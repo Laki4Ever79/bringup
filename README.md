@@ -6,8 +6,8 @@ power simulation, and a consistency report.
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
-> Status: the contract, change control, consistency checker and every tool wrapper (board, enclosure, firmware, SPICE,
-> QEMU) are built and tested. Pieces still marked **(in progress)** are not wired yet. This README does not claim
+> Status: the contract, change control, consistency checker and the board, enclosure, firmware and SPICE
+> wrappers are built and tested against the real tools. The QEMU wrapper is written but has not booted on real QEMU yet. Pieces still marked **(in progress)** are not wired yet. This README does not claim
 > results that haven't run.
 
 ## The problem
