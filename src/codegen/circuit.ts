@@ -97,8 +97,9 @@ const SUPPORT = {
 
 type End = { net: string } | { ref: string; pin: string }
 
-interface Support {
+export interface Support {
 	ref: string
+	job: string // what it is for, e.g. "USB-C CC1 (J1.pin8)"
 	spec: SupportSpec
 	a: End // joined to the part's first pin
 	b: End // joined to its second pin
@@ -107,7 +108,7 @@ interface Support {
 	pins: [string, string]
 }
 
-function usbRef(s: ContractSnapshot): string | undefined {
+export function usbRef(s: ContractSnapshot): string | undefined {
 	const { parts = [], connectors = [] } = s.values
 	const footprintOfRef = (ref: string, fallback?: string) => {
 		const part = parts.find((p) => p.ref === ref)
@@ -129,14 +130,14 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const jobs: Omit<Support, "ref" | "added" | "pins">[] = []
 	const GND = { net: "GND" }
 
-	if (led) jobs.push({ spec: SUPPORT.led, a: { ref: led.ref, pin: "K" }, b: GND, near: led.ref })
+	if (led) jobs.push({ job: `LED ${led.ref} cathode (${led.ref}.K)`, spec: SUPPORT.led, a: { ref: led.ref, pin: "K" }, b: GND, near: led.ref })
 	// A USB-C sink needs 5.1k pull-downs on CC1 and CC2, or a C-to-C charger supplies no VBUS.
-	if (usb) for (const cc of ["CC1", "CC2"] as const) jobs.push({ spec: SUPPORT.cc, a: { ref: usb, pin: USBC_PADS[cc][0] }, b: GND, near: usb })
-	if (charger?.pins.includes("PROG")) jobs.push({ spec: SUPPORT.prog, a: { ref: charger.ref, pin: "PROG" }, b: GND, near: charger.ref })
-	if (supply) for (const p of pins) if (/^I2C_(SDA|SCL)$/.test(p.signal)) jobs.push({ spec: SUPPORT.pullup, a: { net: p.signal }, b: { net: supply }, near: p.partRef })
-	if (charger) jobs.push({ spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
-	if (ldo) jobs.push({ spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
-	if (ldo && supply) jobs.push({ spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
+	if (usb) for (const cc of ["CC1", "CC2"] as const) jobs.push({ job: `USB-C ${cc} (${usb}.${USBC_PADS[cc][0]})`, spec: SUPPORT.cc, a: { ref: usb, pin: USBC_PADS[cc][0] }, b: GND, near: usb })
+	if (charger?.pins.includes("PROG")) jobs.push({ job: `charger PROG (${charger.ref}.PROG), sets the charge current`, spec: SUPPORT.prog, a: { ref: charger.ref, pin: "PROG" }, b: GND, near: charger.ref })
+	if (supply) for (const p of pins) if (/^I2C_(SDA|SCL)$/.test(p.signal)) jobs.push({ job: `${p.signal} pull-up`, spec: SUPPORT.pullup, a: { net: p.signal }, b: { net: supply }, near: p.partRef })
+	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
+	if (ldo) jobs.push({ job: `decoupling on ${charger ? "VBAT" : "VBUS"} (LDO input)`, spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
+	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
 
 	const claimed = new Set<string>()
 	const taken = new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])
@@ -365,21 +366,22 @@ function at(placement: Map<string, Placed>, ref: string): string {
 	return b ? ` pcbX={${+b.x.toFixed(2)}} pcbY={${+b.y.toFixed(2)}} pcbRotation={${b.rotation}}` : ""
 }
 
-// Power, USB and support wiring: GND, the 3V3 rail, VBUS, VBAT (when there is a charger) and USB D±, plus the
-// support passives. A net is only emitted when it reaches at least two components; a one-component net can't be routed.
-function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string[] {
+// The power and USB nets the generator wires on top of the contract's own signals: GND, the 3V3 rail, VBUS, VBAT (when
+// there is a charger) and USB D±, with the support passives' ends. Ends are "REF.pin". Only nets that reach at least
+// two components are kept; a one-component net can't be routed.
+const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN"]
+
+export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const { parts = [], rails = [], pins = [] } = s.values
 	const supply = netName(SUPPLY_RAIL)
-	const nets = new Map<string, string[]>([["GND", []], [supply, []], ["VBUS", []], ["VBAT", []], ["USB_DP", []], ["USB_DN", []]])
-	const lines: string[] = []
-	const port = (ref: string, pin: string) => `.${ref} > .${pin}`
+	const nets = new Map<string, string[]>(POWER_NETS.map((n) => [n, []]))
 	const hasSupply = rails.some((r) => r.name === SUPPLY_RAIL)
 	const ldo = parts.find((p) => p.role === "ldo")
 	const charger = parts.find((p) => p.role === "charger")
 	const battery = parts.find((p) => p.role === "battery")
 	const mcu = parts.find((p) => p.role === "mcu")
 	const usb = usbRef(s)
-	const join = (net: string, ref: string, pin: string) => nets.get(net)!.push(port(ref, pin))
+	const join = (net: string, ref: string, pin: string) => nets.get(net)!.push(`${ref}.${pin}`)
 
 	for (const p of parts) {
 		if (footprintFor(p) === USBC_FOOTPRINT || p.role === "button") continue
@@ -424,23 +426,34 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string
 	}
 
 	for (const sp of supportParts(s)) {
+		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) if (!("ref" in end) && nets.has(end.net)) join(end.net, sp.ref, pin)
+	}
+	return new Map([...nets].filter(([, ends]) => new Set(ends.map((e) => e.split(".")[0])).size >= 2))
+}
+
+// What USB-C pad pinN carries, for people reading generated nets ("J1.pin10" is D+).
+export function usbPadSignal(pin: string): string | undefined {
+	return (Object.entries(USBC_PADS) as [string, string[]][]).find(([, pads]) => pads.includes(pin))?.[0].replace(/^DP$/, "D+").replace(/^DN$/, "D-")
+}
+
+function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string[] {
+	const lines: string[] = []
+	const port = (ref: string, pin: string) => `.${ref} > .${pin}`
+	for (const sp of supportParts(s)) {
 		if (sp.added) {
 			const attr = sp.spec.kind === "resistor" ? "resistance" : "capacitance"
 			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${q(sp.spec.footprint)} />`)
 		}
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) {
 			if ("ref" in end) lines.push(`<trace name=${q(`${end.ref}_${end.pin}_${sp.ref}`)} from=${q(port(end.ref, end.pin))} to=${q(port(sp.ref, pin))} />`)
-			else if (nets.has(end.net)) join(end.net, sp.ref, pin)
-			else lines.push(`<trace name=${q(`${end.net}_${sp.ref}_${pin}`)} from=${q(port(sp.ref, pin))} to=${q(`net.${end.net}`)} />`)
+			else if (!POWER_NETS.includes(end.net)) lines.push(`<trace name=${q(`${end.net}_${sp.ref}_${pin}`)} from=${q(port(sp.ref, pin))} to=${q(`net.${end.net}`)} />`)
 		}
 	}
-
-	for (const [net, ends] of nets) {
-		if (new Set(ends.map((e) => e.split(" > ")[0])).size < 2) continue
+	for (const [net, ends] of generatedNets(s)) {
 		lines.push(`<net name=${q(net)} />`)
 		for (const end of ends) {
-			const [ref, pin] = end.slice(1).split(" > .")
-			lines.push(`<trace name=${q(`${net}_${ref}_${pin}`)} from=${q(end)} to=${q(`net.${net}`)} />`)
+			const [ref, pin] = end.split(".")
+			lines.push(`<trace name=${q(`${net}_${ref}_${pin}`)} from=${q(port(ref, pin))} to=${q(`net.${net}`)} />`)
 		}
 	}
 	return lines
