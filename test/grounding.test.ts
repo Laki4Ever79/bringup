@@ -111,9 +111,17 @@ test("a part outside the catalog is grounded in the KiCad symbol", () => {
 
 test("a pin claimed on a part whose source lists no pins is unknown-pin", () => {
 	const c = fixtureContract()
-	c.values.parts!.push({ ref: "J1", role: "usb-c", mpn: "TYPE-C-31-M-12", lcsc: "C165948", footprint: "usbcmidmount", pins: ["VBUS"] })
+	c.values.parts!.push({ ref: "J9", role: "connector", mpn: "NO-PINS-1", lcsc: null, footprint: "pinrow4", pins: ["VBUS"] })
+	const bare = [...catalog, { role: "connector", mpn: "NO-PINS-1", lcsc: null, footprint: "pinrow4", pins: [], stock: null, priceUsd: null, inStock: null }]
+	const findings = groundParts(c, { catalog: bare })
+	assert.deepEqual(findings.map((f) => [f.partRef, f.kind, f.source]), [["J9", "unknown-pin", "catalog"]])
+})
+
+test("USB-C pins are grounded in the catalog's named pins", () => {
+	const c = fixtureContract()
+	c.values.parts!.push({ ref: "J1", role: "usb-c", mpn: "TYPE-C-31-M-12", lcsc: "C165948", footprint: "usbcmidmount", pins: ["VBUS", "CC1", "DP", "SBU1"] })
 	const findings = groundParts(c, { catalog })
-	assert.deepEqual(findings.map((f) => [f.partRef, f.kind, f.source]), [["J1", "unknown-pin", "catalog"]])
+	assert.deepEqual(findings.map((f) => [f.partRef, f.kind, f.source]), [["J1", "pin-not-on-part", "catalog"]])
 })
 
 test("a pin assignment to a part that is not in the contract is unknown-part", () => {
