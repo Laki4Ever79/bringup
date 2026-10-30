@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs"
+import { copyFileSync, cpSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
@@ -9,6 +9,7 @@ import { when } from "../change-control.ts"
 import { Rebuilder } from "../tools/rebuilder.ts"
 import { tail } from "../tools/exec.ts"
 import { buildBoard } from "../tools/board.ts"
+import { exportFab } from "../tools/fab.ts"
 import { buildEnclosure } from "../tools/enclosure.ts"
 import { buildFirmware } from "../tools/firmware.ts"
 import type { Env } from "../tools/env.ts"
@@ -86,6 +87,17 @@ export function createBoardBuilder(env: Env): Human {
 			const board = await buildBoard(env, dir, snapshot, revision)
 			// Stable path for the dashboard: the latest render is always at <out>/board/board.png.
 			if (board.renderPath) copyFileSync(board.renderPath, join(state().outDir, "board", "board.png"))
+			// The fab package is best-effort: a failed export is recorded on the artifact, not a failed build.
+			// The latest one is also copied to <out>/fab.
+			try {
+				const fab = await exportFab(env, board, snapshot, dir)
+				board.fabDir = fab.dir
+				const latest = join(state().outDir, "fab")
+				rmSync(latest, { recursive: true, force: true })
+				cpSync(fab.dir, latest, { recursive: true })
+			} catch (error) {
+				board.fabError = error instanceof Error ? error.message : String(error)
+			}
 			return board
 		},
 	})

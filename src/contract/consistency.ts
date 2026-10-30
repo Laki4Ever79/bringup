@@ -10,6 +10,10 @@ export interface BoardArtifact {
 	heightMm: number
 	// net name -> "REF.pinName" entries
 	nets: Record<string, string[]>
+	// The JLC/PCBWay fab package (gerbers.zip, bom.csv, cpl.csv, README.txt), or why it could not be exported.
+	// Best-effort: a failed export never fails the board build.
+	fabDir?: string
+	fabError?: string
 }
 
 export interface EnclosureArtifact {
