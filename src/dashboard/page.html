@@ -129,6 +129,7 @@
 	#parts-ready.warn { color: var(--warn); }
 	#parts .part { cursor: pointer; }
 	.src-pop { position: absolute; left: 8px; right: 8px; z-index: 20; padding: 10px 12px; background: var(--raised); border: 1px solid var(--border-hover); border-radius: var(--r-card); box-shadow: 0 20px 50px rgba(0, 0, 0, .55); animation: fadein var(--t) var(--ease); cursor: default; }
+	.src-pop h4 .chip { text-transform: none; letter-spacing: 0; margin-left: 6px; }
 	.src-pop h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
 	.src-pop .row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 90px; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 13px; text-decoration: none; }
 	.src-pop a.row:hover { background: #1c1c21; color: var(--info); }
@@ -143,6 +144,7 @@
 	#parts .mpn a { color: var(--text-3); text-decoration: none; font-family: var(--mono); font-size: 12px; margin-left: 6px; }
 	#parts .mpn a:hover { color: var(--info); }
 	.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
+	.chip.warn { color: var(--warn); border-color: rgba(245, 158, 11, .4); }
 	.chip.ok { color: var(--ok); border-color: rgba(34, 197, 94, .3); } .chip.bad { color: var(--error); border-color: rgba(239, 68, 68, .35); }
 	.ground { text-align: center; font-size: 14px; } .ground.ok { color: var(--ok); } .ground.warn { color: var(--warn); }
 
@@ -386,7 +388,7 @@
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	import { AGENT_COLORS, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -649,7 +651,7 @@
 			const ready = S.bom && !Array.isArray(S.bom) ? S.bom.readiness : null
 			$("parts-ready").textContent = ready?.summary ?? ""
 			$("parts-ready").title = ready?.summary ?? ""
-			$("parts-ready").className = ready && ready.orderable < ready.total ? "warn" : ""
+			$("parts-ready").className = ready?.warn ? "warn" : ""
 			const openRef = $("parts").querySelector(".src-pop")?.dataset.ref
 			$("parts").innerHTML = items.map((p) => {
 				const stock = typeof p.stock === "number" ? `<span class="chip ${p.inStock === false || p.stock === 0 ? "bad" : "ok"} num">${p.stock === 0 ? "out of stock" : `${fmtStock(p.stock)} in stock`}</span>` : `<span class="chip t3">stock —</span>`
@@ -681,7 +683,9 @@
 						return url ? `<a class="row" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="row">${inner}</div>`
 					}).join("")
 				: ""
-			row.insertAdjacentHTML("afterend", `<div class="src-pop" data-ref="${esc(ref)}" style="top:${row.offsetTop + row.offsetHeight + 4}px"><h4>${esc(ref)} · ${esc(item.mpn)} · where to buy</h4>${src}${alts}</div>`)
+			const line = readinessLine(S.bom?.readiness, ref)
+			const badge = line ? ` <span class="chip ${line.warn ? "warn" : ""}">${esc(line.status)}</span>` : ""
+			row.insertAdjacentHTML("afterend", `<div class="src-pop" data-ref="${esc(ref)}" style="top:${row.offsetTop + row.offsetHeight + 4}px"><h4>${esc(ref)} · ${esc(item.mpn)} · where to buy${badge}</h4>${src}${alts}</div>`)
 			const pop = $("parts").querySelector(".src-pop")
 			// Keep it in view inside the scrolling list.
 			const over = pop.offsetTop + pop.offsetHeight - ($("parts").scrollTop + $("parts").clientHeight)

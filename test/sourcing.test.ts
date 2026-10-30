@@ -41,21 +41,37 @@ test("alternatives: other catalog parts with the same role, with live data, neve
 	assert.deepEqual(alternativesFor({ mpn: "KT-0603R", role: "led" }, catalog), [])
 })
 
-test("order readiness: lines orderable at LCSC, and why the rest aren't", () => {
-	const item = (ref: string, lcsc: string | null, stock: number | null) => ({ ref, lcsc, stock, inStock: stock === null ? null : stock > 0 })
-	const r = orderReadiness([item("U1", "C2838502", 22598), item("U4", "C32574", null), item("D1", "C2286", 0), item("J9", null, null), item("R1", "C11702", 100)])
-	assert.deepEqual(r, {
-		supplier: "LCSC/JLCPCB",
-		orderable: 2,
-		total: 5,
-		missing: [
-			{ ref: "U4", reason: "stock unknown" },
-			{ ref: "D1", reason: "out of stock" },
-			{ ref: "J9", reason: "no LCSC number" },
-		],
-		summary: "2/5 lines orderable at LCSC/JLCPCB; U4 stock unknown, D1 out of stock, J9 no LCSC number",
-	})
-	assert.equal(orderReadiness([item("U1", "C2838502", 5)]).summary, "1/1 lines orderable at LCSC/JLCPCB")
+test("readiness separates listed, stock confirmed, stock unknown, out of stock, not listed and not checked", () => {
+	const item = (ref: string, lcsc: string | null, stock: number | null, priceUsd: number | null) => ({ ref, lcsc, stock, priceUsd, inStock: stock === null ? null : stock > 0 })
+	const r = orderReadiness([
+		item("U1", "C2838502", 22598, 3.05),
+		item("U3", "C5446", null, 0.148),
+		item("U4", "C32574", null, 0.15),
+		item("D1", "C2286", 0, 0.01),
+		item("J9", null, null, null),
+		item("R1", "C11702", null, null),
+	])
+	assert.deepEqual(r.counts, { listed: 4, stockConfirmed: 1, stockUnknown: 2, outOfStock: 1, notListed: 1, notChecked: 1 })
+	assert.deepEqual(r.lines, [
+		{ ref: "U1", status: "stock confirmed" },
+		{ ref: "U3", status: "stock unknown" },
+		{ ref: "U4", status: "stock unknown" },
+		{ ref: "D1", status: "out of stock" },
+		{ ref: "J9", status: "not listed" },
+		{ ref: "R1", status: "not checked" },
+	])
+	assert.equal(r.warn, true, "amber: an out-of-stock or unlisted line")
+	assert.equal(
+		r.summary,
+		"4/6 listed at LCSC/JLCPCB · 1 stock confirmed · 2 stock unknown (jlcsearch returned none) · 1 out of stock (D1) · 1 not listed (J9: no LCSC number) · 1 not checked (R1: no live data)",
+	)
+})
+
+test("unknown stock alone is not a warning (7a's 2/18)", () => {
+	const item = (ref: string, stock: number | null) => ({ ref, lcsc: "C5446", stock, priceUsd: 0.1, inStock: stock === null ? null : stock > 0 })
+	const r = orderReadiness([item("U1", 5), item("U2", 7), ...Array.from({ length: 16 }, (_, i) => item(`R${i + 1}`, null))])
+	assert.equal(r.warn, false)
+	assert.equal(r.summary, "18/18 listed at LCSC/JLCPCB · 2 stock confirmed · 16 stock unknown (jlcsearch returned none)")
 })
 
 test("bom.json carries sources, alternatives and the order readiness", async () => {
@@ -81,8 +97,9 @@ test("bom.json carries sources, alternatives and the order readiness", async () 
 	const u3 = bom.items.find((i) => i.ref === "U3")!
 	assert.ok(u3.alternatives!.some((a) => a.mpn === "XC6206P332MR-G" && a.stock === 530418), "the low-Iq LDO is offered with its live stock")
 	assert.equal(bom.readiness!.total, LOGGER_DESIGN.parts.length)
-	assert.equal(bom.readiness!.orderable, 1, "only U1 has known stock in the fake table")
-	assert.match(bom.readiness!.summary, new RegExp(`^1/${LOGGER_DESIGN.parts.length} lines orderable at LCSC/JLCPCB; U2 stock unknown`))
+	assert.equal(bom.readiness!.counts.stockConfirmed, 1, "only U1 has known stock in the fake table")
+	assert.equal(bom.readiness!.counts.notChecked, LOGGER_DESIGN.parts.length - 1, "the fake table returns nothing for the rest")
+	assert.equal(bom.readiness!.warn, false)
 })
 
 test("whenIdle waits for a pending or running bom.json write", async () => {

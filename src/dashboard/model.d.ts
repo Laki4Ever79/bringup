@@ -23,3 +23,4 @@ export function sourcingRows(item: any): {
 	sources: { supplier: string; url: string | null; stock: string; price: string; note: string | null }[]
 	alternatives: { mpn: string; lcsc: string | null; stock: string; price: string }[]
 }
+export function readinessLine(readiness: any, ref: string): { status: string; warn: boolean } | null
