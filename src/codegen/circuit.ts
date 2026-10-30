@@ -148,7 +148,15 @@ function sizeAt(footprint: string, rotation: number): [number, number] {
 	return Math.abs(rotation) % 180 === 90 ? [h, w] : [w, h]
 }
 
-export function placeParts(s: ContractSnapshot): Placed[] {
+// Distance from the USB-C connector centre to the LDO target; 8 mm routed cleanly at every tested width (45–70 mm).
+export const LDO_FROM_USB_MM = 8
+
+export interface PlacementOptions {
+	// Distance from the USB-C connector centre to the LDO target.
+	ldoFromUsbMm?: number
+}
+
+export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Placed[] {
 	const { outline, parts = [], connectors = [] } = s.values
 	if (!outline) throw new Error("placeParts: contract has no outline")
 	const [W, H] = [outline.widthMm, outline.heightMm]
@@ -207,7 +215,10 @@ export function placeParts(s: ContractSnapshot): Placed[] {
 
 	const mcu = put(byRole("mcu"), { x: 0, y: 0 }, MODULE_ROTATION[edge])
 	const centre = mcu ?? { x: 0, y: 0 }
-	put(byRole("ldo"), usbBox ? { x: (usbBox.x + centre.x) / 2, y: (usbBox.y + centre.y) / 2 } : frame(10, span / 2))
+	// The LDO sits a fixed distance in from the USB-C connector, not halfway to the MCU: on wider boards the
+	// halfway point left a gap where tscircuit's router dropped a via onto the VBUS pad (55–60 mm boards).
+	const inward = { left: [1, 0], right: [-1, 0], bottom: [0, 1], top: [0, -1] }[edge]
+	put(byRole("ldo"), usbBox ? { x: usbBox.x + inward[0] * (opts.ldoFromUsbMm ?? LDO_FROM_USB_MM), y: usbBox.y + inward[1] * (opts.ldoFromUsbMm ?? LDO_FROM_USB_MM) } : frame(10, span / 2))
 	// The sensor goes to the far edge, in the corner away from the MCU, so neither the MCU nor the LDO heats it.
 	const mcuV = edge === "left" || edge === "right" ? centre.y + H / 2 : centre.x + W / 2
 	put(byRole("sensor"), frame(depth - 3, mcuV < span / 2 ? span - 4 : 4))
@@ -279,14 +290,14 @@ function powerLines(s: ContractSnapshot, footprintOf: Map<string, string>, place
 }
 
 // Source of board.circuit.tsx. Every part gets a fixed position from placeParts; tscircuit only routes.
-export function circuitFromContract(s: ContractSnapshot): string {
+export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions = {}): string {
 	const { outline, parts = [], pins = [], connectors = [] } = s.values
 	if (!outline) throw new Error("circuitFromContract: contract has no outline")
 	const mcuRef = parts.find((p) => p.role === "mcu")?.ref
 	const connectorRefs = new Set(connectors.map((c) => c.ref))
 	const lines: string[] = []
 	const footprintOf = new Map<string, string>()
-	const placement = new Map(placeParts(s).map((b) => [b.ref, b]))
+	const placement = new Map(placeParts(s, opts).map((b) => [b.ref, b]))
 
 	for (const p of parts) {
 		if (connectorRefs.has(p.ref)) continue

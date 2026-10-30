@@ -39,3 +39,28 @@ test("buildBoard works when the output folder is inside the repo", { skip: !(env
 		rmSync(dir, { recursive: true, force: true })
 	}
 })
+
+test("the logger board routes at every width from 45 to 70 mm", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 900_000 }, async () => {
+	const { LOGGER_DESIGN } = await import("../src/inference/scripts.ts")
+	const failures: string[] = []
+	await Promise.all(
+		[45, 50, 55, 60, 65, 70].map(async (width) => {
+			const s = fixtureContract()
+			s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN), outline: { ...LOGGER_DESIGN.outline, widthMm: width } }
+			try {
+				const board = await buildBoard(env, tempDir(), s, s.revision)
+				const v = checkConsistency(s, { board })
+				if (v.length) failures.push(`${width} mm: ${v.map((x) => x.kind).join(", ")}`)
+			} catch (error) {
+				failures.push(`${width} mm: ${String(error).split("\n").slice(0, 3).join(" | ")}`)
+			}
+		}),
+	)
+	assert.deepEqual(failures, [])
+})
+
+test("build errors lead with the real cause, not tscircuit's advisory warnings", async () => {
+	const { buildErrors } = await import("../src/tools/board.ts")
+	const out = "All pins on U1 are underspecified (no pinAttributes set)\nU2 has no pin with requires_power=true\nVia hole at (-21.24mm, 2.40mm) overlaps SMD pad J1.pin6\nBuild exiting with code 1: circuit build errors occurred"
+	assert.equal(buildErrors(out), "Via hole at (-21.24mm, 2.40mm) overlaps SMD pad J1.pin6\nBuild exiting with code 1: circuit build errors occurred")
+})
