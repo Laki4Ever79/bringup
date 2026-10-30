@@ -169,8 +169,12 @@ static float sampleLine(bool ledOn) {
 			tele("{\"k\":\"err\",\"rev\":%d,\"what\":\"imu\",\"detail\":\"no ACK at 0x68\"}\n", BRINGUP_REVISION);
 		}
 	}
-	tele("{\"k\":\"s\",\"rev\":%d,\"ms\":%lu,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"tilt\":%.1f,\"tC\":%.2f,\"tSrc\":\"%s\",\"led\":%d}\n",
-		BRINGUP_REVISION, (unsigned long)millis(), a[0], a[1], a[2], imu ? tilt : 0.0f, sht ? t : mpuT, sht ? "sht40" : "mpu", ledOn ? 1 : 0);
+	// No temperature sensor at all (a bare S3) reports null, not a made-up 0 °C.
+	char temp[16];
+	if (sht || imu) snprintf(temp, sizeof temp, "%.2f", sht ? t : mpuT);
+	else snprintf(temp, sizeof temp, "null");
+	tele("{\"k\":\"s\",\"rev\":%d,\"ms\":%lu,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"tilt\":%.1f,\"tC\":%s,\"tSrc\":\"%s\",\"led\":%d}\n",
+		BRINGUP_REVISION, (unsigned long)millis(), a[0], a[1], a[2], imu ? tilt : 0.0f, temp, sht ? "sht40" : imu ? "mpu" : "none", ledOn ? 1 : 0);
 	return imu ? tilt : 0.0f;
 }
 

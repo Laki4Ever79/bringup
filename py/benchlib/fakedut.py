@@ -20,8 +20,10 @@ CURRENT_MA = {"blank": 30.0, "download": 30.0, "live": 45.0, "led": 5.0, "awake"
 
 
 class FakeDut:
-    def __init__(self, pins, now_ms: int, info: dict | None = None):
+    def __init__(self, pins, now_ms: int, info: dict | None = None, imu: bool = True):
         self.pins = pins
+        self.imu = imu  # False: no MPU-6050 wired, as on a bare S3
+        self.last_err = None
         self.info = info
         self.lines: list[str] = []
         self.download_mode = False
@@ -62,9 +64,11 @@ class FakeDut:
                 self.next_toggle = now_ms + self._period(now_ms) // 2
             if now_ms >= self.next_sample:
                 self.next_sample = now_ms + LIVE_SAMPLE_MS
+                self._imu_error(now_ms)
                 self._emit(self._sample(now_ms))
         elif self.mode == "duty":
             if self.awake and now_ms >= self.wake_ms + DUTY_AWAKE_MS:
+                self._imu_error(now_ms)
                 self._emit(self._sample(now_ms))
                 self._emit({"k": "cycle", "rev": self.info["rev"], "n": self.cycle, "awakeMs": DUTY_AWAKE_MS})
                 self._sleep(now_ms)
@@ -86,6 +90,7 @@ class FakeDut:
     # ---- firmware behaviour ----------------------------------------------------
     def _boot(self, now_ms: int, reason: str) -> None:
         self.boot_ms = now_ms
+        self.last_err = None
         duty = self.pins.get(MODE_PIN, 0) == 1
         self.mode = "duty" if duty else "live"
         self.awake = duty
@@ -105,10 +110,20 @@ class FakeDut:
         return TILT_SWING_DEG * math.sin(2 * math.pi * (now_ms - self.boot_ms) / TILT_PERIOD_MS)
 
     def _period(self, now_ms: int) -> int:
-        tilted = abs(self._angle(now_ms)) > self.info["tiltDeg"]
+        tilted = self.imu and abs(self._angle(now_ms)) > self.info["tiltDeg"]
         return self.info["tiltBlinkMs"] if tilted else self.info["blinkMs"]
 
+    def _imu_error(self, now_ms: int) -> None:
+        """At most one a second, and once per boot, as main.cpp does."""
+        if self.imu or (self.last_err is not None and now_ms - self.last_err < 1000):
+            return
+        self.last_err = now_ms
+        self._emit({"k": "err", "rev": self.info["rev"], "what": "imu", "detail": "no ACK at 0x68"})
+
     def _sample(self, now_ms: int) -> dict:
+        if not self.imu:
+            return {"k": "s", "rev": self.info["rev"], "ms": now_ms - self.boot_ms, "ax": 0, "ay": 0, "az": 0, "tilt": 0,
+                    "tC": None, "tSrc": "none", "led": 1 if self.mode == "duty" else self.led}
         a = math.radians(self._angle(now_ms))
         return {
             "k": "s",

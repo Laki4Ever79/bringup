@@ -178,6 +178,20 @@ class FakeTier1(unittest.TestCase):
         self.assertFalse(any(m["k"] == "i" for m in b.seen), "no meter, no current lines")
 
 
+class FakeBareS3(unittest.TestCase):
+    def test_no_imu_with_no_meter_is_the_bare_s3(self):
+        b = Bridge("--source", "fake", "--no-meter", "--no-imu", "--fake-speed", "50")
+        hello = b.until(lambda m: m["k"] == "hello")
+        self.assertFalse(hello["meter"])
+        mark = len(b.seen)
+        self.assertTrue(b.ack(b.send("flash", dir=fw_dir(9)))["ok"])
+        err = b.until(lambda m: m["k"] == "err", since=mark)
+        self.assertEqual((err["rev"], err["what"]), (9, "imu"))
+        s = b.until(lambda m: m["k"] == "s" and m["rev"] == 9, since=mark)
+        self.assertEqual((s["tilt"], s["tSrc"]), (0, "none"))
+        b.quit()
+
+
 class ReplaySource(unittest.TestCase):
     def test_replays_a_recording_in_real_time_and_never_rewrites_the_revision(self):
         path = os.path.join(tempfile.mkdtemp(), "bench.jsonl")
