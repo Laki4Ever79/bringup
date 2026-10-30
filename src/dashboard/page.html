@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bringup · live run</title>
+<style>
+	:root {
+		--bg: #0d1117; --panel: #161b22; --line: #30363d; --text: #e6edf3; --dim: #8b949e;
+		--contract: #58a6ff; --proposed: #d29922; --approved: #3fb950; --rejected: #f85149;
+		--artifact: #a371f7; --check: #39c5cf; --settled: #3fb950; --halted: #f85149;
+	}
+	* { box-sizing: border-box; }
+	body { margin: 0; background: var(--bg); color: var(--text); font: 20px/1.4 system-ui, sans-serif; }
+	header { display: flex; align-items: baseline; gap: 24px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+	h1 { margin: 0; font-size: 30px; }
+	h2 { margin: 0 0 12px; font-size: 18px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+	#status { color: var(--dim); }
+	#status.live { color: var(--approved); }
+	#settled { margin-left: auto; font-weight: 600; }
+	main { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
+	section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+	#counters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding: 12px; }
+	.counter { text-align: center; }
+	.counter b { display: block; font-size: 48px; font-variant-numeric: tabular-nums; }
+	.counter span { color: var(--dim); font-size: 16px; }
+	#timeline-panel { grid-row: span 3; }
+	#timeline { list-style: none; margin: 0; padding: 0; max-height: 78vh; overflow-y: auto; }
+	#timeline li { padding: 6px 0 6px 12px; border-left: 5px solid var(--line); margin-bottom: 6px; }
+	#timeline .t { font-weight: 600; }
+	#timeline .meta { color: var(--dim); font-size: 16px; }
+	table { width: 100%; border-collapse: collapse; }
+	td, th { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+	th { color: var(--dim); font-weight: 400; font-size: 16px; }
+	td.v { font-family: ui-monospace, monospace; font-size: 16px; color: var(--dim); word-break: break-word; }
+	.pill { display: inline-block; padding: 0 10px; border-radius: 99px; font-size: 16px; font-weight: 600; color: var(--bg); }
+	.pending { background: var(--proposed); } .approved { background: var(--approved); } .rejected { background: var(--rejected); }
+	ul.plain { list-style: none; margin: 0; padding: 0; }
+	ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+	.kind { color: var(--rejected); font-weight: 600; }
+	.empty { color: var(--dim); font-style: italic; }
+	#board img { max-width: 100%; border-radius: 6px; background: #000; }
+	.c-contract { border-color: var(--contract) !important; } .c-proposed { border-color: var(--proposed) !important; }
+	.c-approved { border-color: var(--approved) !important; } .c-rejected { border-color: var(--rejected) !important; }
+	.c-artifact { border-color: var(--artifact) !important; } .c-failed { border-color: var(--rejected) !important; }
+	.c-check { border-color: var(--check) !important; } .c-settled { border-color: var(--settled) !important; }
+	.c-halted { border-color: var(--halted) !important; }
+</style>
+</head>
+<body>
+<header>
+	<h1>Bringup</h1>
+	<span id="status">connecting…</span>
+	<span id="revision"></span>
+	<span id="settled"></span>
+</header>
+<main>
+	<section id="counters"></section>
+	<section id="timeline-panel"><h2>Timeline</h2><ul id="timeline"></ul></section>
+	<section><h2>Design contract</h2><table id="contract"></table></section>
+	<section><h2>Change requests</h2><table id="changes"></table></section>
+	<section><h2>Violations (latest check)</h2><ul class="plain" id="violations"><li class="empty">no check yet</li></ul></section>
+	<section id="board"><h2>Board</h2><p class="empty">waiting for the first board build</p></section>
+</main>
+<script>
+	const FIELDS = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
+	const state = {
+		revision: 0,
+		fields: {},          // field -> { version, by, revision }
+		values: {},          // field -> value, from /files/contract.json
+		changes: new Map(),  // proposalId -> { field, by, reason, status, decidedBy, why }
+		violations: null,
+		seenViolations: new Set(),
+		counts: { proposed: 0, approved: 0, rejected: 0, built: 0 },
+		settled: null,
+	}
+
+	const $ = (id) => document.getElementById(id)
+	const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
+	const time = (at) => { const d = new Date(at); return isNaN(d) ? "" : d.toLocaleTimeString() }
+
+	function colour(e) {
+		switch (e.type) {
+			case "contract.changed": return "c-contract"
+			case "change.proposed": return "c-proposed"
+			case "change.decided": return e.payload.approved ? "c-approved" : "c-rejected"
+			case "artifact.ready": return "c-artifact"
+			case "artifact.failed": return "c-failed"
+			case "consistency.checked": return e.payload.violations.length ? "c-failed" : "c-check"
+			case "design.settled": return e.payload.settled ? "c-settled" : "c-failed"
+			case "agent.halted": return "c-halted"
+			default: return ""
+		}
+	}
+
+	function describe(e) {
+		const p = e.payload ?? {}
+		switch (e.type) {
+			case "contract.changed": return `${p.field} → v${p.version} by ${p.by}`
+			case "change.proposed": return `${p.by} wants to change ${p.field}: ${p.reason}`
+			case "change.decided": return `${p.by} ${p.approved ? "approved" : "rejected"} ${p.proposalId}: ${p.reason}`
+			case "artifact.ready": return `${p.kind} built for rev ${p.revision}`
+			case "artifact.failed": return `${p.kind} failed for rev ${p.revision}: ${p.error}`
+			case "consistency.checked": return `rev ${p.revision}: ${p.violations.length} violation(s)`
+			case "design.settled": return p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`
+			case "agent.halted": return `${p.agentId} halted: ${p.error}`
+			default: return JSON.stringify(p)
+		}
+	}
+
+	function apply(e) {
+		const p = e.payload ?? {}
+		switch (e.type) {
+			case "contract.changed":
+				state.fields[p.field] = { version: p.version, by: p.by, revision: p.revision }
+				state.revision = Math.max(state.revision, p.revision)
+				fetchContract()
+				break
+			case "change.proposed":
+				state.counts.proposed++
+				state.changes.set(p.proposalId, { field: p.field, by: p.by, reason: p.reason, status: "pending" })
+				break
+			case "change.decided": {
+				state.counts[p.approved ? "approved" : "rejected"]++
+				const c = state.changes.get(p.proposalId) ?? { field: "?", by: "?", reason: "" }
+				state.changes.set(p.proposalId, { ...c, status: p.approved ? "approved" : "rejected", decidedBy: p.by, why: p.reason })
+				break
+			}
+			case "artifact.ready":
+				state.counts.built++
+				if (p.kind === "board") showBoard(p.revision)
+				break
+			case "consistency.checked":
+				state.violations = p
+				for (const v of p.violations) state.seenViolations.add(v.kind + "|" + v.message)
+				break
+			case "design.settled":
+				state.settled = p
+				break
+		}
+	}
+
+	function addToTimeline(e) {
+		const li = document.createElement("li")
+		li.className = colour(e)
+		li.innerHTML = `<div class="t">${esc(e.type)}</div><div>${esc(describe(e))}</div>` +
+			`<div class="meta">#${esc(e.seq)} · ${esc(time(e.at))} · ${esc(e.producerId)}</div>`
+		$("timeline").prepend(li)
+	}
+
+	function short(v) {
+		if (v === undefined) return ""
+		const s = JSON.stringify(v)
+		return s.length > 140 ? s.slice(0, 140) + "…" : s
+	}
+
+	function render() {
+		const pending = [...state.changes.values()].filter((c) => c.status === "pending").length
+		const counters = [
+			["changes proposed", state.counts.proposed], ["held now", pending], ["approved", state.counts.approved],
+			["rejected", state.counts.rejected], ["violations caught", state.seenViolations.size], ["artifacts built", state.counts.built],
+		]
+		$("counters").innerHTML = counters.map(([label, n]) => `<div class="counter"><b>${n}</b><span>${label}</span></div>`).join("")
+
+		$("revision").textContent = state.revision ? `revision ${state.revision}` : ""
+		const s = state.settled
+		$("settled").textContent = s ? (s.settled ? `✔ settled at rev ${s.revision}` : `✖ not settled (rev ${s.revision})`) : ""
+		$("settled").style.color = s ? (s.settled ? "var(--approved)" : "var(--rejected)") : ""
+
+		$("contract").innerHTML = `<tr><th>field</th><th>v</th><th>by</th><th>rev</th></tr>` + FIELDS.map((f) => {
+			const m = state.fields[f]
+			const value = short(state.values[f])
+			return `<tr><td>${f}</td><td>${m ? m.version : "–"}</td><td>${m ? esc(m.by) : ""}</td><td>${m ? m.revision : ""}</td></tr>` +
+				(value ? `<tr><td class="v" colspan="4">${esc(value)}</td></tr>` : "")
+		}).join("")
+
+		const changes = [...state.changes.entries()].reverse()
+		$("changes").innerHTML = changes.length === 0 ? `<tr><td class="empty">none yet</td></tr>` : changes.map(([id, c]) =>
+			`<tr><td><span class="pill ${c.status}">${c.status}</span></td><td><b>${esc(c.field)}</b> by ${esc(c.by)}<br>` +
+			`<span class="meta">${esc(c.reason)}${c.decidedBy ? ` · ${esc(c.decidedBy)}: ${esc(c.why)}` : ""}</span></td></tr>`).join("")
+
+		const v = state.violations
+		$("violations").innerHTML = !v ? `<li class="empty">no check yet</li>` : v.violations.length === 0
+			? `<li style="color: var(--approved)">✔ rev ${v.revision}: consistent</li>`
+			: v.violations.map((x) => `<li><span class="kind">${esc(x.kind)}</span> ${esc(x.message)}<br><span class="meta">wakes ${esc(x.affects.join(", "))}</span></li>`).join("")
+	}
+
+	function showBoard(revision) {
+		$("board").innerHTML = `<h2>Board · rev ${esc(revision)}</h2><img alt="board render" src="/files/board/board.png?rev=${encodeURIComponent(revision)}">`
+	}
+
+	let contractTimer = null
+	function fetchContract() {
+		clearTimeout(contractTimer)
+		contractTimer = setTimeout(async () => {
+			try {
+				const res = await fetch("/files/contract.json", { cache: "no-store" })
+				if (!res.ok) return
+				const snap = await res.json()
+				state.values = snap.values ?? snap
+				render()
+			} catch {}
+		}, 200)
+	}
+
+	let frame = null
+	const source = new EventSource("/events")
+	source.onopen = () => { $("status").textContent = "● live"; $("status").className = "live" }
+	source.onerror = () => { $("status").textContent = "reconnecting…"; $("status").className = "" }
+	let lastSeq = -1
+	source.onmessage = (msg) => {
+		const e = JSON.parse(msg.data)
+		// EventSource replays from the start after a reconnect; skip what is already on screen.
+		if (typeof e.seq === "number" && e.seq <= lastSeq) return
+		lastSeq = typeof e.seq === "number" ? e.seq : lastSeq
+		apply(e)
+		addToTimeline(e)
+		if (!frame) frame = requestAnimationFrame(() => { frame = null; render() })
+	}
+	render()
+	fetchContract()
+</script>
+</body>
+</html>
