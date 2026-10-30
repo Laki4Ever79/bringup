@@ -24,3 +24,17 @@ test("buildBoard fails with tscircuit's message when the board can't be built", 
 	s.values.outline = { widthMm: 4, heightMm: 4, thicknessMm: 1.6 }
 	await assert.rejects(buildBoard(env, tempDir(), s, s.revision), /tscircuit build failed/)
 })
+
+test("buildBoard works when the output folder is inside the repo", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 300_000 }, async () => {
+	const { mkdirSync, rmSync } = await import("node:fs")
+	const dir = new URL(`../out/.test-board-${process.pid}`, import.meta.url).pathname
+	mkdirSync(dir, { recursive: true })
+	try {
+		const s = fixtureContract()
+		const board = await buildBoard(env, dir, s, s.revision)
+		assert.ok(board.pcbPath.startsWith(dir), board.pcbPath)
+		assert.deepEqual(checkConsistency(s, { board }), [])
+	} finally {
+		rmSync(dir, { recursive: true, force: true })
+	}
+})
