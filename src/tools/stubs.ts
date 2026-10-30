@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
-import { createBuilder } from "../agents/builders.ts"
+import { BUILD_REQUIRES, createBuilder } from "../agents/builders.ts"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
@@ -45,12 +45,12 @@ export function stubFirmware(s: ContractSnapshot, revision: number, dir: string)
 	return { revision, ok: true, pins, log: "stubbed (--no-hardware): not compiled", stub: true }
 }
 
-// Same inputs as the real builders in agents/builders.ts, so the same contract changes wake them.
+// Same inputs and required fields as the real builders in agents/builders.ts, so the same contract changes wake them.
 export function createStubBuilders(): Human[] {
 	return [
-		createBuilder({ kind: "board", inputs: ["parts", "pins", "outline", "connectors"], build: async ({ snapshot, revision, dir }) => stubBoard(snapshot, revision, dir) }),
-		createBuilder({ kind: "enclosure", inputs: ["outline", "connectors"], build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
-		createBuilder({ kind: "firmware", inputs: ["parts", "pins"], build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
+		createBuilder({ kind: "board", inputs: ["parts", "pins", "outline", "connectors"], requires: BUILD_REQUIRES.board, build: async ({ snapshot, revision, dir }) => stubBoard(snapshot, revision, dir) }),
+		createBuilder({ kind: "enclosure", inputs: ["outline", "connectors"], requires: BUILD_REQUIRES.enclosure, build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
+		createBuilder({ kind: "firmware", inputs: ["parts", "pins"], requires: BUILD_REQUIRES.firmware, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
 	]
 }
 

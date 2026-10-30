@@ -4,7 +4,7 @@ import { BringupState, emit, join, startRuntime } from "../src/runtime.ts"
 import { createBuilder } from "../src/agents/builders.ts"
 import { createChangeDesk } from "../src/change-control.ts"
 import { makeEvent } from "../src/events.ts"
-import { fixtureArtifacts } from "./fixture.ts"
+import { fixtureArtifacts, fixtureContract } from "./fixture.ts"
 import { recorder, tempDir, waitFor } from "./helpers.ts"
 
 function setup(build: (revision: number) => Promise<unknown>) {
@@ -108,4 +108,39 @@ test("a build that fails before it starts is reported as failed", async () => {
 	emit(makeEvent("contract.changed", desk.getId(), { field: "outline", version: 1, revision: r.revision, by: "architect" }), desk.getId())
 	await waitFor(() => events.some((e) => e.type === "artifact.failed"))
 	assert.ok(state.artifactInputs.enclosure, "inputs recorded so settling can proceed")
+})
+
+test("a builder with required inputs skips silently until they all exist", async () => {
+	const state = new BringupState(tempDir())
+	startRuntime(state, undefined, null)
+	const events = recorder()
+	const desk = createChangeDesk()
+	join(desk)
+	const builds: number[] = []
+	join(
+		createBuilder({
+			kind: "board",
+			inputs: ["parts", "pins", "outline", "connectors"],
+			requires: ["outline", "parts", "pins"],
+			build: async ({ revision }) => {
+				builds.push(revision)
+				return { ...fixtureArtifacts().board!, revision }
+			},
+		}),
+	)
+	const v = fixtureContract().values
+	const write = (field: "parts" | "pins" | "outline") => {
+		const r = state.contract.propose({ field, value: v[field]!, by: field === "parts" ? "parts" : "architect", baseVersion: state.contract.version(field) } as never)
+		if (r.status !== "applied") throw new Error(r.status)
+		emit(makeEvent("contract.changed", desk.getId(), { field, version: r.version, revision: r.revision, by: "architect" }), desk.getId())
+	}
+	write("parts")
+	write("pins")
+	await new Promise((r) => setTimeout(r, 100))
+	assert.deepEqual(builds, [])
+	assert.ok(!events.some((e) => e.type === "artifact.failed" || e.type === "artifact.ready"))
+	assert.equal(state.artifactInputs.board, undefined, "a skip records no inputs, so the board is not current")
+	write("outline")
+	await waitFor(() => events.some((e) => e.type === "artifact.ready"))
+	assert.deepEqual(builds, [3])
 })
