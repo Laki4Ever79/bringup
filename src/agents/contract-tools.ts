@@ -56,6 +56,7 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				const field = state().approvals.fieldOf(args.proposalId)
 				if (!field) return `unknown proposalId "${args.proposalId}"`
 				if (OWNERS[field] !== role) return `not the owner of "${field}" (${OWNERS[field]} decides)`
+				if (state().approvals.hasVoted(args.proposalId, role)) return "already voted on this proposal"
 				const earlier = state().approvals.decisionOf(args.proposalId)
 				if (earlier) return `already decided (${earlier.approved ? "approved" : "rejected"}: ${earlier.reason})`
 				emit(makeEvent("change.decided", self.id, { proposalId: args.proposalId, approved: args.approve, by: role, reason: args.reason }), self.id)
