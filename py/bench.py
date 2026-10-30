@@ -22,14 +22,15 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source", choices=["real", "fake", "replay"], default="real")
     ap.add_argument("--replay", help="a bench.jsonl recording (with --source replay)")
-    ap.add_argument("--out", help="directory for bench.jsonl and power.csv")
+    ap.add_argument("--out", help="directory for bench.jsonl, power.csv and the S3 build dir (fw-s3/)")
     ap.add_argument("--fake-speed", type=float, default=1.0, help="divides the fake flash timings (tests)")
     ap.add_argument("--pio", default=os.environ.get("BENCH_PIO", os.path.join(ROOT, ".venv/bin/pio")))
     args = ap.parse_args(argv)
     if args.source == "replay" and not args.replay:
         ap.error("--source replay needs --replay FILE")
 
-    bridge = Bridge(args.source, Out(sys.stdout, args.out), args.pio, fake_speed=args.fake_speed, replay=args.replay)
+    work_dir = os.path.join(args.out, "fw-s3") if args.out else None
+    bridge = Bridge(args.source, Out(sys.stdout, args.out), args.pio, fake_speed=args.fake_speed, replay=args.replay, work_dir=work_dir)
     try:
         bridge.start()
     except Exception as e:

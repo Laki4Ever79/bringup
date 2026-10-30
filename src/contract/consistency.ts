@@ -10,6 +10,8 @@ export interface BoardArtifact {
 	heightMm: number
 	// net name -> "REF.pinName" entries
 	nets: Record<string, string[]>
+	// KiCad design-rule check against the fab's rules (null when KiCad could not run).
+	drc?: import("../tools/drc.ts").DrcSummary | null
 	// The JLC/PCBWay fab package (gerbers.zip, bom.csv, cpl.csv, README.txt), or why it could not be exported.
 	// Best-effort: a failed export never fails the board build.
 	fabDir?: string

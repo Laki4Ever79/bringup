@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import os
 import queue
+import tempfile
 import threading
 import time
 from typing import Any, Callable, TextIO
 
 from benchlib import ports as port_scan
 from benchlib.fakedut import FakeDut
-from benchlib.flash import flash, read_firmware_info
+from benchlib.flash import bench_pin_conflicts, flash, read_firmware_info, stage_build_dir
 from benchlib.transport import FakeHal, LineTransport, MockTransport, SerialTransport
 
 EN_PIN, BOOT_PIN, MODE_PIN = 10, 11, 12  # fixture GP10/GP11/GP12 → DUT EN / GPIO0 / GPIO4
@@ -31,6 +32,7 @@ class Out:
         self.stream = stream
         self.lock = threading.Lock()
         self.jsonl = self.csv = None
+        self.closed = False
         if out_dir:
             os.makedirs(out_dir, exist_ok=True)
             self.jsonl = open(os.path.join(out_dir, "bench.jsonl"), "a", buffering=1)
@@ -42,6 +44,8 @@ class Out:
         obj.setdefault("at", now_ms())
         line = json.dumps(obj, separators=(",", ":"))
         with self.lock:
+            if self.closed:
+                return  # after bye: stray lines from the stream threads are dropped
             try:
                 self.stream.write(line + "\n")
                 self.stream.flush()
@@ -53,9 +57,11 @@ class Out:
                 self.csv.write(f"{obj['at']},{obj['mA']}\n")
 
     def close(self) -> None:
-        for f in (self.jsonl, self.csv):
-            if f:
-                f.close()
+        with self.lock:
+            self.closed = True
+            for f in (self.jsonl, self.csv):
+                if f:
+                    f.close()
 
 
 def dut_line(text: str) -> dict[str, Any]:
@@ -152,8 +158,10 @@ class FakeBenchHal(FakeHal):
 
 
 class Bridge:
-    def __init__(self, source: str, out: Out, pio: str, fake_speed: float = 1.0, replay: str | None = None):
+    def __init__(self, source: str, out: Out, pio: str, fake_speed: float = 1.0, replay: str | None = None, work_dir: str | None = None):
         self.source = source
+        # One persistent build dir for every flash, so pio rebuilds incrementally (bench.md §7).
+        self.work_dir = work_dir or tempfile.mkdtemp(prefix="bench-fw-")
         self.out = out
         self.pio = pio
         self.fake_speed = fake_speed
@@ -202,7 +210,8 @@ class Bridge:
     def _start_replay(self) -> None:
         with open(self.replay_path or "") as f:
             self.recording = [json.loads(line) for line in f if line.strip()]
-        self.recording = [m for m in self.recording if m.get("k") not in ("hello", "ack", "bye")]
+        # Command replies and progress belong to the recorded session's command ids, not to this one's.
+        self.recording = [m for m in self.recording if m.get("k") not in ("hello", "ack", "flashing", "bye")]
         self.meter = any(m.get("k") == "i" for m in self.recording)
         self.threads.append((self._play, ()))
 
@@ -284,9 +293,16 @@ class Bridge:
 
         if self.source == "replay":
             return {"ok": True, "simulated": True, "ms": 0}
+        try:
+            conflicts = bench_pin_conflicts(fw_dir)
+        except FileNotFoundError:
+            return {"ok": False, "stage": "build", "error": f"{fw_dir}/include/pins.h not found", "ms": 0}
+        if conflicts:
+            return {"ok": False, "stage": "build", "error": "; ".join(conflicts), "ms": 0}
         if self.source == "fake":
             return self._fake_flash(fw_dir, progress)
-        return flash(fw_dir, env, port=lambda: port_scan.scan()["dut"], recover=self._recover, on_progress=progress, pio=self.pio)
+        stage_build_dir(fw_dir, self.work_dir)
+        return flash(self.work_dir, env, port=lambda: port_scan.scan()["dut"], recover=self._recover, on_progress=progress, pio=self.pio)
 
     def _fake_flash(self, fw_dir: str, progress: Callable[[dict], None]) -> dict:
         start = time.monotonic()
@@ -323,8 +339,11 @@ class Bridge:
         return port_scan.scan()["dut"] is not None
 
     def _recover(self) -> bool:
-        """BOOT low through an EN pulse: the ROM bootloader starts and its USB port enumerates, even from deep sleep."""
-        fx = self._need_fixture()
+        """BOOT low through an EN pulse: the ROM bootloader starts and its USB port enumerates, even from deep sleep.
+        Without a fixture there is nothing to pulse: False, so a flash fails cleanly instead of raising."""
+        if not self.fixture:
+            return False
+        fx = self.fixture
         fx.gpio(BOOT_PIN, 0)
         self._pulse_en(fx)
         time.sleep(0.05)
@@ -339,6 +358,7 @@ class Bridge:
     def cmd_recover(self, rid, req) -> dict:
         if self.source == "replay":
             return {"ok": True, "simulated": True}
+        self._need_fixture()
         return {"ok": True} if self._recover() else {"ok": False, "error": f"no 303a:1001 port within {RECOVER_WAIT_S:.0f} s of BOOT+EN"}
 
     def cmd_reset(self, rid, req) -> dict:

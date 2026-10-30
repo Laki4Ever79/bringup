@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from benchlib.fixture_fw.ina226 import INA226, REG_BUS, REG_CAL, REG_CONFIG, REG_CURRENT  # noqa: E402
 from benchlib.ports import classify  # noqa: E402
-from benchlib.flash import FlashProgress, flash, read_firmware_info  # noqa: E402
+from benchlib.flash import FlashProgress, bench_pin_conflicts, flash, read_firmware_info, stage_build_dir  # noqa: E402
 from benchlib.fakedut import FakeDut  # noqa: E402
 
 
@@ -131,6 +131,44 @@ class FirmwareInfo(unittest.TestCase):
         self.assertEqual(read_firmware_info(fw_dir(3, behavior=False)), {"rev": 3, "blinkMs": 1000, "tiltBlinkMs": 1000, "tiltDeg": 90})
 
 
+class BenchPins(unittest.TestCase):
+    def test_the_logger_contract_fits_the_bench(self):
+        self.assertEqual(bench_pin_conflicts(fw_dir(7)), [])
+
+    def test_contract_pins_on_bench_or_reserved_s3_pins_are_refused(self):
+        d = fw_dir(7)
+        with open(os.path.join(d, "include/pins.h"), "a") as f:
+            f.write("#define PIN_BUTTON 4\n#define PIN_BUZZER 17\n#define PIN_X 36\n#define PIN_Y 48\n")
+        conflicts = bench_pin_conflicts(d)
+        self.assertEqual(len(conflicts), 3, conflicts)
+        self.assertIn("BUTTON uses GPIO4", conflicts[0])
+        self.assertIn("BENCH_MODE", conflicts[0])
+        self.assertIn("GPIO17", conflicts[1])
+        self.assertIn("PSRAM", conflicts[2])
+
+
+class StageBuildDir(unittest.TestCase):
+    def test_copies_the_sources_into_one_work_dir_and_keeps_its_build_cache(self):
+        work = tempfile.mkdtemp()
+        os.makedirs(os.path.join(work, ".pio/build"))
+        src = fw_dir(7)
+        os.makedirs(os.path.join(src, "src"))
+        with open(os.path.join(src, "src/main.cpp"), "w") as f:
+            f.write("int x;\n")
+        with open(os.path.join(src, "platformio.ini"), "w") as f:
+            f.write("[env:esp32s3_bench]\n")
+        stage_build_dir(src, work)
+        mtime = os.path.getmtime(os.path.join(work, "src/main.cpp"))
+        self.assertTrue(os.path.isdir(os.path.join(work, ".pio/build")), "the incremental build cache survives")
+        with open(os.path.join(src, "include/pins.h"), "a") as f:
+            f.write("#define PIN_LED 10\n")
+        os.utime(os.path.join(src, "src/main.cpp"), (mtime + 100, mtime + 100))
+        stage_build_dir(src, work)
+        with open(os.path.join(work, "include/pins.h")) as f:
+            self.assertIn("PIN_LED", f.read())
+        self.assertEqual(os.path.getmtime(os.path.join(work, "src/main.cpp")), mtime, "unchanged files keep their mtime, so they don't recompile")
+
+
 class Flash(unittest.TestCase):
     def runner(self, results):
         calls = []
@@ -196,7 +234,7 @@ class FakeDutTests(unittest.TestCase):
         dut = FakeDut(pins, now_ms=0)
         dut.flash({"rev": 9, "blinkMs": 1000, "tiltBlinkMs": 100, "tiltDeg": 20}, now_ms=0)
         boot = lines_of(dut, "boot")
-        self.assertEqual(boot, [{"k": "boot", "rev": 9, "reset": "poweron", "mode": "live"}])
+        self.assertEqual(boot, [{"k": "boot", "rev": 9, "reset": "usb", "mode": "live"}])
         toggles, last = {"flat": 0, "tilted": 0}, None
         for t in range(0, 8000, 10):
             dut.step(t)
@@ -235,7 +273,7 @@ class FakeDutTests(unittest.TestCase):
         pins.levels[11] = 1
         dut.reset(now_ms=200)
         self.assertFalse(dut.download_mode)
-        self.assertEqual(lines_of(dut, "boot")[0]["reset"], "sw")
+        self.assertEqual(lines_of(dut, "boot")[0]["reset"], "poweron")
 
 
 if __name__ == "__main__":

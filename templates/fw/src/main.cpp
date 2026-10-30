@@ -52,6 +52,7 @@ static void led(bool on) {
 #endif
 }
 
+#ifndef BENCH
 // One 2 s reading period: a steady 1 Hz blink while the sensor answers, a double blink when it doesn't.
 static void blinkPeriod(bool sensorOk) {
 	if (sensorOk) {
@@ -61,7 +62,149 @@ static void blinkPeriod(bool sensorOk) {
 		delay(1500);
 	}
 }
+#endif
 
+#ifdef BENCH
+// The bench build (docs/design/bench.md §2): the same pins and sensor code, plus an MPU-6050 for tilt, JSON-lines
+// telemetry on UART1 and two modes chosen by the fixture on BENCH_MODE: live (awake, 20 Hz) or duty cycle (wake,
+// sample, blink, sleep BENCH_PERIOD_S). The fixture's INA226 measures the current; this firmware only reports.
+#include <esp_sleep.h>
+#include <math.h>
+
+#if __has_include("behavior.h")
+#include "behavior.h"
+#endif
+#ifndef BEHAVIOR_BLINK_MS
+#define BEHAVIOR_BLINK_MS 1000
+#endif
+#ifndef BEHAVIOR_TILT_BLINK_MS
+#define BEHAVIOR_TILT_BLINK_MS BEHAVIOR_BLINK_MS
+#endif
+#ifndef BEHAVIOR_TILT_DEG
+#define BEHAVIOR_TILT_DEG 90
+#endif
+
+// Bench-only pins, outside the contract. py/bench.py refuses to flash a contract that uses them.
+static const int BENCH_MODE_PIN = 4;  // fixture GP12 through 1 kΩ: HIGH = duty cycle
+static const int BENCH_TX_PIN = 17;   // UART1 TX → CP2102 RXD
+static const uint32_t LIVE_SAMPLE_MS = 50;
+static const uint32_t DUTY_BLINK_MS = 20;
+static const uint8_t MPU_ADDR = 0x68;
+
+RTC_DATA_ATTR static uint32_t dutyCycles = 0;
+
+static bool mpuWrite(uint8_t reg, uint8_t value) {
+	Wire.beginTransmission(MPU_ADDR);
+	Wire.write(reg);
+	Wire.write(value);
+	return Wire.endTransmission() == 0;
+}
+
+// Accelerometer in g (±2 g range) and the die temperature.
+static bool readMpu(float accel[3], float *tempC) {
+	Wire.beginTransmission(MPU_ADDR);
+	Wire.write(0x3B);  // ACCEL_XOUT_H: accel x/y/z, temperature, gyro x/y/z
+	if (Wire.endTransmission(false) != 0) return false;
+	if (Wire.requestFrom(MPU_ADDR, (uint8_t)8) != 8) return false;
+	int16_t raw[4];
+	for (int i = 0; i < 4; i++) {
+		uint8_t hi = Wire.read();
+		uint8_t lo = Wire.read();
+		raw[i] = (int16_t)(hi << 8 | lo);
+	}
+	for (int i = 0; i < 3; i++) accel[i] = raw[i] / 16384.0f;
+	*tempC = raw[3] / 340.0f + 36.53f;
+	return true;
+}
+
+static const char *resetName() {
+	switch (esp_reset_reason()) {
+		case ESP_RST_POWERON: return "poweron";  // also an EN pulse from the fixture
+		case ESP_RST_DEEPSLEEP: return "deepsleep";
+		case ESP_RST_USB: return "usb";  // esptool's reset after a flash
+		case ESP_RST_SW: return "sw";
+		case ESP_RST_PANIC: return "panic";
+		case ESP_RST_INT_WDT:
+		case ESP_RST_TASK_WDT:
+		case ESP_RST_WDT: return "wdt";
+		case ESP_RST_BROWNOUT: return "brownout";
+		default: return "other";
+	}
+}
+
+// One "s" line: tilt from vertical, and the temperature from the SHT40 when the board has one, else the MPU's die.
+static float sampleLine(bool ledOn) {
+	float a[3] = {0, 0, 0}, mpuT = 0, t = 0, rh = 0;
+	bool imu = readMpu(a, &mpuT);
+	bool sht = readSht40(&t, &rh);
+	float tilt = atan2f(sqrtf(a[0] * a[0] + a[1] * a[1]), a[2]) * 180.0f / (float)M_PI;
+	if (!imu) {
+		static uint32_t lastErr = 0;
+		if (lastErr == 0 || millis() - lastErr >= 1000) {
+			lastErr = millis();
+			Serial1.printf("{\"k\":\"err\",\"rev\":%d,\"what\":\"imu\",\"detail\":\"no ACK at 0x68\"}\n", BRINGUP_REVISION);
+		}
+	}
+	Serial1.printf("{\"k\":\"s\",\"rev\":%d,\"ms\":%lu,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"tilt\":%.1f,\"tC\":%.2f,\"tSrc\":\"%s\",\"led\":%d}\n",
+		BRINGUP_REVISION, (unsigned long)millis(), a[0], a[1], a[2], imu ? tilt : 0.0f, sht ? t : mpuT, sht ? "sht40" : "mpu", ledOn ? 1 : 0);
+	return imu ? tilt : 0.0f;
+}
+
+// Wake, sample, blink once, report how long the whole wake took, sleep. Never returns.
+static void dutyCycle() {
+	dutyCycles++;
+	mpuWrite(0x6B, 0x00);  // PWR_MGMT_1: wake the MPU-6050
+	delay(10);
+	led(true);
+	sampleLine(true);
+	delay(DUTY_BLINK_MS);
+	led(false);
+	Serial1.printf("{\"k\":\"cycle\",\"rev\":%d,\"n\":%lu,\"awakeMs\":%lu}\n", BRINGUP_REVISION, (unsigned long)dutyCycles, (unsigned long)millis());
+	Serial1.flush();
+	mpuWrite(0x6B, 0x40);  // MPU-6050 to sleep, or its ~4 mA would swamp the floor
+	esp_sleep_enable_timer_wakeup((uint64_t)BENCH_PERIOD_S * 1000000ULL);
+	esp_deep_sleep_start();
+}
+
+void setup() {
+	Serial1.begin(115200, SERIAL_8N1, -1, BENCH_TX_PIN);
+	pinMode(BENCH_MODE_PIN, INPUT_PULLDOWN);
+	bool duty = digitalRead(BENCH_MODE_PIN) == HIGH;
+	if (esp_reset_reason() != ESP_RST_DEEPSLEEP) dutyCycles = 0;
+#ifdef HAS_I2C
+	Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+#endif
+#ifdef HAS_LED
+	pinMode(PIN_STATUS_LED, OUTPUT);
+#endif
+	Serial1.printf("{\"k\":\"boot\",\"rev\":%d,\"reset\":\"%s\",\"mode\":\"%s\"}\n", BRINGUP_REVISION, resetName(), duty ? "duty" : "live");
+	if (duty) dutyCycle();
+	mpuWrite(0x6B, 0x00);
+}
+
+// Live: a sample every 50 ms, and the LED toggling every half period, faster while tilted past BEHAVIOR_TILT_DEG.
+void loop() {
+	static uint32_t nextSample = 0, nextToggle = 0;
+	static bool ledOn = false;
+	static float tilt = 0;
+	if (digitalRead(BENCH_MODE_PIN) == HIGH) {
+		led(false);
+		Serial1.flush();
+		esp_restart();  // boots straight into duty-cycle mode
+	}
+	uint32_t now = millis();
+	if ((int32_t)(now - nextToggle) >= 0) {
+		ledOn = !ledOn;
+		led(ledOn);
+		nextToggle = now + (tilt > BEHAVIOR_TILT_DEG ? BEHAVIOR_TILT_BLINK_MS : BEHAVIOR_BLINK_MS) / 2;
+	}
+	if ((int32_t)(now - nextSample) >= 0) {
+		nextSample = now + LIVE_SAMPLE_MS;
+		tilt = sampleLine(ledOn);
+	}
+	delay(1);
+}
+#else
 void setup() {
 	Serial.begin(115200);
 	Serial.printf("bringup rev %d\n", BRINGUP_REVISION);
@@ -80,3 +223,4 @@ void loop() {
 	else Serial.println("SENSOR FAIL");
 	blinkPeriod(ok);
 }
+#endif
