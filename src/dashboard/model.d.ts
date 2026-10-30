@@ -15,6 +15,7 @@ export class TelemetryBuffer {
 	windowMs: number
 	current: { at: number; mA: number }[]
 	tilt: { at: number; tilt: number }[]
+	led: { at: number; led: number }[]
 	lastImu: { ax: number; ay: number; az: number; at: number } | null
 	add(samples: any[]): void
 }

@@ -25,10 +25,12 @@ export async function openBench(opts: {
 	replay?: string
 	start: (args: string[]) => Bridge
 	log?: (message: string) => void
+	// More bridge flags, e.g. the fake's --no-meter (a tier-1 bench).
+	extraArgs?: string[]
 }): Promise<{ bridge: Bridge; hello: BridgeHello }> {
 	const log = opts.log ?? ((m: string) => console.log(`[bench] ${m}`))
 	const open = async (source: BenchSource, replay?: string) => {
-		const bridge = opts.start(benchArgs(opts.root, source, opts.outDir, replay))
+		const bridge = opts.start([...benchArgs(opts.root, source, opts.outDir, replay), ...(opts.extraArgs ?? [])])
 		return { bridge, hello: await bridge.hello }
 	}
 	if (opts.source === "replay") {
