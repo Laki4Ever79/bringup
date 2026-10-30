@@ -9,7 +9,7 @@ import { buildFirmware } from "../src/tools/firmware.ts"
 import { fixtureContract } from "./fixture.ts"
 
 const root = resolve(import.meta.dirname, "..")
-const pio = [join(root, ".venv/bin/pio"), resolve(root, "../agent-mesh/.venv/bin/pio")].find(existsSync)
+const pio = [join(root, ".venv/bin/pio")].find(existsSync)
 const skip = pio ? false : "pio not found"
 
 test("fixture firmware builds and its pins match the contract", { skip, timeout: 600_000 }, async () => {
