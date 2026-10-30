@@ -11,6 +11,7 @@ const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
 const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
+const BRIEFS = new URL("../../briefs/", import.meta.url)
 // Page modules served from this folder (and nothing else from it).
 const MODULES = new Set(["lanes.js", "stl.js", "model.js", "pcb-view.js", "scene3d.js"])
 const RUN_ID = /^[\w-]+$/
@@ -176,6 +177,18 @@ function newRunId(): string {
 	return `${t}-${randomBytes(3).toString("hex")}`
 }
 
+// The example briefs for the start screen: briefs/*.md except the folder's README.
+async function listBriefs(): Promise<{ name: string; title: string; text: string }[]> {
+	const names = (await readdir(BRIEFS).catch(() => [] as string[])).filter((n) => n.endsWith(".md") && n !== "README.md").sort()
+	return Promise.all(
+		names.map(async (name) => {
+			const text = await readFile(new URL(name, BRIEFS), "utf8")
+			const heading = text.split("\n").find((l) => l.trim()) ?? name
+			return { name, title: heading.replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "").trim(), text }
+		}),
+	)
+}
+
 // A hub over out/: GET / is the page (the page picks a run with ?run=<id>), /api/runs lists and starts runs,
 // /api/runs/<id>/requests and /decisions take the engineer's input, /runs/<id>/events streams a run's trace
 // as SSE and /runs/<id>/files/* serves its artifacts. Loopback only: every request must carry a loopback Host
@@ -312,6 +325,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				return res.end(source)
 			}
 			if (path === "/api/runs") return json(res, 200, await listRuns())
+			if (path === "/api/briefs") return json(res, 200, await listBriefs())
 			if (path === "/api/hub") return json(res, 200, { defaultRun: opts.defaultRun?.id ?? null, canStart: Boolean(opts.launch) })
 
 			// Per-run routes, plus /events and /files/* for the default run.

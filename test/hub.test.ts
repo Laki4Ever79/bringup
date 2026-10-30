@@ -206,3 +206,17 @@ test("the page and its modules are served; missing optional modules are 404", as
 		await hub.close()
 	}
 })
+
+test("GET /api/briefs lists the example briefs with a title", async () => {
+	const hub = await serveHub({ outRoot: outRoot(), port: 0 })
+	try {
+		const briefs: any = await (await fetch(`${hub.url}/api/briefs`)).json()
+		assert.ok(briefs.length >= 2)
+		const logger = briefs.find((b: any) => b.name === "logger.md")
+		assert.ok(logger.title.length > 0 && !logger.title.startsWith("#"))
+		assert.match(logger.text, /\S/)
+		assert.ok(!briefs.some((b: any) => b.name === "README.md"), "the folder's README is not a brief")
+	} finally {
+		await hub.close()
+	}
+})

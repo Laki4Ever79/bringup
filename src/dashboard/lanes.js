@@ -29,15 +29,19 @@ export function createLanes() {
 	// versions: field → latest version (for builders' required fields); agents: agentId → role (for agent.halted);
 	// pending: build kind → newest revision it was asked to build
 	const lanes = { versions: {}, agents: {}, pending: {} }
-	for (const l of LANES) lanes[l.key] = { status: "idle", text: "", at: null, history: [] }
+	for (const l of LANES) lanes[l.key] = { status: "idle", text: "", lastResult: "", at: null, history: [] }
 	return lanes
 }
 
-function set(lanes, key, status, text, at) {
+// Updates that count as an outcome for the card's "last result" line.
+const RESULT = new Set(["done", "failed"])
+
+function set(lanes, key, status, text, at, result = RESULT.has(status)) {
 	const lane = lanes[key]
 	if (!lane) return []
 	lane.status = status
 	lane.text = text
+	if (result) lane.lastResult = text
 	lane.at = at
 	lane.history.push({ status, text, at })
 	if (lane.history.length > HISTORY) lane.history.splice(0, lane.history.length - HISTORY)
@@ -53,7 +57,7 @@ export function applyLaneEvent(lanes, e) {
 	switch (e.type) {
 		case "agent.activity":
 			lanes.agents[p.agentId] = p.role
-			return set(lanes, p.role, PHASE_STATUS[p.phase] ?? "idle", p.text, p.at ?? e.at)
+			return set(lanes, p.role, PHASE_STATUS[p.phase] ?? "idle", p.text, p.at ?? e.at, p.phase === "tool-result" || p.phase === "answer")
 		case "contract.changed": {
 			lanes.versions[p.field] = p.version
 			const changed = []

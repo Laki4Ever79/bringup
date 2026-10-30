@@ -85,6 +85,20 @@ test("a halted agent's lane turns failed", () => {
 	assert.deepEqual(applyLaneEvent(lanes, ev("agent.halted", { agentId: "unknown", error: "x" })), [])
 })
 
+test("each lane keeps its last result: tool results, answers and finished builds", () => {
+	const lanes = createLanes()
+	applyLaneEvent(lanes, activity("architect", "tool", "propose_contract_change: outline"))
+	applyLaneEvent(lanes, activity("architect", "tool-result", "applied (v1, rev 3)"))
+	assert.equal(lanes.architect.lastResult, "applied (v1, rev 3)")
+	applyLaneEvent(lanes, activity("architect", "thinking", "thinking…"))
+	assert.equal(lanes.architect.lastResult, "applied (v1, rev 3)", "thinking doesn't replace it")
+	applyLaneEvent(lanes, activity("architect", "answer", "contract drafted"))
+	assert.equal(lanes.architect.lastResult, "contract drafted")
+	applyLaneEvent(lanes, ev("artifact.ready", { kind: "board", revision: 6 }))
+	assert.equal(lanes["build:board"].lastResult, "rev 6 built")
+	assert.equal(lanes.parts.lastResult, "")
+})
+
 test("history is capped", () => {
 	const lanes = createLanes()
 	for (let i = 0; i < 100; i++) applyLaneEvent(lanes, activity("parts", "thinking", `t${i}`))
