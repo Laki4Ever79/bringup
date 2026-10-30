@@ -51,3 +51,31 @@ test("--bench fake: the bench drives py/bench.py through flash, checks and a mea
 	assert.ok(existsSync(join(out, "bench/bench.jsonl")), "the bridge records the session")
 	assert.match(readFileSync(join(out, "report.md"), "utf8"), /fake bench/)
 })
+
+// The stage fallback: no board, so the newest recording plays. Badged replay everywhere, measured, never proposed.
+test("--bench with no board falls back to the recorded session and measures it as a replay", { skip: (!existsSync(python) || !existsSync(join(ROOT, "fixtures/bench/synthetic.jsonl"))) && "no .venv python or no recording", timeout: 240_000 }, async () => {
+	const out = tempDir()
+	let stop: () => void = () => {}
+	const until = new Promise<void>((r) => (stop = r))
+	const run = runDesign({
+		brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"),
+		mock: true,
+		outDir: out,
+		env: bare,
+		noHardware: true,
+		review: false,
+		bench: { open: () => openBench({ root: ROOT, source: "replay", outDir: out, start: (a) => startBridge(python, a, { cwd: ROOT }), log: () => {} }), until, timings: { windowMs: 50_000, liveCheckMs: 3000 } },
+	})
+	const trace = () => (existsSync(join(out, "trace.jsonl")) ? readFileSync(join(out, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as { type: string; payload: any }) : [])
+	await waitFor(() => trace().some((e) => e.type === "bench.verdict"), 200_000)
+	stop()
+	await run
+	const of = (type: string) => trace().filter((e) => e.type === type).map((e) => e.payload)
+	assert.equal(of("bench.flashed")[0].simulated, true)
+	const m = of("bench.measured")[0]
+	assert.ok(m, `no measurement; verdict ${JSON.stringify(of("bench.verdict")[0])}`)
+	assert.equal(m.source, "replay")
+	assert.ok(m.cycles >= 5 && Math.abs(m.floorMa - 6) < 1, `cycles ${m.cycles}, floor ${m.floorMa}`)
+	assert.ok(!trace().some((e) => e.type === "change.proposed" && e.payload.by === "bench"))
+	assert.match(readFileSync(join(out, "report.md"), "utf8"), /REPLAY/)
+})
