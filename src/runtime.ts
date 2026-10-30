@@ -10,6 +10,7 @@ import {
 import { ApprovalRegistry } from "./approvals.ts"
 import type { Artifacts } from "./contract/consistency.ts"
 import { DesignContract } from "./contract/contract.ts"
+import type { GroundingFinding } from "./contract/grounding.ts"
 import type { AgentRole, FieldName } from "./contract/types.ts"
 import { makeEvent } from "./events.ts"
 import { Outbox } from "./outbox.ts"
@@ -23,6 +24,8 @@ export class BringupState extends RuntimeState {
 	readonly artifactInputs: Partial<Record<"board" | "enclosure" | "firmware", Partial<Record<FieldName, number>>>> = {}
 	readonly roles = new Map<string, AgentRole>()
 	readonly approvals = new ApprovalRegistry()
+	// The critic's latest findings: part pins and pin assignments that no datasheet source backs.
+	groundingFindings: GroundingFinding[] = []
 
 	constructor(
 		readonly outDir: string,
