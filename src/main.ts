@@ -6,7 +6,7 @@ import { missingTools } from "./report.ts"
 import { ROOT, runDesign } from "./run.ts"
 import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 
-const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--out <dir>]"
+const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>]"
 
 export interface CliArgs {
 	briefPath: string
@@ -15,16 +15,21 @@ export interface CliArgs {
 	review: boolean
 	engineerApproval: boolean
 	outDir?: string
+	reviewRounds?: number
 }
 
 export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	const outIndex = argv.indexOf("--out")
 	const outDir = outIndex >= 0 ? argv[outIndex + 1] : undefined
 	if (outIndex >= 0 && (!outDir || outDir.startsWith("--"))) return { error: "--out needs a directory" }
-	const briefPath = argv.find((a, i) => !a.startsWith("--") && (outIndex < 0 || i !== outIndex + 1))
+	const roundsIndex = argv.indexOf("--review-rounds")
+	const reviewRounds = roundsIndex >= 0 ? Number(argv[roundsIndex + 1]) : undefined
+	if (roundsIndex >= 0 && !(Number.isInteger(reviewRounds) && reviewRounds! >= 1)) return { error: "--review-rounds needs a whole number of at least 1" }
+	const valueAt = new Set([outIndex, roundsIndex].filter((i) => i >= 0).map((i) => i + 1))
+	const briefPath = argv.find((a, i) => !a.startsWith("--") && !valueAt.has(i))
 	if (!briefPath) return { error: "no brief given" }
 	if (!existsSync(briefPath)) return { error: `brief not found: ${briefPath}` }
-	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}) }
+	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}) }
 }
 
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
@@ -47,7 +52,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		console.warn("  Or rerun with --no-hardware to see the agents coordinate without the hardware tools.")
 	}
 
-	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval })
+	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds })
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)\nreport: ${result.reportPath}`)
 	return result.settled ? 0 : 2
 }

@@ -61,3 +61,9 @@ test("a run with missing tools ends unsettled with a report instead of exiting 1
 	assert.match(top, /docker pull kicad\/kicad:10\.0/)
 	assert.match(report, /board failed: tscircuit build failed: tsci is not installed/)
 })
+
+test("parseArgs reads --review-rounds", () => {
+	const brief = new URL("../briefs/logger.md", import.meta.url).pathname
+	assert.equal((parseArgs([brief, "--review-rounds", "2"]) as { reviewRounds?: number }).reviewRounds, 2)
+	assert.ok("error" in parseArgs([brief, "--review-rounds", "zero"]))
+})
