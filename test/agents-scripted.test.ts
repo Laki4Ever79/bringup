@@ -55,3 +55,31 @@ test("an agent reviews each contract version once", async () => {
 	const proposals = t.events.filter((e) => e.type === "change.proposed").length
 	assert.equal(proposals, 1)
 })
+
+test("an engineer change request mid-run makes the architect change the outline", async () => {
+	const t = setup()
+	sendMessage("Battery BLE temperature logger with USB-C and a status LED.", t.engineer.getId())
+	await waitFor(() => FIELDS.every((f) => t.state.contract.version(f) >= 1), 5000)
+	const before = t.state.contract.revision
+	assert.equal(t.state.contract.get("outline")?.widthMm, 50)
+
+	sendMessage("make the board 60 mm wide", t.engineer.getId())
+	await waitFor(() => t.state.contract.get("outline")?.widthMm === 60, 5000)
+	assert.ok(t.state.contract.revision > before)
+	assert.equal(t.state.contract.get("outline")?.heightMm, 30, "only the width changes")
+	const outlineChanges = t.changes().filter((c) => c.field === "outline")
+	assert.deepEqual(outlineChanges.map((c) => c.by), ["architect", "architect"])
+})
+
+test("a change request the architect can't map to a field changes nothing", async () => {
+	const t = setup()
+	sendMessage("Battery BLE temperature logger with USB-C and a status LED.", t.engineer.getId())
+	await waitFor(() => FIELDS.every((f) => t.state.contract.version(f) >= 1), 5000)
+	await waitFor(() => (t.state.contract.get("pins") ?? []).some((p) => p.signal === "STATUS_LED"), 5000)
+	await new Promise((r) => setTimeout(r, 300))
+	const before = t.state.contract.revision
+	sendMessage("make it prettier", t.engineer.getId())
+	await new Promise((r) => setTimeout(r, 500))
+	assert.equal(t.state.contract.revision, before)
+	assert.equal(t.state.contract.version("requirements"), 1, "the request was not taken as a new brief")
+})
