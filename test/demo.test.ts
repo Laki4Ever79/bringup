@@ -130,7 +130,7 @@ test("the dashboard serves the run and shows engineer requests", { timeout: 10_0
 		assert.match(r.outDir, /demo-[\w-]+$/)
 		assert.equal(readFileSync(join(r.outDir, "brief.md"), "utf8"), readFileSync("briefs/logger.md", "utf8"))
 		const page = await (await fetch(r.dashboard.url)).text()
-		assert.match(page, /\/files\/requests\.jsonl/)
+		assert.match(page, /file\("requests\.jsonl"\)/)
 		const reqs = await fetch(`${r.dashboard.url}/files/requests.jsonl`)
 		assert.equal(reqs.status, 200)
 	} finally {
@@ -184,7 +184,7 @@ test("runDemo relays the run's Cloud links and the dashboard can read them", { t
 		assert.ok(log.includes("Mozaik Cloud: https://app.jigjoy.ai/?s=loop_x1"), log.join(" | "))
 		assert.ok(log.includes("+1 agent loops live in Mozaik Cloud"), log.join(" | "))
 		const page = await (await fetch(r.dashboard.url)).text()
-		assert.match(page, /\/files\/cloud\.jsonl/)
+		assert.match(page, /file\("cloud\.jsonl"\)/)
 		assert.equal((await fetch(`${r.dashboard.url}/files/cloud.jsonl`)).status, 200)
 	} finally {
 		await r.dashboard.close()

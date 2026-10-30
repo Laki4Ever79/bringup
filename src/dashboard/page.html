@@ -3,473 +3,935 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bringup · live run</title>
+<title>Bringup</title>
 <style>
+	/* Tokens: docs/design/dashboard.md */
 	:root {
-		--bg: #0d1117; --panel: #161b22; --line: #30363d; --text: #e6edf3; --dim: #8b949e;
-		--contract: #58a6ff; --proposed: #d29922; --approved: #3fb950; --rejected: #f85149;
-		--artifact: #a371f7; --check: #39c5cf; --settled: #3fb950; --halted: #f85149;
+		--bg: #0a0a0a; --panel: #111113; --raised: #16161a; --border: #232327; --border-hover: #2e2e35;
+		--text: #ededed; --text-2: #a1a1aa; --text-3: #6b6b76;
+		--ok: #22c55e; --warn: #f59e0b; --error: #ef4444; --info: #3b82f6;
+		--c-architect: #3b82f6; --c-parts: #a855f7; --c-firmware: #14b8a6; --c-reviewer: #f59e0b; --c-board: #22c55e;
+		--c-enclosure: #ec4899; --c-fwbuild: #06b6d4; --c-grounding: #eab308; --c-consistency: #f97316; --c-engineer: #e5e7eb;
+		--sans: ui-sans-serif, -apple-system, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif;
+		--mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+		--ease: cubic-bezier(.2, .8, .2, 1); --t: 160ms;
+		--r-panel: 12px; --r-card: 8px;
 	}
 	* { box-sizing: border-box; }
-	body { margin: 0; background: var(--bg); color: var(--text); font: 20px/1.4 system-ui, sans-serif; }
-	header { display: flex; align-items: baseline; gap: 24px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
-	h1 { margin: 0; font-size: 30px; }
-	h2 { margin: 0 0 12px; font-size: 18px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
-	#status { color: var(--dim); }
-	#status.live { color: var(--approved); }
-	#settled { margin-left: auto; font-weight: 600; }
-	#cloud a { color: var(--contract); font-weight: 600; text-decoration: none; }
-	#cloud .meta { color: var(--dim); font-size: 16px; }
-	main { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
-	section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
-	#counters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; padding: 12px; }
-	.counter { text-align: center; }
-	.counter b { display: block; font-size: 48px; font-variant-numeric: tabular-nums; }
-	.counter span { color: var(--dim); font-size: 16px; }
-	#lanes-panel { grid-column: 1 / -1; padding: 12px 16px; }
-	.lane { display: grid; grid-template-columns: 22px 230px 150px 1fr 90px; align-items: center; gap: 12px; padding: 7px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
-	.lane:hover { background: #1c2330; }
-	.lane .label { font-weight: 600; font-size: 22px; }
-	.lane .badge { font-size: 16px; color: var(--dim); }
-	.lane .text { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .3s; }
-	.lane .ago { font-size: 15px; color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
-	.dot { width: 16px; height: 16px; border-radius: 50%; background: var(--line); transition: background-color .3s, box-shadow .3s; }
-	.s-thinking { background: var(--contract); } .s-tool { background: var(--artifact); } .s-held { background: var(--proposed); }
-	.s-building, .s-checking { background: var(--check); } .s-done { background: var(--approved); } .s-failed { background: var(--rejected); }
-	.s-thinking, .s-tool, .s-building, .s-checking { animation: pulse 1.2s ease-in-out infinite; }
-	@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(88,166,255,.0); opacity: 1; } 50% { box-shadow: 0 0 0 6px rgba(88,166,255,.25); opacity: .75; } }
-	.hist { list-style: none; margin: 0 0 8px 34px; padding: 6px 0; font-size: 16px; color: var(--dim); max-height: 220px; overflow-y: auto; border-left: 2px solid var(--line); }
-	.hist li { padding: 2px 10px; }
-	.hist b { color: var(--text); font-weight: 600; margin-right: 8px; }
-	#board-latest img, #filmstrip img { border-radius: 6px; background: #000; cursor: zoom-in; }
-	#board-latest img { width: 100%; }
-	#filmstrip { display: flex; gap: 8px; overflow-x: auto; padding-top: 10px; }
-	#filmstrip figure { margin: 0; flex: 0 0 auto; text-align: center; font-size: 14px; color: var(--dim); }
-	#filmstrip img { width: 120px; display: block; margin-bottom: 2px; }
-	#enclosure-view { width: 100%; height: 280px; display: block; background: #0a0e14; border-radius: 6px; cursor: grab; touch-action: none; }
-	#enclosure a { color: var(--contract); font-size: 16px; }
-	#overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
+	html, body { height: 100%; }
+	body {
+		margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 var(--sans); -webkit-font-smoothing: antialiased;
+		background-image: radial-gradient(1200px 700px at 0% 0%, rgba(30, 41, 59, .06), transparent 70%);
+	}
+	button, input, textarea { font: inherit; color: inherit; }
+	a { color: inherit; }
+	.num { font-variant-numeric: tabular-nums; }
+	.mono { font-family: var(--mono); }
+	.dim { color: var(--text-2); } .dimmer { color: var(--text-3); }
+	.hidden { display: none !important; }
+	.panel { background: rgba(17, 17, 19, .86); border: 1px solid var(--border); border-radius: var(--r-panel); backdrop-filter: blur(12px); min-width: 0; min-height: 0; }
+	.panel-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px 0; font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
+	.panel-head .right { margin-left: auto; text-transform: none; letter-spacing: 0; color: var(--text-2); }
+	.pill { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--raised); font-size: 13px; white-space: nowrap; transition: border-color var(--t) var(--ease), background var(--t) var(--ease), color var(--t) var(--ease); }
+	.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+	button.pill { cursor: pointer; }
+	button.pill:hover { border-color: var(--border-hover); }
+	.btn { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--raised); cursor: pointer; transition: border-color var(--t) var(--ease), background var(--t) var(--ease); }
+	.btn:hover { border-color: var(--border-hover); background: #1c1c21; }
+	.btn.primary { background: var(--text); color: #0a0a0a; border-color: var(--text); font-weight: 600; }
+	.btn.primary:hover { background: #fff; }
+	.btn:disabled { opacity: .45; cursor: default; }
+	.avatar { width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; color: #0a0a0a; flex: 0 0 auto; }
+	@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--ring); } 50% { box-shadow: 0 0 0 6px transparent; } }
+	@keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+	@keyframes tick { 0% { transform: translateY(-3px); opacity: .4; } 100% { transform: none; opacity: 1; } }
+	.popover { position: absolute; top: 34px; right: 0; width: 420px; max-height: 360px; overflow: auto; padding: 10px; background: var(--raised); border: 1px solid var(--border-hover); border-radius: var(--r-card); box-shadow: 0 20px 50px rgba(0, 0, 0, .5); color: var(--text); white-space: normal; z-index: 20; animation: fadein var(--t) var(--ease); cursor: default; }
+	.popover h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
+	.popover li { margin: 0 0 6px; font-size: 13px; color: var(--text-2); }
+	.popover ul { margin: 0; padding-left: 16px; }
+
+	/* ── App frame ───────────────────────────────────────────── */
+	#app { height: 100vh; display: grid; grid-template-rows: 56px 1fr auto; }
+	header { display: flex; align-items: center; gap: 14px; padding: 0 20px; border-bottom: 1px solid var(--border); background: rgba(10, 10, 10, .7); backdrop-filter: blur(12px); position: relative; z-index: 5; }
+	.logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 18px; letter-spacing: -.01em; text-decoration: none; }
+	.logo i { width: 12px; height: 12px; border-radius: 4px; background: conic-gradient(from 200deg, var(--c-architect), var(--c-parts), var(--c-enclosure), var(--c-board), var(--c-architect)); }
+	#brief-title { color: var(--text-2); max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	#state-pill { font-weight: 600; letter-spacing: .02em; }
+	#state-pill.live { color: var(--ok); border-color: rgba(34, 197, 94, .35); background: rgba(34, 197, 94, .08); }
+	#state-pill.live .dot { background: var(--ok); --ring: rgba(34, 197, 94, .5); animation: pulse 1.6s var(--ease) infinite; }
+	#state-pill.settled { color: var(--ok); border-color: rgba(34, 197, 94, .35); }
+	#state-pill.settled .dot { background: var(--ok); }
+	#state-pill.unsettled { color: var(--error); border-color: rgba(239, 68, 68, .4); }
+	#state-pill.unsettled .dot { background: var(--error); }
+	#rev-num.bump { display: inline-block; animation: tick 320ms var(--ease); }
+	#elapsed { color: var(--text-2); font-size: 15px; }
+	#checks { display: flex; gap: 8px; margin-left: auto; }
+	.check { cursor: pointer; position: relative; }
+	.check.ok { color: var(--ok); } .check.ok .dot { background: var(--ok); }
+	.check.warn { color: var(--warn); border-color: rgba(245, 158, 11, .4); } .check.warn .dot { background: var(--warn); }
+	.check.error { color: var(--error); border-color: rgba(239, 68, 68, .45); } .check.error .dot { background: var(--error); }
+	.check.running .dot { background: var(--info); --ring: rgba(59, 130, 246, .5); animation: pulse 1.6s var(--ease) infinite; }
+	#cloud-link { text-decoration: none; }
+	#cloud-link:hover { border-color: var(--border-hover); }
+
+	/* ── Run view ───────────────────────────────────────────── */
+	#run { display: grid; grid-template-columns: minmax(0, 62fr) minmax(0, 38fr); grid-template-rows: minmax(0, 1fr) 132px 148px; gap: 12px; padding: 12px 16px; min-height: 0; }
+	#stage { grid-row: 1; grid-column: 1; display: grid; grid-template-rows: auto minmax(0, 1fr) 46px; }
+	.stage-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px 6px; }
+	.tabs { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); }
+	.tabs button { height: 28px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--text-2); cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+	.tabs button.on { background: #26262c; color: var(--text); }
+	.tabs button:disabled { opacity: .35; cursor: default; }
+	#dims { color: var(--text-2); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#fab { position: relative; }
+	#fab .popover { right: auto; left: 0; width: 320px; }
+	#fab a.row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 6px; border-radius: 6px; text-decoration: none; font-size: 13px; }
+	#fab a.row:hover { background: #1c1c21; color: var(--info); }
+	#battery { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+	#battery .bar { width: 140px; height: 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--border); position: relative; overflow: hidden; }
+	#battery .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; transition: width 600ms var(--ease); }
+	#battery .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .7; }
+	#stage-body { position: relative; margin: 0 14px; border-radius: var(--r-card); background: #0c0d0e; border: 1px solid var(--border); overflow: hidden; }
+	#stage-body > .view { position: absolute; inset: 0; }
+	#render-view { display: grid; place-items: center; }
+	#render-view img { max-width: 100%; max-height: 100%; object-fit: contain; }
+	.empty-state { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); font-size: 15px; text-align: center; padding: 20px; }
+	#changed-pill { position: absolute; top: 12px; left: 12px; z-index: 3; opacity: 0; transform: translateY(-4px); transition: opacity 300ms var(--ease), transform 300ms var(--ease); pointer-events: none; font-weight: 600; }
+	#changed-pill.on { opacity: 1; transform: none; }
+	#viewing-pill { position: absolute; top: 12px; right: 12px; z-index: 3; cursor: pointer; }
+	#request-toast { position: absolute; left: 12px; bottom: 12px; z-index: 3; max-width: 70%; display: flex; flex-direction: column; gap: 6px; }
+	#request-toast .req { padding: 8px 12px; border-radius: var(--r-card); background: rgba(22, 22, 26, .92); border: 1px solid var(--border); font-size: 13px; animation: fadein var(--t) var(--ease); }
+	#request-toast .req b { color: var(--c-engineer); }
+	#request-toast .req .eff { color: var(--c-architect); }
+	#scrubber { display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+	#scrubber .label { font-size: 13px; color: var(--text-3); white-space: nowrap; }
+	#dots { flex: 1; display: flex; align-items: center; position: relative; height: 28px; }
+	#dots::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--border); }
+	#dots button { position: relative; flex: 1; max-width: 64px; height: 28px; border: 0; background: transparent; cursor: pointer; padding: 0; }
+	#dots button i { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--dc); transition: transform var(--t) var(--ease), box-shadow var(--t) var(--ease); }
+	#dots button.board i { box-shadow: 0 0 0 2px #0a0a0a, 0 0 0 3px var(--dc); }
+	#dots button:hover i { transform: scale(1.5); }
+	#dots button.sel i { transform: scale(1.6); box-shadow: 0 0 0 2px #0a0a0a, 0 0 0 4px var(--text); }
+	#dots button .tip { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; padding: 4px 8px; border-radius: 6px; background: var(--raised); border: 1px solid var(--border-hover); opacity: 0; pointer-events: none; transition: opacity var(--t) var(--ease); z-index: 4; }
+	#dots button:hover .tip { opacity: 1; }
+	#live-btn { height: 26px; font-size: 13px; padding: 0 12px; }
+
+	#side { grid-row: 1; grid-column: 2; display: grid; grid-template-rows: minmax(0, 45fr) minmax(0, 55fr); gap: 12px; min-height: 0; }
+	#scene-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+	#scene-body { position: relative; margin: 8px 12px 12px; border-radius: var(--r-card); background: #0c0d0e; border: 1px solid var(--border); overflow: hidden; }
+	#scene-host, #stage-3d { position: absolute; inset: 0; }
+	#explode { width: 110px; accent-color: var(--c-enclosure); vertical-align: middle; }
+	#parts-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+	#parts-total { font-size: 18px; color: var(--text); font-weight: 600; }
+	#parts { overflow-y: auto; padding: 6px 8px 8px; position: relative; }
+	.part { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto 22px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-card); transition: background var(--t) var(--ease); cursor: default; }
+	.part:hover, .part.hl { background: var(--raised); }
+	.part.hl { box-shadow: inset 0 0 0 1px var(--border-hover); }
+	.ref { font-family: var(--mono); font-size: 13px; padding: 2px 6px; border-radius: 6px; background: #1c1c21; color: var(--text); text-align: center; }
+	.mpn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.mpn a { color: var(--text-3); text-decoration: none; font-family: var(--mono); font-size: 12px; margin-left: 6px; }
+	.mpn a:hover { color: var(--info); }
+	.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
+	.chip.ok { color: var(--ok); border-color: rgba(34, 197, 94, .3); } .chip.bad { color: var(--error); border-color: rgba(239, 68, 68, .35); }
+	.ground { text-align: center; font-size: 14px; } .ground.ok { color: var(--ok); } .ground.warn { color: var(--warn); }
+
+	#agents { grid-row: 2; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px; }
+	.card { position: relative; padding: 12px 12px 10px; border-radius: var(--r-card); background: rgba(17, 17, 19, .86); border: 1px solid var(--border); cursor: pointer; display: grid; grid-template-rows: auto auto auto 1fr; gap: 4px; min-width: 0; transition: border-color var(--t) var(--ease), background var(--t) var(--ease); }
+	.card:hover { border-color: var(--border-hover); }
+	.card.active { border-color: color-mix(in srgb, var(--ac) 45%, var(--border)); background: color-mix(in srgb, var(--ac) 6%, rgba(17, 17, 19, .86)); }
+	.card .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+	.card .av { width: 14px; height: 14px; border-radius: 50%; background: var(--ac); box-shadow: 0 0 0 3px #0a0a0a, 0 0 0 4px var(--ring-c, var(--border)); --ring: color-mix(in srgb, var(--ac) 60%, transparent); flex: 0 0 auto; transition: box-shadow var(--t) var(--ease); }
+	.card.active .av { --ring-c: var(--ac); animation: pulse 1.6s var(--ease) infinite; }
+	.card.held .av { --ring-c: var(--warn); } .card.failed .av { --ring-c: var(--error); } .card.done .av { --ring-c: var(--ok); }
+	.card .name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.card .status { margin-left: auto; font-size: 12px; color: var(--text-3); white-space: nowrap; }
+	.card.active .status { color: var(--ac); } .card.held .status { color: var(--warn); } .card.failed .status { color: var(--error); } .card.done .status { color: var(--ok); }
+	.card .task { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.card .result { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.card .bars { display: flex; align-items: flex-end; gap: 2px; height: 18px; align-self: end; }
+	.card .bars i { flex: 1; border-radius: 2px; min-width: 2px; max-width: 8px; }
+	.card .hist { position: absolute; left: 0; bottom: calc(100% + 8px); max-height: 320px; overflow: auto; padding: 10px 12px; background: var(--raised); border: 1px solid var(--border-hover); border-radius: var(--r-card); box-shadow: 0 20px 50px rgba(0, 0, 0, .55); z-index: 15; width: max(100%, 380px); cursor: default; animation: fadein var(--t) var(--ease); }
+	.card:nth-last-child(-n+3) .hist { left: auto; right: 0; }
+	.card .hist li { font-size: 12px; color: var(--text-2); margin: 0 0 4px; list-style: none; }
+	.card .hist ul { margin: 0; padding: 0; }
+	.card .hist b { font-weight: 600; margin-right: 6px; }
+
+	#changes-panel { grid-row: 3; grid-column: 1 / -1; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+	#prs { display: flex; gap: 10px; overflow-x: auto; padding: 8px 12px 12px; }
+	.pr { flex: 0 0 380px; padding: 10px 12px; border-radius: var(--r-card); background: var(--raised); border: 1px solid var(--border); display: grid; grid-template-rows: auto auto 1fr auto; gap: 5px; animation: fadein var(--t) var(--ease); min-width: 0; }
+	.pr.waiting { border-color: rgba(245, 158, 11, .55); box-shadow: 0 0 0 1px rgba(245, 158, 11, .15), 0 0 30px rgba(245, 158, 11, .06); }
+	.pr .who { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+	.pr .who .avatar { width: 20px; height: 20px; font-size: 10px; }
+	.pr .field { margin-left: 4px; font-family: var(--mono); font-size: 12px; padding: 1px 6px; border-radius: 6px; background: #1c1c21; color: var(--text); }
+	.badge { margin-left: auto; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+	.badge.approved { color: var(--ok); background: rgba(34, 197, 94, .1); } .badge.rejected { color: var(--error); background: rgba(239, 68, 68, .1); }
+	.badge.pending { color: var(--info); background: rgba(59, 130, 246, .1); } .badge.waiting { color: var(--warn); background: rgba(245, 158, 11, .12); }
+	.pr .reason { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.pr .diff { font-family: var(--mono); font-size: 12px; line-height: 1.5; overflow: hidden; min-height: 0; }
+	.pr .diff div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.add { color: var(--ok); } .del { color: var(--error); } .mod { color: var(--warn); }
+	.pr .foot { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); min-width: 0; }
+	.pr .foot .why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.vote { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px 1px 2px; border-radius: 999px; background: #1c1c21; font-size: 12px; white-space: nowrap; }
+	.vote .avatar { width: 16px; height: 16px; font-size: 9px; }
+	.pr .act { display: flex; gap: 6px; align-items: center; }
+	.pr .act input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border); background: #0f0f12; font-size: 13px; outline: none; }
+	.pr .act input:focus { border-color: #3f3f46; }
+	.pr .act .btn { height: 30px; font-size: 13px; }
+	.btn.approve { color: var(--ok); border-color: rgba(34, 197, 94, .4); } .btn.reject { color: var(--error); border-color: rgba(239, 68, 68, .4); }
+	#prs .none { color: var(--text-3); font-size: 13px; padding: 14px 4px; }
+
+	/* Change bar */
+	#changebar { display: flex; align-items: center; gap: 10px; padding: 0 16px 12px; }
+	#changebar .box { flex: 1; display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 8px 0 16px; border-radius: 999px; border: 1px solid var(--border); background: rgba(22, 22, 26, .9); backdrop-filter: blur(12px); transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease); min-width: 0; }
+	#changebar .box:focus-within { border-color: #3f3f46; box-shadow: 0 0 0 4px rgba(59, 130, 246, .12); }
+	#changebar .who { font-size: 13px; color: var(--text-3); white-space: nowrap; }
+	#change-input { flex: 1; min-width: 200px; height: 40px; border: 0; outline: none; background: transparent; font-size: 15px; }
+	#changebar kbd { font-family: var(--mono); font-size: 12px; color: var(--text-3); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; }
+	.suggest { display: flex; gap: 6px; overflow: hidden; min-width: 0; }
+	.suggest button { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; white-space: nowrap; transition: border-color var(--t) var(--ease), color var(--t) var(--ease); }
+	.suggest button:hover { border-color: var(--border-hover); color: var(--text); }
+
+	/* Feed drawer */
+	#feed { position: fixed; top: 56px; right: 0; bottom: 0; width: 420px; background: rgba(13, 13, 15, .96); border-left: 1px solid var(--border); backdrop-filter: blur(12px); z-index: 12; transform: translateX(100%); transition: transform 220ms var(--ease); display: grid; grid-template-rows: auto 1fr; }
+	#feed.open { transform: none; }
+	#feed ul { list-style: none; margin: 0; padding: 8px 14px; overflow-y: auto; }
+	#feed li { padding: 6px 0 6px 10px; border-left: 2px solid var(--fc, var(--border)); margin-bottom: 4px; font-size: 13px; }
+	#feed li .t { font-weight: 600; } #feed li .m { color: var(--text-3); font-size: 12px; }
+
+	/* Overlay */
+	#overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .85); display: none; align-items: center; justify-content: center; z-index: 30; cursor: zoom-out; }
 	#overlay.open { display: flex; }
 	#overlay img { max-width: 92vw; max-height: 88vh; border-radius: 8px; }
-	#overlay span { position: absolute; bottom: 24px; color: var(--text); font-size: 22px; }
-	#timeline-panel { grid-row: span 3; }
-	#timeline { list-style: none; margin: 0; padding: 0; max-height: 78vh; overflow-y: auto; }
-	#timeline li { padding: 6px 0 6px 12px; border-left: 5px solid var(--line); margin-bottom: 6px; }
-	#timeline .t { font-weight: 600; }
-	#timeline .meta { color: var(--dim); font-size: 16px; }
-	table { width: 100%; border-collapse: collapse; }
-	td, th { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-	th { color: var(--dim); font-weight: 400; font-size: 16px; }
-	td.v { font-family: ui-monospace, monospace; font-size: 16px; color: var(--dim); word-break: break-word; }
-	.pill { display: inline-block; padding: 0 10px; border-radius: 99px; font-size: 16px; font-weight: 600; color: var(--bg); }
-	.pending { background: var(--proposed); } .approved { background: var(--approved); } .rejected { background: var(--rejected); }
-	ul.plain { list-style: none; margin: 0; padding: 0; }
-	ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
-	.kind { color: var(--rejected); font-weight: 600; }
-	.request { font-weight: 600; }
-	.effect { color: var(--contract); font-size: 16px; }
-	.empty { color: var(--dim); font-style: italic; }
-	#board img { max-width: 100%; border-radius: 6px; background: #000; }
-	.c-contract { border-color: var(--contract) !important; } .c-proposed { border-color: var(--proposed) !important; }
-	.c-approved { border-color: var(--approved) !important; } .c-rejected { border-color: var(--rejected) !important; }
-	.c-artifact { border-color: var(--artifact) !important; } .c-failed { border-color: var(--rejected) !important; }
-	.c-check { border-color: var(--check) !important; } .c-settled { border-color: var(--settled) !important; }
-	.c-halted { border-color: var(--halted) !important; }
+
+	/* ── Start screen ───────────────────────────────────────── */
+	#start { overflow-y: auto; padding: 48px 20px 40px; }
+	.composer { max-width: 860px; margin: 0 auto; }
+	.composer h1 { font-size: 32px; letter-spacing: -.02em; margin: 0 0 6px; }
+	.composer .sub { color: var(--text-2); margin: 0 0 22px; font-size: 18px; }
+	.compose-box { padding: 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--border); transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease); }
+	.compose-box:focus-within { border-color: #3f3f46; box-shadow: 0 0 0 4px rgba(59, 130, 246, .1); }
+	#brief-input { width: 100%; min-height: 190px; resize: vertical; border: 0; outline: none; background: transparent; font-size: 15px; line-height: 1.6; }
+	.examples { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 12px; }
+	.toggles { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--border); padding-top: 12px; }
+	.seg { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); }
+	.seg button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--text-2); cursor: pointer; font-size: 13px; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+	.seg button.on { background: #26262c; color: var(--text); }
+	.switch { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--raised); cursor: pointer; font-size: 13px; color: var(--text-2); user-select: none; }
+	.switch i { width: 28px; height: 16px; border-radius: 999px; background: #2a2a30; position: relative; transition: background var(--t) var(--ease); }
+	.switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-2); transition: transform var(--t) var(--ease), background var(--t) var(--ease); }
+	.switch.on { color: var(--text); } .switch.on i { background: var(--info); } .switch.on i::after { transform: translateX(12px); background: #fff; }
+	#start-btn { margin-left: auto; height: 38px; padding: 0 22px; }
+	#start-error { color: var(--error); font-size: 13px; margin-top: 8px; }
+	.recent { max-width: 860px; margin: 34px auto 0; }
+	.recent h2 { font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; font-weight: 500; }
+	.run-row { display: grid; grid-template-columns: 104px minmax(0, 1fr) 80px 90px; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r-card); border: 1px solid transparent; text-decoration: none; transition: background var(--t) var(--ease), border-color var(--t) var(--ease); }
+	.run-row:hover { background: var(--panel); border-color: var(--border); }
+	.run-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.status-pill { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; text-align: center; }
+	.st-running { color: var(--info); background: rgba(59, 130, 246, .12); } .st-settled { color: var(--ok); background: rgba(34, 197, 94, .1); }
+	.st-unsettled, .st-failed { color: var(--error); background: rgba(239, 68, 68, .1); } .st-stopped { color: var(--text-3); background: #1c1c21; }
+
+	@media (max-width: 1500px) {
+		#run { grid-template-rows: minmax(0, 1fr) 118px 140px; }
+		.card .result { display: none; }
+		.pr { flex-basis: 340px; }
+		#brief-title { max-width: 200px; }
+		.suggest button:nth-child(n+3) { display: none; }
+		#elapsed { display: none; }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		*, *::before, *::after { animation: none !important; transition: none !important; }
+	}
 </style>
 </head>
 <body>
-<header>
-	<h1>Bringup</h1>
-	<span id="status">connecting…</span>
-	<span id="revision"></span>
-	<span id="settled"></span>
-	<span id="cloud"></span>
-</header>
-<main>
-	<section id="lanes-panel"><h2>Agents and tools</h2><div id="lanes"></div></section>
-	<section id="counters"></section>
-	<section id="timeline-panel"><h2>Timeline</h2><ul id="timeline"></ul></section>
-	<section><h2>Design contract</h2><table id="contract"></table></section>
-	<section><h2>Engineer requests</h2><ul class="plain" id="requests"><li class="empty">none yet</li></ul></section>
-	<section><h2>Change control</h2><table id="changes"></table></section>
-	<section><h2>Violations (latest check)</h2><ul class="plain" id="violations"><li class="empty">no check yet</li></ul></section>
-	<section><h2>Brief review</h2><ul class="plain" id="review"><li class="empty">not reviewed yet</li></ul></section>
-	<section id="board"><h2 id="board-title">Board</h2><div id="board-latest"><p class="empty">waiting for the first board build</p></div><div id="filmstrip"></div></section>
-	<section id="enclosure"><h2 id="enclosure-title">Enclosure</h2><canvas id="enclosure-view"></canvas><p class="empty" id="enclosure-note">waiting for the first enclosure build · drag to rotate</p></section>
-</main>
-<div id="overlay"><img alt=""><span></span></div>
+<div id="app">
+	<header>
+		<a class="logo" href="/"><i></i>Bringup</a>
+		<span id="brief-title"></span>
+		<span id="state-pill" class="pill hidden"><span class="dot"></span><span id="state-text">LIVE</span> · rev <span id="rev-num" class="num">0</span></span>
+		<span id="elapsed" class="num hidden"></span>
+		<div id="checks" class="hidden"></div>
+		<button id="feed-btn" class="pill hidden" title="Event feed">Feed</button>
+		<a id="cloud-link" class="pill hidden" target="_blank" rel="noopener">Mozaik Cloud ↗</a>
+		<a id="new-btn" class="pill hidden" href="/" style="text-decoration:none">＋ New design</a>
+	</header>
+
+	<!-- Start screen: no run selected -->
+	<section id="start" class="hidden">
+		<div class="composer">
+			<h1>New design</h1>
+			<p class="sub">Describe the device. Agents pick the parts, route the board, shape the case and write the firmware, all at once, against one shared contract.</p>
+			<div class="compose-box">
+				<textarea id="brief-input" placeholder="A pocket climate logger: temperature and humidity every minute, a USB-C port for charging, a status LED, and about six months on a small Li-ion cell. Must fit a 50 × 30 mm board."></textarea>
+				<div class="examples" id="examples"></div>
+				<div class="toggles">
+					<span class="seg" id="models"><button data-v="mock" class="on">Scripted models</button><button data-v="real">Real models</button></span>
+					<span class="switch on" data-k="hardware"><i></i>Hardware tools</span>
+					<span class="switch on" data-k="review"><i></i>Brief review</span>
+					<span class="switch" data-k="engineerApproval"><i></i>Require my approval for cross-team changes</span>
+					<button id="start-btn" class="btn primary">Start design →</button>
+				</div>
+			</div>
+			<div id="start-error"></div>
+		</div>
+		<div class="recent"><h2>Recent runs</h2><div id="runs"><div class="dimmer">no runs yet</div></div></div>
+	</section>
+
+	<!-- Run view -->
+	<main id="run" class="hidden">
+		<section id="stage" class="panel">
+			<div class="stage-bar">
+				<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button></div>
+				<span id="dims" class="num"></span>
+				<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab files ↓</button></span>
+				<div id="battery" class="hidden"><span id="battery-text" class="num"></span><span class="bar"><span class="fill"></span><span class="target"></span></span></div>
+			</div>
+			<div id="stage-body">
+				<div id="pcb-host" class="view"></div>
+				<div id="render-view" class="view hidden"><div class="empty-state">waiting for the first board build</div></div>
+				<div id="stage-3d" class="view hidden"></div>
+				<span id="changed-pill" class="pill"></span>
+				<span id="viewing-pill" class="pill hidden" title="Back to live"></span>
+				<div id="request-toast"></div>
+			</div>
+			<div id="scrubber"><span class="label">Revisions</span><div id="dots"></div><button id="live-btn" class="btn">Live</button></div>
+		</section>
+		<aside id="side">
+			<section id="scene-panel" class="panel">
+				<div class="panel-head">3D · case + board<span class="right"><label class="dimmer" style="font-size:13px">explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
+				<div id="scene-body"><div id="scene-host"></div><div id="scene-empty" class="empty-state">waiting for the first enclosure build</div></div>
+			</section>
+			<section id="parts-panel" class="panel">
+				<div class="panel-head">Parts<span class="right">total <span id="parts-total" class="num">—</span></span></div>
+				<div id="parts"><div class="empty-state">waiting for the parts list</div></div>
+			</section>
+		</aside>
+		<section id="agents"></section>
+		<section id="changes-panel" class="panel">
+			<div class="panel-head">Change control<span class="right" id="changes-count"></span></div>
+			<div id="prs"><div class="none">No cross-team changes yet. When an agent wants a field it doesn't own, it opens a request here and the owner decides.</div></div>
+		</section>
+	</main>
+
+	<footer id="changebar" class="hidden">
+		<div class="box">
+			<span class="who">engineer ›</span>
+			<input id="change-input" placeholder="Ask for a change while the agents work…" autocomplete="off" maxlength="500">
+			<div class="suggest" id="suggest"></div>
+			<kbd>⌘K</kbd>
+		</div>
+	</footer>
+</div>
+<aside id="feed"><div class="panel-head" style="padding-bottom:6px">Event feed<span class="right"><button class="pill" id="feed-close">Close</button></span></div><ul id="feed-list"></ul></aside>
+<div id="overlay"><img alt=""></div>
+
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	const FIELDS = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
-	const state = {
-		revision: 0,
-		fields: {},          // field -> { version, by, revision }
-		values: {},          // field -> value, from /files/contract.json
-		changes: new Map(),  // proposalId -> { field, by, reason, status, decidedBy, why }
-		violations: null,
-		seenViolations: new Set(),
-		counts: { proposed: 0, approved: 0, rejected: 0, built: 0 },
-		settled: null,
-		review: null,        // latest review.completed payload
-		reviewing: null,     // revision handed to the reviewer by design.ready
-		reviews: 0,
-		requests: [],        // [{at, text}] from /files/requests.jsonl
-		contractChanges: [], // [{at, field, version, revision, by}] from contract.changed
-	}
+	import { AGENT_COLORS, boardFor, changedRefs, checkPills, parseBattery, prCards, scrubberModel } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
-	const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
-	const time = (at) => { const d = new Date(at); return isNaN(d) ? "" : d.toLocaleTimeString() }
+	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
+	const time = (at) => { const d = new Date(at); return isNaN(d) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }
+	const ago = (at) => { const s = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago` }
+	const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches
 
-	function colour(e) {
-		switch (e.type) {
-			case "contract.changed": return "c-contract"
-			case "change.proposed": return "c-proposed"
-			case "change.decided": return e.payload.approved ? "c-approved" : "c-rejected"
-			case "artifact.ready": return "c-artifact"
-			case "artifact.failed": return "c-failed"
-			case "consistency.checked": return e.payload.violations.length ? "c-failed" : "c-check"
-			case "design.ready": return "c-check"
-			case "review.completed": return e.payload.verdict === "pass" ? "c-approved" : "c-rejected"
-			case "design.settled": return e.payload.settled ? "c-settled" : "c-failed"
-			case "agent.halted": return "c-halted"
-			default: return ""
-		}
+	// Who's who: short names and initials for avatars (agent roles and lane keys); colours from model.js.
+	const WHO = {
+		architect: ["Architect", "A"], parts: ["Parts", "P"], firmware: ["Firmware", "F"], reviewer: ["Reviewer", "R"],
+		"build:board": ["Board", "B"], "build:enclosure": ["Case", "C"], "build:firmware": ["Build", "⚙"], grounding: ["Grounding", "G"],
+		consistency: ["Consistency", "✓"], engineer: ["You", "you"], enclosure: ["Case", "C"],
 	}
+	const color = (k) => AGENT_COLORS[k] ?? AGENT_COLORS[`build:${k}`] ?? AGENT_COLORS.engineer
+	const avatar = (k) => `<span class="avatar" style="background:${color(k)}" title="${esc(WHO[k]?.[0] ?? k)}">${esc(WHO[k]?.[1] ?? String(k)[0]?.toUpperCase())}</span>`
 
-	function describe(e) {
-		const p = e.payload ?? {}
-		switch (e.type) {
-			case "contract.changed": return `${p.field} → v${p.version} by ${p.by}`
-			case "change.proposed": return `${p.by} wants to change ${p.field}: ${p.reason}`
-			case "change.decided": return `${p.by} ${p.approved ? "approved" : "rejected"} ${p.proposalId}: ${p.reason}`
-			case "artifact.ready": return `${p.kind} built for rev ${p.revision}`
-			case "artifact.failed": return `${p.kind} failed for rev ${p.revision}: ${p.error}`
-			case "consistency.checked": return `rev ${p.revision}: ${p.violations.length} violation(s)`
-			case "design.ready": return `rev ${p.revision} is consistent; brief review ${p.round}`
-			case "review.completed": return `reviewer: ${p.verdict} with ${p.findings.length} finding(s) at rev ${p.revision}`
-			case "design.settled": return p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`
-			case "agent.halted": return `${p.agentId} halted: ${p.error}`
-			default: return JSON.stringify(p)
-		}
-	}
+	const hubInfo = await fetch("/api/hub").then((r) => r.json()).catch(() => ({ defaultRun: null, canStart: false }))
+	const runId = new URLSearchParams(location.search).get("run") ?? hubInfo.defaultRun
+	if (runId) startRunView(runId)
+	else startScreen()
 
-	function apply(e) {
-		const p = e.payload ?? {}
-		switch (e.type) {
-			case "contract.changed":
-				state.contractChanges.push({ at: e.at, ...p })
-				state.fields[p.field] = { version: p.version, by: p.by, revision: p.revision }
-				state.revision = Math.max(state.revision, p.revision)
-				fetchContract()
-				break
-			case "change.proposed":
-				state.counts.proposed++
-				state.changes.set(p.proposalId, { field: p.field, by: p.by, reason: p.reason, status: "pending" })
-				break
-			case "change.decided": {
-				state.counts[p.approved ? "approved" : "rejected"]++
-				const c = state.changes.get(p.proposalId) ?? { field: "?", by: "?", reason: "" }
-				state.changes.set(p.proposalId, { ...c, status: p.approved ? "approved" : "rejected", decidedBy: p.by, why: p.reason })
-				break
-			}
-			case "artifact.ready":
-				state.counts.built++
-				if (p.kind === "board") showBoard(p.revision)
-				if (p.kind === "enclosure") showEnclosure(p.revision)
-				break
-			case "consistency.checked":
-				state.violations = p
-				for (const v of p.violations) state.seenViolations.add(v.kind + "|" + v.message)
-				break
-			case "design.ready":
-				state.reviewing = p.revision
-				break
-			case "review.completed":
-				state.review = p
-				state.reviews++
-				state.reviewing = null
-				break
-			case "design.settled":
-				state.settled = p
-				break
-		}
-	}
-
-	function addToTimeline(e) {
-		const li = document.createElement("li")
-		li.className = colour(e)
-		li.innerHTML = `<div class="t">${esc(e.type)}</div><div>${esc(describe(e))}</div>` +
-			`<div class="meta">#${esc(e.seq)} · ${esc(time(e.at))} · ${esc(e.producerId)}</div>`
-		$("timeline").prepend(li)
-	}
-
-	function short(v) {
-		if (v === undefined) return ""
-		const s = JSON.stringify(v)
-		return s.length > 140 ? s.slice(0, 140) + "…" : s
-	}
-
-	function render() {
-		const pending = [...state.changes.values()].filter((c) => c.status === "pending").length
-		const counters = [
-			["change requests", state.requests.length], ["changes proposed", state.counts.proposed], ["held now", pending], ["approved", state.counts.approved],
-			["rejected", state.counts.rejected], ["violations caught", state.seenViolations.size], ["artifacts built", state.counts.built],
-		]
-		$("counters").innerHTML = counters.map(([label, n]) => `<div class="counter"><b>${n}</b><span>${label}</span></div>`).join("")
-
-		$("revision").textContent = state.revision ? `revision ${state.revision}` : ""
-		const s = state.settled
-		$("settled").textContent = s ? (s.settled ? `✔ settled at rev ${s.revision}` : `✖ not settled (rev ${s.revision})`) : ""
-		$("settled").style.color = s ? (s.settled ? "var(--approved)" : "var(--rejected)") : ""
-
-		$("contract").innerHTML = `<tr><th>field</th><th>v</th><th>by</th><th>rev</th></tr>` + FIELDS.map((f) => {
-			const m = state.fields[f]
-			const value = short(state.values[f])
-			return `<tr><td>${f}</td><td>${m ? m.version : "–"}</td><td>${m ? esc(m.by) : ""}</td><td>${m ? m.revision : ""}</td></tr>` +
-				(value ? `<tr><td class="v" colspan="4">${esc(value)}</td></tr>` : "")
-		}).join("")
-
-		const changes = [...state.changes.entries()].reverse()
-		$("changes").innerHTML = changes.length === 0 ? `<tr><td class="empty">none yet</td></tr>` : changes.map(([id, c]) =>
-			`<tr><td><span class="pill ${c.status}">${c.status}</span></td><td><b>${esc(c.field)}</b> by ${esc(c.by)}<br>` +
-			`<span class="meta">${esc(c.reason)}${c.decidedBy ? ` · ${esc(c.decidedBy)}: ${esc(c.why)}` : ""}</span></td></tr>`).join("")
-
-		// What each engineer request caused: the architect's contract changes between it and the next request.
-		$("requests").innerHTML = state.requests.length === 0 ? `<li class="empty">none yet</li>` : state.requests.map((r, i) => {
-			const from = Date.parse(r.at)
-			const to = i + 1 < state.requests.length ? Date.parse(state.requests[i + 1].at) : Infinity
-			const caused = state.contractChanges.filter((c) => c.by === "architect" && Date.parse(c.at) >= from && Date.parse(c.at) < to)
-			const effect = caused.length > 0
-				? caused.map((c) => `→ ${esc(c.field)} v${esc(c.version)} (rev ${esc(c.revision)})`).join("<br>")
-				: state.settled ? "→ no field changed" : "→ waiting for the architect…"
-			return `<li><span class="request">“${esc(r.text)}”</span> <span class="meta">${esc(time(r.at))}</span><br><span class="effect">${effect}</span></li>`
-		}).reverse().join("")
-
-		const v = state.violations
-		$("violations").innerHTML = !v ? `<li class="empty">no check yet</li>` : v.violations.length === 0
-			? `<li style="color: var(--approved)">✔ rev ${v.revision}: consistent</li>`
-			: v.violations.map((x) => `<li><span class="kind">${esc(x.kind)}</span> ${esc(x.message)}<br><span class="meta">wakes ${esc(x.affects.join(", "))}</span></li>`).join("")
-		renderReview()
-	}
-
-	function renderReview() {
-		const r = state.review
-		if (!r) {
-			$("review").innerHTML = state.reviewing !== null ? `<li class="empty">reviewing rev ${esc(state.reviewing)} against the brief…</li>` : `<li class="empty">not reviewed yet</li>`
-			return
-		}
-		const head = `<li><span class="pill ${r.verdict === "pass" ? "approved" : "rejected"}">${esc(r.verdict)}</span> rev ${esc(r.revision)} · review ${state.reviews}` +
-			(state.reviewing !== null ? ` · reviewing rev ${esc(state.reviewing)}…` : "") + `</li>`
-		$("review").innerHTML = head + r.findings.map((f) =>
-			`<li><span class="kind">${esc(f.severity)}</span> ${esc(f.issue)}<br><span class="meta">${esc(f.fields.join(", ") || "general")} · ${esc(f.suggestion)}</span></li>`).join("")
-	}
-
-	// Board filmstrip: every rev-N render, the newest large. Stub runs have no render, so missing images hide.
-	const boardRevs = new Set()
-	function showBoard(revision) {
-		if (boardRevs.has(revision)) return
-		boardRevs.add(revision)
-		const src = `/files/board/rev-${encodeURIComponent(revision)}/board.png`
-		const img = new Image()
-		img.alt = `board rev ${revision}`
-		img.onload = () => {
-			$("board-title").textContent = `Board · rev ${revision}`
-			const big = img.cloneNode()
-			big.addEventListener("click", () => openOverlay(src, `Board · rev ${revision}`))
-			$("board-latest").replaceChildren(big)
-			const fig = document.createElement("figure")
-			img.addEventListener("click", () => openOverlay(src, `Board · rev ${revision}`))
-			fig.append(img, `rev ${revision}`)
-			$("filmstrip").append(fig)
-			fig.scrollIntoView({ behavior: "smooth", inline: "end", block: "nearest" })
-		}
-		img.src = src
-	}
-
-	function openOverlay(src, caption) {
-		$("overlay").querySelector("img").src = src
-		$("overlay").querySelector("span").textContent = caption
-		$("overlay").classList.add("open")
-	}
-	$("overlay").addEventListener("click", () => $("overlay").classList.remove("open"))
-	document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("overlay").classList.remove("open") })
-
-	// Enclosure: case.stl as a wireframe of its feature edges, orthographic, slowly turning; drag to rotate.
-	const view = { edges: [], yaw: -0.6, pitch: 0.9, spinning: true, center: [0, 0, 0], radius: 1 }
-	let enclosureRev = -1
-	async function showEnclosure(revision) {
-		if (revision <= enclosureRev) return
-		enclosureRev = revision
-		try {
-			const res = await fetch(`/files/enclosure/rev-${encodeURIComponent(revision)}/case.stl`, { cache: "no-store" })
-			if (!res.ok) return
-			const tris = parseStl(await res.arrayBuffer())
-			if (tris.length === 0) return
-			const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity]
-			for (let i = 0; i < tris.length; i++) { const k = i % 3; min[k] = Math.min(min[k], tris[i]); max[k] = Math.max(max[k], tris[i]) }
-			view.center = min.map((m, k) => (m + max[k]) / 2)
-			view.radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 || 1
-			view.edges = featureEdges(tris)
-			$("enclosure-title").textContent = `Enclosure · rev ${revision}`
-			$("enclosure-note").innerHTML = `${(max[0] - min[0]).toFixed(1)} × ${(max[1] - min[1]).toFixed(1)} × ${(max[2] - min[2]).toFixed(1)} mm · drag to rotate · <a href="/files/enclosure/rev-${encodeURIComponent(revision)}/case.stl" download>case.stl</a>`
-			drawEnclosure()
-		} catch {}
-	}
-
-	function drawEnclosure() {
-		const c = $("enclosure-view")
-		const dpr = window.devicePixelRatio || 1
-		const w = c.clientWidth, h = c.clientHeight
-		if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr }
-		const g = c.getContext("2d")
-		g.setTransform(dpr, 0, 0, dpr, 0, 0)
-		g.clearRect(0, 0, w, h)
-		if (view.edges.length === 0) return
-		const scale = (Math.min(w, h) / 2 / view.radius) * 0.9
-		const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw), cp = Math.cos(view.pitch), sp = Math.sin(view.pitch)
-		const project = ([x, y, z]) => {
-			x -= view.center[0]; y -= view.center[1]; z -= view.center[2]
-			const x1 = x * cy - y * sy, y1 = x * sy + y * cy // yaw about z
-			const z2 = y1 * sp + z * cp // pitch about x; z2 is screen-up
-			return [w / 2 + x1 * scale, h / 2 - z2 * scale]
-		}
-		g.strokeStyle = "#39c5cf"
-		g.lineWidth = 1.4
-		g.beginPath()
-		for (const [a, b] of view.edges) {
-			const [ax, ay] = project(a), [bx, by] = project(b)
-			g.moveTo(ax, ay); g.lineTo(bx, by)
-		}
-		g.stroke()
-	}
-
-	function spin() {
-		if (view.spinning && view.edges.length > 0 && !document.hidden) { view.yaw += 0.004; drawEnclosure() }
-		requestAnimationFrame(spin)
-	}
-	requestAnimationFrame(spin)
-	{
-		const c = $("enclosure-view")
-		let drag = null
-		c.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; view.spinning = false; c.setPointerCapture(e.pointerId) })
-		c.addEventListener("pointermove", (e) => {
-			if (!drag) return
-			view.yaw += (e.clientX - drag.x) * 0.01
-			view.pitch = Math.max(-1.5, Math.min(1.5, view.pitch + (e.clientY - drag.y) * 0.01))
-			drag = { x: e.clientX, y: e.clientY }
-			drawEnclosure()
+	// ═══ Start screen ══════════════════════════════════════════════════════════════════════════
+	async function startScreen() {
+		$("start").classList.remove("hidden")
+		$("app").style.gridTemplateRows = "56px 1fr"
+		document.title = "Bringup · new design"
+		const opts = { mock: true, hardware: true, review: true, engineerApproval: false }
+		$("models").addEventListener("click", (e) => {
+			const b = e.target.closest("button"); if (!b) return
+			opts.mock = b.dataset.v === "mock"
+			for (const x of $("models").children) x.classList.toggle("on", x === b)
 		})
-		c.addEventListener("pointerup", () => (drag = null))
-		window.addEventListener("resize", drawEnclosure)
-	}
-
-	// Lanes: one row per participant. Rows are built once and only their text and dot change, so nothing flickers.
-	const lanes = createLanes()
-	const STATUS_LABEL = { idle: "idle", thinking: "thinking", tool: "calling a tool", held: "held", building: "building", checking: "checking", done: "done", failed: "failed" }
-	const laneRows = {}
-	for (const l of LANES) {
-		const row = document.createElement("div")
-		row.className = "lane"
-		row.innerHTML = `<span class="dot s-idle"></span><span class="label"></span><span class="badge">idle</span><span class="text"></span><span class="ago"></span>`
-		row.querySelector(".label").textContent = l.label
-		const hist = document.createElement("ul")
-		hist.className = "hist"
-		hist.hidden = true
-		row.addEventListener("click", () => { hist.hidden = !hist.hidden; if (!hist.hidden) renderHistory(l.key) })
-		$("lanes").append(row, hist)
-		laneRows[l.key] = { row, hist }
-	}
-	const ago = (at) => { if (!at) return ""; const s = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 1000)); return s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ago` }
-	function renderLane(key) {
-		const lane = lanes[key], r = laneRows[key]
-		if (!lane || !r) return
-		r.row.querySelector(".dot").className = `dot s-${lane.status}`
-		r.row.querySelector(".badge").textContent = STATUS_LABEL[lane.status] ?? lane.status
-		r.row.querySelector(".text").textContent = lane.text
-		r.row.querySelector(".text").title = lane.text
-		r.row.querySelector(".ago").textContent = ago(lane.at)
-		if (!r.hist.hidden) renderHistory(key)
-	}
-	function renderHistory(key) {
-		laneRows[key].hist.innerHTML = lanes[key].history.slice().reverse()
-			.map((h) => `<li><b>${esc(STATUS_LABEL[h.status] ?? h.status)}</b>${esc(time(h.at))} · ${esc(h.text)}</li>`).join("") || `<li>nothing yet</li>`
-	}
-	setInterval(() => { for (const k of Object.keys(laneRows)) laneRows[k].row.querySelector(".ago").textContent = ago(lanes[k].at) }, 1000)
-	const dirtyLanes = new Set()
-
-	let contractTimer = null
-	function fetchContract() {
-		clearTimeout(contractTimer)
-		contractTimer = setTimeout(async () => {
+		for (const sw of document.querySelectorAll(".switch")) sw.addEventListener("click", () => { opts[sw.dataset.k] = !opts[sw.dataset.k]; sw.classList.toggle("on", opts[sw.dataset.k]) })
+		try {
+			const briefs = await (await fetch("/api/briefs")).json()
+			$("examples").innerHTML = briefs.map((b, i) => `<button class="pill" data-i="${i}">↳ ${esc(b.title)}</button>`).join("")
+			$("examples").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { $("brief-input").value = briefs[Number(b.dataset.i)].text; $("brief-input").focus() } })
+		} catch {}
+		if (!hubInfo.canStart) {
+			$("start-btn").disabled = true
+			$("start-error").textContent = "This dashboard is read-only. Run `npx tsx src/dashboard/cli.ts` to start designs from here."
+		}
+		$("start-btn").addEventListener("click", async () => {
+			const brief = $("brief-input").value.trim()
+			if (!brief) { $("brief-input").focus(); return }
+			$("start-btn").disabled = true
+			$("start-error").textContent = ""
 			try {
-				const res = await fetch("/files/contract.json", { cache: "no-store" })
-				if (!res.ok) return
-				const snap = await res.json()
-				state.values = snap.values ?? snap
-				render()
-			} catch {}
-		}, 200)
-	}
-
-	let requestsTimer = null
-	async function fetchRequests() {
-		try {
-			const res = await fetch("/files/requests.jsonl", { cache: "no-store" })
-			if (!res.ok) return
-			const lines = (await res.text()).split("\n").filter((l) => l.trim())
-			const requests = []
-			for (const l of lines) { try { const r = JSON.parse(l); if (typeof r.text === "string") requests.push(r) } catch {} }
-			if (requests.length !== state.requests.length) { state.requests = requests; render() }
-		} catch {}
-	}
-	setInterval(fetchRequests, 2000)
-
-	// Mozaik Cloud loop links the demo relays from the run (<outDir>/cloud.jsonl): link the latest one.
-	let cloudCount = 0
-	async function fetchCloud() {
-		try {
-			const res = await fetch("/files/cloud.jsonl", { cache: "no-store" })
-			if (!res.ok) return
-			const urls = (await res.text()).split("\n").flatMap((l) => { try { return [JSON.parse(l).url] } catch { return [] } })
-				.filter((u) => typeof u === "string" && /^https?:\/\//.test(u))
-			if (urls.length === 0 || urls.length === cloudCount) return
-			cloudCount = urls.length
-			// One URL: the run's single Cloud session. Several: per-loop links from an older run.
-			$("cloud").innerHTML = `<a href="${esc(urls.at(-1))}" target="_blank" rel="noopener">Mozaik Cloud ↗</a> <span class="meta">${urls.length === 1 ? "live session" : `${urls.length} loops`}</span>`
-		} catch {}
-	}
-	setInterval(fetchCloud, 2000)
-
-	let frame = null
-	const source = new EventSource("/events")
-	source.onopen = () => { $("status").textContent = "● live"; $("status").className = "live" }
-	source.onerror = () => { $("status").textContent = "reconnecting…"; $("status").className = "" }
-	let lastSeq = -1
-	source.onmessage = (msg) => {
-		const e = JSON.parse(msg.data)
-		// EventSource replays from the start after a reconnect; skip what is already on screen.
-		if (typeof e.seq === "number" && e.seq <= lastSeq) return
-		lastSeq = typeof e.seq === "number" ? e.seq : lastSeq
-		for (const k of applyLaneEvent(lanes, e)) dirtyLanes.add(k)
-		if (e.type !== "agent.activity") {
-			apply(e)
-			addToTimeline(e)
-			clearTimeout(requestsTimer)
-			requestsTimer = setTimeout(fetchRequests, 200)
-		}
-		if (!frame) frame = requestAnimationFrame(() => {
-			frame = null
-			for (const k of dirtyLanes) renderLane(k)
-			dirtyLanes.clear()
-			render()
+				const res = await fetch("/api/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brief, ...opts }) })
+				const body = await res.json()
+				if (!res.ok) throw new Error(body.error ?? res.statusText)
+				location.href = `/?run=${encodeURIComponent(body.runId)}`
+			} catch (e) { $("start-error").textContent = String(e.message ?? e); $("start-btn").disabled = false }
 		})
+		const loadRuns = async () => {
+			try {
+				const runs = await (await fetch("/api/runs")).json()
+				if (runs.length === 0) return
+				$("runs").innerHTML = runs.map((r) => `<a class="run-row" href="/?run=${encodeURIComponent(r.runId)}"><span class="status-pill st-${esc(r.status)}">${esc(r.status)}</span><span class="t">${esc(r.title)}</span><span class="dim num">rev ${esc(r.revision)}</span><span class="dimmer num" style="text-align:right">${esc(ago(r.startedAt))}</span></a>`).join("")
+			} catch {}
+		}
+		loadRuns()
+		setInterval(loadRuns, 3000)
 	}
-	render()
-	fetchContract()
-	fetchRequests()
-	fetchCloud()
+
+	// ═══ Run view ══════════════════════════════════════════════════════════════════════════════
+	async function startRunView(id) {
+		const base = `/runs/${encodeURIComponent(id)}`
+		const file = (p) => `${base}/files/${p}`
+		for (const el of ["run", "changebar", "state-pill", "elapsed", "checks", "feed-btn", "new-btn"]) $(el).classList.remove("hidden")
+
+		const S = {
+			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
+			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
+			hover: null, bom: null, contract: null,
+		}
+
+		fetch(file("brief.md")).then((r) => (r.ok ? r.text() : "")).then((t) => {
+			const title = (t.split("\n").find((l) => l.trim()) ?? id).replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "")
+			$("brief-title").textContent = `“${title}”`
+			document.title = `Bringup · ${title}`
+		}).catch(() => {})
+
+		// ── Centerpiece modules (agent-mesh-af); without them, the KiCad render and an STL wireframe ──
+		let pcb = null, scene = null
+		const hover = (ref) => setHover(ref)
+		try { pcb = (await import("/pcb-view.js")).mountPcb($("pcb-host"), { onHover: hover }) } catch { pcb = null }
+		try { scene = (await import("/scene3d.js")).mountScene($("scene-host"), { onHover: hover }) } catch { scene = null }
+		if (!pcb) $("tabs").querySelector('[data-tab="pcb"]').disabled = true
+		const wire = scene ? null : wireframe($("scene-host"))
+		setTab(pcb ? "pcb" : "render")
+		$("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !b.disabled) setTab(b.dataset.tab) })
+		$("explode").addEventListener("input", (e) => scene?.setExplode(Number(e.target.value)))
+
+		function setTab(tab) {
+			for (const b of $("tabs").children) b.classList.toggle("on", b.dataset.tab === tab)
+			$("pcb-host").classList.toggle("hidden", tab !== "pcb")
+			$("render-view").classList.toggle("hidden", tab !== "render")
+			$("stage-3d").classList.toggle("hidden", tab !== "3d")
+			// The 3D tab borrows the side panel's scene: one scene, one camera.
+			const host = $("scene-host")
+			if (tab === "3d") $("stage-3d").append(host)
+			else if (host.parentElement !== $("scene-body")) $("scene-body").prepend(host)
+		}
+
+		// ── Hover: one ref lit everywhere ──
+		function setHover(ref) {
+			if (S.hover === ref) return
+			S.hover = ref
+			pcb?.highlight(ref)
+			scene?.highlight(ref)
+			for (const row of $("parts").querySelectorAll(".part")) row.classList.toggle("hl", row.dataset.ref === ref)
+		}
+
+		// ── Snapshots: contract.json remembered per revision as it streams (for diffs and glow) ──
+		let snapTimer = null
+		const fetchSnapshot = () => {
+			clearTimeout(snapTimer)
+			snapTimer = setTimeout(async () => {
+				try {
+					const snap = await (await fetch(file("contract.json"), { cache: "no-store" })).json()
+					if (typeof snap.revision !== "number") return
+					S.snapshots.set(snap.revision, snap)
+					S.contract = snap
+					renderDims()
+					if (!S.bom) renderParts()
+					schedule()
+				} catch {}
+			}, 120)
+		}
+		const snapAt = (rev) => { let best = null; for (const [r, s] of S.snapshots) if (r <= rev && (!best || r > best.revision)) best = s; return best }
+
+		// ── Boards and enclosures per revision ──
+		async function circuitFor(rev) {
+			if (S.boards.has(rev)) return S.boards.get(rev)
+			const tries = [`board/rev-${rev}/dist/board/circuit.json`, `board/rev-${rev}/circuit.json`, ...(rev === S.model.boards.at(-1) ? ["board/circuit.json"] : [])]
+			for (const p of tries) {
+				try { const r = await fetch(file(p)); if (r.ok) { const c = await r.json(); S.boards.set(rev, c); return c } } catch {}
+			}
+			return null
+		}
+		async function showBoard(rev, prevRev) {
+			if (rev === null || rev === S.shownBoard) return
+			S.shownBoard = rev
+			const img = new Image()
+			img.onload = () => {
+				img.style.cursor = "zoom-in"
+				img.addEventListener("click", () => { $("overlay").querySelector("img").src = img.src; $("overlay").classList.add("open") })
+				$("render-view").replaceChildren(img)
+			}
+			img.src = file(`board/rev-${rev}/board.png`)
+			const circuit = await circuitFor(rev)
+			const glow = prevRev != null ? changedRefs(snapAt(prevRev)?.values, snapAt(rev)?.values) : []
+			if (circuit) { pcb?.update(circuit, glow); scene?.update({ circuit }) }
+			renderDims(circuit)
+			schedule()
+		}
+		async function showEnclosure(rev) {
+			if (rev === null || rev === S.shownEnclosure) return
+			S.shownEnclosure = rev
+			try {
+				const r = await fetch(file(`enclosure/rev-${rev}/case.stl`))
+				if (!r.ok) return
+				const buf = await r.arrayBuffer()
+				$("scene-empty").classList.add("hidden")
+				if (scene) scene.update({ caseStl: buf })
+				else wire.load(buf)
+			} catch {}
+		}
+		const enclosureFor = (rev) => { let best = null; for (const e of S.enclosures) if (e <= rev) best = e; return best }
+		function syncArtifacts(prevBoard) {
+			const live = S.selected === null
+			showBoard(live ? (S.model.boards.at(-1) ?? null) : boardFor(S.model, S.selected), live ? prevBoard : undefined)
+			showEnclosure(live ? (S.enclosures.at(-1) ?? null) : enclosureFor(S.selected))
+		}
+
+		// ── Parts: bom.json, else the contract's parts ──
+		let bomTimer = null
+		const fetchBom = () => {
+			clearTimeout(bomTimer)
+			bomTimer = setTimeout(async () => {
+				try { const r = await fetch(file("bom.json"), { cache: "no-store" }); if (r.ok) { S.bom = await r.json(); renderParts() } } catch {}
+			}, 250)
+		}
+		const fmtStock = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n))
+		function renderParts() {
+			const items = S.bom ? (Array.isArray(S.bom) ? S.bom : (S.bom.items ?? [])) : (S.contract?.values?.parts ?? []).map((p) => ({ ...p, stock: null, priceUsd: null, grounded: null }))
+			if (items.length === 0) return
+			// pcb-view and scene3d use MPNs and roles for tooltips, part heights and colours (circuit.json has neither).
+			const parts = items.map((p) => ({ ref: p.ref, mpn: p.mpn, role: p.role }))
+			pcb?.setParts?.(parts)
+			scene?.setParts?.(parts)
+			const total = S.bom && !Array.isArray(S.bom) ? S.bom.totalUsd : null
+			$("parts-total").textContent = typeof total === "number" ? `$${total.toFixed(2)}` : "—"
+			$("parts").innerHTML = items.map((p) => {
+				const stock = typeof p.stock === "number" ? `<span class="chip ${p.inStock === false || p.stock === 0 ? "bad" : "ok"} num">${p.stock === 0 ? "out of stock" : `${fmtStock(p.stock)} in stock`}</span>` : `<span class="chip dimmer">stock —</span>`
+				const price = typeof p.priceUsd === "number" ? `<span class="chip num">$${p.priceUsd.toFixed(p.priceUsd < 0.1 ? 3 : 2)}</span>` : `<span class="chip dimmer">$ —</span>`
+				const g = p.grounded === true ? `<span class="ground ok" title="every pin backed by a datasheet source">✓</span>` : p.grounded === false ? `<span class="ground warn" title="${esc(p.finding ?? "not grounded")}">⚠</span>` : `<span class="ground dimmer">·</span>`
+				const lcsc = p.lcsc ? `<a href="https://www.lcsc.com/product-detail/${encodeURIComponent(p.lcsc)}.html" target="_blank" rel="noopener">${esc(p.lcsc)} ↗</a>` : ""
+				return `<div class="part${S.hover === p.ref ? " hl" : ""}" data-ref="${esc(p.ref)}"><span class="ref">${esc(p.ref)}</span><span class="mpn" title="${esc(p.role)} · ${esc(p.footprint)}">${esc(p.mpn)}${lcsc}</span>${stock}${price}${g}</div>`
+			}).join("")
+		}
+		$("parts").addEventListener("mouseover", (e) => { const row = e.target.closest(".part"); setHover(row ? row.dataset.ref : null) })
+		$("parts").addEventListener("mouseleave", () => setHover(null))
+
+		// ── Dimensions, battery, fab files ──
+		let lastCircuit = null
+		function renderDims(circuit) {
+			if (circuit) lastCircuit = circuit
+			const o = S.contract?.values?.outline
+			const board = Array.isArray(lastCircuit) ? lastCircuit.find((e) => e.type === "pcb_board") : null
+			const comps = Array.isArray(lastCircuit) ? lastCircuit.filter((e) => e.type === "source_component").length : (S.contract?.values?.parts ?? []).length
+			const nets = Array.isArray(lastCircuit) ? lastCircuit.filter((e) => e.type === "source_net").length : null
+			const w = board?.width ?? o?.widthMm, h = board?.height ?? o?.heightMm
+			if (!w) return
+			$("dims").textContent = `${Number(w).toFixed(1)} × ${Number(h).toFixed(1)} mm · ${board?.num_layers ?? 2} layers · ${comps} parts${nets !== null ? ` · ${nets} nets` : ""}`
+		}
+		async function fetchReport() {
+			try {
+				const r = await fetch(file("report.md"), { cache: "no-store" })
+				if (!r.ok) return
+				const b = parseBattery(await r.text())
+				if (!b) return
+				$("battery").classList.remove("hidden")
+				const target = b.targetDays ?? b.days
+				const max = Math.max(b.days, target) * 1.15
+				const okay = b.targetDays === null || b.days >= b.targetDays
+				$("battery-text").innerHTML = `🔋 <b style="color:${okay ? "var(--ok)" : "var(--warn)"}">${Math.round(b.days)} days</b>${b.targetDays !== null ? ` vs ${b.targetDays} target` : " estimated"}`
+				$("battery").querySelector(".fill").style.cssText = `width:${(b.days / max) * 100}%;background:${okay ? "var(--ok)" : "var(--warn)"}`
+				$("battery").querySelector(".target").style.left = `${(target / max) * 100}%`
+			} catch {}
+		}
+		const FAB = [["gerbers.zip", "Gerbers"], ["bom.csv", "BOM (JLCPCB)"], ["cpl.csv", "Pick and place"], ["README.txt", "How to order"]]
+		async function probeFab() {
+			try { const r = await fetch(file("fab/README.txt"), { cache: "no-store" }); if (r.ok) $("fab").classList.remove("hidden") } catch {}
+		}
+		$("fab-btn").addEventListener("click", (e) => {
+			e.stopPropagation()
+			const open = $("fab").querySelector(".popover")
+			if (open) return open.remove()
+			$("fab").insertAdjacentHTML("beforeend", `<div class="popover"><h4>Fabrication · JLCPCB</h4>${FAB.map(([f, label]) => `<a class="row" href="${file(`fab/${f}`)}" download><span>${label}</span><span class="dimmer mono">${f}</span></a>`).join("")}</div>`)
+		})
+		document.addEventListener("click", (e) => { if (!e.target.closest("#fab")) $("fab").querySelector(".popover")?.remove() })
+
+		// ── Revision scrubber ──
+		$("dots").addEventListener("click", (e) => {
+			const b = e.target.closest("button"); if (!b) return
+			const rev = Number(b.dataset.rev)
+			S.selected = rev === S.model.dots.at(-1)?.revision ? null : rev
+			syncArtifacts()
+			schedule()
+		})
+		const goLive = () => { S.selected = null; syncArtifacts(); schedule() }
+		$("live-btn").addEventListener("click", goLive)
+		$("viewing-pill").addEventListener("click", goLive)
+		let dotsKey = ""
+		function renderScrubber() {
+			const m = S.model
+			const key = `${m.dots.length}|${m.boards.join(",")}|${S.selected}`
+			if (key !== dotsKey) {
+				dotsKey = key
+				$("dots").innerHTML = m.dots.map((d) => {
+					const sel = S.selected === null ? d === m.dots.at(-1) : d.revision === S.selected
+					return `<button data-rev="${d.revision}" class="${d.board ? "board" : ""}${sel ? " sel" : ""}" style="--dc:${d.color}" aria-label="revision ${d.revision}"><i></i><span class="tip">rev ${d.revision} · ${esc(d.field)} v${d.version} · ${esc(WHO[d.by]?.[0] ?? d.by)}${d.board ? " · board built" : ""}</span></button>`
+				}).join("")
+			}
+			$("live-btn").disabled = S.selected === null
+			const v = $("viewing-pill")
+			v.classList.toggle("hidden", S.selected === null)
+			if (S.selected !== null) v.textContent = `viewing rev ${S.selected}${S.shownBoard !== null && S.shownBoard !== S.selected ? ` (board from rev ${S.shownBoard})` : ""} · back to live ↻`
+		}
+
+		// ── "What just changed" ──
+		let changedTimer = null
+		function flashChanged(p) {
+			const pill = $("changed-pill")
+			pill.innerHTML = `<span class="dot" style="background:${color(p.by)}"></span>${esc(p.field)} v${esc(p.version)} · ${esc(WHO[p.by]?.[0] ?? p.by)}`
+			pill.style.borderColor = `color-mix(in srgb, ${color(p.by)} 45%, var(--border))`
+			pill.classList.add("on")
+			clearTimeout(changedTimer)
+			changedTimer = setTimeout(() => pill.classList.remove("on"), 4000)
+		}
+
+		// ── Top bar ──
+		let lastRev = 0
+		let pillsKey = ""
+		function renderTop() {
+			const st = S.settled ? (S.settled.settled ? "settled" : "unsettled") : "live"
+			$("state-pill").className = `pill ${st}`
+			$("state-text").textContent = st.toUpperCase()
+			if (S.revision !== lastRev) {
+				$("rev-num").textContent = S.revision
+				if (!reduceMotion) { $("rev-num").classList.remove("bump"); void $("rev-num").offsetWidth; $("rev-num").classList.add("bump") }
+				lastRev = S.revision
+			}
+			const pills = checkPills(S.events)
+			const key = JSON.stringify(pills.map((p) => [p.state, p.count]))
+			if (key === pillsKey) return
+			pillsKey = key
+			const open = $("checks").querySelector(".popover")?.parentElement?.dataset.key
+			$("checks").innerHTML = pills.map((p) => {
+				const label = p.state === "pending" ? "…" : p.state === "running" ? "⟳" : p.state === "ok" ? "✓" : p.count
+				return `<span class="pill check ${p.state}" data-key="${p.key}"><span class="dot"></span>${esc(p.label)} <b class="num">${esc(label)}</b>${open === p.key ? popover(p) : ""}</span>`
+			}).join("")
+		}
+		const popover = (p) => `<div class="popover"><h4>${esc(p.label)}${p.revision !== null ? ` · rev ${p.revision}` : ""}</h4>${p.items.length ? `<ul>${p.items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<div class="dim" style="font-size:13px">${p.state === "pending" ? "not run yet" : p.state === "running" ? "the reviewer is reading the design" : "nothing to report"}</div>`}</div>`
+		$("checks").addEventListener("click", (e) => {
+			const pill = e.target.closest(".check"); if (!pill || e.target.closest(".popover")) return
+			const wasOpen = pill.querySelector(".popover")
+			for (const p of $("checks").querySelectorAll(".popover")) p.remove()
+			if (!wasOpen) pill.insertAdjacentHTML("beforeend", popover(checkPills(S.events).find((x) => x.key === pill.dataset.key)))
+		})
+		document.addEventListener("click", (e) => { if (!e.target.closest(".check")) for (const p of $("checks").querySelectorAll(".popover")) p.remove() })
+		setInterval(() => {
+			if (!S.firstAt) return
+			const s = Math.max(0, Math.round(((S.endAt ?? Date.now()) - S.firstAt) / 1000))
+			$("elapsed").textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
+		}, 500)
+
+		// ── Agent cards (the task list) ──
+		const CARD_KEYS = LANES.map((l) => l.key).filter((k) => k !== "consistency")
+		const ACTIVE = new Set(["thinking", "tool", "building", "checking"])
+		const STATUS = { idle: "idle", thinking: "thinking", tool: "calling a tool", held: "held", building: "building", checking: "checking", done: "done", failed: "failed" }
+		const BAR = { thinking: [0.55, "var(--info)"], tool: [1, "var(--ac)"], held: [0.8, "var(--warn)"], building: [0.9, "var(--ac)"], checking: [0.7, "var(--ac)"], done: [0.45, "var(--ok)"], failed: [1, "var(--error)"], idle: [0.2, "var(--text-3)"] }
+		const cards = {}
+		for (const k of CARD_KEYS) {
+			const el = document.createElement("div")
+			el.className = "card"
+			el.style.setProperty("--ac", color(k))
+			el.innerHTML = `<div class="top"><span class="av"></span><span class="name">${esc(WHO[k][0])}</span><span class="status">idle</span></div><div class="task dimmer">waiting</div><div class="result"></div><div class="bars"></div>`
+			el.addEventListener("click", (e) => {
+				if (e.target.closest(".hist")) return
+				const open = el.querySelector(".hist")
+				for (const h of $("agents").querySelectorAll(".hist")) h.remove()
+				if (!open) { el.insertAdjacentHTML("beforeend", `<div class="hist"><ul></ul></div>`); renderHistory(k) }
+			})
+			$("agents").append(el)
+			cards[k] = el
+		}
+		document.addEventListener("click", (e) => { if (!e.target.closest(".card")) for (const h of $("agents").querySelectorAll(".hist")) h.remove() })
+		function renderCard(k) {
+			const lane = S.lanes[k], el = cards[k]
+			if (!lane || !el) return
+			const hist = el.querySelector(".hist")
+			el.className = `card ${ACTIVE.has(lane.status) ? "active" : lane.status}`
+			el.querySelector(".status").textContent = STATUS[lane.status] ?? lane.status
+			const task = el.querySelector(".task")
+			task.textContent = lane.text || "waiting"
+			task.title = lane.text
+			task.classList.toggle("dimmer", !lane.text)
+			el.querySelector(".result").textContent = lane.lastResult ? `→ ${lane.lastResult}` : ""
+			el.querySelector(".result").title = lane.lastResult
+			el.querySelector(".bars").innerHTML = lane.history.slice(-28).map((h) => { const [ht, c] = BAR[h.status] ?? BAR.idle; return `<i style="height:${Math.round(ht * 100)}%;background:${c};opacity:${h.status === "idle" ? 0.3 : 0.85}"></i>` }).join("")
+			if (hist) renderHistory(k)
+		}
+		function renderHistory(k) {
+			const ul = cards[k].querySelector(".hist ul")
+			if (ul) ul.innerHTML = S.lanes[k].history.slice().reverse().map((h) => `<li><b style="color:${h.status === "failed" ? "var(--error)" : h.status === "done" ? "var(--ok)" : "var(--text)"}">${esc(STATUS[h.status] ?? h.status)}</b><span class="dimmer">${esc(time(h.at))}</span> · ${esc(h.text)}</li>`).join("") || `<li>nothing yet</li>`
+		}
+
+		// ── Change control: pull-request cards ──
+		const diffLine = (l) => `<div class="${l.startsWith("+") ? "add" : l.startsWith("−") ? "del" : "mod"}" title="${esc(l)}">${esc(l)}</div>`
+		const BADGE = { pending: "with the owner", waiting: "Waiting for you", approved: "approved ✓", rejected: "rejected ✗" }
+		function prMarkup(c) {
+			const mine = S.myVotes.get(c.id)
+			const votes = c.votes.map((v) => `<span class="vote" title="${esc(v.reason)}">${avatar(v.by)}${v.approved ? "✓" : "✗"}</span>`).join("") + (mine !== undefined && !c.votes.some((v) => v.by === "engineer") ? `<span class="vote">${avatar("engineer")}${mine ? "✓" : "✗"} sent</span>` : "")
+			const diff = c.diff.length ? c.diff.slice(0, 3).map(diffLine).join("") + (c.diff.length > 3 ? `<div class="dimmer">+${c.diff.length - 3} more</div>` : "") : `<div class="dimmer">${c.status === "rejected" ? "not applied" : "diff appears once applied"}</div>`
+			const act = c.status === "waiting" && mine === undefined
+				? `<div class="act">${votes}<input placeholder="reason (optional)" maxlength="300"><button class="btn approve" data-v="1">Approve</button><button class="btn reject" data-v="0">Reject</button></div>`
+				: `<div class="foot">${votes}<span class="why">${c.why ? `“${esc(c.why)}”` : ""}</span></div>`
+			return `<div class="pr ${c.status}" data-id="${esc(c.id)}"><div class="who">${avatar(c.requester)}<span>→</span>${avatar(c.owner)}${c.needsEngineer ? `<span>+</span>${avatar("engineer")}` : ""}<span class="field">${esc(c.field)}</span><span class="badge ${c.status}">${esc(BADGE[c.status])}</span></div><div class="reason" title="${esc(c.reason)}">${esc(WHO[c.requester]?.[0] ?? c.requester)}: ${esc(c.reason)}</div><div class="diff">${diff}</div>${act}</div>`
+		}
+		const prHtml = new Map()
+		function renderPRs() {
+			const list = prCards(S.events, S.snapshots).reverse()
+			const open = list.filter((c) => c.status === "pending" || c.status === "waiting").length
+			$("changes-count").textContent = list.length ? `${list.filter((c) => c.status === "approved").length} approved · ${list.filter((c) => c.status === "rejected").length} rejected · ${open} open` : ""
+			if (list.length === 0) return
+			const prs = $("prs")
+			prs.querySelector(".none")?.remove()
+			// A card the engineer is typing a reason into is left alone until they vote.
+			const editing = document.activeElement?.closest?.(".pr")?.dataset.id
+			for (const c of list) {
+				const markup = prMarkup(c)
+				const old = prs.querySelector(`.pr[data-id="${CSS.escape(c.id)}"]`)
+				if (old && (prHtml.get(c.id) === markup || c.id === editing)) continue
+				prHtml.set(c.id, markup)
+				if (old) old.outerHTML = markup
+				else prs.insertAdjacentHTML("beforeend", markup)
+			}
+			for (const c of list) { const el = prs.querySelector(`.pr[data-id="${CSS.escape(c.id)}"]`); if (el) prs.append(el) }
+		}
+		$("prs").addEventListener("click", async (e) => {
+			const b = e.target.closest(".act .btn"); if (!b) return
+			const card = b.closest(".pr")
+			const approve = b.dataset.v === "1"
+			const reason = card.querySelector("input")?.value.trim() ?? ""
+			for (const x of card.querySelectorAll(".act .btn")) x.disabled = true
+			try {
+				const res = await fetch(`/api/runs/${encodeURIComponent(id)}/decisions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ proposalId: card.dataset.id, approve, reason }) })
+				if (!res.ok) throw new Error((await res.json()).error)
+				S.myVotes.set(card.dataset.id, approve)
+				document.activeElement?.blur()
+				renderPRs()
+			} catch (err) { for (const x of card.querySelectorAll(".act .btn")) x.disabled = false; card.querySelector(".reason").textContent = `couldn't send: ${err.message ?? err}` }
+		})
+
+		// ── Engineer requests on the stage ──
+		async function fetchRequests() {
+			try {
+				const r = await fetch(file("requests.jsonl"), { cache: "no-store" })
+				if (!r.ok) return
+				const reqs = (await r.text()).split("\n").flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : [] } catch { return [] } })
+				if (reqs.length !== S.requests.length) { S.requests = reqs; renderRequests() }
+			} catch {}
+		}
+		let requestsKey = ""
+		function renderRequests() {
+			const changes = S.events.filter((e) => e.type === "contract.changed" && e.payload.by === "architect")
+			const html = S.requests.slice(-2).map((r) => {
+				const from = Date.parse(r.at)
+				const next = S.requests[S.requests.indexOf(r) + 1]
+				const to = next ? Date.parse(next.at) : Infinity
+				const caused = changes.filter((c) => Date.parse(c.at) >= from && Date.parse(c.at) < to)
+				const eff = caused.length ? caused.map((c) => `${esc(c.payload.field)} v${c.payload.version}`).join(", ") : S.settled ? "no change" : "architect is on it…"
+				return `<div class="req"><b>engineer:</b> ${esc(r.text)} <span class="eff">→ ${eff}</span></div>`
+			}).join("")
+			if (html !== requestsKey) { requestsKey = html; $("request-toast").innerHTML = html }
+		}
+		setInterval(fetchRequests, 2000)
+
+		// ── Change bar ──
+		const SUGGEST = ["make it 60 mm wide", "add a user button", "U2 is out of stock, pick another sensor", "move USB-C to the bottom edge"]
+		$("suggest").innerHTML = SUGGEST.map((s) => `<button>${esc(s)}</button>`).join("")
+		$("suggest").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !$("change-input").disabled) { $("change-input").value = b.textContent; $("change-input").focus() } })
+		document.addEventListener("keydown", (e) => {
+			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("change-input").focus() }
+			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open") }
+		})
+		$("change-input").addEventListener("keydown", async (e) => {
+			if (e.key !== "Enter") return
+			const text = $("change-input").value.trim()
+			if (!text) return
+			$("change-input").disabled = true
+			try {
+				const res = await fetch(`/api/runs/${encodeURIComponent(id)}/requests`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) })
+				if (!res.ok) throw new Error((await res.json()).error)
+				$("change-input").value = ""
+				fetchRequests()
+			} catch (err) { $("change-input").value = text; $("change-input").placeholder = `couldn't send: ${err.message ?? err}` }
+			$("change-input").disabled = Boolean(S.settled)
+			if (!S.settled) $("change-input").focus()
+		})
+
+		// ── Feed drawer ──
+		$("feed-btn").addEventListener("click", () => $("feed").classList.toggle("open"))
+		$("feed-close").addEventListener("click", () => $("feed").classList.remove("open"))
+		$("overlay").addEventListener("click", () => $("overlay").classList.remove("open"))
+		const FEED_COLOR = { "contract.changed": "var(--info)", "change.proposed": "var(--warn)", "change.resolved": "var(--ok)", "artifact.ready": "var(--c-board)", "artifact.failed": "var(--error)", "design.settled": "var(--ok)", "agent.halted": "var(--error)" }
+		function describe(e) {
+			const p = e.payload ?? {}
+			switch (e.type) {
+				case "contract.changed": return `${p.field} → v${p.version} by ${p.by}`
+				case "change.proposed": return `${p.by} asks to change ${p.field}: ${p.reason}${p.needsEngineer ? " (needs you)" : ""}`
+				case "change.decided": return `${p.by} votes ${p.approved ? "approve" : "reject"}: ${p.reason}`
+				case "change.resolved": return `${p.approved ? "approved" : "rejected"}: ${p.reason}`
+				case "artifact.ready": return `${p.kind} built for rev ${p.revision}`
+				case "artifact.failed": return `${p.kind} failed for rev ${p.revision}: ${String(p.error).split("\n")[0]}`
+				case "consistency.checked": return `rev ${p.revision}: ${p.violations.length} violation(s)`
+				case "grounding.checked": return `rev ${p.revision}: ${p.findings.length} finding(s)`
+				case "design.ready": return `rev ${p.revision} ready for review`
+				case "review.completed": return `review ${p.verdict} at rev ${p.revision}`
+				case "design.settled": return p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`
+				case "agent.halted": return `${p.agentId} halted: ${p.error}`
+				default: return ""
+			}
+		}
+		function addToFeed(e) {
+			const li = document.createElement("li")
+			li.style.setProperty("--fc", FEED_COLOR[e.type] ?? "var(--border)")
+			li.innerHTML = `<div class="t">${esc(e.type)}</div><div>${esc(describe(e))}</div><div class="m">#${esc(e.seq)} · ${esc(time(e.at))}</div>`
+			$("feed-list").prepend(li)
+		}
+
+		// ── Mozaik Cloud ──
+		const fetchCloud = async () => {
+			try {
+				const r = await fetch(file("cloud.jsonl"), { cache: "no-store" })
+				if (!r.ok) return
+				const urls = (await r.text()).split("\n").flatMap((l) => { try { return [JSON.parse(l).url] } catch { return [] } }).filter((u) => typeof u === "string" && /^https?:\/\//.test(u))
+				if (!urls.length) return
+				$("cloud-link").href = urls.at(-1)
+				$("cloud-link").classList.remove("hidden")
+			} catch {}
+		}
+		fetchCloud()
+		setInterval(fetchCloud, 3000)
+
+		// ── Event stream ──
+		const dirty = new Set()
+		let frame = null
+		function schedule() { if (!frame) frame = requestAnimationFrame(render) }
+		function render() {
+			frame = null
+			S.model = scrubberModel(S.events)
+			renderTop()
+			renderScrubber()
+			for (const k of dirty) renderCard(k)
+			dirty.clear()
+			renderPRs()
+			renderRequests()
+		}
+		let lastSeq = -1
+		const source = new EventSource(`${base}/events`)
+		source.onmessage = (msg) => {
+			const e = JSON.parse(msg.data)
+			if (typeof e.seq === "number" && e.seq <= lastSeq) return
+			lastSeq = typeof e.seq === "number" ? e.seq : lastSeq
+			S.events.push(e)
+			S.firstAt ??= Date.parse(e.at)
+			for (const k of applyLaneEvent(S.lanes, e)) dirty.add(k)
+			const p = e.payload ?? {}
+			if (e.type !== "agent.activity") addToFeed(e)
+			switch (e.type) {
+				case "contract.changed":
+					S.revision = Math.max(S.revision, p.revision)
+					if (Date.now() - Date.parse(e.at) < 15_000) flashChanged(p)
+					fetchSnapshot()
+					if (p.field === "parts") fetchBom()
+					break
+				case "artifact.ready": {
+					const prevBoard = S.model.boards.at(-1) ?? null
+					S.model = scrubberModel(S.events)
+					if (p.kind === "enclosure" && !S.enclosures.includes(p.revision)) S.enclosures.push(p.revision)
+					syncArtifacts(prevBoard)
+					fetchBom()
+					if (p.kind === "board") probeFab()
+					break
+				}
+				case "grounding.checked": fetchBom(); break
+				case "design.settled":
+					S.settled = p
+					S.endAt = Date.parse(e.at)
+					$("change-input").disabled = true
+					$("change-input").placeholder = "The design has settled. Start a new design to change it."
+					setTimeout(() => { fetchReport(); probeFab(); fetchBom() }, 800)
+					break
+			}
+			schedule()
+		}
+		fetchSnapshot()
+		fetchBom()
+		fetchReport()
+		fetchRequests()
+		probeFab()
+	}
+
+	// ── STL wireframe (stands in for scene3d.js until it loads) ────────────────────────────────
+	function wireframe(host) {
+		const c = document.createElement("canvas")
+		c.style.cssText = "position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none"
+		host.append(c)
+		const v = { edges: [], yaw: -0.6, pitch: 0.9, spin: !reduceMotion, center: [0, 0, 0], radius: 1 }
+		const draw = () => {
+			const dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight
+			if (!w || !h) return
+			if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr }
+			const g = c.getContext("2d")
+			g.setTransform(dpr, 0, 0, dpr, 0, 0)
+			g.clearRect(0, 0, w, h)
+			if (!v.edges.length) return
+			const scale = (Math.min(w, h) / 2 / v.radius) * 0.88
+			const cy = Math.cos(v.yaw), sy = Math.sin(v.yaw), cp = Math.cos(v.pitch), sp = Math.sin(v.pitch)
+			const P = ([x, y, z]) => { x -= v.center[0]; y -= v.center[1]; z -= v.center[2]; const x1 = x * cy - y * sy, y1 = x * sy + y * cy; return [w / 2 + x1 * scale, h / 2 - (y1 * sp + z * cp) * scale] }
+			g.strokeStyle = AGENT_COLORS["build:enclosure"]
+			g.globalAlpha = 0.9
+			g.lineWidth = 1.3
+			g.beginPath()
+			for (const [a, b] of v.edges) { const [ax, ay] = P(a), [bx, by] = P(b); g.moveTo(ax, ay); g.lineTo(bx, by) }
+			g.stroke()
+		}
+		const loop = () => { if (v.spin && v.edges.length && !document.hidden) { v.yaw += 0.004; draw() } requestAnimationFrame(loop) }
+		requestAnimationFrame(loop)
+		new ResizeObserver(draw).observe(host)
+		let drag = null
+		c.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; v.spin = false; c.setPointerCapture(e.pointerId) })
+		c.addEventListener("pointermove", (e) => { if (!drag) return; v.yaw += (e.clientX - drag.x) * 0.01; v.pitch = Math.max(-1.5, Math.min(1.5, v.pitch + (e.clientY - drag.y) * 0.01)); drag = { x: e.clientX, y: e.clientY }; draw() })
+		c.addEventListener("pointerup", () => (drag = null))
+		return {
+			load(buf) {
+				const t = parseStl(buf)
+				if (!t.length) return
+				const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity]
+				for (let i = 0; i < t.length; i++) { const k = i % 3; min[k] = Math.min(min[k], t[i]); max[k] = Math.max(max[k], t[i]) }
+				v.center = min.map((m, k) => (m + max[k]) / 2)
+				v.radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 || 1
+				v.edges = featureEdges(t)
+				draw()
+			},
+		}
+	}
 </script>
 </body>
 </html>

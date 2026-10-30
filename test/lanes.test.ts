@@ -154,9 +154,8 @@ test("the dashboard serves its page modules", async () => {
 		const page = await (await fetch(dash.url)).text()
 		assert.match(page, /from "\/lanes\.js"/)
 		assert.match(page, /from "\/stl\.js"/)
-		assert.match(page, /id="lanes"/)
-		assert.match(page, /id="filmstrip"/)
-		assert.match(page, /id="enclosure-view"/)
+		assert.match(page, /from "\/model\.js"/)
+		for (const id of ["stage", "agents", "parts", "prs", "dots", "change-input", "start"]) assert.match(page, new RegExp(`id="${id}"`))
 		assert.equal((await fetch(`${dash.url}/server.ts`)).status, 404, "only the page modules are served from the dashboard folder")
 	} finally {
 		await dash.close()

@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto"
-import { appendFileSync, createReadStream, mkdirSync, watch, writeFileSync, type FSWatcher } from "node:fs"
+import { createReadStream, mkdirSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
 import { basename, dirname, extname, join, resolve, sep } from "node:path"
+import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 
@@ -30,6 +31,9 @@ const TYPES: Record<string, string> = {
 	".step": "model/step",
 	".txt": "text/plain; charset=utf-8",
 	".log": "text/plain; charset=utf-8",
+	".md": "text/markdown; charset=utf-8",
+	".csv": "text/csv; charset=utf-8",
+	".zip": "application/zip",
 }
 
 export interface Dashboard {
@@ -300,14 +304,11 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					if (!dir) return json(res, 404, { error: "unknown run" })
 					const body = await readJson(req)
 					if (m[2] === "requests") return json(res, 201, appendRequest(dir, text(body.text, "text")))
-					const decision = {
-						at: new Date().toISOString(),
+					const decision = appendDecision(dir, {
 						proposalId: need(typeof body.proposalId === "string" && PROPOSAL_ID.test(body.proposalId), body.proposalId as string, "proposalId is required"),
 						approve: bool(body.approve, "approve"),
 						reason: text(body.reason ?? "", "reason", MAX_TEXT, true),
-					}
-					// Same shape as src/runner/decisions.ts appendDecision.
-					appendFileSync(join(dir, "decisions.jsonl"), JSON.stringify(decision) + "\n")
+					})
 					return json(res, 201, decision)
 				}
 				return json(res, 404, { error: "not found" })
