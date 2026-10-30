@@ -4,8 +4,9 @@ import { createAgent, DeveloperMessageItem, ModelContext, type Agent, type Tool 
 import { generatedNets, supportParts, usbPadSignal, usbRef } from "../codegen/circuit.ts"
 import { checkConsistency, type BoardArtifact } from "../contract/consistency.ts"
 import { estimatePower, powerBudgetLines } from "../contract/power.ts"
-import { FIELDS, type ContractSnapshot } from "../contract/types.ts"
-import { isEvent, makeEvent, type ReviewFinding } from "../events.ts"
+import { FIELDS, type ContractSnapshot, type FieldName } from "../contract/types.ts"
+import { isEvent, makeEvent, type ArtifactKind, type ReviewFinding } from "../events.ts"
+import { BUILD_INPUTS } from "./builders.ts"
 import { modelFor } from "../inference/models.ts"
 import { emit, join as joinRuntime, safeRunLoop, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
@@ -34,7 +35,7 @@ async function powerSummary(env: Env | undefined, s: ContractSnapshot, dir: stri
 	try {
 		const report = await simulatePower(env.root, dir, s)
 		return [
-			"ngspice, behavioural LDO with worst-case dropout, per supply scenario:",
+			`ngspice, behavioural LDO (${report.scenarios[0]?.ldo ?? "none"}), per supply scenario:`,
 			...report.scenarios.map(
 				(x) => `- ${x.name} (${x.vinV} V) rail ${x.rail}: vout ${x.voutV.toFixed(3)} V, dropout headroom ${x.headroomMv} mV, regulator dissipation ${x.dissipationMw} mW, ${x.ok ? "in regulation" : "OUT OF REGULATION"}`,
 			),
@@ -72,20 +73,36 @@ export function wiringSection(s: ContractSnapshot, board: BoardArtifact | undefi
 	return [...out, missing.length === 0 ? `All of it checked against the board built for revision ${board.revision}: every generated net above is on it.` : lines(missing, (m) => m, "")]
 }
 
+// One artifact's status for the reviewer. An artifact built at an older revision is still current when none of its
+// inputs changed since (the enclosure only depends on outline and connectors); say so, or the reviewer reads "built
+// for revision 3" as stale (real run 9).
+export function artifactLine(
+	k: ArtifactKind,
+	a: { revision: number; ok?: boolean; stub?: boolean } | undefined,
+	failure: string | undefined,
+	builtFrom: Partial<Record<FieldName, number>> | undefined,
+	versions: Partial<Record<FieldName, number>>,
+	revision: number,
+): string {
+	if (failure) return `${k}: build FAILED: ${failure.split("\n")[0]}`
+	if (!a) return `${k}: not built`
+	const fw = k === "firmware" ? (a.ok ? ", compiles" : ", does NOT compile") : ""
+	const stub = isStub(a) ? " (stubbed: derived from the contract, not a real build)" : ""
+	if (a.revision === revision || !builtFrom) return `${k}: built for revision ${a.revision}${fw}${stub}`
+	const changed = BUILD_INPUTS[k].filter((f) => builtFrom[f] !== undefined && builtFrom[f] !== versions[f])
+	if (changed.length > 0) return `${k}: built for revision ${a.revision}, OUT OF DATE: ${changed.join(", ")} changed since${fw}${stub}`
+	return `${k}: current: its inputs (${BUILD_INPUTS[k].filter((f) => builtFrom[f] !== undefined).join(", ")}) unchanged since revision ${a.revision}${fw}${stub}`
+}
+
 // The reviewer's whole view of the run: the brief, the contract and the check results. Never an agent's turn.
 export async function reviewMessage(env: Env | undefined, revision: number, round: number): Promise<string> {
 	const s = state()
 	const snapshot = s.contract.snapshot()
 	const briefPath = join(s.outDir, "brief.md")
 	const brief = existsSync(briefPath) ? readFileSync(briefPath, "utf8").trim() : "(brief missing)"
-	const artifacts = (["board", "enclosure", "firmware"] as const).map((k) => {
-		const a = s.artifacts[k]
-		const failure = s.artifactFailures[k]
-		if (failure) return `${k}: build FAILED: ${failure.split("\n")[0]}`
-		if (!a) return `${k}: not built`
-		const fw = k === "firmware" ? ((a as { ok: boolean }).ok ? ", compiles" : ", does NOT compile") : ""
-		return `${k}: built for revision ${a.revision}${fw}${isStub(a) ? " (stubbed: derived from the contract, not a real build)" : ""}`
-	})
+	const artifacts = (["board", "enclosure", "firmware"] as const).map((k) =>
+		artifactLine(k, s.artifacts[k], s.artifactFailures[k], s.artifactInputs[k], snapshot.versions, revision),
+	)
 	const violations = checkConsistency(snapshot, s.artifacts)
 	const power = await powerSummary(env, snapshot, join(s.outDir, "power", `rev-${revision}`))
 	return [

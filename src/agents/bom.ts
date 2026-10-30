@@ -5,6 +5,7 @@ import { isEvent } from "../events.ts"
 import { state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 import { searchParts } from "../tools/parts-search.ts"
+import { alternativesFor, orderReadiness, sourcesFor, type Alternative, type Readiness, type Source } from "../tools/sourcing.ts"
 
 export interface BomItem {
 	ref: string
@@ -17,6 +18,10 @@ export interface BomItem {
 	inStock: boolean | null
 	grounded: boolean
 	finding?: string
+	// Where to buy it: LCSC with live data, other suppliers as unchecked search links (tools/sourcing.ts).
+	sources?: Source[]
+	// Other catalog parts with the same role.
+	alternatives?: Alternative[]
 }
 
 export interface Bom {
@@ -24,6 +29,8 @@ export interface Bom {
 	// Sum of the parts that could be priced; null when none could be (offline).
 	totalUsd: number | null
 	items: BomItem[]
+	// Whether one LCSC/JLCPCB order covers every line, and why not.
+	readiness?: Readiness
 }
 
 // Plain-code participant behind the dashboard's parts panel: on a parts change or a grounding result it writes
@@ -46,6 +53,7 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 		const items: BomItem[] = parts.map((p) => {
 			const hit = p.lcsc ? live.get(p.role)?.find((c) => c.lcsc === p.lcsc) : undefined
 			const finding = findings.find((f) => f.partRef === p.ref)
+			const roleParts = live.get(p.role) ?? []
 			return {
 				ref: p.ref,
 				role: p.role,
@@ -57,6 +65,9 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 				inStock: hit?.inStock ?? null,
 				grounded: !finding,
 				...(finding ? { finding: finding.detail } : {}),
+				sources: sourcesFor(p, hit),
+				// The same per-role lookup feeds the alternatives, so they cost no extra requests.
+				alternatives: alternativesFor(p, roleParts),
 			}
 		})
 		const priced = items.filter((i) => i.priceUsd !== null)
@@ -64,6 +75,7 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 			revision: snapshot.revision,
 			totalUsd: priced.length > 0 ? Math.round(priced.reduce((sum, i) => sum + i.priceUsd!, 0) * 1e4) / 1e4 : null,
 			items,
+			readiness: orderReadiness(items),
 		}
 		// Write then rename, so the page never reads half a file.
 		const path = join(s.outDir, "bom.json")

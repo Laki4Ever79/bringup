@@ -2,7 +2,8 @@ import { execFile } from "node:child_process"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { promisify } from "node:util"
-import { dropoutOhms, powerDeck, QUIESCENT_A, railId, regulatedRails, type PowerScenario } from "../codegen/spice.ts"
+import { dropoutOhms, powerDeck, quiescentA, railId, regulatedRails, type PowerScenario } from "../codegen/spice.ts"
+import { ldoModel } from "../contract/power.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
 const exec = promisify(execFile)
@@ -20,7 +21,8 @@ export const POWER_SCENARIOS: PowerScenario[] = [
 ]
 
 export interface PowerReport {
-	scenarios: { name: string; rail: string; vinV: number; voutV: number; headroomMv: number; dissipationMw: number; ok: boolean }[]
+	// ldo: which regulator model fed the rail, e.g. "XC6206P332MR-G (catalog)".
+	scenarios: { name: string; rail: string; ldo: string; vinV: number; voutV: number; headroomMv: number; dissipationMw: number; ok: boolean }[]
 }
 
 function tail(text: string): string {
@@ -38,7 +40,11 @@ export function parseMeasurements(log: string): Record<string, number> {
 export async function simulatePower(root: string, dir: string, s: ContractSnapshot, scenarios = POWER_SCENARIOS): Promise<PowerReport> {
 	void root
 	await mkdir(dir, { recursive: true })
-	for (const sc of scenarios) await writeFile(join(dir, `${sc.name}.cir`), powerDeck(s, sc))
+	// With exactly one LDO, every regulated rail is its output; otherwise keep the AP2112K-class worst case.
+	const ldos = (s.values.parts ?? []).filter((p) => p.role === "ldo")
+	const ldo = ldos.length === 1 ? ldoModel(ldos[0]) : undefined
+	const ldoLabel = ldo ? `${ldo.mpn} (${ldo.source === "catalog" ? "catalog" : "not in the catalog: AP2112K-class assumed"})` : "AP2112K-class worst case (assumed)"
+	for (const sc of scenarios) await writeFile(join(dir, `${sc.name}.cir`), powerDeck(s, sc, ldo))
 	const script = 'for f in *.cir; do ngspice -b "$f" -o "${f%.cir}.log" || exit 1; done'
 	const uid = `${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`
 	try {
@@ -61,11 +67,12 @@ export async function simulatePower(root: string, dir: string, s: ContractSnapsh
 			report.scenarios.push({
 				name: sc.name,
 				rail: rail.name,
+				ldo: ldoLabel,
 				vinV: sc.vinV,
 				voutV,
 				// Margin above dropout; negative means the rail has fallen out of regulation.
-				headroomMv: Math.round((sc.vinV - rail.voltageV - ioutA * dropoutOhms(rail)) * 1000),
-				dissipationMw: Math.round(((sc.vinV - voutV) * ioutA + sc.vinV * QUIESCENT_A) * 1000),
+				headroomMv: Math.round((sc.vinV - rail.voltageV - ioutA * dropoutOhms(rail, ldo)) * 1000),
+				dissipationMw: Math.round(((sc.vinV - voutV) * ioutA + sc.vinV * quiescentA(ldo)) * 1000),
 				ok: Math.abs(voutV - rail.voltageV) <= rail.voltageV * VOUT_TOLERANCE,
 			})
 		}
