@@ -17,6 +17,9 @@ def classify(devices: list[tuple[str, int | None, int | None]]) -> dict[str, str
         role = ROLES.get((vid, pid))
         if role and found[role] is None:
             found[role] = device
+    # No CP2102: the S3's own USB port carries the telemetry too (the firmware writes to both).
+    if found["telemetry"] is None:
+        found["telemetry"] = found["dut"]
     return found
 
 
