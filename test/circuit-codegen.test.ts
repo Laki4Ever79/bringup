@@ -295,3 +295,16 @@ test("placement: the complete logger fits with a 1.5 mm gap at every swept width
 		assertSpaced(boxes, w, s.values.outline!.heightMm)
 	}
 })
+
+test("a 3-pin LDO without EN: VIN on the battery, VOUT on 3V3, GND on GND", () => {
+	const s = loggerContract()
+	s.values.parts = s.values.parts!.map((p) => (p.role === "ldo" ? { ref: "U3", role: "ldo", mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] } : p))
+	const src = circuitFromContract(s)
+	assert.match(src, /name="U3" pinLabels=\{\{ pin1: "GND", pin2: "VOUT", pin3: "VIN" \}\}[^>]*footprint="sot23"/)
+	onNet(src, ".U3 > .VIN", "VBAT")
+	onNet(src, ".U3 > .VOUT", "V3V3")
+	onNet(src, ".U3 > .GND", "GND")
+	assert.doesNotMatch(src, /\.U3 > \.EN/)
+	const boxes = placeParts(s)
+	assertSpaced(boxes, s.values.outline!.widthMm, s.values.outline!.heightMm)
+})

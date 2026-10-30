@@ -66,6 +66,27 @@ there is one, else codegen adds it to the board. Added parts appear in `bom.csv`
 | Charger input (VBUS), LDO input (VBAT, or VBUS without a charger) | 1 µF 0402 `CL05A105KA5NQNC` | C52923 |
 | LDO output (3V3) | 10 µF 0603 `CL10A106KP8NNNC` | C19702 |
 
+## Regulators and battery life
+
+`src/contract/power.ts` estimates battery life as capacity ÷ (sum of battery-fed rail averages + every LDO's quiescent
+current). It reads each LDO's quiescent current from the `iqUa` field of its catalog entry (typical µA). An LDO the
+catalog doesn't know is assumed to draw 55 µA, like the AP2112K.
+
+| LDO | LCSC | Package, pins | Iq (`iqUa`) | Max out | Notes |
+|---|---|---|---|---|---|
+| AP2112K-3.3TRG1 | C51118 | SOT-23-5: VIN, GND, EN, NC, VOUT | 55 µA | 600 mA | EN tied to VIN |
+| XC6206P332MR-G | C5446 (JLC basic, 530,418 in stock) | SOT-23-3 (`sot23`): GND, VOUT, VIN | 1 µA | 200 mA | 6 V max in; dropout about 250 mV at 100 mA |
+
+The XC6206 is there for battery targets. A 500 mAh cell lasting 180 days allows about 116 µA in total, and the
+AP2112K's 55 µA alone takes half of that (real run 7 failed its brief review on exactly this). The XC6206 pin order is
+from KiCad 10's `XC6206PxxxMR` symbol (1 GND, 2 VO, 3 VI). Its 1 µA is the typical figure from the LCSC listing.
+200 mA covers the ESP32-C3's BLE peaks, but not Wi-Fi transmit (up to about 350 mA); use the AP2112K if the design needs
+Wi-Fi. A real-tool check on 30 Oct 2026: the logger with the XC6206 routes at every width from 45 to 70 mm.
+
+We asked for the HT7333-A (SOT-89, about 4 µA, 250 mA), but couldn't confirm an LCSC number for it: jlcsearch's free-text
+search and `list.json` don't return it. C14289, a number we tried, turned out to be the HT7533-1, a 100 mA part. So the
+HT7333-A isn't in the catalog.
+
 ## Power path
 
 USB-C VBUS → charger (TP4054, C32574) VCC; charger BAT → VBAT → battery connector (JST S2B-PH-K, C173752) and the

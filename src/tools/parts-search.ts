@@ -14,7 +14,8 @@ interface Live {
 	inStock: boolean | null
 }
 
-export type CatalogPart = Omit<Part, "ref"> & { ref?: string } & Live
+// iqUa: an LDO's typical quiescent current in µA (power.ts uses it for battery life).
+export type CatalogPart = Omit<Part, "ref"> & { ref?: string; iqUa?: number } & Live
 
 const UNKNOWN: Live = { stock: null, priceUsd: null, inStock: null }
 
