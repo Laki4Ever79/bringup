@@ -16,18 +16,23 @@ DUTY_PERIOD_MS = 3000  # BENCH_PERIOD_S = 3
 DUTY_AWAKE_MS = 180
 TILT_SWING_DEG = 35
 TILT_PERIOD_MS = 8000
-CURRENT_MA = {"blank": 30.0, "download": 30.0, "live": 45.0, "led": 5.0, "awake": 60.0, "asleep": 6.0}
+CURRENT_MA = {"blank": 30.0, "download": 30.0, "factory": 40.0, "live": 45.0, "led": 5.0, "awake": 60.0, "asleep": 6.0}
 
 
 class FakeDut:
-    def __init__(self, pins, now_ms: int, info: dict | None = None, imu: bool = True):
+    def __init__(self, pins, now_ms: int, info: dict | None = None, imu: bool = True, factory: bool = False):
         self.pins = pins
+        # factory: running the board's shipped demo (TinyUSB), which the laptop can't reset into flashing mode
+        self.factory = factory
+        # the bootloader was entered with the BOOT button: after a flash the S3 stays there until RST (seen 30 Oct)
+        self.manual_download = False
+        self.next_demo = now_ms
         self.imu = imu  # False: no MPU-6050 wired, as on a bare S3
         self.last_err = None
         self.info = info
         self.lines: list[str] = []
         self.download_mode = False
-        self.mode = "blank"
+        self.mode = "factory" if factory else "blank"
         self.boot_ms = now_ms
         self.led = 0
         self.next_toggle = now_ms
@@ -39,11 +44,59 @@ class FakeDut:
             self._boot(now_ms, "poweron")
 
     # ---- what the bridge drives ------------------------------------------------
+    def can_enter_download(self) -> bool:
+        """Whether esptool can reset the S3 into its bootloader over USB: yes for our firmware (USB-Serial-JTAG)."""
+        return self.download_mode or self.mode not in ("factory",)
+
     def flash(self, info: dict, now_ms: int) -> None:
         self.info = info
-        self.download_mode = False
+        self.factory = False
         self.cycle = 0
+        if self.manual_download:
+            return  # written, but still in the bootloader until someone taps RST
+        self.download_mode = False
         self._boot(now_ms, "usb")  # esptool resets the S3 through its USB-Serial-JTAG
+
+    def press(self, buttons: str, now_ms: int) -> None:
+        """A human at the desk: "boot+rst" (hold BOOT, tap RST, release BOOT) or "rst"."""
+        if buttons == "boot+rst":
+            self.download_mode, self.manual_download, self.mode = True, True, "download"
+            return
+        self.download_mode = self.manual_download = False
+        if self.factory or not self.info:
+            self.mode = "factory" if self.factory else "blank"
+            return
+        self.cycle = 0
+        self._boot(now_ms, "poweron")
+
+    def reset(self, now_ms: int) -> None:
+        """The fixture's EN pulse: the same as the buttons, with BOOT as the fixture holds it."""
+        self.press("boot+rst" if self.pins.get(BOOT_PIN, 1) == 0 else "rst", now_ms)
+
+    def can_enter_download(self) -> bool:
+        """Whether esptool can reset the S3 into its bootloader over USB: yes for our firmware (USB-Serial-JTAG)."""
+        return self.download_mode or self.mode not in ("factory",)
+
+    def flash(self, info: dict, now_ms: int) -> None:
+        self.info = info
+        self.factory = False
+        self.cycle = 0
+        if self.manual_download:
+            return  # written, but still in the bootloader until someone taps RST
+        self.download_mode = False
+        self._boot(now_ms, "usb")  # esptool resets the S3 through its USB-Serial-JTAG
+
+    def press(self, buttons: str, now_ms: int) -> None:
+        """A human at the desk: "boot+rst" (hold BOOT, tap RST, release BOOT) or "rst"."""
+        if buttons == "boot+rst":
+            self.download_mode, self.manual_download, self.mode = True, True, "download"
+            return
+        self.download_mode = self.manual_download = False
+        if self.factory or not self.info:
+            self.mode = "factory" if self.factory else "blank"
+            return
+        self.cycle = 0
+        self._boot(now_ms, "poweron")
 
     def reset(self, now_ms: int) -> None:
         if self.pins.get(BOOT_PIN, 1) == 0:
@@ -55,6 +108,9 @@ class FakeDut:
         self._boot(now_ms, "poweron")  # an EN pulse is a power-on reset on the ESP32-S3
 
     def step(self, now_ms: int) -> None:
+        if self.mode == "factory" and now_ms >= self.next_demo:
+            self.next_demo = now_ms + 1000
+            self.lines.append("50%" + "RGB"[(now_ms // 1000) % 3])
         if self.mode == "live":
             if self.pins.get(MODE_PIN, 0) == 1:
                 self._sleep(now_ms)
@@ -77,7 +133,7 @@ class FakeDut:
                 self._boot(now_ms, "deepsleep")
 
     def current_ma(self, now_ms: int) -> float:
-        if self.mode in ("blank", "download"):
+        if self.mode in ("blank", "download", "factory"):
             return CURRENT_MA[self.mode]
         if self.mode == "live":
             return CURRENT_MA["live"] + (CURRENT_MA["led"] if self.led else 0.0)
