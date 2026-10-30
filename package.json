@@ -5,7 +5,9 @@
 	"private": true,
 	"scripts": {
 		"start": "tsx src/main.ts",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"test": "tsx --test test/*.test.ts",
+		"bringup": "tsx src/main.ts"
 	},
 	"dependencies": {
 		"@mozaik-ai/core": "4.1.0",

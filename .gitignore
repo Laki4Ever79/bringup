@@ -4,3 +4,4 @@ node_modules/
 tools/
 out/
 skidl_*
+.superpowers/
