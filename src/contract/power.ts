@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs"
 import { QUIESCENT_A } from "../codegen/spice.ts"
-import type { ContractSnapshot, DutyCycle, Rail } from "./types.ts"
+import type { ContractSnapshot, DutyCycle, Part, Rail } from "./types.ts"
 
 // Battery life from plain arithmetic, so neither the reviewer nor the report has to invent numbers.
 
@@ -20,6 +21,26 @@ export function capacityFromBrief(brief: string): number | null {
 	return m ? Number(m[1].replace(/,/g, "")) : null
 }
 
+// An LDO's typical quiescent current: the catalog's iqUa when it lists the part, else AP2112K-class 55 µA.
+const ASSUMED_IQ_UA = Math.round(QUIESCENT_A * 1e6)
+type CatalogIq = { mpn: string; iqUa?: number }
+let catalogCache: CatalogIq[] | null = null
+function catalog(): CatalogIq[] {
+	return (catalogCache ??= JSON.parse(readFileSync(new URL("../../catalog/parts.json", import.meta.url), "utf8")))
+}
+
+export interface RegulatorIq {
+	ref: string
+	mpn: string
+	iqUa: number
+	source: "catalog" | "assumed"
+}
+
+export function regulatorIq(part: Part, entries: CatalogIq[] = catalog()): RegulatorIq {
+	const iq = entries.find((c) => c.mpn.toUpperCase() === part.mpn.toUpperCase())?.iqUa
+	return typeof iq === "number" ? { ref: part.ref, mpn: part.mpn, iqUa: iq, source: "catalog" } : { ref: part.ref, mpn: part.mpn, iqUa: ASSUMED_IQ_UA, source: "assumed" }
+}
+
 export interface RailDraw {
 	name: string
 	peakMa: number
@@ -36,7 +57,9 @@ export interface PowerEstimate {
 	// Upper bound from the duty cycle, taking the busiest rail's peak as the active current.
 	dutyCycleMa: number | null
 	dutyCycle: DutyCycle | null
+	// Sum over every LDO; each LDO draws its own quiescent current from the cell.
 	regulatorIqUa: number
+	regulators: RegulatorIq[]
 	capacityMah: number | null
 	capacitySource: "brief" | "requirements" | null
 	days: number | null
@@ -59,14 +82,15 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 	const averageMa = draws.length > 0 && draws.every((d) => d.averageMa !== null) ? draws.reduce((sum, d) => sum + d.averageMa!, 0) : null
 	const fromBrief = capacityFromBrief(brief)
 	const capacityMah = fromBrief ?? requirements?.batteryMah ?? null
-	// Each LDO draws its own quiescent current from the cell.
-	const regulatorIqUa = parts.filter((p) => p.role === "ldo").length * Math.round(QUIESCENT_A * 1e6)
+	const regulators = parts.filter((p) => p.role === "ldo").map((p) => regulatorIq(p))
+	const regulatorIqUa = regulators.reduce((sum, r) => sum + r.iqUa, 0)
 	return {
 		rails: draws,
 		averageMa,
 		dutyCycleMa,
 		dutyCycle,
 		regulatorIqUa,
+		regulators,
 		capacityMah,
 		capacitySource: fromBrief !== null ? "brief" : requirements?.batteryMah !== undefined ? "requirements" : null,
 		days: capacityMah !== null && averageMa !== null ? batteryLifeDays(capacityMah, averageMa, regulatorIqUa) : null,
@@ -93,7 +117,8 @@ export function powerBudgetLines(e: PowerEstimate): string[] {
 		const d = e.dutyCycle
 		out.push(`- Duty cycle: ${d.activeMs} ms active every ${d.periodS} s, ${d.sleepUa} µA asleep${e.dutyCycleMa !== null ? `; at most ${ma(e.dutyCycleMa)} average if active at the busiest rail's peak` : ""}`)
 	}
-	out.push(`- Regulator quiescent current: ${e.regulatorIqUa} µA${e.regulatorIqUa > 0 ? " (AP2112K-class LDO, worst case, per LDO)" : " (no LDO in the parts)"}`)
+	const each = e.regulators.map((r) => `${r.ref} ${r.mpn} ${r.iqUa} µA, ${r.source === "catalog" ? "from the catalog" : "not in the catalog: assumed AP2112K-class"}`)
+	out.push(`- Regulator quiescent current: ${e.regulatorIqUa} µA (${each.length > 0 ? each.join("; ") : "no LDO in the parts"})`)
 	out.push(`- Battery: ${e.capacityMah === null ? "capacity not stated" : `${e.capacityMah} mAh (from the ${e.capacitySource})`}`)
 	if (e.days === null) {
 		out.push(`- Estimated battery life: ${batteryLifeSummary(e)}`)

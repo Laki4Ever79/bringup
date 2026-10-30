@@ -236,7 +236,7 @@ const GRID_MM = 0.5
 
 // Pad bounding boxes at rotation 0, measured from tscircuit 0.0.3042 builds.
 const FOOTPRINT_SIZE: Record<string, [number, number]> = {
-	dfn4: [5.3, 1.87], sot23_5: [3.6, 2.5], "0402": [1.56, 0.64], "0603": [2.45, 0.95], qfn32: [5.8, 5.8],
+	dfn4: [5.3, 1.87], sot23_5: [3.6, 2.5], sot23: [3.6, 2.5], "0402": [1.56, 0.64], "0603": [2.45, 0.95], qfn32: [5.8, 5.8],
 	pinrow4: [9.12, 1.5], pushbutton: [6, 8], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
 	jst2_ph: [6, 5], // pads are 3.2 x 1.75; this reserves the S2B-PH-K housing
 	// The USB-C courtyard, not its pads: the body reaches 5.5 mm behind the pad row (footprinter usbcmidmount.ts).

@@ -125,3 +125,42 @@ test("the contract rejects malformed power fields", () => {
 	bad("requirements", { ...req, dutyCycle: { activeMs: 400_000, periodS: 300, sleepUa: 10 } }, /dutyCycle/)
 	bad("requirements", { ...req, batteryMah: 0 }, /batteryMah/)
 })
+
+const LOW_IQ = { ref: "U3", role: "ldo", mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] }
+
+test("an LDO's quiescent current comes from the catalog's iqUa", () => {
+	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values.parts = s.values.parts!.map((p) => (p.role === "ldo" ? LOW_IQ : p))
+	const e = estimatePower(s, "around 500 mAh")
+	assert.equal(e.regulatorIqUa, 1)
+	assert.deepEqual(e.regulators, [{ ref: "U3", mpn: "XC6206P332MR-G", iqUa: 1, source: "catalog" }])
+	const text = powerBudgetLines(e).join("\n")
+	assert.match(text, /Regulator quiescent current: 1 µA \(U3 XC6206P332MR-G 1 µA, from the catalog\)/)
+	assert.match(text, /\+ 0\.001 mA\) \/ 24 h/)
+})
+
+test("an LDO the catalog doesn't know is assumed to draw 55 uA", () => {
+	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values.parts = s.values.parts!.map((p) => (p.role === "ldo" ? { ...p, mpn: "MYSTERY-LDO" } : p))
+	const e = estimatePower(s, "500 mAh")
+	assert.equal(e.regulatorIqUa, 55)
+	assert.equal(e.regulators[0].source, "assumed")
+	assert.match(powerBudgetLines(e).join("\n"), /U3 MYSTERY-LDO 55 µA, not in the catalog: assumed AP2112K-class/)
+})
+
+test("swapping the AP2112K for the low-Iq LDO buys battery life (500 mAh, real run 7's budget)", () => {
+	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values.rails = [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 200, loadMa: 120, averageMa: 0.07 }]
+	const ap = estimatePower(s, "500 mAh").days!
+	s.values.parts = s.values.parts!.map((p) => (p.role === "ldo" ? LOW_IQ : p))
+	const xc = estimatePower(s, "500 mAh").days!
+	assert.ok(ap < 180 && xc > 180, `AP2112K ${Math.round(ap)} days, XC6206 ${Math.round(xc)} days`)
+})
+
+test("every catalog LDO records its quiescent current", async () => {
+	const { loadCatalog } = await import("../src/tools/parts-search.ts")
+	const ldos = loadCatalog(new URL("..", import.meta.url).pathname).filter((p) => p.role === "ldo")
+	assert.ok(ldos.length >= 2)
+	for (const l of ldos) assert.equal(typeof l.iqUa, "number", `${l.mpn} has no iqUa`)
+	assert.ok(ldos.some((l) => l.iqUa! <= 5), "no ultra-low-Iq LDO in the catalog")
+})
