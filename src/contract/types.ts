@@ -79,6 +79,9 @@ export type ProposalResult =
 	| { status: "invalid"; reason: string }
 	| { status: "unchanged"; version: number }
 
+// Part roles the board codegen, catalog and checks understand.
+export const PART_ROLES = ["mcu", "sensor", "ldo", "usb-c", "led", "resistor", "capacitor", "button", "connector", "other"] as const
+
 // Signals become C macros (PIN_<SIGNAL>) and net names, so they must be UPPER_SNAKE.
 export const SIGNAL_PATTERN = /^[A-Z][A-Z0-9_]*$/
 

@@ -62,3 +62,12 @@ test("malformed field values are refused", () => {
 	assert.equal(c.propose({ field: "pins", value: [{ signal: "LED", gpio: "x" }] as never, by: "architect", baseVersion: 0 }).status, "invalid")
 	assert.equal(c.revision, 0)
 })
+
+test("part roles must come from the known list", () => {
+	const c = new DesignContract()
+	const part = { ref: "U1", role: "Microcontroller", mpn: "ESP32-C3-MINI-1", lcsc: null, footprint: "", pins: [] }
+	const r = c.propose({ field: "parts", value: [part], by: "parts", baseVersion: 0 })
+	assert.equal(r.status, "invalid")
+	assert.match((r as { reason: string }).reason, /mcu/)
+	assert.equal(c.propose({ field: "parts", value: [{ ...part, role: "mcu" }], by: "parts", baseVersion: 0 }).status, "applied")
+})
