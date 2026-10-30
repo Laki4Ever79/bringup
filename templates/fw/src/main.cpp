@@ -221,12 +221,13 @@ void loop() {
 	static uint32_t nextSample = 0, nextToggle = 0;
 	static bool ledOn = false;
 	static float tilt = 0;
-	// A flash or reset drops the USB link, and the laptop reopens it a moment after boot: say boot again when it
-	// does, so a bench reading over the S3's own USB still sees which revision is running.
-	static bool usbHost = false;
-	if ((bool)Serial != usbHost) {
-		usbHost = (bool)Serial;
-		if (usbHost) bootLine(false);
+	// A flash or reset drops the USB link, and the laptop reopens the port a moment after boot, too late for the
+	// first boot line. Repeat it once a second for 5 s, so a bench reading over the S3's own USB sees which revision
+	// is running. (The S3 counts as connected as soon as it is plugged in, so "the port was opened" can't be seen.)
+	static uint32_t nextBootLine = 1000;
+	if (millis() < 6000 && (int32_t)(millis() - nextBootLine) >= 0) {
+		nextBootLine += 1000;
+		bootLine(false);
 	}
 	if (digitalRead(BENCH_MODE_PIN) == HIGH) {
 		benchLed(false);
