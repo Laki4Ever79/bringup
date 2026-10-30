@@ -36,7 +36,7 @@ test("estimatePower prefers the brief's capacity and the battery-side rail's ave
 	const e = estimatePower(c, "Runs on a 500 mAh cell")
 	assert.equal(e.capacityMah, 500)
 	assert.equal(e.capacitySource, "brief")
-	assert.equal(e.rail, "3V3", "VBUS is the charger input, not the battery draw")
+	assert.deepEqual(e.rails.map((r) => r.name), ["3V3"], "VBUS is the charger input, not the battery draw")
 	assert.equal(e.averageMa, 0.045)
 	assert.equal(e.regulatorIqUa, 0, "the fixture has no LDO")
 	assert.equal(e.targetDays, 180)
@@ -53,6 +53,43 @@ test("estimatePower adds the LDO's quiescent current and says when it cannot est
 	delete s.values.requirements!.dutyCycle
 	assert.equal(estimatePower(s, "around 500 mAh").days, null)
 	assert.match(powerBudgetLines(estimatePower(s, "around 500 mAh")).join("\n"), /no average current/i)
+})
+
+// Real run 6: VBAT's own loads and the 3V3 rail behind the LDO both draw from the cell. The LDO's input current is
+// its output current, so the battery sees 0.02 + 0.106 mA plus the LDO's 55 µA: about 115 days, not 278.
+const REAL_6_RAILS = [
+	{ name: "VBAT", voltageV: 3.7, regulatorMaxMa: 500, loadMa: 350, averageMa: 0.02 },
+	{ name: "VDD_3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 180, averageMa: 0.106 },
+]
+
+test("the battery current sums every battery-fed rail's own average, plus the LDO Iq (real run 6)", () => {
+	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values.rails = structuredClone(REAL_6_RAILS)
+	s.values.requirements!.dutyCycle = { activeMs: 120, periodS: 300, sleepUa: 20 }
+	const e = estimatePower(s, "a small single-cell pouch, around 500 mAh")
+	assert.deepEqual(e.rails.map((r) => [r.name, r.averageMa]), [["VBAT", 0.02], ["VDD_3V3", 0.106]])
+	assert.equal(Math.round(e.averageMa! * 1000) / 1000, 0.126)
+	assert.equal(e.regulatorIqUa, 55)
+	assert.equal(Math.round(e.days!), 115)
+	const text = powerBudgetLines(e).join("\n")
+	assert.match(text, /Rail VBAT: peak 350 mA, average 0\.02 mA/)
+	assert.match(text, /Rail VDD_3V3: peak 180 mA, average 0\.106 mA/)
+	assert.match(text, /500 mAh \/ \(0\.02 mA \+ 0\.106 mA \+ 0\.055 mA\) \/ 24 h = 115 days vs target 180 days/)
+})
+
+test("a battery-fed rail with no average makes the estimate unknown instead of optimistic", () => {
+	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values.rails = [REAL_6_RAILS[0], { ...REAL_6_RAILS[1], averageMa: undefined }]
+	delete s.values.requirements!.dutyCycle
+	const e = estimatePower(s, "500 mAh")
+	assert.equal(e.days, null)
+	assert.match(powerBudgetLines(e).join("\n"), /no average current for VDD_3V3/)
+})
+
+test("each LDO adds its own quiescent current", () => {
+	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values.parts = [...s.values.parts!, { ...s.values.parts!.find((p) => p.role === "ldo")!, ref: "U4" }]
+	assert.equal(estimatePower(s, "500 mAh").regulatorIqUa, 110)
 })
 
 test("powerBudgetLines shows peak, average and the arithmetic", () => {
