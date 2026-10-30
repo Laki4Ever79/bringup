@@ -114,10 +114,11 @@ message, not a crash.
 
 ## Run 
 
-The end-to-end CLI (`src/main.ts`) is being wired now. The intended commands:
-
 ```bash
-# No API key needed: scripted models, real tools
+# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. Settles in a few seconds.
+npm run bringup -- briefs/logger.md --mock --no-hardware
+
+# No API key needed: scripted models, real tools (about 30 s once the tools are installed)
 npm run bringup -- briefs/logger.md --mock
 
 # Real models: copy .env.example to .env and set one of
@@ -125,6 +126,13 @@ npm run bringup -- briefs/logger.md --mock
 #   ANTHROPIC_API_KEY=... and ANTHROPIC_BASE_URL=...   (the event's Claude credit, build.jigjoy.ai/credits)
 npm run bringup -- briefs/logger.md
 ```
+
+`--no-hardware` swaps the three builders for stubs (`src/tools/stubs.ts`). Each stub derives its artifact straight
+from the contract: board nets from the pin map, enclosure cutouts from the connectors, firmware pins from the pin
+map. The agents, change control, the grounding critic and the consistency checks all run as usual, and the report
+says the hardware was stubbed. Without `--no-hardware`, a missing tool is a warning: its build fails with
+`artifact.failed`, and the run ends unsettled. The report then opens with a "Missing tools" section listing what to
+install.
 
 Each run writes everything under `out/<runId>/`:
 
@@ -137,9 +145,21 @@ Each run writes everything under `out/<runId>/`:
 | `report.md` | Settled or not, violations, changes proposed, held, approved and rejected |
 | `trace.jsonl` | Every event in delivery order |
 
-Exit codes: 0 when settled with no violations, 2 when unsettled, 1 on an environment error.
+Exit codes: 0 when settled with no violations, 2 when unsettled (including when a hardware tool is missing), and 1 on
+bad arguments.
 
-Dashboard ****: `npx tsx src/dashboard/cli.ts out/<runId>`.
+Dashboard: `npx tsx src/dashboard/cli.ts out/<runId>`.
+
+**Design tournament.** Run several variants of one brief at the same time, each in its own process, then rank them:
+
+```bash
+npm run tournament -- briefs/logger.md --variants briefs/variants-logger.json --mock
+```
+
+A variant is a short constraint appended to the brief, for example "Board must be at most 40 mm wide". Results go to
+`out/tournament-<ts>/<variant>/`, one full run each, plus `scoreboard.json` and `scoreboard.md`. The ranking puts
+settled designs first, then fewest violations, then BOM cost (live JLCPCB prices), then board area. With the example
+variants, the 40 mm board fails to route (a via lands on a USB-C pad), so that variant ranks last.
 
 ## Tests
 
@@ -179,7 +199,7 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
   in emulation, so firmware prints `SENSOR FAIL` there. Wokwi could simulate the sensor but needs a token.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
   can only choose from the vetted catalog (one MCU family today).
-- **In progress:** the design tournament and mid-run change requests.
+- **In progress:** mid-run change requests.
 
 ## Use from Claude Code
 
