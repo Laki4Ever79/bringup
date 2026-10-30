@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util"
 import { FIELDS, OWNERS, SIGNAL_PATTERN, type ContractSnapshot, type ContractValues, type FieldName, type Proposal, type ProposalResult } from "./types.ts"
 
 // Single source of truth for the design. Each field has one owning role and a version;
@@ -32,6 +33,9 @@ export class DesignContract {
 		if (p.field === "pins") {
 			const bad = (p.value as ContractValues["pins"]).filter((pin) => !SIGNAL_PATTERN.test(pin.signal)).map((pin) => pin.signal)
 			if (bad.length > 0) return { status: "invalid", reason: `signal names must match ${SIGNAL_PATTERN}: ${bad.join(", ")}` }
+		}
+		if (isDeepStrictEqual(this.values[p.field], p.value)) {
+			return { status: "unchanged", version: this.versions[p.field] }
 		}
 		if (p.baseVersion !== this.versions[p.field]) {
 			return { status: "stale", current: this.versions[p.field] }

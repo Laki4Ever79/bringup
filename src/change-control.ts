@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util"
 import {
 	createHuman,
 	FunctionCallItem,
@@ -15,7 +16,7 @@ import { emit, roleOf, state } from "./runtime.ts"
 import { startTurn } from "./agents/common.ts"
 import type { Agent } from "@mozaik-ai/core"
 
-function readArgs(call: FunctionCallItem): { field?: FieldName; reason?: string; approvalId?: string } {
+function readArgs(call: FunctionCallItem): { field?: FieldName; value?: unknown; baseVersion?: number; reason?: string; approvalId?: string } {
 	try {
 		return JSON.parse(call.args)
 	} catch {
@@ -33,11 +34,14 @@ export class ChangeControl implements InterceptionHandler {
 		if (transition.nextStateId !== "function_call") return false
 		const { call } = transition.input as { call: FunctionCallItem }
 		if (call.name !== "propose_contract_change") return false
-		const { field, approvalId } = readArgs(call)
+		const { field, value, approvalId } = readArgs(call)
 		const role = roleOf(this.agentId)
 		if (field === undefined || role === undefined || OWNERS[field] === role) return false
-		// A call resumed after approval (or retried with the approval after a stale base) goes through.
-		return !(approvalId && state().approvals.approverOf(approvalId, field, role) === OWNERS[field])
+		// Nothing to review when the value equals the current one; the tool reports "unchanged".
+		if (isDeepStrictEqual(state().contract.get(field), value)) return false
+		// A call resumed after approval (or retried with the approval after a stale base) goes through,
+		// but only with the value that was approved.
+		return !(approvalId && state().approvals.approverOf(approvalId, field, role, JSON.stringify(value)) === OWNERS[field])
 	}
 
 	async handle(transition: ExecutableTransition): Promise<ExecutableTransition> {
@@ -45,12 +49,18 @@ export class ChangeControl implements InterceptionHandler {
 		const args = readArgs(call)
 		const requester = roleOf(this.agentId)!
 		const s = state()
-		const proposalId = s.approvals.open(args.field!, requester)
+		const proposalId = s.approvals.open(args.field!, requester, JSON.stringify(args.value))
 		emit(makeEvent("change.proposed", this.agentId, { proposalId, field: args.field!, by: requester, reason: args.reason ?? "" }), this.agentId)
 
 		const decision = await s.approvals.wait(proposalId, s.approvalTimeoutMs)
+		if (decision.reason === "timeout") {
+			emit(makeEvent("change.decided", this.agentId, { proposalId, approved: false, by: decision.by, reason: "timeout" }), this.agentId)
+		}
 		if (decision.approved) {
-			const approved = FunctionCallItem.rehydrate({ callId: call.callId, name: call.name, args: JSON.stringify({ ...args, approvalId: proposalId }) })
+			// The owner decided against the contract as it is now, so the change applies on top of the
+			// current version rather than failing as stale because the field moved while it was held.
+			const baseVersion = s.contract.version(args.field!)
+			const approved = FunctionCallItem.rehydrate({ callId: call.callId, name: call.name, args: JSON.stringify({ ...args, baseVersion, approvalId: proposalId }) })
 			return { nextStateId: "function_call", input: { call: approved, inferenceInput } }
 		}
 		inferenceInput.context.addContextItems([call, FunctionCallOutputItem.create(call.callId, `rejected: ${decision.reason}`)])

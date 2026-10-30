@@ -34,7 +34,7 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 			strict: false,
 			invoke: async (args: { field: FieldName; value: ContractValues[FieldName]; baseVersion: number; reason: string; approvalId?: string }) => {
 				const s = state()
-				const approvedBy = args.approvalId ? s.approvals.approverOf(args.approvalId, args.field, role) : undefined
+				const approvedBy = args.approvalId ? s.approvals.approverOf(args.approvalId, args.field, role, JSON.stringify(args.value)) : undefined
 				const result = s.contract.propose({ field: args.field, value: args.value, by: role, baseVersion: args.baseVersion, approvedBy })
 				if (result.status === "applied") {
 					emit(makeEvent("contract.changed", self.id, { field: args.field, version: result.version, revision: result.revision, by: role }), self.id)
@@ -56,6 +56,8 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				const field = state().approvals.fieldOf(args.proposalId)
 				if (!field) return `unknown proposalId "${args.proposalId}"`
 				if (OWNERS[field] !== role) return `not the owner of "${field}" (${OWNERS[field]} decides)`
+				const earlier = state().approvals.decisionOf(args.proposalId)
+				if (earlier) return `already decided (${earlier.approved ? "approved" : "rejected"}: ${earlier.reason})`
 				emit(makeEvent("change.decided", self.id, { proposalId: args.proposalId, approved: args.approve, by: role, reason: args.reason }), self.id)
 				return "recorded"
 			},

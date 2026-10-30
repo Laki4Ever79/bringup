@@ -114,3 +114,54 @@ test("only the field's owner can decide a change", async () => {
 	assert.match(String(await decide.invoke({ proposalId: id, approve: true, reason: "self-approval" })), /not the owner/)
 	assert.ok(!t.types().includes("change.decided"))
 })
+
+test("an approved change still applies when the owner edited the field while it was held", async () => {
+	// The owner edits pins while the request is held, then approves: the requester's value must land.
+	const ownerEdit = [{ signal: "I2C_SDA", gpio: 8, partRef: "U2", partPin: "SDA" }]
+	const decideAfterEdit: Script = (items) => {
+		const id = /proposalId=([\w-]+)/.exec(lastText(items))?.[1]
+		if (!id) return [ModelMessageItem.rehydrate({ text: "decided" })]
+		const { state } = t
+		state.contract.propose({ field: "pins", value: ownerEdit, by: "architect", baseVersion: state.contract.version("pins") })
+		return [toolCall("decide_change", { proposalId: id, approve: true, reason: "ok" })]
+	}
+	const t = setup({ "mock-architect": decideAfterEdit, "mock-firmware": proposer })
+	startTurn(t.firmware, "add a status LED")
+	await waitFor(() => t.events.some((e) => e.type === "contract.changed" && (e.payload as { by: string }).by === "firmware"))
+	assert.deepEqual(t.state.contract.get("pins"), pins)
+})
+
+test("an approval covers only the value that was proposed", async () => {
+	const { ChangeControl } = await import("../src/change-control.ts")
+	const { FunctionCallItem } = await import("@mozaik-ai/core")
+	const t = setup({ "mock-architect": decider(true), "mock-firmware": proposer })
+	const id = t.state.approvals.open("pins", "firmware", JSON.stringify(pins))
+	t.state.approvals.resolve(id, { approved: true, by: "architect", reason: "ok" })
+	const cc = new ChangeControl(t.firmware.getId())
+	const transition = (value: unknown) =>
+		({ nextStateId: "function_call", input: { call: FunctionCallItem.rehydrate({ callId: "c", name: "propose_contract_change", args: JSON.stringify({ field: "pins", value, baseVersion: 0, reason: "x", approvalId: id }) }), inferenceInput: {} } }) as never
+	assert.equal(cc.isSatisfiedBy(transition(pins)), false)
+	assert.equal(cc.isSatisfiedBy(transition([])), true)
+})
+
+test("a change identical to the current value is not held and applies nothing", async () => {
+	const t = setup({ "mock-architect": decider(true), "mock-firmware": proposer })
+	t.state.contract.propose({ field: "pins", value: pins, by: "architect", baseVersion: 0 })
+	const before = t.state.contract.revision
+	startTurn(t.firmware, "add a status LED")
+	await new Promise((r) => setTimeout(r, 300))
+	assert.ok(!t.types().includes("change.proposed"))
+	assert.equal(t.state.contract.revision, before)
+})
+
+test("a timed-out request is recorded as a rejected decision", async () => {
+	const silent: Script = () => [ModelMessageItem.rehydrate({ text: "not now" })]
+	const t = setup({ "mock-architect": silent, "mock-firmware": proposer }, 200)
+	startTurn(t.firmware, "add a status LED")
+	await waitFor(() => t.types().includes("change.decided"))
+	const d = t.events.find((e) => e.type === "change.decided")!.payload as { approved: boolean; reason: string; by: string }
+	assert.deepEqual({ approved: d.approved, reason: d.reason, by: d.by }, { approved: false, reason: "timeout", by: "architect" })
+	const id = (t.events.find((e) => e.type === "change.proposed")!.payload as { proposalId: string }).proposalId
+	const decide = t.architect.getTools().find((x) => x.name === "decide_change")!
+	assert.match(String(await decide.invoke({ proposalId: id, approve: true, reason: "late" })), /already decided/)
+})

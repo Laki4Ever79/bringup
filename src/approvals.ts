@@ -10,6 +10,8 @@ export interface Decision {
 interface Entry {
 	field: FieldName
 	requester: AgentRole
+	// The proposed value (JSON); an approval covers this value only.
+	valueKey?: string
 	decision?: Decision
 	waiters: ((d: Decision) => void)[]
 }
@@ -18,9 +20,9 @@ interface Entry {
 export class ApprovalRegistry {
 	private entries = new Map<string, Entry>()
 
-	open(field: FieldName, requester: AgentRole): string {
+	open(field: FieldName, requester: AgentRole, valueKey?: string): string {
 		const id = randomUUID().slice(0, 8)
-		this.entries.set(id, { field, requester, waiters: [] })
+		this.entries.set(id, { field, requester, valueKey, waiters: [] })
 		return id
 	}
 
@@ -48,10 +50,15 @@ export class ApprovalRegistry {
 	}
 
 	// The owner who approved this proposal for this field and requester, if any.
-	approverOf(id: string, field: FieldName, requester: AgentRole): AgentRole | undefined {
+	approverOf(id: string, field: FieldName, requester: AgentRole, valueKey?: string): AgentRole | undefined {
 		const entry = this.entries.get(id)
 		if (!entry?.decision?.approved || entry.field !== field || entry.requester !== requester) return undefined
+		if (entry.valueKey !== undefined && entry.valueKey !== valueKey) return undefined
 		return entry.decision.by
+	}
+
+	decisionOf(id: string): Decision | undefined {
+		return this.entries.get(id)?.decision
 	}
 
 	// Change requests still waiting for a decision.
