@@ -1,39 +1,77 @@
-import { defineRuntime, RuntimeState, type InferenceInput, type InterceptionHandler } from "@mozaik-ai/core"
+import {
+	defineRuntime,
+	RuntimeState,
+	type InferenceInput,
+	type InferenceRunnerConfig,
+	type InterceptionHandler,
+	type Participant,
+	type SemanticEvent,
+} from "@mozaik-ai/core"
+import { ApprovalRegistry } from "./approvals.ts"
 import type { Artifacts } from "./contract/consistency.ts"
 import { DesignContract } from "./contract/contract.ts"
 import type { AgentRole } from "./contract/types.ts"
 import { makeEvent } from "./events.ts"
 import { Outbox } from "./outbox.ts"
 
+export const APPROVAL_TIMEOUT_MS = 120_000
+
 export class BringupState extends RuntimeState {
 	readonly contract = new DesignContract()
 	readonly artifacts: Artifacts = {}
 	readonly roles = new Map<string, AgentRole>()
+	readonly approvals = new ApprovalRegistry()
 
-	constructor(readonly outDir: string) {
+	constructor(
+		readonly outDir: string,
+		readonly approvalTimeoutMs: number = APPROVAL_TIMEOUT_MS,
+	) {
 		super()
 	}
 }
 
-export const { initializeRuntime, resolveRuntime, resolveParticipant, join, leave, sendMessage, sendEvent, runLoop } =
-	defineRuntime<BringupState>()
+type Runtime = ReturnType<typeof defineRuntime<BringupState>>
 
-export function roleOf(participantId: string): AgentRole | undefined {
-	return resolveRuntime().state.roles.get(participantId)
-}
-
+let current: Runtime | null = null
 let outbox: Outbox | null = null
 
-export function initOutbox(tracePath: string | null): Outbox {
-	outbox = new Outbox((event, senderId) => sendEvent(event, senderId), tracePath)
-	return outbox
+// A fresh Mozaik runtime per run. defineRuntime() allows one initializeRuntime per closure,
+// so each run (and each test) gets its own closure.
+export function startRuntime(state: BringupState, inferenceRunnerConfig: InferenceRunnerConfig | undefined, tracePath: string | null): Runtime {
+	current = defineRuntime<BringupState>()
+	current.initializeRuntime({ state, inferenceRunnerConfig })
+	outbox = new Outbox((event, senderId) => current!.sendEvent(event, senderId), tracePath)
+	return current
+}
+
+function rt(): Runtime {
+	if (!current) throw new Error("runtime not started; call startRuntime first")
+	return current
+}
+
+export function state(): BringupState {
+	return rt().resolveRuntime().state
+}
+
+export function join(participant: Participant): void {
+	rt().join(participant)
+}
+
+export function sendMessage(message: string, senderId: string): void {
+	rt().sendMessage(message, senderId)
+}
+
+export function roleOf(participantId: string): AgentRole | undefined {
+	return state().roles.get(participantId)
 }
 
 export function getOutbox(): Outbox {
-	if (!outbox) {
-		throw new Error("outbox not initialized; call initOutbox first")
-	}
+	if (!outbox) throw new Error("outbox not initialized; call startRuntime first")
 	return outbox
+}
+
+export function emit(event: SemanticEvent, senderId: string): void {
+	getOutbox().emit(event, senderId)
 }
 
 let haltReporterInstalled = false
@@ -45,16 +83,14 @@ export function safeRunLoop(agentId: string, message: string, input: InferenceIn
 		haltReporterInstalled = true
 		process.on("unhandledRejection", (reason) => {
 			const error = reason instanceof Error ? reason.message : String(reason)
-			const reporter = [...resolveRuntime().state.getParticipants()][0]
-			if (reporter) {
-				getOutbox().emit(makeEvent("agent.halted", reporter.getId(), { agentId: "unknown", error }), reporter.getId())
-			}
 			console.error("[bringup] agent loop failed:", error)
+			const reporter = current ? state().getParticipants()[0] : undefined
+			if (reporter) emit(makeEvent("agent.halted", reporter.getId(), { agentId: "unknown", error }), reporter.getId())
 		})
 	}
 	try {
-		runLoop(agentId, message, input, handler)
+		rt().runLoop(agentId, message, input, handler)
 	} catch (error) {
-		getOutbox().emit(makeEvent("agent.halted", agentId, { agentId, error: String(error) }), agentId)
+		emit(makeEvent("agent.halted", agentId, { agentId, error: String(error) }), agentId)
 	}
 }
