@@ -45,3 +45,11 @@ test("pin signals must be UPPER_SNAKE", () => {
 	assert.equal(r.status, "invalid")
 	assert.equal(c.version("pins"), 0)
 })
+
+test("an identical value is reported unchanged and not applied", () => {
+	const c = new DesignContract()
+	c.propose({ field: "outline", value: outline, by: "architect", baseVersion: 0 })
+	const r = c.propose({ field: "outline", value: { ...outline }, by: "architect", baseVersion: 1 })
+	assert.deepEqual(r, { status: "unchanged", version: 1 })
+	assert.equal(c.revision, 1)
+})

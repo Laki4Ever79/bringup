@@ -77,6 +77,7 @@ export type ProposalResult =
 	| { status: "stale"; current: number }
 	| { status: "not-owner"; owner: AgentRole }
 	| { status: "invalid"; reason: string }
+	| { status: "unchanged"; version: number }
 
 // Signals become C macros (PIN_<SIGNAL>) and net names, so they must be UPPER_SNAKE.
 export const SIGNAL_PATTERN = /^[A-Z][A-Z0-9_]*$/
