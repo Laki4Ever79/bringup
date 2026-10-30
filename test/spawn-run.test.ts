@@ -53,3 +53,18 @@ test("the default command is tsx running src/main.ts from the repo root", async 
 	assert.match(bin, /node_modules\/\.bin\/tsx$/)
 	assert.match(script, /src\/main\.ts$/)
 })
+
+test("onStdout and onStderr see output as it arrives, and done still has it", async () => {
+	const out: string[] = []
+	const err: string[] = []
+	const { done } = startRunProcess(args, {
+		command: node("process.stdout.write('one\\n'); setTimeout(() => { process.stdout.write('two\\n'); console.error('warn') }, 100)"),
+		onStdout: (c) => out.push(c),
+		onStderr: (c) => err.push(c),
+	})
+	const r = await done
+	assert.equal(out.join(""), "one\ntwo\n")
+	assert.ok(out.length >= 2, "chunks were delivered as they came, not once at the end")
+	assert.equal(err.join(""), "warn\n")
+	assert.equal(r.stdout, "one\ntwo\n")
+})
