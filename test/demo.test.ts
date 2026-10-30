@@ -3,7 +3,7 @@ import { appendFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
-import { parseDemoArgs, runDemo, summarize, type DemoDeps } from "../src/demo.ts"
+import { createCloudRelay, parseDemoArgs, runDemo, summarize, type DemoDeps } from "../src/demo.ts"
 
 const ev = (seq: number, type: string, payload: object) => JSON.stringify({ seq, at: new Date().toISOString(), type, producerId: "x", payload }) + "\n"
 
@@ -133,6 +133,59 @@ test("the dashboard serves the run and shows engineer requests", { timeout: 10_0
 		assert.match(page, /\/files\/requests\.jsonl/)
 		const reqs = await fetch(`${r.dashboard.url}/files/requests.jsonl`)
 		assert.equal(reqs.status, 200)
+	} finally {
+		await r.dashboard.close()
+	}
+})
+
+const cloud = (id: string) => `\x1b[36m▶ mozaik cloud — watching live: https://app.jigjoy.ai/?s=loop_${id}\x1b[0m\n`
+
+test("the cloud relay prints the first link, then only counts, and records every URL", () => {
+	const dir = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const log: string[] = []
+	let now = 0
+	const relay = createCloudRelay(dir, (l) => log.push(l), () => now)
+	relay.write("agent-mesh skeleton: ready\n" + cloud("a1"))
+	const second = cloud("b2")
+	relay.write(second.slice(0, 20))
+	relay.write(second.slice(20) + cloud("c3"))
+	now = 10_000
+	relay.write(cloud("d4"))
+	relay.end()
+	assert.equal(log[0], "Mozaik Cloud: https://app.jigjoy.ai/?s=loop_a1")
+	assert.equal(log.filter((l) => l.startsWith("Mozaik Cloud:")).length, 1)
+	assert.ok(!log.some((l) => l.includes("skeleton")), "other stdout is not relayed")
+	assert.equal(log.at(-1), "+3 agent loops live in Mozaik Cloud")
+	assert.ok(log.length <= 4, `too chatty: ${log.join(" | ")}`)
+	const urls = readFileSync(join(dir, "cloud.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).url)
+	assert.deepEqual(urls, ["a1", "b2", "c3", "d4"].map((id) => `https://app.jigjoy.ai/?s=loop_${id}`))
+})
+
+test("a run without Cloud output prints nothing about Cloud", () => {
+	const dir = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const log: string[] = []
+	const relay = createCloudRelay(dir, (l) => log.push(l))
+	relay.write("mozaik cloud: no API key — telemetry disabled.\n")
+	relay.end()
+	assert.deepEqual(log, [])
+	assert.equal(existsSync(join(dir, "cloud.jsonl")), false)
+})
+
+test("runDemo relays the run's Cloud links and the dashboard can read them", { timeout: 10_000 }, async () => {
+	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const log: string[] = []
+	const launch: DemoDeps["launch"] = (args, hooks) => {
+		writeFileSync(join(args.outDir, "trace.jsonl"), "")
+		hooks.onStdout(cloud("x1") + cloud("x2"))
+		return { done: new Promise((r) => setTimeout(() => r({ code: 0, stderr: "" }), 100)) }
+	}
+	const r = await runDemo(parseDemoArgs(["--no-change", "--port", "0", "--no-open"]), { launch, outRoot, log: (l) => log.push(l), openUrl: () => {} })
+	try {
+		assert.ok(log.includes("Mozaik Cloud: https://app.jigjoy.ai/?s=loop_x1"), log.join(" | "))
+		assert.ok(log.includes("+1 agent loops live in Mozaik Cloud"), log.join(" | "))
+		const page = await (await fetch(r.dashboard.url)).text()
+		assert.match(page, /\/files\/cloud\.jsonl/)
+		assert.equal((await fetch(`${r.dashboard.url}/files/cloud.jsonl`)).status, 200)
 	} finally {
 		await r.dashboard.close()
 	}

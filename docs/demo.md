@@ -15,10 +15,10 @@ you start talking.
   artifact is built). When the run exits, it prints the report path and a 5-line summary; the dashboard keeps
   serving until Ctrl+C. Options: `--brief briefs/blinky.md`, `--change "<text>"` or `--no-change`, `--after <s>`,
   `--port <n>` (falls back to a free port if 4317 is taken), `--no-open`.
-- Have three windows ready: the terminal, the dashboard, and the Mozaik Cloud link that `runLoop` prints.
-  Under `npm run demo` the run's output is captured, so its per-loop Cloud links are not printed. If you want them for
-  the closing segment, start the run with `npm run bringup -- briefs/logger.md --out <dir>` and the dashboard with
-  `npx tsx src/dashboard/cli.ts <dir>` instead.
+- Have three windows ready: the terminal, the dashboard, and Mozaik Cloud. `npm run demo` prints the first agent
+  loop's link as `Mozaik Cloud: <url>` and then only counts the rest (`+N agent loops live in Mozaik Cloud`). The
+  dashboard header has a **Mozaik Cloud ↗** link to the latest loop, with the loop count. The links only appear when
+  this machine is paired with Mozaik Cloud (`npx @mozaik-ai/cloud-sdk pair`) or `MOZAIK_API_KEY` is set.
 - Have `briefs/logger.md` open in an editor tab.
 - Fallback: if the network or the gateway is down, use `--mock`. The tools are real and only the models are scripted.
 
@@ -74,7 +74,9 @@ Switch to the dashboard.
 
 ## 2:35 – 3:00 · How it uses Mozaik (closing)
 
-Switch to the Mozaik Cloud link and show the agents' loops side by side.
+Click **Mozaik Cloud ↗** in the dashboard header (or the `Mozaik Cloud:` link in the terminal) and show the agents'
+loops side by side. The header's loop count is how many `runLoop`s this run started: one per agent turn, so it
+grows with every wake-up the situations trigger.
 
 > "Every agent is its own `runLoop`, running concurrently. The shared design contract lives in Mozaik's
 > `RuntimeState`. Situations decide who wakes for which change. An `InterceptionHandler` turns cross-owner edits into

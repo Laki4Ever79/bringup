@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { serveDashboard, type Dashboard } from "./dashboard/server.ts"
@@ -16,7 +16,7 @@ export interface DemoOptions {
 }
 
 export interface DemoDeps {
-	launch: (args: RunProcessArgs) => { done: Promise<{ code: number; stderr: string }>; kill?: () => void }
+	launch: (args: RunProcessArgs, hooks: { onStdout: (chunk: string) => void }) => { done: Promise<{ code: number; stderr: string }>; kill?: () => void }
 	outRoot: string
 	log: (line: string) => void
 	openUrl: (url: string) => void
@@ -102,6 +102,53 @@ export function summarize(traceText: string, code: number): string[] {
 	]
 }
 
+export const CLOUD_FILE = "cloud.jsonl"
+const CLOUD_LINK = /mozaik cloud — watching live:\s*(\S+)/
+const ANSI = /\x1b\[[0-9;]*m/g
+const CLOUD_COUNT_EVERY_MS = 5000
+
+// Picks Mozaik Cloud's per-loop "watching live" links out of the run's stdout. The first is printed in
+// full; later ones are only counted (at most one count line per 5 s) so the terminal stays readable.
+// Every URL goes to <outDir>/cloud.jsonl for the dashboard.
+export function createCloudRelay(outDir: string, log: (line: string) => void, now: () => number = Date.now) {
+	let partial = ""
+	let total = 0
+	let printedCount = 0
+	let lastPrintAt = 0
+
+	const printCount = () => {
+		printedCount = total
+		lastPrintAt = now()
+		log(`+${total - 1} agent loops live in Mozaik Cloud`)
+	}
+
+	const line = (raw: string) => {
+		const url = CLOUD_LINK.exec(raw.replace(ANSI, ""))?.[1]
+		if (!url) return
+		total++
+		appendFileSync(join(outDir, CLOUD_FILE), JSON.stringify({ at: new Date().toISOString(), url }) + "\n")
+		if (total === 1) {
+			lastPrintAt = now()
+			log(`Mozaik Cloud: ${url}`)
+		} else if (now() - lastPrintAt >= CLOUD_COUNT_EVERY_MS) {
+			printCount()
+		}
+	}
+
+	return {
+		write(chunk: string) {
+			const lines = (partial + chunk).split("\n")
+			partial = lines.pop()!
+			for (const l of lines) line(l)
+		},
+		end() {
+			if (partial) line(partial)
+			partial = ""
+			if (total > 1 && printedCount !== total) printCount()
+		},
+	}
+}
+
 const readTrace = (outDir: string) => (existsSync(join(outDir, "trace.jsonl")) ? readFileSync(join(outDir, "trace.jsonl"), "utf8") : "")
 
 async function startDashboard(outDir: string, port: number): Promise<Dashboard> {
@@ -128,7 +175,8 @@ export async function runDemo(o: DemoOptions, deps: DemoDeps): Promise<DemoResul
 	if (o.open) deps.openUrl(dashboard.url)
 
 	deps.log(`run: ${o.real ? "real models" : "mock models"}, brief ${o.brief}, output ${outDir}`)
-	const run = deps.launch({ briefPath, mock: !o.real, outDir })
+	const cloud = createCloudRelay(outDir, deps.log)
+	const run = deps.launch({ briefPath, mock: !o.real, outDir }, { onStdout: (chunk) => cloud.write(chunk) })
 	let exited = false
 
 	let trigger: NodeJS.Timeout | null = null
@@ -148,6 +196,7 @@ export async function runDemo(o: DemoOptions, deps: DemoDeps): Promise<DemoResul
 
 	const { code, stderr } = await run.done
 	exited = true
+	cloud.end()
 	if (trigger) clearInterval(trigger)
 	if (code !== 0 && code !== 2) deps.log(`run failed (exit ${code}):\n${stderr.trimEnd().split("\n").slice(-15).join("\n")}`)
 	const summary = summarize(readTrace(outDir), code)
@@ -175,7 +224,7 @@ async function main(): Promise<void> {
 		void (dashboard?.close() ?? Promise.resolve()).then(() => process.exit(0))
 	})
 	const r = await runDemo(opts, {
-		launch: (args) => (active = startRunProcess(args)),
+		launch: (args, hooks) => (active = startRunProcess(args, { onStdout: hooks.onStdout })),
 		outRoot: join(ROOT, "out"),
 		log: (line) => console.log(line),
 		openUrl: openInBrowser,
