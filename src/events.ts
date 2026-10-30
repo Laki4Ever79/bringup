@@ -16,7 +16,9 @@ export type ReviewVerdict = "pass" | "fail"
 
 export interface Payloads {
 	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole }
-	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string }
+	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string; needsEngineer: boolean }
+	// The final outcome of a held change (votes are change.decided), timeouts included.
+	"change.resolved": { proposalId: string; approved: boolean; reason: string; decidedBy: string[] }
 	"change.decided": { proposalId: string; approved: boolean; by: AgentRole; reason: string }
 	"artifact.ready": { kind: ArtifactKind; revision: number }
 	"artifact.failed": { kind: ArtifactKind; revision: number; error: string }

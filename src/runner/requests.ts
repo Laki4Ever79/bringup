@@ -20,7 +20,17 @@ export function appendRequest(outDir: string, text: string): ChangeRequest {
 // Follows <outDir>/requests.jsonl from its start, calling onRequest once per complete line. A half-written
 // last line waits for its newline; lines that are not {at, text} JSON are skipped.
 export function watchRequests(outDir: string, onRequest: (r: ChangeRequest) => void): { close(): void } {
-	const path = join(outDir, REQUESTS_FILE)
+	return watchJsonl(outDir, REQUESTS_FILE, (raw) => {
+		const r = raw as Partial<ChangeRequest>
+		if (typeof r.text !== "string" || r.text.trim() === "") return null
+		return { at: typeof r.at === "string" ? r.at : new Date().toISOString(), text: r.text }
+	}, onRequest)
+}
+
+// Follows <outDir>/<file> from its start, calling onItem once per complete JSON line that `accept` turns into
+// an item. A half-written last line waits for its newline; other lines are skipped.
+export function watchJsonl<T>(outDir: string, file: string, accept: (raw: unknown) => T | null, onItem: (item: T) => void): { close(): void } {
+	const path = join(outDir, file)
 	let offset = 0
 	let partial = ""
 	let reading = false
@@ -40,15 +50,15 @@ export function watchRequests(outDir: string, onRequest: (r: ChangeRequest) => v
 			for (const raw of lines) {
 				if (closed) return
 				if (raw.trim() === "") continue
-				let r: Partial<ChangeRequest>
+				let parsed: unknown
 				try {
-					r = JSON.parse(raw)
+					parsed = JSON.parse(raw)
 				} catch {
-					console.error(`[requests] skipping a line that is not JSON: ${raw.slice(0, 80)}`)
+					console.error(`[${file}] skipping a line that is not JSON: ${raw.slice(0, 80)}`)
 					continue
 				}
-				if (typeof r.text !== "string" || r.text.trim() === "") continue
-				onRequest({ at: typeof r.at === "string" ? r.at : new Date().toISOString(), text: r.text })
+				const item = accept(parsed)
+				if (item !== null) onItem(item)
 			}
 		} finally {
 			await fh.close()
@@ -78,7 +88,7 @@ export function watchRequests(outDir: string, onRequest: (r: ChangeRequest) => v
 	try {
 		// The directory, not the file: requests.jsonl usually doesn't exist until the first request.
 		watcher = watch(outDir, (_, name) => {
-			if (name === REQUESTS_FILE) void poll()
+			if (name === file) void poll()
 		})
 	} catch {
 		// The poll timer alone is enough.

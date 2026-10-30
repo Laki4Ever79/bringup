@@ -49,13 +49,12 @@ export class ChangeControl implements InterceptionHandler {
 		const args = readArgs(call)
 		const requester = roleOf(this.agentId)!
 		const s = state()
-		const proposalId = s.approvals.open(args.field!, requester, JSON.stringify(args.value))
-		emit(makeEvent("change.proposed", this.agentId, { proposalId, field: args.field!, by: requester, reason: args.reason ?? "" }), this.agentId)
+		const needsEngineer = s.engineerApproval
+		const proposalId = s.approvals.open(args.field!, requester, JSON.stringify(args.value), needsEngineer)
+		emit(makeEvent("change.proposed", this.agentId, { proposalId, field: args.field!, by: requester, reason: args.reason ?? "", needsEngineer }), this.agentId)
 
-		const decision = await s.approvals.wait(proposalId, s.approvalTimeoutMs)
-		if (decision.reason === "timeout") {
-			emit(makeEvent("change.decided", this.agentId, { proposalId, approved: false, by: decision.by, reason: "timeout" }), this.agentId)
-		}
+		const decision = await s.approvals.wait(proposalId, needsEngineer ? s.engineerTimeoutMs : s.approvalTimeoutMs)
+		emit(makeEvent("change.resolved", this.agentId, { proposalId, approved: decision.approved, reason: decision.reason, decidedBy: decision.decidedBy ?? [decision.by] }), this.agentId)
 		if (decision.approved) {
 			// The owner decided against the contract as it is now, so the change applies on top of the
 			// current version rather than failing as stale because the field moved while it was held.

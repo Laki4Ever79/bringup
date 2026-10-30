@@ -184,7 +184,8 @@ choose the folder with `--out <dir>`. The last line of the run prints the report
 | `report.md` | Start here: settled or not, violations, the brief review verdict and findings, changes proposed, held, approved and rejected, tool table |
 | `contract.json` | The final design contract |
 | `brief.md` | The brief the run started from |
-| `board/rev-N/` | One folder per build: `board.circuit.tsx`, KiCad project (`dist/board/kicad/board.kicad_pcb`), `board.step`, `board.png`. The latest render is also at `board/board.png` |
+| `board/rev-N/` | One folder per build: `board.circuit.tsx`, KiCad project (`dist/board/kicad/board.kicad_pcb`), `board.step`, `board.png`, `fab/`. The latest render is also at `board/board.png` |
+| `fab/` | The latest board's fab package in JLCPCB's assembly format (PCBWay takes it too): `gerbers.zip` (9 layers + Excellon drill), `bom.csv`, `cpl.csv`, and `README.txt` with a checklist of what to verify before ordering. Skipped under `--no-hardware` |
 | `enclosure/rev-N/` | `case.step`, `case.stl`, `cutouts.json` |
 | `firmware/rev-N/` | PlatformIO project with the generated `include/pins.h` |
 | `trace.jsonl` | Every event in delivery order |
@@ -243,9 +244,17 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
 
 ## Limits
 
-- **Not fab-ready.** The ESP32-C3-MINI-1 gets a 53-pad land pattern built from its datasheet, but the pad offsets
-  are approximate. The SHT40 uses a generic `dfn4`. USB-C CC pull-downs and D± aren't wired. See `catalog/README.md`.
-- **Small boards only.** Placement and routing are proven on 40–50 × 30 mm boards with up to about 20 parts.
+- **Review before ordering.** The logger is electrically complete: Li-ion charger and battery connector, USB-C CC
+  pull-downs, D± to the ESP32-C3's native USB, I2C pull-ups and bypass caps. Each run exports a fab package. It is
+  still not fab-ready without a human pass:
+  - the ESP32-C3-MINI-1 land pattern has approximate pad offsets, and only one of its GND pads is wired
+  - there is no ground pour
+  - the SHT40 and the button use stand-in footprints
+  - the TP4054 pin order comes from the pin-compatible LTC4054
+  - JST-PH battery polarity varies between packs
+
+  `fab/README.txt` lists every item to check; `catalog/README.md` has the details.
+- **Small boards only.** Placement and routing are proven on 45–70 × 30 mm boards with up to about 20 parts.
 - **QEMU is optional.** It is not installed by default, and its integration test skips without it. There is no SHT40
   in emulation, so firmware prints `SENSOR FAIL` there. Wokwi could simulate the sensor but needs a token.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
