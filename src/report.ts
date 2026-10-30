@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { checkConsistency } from "./contract/consistency.ts"
 import type { BringupState } from "./runtime.ts"
 import { describeEnv, type Env } from "./tools/env.ts"
+import { isStub } from "./tools/stubs.ts"
 
 function counts(tracePath: string): Record<string, number> {
 	const c: Record<string, number> = {}
@@ -17,18 +18,45 @@ function counts(tracePath: string): Record<string, number> {
 	return c
 }
 
-export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean): string {
+const INSTALL = {
+	tsci: { tool: "tscircuit", install: "npm i --prefix tools/node tscircuit bun" },
+	kicad: { tool: "KiCad 10", install: "docker pull kicad/kicad:10.0" },
+	python: { tool: "python with build123d", install: "uv venv .venv && uv pip install platformio build123d" },
+	pio: { tool: "PlatformIO", install: "uv venv .venv && uv pip install platformio build123d" },
+} as const
+
+// The hardware tools this machine lacks, in the order the README installs them.
+export function missingTools(env: Env): { tool: string; install: string }[] {
+	return (Object.keys(INSTALL) as (keyof typeof INSTALL)[]).filter((k) => !env[k]).map((k) => INSTALL[k])
+}
+
+export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
 	const violations = checkConsistency(snapshot, s.artifacts)
 	const c = counts(join(outDir, "trace.jsonl"))
 	const v = snapshot.values
+	// With --no-hardware the tools are never used, so their absence is not news.
+	const missing = opts.noHardware ? [] : missingTools(env)
+	const status = settled ? "settled" : missing.length > 0 ? `UNSETTLED — missing tools: ${missing.map((m) => m.tool).join(", ")}` : "UNSETTLED"
+	const stubbed = opts.noHardware || [s.artifacts.board, s.artifacts.enclosure, s.artifacts.firmware].some(isStub)
 	const lines = [
 		`# Bringup report`,
 		``,
-		`Status: ${settled ? "settled" : "UNSETTLED"} at contract revision ${snapshot.revision}`,
+		`Status: ${status} at contract revision ${snapshot.revision}`,
 		`Violations: ${violations.length}`,
 		...violations.map((x) => `- ${x.kind}: ${x.message}`),
 		``,
+		...(missing.length > 0
+			? [
+					`## Missing tools`,
+					``,
+					`These builds could not run, so the design cannot settle on this machine. Install them (README, "Install"), or rerun with --no-hardware to stub the hardware:`,
+					``,
+					...missing.map((m) => `- ${m.tool}: \`${m.install}\``),
+					``,
+				]
+			: []),
+		...(stubbed ? [`Hardware stubbed (--no-hardware): board, enclosure and firmware were derived from the contract, not built.`, ``] : []),
 		`## Design`,
 		`- ${v.requirements?.summary ?? "?"}`,
 		`- Board ${v.outline?.widthMm}×${v.outline?.heightMm} mm; connectors: ${(v.connectors ?? []).map((x) => `${x.ref} ${x.kind} on ${x.edge}`).join(", ") || "none"}`,

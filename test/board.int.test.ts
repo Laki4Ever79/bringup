@@ -4,13 +4,14 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 import { test } from "node:test"
+import { fileURLToPath } from "node:url"
 import { circuitFromContract } from "../src/codegen/circuit.ts"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { netsFromCircuitJson } from "../src/tools/board-nets.ts"
 import { fixtureContract } from "./fixture.ts"
 
 const KICAD_IMAGE = "kicad/kicad:10.0"
-const PATH = [new URL("../tools/node/node_modules/.bin", import.meta.url).pathname, process.env.PATH].join(delimiter)
+const PATH = [fileURLToPath(new URL("../tools/node/node_modules/.bin", import.meta.url)), process.env.PATH].join(delimiter)
 const hasTsci = spawnSync("tsci", ["--version"], { env: { ...process.env, PATH } }).status === 0
 const hasKicad = spawnSync("docker", ["image", "inspect", KICAD_IMAGE], { stdio: "ignore" }).status === 0
 

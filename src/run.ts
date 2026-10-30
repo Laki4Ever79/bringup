@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { createHuman } from "@mozaik-ai/core"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
@@ -13,6 +14,7 @@ import { writeReport } from "./report.ts"
 import { watchRequests } from "./runner/requests.ts"
 import { APPROVAL_TIMEOUT_MS, BringupState, join as joinRuntime, sendMessage, startRuntime } from "./runtime.ts"
 import { detectEnvironment, type Env } from "./tools/env.ts"
+import { createStubBuilders } from "./tools/stubs.ts"
 
 export interface RunOptions {
 	brief: string
@@ -22,6 +24,8 @@ export interface RunOptions {
 	maxRevisions?: number
 	timeoutMs?: number
 	env?: Env
+	// Derive board, enclosure and firmware from the contract instead of running the hardware tools.
+	noHardware?: boolean
 }
 
 export interface RunResult {
@@ -32,7 +36,7 @@ export interface RunResult {
 	reportPath: string
 }
 
-export const ROOT = new URL("..", import.meta.url).pathname
+export const ROOT = fileURLToPath(new URL("..", import.meta.url))
 
 // Runs one design from a brief until the consistency participant reports design.settled.
 // Everything after sendMessage is event-driven; this function only waits for the outcome.
@@ -48,9 +52,8 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 
 	joinRuntime(createChangeDesk())
 	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, onSettled: resolveSettled }))
-	joinRuntime(createBoardBuilder(env))
-	joinRuntime(createEnclosureBuilder(env))
-	joinRuntime(createFirmwareBuilder(env))
+	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env)]
+	for (const b of builders) joinRuntime(b)
 	joinRuntime(createCritic(env))
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })
@@ -69,7 +72,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	])
 	requests.close()
 	writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
-	const reportPath = writeReport(opts.outDir, state, env, outcome.settled)
+	const reportPath = writeReport(opts.outDir, state, env, outcome.settled, { noHardware: opts.noHardware ?? false })
 	return {
 		settled: outcome.settled,
 		outDir: opts.outDir,
