@@ -106,6 +106,9 @@ phone hotspot. **Cable is the default on stage**, because:
 `py/bench.py` owns every port. `src/agents/bench.ts` owns the events and the measurement math.
 
 **Invocation.** `.venv/bin/python py/bench.py --source real|fake|replay [--replay FILE] [--out DIR] [--fake-speed X] [--no-meter]`
+- `--no-imu` (fake only) is an S3 with no MPU-6050: `s` lines carry ax=ay=az=0, tilt 0, `tC: null`, `tSrc: "none"`,
+  plus `{"k":"err","what":"imu","detail":"no ACK at 0x68"}` about once a second, as the firmware does. With
+  `--no-meter` it is the bare S3.
 - `--no-meter` (fake only) is a tier-1 bench: `hello.meter` is false, `ports.fixture` is null, no `i` lines, and
   `mode`/`recover`/`reset` ack `ok:false` "no fixture", exactly like a real bench without the Pico.
 - Long-lived; it exits on `quit` or when stdin closes.
