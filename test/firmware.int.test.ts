@@ -38,3 +38,32 @@ test("a pin on a non-existent GPIO fails the build instead of throwing", { skip,
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+function withStatusLed(gpio: number) {
+	const c = fixtureContract()
+	c.values.pins!.push({ signal: "STATUS_LED", gpio, partRef: "D1", partPin: "A" })
+	return c
+}
+
+test("a STATUS_LED pin builds and is reported back", { skip, timeout: 600_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	try {
+		const firmware = await buildFirmware(pio!, root, dir, withStatusLed(10), 6)
+		assert.equal(firmware.ok, true, firmware.log)
+		assert.equal(firmware.pins.STATUS_LED, 10)
+		assert.deepEqual(checkConsistency(withStatusLed(10), { firmware }), [])
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})
+
+test("a STATUS_LED on a non-existent GPIO fails the static_assert", { skip, timeout: 600_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	try {
+		const firmware = await buildFirmware(pio!, root, dir, withStatusLed(99), 7)
+		assert.equal(firmware.ok, false)
+		assert.match(firmware.log, /PIN_STATUS_LED is not a GPIO on this chip/)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})
