@@ -220,6 +220,6 @@ test("from above, paint order is case behind, posts, board, pads, parts, then th
 })
 
 test("from below the board's plane, paint order falls back to depth alone", () => {
-	const items = [{ kind: "slab", depth: 10, nz: 1 }, { kind: "part", depth: 50, nz: 0 }, { kind: "case", depth: 30, nz: 0 }]
+	const items = [{ kind: "slab", depth: 10, nz: 1, z: 2 }, { kind: "part", depth: 50, nz: 0, z: 3 }, { kind: "case", depth: 30, nz: 0, z: 7 }]
 	assert.deepEqual(paintOrder(items, { boardDepth: 30, boardZ: 5, above: false }).map((e: { depth: number }) => e.depth), [50, 30, 10])
 })
