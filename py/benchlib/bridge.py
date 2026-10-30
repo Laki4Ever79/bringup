@@ -145,9 +145,10 @@ class FakeBenchHal(FakeHal):
 
 
 class Bridge:
-    def __init__(self, source: str, out: Out, pio: str, fake_speed: float = 1.0, replay: str | None = None, work_dir: str | None = None, no_meter: bool = False):
+    def __init__(self, source: str, out: Out, pio: str, fake_speed: float = 1.0, replay: str | None = None, work_dir: str | None = None, no_meter: bool = False, no_imu: bool = False):
         self.source = source
         self.no_meter = no_meter  # fake only: a tier-1 bench, the S3 alone with no fixture or INA226
+        self.no_imu = no_imu  # fake only: no MPU-6050 on the S3's I2C
         # One persistent build dir for every flash, so pio rebuilds incrementally (bench.md §7).
         self.work_dir = work_dir or tempfile.mkdtemp(prefix="bench-fw-")
         self.out = out
@@ -194,11 +195,11 @@ class Bridge:
         self.threads.append((self._run_fake_dut, ()))
         if self.no_meter:
             # Nothing drives the DUT's EN, BOOT or mode pins: they stay at their pull-ups/pull-downs.
-            self.dut_box["dut"] = FakeDut({}, int(time.monotonic() * 1000))
+            self.dut_box["dut"] = FakeDut({}, int(time.monotonic() * 1000), imu=not self.no_imu)
             self.ports = {"dut": "fake:dut", "fixture": None, "telemetry": "fake:telemetry"}
             return
         pins = FakeBenchHal(self.dut_box, self.lock)
-        self.dut_box["dut"] = FakeDut(pins.pins, int(time.monotonic() * 1000))
+        self.dut_box["dut"] = FakeDut(pins.pins, int(time.monotonic() * 1000), imu=not self.no_imu)
         self.ports = {"dut": "fake:dut", "fixture": "fake:fixture", "telemetry": "fake:telemetry"}
         self._attach_fixture(MockTransport(pins))
 
