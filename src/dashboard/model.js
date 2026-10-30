@@ -205,7 +205,10 @@ export function checkPills(events) {
 			state: flashing ? "running" : !bench.verdict ? "pending" : bench.verdict.pass ? "ok" : "error",
 			count: failed.length,
 			revision: bench.verdict?.revision ?? bench.flash?.revision ?? null,
-			items: bench.verdict ? bench.verdict.checks.map((c) => `${c.pass ? "✓" : "✗"} ${c.name}: ${c.detail}`) : bench.meter ? [] : ["no meter: no fixture or INA226, so no measurement"],
+			items: [
+				...(bench.verdict ? bench.verdict.checks.map((c) => `${c.pass ? "✓" : "✗"} ${c.name}: ${c.detail}`) : []),
+				...(bench.meter ? [] : ["battery life: estimated only, no meter on this bench"]),
+			],
 		})
 	}
 	return pills
@@ -270,19 +273,22 @@ export class TelemetryBuffer {
 		this.windowMs = windowMs
 		this.current = []
 		this.tilt = []
+		this.led = []
 		this.lastImu = null
 	}
 	add(samples) {
 		for (const s of samples) {
 			if (typeof s.mA === "number") this.current.push({ at: s.at, mA: s.mA })
 			if (typeof s.tilt === "number") this.tilt.push({ at: s.at, tilt: s.tilt })
+			if (typeof s.led === "number") this.led.push({ at: s.at, led: s.led })
 			if (typeof s.ax === "number" && typeof s.ay === "number" && typeof s.az === "number") this.lastImu = { ax: s.ax, ay: s.ay, az: s.az, at: s.at }
 		}
-		const end = Math.max(this.current.at(-1)?.at ?? -Infinity, this.tilt.at(-1)?.at ?? -Infinity)
+		const end = Math.max(this.current.at(-1)?.at ?? -Infinity, this.tilt.at(-1)?.at ?? -Infinity, this.led.at(-1)?.at ?? -Infinity)
 		const from = end - this.windowMs
 		const keep = (xs) => (xs.length && xs[0].at < from ? xs.filter((x) => x.at >= from) : xs)
 		this.current = keep(this.current)
 		this.tilt = keep(this.tilt)
+		this.led = keep(this.led)
 	}
 }
 

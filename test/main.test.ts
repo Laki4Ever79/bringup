@@ -79,3 +79,9 @@ test("parseArgs reads --bench with an optional source, and --bench-replay", () =
 	assert.deepEqual([replay.bench, replay.benchReplay], ["replay", "/rec.jsonl"])
 	assert.ok("error" in parseArgs([brief, "--bench-replay"]))
 })
+
+test("parseArgs reads --bench-no-meter, which only means something to the fake bench", () => {
+	const brief = new URL("../briefs/logger.md", import.meta.url).pathname
+	assert.equal((parseArgs([brief, "--bench", "fake", "--bench-no-meter"]) as { benchNoMeter?: boolean }).benchNoMeter, true)
+	assert.equal((parseArgs([brief, "--bench", "fake"]) as { benchNoMeter?: boolean }).benchNoMeter, undefined)
+})

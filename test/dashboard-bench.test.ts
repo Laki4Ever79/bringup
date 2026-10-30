@@ -104,3 +104,20 @@ test("tilt rotates the scene about its centre: identity when level, roll turns +
 	const aroundCentre = applyTilt(tiltMatrix(0, Math.PI / 2), [10, 1, 0], [10, 0, 0])
 	assert.ok(Math.abs(aroundCentre[0] - 10) < 1e-9 && Math.abs(aroundCentre[2] - 1) < 1e-9)
 })
+
+test("the telemetry buffer keeps the LED's state, for the no-meter chart", () => {
+	const b = new TelemetryBuffer(30_000)
+	b.add([{ at: 1000, tilt: 5, led: 0, ax: 0, ay: 0, az: 1 }, { at: 1050, tilt: 6, led: 1, ax: 0, ay: 0, az: 1 }])
+	assert.deepEqual(b.led, [{ at: 1000, led: 0 }, { at: 1050, led: 1 }])
+	b.add([{ at: 40_000, tilt: 7, led: 0 }])
+	assert.deepEqual(b.led.map((s: any) => s.at), [40_000])
+})
+
+test("without a meter the Bench pill says battery life is estimated only, and that is not a failure", () => {
+	const v = ev("bench.verdict", { revision: 9, pass: true, source: "real", checks: checks().filter((c) => c.name !== "battery") })
+	const pill = checkPills([connected("real", false), v]).find((p: any) => p.key === "bench")
+	assert.equal(pill.state, "ok")
+	assert.ok(pill.items.includes("battery life: estimated only, no meter on this bench"))
+	const metered = checkPills([connected("real", true), v]).find((p: any) => p.key === "bench")
+	assert.ok(!metered.items.some((x: string) => x.includes("no meter")))
+})

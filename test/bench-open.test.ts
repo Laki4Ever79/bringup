@@ -55,3 +55,9 @@ test("replay without a recording is an error, not a silent fake", async () => {
 	const f = fakeStart({})
 	await assert.rejects(openBench({ root: tempDir(), source: "replay", outDir: "/out/r", start: f.start, log: () => {} }), /recording/)
 })
+
+test("extra bridge args (the fake's --no-meter) are passed through", async () => {
+	const f = fakeStart({ fake: null })
+	await openBench({ root: tempDir(), source: "fake", outDir: "/out/r", start: f.start, log: () => {}, extraArgs: ["--no-meter"] })
+	assert.deepEqual(f.started[0].slice(-1), ["--no-meter"])
+})
