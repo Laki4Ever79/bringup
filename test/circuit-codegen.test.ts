@@ -308,3 +308,16 @@ test("a 3-pin LDO without EN: VIN on the battery, VOUT on 3V3, GND on GND", () =
 	const boxes = placeParts(s)
 	assertSpaced(boxes, s.values.outline!.widthMm, s.values.outline!.heightMm)
 })
+
+test("generatedNets lists the power and USB nets the generator wires, as REF.pin ends", async () => {
+	const { generatedNets } = await import("../src/codegen/circuit.ts")
+	const nets = generatedNets(loggerContract())
+	assert.deepEqual(nets.get("USB_DP")?.sort(), ["J1.pin10", "J1.pin12", "U1.GPIO19"])
+	assert.deepEqual(nets.get("USB_DN")?.sort(), ["J1.pin11", "J1.pin9", "U1.GPIO18"])
+	assert.ok(nets.get("VBAT")!.includes("U4.BAT") && nets.get("VBAT")!.includes("U3.VIN"))
+	assert.ok(nets.get("GND")!.includes("R2.pin2"), "CC1 resistor's GND end")
+	assert.ok(!nets.has("VBUS") || nets.get("VBUS")!.includes("U4.VCC"))
+	// The generator emits exactly these nets.
+	const src = circuitFromContract(loggerContract())
+	for (const [net, ends] of nets) for (const end of ends) onNet(src, `.${end.replace(".", " > .")}`, net)
+})
