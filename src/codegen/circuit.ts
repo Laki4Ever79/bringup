@@ -131,6 +131,11 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const GND = { net: "GND" }
 
 	if (led) jobs.push({ job: `LED ${led.ref} cathode (${led.ref}.K)`, spec: SUPPORT.led, a: { ref: led.ref, pin: "K" }, b: GND, near: led.ref })
+	// A charge LED lights while the charger's open-drain CHRG pulls low, powered from VBUS, so it shows charging even
+	// with the MCU asleep and never drains the cell.
+	const chargeLed = parts.find((p) => p.role === "charge-led" && p.pins.includes("K"))
+	if (chargeLed && charger?.pins.includes("CHRG"))
+		jobs.push({ job: `charge LED ${chargeLed.ref} cathode (${chargeLed.ref}.K) to charger CHRG`, spec: SUPPORT.led, a: { ref: chargeLed.ref, pin: "K" }, b: { ref: charger.ref, pin: "CHRG" }, near: chargeLed.ref })
 	// A USB-C sink needs 5.1k pull-downs on CC1 and CC2, or a C-to-C charger supplies no VBUS.
 	if (usb) for (const cc of ["CC1", "CC2"] as const) jobs.push({ job: `USB-C ${cc} (${usb}.${USBC_PADS[cc][0]})`, spec: SUPPORT.cc, a: { ref: usb, pin: USBC_PADS[cc][0] }, b: GND, near: usb })
 	if (charger?.pins.includes("PROG")) jobs.push({ job: `charger PROG (${charger.ref}.PROG), sets the charge current`, spec: SUPPORT.prog, a: { ref: charger.ref, pin: "PROG" }, b: GND, near: charger.ref })
@@ -343,6 +348,7 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 	const usbV = usb?.offsetMm ?? span / 2
 	const ledSide = usbV + 9 <= span - 3 ? 1 : -1
 	put(byRole("led"), frame(2, usbV + ledSide * 9))
+	put(byRole("charge-led"), frame(2, usbV + ledSide * 13))
 	put(byRole("battery"), frame(4, usbV - ledSide * 10))
 	put(byRole("charger"), frame(11, usbV - ledSide * 7))
 	put(byRole("button"), frame(depth - 4, mcuV < span / 2 ? 4 : span - 4))
@@ -401,6 +407,8 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		for (const pin of ["VIN", "EN"]) if (ldo.pins.includes(pin)) join(ldoIn, ldo.ref, pin)
 	}
 	if (charger) {
+		const chargeLed = parts.find((p) => p.role === "charge-led" && p.pins.includes("A"))
+		if (chargeLed && charger.pins.includes("CHRG")) join("VBUS", chargeLed.ref, "A")
 		if (charger.pins.includes("VCC")) join("VBUS", charger.ref, "VCC")
 		if (charger.pins.includes("BAT")) join("VBAT", charger.ref, "BAT")
 		if (battery?.pins.includes("VBAT")) join("VBAT", battery.ref, "VBAT")
