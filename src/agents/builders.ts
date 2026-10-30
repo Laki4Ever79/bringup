@@ -99,7 +99,6 @@ export function createBoardBuilder(env: Env): Human {
 			const board = await buildBoard(env, dir, snapshot, revision)
 			// Stable path for the dashboard: the latest render is always at <out>/board/board.png.
 			if (board.renderPath) copyFileSync(board.renderPath, join(state().outDir, "board", "board.png"))
-			if (existsSync(join(dir, "dist/board/circuit.json"))) copyFileSync(join(dir, "dist/board/circuit.json"), join(state().outDir, "board", "circuit.json"))
 			// The fab package is best-effort: a failed export is recorded on the artifact, not a failed build.
 			// The latest one is also copied to <out>/fab.
 			try {
@@ -111,6 +110,7 @@ export function createBoardBuilder(env: Env): Human {
 			} catch (error) {
 				board.fabError = error instanceof Error ? error.message : String(error)
 			}
+			if (existsSync(join(dir, "dist/board/circuit.json"))) copyFileSync(join(dir, "dist/board/circuit.json"), join(state().outDir, "board", "circuit.json"))
 			return board
 		},
 	})

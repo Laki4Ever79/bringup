@@ -1,5 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -9,9 +10,12 @@ import { buildFirmware } from "../src/tools/firmware.ts"
 import { fixtureContract } from "./fixture.ts"
 
 const root = resolve(import.meta.dirname, "..")
-const toolsRoot = existsSync(join(root, "tools/qemu/bin/qemu-system-riscv32")) ? root : undefined
+const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
+const toolsRoot = existsSync(qemu) ? root : undefined
+// Installed is not enough: a prebuilt QEMU can lack shared libraries (e.g. libslirp) on this machine.
+const qemuRuns = toolsRoot !== undefined && spawnSync(qemu, ["--version"], { stdio: "ignore", env: { ...process.env, LD_LIBRARY_PATH: join(root, "tools/qemu/lib") } }).status === 0
 const pio = [join(root, ".venv/bin/pio")].find(existsSync)
-const skip = !toolsRoot ? "tools/qemu not installed" : !pio ? "pio not found" : false
+const skip = !toolsRoot ? "tools/qemu not installed" : !qemuRuns ? "tools/qemu is installed but does not start (missing shared libraries?)" : !pio ? "pio not found" : false
 
 test("fixture firmware boots in QEMU and reports the contract revision", { skip, timeout: 600_000 }, async () => {
 	const dir = await mkdtemp(join(tmpdir(), "bringup-emu-"))

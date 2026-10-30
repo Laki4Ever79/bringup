@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { qemuEnv } from "./env.ts"
 
 // Boots a buildFirmware output in Espressif's QEMU fork (machine esp32c3) and captures its serial port.
 // Wokwi CLI is the other backend (it can also fake the SHT40), but it needs a WOKWI_CLI_TOKEN we don't have.
@@ -27,11 +28,11 @@ function bootApp0Path(): string {
 	return join(core, "packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin")
 }
 
-function run(cmd: string, args: string[], timeoutMs: number, until?: RegExp): Promise<{ code: number | null; output: string }> {
+function run(cmd: string, args: string[], timeoutMs: number, until?: RegExp, env?: NodeJS.ProcessEnv): Promise<{ code: number | null; output: string }> {
 	return new Promise((resolve) => {
 		let output = ""
 		let done = false
-		const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] })
+		const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: env ?? process.env })
 		const finish = (code: number | null) => {
 			if (done) return
 			done = true
@@ -74,13 +75,13 @@ export async function bootFirmware(root: string, fwDir: string, timeoutMs = 1500
 	const { image, log } = await mergeFlash(fwDir)
 	if (!image) return { booted: false, serial: log, revision: null, backend: "qemu" }
 	const args = [
-		"-display", "none", "-machine", "esp32c3", "-icount", "3",
+		// -nographic, not "-display none -serial stdio": with the latter the ESP32-C3's UART0 never reaches stdout.
+		"-nographic", "-machine", "esp32c3", "-icount", "3",
 		"-drive", `file=${image},if=mtd,format=raw`,
 		"-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true",
-		"-serial", "stdio", "-monitor", "none",
 	]
 	// Stop at the first sensor line: by then the boot banner and setup() have run.
-	const { output } = await run(qemu, args, timeoutMs, /SENSOR (OK|FAIL)/)
+	const { output } = await run(qemu, args, timeoutMs, /SENSOR (OK|FAIL)/, { ...process.env, ...qemuEnv(root) })
 	const m = output.match(/bringup rev (\d+)/)
 	return { booted: m !== null, serial: output, revision: m ? Number(m[1]) : null, backend: "qemu" }
 }
