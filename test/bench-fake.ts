@@ -19,7 +19,8 @@ export class FakeBridge implements Bridge {
 			bootRev?: number
 			flash?: (cmd: { dir: string }) => BridgeAck
 			duty?: { floorMa: number; awakeMa: number; awakeMs: number; periodMs: number; cycles: number }
-			imu?: boolean
+			// false: a bare S3 (firmware 4bee4a8), "s" lines with zero accel plus an imu err line. "stops": answers, then not.
+			imu?: boolean | "stops"
 			// Replay: the recorded rev, kept whatever was flashed.
 			recordedRev?: number
 		} = {},
@@ -62,8 +63,12 @@ export class FakeBridge implements Bridge {
 	private boot(mode: string): void {
 		this.emit({ k: "boot", rev: this.rev, reset: "poweron", mode })
 		for (let n = 0; n < 6; n++) {
-			if (this.opts.imu === false) this.emit({ k: "err", rev: this.rev, what: "imu", detail: "no ACK at 0x68" })
-			else this.emit({ k: "s", rev: this.rev, ms: n * 50, ax: 0.2, ay: 0, az: 0.98, tilt: 12, tC: 24.6, led: n % 2 })
+			const answers = this.opts.imu === undefined || this.opts.imu === true || (this.opts.imu === "stops" && n < 3)
+			if (answers) this.emit({ k: "s", rev: this.rev, ms: n * 50, ax: 0.2, ay: 0, az: 0.98, tilt: 12, tC: 24.6, led: n % 2 })
+			else {
+				this.emit({ k: "err", rev: this.rev, what: "imu", detail: "no ACK at 0x68" })
+				this.emit({ k: "s", rev: this.rev, ms: n * 50, ax: 0, ay: 0, az: 0, tilt: 0, tC: 0, led: n % 2 })
+			}
 		}
 	}
 

@@ -165,12 +165,18 @@ export function createBench(opts: BenchOptions): Bench {
 		return { ok: true, simulated, bootDetail: simulated ? `replay: recorded rev ${booted.rev}` : `booted rev ${revision}`, lines }
 	}
 
+	// An IMU line has gravity in it (about 1 g); a board without the MPU-6050 sends zeros.
+	const hasGravity = (l: BridgeLine) => l.k === "s" && typeof l.ax === "number" && typeof l.ay === "number" && typeof l.az === "number" && Math.hypot(l.ax, l.ay as number, l.az as number) > 0.3
 	const liveChecks = (lines: BridgeLine[]): BenchCheck[] => {
 		const imuErr = lines.find((l) => l.k === "err" && l.what === "imu")
-		const imuOk = !imuErr && lines.some((l) => l.k === "s" && typeof l.ax === "number" && typeof l.az === "number")
+		const answered = lines.some(hasGravity)
+		const imuOk = !imuErr && answered
 		const leds = new Set(lines.filter((l) => l.k === "s" && typeof l.led === "number").map((l) => l.led))
 		return [
-			{ name: "imu", pass: imuOk, detail: imuOk ? "the MPU-6050 answers" : imuErr ? `IMU: ${imuErr.detail ?? "error"}` : "no IMU readings" },
+			// Never answered: not fitted (a bare S3), neutral. Answered, then errors: broken wiring, a failure.
+			!answered
+				? { name: "imu", pass: true, skipped: true, detail: `not fitted (${imuErr ? String(imuErr.detail ?? "no answer") : "no IMU readings"})` }
+				: { name: "imu", pass: imuOk, detail: imuOk ? "the MPU-6050 answers" : `stopped answering: ${imuErr!.detail ?? "error"}` },
 			{ name: "led", pass: leds.has(0) && leds.has(1), detail: leds.has(0) && leds.has(1) ? "STATUS_LED toggles" : "the LED did not toggle" },
 		]
 	}

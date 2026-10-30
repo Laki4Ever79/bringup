@@ -17,6 +17,7 @@ export class TelemetryBuffer {
 	tilt: { at: number; tilt: number }[]
 	led: { at: number; led: number }[]
 	lastImu: { ax: number; ay: number; az: number; at: number } | null
+	imu: boolean | null
 	add(samples: any[]): void
 }
 export function safeUrl(url: unknown): string | null
