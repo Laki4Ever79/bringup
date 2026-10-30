@@ -43,6 +43,8 @@ contract**, and a change in one domain wakes exactly the agents it affects.
                                          ▼
                          consistency (plain code, no LLM)
                     consistency.checked ──▶ wakes the affected agents
+                    design.ready        ──▶ brief reviewer (LLM, fresh context)
+                    review.completed    ──▶ fail: findings to the field owners
                     design.settled      ──▶ report.md
 ```
 
@@ -62,12 +64,30 @@ once, exactly one applies and the other gets `stale` and re-reads.
 | `change.decided` | The owner approved or rejected it |
 | `artifact.ready` / `artifact.failed` | A board, enclosure or firmware build finished for a revision |
 | `consistency.checked` | Cross-domain check result, with each violation's `affects` roles |
-| `design.settled` | Every artifact is built against the latest revision with no violations |
+| `grounding.checked` | Part pins and pin assignments checked against the catalog and KiCad symbols |
+| `design.ready` | The design is consistent and quiet; the brief reviewer judges it before it settles |
+| `review.completed` | The reviewer's verdict (`pass`/`fail`) with findings, each naming the contract fields it concerns |
+| `design.settled` | Every artifact is built against the latest revision with no violations, and the review is done |
 | `agent.halted` | An agent loop crashed (Mozaik #114 workaround) |
 
 **Cross-domain checks** (`src/contract/consistency.ts`): `outline-mismatch`, `net-missing`, `pin-mismatch`,
 `cutout-missing`, `cutout-misaligned`, `rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
 were actually built. For example, the firmware's pins are parsed back out of the `pins.h` it compiled.
+
+### Three checks
+
+| Check | What it compares | What it catches | How |
+|---|---|---|---|
+| **Consistency** (`src/contract/consistency.ts`) | The built artifacts against the contract | A board whose nets miss a pin assignment, a case cutout that misses the USB-C port, firmware built for another pin map, an overloaded rail | Plain code, after every build |
+| **Grounding** (`src/agents/grounding-check.ts`) | The contract against the parts catalog and KiCad 10's symbol library | Invented pinouts: a pin a part does not have, a GPIO the MCU lacks, a part no source knows | Plain code, after every parts or pins change |
+| **Brief reviewer** (`src/agents/reviewer.ts`) | The final design against the brief | A must-have the design does not meet, battery-life arithmetic that does not add up, a part choice that undermines the goal (for example an LDO's quiescent current against a 6-month target) | An LLM in a fresh context. It sees only the brief, the contract and the check results, never the agents' turns. |
+
+The first two keep the design self-consistent and real. Neither asks whether it is the *right* design, so the
+reviewer is the final gate. When the design is consistent and quiet, the consistency participant emits
+`design.ready` instead of settling. The reviewer answers with `review.completed`. A pass settles. A fail sends each
+finding to the owner of the fields it names and re-reviews the changed design. After one fix round (`maxReviewRounds`)
+the run settles anyway, with the findings in `report.md`, and it is unsettled only if a blocker remains. `--no-review`
+turns the gate off.
 
 ## How it uses Mozaik
 
@@ -118,6 +138,9 @@ message, not a crash.
 # Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. Settles in a few seconds.
 npm run bringup -- briefs/logger.md --mock --no-hardware
 
+# Skip the brief reviewer gate (the consistency and grounding checks still run)
+npm run bringup -- briefs/logger.md --mock --no-review
+
 # No API key needed: scripted models, real tools (about 30 s once the tools are installed)
 npm run bringup -- briefs/logger.md --mock
 
@@ -142,7 +165,7 @@ Each run writes everything under `out/<runId>/`:
 | `board/` | tscircuit source, KiCad project, DRC result |
 | `enclosure/` | Case STEP and STL |
 | `firmware/` | PlatformIO project with the generated `include/pins.h` |
-| `report.md` | Settled or not, violations, changes proposed, held, approved and rejected |
+| `report.md` | Settled or not, violations, the brief review verdict and findings, changes proposed, held, approved and rejected |
 | `trace.jsonl` | Every event in delivery order |
 
 Exit codes: 0 when settled with no violations, 2 when unsettled (including when a hardware tool is missing), and 1 on

@@ -12,7 +12,7 @@ import type { Artifacts } from "./contract/consistency.ts"
 import { DesignContract } from "./contract/contract.ts"
 import type { GroundingFinding } from "./contract/grounding.ts"
 import type { AgentRole, FieldName } from "./contract/types.ts"
-import { makeEvent } from "./events.ts"
+import { makeEvent, type ReviewFinding, type ReviewVerdict } from "./events.ts"
 import { Outbox } from "./outbox.ts"
 
 export const APPROVAL_TIMEOUT_MS = 120_000
@@ -31,6 +31,14 @@ export class BringupState extends RuntimeState {
 	readonly artifactFailures: Partial<Record<"board" | "enclosure" | "firmware", string>> = {}
 	// The grounding check's latest findings: part pins and pin assignments that no datasheet source backs.
 	groundingFindings: GroundingFinding[] = []
+	// The brief review gate (set up by runDesign). round counts reviews started; results holds each verdict.
+	review: {
+		enabled: boolean
+		maxRounds: number
+		round: number
+		results: { revision: number; round: number; verdict: ReviewVerdict; findings: ReviewFinding[] }[]
+		missingVerdict: boolean
+	} = { enabled: false, maxRounds: 1, round: 0, results: [], missingVerdict: false }
 
 	constructor(
 		readonly outDir: string,
