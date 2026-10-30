@@ -2,7 +2,9 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
 import { BUILD_INPUTS, BUILD_REQUIRES, createBuilder } from "../agents/builders.ts"
+import { mountingHoles } from "../codegen/circuit.ts"
 import { behaviorHeader, pinsHeader } from "../codegen/firmware.ts"
+import { STANDOFF } from "./enclosure.ts"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
@@ -20,12 +22,19 @@ function note(dir: string, kind: string): string {
 	return path
 }
 
+// The mounting holes the board codegen would drill, in the contract frame.
+function holesOf(s: ContractSnapshot): { xMm: number; yMm: number; diameterMm: number }[] {
+	const { outline } = s.values
+	if (!outline) return []
+	return mountingHoles(s).map((h) => ({ xMm: h.x + outline.widthMm / 2, yMm: h.y + outline.heightMm / 2, diameterMm: h.diameterMm }))
+}
+
 export function stubBoard(s: ContractSnapshot, revision: number, dir: string): Stub<BoardArtifact> {
 	const { outline, parts, pins } = s.values
 	const mcu = parts?.find((p) => p.role === "mcu")?.ref ?? "U1"
 	const nets: Record<string, string[]> = {}
 	for (const p of pins ?? []) nets[p.signal] = [`${mcu}.GPIO${p.gpio}`, `${p.partRef}.${p.partPin}`]
-	return { revision, dir, pcbPath: note(dir, "board"), stepPath: null, renderPath: null, widthMm: outline?.widthMm ?? 0, heightMm: outline?.heightMm ?? 0, nets, stub: true }
+	return { revision, dir, pcbPath: note(dir, "board"), stepPath: null, renderPath: null, widthMm: outline?.widthMm ?? 0, heightMm: outline?.heightMm ?? 0, nets, holes: holesOf(s), stub: true }
 }
 
 export function stubEnclosure(s: ContractSnapshot, revision: number, dir: string): Stub<EnclosureArtifact> {
@@ -37,7 +46,8 @@ export function stubEnclosure(s: ContractSnapshot, revision: number, dir: string
 		widthMm: c.widthMm + 2 * SLOT_MARGIN_MM,
 		heightMm: c.heightMm + 2 * SLOT_MARGIN_MM,
 	}))
-	return { revision, stlPath: path, stepPath: path, cutouts, stub: true }
+	const standoffs = holesOf(s).map((h) => ({ xMm: h.xMm, yMm: h.yMm, holeMm: STANDOFF.pilotMm }))
+	return { revision, stlPath: path, stepPath: path, cutouts, standoffs, stub: true }
 }
 
 export function stubFirmware(s: ContractSnapshot, revision: number, dir: string): Stub<FirmwareArtifact> {

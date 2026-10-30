@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { boardParts, circuitFromContract, placeParts, type Placed } from "../src/codegen/circuit.ts"
+import { boardParts, circuitFromContract, MOUNTING_HOLE, mountingHoles, placeParts, type Placed } from "../src/codegen/circuit.ts"
 import { LOGGER_DESIGN } from "../src/inference/scripts.ts"
 import { fixtureContract } from "./fixture.ts"
 
@@ -339,4 +339,34 @@ test("a charge LED with no charger to drive it is left unwired", () => {
 	s.values.parts!.push({ ref: "D2", role: "charge-led", mpn: "KT-0603R", lcsc: "C2286", footprint: "0603", pins: ["A", "K"] })
 	const src = circuitFromContract(s)
 	assert.doesNotMatch(src, /\.D2 > \./)
+})
+
+test("mounting holes: four M2 holes, 3 mm in from each corner", () => {
+	const holes = mountingHoles(fixtureContract())
+	assert.deepEqual(holes.map((h) => [h.ref, h.x, h.y, h.diameterMm]), [
+		["H1", -22, -12, 2.2],
+		["H2", 22, -12, 2.2],
+		["H3", -22, 12, 2.2],
+		["H4", 22, 12, 2.2],
+	])
+})
+
+test("mounting holes are drilled on the board and no part sits on their keep-out", () => {
+	for (const s of [fixtureContract(), withLdo(), busyContract()]) {
+		const src = circuitFromContract(s)
+		const holes = mountingHoles(s)
+		for (const h of holes) assert.ok(src.includes(`<hole pcbX={${h.x}} pcbY={${h.y}} diameter="2.2mm" />`), `${h.ref} not in the board source`)
+		for (const b of placeParts(s)) {
+			for (const h of holes) {
+				const gap = Math.max(Math.abs(b.x - h.x) - (b.w + MOUNTING_HOLE.keepoutMm) / 2, Math.abs(b.y - h.y) - (b.h + MOUNTING_HOLE.keepoutMm) / 2)
+				assert.ok(gap >= 0, `${b.ref} overlaps ${h.ref}'s keep-out by ${-gap} mm`)
+			}
+		}
+	}
+})
+
+test("a connector in a corner drops that corner's hole instead of overlapping it", () => {
+	const s = fixtureContract()
+	s.values.connectors = [{ ref: "J1", kind: "usb-c", edge: "bottom", offsetMm: 6, widthMm: 9, heightMm: 3.5 }]
+	assert.deepEqual(mountingHoles(s).map((h) => h.ref), ["H2", "H3", "H4"])
 })

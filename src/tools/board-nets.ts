@@ -27,3 +27,13 @@ export function netsFromCircuitJson(elements: any[]): Record<string, string[]> {
 	}
 	return nets
 }
+
+// Board-level drilled holes (the mounting holes) from tscircuit's circuit.json, moved from its board-centred frame to the contract's frame (from the
+// board's bottom-left corner), the frame the enclosure places its standoffs in.
+export function holesFromCircuitJson(elements: any[]): { xMm: number; yMm: number; diameterMm: number }[] {
+	const board = elements.find((e) => e.type === "pcb_board")
+	const [w, h] = [board?.width ?? 0, board?.height ?? 0]
+	return elements
+		.filter((e) => e.type === "pcb_hole" && !e.pcb_component_id) // footprint holes (USB-C pegs) belong to their part
+		.map((e) => ({ xMm: +(e.x + w / 2).toFixed(3), yMm: +(e.y + h / 2).toFixed(3), diameterMm: e.hole_diameter ?? 0 }))
+}

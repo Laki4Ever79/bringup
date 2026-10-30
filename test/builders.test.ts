@@ -2,6 +2,8 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { BringupState, emit, join, startRuntime } from "../src/runtime.ts"
 import { createBuilder } from "../src/agents/builders.ts"
+import { checkConsistency } from "../src/contract/consistency.ts"
+import { stubBoard, stubEnclosure } from "../src/tools/stubs.ts"
 import { createChangeDesk } from "../src/change-control.ts"
 import { makeEvent } from "../src/events.ts"
 import { fixtureArtifacts, fixtureContract } from "./fixture.ts"
@@ -159,4 +161,14 @@ test("a board build's KiCad DRC summary rides on its artifact.ready, for the das
 	emit(makeEvent("contract.changed", desk.getId(), { field: "outline", version: r.version, revision: r.revision, by: "architect" }), desk.getId())
 	await waitFor(() => events.some((e) => e.type === "artifact.ready"))
 	assert.deepEqual(events.find((e) => e.type === "artifact.ready")!.payload, { kind: "board", revision: 1, drc })
+})
+
+test("stubs report the board's mounting holes and the case's standoffs from the same contract", () => {
+	const s = fixtureContract()
+	const dir = tempDir()
+	const board = stubBoard(s, 1, dir)
+	const enclosure = stubEnclosure(s, 1, dir)
+	assert.equal(board.holes!.length, 4)
+	assert.deepEqual(enclosure.standoffs!.map((p) => [p.xMm, p.yMm]), board.holes!.map((h) => [h.xMm, h.yMm]))
+	assert.deepEqual(checkConsistency(s, { board, enclosure }).filter((v) => v.kind === "standoff-mismatch"), [])
 })

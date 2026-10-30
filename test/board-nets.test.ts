@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { test } from "node:test"
-import { netsFromCircuitJson } from "../src/tools/board-nets.ts"
+import { holesFromCircuitJson, netsFromCircuitJson } from "../src/tools/board-nets.ts"
 
 // Built by tsci from circuitFromContract(fixtureContract()).
 const elements = JSON.parse(readFileSync(new URL("./data/fixture.circuit.json", import.meta.url), "utf8"))
@@ -15,4 +15,15 @@ test("nets map signal names to REF.pinLabel ends", () => {
 test("a net with no traces is listed empty", () => {
 	const nets = netsFromCircuitJson([{ type: "source_net", source_net_id: "n0", name: "SPARE" }])
 	assert.deepEqual(nets, { SPARE: [] })
+})
+
+test("holes come back in the contract frame: from the board's bottom-left corner", () => {
+	const holes = holesFromCircuitJson([
+		{ type: "pcb_board", width: 50, height: 30 },
+		{ type: "pcb_hole", hole_shape: "circle", hole_diameter: 2.2, x: -22, y: -12 },
+		{ type: "pcb_hole", hole_shape: "circle", hole_diameter: 2.2, x: 22, y: 12 },
+		// A footprint's own hole (the USB-C locating pegs) is not a mounting hole.
+		{ type: "pcb_hole", hole_shape: "circle", hole_diameter: 0.7, x: -17.9, y: 2.9, pcb_component_id: "pcb_component_3" },
+	])
+	assert.deepEqual(holes, [{ xMm: 3, yMm: 3, diameterMm: 2.2 }, { xMm: 47, yMm: 27, diameterMm: 2.2 }])
 })
