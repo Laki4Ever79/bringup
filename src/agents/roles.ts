@@ -1,5 +1,5 @@
 import type { Agent, SituationHandler, Tool } from "@mozaik-ai/core"
-import { isEvent, type ReviewFinding } from "../events.ts"
+import { isEvent, type ArtifactKind, type ReviewFinding } from "../events.ts"
 import { OWNERS, type AgentRole } from "../contract/types.ts"
 import { ownerReviewsChanges, when } from "../change-control.ts"
 import { state } from "../runtime.ts"
@@ -12,6 +12,28 @@ import type { GroundingFinding } from "../contract/grounding.ts"
 function groundingFor(findings: GroundingFinding[], pinAssignments: boolean): GroundingFinding[] {
 	const s = state().contract.snapshot()
 	return findings.filter((f) => isPinAssignmentFinding(f, s) === pinAssignments)
+}
+
+export const BUILD_FAILED_PREFIX = "Build failed:"
+
+// Wakes an agent when an artifact it can fix fails to build. The error is already cut down to the real cause
+// (tools/board.ts buildErrors). Each failure (kind and revision) wakes the agent once.
+function onBuildFailed(kinds: ArtifactKind[], owns: string): SituationHandler {
+	return {
+		specification: when(({ event }) => isEvent(event, "artifact.failed") && kinds.includes(event.payload.kind)),
+		processor: {
+			apply: ({ event, participant }) => {
+				if (!isEvent(event, "artifact.failed")) return
+				const { kind, revision, error } = event.payload
+				requestTurn(
+					participant as Agent,
+					`build-failed@${kind}@${revision}`,
+					`${BUILD_FAILED_PREFIX} the ${kind} build failed at revision ${revision}:\n${error}\n` +
+						`If the failure comes from a contract field you own (${owns}), for example an unknown footprint, a missing part or a pin on a part that doesn't exist, fix it with propose_contract_change. Otherwise change nothing.`,
+				)
+			},
+		},
+	}
 }
 
 const listFindings = (findings: GroundingFinding[]) => findings.map((f) => `- ${f.kind} on ${f.partRef} (${f.source}): ${f.detail}`).join("\n")
@@ -75,6 +97,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 				},
 			},
 			ownerReviewsChanges("architect"),
+			onBuildFailed(["board"], "outline, connectors, rails, pins"),
 			ownerFixesReview("architect"),
 			{
 				specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some((v) => v.affects.includes("architect"))),
@@ -121,6 +144,7 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 		handlers: [
 			ownerFixesReview("parts"),
 			ownerReviewsChanges("parts"),
+			onBuildFailed(["board", "firmware"], "parts"),
 			{
 				specification: when(({ event }) => isEvent(event, "contract.changed") && (event.payload.field === "requirements" || event.payload.field === "rails")),
 				processor: {
