@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { createAgent, DeveloperMessageItem, ModelContext, type Agent, type Tool } from "@mozaik-ai/core"
 import { checkConsistency } from "../contract/consistency.ts"
+import { estimatePower, powerBudgetLines } from "../contract/power.ts"
 import { FIELDS, type ContractSnapshot } from "../contract/types.ts"
 import { isEvent, makeEvent, type ReviewFinding } from "../events.ts"
 import { modelFor } from "../inference/models.ts"
@@ -16,7 +17,7 @@ export const MAX_REVIEW_ROUNDS = 1
 const INSTRUCTION = `You are a demanding hardware design reviewer. Judge the design ONLY against the product brief: does the design contract meet every requirement the brief states, and does any choice clearly undermine one?
 You see the brief, the final design contract and the results of the deterministic checks (builds, consistency, pin grounding, power simulation). You do not see how the design was made, and you do not need to.
 - Check each "must have" in the brief against the contract: present, and plausibly met.
-- Battery life: do the arithmetic and show the numbers (capacity in mAh, average current in µA or mA, including regulator quiescent current and the duty cycle the brief implies, then days).
+- Battery life: start from the power budget computed in code (peak vs average current, regulator quiescent current, capacity, days). Rail loadMa is the PEAK, not a continuous draw. Judge whether the stated average and duty cycle are plausible for the parts and the brief, and show your numbers where you disagree. If no average is stated, say what is missing.
 - Severity: blocker = a must-have cannot be met as designed; major = a requirement is at risk or a choice clearly works against it; minor = worth improving but the brief is met.
 - No style nitpicks and no requests outside the brief's scope.
 - Verdict "fail" only when a brief requirement is not met or a choice clearly undermines it; otherwise "pass" (minor findings are fine with a pass).
@@ -75,7 +76,9 @@ export async function reviewMessage(env: Env | undefined, revision: number, roun
 		lines(violations, (v) => `${v.kind}: ${v.message}`, "- none"),
 		"Grounding findings (part pins against the catalog and KiCad symbols):",
 		lines(s.groundingFindings, (f) => `${f.kind} on ${f.partRef}: ${f.detail}`, "- none"),
-		"Power:",
+		"Power budget (computed in code from the contract and the brief, not by a model):",
+		...powerBudgetLines(estimatePower(snapshot, brief)),
+		"Power path simulation:",
 		power,
 	].join("\n")
 }

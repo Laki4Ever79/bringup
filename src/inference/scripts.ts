@@ -5,10 +5,17 @@ import { toolCall, type Script } from "./scripted-runner.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
 export const LOGGER_DESIGN: Omit<ContractValues, "parts"> & { parts: ContractValues["parts"] } = {
-	requirements: { summary: "BLE temperature and humidity logger", peripherals: ["i2c-sensor", "usb-c", "status-led"], batteryLifeDays: 180 },
+	// ESP32-C3 deep sleep about 10 µA; every 5 min it wakes for a 30 ms reading and a 300 ms BLE advertising burst at
+	// about 25 mA. Average: 25 mA × 330 ms / 300 s + 10 µA = 37.5 µA, before the LDO's own quiescent current.
+	requirements: {
+		summary: "BLE temperature and humidity logger",
+		peripherals: ["i2c-sensor", "usb-c", "status-led"],
+		batteryLifeDays: 180,
+		dutyCycle: { activeMs: 330, periodS: 300, sleepUa: 10 },
+	},
 	outline: { widthMm: 50, heightMm: 30, thicknessMm: 1.6 },
 	connectors: [{ ref: "J1", kind: "usb-c", edge: "left", offsetMm: 15, widthMm: 9, heightMm: 3.5 }],
-	rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 120 }],
+	rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 120, averageMa: 0.0375 }],
 	pins: [
 		{ signal: "I2C_SDA", gpio: 8, partRef: "U2", partPin: "SDA" },
 		{ signal: "I2C_SCL", gpio: 9, partRef: "U2", partPin: "SCL" },
