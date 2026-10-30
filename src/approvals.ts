@@ -54,6 +54,11 @@ export class ApprovalRegistry {
 		return entry.decision.by
 	}
 
+	// Change requests still waiting for a decision.
+	openCount(): number {
+		return [...this.entries.values()].filter((e) => !e.decision).length
+	}
+
 	fieldOf(id: string): FieldName | undefined {
 		return this.entries.get(id)?.field
 	}

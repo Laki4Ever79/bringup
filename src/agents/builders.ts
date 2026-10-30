@@ -38,18 +38,23 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 		const snapshot = s.contract.snapshot()
 		const dir = join(s.outDir, opts.kind, `rev-${snapshot.revision}`)
 		mkdirSync(dir, { recursive: true })
+		const inputs = Object.fromEntries(opts.inputs.map((f) => [f, snapshot.versions[f]]))
 		try {
 			const artifact = await opts.build({ revision: snapshot.revision, snapshot, dir })
 			;(s.artifacts as Record<string, unknown>)[opts.kind] = artifact
-			s.artifactInputs[opts.kind] = Object.fromEntries(opts.inputs.map((f) => [f, snapshot.versions[f]]))
+			s.artifactInputs[opts.kind] = inputs
 			const failure = opts.failure?.(artifact) ?? null
 			if (failure !== null) {
+				s.artifactFailures[opts.kind] = failure
 				emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: tail(failure, 40) }), self.id)
 				return
 			}
+			delete s.artifactFailures[opts.kind]
 			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision }), self.id)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
+			s.artifactInputs[opts.kind] = inputs
+			s.artifactFailures[opts.kind] = message
 			emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: tail(message, 40) }), self.id)
 		}
 	})
