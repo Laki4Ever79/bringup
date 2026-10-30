@@ -11,6 +11,8 @@ export interface Env {
 	kicad: "docker" | "local" | null
 	python: string | null
 	pio: string | null
+	// Espressif's QEMU in tools/qemu, only if it actually starts (it needs tools/qemu/lib, see NOTES.md). Optional.
+	qemu?: string | null
 }
 
 const local = (root: string, rel: string) => (existsSync(join(root, rel)) ? join(root, rel) : null)
@@ -18,9 +20,11 @@ const local = (root: string, rel: string) => (existsSync(join(root, rel)) ? join
 // Picks a backend per tool from what this machine has. Repo-local tools come first so a
 // checkout stays self-contained; KiCad falls back from a local install to the Docker image.
 export async function detectEnvironment(root: string): Promise<Env> {
-	const [localKicad, dockerKicad] = await Promise.all([
+	const qemuPath = local(root, "tools/qemu/bin/qemu-system-riscv32")
+	const [localKicad, dockerKicad, qemu] = await Promise.all([
 		run("kicad-cli", ["version"], { timeoutMs: 10_000 }),
 		run("docker", ["image", "inspect", KICAD_IMAGE], { timeoutMs: 10_000 }),
+		qemuPath ? run(qemuPath, ["--version"], { timeoutMs: 10_000, env: qemuEnv(root) }) : Promise.resolve(null),
 	])
 	return {
 		root,
@@ -28,7 +32,13 @@ export async function detectEnvironment(root: string): Promise<Env> {
 		kicad: localKicad.code === 0 ? "local" : dockerKicad.code === 0 ? "docker" : null,
 		python: local(root, ".venv/bin/python"),
 		pio: local(root, ".venv/bin/pio"),
+		qemu: qemu?.code === 0 ? qemuPath : null,
 	}
+}
+
+// Espressif's prebuilt QEMU links libslirp, which NOTES.md installs into tools/qemu/lib.
+export function qemuEnv(root: string): Record<string, string> {
+	return { LD_LIBRARY_PATH: [join(root, "tools/qemu/lib"), process.env.LD_LIBRARY_PATH].filter(Boolean).join(":") }
 }
 
 // PATH for child processes, with the repo's node tools (tsci, bun) first.
@@ -51,5 +61,6 @@ export function describeEnv(env: Env): string {
 		`KiCad 10:  ${env.kicad ?? "missing"}`,
 		`python:    ${env.python ?? "missing"}`,
 		`pio:       ${env.pio ?? "missing"}`,
+		`QEMU:      ${env.qemu ?? "missing (optional)"}`,
 	].join("\n")
 }
