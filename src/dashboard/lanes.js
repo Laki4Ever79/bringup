@@ -15,11 +15,11 @@ export const LANES = [
 
 const HISTORY = 40
 
-// Same as BUILD_REQUIRES in src/agents/builders.ts, and the builders' input fields.
+// Same as BUILD_INPUTS and BUILD_REQUIRES in src/agents/builders.ts.
 const BUILDS = {
 	board: { inputs: ["parts", "pins", "outline", "connectors"], requires: ["outline", "parts", "pins"] },
 	enclosure: { inputs: ["outline", "connectors"], requires: ["outline", "connectors"] },
-	firmware: { inputs: ["parts", "pins"], requires: ["parts", "pins"] },
+	firmware: { inputs: ["parts", "pins", "behavior"], requires: ["parts", "pins"] },
 }
 
 // agent.activity phase → lane status

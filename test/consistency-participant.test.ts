@@ -6,7 +6,7 @@ import { BUILD_REQUIRES, createBuilder } from "../src/agents/builders.ts"
 import { createConsistencyParticipant } from "../src/agents/consistency.ts"
 import { createChangeDesk } from "../src/change-control.ts"
 import { makeEvent } from "../src/events.ts"
-import { FIELDS, type ContractValues, type FieldName } from "../src/contract/types.ts"
+import { CORE_FIELDS, type ContractValues, type FieldName } from "../src/contract/types.ts"
 import { fixtureArtifacts, fixtureContract } from "./fixture.ts"
 import { recorder, tempDir, waitFor } from "./helpers.ts"
 
@@ -33,7 +33,7 @@ function setup(opts: { maxRevisions?: number; breakFirmware?: boolean; requires?
 	}
 	const writeAll = () => {
 		const v = fixtureContract().values
-		for (const f of FIELDS) write(f, v[f])
+		for (const f of CORE_FIELDS) write(f, v[f])
 	}
 	return { state, events, settled, write, writeAll }
 }
@@ -105,7 +105,7 @@ test("waiting builders still settle once every field exists", async () => {
 test("a quiet design missing a required field settles unsettled and names the field", async () => {
 	const t = setup({ requires: true })
 	const v = fixtureContract().values
-	for (const f of FIELDS) if (f !== "pins") t.write(f, v[f])
+	for (const f of CORE_FIELDS) if (f !== "pins") t.write(f, v[f])
 	await waitFor(() => t.settled.length > 0, 2000)
 	assert.deepEqual(t.settled, [{ settled: false, revision: 5 }])
 	assert.match(t.state.artifactFailures.board ?? "", /pins/)
@@ -117,7 +117,7 @@ test("a quiet design missing a required field settles unsettled and names the fi
 test("a missing field does not end the run while an agent is still mid-turn", async () => {
 	const t = setup({ requires: true })
 	const v = fixtureContract().values
-	for (const f of FIELDS) if (f !== "pins") t.write(f, v[f])
+	for (const f of CORE_FIELDS) if (f !== "pins") t.write(f, v[f])
 	// An agent loop that has started and not answered yet (it may still write the pins).
 	const agent = createHuman({ name: "architect-stand-in", capabilities: [], handlers: [] })
 	join(agent)

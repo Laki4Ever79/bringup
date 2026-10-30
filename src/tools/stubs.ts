@@ -1,7 +1,8 @@
-import { writeFileSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
-import { BUILD_REQUIRES, createBuilder } from "../agents/builders.ts"
+import { BUILD_INPUTS, BUILD_REQUIRES, createBuilder } from "../agents/builders.ts"
+import { behaviorHeader, pinsHeader } from "../codegen/firmware.ts"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
@@ -41,6 +42,10 @@ export function stubEnclosure(s: ContractSnapshot, revision: number, dir: string
 
 export function stubFirmware(s: ContractSnapshot, revision: number, dir: string): Stub<FirmwareArtifact> {
 	note(dir, "firmware")
+	// The headers the real build compiles, so the bench (fake bridge) can "flash" a stubbed firmware too.
+	mkdirSync(join(dir, "include"), { recursive: true })
+	writeFileSync(join(dir, "include/pins.h"), pinsHeader(s))
+	writeFileSync(join(dir, "include/behavior.h"), behaviorHeader(s))
 	const pins = Object.fromEntries((s.values.pins ?? []).map((p) => [p.signal, p.gpio]))
 	return { revision, ok: true, pins, log: "stubbed (--no-hardware): not compiled", stub: true }
 }
@@ -48,9 +53,9 @@ export function stubFirmware(s: ContractSnapshot, revision: number, dir: string)
 // Same inputs and required fields as the real builders in agents/builders.ts, so the same contract changes wake them.
 export function createStubBuilders(): Human[] {
 	return [
-		createBuilder({ kind: "board", inputs: ["parts", "pins", "outline", "connectors"], requires: BUILD_REQUIRES.board, build: async ({ snapshot, revision, dir }) => stubBoard(snapshot, revision, dir) }),
-		createBuilder({ kind: "enclosure", inputs: ["outline", "connectors"], requires: BUILD_REQUIRES.enclosure, build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
-		createBuilder({ kind: "firmware", inputs: ["parts", "pins"], requires: BUILD_REQUIRES.firmware, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
+		createBuilder({ kind: "board", inputs: BUILD_INPUTS.board, requires: BUILD_REQUIRES.board, build: async ({ snapshot, revision, dir }) => stubBoard(snapshot, revision, dir) }),
+		createBuilder({ kind: "enclosure", inputs: BUILD_INPUTS.enclosure, requires: BUILD_REQUIRES.enclosure, build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
+		createBuilder({ kind: "firmware", inputs: BUILD_INPUTS.firmware, requires: BUILD_REQUIRES.firmware, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
 	]
 }
 

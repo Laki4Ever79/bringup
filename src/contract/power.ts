@@ -23,7 +23,7 @@ export function capacityFromBrief(brief: string): number | null {
 
 // An LDO's typical quiescent current: the catalog's iqUa when it lists the part, else AP2112K-class 55 µA.
 const ASSUMED_IQ_UA = Math.round(QUIESCENT_A * 1e6)
-type CatalogIq = { mpn: string; iqUa?: number }
+type CatalogIq = { mpn: string; iqUa?: number; sleepUa?: number }
 let catalogCache: CatalogIq[] | null = null
 function catalog(): CatalogIq[] {
 	return (catalogCache ??= JSON.parse(readFileSync(new URL("../../catalog/parts.json", import.meta.url), "utf8")))
@@ -41,11 +41,37 @@ export function regulatorIq(part: Part, entries: CatalogIq[] = catalog()): Regul
 	return typeof iq === "number" ? { ref: part.ref, mpn: part.mpn, iqUa: iq, source: "catalog" } : { ref: part.ref, mpn: part.mpn, iqUa: ASSUMED_IQ_UA, source: "assumed" }
 }
 
+// The sleep current to use: the contract's duty-cycle sleepUa, but never below the MCU's datasheet deep-sleep floor
+// (catalog sleepUa). A design can't sleep below its chip; real run 8 claimed 0 µA.
+export interface SleepCurrent {
+	sleepUa: number
+	raisedFrom: number | null // the contract's figure, when it was below the floor
+	floorFrom: string | null // the MCU whose datasheet floor applies
+}
+
+export function effectiveSleepUa(s: ContractSnapshot, entries: CatalogIq[] = catalog()): SleepCurrent | null {
+	const d = s.values.requirements?.dutyCycle
+	if (!d) return null
+	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
+	const floor = mcu ? entries.find((c) => c.mpn.toUpperCase() === mcu.mpn.toUpperCase())?.sleepUa : undefined
+	if (typeof floor !== "number") return { sleepUa: d.sleepUa, raisedFrom: null, floorFrom: null }
+	return d.sleepUa < floor ? { sleepUa: floor, raisedFrom: d.sleepUa, floorFrom: mcu!.mpn } : { sleepUa: d.sleepUa, raisedFrom: null, floorFrom: mcu!.mpn }
+}
+
+// The bench's measured rail average: the charge each wake draws above the board's floor (µC), spread over the
+// contract's period, plus the design's sleep current. Pass sleepUa from effectiveSleepUa so a 0 µA claim can't pass.
+export function measuredAverageMa(m: { chargeUc: number; periodS: number; sleepUa: number }): number {
+	if (!(m.periodS > 0)) throw new Error(`measuredAverageMa: periodS must be > 0, got ${m.periodS}`)
+	return (m.chargeUc / m.periodS + m.sleepUa) / 1000
+}
+
 export interface RailDraw {
 	name: string
 	peakMa: number
 	averageMa: number | null
-	source: "rail" | "duty cycle" | null
+	source: "rail" | "measured" | "duty cycle" | null
+	// The firmware revision the bench measured it on, when source is "measured".
+	measuredRevision?: number
 }
 
 export interface PowerEstimate {
@@ -57,6 +83,7 @@ export interface PowerEstimate {
 	// Upper bound from the duty cycle, taking the busiest rail's peak as the active current.
 	dutyCycleMa: number | null
 	dutyCycle: DutyCycle | null
+	sleep: SleepCurrent | null
 	// Sum over every LDO; each LDO draws its own quiescent current from the cell.
 	regulatorIqUa: number
 	regulators: RegulatorIq[]
@@ -71,8 +98,10 @@ const batteryFed = (rails: Rail[]) => rails.filter((r) => !/VBUS|USB/i.test(r.na
 export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate {
 	const { rails = [], requirements, parts = [] } = s.values
 	const fed = batteryFed(rails)
-	const dutyCycle = requirements?.dutyCycle ?? null
+	const sleep = effectiveSleepUa(s)
+	const dutyCycle = requirements?.dutyCycle ? { ...requirements.dutyCycle, sleepUa: sleep!.sleepUa } : null
 	const draws: RailDraw[] = fed.map((r) => {
+		if (r.averageMa !== undefined && r.averageSource === "measured") return { name: r.name, peakMa: r.loadMa, averageMa: r.averageMa, source: "measured", measuredRevision: r.measuredRevision }
 		if (r.averageMa !== undefined) return { name: r.name, peakMa: r.loadMa, averageMa: r.averageMa, source: "rail" }
 		if (dutyCycle) return { name: r.name, peakMa: r.loadMa, averageMa: dutyCycleAverageMa(dutyCycle, r.loadMa), source: "duty cycle" }
 		return { name: r.name, peakMa: r.loadMa, averageMa: null, source: null }
@@ -89,6 +118,7 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 		averageMa,
 		dutyCycleMa,
 		dutyCycle,
+		sleep,
 		regulatorIqUa,
 		regulators,
 		capacityMah,
@@ -101,7 +131,8 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 const ma = (x: number) => `${Number(x.toPrecision(3))} mA`
 
 export function batteryLifeSummary(e: PowerEstimate): string {
-	if (e.days !== null) return `${Math.round(e.days)} days${e.targetDays !== null ? ` vs target ${e.targetDays} days` : ""}`
+	const measured = e.rails.filter((r) => r.source === "measured").map((r) => `${r.name} measured on bench${r.measuredRevision !== undefined ? `, rev ${r.measuredRevision}` : ""}`)
+	if (e.days !== null) return `${Math.round(e.days)} days${e.targetDays !== null ? ` vs target ${e.targetDays} days` : ""}${measured.length ? ` (${measured.join("; ")})` : ""}`
 	const missing = e.rails.filter((r) => r.averageMa === null).map((r) => r.name)
 	if (e.rails.length === 0 || missing.length > 0) return `unknown (no average current${missing.length > 0 ? ` for ${missing.join(", ")}` : " in the contract"})`
 	return "unknown (no battery capacity in the brief or requirements)"
@@ -111,11 +142,13 @@ export function powerBudgetLines(e: PowerEstimate): string[] {
 	const out: string[] = []
 	if (e.rails.length > 0) out.push("- Battery-fed rails (each average is that rail's own loads, so they add up):")
 	for (const r of e.rails) {
-		out.push(`- Rail ${r.name}: peak ${ma(r.peakMa)}, average ${r.averageMa === null ? "not stated" : `${ma(r.averageMa)} (from the ${r.source})`}`)
+		const from = r.source === "measured" ? `measured on bench${r.measuredRevision !== undefined ? `, rev ${r.measuredRevision}` : ""}` : `from the ${r.source}`
+		out.push(`- Rail ${r.name}: peak ${ma(r.peakMa)}, average ${r.averageMa === null ? "not stated" : `${ma(r.averageMa)} (${from})`}`)
 	}
 	if (e.dutyCycle) {
 		const d = e.dutyCycle
-		out.push(`- Duty cycle: ${d.activeMs} ms active every ${d.periodS} s, ${d.sleepUa} µA asleep${e.dutyCycleMa !== null ? `; at most ${ma(e.dutyCycleMa)} average if active at the busiest rail's peak` : ""}`)
+		const asleep = e.sleep?.raisedFrom != null ? `${e.sleep.raisedFrom} µA asleep stated, raised to the ${e.sleep.floorFrom}'s ${d.sleepUa} µA deep-sleep floor (datasheet)` : `${d.sleepUa} µA asleep`
+		out.push(`- Duty cycle: ${d.activeMs} ms active every ${d.periodS} s, ${asleep}${e.dutyCycleMa !== null ? `; at most ${ma(e.dutyCycleMa)} average if active at the busiest rail's peak` : ""}`)
 	}
 	const each = e.regulators.map((r) => `${r.ref} ${r.mpn} ${r.iqUa} µA, ${r.source === "catalog" ? "from the catalog" : "not in the catalog: assumed AP2112K-class"}`)
 	out.push(`- Regulator quiescent current: ${e.regulatorIqUa} µA (${each.length > 0 ? each.join("; ") : "no LDO in the parts"})`)

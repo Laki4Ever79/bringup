@@ -4,7 +4,7 @@ import { state } from "../runtime.ts"
 import { toolCall, type Script } from "./scripted-runner.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
-export const LOGGER_DESIGN: Omit<ContractValues, "parts"> & { parts: ContractValues["parts"] } = {
+export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior"> & { parts: ContractValues["parts"] } = {
 	// ESP32-C3 deep sleep about 10 µA; every 5 min it wakes for a 30 ms reading and a 300 ms BLE advertising burst at
 	// about 25 mA. Average: 25 mA × 330 ms / 300 s + 10 µA = 37.5 µA, before the LDO's own quiescent current.
 	requirements: {
@@ -61,7 +61,7 @@ function propose(field: FieldName, value: unknown, reason: string) {
 	return [toolCall("propose_contract_change", { field, value, baseVersion: state().contract.version(field), reason })]
 }
 
-const ARCHITECT_FIELDS: FieldName[] = ["requirements", "outline", "connectors", "rails", "pins"]
+const ARCHITECT_FIELDS = ["requirements", "outline", "connectors", "rails", "pins"] as const satisfies FieldName[]
 
 // Deterministic stand-ins for each role's model, so a full run needs no API key.
 export function mockScripts(): Record<string, Script> {

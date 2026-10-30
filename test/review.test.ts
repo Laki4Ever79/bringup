@@ -134,6 +134,9 @@ test("the reviewer sees only the brief, the contract and the check results, neve
 	assert.ok(text.includes(brief.trim().split("\n")[0]), "contains the brief")
 	assert.ok(text.includes(`"widthMm": ${LOGGER_DESIGN.outline.widthMm}`), "contains the contract")
 	assert.match(text, /power was not simulated/i)
+	assert.match(text, /## Board-generated wiring \(added by the board generator, not in the contract\)/)
+	assert.match(text, /5\.1k \(C25905\): USB-C CC1/)
+	assert.match(text, /USB_DP: .*U1\.GPIO19/)
 	// Words only the other agents wrote: their turn messages, model answers and proposal reasons.
 	for (const other of ["contract drafted", "initial requirements from the brief", "parts from the catalog", "firmware drives a status LED", "Brief from the engineer", "pins are sufficient"]) {
 		assert.ok(!text.includes(other), `reviewer saw another agent's text: "${other}"`)
