@@ -13,7 +13,7 @@ function counts(tracePath: string): Record<string, number> {
 		if (!line) continue
 		const { type, payload } = JSON.parse(line) as { type: string; payload: { approved?: boolean; violations?: unknown[] } }
 		c[type] = (c[type] ?? 0) + 1
-		if (type === "change.decided") c[payload.approved ? "approved" : "rejected"] = (c[payload.approved ? "approved" : "rejected"] ?? 0) + 1
+		if (type === "change.resolved") c[payload.approved ? "approved" : "rejected"] = (c[payload.approved ? "approved" : "rejected"] ?? 0) + 1
 		if (type === "consistency.checked") c.violationsSeen = (c.violationsSeen ?? 0) + (payload.violations?.length ?? 0)
 	}
 	return c

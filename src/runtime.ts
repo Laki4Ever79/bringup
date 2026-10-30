@@ -24,6 +24,9 @@ export class BringupState extends RuntimeState {
 	readonly artifactInputs: Partial<Record<"board" | "enclosure" | "firmware", Partial<Record<FieldName, number>>>> = {}
 	readonly roles = new Map<string, AgentRole>()
 	readonly approvals = new ApprovalRegistry()
+	// When on, every held change also needs the human engineer's approval (dashboard or decisions.jsonl).
+	engineerApproval = false
+	engineerTimeoutMs = 600_000
 	// Set by the grounding check: settling then waits until it has grounded the current parts and pins.
 	groundingEnabled = false
 	groundedVersions: { parts: number; pins: number } | null = null

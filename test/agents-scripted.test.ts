@@ -64,7 +64,7 @@ test("the parts agent decides change requests to the parts list", async () => {
 	const parts = [...t.state.roles.entries()].find(([, r]) => r === "parts")![0]
 	const architect = [...t.state.roles.entries()].find(([, r]) => r === "architect")![0]
 	const id = t.state.approvals.open("parts", "architect")
-	getOutbox().emit(makeEvent("change.proposed", architect, { proposalId: id, field: "parts", by: "architect", reason: "add a button" }), architect)
+	getOutbox().emit(makeEvent("change.proposed", architect, { proposalId: id, field: "parts", by: "architect", reason: "add a button", needsEngineer: false }), architect)
 	await waitFor(() => types().includes("change.decided"))
 	const decided = t.events.find((e) => e.type === "change.decided")!
 	assert.equal(decided.producerId, parts)
