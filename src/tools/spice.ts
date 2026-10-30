@@ -2,7 +2,7 @@ import { execFile } from "node:child_process"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { promisify } from "node:util"
-import { dropoutOhms, powerDeck, QUIESCENT_A, railId, type PowerScenario } from "../codegen/spice.ts"
+import { dropoutOhms, powerDeck, QUIESCENT_A, railId, regulatedRails, type PowerScenario } from "../codegen/spice.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
 const exec = promisify(execFile)
@@ -53,7 +53,7 @@ export async function simulatePower(root: string, dir: string, s: ContractSnapsh
 	for (const sc of scenarios) {
 		const log = await readFile(join(dir, `${sc.name}.log`), "utf8")
 		const meas = parseMeasurements(log)
-		for (const rail of s.values.rails ?? []) {
+		for (const rail of regulatedRails(s.values.rails ?? [])) {
 			const id = railId(rail)
 			const voutV = meas[`vout_${id}`]
 			const ioutA = meas[`iout_${id}`]
