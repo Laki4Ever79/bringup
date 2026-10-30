@@ -70,6 +70,7 @@
 	.check.ok { color: var(--ok); } .check.ok .dot { background: var(--ok); }
 	.check.warn { color: var(--warn); border-color: rgba(245, 158, 11, .4); } .check.warn .dot { background: var(--warn); }
 	.check.error { color: var(--error); border-color: rgba(239, 68, 68, .45); } .check.error .dot { background: var(--error); }
+	.check.off { color: var(--text-3); } .check.off .dot { background: transparent; border: 1px solid var(--text-3); }
 	.check.running .dot { background: var(--info); --ring: rgba(59, 130, 246, .5); animation: pulse 1.6s var(--ease) infinite; }
 	#cloud-link { text-decoration: none; }
 	#cloud-link:hover { border-color: var(--border-hover); }
@@ -561,6 +562,17 @@
 				} catch {}
 			}, 120)
 		}
+		// Each revision's own contract (contracts/rev-N.json, written by the consistency participant), so change cards
+		// diff the right revisions even on a run reopened after the fact.
+		const fetchRevision = async (rev) => {
+			if (S.snapshots.has(rev)) return
+			try {
+				const r = await fetch(file(`contracts/rev-${rev}.json`))
+				if (!r.ok) return
+				const snap = await r.json()
+				if (snap.revision === rev) { S.snapshots.set(rev, snap); schedule() }
+			} catch {}
+		}
 		const snapAt = (rev) => { let best = null; for (const [r, s] of S.snapshots) if (r <= rev && (!best || r > best.revision)) best = s; return best }
 
 		// ── Boards and enclosures per revision ──
@@ -895,7 +907,7 @@
 			pillsKey = key
 			const open = $("checks").querySelector(".popover")?.parentElement?.dataset.key
 			$("checks").innerHTML = pills.map((p) => {
-				const label = p.state === "pending" ? "…" : p.state === "running" ? "⟳" : p.state === "ok" ? "✓" : p.count
+				const label = p.state === "off" ? "off" : p.state === "pending" ? "…" : p.state === "running" ? "⟳" : p.state === "ok" ? "✓" : p.count
 				return `<span class="pill check ${p.state}" data-key="${p.key}"><span class="dot"></span>${esc(p.label)} <b class="num">${esc(label)}</b>${open === p.key ? popover(p) : ""}</span>`
 			}).join("")
 		}
@@ -1064,6 +1076,7 @@
 		function describe(e) {
 			const p = e.payload ?? {}
 			switch (e.type) {
+				case "run.started": return `run started: review ${p.review ? "on" : "off"}, engineer approval ${p.engineerApproval ? "on" : "off"}${p.noHardware ? ", hardware stubbed" : ""}${p.bench ? ", live bench" : ""}`
 				case "contract.changed": return `${p.field} → v${p.version} by ${p.by}`
 				case "change.proposed": return `${p.by} asks to change ${p.field}: ${p.reason}${p.needsEngineer ? " (needs you)" : ""}`
 				case "change.decided": return `${p.by} votes ${p.approved ? "approve" : "reject"}: ${p.reason}`
@@ -1141,6 +1154,7 @@
 					S.revision = Math.max(S.revision, p.revision)
 					if (Date.now() - Date.parse(e.at) < 15_000) flashChanged(p)
 					fetchSnapshot()
+					fetchRevision(p.revision)
 					if (p.field === "parts") fetchBom()
 					break
 				case "artifact.ready": {
