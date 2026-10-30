@@ -60,7 +60,14 @@ export function mockScripts(): Record<string, Script> {
 			}
 			return say("noted")
 		},
-		"mock-parts": (items) => (stepsTaken(items) === 0 ? propose("parts", LOGGER_DESIGN.parts, "parts from the catalog") : say("parts chosen")),
+		"mock-parts": (items) => {
+			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
+			if (instruction.startsWith("Change request")) {
+				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
+				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
+			}
+			return stepsTaken(items) === 0 ? propose("parts", LOGGER_DESIGN.parts, "parts from the catalog") : say("parts chosen")
+		},
 		"mock-firmware": (items) => {
 			if (stepsTaken(items) > 0) return say("requested")
 			const pins = state().contract.get("pins") ?? []
