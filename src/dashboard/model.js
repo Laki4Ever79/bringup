@@ -153,12 +153,14 @@ export function checkPills(events) {
 	let ready = null
 	let review = null
 	let board = null
+	let started = null
 	for (const e of events) {
 		if (e.type === "consistency.checked") consistency = e.payload
 		if (e.type === "grounding.checked") grounding = e.payload
 		if (e.type === "design.ready") ready = e.payload
 		if (e.type === "review.completed") review = e.payload
 		if (e.type === "artifact.ready" && e.payload.kind === "board") board = e.payload
+		if (e.type === "run.started") started = e.payload
 	}
 	const v = consistency?.violations ?? []
 	const f = grounding?.findings ?? []
@@ -170,10 +172,10 @@ export function checkPills(events) {
 		{
 			key: "review",
 			label: "Review",
-			state: reviewRunning ? "running" : !review ? "pending" : review.verdict === "pass" ? "ok" : "error",
+			state: started?.review === false ? "off" : reviewRunning ? "running" : !review ? "pending" : review.verdict === "pass" ? "ok" : "error",
 			count: rf.length,
 			revision: review?.revision ?? ready?.revision ?? null,
-			items: rf.map((x) => `${x.severity} · ${(x.fields ?? []).join(", ")}: ${x.issue}`),
+			items: started?.review === false ? ["the brief review is off for this run (--no-review)"] : rf.map((x) => `${x.severity} · ${(x.fields ?? []).join(", ")}: ${x.issue}`),
 		},
 	]
 	// KiCad's DRC of the newest board build, against the fab's rules. Unconnected nets count as errors.

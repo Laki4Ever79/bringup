@@ -8,6 +8,8 @@ export class DesignContract {
 	private versions = Object.fromEntries(FIELDS.map((f) => [f, 0])) as Record<FieldName, number>
 	private rev = 0
 	private catalog: { role: string; mpn: string; lcsc: string | null }[] | null = null
+	// Every revision as it was applied, so diffs between revisions can be shown after the fact.
+	private history: ContractSnapshot[] = []
 
 	// With a catalog set, every part must be a catalog part (matched by MPN, case-insensitive), so a model
 	// can't keep proposing parts nobody vetted; the refusal lists the catalog's options for that role.
@@ -26,6 +28,11 @@ export class DesignContract {
 
 	version(field: FieldName): number {
 		return this.versions[field]
+	}
+
+	snapshotAt(revision: number): ContractSnapshot | undefined {
+		const s = this.history[revision - 1]
+		return s === undefined ? undefined : structuredClone(s)
 	}
 
 	snapshot(): ContractSnapshot {
@@ -80,6 +87,7 @@ export class DesignContract {
 		this.values[p.field] = structuredClone(p.value)
 		this.versions[p.field]++
 		this.rev++
+		this.history.push(structuredClone({ revision: this.rev, values: this.values, versions: this.versions }))
 		return { status: "applied", version: this.versions[p.field], revision: this.rev }
 	}
 }
