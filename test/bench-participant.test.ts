@@ -279,3 +279,23 @@ test("a null temperature (no sensor) is left out of the telemetry, not sent as 0
 	assert.equal("tC" in sample, false)
 	assert.equal(sample.led, 1)
 })
+
+test("when the flash needs the person, the bench says so as bench.instruction events, then carries on", async () => {
+	const text = "Hold BOOT, tap RST, release BOOT"
+	const t = setup(new FakeBridge({ meter: false, instruct: { action: "boot-reset", text, done: true } }))
+	const rev = t.firmware()
+	t.send("design.settled", { revision: rev, settled: true })
+	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	assert.deepEqual(t.of("bench.instruction"), [
+		{ revision: rev, action: "boot-reset", text, state: "waiting" },
+		{ revision: rev, action: "boot-reset", text, state: "done" },
+	])
+	assert.equal(t.of("bench.flashed")[0].ok, true)
+})
+
+test("an instruction nobody answered is reported as timed out", async () => {
+	const t = setup(new FakeBridge({ meter: false, instruct: { action: "reset", text: "Tap RST", done: false } }))
+	t.send("design.settled", { revision: t.firmware(), settled: true })
+	await waitFor(() => t.of("bench.instruction").length === 2, 5000)
+	assert.equal(t.of("bench.instruction")[1].state, "timeout")
+})

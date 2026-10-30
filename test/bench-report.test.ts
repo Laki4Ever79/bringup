@@ -79,3 +79,17 @@ test("a skipped check (IMU not fitted) is listed as such, not as ok or FAIL", ()
 	const text = bringupSection(path).join("\n")
 	assert.match(text, /^- imu: not checked, not fitted \(no ACK at 0x68\)$/m)
 })
+
+test("steps the person had to do at the bench are in the report, with what came of them", () => {
+	const path = trace([
+		{ type: "bench.connected", payload: { source: "real", ports: { dut: "/dev/ttyACM0", fixture: null, telemetry: "/dev/ttyACM0" }, meter: false } },
+		{ type: "bench.instruction", payload: { revision: 2, action: "boot-reset", text: "Hold BOOT, tap RST, release BOOT", state: "waiting" } },
+		{ type: "bench.instruction", payload: { revision: 2, action: "boot-reset", text: "Hold BOOT, tap RST, release BOOT", state: "done" } },
+		{ type: "bench.instruction", payload: { revision: 3, action: "reset", text: "Tap RST", state: "waiting" } },
+		{ type: "bench.instruction", payload: { revision: 3, action: "reset", text: "Tap RST", state: "timeout" } },
+		{ type: "bench.flashed", payload: { revision: 3, ok: true, ms: 9000 } },
+	])
+	const text = bringupSection(path).join("\n")
+	assert.match(text, /- Asked the person \(rev 2\): Hold BOOT, tap RST, release BOOT: done/)
+	assert.match(text, /- Asked the person \(rev 3\): Tap RST: nobody did it within 180 s/)
+})

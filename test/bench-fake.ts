@@ -23,6 +23,8 @@ export class FakeBridge implements Bridge {
 			imu?: boolean | "stops"
 			// Replay: the recorded rev, kept whatever was flashed.
 			recordedRev?: number
+			// The flash needs the person (factory firmware): an instruct line, then its outcome, before the ack.
+			instruct?: { action: string; text: string; done: boolean }
 		} = {},
 	) {
 		this.hello = Promise.resolve({ source: opts.source ?? "real", ports: { dut: "/dev/fake-dut", fixture: "/dev/fake-fixture", telemetry: "/dev/fake-uart" }, meter: opts.meter ?? true })
@@ -45,6 +47,12 @@ export class FakeBridge implements Bridge {
 			const dir = cmd.dir as string
 			const ack = this.opts.flash?.({ dir }) ?? { ok: true, ms: 40, ...(this.opts.source === "replay" ? { simulated: true } : {}) }
 			if (!ack.ok) return ack
+			const ask = this.opts.instruct
+			if (ask) {
+				this.emit({ k: "instruct", id: cmd.id ?? 1, action: ask.action, text: ask.text })
+				await new Promise((r) => setTimeout(r, 30))
+				this.emit({ k: "instruct", id: cmd.id ?? 1, action: ask.action, done: ask.done })
+			}
 			this.emit({ k: "flashing", stage: "build", pct: 0 })
 			this.emit({ k: "flashing", stage: "connect", pct: 0 })
 			for (const pct of [0, 50, 100]) this.emit({ k: "flashing", stage: "write", pct })
