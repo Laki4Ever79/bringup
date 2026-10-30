@@ -29,7 +29,8 @@ export function createLanes() {
 	// versions: field → latest version (for builders' required fields); agents: agentId → role (for agent.halted);
 	// pending: build kind → newest revision it was asked to build
 	const lanes = { versions: {}, agents: {}, pending: {} }
-	for (const l of LANES) lanes[l.key] = { status: "idle", text: "", lastResult: "", at: null, history: [] }
+	// boot: the firmware build lane's latest QEMU boot (firmware.booted), else null
+	for (const l of LANES) lanes[l.key] = { status: "idle", text: "", lastResult: "", at: null, history: [], boot: null }
 	return lanes
 }
 
@@ -85,6 +86,15 @@ export function applyLaneEvent(lanes, e) {
 		}
 		case "artifact.failed":
 			return set(lanes, `build:${p.kind}`, "failed", `rev ${p.revision} failed: ${firstLine(p.error)}`, e.at)
+		case "firmware.booted": {
+			// A badge on the build card; the build's own status and text stay as they are.
+			const lane = lanes["build:firmware"]
+			const lines = String(p.serialTail ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
+			lane.boot = { ok: p.booted === true, revision: p.revision, bootRevision: p.bootRevision ?? null, lastLine: lines.at(-1) ?? "", tail: p.serialTail ?? "" }
+			lane.history.push({ status: lane.status, text: lane.boot.ok ? `boots in QEMU, prints rev ${lane.boot.bootRevision}` : `did not boot (rev ${p.revision}): ${lane.boot.lastLine}`, at: e.at })
+			if (lane.history.length > HISTORY) lane.history.splice(0, lane.history.length - HISTORY)
+			return ["build:firmware"]
+		}
 		case "grounding.checked": {
 			const n = (p.findings ?? []).length
 			return set(lanes, "grounding", n ? "failed" : "done", n ? `rev ${p.revision}: ${plural(n, "ungrounded claim")}` : `rev ${p.revision}: every part and pin grounded`, e.at)
