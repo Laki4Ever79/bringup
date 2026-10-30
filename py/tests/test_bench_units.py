@@ -140,11 +140,12 @@ class BenchPins(unittest.TestCase):
         with open(os.path.join(d, "include/pins.h"), "a") as f:
             f.write("#define PIN_BUTTON 4\n#define PIN_BUZZER 17\n#define PIN_X 36\n#define PIN_Y 48\n")
         conflicts = bench_pin_conflicts(d)
-        self.assertEqual(len(conflicts), 3, conflicts)
+        self.assertEqual(len(conflicts), 4, conflicts)
         self.assertIn("BUTTON uses GPIO4", conflicts[0])
         self.assertIn("BENCH_MODE", conflicts[0])
         self.assertIn("GPIO17", conflicts[1])
         self.assertIn("PSRAM", conflicts[2])
+        self.assertIn("onboard RGB LED", conflicts[3])
 
 
 class StageBuildDir(unittest.TestCase):

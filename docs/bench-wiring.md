@@ -1,9 +1,9 @@
 # Bench wiring guide (print me)
 
 Everything runs from the laptop's USB ports: **no bench power supply**. There are two tiers:
-- **Tier 1, pocket.** The ESP32-S3, an MPU-6050 and an LED on **one USB cable**. Flashing, telemetry (over that same
-  cable), tilt and the "blink faster when tilted" change all work. There is no current measurement; the dashboard
-  says "no meter".
+- **Tier 1, pocket.** The ESP32-S3 on **one USB cable**, plus an MPU-6050 if you have one (five wires, for tilt).
+  Flashing, telemetry over that same cable, and the blink on the S3's **onboard RGB LED** all work; with the MPU, so
+  does tilt and "blink faster when tilted". There is no current measurement; the dashboard says "no meter".
 - **Tier 2, meter.** Add the RP2350 Pico (the fixture), the INA226 and one VBUS-cut cable. The S3 is then powered
   through the INA226, so the bench measures its real average current. The Pico can also reset the S3 and switch its
   mode.
@@ -15,8 +15,7 @@ Start with tier 1. Tick each box as you go. **Tell agent-mesh-af "go" before the
 | Tier | Qty | Part | Notes |
 |---|---|---|---|
 | 1 | 1 | YD-ESP32-S3 N16R8 | Two USB-C ports: **"USB"** (native, for flashing) and "COM" (not used). |
-| 1 | 1 | MPU-6050 (GY-521) | Tilt and temperature. |
-| 1 | 1 | LED + 330 Ω resistor | The status LED. |
+| 1 | 1 | MPU-6050 (GY-521), if you have it | Tilt and temperature. Without it the bench still runs; tilt reads 0. |
 | 1 | — | Breadboard, Dupont wires, 1 normal USB cable | |
 | opt. | 1 | CP2102 USB-UART | Not needed. If you have one: S3 `GPIO17` → CP2102 RXD, GND → GND, and the bench uses it for telemetry. |
 | 2 | 1 | RP2350 Pico board | The fixture. Normal USB cable. |
@@ -32,14 +31,17 @@ Start with tier 1. Tick each box as you go. **Tell agent-mesh-af "go" before the
 - [ ] **T3.** S3 **`GPIO8`** → MPU-6050 **SDA**
 - [ ] **T4.** S3 **`GPIO9`** → MPU-6050 **SCL**
 - [ ] **T5.** MPU-6050 **AD0** → **GND** (address 0x68). Leave INT, XDA and XCL unconnected.
-- [ ] **T6.** S3 **`GPIO10`** → LED **long leg**. LED **short leg** → **330 Ω** → **GND**.
 Plug in **one normal USB cable**: PC → S3 **"USB"** port. It powers the board, flashes it and carries the telemetry.
 
 ```
 PC ──USB──► S3 "USB" port   (power + flashing + telemetry)
 S3 3V3 / GND / GPIO8 / GPIO9 ── MPU VCC / GND / SDA / SCL   (AD0 → GND)
-S3 GPIO10 ── LED ── 330 Ω ── GND
 ```
+
+No external LED: the firmware blinks the S3's **onboard RGB LED** (GPIO48). If you happen to have an LED, S3 `GPIO10`
+→ LED long leg, short leg → 330 Ω → GND blinks along with it. On some YD boards the onboard LED is connected through
+a solder pad marked **RGB**; if it never lights, that pad is open, and the dashboard still shows the blink from the
+telemetry.
 
 ## 2. Tier 2 wires (add the meter)
 
