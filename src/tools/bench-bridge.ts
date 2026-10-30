@@ -37,7 +37,8 @@ export interface Bridge {
 // Spawns the bridge (normally `.venv/bin/python py/bench.py --source …`). Lines that aren't JSON become
 // {k:"text"} lines, as the bridge does for the DUT's own text.
 export function startBridge(command: string, args: string[], opts: { cwd?: string; onStderr?: (text: string) => void } = {}): Bridge {
-	const child = spawn(command, args, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"] })
+	// No __pycache__ next to py/benchlib in the checkout.
+	const child = spawn(command, args, { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } })
 	const listeners: ((line: BridgeLine) => void)[] = []
 	const pending = new Map<number, (ack: BridgeAck) => void>()
 	let nextId = 1

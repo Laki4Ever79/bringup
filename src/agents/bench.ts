@@ -14,6 +14,8 @@ import { Rebuilder } from "../tools/rebuilder.ts"
 export const BENCH_PINS: Record<number, string> = { 4: "BENCH_MODE", 17: "UART1 TX" }
 
 export const BENCH_ENV = "esp32s3_bench"
+// Boot reasons that mean the firmware crashed or the supply sagged (bench.md §3b).
+const CRASH_RESETS = new Set(["panic", "wdt", "brownout"])
 const DIALOUT_FIX = "add yourself to dialout (sudo usermod -aG dialout $USER, then log in again) or install udev/99-bench.rules"
 
 export interface BenchOptions {
@@ -173,8 +175,10 @@ export function createBench(opts: BenchOptions): Bench {
 		const d = snapshot.values.requirements?.dutyCycle
 		const sleepFloor = effectiveSleepUa(snapshot)
 		if (!d || !sleepFloor) return null
+		// Collect from the moment the command goes out: the wake's boot line can beat the ack.
+		const window = collect(windowMs)
 		await bridge.command({ cmd: "mode", mode: "duty" })
-		const lines = await collect(windowMs)
+		const lines = await window
 		await bridge.command({ cmd: "mode", mode: "live" })
 		const samples: MeterSample[] = lines.filter((l) => l.k === "i" && typeof l.mA === "number").map((l) => ({ at: l.at, mA: l.mA as number }))
 		const m = measureCycles(samples)
@@ -227,7 +231,10 @@ export function createBench(opts: BenchOptions): Bench {
 		const f = await flash(revision, dir, snapshot)
 		const checks: BenchCheck[] = [{ name: "boot", pass: f.ok, detail: f.bootDetail }]
 		if (f.ok) {
-			checks.push(...liveChecks([...f.lines, ...(await collect(liveCheckMs))]))
+			const live = [...f.lines, ...(await collect(liveCheckMs))]
+			const crash = live.find((l) => l.k === "boot" && CRASH_RESETS.has(String(l.reset)))
+			if (crash) checks[0] = { name: "boot", pass: false, detail: `booted rev ${revision}, then reset by ${crash.reset}` }
+			checks.push(...liveChecks(live))
 			if (hello.meter && revision >= latest) {
 				const m = await measure(revision, snapshot)
 				if (m) {

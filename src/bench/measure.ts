@@ -11,7 +11,7 @@ export interface CycleMeasurement {
 	awakeMs: number
 	// Median charge per wake above the floor, in µC (mA × ms).
 	chargeUc: number
-	// Median current over the whole window: the dev board's sleep floor (LED, LDO, USB bridge), not the design's.
+	// The dev board's sleep floor (LED, LDO, USB bridge), not the design's: the window's 10th-percentile current.
 	floorMa: number
 }
 
@@ -23,12 +23,14 @@ const median = (xs: number[]) => {
 	return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
 }
 
-// Duty-cycle mode: the board is asleep most of the time, so the median sample is the floor. A wake is a run of at
+// Duty-cycle mode: the board is asleep about 94 % of the time, so a low percentile is the floor, even when the window
+// also holds live-mode current from before the switch (a replay, a slow mode change). A wake is a run of at
 // least two samples well above it, widened to where the current falls back near the floor; one that touches either
 // end of the window is cut off and not counted. Null with fewer than MIN_CYCLES complete wakes.
 export function measureCycles(samples: MeterSample[]): CycleMeasurement | null {
 	if (samples.length < 3) return null
-	const floorMa = median(samples.map((s) => s.mA))
+	const sorted = samples.map((s) => s.mA).sort((a, b) => a - b)
+	const floorMa = sorted[Math.floor(sorted.length * 0.1)]
 	const span = Math.max(...samples.map((s) => s.mA)) - floorMa
 	if (span < 1) return null
 	const threshold = floorMa + 0.3 * span

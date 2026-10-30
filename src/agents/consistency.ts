@@ -152,6 +152,9 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 				processor: {
 					apply: ({ event }) => {
 						const type = event.type as string
+						// Bring-up is post-settle and streams all the time; it is not design activity, so it must
+						// neither hold up the quiet period nor re-arm a settled design.
+						if (type.startsWith("bench.")) return
 						// Agent turns: a loop starts with message_received and ends with its model answer. Counted even
 						// once settled, so a turn that began before a re-arm still holds settling up.
 						if (type === "message_received.started") turns.set(event.producerId, (turns.get(event.producerId) ?? 0) + 1)

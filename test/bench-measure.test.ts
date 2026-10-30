@@ -55,3 +55,12 @@ test("worth proposing: only a change over 10 %, and always when nothing was meas
 	assert.equal(worthProposing(0.03, 0.0375), true)
 	assert.equal(worthProposing(0.03, undefined), true)
 })
+
+test("live-mode current before the duty cycle starts does not move the floor or the charge per wake", () => {
+	// 30 s of live mode at ~48 mA (more samples than the duty cycle has), then the duty cycle: the window a replay (or a slow mode switch) hands the bench.
+	const live = Array.from({ length: Math.round(30_000 / 17.6) }, (_, i) => ({ at: -30_000 + i * 17.6, mA: 48 + (i % 3) }))
+	const m = measureCycles([...live, ...stream({ floorMa: 6, awakeMa: 66, awakeMs: 180, periodMs: 3000, cycles: 8 })])
+	assert.ok(m)
+	assert.ok(Math.abs(m.floorMa - 6) < 0.01, `floor ${m.floorMa}`)
+	assert.ok(Math.abs(m.chargeUc - 10_800) < 60 * 17.6 + 1, `charge ${m.chargeUc}`)
+})
