@@ -16,6 +16,10 @@ class SharedPort(unittest.TestCase):
     def test_without_a_cp2102_telemetry_comes_from_the_s3s_own_port(self):
         self.assertEqual(classify([("/dev/ttyACM0", 0x303A, 0x1001)]), {"dut": "/dev/ttyACM0", "fixture": None, "telemetry": "/dev/ttyACM0"})
 
+    def test_an_s3_running_tinyusb_firmware_is_still_the_dut(self):
+        # 303a:4001 is the S3's USB-OTG (TinyUSB) CDC: factory demos and Arduino builds with USB_MODE=0.
+        self.assertEqual(classify([("/dev/ttyACM0", 0x303A, 0x4001)])["dut"], "/dev/ttyACM0")
+
     def test_a_cp2102_still_wins_when_present(self):
         found = classify([("/dev/ttyACM0", 0x303A, 0x1001), ("/dev/ttyUSB0", 0x10C4, 0xEA60)])
         self.assertEqual(found["telemetry"], "/dev/ttyUSB0")
@@ -99,6 +103,11 @@ class FlashReleasesThePort(unittest.TestCase):
             def resume(self):
                 events.append("resume")
 
+        # No board answers in this test: don't wait for a boot line, or for a person to tap RST.
+        waits = (mock.patch.object(B, "BOOT_WAIT_S", 0.01), mock.patch.object(B, "HUMAN_WAIT_S", 0.01))
+        for w in waits:
+            w.start()
+            self.addCleanup(w.stop)
         b = B.Bridge("real", B.Out(io.StringIO(), None), "pio")
         b.ports = {"dut": "/dev/ttyACM0", "fixture": None, "telemetry": "/dev/ttyACM0"}
         b.telemetry = Spy()

@@ -86,7 +86,26 @@ def esptool_lines():
     ]
 
 
+ESPTOOL5_LINES = [
+    "Uploading .pio/build/esp32s3_bench/firmware.bin",
+    "Writing at 0x00010000 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100.0% 47B/47B [0s] ",
+    "Wrote 8192 bytes (47 compressed) at 0x0000e000 in 0.1 seconds (991.5 kbit/s).",
+    "Writing '.pio/build/esp32s3_bench/firmware.bin' at 0x00010000...",
+    "Writing at 0x0001c1af ━━                               7.7% 16.00kB/207.67kB [0s] ",
+    "Writing at 0x00026f51 ━━━━╸                           15.4% 32.00kB/207.67kB [0s] ",
+    "Writing at 0x0002c97e ━━━━━━╸                         23.1% 48.00kB/207.67kB [0s] ",
+    "Writing at 0x0006e930 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100.0% 207.67kB/207.67kB [2s] ",
+]
+
+
 class Progress(unittest.TestCase):
+    def test_esptool_5_bars(self):
+        # Seen on the real board, 30 Oct: esptool v5 draws a bar, not "(NN %)". Its 0x10000 line is the end of the
+        # 47-byte boot_app0 write; the app's bars follow the "Writing '...firmware.bin' at 0x00010000" header.
+        p = FlashProgress()
+        events = [e for line in ESPTOOL5_LINES for e in p.feed(line)]
+        self.assertEqual([e["pct"] for e in events if e["stage"] == "write"], [7, 23, 100])
+
     def test_stages_and_app_write_steps(self):
         p = FlashProgress()
         events = [e for line in esptool_lines() for e in p.feed(line)]
