@@ -25,7 +25,11 @@ const CONTRACT_SHAPES = `Contract field shapes (units: mm, V, mA):
 Reference designators: U1 = MCU (ESP32-C3-MINI-1, pins GPIO0..GPIO10), U2 = sensor, U3 = LDO, J1 = USB-C, D1 = LED.
 Always call read_contract first and pass each field's current version as baseVersion.`
 
+export const ENGINEER_REQUEST_PREFIX = "Change request from the engineer:"
+
 export function createArchitectAgent(opts: { mock: boolean }): Agent {
+	// The engineer's first message is the brief; every later one is a mid-run change request.
+	let briefSeen = false
 	const agent = createRoleAgent({
 		role: "architect",
 		mock: opts.mock,
@@ -33,7 +37,20 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 		handlers: [
 			{
 				specification: when(({ event }) => isEvent(event, "message.sent" as never) && state().getParticipant(event.producerId)?.getManifest().name === "engineer"),
-				processor: { apply: ({ event, participant }) => startTurn(participant as Agent, `Brief from the engineer:\n${(event.payload as { message: string }).message}`) },
+				processor: {
+					apply: ({ event, participant }) => {
+						const message = (event.payload as { message: string }).message
+						if (!briefSeen) {
+							briefSeen = true
+							startTurn(participant as Agent, `Brief from the engineer:\n${message}`)
+							return
+						}
+						startTurn(
+							participant as Agent,
+							`${ENGINEER_REQUEST_PREFIX}\n${message}\nMeet it by changing the fields you own: call read_contract, then propose_contract_change with each field's current baseVersion. Keep everything the request does not mention. If no field you own can meet it, change nothing and say why.`,
+						)
+					},
+				},
 			},
 			ownerReviewsChanges("architect"),
 			{
