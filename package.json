@@ -1,0 +1,19 @@
+{
+	"name": "agent-mesh",
+	"version": "0.1.0",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"start": "tsx src/main.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@mozaik-ai/core": "4.1.0",
+		"dotenv": "^17.4.2"
+	},
+	"devDependencies": {
+		"@types/node": "^24.0.0",
+		"tsx": "^4.23.13",
+		"typescript": "^7.0.2"
+	}
+}

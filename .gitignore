@@ -1,0 +1,6 @@
+node_modules/
+.env
+.venv/
+tools/
+out/
+skidl_*
