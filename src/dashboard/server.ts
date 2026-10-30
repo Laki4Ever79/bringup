@@ -8,6 +8,8 @@ const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
 const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
+// Page modules served from this folder (and nothing else from it).
+const MODULES = new Set(["lanes.js", "stl.js"])
 
 const TYPES: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
@@ -121,6 +123,10 @@ export async function serveDashboard(runDir: string, port = 4317): Promise<Dashb
 			if (path === "/") {
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 				return res.end(await readFile(PAGE))
+			}
+			if (MODULES.has(path.slice(1))) {
+				res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" })
+				return res.end(await readFile(new URL(`.${path}`, import.meta.url)))
 			}
 			if (path === "/events") {
 				res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" })
