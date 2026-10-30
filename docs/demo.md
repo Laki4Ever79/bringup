@@ -6,12 +6,19 @@ you start talking.
 
 **Before you start**
 - Run `npm test` once. The integration tests confirm tscircuit, KiCad (Docker), build123d and PlatformIO are all detected.
-- Start the run, then the dashboard in a second terminal:
+- Start everything with one command:
   ```bash
-  npm run bringup -- briefs/logger.md            # real models; add --mock if there's no key or no network
-  npx tsx src/dashboard/cli.ts out/<runId>       # prints the dashboard URL (default port 4317)
+  npm run demo -- --real        # real models; leave out --real for scripted models (no key, no network)
   ```
+  It creates `out/demo-<timestamp>/`, starts the dashboard on it (and opens it in the browser when it can), launches
+  the run, and sends the engineer's change request "make the board 60 mm wide" 20 s in (never before the first
+  artifact is built). When the run exits, it prints the report path and a 5-line summary; the dashboard keeps
+  serving until Ctrl+C. Options: `--brief briefs/blinky.md`, `--change "<text>"` or `--no-change`, `--after <s>`,
+  `--port <n>` (falls back to a free port if 4317 is taken), `--no-open`.
 - Have three windows ready: the terminal, the dashboard, and the Mozaik Cloud link that `runLoop` prints.
+  Under `npm run demo` the run's output is captured, so its per-loop Cloud links are not printed. If you want them for
+  the closing segment, start the run with `npm run bringup -- briefs/logger.md --out <dir>` and the dashboard with
+  `npx tsx src/dashboard/cli.ts <dir>` instead.
 - Have `briefs/logger.md` open in an editor tab.
 - Fallback: if the network or the gateway is down, use `--mock`. The tools are real and only the models are scripted.
 
@@ -78,17 +85,19 @@ Switch to the Mozaik Cloud link and show the agents' loops side by side.
 
 ## Optional segments (only if the feature has landed)
 
-- **Mid-run change request.** While the run is going (after the first `artifact.ready`), type in a second terminal:
+- **Mid-run change request.** `npm run demo` sends it for you 20 s in (`--after` to move it, `--change` for other
+  wording). To send one by hand instead, run it with `--no-change` and type in a second terminal:
   ```bash
   npx tsx src/request.ts out/<runId> "make the board 60 mm wide"
   ```
   (From Claude Code with the MCP server: `request_change {runId, text}`.) The engineer's message wakes the architect,
-  which proposes `outline` with `widthMm: 60`. Point at the new `contract.changed` for `outline`: the board and the
-  enclosure rebuild, the firmware doesn't (it doesn't depend on the outline). The board's `outline-mismatch` shows
-  until the rebuild lands, then clears, and the report says `Board 60×30 mm`. In a mock run this takes about 30 s
-  from request to `design.settled`. The mock architect only understands "<N> mm wide"; real models take any wording.
-  Send it before the run settles: requests that arrive after `design.settled` are not picked up. Do this at 1:30, in
-  place of or right after the violations segment.
+  which proposes `outline` with `widthMm: 60`. Point at the **Engineer requests** panel: the request and, under it,
+  the `outline` change it caused. Then point at the timeline: the board and the enclosure rebuild, the firmware
+  doesn't (it doesn't depend on the outline). The board's `outline-mismatch` shows until the rebuild lands, then
+  clears, and the report says `Board 60×30 mm`. In a mock run this takes about 30 s from request to
+  `design.settled`. The mock architect only understands "<N> mm wide"; real models take any wording. Send it before
+  the run settles: requests that arrive after `design.settled` are not picked up. Do this at 1:30, in place of or
+  right after the violations segment.
 - **Design tournament** (not built yet). Two branches, ESP32-C3 and nRF52, run in parallel and are scored live. Show
   the scoreboard at 2:00 and skip the enclosure close-up to keep to time.
 - **Firmware in QEMU** (only if `tools/qemu` is installed). Show the serial output `bringup rev N` and then
