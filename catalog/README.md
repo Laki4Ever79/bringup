@@ -17,3 +17,24 @@ labelled), so `pins` is empty until the VBUS/CC/D± pad order is mapped. In code
 not a `<chip>`, which avoids tscircuit's `J`-prefix warning.
 
 The LCSC numbers were not re-checked against live stock during the event.
+
+## Live stock and price
+
+`searchParts(role)` in `src/tools/parts-search.ts` returns this catalog's entries for a role, enriched with live
+`stock`, `priceUsd` (unit price at quantity 1) and `inStock` from jlcsearch:
+
+```
+GET https://jlcsearch.tscircuit.com/api/search?q=C2838502&limit=1
+→ {"components":[{"lcsc":2838502,"mfr":"ESP32-C3-MINI-1-N4","stock":22598,"price":3.0547,"stock_checked_at":"…",…}]}
+```
+
+`q=C<number>` is an exact LCSC lookup and keeps parts with zero or unknown stock. Upstream test:
+`tests/lib/search-lcsc-prefix.test.ts` in tscircuit/jlcsearch. Free text on the same route ranks loosely; `SHT40`
+returns a Zener diode and a buck converter. That is why the agents only look up parts already in this catalog.
+`/components/list.json?search=C<number>` also matches exactly, but its `price` is a tier string from an older snapshot.
+
+Any network error, non-2xx response or 5 s timeout gives `null`s instead of an error, so offline runs still work.
+Successful lookups are cached for the process.
+
+Checked live on 30 Oct 2026: every part was in stock except `SHT40-AD1B-R2` (`C2758054`), which jlcsearch does not
+list at all, whether looked up by LCSC number or by MPN, so its fields stay `null`.
