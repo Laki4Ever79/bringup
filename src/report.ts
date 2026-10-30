@@ -67,7 +67,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`## Artifacts`,
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
 		`- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}`,
-		`- Firmware: ${s.artifacts.firmware ? (s.artifacts.firmware.ok ? "compiles" : "does NOT compile") : "not built"}`,
+		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
 		``,
 		`## Coordination`,
