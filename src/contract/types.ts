@@ -76,6 +76,10 @@ export type ProposalResult =
 	| { status: "applied"; version: number; revision: number }
 	| { status: "stale"; current: number }
 	| { status: "not-owner"; owner: AgentRole }
+	| { status: "invalid"; reason: string }
+
+// Signals become C macros (PIN_<SIGNAL>) and net names, so they must be UPPER_SNAKE.
+export const SIGNAL_PATTERN = /^[A-Z][A-Z0-9_]*$/
 
 export interface Proposal<F extends FieldName = FieldName> {
 	field: F

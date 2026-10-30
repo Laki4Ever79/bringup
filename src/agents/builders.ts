@@ -25,7 +25,13 @@ export interface BuildContext {
 // contract.changed for its input fields, runs one build at a time (newer requests coalesce),
 // stores the artifact and reports artifact.ready or artifact.failed. Builds of different
 // artifacts run concurrently because each builder has its own Rebuilder.
-export function createBuilder<K extends ArtifactKind>(opts: { kind: K; inputs: FieldName[]; build: (ctx: BuildContext) => Promise<ArtifactOf[K]> }): Human {
+export function createBuilder<K extends ArtifactKind>(opts: {
+	kind: K
+	inputs: FieldName[]
+	build: (ctx: BuildContext) => Promise<ArtifactOf[K]>
+	// For tools that report failure in their result instead of throwing.
+	failure?: (artifact: ArtifactOf[K]) => string | null
+}): Human {
 	const self: { id: string } = { id: "" }
 	const rebuilder = new Rebuilder(async (revision) => {
 		const s = state()
@@ -35,6 +41,12 @@ export function createBuilder<K extends ArtifactKind>(opts: { kind: K; inputs: F
 		try {
 			const artifact = await opts.build({ revision: snapshot.revision, snapshot, dir })
 			;(s.artifacts as Record<string, unknown>)[opts.kind] = artifact
+			s.artifactInputs[opts.kind] = Object.fromEntries(opts.inputs.map((f) => [f, snapshot.versions[f]]))
+			const failure = opts.failure?.(artifact) ?? null
+			if (failure !== null) {
+				emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: tail(failure, 40) }), self.id)
+				return
+			}
 			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision }), self.id)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
@@ -93,5 +105,6 @@ export function createFirmwareBuilder(env: Env): Human {
 			if (!env.pio) throw new Error("firmware build failed: .venv PlatformIO is not installed")
 			return buildFirmware(env.pio, env.root, dir, snapshot, revision)
 		},
+		failure: (fw) => (fw.ok ? null : `firmware does not compile:\n${fw.log}`),
 	})
 }

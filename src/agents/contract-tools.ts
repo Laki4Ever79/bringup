@@ -1,5 +1,5 @@
 import type { Tool } from "@mozaik-ai/core"
-import { FIELDS, type AgentRole, type ContractValues, type FieldName } from "../contract/types.ts"
+import { FIELDS, OWNERS, type AgentRole, type ContractValues, type FieldName } from "../contract/types.ts"
 import { makeEvent } from "../events.ts"
 import { emit, state } from "../runtime.ts"
 
@@ -53,7 +53,9 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 			},
 			strict: false,
 			invoke: async (args: { proposalId: string; approve: boolean; reason: string }) => {
-				if (!state().approvals.fieldOf(args.proposalId)) return `unknown proposalId "${args.proposalId}"`
+				const field = state().approvals.fieldOf(args.proposalId)
+				if (!field) return `unknown proposalId "${args.proposalId}"`
+				if (OWNERS[field] !== role) return `not the owner of "${field}" (${OWNERS[field]} decides)`
 				emit(makeEvent("change.decided", self.id, { proposalId: args.proposalId, approved: args.approve, by: role, reason: args.reason }), self.id)
 				return "recorded"
 			},

@@ -61,3 +61,32 @@ test("a failed build is reported, not thrown", async () => {
 	assert.match(failed.error, /tool exploded/)
 	assert.equal(t.state.artifacts.enclosure, undefined)
 })
+
+test("a build that reports failure is stored and announced as failed", async () => {
+	const state = new BringupState(tempDir())
+	startRuntime(state, undefined, null)
+	const events = recorder()
+	const desk = createChangeDesk()
+	join(desk)
+	join(
+		createBuilder({
+			kind: "firmware",
+			inputs: ["pins"],
+			build: async ({ revision }) => ({ revision, ok: false, pins: {}, log: "static assertion failed" }),
+			failure: (a) => (a.ok ? null : a.log),
+		}),
+	)
+	const r = state.contract.propose({ field: "pins", value: [], by: "architect", baseVersion: 0 })
+	if (r.status !== "applied") throw new Error(r.status)
+	emit(makeEvent("contract.changed", desk.getId(), { field: "pins", version: 1, revision: r.revision, by: "architect" }), desk.getId())
+	await waitFor(() => events.some((e) => e.type === "artifact.failed"))
+	assert.equal(state.artifacts.firmware?.ok, false)
+	assert.match((events.find((e) => e.type === "artifact.failed")!.payload as { error: string }).error, /static assertion/)
+})
+
+test("artifacts record the input versions they were built from", async () => {
+	const t = setup(async (revision) => ({ ...fixtureArtifacts().enclosure!, revision }))
+	t.change("outline")
+	await waitFor(() => t.events.some((e) => e.type === "artifact.ready"))
+	assert.deepEqual(t.state.artifactInputs.enclosure, { outline: 1, connectors: 0 })
+})

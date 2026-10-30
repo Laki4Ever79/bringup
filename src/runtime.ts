@@ -10,7 +10,7 @@ import {
 import { ApprovalRegistry } from "./approvals.ts"
 import type { Artifacts } from "./contract/consistency.ts"
 import { DesignContract } from "./contract/contract.ts"
-import type { AgentRole } from "./contract/types.ts"
+import type { AgentRole, FieldName } from "./contract/types.ts"
 import { makeEvent } from "./events.ts"
 import { Outbox } from "./outbox.ts"
 
@@ -19,6 +19,8 @@ export const APPROVAL_TIMEOUT_MS = 120_000
 export class BringupState extends RuntimeState {
 	readonly contract = new DesignContract()
 	readonly artifacts: Artifacts = {}
+	// Per artifact: the versions of its input fields it was last built from.
+	readonly artifactInputs: Partial<Record<"board" | "enclosure" | "firmware", Partial<Record<FieldName, number>>>> = {}
 	readonly roles = new Map<string, AgentRole>()
 	readonly approvals = new ApprovalRegistry()
 
