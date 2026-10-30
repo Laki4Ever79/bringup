@@ -133,6 +133,13 @@
 	#parts-ready.warn { color: var(--warn); }
 	#parts .part { cursor: pointer; }
 	.src-pop { position: absolute; left: 8px; right: 8px; z-index: 20; padding: 10px 12px; background: var(--raised); border: 1px solid var(--border-hover); border-radius: var(--r-card); box-shadow: 0 20px 50px rgba(0, 0, 0, .55); animation: fadein var(--t) var(--ease); cursor: default; }
+	/* Expanded state: the row's chevron turns down; the popover has a close button. */
+	#parts .chev { color: var(--text-3); font-size: 14px; line-height: 1; transition: transform var(--t) var(--ease); }
+	#parts .part.open { background: var(--raised); box-shadow: inset 0 0 0 1px var(--border-hover); }
+	#parts .part.open .chev { transform: rotate(90deg); color: var(--text); }
+	.src-pop .close { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 6px; border: 0; background: transparent; color: var(--text-2); font-size: 18px; line-height: 1; cursor: pointer; }
+	.src-pop .close:hover { background: #26262c; color: var(--text); }
+	.src-pop h4 { padding-right: 30px; }
 	.src-pop h4 .chip { text-transform: none; letter-spacing: 0; margin-left: 6px; }
 	.src-pop h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
 	.src-pop .row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 90px; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 13px; text-decoration: none; }
@@ -140,7 +147,7 @@
 	.src-pop .nc { color: var(--text-3); }
 	#parts-total { font-size: 18px; color: var(--text); font-weight: 600; }
 	#parts { overflow-y: auto; padding: 6px 8px 8px; position: relative; }
-	#parts .part { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto 22px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-card); transition: background var(--t) var(--ease); cursor: default; }
+	#parts .part { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto 22px 12px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-card); transition: background var(--t) var(--ease); cursor: default; }
 	#parts .part:hover, #parts .part.hl { background: var(--raised); }
 	#parts .part.hl { box-shadow: inset 0 0 0 1px var(--border-hover); }
 	#parts .ref { font-family: var(--mono); font-size: 13px; padding: 2px 6px; border-radius: 6px; background: #1c1c21; color: var(--text); text-align: center; }
@@ -405,7 +412,7 @@
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	import { AGENT_COLORS, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -513,7 +520,7 @@
 			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
 			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
 			hover: null, bom: null, contract: null,
-			fab: false, print: null,
+			fab: false, print: null, openPart: null,
 			bench: null, telemetry: new TelemetryBuffer(30_000), att: { pitch: 0, roll: 0 }, benchTabShown: false, batteryEst: null, stopped: false, lastSampleAt: 0, g0: null,
 		}
 		let benchDirty = false
@@ -694,20 +701,24 @@
 			$("parts-ready").textContent = ready?.summary ?? ""
 			$("parts-ready").title = ready?.summary ?? ""
 			$("parts-ready").className = ready?.warn ? "warn" : ""
-			const openRef = $("parts").querySelector(".src-pop")?.dataset.ref
 			$("parts").innerHTML = items.map((p) => {
 				const stock = typeof p.stock === "number" ? `<span class="chip ${p.inStock === false || p.stock === 0 ? "bad" : "ok"} num">${p.stock === 0 ? "out of stock" : `${fmtStock(p.stock)} in stock`}</span>` : `<span class="chip t3">stock —</span>`
 				const price = typeof p.priceUsd === "number" ? `<span class="chip num">$${p.priceUsd.toFixed(p.priceUsd < 0.1 ? 3 : 2)}</span>` : `<span class="chip t3">$ —</span>`
 				const g = p.grounded === true ? `<span class="ground ok" title="every pin backed by a datasheet source">✓</span>` : p.grounded === false ? `<span class="ground warn" title="${esc(p.finding ?? "not grounded")}">⚠</span>` : `<span class="ground t3">·</span>`
 				const lcsc = p.lcsc ? `<a href="https://www.lcsc.com/product-detail/${encodeURIComponent(p.lcsc)}.html" target="_blank" rel="noopener">${esc(p.lcsc)} ↗</a>` : ""
-				return `<div class="part${S.hover === p.ref ? " hl" : ""}" data-ref="${esc(p.ref)}"><span class="ref">${esc(p.ref)}</span><span class="mpn" title="${esc(p.role)} · ${esc(p.footprint)}">${esc(p.mpn)}${lcsc}</span>${stock}${price}${g}</div>`
+				return `<div class="part${S.hover === p.ref ? " hl" : ""}" data-ref="${esc(p.ref)}" title="Where to buy ${esc(p.ref)}"><span class="ref">${esc(p.ref)}</span><span class="mpn" title="${esc(p.role)} · ${esc(p.footprint)}">${esc(p.mpn)}${lcsc}</span>${stock}${price}${g}<span class="chev" aria-hidden="true">›</span></div>`
 			}).join("")
-			if (openRef) openSourcing(openRef)
+			// The list is rebuilt whenever bom.json updates; the open part is state, not DOM, so it survives that.
+			showSourcing(S.openPart, false)
 		}
 		// Click a part: where to buy it (links open in a new tab), live stock and price where known, and alternatives.
 		const bomItems = () => (S.bom ? (Array.isArray(S.bom) ? S.bom : (S.bom.items ?? [])) : [])
-		function openSourcing(ref) {
+		// Shows the popover for ref (null closes it) and marks its row expanded.
+		function showSourcing(ref, scroll = true) {
+			S.openPart = ref
 			$("parts").querySelector(".src-pop")?.remove()
+			for (const r of $("parts").querySelectorAll(".part")) r.classList.toggle("open", r.dataset.ref === ref)
+			if (!ref) return
 			const row = $("parts").querySelector(`.part[data-ref="${CSS.escape(ref)}"]`)
 			const item = bomItems().find((p) => p.ref === ref)
 			if (!row || !item) return
@@ -727,20 +738,20 @@
 				: ""
 			const line = readinessLine(S.bom?.readiness, ref)
 			const badge = line ? ` <span class="chip ${line.warn ? "warn" : ""}">${esc(line.status)}</span>` : ""
-			row.insertAdjacentHTML("afterend", `<div class="src-pop" data-ref="${esc(ref)}" style="top:${row.offsetTop + row.offsetHeight + 4}px"><h4>${esc(ref)} · ${esc(item.mpn)} · where to buy${badge}</h4>${src}${alts}</div>`)
-			const pop = $("parts").querySelector(".src-pop")
-			// Keep it in view inside the scrolling list.
-			const over = pop.offsetTop + pop.offsetHeight - ($("parts").scrollTop + $("parts").clientHeight)
-			if (over > 0) $("parts").scrollTop += over + 8
+			row.insertAdjacentHTML("afterend", `<div class="src-pop" data-ref="${esc(ref)}" style="top:${row.offsetTop + row.offsetHeight + 4}px"><button class="close" aria-label="Close" title="Close (Esc)">×</button><h4>${esc(ref)} · ${esc(item.mpn)} · where to buy${badge}</h4>${src}${alts}</div>`)
+			if (!scroll) return
+			// Bring the popover into view, but never scroll its own row out of the top: the row is how it closes too.
+			const list = $("parts"), pop = list.querySelector(".src-pop")
+			const over = pop.offsetTop + pop.offsetHeight - (list.scrollTop + list.clientHeight)
+			if (over > 0) list.scrollTop = Math.min(list.scrollTop + over + 8, row.offsetTop - 4)
 		}
 		$("parts").addEventListener("click", (e) => {
+			if (e.target.closest(".src-pop .close")) return showSourcing(null)
 			if (e.target.closest(".src-pop") || e.target.closest("a")) return
 			const row = e.target.closest(".part")
-			const open = $("parts").querySelector(".src-pop")
-			if (!row || open?.dataset.ref === row.dataset.ref) return open?.remove()
-			openSourcing(row.dataset.ref)
+			showSourcing(toggleOpen(S.openPart, row ? row.dataset.ref : null))
 		})
-		document.addEventListener("click", (e) => { if (!e.target.closest("#parts")) $("parts").querySelector(".src-pop")?.remove() })
+		document.addEventListener("click", (e) => { if (S.openPart && !e.target.closest("#parts")) showSourcing(null) })
 		$("parts").addEventListener("mouseover", (e) => { const row = e.target.closest(".part"); setHover(row ? row.dataset.ref : null) })
 		$("parts").addEventListener("mouseleave", () => setHover(null))
 
@@ -1173,7 +1184,7 @@
 		$("suggest").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !$("change-input").disabled) { $("change-input").value = b.textContent; $("change-input").focus() } })
 		document.addEventListener("keydown", (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("change-input").focus() }
-			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("brief-panel").classList.add("hidden"); document.querySelector(".src-pop")?.remove() }
+			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("brief-panel").classList.add("hidden"); if (S.openPart) showSourcing(null) }
 		})
 		$("change-input").addEventListener("keydown", async (e) => {
 			if (e.key !== "Enter") return

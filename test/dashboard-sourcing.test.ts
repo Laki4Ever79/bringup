@@ -43,3 +43,11 @@ test("a part's order status: amber only for out of stock or not listed, neutral 
 	assert.equal(readinessLine(undefined, "U1"), null)
 	assert.equal(readinessLine({ orderable: 2, total: 18, missing: [] }, "U1"), null, "the old shape has no lines")
 })
+
+test("the sourcing popover toggles: the same row closes it, another row switches, nothing (Esc, outside) closes", async () => {
+	const { toggleOpen } = await import("../src/dashboard/model.js")
+	assert.equal(toggleOpen(null, "U1"), "U1")
+	assert.equal(toggleOpen("U1", "U1"), null)
+	assert.equal(toggleOpen("U1", "U2"), "U2")
+	assert.equal(toggleOpen("U1", null), null)
+})
