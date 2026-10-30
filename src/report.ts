@@ -119,6 +119,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...reviewSection(s),
 		`## Artifacts`,
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
+		...drcLines(s.artifacts.board?.drc),
 		`- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}`,
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		bootLine(join(outDir, "trace.jsonl"), env, stubbed),
@@ -142,3 +143,11 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 	writeFileSync(path, lines.join("\n"))
 	return path
 }
+
+function drcLines(drc: import("./tools/drc.ts").DrcSummary | null | undefined): string[] {
+	if (drc === undefined) return []
+	if (drc === null) return ["- Design rules (KiCad): not checked (KiCad could not run)"]
+	const types = Object.entries(drc.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(", ")
+	return [`- Design rules (KiCad, ${drc.rules}): ${drc.errors} errors, ${drc.warnings} warnings, ${drc.unconnected} unconnected${types ? ` (${types})` : ""}`]
+}
+export const drcReportLinesForTest = drcLines
