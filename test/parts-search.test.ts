@@ -71,7 +71,8 @@ test("an unknown role gives no parts", async () => {
 
 test("live lookups are cached for the process", async () => {
 	const calls: string[] = []
-	const f = fakeFetch({ C25744: { stock: 5, price: 0.001 }, C11702: { stock: 7, price: 0.001 } }, calls)
+	const resistors = loadCatalog(root).filter((p) => p.role === "resistor")
+	const f = fakeFetch({ ...Object.fromEntries(resistors.map((p) => [p.lcsc!, { stock: 7, price: 0.001 }])), C25744: { stock: 5, price: 0.001 } }, calls)
 	const first = await searchParts("resistor", { root, fetch: f })
 	const again = await searchParts("resistor", { root, fetch: f })
 	assert.equal(calls.length, first.length) // one lookup per catalog resistor, none repeated
