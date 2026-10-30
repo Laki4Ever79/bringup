@@ -10,6 +10,8 @@ run once and cut it down**. Don't speed up the agent activity itself, only the w
 - Window at 1920×1080, browser fullscreen, dashboard zoom 100 %. Dark desktop, notifications off.
 - `npm test` green, and `npm run bringup -- briefs/logger.md --mock` settles. This proves the tools are warm, so the
   first PlatformIO build doesn't stall on a toolchain download.
+- QEMU installed (NOTES.md, "Firmware emulation"), so the report shows the boot line. Check it: the tool table printed
+  at start must show a `QEMU:` path, not "missing".
 - `.env` holds the API key; never show the terminal while `.env` is open.
 - Start the recorder, then run `npm run demo -- --real`. Keep the terminal visible for the first shot only.
 - Keep the printed Mozaik Cloud link; it's the last shot.
@@ -25,7 +27,7 @@ run once and cut it down**. Don't speed up the agent activity itself, only the w
 | 1:10–1:35 | **Change control** strip: a pull-request card, `firmware → architect · pins · + STATUS_LED → GPIO10`, held, then **approved ✓** with the reason "GPIO10 is free". | "The firmware agent wants a status LED pin, but pins belong to the architect. Mozaik interception holds that tool call mid-loop until the owner approves. That's engineering change control, built on interception." |
 | 1:35–1:55 | Around 0:20 into the real run: the engineer's request "make the board 60 mm wide" appears. The stage dimensions change to 60.0 × 30.0 mm; the **Consistency pill** goes amber with a count, then back to green ✓. | "A human can join mid-run. The engineer asks for a wider board. The consistency checks are plain code: they compare what was actually built against the contract. Violations wake only the agents they affect, until everything agrees again." |
 | 1:55–2:10 | **Parts (BOM) panel**: hover `U1 ESP32-C3-MINI-1`; it lights up on the PCB and in 3D at the same time. Show the LCSC numbers, live stock and `total $…`. | "Every part comes from a vetted catalog with live JLCPCB stock. The grounding check rejects any pin that neither the catalog nor KiCad's symbol library backs." |
-| 2:10–2:22 | **Top bar**: all three pills green (Consistency, Grounding, Review), `settled`. Cut to `report.md`, then the `fab/` folder: `gerbers.zip`, `bom.csv`, `cpl.csv`. | "Settled: zero violations, the brief reviewer signs off, and out comes a KiCad board, a printable case, compiled firmware and a JLCPCB fab package." |
+| 2:10–2:22 | **Top bar**: all three pills green (Consistency, Grounding, Review), `settled`. Cut to `report.md`, and zoom on `Firmware boot (QEMU): booted, printed revision N`, then the `fab/` folder: `gerbers.zip`, `bom.csv`, `cpl.csv`. | "Settled: zero violations, the brief reviewer signs off. Out comes a KiCad board, a printable case, a JLCPCB fab package, and firmware that just booted in an emulator and printed the revision it was built from." |
 | 2:22–2:30 | The Mozaik Cloud link opened: the agents' loops side by side. End card: `github.com/Laki4Ever79/bringup`. | "Concurrent agents, one live contract, change control on interception. That's Bringup." |
 
 Use the real run's numbers in the voice-over only if they show on screen. Don't quote numbers from other runs over
