@@ -101,6 +101,53 @@ phone hotspot. **Cable is the default on stage**, because:
 - OTA can't reach a board in deep sleep;
 - venue 2.4 GHz and hotspot client isolation are risks we can't rehearse away.
 
+## 3b. Bridge protocol (`py/bench.py` ↔ Node), agreed by af and 7a
+
+`py/bench.py` owns every port. `src/agents/bench.ts` owns the events and the measurement math.
+
+**Invocation.** `.venv/bin/python py/bench.py --source real|fake|replay [--replay FILE] [--out DIR] [--fake-speed X]`
+- Long-lived; it exits on `quit` or when stdin closes.
+- stdout carries JSON lines and stderr carries free text.
+- Every stdout line has `k` and `at` (host epoch ms).
+
+**stdout**
+
+| Line | When |
+|---|---|
+| `{"k":"hello","source","ports":{"dut","fixture","telemetry"},"meter":bool}` | Once, first. `meter:false` means no fixture or INA226. |
+| `{"k":"boot"\|"s"\|"cycle"\|"err",...}` | DUT UART1 lines, passed through unchanged with `at` added (§2). |
+| `{"k":"text","text"}` | Non-JSON serial text from the DUT. |
+| `{"k":"i","mA"}` | One per meter sample, about 60 Hz. |
+| `{"k":"flashing","id","stage":"build"\|"connect"\|"write","pct"}` | During `flash`: on stage changes and in ≥10 % steps of the app image. |
+| `{"k":"ack","id","ok","error"?,...}` | One per command. |
+| `{"k":"error","where":"fixture"\|"telemetry","error"}` | Non-fatal, e.g. a port vanished. |
+| `{"k":"bye"}` | On exit. |
+
+**stdin**
+
+| Command | Ack |
+|---|---|
+| `{"id","cmd":"flash","dir","env"?}` | When pio exits: `ms`, plus `stage` on failure (`build`\|`connect`\|`write`\|`permission`\|`timeout`). Recovery (BOOT+EN, retry once) happens inside. Node then waits up to 10 s for a `boot` line with the flashed rev; the "boot" stage is Node's. |
+| `{"id","cmd":"recover"}` | The fixture holds GPIO0 low and pulses EN. Ok once 303a:1001 appears; ok:false after 3 s. |
+| `{"id","cmd":"reset"}` | Pulses EN with GPIO0 released. |
+| `{"id","cmd":"mode","mode":"live"\|"duty"}` | Sets fixture GP12, then resets. |
+| `{"id","cmd":"ports"}` | Rescans. The ack carries `ports`. |
+| `{"id","cmd":"quit"}` | Ack, then `bye`, then exit. |
+
+**Files.** `--out DIR` writes two files:
+- `bench.jsonl`: every stdout line except acks. It is also the **replay format**.
+- `power.csv`: `at,mA`.
+
+**Sources.**
+- **fake:** the DUT and the meter are simulated.
+  - A flash takes about 4 s.
+  - The DUT then boots with `BRINGUP_REVISION` from `<dir>/include/pins.h`, and the LED period comes from
+    `behavior.h`.
+  - It follows `mode`. Live mode: tilt follows a slow sine. Duty mode: about 60 mA for about 180 ms every 3 s, over a
+    6 mA floor.
+- **replay:** plays `bench.jsonl` in real time and loops it. A `flash` acks `{ok:true, simulated:true}`, and the
+  recorded `rev` is kept, never rewritten.
+
 ## 4. Events, contract, settling
 
 **Events.**
