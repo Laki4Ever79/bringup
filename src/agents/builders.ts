@@ -13,6 +13,7 @@ import { exportFab } from "../tools/fab.ts"
 import { buildEnclosure } from "../tools/enclosure.ts"
 import { buildFirmware } from "../tools/firmware.ts"
 import type { Env } from "../tools/env.ts"
+import type { DrcSummary } from "../tools/drc.ts"
 
 type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact }
 
@@ -69,7 +70,9 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 				return
 			}
 			delete s.artifactFailures[opts.kind]
-			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision }), self.id)
+			// A board's KiCad DRC summary rides along, so the dashboard can show it live (not only in report.md).
+			const drc = (artifact as { drc?: DrcSummary | null }).drc
+			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}) }), self.id)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
 			s.artifactInputs[opts.kind] = inputs

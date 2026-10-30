@@ -144,3 +144,19 @@ test("a builder with required inputs skips silently until they all exist", async
 	await waitFor(() => events.some((e) => e.type === "artifact.ready"))
 	assert.deepEqual(builds, [3])
 })
+
+test("a board build's KiCad DRC summary rides on its artifact.ready, for the dashboard's DRC pill", async () => {
+	const { createBuilder: make } = await import("../src/agents/builders.ts")
+	const state = new BringupState(tempDir())
+	startRuntime(state, undefined, null)
+	const events = recorder()
+	const desk = createChangeDesk()
+	join(desk)
+	const drc = { rules: "JLCPCB 2-layer", errors: 2, warnings: 0, unconnected: 1, byType: { clearance: 2 }, firstError: "Clearance" }
+	join(make({ kind: "board", inputs: ["outline"], build: async ({ revision }) => ({ ...fixtureArtifacts().board!, revision, drc }) as never }))
+	const r = state.contract.propose({ field: "outline", value: { widthMm: 50, heightMm: 30, thicknessMm: 1.6 }, by: "architect", baseVersion: 0 })
+	if (r.status !== "applied") throw new Error(r.status)
+	emit(makeEvent("contract.changed", desk.getId(), { field: "outline", version: r.version, revision: r.revision, by: "architect" }), desk.getId())
+	await waitFor(() => events.some((e) => e.type === "artifact.ready"))
+	assert.deepEqual(events.find((e) => e.type === "artifact.ready")!.payload, { kind: "board", revision: 1, drc })
+})

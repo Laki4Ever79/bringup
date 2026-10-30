@@ -152,17 +152,19 @@ export function checkPills(events) {
 	let grounding = null
 	let ready = null
 	let review = null
+	let board = null
 	for (const e of events) {
 		if (e.type === "consistency.checked") consistency = e.payload
 		if (e.type === "grounding.checked") grounding = e.payload
 		if (e.type === "design.ready") ready = e.payload
 		if (e.type === "review.completed") review = e.payload
+		if (e.type === "artifact.ready" && e.payload.kind === "board") board = e.payload
 	}
 	const v = consistency?.violations ?? []
 	const f = grounding?.findings ?? []
 	const rf = review?.findings ?? []
 	const reviewRunning = ready && (!review || review.revision < ready.revision)
-	return [
+	const pills = [
 		{ key: "consistency", label: "Consistency", state: !consistency ? "pending" : v.length ? "error" : "ok", count: v.length, revision: consistency?.revision ?? null, items: v.map((x) => `${x.kind}: ${x.message}`) },
 		{ key: "grounding", label: "Grounding", state: !grounding ? "pending" : f.length ? "warn" : "ok", count: f.length, revision: grounding?.revision ?? null, items: f.map((x) => `${x.kind} on ${x.partRef}: ${x.detail}`) },
 		{
@@ -174,6 +176,112 @@ export function checkPills(events) {
 			items: rf.map((x) => `${x.severity} · ${(x.fields ?? []).join(", ")}: ${x.issue}`),
 		},
 	]
+	// KiCad's DRC of the newest board build, against the fab's rules. Unconnected nets count as errors.
+	const drc = board?.drc
+	if (drc) {
+		const bad = drc.errors + drc.unconnected
+		pills.push({
+			key: "drc",
+			label: "DRC",
+			state: bad > 0 ? "error" : drc.warnings > 0 ? "warn" : "ok",
+			count: bad > 0 ? bad : drc.warnings,
+			revision: board.revision,
+			items: [
+				`${drc.errors} errors · ${drc.warnings} warnings · ${drc.unconnected} unconnected (${drc.rules})`,
+				...Object.entries(drc.byType ?? {}).map(([type, n]) => `${type} × ${n}`),
+				...(drc.firstError ? [`first: ${drc.firstError}`] : []),
+			],
+		})
+	}
+	const bench = benchState(events)
+	if (bench) {
+		const failed = bench.verdict ? bench.verdict.checks.filter((c) => !c.pass) : []
+		const flashing = bench.flash && bench.flash.ok === null
+		pills.push({
+			key: "bench",
+			label: bench.source === "real" ? "Bench" : `Bench · ${bench.source.toUpperCase()}`,
+			state: flashing ? "running" : !bench.verdict ? "pending" : bench.verdict.pass ? "ok" : "error",
+			count: failed.length,
+			revision: bench.verdict?.revision ?? bench.flash?.revision ?? null,
+			items: bench.verdict ? bench.verdict.checks.map((c) => `${c.pass ? "✓" : "✗"} ${c.name}: ${c.detail}`) : bench.meter ? [] : ["no meter: no fixture or INA226, so no measurement"],
+		})
+	}
+	return pills
+}
+
+// ── Bench (bring-up on the desk) ──────────────────────────────────────────────────────────────────
+
+// The bench as the page shows it, from the bench.* events; null until the bridge connects.
+export function benchState(events) {
+	let state = null
+	for (const e of events) {
+		const p = e.payload
+		switch (e.type) {
+			case "bench.connected":
+				state = { source: p.source, meter: p.meter, ports: p.ports, flash: null, verdict: null, measured: null }
+				break
+			case "bench.flashing":
+				if (!state) break
+				state.flash = { revision: p.revision, stage: p.stage, pct: p.pct, ok: null, error: null }
+				break
+			case "bench.flashed":
+				if (!state) break
+				state.flash = { revision: p.revision, stage: p.ok ? "boot" : (p.stage ?? "write"), pct: p.ok ? 100 : (state.flash?.revision === p.revision ? state.flash.pct : 0), ok: p.ok, error: p.error ?? null, ...(p.simulated ? { simulated: true } : {}) }
+				break
+			case "bench.verdict":
+				if (state) state.verdict = p
+				break
+			case "bench.measured":
+				if (state) state.measured = p
+				break
+		}
+	}
+	return state
+}
+
+const FLASH_STEPS = ["build", "connect", "write", "boot"]
+// Where a failure lands on the bar: the bridge's failure stages, and the bench's own refusal (pins) before the build.
+const FAIL_STEP = { pins: "build", build: "build", permission: "connect", connect: "connect", timeout: "write", write: "write", boot: "boot" }
+
+// The flash bar: build → connect → write % → boot rev N.
+export function flashSteps(flash) {
+	const at = flash.ok === false ? FLASH_STEPS.indexOf(FAIL_STEP[flash.stage] ?? "build") : FLASH_STEPS.indexOf(flash.stage)
+	return FLASH_STEPS.map((key, i) => ({
+		key,
+		label: key === "write" && flash.stage === "write" && flash.ok === null ? `write ${flash.pct} %` : key === "boot" ? `boot rev ${flash.revision}` : key,
+		state: flash.ok === true || i < at ? "done" : i === at ? (flash.ok === false ? "failed" : "active") : "todo",
+	}))
+}
+
+// Board attitude from gravity: roll = atan2(ay, az), pitch = atan2(−ax, √(ay² + az²)). No yaw (no gyro).
+export function attitude(ax, ay, az) {
+	return { pitch: Math.atan2(-ax, Math.hypot(ay, az)), roll: Math.atan2(ay, az) }
+}
+
+export function lowPass(prev, next, k) {
+	return { pitch: prev.pitch + (next.pitch - prev.pitch) * k, roll: prev.roll + (next.roll - prev.roll) * k }
+}
+
+// The live chart's window of bench.telemetry samples, kept out of the event list (they arrive 4 times a second).
+export class TelemetryBuffer {
+	constructor(windowMs = 30_000) {
+		this.windowMs = windowMs
+		this.current = []
+		this.tilt = []
+		this.lastImu = null
+	}
+	add(samples) {
+		for (const s of samples) {
+			if (typeof s.mA === "number") this.current.push({ at: s.at, mA: s.mA })
+			if (typeof s.tilt === "number") this.tilt.push({ at: s.at, tilt: s.tilt })
+			if (typeof s.ax === "number" && typeof s.ay === "number" && typeof s.az === "number") this.lastImu = { ax: s.ax, ay: s.ay, az: s.az, at: s.at }
+		}
+		const end = Math.max(this.current.at(-1)?.at ?? -Infinity, this.tilt.at(-1)?.at ?? -Infinity)
+		const from = end - this.windowMs
+		const keep = (xs) => (xs.length && xs[0].at < from ? xs.filter((x) => x.at >= from) : xs)
+		this.current = keep(this.current)
+		this.tilt = keep(this.tilt)
+	}
 }
 
 // ── Battery gauge ────────────────────────────────────────────────────────────────────────────────

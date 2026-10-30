@@ -30,7 +30,7 @@ afterEach(async () => {
 	bench = null
 })
 
-function setup(fake: FakeBridge, opts: { pins?: typeof LOGGER_DESIGN.pins } = {}) {
+function setup(fake: FakeBridge, opts: { pins?: typeof LOGGER_DESIGN.pins; windowMs?: number } = {}) {
 	const state = new BringupState(tempDir(), 2000)
 	writeFileSync(path(state.outDir, "brief.md"), "BLE logger on a 500 mAh cell, six months.\n")
 	startRuntime(state, inferenceConfig(true, { "mock-architect": approver }), null)
@@ -43,7 +43,7 @@ function setup(fake: FakeBridge, opts: { pins?: typeof LOGGER_DESIGN.pins } = {}
 		const r = state.contract.propose({ field: f, value: values[f as keyof typeof values], by: f === "parts" ? "parts" : "architect", baseVersion: 0 } as never)
 		assert.equal(r.status, "applied", f)
 	}
-	bench = createBench({ bridge: fake, hello: { source: fake.opts.source ?? "real", ports: { dut: "/dev/x", fixture: null, telemetry: null }, meter: fake.opts.meter ?? true }, windowMs: 40, liveCheckMs: 30, bootTimeoutMs: 400, batchMs: 15 })
+	bench = createBench({ bridge: fake, hello: { source: fake.opts.source ?? "real", ports: { dut: "/dev/x", fixture: null, telemetry: null }, meter: fake.opts.meter ?? true }, windowMs: opts.windowMs ?? 40, liveCheckMs: 30, bootTimeoutMs: 400, batchMs: 15 })
 	join(bench)
 	// A compiled firmware at the current revision, as the firmware builder leaves it.
 	const firmware = (revision = state.contract.revision) => {
@@ -105,6 +105,9 @@ test("the measured average goes to the contract through change control, once, wh
 	assert.ok(Math.abs(m.averageMa - 0.046) < 0.004, `averageMa ${m.averageMa}`)
 	assert.equal(m.estimateMa, 0.0375)
 	assert.equal(m.sleepUa, 10)
+	// For the dashboard's measured-vs-estimated gauge: 500 mAh / (0.046 mA + the AP2112K's 55 µA) / 24 h.
+	assert.deepEqual([m.capacityMah, m.regulatorIqUa, m.targetDays], [500, 55, 180])
+	assert.ok(Math.abs(m.days! - 500 / (m.averageMa + 0.055) / 24) < 0.01, `days ${m.days}`)
 	const proposed = t.of("change.proposed")
 	assert.deepEqual(proposed.map((p) => [p.field, p.by]), [["rails", "bench"]])
 	await waitFor(() => t.of("contract.changed").length > 0)
@@ -208,4 +211,33 @@ test("a board that panics or browns out after booting fails the boot check", asy
 	const boot = t.of("bench.verdict")[0].checks.find((c) => c.name === "boot")!
 	assert.equal(boot.pass, false)
 	assert.match(boot.detail, /brownout/)
+})
+
+test("without a battery capacity the measurement is reported but battery life is not judged, so it can't fail", async () => {
+	const t = setup(new FakeBridge())
+	writeFileSync(path(t.state.outDir, "brief.md"), "A blinky with a button.\n")
+	t.send("design.settled", { revision: t.firmware(), settled: true })
+	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	assert.equal(t.of("bench.measured")[0].days, null)
+	const v = t.of("bench.verdict")[0]
+	assert.equal(v.checks.some((c) => c.name === "battery"), false)
+	assert.equal(v.pass, true)
+})
+
+test("a newer firmware cuts the running measurement short and is flashed at once", async () => {
+	const t = setup(new FakeBridge(), { windowMs: 5000 })
+	const first = t.firmware()
+	t.send("design.settled", { revision: first, settled: true })
+	await waitFor(() => t.fake.commands.some((c) => c.cmd === "mode" && c.mode === "duty"))
+	t.state.contract.propose({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 100, tiltDeg: 20 }, by: "firmware", baseVersion: 0 })
+	const next = t.firmware()
+	const sent = Date.now()
+	t.send("artifact.ready", { kind: "firmware", revision: next })
+	await waitFor(() => t.of("bench.flashing").some((f) => f.revision === next), 2000)
+	assert.ok(Date.now() - sent < 1500, "flashed without waiting out the 5 s window")
+	await waitFor(() => t.of("bench.verdict").some((v) => v.revision === next), 8000)
+	const old = t.of("bench.verdict").find((v) => v.revision === first)
+	assert.ok(old, "the superseded firmware still gets its verdict on what was checked")
+	assert.equal(old!.checks.some((c) => c.name === "battery"), false)
+	assert.equal(t.of("bench.measured").some((m) => m.revision === first), false)
 })

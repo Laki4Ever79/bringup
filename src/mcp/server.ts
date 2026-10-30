@@ -60,7 +60,8 @@ function summarise(trace: TraceLine[]) {
 	// change.resolved is the outcome; change.decided is one vote (there can be two). Older traces have only votes.
 	const resolved = trace.some((e) => e.type === "change.resolved")
 	for (const e of trace) {
-		if (typeof e.payload?.revision === "number") revision = Math.max(revision, e.payload.revision)
+		// A bench event carries the board's booted rev (a replay's recorded one), not the contract's.
+		if (typeof e.payload?.revision === "number" && !e.type.startsWith("bench.")) revision = Math.max(revision, e.payload.revision)
 		switch (e.type) {
 			case "change.proposed": counts.proposed++; break
 			case "change.resolved": e.payload.approved ? counts.approved++ : counts.rejected++; break
