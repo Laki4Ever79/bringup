@@ -11,6 +11,7 @@
 	},
 	"dependencies": {
 		"@mozaik-ai/core": "4.1.0",
+		"@modelcontextprotocol/sdk": "1.32.2",
 		"dotenv": "^17.4.2"
 	},
 	"devDependencies": {
