@@ -31,3 +31,15 @@ test("sources show live stock and price where known, 'not checked' otherwise, ne
 	assert.deepEqual(r.alternatives.map((a: any) => [a.mpn, a.stock, a.price]), [["ESP32-C3-WROOM-02", "out of stock", "$2.80"], ["X", "not checked", "not checked"]])
 	assert.deepEqual(sourcingRows({ ref: "R1", mpn: "0402" }), { sources: [], alternatives: [] }, "older bom.json without sourcing")
 })
+
+test("a part's order status: amber only for out of stock or not listed, neutral when stock is unknown or not checked", async () => {
+	const { readinessLine } = await import("../src/dashboard/model.js")
+	const readiness = { warn: true, lines: [{ ref: "U1", status: "stock unknown" }, { ref: "U2", status: "stock confirmed" }, { ref: "U4", status: "out of stock" }, { ref: "J2", status: "not listed" }, { ref: "R1", status: "not checked" }] }
+	assert.deepEqual(readinessLine(readiness, "U1"), { status: "stock unknown", warn: false })
+	assert.deepEqual(readinessLine(readiness, "U4"), { status: "out of stock", warn: true })
+	assert.deepEqual(readinessLine(readiness, "J2"), { status: "not listed", warn: true })
+	assert.deepEqual(readinessLine(readiness, "R1"), { status: "not checked", warn: false })
+	assert.equal(readinessLine(readiness, "C9"), null)
+	assert.equal(readinessLine(undefined, "U1"), null)
+	assert.equal(readinessLine({ orderable: 2, total: 18, missing: [] }, "U1"), null, "the old shape has no lines")
+})

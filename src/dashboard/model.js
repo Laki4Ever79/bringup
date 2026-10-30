@@ -313,3 +313,9 @@ export function sourcingRows(item) {
 		alternatives: (item.alternatives ?? []).map((a) => ({ mpn: a.mpn, lcsc: a.lcsc ?? null, stock: stockText(a.stock), price: priceText(a.priceUsd) })),
 	}
 }
+
+// One part's line in bom.json's order readiness. Amber only when the part can't be ordered as listed.
+export function readinessLine(readiness, ref) {
+	const line = (readiness?.lines ?? []).find((l) => l.ref === ref)
+	return line ? { status: line.status, warn: line.status === "out of stock" || line.status === "not listed" } : null
+}
