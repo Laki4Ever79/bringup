@@ -69,7 +69,9 @@ export interface RailDraw {
 	name: string
 	peakMa: number
 	averageMa: number | null
-	source: "rail" | "duty cycle" | null
+	source: "rail" | "measured" | "duty cycle" | null
+	// The firmware revision the bench measured it on, when source is "measured".
+	measuredRevision?: number
 }
 
 export interface PowerEstimate {
@@ -99,6 +101,7 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 	const sleep = effectiveSleepUa(s)
 	const dutyCycle = requirements?.dutyCycle ? { ...requirements.dutyCycle, sleepUa: sleep!.sleepUa } : null
 	const draws: RailDraw[] = fed.map((r) => {
+		if (r.averageMa !== undefined && r.averageSource === "measured") return { name: r.name, peakMa: r.loadMa, averageMa: r.averageMa, source: "measured", measuredRevision: r.measuredRevision }
 		if (r.averageMa !== undefined) return { name: r.name, peakMa: r.loadMa, averageMa: r.averageMa, source: "rail" }
 		if (dutyCycle) return { name: r.name, peakMa: r.loadMa, averageMa: dutyCycleAverageMa(dutyCycle, r.loadMa), source: "duty cycle" }
 		return { name: r.name, peakMa: r.loadMa, averageMa: null, source: null }
@@ -128,7 +131,8 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 const ma = (x: number) => `${Number(x.toPrecision(3))} mA`
 
 export function batteryLifeSummary(e: PowerEstimate): string {
-	if (e.days !== null) return `${Math.round(e.days)} days${e.targetDays !== null ? ` vs target ${e.targetDays} days` : ""}`
+	const measured = e.rails.filter((r) => r.source === "measured").map((r) => `${r.name} measured on bench${r.measuredRevision !== undefined ? `, rev ${r.measuredRevision}` : ""}`)
+	if (e.days !== null) return `${Math.round(e.days)} days${e.targetDays !== null ? ` vs target ${e.targetDays} days` : ""}${measured.length ? ` (${measured.join("; ")})` : ""}`
 	const missing = e.rails.filter((r) => r.averageMa === null).map((r) => r.name)
 	if (e.rails.length === 0 || missing.length > 0) return `unknown (no average current${missing.length > 0 ? ` for ${missing.join(", ")}` : " in the contract"})`
 	return "unknown (no battery capacity in the brief or requirements)"
@@ -138,7 +142,8 @@ export function powerBudgetLines(e: PowerEstimate): string[] {
 	const out: string[] = []
 	if (e.rails.length > 0) out.push("- Battery-fed rails (each average is that rail's own loads, so they add up):")
 	for (const r of e.rails) {
-		out.push(`- Rail ${r.name}: peak ${ma(r.peakMa)}, average ${r.averageMa === null ? "not stated" : `${ma(r.averageMa)} (from the ${r.source})`}`)
+		const from = r.source === "measured" ? `measured on bench${r.measuredRevision !== undefined ? `, rev ${r.measuredRevision}` : ""}` : `from the ${r.source}`
+		out.push(`- Rail ${r.name}: peak ${ma(r.peakMa)}, average ${r.averageMa === null ? "not stated" : `${ma(r.averageMa)} (${from})`}`)
 	}
 	if (e.dutyCycle) {
 		const d = e.dutyCycle
