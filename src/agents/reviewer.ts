@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { createAgent, DeveloperMessageItem, ModelContext, type Agent, type Tool } from "@mozaik-ai/core"
-import { checkConsistency } from "../contract/consistency.ts"
+import { generatedNets, supportParts, usbPadSignal, usbRef } from "../codegen/circuit.ts"
+import { checkConsistency, type BoardArtifact } from "../contract/consistency.ts"
 import { estimatePower, powerBudgetLines } from "../contract/power.ts"
 import { FIELDS, type ContractSnapshot } from "../contract/types.ts"
 import { isEvent, makeEvent, type ReviewFinding } from "../events.ts"
@@ -21,6 +22,7 @@ You see the brief, the final design contract and the results of the deterministi
 - Severity: blocker = a must-have cannot be met as designed; major = a requirement is at risk or a choice clearly works against it; minor = worth improving but the brief is met.
 - No style nitpicks and no requests outside the brief's scope.
 - Verdict "fail" only when a brief requirement is not met or a choice clearly undermines it; otherwise "pass" (minor findings are fine with a pass).
+- Wiring: the board generator wires part of every board itself, and the "Board-generated wiring" section lists it: USB-C CC pull-downs, USB D+/D- to the MCU, the power path, pull-ups, decoupling. That wiring is part of the design even though the contract does not list it. Do not report as missing anything that section shows; judge whether it meets the brief. When the section says it was checked against a built board, it is on the board.
 - Name the contract fields each finding concerns (${FIELDS.join(", ")}) so it reaches their owner.
 Call submit_review exactly once.`
 
@@ -40,6 +42,34 @@ async function powerSummary(env: Env | undefined, s: ContractSnapshot, dir: stri
 	} catch (error) {
 		return `Power simulation failed: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`
 	}
+}
+
+// What the board generator adds on top of the contract, so the reviewer judges the board that gets built and not only
+// the contract: the support passives with their jobs and the generated power and USB nets, checked against the latest
+// real board build when there is one.
+export function wiringSection(s: ContractSnapshot, board: BoardArtifact | undefined): string[] {
+	const usb = usbRef(s)
+	const show = (end: string) => {
+		const [ref, pin] = end.split(".")
+		const signal = ref === usb ? usbPadSignal(pin) : undefined
+		return signal ? `${end} (${signal})` : end
+	}
+	const nets = generatedNets(s)
+	const out = [
+		"## Board-generated wiring (added by the board generator, not in the contract)",
+		"The board generator wires this on every build. It is part of the design even though the contract does not list it.",
+		"Support passives (each uses a contract part with the same LCSC number, else the generator adds one):",
+		lines(supportParts(s), (p) => `${p.ref} ${p.spec.value} (${p.spec.lcsc}): ${p.job} → ${"net" in p.b ? p.b.net : `${p.b.ref}.${p.b.pin}`} [${p.added ? "added by the board generator" : "contract part"}]`, "- none"),
+		"Generated power and USB nets (REF.pin; USB-C pads named):",
+		lines([...nets], ([net, ends]) => `${net}: ${ends.map(show).join(", ")}`, "- none"),
+	]
+	if (!board) return [...out, "No board has been built yet, so this comes from the generator's rules, not from a build."]
+	if (isStub(board)) return [...out, "The board is stubbed (--no-hardware), so this comes from the generator's rules, not from a build."]
+	const missing = [...nets].flatMap(([net, ends]) => {
+		const gone = ends.filter((e) => !(board.nets[net] ?? []).includes(e))
+		return gone.length ? [`${net} is missing ${gone.join(", ")} on the board built for revision ${board.revision}`] : []
+	})
+	return [...out, missing.length === 0 ? `All of it checked against the board built for revision ${board.revision}: every generated net above is on it.` : lines(missing, (m) => m, "")]
 }
 
 // The reviewer's whole view of the run: the brief, the contract and the check results. Never an agent's turn.
@@ -80,6 +110,8 @@ export async function reviewMessage(env: Env | undefined, revision: number, roun
 		...powerBudgetLines(estimatePower(snapshot, brief)),
 		"Power path simulation:",
 		power,
+		"",
+		...wiringSection(snapshot, s.artifacts.board),
 	].join("\n")
 }
 

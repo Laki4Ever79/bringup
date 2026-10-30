@@ -164,3 +164,30 @@ test("every catalog LDO records its quiescent current", async () => {
 	for (const l of ldos) assert.equal(typeof l.iqUa, "number", `${l.mpn} has no iqUa`)
 	assert.ok(ldos.some((l) => l.iqUa! <= 5), "no ultra-low-Iq LDO in the catalog")
 })
+
+test("measuredAverageMa: charge per wake (µC) over the period, plus the sleep floor, in mA", async () => {
+	const { measuredAverageMa } = await import("../src/contract/power.ts")
+	// 183 ms awake at about 60 mA above the floor ≈ 11 000 µC per wake; one wake every 300 s; 5 µA asleep.
+	assert.equal(measuredAverageMa({ chargeUc: 11_000, periodS: 300, sleepUa: 5 }), (11_000 / 300 + 5) / 1000)
+	assert.ok(Math.abs(measuredAverageMa({ chargeUc: 11_000, periodS: 300, sleepUa: 5 }) - 0.04167) < 1e-4, "mA, not µA")
+	assert.throws(() => measuredAverageMa({ chargeUc: 1, periodS: 0, sleepUa: 5 }), /periodS/)
+})
+
+test("a sleep current below the MCU's datasheet deep-sleep floor is raised to it", async () => {
+	const { effectiveSleepUa } = await import("../src/contract/power.ts")
+	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values.requirements = { ...s.values.requirements!, dutyCycle: { activeMs: 200, periodS: 300, sleepUa: 0 } }
+	assert.deepEqual(effectiveSleepUa(s), { sleepUa: 5, raisedFrom: 0, floorFrom: "ESP32-C3-MINI-1" })
+	s.values.requirements.dutyCycle!.sleepUa = 12
+	assert.deepEqual(effectiveSleepUa(s), { sleepUa: 12, raisedFrom: null, floorFrom: "ESP32-C3-MINI-1" })
+})
+
+test("the duty-cycle estimate uses the raised sleep current and says so (real run 8 claimed 0 µA)", () => {
+	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values.requirements = { ...s.values.requirements!, dutyCycle: { activeMs: 200, periodS: 300, sleepUa: 0 } }
+	s.values.rails = [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 120 }]
+	const e = estimatePower(s, "500 mAh")
+	const awake = 200 / 300_000
+	assert.ok(Math.abs(e.rails[0].averageMa! - (awake * 120 + (1 - awake) * 0.005)) < 1e-9)
+	assert.match(powerBudgetLines(e).join("\n"), /0 µA asleep stated, raised to the ESP32-C3-MINI-1's 5 µA deep-sleep floor \(datasheet\)/)
+})
