@@ -8,7 +8,7 @@ import { buildEnclosure } from "../src/tools/enclosure.ts"
 import { fixtureContract } from "./fixture.ts"
 
 const root = resolve(import.meta.dirname, "..")
-const python = [join(root, ".venv/bin/python"), resolve(root, "../agent-mesh/.venv/bin/python")].find(existsSync)
+const python = [join(root, ".venv/bin/python")].find(existsSync)
 const skip = python ? false : "no .venv python with build123d"
 
 function tmp() {

@@ -9,9 +9,8 @@ import { buildFirmware } from "../src/tools/firmware.ts"
 import { fixtureContract } from "./fixture.ts"
 
 const root = resolve(import.meta.dirname, "..")
-// tools/ is gitignored, so a worktree borrows the main checkout's.
-const toolsRoot = [root, resolve(root, "../agent-mesh")].find((r) => existsSync(join(r, "tools/qemu/bin/qemu-system-riscv32")))
-const pio = [join(root, ".venv/bin/pio"), resolve(root, "../agent-mesh/.venv/bin/pio")].find(existsSync)
+const toolsRoot = existsSync(join(root, "tools/qemu/bin/qemu-system-riscv32")) ? root : undefined
+const pio = [join(root, ".venv/bin/pio")].find(existsSync)
 const skip = !toolsRoot ? "tools/qemu not installed" : !pio ? "pio not found" : false
 
 test("fixture firmware boots in QEMU and reports the contract revision", { skip, timeout: 600_000 }, async () => {
