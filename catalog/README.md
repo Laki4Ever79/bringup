@@ -9,8 +9,27 @@ Generic footprints, not the real land pattern:
 
 | Part | Footprint used | Real package |
 |---|---|---|
-| ESP32-C3-MINI-1 | `qfn32` | 53-pad LGA module, 13.2×16.6 mm |
 | SHT40 | `dfn4` | 1.5×1.5 mm DFN-4 (pitch differs) |
+
+**ESP32-C3-MINI-1** uses `esp32_c3_mini_1`. This isn't a footprinter string: `src/codegen/circuit.ts` emits an
+inline `<footprint>` for it. It follows the module datasheet (v2.2, Table 3-1 and Figure 11-1):
+- a 13.2 × 16.6 mm body, the top 5.4 mm of which is the antenna area, drawn on silkscreen
+- 53 pads, with the datasheet's numbering and sides: 1–11 down the left, 12–24 along the bottom, 25–35 up the right,
+  36–48 a GND row under the antenna, 49 the thermal pad, 50–53 the corner pads
+- 0.4 × 0.8 mm edge pads on a 0.8 mm pitch, and 0.7 mm corner pads
+
+The contract's pin names map to the datasheet's pin numbers: GPIO8 → pin 22, GPIO9 → 23, GPIO10 → 16, 3V3 → 3,
+GND → 1, and so on. Pad *offsets* are reconstructed from the figure's dimensions and are approximate, to roughly
+0.5 mm. The 5.4 mm thermal-pad size is our best reading of the figure. Only pad 1 is wired to GND; the other GND pads
+(2, 11, 14, 36–53) are left unconnected. Check against Espressif's land-pattern source files before ordering boards.
+
+**Placement** (`placeParts` in `src/codegen/circuit.ts`) is deterministic. Connectors go to their contract
+edge and offset. The MCU goes near the board centre, its whole body reserved and its antenna turned away from USB-C.
+The LDO goes between USB-C and the MCU. The sensor goes to the far edge, in the corner away from the MCU, to keep it
+away from heat. The LED and its resistor go by the USB-C edge. Other passives go around the MCU. Each part takes the
+free spot nearest its target, on a 0.5 mm grid, with a 1.5 mm gap to every other part and 0.5 mm to the board edge.
+Part sizes come from pad bounding boxes measured in tscircuit 0.0.3042. A part with no room left is handed to
+tscircuit's packer.
 
 `usbcmidmount` is tscircuit's 16-pin mid-mount USB-C receptacle. Its pins are `pin1`..`pin16` (shell pads not
 labelled), so `pins` is empty until the VBUS/CC/D± pad order is mapped. In codegen it is emitted as a `<connector>`,
@@ -32,9 +51,11 @@ Still missing for a working USB-C sink: 5.1 kΩ pull-downs from CC1 and CC2 to G
 supplies no VBUS), and D+/D− to the ESP32-C3's GPIO18/GPIO19 for flashing. Both need the inner pad order checked
 against the TYPE-C-31-M-12 datasheet first.
 
-The LED gets a series resistor to GND: the contract's `resistor` part if it has one, otherwise codegen adds a 1 kΩ 0402
-`<resistor>` (`R1`, or the next free ref). That added resistor is on the board but not in the contract's BOM. The
-catalog's resistor is 10 kΩ (`0402WGF1002TCE`), so a real 1 kΩ LCSC part still has to be added.
+The LED gets a series resistor to GND. Codegen uses the contract's 1 kΩ `resistor` (LCSC C11702) if it has one, then
+any other `resistor` in the contract, and otherwise adds a 1 kΩ 0402 `<resistor>` (`R1`, or the next free ref). That
+added resistor is on the board but not in the contract's BOM; the parts agent can avoid that by picking C11702.
+The catalog's 1 kΩ is `0402WGF1001TCE` (C11702), a JLCPCB basic part. jlcsearch's exact lookup on 30 Oct 2026 showed
+21,651,885 in stock at $0.0013.
 
 The LCSC numbers were not re-checked against live stock during the event.
 

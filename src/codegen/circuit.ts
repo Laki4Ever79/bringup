@@ -53,7 +53,7 @@ function connectorPosition(c: Connector, w: number, h: number): { x: number; y: 
 const GROUND_PINS = new Set(["GND", "VSS"])
 const SUPPLY_PINS = new Set(["3V3", "VDD", "VCC"])
 const SUPPLY_RAIL = "3V3"
-const LED_RESISTOR = { resistance: "1k", footprint: "0402" }
+const LED_RESISTOR = { resistance: "1k", footprint: "0402", lcsc: "C11702" }
 
 // usbcmidmount numbers its 4 shell tabs pin1-pin4, then the 12 contact pads left to right. The two outer
 // (wider, merged) pads on each side are GND then VBUS, as on every 16-pin USB-C receptacle. CC and D± are
@@ -71,9 +71,165 @@ function freeRef(prefix: string, taken: Set<string>): string {
 	return `${prefix}${n}`
 }
 
+// LED cathode to GND through a series resistor: the contract's own (a 1k first) if it has one, else an
+// added 1k that is on the board but not in the contract's BOM.
+function ledResistor(s: ContractSnapshot): { ref: string; a: string; b: string; added: boolean } | null {
+	const { parts = [], connectors = [] } = s.values
+	if (!parts.some((p) => p.role === "led" && p.pins.includes("K"))) return null
+	const resistors = parts.filter((p) => p.role === "resistor")
+	const own = resistors.find((p) => p.lcsc === LED_RESISTOR.lcsc) ?? resistors[0]
+	if (own) return { ref: own.ref, a: own.pins[0] ?? "pin1", b: own.pins[1] ?? "pin2", added: false }
+	if (!CATALOG.some((c) => c.role === "resistor")) return null
+	return { ref: freeRef("R", new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])), a: "pin1", b: "pin2", added: true }
+}
+
+// ESP32-C3-MINI-1 (datasheet v2.2, Table 3-1 and Figure 11-1). Origin at the module centre, antenna toward +y.
+// The 53 pads keep the datasheet's numbering and sides; their offsets are approximate (see catalog/README.md).
+const MODULE_FOOTPRINT = "esp32_c3_mini_1"
+const MODULE_BODY = { w: 13.2, h: 16.6 }
+const MODULE_PAD_AREA_TOP = 2.9 // the top 5.4 mm is the antenna
+const MODULE_PINS: Record<string, number> = {
+	GND: 1, "3V3": 3, GPIO2: 5, GPIO3: 6, EN: 8, GPIO0: 12, GPIO1: 13, GPIO10: 16, GPIO4: 18, GPIO5: 19, GPIO6: 20,
+	GPIO7: 21, GPIO8: 22, GPIO9: 23, GPIO18: 26, GPIO19: 27, GPIO20: 30, GPIO21: 31,
+}
+
+function modulePads(): { pin: number; x: number; y: number; w: number; h: number }[] {
+	const pads = []
+	for (let k = 1; k <= 11; k++) pads.push({ pin: k, x: -6.2, y: 1.3 - 0.8 * (k - 1), w: 0.8, h: 0.4 }) // left, top down
+	for (let k = 12; k <= 24; k++) pads.push({ pin: k, x: -4.8 + 0.8 * (k - 12), y: -7.9, w: 0.4, h: 0.8 }) // bottom, left to right
+	for (let k = 25; k <= 35; k++) pads.push({ pin: k, x: 6.2, y: -6.7 + 0.8 * (k - 25), w: 0.8, h: 0.4 }) // right, bottom up
+	for (let k = 36; k <= 48; k++) pads.push({ pin: k, x: 4.8 - 0.8 * (k - 36), y: 2.5, w: 0.4, h: 0.8 }) // top GND row, right to left
+	pads.push({ pin: 49, x: 0, y: -2.7, w: 5.4, h: 5.4 }) // thermal pad
+	for (const [pin, x, y] of [[50, 6.2, 2.5], [51, 6.2, -7.9], [52, -6.2, -7.9], [53, -6.2, 2.5]]) pads.push({ pin, x, y, w: 0.7, h: 0.7 })
+	return pads
+}
+
+function moduleFootprint(): string {
+	const n = (v: number) => `${+v.toFixed(2)}mm`
+	const pads = modulePads().map((p) => `<smtpad portHints={["pin${p.pin}"]} pcbX="${n(p.x)}" pcbY="${n(p.y)}" width="${n(p.w)}" height="${n(p.h)}" shape="rect" />`)
+	const [hw, hh] = [MODULE_BODY.w / 2, MODULE_BODY.h / 2]
+	const outline = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+	const antenna = `{ x: ${-hw}, y: ${MODULE_PAD_AREA_TOP} }, { x: ${hw}, y: ${MODULE_PAD_AREA_TOP} }`
+	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[${antenna}]} /></footprint>}`
+}
+
+function modulePinLabels(pins: string[]): string {
+	const known = pins.filter((name) => MODULE_PINS[name] !== undefined)
+	return `{{ ${known.map((name) => `pin${MODULE_PINS[name]}: ${q(name)}`).join(", ")} }}`
+}
+
+// Deterministic placement. Connectors sit at their contract edge and offset; every other part takes the free
+// spot nearest a role-based target, on a 0.5 mm grid, keeping a 1.5 mm gap to everything already placed.
+export interface Placed {
+	ref: string
+	x: number
+	y: number
+	w: number // reserved size along x and y, after rotation
+	h: number
+	rotation: number
+}
+
+const GAP_MM = 1.5
+const EDGE_MARGIN_MM = 0.5
+const GRID_MM = 0.5
+
+// Pad bounding boxes at rotation 0, measured from tscircuit 0.0.3042 builds.
+const FOOTPRINT_SIZE: Record<string, [number, number]> = {
+	dfn4: [5.3, 1.87], sot23_5: [3.6, 2.5], "0402": [1.56, 0.64], "0603": [2.45, 0.95], qfn32: [5.8, 5.8],
+	usbcmidmount: [9.85, 6.2], pinrow4: [9.12, 1.5], pushbutton: [6, 8], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
+}
+const DEFAULT_SIZE: [number, number] = [3, 3]
+
+// Turns the module's antenna away from the USB-C edge.
+const MODULE_ROTATION: Record<Connector["edge"], number> = { left: -90, right: 90, bottom: 0, top: 180 }
+
+function sizeAt(footprint: string, rotation: number): [number, number] {
+	const [w, h] = FOOTPRINT_SIZE[footprint] ?? DEFAULT_SIZE
+	return Math.abs(rotation) % 180 === 90 ? [h, w] : [w, h]
+}
+
+export function placeParts(s: ContractSnapshot): Placed[] {
+	const { outline, parts = [], connectors = [] } = s.values
+	if (!outline) throw new Error("placeParts: contract has no outline")
+	const [W, H] = [outline.widthMm, outline.heightMm]
+	const placed: Placed[] = []
+
+	for (const c of connectors) {
+		const part = parts.find((p) => p.ref === c.ref)
+		const rotation = EDGE_ROTATION[c.edge]
+		const [w, h] = sizeAt(part ? footprintFor(part) : CONNECTOR_FOOTPRINT[c.kind], rotation)
+		placed.push({ ref: c.ref, ...connectorPosition(c, W, H), w, h, rotation })
+	}
+
+	// (u, v) runs inward from the USB-C edge and along it, so role targets don't depend on which edge that is.
+	const usb = connectors.find((c) => c.kind === "usb-c")
+	const edge = usb?.edge ?? "left"
+	const [depth, span] = edge === "left" || edge === "right" ? [W, H] : [H, W]
+	const frame = (u: number, v: number): { x: number; y: number } => {
+		switch (edge) {
+			case "left": return { x: -W / 2 + u, y: -H / 2 + v }
+			case "right": return { x: W / 2 - u, y: -H / 2 + v }
+			case "bottom": return { x: -W / 2 + v, y: -H / 2 + u }
+			case "top": return { x: -W / 2 + v, y: H / 2 - u }
+		}
+	}
+
+	const fits = (b: Placed) =>
+		Math.abs(b.x) + b.w / 2 <= W / 2 - EDGE_MARGIN_MM &&
+		Math.abs(b.y) + b.h / 2 <= H / 2 - EDGE_MARGIN_MM &&
+		placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= GAP_MM)
+
+	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }): Placed | undefined => {
+		const [w, h] = sizeAt(footprint, rotation)
+		let best: Placed | undefined
+		let bestD = Infinity
+		for (let i = 0; i <= W / GRID_MM; i++) {
+			for (let j = 0; j <= H / GRID_MM; j++) {
+				const b = { ref, x: -W / 2 + i * GRID_MM, y: -H / 2 + j * GRID_MM, w, h, rotation }
+				const d = Math.hypot(b.x - want.x, b.y - want.y)
+				if (d < bestD - 1e-9 && fits(b)) [best, bestD] = [b, d]
+			}
+		}
+		if (best) placed.push(best)
+		return best
+	}
+
+	const connectorRefs = new Set(connectors.map((c) => c.ref))
+	const free = parts.filter((p) => !connectorRefs.has(p.ref))
+	const byRole = (role: string) => free.find((p) => p.role === role)
+	const usbBox = usb ? placed.find((b) => b.ref === usb.ref) : undefined
+	const done = new Set<string>()
+	const put = (p: Part | undefined, want: { x: number; y: number }, rotation = 0, footprint = p ? footprintFor(p) : "") => {
+		if (!p || done.has(p.ref)) return undefined
+		done.add(p.ref)
+		return place(p.ref, footprint, rotation, want)
+	}
+
+	const mcu = put(byRole("mcu"), { x: 0, y: 0 }, MODULE_ROTATION[edge])
+	const centre = mcu ?? { x: 0, y: 0 }
+	put(byRole("ldo"), usbBox ? { x: (usbBox.x + centre.x) / 2, y: (usbBox.y + centre.y) / 2 } : frame(10, span / 2))
+	// The sensor goes to the far edge, in the corner away from the MCU, so neither the MCU nor the LDO heats it.
+	const mcuV = edge === "left" || edge === "right" ? centre.y + H / 2 : centre.x + W / 2
+	put(byRole("sensor"), frame(depth - 3, mcuV < span / 2 ? span - 4 : 4))
+	const usbV = usb?.offsetMm ?? span / 2
+	const led = put(byRole("led"), frame(2, usbV + 9 <= span - 3 ? usbV + 9 : usbV - 9))
+	const r = ledResistor(s)
+	if (r && led) {
+		if (r.added) place(r.ref, LED_RESISTOR.footprint, 0, led)
+		else put(free.find((p) => p.ref === r.ref), led)
+	}
+	for (const p of free) put(p, centre)
+	return placed
+}
+
+function at(placement: Map<string, Placed>, ref: string): string {
+	const b = placement.get(ref)
+	return b ? ` pcbX={${+b.x.toFixed(2)}} pcbY={${+b.y.toFixed(2)}} pcbRotation={${b.rotation}}` : ""
+}
+
 // GND, the 3V3 rail and VBUS, so the board is powered and not just a set of signal traces. A net is only
 // emitted when it reaches at least two components; a one-component net can't be routed.
-function powerLines(s: ContractSnapshot, footprintOf: Map<string, string>): string[] {
+function powerLines(s: ContractSnapshot, footprintOf: Map<string, string>, placement: Map<string, Placed>): string[] {
 	const { parts = [], rails = [], connectors = [] } = s.values
 	const supply = netName(SUPPLY_RAIL)
 	const nets = new Map<string, string[]>([["GND", []], [supply, []], ["VBUS", []]])
@@ -99,17 +255,10 @@ function powerLines(s: ContractSnapshot, footprintOf: Map<string, string>): stri
 		for (const pin of USBC_MIDMOUNT_PADS.VBUS) nets.get("VBUS")!.push(port(c.ref, pin))
 	}
 
-	// LED cathode to GND through a series resistor: the contract's own if it has one, else an added 1k.
 	const led = parts.find((p) => p.role === "led" && p.pins.includes("K"))
 	if (led) {
-		const contractResistor = parts.find((p) => p.role === "resistor")
-		let r: { ref: string; a: string; b: string } | null = null
-		if (contractResistor) {
-			r = { ref: contractResistor.ref, a: contractResistor.pins[0] ?? "pin1", b: contractResistor.pins[1] ?? "pin2" }
-		} else if (CATALOG.some((c) => c.role === "resistor")) {
-			r = { ref: freeRef("R", new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])), a: "pin1", b: "pin2" }
-			lines.push(`<resistor name=${q(r.ref)} resistance=${q(LED_RESISTOR.resistance)} footprint=${q(LED_RESISTOR.footprint)} />`)
-		}
+		const r = ledResistor(s)
+		if (r?.added) lines.push(`<resistor name=${q(r.ref)} resistance=${q(LED_RESISTOR.resistance)}${at(placement, r.ref)} footprint=${q(LED_RESISTOR.footprint)} />`)
 		if (r) {
 			lines.push(`<trace name=${q(`${led.ref}_K_${r.ref}`)} from=${q(port(led.ref, "K"))} to=${q(port(r.ref, r.a))} />`)
 			nets.get("GND")!.push(port(r.ref, r.b))
@@ -129,7 +278,7 @@ function powerLines(s: ContractSnapshot, footprintOf: Map<string, string>): stri
 	return lines
 }
 
-// Source of board.circuit.tsx. Parts are left to tscircuit's packer; only connectors are pinned to the edge.
+// Source of board.circuit.tsx. Every part gets a fixed position from placeParts; tscircuit only routes.
 export function circuitFromContract(s: ContractSnapshot): string {
 	const { outline, parts = [], pins = [], connectors = [] } = s.values
 	if (!outline) throw new Error("circuitFromContract: contract has no outline")
@@ -137,11 +286,14 @@ export function circuitFromContract(s: ContractSnapshot): string {
 	const connectorRefs = new Set(connectors.map((c) => c.ref))
 	const lines: string[] = []
 	const footprintOf = new Map<string, string>()
+	const placement = new Map(placeParts(s).map((b) => [b.ref, b]))
 
 	for (const p of parts) {
 		if (connectorRefs.has(p.ref)) continue
-		const labels = p.pins.length > 0 ? ` pinLabels=${pinLabels(p.pins)}` : ""
-		lines.push(`<chip name=${q(p.ref)} footprint=${q(footprintFor(p))}${labels} />`)
+		const footprint = footprintFor(p)
+		const isModule = footprint === MODULE_FOOTPRINT
+		const labels = p.pins.length > 0 ? ` pinLabels=${isModule ? modulePinLabels(p.pins) : pinLabels(p.pins)}` : ""
+		lines.push(`<chip name=${q(p.ref)}${labels}${at(placement, p.ref)} footprint=${isModule ? moduleFootprint() : q(footprint)} />`)
 	}
 
 	for (const c of connectors) {
@@ -159,7 +311,7 @@ export function circuitFromContract(s: ContractSnapshot): string {
 		lines.push(`<trace name=${q(`${pin.signal}_part`)} from=${q(`.${pin.partRef} > .${pin.partPin}`)} to=${q(`net.${pin.signal}`)} />`)
 	}
 
-	lines.push(...powerLines(s, footprintOf))
+	lines.push(...powerLines(s, footprintOf, placement))
 
 	return [
 		"export default () => (",
