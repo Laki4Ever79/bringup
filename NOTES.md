@@ -138,3 +138,22 @@ Gotchas:
 - With the built-in telemetry each `runLoop` is its own cloud session (a new "watching live" URL per turn). For one
   shared view across laptops, use `createCloudExporter` from `@mozaik-ai/cloud-sdk/exporter` with a shared
   `sessionId` (see RESEARCH.md §E).
+
+## Firmware emulation: Espressif QEMU (`tools/qemu`)
+
+`src/tools/emulator.ts` boots `buildFirmware` output headless on `qemu-system-riscv32 -machine esp32c3`.
+Install the prebuilt fork user-level (no sudo) into the main checkout's gitignored `tools/`:
+
+```bash
+cd tools
+curl -LO https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417/qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
+tar xf qemu-riscv32-softmmu-*.tar.xz   # unpacks to tools/qemu/bin/qemu-system-riscv32
+rm qemu-riscv32-softmmu-*.tar.xz
+tools/qemu/bin/qemu-system-riscv32 -machine help | grep esp32c3
+```
+
+- The flash image is merged with PlatformIO's bundled esptool (`~/.platformio/packages/tool-esptool/esptool merge-bin`,
+  padded to 4 MB): bootloader `0x0`, partitions `0x8000`, `boot_app0` `0xe000`, app `0x10000`.
+- No SHT40 in emulation, so `SENSOR FAIL` is expected; a boot counts when `bringup rev N` appears on serial.
+- Wokwi CLI is the alternative backend (it can simulate the SHT40) but needs `WOKWI_CLI_TOKEN`.
+- `test/emulator.int.test.ts` skips while `tools/qemu` is missing.
