@@ -84,3 +84,32 @@ test("bom.json carries sources, alternatives and the order readiness", async () 
 	assert.equal(bom.readiness!.orderable, 1, "only U1 has known stock in the fake table")
 	assert.match(bom.readiness!.summary, new RegExp(`^1/${LOGGER_DESIGN.parts.length} lines orderable at LCSC/JLCPCB; U2 stock unknown`))
 })
+
+test("whenIdle waits for a pending or running bom.json write", async () => {
+	const slow = (async () => { await new Promise((r) => setTimeout(r, 300)); return new Response(JSON.stringify({ components: [] })) }) as typeof fetch
+	const state = new BringupState(tempDir())
+	startRuntime(state, undefined, null)
+	const desk = createChangeDesk()
+	joinRuntime(desk)
+	const writer = createBomWriter({ fetch: slow, debounceMs: 50, root })
+	joinRuntime(writer)
+	assert.equal(writer.idle, true)
+	const r = state.contract.propose({ field: "parts", value: LOGGER_DESIGN.parts, by: "parts", baseVersion: 0 })
+	if (r.status !== "applied") throw new Error(r.status)
+	emit(makeEvent("contract.changed", desk.getId(), { field: "parts", version: r.version, revision: r.revision, by: "parts" }), desk.getId())
+	assert.equal(writer.idle, false, "a debounced write is pending")
+	await writer.whenIdle(10_000)
+	assert.ok(existsSync(join(state.outDir, "bom.json")), "the write finished before whenIdle resolved")
+	assert.equal(writer.idle, true)
+})
+
+test("a run writes bom.json before it returns, even with slow live lookups (7a's race)", { timeout: 60_000 }, async () => {
+	const { runDesign, ROOT } = await import("../src/run.ts")
+	const { mockScripts } = await import("../src/inference/scripts.ts")
+	const slow = (async () => { await new Promise((r) => setTimeout(r, 400)); return new Response(JSON.stringify({ components: [] })) }) as typeof fetch
+	const outDir = tempDir()
+	await runDesign({ brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"), mock: true, outDir, noHardware: true, review: false, timeoutMs: 50_000, scripts: mockScripts(), bomFetch: slow, env: { root: ROOT, tsci: null, kicad: null, python: null, pio: null } })
+	assert.ok(existsSync(join(outDir, "bom.json")), "bom.json missing after the run returned")
+	const bom = JSON.parse(readFileSync(join(outDir, "bom.json"), "utf8")) as Bom
+	assert.ok(bom.readiness, "the final bom.json has the readiness summary")
+})
