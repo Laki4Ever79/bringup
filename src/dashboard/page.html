@@ -18,6 +18,8 @@
 	#status { color: var(--dim); }
 	#status.live { color: var(--approved); }
 	#settled { margin-left: auto; font-weight: 600; }
+	#cloud a { color: var(--contract); font-weight: 600; text-decoration: none; }
+	#cloud .meta { color: var(--dim); font-size: 16px; }
 	main { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
 	section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
 	#counters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; padding: 12px; }
@@ -55,6 +57,7 @@
 	<span id="status">connecting…</span>
 	<span id="revision"></span>
 	<span id="settled"></span>
+	<span id="cloud"></span>
 </header>
 <main>
 	<section id="counters"></section>
@@ -233,6 +236,21 @@
 	}
 	setInterval(fetchRequests, 2000)
 
+	// Mozaik Cloud loop links the demo relays from the run (<outDir>/cloud.jsonl): link the latest one.
+	let cloudCount = 0
+	async function fetchCloud() {
+		try {
+			const res = await fetch("/files/cloud.jsonl", { cache: "no-store" })
+			if (!res.ok) return
+			const urls = (await res.text()).split("\n").flatMap((l) => { try { return [JSON.parse(l).url] } catch { return [] } })
+				.filter((u) => typeof u === "string" && /^https?:\/\//.test(u))
+			if (urls.length === 0 || urls.length === cloudCount) return
+			cloudCount = urls.length
+			$("cloud").innerHTML = `<a href="${esc(urls.at(-1))}" target="_blank" rel="noopener">Mozaik Cloud ↗</a> <span class="meta">${urls.length} loop${urls.length === 1 ? "" : "s"}</span>`
+		} catch {}
+	}
+	setInterval(fetchCloud, 2000)
+
 	let frame = null
 	const source = new EventSource("/events")
 	source.onopen = () => { $("status").textContent = "● live"; $("status").className = "live" }
@@ -252,6 +270,7 @@
 	render()
 	fetchContract()
 	fetchRequests()
+	fetchCloud()
 </script>
 </body>
 </html>
