@@ -7,6 +7,7 @@ import { createChangeDesk } from "./change-control.ts"
 import { createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder } from "./agents/builders.ts"
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
 import { createGroundingCheck } from "./agents/grounding-check.ts"
+import { createBomWriter } from "./agents/bom.ts"
 import { createArchitectAgent, createFirmwareReviewer, createPartsAgent } from "./agents/roles.ts"
 import { createBriefReviewer, MAX_REVIEW_ROUNDS } from "./agents/reviewer.ts"
 import type { Script } from "./inference/scripted-runner.ts"
@@ -71,6 +72,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env)]
 	for (const b of builders) joinRuntime(b)
 	joinRuntime(createGroundingCheck(env))
+	joinRuntime(createBomWriter({ root: env.root }))
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })
 	createFirmwareReviewer({ mock: opts.mock })

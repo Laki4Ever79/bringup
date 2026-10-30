@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
@@ -98,6 +98,7 @@ export function createBoardBuilder(env: Env): Human {
 			const board = await buildBoard(env, dir, snapshot, revision)
 			// Stable path for the dashboard: the latest render is always at <out>/board/board.png.
 			if (board.renderPath) copyFileSync(board.renderPath, join(state().outDir, "board", "board.png"))
+			if (existsSync(join(dir, "dist/board/circuit.json"))) copyFileSync(join(dir, "dist/board/circuit.json"), join(state().outDir, "board", "circuit.json"))
 			return board
 		},
 	})
