@@ -15,7 +15,10 @@ TAIL_LINES = 40
 # The app image starts at 0x10000; bootloader and partition table writes before it are too short to show.
 APP_OFFSET = 0x10000
 
-WRITING = re.compile(r"Writing at 0x([0-9a-fA-F]+)\.*\s*\(\s*(\d+)\s*%\)")
+WRITING = re.compile(r"Writing at 0x([0-9a-fA-F]+)\.*\s*\(\s*(\d+)\s*%\)")  # esptool 4: "(37 %)"
+# esptool 5 draws a bar, and its address is where the write ends, so only bars after the app's header count.
+BAR = re.compile(r"Writing at 0x[0-9a-fA-F]+ .*?(\d+(?:\.\d+)?)%")
+APP_HEADER = re.compile(r"Writing '[^']+' at 0x([0-9a-fA-F]+)")
 CONNECT_MARKERS = ("Uploading", "Connecting", "Serial port ")
 DIALOUT_FIX = "run `sudo usermod -aG dialout $USER` and log in again (or install hw_agent's udev/99-bench.rules)"
 
@@ -26,6 +29,7 @@ class FlashProgress:
     def __init__(self) -> None:
         self.stage: str | None = None
         self.pct = -1
+        self.app = False  # esptool 5: the app image's header has been seen
 
     def feed(self, line: str) -> list[dict]:
         out = []
@@ -35,9 +39,16 @@ class FlashProgress:
         if self.stage == "build" and line.startswith(CONNECT_MARKERS):
             self.stage = "connect"
             out.append({"stage": "connect", "pct": 0})
-        m = WRITING.search(line)
+        header = APP_HEADER.search(line)
+        if header:
+            self.app = int(header.group(1), 16) >= APP_OFFSET
+        m, bar = WRITING.search(line), BAR.search(line)
+        pct = None
         if m and int(m.group(1), 16) >= APP_OFFSET:
             pct = int(m.group(2))
+        elif bar and not m and self.app:
+            pct = int(float(bar.group(1)))
+        if pct is not None:
             if self.stage != "write" or pct - self.pct >= 10 or (pct == 100 and self.pct != 100):
                 self.stage, self.pct = "write", pct
                 out.append({"stage": "write", "pct": pct})
