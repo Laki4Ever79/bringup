@@ -13,7 +13,7 @@ export function fixtureContract(): ContractSnapshot {
 			rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 500, loadMa: 120 }],
 			parts: [
 				{ ref: "U1", role: "mcu", mpn: "ESP32-C3-MINI-1", lcsc: "C2838502", footprint: "module", pins: ["GPIO8", "GPIO9", "GPIO10", "3V3", "GND"] },
-				{ ref: "U2", role: "sensor", mpn: "SHT40-AD1B-R2", lcsc: "C2758054", footprint: "dfn4", pins: ["SDA", "SCL", "VDD", "VSS"] },
+				{ ref: "U2", role: "sensor", mpn: "SHT40-AD1B-R2", lcsc: "C2909890", footprint: "dfn4", pins: ["SDA", "SCL", "VDD", "VSS"] },
 				{ ref: "D1", role: "led", mpn: "KT-0603R", lcsc: "C2286", footprint: "0603", pins: ["A", "K"] },
 			],
 			pins: [
