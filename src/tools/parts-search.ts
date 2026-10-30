@@ -15,8 +15,9 @@ interface Live {
 }
 
 // iqUa: an LDO's typical quiescent current in µA. sleepUa: an MCU's typical deep-sleep current in µA, the lowest
-// sleep current a design can claim. power.ts uses both for battery life.
-export type CatalogPart = Omit<Part, "ref"> & { ref?: string; iqUa?: number; sleepUa?: number } & Live
+// sleep current a design can claim. power.ts uses both for battery life. flashMb and notes: facts the reviewer is
+// shown about a part, e.g. that an MCU module's flash can hold the reading history.
+export type CatalogPart = Omit<Part, "ref"> & { ref?: string; iqUa?: number; sleepUa?: number; flashMb?: number; notes?: string } & Live
 
 const UNKNOWN: Live = { stock: null, priceUsd: null, inStock: null }
 
