@@ -53,3 +53,12 @@ test("an identical value is reported unchanged and not applied", () => {
 	assert.deepEqual(r, { status: "unchanged", version: 1 })
 	assert.equal(c.revision, 1)
 })
+
+test("malformed field values are refused", () => {
+	const c = new DesignContract()
+	assert.equal(c.propose({ field: "rails", value: { name: "3V3" } as never, by: "architect", baseVersion: 0 }).status, "invalid")
+	assert.equal(c.propose({ field: "parts", value: "U1 ESP32" as never, by: "parts", baseVersion: 0 }).status, "invalid")
+	assert.equal(c.propose({ field: "outline", value: { widthMm: "50" } as never, by: "architect", baseVersion: 0 }).status, "invalid")
+	assert.equal(c.propose({ field: "pins", value: [{ signal: "LED", gpio: "x" }] as never, by: "architect", baseVersion: 0 }).status, "invalid")
+	assert.equal(c.revision, 0)
+})

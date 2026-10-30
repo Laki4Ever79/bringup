@@ -34,6 +34,15 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 	}
 
 	const check = () => {
+		try {
+			checkNow()
+		} catch (error) {
+			// A checker bug must never stop event delivery to the other participants.
+			console.error("[consistency] check failed:", error)
+		}
+	}
+
+	const checkNow = () => {
 		const s = state()
 		const snapshot = s.contract.snapshot()
 		writeFileSync(join(s.outDir, "contract.json"), JSON.stringify(snapshot, null, 2))
@@ -57,7 +66,11 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		timer = null
 		if (done) return
 		const s = state()
-		const busy = [...turns.values()].some((n) => n > 0) || s.approvals.openCount() > 0 || !KINDS.every(current)
+		const grounding =
+			!s.criticEnabled ||
+			s.contract.version("parts") === 0 ||
+			(s.groundedVersions?.parts === s.contract.version("parts") && s.groundedVersions?.pins === s.contract.version("pins"))
+		const busy = [...turns.values()].some((n) => n > 0) || s.approvals.openCount() > 0 || !KINDS.every(current) || !grounding
 		if (busy) return
 		settle(violations.length === 0 && s.groundingFindings.length === 0 && KINDS.every((k) => s.artifactFailures[k] === undefined))
 	}

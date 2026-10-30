@@ -1,4 +1,5 @@
-import type { InferenceRunnerConfig } from "@mozaik-ai/core"
+import { DefaultInferenceRunner, supportedModels, type InferenceRunnerConfig } from "@mozaik-ai/core"
+import { SafeRunner } from "./safe-runner.ts"
 import type { AgentRole } from "../contract/types.ts"
 import { ScriptedRunner, type Script } from "./scripted-runner.ts"
 
@@ -18,6 +19,14 @@ export function modelFor(role: AgentRole, mock: boolean, env: Record<string, str
 }
 
 // Mock runs swap in the scripted runner; real runs use Mozaik's default runner and built-in models.
-export function inferenceConfig(mock: boolean, scripts: Record<string, Script> = {}): InferenceRunnerConfig | undefined {
-	return mock ? { runner: new ScriptedRunner(scripts) } : undefined
+export function inferenceConfig(
+	mock: boolean,
+	scripts: Record<string, Script> = {},
+	onFailure: (model: string, error: string) => void = (model, error) => console.error(`[bringup] ${model} inference failed: ${error}`),
+): InferenceRunnerConfig {
+	if (mock) return { runner: new ScriptedRunner(scripts) }
+	// Mozaik does not export its input validator; the provider rejects invalid requests anyway,
+	// and SafeRunner turns that rejection into a message instead of a dead loop.
+	const noValidation = { validate: () => {} } as unknown as ConstructorParameters<typeof DefaultInferenceRunner>[1]
+	return { runner: new SafeRunner(new DefaultInferenceRunner(supportedModels, noValidation), onFailure) }
 }
