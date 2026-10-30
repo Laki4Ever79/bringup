@@ -5,7 +5,7 @@ builds the run's firmware for the ESP32-S3 on the desk and flashes it over USB. 
 Mozaik events and writes the **measured** average current back into the contract. The brief reviewer then judges
 battery life from a measurement, not from a guess.
 
-**Status on 30 Oct, 22:00.** Nothing is plugged in yet (`/dev/serial/by-id` is empty). The user is **not in
+**Status on 30 Oct.** Nothing is plugged in yet (`/dev/serial/by-id` is empty). The user is **not in
 `dialout`**, so they will need one `sudo usermod -aG dialout $USER` or hw_agent's `udev/99-bench.rules`. PlatformIO
 has the Xtensa toolchain but not the S3 Arduino libraries: run the first S3 build tonight. hw_agent's rule applies:
 **ask the human before the first power-on of new wiring.**
@@ -145,7 +145,9 @@ phone hotspot. **Cable is the default on stage**, because:
     `behavior.h`.
   - It follows `mode`. Live mode: tilt follows a slow sine. Duty mode: about 60 mA for about 180 ms every 3 s, over a
     6 mA floor.
-- **replay:** plays `bench.jsonl` in real time and loops it. A `flash` acks `{ok:true, simulated:true}`, and the
+- **replay:** plays `bench.jsonl` in real time and loops it. `fixtures/bench/synthetic.jsonl` is a 47 s `--source fake`
+  session to develop against: flash rev 15, live with tilt, then duty cycle. It is **synthetic**; the rehearsal
+  recording replaces it Saturday morning. A `flash` acks `{ok:true, simulated:true}`, and the
   recorded `rev` is kept, never rewritten.
 
 ## 4. Events, contract, settling
