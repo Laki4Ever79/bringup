@@ -35,7 +35,7 @@ async function powerSummary(env: Env | undefined, s: ContractSnapshot, dir: stri
 	try {
 		const report = await simulatePower(env.root, dir, s)
 		return [
-			"ngspice, behavioural LDO with worst-case dropout, per supply scenario:",
+			`ngspice, behavioural LDO (${report.scenarios[0]?.ldo ?? "none"}), per supply scenario:`,
 			...report.scenarios.map(
 				(x) => `- ${x.name} (${x.vinV} V) rail ${x.rail}: vout ${x.voutV.toFixed(3)} V, dropout headroom ${x.headroomMv} mV, regulator dissipation ${x.dissipationMw} mW, ${x.ok ? "in regulation" : "OUT OF REGULATION"}`,
 			),
