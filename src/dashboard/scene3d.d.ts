@@ -6,7 +6,10 @@ export function boardMesh(
 	circuit: any[],
 	parts?: { ref: string; role?: string }[],
 ): { positions: Float32Array; colors: number[][]; refs: (string | null)[]; kinds: ("slab" | "pad" | "part")[]; bounds: { min: number[]; max: number[] } }
-export function placeBoardInCase(caseTris: Float32Array, board: { min: number[]; max: number[] }): [number, number, number]
+export function placeBoardInCase(caseTris: Float32Array, board: { min: number[]; max: number[] }, boardZ?: number): [number, number, number]
+export function enclosureFrame(spec: any): { boardZ: number; lidTopZ: number; postOuter: number } | null
+export function assembleLid(lidTris: Float32Array, lidTopZ: number): Float32Array
+export function postTris(standoffs: { xMm: number; yMm: number; holeMm?: number }[] | null | undefined, z0: number, z1: number, outer: number): number[]
 
 export interface Camera { eye: number[]; forward: number[]; right: number[]; up: number[]; fov: number }
 export function orbitCamera(o: { yaw: number; pitch: number; distance: number; target: Vec3; fov?: number }): Camera
@@ -17,7 +20,7 @@ export function tiltMatrix(pitch: number, roll: number): number[]
 export function applyTilt(m: number[], p: Vec3, centre: Vec3): number[]
 
 export interface SceneView {
-	update(input: { caseStl?: ArrayBuffer | null; circuit?: any[] | null }): void
+	update(input: { caseStl?: ArrayBuffer | null; lidStl?: ArrayBuffer | null; enclosure?: { spec: any; standoffs: any[] | null } | null; circuit?: any[] | null }): void
 	setExplode(t: number): void
 	highlight(ref: string | null): void
 	setParts(parts: { ref: string; role?: string }[]): void

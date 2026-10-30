@@ -166,3 +166,33 @@ test("the dashboard server serves both modules and the preview page", async () =
 		await d.close()
 	}
 })
+
+test("on standoffs the board's underside sits at the spec's floor plus post height", async () => {
+	const { placeBoardInCase: place, enclosureFrame } = await import("../src/dashboard/scene3d.js")
+	const spec = { wallMm: 2, heightMm: 14, standoff: { heightMm: 3, outerMm: 5, pilotMm: 1.6 }, lid: { plateMm: 2, lipMm: 3 } }
+	const frame = enclosureFrame(spec)
+	assert.deepEqual(frame, { boardZ: 5, lidTopZ: 16, postOuter: 5 })
+	const caseTris = new Float32Array([-4, -4, 0, 54, -4, 0, 54, 34, 14])
+	assert.deepEqual(place(caseTris, { min: [-25, -15, 0], max: [25, 15, 1.6] }, frame.boardZ), [25, 15, 5])
+	assert.equal(enclosureFrame(null), null, "older runs have no spec: the board rests on the floor as before")
+})
+
+test("the lid's print pose is mirrored into place, and its triangles still face outward", async () => {
+	const { assembleLid, triNormal: normal } = await import("../src/dashboard/scene3d.js")
+	// The plate's outer face lies on the print bed, facing -z; once assembled it is the lid's top and must face +z.
+	const printed = new Float32Array([0, 0, 0, 0, 10, 0, 10, 0, 0])
+	assert.ok(normal(printed, 0)[2] < 0)
+	const assembled = assembleLid(printed, 16)
+	assert.deepEqual([assembled[2], assembled[5], assembled[8]], [16, 16, 16])
+	assert.ok(normal(assembled, 0)[2] > 0, "winding swapped with the mirror")
+})
+
+test("standoff posts become one box each, from the floor to the board", async () => {
+	const { postTris } = await import("../src/dashboard/scene3d.js")
+	const tris = postTris([{ xMm: 3, yMm: 3, holeMm: 1.6 }, { xMm: 47, yMm: 27, holeMm: 1.6 }], 2, 5, 5)
+	assert.equal(tris.length, 2 * 12 * 9)
+	const zs = tris.filter((_: number, i: number) => i % 3 === 2)
+	assert.deepEqual([Math.min(...zs), Math.max(...zs)], [2, 5])
+	const xs = tris.slice(0, 12 * 9).filter((_: number, i: number) => i % 3 === 0)
+	assert.deepEqual([Math.min(...xs), Math.max(...xs)], [0.5, 5.5])
+})

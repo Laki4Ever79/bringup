@@ -21,6 +21,8 @@ const BODY = { mcu: [178, 182, 191], sensor: [46, 46, 54], ldo: [36, 36, 42], "u
 const BOARD_RGB = [22, 74, 50]
 const PAD_RGB = [232, 194, 122]
 const CASE_RGB = [212, 212, 222]
+const LID_RGB = [196, 204, 224]
+const POST_RGB = [156, 163, 175]
 
 // Axis-aligned box as 12 triangles, counter-clockwise seen from outside.
 export function boxTris(min, max) {
@@ -67,8 +69,38 @@ export function boardMesh(circuit, parts = []) {
 
 const WALL_MM = 2
 
-// Where to move the board so it sits centred in the case, resting on its floor (the enclosure spec's 2 mm wall).
-export function placeBoardInCase(caseTris, board) {
+// Heights in the case frame (z 0 = the floor's underside) from the run's enclosure spec.json: where the board's
+// underside rests (floor plus standoffs) and the lid's top, which mirrors its print pose into place. Null without a spec.
+export function enclosureFrame(spec) {
+	if (!spec || typeof spec.wallMm !== "number" || typeof spec.heightMm !== "number") return null
+	return { boardZ: spec.wallMm + (spec.standoff?.heightMm ?? 0), lidTopZ: spec.heightMm + (spec.lid?.plateMm ?? 0), postOuter: spec.standoff?.outerMm ?? 0 }
+}
+
+// lid.stl is printed plate down; assembled, z' = lidTopZ − z. A mirror reverses every triangle's winding, so two
+// vertices swap to keep the faces pointing outward.
+export function assembleLid(lidTris, lidTopZ) {
+	const out = new Float32Array(lidTris.length)
+	for (let i = 0; i < lidTris.length; i += 9) {
+		const v = [0, 6, 3] // a, c, b
+		for (let k = 0; k < 3; k++) {
+			const j = i + v[k]
+			out[i + k * 3] = lidTris[j]
+			out[i + k * 3 + 1] = lidTris[j + 1]
+			out[i + k * 3 + 2] = lidTopZ - lidTris[j + 2]
+		}
+	}
+	return out
+}
+
+// The standoff posts (standoffs.json, case frame) as square boxes from the floor up to the board.
+export function postTris(standoffs, z0, z1, outer) {
+	const r = outer / 2
+	return (standoffs ?? []).flatMap((p) => boxTris([p.xMm - r, p.yMm - r, z0], [p.xMm + r, p.yMm + r, z1]))
+}
+
+// Where to move the board so it sits centred in the case with its underside at boardZ above the case's bottom
+// (the floor, or the standoffs' tops).
+export function placeBoardInCase(caseTris, board, boardZ = WALL_MM) {
 	let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity
 	for (let i = 0; i < caseTris.length; i += 3) {
 		minX = Math.min(minX, caseTris[i]); maxX = Math.max(maxX, caseTris[i])
@@ -76,7 +108,7 @@ export function placeBoardInCase(caseTris, board) {
 		minZ = Math.min(minZ, caseTris[i + 2])
 	}
 	const bx = (board.min[0] + board.max[0]) / 2, by = (board.min[1] + board.max[1]) / 2
-	return [(minX + maxX) / 2 - bx, (minY + maxY) / 2 - by, minZ + WALL_MM - board.min[2]]
+	return [(minX + maxX) / 2 - bx, (minY + maxY) / 2 - by, minZ + boardZ - board.min[2]]
 }
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -153,6 +185,8 @@ export function mountScene(host, opts = {}) {
 	let parts = opts.parts ?? []
 	let circuit = null, caseTris = null, caseEdges = []
 	let circuitKey = "", caseKey = null
+	// The lid (assembled from lid.stl) and the standoff posts, placed from the run's enclosure spec.
+	let lidTris = null, lidEdges = [], lidKey = null, frameSpec = null, standoffs = null
 	let board = null // boardMesh() result
 	let offset = [0, 0, 0]
 	let tris = null // { pos: Float32Array, color[], alpha[], ref[], kind[], normal[] }
@@ -170,14 +204,20 @@ export function mountScene(host, opts = {}) {
 
 	function rebuild() {
 		const pos = [], color = [], alpha = [], ref = [], kind = []
+		const addTris = (t, rgb, a, k) => {
+			for (let i = 0; i < t.length; i++) pos.push(t[i])
+			for (let i = 0; i < t.length / 9; i++) { color.push(rgb); alpha.push(a); ref.push(null); kind.push(k) }
+		}
 		caseCount = 0
+		const frame = enclosureFrame(frameSpec)
 		if (caseTris) {
-			for (let i = 0; i < caseTris.length; i++) pos.push(caseTris[i])
-			caseCount = caseTris.length / 9
-			for (let i = 0; i < caseCount; i++) { color.push(CASE_RGB); alpha.push(CASE_ALPHA); ref.push(null); kind.push("case") }
+			addTris(caseTris, CASE_RGB, CASE_ALPHA, "case")
+			if (frame && standoffs?.length) addTris(postTris(standoffs, frameSpec.wallMm, frame.boardZ, frame.postOuter), POST_RGB, 1, "post")
+			if (lidTris) addTris(lidTris, LID_RGB, CASE_ALPHA, "lid")
+			caseCount = color.length
 		}
 		if (board) {
-			offset = caseTris ? placeBoardInCase(caseTris, board.bounds) : [0, 0, 0]
+			offset = caseTris ? placeBoardInCase(caseTris, board.bounds, frame?.boardZ) : [0, 0, 0]
 			const p = board.positions
 			for (let i = 0; i < p.length; i += 3) pos.push(p[i] + offset[0], p[i + 1] + offset[1], p[i + 2] + offset[2])
 			for (let i = 0; i < board.refs.length; i++) { color.push(board.colors[i]); alpha.push(1); ref.push(board.refs[i]); kind.push(board.kinds[i]) }
@@ -234,16 +274,20 @@ export function mountScene(host, opts = {}) {
 		ctx.fillStyle = g
 		ctx.fillRect(0, 0, w, h)
 
-		const cam = orbitCamera({ yaw, pitch, distance, target })
 		const lift = explode * caseLift
+		// Exploded with a lid, the stack is taller: follow it up and back off so the lid stays in frame.
+		const reach = lidTris ? explode * (caseLift * 2 + 4) : lift
+		const cam = orbitCamera({ yaw, pitch, distance: distance * (1 + (0.9 * reach) / (caseLift * 3 + 1)), target: [target[0], target[1], target[2] + reach / 2] })
 		const P = tris.pos
 		// Model space → world: the bench tilt, about the scene's centre.
 		const m = tilt && (tilt.pitch !== 0 || tilt.roll !== 0) ? tiltMatrix(tilt.pitch, tilt.roll) : null
 		const W = m ? (p) => applyTilt(m, p, target) : (p) => p
 		const list = []
+		// Exploded: the case and its posts lift off the board, the lid further still, above the case.
+		const lidLift = reach
 		for (let t = 0, i = 0; i < P.length; t++, i += 9) {
-			const isCase = t < caseCount
-			const dz = isCase ? lift : 0
+			const k = tris.kind[t]
+			const dz = k === "lid" ? lidLift : t < caseCount ? lift : 0
 			const n = m ? applyTilt(m, tris.normal[t], [0, 0, 0]) : tris.normal[t]
 			const a = W([P[i], P[i + 1], P[i + 2] + dz])
 			// Back-face culling in world space.
@@ -284,6 +328,11 @@ export function mountScene(host, opts = {}) {
 		ctx.beginPath()
 		for (const [a, b] of caseEdges) {
 			const pa = project(cam, W([a[0], a[1], a[2] + lift]), w, h), pb = project(cam, W([b[0], b[1], b[2] + lift]), w, h)
+			ctx.moveTo(pa[0], pa[1])
+			ctx.lineTo(pb[0], pb[1])
+		}
+		for (const [a, b] of lidEdges) {
+			const pa = project(cam, W([a[0], a[1], a[2] + lidLift]), w, h), pb = project(cam, W([b[0], b[1], b[2] + lidLift]), w, h)
 			ctx.moveTo(pa[0], pa[1])
 			ctx.lineTo(pb[0], pb[1])
 		}
@@ -380,8 +429,23 @@ export function mountScene(host, opts = {}) {
 	resize()
 
 	return {
-		update({ caseStl, circuit: nextCircuit } = {}) {
+		// lidStl and enclosure ({spec, standoffs}) are extensions; without them the board rests on the floor, no lid.
+		update({ caseStl, lidStl, enclosure, circuit: nextCircuit } = {}) {
 			let changed = false
+			if (enclosure !== undefined) {
+				frameSpec = enclosure?.spec ?? null
+				standoffs = enclosure?.standoffs ?? null
+				// A new spec may move the lid's top.
+				lidTris = null
+				lidEdges = []
+				changed = true
+			}
+			if (lidStl !== undefined && lidStl !== lidKey) {
+				lidKey = lidStl
+				lidTris = null
+				lidEdges = []
+				changed = true
+			}
 			if (caseStl !== undefined && caseStl !== caseKey) {
 				caseKey = caseStl
 				caseTris = caseStl ? parseStl(caseStl) : null
@@ -396,6 +460,13 @@ export function mountScene(host, opts = {}) {
 					board = circuit ? boardMesh(circuit, parts) : null
 					changed = true
 				}
+			}
+			// The lid needs the spec's height to be put in place.
+			const top = enclosureFrame(frameSpec)?.lidTopZ
+			if (lidKey && !lidTris && top !== undefined) {
+				lidTris = assembleLid(parseStl(lidKey), top)
+				lidEdges = featureEdges(lidTris)
+				changed = true
 			}
 			if (changed) rebuild()
 		},

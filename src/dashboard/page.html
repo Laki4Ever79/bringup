@@ -335,7 +335,7 @@
 			<div class="stage-bar">
 				<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="bench" class="hidden">Bench</button></div>
 				<span id="dims" class="num"></span>
-				<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab files ↓</button></span>
+				<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
 				<div id="battery" class="hidden"><span id="battery-text" class="num"></span><span class="bar"><span class="fill"></span><span class="target"></span></span></div>
 			</div>
 			<div id="stage-body">
@@ -496,6 +496,7 @@
 			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
 			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
 			hover: null, bom: null, contract: null,
+			fab: false, print: null,
 			bench: null, telemetry: new TelemetryBuffer(30_000), att: { pitch: 0, roll: 0 }, benchTabShown: false, batteryEst: null, stopped: false,
 		}
 		let benchDirty = false
@@ -607,12 +608,18 @@
 			if (rev === null || rev === S.shownEnclosure) return
 			S.shownEnclosure = rev
 			try {
-				const r = await fetch(file(`enclosure/rev-${rev}/case.stl`))
+				const dir = `enclosure/rev-${rev}`
+				const r = await fetch(file(`${dir}/case.stl`))
 				if (!r.ok) return
 				const buf = await r.arrayBuffer()
+				// The lid, the spec (heights) and the measured standoffs: optional, older runs have none of them.
+				const opt = async (p, as) => { try { const x = await fetch(file(`${dir}/${p}`)); return x.ok ? await x[as]() : null } catch { return null } }
+				const [lid, spec, standoffs, print] = await Promise.all([opt("lid.stl", "arrayBuffer"), opt("spec.json", "json"), opt("standoffs.json", "json"), opt("print.json", "json")])
 				$("scene-empty").classList.add("hidden")
-				if (scene) scene.update({ caseStl: buf })
+				if (scene) scene.update({ caseStl: buf, lidStl: lid, enclosure: { spec, standoffs } })
 				else wire.load(buf)
+				S.print = { rev, lid: lid !== null, check: print }
+				$("fab").classList.remove("hidden")
 			} catch {}
 		}
 		const enclosureFor = (rev) => { let best = null; for (const e of S.enclosures) if (e <= rev) best = e; return best }
@@ -749,13 +756,24 @@
 		}
 		const FAB = [["gerbers.zip", "Gerbers"], ["bom.csv", "BOM (JLCPCB)"], ["cpl.csv", "Pick and place"], ["README.txt", "How to order"]]
 		async function probeFab() {
-			try { const r = await fetch(file("fab/README.txt"), { cache: "no-store" }); if (r.ok) $("fab").classList.remove("hidden") } catch {}
+			try { const r = await fetch(file("fab/README.txt"), { cache: "no-store" }); if (r.ok) { S.fab = true; $("fab").classList.remove("hidden") } } catch {}
+		}
+		// The 3D-printed enclosure next to the board's fab files: case and lid STLs (print-ready poses) and the print check.
+		function printRows() {
+			const p = S.print
+			if (!p) return ""
+			const dir = `enclosure/rev-${p.rev}`
+			const rows = [["case.stl", "Case (open side up)"], ...(p.lid ? [["lid.stl", "Lid (plate down)"]] : [])]
+			const issues = p.check?.issues ?? []
+			const check = p.check ? `<div class="t3" style="font-size:12px;padding:4px 6px" title="${esc(issues.join("\n"))}">print check: ${p.check.ok ? "✓ ok" : `⚠ ${issues.length} issue${issues.length === 1 ? "" : "s"}`}</div>` : ""
+			return `<h4 style="margin-top:8px">3D print · rev ${p.rev}</h4>${rows.map(([f, label]) => `<a class="row" href="${file(`${dir}/${f}`)}" download><span>${label}</span><span class="t3 mono">${f}</span></a>`).join("")}${check}`
 		}
 		$("fab-btn").addEventListener("click", (e) => {
 			e.stopPropagation()
 			const open = $("fab").querySelector(".popover")
 			if (open) return open.remove()
-			$("fab").insertAdjacentHTML("beforeend", `<div class="popover"><h4>Fabrication · JLCPCB</h4>${FAB.map(([f, label]) => `<a class="row" href="${file(`fab/${f}`)}" download><span>${label}</span><span class="t3 mono">${f}</span></a>`).join("")}</div>`)
+			const fab = S.fab ? `<h4>Fabrication · JLCPCB</h4>${FAB.map(([f, label]) => `<a class="row" href="${file(`fab/${f}`)}" download><span>${label}</span><span class="t3 mono">${f}</span></a>`).join("")}` : ""
+			$("fab").insertAdjacentHTML("beforeend", `<div class="popover">${fab}${printRows()}</div>`)
 		})
 		document.addEventListener("click", (e) => { if (!e.target.closest("#fab")) $("fab").querySelector(".popover")?.remove() })
 
