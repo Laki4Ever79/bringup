@@ -67,7 +67,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		if (done) return
 		const s = state()
 		const grounding =
-			!s.criticEnabled ||
+			!s.groundingEnabled ||
 			s.contract.version("parts") === 0 ||
 			(s.groundedVersions?.parts === s.contract.version("parts") && s.groundedVersions?.pins === s.contract.version("pins"))
 		const busy = [...turns.values()].some((n) => n > 0) || s.approvals.openCount() > 0 || !KINDS.every(current) || !grounding

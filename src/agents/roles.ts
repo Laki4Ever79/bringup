@@ -4,10 +4,10 @@ import { ownerReviewsChanges, when } from "../change-control.ts"
 import { state } from "../runtime.ts"
 import { searchParts } from "../tools/parts-search.ts"
 import { createRoleAgent, requestTurn, startTurn } from "./common.ts"
-import { isPinAssignmentFinding } from "./critic.ts"
+import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
 
-// Splits the critic's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
+// Splits the grounding check's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
 function groundingFor(findings: GroundingFinding[], pinAssignments: boolean): GroundingFinding[] {
 	const s = state().contract.snapshot()
 	return findings.filter((f) => isPinAssignmentFinding(f, s) === pinAssignments)
@@ -69,7 +69,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "grounding.checked")) return
 						const mine = groundingFor(event.payload.findings, true)
-						requestTurn(participant as Agent, `grounding-pins@${event.payload.revision}`, `The critic found pin assignments with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the pins field: use only GPIOs the MCU has and pins the parts list names.`)
+						requestTurn(participant as Agent, `grounding-pins@${event.payload.revision}`, `The grounding check found pin assignments with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the pins field: use only GPIOs the MCU has and pins the parts list names.`)
 					},
 				},
 			},
@@ -112,7 +112,7 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "grounding.checked")) return
 						const mine = groundingFor(event.payload.findings, false)
-						requestTurn(participant as Agent, `grounding@${event.payload.revision}`, `The critic found parts with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the parts list: use search_parts and list only the pins the catalog gives.`)
+						requestTurn(participant as Agent, `grounding@${event.payload.revision}`, `The grounding check found parts with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the parts list: use search_parts and list only the pins the catalog gives.`)
 					},
 				},
 			},

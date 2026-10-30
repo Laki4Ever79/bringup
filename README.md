@@ -129,7 +129,7 @@ npm run bringup -- briefs/logger.md
 
 `--no-hardware` swaps the three builders for stubs (`src/tools/stubs.ts`). Each stub derives its artifact straight
 from the contract: board nets from the pin map, enclosure cutouts from the connectors, firmware pins from the pin
-map. The agents, change control, the grounding critic and the consistency checks all run as usual, and the report
+map. The agents, change control, the grounding check and the consistency checks all run as usual, and the report
 says the hardware was stubbed. Without `--no-hardware`, a missing tool is a warning: its build fails with
 `artifact.failed`, and the run ends unsettled. The report then opens with a "Missing tools" section listing what to
 install.
