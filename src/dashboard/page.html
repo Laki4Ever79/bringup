@@ -26,6 +26,32 @@
 	.counter { text-align: center; }
 	.counter b { display: block; font-size: 48px; font-variant-numeric: tabular-nums; }
 	.counter span { color: var(--dim); font-size: 16px; }
+	#lanes-panel { grid-column: 1 / -1; padding: 12px 16px; }
+	.lane { display: grid; grid-template-columns: 22px 230px 150px 1fr 90px; align-items: center; gap: 12px; padding: 7px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+	.lane:hover { background: #1c2330; }
+	.lane .label { font-weight: 600; font-size: 22px; }
+	.lane .badge { font-size: 16px; color: var(--dim); }
+	.lane .text { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .3s; }
+	.lane .ago { font-size: 15px; color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+	.dot { width: 16px; height: 16px; border-radius: 50%; background: var(--line); transition: background-color .3s, box-shadow .3s; }
+	.s-thinking { background: var(--contract); } .s-tool { background: var(--artifact); } .s-held { background: var(--proposed); }
+	.s-building, .s-checking { background: var(--check); } .s-done { background: var(--approved); } .s-failed { background: var(--rejected); }
+	.s-thinking, .s-tool, .s-building, .s-checking { animation: pulse 1.2s ease-in-out infinite; }
+	@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(88,166,255,.0); opacity: 1; } 50% { box-shadow: 0 0 0 6px rgba(88,166,255,.25); opacity: .75; } }
+	.hist { list-style: none; margin: 0 0 8px 34px; padding: 6px 0; font-size: 16px; color: var(--dim); max-height: 220px; overflow-y: auto; border-left: 2px solid var(--line); }
+	.hist li { padding: 2px 10px; }
+	.hist b { color: var(--text); font-weight: 600; margin-right: 8px; }
+	#board-latest img, #filmstrip img { border-radius: 6px; background: #000; cursor: zoom-in; }
+	#board-latest img { width: 100%; }
+	#filmstrip { display: flex; gap: 8px; overflow-x: auto; padding-top: 10px; }
+	#filmstrip figure { margin: 0; flex: 0 0 auto; text-align: center; font-size: 14px; color: var(--dim); }
+	#filmstrip img { width: 120px; display: block; margin-bottom: 2px; }
+	#enclosure-view { width: 100%; height: 280px; display: block; background: #0a0e14; border-radius: 6px; cursor: grab; touch-action: none; }
+	#enclosure a { color: var(--contract); font-size: 16px; }
+	#overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
+	#overlay.open { display: flex; }
+	#overlay img { max-width: 92vw; max-height: 88vh; border-radius: 8px; }
+	#overlay span { position: absolute; bottom: 24px; color: var(--text); font-size: 22px; }
 	#timeline-panel { grid-row: span 3; }
 	#timeline { list-style: none; margin: 0; padding: 0; max-height: 78vh; overflow-y: auto; }
 	#timeline li { padding: 6px 0 6px 12px; border-left: 5px solid var(--line); margin-bottom: 6px; }
@@ -60,6 +86,7 @@
 	<span id="cloud"></span>
 </header>
 <main>
+	<section id="lanes-panel"><h2>Agents and tools</h2><div id="lanes"></div></section>
 	<section id="counters"></section>
 	<section id="timeline-panel"><h2>Timeline</h2><ul id="timeline"></ul></section>
 	<section><h2>Design contract</h2><table id="contract"></table></section>
@@ -67,9 +94,13 @@
 	<section><h2>Change control</h2><table id="changes"></table></section>
 	<section><h2>Violations (latest check)</h2><ul class="plain" id="violations"><li class="empty">no check yet</li></ul></section>
 	<section><h2>Brief review</h2><ul class="plain" id="review"><li class="empty">not reviewed yet</li></ul></section>
-	<section id="board"><h2>Board</h2><p class="empty">waiting for the first board build</p></section>
+	<section id="board"><h2 id="board-title">Board</h2><div id="board-latest"><p class="empty">waiting for the first board build</p></div><div id="filmstrip"></div></section>
+	<section id="enclosure"><h2 id="enclosure-title">Enclosure</h2><canvas id="enclosure-view"></canvas><p class="empty" id="enclosure-note">waiting for the first enclosure build · drag to rotate</p></section>
 </main>
-<script>
+<div id="overlay"><img alt=""><span></span></div>
+<script type="module">
+	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
+	import { featureEdges, parseStl } from "/stl.js"
 	const FIELDS = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
 	const state = {
 		revision: 0,
@@ -146,6 +177,7 @@
 			case "artifact.ready":
 				state.counts.built++
 				if (p.kind === "board") showBoard(p.revision)
+				if (p.kind === "enclosure") showEnclosure(p.revision)
 				break
 			case "consistency.checked":
 				state.violations = p
@@ -234,9 +266,138 @@
 			`<li><span class="kind">${esc(f.severity)}</span> ${esc(f.issue)}<br><span class="meta">${esc(f.fields.join(", ") || "general")} · ${esc(f.suggestion)}</span></li>`).join("")
 	}
 
+	// Board filmstrip: every rev-N render, the newest large. Stub runs have no render, so missing images hide.
+	const boardRevs = new Set()
 	function showBoard(revision) {
-		$("board").innerHTML = `<h2>Board · rev ${esc(revision)}</h2><img alt="board render" src="/files/board/board.png?rev=${encodeURIComponent(revision)}">`
+		if (boardRevs.has(revision)) return
+		boardRevs.add(revision)
+		const src = `/files/board/rev-${encodeURIComponent(revision)}/board.png`
+		const img = new Image()
+		img.alt = `board rev ${revision}`
+		img.onload = () => {
+			$("board-title").textContent = `Board · rev ${revision}`
+			const big = img.cloneNode()
+			big.addEventListener("click", () => openOverlay(src, `Board · rev ${revision}`))
+			$("board-latest").replaceChildren(big)
+			const fig = document.createElement("figure")
+			img.addEventListener("click", () => openOverlay(src, `Board · rev ${revision}`))
+			fig.append(img, `rev ${revision}`)
+			$("filmstrip").append(fig)
+			fig.scrollIntoView({ behavior: "smooth", inline: "end", block: "nearest" })
+		}
+		img.src = src
 	}
+
+	function openOverlay(src, caption) {
+		$("overlay").querySelector("img").src = src
+		$("overlay").querySelector("span").textContent = caption
+		$("overlay").classList.add("open")
+	}
+	$("overlay").addEventListener("click", () => $("overlay").classList.remove("open"))
+	document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("overlay").classList.remove("open") })
+
+	// Enclosure: case.stl as a wireframe of its feature edges, orthographic, slowly turning; drag to rotate.
+	const view = { edges: [], yaw: -0.6, pitch: 0.9, spinning: true, center: [0, 0, 0], radius: 1 }
+	let enclosureRev = -1
+	async function showEnclosure(revision) {
+		if (revision <= enclosureRev) return
+		enclosureRev = revision
+		try {
+			const res = await fetch(`/files/enclosure/rev-${encodeURIComponent(revision)}/case.stl`, { cache: "no-store" })
+			if (!res.ok) return
+			const tris = parseStl(await res.arrayBuffer())
+			if (tris.length === 0) return
+			const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity]
+			for (let i = 0; i < tris.length; i++) { const k = i % 3; min[k] = Math.min(min[k], tris[i]); max[k] = Math.max(max[k], tris[i]) }
+			view.center = min.map((m, k) => (m + max[k]) / 2)
+			view.radius = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2 || 1
+			view.edges = featureEdges(tris)
+			$("enclosure-title").textContent = `Enclosure · rev ${revision}`
+			$("enclosure-note").innerHTML = `${(max[0] - min[0]).toFixed(1)} × ${(max[1] - min[1]).toFixed(1)} × ${(max[2] - min[2]).toFixed(1)} mm · drag to rotate · <a href="/files/enclosure/rev-${encodeURIComponent(revision)}/case.stl" download>case.stl</a>`
+			drawEnclosure()
+		} catch {}
+	}
+
+	function drawEnclosure() {
+		const c = $("enclosure-view")
+		const dpr = window.devicePixelRatio || 1
+		const w = c.clientWidth, h = c.clientHeight
+		if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr }
+		const g = c.getContext("2d")
+		g.setTransform(dpr, 0, 0, dpr, 0, 0)
+		g.clearRect(0, 0, w, h)
+		if (view.edges.length === 0) return
+		const scale = (Math.min(w, h) / 2 / view.radius) * 0.9
+		const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw), cp = Math.cos(view.pitch), sp = Math.sin(view.pitch)
+		const project = ([x, y, z]) => {
+			x -= view.center[0]; y -= view.center[1]; z -= view.center[2]
+			const x1 = x * cy - y * sy, y1 = x * sy + y * cy // yaw about z
+			const z2 = y1 * sp + z * cp // pitch about x; z2 is screen-up
+			return [w / 2 + x1 * scale, h / 2 - z2 * scale]
+		}
+		g.strokeStyle = "#39c5cf"
+		g.lineWidth = 1.4
+		g.beginPath()
+		for (const [a, b] of view.edges) {
+			const [ax, ay] = project(a), [bx, by] = project(b)
+			g.moveTo(ax, ay); g.lineTo(bx, by)
+		}
+		g.stroke()
+	}
+
+	function spin() {
+		if (view.spinning && view.edges.length > 0 && !document.hidden) { view.yaw += 0.004; drawEnclosure() }
+		requestAnimationFrame(spin)
+	}
+	requestAnimationFrame(spin)
+	{
+		const c = $("enclosure-view")
+		let drag = null
+		c.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; view.spinning = false; c.setPointerCapture(e.pointerId) })
+		c.addEventListener("pointermove", (e) => {
+			if (!drag) return
+			view.yaw += (e.clientX - drag.x) * 0.01
+			view.pitch = Math.max(-1.5, Math.min(1.5, view.pitch + (e.clientY - drag.y) * 0.01))
+			drag = { x: e.clientX, y: e.clientY }
+			drawEnclosure()
+		})
+		c.addEventListener("pointerup", () => (drag = null))
+		window.addEventListener("resize", drawEnclosure)
+	}
+
+	// Lanes: one row per participant. Rows are built once and only their text and dot change, so nothing flickers.
+	const lanes = createLanes()
+	const STATUS_LABEL = { idle: "idle", thinking: "thinking", tool: "calling a tool", held: "held", building: "building", checking: "checking", done: "done", failed: "failed" }
+	const laneRows = {}
+	for (const l of LANES) {
+		const row = document.createElement("div")
+		row.className = "lane"
+		row.innerHTML = `<span class="dot s-idle"></span><span class="label"></span><span class="badge">idle</span><span class="text"></span><span class="ago"></span>`
+		row.querySelector(".label").textContent = l.label
+		const hist = document.createElement("ul")
+		hist.className = "hist"
+		hist.hidden = true
+		row.addEventListener("click", () => { hist.hidden = !hist.hidden; if (!hist.hidden) renderHistory(l.key) })
+		$("lanes").append(row, hist)
+		laneRows[l.key] = { row, hist }
+	}
+	const ago = (at) => { if (!at) return ""; const s = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 1000)); return s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ago` }
+	function renderLane(key) {
+		const lane = lanes[key], r = laneRows[key]
+		if (!lane || !r) return
+		r.row.querySelector(".dot").className = `dot s-${lane.status}`
+		r.row.querySelector(".badge").textContent = STATUS_LABEL[lane.status] ?? lane.status
+		r.row.querySelector(".text").textContent = lane.text
+		r.row.querySelector(".text").title = lane.text
+		r.row.querySelector(".ago").textContent = ago(lane.at)
+		if (!r.hist.hidden) renderHistory(key)
+	}
+	function renderHistory(key) {
+		laneRows[key].hist.innerHTML = lanes[key].history.slice().reverse()
+			.map((h) => `<li><b>${esc(STATUS_LABEL[h.status] ?? h.status)}</b>${esc(time(h.at))} · ${esc(h.text)}</li>`).join("") || `<li>nothing yet</li>`
+	}
+	setInterval(() => { for (const k of Object.keys(laneRows)) laneRows[k].row.querySelector(".ago").textContent = ago(lanes[k].at) }, 1000)
+	const dirtyLanes = new Set()
 
 	let contractTimer = null
 	function fetchContract() {
@@ -275,7 +436,8 @@
 				.filter((u) => typeof u === "string" && /^https?:\/\//.test(u))
 			if (urls.length === 0 || urls.length === cloudCount) return
 			cloudCount = urls.length
-			$("cloud").innerHTML = `<a href="${esc(urls.at(-1))}" target="_blank" rel="noopener">Mozaik Cloud ↗</a> <span class="meta">${urls.length} loop${urls.length === 1 ? "" : "s"}</span>`
+			// One URL: the run's single Cloud session. Several: per-loop links from an older run.
+			$("cloud").innerHTML = `<a href="${esc(urls.at(-1))}" target="_blank" rel="noopener">Mozaik Cloud ↗</a> <span class="meta">${urls.length === 1 ? "live session" : `${urls.length} loops`}</span>`
 		} catch {}
 	}
 	setInterval(fetchCloud, 2000)
@@ -290,11 +452,19 @@
 		// EventSource replays from the start after a reconnect; skip what is already on screen.
 		if (typeof e.seq === "number" && e.seq <= lastSeq) return
 		lastSeq = typeof e.seq === "number" ? e.seq : lastSeq
-		apply(e)
-		addToTimeline(e)
-		clearTimeout(requestsTimer)
-		requestsTimer = setTimeout(fetchRequests, 200)
-		if (!frame) frame = requestAnimationFrame(() => { frame = null; render() })
+		for (const k of applyLaneEvent(lanes, e)) dirtyLanes.add(k)
+		if (e.type !== "agent.activity") {
+			apply(e)
+			addToTimeline(e)
+			clearTimeout(requestsTimer)
+			requestsTimer = setTimeout(fetchRequests, 200)
+		}
+		if (!frame) frame = requestAnimationFrame(() => {
+			frame = null
+			for (const k of dirtyLanes) renderLane(k)
+			dirtyLanes.clear()
+			render()
+		})
 	}
 	render()
 	fetchContract()
