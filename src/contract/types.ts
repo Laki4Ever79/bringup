@@ -1,9 +1,12 @@
-// "reviewer" is the LLM brief reviewer; it owns no field.
-export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer"
+// "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field.
+export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench"
 
-export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins"
+export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior"
 
-export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
+export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior"]
+
+// The fields every design writes; behavior is optional (the firmware has defaults).
+export const CORE_FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
 
 export const OWNERS: Record<FieldName, AgentRole> = {
 	requirements: "architect",
@@ -12,6 +15,7 @@ export const OWNERS: Record<FieldName, AgentRole> = {
 	rails: "architect",
 	parts: "parts",
 	pins: "architect",
+	behavior: "firmware",
 }
 
 // How the device spends its time: awake for activeMs every periodS seconds, drawing sleepUa in between.
@@ -55,6 +59,9 @@ export interface Rail {
 	// own quiescent current. So averages never overlap, and the battery current is their sum over every
 	// battery-fed rail plus each LDO's quiescent current.
 	averageMa?: number
+	// "measured" once the bench measured averageMa on the board, at firmware revision measuredRevision.
+	averageSource?: "estimated" | "measured"
+	measuredRevision?: number
 }
 
 export interface Part {
@@ -73,6 +80,14 @@ export interface PinAssignment {
 	partPin: string
 }
 
+// What the firmware does, as numbers the template reads from include/behavior.h: the LED blinks every blinkMs,
+// and every tiltBlinkMs while the board is tilted more than tiltDeg. No model writes C++.
+export interface Behavior {
+	blinkMs: number
+	tiltBlinkMs: number
+	tiltDeg: number
+}
+
 export type ContractValues = {
 	requirements: Requirements
 	outline: Outline
@@ -80,6 +95,7 @@ export type ContractValues = {
 	rails: Rail[]
 	parts: Part[]
 	pins: PinAssignment[]
+	behavior: Behavior
 }
 
 export interface ContractSnapshot {

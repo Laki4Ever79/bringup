@@ -9,7 +9,7 @@ import { mockScripts } from "../src/inference/scripts.ts"
 import { createChangeDesk } from "../src/change-control.ts"
 import { createArchitectAgent, createFirmwareReviewer, createPartsAgent } from "../src/agents/roles.ts"
 import { makeEvent } from "../src/events.ts"
-import { FIELDS } from "../src/contract/types.ts"
+import { CORE_FIELDS } from "../src/contract/types.ts"
 import { ROOT, runDesign } from "../src/run.ts"
 import type { Env } from "../src/tools/env.ts"
 import { recorder, tempDir, waitFor } from "./helpers.ts"
@@ -30,7 +30,7 @@ async function drafted() {
 	const parts = createPartsAgent({ mock: true })
 	createFirmwareReviewer({ mock: true })
 	sendMessage("Battery BLE temperature logger with USB-C and a status LED.", engineer.getId())
-	await waitFor(() => FIELDS.every((f) => state.contract.version(f) >= 1) && (state.contract.get("pins") ?? []).some((p) => p.signal === "STATUS_LED"), 5000)
+	await waitFor(() => CORE_FIELDS.every((f) => state.contract.version(f) >= 1) && (state.contract.get("pins") ?? []).some((p) => p.signal === "STATUS_LED"), 5000)
 	await new Promise((r) => setTimeout(r, 300))
 	// The text each agent's turns started with, from Mozaik's loop events.
 	const turns = (agentId: string) =>

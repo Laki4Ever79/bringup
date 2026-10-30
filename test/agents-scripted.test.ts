@@ -6,7 +6,7 @@ import { inferenceConfig } from "../src/inference/models.ts"
 import { mockScripts } from "../src/inference/scripts.ts"
 import { createChangeDesk } from "../src/change-control.ts"
 import { createArchitectAgent, createFirmwareReviewer, createPartsAgent } from "../src/agents/roles.ts"
-import { FIELDS } from "../src/contract/types.ts"
+import { CORE_FIELDS } from "../src/contract/types.ts"
 import { recorder, tempDir, waitFor } from "./helpers.ts"
 
 // Let the previous test's agent loops finish before the next runtime starts (one runtime per process).
@@ -29,7 +29,7 @@ function setup() {
 test("scripted architect and parts populate the contract concurrently", async () => {
 	const t = setup()
 	sendMessage("Battery BLE temperature logger with USB-C and a status LED.", t.engineer.getId())
-	await waitFor(() => FIELDS.every((f) => t.state.contract.version(f) >= 1), 5000)
+	await waitFor(() => CORE_FIELDS.every((f) => t.state.contract.version(f) >= 1), 5000)
 	const order = t.changes().map((c) => `${c.by}:${c.field}`)
 	const partsAt = order.indexOf("parts:parts")
 	const requirementsAt = order.indexOf("architect:requirements")
@@ -73,7 +73,7 @@ test("the parts agent decides change requests to the parts list", async () => {
 test("an engineer change request mid-run makes the architect change the outline", async () => {
 	const t = setup()
 	sendMessage("Battery BLE temperature logger with USB-C and a status LED.", t.engineer.getId())
-	await waitFor(() => FIELDS.every((f) => t.state.contract.version(f) >= 1), 5000)
+	await waitFor(() => CORE_FIELDS.every((f) => t.state.contract.version(f) >= 1), 5000)
 	const before = t.state.contract.revision
 	assert.equal(t.state.contract.get("outline")?.widthMm, 50)
 
@@ -88,7 +88,7 @@ test("an engineer change request mid-run makes the architect change the outline"
 test("a change request the architect can't map to a field changes nothing", async () => {
 	const t = setup()
 	sendMessage("Battery BLE temperature logger with USB-C and a status LED.", t.engineer.getId())
-	await waitFor(() => FIELDS.every((f) => t.state.contract.version(f) >= 1), 5000)
+	await waitFor(() => CORE_FIELDS.every((f) => t.state.contract.version(f) >= 1), 5000)
 	await waitFor(() => (t.state.contract.get("pins") ?? []).some((p) => p.signal === "STATUS_LED"), 5000)
 	await new Promise((r) => setTimeout(r, 300))
 	const before = t.state.contract.revision

@@ -5,7 +5,7 @@ import type { ContractSnapshot } from "../src/contract/types.ts"
 export function fixtureContract(): ContractSnapshot {
 	return {
 		revision: 6,
-		versions: { requirements: 1, outline: 1, connectors: 1, rails: 1, parts: 1, pins: 1 },
+		versions: { requirements: 1, outline: 1, connectors: 1, rails: 1, parts: 1, pins: 1, behavior: 0 },
 		values: {
 			requirements: { summary: "BLE temperature logger", peripherals: ["i2c-sensor", "usb-c"], batteryLifeDays: 180 },
 			outline: { widthMm: 50, heightMm: 30, thicknessMm: 1.6 },
