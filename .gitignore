@@ -5,3 +5,4 @@ node_modules/
 out/
 skidl_*
 .superpowers/
+.playwright-mcp/
