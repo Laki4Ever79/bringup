@@ -103,6 +103,10 @@
 	#changed-pill.on { opacity: 1; transform: none; }
 	#viewing-pill { position: absolute; top: 12px; right: 12px; z-index: 3; cursor: pointer; }
 	#request-toast { position: absolute; right: 12px; bottom: 12px; z-index: 3; max-width: 55%; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+	/* On the Bench tab the bottom holds the gauge and the checks: the toast moves up into the chart's empty top right. */
+	#stage-body.on-bench #request-toast { top: 52px; bottom: auto; right: 64px; max-width: 46%; }
+	/* …and the "what changed" pill leaves the source badge (REPLAY/FAKE) visible, between the legend and the toast. */
+	#stage-body.on-bench #changed-pill { top: 52px; left: 38%; }
 	#request-toast .req { padding: 8px 12px; border-radius: var(--r-card); background: rgba(22, 22, 26, .92); border: 1px solid var(--border); font-size: 13px; animation: fadein var(--t) var(--ease); }
 	#request-toast .req b { color: var(--c-engineer); }
 	#request-toast .req .eff { color: var(--c-architect); }
@@ -545,6 +549,7 @@
 			$("render-view").classList.toggle("hidden", tab !== "render")
 			$("stage-3d").classList.toggle("hidden", tab !== "3d")
 			$("bench-view").classList.toggle("hidden", tab !== "bench")
+			$("stage-body").classList.toggle("on-bench", tab === "bench")
 			if (tab === "bench") benchDirty = true
 			// The 3D tab borrows the side panel's scene: one scene, one camera.
 			const host = $("scene-host")
