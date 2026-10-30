@@ -180,3 +180,17 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
 - **Stock not re-checked.** LCSC part numbers were not re-checked against live stock during the event.
 - **In progress:** the agents themselves (`src/agents/`), the CLI, the briefs, the dashboard, the design tournament
   and mid-run change requests.
+
+## Use from Claude Code
+
+Bringup is also an MCP server (stdio), so a coding agent can start runs and read their results. Register it from
+the repo root:
+
+```bash
+claude mcp add bringup -- "$PWD/node_modules/.bin/tsx" "$PWD/src/mcp/cli.ts"
+```
+
+Tools: `start_design {brief, mock?}` starts a run in the background and returns its `runId` at once (`mock` defaults to
+true: scripted models, no API key). `design_status`, `read_contract`, `get_report` and `list_events {sinceSeq?}` read
+`out/<runId>/`. Cursor and other MCP clients take the same command. Set `BRINGUP_OUT` to keep runs somewhere other than
+`out/`.
