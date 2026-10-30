@@ -31,6 +31,9 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 	let done = false
 	// The revision handed to the reviewer, and whether its verdict is still due.
 	let readyRevision = -1
+	// MAX_REVISIONS counts from the start or from the last design.ready: a fix round after a review
+	// legitimately needs its own budget.
+	let budgetBase = 0
 	let awaitingReview = false
 	let reviewerStarted = false
 
@@ -91,6 +94,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		const revision = s.contract.revision
 		if (revision !== readyRevision) {
 			readyRevision = revision
+			budgetBase = revision
 			awaitingReview = true
 			reviewerStarted = false
 			s.review.round++
@@ -136,7 +140,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 							onReview(event.payload)
 							if (done) return
 						}
-						if (isEvent(event, "contract.changed") && event.payload.revision > maxRevisions) {
+						if (isEvent(event, "contract.changed") && event.payload.revision - budgetBase > maxRevisions) {
 							settle(false)
 							return
 						}
