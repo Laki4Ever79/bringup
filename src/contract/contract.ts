@@ -7,6 +7,13 @@ export class DesignContract {
 	private values: Partial<ContractValues> = {}
 	private versions = Object.fromEntries(FIELDS.map((f) => [f, 0])) as Record<FieldName, number>
 	private rev = 0
+	private catalog: { role: string; mpn: string; lcsc: string | null }[] | null = null
+
+	// With a catalog set, every part must be a catalog part (matched by MPN, case-insensitive), so a model
+	// can't keep proposing parts nobody vetted; the refusal lists the catalog's options for that role.
+	setCatalog(catalog: { role: string; mpn: string; lcsc: string | null }[]): void {
+		this.catalog = catalog
+	}
 
 	get revision(): number {
 		return this.rev
@@ -32,6 +39,18 @@ export class DesignContract {
 		}
 		const shape = shapeError(p.field, p.value)
 		if (shape) return { status: "invalid", reason: shape }
+		if (p.field === "parts" && this.catalog) {
+			const known = new Set(this.catalog.map((c) => c.mpn.toLowerCase()))
+			const unknown = (p.value as ContractValues["parts"]).filter((part) => !known.has(part.mpn.toLowerCase()))
+			if (unknown.length > 0) {
+				const options = (role: string) =>
+					this.catalog!.filter((c) => c.role === role).map((c) => `${c.mpn} (${c.lcsc ?? "no LCSC"})`).join(", ") || "none in the catalog"
+				return {
+					status: "invalid",
+					reason: `only catalog parts are allowed: ${unknown.map((u) => `${u.ref} ${u.mpn} is not in the catalog; options for role ${u.role}: ${options(u.role)}`).join("; ")}`,
+				}
+			}
+		}
 		if (p.field === "pins") {
 			const mcus = new Set((this.values.parts ?? []).filter((part) => part.role === "mcu").map((part) => part.ref))
 			const onMcu = (p.value as ContractValues["pins"]).filter((pin) => mcus.has(pin.partRef))

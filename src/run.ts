@@ -13,8 +13,10 @@ import type { Script } from "./inference/scripted-runner.ts"
 import { inferenceConfig } from "./inference/models.ts"
 import { mockScripts } from "./inference/scripts.ts"
 import { writeReport } from "./report.ts"
+import { createEmulatorCheck, emulatorEnabled } from "./agents/emulator.ts"
 import { watchRequests } from "./runner/requests.ts"
 import { watchDecisions } from "./runner/decisions.ts"
+import { loadCatalog } from "./tools/parts-search.ts"
 import { createEngineer } from "./agents/engineer.ts"
 import { startCloudSession } from "./runner/cloud.ts"
 import { createActivityParticipant } from "./agents/activity.ts"
@@ -51,6 +53,9 @@ export interface RunResult {
 
 export const ROOT = fileURLToPath(new URL("..", import.meta.url))
 
+// How long, after settling, the report waits for a QEMU boot still in flight.
+const EMULATOR_GRACE_MS = 30_000
+
 // Runs one design from a brief until the consistency participant reports design.settled.
 // Everything after sendMessage is event-driven; this function only waits for the outcome.
 export async function runDesign(opts: RunOptions): Promise<RunResult> {
@@ -59,6 +64,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const env = opts.env ?? (await detectEnvironment(ROOT))
 	const state = new BringupState(opts.outDir, opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS)
 	state.engineerApproval = opts.engineerApproval ?? false
+	state.contract.setCatalog(loadCatalog(ROOT))
 	state.review.enabled = opts.review ?? true
 	state.review.maxRounds = opts.maxReviewRounds ?? MAX_REVIEW_ROUNDS
 	startRuntime(state, inferenceConfig(opts.mock, opts.scripts ?? mockScripts()), join(opts.outDir, "trace.jsonl"))
@@ -75,6 +81,9 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, onSettled: resolveSettled }))
 	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env)]
 	for (const b of builders) joinRuntime(b)
+	// Boots each new compiled firmware in QEMU when it is installed; never holds up settling.
+	const emulator = emulatorEnabled(env, opts.noHardware ?? false) ? createEmulatorCheck(env) : null
+	if (emulator) joinRuntime(emulator)
 	joinRuntime(createGroundingCheck(env))
 	joinRuntime(createBomWriter({ root: env.root }))
 	createArchitectAgent({ mock: opts.mock })
@@ -99,6 +108,8 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	decisions.close()
 	await cloud?.end()
 	writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
+	// The design has settled; give a boot that is still running a moment to finish, so the report can include it.
+	await emulator?.whenIdle(EMULATOR_GRACE_MS)
 	const reportPath = writeReport(opts.outDir, state, env, outcome.settled, { noHardware: opts.noHardware ?? false })
 	return {
 		settled: outcome.settled,

@@ -63,8 +63,8 @@ const CONTRACT_SHAPES = `Contract field shapes (units: mm, V, mA):
 - requirements: {summary: string, peripherals: string[], batteryLifeDays: number|null, batteryMah?: number, dutyCycle?: {activeMs, periodS, sleepUa}}
 - outline: {widthMm, heightMm, thicknessMm}
 - connectors: [{ref, kind: "usb-c"|"header"|"button", edge: "left"|"right"|"top"|"bottom", offsetMm (centre along the edge, from bottom or left), widthMm, heightMm}]
-- rails: [{name, voltageV, regulatorMaxMa, loadMa (peak), averageMa? (long-run average including sleep, without the regulator's own quiescent current)}]
-When the brief sets a battery-life target, estimate the duty cycle (requirements.dutyCycle) and each battery-fed rail's averageMa from it, and set batteryMah if the brief does not state the capacity. Battery life is then checked in code from these numbers.
+- rails: [{name, voltageV, regulatorMaxMa, loadMa (peak), averageMa? (long-run average including sleep, of this rail's OWN loads only: do not include the current of rails it feeds, nor the regulator's quiescent current)}]
+When the brief sets a battery-life target, estimate the duty cycle (requirements.dutyCycle) and each battery-fed rail's averageMa from it, and set batteryMah if the brief does not state the capacity. Battery life is then checked in code: the battery current is the sum of averageMa over every rail except VBUS (they must not overlap), plus each LDO's quiescent current.
 - parts: [{ref, role (one of: mcu, sensor, ldo, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
 - pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
 Reference designators: U1 = MCU (ESP32-C3-MINI-1, pins GPIO0..GPIO10, GPIO18/GPIO19 for USB), U2 = sensor, U3 = LDO, U4 = Li-ion charger, J1 = USB-C, J2 = battery connector, D1 = LED, SW1 = button.

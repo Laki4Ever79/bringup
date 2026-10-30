@@ -51,7 +51,9 @@ export interface Rail {
 	regulatorMaxMa: number
 	// Peak load, which the regulator must supply.
 	loadMa: number
-	// Long-run average including sleep, excluding the regulator's own quiescent current.
+	// Long-run average including sleep, of this rail's OWN loads: excluding the rails it feeds and the regulator's
+	// own quiescent current. So averages never overlap, and the battery current is their sum over every
+	// battery-fed rail plus each LDO's quiescent current.
 	averageMa?: number
 }
 
