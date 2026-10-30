@@ -38,3 +38,10 @@ test("snapshot is a copy", () => {
 	s.values.outline!.widthMm = 99
 	assert.equal(c.get("outline")?.widthMm, 50)
 })
+
+test("pin signals must be UPPER_SNAKE", () => {
+	const c = new DesignContract()
+	const r = c.propose({ field: "pins", value: [{ signal: "status-led", gpio: 10, partRef: "D1", partPin: "A" }], by: "architect", baseVersion: 0 })
+	assert.equal(r.status, "invalid")
+	assert.equal(c.version("pins"), 0)
+})

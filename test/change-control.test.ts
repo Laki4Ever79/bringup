@@ -92,3 +92,25 @@ test("deciding an unknown proposal is reported to the model", async () => {
 	assert.equal(await decide.invoke({ proposalId: "nope:", approve: true, reason: "x" }), 'unknown proposalId "nope:"')
 	assert.ok(!t.types().includes("change.decided"))
 })
+
+test("an already-approved call is not intercepted again", async () => {
+	const { ChangeControl } = await import("../src/change-control.ts")
+	const { FunctionCallItem } = await import("@mozaik-ai/core")
+	const t = setup({ "mock-architect": decider(true), "mock-firmware": proposer })
+	const id = t.state.approvals.open("pins", "firmware")
+	t.state.approvals.resolve(id, { approved: true, by: "architect", reason: "ok" })
+	const call = (args: object) => FunctionCallItem.rehydrate({ callId: "c", name: "propose_contract_change", args: JSON.stringify(args) })
+	const cc = new ChangeControl(t.firmware.getId())
+	const transition = (args: object) => ({ nextStateId: "function_call", input: { call: call(args), inferenceInput: {} } }) as never
+	assert.equal(cc.isSatisfiedBy(transition({ field: "pins", value: [], baseVersion: 1, reason: "x", approvalId: id })), false)
+	assert.equal(cc.isSatisfiedBy(transition({ field: "pins", value: [], baseVersion: 1, reason: "x" })), true)
+	assert.equal(cc.isSatisfiedBy(transition({ field: "outline", value: {}, baseVersion: 1, reason: "x", approvalId: id })), true)
+})
+
+test("only the field's owner can decide a change", async () => {
+	const t = setup({ "mock-architect": decider(true), "mock-firmware": proposer })
+	const id = t.state.approvals.open("pins", "firmware")
+	const decide = t.firmware.getTools().find((x) => x.name === "decide_change")!
+	assert.match(String(await decide.invoke({ proposalId: id, approve: true, reason: "self-approval" })), /not the owner/)
+	assert.ok(!t.types().includes("change.decided"))
+})

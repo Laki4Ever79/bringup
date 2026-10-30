@@ -15,7 +15,7 @@ import { emit, roleOf, state } from "./runtime.ts"
 import { startTurn } from "./agents/common.ts"
 import type { Agent } from "@mozaik-ai/core"
 
-function readArgs(call: FunctionCallItem): { field?: FieldName; reason?: string } {
+function readArgs(call: FunctionCallItem): { field?: FieldName; reason?: string; approvalId?: string } {
 	try {
 		return JSON.parse(call.args)
 	} catch {
@@ -33,8 +33,11 @@ export class ChangeControl implements InterceptionHandler {
 		if (transition.nextStateId !== "function_call") return false
 		const { call } = transition.input as { call: FunctionCallItem }
 		if (call.name !== "propose_contract_change") return false
-		const { field } = readArgs(call)
-		return field !== undefined && OWNERS[field] !== roleOf(this.agentId)
+		const { field, approvalId } = readArgs(call)
+		const role = roleOf(this.agentId)
+		if (field === undefined || role === undefined || OWNERS[field] === role) return false
+		// A call resumed after approval (or retried with the approval after a stale base) goes through.
+		return !(approvalId && state().approvals.approverOf(approvalId, field, role) === OWNERS[field])
 	}
 
 	async handle(transition: ExecutableTransition): Promise<ExecutableTransition> {
