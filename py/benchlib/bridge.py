@@ -13,12 +13,12 @@ from typing import Any, Callable, TextIO
 from benchlib import ports as port_scan
 from benchlib.fakedut import FakeDut
 from benchlib.flash import bench_pin_conflicts, flash, read_firmware_info, stage_build_dir
+from benchlib.telemetry import TelemetryReader, dut_line
 from benchlib.transport import FakeHal, LineTransport, MockTransport, SerialTransport
 
 EN_PIN, BOOT_PIN, MODE_PIN = 10, 11, 12  # fixture GP10/GP11/GP12 → DUT EN / GPIO0 / GPIO4
 STREAM_HZ = 60  # faster than the INA226's 17.6 ms conversions, so every one is read
 RECOVER_WAIT_S = 3.0
-TELEMETRY_BAUD = 115200
 
 
 def now_ms() -> int:
@@ -62,19 +62,6 @@ class Out:
             for f in (self.jsonl, self.csv):
                 if f:
                     f.close()
-
-
-def dut_line(text: str) -> dict[str, Any]:
-    """A DUT serial line as a protocol line: JSON objects with k pass through, anything else is text."""
-    text = text.strip()
-    if text.startswith("{"):
-        try:
-            obj = json.loads(text)
-            if isinstance(obj, dict) and isinstance(obj.get("k"), str) and obj["k"] not in ("hello", "ack", "bye", "i", "flashing", "error"):
-                return obj
-        except json.JSONDecodeError:
-            pass
-    return {"k": "text", "text": text}
 
 
 class FixtureLink:
@@ -175,6 +162,7 @@ class Bridge:
         self.lock = threading.Lock()
         self.dut_box: dict = {}
         self.threads: list[tuple[Callable, tuple]] = []
+        self.telemetry: TelemetryReader | None = None
 
     # ---- start -------------------------------------------------------------------
     def start(self) -> None:
@@ -199,7 +187,8 @@ class Bridge:
             except Exception as e:
                 self.out.emit({"k": "error", "where": "fixture", "error": str(e)})
         if self.ports["telemetry"]:
-            self.threads.append((self._read_telemetry, (self.ports["telemetry"],)))
+            self.telemetry = TelemetryReader(self.ports["telemetry"], self.out.emit)
+            self.threads.append((self.telemetry._run, ()))
 
     def _start_fake(self) -> None:
         self.threads.append((self._run_fake_dut, ()))
@@ -236,20 +225,6 @@ class Bridge:
         self.out.emit({"k": "i", "at": sample["t_ms"] + self.clock_offset, "mA": round(sample["ina226"]["current_a"] * 1000, 3)})
 
     # ---- DUT telemetry -------------------------------------------------------------
-    def _read_telemetry(self, port: str) -> None:
-        import serial
-
-        while not self.stopped.is_set():
-            try:
-                with serial.Serial(port, TELEMETRY_BAUD, timeout=0.2) as ser:
-                    while not self.stopped.is_set():
-                        raw = ser.readline()
-                        if raw:
-                            self.out.emit(dut_line(raw.decode(errors="replace")))
-            except Exception as e:
-                self.out.emit({"k": "error", "where": "telemetry", "error": str(e)})
-                self.stopped.wait(2.0)
-
     def _run_fake_dut(self) -> None:
         while not self.stopped.is_set():
             with self.lock:
@@ -308,7 +283,15 @@ class Bridge:
         if self.source == "fake":
             return self._fake_flash(fw_dir, progress)
         stage_build_dir(fw_dir, self.work_dir)
-        return flash(self.work_dir, env, port=lambda: port_scan.scan()["dut"], recover=self._recover, on_progress=progress, pio=self.pio)
+        # Without a CP2102 the telemetry comes over the flashing port: let go of it while esptool needs it.
+        shared = self.telemetry is not None and self.ports["telemetry"] == self.ports["dut"]
+        if shared:
+            self.telemetry.pause()
+        try:
+            return flash(self.work_dir, env, port=lambda: port_scan.scan()["dut"], recover=self._recover, on_progress=progress, pio=self.pio)
+        finally:
+            if shared:
+                self.telemetry.resume()
 
     def _fake_flash(self, fw_dir: str, progress: Callable[[dict], None]) -> dict:
         start = time.monotonic()
@@ -400,5 +383,7 @@ class Bridge:
         self.stopped.set()
         if self.fixture:
             self.fixture.stop()
+        if self.telemetry:
+            self.telemetry.stop()
         self.out.emit({"k": "bye"})
         self.out.close()
