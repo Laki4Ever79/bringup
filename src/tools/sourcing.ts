@@ -21,11 +21,15 @@ export interface Alternative {
 	inStock: boolean | null
 }
 
+export type LineStatus = "stock confirmed" | "stock unknown" | "out of stock" | "not listed" | "not checked"
+
 export interface Readiness {
 	supplier: string
-	orderable: number
 	total: number
-	missing: { ref: string; reason: "no LCSC number" | "stock unknown" | "out of stock" }[]
+	counts: { listed: number; stockConfirmed: number; stockUnknown: number; outOfStock: number; notListed: number; notChecked: number }
+	lines: { ref: string; status: LineStatus }[]
+	// Amber: a line is out of stock or not listed. Unknown or unchecked stock is not a warning.
+	warn: boolean
 	summary: string
 }
 
@@ -53,16 +57,33 @@ export function alternativesFor(
 		.map((c) => ({ mpn: c.mpn, lcsc: c.lcsc, stock: c.stock, priceUsd: c.priceUsd, inStock: c.inStock }))
 }
 
-// Can one LCSC/JLCPCB order (and JLC assembly) cover every line? Unknown stock counts as not orderable, but is named
-// as "stock unknown", not "missing": offline runs know nothing either way.
-export function orderReadiness(items: { ref: string; lcsc: string | null; stock: number | null; inStock: boolean | null }[]): Readiness {
-	const missing: Readiness["missing"] = []
-	for (const i of items) {
-		if (!i.lcsc || !LCSC_NUMBER.test(i.lcsc)) missing.push({ ref: i.ref, reason: "no LCSC number" })
-		else if (i.stock === null) missing.push({ ref: i.ref, reason: "stock unknown" })
-		else if (i.inStock === false || i.stock <= 0) missing.push({ ref: i.ref, reason: "out of stock" })
+// What one LCSC/JLCPCB order (and JLC assembly) could cover. "Listed" means an LCSC number and a live price.
+// Stock jlcsearch didn't report is "stock unknown", and a part with an LCSC number but no live data at all (offline,
+// or not returned) is "not checked": neither is a sourcing failure, so neither sets warn.
+export function orderReadiness(items: { ref: string; lcsc: string | null; stock: number | null; priceUsd: number | null; inStock: boolean | null }[]): Readiness {
+	const status = (i: (typeof items)[number]): LineStatus => {
+		if (!i.lcsc || !LCSC_NUMBER.test(i.lcsc)) return "not listed"
+		if (i.stock !== null && (i.inStock === false || i.stock <= 0)) return "out of stock"
+		if (i.stock !== null) return "stock confirmed"
+		return i.priceUsd !== null ? "stock unknown" : "not checked"
 	}
-	const orderable = items.length - missing.length
-	const head = `${orderable}/${items.length} lines orderable at ${ORDER_SUPPLIER}`
-	return { supplier: ORDER_SUPPLIER, orderable, total: items.length, missing, summary: missing.length ? `${head}; ${missing.map((m) => `${m.ref} ${m.reason}`).join(", ")}` : head }
+	const lines = items.map((i) => ({ ref: i.ref, status: status(i) }))
+	const refs = (s: LineStatus) => lines.filter((l) => l.status === s).map((l) => l.ref)
+	const counts = {
+		listed: lines.filter((l) => l.status === "stock confirmed" || l.status === "stock unknown" || l.status === "out of stock").length,
+		stockConfirmed: refs("stock confirmed").length,
+		stockUnknown: refs("stock unknown").length,
+		outOfStock: refs("out of stock").length,
+		notListed: refs("not listed").length,
+		notChecked: refs("not checked").length,
+	}
+	const parts = [
+		`${counts.listed}/${items.length} listed at ${ORDER_SUPPLIER}`,
+		counts.stockConfirmed ? `${counts.stockConfirmed} stock confirmed` : "",
+		counts.stockUnknown ? `${counts.stockUnknown} stock unknown (jlcsearch returned none)` : "",
+		counts.outOfStock ? `${counts.outOfStock} out of stock (${refs("out of stock").join(", ")})` : "",
+		counts.notListed ? `${counts.notListed} not listed (${refs("not listed").map((r) => `${r}: no LCSC number`).join(", ")})` : "",
+		counts.notChecked ? `${counts.notChecked} not checked (${refs("not checked").map((r) => `${r}: no live data`).join(", ")})` : "",
+	]
+	return { supplier: ORDER_SUPPLIER, total: items.length, counts, lines, warn: counts.outOfStock + counts.notListed > 0, summary: parts.filter(Boolean).join(" · ") }
 }

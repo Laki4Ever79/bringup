@@ -64,6 +64,13 @@ function bootLine(tracePath: string, env: Env, noHardware: boolean): string {
 	return `${label} did NOT boot (firmware rev ${last.revision}): ${last.serialTail.trim().split("\n").at(-1) ?? ""}`
 }
 
+// The parts list's order-readiness summary (agents/bom.ts). "needs attention" only for out-of-stock or unlisted lines.
+function sourcingLine(bomPath: string): string {
+	if (!existsSync(bomPath)) return "- Sourcing: no bom.json (no parts yet)"
+	const r = (JSON.parse(readFileSync(bomPath, "utf8")) as { readiness?: { summary: string; warn: boolean } }).readiness
+	return r ? `- Sourcing: ${r.warn ? "needs attention: " : ""}${r.summary}` : "- Sourcing: bom.json has no readiness summary"
+}
+
 function fabSection(s: BringupState, stubbed: boolean): string[] {
 	const b = s.artifacts.board
 	const body = stubbed
@@ -123,6 +130,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}`,
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		bootLine(join(outDir, "trace.jsonl"), env, stubbed),
+		sourcingLine(join(outDir, "bom.json")),
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
 		``,
 		...fabSection(s, stubbed),
