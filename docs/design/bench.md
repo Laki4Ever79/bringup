@@ -20,7 +20,7 @@ The **RP2350 fixture reads the INA226**, not the DUT. Reasons:
 
 | From | To | Note |
 |---|---|---|
-| PL601 + (5.00 V, limit 0.3 A) | INA226 VIN+ | High side. The PSU current limit is the hardware backstop. |
+| Pico VBUS (pin 40: the laptop's USB 5 V) | INA226 VIN+ | High side. No bench supply: everything runs from the laptop's USB (`docs/bench-wiring.md`, tier 2). Tier 1 skips the meter: the S3 on a normal USB cable. |
 | INA226 VIN− | S3 `5V` pin | The S3's only power path. |
 | S3 native "USB" port | PC | Flash only, through a **VBUS-cut cable** (how-to in `docs/bench-wiring.md`). Otherwise USB powers the board around the shunt and fights the PL601. |
 | Fixture GP4/GP5 (I2C0) | INA226 SDA/SCL, addr 0x40 | INA226 VCC = fixture 3V3. |
