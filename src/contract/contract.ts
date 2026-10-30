@@ -39,6 +39,10 @@ export class DesignContract {
 		}
 		const shape = shapeError(p.field, p.value)
 		if (shape) return { status: "invalid", reason: shape }
+		if (p.by === "bench") {
+			const scope = benchScopeError(p.field, this.values.rails, p.value)
+			if (scope) return { status: "invalid", reason: scope }
+		}
 		if (p.field === "parts" && this.catalog) {
 			const known = new Set(this.catalog.map((c) => c.mpn.toLowerCase()))
 			const unknown = (p.value as ContractValues["parts"]).filter((part) => !known.has(part.mpn.toLowerCase()))
@@ -80,6 +84,22 @@ const isNum = (v: unknown) => typeof v === "number" && Number.isFinite(v)
 const isStr = (v: unknown) => typeof v === "string"
 const obj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
 
+// The keys of a rail the bench may write: what it measured, and where the number came from.
+const BENCH_RAIL_KEYS = new Set(["averageMa", "averageSource", "measuredRevision"])
+
+// The bench proposes through change control like anyone else, but even an approved bench proposal may only
+// write a measurement onto one existing rail: same rails, same order, nothing else changed.
+function benchScopeError(field: FieldName, current: ContractValues["rails"] | undefined, value: unknown): string | null {
+	if (field !== "rails") return `the bench may only change rails, not ${field}`
+	const next = value as ContractValues["rails"]
+	if (!current || current.length !== next.length) return "the bench may not add or remove rails"
+	const without = (r: object) => Object.fromEntries(Object.entries(r).filter(([k]) => !BENCH_RAIL_KEYS.has(k)))
+	const touched = next.filter((r, i) => !isDeepStrictEqual(without(r), without(current[i]))).map((r) => r.name)
+	if (touched.length) return `the bench may only change averageMa, averageSource and measuredRevision; it changed other keys of ${touched.join(", ")}`
+	const measured = next.filter((r, i) => !isDeepStrictEqual(r, current[i])).map((r) => r.name)
+	return measured.length > 1 ? `the bench measures one rail at a time; it changed ${measured.join(", ")}` : null
+}
+
 // Rejects values a model got structurally wrong, so a bad shape never reaches the checkers and builders.
 function shapeError(field: FieldName, value: unknown): string | null {
 	const list = (check: (x: Record<string, unknown>) => boolean, what: string) =>
@@ -103,7 +123,11 @@ function shapeError(field: FieldName, value: unknown): string | null {
 			const shape = list((x) => isStr(x.name) && isNum(x.voltageV) && isNum(x.regulatorMaxMa) && isNum(x.loadMa), "{name, voltageV, regulatorMaxMa, loadMa, averageMa?}")
 			if (shape) return shape
 			const bad = (value as Record<string, unknown>[]).filter((r) => r.averageMa !== undefined && !(isNum(r.averageMa) && (r.averageMa as number) >= 0 && (r.averageMa as number) <= (r.loadMa as number)))
-			return bad.length ? `rail averageMa must be a number from 0 to the rail's loadMa (the peak); got ${bad.map((r) => `${r.name}: ${JSON.stringify(r.averageMa)}`).join(", ")}` : null
+			if (bad.length) return `rail averageMa must be a number from 0 to the rail's loadMa (the peak); got ${bad.map((r) => `${r.name}: ${JSON.stringify(r.averageMa)}`).join(", ")}`
+			const source = (value as Record<string, unknown>[]).filter(
+				(r) => (r.averageSource !== undefined && r.averageSource !== "estimated" && r.averageSource !== "measured") || (r.measuredRevision !== undefined && !(Number.isInteger(r.measuredRevision) && (r.measuredRevision as number) >= 0)),
+			)
+			return source.length ? `rail averageSource must be "estimated" or "measured", and measuredRevision a revision number; got ${source.map((r) => r.name).join(", ")}` : null
 		}
 		case "parts": {
 			const shape = list((x) => isStr(x.ref) && isStr(x.role) && isStr(x.mpn) && Array.isArray(x.pins), "{ref, role, mpn, lcsc, footprint, pins[]}")
@@ -113,5 +137,11 @@ function shapeError(field: FieldName, value: unknown): string | null {
 		}
 		case "pins":
 			return list((x) => isStr(x.signal) && isNum(x.gpio) && isStr(x.partRef) && isStr(x.partPin), "{signal, gpio, partRef, partPin}")
+		case "behavior": {
+			const ok = obj(value) && isNum(value.blinkMs) && isNum(value.tiltBlinkMs) && isNum(value.tiltDeg)
+			return ok && (value.blinkMs as number) > 0 && (value.tiltBlinkMs as number) > 0 && (value.tiltDeg as number) >= 0 && (value.tiltDeg as number) <= 90
+				? null
+				: "behavior must be {blinkMs > 0, tiltBlinkMs > 0, tiltDeg from 0 to 90}"
+		}
 	}
 }

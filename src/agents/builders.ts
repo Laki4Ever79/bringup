@@ -31,6 +31,13 @@ export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
 	firmware: ["parts", "pins"],
 }
 
+// Every field that shapes each artifact; a change to one rebuilds it. behavior is optional (behavior.h has defaults).
+export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
+	board: ["parts", "pins", "outline", "connectors"],
+	enclosure: ["outline", "connectors"],
+	firmware: ["parts", "pins", "behavior"],
+}
+
 // A plain-code participant that keeps one artifact in step with the contract. It wakes on
 // contract.changed for its input fields, runs one build at a time (newer requests coalesce),
 // stores the artifact and reports artifact.ready or artifact.failed. Builds of different
@@ -93,7 +100,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 export function createBoardBuilder(env: Env): Human {
 	return createBuilder({
 		kind: "board",
-		inputs: ["parts", "pins", "outline", "connectors"],
+		inputs: BUILD_INPUTS.board,
 		requires: BUILD_REQUIRES.board,
 		build: async ({ dir, snapshot, revision }) => {
 			const board = await buildBoard(env, dir, snapshot, revision)
@@ -119,7 +126,7 @@ export function createBoardBuilder(env: Env): Human {
 export function createEnclosureBuilder(env: Env): Human {
 	return createBuilder({
 		kind: "enclosure",
-		inputs: ["outline", "connectors"],
+		inputs: BUILD_INPUTS.enclosure,
 		requires: BUILD_REQUIRES.enclosure,
 		build: ({ dir, snapshot, revision }) => {
 			if (!env.python) throw new Error("enclosure build failed: .venv python with build123d is not installed")
@@ -131,7 +138,7 @@ export function createEnclosureBuilder(env: Env): Human {
 export function createFirmwareBuilder(env: Env): Human {
 	return createBuilder({
 		kind: "firmware",
-		inputs: ["parts", "pins"],
+		inputs: BUILD_INPUTS.firmware,
 		requires: BUILD_REQUIRES.firmware,
 		build: ({ dir, snapshot, revision }) => {
 			if (!env.pio) throw new Error("firmware build failed: .venv PlatformIO is not installed")
