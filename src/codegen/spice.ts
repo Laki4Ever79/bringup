@@ -18,11 +18,18 @@ export function dropoutOhms(rail: Rail): number {
 	return DROPOUT_MV / rail.regulatorMaxMa
 }
 
+// The rails an LDO makes from the input. VBUS/USB is the input and VBAT/BAT the cell itself (the same names power.ts
+// treats as the source), so they are not modelled as regulators.
+export function regulatedRails(rails: Rail[]): Rail[] {
+	return rails.filter((r) => !/VBUS|USB|BAT/i.test(r.name))
+}
+
 // ngspice deck for one supply scenario: every rail's LDO fed from the same input, each into a resistive load
 // that draws loadMa at the set voltage. A single-point .dc sweep lets .meas report the operating point.
 export function powerDeck(s: ContractSnapshot, scenario: PowerScenario): string {
-	const rails = s.values.rails
-	if (!rails?.length) throw new Error("power simulation needs rails in the contract")
+	if (!s.values.rails?.length) throw new Error("power simulation needs rails in the contract")
+	const rails = regulatedRails(s.values.rails)
+	if (!rails.length) throw new Error("power simulation found no regulated rail (rails named VBUS/USB/BAT are the input and the cell)")
 	const lines = [
 		`* Bringup power path, scenario ${scenario.name}, contract revision ${s.revision}. Generated; do not edit.`,
 		`.param vin=${scenario.vinV}`,
@@ -39,7 +46,8 @@ export function powerDeck(s: ContractSnapshot, scenario: PowerScenario): string 
 			// Output follows the set point until the input minus the dropout drop can no longer reach it.
 			`Bpass_${id} out_${id} 0 V = min({vset_${id}}, V(in) - {rdo_${id}}*I(Vsense_${id}))`,
 			`Vsense_${id} out_${id} load_${id} DC 0`,
-			`Rload_${id} load_${id} 0 {vset_${id}/iload_${id}}`,
+			// A rail with no stated load gets an open load; vset/0 would be an infinite resistance ngspice rejects.
+			rail.loadMa > 0 ? `Rload_${id} load_${id} 0 {vset_${id}/iload_${id}}` : `Rload_${id} load_${id} 0 1e9`,
 			// The input supplies the load current plus quiescent current.
 			`Bin_${id} in 0 I = I(Vsense_${id}) + ${QUIESCENT_A}`,
 		)
