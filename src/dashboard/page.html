@@ -269,6 +269,12 @@
 	.flash-bar span { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-3); white-space: nowrap; }
 	.flash-bar .done { color: var(--ok); border-color: rgba(34, 197, 94, .35); } .flash-bar .active { color: var(--info); border-color: rgba(59, 130, 246, .5); }
 	.flash-bar .failed { color: var(--error); border-color: rgba(239, 68, 68, .5); }
+	/* The bench needs the person: the most important thing on the panel until it is answered. */
+	#bench-ask { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: var(--r-card); background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .6); box-shadow: 0 0 0 4px rgba(245, 158, 11, .08); animation: fadein var(--t) var(--ease); }
+	#bench-ask .hand { font-size: 26px; }
+	#bench-ask b { display: block; font-size: 17px; color: var(--text); }
+	#bench-ask .t2 { font-size: 13px; }
+	#bench-view.asking { grid-template-rows: auto auto minmax(0, 1fr) auto; }
 	#bench-chart-box { position: relative; min-height: 0; border-radius: var(--r-card); border: 1px solid var(--border); background: #0a0b0c; }
 	#bench-chart { position: absolute; inset: 0; width: 100%; height: 100%; }
 	#bench-chart-box .src-badge { position: absolute; top: 8px; right: 8px; }
@@ -349,6 +355,7 @@
 				<div id="stage-3d" class="view hidden"></div>
 				<div id="bench-view" class="view hidden">
 					<div class="bench-top"><span id="bench-src" class="src-badge"></span><span id="bench-ports" class="t3"></span><div class="flash-bar" id="flash-bar"></div></div>
+					<div id="bench-ask" class="hidden" role="alert"><span class="hand">✋</span><div><b id="bench-ask-text"></b><span class="t2" id="bench-ask-note"></span></div></div>
 					<div id="bench-chart-box"><canvas id="bench-chart"></canvas></div>
 					<div class="bench-bottom"><div id="bench-gauge"><div class="t3">measured vs estimated battery life: waiting for a duty-cycle measurement</div></div><ul class="bench-checks" id="bench-checks"><li class="t3">checks: waiting for the first flash (after the design settles)</li></ul></div>
 				</div>
@@ -506,7 +513,8 @@
 		let benchDirty = false
 		// The change bar: open while the design is live, and after settling while the bench is up (it streams all the
 		// time; samples carry the bridge's clock, so a replayed old trace doesn't look alive). Whoever started the run.
-		const benchLive = () => Boolean(S.bench) && !S.stopped && Date.now() - S.lastSampleAt < 10_000
+		// A flash in progress or a step waiting for the person counts too: the factory demo streams nothing meanwhile.
+		const benchLive = () => Boolean(S.bench) && !S.stopped && (Date.now() - S.lastSampleAt < 10_000 || Boolean(S.bench.instruction) || S.bench.flash?.ok === null)
 		let barKey = ""
 		function syncChangeBar() {
 			const input = $("change-input")
@@ -811,6 +819,14 @@
 			// Tier 1 (pocket): the board, IMU and LED only. Tier 2 adds the Pico + INA226 that measures the current.
 			$("bench-ports").textContent = [b.source === "real" && b.ports?.dut && `board ${b.ports.dut.split("/").pop()}`, b.meter ? "meter ✓" : "tier 1: no current meter"].filter(Boolean).join(" · ")
 			$("flash-bar").innerHTML = b.flash ? flashSteps(b.flash).map((st) => `<span class="${st.state}" title="${esc(st.state === "failed" ? (b.flash.error ?? "") : "")}">${st.state === "done" ? "✓ " : st.state === "failed" ? "✗ " : ""}${esc(st.label)}</span>`).join("") : `<span>waiting for the design to settle</span>`
+			// A step for the person at the desk (the bridge can't reset this board into flashing mode by itself).
+			const ask = b.instruction
+			$("bench-ask").classList.toggle("hidden", !ask)
+			$("bench-view").classList.toggle("asking", Boolean(ask))
+			if (ask) {
+				$("bench-ask-text").textContent = ask.text
+				$("bench-ask-note").textContent = `At the board on the desk, for firmware rev ${ask.revision ?? "?"}. The flash carries on by itself once it's done; the bench gives up after 3 minutes.`
+			}
 			const v = b.verdict
 			$("bench-checks").innerHTML = v
 				? `<li><b class="${v.pass ? "ok" : "bad"}">${v.pass ? "✓ pass" : "✗ fail"}</b> <span class="t3">firmware rev ${esc(v.revision)}${v.source !== "real" ? ` · ${esc(v.source.toUpperCase())}` : ""}</span></li>` + v.checks.map((c) => c.skipped ? `<li class="t3" title="${esc(c.detail)}">– ${esc(c.name)} <span>${esc(c.detail)}</span></li>` : `<li title="${esc(c.detail)}"><span class="${c.pass ? "ok" : "bad"}">${c.pass ? "✓" : "✗"}</span> ${esc(c.name)} <span class="t3">${esc(c.detail)}</span></li>`).join("")
@@ -1197,6 +1213,7 @@
 				case "bench.flashed": return p.ok ? `rev ${p.revision} flashed${p.simulated ? " (replay)" : ` in ${(p.ms / 1000).toFixed(1)} s`}` : `rev ${p.revision} flash failed at ${p.stage}: ${p.error}`
 				case "bench.measured": return `measured ${p.averageMa.toPrecision(3)} mA (${p.source}), ${p.cycles} wakes`
 				case "bench.verdict": return `bench ${p.pass ? "pass" : "FAIL"} at rev ${p.revision}`
+				case "bench.instruction": return p.state === "waiting" ? `the bench asks: ${p.text}` : p.state === "done" ? `done: ${p.text}` : `nobody did it within 180 s: ${p.text}`
 				default: return ""
 			}
 		}
@@ -1274,6 +1291,7 @@
 				case "bench.flashed":
 				case "bench.measured":
 				case "bench.verdict":
+				case "bench.instruction":
 					S.bench = benchState(S.events)
 					benchDirty = true
 					if (e.type === "bench.connected") {
@@ -1287,6 +1305,9 @@
 					// The first live flash brings the Bench tab forward once; after that the engineer picks.
 					if (e.type === "bench.flashing" && !S.benchTabShown && Date.now() - Date.parse(e.at) < 60_000) { S.benchTabShown = true; setTab("bench") }
 					if (e.type === "bench.measured") renderBattery()
+					if (S.settled) syncChangeBar()
+					// Someone has to act: bring the Bench tab forward, whatever is showing.
+					if (e.type === "bench.instruction" && p.state === "waiting" && Date.now() - Date.parse(e.at) < 180_000) setTab("bench")
 					break
 				case "design.settled":
 					S.settled = p

@@ -223,7 +223,7 @@ export function benchState(events) {
 		const p = e.payload
 		switch (e.type) {
 			case "bench.connected":
-				state = { source: p.source, meter: p.meter, ports: p.ports, flash: null, verdict: null, measured: null }
+				state = { source: p.source, meter: p.meter, ports: p.ports, flash: null, verdict: null, measured: null, instruction: null }
 				break
 			case "bench.flashing":
 				if (!state) break
@@ -235,6 +235,9 @@ export function benchState(events) {
 				break
 			case "bench.verdict":
 				if (state) state.verdict = p
+				break
+			case "bench.instruction":
+				if (state) state.instruction = p.state === "waiting" ? { revision: p.revision, action: p.action, text: p.text } : null
 				break
 			case "bench.measured":
 				if (state) state.measured = p

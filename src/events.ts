@@ -62,6 +62,9 @@ export interface Payloads {
 	// The live hardware bench (agents/bench.ts, docs/design/bench.md). Post-settle: none of these hold up settling.
 	"bench.connected": { source: BenchSourceName; ports: { dut: string | null; fixture: string | null; telemetry: string | null }; meter: boolean }
 	"bench.flashing": { revision: number; stage: "build" | "connect" | "write" | "boot"; pct: number }
+	// The bench needs the person at the desk (factory firmware: hold BOOT, tap RST; or a silent new firmware: tap RST),
+	// then whether they did it ("done") or nobody did within the bridge's 180 s ("timeout").
+	"bench.instruction": { revision: number | null; action: string; text: string; state: "waiting" | "done" | "timeout" }
 	"bench.flashed": { revision: number; ok: boolean; stage?: string; ms: number; error?: string; simulated?: boolean }
 	// Batched every 250 ms; revision is the firmware revision the board last booted (null before a boot).
 	"bench.telemetry": { revision: number | null; source: BenchSourceName; samples: BenchSample[] }

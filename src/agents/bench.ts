@@ -67,6 +67,9 @@ export function createBench(opts: BenchOptions): Bench {
 
 	let settledOnce = false
 	let bootedRev: number | null = null
+	// The revision being flashed (instructions arrive during a flash), and each instruction's text by its id.
+	let flashingRev: number | null = null
+	const asked = new Map<unknown, string>()
 	let latest = -1
 	const proposedFor = new Set<number>()
 	// Session-scoped line taps (boot waits, live checks, the meter window); telemetry batching sees every line.
@@ -75,6 +78,16 @@ export function createBench(opts: BenchOptions): Bench {
 
 	bridge.onLine((line) => {
 		if (line.k === "boot" && typeof line.rev === "number") bootedRev = line.rev
+		if (line.k === "instruct") {
+			const action = String(line.action ?? "")
+			if (typeof line.done === "boolean") {
+				send("bench.instruction", { revision: flashingRev, action, text: asked.get(line.id) ?? "", state: line.done ? "done" : "timeout" })
+				asked.delete(line.id)
+			} else {
+				asked.set(line.id, String(line.text ?? ""))
+				send("bench.instruction", { revision: flashingRev, action, text: String(line.text ?? ""), state: "waiting" })
+			}
+		}
 		const sample = sampleOf(line)
 		if (sample) batch.push(sample)
 		for (const tap of taps) tap(line)
@@ -138,6 +151,8 @@ export function createBench(opts: BenchOptions): Bench {
 		const after: BridgeLine[] = []
 		const afterTap = (line: BridgeLine) => void after.push(line)
 		taps.add(afterTap)
+		// The ack can take minutes now: the bridge waits for the new firmware to speak, or for the person (bench.instruction).
+		flashingRev = revision
 		const ack = await bridge.command({ cmd: "flash", dir, env: BENCH_ENV })
 		taps.delete(progress)
 		if (!ack.ok) {

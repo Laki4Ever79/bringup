@@ -140,3 +140,10 @@ test("zero acceleration means no IMU: no tilt is charted and nothing tilts the 3
 	assert.equal(b.imu, true)
 	assert.equal(b.tilt.length, 1)
 })
+
+test("a waiting instruction is the bench's banner until it is answered or times out", () => {
+	const ask = ev("bench.instruction", { revision: 9, action: "boot-reset", text: "Hold BOOT, tap RST, release BOOT", state: "waiting" })
+	assert.deepEqual(benchState([connected(), ask])!.instruction, { revision: 9, action: "boot-reset", text: "Hold BOOT, tap RST, release BOOT" })
+	assert.equal(benchState([connected(), ask, ev("bench.instruction", { revision: 9, action: "boot-reset", text: "Hold BOOT, tap RST, release BOOT", state: "done" })])!.instruction, null)
+	assert.equal(benchState([connected()])!.instruction, null)
+})

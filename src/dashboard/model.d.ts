@@ -6,7 +6,7 @@ export function changedRefs(before: any, after: any): string[]
 export function prCards(events: any[], snapshots: Map<number, any>): any[]
 export function checkPills(events: any[]): any[]
 export function parseBattery(reportText: string): { days: number; targetDays: number | null } | null
-export function benchState(events: any[]): { source: "real" | "fake" | "replay"; meter: boolean; ports: any; flash: any; verdict: any; measured: any } | null
+export function benchState(events: any[]): { source: "real" | "fake" | "replay"; meter: boolean; ports: any; flash: any; verdict: any; measured: any; instruction: { revision: number | null; action: string; text: string } | null } | null
 export function flashSteps(flash: any): { key: string; label: string; state: "done" | "active" | "failed" | "todo" }[]
 export function attitude(ax: number, ay: number, az: number): { pitch: number; roll: number }
 export function lowPass(prev: { pitch: number; roll: number }, next: { pitch: number; roll: number }, k: number): { pitch: number; roll: number }

@@ -43,6 +43,11 @@ export function bringupSection(tracePath: string): string[] {
 			? `- Flash: rev ${flashed.revision} ${flashed.simulated ? "simulated (replay)" : `flashed in ${sig(flashed.ms / 1000)} s`}`
 			: `- Flash: rev ${flashed.revision} flash failed at ${flashed.stage ?? "?"}: ${flashed.error ?? ""}`,
 	)
+	// What the person at the desk was asked to do, and whether they did.
+	for (const e of trace.filter((x) => x.type === "bench.instruction" && x.payload.state !== "waiting")) {
+		const p = e.payload as Payloads["bench.instruction"]
+		out.push(`- Asked the person${p.revision !== null ? ` (rev ${p.revision})` : ""}: ${p.text}: ${p.state === "done" ? "done" : "nobody did it within 180 s"}`)
+	}
 	for (const c of verdict?.checks ?? []) out.push(c.skipped ? `- ${c.name}: not checked, ${c.detail}` : `- ${c.name}: ${c.pass ? "ok" : "FAIL"}, ${c.detail}`)
 	if (measured) {
 		const tag = measured.source === "real" ? "" : ` (${measured.source.toUpperCase()}`
