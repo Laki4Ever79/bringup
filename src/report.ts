@@ -6,6 +6,7 @@ import type { BringupState } from "./runtime.ts"
 import { describeEnv, type Env } from "./tools/env.ts"
 import { isStub } from "./tools/stubs.ts"
 import type { Payloads } from "./events.ts"
+import { bringupSection } from "./bench/report.ts"
 
 function counts(tracePath: string): Record<string, number> {
 	const c: Record<string, number> = {}
@@ -80,7 +81,7 @@ function fabSection(s: BringupState, stubbed: boolean): string[] {
 	return ["## Fabrication", "", ...body, ""]
 }
 
-export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean } = {}): string {
+export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean; bench?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
 	const violations = checkConsistency(snapshot, s.artifacts)
 	const c = counts(join(outDir, "trace.jsonl"))
@@ -125,6 +126,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
 		``,
 		...fabSection(s, stubbed),
+		...(opts.bench ? bringupSection(join(outDir, "trace.jsonl")) : []),
 		`## Coordination`,
 		`- Contract changes: ${c["contract.changed"] ?? 0}`,
 		`- Change requests held by interception: ${c["change.proposed"] ?? 0} (approved ${c.approved ?? 0}, rejected ${c.rejected ?? 0})`,

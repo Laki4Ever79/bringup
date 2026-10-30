@@ -5,8 +5,12 @@ import { fileURLToPath } from "node:url"
 import { missingTools } from "./report.ts"
 import { ROOT, runDesign } from "./run.ts"
 import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
+import { openBench } from "./bench/open.ts"
+import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 
-const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>]"
+const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>]"
+
+const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
 export interface CliArgs {
 	briefPath: string
@@ -16,6 +20,9 @@ export interface CliArgs {
 	engineerApproval: boolean
 	outDir?: string
 	reviewRounds?: number
+	// --bench: bring-up on the desk after settling, until Ctrl-C. real falls back to a replay, then the fake bench.
+	bench?: BenchSource
+	benchReplay?: string
 }
 
 export function parseArgs(argv: string[]): CliArgs | { error: string } {
@@ -25,11 +32,16 @@ export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	const roundsIndex = argv.indexOf("--review-rounds")
 	const reviewRounds = roundsIndex >= 0 ? Number(argv[roundsIndex + 1]) : undefined
 	if (roundsIndex >= 0 && !(Number.isInteger(reviewRounds) && reviewRounds! >= 1)) return { error: "--review-rounds needs a whole number of at least 1" }
-	const valueAt = new Set([outIndex, roundsIndex].filter((i) => i >= 0).map((i) => i + 1))
+	const benchIndex = argv.indexOf("--bench")
+	const benchSource = benchIndex >= 0 && (BENCH_SOURCES as readonly string[]).includes(argv[benchIndex + 1]) ? (argv[benchIndex + 1] as BenchSource) : undefined
+	const replayIndex = argv.indexOf("--bench-replay")
+	const benchReplay = replayIndex >= 0 ? argv[replayIndex + 1] : undefined
+	if (replayIndex >= 0 && (!benchReplay || benchReplay.startsWith("--"))) return { error: "--bench-replay needs a recorded bench.jsonl" }
+	const valueAt = new Set([outIndex, roundsIndex, replayIndex, ...(benchSource ? [benchIndex] : [])].filter((i) => i >= 0).map((i) => i + 1))
 	const briefPath = argv.find((a, i) => !a.startsWith("--") && !valueAt.has(i))
 	if (!briefPath) return { error: "no brief given" }
 	if (!existsSync(briefPath)) return { error: `brief not found: ${briefPath}` }
-	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}) }
+	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}) }
 }
 
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
@@ -52,7 +64,26 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		console.warn("  Or rerun with --no-hardware to see the agents coordinate without the hardware tools.")
 	}
 
-	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds })
+	let bench: Parameters<typeof runDesign>[0]["bench"]
+	if (args.bench) {
+		if (!env.python || !existsSync(join(ROOT, "py/bench.py"))) {
+			console.error("bringup: --bench needs .venv/bin/python and py/bench.py (see docs/design/bench.md)")
+			return 1
+		}
+		const python = env.python
+		const source = args.bench
+		// Ctrl-C, or SIGTERM from the dashboard hub stopping the run.
+		const until = new Promise<void>((resolve) => {
+			process.once("SIGINT", () => resolve())
+			process.once("SIGTERM", () => resolve())
+		})
+		console.log(`bringup: bench ${source}; after the design settles the run stays up for bring-up. Ctrl-C ends it.`)
+		bench = {
+			until,
+			open: () => openBench({ root: ROOT, source, outDir, replay: args.benchReplay, start: (a) => startBridge(python, a, { cwd: ROOT, onStderr: (t) => process.stderr.write(`[bench.py] ${t}`) }) }),
+		}
+	}
+	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, bench })
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)\nreport: ${result.reportPath}`)
 	return result.settled ? 0 : 2
 }

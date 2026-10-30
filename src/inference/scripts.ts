@@ -2,6 +2,7 @@ import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type Context
 import type { ContractValues, FieldName } from "../contract/types.ts"
 import { state } from "../runtime.ts"
 import { toolCall, type Script } from "./scripted-runner.ts"
+import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
 export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior"> & { parts: ContractValues["parts"] } = {
@@ -77,7 +78,8 @@ export function mockScripts(): Record<string, Script> {
 			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
-				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "GPIO10 is free" })] : say("decided")
+				const why = /change "rails"/.test(instruction) ? "a measurement beats the estimate" : "GPIO10 is free"
+				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: why })] : say("decided")
 			}
 			if (instruction.startsWith("Brief")) {
 				const field = ARCHITECT_FIELDS[step]
@@ -115,6 +117,15 @@ export function mockScripts(): Record<string, Script> {
 					]
 				: say("review submitted"),
 		"mock-firmware": (items) => {
+			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
+			if (instruction.startsWith("Change request from the engineer:")) {
+				// The request is the line after the prefix. "blink faster when tilted": a faster blink past 20°.
+				const request = instruction.split("\n")[1] ?? ""
+				if (stepsTaken(items) > 0 || !/blink/i.test(request)) return say(/blink/i.test(request) ? "behavior updated" : "not a firmware behavior change")
+				const current = state().contract.get("behavior") ?? DEFAULT_BEHAVIOR
+				const value = /tilt/i.test(request) ? { ...current, tiltBlinkMs: 100, tiltDeg: 20 } : { ...current, blinkMs: Math.max(100, Math.round(current.blinkMs / 2)) }
+				return propose("behavior", value, `engineer asked: ${request}`)
+			}
 			if (stepsTaken(items) > 0) return say("requested")
 			const pins = state().contract.get("pins") ?? []
 			return pins.some((p) => p.signal === "STATUS_LED") ? say("pins are sufficient") : propose("pins", [...pins, STATUS_LED], "firmware drives a status LED")

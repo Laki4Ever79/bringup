@@ -22,7 +22,11 @@ export interface Settlement {
 // With the brief review on, a quiet consistent design first emits design.ready and waits for the reviewer's
 // review.completed: a pass settles; a fail with a fix round left waits for the owners to change the design, which
 // is then reviewed again; a fail on the last round settles, unsettled only if a blocker remains.
-export function createConsistencyParticipant(opts: { quietMs: number; maxRevisions?: number; onSettled: (s: Settlement) => void }): Human {
+//
+// With keepRunning (run --bench), settling is not the end: a later contract change or held change un-settles the
+// design, which then settles again (design.settled each time, onSettled each time). A new round of changes gets its
+// own revision budget and review fix rounds.
+export function createConsistencyParticipant(opts: { quietMs: number; maxRevisions?: number; keepRunning?: boolean; onSettled: (s: Settlement) => void }): Human {
 	const maxRevisions = opts.maxRevisions ?? MAX_REVISIONS
 	const self = { id: "" }
 	const turns = new Map<string, number>()
@@ -132,18 +136,33 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		// Otherwise the owners got the findings (roles.ts); the timer below re-evaluates once they are done.
 	}
 
+	const rearm = () => {
+		const s = state()
+		done = false
+		budgetBase = s.contract.revision
+		s.review.round = 0
+	}
+
 	const participant = createHuman({
 		name: "consistency",
 		capabilities: [],
 		handlers: [
 			{
-				specification: when(() => !done),
+				specification: when(() => !done || opts.keepRunning === true),
 				processor: {
 					apply: ({ event }) => {
 						const type = event.type as string
-						// Agent turns: a loop starts with message_received and ends with its model answer.
+						// Bring-up is post-settle and streams all the time; it is not design activity, so it must
+						// neither hold up the quiet period nor re-arm a settled design.
+						if (type.startsWith("bench.")) return
+						// Agent turns: a loop starts with message_received and ends with its model answer. Counted even
+						// once settled, so a turn that began before a re-arm still holds settling up.
 						if (type === "message_received.started") turns.set(event.producerId, (turns.get(event.producerId) ?? 0) + 1)
 						if (type === "model.answer") turns.set(event.producerId, Math.max(0, (turns.get(event.producerId) ?? 0) - 1))
+						if (done) {
+							if (!(isEvent(event, "contract.changed") || isEvent(event, "change.proposed"))) return
+							rearm()
+						}
 						if (isEvent(event, "contract.changed") || isEvent(event, "artifact.ready") || isEvent(event, "artifact.failed")) check()
 						if (type === "message_received.started" && awaitingReview && roleOf(event.producerId) === "reviewer") reviewerStarted = true
 						if (isEvent(event, "review.completed")) {
