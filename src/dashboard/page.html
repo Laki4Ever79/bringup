@@ -20,7 +20,7 @@
 	#settled { margin-left: auto; font-weight: 600; }
 	main { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
 	section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
-	#counters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding: 12px; }
+	#counters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; padding: 12px; }
 	.counter { text-align: center; }
 	.counter b { display: block; font-size: 48px; font-variant-numeric: tabular-nums; }
 	.counter span { color: var(--dim); font-size: 16px; }
@@ -38,6 +38,8 @@
 	ul.plain { list-style: none; margin: 0; padding: 0; }
 	ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
 	.kind { color: var(--rejected); font-weight: 600; }
+	.request { font-weight: 600; }
+	.effect { color: var(--contract); font-size: 16px; }
 	.empty { color: var(--dim); font-style: italic; }
 	#board img { max-width: 100%; border-radius: 6px; background: #000; }
 	.c-contract { border-color: var(--contract) !important; } .c-proposed { border-color: var(--proposed) !important; }
@@ -58,7 +60,8 @@
 	<section id="counters"></section>
 	<section id="timeline-panel"><h2>Timeline</h2><ul id="timeline"></ul></section>
 	<section><h2>Design contract</h2><table id="contract"></table></section>
-	<section><h2>Change requests</h2><table id="changes"></table></section>
+	<section><h2>Engineer requests</h2><ul class="plain" id="requests"><li class="empty">none yet</li></ul></section>
+	<section><h2>Change control</h2><table id="changes"></table></section>
 	<section><h2>Violations (latest check)</h2><ul class="plain" id="violations"><li class="empty">no check yet</li></ul></section>
 	<section id="board"><h2>Board</h2><p class="empty">waiting for the first board build</p></section>
 </main>
@@ -73,6 +76,8 @@
 		seenViolations: new Set(),
 		counts: { proposed: 0, approved: 0, rejected: 0, built: 0 },
 		settled: null,
+		requests: [],        // [{at, text}] from /files/requests.jsonl
+		contractChanges: [], // [{at, field, version, revision, by}] from contract.changed
 	}
 
 	const $ = (id) => document.getElementById(id)
@@ -112,6 +117,7 @@
 		const p = e.payload ?? {}
 		switch (e.type) {
 			case "contract.changed":
+				state.contractChanges.push({ at: e.at, ...p })
 				state.fields[p.field] = { version: p.version, by: p.by, revision: p.revision }
 				state.revision = Math.max(state.revision, p.revision)
 				fetchContract()
@@ -157,7 +163,7 @@
 	function render() {
 		const pending = [...state.changes.values()].filter((c) => c.status === "pending").length
 		const counters = [
-			["changes proposed", state.counts.proposed], ["held now", pending], ["approved", state.counts.approved],
+			["change requests", state.requests.length], ["changes proposed", state.counts.proposed], ["held now", pending], ["approved", state.counts.approved],
 			["rejected", state.counts.rejected], ["violations caught", state.seenViolations.size], ["artifacts built", state.counts.built],
 		]
 		$("counters").innerHTML = counters.map(([label, n]) => `<div class="counter"><b>${n}</b><span>${label}</span></div>`).join("")
@@ -178,6 +184,17 @@
 		$("changes").innerHTML = changes.length === 0 ? `<tr><td class="empty">none yet</td></tr>` : changes.map(([id, c]) =>
 			`<tr><td><span class="pill ${c.status}">${c.status}</span></td><td><b>${esc(c.field)}</b> by ${esc(c.by)}<br>` +
 			`<span class="meta">${esc(c.reason)}${c.decidedBy ? ` · ${esc(c.decidedBy)}: ${esc(c.why)}` : ""}</span></td></tr>`).join("")
+
+		// What each engineer request caused: the architect's contract changes between it and the next request.
+		$("requests").innerHTML = state.requests.length === 0 ? `<li class="empty">none yet</li>` : state.requests.map((r, i) => {
+			const from = Date.parse(r.at)
+			const to = i + 1 < state.requests.length ? Date.parse(state.requests[i + 1].at) : Infinity
+			const caused = state.contractChanges.filter((c) => c.by === "architect" && Date.parse(c.at) >= from && Date.parse(c.at) < to)
+			const effect = caused.length > 0
+				? caused.map((c) => `→ ${esc(c.field)} v${esc(c.version)} (rev ${esc(c.revision)})`).join("<br>")
+				: state.settled ? "→ no field changed" : "→ waiting for the architect…"
+			return `<li><span class="request">“${esc(r.text)}”</span> <span class="meta">${esc(time(r.at))}</span><br><span class="effect">${effect}</span></li>`
+		}).reverse().join("")
 
 		const v = state.violations
 		$("violations").innerHTML = !v ? `<li class="empty">no check yet</li>` : v.violations.length === 0
@@ -203,6 +220,19 @@
 		}, 200)
 	}
 
+	let requestsTimer = null
+	async function fetchRequests() {
+		try {
+			const res = await fetch("/files/requests.jsonl", { cache: "no-store" })
+			if (!res.ok) return
+			const lines = (await res.text()).split("\n").filter((l) => l.trim())
+			const requests = []
+			for (const l of lines) { try { const r = JSON.parse(l); if (typeof r.text === "string") requests.push(r) } catch {} }
+			if (requests.length !== state.requests.length) { state.requests = requests; render() }
+		} catch {}
+	}
+	setInterval(fetchRequests, 2000)
+
 	let frame = null
 	const source = new EventSource("/events")
 	source.onopen = () => { $("status").textContent = "● live"; $("status").className = "live" }
@@ -215,10 +245,13 @@
 		lastSeq = typeof e.seq === "number" ? e.seq : lastSeq
 		apply(e)
 		addToTimeline(e)
+		clearTimeout(requestsTimer)
+		requestsTimer = setTimeout(fetchRequests, 200)
 		if (!frame) frame = requestAnimationFrame(() => { frame = null; render() })
 	}
 	render()
 	fetchContract()
+	fetchRequests()
 </script>
 </body>
 </html>
