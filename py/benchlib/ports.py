@@ -6,6 +6,7 @@ from __future__ import annotations
 # so the DUT has the same port in download mode.
 ROLES = {
     (0x303A, 0x1001): "dut",
+    (0x303A, 0x4001): "dut",  # the same S3 running USB-OTG (TinyUSB) firmware, e.g. the factory demo
     (0x2E8A, 0x0005): "fixture",  # RP2350 running MicroPython
     (0x10C4, 0xEA60): "telemetry",  # CP2102 on the DUT's UART1 TX
 }
