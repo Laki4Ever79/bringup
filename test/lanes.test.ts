@@ -85,6 +85,42 @@ test("a halted agent's lane turns failed", () => {
 	assert.deepEqual(applyLaneEvent(lanes, ev("agent.halted", { agentId: "unknown", error: "x" })), [])
 })
 
+test("each lane keeps its last result: tool results, answers and finished builds", () => {
+	const lanes = createLanes()
+	applyLaneEvent(lanes, activity("architect", "tool", "propose_contract_change: outline"))
+	applyLaneEvent(lanes, activity("architect", "tool-result", "applied (v1, rev 3)"))
+	assert.equal(lanes.architect.lastResult, "applied (v1, rev 3)")
+	applyLaneEvent(lanes, activity("architect", "thinking", "thinking…"))
+	assert.equal(lanes.architect.lastResult, "applied (v1, rev 3)", "thinking doesn't replace it")
+	applyLaneEvent(lanes, activity("architect", "answer", "contract drafted"))
+	assert.equal(lanes.architect.lastResult, "contract drafted")
+	applyLaneEvent(lanes, ev("artifact.ready", { kind: "board", revision: 6 }))
+	assert.equal(lanes["build:board"].lastResult, "rev 6 built")
+	assert.equal(lanes.parts.lastResult, "")
+})
+
+test("when the design settles, agents still marked active go idle", () => {
+	const lanes = createLanes()
+	applyLaneEvent(lanes, activity("reviewer", "thinking", "thinking…"))
+	applyLaneEvent(lanes, activity("architect", "answer", "contract drafted"))
+	const changed = applyLaneEvent(lanes, ev("design.settled", { revision: 8, settled: true }))
+	assert.ok(changed.includes("reviewer"))
+	assert.equal(lanes.reviewer.status, "idle")
+	assert.equal(lanes.reviewer.text, "run ended")
+	assert.equal(lanes.architect.text, "contract drafted", "idle agents keep their last line")
+	assert.equal(lanes.consistency.status, "done")
+})
+
+test("loop events that arrive after the design settled don't wake the lane again", () => {
+	const lanes = createLanes()
+	applyLaneEvent(lanes, ev("design.settled", { revision: 8, settled: true }))
+	applyLaneEvent(lanes, activity("reviewer", "thinking", "thinking…"))
+	assert.equal(lanes.reviewer.status, "idle")
+	applyLaneEvent(lanes, activity("reviewer", "answer", "review submitted"))
+	assert.equal(lanes.reviewer.status, "idle")
+	assert.equal(lanes.reviewer.text, "review submitted")
+})
+
 test("history is capped", () => {
 	const lanes = createLanes()
 	for (let i = 0; i < 100; i++) applyLaneEvent(lanes, activity("parts", "thinking", `t${i}`))
@@ -140,9 +176,8 @@ test("the dashboard serves its page modules", async () => {
 		const page = await (await fetch(dash.url)).text()
 		assert.match(page, /from "\/lanes\.js"/)
 		assert.match(page, /from "\/stl\.js"/)
-		assert.match(page, /id="lanes"/)
-		assert.match(page, /id="filmstrip"/)
-		assert.match(page, /id="enclosure-view"/)
+		assert.match(page, /from "\/model\.js"/)
+		for (const id of ["stage", "agents", "parts", "prs", "dots", "change-input", "start"]) assert.match(page, new RegExp(`id="${id}"`))
 		assert.equal((await fetch(`${dash.url}/server.ts`)).status, 404, "only the page modules are served from the dashboard folder")
 	} finally {
 		await dash.close()

@@ -1,0 +1,187 @@
+// Pure view-model helpers for the dashboard (docs/design/dashboard.md): the revision scrubber, pull-request
+// cards with before→after diffs, the changed refs that glow on the PCB, the three check pills, the battery gauge.
+// Plain ES module with no dependencies: the page imports it from /model.js and the tests import it in Node.
+
+// One accent per participant (the spec's agent colours). Keys are agent roles and lane keys.
+export const AGENT_COLORS = {
+	architect: "#3b82f6",
+	parts: "#a855f7",
+	firmware: "#14b8a6",
+	reviewer: "#f59e0b",
+	"build:board": "#22c55e",
+	"build:enclosure": "#ec4899",
+	"build:firmware": "#06b6d4",
+	grounding: "#eab308",
+	consistency: "#f97316",
+	engineer: "#e5e7eb",
+}
+
+// Who owns each contract field (src/contract/types.ts OWNERS).
+const OWNERS = { requirements: "architect", outline: "architect", connectors: "architect", rails: "architect", parts: "parts", pins: "architect" }
+
+// ── Revision scrubber ────────────────────────────────────────────────────────────────────────────
+
+// Every contract revision as a dot (its first change), coloured by its author, and the revisions that have a board.
+export function scrubberModel(events) {
+	const dots = []
+	const seen = new Set()
+	const boards = []
+	for (const e of events) {
+		const p = e.payload ?? {}
+		if (e.type === "contract.changed" && !seen.has(p.revision)) {
+			seen.add(p.revision)
+			dots.push({ revision: p.revision, field: p.field, version: p.version, by: p.by, color: AGENT_COLORS[p.by] ?? AGENT_COLORS.engineer, at: e.at, board: false })
+		}
+		if (e.type === "artifact.ready" && p.kind === "board" && !boards.includes(p.revision)) boards.push(p.revision)
+	}
+	boards.sort((a, b) => a - b)
+	for (const d of dots) d.board = boards.includes(d.revision)
+	return { dots, boards }
+}
+
+// The board to show for a revision: the newest one built at or before it.
+export function boardFor(model, revision) {
+	let best = null
+	for (const b of model.boards) if (b <= revision) best = b
+	return best
+}
+
+// ── Contract diffs ───────────────────────────────────────────────────────────────────────────────
+
+const LIST_KEY = { pins: "signal", parts: "ref", connectors: "ref", rails: "name" }
+const LABEL = {
+	pins: (p) => `${p.signal} → GPIO${p.gpio} (${p.partRef}.${p.partPin})`,
+	parts: (p) => `${p.ref} ${p.mpn}`,
+	connectors: (c) => `${c.ref} ${c.kind} ${c.edge} @ ${c.offsetMm} mm`,
+	rails: (r) => `${r.name} ${r.voltageV} V ${r.loadMa}/${r.regulatorMaxMa} mA`,
+}
+// What a changed list entry shows after its key: the part of LABEL that can differ.
+const CHANGE = {
+	pins: (a, b) => (a.gpio !== b.gpio ? `GPIO${a.gpio} → GPIO${b.gpio}` : `${a.partRef}.${a.partPin} → ${b.partRef}.${b.partPin}`),
+	parts: (a, b) => (a.mpn !== b.mpn ? `${a.mpn} → ${b.mpn}` : `${a.footprint} → ${b.footprint}`),
+	connectors: (a, b) => `${a.kind} ${a.edge} @ ${a.offsetMm} mm → ${b.kind} ${b.edge} @ ${b.offsetMm} mm`,
+	rails: (a, b) => `${a.voltageV} V ${a.loadMa}/${a.regulatorMaxMa} mA → ${b.voltageV} V ${b.loadMa}/${b.regulatorMaxMa} mA`,
+}
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+const show = (v) => (typeof v === "string" ? v : JSON.stringify(v))
+
+// Compact before→after lines for one field: "+ added", "− removed", "~ changed".
+export function contractDiff(field, before, after) {
+	const key = LIST_KEY[field]
+	if (key) {
+		const b = new Map((before ?? []).map((x) => [x[key], x]))
+		const a = new Map((after ?? []).map((x) => [x[key], x]))
+		const out = []
+		for (const [k, x] of a) if (b.has(k) && !same(b.get(k), x)) out.push(`~ ${k} ${CHANGE[field](b.get(k), x)}`)
+		for (const [k, x] of b) if (!a.has(k)) out.push(`− ${LABEL[field](x)}`)
+		for (const [k, x] of a) if (!b.has(k)) out.push(`+ ${LABEL[field](x)}`)
+		return out
+	}
+	const b = before ?? {}
+	const a = after ?? {}
+	const out = []
+	for (const k of new Set([...Object.keys(b), ...Object.keys(a)])) if (!same(b[k], a[k])) out.push(`~ ${k} ${show(b[k] ?? "—")} → ${show(a[k] ?? "—")}`)
+	return out
+}
+
+// Refs to glow on the PCB after a revision: parts whose entry changed, plus both ends of changed pins.
+export function changedRefs(before, after) {
+	if (!before || !after) return []
+	const refs = new Set()
+	const b = new Map((before.parts ?? []).map((p) => [p.ref, p]))
+	for (const p of after.parts ?? []) if (!same(b.get(p.ref), p)) refs.add(p.ref)
+	const mcu = (after.parts ?? []).find((p) => p.role === "mcu")?.ref
+	const pb = new Map((before.pins ?? []).map((p) => [p.signal, p]))
+	const pa = new Map((after.pins ?? []).map((p) => [p.signal, p]))
+	for (const [sig, p] of pa) {
+		if (same(pb.get(sig), p)) continue
+		refs.add(p.partRef)
+		if (mcu) refs.add(mcu)
+		if (pb.get(sig)) refs.add(pb.get(sig).partRef)
+	}
+	for (const [sig, p] of pb) if (!pa.has(sig)) refs.add(p.partRef)
+	return [...refs].sort()
+}
+
+// ── Pull-request cards ───────────────────────────────────────────────────────────────────────────
+
+function nearest(snapshots, revision, below) {
+	let best = null
+	for (const [r, s] of snapshots) {
+		if (below ? r < revision && (best === null || r > best[0]) : r >= revision && (best === null || r < best[0])) best = [r, s]
+	}
+	return best ? best[1] : null
+}
+
+// Held changes as pull requests. change.decided is one vote (an owner agent or the engineer); change.resolved is
+// the outcome. Traces from before change.resolved existed fall back to the first vote, unless the engineer's vote
+// was required. The diff compares the contract just before and at the revision the approved
+// change was applied (the requester's next contract.changed on that field), from snapshots kept as they stream.
+export function prCards(events, snapshots) {
+	const cards = new Map()
+	for (const e of events) {
+		const p = e.payload ?? {}
+		if (e.type === "change.proposed") {
+			const needsEngineer = p.needsEngineer === true
+			cards.set(p.proposalId, { id: p.proposalId, field: p.field, requester: p.by, owner: OWNERS[p.field] ?? "architect", reason: p.reason, needsEngineer, status: needsEngineer ? "waiting" : "pending", resolved: false, votes: [], decidedBy: null, why: null, revision: null, diff: [], at: e.at })
+		} else if (e.type === "change.decided" && cards.has(p.proposalId)) {
+			const c = cards.get(p.proposalId)
+			c.votes.push({ by: p.by, approved: p.approved, reason: p.reason })
+			if (!c.resolved && !c.needsEngineer) Object.assign(c, { status: p.approved ? "approved" : "rejected", decidedBy: [p.by], why: p.reason })
+		} else if (e.type === "change.resolved" && cards.has(p.proposalId)) {
+			Object.assign(cards.get(p.proposalId), { resolved: true, status: p.approved ? "approved" : "rejected", decidedBy: p.decidedBy ?? [], why: p.reason })
+		} else if (e.type === "contract.changed") {
+			for (const c of cards.values()) if (c.status === "approved" && c.revision === null && c.field === p.field && c.requester === p.by) c.revision = p.revision
+		}
+	}
+	for (const c of cards.values()) {
+		if (c.revision === null) continue
+		const before = nearest(snapshots, c.revision, true)
+		const after = nearest(snapshots, c.revision, false)
+		if (after) c.diff = contractDiff(c.field, before?.values?.[c.field], after.values?.[c.field])
+	}
+	return [...cards.values()]
+}
+
+// ── Check pills ──────────────────────────────────────────────────────────────────────────────────
+
+// The three checks for the top bar: state pending | running | ok | warn | error, a count and the popover lines.
+export function checkPills(events) {
+	let consistency = null
+	let grounding = null
+	let ready = null
+	let review = null
+	for (const e of events) {
+		if (e.type === "consistency.checked") consistency = e.payload
+		if (e.type === "grounding.checked") grounding = e.payload
+		if (e.type === "design.ready") ready = e.payload
+		if (e.type === "review.completed") review = e.payload
+	}
+	const v = consistency?.violations ?? []
+	const f = grounding?.findings ?? []
+	const rf = review?.findings ?? []
+	const reviewRunning = ready && (!review || review.revision < ready.revision)
+	return [
+		{ key: "consistency", label: "Consistency", state: !consistency ? "pending" : v.length ? "error" : "ok", count: v.length, revision: consistency?.revision ?? null, items: v.map((x) => `${x.kind}: ${x.message}`) },
+		{ key: "grounding", label: "Grounding", state: !grounding ? "pending" : f.length ? "warn" : "ok", count: f.length, revision: grounding?.revision ?? null, items: f.map((x) => `${x.kind} on ${x.partRef}: ${x.detail}`) },
+		{
+			key: "review",
+			label: "Review",
+			state: reviewRunning ? "running" : !review ? "pending" : review.verdict === "pass" ? "ok" : "error",
+			count: rf.length,
+			revision: review?.revision ?? ready?.revision ?? null,
+			items: rf.map((x) => `${x.severity} · ${(x.fields ?? []).join(", ")}: ${x.issue}`),
+		},
+	]
+}
+
+// ── Battery gauge ────────────────────────────────────────────────────────────────────────────────
+
+// "Estimated battery life: … = 198 days vs target 180 days" from report.md → {days, targetDays}.
+export function parseBattery(reportText) {
+	const line = /Estimated battery life:[^\n]*/.exec(reportText ?? "")?.[0]
+	if (!line) return null
+	const m = /(\d+(?:\.\d+)?) days(?: vs target (\d+(?:\.\d+)?) days)?\s*$/.exec(line)
+	return m ? { days: Number(m[1]), targetDays: m[2] ? Number(m[2]) : null } : null
+}

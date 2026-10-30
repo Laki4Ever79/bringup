@@ -122,7 +122,7 @@ test("the page is served at /", async () => {
 	try {
 		const res = await fetch(dash.url)
 		assert.equal(res.status, 200)
-		assert.match(await res.text(), /EventSource\("\/events"\)/)
+		assert.match(await res.text(), /new EventSource\(`\$\{base\}\/events`\)/)
 	} finally {
 		await dash.close()
 	}
