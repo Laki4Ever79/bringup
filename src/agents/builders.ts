@@ -21,6 +21,15 @@ export interface BuildContext {
 	dir: string
 }
 
+// Fields an artifact can't be built without. Until each has been written (version > 0) a build request is a
+// silent skip: no artifact, no artifact.failed, no recorded inputs, so the consistency participant still
+// sees the artifact as not current and waits (or ends a stuck run, see consistency.ts).
+export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
+	board: ["outline", "parts", "pins"],
+	enclosure: ["outline", "connectors"],
+	firmware: ["parts", "pins"],
+}
+
 // A plain-code participant that keeps one artifact in step with the contract. It wakes on
 // contract.changed for its input fields, runs one build at a time (newer requests coalesce),
 // stores the artifact and reports artifact.ready or artifact.failed. Builds of different
@@ -28,6 +37,7 @@ export interface BuildContext {
 export function createBuilder<K extends ArtifactKind>(opts: {
 	kind: K
 	inputs: FieldName[]
+	requires?: FieldName[]
 	build: (ctx: BuildContext) => Promise<ArtifactOf[K]>
 	// For tools that report failure in their result instead of throwing.
 	failure?: (artifact: ArtifactOf[K]) => string | null
@@ -36,6 +46,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	const rebuilder = new Rebuilder(async (revision) => {
 		const s = state()
 		const snapshot = s.contract.snapshot()
+		if ((opts.requires ?? []).some((f) => snapshot.versions[f] === 0)) return
 		const inputs = Object.fromEntries(opts.inputs.map((f) => [f, snapshot.versions[f]]))
 		try {
 			const dir = join(s.outDir, opts.kind, `rev-${snapshot.revision}`)
@@ -82,6 +93,7 @@ export function createBoardBuilder(env: Env): Human {
 	return createBuilder({
 		kind: "board",
 		inputs: ["parts", "pins", "outline", "connectors"],
+		requires: BUILD_REQUIRES.board,
 		build: async ({ dir, snapshot, revision }) => {
 			const board = await buildBoard(env, dir, snapshot, revision)
 			// Stable path for the dashboard: the latest render is always at <out>/board/board.png.
@@ -95,6 +107,7 @@ export function createEnclosureBuilder(env: Env): Human {
 	return createBuilder({
 		kind: "enclosure",
 		inputs: ["outline", "connectors"],
+		requires: BUILD_REQUIRES.enclosure,
 		build: ({ dir, snapshot, revision }) => {
 			if (!env.python) throw new Error("enclosure build failed: .venv python with build123d is not installed")
 			return buildEnclosure(env.python, env.root, dir, snapshot, revision)
@@ -106,6 +119,7 @@ export function createFirmwareBuilder(env: Env): Human {
 	return createBuilder({
 		kind: "firmware",
 		inputs: ["parts", "pins"],
+		requires: BUILD_REQUIRES.firmware,
 		build: ({ dir, snapshot, revision }) => {
 			if (!env.pio) throw new Error("firmware build failed: .venv PlatformIO is not installed")
 			return buildFirmware(env.pio, env.root, dir, snapshot, revision)

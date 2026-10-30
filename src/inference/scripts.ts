@@ -72,6 +72,7 @@ export function mockScripts(): Record<string, Script> {
 		},
 		"mock-parts": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
+			if (instruction.startsWith("Build failed:")) return say("noted")
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")

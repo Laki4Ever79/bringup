@@ -5,6 +5,7 @@ import { checkConsistency, type Violation } from "../contract/consistency.ts"
 import { isEvent, makeEvent, type ArtifactKind, type Payloads } from "../events.ts"
 import { emit, roleOf, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
+import { BUILD_REQUIRES } from "./builders.ts"
 
 export const MAX_REVISIONS = 25
 const KINDS: ArtifactKind[] = ["board", "enclosure", "firmware"]
@@ -80,7 +81,16 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 			!s.groundingEnabled ||
 			s.contract.version("parts") === 0 ||
 			(s.groundedVersions?.parts === s.contract.version("parts") && s.groundedVersions?.pins === s.contract.version("pins"))
-		const busy = [...turns.values()].some((n) => n > 0) || s.approvals.openCount() > 0 || !KINDS.every(current) || !grounding
+		const agentsBusy = [...turns.values()].some((n) => n > 0) || s.approvals.openCount() > 0
+		const stale = KINDS.filter((k) => !current(k))
+		// Quiet, and every artifact that isn't current is only waiting for a field nobody wrote: the run is stuck.
+		// End it unsettled, naming the missing fields in place of a build failure.
+		const missing = (k: ArtifactKind) => BUILD_REQUIRES[k].filter((f) => s.contract.version(f) === 0)
+		if (!agentsBusy && stale.length > 0 && stale.every((k) => missing(k).length > 0 && s.artifactInputs[k] === undefined)) {
+			for (const k of stale) s.artifactFailures[k] = `not built: the contract has no ${missing(k).join(", ")}`
+			return settle(false)
+		}
+		const busy = agentsBusy || stale.length > 0 || !grounding
 		if (busy) return
 		const consistent = violations.length === 0 && s.groundingFindings.length === 0 && KINDS.every((k) => s.artifactFailures[k] === undefined)
 		if (!consistent || !s.review.enabled) return settle(consistent)
