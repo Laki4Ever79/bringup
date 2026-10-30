@@ -506,7 +506,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 
 	return [
 		"export default () => (",
-		`  <board width="${outline.widthMm}mm" height="${outline.heightMm}mm" minViaHoleDiameter="0.3mm" minViaPadDiameter="0.6mm">`,
+		`  <board width="${outline.widthMm}mm" height="${outline.heightMm}mm" minViaHoleDiameter="0.25mm" minViaPadDiameter="0.45mm">`,
 		...lines.map((l) => `    ${l}`),
 		"  </board>",
 		")",
