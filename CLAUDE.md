@@ -103,14 +103,21 @@ Pitfalls:
 | Sat 17:00 | Optional live demos at NTP |
 | **Sat 20:00** | **Submissions close** |
 
-## Current state (30 Oct, evening)
-- Branch `bringup-core`: plan tasks 1–10 done. `npm run bringup -- briefs/logger.md --mock` settles with 0 violations
-  in about 30 s. `npm test` is green (2 QEMU tests skip). Ledger: `.superpowers/sdd/2026-10-30-bringup-core/progress.md`.
-- Also merged: SPICE power simulation, emulator boot (needs QEMU), live dashboard (`src/dashboard`), MCP server
-  (`src/mcp`, one child process per run), part search with live stock, a grounding critic (KiCad symbols), README.
-- Parallel sessions (agent-mesh-7a / -af / -5b) work in worktrees `../wt-board`, `../wt-enclosure`, `../wt-firmware`;
-  the lead session merges their branches.
-- One process runs one design (`src/runtime.ts` holds the current runtime); tournaments and MCP spawn a process per run.
+## Current state (30 Oct, late night)
+- `main` = branch `bringup-core`: 456 tests pass, nothing skipped (with tools, QEMU, Docker). Pushed to github.com/Laki4Ever79/bringup.
+- Built:
+  - contract + change control (+ engineer approval)
+  - agents
+  - builders (tscircuit/KiCad with DRC vs JLCPCB, build123d case + lid + standoffs + print check, PlatformIO)
+  - checks (consistency, grounding, brief reviewer)
+  - SPICE, QEMU boot per run, fab files, sourcing
+  - dashboard hub (:4317, `npm run demo`)
+  - MCP server, tournament
+  - live bench (docs/design/bench.md, docs/bench-wiring.md; --bench real|fake|replay)
+- Presentation: one line + three acts (docs/submission.md, docs/video.md). Act 3 = bring-up on the real ESP32-S3.
+- Real runs 1-10 are in out/real-*; none passed the final brief review yet (see the plan doc's runs table).
+- Helper sessions: agent-mesh-7a (dashboard/host, ../wt-board), agent-mesh-af (bench hardware/firmware/enclosure, ../wt-enclosure), agent-mesh-5b (power/catalog/docs, ../wt-firmware). The lead merges.
+- Waiting on the user: log back in (dialout), wire the bench, say go to af before first power-on; record the video; submit by Sat 20:00.
 
 ## Open items for the user
 - Answer the "Shiva" team invite on the dashboard (https://build.jigjoy.ai/dashboard).
