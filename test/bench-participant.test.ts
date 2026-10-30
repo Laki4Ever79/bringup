@@ -196,3 +196,16 @@ test("telemetry reaches Mozaik in batches, tagged with the booted revision", asy
 	assert.deepEqual(Object.keys(batch.samples[1]).sort(), ["at", "mA"])
 	assert.ok(t.events.some((e) => e.type === "bench.connected"))
 })
+
+test("a board that panics or browns out after booting fails the boot check", async () => {
+	const fake = new FakeBridge({ meter: false })
+	const t = setup(fake)
+	const rev = t.firmware()
+	t.send("design.settled", { revision: rev, settled: true })
+	await waitFor(() => t.of("bench.flashed").length > 0)
+	fake.emit({ k: "boot", rev, reset: "brownout", mode: "live" })
+	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	const boot = t.of("bench.verdict")[0].checks.find((c) => c.name === "boot")!
+	assert.equal(boot.pass, false)
+	assert.match(boot.detail, /brownout/)
+})

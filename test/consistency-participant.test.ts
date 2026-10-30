@@ -168,3 +168,18 @@ test("with keepRunning, a change held for approval after settling keeps the desi
 	await waitFor(() => t.settled.length > 1)
 	assert.equal(t.settled[1].revision, 6)
 })
+
+test("a steady stream of bench telemetry does not keep the design from going quiet and settling", async () => {
+	const t = setup()
+	const stream = setInterval(() => {
+		const id = t.state.getParticipants()[0].getId()
+		emit(makeEvent("bench.telemetry", id, { revision: null, source: "fake", samples: [{ at: Date.now(), mA: 6 }] }), id)
+	}, 10)
+	try {
+		t.writeAll()
+		await waitFor(() => t.settled.length > 0)
+	} finally {
+		clearInterval(stream)
+	}
+	assert.equal(t.settled[0].settled, true)
+})
