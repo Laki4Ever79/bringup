@@ -36,7 +36,8 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	const build = await run(env.tsci!, ["build", "board.circuit.tsx", "--kicad-project"], { cwd: work, timeoutMs: 300_000, env: { PATH: toolPath(env) } })
 	const circuitPath = join(work, "dist/board/circuit.json")
 	if (build.code !== 0 || !existsSync(circuitPath)) {
-		throw new Error(`tscircuit build failed (exit ${build.code}):\n${buildErrors(build.stdout + "\n" + build.stderr)}`)
+		writeFileSync(join(dir, "build.log"), build.stdout + "\n" + build.stderr)
+		throw new Error(`tscircuit build failed (exit ${build.code}):\n${buildErrors(build.stdout + "\n" + build.stderr)}\nfull log: ${join(dir, "build.log")}`)
 	}
 	const elements = JSON.parse(readFileSync(circuitPath, "utf8")) as { type: string; width?: number; height?: number }[]
 	const pcb = elements.find((e) => e.type === "pcb_board")

@@ -13,7 +13,7 @@ const root = resolve(import.meta.dirname, "..")
 const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
 const toolsRoot = existsSync(qemu) ? root : undefined
 // Installed is not enough: a prebuilt QEMU can lack shared libraries (e.g. libslirp) on this machine.
-const qemuRuns = toolsRoot !== undefined && spawnSync(qemu, ["--version"], { stdio: "ignore" }).status === 0
+const qemuRuns = toolsRoot !== undefined && spawnSync(qemu, ["--version"], { stdio: "ignore", env: { ...process.env, LD_LIBRARY_PATH: join(root, "tools/qemu/lib") } }).status === 0
 const pio = [join(root, ".venv/bin/pio")].find(existsSync)
 const skip = !toolsRoot ? "tools/qemu not installed" : !qemuRuns ? "tools/qemu is installed but does not start (missing shared libraries?)" : !pio ? "pio not found" : false
 

@@ -79,3 +79,13 @@ test("a pin assignment must point at the peripheral, not the MCU itself", () => 
 	assert.equal(r.status, "invalid")
 	assert.match((r as { reason: string }).reason, /USB_D_PLUS.*U1/)
 })
+
+test("with a catalog, parts must be catalog parts and the error lists the options", () => {
+	const c = new DesignContract()
+	c.setCatalog([{ role: "charger", mpn: "TP4054-42-SOT25R", lcsc: "C32574" }, { role: "mcu", mpn: "ESP32-C3-MINI-1", lcsc: "C2838502" }])
+	const charger = { ref: "U4", role: "charger", mpn: "MCP73831T-2ACI/OT", lcsc: null, footprint: "", pins: [] }
+	const r = c.propose({ field: "parts", value: [charger], by: "parts", baseVersion: 0 })
+	assert.equal(r.status, "invalid")
+	assert.match((r as { reason: string }).reason, /MCP73831T-2ACI\/OT.*TP4054-42-SOT25R \(C32574\)/s)
+	assert.equal(c.propose({ field: "parts", value: [{ ...charger, mpn: "tp4054-42-sot25r" }], by: "parts", baseVersion: 0 }).status, "applied")
+})

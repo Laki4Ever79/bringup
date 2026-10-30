@@ -15,6 +15,7 @@ import { mockScripts } from "./inference/scripts.ts"
 import { writeReport } from "./report.ts"
 import { watchRequests } from "./runner/requests.ts"
 import { watchDecisions } from "./runner/decisions.ts"
+import { loadCatalog } from "./tools/parts-search.ts"
 import { createEngineer } from "./agents/engineer.ts"
 import { startCloudSession } from "./runner/cloud.ts"
 import { createActivityParticipant } from "./agents/activity.ts"
@@ -59,6 +60,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const env = opts.env ?? (await detectEnvironment(ROOT))
 	const state = new BringupState(opts.outDir, opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS)
 	state.engineerApproval = opts.engineerApproval ?? false
+	state.contract.setCatalog(loadCatalog(ROOT))
 	state.review.enabled = opts.review ?? true
 	state.review.maxRounds = opts.maxReviewRounds ?? MAX_REVIEW_ROUNDS
 	startRuntime(state, inferenceConfig(opts.mock, opts.scripts ?? mockScripts()), join(opts.outDir, "trace.jsonl"))
