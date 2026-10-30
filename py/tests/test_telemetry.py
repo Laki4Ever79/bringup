@@ -103,6 +103,11 @@ class FlashReleasesThePort(unittest.TestCase):
             def resume(self):
                 events.append("resume")
 
+        # No board answers in this test: don't wait for a boot line, or for a person to tap RST.
+        waits = (mock.patch.object(B, "BOOT_WAIT_S", 0.01), mock.patch.object(B, "HUMAN_WAIT_S", 0.01))
+        for w in waits:
+            w.start()
+            self.addCleanup(w.stop)
         b = B.Bridge("real", B.Out(io.StringIO(), None), "pio")
         b.ports = {"dut": "/dev/ttyACM0", "fixture": None, "telemetry": "/dev/ttyACM0"}
         b.telemetry = Spy()

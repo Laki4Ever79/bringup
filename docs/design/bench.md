@@ -106,6 +106,8 @@ phone hotspot. **Cable is the default on stage**, because:
 `py/bench.py` owns every port. `src/agents/bench.ts` owns the events and the measurement math.
 
 **Invocation.** `.venv/bin/python py/bench.py --source real|fake|replay [--replay FILE] [--out DIR] [--fake-speed X] [--no-meter]`
+- `--fake-factory` (fake only): the S3 still runs its shipped demo, so the first flash sends `instruct boot-reset`, and
+  after it `instruct reset`; answer with `fake.press`. This is what the real board did on 30 Oct.
 - `--no-imu` (fake only) is an S3 with no MPU-6050: `s` lines carry ax=ay=az=0, tilt 0, `tC: null`, `tSrc: "none"`,
   plus `{"k":"err","what":"imu","detail":"no ACK at 0x68"}` about once a second, as the firmware does. With
   `--no-meter` it is the bare S3.
@@ -126,16 +128,19 @@ phone hotspot. **Cable is the default on stage**, because:
 | `{"k":"flashing","id","stage":"build"\|"connect"\|"write","pct"}` | During `flash`: on stage changes and in ≥10 % steps of the app image. |
 | `{"k":"ack","id","ok","error"?,...}` | One per command. |
 | `{"k":"error","where":"fixture"\|"telemetry","error"}` | Non-fatal, e.g. a port vanished. |
+| `{"k":"instruct","id","action":"boot-reset"\|"reset","text"}` | The bench needs the person at the desk. Show `text` prominently. Sent during a `flash` with no fixture when the S3 can't be reset from the laptop (factory firmware: "hold BOOT, tap RST, release BOOT"), or when the new firmware stays silent for 8 s after the upload ("tap RST"). |
+| `{"k":"instruct","id","action","done":bool}` | The person did it (`true`), or nobody did within 180 s (`false`). Hide the instruction. |
 | `{"k":"bye"}` | On exit. |
 
 **stdin**
 
 | Command | Ack |
 |---|---|
-| `{"id","cmd":"flash","dir","env"?}` | When pio exits: `ms`, plus `stage` on failure (`build`\|`connect`\|`write`\|`permission`\|`timeout`). Recovery (BOOT+EN, retry once) happens inside. Node then waits up to 10 s for a `boot` line with the flashed rev; the "boot" stage is Node's. |
+| `{"id","cmd":"flash","dir","env"?}` | After pio exits **and** the new firmware has spoken (or an `instruct` was answered or timed out), with `booted`: the flashed rev, or null if it never spoke. Before that: `ms`, plus `stage` on failure (`build`\|`connect`\|`write`\|`permission`\|`timeout`). Recovery (BOOT+EN, retry once) happens inside. Node then waits up to 10 s for a `boot` line with the flashed rev; the "boot" stage is Node's. |
 | `{"id","cmd":"recover"}` | The fixture holds GPIO0 low and pulses EN. Ok once 303a:1001 appears; ok:false after 3 s. |
 | `{"id","cmd":"reset"}` | Pulses EN with GPIO0 released. |
 | `{"id","cmd":"mode","mode":"live"\|"duty"}` | Sets fixture GP12, then resets. |
+| `{"id","cmd":"fake.press","buttons":"boot+rst"\|"rst"}` | `--source fake` only: the simulated person presses the S3's buttons. Answered at once, even while a `flash` waits. |
 | `{"id","cmd":"ports"}` | Rescans. The ack carries `ports`. |
 | `{"id","cmd":"quit"}` | Ack, then `bye`, then exit. |
 

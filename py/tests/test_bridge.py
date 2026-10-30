@@ -15,6 +15,10 @@ sys.path.insert(0, os.path.join(ROOT, "py"))
 
 from test_bench_units import fw_dir  # noqa: E402
 
+REPLAY_STUB = os.path.join(tempfile.mkdtemp(), "stub.jsonl")
+with open(REPLAY_STUB, "w") as _f:
+    _f.write(json.dumps({"k": "s", "at": 1, "rev": 1}) + "\n")
+
 
 class Bridge:
     def __init__(self, *args):
@@ -189,6 +193,46 @@ class FakeBareS3(unittest.TestCase):
         self.assertEqual((err["rev"], err["what"]), (9, "imu"))
         s = b.until(lambda m: m["k"] == "s" and m["rev"] == 9, since=mark)
         self.assertEqual((s["tilt"], s["tSrc"]), (0, "none"))
+        b.quit()
+
+
+class AsksTheHuman(unittest.TestCase):
+    def test_a_factory_board_with_no_fixture_gets_button_instructions(self):
+        # What happened on the real board, 30 Oct: the factory demo can't be reset into flashing mode from the laptop,
+        # and after a button-entered flash the S3 stays in the bootloader until RST.
+        b = Bridge("--source", "fake", "--no-meter", "--fake-factory", "--fake-speed", "20")
+        b.until(lambda m: m["k"] == "hello")
+        mark = len(b.seen)
+        rid = b.send("flash", dir=fw_dir(4))
+        ask = b.until(lambda m: m["k"] == "instruct" and m["action"] == "boot-reset")
+        self.assertEqual(ask["id"], rid)
+        self.assertIn("hold BOOT, tap RST, release BOOT", ask["text"])
+        self.assertTrue(b.ack(b.send("fake.press", buttons="boot+rst"))["ok"], "answered while the flash waits")
+        self.assertTrue(b.until(lambda m: m["k"] == "instruct" and m["action"] == "boot-reset" and "done" in m)["done"])
+        b.until(lambda m: m["k"] == "flashing" and m["pct"] == 100)
+        ask = b.until(lambda m: m["k"] == "instruct" and m["action"] == "reset")
+        self.assertIn("Tap RST", ask["text"])
+        b.ack(b.send("fake.press", buttons="rst"))
+        self.assertTrue(b.until(lambda m: m["k"] == "instruct" and m["action"] == "reset" and "done" in m)["done"])
+        ack = b.ack(rid)
+        self.assertEqual((ack["ok"], ack["booted"]), (True, 4))
+        self.assertEqual(b.until(lambda m: m["k"] == "boot" and m["rev"] == 4, since=mark)["reset"], "poweron")
+        b.quit()
+
+    def test_our_firmware_resets_itself_and_nobody_is_asked(self):
+        b = Bridge("--source", "fake", "--no-meter", "--fake-speed", "20")
+        b.until(lambda m: m["k"] == "hello")
+        self.assertTrue(b.ack(b.send("flash", dir=fw_dir(5)))["ok"])
+        mark = len(b.seen)
+        ack = b.ack(b.send("flash", dir=fw_dir(6)))
+        self.assertEqual((ack["ok"], ack["booted"]), (True, 6))
+        self.assertFalse(any(m["k"] == "instruct" for m in b.seen))
+        b.quit()
+
+    def test_fake_press_is_refused_on_a_real_bench(self):
+        b = Bridge("--source", "replay", "--replay", REPLAY_STUB)
+        b.until(lambda m: m["k"] == "hello")
+        self.assertFalse(b.ack(b.send("fake.press", buttons="rst"))["ok"])
         b.quit()
 
 
