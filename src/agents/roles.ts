@@ -4,6 +4,16 @@ import { ownerReviewsChanges, when } from "../change-control.ts"
 import { state } from "../runtime.ts"
 import { searchParts } from "../tools/parts-search.ts"
 import { createRoleAgent, requestTurn, startTurn } from "./common.ts"
+import { isPinAssignmentFinding } from "./critic.ts"
+import type { GroundingFinding } from "../contract/grounding.ts"
+
+// Splits the critic's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
+function groundingFor(findings: GroundingFinding[], pinAssignments: boolean): GroundingFinding[] {
+	const s = state().contract.snapshot()
+	return findings.filter((f) => isPinAssignmentFinding(f, s) === pinAssignments)
+}
+
+const listFindings = (findings: GroundingFinding[]) => findings.map((f) => `- ${f.kind} on ${f.partRef} (${f.source}): ${f.detail}`).join("\n")
 
 const CONTRACT_SHAPES = `Contract field shapes (units: mm, V, mA):
 - requirements: {summary: string, peripherals: string[], batteryLifeDays: number|null}
@@ -36,6 +46,16 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 					},
 				},
 			},
+			{
+				specification: when(({ event }) => isEvent(event, "grounding.checked") && groundingFor(event.payload.findings, true).length > 0),
+				processor: {
+					apply: ({ event, participant }) => {
+						if (!isEvent(event, "grounding.checked")) return
+						const mine = groundingFor(event.payload.findings, true)
+						requestTurn(participant as Agent, `grounding-pins@${event.payload.revision}`, `The critic found pin assignments with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the pins field: use only GPIOs the MCU has and pins the parts list names.`)
+					},
+				},
+			},
 		],
 	})
 	return agent
@@ -65,6 +85,16 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 					apply: ({ participant }) => {
 						const c = state().contract
 						requestTurn(participant as Agent, `parts@${c.version("requirements")}.${c.version("rails")}`, "The requirements or rails changed. Choose the parts.")
+					},
+				},
+			},
+			{
+				specification: when(({ event }) => isEvent(event, "grounding.checked") && groundingFor(event.payload.findings, false).length > 0),
+				processor: {
+					apply: ({ event, participant }) => {
+						if (!isEvent(event, "grounding.checked")) return
+						const mine = groundingFor(event.payload.findings, false)
+						requestTurn(participant as Agent, `grounding@${event.payload.revision}`, `The critic found parts with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the parts list: use search_parts and list only the pins the catalog gives.`)
 					},
 				},
 			},
