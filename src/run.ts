@@ -41,6 +41,8 @@ export interface RunOptions {
 	maxReviewRounds?: number
 	// Mock model scripts, for tests; defaults to mockScripts().
 	scripts?: Record<string, Script>
+	// Injected fetch for bom.json's live stock lookups (tests).
+	bomFetch?: typeof fetch
 }
 
 export interface RunResult {
@@ -55,6 +57,8 @@ export const ROOT = fileURLToPath(new URL("..", import.meta.url))
 
 // How long, after settling, the report waits for a QEMU boot still in flight.
 const EMULATOR_GRACE_MS = 30_000
+// How long, after settling, the run waits for bom.json's live stock lookups to finish.
+const BOM_GRACE_MS = 15_000
 
 // Runs one design from a brief until the consistency participant reports design.settled.
 // Everything after sendMessage is event-driven; this function only waits for the outcome.
@@ -85,7 +89,8 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const emulator = emulatorEnabled(env, opts.noHardware ?? false) ? createEmulatorCheck(env) : null
 	if (emulator) joinRuntime(emulator)
 	joinRuntime(createGroundingCheck(env))
-	joinRuntime(createBomWriter({ root: env.root }))
+	const bom = createBomWriter({ root: env.root, fetch: opts.bomFetch })
+	joinRuntime(bom)
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })
 	createFirmwareReviewer({ mock: opts.mock })
@@ -109,7 +114,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	await cloud?.end()
 	writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
 	// The design has settled; give a boot that is still running a moment to finish, so the report can include it.
-	await emulator?.whenIdle(EMULATOR_GRACE_MS)
+	await Promise.all([emulator?.whenIdle(EMULATOR_GRACE_MS), bom.whenIdle(BOM_GRACE_MS)])
 	const reportPath = writeReport(opts.outDir, state, env, outcome.settled, { noHardware: opts.noHardware ?? false })
 	return {
 		settled: outcome.settled,
