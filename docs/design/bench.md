@@ -20,9 +20,9 @@ The **RP2350 fixture reads the INA226**, not the DUT. Reasons:
 
 | From | To | Note |
 |---|---|---|
-| PL601 + (5.25 V, limit 0.3 A) | INA226 VIN+ | High side. The PSU current limit is the hardware backstop. |
+| PL601 + (5.00 V, limit 0.3 A) | INA226 VIN+ | High side. The PSU current limit is the hardware backstop. |
 | INA226 VIN− | S3 `5V` pin | The S3's only power path. |
-| S3 native "USB" port | PC | Flash only. **VBUS must not reach the board:** use a VBUS-cut cable, or verify the YD board's USB diode and rely on 5.25 V > VBUS − Vf. Otherwise USB powers the board around the shunt. |
+| S3 native "USB" port | PC | Flash only, through a **VBUS-cut cable** (how-to in `docs/bench-wiring.md`). Otherwise USB powers the board around the shunt and fights the PL601. |
 | Fixture GP4/GP5 (I2C0) | INA226 SDA/SCL, addr 0x40 | INA226 VCC = fixture 3V3. |
 | Fixture GP10 / GP11 (open-drain) | S3 `EN` / `GPIO0` | Reset and download mode (hw_agent v0 map). |
 | Fixture GP12, through 1 kΩ | S3 GPIO4 = `BENCH_MODE` | High = duty-cycle mode, low = live mode. Read at every boot and wake. |
@@ -240,11 +240,11 @@ field `behavior {blinkMs, tiltBlinkMs, tiltDeg}`, owned by the firmware agent, b
 | S3 ≠ C3 current | Stated on screen. A C3 dev board is the obvious next purchase. |
 
 **Reuse from hw_agent (copy, don't import).**
-- `src/bench/fixture_fw/*` → `bench/fixture/`, deployed with `.venv/bin/mpremote` (pip into `.venv`). Change the
-  INA226 config constant.
-- `drivers/{transport,fixture}.py` → `py/bench/`, as the host bridge: pyserial is already in `.venv`, and
-  `MockTransport`/`FakeHal` serve tests and replay. `py/bench.py` prints merged JSON lines on stdout, and
-  `src/tools/bench.ts` turns them into events (the same pattern as `py/enclosure.py`).
+- `src/bench/fixture_fw/*` → `py/benchlib/fixture_fw/`, deployed with `.venv/bin/mpremote` (pip into `.venv`).
+  The INA226 now runs shunt-only.
+- `drivers/transport.py` → `py/benchlib/`: pyserial is already in `.venv`, and `MockTransport`/`FakeHal` run the
+  fake bench. hw_agent's `FixtureClient` is replaced by a threaded `FixtureLink`, because replies and a 60 Hz stream
+  share one port. The bridge is `py/bench.py` (§3b).
 - The S3 flags from `firmware/blink_pwm/platformio.ini`.
 - The udev rules, as the documented permissions fix.
 - The safety rules (PLAN §7: current limit set, ask before first power-on).
