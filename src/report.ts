@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { checkConsistency } from "./contract/consistency.ts"
+import { checkConsistency, type EnclosureArtifact } from "./contract/consistency.ts"
 import { batteryLifeSummary, estimatePower } from "./contract/power.ts"
 import type { BringupState } from "./runtime.ts"
 import { describeEnv, type Env } from "./tools/env.ts"
@@ -64,6 +64,21 @@ function bootLine(tracePath: string, env: Env, noHardware: boolean): string {
 	return `${label} did NOT boot (firmware rev ${last.revision}): ${last.serialTail.trim().split("\n").at(-1) ?? ""}`
 }
 
+// The files to slice and whether py/enclosure.py's print check passed them.
+function printLines(e: EnclosureArtifact | undefined, stubbed: boolean): string[] {
+	if (!e) return []
+	if (stubbed || isStub(e) || !e.lidStlPath) return [`- Print files: none (--no-hardware: the enclosure was not built)`]
+	const lines = [`- Print files: ${e.stlPath}, ${e.lidStlPath}`]
+	const check = e.printCheck
+	if (!check) return lines
+	if (check.ok) {
+		lines.push(`- Print check: ok (case open side up, lid plate down; ${e.standoffs?.length ?? 0} M2 standoffs for self-tapping screws)`)
+	} else {
+		lines.push(`- Print check: ${check.issues.length} issue(s)`, ...check.issues.map((i) => `  - ${i}`))
+	}
+	return lines
+}
+
 function fabSection(s: BringupState, stubbed: boolean): string[] {
 	const b = s.artifacts.board
 	const body = stubbed
@@ -121,6 +136,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
 		...drcLines(s.artifacts.board?.drc),
 		`- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}`,
+		...printLines(s.artifacts.enclosure, stubbed),
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		bootLine(join(outDir, "trace.jsonl"), env, stubbed),
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
