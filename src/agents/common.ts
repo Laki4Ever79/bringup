@@ -34,3 +34,15 @@ export function inferenceInputFor(agent: Agent): InferenceInput {
 export function startTurn(agent: Agent, message: string): void {
 	safeRunLoop(agent.getId(), message, inferenceInputFor(agent), new ChangeControl(agent.getId()))
 }
+
+const handled = new WeakMap<Agent, Set<string>>()
+
+// Starts a turn unless this agent already handled the same situation (key), so repeated
+// events about one contract version wake an agent once.
+export function requestTurn(agent: Agent, key: string, message: string): void {
+	const seen = handled.get(agent) ?? new Set<string>()
+	handled.set(agent, seen)
+	if (seen.has(key)) return
+	seen.add(key)
+	startTurn(agent, message)
+}
