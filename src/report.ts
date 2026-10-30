@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { checkConsistency } from "./contract/consistency.ts"
 import { batteryLifeSummary, estimatePower } from "./contract/power.ts"
@@ -48,6 +48,23 @@ function reviewSection(s: BringupState): string[] {
 	return ["## Brief review", "", head, ...rounds.flat(), ""]
 }
 
+function fabSection(s: BringupState, stubbed: boolean): string[] {
+	const b = s.artifacts.board
+	const body = stubbed
+		? ["Fab export: skipped (--no-hardware: there is no real board to fabricate)."]
+		: b?.fabDir && existsSync(b.fabDir)
+			? [
+					`JLCPCB assembly package (PCBWay takes the same files) in ${b.fabDir}:`,
+					...readdirSync(b.fabDir).sort().map((f) => `- ${f} (${statSync(join(b.fabDir!, f)).size} bytes)`),
+					"",
+					"Work through the checklist in README.txt before ordering.",
+				]
+			: b?.fabError
+				? [`Fab export failed: ${b.fabError.split("\n")[0]}`]
+				: ["Fab export: no board was built."]
+	return ["## Fabrication", "", ...body, ""]
+}
+
 export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
 	const violations = checkConsistency(snapshot, s.artifacts)
@@ -90,6 +107,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
 		``,
+		...fabSection(s, stubbed),
 		`## Coordination`,
 		`- Contract changes: ${c["contract.changed"] ?? 0}`,
 		`- Change requests held by interception: ${c["change.proposed"] ?? 0} (approved ${c.approved ?? 0}, rejected ${c.rejected ?? 0})`,
