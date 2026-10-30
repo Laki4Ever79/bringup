@@ -114,8 +114,9 @@ Pitfalls:
 
 ## Open items for the user
 - Answer the "Shiva" team invite on the dashboard (https://build.jigjoy.ai/dashboard).
-- Create the GitHub repo (public by submission). Ask before pushing.
-- Get a Wokwi token, or choose QEMU.
+- Repo: https://github.com/Laki4Ever79/bringup (public; `bringup-core` is pushed as `main`).
+- Get a Wokwi token, or choose QEMU (QEMU install is waiting for the user's approval in agent-mesh-5b's window).
+- Before submitting: a fresh-machine check of the README install path (clone into an empty dir, `npm ci`, `--no-hardware`, then the full toolchain install and `--mock`).
 - Find a channel to a teammate's agent (see the plan doc).
 
 ## Commands
