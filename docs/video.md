@@ -40,16 +40,25 @@ Before recording:
 | 1:00–1:20 | Live run, about 20 s in: the engineer's request "make the board 60 mm wide". The stage reads 60.0 × 30.0 mm; only the board and case cards rebuild. The **Consistency pill** goes amber with a count, then green. | "A human can join too. The engineer asks for a wider board. Only the board and the case wake up. Checker two is plain code: it compares the board, case and firmware that were actually built against the contract, until they agree." |
 | 1:20–1:50 | **Replay of real-8.** The Review pill is red. Open the popover: "no CC resistors or equivalent sink controller are included". Scrub to the architect's held change "Add required USB-C sink CC pull-down resistors", approved by the parts agent. In the BOM, R2 and R3 (5.1 kΩ) appear; scrub on to the next review, where that finding is gone. | "Checker three is a reviewer with a fresh context and only the brief. In an earlier real run, it failed the design: the USB-C port had no CC resistors, so a charger wouldn't supply power. The agents added them, through the same change control, and the next review dropped it." |
 
-## Act 3: bring-up (1:50–2:50). PLACEHOLDER: depends on the bench
+## Act 3: bring-up (1:50–2:50). PLACEHOLDER: as designed in `docs/design/bench.md` §6, not yet run
 
-> **Only use this act if the bench works on the day.** It's being designed now (`docs/design/bench.md`, af). Rewrite
-> these lines against the real bench before recording; don't narrate anything the bench didn't do.
+> **Only use this act if the bench works on the day.** The beats below follow the bench design (§6); nothing is plugged
+> in yet. Before recording, replace each line with what the bench actually did. Keep these caveats:
+> - **Say the stand-in out loud.** The board on the desk is an **ESP32-S3 dev board standing in for the C3 design**,
+>   and the MPU-6050 die temperature stands in for the SHT40. The dashboard badges it.
+> - **Show the REPLAY badge** if the run falls back to a recorded session, and say "recorded" over it.
+> - **Name the measured average for what it is:** charge per wake above the dev board's floor, rescaled to the
+>   contract's period, plus the design's sleep current (`measuredAverageMa`, never below the MCU's 5 µA deep-sleep
+>   floor). It is not the dev board's raw current.
 
-| On screen | Voice-over (draft) |
-|---|---|
-| A camera on the table: the ESP32-S3 board, USB cable, current meter. | "Checker four is the real board. The fourth checker doesn't trust anyone's numbers." |
-| The board runs the design's firmware; the dashboard shows the measured current arriving. | "The design's firmware runs on real silicon, and the current it actually draws flows back into the contract." |
-| A mismatch with the estimate, then the agents react (the power budget changes, the reviewer re-checks). | "When reality disagrees with the agents' estimate, the agents react, and the reviewer checks the new numbers." |
+| Time | Presenter / on screen | Voice-over (draft) |
+|---|---|---|
+| 1:50 | Tilts the board; the dashboard's 3D board tilts in sync; LED at 1 Hz on camera. | "Checker four is the real board. This one on my desk runs the firmware the agents just wrote." |
+| 1:58 | Types "blink faster when tilted" in the change bar. The firmware lane wakes; PR card `behavior +tiltBlinkMs 100` → approved. | "A change request, in plain words. The firmware agent turns it into a setting, and the owner approves it, like every other change." |
+| 2:10 | Flash bar: build → write 37…100 % → boot rev N ✓. | "Built, flashed, and booted, with the board reporting the revision it's running." |
+| 2:22 | Tilts the board: LED blinks fast; tilt trace crosses 20°; Bench pill ✓ rev N. | — |
+| 2:28 | "Does it really last six months?" The fixture switches to duty mode; current spikes every 3 s over the dashed floor. | "Now the question the agents could only estimate." |
+| 2:43 | `bench.measured`: measured vs estimated bars on the battery gauge; PR card `rails 3V3 averageMa (measured)` → approved; the budget line reads "(measured on bench, rev N)"; the reviewer re-judges battery life. | "The bench writes the measured current back into the contract, through the same change control. The reviewer judges battery life from a measurement, not a guess." |
 
 ## Fallback Act 3 (1:50–2:50): the reviewer catches the agents gaming the numbers
 
