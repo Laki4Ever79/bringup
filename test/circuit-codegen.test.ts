@@ -321,3 +321,22 @@ test("generatedNets lists the power and USB nets the generator wires, as REF.pin
 	const src = circuitFromContract(loggerContract())
 	for (const [net, ends] of nets) for (const end of ends) onNet(src, `.${end.replace(".", " > .")}`, net)
 })
+
+test("charge LED: anode on VBUS, cathode through a 1k to the charger's CHRG, so it lights while charging", () => {
+	const s = loggerContract()
+	const led = s.values.parts!.find((p) => p.role === "charge-led")
+	assert.ok(led, "the mock logger has a charge LED")
+	const src = circuitFromContract(s)
+	onNet(src, `.${led!.ref} > .A`, "VBUS")
+	const r = partAt(src, `.${led!.ref} > .K`)
+	assert.equal(s.values.parts!.find((p) => p.ref === r)?.lcsc, "C11702", "a 1k series resistor")
+	assert.match(src, new RegExp(`from="\\.U4 > \\.CHRG" to="\\.${r} > \\.pin2"`))
+	assert.notEqual(r, partAt(src, ".D1 > .K"), "the status LED keeps its own resistor")
+})
+
+test("a charge LED with no charger to drive it is left unwired", () => {
+	const s = fixtureContract()
+	s.values.parts!.push({ ref: "D2", role: "charge-led", mpn: "KT-0603R", lcsc: "C2286", footprint: "0603", pins: ["A", "K"] })
+	const src = circuitFromContract(s)
+	assert.doesNotMatch(src, /\.D2 > \./)
+})

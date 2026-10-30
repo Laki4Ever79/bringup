@@ -8,6 +8,7 @@
 	{ "role": "resistor", "mpn": "0402WGF1002TCE", "lcsc": "C25744", "footprint": "0402", "pins": ["pin1", "pin2"] },
 	{ "role": "capacitor", "mpn": "CL05B104KO5NNNC", "lcsc": "C1525", "footprint": "0402", "pins": ["pin1", "pin2"] },
 	{ "role": "led", "mpn": "KT-0603R", "lcsc": "C2286", "footprint": "0603", "pins": ["A", "K"] },
+	{ "role": "charge-led", "mpn": "KT-0603R", "lcsc": "C2286", "footprint": "0603", "pins": ["A", "K"] },
 	{ "role": "charger", "mpn": "TP4054-42-SOT25R", "lcsc": "C32574", "footprint": "sot23_5", "pins": ["CHRG", "GND", "BAT", "VCC", "PROG"] },
 	{ "role": "battery", "mpn": "S2B-PH-K-S(LF)(SN)", "lcsc": "C173752", "footprint": "jst2_ph", "pins": ["VBAT", "GND"] },
 	{ "role": "button", "mpn": "TS-1187A-B-A-B", "lcsc": "C318884", "footprint": "pushbutton", "pins": ["A", "B"] },
