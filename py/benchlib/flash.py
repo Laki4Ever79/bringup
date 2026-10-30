@@ -76,6 +76,7 @@ BENCH_RESERVED = {
     35: "octal PSRAM",
     36: "octal PSRAM",
     37: "octal PSRAM",
+    48: "the onboard RGB LED (the bench's status light)",
 }
 S3_GPIOS = set(range(0, 22)) | set(range(26, 49))
 
