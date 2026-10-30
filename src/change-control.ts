@@ -10,7 +10,7 @@ import {
 	type SituationContext,
 	type SituationHandler,
 } from "@mozaik-ai/core"
-import { OWNERS, type AgentRole, type FieldName } from "./contract/types.ts"
+import { OWNERS, type AgentRole, type ContractValues, type FieldName, type ProposalResult } from "./contract/types.ts"
 import { isEvent, makeEvent } from "./events.ts"
 import { emit, roleOf, state } from "./runtime.ts"
 import { startTurn } from "./agents/common.ts"
@@ -117,4 +117,28 @@ export function ownerReviewsChanges(role: AgentRole): SituationHandler {
 			},
 		},
 	}
+}
+
+export type HeldResult = ProposalResult | { status: "rejected"; reason: string }
+
+// Change control for plain-code participants (the bench), which have no model loop to intercept: the same
+// change.proposed → owner's decide_change → change.resolved path, then the write with the owner's approval.
+// Plain code checks the value first, so the owner is never asked about a change the contract would refuse.
+export async function proposeHeld<F extends FieldName>(p: { selfId: string; role: AgentRole; field: F; value: ContractValues[F]; reason: string }): Promise<HeldResult> {
+	const s = state()
+	const invalid = s.contract.validate({ field: p.field, value: p.value, by: p.role })
+	if (invalid) return { status: "invalid", reason: invalid }
+	if (isDeepStrictEqual(s.contract.get(p.field), p.value)) return { status: "unchanged", version: s.contract.version(p.field) }
+	const valueKey = JSON.stringify(p.value)
+	const needsEngineer = s.engineerApproval
+	const proposalId = s.approvals.open(p.field, p.role, valueKey, needsEngineer)
+	emit(makeEvent("change.proposed", p.selfId, { proposalId, field: p.field, by: p.role, reason: p.reason, needsEngineer }), p.selfId)
+	const decision = await s.approvals.wait(proposalId, needsEngineer ? s.engineerTimeoutMs : s.approvalTimeoutMs)
+	emit(makeEvent("change.resolved", p.selfId, { proposalId, approved: decision.approved, reason: decision.reason, decidedBy: decision.decidedBy ?? [decision.by] }), p.selfId)
+	if (!decision.approved) return { status: "rejected", reason: decision.reason }
+	// As for agents: the owner decided against the field as it is now, so apply on top of its current version.
+	const approvedBy = s.approvals.approverOf(proposalId, p.field, p.role, valueKey)
+	const result = s.contract.propose({ field: p.field, value: p.value, by: p.role, baseVersion: s.contract.version(p.field), approvedBy })
+	if (result.status === "applied") emit(makeEvent("contract.changed", p.selfId, { field: p.field, version: result.version, revision: result.revision, by: p.role }), p.selfId)
+	return result
 }

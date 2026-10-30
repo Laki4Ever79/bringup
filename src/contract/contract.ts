@@ -32,17 +32,21 @@ export class DesignContract {
 		return structuredClone({ revision: this.rev, values: this.values, versions: this.versions })
 	}
 
+	// The shape check, and for the bench its scope: what propose would refuse as invalid before looking at the catalog
+	// or versions. Plain-code proposers call it before holding a change for its owner.
+	validate<F extends FieldName>(p: Pick<Proposal<F>, "field" | "value" | "by">): string | null {
+		const shape = shapeError(p.field, p.value)
+		if (shape) return shape
+		return p.by === "bench" ? benchScopeError(p.field, this.values.rails, p.value) : null
+	}
+
 	propose<F extends FieldName>(p: Proposal<F>): ProposalResult {
 		const owner = OWNERS[p.field]
 		if (p.by !== owner && p.approvedBy !== owner) {
 			return { status: "not-owner", owner }
 		}
-		const shape = shapeError(p.field, p.value)
-		if (shape) return { status: "invalid", reason: shape }
-		if (p.by === "bench") {
-			const scope = benchScopeError(p.field, this.values.rails, p.value)
-			if (scope) return { status: "invalid", reason: scope }
-		}
+		const invalid = this.validate(p)
+		if (invalid) return { status: "invalid", reason: invalid }
 		if (p.field === "parts" && this.catalog) {
 			const known = new Set(this.catalog.map((c) => c.mpn.toLowerCase()))
 			const unknown = (p.value as ContractValues["parts"]).filter((part) => !known.has(part.mpn.toLowerCase()))

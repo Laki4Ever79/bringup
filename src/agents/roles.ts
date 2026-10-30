@@ -69,6 +69,7 @@ dutyCycle.sleepUa is the whole board asleep, excluding the regulator's quiescent
 For a battery target, pick a low-Iq regulator: catalog LDOs list their quiescent current as iqUa. XC6206P332MR-G draws 1 µA; AP2112K-3.3TRG1 draws 55 µA, which alone is half the ~116 µA a 500 mAh cell allows for 180 days. A low-Iq LDO keeps its pins VIN, VOUT, GND (no EN).
 - parts: [{ref, role (one of: mcu, sensor, ldo, charger, battery, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
 - pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
+- behavior (optional, owned by firmware): {blinkMs, tiltBlinkMs, tiltDeg}: the status LED blinks every blinkMs, and every tiltBlinkMs while the board is tilted more than tiltDeg (0..90). Without it the LED blinks at 1 Hz and tilt changes nothing.
 Reference designators: U1 = MCU (ESP32-C3-MINI-1, pins GPIO0..GPIO10, GPIO18/GPIO19 for USB), U2 = sensor, U3 = LDO, U4 = Li-ion charger, J1 = USB-C, J2 = battery connector, D1 = LED, SW1 = button.
 Pin names come from the catalog (use search_parts): the USB-C pins are VBUS, GND, CC1, CC2, DP, DN; the button pins are A and B; the battery connector pins are VBAT and GND. The board generator adds the support passives (CC resistors, pull-ups, decoupling) itself.
 Always call read_contract first and pass each field's current version as baseVersion.`
@@ -175,12 +176,30 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 // The firmware discipline's reasoning side: it checks that the pin map gives firmware what the
 // requirements need and asks the architect (through change control) for anything missing.
 export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
+	let briefSeen = false
 	return createRoleAgent({
 		role: "firmware",
 		name: "firmware-reviewer",
 		mock: opts.mock,
-		instruction: `You are the firmware engineer. Check that the pins in the contract cover every peripheral in the requirements (I2C bus, status LED, buttons). If a signal is missing, propose the complete new pins list with propose_contract_change; the architect must approve it. If the firmware build failed, read the error and propose the pin change that fixes it. Change nothing if the pins are sufficient.\n${CONTRACT_SHAPES}`,
+		instruction: `You are the firmware engineer. Check that the pins in the contract cover every peripheral in the requirements (I2C bus, status LED, buttons). If a signal is missing, propose the complete new pins list with propose_contract_change; the architect must approve it. If the firmware build failed, read the error and propose the pin change that fixes it. Change nothing if the pins are sufficient. You own the behavior field: what the firmware does (LED blink periods, tilt threshold); the firmware template reads it, so you never write C++.\n${CONTRACT_SHAPES}`,
 		handlers: [
+			{
+				// The engineer's messages after the brief are change requests; the ones about firmware behavior are this agent's.
+				specification: when(({ event }) => isEvent(event, "message.sent" as never) && state().getParticipant(event.producerId)?.getManifest().name === "engineer"),
+				processor: {
+					apply: ({ event, participant }) => {
+						if (!briefSeen) {
+							briefSeen = true
+							return
+						}
+						const message = (event.payload as { message: string }).message
+						startTurn(
+							participant as Agent,
+							`${ENGINEER_REQUEST_PREFIX}\n${message}\nIf it is about what the firmware does (the LED, blinking, tilt), meet it by changing the behavior field you own: call read_contract, then propose_contract_change with its current baseVersion, keeping what the request does not mention. Otherwise change nothing; the architect handles the rest.`,
+						)
+					},
+				},
+			},
 			{
 				specification: when(({ event }) => isEvent(event, "contract.changed") && event.payload.field === "pins"),
 				processor: { apply: ({ participant }) => requestTurn(participant as Agent, `pins@${state().contract.version("pins")}`, "The pin map changed. Review it against the requirements.") },

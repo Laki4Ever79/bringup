@@ -67,3 +67,14 @@ test("parseArgs reads --review-rounds", () => {
 	assert.equal((parseArgs([brief, "--review-rounds", "2"]) as { reviewRounds?: number }).reviewRounds, 2)
 	assert.ok("error" in parseArgs([brief, "--review-rounds", "zero"]))
 })
+
+test("parseArgs reads --bench with an optional source, and --bench-replay", () => {
+	const brief = new URL("../briefs/logger.md", import.meta.url).pathname
+	assert.equal((parseArgs([brief, "--mock"]) as { bench?: string }).bench, undefined)
+	assert.equal((parseArgs([brief, "--bench"]) as { bench?: string }).bench, "real")
+	assert.equal((parseArgs(["--bench", brief]) as { briefPath: string }).briefPath, brief, "the brief after --bench is not its source")
+	assert.equal((parseArgs([brief, "--bench", "fake"]) as { bench?: string }).bench, "fake")
+	const replay = parseArgs([brief, "--bench", "replay", "--bench-replay", "/rec.jsonl"]) as { bench?: string; benchReplay?: string }
+	assert.deepEqual([replay.bench, replay.benchReplay], ["replay", "/rec.jsonl"])
+	assert.ok("error" in parseArgs([brief, "--bench-replay"]))
+})
