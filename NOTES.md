@@ -149,8 +149,18 @@ cd tools
 curl -LO https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417/qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
 tar xf qemu-riscv32-softmmu-*.tar.xz   # unpacks to tools/qemu/bin/qemu-system-riscv32
 rm qemu-riscv32-softmmu-*.tar.xz
-tools/qemu/bin/qemu-system-riscv32 -machine help | grep esp32c3
+# The binary links libslirp, which Ubuntu doesn't install by default. Fetch it user-level, without sudo:
+d=$(mktemp -d) && (cd $d && apt download libslirp0 && dpkg -x libslirp0_*.deb x) \
+  && mkdir -p qemu/lib && cp -a $d/x/usr/lib/x86_64-linux-gnu/libslirp.so.0* qemu/lib/ && rm -rf $d
+LD_LIBRARY_PATH=$PWD/qemu/lib qemu/bin/qemu-system-riscv32 -machine help | grep esp32c3
 ```
+
+`bootFirmware` puts `tools/qemu/lib` on `LD_LIBRARY_PATH` itself. Verified on 30 Oct 2026: QEMU 9.2.2
+(esp_develop_9.2.2_20260417) boots the fixture firmware to `bringup rev 6`, then `SENSOR FAIL` every 2 s.
+It took two fixes:
+- `templates/fw/platformio.ini` sets `board_build.flash_mode = dio`. With the board's default QIO, the image asserts in
+  `init_flash` ("Failed to set QIE bit"), because QEMU's flash model can't enable QIO.
+- QEMU runs with `-nographic`. With `-display none -serial stdio`, UART0 never reaches stdout.
 
 - The flash image is merged with PlatformIO's bundled esptool (`~/.platformio/packages/tool-esptool/esptool merge-bin`,
   padded to 4 MB): bootloader `0x0`, partitions `0x8000`, `boot_app0` `0xe000`, app `0x10000`.
