@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import { checkConsistency, type Violation } from "../contract/consistency.ts"
@@ -57,10 +57,25 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		}
 	}
 
+	// <out>/contracts/rev-N.json for every revision so far, from the contract's own history (events can arrive
+	// after the contract has moved on, so writing "the current one" would skip revisions). The dashboard diffs them.
+	let written = 0
+	const writeRevisions = (upTo: number) => {
+		const s = state()
+		if (written >= upTo) return
+		mkdirSync(join(s.outDir, "contracts"), { recursive: true })
+		for (let rev = written + 1; rev <= upTo; rev++) {
+			const snap = s.contract.snapshotAt(rev)
+			if (snap) writeFileSync(join(s.outDir, "contracts", `rev-${rev}.json`), JSON.stringify(snap, null, 2))
+		}
+		written = upTo
+	}
+
 	const checkNow = () => {
 		const s = state()
 		const snapshot = s.contract.snapshot()
 		writeFileSync(join(s.outDir, "contract.json"), JSON.stringify(snapshot, null, 2))
+		writeRevisions(snapshot.revision)
 		violations = checkConsistency(snapshot, s.artifacts)
 		const report = JSON.stringify({ revision: snapshot.revision, violations })
 		if (report !== lastReport) {
