@@ -10,6 +10,7 @@ import { createArchitectAgent, createFirmwareReviewer, createPartsAgent } from "
 import { inferenceConfig } from "./inference/models.ts"
 import { mockScripts } from "./inference/scripts.ts"
 import { writeReport } from "./report.ts"
+import { watchRequests } from "./runner/requests.ts"
 import { APPROVAL_TIMEOUT_MS, BringupState, join as joinRuntime, sendMessage, startRuntime } from "./runtime.ts"
 import { detectEnvironment, type Env } from "./tools/env.ts"
 
@@ -58,12 +59,15 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	joinRuntime(engineer)
 
 	sendMessage(opts.brief, engineer.getId())
+	// Mid-run change requests (tsx src/request.ts, MCP request_change) arrive as further engineer messages.
+	const requests = watchRequests(opts.outDir, (r) => sendMessage(r.text, engineer.getId()))
 
 	const timeoutMs = opts.timeoutMs ?? 30 * 60_000
 	const outcome = await Promise.race([
 		settledPromise,
 		new Promise<Settlement>((r) => setTimeout(() => r({ settled: false, revision: state.contract.revision }), timeoutMs).unref()),
 	])
+	requests.close()
 	writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
 	const reportPath = writeReport(opts.outDir, state, env, outcome.settled)
 	return {

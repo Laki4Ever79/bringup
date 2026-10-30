@@ -4,6 +4,7 @@ import { readFile, realpath, stat } from "node:fs/promises"
 import { join, sep } from "node:path"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
+import { appendRequest } from "../runner/requests.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 
 export interface BringupMcpDeps {
@@ -167,6 +168,21 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			const text = await readFile(join(r.dir, "report.md"), "utf8").catch(() => null)
 			if (text === null) return fail(`run ${runId} has no report.md yet`)
 			return ok(text)
+		},
+	)
+
+	server.registerTool(
+		"request_change",
+		{
+			description: "Send a mid-run change request to a running design, as the engineer would (e.g. 'make the board 60 mm wide'). The architect picks it up and changes the fields it owns; poll design_status or list_events to watch the effect.",
+			inputSchema: { runId: z.string(), text: z.string().min(1) },
+		},
+		async ({ runId, text }) => {
+			const r = await runDir(runId)
+			if ("error" in r) return fail(r.error)
+			const state = runs.get(runId)
+			if (state && state.status !== "running") return fail(`run ${runId} is ${state.status}; change requests only reach a running design`)
+			return ok(appendRequest(r.dir, text))
 		},
 	)
 

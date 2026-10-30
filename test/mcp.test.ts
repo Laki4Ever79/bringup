@@ -201,3 +201,32 @@ test("two overlapping runs both settle in separate outDirs", async () => {
 		await mcp.close()
 	}
 })
+
+test("request_change appends a line to the run's requests.jsonl", async () => {
+	const stub = stubRun()
+	const mcp = await connect(stub.launch)
+	try {
+		const { runId, outDir } = (await mcp.call("start_design", { brief: "logger" })).json()
+		const res = await mcp.call("request_change", { runId, text: "make it 60 mm wide" })
+		assert.equal(res.isError, false, res.text)
+		await mcp.call("request_change", { runId, text: "move USB-C to the right" })
+		const lines = readFileSync(join(outDir, "requests.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+		assert.deepEqual(lines.map((l) => l.text), ["make it 60 mm wide", "move USB-C to the right"])
+		assert.ok(!Number.isNaN(Date.parse(lines[0].at)))
+		stub.release()
+	} finally {
+		await mcp.close()
+	}
+})
+
+test("request_change with a bad runId is an error result", async () => {
+	const mcp = await connect(stubRun().launch)
+	try {
+		for (const runId of ["nope", "../x", ".."]) {
+			const res = await mcp.call("request_change", { runId, text: "make it 60 mm wide" })
+			assert.equal(res.isError, true, `${runId} → ${res.text}`)
+		}
+	} finally {
+		await mcp.close()
+	}
+})
