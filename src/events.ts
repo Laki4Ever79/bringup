@@ -5,6 +5,15 @@ import type { AgentRole, FieldName } from "./contract/types.ts"
 
 export type ArtifactKind = "board" | "enclosure" | "firmware"
 
+export interface ReviewFinding {
+	severity: "blocker" | "major" | "minor"
+	fields: FieldName[]
+	issue: string
+	suggestion: string
+}
+
+export type ReviewVerdict = "pass" | "fail"
+
 export interface Payloads {
 	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole }
 	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string }
@@ -13,6 +22,9 @@ export interface Payloads {
 	"artifact.failed": { kind: ArtifactKind; revision: number; error: string }
 	"consistency.checked": { revision: number; violations: Violation[] }
 	"grounding.checked": { revision: number; findings: GroundingFinding[] }
+	// The design is consistent and quiet; the brief reviewer judges it before it settles.
+	"design.ready": { revision: number; round: number }
+	"review.completed": { revision: number; verdict: ReviewVerdict; findings: ReviewFinding[] }
 	"design.settled": { revision: number; settled: boolean }
 	"agent.halted": { agentId: string; error: string }
 }

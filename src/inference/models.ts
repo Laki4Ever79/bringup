@@ -10,12 +10,13 @@ const MODELS = {
 	openai: { strong: "gpt-5.4", fast: "gpt-5.4-mini" },
 }
 
-// The architect plans the whole design, so it gets the strong model; the other roles use the fast one.
+// The architect plans the whole design and the reviewer judges it against the brief, so both get the
+// strong model; the other roles use the fast one.
 export function modelFor(role: AgentRole, mock: boolean, env: Record<string, string | undefined> = process.env): string {
 	if (mock) return `mock-${role}`
 	// OpenAI by default; the event credit (Claude Sonnet/Haiku only) is opt-in or the fallback when it is the only key.
 	const provider = env.BRINGUP_PROVIDER === "openai" || env.BRINGUP_PROVIDER === "anthropic" ? env.BRINGUP_PROVIDER : env.OPENAI_API_KEY ? "openai" : env.ANTHROPIC_API_KEY ? "anthropic" : "openai"
-	return role === "architect" ? MODELS[provider].strong : MODELS[provider].fast
+	return role === "architect" || role === "reviewer" ? MODELS[provider].strong : MODELS[provider].fast
 }
 
 // Mock runs swap in the scripted runner; real runs use Mozaik's default runner and built-in models.

@@ -16,8 +16,8 @@ const brief = join(ROOT, "briefs/logger.md")
 const bare = async (): Promise<Env> => ({ root: ROOT, tsci: null, kicad: null, python: null, pio: null })
 
 test("parseArgs reads the brief and flags", () => {
-	assert.deepEqual(parseArgs([brief, "--mock", "--no-hardware", "--out", "/tmp/x"]), { briefPath: brief, mock: true, noHardware: true, outDir: "/tmp/x" })
-	assert.deepEqual(parseArgs(["--out", "/tmp/x", brief]), { briefPath: brief, mock: false, noHardware: false, outDir: "/tmp/x" })
+	assert.deepEqual(parseArgs([brief, "--mock", "--no-hardware", "--out", "/tmp/x"]), { briefPath: brief, mock: true, noHardware: true, review: true, outDir: "/tmp/x" })
+	assert.deepEqual(parseArgs(["--out", "/tmp/x", brief]), { briefPath: brief, mock: false, noHardware: false, review: true, outDir: "/tmp/x" })
 })
 
 test("parseArgs rejects --out without a value instead of crashing", () => {

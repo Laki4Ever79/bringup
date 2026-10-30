@@ -2,8 +2,8 @@ import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import { checkConsistency, type Violation } from "../contract/consistency.ts"
-import { isEvent, makeEvent, type ArtifactKind } from "../events.ts"
-import { emit, state } from "../runtime.ts"
+import { isEvent, makeEvent, type ArtifactKind, type Payloads } from "../events.ts"
+import { emit, roleOf, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 
 export const MAX_REVISIONS = 25
@@ -18,6 +18,9 @@ export interface Settlement {
 // decides when the design has settled: every artifact built from the current versions of its
 // inputs, no agent mid-turn, no change request open, and nothing changing for `quietMs`.
 // A quiet design with violations or failed builds settles as unsettled, so a run always ends.
+// With the brief review on, a quiet consistent design first emits design.ready and waits for the reviewer's
+// review.completed: a pass settles; a fail with a fix round left waits for the owners to change the design, which
+// is then reviewed again; a fail on the last round settles, unsettled only if a blocker remains.
 export function createConsistencyParticipant(opts: { quietMs: number; maxRevisions?: number; onSettled: (s: Settlement) => void }): Human {
 	const maxRevisions = opts.maxRevisions ?? MAX_REVISIONS
 	const self = { id: "" }
@@ -26,6 +29,10 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 	let violations: Violation[] = []
 	let timer: NodeJS.Timeout | null = null
 	let done = false
+	// The revision handed to the reviewer, and whether its verdict is still due.
+	let readyRevision = -1
+	let awaitingReview = false
+	let reviewerStarted = false
 
 	const current = (kind: ArtifactKind): boolean => {
 		const s = state()
@@ -67,12 +74,48 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		if (done) return
 		const s = state()
 		const grounding =
-			!s.criticEnabled ||
+			!s.groundingEnabled ||
 			s.contract.version("parts") === 0 ||
 			(s.groundedVersions?.parts === s.contract.version("parts") && s.groundedVersions?.pins === s.contract.version("pins"))
 		const busy = [...turns.values()].some((n) => n > 0) || s.approvals.openCount() > 0 || !KINDS.every(current) || !grounding
 		if (busy) return
-		settle(violations.length === 0 && s.groundingFindings.length === 0 && KINDS.every((k) => s.artifactFailures[k] === undefined))
+		const consistent = violations.length === 0 && s.groundingFindings.length === 0 && KINDS.every((k) => s.artifactFailures[k] === undefined)
+		if (!consistent || !s.review.enabled) return settle(consistent)
+		reviewGate()
+	}
+
+	const noBlockers = () => !(state().review.results.at(-1)?.findings ?? []).some((f) => f.severity === "blocker")
+
+	const reviewGate = () => {
+		const s = state()
+		const revision = s.contract.revision
+		if (revision !== readyRevision) {
+			readyRevision = revision
+			awaitingReview = true
+			reviewerStarted = false
+			s.review.round++
+			emit(makeEvent("design.ready", self.id, { revision, round: s.review.round }), self.id)
+			return
+		}
+		if (awaitingReview) {
+			// Quiet, and the reviewer's turn ended without submit_review: settle on the deterministic checks alone.
+			if (!reviewerStarted) return
+			awaitingReview = false
+			s.review.missingVerdict = true
+			return settle(true)
+		}
+		// Reviewed, failed with a fix round left, and the owners changed nothing.
+		settle(noBlockers())
+	}
+
+	const onReview = (p: Payloads["review.completed"]) => {
+		const s = state()
+		if (!awaitingReview || p.revision !== readyRevision) return
+		awaitingReview = false
+		s.review.results.push({ revision: p.revision, round: s.review.round, verdict: p.verdict, findings: p.findings })
+		if (p.verdict === "pass") return settle(true)
+		if (s.review.round > s.review.maxRounds) return settle(noBlockers())
+		// Otherwise the owners got the findings (roles.ts); the timer below re-evaluates once they are done.
 	}
 
 	const participant = createHuman({
@@ -88,6 +131,11 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 						if (type === "message_received.started") turns.set(event.producerId, (turns.get(event.producerId) ?? 0) + 1)
 						if (type === "model.answer") turns.set(event.producerId, Math.max(0, (turns.get(event.producerId) ?? 0) - 1))
 						if (isEvent(event, "contract.changed") || isEvent(event, "artifact.ready") || isEvent(event, "artifact.failed")) check()
+						if (type === "message_received.started" && awaitingReview && roleOf(event.producerId) === "reviewer") reviewerStarted = true
+						if (isEvent(event, "review.completed")) {
+							onReview(event.payload)
+							if (done) return
+						}
 						if (isEvent(event, "contract.changed") && event.payload.revision > maxRevisions) {
 							settle(false)
 							return
