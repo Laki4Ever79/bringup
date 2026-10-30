@@ -23,6 +23,8 @@ import { createActivityParticipant } from "./agents/activity.ts"
 import { APPROVAL_TIMEOUT_MS, BringupState, join as joinRuntime, sendMessage, startRuntime } from "./runtime.ts"
 import { detectEnvironment, type Env } from "./tools/env.ts"
 import { createStubBuilders } from "./tools/stubs.ts"
+import { createBench, type Bench, type BenchOptions } from "./agents/bench.ts"
+import type { Bridge, BridgeHello } from "./tools/bench-bridge.ts"
 
 export interface RunOptions {
 	brief: string
@@ -41,6 +43,13 @@ export interface RunOptions {
 	maxReviewRounds?: number
 	// Mock model scripts, for tests; defaults to mockScripts().
 	scripts?: Record<string, Script>
+	// The live hardware bench (--bench): bring-up is a post-settle phase. The run stays alive after the first settle
+	// until `until` resolves (Ctrl-C), re-settling and rewriting the report after every later change.
+	bench?: {
+		open: () => Promise<{ bridge: Bridge; hello: BridgeHello }>
+		until: Promise<void>
+		timings?: Pick<BenchOptions, "windowMs" | "liveCheckMs" | "bootTimeoutMs" | "batchMs">
+	}
 }
 
 export interface RunResult {
@@ -76,9 +85,26 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 
 	let resolveSettled: (s: Settlement) => void = () => {}
 	const settledPromise = new Promise<Settlement>((r) => (resolveSettled = r))
+	// The newest settlement; with --bench the design can settle again after the first.
+	let latest: Settlement | null = null
+	const writeOutputs = (settled: boolean) => {
+		writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
+		return writeReport(opts.outDir, state, env, settled, { noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench) })
+	}
+	const onSettled = (s: Settlement) => {
+		const first = latest === null
+		latest = s
+		if (opts.bench) writeOutputs(s.settled)
+		if (first) resolveSettled(s)
+	}
 
 	joinRuntime(createChangeDesk())
-	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, onSettled: resolveSettled }))
+	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, keepRunning: Boolean(opts.bench), onSettled }))
+	let bench: Bench | null = null
+	if (opts.bench) {
+		bench = createBench({ ...(await opts.bench.open()), ...opts.bench.timings })
+		joinRuntime(bench)
+	}
 	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env)]
 	for (const b of builders) joinRuntime(b)
 	// Boots each new compiled firmware in QEMU when it is installed; never holds up settling.
@@ -104,15 +130,18 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		settledPromise,
 		new Promise<Settlement>((r) => setTimeout(() => r({ settled: false, revision: state.contract.revision }), timeoutMs).unref()),
 	])
+	// Bring-up: change requests keep arriving and the bench keeps flashing until the engineer stops the run.
+	if (opts.bench) await opts.bench.until
 	requests.close()
 	decisions.close()
+	await bench?.close()
 	await cloud?.end()
-	writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
 	// The design has settled; give a boot that is still running a moment to finish, so the report can include it.
 	await emulator?.whenIdle(EMULATOR_GRACE_MS)
-	const reportPath = writeReport(opts.outDir, state, env, outcome.settled, { noHardware: opts.noHardware ?? false })
+	const settled = (latest as Settlement | null)?.settled ?? outcome.settled
+	const reportPath = writeOutputs(settled)
 	return {
-		settled: outcome.settled,
+		settled,
 		outDir: opts.outDir,
 		revision: state.contract.revision,
 		violations: checkConsistency(state.contract.snapshot(), state.artifacts),

@@ -14,6 +14,27 @@ export interface ReviewFinding {
 
 export type ReviewVerdict = "pass" | "fail"
 
+// "fake" and "replay" are badged on the dashboard and never propose to the contract.
+export type BenchSourceName = "real" | "fake" | "replay"
+
+// One point of the bench's live stream: a meter sample (mA) or a DUT telemetry line (IMU, tilt, LED).
+export interface BenchSample {
+	at: number
+	mA?: number
+	ax?: number
+	ay?: number
+	az?: number
+	tilt?: number
+	tC?: number
+	led?: number
+}
+
+export interface BenchCheck {
+	name: "boot" | "imu" | "led" | "battery"
+	pass: boolean
+	detail: string
+}
+
 export interface Payloads {
 	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole }
 	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string; needsEngineer: boolean }
@@ -32,6 +53,26 @@ export interface Payloads {
 	"review.completed": { revision: number; verdict: ReviewVerdict; findings: ReviewFinding[] }
 	"design.settled": { revision: number; settled: boolean }
 	"agent.halted": { agentId: string; error: string }
+	// The live hardware bench (agents/bench.ts, docs/design/bench.md). Post-settle: none of these hold up settling.
+	"bench.connected": { source: BenchSourceName; ports: { dut: string | null; fixture: string | null; telemetry: string | null }; meter: boolean }
+	"bench.flashing": { revision: number; stage: "build" | "connect" | "write" | "boot"; pct: number }
+	"bench.flashed": { revision: number; ok: boolean; stage?: string; ms: number; error?: string; simulated?: boolean }
+	// Batched every 250 ms; revision is the firmware revision the board last booted (null before a boot).
+	"bench.telemetry": { revision: number | null; source: BenchSourceName; samples: BenchSample[] }
+	// rail is null when no single rail can be the one that feeds the MCU; the bench then proposes nothing.
+	"bench.measured": {
+		revision: number
+		rail: string | null
+		cycles: number
+		awakeMs: number
+		chargeUc: number
+		floorMa: number
+		averageMa: number
+		estimateMa: number | null
+		sleepUa: number
+		source: BenchSourceName
+	}
+	"bench.verdict": { revision: number; pass: boolean; source: BenchSourceName; checks: BenchCheck[] }
 	// What an agent is doing right now, from Mozaik's loop events (agents/activity.ts). For the dashboard lanes.
 	"agent.activity": {
 		agentId: string
