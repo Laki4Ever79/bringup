@@ -45,6 +45,7 @@ test("tool results are summarised", () => {
 	assert.equal(summarizeResult('{"revision":7,"values":{},"versions":{}}'), "contract at rev 7")
 	assert.equal(summarizeResult('[{"mpn":"a"},{"mpn":"b"}]'), "2 results")
 	assert.equal(summarizeResult("recorded"), "recorded")
+	assert.equal(summarizeResult('{"recorded":true,"revision":8,"verdict":"pass"}'), "recorded (rev 8)")
 })
 
 test("the participant emits agent.activity for agents only and collapses repeated thinking", async () => {

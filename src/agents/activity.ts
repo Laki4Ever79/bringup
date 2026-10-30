@@ -56,6 +56,7 @@ export function summarizeResult(text: string): string {
 		if (r.status === "stale") return `stale (current v${r.current})`
 		if (r.status === "not-owner") return `not-owner (${r.owner} decides)`
 		if (typeof r.status === "string") return r.status
+		if (r.recorded === true) return `recorded${typeof r.revision === "number" ? ` (rev ${r.revision})` : ""}`
 		if (typeof r.revision === "number" && r.values) return `contract at rev ${r.revision}`
 		return clip(text, TOOL_CHARS)
 	}
