@@ -76,9 +76,10 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 	return createRoleAgent({
 		role: "parts",
 		mock: opts.mock,
-		instruction: `You select the parts for a hardware design. Use search_parts for every role the requirements and rails need, prefer in-stock parts, and write the complete parts list with one propose_contract_change. Keep the reference designators below.\n${CONTRACT_SHAPES}`,
+		instruction: `You select the parts for a hardware design. Use search_parts for every role the requirements and rails need, prefer in-stock parts, and write the complete parts list with one propose_contract_change. Keep the reference designators below. You own the parts list: when another discipline asks to change it, decide with decide_change.\n${CONTRACT_SHAPES}`,
 		tools: [searchPartsTool()],
 		handlers: [
+			ownerReviewsChanges("parts"),
 			{
 				specification: when(({ event }) => isEvent(event, "contract.changed") && (event.payload.field === "requirements" || event.payload.field === "rails")),
 				processor: {

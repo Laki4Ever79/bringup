@@ -55,3 +55,17 @@ test("an agent reviews each contract version once", async () => {
 	const proposals = t.events.filter((e) => e.type === "change.proposed").length
 	assert.equal(proposals, 1)
 })
+
+test("the parts agent decides change requests to the parts list", async () => {
+	const t = setup()
+	const types = () => t.events.map((e) => e.type)
+	const { getOutbox } = await import("../src/runtime.ts")
+	const { makeEvent } = await import("../src/events.ts")
+	const parts = [...t.state.roles.entries()].find(([, r]) => r === "parts")![0]
+	const architect = [...t.state.roles.entries()].find(([, r]) => r === "architect")![0]
+	const id = t.state.approvals.open("parts", "architect")
+	getOutbox().emit(makeEvent("change.proposed", architect, { proposalId: id, field: "parts", by: "architect", reason: "add a button" }), architect)
+	await waitFor(() => types().includes("change.decided"))
+	const decided = t.events.find((e) => e.type === "change.decided")!
+	assert.equal(decided.producerId, parts)
+})
