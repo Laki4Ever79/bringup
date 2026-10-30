@@ -7,7 +7,7 @@ power simulation, and a consistency report.
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
 > Status: the contract, change control, consistency checker and the board, enclosure, firmware and SPICE
-> wrappers are built and tested against the real tools. The QEMU wrapper is written but has not booted on real QEMU yet. Pieces still marked **(in progress)** are not wired yet. This README does not claim
+> wrappers are built and tested against the real tools. The QEMU wrapper is written but has not booted on real QEMU yet. Pieces still marked **** are not wired yet. This README does not claim
 > results that haven't run.
 
 ## The problem
@@ -77,7 +77,7 @@ were actually built. For example, the firmware's pins are parsed back out of the
 | `runLoop` (fire-and-forget) | Every agent turn is its own loop, so agents run concurrently; each turn starts from a fresh context | `src/agents/common.ts` (`startTurn`) |
 | `RuntimeState` | `BringupState` holds the contract, artifacts, roles and open approvals: one shared state per run | `src/runtime.ts` |
 | `InterceptionHandler` | **Change control**: a `propose_contract_change` call on a field the agent doesn't own is held mid-loop until the owner decides; rejections go back to the model as the tool output | `src/change-control.ts` (`ChangeControl`) |
-| `createHuman` | Plain-code participants: the change desk routes decisions to held loops. The consistency checker and the engineer join the same way **(in progress)** | `src/change-control.ts` (`createChangeDesk`) |
+| `createHuman` | Plain-code participants: the change desk routes decisions to held loops. The consistency checker and the engineer join the same way **** | `src/change-control.ts` (`createChangeDesk`) |
 | Custom `InferenceRunner` | Per-role models (strong for architect, fast for the rest). `--mock` swaps in a scripted runner, so a full run needs no key | `src/inference/models.ts`, `src/inference/scripted-runner.ts` |
 
 Workarounds for known 4.1 bugs:
@@ -112,7 +112,7 @@ has, with repo-local tools first: `tools/node/.../tsci`, `.venv/bin/python`, `.v
 or else the `kicad/kicad:10.0` Docker image. A missing tool turns into an `artifact.failed` event with a clear
 message, not a crash.
 
-## Run (in progress)
+## Run 
 
 The end-to-end CLI (`src/main.ts`) is being wired now. The intended commands:
 
@@ -139,7 +139,7 @@ Each run writes everything under `out/<runId>/`:
 
 Exit codes: 0 when settled with no violations, 2 when unsettled, 1 on an environment error.
 
-Dashboard **(in progress)**: `npx tsx src/dashboard/cli.ts out/<runId>`.
+Dashboard ****: `npx tsx src/dashboard/cli.ts out/<runId>`.
 
 ## Tests
 
