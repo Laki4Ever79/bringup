@@ -90,8 +90,15 @@ static const int BENCH_TX_PIN = 17;   // UART1 TX → CP2102 RXD
 static const uint32_t LIVE_SAMPLE_MS = 50;
 static const uint32_t DUTY_BLINK_MS = 20;
 static const uint8_t MPU_ADDR = 0x68;
+static const int BENCH_RGB_PIN = 48;  // the YD-ESP32-S3's onboard RGB LED: the status light when none is wired
 
 RTC_DATA_ATTR static uint32_t dutyCycles = 0;
+
+// The contract's STATUS_LED (if a LED is wired) and the onboard RGB LED, together.
+static void benchLed(bool on) {
+	led(on);
+	rgbLedWrite(BENCH_RGB_PIN, 0, on ? 40 : 0, 0);
+}
 
 // Every telemetry line goes out twice: on UART1 (GPIO17, for a CP2102 if one is wired) and on the S3's own USB, which
 // is how a bench with no CP2102 reads it. USB writes never block: with no host listening they are dropped.
@@ -176,10 +183,10 @@ static void dutyCycle() {
 	dutyCycles++;
 	mpuWrite(0x6B, 0x00);  // PWR_MGMT_1: wake the MPU-6050
 	delay(10);
-	led(true);
+	benchLed(true);
 	sampleLine(true);
 	delay(DUTY_BLINK_MS);
-	led(false);
+	benchLed(false);
 	tele("{\"k\":\"cycle\",\"rev\":%d,\"n\":%lu,\"awakeMs\":%lu}\n", BRINGUP_REVISION, (unsigned long)dutyCycles, (unsigned long)millis());
 	teleFlush();
 	mpuWrite(0x6B, 0x40);  // MPU-6050 to sleep, or its ~4 mA would swamp the floor
@@ -218,14 +225,14 @@ void loop() {
 		if (usbHost) bootLine(false);
 	}
 	if (digitalRead(BENCH_MODE_PIN) == HIGH) {
-		led(false);
+		benchLed(false);
 		teleFlush();
 		esp_restart();  // boots straight into duty-cycle mode
 	}
 	uint32_t now = millis();
 	if ((int32_t)(now - nextToggle) >= 0) {
 		ledOn = !ledOn;
-		led(ledOn);
+		benchLed(ledOn);
 		nextToggle = now + (tilt > BEHAVIOR_TILT_DEG ? BEHAVIOR_TILT_BLINK_MS : BEHAVIOR_BLINK_MS) / 2;
 	}
 	if ((int32_t)(now - nextSample) >= 0) {
