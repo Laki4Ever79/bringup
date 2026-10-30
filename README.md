@@ -14,8 +14,8 @@ power simulation, and a consistency report.
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
 > Status: a full run, with agents, change control, consistency checks and real board, enclosure and firmware builds,
-> settles with 0 violations from the commands below. With the optional QEMU installed, the built firmware boots headless
-> and prints its contract revision. Mid-run change requests are in progress (see Limits). This README does not claim
+> settles with 0 violations from the commands below. With the optional QEMU installed, every run boots its newest
+> firmware headless, and the report shows the contract revision the firmware printed. Mid-run change requests are in progress (see Limits). This README does not claim
 > results that haven't run.
 
 ## The problem
@@ -223,7 +223,7 @@ against a reference ESP32-C3 + SHT40 logger (`test/fixture.ts`). Each one **skip
 | Checkout | Result | Time |
 |---|---|---|
 | After `npm ci` only | all pass; the tool-dependent integration tests skip | about 20 s |
-| Full toolchain | all pass; only the 2 QEMU tests skip (QEMU is optional) | about 2 min |
+| Full toolchain | all pass; only the 3 QEMU tests skip (QEMU is optional) | about 2 min; 3 min 15 s with QEMU |
 
 ## Prior art and what's new
 
@@ -256,9 +256,9 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
 
   `fab/README.txt` lists every item to check; `catalog/README.md` has the details.
 - **Small boards only.** Placement and routing are proven on 45–70 × 30 mm boards with up to about 20 parts.
-- **QEMU is optional.** It is not installed by default, and its integration test skips without it. Installed, the
-  fixture firmware boots to `bringup rev N`. There is no SHT40 in emulation, so the firmware then prints
-  `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token.
+- **QEMU is optional.** It is not installed by default; without it the report says "not run" and the QEMU tests
+  skip. Installed, every run boots its newest firmware to `bringup rev N` (event `firmware.booted`). There is no SHT40
+  in emulation, so the firmware then prints `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
   can only choose from the vetted catalog (one MCU family today).
 
