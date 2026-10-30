@@ -34,7 +34,7 @@ export function applyFabRules(project: Record<string, any>): Record<string, any>
 	p.net_settings ??= {}
 	const classes: any[] = (p.net_settings.classes ??= [])
 	const def = classes.find((c) => c.name === "Default") ?? (classes.push({ name: "Default" }), classes.at(-1))
-	Object.assign(def, { clearance: FAB_RULES.minClearanceMm, track_width: 0.15, via_diameter: 0.6, via_drill: 0.3 })
+	Object.assign(def, { clearance: FAB_RULES.minClearanceMm, track_width: 0.15, via_diameter: 0.45, via_drill: 0.25 })
 	return p
 }
 
