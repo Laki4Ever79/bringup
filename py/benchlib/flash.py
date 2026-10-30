@@ -66,6 +66,53 @@ def read_firmware_info(fw_dir: str) -> dict:
     return info
 
 
+# GPIOs the contract may not use on the bench's ESP32-S3 (YD-ESP32-S3 N16R8), and why.
+BENCH_RESERVED = {
+    0: "BOOT (driven by the fixture)",
+    4: "BENCH_MODE (fixture GP12)",
+    17: "telemetry TX (UART1 → CP2102)",
+    19: "native USB D−",
+    20: "native USB D+",
+    35: "octal PSRAM",
+    36: "octal PSRAM",
+    37: "octal PSRAM",
+}
+S3_GPIOS = set(range(0, 22)) | set(range(26, 49))
+
+
+def bench_pin_conflicts(fw_dir: str) -> list[str]:
+    """Contract pins the bench can't give the design: ones it wires itself, or ones the S3 module reserves."""
+    with open(os.path.join(fw_dir, "include/pins.h")) as f:
+        pins = re.findall(r"^#define PIN_(\w+) (-?\d+)", f.read(), re.M)
+    out = []
+    for name, gpio in pins:
+        g = int(gpio)
+        if g in BENCH_RESERVED:
+            out.append(f"{name} uses GPIO{g}, which is {BENCH_RESERVED[g]} on the bench")
+        elif g not in S3_GPIOS:
+            out.append(f"{name} uses GPIO{g}, which the ESP32-S3 does not have")
+    return out
+
+
+def stage_build_dir(src: str, work: str) -> None:
+    """Copies a firmware dir into one persistent work dir, writing only files whose content changed. The work
+    dir keeps .pio, so a behavior change recompiles one file (~10 s) instead of the whole core (~30 s)."""
+    for dirpath, dirnames, filenames in os.walk(src):
+        dirnames[:] = [d for d in dirnames if d != ".pio"]
+        rel = os.path.relpath(dirpath, src)
+        os.makedirs(os.path.join(work, rel), exist_ok=True)
+        for name in filenames:
+            with open(os.path.join(dirpath, name), "rb") as f:
+                data = f.read()
+            dest = os.path.join(work, rel, name)
+            if os.path.exists(dest):
+                with open(dest, "rb") as f:
+                    if f.read() == data:
+                        continue
+            with open(dest, "wb") as f:
+                f.write(data)
+
+
 def run_pio(cmd: list[str], on_line: Callable[[str], None], too_long: Callable[[], bool]) -> int | None:
     """Runs pio, feeding each output line to on_line. Returns the exit code, or None if too_long() killed it."""
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
