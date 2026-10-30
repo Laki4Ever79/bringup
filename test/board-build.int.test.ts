@@ -18,6 +18,10 @@ test("buildBoard produces a routed, exported board that matches the contract", {
 	assert.ok(board.stepPath && existsSync(board.stepPath), "STEP export missing")
 	assert.ok(board.renderPath && existsSync(board.renderPath), "render missing")
 	assert.deepEqual(checkConsistency(s, { board }), [])
+	assert.ok(board.drc, "DRC did not run")
+	assert.equal(board.drc!.unconnected, 0)
+	assert.equal(board.drc!.byType.via_diameter ?? 0, 0, "vias are below the fab minimum")
+	assert.equal(board.drc!.byType.track_width ?? 0, 0, "tracks are below the fab minimum")
 })
 
 test("buildBoard fails with tscircuit's message when the board can't be built", { skip: !env.tsci && "tsci missing", timeout: 300_000 }, async () => {
