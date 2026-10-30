@@ -93,6 +93,23 @@ static const uint8_t MPU_ADDR = 0x68;
 
 RTC_DATA_ATTR static uint32_t dutyCycles = 0;
 
+// Every telemetry line goes out twice: on UART1 (GPIO17, for a CP2102 if one is wired) and on the S3's own USB, which
+// is how a bench with no CP2102 reads it. USB writes never block: with no host listening they are dropped.
+static void tele(const char *fmt, ...) {
+	char line[256];
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(line, sizeof line, fmt, args);
+	va_end(args);
+	Serial1.print(line);
+	Serial.print(line);
+}
+
+static void teleFlush() {
+	Serial1.flush();
+	Serial.flush();
+}
+
 static bool mpuWrite(uint8_t reg, uint8_t value) {
 	Wire.beginTransmission(MPU_ADDR);
 	Wire.write(reg);
@@ -142,12 +159,16 @@ static float sampleLine(bool ledOn) {
 		static uint32_t lastErr = 0;
 		if (lastErr == 0 || millis() - lastErr >= 1000) {
 			lastErr = millis();
-			Serial1.printf("{\"k\":\"err\",\"rev\":%d,\"what\":\"imu\",\"detail\":\"no ACK at 0x68\"}\n", BRINGUP_REVISION);
+			tele("{\"k\":\"err\",\"rev\":%d,\"what\":\"imu\",\"detail\":\"no ACK at 0x68\"}\n", BRINGUP_REVISION);
 		}
 	}
-	Serial1.printf("{\"k\":\"s\",\"rev\":%d,\"ms\":%lu,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"tilt\":%.1f,\"tC\":%.2f,\"tSrc\":\"%s\",\"led\":%d}\n",
+	tele("{\"k\":\"s\",\"rev\":%d,\"ms\":%lu,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"tilt\":%.1f,\"tC\":%.2f,\"tSrc\":\"%s\",\"led\":%d}\n",
 		BRINGUP_REVISION, (unsigned long)millis(), a[0], a[1], a[2], imu ? tilt : 0.0f, sht ? t : mpuT, sht ? "sht40" : "mpu", ledOn ? 1 : 0);
 	return imu ? tilt : 0.0f;
+}
+
+static void bootLine(bool duty) {
+	tele("{\"k\":\"boot\",\"rev\":%d,\"reset\":\"%s\",\"mode\":\"%s\"}\n", BRINGUP_REVISION, resetName(), duty ? "duty" : "live");
 }
 
 // Wake, sample, blink once, report how long the whole wake took, sleep. Never returns.
@@ -159,8 +180,8 @@ static void dutyCycle() {
 	sampleLine(true);
 	delay(DUTY_BLINK_MS);
 	led(false);
-	Serial1.printf("{\"k\":\"cycle\",\"rev\":%d,\"n\":%lu,\"awakeMs\":%lu}\n", BRINGUP_REVISION, (unsigned long)dutyCycles, (unsigned long)millis());
-	Serial1.flush();
+	tele("{\"k\":\"cycle\",\"rev\":%d,\"n\":%lu,\"awakeMs\":%lu}\n", BRINGUP_REVISION, (unsigned long)dutyCycles, (unsigned long)millis());
+	teleFlush();
 	mpuWrite(0x6B, 0x40);  // MPU-6050 to sleep, or its ~4 mA would swamp the floor
 	esp_sleep_enable_timer_wakeup((uint64_t)BENCH_PERIOD_S * 1000000ULL);
 	esp_deep_sleep_start();
@@ -168,6 +189,8 @@ static void dutyCycle() {
 
 void setup() {
 	Serial1.begin(115200, SERIAL_8N1, -1, BENCH_TX_PIN);
+	Serial.begin(115200);
+	Serial.setTxTimeoutMs(0);
 	pinMode(BENCH_MODE_PIN, INPUT_PULLDOWN);
 	bool duty = digitalRead(BENCH_MODE_PIN) == HIGH;
 	if (esp_reset_reason() != ESP_RST_DEEPSLEEP) dutyCycles = 0;
@@ -177,7 +200,7 @@ void setup() {
 #ifdef HAS_LED
 	pinMode(PIN_STATUS_LED, OUTPUT);
 #endif
-	Serial1.printf("{\"k\":\"boot\",\"rev\":%d,\"reset\":\"%s\",\"mode\":\"%s\"}\n", BRINGUP_REVISION, resetName(), duty ? "duty" : "live");
+	bootLine(duty);
 	if (duty) dutyCycle();
 	mpuWrite(0x6B, 0x00);
 }
@@ -187,9 +210,16 @@ void loop() {
 	static uint32_t nextSample = 0, nextToggle = 0;
 	static bool ledOn = false;
 	static float tilt = 0;
+	// A flash or reset drops the USB link, and the laptop reopens it a moment after boot: say boot again when it
+	// does, so a bench reading over the S3's own USB still sees which revision is running.
+	static bool usbHost = false;
+	if ((bool)Serial != usbHost) {
+		usbHost = (bool)Serial;
+		if (usbHost) bootLine(false);
+	}
 	if (digitalRead(BENCH_MODE_PIN) == HIGH) {
 		led(false);
-		Serial1.flush();
+		teleFlush();
 		esp_restart();  // boots straight into duty-cycle mode
 	}
 	uint32_t now = millis();
