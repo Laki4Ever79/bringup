@@ -374,3 +374,8 @@ export function relativeGravity(g0, g) {
 	const R = [0, 1, 2].map((i) => [0, 1, 2].map((j) => (i === j ? 1 : 0) + vx[i][j] + k * [0, 1, 2].reduce((sum, m) => sum + vx[i][m] * vx[m][j], 0)))
 	return R.map((row) => row[0] * b[0] + row[1] * b[1] + row[2] * b[2])
 }
+
+// Which part's sourcing popover is open after a click on a row (null: Esc, a click outside, or the × button).
+export function toggleOpen(open, clicked) {
+	return clicked === null || clicked === open ? null : clicked
+}
