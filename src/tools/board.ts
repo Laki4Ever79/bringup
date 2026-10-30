@@ -6,6 +6,7 @@ import type { BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { netsFromCircuitJson } from "./board-nets.ts"
 import { kicadCli, toolPath, type Env } from "./env.ts"
+import { runDrc } from "./drc.ts"
 import { run, tail } from "./exec.ts"
 
 // Contract -> tscircuit source -> placed and autorouted board -> KiCad project, STEP and render.
@@ -45,6 +46,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 
 	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], work, 180_000)
 	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], work, 180_000)
+	const drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro")
 	cpSync(work, dir, { recursive: true })
 
 	return {
@@ -56,6 +58,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 		widthMm: pcb?.width ?? 0,
 		heightMm: pcb?.height ?? 0,
 		nets: netsFromCircuitJson(elements),
+		drc,
 	}
 }
 
