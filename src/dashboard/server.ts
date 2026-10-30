@@ -12,6 +12,7 @@ const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
 const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
+const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
 // Page modules served from this folder (and nothing else from it).
 const MODULES = new Set(["lanes.js", "stl.js", "model.js", "pcb-view.js", "scene3d.js"])
@@ -317,6 +318,10 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			if (path === "/") {
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 				return res.end(await readFile(PAGE))
+			}
+			if (path === "/preview") {
+				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
+				return res.end(await readFile(PREVIEW))
 			}
 			if (MODULES.has(path.slice(1))) {
 				const source = await readFile(new URL(`.${path}`, import.meta.url)).catch(() => null)
