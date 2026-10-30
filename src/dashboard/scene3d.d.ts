@@ -13,11 +13,14 @@ export function orbitCamera(o: { yaw: number; pitch: number; distance: number; t
 export function project(cam: Camera, p: Vec3, width: number, height: number): [number, number, number]
 export function triNormal(tris: Float32Array, i: number): number[]
 export function shade(rgb: number[], normal: number[], light: number[]): number[]
+export function tiltMatrix(pitch: number, roll: number): number[]
+export function applyTilt(m: number[], p: Vec3, centre: Vec3): number[]
 
 export interface SceneView {
 	update(input: { caseStl?: ArrayBuffer | null; circuit?: any[] | null }): void
 	setExplode(t: number): void
 	highlight(ref: string | null): void
 	setParts(parts: { ref: string; role?: string }[]): void
+	setOrientation(pitchRad: number | null, rollRad: number | null): void
 }
 export function mountScene(el: HTMLElement, opts?: { onHover?(ref: string | null): void; parts?: { ref: string; role?: string }[] }): SceneView

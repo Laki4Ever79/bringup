@@ -220,3 +220,41 @@ test("GET /api/briefs lists the example briefs with a title", async () => {
 		await hub.close()
 	}
 })
+
+test("a run can be started with the live bench, and only a running run can be stopped", async () => {
+	const stub = stubLaunch()
+	let killed = 0
+	const launch: HubLaunch = (args) => ({ ...stub.launch(args), kill: () => void killed++ })
+	const root = outRoot()
+	const hub = await serveHub({ outRoot: root, port: 0, launch })
+	try {
+		const bad = await post(hub.url, "/api/runs", { brief: "x", mock: true, hardware: true, review: true, engineerApproval: false, bench: "usb" })
+		assert.equal(bad.status, 400)
+		const { json } = await post(hub.url, "/api/runs", { brief: "x", mock: true, hardware: true, review: true, engineerApproval: false, bench: "fake" })
+		assert.deepEqual(stub.calls.at(-1).extraArgs, ["--bench", "fake"])
+		const runs: any = await (await fetch(hub.url + "/api/runs")).json()
+		assert.equal(runs.find((r: any) => r.runId === json.runId).bench, false, "no bench.connected in the trace yet")
+		writeFileSync(join(root, json.runId, "trace.jsonl"), line(0, "bench.connected", { source: "fake", ports: {}, meter: true }) + line(1, "design.settled", { revision: 3, settled: true }))
+		const live = ((await (await fetch(hub.url + "/api/runs")).json()) as any[]).find((r: any) => r.runId === json.runId)
+		assert.deepEqual([live.status, live.bench], ["bench live", true], "a settled run with its bench still up is bench live")
+		assert.equal((await post(hub.url, `/api/runs/${json.runId}/stop`, {})).status, 200)
+		assert.equal(killed, 1)
+		assert.equal((await post(hub.url, "/api/runs/20261031-120000-aaaaaa/stop", {})).status, 409, "not running here")
+		assert.equal((await post(hub.url, "/api/runs/nope/stop", {})).status, 404)
+	} finally {
+		await hub.close()
+	}
+})
+
+test("the run list's revision is the contract's, not a bench board's recorded rev", async () => {
+	const root = outRoot()
+	mkdirSync(join(root, "20261031-140000-cccccc"))
+	writeFileSync(join(root, "20261031-140000-cccccc", "trace.jsonl"), line(0, "contract.changed", { field: "outline", version: 1, revision: 7, by: "architect" }) + line(1, "bench.telemetry", { revision: 15, source: "replay", samples: [] }) + line(2, "bench.verdict", { revision: 15, pass: true, source: "replay", checks: [] }))
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const runs: any = await (await fetch(hub.url + "/api/runs")).json()
+		assert.equal(runs.find((r: any) => r.runId === "20261031-140000-cccccc").revision, 7)
+	} finally {
+		await hub.close()
+	}
+})

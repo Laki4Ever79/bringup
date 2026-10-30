@@ -87,8 +87,10 @@ export function createBench(opts: BenchOptions): Bench {
 	}, opts.batchMs ?? 250)
 	flush.unref()
 
-	// Collects lines for ms (or until stop returns true).
-	const collect = async (ms: number, stop?: (line: BridgeLine) => boolean): Promise<BridgeLine[]> => {
+	// Windows a newer firmware may cut short (the live check, the duty-cycle measurement).
+	const cuttable = new Set<() => void>()
+	// Collects lines for ms (or until stop returns true, or, if cut, until a newer firmware arrives).
+	const collect = async (ms: number, stop?: (line: BridgeLine) => boolean, cut = false): Promise<BridgeLine[]> => {
 		const got: BridgeLine[] = []
 		let done = false
 		await new Promise<void>((resolve) => {
@@ -100,11 +102,13 @@ export function createBench(opts: BenchOptions): Bench {
 			const finish = () => {
 				done = true
 				taps.delete(tap)
+				cuttable.delete(finish)
 				clearTimeout(timer)
 				resolve()
 			}
 			const timer = setTimeout(finish, ms)
 			taps.add(tap)
+			if (cut) cuttable.add(finish)
 		})
 		return got
 	}
@@ -171,21 +175,22 @@ export function createBench(opts: BenchOptions): Bench {
 		]
 	}
 
-	const measure = async (revision: number, snapshot: ContractSnapshot): Promise<{ check: BenchCheck; measured: Payloads["bench.measured"] | null } | null> => {
+	const measure = async (revision: number, snapshot: ContractSnapshot): Promise<{ check: BenchCheck | null; measured: Payloads["bench.measured"] | null } | null> => {
 		const d = snapshot.values.requirements?.dutyCycle
 		const sleepFloor = effectiveSleepUa(snapshot)
 		if (!d || !sleepFloor) return null
 		// Collect from the moment the command goes out: the wake's boot line can beat the ack.
-		const window = collect(windowMs)
+		const window = collect(windowMs, undefined, true)
 		await bridge.command({ cmd: "mode", mode: "duty" })
 		const lines = await window
 		await bridge.command({ cmd: "mode", mode: "live" })
+		// Cut short by a newer firmware: a partial window is no measurement.
+		if (latest > revision) return null
 		const samples: MeterSample[] = lines.filter((l) => l.k === "i" && typeof l.mA === "number").map((l) => ({ at: l.at, mA: l.mA as number }))
 		const m = measureCycles(samples)
 		if (!m) return { check: { name: "battery", pass: false, detail: `fewer than 5 complete wakes in ${Math.round(windowMs / 1000)} s` }, measured: null }
 		const rail = measuredRail(snapshot.values.rails ?? [])
 		const averageMa = measuredAverageMa({ chargeUc: m.chargeUc, periodS: d.periodS, sleepUa: sleepFloor.sleepUa })
-		const measured: Payloads["bench.measured"] = { revision, rail: rail?.name ?? null, ...m, averageMa, estimateMa: rail?.averageMa ?? null, sleepUa: sleepFloor.sleepUa, source }
 		// Battery life with the measured average in place of the rail's.
 		const briefPath = join(state().outDir, "brief.md")
 		const brief = existsSync(briefPath) ? readFileSync(briefPath, "utf8") : ""
@@ -193,10 +198,21 @@ export function createBench(opts: BenchOptions): Bench {
 		const e = estimatePower(withMeasured, brief)
 		const days = rail && e.capacityMah !== null && e.averageMa !== null ? batteryLifeDays(e.capacityMah, e.averageMa, e.regulatorIqUa) : null
 		const target = e.targetDays
-		const check: BenchCheck =
-			days === null
-				? { name: "battery", pass: false, detail: rail ? "no battery capacity to judge the measured average against" : "more than one rail could feed the MCU: measured, not attributed" }
-				: { name: "battery", pass: target === null || days >= target, detail: `${Math.round(days)} days measured${target !== null ? ` vs target ${target}` : ""}` }
+		const measured: Payloads["bench.measured"] = {
+			revision,
+			rail: rail?.name ?? null,
+			...m,
+			averageMa,
+			estimateMa: rail?.averageMa ?? null,
+			sleepUa: sleepFloor.sleepUa,
+			source,
+			days,
+			targetDays: target,
+			capacityMah: e.capacityMah,
+			regulatorIqUa: e.regulatorIqUa,
+		}
+		// Without a capacity (or a rail to attribute it to) there is nothing to judge: measured, reported, no check.
+		const check: BenchCheck | null = days === null ? null : { name: "battery", pass: target === null || days >= target, detail: `${Math.round(days)} days measured${target !== null ? ` vs target ${target}` : ""}` }
 		return { check, measured }
 	}
 
@@ -231,14 +247,14 @@ export function createBench(opts: BenchOptions): Bench {
 		const f = await flash(revision, dir, snapshot)
 		const checks: BenchCheck[] = [{ name: "boot", pass: f.ok, detail: f.bootDetail }]
 		if (f.ok) {
-			const live = [...f.lines, ...(await collect(liveCheckMs))]
+			const live = [...f.lines, ...(await collect(liveCheckMs, undefined, true))]
 			const crash = live.find((l) => l.k === "boot" && CRASH_RESETS.has(String(l.reset)))
 			if (crash) checks[0] = { name: "boot", pass: false, detail: `booted rev ${revision}, then reset by ${crash.reset}` }
 			checks.push(...liveChecks(live))
 			if (hello.meter && revision >= latest) {
 				const m = await measure(revision, snapshot)
 				if (m) {
-					checks.push(m.check)
+					if (m.check) checks.push(m.check)
 					if (m.measured) {
 						send("bench.measured", m.measured)
 						void propose(revision, m.measured, snapshot)
@@ -250,8 +266,11 @@ export function createBench(opts: BenchOptions): Bench {
 	}
 
 	const rebuilder = new Rebuilder(session)
+	// The hot loop: a newer firmware cuts the running session's windows short, so it is flashed at once.
 	const request = (revision: number) => {
+		const newer = revision > latest
 		latest = Math.max(latest, revision)
+		if (newer) for (const cut of [...cuttable]) cut()
 		rebuilder.request(revision)
 	}
 

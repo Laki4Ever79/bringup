@@ -229,12 +229,42 @@
 	#start-error { color: var(--error); font-size: 13px; margin-top: 8px; }
 	.recent { max-width: 860px; margin: 34px auto 0; }
 	.recent h2 { font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; font-weight: 500; }
-	.run-row { display: grid; grid-template-columns: 104px minmax(0, 1fr) 80px 90px; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r-card); border: 1px solid transparent; text-decoration: none; transition: background var(--t) var(--ease), border-color var(--t) var(--ease); }
+	.run-row { display: grid; grid-template-columns: 104px minmax(0, 1fr) 80px 90px auto; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r-card); border: 1px solid transparent; text-decoration: none; transition: background var(--t) var(--ease), border-color var(--t) var(--ease); }
 	.run-row:hover { background: var(--panel); border-color: var(--border); }
 	.run-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.status-pill { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; text-align: center; }
 	.st-running { color: var(--info); background: rgba(59, 130, 246, .12); } .st-settled { color: var(--ok); background: rgba(34, 197, 94, .1); }
 	.st-unsettled, .st-failed { color: var(--error); background: rgba(239, 68, 68, .1); } .st-stopped { color: var(--text-3); background: #1c1c21; }
+
+	/* Brief panel */
+	#brief-panel { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); width: min(760px, 92vw); max-height: 70vh; display: grid; grid-template-rows: auto minmax(0, 1fr); z-index: 25; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); background: var(--raised); animation: fadein var(--t) var(--ease); }
+	#brief-panel pre { margin: 0; padding: 12px 16px 16px; overflow: auto; white-space: pre-wrap; font: 14px/1.6 var(--sans); color: var(--text); }
+	#stop-btn { color: var(--error); border-color: rgba(239, 68, 68, .4); }
+	.st-bench-live { color: var(--c-firmware); background: rgba(20, 184, 166, .12); }
+	.run-row .reuse { height: 26px; font-size: 12px; padding: 0 10px; }
+	#scripted-note { font-size: 13px; color: var(--warn); margin: 0 0 8px; }
+	#brief-input[readonly] { color: var(--text-2); }
+
+	/* Bench (bring-up on the desk) */
+	#bench-view { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding: 10px 12px; }
+	.bench-top { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13px; color: var(--text-2); }
+	.src-badge { font-size: 12px; font-weight: 700; letter-spacing: .06em; padding: 2px 9px; border-radius: 999px; }
+	.src-badge.real { color: var(--ok); background: rgba(34, 197, 94, .12); } .src-badge.replay, .src-badge.fake { color: var(--warn); background: rgba(245, 158, 11, .14); }
+	.flash-bar { display: flex; gap: 4px; margin-left: auto; }
+	.flash-bar span { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-3); white-space: nowrap; }
+	.flash-bar .done { color: var(--ok); border-color: rgba(34, 197, 94, .35); } .flash-bar .active { color: var(--info); border-color: rgba(59, 130, 246, .5); }
+	.flash-bar .failed { color: var(--error); border-color: rgba(239, 68, 68, .5); }
+	#bench-chart-box { position: relative; min-height: 0; border-radius: var(--r-card); border: 1px solid var(--border); background: #0a0b0c; }
+	#bench-chart { position: absolute; inset: 0; width: 100%; height: 100%; }
+	#bench-chart-box .src-badge { position: absolute; top: 8px; right: 8px; }
+	.bench-bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; font-size: 13px; }
+	.gauge-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 128px; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text-2); cursor: help; }
+	.gauge-row .bar { height: 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--border); position: relative; overflow: hidden; }
+	.gauge-row .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; transition: width 600ms var(--ease); }
+	.gauge-row .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .7; }
+	.bench-checks { margin: 0; padding: 0; list-style: none; }
+	.bench-checks li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; color: var(--text-2); }
+	.bench-checks .ok { color: var(--ok); } .bench-checks .bad { color: var(--error); }
 
 	@media (max-width: 1500px) {
 		#run { grid-template-rows: minmax(0, 1fr) 100px 168px; }
@@ -258,6 +288,8 @@
 		<span id="state-pill" class="pill hidden"><span class="dot"></span><span id="state-text">LIVE</span> · rev <span id="rev-num" class="num">0</span></span>
 		<span id="elapsed" class="num hidden"></span>
 		<div id="checks" class="hidden"></div>
+		<button id="brief-btn" class="pill hidden" title="The brief this run started from">Brief</button>
+		<button id="stop-btn" class="pill hidden" title="End the bring-up phase and the run">■ Stop</button>
 		<button id="feed-btn" class="pill hidden" title="Event feed">Feed</button>
 		<a id="cloud-link" class="pill hidden" target="_blank" rel="noopener">Mozaik Cloud ↗</a>
 		<a id="new-btn" class="pill hidden" href="/" style="text-decoration:none">＋ New design</a>
@@ -269,13 +301,15 @@
 			<h1>New design</h1>
 			<p class="sub">Describe the device. Agents pick the parts, route the board, shape the case and write the firmware, all at once, against one shared contract.</p>
 			<div class="compose-box">
+				<p id="scripted-note">Scripted demo: the scripted models always build the logger example, whatever the brief says. For your own brief, pick <b>Real models</b>.</p>
 				<textarea id="brief-input" placeholder="A pocket climate logger: temperature and humidity every minute, a USB-C port for charging, a status LED, and about six months on a small Li-ion cell. Must fit a 50 × 30 mm board."></textarea>
 				<div class="examples" id="examples"></div>
 				<div class="toggles">
-					<span class="seg" id="models"><button data-v="mock" class="on">Scripted models</button><button data-v="real">Real models</button></span>
+					<span class="seg" id="models"><button data-v="mock" class="on">Scripted demo: always builds the logger example</button><button data-v="real">Real models</button></span>
 					<span class="switch on" data-k="hardware"><i></i>Hardware tools</span>
 					<span class="switch on" data-k="review"><i></i>Brief review</span>
 					<span class="switch" data-k="engineerApproval"><i></i>Require my approval for cross-team changes</span>
+					<span class="switch" data-k="bench" title="After the design settles, flash the board on USB and measure it; with no board, a recorded session plays (badged REPLAY)"><i></i>Live bench</span>
 					<button id="start-btn" class="btn primary">Start design →</button>
 				</div>
 			</div>
@@ -288,7 +322,7 @@
 	<main id="run" class="hidden">
 		<section id="stage" class="panel">
 			<div class="stage-bar">
-				<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button></div>
+				<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="bench" class="hidden">Bench</button></div>
 				<span id="dims" class="num"></span>
 				<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab files ↓</button></span>
 				<div id="battery" class="hidden"><span id="battery-text" class="num"></span><span class="bar"><span class="fill"></span><span class="target"></span></span></div>
@@ -298,6 +332,11 @@
 				<div id="pcb-empty" class="empty-state">waiting for the first board build</div>
 				<div id="render-view" class="view hidden"><div class="empty-state">waiting for the first board build</div></div>
 				<div id="stage-3d" class="view hidden"></div>
+				<div id="bench-view" class="view hidden">
+					<div class="bench-top"><span id="bench-src" class="src-badge"></span><span id="bench-ports" class="t3"></span><div class="flash-bar" id="flash-bar"></div></div>
+					<div id="bench-chart-box"><canvas id="bench-chart"></canvas></div>
+					<div class="bench-bottom"><div id="bench-gauge"><div class="t3">measured vs estimated battery life: waiting for a duty-cycle measurement</div></div><ul class="bench-checks" id="bench-checks"><li class="t3">checks: waiting for the first flash (after the design settles)</li></ul></div>
+				</div>
 				<span id="changed-pill" class="pill"></span>
 				<span id="viewing-pill" class="pill hidden" title="Back to live"></span>
 				<div id="request-toast"></div>
@@ -330,13 +369,14 @@
 		</div>
 	</footer>
 </div>
+<section id="brief-panel" class="panel hidden"><div class="panel-head">Brief<span class="right"><button class="pill" id="brief-close">Close</button></span></div><pre id="brief-text"></pre></section>
 <aside id="feed"><div class="panel-head" style="padding-bottom:6px">Event feed<span class="right"><button class="pill" id="feed-close">Close</button></span></div><ul id="feed-list"></ul></aside>
 <div id="overlay"><img alt=""></div>
 
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	import { AGENT_COLORS, boardFor, changedRefs, checkPills, parseBattery, prCards, scrubberModel } from "/model.js"
+	import { AGENT_COLORS, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -363,18 +403,33 @@
 		$("start").classList.remove("hidden")
 		$("app").style.gridTemplateRows = "56px 1fr"
 		document.title = "Bringup · new design"
-		const opts = { mock: true, hardware: true, review: true, engineerApproval: false }
+		const opts = { mock: true, hardware: true, review: true, engineerApproval: false, bench: false }
+		// The scripted models always build the logger whatever the brief says, so in that mode the brief is the
+		// logger's, read-only; the engineer's own draft comes back with Real models.
+		let loggerBrief = "", draft = ""
+		const applyMode = () => {
+			const input = $("brief-input")
+			if (opts.mock && !input.readOnly) draft = input.value
+			input.readOnly = opts.mock
+			if (opts.mock) input.value = loggerBrief
+			else if (input.value === loggerBrief) input.value = draft
+			$("scripted-note").classList.toggle("hidden", !opts.mock)
+			$("examples").classList.toggle("hidden", opts.mock)
+			for (const x of $("models").children) x.classList.toggle("on", (x.dataset.v === "mock") === opts.mock)
+		}
 		$("models").addEventListener("click", (e) => {
 			const b = e.target.closest("button"); if (!b) return
 			opts.mock = b.dataset.v === "mock"
-			for (const x of $("models").children) x.classList.toggle("on", x === b)
+			applyMode()
 		})
 		for (const sw of document.querySelectorAll(".switch")) sw.addEventListener("click", () => { opts[sw.dataset.k] = !opts[sw.dataset.k]; sw.classList.toggle("on", opts[sw.dataset.k]) })
 		try {
 			const briefs = await (await fetch("/api/briefs")).json()
+			loggerBrief = briefs.find((b) => b.name === "logger.md")?.text ?? ""
 			$("examples").innerHTML = briefs.map((b, i) => `<button class="pill" data-i="${i}">↳ ${esc(b.title)}</button>`).join("")
 			$("examples").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { $("brief-input").value = briefs[Number(b.dataset.i)].text; $("brief-input").focus() } })
 		} catch {}
+		applyMode()
 		if (!hubInfo.canStart) {
 			$("start-btn").disabled = true
 			$("start-error").textContent = "This dashboard is read-only. Run `npx tsx src/dashboard/cli.ts` to start designs from here."
@@ -385,7 +440,7 @@
 			$("start-btn").disabled = true
 			$("start-error").textContent = ""
 			try {
-				const res = await fetch("/api/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brief, ...opts }) })
+				const res = await fetch("/api/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brief, ...opts, bench: opts.bench ? "real" : false }) })
 				const body = await res.json()
 				if (!res.ok) throw new Error(body.error ?? res.statusText)
 				location.href = `/?run=${encodeURIComponent(body.runId)}`
@@ -395,9 +450,26 @@
 			try {
 				const runs = await (await fetch("/api/runs")).json()
 				if (runs.length === 0) return
-				$("runs").innerHTML = runs.map((r) => `<a class="run-row" href="/?run=${encodeURIComponent(r.runId)}"><span class="status-pill st-${esc(r.status)}">${esc(r.status)}</span><span class="t">${esc(r.title)}</span><span class="t2 num">rev ${esc(r.revision)}</span><span class="t3 num" style="text-align:right">${esc(ago(r.startedAt))}</span></a>`).join("")
+				$("runs").innerHTML = runs.map((r) => `<a class="run-row" href="/?run=${encodeURIComponent(r.runId)}"><span class="status-pill st-${esc(r.status.replace(/ /g, "-"))}">${esc(r.status)}</span><span class="t" title="${esc(r.title)}">${esc(r.title)}</span><span class="t2 num">rev ${esc(r.revision)}</span><span class="t3 num" style="text-align:right">${esc(ago(r.startedAt))}</span><button class="btn reuse" data-reuse="${esc(r.runId)}" title="Load this run's brief into the composer">Use this brief again</button></a>`).join("")
 			} catch {}
 		}
+		$("runs").addEventListener("click", async (e) => {
+			const b = e.target.closest("[data-reuse]"); if (!b) return
+			e.preventDefault()
+			try {
+				const r = await fetch(`/runs/${encodeURIComponent(b.dataset.reuse)}/files/brief.md`)
+				if (!r.ok) return
+				const text = (await r.text()).trimEnd()
+				// Somebody's own brief needs real models; the logger's can stay scripted.
+				opts.mock = text === loggerBrief.trimEnd()
+				$("brief-input").readOnly = false
+				$("brief-input").value = text
+				draft = text
+				applyMode()
+				$("start").scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" })
+				$("brief-input").focus()
+			} catch {}
+		})
 		loadRuns()
 		setInterval(loadRuns, 3000)
 	}
@@ -406,19 +478,25 @@
 	async function startRunView(id) {
 		const base = `/runs/${encodeURIComponent(id)}`
 		const file = (p) => `${base}/files/${p}`
-		for (const el of ["run", "changebar", "state-pill", "elapsed", "checks", "feed-btn", "new-btn"]) $(el).classList.remove("hidden")
+		for (const el of ["run", "changebar", "state-pill", "elapsed", "checks", "brief-btn", "feed-btn", "new-btn"]) $(el).classList.remove("hidden")
 
 		const S = {
 			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
 			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
 			hover: null, bom: null, contract: null,
+			bench: null, telemetry: new TelemetryBuffer(30_000), att: { pitch: 0, roll: 0 }, benchTabShown: false, batteryEst: null, stopped: false,
 		}
+		let benchDirty = false
 
 		fetch(file("brief.md")).then((r) => (r.ok ? r.text() : "")).then((t) => {
+			$("brief-text").textContent = t || "(this run has no brief.md)"
 			const title = (t.split("\n").find((l) => l.trim()) ?? id).replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "")
 			$("brief-title").textContent = `“${title}”`
 			document.title = `Bringup · ${title}`
 		}).catch(() => {})
+
+		$("brief-btn").addEventListener("click", () => $("brief-panel").classList.toggle("hidden"))
+		$("brief-close").addEventListener("click", () => $("brief-panel").classList.add("hidden"))
 
 		// ── Centerpiece modules (agent-mesh-af); without them, the KiCad render and an STL wireframe ──
 		let pcb = null, scene = null
@@ -437,6 +515,8 @@
 			$("pcb-empty").classList.toggle("hidden", tab !== "pcb" || S.shownBoard !== null)
 			$("render-view").classList.toggle("hidden", tab !== "render")
 			$("stage-3d").classList.toggle("hidden", tab !== "3d")
+			$("bench-view").classList.toggle("hidden", tab !== "bench")
+			if (tab === "bench") benchDirty = true
 			// The 3D tab borrows the side panel's scene: one scene, one camera.
 			const host = $("scene-host")
 			if (tab === "3d") $("stage-3d").append(host)
@@ -566,14 +646,32 @@
 				if (!r.ok) return
 				const b = parseBattery(await r.text())
 				if (!b) return
-				$("battery").classList.remove("hidden")
-				const target = b.targetDays ?? b.days
-				const max = Math.max(b.days, target) * 1.15
-				const okay = b.targetDays === null || b.days >= b.targetDays
-				$("battery-text").innerHTML = `🔋 <b style="color:${okay ? "var(--ok)" : "var(--warn)"}">${Math.round(b.days)} days</b>${b.targetDays !== null ? ` vs ${b.targetDays} target` : " estimated"}`
-				$("battery").querySelector(".fill").style.cssText = `width:${(b.days / max) * 100}%;background:${okay ? "var(--ok)" : "var(--warn)"}`
-				$("battery").querySelector(".target").style.left = `${(target / max) * 100}%`
+				S.batteryEst = b
+				renderBattery()
 			} catch {}
+		}
+		// Estimated (report.md) and, once the bench has measured it, measured battery life.
+		function renderBattery() {
+			const b = S.batteryEst, m = S.bench?.measured
+			const measured = typeof m?.days === "number"
+			const days = measured ? m.days : b?.days
+			if (typeof days !== "number") return
+			const targetDays = (measured ? m.targetDays : b?.targetDays) ?? null
+			$("battery").classList.remove("hidden")
+			const target = targetDays ?? days
+			const max = Math.max(days, target, b?.days ?? 0) * 1.15
+			const okay = targetDays === null || days >= targetDays
+			$("battery-text").innerHTML = `🔋 <b style="color:${okay ? "var(--ok)" : "var(--warn)"}">${Math.round(days)} days</b>${measured ? ` measured${m.source !== "real" ? ` (${esc(m.source)})` : ""}` : ""}${targetDays !== null ? ` vs ${targetDays} target` : measured ? "" : " estimated"}`
+			$("battery").title = [b ? `estimated: ${Math.round(b.days)} days (report.md)` : null, measured ? `measured on the bench: ${batteryMath(m)}` : null].filter(Boolean).join("\n")
+			$("battery").querySelector(".fill").style.cssText = `width:${(days / max) * 100}%;background:${okay ? "var(--ok)" : "var(--warn)"}`
+			$("battery").querySelector(".target").style.left = `${(target / max) * 100}%`
+		}
+		const sig = (x) => Number(Number(x).toPrecision(3))
+		// The measured arithmetic, for tooltips: charge per wake over the period plus sleep, then the cell over that plus the LDO.
+		function batteryMath(m) {
+			const period = S.contract?.values?.requirements?.dutyCycle?.periodS
+			const avg = `${Math.round(m.chargeUc)} µC per wake${period ? ` / ${period} s` : ""} + ${m.sleepUa} µA asleep = ${sig(m.averageMa)} mA`
+			return m.days === null || m.capacityMah === null ? avg : `${avg}; ${m.capacityMah} mAh / (${sig(m.averageMa)} mA + ${sig(m.regulatorIqUa / 1000)} mA LDO) / 24 h = ${Math.round(m.days)} days`
 		}
 		const FAB = [["gerbers.zip", "Gerbers"], ["bom.csv", "BOM (JLCPCB)"], ["cpl.csv", "Pick and place"], ["README.txt", "How to order"]]
 		async function probeFab() {
@@ -586,6 +684,101 @@
 			$("fab").insertAdjacentHTML("beforeend", `<div class="popover"><h4>Fabrication · JLCPCB</h4>${FAB.map(([f, label]) => `<a class="row" href="${file(`fab/${f}`)}" download><span>${label}</span><span class="t3 mono">${f}</span></a>`).join("")}</div>`)
 		})
 		document.addEventListener("click", (e) => { if (!e.target.closest("#fab")) $("fab").querySelector(".popover")?.remove() })
+
+		// ── Bench: bring-up on the desk ──
+		function renderBench() {
+			const b = S.bench
+			if (!b) return
+			benchDirty = false
+			$("bench-src").className = `src-badge ${b.source}`
+			$("bench-src").textContent = b.source === "real" ? "LIVE BOARD" : b.source.toUpperCase()
+			$("bench-src").title = b.source === "replay" ? "A recorded session, not this run's firmware. Replays never change the contract." : b.source === "fake" ? "A simulated board and meter. Never changes the contract." : "The board on the desk, over USB"
+			$("bench-ports").textContent = b.source === "real" ? [b.ports?.dut && `board ${b.ports.dut.split("/").pop()}`, b.meter ? "meter ✓" : "no meter"].filter(Boolean).join(" · ") : b.meter ? "" : "no meter"
+			$("flash-bar").innerHTML = b.flash ? flashSteps(b.flash).map((st) => `<span class="${st.state}" title="${esc(st.state === "failed" ? (b.flash.error ?? "") : "")}">${st.state === "done" ? "✓ " : st.state === "failed" ? "✗ " : ""}${esc(st.label)}</span>`).join("") : `<span>waiting for the design to settle</span>`
+			const v = b.verdict
+			$("bench-checks").innerHTML = v
+				? `<li><b class="${v.pass ? "ok" : "bad"}">${v.pass ? "✓ pass" : "✗ fail"}</b> <span class="t3">firmware rev ${esc(v.revision)}${v.source !== "real" ? ` · ${esc(v.source.toUpperCase())}` : ""}</span></li>` + v.checks.map((c) => `<li title="${esc(c.detail)}"><span class="${c.pass ? "ok" : "bad"}">${c.pass ? "✓" : "✗"}</span> ${esc(c.name)} <span class="t3">${esc(c.detail)}</span></li>`).join("")
+				: b.flash?.ok === false ? `<li class="bad" title="${esc(b.flash.error)}">✗ flash failed: ${esc(b.flash.error)}</li>` : `<li class="t3">checks: after the flash</li>`
+			const m = b.measured, est = S.batteryEst
+			if (m && typeof m.days !== "number") {
+				$("bench-gauge").innerHTML = `<div title="${esc(batteryMath(m))}" style="cursor:help"><b class="num">${sig(m.averageMa)} mA</b> measured${m.source !== "real" ? ` (${esc(m.source)})` : ""} vs <b class="num">${m.estimateMa === null ? "no" : sig(m.estimateMa)} mA</b> estimated</div><div class="t3" style="font-size:12px">${m.capacityMah === null ? "no battery capacity in the brief or requirements, so no battery life" : "not attributable to one rail"} · ${m.cycles} wakes of ${Math.round(m.awakeMs)} ms · board floor ${sig(m.floorMa)} mA excluded</div>`
+			}
+			if (m && typeof m.days === "number") {
+				const target = m.targetDays ?? est?.targetDays ?? null
+				const max = Math.max(m.days, est?.days ?? 0, target ?? 0) * 1.15
+				const row = (label, days, tip, color) => `<div class="gauge-row" title="${esc(tip)}"><span>${label}</span><span class="bar"><span class="fill" style="width:${(days / max) * 100}%;background:${color}"></span>${target !== null ? `<span class="target" style="left:${(target / max) * 100}%"></span>` : ""}</span><span class="num"><b>${Math.round(days)} d</b>${target !== null ? ` vs ${target}` : ""}</span></div>`
+				const good = (d) => (target === null || d >= target ? "var(--ok)" : "var(--warn)")
+				$("bench-gauge").innerHTML =
+					(est ? row("estimated", est.days, "from the contract's duty cycle and rail averages (report.md)", good(est.days)) : "") +
+					row(m.source === "real" ? "measured" : `measured (${esc(m.source)})`, m.days, batteryMath(m), good(m.days)) +
+					`<div class="t3" style="font-size:12px">${sig(m.averageMa)} mA vs ${m.estimateMa === null ? "no" : sig(m.estimateMa)} estimated · ${m.cycles} wakes of ${Math.round(m.awakeMs)} ms · board floor ${sig(m.floorMa)} mA excluded · S3 on the desk standing in for the C3</div>`
+			}
+			drawBenchChart()
+		}
+		function drawBenchChart() {
+			const c = $("bench-chart"), box = $("bench-chart-box")
+			const w = box.clientWidth, h = box.clientHeight, dpr = devicePixelRatio || 1
+			if (!w || !h || $("bench-view").classList.contains("hidden")) return
+			if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr) }
+			const g = c.getContext("2d")
+			g.setTransform(dpr, 0, 0, dpr, 0, 0)
+			g.clearRect(0, 0, w, h)
+			const T = S.telemetry, cur = T.current, tl = T.tilt
+			const end = Math.max(cur.at(-1)?.at ?? 0, tl.at(-1)?.at ?? 0)
+			const from = end - T.windowMs
+			const L = 52, R = 40, top = 24, bottom = 20, pw = w - L - R, ph = h - top - bottom
+			const x = (at) => L + ((at - from) / T.windowMs) * pw
+			g.font = "12px ui-sans-serif, system-ui, sans-serif"
+			g.fillStyle = "#6b6b76"
+			if (!cur.length && !tl.length) { g.fillText(S.bench?.meter === false ? "no meter: tilt shows once the board streams" : "waiting for telemetry", L, top + 16); return }
+			const peak = Math.max(10, ...cur.map((p) => p.mA))
+			const maxMa = peak * 1.1
+			const yMa = (mA) => top + ph - (mA / maxMa) * ph
+			const yTilt = (deg) => top + ph - (Math.min(90, deg) / 90) * ph
+			const sorted = cur.map((p) => p.mA).sort((a, b) => a - b)
+			const floor = S.bench?.measured?.floorMa ?? sorted[Math.floor(sorted.length * 0.1)] ?? 0
+			const awake = floor + 0.3 * (peak - floor)
+			// Awake windows shaded.
+			g.fillStyle = "rgba(6, 182, 212, .10)"
+			let start = null
+			for (let i = 0; i < cur.length; i++) {
+				const on = cur[i].mA > awake
+				if (on && start === null) start = cur[i].at
+				if ((!on || i === cur.length - 1) && start !== null) { g.fillRect(x(start), top, Math.max(1, x(cur[i].at) - x(start)), ph); start = null }
+			}
+			// The floor, dashed: the dev board's own draw, excluded from the measurement.
+			g.setLineDash([4, 4]); g.strokeStyle = "rgba(237, 237, 237, .35)"; g.lineWidth = 1
+			if (cur.length) { g.beginPath(); g.moveTo(L, yMa(floor)); g.lineTo(L + pw, yMa(floor)); g.stroke() }
+			const tiltDeg = S.contract?.values?.behavior?.tiltDeg
+			if (typeof tiltDeg === "number" && tiltDeg < 90) { g.strokeStyle = "rgba(236, 72, 153, .45)"; g.beginPath(); g.moveTo(L, yTilt(tiltDeg)); g.lineTo(L + pw, yTilt(tiltDeg)); g.stroke() }
+			g.setLineDash([])
+			const trace = (pts, y, color) => { if (!pts.length) return; g.strokeStyle = color; g.lineWidth = 1.5; g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(x(p.at), y(p)) : g.moveTo(x(p.at), y(p)))); g.stroke() }
+			trace(cur, (p) => yMa(p.mA), AGENT_COLORS["build:firmware"])
+			trace(tl, (p) => yTilt(p.tilt), AGENT_COLORS["build:enclosure"])
+			// Axes and legend.
+			g.fillStyle = "#6b6b76"
+			g.fillText(`${Math.round(peak)} mA`, 4, top + 10)
+			g.fillText("0", 4, top + ph)
+			g.fillText("90°", w - R + 8, top + 10)
+			g.fillText("0°", w - R + 8, top + ph)
+			g.fillText("−30 s", L, h - 4)
+			g.fillText("now", L + pw - 24, h - 4)
+			g.fillStyle = AGENT_COLORS["build:firmware"]; g.fillText(`current${cur.length ? ` ${sig(cur.at(-1).mA)} mA` : ""}`, L, 15)
+			g.fillStyle = AGENT_COLORS["build:enclosure"]; g.fillText(`tilt${tl.length ? ` ${Math.round(tl.at(-1).tilt)}°` : ""}${typeof tiltDeg === "number" && tiltDeg < 90 ? ` (fast blink past ${tiltDeg}°)` : ""}`, L + 140, 15)
+			g.fillStyle = "rgba(237, 237, 237, .5)"; if (cur.length) g.fillText(`floor ${sig(floor)} mA`, L + pw - 92, yMa(floor) - 4)
+		}
+		new ResizeObserver(() => drawBenchChart()).observe($("bench-chart-box"))
+		$("stop-btn").addEventListener("click", async () => {
+			$("stop-btn").disabled = true
+			try {
+				const res = await fetch(`/api/runs/${encodeURIComponent(id)}/stop`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+				if (!res.ok) throw new Error((await res.json()).error)
+				S.stopped = true
+				$("stop-btn").textContent = "stopped"
+				$("change-input").disabled = true
+				$("change-input").placeholder = "The run was stopped. Start a new design to change it."
+			} catch (err) { $("stop-btn").disabled = false; $("stop-btn").title = `couldn't stop: ${err.message ?? err}` }
+		})
 
 		// ── Revision scrubber ──
 		$("dots").addEventListener("click", (e) => {
@@ -768,13 +961,14 @@
 		}
 		let requestsKey = ""
 		function renderRequests() {
-			const changes = S.events.filter((e) => e.type === "contract.changed" && e.payload.by === "architect")
+			// Requests reach the architect and the firmware agent (behavior); either may act on one.
+			const changes = S.events.filter((e) => e.type === "contract.changed" && (e.payload.by === "architect" || e.payload.by === "firmware"))
 			const html = S.requests.slice(-2).map((r) => {
 				const from = Date.parse(r.at)
 				const next = S.requests[S.requests.indexOf(r) + 1]
 				const to = next ? Date.parse(next.at) : Infinity
 				const caused = changes.filter((c) => Date.parse(c.at) >= from && Date.parse(c.at) < to)
-				const eff = caused.length ? caused.map((c) => `${esc(c.payload.field)} v${c.payload.version}`).join(", ") : S.settled ? "no change" : "architect is on it…"
+				const eff = caused.length ? caused.map((c) => `${esc(c.payload.field)} v${c.payload.version}`).join(", ") : S.settled ? "no change" : "the agents are on it…"
 				return `<div class="req"><b>engineer:</b> ${esc(r.text)} <span class="eff">→ ${eff}</span></div>`
 			}).join("")
 			if (html !== requestsKey) { requestsKey = html; $("request-toast").innerHTML = html }
@@ -787,7 +981,7 @@
 		$("suggest").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !$("change-input").disabled) { $("change-input").value = b.textContent; $("change-input").focus() } })
 		document.addEventListener("keydown", (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("change-input").focus() }
-			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open") }
+			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("brief-panel").classList.add("hidden") }
 		})
 		$("change-input").addEventListener("keydown", async (e) => {
 			if (e.key !== "Enter") return
@@ -800,8 +994,8 @@
 				$("change-input").value = ""
 				fetchRequests()
 			} catch (err) { $("change-input").value = text; $("change-input").placeholder = `couldn't send: ${err.message ?? err}` }
-			$("change-input").disabled = Boolean(S.settled)
-			if (!S.settled) $("change-input").focus()
+			$("change-input").disabled = Boolean(S.settled) && !(S.bench && !S.stopped)
+			if (!$("change-input").disabled) $("change-input").focus()
 		})
 
 		// ── Feed drawer ──
@@ -825,6 +1019,11 @@
 				case "firmware.booted": return p.booted ? `firmware rev ${p.revision} boots in QEMU, prints rev ${p.bootRevision}` : `firmware rev ${p.revision} did not boot`
 				case "design.settled": return p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`
 				case "agent.halted": return `${p.agentId} halted: ${p.error}`
+				case "bench.connected": return `bench: ${p.source}${p.meter ? "" : ", no meter"}`
+				case "bench.flashing": return `flashing rev ${p.revision}: ${p.stage} ${p.pct} %`
+				case "bench.flashed": return p.ok ? `rev ${p.revision} flashed${p.simulated ? " (replay)" : ` in ${(p.ms / 1000).toFixed(1)} s`}` : `rev ${p.revision} flash failed at ${p.stage}: ${p.error}`
+				case "bench.measured": return `measured ${p.averageMa.toPrecision(3)} mA (${p.source}), ${p.cycles} wakes`
+				case "bench.verdict": return `bench ${p.pass ? "pass" : "FAIL"} at rev ${p.revision}`
 				default: return ""
 			}
 		}
@@ -862,6 +1061,7 @@
 			dirty.clear()
 			renderPRs()
 			renderRequests()
+			if (benchDirty) renderBench()
 		}
 		let lastSeq = -1
 		const source = new EventSource(`${base}/events`)
@@ -869,6 +1069,8 @@
 			const e = JSON.parse(msg.data)
 			if (typeof e.seq === "number" && e.seq <= lastSeq) return
 			lastSeq = typeof e.seq === "number" ? e.seq : lastSeq
+			// Telemetry arrives 4 times a second for as long as the bench runs: into the chart's window, not the event list.
+			if (e.type === "bench.telemetry") { onTelemetry(e.payload); return }
 			S.events.push(e)
 			S.firstAt ??= Date.parse(e.at)
 			for (const k of applyLaneEvent(S.lanes, e)) dirty.add(k)
@@ -876,6 +1078,8 @@
 			if (e.type !== "agent.activity") addToFeed(e)
 			switch (e.type) {
 				case "contract.changed":
+					// With the bench up, a change after settling un-settles the design: live again until it re-settles.
+					if (S.settled && S.bench) { S.settled = null; S.endAt = null }
 					S.revision = Math.max(S.revision, p.revision)
 					if (Date.now() - Date.parse(e.at) < 15_000) flashChanged(p)
 					fetchSnapshot()
@@ -891,11 +1095,31 @@
 					break
 				}
 				case "grounding.checked": fetchBom(); break
+				case "bench.connected":
+				case "bench.flashing":
+				case "bench.flashed":
+				case "bench.measured":
+				case "bench.verdict":
+					S.bench = benchState(S.events)
+					benchDirty = true
+					if (e.type === "bench.connected") {
+						$("tabs").querySelector('[data-tab="bench"]').classList.remove("hidden")
+						if (hubInfo.canStart && !S.stopped) $("stop-btn").classList.remove("hidden")
+					}
+					// The first live flash brings the Bench tab forward once; after that the engineer picks.
+					if (e.type === "bench.flashing" && !S.benchTabShown && Date.now() - Date.parse(e.at) < 60_000) { S.benchTabShown = true; setTab("bench") }
+					if (e.type === "bench.measured") renderBattery()
+					break
 				case "design.settled":
 					S.settled = p
 					S.endAt = Date.parse(e.at)
-					$("change-input").disabled = true
-					$("change-input").placeholder = "The design has settled. Start a new design to change it."
+					if (S.bench && !S.stopped) {
+						// Bring-up keeps the run up: requests still reach the agents, and a firmware change reflashes the board.
+						$("change-input").placeholder = "Bring-up: ask for a change; a firmware change reflashes the board (try “blink faster when tilted”)"
+					} else {
+						$("change-input").disabled = true
+						$("change-input").placeholder = "The design has settled. Start a new design to change it."
+					}
 					setTimeout(() => { fetchReport(); probeFab(); fetchBom() }, 800)
 					break
 			}
@@ -906,6 +1130,17 @@
 		fetchReport()
 		fetchRequests()
 		probeFab()
+
+		function onTelemetry(p) {
+			S.telemetry.add(p.samples ?? [])
+			const imu = S.telemetry.lastImu
+			// The 3D board follows the one on the desk: gravity gives pitch and roll, low-pass filtered.
+			if (imu && scene?.setOrientation) {
+				S.att = lowPass(S.att, attitude(imu.ax, imu.ay, imu.az), 0.35)
+				scene.setOrientation(S.att.pitch, S.att.roll)
+			}
+			if (!$("bench-view").classList.contains("hidden")) drawBenchChart()
+		}
 	}
 
 	// ── STL wireframe (stands in for scene3d.js until it loads) ────────────────────────────────

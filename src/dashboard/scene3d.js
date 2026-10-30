@@ -87,6 +87,19 @@ const norm = (a) => {
 	return [a[0] / l, a[1] / l, a[2] / l]
 }
 
+// The board's attitude as a rotation: roll about x, then pitch about y (z up, the board flat in xy).
+export function tiltMatrix(pitch, roll) {
+	const cp = Math.cos(pitch), sp = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll)
+	// Ry(pitch) · Rx(roll), row-major.
+	return [cp, sp * sr, sp * cr, 0, cr, -sr, -sp, cp * sr, cp * cr]
+}
+
+// p rotated by m about centre c.
+export function applyTilt(m, p, c) {
+	const x = p[0] - c[0], y = p[1] - c[1], z = p[2] - c[2]
+	return [c[0] + m[0] * x + m[1] * y + m[2] * z, c[1] + m[3] * x + m[4] * y + m[5] * z, c[2] + m[6] * x + m[7] * y + m[8] * z]
+}
+
 // Orbit camera around `target`, z up: yaw about z, pitch above the horizon.
 export function orbitCamera({ yaw, pitch, distance, target, fov = 0.62 }) {
 	const eye = [
@@ -147,6 +160,8 @@ export function mountScene(host, opts = {}) {
 	let caseLift = 0
 	let explode = 0, explodeTarget = 0
 	let yaw = -2.2, pitch = 0.62, distance = 120, target = [0, 0, 0]
+	// The bench board's attitude (setOrientation), eased toward the latest reading; null when no board is tilting it.
+	let tilt = null, tiltTarget = null, tiltAt = -Infinity
 	let lastInteraction = -Infinity
 	let focused = null, hovered = null
 	let drawn = [] // visible triangles of the last frame, far to near, for hit testing
@@ -193,7 +208,17 @@ export function mountScene(host, opts = {}) {
 	}
 
 	function frame(now, dt) {
-		if (!reduced && now - lastInteraction > IDLE_AFTER_MS) { yaw += IDLE_SPEED * dt; dirty = true }
+		// While a real board tilts the model, the idle spin stops so the two motions don't mix.
+		const tilting = now - tiltAt < IDLE_AFTER_MS
+		if (!reduced && !tilting && now - lastInteraction > IDLE_AFTER_MS) { yaw += IDLE_SPEED * dt; dirty = true }
+		if (tiltTarget) {
+			tilt ??= { pitch: 0, roll: 0 }
+			const k = reduced ? 1 : Math.min(1, dt * 10)
+			if (Math.abs(tiltTarget.pitch - tilt.pitch) + Math.abs(tiltTarget.roll - tilt.roll) > 1e-4) {
+				tilt = { pitch: tilt.pitch + (tiltTarget.pitch - tilt.pitch) * k, roll: tilt.roll + (tiltTarget.roll - tilt.roll) * k }
+				dirty = true
+			}
+		}
 		if (Math.abs(explodeTarget - explode) > 1e-3) {
 			explode += (explodeTarget - explode) * (reduced ? 1 : Math.min(1, dt * 8))
 			dirty = true
@@ -212,24 +237,27 @@ export function mountScene(host, opts = {}) {
 		const cam = orbitCamera({ yaw, pitch, distance, target })
 		const lift = explode * caseLift
 		const P = tris.pos
+		// Model space → world: the bench tilt, about the scene's centre.
+		const m = tilt && (tilt.pitch !== 0 || tilt.roll !== 0) ? tiltMatrix(tilt.pitch, tilt.roll) : null
+		const W = m ? (p) => applyTilt(m, p, target) : (p) => p
 		const list = []
 		for (let t = 0, i = 0; i < P.length; t++, i += 9) {
 			const isCase = t < caseCount
 			const dz = isCase ? lift : 0
-			const n = tris.normal[t]
-			const a = [P[i], P[i + 1], P[i + 2] + dz]
+			const n = m ? applyTilt(m, tris.normal[t], [0, 0, 0]) : tris.normal[t]
+			const a = W([P[i], P[i + 1], P[i + 2] + dz])
 			// Back-face culling in world space.
 			if (dot(n, sub(cam.eye, a)) <= 0) continue
 			const pa = project(cam, a, w, h)
-			const pb = project(cam, [P[i + 3], P[i + 4], P[i + 5] + dz], w, h)
-			const pc = project(cam, [P[i + 6], P[i + 7], P[i + 8] + dz], w, h)
+			const pb = project(cam, W([P[i + 3], P[i + 4], P[i + 5] + dz]), w, h)
+			const pc = project(cam, W([P[i + 6], P[i + 7], P[i + 8] + dz]), w, h)
 			list.push({ t, pa, pb, pc, depth: (pa[2] + pb[2] + pc[2]) / 3 })
 		}
 		list.sort((x, y) => y.depth - x.depth)
 		for (const d of list) {
 			const t = d.t
 			const isHot = (focused && tris.ref[t] === focused) || (hovered && tris.ref[t] === hovered)
-			const [r, gg, b] = shade(tris.color[t], tris.normal[t], LIGHT)
+			const [r, gg, b] = shade(tris.color[t], m ? applyTilt(m, tris.normal[t], [0, 0, 0]) : tris.normal[t], LIGHT)
 			ctx.beginPath()
 			ctx.moveTo(d.pa[0], d.pa[1])
 			ctx.lineTo(d.pb[0], d.pb[1])
@@ -255,7 +283,7 @@ export function mountScene(host, opts = {}) {
 		ctx.strokeStyle = "rgba(237,237,237,0.32)"
 		ctx.beginPath()
 		for (const [a, b] of caseEdges) {
-			const pa = project(cam, [a[0], a[1], a[2] + lift], w, h), pb = project(cam, [b[0], b[1], b[2] + lift], w, h)
+			const pa = project(cam, W([a[0], a[1], a[2] + lift]), w, h), pb = project(cam, W([b[0], b[1], b[2] + lift]), w, h)
 			ctx.moveTo(pa[0], pa[1])
 			ctx.lineTo(pb[0], pb[1])
 		}
@@ -276,7 +304,7 @@ export function mountScene(host, opts = {}) {
 				if (tris.ref[t] !== ref) continue
 				// Box edges only: each quad is (a,b,c)+(a,c,d), so skip the shared diagonal a–c.
 				const first = n++ % 2 === 0
-				const pts = [0, 1, 2].map((k) => project(cam, [P2[i + k * 3], P2[i + k * 3 + 1], P2[i + k * 3 + 2]], w, h))
+				const pts = [0, 1, 2].map((k) => project(cam, W([P2[i + k * 3], P2[i + k * 3 + 1], P2[i + k * 3 + 2]]), w, h))
 				const edges = first ? [[0, 1], [1, 2]] : [[1, 2], [2, 0]]
 				for (const [a, b] of edges) { ctx.moveTo(pts[a][0], pts[a][1]); ctx.lineTo(pts[b][0], pts[b][1]) }
 			}
@@ -377,6 +405,18 @@ export function mountScene(host, opts = {}) {
 		},
 		highlight(ref) {
 			focused = ref
+			dirty = true
+		},
+		// Extension (bench): the board on the desk's attitude in radians, already low-pass filtered by the caller;
+		// null levels the model again. Yaw stays the camera's.
+		setOrientation(pitchRad, rollRad) {
+			if (pitchRad === null || rollRad === null || pitchRad === undefined) {
+				tiltTarget = { pitch: 0, roll: 0 }
+				tiltAt = -Infinity
+			} else {
+				tiltTarget = { pitch: pitchRad, roll: rollRad }
+				tiltAt = performance.now()
+			}
 			dirty = true
 		},
 		// Extension: parts ({ref, role}) so part heights and colours follow their roles.

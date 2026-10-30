@@ -14,6 +14,7 @@ const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
+const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
 const MODULES = new Set(["lanes.js", "stl.js", "model.js", "pcb-view.js", "scene3d.js"])
 const RUN_ID = /^[\w-]+$/
@@ -171,7 +172,9 @@ export interface HubOptions {
 
 interface RunSummary {
 	runId: string
-	status: "running" | "settled" | "unsettled" | "failed" | "stopped"
+	// "bench live": settled, with its bring-up phase still running (--bench keeps the run up until Stop).
+	status: "running" | "bench live" | "settled" | "unsettled" | "failed" | "stopped"
+	bench: boolean
 	revision: number
 	startedAt: string
 	title: string
@@ -243,21 +246,24 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		let revision = 0
 		let startedAt: string | null = null
 		let settled: boolean | null = null
+		let bench = false
 		for (const l of traceText.split("\n")) {
 			if (!l.trim()) continue
 			try {
 				const e = JSON.parse(l)
 				startedAt ??= e.at
-				if (typeof e.payload?.revision === "number") revision = Math.max(revision, e.payload.revision)
+				// A bench event carries the board's booted rev (a replay's recorded one), not the contract's.
+				if (typeof e.payload?.revision === "number" && !e.type.startsWith("bench.")) revision = Math.max(revision, e.payload.revision)
 				if (e.type === "design.settled") settled = e.payload.settled === true
+				if (e.type === "bench.connected") bench = true
 			} catch {}
 		}
 		const brief = await readFile(join(dir, "brief.md"), "utf8").catch(() => "")
 		const title = (brief.split("\n").find((l) => l.trim()) ?? id).replace(/^#+\s*/, "").trim().slice(0, 80)
 		const run = live.get(id)
 		const status: RunSummary["status"] =
-			run && run.exit === null ? "running" : settled !== null ? (settled ? "settled" : "unsettled") : run ? (run.exit === 0 ? "settled" : run.exit === 2 ? "unsettled" : "failed") : "stopped"
-		return { runId: id, status, revision, startedAt: startedAt ?? (await stat(dir)).mtime.toISOString(), title }
+			run && run.exit === null ? (bench && settled !== null ? "bench live" : "running") : settled !== null ? (settled ? "settled" : "unsettled") : run ? (run.exit === 0 ? "settled" : run.exit === 2 ? "unsettled" : "failed") : "stopped"
+		return { runId: id, status, revision, startedAt: startedAt ?? (await stat(dir)).mtime.toISOString(), title, bench }
 	}
 
 	const listRuns = async (): Promise<RunSummary[]> => {
@@ -276,12 +282,14 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		const hardware = bool(body.hardware, "hardware")
 		const review = bool(body.review, "review")
 		const engineerApproval = bool(body.engineerApproval, "engineerApproval")
+		const bench = body.bench ?? false
+		if (bench !== false && !BENCH_SOURCES.includes(bench as never)) throw new HttpError(400, `bench must be false or one of ${BENCH_SOURCES.join(", ")}`)
 		const runId = newRunId()
 		const outDir = join(outRoot, runId)
 		mkdirSync(outDir, { recursive: true })
 		const briefPath = join(outDir, "brief.md")
 		writeFileSync(briefPath, brief.endsWith("\n") ? brief : brief + "\n")
-		const extraArgs = [...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"]), ...(engineerApproval ? ["--engineer-approval"] : [])]
+		const extraArgs = [...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"]), ...(engineerApproval ? ["--engineer-approval"] : []), ...(bench ? ["--bench", bench as string] : [])]
 		const run = opts.launch({ briefPath, mock, outDir, extraArgs })
 		const entry = { exit: null as number | null, kill: run.kill }
 		live.set(runId, entry)
@@ -299,6 +307,14 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				const origin = req.headers.origin
 				if (origin !== undefined && !allowedHost(origin.replace(/^http:\/\//, ""))) return json(res, 403, { error: "cross-site request" })
 				if (path === "/api/runs") return json(res, 201, { runId: startRun(await readJson(req)) })
+				const stop = /^\/api\/runs\/([^/]+)\/stop$/.exec(path)
+				if (stop) {
+					if (!(await runDir(stop[1]))) return json(res, 404, { error: "unknown run" })
+					const run = live.get(stop[1])
+					if (!run || run.exit !== null) return json(res, 409, { error: "that run is not running from this dashboard" })
+					run.kill?.()
+					return json(res, 200, { stopped: true })
+				}
 				const m = /^\/api\/runs\/([^/]+)\/(requests|decisions)$/.exec(path)
 				if (m) {
 					const dir = await runDir(m[1])

@@ -1,6 +1,7 @@
 import { SemanticEvent } from "@mozaik-ai/core"
 import type { Violation } from "./contract/consistency.ts"
 import type { GroundingFinding } from "./contract/grounding.ts"
+import type { DrcSummary } from "./tools/drc.ts"
 import type { AgentRole, FieldName } from "./contract/types.ts"
 
 export type ArtifactKind = "board" | "enclosure" | "firmware"
@@ -41,7 +42,8 @@ export interface Payloads {
 	// The final outcome of a held change (votes are change.decided), timeouts included.
 	"change.resolved": { proposalId: string; approved: boolean; reason: string; decidedBy: string[] }
 	"change.decided": { proposalId: string; approved: boolean; by: AgentRole; reason: string }
-	"artifact.ready": { kind: ArtifactKind; revision: number }
+	// drc: the board build's KiCad DRC against the fab's rules, when it ran.
+	"artifact.ready": { kind: ArtifactKind; revision: number; drc?: DrcSummary }
 	"artifact.failed": { kind: ArtifactKind; revision: number; error: string }
 	// The newest compiled firmware booted in Espressif's QEMU (agents/emulator.ts). bootRevision is the contract
 	// revision the firmware printed on serial, null if it never got that far. Not an artifact: it never blocks settling.
@@ -71,6 +73,11 @@ export interface Payloads {
 		estimateMa: number | null
 		sleepUa: number
 		source: BenchSourceName
+		// Battery life with the measured average in place of the rail's, and what it is computed from.
+		days: number | null
+		targetDays: number | null
+		capacityMah: number | null
+		regulatorIqUa: number
 	}
 	"bench.verdict": { revision: number; pass: boolean; source: BenchSourceName; checks: BenchCheck[] }
 	// What an agent is doing right now, from Mozaik's loop events (agents/activity.ts). For the dashboard lanes.
