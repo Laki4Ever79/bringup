@@ -27,7 +27,7 @@
 	a { color: inherit; }
 	.num { font-variant-numeric: tabular-nums; }
 	.mono { font-family: var(--mono); }
-	.dim { color: var(--text-2); } .dimmer { color: var(--text-3); }
+	.t2 { color: var(--text-2); } .t3 { color: var(--text-3); }
 	.hidden { display: none !important; }
 	.panel { background: rgba(17, 17, 19, .86); border: 1px solid var(--border); border-radius: var(--r-panel); backdrop-filter: blur(12px); min-width: 0; min-height: 0; }
 	.panel-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px 0; font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
@@ -75,14 +75,16 @@
 	#cloud-link:hover { border-color: var(--border-hover); }
 
 	/* ── Run view ───────────────────────────────────────────── */
-	#run { display: grid; grid-template-columns: minmax(0, 62fr) minmax(0, 38fr); grid-template-rows: minmax(0, 1fr) 132px 148px; gap: 12px; padding: 12px 16px; min-height: 0; }
+	#run { display: grid; grid-template-columns: minmax(0, 62fr) minmax(0, 38fr); grid-template-rows: minmax(0, 1fr) 124px 168px; gap: 12px; padding: 12px 16px; min-height: 0; }
 	#stage { grid-row: 1; grid-column: 1; display: grid; grid-template-rows: auto minmax(0, 1fr) 46px; }
-	.stage-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px 6px; }
+	.stage-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px 6px; min-width: 0; }
 	.tabs { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); }
 	.tabs button { height: 28px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--text-2); cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
 	.tabs button.on { background: #26262c; color: var(--text); }
 	.tabs button:disabled { opacity: .35; cursor: default; }
-	#dims { color: var(--text-2); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#dims { color: var(--text-2); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+	.stage-bar > * { flex-shrink: 0; }
+	.stage-bar > #dims { flex-shrink: 1; }
 	#fab { position: relative; }
 	#fab .popover { right: auto; left: 0; width: 320px; }
 	#fab a.row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 6px; border-radius: 6px; text-decoration: none; font-size: 13px; }
@@ -99,7 +101,7 @@
 	#changed-pill { position: absolute; top: 12px; left: 12px; z-index: 3; opacity: 0; transform: translateY(-4px); transition: opacity 300ms var(--ease), transform 300ms var(--ease); pointer-events: none; font-weight: 600; }
 	#changed-pill.on { opacity: 1; transform: none; }
 	#viewing-pill { position: absolute; top: 12px; right: 12px; z-index: 3; cursor: pointer; }
-	#request-toast { position: absolute; left: 12px; bottom: 12px; z-index: 3; max-width: 70%; display: flex; flex-direction: column; gap: 6px; }
+	#request-toast { position: absolute; right: 12px; bottom: 12px; z-index: 3; max-width: 55%; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 	#request-toast .req { padding: 8px 12px; border-radius: var(--r-card); background: rgba(22, 22, 26, .92); border: 1px solid var(--border); font-size: 13px; animation: fadein var(--t) var(--ease); }
 	#request-toast .req b { color: var(--c-engineer); }
 	#request-toast .req .eff { color: var(--c-architect); }
@@ -124,13 +126,13 @@
 	#parts-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 	#parts-total { font-size: 18px; color: var(--text); font-weight: 600; }
 	#parts { overflow-y: auto; padding: 6px 8px 8px; position: relative; }
-	.part { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto 22px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-card); transition: background var(--t) var(--ease); cursor: default; }
-	.part:hover, .part.hl { background: var(--raised); }
-	.part.hl { box-shadow: inset 0 0 0 1px var(--border-hover); }
-	.ref { font-family: var(--mono); font-size: 13px; padding: 2px 6px; border-radius: 6px; background: #1c1c21; color: var(--text); text-align: center; }
-	.mpn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.mpn a { color: var(--text-3); text-decoration: none; font-family: var(--mono); font-size: 12px; margin-left: 6px; }
-	.mpn a:hover { color: var(--info); }
+	#parts .part { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto 22px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-card); transition: background var(--t) var(--ease); cursor: default; }
+	#parts .part:hover, #parts .part.hl { background: var(--raised); }
+	#parts .part.hl { box-shadow: inset 0 0 0 1px var(--border-hover); }
+	#parts .ref { font-family: var(--mono); font-size: 13px; padding: 2px 6px; border-radius: 6px; background: #1c1c21; color: var(--text); text-align: center; }
+	#parts .mpn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	#parts .mpn a { color: var(--text-3); text-decoration: none; font-family: var(--mono); font-size: 12px; margin-left: 6px; }
+	#parts .mpn a:hover { color: var(--info); }
 	.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
 	.chip.ok { color: var(--ok); border-color: rgba(34, 197, 94, .3); } .chip.bad { color: var(--error); border-color: rgba(239, 68, 68, .35); }
 	.ground { text-align: center; font-size: 14px; } .ground.ok { color: var(--ok); } .ground.warn { color: var(--warn); }
@@ -158,7 +160,7 @@
 
 	#changes-panel { grid-row: 3; grid-column: 1 / -1; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 	#prs { display: flex; gap: 10px; overflow-x: auto; padding: 8px 12px 12px; }
-	.pr { flex: 0 0 380px; padding: 10px 12px; border-radius: var(--r-card); background: var(--raised); border: 1px solid var(--border); display: grid; grid-template-rows: auto auto 1fr auto; gap: 5px; animation: fadein var(--t) var(--ease); min-width: 0; }
+	.pr { flex: 0 0 380px; grid-template-columns: minmax(0, 1fr); padding: 10px 12px; border-radius: var(--r-card); background: var(--raised); border: 1px solid var(--border); display: grid; grid-template-rows: auto auto 1fr auto; gap: 5px; animation: fadein var(--t) var(--ease); min-width: 0; }
 	.pr.waiting { border-color: rgba(245, 158, 11, .55); box-shadow: 0 0 0 1px rgba(245, 158, 11, .15), 0 0 30px rgba(245, 158, 11, .06); }
 	.pr .who { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
 	.pr .who .avatar { width: 20px; height: 20px; font-size: 10px; }
@@ -233,7 +235,8 @@
 	.st-unsettled, .st-failed { color: var(--error); background: rgba(239, 68, 68, .1); } .st-stopped { color: var(--text-3); background: #1c1c21; }
 
 	@media (max-width: 1500px) {
-		#run { grid-template-rows: minmax(0, 1fr) 118px 140px; }
+		#run { grid-template-rows: minmax(0, 1fr) 100px 168px; }
+		#battery .bar { width: 64px; }
 		.card .result { display: none; }
 		.pr { flex-basis: 340px; }
 		#brief-title { max-width: 200px; }
@@ -276,7 +279,7 @@
 			</div>
 			<div id="start-error"></div>
 		</div>
-		<div class="recent"><h2>Recent runs</h2><div id="runs"><div class="dimmer">no runs yet</div></div></div>
+		<div class="recent"><h2>Recent runs</h2><div id="runs"><div class="t3">no runs yet</div></div></div>
 	</section>
 
 	<!-- Run view -->
@@ -290,6 +293,7 @@
 			</div>
 			<div id="stage-body">
 				<div id="pcb-host" class="view"></div>
+				<div id="pcb-empty" class="empty-state">waiting for the first board build</div>
 				<div id="render-view" class="view hidden"><div class="empty-state">waiting for the first board build</div></div>
 				<div id="stage-3d" class="view hidden"></div>
 				<span id="changed-pill" class="pill"></span>
@@ -300,7 +304,7 @@
 		</section>
 		<aside id="side">
 			<section id="scene-panel" class="panel">
-				<div class="panel-head">3D · case + board<span class="right"><label class="dimmer" style="font-size:13px">explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
+				<div class="panel-head">3D · case + board<span class="right"><label class="t3" style="font-size:13px">explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
 				<div id="scene-body"><div id="scene-host"></div><div id="scene-empty" class="empty-state">waiting for the first enclosure build</div></div>
 			</section>
 			<section id="parts-panel" class="panel">
@@ -389,7 +393,7 @@
 			try {
 				const runs = await (await fetch("/api/runs")).json()
 				if (runs.length === 0) return
-				$("runs").innerHTML = runs.map((r) => `<a class="run-row" href="/?run=${encodeURIComponent(r.runId)}"><span class="status-pill st-${esc(r.status)}">${esc(r.status)}</span><span class="t">${esc(r.title)}</span><span class="dim num">rev ${esc(r.revision)}</span><span class="dimmer num" style="text-align:right">${esc(ago(r.startedAt))}</span></a>`).join("")
+				$("runs").innerHTML = runs.map((r) => `<a class="run-row" href="/?run=${encodeURIComponent(r.runId)}"><span class="status-pill st-${esc(r.status)}">${esc(r.status)}</span><span class="t">${esc(r.title)}</span><span class="t2 num">rev ${esc(r.revision)}</span><span class="t3 num" style="text-align:right">${esc(ago(r.startedAt))}</span></a>`).join("")
 			} catch {}
 		}
 		loadRuns()
@@ -428,12 +432,17 @@
 		function setTab(tab) {
 			for (const b of $("tabs").children) b.classList.toggle("on", b.dataset.tab === tab)
 			$("pcb-host").classList.toggle("hidden", tab !== "pcb")
+			$("pcb-empty").classList.toggle("hidden", tab !== "pcb" || S.shownBoard !== null)
 			$("render-view").classList.toggle("hidden", tab !== "render")
 			$("stage-3d").classList.toggle("hidden", tab !== "3d")
 			// The 3D tab borrows the side panel's scene: one scene, one camera.
 			const host = $("scene-host")
 			if (tab === "3d") $("stage-3d").append(host)
 			else if (host.parentElement !== $("scene-body")) $("scene-body").prepend(host)
+			const note = $("scene-empty")
+			if (tab === "3d") { note.textContent = "shown on the stage"; note.classList.remove("hidden") }
+			else if (S.shownEnclosure !== null) note.classList.add("hidden")
+			else note.textContent = "waiting for the first enclosure build"
 		}
 
 		// ── Hover: one ref lit everywhere ──
@@ -485,6 +494,7 @@
 			const circuit = await circuitFor(rev)
 			const glow = prevRev != null ? changedRefs(snapAt(prevRev)?.values, snapAt(rev)?.values) : []
 			if (circuit) { pcb?.update(circuit, glow); scene?.update({ circuit }) }
+			if (circuit && pcb) $("pcb-empty").classList.add("hidden")
 			renderDims(circuit)
 			schedule()
 		}
@@ -526,9 +536,9 @@
 			const total = S.bom && !Array.isArray(S.bom) ? S.bom.totalUsd : null
 			$("parts-total").textContent = typeof total === "number" ? `$${total.toFixed(2)}` : "—"
 			$("parts").innerHTML = items.map((p) => {
-				const stock = typeof p.stock === "number" ? `<span class="chip ${p.inStock === false || p.stock === 0 ? "bad" : "ok"} num">${p.stock === 0 ? "out of stock" : `${fmtStock(p.stock)} in stock`}</span>` : `<span class="chip dimmer">stock —</span>`
-				const price = typeof p.priceUsd === "number" ? `<span class="chip num">$${p.priceUsd.toFixed(p.priceUsd < 0.1 ? 3 : 2)}</span>` : `<span class="chip dimmer">$ —</span>`
-				const g = p.grounded === true ? `<span class="ground ok" title="every pin backed by a datasheet source">✓</span>` : p.grounded === false ? `<span class="ground warn" title="${esc(p.finding ?? "not grounded")}">⚠</span>` : `<span class="ground dimmer">·</span>`
+				const stock = typeof p.stock === "number" ? `<span class="chip ${p.inStock === false || p.stock === 0 ? "bad" : "ok"} num">${p.stock === 0 ? "out of stock" : `${fmtStock(p.stock)} in stock`}</span>` : `<span class="chip t3">stock —</span>`
+				const price = typeof p.priceUsd === "number" ? `<span class="chip num">$${p.priceUsd.toFixed(p.priceUsd < 0.1 ? 3 : 2)}</span>` : `<span class="chip t3">$ —</span>`
+				const g = p.grounded === true ? `<span class="ground ok" title="every pin backed by a datasheet source">✓</span>` : p.grounded === false ? `<span class="ground warn" title="${esc(p.finding ?? "not grounded")}">⚠</span>` : `<span class="ground t3">·</span>`
 				const lcsc = p.lcsc ? `<a href="https://www.lcsc.com/product-detail/${encodeURIComponent(p.lcsc)}.html" target="_blank" rel="noopener">${esc(p.lcsc)} ↗</a>` : ""
 				return `<div class="part${S.hover === p.ref ? " hl" : ""}" data-ref="${esc(p.ref)}"><span class="ref">${esc(p.ref)}</span><span class="mpn" title="${esc(p.role)} · ${esc(p.footprint)}">${esc(p.mpn)}${lcsc}</span>${stock}${price}${g}</div>`
 			}).join("")
@@ -571,7 +581,7 @@
 			e.stopPropagation()
 			const open = $("fab").querySelector(".popover")
 			if (open) return open.remove()
-			$("fab").insertAdjacentHTML("beforeend", `<div class="popover"><h4>Fabrication · JLCPCB</h4>${FAB.map(([f, label]) => `<a class="row" href="${file(`fab/${f}`)}" download><span>${label}</span><span class="dimmer mono">${f}</span></a>`).join("")}</div>`)
+			$("fab").insertAdjacentHTML("beforeend", `<div class="popover"><h4>Fabrication · JLCPCB</h4>${FAB.map(([f, label]) => `<a class="row" href="${file(`fab/${f}`)}" download><span>${label}</span><span class="t3 mono">${f}</span></a>`).join("")}</div>`)
 		})
 		document.addEventListener("click", (e) => { if (!e.target.closest("#fab")) $("fab").querySelector(".popover")?.remove() })
 
@@ -636,7 +646,7 @@
 				return `<span class="pill check ${p.state}" data-key="${p.key}"><span class="dot"></span>${esc(p.label)} <b class="num">${esc(label)}</b>${open === p.key ? popover(p) : ""}</span>`
 			}).join("")
 		}
-		const popover = (p) => `<div class="popover"><h4>${esc(p.label)}${p.revision !== null ? ` · rev ${p.revision}` : ""}</h4>${p.items.length ? `<ul>${p.items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<div class="dim" style="font-size:13px">${p.state === "pending" ? "not run yet" : p.state === "running" ? "the reviewer is reading the design" : "nothing to report"}</div>`}</div>`
+		const popover = (p) => `<div class="popover"><h4>${esc(p.label)}${p.revision !== null ? ` · rev ${p.revision}` : ""}</h4>${p.items.length ? `<ul>${p.items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<div class="t2" style="font-size:13px">${p.state === "pending" ? "not run yet" : p.state === "running" ? "the reviewer is reading the design" : "nothing to report"}</div>`}</div>`
 		$("checks").addEventListener("click", (e) => {
 			const pill = e.target.closest(".check"); if (!pill || e.target.closest(".popover")) return
 			const wasOpen = pill.querySelector(".popover")
@@ -660,7 +670,7 @@
 			const el = document.createElement("div")
 			el.className = "card"
 			el.style.setProperty("--ac", color(k))
-			el.innerHTML = `<div class="top"><span class="av"></span><span class="name">${esc(WHO[k][0])}</span><span class="status">idle</span></div><div class="task dimmer">waiting</div><div class="result"></div><div class="bars"></div>`
+			el.innerHTML = `<div class="top"><span class="av"></span><span class="name">${esc(WHO[k][0])}</span><span class="status">idle</span></div><div class="task t3">waiting</div><div class="result"></div><div class="bars"></div>`
 			el.addEventListener("click", (e) => {
 				if (e.target.closest(".hist")) return
 				const open = el.querySelector(".hist")
@@ -680,7 +690,7 @@
 			const task = el.querySelector(".task")
 			task.textContent = lane.text || "waiting"
 			task.title = lane.text
-			task.classList.toggle("dimmer", !lane.text)
+			task.classList.toggle("t3", !lane.text)
 			el.querySelector(".result").textContent = lane.lastResult ? `→ ${lane.lastResult}` : ""
 			el.querySelector(".result").title = lane.lastResult
 			el.querySelector(".bars").innerHTML = lane.history.slice(-28).map((h) => { const [ht, c] = BAR[h.status] ?? BAR.idle; return `<i style="height:${Math.round(ht * 100)}%;background:${c};opacity:${h.status === "idle" ? 0.3 : 0.85}"></i>` }).join("")
@@ -688,7 +698,7 @@
 		}
 		function renderHistory(k) {
 			const ul = cards[k].querySelector(".hist ul")
-			if (ul) ul.innerHTML = S.lanes[k].history.slice().reverse().map((h) => `<li><b style="color:${h.status === "failed" ? "var(--error)" : h.status === "done" ? "var(--ok)" : "var(--text)"}">${esc(STATUS[h.status] ?? h.status)}</b><span class="dimmer">${esc(time(h.at))}</span> · ${esc(h.text)}</li>`).join("") || `<li>nothing yet</li>`
+			if (ul) ul.innerHTML = S.lanes[k].history.slice().reverse().map((h) => `<li><b style="color:${h.status === "failed" ? "var(--error)" : h.status === "done" ? "var(--ok)" : "var(--text)"}">${esc(STATUS[h.status] ?? h.status)}</b><span class="t3">${esc(time(h.at))}</span> · ${esc(h.text)}</li>`).join("") || `<li>nothing yet</li>`
 		}
 
 		// ── Change control: pull-request cards ──
@@ -697,7 +707,7 @@
 		function prMarkup(c) {
 			const mine = S.myVotes.get(c.id)
 			const votes = c.votes.map((v) => `<span class="vote" title="${esc(v.reason)}">${avatar(v.by)}${v.approved ? "✓" : "✗"}</span>`).join("") + (mine !== undefined && !c.votes.some((v) => v.by === "engineer") ? `<span class="vote">${avatar("engineer")}${mine ? "✓" : "✗"} sent</span>` : "")
-			const diff = c.diff.length ? c.diff.slice(0, 3).map(diffLine).join("") + (c.diff.length > 3 ? `<div class="dimmer">+${c.diff.length - 3} more</div>` : "") : `<div class="dimmer">${c.status === "rejected" ? "not applied" : "diff appears once applied"}</div>`
+			const diff = c.diff.length ? c.diff.slice(0, 3).map(diffLine).join("") + (c.diff.length > 3 ? `<div class="t3">+${c.diff.length - 3} more</div>` : "") : c.status === "rejected" ? `<div class="t3">not applied</div>` : ""
 			const act = c.status === "waiting" && mine === undefined
 				? `<div class="act">${votes}<input placeholder="reason (optional)" maxlength="300"><button class="btn approve" data-v="1">Approve</button><button class="btn reject" data-v="0">Reject</button></div>`
 				: `<div class="foot">${votes}<span class="why">${c.why ? `“${esc(c.why)}”` : ""}</span></div>`

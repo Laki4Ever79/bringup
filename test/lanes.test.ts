@@ -99,6 +99,28 @@ test("each lane keeps its last result: tool results, answers and finished builds
 	assert.equal(lanes.parts.lastResult, "")
 })
 
+test("when the design settles, agents still marked active go idle", () => {
+	const lanes = createLanes()
+	applyLaneEvent(lanes, activity("reviewer", "thinking", "thinking…"))
+	applyLaneEvent(lanes, activity("architect", "answer", "contract drafted"))
+	const changed = applyLaneEvent(lanes, ev("design.settled", { revision: 8, settled: true }))
+	assert.ok(changed.includes("reviewer"))
+	assert.equal(lanes.reviewer.status, "idle")
+	assert.equal(lanes.reviewer.text, "run ended")
+	assert.equal(lanes.architect.text, "contract drafted", "idle agents keep their last line")
+	assert.equal(lanes.consistency.status, "done")
+})
+
+test("loop events that arrive after the design settled don't wake the lane again", () => {
+	const lanes = createLanes()
+	applyLaneEvent(lanes, ev("design.settled", { revision: 8, settled: true }))
+	applyLaneEvent(lanes, activity("reviewer", "thinking", "thinking…"))
+	assert.equal(lanes.reviewer.status, "idle")
+	applyLaneEvent(lanes, activity("reviewer", "answer", "review submitted"))
+	assert.equal(lanes.reviewer.status, "idle")
+	assert.equal(lanes.reviewer.text, "review submitted")
+})
+
 test("history is capped", () => {
 	const lanes = createLanes()
 	for (let i = 0; i < 100; i++) applyLaneEvent(lanes, activity("parts", "thinking", `t${i}`))
