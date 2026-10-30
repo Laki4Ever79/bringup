@@ -14,6 +14,8 @@ import { inferenceConfig } from "./inference/models.ts"
 import { mockScripts } from "./inference/scripts.ts"
 import { writeReport } from "./report.ts"
 import { watchRequests } from "./runner/requests.ts"
+import { startCloudSession } from "./runner/cloud.ts"
+import { createActivityParticipant } from "./agents/activity.ts"
 import { APPROVAL_TIMEOUT_MS, BringupState, join as joinRuntime, sendMessage, startRuntime } from "./runtime.ts"
 import { detectEnvironment, type Env } from "./tools/env.ts"
 import { createStubBuilders } from "./tools/stubs.ts"
@@ -56,6 +58,11 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	state.review.maxRounds = opts.maxReviewRounds ?? MAX_REVIEW_ROUNDS
 	startRuntime(state, inferenceConfig(opts.mock, opts.scripts ?? mockScripts()), join(opts.outDir, "trace.jsonl"))
 
+	// First, so the one Cloud session sees every participant join and every event (null without a key).
+	const cloud = startCloudSession(() => state.getParticipants())
+	if (cloud) joinRuntime(cloud.participant)
+	joinRuntime(createActivityParticipant())
+
 	let resolveSettled: (s: Settlement) => void = () => {}
 	const settledPromise = new Promise<Settlement>((r) => (resolveSettled = r))
 
@@ -81,6 +88,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		new Promise<Settlement>((r) => setTimeout(() => r({ settled: false, revision: state.contract.revision }), timeoutMs).unref()),
 	])
 	requests.close()
+	await cloud?.end()
 	writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
 	const reportPath = writeReport(opts.outDir, state, env, outcome.settled, { noHardware: opts.noHardware ?? false })
 	return {
