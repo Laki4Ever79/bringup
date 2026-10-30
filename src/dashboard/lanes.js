@@ -55,9 +55,13 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`
 export function applyLaneEvent(lanes, e) {
 	const p = e.payload ?? {}
 	switch (e.type) {
-		case "agent.activity":
+		case "agent.activity": {
 			lanes.agents[p.agentId] = p.role
-			return set(lanes, p.role, PHASE_STATUS[p.phase] ?? "idle", p.text, p.at ?? e.at, p.phase === "tool-result" || p.phase === "answer")
+			const result = p.phase === "tool-result" || p.phase === "answer"
+			// A loop still winding down after design.settled (its process is exiting) doesn't make the agent busy again.
+			if (lanes.ended) return result ? set(lanes, p.role, "idle", p.text, p.at ?? e.at, true) : []
+			return set(lanes, p.role, PHASE_STATUS[p.phase] ?? "idle", p.text, p.at ?? e.at, result)
+		}
 		case "contract.changed": {
 			lanes.versions[p.field] = p.version
 			const changed = []
@@ -93,8 +97,12 @@ export function applyLaneEvent(lanes, e) {
 			return set(lanes, "consistency", "held", `rev ${p.revision} ready: waiting for the brief review`, e.at)
 		case "review.completed":
 			return set(lanes, "reviewer", p.verdict === "pass" ? "done" : "failed", `review ${p.verdict}: ${plural((p.findings ?? []).length, "finding")}`, e.at)
-		case "design.settled":
-			return set(lanes, "consistency", p.settled ? "done" : "failed", p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`, e.at)
+		case "design.settled": {
+			// The run is over: nobody is still thinking, whatever their last loop event said.
+			lanes.ended = true
+			const ended = ["architect", "parts", "firmware", "reviewer"].filter((k) => ["thinking", "tool", "held"].includes(lanes[k].status)).flatMap((k) => set(lanes, k, "idle", "run ended", e.at, false))
+			return [...ended, ...set(lanes, "consistency", p.settled ? "done" : "failed", p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`, e.at)]
+		}
 		case "agent.halted":
 			return lanes.agents[p.agentId] ? set(lanes, lanes.agents[p.agentId], "failed", `halted: ${firstLine(p.error)}`, e.at) : []
 		default:
