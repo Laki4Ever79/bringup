@@ -27,6 +27,15 @@ export interface Payloads {
 	"review.completed": { revision: number; verdict: ReviewVerdict; findings: ReviewFinding[] }
 	"design.settled": { revision: number; settled: boolean }
 	"agent.halted": { agentId: string; error: string }
+	// What an agent is doing right now, from Mozaik's loop events (agents/activity.ts). For the dashboard lanes.
+	"agent.activity": {
+		agentId: string
+		role: AgentRole
+		name: string
+		phase: "turn" | "thinking" | "tool" | "tool-result" | "answer" | "held" | "released"
+		text: string
+		at: string
+	}
 }
 
 export type EventType = keyof Payloads
