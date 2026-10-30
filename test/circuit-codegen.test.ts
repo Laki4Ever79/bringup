@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { circuitFromContract, placeParts, type Placed } from "../src/codegen/circuit.ts"
+import { boardParts, circuitFromContract, placeParts, type Placed } from "../src/codegen/circuit.ts"
+import { LOGGER_DESIGN } from "../src/inference/scripts.ts"
 import { fixtureContract } from "./fixture.ts"
 
 test("codegen emits board size and nets", () => {
@@ -83,11 +84,11 @@ test("LED cathode goes to GND through an added 1k resistor when the contract has
 	assert.match(src, /from="\.R1 > \.pin2" to="net\.GND"/)
 })
 
-test("LED uses the contract's resistor when there is one", () => {
+test("LED uses the contract's 1k resistor when there is one", () => {
 	const s = fixtureContract()
-	s.values.parts!.push({ ref: "R7", role: "resistor", mpn: "0402WGF1002TCE", lcsc: "C25744", footprint: "0402", pins: ["pin1", "pin2"] })
+	s.values.parts!.push({ ref: "R7", role: "resistor", mpn: "0402WGF1001TCE", lcsc: "C11702", footprint: "0402", pins: ["pin1", "pin2"] })
 	const src = circuitFromContract(s)
-	assert.doesNotMatch(src, /<resistor /)
+	assert.doesNotMatch(src, /resistance="1k"/)
 	assert.match(src, /from="\.D1 > \.K" to="\.R7 > \.pin1"/)
 	assert.match(src, /from="\.R7 > \.pin2" to="net\.GND"/)
 })
@@ -184,4 +185,113 @@ test("ESP32-C3-MINI-1 gets the module land pattern with datasheet pin numbers", 
 	assert.match(src, /pin16: "GPIO10"/)
 	assert.match(src, /pin3: "3V3"/)
 	assert.match(src, /pin1: "GND"/)
+})
+
+// The mock run's design: charger, battery connector and every support passive are in the contract.
+function loggerContract(widthMm = LOGGER_DESIGN.outline.widthMm) {
+	const s = fixtureContract()
+	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN), outline: { ...LOGGER_DESIGN.outline, widthMm } }
+	s.values.pins!.push({ signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" })
+	return s
+}
+
+// The resistor or capacitor whose first pin traces to `from`, e.g. ".J1 > .pin8".
+function partAt(src: string, from: string): string {
+	const esc = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+	const m = new RegExp(`from="${esc}" to="\\.([A-Z]+\\d+) > \\.pin1"`).exec(src) ?? new RegExp(`from="\\.([A-Z]+\\d+) > \\.pin1" to="${esc}"`).exec(src)
+	assert.ok(m, `nothing traces to ${from}`)
+	return m![1]
+}
+
+const onNet = (src: string, end: string, net: string) => assert.match(src, new RegExp(`from="${end.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" to="net\\.${net}"`), `${end} is not on ${net}`)
+
+test("USB-C CC1 and CC2 each go to GND through a 5.1k", () => {
+	const src = circuitFromContract(fixtureContract())
+	for (const pad of ["pin8", "pin14"]) {
+		const r = partAt(src, `.J1 > .${pad}`)
+		assert.match(src, new RegExp(`<resistor name="${r}" resistance="5.1k"`))
+		onNet(src, `.${r} > .pin2`, "GND")
+	}
+})
+
+test("USB D+ and D- reach GPIO19 and GPIO18 when the MCU lists them", () => {
+	const src = circuitFromContract(loggerContract())
+	for (const end of [".J1 > .pin10", ".J1 > .pin12", ".U1 > .GPIO19"]) onNet(src, end, "USB_DP")
+	for (const end of [".J1 > .pin9", ".J1 > .pin11", ".U1 > .GPIO18"]) onNet(src, end, "USB_DN")
+	assert.doesNotMatch(circuitFromContract(fixtureContract()), /USB_D/, "fixture MCU does not list GPIO18/19")
+})
+
+test("USB D+/D- are skipped when the contract uses GPIO18 or GPIO19 for something else", () => {
+	const s = loggerContract()
+	s.values.pins!.push({ signal: "EXTRA", gpio: 19, partRef: "D1", partPin: "A" })
+	assert.doesNotMatch(circuitFromContract(s), /USB_D/)
+})
+
+test("charger: VBUS in, VBAT out to the battery and the LDO, PROG to GND through 4.7k", () => {
+	const src = circuitFromContract(loggerContract())
+	for (const end of [".J1 > .pin6", ".J1 > .pin15", ".U4 > .VCC"]) onNet(src, end, "VBUS")
+	for (const end of [".U4 > .BAT", ".J2 > .VBAT", ".U3 > .VIN", ".U3 > .EN"]) onNet(src, end, "VBAT")
+	for (const end of [".U4 > .GND", ".J2 > .GND"]) onNet(src, end, "GND")
+	const prog = partAt(src, ".U4 > .PROG")
+	assert.equal(LOGGER_DESIGN.parts.find((p) => p.ref === prog)?.lcsc, "C25900", "PROG resistor is the contract's 4.7k")
+	onNet(src, `.${prog} > .pin2`, "GND")
+	assert.doesNotMatch(src, /from="\.U3 > \.VIN" to="net\.VBUS"/, "LDO must run from the battery, not VBUS")
+})
+
+test("module EN is tied to 3V3", () => {
+	onNet(circuitFromContract(loggerContract()), ".U1 > .EN", "V3V3")
+})
+
+test("I2C lines get 10k pull-ups to 3V3", () => {
+	const src = circuitFromContract(loggerContract())
+	for (const signal of ["I2C_SDA", "I2C_SCL"]) {
+		const r = partAt(src, `net.${signal}`)
+		assert.equal(LOGGER_DESIGN.parts.find((p) => p.ref === r)?.lcsc, "C25744")
+		onNet(src, `.${r} > .pin2`, "V3V3")
+	}
+})
+
+test("bypass caps: 1uF on VBUS and VBAT, 10uF on 3V3", () => {
+	const src = circuitFromContract(loggerContract())
+	const lcsc = (net: string) => LOGGER_DESIGN.parts.find((p) => p.ref === partAt(src, `net.${net}`) && p.role === "capacitor")?.lcsc
+	assert.equal(lcsc("VBUS"), "C52923")
+	assert.equal(lcsc("VBAT"), "C52923")
+	assert.equal(lcsc("V3V3"), "C19702")
+})
+
+test("the mock logger needs no added parts, and boardParts lists every part with its LCSC number", () => {
+	const s = loggerContract()
+	assert.doesNotMatch(circuitFromContract(s), /<(resistor|capacitor) /, "codegen added a part the contract lacks")
+	const parts = boardParts(s)
+	assert.deepEqual(parts.map((p) => p.ref).sort(), LOGGER_DESIGN.parts.map((p) => p.ref).sort())
+	for (const p of parts) assert.ok(p.lcsc, `${p.ref} has no LCSC number`)
+})
+
+test("boardParts includes the parts codegen adds, with their LCSC numbers", () => {
+	const added = boardParts(fixtureContract()).filter((p) => p.added)
+	assert.deepEqual(added.map((p) => p.lcsc).sort(), ["C11702", "C25744", "C25744", "C25905", "C25905"])
+})
+
+test("button: A on its GPIO, B to GND, on opposite sides of the switch (pads 1 and 3)", () => {
+	const s = fixtureContract()
+	s.values.parts!.push({ ref: "SW1", role: "button", mpn: "TS-1187A-B-A-B", lcsc: "C318884", footprint: "pushbutton", pins: ["A", "B"] })
+	s.values.pins!.push({ signal: "BUTTON", gpio: 3, partRef: "SW1", partPin: "A" })
+	const src = circuitFromContract(s)
+	assert.match(src, /name="SW1" pinLabels=\{\{ pin1: "A", pin3: "B" \}\}/)
+	onNet(src, ".SW1 > .A", "BUTTON")
+	onNet(src, ".SW1 > .B", "GND")
+})
+
+test("a USB-C part is never given sequential pin labels", () => {
+	const src = circuitFromContract(loggerContract())
+	assert.doesNotMatch(src, /name="J1"[^>]*pinLabels/)
+})
+
+test("placement: the complete logger fits with a 1.5 mm gap at every swept width", () => {
+	for (const w of [45, 50, 55, 60, 65, 70]) {
+		const s = loggerContract(w)
+		const boxes = placeParts(s)
+		for (const p of s.values.parts!) assert.ok(boxes.some((b) => b.ref === p.ref), `${p.ref} not placed at ${w} mm`)
+		assertSpaced(boxes, w, s.values.outline!.heightMm)
+	}
 })

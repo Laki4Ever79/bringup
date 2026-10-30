@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 import { test } from "node:test"
 import { fileURLToPath } from "node:url"
-import { circuitFromContract } from "../src/codegen/circuit.ts"
+import { boardParts, circuitFromContract } from "../src/codegen/circuit.ts"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { netsFromCircuitJson } from "../src/tools/board-nets.ts"
 import { fixtureContract } from "./fixture.ts"
@@ -64,8 +64,7 @@ for (const [name, contract] of [["fixture", fixtureContract], ["busy mock-run co
 		const names = new Map(elements.filter((e: any) => e.type === "source_component").map((e: any) => [e.source_component_id, e.name]))
 		const boxes = elements.filter((e: any) => e.type === "pcb_component").map((c: any) => ({ ref: names.get(c.source_component_id), x: c.center.x, y: c.center.y, w: c.width, h: c.height }))
 		const { widthMm: w, heightMm: h } = s.values.outline!
-		// fixture: parts + J1 + the added LED resistor; busy: parts + J1 + SW1 (it has its own resistors)
-		assert.equal(boxes.length, s.values.parts!.length + 2, "component count")
+		assert.equal(boxes.length, boardParts(s).length, "component count")
 		for (const b of boxes) assert.ok(Math.abs(b.x) + b.w / 2 <= w / 2 && Math.abs(b.y) + b.h / 2 <= h / 2, `${b.ref} is outside the ${w}×${h} board`)
 		for (let i = 0; i < boxes.length; i++) {
 			for (let j = i + 1; j < boxes.length; j++) {
