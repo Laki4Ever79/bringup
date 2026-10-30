@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { circuitFromContract } from "../codegen/circuit.ts"
 import type { BoardArtifact } from "../contract/consistency.ts"
@@ -11,9 +12,20 @@ import { run, tail } from "./exec.ts"
 // tscircuit's own result is the source of truth for nets and size; KiCad exports are best-effort.
 export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
 	if (!env.tsci) throw new Error("tscircuit build failed: tsci is not installed (tools/node)")
-	writeFileSync(join(dir, "board.circuit.tsx"), circuitFromContract(s))
-	const build = await run(env.tsci, ["build", "board.circuit.tsx", "--kicad-project"], { cwd: dir, timeoutMs: 300_000, env: { PATH: toolPath(env) } })
-	const circuitPath = join(dir, "dist/board/circuit.json")
+	// tscircuit treats the nearest package.json as its project: inside this repo it would look for
+	// react in our node_modules and write to the repo's dist/. Build outside any project, then copy.
+	const work = mkdtempSync(join(tmpdir(), "bringup-board-"))
+	try {
+		return await buildIn(env, work, s, revision, dir)
+	} finally {
+		rmSync(work, { recursive: true, force: true })
+	}
+}
+
+async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: number, dir: string): Promise<BoardArtifact> {
+	writeFileSync(join(work, "board.circuit.tsx"), circuitFromContract(s))
+	const build = await run(env.tsci!, ["build", "board.circuit.tsx", "--kicad-project"], { cwd: work, timeoutMs: 300_000, env: { PATH: toolPath(env) } })
+	const circuitPath = join(work, "dist/board/circuit.json")
 	if (build.code !== 0 || !existsSync(circuitPath)) {
 		throw new Error(`tscircuit build failed (exit ${build.code}):\n${tail(build.stdout + "\n" + build.stderr, 40)}`)
 	}
@@ -21,8 +33,9 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	const pcb = elements.find((e) => e.type === "pcb_board")
 	const pcbRel = "dist/board/kicad/board.kicad_pcb"
 
-	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], dir, 180_000)
-	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], dir, 180_000)
+	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], work, 180_000)
+	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], work, 180_000)
+	cpSync(work, dir, { recursive: true })
 
 	return {
 		revision,

@@ -6,7 +6,7 @@
 	"scripts": {
 		"start": "tsx src/main.ts",
 		"typecheck": "tsc --noEmit",
-		"test": "tsx --test test/*.test.ts",
+		"test": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= tsx --test test/*.test.ts",
 		"bringup": "tsx src/main.ts"
 	},
 	"dependencies": {
