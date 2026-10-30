@@ -197,3 +197,15 @@ test("the dashboard serves its page modules", async () => {
 		await dash.close()
 	}
 })
+
+test("the firmware lane builds again when the behavior changes, like the firmware builder", async () => {
+	const { BUILD_INPUTS } = await import("../src/agents/builders.ts")
+	assert.ok(BUILD_INPUTS.firmware.includes("behavior"))
+	const lanes = createLanes()
+	applyLaneEvent(lanes, changed("parts", 1, 1))
+	applyLaneEvent(lanes, changed("pins", 1, 2))
+	applyLaneEvent(lanes, ev("artifact.ready", { kind: "firmware", revision: 2 }))
+	assert.equal(lanes["build:firmware"].status, "done")
+	applyLaneEvent(lanes, changed("behavior", 1, 3))
+	assert.equal(lanes["build:firmware"].status, "building")
+})
