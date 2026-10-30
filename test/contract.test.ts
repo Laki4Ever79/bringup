@@ -71,3 +71,11 @@ test("part roles must come from the known list", () => {
 	assert.match((r as { reason: string }).reason, /mcu/)
 	assert.equal(c.propose({ field: "parts", value: [{ ...part, role: "mcu" }], by: "parts", baseVersion: 0 }).status, "applied")
 })
+
+test("a pin assignment must point at the peripheral, not the MCU itself", () => {
+	const c = new DesignContract()
+	c.propose({ field: "parts", value: [{ ref: "U1", role: "mcu", mpn: "ESP32-C3-MINI-1", lcsc: null, footprint: "", pins: ["GPIO6"] }], by: "parts", baseVersion: 0 })
+	const r = c.propose({ field: "pins", value: [{ signal: "USB_D_PLUS", gpio: 6, partRef: "U1", partPin: "GPIO6" }], by: "architect", baseVersion: 0 })
+	assert.equal(r.status, "invalid")
+	assert.match((r as { reason: string }).reason, /USB_D_PLUS.*U1/)
+})

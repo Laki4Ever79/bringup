@@ -79,3 +79,15 @@ test("does not settle until the grounding check has grounded the current parts a
 	t.write("outline", { widthMm: 50, heightMm: 32, thicknessMm: 1.6 })
 	await waitFor(() => t.settled.length > 0)
 })
+
+test("the revision budget restarts when a design reaches review", async () => {
+	const t = setup({ maxRevisions: 8 })
+	t.state.review.enabled = true
+	t.writeAll()
+	await waitFor(() => t.events.some((e) => e.type === "design.ready"))
+	// A fix round after review: 4 more revisions would pass the absolute budget (6 + 4 > 8) but stay within it per round.
+	// Requirements feed no builder or check, so the design stays consistent and only the budget is tested.
+	for (const n of [1, 2, 3, 4]) t.write("requirements", { summary: `fix round ${n}`, peripherals: [], batteryLifeDays: 180 })
+	await new Promise((r) => setTimeout(r, 200))
+	assert.deepEqual(t.settled, [], "settled early on the absolute revision count")
+})

@@ -33,6 +33,14 @@ export class DesignContract {
 		const shape = shapeError(p.field, p.value)
 		if (shape) return { status: "invalid", reason: shape }
 		if (p.field === "pins") {
+			const mcus = new Set((this.values.parts ?? []).filter((part) => part.role === "mcu").map((part) => part.ref))
+			const onMcu = (p.value as ContractValues["pins"]).filter((pin) => mcus.has(pin.partRef))
+			if (onMcu.length > 0) {
+				return {
+					status: "invalid",
+					reason: `partRef must be the part the GPIO connects to, not the MCU: ${onMcu.map((pin) => `${pin.signal} → ${pin.partRef}`).join(", ")}. Add the peripheral part first if it is missing.`,
+				}
+			}
 			const bad = (p.value as ContractValues["pins"]).filter((pin) => !SIGNAL_PATTERN.test(pin.signal)).map((pin) => pin.signal)
 			if (bad.length > 0) return { status: "invalid", reason: `signal names must match ${SIGNAL_PATTERN}: ${bad.join(", ")}` }
 		}
