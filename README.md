@@ -261,7 +261,6 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
   `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
   can only choose from the vetted catalog (one MCU family today).
-- **In progress:** mid-run change requests.
 
 ## Use from Claude Code
 
