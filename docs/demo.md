@@ -78,9 +78,17 @@ Switch to the Mozaik Cloud link and show the agents' loops side by side.
 
 ## Optional segments (only if the feature has landed)
 
-- **Mid-run change request** (not built yet). While the run is going, the engineer types "make it 45 mm wide". The
-  `outline` change wakes the board and the enclosure but not the firmware; violations appear, then clear. Do this at
-  1:30 in place of, or right after, the violations segment.
+- **Mid-run change request.** While the run is going (after the first `artifact.ready`), type in a second terminal:
+  ```bash
+  npx tsx src/request.ts out/<runId> "make the board 60 mm wide"
+  ```
+  (From Claude Code with the MCP server: `request_change {runId, text}`.) The engineer's message wakes the architect,
+  which proposes `outline` with `widthMm: 60`. Point at the new `contract.changed` for `outline`: the board and the
+  enclosure rebuild, the firmware doesn't (it doesn't depend on the outline). The board's `outline-mismatch` shows
+  until the rebuild lands, then clears, and the report says `Board 60×30 mm`. In a mock run this takes about 30 s
+  from request to `design.settled`. The mock architect only understands "<N> mm wide"; real models take any wording.
+  Send it before the run settles: requests that arrive after `design.settled` are not picked up. Do this at 1:30, in
+  place of or right after the violations segment.
 - **Design tournament** (not built yet). Two branches, ESP32-C3 and nRF52, run in parallel and are scored live. Show
   the scoreboard at 2:00 and skip the enclosure close-up to keep to time.
 - **Firmware in QEMU** (only if `tools/qemu` is installed). Show the serial output `bringup rev N` and then
