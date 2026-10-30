@@ -26,3 +26,5 @@ export function sourcingRows(item: any): {
 	alternatives: { mpn: string; lcsc: string | null; stock: string; price: string }[]
 }
 export function readinessLine(readiness: any, ref: string): { status: string; warn: boolean } | null
+export function statusLedRef(contract: any): string | null
+export function ledMirror(input: { contract: any; bench: any; led: { at: number; led: number }[] }): { ref: string; on: boolean; label: string } | null

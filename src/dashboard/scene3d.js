@@ -23,6 +23,7 @@ const PAD_RGB = [232, 194, 122]
 const CASE_RGB = [212, 212, 222]
 const LID_RGB = [196, 204, 224]
 const POST_RGB = [156, 163, 175]
+const LIGHT_OFF_RGB = [70, 34, 34]
 
 // Axis-aligned box as 12 triangles, counter-clockwise seen from outside.
 export function boxTris(min, max) {
@@ -204,6 +205,8 @@ export function mountScene(host, opts = {}) {
 	let circuitKey = "", caseKey = null
 	// The lid (assembled from lid.stl) and the standoff posts, placed from the run's enclosure spec.
 	let lidTris = null, lidEdges = [], lidKey = null, frameSpec = null, standoffs = null
+	// A part lit like a light (the bench LED mirrored on the design): drawn unshaded in its colour, with a halo.
+	let lit = null
 	let board = null // boardMesh() result
 	let offset = [0, 0, 0]
 	let tris = null // { pos: Float32Array, color[], alpha[], ref[], kind[], normal[] }
@@ -320,7 +323,10 @@ export function mountScene(host, opts = {}) {
 		for (const d of list) {
 			const t = d.t
 			const isHot = (focused && tris.ref[t] === focused) || (hovered && tris.ref[t] === hovered)
-			const [r, gg, b] = shade(tris.color[t], m ? applyTilt(m, tris.normal[t], [0, 0, 0]) : tris.normal[t], LIGHT)
+			const mirrored = lit && tris.ref[t] === lit.ref
+			const glowing = mirrored && lit.rgb !== null
+			// A mirrored light that is off is drawn dark, so on and off read apart even for a part that is red anyway.
+			const [r, gg, b] = glowing ? lit.rgb : shade(mirrored ? LIGHT_OFF_RGB : tris.color[t], m ? applyTilt(m, tris.normal[t], [0, 0, 0]) : tris.normal[t], LIGHT)
 			ctx.beginPath()
 			ctx.moveTo(d.pa[0], d.pa[1])
 			ctx.lineTo(d.pb[0], d.pb[1])
@@ -337,6 +343,14 @@ export function mountScene(host, opts = {}) {
 			if (isHot) {
 				ctx.fillStyle = "rgba(245,158,11,0.18)"
 				ctx.fill()
+			}
+			if (glowing) {
+				// A halo, so the part reads as emitting rather than just painted.
+				ctx.save()
+				ctx.shadowColor = `rgba(${lit.rgb[0]},${lit.rgb[1]},${lit.rgb[2]},0.9)`
+				ctx.shadowBlur = 16
+				ctx.fill()
+				ctx.restore()
 			}
 		}
 		drawn = list
@@ -488,6 +502,14 @@ export function mountScene(host, opts = {}) {
 				changed = true
 			}
 			if (changed) rebuild()
+		},
+		// Extension: a part that mirrors a light, e.g. the bench LED on D1: rgb lights it ([r, g, b]), null shows it dark;
+		// ref null stops mirroring (the part's own colour again).
+		setLit(ref, rgb) {
+			const next = ref ? { ref, rgb: rgb ?? null } : null
+			if (JSON.stringify(next) === JSON.stringify(lit)) return
+			lit = next
+			dirty = true
 		},
 		setExplode(t) {
 			explodeTarget = Math.max(0, Math.min(1, t))

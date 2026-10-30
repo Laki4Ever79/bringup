@@ -147,3 +147,25 @@ test("a waiting instruction is the bench's banner until it is answered or times 
 	assert.equal(benchState([connected(), ask, ev("bench.instruction", { revision: 9, action: "boot-reset", text: "Hold BOOT, tap RST, release BOOT", state: "done" })])!.instruction, null)
 	assert.equal(benchState([connected()])!.instruction, null)
 })
+
+test("the LED mirror: the part wired to STATUS_LED, lit as the bench's LED last reported, labelled by source", async () => {
+	const { ledMirror, statusLedRef } = await import("../src/dashboard/model.js")
+	const contract = { values: { pins: [{ signal: "I2C_SDA", gpio: 8, partRef: "U2", partPin: "SDA" }, { signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" }] } }
+	assert.equal(statusLedRef(contract), "D1")
+	assert.equal(statusLedRef({ values: { pins: [] } }), null)
+	assert.equal(statusLedRef(null), null)
+	const bench = (source: string) => ({ source, meter: false, ports: {}, flash: null, verdict: null, measured: null, instruction: null })
+	const led = [{ at: 1, led: 0 }, { at: 2, led: 1 }]
+	assert.deepEqual(ledMirror({ contract, bench: bench("real"), led }), { ref: "D1", on: true, label: "D1 mirrors the bench LED (S3 onboard GPIO48 stands in)" })
+	assert.equal(ledMirror({ contract, bench: bench("replay"), led: [{ at: 1, led: 0 }] })!.on, false)
+	assert.match(ledMirror({ contract, bench: bench("replay"), led })!.label, /recorded.*REPLAY/)
+	assert.match(ledMirror({ contract, bench: bench("fake"), led })!.label, /simulated.*FAKE/)
+	assert.equal(ledMirror({ contract, bench: null, led }), null, "no bench, nothing to mirror")
+	assert.equal(ledMirror({ contract, bench: bench("real"), led: [] }), null, "no LED reading yet")
+	assert.equal(ledMirror({ contract: { values: { pins: [] } }, bench: bench("real"), led }), null, "no STATUS_LED in the design")
+})
+
+test("a bench instruction stops showing once the board boots again", () => {
+	const ask = ev("bench.instruction", { revision: 9, action: "reset", text: "Tap RST", state: "waiting" })
+	assert.equal(benchState([connected(), ask, ev("bench.flashed", { revision: 9, ok: true, ms: 1 })])!.instruction, null)
+})

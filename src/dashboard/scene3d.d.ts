@@ -25,6 +25,8 @@ export interface SceneView {
 	highlight(ref: string | null): void
 	setParts(parts: { ref: string; role?: string }[]): void
 	setOrientation(pitchRad: number | null, rollRad: number | null): void
+	// rgb lights the part; null shows it dark; ref null stops mirroring.
+	setLit(ref: string | null, rgb: [number, number, number] | null): void
 }
 export function mountScene(el: HTMLElement, opts?: { onHover?(ref: string | null): void; parts?: { ref: string; role?: string }[] }): SceneView
 export interface PaintItem {

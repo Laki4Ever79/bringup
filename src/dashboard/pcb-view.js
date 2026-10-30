@@ -219,6 +219,8 @@ export function mountPcb(host, opts = {}) {
 	let base = null // fitted viewBox [x, y, w, h] in mm, svg y = -board y
 	let view = null // current viewBox after zoom/pan
 	let focused = null
+	// A part lit like a light (the bench LED mirrored on the design): its ref and colour, or null.
+	let lit = null
 	let userMoved = false // set by wheel or drag; a resize refits until then
 	const byRef = new Map() // ref -> { group, outline }
 
@@ -319,6 +321,22 @@ export function mountPcb(host, opts = {}) {
 			.map((n) => `<span><i style="background:${colors[n] ?? colorOf(n)}"></i>${html(n)}</span>`)
 			.join("")
 		if (focused) applyHighlight(focused)
+		applyLit()
+	}
+
+	// The lit part's outline filled and glowing in the light's colour, and its pads tinted; dark when lit is null.
+	function applyLit() {
+		for (const e of svg.querySelectorAll(".pcb-lit")) e.remove()
+		const hit = lit && byRef.get(lit.ref)
+		if (!hit) return
+		const o = hit.outline
+		el("rect", {
+			class: "pcb-lit", x: o.getAttribute("x"), y: o.getAttribute("y"), width: o.getAttribute("width"), height: o.getAttribute("height"),
+			rx: o.getAttribute("rx"), fill: lit.color, "fill-opacity": 0.75, stroke: lit.color, "stroke-width": 0.3, filter: "url(#pcb-glow)", "pointer-events": "none",
+		}, hit.group)
+		for (const p of svg.querySelectorAll(`.pcb-pad[data-ref="${CSS.escape(lit.ref)}"] rect:first-child`)) {
+			el("rect", { class: "pcb-lit", x: p.getAttribute("x"), y: p.getAttribute("y"), width: p.getAttribute("width"), height: p.getAttribute("height"), rx: p.getAttribute("rx"), fill: lit.color, "fill-opacity": 0.6, filter: "url(#pcb-glow)", "pointer-events": "none" }, p.parentNode)
+		}
 	}
 
 	function showTip(c, e) {
@@ -438,6 +456,11 @@ export function mountPcb(host, opts = {}) {
 		setView(v) {
 			root.classList.remove("pcb-view-top", "pcb-view-bottom", "pcb-view-both")
 			root.classList.add(`pcb-view-${v === "top" || v === "bottom" ? v : "both"}`)
+		},
+		// Extension: light a part as if it were emitting (ref, CSS colour), e.g. the bench LED mirrored on D1; null = dark.
+		setLit(ref, color) {
+			lit = ref && color ? { ref, color } : null
+			applyLit()
 		},
 		// Extension: parts from contract.json or bom.json ({ref, mpn, role}) for the tooltip.
 		setParts(list) {

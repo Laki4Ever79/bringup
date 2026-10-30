@@ -27,6 +27,7 @@ export interface PcbView {
 	highlight(ref: string | null): void
 	setView(v: "top" | "bottom" | "both"): void
 	setParts(parts: { ref: string; mpn?: string; role?: string }[]): void
+	setLit(ref: string | null, color: string | null): void
 }
 export function mountPcb(
 	el: HTMLElement,

@@ -231,6 +231,8 @@ export function benchState(events) {
 				break
 			case "bench.flashed":
 				if (!state) break
+				// The board has spoken (or the flash failed): no step is waiting for the person any more.
+				state.instruction = null
 				state.flash = { revision: p.revision, stage: p.ok ? "boot" : (p.stage ?? "write"), pct: p.ok ? 100 : (state.flash?.revision === p.revision ? state.flash.pct : 0), ok: p.ok, error: p.error ?? null, ...(p.simulated ? { simulated: true } : {}) }
 				break
 			case "bench.verdict":
@@ -331,4 +333,26 @@ export function sourcingRows(item) {
 export function readinessLine(readiness, ref) {
 	const line = (readiness?.lines ?? []).find((l) => l.ref === ref)
 	return line ? { status: line.status, warn: line.status === "out of stock" || line.status === "not listed" } : null
+}
+
+// ── The bench LED mirrored on the design ──────────────────────────────────────────────────────────
+
+// The part the firmware's status LED drives (the pins field's STATUS_LED → partRef), or null.
+export function statusLedRef(contract) {
+	return (contract?.values?.pins ?? []).find((p) => p.signal === "STATUS_LED")?.partRef ?? null
+}
+
+const MIRROR_LABEL = {
+	real: (ref) => `${ref} mirrors the bench LED (S3 onboard GPIO48 stands in)`,
+	replay: (ref) => `${ref} mirrors the recorded LED (REPLAY)`,
+	fake: (ref) => `${ref} mirrors the simulated LED (FAKE bench)`,
+}
+
+// Whether the design's status LED should glow in the preview: on as the bench's LED last reported. Null when there
+// is no bench, no LED reading yet, or no STATUS_LED in the design.
+export function ledMirror({ contract, bench, led }) {
+	const ref = statusLedRef(contract)
+	const last = (led ?? []).at(-1)
+	if (!bench || !ref || !last) return null
+	return { ref, on: Boolean(last.led), label: (MIRROR_LABEL[bench.source] ?? MIRROR_LABEL.fake)(ref) }
 }

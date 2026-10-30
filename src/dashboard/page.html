@@ -270,11 +270,15 @@
 	.flash-bar .done { color: var(--ok); border-color: rgba(34, 197, 94, .35); } .flash-bar .active { color: var(--info); border-color: rgba(59, 130, 246, .5); }
 	.flash-bar .failed { color: var(--error); border-color: rgba(239, 68, 68, .5); }
 	/* The bench needs the person: the most important thing on the panel until it is answered. */
-	#bench-ask { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: var(--r-card); background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .6); box-shadow: 0 0 0 4px rgba(245, 158, 11, .08); animation: fadein var(--t) var(--ease); }
+	#bench-ask { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 6; backdrop-filter: blur(10px); background-color: rgba(30, 22, 8, .92); display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: var(--r-card); background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .6); box-shadow: 0 0 0 4px rgba(245, 158, 11, .08); animation: fadein var(--t) var(--ease); }
 	#bench-ask .hand { font-size: 26px; }
 	#bench-ask b { display: block; font-size: 17px; color: var(--text); }
 	#bench-ask .t2 { font-size: 13px; }
-	#bench-view.asking { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+	/* The design's status LED mirrors the bench's: a small label, its dot lit with the LED. */
+	#led-mirror { position: absolute; left: 12px; bottom: 44px; z-index: 3; font-size: 12px; color: var(--text-2); }
+	#led-mirror i { width: 9px; height: 9px; border-radius: 50%; background: #3a2a2a; transition: background 80ms linear, box-shadow 80ms linear; }
+	#led-mirror.on i { background: #f87171; box-shadow: 0 0 8px 2px rgba(248, 113, 113, .8); }
+	#stage-body.on-bench #led-mirror { display: none; }
 	#bench-chart-box { position: relative; min-height: 0; border-radius: var(--r-card); border: 1px solid var(--border); background: #0a0b0c; }
 	#bench-chart { position: absolute; inset: 0; width: 100%; height: 100%; }
 	#bench-chart-box .src-badge { position: absolute; top: 8px; right: 8px; }
@@ -355,13 +359,14 @@
 				<div id="stage-3d" class="view hidden"></div>
 				<div id="bench-view" class="view hidden">
 					<div class="bench-top"><span id="bench-src" class="src-badge"></span><span id="bench-ports" class="t3"></span><div class="flash-bar" id="flash-bar"></div></div>
-					<div id="bench-ask" class="hidden" role="alert"><span class="hand">✋</span><div><b id="bench-ask-text"></b><span class="t2" id="bench-ask-note"></span></div></div>
 					<div id="bench-chart-box"><canvas id="bench-chart"></canvas></div>
 					<div class="bench-bottom"><div id="bench-gauge"><div class="t3">measured vs estimated battery life: waiting for a duty-cycle measurement</div></div><ul class="bench-checks" id="bench-checks"><li class="t3">checks: waiting for the first flash (after the design settles)</li></ul></div>
 				</div>
 				<span id="changed-pill" class="pill"></span>
 				<span id="viewing-pill" class="pill hidden" title="Back to live"></span>
 				<div id="request-toast"></div>
+				<div id="bench-ask" class="hidden" role="alert"><span class="hand">✋</span><div><b id="bench-ask-text"></b><span class="t2" id="bench-ask-note"></span></div></div>
+				<span id="led-mirror" class="pill hidden"><i></i><span></span></span>
 			</div>
 			<div id="scrubber"><span class="label">Revisions</span><div id="dots"></div><button id="live-btn" class="btn">Live</button></div>
 		</section>
@@ -399,7 +404,7 @@
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	import { AGENT_COLORS, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, ledMirror, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -822,7 +827,6 @@
 			// A step for the person at the desk (the bridge can't reset this board into flashing mode by itself).
 			const ask = b.instruction
 			$("bench-ask").classList.toggle("hidden", !ask)
-			$("bench-view").classList.toggle("asking", Boolean(ask))
 			if (ask) {
 				$("bench-ask-text").textContent = ask.text
 				$("bench-ask-note").textContent = `At the board on the desk, for firmware rev ${ask.revision ?? "?"}. The flash carries on by itself once it's done; the bench gives up after 3 minutes.`
@@ -1306,8 +1310,6 @@
 					if (e.type === "bench.flashing" && !S.benchTabShown && Date.now() - Date.parse(e.at) < 60_000) { S.benchTabShown = true; setTab("bench") }
 					if (e.type === "bench.measured") renderBattery()
 					if (S.settled) syncChangeBar()
-					// Someone has to act: bring the Bench tab forward, whatever is showing.
-					if (e.type === "bench.instruction" && p.state === "waiting" && Date.now() - Date.parse(e.at) < 180_000) setTab("bench")
 					break
 				case "design.settled":
 					S.settled = p
@@ -1337,6 +1339,22 @@
 				scene.setOrientation(S.att.pitch, S.att.roll)
 			}
 			if (!$("bench-view").classList.contains("hidden")) drawBenchChart()
+			mirrorLed()
+		}
+
+		// The bench LED mirrored on the design's STATUS_LED part, in the PCB and 3D views. Only on a change of state, so
+		// at most at the telemetry rate, and no render loop of its own.
+		let mirrorKey = ""
+		function mirrorLed() {
+			const m = ledMirror({ contract: S.contract, bench: S.bench, led: S.telemetry.led })
+			const key = m ? `${m.ref}|${m.on}|${m.label}` : ""
+			if (key === mirrorKey) return
+			mirrorKey = key
+			pcb?.setLit?.(m?.on ? m.ref : null, m?.on ? "#f87171" : null)
+			scene?.setLit?.(m ? m.ref : null, m?.on ? [248, 113, 113] : null)
+			$("led-mirror").classList.toggle("hidden", !m)
+			$("led-mirror").classList.toggle("on", Boolean(m?.on))
+			if (m) $("led-mirror").querySelector("span").textContent = m.label
 		}
 	}
 
