@@ -103,6 +103,15 @@ Pitfalls:
 | Sat 17:00 | Optional live demos at NTP |
 | **Sat 20:00** | **Submissions close** |
 
+## Current state (30 Oct, evening)
+- Branch `bringup-core`: plan tasks 1–10 done. `npm run bringup -- briefs/logger.md --mock` settles with 0 violations
+  in about 30 s. `npm test` is green (2 QEMU tests skip). Ledger: `.superpowers/sdd/2026-10-30-bringup-core/progress.md`.
+- Also merged: SPICE power simulation, emulator boot (needs QEMU), live dashboard (`src/dashboard`), MCP server
+  (`src/mcp`, one child process per run), part search with live stock, a grounding critic (KiCad symbols), README.
+- Parallel sessions (agent-mesh-7a / -af / -5b) work in worktrees `../wt-board`, `../wt-enclosure`, `../wt-firmware`;
+  the lead session merges their branches.
+- One process runs one design (`src/runtime.ts` holds the current runtime); tournaments and MCP spawn a process per run.
+
 ## Open items for the user
 - Answer the "Shiva" team invite on the dashboard (https://build.jigjoy.ai/dashboard).
 - Create the GitHub repo (public by submission). Ask before pushing.

@@ -177,9 +177,9 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
 - **Small boards only.** Routing has been proven only on small boards (50×30 mm, a handful of parts).
 - **QEMU is optional.** It is not installed by default, and its integration test skips without it. There is no SHT40
   in emulation, so firmware prints `SENSOR FAIL` there. Wokwi could simulate the sensor but needs a token.
-- **Stock not re-checked.** LCSC part numbers were not re-checked against live stock during the event.
-- **In progress:** the agents themselves (`src/agents/`), the CLI, the briefs, the dashboard, the design tournament
-  and mid-run change requests.
+- **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
+  can only choose from the vetted catalog (one MCU family today).
+- **In progress:** the design tournament and mid-run change requests.
 
 ## Use from Claude Code
 
