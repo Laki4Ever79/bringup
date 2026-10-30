@@ -191,3 +191,11 @@ test("the duty-cycle estimate uses the raised sleep current and says so (real ru
 	assert.ok(Math.abs(e.rails[0].averageMa! - (awake * 120 + (1 - awake) * 0.005)) < 1e-9)
 	assert.match(powerBudgetLines(e).join("\n"), /0 µA asleep stated, raised to the ESP32-C3-MINI-1's 5 µA deep-sleep floor \(datasheet\)/)
 })
+
+test("a measured rail average is labelled with its bench revision", () => {
+	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values.rails = [{ ...s.values.rails![0], averageMa: 0.0567, averageSource: "measured", measuredRevision: 14 }]
+	const e = estimatePower(s, "500 mAh")
+	assert.equal(e.rails[0].source, "measured")
+	assert.match(powerBudgetLines(e).join("\n"), /Rail 3V3: peak 120 mA, average 0\.0567 mA \(measured on bench, rev 14\)/)
+})
