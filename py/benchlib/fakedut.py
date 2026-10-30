@@ -41,7 +41,7 @@ class FakeDut:
         self.info = info
         self.download_mode = False
         self.cycle = 0
-        self._boot(now_ms, "poweron")
+        self._boot(now_ms, "usb")  # esptool resets the S3 through its USB-Serial-JTAG
 
     def reset(self, now_ms: int) -> None:
         if self.pins.get(BOOT_PIN, 1) == 0:
@@ -50,7 +50,7 @@ class FakeDut:
             return
         self.download_mode = False
         self.cycle = 0
-        self._boot(now_ms, "sw")
+        self._boot(now_ms, "poweron")  # an EN pulse is a power-on reset on the ESP32-S3
 
     def step(self, now_ms: int) -> None:
         if self.mode == "live":
