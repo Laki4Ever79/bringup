@@ -12,14 +12,14 @@ import { recorder, tempDir, waitFor } from "./helpers.ts"
 
 afterEach(() => new Promise((r) => setTimeout(r, 100)))
 
-function setup(opts: { maxRevisions?: number; breakFirmware?: boolean; requires?: boolean } = {}) {
+function setup(opts: { maxRevisions?: number; breakFirmware?: boolean; requires?: boolean; keepRunning?: boolean } = {}) {
 	const state = new BringupState(tempDir())
 	startRuntime(state, undefined, null)
 	const events = recorder()
 	const desk = createChangeDesk()
 	join(desk)
 	const settled: { settled: boolean; revision: number }[] = []
-	join(createConsistencyParticipant({ quietMs: 50, maxRevisions: opts.maxRevisions ?? 25, onSettled: (r) => settled.push(r) }))
+	join(createConsistencyParticipant({ quietMs: 50, maxRevisions: opts.maxRevisions ?? 25, keepRunning: opts.keepRunning, onSettled: (r) => settled.push(r) }))
 	const a = fixtureArtifacts()
 	if (opts.breakFirmware) a.firmware!.pins.I2C_SDA = 7
 	const requires = (kind: keyof typeof BUILD_REQUIRES) => (opts.requires ? { requires: BUILD_REQUIRES[kind] } : {})
@@ -132,4 +132,54 @@ test("MAX_REVISIONS still ends a run with waiting builders", async () => {
 	for (const f of ["requirements", "outline", "connectors", "rails"] as const) t.write(f, v[f])
 	await waitFor(() => t.settled.length > 0)
 	assert.equal(t.settled[0].settled, false)
+})
+
+test("a settled design stays settled when nothing changes, without keepRunning even after a change", async () => {
+	const t = setup()
+	t.writeAll()
+	await waitFor(() => t.settled.length > 0)
+	t.write("outline", { widthMm: 60, heightMm: 30, thicknessMm: 1.6 })
+	await new Promise((r) => setTimeout(r, 300))
+	assert.equal(t.settled.length, 1)
+})
+
+test("with keepRunning, a change after settling un-settles the design and it settles again at the new revision", async () => {
+	const t = setup({ keepRunning: true })
+	t.writeAll()
+	await waitFor(() => t.settled.length > 0)
+	await new Promise((r) => setTimeout(r, 200))
+	assert.equal(t.settled.length, 1, "quiet: no second settle without a change")
+	t.write("requirements", { ...fixtureContract().values.requirements!, summary: "BLE logger, now blue" })
+	await waitFor(() => t.settled.length > 1)
+	assert.deepEqual(t.settled, [{ settled: true, revision: 6 }, { settled: true, revision: 7 }])
+	assert.equal(t.events.filter((e) => e.type === "design.settled").length, 2)
+})
+
+test("with keepRunning, a change held for approval after settling keeps the design unsettled until it is decided", async () => {
+	const t = setup({ keepRunning: true })
+	t.writeAll()
+	await waitFor(() => t.settled.length > 0)
+	const id = t.state.approvals.open("rails", "bench")
+	emit(makeEvent("change.proposed", t.events[0].producerId, { proposalId: id, field: "rails", by: "bench", reason: "measured", needsEngineer: false }), t.events[0].producerId)
+	await new Promise((r) => setTimeout(r, 300))
+	assert.equal(t.settled.length, 1)
+	t.state.approvals.resolve(id, { approved: false, by: "architect", reason: "no" })
+	emit(makeEvent("change.resolved", t.events[0].producerId, { proposalId: id, approved: false, reason: "no", decidedBy: ["architect"] }), t.events[0].producerId)
+	await waitFor(() => t.settled.length > 1)
+	assert.equal(t.settled[1].revision, 6)
+})
+
+test("a steady stream of bench telemetry does not keep the design from going quiet and settling", async () => {
+	const t = setup()
+	const stream = setInterval(() => {
+		const id = t.state.getParticipants()[0].getId()
+		emit(makeEvent("bench.telemetry", id, { revision: null, source: "fake", samples: [{ at: Date.now(), mA: 6 }] }), id)
+	}, 10)
+	try {
+		t.writeAll()
+		await waitFor(() => t.settled.length > 0)
+	} finally {
+		clearInterval(stream)
+	}
+	assert.equal(t.settled[0].settled, true)
 })
