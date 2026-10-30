@@ -175,16 +175,30 @@ test("the bench refuses to flash a design whose pins collide with the bench's ow
 	assert.equal(t.fake.commands.filter((c) => c.cmd === "flash").length, 0)
 })
 
-test("no IMU answer and no meter: the IMU check fails and there is no measurement", async () => {
+test("a bare S3 with no IMU fitted and no meter: imu is 'not fitted', neutral, and the verdict passes on boot and LED", async () => {
 	const t = setup(new FakeBridge({ imu: false, meter: false }))
 	t.send("design.settled", { revision: t.firmware(), settled: true })
 	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
-	const checks = Object.fromEntries(t.of("bench.verdict")[0].checks.map((c) => [c.name, c]))
-	assert.equal(checks.imu.pass, false)
-	assert.match(checks.imu.detail, /no ACK/)
+	const v = t.of("bench.verdict")[0]
+	const checks = Object.fromEntries(v.checks.map((c) => [c.name, c]))
+	assert.deepEqual([checks.imu.pass, checks.imu.skipped], [true, true])
+	assert.match(checks.imu.detail, /not fitted/)
+	assert.equal(checks.led.pass, true)
+	assert.equal(v.pass, true)
 	assert.equal(checks.battery, undefined)
 	assert.equal(t.of("bench.measured").length, 0)
 	assert.ok(!t.fake.commands.some((c) => c.cmd === "mode" && c.mode === "duty"))
+})
+
+test("an IMU that answered and then stopped is a failure, not 'not fitted'", async () => {
+	const t = setup(new FakeBridge({ imu: "stops", meter: false }))
+	t.send("design.settled", { revision: t.firmware(), settled: true })
+	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	const imu = t.of("bench.verdict")[0].checks.find((c) => c.name === "imu")!
+	assert.equal(imu.pass, false)
+	assert.equal(imu.skipped, undefined)
+	assert.match(imu.detail, /stopped answering.*no ACK/)
+	assert.equal(t.of("bench.verdict")[0].pass, false)
 })
 
 test("telemetry reaches Mozaik in batches, tagged with the booted revision", async () => {

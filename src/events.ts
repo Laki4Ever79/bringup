@@ -34,6 +34,8 @@ export interface BenchCheck {
 	name: "boot" | "imu" | "led" | "battery"
 	pass: boolean
 	detail: string
+	// Not checked because the part isn't on this bench (a bare S3 has no IMU): neutral, never a failure.
+	skipped?: true
 }
 
 export interface Payloads {

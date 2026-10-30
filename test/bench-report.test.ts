@@ -69,3 +69,13 @@ test("a bench that never got a settled design says so", () => {
 	assert.match(text, /fake bench/)
 	assert.match(text, /nothing flashed/)
 })
+
+test("a skipped check (IMU not fitted) is listed as such, not as ok or FAIL", () => {
+	const path = trace([
+		{ type: "bench.connected", payload: { source: "real", ports: { dut: "/dev/ttyACM0", fixture: null, telemetry: "/dev/ttyACM0" }, meter: false } },
+		{ type: "bench.flashed", payload: { revision: 9, ok: true, ms: 9000 } },
+		{ type: "bench.verdict", payload: { revision: 9, pass: true, source: "real", checks: [{ name: "imu", pass: true, skipped: true, detail: "not fitted (no ACK at 0x68)" }] } },
+	])
+	const text = bringupSection(path).join("\n")
+	assert.match(text, /^- imu: not checked, not fitted \(no ACK at 0x68\)$/m)
+})

@@ -206,7 +206,7 @@ export function checkPills(events) {
 			count: failed.length,
 			revision: bench.verdict?.revision ?? bench.flash?.revision ?? null,
 			items: [
-				...(bench.verdict ? bench.verdict.checks.map((c) => `${c.pass ? "✓" : "✗"} ${c.name}: ${c.detail}`) : []),
+				...(bench.verdict ? bench.verdict.checks.map((c) => `${c.skipped ? "–" : c.pass ? "✓" : "✗"} ${c.name}: ${c.detail}`) : []),
 				...(bench.meter ? [] : ["battery life: estimated only, no meter on this bench"]),
 			],
 		})
@@ -275,13 +275,17 @@ export class TelemetryBuffer {
 		this.tilt = []
 		this.led = []
 		this.lastImu = null
+		// null until a sample says; false when the accel reads zero (no IMU fitted), so there is no tilt to show.
+		this.imu = null
 	}
 	add(samples) {
 		for (const s of samples) {
 			if (typeof s.mA === "number") this.current.push({ at: s.at, mA: s.mA })
-			if (typeof s.tilt === "number") this.tilt.push({ at: s.at, tilt: s.tilt })
+			const accel = typeof s.ax === "number" && typeof s.ay === "number" && typeof s.az === "number"
+			if (accel) this.imu = Math.hypot(s.ax, s.ay, s.az) > 0.3
+			if (typeof s.tilt === "number" && (!accel || this.imu)) this.tilt.push({ at: s.at, tilt: s.tilt })
 			if (typeof s.led === "number") this.led.push({ at: s.at, led: s.led })
-			if (typeof s.ax === "number" && typeof s.ay === "number" && typeof s.az === "number") this.lastImu = { ax: s.ax, ay: s.ay, az: s.az, at: s.at }
+			if (accel && this.imu) this.lastImu = { ax: s.ax, ay: s.ay, az: s.az, at: s.at }
 		}
 		const end = Math.max(this.current.at(-1)?.at ?? -Infinity, this.tilt.at(-1)?.at ?? -Infinity, this.led.at(-1)?.at ?? -Infinity)
 		const from = end - this.windowMs

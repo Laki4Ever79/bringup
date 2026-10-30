@@ -121,3 +121,22 @@ test("without a meter the Bench pill says battery life is estimated only, and th
 	const metered = checkPills([connected("real", true), v]).find((p: any) => p.key === "bench")
 	assert.ok(!metered.items.some((x: string) => x.includes("no meter")))
 })
+
+test("a check the bench skipped (IMU not fitted) reads neutral in the Bench pill", () => {
+	const v = ev("bench.verdict", { revision: 9, pass: true, source: "real", checks: [{ name: "boot", pass: true, detail: "booted rev 9" }, { name: "imu", pass: true, skipped: true, detail: "not fitted (nothing answers at 0x68)" }] })
+	const pill = checkPills([connected("real", false), v]).find((p: any) => p.key === "bench")
+	assert.equal(pill.state, "ok")
+	assert.ok(pill.items.includes("– imu: not fitted (nothing answers at 0x68)"))
+})
+
+test("zero acceleration means no IMU: no tilt is charted and nothing tilts the 3D board", () => {
+	const b = new TelemetryBuffer(30_000)
+	b.add([{ at: 1000, ax: 0, ay: 0, az: 0, tilt: 0, led: 1 }, { at: 1050, ax: 0, ay: 0, az: 0, tilt: 0, led: 0 }])
+	assert.equal(b.imu, false)
+	assert.deepEqual(b.tilt, [])
+	assert.equal(b.lastImu, null)
+	assert.equal(b.led.length, 2, "the LED still charts")
+	b.add([{ at: 1100, ax: 0.1, ay: 0, az: 0.99, tilt: 6, led: 1 }])
+	assert.equal(b.imu, true)
+	assert.equal(b.tilt.length, 1)
+})

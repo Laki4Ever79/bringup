@@ -43,7 +43,7 @@ export function bringupSection(tracePath: string): string[] {
 			? `- Flash: rev ${flashed.revision} ${flashed.simulated ? "simulated (replay)" : `flashed in ${sig(flashed.ms / 1000)} s`}`
 			: `- Flash: rev ${flashed.revision} flash failed at ${flashed.stage ?? "?"}: ${flashed.error ?? ""}`,
 	)
-	for (const c of verdict?.checks ?? []) out.push(`- ${c.name}: ${c.pass ? "ok" : "FAIL"}, ${c.detail}`)
+	for (const c of verdict?.checks ?? []) out.push(c.skipped ? `- ${c.name}: not checked, ${c.detail}` : `- ${c.name}: ${c.pass ? "ok" : "FAIL"}, ${c.detail}`)
 	if (measured) {
 		const tag = measured.source === "real" ? "" : ` (${measured.source.toUpperCase()}`
 		out.push(
