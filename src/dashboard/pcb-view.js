@@ -163,29 +163,29 @@ const GLOW_MS = 2000
 const STYLE = `
 .pcb-root { position: absolute; inset: 0; overflow: hidden; font-family: ${FONT}; color: #ededed; user-select: none; }
 .pcb-root svg { width: 100%; height: 100%; display: block; cursor: grab; }
-.pcb-root svg.panning { cursor: grabbing; }
-.pcb-root .part, .pcb-root .trace, .pcb-root .pad, .pcb-root .via { transition: opacity 160ms ${EASE}; }
-.pcb-root .dim { opacity: .16; }
-.pcb-root .part .outline { fill: rgba(237,237,237,.025); stroke: ${PCB_COLORS.silk}; stroke-opacity: .55; transition: stroke-opacity 160ms ${EASE}, fill 160ms ${EASE}; }
-.pcb-root .part:hover .outline, .pcb-root .part.focus .outline { stroke-opacity: 1; fill: rgba(237,237,237,.07); }
-.pcb-root .part .ref { fill: ${PCB_COLORS.silk}; fill-opacity: .8; font-family: ${MONO}; font-weight: 600; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
-.pcb-root .pulse { fill: none; stroke: ${PCB_COLORS.accent}; opacity: 0; pointer-events: none; animation: pcb-pulse ${GLOW_MS}ms ${EASE} forwards; }
+.pcb-root svg.pcb-panning { cursor: grabbing; }
+.pcb-root .pcb-part, .pcb-root .pcb-trace, .pcb-root .pcb-pad, .pcb-root .pcb-via { transition: opacity 160ms ${EASE}; }
+.pcb-root .pcb-dim { opacity: .16; }
+.pcb-root .pcb-part .pcb-outline { fill: rgba(237,237,237,.025); stroke: ${PCB_COLORS.silk}; stroke-opacity: .55; transition: stroke-opacity 160ms ${EASE}, fill 160ms ${EASE}; }
+.pcb-root .pcb-part:hover .pcb-outline, .pcb-root .pcb-part.pcb-focus .pcb-outline { stroke-opacity: 1; fill: rgba(237,237,237,.07); }
+.pcb-root .pcb-part .pcb-ref { fill: ${PCB_COLORS.silk}; fill-opacity: .8; font-family: ${MONO}; font-weight: 600; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.pcb-root .pcb-pulse { fill: none; stroke: ${PCB_COLORS.accent}; opacity: 0; pointer-events: none; animation: pcb-pulse ${GLOW_MS}ms ${EASE} forwards; }
 @keyframes pcb-pulse { 0% { opacity: 0 } 12% { opacity: 1 } 60% { opacity: .85 } 100% { opacity: 0 } }
-.pcb-root.view-top .layer-bottom { opacity: .12; }
-.pcb-root.view-bottom .layer-top { opacity: .12; }
+.pcb-root.pcb-view-top .pcb-layer-bottom { opacity: .12; }
+.pcb-root.pcb-view-bottom .pcb-layer-top { opacity: .12; }
 .pcb-tip { position: absolute; pointer-events: none; padding: 8px 10px; border-radius: 8px; background: rgba(22,22,26,.86);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid #2e2e35; box-shadow: 0 8px 24px rgba(0,0,0,.45);
   font-size: 13px; line-height: 1.35; white-space: nowrap; opacity: 0; transform: translateY(4px); transition: opacity 160ms ${EASE}, transform 160ms ${EASE}; }
-.pcb-tip.on { opacity: 1; transform: none; }
+.pcb-tip.pcb-on { opacity: 1; transform: none; }
 .pcb-tip b { font-family: ${MONO}; font-size: 15px; letter-spacing: .02em; }
-.pcb-tip .mpn { font-family: ${MONO}; color: #a1a1aa; }
-.pcb-tip .role { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; border: 1px solid #2e2e35; color: #a1a1aa; font-size: 12px; }
-.pcb-tip .nets { color: #6b6b76; margin-top: 2px; }
+.pcb-tip .pcb-mpn { font-family: ${MONO}; color: #a1a1aa; }
+.pcb-tip .pcb-role { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; border: 1px solid #2e2e35; color: #a1a1aa; font-size: 12px; }
+.pcb-tip .pcb-nets { color: #6b6b76; margin-top: 2px; }
 .pcb-legend { position: absolute; left: 14px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px 12px; max-width: 70%;
   font-size: 13px; color: #a1a1aa; pointer-events: none; }
 .pcb-legend span { display: inline-flex; align-items: center; gap: 6px; font-family: ${MONO}; font-variant-numeric: tabular-nums; }
 .pcb-legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
-@media (prefers-reduced-motion: reduce) { .pcb-root .pulse { animation-duration: 1ms; } .pcb-root * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .pcb-root .pcb-pulse { animation-duration: 1ms; } .pcb-root * { transition: none !important; } }
 `
 
 function el(tag, attrs = {}, parent) {
@@ -200,7 +200,7 @@ const html = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "
 export function mountPcb(host, opts = {}) {
 	if (getComputedStyle(host).position === "static") host.style.position = "relative"
 	const root = document.createElement("div")
-	root.className = "pcb-root view-both"
+	root.className = "pcb-root pcb-view-both"
 	const style = document.createElement("style")
 	style.textContent = STYLE
 	root.appendChild(style)
@@ -266,13 +266,13 @@ export function mountPcb(host, opts = {}) {
 		const colors = opts.colors ?? {}
 
 		for (const layer of ["bottom", "top"]) {
-			const g = el("g", { class: `layer-${layer}` }, svg)
+			const g = el("g", { class: `pcb-layer-${layer}` }, svg)
 			for (const t of ix.traces) {
 				const segs = t.segments.filter((s) => s.layer === layer)
 				if (segs.length === 0) continue
 				const path = segs.map((s) => `M${s.x1} ${-s.y1}L${s.x2} ${-s.y2}`).join("")
 				el("path", {
-					class: "trace", d: path, "data-refs": t.refs.join(" "), "data-net": t.net ?? "",
+					class: "pcb-trace", d: path, "data-refs": t.refs.join(" "), "data-net": t.net ?? "",
 					stroke: colors[t.net] ?? colorOf(t.net), "stroke-opacity": layer === "bottom" ? 0.7 : 0.95,
 					"stroke-width": Math.max(0.15, segs[0].width), "stroke-linecap": "round", "stroke-linejoin": "round", fill: "none",
 				}, g)
@@ -281,7 +281,7 @@ export function mountPcb(host, opts = {}) {
 
 		const padLayer = el("g", {}, svg)
 		for (const p of ix.pads) {
-			const g = el("g", { class: `pad layer-${p.layer === "bottom" ? "bottom" : "top"}`, "data-ref": p.ref ?? "" }, padLayer)
+			const g = el("g", { class: `pcb-pad pcb-layer-${p.layer === "bottom" ? "bottom" : "top"}`, "data-ref": p.ref ?? "" }, padLayer)
 			const round = p.shape === "circle" || p.shape === "pill" || p.shape === "oval"
 			el("rect", {
 				x: p.x - p.w / 2, y: -p.y - p.h / 2, width: p.w, height: p.h, rx: round ? Math.min(p.w, p.h) / 2 : Math.min(p.w, p.h) * 0.18,
@@ -293,7 +293,7 @@ export function mountPcb(host, opts = {}) {
 		}
 		const viaLayer = el("g", {}, svg)
 		for (const v of ix.vias) {
-			const g = el("g", { class: "via" }, viaLayer)
+			const g = el("g", { class: "pcb-via" }, viaLayer)
 			el("circle", { cx: v.x, cy: -v.y, r: v.outer / 2, fill: PCB_COLORS.copperTop }, g)
 			el("circle", { cx: v.x, cy: -v.y, r: v.hole / 2, fill: PCB_COLORS.bg }, g)
 		}
@@ -301,12 +301,13 @@ export function mountPcb(host, opts = {}) {
 		const partLayer = el("g", {}, svg)
 		for (const c of ix.components) {
 			const w = c.x1 - c.x0, h = c.y1 - c.y0
-			const g = el("g", { class: `part layer-${c.layer}`, "data-ref": c.ref }, partLayer)
-			const outline = el("rect", { class: "outline", x: c.x0, y: -c.y1, width: w, height: h, rx: Math.min(0.6, Math.min(w, h) * 0.15), "stroke-width": 0.14 }, g)
+			const g = el("g", { class: `pcb-part pcb-layer-${c.layer}`, "data-ref": c.ref }, partLayer)
+			const outline = el("rect", { class: "pcb-outline", x: c.x0, y: -c.y1, width: w, height: h, rx: Math.min(0.6, Math.min(w, h) * 0.15), "stroke-width": 0.14 }, g)
 			const size = Math.max(0.7, Math.min(2.2, Math.min(w, h) * 0.32))
 			// Small parts get their ref just above the outline; big ones in the middle.
 			const inside = Math.min(w, h) > 4
-			const label = el("text", { class: "ref", x: c.cx, y: inside ? -c.cy : -c.y1 - size * 0.75, "font-size": size }, g)
+			// Inline style, not the font-size attribute: a page's own CSS would override an attribute.
+			const label = el("text", { class: "pcb-ref", x: c.cx, y: inside ? -c.cy : -c.y1 - size * 0.75, style: `font-size:${size}px` }, g)
 			label.textContent = c.ref
 			byRef.set(c.ref, { group: g, outline })
 			g.addEventListener("pointerenter", (e) => showTip(c, e))
@@ -323,9 +324,9 @@ export function mountPcb(host, opts = {}) {
 	function showTip(c, e) {
 		const p = parts.get(c.ref)
 		const nets = [...new Set(ix.pads.filter((x) => x.ref === c.ref && x.net).map((x) => x.net))]
-		tip.innerHTML = `<b>${html(c.ref)}</b>${p?.mpn ? ` · <span class="mpn">${html(p.mpn)}</span>` : ""}${p?.role ? `<span class="role">${html(p.role)}</span>` : ""}` +
-			(nets.length ? `<div class="nets">${nets.map(html).join(" · ")}</div>` : "")
-		tip.classList.add("on")
+		tip.innerHTML = `<b>${html(c.ref)}</b>${p?.mpn ? ` · <span class="pcb-mpn">${html(p.mpn)}</span>` : ""}${p?.role ? `<span class="pcb-role">${html(p.role)}</span>` : ""}` +
+			(nets.length ? `<div class="pcb-nets">${nets.map(html).join(" · ")}</div>` : "")
+		tip.classList.add("pcb-on")
 		moveTip(e)
 		opts.onHover?.(c.ref)
 	}
@@ -337,19 +338,19 @@ export function mountPcb(host, opts = {}) {
 		tip.style.top = `${y}px`
 	}
 	function hideTip() {
-		tip.classList.remove("on")
+		tip.classList.remove("pcb-on")
 		opts.onHover?.(null)
 	}
 
 	function applyHighlight(ref) {
 		const on = ref !== null && byRef.has(ref)
 		for (const [r, { group }] of byRef) {
-			group.classList.toggle("dim", on && r !== ref)
-			group.classList.toggle("focus", on && r === ref)
+			group.classList.toggle("pcb-dim", on && r !== ref)
+			group.classList.toggle("pcb-focus", on && r === ref)
 		}
-		for (const t of svg.querySelectorAll(".trace")) t.classList.toggle("dim", on && !t.getAttribute("data-refs").split(" ").includes(ref))
-		for (const p of svg.querySelectorAll(".pad")) p.classList.toggle("dim", on && p.getAttribute("data-ref") !== ref)
-		for (const v of svg.querySelectorAll(".via")) v.classList.toggle("dim", on)
+		for (const t of svg.querySelectorAll(".pcb-trace")) t.classList.toggle("pcb-dim", on && !t.getAttribute("data-refs").split(" ").includes(ref))
+		for (const p of svg.querySelectorAll(".pcb-pad")) p.classList.toggle("pcb-dim", on && p.getAttribute("data-ref") !== ref)
+		for (const v of svg.querySelectorAll(".pcb-via")) v.classList.toggle("pcb-dim", on)
 	}
 
 	function pulse(refs) {
@@ -358,14 +359,14 @@ export function mountPcb(host, opts = {}) {
 			if (!hit) continue
 			const o = hit.outline
 			const ring = el("rect", {
-				class: "pulse", x: o.getAttribute("x"), y: o.getAttribute("y"), width: o.getAttribute("width"), height: o.getAttribute("height"),
+				class: "pcb-pulse", x: o.getAttribute("x"), y: o.getAttribute("y"), width: o.getAttribute("width"), height: o.getAttribute("height"),
 				rx: o.getAttribute("rx"), "stroke-width": 0.35, filter: "url(#pcb-glow)",
 			}, hit.group)
 			setTimeout(() => ring.remove(), GLOW_MS + 100)
-			for (const t of svg.querySelectorAll(".trace")) {
+			for (const t of svg.querySelectorAll(".pcb-trace")) {
 				if (!t.getAttribute("data-refs").split(" ").includes(ref)) continue
 				const copy = t.cloneNode()
-				copy.setAttribute("class", "pulse")
+				copy.setAttribute("class", "pcb-pulse")
 				copy.setAttribute("stroke", PCB_COLORS.accent)
 				copy.setAttribute("filter", "url(#pcb-glow)")
 				t.parentNode.appendChild(copy)
@@ -392,7 +393,7 @@ export function mountPcb(host, opts = {}) {
 	svg.addEventListener("pointerdown", (e) => {
 		if (!view || e.button !== 0) return
 		drag = { x: e.clientX, y: e.clientY, view: [...view] }
-		svg.classList.add("panning")
+		svg.classList.add("pcb-panning")
 		svg.setPointerCapture?.(e.pointerId)
 	})
 	svg.addEventListener("pointermove", (e) => {
@@ -405,7 +406,7 @@ export function mountPcb(host, opts = {}) {
 	})
 	const endDrag = () => {
 		drag = null
-		svg.classList.remove("panning")
+		svg.classList.remove("pcb-panning")
 	}
 	svg.addEventListener("pointerup", endDrag)
 	svg.addEventListener("pointercancel", endDrag)
@@ -435,8 +436,8 @@ export function mountPcb(host, opts = {}) {
 			applyHighlight(ref)
 		},
 		setView(v) {
-			root.classList.remove("view-top", "view-bottom", "view-both")
-			root.classList.add(`view-${v === "top" || v === "bottom" ? v : "both"}`)
+			root.classList.remove("pcb-view-top", "pcb-view-bottom", "pcb-view-both")
+			root.classList.add(`pcb-view-${v === "top" || v === "bottom" ? v : "both"}`)
 		},
 		// Extension: parts from contract.json or bom.json ({ref, mpn, role}) for the tooltip.
 		setParts(list) {
