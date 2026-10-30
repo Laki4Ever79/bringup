@@ -6,7 +6,7 @@ import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
 import { createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder } from "./agents/builders.ts"
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
-import { createCritic } from "./agents/critic.ts"
+import { createGroundingCheck } from "./agents/grounding-check.ts"
 import { createArchitectAgent, createFirmwareReviewer, createPartsAgent } from "./agents/roles.ts"
 import { inferenceConfig } from "./inference/models.ts"
 import { mockScripts } from "./inference/scripts.ts"
@@ -54,7 +54,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, onSettled: resolveSettled }))
 	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env)]
 	for (const b of builders) joinRuntime(b)
-	joinRuntime(createCritic(env))
+	joinRuntime(createGroundingCheck(env))
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })
 	createFirmwareReviewer({ mock: opts.mock })
