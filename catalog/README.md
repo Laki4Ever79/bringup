@@ -16,6 +16,26 @@ Generic footprints, not the real land pattern:
 labelled), so `pins` is empty until the VBUS/CC/D± pad order is mapped. In codegen it is emitted as a `<connector>`,
 not a `<chip>`, which avoids tscircuit's `J`-prefix warning.
 
+Power pads of `usbcmidmount`, as wired by `src/codegen/circuit.ts`. These were read from the footprinter source
+(`@tscircuit/footprinter`, `usbcmidmount.ts`), not from a datasheet. `pin1`..`pin4` are the shell tabs, and
+`pin5`..`pin16` are the 12 contact pads from left to right. The outer two pads on each side are the wide merged power
+pads, which on a 16-pin USB-C receptacle are GND (outermost) and VBUS:
+
+| Pads | Net | Wired |
+|---|---|---|
+| `pin5`, `pin16` | GND | yes |
+| `pin6`, `pin15` | VBUS → LDO VIN and EN | yes, when the contract has an `ldo` part |
+| `pin7`..`pin14` | SBU, CC1/CC2, D+/D− | **no** |
+| `pin1`..`pin4` | shell | no (left floating) |
+
+Still missing for a working USB-C sink: 5.1 kΩ pull-downs from CC1 and CC2 to GND (without them, a C-to-C charger
+supplies no VBUS), and D+/D− to the ESP32-C3's GPIO18/GPIO19 for flashing. Both need the inner pad order checked
+against the TYPE-C-31-M-12 datasheet first.
+
+The LED gets a series resistor to GND: the contract's `resistor` part if it has one, otherwise codegen adds a 1 kΩ 0402
+`<resistor>` (`R1`, or the next free ref). That added resistor is on the board but not in the contract's BOM. The
+catalog's resistor is 10 kΩ (`0402WGF1002TCE`), so a real 1 kΩ LCSC part still has to be added.
+
 The LCSC numbers were not re-checked against live stock during the event.
 
 ## Live stock and price
