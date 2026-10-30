@@ -23,6 +23,8 @@ export class BringupState extends RuntimeState {
 	readonly artifactInputs: Partial<Record<"board" | "enclosure" | "firmware", Partial<Record<FieldName, number>>>> = {}
 	readonly roles = new Map<string, AgentRole>()
 	readonly approvals = new ApprovalRegistry()
+	// Per artifact: the error of its last build, if that build failed.
+	readonly artifactFailures: Partial<Record<"board" | "enclosure" | "firmware", string>> = {}
 
 	constructor(
 		readonly outDir: string,

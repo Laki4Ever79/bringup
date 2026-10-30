@@ -1,0 +1,60 @@
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { checkConsistency } from "./contract/consistency.ts"
+import type { BringupState } from "./runtime.ts"
+import { describeEnv, type Env } from "./tools/env.ts"
+
+function counts(tracePath: string): Record<string, number> {
+	const c: Record<string, number> = {}
+	if (!existsSync(tracePath)) return c
+	for (const line of readFileSync(tracePath, "utf8").trim().split("\n")) {
+		if (!line) continue
+		const { type, payload } = JSON.parse(line) as { type: string; payload: { approved?: boolean; violations?: unknown[] } }
+		c[type] = (c[type] ?? 0) + 1
+		if (type === "change.decided") c[payload.approved ? "approved" : "rejected"] = (c[payload.approved ? "approved" : "rejected"] ?? 0) + 1
+		if (type === "consistency.checked") c.violationsSeen = (c.violationsSeen ?? 0) + (payload.violations?.length ?? 0)
+	}
+	return c
+}
+
+export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean): string {
+	const snapshot = s.contract.snapshot()
+	const violations = checkConsistency(snapshot, s.artifacts)
+	const c = counts(join(outDir, "trace.jsonl"))
+	const v = snapshot.values
+	const lines = [
+		`# Bringup report`,
+		``,
+		`Status: ${settled ? "settled" : "UNSETTLED"} at contract revision ${snapshot.revision}`,
+		`Violations: ${violations.length}`,
+		...violations.map((x) => `- ${x.kind}: ${x.message}`),
+		``,
+		`## Design`,
+		`- ${v.requirements?.summary ?? "?"}`,
+		`- Board ${v.outline?.widthMm}×${v.outline?.heightMm} mm; connectors: ${(v.connectors ?? []).map((x) => `${x.ref} ${x.kind} on ${x.edge}`).join(", ") || "none"}`,
+		`- Parts: ${(v.parts ?? []).map((p) => `${p.ref} ${p.mpn}${p.lcsc ? ` (${p.lcsc})` : ""}`).join(", ")}`,
+		`- Pins: ${(v.pins ?? []).map((p) => `${p.signal}=GPIO${p.gpio}→${p.partRef}.${p.partPin}`).join(", ")}`,
+		`- Rails: ${(v.rails ?? []).map((r) => `${r.name} ${r.loadMa}/${r.regulatorMaxMa} mA`).join(", ")}`,
+		``,
+		`## Artifacts`,
+		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
+		`- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}`,
+		`- Firmware: ${s.artifacts.firmware ? (s.artifacts.firmware.ok ? "compiles" : "does NOT compile") : "not built"}`,
+		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
+		``,
+		`## Coordination`,
+		`- Contract changes: ${c["contract.changed"] ?? 0}`,
+		`- Change requests held by interception: ${c["change.proposed"] ?? 0} (approved ${c.approved ?? 0}, rejected ${c.rejected ?? 0})`,
+		`- Consistency checks: ${c["consistency.checked"] ?? 0}; violations caught along the way: ${c.violationsSeen ?? 0}`,
+		`- Artifacts built: ${c["artifact.ready"] ?? 0}; failed builds: ${c["artifact.failed"] ?? 0}; agent crashes: ${c["agent.halted"] ?? 0}`,
+		``,
+		`## Environment`,
+		"```",
+		describeEnv(env),
+		"```",
+		``,
+	]
+	const path = join(outDir, "report.md")
+	writeFileSync(path, lines.join("\n"))
+	return path
+}
