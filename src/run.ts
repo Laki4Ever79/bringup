@@ -5,6 +5,7 @@ import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
 import { createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder } from "./agents/builders.ts"
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
+import { createCritic } from "./agents/critic.ts"
 import { createArchitectAgent, createFirmwareReviewer, createPartsAgent } from "./agents/roles.ts"
 import { inferenceConfig } from "./inference/models.ts"
 import { mockScripts } from "./inference/scripts.ts"
@@ -49,6 +50,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	joinRuntime(createBoardBuilder(env))
 	joinRuntime(createEnclosureBuilder(env))
 	joinRuntime(createFirmwareBuilder(env))
+	joinRuntime(createCritic(env))
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })
 	createFirmwareReviewer({ mock: opts.mock })

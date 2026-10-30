@@ -1,19 +1,20 @@
 import { randomBytes } from "node:crypto"
-import { mkdirSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { readFile, realpath, stat } from "node:fs/promises"
 import { join, sep } from "node:path"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
-import type { runDesign } from "../run.ts"
+import type { RunProcessArgs } from "../runner/spawn-run.ts"
 
 export interface BringupMcpDeps {
-	runDesign: typeof runDesign
+	// Starts one run (by default a `tsx src/main.ts` child, see startRunProcess). Exit 0 settled, 2 unsettled.
+	launch: (args: RunProcessArgs) => { done: Promise<{ code: number; stderr: string }> }
 	outRoot: string
 }
 
 type RunState =
 	| { status: "running" }
-	| { status: "settled" | "unsettled"; revision: number }
+	| { status: "settled" | "unsettled" }
 	| { status: "failed"; error: string }
 
 interface TraceLine {
@@ -26,6 +27,7 @@ interface TraceLine {
 
 const RUN_ID = /^[\w-]+$/
 const MAX_EVENTS = 500
+const ERROR_TAIL_LINES = 20
 
 const ok = (value: unknown) => ({ content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] })
 const fail = (message: string) => ({ isError: true, content: [{ type: "text" as const, text: message }] })
@@ -69,6 +71,13 @@ function summarise(trace: TraceLine[]) {
 	return { counts, revision, violations, settled: settled as { revision: number; settled: boolean } | null }
 }
 
+function exitState(code: number, stderr: string): RunState {
+	if (code === 0) return { status: "settled" }
+	if (code === 2) return { status: "unsettled" }
+	const tail = stderr.trimEnd().split("\n").slice(-ERROR_TAIL_LINES).join("\n")
+	return { status: "failed", error: tail || `run exited with code ${code}` }
+}
+
 // MCP face of Bringup: a coding agent starts runs and reads their contract, report and trace. Runs go on
 // in the background; every read comes from out/<runId>/ and never leaves outRoot.
 export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
@@ -101,11 +110,13 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			const runId = newRunId()
 			const outDir = join(deps.outRoot, runId)
 			mkdirSync(outDir, { recursive: true })
+			const briefPath = join(outDir, "brief.md")
+			writeFileSync(briefPath, brief.endsWith("\n") ? brief : brief + "\n")
 			runs.set(runId, { status: "running" })
-			// Not awaited: the run goes on while the client polls.
-			deps.runDesign({ brief, mock: mock ?? true, outDir }).then(
-				(r) => runs.set(runId, { status: r.settled ? "settled" : "unsettled", revision: r.revision }),
-				(error) => runs.set(runId, { status: "failed", error: error instanceof Error ? error.message : String(error) }),
+			// Not awaited: the run goes on in its own process while the client polls.
+			deps.launch({ briefPath, mock: mock ?? true, outDir }).done.then(
+				({ code, stderr }) => runs.set(runId, exitState(code, stderr)),
+				(error) => runs.set(runId, { status: "failed", error: String(error) }),
 			)
 			return ok({ runId, outDir })
 		},
@@ -127,7 +138,7 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			return ok({
 				runId,
 				status,
-				revision: state && "revision" in state ? state.revision : revision,
+				revision,
 				violations,
 				counts,
 				...(state?.status === "failed" ? { error: state.error } : {}),
