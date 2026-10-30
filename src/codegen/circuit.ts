@@ -275,21 +275,56 @@ export interface PlacementOptions {
 	ldoFromUsbMm?: number
 }
 
-export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Placed[] {
-	const { outline, parts = [], connectors = [] } = s.values
-	if (!outline) throw new Error("placeParts: contract has no outline")
-	const [W, H] = [outline.widthMm, outline.heightMm]
-	const placed: Placed[] = []
+// Board mounting holes for M2 screws: 2.2 mm clearance holes, centred 3 mm in from each corner. Nothing is placed
+// within the 5.5 mm keep-out square (an M2 pan head is 3.8 mm). The enclosure puts a standoff under each one.
+export const MOUNTING_HOLE = { diameterMm: 2.2, insetMm: 3, keepoutMm: 5.5 }
 
-	for (const c of connectors) {
+export interface MountingHole {
+	ref: string
+	x: number // board-centred, like pcbX/pcbY
+	y: number
+	diameterMm: number
+}
+
+function connectorBoxes(s: ContractSnapshot, W: number, H: number): Placed[] {
+	const { parts = [], connectors = [] } = s.values
+	return connectors.map((c) => {
 		const part = parts.find((p) => p.ref === c.ref)
 		const rotation = EDGE_ROTATION[c.edge]
 		const footprint = part ? footprintFor(part) : CONNECTOR_FOOTPRINT[c.kind]
 		const [w, h] = sizeAt(footprint, rotation)
 		const { x, y } = connectorPosition(c, W, H)
 		const { dx, dy } = offsetAt(footprint, rotation)
-		placed.push({ ref: c.ref, x: x + dx, y: y + dy, w, h, rotation })
-	}
+		return { ref: c.ref, x: x + dx, y: y + dy, w, h, rotation }
+	})
+}
+
+const overlaps = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) =>
+	Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y - b.y) < (a.h + b.h) / 2
+
+// The corner holes the board gets: H1 bottom-left, H2 bottom-right, H3 top-left, H4 top-right. A corner whose
+// keep-out a connector already covers gets no hole, so the enclosure gets no standoff there either.
+export function mountingHoles(s: ContractSnapshot): MountingHole[] {
+	const { outline } = s.values
+	if (!outline) return []
+	const [W, H] = [outline.widthMm, outline.heightMm]
+	const dx = W / 2 - MOUNTING_HOLE.insetMm
+	const dy = H / 2 - MOUNTING_HOLE.insetMm
+	const corners = [[-dx, -dy], [dx, -dy], [-dx, dy], [dx, dy]]
+	const taken = connectorBoxes(s, W, H)
+	const k = MOUNTING_HOLE.keepoutMm
+	return corners
+		.map(([x, y], i) => ({ ref: `H${i + 1}`, x: +x.toFixed(3), y: +y.toFixed(3), diameterMm: MOUNTING_HOLE.diameterMm }))
+		.filter((h) => !taken.some((b) => overlaps(b, { x: h.x, y: h.y, w: k, h: k })))
+}
+
+export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Placed[] {
+	const { outline, parts = [], connectors = [] } = s.values
+	if (!outline) throw new Error("placeParts: contract has no outline")
+	const [W, H] = [outline.widthMm, outline.heightMm]
+	const placed: Placed[] = connectorBoxes(s, W, H)
+	// Hole keep-outs block placement but are not parts, so they are not returned.
+	const keepouts = mountingHoles(s).map((h) => ({ x: h.x, y: h.y, w: MOUNTING_HOLE.keepoutMm, h: MOUNTING_HOLE.keepoutMm }))
 
 	// (u, v) runs inward from the USB-C edge and along it, so role targets don't depend on which edge that is.
 	const usb = connectors.find((c) => c.kind === "usb-c")
@@ -307,7 +342,8 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 	const fits = (b: Placed) =>
 		Math.abs(b.x) + b.w / 2 <= W / 2 - EDGE_MARGIN_MM &&
 		Math.abs(b.y) + b.h / 2 <= H / 2 - EDGE_MARGIN_MM &&
-		placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= GAP_MM)
+		placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= GAP_MM) &&
+		keepouts.every((o) => !overlaps(b, o))
 
 	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }): Placed | undefined => {
 		const [w, h] = sizeAt(footprint, rotation)
@@ -503,6 +539,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	}
 
 	lines.push(...powerLines(s, placement))
+	for (const h of mountingHoles(s)) lines.push(`<hole pcbX={${h.x}} pcbY={${h.y}} diameter="${h.diameterMm}mm" />`)
 
 	return [
 		"export default () => (",

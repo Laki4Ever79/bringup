@@ -34,3 +34,36 @@ test("firmware-build-failed", () => only("firmware-build-failed", ["firmware"], 
 test("rules skip missing artifacts", () => {
 	assert.deepEqual(checkConsistency(fixtureContract(), {}), [])
 })
+
+const CORNERS = [[3, 3], [47, 3], [3, 27], [47, 27]]
+const withMounting = (a: ReturnType<typeof fixtureArtifacts>) => {
+	a.board!.holes = CORNERS.map(([xMm, yMm]) => ({ xMm, yMm, diameterMm: 2.2 }))
+	a.enclosure!.standoffs = CORNERS.map(([xMm, yMm]) => ({ xMm, yMm, holeMm: 1.6 }))
+	return a
+}
+
+test("standoffs under every board hole are consistent", () => {
+	assert.deepEqual(checkConsistency(fixtureContract(), withMounting(fixtureArtifacts())), [])
+})
+
+test("standoff-mismatch: a standoff off its hole", () =>
+	only("standoff-mismatch", ["enclosure"], (_c, a) => {
+		withMounting(a).enclosure!.standoffs![1].xMm = 46
+	}))
+
+test("standoff-mismatch: a hole with no standoff, and a standoff with no hole", () => {
+	const a = withMounting(fixtureArtifacts())
+	a.enclosure!.standoffs!.pop()
+	a.board!.holes!.shift()
+	const v = checkConsistency(fixtureContract(), a)
+	assert.deepEqual(v.map((x) => x.kind), ["standoff-mismatch", "standoff-mismatch"])
+	assert.match(v[0].message, /47, 27/)
+	assert.match(v[1].message, /3, 3/)
+})
+
+test("the standoff rule waits until both the board and the case report their holes", () => {
+	const a = withMounting(fixtureArtifacts())
+	delete a.board!.holes
+	a.enclosure!.standoffs = []
+	assert.deepEqual(checkConsistency(fixtureContract(), a), [])
+})
