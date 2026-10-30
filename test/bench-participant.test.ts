@@ -241,3 +241,18 @@ test("a newer firmware cuts the running measurement short and is flashed at once
 	assert.equal(old!.checks.some((c) => c.name === "battery"), false)
 	assert.equal(t.of("bench.measured").some((m) => m.revision === first), false)
 })
+
+test("without a CP2102: a telemetry error while the port re-enumerates and a repeated boot line change nothing", async () => {
+	const fake = new FakeBridge()
+	const t = setup(fake)
+	const rev = t.firmware()
+	t.send("design.settled", { revision: rev, settled: true })
+	await waitFor(() => t.of("bench.flashed").length > 0)
+	// The bridge reopens the S3's own USB port after the flash: one error line, then the firmware resends its boot line.
+	fake.emit({ k: "error", where: "telemetry", error: "port vanished: /dev/ttyACM0" })
+	fake.emit({ k: "boot", rev, reset: "usb", mode: "live" })
+	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	assert.equal(t.of("bench.flashed").length, 1)
+	assert.equal(t.of("bench.verdict")[0].pass, true, JSON.stringify(t.of("bench.verdict")[0].checks))
+	assert.equal(t.of("bench.measured").length, 1, "measured from the meter samples alone, with no cycle lines")
+})
