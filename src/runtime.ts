@@ -10,6 +10,7 @@ import {
 import { ApprovalRegistry } from "./approvals.ts"
 import type { Artifacts } from "./contract/consistency.ts"
 import { DesignContract } from "./contract/contract.ts"
+import type { GroundingFinding } from "./contract/grounding.ts"
 import type { AgentRole, FieldName } from "./contract/types.ts"
 import { makeEvent } from "./events.ts"
 import { Outbox } from "./outbox.ts"
@@ -25,6 +26,8 @@ export class BringupState extends RuntimeState {
 	readonly approvals = new ApprovalRegistry()
 	// Per artifact: the error of its last build, if that build failed.
 	readonly artifactFailures: Partial<Record<"board" | "enclosure" | "firmware", string>> = {}
+	// The critic's latest findings: part pins and pin assignments that no datasheet source backs.
+	groundingFindings: GroundingFinding[] = []
 
 	constructor(
 		readonly outDir: string,

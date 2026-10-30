@@ -1,5 +1,6 @@
 import { SemanticEvent } from "@mozaik-ai/core"
 import type { Violation } from "./contract/consistency.ts"
+import type { GroundingFinding } from "./contract/grounding.ts"
 import type { AgentRole, FieldName } from "./contract/types.ts"
 
 export type ArtifactKind = "board" | "enclosure" | "firmware"
@@ -11,6 +12,7 @@ export interface Payloads {
 	"artifact.ready": { kind: ArtifactKind; revision: number }
 	"artifact.failed": { kind: ArtifactKind; revision: number; error: string }
 	"consistency.checked": { revision: number; violations: Violation[] }
+	"grounding.checked": { revision: number; findings: GroundingFinding[] }
 	"design.settled": { revision: number; settled: boolean }
 	"agent.halted": { agentId: string; error: string }
 }

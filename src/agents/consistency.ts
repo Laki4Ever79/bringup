@@ -59,7 +59,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		const s = state()
 		const busy = [...turns.values()].some((n) => n > 0) || s.approvals.openCount() > 0 || !KINDS.every(current)
 		if (busy) return
-		settle(violations.length === 0 && KINDS.every((k) => s.artifactFailures[k] === undefined))
+		settle(violations.length === 0 && s.groundingFindings.length === 0 && KINDS.every((k) => s.artifactFailures[k] === undefined))
 	}
 
 	const participant = createHuman({
