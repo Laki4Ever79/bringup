@@ -14,10 +14,20 @@ export const OWNERS: Record<FieldName, AgentRole> = {
 	pins: "architect",
 }
 
+// How the device spends its time: awake for activeMs every periodS seconds, drawing sleepUa in between.
+export interface DutyCycle {
+	activeMs: number
+	periodS: number
+	sleepUa: number
+}
+
 export interface Requirements {
 	summary: string
 	peripherals: string[]
 	batteryLifeDays: number | null
+	// Battery capacity, when the brief does not state it in mAh.
+	batteryMah?: number
+	dutyCycle?: DutyCycle
 }
 
 export interface Outline {
@@ -39,7 +49,10 @@ export interface Rail {
 	name: string
 	voltageV: number
 	regulatorMaxMa: number
+	// Peak load, which the regulator must supply.
 	loadMa: number
+	// Long-run average including sleep, excluding the regulator's own quiescent current.
+	averageMa?: number
 }
 
 export interface Part {

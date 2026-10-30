@@ -66,14 +66,26 @@ function shapeError(field: FieldName, value: unknown): string | null {
 	const list = (check: (x: Record<string, unknown>) => boolean, what: string) =>
 		Array.isArray(value) && value.every((x) => obj(x) && check(x)) ? null : `${field} must be an array of ${what}`
 	switch (field) {
-		case "requirements":
-			return obj(value) && isStr(value.summary) && Array.isArray(value.peripherals) ? null : "requirements must be {summary, peripherals[], batteryLifeDays}"
+		case "requirements": {
+			if (!(obj(value) && isStr(value.summary) && Array.isArray(value.peripherals))) return "requirements must be {summary, peripherals[], batteryLifeDays}"
+			if (value.batteryMah !== undefined && !(isNum(value.batteryMah) && (value.batteryMah as number) > 0)) return "requirements.batteryMah must be a positive number of mAh"
+			const d = value.dutyCycle
+			if (d === undefined) return null
+			const ok = obj(d) && isNum(d.activeMs) && isNum(d.periodS) && isNum(d.sleepUa) && (d.activeMs as number) > 0 && (d.periodS as number) > 0 && (d.sleepUa as number) >= 0
+			return ok && (d.activeMs as number) <= (d.periodS as number) * 1000
+				? null
+				: "requirements.dutyCycle must be {activeMs > 0, periodS > 0, sleepUa >= 0} with activeMs no longer than the period"
+		}
 		case "outline":
 			return obj(value) && isNum(value.widthMm) && isNum(value.heightMm) && isNum(value.thicknessMm) ? null : "outline must be {widthMm, heightMm, thicknessMm} numbers"
 		case "connectors":
 			return list((x) => isStr(x.ref) && isStr(x.edge) && isNum(x.offsetMm) && isNum(x.widthMm) && isNum(x.heightMm), "{ref, kind, edge, offsetMm, widthMm, heightMm}")
-		case "rails":
-			return list((x) => isStr(x.name) && isNum(x.voltageV) && isNum(x.regulatorMaxMa) && isNum(x.loadMa), "{name, voltageV, regulatorMaxMa, loadMa}")
+		case "rails": {
+			const shape = list((x) => isStr(x.name) && isNum(x.voltageV) && isNum(x.regulatorMaxMa) && isNum(x.loadMa), "{name, voltageV, regulatorMaxMa, loadMa, averageMa?}")
+			if (shape) return shape
+			const bad = (value as Record<string, unknown>[]).filter((r) => r.averageMa !== undefined && !(isNum(r.averageMa) && (r.averageMa as number) >= 0 && (r.averageMa as number) <= (r.loadMa as number)))
+			return bad.length ? `rail averageMa must be a number from 0 to the rail's loadMa (the peak); got ${bad.map((r) => `${r.name}: ${JSON.stringify(r.averageMa)}`).join(", ")}` : null
+		}
 		case "parts": {
 			const shape = list((x) => isStr(x.ref) && isStr(x.role) && isStr(x.mpn) && Array.isArray(x.pins), "{ref, role, mpn, lcsc, footprint, pins[]}")
 			if (shape) return shape
