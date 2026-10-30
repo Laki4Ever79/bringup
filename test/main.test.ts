@@ -85,3 +85,9 @@ test("parseArgs reads --bench-no-meter, which only means something to the fake b
 	assert.equal((parseArgs([brief, "--bench", "fake", "--bench-no-meter"]) as { benchNoMeter?: boolean }).benchNoMeter, true)
 	assert.equal((parseArgs([brief, "--bench", "fake"]) as { benchNoMeter?: boolean }).benchNoMeter, undefined)
 })
+
+test("parseArgs reads --bench-no-imu for the fake bench (a bare S3 with --bench-no-meter)", () => {
+	const brief = new URL("../briefs/logger.md", import.meta.url).pathname
+	const a = parseArgs([brief, "--bench", "fake", "--bench-no-meter", "--bench-no-imu"]) as { benchNoMeter?: boolean; benchNoImu?: boolean }
+	assert.deepEqual([a.benchNoMeter, a.benchNoImu], [true, true])
+})

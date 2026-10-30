@@ -926,7 +926,8 @@
 		// A bare board (no IMU fitted): the LED is all there is to see, so it gets the chart, as a tall strip.
 		function drawLedOnly(g, w, h, from, end) {
 			const led = S.telemetry.led
-			const L = 44, R = 16, pw = w - L - R, top = 40, sh = Math.min(120, h - top - 40)
+			// Centred in the chart, tall enough to read as the chart rather than a stray band.
+			const L = 44, R = 16, pw = w - L - R, sh = Math.max(40, Math.min(180, h - 90)), top = Math.max(30, (h - sh) / 2)
 			const x = (at) => L + ((at - from) / S.telemetry.windowMs) * pw
 			g.fillStyle = "rgba(255, 255, 255, .04)"; g.fillRect(L, top, pw, sh)
 			g.fillStyle = "#f87171"
