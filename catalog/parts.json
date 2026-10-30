@@ -1,0 +1,9 @@
+[
+	{ "ref": "U1", "role": "mcu", "mpn": "ESP32-C3-MINI-1", "lcsc": "C2838502", "footprint": "qfn32", "pins": ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "3V3", "GND"] },
+	{ "role": "sensor", "mpn": "SHT40-AD1B-R2", "lcsc": "C2758054", "footprint": "dfn4", "pins": ["SDA", "SCL", "VDD", "VSS"] },
+	{ "role": "usb-c", "mpn": "TYPE-C-31-M-12", "lcsc": "C165948", "footprint": "usbcmidmount", "pins": [] },
+	{ "role": "ldo", "mpn": "AP2112K-3.3TRG1", "lcsc": "C51118", "footprint": "sot23_5", "pins": ["VIN", "GND", "EN", "NC", "VOUT"] },
+	{ "role": "resistor", "mpn": "0402WGF1002TCE", "lcsc": "C25744", "footprint": "0402", "pins": ["pin1", "pin2"] },
+	{ "role": "capacitor", "mpn": "CL05B104KO5NNNC", "lcsc": "C1525", "footprint": "0402", "pins": ["pin1", "pin2"] },
+	{ "role": "led", "mpn": "KT-0603R", "lcsc": "C2286", "footprint": "0603", "pins": ["A", "K"] }
+]
