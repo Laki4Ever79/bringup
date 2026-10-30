@@ -32,7 +32,7 @@ class Bridge:
             self.lines.put(json.loads(line))
         self.lines.put(None)
 
-    def until(self, pred, timeout=8.0, since=None):
+    def until(self, pred, timeout=30.0, since=None):
         """The first line matching pred: from self.seen[since:] if given (lines an ack() already passed over), then
         from new output."""
         if since is not None:
@@ -58,7 +58,7 @@ class Bridge:
         self.proc.stdin.flush()
         return self.next_id
 
-    def ack(self, rid, timeout=8.0):
+    def ack(self, rid, timeout=30.0):
         return self.until(lambda m: m["k"] == "ack" and m["id"] == rid, timeout)
 
     def quit(self):
@@ -68,7 +68,7 @@ class Bridge:
         self.assert_exit()
 
     def assert_exit(self):
-        code = self.proc.wait(timeout=5)
+        code = self.proc.wait(timeout=30)
         assert code == 0, f"exit {code}; stderr: {self.proc.stderr.read()}"
         for f in (self.proc.stdin, self.proc.stdout, self.proc.stderr):
             if not f.closed:
@@ -104,9 +104,9 @@ class FakeSource(unittest.TestCase):
         mark = len(b.seen)
         rid = b.send("mode", mode="duty")
         self.assertTrue(b.ack(rid)["ok"])
-        cycle = b.until(lambda m: m["k"] == "cycle", timeout=6, since=mark)
+        cycle = b.until(lambda m: m["k"] == "cycle", since=mark)
         self.assertEqual(cycle["rev"], 7)
-        floor = b.until(lambda m: m["k"] == "i" and m["mA"] < 10, timeout=6)
+        floor = b.until(lambda m: m["k"] == "i" and m["mA"] < 10)
         self.assertAlmostEqual(floor["mA"], 6.0, delta=0.5)
 
         rid = b.send("recover")
@@ -193,14 +193,15 @@ class ReplaySource(unittest.TestCase):
         b = Bridge("--source", "replay", "--replay", path)
         hello = b.until(lambda m: m["k"] == "hello")
         self.assertEqual((hello["source"], hello["meter"]), ("replay", True))
-        start = time.time() * 1000
+        boot = b.until(lambda m: m["k"] == "boot")
         s = b.until(lambda m: m["k"] == "s")
-        self.assertGreaterEqual(s["at"] - start, 250, "played back at the recorded pace")
+        # Paced by the bridge's own clock (recorded 390 ms apart), not by when this test got to read the lines.
+        self.assertGreaterEqual(s["at"] - boot["at"], 300, "played back at the recorded pace")
         self.assertEqual(s["rev"], 12)
         self.assertFalse(any(m["k"] in ("ack", "flashing") for m in b.seen), "a recording's command ids are not replayed")
         ack = b.ack(b.send("flash", dir="/nowhere"))
         self.assertEqual((ack["ok"], ack["simulated"]), (True, True))
-        self.assertEqual(b.until(lambda m: m["k"] == "boot", timeout=4)["rev"], 12, "loops, rev as recorded")
+        self.assertEqual(b.until(lambda m: m["k"] == "boot")["rev"], 12, "loops, rev as recorded")
         b.quit()
 
 

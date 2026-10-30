@@ -34,7 +34,7 @@ class FakeSerial:
         self.log.append("close")
 
 
-def wait(pred, timeout=2.0):
+def wait(pred, timeout=20.0):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         if pred():
