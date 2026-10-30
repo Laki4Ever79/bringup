@@ -123,7 +123,15 @@
 	#scene-body { position: relative; margin: 8px 12px 12px; border-radius: var(--r-card); background: #0c0d0e; border: 1px solid var(--border); overflow: hidden; }
 	#scene-host, #stage-3d { position: absolute; inset: 0; }
 	#explode { width: 110px; accent-color: var(--c-enclosure); vertical-align: middle; }
-	#parts-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+	#parts-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
+	#parts-ready { padding: 2px 16px 0; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#parts-ready.warn { color: var(--warn); }
+	#parts .part { cursor: pointer; }
+	.src-pop { position: absolute; left: 8px; right: 8px; z-index: 20; padding: 10px 12px; background: var(--raised); border: 1px solid var(--border-hover); border-radius: var(--r-card); box-shadow: 0 20px 50px rgba(0, 0, 0, .55); animation: fadein var(--t) var(--ease); cursor: default; }
+	.src-pop h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
+	.src-pop .row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 90px; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 13px; text-decoration: none; }
+	.src-pop a.row:hover { background: #1c1c21; color: var(--info); }
+	.src-pop .nc { color: var(--text-3); }
 	#parts-total { font-size: 18px; color: var(--text); font-weight: 600; }
 	#parts { overflow-y: auto; padding: 6px 8px 8px; position: relative; }
 	#parts .part { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto 22px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-card); transition: background var(--t) var(--ease); cursor: default; }
@@ -350,6 +358,7 @@
 			</section>
 			<section id="parts-panel" class="panel">
 				<div class="panel-head">Parts<span class="right">total <span id="parts-total" class="num">—</span></span></div>
+				<div id="parts-ready"></div>
 				<div id="parts"><div class="empty-state">waiting for the parts list</div></div>
 			</section>
 		</aside>
@@ -376,7 +385,7 @@
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	import { AGENT_COLORS, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -601,10 +610,18 @@
 
 		// ── Parts: bom.json, else the contract's parts ──
 		let bomTimer = null
-		const fetchBom = () => {
+		let bomRetries = 0
+		const fetchBom = (retry = false) => {
+			if (!retry) bomRetries = 6
 			clearTimeout(bomTimer)
 			bomTimer = setTimeout(async () => {
-				try { const r = await fetch(file("bom.json"), { cache: "no-store" }); if (r.ok) { S.bom = await r.json(); renderParts() } } catch {}
+				try {
+					const r = await fetch(file("bom.json"), { cache: "no-store" })
+					if (r.ok) { S.bom = await r.json(); renderParts() }
+					// The writer looks up live stock per role, so bom.json can trail the contract by seconds: poll until it catches up.
+					// Bounded: bom.json only follows parts and grounding changes, so it may stay behind for good.
+					if (bomRetries > 0 && (!r.ok || (typeof S.bom?.revision === "number" && S.bom.revision < S.revision))) { bomRetries--; bomTimer = setTimeout(() => fetchBom(true), 3000) }
+				} catch {}
 			}, 250)
 		}
 		const fmtStock = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n))
@@ -617,6 +634,11 @@
 			scene?.setParts?.(parts)
 			const total = S.bom && !Array.isArray(S.bom) ? S.bom.totalUsd : null
 			$("parts-total").textContent = typeof total === "number" ? `$${total.toFixed(2)}` : "—"
+			const ready = S.bom && !Array.isArray(S.bom) ? S.bom.readiness : null
+			$("parts-ready").textContent = ready?.summary ?? ""
+			$("parts-ready").title = ready?.summary ?? ""
+			$("parts-ready").className = ready && ready.orderable < ready.total ? "warn" : ""
+			const openRef = $("parts").querySelector(".src-pop")?.dataset.ref
 			$("parts").innerHTML = items.map((p) => {
 				const stock = typeof p.stock === "number" ? `<span class="chip ${p.inStock === false || p.stock === 0 ? "bad" : "ok"} num">${p.stock === 0 ? "out of stock" : `${fmtStock(p.stock)} in stock`}</span>` : `<span class="chip t3">stock —</span>`
 				const price = typeof p.priceUsd === "number" ? `<span class="chip num">$${p.priceUsd.toFixed(p.priceUsd < 0.1 ? 3 : 2)}</span>` : `<span class="chip t3">$ —</span>`
@@ -624,7 +646,43 @@
 				const lcsc = p.lcsc ? `<a href="https://www.lcsc.com/product-detail/${encodeURIComponent(p.lcsc)}.html" target="_blank" rel="noopener">${esc(p.lcsc)} ↗</a>` : ""
 				return `<div class="part${S.hover === p.ref ? " hl" : ""}" data-ref="${esc(p.ref)}"><span class="ref">${esc(p.ref)}</span><span class="mpn" title="${esc(p.role)} · ${esc(p.footprint)}">${esc(p.mpn)}${lcsc}</span>${stock}${price}${g}</div>`
 			}).join("")
+			if (openRef) openSourcing(openRef)
 		}
+		// Click a part: where to buy it (links open in a new tab), live stock and price where known, and alternatives.
+		const bomItems = () => (S.bom ? (Array.isArray(S.bom) ? S.bom : (S.bom.items ?? [])) : [])
+		function openSourcing(ref) {
+			$("parts").querySelector(".src-pop")?.remove()
+			const row = $("parts").querySelector(`.part[data-ref="${CSS.escape(ref)}"]`)
+			const item = bomItems().find((p) => p.ref === ref)
+			if (!row || !item) return
+			const r = sourcingRows(item)
+			const src = r.sources.length
+				? r.sources.map((x) => {
+						const inner = `<span>${esc(x.supplier)}${x.note ? ` <span class="nc">· ${esc(x.note)}</span>` : ""}</span><span class="${x.stock === "not checked" ? "nc" : ""}">${esc(x.stock)}</span><span class="num ${x.price === "not checked" ? "nc" : ""}">${esc(x.price)}</span>`
+						return x.url ? `<a class="row" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="row">${inner}</div>`
+					}).join("")
+				: `<div class="row nc">no sourcing data in this bom.json</div>`
+			const alts = r.alternatives.length
+				? `<h4 style="margin-top:8px">Alternatives (same role)</h4>` + r.alternatives.map((a) => {
+						const url = a.lcsc ? safeUrl(`https://www.lcsc.com/product-detail/${encodeURIComponent(a.lcsc)}.html`) : null
+						const inner = `<span class="mono">${esc(a.mpn)}${a.lcsc ? ` <span class="nc">${esc(a.lcsc)}</span>` : ""}</span><span class="${a.stock === "not checked" ? "nc" : ""}">${esc(a.stock)}</span><span class="num ${a.price === "not checked" ? "nc" : ""}">${esc(a.price)}</span>`
+						return url ? `<a class="row" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="row">${inner}</div>`
+					}).join("")
+				: ""
+			row.insertAdjacentHTML("afterend", `<div class="src-pop" data-ref="${esc(ref)}" style="top:${row.offsetTop + row.offsetHeight + 4}px"><h4>${esc(ref)} · ${esc(item.mpn)} · where to buy</h4>${src}${alts}</div>`)
+			const pop = $("parts").querySelector(".src-pop")
+			// Keep it in view inside the scrolling list.
+			const over = pop.offsetTop + pop.offsetHeight - ($("parts").scrollTop + $("parts").clientHeight)
+			if (over > 0) $("parts").scrollTop += over + 8
+		}
+		$("parts").addEventListener("click", (e) => {
+			if (e.target.closest(".src-pop") || e.target.closest("a")) return
+			const row = e.target.closest(".part")
+			const open = $("parts").querySelector(".src-pop")
+			if (!row || open?.dataset.ref === row.dataset.ref) return open?.remove()
+			openSourcing(row.dataset.ref)
+		})
+		document.addEventListener("click", (e) => { if (!e.target.closest("#parts")) $("parts").querySelector(".src-pop")?.remove() })
 		$("parts").addEventListener("mouseover", (e) => { const row = e.target.closest(".part"); setHover(row ? row.dataset.ref : null) })
 		$("parts").addEventListener("mouseleave", () => setHover(null))
 
@@ -981,7 +1039,7 @@
 		$("suggest").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !$("change-input").disabled) { $("change-input").value = b.textContent; $("change-input").focus() } })
 		document.addEventListener("keydown", (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("change-input").focus() }
-			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("brief-panel").classList.add("hidden") }
+			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("brief-panel").classList.add("hidden"); document.querySelector(".src-pop")?.remove() }
 		})
 		$("change-input").addEventListener("keydown", async (e) => {
 			if (e.key !== "Enter") return
@@ -1104,7 +1162,14 @@
 					benchDirty = true
 					if (e.type === "bench.connected") {
 						$("tabs").querySelector('[data-tab="bench"]').classList.remove("hidden")
-						if (hubInfo.canStart && !S.stopped) $("stop-btn").classList.remove("hidden")
+						// Stop only while this dashboard runs it: a reopened finished run has nothing to stop.
+						if (hubInfo.canStart && !S.stopped) fetch("/api/runs").then((r) => r.json()).then((runs) => {
+							const me = runs.find((r) => r.runId === id)
+							if (me && (me.status === "running" || me.status === "bench live")) return $("stop-btn").classList.remove("hidden")
+							// Not running any more: no bring-up phase to send changes to.
+							S.stopped = true
+							if (S.settled) { $("change-input").disabled = true; $("change-input").placeholder = "This run has ended. Start a new design to change it." }
+						}).catch(() => {})
 					}
 					// The first live flash brings the Bench tab forward once; after that the engineer picks.
 					if (e.type === "bench.flashing" && !S.benchTabShown && Date.now() - Date.parse(e.at) < 60_000) { S.benchTabShown = true; setTab("bench") }
@@ -1121,6 +1186,8 @@
 						$("change-input").placeholder = "The design has settled. Start a new design to change it."
 					}
 					setTimeout(() => { fetchReport(); probeFab(); fetchBom() }, 800)
+					// The live stock lookups often finish after the settle.
+					for (const ms of [5000, 15000, 30000]) setTimeout(() => fetchBom(), ms)
 					break
 			}
 			schedule()
