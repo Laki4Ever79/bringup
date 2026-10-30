@@ -178,7 +178,7 @@ class FakeDut:
 
     def _sample(self, now_ms: int) -> dict:
         if not self.imu:
-            return {"k": "s", "rev": self.info["rev"], "ms": now_ms - self.boot_ms, "ax": 0, "ay": 0, "az": 0, "tilt": 0,
+            return {"k": "s", "rev": self.info["rev"], "ms": now_ms - self.boot_ms, "ax": 0, "ay": 0, "az": 0, "tilt": 0, "shake": 0,
                     "tC": None, "tSrc": "none", "led": 1 if self.mode == "duty" else self.led}
         a = math.radians(self._angle(now_ms))
         return {
@@ -189,6 +189,7 @@ class FakeDut:
             "ay": 0.0,
             "az": round(math.cos(a), 3),
             "tilt": round(abs(math.degrees(a)), 1),
+            "shake": 0,
             "tC": 24.6,
             "tSrc": "mpu",
             "led": 1 if self.mode == "duty" else self.led,
