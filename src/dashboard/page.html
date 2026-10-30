@@ -277,8 +277,9 @@
 	/* The design's status LED mirrors the bench's: a small label, its dot lit with the LED. */
 	#led-mirror { position: absolute; left: 12px; bottom: 44px; z-index: 3; font-size: 12px; color: var(--text-2); }
 	#led-mirror i { width: 9px; height: 9px; border-radius: 50%; background: #3a2a2a; transition: background 80ms linear, box-shadow 80ms linear; }
-	#led-mirror.on i { background: #f87171; box-shadow: 0 0 8px 2px rgba(248, 113, 113, .8); }
+	#led-mirror.on i { background: var(--lc, #4ade80); box-shadow: 0 0 8px 2px var(--lc, #4ade80); }
 	#stage-body.on-bench #led-mirror { display: none; }
+	#shake-chip.shaking { color: #fff; background: #ef4444; border-color: #ef4444; font-weight: 700; letter-spacing: .06em; }
 	#bench-chart-box { position: relative; min-height: 0; border-radius: var(--r-card); border: 1px solid var(--border); background: #0a0b0c; }
 	#bench-chart { position: absolute; inset: 0; width: 100%; height: 100%; }
 	#bench-chart-box .src-badge { position: absolute; top: 8px; right: 8px; }
@@ -358,7 +359,7 @@
 				<div id="render-view" class="view hidden"><div class="empty-state">waiting for the first board build</div></div>
 				<div id="stage-3d" class="view hidden"></div>
 				<div id="bench-view" class="view hidden">
-					<div class="bench-top"><span id="bench-src" class="src-badge"></span><span id="bench-ports" class="t3"></span><div class="flash-bar" id="flash-bar"></div></div>
+					<div class="bench-top"><span id="bench-src" class="src-badge"></span><span id="bench-ports" class="t3"></span><span id="shake-chip" class="chip hidden" title="The board's LED blinks red while it is being shaken">steady</span><div class="flash-bar" id="flash-bar"></div></div>
 					<div id="bench-chart-box"><canvas id="bench-chart"></canvas></div>
 					<div class="bench-bottom"><div id="bench-gauge"><div class="t3">measured vs estimated battery life: waiting for a duty-cycle measurement</div></div><ul class="bench-checks" id="bench-checks"><li class="t3">checks: waiting for the first flash (after the design settles)</li></ul></div>
 				</div>
@@ -404,7 +405,7 @@
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	import { AGENT_COLORS, ledMirror, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -513,7 +514,7 @@
 			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
 			hover: null, bom: null, contract: null,
 			fab: false, print: null,
-			bench: null, telemetry: new TelemetryBuffer(30_000), att: { pitch: 0, roll: 0 }, benchTabShown: false, batteryEst: null, stopped: false, lastSampleAt: 0,
+			bench: null, telemetry: new TelemetryBuffer(30_000), att: { pitch: 0, roll: 0 }, benchTabShown: false, batteryEst: null, stopped: false, lastSampleAt: 0, g0: null,
 		}
 		let benchDirty = false
 		// The change bar: open while the design is live, and after settling while the bench is up (it streams all the
@@ -913,6 +914,7 @@
 			g.fillStyle = AGENT_COLORS["build:enclosure"]; g.fillText(T.imu === false ? "tilt: no IMU fitted" : `tilt${tl.length ? ` ${Math.round(tl.at(-1).tilt)}°` : ""}${typeof tiltDeg === "number" && tiltDeg < 90 ? ` (fast blink past ${tiltDeg}°)` : ""}`, L + 140, 15)
 			g.fillStyle = "rgba(237, 237, 237, .5)"; if (cur.length) g.fillText(`floor ${sig(floor)} mA`, L + pw - 92, yMa(floor) - 4)
 		}
+		const ledCss = (sample) => (sample.shake === 1 ? "#f87171" : "#4ade80")
 		// Tier 1, no meter: tilt across the whole chart, and the LED as a strip under it (on = lit), so the
 		// "blink faster when tilted" change can be seen without a current trace.
 		function drawTiltChart(g, w, h) {
@@ -935,13 +937,13 @@
 			// LED strip: lit spans filled.
 			const sy = top + ph + 8
 			g.fillStyle = "rgba(255, 255, 255, .04)"; g.fillRect(L, sy, pw, stripH)
-			g.fillStyle = "#f87171"
-			for (let i = 0; i < led.length; i++) if (led[i].led) g.fillRect(x(led[i].at), sy, Math.max(1, x(led[i + 1]?.at ?? end) - x(led[i].at)), stripH)
+			// Lit spans in the LED's colour: red while the board was being shaken, green otherwise.
+			for (let i = 0; i < led.length; i++) if (led[i].led) (g.fillStyle = ledCss(led[i])), g.fillRect(x(led[i].at), sy, Math.max(1, x(led[i + 1]?.at ?? end) - x(led[i].at)), stripH)
 			g.fillStyle = "#6b6b76"
 			g.fillText("90°", 8, top + 10); g.fillText("0°", 14, top + ph); g.fillText("LED", 8, sy + 13)
 			g.fillText("−30 s", L, h - 4); g.fillText("now", L + pw - 24, h - 4)
-			g.fillStyle = AGENT_COLORS["build:enclosure"]; g.fillText(`tilt${tl.length ? ` ${Math.round(tl.at(-1).tilt)}°` : ""}${typeof tiltDeg === "number" && tiltDeg < 90 ? ` (fast blink past ${tiltDeg}°)` : ""}`, L, 15)
-			g.fillStyle = "#f87171"; g.fillText(`LED${led.length ? (led.at(-1).led ? " on" : " off") : ""}`, L + 220, 15)
+			g.fillStyle = AGENT_COLORS["build:enclosure"]; g.fillText(`tilt from boot pose${tl.length ? ` ${Math.round(tl.at(-1).tilt)}°` : ""}${typeof tiltDeg === "number" && tiltDeg < 90 ? ` (fast blink past ${tiltDeg}°)` : ""}`, L, 15)
+			g.fillStyle = led.length ? ledCss(led.at(-1)) : "#4ade80"; g.fillText(`LED${led.length ? (led.at(-1).led ? " on" : " off") : ""}`, L + 220, 15)
 		}
 		// A bare board (no IMU fitted): the LED is all there is to see, so it gets the chart, as a tall strip.
 		function drawLedOnly(g, w, h, from, end) {
@@ -950,9 +952,9 @@
 			const L = 44, R = 16, pw = w - L - R, sh = Math.max(40, Math.min(180, h - 90)), top = Math.max(30, (h - sh) / 2)
 			const x = (at) => L + ((at - from) / S.telemetry.windowMs) * pw
 			g.fillStyle = "rgba(255, 255, 255, .04)"; g.fillRect(L, top, pw, sh)
-			g.fillStyle = "#f87171"
-			for (let i = 0; i < led.length; i++) if (led[i].led) g.fillRect(x(led[i].at), top, Math.max(1, x(led[i + 1]?.at ?? end) - x(led[i].at)), sh)
-			g.fillStyle = "#f87171"; g.fillText(`LED${led.length ? (led.at(-1).led ? " on" : " off") : ""}`, L, 15)
+			// Lit spans in the LED's colour: red while the board was being shaken, green otherwise.
+			for (let i = 0; i < led.length; i++) if (led[i].led) (g.fillStyle = ledCss(led[i])), g.fillRect(x(led[i].at), top, Math.max(1, x(led[i + 1]?.at ?? end) - x(led[i].at)), sh)
+			g.fillStyle = led.length ? ledCss(led.at(-1)) : "#4ade80"; g.fillText(`LED${led.length ? (led.at(-1).led ? " on" : " off") : ""}`, L, 15)
 			g.fillStyle = "#6b6b76"
 			g.fillText("no IMU fitted: the LED is the board's only output here, so there is no tilt to chart", L + 70, 15)
 			g.fillText("LED", 8, top + sh / 2 + 4)
@@ -1309,6 +1311,8 @@
 					// The first live flash brings the Bench tab forward once; after that the engineer picks.
 					if (e.type === "bench.flashing" && !S.benchTabShown && Date.now() - Date.parse(e.at) < 60_000) { S.benchTabShown = true; setTab("bench") }
 					if (e.type === "bench.measured") renderBattery()
+					// A new firmware boots with a new reference pose.
+					if (e.type === "bench.flashed" && p.ok) S.g0 = null
 					if (S.settled) syncChangeBar()
 					break
 				case "design.settled":
@@ -1335,11 +1339,18 @@
 			const imu = S.telemetry.lastImu
 			// The 3D board follows the one on the desk: gravity gives pitch and roll, low-pass filtered.
 			if (imu && scene?.setOrientation) {
-				S.att = lowPass(S.att, attitude(imu.ax, imu.ay, imu.az), 0.35)
+				// Relative to the board's pose at boot (the firmware's tilt is too): level at rest, however the IMU is mounted.
+				S.g0 ??= [imu.ax, imu.ay, imu.az]
+				const [gx, gy, gz] = relativeGravity(S.g0, [imu.ax, imu.ay, imu.az])
+				S.att = lowPass(S.att, attitude(gx, gy, gz), 0.35)
 				scene.setOrientation(S.att.pitch, S.att.roll)
 			}
 			if (!$("bench-view").classList.contains("hidden")) drawBenchChart()
 			mirrorLed()
+			const shaking = S.telemetry.shake
+			$("shake-chip").classList.toggle("hidden", shaking === null)
+			$("shake-chip").classList.toggle("shaking", shaking === true)
+			$("shake-chip").textContent = shaking ? "SHAKE" : "steady"
 		}
 
 		// The bench LED mirrored on the design's STATUS_LED part, in the PCB and 3D views. Only on a change of state, so
@@ -1347,13 +1358,15 @@
 		let mirrorKey = ""
 		function mirrorLed() {
 			const m = ledMirror({ contract: S.contract, bench: S.bench, led: S.telemetry.led })
-			const key = m ? `${m.ref}|${m.on}|${m.label}` : ""
+			const key = m ? `${m.ref}|${m.on}|${m.color}|${m.label}` : ""
 			if (key === mirrorKey) return
 			mirrorKey = key
-			pcb?.setLit?.(m?.on ? m.ref : null, m?.on ? "#f87171" : null)
-			scene?.setLit?.(m ? m.ref : null, m?.on ? [248, 113, 113] : null)
+			const css = m?.color === "red" ? "#f87171" : "#4ade80"
+			pcb?.setLit?.(m?.on ? m.ref : null, m?.on ? css : null)
+			scene?.setLit?.(m ? m.ref : null, m?.on ? (m.color === "red" ? [248, 113, 113] : [74, 222, 128]) : null)
 			$("led-mirror").classList.toggle("hidden", !m)
 			$("led-mirror").classList.toggle("on", Boolean(m?.on))
+			$("led-mirror").style.setProperty("--lc", css)
 			if (m) $("led-mirror").querySelector("span").textContent = m.label
 		}
 	}

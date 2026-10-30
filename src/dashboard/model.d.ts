@@ -15,9 +15,10 @@ export class TelemetryBuffer {
 	windowMs: number
 	current: { at: number; mA: number }[]
 	tilt: { at: number; tilt: number }[]
-	led: { at: number; led: number }[]
+	led: { at: number; led: number; shake?: number }[]
 	lastImu: { ax: number; ay: number; az: number; at: number } | null
 	imu: boolean | null
+	shake: boolean | null
 	add(samples: any[]): void
 }
 export function safeUrl(url: unknown): string | null
@@ -27,4 +28,5 @@ export function sourcingRows(item: any): {
 }
 export function readinessLine(readiness: any, ref: string): { status: string; warn: boolean } | null
 export function statusLedRef(contract: any): string | null
-export function ledMirror(input: { contract: any; bench: any; led: { at: number; led: number }[] }): { ref: string; on: boolean; label: string } | null
+export function ledMirror(input: { contract: any; bench: any; led: { at: number; led: number; shake?: number }[] }): { ref: string; on: boolean; color: "red" | "green"; label: string } | null
+export function relativeGravity(g0: number[], g: number[]): number[]

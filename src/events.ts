@@ -28,6 +28,8 @@ export interface BenchSample {
 	tilt?: number
 	tC?: number
 	led?: number
+	// 1 while the board is being shaken (firmware fcb507c): its LED then blinks red, else green.
+	shake?: number
 }
 
 export interface BenchCheck {

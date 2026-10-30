@@ -299,3 +299,10 @@ test("an instruction nobody answered is reported as timed out", async () => {
 	await waitFor(() => t.of("bench.instruction").length === 2, 5000)
 	assert.equal(t.of("bench.instruction")[1].state, "timeout")
 })
+
+test("the shake flag reaches the telemetry", async () => {
+	const t = setup(new FakeBridge())
+	t.fake.emit({ k: "s", rev: 0, ms: 0, ax: 0, ay: 0, az: 1, tilt: 0, led: 1, shake: 1 })
+	await waitFor(() => t.of("bench.telemetry").length > 0)
+	assert.equal(t.of("bench.telemetry")[0].samples[0].shake, 1)
+})

@@ -156,7 +156,7 @@ test("the LED mirror: the part wired to STATUS_LED, lit as the bench's LED last 
 	assert.equal(statusLedRef(null), null)
 	const bench = (source: string) => ({ source, meter: false, ports: {}, flash: null, verdict: null, measured: null, instruction: null })
 	const led = [{ at: 1, led: 0 }, { at: 2, led: 1 }]
-	assert.deepEqual(ledMirror({ contract, bench: bench("real"), led }), { ref: "D1", on: true, label: "D1 mirrors the bench LED (S3 onboard GPIO48 stands in)" })
+	assert.deepEqual(ledMirror({ contract, bench: bench("real"), led }), { ref: "D1", on: true, color: "green", label: "D1 mirrors the bench LED (S3 onboard GPIO48 stands in)" })
 	assert.equal(ledMirror({ contract, bench: bench("replay"), led: [{ at: 1, led: 0 }] })!.on, false)
 	assert.match(ledMirror({ contract, bench: bench("replay"), led })!.label, /recorded.*REPLAY/)
 	assert.match(ledMirror({ contract, bench: bench("fake"), led })!.label, /simulated.*FAKE/)
@@ -168,4 +168,34 @@ test("the LED mirror: the part wired to STATUS_LED, lit as the bench's LED last 
 test("a bench instruction stops showing once the board boots again", () => {
 	const ask = ev("bench.instruction", { revision: 9, action: "reset", text: "Tap RST", state: "waiting" })
 	assert.equal(benchState([connected(), ask, ev("bench.flashed", { revision: 9, ok: true, ms: 1 })])!.instruction, null)
+})
+
+test("the mirrored LED takes the board's colour: red while it is being shaken, green otherwise", async () => {
+	const { ledMirror } = await import("../src/dashboard/model.js")
+	const contract = { values: { pins: [{ signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" }] } }
+	const bench = { source: "real", meter: false, ports: {}, flash: null, verdict: null, measured: null, instruction: null }
+	assert.equal(ledMirror({ contract, bench, led: [{ at: 1, led: 1, shake: 1 }] })!.color, "red")
+	assert.equal(ledMirror({ contract, bench, led: [{ at: 1, led: 1, shake: 0 }] })!.color, "green")
+	assert.equal(ledMirror({ contract, bench, led: [{ at: 1, led: 1 }] })!.color, "green", "older firmware without shake")
+	const b = new TelemetryBuffer(30_000)
+	b.add([{ at: 1, led: 1, shake: 1, ax: 0, ay: 0, az: 1 }])
+	assert.deepEqual(b.led, [{ at: 1, led: 1, shake: 1 }])
+	assert.equal(b.shake, true)
+	b.add([{ at: 2, led: 0, shake: 0, ax: 0, ay: 0, az: 1 }])
+	assert.equal(b.shake, false)
+})
+
+test("the 3D board tilts from its pose at boot: the boot reading is level, whatever the IMU's mounting", async () => {
+	const { relativeGravity } = await import("../src/dashboard/model.js")
+	// The real breadboard's MPU sits at 126° from vertical.
+	const g0 = [Math.sin((126 * Math.PI) / 180), 0, Math.cos((126 * Math.PI) / 180)]
+	const level = relativeGravity(g0, g0)
+	assert.ok(Math.abs(level[0]) < 1e-9 && Math.abs(level[1]) < 1e-9 && Math.abs(level[2] - 1) < 1e-9, String(level))
+	const a = attitude(...(relativeGravity(g0, g0) as [number, number, number]))
+	assert.ok(Math.abs(a.pitch) < 1e-9 && Math.abs(a.roll) < 1e-9)
+	// Turning the board 30° further about y shows as 30° of pitch.
+	const t = ((126 + 30) * Math.PI) / 180
+	const p = attitude(...(relativeGravity(g0, [Math.sin(t), 0, Math.cos(t)]) as [number, number, number]))
+	assert.ok(Math.abs(Math.abs(p.pitch) - Math.PI / 6) < 1e-6, String(p.pitch))
+	assert.ok(Math.abs(p.roll) < 1e-6)
 })

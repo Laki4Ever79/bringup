@@ -282,6 +282,8 @@ export class TelemetryBuffer {
 		this.lastImu = null
 		// null until a sample says; false when the accel reads zero (no IMU fitted), so there is no tilt to show.
 		this.imu = null
+		// Whether the board is being shaken right now (null before a sample says).
+		this.shake = null
 	}
 	add(samples) {
 		for (const s of samples) {
@@ -289,7 +291,8 @@ export class TelemetryBuffer {
 			const accel = typeof s.ax === "number" && typeof s.ay === "number" && typeof s.az === "number"
 			if (accel) this.imu = Math.hypot(s.ax, s.ay, s.az) > 0.3
 			if (typeof s.tilt === "number" && (!accel || this.imu)) this.tilt.push({ at: s.at, tilt: s.tilt })
-			if (typeof s.led === "number") this.led.push({ at: s.at, led: s.led })
+			if (typeof s.led === "number") this.led.push(typeof s.shake === "number" ? { at: s.at, led: s.led, shake: s.shake } : { at: s.at, led: s.led })
+			if (typeof s.shake === "number") this.shake = s.shake === 1
 			if (accel && this.imu) this.lastImu = { ax: s.ax, ay: s.ay, az: s.az, at: s.at }
 		}
 		const end = Math.max(this.current.at(-1)?.at ?? -Infinity, this.tilt.at(-1)?.at ?? -Infinity, this.led.at(-1)?.at ?? -Infinity)
@@ -354,5 +357,20 @@ export function ledMirror({ contract, bench, led }) {
 	const ref = statusLedRef(contract)
 	const last = (led ?? []).at(-1)
 	if (!bench || !ref || !last) return null
-	return { ref, on: Boolean(last.led), label: (MIRROR_LABEL[bench.source] ?? MIRROR_LABEL.fake)(ref) }
+	// The onboard LED blinks red while the board is shaken, green otherwise (firmware fcb507c).
+	return { ref, on: Boolean(last.led), color: last.shake === 1 ? "red" : "green", label: (MIRROR_LABEL[bench.source] ?? MIRROR_LABEL.fake)(ref) }
+}
+
+// Gravity as seen from the board's pose at boot: the rotation that takes the boot reading g0 to straight up, applied
+// to g. At rest it is (0, 0, 1) however the IMU is mounted (the bench's MPU sits at 126° from vertical).
+export function relativeGravity(g0, g) {
+	const unit = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l] }
+	const a = unit(g0), b = unit(g)
+	// Rodrigues: v = a × z, c = a · z.
+	const v = [a[1], -a[0], 0], c = a[2], s2 = v[0] * v[0] + v[1] * v[1]
+	if (s2 < 1e-18) return c > 0 ? b : [b[0], -b[1], -b[2]]
+	const k = (1 - c) / s2
+	const vx = [[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]]
+	const R = [0, 1, 2].map((i) => [0, 1, 2].map((j) => (i === j ? 1 : 0) + vx[i][j] + k * [0, 1, 2].reduce((sum, m) => sum + vx[i][m] * vx[m][j], 0)))
+	return R.map((row) => row[0] * b[0] + row[1] * b[1] + row[2] * b[2])
 }

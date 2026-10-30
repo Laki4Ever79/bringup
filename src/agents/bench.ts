@@ -47,7 +47,7 @@ function measuredRail(rails: Rail[]): Rail | null {
 function sampleOf(line: BridgeLine): BenchSample | null {
 	const num = (k: string) => (typeof line[k] === "number" ? { [k]: line[k] as number } : {})
 	if (line.k === "i" && typeof line.mA === "number") return { at: line.at, mA: line.mA }
-	if (line.k === "s") return { at: line.at, ...num("ax"), ...num("ay"), ...num("az"), ...num("tilt"), ...num("tC"), ...num("led") }
+	if (line.k === "s") return { at: line.at, ...num("ax"), ...num("ay"), ...num("az"), ...num("tilt"), ...num("tC"), ...num("led"), ...num("shake") }
 	return null
 }
 
