@@ -5,6 +5,7 @@ import { batteryLifeSummary, estimatePower } from "./contract/power.ts"
 import type { BringupState } from "./runtime.ts"
 import { describeEnv, type Env } from "./tools/env.ts"
 import { isStub } from "./tools/stubs.ts"
+import type { Payloads } from "./events.ts"
 
 function counts(tracePath: string): Record<string, number> {
 	const c: Record<string, number> = {}
@@ -46,6 +47,20 @@ function reviewSection(s: BringupState): string[] {
 		...x.findings.map((f) => `  - ${f.severity} (${f.fields.join(", ") || "general"}): ${f.issue} Suggestion: ${f.suggestion}`),
 	])
 	return ["## Brief review", "", head, ...rounds.flat(), ""]
+}
+
+// The last firmware.booted event in the trace, as one report line.
+function bootLine(tracePath: string, env: Env, noHardware: boolean): string {
+	const label = "- Firmware boot (QEMU):"
+	if (noHardware) return `${label} not run (--no-hardware)`
+	if (!env.qemu) return `${label} not run (QEMU not installed; see NOTES.md)`
+	const boots = existsSync(tracePath)
+		? readFileSync(tracePath, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { type: string; payload: Payloads["firmware.booted"] }).filter((e) => e.type === "firmware.booted")
+		: []
+	const last = boots.at(-1)?.payload
+	if (!last) return `${label} not run (no firmware compiled)`
+	if (last.booted) return `${label} booted, printed revision ${last.bootRevision}`
+	return `${label} did NOT boot (firmware rev ${last.revision}): ${last.serialTail.trim().split("\n").at(-1) ?? ""}`
 }
 
 function fabSection(s: BringupState, stubbed: boolean): string[] {
@@ -105,6 +120,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
 		`- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}`,
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
+		bootLine(join(outDir, "trace.jsonl"), env, stubbed),
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
 		``,
 		...fabSection(s, stubbed),

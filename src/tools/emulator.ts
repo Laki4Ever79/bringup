@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { qemuEnv } from "./env.ts"
 
 // Boots a buildFirmware output in Espressif's QEMU fork (machine esp32c3) and captures its serial port.
 // Wokwi CLI is the other backend (it can also fake the SHT40), but it needs a WOKWI_CLI_TOKEN we don't have.
@@ -80,10 +81,7 @@ export async function bootFirmware(root: string, fwDir: string, timeoutMs = 1500
 		"-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true",
 	]
 	// Stop at the first sensor line: by then the boot banner and setup() have run.
-	// Espressif's prebuilt QEMU links libslirp, which many machines lack; NOTES.md installs it into tools/qemu/lib.
-	const lib = join(root, "tools/qemu/lib")
-	const env = { ...process.env, LD_LIBRARY_PATH: [lib, process.env.LD_LIBRARY_PATH].filter(Boolean).join(":") }
-	const { output } = await run(qemu, args, timeoutMs, /SENSOR (OK|FAIL)/, env)
+	const { output } = await run(qemu, args, timeoutMs, /SENSOR (OK|FAIL)/, { ...process.env, ...qemuEnv(root) })
 	const m = output.match(/bringup rev (\d+)/)
 	return { booted: m !== null, serial: output, revision: m ? Number(m[1]) : null, backend: "qemu" }
 }

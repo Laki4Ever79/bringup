@@ -22,6 +22,9 @@ export interface Payloads {
 	"change.decided": { proposalId: string; approved: boolean; by: AgentRole; reason: string }
 	"artifact.ready": { kind: ArtifactKind; revision: number }
 	"artifact.failed": { kind: ArtifactKind; revision: number; error: string }
+	// The newest compiled firmware booted in Espressif's QEMU (agents/emulator.ts). bootRevision is the contract
+	// revision the firmware printed on serial, null if it never got that far. Not an artifact: it never blocks settling.
+	"firmware.booted": { revision: number; booted: boolean; bootRevision: number | null; serialTail: string }
 	"consistency.checked": { revision: number; violations: Violation[] }
 	"grounding.checked": { revision: number; findings: GroundingFinding[] }
 	// The design is consistent and quiet; the brief reviewer judges it before it settles.

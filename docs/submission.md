@@ -14,8 +14,8 @@ with each other, and keep them agreeing while the design changes.
 
 ## Description (about 150 words)
 
-Small boards fail at bring-up for boring reasons: the firmware drives the wrong GPIO, the USB-C port misses the hole in
-the case, the regulator is over budget, a part is out of stock. Bringup gives every domain its own agent and puts every
+Small boards fail at bring-up for boring reasons: firmware on the wrong GPIO, a USB-C port that misses the case
+cutout, an overloaded regulator. Bringup gives every domain its own agent and puts every
 fact in one live design contract, held in Mozaik's shared `RuntimeState`. Each contract field has one owner and a version.
 
 When a field changes, only the agents and builders that depend on it wake up. A routed PCB (tscircuit + KiCad), a 3D-printable
@@ -23,7 +23,8 @@ case (build123d) and firmware (PlatformIO) rebuild in parallel. Plain-code check
 against the contract. If an agent wants to change a field it doesn't own, Mozaik interception holds the call until the
 owner, or the human engineer, approves it: engineering change control.
 
-Each run ends with a consistency report, a JLCPCB-ready fab package, and firmware that compiles against the real pin map.
+Each run ends with a consistency report, a JLCPCB fab package, and firmware compiled against the real pin map, which
+boots in QEMU when that is installed.
 
 ## How the agents run concurrently
 
@@ -39,6 +40,8 @@ Each run ends with a consistency report, a JLCPCB-ready fab package, and firmwar
 - **Interception holds cross-owner changes.** For example, the firmware agent asks to add `STATUS_LED` to `pins`, which
   the architect owns. The call is held mid-loop; it resumes when the owner approves, or returns to the model with the
   rejection (`src/change-control.ts`). The engineer can vote too.
+- **The emulator check boots each new firmware in QEMU** while the other builds run. Boots coalesce the same way builds
+  do, and it never holds up settling, because it isn't an artifact (`src/agents/emulator.ts`).
 - **Tournaments run whole designs in parallel processes** and rank them (`npm run tournament`).
 - **Mozaik 4.1 fixes:** an outbox gives every participant the same event order (#115), and `safeRunLoop` reports a
   crashed loop instead of hiding it (#114).
@@ -51,6 +54,7 @@ Each run ends with a consistency report, a JLCPCB-ready fab package, and firmwar
 | `out/real-4` | real | settled, 0 violations | 192 s | 13 | 2 (2 approved) | 57 |
 | `out/demo-20261030-133550` | mock | settled, 0 violations; mid-run "make the board 60 mm wide" applied at 17 s | 52 s | 8 | 1 (approved) | 3 |
 | tournament, 4 variants | mock | all 4 settled | 78 s total | — | — | — |
+| `out/boot-1` (wt-firmware) | mock | settled, 0 violations; firmware revs 6 and 7 booted in QEMU (at 8.8 s and 17.7 s), report: "booted, printed revision 7" | 44 s | 7 | 1 (approved) | 2 |
 
 Honest count: of the 5 real-model runs we kept, **2 settled** (`real-2`, `real-4`).
 - `real-1` and `real-3` stopped on board-build failures, which the placement work fixed afterwards.
@@ -59,7 +63,7 @@ Honest count: of the 5 real-model runs we kept, **2 settled** (`real-2`, `real-4
   connector, CC resistors and USB D± wiring.
 - All real runs predate that completed catalog. A real run on the current build has not been recorded yet.
 
-`npm test`: 269 tests pass, 0 skipped, when the full toolchain and QEMU are installed.
+`npm test`: 295 tests pass, 0 skipped, when the full toolchain and QEMU are installed.
 
 ## What's new compared with prior art
 
@@ -69,9 +73,9 @@ engineering agents (Engineering Studio AI) already exist, and the README credits
 - contract fields have **owners and versions**, and cross-owner edits go through **change control built on Mozaik
   interception**, with the human engineer as a voting participant
 - **whole-design tournaments** run as parallel processes
-- every run ends in **artifacts you can open**: KiCad project, STEP/STL case, compiled firmware,
-  and a JLCPCB fab package (gerbers, drill, BOM with LCSC numbers, CPL). The built firmware also boots in Espressif's
-  QEMU in the test suite; that boot isn't part of a run yet
+- every run ends in **artifacts you can open**: KiCad project, STEP/STL case, compiled firmware, and a JLCPCB fab
+  package (gerbers, drill, BOM with LCSC numbers, CPL). With the optional Espressif QEMU installed, every run also
+  boots its newest firmware headless and reports the contract revision the firmware printed (`firmware.booted`)
 
 ## Try it (Quick look: Node 24 only, about 5 s, no API key)
 
