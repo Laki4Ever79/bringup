@@ -62,7 +62,10 @@ export function mockScripts(): Record<string, Script> {
 			}
 			if (instruction.startsWith("Brief")) {
 				const field = ARCHITECT_FIELDS[step]
-				return field ? propose(field, LOGGER_DESIGN[field], `initial ${field} from the brief`) : say("contract drafted")
+				// Tournament variants may cap the width: "Board must be at most <N> mm wide".
+				const maxWidth = Number(/Board must be at most (\d+(?:\.\d+)?) mm wide/i.exec(instruction)?.[1] ?? Infinity)
+				const value = field === "outline" ? { ...LOGGER_DESIGN.outline, widthMm: Math.min(LOGGER_DESIGN.outline.widthMm, maxWidth) } : LOGGER_DESIGN[field]
+				return field ? propose(field, value, `initial ${field} from the brief`) : say("contract drafted")
 			}
 			return say("noted")
 		},

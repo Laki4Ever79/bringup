@@ -1,0 +1,6 @@
+[
+	{ "name": "baseline", "constraint": "" },
+	{ "name": "narrow-40mm", "constraint": "Board must be at most 40 mm wide." },
+	{ "name": "coin-cell", "constraint": "Use a coin cell (CR2032) instead of Li-ion. There is no charger; USB-C is for flashing and bench power only." },
+	{ "name": "2xAAA", "constraint": "Power from 2×AAA alkaline cells (2.0–3.2 V) instead of Li-ion." }
+]
