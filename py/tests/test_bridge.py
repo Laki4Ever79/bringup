@@ -160,6 +160,24 @@ class FakeSource(unittest.TestCase):
         b.assert_exit()
 
 
+class FakeTier1(unittest.TestCase):
+    def test_no_meter_is_a_bench_without_the_fixture(self):
+        b = Bridge("--source", "fake", "--no-meter", "--fake-speed", "50")
+        hello = b.until(lambda m: m["k"] == "hello")
+        self.assertEqual((hello["meter"], hello["ports"]["fixture"]), (False, None))
+        self.assertTrue(hello["ports"]["dut"] and hello["ports"]["telemetry"])
+        mark = len(b.seen)
+        self.assertTrue(b.ack(b.send("flash", dir=fw_dir(5)))["ok"])
+        self.assertEqual(b.until(lambda m: m["k"] == "boot", since=mark)["rev"], 5)
+        self.assertEqual(b.until(lambda m: m["k"] == "s")["rev"], 5)
+        for cmd, extra in (("mode", {"mode": "duty"}), ("recover", {}), ("reset", {})):
+            ack = b.ack(b.send(cmd, **extra))
+            self.assertEqual(ack["ok"], False, cmd)
+            self.assertIn("no fixture", ack["error"])
+        b.quit()
+        self.assertFalse(any(m["k"] == "i" for m in b.seen), "no meter, no current lines")
+
+
 class ReplaySource(unittest.TestCase):
     def test_replays_a_recording_in_real_time_and_never_rewrites_the_revision(self):
         path = os.path.join(tempfile.mkdtemp(), "bench.jsonl")
