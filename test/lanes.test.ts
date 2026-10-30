@@ -121,6 +121,20 @@ test("loop events that arrive after the design settled don't wake the lane again
 	assert.equal(lanes.reviewer.text, "review submitted")
 })
 
+test("firmware.booted puts a boot badge on the firmware build lane", () => {
+	const lanes = createLanes()
+	applyLaneEvent(lanes, ev("artifact.ready", { kind: "firmware", revision: 7 }))
+	assert.equal(lanes["build:firmware"].boot, null)
+	const changed = applyLaneEvent(lanes, ev("firmware.booted", { revision: 7, booted: true, bootRevision: 7, serialTail: "ESP-ROM:esp32c3\nbringup rev 7\nSENSOR FAIL" }))
+	assert.deepEqual(changed, ["build:firmware"])
+	assert.deepEqual(lanes["build:firmware"].boot, { ok: true, revision: 7, bootRevision: 7, lastLine: "SENSOR FAIL", tail: "ESP-ROM:esp32c3\nbringup rev 7\nSENSOR FAIL" })
+	assert.equal(lanes["build:firmware"].status, "done", "the build status is unchanged")
+	applyLaneEvent(lanes, ev("firmware.booted", { revision: 8, booted: false, bootRevision: null, serialTail: "rst:0x3\nGuru Meditation Error\n" }))
+	assert.equal(lanes["build:firmware"].boot.ok, false)
+	assert.equal(lanes["build:firmware"].boot.lastLine, "Guru Meditation Error")
+	assert.match(lanes["build:firmware"].history.at(-1).text, /did not boot/)
+})
+
 test("history is capped", () => {
 	const lanes = createLanes()
 	for (let i = 0; i < 100; i++) applyLaneEvent(lanes, activity("parts", "thinking", `t${i}`))

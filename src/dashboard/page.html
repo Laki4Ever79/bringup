@@ -150,6 +150,8 @@
 	.card.active .status { color: var(--ac); } .card.held .status { color: var(--warn); } .card.failed .status { color: var(--error); } .card.done .status { color: var(--ok); }
 	.card .task { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.card .result { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.card .boot { position: absolute; right: 10px; bottom: 9px; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; cursor: help; }
+	.card .boot.ok { color: var(--ok); background: rgba(34, 197, 94, .12); } .card .boot.bad { color: var(--error); background: rgba(239, 68, 68, .12); }
 	.card .bars { display: flex; align-items: flex-end; gap: 2px; height: 18px; align-self: end; }
 	.card .bars i { flex: 1; border-radius: 2px; min-width: 2px; max-width: 8px; }
 	.card .hist { position: absolute; left: 0; bottom: calc(100% + 8px); max-height: 320px; overflow: auto; padding: 10px 12px; background: var(--raised); border: 1px solid var(--border-hover); border-radius: var(--r-card); box-shadow: 0 20px 50px rgba(0, 0, 0, .55); z-index: 15; width: max(100%, 380px); cursor: default; animation: fadein var(--t) var(--ease); }
@@ -693,6 +695,13 @@
 			task.classList.toggle("t3", !lane.text)
 			el.querySelector(".result").textContent = lane.lastResult ? `→ ${lane.lastResult}` : ""
 			el.querySelector(".result").title = lane.lastResult
+			if (lane.boot) {
+				let b = el.querySelector(".boot")
+				if (!b) { b = document.createElement("span"); el.append(b) }
+				b.className = `boot ${lane.boot.ok ? "ok" : "bad"}`
+				b.textContent = lane.boot.ok ? `boots ✓ rev ${lane.boot.bootRevision}` : "✗ no boot"
+				b.title = `QEMU serial (firmware rev ${lane.boot.revision}):\n${lane.boot.tail}`
+			}
 			el.querySelector(".bars").innerHTML = lane.history.slice(-28).map((h) => { const [ht, c] = BAR[h.status] ?? BAR.idle; return `<i style="height:${Math.round(ht * 100)}%;background:${c};opacity:${h.status === "idle" ? 0.3 : 0.85}"></i>` }).join("")
 			if (hist) renderHistory(k)
 		}
@@ -813,6 +822,7 @@
 				case "grounding.checked": return `rev ${p.revision}: ${p.findings.length} finding(s)`
 				case "design.ready": return `rev ${p.revision} ready for review`
 				case "review.completed": return `review ${p.verdict} at rev ${p.revision}`
+				case "firmware.booted": return p.booted ? `firmware rev ${p.revision} boots in QEMU, prints rev ${p.bootRevision}` : `firmware rev ${p.revision} did not boot`
 				case "design.settled": return p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`
 				case "agent.halted": return `${p.agentId} halted: ${p.error}`
 				default: return ""
