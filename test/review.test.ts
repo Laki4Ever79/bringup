@@ -135,6 +135,7 @@ test("the reviewer sees only the brief, the contract and the check results, neve
 	assert.ok(text.includes(`"widthMm": ${LOGGER_DESIGN.outline.widthMm}`), "contains the contract")
 	assert.match(text, /power was not simulated/i)
 	assert.match(text, /## Board-generated wiring \(added by the board generator, not in the contract\)/)
+	assert.match(text, /## Part facts \(from the catalog\)\n- U1 ESP32-C3-MINI-1: 4 MB on-module flash/)
 	assert.match(text, /5\.1k \(C25905\): USB-C CC1/)
 	assert.match(text, /USB_DP: .*U1\.GPIO19/)
 	// Words only the other agents wrote: their turn messages, model answers and proposal reasons.

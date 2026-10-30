@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { createAgent, DeveloperMessageItem, ModelContext, type Agent, type Tool } from "@mozaik-ai/core"
 import { generatedNets, supportParts, usbPadSignal, usbRef } from "../codegen/circuit.ts"
 import { checkConsistency, type BoardArtifact } from "../contract/consistency.ts"
@@ -13,6 +13,7 @@ import { when } from "../change-control.ts"
 import type { Env } from "../tools/env.ts"
 import { simulatePower } from "../tools/spice.ts"
 import { isStub } from "../tools/stubs.ts"
+import { loadCatalog } from "../tools/parts-search.ts"
 
 export const MAX_REVIEW_ROUNDS = 1
 
@@ -73,6 +74,17 @@ export function wiringSection(s: ContractSnapshot, board: BoardArtifact | undefi
 	return [...out, missing.length === 0 ? `All of it checked against the board built for revision ${board.revision}: every generated net above is on it.` : lines(missing, (m) => m, "")]
 }
 
+// Catalog facts about the contract's parts that the contract itself doesn't carry, e.g. that the MCU module's 4 MB
+// flash holds the reading history (real run 10's reviewer blocked "no nonvolatile storage").
+export function partFactsSection(s: ContractSnapshot): string[] {
+	const catalog = loadCatalog(resolve(import.meta.dirname, "../.."))
+	const facts = (s.values.parts ?? []).flatMap((p) => {
+		const notes = catalog.find((c) => c.mpn.toUpperCase() === p.mpn.toUpperCase())?.notes
+		return notes ? [`- ${p.ref} ${p.mpn}: ${notes}`] : []
+	})
+	return ["## Part facts (from the catalog)", ...(facts.length ? facts : ["- none"])]
+}
+
 // One artifact's status for the reviewer. An artifact built at an older revision is still current when none of its
 // inputs changed since (the enclosure only depends on outline and connectors); say so, or the reviewer reads "built
 // for revision 3" as stale (real run 9).
@@ -115,6 +127,8 @@ export async function reviewMessage(env: Env | undefined, revision: number, roun
 		"```json",
 		JSON.stringify(snapshot.values, null, 2),
 		"```",
+		"",
+		...partFactsSection(snapshot),
 		"",
 		"## Check results",
 		"Artifacts:",
