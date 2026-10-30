@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs"
-import { QUIESCENT_A } from "../codegen/spice.ts"
+import { DROPOUT_MV, QUIESCENT_A, type LdoModel } from "../codegen/spice.ts"
 import type { ContractSnapshot, DutyCycle, Part, Rail } from "./types.ts"
 
 // Battery life from plain arithmetic, so neither the reviewer nor the report has to invent numbers.
@@ -23,7 +23,7 @@ export function capacityFromBrief(brief: string): number | null {
 
 // An LDO's typical quiescent current: the catalog's iqUa when it lists the part, else AP2112K-class 55 µA.
 const ASSUMED_IQ_UA = Math.round(QUIESCENT_A * 1e6)
-type CatalogIq = { mpn: string; iqUa?: number; sleepUa?: number }
+type CatalogIq = { mpn: string; iqUa?: number; sleepUa?: number; dropoutMv?: number; dropoutAtMa?: number }
 let catalogCache: CatalogIq[] | null = null
 function catalog(): CatalogIq[] {
 	return (catalogCache ??= JSON.parse(readFileSync(new URL("../../catalog/parts.json", import.meta.url), "utf8")))
@@ -63,6 +63,16 @@ export function effectiveSleepUa(s: ContractSnapshot, entries: CatalogIq[] = cat
 export function measuredAverageMa(m: { chargeUc: number; periodS: number; sleepUa: number }): number {
 	if (!(m.periodS > 0)) throw new Error(`measuredAverageMa: periodS must be > 0, got ${m.periodS}`)
 	return (m.chargeUc / m.periodS + m.sleepUa) / 1000
+}
+
+// The LDO's behavioural model for the power simulation: dropout and quiescent current from its catalog entry, else the
+// AP2112K-class worst case (400 mV at the rail's rating, 55 µA).
+export function ldoModel(part: Part, entries: CatalogIq[] = catalog()): LdoModel {
+	const c = entries.find((e) => e.mpn.toUpperCase() === part.mpn.toUpperCase())
+	if (c && typeof c.iqUa === "number" && typeof c.dropoutMv === "number" && typeof c.dropoutAtMa === "number") {
+		return { mpn: part.mpn, iqUa: c.iqUa, dropoutMv: c.dropoutMv, dropoutAtMa: c.dropoutAtMa, source: "catalog" }
+	}
+	return { mpn: part.mpn, iqUa: typeof c?.iqUa === "number" ? c.iqUa : ASSUMED_IQ_UA, dropoutMv: DROPOUT_MV, dropoutAtMa: null, source: "assumed" }
 }
 
 export interface RailDraw {
