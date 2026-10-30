@@ -170,6 +170,7 @@ class ReplaySource(unittest.TestCase):
             for n in range(20):
                 f.write(json.dumps({"k": "i", "at": t0 + 20 + n * 17, "mA": 45.0}) + "\n")
             f.write(json.dumps({"k": "ack", "at": t0 + 400, "id": 1, "ok": True}) + "\n")
+            f.write(json.dumps({"k": "flashing", "at": t0 + 390, "id": 1, "stage": "write", "pct": 100}) + "\n")
             f.write(json.dumps({"k": "s", "at": t0 + 400, "rev": 12, "tilt": 3.0}) + "\n")
         b = Bridge("--source", "replay", "--replay", path)
         hello = b.until(lambda m: m["k"] == "hello")
@@ -178,7 +179,7 @@ class ReplaySource(unittest.TestCase):
         s = b.until(lambda m: m["k"] == "s")
         self.assertGreaterEqual(s["at"] - start, 250, "played back at the recorded pace")
         self.assertEqual(s["rev"], 12)
-        self.assertFalse(any(m["k"] == "ack" for m in b.seen), "acks in a recording are not replayed")
+        self.assertFalse(any(m["k"] in ("ack", "flashing") for m in b.seen), "a recording's command ids are not replayed")
         ack = b.ack(b.send("flash", dir="/nowhere"))
         self.assertEqual((ack["ok"], ack["simulated"]), (True, True))
         self.assertEqual(b.until(lambda m: m["k"] == "boot", timeout=4)["rev"], 12, "loops, rev as recorded")

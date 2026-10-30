@@ -210,7 +210,8 @@ class Bridge:
     def _start_replay(self) -> None:
         with open(self.replay_path or "") as f:
             self.recording = [json.loads(line) for line in f if line.strip()]
-        self.recording = [m for m in self.recording if m.get("k") not in ("hello", "ack", "bye")]
+        # Command replies and progress belong to the recorded session's command ids, not to this one's.
+        self.recording = [m for m in self.recording if m.get("k") not in ("hello", "ack", "flashing", "bye")]
         self.meter = any(m.get("k") == "i" for m in self.recording)
         self.threads.append((self._play, ()))
 

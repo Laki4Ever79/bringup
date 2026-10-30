@@ -147,8 +147,9 @@ phone hotspot. **Cable is the default on stage**, because:
     6 mA floor.
 - **replay:** plays `bench.jsonl` in real time and loops it. `fixtures/bench/synthetic.jsonl` is a 47 s `--source fake`
   session to develop against: flash rev 15, live with tilt, then duty cycle. It is **synthetic**; the rehearsal
-  recording replaces it Saturday morning. A `flash` acks `{ok:true, simulated:true}`, and the
-  recorded `rev` is kept, never rewritten.
+  recording replaces it Saturday morning. A `flash` acks `{ok:true, simulated:true}`; recorded
+  acks and `flashing` lines are not replayed, because their ids belong to the old session. The recorded `rev` is kept,
+  never rewritten.
 
 ## 4. Events, contract, settling
 
