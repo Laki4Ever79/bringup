@@ -1,4 +1,4 @@
-import { copyFileSync, cpSync, mkdirSync, rmSync } from "node:fs"
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
@@ -110,6 +110,7 @@ export function createBoardBuilder(env: Env): Human {
 			} catch (error) {
 				board.fabError = error instanceof Error ? error.message : String(error)
 			}
+			if (existsSync(join(dir, "dist/board/circuit.json"))) copyFileSync(join(dir, "dist/board/circuit.json"), join(state().outDir, "board", "circuit.json"))
 			return board
 		},
 	})
