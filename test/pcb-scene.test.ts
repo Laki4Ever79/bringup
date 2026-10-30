@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { circuitIndex, diffRefs, fitTransform, netColor, PCB_COLORS } from "../src/dashboard/pcb-view.js"
-import { boardMesh, boxTris, heightFor, orbitCamera, placeBoardInCase, project, shade } from "../src/dashboard/scene3d.js"
+import { boardMesh, boxTris, heightFor, orbitCamera, paintOrder, placeBoardInCase, project, shade } from "../src/dashboard/scene3d.js"
 
 // A two-part board: U1 (a module) and R1, joined by net SDA (by source_net) and GND (by source_trace).
 function circuit(r1x = 10) {
@@ -195,4 +195,31 @@ test("standoff posts become one box each, from the floor to the board", async ()
 	assert.deepEqual([Math.min(...zs), Math.max(...zs)], [2, 5])
 	const xs = tris.slice(0, 12 * 9).filter((_: number, i: number) => i % 3 === 0)
 	assert.deepEqual([Math.min(...xs), Math.max(...xs)], [0.5, 5.5])
+})
+
+// Seen on the dashboard (30 Oct): most parts vanished and the module's top was half drawn. The painter's sort used each
+// triangle's centre, and a slab face of two 50 x 30 mm triangles has its centre nearer the camera than the parts on it.
+test("from above, paint order is case behind, posts, board, pads, parts, then the case in front and the lid", () => {
+	// depth along the view (larger is farther), the world normal's z, the centre's height
+	const at = (kind: string, depth: number, nz = 0, z = 8) => ({ kind, depth, nz, z })
+	const items = [
+		at("part", 50), // a small part far back
+		at("slab", 10, 1), // a huge slab triangle whose centre is near the camera
+		at("pad", 40, 1),
+		at("case", 90), // the far wall's inside
+		at("case", 30, 1, 2), // the floor's inside: under the board, whatever its centre
+		at("case", 31, 1, 5), // a floor the board rests on directly (no standoffs): still under it
+		at("case", 12, 1, 14), // the walls' top rim: above the board, so it stays in depth order
+		at("case", 5), // the near wall
+		at("post", 45),
+		at("part", 20),
+		at("lid", 2),
+	]
+	const order = paintOrder(items, { boardDepth: 45, boardZ: 5, above: true }).map((e: { kind: string; depth: number }) => `${e.kind}@${e.depth}`)
+	assert.deepEqual(order, ["case@90", "case@31", "case@30", "post@45", "slab@10", "pad@40", "part@50", "part@20", "case@12", "case@5", "lid@2"])
+})
+
+test("from below the board's plane, paint order falls back to depth alone", () => {
+	const items = [{ kind: "slab", depth: 10, nz: 1, z: 2 }, { kind: "part", depth: 50, nz: 0, z: 3 }, { kind: "case", depth: 30, nz: 0, z: 7 }]
+	assert.deepEqual(paintOrder(items, { boardDepth: 30, boardZ: 5, above: false }).map((e: { depth: number }) => e.depth), [50, 30, 10])
 })

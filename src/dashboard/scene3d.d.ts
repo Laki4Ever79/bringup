@@ -27,3 +27,10 @@ export interface SceneView {
 	setOrientation(pitchRad: number | null, rollRad: number | null): void
 }
 export function mountScene(el: HTMLElement, opts?: { onHover?(ref: string | null): void; parts?: { ref: string; role?: string }[] }): SceneView
+export interface PaintItem {
+	kind: string
+	depth: number
+	nz: number
+	z: number
+}
+export function paintOrder<T extends PaintItem>(items: T[], opts: { boardDepth: number; boardZ: number; above: boolean }): T[]

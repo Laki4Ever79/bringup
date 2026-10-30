@@ -158,6 +158,23 @@ export function triNormal(t, i) {
 	return norm(cross(sub([t[i + 3], t[i + 4], t[i + 5]], [t[i], t[i + 1], t[i + 2]]), sub([t[i + 6], t[i + 7], t[i + 8]], [t[i], t[i + 1], t[i + 2]])))
 }
 
+// The order to paint triangles in, farthest first. Sorting by triangle centre alone fails on this scene: the board's
+// faces are a few huge triangles whose centres sort nearer than the parts standing on them, which then vanish. From
+// above (the usual view) the scene is a stack, so paint it as one: the case behind the board (and its floor), the
+// posts, the board, its pads, the parts, then the case in front and the lid; each group in depth order. Items carry
+// kind, depth (larger is farther), nz (world normal's z) and z (centre height); boardZ is the board's underside.
+const PAINT_GROUP = { post: 1, slab: 2, pad: 3, part: 4 }
+export function paintOrder(items, { boardDepth, boardZ, above }) {
+	const byDepth = (a, b) => b.depth - a.depth
+	if (!above) return [...items].sort(byDepth)
+	const group = (e) => {
+		if (e.kind === "lid") return 5
+		if (e.kind === "case") return (e.nz > 0.9 && e.z <= boardZ + 0.05) || e.depth > boardDepth ? 0 : 5
+		return PAINT_GROUP[e.kind] ?? 5
+	}
+	return items.map((e) => [group(e), e]).sort((a, b) => a[0] - b[0] || byDepth(a[1], b[1])).map(([, e]) => e)
+}
+
 const AMBIENT = 0.35
 
 // Flat shading: ambient plus Lambert from one directional light.
@@ -292,12 +309,14 @@ export function mountScene(host, opts = {}) {
 			const a = W([P[i], P[i + 1], P[i + 2] + dz])
 			// Back-face culling in world space.
 			if (dot(n, sub(cam.eye, a)) <= 0) continue
-			const pa = project(cam, a, w, h)
-			const pb = project(cam, W([P[i + 3], P[i + 4], P[i + 5] + dz]), w, h)
-			const pc = project(cam, W([P[i + 6], P[i + 7], P[i + 8] + dz]), w, h)
-			list.push({ t, pa, pb, pc, depth: (pa[2] + pb[2] + pc[2]) / 3 })
+			const b = W([P[i + 3], P[i + 4], P[i + 5] + dz]), c = W([P[i + 6], P[i + 7], P[i + 8] + dz])
+			const pa = project(cam, a, w, h), pb = project(cam, b, w, h), pc = project(cam, c, w, h)
+			list.push({ t, pa, pb, pc, depth: (pa[2] + pb[2] + pc[2]) / 3, kind: k, nz: n[2], z: (a[2] + b[2] + c[2]) / 3 })
 		}
-		list.sort((x, y) => y.depth - x.depth)
+		// Paint as a stack seen from above (paintOrder): the parts can't vanish under the board's big triangles.
+		const boardZ = board ? board.bounds.min[2] + offset[2] : 0
+		const boardMid = board ? W([(board.bounds.min[0] + board.bounds.max[0]) / 2 + offset[0], (board.bounds.min[1] + board.bounds.max[1]) / 2 + offset[1], boardZ]) : target
+		list.splice(0, list.length, ...paintOrder(list, { boardDepth: project(cam, boardMid, w, h)[2], boardZ, above: cam.eye[2] > boardZ + 2 }))
 		for (const d of list) {
 			const t = d.t
 			const isHot = (focused && tris.ref[t] === focused) || (hovered && tris.ref[t] === hovered)
