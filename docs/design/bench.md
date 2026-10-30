@@ -28,7 +28,7 @@ The **RP2350 fixture reads the INA226**, not the DUT. Reasons:
 | Fixture GP12, through 1 kΩ | S3 GPIO4 = `BENCH_MODE` | High = duty-cycle mode, low = live mode. Read at every boot and wake. |
 | S3 GPIO8 / GPIO9 | MPU-6050 SDA/SCL (0x68) | **Contract I2C pins 1:1.** GY-521 VCC = S3 3V3, so its current is measured. |
 | S3 GPIO10 → 330 Ω → LED → GND | | **Contract `STATUS_LED` 1:1** (anode on GPIO, HIGH = on). |
-| S3 GPIO17 (UART1 TX) | CP2102 RXD | Telemetry. Leave CP2102 TXD unconnected so nothing drives an unpowered DUT. |
+| S3 native "USB" port | PC | **Telemetry by default** (USB CDC, the same cable that flashes; the bridge releases the port while esptool runs). GPIO17 (UART1 TX) → an optional CP2102 RXD also carries it, and survives deep sleep. |
 | All GND | Common | PSU−, INA226, fixture, S3, CP2102. |
 
 The contract's GPIOs 8, 9 and 10 are free on the S3: they are not strapping pins (0, 3, 45, 46), not PSRAM (35–37)

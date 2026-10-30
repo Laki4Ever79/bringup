@@ -1,8 +1,9 @@
 # Bench wiring guide (print me)
 
 Everything runs from the laptop's USB ports: **no bench power supply**. There are two tiers:
-- **Tier 1, pocket.** The ESP32-S3, an MPU-6050, an LED and a CP2102. Flashing, telemetry, tilt and the "blink
-  faster when tilted" change all work. There is no current measurement; the dashboard says "no meter".
+- **Tier 1, pocket.** The ESP32-S3, an MPU-6050 and an LED on **one USB cable**. Flashing, telemetry (over that same
+  cable), tilt and the "blink faster when tilted" change all work. There is no current measurement; the dashboard
+  says "no meter".
 - **Tier 2, meter.** Add the RP2350 Pico (the fixture), the INA226 and one VBUS-cut cable. The S3 is then powered
   through the INA226, so the bench measures its real average current. The Pico can also reset the S3 and switch its
   mode.
@@ -15,9 +16,9 @@ Start with tier 1. Tick each box as you go. **Tell agent-mesh-af "go" before the
 |---|---|---|---|
 | 1 | 1 | YD-ESP32-S3 N16R8 | Two USB-C ports: **"USB"** (native, for flashing) and "COM" (not used). |
 | 1 | 1 | MPU-6050 (GY-521) | Tilt and temperature. |
-| 1 | 1 | CP2102 USB-UART | Telemetry. |
 | 1 | 1 | LED + 330 Ω resistor | The status LED. |
-| 1 | — | Breadboard, Dupont wires, 2 normal USB cables | |
+| 1 | — | Breadboard, Dupont wires, 1 normal USB cable | |
+| opt. | 1 | CP2102 USB-UART | Not needed. If you have one: S3 `GPIO17` → CP2102 RXD, GND → GND, and the bench uses it for telemetry. |
 | 2 | 1 | RP2350 Pico board | The fixture. Normal USB cable. |
 | 2 | 1 | INA226 module (CJMCU-226, 0.1 Ω shunt `R100`) | The current meter. A0/A1 at GND = address 0x40. |
 | 2 | 1 | 1 kΩ resistor | In series on the mode wire. |
@@ -32,15 +33,10 @@ Start with tier 1. Tick each box as you go. **Tell agent-mesh-af "go" before the
 - [ ] **T4.** S3 **`GPIO9`** → MPU-6050 **SCL**
 - [ ] **T5.** MPU-6050 **AD0** → **GND** (address 0x68). Leave INT, XDA and XCL unconnected.
 - [ ] **T6.** S3 **`GPIO10`** → LED **long leg**. LED **short leg** → **330 Ω** → **GND**.
-- [ ] **T7.** S3 **`GPIO17`** → CP2102 **RXD**
-- [ ] **T8.** CP2102 **GND** → S3 **GND**
-- [ ] **T9.** Leave CP2102 **TXD, 3V3, 5V and DTR unconnected**.
-
-Plug in two **normal** USB cables: PC → S3 **"USB"** port, and PC → CP2102.
+Plug in **one normal USB cable**: PC → S3 **"USB"** port. It powers the board, flashes it and carries the telemetry.
 
 ```
-PC ──USB──► S3 "USB" port
-PC ──USB──► CP2102   RXD ◄── S3 GPIO17 ;  GND ── S3 GND
+PC ──USB──► S3 "USB" port   (power + flashing + telemetry)
 S3 3V3 / GND / GPIO8 / GPIO9 ── MPU VCC / GND / SDA / SCL   (AD0 → GND)
 S3 GPIO10 ── LED ── 330 Ω ── GND
 ```
@@ -68,10 +64,12 @@ count.
 PC ──USB──► Pico ── VBUS(40) ──► INA226 IN+ ;  IN− ──► S3 5V
                     GP4/GP5 ──► INA226 SDA/SCL ;  3V3(36) ──► INA226 VCC
                     GP10 ──► S3 EN ;  GP11 ──► S3 GPIO0 ;  GP12 ──1kΩ──► S3 GPIO4
-PC ──VBUS-cut cable (data only)──► S3 "USB" port
-PC ──USB──► CP2102 (as in tier 1)
+PC ──VBUS-cut cable (data + telemetry, no power)──► S3 "USB" port
 all GNDs joined
 ```
+
+During the sleep-cycle measurement the S3 switches its USB off while it sleeps, so its per-wake lines only arrive with
+the optional CP2102. The INA226's current trace, which is the measurement, comes through the Pico and is unaffected.
 
 ## 3. The VBUS-cut cable (tier 2 only, 5 min, a knife)
 
@@ -101,12 +99,10 @@ matters.
 
 **Tier 1:**
 1. PC → S3 (normal cable). The S3's power LED should light.
-2. PC → CP2102.
 
 **Tier 2:**
 1. PC → Pico. The S3's power LED should now light, powered through the INA226.
 2. PC → S3 with the **VBUS-cut** cable.
-3. PC → CP2102.
 
 The agent then checks the ports (`ls /dev/serial/by-id`). In tier 2 it installs the fixture firmware on the Pico (the
 MicroPython UF2 is in `tools/micropython/`; to load it, hold BOOTSEL while plugging the Pico in). Then
@@ -120,5 +116,5 @@ MicroPython UF2 is in `tools/micropython/`; to load it, hold BOOTSEL while plugg
 | Tier 2: the meter reads about 0 mA while the board runs | USB is powering the S3 around the shunt, or IN+ and IN− are both on the same side. |
 | `meter: false` | INA226 SDA/SCL swapped, VCC missing, or the address pins aren't at GND. |
 | The MPU answers nothing (`err imu`) | GPIO8/GPIO9 swapped, or AD0 floating. |
-| No telemetry lines | The wire is on CP2102 TXD instead of RXD, or the CP2102 GND (T8) is missing. |
+| No telemetry lines | Use the S3 socket labelled **USB**, not COM. With the optional CP2102: its RXD (not TXD) and GND must be wired. |
 | `permission denied` | Log out and back in once (the `dialout` group was added on 30 Oct). |
