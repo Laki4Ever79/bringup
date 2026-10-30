@@ -71,9 +71,9 @@ test("an unknown role gives no parts", async () => {
 
 test("live lookups are cached for the process", async () => {
 	const calls: string[] = []
-	const f = fakeFetch({ C25744: { stock: 5, price: 0.001 } }, calls)
-	await searchParts("resistor", { root, fetch: f })
+	const f = fakeFetch({ C25744: { stock: 5, price: 0.001 }, C11702: { stock: 7, price: 0.001 } }, calls)
+	const first = await searchParts("resistor", { root, fetch: f })
 	const again = await searchParts("resistor", { root, fetch: f })
-	assert.equal(calls.length, 1)
-	assert.equal(again[0].stock, 5)
+	assert.equal(calls.length, first.length) // one lookup per catalog resistor, none repeated
+	assert.equal(again.find((p) => p.lcsc === "C25744")?.stock, 5)
 })
