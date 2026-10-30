@@ -36,5 +36,14 @@ returns a Zener diode and a buck converter. That is why the agents only look up 
 Any network error, non-2xx response or 5 s timeout gives `null`s instead of an error, so offline runs still work.
 Successful lookups are cached for the process.
 
-Checked live on 30 Oct 2026: every part was in stock except `SHT40-AD1B-R2` (`C2758054`), which jlcsearch does not
-list at all, whether looked up by LCSC number or by MPN, so its fields stay `null`.
+Checked live on 30 Oct 2026: every part is in stock. `SHT40-AD1B-R2` used to be listed as `C2758054`, a number LCSC
+does not have. JLCPCB's parts search and jlcsearch both give `C2909890` (DFN-4 1.5×1.5, 16 939 in stock), so the
+catalog now uses that.
+
+## Pin grounding
+
+`groundParts` in `src/contract/grounding.ts` checks every contract part's pins, and every pin assignment, against
+ground truth. It looks in this catalog first, then in KiCad 10's official symbol library (`/usr/share/kicad/symbols`
+in the `kicad/kicad:10.0` image, read by `src/tools/kicad-symbols.ts` and cached in `out/.cache/kicad-symbols/`).
+An MPN matches a KiCad symbol by exact name, by name prefix (`AP2112K-3.3` for `AP2112K-3.3TRG1`), by the `x` wildcard
+(`SHT4x`), or by a `ki_keywords` entry (`SHT40`). Symbols that `extends` another symbol take that symbol's pins.
