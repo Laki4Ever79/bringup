@@ -1,14 +1,21 @@
 # Bringup
 
+> **Quick look: needs only Node 24, takes about 5 s, no API key.**
+> ```bash
+> git clone https://github.com/Laki4Ever79/bringup && cd bringup && npm ci
+> npm run bringup -- briefs/logger.md --mock --no-hardware --out out/quick
+> cat out/quick/report.md   # "settled ... Violations: 0", plus the change requests held by interception
+> ```
+
 **Concurrent Mozaik agents turn a short product brief into a hardware design that agrees with itself across domains:** in-stock
 parts, a routed PCB, an enclosure whose cutouts match the board, firmware that compiles against the real pin map, a
 power simulation, and a consistency report.
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
-> Status: the contract, change control, consistency checker and the board, enclosure, firmware and SPICE
-> wrappers are built and tested against the real tools. The QEMU wrapper is written but has not booted on real QEMU yet. Pieces still marked **** are not wired yet. This README does not claim
-> results that haven't run.
+> Status: a full run, with agents, change control, consistency checks and real board, enclosure and firmware builds,
+> settles with 0 violations from the commands below. The QEMU boot wrapper is written but has not booted on real QEMU
+> yet. Mid-run change requests are in progress (see Limits). This README does not claim results that haven't run.
 
 ## The problem
 
@@ -77,7 +84,7 @@ were actually built. For example, the firmware's pins are parsed back out of the
 | `runLoop` (fire-and-forget) | Every agent turn is its own loop, so agents run concurrently; each turn starts from a fresh context | `src/agents/common.ts` (`startTurn`) |
 | `RuntimeState` | `BringupState` holds the contract, artifacts, roles and open approvals: one shared state per run | `src/runtime.ts` |
 | `InterceptionHandler` | **Change control**: a `propose_contract_change` call on a field the agent doesn't own is held mid-loop until the owner decides; rejections go back to the model as the tool output | `src/change-control.ts` (`ChangeControl`) |
-| `createHuman` | Plain-code participants: the change desk routes decisions to held loops. The consistency checker and the engineer join the same way **** | `src/change-control.ts` (`createChangeDesk`) |
+| `createHuman` | Plain-code participants with no LLM: the change desk routes decisions to held loops, the consistency checker, the grounding critic, the three builders, and the engineer who sends the brief | `src/change-control.ts`, `src/agents/consistency.ts`, `src/agents/critic.ts`, `src/agents/builders.ts`, `src/run.ts` |
 | Custom `InferenceRunner` | Per-role models (strong for architect, fast for the rest). `--mock` swaps in a scripted runner, so a full run needs no key | `src/inference/models.ts`, `src/inference/scripted-runner.ts` |
 
 Workarounds for known 4.1 bugs:
@@ -93,17 +100,29 @@ the inputs change mid-build, exactly one more build runs at the newest revision.
 
 ## Install
 
-Requirements: Linux or macOS, Node 24, Docker, [uv](https://docs.astral.sh/uv/), and optionally Java (for the
-Freerouting fallback). Everything installs inside the repo, with no system-wide installs.
+The Quick look above needs only Node. The full toolchain adds real board, enclosure and firmware builds.
+
+| Prerequisite | Tested with | Notes |
+|---|---|---|
+| Linux x86-64 (macOS should work, but is untested) | Ubuntu, kernel 7.0 | |
+| Node 24 + npm | Node 24.0.2, npm 11.3.0 | the only requirement for `--no-hardware` |
+| [uv](https://docs.astral.sh/uv/) + Python 3.12 | uv 0.10.2, CPython 3.12.3 | for build123d and PlatformIO |
+| Docker, with the daemon running and usable without `sudo` | Docker 29.6.1 | for KiCad and ngspice |
+| Disk | about 7 GB | `.venv` 1.1 GB, `tools/node` 0.8 GB, KiCad image 2.6 GB (0.8 GB download), ESP32-C3 toolchain about 2.8 GB in `~/.platformio` |
+| Java 17+ (optional) | | only for the Freerouting fallback |
 
 ```bash
 npm ci
-uv venv .venv && uv pip install platformio build123d
-npm i --prefix tools/node tscircuit bun
-docker pull kicad/kicad:10.0          # kicad-cli 10 and ngspice
+uv venv --python 3.12 .venv && uv pip install platformio==6.2.0 build123d==0.13.0
+npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4    # pinned: tscircuit releases daily
+docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngspice; 0.8 GB download
+.venv/bin/pio pkg install -d templates/fw                 # pre-downloads the ESP32-C3 toolchain into ~/.platformio
 ```
 
-The first PlatformIO build downloads the ESP32-C3 toolchain (a few minutes); later builds take seconds.
+Repo-local installs go in `.venv/` and `tools/node/`, both gitignored. The exceptions are PlatformIO's package cache
+(`~/.platformio`) and Docker's image store. The last command downloads the toolchain up front, so the first run
+doesn't stall on it. Without it, the first firmware build downloads it and takes several minutes; later builds take
+about 5 s.
 
 Optional: Espressif QEMU, to boot the built firmware headless. Install steps are in `NOTES.md` ("Firmware emulation").
 
@@ -112,13 +131,13 @@ has, with repo-local tools first: `tools/node/.../tsci`, `.venv/bin/python`, `.v
 or else the `kicad/kicad:10.0` Docker image. A missing tool turns into an `artifact.failed` event with a clear
 message, not a crash.
 
-## Run 
+## Run
 
 ```bash
-# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. Settles in a few seconds.
+# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. About 4 s.
 npm run bringup -- briefs/logger.md --mock --no-hardware
 
-# No API key needed: scripted models, real tools (about 30 s once the tools are installed)
+# No API key needed: scripted models, real tools. About 35 s once the tools are installed.
 npm run bringup -- briefs/logger.md --mock
 
 # Real models: copy .env.example to .env and set one of
@@ -134,15 +153,17 @@ says the hardware was stubbed. Without `--no-hardware`, a missing tool is a warn
 `artifact.failed`, and the run ends unsettled. The report then opens with a "Missing tools" section listing what to
 install.
 
-Each run writes everything under `out/<runId>/`:
+Each run writes everything under `out/<runId>/`. `<runId>` is a UTC timestamp such as `20261031-142530`, or you can
+choose the folder with `--out <dir>`. The last line of the run prints the report's path.
 
 | Path | Contents |
 |---|---|
+| `report.md` | Start here: settled or not, violations, changes proposed, held, approved and rejected, tool table |
 | `contract.json` | The final design contract |
-| `board/` | tscircuit source, KiCad project, DRC result |
-| `enclosure/` | Case STEP and STL |
-| `firmware/` | PlatformIO project with the generated `include/pins.h` |
-| `report.md` | Settled or not, violations, changes proposed, held, approved and rejected |
+| `brief.md` | The brief the run started from |
+| `board/rev-N/` | One folder per build: `board.circuit.tsx`, KiCad project (`dist/board/kicad/board.kicad_pcb`), `board.step`, `board.png`. The latest render is also at `board/board.png` |
+| `enclosure/rev-N/` | `case.step`, `case.stl`, `cutouts.json` |
+| `firmware/rev-N/` | PlatformIO project with the generated `include/pins.h` |
 | `trace.jsonl` | Every event in delivery order |
 
 Exit codes: 0 when settled with no violations, 2 when unsettled (including when a hardware tool is missing), and 1 on
@@ -158,8 +179,10 @@ npm run tournament -- briefs/logger.md --variants briefs/variants-logger.json --
 
 A variant is a short constraint appended to the brief, for example "Board must be at most 40 mm wide". Results go to
 `out/tournament-<ts>/<variant>/`, one full run each, plus `scoreboard.json` and `scoreboard.md`. The ranking puts
-settled designs first, then fewest violations, then BOM cost (live JLCPCB prices), then board area. With the example
-variants, the 40 mm board fails to route (a via lands on a USB-C pad), so that variant ranks last.
+settled designs first, then fewest violations, then BOM cost (live JLCPCB prices), then board area. It needs the full
+toolchain. With the four example variants and `--mock`, all four settle with 0 violations in about 80 s of wall time
+for the four concurrent runs. The 40 mm board ranks first on board area. The BOMs tie, because the scripted models
+pick the same parts for every variant.
 
 ## Tests
 
@@ -170,7 +193,12 @@ npm run typecheck
 
 Integration tests (`*.int.test.ts`) run the real tools (tscircuit + KiCad, build123d, PlatformIO, ngspice, QEMU)
 against a reference ESP32-C3 + SHT40 logger (`test/fixture.ts`). Each one **skips** when its tool is missing, so
-`npm test` passes on a bare checkout.
+`npm test` passes on a bare checkout:
+
+| Checkout | Result | Time |
+|---|---|---|
+| After `npm ci` only | all pass; the tool-dependent integration tests skip | about 20 s |
+| Full toolchain | all pass; only the 2 QEMU tests skip (QEMU is optional) | about 2 min |
 
 ## Prior art and what's new
 
@@ -192,9 +220,9 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
 
 ## Limits
 
-- **Generic footprints.** The catalog (`catalog/parts.json`) uses tscircuit footprints that stand in for the real land
-  patterns (for example, `qfn32` for the ESP32-C3-MINI-1 module). The boards are not fab-ready.
-- **Small boards only.** Routing has been proven only on small boards (50×30 mm, a handful of parts).
+- **Not fab-ready.** The ESP32-C3-MINI-1 gets a 53-pad land pattern built from its datasheet, but the pad offsets
+  are approximate. The SHT40 uses a generic `dfn4`. USB-C CC pull-downs and D± aren't wired. See `catalog/README.md`.
+- **Small boards only.** Placement and routing are proven on 40–50 × 30 mm boards with up to about 20 parts.
 - **QEMU is optional.** It is not installed by default, and its integration test skips without it. There is no SHT40
   in emulation, so firmware prints `SENSOR FAIL` there. Wokwi could simulate the sensor but needs a token.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
