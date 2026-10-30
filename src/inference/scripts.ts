@@ -50,6 +50,12 @@ export function mockScripts(): Record<string, Script> {
 		"mock-architect": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
 			const step = stepsTaken(items)
+			if (instruction.startsWith("Change request from the engineer:")) {
+				const width = /(\d+(?:\.\d+)?)\s*mm wide/.exec(instruction)?.[1]
+				const outline = state().contract.get("outline")
+				if (step > 0 || !width || !outline) return say(width ? "outline updated" : "no field I own covers that request")
+				return propose("outline", { ...outline, widthMm: Number(width) }, `engineer asked for ${width} mm wide`)
+			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
 				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "GPIO10 is free" })] : say("decided")
