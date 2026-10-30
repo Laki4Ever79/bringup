@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { buildBoard } from "../src/tools/board.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
@@ -18,6 +18,9 @@ test("buildBoard produces a routed, exported board that matches the contract", {
 	assert.ok(board.stepPath && existsSync(board.stepPath), "STEP export missing")
 	assert.ok(board.renderPath && existsSync(board.renderPath), "render missing")
 	assert.deepEqual(checkConsistency(s, { board }), [])
+	// The four M2 mounting holes are drilled, and they survive the KiCad export (the fab package's drill file).
+	assert.deepEqual(board.holes, [[3, 3], [47, 3], [3, 27], [47, 27]].map(([xMm, yMm]) => ({ xMm, yMm, diameterMm: 2.2 })))
+	assert.equal(readFileSync(board.pcbPath, "utf8").match(/np_thru_hole[^)]*\)[^)]*\)\s*\(drill 2\.2\)/g)?.length, 4, "the KiCad board lacks the mounting holes")
 	assert.ok(board.drc, "DRC did not run")
 	assert.equal(board.drc!.unconnected, 0)
 	assert.equal(board.drc!.byType.via_diameter ?? 0, 0, "vias are below the fab minimum")
