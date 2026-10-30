@@ -57,11 +57,14 @@ function summarise(trace: TraceLine[]) {
 	let revision = 0
 	let violations: unknown[] = []
 	let settled: { revision: number; settled: boolean } | null = null
+	// change.resolved is the outcome; change.decided is one vote (there can be two). Older traces have only votes.
+	const resolved = trace.some((e) => e.type === "change.resolved")
 	for (const e of trace) {
 		if (typeof e.payload?.revision === "number") revision = Math.max(revision, e.payload.revision)
 		switch (e.type) {
 			case "change.proposed": counts.proposed++; break
-			case "change.decided": e.payload.approved ? counts.approved++ : counts.rejected++; break
+			case "change.resolved": e.payload.approved ? counts.approved++ : counts.rejected++; break
+			case "change.decided": if (!resolved) e.payload.approved ? counts.approved++ : counts.rejected++; break
 			case "artifact.ready": counts.artifactsBuilt++; break
 			case "artifact.failed": counts.artifactsFailed++; break
 			case "consistency.checked": counts.checks++; violations = e.payload.violations; break

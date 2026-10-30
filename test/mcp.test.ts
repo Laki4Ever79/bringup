@@ -230,3 +230,22 @@ test("request_change with a bad runId is an error result", async () => {
 		await mcp.close()
 	}
 })
+
+test("design_status counts approved and rejected from change.resolved, not from votes", async () => {
+	const outRoot = mkdtempSync(join(tmpdir(), "bringup-mcp-"))
+	mkdirSync(join(outRoot, "voted"))
+	const t = [
+		{ seq: 0, at: "", type: "change.proposed", producerId: "f", payload: { proposalId: "p1", field: "pins", by: "firmware", reason: "", needsEngineer: true } },
+		{ seq: 1, at: "", type: "change.decided", producerId: "a", payload: { proposalId: "p1", approved: true, by: "architect", reason: "ok" } },
+		{ seq: 2, at: "", type: "change.decided", producerId: "e", payload: { proposalId: "p1", approved: false, by: "engineer", reason: "no" } },
+		{ seq: 3, at: "", type: "change.resolved", producerId: "d", payload: { proposalId: "p1", approved: false, reason: "no", decidedBy: ["architect", "engineer"] } },
+	]
+	writeFileSync(join(outRoot, "voted", "trace.jsonl"), t.map((l) => JSON.stringify(l) + "\n").join(""))
+	const mcp = await connect(stubRun().launch, outRoot)
+	try {
+		const { counts } = (await mcp.call("design_status", { runId: "voted" })).json()
+		assert.deepEqual({ proposed: counts.proposed, approved: counts.approved, rejected: counts.rejected }, { proposed: 1, approved: 0, rejected: 1 })
+	} finally {
+		await mcp.close()
+	}
+})

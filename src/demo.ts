@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from "node:child_process"
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { basename, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { serveDashboard, type Dashboard } from "./dashboard/server.ts"
+import { serveDashboard, type Dashboard, type HubLaunch } from "./dashboard/server.ts"
 import { appendRequest } from "./runner/requests.ts"
 import { startRunProcess, type RunProcessArgs } from "./runner/spawn-run.ts"
 
@@ -151,12 +151,13 @@ export function createCloudRelay(outDir: string, log: (line: string) => void, no
 
 const readTrace = (outDir: string) => (existsSync(join(outDir, "trace.jsonl")) ? readFileSync(join(outDir, "trace.jsonl"), "utf8") : "")
 
-async function startDashboard(outDir: string, port: number): Promise<Dashboard> {
+// The hub over out/, opened on this run. Runs started from its start screen use the same launcher.
+async function startDashboard(outDir: string, port: number, launch: HubLaunch): Promise<Dashboard> {
 	try {
-		return await serveDashboard(outDir, port)
+		return await serveDashboard(outDir, port, launch)
 	} catch (error) {
 		// Another demo's dashboard still holds the port: take any free one instead.
-		if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") return serveDashboard(outDir, 0)
+		if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") return serveDashboard(outDir, 0, launch)
 		throw error
 	}
 }
@@ -170,9 +171,10 @@ export async function runDemo(o: DemoOptions, deps: DemoDeps): Promise<DemoResul
 	const briefPath = join(outDir, "brief.md")
 	copyFileSync(resolve(ROOT, o.brief), briefPath)
 
-	const dashboard = await startDashboard(outDir, o.port)
-	deps.log(`dashboard: ${dashboard.url}`)
-	if (o.open) deps.openUrl(dashboard.url)
+	const dashboard = await startDashboard(outDir, o.port, (args) => deps.launch(args, { onStdout: () => {} }))
+	const pageUrl = `${dashboard.url}/?run=${encodeURIComponent(basename(outDir))}`
+	deps.log(`dashboard: ${pageUrl}`)
+	if (o.open) deps.openUrl(pageUrl)
 
 	deps.log(`run: ${o.real ? "real models" : "mock models"}, brief ${o.brief}, output ${outDir}`)
 	const cloud = createCloudRelay(outDir, deps.log)
