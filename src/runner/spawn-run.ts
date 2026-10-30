@@ -5,6 +5,8 @@ export interface RunProcessArgs {
 	briefPath: string
 	mock: boolean
 	outDir: string
+	// Flags for src/main.ts after the brief, e.g. --no-hardware, --no-review, --engineer-approval.
+	extraArgs?: string[]
 }
 
 export interface RunExit {
@@ -45,7 +47,7 @@ export interface RunProcessOptions {
 // the parent's stdout may be an MCP stdio stream. `done` never rejects.
 export function startRunProcess(args: RunProcessArgs, opts: RunProcessOptions = {}): RunProcess {
 	const [bin, ...prefix] = opts.command ?? defaultCommand()
-	const argv = [...prefix, args.briefPath, ...(args.mock ? ["--mock"] : []), "--out", args.outDir]
+	const argv = [...prefix, args.briefPath, ...(args.mock ? ["--mock"] : []), ...(args.extraArgs ?? []), "--out", args.outDir]
 	const child = spawn(bin, argv, { cwd: opts.cwd ?? REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], env: process.env })
 	let stdout = ""
 	let stderr = ""

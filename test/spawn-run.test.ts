@@ -68,3 +68,8 @@ test("onStdout and onStderr see output as it arrives, and done still has it", as
 	assert.equal(err.join(""), "warn\n")
 	assert.equal(r.stdout, "one\ntwo\n")
 })
+
+test("extraArgs go between the brief flags and --out", async () => {
+	const { done } = startRunProcess({ ...args, extraArgs: ["--no-hardware", "--engineer-approval"] }, { command: node("console.error(JSON.stringify(process.argv.slice(1)))") })
+	assert.deepEqual(JSON.parse((await done).stderr), ["/tmp/b/brief.md", "--mock", "--no-hardware", "--engineer-approval", "--out", "/tmp/b"])
+})
