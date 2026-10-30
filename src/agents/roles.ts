@@ -20,7 +20,7 @@ const CONTRACT_SHAPES = `Contract field shapes (units: mm, V, mA):
 - outline: {widthMm, heightMm, thicknessMm}
 - connectors: [{ref, kind: "usb-c"|"header"|"button", edge: "left"|"right"|"top"|"bottom", offsetMm (centre along the edge, from bottom or left), widthMm, heightMm}]
 - rails: [{name, voltageV, regulatorMaxMa, loadMa}]
-- parts: [{ref, role, mpn, lcsc, footprint, pins: string[]}]
+- parts: [{ref, role (one of: mcu, sensor, ldo, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
 - pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
 Reference designators: U1 = MCU (ESP32-C3-MINI-1, pins GPIO0..GPIO10), U2 = sensor, U3 = LDO, J1 = USB-C, D1 = LED.
 Always call read_contract first and pass each field's current version as baseVersion.`

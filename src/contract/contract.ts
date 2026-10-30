@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util"
-import { FIELDS, OWNERS, SIGNAL_PATTERN, type ContractSnapshot, type ContractValues, type FieldName, type Proposal, type ProposalResult } from "./types.ts"
+import { FIELDS, OWNERS, PART_ROLES, SIGNAL_PATTERN, type ContractSnapshot, type ContractValues, type FieldName, type Proposal, type ProposalResult } from "./types.ts"
 
 // Single source of truth for the design. Each field has one owning role and a version;
 // a write must name the version it was based on, so concurrent writers can't silently overwrite each other.
@@ -66,8 +66,12 @@ function shapeError(field: FieldName, value: unknown): string | null {
 			return list((x) => isStr(x.ref) && isStr(x.edge) && isNum(x.offsetMm) && isNum(x.widthMm) && isNum(x.heightMm), "{ref, kind, edge, offsetMm, widthMm, heightMm}")
 		case "rails":
 			return list((x) => isStr(x.name) && isNum(x.voltageV) && isNum(x.regulatorMaxMa) && isNum(x.loadMa), "{name, voltageV, regulatorMaxMa, loadMa}")
-		case "parts":
-			return list((x) => isStr(x.ref) && isStr(x.role) && isStr(x.mpn) && Array.isArray(x.pins), "{ref, role, mpn, lcsc, footprint, pins[]}")
+		case "parts": {
+			const shape = list((x) => isStr(x.ref) && isStr(x.role) && isStr(x.mpn) && Array.isArray(x.pins), "{ref, role, mpn, lcsc, footprint, pins[]}")
+			if (shape) return shape
+			const bad = (value as { ref: string; role: string }[]).filter((p) => !(PART_ROLES as readonly string[]).includes(p.role))
+			return bad.length ? `part role must be one of ${PART_ROLES.join(", ")}; got ${bad.map((p) => `${p.ref}: "${p.role}"`).join(", ")}` : null
+		}
 		case "pins":
 			return list((x) => isStr(x.signal) && isNum(x.gpio) && isStr(x.partRef) && isStr(x.partPin), "{signal, gpio, partRef, partPin}")
 	}
