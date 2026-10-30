@@ -33,10 +33,15 @@ export function createCritic(env: Env): Human {
 
 	const rebuilder = new Rebuilder(async () => {
 		const snapshot = state().contract.snapshot()
+		const grounded = { parts: snapshot.versions.parts, pins: snapshot.versions.pins }
 		// Until a parts list exists, every pin assignment would read as "part not in the contract".
-		if (!snapshot.values.parts) return
+		if (!snapshot.values.parts) {
+			state().groundedVersions = grounded
+			return
+		}
 		const findings = groundParts(snapshot, { catalog, symbols: await loadOnce() })
 		state().groundingFindings = findings
+		state().groundedVersions = grounded
 		emit(makeEvent("grounding.checked", self.id, { revision: snapshot.revision, findings }), self.id)
 	})
 
@@ -55,5 +60,6 @@ export function createCritic(env: Env): Human {
 		],
 	})
 	self.id = critic.getId()
+	state().criticEnabled = true
 	return Object.assign(critic, { rebuilder })
 }

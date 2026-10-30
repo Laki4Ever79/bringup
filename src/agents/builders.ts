@@ -36,10 +36,10 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	const rebuilder = new Rebuilder(async (revision) => {
 		const s = state()
 		const snapshot = s.contract.snapshot()
-		const dir = join(s.outDir, opts.kind, `rev-${snapshot.revision}`)
-		mkdirSync(dir, { recursive: true })
 		const inputs = Object.fromEntries(opts.inputs.map((f) => [f, snapshot.versions[f]]))
 		try {
+			const dir = join(s.outDir, opts.kind, `rev-${snapshot.revision}`)
+			mkdirSync(dir, { recursive: true })
 			const artifact = await opts.build({ revision: snapshot.revision, snapshot, dir })
 			;(s.artifacts as Record<string, unknown>)[opts.kind] = artifact
 			s.artifactInputs[opts.kind] = inputs

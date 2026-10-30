@@ -67,3 +67,15 @@ test("stops after too many revisions", async () => {
 	await waitFor(() => t.settled.length > 0)
 	assert.equal(t.settled[0].settled, false)
 })
+
+test("does not settle until the critic has grounded the current parts and pins", async () => {
+	const t = setup()
+	t.state.criticEnabled = true
+	t.writeAll()
+	await new Promise((r) => setTimeout(r, 300))
+	assert.deepEqual(t.settled, [])
+	t.state.groundedVersions = { parts: t.state.contract.version("parts"), pins: t.state.contract.version("pins") }
+	// Any event re-runs the settle check; a real (different) outline write provides one.
+	t.write("outline", { widthMm: 50, heightMm: 32, thicknessMm: 1.6 })
+	await waitFor(() => t.settled.length > 0)
+})
