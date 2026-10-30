@@ -7,16 +7,23 @@
 > cat out/quick/report.md   # "settled ... Violations: 0", plus the change requests held by interception
 > ```
 
-**Concurrent Mozaik agents turn a short product brief into a hardware design that agrees with itself across domains:** in-stock
-parts, a routed PCB, an enclosure whose cutouts match the board, firmware that compiles against the real pin map, a
-power simulation, and a consistency report.
+**A team of agents designs hardware around one shared contract, and every change is checked by someone other than the
+agent who made it.**
+
+Concurrent Mozaik agents turn a short product brief into in-stock parts, a routed PCB, an enclosure whose cutouts match
+the board, firmware that compiles against the real pin map, and a consistency report. Every change has a checker other
+than its author:
+1. **The field's owner** approves or rejects it, through Mozaik interception (change control).
+2. **Plain code** checks what was actually built, and grounds every pin in the catalog and KiCad's symbols.
+3. **A fresh-context reviewer** judges the design against the brief.
+4. **The real board** (bench, in progress).
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
-> Status: a full run, with agents, change control, consistency checks and real board, enclosure and firmware builds,
-> settles with 0 violations from the commands below. With the optional QEMU installed, every run boots its newest
-> firmware headless, and the report shows the contract revision the firmware printed. Mid-run change requests are in progress (see Limits). This README does not claim
-> results that haven't run.
+> Status: mock runs settle with 0 violations from the commands below, with real board, enclosure and firmware builds.
+> With the optional QEMU installed, every run boots its newest firmware headless. The latest real-model runs (6, 7, 8) end with 0
+> consistency violations, but **none has passed the final brief review yet**; the report lists the open findings. See
+> `docs/submission.md` for the evidence. This README does not claim results that haven't run.
 
 ## The problem
 
