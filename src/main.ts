@@ -8,7 +8,7 @@ import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 import { openBench } from "./bench/open.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 
-const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter]"
+const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -25,6 +25,8 @@ export interface CliArgs {
 	benchReplay?: string
 	// The fake bench without a meter: a tier-1 (pocket) bench, for trying the dashboard without hardware.
 	benchNoMeter?: boolean
+	// The fake bench without an MPU-6050; with benchNoMeter, a bare ESP32-S3.
+	benchNoImu?: boolean
 }
 
 export function parseArgs(argv: string[]): CliArgs | { error: string } {
@@ -43,7 +45,7 @@ export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	const briefPath = argv.find((a, i) => !a.startsWith("--") && !valueAt.has(i))
 	if (!briefPath) return { error: "no brief given" }
 	if (!existsSync(briefPath)) return { error: `brief not found: ${briefPath}` }
-	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}) }
+	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}) }
 }
 
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
@@ -82,7 +84,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		console.log(`bringup: bench ${source}; after the design settles the run stays up for bring-up. Ctrl-C ends it.`)
 		bench = {
 			until,
-			open: () => openBench({ root: ROOT, source, outDir, replay: args.benchReplay, extraArgs: args.benchNoMeter ? ["--no-meter"] : [], start: (a) => startBridge(python, a, { cwd: ROOT, onStderr: (t) => process.stderr.write(`[bench.py] ${t}`) }) }),
+			open: () => openBench({ root: ROOT, source, outDir, replay: args.benchReplay, extraArgs: [...(args.benchNoMeter ? ["--no-meter"] : []), ...(args.benchNoImu ? ["--no-imu"] : [])], start: (a) => startBridge(python, a, { cwd: ROOT, onStderr: (t) => process.stderr.write(`[bench.py] ${t}`) }) }),
 		}
 	}
 	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, bench })

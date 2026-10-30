@@ -270,3 +270,12 @@ test("without a CP2102: a telemetry error while the port re-enumerates and a rep
 	assert.equal(t.of("bench.verdict")[0].pass, true, JSON.stringify(t.of("bench.verdict")[0].checks))
 	assert.equal(t.of("bench.measured").length, 1, "measured from the meter samples alone, with no cycle lines")
 })
+
+test("a null temperature (no sensor) is left out of the telemetry, not sent as 0 °C", async () => {
+	const t = setup(new FakeBridge())
+	t.fake.emit({ k: "s", rev: 0, ms: 0, ax: 0, ay: 0, az: 0, tilt: 0, tC: null, tSrc: "none", led: 1 })
+	await waitFor(() => t.of("bench.telemetry").length > 0)
+	const sample = t.of("bench.telemetry")[0].samples[0]
+	assert.equal("tC" in sample, false)
+	assert.equal(sample.led, 1)
+})
