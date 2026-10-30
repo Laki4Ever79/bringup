@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bringup · board preview</title>
+<style>
+	:root {
+		--bg: #0a0a0a; --panel: #111113; --raised: #16161a; --line: #232327; --line-hi: #2e2e35;
+		--t1: #ededed; --t2: #a1a1aa; --t3: #6b6b76; --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
+		--sans: ui-sans-serif, -apple-system, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif;
+		--mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+		--ease: cubic-bezier(.2,.8,.2,1);
+	}
+	* { box-sizing: border-box; }
+	html, body { height: 100%; margin: 0; }
+	body { background: var(--bg) radial-gradient(1200px 700px at 0% 0%, rgba(30,41,59,.06), transparent 60%); color: var(--t1);
+		font: 15px/1.4 var(--sans); display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+	header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+	header .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--ok); box-shadow: 0 0 0 4px rgba(34,197,94,.15); }
+	header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
+	header .meta { color: var(--t2); font-size: 13px; font-variant-numeric: tabular-nums; }
+	header .spacer { flex: 1; }
+	main { display: grid; grid-template-columns: 62fr 38fr; grid-template-rows: 1fr 1fr; gap: 12px; padding: 12px; min-height: 0; }
+	section { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; min-height: 0; }
+	#stage { grid-row: 1 / span 2; }
+	.bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: 10px 14px; z-index: 2;
+		font-size: 13px; color: var(--t2); pointer-events: none; }
+	.bar b { color: var(--t1); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; font-size: 13px; }
+	.bar .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+	.bar .ctl { margin-left: auto; display: flex; gap: 4px; pointer-events: auto; }
+	.seg { display: inline-flex; background: var(--raised); border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
+	.seg button { font: 13px var(--sans); color: var(--t2); background: none; border: 0; padding: 3px 10px; border-radius: 999px; cursor: pointer;
+		transition: color 160ms var(--ease), background 160ms var(--ease); }
+	.seg button.on { color: var(--t1); background: #232327; }
+	input[type=range] { accent-color: #f59e0b; width: 110px; }
+	.mount { position: absolute; inset: 40px 0 0 0; }
+	#parts .mount { overflow: auto; padding: 0 6px 8px; }
+	table { width: 100%; border-collapse: collapse; font-size: 13px; }
+	td { padding: 7px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
+	tr { transition: background 160ms var(--ease); cursor: default; }
+	tr.hot td { background: rgba(245,158,11,.08); }
+	td.ref { font-family: var(--mono); font-weight: 600; }
+	td.mpn { font-family: var(--mono); color: var(--t2); overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+	td.num { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; color: var(--t2); }
+	.pill { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line-hi); color: var(--t2); }
+	.ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+	.empty { color: var(--t3); font-style: italic; padding: 24px; }
+</style>
+</head>
+<body>
+<header>
+	<span class="dot"></span>
+	<h1>Bringup</h1>
+	<span class="meta" id="summary">loading the run…</span>
+	<span class="spacer"></span>
+	<span class="meta" id="rev"></span>
+</header>
+<main>
+	<section id="stage">
+		<div class="bar"><b>PCB</b><span class="num" id="dims"></span>
+			<span class="ctl"><span class="seg" id="side"><button data-v="both" class="on">Both</button><button data-v="top">Top</button><button data-v="bottom">Bottom</button></span></span>
+		</div>
+		<div class="mount" id="pcb"></div>
+	</section>
+	<section id="three">
+		<div class="bar"><b>3D</b><span>drag to rotate</span>
+			<span class="ctl"><label class="seg" style="padding:2px 10px;align-items:center;gap:8px;font-size:13px;color:var(--t2)">explode <input type="range" id="explode" min="0" max="1" step="0.01" value="0"></label></span>
+		</div>
+		<div class="mount" id="scene"></div>
+	</section>
+	<section id="parts">
+		<div class="bar"><b>Parts</b><span class="num" id="total"></span></div>
+		<div class="mount"><table id="bom"><tbody><tr><td class="empty">waiting for bom.json</td></tr></tbody></table></div>
+	</section>
+</main>
+<script type="module">
+	import { mountPcb } from "/pcb-view.js"
+	import { mountScene } from "/scene3d.js"
+
+	const $ = (id) => document.getElementById(id)
+	const q = new URLSearchParams(location.search)
+	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
+	let pinned = q.get("highlight")
+
+	const hover = (ref) => {
+		const r = ref ?? pinned
+		pcb.highlight(r)
+		scene.highlight(r)
+		for (const tr of document.querySelectorAll("#bom tr[data-ref]")) tr.classList.toggle("hot", tr.dataset.ref === r)
+	}
+	const pcb = mountPcb($("pcb"), { onHover: hover })
+	const scene = mountScene($("scene"), { onHover: hover })
+	// For poking at the views from the console: bringupPreview.pcb.update(circuit, ["U2"]) replays the glow.
+	window.bringupPreview = { pcb, scene }
+
+	const json = async (path) => { const r = await fetch(path, { cache: "no-store" }); return r.ok ? r.json() : null }
+	const bytes = async (path) => { const r = await fetch(path, { cache: "no-store" }); return r.ok ? r.arrayBuffer() : null }
+	const latest = { board: null, enclosure: null }
+
+	async function loadContract() {
+		const c = await json("/files/contract.json")
+		if (!c) return
+		const parts = c.values.parts ?? []
+		pcb.setParts(parts)
+		scene.setParts(parts)
+		$("summary").textContent = c.values.requirements?.summary ?? ""
+		$("rev").textContent = `rev ${c.revision}`
+	}
+	async function loadBoard(rev) {
+		const circuit = (rev !== null && (await json(`/files/board/rev-${rev}/dist/board/circuit.json`))) || (await json("/files/board/circuit.json"))
+		if (!circuit) return
+		pcb.update(circuit)
+		scene.update({ circuit })
+		const b = circuit.find((e) => e.type === "pcb_board")
+		if (b) $("dims").textContent = `${b.width.toFixed(1)} × ${b.height.toFixed(1)} mm · ${b.num_layers ?? 2} layers`
+	}
+	async function loadCase(rev) {
+		if (rev === null) return
+		const stl = await bytes(`/files/enclosure/rev-${rev}/case.stl`)
+		if (stl) scene.update({ caseStl: stl })
+	}
+	async function loadBom() {
+		const bom = await json("/files/bom.json")
+		if (!bom) return
+		$("total").textContent = bom.totalUsd === null ? "total —" : `total $${bom.totalUsd.toFixed(2)}`
+		$("bom").innerHTML = bom.items.map((i) => {
+			const stock = i.stock === null ? "—" : i.stock >= 1e6 ? `${(i.stock / 1e6).toFixed(1)}M` : i.stock >= 1000 ? `${Math.round(i.stock / 1000)}k` : String(i.stock)
+			const mark = !i.grounded ? `<span class="err" title="${esc(i.finding)}">✕</span>` : i.inStock === false ? `<span class="warn">!</span>` : `<span class="ok">✓</span>`
+			return `<tr data-ref="${esc(i.ref)}"><td class="ref">${esc(i.ref)}</td><td class="mpn">${esc(i.mpn)}</td><td><span class="pill">${esc(i.role)}</span></td>` +
+				`<td class="num">${esc(i.lcsc ?? "")}</td><td>${mark}</td><td class="num">${stock}</td><td class="num">${i.priceUsd === null ? "—" : "$" + i.priceUsd.toFixed(2)}</td></tr>`
+		}).join("")
+		for (const tr of document.querySelectorAll("#bom tr[data-ref]")) {
+			tr.addEventListener("mouseenter", () => hover(tr.dataset.ref))
+			tr.addEventListener("mouseleave", () => hover(null))
+		}
+		hover(null)
+	}
+
+	for (const b of document.querySelectorAll("#side button")) b.addEventListener("click", () => {
+		for (const x of document.querySelectorAll("#side button")) x.classList.toggle("on", x === b)
+		pcb.setView(b.dataset.v)
+	})
+	$("explode").addEventListener("input", (e) => scene.setExplode(Number(e.target.value)))
+	if (q.get("view")) document.querySelector(`#side button[data-v="${q.get("view")}"]`)?.click()
+	if (q.get("explode")) { $("explode").value = q.get("explode"); scene.setExplode(Number(q.get("explode"))) }
+
+	// Follow the run: replayed events find the latest build of each artifact, live ones refresh it.
+	let timer = null
+	const refresh = () => {
+		clearTimeout(timer)
+		timer = setTimeout(async () => {
+			await loadContract()
+			await Promise.all([loadBoard(latest.board), loadCase(latest.enclosure), loadBom()])
+			hover(null)
+		}, 150)
+	}
+	const events = new EventSource("/events")
+	events.onmessage = (m) => {
+		const e = JSON.parse(m.data)
+		if (e.type === "artifact.ready" && (e.payload.kind === "board" || e.payload.kind === "enclosure")) latest[e.payload.kind] = e.payload.revision
+		if (["artifact.ready", "contract.changed", "grounding.checked", "design.settled"].includes(e.type)) refresh()
+	}
+	refresh()
+</script>
+</body>
+</html>
