@@ -28,3 +28,21 @@ def scan() -> dict[str, str | None]:
     from serial.tools import list_ports
 
     return classify([(p.device, p.vid, p.pid) for p in list_ports.comports()])
+
+
+def dut_identity() -> tuple[int, int, int] | None:
+    """(vid, pid, USB device number) of the S3. The device number changes whenever it re-enumerates, which is how
+    the bench sees that someone pressed its buttons."""
+    from serial.tools import list_ports
+
+    for p in list_ports.comports():
+        if ROLES.get((p.vid, p.pid)) == "dut":
+            devnum = -1
+            path = getattr(p, "usb_device_path", None)
+            try:
+                with open(f"{path}/devnum") as f:
+                    devnum = int(f.read())
+            except (OSError, TypeError, ValueError):
+                pass
+            return p.vid, p.pid, devnum
+    return None
