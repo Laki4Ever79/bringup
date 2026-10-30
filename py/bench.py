@@ -24,6 +24,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--replay", help="a bench.jsonl recording (with --source replay)")
     ap.add_argument("--out", help="directory for bench.jsonl, power.csv and the S3 build dir (fw-s3/)")
     ap.add_argument("--no-meter", action="store_true", help="with --source fake: a tier-1 bench, no fixture or INA226")
+    ap.add_argument("--no-imu", action="store_true", help="with --source fake: no MPU-6050 (tilt 0, an imu error each second)")
     ap.add_argument("--fake-speed", type=float, default=1.0, help="divides the fake flash timings (tests)")
     ap.add_argument("--pio", default=os.environ.get("BENCH_PIO", os.path.join(ROOT, ".venv/bin/pio")))
     args = ap.parse_args(argv)
@@ -31,7 +32,7 @@ def main(argv: list[str]) -> int:
         ap.error("--source replay needs --replay FILE")
 
     work_dir = os.path.join(args.out, "fw-s3") if args.out else None
-    bridge = Bridge(args.source, Out(sys.stdout, args.out), args.pio, fake_speed=args.fake_speed, replay=args.replay, work_dir=work_dir, no_meter=args.no_meter)
+    bridge = Bridge(args.source, Out(sys.stdout, args.out), args.pio, fake_speed=args.fake_speed, replay=args.replay, work_dir=work_dir, no_meter=args.no_meter, no_imu=args.no_imu)
     try:
         bridge.start()
     except Exception as e:
