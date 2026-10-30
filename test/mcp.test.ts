@@ -1,12 +1,11 @@
 import assert from "node:assert/strict"
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createBringupMcpServer } from "../src/mcp/server.ts"
-import type { RunOptions, RunResult } from "../src/run.ts"
 import { fixtureContract } from "./fixture.ts"
 
 const trace = [
@@ -17,25 +16,31 @@ const trace = [
 	{ seq: 4, at: "2026-10-30T12:00:04.000Z", type: "design.settled", producerId: "consistency", payload: { revision: 4, settled: true } },
 ]
 
-// Stub run: writes the run files, then waits for `release()` before resolving.
+type Launch = Parameters<typeof createBringupMcpServer>[0]["launch"]
+type LaunchArgs = Parameters<Launch>[0]
+
+// Stub launch: writes the run files like `tsx src/main.ts` would, but only once `release()` is called.
 function stubRun() {
-	let release!: () => void
-	const gate = new Promise<void>((ok) => (release = ok))
-	const calls: RunOptions[] = []
-	const runDesign = async (opts: RunOptions): Promise<RunResult> => {
-		calls.push(opts)
-		writeFileSync(join(opts.outDir, "trace.jsonl"), trace.slice(0, 2).map((l) => JSON.stringify(l) + "\n").join(""))
-		await gate
-		writeFileSync(join(opts.outDir, "trace.jsonl"), trace.map((l) => JSON.stringify(l) + "\n").join(""))
-		writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(fixtureContract()))
-		writeFileSync(join(opts.outDir, "report.md"), "# Report\n\nsettled at revision 4\n")
-		return { settled: true, outDir: opts.outDir, revision: 4, violations: [], reportPath: join(opts.outDir, "report.md") }
+	const gates: (() => void)[] = []
+	const calls: LaunchArgs[] = []
+	const launch: Launch = (args) => {
+		calls.push(args)
+		writeFileSync(join(args.outDir, "trace.jsonl"), trace.slice(0, 2).map((l) => JSON.stringify(l) + "\n").join(""))
+		const done = new Promise<void>((ok) => gates.push(ok)).then(() => {
+			writeFileSync(join(args.outDir, "trace.jsonl"), trace.map((l) => JSON.stringify(l) + "\n").join(""))
+			writeFileSync(join(args.outDir, "contract.json"), JSON.stringify(fixtureContract()))
+			writeFileSync(join(args.outDir, "report.md"), "# Report\n\nsettled at revision 4\n")
+			return { code: 0, stderr: "" }
+		})
+		return { done }
 	}
-	return { runDesign, release, calls }
+	return { launch, calls, release: () => gates.splice(0).forEach((g) => g()) }
 }
 
-async function connect(runDesign: (o: RunOptions) => Promise<RunResult>, outRoot = mkdtempSync(join(tmpdir(), "bringup-mcp-"))) {
-	const server = createBringupMcpServer({ runDesign, outRoot })
+const exitWith = (code: number, stderr: string): Launch => () => ({ done: Promise.resolve({ code, stderr }) })
+
+async function connect(launch: Launch, outRoot = mkdtempSync(join(tmpdir(), "bringup-mcp-"))) {
+	const server = createBringupMcpServer({ launch, outRoot })
 	const [a, b] = InMemoryTransport.createLinkedPair()
 	const client = new Client({ name: "test", version: "0" })
 	await Promise.all([server.connect(a), client.connect(b)])
@@ -57,7 +62,7 @@ async function until(check: () => Promise<boolean>, ms = 2000) {
 
 test("start_design returns a runId before the run finishes", async () => {
 	const stub = stubRun()
-	const mcp = await connect(stub.runDesign)
+	const mcp = await connect(stub.launch)
 	try {
 		const res = await mcp.call("start_design", { brief: "BLE temperature logger", mock: true })
 		assert.equal(res.isError, false, res.text)
@@ -65,7 +70,8 @@ test("start_design returns a runId before the run finishes", async () => {
 		assert.match(runId, /^[\w-]+$/)
 		assert.equal(outDir, join(mcp.outRoot, runId))
 		assert.equal(stub.calls.length, 1)
-		assert.deepEqual({ brief: stub.calls[0].brief, mock: stub.calls[0].mock, outDir: stub.calls[0].outDir }, { brief: "BLE temperature logger", mock: true, outDir })
+		assert.deepEqual(stub.calls[0], { briefPath: join(outDir, "brief.md"), mock: true, outDir })
+		assert.equal(readFileSync(join(outDir, "brief.md"), "utf8"), "BLE temperature logger\n")
 		stub.release()
 	} finally {
 		await mcp.close()
@@ -74,7 +80,7 @@ test("start_design returns a runId before the run finishes", async () => {
 
 test("design_status moves from running to settled", async () => {
 	const stub = stubRun()
-	const mcp = await connect(stub.runDesign)
+	const mcp = await connect(stub.launch)
 	try {
 		const { runId } = (await mcp.call("start_design", { brief: "logger" })).json()
 		const running = (await mcp.call("design_status", { runId })).json()
@@ -92,10 +98,8 @@ test("design_status moves from running to settled", async () => {
 	}
 })
 
-test("a run that throws reports failed with its error", async () => {
-	const mcp = await connect(async () => {
-		throw new Error("kicad image missing")
-	})
+test("a run that exits 1 reports failed with its stderr tail", async () => {
+	const mcp = await connect(exitWith(1, "starting\nError: kicad image missing\n"))
 	try {
 		const { runId } = (await mcp.call("start_design", { brief: "logger" })).json()
 		await until(async () => (await mcp.call("design_status", { runId })).json().status === "failed")
@@ -107,7 +111,7 @@ test("a run that throws reports failed with its error", async () => {
 
 test("read_contract, get_report and list_events read the run files", async () => {
 	const stub = stubRun()
-	const mcp = await connect(stub.runDesign)
+	const mcp = await connect(stub.launch)
 	try {
 		const { runId } = (await mcp.call("start_design", { brief: "logger" })).json()
 		stub.release()
@@ -127,7 +131,7 @@ test("an existing run dir under outRoot is readable", async () => {
 	const outRoot = mkdtempSync(join(tmpdir(), "bringup-mcp-"))
 	mkdirSync(join(outRoot, "old-run"))
 	writeFileSync(join(outRoot, "old-run", "trace.jsonl"), trace.map((l) => JSON.stringify(l) + "\n").join(""))
-	const mcp = await connect(stubRun().runDesign, outRoot)
+	const mcp = await connect(stubRun().launch, outRoot)
 	try {
 		const status = (await mcp.call("design_status", { runId: "old-run" })).json()
 		assert.equal(status.status, "settled")
@@ -139,7 +143,7 @@ test("an existing run dir under outRoot is readable", async () => {
 })
 
 test("unknown and path-like runIds give an error result, not a crash", async () => {
-	const mcp = await connect(stubRun().runDesign)
+	const mcp = await connect(stubRun().launch)
 	try {
 		for (const runId of ["nope", "../x", "..", "a/b", "/etc", ""]) {
 			for (const tool of ["design_status", "read_contract", "get_report", "list_events"]) {
@@ -149,6 +153,50 @@ test("unknown and path-like runIds give an error result, not a crash", async () 
 		}
 		// The server still answers afterwards.
 		assert.equal((await mcp.call("start_design", { brief: "x" })).isError, false)
+	} finally {
+		await mcp.close()
+	}
+})
+
+test("exit code 2 means unsettled", async () => {
+	const mcp = await connect(exitWith(2, ""))
+	try {
+		const { runId } = (await mcp.call("start_design", { brief: "logger" })).json()
+		await until(async () => (await mcp.call("design_status", { runId })).json().status === "unsettled")
+	} finally {
+		await mcp.close()
+	}
+})
+
+test("start_design defaults to mock", async () => {
+	const stub = stubRun()
+	const mcp = await connect(stub.launch)
+	try {
+		await mcp.call("start_design", { brief: "logger" })
+		assert.equal(stub.calls[0].mock, true)
+		stub.release()
+	} finally {
+		await mcp.close()
+	}
+})
+
+test("two overlapping runs both settle in separate outDirs", async () => {
+	const stub = stubRun()
+	const mcp = await connect(stub.launch)
+	try {
+		const [a, b] = await Promise.all([
+			mcp.call("start_design", { brief: "logger A" }).then((r) => r.json()),
+			mcp.call("start_design", { brief: "logger B" }).then((r) => r.json()),
+		])
+		assert.notEqual(a.runId, b.runId)
+		assert.notEqual(a.outDir, b.outDir)
+		assert.equal(stub.calls.length, 2)
+		for (const r of [a, b]) assert.equal((await mcp.call("design_status", { runId: r.runId })).json().status, "running")
+		assert.equal(readFileSync(join(a.outDir, "brief.md"), "utf8"), "logger A\n")
+		assert.equal(readFileSync(join(b.outDir, "brief.md"), "utf8"), "logger B\n")
+
+		stub.release()
+		for (const r of [a, b]) await until(async () => (await mcp.call("design_status", { runId: r.runId })).json().status === "settled")
 	} finally {
 		await mcp.close()
 	}
