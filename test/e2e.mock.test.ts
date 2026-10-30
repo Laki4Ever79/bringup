@@ -2,11 +2,12 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { detectEnvironment } from "../src/tools/env.ts"
 import { run } from "../src/tools/exec.ts"
 import { tempDir } from "./helpers.ts"
 
-const root = new URL("..", import.meta.url).pathname
+const root = fileURLToPath(new URL("..", import.meta.url))
 const env = await detectEnvironment(root)
 const ready = env.tsci && env.kicad && env.python && env.pio
 
