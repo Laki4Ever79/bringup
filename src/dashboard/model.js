@@ -293,3 +293,21 @@ export function parseBattery(reportText) {
 	const m = /(\d+(?:\.\d+)?) days(?: vs target (\d+(?:\.\d+)?) days)?\s*$/.exec(line)
 	return m ? { days: Number(m[1]), targetDays: m[2] ? Number(m[2]) : null } : null
 }
+
+// ── Sourcing (bom.json items[i].sources / alternatives) ───────────────────────────────────────────
+
+// Only absolute http(s) URLs may become an href.
+export function safeUrl(url) {
+	return typeof url === "string" && /^https?:\/\/[^/]/i.test(url) ? url : null
+}
+
+const stockText = (n) => (typeof n !== "number" ? "not checked" : n === 0 ? "out of stock" : `${n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : n} in stock`)
+const priceText = (p) => (typeof p !== "number" ? "not checked" : `$${p.toFixed(p < 0.1 ? 3 : 2)}`)
+
+// The part's sourcing popover rows: live numbers where known, "not checked" where not, never an invented one.
+export function sourcingRows(item) {
+	return {
+		sources: (item.sources ?? []).map((s) => ({ supplier: s.supplier, url: safeUrl(s.url), stock: stockText(s.stock), price: priceText(s.priceUsd), note: s.note ?? null })),
+		alternatives: (item.alternatives ?? []).map((a) => ({ mpn: a.mpn, lcsc: a.lcsc ?? null, stock: stockText(a.stock), price: priceText(a.priceUsd) })),
+	}
+}

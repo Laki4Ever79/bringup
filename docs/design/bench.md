@@ -225,7 +225,7 @@ field `behavior {blinkMs, tiltBlinkMs, tiltDeg}`, owned by the firmware agent, b
 | t | Presenter | On screen |
 |---|---|---|
 | 0 | "This board on my desk runs the firmware the agents just wrote." Tilts it. | 3D board tilts in sync; live chart; LED at 1 Hz on the camera. |
-| 8 | Types **"blink faster when tilted"** in the change bar. | Firmware lane wakes; PR card `behavior +tiltBlinkMs 100` → approved. |
+| 8 | Types **"blink faster when tilted"** in the change bar. | Firmware lane wakes and writes `behavior v1` (tiltBlinkMs 100, tiltDeg 20). The firmware agent owns `behavior`, so no PR card: the change shows on the firmware lane and in the request toast. |
 | 20 | — | Flash bar build → write 37…100 % → boot rev 15 ✓. |
 | 32 | Tilts the board. | LED blinks fast; tilt trace crosses 20°; Bench pill ✓ rev 15. |
 | 38 | "Now: does it really last six months?" | Fixture switches to duty mode; current spikes every 3 s over the dashed floor. |

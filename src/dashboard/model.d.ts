@@ -18,3 +18,8 @@ export class TelemetryBuffer {
 	lastImu: { ax: number; ay: number; az: number; at: number } | null
 	add(samples: any[]): void
 }
+export function safeUrl(url: unknown): string | null
+export function sourcingRows(item: any): {
+	sources: { supplier: string; url: string | null; stock: string; price: string; note: string | null }[]
+	alternatives: { mpn: string; lcsc: string | null; stock: string; price: string }[]
+}
