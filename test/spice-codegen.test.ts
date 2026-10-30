@@ -54,3 +54,24 @@ test("power deck refuses a contract with no regulated rail", () => {
 	c.values.rails = [RUN9_RAILS[0], RUN9_RAILS[1]]
 	assert.throws(() => powerDeck(c, { name: "vbus", vinV: 5 }), /no regulated rail/)
 })
+
+test("the deck uses the LDO's own dropout and quiescent current when given its model", () => {
+	const deck = powerDeck(fixtureContract(), { name: "liion-3v7", vinV: 3.7 }, { mpn: "XC6206P332MR-G", iqUa: 1, dropoutMv: 250, dropoutAtMa: 100, source: "catalog" })
+	assert.match(deck, /^\.param rdo_3v3=2\.5$/m, "250 mV at 100 mA")
+	assert.match(deck, /^Bin_3v3 in 0 I = I\(Vsense_3v3\) \+ 0\.000001$/m, "1 µA quiescent")
+	assert.match(deck, /XC6206P332MR-G/)
+})
+
+test("without an LDO model the deck keeps the AP2112K-class worst case", () => {
+	const deck = powerDeck(fixtureContract(), { name: "vbus", vinV: 5 })
+	assert.match(deck, /^\.param rdo_3v3=0\.8$/m, "400 mV at the rail's 500 mA rating")
+	assert.match(deck, /\+ 0\.000055$/m)
+})
+
+test("ldoModel reads dropout and Iq from the catalog, else assumes AP2112K-class", async () => {
+	const { ldoModel } = await import("../src/contract/power.ts")
+	const part = (mpn: string) => ({ ref: "U3", role: "ldo", mpn, lcsc: null, footprint: "sot23", pins: [] })
+	assert.deepEqual(ldoModel(part("XC6206P332MR-G")), { mpn: "XC6206P332MR-G", iqUa: 1, dropoutMv: 250, dropoutAtMa: 100, source: "catalog" })
+	assert.deepEqual(ldoModel(part("AP2112K-3.3TRG1")), { mpn: "AP2112K-3.3TRG1", iqUa: 55, dropoutMv: 400, dropoutAtMa: 600, source: "catalog" })
+	assert.equal(ldoModel(part("MYSTERY")).source, "assumed")
+})

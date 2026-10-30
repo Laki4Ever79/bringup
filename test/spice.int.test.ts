@@ -63,3 +63,18 @@ test("real run 9's rails simulate: VBUS and VBAT are skipped, the 3.3 V rail is 
 	assert.deepEqual([...new Set(report.scenarios.map((x) => x.rail))], ["VDD_3V3"])
 	assert.ok(report.scenarios.find((x) => x.name === "liion-3v7")!.ok)
 })
+
+test("the XC6206's own dropout leaves no headroom at 180 mA from a 3.7 V cell; the AP2112K's does", { skip, timeout: 120_000 }, async () => {
+	const at37 = async (mpn: string) => {
+		const report = await simulate((c) => {
+			c.values.rails = [{ name: "VDD_3V3", voltageV: 3.3, regulatorMaxMa: 300, loadMa: 180 }]
+			c.values.parts!.push({ ref: "U3", role: "ldo", mpn, lcsc: null, footprint: "sot23", pins: ["GND", "VOUT", "VIN"] })
+		})
+		return report.scenarios.find((x) => x.name === "liion-3v7")!
+	}
+	const xc = await at37("XC6206P332MR-G")
+	const ap = await at37("AP2112K-3.3TRG1")
+	assert.ok(xc.headroomMv < 0, `XC6206 headroom ${xc.headroomMv} mV`)
+	assert.ok(ap.headroomMv > 0, `AP2112K headroom ${ap.headroomMv} mV`)
+	assert.equal(xc.ldo, "XC6206P332MR-G (catalog)")
+})

@@ -41,7 +41,8 @@ function setup(f: typeof fetch) {
 
 test("a parts change writes bom.json with live stock, prices and a total", async () => {
 	const calls: string[] = []
-	const t = setup(fakeFetch({ C2838502: { stock: 22598, price: 3.05 }, C2909890: { stock: 16939, price: 1.75 }, C2286: { stock: 0, price: 0.01 } }, calls))
+	const prices = { C2838502: { stock: 22598, price: 3.05 }, C2909890: { stock: 16939, price: 1.75 }, C2286: { stock: 0, price: 0.01 } }
+	const t = setup(fakeFetch(prices, calls))
 	t.setParts()
 	await waitFor(() => existsSync(t.path))
 	const bom = t.read()
@@ -51,7 +52,9 @@ test("a parts change writes bom.json with live stock, prices and a total", async
 	assert.deepEqual([u1.mpn, u1.lcsc, u1.role, u1.stock, u1.priceUsd, u1.inStock, u1.grounded], ["ESP32-C3-MINI-1", "C2838502", "mcu", 22598, 3.05, true, true])
 	assert.equal(bom.items.find((i) => i.ref === "D1")!.inStock, false)
 	assert.equal(bom.items.find((i) => i.ref === "U3")!.priceUsd, null, "not in the fake price table")
-	assert.equal(bom.totalUsd, 4.81)
+	// The total of the parts the fake table prices (the mock's LEDs share C2286), so mock design changes don't break it.
+	const priced = LOGGER_DESIGN.parts.map((p) => prices[p.lcsc as keyof typeof prices]?.price ?? 0)
+	assert.equal(bom.totalUsd, Math.round(priced.reduce((a, b) => a + b, 0) * 1e4) / 1e4)
 })
 
 test("a grounding finding marks its part ungrounded with the finding", async () => {

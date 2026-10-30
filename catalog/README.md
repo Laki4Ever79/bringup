@@ -72,10 +72,19 @@ there is one, else codegen adds it to the board. Added parts appear in `bom.csv`
 current). It reads each LDO's quiescent current from the `iqUa` field of its catalog entry (typical µA). An LDO the
 catalog doesn't know is assumed to draw 55 µA, like the AP2112K.
 
-| LDO | LCSC | Package, pins | Iq (`iqUa`) | Max out | Notes |
-|---|---|---|---|---|---|
-| AP2112K-3.3TRG1 | C51118 | SOT-23-5: VIN, GND, EN, NC, VOUT | 55 µA | 600 mA | EN tied to VIN |
-| XC6206P332MR-G | C5446 (JLC basic, 530,418 in stock) | SOT-23-3 (`sot23`): GND, VOUT, VIN | 1 µA | 200 mA | 6 V max in; dropout about 250 mV at 100 mA |
+| LDO | LCSC | Package, pins | Iq (`iqUa`) | Dropout (`dropoutMv` at `dropoutAtMa`) | Max out | Notes |
+|---|---|---|---|---|---|---|
+| AP2112K-3.3TRG1 | C51118 | SOT-23-5: VIN, GND, EN, NC, VOUT | 55 µA | 400 mV at 600 mA (datasheet maximum) | 600 mA | EN tied to VIN |
+| XC6206P332MR-G | C5446 (JLC basic, 530,418 in stock) | SOT-23-3 (`sot23`): GND, VOUT, VIN | 1 µA | 250 mV at 100 mA (typical) | 200 mA | 6 V max in |
+
+The power simulation (`src/tools/spice.ts`) models dropout as a resistance, `dropoutMv / dropoutAtMa`. For the XC6206
+that's 2.5 Ω, so at a 180 mA peak it drops about 450 mV and has no headroom from a 3.7 V cell. That's a real limit of
+this part, which the old AP2112K-only model hid.
+- **When it applies:** with exactly one LDO in the design, the simulation uses that LDO's catalog numbers. Otherwise, or
+  for an LDO the catalog doesn't know, it assumes the AP2112K-class worst case (400 mV at the rail's rating, 55 µA).
+- **Source of the XC6206 figures:** the 250 mV at 100 mA typical figure is Torex's headline, as listed by Farnell/CPC.
+  We couldn't fetch Torex's datasheet (HTTP 403) to get the maximum, and clone versions list other figures, e.g.
+  240 mV at 50 mA (UMW).
 
 The XC6206 is there for battery targets. A 500 mAh cell lasting 180 days allows about 116 µA in total, and the
 AP2112K's 55 µA alone takes half of that (real run 7 failed its brief review on exactly this). The XC6206 pin order is

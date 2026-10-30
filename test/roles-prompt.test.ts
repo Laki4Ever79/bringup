@@ -16,3 +16,8 @@ test("the agents are told what sleepUa covers and that it can't go below the MCU
 	assert.match(CONTRACT_SHAPES, /sleepUa[^.]*excluding the regulator's quiescent current/)
 	assert.match(CONTRACT_SHAPES, /deep-sleep floor/)
 })
+
+test("the agents are told how to show charging state in hardware", () => {
+	assert.match(CONTRACT_SHAPES, /charge-led/)
+	assert.match(CONTRACT_SHAPES, /CHRG/)
+})
