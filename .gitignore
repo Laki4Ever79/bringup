@@ -6,3 +6,4 @@ out/
 skidl_*
 .superpowers/
 .playwright-mcp/
+*.log
