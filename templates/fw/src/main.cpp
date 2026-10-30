@@ -9,6 +9,11 @@ static_assert(PIN_I2C_SCL >= 0 && PIN_I2C_SCL < SOC_GPIO_PIN_COUNT, "PIN_I2C_SCL
 #define HAS_I2C 1
 #endif
 
+#ifdef PIN_STATUS_LED
+static_assert(PIN_STATUS_LED >= 0 && PIN_STATUS_LED < SOC_GPIO_PIN_COUNT, "PIN_STATUS_LED is not a GPIO on this chip");
+#define HAS_LED 1
+#endif
+
 static const uint8_t SHT40_ADDR = 0x44;
 static const uint8_t SHT40_MEASURE_HIGH = 0xFD;
 
@@ -40,17 +45,38 @@ static bool readSht40(float *tempC, float *rh) {
 #endif
 }
 
+// The LED's anode is on the GPIO and its cathode goes to GND through a resistor, so HIGH is on.
+static void led(bool on) {
+#ifdef HAS_LED
+	digitalWrite(PIN_STATUS_LED, on ? HIGH : LOW);
+#endif
+}
+
+// One 2 s reading period: a steady 1 Hz blink while the sensor answers, a double blink when it doesn't.
+static void blinkPeriod(bool sensorOk) {
+	if (sensorOk) {
+		for (int i = 0; i < 2; i++) { led(true); delay(500); led(false); delay(500); }
+	} else {
+		for (int i = 0; i < 2; i++) { led(true); delay(100); led(false); delay(150); }
+		delay(1500);
+	}
+}
+
 void setup() {
 	Serial.begin(115200);
 	Serial.printf("bringup rev %d\n", BRINGUP_REVISION);
 #ifdef HAS_I2C
 	Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 #endif
+#ifdef HAS_LED
+	pinMode(PIN_STATUS_LED, OUTPUT);
+#endif
 }
 
 void loop() {
 	float t, rh;
-	if (readSht40(&t, &rh)) Serial.printf("SENSOR OK %.2f C %.1f %%RH\n", t, rh);
+	bool ok = readSht40(&t, &rh);
+	if (ok) Serial.printf("SENSOR OK %.2f C %.1f %%RH\n", t, rh);
 	else Serial.println("SENSOR FAIL");
-	delay(2000);
+	blinkPeriod(ok);
 }
