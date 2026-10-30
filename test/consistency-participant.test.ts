@@ -68,9 +68,9 @@ test("stops after too many revisions", async () => {
 	assert.equal(t.settled[0].settled, false)
 })
 
-test("does not settle until the critic has grounded the current parts and pins", async () => {
+test("does not settle until the grounding check has grounded the current parts and pins", async () => {
 	const t = setup()
-	t.state.criticEnabled = true
+	t.state.groundingEnabled = true
 	t.writeAll()
 	await new Promise((r) => setTimeout(r, 300))
 	assert.deepEqual(t.settled, [])

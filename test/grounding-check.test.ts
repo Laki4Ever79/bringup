@@ -8,7 +8,7 @@ import { LOGGER_DESIGN, mockScripts } from "../src/inference/scripts.ts"
 import type { Script } from "../src/inference/scripted-runner.ts"
 import { createChangeDesk } from "../src/change-control.ts"
 import { createArchitectAgent, createPartsAgent } from "../src/agents/roles.ts"
-import { createCritic } from "../src/agents/critic.ts"
+import { createGroundingCheck } from "../src/agents/grounding-check.ts"
 import { makeEvent } from "../src/events.ts"
 import type { GroundingFinding } from "../src/contract/grounding.ts"
 import type { FieldName } from "../src/contract/types.ts"
@@ -34,7 +34,7 @@ function setup() {
 	const events = recorder()
 	const desk = createChangeDesk()
 	join(desk)
-	join(createCritic(env))
+	join(createGroundingCheck(env))
 	createArchitectAgent({ mock: true })
 	createPartsAgent({ mock: true })
 	// Applies a change the way an agent's contract tool would, then announces it.
@@ -66,7 +66,7 @@ test("an invented pin wakes the parts agent, which replaces the parts list", asy
 	const flagged = t.checks().find((c) => c.findings.length > 0)!.findings
 	assert.deepEqual(flagged.map((f) => [f.partRef, f.kind]), [["U2", "pin-not-on-part"]])
 	assert.match(flagged[0].detail, /SDA2/)
-	// The mock parts agent proposes the catalog parts again, and the critic clears the finding.
+	// The mock parts agent proposes the catalog parts again, and the grounding check clears the finding.
 	await waitFor(() => t.turns["mock-parts"] >= 1 && t.state.contract.version("parts") >= 2 && t.checks().at(-1)!.findings.length === 0, 5000)
 	assert.deepEqual(t.state.groundingFindings, [])
 	assert.equal(t.turns["mock-architect"], 0, "a parts-list finding is not the architect's")

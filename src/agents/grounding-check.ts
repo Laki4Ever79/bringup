@@ -17,15 +17,15 @@ export function isPinAssignmentFinding(f: GroundingFinding, s: ContractSnapshot)
 	return (s.values.pins ?? []).some((a) => f.detail.startsWith(`${a.signal} `))
 }
 
-// A plain-code critic: whenever parts or pins change, it checks every claimed pin against the catalog and
+// A plain-code grounding check: whenever parts or pins change, it checks every claimed pin against the catalog and
 // KiCad's symbol library and reports grounding.checked. Without KiCad it grounds in the catalog alone.
-export function createCritic(env: Env): Human {
+export function createGroundingCheck(env: Env): Human {
 	const self = { id: "" }
 	let symbols: Promise<Record<string, KicadSymbol> | undefined> | null = null
 	const loadOnce = () =>
 		(symbols ??= env.kicad
 			? loadSymbols(env, SYMBOL_LIBRARIES).catch((error) => {
-					console.error("[critic] KiCad symbols unavailable, grounding in the catalog only:", error instanceof Error ? error.message : error)
+					console.error("[grounding-check] KiCad symbols unavailable, grounding in the catalog only:", error instanceof Error ? error.message : error)
 					return undefined
 				})
 			: Promise.resolve(undefined))
@@ -45,8 +45,8 @@ export function createCritic(env: Env): Human {
 		emit(makeEvent("grounding.checked", self.id, { revision: snapshot.revision, findings }), self.id)
 	})
 
-	const critic = createHuman({
-		name: "critic",
+	const check = createHuman({
+		name: "grounding-check",
 		capabilities: [],
 		handlers: [
 			{
@@ -59,7 +59,7 @@ export function createCritic(env: Env): Human {
 			},
 		],
 	})
-	self.id = critic.getId()
-	state().criticEnabled = true
-	return Object.assign(critic, { rebuilder })
+	self.id = check.getId()
+	state().groundingEnabled = true
+	return Object.assign(check, { rebuilder })
 }

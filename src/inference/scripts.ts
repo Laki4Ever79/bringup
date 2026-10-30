@@ -78,6 +78,23 @@ export function mockScripts(): Record<string, Script> {
 			}
 			return stepsTaken(items) === 0 ? propose("parts", LOGGER_DESIGN.parts, "parts from the catalog") : say("parts chosen")
 		},
+		// Passes with one minor finding, so mock runs settle and still show a verdict. 55 µA × 24 h × 183 days ≈ 242 mAh.
+		"mock-reviewer": (items) =>
+			stepsTaken(items) === 0
+				? [
+						toolCall("submit_review", {
+							verdict: "pass",
+							findings: [
+								{
+									severity: "minor",
+									fields: ["rails", "parts"],
+									issue: "The AP2112K draws about 55 µA quiescent: over 6 months that alone is about 242 mAh of the 500 mAh cell.",
+									suggestion: "Consider a low-Iq LDO (about 1 µA) to leave margin for the radio and the sensor.",
+								},
+							],
+						}),
+					]
+				: say("review submitted"),
 		"mock-firmware": (items) => {
 			if (stepsTaken(items) > 0) return say("requested")
 			const pins = state().contract.get("pins") ?? []

@@ -1,19 +1,41 @@
-import type { Agent, Tool } from "@mozaik-ai/core"
-import { isEvent } from "../events.ts"
+import type { Agent, SituationHandler, Tool } from "@mozaik-ai/core"
+import { isEvent, type ReviewFinding } from "../events.ts"
+import { OWNERS, type AgentRole } from "../contract/types.ts"
 import { ownerReviewsChanges, when } from "../change-control.ts"
 import { state } from "../runtime.ts"
 import { searchParts } from "../tools/parts-search.ts"
 import { createRoleAgent, requestTurn, startTurn } from "./common.ts"
-import { isPinAssignmentFinding } from "./critic.ts"
+import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
 
-// Splits the critic's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
+// Splits the grounding check's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
 function groundingFor(findings: GroundingFinding[], pinAssignments: boolean): GroundingFinding[] {
 	const s = state().contract.snapshot()
 	return findings.filter((f) => isPinAssignmentFinding(f, s) === pinAssignments)
 }
 
 const listFindings = (findings: GroundingFinding[]) => findings.map((f) => `- ${f.kind} on ${f.partRef} (${f.source}): ${f.detail}`).join("\n")
+
+// Brief review findings for the fields this role owns (a finding naming no field goes to the architect), while a
+// fix round is left. Each review wakes an owner once.
+function reviewFindingsFor(role: AgentRole, findings: ReviewFinding[]): ReviewFinding[] {
+	return findings.filter((f) => (f.fields.length === 0 ? role === "architect" : f.fields.some((field) => OWNERS[field] === role)))
+}
+
+function ownerFixesReview(role: AgentRole): SituationHandler {
+	const fixRoundLeft = () => state().review.round <= state().review.maxRounds
+	return {
+		specification: when(({ event }) => isEvent(event, "review.completed") && event.payload.verdict === "fail" && fixRoundLeft() && reviewFindingsFor(role, event.payload.findings).length > 0),
+		processor: {
+			apply: ({ event, participant }) => {
+				if (!isEvent(event, "review.completed")) return
+				const mine = reviewFindingsFor(role, event.payload.findings)
+				const list = mine.map((f) => `- [${f.severity}] ${f.fields.join(", ") || "general"}: ${f.issue} Suggestion: ${f.suggestion}`).join("\n")
+				requestTurn(participant as Agent, `review@${event.payload.revision}`, `Review findings at revision ${event.payload.revision} for fields you own:\n${list}\nChange the fields you own to address them, if you agree they are right. Leave other fields to their owners.`)
+			},
+		},
+	}
+}
 
 const CONTRACT_SHAPES = `Contract field shapes (units: mm, V, mA):
 - requirements: {summary: string, peripherals: string[], batteryLifeDays: number|null}
@@ -53,6 +75,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 				},
 			},
 			ownerReviewsChanges("architect"),
+			ownerFixesReview("architect"),
 			{
 				specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some((v) => v.affects.includes("architect"))),
 				processor: {
@@ -69,7 +92,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "grounding.checked")) return
 						const mine = groundingFor(event.payload.findings, true)
-						requestTurn(participant as Agent, `grounding-pins@${event.payload.revision}`, `The critic found pin assignments with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the pins field: use only GPIOs the MCU has and pins the parts list names.`)
+						requestTurn(participant as Agent, `grounding-pins@${event.payload.revision}`, `The grounding check found pin assignments with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the pins field: use only GPIOs the MCU has and pins the parts list names.`)
 					},
 				},
 			},
@@ -96,6 +119,7 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 		instruction: `You select the parts for a hardware design. Use search_parts for every role the requirements and rails need, prefer in-stock parts, and write the complete parts list with one propose_contract_change. Keep the reference designators below. You own the parts list: when another discipline asks to change it, decide with decide_change.\n${CONTRACT_SHAPES}`,
 		tools: [searchPartsTool()],
 		handlers: [
+			ownerFixesReview("parts"),
 			ownerReviewsChanges("parts"),
 			{
 				specification: when(({ event }) => isEvent(event, "contract.changed") && (event.payload.field === "requirements" || event.payload.field === "rails")),
@@ -112,7 +136,7 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "grounding.checked")) return
 						const mine = groundingFor(event.payload.findings, false)
-						requestTurn(participant as Agent, `grounding@${event.payload.revision}`, `The critic found parts with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the parts list: use search_parts and list only the pins the catalog gives.`)
+						requestTurn(participant as Agent, `grounding@${event.payload.revision}`, `The grounding check found parts with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the parts list: use search_parts and list only the pins the catalog gives.`)
 					},
 				},
 			},

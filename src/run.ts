@@ -6,8 +6,10 @@ import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
 import { createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder } from "./agents/builders.ts"
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
-import { createCritic } from "./agents/critic.ts"
+import { createGroundingCheck } from "./agents/grounding-check.ts"
 import { createArchitectAgent, createFirmwareReviewer, createPartsAgent } from "./agents/roles.ts"
+import { createBriefReviewer, MAX_REVIEW_ROUNDS } from "./agents/reviewer.ts"
+import type { Script } from "./inference/scripted-runner.ts"
 import { inferenceConfig } from "./inference/models.ts"
 import { mockScripts } from "./inference/scripts.ts"
 import { writeReport } from "./report.ts"
@@ -26,6 +28,11 @@ export interface RunOptions {
 	env?: Env
 	// Derive board, enclosure and firmware from the contract instead of running the hardware tools.
 	noHardware?: boolean
+	// The LLM brief reviewer gates settling (default on); maxReviewRounds is how many fix rounds it may ask for.
+	review?: boolean
+	maxReviewRounds?: number
+	// Mock model scripts, for tests; defaults to mockScripts().
+	scripts?: Record<string, Script>
 }
 
 export interface RunResult {
@@ -45,7 +52,9 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	writeFileSync(join(opts.outDir, "brief.md"), opts.brief)
 	const env = opts.env ?? (await detectEnvironment(ROOT))
 	const state = new BringupState(opts.outDir, opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS)
-	startRuntime(state, inferenceConfig(opts.mock, mockScripts()), join(opts.outDir, "trace.jsonl"))
+	state.review.enabled = opts.review ?? true
+	state.review.maxRounds = opts.maxReviewRounds ?? MAX_REVIEW_ROUNDS
+	startRuntime(state, inferenceConfig(opts.mock, opts.scripts ?? mockScripts()), join(opts.outDir, "trace.jsonl"))
 
 	let resolveSettled: (s: Settlement) => void = () => {}
 	const settledPromise = new Promise<Settlement>((r) => (resolveSettled = r))
@@ -54,10 +63,11 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, onSettled: resolveSettled }))
 	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env)]
 	for (const b of builders) joinRuntime(b)
-	joinRuntime(createCritic(env))
+	joinRuntime(createGroundingCheck(env))
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })
 	createFirmwareReviewer({ mock: opts.mock })
+	if (state.review.enabled) createBriefReviewer({ mock: opts.mock, env })
 	const engineer = createHuman({ name: "engineer", capabilities: [], handlers: [] })
 	joinRuntime(engineer)
 

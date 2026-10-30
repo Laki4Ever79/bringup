@@ -6,8 +6,8 @@ import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../cont
 import type { ContractSnapshot } from "../contract/types.ts"
 
 // --no-hardware: each builder derives its artifact straight from the contract instead of running tscircuit,
-// build123d or PlatformIO. The agents, change control, the critic and the consistency checks all run as usual,
-// so a machine with only `npm ci` can watch the coordination. Every stub carries stub: true.
+// build123d or PlatformIO. The agents, change control, the grounding check and the consistency checks all run as
+// usual, so a machine with only `npm ci` can watch the coordination. Every stub carries stub: true.
 
 type Stub<T> = T & { stub: true }
 

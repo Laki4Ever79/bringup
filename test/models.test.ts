@@ -30,3 +30,7 @@ test("openai is the fallback provider", () => {
 test("BRINGUP_PROVIDER overrides the choice", () => {
 	assert.equal(modelFor("architect", false, { ANTHROPIC_API_KEY: "x", BRINGUP_PROVIDER: "openai" }), "gpt-5.4")
 })
+
+test("the brief reviewer gets the strong model", () => {
+	assert.equal(modelFor("reviewer", false, { OPENAI_API_KEY: "y" }), "gpt-5.4")
+})

@@ -50,6 +50,8 @@ contract**, and a change in one domain wakes exactly the agents it affects.
                                          ▼
                          consistency (plain code, no LLM)
                     consistency.checked ──▶ wakes the affected agents
+                    design.ready        ──▶ brief reviewer (LLM, fresh context)
+                    review.completed    ──▶ fail: findings to the field owners
                     design.settled      ──▶ report.md
 ```
 
@@ -69,12 +71,30 @@ once, exactly one applies and the other gets `stale` and re-reads.
 | `change.decided` | The owner approved or rejected it |
 | `artifact.ready` / `artifact.failed` | A board, enclosure or firmware build finished for a revision |
 | `consistency.checked` | Cross-domain check result, with each violation's `affects` roles |
-| `design.settled` | Every artifact is built against the latest revision with no violations |
+| `grounding.checked` | Part pins and pin assignments checked against the catalog and KiCad symbols |
+| `design.ready` | The design is consistent and quiet; the brief reviewer judges it before it settles |
+| `review.completed` | The reviewer's verdict (`pass`/`fail`) with findings, each naming the contract fields it concerns |
+| `design.settled` | Every artifact is built against the latest revision with no violations, and the review is done |
 | `agent.halted` | An agent loop crashed (Mozaik #114 workaround) |
 
 **Cross-domain checks** (`src/contract/consistency.ts`): `outline-mismatch`, `net-missing`, `pin-mismatch`,
 `cutout-missing`, `cutout-misaligned`, `rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
 were actually built. For example, the firmware's pins are parsed back out of the `pins.h` it compiled.
+
+### Three checks
+
+| Check | What it compares | What it catches | How |
+|---|---|---|---|
+| **Consistency** (`src/contract/consistency.ts`) | The built artifacts against the contract | A board whose nets miss a pin assignment, a case cutout that misses the USB-C port, firmware built for another pin map, an overloaded rail | Plain code, after every build |
+| **Grounding** (`src/agents/grounding-check.ts`) | The contract against the parts catalog and KiCad 10's symbol library | Invented pinouts: a pin a part does not have, a GPIO the MCU lacks, a part no source knows | Plain code, after every parts or pins change |
+| **Brief reviewer** (`src/agents/reviewer.ts`) | The final design against the brief | A must-have the design does not meet, battery-life arithmetic that does not add up, a part choice that undermines the goal (for example an LDO's quiescent current against a 6-month target) | An LLM in a fresh context. It sees only the brief, the contract and the check results, never the agents' turns. |
+
+The first two keep the design self-consistent and real. Neither asks whether it is the *right* design, so the
+reviewer is the final gate. When the design is consistent and quiet, the consistency participant emits
+`design.ready` instead of settling. The reviewer answers with `review.completed`. A pass settles. A fail sends each
+finding to the owner of the fields it names and re-reviews the changed design. After one fix round (`maxReviewRounds`)
+the run settles anyway, with the findings in `report.md`, and it is unsettled only if a blocker remains. `--no-review`
+turns the gate off.
 
 ## How it uses Mozaik
 
@@ -137,7 +157,10 @@ message, not a crash.
 # Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. About 4 s.
 npm run bringup -- briefs/logger.md --mock --no-hardware
 
-# No API key needed: scripted models, real tools. About 35 s once the tools are installed.
+# Skip the brief reviewer gate (the consistency and grounding checks still run)
+npm run bringup -- briefs/logger.md --mock --no-review
+
+# No API key needed: scripted models, real tools. About 35–45 s once the tools are installed.
 npm run bringup -- briefs/logger.md --mock
 
 # Real models: copy .env.example to .env and set one of
@@ -148,7 +171,7 @@ npm run bringup -- briefs/logger.md
 
 `--no-hardware` swaps the three builders for stubs (`src/tools/stubs.ts`). Each stub derives its artifact straight
 from the contract: board nets from the pin map, enclosure cutouts from the connectors, firmware pins from the pin
-map. The agents, change control, the grounding critic and the consistency checks all run as usual, and the report
+map. The agents, change control, the grounding check and the consistency checks all run as usual, and the report
 says the hardware was stubbed. Without `--no-hardware`, a missing tool is a warning: its build fails with
 `artifact.failed`, and the run ends unsettled. The report then opens with a "Missing tools" section listing what to
 install.
@@ -158,7 +181,7 @@ choose the folder with `--out <dir>`. The last line of the run prints the report
 
 | Path | Contents |
 |---|---|
-| `report.md` | Start here: settled or not, violations, changes proposed, held, approved and rejected, tool table |
+| `report.md` | Start here: settled or not, violations, the brief review verdict and findings, changes proposed, held, approved and rejected, tool table |
 | `contract.json` | The final design contract |
 | `brief.md` | The brief the run started from |
 | `board/rev-N/` | One folder per build: `board.circuit.tsx`, KiCad project (`dist/board/kicad/board.kicad_pcb`), `board.step`, `board.png`. The latest render is also at `board/board.png` |
