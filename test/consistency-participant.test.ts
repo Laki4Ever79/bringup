@@ -183,3 +183,18 @@ test("a steady stream of bench telemetry does not keep the design from going qui
 	}
 	assert.equal(t.settled[0].settled, true)
 })
+
+test("every revision's contract is kept as contracts/rev-N.json, so diffs can be shown after the fact", async () => {
+	const { existsSync, readFileSync } = await import("node:fs")
+	const { join: path } = await import("node:path")
+	const t = setup()
+	t.writeAll()
+	await waitFor(() => t.settled.length > 0)
+	for (let rev = 1; rev <= 6; rev++) {
+		const file = path(t.state.outDir, "contracts", `rev-${rev}.json`)
+		assert.ok(existsSync(file), file)
+		assert.equal(JSON.parse(readFileSync(file, "utf8")).revision, rev)
+	}
+	const rev5 = JSON.parse(readFileSync(path(t.state.outDir, "contracts", "rev-5.json"), "utf8"))
+	assert.equal(rev5.versions.pins, 0, "rev 5 is before the pins were written")
+})

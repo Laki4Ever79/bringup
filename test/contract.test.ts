@@ -89,3 +89,14 @@ test("with a catalog, parts must be catalog parts and the error lists the option
 	assert.match((r as { reason: string }).reason, /MCP73831T-2ACI\/OT.*TP4054-42-SOT25R \(C32574\)/s)
 	assert.equal(c.propose({ field: "parts", value: [{ ...charger, mpn: "tp4054-42-sot25r" }], by: "parts", baseVersion: 0 }).status, "applied")
 })
+
+test("the contract keeps every revision's snapshot", () => {
+	const c = new DesignContract()
+	c.propose({ field: "outline", value: outline, by: "architect", baseVersion: 0 })
+	c.propose({ field: "outline", value: { ...outline, widthMm: 60 }, by: "architect", baseVersion: 1 })
+	assert.equal(c.snapshotAt(1)?.values.outline?.widthMm, 50)
+	assert.equal(c.snapshotAt(2)?.values.outline?.widthMm, 60)
+	assert.equal(c.snapshotAt(3), undefined)
+	c.snapshotAt(1)!.values.outline!.widthMm = 1
+	assert.equal(c.snapshotAt(1)?.values.outline?.widthMm, 50, "a copy")
+})

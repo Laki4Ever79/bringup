@@ -20,7 +20,8 @@ import { loadCatalog } from "./tools/parts-search.ts"
 import { createEngineer } from "./agents/engineer.ts"
 import { startCloudSession } from "./runner/cloud.ts"
 import { createActivityParticipant } from "./agents/activity.ts"
-import { APPROVAL_TIMEOUT_MS, BringupState, join as joinRuntime, sendMessage, startRuntime } from "./runtime.ts"
+import { APPROVAL_TIMEOUT_MS, BringupState, emit, join as joinRuntime, sendMessage, startRuntime } from "./runtime.ts"
+import { makeEvent } from "./events.ts"
 import { detectEnvironment, type Env } from "./tools/env.ts"
 import { createStubBuilders } from "./tools/stubs.ts"
 import { createBench, type Bench, type BenchOptions } from "./agents/bench.ts"
@@ -124,6 +125,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const engineer = createEngineer()
 	joinRuntime(engineer)
 
+	emit(makeEvent("run.started", engineer.getId(), { review: state.review.enabled, engineerApproval: state.engineerApproval, noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench) }), engineer.getId())
 	sendMessage(opts.brief, engineer.getId())
 	// Mid-run change requests (tsx src/request.ts, MCP request_change) arrive as further engineer messages.
 	const requests = watchRequests(opts.outDir, (r) => sendMessage(r.text, engineer.getId()))

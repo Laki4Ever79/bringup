@@ -142,3 +142,10 @@ test("change.resolved decides even without a vote (timeout)", () => {
 	assert.equal(c.status, "rejected")
 	assert.equal(c.why, "timeout")
 })
+
+test("the Review pill says off when the run has the brief review disabled", () => {
+	const off = checkPills([ev("run.started", { review: false, engineerApproval: false, noHardware: true, bench: false }), ev("consistency.checked", { revision: 3, violations: [] })]).find((p: any) => p.key === "review")
+	assert.deepEqual([off.state, off.items], ["off", ["the brief review is off for this run (--no-review)"]])
+	const on = checkPills([ev("run.started", { review: true, engineerApproval: false, noHardware: true, bench: false })]).find((p: any) => p.key === "review")
+	assert.equal(on.state, "pending")
+})
