@@ -42,3 +42,12 @@ test("report says fab was skipped under --no-hardware", () => {
 	const s = new BringupState(tempDir())
 	assert.match(report(s, { noHardware: true }), /Fab export: skipped \(--no-hardware/)
 })
+
+test("report shows the sourcing summary from bom.json, and says when there is none", () => {
+	const s = new BringupState(tempDir())
+	writeFileSync(join(s.outDir, "bom.json"), JSON.stringify({ revision: 1, totalUsd: 5, items: [], readiness: { summary: "18/18 listed at LCSC/JLCPCB · 2 stock confirmed · 16 stock unknown (jlcsearch returned none)", warn: false } }))
+	assert.match(report(s), /^- Sourcing: 18\/18 listed at LCSC\/JLCPCB · 2 stock confirmed · 16 stock unknown \(jlcsearch returned none\)$/m)
+	writeFileSync(join(s.outDir, "bom.json"), JSON.stringify({ revision: 1, totalUsd: null, items: [], readiness: { summary: "1/2 listed at LCSC/JLCPCB · 1 out of stock (D1)", warn: true } }))
+	assert.match(report(s), /^- Sourcing: needs attention: 1\/2 listed at LCSC\/JLCPCB · 1 out of stock \(D1\)$/m)
+	assert.match(report(new BringupState(tempDir())), /^- Sourcing: no bom\.json \(no parts yet\)$/m)
+})

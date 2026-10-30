@@ -36,7 +36,15 @@ export interface Bom {
 // Plain-code participant behind the dashboard's parts panel: on a parts change or a grounding result it writes
 // <outDir>/bom.json with live stock and price per part and whether the grounding check backs it. Writes are
 // debounced and run off the event path, so the outbox never waits on the network.
-export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: number; root?: string } = {}): Human & { writes: number } {
+export type BomWriter = Human & {
+	readonly writes: number
+	// No write pending (debounce timer) or running.
+	readonly idle: boolean
+	// Resolves once idle, or after timeoutMs. A run awaits it before exiting, or bom.json may never be written.
+	whenIdle(timeoutMs: number): Promise<void>
+}
+
+export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: number; root?: string } = {}): BomWriter {
 	const debounceMs = opts.debounceMs ?? 400
 	let timer: NodeJS.Timeout | null = null
 	let running: Promise<void> | null = null
@@ -116,5 +124,13 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 			},
 		],
 	})
-	return Object.defineProperty(participant, "writes", { get: () => counter.writes }) as Human & { writes: number }
+	const idle = () => timer === null && running === null
+	Object.defineProperty(participant, "writes", { get: () => counter.writes })
+	Object.defineProperty(participant, "idle", { get: idle })
+	return Object.assign(participant, {
+		async whenIdle(timeoutMs: number) {
+			const end = Date.now() + timeoutMs
+			while (!idle() && Date.now() < end) await new Promise((r) => setTimeout(r, 50))
+		},
+	}) as BomWriter
 }
