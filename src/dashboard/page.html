@@ -147,7 +147,7 @@
 	.src-pop .nc { color: var(--text-3); }
 	#parts-total { font-size: 18px; color: var(--text); font-weight: 600; }
 	#parts { overflow-y: auto; padding: 6px 8px 8px; position: relative; }
-	#parts .part { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto 22px 12px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-card); transition: background var(--t) var(--ease); cursor: default; }
+	#parts .part { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto 22px 12px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-card); transition: background var(--t) var(--ease); cursor: default; }
 	#parts .part:hover, #parts .part.hl { background: var(--raised); }
 	#parts .part.hl { box-shadow: inset 0 0 0 1px var(--border-hover); }
 	#parts .ref { font-family: var(--mono); font-size: 13px; padding: 2px 6px; border-radius: 6px; background: #1c1c21; color: var(--text); text-align: center; }
@@ -687,7 +687,6 @@
 				} catch {}
 			}, 250)
 		}
-		const fmtStock = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n))
 		function renderParts() {
 			const items = S.bom ? (Array.isArray(S.bom) ? S.bom : (S.bom.items ?? [])) : (S.contract?.values?.parts ?? []).map((p) => ({ ...p, stock: null, priceUsd: null, grounded: null }))
 			if (items.length === 0) return
@@ -702,11 +701,10 @@
 			$("parts-ready").title = ready?.summary ?? ""
 			$("parts-ready").className = ready?.warn ? "warn" : ""
 			$("parts").innerHTML = items.map((p) => {
-				const stock = typeof p.stock === "number" ? `<span class="chip ${p.inStock === false || p.stock === 0 ? "bad" : "ok"} num">${p.stock === 0 ? "out of stock" : `${fmtStock(p.stock)} in stock`}</span>` : `<span class="chip t3">stock —</span>`
 				const price = typeof p.priceUsd === "number" ? `<span class="chip num">$${p.priceUsd.toFixed(p.priceUsd < 0.1 ? 3 : 2)}</span>` : `<span class="chip t3">$ —</span>`
 				const g = p.grounded === true ? `<span class="ground ok" title="every pin backed by a datasheet source">✓</span>` : p.grounded === false ? `<span class="ground warn" title="${esc(p.finding ?? "not grounded")}">⚠</span>` : `<span class="ground t3">·</span>`
 				const lcsc = p.lcsc ? `<a href="https://www.lcsc.com/product-detail/${encodeURIComponent(p.lcsc)}.html" target="_blank" rel="noopener">${esc(p.lcsc)} ↗</a>` : ""
-				return `<div class="part${S.hover === p.ref ? " hl" : ""}" data-ref="${esc(p.ref)}" title="Where to buy ${esc(p.ref)}"><span class="ref">${esc(p.ref)}</span><span class="mpn" title="${esc(p.role)} · ${esc(p.footprint)}">${esc(p.mpn)}${lcsc}</span>${stock}${price}${g}<span class="chev" aria-hidden="true">›</span></div>`
+				return `<div class="part${S.hover === p.ref ? " hl" : ""}" data-ref="${esc(p.ref)}" title="Where to buy ${esc(p.ref)}"><span class="ref">${esc(p.ref)}</span><span class="mpn" title="${esc(p.role)} · ${esc(p.footprint)}">${esc(p.mpn)}${lcsc}</span>${price}${g}<span class="chev" aria-hidden="true">›</span></div>`
 			}).join("")
 			// The list is rebuilt whenever bom.json updates; the open part is state, not DOM, so it survives that.
 			showSourcing(S.openPart, false)
