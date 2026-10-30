@@ -67,7 +67,8 @@ const CONTRACT_SHAPES = `Contract field shapes (units: mm, V, mA):
 When the brief sets a battery-life target, estimate the duty cycle (requirements.dutyCycle) and each battery-fed rail's averageMa from it, and set batteryMah if the brief does not state the capacity. Battery life is then checked in code from these numbers.
 - parts: [{ref, role (one of: mcu, sensor, ldo, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
 - pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
-Reference designators: U1 = MCU (ESP32-C3-MINI-1, pins GPIO0..GPIO10), U2 = sensor, U3 = LDO, J1 = USB-C, D1 = LED.
+Reference designators: U1 = MCU (ESP32-C3-MINI-1, pins GPIO0..GPIO10, GPIO18/GPIO19 for USB), U2 = sensor, U3 = LDO, U4 = Li-ion charger, J1 = USB-C, J2 = battery connector, D1 = LED, SW1 = button.
+Pin names come from the catalog (use search_parts): the USB-C pins are VBUS, GND, CC1, CC2, DP, DN; the button pins are A and B; the battery connector pins are VBAT and GND. The board generator adds the support passives (CC resistors, pull-ups, decoupling) itself.
 Always call read_contract first and pass each field's current version as baseVersion.`
 
 export const ENGINEER_REQUEST_PREFIX = "Change request from the engineer:"

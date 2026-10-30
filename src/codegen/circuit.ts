@@ -53,12 +53,18 @@ function connectorPosition(c: Connector, w: number, h: number): { x: number; y: 
 const GROUND_PINS = new Set(["GND", "VSS"])
 const SUPPLY_PINS = new Set(["3V3", "VDD", "VCC"])
 const SUPPLY_RAIL = "3V3"
-const LED_RESISTOR = { resistance: "1k", footprint: "0402", lcsc: "C11702" }
 
-// usbcmidmount numbers its 4 shell tabs pin1-pin4, then the 12 contact pads left to right. The two outer
-// (wider, merged) pads on each side are GND then VBUS, as on every 16-pin USB-C receptacle. CC and D± are
-// not wired yet: see catalog/README.md.
-const USBC_MIDMOUNT_PADS = { GND: ["pin5", "pin16"], VBUS: ["pin6", "pin15"] }
+// usbcmidmount pads by signal. pin1-pin4 are the shell tabs; pin5-pin16 sit at the same positions as the contact
+// pads of KiCad's USB_C_Receptacle_HRO_TYPE-C-31-M-12 footprint, left to right: A1/B12 GND, A4/B9 VBUS, B8, A5 CC1,
+// B7 D-, A6 D+, A7 D-, B6 D+, A8, B5 CC2, B4/A9 VBUS, B1/A12 GND. The catalog names these pins; codegen maps them.
+const USBC_PADS: Record<"GND" | "VBUS" | "CC1" | "CC2" | "DN" | "DP", string[]> = {
+	GND: ["pin5", "pin16"], VBUS: ["pin6", "pin15"], CC1: ["pin8"], CC2: ["pin14"], DN: ["pin9", "pin11"], DP: ["pin10", "pin12"],
+}
+const USBC_FOOTPRINT = "usbcmidmount"
+
+// pushbutton pads 1-2 and 3-4 are internally connected; the switch closes between the two sides.
+const BUTTON_FOOTPRINT = "pushbutton"
+const BUTTON_PADS = { A: "pin1", B: "pin3" }
 
 // tscircuit rejects net names that start with a digit, so the 3V3 rail is net V3V3.
 function netName(rail: string): string {
@@ -71,16 +77,111 @@ function freeRef(prefix: string, taken: Set<string>): string {
 	return `${prefix}${n}`
 }
 
-// LED cathode to GND through a series resistor: the contract's own (a 1k first) if it has one, else an
-// added 1k that is on the board but not in the contract's BOM.
-function ledResistor(s: ContractSnapshot): { ref: string; a: string; b: string; added: boolean } | null {
+// Passives every board of this kind needs. Each job takes a contract part with the same LCSC number if there is
+// one, else codegen adds the part, so the board is complete either way and the BOM lists what is really on it.
+interface SupportSpec {
+	kind: "resistor" | "capacitor"
+	value: string
+	lcsc: string
+	mpn: string
+	footprint: string
+}
+const SUPPORT = {
+	led: { kind: "resistor", value: "1k", lcsc: "C11702", mpn: "0402WGF1001TCE", footprint: "0402" },
+	cc: { kind: "resistor", value: "5.1k", lcsc: "C25905", mpn: "0402WGF5101TCE", footprint: "0402" },
+	prog: { kind: "resistor", value: "4.7k", lcsc: "C25900", mpn: "0402WGF4701TCE", footprint: "0402" },
+	pullup: { kind: "resistor", value: "10k", lcsc: "C25744", mpn: "0402WGF1002TCE", footprint: "0402" },
+	bypass: { kind: "capacitor", value: "1uF", lcsc: "C52923", mpn: "CL05A105KA5NQNC", footprint: "0402" },
+	bulk: { kind: "capacitor", value: "10uF", lcsc: "C19702", mpn: "CL10A106KP8NNNC", footprint: "0603" },
+} satisfies Record<string, SupportSpec>
+
+type End = { net: string } | { ref: string; pin: string }
+
+interface Support {
+	ref: string
+	spec: SupportSpec
+	a: End // joined to the part's first pin
+	b: End // joined to its second pin
+	near: string // placed next to this part
+	added: boolean
+	pins: [string, string]
+}
+
+function usbRef(s: ContractSnapshot): string | undefined {
 	const { parts = [], connectors = [] } = s.values
-	if (!parts.some((p) => p.role === "led" && p.pins.includes("K"))) return null
-	const resistors = parts.filter((p) => p.role === "resistor")
-	const own = resistors.find((p) => p.lcsc === LED_RESISTOR.lcsc) ?? resistors[0]
-	if (own) return { ref: own.ref, a: own.pins[0] ?? "pin1", b: own.pins[1] ?? "pin2", added: false }
-	if (!CATALOG.some((c) => c.role === "resistor")) return null
-	return { ref: freeRef("R", new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])), a: "pin1", b: "pin2", added: true }
+	const footprintOfRef = (ref: string, fallback?: string) => {
+		const part = parts.find((p) => p.ref === ref)
+		return part ? footprintFor(part) : fallback
+	}
+	return (
+		connectors.find((c) => footprintOfRef(c.ref, CONNECTOR_FOOTPRINT[c.kind]) === USBC_FOOTPRINT)?.ref ??
+		parts.find((p) => footprintFor(p) === USBC_FOOTPRINT)?.ref
+	)
+}
+
+export function supportParts(s: ContractSnapshot): Support[] {
+	const { parts = [], connectors = [], pins = [], rails = [] } = s.values
+	const supply = rails.some((r) => r.name === SUPPLY_RAIL) ? netName(SUPPLY_RAIL) : null
+	const charger = parts.find((p) => p.role === "charger")
+	const ldo = parts.find((p) => p.role === "ldo")
+	const led = parts.find((p) => p.role === "led" && p.pins.includes("K"))
+	const usb = usbRef(s)
+	const jobs: Omit<Support, "ref" | "added" | "pins">[] = []
+	const GND = { net: "GND" }
+
+	if (led) jobs.push({ spec: SUPPORT.led, a: { ref: led.ref, pin: "K" }, b: GND, near: led.ref })
+	// A USB-C sink needs 5.1k pull-downs on CC1 and CC2, or a C-to-C charger supplies no VBUS.
+	if (usb) for (const cc of ["CC1", "CC2"] as const) jobs.push({ spec: SUPPORT.cc, a: { ref: usb, pin: USBC_PADS[cc][0] }, b: GND, near: usb })
+	if (charger?.pins.includes("PROG")) jobs.push({ spec: SUPPORT.prog, a: { ref: charger.ref, pin: "PROG" }, b: GND, near: charger.ref })
+	if (supply) for (const p of pins) if (/^I2C_(SDA|SCL)$/.test(p.signal)) jobs.push({ spec: SUPPORT.pullup, a: { net: p.signal }, b: { net: supply }, near: p.partRef })
+	if (charger) jobs.push({ spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
+	if (ldo) jobs.push({ spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
+	if (ldo && supply) jobs.push({ spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
+
+	const claimed = new Set<string>()
+	const taken = new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])
+	return jobs.map((j) => {
+		const own = parts.find((p) => p.role === j.spec.kind && p.lcsc === j.spec.lcsc && !claimed.has(p.ref))
+		if (own) {
+			claimed.add(own.ref)
+			return { ...j, ref: own.ref, added: false, pins: [own.pins[0] ?? "pin1", own.pins[1] ?? "pin2"] }
+		}
+		const ref = freeRef(j.spec.kind === "resistor" ? "R" : "C", taken)
+		taken.add(ref)
+		return { ...j, ref, added: true, pins: ["pin1", "pin2"] }
+	})
+}
+
+// Every part that ends up on the board, for the BOM: the contract's parts and connectors plus the passives
+// codegen adds.
+export interface BoardPart {
+	ref: string
+	mpn: string
+	lcsc: string | null
+	footprint: string
+	value: string | null
+	added: boolean
+}
+
+export function boardParts(s: ContractSnapshot): BoardPart[] {
+	const { parts = [], connectors = [] } = s.values
+	const own = parts.map((p) => ({ ref: p.ref, mpn: p.mpn, lcsc: p.lcsc, footprint: footprintFor(p), value: null, added: false }))
+	const bare = connectors
+		.filter((c) => !parts.some((p) => p.ref === c.ref))
+		.map((c) => ({ ref: c.ref, mpn: "", lcsc: null, footprint: CONNECTOR_FOOTPRINT[c.kind], value: null, added: false }))
+	const added = supportParts(s)
+		.filter((x) => x.added)
+		.map((x) => ({ ref: x.ref, mpn: x.spec.mpn, lcsc: x.spec.lcsc, footprint: x.spec.footprint, value: x.spec.value, added: true }))
+	return [...own, ...bare, ...added]
+}
+
+// pinLabels for a part: the module's datasheet numbering, the button's two sides, or pins in order. USB-C pins are
+// named in the catalog but never labelled: codegen addresses its pads directly (USBC_PADS).
+function labelsFor(p: Part, footprint: string): string {
+	if (p.pins.length === 0 || footprint === USBC_FOOTPRINT) return ""
+	if (footprint === MODULE_FOOTPRINT) return ` pinLabels=${modulePinLabels(p.pins)}`
+	if (footprint === BUTTON_FOOTPRINT && p.pins.includes("A") && p.pins.includes("B")) return ` pinLabels={{ pin1: "A", pin3: "B" }}`
+	return ` pinLabels=${pinLabels(p.pins)}`
 }
 
 // ESP32-C3-MINI-1 (datasheet v2.2, Table 3-1 and Figure 11-1). Origin at the module centre, antenna toward +y.
@@ -136,9 +237,21 @@ const GRID_MM = 0.5
 // Pad bounding boxes at rotation 0, measured from tscircuit 0.0.3042 builds.
 const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	dfn4: [5.3, 1.87], sot23_5: [3.6, 2.5], "0402": [1.56, 0.64], "0603": [2.45, 0.95], qfn32: [5.8, 5.8],
-	usbcmidmount: [9.85, 6.2], pinrow4: [9.12, 1.5], pushbutton: [6, 8], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
+	pinrow4: [9.12, 1.5], pushbutton: [6, 8], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
+	jst2_ph: [6, 5], // pads are 3.2 x 1.75; this reserves the S2B-PH-K housing
+	// The USB-C courtyard, not its pads: the body reaches 5.5 mm behind the pad row (footprinter usbcmidmount.ts).
+	usbcmidmount: [10.35, 8.4],
 }
 const DEFAULT_SIZE: [number, number] = [3, 3]
+
+// Centre of the reserved box relative to the part's origin, at rotation 0.
+const FOOTPRINT_OFFSET: Record<string, [number, number]> = { usbcmidmount: [0, -1.275] }
+
+function offsetAt(footprint: string, rotation: number): { dx: number; dy: number } {
+	const [ox, oy] = FOOTPRINT_OFFSET[footprint] ?? [0, 0]
+	const t = (rotation * Math.PI) / 180
+	return { dx: +(ox * Math.cos(t) - oy * Math.sin(t)).toFixed(3), dy: +(ox * Math.sin(t) + oy * Math.cos(t)).toFixed(3) }
+}
 
 // Turns the module's antenna away from the USB-C edge.
 const MODULE_ROTATION: Record<Connector["edge"], number> = { left: -90, right: 90, bottom: 0, top: 180 }
@@ -165,8 +278,11 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 	for (const c of connectors) {
 		const part = parts.find((p) => p.ref === c.ref)
 		const rotation = EDGE_ROTATION[c.edge]
-		const [w, h] = sizeAt(part ? footprintFor(part) : CONNECTOR_FOOTPRINT[c.kind], rotation)
-		placed.push({ ref: c.ref, ...connectorPosition(c, W, H), w, h, rotation })
+		const footprint = part ? footprintFor(part) : CONNECTOR_FOOTPRINT[c.kind]
+		const [w, h] = sizeAt(footprint, rotation)
+		const { x, y } = connectorPosition(c, W, H)
+		const { dx, dy } = offsetAt(footprint, rotation)
+		placed.push({ ref: c.ref, x: x + dx, y: y + dy, w, h, rotation })
 	}
 
 	// (u, v) runs inward from the USB-C edge and along it, so role targets don't depend on which edge that is.
@@ -205,7 +321,7 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 	const connectorRefs = new Set(connectors.map((c) => c.ref))
 	const free = parts.filter((p) => !connectorRefs.has(p.ref))
 	const byRole = (role: string) => free.find((p) => p.role === role)
-	const usbBox = usb ? placed.find((b) => b.ref === usb.ref) : undefined
+	const usbBox = usb ? connectorPosition(usb, W, H) : undefined
 	const done = new Set<string>()
 	const put = (p: Part | undefined, want: { x: number; y: number }, rotation = 0, footprint = p ? footprintFor(p) : "") => {
 		if (!p || done.has(p.ref)) return undefined
@@ -222,12 +338,23 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 	// The sensor goes to the far edge, in the corner away from the MCU, so neither the MCU nor the LDO heats it.
 	const mcuV = edge === "left" || edge === "right" ? centre.y + H / 2 : centre.x + W / 2
 	put(byRole("sensor"), frame(depth - 3, mcuV < span / 2 ? span - 4 : 4))
+	// The LED goes beside the USB-C port; the battery connector and its charger go on the port's other side.
 	const usbV = usb?.offsetMm ?? span / 2
-	const led = put(byRole("led"), frame(2, usbV + 9 <= span - 3 ? usbV + 9 : usbV - 9))
-	const r = ledResistor(s)
-	if (r && led) {
-		if (r.added) place(r.ref, LED_RESISTOR.footprint, 0, led)
-		else put(free.find((p) => p.ref === r.ref), led)
+	const ledSide = usbV + 9 <= span - 3 ? 1 : -1
+	put(byRole("led"), frame(2, usbV + ledSide * 9))
+	put(byRole("battery"), frame(4, usbV - ledSide * 10))
+	put(byRole("charger"), frame(11, usbV - ledSide * 7))
+	put(byRole("button"), frame(depth - 4, mcuV < span / 2 ? 4 : span - 4))
+	// Each support passive sits next to the part it serves.
+	const boxOf = (ref: string) => placed.find((b) => b.ref === ref)
+	for (const sp of supportParts(s)) {
+		const want = boxOf(sp.near) ?? centre
+		if (sp.added) {
+			if (!done.has(sp.ref)) {
+				done.add(sp.ref)
+				place(sp.ref, sp.spec.footprint, 0, want)
+			}
+		} else put(free.find((p) => p.ref === sp.ref), want)
 	}
 	for (const p of free) put(p, centre)
 	return placed
@@ -238,43 +365,73 @@ function at(placement: Map<string, Placed>, ref: string): string {
 	return b ? ` pcbX={${+b.x.toFixed(2)}} pcbY={${+b.y.toFixed(2)}} pcbRotation={${b.rotation}}` : ""
 }
 
-// GND, the 3V3 rail and VBUS, so the board is powered and not just a set of signal traces. A net is only
-// emitted when it reaches at least two components; a one-component net can't be routed.
-function powerLines(s: ContractSnapshot, footprintOf: Map<string, string>, placement: Map<string, Placed>): string[] {
-	const { parts = [], rails = [], connectors = [] } = s.values
+// Power, USB and support wiring: GND, the 3V3 rail, VBUS, VBAT (when there is a charger) and USB D±, plus the
+// support passives. A net is only emitted when it reaches at least two components; a one-component net can't be routed.
+function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string[] {
+	const { parts = [], rails = [], pins = [] } = s.values
 	const supply = netName(SUPPLY_RAIL)
-	const nets = new Map<string, string[]>([["GND", []], [supply, []], ["VBUS", []]])
+	const nets = new Map<string, string[]>([["GND", []], [supply, []], ["VBUS", []], ["VBAT", []], ["USB_DP", []], ["USB_DN", []]])
 	const lines: string[] = []
 	const port = (ref: string, pin: string) => `.${ref} > .${pin}`
 	const hasSupply = rails.some((r) => r.name === SUPPLY_RAIL)
 	const ldo = parts.find((p) => p.role === "ldo")
+	const charger = parts.find((p) => p.role === "charger")
+	const battery = parts.find((p) => p.role === "battery")
+	const mcu = parts.find((p) => p.role === "mcu")
+	const usb = usbRef(s)
+	const join = (net: string, ref: string, pin: string) => nets.get(net)!.push(port(ref, pin))
 
 	for (const p of parts) {
+		if (footprintFor(p) === USBC_FOOTPRINT || p.role === "button") continue
 		for (const pin of p.pins) {
-			if (GROUND_PINS.has(pin)) nets.get("GND")!.push(port(p.ref, pin))
-			if (hasSupply && p.role !== "ldo" && SUPPLY_PINS.has(pin)) nets.get(supply)!.push(port(p.ref, pin))
+			if (GROUND_PINS.has(pin)) join("GND", p.ref, pin)
+			if (hasSupply && p.role !== "ldo" && p.role !== "charger" && SUPPLY_PINS.has(pin)) join(supply, p.ref, pin)
 		}
 	}
+	// The ESP32-C3 must not have EN floating; tied straight to 3V3 (the datasheet suggests an RC delay, see catalog/README.md).
+	if (hasSupply && mcu?.pins.includes("EN")) join(supply, mcu.ref, "EN")
+
+	// USB-C VBUS feeds the charger when there is one, else the LDO directly. The charger's BAT output, the battery
+	// and the LDO input share VBAT.
+	const ldoIn = charger ? "VBAT" : "VBUS"
 	if (ldo) {
-		if (hasSupply && ldo.pins.includes("VOUT")) nets.get(supply)!.push(port(ldo.ref, "VOUT"))
-		for (const pin of ["VIN", "EN"]) if (ldo.pins.includes(pin)) nets.get("VBUS")!.push(port(ldo.ref, pin))
+		if (hasSupply && ldo.pins.includes("VOUT")) join(supply, ldo.ref, "VOUT")
+		for (const pin of ["VIN", "EN"]) if (ldo.pins.includes(pin)) join(ldoIn, ldo.ref, pin)
+	}
+	if (charger) {
+		if (charger.pins.includes("VCC")) join("VBUS", charger.ref, "VCC")
+		if (charger.pins.includes("BAT")) join("VBAT", charger.ref, "BAT")
+		if (battery?.pins.includes("VBAT")) join("VBAT", battery.ref, "VBAT")
+	}
+	if (usb) {
+		for (const pad of USBC_PADS.GND) join("GND", usb, pad)
+		for (const pad of USBC_PADS.VBUS) join("VBUS", usb, pad)
+		// D+/D- to the ESP32-C3's native USB (GPIO19/GPIO18), unless the contract uses those GPIOs for something else.
+		const usbGpiosFree = !pins.some((p) => p.gpio === 18 || p.gpio === 19)
+		if (mcu?.pins.includes("GPIO18") && mcu.pins.includes("GPIO19") && usbGpiosFree) {
+			for (const pad of USBC_PADS.DP) join("USB_DP", usb, pad)
+			for (const pad of USBC_PADS.DN) join("USB_DN", usb, pad)
+			join("USB_DP", mcu.ref, "GPIO19")
+			join("USB_DN", mcu.ref, "GPIO18")
+		}
 	}
 
-	for (const c of connectors) {
-		if (footprintOf.get(c.ref) !== "usbcmidmount") continue
-		for (const pin of USBC_MIDMOUNT_PADS.GND) nets.get("GND")!.push(port(c.ref, pin))
-		for (const pin of USBC_MIDMOUNT_PADS.VBUS) nets.get("VBUS")!.push(port(c.ref, pin))
+	// A button closes between its two sides: the side a pin assignment uses goes to the GPIO, the other to GND.
+	for (const b of parts.filter((p) => p.role === "button" && p.pins.includes("A") && p.pins.includes("B"))) {
+		const used = new Set(pins.filter((p) => p.partRef === b.ref).map((p) => p.partPin))
+		const free = ["B", "A"].find((t) => !used.has(t))
+		if (free) join("GND", b.ref, free)
 	}
 
-	const led = parts.find((p) => p.role === "led" && p.pins.includes("K"))
-	if (led) {
-		const r = ledResistor(s)
-		if (r?.added) lines.push(`<resistor name=${q(r.ref)} resistance=${q(LED_RESISTOR.resistance)}${at(placement, r.ref)} footprint=${q(LED_RESISTOR.footprint)} />`)
-		if (r) {
-			lines.push(`<trace name=${q(`${led.ref}_K_${r.ref}`)} from=${q(port(led.ref, "K"))} to=${q(port(r.ref, r.a))} />`)
-			nets.get("GND")!.push(port(r.ref, r.b))
-		} else {
-			nets.get("GND")!.push(port(led.ref, "K"))
+	for (const sp of supportParts(s)) {
+		if (sp.added) {
+			const attr = sp.spec.kind === "resistor" ? "resistance" : "capacitance"
+			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${q(sp.spec.footprint)} />`)
+		}
+		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) {
+			if ("ref" in end) lines.push(`<trace name=${q(`${end.ref}_${end.pin}_${sp.ref}`)} from=${q(port(end.ref, end.pin))} to=${q(port(sp.ref, pin))} />`)
+			else if (nets.has(end.net)) join(end.net, sp.ref, pin)
+			else lines.push(`<trace name=${q(`${end.net}_${sp.ref}_${pin}`)} from=${q(port(sp.ref, pin))} to=${q(`net.${end.net}`)} />`)
 		}
 	}
 
@@ -296,23 +453,25 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	const mcuRef = parts.find((p) => p.role === "mcu")?.ref
 	const connectorRefs = new Set(connectors.map((c) => c.ref))
 	const lines: string[] = []
-	const footprintOf = new Map<string, string>()
 	const placement = new Map(placeParts(s, opts).map((b) => [b.ref, b]))
 
 	for (const p of parts) {
 		if (connectorRefs.has(p.ref)) continue
 		const footprint = footprintFor(p)
-		const isModule = footprint === MODULE_FOOTPRINT
-		const labels = p.pins.length > 0 ? ` pinLabels=${isModule ? modulePinLabels(p.pins) : pinLabels(p.pins)}` : ""
-		lines.push(`<chip name=${q(p.ref)}${labels}${at(placement, p.ref)} footprint=${isModule ? moduleFootprint() : q(footprint)} />`)
+		if (footprint === USBC_FOOTPRINT) {
+			lines.push(`<connector name=${q(p.ref)}${at(placement, p.ref)} footprint=${q(footprint)} />`)
+			continue
+		}
+		const fp = footprint === MODULE_FOOTPRINT ? moduleFootprint() : q(footprint)
+		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${at(placement, p.ref)} footprint=${fp} />`)
 	}
 
 	for (const c of connectors) {
 		const part = parts.find((p) => p.ref === c.ref)
 		const footprint = part ? footprintFor(part) : CONNECTOR_FOOTPRINT[c.kind]
-		footprintOf.set(c.ref, footprint)
+		const labels = part ? labelsFor(part, footprint) : ""
 		const { x, y } = connectorPosition(c, outline.widthMm, outline.heightMm)
-		lines.push(`<connector name=${q(c.ref)} footprint=${q(footprint)} pcbX={${x}} pcbY={${y}} pcbRotation={${EDGE_ROTATION[c.edge]}} />`)
+		lines.push(`<connector name=${q(c.ref)}${labels} footprint=${q(footprint)} pcbX={${x}} pcbY={${y}} pcbRotation={${EDGE_ROTATION[c.edge]}} />`)
 	}
 
 	for (const pin of pins) {
@@ -322,7 +481,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		lines.push(`<trace name=${q(`${pin.signal}_part`)} from=${q(`.${pin.partRef} > .${pin.partPin}`)} to=${q(`net.${pin.signal}`)} />`)
 	}
 
-	lines.push(...powerLines(s, footprintOf, placement))
+	lines.push(...powerLines(s, placement))
 
 	return [
 		"export default () => (",

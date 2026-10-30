@@ -1,7 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { createHuman } from "@mozaik-ai/core"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
 import { createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder } from "./agents/builders.ts"
@@ -14,6 +13,8 @@ import { inferenceConfig } from "./inference/models.ts"
 import { mockScripts } from "./inference/scripts.ts"
 import { writeReport } from "./report.ts"
 import { watchRequests } from "./runner/requests.ts"
+import { watchDecisions } from "./runner/decisions.ts"
+import { createEngineer } from "./agents/engineer.ts"
 import { startCloudSession } from "./runner/cloud.ts"
 import { createActivityParticipant } from "./agents/activity.ts"
 import { APPROVAL_TIMEOUT_MS, BringupState, join as joinRuntime, sendMessage, startRuntime } from "./runtime.ts"
@@ -32,6 +33,8 @@ export interface RunOptions {
 	noHardware?: boolean
 	// The LLM brief reviewer gates settling (default on); maxReviewRounds is how many fix rounds it may ask for.
 	review?: boolean
+	// Every held change also needs the human engineer (votes arrive in <outDir>/decisions.jsonl).
+	engineerApproval?: boolean
 	maxReviewRounds?: number
 	// Mock model scripts, for tests; defaults to mockScripts().
 	scripts?: Record<string, Script>
@@ -54,6 +57,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	writeFileSync(join(opts.outDir, "brief.md"), opts.brief)
 	const env = opts.env ?? (await detectEnvironment(ROOT))
 	const state = new BringupState(opts.outDir, opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS)
+	state.engineerApproval = opts.engineerApproval ?? false
 	state.review.enabled = opts.review ?? true
 	state.review.maxRounds = opts.maxReviewRounds ?? MAX_REVIEW_ROUNDS
 	startRuntime(state, inferenceConfig(opts.mock, opts.scripts ?? mockScripts()), join(opts.outDir, "trace.jsonl"))
@@ -75,12 +79,14 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	createPartsAgent({ mock: opts.mock })
 	createFirmwareReviewer({ mock: opts.mock })
 	if (state.review.enabled) createBriefReviewer({ mock: opts.mock, env })
-	const engineer = createHuman({ name: "engineer", capabilities: [], handlers: [] })
+	const engineer = createEngineer()
 	joinRuntime(engineer)
 
 	sendMessage(opts.brief, engineer.getId())
 	// Mid-run change requests (tsx src/request.ts, MCP request_change) arrive as further engineer messages.
 	const requests = watchRequests(opts.outDir, (r) => sendMessage(r.text, engineer.getId()))
+	// The engineer's Approve/Reject votes on held changes (dashboard, or appended by hand).
+	const decisions = watchDecisions(opts.outDir, (d) => engineer.decide(d))
 
 	const timeoutMs = opts.timeoutMs ?? 30 * 60_000
 	const outcome = await Promise.race([
@@ -88,6 +94,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		new Promise<Settlement>((r) => setTimeout(() => r({ settled: false, revision: state.contract.revision }), timeoutMs).unref()),
 	])
 	requests.close()
+	decisions.close()
 	await cloud?.end()
 	writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
 	const reportPath = writeReport(opts.outDir, state, env, outcome.settled, { noHardware: opts.noHardware ?? false })

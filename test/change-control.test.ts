@@ -154,13 +154,13 @@ test("a change identical to the current value is not held and applies nothing", 
 	assert.equal(t.state.contract.revision, before)
 })
 
-test("a timed-out request is recorded as a rejected decision", async () => {
+test("a timed-out request is recorded as a rejected outcome", async () => {
 	const silent: Script = () => [ModelMessageItem.rehydrate({ text: "not now" })]
 	const t = setup({ "mock-architect": silent, "mock-firmware": proposer }, 200)
 	startTurn(t.firmware, "add a status LED")
-	await waitFor(() => t.types().includes("change.decided"))
-	const d = t.events.find((e) => e.type === "change.decided")!.payload as { approved: boolean; reason: string; by: string }
-	assert.deepEqual({ approved: d.approved, reason: d.reason, by: d.by }, { approved: false, reason: "timeout", by: "architect" })
+	await waitFor(() => t.types().includes("change.resolved"))
+	const d = t.events.find((e) => e.type === "change.resolved")!.payload as { approved: boolean; reason: string; decidedBy: string[] }
+	assert.deepEqual({ approved: d.approved, reason: d.reason, decidedBy: d.decidedBy }, { approved: false, reason: "timeout", decidedBy: [] })
 	const id = (t.events.find((e) => e.type === "change.proposed")!.payload as { proposalId: string }).proposalId
 	const decide = t.architect.getTools().find((x) => x.name === "decide_change")!
 	assert.match(String(await decide.invoke({ proposalId: id, approve: true, reason: "late" })), /already decided/)

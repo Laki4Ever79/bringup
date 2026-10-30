@@ -5,6 +5,8 @@ export interface Decision {
 	approved: boolean
 	reason: string
 	by: AgentRole
+	// Everyone whose vote decided it (the owner, and the engineer when engineer approval is on).
+	decidedBy?: AgentRole[]
 }
 
 interface Entry {
@@ -12,6 +14,9 @@ interface Entry {
 	requester: AgentRole
 	// The proposed value (JSON); an approval covers this value only.
 	valueKey?: string
+	// With engineer approval on, an approval needs the owner AND the engineer; a reject from either decides.
+	needsEngineer: boolean
+	votes: Decision[]
 	decision?: Decision
 	waiters: ((d: Decision) => void)[]
 }
@@ -20,9 +25,9 @@ interface Entry {
 export class ApprovalRegistry {
 	private entries = new Map<string, Entry>()
 
-	open(field: FieldName, requester: AgentRole, valueKey?: string): string {
+	open(field: FieldName, requester: AgentRole, valueKey?: string, needsEngineer = false): string {
 		const id = randomUUID().slice(0, 8)
-		this.entries.set(id, { field, requester, valueKey, waiters: [] })
+		this.entries.set(id, { field, requester, valueKey, needsEngineer, votes: [], waiters: [] })
 		return id
 	}
 
@@ -39,14 +44,34 @@ export class ApprovalRegistry {
 		})
 	}
 
-	// Only the owner of the field may decide; other decisions and repeats are ignored.
-	resolve(id: string, decision: Decision): boolean {
+	// Records one vote. Only the field's owner votes (plus the engineer when engineer approval is on);
+	// repeats and other voters are ignored. Returns whether the vote counted.
+	resolve(id: string, vote: Decision): boolean {
 		const entry = this.entries.get(id)
 		if (!entry || entry.decision) return false
-		if (decision.reason !== "timeout" && decision.by !== OWNERS[entry.field]) return false
+		if (vote.reason === "timeout") return this.finish(entry, { ...vote, approved: false, decidedBy: entry.votes.map((v) => v.by) })
+		const voter = vote.by === "engineer" ? (entry.needsEngineer ? "engineer" : null) : vote.by === OWNERS[entry.field] ? "owner" : null
+		if (!voter || entry.votes.some((v) => v.by === vote.by)) return false
+		entry.votes.push(vote)
+		const decidedBy = entry.votes.map((v) => v.by)
+		if (!vote.approved) return this.finish(entry, { ...vote, decidedBy })
+		const ownerOk = entry.votes.some((v) => v.by === OWNERS[entry.field] && v.approved)
+		const engineerOk = !entry.needsEngineer || entry.votes.some((v) => v.by === "engineer" && v.approved)
+		if (ownerOk && engineerOk) {
+			const owner = entry.votes.find((v) => v.by === OWNERS[entry.field])!
+			return this.finish(entry, { approved: true, by: owner.by, reason: entry.votes.map((v) => v.reason).join("; "), decidedBy })
+		}
+		return true
+	}
+
+	private finish(entry: Entry, decision: Decision): boolean {
 		entry.decision = decision
 		for (const w of entry.waiters.splice(0)) w(decision)
 		return true
+	}
+
+	hasVoted(id: string, by: AgentRole): boolean {
+		return this.entries.get(id)?.votes.some((v) => v.by === by) ?? false
 	}
 
 	// The owner who approved this proposal for this field and requester, if any.

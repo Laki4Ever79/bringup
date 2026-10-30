@@ -10,6 +10,7 @@ Generic footprints, not the real land pattern:
 | Part | Footprint used | Real package |
 |---|---|---|
 | SHT40 | `dfn4` | 1.5×1.5 mm DFN-4 (pitch differs) |
+| TS-1187A-B-A-B | `pushbutton` | 5.1×5.1 mm SMD tactile switch |
 
 **ESP32-C3-MINI-1** uses `esp32_c3_mini_1`. This isn't a footprinter string: `src/codegen/circuit.ts` emits an
 inline `<footprint>` for it. It follows the module datasheet (v2.2, Table 3-1 and Figure 11-1):
@@ -31,31 +32,57 @@ free spot nearest its target, on a 0.5 mm grid, with a 1.5 mm gap to every other
 Part sizes come from pad bounding boxes measured in tscircuit 0.0.3042. A part with no room left is handed to
 tscircuit's packer.
 
-`usbcmidmount` is tscircuit's 16-pin mid-mount USB-C receptacle. Its pins are `pin1`..`pin16` (shell pads not
-labelled), so `pins` is empty until the VBUS/CC/D± pad order is mapped. In codegen it is emitted as a `<connector>`,
-not a `<chip>`, which avoids tscircuit's `J`-prefix warning.
+`usbcmidmount` is tscircuit's 16-pin mid-mount USB-C receptacle, used for TYPE-C-31-M-12. Its catalog pins are named
+(`VBUS, GND, CC1, CC2, DP, DN`), but codegen never labels its pads. It addresses them directly (`USBC_PADS` in
+`src/codegen/circuit.ts`), because the pin order isn't the pad order. `pin1`..`pin4` are the shell tabs. `pin5`..`pin16`
+sit at the same x positions as the contact pads of KiCad's `USB_C_Receptacle_HRO_TYPE-C-31-M-12` footprint (KiCad 10
+library, both top view), which name them, left to right:
 
-Power pads of `usbcmidmount`, as wired by `src/codegen/circuit.ts`. These were read from the footprinter source
-(`@tscircuit/footprinter`, `usbcmidmount.ts`), not from a datasheet. `pin1`..`pin4` are the shell tabs, and
-`pin5`..`pin16` are the 12 contact pads from left to right. The outer two pads on each side are the wide merged power
-pads, which on a 16-pin USB-C receptacle are GND (outermost) and VBUS:
+| Pads | KiCad pads | Signal | Wired to |
+|---|---|---|---|
+| `pin5`, `pin16` | A1/B12, B1/A12 | GND | GND |
+| `pin6`, `pin15` | A4/B9, B4/A9 | VBUS | charger VCC, or LDO VIN and EN when there is no charger |
+| `pin8`, `pin14` | A5, B5 | CC1, CC2 | each to GND through 5.1 kΩ (C25905), so a C-to-C charger supplies 5 V |
+| `pin10`, `pin12` | A6, B6 | D+ | ESP32-C3 GPIO19 (native USB), when the MCU lists GPIO18/19 and the contract doesn't use them |
+| `pin9`, `pin11` | B7, A7 | D− | ESP32-C3 GPIO18 |
+| `pin7`, `pin13` | B8, A8 | SBU2, SBU1 | not connected (not used by USB 2.0) |
+| `pin1`..`pin4` | SH | shell | not connected |
 
-| Pads | Net | Wired |
+The mapping relies on both footprints being top views with the pad row on the same side. tscircuit's footprint is
+symmetric, so if it were mirrored, only D+ and D− would swap. Check D± in KiCad before ordering.
+
+## Support parts
+
+Codegen gives every board the passives it needs to work. Each one takes a contract part with the same LCSC number if
+there is one, else codegen adds it to the board. Added parts appear in `bom.csv`, but not in the contract.
+`boardParts()` lists both. Assignment order: LED, CC1, CC2, PROG, I2C pull-ups, bypass caps.
+
+| Job | Part | LCSC |
 |---|---|---|
-| `pin5`, `pin16` | GND | yes |
-| `pin6`, `pin15` | VBUS → LDO VIN and EN | yes, when the contract has an `ldo` part |
-| `pin7`..`pin14` | SBU, CC1/CC2, D+/D− | **no** |
-| `pin1`..`pin4` | shell | no (left floating) |
+| LED series resistor, cathode → GND | 1 kΩ 0402 `0402WGF1001TCE` | C11702 |
+| USB-C CC1, CC2 → GND | 5.1 kΩ 0402 `0402WGF5101TCE` | C25905 |
+| Charger PROG → GND (sets the charge current, about 1000 V / R ≈ 210 mA) | 4.7 kΩ 0402 `0402WGF4701TCE` | C25900 |
+| I2C SDA, SCL pull-ups → 3V3 | 10 kΩ 0402 `0402WGF1002TCE` | C25744 |
+| Charger input (VBUS), LDO input (VBAT, or VBUS without a charger) | 1 µF 0402 `CL05A105KA5NQNC` | C52923 |
+| LDO output (3V3) | 10 µF 0603 `CL10A106KP8NNNC` | C19702 |
 
-Still missing for a working USB-C sink: 5.1 kΩ pull-downs from CC1 and CC2 to GND (without them, a C-to-C charger
-supplies no VBUS), and D+/D− to the ESP32-C3's GPIO18/GPIO19 for flashing. Both need the inner pad order checked
-against the TYPE-C-31-M-12 datasheet first.
+## Power path
 
-The LED gets a series resistor to GND. Codegen uses the contract's 1 kΩ `resistor` (LCSC C11702) if it has one, then
-any other `resistor` in the contract, and otherwise adds a 1 kΩ 0402 `<resistor>` (`R1`, or the next free ref). That
-added resistor is on the board but not in the contract's BOM; the parts agent can avoid that by picking C11702.
-The catalog's 1 kΩ is `0402WGF1001TCE` (C11702), a JLCPCB basic part. jlcsearch's exact lookup on 30 Oct 2026 showed
-21,651,885 in stock at $0.0013.
+USB-C VBUS → charger (TP4054, C32574) VCC; charger BAT → VBAT → battery connector (JST S2B-PH-K, C173752) and the
+LDO's VIN and EN; LDO VOUT → 3V3. Without a charger, VBUS feeds the LDO directly, as before. The ESP32-C3's EN is tied
+straight to 3V3. Espressif recommends a 10 kΩ / 1 µF RC delay there; it's not fitted yet.
+
+- **TP4054-42-SOT25R** (C32574, JLC preferred part, 44,864 in stock): pins in the order `CHRG, GND, BAT, VCC,
+  PROG`, as in KiCad's symbol for the pin-compatible LTC4054ES5-4.2. Not checked against TP4054's own datasheet (the
+  LCSC PDF link only returns an HTML page). `CHRG` (open-drain charge status) is left unconnected.
+- **S2B-PH-K-S(LF)(SN)** (C173752, 198,123 in stock): through-hole, right angle, footprint `jst2_ph` (2 mm pitch).
+  Pins `VBAT` (pad 1) and `GND` (pad 2). **JST-PH battery packs don't agree on polarity. Check the pack's wiring
+  against pad 1 = + before plugging in.** Pin names can't contain `+` (tscircuit rejects `BAT+` as a pin label).
+- **TS-1187A-B-A-B** (C318884, basic) tactile switch, role `button`, pins `A` and `B`. tscircuit's `pushbutton`
+  footprint connects pads 1–2 and 3–4 internally, so `A` is pad 1 and `B` is pad 3, on opposite sides. Sequential
+  labels would have put both wires on the same side and shorted the GPIO to GND. A pin assignment wires one side to its
+  GPIO, and codegen ties the other side to GND. The `pushbutton` footprint is a 6 × 6 mm THT stand-in for the
+  5.1 × 5.1 mm SMD switch.
 
 The LCSC numbers were not re-checked against live stock during the event.
 
