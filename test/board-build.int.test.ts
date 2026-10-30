@@ -1,13 +1,14 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { existsSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { buildBoard } from "../src/tools/board.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { fixtureContract } from "./fixture.ts"
 import { tempDir } from "./helpers.ts"
 
-const env = await detectEnvironment(new URL("..", import.meta.url).pathname)
+const env = await detectEnvironment(fileURLToPath(new URL("..", import.meta.url)))
 
 test("buildBoard produces a routed, exported board that matches the contract", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 300_000 }, async () => {
 	const s = fixtureContract()
@@ -27,7 +28,7 @@ test("buildBoard fails with tscircuit's message when the board can't be built", 
 
 test("buildBoard works when the output folder is inside the repo", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 300_000 }, async () => {
 	const { mkdirSync, rmSync } = await import("node:fs")
-	const dir = new URL(`../out/.test-board-${process.pid}`, import.meta.url).pathname
+	const dir = fileURLToPath(new URL(`../out/.test-board-${process.pid}`, import.meta.url))
 	mkdirSync(dir, { recursive: true })
 	try {
 		const s = fixtureContract()
