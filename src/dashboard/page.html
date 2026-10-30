@@ -63,6 +63,7 @@
 	<section><h2>Engineer requests</h2><ul class="plain" id="requests"><li class="empty">none yet</li></ul></section>
 	<section><h2>Change control</h2><table id="changes"></table></section>
 	<section><h2>Violations (latest check)</h2><ul class="plain" id="violations"><li class="empty">no check yet</li></ul></section>
+	<section><h2>Brief review</h2><ul class="plain" id="review"><li class="empty">not reviewed yet</li></ul></section>
 	<section id="board"><h2>Board</h2><p class="empty">waiting for the first board build</p></section>
 </main>
 <script>
@@ -76,6 +77,9 @@
 		seenViolations: new Set(),
 		counts: { proposed: 0, approved: 0, rejected: 0, built: 0 },
 		settled: null,
+		review: null,        // latest review.completed payload
+		reviewing: null,     // revision handed to the reviewer by design.ready
+		reviews: 0,
 		requests: [],        // [{at, text}] from /files/requests.jsonl
 		contractChanges: [], // [{at, field, version, revision, by}] from contract.changed
 	}
@@ -92,6 +96,8 @@
 			case "artifact.ready": return "c-artifact"
 			case "artifact.failed": return "c-failed"
 			case "consistency.checked": return e.payload.violations.length ? "c-failed" : "c-check"
+			case "design.ready": return "c-check"
+			case "review.completed": return e.payload.verdict === "pass" ? "c-approved" : "c-rejected"
 			case "design.settled": return e.payload.settled ? "c-settled" : "c-failed"
 			case "agent.halted": return "c-halted"
 			default: return ""
@@ -107,6 +113,8 @@
 			case "artifact.ready": return `${p.kind} built for rev ${p.revision}`
 			case "artifact.failed": return `${p.kind} failed for rev ${p.revision}: ${p.error}`
 			case "consistency.checked": return `rev ${p.revision}: ${p.violations.length} violation(s)`
+			case "design.ready": return `rev ${p.revision} is consistent; brief review ${p.round}`
+			case "review.completed": return `reviewer: ${p.verdict} with ${p.findings.length} finding(s) at rev ${p.revision}`
 			case "design.settled": return p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`
 			case "agent.halted": return `${p.agentId} halted: ${p.error}`
 			default: return JSON.stringify(p)
@@ -139,6 +147,14 @@
 			case "consistency.checked":
 				state.violations = p
 				for (const v of p.violations) state.seenViolations.add(v.kind + "|" + v.message)
+				break
+			case "design.ready":
+				state.reviewing = p.revision
+				break
+			case "review.completed":
+				state.review = p
+				state.reviews++
+				state.reviewing = null
 				break
 			case "design.settled":
 				state.settled = p
@@ -200,6 +216,19 @@
 		$("violations").innerHTML = !v ? `<li class="empty">no check yet</li>` : v.violations.length === 0
 			? `<li style="color: var(--approved)">✔ rev ${v.revision}: consistent</li>`
 			: v.violations.map((x) => `<li><span class="kind">${esc(x.kind)}</span> ${esc(x.message)}<br><span class="meta">wakes ${esc(x.affects.join(", "))}</span></li>`).join("")
+		renderReview()
+	}
+
+	function renderReview() {
+		const r = state.review
+		if (!r) {
+			$("review").innerHTML = state.reviewing !== null ? `<li class="empty">reviewing rev ${esc(state.reviewing)} against the brief…</li>` : `<li class="empty">not reviewed yet</li>`
+			return
+		}
+		const head = `<li><span class="pill ${r.verdict === "pass" ? "approved" : "rejected"}">${esc(r.verdict)}</span> rev ${esc(r.revision)} · review ${state.reviews}` +
+			(state.reviewing !== null ? ` · reviewing rev ${esc(state.reviewing)}…` : "") + `</li>`
+		$("review").innerHTML = head + r.findings.map((f) =>
+			`<li><span class="kind">${esc(f.severity)}</span> ${esc(f.issue)}<br><span class="meta">${esc(f.fields.join(", ") || "general")} · ${esc(f.suggestion)}</span></li>`).join("")
 	}
 
 	function showBoard(revision) {

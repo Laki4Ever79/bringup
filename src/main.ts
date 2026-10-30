@@ -6,12 +6,13 @@ import { missingTools } from "./report.ts"
 import { ROOT, runDesign } from "./run.ts"
 import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 
-const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--out <dir>]"
+const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--out <dir>]"
 
 export interface CliArgs {
 	briefPath: string
 	mock: boolean
 	noHardware: boolean
+	review: boolean
 	outDir?: string
 }
 
@@ -22,7 +23,7 @@ export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	const briefPath = argv.find((a, i) => !a.startsWith("--") && (outIndex < 0 || i !== outIndex + 1))
 	if (!briefPath) return { error: "no brief given" }
 	if (!existsSync(briefPath)) return { error: `brief not found: ${briefPath}` }
-	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), ...(outDir ? { outDir } : {}) }
+	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), ...(outDir ? { outDir } : {}) }
 }
 
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
@@ -36,7 +37,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	const runId = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)
 	const outDir = args.outDir ?? join(ROOT, "out", runId)
 	const env = await (deps.detect ?? detectEnvironment)(ROOT)
-	const mode = `${args.mock ? "mock models (no API key)" : "real models"}${args.noHardware ? ", hardware stubbed" : ""}`
+	const mode = `${args.mock ? "mock models (no API key)" : "real models"}${args.noHardware ? ", hardware stubbed" : ""}${args.review ? "" : ", no brief review"}`
 	console.log(`bringup: ${mode}\n${describeEnv(env)}\noutput: ${outDir}`)
 	const missing = missingTools(env)
 	if (missing.length > 0 && !args.noHardware) {
@@ -45,7 +46,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		console.warn("  Or rerun with --no-hardware to see the agents coordinate without the hardware tools.")
 	}
 
-	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware })
+	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review })
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)\nreport: ${result.reportPath}`)
 	return result.settled ? 0 : 2
 }

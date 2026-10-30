@@ -30,6 +30,23 @@ export function missingTools(env: Env): { tool: string; install: string }[] {
 	return (Object.keys(INSTALL) as (keyof typeof INSTALL)[]).filter((k) => !env[k]).map((k) => INSTALL[k])
 }
 
+function reviewSection(s: BringupState): string[] {
+	const r = s.review
+	if (!r.enabled) return ["Brief review: skipped (--no-review).", ""]
+	const last = r.results.at(-1)
+	const n = r.results.length
+	const head = last
+		? `Verdict: ${last.verdict} after ${n} review${n === 1 ? "" : "s"} (at most ${r.maxRounds} fix round${r.maxRounds === 1 ? "" : "s"}).`
+		: r.missingVerdict
+			? "No verdict: the reviewer ended its turn without submitting a review, so the design settled on the deterministic checks alone."
+			: "No verdict: the design never reached the reviewer (it did not become consistent and quiet)."
+	const rounds = r.results.map((x) => [
+		`- Review ${x.round} of revision ${x.revision}: ${x.verdict}`,
+		...x.findings.map((f) => `  - ${f.severity} (${f.fields.join(", ") || "general"}): ${f.issue} Suggestion: ${f.suggestion}`),
+	])
+	return ["## Brief review", "", head, ...rounds.flat(), ""]
+}
+
 export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
 	const violations = checkConsistency(snapshot, s.artifacts)
@@ -64,6 +81,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Pins: ${(v.pins ?? []).map((p) => `${p.signal}=GPIO${p.gpio}→${p.partRef}.${p.partPin}`).join(", ")}`,
 		`- Rails: ${(v.rails ?? []).map((r) => `${r.name} ${r.loadMa}/${r.regulatorMaxMa} mA`).join(", ")}`,
 		``,
+		...reviewSection(s),
 		`## Artifacts`,
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
 		`- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}`,

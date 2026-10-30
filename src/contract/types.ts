@@ -1,4 +1,5 @@
-export type AgentRole = "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency"
+// "reviewer" is the LLM brief reviewer; it owns no field.
+export type AgentRole = "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer"
 
 export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins"
 
