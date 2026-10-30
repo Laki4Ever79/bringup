@@ -105,7 +105,9 @@ phone hotspot. **Cable is the default on stage**, because:
 
 `py/bench.py` owns every port. `src/agents/bench.ts` owns the events and the measurement math.
 
-**Invocation.** `.venv/bin/python py/bench.py --source real|fake|replay [--replay FILE] [--out DIR] [--fake-speed X]`
+**Invocation.** `.venv/bin/python py/bench.py --source real|fake|replay [--replay FILE] [--out DIR] [--fake-speed X] [--no-meter]`
+- `--no-meter` (fake only) is a tier-1 bench: `hello.meter` is false, `ports.fixture` is null, no `i` lines, and
+  `mode`/`recover`/`reset` ack `ok:false` "no fixture", exactly like a real bench without the Pico.
 - Long-lived; it exits on `quit` or when stdin closes.
 - stdout carries JSON lines and stderr carries free text.
 - Every stdout line has `k` and `at` (host epoch ms).
