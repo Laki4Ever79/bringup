@@ -261,6 +261,25 @@ class FakeDutTests(unittest.TestCase):
         self.assertAlmostEqual(min(currents), 6.0, delta=0.5)
         self.assertGreater(max(currents), 50)
 
+    def test_without_an_mpu_tilt_is_zero_and_an_imu_error_comes_about_once_a_second(self):
+        dut = FakeDut(Pins(), now_ms=0, imu=False)
+        dut.flash({"rev": 6, "blinkMs": 1000, "tiltBlinkMs": 100, "tiltDeg": 20}, now_ms=0)
+        samples, errors, leds = [], [], set()
+        for t in range(0, 5000, 10):
+            dut.step(t)
+            for line in dut.drain_lines():
+                m = json.loads(line)
+                if m["k"] == "s":
+                    samples.append(m)
+                    leds.add(m["led"])
+                elif m["k"] == "err":
+                    errors.append(m)
+        self.assertTrue(samples)
+        self.assertTrue(all((m["ax"], m["ay"], m["az"], m["tilt"], m["tC"], m["tSrc"]) == (0, 0, 0, 0, None, "none") for m in samples))
+        self.assertIn(len(errors), (5, 6), "about one a second over 5 s")
+        self.assertEqual(errors[0], {"k": "err", "rev": 6, "what": "imu", "detail": "no ACK at 0x68"})
+        self.assertEqual(leds, {0, 1}, "the LED still blinks")
+
     def test_boot_pin_low_during_reset_enters_download_mode(self):
         pins = Pins()
         dut = FakeDut(pins, now_ms=0)
