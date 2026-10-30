@@ -95,9 +95,22 @@ static const int BENCH_RGB_PIN = 48;  // the YD-ESP32-S3's onboard RGB LED: the 
 RTC_DATA_ATTR static uint32_t dutyCycles = 0;
 
 // The contract's STATUS_LED (if a LED is wired) and the onboard RGB LED, together.
+// Shaking: any reading whose magnitude is off 1 g by this much (or jumps this much between samples) counts, and the
+// state lasts SHAKE_HOLD_MS after the last one, so a shake reads as one clear red burst on stage.
+static const float SHAKE_G = 0.35f;
+static const uint32_t SHAKE_HOLD_MS = 1500;
+static const uint32_t SHAKE_BLINK_MS = 120;
+static uint32_t shakeUntil = 0;
+
+static bool shaking() {
+	return shakeUntil != 0 && (int32_t)(shakeUntil - millis()) > 0;
+}
+
+// Green normally, red while shaking.
 static void benchLed(bool on) {
 	led(on);
-	rgbLedWrite(BENCH_RGB_PIN, 0, on ? 40 : 0, 0);
+	bool red = shaking();
+	rgbLedWrite(BENCH_RGB_PIN, on && red ? 60 : 0, on && !red ? 40 : 0, 0);
 }
 
 // Every telemetry line goes out twice: on UART1 (GPIO17, for a CP2102 if one is wired) and on the S3's own USB, which
@@ -156,12 +169,28 @@ static const char *resetName() {
 	}
 }
 
-// One "s" line: tilt from vertical, and the temperature from the SHT40 when the board has one, else the MPU's die.
+// One "s" line. Tilt is measured from the pose the board had when the firmware started (its first good reading), not
+// from vertical, so it works however the MPU-6050 happens to sit on the breadboard. Temperature comes from the SHT40
+// when the board has one, else the MPU's die.
 static float sampleLine(bool ledOn) {
 	float a[3] = {0, 0, 0}, mpuT = 0, t = 0, rh = 0;
 	bool imu = readMpu(a, &mpuT);
 	bool sht = readSht40(&t, &rh);
-	float tilt = atan2f(sqrtf(a[0] * a[0] + a[1] * a[1]), a[2]) * 180.0f / (float)M_PI;
+	static float rest[3] = {0, 0, 0};
+	static bool haveRest = false;
+	static float lastMag = 1.0f;
+	float tilt = 0;
+	float mag = sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+	if (imu && mag > 0.2f) {
+		if (!haveRest) {
+			for (int i = 0; i < 3; i++) rest[i] = a[i] / mag;
+			haveRest = true;
+		}
+		float c = (a[0] * rest[0] + a[1] * rest[1] + a[2] * rest[2]) / mag;
+		tilt = acosf(fmaxf(-1.0f, fminf(1.0f, c))) * 180.0f / (float)M_PI;
+		if (fabsf(mag - 1.0f) > SHAKE_G || fabsf(mag - lastMag) > SHAKE_G) shakeUntil = millis() + SHAKE_HOLD_MS;
+		lastMag = mag;
+	}
 	if (!imu) {
 		static uint32_t lastErr = 0;
 		if (lastErr == 0 || millis() - lastErr >= 1000) {
@@ -173,8 +202,8 @@ static float sampleLine(bool ledOn) {
 	char temp[16];
 	if (sht || imu) snprintf(temp, sizeof temp, "%.2f", sht ? t : mpuT);
 	else snprintf(temp, sizeof temp, "null");
-	tele("{\"k\":\"s\",\"rev\":%d,\"ms\":%lu,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"tilt\":%.1f,\"tC\":%s,\"tSrc\":\"%s\",\"led\":%d}\n",
-		BRINGUP_REVISION, (unsigned long)millis(), a[0], a[1], a[2], imu ? tilt : 0.0f, temp, sht ? "sht40" : imu ? "mpu" : "none", ledOn ? 1 : 0);
+	tele("{\"k\":\"s\",\"rev\":%d,\"ms\":%lu,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"tilt\":%.1f,\"shake\":%d,\"tC\":%s,\"tSrc\":\"%s\",\"led\":%d}\n",
+		BRINGUP_REVISION, (unsigned long)millis(), a[0], a[1], a[2], tilt, shaking() ? 1 : 0, temp, sht ? "sht40" : imu ? "mpu" : "none", ledOn ? 1 : 0);
 	return imu ? tilt : 0.0f;
 }
 
@@ -216,7 +245,8 @@ void setup() {
 	mpuWrite(0x6B, 0x00);
 }
 
-// Live: a sample every 50 ms, and the LED toggling every half period, faster while tilted past BEHAVIOR_TILT_DEG.
+// Live: a sample every 50 ms, and the LED toggling every half period: green, faster while tilted past
+// BEHAVIOR_TILT_DEG, and fast red while shaking.
 void loop() {
 	static uint32_t nextSample = 0, nextToggle = 0;
 	static bool ledOn = false;
@@ -238,7 +268,8 @@ void loop() {
 	if ((int32_t)(now - nextToggle) >= 0) {
 		ledOn = !ledOn;
 		benchLed(ledOn);
-		nextToggle = now + (tilt > BEHAVIOR_TILT_DEG ? BEHAVIOR_TILT_BLINK_MS : BEHAVIOR_BLINK_MS) / 2;
+		uint32_t period = shaking() ? SHAKE_BLINK_MS : tilt > BEHAVIOR_TILT_DEG ? BEHAVIOR_TILT_BLINK_MS : BEHAVIOR_BLINK_MS;
+		nextToggle = now + period / 2;
 	}
 	if ((int32_t)(now - nextSample) >= 0) {
 		nextSample = now + LIVE_SAMPLE_MS;
