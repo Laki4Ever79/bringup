@@ -39,6 +39,21 @@ export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	firmware: ["parts", "pins", "behavior"],
 }
 
+// Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
+// its builds awaited one after another instead of concurrently. Runs never pass one.
+export class BuildLock {
+	private tail: Promise<void> = Promise.resolve()
+
+	run<T>(work: () => Promise<T>): Promise<T> {
+		const result = this.tail.then(work)
+		this.tail = result.then(
+			() => {},
+			() => {},
+		)
+		return result
+	}
+}
+
 // A plain-code participant that keeps one artifact in step with the contract. It wakes on
 // contract.changed for its input fields, runs one build at a time (newer requests coalesce),
 // stores the artifact and reports artifact.ready or artifact.failed. Builds of different
@@ -50,6 +65,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	build: (ctx: BuildContext) => Promise<ArtifactOf[K]>
 	// For tools that report failure in their result instead of throwing.
 	failure?: (artifact: ArtifactOf[K]) => string | null
+	lock?: BuildLock
 }): Human {
 	const self: { id: string } = { id: "" }
 	const rebuilder = new Rebuilder(async (revision) => {
@@ -60,7 +76,8 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 		try {
 			const dir = join(s.outDir, opts.kind, `rev-${snapshot.revision}`)
 			mkdirSync(dir, { recursive: true })
-			const artifact = await opts.build({ revision: snapshot.revision, snapshot, dir })
+			const ctx = { revision: snapshot.revision, snapshot, dir }
+			const artifact = await (opts.lock ? opts.lock.run(() => opts.build(ctx)) : opts.build(ctx))
 			;(s.artifacts as Record<string, unknown>)[opts.kind] = artifact
 			s.artifactInputs[opts.kind] = inputs
 			const failure = opts.failure?.(artifact) ?? null
@@ -100,9 +117,10 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 
 // The three domain builders. Each depends only on the contract fields that shape its artifact,
 // so a pin change rebuilds the board and firmware while the enclosure keeps working undisturbed.
-export function createBoardBuilder(env: Env): Human {
+export function createBoardBuilder(env: Env, lock?: BuildLock): Human {
 	return createBuilder({
 		kind: "board",
+		lock,
 		inputs: BUILD_INPUTS.board,
 		requires: BUILD_REQUIRES.board,
 		build: async ({ dir, snapshot, revision }) => {
@@ -126,9 +144,10 @@ export function createBoardBuilder(env: Env): Human {
 	})
 }
 
-export function createEnclosureBuilder(env: Env): Human {
+export function createEnclosureBuilder(env: Env, lock?: BuildLock): Human {
 	return createBuilder({
 		kind: "enclosure",
+		lock,
 		inputs: BUILD_INPUTS.enclosure,
 		requires: BUILD_REQUIRES.enclosure,
 		build: ({ dir, snapshot, revision }) => {
@@ -138,9 +157,10 @@ export function createEnclosureBuilder(env: Env): Human {
 	})
 }
 
-export function createFirmwareBuilder(env: Env): Human {
+export function createFirmwareBuilder(env: Env, lock?: BuildLock): Human {
 	return createBuilder({
 		kind: "firmware",
+		lock,
 		inputs: BUILD_INPUTS.firmware,
 		requires: BUILD_REQUIRES.firmware,
 		build: ({ dir, snapshot, revision }) => {
