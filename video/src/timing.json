@@ -1,7 +1,7 @@
 {
   "_doc": "Scene lengths (s) and where each voice line starts inside its scene. Read by the scenes (fill to length) and by tools/mux.sh.",
   "scenes": [
-    {"scene": "b1-problem",      "length": 13, "voice": [["b1", 0.6]]},
+    {"scene": "b1-problem",      "length": 14, "voice": [["b1", 0.6]]},
     {"scene": "b2-title",        "length": 12, "voice": [["b2", 0.6]]},
     {"scene": "b3-first-design", "length": 25, "voice": [["b3", 1.0]]},
     {"scene": "b4-change",       "length": 56, "voice": [["b4", 0.3], ["b5", 6.0], ["b6", 36.5]]},
