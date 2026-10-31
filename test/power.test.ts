@@ -218,11 +218,28 @@ test("dutyCycleCheckLines derives battery life from the duty cycle, independent 
 	assert.match(text, /^- Asleep the rest of the 300 s period: 5 µA \(MCU deep sleep\) \+ 1 µA \(LDO quiescent\)$/m)
 	// 100/300000 × 80 mA + (1 − 1/3000) × 0.005 mA + 0.001 mA = 0.0327 mA; 500 mAh / 0.0327 mA / 24 h = 638 days
 	assert.match(text, /^- Average 0\.0327 mA; 500 mAh \/ 0\.0327 mA \/ 24 h = 638 days vs target 180 days$/m)
-	assert.match(text, /^- Assumes the firmware sleeps between readings as requirements\.dutyCycle says, and the peak current for the whole wake \(an upper bound\)\.$/m)
+	assert.match(text, /^- Assumes the firmware sleeps between readings as requirements\.dutyCycle says, and the peak current for the whole wake \(an upper bound on current\)\. So a result at or above the target shows the target is met; one below it does not by itself show it is missed: then judge the stated average against the parts\.$/m)
 	const none = fixtureContract()
 	assert.deepEqual(dutyCycleCheckLines(estimatePower(none, "")), ["Battery-life check: not computed (no requirements.dutyCycle)"])
 	// A wake too short for the reading and the shortest advertising window: the check charges what the firmware does.
 	s.values.requirements = { ...s.values.requirements!, dutyCycle: { activeMs: 40, periodS: 300, sleepUa: 5 } }
 	const short = dutyCycleCheckLines(estimatePower(s, "")).join("\n")
 	assert.match(short, /^- Each reading: 80 ms awake \(requirements\.dutyCycle\.activeMs says 40 ms\) at up to 80 mA \(the busiest battery-fed rail's peak\) = 6\.4 mC$/m)
+})
+
+// Real run 20: VBAT and VCC_3V3 both stated 0.0307 mA, i.e. VBAT's figure was the 3V3 loads again. Counted once.
+test("a battery rail stating the same average as the rail behind its LDO is counted once, and the budget says so", () => {
+	const c = fixtureContract()
+	c.values.rails = [
+		{ name: "VBAT", voltageV: 3.7, regulatorMaxMa: 500, loadMa: 300, averageMa: 0.0307 },
+		{ name: "VCC_3V3", voltageV: 3.3, regulatorMaxMa: 500, loadMa: 250, averageMa: 0.0307 },
+	]
+	const e = estimatePower(c, "around 500 mAh")
+	assert.equal(e.averageMa, 0.0307)
+	assert.equal(e.rails[0].sameAs, "VCC_3V3")
+	const text = powerBudgetLines(e).join("\n")
+	assert.match(text, /Rail VBAT: .*the same as VCC_3V3's, so read as including VCC_3V3's loads and counted once/)
+	assert.match(text, /500 mAh \/ \(0\.0307 mA\) \/ 24 h/)
+	c.values.rails[0].averageMa = 0.002
+	assert.equal(estimatePower(c, "around 500 mAh").averageMa, 0.0327, "different averages still add up")
 })
