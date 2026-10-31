@@ -4,8 +4,8 @@ import {all, chain, createRef, sequence, waitFor} from '@motion-canvas/core';
 import {sceneClock, C, F, FULL, caption, fontsReady, footage, tag} from '../lib';
 
 // Source pixels in the 1920×1080 dashboard recording.
-const AGENTS = {x: 1240, y: 300, zoom: 1.7};
-const RESULT = {x: 700, y: 390, zoom: 1.4};
+const AGENTS = {x: 1100, y: 300, zoom: 1.5}; // fields + agents + timeline
+const RESULT = {x: 760, y: 420, zoom: 1.35}; // the result line over the board
 
 export default makeScene2D(function* (view) {
   const clock = sceneClock('b3-first-design');
@@ -18,12 +18,11 @@ export default makeScene2D(function* (view) {
   yield* t().opacity(1, 0.3);
   yield* all(
     chain(
-      footage(stage(), '/a2_start.mp4', 10, [{at: 2, to: AGENTS, dur: 1.2}], FULL),
-      // (cut: the first design keeps building; the board appears)
-      footage(stage(), '/a2_board.mp4', 5),
-      footage(stage(), '/a2_settle.mp4', 5, [{at: 2.2, to: RESULT, dur: 1}]),
+      footage(stage(), '/a2_start.mp4', 11, [{at: 2, to: AGENTS, dur: 1.2}], FULL),
+      // (cut: the first design keeps building with the real tools; it took 2 min 33 s)
+      footage(stage(), '/a2_settle.mp4', 10, [{at: 5.5, to: RESULT, dur: 1}]),
     ),
-    chain(waitFor(3), cap.in(), waitFor(9), cap.out()),
+    chain(waitFor(3), cap.in(), waitFor(15), cap.out()),
   );
 
   // What one run hands you (README "What one run hands you").
