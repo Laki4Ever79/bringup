@@ -47,3 +47,19 @@ test("part-unconnected: a part no pin uses and the board generator doesn't wire 
 	assert.match(found[0].message, /a charging-state LED needs role charge-led$/)
 	assert.match(found[1].message, /reuses a contract part only with the same LCSC number: .*1k C11702/)
 })
+
+// Real beacon run M: a 3V3 rail sized for 80 mA under an MCU that draws 84 mA receiving; only the final review saw it.
+test("rail-underrated: a 3.3 V rail whose peak is below the MCU's datasheet radio current is a live violation", () => {
+	const c = fixtureContract()
+	c.values.rails = [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 200, loadMa: 80 }]
+	const found = checkConsistency(c, {}).filter((v) => v.kind === "rail-underrated")
+	assert.equal(found.length, 1)
+	assert.equal(found[0].message, "rail 3V3 is sized for a 80 mA peak, below U1 ESP32-C3-MINI-1's 84 mA with its radio receiving (datasheet; it gives Wi-Fi transmit peaks up to 335 mA and no Bluetooth LE figure)")
+	assert.deepEqual([found[0].fields, found[0].affects], [["rails", "parts"], ["architect"]])
+	c.values.rails[0].loadMa = 120
+	assert.equal(checkConsistency(c, {}).filter((v) => v.kind === "rail-underrated").length, 0)
+})
+
+test("the ESP32-C3 facts name its real strapping pins", () => {
+	assert.match(designFacts(fixtureContract(), "").join("\n"), /strapping pins are GPIO2, GPIO8 and GPIO9 \(datasheet v2\.4, section 3\.1\).*GPIO0, GPIO1 and GPIO3 to GPIO5 are not strapping pins/)
+})
