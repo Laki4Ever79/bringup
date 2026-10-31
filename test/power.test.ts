@@ -199,3 +199,25 @@ test("a measured rail average is labelled with its bench revision", () => {
 	assert.equal(e.rails[0].source, "measured")
 	assert.match(powerBudgetLines(e).join("\n"), /Rail 3V3: peak 120 mA, average 0\.0567 mA \(measured on bench, rev 14\)/)
 })
+
+// Real runs 15 and 16: the reviewer re-derived battery life from the duty cycle by hand and blocked on the rails'
+// stated averages. It now gets the duty-cycle estimate as a computed check, with every input, like DRC or SPICE.
+test("dutyCycleCheckLines derives battery life from the duty cycle, independent of the stated averages", async () => {
+	const { dutyCycleCheckLines } = await import("../src/contract/power.ts")
+	const s = fixtureContract()
+	s.values.requirements = { summary: "logger", peripherals: [], batteryLifeDays: 180, batteryMah: 500, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
+	s.values.rails = [
+		{ name: "VBAT", voltageV: 3.7, regulatorMaxMa: 500, loadMa: 40, averageMa: 0.006 },
+		{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 200, loadMa: 80, averageMa: 0.028 },
+	]
+	s.values.parts = [...s.values.parts!, { ref: "U3", role: "ldo", mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] }]
+	const text = dutyCycleCheckLines(estimatePower(s, "")).join("\n")
+	assert.match(text, /^Battery-life check \(computed in code from the duty cycle, not from the rails' stated averages\):$/m)
+	assert.match(text, /^- Each reading: 100 ms awake at up to 80 mA \(the busiest battery-fed rail's peak\) = 8 mC$/m)
+	assert.match(text, /^- Asleep the rest of the 300 s period: 5 µA \(MCU deep sleep\) \+ 1 µA \(LDO quiescent\)$/m)
+	// 100/300000 × 80 mA + (1 − 1/3000) × 0.005 mA + 0.001 mA = 0.0327 mA; 500 mAh / 0.0327 mA / 24 h = 638 days
+	assert.match(text, /^- Average 0\.0327 mA; 500 mAh \/ 0\.0327 mA \/ 24 h = 638 days vs target 180 days$/m)
+	assert.match(text, /^- Assumes the firmware sleeps between readings as requirements\.dutyCycle says, and the peak current for the whole wake \(an upper bound\)\.$/m)
+	const none = fixtureContract()
+	assert.deepEqual(dutyCycleCheckLines(estimatePower(none, "")), ["Battery-life check: not computed (no requirements.dutyCycle)"])
+})
