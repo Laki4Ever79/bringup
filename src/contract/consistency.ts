@@ -22,6 +22,8 @@ export interface BoardArtifact {
 	holes?: { xMm: number; yMm: number; diameterMm: number }[]
 	// What was placed, by reference designator (circuit.json): the MPN (null when the board has none) and the pins.
 	parts?: Record<string, { mpn: string | null; pins: string[] }>
+	// Where each part's centre was placed, from the board's bottom-left corner (circuit.json).
+	placements?: Record<string, { xMm: number; yMm: number }>
 }
 
 export interface PrintCheck {
@@ -39,6 +41,9 @@ export interface EnclosureArtifact {
 	lidStlPath?: string
 	lidStepPath?: string
 	printCheck?: PrintCheck
+	// Slot vents in the lid, one per sensor, measured from the built lid: centre from the board's bottom-left corner and
+	// the grille's size. Absent on cases built before vents existed.
+	vents?: { ref: string; xMm: number; yMm: number; widthMm: number; heightMm: number }[]
 }
 
 export interface FirmwareArtifact {
@@ -68,6 +73,7 @@ export type ViolationKind =
 	| "firmware-build-failed"
 	| "sensor-mismatch"
 	| "history-overflow"
+	| "vent-missing"
 
 export interface Violation {
 	kind: ViolationKind
@@ -78,6 +84,8 @@ export interface Violation {
 
 const OUTLINE_TOLERANCE_MM = 0.1
 const CUTOUT_TOLERANCE_MM = 0.5
+// A sensor counts as vented when its centre lies under the grille or within this distance of its edge.
+const VENT_TOLERANCE_MM = 1
 // An M2 screw through a 2.2 mm hole forgives about 0.3 mm of misplacement.
 const STANDOFF_TOLERANCE_MM = 0.3
 // A post within this distance of an unmatched hole is reported as that hole's post, moved.
@@ -186,6 +194,21 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 					affects: ["enclosure"],
 				})
 			}
+		}
+	}
+
+	// A temperature/humidity sensor sealed in the case measures the box, not the room: each needs a vent over it. Where
+	// the board placed the sensor is the truth when the board is built; without it, a vent named for the sensor counts.
+	const vents = a.enclosure?.vents
+	if (vents) {
+		for (const sensor of (parts ?? []).filter((p) => p.role === "sensor")) {
+			const vent = vents.find((x) => x.ref === sensor.ref)
+			const at = a.board?.placements?.[sensor.ref]
+			const covers = vent && (!at || (Math.abs(at.xMm - vent.xMm) <= vent.widthMm / 2 + VENT_TOLERANCE_MM && Math.abs(at.yMm - vent.yMm) <= vent.heightMm / 2 + VENT_TOLERANCE_MM))
+			if (covers) continue
+			const where = at ? ` at (${+at.xMm.toFixed(1)}, ${+at.yMm.toFixed(1)}) mm` : ""
+			const nearest = vent ? `; its vent is at (${+vent.xMm.toFixed(1)}, ${+vent.yMm.toFixed(1)}) mm` : ""
+			v.push({ kind: "vent-missing", message: `case has no vent over the sensor ${sensor.ref}${where}${nearest}`, fields: ["parts"], affects: ["enclosure"] })
 		}
 	}
 

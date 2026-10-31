@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { test } from "node:test"
-import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson } from "../src/tools/board-nets.ts"
+import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "../src/tools/board-nets.ts"
 
 // Built by tsci from circuitFromContract(fixtureContract()).
 const elements = JSON.parse(readFileSync(new URL("./data/fixture.circuit.json", import.meta.url), "utf8"))
@@ -37,4 +37,14 @@ test("parts come back as placed: each component's MPN (null when the board has n
 		{ type: "source_port", source_port_id: "p3", source_component_id: "c2", name: "pin1" },
 	])
 	assert.deepEqual(parts, { U3: { mpn: "AP2112K-3.3TRG1", pins: ["VIN", "VOUT"] }, R1: { mpn: null, pins: ["pin1"] } })
+})
+
+test("placements come back in the contract frame: each component's centre from the board's bottom-left corner", () => {
+	const placements = placementsFromCircuitJson([
+		{ type: "pcb_board", width: 50, height: 30 },
+		{ type: "source_component", source_component_id: "s1", name: "U2" },
+		{ type: "pcb_component", source_component_id: "s1", center: { x: 21.5, y: 11 } },
+		{ type: "source_component", source_component_id: "s2", name: "unplaced" },
+	])
+	assert.deepEqual(placements, { U2: { xMm: 46.5, yMm: 26 } })
 })

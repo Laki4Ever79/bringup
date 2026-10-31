@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto"
+import { randomBytes, timingSafeEqual } from "node:crypto"
 import { appendFileSync, createReadStream, mkdirSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
@@ -10,6 +10,7 @@ import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "
 import { orderCheck, orderPackage } from "./order.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
+import type { TraceNotifier } from "./notify.ts"
 
 const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
@@ -50,6 +51,8 @@ export interface Dashboard {
 	close(): Promise<void>
 	// Tracks a run this process started some other way (npm run demo): its live status, and Stop reaches it.
 	adopt(runId: string, run: { done: Promise<{ code: number }>; kill?: () => void }): void
+	// With --lan: the random token a decision from another host (the phone) must carry as X-Bringup-Token.
+	token?: string
 }
 
 // Follows trace.jsonl from byte 0, keeping every complete line for replay. A half-written last line waits
@@ -179,6 +182,11 @@ export interface HubOptions {
 	defaultRun?: { id: string; dir: string }
 	// The model behind POST /api/runs/<id>/ask (tests inject one); by default the runs' own provider (ask.ts).
 	ask?: (prompt: AskPrompt) => Promise<string>
+	// --lan: listen on the network (bind, default every interface) so a phone can send decisions. Only the decision
+	// route answers another host, and only with the hub's random token; everything else stays loopback-only.
+	lan?: { bind?: string; token?: string }
+	// Gets every trace line of the runs this hub follows (started here, adopted, or the default run): the ntfy push.
+	notify?: TraceNotifier
 }
 
 // What a scripted run says to a question: its agents don't reason, so there is nothing to ask them.
@@ -235,6 +243,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			const clients = new Set<ServerResponse>()
 			const tail = new TraceTail(join(dir, TRACE), (line) => {
 				for (const c of clients) c.write(frame(line))
+				void opts.notify?.(basename(dir), line)
 			})
 			let watcher: FSWatcher | null = null
 			try {
@@ -321,19 +330,27 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		const run = opts.launch({ briefPath, mock, outDir, extraArgs })
 		const entry = { exit: null as number | null, kill: run.kill }
 		live.set(runId, entry)
+		if (opts.notify) void streamFor(outDir)
 		void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
 		return runId
 	}
 
 	const allowedHost = (host: string | undefined) => ["127.0.0.1", "localhost", "[::1]"].some((h) => host === `${h}:${port}`)
+	const token = opts.lan ? (opts.lan.token ?? randomBytes(24).toString("base64url")) : undefined
+	const tokenOk = (given: string | string[] | undefined) => {
+		if (!token || typeof given !== "string" || given.length !== token.length) return false
+		return timingSafeEqual(Buffer.from(given), Buffer.from(token))
+	}
 
 	const server = createServer(async (req, res) => {
 		const path = (req.url ?? "/").split("?")[0]
 		try {
-			if (!allowedHost(req.headers.host)) return json(res, 403, { error: "loopback only" })
+			// From another host (--lan, the phone's ntfy buttons): a decision with the token, and nothing else.
+			const fromLan = !allowedHost(req.headers.host)
+			if (fromLan && !(req.method === "POST" && /^\/api\/runs\/[^/]+\/decisions$/.test(path) && tokenOk(req.headers["x-bringup-token"]))) return json(res, 403, { error: "loopback only" })
 			if (req.method === "POST") {
 				const origin = req.headers.origin
-				if (origin !== undefined && !allowedHost(origin.replace(/^http:\/\//, ""))) return json(res, 403, { error: "cross-site request" })
+				if (!fromLan && origin !== undefined && !allowedHost(origin.replace(/^http:\/\//, ""))) return json(res, 403, { error: "cross-site request" })
 				if (path === "/api/runs") return json(res, 201, { runId: startRun(await readJson(req)) })
 				const stop = /^\/api\/runs\/([^/]+)\/stop$/.exec(path)
 				if (stop) {
@@ -492,7 +509,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			clearInterval(heartbeat)
 			fail(error)
 		})
-		server.listen(port, "127.0.0.1", () => ok())
+		server.listen(port, opts.lan ? (opts.lan.bind ?? "0.0.0.0") : "127.0.0.1", () => ok())
 	})
 	port = (server.address() as AddressInfo).port
 
@@ -501,7 +518,9 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			const entry = { exit: null as number | null, kill: run.kill }
 			live.set(runId, entry)
 			void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
+			if (opts.notify) void runDir(runId).then((dir) => (dir ? streamFor(dir) : null))
 		},
+		token,
 		url: `http://127.0.0.1:${port}`,
 		close: async () => {
 			clearInterval(timer)
@@ -531,7 +550,7 @@ export async function listenWithFallback(start: (port: number) => Promise<Dashbo
 }
 
 // Live view of one run: the hub over its parent folder, with /events and /files/* serving this run.
-export async function serveDashboard(runDir: string, port = 4317, launch?: HubLaunch): Promise<Dashboard> {
+export async function serveDashboard(runDir: string, port = 4317, launch?: HubLaunch, extra: Pick<HubOptions, "lan" | "notify"> = {}): Promise<Dashboard> {
 	const dir = resolve(runDir)
-	return serveHub({ outRoot: dirname(dir), port, launch, defaultRun: { id: basename(dir), dir } })
+	return serveHub({ outRoot: dirname(dir), port, launch, defaultRun: { id: basename(dir), dir }, ...extra })
 }

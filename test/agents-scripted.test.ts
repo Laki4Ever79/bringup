@@ -1,5 +1,6 @@
 import { afterEach, test } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import { createHuman } from "@mozaik-ai/core"
 import { BringupState, join, sendMessage, startRuntime } from "../src/runtime.ts"
 import { inferenceConfig } from "../src/inference/models.ts"
@@ -96,4 +97,37 @@ test("a change request the architect can't map to a field changes nothing", asyn
 	await new Promise((r) => setTimeout(r, 500))
 	assert.equal(t.state.contract.revision, before)
 	assert.equal(t.state.contract.version("requirements"), 1, "the request was not taken as a new brief")
+})
+
+const BEACON = readFileSync(new URL("../briefs/beacon.md", import.meta.url), "utf8")
+
+test("the beacon brief gets the second scripted design: a button, no sensor, no I2C", async () => {
+	const t = setup()
+	sendMessage(BEACON, t.engineer.getId())
+	await waitFor(() => CORE_FIELDS.every((f) => t.state.contract.version(f) >= 1) && (t.state.contract.get("pins") ?? []).some((p) => p.signal === "STATUS_LED"), 5000)
+	const c = t.state.contract
+	assert.ok(!c.get("parts")!.some((p) => p.role === "sensor"))
+	assert.ok(c.get("parts")!.some((p) => p.ref === "SW1" && p.role === "button"))
+	assert.deepEqual(c.get("pins")!.map((p) => p.signal).sort(), ["BUTTON", "STATUS_LED"])
+	assert.deepEqual(c.get("connectors")!.map((x) => `${x.ref}:${x.edge}`), ["J1:left", "SW1:top"])
+	assert.match(c.get("requirements")!.summary, /beacon/i)
+})
+
+test("\"add a temperature/humidity sensor\" on the beacon: parts adds the SHT40, the architect its I2C pins and a requirement", async () => {
+	const t = setup()
+	sendMessage(BEACON, t.engineer.getId())
+	await waitFor(() => CORE_FIELDS.every((f) => t.state.contract.version(f) >= 1) && (t.state.contract.get("pins") ?? []).some((p) => p.signal === "STATUS_LED"), 5000)
+	await new Promise((r) => setTimeout(r, 300))
+	const mark = t.changes().length
+	sendMessage("add a temperature/humidity sensor", t.engineer.getId())
+	const c = t.state.contract
+	await waitFor(() => (c.get("parts") ?? []).some((p) => p.ref === "U2") && (c.get("pins") ?? []).some((p) => p.signal === "I2C_SCL"), 5000)
+	await new Promise((r) => setTimeout(r, 300))
+	assert.equal(c.get("parts")!.find((p) => p.ref === "U2")!.mpn, "SHT40-AD1B-R2")
+	assert.deepEqual(c.get("pins")!.filter((p) => p.signal.startsWith("I2C")).map((p) => `${p.signal}=GPIO${p.gpio}>${p.partRef}.${p.partPin}`), ["I2C_SDA=GPIO8>U2.SDA", "I2C_SCL=GPIO9>U2.SCL"])
+	assert.ok(c.get("requirements")!.peripherals.includes("i2c-sensor"))
+	assert.ok(c.get("pins")!.some((p) => p.signal === "BUTTON") && c.get("pins")!.some((p) => p.signal === "STATUS_LED"), "the other pins stay")
+	const after = t.changes().slice(mark).map((x) => `${x.by}:${x.field}`)
+	assert.ok(after.includes("parts:parts") && after.includes("architect:pins") && after.includes("architect:requirements"), after.join(" "))
+	assert.equal(after.filter((x) => x === "parts:parts").length, 1, `parts written once: ${after.join(" ")}`)
 })
