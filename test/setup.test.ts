@@ -5,7 +5,8 @@ import { checkPrerequisites, INSTALL, runSetup, type Probe } from "../src/setup/
 import { doctorReport } from "../src/setup/doctor.ts"
 import { WOKWI_CHIPS, WOKWI_CLI } from "../src/tools/wokwi.ts"
 
-const README = readFileSync(new URL("../README.md", import.meta.url), "utf8")
+// The manual install steps moved from the README to docs/details.md; the pins must still be documented there.
+const README = readFileSync(new URL("../README.md", import.meta.url), "utf8") + readFileSync(new URL("../docs/details.md", import.meta.url), "utf8")
 
 // A machine where `ready` names what is already installed; every command run is recorded.
 function machine(opts: { node?: string; uv?: boolean; docker?: "ok" | "down" | "missing" | "denied"; ready?: string[] } = {}) {
