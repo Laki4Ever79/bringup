@@ -156,7 +156,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const emulator = emulatorEnabled(env, opts.noHardware ?? false) ? createEmulatorCheck(env) : null
 	if (emulator) joinRuntime(emulator)
 	joinRuntime(createGroundingCheck(env))
-	const bom = createBomWriter({ root: env.root, fetch: opts.bomFetch })
+	const bom = createBomWriter({ root: env.root, fetch: opts.bomFetch, live: !opts.mock || opts.bomFetch !== undefined })
 	joinRuntime(bom)
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })

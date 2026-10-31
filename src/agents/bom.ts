@@ -4,7 +4,7 @@ import { createHuman, type Human } from "@mozaik-ai/core"
 import { isEvent } from "../events.ts"
 import { state } from "../runtime.ts"
 import { when } from "../change-control.ts"
-import { searchParts } from "../tools/parts-search.ts"
+import { loadCatalog, searchParts } from "../tools/parts-search.ts"
 import { alternativesFor, orderReadiness, sourcesFor, type Alternative, type Readiness, type Source } from "../tools/sourcing.ts"
 
 export interface BomItem {
@@ -31,6 +31,8 @@ export interface Bom {
 	items: BomItem[]
 	// Whether one LCSC/JLCPCB order covers every line, and why not.
 	readiness?: Readiness
+	// false in a mock run: stock and price were not looked up, so every line is "not checked".
+	liveStock?: boolean
 }
 
 // Plain-code participant behind the dashboard's parts panel: on a parts change or a grounding result it writes
@@ -44,7 +46,9 @@ export type BomWriter = Human & {
 	whenIdle(timeoutMs: number): Promise<void>
 }
 
-export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: number; root?: string } = {}): BomWriter {
+// live: false (mock runs) takes the parts from the catalog without asking jlcsearch.
+export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: number; root?: string; live?: boolean } = {}): BomWriter {
+	const live = opts.live ?? true
 	const debounceMs = opts.debounceMs ?? 400
 	let timer: NodeJS.Timeout | null = null
 	let running: Promise<void> | null = null
@@ -56,12 +60,14 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 		const snapshot = s.contract.snapshot()
 		const parts = snapshot.values.parts ?? []
 		const findings = s.groundingFindings
-		const live = new Map<string, Awaited<ReturnType<typeof searchParts>>>()
-		for (const role of new Set(parts.map((p) => p.role))) live.set(role, await searchParts(role, { fetch: opts.fetch, root: opts.root }))
+		const byRole = new Map<string, Awaited<ReturnType<typeof searchParts>>>()
+		const catalog = live ? [] : loadCatalog(opts.root ?? process.cwd())
+		for (const role of new Set(parts.map((p) => p.role)))
+			byRole.set(role, live ? await searchParts(role, { fetch: opts.fetch, root: opts.root }) : catalog.filter((c) => c.role === role))
 		const items: BomItem[] = parts.map((p) => {
-			const hit = p.lcsc ? live.get(p.role)?.find((c) => c.lcsc === p.lcsc) : undefined
+			const hit = p.lcsc ? byRole.get(p.role)?.find((c) => c.lcsc === p.lcsc) : undefined
 			const finding = findings.find((f) => f.partRef === p.ref)
-			const roleParts = live.get(p.role) ?? []
+			const roleParts = byRole.get(p.role) ?? []
 			return {
 				ref: p.ref,
 				role: p.role,
@@ -83,7 +89,8 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 			revision: snapshot.revision,
 			totalUsd: priced.length > 0 ? Math.round(priced.reduce((sum, i) => sum + i.priceUsd!, 0) * 1e4) / 1e4 : null,
 			items,
-			readiness: orderReadiness(items),
+			readiness: orderReadiness(items, live ? undefined : "stock not looked up (mock run)"),
+			liveStock: live,
 		}
 		// Write then rename, so the page never reads half a file.
 		const path = join(s.outDir, "bom.json")
