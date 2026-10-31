@@ -6,8 +6,8 @@ import {all, chain, createRef, waitFor} from '@motion-canvas/core';
 import {sceneClock, caption, fontsReady, footage, tag} from '../lib';
 
 // Source pixels in the 1920×1080 recording (see act-3 at 0:25).
-const COMPOSER = {x: 900, y: 360, zoom: 1.5};
-const FIELDS_AGENTS = {x: 780, y: 300, zoom: 1.5}; // the change, its fields, the agents
+const COMPOSER = {x: 640, y: 360, zoom: 1.5}; // the composer, the change and its fields
+const FIELDS_AGENTS = {x: 640, y: 330, zoom: 1.5}; // the change, its fields, the agents
 const AGENTS_TIMELINE = {x: 1340, y: 330, zoom: 1.6}; // the agents and the timeline of mismatches
 const CASE3D = {x: 1545, y: 770, zoom: 2.0}; // the 3D case: the vent
 const RESULT = {x: 760, y: 420, zoom: 1.35}; // the banner over the board

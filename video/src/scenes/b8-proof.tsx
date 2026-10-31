@@ -3,7 +3,8 @@ import {Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, createRef, createSignal, easeOutCubic, waitFor} from '@motion-canvas/core';
 import {sceneClock, C, F, caption, fontsReady, footage, tag} from '../lib';
 
-const J1 = {x: 960, y: 540, zoom: 1}; // act-4 already closes in on the J1 line by itself
+// Only the evidence table: the top of act-4 still shows the hub's old tagline (recorded before the new line).
+const J1 = {x: 1200, y: 860, zoom: 1.5};
 
 export default makeScene2D(function* (view) {
   view.fill(C.paper);
