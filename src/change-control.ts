@@ -49,6 +49,12 @@ export class ChangeControl implements InterceptionHandler {
 		const args = readArgs(call)
 		const requester = roleOf(this.agentId)!
 		const s = state()
+		// A value the contract would refuse goes straight back with the reason; the owner is never asked about it.
+		const invalid = s.contract.validate({ field: args.field!, value: args.value as never, by: requester })
+		if (invalid) {
+			inferenceInput.context.addContextItems([call, FunctionCallOutputItem.create(call.callId, JSON.stringify({ status: "invalid", reason: invalid }))])
+			return { nextStateId: "inference", input: inferenceInput }
+		}
 		const needsEngineer = s.engineerApproval
 		const proposalId = s.approvals.open(args.field!, requester, JSON.stringify(args.value), needsEngineer)
 		emit(makeEvent("change.proposed", this.agentId, { proposalId, field: args.field!, by: requester, reason: args.reason ?? "", needsEngineer }), this.agentId)

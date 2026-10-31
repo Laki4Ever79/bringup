@@ -84,8 +84,13 @@ export function describeLoopEvent(type: string, p: any): { phase: ActivityPhase;
 			const c = p?.input?.call
 			return { phase: "held", text: clip(`held for approval: ${c?.name ?? p?.nextStateId}${c ? ` ${(parse(c.args) as any)?.field ?? ""}` : ""}`, TOOL_CHARS) }
 		}
-		case "interception.finished":
+		case "interception.finished": {
+			// Turned back to the model (the owner rejected it, or the contract would refuse it): the tool output it got.
+			const items = p?.nextStateId === "inference" ? p?.input?.context?.getItems?.() : undefined
+			const told = Array.isArray(items) ? items.at(-1)?.output?.text : undefined
+			if (typeof told === "string") return { phase: "released", text: clip(`returned: ${summarizeResult(told)}`, ANSWER_CHARS) }
 			return { phase: "released", text: `released: ${p?.input?.call?.name ?? p?.nextStateId}` }
+		}
 		default:
 			return null
 	}

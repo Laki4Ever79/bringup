@@ -100,3 +100,12 @@ test("the contract keeps every revision's snapshot", () => {
 	c.snapshotAt(1)!.values.outline!.widthMm = 1
 	assert.equal(c.snapshotAt(1)?.values.outline?.widthMm, 50, "a copy")
 })
+
+test("validate covers every rule propose enforces, so change control can check before holding", () => {
+	const c = new DesignContract()
+	c.setCatalog([{ role: "mcu", mpn: "ESP32-C3-MINI-1", lcsc: "C2838502", footprint: "x", pins: [] }] as never)
+	assert.equal(c.propose({ field: "parts", value: [{ ref: "U1", role: "mcu", mpn: "ESP32-C3-MINI-1", lcsc: "C2838502", footprint: "x", pins: [] }], by: "parts", baseVersion: 0 }).status, "applied")
+	assert.match(c.validate({ field: "pins", value: [{ signal: "X", gpio: 1, partRef: "U1", partPin: "GPIO1" }], by: "architect" }) ?? "", /partRef must be/)
+	assert.match(c.validate({ field: "pins", value: [{ signal: "led", gpio: 1, partRef: "D1", partPin: "A" }], by: "architect" }) ?? "", /signal names must match/)
+	assert.match(c.validate({ field: "parts", value: [{ ref: "U9", role: "mcu", mpn: "NRF52840", lcsc: null, footprint: "x", pins: [] }], by: "parts" }) ?? "", /only catalog parts/)
+})
