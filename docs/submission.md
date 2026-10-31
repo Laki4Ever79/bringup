@@ -83,6 +83,13 @@ re-placed and re-routed, the firmware switched on its driver, and the case cut a
 9 agents woke; 9 conflicts were caught live (including "case has no vent over the sensor U2"); consistent again in
 195 s with 0 left.
 
+### Simulated with its sensor (`docs/runs/wokwi/`, optional)
+
+After "add a temperature/humidity sensor", `npm run bringup -- simulate <runDir>` ran the new firmware in Wokwi on a
+circuit generated from the contract (the ESP32-C3 plus the chosen sensor on the assigned pins): `SENSOR OK 21.50 C
+48.0 %RH`, and the reading was stored. The firmware the agents generated reads the sensor they chose, on the pins they
+assigned. The sensor is a stand-in chip with fixed values; simulation runs on demand (free plan: 50 min a month).
+
 ### Edit the file instead (`docs/runs/file-sync/`)
 
 A save of a generated file becomes the engineer's change request and goes through the same change control. Scripted
