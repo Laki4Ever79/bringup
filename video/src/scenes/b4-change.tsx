@@ -4,13 +4,13 @@ import {Node, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef, waitFor} from '@motion-canvas/core';
 import {sceneClock, FULL, caption, fontsReady, footage, tag} from '../lib';
 
-// Source pixels in the 1920×1080 dashboard recording (../wt-board/out/footage/act-3.png).
-const COMPOSER = {x: 640, y: 120, zoom: 1.6};
-const FIELDS = {x: 520, y: 250, zoom: 1.9};
-const AGENTS = {x: 1015, y: 270, zoom: 1.75};
-const RESULT = {x: 470, y: 440, zoom: 1.7};
-const MOVED = {x: 1110, y: 760, zoom: 1.5};
-const WHY = {x: 1580, y: 200, zoom: 1.7};
+// Source pixels in the 1920×1080 dashboard recording (31 Oct re-recording; see act-3 at 0:30).
+const COMPOSER = {x: 700, y: 330, zoom: 1.6};
+const FIELDS = {x: 565, y: 300, zoom: 1.7};
+const AGENTS = {x: 1240, y: 300, zoom: 1.7};
+const RESULT = {x: 700, y: 390, zoom: 1.4};
+const BOARD = {x: 960, y: 790, zoom: 1.35}; // the PCB with its rulers and the 3D case
+const WHY = {x: 1580, y: 300, zoom: 1.7};
 
 export default makeScene2D(function* (view) {
   const clock = sceneClock('b4-change');
@@ -26,7 +26,7 @@ export default makeScene2D(function* (view) {
 
   // Beat 4: typing the change.
   yield* all(
-    footage(stage(), '/a3_type.mp4', 5, [], COMPOSER),
+    footage(stage(), '/a3_type.mp4', 4, [], COMPOSER),
     chain(waitFor(1), c4.in()),
   );
 
@@ -43,7 +43,7 @@ export default makeScene2D(function* (view) {
 
   // What moved (50 → 40 mm), then "What changed & why".
   yield* all(
-    footage(stage(), '/a3_moved.mp4', 13, [{at: 0.5, to: MOVED, dur: 1}, {at: 7, to: WHY, dur: 1}], FULL),
+    footage(stage(), '/a3_moved.mp4', 13, [{at: 0.5, to: BOARD, dur: 1}, {at: 7, to: WHY, dur: 1}], FULL),
     chain(waitFor(5), c6.out()),
   );
   yield* clock.end();

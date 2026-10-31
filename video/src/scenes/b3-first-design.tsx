@@ -4,8 +4,8 @@ import {all, chain, createRef, sequence, waitFor} from '@motion-canvas/core';
 import {sceneClock, C, F, FULL, caption, fontsReady, footage, tag} from '../lib';
 
 // Source pixels in the 1920×1080 dashboard recording.
-const AGENTS = {x: 900, y: 290, zoom: 1.75};
-const RESULT = {x: 520, y: 450, zoom: 1.55};
+const AGENTS = {x: 1240, y: 300, zoom: 1.7};
+const RESULT = {x: 700, y: 390, zoom: 1.4};
 
 export default makeScene2D(function* (view) {
   const clock = sceneClock('b3-first-design');

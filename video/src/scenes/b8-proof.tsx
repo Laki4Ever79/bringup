@@ -39,7 +39,7 @@ export default makeScene2D(function* (view) {
   const t = tag(view, 'ONE OF THE 16');
   const c2 = caption(view, 'Like a USB port that no longer meets its hole.');
   yield* t().opacity(1, 0.3);
-  yield* all(footage(stage(), '/a4_proof.mp4', 10.8, [], J1), c2.in());
+  yield* all(footage(stage(), '/a4_proof.mp4', 12.2, [], J1), c2.in());
   yield* c2.out();
   yield* clock.end();
 });
