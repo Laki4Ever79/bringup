@@ -1,0 +1,8 @@
+[wokwi]
+version = 1
+firmware = '../.pio/build/esp32c3/flash.bin'
+elf = '../.pio/build/esp32c3/firmware.elf'
+
+[[chip]]
+name = 'sht40'
+binary = 'chips/sht40.chip.wasm'

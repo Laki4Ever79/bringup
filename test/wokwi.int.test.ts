@@ -28,7 +28,7 @@ test("the firmware, simulated in Wokwi with the contract's sensor on its I2C pin
 		const r = await simulateFirmware(env, dir, contract)
 		assert.equal(r.ran, true, r.reason)
 		assert.ok(r.serial!.includes(EXPECTED_LINE), r.serial)
-		assert.match(r.serial!, /HISTORY slot \d+/)
+		assert.match(r.serial!, /^HISTORY slot 0$/m)
 		assert.equal(r.passed, true)
 	} finally {
 		await rm(dir, { recursive: true, force: true })
