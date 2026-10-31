@@ -217,16 +217,22 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 		const readingMc = (figures.cpuMa * BLE_READING_MS) / 1000
 		const advertiseMc = (figures.radioMa * advertiseMs) / 1000
 		const asleepMa = (1 - wakeMs / (d.periodS * 1000)) * (d.sleepUa / 1000)
-		const averageMa = (readingMc + advertiseMc) / d.periodS + asleepMa + e.regulatorIqUa / 1000
+		// The status LED's blink, bounded without the LED's data: 3.3 V across the board generator's 1k resistor.
+		const hasLed = (s!.values.parts ?? []).some((p) => p.role === "led")
+		const blinkMs = templateConstant("READING_BLINK_MS")
+		const ledMa = 3.3 / 1
+		const ledMc = hasLed && Number.isFinite(blinkMs) ? (ledMa * blinkMs) / 1000 : 0
+		const averageMa = (readingMc + advertiseMc + ledMc) / d.periodS + asleepMa + e.regulatorIqUa / 1000
 		return [
 			`Battery-life check (computed in code from the duty cycle and ${mcu.ref} ${mcu.mpn}'s datasheet currents, not from the rails' stated averages):`,
 			firmwareWake,
 			`- Reading: ${BLE_READING_MS} ms at ${figures.cpuMa} mA (CPU running, datasheet) = ${n(readingMc)} mC`,
 			`- Advertising: ${advertiseMs} ms at ${figures.radioMa} mA (radio receiving, datasheet; it gives no Bluetooth LE figure, so the receive current stands in for the whole window, which keeps the radio on while advertising transmits in short bursts) = ${n(advertiseMc)} mC`,
+			...(ledMc > 0 ? [`- Status LED blink: ${blinkMs} ms at no more than ${ledMa} mA (3.3 V across its 1k resistor; the LED's own forward drop only lowers it) = ${n(ledMc)} mC`] : []),
 			asleep,
 			lifeLine(averageMa, "Average"),
 			...connectionLines(e, averageMa, figures.radioMa, connectedS),
-			"- Leaves out the status LED's blink and the other parts' currents while awake.",
+			"- Leaves out the other parts' currents while awake (charger and LDO idle, button pull-up).",
 			`- Worst case, the busiest battery-fed rail's peak (${ma(peak)}, a regulator sizing figure) for the whole ${wakeMs} ms wake:`,
 			lifeLine(worstMa, "  worst-case average"),
 		]

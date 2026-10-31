@@ -256,8 +256,10 @@ test("dutyCycleCheckLines charges the reading at the CPU current and the adverti
 	assert.match(text, /^Battery-life check \(computed in code from the duty cycle and U1 ESP32-C3-MINI-1's datasheet currents, not from the rails' stated averages\):$/m)
 	assert.match(text, /^- Reading: 30 ms at 28 mA \(CPU running, datasheet\) = 0\.84 mC$/m)
 	assert.match(text, /^- Advertising: 50 ms at 84 mA \(radio receiving, datasheet; it gives no Bluetooth LE figure, so the receive current stands in for the whole window, which keeps the radio on while advertising transmits in short bursts\) = 4\.2 mC$/m)
-	// (0.84 + 4.2) mC / 60 s + (1 − 80/60000) × 0.005 mA + 0.001 mA = 0.0900 mA; 500 / 0.09 / 24 = 231 days
-	assert.match(text, /^- Average 0\.09 mA; 500 mAh \/ 0\.09 mA \/ 24 h = 231 days vs target 90 days$/m)
+	// The fixture's D1 blinks 20 ms at no more than 3.3 V / 1k = 3.3 mA: 0.066 mC.
+	assert.match(text, /^- Status LED blink: 20 ms at no more than 3\.3 mA \(3\.3 V across its 1k resistor; the LED's own forward drop only lowers it\) = 0\.066 mC$/m)
+	// (0.84 + 4.2 + 0.066) mC / 60 s + (1 − 80/60000) × 0.005 mA + 0.001 mA = 0.0911 mA; 500 / 0.0911 / 24 = 229 days
+	assert.match(text, /^- Average 0\.0911 mA; 500 mAh \/ 0\.0911 mA \/ 24 h = 229 days vs target 90 days$/m)
 	assert.match(text, /^- Worst case, the busiest battery-fed rail's peak \(200 mA, a regulator sizing figure\) for the whole 80 ms wake:$/m)
 	// 80/60000 × 200 + (1 − 80/60000) × 0.005 + 0.001 = 0.273 mA; 76 days
 	assert.match(text, /^- {3}worst-case average 0\.273 mA; 500 mAh \/ 0\.273 mA \/ 24 h = 76 days vs target 90 days$/m)
@@ -271,6 +273,6 @@ test("the duty-cycle check says how many full-length connections a day the batte
 	s.values.rails = [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 200, loadMa: 200, averageMa: 0.12 }]
 	s.values.parts = [...s.values.parts!, { ref: "U3", role: "ldo", mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] }]
 	const text = dutyCycleCheckLines(estimatePower(s, ""), s).join("\n")
-	// allowed 500 / (90 × 24) = 0.231 mA; spare 0.231 − 0.09 = 0.141 mA → 12200 mC a day / 2520 mC = 4 connections
-	assert.match(text, /^- Connections: a phone that connects keeps it awake up to 30 s at about 84 mA \(2520 mC each\)\. The 90-day target allows 0\.231 mA on average; 0\.141 mA above this average, which pays for 4 full-length connections a day \(the brief does not say how often a phone connects\)\.$/m)
+	// allowed 500 / (90 × 24) = 0.231 mA; spare 0.231 − 0.0911 = 0.14 mA → 12200 mC a day / 2520 mC = 4 connections
+	assert.match(text, /^- Connections: a phone that connects keeps it awake up to 30 s at about 84 mA \(2520 mC each\)\. The 90-day target allows 0\.231 mA on average; 0\.14 mA above this average, which pays for 4 full-length connections a day \(the brief does not say how often a phone connects\)\.$/m)
 })
