@@ -35,7 +35,7 @@ async function drafted() {
 	// The text each agent's turns started with, from Mozaik's loop events.
 	const turns = (agentId: string) =>
 		events.filter((e) => e.type === "message_received.started" && e.producerId === agentId).map((e) => String((e.payload as { content?: string }).content ?? ""))
-	const fail = (kind: "board" | "firmware", revision: number, error: string) =>
+	const fail = (kind: "board" | "firmware" | "enclosure", revision: number, error: string) =>
 		emit(makeEvent("artifact.failed", desk.getId(), { kind, revision, error }), desk.getId())
 	return { state, events, architect, parts, turns, fail }
 }
@@ -72,6 +72,17 @@ test("a failed firmware build wakes the parts agent but not the architect", asyn
 	await waitFor(() => t.turns(t.parts.getId()).some((m) => m.includes(error)))
 	await new Promise((r) => setTimeout(r, 300))
 	assert.ok(!t.turns(t.architect.getId()).some((m) => m.includes(error)))
+})
+
+// Real run 14: the enclosure failed on a 7.5 mm tall USB-C cutout (the architect's connector height), nobody was
+// woken, and the run ended unsettled with everything quiet.
+test("a failed enclosure build wakes the architect, who owns the outline and connectors, and not the parts agent", async () => {
+	const t = await drafted()
+	const error = "enclosure: J1: cutout top 14.60 mm reaches the lid's lip (starts at 11.00 mm)"
+	t.fail("enclosure", t.state.contract.revision, error)
+	await waitFor(() => t.turns(t.architect.getId()).some((m) => m.includes(error)))
+	await new Promise((r) => setTimeout(r, 300))
+	assert.ok(!t.turns(t.parts.getId()).some((m) => m.includes(error)))
 })
 
 test("a run where parts arrive before the outline has no failed builds", { timeout: 90_000 }, async () => {
