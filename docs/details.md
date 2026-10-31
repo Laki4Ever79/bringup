@@ -501,3 +501,20 @@ chip and PCB tools but not the case or firmware. The A/B experiment above measur
   took the edit but ended unsettled.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
   can only choose from the vetted catalog (one MCU family, two temperature/humidity sensors today).
+
+## Why the live demo is stubbed
+
+The public demo ([bringup-demo.onrender.com](https://bringup-demo.onrender.com/)) runs on Render's free plan. It
+shows recorded runs that used the real tools, and its own "Try it" runs stub the hardware, because the toolchain
+doesn't fit there:
+
+| | What the full toolchain needs | What a free web host has |
+|---|---|---|
+| Disk | about 9.6 GB: the KiCad image (2.6 GB), the ESP32 toolchain (5.3 GB), the Python and Node tools | a small disk that is wiped on every restart |
+| KiCad | runs inside Docker | no Docker inside the service |
+| CPU and memory | one design build takes 1–4 minutes of full CPU on a laptop | 0.1 CPU and 512 MB RAM |
+| Always on | | it sleeps when idle (the ~30 s first load) |
+
+A paid VM with one Docker image bundling KiCad, Python and PlatformIO could run the real tools online; we kept the
+public demo free and read-only instead (no API keys on the server, and no way for visitors to start heavy builds). To
+run everything for real, install locally (`npm run setup`) and, for real models, put your own key in `.env`.
