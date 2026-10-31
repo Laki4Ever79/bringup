@@ -11,6 +11,12 @@
 
 **Change “one thing”, and the whole hardware design follows: board, case, firmware and parts, in parallel.**
 
+## Live deployment
+
+https://bringup-demo.onrender.com/: a read-only dashboard of the recorded runs (add a sensor, the real-model runs, the
+linked git folder…); the first load after idle takes about 30 s. The recorded runs used the real tools; live runs
+there are stubbed. Write actions are refused.
+
 ## Description (about 150 words)
 
 Add a sensor to a device, and four teams have work to do: the parts list, the board, the firmware and the case.
