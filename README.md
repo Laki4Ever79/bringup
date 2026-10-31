@@ -55,12 +55,20 @@ have scored 0 by not looking.
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
 > **Status, honestly.** Scripted runs settle with 0 violations and take mid-run changes, with real board, case and
-> firmware builds (and a QEMU boot when QEMU is installed). **Real models took mid-run changes too** in real run 15:
-> "make the board 40 mm wide" touched only the outline and was consistent again in 49 s (architect, board, case and
-> consistency worked; parts, firmware build and grounding stayed idle), and "the SHT40 is out of stock" swapped in the
-> SHTC3, tripped a real `sensor-mismatch` (firmware still built for the old driver) and was consistent again in 133 s.
-> That run still **did not pass the final brief review** (a charge-LED blocker and battery life), and no real-model run
-> has yet. See `docs/runs/real-15/` (report, ripples, trace) and `docs/submission.md`. This README does not claim results that haven't run.
+> firmware builds (and a QEMU boot when QEMU is installed). **Real models take mid-run changes too:**
+>
+> | Run | Change | Touched | Woke (of 9) | Consistent again |
+> |---|---|---|---|---|
+> | real-20 | "our temperature/humidity sensor is out of stock; switch to the other one" | parts | parts, board, firmware build, grounding, consistency (5) | 75 s, after `sensor-mismatch` and `part-mismatch` were caught and cleared |
+> | real-20 | "make the board 40 mm wide" | outline | architect, board, case, consistency (4) | 28 s |
+> | real-19 | the same sensor swap | parts | 6 | 52 s, after a `sensor-mismatch` was caught and cleared |
+> | real-15 | "make the board 40 mm wide" | outline | 4 | 49 s |
+>
+> Reports, ripples and full traces: `docs/runs/real-15`, `real-19`, `real-20`. Each ends with 0 violations, but **no
+> real-model run has passed the final brief review yet.** The fresh-context reviewer's open points in real-20: it reads
+> the bench-only `behavior` field as the product LED (one field meaning two builds), it calls two rails' stated
+> averages double-counted, and in one round it caught a 250 mA charge current that is too high for a 500 mAh cell.
+> This README does not claim results that haven't run.
 
 ## Every change has a checker other than its author
 
