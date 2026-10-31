@@ -3,7 +3,7 @@
   "entries": [
     {
       "id": "drift-1",
-      "savedAt": "2026-10-31T12:57:11.016Z",
+      "savedAt": "2026-10-31T13:40:43.749Z",
       "path": "firmware/pins.h",
       "savedRevision": 7,
       "designRevision": 7,
@@ -17,7 +17,7 @@
     },
     {
       "id": "drift-2",
-      "savedAt": "2026-10-31T12:59:19.420Z",
+      "savedAt": "2026-10-31T13:42:48.369Z",
       "path": "firmware/pins.h",
       "savedRevision": 8,
       "designRevision": 9,
@@ -32,7 +32,7 @@
     },
     {
       "id": "drift-3",
-      "savedAt": "2026-10-31T13:00:07.203Z",
+      "savedAt": "2026-10-31T13:44:45.849Z",
       "path": "board/board.kicad_pcb",
       "savedRevision": 10,
       "designRevision": 10,
@@ -43,6 +43,20 @@
       "status": "re-saved",
       "adoptable": false,
       "note": "re-saved, no design change; ignored"
+    },
+    {
+      "id": "drift-4",
+      "savedAt": "2026-10-31T13:44:46.291Z",
+      "path": "firmware/pins.h",
+      "savedRevision": 10,
+      "designRevision": 10,
+      "kind": "not-in-contract",
+      "items": [
+        "+ #define DEBUG_LOG 1"
+      ],
+      "status": "open",
+      "adoptable": false,
+      "note": "this edit isn't in the design contract; the next rebuild will overwrite it"
     }
   ]
 }
