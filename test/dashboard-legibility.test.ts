@@ -28,3 +28,14 @@ test("the state labels (STAYED IDLE, CHECKED) are at least 12px and not the fain
 	assert.notEqual(prop(".tile .status", "color"), "var(--ink-3)")
 	assert.notEqual(prop(".tile.asleep .status", "color") ?? prop(".tile .status", "color"), "var(--ink-3)")
 })
+
+test("a tile fits its name plus two full task lines, so no line is cut in half at the bottom", () => {
+	// 66px: a tile's height at 1920×1080 (the ripple band is clamp(250px, 33vh, 352px), three rows of tiles).
+	const px = (v: string | undefined) => (v ?? "").split(/\s+/).map(parseFloat)
+	const [padTop, , padBottom] = px(prop(".tile", "padding"))
+	const gap = parseFloat(prop(".tile", "gap") ?? "0")
+	const nameLh = parseFloat(/\/([\d.]+)/.exec(prop(".tile .name", "font") ?? "")?.[1] ?? "0") * 22
+	const task = 2 * parseFloat(prop(".tile .task", "font-size") ?? "0") * parseFloat(prop(".tile .task", "line-height") ?? "0")
+	const need = 3 + padTop + padBottom + nameLh + gap + task
+	assert.ok(need <= 66, `a tile needs ${need.toFixed(1)}px for two task lines`)
+})
