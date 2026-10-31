@@ -32,6 +32,23 @@ test("fixture firmware boots in QEMU and reports the contract revision", { skip,
 	}
 })
 
+test("a no-sensor build (briefs/beacon.md) boots in QEMU, reports its revision and says it has no sensor", { skip, timeout: 600_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-emu-"))
+	try {
+		const c = fixtureContract()
+		c.values.parts = c.values.parts!.filter((p) => p.role !== "sensor")
+		c.values.pins = [{ signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" }]
+		const firmware = await buildFirmware(pio!, root, dir, c, c.revision)
+		assert.equal(firmware.ok, true, firmware.log)
+		const boot = await bootFirmware(toolsRoot!, dir)
+		assert.equal(boot.booted, true, boot.serial)
+		assert.equal(boot.revision, c.revision)
+		assert.match(boot.serial, /SENSOR NONE/)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})
+
 test("booting a directory with no build returns booted:false instead of throwing", { skip, timeout: 60_000 }, async () => {
 	const dir = await mkdtemp(join(tmpdir(), "bringup-emu-"))
 	try {

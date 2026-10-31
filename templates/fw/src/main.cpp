@@ -7,6 +7,8 @@
 static_assert(PIN_I2C_SDA >= 0 && PIN_I2C_SDA < SOC_GPIO_PIN_COUNT, "PIN_I2C_SDA is not a GPIO on this chip");
 static_assert(PIN_I2C_SCL >= 0 && PIN_I2C_SCL < SOC_GPIO_PIN_COUNT, "PIN_I2C_SCL is not a GPIO on this chip");
 #define HAS_I2C 1
+// The sensor is the only I2C part the product firmware drives: a design with no I2C pins has no sensor (briefs/beacon.md).
+#define HAS_SENSOR 1
 #endif
 
 #ifdef PIN_STATUS_LED
@@ -86,8 +88,9 @@ static void led(bool on) {
 }
 
 #ifndef BENCH
-// The product: one reading per wake. Read the sensor, store the reading, blink briefly, deep-sleep for the contract's
-// period (pins.h DUTY_PERIOD_S, from requirements.dutyCycle.periodS). Each wake starts again at setup().
+// The product: one reading per wake. Read the sensor, store the reading, blink briefly, advertise, deep-sleep for the
+// contract's period (pins.h DUTY_PERIOD_S, from requirements.dutyCycle.periodS); a board with no sensor only blinks and
+// advertises. Each wake starts again at setup().
 #include <esp_sleep.h>
 #include <LittleFS.h>
 #include <Preferences.h>
@@ -104,6 +107,7 @@ static const uint32_t READING_BLINK_MS = 20;
 static const uint32_t HISTORY_SLOTS = HISTORY_DAYS * 86400UL / DUTY_PERIOD_S;
 static const char *HISTORY_FILE = "/history.bin";
 
+#ifdef HAS_SENSOR
 // Temperature in centi-degrees offset by +45 °C (the sensors' −45 °C floor) in the high half, RH in centi-percent in
 // the low half.
 static uint32_t packReading(float tempC, float rh) {
@@ -131,11 +135,13 @@ static int32_t storeReading(float tempC, float rh) {
 	LittleFS.end();
 	return ok ? (int32_t)slot : -1;
 }
+#endif
 
 // BLE (NimBLE-Arduino, pinned in platformio.ini): after each reading the device advertises for BLE_ADVERTISE_MS
 // (pins.h, generated from the contract's dutyCycle.activeMs minus the reading), so it is awake as long as the battery
 // math assumes. A phone that connects keeps it awake until it disconnects or BLE_CONNECTED_MAX_MS pass. The service:
-// - latest (read): this wake's reading as one packed record, 0xFFFFFFFF if the sensor failed;
+// - latest (read): this wake's reading as one packed record, 0xFFFFFFFF if the sensor failed, 0xFFFFFFFE on a board
+//   with no sensor (count stays 0 and the history empty);
 // - count (read): how many readings the history holds;
 // - offset (read/write): how many of the newest records the next history read skips;
 // - history (read): up to HISTORY_CHUNK records, newest first, from offset on. Records are packReading()'s, little-endian.
@@ -146,6 +152,7 @@ static int32_t storeReading(float tempC, float rh) {
 #endif
 static const uint32_t BLE_CONNECTED_MAX_MS = 30000;
 static const uint32_t HISTORY_CHUNK = 100;
+static const uint32_t LATEST_SENSOR_FAILED = 0xFFFFFFFF, LATEST_NO_SENSOR = 0xFFFFFFFE;
 static const char *BLE_SERVICE_UUID = "b7e10001-5c2e-4f1a-9d3b-6a8e2f40c0de";
 static const char *BLE_LATEST_UUID = "b7e10002-5c2e-4f1a-9d3b-6a8e2f40c0de";
 static const char *BLE_COUNT_UUID = "b7e10003-5c2e-4f1a-9d3b-6a8e2f40c0de";
@@ -452,16 +459,31 @@ void setup() {
 #ifdef HAS_LED
 	pinMode(PIN_STATUS_LED, OUTPUT);
 #endif
+#ifdef HAS_SENSOR
 	float t, rh;
 	bool ok = readClimate(&t, &rh);
 	if (ok) Serial.printf("SENSOR OK %.2f C %.1f %%RH\n", t, rh);
 	else Serial.println("SENSOR FAIL");
 	if (ok) Serial.printf("HISTORY slot %ld\n", (long)storeReading(t, rh));
 	readingBlink(ok);
-	serveBle(ok ? packReading(t, rh) : 0xFFFFFFFF);
+	serveBle(ok ? packReading(t, rh) : LATEST_SENSOR_FAILED);
+#else
+	// No sensor: nothing to read or store. Blink once and advertise.
+	Serial.println("SENSOR NONE");
+	readingBlink(true);
+	serveBle(LATEST_NO_SENSOR);
+#endif
 	Serial.printf("SLEEP %d s\n", DUTY_PERIOD_S);
 	Serial.flush();
 	esp_sleep_enable_timer_wakeup((uint64_t)DUTY_PERIOD_S * 1000000ULL);
+#ifdef PIN_BUTTON
+	// The button closes to GND (codegen wires its other side there): a press wakes the board early. Only GPIO0..5 can
+	// wake the ESP32-C3 from deep sleep (TRM, "Deep-sleep wakeup"); the internal pull-up holds the pin high meanwhile.
+	static_assert(PIN_BUTTON >= 0 && PIN_BUTTON <= 5, "PIN_BUTTON cannot wake the ESP32-C3 from deep sleep (GPIO0..5 only)");
+	gpio_pullup_en((gpio_num_t)PIN_BUTTON);
+	gpio_pulldown_dis((gpio_num_t)PIN_BUTTON);
+	esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_BUTTON, ESP_GPIO_WAKEUP_GPIO_LOW);
+#endif
 	esp_deep_sleep_start();
 }
 
