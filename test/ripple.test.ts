@@ -165,3 +165,10 @@ test("each scripted change adds its own time to the run's default timeout", asyn
 	assert.equal(runTimeoutMs({ changes: ["a", "b"] }), 70 * 60_000)
 	assert.equal(runTimeoutMs({ timeoutMs: 5_000, changes: ["a"] }), 5_000, "an explicit timeout wins")
 })
+
+test("scripted changes start only after a first settle that reached a consistent design", async () => {
+	const { changesMayStart } = await import("../src/run.ts")
+	assert.equal(changesMayStart({ settled: true, revision: 7 }, 0), true, "settled (no review)")
+	assert.equal(changesMayStart({ settled: false, revision: 9 }, 2), true, "reviewed and failed: still a whole design to change")
+	assert.equal(changesMayStart({ settled: false, revision: 5 }, 0), false, "stuck before design.ready (real-11: no pins), nothing to ripple through")
+})
