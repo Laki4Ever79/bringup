@@ -174,10 +174,7 @@ mm rulers on the board view, and 614 tests.
 
 ## Limits, honestly
 
-- **No real-model run has passed the final brief review yet.** Runs 15, 19 and 20 took mid-run changes and ended with
-  0 violations; the fresh-context reviewer still blocked. Its open points in real-20: it reads the bench-only
-  `behavior` field as the product LED, it calls two rails' stated averages double-counted, and in one round it caught a
-  250 mA charge current that is too high for a 500 mAh cell.
+- **One real-model run has passed the final brief review** (docs/runs/real-pass: settled at rev 19, passed review 2), 1 out of 19 real runs started; earlier real runs ended with 0 violations but failed review. Battery life is computed from datasheet currents, not measured.
 - The experiment uses scripted agents (real tools); real-model change times vary from 28 s to 224 s.
 - BLE was verified on an ESP32-S3 dev board (advertising, reading the latest record and the history), not on the C3 design; QEMU can't test the deep-sleep wake.
 - Boards need a human review before ordering (`fab/README.txt` lists every item).

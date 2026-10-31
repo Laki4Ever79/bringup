@@ -141,9 +141,8 @@ With real models, an engineer's request now amends the brief: the reviewer stopp
 made the agents wire it. (In that run the parts agent had already added a sensor before the request, against the
 beacon brief; the request made it legitimate. It still ended unsettled on battery life.)
 
-Reports, ripples and full traces: `docs/runs/real-15`, `real-19`, `real-20`, `add-sensor-real-2`. Each ends with 0 violations, but **no
-real-model run has passed the final brief review yet** (see [Limits](#limits) below). This README does not claim results that
-haven't run.
+Reports, ripples and full traces: `docs/runs/real-15`, `real-19`, `real-20`, `add-sensor-real-2`. Each ends with 0 violations; those runs did not pass the final review.
+**A real-model run has passed the final brief review**: run real-pass ([docs/runs/real-pass](runs/real-pass/)) designed the beacon from its brief with real models and real tools, failed review 1, fixed itself, and passed review 2 (settled at rev 19, 0 violations, about 8 minutes). It is 1 pass out of 19 real runs started that night; the others ended unsettled. What got it there: the designers now see the same computed facts as the reviewer, and the review's computable checks run live during design.
 
 ## How it works
 
@@ -490,11 +489,7 @@ chip and PCB tools but not the case or firmware. The A/B experiment above measur
   battery maths assumes and serves the latest reading and the history over a GATT service (NimBLE 2.5.2). On the
   desk's ESP32-S3, a laptop found it and read the latest reading and the history; no real sensor was fitted, and
   connection hold with a phone is untested.
-- **No real-model run has passed the final brief review yet.** Real runs 15, 19 and 20 took mid-run changes and ended
-  with 0 violations, but the fresh-context reviewer still blocked. Its open points in real-20: it reads the bench-only
-  `behavior` field as the product LED (one field meaning two builds), it calls two rails' stated averages
-  double-counted, and in one round it caught a 250 mA charge current that is too high for a 500 mAh cell. Each report
-  lists what's open.
+- **One real-model run has passed the final brief review (real-pass), out of 19 started.** Earlier real runs (15, 19, 20) took mid-run changes and ended with 0 violations but failed review; their open points were fixed as general causes (shared design facts, live checks). The passing run's two-LED design was a blocker in review 1 and a minor in review 2: reviewer judgment on an ambiguous brief line. Its KiCad DRC shows 2 errors on the USB-C vendor land pattern; battery life is computed from datasheet currents, not measured.
 - **File sync reads a few fields back.** A saved `pins.h` (pin numbers) and a saved `board.kicad_pcb` (outline,
   connector positions) map to the contract; other edits are reported as drift and never applied. It doesn't import an
   arbitrary existing KiCad project. The sync runs used scripted agents with the real tools; the one real-model run
