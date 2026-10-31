@@ -21,9 +21,9 @@ load_dotenv(os.environ.get("SONIOX_ENV", str(HERE.parent.parent.parent / "laik" 
 
 RATE = 24000
 LINES = {
-    "b1": "Move a connector five millimetres, and the board, the case and the firmware all have to change. Hardware bugs live in that gap.",
+    "b1": "Hardware is never designed just once. Add one sensor, and every part of the design has to change: the parts list, the board, the firmware, even the case. Hardware bugs live in the gaps between them.",
     "b2": "Bringup. Change one thing, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still consistent.",
-    "b3": "One brief in. Each agent is its own Mozaik loop, all running at once against one shared design contract. Out come a routed board, a printable case, and firmware for the real pin map.",
+    "b3": "One short brief in. Nine agents, each its own Mozaik loop, all working at once against one shared design contract. Out come parts in stock, a routed board, a printable case, and firmware for the real pin map.",
     "b4": "Now, one change. It touches one field of the contract: the outline.",
     "b5": "Mozaik situations are the dependency graph. Only the agents the outline affects wake up, and they rework in parallel. The checks go red, and plain code compares what was actually built, until it agrees.",
     "b6": "Consistent again, without anyone coordinating by hand. And no agent can change a field it doesn't own: Mozaik interception holds that until the owner approves.",
