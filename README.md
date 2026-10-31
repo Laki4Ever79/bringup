@@ -48,7 +48,7 @@ hand-routed track, is listed in the **drift panel**, where you can revert it, in
 edit that maps to a contract field (pins, outline, connectors) can be adopted there as a change request.
 `npm run bringup -- status <runDir>` (a run folder, e.g. `out/quick`) lists the same edits like `git status`.
 
-<!-- PENDING (cite only after the lead confirms): `bringup link` + linked git working copy, rebase of independent stale edits, ready-to-order, phone approvals, add-a-sensor. -->
+<!-- PENDING (cite only after the lead confirms): `bringup link` + linked git working copy, rebase of independent stale edits, phone approvals, add-a-sensor. -->
 
 ### 4. All the way to a real board
 
@@ -70,6 +70,15 @@ An ESP32-S3 dev board stands in for the design's ESP32-C3.
 
 Every change re-makes the affected outputs: a narrower board means a new case STL, new Gerbers and new standoffs, and
 nothing else.
+
+**Ready to order in one click.** When a run is fully green (settled, consistent, real hardware, DRC clean, brief
+review passed), a "Ready to order ↗" button appears on the board. One click downloads one zip with the exact files
+JLCPCB asks for (`gerbers.zip`, `bom.csv`, `cpl.csv`, byte-identical to the fab package), plus `case.stl` and `lid.stl`
+for JLC3DP and a README with the upload steps and a "before you pay" checklist, and opens JLCPCB's quote page.
+Nothing is uploaded and no order is placed: JLCPCB has no public order API. Until the run is green the button stays
+hidden, with the reason (`test/order.test.ts`).
+
+<!-- IMG docs/img/order.png: the "Ready to order ↗" button in the board's stage bar. -->
 
 ## The proof: one change, with and without the shared contract
 
