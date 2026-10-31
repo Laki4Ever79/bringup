@@ -27,7 +27,7 @@ test("editing the board outline in a --stay run's board.kicad_pcb becomes an eng
 		const req = trace(out).find((e) => e.type === "change.requested")!
 		assert.equal(req.payload.text, "edited board.kicad_pcb: outline 50×30 → 55×30 mm")
 		assert.equal(req.payload.source.path, `board/rev-${rev}/dist/board/kicad/board.kicad_pcb`)
-		const n = trace(out).indexOf(trace(out).find((e) => e.type === "change.requested"))
+		const n = trace(out).findIndex((e) => e.type === "change.requested")
 		await waitFor(() => trace(out).slice(n).some((e) => e.type === "design.settled"), 900_000)
 		const contract = JSON.parse(readFileSync(join(out, "contract.json"), "utf8"))
 		assert.equal(contract.values.outline.widthMm, 55)
