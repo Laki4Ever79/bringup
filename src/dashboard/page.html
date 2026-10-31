@@ -418,7 +418,11 @@
 
 	@media (max-width: 1500px) {
 		#battery .bar { width: 56px; }
-		#brief-title { max-width: 18vw; }
+		/* Narrow: the header's pills tighten and the brief's title gives way (it's on the ripple and under Brief). */
+		#brief-title { display: none; }
+		header { gap: 8px; }
+		header .pill { padding: 0 8px; font-size: 12px; height: 28px; }
+		.logo { font-size: 24px; }
 		#elapsed { display: none; }
 		.suggest .lead { display: none; }
 		.suggest button:nth-child(n+4) { display: none; }
