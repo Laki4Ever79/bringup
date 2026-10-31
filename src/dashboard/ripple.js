@@ -103,6 +103,8 @@ function ripple({ r, i, from, to, events: all, cleanIn, benchSource }, lanes, no
 	return {
 		id: `req-${i + 1}`,
 		text: r.text,
+		// Saved in a generated file (pins.h, board.kicad_pcb) rather than typed: which file, and what it changed.
+		file: r.source?.kind === "file" ? { name: r.source.path.split("/").pop(), path: r.source.path, revision: r.source.revision, items: r.source.items ?? [] } : null,
 		atMs: from,
 		fieldsChanged: fields,
 		woke,

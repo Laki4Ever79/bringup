@@ -2,6 +2,7 @@ export interface RippleCheck { key: string; label: string; state: "running" | "o
 export interface Ripple {
 	id: string
 	text: string
+	file: { name: string; path: string; revision: number; items: string[] } | null
 	atMs: number
 	fieldsChanged: string[]
 	woke: string[]
@@ -21,7 +22,7 @@ export interface Ripple {
 export interface RipplesFile { requests: { id: string; text: string; atMs: number; fieldsChanged: string[]; woke: string[]; checked?: string[]; stayedIdle: string[]; violationsPeak: number; consistentAtMs: number | null; durationMs: number | null }[] }
 type Ev = { type: string; at: string; payload?: any }
 export function runStart(events: Ev[]): number | null
-export function liveRipples(events: Ev[], requests: { at: string; text: string }[], now?: number): Ripple[]
+export function liveRipples(events: Ev[], requests: { at: string; text: string; source?: { kind: string; path: string; revision: number; items?: string[] } }[], now?: number): Ripple[]
 export function mergeRipples(live: Ripple[], file: RipplesFile | null, t0: number): Ripple[]
 export function resultLine(r: Ripple, now?: number, opts?: { stubbed?: boolean }): { headline: string; detail: string; text: string }
 export interface Moved {
