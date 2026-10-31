@@ -99,3 +99,16 @@ test("a board part with no MPN on record is not called a mismatch, and MPNs comp
 	a.board!.parts = Object.fromEntries(c.values.parts!.map((p, i) => [p.ref, { mpn: i === 0 ? null : p.mpn.toLowerCase(), pins: p.pins }]))
 	assert.deepEqual(checkConsistency(c, a), [])
 })
+
+// Real run 19: the contract claimed about 6 months of history, the firmware kept 30 days. The depth is now generated
+// from the contract, so what can still disagree is the claim and the flash: the LittleFS partition holds 0x160000 bytes.
+test("a history depth the flash partition cannot hold at the contract's period is a violation for the architect", () => {
+	const c = fixtureContract()
+	c.values.requirements = { ...c.values.requirements!, historyDays: 180, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
+	const a = fixtureArtifacts()
+	assert.deepEqual(checkConsistency(c, a).filter((v) => v.kind === "history-overflow"), [], "180 days at 300 s is about 207 KB")
+	c.values.requirements = { ...c.values.requirements!, historyDays: 3650, dutyCycle: { activeMs: 100, periodS: 60, sleepUa: 5 } }
+	const v = checkConsistency(c, a).find((x) => x.kind === "history-overflow")!
+	assert.deepEqual([v.fields, v.affects], [["requirements"], ["architect"]])
+	assert.match(v.message, /3650 days at 60 s is 21\.0 MB of readings; the firmware's LittleFS partition holds 1\.30 MB/)
+})

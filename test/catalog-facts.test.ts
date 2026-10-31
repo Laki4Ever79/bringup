@@ -53,7 +53,7 @@ test("the reviewer learns what the product firmware does on each reading, from t
 	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
 	s.values.requirements = { ...s.values.requirements!, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
 	const text = firmwareFacts(s).join("\n")
-	assert.match(text, /^- Firmware \(product build of templates\/fw\): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash \(LittleFS, the last 8640 readings: 30 days at 300 s\), blinks the status LED 20 ms \(a double blink if the sensor fails\), then advertises over BLE for 70 ms \(activeMs minus the reading\), then deep-sleeps 300 s \(requirements\.dutyCycle\.periodS\)\. The behavior field/m)
+	assert.match(text, /^- Firmware \(product build of templates\/fw\): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash \(LittleFS, the last 8640 readings: 30 days at 300 s \(the template's default; the contract has no historyDays\)\), blinks the status LED 20 ms \(a double blink if the sensor fails\), then advertises over BLE for 70 ms \(activeMs minus the reading\), then deep-sleeps 300 s \(requirements\.dutyCycle\.periodS\)\. The behavior field/m)
 	assert.match(text, /^- Firmware BLE: a GATT service with the latest reading, the history count and the history read newest first in chunks of 100 records; a phone that connects keeps the device awake until it disconnects or 30 s pass\.$/m)
 })
 
@@ -73,4 +73,12 @@ test("the firmware fact says behavior only drives the bench build", async () => 
 	const s = fixtureContract()
 	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
 	assert.match(firmwareFacts(s).join("\n"), /The behavior field \(blinkMs, tiltBlinkMs, tiltDeg\) only drives the bench build; the product build ignores it\./)
+})
+
+test("the firmware fact's history depth follows the contract's historyDays", async () => {
+	const { firmwareFacts } = await import("../src/agents/reviewer.ts")
+	const s = fixtureContract()
+	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
+	s.values.requirements = { ...s.values.requirements!, historyDays: 180, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
+	assert.match(firmwareFacts(s).join("\n"), /the last 51840 readings: 180 days at 300 s \(requirements\.historyDays\)/)
 })

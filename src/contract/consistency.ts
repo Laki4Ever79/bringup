@@ -1,5 +1,5 @@
 import { partPads } from "../codegen/circuit.ts"
-import { sensorDriver } from "../codegen/firmware.ts"
+import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
 
 export interface BoardArtifact {
@@ -67,6 +67,7 @@ export type ViolationKind =
 	| "rail-overload"
 	| "firmware-build-failed"
 	| "sensor-mismatch"
+	| "history-overflow"
 
 export interface Violation {
 	kind: ViolationKind
@@ -141,6 +142,22 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 				message: `firmware reads the sensor with the ${a.firmware.sensor ?? "no"} driver, contract's ${sensor.ref} is ${sensor.mpn} (${wanted ?? "no driver"})`,
 				fields: ["parts"],
 				affects: ["firmware"],
+			})
+		}
+	}
+
+	// The history depth the architect claims has to fit the firmware's flash partition at the reading period.
+	const historyDays = c.values.requirements?.historyDays
+	if (a.firmware && historyDays !== undefined) {
+		const periodS = c.values.requirements?.dutyCycle?.periodS ?? DEFAULT_PERIOD_S
+		const bytes = Math.ceil((historyDays * 86400) / periodS) * HISTORY_RECORD_BYTES
+		if (bytes > HISTORY_CAPACITY_BYTES) {
+			const mb = (n: number) => `${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2)} MB`
+			v.push({
+				kind: "history-overflow",
+				message: `requirements.historyDays: ${historyDays} days at ${periodS} s is ${mb(bytes)} of readings; the firmware's LittleFS partition holds ${mb(HISTORY_CAPACITY_BYTES)}`,
+				fields: ["requirements"],
+				affects: ["architect"],
 			})
 		}
 	}
