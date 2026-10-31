@@ -15,9 +15,9 @@ Violations: 0
 
 | Request | Fields changed | Woken | Consistent again | After it |
 |---|---|---|---|---|
-| edited pins.h: I2C_SDA GPIO8 → GPIO4 | pins | architect, build:board, build:firmware, grounding, consistency (5 of 9; 2 more checked, no change: parts, firmware) | 125.1 s | then 1 review round changed nothing |
+| edited pins.h: I2C_SDA GPIO8 → GPIO4 | pins | architect, build:board, build:firmware, grounding, consistency (5 of 9; 2 more checked, no change: parts, firmware) | 120.6 s | then 1 review round changed nothing |
 | blink faster | behavior | firmware, build:firmware, consistency (3 of 9; 2 more checked, no change: architect, parts) | not reached | no review yet |
-| edited pins.h at rev 8, rebased onto rev 9: I2C_SCL GPIO9 → GPIO3 | pins | architect, build:board, build:firmware, grounding, consistency (5 of 9; 2 more checked, no change: parts, firmware) | 45.0 s | then 1 review round changed nothing |
+| edited pins.h at rev 8, rebased onto rev 9: I2C_SCL GPIO9 → GPIO3 | pins | architect, build:board, build:firmware, grounding, consistency (5 of 9; 2 more checked, no change: parts, firmware) | 113.2 s | then 1 review round changed nothing |
 
 ## Brief review
 
@@ -30,18 +30,19 @@ Verdict: pass after 3 reviews (at most 1 fix round).
   - minor (rails, parts): The AP2112K draws about 55 µA quiescent: over 6 months that alone is about 242 mAh of the 500 mAh cell. Suggestion: Consider a low-Iq LDO (about 1 µA) to leave margin for the radio and the sensor.
 
 ## Artifacts
-- Board: out/linked-1/board/rev-10/dist/board/kicad/board.kicad_pcb (render out/linked-1/board/rev-10/board.png)
+- Board: out/linked-2/board/rev-10/dist/board/kicad/board.kicad_pcb (render out/linked-2/board/rev-10/board.png)
 - Design rules (KiCad, JLCPCB 2-layer): 0 errors, 88 warnings, 0 unconnected (silk_over_copper 49, lib_footprint_issues 22, text_height 17); 1 rule: USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm
-- Enclosure: out/linked-1/enclosure/rev-4/case.stl
-- Print files: out/linked-1/enclosure/rev-4/case.stl, out/linked-1/enclosure/rev-4/lid.stl
+- Enclosure: out/linked-2/enclosure/rev-4/case.stl
+- Print files: out/linked-2/enclosure/rev-4/case.stl, out/linked-2/enclosure/rev-4/lid.stl
 - Print check: ok (case open side up, lid plate down; 4 M2 standoffs for self-tapping screws)
 - Firmware: compiles
 - Firmware boot (QEMU): booted, printed revision 10; SENSOR FAIL is expected: QEMU emulates no I2C sensor
+- Firmware simulation (Wokwi): not run (no WOKWI_CLI_TOKEN in .env; optional, see NOTES.md)
 - Sourcing: 18/18 at LCSC/JLCPCB · stock not checked (mock run)
 
 ## Fabrication
 
-JLCPCB assembly package (PCBWay takes the same files) in out/linked-1/board/rev-10/fab:
+JLCPCB assembly package (PCBWay takes the same files) in out/linked-2/board/rev-10/fab:
 - README.txt (2130 bytes)
 - bom.csv (586 bytes)
 - cpl.csv (525 bytes)
@@ -57,9 +58,10 @@ Work through the checklist in README.txt before ordering.
 
 ## Environment
 ```
-tscircuit: wt-next/tools/node/node_modules/.bin/tsci
+tscircuit: tools/node/node_modules/.bin/tsci
 KiCad 10:  docker
-python:    wt-next/.venv/bin/python
-pio:       wt-next/.venv/bin/pio
-QEMU:      wt-next/tools/qemu/bin/qemu-system-riscv32
+python:    .venv/bin/python
+pio:       .venv/bin/pio
+QEMU:      tools/qemu/bin/qemu-system-riscv32
+Wokwi:     not set up (optional: WOKWI_CLI_TOKEN in .env and tools/wokwi-cli, see NOTES.md)
 ```

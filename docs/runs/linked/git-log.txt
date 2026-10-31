@@ -1,14 +1,16 @@
-commit a1590bf
+commit 68d8b1b
 Author: Bringup <bringup@localhost>
 
 Bringup rev 10: edited pins.h at rev 8, rebased onto rev 9: I2C_SCL GPIO9 → GPIO3
 
 Fields: pins
 Woke: architect, build:board, build:firmware, grounding, consistency (checked, no change: parts, firmware)
-Consistent again: 45.0 s
+Consistent again: 113.2 s
 Checks: 0 violation(s); brief review pass
 
 Bringup-Revision: 10
+Bringup-Request: req-3
+Bringup-Source: file
 
 
  board/board.kicad_pcb | 272 ++++++++++++++++++++++++++++----------------------
@@ -16,17 +18,19 @@ Bringup-Revision: 10
  fab/gerbers.zip       | Bin 62541 -> 62774 bytes
  firmware/pins.h       |   4 +-
  4 files changed, 157 insertions(+), 125 deletions(-)
-commit ed5143f
+commit 136cf9c
 Author: Bringup <bringup@localhost>
 
 Bringup rev 8: edited pins.h: I2C_SDA GPIO8 → GPIO4
 
 Fields: pins
 Woke: architect, build:board, build:firmware, grounding, consistency (checked, no change: parts, firmware)
-Consistent again: 125.1 s
+Consistent again: 120.6 s
 Checks: 0 violation(s); brief review pass
 
 Bringup-Revision: 8
+Bringup-Request: req-1
+Bringup-Source: file
 
 
  board/board.kicad_pcb | 236 +++++++++++++++++++++++++++++---------------------
@@ -34,7 +38,7 @@ Bringup-Revision: 8
  fab/gerbers.zip       | Bin 62244 -> 62541 bytes
  firmware/pins.h       |   4 +-
  4 files changed, 143 insertions(+), 103 deletions(-)
-commit 589476e
+commit 6c53df9
 Author: Bringup <bringup@localhost>
 
 Bringup rev 7: the design from the brief
@@ -42,6 +46,7 @@ Bringup rev 7: the design from the brief
 Checks: 0 violation(s); brief review pass
 
 Bringup-Revision: 7
+Bringup-Source: brief
 
 
  board/board.kicad_pcb | 6080 +++++++++++++++++++++++++++++++++++++++++++++++++
