@@ -172,11 +172,12 @@ export function checkPills(events) {
 		{ key: "grounding", label: "Grounding", state: !grounding ? "pending" : f.length ? "warn" : "ok", count: f.length, revision: grounding?.revision ?? null, items: f.map((x) => `${x.kind} on ${x.partRef}: ${x.detail}`) },
 		{
 			key: "review",
-			label: "Review",
+			// A --mock run's reviewer follows a script: its pass is not a model's verdict.
+			label: started?.mock ? "Review · scripted" : "Review",
 			state: started?.review === false ? "off" : reviewRunning ? "running" : !review ? "pending" : review.verdict === "pass" ? "ok" : "error",
 			count: rf.length,
 			revision: review?.revision ?? ready?.revision ?? null,
-			items: started?.review === false ? ["the brief review is off for this run (--no-review)"] : rf.map((x) => `${x.severity} · ${(x.fields ?? []).join(", ")}: ${x.issue}`),
+			items: started?.review === false ? ["the brief review is off for this run (--no-review)"] : [...(started?.mock && review ? [`${review.verdict} from the scripted reviewer (--mock), not a model verdict`] : []), ...rf.map((x) => `${x.severity} · ${(x.fields ?? []).join(", ")}: ${x.issue}`)],
 		},
 	]
 	// KiCad's DRC of the newest board build, against the fab's rules. Unconnected nets count as errors.
