@@ -1,7 +1,7 @@
 import { afterEach, test } from "node:test"
 import assert from "node:assert/strict"
 import { createHuman } from "@mozaik-ai/core"
-import { startCloudSession } from "../src/runner/cloud.ts"
+import { onceNoKeyWarning, startCloudSession } from "../src/runner/cloud.ts"
 import { makeEvent } from "../src/events.ts"
 import { BringupState, emit, join, startRuntime, state } from "../src/runtime.ts"
 import { tempDir, waitFor } from "./helpers.ts"
@@ -17,6 +17,18 @@ test("no key anywhere: Cloud stays off and nothing is touched", () => {
 	assert.equal(s, null)
 	assert.equal(created, 0)
 	assert.deepEqual(env, { MOZAIK_API_KEY: "" })
+})
+
+// An unpaired machine (a judge's) printed core's per-loop "no API key" warning once per agent loop: 9 times.
+test("without a key, the cloud-sdk's no-key warning prints once per process, other warnings untouched", () => {
+	const printed: string[] = []
+	const target = { warn: (...args: unknown[]) => void printed.push(String(args[0])) }
+	onceNoKeyWarning(target)
+	onceNoKeyWarning(target) // installing twice must not double-wrap
+	const noKey = "mozaik cloud: no API key — telemetry disabled. Set MOZAIK_API_KEY, or run `npx @mozaik-ai/cloud-sdk pair` to connect this machine."
+	for (let i = 0; i < 9; i++) target.warn(noKey)
+	target.warn("something else")
+	assert.deepEqual(printed, [noKey, "something else"])
 })
 
 test("a key starts one exporter session and turns the per-loop telemetry off", () => {
