@@ -1,4 +1,4 @@
-export interface RippleCheck { key: string; label: string; state: "running" | "ok" | "warn" | "error"; detail: string; seq?: number[] }
+export interface RippleCheck { key: string; label: string; state: "running" | "ok" | "warn" | "error"; detail: string; short?: string; seq?: number[] }
 export interface Ripple {
 	id: string
 	text: string
@@ -24,7 +24,6 @@ type Ev = { type: string; at: string; payload?: any }
 export function runStart(events: Ev[]): number | null
 export function liveRipples(events: Ev[], requests: { at: string; text: string; source?: { kind: string; path: string; revision: number; items?: string[] } }[], now?: number): Ripple[]
 export function mergeRipples(live: Ripple[], file: RipplesFile | null, t0: number): Ripple[]
-export function resultLine(r: Ripple, now?: number, opts?: { stubbed?: boolean }): { headline: string; detail: string; text: string }
 export interface Moved {
 	outline: { before: { w: number; h: number }; after: { w: number; h: number } } | null
 	connectors: { ref: string; kind: string; before: { edge: string; offsetMm: number; widthMm: number } | null; after: { edge: string; offsetMm: number; widthMm: number } | null }[]
@@ -33,3 +32,5 @@ export interface Moved {
 	count: number
 }
 export function whatMoved(before: any, after: any): Moved
+export interface StatusLine { state: "initial" | "rippling" | "sent" | "consistent" | "no-change" | "unsettled"; headline: string; detail: string }
+export function statusLine(o: { ripple: Ripple | null; now?: number; stubbed?: boolean; violations?: { kind: string }[]; settled?: { settled: boolean; revision: number } | null; revision?: number; firstAtMs?: number | null; endAtMs?: number | null; workingCount?: number; open?: boolean; benchAsk?: string | null }): StatusLine

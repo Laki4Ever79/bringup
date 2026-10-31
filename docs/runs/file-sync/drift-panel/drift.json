@@ -1,0 +1,48 @@
+{
+  "live": false,
+  "entries": [
+    {
+      "id": "drift-1",
+      "savedAt": "2026-10-31T12:37:39.815Z",
+      "path": "firmware/rev-7/include/pins.h",
+      "savedRevision": 7,
+      "designRevision": 7,
+      "kind": "not-in-contract",
+      "items": [
+        "+ #define DEBUG_LOG 1"
+      ],
+      "status": "reverted",
+      "adoptable": false,
+      "note": "this edit isn't in the design contract; the next rebuild will overwrite it"
+    },
+    {
+      "id": "drift-2",
+      "savedAt": "2026-10-31T12:37:40.443Z",
+      "path": "firmware/rev-6/include/pins.h",
+      "savedRevision": 6,
+      "designRevision": 7,
+      "kind": "stale",
+      "items": [
+        "I2C_SCL GPIO9 → GPIO3"
+      ],
+      "status": "adopted",
+      "adoptable": true,
+      "note": "saved against rev 6, the design is at rev 7",
+      "requestId": "req-1"
+    },
+    {
+      "id": "drift-3",
+      "savedAt": "2026-10-31T12:37:42.658Z",
+      "path": "firmware/rev-8/include/pins.h",
+      "savedRevision": 8,
+      "designRevision": 8,
+      "kind": "not-in-contract",
+      "items": [
+        "+ // tuned by hand"
+      ],
+      "status": "open",
+      "adoptable": false,
+      "note": "this edit isn't in the design contract; the next rebuild will overwrite it"
+    }
+  ]
+}
