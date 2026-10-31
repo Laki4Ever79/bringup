@@ -7,8 +7,8 @@ import { createCloudRelay, parseDemoArgs, runDemo, summarize, type DemoDeps } fr
 
 const ev = (seq: number, type: string, payload: object) => JSON.stringify({ seq, at: new Date().toISOString(), type, producerId: "x", payload }) + "\n"
 
-test("defaults: mock, logger brief, one width change after 20 s", () => {
-	assert.deepEqual(parseDemoArgs([]), { real: false, brief: "briefs/logger.md", change: "make the board 60 mm wide", afterS: 20, port: 4317, open: true })
+test("defaults: mock, logger brief, one width change 8 s after the first design settles", () => {
+	assert.deepEqual(parseDemoArgs([]), { real: false, brief: "briefs/logger.md", change: "make the board 60 mm wide", afterS: 8, port: 4317, open: true })
 })
 
 test("flags override the defaults", () => {
@@ -55,23 +55,16 @@ test("summarize reads settled, revision, change control, violations and artifact
 	assert.match(summarize("", 2)[0], /no \(exit 2\)/)
 })
 
-// A stub run: writes a trace without artifacts, then the first artifact.ready after `artifactMs`, then exits.
-function stubLaunch(artifactMs: number, exitMs: number) {
-	const seen = { artifactAt: 0, requestsBeforeArtifact: false, args: null as any }
+// A stub run: a trace that starts, settles after `settleMs`, then exits after `exitMs`.
+function stubLaunch(settleMs: number, exitMs: number) {
+	const seen = { args: null as any }
 	const launch: DemoDeps["launch"] = (args) => {
 		seen.args = args
 		const trace = join(args.outDir, "trace.jsonl")
-		writeFileSync(trace, ev(0, "contract.changed", { field: "outline", version: 1, revision: 1, by: "architect" }))
+		writeFileSync(trace, ev(0, "run.started", { review: true, engineerApproval: false, noHardware: false, bench: false, stay: true }))
 		const done = new Promise<{ code: number; stderr: string }>((resolve) => {
-			setTimeout(() => {
-				seen.requestsBeforeArtifact = existsSync(join(args.outDir, "requests.jsonl"))
-				seen.artifactAt = Date.now()
-				appendFileSync(trace, ev(1, "artifact.ready", { kind: "board", revision: 1 }))
-			}, artifactMs)
-			setTimeout(() => {
-				appendFileSync(trace, ev(2, "design.settled", { revision: 2, settled: true }))
-				resolve({ code: 0, stderr: "" })
-			}, exitMs)
+			setTimeout(() => appendFileSync(trace, ev(1, "design.settled", { revision: 2, settled: true })), settleMs)
+			setTimeout(() => resolve({ code: 0, stderr: "" }), exitMs)
 		})
 		return { done, kill: () => {} }
 	}
@@ -80,59 +73,67 @@ function stubLaunch(artifactMs: number, exitMs: number) {
 
 const quiet: Pick<DemoDeps, "log" | "openUrl"> = { log: () => {}, openUrl: () => {} }
 
-test("the change request is appended only after the first artifact.ready", { timeout: 10_000 }, async () => {
-	const stub = stubLaunch(400, 1200)
+test("the change rides on the run's own after-settle mechanism, and the run stays up for more", { timeout: 10_000 }, async () => {
+	const stub = stubLaunch(50, 200)
 	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
-	const r = await runDemo({ ...parseDemoArgs(["--after", "0", "--port", "0", "--no-open"]) }, { launch: stub.launch, outRoot, ...quiet })
+	const r = await runDemo(parseDemoArgs(["--after", "6", "--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
 	try {
 		assert.equal(r.code, 0)
-		assert.equal(stub.seen.requestsBeforeArtifact, false)
-		const lines = readFileSync(join(r.outDir, "requests.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
-		assert.equal(lines.length, 1)
-		assert.equal(lines[0].text, "make the board 60 mm wide")
-		assert.ok(Date.parse(lines[0].at) >= stub.seen.artifactAt - 5, "request came before the artifact")
-		assert.deepEqual(stub.seen.args, { briefPath: join(r.outDir, "brief.md"), mock: true, outDir: r.outDir })
+		assert.deepEqual(stub.seen.args, { briefPath: join(r.outDir, "brief.md"), mock: true, outDir: r.outDir, extraArgs: ["--stay", "--change", "make the board 60 mm wide", "--change-delay", "6"] })
+		assert.equal(existsSync(join(r.outDir, "requests.jsonl")), false, "the run sends it, after it settles; the demo no longer does")
 		assert.match(r.summary[0], /yes/)
 	} finally {
 		await r.dashboard.close()
 	}
 })
 
-test("--after wins when it comes later than the first artifact", { timeout: 10_000 }, async () => {
+test("--no-change: no scripted change, and the run still stays up for changes from the dashboard", { timeout: 10_000 }, async () => {
+	const stub = stubLaunch(50, 200)
+	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const r = await runDemo(parseDemoArgs(["--no-change", "--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
+	try {
+		assert.deepEqual(stub.seen.args.extraArgs, ["--stay"])
+	} finally {
+		await r.dashboard.close()
+	}
+})
+
+test("the demo's dashboard tracks its run: 'waiting for a change' while it stays up, Stop reaches it", { timeout: 10_000 }, async () => {
 	const stub = stubLaunch(50, 1500)
 	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
-	const started = Date.now()
-	const r = await runDemo(parseDemoArgs(["--after", "0.8", "--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
+	let url = ""
+	const statuses: string[] = []
+	const r = await runDemo(parseDemoArgs(["--port", "0", "--no-open"]), {
+		launch: stub.launch,
+		outRoot,
+		openUrl: () => {},
+		log: (l) => {
+			const m = /dashboard: (http:\/\/[^/]+)/.exec(l)
+			if (!m) return
+			url = m[1]
+			setTimeout(async () => {
+				const runs = (await (await fetch(`${url}/api/runs`)).json()) as any[]
+				statuses.push(runs[0].status)
+			}, 600)
+		},
+	})
 	try {
-		const [line] = readFileSync(join(r.outDir, "requests.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
-		assert.ok(Date.parse(line.at) - started >= 800, `request after ${Date.parse(line.at) - started} ms`)
+		assert.deepEqual(statuses, ["waiting for a change"])
 	} finally {
 		await r.dashboard.close()
 	}
 })
 
-test("a run that ends before the trigger gets no request and doesn't hang", { timeout: 10_000 }, async () => {
-	const stub = stubLaunch(5000, 200)
+test("the dashboard serves the run", { timeout: 10_000 }, async () => {
+	const stub = stubLaunch(100, 300)
 	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
-	const r = await runDemo(parseDemoArgs(["--after", "0", "--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
-	try {
-		assert.equal(existsSync(join(r.outDir, "requests.jsonl")), false)
-	} finally {
-		await r.dashboard.close()
-	}
-})
-
-test("the dashboard serves the run and shows engineer requests", { timeout: 10_000 }, async () => {
-	const stub = stubLaunch(100, 600)
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
-	const r = await runDemo(parseDemoArgs(["--after", "0", "--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
+	const r = await runDemo(parseDemoArgs(["--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
 	try {
 		assert.match(r.outDir, /demo-[\w-]+$/)
 		assert.equal(readFileSync(join(r.outDir, "brief.md"), "utf8"), readFileSync("briefs/logger.md", "utf8"))
 		const page = await (await fetch(r.dashboard.url)).text()
 		assert.match(page, /file\("requests\.jsonl"\)/)
-		const reqs = await fetch(`${r.dashboard.url}/files/requests.jsonl`)
-		assert.equal(reqs.status, 200)
+		assert.equal((await fetch(`${r.dashboard.url}/files/brief.md`)).status, 200)
 	} finally {
 		await r.dashboard.close()
 	}

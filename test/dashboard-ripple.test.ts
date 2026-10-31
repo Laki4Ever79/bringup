@@ -47,6 +47,7 @@ test("ripple: the fields a request touched, who woke and who stayed idle", () =>
 	assert.deepEqual(r.fieldsChanged, ["outline", "connectors"])
 	assert.deepEqual(r.woke, ["architect", "build:board", "build:enclosure", "consistency"])
 	assert.deepEqual(r.checked, [])
+	assert.deepEqual(r.reading, [])
 	assert.deepEqual(r.stayedIdle, ["parts", "firmware", "reviewer", "build:firmware", "grounding"])
 	assert.equal(r.violationsPeak, 2)
 	assert.deepEqual(r.violations, [2, 0])
@@ -122,6 +123,22 @@ test("ripple: woke = changed or proposed a field; checked = took a turn and chan
 	assert.equal(resultLine(r, T0 + 106_000).detail, "5 of 9 agents woke · 1 checked, no change · 3 still working")
 })
 
+test("ripple: an agent that took a turn and is still at it is 'reading', not yet woke or checked", () => {
+	const events = [...initial, activity(101, "architect", "turn"), activity(101, "firmware", "turn"), changed(104, "outline", 2, 6, "architect")]
+	const [r] = liveRipples(events, [request], T0 + 105_000)
+	assert.deepEqual(r.reading, ["firmware"])
+	assert.ok(!r.checked.includes("firmware") && !r.woke.includes("firmware"))
+	// It answers without touching the contract: checked.
+	const [done] = liveRipples([...events, activity(108, "firmware", "answer")], [request], T0 + 109_000)
+	assert.deepEqual(done.reading, [])
+	assert.deepEqual(done.checked, ["firmware"])
+	// The runner's file has no "reading": a live reader is kept as reading until the file says it woke.
+	const file = { requests: [{ id: "req-1", text: request.text, atMs: 100_000, fieldsChanged: ["outline"], woke: ["architect", "build:board", "build:enclosure", "consistency"], checked: ["firmware"], stayedIdle: ["parts", "reviewer", "build:firmware", "grounding"], violationsPeak: 0, consistentAtMs: null, durationMs: null }] }
+	const [m] = mergeRipples([r], file, T0)
+	assert.deepEqual(m.reading, ["firmware"])
+	assert.deepEqual(m.checked, [])
+})
+
 test("ripple: a design that ends unsettled says so", () => {
 	const bad = [...initial, activity(101, "architect", "turn"), changed(104, "outline", 2, 6, "architect"), checked(105, 6, 3), ev(130, "design.settled", { settled: false, revision: 6 })]
 	const [r] = liveRipples(bad, [request], T0 + 140_000)
@@ -168,6 +185,18 @@ test("the run's clock starts at run.started, else the first event", () => {
 	assert.equal(runStart([ev(3, "contract.changed", {}), ev(5, "run.started", {})]), T0 + 5000)
 	assert.equal(runStart([ev(3, "contract.changed", {})]), T0 + 3000)
 	assert.equal(runStart([]), null)
+})
+
+test("ripple: the board's DRC errors inside one part's own footprint are amber and say so", () => {
+	const own = { errors: 2, warnings: 1, unconnected: 0, rules: "jlcpcb", ownFootprint: { J1: 2 } }
+	const events = [...initial, ...ripple.slice(0, 7), ev(125, "artifact.ready", { kind: "board", revision: 7, drc: own }), ev(138, "artifact.ready", { kind: "enclosure", revision: 7 })]
+	const [r] = liveRipples(events, [request], T0 + 200_000)
+	const board = r.checks.find((c) => c.key === "build:board")!
+	assert.equal(board.state, "warn")
+	assert.match(board.detail, /DRC: 2 inside J1's footprint/)
+	const real = liveRipples([...initial, ...ripple.slice(0, 7), ev(125, "artifact.ready", { kind: "board", revision: 7, drc: { ...own, errors: 3 } })], [request], T0 + 200_000)[0].checks.find((c) => c.key === "build:board")!
+	assert.equal(real.state, "error")
+	assert.match(real.detail, /DRC 3 errors/)
 })
 
 test("what moved: outline, connectors, pins and parts, before → after", () => {

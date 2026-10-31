@@ -149,3 +149,27 @@ test("the Review pill says off when the run has the brief review disabled", () =
 	const on = checkPills([ev("run.started", { review: true, engineerApproval: false, noHardware: true, bench: false })]).find((p: any) => p.key === "review")
 	assert.equal(on.state, "pending")
 })
+
+test("the composer and the state pill: live, bench, waiting for a change, settled, stopped", async () => {
+	const { runPhase } = await import("../src/dashboard/model.js")
+	assert.deepEqual(runPhase({ settled: null, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "live", pill: "LIVE", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "SETTLED · waiting for a change", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: false }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "UNSETTLED · waiting for a change", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: false, alive: true, benchLive: true, stopped: false }), { bar: "bench", pill: "SETTLED · bench live", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: false, benchLive: false, stopped: false }), { bar: "settled", pill: "SETTLED", open: false })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: true }), { bar: "stopped", pill: "SETTLED", open: false })
+	assert.deepEqual(runPhase({ settled: { settled: false }, stay: false, alive: false, benchLive: false, stopped: false }), { bar: "settled", pill: "UNSETTLED", open: false })
+})
+
+test("DRC errors inside one part's own footprint read amber with the reason; any other error stays red", () => {
+	const board = (drc: object) => [{ seq: 1, at: "2026-10-31T12:00:01.000Z", type: "artifact.ready", producerId: "x", payload: { kind: "board", revision: 8, drc } }]
+	const own = { rules: "JLCPCB 2-layer", errors: 2, warnings: 91, unconnected: 0, byType: { hole_clearance: 2 }, firstError: "Hole clearance violation (board setup constraints hole clearance 0.2000 mm; actual 0.1712 mm)", ownFootprint: { J1: 2 } }
+	const pill = checkPills(board(own)).find((p) => p.key === "drc")!
+	assert.equal(pill.state, "warn")
+	assert.equal(pill.count, 2)
+	assert.match(pill.items[0], /2 inside J1's own footprint/)
+	assert.match(pill.items.join("\n"), /vendor land pattern/)
+	const real = checkPills(board({ ...own, errors: 3 })).find((p) => p.key === "drc")!
+	assert.equal(real.state, "error", "an error between parts is a real one")
+	assert.equal(checkPills(board({ ...own, ownFootprint: undefined })).find((p) => p.key === "drc")!.state, "error", "older traces without the field stay as they were")
+})

@@ -78,7 +78,7 @@ test("POST /api/runs writes the brief, launches with the flags and tracks the ru
 		const { runId } = r.json
 		assert.match(runId, /^[\w-]+$/)
 		assert.equal(readFileSync(join(root, runId, "brief.md"), "utf8"), "Pocket CO2 sensor\n")
-		assert.deepEqual(stub.calls[0], { briefPath: join(root, runId, "brief.md"), mock: true, outDir: join(root, runId), extraArgs: ["--no-hardware", "--no-review", "--engineer-approval"] })
+		assert.deepEqual(stub.calls[0], { briefPath: join(root, runId, "brief.md"), mock: true, outDir: join(root, runId), extraArgs: ["--stay", "--no-hardware", "--no-review", "--engineer-approval"] })
 		let runs: any = await (await fetch(`${hub.url}/api/runs`)).json()
 		assert.equal(runs.find((x: any) => x.runId === runId).status, "running")
 		stub.release(1)
@@ -95,7 +95,7 @@ test("hardware and review on add no flags", async () => {
 	const hub = await serveHub({ outRoot: outRoot(), port: 0, launch: stub.launch })
 	try {
 		await post(hub.url, "/api/runs", { brief: "x", mock: false, hardware: true, review: true, engineerApproval: false })
-		assert.deepEqual(stub.calls[0].extraArgs, [])
+		assert.deepEqual(stub.calls[0].extraArgs, ["--stay"], "runs started here stay up after settling, until Stop")
 		assert.equal(stub.calls[0].mock, false)
 	} finally {
 		await hub.close()
@@ -231,7 +231,7 @@ test("a run can be started with the live bench, and only a running run can be st
 		const bad = await post(hub.url, "/api/runs", { brief: "x", mock: true, hardware: true, review: true, engineerApproval: false, bench: "usb" })
 		assert.equal(bad.status, 400)
 		const { json } = await post(hub.url, "/api/runs", { brief: "x", mock: true, hardware: true, review: true, engineerApproval: false, bench: "fake" })
-		assert.deepEqual(stub.calls.at(-1).extraArgs, ["--bench", "fake"])
+		assert.deepEqual(stub.calls.at(-1).extraArgs, ["--stay", "--bench", "fake"])
 		const runs: any = await (await fetch(hub.url + "/api/runs")).json()
 		assert.equal(runs.find((r: any) => r.runId === json.runId).bench, false, "no bench.connected in the trace yet")
 		writeFileSync(join(root, json.runId, "trace.jsonl"), line(0, "bench.connected", { source: "fake", ports: {}, meter: true }) + line(1, "design.settled", { revision: 3, settled: true }))
@@ -241,6 +241,49 @@ test("a run can be started with the live bench, and only a running run can be st
 		assert.equal(killed, 1)
 		assert.equal((await post(hub.url, "/api/runs/20261031-120000-aaaaaa/stop", {})).status, 409, "not running here")
 		assert.equal((await post(hub.url, "/api/runs/nope/stop", {})).status, 404)
+	} finally {
+		await hub.close()
+	}
+})
+
+test("a settled run that stays up is 'waiting for a change' until it is stopped", async () => {
+	const stub = stubLaunch()
+	const root = outRoot()
+	const hub = await serveHub({ outRoot: root, port: 0, launch: stub.launch })
+	try {
+		const { json } = await post(hub.url, "/api/runs", { brief: "x", mock: true, hardware: true, review: true, engineerApproval: false })
+		const status = async () => ((await (await fetch(hub.url + "/api/runs")).json()) as any[]).find((r: any) => r.runId === json.runId).status
+		writeFileSync(join(root, json.runId, "trace.jsonl"), line(0, "run.started", { review: true, engineerApproval: false, noHardware: false, bench: false, stay: true }))
+		assert.equal(await status(), "running")
+		writeFileSync(join(root, json.runId, "trace.jsonl"), line(0, "run.started", { review: true, engineerApproval: false, noHardware: false, bench: false, stay: true }) + line(1, "design.settled", { revision: 3, settled: true }))
+		assert.equal(await status(), "waiting for a change")
+		writeFileSync(join(root, json.runId, "trace.jsonl"), line(0, "run.started", { review: true, engineerApproval: false, noHardware: false, bench: false, stay: true }) + line(1, "design.settled", { revision: 3, settled: true }) + line(2, "change.requested", { id: "req-1", text: "make it 40 mm wide" }) + line(3, "contract.changed", { field: "outline", version: 2, revision: 4, by: "architect" }))
+		assert.equal(await status(), "running", "a change in flight")
+		stub.release(0)
+		await new Promise((r) => setTimeout(r, 50))
+		assert.equal(await status(), "settled")
+	} finally {
+		await hub.close()
+	}
+})
+
+test("a run started elsewhere (npm run demo) can be adopted: its status is live and Stop reaches it", async () => {
+	const root = outRoot()
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const id = "demo-20261031-120000"
+		mkdirSync(join(root, id))
+		writeFileSync(join(root, id, "trace.jsonl"), line(0, "run.started", { review: true, engineerApproval: false, noHardware: false, bench: false, stay: true }) + line(1, "design.settled", { revision: 3, settled: true }))
+		let killed = 0
+		let exit: (code: number) => void = () => {}
+		hub.adopt(id, { done: new Promise((r) => (exit = (code) => r({ code }))), kill: () => void killed++ })
+		const status = async () => ((await (await fetch(hub.url + "/api/runs")).json()) as any[]).find((r: any) => r.runId === id).status
+		assert.equal(await status(), "waiting for a change")
+		assert.equal((await post(hub.url, `/api/runs/${id}/stop`, {})).status, 200)
+		assert.equal(killed, 1)
+		exit(0)
+		await new Promise((r) => setTimeout(r, 50))
+		assert.equal(await status(), "settled")
 	} finally {
 		await hub.close()
 	}

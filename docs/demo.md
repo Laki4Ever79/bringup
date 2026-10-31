@@ -11,9 +11,10 @@ you start talking.
   npm run demo -- --real        # real models; leave out --real for scripted models (no key, no network)
   ```
   It creates `out/demo-<timestamp>/`, starts the dashboard on it (and opens it in the browser when it can), launches
-  the run, and sends the engineer's change request "make the board 60 mm wide" 20 s in (never before the first
-  artifact is built). When the run exits, it prints the report path and a 5-line summary; the dashboard keeps
-  serving until Ctrl+C. Options: `--brief briefs/blinky.md`, `--change "<text>"` or `--no-change`, `--after <s>`,
+  the run, and once the first design has settled ("Consistent at rev N" on the dashboard) waits 8 s and sends the
+  engineer's change request "make the board 60 mm wide". The run then stays up for more changes typed on the
+  dashboard, until you press Stop there (or Ctrl+C); then it prints the report path and a 5-line summary, and the
+  dashboard keeps serving until Ctrl+C. Options: `--brief briefs/blinky.md`, `--change "<text>"` or `--no-change`, `--after <s>` (seconds after settling),
   `--port <n>` (falls back to a free port if 4317 is taken), `--no-open`.
 - Have three windows ready: the terminal, the dashboard, and Mozaik Cloud. `npm run demo` prints the first agent
   loop's link as `Mozaik Cloud: <url>` and then only counts the rest (`+N agent loops live in Mozaik Cloud`). The
@@ -87,8 +88,8 @@ grows with every wake-up the situations trigger.
 
 ## Optional segments (only if the feature has landed)
 
-- **Mid-run change request.** `npm run demo` sends it for you 20 s in (`--after` to move it, `--change` for other
-  wording). To send one by hand instead, run it with `--no-change` and type in a second terminal:
+- **Change request.** `npm run demo` sends it for you 8 s after the first settle (`--after` to change the pause,
+  `--change` for other wording), and the run keeps taking more from the dashboard's composer. To send one by hand instead, run it with `--no-change` and type in a second terminal:
   ```bash
   npx tsx src/request.ts out/<runId> "make the board 60 mm wide"
   ```
