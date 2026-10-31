@@ -8,7 +8,7 @@
 // `npm i --no-save playwright-core && npx playwright-core install chromium`, then PLAYWRIGHT_CORE=playwright-core.
 // Writes out/footage/act-1.webm … act-4.webm, a frame grab per act (act-N.png) and shots.md (timestamps).
 import { spawn } from "node:child_process"
-import { mkdirSync, renameSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -22,10 +22,14 @@ export interface Mark {
 	what: string
 }
 
-// The shot list: one line per mark, "act N  m:ss  what happens", in recording order.
-export function shotList(marks: Mark[]): string {
+// The shot list: one line per mark, "act N  m:ss  what happens", in act order. Re-recording some acts (--acts) keeps
+// the other acts' lines from the existing list (`keep`).
+export function shotList(marks: Mark[], { keep = "", acts = [] as number[] } = {}): string {
 	const t = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")}`
-	return ["# Footage shot list (times from the start of each act's file)", "", ...marks.map((m) => `- act-${m.act}.webm  ${t(m.atMs)}  ${m.what}`), ""].join("\n")
+	const kept = keep.split("\n").filter((l) => { const m = /^- act-(\d+)\.webm/.exec(l); return m && !acts.includes(Number(m[1])) })
+	const lines = [...kept, ...marks.map((m) => `- act-${m.act}.webm  ${t(m.atMs)}  ${m.what}`)]
+	const act = (l: string) => Number(/^- act-(\d+)/.exec(l)?.[1] ?? 0)
+	return ["# Footage shot list (times from the start of each act's file)", "", ...lines.map((l, i) => [l, i] as const).sort((a, b) => act(a[0]) - act(b[0]) || a[1] - b[1]).map(([l]) => l), ""].join("\n")
 }
 
 // A cursor drawn where the real mouse is, as a screen recorder would (headless video has none). Moves only on real
@@ -45,6 +49,8 @@ async function main(): Promise<void> {
 	const out = resolve(ROOT, arg("--out", "out/footage"))
 	const port = Number(arg("--port", "4398"))
 	const cursor = !argv.includes("--no-cursor")
+	// --acts 1,3: record only those; the other acts' files and shot-list lines stay.
+	const acts = arg("--acts", "1,2,3,4").split(",").map(Number)
 	mkdirSync(out, { recursive: true })
 	const pw = process.env.PLAYWRIGHT_CORE
 	if (!pw) throw new Error("set PLAYWRIGHT_CORE to a playwright-core install (see the header of this file)")
@@ -73,6 +79,7 @@ async function main(): Promise<void> {
 		console.log(`[act ${act}] ${what}`)
 	}
 	const take = async (n: number, url: string, body: (page: any) => Promise<void>) => {
+		if (!acts.includes(n)) return
 		const ctx = await browser.newContext({ viewport: { width: W, height: H }, recordVideo: { dir: out, size: { width: W, height: H } } })
 		if (cursor) await ctx.addInitScript(CURSOR)
 		const page = await ctx.newPage()
@@ -141,12 +148,15 @@ async function main(): Promise<void> {
 		// Act 1: the hub page, the evidence band, a slow scroll.
 		await take(1, hubUrl, async (page) => {
 			mark("the hub: Change one thing. The whole design follows.")
-			await page.waitForTimeout(3000)
-			for (let i = 0; i < 12; i++) {
+			await page.waitForTimeout(2000)
+			// The wheel scrolls what is under the pointer: bring it onto the page first (not the fixed header).
+			await page.mouse.move(W / 2, H * 0.55, { steps: 20 })
+			await page.waitForTimeout(800)
+			for (let i = 0; i < 15; i++) {
 				await page.mouse.wheel(0, 60)
 				await page.waitForTimeout(180)
 			}
-			mark("the evidence band comes into view")
+			mark("the evidence band, and below it the drawing register folded to one line")
 			await page.waitForTimeout(3000)
 		})
 
@@ -170,7 +180,8 @@ async function main(): Promise<void> {
 		await browser.close()
 		// npx → tsx → demo: signal the whole group, or the demo outlives its wrapper.
 		try { process.kill(-demo.pid!, "SIGTERM") } catch {}
-		writeFileSync(join(out, "shots.md"), shotList(marks.sort((a, b) => a.act - b.act || a.atMs - b.atMs)))
+		const keep = acts.length < 4 && existsSync(join(out, "shots.md")) ? readFileSync(join(out, "shots.md"), "utf8") : ""
+		writeFileSync(join(out, "shots.md"), shotList(marks.sort((a, b) => a.act - b.act || a.atMs - b.atMs), { keep, acts }))
 		console.log(`footage: ${out}`)
 	}
 }
