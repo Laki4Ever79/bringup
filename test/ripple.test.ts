@@ -230,3 +230,35 @@ test("a --mock --no-hardware run makes no network requests", { timeout: 60_000 }
 	assert.deepEqual(urls, [])
 	assert.match(readFileSync(join(out, "report.md"), "utf8"), /^- Sourcing: \d+\/\d+ at LCSC\/JLCPCB · stock not checked \(mock run\)$/m)
 })
+
+// Real run 16: the design already used the SHTC3, so "the SHT40 is out of stock" changed nothing, nothing re-armed the
+// settled design, and the run sat idle for the full 20-minute change timeout.
+test("a scripted request that changes nothing re-settles as soon as the agents are done, not after the timeout", { timeout: 60_000 }, async () => {
+	const out = tempDir()
+	const env = await detectEnvironment(ROOT)
+	const started = Date.now()
+	const r = await runDesign({ brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"), mock: true, noHardware: true, outDir: out, env, changes: ["make it prettier"], changeTimeoutMs: 40_000 })
+	assert.ok(Date.now() - started < 20_000, `took ${Date.now() - started} ms`)
+	assert.ok(r.settled)
+	const [row] = JSON.parse(readFileSync(join(out, "ripples.json"), "utf8")).requests
+	assert.deepEqual(row.fieldsChanged, [])
+	assert.deepEqual(row.checked.includes("architect"), true)
+})
+
+test("the live ripples.json picks up an agent's turn on a request that changes nothing", async () => {
+	const { createRippleRecorder } = await import("../src/runner/ripple.ts")
+	const { BringupState, emit, join: joinRt, startRuntime } = await import("../src/runtime.ts")
+	const { makeEvent } = await import("../src/events.ts")
+	const out = tempDir()
+	startRuntime(new BringupState(out), undefined, null)
+	const { createHuman } = await import("@mozaik-ai/core")
+	const sender = createHuman({ name: "sender", capabilities: [], handlers: [] })
+	joinRt(sender)
+	joinRt(createRippleRecorder(out))
+	const id = sender.getId()
+	emit(makeEvent("run.started", id, { review: true, engineerApproval: false, noHardware: true, bench: false }), id)
+	emit(makeEvent("change.requested", id, { id: "req-1", text: "x" }), id)
+	emit(makeEvent("agent.activity", id, { agentId: "a", role: "architect", name: "architect", phase: "turn", text: "x", at: new Date().toISOString() }), id)
+	const [row] = JSON.parse(readFileSync(join(out, "ripples.json"), "utf8")).requests
+	assert.deepEqual(row.checked, ["architect"])
+})
