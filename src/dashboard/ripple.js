@@ -3,12 +3,13 @@
 // when the design was consistent again. The runner writes the same thing to ripples.json (src/runner/ripple.ts);
 // that file wins where it has an answer, and this live view from the trace fills in while a ripple is in flight.
 // Plain ES module with no dependencies but lanes.js: the page imports it from /ripple.js, the tests in Node.
-import { LANES, applyLaneEvent, createLanes } from "./lanes.js"
+import { BUILDS, LANES, applyLaneEvent, createLanes } from "./lanes.js"
 
 const KEYS = LANES.map((l) => l.key)
 const AGENTS = new Set(["architect", "parts", "firmware", "reviewer"])
 // Same as BUILD_INPUTS in src/agents/builders.ts.
-const BUILD_INPUTS = { "build:board": ["parts", "pins", "outline", "connectors"], "build:enclosure": ["outline", "connectors"], "build:firmware": ["parts", "pins", "behavior"] }
+// The builders' inputs, from lanes.js (held equal to src/agents/builders.ts by a test).
+const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b]) => [`build:${k}`, b.inputs]))
 const ACTIVE = new Set(["thinking", "tool", "building", "checking", "held"])
 
 // The run's clock: run.started, else the first event. ripples.json times are ms from it.
