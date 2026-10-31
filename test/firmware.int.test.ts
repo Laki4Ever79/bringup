@@ -115,3 +115,27 @@ test("the firmware compiles with the contract's 180-day history", { skip, timeou
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+// A board with no sensor (briefs/beacon.md): no I2C pins, no sensor part. It wakes, blinks, advertises "no sensor" over
+// BLE and sleeps, and never reads or writes the history.
+test("a design with no sensor compiles the no-sensor product path: no reading, no history writes", { skip, timeout: 600_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	try {
+		const c = fixtureContract()
+		c.values.parts = c.values.parts!.filter((p) => p.role !== "sensor")
+		c.values.parts.push({ ref: "SW1", role: "button", mpn: "TS-1187A-B-A-B", lcsc: "C318884", footprint: "pushbutton", pins: ["A", "B"] })
+		c.values.pins = [{ signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" }, { signal: "BUTTON", gpio: 3, partRef: "SW1", partPin: "A" }]
+		c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 330, periodS: 60, sleepUa: 10 } }
+		const firmware = await buildFirmware(pio!, root, dir, c, 4)
+		assert.equal(firmware.ok, true, firmware.log)
+		assert.equal(firmware.sensor, null)
+		assert.deepEqual(checkConsistency(c, { firmware }), [])
+		const bin = readFileSync(join(dir, ".pio/build/esp32c3/firmware.bin")).toString("latin1")
+		assert.ok(bin.includes("SENSOR NONE"), "the no-sensor path is compiled in")
+		assert.ok(!bin.includes("HISTORY slot"), "no history writes")
+		assert.ok(!bin.includes("SENSOR FAIL"), "no sensor reading")
+		assert.equal(firmware.pins.BUTTON, 3)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})
