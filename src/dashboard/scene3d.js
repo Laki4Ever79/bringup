@@ -70,6 +70,18 @@ export function boardMesh(circuit, parts = []) {
 
 const WALL_MM = 2
 
+// A lid vent grille (af's enclosure/rev-N/vents.json: centre and box in the board frame, origin at the board's
+// bottom-left) in scene space: `origin` is the board's bottom-left corner in the scene (already placed in the case),
+// z the lid's top. The grille is 4 slots, 1.2 mm wide at a 2.4 mm pitch, running along Y.
+const SLOTS = 4, SLOT_PITCH_MM = 2.4
+export function ventOutline(vent, origin, z) {
+	const r = (v) => Math.round(v * 1e6) / 1e6
+	const cx = origin[0] + vent.xMm, cy = origin[1] + vent.yMm
+	const x0 = r(cx - vent.widthMm / 2), x1 = r(cx + vent.widthMm / 2), y0 = r(cy - vent.heightMm / 2), y1 = r(cy + vent.heightMm / 2)
+	const slots = Array.from({ length: SLOTS }, (_, i) => { const x = r(cx + (i - (SLOTS - 1) / 2) * SLOT_PITCH_MM); return [[x, y0, z], [x, y1, z]] })
+	return { box: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], slots }
+}
+
 // Heights in the case frame (z 0 = the floor's underside) from the run's enclosure spec.json: where the board's
 // underside rests (floor plus standoffs) and the lid's top, which mirrors its print pose into place. Null without a spec.
 export function enclosureFrame(spec) {
@@ -218,6 +230,8 @@ export function mountScene(host, opts = {}) {
 	let tilt = null, tiltTarget = null, tiltAt = -Infinity
 	let lastInteraction = -Infinity
 	let focused = null, hovered = null
+	// The change on screen: parts it added or changed, and the new case features (lid vents), drawn breathing.
+	let marks = { refs: [], vents: [] }
 	let drawn = [] // visible triangles of the last frame, far to near, for hit testing
 	let dirty = true
 	let w = 0, h = 0, dpr = 1
@@ -393,6 +407,50 @@ export function mountScene(host, opts = {}) {
 			ctx.stroke()
 			ctx.restore()
 		}
+
+		// Marks: the change's new/changed parts and its new vents, in signal orange, breathing (steady with reduced motion).
+		if (marks.refs.length || marks.vents.length) {
+			const k = reduced ? 1 : 0.55 + 0.45 * Math.sin(now / 380)
+			ctx.save()
+			ctx.strokeStyle = `rgba(255,74,23,${k})`
+			ctx.shadowColor = "rgba(255,74,23,0.9)"
+			ctx.shadowBlur = 6 + 10 * k
+			ctx.lineWidth = 1.8
+			ctx.beginPath()
+			if (board) {
+				const P2 = tris.pos, want = new Set(marks.refs)
+				let n = 0
+				for (let t = caseCount, i = caseCount * 9; i < P2.length; t++, i += 9) {
+					if (!want.has(tris.ref[t])) continue
+					const first = n++ % 2 === 0
+					const pts = [0, 1, 2].map((q) => project(cam, W([P2[i + q * 3], P2[i + q * 3 + 1], P2[i + q * 3 + 2]]), w, h))
+					const edges = first ? [[0, 1], [1, 2]] : [[1, 2], [2, 0]]
+					for (const [a, b] of edges) { ctx.moveTo(pts[a][0], pts[a][1]); ctx.lineTo(pts[b][0], pts[b][1]) }
+				}
+			}
+			ctx.stroke()
+			const top = enclosureFrame(frameSpec)?.lidTopZ
+			if (board && top !== undefined && lidTris) {
+				const origin = [board.bounds.min[0] + offset[0], board.bounds.min[1] + offset[1]]
+				for (const v of marks.vents) {
+					const o = ventOutline(v, origin, top + lidLift + 0.05)
+					const box = o.box.map((p) => project(cam, W(p), w, h))
+					ctx.beginPath()
+					box.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])))
+					ctx.closePath()
+					ctx.fillStyle = `rgba(255,74,23,${0.12 + 0.18 * k})`
+					ctx.fill()
+					ctx.stroke()
+					ctx.beginPath()
+					ctx.lineWidth = 2.4
+					for (const [a, b] of o.slots) { const pa = project(cam, W(a), w, h), pb = project(cam, W(b), w, h); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]) }
+					ctx.stroke()
+					ctx.lineWidth = 1.8
+				}
+			}
+			ctx.restore()
+			if (!reduced) dirty = true
+		}
 	}
 
 	let last = performance.now()
@@ -517,6 +575,13 @@ export function mountScene(host, opts = {}) {
 		},
 		highlight(ref) {
 			focused = ref
+			dirty = true
+		},
+		// Extension: the change on screen: parts it added or changed (refs) and its new lid vents (af's vents.json).
+		setMarks(next) {
+			const m = { refs: next?.refs ?? [], vents: next?.vents ?? [] }
+			if (JSON.stringify(m) === JSON.stringify(marks)) return
+			marks = m
 			dirty = true
 		},
 		// Extension (bench): the board on the desk's attitude in radians, already low-pass filtered by the caller;

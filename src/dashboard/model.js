@@ -476,3 +476,11 @@ export function driftView(drift) {
 		})
 	return { open: rows.filter((r) => r.status === "open").length, rows, live }
 }
+
+// ── What a ripple added or changed on the board: new refs glow as NEW, changed ones (moved pins, a swap) as CHANGED ──
+export function rippleMarks(before, after) {
+	if (!before || !after) return { added: [], changed: [] }
+	const had = new Set((before.parts ?? []).map((p) => p.ref))
+	const added = (after.parts ?? []).map((p) => p.ref).filter((r) => !had.has(r)).sort()
+	return { added, changed: changedRefs(before, after).filter((r) => !added.includes(r)) }
+}
