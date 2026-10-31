@@ -32,10 +32,19 @@ booted in QEMU.
 
 <!-- IMG docs/img/ripple.png: mid-ripple: the change, the contract field it touched, the woken tiles lit and the idle ones dimmed, the status banner. -->
 
-Type a change mid-run ("make it 40 mm wide", "the sensor is out of stock", "blink faster when tilted"). It touches one
-or two contract fields. Mozaik situations wake only the agents those fields affect; they rework their part at the same
+Type a change mid-run ("add a temperature/humidity sensor", "make it 40 mm wide", "the sensor is out of stock",
+"blink faster when tilted"). It touches one or a few contract fields. Mozaik situations wake only the agents those fields affect; they rework their part at the same
 time; plain-code checks compare what was actually built until the design is consistent again. No agent changes a field
 it doesn't own: Mozaik interception holds the call until the owner approves.
+
+**Add a sensor** (`docs/runs/add-sensor/`, scripted agents, real tools). A pocket BLE beacon with no sensor
+(`briefs/beacon.md`) was designed first. Then "add a temperature/humidity sensor": the parts agent added the SHT40 and
+its pull-ups, the architect wired it to GPIO8/GPIO9, the board re-placed and re-routed, the firmware switched on its
+driver, and **the case cut a vent in the lid over the sensor**, because a sealed sensor measures the box, not the room.
+7 of 9 agents woke; 9 conflicts were caught live (including "case has no vent over the sensor U2"), and the design was
+consistent again in 195 s with 0 left. The before and after boards and cases are in the run folder.
+
+<!-- IMG docs/img/add-sensor.png: before/after: the board with the new sensor, the lid with its vent. -->
 
 ### 3. Or just edit the file
 
@@ -48,7 +57,22 @@ hand-routed track, is listed in the **drift panel**, where you can revert it, in
 edit that maps to a contract field (pins, outline, connectors) can be adopted there as a change request.
 `npm run bringup -- status <runDir>` (a run folder, e.g. `out/quick`) lists the same edits like `git status`.
 
-<!-- PENDING (cite only after the lead confirms): `bringup link` + linked git working copy, rebase of independent stale edits, phone approvals, add-a-sensor. -->
+**Link a folder, and it's a git repo** (`docs/runs/linked/`, scripted agents, real tools). `npm run bringup -- link
+<runDir> <dir>` (or `--link <dir>` at the start) makes the folder a git repo, and every settled revision is one commit
+by "Bringup <bringup@localhost>" whose message is the ripple: the request, the fields, who woke, the time to
+consistent, the checks. Edit a file there and each edit is compared against Bringup's last commit and the design now:
+
+| Edit | What happened |
+|---|---|
+| `pins.h`: I2C_SDA GPIO8 → GPIO4 | **Adopted**: commit "edited pins.h: I2C_SDA GPIO8 → GPIO4", consistent in 125 s |
+| An older `pins.h` edited (I2C_SCL GPIO9 → GPIO3) while another change moved the design | **Rebased** onto the newer revision instead of refused, 45 s |
+| KiCad re-saved the board: every line re-indented, every uuid re-stamped, same design | **"Re-saved, no design change"**, ignored |
+
+It never overwrites your edits; Revert restores the committed bytes; commits are local only, never pushed. With real
+models (`docs/runs/file-sync/real/`), a `pins.h` edit reached the architect as an engineer request and was applied 5 s
+after the save, and the final design kept it; that run then churned and ended unsettled.
+
+<!-- PENDING (cite only after the lead confirms): phone approvals. -->
 
 ### 4. All the way to a real board
 
@@ -292,6 +316,12 @@ the agents that reworked something, the ones that only checked it, the ones that
 design was consistent again. The scripted agents understand "N mm wide" and "blink faster when tilted". Use real
 models for anything else.
 
+**Link a folder** (it becomes a git repo with one commit per settled revision; edit files there):
+
+```bash
+npm run bringup -- link <runDir> <dir>
+```
+
 **Edit a generated file.** On a run that stays up (`npm run demo`, or `--stay`), save an edited `firmware/rev-N/include/pins.h`
 or `board/rev-N/dist/board/kicad/board.kicad_pcb`: a pin, outline or connector change becomes a change request and
 ripples like a typed one. Anything else shows up in the dashboard's drift drawer, with Adopt (for edits that map to a
@@ -419,7 +449,8 @@ chip and PCB tools but not the case or firmware. The A/B experiment above measur
   double-counted, and in one round it caught a 250 mA charge current that is too high for a 500 mAh cell. Each report
   lists what's open.
 - **File sync reads a few fields back.** A saved `pins.h` (pin numbers) and a saved `board.kicad_pcb` (outline,
-  connector positions) map to the contract; other edits are reported as drift. The file-sync runs used scripted agents
-  with the real tools.
+  connector positions) map to the contract; other edits are reported as drift and never applied. It doesn't import an
+  arbitrary existing KiCad project. The sync runs used scripted agents with the real tools; the one real-model run
+  took the edit but ended unsettled.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
   can only choose from the vetted catalog (one MCU family, two temperature/humidity sensors today).
