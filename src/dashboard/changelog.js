@@ -17,12 +17,19 @@ export function readableDiff(field, before, after) {
 
 const plus = (n) => (n > 0 ? ` (+${n} more)` : "")
 
-// The cause in words, and what it links to in the page: a ripple, a check, or a held change.
-export function causeText(cause) {
+const basename = (path) => path.split("/").pop()
+
+// The cause in words, and what it links to in the page: a ripple, a check, or a held change. `requests` maps a
+// request id to its change.requested payload, so a request that came from a saved file reads as that file edit.
+export function causeText(cause, requests = new Map()) {
 	if (!cause) return { text: "cause not recorded (older run)", link: null }
 	switch (cause.kind) {
 		case "brief": return { text: "the brief", link: null }
-		case "request": return { text: `request #${cause.id.replace(/^req-/, "") || "?"} “${cause.text}”`, link: cause.id ? { ripple: cause.id } : null }
+		case "request": {
+			const src = requests.get(cause.id)?.source
+			if (src?.kind === "file") return { text: `file edit: ${basename(src.path)}${src.items?.length ? ` “${src.items.join("; ")}”` : ""}`, link: { ripple: cause.id } }
+			return { text: `request #${cause.id.replace(/^req-/, "") || "?"} “${cause.text}”`, link: cause.id ? { ripple: cause.id } : null }
+		}
 		case "violation": return { text: `consistency at rev ${cause.revision}: ${cause.items[0] ? `${cause.items[0].kind}: ${cause.items[0].message}` : "violations"}${plus(cause.items.length - 1)}`, link: { checks: "consistency" } }
 		case "grounding": return { text: `grounding at rev ${cause.revision}: ${cause.items[0] ? `${cause.items[0].partRef}: ${cause.items[0].detail}` : "findings"}${plus(cause.items.length - 1)}`, link: { checks: "grounding" } }
 		case "review": return { text: `brief review at rev ${cause.revision}${cause.items[0] ? ` (${cause.items[0].severity}): ${cause.items[0].issue}` : ""}${plus(cause.items.length - 1)}`, link: { checks: "review" } }
@@ -36,6 +43,7 @@ export function causeText(cause) {
 
 // Every write after `from` up to and including `to`, oldest first.
 export function changeLog(events, from, to, snapshots) {
+	const requests = new Map(events.filter((e) => e.type === "change.requested").map((e) => [e.payload.id, e.payload]))
 	return events
 		.filter((e) => e.type === "contract.changed" && e.payload.revision > from && e.payload.revision <= to)
 		.map((e) => {
@@ -44,7 +52,7 @@ export function changeLog(events, from, to, snapshots) {
 			const before = recorded ? p.before : snapshots.get(p.revision - 1)?.values?.[p.field]
 			const after = recorded ? p.after : snapshots.get(p.revision)?.values?.[p.field]
 			const diff = recorded || (snapshots.has(p.revision) && snapshots.has(p.revision - 1)) ? readableDiff(p.field, before, after) : []
-			return { revision: p.revision, field: p.field, version: p.version, by: p.by, who: who(p.by), diff, reason: p.reason ?? null, cause: causeText(p.cause) }
+			return { revision: p.revision, field: p.field, version: p.version, by: p.by, who: who(p.by), diff, reason: p.reason ?? null, cause: causeText(p.cause, requests) }
 		})
 		.sort((a, b) => a.revision - b.revision)
 }
@@ -55,4 +63,16 @@ export function defaultRange(events) {
 	if (!revs.length) return null
 	const to = Math.max(...revs)
 	return { from: to - 1, to }
+}
+
+// Saves of a generated file that the design won't keep (file.drift): an edit with no contract field (the next
+// rebuild overwrites it), or a file saved against an older revision (not applied). Oldest first.
+export function fileDrift(events) {
+	return events
+		.filter((e) => e.type === "file.drift")
+		.map((e) => {
+			const p = e.payload
+			const name = basename(p.path)
+			return { seq: e.seq, at: e.at, name, path: p.path, reason: p.reason, items: p.items ?? [], line: `${name}: ${p.message}${p.reason === "stale" ? "; not applied" : ""}` }
+		})
 }
