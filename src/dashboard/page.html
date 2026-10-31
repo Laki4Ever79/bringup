@@ -102,7 +102,7 @@
 
 	/* ── The composer: always there during a run ─────────── */
 	#changebar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: stretch; gap: 0; margin: var(--gap) var(--gap) 0; border: 2px solid var(--ink); background: var(--paper); box-shadow: 6px 6px 0 var(--ink); }
-	#changebar .who { display: grid; place-items: center; padding: 0 18px; background: var(--signal); color: #fff; font: 800 22px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+	#changebar .who { display: flex; align-items: center; justify-content: center; gap: .25em; padding: 0 18px; background: var(--signal); color: #fff; font: 800 22px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
 	#changebar .box { display: flex; align-items: center; min-width: 0; }
 	#change-input { flex: 1; min-width: 160px; height: 58px; padding: 0 18px; border: 0; outline: none; background: transparent; font: 500 clamp(17px, 1.35vw, 22px)/1 var(--sans); }
 	#change-input::placeholder { color: var(--ink-3); }
@@ -125,6 +125,9 @@
 	#rip-text { margin: 6px 0 0; font: 700 clamp(24px, 2.1vw, 38px)/1.02 var(--display); text-transform: uppercase; letter-spacing: .01em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 	#rip-file { display: inline-block; margin-top: 6px; padding: 4px 8px; font: 700 13px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; background: var(--ink); color: var(--paper); }
 	#rip-file::before { content: "✎ "; color: var(--signal); }
+	/* “one thing”: the tagline's quote marks in signal orange (like a quoted request in 01). */
+	q { quotes: "“" "”"; } q::before, q::after { color: var(--signal); }
+	#changebar .who q::before, #changebar .who q::after { color: var(--ink); }
 	#rip-text.quote::before { content: "“"; color: var(--signal); } #rip-text.quote::after { content: "”"; color: var(--signal); }
 	#rip-meta { font: 500 13px/1.35 var(--mono); color: var(--ink-2); align-self: end; }
 	#rip-history { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
@@ -540,7 +543,7 @@
 
 	<!-- The composer: change one thing, any time during the run -->
 	<footer id="changebar" class="hidden">
-		<span class="who">Change one thing</span>
+		<span class="who">Change <q>one thing</q></span>
 		<div class="box"><input id="change-input" placeholder="Ask for a change while the agents work…" autocomplete="off" maxlength="500" aria-label="Change request"></div>
 		<button id="send-btn" title="Send the change (Enter); ⌘K focuses the box">Send ⏎</button>
 	</footer>
@@ -549,7 +552,7 @@
 	<section id="start" class="hidden">
 		<div class="start-grid">
 			<div class="hero">
-				<h1>Change one thing.<br><em>The whole design follows.</em></h1>
+				<h1>Change <q>one thing</q>.<br><em>The whole design follows.</em></h1>
 				<p class="sub">Describe a device. Concurrent Mozaik agents pick the parts, route the board, shape the case and write the firmware against one shared contract. Then change anything, mid-run or after it settles, and watch board, case, firmware and parts follow in parallel and stay consistent.</p>
 				<ol class="steps" aria-label="How a run goes">
 					<li><b>01</b><span>Brief</span><i>one paragraph about the device</i></li>
