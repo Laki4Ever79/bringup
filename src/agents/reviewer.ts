@@ -3,7 +3,7 @@ import { join, resolve } from "node:path"
 import { createAgent, DeveloperMessageItem, ModelContext, type Agent, type Tool } from "@mozaik-ai/core"
 import { generatedNets, supportParts, usbPadSignal, usbRef } from "../codegen/circuit.ts"
 import { checkConsistency, type BoardArtifact } from "../contract/consistency.ts"
-import { estimatePower, powerBudgetLines } from "../contract/power.ts"
+import { dutyCycleCheckLines, estimatePower, powerBudgetLines } from "../contract/power.ts"
 import { FIELDS, type ContractSnapshot, type FieldName } from "../contract/types.ts"
 import { isEvent, makeEvent, type ArtifactKind, type ReviewFinding } from "../events.ts"
 import { BUILD_INPUTS } from "./builders.ts"
@@ -76,13 +76,27 @@ export function wiringSection(s: ContractSnapshot, board: BoardArtifact | undefi
 
 // Catalog facts about the contract's parts that the contract itself doesn't carry, e.g. that the MCU module's 4 MB
 // flash holds the reading history (real run 10's reviewer blocked "no nonvolatile storage").
+// A charge LED the board generator wires from VBUS to the charger's CHRG pin shows charging state by itself. Derived
+// from the generated wiring, so it is only said when the board really wires it (real runs 15 and 16 blocked on it).
+function chargeLedFacts(s: ContractSnapshot): string[] {
+	const parts = s.values.parts ?? []
+	const vbus = generatedNets(s).get("VBUS") ?? []
+	return supportParts(s).flatMap((sp) => {
+		const led = "ref" in sp.a ? parts.find((p) => p.ref === (sp.a as { ref: string }).ref && p.role === "charge-led") : undefined
+		const to = "ref" in sp.b ? (sp.b as { ref: string; pin: string }) : undefined
+		const charger = to && to.pin === "CHRG" ? parts.find((p) => p.ref === to.ref && p.role === "charger") : undefined
+		if (!led || !charger || !vbus.includes(`${led.ref}.A`)) return []
+		return [`- ${led.ref} ${led.mpn} (charge-led): anode on VBUS, cathode through ${sp.ref} ${sp.spec.value} to ${charger.ref} CHRG (${charger.mpn}). CHRG pulls low while the cell charges, so ${led.ref} shows charging state in hardware, with no firmware.`]
+	})
+}
+
 export function partFactsSection(s: ContractSnapshot): string[] {
 	const catalog = loadCatalog(resolve(import.meta.dirname, "../.."))
 	const facts = (s.values.parts ?? []).flatMap((p) => {
 		const notes = catalog.find((c) => c.mpn.toUpperCase() === p.mpn.toUpperCase())?.notes
 		return notes ? [`- ${p.ref} ${p.mpn}: ${notes}`] : []
 	})
-	return ["## Part facts (from the catalog)", ...(facts.length ? facts : ["- none"])]
+	return ["## Part facts (from the catalog)", ...(facts.length ? facts : ["- none"]), ...chargeLedFacts(s)]
 }
 
 // One artifact's status for the reviewer. An artifact built at an older revision is still current when none of its
@@ -139,6 +153,7 @@ export async function reviewMessage(env: Env | undefined, revision: number, roun
 		lines(s.groundingFindings, (f) => `${f.kind} on ${f.partRef}: ${f.detail}`, "- none"),
 		"Power budget (computed in code from the contract and the brief, not by a model):",
 		...powerBudgetLines(estimatePower(snapshot, brief)),
+		...dutyCycleCheckLines(estimatePower(snapshot, brief)),
 		"Power path simulation:",
 		power,
 		"",
