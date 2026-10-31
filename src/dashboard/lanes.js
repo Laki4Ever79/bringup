@@ -68,7 +68,12 @@ export function applyLaneEvent(lanes, e) {
 			lanes.versions[p.field] = p.version
 			const changed = []
 			for (const [kind, b] of Object.entries(BUILDS)) {
-				if (!b.inputs.includes(p.field)) continue
+				if (!b.inputs.includes(p.field)) {
+					// Not its input: a finished build is still the current one (the design moved on without it).
+					const lane = lanes[`build:${kind}`]
+					if (lane.status === "done" && lane.builtRev !== undefined && p.revision > lane.builtRev && /^rev \d+ built$/.test(lane.text)) { lane.text = `rev ${lane.builtRev} · current`; changed.push(`build:${kind}`) }
+					continue
+				}
 				const missing = b.requires.filter((f) => !lanes.versions[f])
 				if (missing.length === 0) {
 					lanes.pending[kind] = p.revision
@@ -85,6 +90,7 @@ export function applyLaneEvent(lanes, e) {
 			if (next !== undefined && next > p.revision) return set(lanes, `build:${p.kind}`, "building", `building rev ${next}…`, e.at, false, `rev ${p.revision} built`)
 			// The board's DRC rides on its tile (what 04 used to show): clean = no errors; warnings go in the history.
 			const drc = p.kind === "board" ? p.drc : null
+			lanes[`build:${p.kind}`].builtRev = p.revision
 			const text = !drc ? `rev ${p.revision} built` : drc.errors ? `DRC: ${plural(drc.errors, "error")}` : `rev ${p.revision} · DRC clean`
 			const detail = drc ? `rev ${p.revision}: ${plural(drc.errors, "error")}, ${plural(drc.warnings ?? 0, "warning")}, ${drc.unconnected ?? 0} unconnected (${drc.rules ?? "default"} rules)` : undefined
 			return set(lanes, `build:${p.kind}`, "done", text, e.at, true, detail)

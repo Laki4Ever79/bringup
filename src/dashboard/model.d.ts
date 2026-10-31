@@ -40,3 +40,4 @@ export function foldOpen(storage: FoldStorage | null | undefined, kind: string):
 export function setFold(storage: FoldStorage | null | undefined, kind: string, open: boolean): void
 export interface DriftRow { id: string; name: string; path: string; at: string; items: string[]; kind: string; message: string; status: string; revert: { enabled: boolean; reason: string }; adopt: { enabled: boolean; reason: string }; requestId: string | null }
 export function driftView(drift: { live?: boolean; entries?: any[] } | null): { open: number; rows: DriftRow[]; live: boolean }
+export function rippleMarks(before: any, after: any): { added: string[]; changed: string[] }
