@@ -1,6 +1,6 @@
 # Bringup
 
-**Describe a device. Agents design all of it at once: board, case, firmware and parts. Change anything, and it all follows.**
+**Change “one thing”, and the whole hardware design follows: board, case, firmware and parts, in parallel. Even designing from scratch is just the first change.**
 
 ![The engineer types "add a temperature/humidity sensor": 7 of 9 agents wake, the checks find mismatches, and board, case and firmware agree again, with the new sensor on the board and a vent in the case](docs/img/hero.gif)
 
@@ -9,8 +9,8 @@ ripple took 3 min 15 s.</sub>
 
 A short product brief goes in. Concurrent [Mozaik](https://www.npmjs.com/package/@mozaik-ai/core) agents turn it into
 parts with JLCPCB order numbers (stock checked live with real models), a routed PCB, a printable case whose cutouts match the board, and firmware that compiles against the
-real pin map. Then the design changes, the way real designs always do: change “one thing”, and Bringup keeps every part
-of it consistent. The first design is itself just the first change: the beacon's took 7 contract revisions.
+real pin map. Then the design changes, the way real designs always do, and Bringup keeps every part of it consistent. The
+first design is built the same way: the beacon's took 7 contract revisions.
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 

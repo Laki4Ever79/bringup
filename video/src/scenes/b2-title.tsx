@@ -15,7 +15,7 @@ export default makeScene2D(function* (view) {
   view.add(
     <Txt
       ref={line}
-      text={'Describe a device. Agents design all of it at once:\nboard, case, firmware and parts. Change anything, and it all follows.'}
+      text={'Change “one thing”, and the whole hardware design follows:\nboard, case, firmware and parts, in parallel.\nEven designing from scratch is just the first change.'}
       fontFamily={F.sans}
       fontWeight={600}
       fontSize={46}

@@ -9,7 +9,7 @@
 
 ## The one line
 
-**Describe a device. Agents design all of it at once: board, case, firmware and parts. Change anything, and it all follows.**
+**Change “one thing”, and the whole hardware design follows: board, case, firmware and parts, in parallel. Even designing from scratch is just the first change.**
 
 ## Description (about 150 words)
 
