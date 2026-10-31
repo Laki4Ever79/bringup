@@ -24,7 +24,8 @@ export function capacityFromBrief(brief: string): number | null {
 
 // An LDO's typical quiescent current: the catalog's iqUa when it lists the part, else AP2112K-class 55 µA.
 const ASSUMED_IQ_UA = Math.round(QUIESCENT_A * 1e6)
-type CatalogIq = { mpn: string; iqUa?: number; sleepUa?: number; dropoutMv?: number; dropoutAtMa?: number }
+// cpuMa / radioMa: an MCU's datasheet current with the CPU running and with the radio on, for the duty-cycle check.
+type CatalogIq = { mpn: string; iqUa?: number; sleepUa?: number; cpuMa?: number; radioMa?: number; dropoutMv?: number; dropoutAtMa?: number }
 let catalogCache: CatalogIq[] | null = null
 function catalog(): CatalogIq[] {
 	return (catalogCache ??= JSON.parse(readFileSync(new URL("../../catalog/parts.json", import.meta.url), "utf8")))
@@ -185,7 +186,7 @@ export function powerBudgetLines(e: PowerEstimate): string[] {
 
 // For the reviewer, like DRC or SPICE: battery life derived from the duty cycle alone, with every input shown, so it
 // doesn't have to re-derive it by hand or trust the rails' stated averages (real runs 15 and 16).
-export function dutyCycleCheckLines(e: PowerEstimate): string[] {
+export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entries: CatalogIq[] = catalog()): string[] {
 	const d = e.dutyCycle
 	const peak = Math.max(0, ...e.rails.map((r) => r.peakMa))
 	if (!d) return ["Battery-life check: not computed (no requirements.dutyCycle)"]
@@ -198,18 +199,43 @@ export function dutyCycleCheckLines(e: PowerEstimate): string[] {
 	const wakeMs = Math.max(d.activeMs, BLE_READING_MS + advertiseMs)
 	const wake = { ...d, activeMs: wakeMs }
 	const connectedS = templateConstant("BLE_CONNECTED_MAX_MS") / 1000
-	const averageMa = dutyCycleAverageMa(wake, peak) + e.regulatorIqUa / 1000
-	const days = e.capacityMah !== null ? batteryLifeDays(e.capacityMah, dutyCycleAverageMa(wake, peak), e.regulatorIqUa) : null
-	const life =
-		days === null || e.capacityMah === null
-			? `- Average ${ma(averageMa)}; battery life unknown (no capacity in the brief or requirements)`
-			: `- Average ${ma(averageMa)}; ${e.capacityMah} mAh / ${ma(averageMa)} / 24 h = ${Math.round(days)} days${e.targetDays !== null ? ` vs target ${e.targetDays} days` : ""}`
+	const lifeLine = (averageMa: number, label: string) => {
+		const days = e.capacityMah !== null ? e.capacityMah / averageMa / 24 : null
+		return days === null
+			? `- ${label} ${ma(averageMa)}; battery life unknown (no capacity in the brief or requirements)`
+			: `- ${label} ${ma(averageMa)}; ${e.capacityMah} mAh / ${ma(averageMa)} / 24 h = ${Math.round(days)} days${e.targetDays !== null ? ` vs target ${e.targetDays} days` : ""}`
+	}
+	const firmwareWake = `- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs)${wakeMs > d.activeMs ? `, ${wakeMs} ms in all (requirements.dutyCycle.activeMs says ${d.activeMs} ms)` : ""}. A phone that connects keeps it awake up to ${connectedS} s, which this average leaves out.`
+	const asleep = `- Asleep the rest of the ${d.periodS} s period: ${mcuSleep}${ldo}`
+	const worstMa = dutyCycleAverageMa(wake, peak) + e.regulatorIqUa / 1000
+	// The MCU's datasheet currents per phase, when the catalog lists them: the reading with the CPU running, the
+	// advertising window with the radio on. Charging the whole wake at the rail's peak (a regulator sizing figure) was
+	// a modelling error the reviewer then trusted; it stays below as the labelled worst case.
+	const mcu = s ? (s.values.parts ?? []).find((p) => p.role === "mcu") : undefined
+	const figures = mcu ? entries.find((c) => c.mpn.toUpperCase() === mcu.mpn.toUpperCase()) : undefined
+	if (mcu && typeof figures?.cpuMa === "number" && typeof figures.radioMa === "number") {
+		const readingMc = (figures.cpuMa * BLE_READING_MS) / 1000
+		const advertiseMc = (figures.radioMa * advertiseMs) / 1000
+		const asleepMa = (1 - wakeMs / (d.periodS * 1000)) * (d.sleepUa / 1000)
+		const averageMa = (readingMc + advertiseMc) / d.periodS + asleepMa + e.regulatorIqUa / 1000
+		return [
+			`Battery-life check (computed in code from the duty cycle and ${mcu.ref} ${mcu.mpn}'s datasheet currents, not from the rails' stated averages):`,
+			firmwareWake,
+			`- Reading: ${BLE_READING_MS} ms at ${figures.cpuMa} mA (CPU running, datasheet) = ${n(readingMc)} mC`,
+			`- Advertising: ${advertiseMs} ms at ${figures.radioMa} mA (radio receiving, datasheet; it gives no Bluetooth LE figure, so the receive current stands in for the whole window, which keeps the radio on while advertising transmits in short bursts) = ${n(advertiseMc)} mC`,
+			asleep,
+			lifeLine(averageMa, "Average"),
+			"- Leaves out the status LED's blink and the other parts' currents while awake.",
+			`- Worst case, the busiest battery-fed rail's peak (${ma(peak)}, a regulator sizing figure) for the whole ${wakeMs} ms wake:`,
+			lifeLine(worstMa, "  worst-case average"),
+		]
+	}
 	return [
 		"Battery-life check (computed in code from the duty cycle, not from the rails' stated averages):",
 		`- Each reading: ${wakeMs} ms awake${wakeMs > d.activeMs ? ` (requirements.dutyCycle.activeMs says ${d.activeMs} ms)` : ""} at up to ${ma(peak)} (the busiest battery-fed rail's peak) = ${n((peak * wakeMs) / 1000)} mC`,
 		`- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs). A phone that connects keeps it awake up to ${connectedS} s, which this average leaves out.`,
-		`- Asleep the rest of the ${d.periodS} s period: ${mcuSleep}${ldo}`,
-		life,
+		asleep,
+		lifeLine(worstMa, "Average"),
 		"- Assumes the firmware sleeps between readings as requirements.dutyCycle says, and the peak current for the whole wake (an upper bound on current). So a result at or above the target shows the target is met; one below it does not by itself show it is missed: then judge the stated average against the parts.",
 	]
 }

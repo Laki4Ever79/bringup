@@ -18,7 +18,7 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 		"",
 		"## Power budget (computed in code from the contract and the brief, not by a model)",
 		...powerBudgetLines(power),
-		...dutyCycleCheckLines(power),
+		...dutyCycleCheckLines(power, s),
 	]
 }
 
