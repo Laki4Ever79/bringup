@@ -1,0 +1,31 @@
+{
+  "revision": 1,
+  "values": {
+    "requirements": {
+      "summary": "Pocket BLE beacon with BLE advertising about once per minute, connectable by phone, USB-C charging and flashing, one button to wake and advertise immediately, status LED blink on wake, and ~3 months operation from a single-cell Li-ion pouch battery.",
+      "peripherals": [
+        "BLE radio",
+        "USB-C",
+        "Li-ion charging",
+        "status LED",
+        "button"
+      ],
+      "batteryLifeDays": 90,
+      "batteryMah": 500,
+      "dutyCycle": {
+        "activeMs": 300,
+        "periodS": 60,
+        "sleepUa": 5
+      }
+    }
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 0,
+    "connectors": 0,
+    "rails": 0,
+    "parts": 0,
+    "pins": 0,
+    "behavior": 0
+  }
+}
