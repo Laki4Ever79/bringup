@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { causeText, changeLog, defaultRange, readableDiff } from "../src/dashboard/changelog.js"
+import { causeText, changeLog, defaultRange, fileDrift, readableDiff } from "../src/dashboard/changelog.js"
 
 let seq = 0
 const changed = (revision: number, field: string, version: number, by: string, extra: object = {}) => ({ seq: seq++, at: `2026-10-31T12:00:${String(revision).padStart(2, "0")}.000Z`, type: "contract.changed", producerId: "x", payload: { field, version, revision, by, ...extra } })
@@ -51,4 +51,27 @@ test("the default view is the latest two revisions", () => {
 	assert.deepEqual(defaultRange([changed(3, "a", 1, "architect"), changed(9, "b", 1, "parts"), changed(8, "c", 1, "parts")]), { from: 8, to: 9 })
 	assert.deepEqual(defaultRange([changed(1, "a", 1, "architect")]), { from: 0, to: 1 })
 	assert.equal(defaultRange([]), null)
+})
+
+test("a write caused by a request that came from a saved file reads \"file edit: pins.h\"", () => {
+	const events = [
+		{ seq: seq++, at: "2026-10-31T12:01:00.000Z", type: "change.requested", producerId: "engineer", payload: { id: "req-2", text: "edited pins.h: I2C_SDA GPIO8 → GPIO4", source: { kind: "file", path: "firmware/rev-7/include/pins.h", revision: 7, items: ["I2C_SDA GPIO8 → GPIO4"] } } },
+		changed(8, "pins", 3, "architect", { reason: "the engineer moved SDA in pins.h", cause: { kind: "request", id: "req-2", text: "edited pins.h: I2C_SDA GPIO8 → GPIO4" } }),
+	]
+	assert.deepEqual(changeLog(events, 7, 8, new Map())[0].cause, { text: "file edit: pins.h “I2C_SDA GPIO8 → GPIO4”", link: { ripple: "req-2" } })
+	// A typed request is unchanged.
+	assert.equal(causeText({ kind: "request", id: "req-1", text: "make it 40 mm wide" }).text, "request #1 “make it 40 mm wide”")
+})
+
+test("file drift: a save the design won't keep, as a notice and a feed line, newest last", () => {
+	const drift = (reason: string, message: string, items: string[]) => ({ seq: seq++, at: "2026-10-31T12:02:00.000Z", type: "file.drift", producerId: "files", payload: { path: "firmware/rev-7/include/pins.h", savedRevision: 7, designRevision: reason === "stale" ? 9 : 7, reason, items, message } })
+	const notices = fileDrift([
+		drift("not-in-contract", "this edit isn't in the design contract; the next rebuild will overwrite it", ["#define BLE_ADVERTISE_MS 70 → 500"]),
+		changed(9, "pins", 3, "architect"),
+		drift("stale", "saved against rev 7, the design is at rev 9", ["I2C_SDA GPIO8 → GPIO4"]),
+	])
+	assert.equal(notices.length, 2)
+	assert.deepEqual(notices[0], { seq: notices[0].seq, at: "2026-10-31T12:02:00.000Z", name: "pins.h", path: "firmware/rev-7/include/pins.h", reason: "not-in-contract", items: ["#define BLE_ADVERTISE_MS 70 → 500"], line: "pins.h: this edit isn't in the design contract; the next rebuild will overwrite it" })
+	assert.equal(notices[1].line, "pins.h: saved against rev 7, the design is at rev 9; not applied")
+	assert.deepEqual(fileDrift([]), [])
 })
