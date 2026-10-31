@@ -66,7 +66,7 @@ test("a run with no tools at all and --no-hardware settles with 0 violations", {
 	const ready = new Set(trace.filter((e) => e.type === "artifact.ready").map((e) => e.payload.kind))
 	assert.deepEqual([...ready].sort(), ["board", "enclosure", "firmware"])
 	assert.ok(trace.some((e) => e.type === "change.decided"), "change control still runs")
-	assert.deepEqual(trace.find((e) => e.type === "run.started")?.payload, { review: true, engineerApproval: false, noHardware: true, bench: false, stay: false }, "the run's options are in the trace, for the dashboard; the CLI judge path doesn't stay")
+	assert.deepEqual(trace.find((e) => e.type === "run.started")?.payload, { review: true, engineerApproval: false, noHardware: true, bench: false, stay: false, mock: true }, "the run's options are in the trace, for the dashboard; the CLI judge path doesn't stay")
 	console.log(`no-hardware run took ${Date.now() - start} ms`)
 })
 
