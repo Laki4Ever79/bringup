@@ -69,7 +69,11 @@ export function createBench(opts: BenchOptions): Bench {
 	// Long enough for the person to notice the new firmware and pick the board up.
 	const blinkWaitMs = opts.blinkWaitMs ?? 120_000
 	const self = { id: "" }
-	const send = <T extends keyof Payloads>(type: T, payload: Payloads[T]) => emit(makeEvent(type, self.id, payload), self.id)
+	// Once closed (the run is over), a window that was still open must not emit into a runtime that has moved on.
+	let closed = false
+	const send = <T extends keyof Payloads>(type: T, payload: Payloads[T]) => {
+		if (!closed) emit(makeEvent(type, self.id, payload), self.id)
+	}
 
 	let settledOnce = false
 	let bootedRev: number | null = null
@@ -126,6 +130,7 @@ export function createBench(opts: BenchOptions): Bench {
 				resolve()
 			}
 			const timer = setTimeout(finish, ms)
+			timer.unref()
 			taps.add(tap)
 			if (cut) cuttable.add(finish)
 		})
@@ -207,10 +212,12 @@ export function createBench(opts: BenchOptions): Bench {
 	const watchBlink = async (revision: number, live: BridgeLine[], snapshot: ContractSnapshot, imu: BenchCheck): Promise<BenchCheck> => {
 		const expected = snapshot.values.behavior ?? DEFAULT_BEHAVIOR
 		const tilts = expected.tiltDeg < 90 && expected.tiltBlinkMs !== expected.blinkMs && imu.pass && !imu.skipped
-		const complete = (m: ReturnType<typeof measureBlink>) => m.blinkMs !== null && (!tilts || m.tiltBlinkMs !== null)
+		const tiltMeasured = (m: ReturnType<typeof measureBlink>) => m.tiltBlinkMs !== null
 		const lines = [...live]
 		let m = measureBlink(lines, expected.tiltDeg)
-		if (!complete(m) && revision >= latest) {
+		// Only the tilted period is worth waiting for (someone, or the fake bench's swing, tilts the board); a plain period
+		// the live window didn't catch is reported as not measured.
+		if (tilts && !tiltMeasured(m) && revision >= latest && !closed) {
 			const text = `Tilt the board more than ${expected.tiltDeg}° and hold it there for 3 s, so the bench can time the tilted blink.`
 			const ask = tilts && m.tiltBlinkMs === null && source === "real"
 			if (ask) send("bench.instruction", { revision, action: "tilt", text, state: "waiting" })
@@ -218,7 +225,7 @@ export function createBench(opts: BenchOptions): Bench {
 				if (line.k !== "s") return false
 				lines.push(line)
 				m = measureBlink(lines, expected.tiltDeg)
-				return complete(m)
+				return tiltMeasured(m)
 			}, true)).filter((l) => l.k !== "s"))
 			m = measureBlink(lines, expected.tiltDeg)
 			if (ask) send("bench.instruction", { revision, action: "tilt", text, state: m.tiltBlinkMs !== null ? "done" : "timeout" })
@@ -359,6 +366,8 @@ export function createBench(opts: BenchOptions): Bench {
 			while (!rebuilder.idle && Date.now() < end) await sleep(100)
 		},
 		async close() {
+			closed = true
+			for (const cut of [...cuttable]) cut()
 			clearInterval(flush)
 			await bridge.close()
 		},
