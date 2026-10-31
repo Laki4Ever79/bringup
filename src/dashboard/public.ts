@@ -10,7 +10,7 @@ export const PUBLIC_TRY_IT = "Try it runs the scripted beacon with hardware stub
 export const PUBLIC_BANNER = "Public demo: recorded runs used the real tools (KiCad, build123d, PlatformIO); live runs here are stubbed."
 
 // Recorded runs worth replaying, from docs/runs (each has a trace.jsonl).
-export const PUBLIC_RUNS = ["add-sensor", "add-sensor-real", "add-sensor-real-2", "real-20", "real-15", "linked", "file-sync", "wokwi"]
+export const PUBLIC_RUNS = ["real-pass", "add-sensor", "add-sensor-real", "add-sensor-real-2", "real-20", "real-15", "linked", "file-sync", "wokwi"]
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url))
 
