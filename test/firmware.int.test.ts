@@ -95,6 +95,9 @@ test("the product firmware compiles its duty cycle: the period from the contract
 		assert.match(readFileSync(join(dir, "include/pins.h"), "utf8"), /^#define DUTY_PERIOD_S 240$/m)
 		const main = readFileSync(join(dir, "src/main.cpp"), "utf8")
 		for (const needle of ["esp_deep_sleep_start", "esp_sleep_enable_timer_wakeup", "LittleFS", "READING_BLINK_MS = 20"]) assert.ok(main.includes(needle), needle)
+		// BLE after each reading, for the rest of the contract's wake (100 ms minus the 30 ms reading), with NimBLE pinned.
+		assert.match(readFileSync(join(dir, "include/pins.h"), "utf8"), /^#define BLE_ADVERTISE_MS 70$/m)
+		assert.match(readFileSync(join(dir, ".pio/libdeps/esp32c3/NimBLE-Arduino/library.properties"), "utf8"), /^version=2\.5\.2$/m)
 	} finally {
 		await rm(dir, { recursive: true, force: true })
 	}

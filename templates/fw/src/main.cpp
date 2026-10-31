@@ -110,7 +110,7 @@ static uint32_t packReading(float tempC, float rh) {
 	return t << 16 | h;
 }
 
-// Returns the slot written, or -1 if the flash couldn't take it.
+// Returns the slot written, or -1 if the flash couldn't take it. NVS also keeps how many slots hold a reading, for BLE.
 static int32_t storeReading(float tempC, float rh) {
 	if (!LittleFS.begin(true)) return -1;  // formats the partition on the very first boot
 	Preferences prefs;
@@ -121,10 +121,99 @@ static int32_t storeReading(float tempC, float rh) {
 	uint32_t record = packReading(tempC, rh);
 	ok = ok && f.write((const uint8_t *)&record, sizeof record) == sizeof record;
 	if (f) f.close();
-	if (ok) prefs.putUInt("next", (slot + 1) % HISTORY_SLOTS);
+	if (ok) {
+		prefs.putUInt("next", (slot + 1) % HISTORY_SLOTS);
+		prefs.putUInt("count", min(prefs.getUInt("count", 0) + 1, HISTORY_SLOTS));
+	}
 	prefs.end();
 	LittleFS.end();
 	return ok ? (int32_t)slot : -1;
+}
+
+// BLE (NimBLE-Arduino, pinned in platformio.ini): after each reading the device advertises for BLE_ADVERTISE_MS
+// (pins.h, generated from the contract's dutyCycle.activeMs minus the reading), so it is awake as long as the battery
+// math assumes. A phone that connects keeps it awake until it disconnects or BLE_CONNECTED_MAX_MS pass. The service:
+// - latest (read): this wake's reading as one packed record, 0xFFFFFFFF if the sensor failed;
+// - count (read): how many readings the history holds;
+// - offset (read/write): how many of the newest records the next history read skips;
+// - history (read): up to HISTORY_CHUNK records, newest first, from offset on. Records are packReading()'s, little-endian.
+#include <NimBLEDevice.h>
+
+#ifndef BLE_ADVERTISE_MS
+#define BLE_ADVERTISE_MS 300  // the logger brief's 300 ms advertising burst, without a contract duty cycle
+#endif
+static const uint32_t BLE_CONNECTED_MAX_MS = 30000;
+static const uint32_t HISTORY_CHUNK = 100;
+static const char *BLE_SERVICE_UUID = "b7e10001-5c2e-4f1a-9d3b-6a8e2f40c0de";
+static const char *BLE_LATEST_UUID = "b7e10002-5c2e-4f1a-9d3b-6a8e2f40c0de";
+static const char *BLE_COUNT_UUID = "b7e10003-5c2e-4f1a-9d3b-6a8e2f40c0de";
+static const char *BLE_OFFSET_UUID = "b7e10004-5c2e-4f1a-9d3b-6a8e2f40c0de";
+static const char *BLE_HISTORY_UUID = "b7e10005-5c2e-4f1a-9d3b-6a8e2f40c0de";
+
+static volatile bool bleConnected = false;
+static uint32_t historyNext = 0, historyCount = 0, historyOffset = 0;
+
+class ServerCallbacks : public NimBLEServerCallbacks {
+	void onConnect(NimBLEServer *, NimBLEConnInfo &) override { bleConnected = true; }
+	void onDisconnect(NimBLEServer *, NimBLEConnInfo &, int) override { bleConnected = false; }
+};
+
+class OffsetCallbacks : public NimBLECharacteristicCallbacks {
+	void onWrite(NimBLECharacteristic *c, NimBLEConnInfo &) override { historyOffset = c->getValue<uint32_t>(); }
+};
+
+// Reads the newest records first, straight from /history.bin: slot next-1 is the newest.
+class HistoryCallbacks : public NimBLECharacteristicCallbacks {
+	void onRead(NimBLECharacteristic *c, NimBLEConnInfo &) override {
+		static uint32_t records[HISTORY_CHUNK];
+		uint32_t n = 0;
+		File f = LittleFS.open(HISTORY_FILE, "r");
+		for (uint32_t i = historyOffset; f && i < historyCount && n < HISTORY_CHUNK; i++) {
+			uint32_t slot = (historyNext + HISTORY_SLOTS - 1 - i) % HISTORY_SLOTS;
+			if (!f.seek(slot * sizeof(uint32_t)) || f.read((uint8_t *)&records[n], sizeof(uint32_t)) != sizeof(uint32_t)) break;
+			n++;
+		}
+		if (f) f.close();
+		c->setValue((const uint8_t *)records, n * sizeof(uint32_t));
+	}
+};
+
+static void serveBle(uint32_t latest) {
+	Preferences prefs;
+	prefs.begin("history", true);
+	historyNext = prefs.getUInt("next", 0);
+	historyCount = prefs.getUInt("count", 0);
+	prefs.end();
+	LittleFS.begin(false);
+	char name[16];
+	snprintf(name, sizeof name, "Bringup-%04X", (unsigned)(ESP.getEfuseMac() >> 32) & 0xFFFF);
+	NimBLEDevice::init(name);
+	NimBLEServer *server = NimBLEDevice::createServer();
+	server->setCallbacks(new ServerCallbacks());
+	NimBLEService *service = server->createService(BLE_SERVICE_UUID);
+	service->createCharacteristic(BLE_LATEST_UUID, NIMBLE_PROPERTY::READ)->setValue(latest);
+	service->createCharacteristic(BLE_COUNT_UUID, NIMBLE_PROPERTY::READ)->setValue(historyCount);
+	NimBLECharacteristic *offset = service->createCharacteristic(BLE_OFFSET_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE);
+	offset->setValue(historyOffset = 0);  // reads 0 until a phone writes one (it read empty on the S3)
+	offset->setCallbacks(new OffsetCallbacks());
+	service->createCharacteristic(BLE_HISTORY_UUID, NIMBLE_PROPERTY::READ)->setCallbacks(new HistoryCallbacks());
+	service->start();
+	NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
+	adv->setName(name);
+	adv->addServiceUUID(BLE_SERVICE_UUID);
+	adv->start();
+	Serial.printf("BLE %s advertising %d ms\n", name, BLE_ADVERTISE_MS);
+	const uint32_t start = millis();
+	bool everConnected = false;
+	for (;;) {
+		const uint32_t awake = millis() - start;
+		everConnected |= bleConnected;
+		if (bleConnected ? awake >= BLE_CONNECTED_MAX_MS : awake >= BLE_ADVERTISE_MS) break;
+		delay(5);
+	}
+	if (everConnected) Serial.println("BLE a phone connected");
+	NimBLEDevice::deinit(true);
+	LittleFS.end();
 }
 
 // A brief blink when the reading worked, a double blink when the sensor didn't answer.
@@ -367,6 +456,7 @@ void setup() {
 	else Serial.println("SENSOR FAIL");
 	if (ok) Serial.printf("HISTORY slot %ld\n", (long)storeReading(t, rh));
 	readingBlink(ok);
+	serveBle(ok ? packReading(t, rh) : 0xFFFFFFFF);
 	Serial.printf("SLEEP %d s\n", DUTY_PERIOD_S);
 	Serial.flush();
 	esp_sleep_enable_timer_wakeup((uint64_t)DUTY_PERIOD_S * 1000000ULL);

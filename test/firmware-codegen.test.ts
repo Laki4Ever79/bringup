@@ -29,3 +29,14 @@ test("pins.h carries the duty-cycle period from the contract, and leaves it to t
 	assert.match(pinsHeader(c), /^#define DUTY_PERIOD_S 120$/m, "whole seconds")
 	assert.doesNotMatch(pinsHeader(fixtureContract()), /DUTY_PERIOD_S/)
 })
+
+// The product firmware advertises over BLE for the rest of the contract's wake: activeMs minus the 30 ms reading, so the
+// firmware spends exactly the awake time the battery math assumes (at least 50 ms, a few advertising packets).
+test("pins.h carries the BLE advertising window, from the contract's wake time minus the reading", () => {
+	const c = fixtureContract()
+	c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 330, periodS: 300, sleepUa: 5 } }
+	assert.match(pinsHeader(c), /^#define BLE_ADVERTISE_MS 300$/m)
+	c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 40, periodS: 300, sleepUa: 5 } }
+	assert.match(pinsHeader(c), /^#define BLE_ADVERTISE_MS 50$/m, "never shorter than 50 ms")
+	assert.doesNotMatch(pinsHeader(fixtureContract()), /BLE_ADVERTISE_MS/)
+})
