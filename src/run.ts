@@ -77,6 +77,11 @@ const BOM_GRACE_MS = 15_000
 // How long a scripted change request may take to re-settle the design before the next one is sent anyway.
 const CHANGE_TIMEOUT_MS = 20 * 60_000
 
+// The whole run's time limit: 30 min for the design, plus one change timeout per scripted change request.
+export function runTimeoutMs(opts: Pick<RunOptions, "timeoutMs" | "changes" | "changeTimeoutMs">): number {
+	return opts.timeoutMs ?? 30 * 60_000 + (opts.changes ?? []).length * (opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
+}
+
 // Runs one design from a brief until the consistency participant reports design.settled.
 // Everything after sendMessage is event-driven; this function only waits for the outcome.
 export async function runDesign(opts: RunOptions): Promise<RunResult> {
@@ -160,7 +165,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	// The engineer's Approve/Reject votes on held changes (dashboard, or appended by hand).
 	const decisions = watchDecisions(opts.outDir, (d) => engineer.decide(d))
 
-	const timeoutMs = opts.timeoutMs ?? 30 * 60_000
+	const timeoutMs = runTimeoutMs(opts)
 	const deadline = new Promise<Settlement>((r) => setTimeout(() => r({ settled: false, revision: state.contract.revision }), timeoutMs).unref())
 	const outcome = await Promise.race([settledPromise, deadline])
 	// Scripted changes, until the last one has settled or the run's time is up.
