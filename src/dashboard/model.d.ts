@@ -32,3 +32,4 @@ export function ledMirror(input: { contract: any; bench: any; led: { at: number;
 export function relativeGravity(g0: number[], g: number[]): number[]
 export function toggleOpen(open: string | null, clicked: string | null): string | null
 export function readinessShort(readiness: { supplier: string; total: number; counts: { listed: number }; lines?: { ref: string; status: string }[] } | null): string
+export function runPhase(s: { settled: { settled: boolean } | null; stay: boolean; alive: boolean; benchLive: boolean; stopped: boolean }): { bar: "live" | "bench" | "waiting" | "stopped" | "settled"; pill: string; open: boolean }

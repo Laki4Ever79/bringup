@@ -57,7 +57,9 @@ function ripple({ r, i, from, to, events, cleanIn }, lanes, now) {
 	// Checked: took a turn and changed nothing. Same three-way split as the runner's ripples.json.
 	const wakes = (k) => (AGENTS.has(k) ? acted.has(k) : BUILD_INPUTS[k] ? touched(BUILD_INPUTS[k]) : k === "grounding" ? touched(["parts", "pins"]) : fields.length > 0)
 	const woke = KEYS.filter(wakes)
-	const checked = KEYS.filter((k) => !wakes(k) && turned.has(k))
+	// Reading: took a turn, still at it, nothing changed or proposed yet; it ends as woke or checked. Live only.
+	const reading = to === Infinity ? KEYS.filter((k) => turned.has(k) && !wakes(k) && ACTIVE.has(lanes[k]?.status)) : []
+	const checked = KEYS.filter((k) => !wakes(k) && turned.has(k) && !reading.includes(k))
 	const stayedIdle = KEYS.filter((k) => !wakes(k) && !turned.has(k))
 	const lastChange = changes.at(-1) ?? null
 
@@ -95,6 +97,7 @@ function ripple({ r, i, from, to, events, cleanIn }, lanes, now) {
 		fieldsChanged: fields,
 		woke,
 		checked,
+		reading,
 		stayedIdle,
 		working: state === "consistent" ? [] : woke.filter((k) => ACTIVE.has(lanes[k]?.status)),
 		violationsPeak: seq.length ? Math.max(...seq) : 0,
@@ -136,8 +139,14 @@ function buildCheck(key, events, changes) {
 	if (done.type === "artifact.failed") return { key, label: BUILD_LABEL[key], state: "error", detail: `rev ${done.payload.revision} failed`, doneAt }
 	const drc = done.payload.drc
 	if (drc) {
-		const bad = drc.errors + drc.unconnected
-		return { key, label: BUILD_LABEL[key], state: bad ? "warn" : "ok", detail: `rev ${done.payload.revision} · DRC ${drc.errors} errors${drc.unconnected ? `, ${drc.unconnected} unconnected` : ""}`, doneAt }
+		// Errors inside one part's own footprint (its vendor land pattern) are amber and named; any other is red.
+		const own = Object.entries(drc.ownFootprint ?? {})
+		const ownCount = own.reduce((n, [, c]) => n + c, 0)
+		const ownText = own.map(([ref, n]) => `${n} inside ${ref}'s footprint`).join(", ")
+		const rev = `rev ${done.payload.revision}`
+		if (drc.errors + drc.unconnected === 0) return { key, label: BUILD_LABEL[key], state: "ok", detail: `${rev} · DRC 0 errors`, doneAt }
+		if (ownCount === drc.errors && !drc.unconnected) return { key, label: BUILD_LABEL[key], state: "warn", detail: `${rev} · DRC: ${ownText}`, doneAt }
+		return { key, label: BUILD_LABEL[key], state: "error", detail: `${rev} · DRC ${drc.errors} errors${drc.unconnected ? `, ${drc.unconnected} unconnected` : ""}${ownCount ? ` (${ownText})` : ""}`, doneAt }
 	}
 	if (boot) return { key, label: BUILD_LABEL[key], state: boot.booted ? "ok" : "error", detail: boot.booted ? `rev ${done.payload.revision} · boots in QEMU` : `rev ${done.payload.revision} · did not boot`, doneAt }
 	return { key, label: BUILD_LABEL[key], state: "ok", detail: `rev ${done.payload.revision} built`, doneAt }
@@ -158,6 +167,9 @@ export function mergeRipples(live, file, t0) {
 		const f = byId.get(r.id)
 		if (!f) return r
 		const out = { ...r, atMs: abs(f.atMs) ?? r.atMs, fieldsChanged: f.fieldsChanged ?? r.fieldsChanged, woke: f.woke ?? r.woke, checked: f.checked ?? r.checked, stayedIdle: f.stayedIdle ?? r.stayedIdle, violationsPeak: f.violationsPeak ?? r.violationsPeak }
+		// The file has no "reading": a live reader stays one until the file says it woke.
+		out.reading = typeof f.consistentAtMs === "number" ? [] : r.reading.filter((k) => !(f.woke ?? []).includes(k))
+		out.checked = out.checked.filter((k) => !out.reading.includes(k))
 		if (typeof f.consistentAtMs === "number") Object.assign(out, { consistentAtMs: abs(f.consistentAtMs), durationMs: f.durationMs, state: "consistent", working: [] })
 		return out
 	})
