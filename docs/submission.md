@@ -174,7 +174,7 @@ mm rulers on the board view, and 614 tests.
 
 ## Limits, honestly
 
-- **One real-model run has passed the final brief review** (docs/runs/real-pass: settled at rev 19, passed review 2), after the night's real runs were used to find and fix general problems; it doesn't pass every time yet, but the remaining blockers are known and concrete, and we expect further tuning to raise the pass rate a lot; earlier real runs ended with 0 violations but failed review. Battery life is computed from datasheet currents, not measured.
+- **One real-model run has passed the final brief review** (docs/runs/real-pass: settled at rev 19, passed review 2), after the night's real runs were used to find and fix general problems; each real run surfaced a concrete blocker and each fix removed it for every later run; a few known blockers remain; earlier real runs ended with 0 violations but failed review. Battery life is computed from datasheet currents, not measured.
 - The experiment uses scripted agents (real tools); real-model change times vary from 28 s to 224 s.
 - BLE was verified on an ESP32-S3 dev board (advertising, reading the latest record and the history), not on the C3 design; QEMU can't test the deep-sleep wake.
 - Boards need a human review before ordering (`fab/README.txt` lists every item).

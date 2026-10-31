@@ -45,7 +45,7 @@ facts and computed checks the designers never saw. The fixes:
 
 ## What NOT to say
 
-- Not "passes every time": the night's real runs were used to find and fix general problems, and runs on the final code still failed on genuine design trade-offs (LDO dropout, a short advertising window, battery assumptions).
+- Not "passes every time" yet: each real run surfaced a blocker and each fix removed it for later runs; a few known ones remain (LDO dropout, a short advertising window, battery assumptions).
 - Not "the agents resolved the LED question": the same two-LED design was a blocker in review 1 and a minor in review
   2. The architect removed the charge LED at rev 18 and the parts agent put it back at rev 19. The pass on that point
   is reviewer judgement on an ambiguous brief line ("a status LED that … shows charging state").
