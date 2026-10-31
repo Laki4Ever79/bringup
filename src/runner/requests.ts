@@ -1,3 +1,4 @@
+import type { FileSource } from "../events.ts"
 import { appendFileSync, watch, type FSWatcher } from "node:fs"
 import { open, stat } from "node:fs/promises"
 import { join } from "node:path"
@@ -8,11 +9,13 @@ const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling ba
 export interface ChangeRequest {
 	at: string
 	text: string
+	// Set when the request came from a saved file, not from a person typing it.
+	source?: FileSource
 }
 
 // Appends one engineer request for a running design to pick up (CLI and MCP request_change).
-export function appendRequest(outDir: string, text: string): ChangeRequest {
-	const request = { at: new Date().toISOString(), text }
+export function appendRequest(outDir: string, text: string, source?: FileSource): ChangeRequest {
+	const request = { at: new Date().toISOString(), text, ...(source ? { source } : {}) }
 	appendFileSync(join(outDir, REQUESTS_FILE), JSON.stringify(request) + "\n")
 	return request
 }
@@ -23,7 +26,8 @@ export function watchRequests(outDir: string, onRequest: (r: ChangeRequest) => v
 	return watchJsonl(outDir, REQUESTS_FILE, (raw) => {
 		const r = raw as Partial<ChangeRequest>
 		if (typeof r.text !== "string" || r.text.trim() === "") return null
-		return { at: typeof r.at === "string" ? r.at : new Date().toISOString(), text: r.text }
+		const source = r.source && typeof r.source === "object" && r.source.kind === "file" ? { source: r.source } : {}
+		return { at: typeof r.at === "string" ? r.at : new Date().toISOString(), text: r.text, ...source }
 	}, onRequest)
 }
 
