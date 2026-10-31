@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { WOKWI_CHIPS, WOKWI_CLI } from "../tools/wokwi.ts"
 
 export interface Probe {
 	nodeVersion: string
@@ -14,6 +15,14 @@ export interface Probe {
 	// Runs an install command with its output shown; resolves to the exit code.
 	install(cmd: string, args: string[]): Promise<number>
 	log(line: string): void
+	// For --wokwi (all paths relative to the repo root): "<os>-<arch>", file checks, the download and its placing.
+	platform?: string
+	exists?(path: string): Promise<boolean>
+	sha256?(path: string): Promise<string | null>
+	download?(url: string, to: string): Promise<boolean>
+	// Moves a verified download into place and makes it executable.
+	place?(from: string, to: string): Promise<void>
+	remove?(path: string): Promise<void>
 }
 
 export type StepId = "python" | "tscircuit" | "kicad" | "toolchain" | "qemu"
@@ -93,11 +102,50 @@ export async function runSetup(probe: Probe, flags: { qemu?: boolean; wokwi?: bo
 	for (const step of INSTALL) await doStep(step)
 	if (flags.qemu) await doStep(QEMU)
 	else lines.push(`${QEMU.name}: ${(await probe.present("qemu")) ? "already there" : "not installed (optional: npm run setup -- --qemu)"}`)
-	if (flags.wokwi) {
-		ok = false
-		lines.push("Wokwi CLI: not wired yet (waiting for the pinned release from src/tools; see NOTES.md)")
-	}
+	const wokwi = await wokwiStep(probe, Boolean(flags.wokwi))
+	ok &&= wokwi.ok
+	lines.push(wokwi.line)
 	return { ok, lines }
+}
+
+// Wokwi's CLI, pinned by src/tools/wokwi.ts (WOKWI_CLI, WOKWI_CHIPS): the one source of truth with the simulator. The
+// download is checked against the pinned sha256 before it is put in place; then each sensor chip is compiled once
+// (the first compile fetches a WASI SDK into ~/.wokwi, about 360 MB). The token (WOKWI_CLI_TOKEN) is the user's to add.
+const chipOut = (c: string) => `tools/wokwi-cli/chips/${c}.chip.wasm`
+
+async function wokwiStep(probe: Probe, wanted: boolean): Promise<{ ok: boolean; line: string }> {
+	const name = `Wokwi CLI ${WOKWI_CLI.version} (tools/wokwi-cli)`
+	const has = async (p: string) => (await probe.exists?.(p)) ?? false
+	const binaryOk = async () => (await has(WOKWI_CLI.dest)) && (await probe.sha256?.(WOKWI_CLI.dest)) === WOKWI_CLI.sha256
+	const missingChips = async () => {
+		const out: string[] = []
+		for (const c of WOKWI_CHIPS) if (!(await has(chipOut(c)))) out.push(c)
+		return out
+	}
+	if (!wanted) {
+		const ready = (await binaryOk()) && (await missingChips()).length === 0
+		return { ok: true, line: `${name}: ${ready ? "already there" : "not installed (optional: npm run setup -- --wokwi, plus WOKWI_CLI_TOKEN in .env)"}` }
+	}
+	if (probe.platform !== "linux-x64") return { ok: false, line: `Wokwi CLI: linux x64 only for now (this is ${probe.platform}); no other release asset is pinned` }
+	const chips = await missingChips()
+	const binary = await binaryOk()
+	if (binary && chips.length === 0) return { ok: true, line: `${name}: already there` }
+	if (!binary) {
+		probe.log(`setup: ${name}`)
+		const tmp = `${WOKWI_CLI.dest}.download`
+		if (!(await probe.download!(WOKWI_CLI.url, tmp))) return { ok: false, line: `${name}: FAILED (download of ${WOKWI_CLI.url})` }
+		const got = await probe.sha256!(tmp)
+		if (got !== WOKWI_CLI.sha256) {
+			await probe.remove!(tmp)
+			return { ok: false, line: `${name}: FAILED (sha256 mismatch: got ${got}, pinned ${WOKWI_CLI.sha256})` }
+		}
+		await probe.place!(tmp, WOKWI_CLI.dest)
+	}
+	for (const c of chips) {
+		const code = await probe.install(WOKWI_CLI.dest, ["chip", "compile", "-o", chipOut(c), `templates/wokwi/chips/${c}.chip.c`])
+		if (code !== 0) return { ok: false, line: `${name}: FAILED (chip compile ${c} exited ${code})` }
+	}
+	return { ok: true, line: `${name}: installed` }
 }
 
 // What "present" means on this machine, step by step.

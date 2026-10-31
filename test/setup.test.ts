@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { checkPrerequisites, INSTALL, runSetup, type Probe } from "../src/setup/setup.ts"
 import { doctorReport } from "../src/setup/doctor.ts"
+import { WOKWI_CHIPS, WOKWI_CLI } from "../src/tools/wokwi.ts"
 
 const README = readFileSync(new URL("../README.md", import.meta.url), "utf8")
 
@@ -106,4 +107,73 @@ test("doctor names each tool's backend and which optional settings are set, neve
 	assert.match(text, /WOKWI_CLI_TOKEN\s+not set/)
 	assert.match(text, /BRINGUP_NTFY_TOPIC\s+set/)
 	assert.ok(!text.includes("sk-very-secret-value") && !text.includes("bringup-secret-topic"))
+})
+
+// --wokwi: 5b's pinned release (src/tools/wokwi.ts), the one source of truth.
+function wokwiMachine(opts: { platform?: string; files?: Record<string, string>; download?: string } = {}) {
+	const m = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
+	const files = new Map(Object.entries(opts.files ?? {}))
+	const steps: string[] = []
+	Object.assign(m.probe, {
+		platform: opts.platform ?? "linux-x64",
+		exists: async (p: string) => files.has(p),
+		sha256: async (p: string) => (files.has(p) ? files.get(p)! : null),
+		download: async (url: string, to: string) => {
+			steps.push(`download ${url} -> ${to}`)
+			files.set(to, opts.download ?? WOKWI_CLI.sha256)
+			return true
+		},
+		place: async (from: string, to: string) => {
+			steps.push(`place ${from} -> ${to} (+x)`)
+			files.set(to, files.get(from)!)
+			files.delete(from)
+		},
+		remove: async (p: string) => {
+			steps.push(`remove ${p}`)
+			files.delete(p)
+		},
+	})
+	return { ...m, steps, files }
+}
+
+test("--wokwi downloads 5b's pinned CLI, checks its sha256 before putting it in place, then compiles each sensor chip", async () => {
+	const m = wokwiMachine()
+	const s = await runSetup(m.probe, { wokwi: true })
+	assert.equal(s.ok, true, s.lines.join("\n"))
+	const tmp = `${WOKWI_CLI.dest}.download`
+	assert.deepEqual(m.steps, [`download ${WOKWI_CLI.url} -> ${tmp}`, `place ${tmp} -> ${WOKWI_CLI.dest} (+x)`])
+	assert.deepEqual(m.ran, WOKWI_CHIPS.map((c) => `${WOKWI_CLI.dest} chip compile -o tools/wokwi-cli/chips/${c}.chip.wasm templates/wokwi/chips/${c}.chip.c`))
+	assert.match(s.lines.join("\n"), new RegExp(`Wokwi CLI ${WOKWI_CLI.version.replace(/\./g, "\\.")} \\(tools/wokwi-cli\\): installed`))
+})
+
+test("--wokwi refuses a download whose sha256 doesn't match and leaves nothing in place", async () => {
+	const m = wokwiMachine({ download: "0".repeat(64) })
+	const s = await runSetup(m.probe, { wokwi: true })
+	assert.equal(s.ok, false)
+	assert.match(s.lines.join("\n"), /Wokwi CLI .*FAILED \(sha256 mismatch/)
+	assert.ok(!m.files.has(WOKWI_CLI.dest))
+	assert.ok(m.steps.some((x) => x.startsWith("remove ")))
+	assert.deepEqual(m.ran, [])
+})
+
+test("--wokwi skips what is there: a matching binary and compiled chips", async () => {
+	const files: Record<string, string> = { [WOKWI_CLI.dest]: WOKWI_CLI.sha256 }
+	for (const c of WOKWI_CHIPS) files[`tools/wokwi-cli/chips/${c}.chip.wasm`] = "x"
+	const m = wokwiMachine({ files })
+	const s = await runSetup(m.probe, { wokwi: true })
+	assert.deepEqual([m.steps, m.ran], [[], []])
+	assert.match(s.lines.join("\n"), /Wokwi CLI .*: already there/)
+})
+
+test("--wokwi on anything but linux x64 says so instead of guessing another asset's checksum", async () => {
+	const m = wokwiMachine({ platform: "darwin-arm64" })
+	const s = await runSetup(m.probe, { wokwi: true })
+	assert.match(s.lines.join("\n"), /Wokwi CLI: linux x64 only for now \(this is darwin-arm64\)/)
+	assert.deepEqual([m.steps, m.ran], [[], []])
+})
+
+test("without --wokwi the summary says how to add it", async () => {
+	const m = wokwiMachine()
+	const s = await runSetup(m.probe, {})
+	assert.match(s.lines.join("\n"), /Wokwi CLI .*not installed \(optional: npm run setup -- --wokwi, plus WOKWI_CLI_TOKEN in \.env\)/)
 })
