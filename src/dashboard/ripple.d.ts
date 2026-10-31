@@ -15,6 +15,7 @@ export interface Ripple {
 	durationMs: number | null
 	revisions: { from: number; to: number } | null
 	checks: RippleCheck[]
+	reviewFollowUps: { fieldsChanged: string[]; rounds: number }
 	state: "sent" | "rippling" | "consistent" | "no-change" | "unsettled"
 }
 export interface RipplesFile { requests: { id: string; text: string; atMs: number; fieldsChanged: string[]; woke: string[]; checked?: string[]; stayedIdle: string[]; violationsPeak: number; consistentAtMs: number | null; durationMs: number | null }[] }

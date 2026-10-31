@@ -1667,7 +1667,9 @@
 			if (textEl.textContent !== r.text) textEl.textContent = r.text
 			textEl.className = "quote"
 			$("rip-when").textContent = `#${idx + 1} · ${time(r.atMs)}`
-			$("rip-meta").textContent = r.revisions ? `contract rev ${r.revisions.from === r.revisions.to ? r.revisions.from : `${r.revisions.from}–${r.revisions.to}`}` : r.state === "sent" ? "the architect and the firmware agent are reading it" : ""
+			const fu = r.reviewFollowUps
+			const followUps = fu?.rounds ? ` · then ${fu.rounds} review round${fu.rounds === 1 ? "" : "s"} ${fu.fieldsChanged.length ? `changed ${fu.fieldsChanged.join(", ")}` : "changed nothing"}` : ""
+			$("rip-meta").textContent = (r.revisions ? `contract rev ${r.revisions.from === r.revisions.to ? r.revisions.from : `${r.revisions.from}–${r.revisions.to}`}` : r.state === "sent" ? "the architect and the firmware agent are reading it" : "") + followUps
 			const fieldsHtml = FIELDS.map((f) => {
 				const t = touched.get(f)
 				if (touched.has(f)) return `<li class="touched"><span>${esc(f)}</span><span class="v">${t ? `v${t.from} → v${t.to}` : "changed"}</span></li>`
