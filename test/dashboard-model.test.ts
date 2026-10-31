@@ -244,3 +244,14 @@ test("folds: the parts list and the revisions strip start collapsed, with a one-
 	assert.equal(foldOpen(broken, "parts"), false)
 	setFold(broken, "parts", true)
 })
+
+test("scripted mode offers the two scripted briefs, the beacon (then add a sensor) first and by default", async () => {
+	const { scriptedBriefs } = await import("../src/dashboard/model.js")
+	const briefs = [{ name: "blinky.md", title: "blinky", text: "b" }, { name: "logger.md", title: "pocket climate logger", text: "L" }, { name: "beacon.md", title: "pocket BLE beacon", text: "B" }]
+	assert.deepEqual(scriptedBriefs(briefs), [
+		{ name: "beacon.md", label: "beacon.md (then add a sensor)", text: "B" },
+		{ name: "logger.md", label: "logger.md", text: "L" },
+	])
+	// Only what exists: no beacon in an older checkout, just the logger.
+	assert.deepEqual(scriptedBriefs(briefs.filter((b) => b.name !== "beacon.md")).map((b) => b.name), ["logger.md"])
+})
