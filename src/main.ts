@@ -8,7 +8,7 @@ import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 import { openBench } from "./bench/open.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 
-const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu]"
+const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]..."
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -27,6 +27,8 @@ export interface CliArgs {
 	benchNoMeter?: boolean
 	// The fake bench without an MPU-6050; with benchNoMeter, a bare ESP32-S3.
 	benchNoImu?: boolean
+	// --change, repeatable: engineer change requests sent one at a time, each after the design has settled.
+	changes?: string[]
 }
 
 export function parseArgs(argv: string[]): CliArgs | { error: string } {
@@ -41,11 +43,14 @@ export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	const replayIndex = argv.indexOf("--bench-replay")
 	const benchReplay = replayIndex >= 0 ? argv[replayIndex + 1] : undefined
 	if (replayIndex >= 0 && (!benchReplay || benchReplay.startsWith("--"))) return { error: "--bench-replay needs a recorded bench.jsonl" }
-	const valueAt = new Set([outIndex, roundsIndex, replayIndex, ...(benchSource ? [benchIndex] : [])].filter((i) => i >= 0).map((i) => i + 1))
+	const changeIndexes = argv.flatMap((a, i) => (a === "--change" ? [i] : []))
+	const changes = changeIndexes.map((i) => argv[i + 1]?.trim() ?? "")
+	if (changes.some((c) => !c || c.startsWith("--"))) return { error: "--change needs the request text" }
+	const valueAt = new Set([outIndex, roundsIndex, replayIndex, ...changeIndexes, ...(benchSource ? [benchIndex] : [])].filter((i) => i >= 0).map((i) => i + 1))
 	const briefPath = argv.find((a, i) => !a.startsWith("--") && !valueAt.has(i))
 	if (!briefPath) return { error: "no brief given" }
 	if (!existsSync(briefPath)) return { error: `brief not found: ${briefPath}` }
-	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}) }
+	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}) }
 }
 
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
@@ -87,7 +92,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			open: () => openBench({ root: ROOT, source, outDir, replay: args.benchReplay, extraArgs: [...(args.benchNoMeter ? ["--no-meter"] : []), ...(args.benchNoImu ? ["--no-imu"] : [])], start: (a) => startBridge(python, a, { cwd: ROOT, onStderr: (t) => process.stderr.write(`[bench.py] ${t}`) }) }),
 		}
 	}
-	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, bench })
+	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, bench, changes: args.changes })
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)\nreport: ${result.reportPath}`)
 	return result.settled ? 0 : 2
 }
