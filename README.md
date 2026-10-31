@@ -140,7 +140,7 @@ the tests are in [docs/details.md](docs/details.md).
 - Scripted runs settle with 0 violations and take mid-run changes, with the real board, case and firmware tools.
 - Real models take mid-run changes too (run 20: a sensor swap rippled to consistent in 75 s, 40 mm wide in 28 s;
   that run as a whole then failed the final review and did not settle).
-- **A real-model run has passed the final brief review**: run real-pass ([docs/runs/real-pass](docs/runs/real-pass/)) designed the beacon from its brief with real models and real tools, failed review 1, fixed itself, and passed review 2 (settled at rev 19, 0 violations, about 8 minutes). It is 1 pass out of 21 real runs started that night; the others ended unsettled. What got it there: the designers now see the same computed facts as the reviewer, and the review's computable checks run live during design.
+- **A real-model run has passed the final brief review.** We used the night's real-model runs to find and fix general problems (the designers now see the same computed facts as the reviewer, and the review's computable checks run live during design). After those fixes, run real-pass ([docs/runs/real-pass](docs/runs/real-pass/)) designed the beacon from its brief with real models and real tools, failed review 1, fixed itself and passed review 2 (settled at rev 19, 0 violations, about 8 minutes). It does not pass every time: later runs still failed on genuine design trade-offs.
 - Boards need a human review before ordering (`fab/README.txt` lists every item); the parts catalog is small.
 
 ## Credits
