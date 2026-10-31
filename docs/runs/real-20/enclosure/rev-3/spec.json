@@ -1,0 +1,61 @@
+{
+  "outline": {
+    "widthMm": 50,
+    "heightMm": 30,
+    "thicknessMm": 1.6
+  },
+  "connectors": [
+    {
+      "ref": "J1",
+      "kind": "usb-c",
+      "edge": "bottom",
+      "offsetMm": 25,
+      "widthMm": 9,
+      "heightMm": 3.2
+    },
+    {
+      "ref": "SW1",
+      "kind": "button",
+      "edge": "top",
+      "offsetMm": 25,
+      "widthMm": 3.5,
+      "heightMm": 2
+    }
+  ],
+  "holes": [
+    {
+      "ref": "H1",
+      "xMm": 3,
+      "yMm": 3
+    },
+    {
+      "ref": "H2",
+      "xMm": 47,
+      "yMm": 3
+    },
+    {
+      "ref": "H3",
+      "xMm": 3,
+      "yMm": 27
+    },
+    {
+      "ref": "H4",
+      "xMm": 47,
+      "yMm": 27
+    }
+  ],
+  "wallMm": 2,
+  "clearanceMm": 2,
+  "heightMm": 14,
+  "standoff": {
+    "heightMm": 3,
+    "outerMm": 5,
+    "pilotMm": 1.6
+  },
+  "lid": {
+    "plateMm": 2,
+    "lipMm": 3,
+    "lipWallMm": 1.6,
+    "clearanceMm": 0.2
+  }
+}
