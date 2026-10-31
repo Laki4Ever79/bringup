@@ -3,6 +3,7 @@
 // those: the diff then comes from the per-revision snapshots, and the reason says it was not recorded.
 // Plain ES module: the page imports it from /changelog.js, the tests in Node.
 import { contractDiff } from "./model.js"
+import { PROBLEM } from "./ripple.js"
 
 const WHO = { architect: "Architect", parts: "Parts", firmware: "Firmware", reviewer: "Reviewer", engineer: "You", bench: "Bench", consistency: "Consistency" }
 const who = (role) => WHO[role] ?? role
@@ -75,4 +76,51 @@ export function fileDrift(events) {
 			const name = basename(p.path)
 			return { seq: e.seq, at: e.at, name, path: p.path, reason: p.reason, items: p.items ?? [], line: `${name}: ${p.message}${p.reason === "stale" ? "; not applied" : ""}` }
 		})
+}
+
+// ── The timeline beside 03 Agents: how a change travelled, step by step, with times from the request ──────────────
+const ACTOR = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", engineer: "you", bench: "bench" }
+const BUILT = { board: "board", enclosure: "case", firmware: "firmware" }
+const since = (ms) => (ms < 10_000 ? `+${(Math.max(0, ms) / 1000).toFixed(1)} s` : ms < 60_000 ? `+${Math.round(ms / 1000)} s` : `+${Math.floor(ms / 60_000)}:${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}`)
+
+function step(e) {
+	const p = e.payload ?? {}
+	switch (e.type) {
+		case "change.requested": return p.source?.kind === "file" ? `you edited ${basename(p.source.path)}: ${(p.source.items ?? []).join("; ")}` : `you asked “${p.text}”`
+		case "contract.changed": {
+			const who = ACTOR[p.by] ?? p.by
+			const diff = "after" in p ? readableDiff(p.field, p.before, p.after)[0]?.replace(/^[~+−-] /, "") : null
+			return diff ? `${who}: ${diff}` : `${who} ${p.version === 1 ? "set" : "changed"} ${p.field}`
+		}
+		case "artifact.ready": return `${BUILT[p.kind] ?? p.kind} rebuilt · rev ${p.revision}`
+		case "artifact.failed": return `${BUILT[p.kind] ?? p.kind} build failed · rev ${p.revision}`
+		case "firmware.booted": return p.booted ? `firmware boots in QEMU · rev ${p.revision}` : `firmware did not boot · rev ${p.revision}`
+		case "bench.flashed": return p.ok ? `flashed the real board · rev ${p.revision}` : `flashing the board failed · rev ${p.revision}`
+		case "bench.blink": return `measured on the board: ${typeof p.tiltBlinkMs === "number" ? `tilted ${p.tiltBlinkMs} ms` : `blink ${p.blinkMs} ms`} ${p.pass ? "✓" : "✗"}`
+		default: return null
+	}
+}
+
+// Steps from fromMs up to toMs (exclusive). `start`: a first line when the window has no request (the first design).
+// consistentAtMs: when the change was consistent again (the ripple's), the closing step. The newest `max` steps stay.
+export function rippleTimeline(events, { fromMs, toMs = Infinity, consistentAtMs = null, start = null, max = 7 } = {}) {
+	const steps = []
+	if (start) steps.push({ key: "start", at: fromMs, text: start })
+	let mismatches = 0
+	for (const e of events) {
+		const at = Date.parse(e.at)
+		if (at < fromMs || at >= toMs) continue
+		if (e.type === "consistency.checked") {
+			const v = e.payload.violations ?? []
+			if (v.length && v.length !== mismatches) steps.push({ key: `c${e.seq}`, at, text: `${v.length} mismatch${v.length === 1 ? "" : "es"}: ${PROBLEM[v[0].kind] ?? v[0].kind}` })
+			mismatches = v.length
+			continue
+		}
+		const text = step(e)
+		if (text) steps.push({ key: `e${e.seq}`, at, text })
+	}
+	if (consistentAtMs !== null && consistentAtMs < toMs) steps.push({ key: "done", at: consistentAtMs, text: "consistent: board, case and firmware agree" })
+	steps.sort((a, b) => a.at - b.at)
+	const shown = steps.length > max ? [{ key: "earlier", at: fromMs, text: `… ${steps.length - (max - 1)} earlier steps` }, ...steps.slice(-(max - 1))] : steps
+	return shown.map((s) => ({ key: s.key, t: s.key === "earlier" ? "" : since(s.at - fromMs), text: s.text }))
 }

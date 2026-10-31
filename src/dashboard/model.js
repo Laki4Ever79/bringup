@@ -449,3 +449,30 @@ export function foldOpen(storage, kind) {
 export function setFold(storage, kind, open) {
 	try { storage?.setItem(foldKey(kind), open ? "open" : "closed") } catch {}
 }
+
+
+// ── Drift: saved edits outside the contract (drift.json, owned by the run), with Adopt / Revert ──────────────────
+const DRIFT_KIND = { "not-in-contract": "not in the design", stale: "stale save", adopted: "adopted" }
+export function driftView(drift) {
+	if (!drift) return { open: 0, rows: [], live: false }
+	const live = drift.live === true
+	const rows = [...(drift.entries ?? [])]
+		.sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
+		.map((e) => {
+			const open = e.status === "open"
+			const message = e.status === "adopted" ? `became change request #${String(e.requestId ?? "").replace(/^req-/, "") || "?"}`
+				: e.status === "reverted" ? "reverted to the generated file"
+				: e.kind === "stale" ? `saved against rev ${e.savedRevision}, the design is at rev ${e.designRevision}`
+				: "not in the design contract; the next rebuild will overwrite it"
+			const off = (reason) => ({ enabled: false, reason })
+			const act = !open ? off("") : !live ? off("the run has ended") : null
+			return {
+				id: e.id, name: e.path.split("/").pop(), path: e.path, at: e.savedAt, items: e.items ?? [],
+				kind: DRIFT_KIND[e.kind] ?? e.kind, message, status: e.status,
+				revert: act ?? { enabled: true, reason: "" },
+				adopt: act ?? (e.adoptable ? { enabled: true, reason: "" } : off(e.note ?? "this edit isn't in the design contract: nothing to adopt")),
+				requestId: e.requestId ?? null,
+			}
+		})
+	return { open: rows.filter((r) => r.status === "open").length, rows, live }
+}
