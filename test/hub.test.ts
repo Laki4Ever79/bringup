@@ -354,3 +354,55 @@ test("the dashboard CLI's port: a taken port falls back to a free one and says s
 		blocker.close()
 	}
 })
+
+// --lan: the phone (ntfy's Approve/Reject buttons) reaches the decision route over the network, with the hub's token.
+test("--lan: a decision from another host needs the hub's random token; nothing else is reachable from the LAN", async () => {
+	const root = outRoot()
+	const id = "20261031-120000-aaaaaa"
+	const hub = await serveHub({ outRoot: root, port: 0, lan: { bind: "127.0.0.1" } })
+	try {
+		assert.ok(hub.token && hub.token.length >= 20, `token ${hub.token}`)
+		const lanHost = `192.168.1.50:${new URL(hub.url).port}`
+		const decide = (headers: Record<string, string>) => raw(hub.url, `/api/runs/${id}/decisions`, { method: "POST", headers: { host: lanHost, "content-type": "application/json", ...headers }, body: '{"proposalId":"p-9","approve":true,"reason":"approved from the phone"}' })
+		assert.equal(await decide({}), 403)
+		assert.equal(await decide({ "x-bringup-token": "wrong" }), 403)
+		assert.equal(await decide({ "x-bringup-token": hub.token! }), 201)
+		assert.equal(JSON.parse(readFileSync(join(root, id, "decisions.jsonl"), "utf8")).proposalId, "p-9")
+		// The token opens the decision route only: not the page, not starting runs, not change requests.
+		assert.equal(await raw(hub.url, "/", { headers: { host: lanHost, "x-bringup-token": hub.token! } }), 403)
+		assert.equal(await raw(hub.url, `/api/runs/${id}/requests`, { method: "POST", headers: { host: lanHost, "content-type": "application/json", "x-bringup-token": hub.token! }, body: '{"text":"x"}' }), 403)
+		// The laptop's own page still works as before.
+		assert.equal((await post(hub.url, `/api/runs/${id}/decisions`, { proposalId: "p-10", approve: false, reason: "" })).status, 201)
+	} finally {
+		await hub.close()
+	}
+})
+
+test("without --lan there is no token and another host's decision is refused, token or not", async () => {
+	const hub = await serveHub({ outRoot: outRoot(), port: 0 })
+	try {
+		assert.equal(hub.token, undefined)
+		const lanHost = `192.168.1.50:${new URL(hub.url).port}`
+		assert.equal(await raw(hub.url, "/api/runs/20261031-120000-aaaaaa/decisions", { method: "POST", headers: { host: lanHost, "content-type": "application/json", "x-bringup-token": "anything" }, body: '{"proposalId":"p-9","approve":true}' }), 403)
+	} finally {
+		await hub.close()
+	}
+})
+
+test("the hub hands an adopted run's trace lines to the notifier (ntfy), so a held change reaches the phone", async () => {
+	const root = outRoot()
+	const seen: [string, string][] = []
+	const hub = await serveHub({ outRoot: root, port: 0, notify: async (runId, l) => void seen.push([runId, l]) })
+	try {
+		const id = "demo-20261031-150000"
+		mkdirSync(join(root, id))
+		writeFileSync(join(root, id, "trace.jsonl"), line(0, "run.started", { review: false, engineerApproval: true, noHardware: true, bench: false, stay: true }))
+		hub.adopt(id, { done: new Promise(() => {}), kill: () => {} })
+		writeFileSync(join(root, id, "trace.jsonl"), line(0, "run.started", {}) + line(1, "change.proposed", { proposalId: "p-1", field: "pins", by: "firmware", reason: "LED", needsEngineer: true }))
+		const deadline = Date.now() + 3000
+		while (!seen.some(([, l]) => l.includes("change.proposed")) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50))
+		assert.ok(seen.some(([r, l]) => r === id && l.includes('"p-1"')), JSON.stringify(seen))
+	} finally {
+		await hub.close()
+	}
+})
