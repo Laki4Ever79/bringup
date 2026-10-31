@@ -123,3 +123,18 @@ test("an engineer request reaches the parts agent too, and the engineer's word o
 	assert.match(msg, /The engineer's word on stock counts over search_parts/)
 	assert.ok(!t.turns(t.parts.getId()).some((m) => m.includes("Battery BLE temperature logger")), "the brief itself is not a change request")
 })
+
+// Real-model file sync (docs/runs/file-sync/real): a pin-mismatch against a firmware not yet rebuilt woke the firmware
+// agent, which changed the contract back to the stale build's pin. The builder fixes a mismatch by rebuilding.
+test("a pin-mismatch (firmware not rebuilt yet) wakes no agent; a failed firmware build still does", async () => {
+	const t = await drafted()
+	const message = "firmware drives I2C_SDA on GPIO5, contract says GPIO6"
+	const { checkConsistency } = await import("../src/contract/consistency.ts")
+	const affects = checkConsistency(t.state.contract.snapshot(), { firmware: { revision: 1, ok: true, pins: { I2C_SDA: 99, I2C_SCL: 99 }, log: "" } }).find((v) => v.kind === "pin-mismatch")!.affects
+	emit(makeEvent("consistency.checked", t.desk.getId(), { revision: t.state.contract.revision, violations: [{ kind: "pin-mismatch", message, fields: ["pins"], affects }] }), t.desk.getId())
+	await new Promise((r) => setTimeout(r, 500))
+	assert.ok(!t.turns(t.firmware.getId()).some((m) => m.includes(message)), "the firmware agent was not woken")
+	const error = "src/main.cpp:3: error: 'PIN_X' was not declared"
+	t.fail("firmware", t.state.contract.revision, error)
+	await waitFor(() => t.turns(t.parts.getId()).some((m) => m.includes(error)))
+})
