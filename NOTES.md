@@ -167,3 +167,29 @@ It took two fixes:
 - No SHT40 in emulation, so `SENSOR FAIL` is expected; a boot counts when `bringup rev N` appears on serial.
 - Wokwi CLI is the alternative backend (it can simulate the SHT40) but needs `WOKWI_CLI_TOKEN`.
 - `test/emulator.int.test.ts` skips while `tools/qemu` is missing.
+
+## Optional: Wokwi firmware simulation (the sensor answers)
+
+QEMU boots the firmware but has no I2C sensor, so every QEMU boot prints `SENSOR FAIL`. Wokwi can run the same
+firmware with the design's sensor answering: `npm run bringup -- simulate <runDir>` builds a Wokwi project from the
+contract (`src/codegen/wokwi.ts`: the ESP32-C3 and the sensor on the contract's I2C pins), runs one session of at most
+30 s, and passes when the firmware prints `SENSOR OK 21.50 C 48.0 %RH` and stores it (`HISTORY slot`). The result goes
+to `<runDir>/simulation.json` and the report. Without the pieces below it is skipped, and says why.
+
+1. A token: create one at wokwi.com (CI dashboard) and add `WOKWI_CLI_TOKEN=...` to `.env`. The free plan has 50 minutes
+   per 30 days and 5 minutes per session, so Bringup only simulates on demand, never on every build.
+2. The CLI, repo-local, pinned and checksum-checked (no `curl | sh`, nothing system-wide):
+   ```bash
+   mkdir -p tools/wokwi-cli && cd tools/wokwi-cli
+   curl -sSL -o wokwi-cli https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-linuxstatic-x64
+   echo "3c9d6da007d008a3822ab468318037285440055132c59fd659d7306e40f14258  wokwi-cli" | sha256sum -c - && chmod +x wokwi-cli
+   ```
+3. The sensor stand-ins: Wokwi has no SHT40 or SHTC3, so `templates/wokwi/chips/*.chip.c` are custom chips that answer
+   each sensor's I2C commands with a fixed reading. Compile them to WebAssembly into `tools/wokwi-cli/chips/` with
+   Wokwi's clang image (not yet verified on this machine):
+   ```bash
+   mkdir -p tools/wokwi-cli/chips
+   for c in sht40 shtc3; do docker run --rm -u $(id -u):$(id -g) -v "$PWD/templates/wokwi/chips":/src -v "$PWD/tools/wokwi-cli/chips":/out \
+     wokwi/builder-clang-wasm clang --target=wasm32-unknown-wasi -nostartfiles -Wl,--import-memory -Wl,--export-table \
+     -Wl,--no-entry -Werror -o /out/$c.chip.wasm /src/$c.chip.c; done
+   ```

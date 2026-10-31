@@ -84,7 +84,8 @@ export interface Payloads {
 	"artifact.failed": { kind: ArtifactKind; revision: number; error: string }
 	// The newest compiled firmware booted in Espressif's QEMU (agents/emulator.ts). bootRevision is the contract
 	// revision the firmware printed on serial, null if it never got that far. Not an artifact: it never blocks settling.
-	"firmware.booted": { revision: number; booted: boolean; bootRevision: number | null; serialTail: string }
+	// backend: which simulator ran it (Espressif's QEMU boots it; Wokwi, on demand, is reported in simulation.json).
+	"firmware.booted": { revision: number; booted: boolean; bootRevision: number | null; serialTail: string; backend?: "qemu" | "wokwi" }
 	"consistency.checked": { revision: number; violations: Violation[] }
 	"grounding.checked": { revision: number; findings: GroundingFinding[] }
 	// The design is consistent and quiet; the brief reviewer judges it before it settles.

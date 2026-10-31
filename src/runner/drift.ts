@@ -17,9 +17,11 @@ export interface DriftEntry {
 	savedRevision: number
 	designRevision: number
 	// adopted: the edit mapped to a contract field and went out as the engineer's change request.
-	kind: "not-in-contract" | "stale" | "adopted"
+	// rebased: saved against an older revision, independent of what changed since, sent as a request against HEAD;
+	// resaved: the file changed but the design did not (a KiCad re-save).
+	kind: "not-in-contract" | "stale" | "adopted" | "rebased" | "resaved"
 	items: string[]
-	status: "open" | "adopted" | "reverted"
+	status: "open" | "adopted" | "reverted" | "rebased" | "re-saved"
 	requestId?: string
 	// Whether the edit maps to a contract field, so it can be sent as a change request.
 	adoptable: boolean
@@ -65,8 +67,13 @@ export function driftStatusLines(d: DriftFile, where: string): string[] {
 	if (d.entries.length === 0) return [`Drift in ${where} (${state}): nothing drifted.`]
 	const lines = [`Drift in ${where} (${state}):`]
 	for (const e of d.entries) {
-		const why = e.kind === "stale" ? `stale, saved at rev ${e.savedRevision}, design at rev ${e.designRevision}` : e.kind === "not-in-contract" ? `not in the contract, saved at rev ${e.savedRevision}` : `saved at rev ${e.savedRevision}`
-		const head = e.status === "adopted" && e.requestId ? `→ ${e.requestId} (${why})` : `(${why})`
+		const why =
+			e.kind === "stale" ? `stale, saved at rev ${e.savedRevision}, design at rev ${e.designRevision}` :
+			e.kind === "not-in-contract" ? `not in the contract, saved at rev ${e.savedRevision}` :
+			e.kind === "rebased" ? `saved at rev ${e.savedRevision}, rebased onto rev ${e.designRevision}` :
+			e.kind === "resaved" ? "re-saved, no design change" :
+			`saved at rev ${e.savedRevision}`
+		const head = e.requestId ? `→ ${e.requestId} (${why})` : `(${why})`
 		lines.push(`  ${e.status.padEnd(8)}  ${e.id}  ${e.path}  ${head}`)
 		for (const item of e.items) lines.push(`              ${item}`)
 	}
