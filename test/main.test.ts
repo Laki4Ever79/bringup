@@ -20,6 +20,14 @@ test("parseArgs reads the brief and flags", () => {
 	assert.deepEqual(parseArgs(["--out", "/tmp/x", brief]), { briefPath: brief, mock: false, noHardware: false, review: true, engineerApproval: false, outDir: "/tmp/x" })
 })
 
+test("parseArgs reads repeated --change requests, in order, without taking one for the brief", () => {
+	const a = parseArgs(["--change", "make the board 40 mm wide", brief, "--mock", "--change", "the SHT40 is out of stock"]) as { briefPath: string; changes: string[] }
+	assert.equal(a.briefPath, brief)
+	assert.deepEqual(a.changes, ["make the board 40 mm wide", "the SHT40 is out of stock"])
+	assert.match((parseArgs([brief, "--change"]) as { error: string }).error, /--change/)
+	assert.match((parseArgs([brief, "--change", "--mock"]) as { error: string }).error, /--change/)
+})
+
 test("parseArgs rejects --out without a value instead of crashing", () => {
 	assert.match((parseArgs([brief, "--out"]) as { error: string }).error, /--out/)
 	assert.match((parseArgs([brief, "--out", "--mock"]) as { error: string }).error, /--out/)

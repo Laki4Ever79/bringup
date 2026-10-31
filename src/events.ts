@@ -43,6 +43,8 @@ export interface BenchCheck {
 export interface Payloads {
 	// The run's options, first thing, so a dashboard can show what is switched off.
 	"run.started": { review: boolean; engineerApproval: boolean; noHardware: boolean; bench: boolean }
+	// An engineer change request (requests.jsonl, line N = req-N) as it is forwarded to the agents.
+	"change.requested": { id: string; text: string }
 	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole }
 	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string; needsEngineer: boolean }
 	// The final outcome of a held change (votes are change.decided), timeouts included.
