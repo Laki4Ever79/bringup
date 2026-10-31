@@ -6,6 +6,8 @@ import { batteryLifeDays, effectiveSleepUa, estimatePower, measuredAverageMa } f
 import type { ContractSnapshot, Rail } from "../contract/types.ts"
 import { isEvent, makeEvent, type BenchCheck, type BenchSample, type BenchSourceName, type Payloads } from "../events.ts"
 import { measureCycles, worthProposing, type MeterSample } from "../bench/measure.ts"
+import { blinkVerdict, measureBlink } from "../bench/blink.ts"
+import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 import { emit, state } from "../runtime.ts"
 import type { Bridge, BridgeHello, BridgeLine } from "../tools/bench-bridge.ts"
 import { Rebuilder } from "../tools/rebuilder.ts"
@@ -27,6 +29,8 @@ export interface BenchOptions {
 	liveCheckMs?: number
 	bootTimeoutMs?: number
 	batchMs?: number
+	// How long to keep watching for the LED periods the live check didn't catch, e.g. while the person tilts the board.
+	blinkWaitMs?: number
 }
 
 export interface Bench extends Human {
@@ -62,6 +66,7 @@ export function createBench(opts: BenchOptions): Bench {
 	const windowMs = opts.windowMs ?? 60_000
 	const liveCheckMs = opts.liveCheckMs ?? 5_000
 	const bootTimeoutMs = opts.bootTimeoutMs ?? 10_000
+	const blinkWaitMs = opts.blinkWaitMs ?? 30_000
 	const self = { id: "" }
 	const send = <T extends keyof Payloads>(type: T, payload: Payloads[T]) => emit(makeEvent(type, self.id, payload), self.id)
 
@@ -196,6 +201,32 @@ export function createBench(opts: BenchOptions): Bench {
 		]
 	}
 
+	// The LED periods, measured from the telemetry against the contract's behavior. If the live window lacks one (the
+	// tilted period needs the board tilted), keep watching up to blinkWaitMs; a real board asks the person to tilt it.
+	const watchBlink = async (revision: number, live: BridgeLine[], snapshot: ContractSnapshot, imu: BenchCheck): Promise<BenchCheck> => {
+		const expected = snapshot.values.behavior ?? DEFAULT_BEHAVIOR
+		const tilts = expected.tiltDeg < 90 && expected.tiltBlinkMs !== expected.blinkMs && imu.pass && !imu.skipped
+		const complete = (m: ReturnType<typeof measureBlink>) => m.blinkMs !== null && (!tilts || m.tiltBlinkMs !== null)
+		const lines = [...live]
+		let m = measureBlink(lines, expected.tiltDeg)
+		if (!complete(m) && revision >= latest) {
+			const text = `Tilt the board more than ${expected.tiltDeg}° and hold it there for 3 s, so the bench can time the tilted blink.`
+			const ask = tilts && m.tiltBlinkMs === null && source === "real"
+			if (ask) send("bench.instruction", { revision, action: "tilt", text, state: "waiting" })
+			lines.push(...(await collect(blinkWaitMs, (line) => {
+				if (line.k !== "s") return false
+				lines.push(line)
+				m = measureBlink(lines, expected.tiltDeg)
+				return complete(m)
+			}, true)).filter((l) => l.k !== "s"))
+			m = measureBlink(lines, expected.tiltDeg)
+			if (ask) send("bench.instruction", { revision, action: "tilt", text, state: m.tiltBlinkMs !== null ? "done" : "timeout" })
+		}
+		const check = blinkVerdict(m, expected)
+		send("bench.blink", { revision, source, blinkMs: m.blinkMs, tiltBlinkMs: m.tiltBlinkMs, expected, pass: check.pass, detail: check.detail })
+		return check
+	}
+
 	const measure = async (revision: number, snapshot: ContractSnapshot): Promise<{ check: BenchCheck | null; measured: Payloads["bench.measured"] | null } | null> => {
 		const d = snapshot.values.requirements?.dutyCycle
 		const sleepFloor = effectiveSleepUa(snapshot)
@@ -272,6 +303,7 @@ export function createBench(opts: BenchOptions): Bench {
 			const crash = live.find((l) => l.k === "boot" && CRASH_RESETS.has(String(l.reset)))
 			if (crash) checks[0] = { name: "boot", pass: false, detail: `booted rev ${revision}, then reset by ${crash.reset}` }
 			checks.push(...liveChecks(live))
+			checks.push(await watchBlink(revision, live, snapshot, checks.find((c) => c.name === "imu")!))
 			if (hello.meter && revision >= latest) {
 				const m = await measure(revision, snapshot)
 				if (m) {
