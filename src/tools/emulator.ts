@@ -53,7 +53,7 @@ function run(cmd: string, args: string[], timeoutMs: number, until?: RegExp, env
 }
 
 // Merges bootloader, partitions, boot_app0 and the app into one image QEMU can mount as flash.
-async function mergeFlash(fwDir: string): Promise<{ image: string | null; log: string }> {
+export async function mergeFlash(fwDir: string): Promise<{ image: string | null; log: string }> {
 	const build = join(fwDir, ".pio/build/esp32c3")
 	const parts: [string, string][] = [
 		["0x0", join(build, "bootloader.bin")],

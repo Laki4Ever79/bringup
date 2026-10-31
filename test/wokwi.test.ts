@@ -30,7 +30,7 @@ test("describeEnv says whether Wokwi can run, and never prints the token", () =>
 test("the Wokwi project comes from the contract: the C3, the contract's sensor chip on its I2C pins, power and ground", () => {
 	const c = fixtureContract() // SHT40 on I2C_SDA GPIO8, I2C_SCL GPIO9
 	const p = wokwiProject(c, "../.pio/build/esp32c3")
-	assert.match(p.toml, /^firmware = '\.\.\/\.pio\/build\/esp32c3\/firmware\.bin'$/m)
+	assert.match(p.toml, /^firmware = '\.\.\/\.pio\/build\/esp32c3\/flash\.bin'$/m)
 	assert.match(p.toml, /^elf = '\.\.\/\.pio\/build\/esp32c3\/firmware\.elf'$/m)
 	assert.match(p.toml, /^\[\[chip\]\]\nname = 'sht40'\nbinary = 'chips\/sht40\.chip\.wasm'$/m)
 	const d = JSON.parse(p.diagram)

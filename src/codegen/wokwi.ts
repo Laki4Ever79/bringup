@@ -34,7 +34,8 @@ export function wokwiProject(s: ContractSnapshot, firmwareDir: string): { toml: 
 	const toml = [
 		"[wokwi]",
 		"version = 1",
-		`firmware = '${firmwareDir}/firmware.bin'`,
+		// The merged flash image (bootloader, partition table, app), so the LittleFS partition for the history exists.
+		`firmware = '${firmwareDir}/flash.bin'`,
 		`elf = '${firmwareDir}/firmware.elf'`,
 		...(chip ? ["", "[[chip]]", `name = '${chip}'`, `binary = 'chips/${chip}.chip.wasm'`] : []),
 		"",
