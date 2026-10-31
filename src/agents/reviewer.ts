@@ -109,9 +109,23 @@ export function firmwareFacts(s: ContractSnapshot): string[] {
 	const from = contractPeriod !== undefined && contractPeriod > 0 ? "requirements.dutyCycle.periodS" : "the template's default; the contract has no duty cycle"
 	const duty = s.values.requirements?.dutyCycle
 	const advertise = duty ? `${bleAdvertiseMs(duty)} ms (activeMs minus the reading)` : `${num(/#define BLE_ADVERTISE_MS (\d+)/)} ms (the template's default; the contract has no duty cycle)`
+	// The firmware has a sensor exactly when pins.h has both I2C pins (main.cpp HAS_SENSOR), and wakes early on a pin
+	// named BUTTON on GPIO0..5.
+	const pins = s.values.pins ?? []
+	const button = pins.find((p) => p.signal === "BUTTON" && p.gpio >= 0 && p.gpio <= 5)
+	const buttonFact = button
+		? `- Firmware button: BUTTON on GPIO${button.gpio} wakes it from deep sleep early (pressed = low, to GND).`
+		: "- Firmware button: the firmware wakes on a pin named exactly BUTTON on GPIO0..5 (the ESP32-C3's deep-sleep wake pins); this design has none, so no button wakes it."
+	if (!(pins.some((p) => p.signal === "I2C_SDA") && pins.some((p) => p.signal === "I2C_SCL")))
+		return [
+			`- Firmware (product build of templates/fw): the design has no sensor (no I2C_SDA/I2C_SCL pins), so on each wake it reads nothing and stores nothing: it blinks the status LED ${blinkMs} ms, then advertises over BLE for ${advertise}, then deep-sleeps ${periodS} s (${from}). The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
+			`- Firmware BLE: the same GATT service as with a sensor, but the latest reading reads 0xFFFFFFFE ("no sensor") and the history stays empty; a phone that connects keeps the device awake until it disconnects or ${connectedS} s pass.`,
+			buttonFact,
+		]
 	return [
 		`- Firmware (product build of templates/fw): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash (LittleFS, the last ${Math.floor((days * 86400) / periodS)} readings: ${days} days at ${periodS} s (${daysFrom})), blinks the status LED ${blinkMs} ms (a double blink if the sensor fails), then advertises over BLE for ${advertise}, then deep-sleeps ${periodS} s (${from}). The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
 		`- Firmware BLE: a GATT service with the latest reading, the history count and the history read newest first in chunks of ${chunk} records; a phone that connects keeps the device awake until it disconnects or ${connectedS} s pass.`,
+		buttonFact,
 	]
 }
 
