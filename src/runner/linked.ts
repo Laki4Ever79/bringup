@@ -9,7 +9,7 @@ import { emit, state } from "../runtime.ts"
 import { readBoardEdits } from "../tools/kicad-read.ts"
 import { DRIFT_ACTIONS_FILE, writeDrift, type DriftAction, type DriftEntry } from "./drift.ts"
 import { boardEdits, pinsEdits } from "./file-sync.ts"
-import { commitPaths, ensureRepo, lastBringupCommit, showAt } from "./git.ts"
+import { commitPaths, ensureRepo, git, lastBringupCommit, showAt } from "./git.ts"
 import { appendRequest, REQUESTS_FILE, watchJsonl } from "./requests.ts"
 import { changeRipples, type TraceEvent } from "./ripple.ts"
 
@@ -108,7 +108,10 @@ export function rippleMessage(events: TraceEvent[], revision: number): string {
 		lines.push(`Consistent again: ${last.durationMs === null ? "not reached" : `${(last.durationMs / 1000).toFixed(1)} s`}`)
 	}
 	lines.push(`Checks: ${checked ? `${checked.payload.violations.length} violation(s)` : "none run"}${review ? `; brief review ${review.payload.verdict}` : ""}`)
-	lines.push("", `Bringup-Revision: ${revision}`)
+	// Trailers: the revision (the base for every later save), and the request with where it came from (the Files panel).
+	const request = events.findLast((e) => e.type === "change.requested")
+	const source = !request ? "brief" : request.payload.source?.kind === "file" ? "file" : "typed"
+	lines.push("", `Bringup-Revision: ${revision}`, ...(request ? [`Bringup-Request: ${request.payload.id}`] : []), `Bringup-Source: ${source}`)
 	return lines.join("\n")
 }
 
@@ -179,7 +182,9 @@ export function createLinkedSync(opts: { outDir: string; linkDir?: string; debou
 			writeFileSync(join(dir, rel), content)
 			changed.push(rel)
 		}
-		commitPaths(dir, changed, rippleMessage(seen, revision))
+		const message = rippleMessage(seen, revision)
+		const commit = commitPaths(dir, changed, message)
+		emit(makeEvent("linked.committed", self.id, { commit: commit.slice(0, 7), revision, subject: message.split("\n")[0], files: changed }), self.id)
 		settledEdits.clear()
 		save()
 	}
@@ -286,6 +291,7 @@ export function createLinkedSync(opts: { outDir: string; linkDir?: string; debou
 			console.error("[linked] cannot watch the linked folder; edits won't sync:", error)
 		}
 		writeFileSync(join(opts.outDir, LINKED_FILE), JSON.stringify({ dir }, null, 2))
+		emit(makeEvent("linked.attached", self.id, { dir }), self.id)
 		// Linked after the design settled: commit what is there now.
 		if (seen.some((e) => e.type === "design.settled")) commitRevision()
 		save()
@@ -419,4 +425,44 @@ export function linkedStatusLines(outDir: string): string[] {
 	}
 	lines.push(`  ${clean} file(s) as Bringup committed them`)
 	return lines
+}
+
+export interface LinkedCommit {
+	id: string
+	revision: number
+	subject: string
+	at: string
+	source: "brief" | "typed" | "file"
+	requestId: string | null
+}
+
+export interface LinkedInfo {
+	dir: string
+	git: boolean
+	// Uncommitted changes to files Bringup tracks there: the engineer's edits.
+	dirty: boolean
+	commits: LinkedCommit[]
+}
+
+// For the hub's Files panel: the linked folder and Bringup's commits there, newest first (null if not linked).
+export function linkedInfo(outDir: string): LinkedInfo | null {
+	const p = join(outDir, LINKED_FILE)
+	if (!existsSync(p)) return null
+	const dir = JSON.parse(readFileSync(p, "utf8")).dir as string
+	const isGit = existsSync(join(dir, ".git"))
+	if (!isGit) return { dir, git: false, dirty: false, commits: [] }
+	let dirty = false
+	let log = ""
+	try {
+		dirty = git(dir, ["status", "--porcelain", "--untracked-files=no"]).trim() !== ""
+		const trailer = (key: string) => `%(trailers:key=${key},valueonly,separator=%x2C)`
+		log = git(dir, ["log", "--author=bringup@localhost", `--format=%h%x1f%cI%x1f%s%x1f${trailer("Bringup-Revision")}%x1f${trailer("Bringup-Source")}%x1f${trailer("Bringup-Request")}%x1e`])
+	} catch {
+		// No commits yet.
+	}
+	const commits = log.split("\x1e").map((r) => r.trim()).filter(Boolean).map((r) => {
+		const [id, at, subject, revision, source, requestId] = r.split("\x1f").map((x) => x.trim())
+		return { id, at, subject, revision: Number(revision), source: (source || "brief") as LinkedCommit["source"], requestId: requestId || null }
+	})
+	return { dir, git: true, dirty, commits }
 }

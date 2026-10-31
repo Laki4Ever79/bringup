@@ -72,6 +72,9 @@ export interface Payloads {
 	// revision than the design is at. Never dropped silently.
 	// A drift entry (runner/drift.ts) settled by an action: reverted to the generated file, or adopted as request requestId.
 	"drift.resolved": { id: string; status: "adopted" | "reverted"; requestId?: string }
+	// A linked git working copy (runner/linked.ts): attached, and each settled revision committed there.
+	"linked.attached": { dir: string }
+	"linked.committed": { commit: string; revision: number; subject: string; files: string[] }
 	"file.drift": { path: string; savedRevision: number; designRevision: number; reason: "not-in-contract" | "stale"; items: string[]; message: string }
 	// reason, before, after and cause: why the field changed (older traces have only field, version, revision, by).
 	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole; reason?: string; before?: unknown; after?: unknown; cause?: Cause }
