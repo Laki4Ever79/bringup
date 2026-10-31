@@ -35,18 +35,19 @@ export function missingTools(env: Env): { tool: string; install: string }[] {
 	return (Object.keys(INSTALL) as (keyof typeof INSTALL)[]).filter((k) => !env[k]).map((k) => INSTALL[k])
 }
 
-function reviewSection(s: BringupState): string[] {
+// In a --mock run the reviewer, the field owners and the agents follow scripts: say so wherever a line reads like a judgement.
+function reviewSection(s: BringupState, mock: boolean): string[] {
 	const r = s.review
 	if (!r.enabled) return ["Brief review: skipped (--no-review).", ""]
 	const last = r.results.at(-1)
 	const n = r.results.length
 	const head = last
-		? `Verdict: ${last.verdict} after ${n} review${n === 1 ? "" : "s"} (at most ${r.maxRounds} fix round${r.maxRounds === 1 ? "" : "s"}).`
+		? `Verdict: ${last.verdict}${mock ? " (scripted reviewer, not a model verdict)" : ""} after ${n} review${n === 1 ? "" : "s"} (at most ${r.maxRounds} fix round${r.maxRounds === 1 ? "" : "s"}).`
 		: r.missingVerdict
 			? "No verdict: the reviewer ended its turn without submitting a review, so the design settled on the deterministic checks alone."
 			: "No verdict: the design never reached the reviewer (it did not become consistent and quiet)."
 	const rounds = r.results.map((x) => [
-		`- Review ${x.round} of revision ${x.revision}: ${x.verdict}`,
+		`- Review ${x.round} of revision ${x.revision}: ${x.verdict}${mock ? " (scripted)" : ""}`,
 		...x.findings.map((f) => `  - ${f.severity} (${f.fields.join(", ") || "general"}): ${f.issue} Suggestion: ${f.suggestion}`),
 	])
 	return ["## Brief review", "", head, ...rounds.flat(), ""]
@@ -146,7 +147,7 @@ export function changeRequestsSection(outDir: string): string[] {
 	]
 }
 
-export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean; bench?: boolean } = {}): string {
+export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean; bench?: boolean; mock?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
 	const violations = checkConsistency(snapshot, s.artifacts)
 	const c = counts(join(outDir, "trace.jsonl"))
@@ -159,6 +160,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`# Bringup report`,
 		``,
 		`Status: ${status} at contract revision ${snapshot.revision}`,
+		...(opts.mock ? [`Models: mock (scripted agents: no model judged this design)`] : []),
 		`Violations: ${violations.length}`,
 		...violations.map((x) => `- ${x.kind}: ${x.message}`),
 		``,
@@ -182,7 +184,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Estimated battery life: ${batteryLifeSummary(estimatePower(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""))}`,
 		``,
 		...changeRequestsSection(outDir),
-		...reviewSection(s),
+		...reviewSection(s, Boolean(opts.mock)),
 		`## Artifacts`,
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
 		...drcLines(s.artifacts.board?.drc),
@@ -198,7 +200,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...(opts.bench ? bringupSection(join(outDir, "trace.jsonl")) : []),
 		`## Coordination`,
 		`- Contract changes: ${c["contract.changed"] ?? 0}`,
-		`- Change requests held by interception: ${c["change.proposed"] ?? 0} (approved ${c.approved ?? 0}, rejected ${c.rejected ?? 0})`,
+		`- Change requests held by interception: ${c["change.proposed"] ?? 0} (approved ${c.approved ?? 0}, rejected ${c.rejected ?? 0}${opts.mock ? "; by scripted owners" : ""})`,
 		`- Consistency checks: ${c["consistency.checked"] ?? 0}; violations caught along the way: ${c.violationsSeen ?? 0}`,
 		`- Artifacts built: ${c["artifact.ready"] ?? 0}; failed builds: ${c["artifact.failed"] ?? 0}; agent crashes: ${c["agent.halted"] ?? 0}`,
 		``,
