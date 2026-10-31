@@ -386,14 +386,23 @@ export function mountPcb(host, opts = {}) {
 	let marks = { added: [], changed: [] }
 	function applyMarks() {
 		for (const m of svg.querySelectorAll(".pcb-mark, .pcb-mark-tag")) m.remove()
+		// A tag that would sit on one already placed is left out: the glow still says it.
+		const placed = []
+		const free = (x0, x1, y) => !placed.some((p) => x0 < p.x1 && x1 > p.x0 && Math.abs(y - p.y) < 1.4)
+		const area = (ref) => { const o = byRef.get(ref)?.outline; return o ? Number(o.getAttribute("width")) * Number(o.getAttribute("height")) : 0 }
 		for (const [refs, kind, label] of [[marks.added, "new", "NEW"], [marks.changed, "changed", "CHANGED"]]) {
+			// One tag per kind, on the biggest part (the sensor, not its pull-ups); the rest glow without one.
+			const tagged = [...refs].sort((a, b) => area(b) - area(a))[0]
 			for (const ref of refs) {
 				const hit = byRef.get(ref)
 				if (!hit) continue
 				const o = hit.outline
 				const x = Number(o.getAttribute("x")), y = Number(o.getAttribute("y")), w = Number(o.getAttribute("width"))
 				el("rect", { class: `pcb-mark pcb-mark-${kind}`, x: x - 0.5, y: y - 0.5, width: w + 1, height: Number(o.getAttribute("height")) + 1, rx: 0.6, filter: "url(#pcb-glow)" }, hit.group)
-				const tag = el("text", { class: `pcb-mark-tag pcb-mark-${kind}`, x: x + w / 2, y: y - 0.9, "font-size": 1.15 }, hit.group)
+				const half = label.length * 0.42, tx = x + w / 2, ty = y - 0.9
+				if (ref !== tagged || !free(tx - half, tx + half, ty)) continue
+				placed.push({ x0: tx - half, x1: tx + half, y: ty })
+				const tag = el("text", { class: `pcb-mark-tag pcb-mark-${kind}`, x: tx, y: ty, "font-size": 1.15 }, hit.group)
 				tag.textContent = label
 			}
 		}
