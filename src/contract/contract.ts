@@ -149,10 +149,12 @@ function shapeError(field: FieldName, value: unknown): string | null {
 		case "pins":
 			return list((x) => isStr(x.signal) && isNum(x.gpio) && isStr(x.partRef) && isStr(x.partPin), "{signal, gpio, partRef, partPin}")
 		case "behavior": {
-			const ok = obj(value) && isNum(value.blinkMs) && isNum(value.tiltBlinkMs) && isNum(value.tiltDeg)
-			return ok && (value.blinkMs as number) > 0 && (value.tiltBlinkMs as number) > 0 && (value.tiltDeg as number) >= 0 && (value.tiltDeg as number) <= 90
-				? null
-				: "behavior must be {blinkMs > 0, tiltBlinkMs > 0, tiltDeg from 0 to 90}"
+			const shape = 'behavior must be exactly {blinkMs, tiltBlinkMs, tiltDeg}: numbers, blinkMs > 0, tiltBlinkMs > 0, tiltDeg from 0 to 90, e.g. {"blinkMs":1000,"tiltBlinkMs":200,"tiltDeg":20}. It sets only the status LED blink period and the tilt threshold'
+			if (!obj(value)) return shape
+			const extra = Object.keys(value).filter((k) => !["blinkMs", "tiltBlinkMs", "tiltDeg"].includes(k))
+			if (extra.length > 0) return `${shape}; it has no ${extra.join(", ")}`
+			const ok = isNum(value.blinkMs) && isNum(value.tiltBlinkMs) && isNum(value.tiltDeg)
+			return ok && (value.blinkMs as number) > 0 && (value.tiltBlinkMs as number) > 0 && (value.tiltDeg as number) >= 0 && (value.tiltDeg as number) <= 90 ? null : shape
 		}
 	}
 }

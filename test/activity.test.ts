@@ -15,7 +15,9 @@ test("each Mozaik loop event maps to a phase and a short text", () => {
 	assert.deepEqual(describeLoopEvent("function_call.started", call("decide_change", { proposalId: "p-1", approve: true, reason: "ok" })), { phase: "tool", text: "decide_change: approve p-1" })
 	assert.deepEqual(describeLoopEvent("function_call.completed", { type: "function_call_output", callId: "c1", output: { text: '{"status":"applied","version":2,"revision":9}' } }), { phase: "tool-result", text: "applied (v2, rev 9)" })
 	assert.deepEqual(describeLoopEvent("model.answer", { answer: { type: "message", role: "assistant", content: { text: "Contract drafted." } } }), { phase: "answer", text: "Contract drafted." })
-	assert.deepEqual(describeLoopEvent("interception.started", { nextStateId: "function_call", input: call("propose_contract_change", { field: "pins", value: [], baseVersion: 1, reason: "" }) }), { phase: "held", text: "held for approval: propose_contract_change pins" })
+	assert.deepEqual(describeLoopEvent("interception.started", { nextStateId: "function_call", input: call("propose_contract_change", { field: "pins", value: [], baseVersion: 1, reason: "" }) }), { phase: "held", text: "held for approval: propose_contract_change pins ← 0 items (base v1)" })
+	// Real run 15: ten held behavior proposals were refused for their shape, and the trace never showed the value.
+	assert.deepEqual(describeLoopEvent("interception.started", { nextStateId: "function_call", input: call("propose_contract_change", { field: "behavior", value: { blinkOnRead: true }, baseVersion: 0, reason: "" }) }), { phase: "held", text: 'held for approval: propose_contract_change behavior ← {"blinkOnRead":true} (base v0)' })
 	assert.deepEqual(describeLoopEvent("interception.finished", { nextStateId: "function_call", input: call("propose_contract_change", { field: "pins" }) }), { phase: "released", text: "released: propose_contract_change" })
 	// Turned back to the model instead (rejected by the owner, or refused before holding): say what it was told.
 	const back = (text: string) => ({ nextStateId: "inference", input: { context: { getItems: () => [{ output: { text } }] } } })

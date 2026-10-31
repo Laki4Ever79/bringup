@@ -61,7 +61,9 @@ function bootLine(tracePath: string, env: Env, noHardware: boolean): string {
 		: []
 	const last = boots.at(-1)?.payload
 	if (!last) return `${label} not run (no firmware compiled)`
-	if (last.booted) return `${label} booted, printed revision ${last.bootRevision}`
+	// QEMU emulates no I2C device, so the firmware's sensor read always fails there; say so, so it isn't read as a bug.
+	const sensorNote = /SENSOR FAIL/.test(last.serialTail) ? "; SENSOR FAIL is expected: QEMU emulates no I2C sensor" : ""
+	if (last.booted) return `${label} booted, printed revision ${last.bootRevision}${sensorNote}`
 	return `${label} did NOT boot (firmware rev ${last.revision}): ${last.serialTail.trim().split("\n").at(-1) ?? ""}`
 }
 
@@ -106,6 +108,13 @@ function fabSection(s: BringupState, stubbed: boolean): string[] {
 
 const cell = (text: string) => text.replace(/\|/g, "\\|").replace(/\s+/g, " ")
 
+// What the re-armed brief review did after a request had rippled, in words.
+function followUps(f: { fieldsChanged: string[]; rounds: number }): string {
+	if (f.rounds === 0) return "no review yet"
+	const rounds = `${f.rounds} review round${f.rounds === 1 ? "" : "s"}`
+	return `then ${rounds} changed ${f.fieldsChanged.join(", ") || "nothing"}`
+}
+
 // The engineer's mid-run change requests and what each one rippled through (the same rows as ripples.json).
 export function changeRequestsSection(outDir: string): string[] {
 	const ripples = changeRipples(readTrace(outDir))
@@ -113,11 +122,11 @@ export function changeRequestsSection(outDir: string): string[] {
 	return [
 		`## Change requests`,
 		``,
-		`| Request | Fields changed | Woken | Consistent again |`,
-		`|---|---|---|---|`,
+		`| Request | Fields changed | Woken | Consistent again | After it |`,
+		`|---|---|---|---|---|`,
 		...ripples.map((r) => {
 			const again = r.durationMs !== null ? `${(r.durationMs / 1000).toFixed(1)} s` : r.fieldsChanged.length === 0 ? "nothing changed" : "not reached"
-			return `| ${cell(r.text)} | ${r.fieldsChanged.join(", ") || "none"} | ${r.woke.join(", ") || "none"} (${r.woke.length} of ${RIPPLE_PARTICIPANTS.length}${r.checked.length > 0 ? `; ${r.checked.length} more checked, no change: ${r.checked.join(", ")}` : ""}) | ${again} |`
+			return `| ${cell(r.text)} | ${r.fieldsChanged.join(", ") || "none"} | ${r.woke.join(", ") || "none"} (${r.woke.length} of ${RIPPLE_PARTICIPANTS.length}${r.checked.length > 0 ? `; ${r.checked.length} more checked, no change: ${r.checked.join(", ")}` : ""}) | ${again} | ${followUps(r.reviewFollowUps)} |`
 		}),
 		``,
 	]

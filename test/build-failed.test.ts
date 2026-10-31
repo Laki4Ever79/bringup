@@ -28,7 +28,7 @@ async function drafted() {
 	join(engineer)
 	const architect = createArchitectAgent({ mock: true })
 	const parts = createPartsAgent({ mock: true })
-	createFirmwareReviewer({ mock: true })
+	const firmware = createFirmwareReviewer({ mock: true })
 	sendMessage("Battery BLE temperature logger with USB-C and a status LED.", engineer.getId())
 	await waitFor(() => CORE_FIELDS.every((f) => state.contract.version(f) >= 1) && (state.contract.get("pins") ?? []).some((p) => p.signal === "STATUS_LED"), 5000)
 	await new Promise((r) => setTimeout(r, 300))
@@ -37,7 +37,7 @@ async function drafted() {
 		events.filter((e) => e.type === "message_received.started" && e.producerId === agentId).map((e) => String((e.payload as { content?: string }).content ?? ""))
 	const fail = (kind: "board" | "firmware" | "enclosure", revision: number, error: string) =>
 		emit(makeEvent("artifact.failed", desk.getId(), { kind, revision, error }), desk.getId())
-	return { state, events, architect, parts, turns, fail }
+	return { state, events, architect, parts, firmware, desk, turns, fail }
 }
 
 test("a failed board build gives the architect and the parts agent a turn with the error", async () => {
@@ -98,4 +98,14 @@ test("a run where parts arrive before the outline has no failed builds", { timeo
 	const firstBoard = trace.find((e) => e.type === "artifact.ready" && e.payload.kind === "board").payload.revision
 	assert.ok(firstBoard >= outlineAt, `board built at rev ${firstBoard}, before the outline (rev ${outlineAt})`)
 	assert.equal(result.settled, true)
+})
+
+// Real run 15: six behavior proposals from the architect and parts waited 120 s and timed out. The firmware agent
+// owns behavior but was never asked to decide.
+test("a held behavior change asks its owner, the firmware agent, to decide", async () => {
+	const t = await drafted()
+	const id = t.state.approvals.open("behavior", "architect", "{}", false)
+	emit(makeEvent("change.proposed", t.desk.getId(), { proposalId: id, field: "behavior", by: "architect", reason: "blink faster", needsEngineer: false }), t.desk.getId())
+	await waitFor(() => t.turns(t.firmware.getId()).some((m) => m.includes(`proposalId=${id}`)))
+	assert.ok(!t.turns(t.parts.getId()).some((m) => m.includes(`proposalId=${id}`)))
 })
