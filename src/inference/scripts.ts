@@ -74,6 +74,17 @@ export function mockScripts(): Record<string, Script> {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
 			const step = stepsTaken(items)
 			if (instruction.startsWith("Change request from the engineer:")) {
+				// A saved pins.h (runner/file-sync.ts): "edited pins.h: I2C_SDA GPIO8 → GPIO4; …".
+				const moves = [...instruction.matchAll(/(\w+) GPIO(\d+) → GPIO(\d+)/g)]
+				const current = state().contract.get("pins")
+				if (moves.length > 0 && current) {
+					if (step > 0) return say("pins updated")
+					const value = current.map((p) => {
+						const m = moves.find((x) => x[1] === p.signal)
+						return m ? { ...p, gpio: Number(m[3]) } : p
+					})
+					return propose("pins", value, `engineer edited pins.h: ${moves.map((m) => m[0]).join("; ")}`)
+				}
 				const width = /(\d+(?:\.\d+)?)\s*mm wide/.exec(instruction)?.[1]
 				const outline = state().contract.get("outline")
 				if (step > 0 || !width || !outline) return say(width ? "outline updated" : "no field I own covers that request")
