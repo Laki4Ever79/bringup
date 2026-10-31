@@ -1,0 +1,18 @@
+[
+  {
+    "ref": "J1",
+    "edge": "left",
+    "offsetMm": 15.0,
+    "widthMm": 10.0,
+    "heightMm": 4.5,
+    "zMm": 8.35
+  },
+  {
+    "ref": "SW1",
+    "edge": "top",
+    "offsetMm": 25.0,
+    "widthMm": 5.0,
+    "heightMm": 4.0,
+    "zMm": 8.1
+  }
+]
