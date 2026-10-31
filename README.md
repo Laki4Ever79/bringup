@@ -46,9 +46,9 @@ request and the design follows (`docs/runs/file-sync`: a pin moved in `pins.h` r
 the board's edge dragged 5 mm in KiCad rebuilt the board and case in 21 s). An edit the contract can't hold, such as a
 hand-routed track, is listed in the **drift panel**, where you can revert it, instead of being dropped silently; an
 edit that maps to a contract field (pins, outline, connectors) can be adopted there as a change request.
-`npm run bringup -- status <run>` lists the same edits like `git status`.
+`npm run bringup -- status <runDir>` (a run folder, e.g. `out/quick`) lists the same edits like `git status`.
 
-<!-- PENDING (cite only after the lead confirms): linked git working copy, rebase of independent stale edits, ready-to-order, phone approvals, add-a-sensor. -->
+<!-- PENDING (cite only after the lead confirms): `bringup link` + linked git working copy, rebase of independent stale edits, ready-to-order, phone approvals, add-a-sensor. -->
 
 ### 4. All the way to a real board
 
@@ -181,8 +181,9 @@ were actually built. For example, the firmware's pins are parsed back out of the
 | `bench.*` | The real board: `flashing`, `flashed`, `telemetry`, `blink` (LED period measured from telemetry), `instruction` ("tilt the board"), `measured`, `verdict` |
 | `agent.halted` | An agent loop crashed (Mozaik #114 workaround) |
 | `run.ended` | A run kept up with `--stay` or `--bench` was stopped |
-
-<!-- LEAD: please add the file-sync events here (file.drift and any others) with their exact names; I didn't want to guess them. -->
+| `change.requested` from a file | A saved generated file whose edit maps to the contract becomes a change request with `source: {kind: "file", path, revision, items}` |
+| `file.drift` | An edit outside the contract, or a save against an older revision: `path`, `savedRevision`, `designRevision`, `reason`, `items`, `message` |
+| `drift.resolved` | A drift entry was adopted (as a change request) or reverted |
 
 ## How it uses Mozaik
 
@@ -282,7 +283,15 @@ the agents that reworked something, the ones that only checked it, the ones that
 design was consistent again. The scripted agents understand "N mm wide" and "blink faster when tilted". Use real
 models for anything else.
 
-<!-- LEAD: add the exact file-sync / status / link commands here once confirmed (e.g. `npm run bringup -- status <run>`). -->
+**Edit a generated file.** On a run that stays up (`npm run demo`, or `--stay`), save an edited `firmware/rev-N/include/pins.h`
+or `board/rev-N/dist/board/kicad/board.kicad_pcb`: a pin, outline or connector change becomes a change request and
+ripples like a typed one. Anything else shows up in the dashboard's drift drawer, with Adopt (for edits that map to a
+contract field) and Revert.
+
+```bash
+# What was edited by hand in a run folder, like git status: open, adopted or reverted, with the diff lines
+npm run bringup -- status out/quick
+```
 
 `--no-hardware` swaps the three builders for stubs (`src/tools/stubs.ts`). Each stub derives its artifact straight
 from the contract: board nets from the pin map, enclosure cutouts from the connectors, firmware pins from the pin
