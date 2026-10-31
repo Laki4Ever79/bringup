@@ -38,6 +38,7 @@ function ripple({ r, i, from, to, events, cleanIn }, lanes, now) {
 	const fields = []
 	const changes = []
 	const turned = new Set()
+	const acted = new Set()
 	let unsettled = false
 	let settled = false
 	for (const e of events) {
@@ -45,14 +46,19 @@ function ripple({ r, i, from, to, events, cleanIn }, lanes, now) {
 		if (e.type === "contract.changed") {
 			if (!fields.includes(p.field)) fields.push(p.field)
 			changes.push({ field: p.field, revision: p.revision, at: Date.parse(e.at) })
+			acted.add(p.by)
 		}
+		if (e.type === "change.proposed") acted.add(p.by)
 		if (e.type === "agent.activity" && p.phase === "turn" && AGENTS.has(p.role)) turned.add(p.role)
 		if (e.type === "design.settled") (p.settled ? (settled = true) : (unsettled = true))
 	}
 	const touched = (inputs) => fields.some((f) => inputs.includes(f))
-	const wakes = (k) => (AGENTS.has(k) ? turned.has(k) : BUILD_INPUTS[k] ? touched(BUILD_INPUTS[k]) : k === "grounding" ? touched(["parts", "pins"]) : fields.length > 0)
+	// Woke: changed or proposed a field (agents), or had its inputs change (builders, grounding, consistency).
+	// Checked: took a turn and changed nothing. Same three-way split as the runner's ripples.json.
+	const wakes = (k) => (AGENTS.has(k) ? acted.has(k) : BUILD_INPUTS[k] ? touched(BUILD_INPUTS[k]) : k === "grounding" ? touched(["parts", "pins"]) : fields.length > 0)
 	const woke = KEYS.filter(wakes)
-	const stayedIdle = KEYS.filter((k) => !wakes(k))
+	const checked = KEYS.filter((k) => !wakes(k) && turned.has(k))
+	const stayedIdle = KEYS.filter((k) => !wakes(k) && !turned.has(k))
 	const lastChange = changes.at(-1) ?? null
 
 	// Consistent again: the newest check is clean and every woken builder has reached the last change to its
@@ -88,6 +94,7 @@ function ripple({ r, i, from, to, events, cleanIn }, lanes, now) {
 		atMs: from,
 		fieldsChanged: fields,
 		woke,
+		checked,
 		stayedIdle,
 		working: state === "consistent" ? [] : woke.filter((k) => ACTIVE.has(lanes[k]?.status)),
 		violationsPeak: seq.length ? Math.max(...seq) : 0,
@@ -150,7 +157,7 @@ export function mergeRipples(live, file, t0) {
 	return live.map((r) => {
 		const f = byId.get(r.id)
 		if (!f) return r
-		const out = { ...r, atMs: abs(f.atMs) ?? r.atMs, fieldsChanged: f.fieldsChanged ?? r.fieldsChanged, woke: f.woke ?? r.woke, stayedIdle: f.stayedIdle ?? r.stayedIdle, violationsPeak: f.violationsPeak ?? r.violationsPeak }
+		const out = { ...r, atMs: abs(f.atMs) ?? r.atMs, fieldsChanged: f.fieldsChanged ?? r.fieldsChanged, woke: f.woke ?? r.woke, checked: f.checked ?? r.checked, stayedIdle: f.stayedIdle ?? r.stayedIdle, violationsPeak: f.violationsPeak ?? r.violationsPeak }
 		if (typeof f.consistentAtMs === "number") Object.assign(out, { consistentAtMs: abs(f.consistentAtMs), durationMs: f.durationMs, state: "consistent", working: [] })
 		return out
 	})
@@ -163,12 +170,12 @@ const secs = (ms) => {
 
 // The big line under the ripple: "Consistent again in 38 s · 4 of 9 agents woke".
 export function resultLine(r, now = Date.now()) {
-	const woke = `${r.woke.length} of ${KEYS.length} agents woke`
+	const woke = `${r.woke.length} of ${KEYS.length} agents woke${r.checked?.length ? ` · ${r.checked.length} checked, no change` : ""}`
 	const [headline, detail] =
 		r.state === "consistent" ? [`Consistent again in ${secs(r.durationMs)}`, woke]
 		: r.state === "rippling" ? [`Rippling · ${secs(now - r.atMs)}`, `${woke}${r.working.length ? ` · ${r.working.length} still working` : ""}`]
 		: r.state === "unsettled" ? [`Not consistent: ${r.violations.at(-1) ?? r.violationsPeak} violation${(r.violations.at(-1) ?? r.violationsPeak) === 1 ? "" : "s"} left`, woke]
-		: r.state === "no-change" ? ["No change to the design", "the agents answered without touching the contract"]
+		: r.state === "no-change" ? ["No change to the design", r.checked?.length ? `${r.checked.length} agent${r.checked.length === 1 ? "" : "s"} checked it; none touched the contract` : "no agent touched the contract"]
 		: ["Sent to the agents", r.woke.length ? woke : "waiting for an agent to pick it up"]
 	return { headline, detail, text: `${headline} · ${detail}` }
 }
