@@ -95,7 +95,7 @@ measured vs 250 ms** in the contract. The S3 dev board stands in for the design'
 Printable case and lid STLs with a print check; a JLCPCB fab package (Gerbers, drill, BOM, CPL, checklist); firmware
 compiled against the real pin map and booted in QEMU; a SPICE simulation of the power rails, which the reviewer cites;
 a routed KiCad board with DRC against JLCPCB's rules. The product firmware reads, stores a 30-day history on flash,
-blinks 20 ms and deep-sleeps.
+blinks 20 ms, advertises over BLE for the rest of its wake window, and deep-sleeps.
 
 ## Try it
 
@@ -116,7 +116,7 @@ mm rulers on the board view, and 614 tests.
   violations; the fresh-context reviewer still blocked on brief-vs-design arguments (battery life, LED behaviour,
   history depth).
 - The experiment uses scripted agents (real tools); real-model change times vary from 49 s to 224 s.
-- BLE is being added to the product firmware; QEMU can't test the deep-sleep wake.
+- BLE was verified on an ESP32-S3 dev board (advertising, reading the latest record and the history), not on the C3 design; QEMU can't test the deep-sleep wake.
 - Boards need a human review before ordering (`fab/README.txt` lists every item).
 - Proven on 40–70 × 30 mm boards with about 20 parts; the catalog is small.
 

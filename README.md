@@ -344,8 +344,10 @@ chip and PCB tools but not the case or firmware. The A/B experiment above measur
   skip. Installed, every run boots its newest firmware to `bringup rev N` (event `firmware.booted`). There is no SHT40
   in emulation, so the firmware then prints `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token. The
   product firmware deep-sleeps between readings; QEMU doesn't emulate the timer wake, so that part is untested.
-- **BLE.** The brief asks for a phone to read the history over BLE. The product firmware stores the history on flash;
-  BLE is being added (see the report's firmware facts for what a given run's firmware actually does).
+- **BLE is verified on a dev board, not on the design.** The product firmware advertises for the wake window the
+  battery maths assumes and serves the latest reading and the history over a GATT service (NimBLE 2.5.2). On the
+  desk's ESP32-S3, a laptop found it and read the latest reading and the history; no real sensor was fitted, and
+  connection hold with a phone is untested.
 - **No real-model run has passed the final brief review yet.** Real runs 15–17 took mid-run changes and ended with 0
   violations, but the fresh-context reviewer still blocked on brief-vs-design arguments (battery life, LED behaviour,
   history depth). The reviewer now gets computed and datasheet-checked facts for those; each report lists what's open.
