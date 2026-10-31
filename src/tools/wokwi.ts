@@ -10,6 +10,18 @@ import { run, tail } from "./exec.ts"
 // circuit is generated from the contract (codegen/wokwi.ts), the sensor is a custom chip that answers a known reading,
 // and the run passes when the firmware prints that reading and stores it.
 
+// The pinned Wokwi CLI (NOTES.md; `npm run setup -- --wokwi` installs it from here): GitHub's release binary, checked
+// against GitHub's published sha256 before it is used, repo-local.
+export const WOKWI_CLI = {
+	version: "0.29.1",
+	url: "https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-linuxstatic-x64",
+	sha256: "3c9d6da007d008a3822ab468318037285440055132c59fd659d7306e40f14258",
+	dest: "tools/wokwi-cli/wokwi-cli",
+} as const
+// The sensor stand-ins to compile once per machine: `<dest> chip compile -o tools/wokwi-cli/chips/<name>.chip.wasm
+// templates/wokwi/chips/<name>.chip.c` (it installs a WASI-SDK into ~/.wokwi on first use).
+export const WOKWI_CHIPS = ["sht40", "shtc3"] as const
+
 export const SIM_TIMEOUT_MS = 30_000
 export const EXPECTED_LINE = `SENSOR OK ${SIM_READING.tempC.toFixed(2)} C ${SIM_READING.rh.toFixed(1)} %RH`
 
