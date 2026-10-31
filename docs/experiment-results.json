@@ -1,0 +1,340 @@
+{
+  "date": "2026-10-31",
+  "tools": "real",
+  "workers": [
+    "architect",
+    "parts",
+    "firmware-reviewer",
+    "board-builder",
+    "enclosure-builder",
+    "firmware-builder",
+    "grounding-check"
+  ],
+  "results": [
+    {
+      "change": "narrower",
+      "label": "Make the board 10 mm narrower",
+      "receiver": "board",
+      "armA": {
+        "ms": 53089,
+        "woken": [
+          "board-builder",
+          "enclosure-builder"
+        ],
+        "workers": 7,
+        "violations": [],
+        "settled": true
+      },
+      "armB": {
+        "shipped": [
+          {
+            "kind": "standoff-mismatch",
+            "message": "board hole at (37, 3) mm has no standoff under it",
+            "fields": [
+              "outline",
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          },
+          {
+            "kind": "standoff-mismatch",
+            "message": "board hole at (37, 27) mm has no standoff under it",
+            "fields": [
+              "outline",
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          },
+          {
+            "kind": "standoff-mismatch",
+            "message": "standoff at (47, 3) mm has no board hole over it",
+            "fields": [
+              "outline",
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          },
+          {
+            "kind": "standoff-mismatch",
+            "message": "standoff at (47, 27) mm has no board hole over it",
+            "fields": [
+              "outline",
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          }
+        ]
+      },
+      "armC": {
+        "ms": 75942,
+        "settled": true
+      }
+    },
+    {
+      "change": "taller",
+      "label": "Make the board 6 mm taller",
+      "receiver": "enclosure",
+      "armA": {
+        "ms": 31335,
+        "woken": [
+          "board-builder",
+          "enclosure-builder"
+        ],
+        "workers": 7,
+        "violations": [],
+        "settled": true
+      },
+      "armB": {
+        "shipped": [
+          {
+            "kind": "outline-mismatch",
+            "message": "board is 50×30 mm, contract says 50×36 mm",
+            "fields": [
+              "outline"
+            ],
+            "affects": [
+              "board"
+            ]
+          },
+          {
+            "kind": "standoff-mismatch",
+            "message": "board hole at (3, 27) mm has no standoff under it",
+            "fields": [
+              "outline",
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          },
+          {
+            "kind": "standoff-mismatch",
+            "message": "board hole at (47, 27) mm has no standoff under it",
+            "fields": [
+              "outline",
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          },
+          {
+            "kind": "standoff-mismatch",
+            "message": "standoff at (3, 33) mm has no board hole over it",
+            "fields": [
+              "outline",
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          },
+          {
+            "kind": "standoff-mismatch",
+            "message": "standoff at (47, 33) mm has no board hole over it",
+            "fields": [
+              "outline",
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          }
+        ]
+      },
+      "armC": {
+        "ms": 83332,
+        "settled": true
+      }
+    },
+    {
+      "change": "usb-edge",
+      "label": "Move the USB-C port to the bottom edge",
+      "receiver": "board",
+      "armA": {
+        "ms": 51908,
+        "woken": [
+          "board-builder",
+          "enclosure-builder"
+        ],
+        "workers": 7,
+        "violations": [],
+        "settled": true
+      },
+      "armB": {
+        "shipped": [
+          {
+            "kind": "cutout-misaligned",
+            "message": "cutout for J1 is left@15 mm 10×4.5, connector is bottom@25 mm 9×3.5",
+            "fields": [
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          }
+        ]
+      },
+      "armC": {
+        "ms": 63898,
+        "settled": true
+      }
+    },
+    {
+      "change": "i2c-pins",
+      "label": "Move the sensor's I2C bus to GPIO4/GPIO5",
+      "receiver": "firmware",
+      "armA": {
+        "ms": 71914,
+        "woken": [
+          "firmware-reviewer",
+          "board-builder",
+          "firmware-builder",
+          "grounding-check"
+        ],
+        "workers": 7,
+        "violations": [],
+        "settled": true
+      },
+      "armB": {
+        "shipped": [
+          {
+            "kind": "net-missing",
+            "message": "net I2C_SDA does not connect U1.GPIO4",
+            "fields": [
+              "pins"
+            ],
+            "affects": [
+              "board"
+            ]
+          },
+          {
+            "kind": "net-missing",
+            "message": "net I2C_SCL does not connect U1.GPIO5",
+            "fields": [
+              "pins"
+            ],
+            "affects": [
+              "board"
+            ]
+          }
+        ]
+      },
+      "armC": {
+        "ms": 90820,
+        "settled": true
+      }
+    },
+    {
+      "change": "add-button",
+      "label": "Add a user button (GPIO3, reachable through the case)",
+      "receiver": "firmware",
+      "armA": {
+        "ms": 84153,
+        "woken": [
+          "firmware-reviewer",
+          "board-builder",
+          "enclosure-builder",
+          "firmware-builder",
+          "grounding-check"
+        ],
+        "workers": 7,
+        "violations": [],
+        "settled": true
+      },
+      "armB": {
+        "shipped": [
+          {
+            "kind": "net-missing",
+            "message": "net BUTTON does not connect U1.GPIO3, SW1.A",
+            "fields": [
+              "pins"
+            ],
+            "affects": [
+              "board"
+            ]
+          },
+          {
+            "kind": "cutout-missing",
+            "message": "enclosure has no cutout for SW1",
+            "fields": [
+              "connectors"
+            ],
+            "affects": [
+              "enclosure"
+            ]
+          }
+        ]
+      },
+      "armC": {
+        "ms": 310423,
+        "settled": true
+      }
+    }
+  ],
+  "runs": {
+    "narrower": {
+      "A": {
+        "baseMs": 114062,
+        "changeRevisions": 1,
+        "laterRevisions": 0
+      },
+      "C": {
+        "baseMs": 232545,
+        "violations": 0
+      }
+    },
+    "taller": {
+      "A": {
+        "baseMs": 84594,
+        "changeRevisions": 1,
+        "laterRevisions": 0
+      },
+      "C": {
+        "baseMs": 228349,
+        "violations": 0
+      }
+    },
+    "usb-edge": {
+      "A": {
+        "baseMs": 164549,
+        "changeRevisions": 1,
+        "laterRevisions": 0
+      },
+      "C": {
+        "baseMs": 205047,
+        "violations": 0
+      }
+    },
+    "i2c-pins": {
+      "A": {
+        "baseMs": 202920,
+        "changeRevisions": 1,
+        "laterRevisions": 0
+      },
+      "C": {
+        "baseMs": 250070,
+        "violations": 0
+      }
+    },
+    "add-button": {
+      "A": {
+        "baseMs": 100336,
+        "changeRevisions": 3,
+        "laterRevisions": 0
+      },
+      "C": {
+        "baseMs": 281849,
+        "violations": 0
+      }
+    }
+  }
+}

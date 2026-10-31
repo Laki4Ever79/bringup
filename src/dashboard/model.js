@@ -342,7 +342,13 @@ export function sourcingRows(item) {
 export function readinessShort(readiness) {
 	if (!readiness) return ""
 	const blocking = (readiness.lines ?? []).filter((l) => l.status === "out of stock" || l.status === "not listed").map((l) => `${l.ref} ${l.status}`)
-	return [`${readiness.counts.listed}/${readiness.total} listed at ${readiness.supplier}`, ...blocking].join(" · ")
+	const c = readiness.counts
+	// Stock not looked up (a scripted run, or offline): the parts that have an LCSC number, and say so; never "0/18 listed".
+	if (c.notChecked) {
+		const at = `${c.listed + c.notChecked}/${readiness.total} at ${readiness.supplier}`
+		return [at, c.notChecked === c.listed + c.notChecked ? "stock not checked" : `${c.notChecked} not checked`, ...blocking].join(" · ")
+	}
+	return [`${c.listed}/${readiness.total} listed at ${readiness.supplier}`, ...blocking].join(" · ")
 }
 
 // One part's line in bom.json's order readiness. Amber only when the part can't be ordered as listed.

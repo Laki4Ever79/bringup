@@ -197,6 +197,11 @@
 	#rip-result.unsettled { color: var(--error); } #rip-result.unsettled #rip-headline { color: var(--error); }
 	#rip-result.no-change, #rip-result.initial { color: var(--ink-2); }
 	#held { margin-left: auto; flex: 0 0 auto; }
+	/* The same change in af's experiment, when there is one: what it would have shipped without the contract. */
+	#rip-proof { margin-left: auto; max-width: 46%; padding: 6px 12px; border: 1.5px solid var(--error); background: var(--error-wash); color: var(--ink); font: 500 13px/1.3 var(--sans); }
+	#rip-proof b { color: var(--error); font: 800 18px/1 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+	#rip-proof .v { display: block; font: 500 12px/1.3 var(--mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#rip-proof .src { color: var(--ink-3); font-size: 11px; }
 	#held .pill { background: var(--warn); border-color: var(--warn); color: #fff; height: 38px; font-size: 15px; }
 
 	/* Lower deck: the stage screen, what moved, the case and the parts. */
@@ -368,6 +373,22 @@
 	.steps li:nth-child(3) { background: var(--signal); color: #fff; } .steps li:nth-child(3) b, .steps li:nth-child(3) i { color: #fff; }
 	.steps li:nth-child(3)::after { background: var(--signal); }
 	.steps li.end span::after { content: " ✓"; color: var(--ok); }
+	#proof { max-width: 1560px; margin: clamp(28px, 4vh, 48px) auto 0; border: 1.5px solid var(--ink); background: var(--paper); }
+	#proof > .label { padding: 10px 14px; border-bottom: 1.5px solid var(--ink); }
+	#proof > .label .right { font-size: 11px; color: var(--ink-3); }
+	.proof-head { display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1.5px solid var(--ink); }
+	.proof-head > div { padding: 10px 14px; display: grid; gap: 4px; border-right: 1.5px solid var(--ink); }
+	.proof-head > div:last-child { border-right: 0; }
+	.proof-head .big { font: 800 clamp(22px, 1.9vw, 34px)/1 var(--display); text-transform: uppercase; }
+	.proof-head .cap { font: 600 11px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+	.proof-head .good .big { color: var(--ok); } .proof-head .bad .big { color: var(--error); }
+	.proof-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px 100px minmax(0, 1.6fr); gap: 10px; align-items: baseline; padding: 6px 14px; border-bottom: 1px dashed var(--rule-2); font-size: 13px; }
+	.proof-row:last-child { border-bottom: 0; }
+	.proof-row.proof-cols { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); padding: 8px 14px; }
+	.proof-row .what { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.proof-row .a { font: 600 12px/1 var(--mono); color: var(--ok); white-space: nowrap; }
+	.proof-row .b { font: 700 12px/1 var(--mono); color: var(--error); white-space: nowrap; }
+	.proof-row .v { font: 500 13px/1.3 var(--mono); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.compose-box { border: 2px solid var(--ink); background: var(--paper); box-shadow: 8px 8px 0 var(--ink); }
 	.compose-box > .label { padding: 12px 16px; border-bottom: 1.5px solid var(--ink); }
 	#scripted-note { font-size: 14px; color: var(--warn); margin: 0; padding: 10px 16px 0; font-weight: 600; }
@@ -528,6 +549,16 @@
 				<div id="start-error"></div>
 			</div>
 		</div>
+		<section id="proof" class="hidden" aria-label="The evidence">
+			<div class="label"><b>03</b> The evidence: the same change, with and without the shared contract<span class="right">scripted agents, real tools · npm run experiment · docs/experiment.md</span></div>
+			<div class="proof-head">
+				<div><span class="big" id="proof-n"></span><span class="cap">real changes to the settled logger, one at a time</span></div>
+				<div class="good"><span class="big" id="proof-a"></span><span class="cap" id="proof-a-cap"></span></div>
+				<div class="bad"><span class="big" id="proof-b"></span><span class="cap">would ship with each team on its own copy</span></div>
+			</div>
+			<div class="proof-row proof-cols"><span>Change</span><span>Contract</span><span>Own copies</span><span>The most visible mismatch that would ship</span></div>
+			<div id="proof-rows"></div>
+		</section>
 		<div class="recent">
 			<h2 class="label"><b>02</b> Drawing register<span class="right" id="runs-count"></span></h2>
 			<div class="reg-head"><span>Status</span><span>Design</span><span>Rev</span><span>Changes</span><span>Last ripple</span><span>Started</span><span></span></div>
@@ -556,7 +587,7 @@
 				<div class="label"><b>04</b> Checks</div>
 				<ul id="rip-checks"></ul>
 			</div>
-			<div id="rip-result" class="initial"><span class="stampbox" id="rip-stamp">·</span><div style="min-width:0"><div id="rip-headline">Waiting for the first event</div><div id="rip-detail"></div></div><div id="held" class="hidden"></div></div>
+			<div id="rip-result" class="initial"><span class="stampbox" id="rip-stamp">·</span><div style="min-width:0"><div id="rip-headline">Waiting for the first event</div><div id="rip-detail"></div></div><div id="rip-proof" class="hidden"></div><div id="held" class="hidden"></div></div>
 		</section>
 
 		<section id="deck">
@@ -617,6 +648,7 @@
 	import { featureEdges, parseStl } from "/stl.js"
 	import { liveRipples, mergeRipples, resultLine, runStart, whatMoved } from "/ripple.js"
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
+	import { matchTrial, proofSummary } from "/proof.js"
 	import { AGENT_COLORS, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
@@ -723,6 +755,18 @@
 		})
 		loadRuns()
 		setInterval(loadRuns, 3000)
+		// The evidence: af's A/B experiment, from docs/experiment-results.json.
+		fetch("/api/experiment").then((r) => (r.ok ? r.json() : null)).then((results) => {
+			const p = proofSummary(results)
+			if (!p) return
+			$("proof-n").textContent = `${p.changes} changes`
+			$("proof-a").textContent = `${p.violations} violations`
+			$("proof-a-cap").textContent = `with the shared contract · consistent again in ${p.rangeS[0]}–${p.rangeS[1]}\u00a0s`
+			$("proof-b").textContent = `${p.shipped} mismatches`
+			$("proof").title = p.headline
+			$("proof-rows").innerHTML = p.rows.map((r) => `<div class="proof-row"><span class="what" title="${esc(r.label)}">${esc(r.label)}</span><span class="a" title="consistent again, ${r.woken} of ${r.workers} workers woke">✓ ${r.seconds} s</span><span class="b">✗ ${r.shipped} ship</span><span class="v" title="${esc(r.vivid ?? "")}">${esc(r.vivid ?? "")}</span></div>`).join("")
+			$("proof").classList.remove("hidden")
+		}).catch(() => {})
 	}
 
 	// ═══ Run view ══════════════════════════════════════════════════════════════════════════════
@@ -735,7 +779,7 @@
 			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
 			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
 			hover: null, bom: null, contract: null,
-			fab: false, print: null, openPart: null, ripplesFile: null, ripplesText: "", pinned: null, triedRevs: new Set(), stay: false, ended: false,
+			fab: false, print: null, openPart: null, ripplesFile: null, ripplesText: "", pinned: null, experiment: null, triedRevs: new Set(), stay: false, ended: false,
 			bench: null, telemetry: new TelemetryBuffer(30_000), att: { pitch: 0, roll: 0 }, benchTabShown: false, batteryEst: null, stopped: false, lastSampleAt: 0, g0: null,
 		}
 		let benchDirty = false
@@ -1532,6 +1576,14 @@
 			schedule()
 		})
 
+		// Replaces an element's HTML only when it changed. Compared with the last string set, not innerHTML: the
+		// browser re-serialises entities (&#39; comes back as '), which would rewrite it, and replay its animations, every tick.
+		const lastHtml = new Map()
+		function setHtml(id, html) {
+			if (lastHtml.get(id) === html) return
+			lastHtml.set(id, html)
+			$(id).innerHTML = html
+		}
 		let resultKey = ""
 		function setResult(state, headline, detail) {
 			const key = `${state}|${headline}|${detail}`
@@ -1576,12 +1628,12 @@
 				if (touched.has(f)) return `<li class="touched"><span>${esc(f)}</span><span class="v">${t ? `v${t.from} → v${t.to}` : "changed"}</span></li>`
 				return `<li><span>${esc(f)}</span><span class="v">${S.contract?.versions?.[f] ? `v${S.contract.versions[f]}` : "—"}</span></li>`
 			}).join("")
-			if ($("rip-fields").innerHTML !== fieldsHtml) $("rip-fields").innerHTML = fieldsHtml
+			setHtml("rip-fields", fieldsHtml)
 			$("rip-agents-note").textContent = r.state === "sent" ? "" : `${r.woke.length} woke${r.reading?.length ? ` · ${r.reading.length} reading` : ""}${r.checked?.length ? ` · ${r.checked.length} checked` : ""} · ${r.stayedIdle.length} idle`
 			const checksHtml = r.checks.length
 				? r.checks.map((c) => `<li class="${esc(c.state)}"><span class="mark">${MARK[c.state] ?? ""}</span><span class="what">${esc(c.label)}${c.seq?.length ? `<span class="seq">${c.seq.map((n) => `<i class="${n ? "" : "z"}">${n}</i>`).join("<s>→</s>")}</span>` : ""}</span><span class="detail" title="${esc(c.detail)}">${esc(c.detail)}</span></li>`).join("")
 				: `<li class="pending"><span class="mark">·</span><span class="what">Waiting</span><span class="detail">checks run once a field changes</span></li>`
-			if ($("rip-checks").innerHTML !== checksHtml) $("rip-checks").innerHTML = checksHtml
+			setHtml("rip-checks", checksHtml)
 			const line = resultLine(r, Date.now())
 			setResult(r.state, line.headline, line.detail)
 			renderMoved(r)
@@ -1598,7 +1650,7 @@
 				const v = S.contract?.versions?.[f]
 				return `<li class="${v ? "set" : "missing"}"><span>${esc(f)}</span><span class="v">${v ? `v${v}` : "—"}</span></li>`
 			}).join("")
-			if ($("rip-fields").innerHTML !== fieldsHtml) $("rip-fields").innerHTML = fieldsHtml
+			setHtml("rip-fields", fieldsHtml)
 			const working = CARD_KEYS.filter((k) => ACTIVE.has(S.lanes[k].status)).length
 			$("rip-agents-note").textContent = S.settled ? "" : `${working} working now`
 			const pills = checkPills(S.events)
@@ -1607,7 +1659,7 @@
 				const detail = p.state === "off" ? "off for this run" : p.state === "pending" ? "not run yet" : p.state === "running" ? "running" : p.state === "ok" ? (p.revision !== null ? `clean at rev ${p.revision}` : "clean") : p.items[0] ?? `${p.count}`
 				return `<li class="${esc(state)}"><span class="mark">${MARK[state] ?? ""}</span><span class="what">${esc(p.label)}${p.count && p.state !== "ok" ? `<span class="seq"><i>${p.count}</i></span>` : ""}</span><span class="detail" title="${esc(detail)}">${esc(detail)}</span></li>`
 			}).join("")
-			if ($("rip-checks").innerHTML !== checksHtml) $("rip-checks").innerHTML = checksHtml
+			setHtml("rip-checks", checksHtml)
 			const took = S.firstAt && S.endAt ? secs(S.endAt - S.firstAt) : ""
 			if (!S.firstAt) setResult("initial", "Waiting for the first event", "")
 			else if (!S.settled) setResult("rippling", `Designing · rev ${S.revision}`, `${working} of ${CARD_KEYS.length} agents working · ${secs(Date.now() - S.firstAt)}`)
@@ -1633,6 +1685,10 @@
 				label = `rev ${r.revisions.from - 1} → ${r.revisions.to}`
 			}
 			const m = whatMoved(before, after)
+			// The same change in the experiment (exactly it, from the same starting design), or nothing.
+			const trial = r && r.state === "consistent" ? matchTrial({ brief: $("brief-title").textContent, before, after }, S.experiment) : null
+			$("rip-proof").classList.toggle("hidden", !trial)
+			if (trial) $("rip-proof").innerHTML = `<b>Without the shared contract: ${trial.shipped} mismatch${trial.shipped === 1 ? "" : "es"} would ship</b><span class="v" title="${esc(trial.vivid ?? "")}">${esc(trial.vivid ?? "")}</span><span class="src">same change in the experiment (“${esc(trial.label)}”) · npm run experiment</span>`
 			const key = JSON.stringify([label, r?.id ?? null, r?.fieldsChanged ?? null, Boolean(before), after?.outline, after?.connectors, m])
 			if (key === movedKey) return
 			movedKey = key
@@ -1875,6 +1931,7 @@
 			}
 			schedule()
 		}
+		fetch("/api/experiment").then((r) => (r.ok ? r.json() : null)).then((x) => { S.experiment = x; movedKey = ""; schedule() }).catch(() => {})
 		fetchSnapshot()
 		fetchBom()
 		fetchReport()

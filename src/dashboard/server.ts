@@ -14,9 +14,11 @@ const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
+// af's A/B experiment (docs/experiment.md), committed so the hub can show the evidence without a run.
+const EXPERIMENT = new URL("../../docs/experiment-results.json", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "pcb-view.js", "scene3d.js"])
+const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "pcb-view.js", "scene3d.js"])
 // Vendored OFL fonts (fonts/README.md), by exact name.
 const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
@@ -368,6 +370,10 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			}
 			if (path === "/api/runs") return json(res, 200, await listRuns())
 			if (path === "/api/briefs") return json(res, 200, await listBriefs())
+			if (path === "/api/experiment") {
+				const text = await readFile(EXPERIMENT, "utf8").catch(() => null)
+				return text ? json(res, 200, JSON.parse(text)) : json(res, 404, { error: "no experiment results" })
+			}
 			if (path === "/api/hub") return json(res, 200, { defaultRun: opts.defaultRun?.id ?? null, canStart: Boolean(opts.launch) })
 
 			// Per-run routes, plus /events and /files/* for the default run.

@@ -310,6 +310,19 @@ test("the run list: the title without its \"Brief:\" prefix, how many changes we
 	}
 })
 
+test("the experiment's results (docs/experiment-results.json) and the proof module are served for the hub's proof strip", async () => {
+	const hub = await serveHub({ outRoot: outRoot(), port: 0 })
+	try {
+		const res = await fetch(`${hub.url}/api/experiment`)
+		assert.equal(res.status, 200)
+		const body = (await res.json()) as any
+		assert.equal(body.results.length, 5)
+		assert.equal((await fetch(`${hub.url}/proof.js`)).status, 200)
+	} finally {
+		await hub.close()
+	}
+})
+
 test("the run list's revision is the contract's, not a bench board's recorded rev", async () => {
 	const root = outRoot()
 	mkdirSync(join(root, "20261031-140000-cccccc"))
