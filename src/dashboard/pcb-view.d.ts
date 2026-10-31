@@ -19,7 +19,7 @@ export interface Bounds { minX: number; minY: number; maxX: number; maxY: number
 
 export function circuitIndex(circuit: any[]): CircuitIndex
 export function indexBounds(ix: CircuitIndex): Bounds
-export function fitTransform(bounds: Bounds, width: number, height: number, padding?: number): { scale: number; apply(x: number, y: number): [number, number] }
+export function fitTransform(bounds: Bounds, width: number, height: number, padding?: number, bottomInset?: number): { scale: number; apply(x: number, y: number): [number, number] }
 export function diffRefs(prev: any[] | null, next: any[] | null): string[]
 
 export interface PcbView {
