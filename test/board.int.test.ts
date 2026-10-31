@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url"
 import { boardParts, circuitFromContract } from "../src/codegen/circuit.ts"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { netsFromCircuitJson, partsFromCircuitJson } from "../src/tools/board-nets.ts"
+import { readBoardEdits } from "../src/tools/kicad-read.ts"
 import { fixtureContract } from "./fixture.ts"
+import type { ContractSnapshot } from "../src/contract/types.ts"
 
 const KICAD_IMAGE = "kicad/kicad:10.0"
 const PATH = [fileURLToPath(new URL("../tools/node/node_modules/.bin", import.meta.url)), process.env.PATH].join(delimiter)
@@ -35,11 +37,25 @@ test("board builds and passes consistency", { skip: !(hasTsci && hasKicad) && "t
 	const board = { revision: s.revision, dir, pcbPath, stepPath: null, renderPath: null, widthMm: pcb.width, heightMm: pcb.height, nets: netsFromCircuitJson(elements), parts: partsFromCircuitJson(elements) }
 	// The real build carries each part's MPN, so the part check compares MPNs rather than skipping them.
 	for (const p of s.values.parts!) assert.equal(board.parts[p.ref]?.mpn, p.mpn, p.ref)
+	assertRoundTrip(s, readFileSync(pcbPath, "utf8"))
 	const kinds = checkConsistency(s, { board }).map((v) => v.kind)
 	assert.ok(!kinds.includes("net-missing"), `violations: ${kinds}`)
 	assert.ok(!kinds.includes("outline-mismatch"), `violations: ${kinds}`)
 	assert.ok(!kinds.includes("part-mismatch"), `violations: ${kinds}`)
 })
+
+// The contract's outline and connectors survive the trip contract → codegen → tscircuit → .kicad_pcb → readBoardEdits.
+function assertRoundTrip(s: ContractSnapshot, pcbText: string) {
+	const edits = readBoardEdits(pcbText)
+	const near = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) <= 0.1, `${what}: read ${a}, contract ${b}`)
+	near(edits.outline.widthMm, s.values.outline!.widthMm, "width")
+	near(edits.outline.heightMm, s.values.outline!.heightMm, "height")
+	for (const c of s.values.connectors!) {
+		const read = edits.connectors.find((e) => e.ref === c.ref)
+		assert.equal(read?.edge, c.edge, c.ref)
+		near(read!.offsetMm, c.offsetMm, `${c.ref} offset`)
+	}
+}
 
 // The shape of a real mock run: LDO, USB-C on the bottom, a button on top, a status LED and 14 passives.
 function busyContract() {
@@ -56,6 +72,14 @@ function busyContract() {
 	}
 	return s
 }
+
+test("busy mock-run contract: J1 on the bottom and SW1 on top read back from the .kicad_pcb", { skip: !hasTsci && "tsci is missing", timeout: 300_000 }, () => {
+	const s = busyContract()
+	const dir = mkdtempSync(join(tmpdir(), "bringup-board-"))
+	writeFileSync(join(dir, "board.circuit.tsx"), circuitFromContract(s))
+	execFileSync("tsci", ["build", "board.circuit.tsx", "--kicad-project"], { cwd: dir, env: { ...process.env, PATH }, stdio: "pipe" })
+	assertRoundTrip(s, readFileSync(join(dir, "dist/board/kicad/board.kicad_pcb"), "utf8"))
+})
 
 for (const [name, contract] of [["fixture", fixtureContract], ["busy mock-run contract", busyContract]] as const) {
 	test(`${name}: built components don't overlap and stay on the board`, { skip: !hasTsci && "tsci is missing", timeout: 300_000 }, () => {
