@@ -144,7 +144,9 @@ export async function proposeHeld<F extends FieldName>(p: { selfId: string; role
 	if (!decision.approved) return { status: "rejected", reason: decision.reason }
 	// As for agents: the owner decided against the field as it is now, so apply on top of its current version.
 	const approvedBy = s.approvals.approverOf(proposalId, p.field, p.role, valueKey)
+	const before = s.contract.get(p.field) ?? null
 	const result = s.contract.propose({ field: p.field, value: p.value, by: p.role, baseVersion: s.contract.version(p.field), approvedBy })
-	if (result.status === "applied") emit(makeEvent("contract.changed", p.selfId, { field: p.field, version: result.version, revision: result.revision, by: p.role }), p.selfId)
+	const cause = { kind: "approval" as const, proposalId, approvedBy: decision.decidedBy ?? [decision.by], reason: decision.reason }
+	if (result.status === "applied") emit(makeEvent("contract.changed", p.selfId, { field: p.field, version: result.version, revision: result.revision, by: p.role, reason: p.reason, before, after: p.value, cause }), p.selfId)
 	return result
 }

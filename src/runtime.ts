@@ -24,6 +24,8 @@ export class BringupState extends RuntimeState {
 	readonly artifactInputs: Partial<Record<"board" | "enclosure" | "firmware", Partial<Record<FieldName, number>>>> = {}
 	readonly roles = new Map<string, AgentRole>()
 	readonly approvals = new ApprovalRegistry()
+	// The engineer request being forwarded right now (run.ts), so the turn it starts can name it as its cause.
+	currentRequest: { id: string; text: string } | null = null
 	// When on, every held change also needs the human engineer's approval (dashboard or decisions.jsonl).
 	engineerApproval = false
 	engineerTimeoutMs = 600_000

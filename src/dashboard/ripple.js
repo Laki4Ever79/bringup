@@ -37,7 +37,13 @@ export function liveRipples(events, requests, now = Date.now()) {
 	return windows.map((w) => ripple(w, lanes, now))
 }
 
-function ripple({ r, i, from, to, events, cleanIn, benchSource }, lanes, now) {
+function ripple({ r, i, from, to, events: all, cleanIn, benchSource }, lanes, now) {
+	// The request's ripple ends at the first design.ready after it, inclusive (src/runner/ripple.ts): what the brief
+	// review changes after that is a follow-up, not the request. No design.ready yet: up to the next request.
+	const readyAt = all.findIndex((e) => e.type === "design.ready")
+	const events = readyAt >= 0 ? all.slice(0, readyAt + 1) : all
+	const after = readyAt >= 0 ? all.slice(readyAt + 1) : []
+	const reviewFollowUps = { fieldsChanged: [...new Set(after.filter((e) => e.type === "contract.changed").map((e) => e.payload.field))], rounds: after.filter((e) => e.type === "review.completed").length }
 	const fields = []
 	const changes = []
 	const turned = new Set()
@@ -61,7 +67,7 @@ function ripple({ r, i, from, to, events, cleanIn, benchSource }, lanes, now) {
 	const wakes = (k) => (AGENTS.has(k) ? acted.has(k) : BUILD_INPUTS[k] ? touched(BUILD_INPUTS[k]) : k === "grounding" ? touched(["parts", "pins"]) : fields.length > 0)
 	const woke = KEYS.filter(wakes)
 	// Reading: took a turn, still at it, nothing changed or proposed yet; it ends as woke or checked. Live only.
-	const reading = to === Infinity ? KEYS.filter((k) => turned.has(k) && !wakes(k) && ACTIVE.has(lanes[k]?.status)) : []
+	const reading = to === Infinity && readyAt < 0 ? KEYS.filter((k) => turned.has(k) && !wakes(k) && ACTIVE.has(lanes[k]?.status)) : []
 	const checked = KEYS.filter((k) => !wakes(k) && turned.has(k) && !reading.includes(k))
 	const stayedIdle = KEYS.filter((k) => !wakes(k) && !turned.has(k))
 	const lastChange = changes.at(-1) ?? null
@@ -88,7 +94,7 @@ function ripple({ r, i, from, to, events, cleanIn, benchSource }, lanes, now) {
 		const sofar = changes.filter((c) => c.at <= t)
 		if (consistentAtMs === null && sofar.length && clean && caughtUp(seen, sofar)) consistentAtMs = t
 	}
-	const state = consistentAtMs !== null ? "consistent" : unsettled ? "unsettled" : fields.length ? "rippling" : settled || to !== Infinity ? "no-change" : "sent"
+	const state = consistentAtMs !== null ? "consistent" : unsettled ? "unsettled" : fields.length ? "rippling" : settled || to !== Infinity || readyAt >= 0 ? "no-change" : "sent"
 	const checks = []
 	if (fields.length) checks.push({ key: "consistency", label: "Contract", seq, state: clean ? "ok" : "error", detail: clean ? "consistent" : `${lastCount} violation${lastCount === 1 ? "" : "s"}` })
 	for (const b of builds) checks.push({ key: b.key, label: b.label, state: b.state, detail: b.detail })
@@ -111,6 +117,7 @@ function ripple({ r, i, from, to, events, cleanIn, benchSource }, lanes, now) {
 		revisions: changes.length ? { from: Math.min(...changes.map((c) => c.revision)), to: Math.max(...changes.map((c) => c.revision)) } : null,
 		checks,
 		state,
+		reviewFollowUps,
 	}
 }
 
@@ -190,7 +197,7 @@ export function mergeRipples(live, file, t0) {
 	return live.map((r) => {
 		const f = byId.get(r.id)
 		if (!f) return r
-		const out = { ...r, atMs: abs(f.atMs) ?? r.atMs, fieldsChanged: f.fieldsChanged ?? r.fieldsChanged, woke: f.woke ?? r.woke, checked: f.checked ?? r.checked, stayedIdle: f.stayedIdle ?? r.stayedIdle, violationsPeak: f.violationsPeak ?? r.violationsPeak }
+		const out = { ...r, atMs: abs(f.atMs) ?? r.atMs, fieldsChanged: f.fieldsChanged ?? r.fieldsChanged, woke: f.woke ?? r.woke, checked: f.checked ?? r.checked, stayedIdle: f.stayedIdle ?? r.stayedIdle, violationsPeak: f.violationsPeak ?? r.violationsPeak, reviewFollowUps: f.reviewFollowUps ?? r.reviewFollowUps }
 		// The file has no "reading": a live reader stays one until the file says it woke.
 		out.reading = typeof f.consistentAtMs === "number" ? [] : r.reading.filter((k) => !(f.woke ?? []).includes(k))
 		out.checked = out.checked.filter((k) => !out.reading.includes(k))
@@ -200,13 +207,15 @@ export function mergeRipples(live, file, t0) {
 }
 
 const secs = (ms) => {
+	if (ms < 1000) return "under 1 s"
 	const s = Math.max(0, Math.round(ms / 1000))
 	return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`
 }
 
 // The big line under the ripple: "Consistent again in 38 s · 4 of 9 agents woke".
-export function resultLine(r, now = Date.now()) {
-	const woke = `${r.woke.length} of ${KEYS.length} agents woke${r.checked?.length ? ` · ${r.checked.length} checked, no change` : ""}`
+// stubbed: the run's hardware is stubbed (--no-hardware), which is why a ripple can take under a second.
+export function resultLine(r, now = Date.now(), { stubbed = false } = {}) {
+	const woke = `${r.woke.length} of ${KEYS.length} agents woke${r.checked?.length ? ` · ${r.checked.length} checked, no change` : ""}${stubbed ? " · hardware stubbed" : ""}`
 	const [headline, detail] =
 		r.state === "consistent" ? [`Consistent again in ${secs(r.durationMs)}`, woke]
 		: r.state === "rippling" ? [`Rippling · ${secs(now - r.atMs)}`, `${woke}${r.working.length ? ` · ${r.working.length} still working` : ""}`]

@@ -197,6 +197,7 @@ test("the page and its modules are served; missing optional modules are 404", as
 		assert.equal((await fetch(`${hub.url}/`)).status, 200)
 		assert.equal((await fetch(`${hub.url}/model.js`)).status, 200)
 		assert.equal((await fetch(`${hub.url}/rulers.js`)).status, 200)
+		assert.equal((await fetch(`${hub.url}/changelog.js`)).status, 200)
 		for (const m of ["pcb-view.js", "scene3d.js"]) {
 			const s = (await fetch(`${hub.url}/${m}`)).status
 			assert.ok(s === 200 || s === 404, `${m} → ${s}`)
@@ -333,5 +334,23 @@ test("the run list's revision is the contract's, not a bench board's recorded re
 		assert.equal(runs.find((r: any) => r.runId === "20261031-140000-cccccc").revision, 7)
 	} finally {
 		await hub.close()
+	}
+})
+
+test("the dashboard CLI's port: a taken port falls back to a free one and says so, instead of a stack trace", async () => {
+	const { createServer } = await import("node:net")
+	const { listenWithFallback } = await import("../src/dashboard/server.ts")
+	const blocker = createServer()
+	await new Promise<void>((r) => blocker.listen(0, "127.0.0.1", () => r()))
+	const taken = (blocker.address() as { port: number }).port
+	const log: string[] = []
+	const hub = await listenWithFallback((port) => serveHub({ outRoot: outRoot(), port }), taken, (l) => log.push(l))
+	try {
+		assert.notEqual(new URL(hub.url).port, String(taken))
+		assert.equal((await fetch(`${hub.url}/api/runs`)).status, 200)
+		assert.match(log.join("\n"), new RegExp(`port ${taken} is taken`))
+	} finally {
+		await hub.close()
+		blocker.close()
 	}
 })

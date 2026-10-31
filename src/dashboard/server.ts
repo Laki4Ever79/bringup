@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net"
 import { basename, dirname, extname, join, resolve, sep } from "node:path"
 import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
+import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 
 const TRACE = "trace.jsonl"
@@ -18,7 +19,7 @@ const BRIEFS = new URL("../../briefs/", import.meta.url)
 const EXPERIMENT = new URL("../../docs/experiment-results.json", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "pcb-view.js", "scene3d.js"])
+const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js"])
 // Vendored OFL fonts (fonts/README.md), by exact name.
 const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
@@ -174,7 +175,13 @@ export interface HubOptions {
 	launch?: HubLaunch
 	// The run that /events and /files/* serve, for single-run dashboards and the demo.
 	defaultRun?: { id: string; dir: string }
+	// The model behind POST /api/runs/<id>/ask (tests inject one); by default the runs' own provider (ask.ts).
+	ask?: (prompt: AskPrompt) => Promise<string>
 }
+
+// What a scripted run says to a question: its agents don't reason, so there is nothing to ask them.
+export const SCRIPTED_ANSWER = "Scripted mode: see the change log above. The scripted agents follow fixed scripts, so there is no model to ask; every write's reason and cause is listed there. Start a run with real models to ask questions."
+const MAX_QUESTION = 500
 
 interface RunSummary {
 	runId: string
@@ -333,6 +340,29 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					run.kill?.()
 					return json(res, 200, { stopped: true })
 				}
+				const ask = /^\/api\/runs\/([^/]+)\/ask$/.exec(path)
+				if (ask) {
+					const dir = await runDir(ask[1])
+					if (!dir) return json(res, 404, { error: "unknown run" })
+					const body = await readJson(req)
+					const question = text(body.question, "question", MAX_QUESTION).trim()
+					const events = (await readFile(join(dir, TRACE), "utf8").catch(() => "")).split("\n").flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : [] } catch { return [] } })
+					if (events.find((e) => e.type === "run.started")?.payload?.mock === true) return json(res, 200, { scripted: true, answer: SCRIPTED_ANSWER })
+					const revs = events.filter((e) => e.type === "contract.changed").map((e) => e.payload.revision as number)
+					const to = typeof body.to === "number" ? body.to : Math.max(0, ...revs)
+					const from = typeof body.from === "number" ? body.from : to - 1
+					const snap = async (rev: number) => (rev > 0 ? readFile(join(dir, "contracts", `rev-${rev}.json`), "utf8").then((t) => JSON.parse(t), () => null) : null)
+					const brief = ((await readFile(join(dir, "brief.md"), "utf8").catch(() => "")).split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "")
+					try {
+						// An older trace has no values in its writes: the revision snapshots give each one its change.
+						const snapshots = new Map((await Promise.all(revisionsToLoad(events).map(async (rev) => [rev, await snap(rev)] as const))).filter(([, v]) => v))
+						const answer = await (opts.ask ?? ((p: AskPrompt) => callModel(p)))(askPrompt({ question, events, from: await snap(from), to: await snap(to), brief, snapshots }))
+						return json(res, 200, { scripted: false, answer, from, to })
+					} catch (error) {
+						const e = error as Error & { code?: string }
+						return e.code === "NO_KEY" ? json(res, 503, { error: new NoModelKey().message }) : json(res, 502, { error: e.message })
+					}
+				}
 				const m = /^\/api\/runs\/([^/]+)\/(requests|decisions)$/.exec(path)
 				if (m) {
 					const dir = await runDir(m[1])
@@ -420,7 +450,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	}, HEARTBEAT_MS)
 
 	await new Promise<void>((ok, fail) => {
-		server.once("error", fail)
+		// A port that is taken (EADDRINUSE): stop the polling timers too, or they keep the process alive for nothing.
+		server.once("error", (error) => {
+			clearInterval(timer)
+			clearInterval(heartbeat)
+			fail(error)
+		})
 		server.listen(port, "127.0.0.1", () => ok())
 	})
 	port = (server.address() as AddressInfo).port
@@ -443,6 +478,19 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			for (const run of live.values()) if (run.exit === null) run.kill?.()
 			await new Promise<void>((ok) => server.close(() => ok()))
 		},
+	}
+}
+
+// Starts a dashboard on `port`; if another process holds it (another hub, npm run demo), on a free port instead,
+// saying so, rather than dying with EADDRINUSE.
+export async function listenWithFallback(start: (port: number) => Promise<Dashboard>, port: number, log: (line: string) => void): Promise<Dashboard> {
+	try {
+		return await start(port)
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error
+		const dash = await start(0)
+		log(`dashboard: port ${port} is taken (another dashboard or npm run demo?), so this one is on ${new URL(dash.url).port}`)
+		return dash
 	}
 }
 
