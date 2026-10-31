@@ -82,7 +82,9 @@ export function describeLoopEvent(type: string, p: any): { phase: ActivityPhase;
 			return { phase: "answer", text: clip(String(p?.answer?.content?.text ?? ""), ANSWER_CHARS) }
 		case "interception.started": {
 			const c = p?.input?.call
-			return { phase: "held", text: clip(`held for approval: ${c?.name ?? p?.nextStateId}${c ? ` ${(parse(c.args) as any)?.field ?? ""}` : ""}`, TOOL_CHARS) }
+			// The proposed value too: a held call's tool line only appears once it is released.
+			const args = c?.name ? summarizeArgs(c.name, String(c.args ?? "{}")) : ""
+			return { phase: "held", text: clip(`held for approval: ${c?.name ?? p?.nextStateId}${args ? ` ${args}` : ""}`, TOOL_CHARS) }
 		}
 		case "interception.finished": {
 			// Turned back to the model (the owner rejected it, or the contract would refuse it): the tool output it got.
