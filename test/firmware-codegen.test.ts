@@ -40,3 +40,11 @@ test("pins.h carries the BLE advertising window, from the contract's wake time m
 	assert.match(pinsHeader(c), /^#define BLE_ADVERTISE_MS 50$/m, "never shorter than 50 ms")
 	assert.doesNotMatch(pinsHeader(fixtureContract()), /BLE_ADVERTISE_MS/)
 })
+
+// The history depth is the architect's claim (requirements.historyDays); the firmware stores that many days.
+test("pins.h carries the history depth from the contract, and leaves the template's 30-day default without one", () => {
+	const c = fixtureContract()
+	c.values.requirements = { ...c.values.requirements!, historyDays: 180 }
+	assert.match(pinsHeader(c), /^#define HISTORY_DAYS 180$/m)
+	assert.doesNotMatch(pinsHeader(fixtureContract()), /HISTORY_DAYS/)
+})

@@ -22,6 +22,14 @@ function macroName(signal: string): string {
 	return `PIN_${signal.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`
 }
 
+// The template's LittleFS partition: "spiffs" in Arduino-ESP32's default.csv (0x290000, 0x160000 bytes). A tenth is
+// left for LittleFS's own blocks; the rest holds 4-byte readings.
+export const HISTORY_PARTITION_BYTES = 0x160000
+export const HISTORY_CAPACITY_BYTES = Math.floor(HISTORY_PARTITION_BYTES * 0.9)
+export const HISTORY_RECORD_BYTES = 4
+export const DEFAULT_HISTORY_DAYS = 30
+export const DEFAULT_PERIOD_S = 300
+
 // The firmware template's driver for a temperature/humidity sensor part (templates/fw/src/main.cpp), or null.
 export function sensorDriver(mpn: string): "SHT40" | "SHTC3" | null {
 	if (/^SHTC3/i.test(mpn)) return "SHTC3"
@@ -39,6 +47,9 @@ export function pinsHeader(s: ContractSnapshot): string {
 	// The product firmware deep-sleeps this long between readings; without a duty cycle it keeps the template's default.
 	const period = s.values.requirements?.dutyCycle?.periodS
 	if (period !== undefined && period > 0) lines.push(`#define DUTY_PERIOD_S ${Math.round(period)}`)
+	// How many days of readings the firmware keeps; without one it keeps the template's default.
+	const days = s.values.requirements?.historyDays
+	if (days !== undefined) lines.push(`#define HISTORY_DAYS ${days}`)
 	const duty = s.values.requirements?.dutyCycle
 	if (duty) lines.push(`#define BLE_ADVERTISE_MS ${bleAdvertiseMs(duty)}`)
 	lines.push(`#define BRINGUP_REVISION ${s.revision}`, "")
