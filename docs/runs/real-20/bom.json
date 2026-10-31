@@ -1,0 +1,501 @@
+{
+  "revision": 34,
+  "totalUsd": 5.8444,
+  "items": [
+    {
+      "ref": "U1",
+      "role": "mcu",
+      "mpn": "ESP32-C3-MINI-1",
+      "lcsc": "C2838502",
+      "footprint": "esp32_c3_mini_1",
+      "stock": 22405,
+      "priceUsd": 3.0577,
+      "inStock": true,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C2838502.html",
+          "stock": 22405,
+          "priceUsd": 3.0577
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=ESP32-C3-MINI-1",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=ESP32-C3-MINI-1",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": []
+    },
+    {
+      "ref": "U2",
+      "role": "sensor",
+      "mpn": "SHTC3-TR-2.5KS",
+      "lcsc": "C194656",
+      "footprint": "dfn4",
+      "stock": 7104,
+      "priceUsd": 2.2408,
+      "inStock": true,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C194656.html",
+          "stock": 7104,
+          "priceUsd": 2.2408
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=SHTC3-TR-2.5KS",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=SHTC3-TR-2.5KS",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": [
+        {
+          "mpn": "SHT40-AD1B-R2",
+          "lcsc": "C2909890",
+          "stock": null,
+          "priceUsd": 1.7519,
+          "inStock": null
+        }
+      ]
+    },
+    {
+      "ref": "U3",
+      "role": "ldo",
+      "mpn": "XC6206P332MR-G",
+      "lcsc": "C5446",
+      "footprint": "sot23",
+      "stock": null,
+      "priceUsd": 0.148,
+      "inStock": null,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C5446.html",
+          "stock": null,
+          "priceUsd": 0.148
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=XC6206P332MR-G",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=XC6206P332MR-G",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": [
+        {
+          "mpn": "AP2112K-3.3TRG1",
+          "lcsc": "C51118",
+          "stock": null,
+          "priceUsd": 0.1816,
+          "inStock": null
+        }
+      ]
+    },
+    {
+      "ref": "U4",
+      "role": "charger",
+      "mpn": "TP4054-42-SOT25R",
+      "lcsc": "C32574",
+      "footprint": "sot23_5",
+      "stock": null,
+      "priceUsd": 0.1323,
+      "inStock": null,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C32574.html",
+          "stock": null,
+          "priceUsd": 0.1323
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=TP4054-42-SOT25R",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=TP4054-42-SOT25R",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": []
+    },
+    {
+      "ref": "J1",
+      "role": "usb-c",
+      "mpn": "TYPE-C-31-M-12",
+      "lcsc": "C165948",
+      "footprint": "usbcmidmount",
+      "stock": null,
+      "priceUsd": 0.1872,
+      "inStock": null,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C165948.html",
+          "stock": null,
+          "priceUsd": 0.1872
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=TYPE-C-31-M-12",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=TYPE-C-31-M-12",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": []
+    },
+    {
+      "ref": "J2",
+      "role": "battery",
+      "mpn": "S2B-PH-K-S(LF)(SN)",
+      "lcsc": "C173752",
+      "footprint": "jst2_ph",
+      "stock": null,
+      "priceUsd": 0.0397,
+      "inStock": null,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C173752.html",
+          "stock": null,
+          "priceUsd": 0.0397
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=S2B-PH-K-S(LF)(SN)",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=S2B-PH-K-S(LF)(SN)",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": []
+    },
+    {
+      "ref": "D1",
+      "role": "led",
+      "mpn": "KT-0603R",
+      "lcsc": "C2286",
+      "footprint": "0603",
+      "stock": null,
+      "priceUsd": 0.0077,
+      "inStock": null,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C2286.html",
+          "stock": null,
+          "priceUsd": 0.0077
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=KT-0603R",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=KT-0603R",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": []
+    },
+    {
+      "ref": "D2",
+      "role": "charge-led",
+      "mpn": "KT-0603R",
+      "lcsc": "C2286",
+      "footprint": "0603",
+      "stock": null,
+      "priceUsd": 0.0077,
+      "inStock": null,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C2286.html",
+          "stock": null,
+          "priceUsd": 0.0077
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=KT-0603R",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=KT-0603R",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": []
+    },
+    {
+      "ref": "R1",
+      "role": "resistor",
+      "mpn": "0402WGF1001TCE",
+      "lcsc": "C11702",
+      "footprint": "0402",
+      "stock": null,
+      "priceUsd": 0.0013,
+      "inStock": null,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C11702.html",
+          "stock": null,
+          "priceUsd": 0.0013
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=0402WGF1001TCE",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=0402WGF1001TCE",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": [
+        {
+          "mpn": "0402WGF1002TCE",
+          "lcsc": "C25744",
+          "stock": null,
+          "priceUsd": 0.0024,
+          "inStock": null
+        },
+        {
+          "mpn": "0402WGF5101TCE",
+          "lcsc": "C25905",
+          "stock": null,
+          "priceUsd": 0.0023,
+          "inStock": null
+        },
+        {
+          "mpn": "0402WGF4701TCE",
+          "lcsc": "C25900",
+          "stock": null,
+          "priceUsd": 0.002,
+          "inStock": null
+        }
+      ]
+    },
+    {
+      "ref": "R2",
+      "role": "resistor",
+      "mpn": "0402WGF1001TCE",
+      "lcsc": "C11702",
+      "footprint": "0402",
+      "stock": null,
+      "priceUsd": 0.0013,
+      "inStock": null,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C11702.html",
+          "stock": null,
+          "priceUsd": 0.0013
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=0402WGF1001TCE",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=0402WGF1001TCE",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": [
+        {
+          "mpn": "0402WGF1002TCE",
+          "lcsc": "C25744",
+          "stock": null,
+          "priceUsd": 0.0024,
+          "inStock": null
+        },
+        {
+          "mpn": "0402WGF5101TCE",
+          "lcsc": "C25905",
+          "stock": null,
+          "priceUsd": 0.0023,
+          "inStock": null
+        },
+        {
+          "mpn": "0402WGF4701TCE",
+          "lcsc": "C25900",
+          "stock": null,
+          "priceUsd": 0.002,
+          "inStock": null
+        }
+      ]
+    },
+    {
+      "ref": "SW1",
+      "role": "button",
+      "mpn": "TS-1187A-B-A-B",
+      "lcsc": "C318884",
+      "footprint": "SW-SMD_4P-L3.5-W2.9",
+      "stock": null,
+      "priceUsd": 0.0207,
+      "inStock": null,
+      "grounded": true,
+      "sources": [
+        {
+          "supplier": "LCSC/JLCPCB",
+          "url": "https://www.lcsc.com/product-detail/C318884.html",
+          "stock": null,
+          "priceUsd": 0.0207
+        },
+        {
+          "supplier": "Digi-Key",
+          "url": "https://www.digikey.com/en/products/result?keywords=TS-1187A-B-A-B",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        },
+        {
+          "supplier": "Mouser",
+          "url": "https://www.mouser.com/c/?q=TS-1187A-B-A-B",
+          "stock": null,
+          "priceUsd": null,
+          "note": "search link, not checked"
+        }
+      ],
+      "alternatives": []
+    }
+  ],
+  "readiness": {
+    "supplier": "LCSC/JLCPCB",
+    "total": 11,
+    "counts": {
+      "listed": 11,
+      "stockConfirmed": 2,
+      "stockUnknown": 9,
+      "outOfStock": 0,
+      "notListed": 0,
+      "notChecked": 0
+    },
+    "lines": [
+      {
+        "ref": "U1",
+        "status": "stock confirmed"
+      },
+      {
+        "ref": "U2",
+        "status": "stock confirmed"
+      },
+      {
+        "ref": "U3",
+        "status": "stock unknown"
+      },
+      {
+        "ref": "U4",
+        "status": "stock unknown"
+      },
+      {
+        "ref": "J1",
+        "status": "stock unknown"
+      },
+      {
+        "ref": "J2",
+        "status": "stock unknown"
+      },
+      {
+        "ref": "D1",
+        "status": "stock unknown"
+      },
+      {
+        "ref": "D2",
+        "status": "stock unknown"
+      },
+      {
+        "ref": "R1",
+        "status": "stock unknown"
+      },
+      {
+        "ref": "R2",
+        "status": "stock unknown"
+      },
+      {
+        "ref": "SW1",
+        "status": "stock unknown"
+      }
+    ],
+    "warn": false,
+    "summary": "11/11 listed at LCSC/JLCPCB · 2 stock confirmed · 9 stock unknown (jlcsearch returned none)"
+  },
+  "liveStock": true
+}
