@@ -27,7 +27,7 @@ test("the reviewer sees the catalog's facts about the contract's parts", () => {
 	const text = partFactsSection(s).join("\n")
 	assert.match(text, /^## Part facts \(from the catalog\)$/m)
 	assert.match(text, /^- U1 ESP32-C3-MINI-1: 4 MB on-module flash; .*history.*NVS.*LittleFS/m)
-	assert.doesNotMatch(text, /^- U2 /m, "parts without catalog notes are not listed")
+	assert.doesNotMatch(text, /^- U3 /m, "parts without catalog notes are not listed")
 })
 
 test("the agents are told the module's flash stores the history", () => {
@@ -53,5 +53,23 @@ test("the reviewer learns what the product firmware does on each reading, from t
 	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
 	s.values.requirements = { ...s.values.requirements!, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
 	const text = firmwareFacts(s).join("\n")
-	assert.match(text, /^- Firmware \(product build of templates\/fw\): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash \(LittleFS, the last 8640 readings: 30 days at 300 s\), blinks the status LED 20 ms \(a double blink if the sensor fails\), then deep-sleeps 300 s \(requirements\.dutyCycle\.periodS\)\. It does not implement BLE yet\.$/m)
+	assert.match(text, /^- Firmware \(product build of templates\/fw\): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash \(LittleFS, the last 8640 readings: 30 days at 300 s\), blinks the status LED 20 ms \(a double blink if the sensor fails\), then deep-sleeps 300 s \(requirements\.dutyCycle\.periodS\)\. It does not implement BLE yet\. /m)
+})
+
+// Real run 17's review blocked on sensor accuracy and on "no USB-UART bridge for flashing": both are datasheet facts.
+test("the reviewer gets each sensor's datasheet accuracy and the module's native USB flashing", () => {
+	const s = fixtureContract()
+	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
+	const text = partFactsSection(s).join("\n")
+	assert.match(text, /^- U1 ESP32-C3-MINI-1: .*USB Serial\/JTAG .*GPIO18 \(USB_D-\) and GPIO19 \(USB_D\+\).*no USB-UART bridge/m)
+	assert.match(text, /^- U2 SHT40-AD1B-R2: typical accuracy ±1\.8 %RH and ±0\.2 °C/m)
+	const shtc3 = catalog.find((p) => p.mpn === "SHTC3-TR-2.5KS")!
+	assert.match(shtc3.notes ?? "", /^typical accuracy ±2 %RH and ±0\.2 °C/)
+})
+
+test("the firmware fact says behavior only drives the bench build", async () => {
+	const { firmwareFacts } = await import("../src/agents/reviewer.ts")
+	const s = fixtureContract()
+	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
+	assert.match(firmwareFacts(s).join("\n"), /The behavior field \(blinkMs, tiltBlinkMs, tiltDeg\) only drives the bench build; the product build ignores it\./)
 })
