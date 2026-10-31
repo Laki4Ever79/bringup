@@ -200,3 +200,10 @@ test("the composer's prompt matches the run: settled and waiting, unsettled and 
 	assert.match(composerPrompt("stopped", { settled: true }), /stopped/)
 	assert.match(composerPrompt("settled", { settled: false }), /ended/)
 })
+
+test("a part that keeps its MPN and footprint says what did change, not \"SOT-23-5 → SOT-23-5\"", () => {
+	const a = { ref: "U4", role: "charger", mpn: "TP4054-42-SOT25R", lcsc: "C32574", footprint: "SOT-23-5", pins: ["VCC", "GND"] }
+	assert.deepEqual(contractDiff("parts", [a], [{ ...a, pins: ["VCC", "GND", "CHRG"] }]), ["~ U4 TP4054-42-SOT25R: pins changed"])
+	assert.deepEqual(contractDiff("parts", [a], [{ ...a, lcsc: "C1", pins: ["X"] }]), ["~ U4 TP4054-42-SOT25R: lcsc, pins changed"])
+	assert.deepEqual(contractDiff("parts", [a], [{ ...a, footprint: "SOT-23-6" }]), ["~ U4 SOT-23-5 → SOT-23-6"])
+})

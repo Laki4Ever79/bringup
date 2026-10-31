@@ -197,6 +197,7 @@ test("the page and its modules are served; missing optional modules are 404", as
 		assert.equal((await fetch(`${hub.url}/`)).status, 200)
 		assert.equal((await fetch(`${hub.url}/model.js`)).status, 200)
 		assert.equal((await fetch(`${hub.url}/rulers.js`)).status, 200)
+		assert.equal((await fetch(`${hub.url}/changelog.js`)).status, 200)
 		for (const m of ["pcb-view.js", "scene3d.js"]) {
 			const s = (await fetch(`${hub.url}/${m}`)).status
 			assert.ok(s === 200 || s === 404, `${m} → ${s}`)

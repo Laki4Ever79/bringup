@@ -321,6 +321,27 @@
 	.drawer { position: fixed; top: 54px; right: 0; bottom: 0; width: min(460px, 92vw); background: var(--paper); border-left: 2px solid var(--ink); box-shadow: -10px 0 0 rgba(22, 20, 15, .08); z-index: 30; transform: translateX(104%); transition: transform 220ms var(--ease); display: grid; grid-template-rows: auto minmax(0, 1fr); }
 	.drawer.open { transform: none; }
 	.drawer > .label { padding: 14px 16px 10px; border-bottom: 1.5px solid var(--ink); }
+	#why { width: min(680px, 94vw); }
+	#why .label .right { display: flex; gap: 6px; align-items: center; }
+	#why-range { font: 700 13px/1 var(--mono); padding: 0 4px; }
+	#why-list { overflow-y: auto; padding: 12px; display: grid; align-content: start; gap: 10px; }
+	.why-entry { border: 1.5px solid var(--ink); background: var(--paper); padding: 10px 12px; display: grid; gap: 6px; animation: fadein var(--t) var(--ease); }
+	.why-entry .top { display: flex; align-items: baseline; gap: 8px; font: 700 13px/1.2 var(--mono); }
+	.why-entry .top .f { background: var(--ink); color: var(--paper); padding: 3px 6px; }
+	.why-entry .top .v { color: var(--signal-ink); }
+	.why-entry .top .by { margin-left: auto; font-family: var(--sans); font-weight: 700; }
+	.why-entry .diff { font: 500 13px/1.45 var(--mono); }
+	.why-entry .diff div { overflow-wrap: anywhere; }
+	.why-entry blockquote { margin: 0; padding: 4px 0 4px 10px; border-left: 3px solid var(--signal); font: 500 14px/1.4 var(--sans); }
+	.why-entry blockquote.none { border-color: var(--rule-2); color: var(--ink-3); font-style: italic; }
+	.why-entry .cause { font-size: 13px; color: var(--ink-2); }
+	.why-entry .cause b { font: 700 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-right: 6px; }
+	.why-entry .cause a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--signal); text-underline-offset: 3px; cursor: pointer; }
+	#why-list .none { color: var(--ink-3); font-size: 14px; padding: 6px 2px; }
+	#moved-revs.link, #rip-meta .link { cursor: pointer; text-decoration: underline; text-decoration-color: var(--signal); text-underline-offset: 3px; }
+	/* A touched field's why, on hover. */
+	#rip-fields li .why { display: none; grid-column: 1 / -1; font: 500 12px/1.35 var(--sans); color: #e8e1cf; white-space: normal; }
+	#rip-fields li.touched:hover .why { display: block; }
 	#feed ul { list-style: none; margin: 0; padding: 8px 14px; overflow-y: auto; }
 	#feed li { padding: 6px 0 6px 10px; border-left: 3px solid var(--fc, var(--rule)); margin-bottom: 4px; font-size: 13px; }
 	#feed li .t { font: 700 12px/1.2 var(--mono); } #feed li .m { color: var(--ink-3); font-size: 12px; }
@@ -519,6 +540,7 @@
 		<span id="elapsed" class="num hidden"></span>
 		<div id="checks" class="hidden"></div>
 		<button id="brief-btn" class="pill hidden" title="The brief this run started from">Brief</button>
+		<button id="why-btn" class="pill hidden" title="What changed between revisions, who changed it, their reason and what caused it">What changed &amp; why</button>
 		<button id="changes-btn" class="pill hidden" title="Change control: cross-team changes and their owners' decisions">Change control <b id="changes-count" class="num"></b></button>
 		<button id="stop-btn" class="pill hidden" title="End the bring-up phase and the run">■ Stop</button>
 		<button id="feed-btn" class="pill hidden" title="Event feed">Feed</button>
@@ -657,6 +679,7 @@
 </div>
 <section id="brief-panel" class="sheet hidden"><div class="label">Brief<span class="right"><button class="pill" id="brief-close">Close</button></span></div><pre id="brief-text"></pre></section>
 <aside id="changes" class="drawer"><div class="label"><b>CC</b> Change control<span class="right"><button class="pill" id="changes-close">Close</button></span></div><div id="prs"><div class="none">No cross-team changes yet. When an agent wants a field it doesn't own, it opens a request here and the owner decides.</div></div></aside>
+<aside id="why" class="drawer" aria-label="What changed and why"><div class="label">What changed &amp; why<span class="right"><button class="pill" id="why-prev" title="One revision earlier">‹</button><span id="why-range" class="num"></span><button class="pill" id="why-next" title="One revision later">›</button><button class="pill" id="why-close">Close</button></span></div><div id="why-list"></div></aside>
 <aside id="feed" class="drawer"><div class="label">Event feed<span class="right"><button class="pill" id="feed-close">Close</button></span></div><ul id="feed-list"></ul></aside>
 <div id="overlay"><img alt=""></div>
 
@@ -666,6 +689,7 @@
 	import { liveRipples, mergeRipples, resultLine, runStart, whatMoved } from "/ripple.js"
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { matchTrial, proofSummary } from "/proof.js"
+	import { changeLog, defaultRange } from "/changelog.js"
 	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
@@ -790,13 +814,13 @@
 	async function startRunView(id) {
 		const base = `/runs/${encodeURIComponent(id)}`
 		const file = (p) => `${base}/files/${p}`
-		for (const el of ["run", "changebar", "state-pill", "elapsed", "checks", "brief-btn", "changes-btn", "feed-btn", "new-btn"]) $(el).classList.remove("hidden")
+		for (const el of ["run", "changebar", "state-pill", "elapsed", "checks", "brief-btn", "why-btn", "changes-btn", "feed-btn", "new-btn"]) $(el).classList.remove("hidden")
 
 		const S = {
 			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
 			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
 			hover: null, bom: null, contract: null,
-			fab: false, print: null, openPart: null, ripplesFile: null, ripplesText: "", pinned: null, experiment: null, triedRevs: new Set(), stay: false, ended: false,
+			fab: false, print: null, openPart: null, ripplesFile: null, ripplesText: "", pinned: null, experiment: null, why: null, triedRevs: new Set(), stay: false, ended: false,
 			bench: null, telemetry: new TelemetryBuffer(30_000), att: { pitch: 0, roll: 0 }, benchTabShown: false, batteryEst: null, stopped: false, lastSampleAt: 0, g0: null,
 		}
 		let benchDirty = false
@@ -1388,6 +1412,7 @@
 			const rev = Number(b.dataset.rev)
 			S.selected = rev === S.model.dots.at(-1)?.revision ? null : rev
 			syncArtifacts()
+			openWhy({ from: rev - 1, to: rev })
 			schedule()
 		})
 		const goLive = () => { S.selected = null; syncArtifacts(); schedule() }
@@ -1660,7 +1685,7 @@
 				const t = Date.parse(e.at)
 				if (t < r.atMs || t >= until) continue
 				const f = touched.get(e.payload.field)
-				touched.set(e.payload.field, { from: f?.from ?? e.payload.version - 1, to: e.payload.version, by: e.payload.by })
+				touched.set(e.payload.field, { from: f?.from ?? e.payload.version - 1, to: e.payload.version, by: e.payload.by, reason: e.payload.reason ?? null })
 			}
 			for (const f of r.fieldsChanged) if (!touched.has(f)) touched.set(f, null)
 			const textEl = $("rip-text")
@@ -1669,10 +1694,12 @@
 			$("rip-when").textContent = `#${idx + 1} · ${time(r.atMs)}`
 			const fu = r.reviewFollowUps
 			const followUps = fu?.rounds ? ` · then ${fu.rounds} review round${fu.rounds === 1 ? "" : "s"} ${fu.fieldsChanged.length ? `changed ${fu.fieldsChanged.join(", ")}` : "changed nothing"}` : ""
-			$("rip-meta").textContent = (r.revisions ? `contract rev ${r.revisions.from === r.revisions.to ? r.revisions.from : `${r.revisions.from}–${r.revisions.to}`}` : r.state === "sent" ? "the architect and the firmware agent are reading it" : "") + followUps
+			const revLink = r.revisions ? `<span class="link" data-from="${r.revisions.from - 1}" data-to="${r.revisions.to}" title="What changed and why">contract rev ${r.revisions.from === r.revisions.to ? r.revisions.from : `${r.revisions.from}–${r.revisions.to}`}</span>` : r.state === "sent" ? "the architect and the firmware agent are reading it" : ""
+			setHtml("rip-meta", revLink + esc(followUps))
 			const fieldsHtml = FIELDS.map((f) => {
 				const t = touched.get(f)
-				if (touched.has(f)) return `<li class="touched"><span>${esc(f)}</span><span class="v">${t ? `v${t.from} → v${t.to}` : "changed"}</span></li>`
+				const why = t ? `${WHO[t.by]?.[0] ?? t.by}: ${t.reason ? `“${t.reason}”` : "reason not recorded"}` : ""
+				if (touched.has(f)) return `<li class="touched" title="${esc(why)}"><span>${esc(f)}</span><span class="v">${t ? `v${t.from} → v${t.to}` : "changed"}</span>${why ? `<span class="why">${esc(why)}</span>` : ""}</li>`
 				return `<li><span>${esc(f)}</span><span class="v">${S.contract?.versions?.[f] ? `v${S.contract.versions[f]}` : "—"}</span></li>`
 			}).join("")
 			setHtml("rip-fields", fieldsHtml)
@@ -1692,7 +1719,7 @@
 			if ($("rip-text").textContent !== title) $("rip-text").textContent = title
 			$("rip-text").className = ""
 			$("rip-when").textContent = "the brief"
-			$("rip-meta").textContent = S.settled ? "No change requested yet: type one above, or pick a suggestion." : "Every agent works the brief at once, against one contract."
+			setHtml("rip-meta", esc(S.settled ? "No change requested yet: type one above, or pick a suggestion." : "Every agent works the brief at once, against one contract."))
 			const fieldsHtml = FIELDS.map((f) => {
 				const v = S.contract?.versions?.[f]
 				return `<li class="${v ? "set" : "missing"}"><span>${esc(f)}</span><span class="v">${v ? `v${v}` : "—"}</span></li>`
@@ -1740,6 +1767,8 @@
 			if (key === movedKey) return
 			movedKey = key
 			$("moved-revs").textContent = label
+			$("moved-revs").classList.toggle("link", /→/.test(label))
+			$("moved-revs").title = /→/.test(label) ? "What changed and why between these revisions" : ""
 			drawMoved(before, after, m)
 			const was = (s) => `<span class="was">${esc(s)}</span>`, now = (s) => `<span class="now">${esc(s)}</span>`
 			const place = (c) => (c ? `${c.edge} @ ${c.offsetMm}` : "—")
@@ -1811,7 +1840,7 @@
 		$("send-btn").addEventListener("click", () => sendChange($("change-input").value))
 		document.addEventListener("keydown", (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("change-input").focus() }
-			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("changes").classList.remove("open"); $("brief-panel").classList.add("hidden"); if (S.openPart) showSourcing(null) }
+			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("changes").classList.remove("open"); $("why").classList.remove("open"); $("brief-panel").classList.add("hidden"); if (S.openPart) showSourcing(null) }
 		})
 		$("change-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChange($("change-input").value) })
 		async function sendChange(raw) {
@@ -1833,13 +1862,63 @@
 			if (!$("change-input").disabled) $("change-input").focus()
 		}
 
+		// ── What changed and why: the writes between two revisions, their reasons and causes ──
+		function openWhy(range) {
+			const r = range ?? defaultRange(S.events)
+			if (!r) return
+			S.why = { from: Math.max(0, r.from), to: r.to, follow: !range }
+			for (const id of ["feed", "changes"]) $(id).classList.remove("open")
+			$("why").classList.add("open")
+			renderWhy()
+		}
+		function renderWhy() {
+			if (!S.why || !$("why").classList.contains("open")) return
+			if (S.why.follow) Object.assign(S.why, defaultRange(S.events) ?? {})
+			const { from, to } = S.why
+			// Older traces carry no values: the diff comes from each revision's snapshot (contracts/rev-N.json).
+			for (let rev = Math.max(1, from); rev <= to; rev++) { ensureRevision(rev); ensureRevision(rev - 1) }
+			$("why-range").textContent = `rev ${from} → ${to}`
+			const entries = changeLog(S.events, from, to, S.snapshots)
+			const link = (l) => (!l ? "" : l.ripple ? `data-ripple="${esc(l.ripple)}"` : l.checks ? `data-check="${esc(l.checks)}"` : l.changes ? `data-changes="${esc(l.changes)}"` : "")
+			const line = (l) => `<div class="${l.startsWith("+") ? "add" : l.startsWith("−") ? "del" : "mod"}">${esc(l)}</div>`
+			const html = entries.length
+				? entries.slice().reverse().map((e) => `<div class="why-entry"><div class="top"><span>rev ${e.revision}</span><span class="f">${esc(e.field)}</span><span class="v">v${e.version - 1} → v${e.version}</span><span class="by">${esc(e.who)}</span></div>` +
+					(e.diff.length ? `<div class="diff">${e.diff.slice(0, 12).map(line).join("")}${e.diff.length > 12 ? `<div class="t3">+${e.diff.length - 12} more</div>` : ""}</div>` : `<div class="diff t3">value not recorded (older run)</div>`) +
+					(e.reason ? `<blockquote>“${esc(e.reason)}”</blockquote>` : `<blockquote class="none">reason not recorded (older run)</blockquote>`) +
+					`<div class="cause"><b>why</b>${e.cause.link ? `<a ${link(e.cause.link)}>${esc(e.cause.text)}</a>` : esc(e.cause.text)}</div></div>`).join("")
+				: `<div class="none">No contract writes between rev ${from} and rev ${to}.</div>`
+			setHtml("why-list", html)
+		}
+		$("why-btn").addEventListener("click", () => ($("why").classList.contains("open") ? $("why").classList.remove("open") : openWhy()))
+		$("why-close").addEventListener("click", () => $("why").classList.remove("open"))
+		const stepWhy = (d) => {
+			if (!S.why) return
+			const latest = defaultRange(S.events)?.to ?? 0
+			const span = S.why.to - S.why.from
+			const to = Math.min(latest, Math.max(1, S.why.to + d))
+			S.why = { from: Math.max(0, to - span), to, follow: false }
+			renderWhy()
+		}
+		$("why-prev").addEventListener("click", () => stepWhy(-1))
+		$("why-next").addEventListener("click", () => stepWhy(1))
+		$("why-list").addEventListener("click", (e) => {
+			const a = e.target.closest("a"); if (!a) return
+			$("why").classList.remove("open")
+			if (a.dataset.ripple) { S.pinned = a.dataset.ripple; schedule() }
+			else if (a.dataset.check) document.querySelector(`.check[data-key="${CSS.escape(a.dataset.check)}"]`)?.click()
+			else if (a.dataset.changes) $("changes").classList.add("open")
+		})
+		// "rev 7 → 8" anywhere opens it on that range.
+		$("moved-revs").addEventListener("click", () => { const m = /rev (\d+) → (\d+)/.exec($("moved-revs").textContent); if (m) openWhy({ from: Number(m[1]), to: Number(m[2]) }) })
+		$("rip-meta").addEventListener("click", (e) => { const l = e.target.closest(".link"); if (l) openWhy({ from: Number(l.dataset.from), to: Number(l.dataset.to) }) })
+
 		// ── Drawers: change control and the event feed ──
-		$("changes-btn").addEventListener("click", () => { $("feed").classList.remove("open"); $("changes").classList.toggle("open") })
+		$("changes-btn").addEventListener("click", () => { $("feed").classList.remove("open"); $("why").classList.remove("open"); $("changes").classList.toggle("open") })
 		$("changes-close").addEventListener("click", () => $("changes").classList.remove("open"))
 		$("held").addEventListener("click", () => { $("feed").classList.remove("open"); $("changes").classList.add("open") })
 
 		// ── Feed drawer ──
-		$("feed-btn").addEventListener("click", () => { $("changes").classList.remove("open"); $("feed").classList.toggle("open") })
+		$("feed-btn").addEventListener("click", () => { $("changes").classList.remove("open"); $("why").classList.remove("open"); $("feed").classList.toggle("open") })
 		$("feed-close").addEventListener("click", () => $("feed").classList.remove("open"))
 		$("overlay").addEventListener("click", () => $("overlay").classList.remove("open"))
 		const FEED_COLOR = { "contract.changed": "var(--info)", "change.proposed": "var(--warn)", "change.resolved": "var(--ok)", "artifact.ready": "var(--c-board)", "artifact.failed": "var(--error)", "design.settled": "var(--ok)", "agent.halted": "var(--error)" }
@@ -1905,6 +1984,7 @@
 			dirty.clear()
 			renderPRs()
 			renderRipple()
+			renderWhy()
 			if (benchDirty) renderBench()
 		}
 		let lastSeq = -1

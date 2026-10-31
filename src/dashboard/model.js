@@ -58,7 +58,8 @@ const LABEL = {
 // What a changed list entry shows after its key: the part of LABEL that can differ.
 const CHANGE = {
 	pins: (a, b) => (a.gpio !== b.gpio ? `GPIO${a.gpio} → GPIO${b.gpio}` : `${a.partRef}.${a.partPin} → ${b.partRef}.${b.partPin}`),
-	parts: (a, b) => (a.mpn !== b.mpn ? `${a.mpn} → ${b.mpn}` : `${a.footprint} → ${b.footprint}`),
+	// Same MPN and footprint: name what did change (pins, LCSC number, role…), not "SOT-23-5 → SOT-23-5".
+	parts: (a, b) => (a.mpn !== b.mpn ? `${a.mpn} → ${b.mpn}` : a.footprint !== b.footprint ? `${a.footprint} → ${b.footprint}` : `${b.mpn}: ${Object.keys({ ...a, ...b }).filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).sort().join(", ")} changed`),
 	connectors: (a, b) => `${a.kind} ${a.edge} @ ${a.offsetMm} mm → ${b.kind} ${b.edge} @ ${b.offsetMm} mm`,
 	rails: (a, b) => `${a.voltageV} V ${a.loadMa}/${a.regulatorMaxMa} mA → ${b.voltageV} V ${b.loadMa}/${b.regulatorMaxMa} mA`,
 }
