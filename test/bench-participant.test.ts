@@ -7,7 +7,7 @@ import { BringupState, emit, join, startRuntime } from "../src/runtime.ts"
 import { createChangeDesk, ownerReviewsChanges } from "../src/change-control.ts"
 import { createRoleAgent } from "../src/agents/common.ts"
 import { createBench, type Bench } from "../src/agents/bench.ts"
-import { pinsHeader } from "../src/codegen/firmware.ts"
+import { behaviorHeader, pinsHeader } from "../src/codegen/firmware.ts"
 import { makeEvent, type Payloads } from "../src/events.ts"
 import { inferenceConfig } from "../src/inference/models.ts"
 import { toolCall, type Script } from "../src/inference/scripted-runner.ts"
@@ -30,7 +30,7 @@ afterEach(async () => {
 	bench = null
 })
 
-function setup(fake: FakeBridge, opts: { pins?: typeof LOGGER_DESIGN.pins; windowMs?: number } = {}) {
+function setup(fake: FakeBridge, opts: { pins?: typeof LOGGER_DESIGN.pins; windowMs?: number; blinkWaitMs?: number } = {}) {
 	const state = new BringupState(tempDir(), 2000)
 	writeFileSync(path(state.outDir, "brief.md"), "BLE logger on a 500 mAh cell, six months.\n")
 	startRuntime(state, inferenceConfig(true, { "mock-architect": approver }), null)
@@ -43,13 +43,14 @@ function setup(fake: FakeBridge, opts: { pins?: typeof LOGGER_DESIGN.pins; windo
 		const r = state.contract.propose({ field: f, value: values[f as keyof typeof values], by: f === "parts" ? "parts" : "architect", baseVersion: 0 } as never)
 		assert.equal(r.status, "applied", f)
 	}
-	bench = createBench({ bridge: fake, hello: { source: fake.opts.source ?? "real", ports: { dut: "/dev/x", fixture: null, telemetry: null }, meter: fake.opts.meter ?? true }, windowMs: opts.windowMs ?? 40, liveCheckMs: 30, bootTimeoutMs: 400, batchMs: 15 })
+	bench = createBench({ bridge: fake, hello: { source: fake.opts.source ?? "real", ports: { dut: "/dev/x", fixture: null, telemetry: null }, meter: fake.opts.meter ?? true }, windowMs: opts.windowMs ?? 40, liveCheckMs: 30, bootTimeoutMs: 400, batchMs: 15, blinkWaitMs: opts.blinkWaitMs ?? 60 })
 	join(bench)
 	// A compiled firmware at the current revision, as the firmware builder leaves it.
 	const firmware = (revision = state.contract.revision) => {
 		const dir = path(state.outDir, "firmware", `rev-${revision}`)
 		mkdirSync(path(dir, "include"), { recursive: true })
 		writeFileSync(path(dir, "include/pins.h"), pinsHeader({ ...state.contract.snapshot(), revision }))
+		writeFileSync(path(dir, "include/behavior.h"), behaviorHeader({ ...state.contract.snapshot(), revision }))
 		state.artifacts.firmware = { revision, ok: true, pins: {}, log: "" }
 		return revision
 	}
@@ -75,7 +76,7 @@ test("the bench waits for the design to settle, then flashes the current firmwar
 	assert.deepEqual(t.of("bench.flashed").map((f) => [f.revision, f.ok]), [[rev, true]])
 	const verdict = t.of("bench.verdict")[0]
 	assert.equal(verdict.revision, rev)
-	assert.deepEqual(verdict.checks.map((c) => [c.name, c.pass]), [["boot", true], ["imu", true], ["led", true], ["battery", true]])
+	assert.deepEqual(verdict.checks.map((c) => [c.name, c.pass]), [["boot", true], ["imu", true], ["led", true], ["blink", true], ["battery", true]])
 	assert.equal(verdict.pass, true)
 })
 
@@ -305,4 +306,51 @@ test("the shake flag reaches the telemetry", async () => {
 	t.fake.emit({ k: "s", rev: 0, ms: 0, ax: 0, ay: 0, az: 1, tilt: 0, led: 1, shake: 1 })
 	await waitFor(() => t.of("bench.telemetry").length > 0)
 	assert.equal(t.of("bench.telemetry")[0].samples[0].shake, 1)
+})
+
+const swing = (ms: number) => Math.abs(35 * Math.sin((2 * Math.PI * ms) / 8000))
+
+test("after a behavior change the bench measures the new tilted blink from the telemetry, not from behavior.h", async () => {
+	const t = setup(new FakeBridge({ meter: false, live: { seconds: 16, tilt: swing } }))
+	t.state.contract.propose({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, by: "firmware", baseVersion: 0 })
+	const rev = t.firmware()
+	t.send("design.settled", { revision: rev, settled: true })
+	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	const blink = t.of("bench.blink")[0]
+	assert.equal(blink.revision, rev)
+	assert.ok(blink.tiltBlinkMs !== null && Math.abs(blink.tiltBlinkMs - 250) <= 50, `tiltBlinkMs ${blink.tiltBlinkMs}`)
+	assert.ok(blink.blinkMs !== null && Math.abs(blink.blinkMs - 1000) <= 50, `blinkMs ${blink.blinkMs}`)
+	assert.deepEqual(blink.expected, { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 })
+	const check = t.of("bench.verdict")[0].checks.find((c) => c.name === "blink")!
+	assert.equal(check.pass, true)
+	assert.match(check.detail, /tilted \d+ ms past 20°/)
+	assert.equal(t.of("bench.instruction").length, 0, "a board that tilts on its own needs no instruction")
+})
+
+test("a firmware that ignores the new behavior fails the blink check", async () => {
+	// The board keeps blinking at 1 Hz when tilted: behavior.h says 250 ms, the telemetry says otherwise.
+	const fake = new FakeBridge({ meter: false, live: { seconds: 16, tilt: swing } })
+	const t = setup(fake)
+	t.state.contract.propose({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, by: "firmware", baseVersion: 0 })
+	const rev = t.firmware()
+	writeFileSync(path(t.state.outDir, "firmware", `rev-${rev}`, "include/behavior.h"), "#define BEHAVIOR_BLINK_MS 1000\n")
+	t.send("design.settled", { revision: rev, settled: true })
+	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	const check = t.of("bench.verdict")[0].checks.find((c) => c.name === "blink")!
+	assert.equal(check.pass, false)
+	assert.match(check.detail, /contract 250 ms/)
+})
+
+test("on a real board nobody tilted, the bench asks the person to tilt it, then reports the tilt as not measured", async () => {
+	const t = setup(new FakeBridge({ meter: false, live: { seconds: 6, tilt: () => 3 } }), { blinkWaitMs: 80 })
+	t.state.contract.propose({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, by: "firmware", baseVersion: 0 })
+	const rev = t.firmware()
+	t.send("design.settled", { revision: rev, settled: true })
+	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	assert.deepEqual(t.of("bench.instruction").map((i) => [i.action, i.state]), [["tilt", "waiting"], ["tilt", "timeout"]])
+	assert.match(t.of("bench.instruction")[0].text, /Tilt the board more than 20°/)
+	const check = t.of("bench.verdict")[0].checks.find((c) => c.name === "blink")!
+	assert.equal(check.pass, true)
+	assert.match(check.detail, /not tilted/)
+	assert.equal(t.of("bench.blink")[0].tiltBlinkMs, null)
 })
