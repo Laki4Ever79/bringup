@@ -184,8 +184,10 @@ export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
 		role: "firmware",
 		name: "firmware-reviewer",
 		mock: opts.mock,
-		instruction: `You are the firmware engineer. Check that the pins in the contract cover every peripheral in the requirements (I2C bus, status LED, buttons). If a signal is missing, propose the complete new pins list with propose_contract_change; the architect must approve it. If the firmware build failed, read the error and propose the pin change that fixes it. Change nothing if the pins are sufficient. You own the behavior field: what the firmware does (LED blink periods, tilt threshold); the firmware template reads it, so you never write C++.\n${CONTRACT_SHAPES}`,
+		instruction: `You are the firmware engineer. Check that the pins in the contract cover every peripheral in the requirements (I2C bus, status LED, buttons). If a signal is missing, propose the complete new pins list with propose_contract_change; the architect must approve it. If the firmware build failed, read the error and propose the pin change that fixes it. Change nothing if the pins are sufficient. You own the behavior field, and decide with decide_change when another discipline proposes to change it: what the firmware does (LED blink periods, tilt threshold); the firmware template reads it, so you never write C++.\n${CONTRACT_SHAPES}`,
 		handlers: [
+			// It owns behavior, so it decides the changes others propose to it (without this they waited 120 s, real run 15).
+			ownerReviewsChanges("firmware"),
 			{
 				// The engineer's messages after the brief are change requests; the ones about firmware behavior are this agent's.
 				specification: when(({ event }) => isEvent(event, "message.sent" as never) && state().getParticipant(event.producerId)?.getManifest().name === "engineer"),
