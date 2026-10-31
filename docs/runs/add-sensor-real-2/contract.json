@@ -1,0 +1,272 @@
+{
+  "revision": 39,
+  "values": {
+    "requirements": {
+      "summary": "Pocket BLE temperature/humidity logger with USB-C charging/flashing, one wake button, status LED blink on wake, separate hardware charge indication, and temperature/humidity sensing on a single-cell Li-ion battery.",
+      "peripherals": [
+        "BLE",
+        "temperature/humidity sensor",
+        "USB-C charging",
+        "USB flashing",
+        "status LED",
+        "hardware charge LED",
+        "wake button"
+      ],
+      "batteryLifeDays": 90,
+      "batteryMah": 650,
+      "dutyCycle": {
+        "activeMs": 80,
+        "periodS": 60,
+        "sleepUa": 5
+      },
+      "historyDays": 30
+    },
+    "outline": {
+      "widthMm": 50,
+      "heightMm": 30,
+      "thicknessMm": 1.6
+    },
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 25,
+        "widthMm": 9,
+        "heightMm": 3.2
+      },
+      {
+        "ref": "SW1",
+        "kind": "button",
+        "edge": "right",
+        "offsetMm": 15,
+        "widthMm": 3.5,
+        "heightMm": 2
+      }
+    ],
+    "rails": [
+      {
+        "name": "VBUS",
+        "voltageV": 5,
+        "regulatorMaxMa": 500,
+        "loadMa": 500,
+        "averageMa": 0
+      },
+      {
+        "name": "VBAT",
+        "voltageV": 3.7,
+        "regulatorMaxMa": 500,
+        "loadMa": 250,
+        "averageMa": 0
+      },
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 300,
+        "loadMa": 150,
+        "averageMa": 0.246
+      }
+    ],
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-C3-MINI-1",
+        "lcsc": "C2838502",
+        "footprint": "esp32_c3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO18",
+          "GPIO19",
+          "EN",
+          "3V3",
+          "GND"
+        ]
+      },
+      {
+        "ref": "U2",
+        "role": "sensor",
+        "mpn": "SHT40-AD1B-R2",
+        "lcsc": "C2909890",
+        "footprint": "dfn4",
+        "pins": [
+          "SDA",
+          "SCL",
+          "VDD",
+          "VSS"
+        ]
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "AP2112K-3.3TRG1",
+        "lcsc": "C51118",
+        "footprint": "sot23_5",
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ]
+      },
+      {
+        "ref": "U4",
+        "role": "charger",
+        "mpn": "TP4054-42-SOT25R",
+        "lcsc": "C32574",
+        "footprint": "sot23_5",
+        "pins": [
+          "CHRG",
+          "GND",
+          "BAT",
+          "VCC",
+          "PROG"
+        ]
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "USB-C-SMD_TYPE-C-31-M-12",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ]
+      },
+      {
+        "ref": "J2",
+        "role": "connector",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ]
+      },
+      {
+        "ref": "D1",
+        "role": "led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ]
+      },
+      {
+        "ref": "D2",
+        "role": "charge-led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ]
+      },
+      {
+        "ref": "R1",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ]
+      },
+      {
+        "ref": "C1",
+        "role": "capacitor",
+        "mpn": "CL05B104KO5NNNC",
+        "lcsc": "C1525",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ]
+      },
+      {
+        "ref": "SW1",
+        "role": "button",
+        "mpn": "TS-1187A-B-A-B",
+        "lcsc": "C318884",
+        "footprint": "pushbutton",
+        "pins": [
+          "A",
+          "B"
+        ]
+      }
+    ],
+    "pins": [
+      {
+        "signal": "USB_DN",
+        "gpio": 18,
+        "partRef": "J1",
+        "partPin": "DN"
+      },
+      {
+        "signal": "USB_DP",
+        "gpio": 19,
+        "partRef": "J1",
+        "partPin": "DP"
+      },
+      {
+        "signal": "LED_STATUS",
+        "gpio": 8,
+        "partRef": "D1",
+        "partPin": "K"
+      },
+      {
+        "signal": "BUTTON",
+        "gpio": 3,
+        "partRef": "SW1",
+        "partPin": "A"
+      },
+      {
+        "signal": "I2C_SDA",
+        "gpio": 6,
+        "partRef": "U2",
+        "partPin": "SDA"
+      },
+      {
+        "signal": "I2C_SCL",
+        "gpio": 7,
+        "partRef": "U2",
+        "partPin": "SCL"
+      }
+    ],
+    "behavior": {
+      "blinkMs": 100,
+      "tiltBlinkMs": 1000,
+      "tiltDeg": 90
+    }
+  },
+  "versions": {
+    "requirements": 6,
+    "outline": 1,
+    "connectors": 1,
+    "rails": 5,
+    "parts": 15,
+    "pins": 9,
+    "behavior": 2
+  }
+}
