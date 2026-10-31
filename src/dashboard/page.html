@@ -158,6 +158,9 @@
 	/* Took a turn, changed nothing: present, but not lit. */
 	.tile.checked { background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(22, 20, 15, .06) 6px 7px); }
 	.tile.checked .status { color: var(--ink-2); }
+	/* Took a turn and still at it: not yet woke or checked. */
+	.tile.reading { background: var(--paper-2); border-style: dashed; }
+	.tile.reading .status { color: var(--signal-ink); }
 	.tile.asleep { opacity: .32; border-style: dashed; background: transparent; }
 	.tile.asleep::before { background: var(--ink-3); }
 	.tile.failed { box-shadow: inset 0 0 0 2px var(--error); } .tile.failed .status { color: var(--error); }
@@ -1257,13 +1260,14 @@
 		}
 		// Ripple mode: woke vs stayed idle; before any request: who is working on the first design.
 		function paintTiles(r) {
-			const woke = new Set(r?.woke ?? []), working = new Set(r?.working ?? []), checked = new Set(r?.checked ?? [])
+			const woke = new Set(r?.woke ?? []), working = new Set(r?.working ?? []), checked = new Set(r?.checked ?? []), reading = new Set(r?.reading ?? [])
 			for (const k of CARD_KEYS) {
 				const lane = S.lanes[k], el = cards[k]
 				const failed = lane.status === "failed" ? " failed" : lane.status === "held" ? " held" : ""
 				let cls, status
 				if (r) {
-					if (checked.has(k)) { cls = "checked"; status = "checked" }
+					if (reading.has(k)) { cls = "reading working"; status = "reading…" }
+					else if (checked.has(k)) { cls = "checked"; status = "checked" }
 					else if (!woke.has(k)) { cls = "asleep"; status = "stayed idle" }
 					else if (working.has(k)) { cls = "woke working"; status = STATUS[lane.status] ?? lane.status }
 					else { cls = "woke done"; status = lane.status === "failed" ? "failed" : "woke ✓" }
@@ -1416,7 +1420,7 @@
 				return `<li><span>${esc(f)}</span><span class="v">${S.contract?.versions?.[f] ? `v${S.contract.versions[f]}` : "—"}</span></li>`
 			}).join("")
 			if ($("rip-fields").innerHTML !== fieldsHtml) $("rip-fields").innerHTML = fieldsHtml
-			$("rip-agents-note").textContent = r.state === "sent" ? "" : `${r.woke.length} woke${r.checked?.length ? ` · ${r.checked.length} checked` : ""} · ${r.stayedIdle.length} idle`
+			$("rip-agents-note").textContent = r.state === "sent" ? "" : `${r.woke.length} woke${r.reading?.length ? ` · ${r.reading.length} reading` : ""}${r.checked?.length ? ` · ${r.checked.length} checked` : ""} · ${r.stayedIdle.length} idle`
 			const checksHtml = r.checks.length
 				? r.checks.map((c) => `<li class="${esc(c.state)}"><span class="mark">${MARK[c.state] ?? ""}</span><span class="what">${esc(c.label)}${c.seq?.length ? `<span class="seq">${c.seq.map((n) => `<i class="${n ? "" : "z"}">${n}</i>`).join("<s>→</s>")}</span>` : ""}</span><span class="detail" title="${esc(c.detail)}">${esc(c.detail)}</span></li>`).join("")
 				: `<li class="pending"><span class="mark">·</span><span class="what">Waiting</span><span class="detail">checks run once a field changes</span></li>`

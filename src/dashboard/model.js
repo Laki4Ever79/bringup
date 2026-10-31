@@ -182,13 +182,18 @@ export function checkPills(events) {
 	const drc = board?.drc
 	if (drc) {
 		const bad = drc.errors + drc.unconnected
+		// Errors inside one part's own footprint: amber with the reason. Any other error, or an unconnected net, is red.
+		const own = Object.entries(drc.ownFootprint ?? {})
+		const ownCount = own.reduce((n, [, c]) => n + c, 0)
+		const ownOnly = drc.errors > 0 && ownCount === drc.errors && drc.unconnected === 0
 		pills.push({
 			key: "drc",
 			label: "DRC",
-			state: bad > 0 ? "error" : drc.warnings > 0 ? "warn" : "ok",
+			state: ownOnly ? "warn" : bad > 0 ? "error" : drc.warnings > 0 ? "warn" : "ok",
 			count: bad > 0 ? bad : drc.warnings,
 			revision: board.revision,
 			items: [
+				...(ownCount ? [`${own.map(([ref, n]) => `${n} inside ${ref}'s own footprint`).join(", ")}: the part's vendor land pattern against the fab's generic rule, not the layout`] : []),
 				`${drc.errors} errors · ${drc.warnings} warnings · ${drc.unconnected} unconnected (${drc.rules})`,
 				...Object.entries(drc.byType ?? {}).map(([type, n]) => `${type} × ${n}`),
 				...(drc.firstError ? [`first: ${drc.firstError}`] : []),

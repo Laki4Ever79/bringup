@@ -13,7 +13,13 @@ export interface DrcSummary {
 	unconnected: number
 	byType: Record<string, number>
 	firstError: string | null
+	// Errors whose items all belong to one part, by ref: the part's own land pattern against the fab's generic rule
+	// (e.g. a USB-C receptacle's GND pads 0.17 mm from its own locating holes), not the layout. Still errors.
+	ownFootprint?: Record<string, number>
 }
+
+// "Pad 5 [GND] of J1 on F.Cu", "NPTH pad of J1" → J1; a track or zone has no part.
+const partOf = (item: { description?: string }) => /\bof ([A-Z]+\d+)\b/.exec(item.description ?? "")?.[1] ?? null
 
 // Adds the fab's board rules and default net class to a KiCad project, keeping everything else.
 export function applyFabRules(project: Record<string, any>): Record<string, any> {
@@ -38,10 +44,17 @@ export function applyFabRules(project: Record<string, any>): Record<string, any>
 	return p
 }
 
-export function summarizeDrc(report: { violations?: { type: string; severity: string; description: string }[]; unconnected_items?: unknown[] }): DrcSummary {
+export function summarizeDrc(report: { violations?: { type: string; severity: string; description: string; items?: { description?: string }[] }[]; unconnected_items?: unknown[] }): DrcSummary {
 	const v = report.violations ?? []
 	const byType: Record<string, number> = {}
 	for (const x of v) byType[x.type] = (byType[x.type] ?? 0) + 1
+	const ownFootprint: Record<string, number> = {}
+	for (const x of v) {
+		if (x.severity !== "error" || !x.items?.length) continue
+		const refs = new Set(x.items.map(partOf))
+		const [ref] = refs
+		if (refs.size === 1 && ref) ownFootprint[ref] = (ownFootprint[ref] ?? 0) + 1
+	}
 	return {
 		rules: FAB_RULES.name,
 		errors: v.filter((x) => x.severity === "error").length,
@@ -49,6 +62,7 @@ export function summarizeDrc(report: { violations?: { type: string; severity: st
 		unconnected: (report.unconnected_items ?? []).length,
 		byType,
 		firstError: v.find((x) => x.severity === "error")?.description ?? null,
+		ownFootprint,
 	}
 }
 
