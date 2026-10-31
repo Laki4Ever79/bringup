@@ -72,8 +72,6 @@ It never overwrites your edits; Revert restores the committed bytes; commits are
 models (`docs/runs/file-sync/real/`), a `pins.h` edit reached the architect as an engineer request and was applied 5 s
 after the save, and the final design kept it; that run then churned and ended unsettled.
 
-<!-- PENDING (cite only after the lead confirms): phone approvals. -->
-
 ### 4. All the way to a real board
 
 <!-- IMG docs/img/bench.png: a still of the ESP32-S3 on the desk, tilted, with the measured blink. -->
@@ -172,7 +170,11 @@ once, exactly one applies and the other gets `stale` and re-reads.
 ### Every change has a checker other than its author
 
 1. **The field's owner** approves or rejects it, through Mozaik interception (change control). An invalid proposal is
-   returned with the reason before the owner is ever asked.
+   returned with the reason before the owner is ever asked. **Approvals where you are**: a change held for the
+   engineer can be pushed to a phone through [ntfy](https://ntfy.sh), with Approve and Reject buttons that decide it
+   like the dashboard's. It's opt-in (off unless `BRINGUP_NTFY_TOPIC` is set), the push carries only the field and a
+   one-line reason, and the phone reaches the hub only through a token-guarded decision route; a failed push leaves
+   the change held. Built and tested; not yet tried on a real phone. Setup: `docs/design/phone-approvals.md`.
 2. **Plain code** checks what was actually built, and grounds every pin in the catalog and KiCad's symbols.
 3. **A fresh-context reviewer** judges the design against the brief.
 4. **The real board**: an ESP32-S3 on the bench runs the design's firmware and reports back (`--bench real`).

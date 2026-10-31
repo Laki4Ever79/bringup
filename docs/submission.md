@@ -120,6 +120,10 @@ classified "re-saved, no design change". Commits are local only. With real model
 - **Mozaik 4.1 fixes:** an outbox gives every participant the same event order (#115); `safeRunLoop` reports crashed
   loops (#114).
 
+**Approvals where you are.** A change held for the engineer can be pushed to a phone through ntfy, with Approve and
+Reject buttons that decide it like the dashboard's: opt-in, only the field and a one-line reason in the push, a
+token-guarded route from the network. Built and tested; not yet tried on a real phone (`docs/design/phone-approvals.md`).
+
 ## What one run hands you
 
 Printable case and lid STLs with a print check; a JLCPCB fab package (Gerbers, drill, BOM, CPL, checklist); firmware
