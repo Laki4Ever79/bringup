@@ -1,0 +1,85 @@
+# Bringup report
+
+Status: UNSETTLED at contract revision 34
+Violations: 0
+
+## Design
+- Pocket battery-powered climate logger with BLE phone access, logging temperature and humidity for cellar/greenhouse/shipping-box use.
+- Board 40×30 mm; connectors: J1 usb-c on bottom, SW1 button on top
+- Parts: U1 ESP32-C3-MINI-1 (C2838502), U2 SHTC3-TR-2.5KS (C194656), U3 XC6206P332MR-G (C5446), U4 TP4054-42-SOT25R (C32574), J1 TYPE-C-31-M-12 (C165948), J2 S2B-PH-K-S(LF)(SN) (C173752), D1 KT-0603R (C2286), D2 KT-0603R (C2286), R1 0402WGF1001TCE (C11702), R2 0402WGF1001TCE (C11702), SW1 TS-1187A-B-A-B (C318884)
+- Pins: I2C_SCL=GPIO4→U2.SCL, I2C_SDA=GPIO5→U2.SDA, STATUS_LED=GPIO8→D1.A, BOOT_BUTTON=GPIO9→SW1.A
+- Rails (peak/rated): VBUS 0/500 mA; VBAT 100/1000 mA, average 0.0307 mA; VCC_3V3 80/200 mA, average 0.0307 mA
+- Estimated battery life: 334 days vs target 180 days
+
+## Change requests
+
+| Request | Fields changed | Woken | Consistent again | After it |
+|---|---|---|---|---|
+| our temperature/humidity sensor is out of stock; switch to the other one in the catalog | parts | parts, build:board, build:firmware, grounding, consistency (5 of 9; 2 more checked, no change: architect, firmware) | 75.3 s | then 2 review rounds changed behavior |
+| make the board 40 mm wide | outline | architect, build:board, build:enclosure, consistency (4 of 9; 2 more checked, no change: parts, firmware) | 28.0 s | then 3 review rounds changed requirements, rails, behavior, parts |
+
+## Brief review
+
+Verdict: fail after 8 reviews (at most 2 fix rounds).
+- Review 1 of revision 8: fail
+  - blocker (requirements, rails, behavior): The 6-month battery-life requirement is not plausibly met by the stated power budget. The contract claims VCC_3V3 average 0.093 mA and 222 days, but the duty-cycle check from the same contract uses 150 ms active every 300 s and up to 500 mA peak on the busiest battery-fed rail, giving 0.256 mA average and only about 81 days on 500 mAh. Even if 500 mA is a conservative upper bound, the design provides no justified active-average current for the ESP32-C3 BLE wake/read/advertise interval, so the 180-day requirement is unsubstantiated and the available deterministic check says it misses badly. Suggestion: Provide a realistic active current budget for the wake interval, or reduce active time / interval / platform power enough that the computed average supports at least 180 days on 500 mAh under the stated every-few-minutes logging behavior.
+  - major (parts, requirements, behavior): Reading history is stored in the ESP32-C3 module flash while the brief requires a phone app to download stored history over BLE. The firmware note says a phone connection keeps the device awake until disconnect or 30 s timeout, but there is no battery-life accounting for these BLE download sessions 'every few days'. That usage works against the 6-month battery target and may further reduce life below the already-failing estimate. Suggestion: Include connected-BLE download energy in the battery-life budget, or change the storage/download strategy or battery target assumptions so typical phone history reads still meet the 6-month requirement.
+- Review 2 of revision 14: fail
+  - blocker (parts, pins, behavior, requirements): The brief requires a status LED that blinks on each reading and shows charging state. The design has two LEDs in parts, but only D1 is wired in the contract/board-generated wiring. D2 has no pin assignment and charger U4.CHRG is not connected anywhere, so there is no implemented charging-state indication. Suggestion: Connect a charge-status LED to the charger status output (or otherwise implement charging indication in hardware/firmware) and include its pin/wiring in the contract.
+  - major (requirements, rails, behavior): Battery-life support is not convincingly specified. The contract states VCC_3V3 average 0.069 mA, but the duty-cycle-based check gives about 0.0131 mA: 80 mA × 0.08 s / 900 s = 0.0071 mA active average, plus 0.005 mA MCU sleep and 0.001 mA LDO IQ ≈ 0.0131 mA. The design still exceeds 180 days by a large margin, but the stated rail average appears inconsistent with the stated duty cycle and firmware behavior. Also, the 30 s connected BLE session noted in firmware is excluded from the estimate, so real life depends on how often phones connect. Suggestion: Make the average-current budget consistent with the stated wake profile and explicitly include an assumed phone-connection pattern, or state that the 180-day requirement is met under the no-active-connection baseline.
+  - minor (behavior, requirements): The contract behavior says blinkMs = 1000, while the product firmware actually blinks the status LED for 20 ms on each reading and ignores the behavior field. This does not break the brief, but the contract field does not describe product behavior. Suggestion: Align the contract behavior fields with the shipped firmware behavior or remove fields that only affect bench builds.
+- Review 3 of revision 18: fail
+  - blocker (requirements, parts, pins, behavior): The brief requires a status LED that blinks briefly on each reading and also shows charging state. Charging state is covered by D2 in hardware, but the main status LED blink is not brief as contracted: behavior.blinkMs is 900000 ms (15 minutes). Although the product firmware note says it actually blinks 20 ms per reading, the design contract itself does not reflect that required behavior and instead states a value that clearly conflicts with the brief. Suggestion: Update the contract behavior to match the product behavior for the status LED on each reading, e.g. a brief blink around 20 ms, so the contract itself meets the brief.
+  - major (requirements, rails, parts, behavior): The 6-month battery-life target is plausible for the periodic 15-minute logging duty cycle: 80 mA peak for 80 ms every 900 s gives 0.0131 mA average including 5 µA sleep and 1 µA LDO IQ, or about 1589 days from 500 mAh. However, the firmware also stays awake up to 30 s when a phone connects to download history, and that usage is omitted from the battery-life claim even though the brief expects phone reads every few days. If awake current is on the order of tens of mA during a 30 s session, each connection costs roughly 0.17–0.67 mAh (20–80 mA × 30 s / 3600), which over many sessions can materially reduce life. Suggestion: State an average usage assumption for BLE download sessions in the contract and include it in the battery-life budget, to demonstrate the 180-day target under the intended 'checked every few days' use case.
+- Review 1 of revision 19: fail
+  - blocker (behavior, requirements): The contract's behavior does not meet the brief's status-LED requirement. It specifies blinkMs = 900000 ms, while the actual product firmware blinks the status LED for 20 ms on each reading and ignores the behavior field entirely. The design contract therefore does not correctly represent the required brief behavior for the status LED. Suggestion: Update the contract so behavior matches the shipped product behavior: brief blink on each reading, and charge indication on charging. Remove or correct the ignored 900000 ms behavior fields.
+  - major (requirements, behavior): Battery-life budgeting in the contract is incomplete for the actual BLE use case in the brief. The 180-day requirement is met by the idle logger budget: 80 mA for 80 ms every 900 s plus 6 µA sleep/regulator gives about 0.0131 mA average, or about 500/0.0131/24 ≈ 1589 days. But the firmware also stays awake up to 30 s when a phone connects to download history, and this energy is excluded from the stated average. Since the brief expects checks every few days by phone, the contract does not show that the 6-month target still holds under intended use. Suggestion: Add an average-use battery budget including connection/history-download sessions at a stated frequency, and verify it still exceeds 180 days for that usage pattern.
+- Review 2 of revision 20: fail
+  - blocker (parts, rails, requirements, behavior): The charger choice and generated charge current clearly undermine the 500 mAh single-cell pouch battery requirement. U4 is a TP4054 linear charger with R5 = 4.7 kΩ setting about 200 mA charge current, i.e. roughly 0.4C for a 500 mAh cell. Many small 500 mAh Li-ion/LiPo pouches are specified at 0.2C–0.5C max, so this may be acceptable for some cells, but the brief only says 'around 500 mAh' and does not constrain the chosen pouch. As designed, charging safety/compatibility depends on picking a cell that tolerates this current, so 'charges over USB-C' is not robustly met for the intended generic small pouch battery. Suggestion: Specify a battery model whose allowed charge current covers the programmed current, or reduce the TP4054 charge current to a more universally safe value for ~500 mAh pouches.
+  - major (behavior, requirements): The contract's behavior field says blinkMs = 1000, while the actual product firmware blinks the status LED for 20 ms on each reading and ignores the behavior field. The brief requires a status LED that blinks briefly on each reading, and the implemented firmware behavior does satisfy that, but the contract itself misstates the product behavior. Suggestion: Align the contract behavior with the shipped firmware behavior so the design contract accurately states the required brief-facing LED behavior.
+  - minor (requirements, parts): Battery-life margin looks strong. Using the provided duty cycle check: 80 mA for 80 ms every 900 s gives 0.0131 mA average including 5 µA sleep and 1 µA LDO IQ, or about 1589 days from 500 mAh. Even allowing substantial overhead for periodic phone connections, this still appears comfortably above the 180-day requirement. However, the average excludes user download sessions that can keep the device awake up to 30 s, so the true field life depends somewhat on connection frequency. Suggestion: Keep the duty-cycle assumptions documented with an expected phone-check frequency so the deployed battery-life claim remains traceable.
+- Review 1 of revision 21: fail
+  - blocker (parts, rails, requirements, behavior): The 6-month battery-life requirement is not plausibly met with the chosen ESP32-C3 BLE architecture and the stated average omits phone-download use. The computed 0.0131 mA average assumes only 80 ms awake every 900 s at up to 80 mA, but the firmware explicitly stays awake whenever a phone connects, up to 30 s per connection, and the brief says users check it from their phone every few days and download history. One 30 s session at 80 mA every 3 days adds 80 mA × 30 s / 259200 s = 0.00926 mA average, raising total to about 0.0224 mA including 6 µA sleep+LDO, which is still mathematically >180 days on paper (~930 days), but this contract provides no stated connected-mode current, no BLE idle/listen current, and no flash-write energy basis for the ESP32-C3 system. The claimed average is therefore unsupported for the actual required use case, and the selected Wi-Fi/BLE MCU is a risky fit for a 500 mAh / 6 month logger unless connected-mode current is explicitly budgeted. Suggestion: Provide a battery budget that includes the required BLE history-download sessions and realistic ESP32-C3 currents for wake, advertising, connection, flash writes, and sleep, or choose a lower-power BLE MCU if needed. The contract should state the average current basis for required phone access, not only the no-connection duty cycle.
+  - major (behavior, requirements): The contract's behavior field conflicts with the actual product behavior for the status LED. The brief requires a status LED that blinks briefly on each reading, but behavior.blinkMs is 1000 ms while the firmware note says the product build blinks only 20 ms and ignores the behavior field entirely. Suggestion: Make the contract describe the real product behavior used by firmware, including the brief blink duration on each reading, so the requirement is verifiable from the contract.
+- Review 2 of revision 28: fail
+  - blocker (requirements, behavior): The contract's behavior section is inconsistent with the brief-required status indication. It specifies blinkMs = 900000 ms, while the actual firmware note says the product build ignores behavior and blinks 20 ms on each reading. The contract therefore does not correctly specify the required LED behavior for the shipped product. Suggestion: Put the actual product LED behavior in the contract behavior field, e.g. a brief status blink on each reading and charge indication, so the contract itself demonstrates the brief requirement is met.
+  - major (requirements, rails, parts): The battery-life claim is not supported by a complete average-power budget. The quoted 180-day target is plausible from the provided sleep/duty figures, but the average excludes phone download sessions even though the brief explicitly expects checks every few days. Using the contract numbers: one 30 s session every 3 days at 80 mA adds 80 mA × 30 s / 259200 s = 0.00926 mA average. Adding that to the duty-cycle estimate 0.0149 mA gives about 0.0242 mA, still about 860 days on 500 mAh before other losses, but this omission means the stated average is incomplete. Suggestion: Include BLE download-session energy in the stated average current or explicitly provide a full battery-life budget covering periodic phone connections, charger/LDO leakage paths, and any flash-write overhead.
+  - minor (requirements, parts): History retention is only 30 days in the contract. The brief says users check it every few days; 30 days is probably acceptable, but it is an implicit design choice rather than a stated brief requirement, so there is no issue unless longer offline gaps are expected. Suggestion: No change required for the brief; optionally document why 30 days of stored history is sufficient for the intended use.
+- Review 3 of revision 34: fail
+  - blocker (behavior, requirements): The status LED behavior in the design contract conflicts with the brief. The brief requires a brief blink on each reading, but the contract's behavior specifies blinkMs = 1000 ms, i.e. a 1 s blink, which is not brief. Although the notes say the product firmware actually blinks 20 ms and ignores the behavior field, the contract itself does not state that required product behavior correctly. Suggestion: Make the contract explicitly reflect the product behavior required by the brief, e.g. set the reading blink to a short duration consistent with the implemented 20 ms blink, or otherwise encode the real product LED behavior in the contract.
+  - major (requirements, rails): The stated rail averages are internally implausible and appear to double-count battery consumption: both VBAT and VCC_3V3 are given as 0.0307 mA average, and the computed battery-life estimate adds both to get 334 days. For a battery feeding an LDO into a 3.3 V rail, the battery current should not also separately include the same downstream load current as an independent rail load. Using the duty-cycle-based upper bound given in the checks: 100 mA for 80 ms every 900 s gives 0.0089 mA active average, plus 6 µA sleep/regulator gives about 0.0149 mA average, not 0.0614 mA. The brief target of 180 days is still met with margin, but the contract's power accounting is inconsistent. Suggestion: Correct the rail average-current accounting so battery-life claims are based on one consistent average path from battery to loads, with regulator quiescent current added once. Keep the duty-cycle-based battery-life estimate in the contract or explicitly document the average assumptions.
+
+## Artifacts
+- Board: out/real-20/board/rev-34/dist/board/kicad/board.kicad_pcb (render out/real-20/board/rev-34/board.png)
+- Design rules (KiCad, JLCPCB 2-layer): 0 errors, 90 warnings, 0 unconnected (silk_over_copper 53, lib_footprint_issues 20, text_height 15, silk_overlap 2); 1 rule: USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm
+- Enclosure: out/real-20/enclosure/rev-21/case.stl
+- Print files: out/real-20/enclosure/rev-21/case.stl, out/real-20/enclosure/rev-21/lid.stl
+- Print check: ok (case open side up, lid plate down; 4 M2 standoffs for self-tapping screws)
+- Firmware: compiles
+- Firmware boot (QEMU): booted, printed revision 34; SENSOR FAIL is expected: QEMU emulates no I2C sensor
+- Sourcing: 11/11 listed at LCSC/JLCPCB · 2 stock confirmed · 9 stock unknown (jlcsearch returned none)
+
+## Fabrication
+
+JLCPCB assembly package (PCBWay takes the same files) in out/real-20/board/rev-34/fab:
+- README.txt (2189 bytes)
+- bom.csv (516 bytes)
+- cpl.csv (480 bytes)
+- gerbers.zip (62895 bytes)
+
+Work through the checklist in README.txt before ordering.
+
+## Coordination
+- Contract changes: 34
+- Change requests held by interception: 14 (approved 11, rejected 3)
+- Consistency checks: 41; violations caught along the way: 19
+- Artifacts built: 28; failed builds: 0; agent crashes: 0
+
+## Environment
+```
+tscircuit: tools/node/node_modules/.bin/tsci
+KiCad 10:  docker
+python:    .venv/bin/python
+pio:       .venv/bin/pio
+QEMU:      tools/qemu/bin/qemu-system-riscv32
+```
