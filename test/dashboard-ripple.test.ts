@@ -76,7 +76,7 @@ test("ripple: in flight, red checks and agents still working", () => {
 
 test("ripple: checks go red then green, the board's DRC rides along", () => {
 	const [r] = liveRipples([...initial, ...ripple], [request], T0 + 200_000)
-	const byKey = Object.fromEntries(r.checks.map((c: { key: string }) => [c.key, c]))
+	const byKey = Object.fromEntries(r.checks.map((c) => [c.key, c]))
 	assert.deepEqual(byKey.consistency.seq, [2, 0])
 	assert.equal(byKey.consistency.state, "ok")
 	assert.equal(byKey["build:board"].state, "ok")
@@ -133,7 +133,7 @@ test("ripples.json from the runner wins where it has an answer; the live trace f
 	const live = liveRipples([...initial, ...ripple.slice(0, 4)], [request], T0 + 106_000)
 	assert.equal(live[0].id, "req-1")
 	const file = { requests: [{ id: "req-1", text: "make it 60 mm wide", atMs: 100_200, fieldsChanged: ["outline", "connectors"], woke: ["architect", "parts", "build:board", "build:enclosure", "consistency"], stayedIdle: ["firmware", "reviewer", "build:firmware", "grounding"], violationsPeak: 2, consistentAtMs: 140_000, durationMs: 39_800 }] }
-	const [m] = mergeRipples(live, file, runStart([...initial, ...ripple]))
+	const [m] = mergeRipples(live, file, runStart([...initial, ...ripple]) ?? 0)
 	assert.equal(m.state, "consistent")
 	assert.equal(m.atMs, T0 + 100_200)
 	assert.equal(m.consistentAtMs, T0 + 140_000)
