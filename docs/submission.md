@@ -75,6 +75,21 @@ The design settled and was flashed to an ESP32-S3 in 35 s; the LED blinked at 10
 tilted" set the firmware's behaviour field; rev 8 was flashed in 16 s and booted; tilted, it blinked at **244 ms
 measured vs 250 ms** in the contract. The S3 dev board stands in for the design's C3.
 
+### Add a sensor (`docs/runs/add-sensor/`, scripted agents, real tools)
+
+A pocket BLE beacon with no sensor (`briefs/beacon.md`) was designed first (consistent in 263 s). Then "add a
+temperature/humidity sensor": parts added the SHT40 and its pull-ups, the architect wired it to GPIO8/GPIO9, the board
+re-placed and re-routed, the firmware switched on its driver, and the case cut a vent in the lid over the sensor. 7 of
+9 agents woke; 9 conflicts were caught live (including "case has no vent over the sensor U2"); consistent again in
+195 s with 0 left.
+
+### Simulated with its sensor (`docs/runs/wokwi/`, optional)
+
+After "add a temperature/humidity sensor", `npm run bringup -- simulate <runDir>` ran the new firmware in Wokwi on a
+circuit generated from the contract (the ESP32-C3 plus the chosen sensor on the assigned pins): `SENSOR OK 21.50 C
+48.0 %RH`, and the reading was stored. The firmware the agents generated reads the sensor they chose, on the pins they
+assigned. The sensor is a stand-in chip with fixed values; simulation runs on demand (free plan: 50 min a month).
+
 ### Edit the file instead (`docs/runs/file-sync/`)
 
 A save of a generated file becomes the engineer's change request and goes through the same change control. Scripted
@@ -88,6 +103,12 @@ agents, real tools; tests in `test/file-sync.test.ts` and `test/file-sync.int.te
 An edit the contract doesn't cover gets a drift warning ("this edit isn't in the design contract; the next rebuild
 will overwrite it"), and a save against an old revision is refused. Connector moves are mapped and unit-tested; only
 the outline was run end to end with real tools.
+
+**A linked folder is a git repo** (`docs/runs/linked/`, scripted agents, real tools; `test/linked.test.ts`): every
+settled revision is a commit whose message is the ripple. A `pins.h` edit was adopted (125 s); an edit to an older
+`pins.h` made while the design had moved was rebased instead of refused (45 s); a KiCad re-save with the same design was
+classified "re-saved, no design change". Commits are local only. With real models (`docs/runs/file-sync/real/`), a
+`pins.h` edit was applied 5 s after the save and kept, though that run then ended unsettled.
 
 ## How it uses Mozaik
 
@@ -106,12 +127,21 @@ the outline was run end to end with real tools.
 - **Mozaik 4.1 fixes:** an outbox gives every participant the same event order (#115); `safeRunLoop` reports crashed
   loops (#114).
 
+**Approvals where you are.** A change held for the engineer can be pushed to a phone through ntfy, with Approve and
+Reject buttons that decide it like the dashboard's: opt-in, only the field and a one-line reason in the push, a
+token-guarded route from the network. Built and tested; not yet tried on a real phone (`docs/design/phone-approvals.md`).
+
 ## What one run hands you
 
 Printable case and lid STLs with a print check; a JLCPCB fab package (Gerbers, drill, BOM, CPL, checklist); firmware
 compiled against the real pin map and booted in QEMU; a SPICE simulation of the power rails, which the reviewer cites;
 a routed KiCad board with DRC against JLCPCB's rules. The product firmware reads, stores a 30-day history on flash,
 blinks 20 ms, advertises over BLE for the rest of its wake window, and deep-sleeps.
+
+**Ready to order in one click.** On a fully green run (settled, consistent, real hardware, DRC clean, review passed), a
+"Ready to order ↗" button downloads one zip with the exact files JLCPCB asks for (`gerbers.zip`, `bom.csv`, `cpl.csv`),
+the case and lid STLs for JLC3DP, and a README with the steps and a "before you pay" checklist, and opens JLCPCB's quote
+page. Nothing is uploaded and no order is placed (`test/order.test.ts`).
 
 ## Try it
 
