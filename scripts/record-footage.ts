@@ -50,10 +50,9 @@ async function main(): Promise<void> {
 	if (!pw) throw new Error("set PLAYWRIGHT_CORE to a playwright-core install (see the header of this file)")
 	const { chromium } = await import(pw)
 
-	// The demo: scripted agents, real tools. The automatic change is "blink faster when tilted" (firmware only), so
-	// the board is still 50 × 30 mm when "make it 40 mm wide" is typed: exactly the experiment's "10 mm narrower" trial,
-	// which is what puts the proof line on screen.
-	const demo = spawn("npx", ["tsx", "src/demo.ts", "--no-open", "--port", String(port), "--change", "blink faster when tilted", "--after", "10"], { cwd: ROOT, stdio: ["ignore", "pipe", "inherit"], detached: true })
+	// The demo: scripted agents, real tools, the no-sensor beacon brief (briefs/beacon.md) and no automatic change:
+	// "add a temperature/humidity sensor" is typed by hand in Act 3, and the board, the case (a vent) and the firmware follow.
+	const demo = spawn("npx", ["tsx", "src/demo.ts", "--no-open", "--port", String(port), "--brief", "briefs/beacon.md", "--no-change"], { cwd: ROOT, stdio: ["ignore", "pipe", "inherit"], detached: true })
 	const runUrl = await new Promise<string>((ok, fail) => {
 		let buf = ""
 		demo.stdout.on("data", (c: Buffer) => {
@@ -96,7 +95,7 @@ async function main(): Promise<void> {
 	try {
 		// Act 2 (recorded first: the run is already starting): the first design building, then "Consistent at rev N".
 		await take(2, runUrl, async (page) => {
-			mark("the run page opens: 05 reads “Designing from the brief”, agent tiles lighting up together")
+			mark("the beacon brief: 05 reads “Designing from the brief”, agent tiles lighting up together")
 			await page.waitForTimeout(4000)
 			await glide(page, "#agents")
 			mark("several agent tiles working at once")
@@ -106,32 +105,36 @@ async function main(): Promise<void> {
 			await page.waitForTimeout(3500)
 		})
 
-		// Act 3: the automatic change ripples; then "make it 40 mm wide" typed by hand; the proof line; the PCB; why.
+		// Act 3: "add a temperature/humidity sensor" typed by hand; the ripple; the new sensor glowing on the PCB, its vent
+		// breathing on the case; what changed and why.
+		const SENSOR = "add a temperature/humidity sensor"
 		await take(3, runUrl, async (page) => {
-			await until(page, `/blink/i.test(document.getElementById("rip-text").textContent)`, 120_000)
-			mark("the automatic change lands: “blink faster when tilted” (firmware only)")
-			await until(page, resultIs("consistent", true), 10 * 60_000)
-			mark("05: “blink faster when tilted”: board, case and firmware agree; firmware woke, board and case stayed idle")
-			await page.waitForTimeout(3000)
+			await until(page, resultIs("consistent", false), 15 * 60_000)
+			mark("the beacon, settled: no sensor yet · 05 reads “First design consistent”")
+			await page.waitForTimeout(2500)
 			await glide(page, "#change-input")
 			await page.click("#change-input")
-			mark("typing “make it 40 mm wide”")
-			await page.keyboard.type("make it 40 mm wide", { delay: 90 })
+			mark(`typing “${SENSOR}”`)
+			await page.keyboard.type(SENSOR, { delay: 75 })
 			await page.waitForTimeout(600)
 			await page.keyboard.press("Enter")
-			await until(page, `/40 mm/.test(document.getElementById("rip-text").textContent) && ["rippling", "sent"].includes(document.getElementById("rip-result").className)`, 120_000)
-			mark("the ripple: outline v1 → v2; 05 reads “Board and case rebuilding for 40 mm wide”")
-			await until(page, `/40 mm/.test(document.getElementById("rip-text").textContent) && document.getElementById("rip-result").className === "consistent"`, 10 * 60_000)
-			mark("05: “40 mm wide: board, case and firmware agree” · the proof line: without the shared contract, 4 mismatches would ship")
-			await page.waitForTimeout(4000)
-			const u1 = page.locator('.pcb-root [data-ref="U1"]').first()
-			const b = await u1.boundingBox().catch(() => null)
+			await until(page, `/sensor/.test(document.getElementById("rip-text").textContent) && ["rippling", "sent"].includes(document.getElementById("rip-result").className)`, 120_000)
+			mark("the ripple: parts, pins and requirements change; 7 of 9 agents wake; 05 says who is rebuilding")
+			await until(page, `/sensor/.test(document.getElementById("rip-text").textContent) && document.getElementById("rip-result").className === "consistent"`, 15 * 60_000)
+			mark("05: “add a temperature/humidity sensor”: board, case and firmware agree")
+			// The case first, the pointer parked in an empty corner (over a part it would highlight that part everywhere).
+			const scene = await page.locator("#scene-host").boundingBox()
+			if (scene) await page.mouse.move(scene.x + 40, scene.y + 40, { steps: 25 })
+			mark("the case: the new vent grille breathes on the lid above the sensor")
+			await page.waitForTimeout(4500)
+			const u2 = page.locator('.pcb-root .pcb-part[data-ref="U2"]').first()
+			const b = await u2.boundingBox().catch(() => null)
 			if (b) await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 30 })
-			mark("the PCB at 40 mm: rulers, U1's size on hover")
-			await page.waitForTimeout(3000)
+			mark("the PCB: the new sensor U2 glows NEW (its pull-ups too), U1 CHANGED; hover names the part")
+			await page.waitForTimeout(4000)
 			await glide(page, "#why-btn")
 			await page.click("#why-btn")
-			mark("What changed & why: outline 50×30 → 40×30 mm, the architect's reason, caused by the request")
+			mark("What changed & why: parts + U2 SHT40, pins + I2C, each with its reason, caused by the request")
 			await page.waitForTimeout(5000)
 		})
 
