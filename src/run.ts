@@ -50,7 +50,7 @@ export interface RunOptions {
 	bench?: {
 		open: () => Promise<{ bridge: Bridge; hello: BridgeHello }>
 		until: Promise<void>
-		timings?: Pick<BenchOptions, "windowMs" | "liveCheckMs" | "bootTimeoutMs" | "batchMs">
+		timings?: Pick<BenchOptions, "windowMs" | "liveCheckMs" | "bootTimeoutMs" | "batchMs" | "blinkWaitMs">
 	}
 	// Engineer change requests sent one at a time: the first once the design has settled, each next one once it has
 	// settled again (or after changeTimeoutMs, for a request that changed nothing). The run ends after the last.
