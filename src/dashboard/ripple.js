@@ -262,6 +262,7 @@ export const PROBLEM = {
 	"sensor-mismatch": "the firmware drives a different sensor than the board has",
 	"firmware-build-failed": "the firmware doesn't build",
 	"history-overflow": "the history doesn't fit in flash",
+	"battery-short": "the battery won't last the target",
 }
 const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", grounding: "datasheet check", consistency: "consistency check" }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)

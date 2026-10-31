@@ -5,6 +5,9 @@ import { modelFor } from "../inference/models.ts"
 import { join, safeRunLoop, state } from "../runtime.ts"
 import { ChangeControl } from "../change-control.ts"
 import { contractTools } from "./contract-tools.ts"
+import { designFacts } from "./design-facts.ts"
+import { existsSync, readFileSync } from "node:fs"
+import { join as joinPath } from "node:path"
 
 const models = new Map<string, string>()
 
@@ -37,9 +40,22 @@ export function inferenceInputFor(agent: Agent): InferenceInput {
 const causes = new Map<string, Cause>()
 export const causeOf = (agentId: string): Cause | undefined => causes.get(agentId)
 
+// The designers whose turns carry the design facts, so they see what the reviewer will judge them on.
+export const FACT_ROLES: ReadonlySet<AgentRole> = new Set(["architect", "parts", "firmware"])
+
+// The facts the reviewer judges on, recomputed from the contract as it is when the turn starts.
+export function withDesignFacts(role: AgentRole | undefined, message: string): string {
+	if (!role || !FACT_ROLES.has(role)) return message
+	const s = state()
+	const briefPath = joinPath(s.outDir, "brief.md")
+	const brief = existsSync(briefPath) ? readFileSync(briefPath, "utf8") : ""
+	const facts = designFacts(s.contract.snapshot(), brief)
+	return `${message}\n\n# Design facts (computed from the current contract; the final brief review judges with the same facts)\n${facts.join("\n")}`
+}
+
 export function startTurn(agent: Agent, message: string, cause?: Cause): void {
 	if (cause) causes.set(agent.getId(), cause)
-	safeRunLoop(agent.getId(), message, inferenceInputFor(agent), new ChangeControl(agent.getId()))
+	safeRunLoop(agent.getId(), withDesignFacts(state().roles.get(agent.getId()), message), inferenceInputFor(agent), new ChangeControl(agent.getId()))
 }
 
 const handled = new WeakMap<Agent, Set<string>>()
