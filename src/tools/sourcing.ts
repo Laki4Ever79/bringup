@@ -60,7 +60,8 @@ export function alternativesFor(
 // What one LCSC/JLCPCB order (and JLC assembly) could cover. "Listed" means an LCSC number and a live price.
 // Stock jlcsearch didn't report is "stock unknown", and a part with an LCSC number but no live data at all (offline,
 // or not returned) is "not checked": neither is a sourcing failure, so neither sets warn.
-export function orderReadiness(items: { ref: string; lcsc: string | null; stock: number | null; priceUsd: number | null; inStock: boolean | null }[]): Readiness {
+// skipped: why nothing was looked up (a mock run), said in place of the per-line "no live data".
+export function orderReadiness(items: { ref: string; lcsc: string | null; stock: number | null; priceUsd: number | null; inStock: boolean | null }[], skipped?: string): Readiness {
 	const status = (i: (typeof items)[number]): LineStatus => {
 		if (!i.lcsc || !LCSC_NUMBER.test(i.lcsc)) return "not listed"
 		if (i.stock !== null && (i.inStock === false || i.stock <= 0)) return "out of stock"
@@ -83,7 +84,7 @@ export function orderReadiness(items: { ref: string; lcsc: string | null; stock:
 		counts.stockUnknown ? `${counts.stockUnknown} stock unknown (jlcsearch returned none)` : "",
 		counts.outOfStock ? `${counts.outOfStock} out of stock (${refs("out of stock").join(", ")})` : "",
 		counts.notListed ? `${counts.notListed} not listed (${refs("not listed").map((r) => `${r}: no LCSC number`).join(", ")})` : "",
-		counts.notChecked ? `${counts.notChecked} not checked (${refs("not checked").map((r) => `${r}: no live data`).join(", ")})` : "",
+		counts.notChecked ? (skipped ? `${counts.notChecked} not checked: ${skipped}` : `${counts.notChecked} not checked (${refs("not checked").map((r) => `${r}: no live data`).join(", ")})`) : "",
 	]
 	return { supplier: ORDER_SUPPLIER, total: items.length, counts, lines, warn: counts.outOfStock + counts.notListed > 0, summary: parts.filter(Boolean).join(" · ") }
 }

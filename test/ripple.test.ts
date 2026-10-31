@@ -172,3 +172,22 @@ test("scripted changes start only after a first settle that reached a consistent
 	assert.equal(changesMayStart({ settled: false, revision: 9 }, 2), true, "reviewed and failed: still a whole design to change")
 	assert.equal(changesMayStart({ settled: false, revision: 5 }, 0), false, "stuck before design.ready (real-11: no pins), nothing to ripple through")
 })
+
+test("a --mock --no-hardware run makes no network requests", { timeout: 60_000 }, async () => {
+	const out = tempDir()
+	const env = await detectEnvironment(ROOT)
+	const real = globalThis.fetch
+	const urls: string[] = []
+	globalThis.fetch = (async (input: string | URL | Request) => {
+		urls.push(String(input))
+		throw new TypeError("no network in a mock run")
+	}) as typeof fetch
+	try {
+		const r = await runDesign({ brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"), mock: true, noHardware: true, outDir: out, env })
+		assert.ok(r.settled)
+	} finally {
+		globalThis.fetch = real
+	}
+	assert.deepEqual(urls, [])
+	assert.match(readFileSync(join(out, "report.md"), "utf8"), /^- Sourcing: .*stock not looked up \(mock run\)/m)
+})
