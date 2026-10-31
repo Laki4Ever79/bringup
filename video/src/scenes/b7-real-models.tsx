@@ -1,10 +1,11 @@
 // Beat 7 (1:45–2:10): with real models. Every number is from docs/runs/real-20/ripples.json (req-1).
 import {Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, createRef, sequence, waitFor} from '@motion-canvas/core';
-import {C, F, caption, fontsReady, tag} from '../lib';
+import {sceneClock, C, F, caption, fontsReady, tag} from '../lib';
 
 export default makeScene2D(function* (view) {
   view.fill(C.paper);
+  const clock = sceneClock('b7-real-models');
   yield* fontsReady();
   const t = tag(view, 'REAL MODELS · RUN 20', C.ok);
   const cap = caption(view, 'With real models, too.');
@@ -37,4 +38,5 @@ export default makeScene2D(function* (view) {
   yield* cap.in();
   yield* waitFor(8);
   yield* all(cap.out(), rows().opacity(0.0, 0.3), req().opacity(0, 0.3));
+  yield* clock.end();
 });

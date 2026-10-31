@@ -1,12 +1,13 @@
 // Beat 8 (2:10–2:35): the A/B experiment (docs/experiment.md): 6 changes, 0 violations vs 16 mismatches shipped.
 import {Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, createRef, createSignal, easeOutCubic, waitFor} from '@motion-canvas/core';
-import {C, F, caption, fontsReady, footage, tag} from '../lib';
+import {sceneClock, C, F, caption, fontsReady, footage, tag} from '../lib';
 
 const J1 = {x: 960, y: 540, zoom: 1}; // act-4 already closes in on the J1 line by itself
 
 export default makeScene2D(function* (view) {
   view.fill(C.paper);
+  const clock = sceneClock('b8-proof');
   yield* fontsReady();
   const card = createRef<Rect>();
   const n = createSignal(0);
@@ -40,4 +41,5 @@ export default makeScene2D(function* (view) {
   yield* t().opacity(1, 0.3);
   yield* all(footage(stage(), '/a4_proof.mp4', 10.8, [], J1), c2.in());
   yield* c2.out();
+  yield* clock.end();
 });

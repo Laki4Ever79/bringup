@@ -22,7 +22,7 @@ Storyboard approved by the user on 31 Oct. Built in Motion Canvas (`video/`), on
 
 | Source | Where | Shows |
 |---|---|---|
-| Footage, Acts 1–4 (scripted agents, real tools) | `../wt-board/out/footage/act-{1..4}.webm`, shot list in `shots.md` there | hub, first design, the 40 mm ripple, the evidence band |
+| Footage, Acts 1–4 (scripted agents, real tools) | `../wt-board/out/footage/act-{1..4}.webm` (31 Oct re-recording, legible tiles), shot list in `shots.md` there; cut by `video/cut-footage.sh` | hub, first design, the 40 mm ripple, the evidence band |
 | real-20 (real models) | `docs/runs/real-20/ripples.json`, `report.md` | sensor swap: 2 mismatches caught and cleared, 75 s, case idle |
 | A/B experiment | `docs/experiment.md` | 0 violations against 16 mismatches |
 | The real board | phone video, still to record | "blink faster when tilted" → reflash → tilted 244 ms measured vs 250 ms |
@@ -42,8 +42,15 @@ Storyboard approved by the user on 31 Oct. Built in Motion Canvas (`video/`), on
 | 9 | 2:35–2:55 | Phone video of the board: slow blink; picture-in-picture of typing the change and the flash bar; tilt; fast blink; the measured number | "And it reaches the real board." Small: "ESP32-S3 dev board, standing in for the design's C3" | "One more change, in plain words. The firmware rebuilds, the board is reflashed, and it's measured on the board itself." |
 | 10 | 2:55–3:00 | End card | "Change one thing. The whole design follows." + `github.com/Laki4Ever79/bringup` · built on Mozaik | "That's Bringup." |
 
-The time on the result line (beat 6) is whatever the recorded run shows; the footage recorded on 31 Oct reads
-"Consistent again in 1 min 7 s · 4 of 9 agents woke".
+**About the footage run.** Its automatic change is "blink faster when tilted" (firmware only); we skip it in the video.
+"Make it 40 mm wide" is then typed from 50 mm, so the run view's proof line matches the experiment's "10 mm narrower"
+trial. The ripple plays in real time with no cuts (act-3 0:21–0:58): typed → "Consistent again in 31 s · 4 of 9 agents
+woke". At about 0:30 the Consistency tile shows FAILED with 5 violations for a few seconds before the builders catch
+up; that's real, it's "the checks go red, then green", and the caption says so. The pointer is a drawn SVG cursor that
+follows the recording's real mouse moves (headless video has none); act 4's zoom is a CSS scale on the page.
+
+**Voice.** Soniox TTS (`video/tools/voice.py`, run with the livekit project's venv), one WAV per beat, laid on the
+timeline from `video/src/timing.json` by `video/tools/mux.sh`. The captions carry the story without it.
 
 ## Live presentation at NTP (15 min slot: about 5 min talk, the rest Q&A)
 

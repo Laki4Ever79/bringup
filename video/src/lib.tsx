@@ -97,3 +97,20 @@ export function* footage(
   yield* waitFor(Math.max(0, seconds - t));
   v().remove();
 }
+
+import timing from './timing.json';
+import {useTime} from '@motion-canvas/core';
+
+/** Call at the start of a scene; `yield* end()` pads it to its length in timing.json (the voice track relies on it). */
+export function sceneClock(name: string) {
+  const t0 = useTime();
+  const s = timing.scenes.find(x => x.scene === name);
+  if (!s) throw new Error(`no timing for ${name}`);
+  return {
+    *end(): ThreadGenerator {
+      const left = s.length - (useTime() - t0);
+      if (left < 0) console.warn(`${name} runs ${(-left).toFixed(2)} s over its ${s.length} s`);
+      yield* waitFor(Math.max(0, left));
+    },
+  };
+}
