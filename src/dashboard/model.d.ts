@@ -43,3 +43,6 @@ export function driftView(drift: { live?: boolean; entries?: any[] } | null): { 
 export function rippleMarks(before: any, after: any): { added: string[]; changed: string[] }
 export function scriptedBriefs(briefs: { name: string; text: string }[]): { name: string; label: string; text: string }[]
 export function batteryLabel(o: { days: number; targetDays?: number | null; measured?: boolean; source?: string; short?: boolean }): string
+export interface FilesEdit { id: string; name: string; path: string; at: string; items: string[]; says: string; action: "adopt" | "revert" | null; open: boolean; folded: boolean; requestId: string | null }
+export interface FilesHistory { id: string; revision: number; at: string; subject: string; source: string; sourceLabel: string; requestId: string | null }
+export function filesView(files: any): { show: boolean; chip: string; folder: string | null; git: boolean; dirty: boolean; edits: FilesEdit[]; history: FilesHistory[]; open: number }

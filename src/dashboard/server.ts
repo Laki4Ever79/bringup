@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto"
-import { appendFileSync, createReadStream, mkdirSync, watch, writeFileSync, type FSWatcher } from "node:fs"
+import { appendFileSync, copyFileSync, createReadStream, mkdirSync, rmSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
@@ -12,6 +12,7 @@ import { orderCheck, orderPackage } from "./order.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 import type { TraceNotifier } from "./notify.ts"
+import { clientIp, PUBLIC_BANNER, type PublicGate } from "./public.ts"
 
 const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
@@ -188,6 +189,9 @@ export interface HubOptions {
 	lan?: { bind?: string; token?: string }
 	// Gets every trace line of the runs this hub follows (started here, adopted, or the default run): the ntfy push.
 	notify?: TraceNotifier
+	// --public (public.ts): any host may read; every POST is 403 "read-only demo" except Try it, a scripted stubbed run
+	// of briefPath with one scripted change, within the gate's limits. Listens on bind (default every interface).
+	public?: { gate: PublicGate; briefPath: string; bind?: string }
 }
 
 // What a scripted run says to a question: its agents don't reason, so there is nothing to ask them.
@@ -343,11 +347,65 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		return timingSafeEqual(Buffer.from(given), Buffer.from(token))
 	}
 
+	// The public demo's own routes; everything it doesn't handle falls through to the read-only GETs below.
+	const publicRuns = new Set<string>()
+	const READ_ONLY = Symbol("the read-only GET routes")
+	const publicRoute = async (req: IncomingMessage, res: ServerResponse, path: string, pub: NonNullable<HubOptions["public"]>): Promise<unknown> => {
+		if (req.method === "POST") {
+			const origin = req.headers.origin
+			if (origin !== undefined && origin.replace(/^https?:\/\//, "") !== req.headers.host) return json(res, 403, { error: "cross-site request" })
+			if (path === "/api/runs") {
+				if (!opts.launch) return json(res, 403, { error: "read-only demo" })
+				const refused = pub.gate.admit(clientIp(req.headers["x-forwarded-for"], req.socket.remoteAddress))
+				if (refused) return json(res, refused.status, { error: refused.error })
+				const runId = newRunId()
+				const outDir = join(outRoot, runId)
+				mkdirSync(outDir, { recursive: true })
+				copyFileSync(pub.briefPath, join(outDir, "brief.md"))
+				const run = opts.launch({ briefPath: join(outDir, "brief.md"), mock: true, outDir, extraArgs: ["--stay", "--no-hardware", "--no-review"] })
+				const entry = { exit: null as number | null, kill: run.kill }
+				live.set(runId, entry)
+				publicRuns.add(runId)
+				const timer = setTimeout(() => run.kill?.(), pub.gate.timeoutMs)
+				const end = (code: number) => {
+					clearTimeout(timer)
+					entry.exit = code
+					publicRuns.delete(runId)
+					pub.gate.finished()
+					setTimeout(() => rmSync(outDir, { recursive: true, force: true }), pub.gate.cleanupMs).unref()
+				}
+				void run.done.then(({ code }) => end(code), () => end(1))
+				return json(res, 201, { runId })
+			}
+			const change = /^\/api\/runs\/([^/]+)\/requests$/.exec(path)
+			if (change && publicRuns.has(change[1])) {
+				const dir = await runDir(change[1])
+				if (!dir) return json(res, 404, { error: "unknown run" })
+				const t = text((await readJson(req)).text, "text")
+				const refused = pub.gate.change(change[1], t)
+				if (refused) return json(res, refused.status, { error: refused.error })
+				return json(res, 201, appendRequest(dir, t))
+			}
+			return json(res, 403, { error: "read-only demo" })
+		}
+		if (req.method !== "GET") return send(res, 405, "method not allowed")
+		if (/^\/api\/runs\/[^/]+\/ready-to-order$/.test(path)) return json(res, 403, { error: "read-only demo" })
+		if (path === "/") {
+			const page = (await readFile(PAGE, "utf8")).replace(/<body[^>]*>/, (tag) => `${tag}<script>window.BRINGUP_PUBLIC = true</script><style>#fab, #order-btn { display: none !important }</style><div id="public-banner" style="position:fixed;left:12px;bottom:12px;z-index:9999;max-width:560px;padding:6px 12px;font:13px/1.4 system-ui,sans-serif;background:#fff4d6;color:#4a3800;border:1px solid #e6cf8a;border-radius:4px">${PUBLIC_BANNER}</div>`)
+			res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
+			return res.end(page)
+		}
+		if (path === "/api/hub") return json(res, 200, { defaultRun: null, canStart: Boolean(opts.launch), public: true })
+		return READ_ONLY
+	}
+
 	const server = createServer(async (req, res) => {
 		const path = (req.url ?? "/").split("?")[0]
 		try {
-			// From another host (--lan, the phone's ntfy buttons): a decision with the token, and nothing else.
-			const fromLan = !allowedHost(req.headers.host)
+			if (opts.public && (await publicRoute(req, res, path, opts.public)) !== READ_ONLY) return
+			// From another host (--lan, the phone's ntfy buttons): a decision with the token, and nothing else. In the
+			// public demo every host may read (it only gets here for GETs).
+			const fromLan = !opts.public && !allowedHost(req.headers.host)
 			if (fromLan && !(req.method === "POST" && /^\/api\/runs\/[^/]+\/decisions$/.test(path) && tokenOk(req.headers["x-bringup-token"]))) return json(res, 403, { error: "loopback only" })
 			if (req.method === "POST") {
 				const origin = req.headers.origin
@@ -515,7 +573,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			clearInterval(heartbeat)
 			fail(error)
 		})
-		server.listen(port, opts.lan ? (opts.lan.bind ?? "0.0.0.0") : "127.0.0.1", () => ok())
+		server.listen(port, opts.public ? (opts.public.bind ?? "0.0.0.0") : opts.lan ? (opts.lan.bind ?? "0.0.0.0") : "127.0.0.1", () => ok())
 	})
 	port = (server.address() as AddressInfo).port
 
