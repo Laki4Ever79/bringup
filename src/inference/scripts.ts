@@ -85,6 +85,21 @@ export function mockScripts(): Record<string, Script> {
 					})
 					return propose("pins", value, `engineer edited pins.h: ${moves.map((m) => m[0]).join("; ")}`)
 				}
+				// A saved board.kicad_pcb: "edited board.kicad_pcb: outline 50×30 → 45×30 mm; J1 left@15 → left@12 mm".
+				const resized = /outline [\d.]+×[\d.]+ → ([\d.]+)×([\d.]+) mm/.exec(instruction)
+				const shifts = [...instruction.matchAll(/(\w+) (left|right|top|bottom)@[\d.]+ → (left|right|top|bottom)@([\d.]+) mm/g)]
+				if (instruction.includes("edited board.kicad_pcb:") && (resized || shifts.length > 0)) {
+					const outlineNow = state().contract.get("outline")
+					const connectorsNow = state().contract.get("connectors") ?? []
+					if (resized && outlineNow && (outlineNow.widthMm !== Number(resized[1]) || outlineNow.heightMm !== Number(resized[2])))
+						return propose("outline", { ...outlineNow, widthMm: Number(resized[1]), heightMm: Number(resized[2]) }, `engineer edited the board outline: ${resized[0]}`)
+					const moved = connectorsNow.map((c) => {
+						const m = shifts.find((x) => x[1] === c.ref)
+						return m ? { ...c, edge: m[3] as typeof c.edge, offsetMm: Number(m[4]) } : c
+					})
+					if (shifts.length > 0 && JSON.stringify(moved) !== JSON.stringify(connectorsNow)) return propose("connectors", moved, `engineer moved ${shifts.map((m) => m[1]).join(", ")} on the board`)
+					return say("board edits applied")
+				}
 				const width = /(\d+(?:\.\d+)?)\s*mm wide/.exec(instruction)?.[1]
 				const outline = state().contract.get("outline")
 				if (step > 0 || !width || !outline) return say(width ? "outline updated" : "no field I own covers that request")

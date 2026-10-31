@@ -115,3 +115,15 @@ test("the file watcher stops when the run ends", { timeout: 60_000 }, async () =
 	assert.ok(!trace(out).some((e) => e.type === "change.requested" || e.type === "file.drift"), "no sync after run.ended")
 	assert.ok(!existsSync(join(out, "requests.jsonl")), "nothing was requested")
 })
+
+test("boardEdits maps a saved board's outline and connector moves to the contract, within the round-trip tolerance", async () => {
+	const { boardEdits } = await import("../src/runner/file-sync.ts")
+	const c = fixtureContract() // 50×30, J1 usb-c left@15
+	const same = { outline: { widthMm: 50.04, heightMm: 29.97 }, connectors: [{ ref: "J1", edge: "left" as const, offsetMm: 15.06 }, { ref: "J2", edge: "top" as const, offsetMm: 5 }] }
+	assert.deepEqual(boardEdits(same, c), { mapped: [], outline: null, connectors: null }, "the generator's own output, and J2 (a part, not a contract connector), are no edit")
+	const moved = { outline: { widthMm: 45, heightMm: 30 }, connectors: [{ ref: "J1", edge: "left" as const, offsetMm: 12 }] }
+	const e = boardEdits(moved, c)
+	assert.deepEqual(e.mapped, ["outline 50×30 → 45×30 mm", "J1 left@15 → left@12 mm"])
+	assert.deepEqual(e.outline, { widthMm: 45, heightMm: 30, thicknessMm: 1.6 })
+	assert.deepEqual(e.connectors![0], { ...c.values.connectors![0], edge: "left", offsetMm: 12 })
+})
