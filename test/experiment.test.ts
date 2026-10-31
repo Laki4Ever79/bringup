@@ -11,7 +11,7 @@ import { CHANGES, settledBase } from "../src/experiment/changes.ts"
 import { renderMarkdown, shippedMismatches, type TrialResult } from "../src/experiment/score.ts"
 import { runTrial } from "../src/experiment/harness.ts"
 import { runExperiment } from "../src/experiment/run.ts"
-import { readFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { join as joinPath } from "node:path"
 import { ROOT } from "../src/run.ts"
 import { fixtureArtifacts } from "./fixture.ts"
@@ -148,4 +148,27 @@ test("runExperiment writes results.json and the table, one trial per change and 
 	assert.ok(button.armB.shipped.some((v) => v.kind === "net-missing" && /BUTTON/.test(v.message)))
 	assert.ok(button.armB.shipped.some((v) => v.kind === "cutout-missing" && /SW1/.test(v.message)))
 	assert.match(readFileSync(docs, "utf8"), /Add a user button/)
+})
+
+test("arm B: an LDO swap only the firmware heard of ships a board with the old regulator, now that parts are checked", () => {
+	const truth = applied("ldo-swap").snapshot()
+	const baseSnap = { ...truth, values: { ...truth.values, parts: settledBase().parts } }
+	const dir = tempDir()
+	const base = { board: stubBoard(baseSnap, 1, dir), enclosure: stubEnclosure(baseSnap, 1, dir), firmware: stubFirmware(baseSnap, 1, dir) }
+	const shipped = shippedMismatches(truth, base, "firmware", stubFirmware(truth, 2, dir))
+	assert.deepEqual(shipped.map((v) => v.message), ["board places AP2112K-3.3TRG1 as U3, contract says XC6206P332MR-G"])
+})
+
+test("--only merges its trials into the saved results, keeping the change order and the other trials", { timeout: 120_000 }, async () => {
+	const out = tempDir()
+	const resultsPath = joinPath(out, "experiment-results.json")
+	const old = (change: string) => ({ change, label: change, receiver: "board", armA: { ms: 1, woken: [], workers: 7, violations: [], settled: true }, armB: { shipped: [] } })
+	writeFileSync(resultsPath, JSON.stringify({ date: "2026-10-30", tools: "real", workers: [], results: [old("narrower"), old("i2c-pins")], runs: { narrower: { A: {} }, "i2c-pins": { A: {} } } }))
+	await runExperiment({ outDir: out, docsPath: joinPath(out, "experiment.md"), resultsPath, noHardware: true, only: ["i2c-pins"] })
+	const saved = JSON.parse(readFileSync(resultsPath, "utf8"))
+	assert.deepEqual(saved.results.map((r: { change: string }) => r.change), ["narrower", "i2c-pins"])
+	assert.equal(saved.results[0].armA.ms, 1, "the trial not rerun is kept as it was")
+	assert.notEqual(saved.results[1].armA.ms, 1, "the rerun trial is replaced")
+	assert.deepEqual(Object.keys(saved.runs).sort(), ["i2c-pins", "narrower"])
+	assert.match(readFileSync(joinPath(out, "experiment.md"), "utf8"), /\| narrower \|/)
 })
