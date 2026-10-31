@@ -9,14 +9,15 @@ cut() { # name file start end
   ffmpeg -v error -y -ss "$3" -to "$4" -i "$SRC/$2" -an -r 30 -c:v libx264 -preset veryfast -crf 18 -g 10 -pix_fmt yuv420p "$OUT/$1.mp4"
   echo "$1.mp4  $2 $3–$4"
 }
-# Times from shots.md of the 31 Oct re-recording (legible tiles).
-cut a1_hub     act-1.webm 0   8.9
-cut a2_start   act-2.webm 0   14
-cut a2_board   act-2.webm 34  40
-cut a2_settle  act-2.webm 69  76
-cut a3_type    act-3.webm 17  21   # starts on the typing, after the earlier automatic change
-cut a3_ripple  act-3.webm 21  58   # the whole ripple in real time: typed → consistent again in 31 s
-cut a3_moved   act-3.webm 59  72.7
-cut a4_proof   act-4.webm 0   10.8
+# Times from shots.md of the final re-recording (frozen design; beacon brief → "add a temperature/humidity sensor").
+cut a1_hub     act-1.webm 0     8.9
+cut a2_start   act-2.webm 0     11
+cut a2_settle  act-2.webm 148   159   # "First design consistent" at 2:33
+cut a3_type    act-3.webm 2     7
+cut a3_rip_a   act-3.webm 7     27    # 7 of 9 wake, mismatches appear, the case cuts its vent (+12 s)
+cut a3_rip_b   act-3.webm 216   230   # the banner at 3:41 (the waiting between is cut; the clock on screen is real)
+cut a3_case    act-3.webm 239   248   # the new vent grille in 3D
+cut a3_pcb     act-3.webm 268   277   # U2 glows NEW, U1 CHANGED
+cut a4_proof   act-4.webm 0     10.8
 # The dashboard's own fonts, so the cards match the footage.
 mkdir -p "$OUT/fonts" && cp ../src/dashboard/fonts/*.woff "$OUT/fonts/"
