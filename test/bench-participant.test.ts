@@ -354,3 +354,29 @@ test("on a real board nobody tilted, the bench asks the person to tilt it, then 
 	assert.match(check.detail, /not tilted/)
 	assert.equal(t.of("bench.blink")[0].tiltBlinkMs, null)
 })
+
+test("a missing plain blink period is not waited for: only a tilt is worth waiting for", async () => {
+	// Six samples with one LED toggle: no period to measure, and no behavior asking for a tilt.
+	const t = setup(new FakeBridge({ meter: false }), { blinkWaitMs: 5000 })
+	const started = Date.now()
+	t.send("design.settled", { revision: t.firmware(), settled: true })
+	await waitFor(() => t.of("bench.verdict").length > 0, 2000)
+	assert.ok(Date.now() - started < 1500, `verdict after ${Date.now() - started} ms`)
+	assert.equal(t.of("bench.verdict")[0].checks.find((c) => c.name === "blink")!.skipped, true)
+})
+
+test("close() ends a tilt wait at once, and the bench emits nothing after it", async () => {
+	const t = setup(new FakeBridge({ meter: false, live: { seconds: 6, tilt: () => 3 } }), { blinkWaitMs: 20_000 })
+	t.state.contract.propose({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, by: "firmware", baseVersion: 0 })
+	t.send("design.settled", { revision: t.firmware(), settled: true })
+	await waitFor(() => t.of("bench.instruction").length === 1, 2000)
+	const b = bench!
+	bench = null
+	await b.close()
+	await b.whenIdle(500)
+	assert.equal(b.idle, true, "the tilt wait still runs after close(), and its timer keeps the process alive")
+	const after = t.events.length
+	await new Promise((r) => setTimeout(r, 200))
+	assert.equal(t.events.length, after, "no events after close")
+	assert.equal(t.of("bench.blink").length, 0)
+})

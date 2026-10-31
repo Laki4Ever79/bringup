@@ -382,3 +382,9 @@ test("a connector in a corner drops that corner's hole instead of overlapping it
 	s.values.connectors = [{ ref: "J1", kind: "usb-c", edge: "bottom", offsetMm: 6, widthMm: 9, heightMm: 3.5 }]
 	assert.deepEqual(mountingHoles(s).map((h) => h.ref), ["H2", "H3", "H4"])
 })
+
+test("every contract part carries its MPN onto the board, so a check can compare what was placed", () => {
+	const s = fixtureContract()
+	const src = circuitFromContract(s)
+	for (const p of s.values.parts!) assert.match(src, new RegExp(`name="${p.ref}"[^\\n]*manufacturerPartNumber="${p.mpn.replace(/[()]/g, "\\$&")}"`), p.ref)
+})

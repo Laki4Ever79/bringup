@@ -510,6 +510,10 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string
 	return lines
 }
 
+// The part's MPN on the board itself (circuit.json manufacturer_part_number), so the consistency check can compare
+// what was placed with the contract's parts list.
+const mpnOf = (p: Part) => (p.mpn ? ` manufacturerPartNumber=${q(p.mpn)}` : "")
+
 // Source of board.circuit.tsx. Every part gets a fixed position from placeParts; tscircuit only routes.
 export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions = {}): string {
 	const { outline, parts = [], pins = [], connectors = [] } = s.values
@@ -523,11 +527,11 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		if (connectorRefs.has(p.ref)) continue
 		const footprint = footprintFor(p)
 		if (footprint === USBC_FOOTPRINT) {
-			lines.push(`<connector name=${q(p.ref)}${at(placement, p.ref)} footprint=${q(footprint)} />`)
+			lines.push(`<connector name=${q(p.ref)}${mpnOf(p)}${at(placement, p.ref)} footprint=${q(footprint)} />`)
 			continue
 		}
 		const fp = footprint === MODULE_FOOTPRINT ? moduleFootprint() : q(footprint)
-		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${at(placement, p.ref)} footprint=${fp} />`)
+		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
 	}
 
 	for (const c of connectors) {
@@ -535,7 +539,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		const footprint = part ? footprintFor(part) : CONNECTOR_FOOTPRINT[c.kind]
 		const labels = part ? labelsFor(part, footprint) : ""
 		const { x, y } = connectorPosition(c, outline.widthMm, outline.heightMm)
-		lines.push(`<connector name=${q(c.ref)}${labels} footprint=${q(footprint)} pcbX={${x}} pcbY={${y}} pcbRotation={${EDGE_ROTATION[c.edge]}} />`)
+		lines.push(`<connector name=${q(c.ref)}${labels}${part ? mpnOf(part) : ""} footprint=${q(footprint)} pcbX={${x}} pcbY={${y}} pcbRotation={${EDGE_ROTATION[c.edge]}} />`)
 	}
 
 	for (const pin of pins) {
