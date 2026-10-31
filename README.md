@@ -15,7 +15,8 @@ designing from scratch is just the first change: the beacon's first design took 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
 **Try it online: [bringup-demo.onrender.com](https://bringup-demo.onrender.com/)**, a read-only dashboard of recorded
-runs (the first load after idle takes about 30 s). The recorded runs used the real tools; live runs there are stubbed.
+runs (the first load after idle takes about 30 s), or press **Try it**: a stubbed scripted run you can change once
+("add a temperature/humidity sensor"). The recorded runs used the real tools; live runs there are stubbed.
 
 > **Quick look: needs only Node 24, no API key; about 1 min for `npm ci`, then 10–20 s.**
 > ```bash
@@ -28,7 +29,9 @@ runs (the first load after idle takes about 30 s). The recorded runs used the re
 
 ### 1. A brief becomes a whole design
 
-<!-- IMG docs/img/design.png: the run view, settled after the first design (agent tiles, PCB, 3D case). -->
+![The run view after the first design: nine agent tiles, the contract fields, the timeline, "First design consistent at rev 7", the routed PCB and the 3D case](docs/img/design.png)
+<sub>A short brief became a whole design: consistent at revision 7, 2 min 30 s after the brief (scripted agents, real tools).</sub>
+
 
 Nine participants, each its own Mozaik loop, work at the same time against **one live design contract**. Out come
 parts with LCSC numbers, a routed KiCad board, a printable case and lid, and firmware for the board's actual pin map,
@@ -36,7 +39,9 @@ booted in QEMU.
 
 ### 2. Change one thing, and only what it affects wakes up
 
-<!-- IMG docs/img/ripple.png: mid-ripple: the change, the contract field it touched, the woken tiles lit and the idle ones dimmed, the status banner. -->
+![Mid-change: "add a temperature/humidity sensor" changed requirements, parts and pins; 7 of 9 agents woke; the Consistency tile is red with 8 violations; the timeline lists the mismatches](docs/img/ripple.png)
+<sub>Mid-change: three fields changed, 7 of 9 agents working at once, the checks red while the builders catch up.</sub>
+
 
 Type a change mid-run ("add a temperature/humidity sensor", "make it 40 mm wide", "the sensor is out of stock",
 "blink faster when tilted"). It touches one or a few contract fields. Mozaik situations wake only the agents those fields affect; they rework their part at the same
@@ -50,11 +55,15 @@ driver, and **the case cut a vent in the lid over the sensor**, because a sealed
 7 of 9 agents woke; 9 conflicts were caught live (including "case has no vent over the sensor U2"), and the design was
 consistent again in 195 s with 0 left. The before and after boards and cases are in the run folder.
 
-<!-- IMG docs/img/add-sensor.png: before/after: the board with the new sensor, the lid with its vent. -->
+![After the change: the banner reads "board, case and firmware agree, in 3 min 15 s, 7 of 9 agents had to act"; the new sensor U2 glows NEW on the PCB; the case has a new vent over it](docs/img/add-sensor.png)
+<sub>Consistent again: the new sensor glows NEW on the board, and the case grew a vent over it.</sub>
+
 
 ### 3. Or just edit the file
 
-<!-- IMG docs/img/edits.png: the drift panel / "Your edits" with Adopt and Revert. -->
+![The Files panel: the linked folder, your edits (a debug line flagged as not in the design, a KiCad re-save with no design change, a pin edit applied on top of the current design, an adopted pin edit) and the git history](docs/img/edits.png)
+<sub>The Files panel: the linked git folder, each edit classified (adopted, rebased, re-saved, not in the design), and one commit per settled revision.</sub>
+
 
 Edit and save a generated file: the firmware's `pins.h`, or the board in KiCad. The save becomes the engineer's change
 request and the design follows (`docs/runs/file-sync`: a pin moved in `pins.h` rebuilt the board and firmware in 96 s;
@@ -85,7 +94,6 @@ assigned. (Wokwi has no SHT40, so a small custom chip answers the datasheet's co
 
 ### 4. All the way to a real board
 
-<!-- IMG docs/img/bench.png: a still of the ESP32-S3 on the desk, tilted, with the measured blink. -->
 
 "Blink faster when tilted" changed the firmware's behaviour field; the firmware rebuilt, the board was flashed in 16 s
 and booted, and tilted it blinked at **244 ms measured** against the 250 ms the contract asked for (`--bench real`).
@@ -111,7 +119,8 @@ for JLC3DP and a README with the upload steps and a "before you pay" checklist, 
 Nothing is uploaded and no order is placed: JLCPCB has no public order API. Until the run is green the button stays
 hidden, with the reason (`test/order.test.ts`).
 
-<!-- IMG docs/img/order.png: the "Ready to order ↗" button in the board's stage bar. -->
+![The board panel's toolbar with the "Ready to order" button next to "Fab & print files"](docs/img/order.png)
+
 
 ## The proof: one change, with and without the shared contract
 
