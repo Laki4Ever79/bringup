@@ -31,3 +31,7 @@ test("the agents are told behavior is exactly three numbers and what it cannot e
 	assert.match(CONTRACT_SHAPES, /behavior .*exactly these three numbers/)
 	assert.match(CONTRACT_SHAPES, /charging state/)
 })
+
+test("the agents are told unknown stock is not out of stock, and the architect leaves parts-only requests to the parts agent", async () => {
+	assert.match(CONTRACT_SHAPES, /stock null means unknown, not out of stock/)
+})
