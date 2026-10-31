@@ -23,6 +23,9 @@ test("the most vivid mismatch: a misplaced cutout, then a wrong outline, then a 
 	assert.equal(vividMismatch([m("standoff-mismatch", "a"), m("outline-mismatch", "board is 50×30 mm, contract says 50×36 mm")]), "board is 50×30 mm, contract says 50×36 mm")
 	assert.equal(vividMismatch([m("net-missing", "n"), m("cutout-misaligned", "c")]), "c")
 	assert.equal(vividMismatch([m("something-new", "x")]), "x")
+	// A wrong part on the board (af's part-mismatch) is as tangible as a wrong outline, and beats a missing net.
+	assert.equal(vividMismatch([m("net-missing", "n"), m("part-mismatch", "board places AP2112K-3.3TRG1 as U3, contract says XC6206P332MR-G")]), "board places AP2112K-3.3TRG1 as U3, contract says XC6206P332MR-G")
+	assert.equal(vividMismatch([m("part-mismatch", "p"), m("outline-mismatch", "o")]), "o")
 	assert.equal(vividMismatch([]), null)
 })
 

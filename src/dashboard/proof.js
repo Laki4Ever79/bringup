@@ -3,8 +3,9 @@
 // Plain ES module with no dependencies but ripple.js: the page imports it from /proof.js, the tests in Node.
 import { whatMoved } from "./ripple.js"
 
-// Most telling first: a misplaced cutout or a wrong outline is visible in plastic; a missing net is a dead board.
-const VIVID = ["cutout-misaligned", "outline-mismatch", "net-missing", "cutout-missing", "standoff-mismatch"]
+// Most telling first: a misplaced cutout or a wrong outline is visible in plastic, a wrong part on the board in
+// copper; a missing net is a dead board.
+const VIVID = ["cutout-misaligned", "outline-mismatch", "part-mismatch", "net-missing", "cutout-missing", "standoff-mismatch"]
 
 export function vividMismatch(shipped) {
 	if (!shipped?.length) return null
