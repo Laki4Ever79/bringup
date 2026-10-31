@@ -8,7 +8,7 @@ import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 import { openBench } from "./bench/open.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 
-const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]..."
+const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -29,6 +29,10 @@ export interface CliArgs {
 	benchNoImu?: boolean
 	// --change, repeatable: engineer change requests sent one at a time, each after the design has settled.
 	changes?: string[]
+	// Seconds to wait after each settle before the next --change goes out, so the settled design can be seen first.
+	changeDelayMs?: number
+	// After settling (and after the --change requests), keep taking change requests until Ctrl-C or SIGTERM.
+	stay?: boolean
 }
 
 export function parseArgs(argv: string[]): CliArgs | { error: string } {
@@ -46,11 +50,14 @@ export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	const changeIndexes = argv.flatMap((a, i) => (a === "--change" ? [i] : []))
 	const changes = changeIndexes.map((i) => argv[i + 1]?.trim() ?? "")
 	if (changes.some((c) => !c || c.startsWith("--"))) return { error: "--change needs the request text" }
-	const valueAt = new Set([outIndex, roundsIndex, replayIndex, ...changeIndexes, ...(benchSource ? [benchIndex] : [])].filter((i) => i >= 0).map((i) => i + 1))
+	const delayIndex = argv.indexOf("--change-delay")
+	const delayS = delayIndex >= 0 ? Number(argv[delayIndex + 1]) : undefined
+	if (delayIndex >= 0 && !(Number.isFinite(delayS) && delayS! >= 0)) return { error: "--change-delay needs a number of seconds" }
+	const valueAt = new Set([outIndex, roundsIndex, replayIndex, delayIndex, ...changeIndexes, ...(benchSource ? [benchIndex] : [])].filter((i) => i >= 0).map((i) => i + 1))
 	const briefPath = argv.find((a, i) => !a.startsWith("--") && !valueAt.has(i))
 	if (!briefPath) return { error: "no brief given" }
 	if (!existsSync(briefPath)) return { error: `brief not found: ${briefPath}` }
-	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}) }
+	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}), ...(delayS !== undefined ? { changeDelayMs: delayS * 1000 } : {}), ...(argv.includes("--stay") ? { stay: true } : {}) }
 }
 
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
@@ -73,6 +80,14 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		console.warn("  Or rerun with --no-hardware to see the agents coordinate without the hardware tools.")
 	}
 
+	// Ctrl-C, or SIGTERM from the dashboard hub stopping the run: ends a run that stays up (--stay, --bench). Only
+	// then are the signals caught; otherwise Ctrl-C ends the run as usual.
+	const until = new Promise<void>((resolve) => {
+		if (!args.stay && !args.bench) return
+		process.once("SIGINT", () => resolve())
+		process.once("SIGTERM", () => resolve())
+	})
+	if (args.stay) console.log("bringup: --stay; after the design settles the run keeps taking change requests. Ctrl-C ends it.")
 	let bench: Parameters<typeof runDesign>[0]["bench"]
 	if (args.bench) {
 		if (!env.python || !existsSync(join(ROOT, "py/bench.py"))) {
@@ -81,18 +96,13 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		}
 		const python = env.python
 		const source = args.bench
-		// Ctrl-C, or SIGTERM from the dashboard hub stopping the run.
-		const until = new Promise<void>((resolve) => {
-			process.once("SIGINT", () => resolve())
-			process.once("SIGTERM", () => resolve())
-		})
 		console.log(`bringup: bench ${source}; after the design settles the run stays up for bring-up. Ctrl-C ends it.`)
 		bench = {
 			until,
 			open: () => openBench({ root: ROOT, source, outDir, replay: args.benchReplay, extraArgs: [...(args.benchNoMeter ? ["--no-meter"] : []), ...(args.benchNoImu ? ["--no-imu"] : [])], start: (a) => startBridge(python, a, { cwd: ROOT, onStderr: (t) => process.stderr.write(`[bench.py] ${t}`) }) }),
 		}
 	}
-	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, bench, changes: args.changes })
+	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}) })
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)\nreport: ${result.reportPath}`)
 	return result.settled ? 0 : 2
 }
