@@ -485,3 +485,9 @@ export function rippleMarks(before, after) {
 	const added = (after.parts ?? []).map((p) => p.ref).filter((r) => !had.has(r)).sort()
 	return { added, changed: changedRefs(before, after).filter((r) => !added.includes(r)) }
 }
+
+// ── Scripted mode's briefs: the scripted models build one of two fixed designs, chosen by the brief ─────────────────
+const SCRIPTED = [["beacon.md", "beacon.md (then add a sensor)"], ["logger.md", "logger.md"]]
+export function scriptedBriefs(briefs) {
+	return SCRIPTED.flatMap(([name, label]) => { const b = (briefs ?? []).find((x) => x.name === name); return b ? [{ name, label, text: b.text }] : [] })
+}

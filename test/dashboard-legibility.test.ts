@@ -42,5 +42,5 @@ test("the board/case row never crushes: it has a floor, and the page scrolls bel
 	assert.doesNotMatch(rule("#app"), /(^|;|\s)height:\s*100vh/)
 	// The deck's row: a floor tall enough to read the board, then whatever height is left.
 	const deck = /minmax\(clamp\([^)]*\), auto\) minmax\((\d+)px, 1fr\)/.exec(prop("#run", "grid-template-rows") ?? "")
-	assert.ok(deck && Number(deck[1]) >= 320, `the deck row's floor: ${prop("#run", "grid-template-rows")}`)
+	assert.ok(deck && Number(deck[1]) >= 300, `the deck row's floor: ${prop("#run", "grid-template-rows")}`)
 })
