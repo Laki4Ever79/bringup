@@ -391,10 +391,10 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		}
 		if (req.method !== "GET") return send(res, 405, "method not allowed")
 		if (/^\/api\/runs\/[^/]+\/ready-to-order$/.test(path)) return json(res, 403, { error: "read-only demo" })
-		// The page probes optional files (Cloud links, fab files, the BOM, change requests, lid vents, revision snapshots) that recorded runs
+		// The page probes optional files (the report and the contract before a live run writes them, Cloud links, fab files, the BOM, change requests, lid vents, revision snapshots) that recorded runs
 		// may not carry: an empty 204 instead of a 404, so a visitor's console stays clean. Anything else missing is a 404.
 		if (path === "/favicon.ico") return send(res, 204, "")
-		const probe = /^\/runs\/([^/]+)\/files\/(brief\.md|cloud\.jsonl|fab\/README\.txt|bom\.json|requests\.jsonl|enclosure\/rev-\d+\/vents\.json|contracts\/rev-\d+\.json)$/.exec(path)
+		const probe = /^\/runs\/([^/]+)\/files\/(brief\.md|report\.md|contract\.json|cloud\.jsonl|fab\/README\.txt|bom\.json|requests\.jsonl|enclosure\/rev-\d+\/vents\.json|contracts\/rev-\d+\.json)$/.exec(path)
 		if (probe) {
 			const dir = await runDir(probe[1])
 			if (dir && !existsSync(join(dir, probe[2]))) return send(res, 204, "")
