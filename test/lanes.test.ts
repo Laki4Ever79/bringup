@@ -209,3 +209,14 @@ test("the firmware lane builds again when the behavior changes, like the firmwar
 	applyLaneEvent(lanes, changed("behavior", 1, 3))
 	assert.equal(lanes["build:firmware"].status, "building")
 })
+
+test("the firmware lane builds again when the requirements change (the duty-cycle period), like the firmware builder", async () => {
+	const { BUILD_INPUTS } = await import("../src/agents/builders.ts")
+	assert.ok(BUILD_INPUTS.firmware.includes("requirements"))
+	const lanes = createLanes()
+	applyLaneEvent(lanes, changed("parts", 1, 1))
+	applyLaneEvent(lanes, changed("pins", 1, 2))
+	applyLaneEvent(lanes, ev("artifact.ready", { kind: "firmware", revision: 2 }))
+	applyLaneEvent(lanes, changed("requirements", 2, 3))
+	assert.equal(lanes["build:firmware"].status, "building")
+})

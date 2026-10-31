@@ -18,6 +18,9 @@ export function pinsHeader(s: ContractSnapshot): string {
 	const sensor = (s.values.parts ?? []).find((p) => p.role === "sensor")
 	const driver = sensor ? sensorDriver(sensor.mpn) : null
 	if (driver) lines.push(`#define SENSOR_${driver} 1`)
+	// The product firmware deep-sleeps this long between readings; without a duty cycle it keeps the template's default.
+	const period = s.values.requirements?.dutyCycle?.periodS
+	if (period !== undefined && period > 0) lines.push(`#define DUTY_PERIOD_S ${Math.round(period)}`)
 	lines.push(`#define BRINGUP_REVISION ${s.revision}`, "")
 	return lines.join("\n")
 }
