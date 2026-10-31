@@ -1,0 +1,1 @@
+{"at":"2026-10-31T11:22:54.131Z","text":"edited pins.h: I2C_SDA GPIO8 → GPIO4","source":{"kind":"file","path":"firmware/rev-7/include/pins.h","revision":7,"items":["I2C_SDA GPIO8 → GPIO4"]}}

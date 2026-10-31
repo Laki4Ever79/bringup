@@ -42,6 +42,13 @@ export interface BenchCheck {
 
 // What woke the agent whose write this is: the turn's trigger (src/agents/common.ts startTurn), or for a held
 // change the approval it was written under.
+export interface FileSource {
+	kind: "file"
+	path: string
+	revision: number
+	items: string[]
+}
+
 export type Cause =
 	| { kind: "brief" }
 	| { kind: "request"; id: string; text: string }
@@ -58,7 +65,14 @@ export interface Payloads {
 	"run.started": { review: boolean; engineerApproval: boolean; noHardware: boolean; bench: boolean; stay?: boolean; mock?: boolean }
 	"run.ended": { settled: boolean; revision: number }
 	// An engineer change request (requests.jsonl, line N = req-N) as it is forwarded to the agents.
-	"change.requested": { id: string; text: string }
+	// source: the request came from a saved file (runner/file-sync.ts): its path in the out dir, the contract revision
+	// it was generated at, and the mapped differences.
+	"change.requested": { id: string; text: string; source?: FileSource }
+	// A saved file that did not become a change request: an edit with no contract field, or a save against an older
+	// revision than the design is at. Never dropped silently.
+	// A drift entry (runner/drift.ts) settled by an action: reverted to the generated file, or adopted as request requestId.
+	"drift.resolved": { id: string; status: "adopted" | "reverted"; requestId?: string }
+	"file.drift": { path: string; savedRevision: number; designRevision: number; reason: "not-in-contract" | "stale"; items: string[]; message: string }
 	// reason, before, after and cause: why the field changed (older traces have only field, version, revision, by).
 	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole; reason?: string; before?: unknown; after?: unknown; cause?: Cause }
 	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string; needsEngineer: boolean }

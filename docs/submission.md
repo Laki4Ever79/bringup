@@ -18,8 +18,8 @@ Move a connector five millimetres and three teams have work to do: the board, th
 bugs live in that gap. Bringup gives each domain its own agent and puts every fact in one live design contract, held
 in Mozaik's shared `RuntimeState`. Agents run concurrently, each in its own `runLoop`.
 
-When you change something mid-run ("make it 40 mm wide", "our sensor is out of stock"), Mozaik situations wake only
-the agents it affects. They rework in parallel, and plain-code checks compare what was actually built until the design
+When you change something mid-run ("make it 40 mm wide", "our sensor is out of stock"), or simply edit and save a
+generated file (the firmware's `pins.h`, the board in KiCad), Mozaik situations wake only the agents it affects. They rework in parallel, and plain-code checks compare what was actually built until the design
 is consistent again. No agent edits a field it doesn't own: Mozaik interception holds the call until the owner
 approves.
 
@@ -58,20 +58,36 @@ With the builders forced to take turns, the same changes took 36–94 s instead 
 
 ### Real-model runs with mid-run changes
 
-| Run | Change | Touched | Woke | Consistent again |
+| Run | Change | Touched | Woke (of 9) | Consistent again |
 |---|---|---|---|---|
-| `real-15` | make the board 40 mm wide | outline | architect, board, case, consistency (4 of 9) | 49 s |
-| `real-15` | the SHT40 is out of stock | requirements, parts | architect, board, firmware, grounding, consistency (5 of 9) | 133 s, after a real `sensor-mismatch` (firmware still built for the old driver) was caught and cleared |
-| `real-16` | make the board 40 mm wide | outline, connectors | architect, parts, board, case, consistency | 111 s: at 40 mm the button overlapped USB-C, so the architect moved the connectors |
-| `real-17` | make the board 40 mm wide | outline, connectors | architect, board, case, consistency (4 of 9) | 224 s: the button ended up off the edge; the case and board failed until the connectors moved |
+| `real-20` | "our temperature/humidity sensor is out of stock; switch to the other one" | parts | parts, board, firmware build, grounding, consistency (5); the case stayed idle | 75 s, after a `sensor-mismatch` and a `part-mismatch` were caught and cleared |
+| `real-20` | "make the board 40 mm wide" | outline | architect, board, case, consistency (4) | 28 s |
+| `real-19` | the same sensor swap | parts | 6; the case stayed idle | 52 s, after a `sensor-mismatch` (firmware still built for the old driver) was caught and cleared |
+| `real-19` | "make the board 40 mm wide" | outline, connectors | 5 | 102 s: the first 40 mm board failed, so the architect moved the connectors |
+| `real-15` | "make the board 40 mm wide" | outline | 4 | 49 s |
 
-Full report, ripples and trace for real-15: `docs/runs/real-15/`.
+Each of these changes ended with 0 violations. Reports, ripples and full traces: `docs/runs/real-15/`, `real-19/`,
+`real-20/`.
 
 ### The real board (Act 3, `--bench real`)
 
 The design settled and was flashed to an ESP32-S3 in 35 s; the LED blinked at 1000 ms (measured). "Blink faster when
 tilted" set the firmware's behaviour field; rev 8 was flashed in 16 s and booted; tilted, it blinked at **244 ms
 measured vs 250 ms** in the contract. The S3 dev board stands in for the design's C3.
+
+### Edit the file instead (`docs/runs/file-sync/`)
+
+A save of a generated file becomes the engineer's change request and goes through the same change control. Scripted
+agents, real tools; tests in `test/file-sync.test.ts` and `test/file-sync.int.test.ts`.
+
+| Saved | Became | Woke (of 9) | Consistent again |
+|---|---|---|---|
+| `pins.h`: `PIN_I2C_SDA 8` → `4` | "edited pins.h: I2C_SDA GPIO8 → GPIO4", 0.3 s after the save | 5; the case stayed idle | 96 s: the firmware rebuilt on GPIO4 and booted in QEMU, the board rebuilt DRC-clean |
+| `board.kicad_pcb`: right edge dragged out 5 mm | "edited board.kicad_pcb: outline 50×30 → 55×30 mm" | 4; firmware build and grounding stayed idle | 21 s |
+
+An edit the contract doesn't cover gets a drift warning ("this edit isn't in the design contract; the next rebuild
+will overwrite it"), and a save against an old revision is refused. Connector moves are mapped and unit-tested; only
+the outline was run end to end with real tools.
 
 ## How it uses Mozaik
 
@@ -112,10 +128,11 @@ mm rulers on the board view, and 614 tests.
 
 ## Limits, honestly
 
-- **No real-model run has passed the final brief review yet.** Runs 15–17 took mid-run changes and ended with 0
-  violations; the fresh-context reviewer still blocked on brief-vs-design arguments (battery life, LED behaviour,
-  history depth).
-- The experiment uses scripted agents (real tools); real-model change times vary from 49 s to 224 s.
+- **No real-model run has passed the final brief review yet.** Runs 15, 19 and 20 took mid-run changes and ended with
+  0 violations; the fresh-context reviewer still blocked. Its open points in real-20: it reads the bench-only
+  `behavior` field as the product LED, it calls two rails' stated averages double-counted, and in one round it caught a
+  250 mA charge current that is too high for a 500 mAh cell.
+- The experiment uses scripted agents (real tools); real-model change times vary from 28 s to 224 s.
 - BLE was verified on an ESP32-S3 dev board (advertising, reading the latest record and the history), not on the C3 design; QEMU can't test the deep-sleep wake.
 - Boards need a human review before ordering (`fab/README.txt` lists every item).
 - Proven on 40–70 × 30 mm boards with about 20 parts; the catalog is small.
