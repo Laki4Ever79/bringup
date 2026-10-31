@@ -67,7 +67,14 @@ export function tag(view: View2D, text: string, color = C.signal) {
 export type Focus = {x: number; y: number; zoom: number};
 export const FULL: Focus = {x: 960, y: 540, zoom: 1};
 
-function place(v: Video, f: Focus) {
+/** Keeps the camera inside the recording, so a zoom never shows black past its edges. */
+function clampFocus(f: Focus): Focus {
+  const hx = 960 / f.zoom, hy = 540 / f.zoom;
+  return {zoom: f.zoom, x: Math.min(Math.max(f.x, hx), 1920 - hx), y: Math.min(Math.max(f.y, hy), 1080 - hy)};
+}
+
+function place(v: Video, f0: Focus) {
+  const f = clampFocus(f0);
   v.scale(f.zoom);
   v.position([-(f.x - 960) * f.zoom, -(f.y - 540) * f.zoom]);
 }
@@ -88,9 +95,10 @@ export function* footage(
   for (const m of moves) {
     yield* waitFor(m.at - t);
     const d = m.dur ?? 0.8;
+    const to = clampFocus(m.to);
     yield* all(
-      v().scale(m.to.zoom, d, easeInOutCubic),
-      v().position([-(m.to.x - 960) * m.to.zoom, -(m.to.y - 540) * m.to.zoom], d, easeInOutCubic),
+      v().scale(to.zoom, d, easeInOutCubic),
+      v().position([-(to.x - 960) * to.zoom, -(to.y - 540) * to.zoom], d, easeInOutCubic),
     );
     t = m.at + d;
   }

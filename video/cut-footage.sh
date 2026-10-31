@@ -14,7 +14,7 @@ cut a1_hub     act-1.webm 0   8.9
 cut a2_start   act-2.webm 0   14
 cut a2_board   act-2.webm 34  40
 cut a2_settle  act-2.webm 69  76
-cut a3_type    act-3.webm 16  21
+cut a3_type    act-3.webm 17  21   # starts on the typing, after the earlier automatic change
 cut a3_ripple  act-3.webm 21  58   # the whole ripple in real time: typed → consistent again in 31 s
 cut a3_moved   act-3.webm 59  72.7
 cut a4_proof   act-4.webm 0   10.8
