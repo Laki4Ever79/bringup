@@ -223,6 +223,16 @@
 	#battery .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--screen-text); opacity: .7; }
 	#stage-body { position: relative; overflow: hidden; background: var(--screen); }
 	#stage-body > .view { position: absolute; inset: 0; }
+	/* CAD rulers on the PCB tab: paper strips pinned to the top and left edges, in mm from the board's corner. */
+	#stage-body.rulers #pcb-host { inset: 26px 0 0 40px; }
+	.ruler { position: absolute; z-index: 2; display: block; background: var(--paper); pointer-events: none; }
+	/* A canvas doesn't stretch between left and right: explicit sizes. */
+	#ruler-x { left: 40px; top: 0; width: calc(100% - 40px); height: 26px; border-bottom: 1.5px solid var(--ink); box-sizing: border-box; }
+	#ruler-y { left: 0; top: 26px; width: 40px; height: calc(100% - 26px); border-right: 1.5px solid var(--ink); box-sizing: border-box; }
+	#ruler-corner { position: absolute; z-index: 3; left: 0; top: 0; width: 40px; height: 26px; border: 0; border-right: 1.5px solid var(--ink); border-bottom: 1.5px solid var(--ink); background: var(--ink); color: var(--paper); font: 700 11px/1 var(--mono); letter-spacing: .06em; cursor: pointer; }
+	#ruler-corner:hover { background: var(--signal); }
+	#ruler-xy { position: absolute; z-index: 3; right: 10px; bottom: 10px; padding: 5px 8px; background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); font: 600 12px/1 var(--mono); pointer-events: none; }
+	#stage-body:not(.rulers) .ruler, #stage-body:not(.rulers) #ruler-corner, #stage-body:not(.rulers) #ruler-xy { display: none; }
 	#render-view { display: grid; place-items: center; }
 	#render-view img { max-width: 100%; max-height: 100%; object-fit: contain; }
 	.empty-state { position: absolute; inset: 0; display: grid; place-items: center; color: var(--screen-text-2); font: 500 14px/1.4 var(--mono); text-align: center; padding: 20px; }
@@ -230,6 +240,8 @@
 	#changed-pill.on { opacity: 1; transform: none; }
 	#viewing-pill { position: absolute; top: 10px; right: 10px; z-index: 3; cursor: pointer; background: var(--screen-text) !important; color: var(--screen) !important; }
 	#stage-body.on-bench #changed-pill { top: 52px; left: 38%; }
+	#stage-body.rulers #changed-pill { top: 36px; left: 50px; }
+	#stage-body.rulers #viewing-pill { top: 36px; }
 	#scrubber { display: flex; align-items: center; gap: 10px; padding: 0 10px; border-top: 1px solid var(--screen-rule); }
 	#scrubber .label { color: var(--screen-text-2); }
 	#dots { flex: 1; display: flex; align-items: center; position: relative; height: 28px; }
@@ -255,6 +267,7 @@
 	#moved-svg .cut-same { fill: var(--paper-3); stroke: var(--ink-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
 	#moved-svg .arrow { stroke: var(--signal); stroke-width: 1.8; fill: none; vector-effect: non-scaling-stroke; marker-end: url(#arrowhead); }
 	#moved-svg text { font-family: var(--mono); fill: var(--ink-2); }
+	#moved-svg .axis { stroke: var(--ink-2); stroke-width: 1; fill: none; vector-effect: non-scaling-stroke; }
 	#moved-svg .dim { font-weight: 700; fill: var(--ink); }
 	#moved-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 9.5em; overflow: auto; font: 500 clamp(13px, .95vw, 16px)/1.3 var(--mono); }
 	#moved-list li { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 8px; padding: 4px 0; border-top: 1px dashed var(--rule-2); }
@@ -405,7 +418,11 @@
 
 	@media (max-width: 1500px) {
 		#battery .bar { width: 56px; }
-		#brief-title { max-width: 18vw; }
+		/* Narrow: the header's pills tighten and the brief's title gives way (it's on the ripple and under Brief). */
+		#brief-title { display: none; }
+		header { gap: 8px; }
+		header .pill { padding: 0 8px; font-size: 12px; height: 28px; }
+		.logo { font-size: 24px; }
 		#elapsed { display: none; }
 		.suggest .lead { display: none; }
 		.suggest button:nth-child(n+4) { display: none; }
@@ -511,6 +528,10 @@
 				</div>
 				<div id="stage-body">
 					<div id="pcb-host" class="view"></div>
+					<canvas id="ruler-x" class="ruler" aria-hidden="true"></canvas>
+					<canvas id="ruler-y" class="ruler" aria-hidden="true"></canvas>
+					<button id="ruler-corner" title="Fit the board (double-click the board does too). Wheel zooms about the cursor, drag pans.">FIT</button>
+					<span id="ruler-xy" class="hidden"></span>
 					<div id="pcb-empty" class="empty-state">waiting for the first board build</div>
 					<div id="render-view" class="view hidden"><div class="empty-state">waiting for the first board build</div></div>
 					<div id="stage-3d" class="view hidden"></div>
@@ -554,6 +575,7 @@
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
 	import { liveRipples, mergeRipples, resultLine, runStart, whatMoved } from "/ripple.js"
+	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { AGENT_COLORS, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
@@ -702,7 +724,7 @@
 		// ── Centerpiece modules (agent-mesh-af); without them, the KiCad render and an STL wireframe ──
 		let pcb = null, scene = null
 		const hover = (ref) => setHover(ref)
-		try { pcb = (await import("/pcb-view.js")).mountPcb($("pcb-host"), { onHover: hover }) } catch { pcb = null }
+		try { pcb = (await import("/pcb-view.js")).mountPcb($("pcb-host"), { onHover: hover, onView: (v) => { S.pcbView = v; drawRulers() } }) } catch { pcb = null }
 		try { scene = (await import("/scene3d.js")).mountScene($("scene-host"), { onHover: hover }) } catch { scene = null }
 		if (!pcb) $("tabs").querySelector('[data-tab="pcb"]').disabled = true
 		const wire = scene ? null : wireframe($("scene-host"))
@@ -718,6 +740,8 @@
 			$("stage-3d").classList.toggle("hidden", tab !== "3d")
 			$("bench-view").classList.toggle("hidden", tab !== "bench")
 			$("stage-body").classList.toggle("on-bench", tab === "bench")
+			$("stage-body").classList.toggle("rulers", tab === "pcb" && Boolean(pcb))
+			if (tab === "pcb") requestAnimationFrame(() => pcb?.fit?.())
 			if (tab === "bench") benchDirty = true
 			// The 3D tab borrows the side panel's scene: one scene, one camera.
 			const host = $("scene-host")
@@ -729,12 +753,94 @@
 			else note.textContent = "waiting for the first enclosure build"
 		}
 
+		// ── Rulers: mm from the board's bottom-left corner, tracking zoom and pan; the hovered part's extent on both ──
+		$("ruler-corner").addEventListener("click", () => pcb?.fit?.())
+		$("pcb-host").addEventListener("pointermove", (e) => {
+			const r = $("pcb-host").getBoundingClientRect()
+			S.cursor = { x: e.clientX - r.left, y: e.clientY - r.top }
+			drawRulers()
+		})
+		$("pcb-host").addEventListener("pointerleave", () => { S.cursor = null; drawRulers() })
+		function fmt(mm) { return Math.abs(mm) >= 100 ? mm.toFixed(0) : mm.toFixed(1) }
+		function drawRulers() {
+			const v = S.pcbView
+			if (!v?.board || !$("stage-body").classList.contains("rulers")) return
+			const map = axisMap({ view: v.view, width: v.width, height: v.height, origin: { x: v.board.minX, y: v.board.minY } })
+			const step = tickStep(map.pxPerMm)
+			const ext = S.hover ? pcb?.extentOf?.(S.hover) : null
+			const band = ext ? { x0: ext.x0 - v.board.minX, x1: ext.x1 - v.board.minX, y0: ext.y0 - v.board.minY, y1: ext.y1 - v.board.minY } : null
+			const css = getComputedStyle(document.body)
+			const ink = css.getPropertyValue("--ink").trim(), ink3 = css.getPropertyValue("--ink-3").trim(), signal = css.getPropertyValue("--signal").trim(), paper3 = css.getPropertyValue("--paper-3").trim()
+			const prep = (c, w, h) => {
+				const dpr = devicePixelRatio || 1
+				if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr) }
+				const g = c.getContext("2d")
+				g.setTransform(dpr, 0, 0, dpr, 0, 0)
+				g.clearRect(0, 0, w, h)
+				g.font = "500 10.5px JBMono, ui-monospace, monospace"
+				return g
+			}
+			const boardW = v.board.maxX - v.board.minX, boardH = v.board.maxY - v.board.minY
+			// Top: x.
+			const X = $("ruler-x"), W = X.clientWidth, RH = X.clientHeight
+			let g = prep(X, W, RH)
+			g.fillStyle = paper3; g.fillRect(map.xPx(0), 0, map.xPx(boardW) - map.xPx(0), RH)
+			if (band) { g.fillStyle = "rgba(255, 74, 23, .22)"; g.fillRect(map.xPx(band.x0), 0, map.xPx(band.x1) - map.xPx(band.x0), RH) }
+			g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 1
+			g.beginPath()
+			for (const t of rulerTicks(map.xMm(0), map.xMm(W), step)) {
+				const x = Math.round(map.xPx(t.mm)) + 0.5
+				g.moveTo(x, RH); g.lineTo(x, RH - (t.major ? 11 : 5))
+				if (t.major) g.fillText(t.label, x + 3, 11)
+			}
+			g.stroke()
+			// Bottom: y (up from the board's bottom edge).
+			const Y = $("ruler-y"), RW = Y.clientWidth, H = Y.clientHeight
+			const gy = prep(Y, RW, H)
+			gy.fillStyle = paper3; gy.fillRect(0, map.yPx(boardH), RW, map.yPx(0) - map.yPx(boardH))
+			if (band) { gy.fillStyle = "rgba(255, 74, 23, .22)"; gy.fillRect(0, map.yPx(band.y1), RW, map.yPx(band.y0) - map.yPx(band.y1)) }
+			gy.strokeStyle = ink; gy.fillStyle = ink; gy.lineWidth = 1; gy.textAlign = "right"
+			gy.beginPath()
+			for (const t of rulerTicks(map.yMm(H), map.yMm(0), step)) {
+				const y = Math.round(map.yPx(t.mm)) + 0.5
+				gy.moveTo(RW, y); gy.lineTo(RW - (t.major ? 11 : 5), y)
+				if (t.major) gy.fillText(t.label, RW - 3, y - 3)
+			}
+			gy.stroke()
+			// The hovered part: its extent's edges and W × H on the top ruler.
+			if (band) {
+				const label = `${S.hover} ${fmt(band.x1 - band.x0)} × ${fmt(band.y1 - band.y0)} mm`
+				g.font = "700 11px JBMono, ui-monospace, monospace"
+				const tw = g.measureText(label).width + 10
+				const cx = Math.min(Math.max((map.xPx(band.x0) + map.xPx(band.x1)) / 2 - tw / 2, 2), W - tw - 2)
+				g.fillStyle = signal; g.fillRect(cx, 2, tw, 14)
+				g.fillStyle = "#fff"; g.fillText(label, cx + 5, 13)
+				g.strokeStyle = signal; g.lineWidth = 2
+				g.beginPath(); for (const x of [band.x0, band.x1]) { g.moveTo(map.xPx(x), 0); g.lineTo(map.xPx(x), RH) } g.stroke()
+				gy.strokeStyle = signal; gy.lineWidth = 2
+				gy.beginPath(); for (const y of [band.y0, band.y1]) { gy.moveTo(0, map.yPx(y)); gy.lineTo(RW, map.yPx(y)) } gy.stroke()
+			}
+			// The cursor: a marker on both rulers and its x / y in mm.
+			const xy = $("ruler-xy")
+			if (S.cursor) {
+				g.fillStyle = ink3; g.fillRect(S.cursor.x - 0.5, 0, 1.5, RH)
+				gy.fillStyle = ink3; gy.fillRect(0, S.cursor.y - 0.5, RW, 1.5)
+				xy.textContent = `x ${fmt(map.xMm(S.cursor.x))} · y ${fmt(map.yMm(S.cursor.y))} mm`
+				xy.classList.remove("hidden")
+			} else if (band) {
+				xy.textContent = `${S.hover}: ${fmt(band.x1 - band.x0)} × ${fmt(band.y1 - band.y0)} mm at (${fmt(band.x0)}, ${fmt(band.y0)})`
+				xy.classList.remove("hidden")
+			} else xy.classList.add("hidden")
+		}
+		new ResizeObserver(() => drawRulers()).observe($("stage-body"))
+
 		// ── Hover: one ref lit everywhere ──
 		function setHover(ref) {
 			if (S.hover === ref) return
 			S.hover = ref
 			pcb?.highlight(ref)
 			scene?.highlight(ref)
+			drawRulers()
 			for (const row of $("parts").querySelectorAll(".part")) row.classList.toggle("hl", row.dataset.ref === ref)
 		}
 
@@ -1500,7 +1606,7 @@
 			if (!o) { svg.innerHTML = ""; return }
 			const bo = before?.outline ?? o
 			const W = Math.max(o.widthMm, bo.widthMm), H = Math.max(o.heightMm, bo.heightMm)
-			const pad = Math.max(W, H) * 0.16, fs = Math.max(W, H) * 0.05, depth = Math.max(2.5, Math.max(W, H) * 0.05)
+			const pad = Math.max(W, H) * 0.24, fs = Math.max(W, H) * 0.05, depth = Math.max(2.5, Math.max(W, H) * 0.05)
 			svg.setAttribute("viewBox", `${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}`)
 			svg.setAttribute("preserveAspectRatio", "xMidYMid meet")
 			// Contract coordinates run from the bottom-left corner, y up (codegen/circuit.ts); the SVG's y runs down.
@@ -1530,10 +1636,17 @@
 				out += `<text x="${x + dx}" y="${Y(y + dy) + fs * 0.35}" font-size="${fs}" text-anchor="${c.edge === "left" ? "start" : c.edge === "right" ? "end" : "middle"}">${esc(c.ref)}</text>`
 			}
 			for (const c of m.connectors) if (!c.after && c.before) out += cut(c.before, bo, "cut-before")
+			// mm axes along the top and left edges of the drawing, origin at the board's bottom-left corner.
+			const ppm = (svg.clientWidth || 300) / (W + 2 * pad)
+			const step = tickStep(Math.min(ppm, (svg.clientHeight || 200) / (H + 2 * pad)) * 0.8)
+			const top = -pad * 0.35, left = -pad * 0.35, tick = fs * 0.45
+			out += `<path class="axis" d="M0 ${top} H${W} M${left} ${Y(0)} V${Y(H)}"/>`
+			for (const t of rulerTicks(0, W, step)) out += `<path class="axis" d="M${t.mm} ${top} v${t.major ? -tick : -tick / 2}"/>` + (t.major ? `<text x="${t.mm}" y="${top - tick * 1.4}" font-size="${fs * 0.7}" text-anchor="middle">${t.label}</text>` : "")
+			for (const t of rulerTicks(0, H, step)) out += `<path class="axis" d="M${left} ${Y(t.mm)} h${t.major ? -tick : -tick / 2}"/>` + (t.major ? `<text x="${left - tick * 1.4}" y="${Y(t.mm) + fs * 0.25}" font-size="${fs * 0.7}" text-anchor="end">${t.label}</text>` : "")
 			const wText = m.outline && m.outline.before.w !== m.outline.after.w ? `${m.outline.before.w} → ${m.outline.after.w} mm` : `${o.widthMm} mm`
 			const hText = m.outline && m.outline.before.h !== m.outline.after.h ? `${m.outline.before.h} → ${m.outline.after.h} mm` : `${o.heightMm} mm`
 			out += `<text class="dim" x="${o.widthMm / 2}" y="${H + pad * 0.62}" font-size="${fs * 1.15}" text-anchor="middle">${esc(wText)}</text>`
-			out += `<text class="dim" transform="translate(${-pad * 0.42} ${Y(o.heightMm / 2)}) rotate(-90)" font-size="${fs * 1.15}" text-anchor="middle">${esc(hText)}</text>`
+			out += `<text class="dim" transform="translate(${-pad * 0.82} ${Y(o.heightMm / 2)}) rotate(-90)" font-size="${fs * 1.15}" text-anchor="middle">${esc(hText)}</text>`
 			svg.innerHTML = out
 		}
 

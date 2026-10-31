@@ -16,7 +16,7 @@ const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "pcb-view.js", "scene3d.js"])
+const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "pcb-view.js", "scene3d.js"])
 // Vendored OFL fonts (fonts/README.md), by exact name.
 const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
