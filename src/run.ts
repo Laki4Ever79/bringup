@@ -180,7 +180,9 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	// Mid-run change requests (tsx src/request.ts, MCP request_change) arrive as further engineer messages.
 	let requestCount = 0
 	const requests = watchRequests(opts.outDir, (r) => {
-		emit(makeEvent("change.requested", engineer.getId(), { id: `req-${++requestCount}`, text: r.text }), engineer.getId())
+		const request = { id: `req-${++requestCount}`, text: r.text }
+		emit(makeEvent("change.requested", engineer.getId(), request), engineer.getId())
+		state.currentRequest = request
 		sendMessage(r.text, engineer.getId())
 	})
 	// The engineer's Approve/Reject votes on held changes (dashboard, or appended by hand).

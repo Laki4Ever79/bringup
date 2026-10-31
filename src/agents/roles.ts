@@ -1,5 +1,5 @@
 import type { Agent, SituationHandler, Tool } from "@mozaik-ai/core"
-import { isEvent, type ArtifactKind, type ReviewFinding } from "../events.ts"
+import { isEvent, type ArtifactKind, type Cause, type ReviewFinding } from "../events.ts"
 import { OWNERS, type AgentRole } from "../contract/types.ts"
 import { ownerReviewsChanges, when } from "../change-control.ts"
 import { state } from "../runtime.ts"
@@ -30,6 +30,7 @@ function onBuildFailed(kinds: ArtifactKind[], owns: string): SituationHandler {
 					`build-failed@${kind}@${revision}`,
 					`${BUILD_FAILED_PREFIX} the ${kind} build failed at revision ${revision}:\n${error}\n` +
 						`If the failure comes from a contract field you own (${owns}), for example an unknown footprint, a missing part or a pin on a part that doesn't exist, fix it with propose_contract_change. Otherwise change nothing.`,
+					{ kind: "build-failed", artifact: kind, revision, error: String(error).split("\n")[0] },
 				)
 			},
 		},
@@ -53,7 +54,7 @@ function ownerFixesReview(role: AgentRole): SituationHandler {
 				if (!isEvent(event, "review.completed")) return
 				const mine = reviewFindingsFor(role, event.payload.findings)
 				const list = mine.map((f) => `- [${f.severity}] ${f.fields.join(", ") || "general"}: ${f.issue} Suggestion: ${f.suggestion}`).join("\n")
-				requestTurn(participant as Agent, `review@${event.payload.revision}`, `Review findings at revision ${event.payload.revision} for fields you own:\n${list}\nChange the fields you own to address them, if you agree they are right. Leave other fields to their owners.`)
+				requestTurn(participant as Agent, `review@${event.payload.revision}`, `Review findings at revision ${event.payload.revision} for fields you own:\n${list}\nChange the fields you own to address them, if you agree they are right. Leave other fields to their owners.`, { kind: "review", revision: event.payload.revision, items: mine.map((f) => ({ severity: f.severity, fields: f.fields, issue: f.issue })) })
 			},
 		},
 	}
@@ -79,6 +80,12 @@ Always call read_contract first and pass each field's current version as baseVer
 
 export const ENGINEER_REQUEST_PREFIX = "Change request from the engineer:"
 
+// The request being forwarded (run.ts sets it as it sends the message), so the turn names it by id.
+const requestCause = (text: string): Cause => {
+	const r = state().currentRequest
+	return r && r.text === text ? { kind: "request", id: r.id, text: r.text } : { kind: "request", id: "", text }
+}
+
 export function createArchitectAgent(opts: { mock: boolean }): Agent {
 	// The engineer's first message is the brief; every later one is a mid-run change request.
 	let briefSeen = false
@@ -94,12 +101,13 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 						const message = (event.payload as { message: string }).message
 						if (!briefSeen) {
 							briefSeen = true
-							startTurn(participant as Agent, `Brief from the engineer:\n${message}`)
+							startTurn(participant as Agent, `Brief from the engineer:\n${message}`, { kind: "brief" })
 							return
 						}
 						startTurn(
 							participant as Agent,
 							`${ENGINEER_REQUEST_PREFIX}\n${message}\nMeet it by changing the fields you own: call read_contract, then propose_contract_change with each field's current baseVersion. Keep everything the request does not mention. If no field you own can meet it, change nothing and say why.`,
+							requestCause(message),
 						)
 					},
 				},
@@ -113,7 +121,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "consistency.checked")) return
 						const mine = event.payload.violations.filter((v) => v.affects.includes("architect"))
-						requestTurn(participant as Agent, `violations@${event.payload.revision}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\nFix them by changing the fields you own.`)
+						requestTurn(participant as Agent, `violations@${event.payload.revision}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\nFix them by changing the fields you own.`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
 					},
 				},
 			},
@@ -123,7 +131,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "grounding.checked")) return
 						const mine = groundingFor(event.payload.findings, true)
-						requestTurn(participant as Agent, `grounding-pins@${event.payload.revision}`, `The grounding check found pin assignments with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the pins field: use only GPIOs the MCU has and pins the parts list names.`)
+						requestTurn(participant as Agent, `grounding-pins@${event.payload.revision}`, `The grounding check found pin assignments with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the pins field: use only GPIOs the MCU has and pins the parts list names.`, { kind: "grounding", revision: event.payload.revision, items: mine.map((f) => ({ kind: f.kind, partRef: f.partRef, detail: f.detail })) })
 					},
 				},
 			},
@@ -158,7 +166,7 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 				processor: {
 					apply: ({ participant }) => {
 						const c = state().contract
-						requestTurn(participant as Agent, `parts@${c.version("requirements")}.${c.version("rails")}`, "The requirements or rails changed. Choose the parts.")
+						requestTurn(participant as Agent, `parts@${c.version("requirements")}.${c.version("rails")}`, "The requirements or rails changed. Choose the parts.", { kind: "field-changed", fields: ["requirements", "rails"] })
 					},
 				},
 			},
@@ -168,7 +176,7 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "grounding.checked")) return
 						const mine = groundingFor(event.payload.findings, false)
-						requestTurn(participant as Agent, `grounding@${event.payload.revision}`, `The grounding check found parts with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the parts list: use search_parts and list only the pins the catalog gives.`)
+						requestTurn(participant as Agent, `grounding@${event.payload.revision}`, `The grounding check found parts with no datasheet behind them at revision ${event.payload.revision}:\n${listFindings(mine)}\nFix the parts list: use search_parts and list only the pins the catalog gives.`, { kind: "grounding", revision: event.payload.revision, items: mine.map((f) => ({ kind: f.kind, partRef: f.partRef, detail: f.detail })) })
 					},
 				},
 			},
@@ -199,13 +207,14 @@ export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
 						startTurn(
 							participant as Agent,
 							`${ENGINEER_REQUEST_PREFIX}\n${message}\nIf it is about what the firmware does (the LED, blinking, tilt), meet it by changing the behavior field you own: call read_contract, then propose_contract_change with its current baseVersion, keeping what the request does not mention. Otherwise change nothing; the architect handles the rest.`,
+							requestCause(message),
 						)
 					},
 				},
 			},
 			{
 				specification: when(({ event }) => isEvent(event, "contract.changed") && event.payload.field === "pins"),
-				processor: { apply: ({ participant }) => requestTurn(participant as Agent, `pins@${state().contract.version("pins")}`, "The pin map changed. Review it against the requirements.") },
+				processor: { apply: ({ participant }) => requestTurn(participant as Agent, `pins@${state().contract.version("pins")}`, "The pin map changed. Review it against the requirements.", { kind: "field-changed", fields: ["pins"] }) },
 			},
 			{
 				specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some((v) => v.affects.includes("firmware"))),
@@ -213,7 +222,7 @@ export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "consistency.checked")) return
 						const mine = event.payload.violations.filter((v) => v.affects.includes("firmware"))
-						requestTurn(participant as Agent, `fw-violations@${event.payload.revision}`, `Firmware violations at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}`)
+						requestTurn(participant as Agent, `fw-violations@${event.payload.revision}`, `Firmware violations at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
 					},
 				},
 			},
