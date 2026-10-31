@@ -15,7 +15,7 @@ export default makeScene2D(function* (view) {
   view.add(
     <Txt
       ref={line}
-      text={'Change one thing, and the whole hardware design follows:\nboard, case, firmware and parts, in parallel, and still consistent.'}
+      text={'Change “one thing”, and the whole hardware design follows:\nboard, case, firmware and parts, in parallel, and still consistent.'}
       fontFamily={F.sans}
       fontWeight={600}
       fontSize={46}

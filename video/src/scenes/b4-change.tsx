@@ -18,7 +18,7 @@ export default makeScene2D(function* (view) {
   const stage = createRef<Node>();
   view.add(<Node ref={stage} />);
   const t = tag(view, 'SCRIPTED AGENTS · REAL TOOLS');
-  const c4 = caption(view, 'Change one thing.');
+  const c4 = caption(view, 'Change “one thing”.');
   const c5 = caption(view, 'Only the affected agents wake, and they work at the same time.', 'REAL TIME · NO CUTS');
   const c5b = caption(view, 'The checks go red, then the builders catch up.', 'REAL TIME · NO CUTS');
   const c6 = caption(view, 'Consistent again. Nobody coordinated by hand.');
