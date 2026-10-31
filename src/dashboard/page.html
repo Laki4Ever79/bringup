@@ -1963,6 +1963,7 @@
 				(r.status === "open" ? `<div class="act">${btn("revert", "Revert", r.revert, r)}${btn("adopt", "Adopt into the design", r.adopt, r)}${!r.adopt.enabled && r.adopt.reason ? `<span class="why">${esc(r.adopt.reason)}</span>` : ""}</div>` : "") + `</div>`).join("")
 				: `<div class="none">No saved edits outside the contract.</div>`
 			if (html !== driftHtml) { driftHtml = html; $("drift-list").innerHTML = html }
+			renderFileNotice()
 		}
 		$("drift-btn").addEventListener("click", () => { for (const d of ["feed", "why", "changes"]) $(d).classList.remove("open"); $("drift").classList.toggle("open") })
 		$("drift-close").addEventListener("click", () => $("drift").classList.remove("open"))
@@ -1991,7 +1992,9 @@
 		// The newest save the design won't keep, on the stage until closed (the Feed keeps every one).
 		function renderFileNotice() {
 			const n = fileDrift(S.events).at(-1)
-			const show = n && n.seq !== S.fileNoticeClosed
+			// Once drift.json says nothing is open (reverted or adopted), the save is dealt with: no notice.
+			const settledDrift = S.drift && driftView(S.drift).open === 0
+			const show = n && n.seq !== S.fileNoticeClosed && !settledDrift
 			$("file-notice").classList.toggle("hidden", !show)
 			if (!show) return
 			$("file-notice-k").textContent = n.reason === "stale" ? "stale save · not applied" : "not in the design"
