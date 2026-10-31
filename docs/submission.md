@@ -113,6 +113,11 @@ compiled against the real pin map and booted in QEMU; a SPICE simulation of the 
 a routed KiCad board with DRC against JLCPCB's rules. The product firmware reads, stores a 30-day history on flash,
 blinks 20 ms, advertises over BLE for the rest of its wake window, and deep-sleeps.
 
+**Ready to order in one click.** On a fully green run (settled, consistent, real hardware, DRC clean, review passed), a
+"Ready to order ↗" button downloads one zip with the exact files JLCPCB asks for (`gerbers.zip`, `bom.csv`, `cpl.csv`),
+the case and lid STLs for JLC3DP, and a README with the steps and a "before you pay" checklist, and opens JLCPCB's quote
+page. Nothing is uploaded and no order is placed (`test/order.test.ts`).
+
 ## Try it
 
 ```bash
