@@ -55,7 +55,8 @@ pass. **Arm B** is a simulated "every team works from its own copy" baseline. On
 rebuilds (its artifact is the one arm A's builder produced from the same contract), and every other domain ships what
 it had built before the change. The same plain-code checks as arm A then run against the changed design. A mismatch no
 checker looks for counts as 0, not as a pass. **Arm C** is arm A with the builders made to take turns, for a
-parallel-versus-sequential wall-clock on the same change. Arms B and C are switches for the experiment only; runs never
+parallel-versus-sequential wall-clock on the same change. Each cell is one run on one laptop, and timings vary
+from run to run (the tools share the CPU), so read the times as tens of seconds, not exact. Arms B and C are switches for the experiment only; runs never
 use them.
 `
 }
