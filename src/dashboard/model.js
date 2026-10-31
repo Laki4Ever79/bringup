@@ -498,3 +498,35 @@ export function batteryLabel({ days, targetDays = null, measured = false, source
 	if (short) return targetDays !== null ? `${d} d / ${targetDays} d` : `${d} d${measured ? "" : " est."}`
 	return `${d} days${measured ? ` measured${source !== "real" ? ` (${source})` : ""}` : ""}${targetDays !== null ? ` vs ${targetDays} target` : measured ? "" : " estimated"}`
 }
+
+// ── Files: the linked folder, your edits in plain words (one action each) and the design's git history ───────────────
+// From GET /api/runs/:id/files ({linked, entries}) plus drift.json's `live`. Shows only with a folder or edits.
+const SOURCE_LABEL = { brief: "the brief", typed: "typed", file: "file edit" }
+const reqNo = (id) => `#${String(id ?? "").replace(/^req-/, "") || "?"}`
+function editSays(e) {
+	if (e.status === "open") return e.kind === "stale" ? `saved against rev ${e.savedRevision}, the design is at rev ${e.designRevision}` : "not in the design: the next rebuild will overwrite it"
+	if (e.status === "re-saved") return "re-saved, no design change"
+	if (e.status === "reverted") return "reverted to the generated file"
+	if (e.status === "rebased") return `applied on top of the current design: change request ${reqNo(e.requestId)}`
+	const clash = /^conflict: .*?sent to the owner of (\w+)/.exec(e.note ?? "")
+	if (clash) return `clashes with a newer change: waiting for the owner of ${clash[1]}`
+	return `adopted: change request ${reqNo(e.requestId)}`
+}
+export function filesView(files) {
+	const linked = files?.linked ?? null
+	const entries = files?.entries ?? []
+	if (!linked && entries.length === 0) return { show: false, chip: "", folder: null, git: false, dirty: false, edits: [], history: [], open: 0 }
+	const live = files.live !== false
+	const edits = [...entries]
+		.sort((a, b) => (a.status === "open") - (b.status === "open") || Date.parse(a.savedAt) - Date.parse(b.savedAt))
+		.reverse()
+		.map((e) => {
+			const open = e.status === "open"
+			const action = !open || !live ? null : e.adoptable ? "adopt" : "revert"
+			return { id: e.id, name: e.path.split("/").pop(), path: e.path, at: e.savedAt, items: e.items ?? [], says: editSays(e), action, open, folded: e.status === "re-saved", requestId: e.requestId ?? null }
+		})
+	const open = edits.filter((e) => e.open).length
+	const name = linked ? linked.dir.split("/").filter(Boolean).pop() : "files"
+	const history = (linked?.commits ?? []).map((c) => ({ id: c.id, revision: c.revision, at: c.at, subject: c.subject.replace(/^Bringup rev \d+: /, ""), source: c.source, sourceLabel: SOURCE_LABEL[c.source] ?? c.source, requestId: c.requestId }))
+	return { show: true, chip: `${name}${linked?.git ? " · git" : ""} · ${open ? `${open} edit${open === 1 ? "" : "s"}` : "clean"}`, folder: linked?.dir ?? null, git: Boolean(linked?.git), dirty: Boolean(linked?.dirty), edits, history, open }
+}

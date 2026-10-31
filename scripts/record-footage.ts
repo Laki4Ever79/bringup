@@ -147,7 +147,7 @@ async function main(): Promise<void> {
 
 		// Act 1: the hub page, the evidence band, a slow scroll.
 		await take(1, hubUrl, async (page) => {
-			mark("the hub: Describe a device. Agents design all of it at once. Change anything, and it all follows.")
+			mark("the hub: Change “one thing”. The whole hardware design follows: board, case, firmware and parts, in parallel.")
 			await page.waitForTimeout(2000)
 			// The wheel scrolls what is under the pointer: bring it onto the page first (not the fixed header).
 			await page.mouse.move(W / 2, H * 0.55, { steps: 20 })
