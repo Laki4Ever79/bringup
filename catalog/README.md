@@ -10,6 +10,7 @@ Generic footprints, not the real land pattern:
 | Part | Footprint used | Real package |
 |---|---|---|
 | SHT40 | `dfn4` | 1.5×1.5 mm DFN-4 (pitch differs) |
+| SHTC3 | `dfn4` | 2×2 mm DFN-4 with a centre pad tied to VSS (pitch differs, centre pad not drawn) |
 | TS-1187A-B-A-B | `pushbutton` | 5.1×5.1 mm SMD tactile switch |
 
 **ESP32-C3-MINI-1** uses `esp32_c3_mini_1`. This isn't a footprinter string: `src/codegen/circuit.ts` emits an
@@ -145,3 +146,16 @@ ground truth. It looks in this catalog first, then in KiCad 10's official symbol
 in the `kicad/kicad:10.0` image, read by `src/tools/kicad-symbols.ts` and cached in `out/.cache/kicad-symbols/`).
 An MPN matches a KiCad symbol by exact name, by name prefix (`AP2112K-3.3` for `AP2112K-3.3TRG1`), by the `x` wildcard
 (`SHT4x`), or by a `ki_keywords` entry (`SHT40`). Symbols that `extends` another symbol take that symbol's pins.
+
+## Second sensor: SHTC3
+
+`SHTC3-TR-2.5KS` (LCSC `C194656`) is the alternative to the SHT40, so a change request like "the SHT40 is out of
+stock" has a catalog part to move to. Checked on 31 Oct 2026:
+- jlcsearch `q=C194656`: SHTC3-TR-2.5KS, DFN-4-EP (2×2), 7104 in stock.
+- Pins from the SHTC3 datasheet (version 4, December 2022), Table 7: 1 VDD, 2 SCL, 3 SDA, 4 VSS. The centre pad is
+  internally connected to VSS. KiCad's `Sensor_Humidity:SHTC3` symbol uses the same four names (plus an NC pin).
+- Firmware: `pins.h` defines `SENSOR_SHTC3` or `SENSOR_SHT40` from the contract's sensor part, and
+  `templates/fw/src/main.cpp` compiles the matching driver. The SHTC3 driver uses address 0x70 (Table 8), wakeup
+  0x3517, measure 0x7866 (T first, normal mode, no clock stretching, up to 12.1 ms), and sleep 0xB098 (0.3 µA typ.).
+  A firmware built for the other sensor is a `sensor-mismatch` violation until it is rebuilt.
+- Not checked on hardware: we have no SHTC3 on the bench.
