@@ -1,3 +1,5 @@
+import { partPads } from "../codegen/circuit.ts"
+import { sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
 
 export interface BoardArtifact {
@@ -41,6 +43,8 @@ export interface FirmwareArtifact {
 	revision: number
 	ok: boolean
 	pins: Record<string, number>
+	// The sensor driver compiled in (SENSOR_* in pins.h), null for none; absent on artifacts that don't record it.
+	sensor?: string | null
 	log: string
 }
 
@@ -59,6 +63,7 @@ export type ViolationKind =
 	| "standoff-mismatch"
 	| "rail-overload"
 	| "firmware-build-failed"
+	| "sensor-mismatch"
 
 export interface Violation {
 	kind: ViolationKind
@@ -95,7 +100,10 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 	if (a.board && pins && mcuRef) {
 		for (const pin of pins) {
 			const net = a.board.nets[pin.signal] ?? []
-			const missing = [`${mcuRef}.GPIO${pin.gpio}`, `${pin.partRef}.${pin.partPin}`].filter((end) => !net.includes(end))
+			const mcuEnd = `${mcuRef}.GPIO${pin.gpio}`
+			// On a USB-C connector the pin lands on numbered pads (J1.DN on pin9 and pin11): any of them counts.
+			const pads = partPads(parts?.find((p) => p.ref === pin.partRef), pin.partPin).map((pad) => `${pin.partRef}.${pad}`)
+			const missing = [...(net.includes(mcuEnd) ? [] : [mcuEnd]), ...(pads.some((end) => net.includes(end)) ? [] : [`${pin.partRef}.${pin.partPin}`])]
 			if (missing.length > 0) {
 				v.push({
 					kind: "net-missing",
@@ -118,6 +126,19 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 					affects: ["firmware"],
 				})
 			}
+		}
+	}
+
+	const sensor = (c.values.parts ?? []).find((p) => p.role === "sensor")
+	if (a.firmware && a.firmware.sensor !== undefined && sensor) {
+		const wanted = sensorDriver(sensor.mpn)
+		if (a.firmware.sensor !== wanted) {
+			v.push({
+				kind: "sensor-mismatch",
+				message: `firmware reads the sensor with the ${a.firmware.sensor ?? "no"} driver, contract's ${sensor.ref} is ${sensor.mpn} (${wanted ?? "no driver"})`,
+				fields: ["parts"],
+				affects: ["firmware"],
+			})
 		}
 	}
 

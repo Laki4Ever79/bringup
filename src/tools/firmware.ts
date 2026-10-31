@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { cp, mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { behaviorHeader, parsePinsHeader, pinsHeader } from "../codegen/firmware.ts"
+import { behaviorHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import type { FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
@@ -31,6 +31,7 @@ export async function buildFirmware(pio: string, root: string, dir: string, s: C
 		revision,
 		ok: code === 0,
 		pins: parsePinsHeader(header),
+		sensor: parseSensorHeader(header),
 		log: output.trimEnd().split("\n").slice(-LOG_LINES).join("\n"),
 	}
 }

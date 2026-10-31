@@ -227,6 +227,18 @@ test("USB D+/D- are skipped when the contract uses GPIO18 or GPIO19 for somethin
 	assert.doesNotMatch(circuitFromContract(s), /USB_D/)
 })
 
+// Real run 12: the agents assigned USB_DN → J1.DN and USB_DP → J1.DP themselves. The USB-C footprint has no port
+// called DN or DP, only pads, so every board build failed until the agents gave up.
+test("contract pins on the USB-C connector go to its pads (D- pin9+pin11, D+ pin10+pin12), not to a DN/DP port", () => {
+	const s = loggerContract()
+	s.values.pins!.push({ signal: "USB_DN", gpio: 18, partRef: "J1", partPin: "DN" }, { signal: "USB_DP", gpio: 19, partRef: "J1", partPin: "DP" })
+	const src = circuitFromContract(s)
+	assert.doesNotMatch(src, /\.J1 > \.D[NP]"/)
+	for (const end of [".J1 > .pin10", ".J1 > .pin12", ".U1 > .GPIO19"]) onNet(src, end, "USB_DP")
+	for (const end of [".J1 > .pin9", ".J1 > .pin11", ".U1 > .GPIO18"]) onNet(src, end, "USB_DN")
+	assert.equal(src.match(/<net name="USB_DP" \/>/g)?.length, 1, "one USB_DP net, from the contract")
+})
+
 test("charger: VBUS in, VBAT out to the battery and the LDO, PROG to GND through 4.7k", () => {
 	const src = circuitFromContract(loggerContract())
 	for (const end of [".J1 > .pin6", ".J1 > .pin15", ".U4 > .VCC"]) onNet(src, end, "VBUS")

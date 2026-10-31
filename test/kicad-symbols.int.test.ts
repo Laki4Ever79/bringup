@@ -27,6 +27,13 @@ test("KiCad's Sensor_Humidity library grounds the SHT40", { skip, timeout: 120_0
 		c.values.pins = []
 		assert.deepEqual(groundParts(c, { catalog: [], symbols }), [])
 
+		// The catalog's second sensor, for "the SHT40 is out of stock": KiCad's SHTC3 symbol has the same four pin names.
+		assert.equal(matchSymbol("SHTC3-TR-2.5KS", symbols), "SHTC3")
+		const swapped = fixtureContract()
+		swapped.values.parts = swapped.values.parts!.filter((p) => p.ref === "U2").map((p) => ({ ...p, mpn: "SHTC3-TR-2.5KS", lcsc: "C194656", pins: ["VDD", "SCL", "SDA", "VSS"] }))
+		swapped.values.pins = []
+		assert.deepEqual(groundParts(swapped, { catalog: [], symbols }), [])
+
 		// The second load comes from the cache, not from docker.
 		const start = Date.now()
 		await loadSymbols(env, ["Sensor_Humidity", "Regulator_Linear"])

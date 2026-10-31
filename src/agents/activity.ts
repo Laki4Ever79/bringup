@@ -55,6 +55,7 @@ export function summarizeResult(text: string): string {
 		if (r.status === "applied") return `applied (v${r.version}, rev ${r.revision})`
 		if (r.status === "stale") return `stale (current v${r.current})`
 		if (r.status === "not-owner") return `not-owner (${r.owner} decides)`
+		if (r.status === "invalid" && typeof r.reason === "string") return clip(`invalid: ${r.reason}`, ANSWER_CHARS)
 		if (typeof r.status === "string") return r.status
 		if (r.recorded === true) return `recorded${typeof r.revision === "number" ? ` (rev ${r.revision})` : ""}`
 		if (typeof r.revision === "number" && r.values) return `contract at rev ${r.revision}`
@@ -83,8 +84,13 @@ export function describeLoopEvent(type: string, p: any): { phase: ActivityPhase;
 			const c = p?.input?.call
 			return { phase: "held", text: clip(`held for approval: ${c?.name ?? p?.nextStateId}${c ? ` ${(parse(c.args) as any)?.field ?? ""}` : ""}`, TOOL_CHARS) }
 		}
-		case "interception.finished":
+		case "interception.finished": {
+			// Turned back to the model (the owner rejected it, or the contract would refuse it): the tool output it got.
+			const items = p?.nextStateId === "inference" ? p?.input?.context?.getItems?.() : undefined
+			const told = Array.isArray(items) ? items.at(-1)?.output?.text : undefined
+			if (typeof told === "string") return { phase: "released", text: clip(`returned: ${summarizeResult(told)}`, ANSWER_CHARS) }
 			return { phase: "released", text: `released: ${p?.input?.call?.name ?? p?.nextStateId}` }
+		}
 		default:
 			return null
 	}

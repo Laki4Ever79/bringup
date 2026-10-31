@@ -39,8 +39,8 @@ test("zero stock is reported as out of stock", async () => {
 
 test("a part jlcsearch does not know keeps nulls", async () => {
 	const parts = await searchParts("sensor", { root, fetch: fakeFetch({}) })
-	assert.equal(parts.length, 1)
-	assert.deepEqual([parts[0].stock, parts[0].priceUsd, parts[0].inStock], [null, null, null])
+	assert.deepEqual(parts.map((p) => p.mpn), ["SHT40-AD1B-R2", "SHTC3-TR-2.5KS"])
+	for (const p of parts) assert.deepEqual([p.stock, p.priceUsd, p.inStock], [null, null, null])
 })
 
 test("a failed fetch returns the catalog entries with nulls instead of throwing", async () => {

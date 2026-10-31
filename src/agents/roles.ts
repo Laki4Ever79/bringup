@@ -63,6 +63,7 @@ export const CONTRACT_SHAPES = `Contract field shapes (units: mm, V, mA):
 - requirements: {summary: string, peripherals: string[], batteryLifeDays: number|null, batteryMah?: number, dutyCycle?: {activeMs, periodS, sleepUa}}
 - outline: {widthMm, heightMm, thicknessMm}
 - connectors: [{ref, kind: "usb-c"|"header"|"button", edge: "left"|"right"|"top"|"bottom", offsetMm (centre along the edge, from bottom or left), widthMm, heightMm}]
+  widthMm and heightMm are the part's own opening seen from that edge, not the case: the USB-C receptacle (TYPE-C-31-M-12) is about 9 × 3.2 mm. The case adds its own clearance, and a cutout too tall runs into the lid.
 - rails: [{name, voltageV, regulatorMaxMa, loadMa (peak), averageMa? (long-run average including sleep, of this rail's OWN loads only: do not include the current of rails it feeds, nor the regulator's quiescent current)}]
 When the brief sets a battery-life target, estimate the duty cycle (requirements.dutyCycle) and each battery-fed rail's averageMa from it, and set batteryMah if the brief does not state the capacity. Battery life is then checked in code: the battery current is the sum of averageMa over every rail except VBUS (they must not overlap), plus each LDO's quiescent current.
 dutyCycle.sleepUa is the whole board asleep, excluding the regulator's quiescent current (counted separately). It can't be below the MCU's deep-sleep floor (catalog sleepUa; ESP32-C3-MINI-1: 5 µA), and a lower figure is raised to that floor.
@@ -104,7 +105,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 				},
 			},
 			ownerReviewsChanges("architect"),
-			onBuildFailed(["board"], "outline, connectors, rails, pins"),
+			onBuildFailed(["board", "enclosure"], "outline, connectors, rails, pins"),
 			ownerFixesReview("architect"),
 			{
 				specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some((v) => v.affects.includes("architect"))),

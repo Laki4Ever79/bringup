@@ -22,12 +22,12 @@ function fakeFetch(prices: Record<string, { stock: number; price: number }>, cal
 	}) as typeof fetch
 }
 
-function setup(f: typeof fetch) {
+function setup(f: typeof fetch, live = true) {
 	const state = new BringupState(tempDir())
 	startRuntime(state, undefined, null)
 	const desk = createChangeDesk()
 	joinRuntime(desk)
-	const writer = createBomWriter({ fetch: f, debounceMs: 20, root })
+	const writer = createBomWriter({ fetch: f, debounceMs: 20, root, live })
 	joinRuntime(writer)
 	const setParts = () => {
 		const r = state.contract.propose({ field: "parts", value: LOGGER_DESIGN.parts, by: "parts", baseVersion: state.contract.version("parts") })
@@ -86,4 +86,19 @@ test("a burst of changes is written once, debounced", async () => {
 	await waitFor(() => existsSync(t.path))
 	await new Promise((r) => setTimeout(r, 100))
 	assert.equal(t.writer.writes, 1, "three events, one write")
+})
+
+// --mock is the judges' keyless path: it must not wait on jlcsearch (1.5-2.6 s measured on 31 Oct) or need a network.
+test("without live lookups the BOM makes no requests and says stock was not looked up", async () => {
+	const calls: string[] = []
+	const t = setup(fakeFetch({ C2838502: { stock: 5, price: 1 } }, calls), false)
+	t.setParts()
+	await waitFor(() => existsSync(t.path), 3000)
+	const bom = t.read()
+	assert.deepEqual(calls, [])
+	assert.equal(bom.liveStock, false)
+	assert.ok(bom.items.every((i) => i.stock === null && i.priceUsd === null))
+	assert.match(bom.readiness!.summary, /stock not looked up \(mock run\)/)
+	assert.equal(bom.readiness!.warn, false)
+	assert.ok(bom.items.find((i) => i.role === "sensor")!.alternatives!.some((a) => a.mpn === "SHTC3-TR-2.5KS"), "alternatives still come from the catalog")
 })
