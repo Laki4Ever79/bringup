@@ -220,6 +220,14 @@ test("ripple: on a bench run, a 'real board' check follows the change onto the b
 	assert.equal(check(base.filter((e: any) => e.type !== "bench.connected")), undefined)
 })
 
+test("ripple: a clean DRC that relies on the USB-C vendor rule reads clean, with the rule counted", () => {
+	const clean = { errors: 0, warnings: 0, unconnected: 0, rules: "jlcpcb", ownFootprint: {}, exemptions: ["USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm"] }
+	const events = [...initial, ...ripple.slice(0, 7), ev(125, "artifact.ready", { kind: "board", revision: 7, drc: clean }), ev(138, "artifact.ready", { kind: "enclosure", revision: 7 })]
+	const board = liveRipples(events, [request], T0 + 200_000)[0].checks.find((c) => c.key === "build:board")!
+	assert.equal(board.state, "ok")
+	assert.equal(board.detail, "rev 7 · DRC clean (1 rule: USB-C vendor land pattern)")
+})
+
 test("what moved: outline, connectors, pins and parts, before → after", () => {
 	const before = {
 		outline: { widthMm: 50, heightMm: 30 },

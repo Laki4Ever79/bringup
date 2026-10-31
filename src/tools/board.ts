@@ -46,7 +46,8 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 
 	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], work, 180_000)
 	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], work, 180_000)
-	const drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro")
+	const usbRefs = (s.values.connectors ?? []).filter((c) => c.kind === "usb-c").map((c) => c.ref)
+	const drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro", usbRefs)
 	cpSync(work, dir, { recursive: true })
 
 	return {

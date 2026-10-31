@@ -148,7 +148,11 @@ function buildCheck(key, events, changes) {
 		const ownCount = own.reduce((n, [, c]) => n + c, 0)
 		const ownText = own.map(([ref, n]) => `${n} inside ${ref}'s footprint`).join(", ")
 		const rev = `rev ${done.payload.revision}`
-		if (drc.errors + drc.unconnected === 0) return { key, label: BUILD_LABEL[key], state: "ok", detail: `${rev} · DRC 0 errors`, doneAt }
+		if (drc.errors + drc.unconnected === 0) {
+			// Clean, and which custom rule that relied on (the USB-C vendor land pattern), by kind.
+			const kinds = [...new Set((drc.exemptions ?? []).map((x) => x.replace(/ \(.*$/, "")))]
+			return { key, label: BUILD_LABEL[key], state: "ok", detail: `${rev} · ${kinds.length ? `DRC clean (${drc.exemptions.length} rule${drc.exemptions.length === 1 ? "" : "s"}: ${kinds.join(", ")})` : "DRC 0 errors"}`, doneAt }
+		}
 		if (ownCount === drc.errors && !drc.unconnected) return { key, label: BUILD_LABEL[key], state: "warn", detail: `${rev} · DRC: ${ownText}`, doneAt }
 		return { key, label: BUILD_LABEL[key], state: "error", detail: `${rev} · DRC ${drc.errors} errors${drc.unconnected ? `, ${drc.unconnected} unconnected` : ""}${ownCount ? ` (${ownText})` : ""}`, doneAt }
 	}

@@ -173,3 +173,19 @@ test("DRC errors inside one part's own footprint read amber with the reason; any
 	assert.equal(real.state, "error", "an error between parts is a real one")
 	assert.equal(checkPills(board({ ...own, ownFootprint: undefined })).find((p) => p.key === "drc")!.state, "error", "older traces without the field stay as they were")
 })
+
+test("a clean DRC that relies on the USB-C vendor rule says so in the pill", () => {
+	const board = (drc: object) => [{ seq: 1, at: "2026-10-31T12:00:01.000Z", type: "artifact.ready", producerId: "x", payload: { kind: "board", revision: 9, drc } }]
+	const clean = { rules: "JLCPCB 2-layer", errors: 0, warnings: 0, unconnected: 0, byType: {}, firstError: null, ownFootprint: {}, exemptions: ["USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm"] }
+	const pill = checkPills(board(clean)).find((p) => p.key === "drc")!
+	assert.equal(pill.state, "ok")
+	assert.equal(pill.items[0], "DRC clean · 1 rule: USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm")
+})
+
+test("DRC with no errors is clean even with KiCad's warnings (silkscreen, library notes); they stay in the popover", () => {
+	const board = (drc: object) => [{ seq: 1, at: "2026-10-31T12:00:01.000Z", type: "artifact.ready", producerId: "x", payload: { kind: "board", revision: 8, drc } }]
+	const drc = { rules: "JLCPCB 2-layer", errors: 0, warnings: 92, unconnected: 0, byType: { silk_over_copper: 50, lib_footprint_issues: 22, text_height: 17, silk_overlap: 3 }, firstError: null, ownFootprint: {}, exemptions: ["USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm"] }
+	const pill = checkPills(board(drc)).find((p) => p.key === "drc")!
+	assert.equal(pill.state, "ok")
+	assert.match(pill.items.join("\n"), /0 errors · 92 warnings/)
+})
