@@ -9,8 +9,7 @@
 
 ## The one line
 
-**Change one thing, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still
-consistent.**
+**Describe a device. Agents design all of it at once: board, case, firmware and parts. Change anything, and it all follows.**
 
 ## Description (about 150 words)
 
@@ -68,6 +67,11 @@ With the builders forced to take turns, the same changes took 36–94 s instead 
 
 Each of these changes ended with 0 violations. Reports, ripples and full traces: `docs/runs/real-15/`, `real-19/`,
 `real-20/`.
+
+**Add a sensor with real models** (`docs/runs/add-sensor-real-2/`): 7 of 9 woke, consistent again in 79 s. An engineer's
+request now amends the brief, so the reviewer stopped calling the sensor out of scope and made the agents wire it (I2C
+on GPIO6/7). The parts agent had already added a sensor before the request, against the beacon brief; the request made
+it legitimate. The run still ended unsettled (battery life).
 
 ### The real board (Act 3, `--bench real`)
 
