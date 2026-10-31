@@ -30,8 +30,8 @@ rework in parallel, and plain-code checks compare what was actually built until 
 the add-a-sensor run, 7 of 9 agents woke, 9 mismatches were caught, and the case grew a vent over the new sensor. No
 agent edits a field it doesn't own: Mozaik interception holds the call until the owner approves.
 
-Across 6 changes, the shared contract ended with 0 violations; with each team on its own copy, 16 mismatches would
-have shipped. Each run produces printable case STLs, a JLCPCB fab package, firmware booted in QEMU, and a SPICE power
+Across 6 changes, the shared contract ended with 0 violations, consistent again in 31–72 s with builds in parallel (36–94 s
+one at a time); a simulated baseline where each team keeps its own stale copy would have shipped 16 mismatches. Each run produces printable case STLs, a JLCPCB fab package, firmware booted in QEMU, and a SPICE power
 check, and a real ESP32-S3 runs the changed firmware.
 
 ## The demo (about 3 min, script in `docs/video.md`)

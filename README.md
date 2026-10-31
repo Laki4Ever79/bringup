@@ -13,9 +13,10 @@ compiles against the real pin map. Then the design changes, the way real designs
 part of it consistent. Even designing from scratch is just the first change: the beacon's first design took 7 contract
 revisions.
 
+Bringup is a demonstrator for one product family: ESP32-C3 boards built from a small, vetted parts catalog.
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0. Full details: [docs/details.md](docs/details.md).
 
-**Try it online: [bringup-demo.onrender.com](https://bringup-demo.onrender.com/)**, a read-only dashboard of recorded
+**The fastest way to see it: [bringup-demo.onrender.com](https://bringup-demo.onrender.com/)**, nothing to install. A read-only dashboard of recorded
 runs (the first load after idle takes about 30 s), or press **Try it**: a stubbed scripted run you can change once
 ("add a temperature/humidity sensor"). The recorded runs used the real tools; live runs there are stubbed.
 
@@ -26,6 +27,16 @@ git clone https://github.com/Laki4Ever79/bringup && cd bringup && npm ci
 npm run bringup -- briefs/logger.md --mock --no-hardware --out out/quick
 cat out/quick/report.md   # "settled ... Violations: 0", plus the change requests held by interception
 ```
+
+This quick look stubs the hardware tools, so it builds no board or case. To see what the real tools produce without
+installing them, open the recorded run [docs/runs/add-sensor/](docs/runs/add-sensor/): its board renders
+(`board/rev-10/board.png`), the printable case and lid (`enclosure/rev-9/*.stl`, which GitHub shows in 3D), the
+report and the full trace.
+
+**Words used below.** *Contract*: the one shared design every agent reads and writes. *Settled*: every built file
+matches the contract and nothing is left to do. *Grounding*: checking every part and pin against the parts catalog and
+KiCad's symbol library. *Brief reviewer*: an AI that judges the finished design against the original brief, with none
+of the agents' history.
 
 ## What it does
 
@@ -108,6 +119,13 @@ Prerequisites: Linux x86-64, Node 24, [uv](https://docs.astral.sh/uv/), and Dock
 of disk. `npm run setup` checks them first and says plainly what's missing. Optional settings go in `.env` (copy
 `.env.example`). The manual install steps, every command (link, status, simulate, tournament, MCP), the run folder and
 the tests are in [docs/details.md](docs/details.md).
+
+## Honest status
+
+- Scripted runs settle with 0 violations and take mid-run changes, with the real board, case and firmware tools.
+- Real models take mid-run changes too (run 20: a sensor swap in 75 s, 40 mm wide in 28 s), but **no real-model run
+  has passed the final brief review yet**; each report lists what's open.
+- Boards need a human review before ordering (`fab/README.txt` lists every item); the parts catalog is small.
 
 ## Credits
 
