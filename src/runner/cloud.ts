@@ -14,6 +14,24 @@ export interface CloudSessionDeps {
 }
 
 let warningFiltered = false
+const ONCE = Symbol("bringup: no-key warning printed once")
+
+// The cloud-sdk warns "no API key" each time core makes a per-loop client (one per runLoop), which on an unpaired
+// machine prints it once per agent turn. Wraps target.warn so it prints the first one only. node_modules stay as-is.
+export function onceNoKeyWarning(target: { warn: (...args: unknown[]) => void }): void {
+	const t = target as typeof target & { [ONCE]?: true }
+	if (t[ONCE]) return
+	t[ONCE] = true
+	const warn = target.warn
+	let printed = false
+	target.warn = (...args: unknown[]) => {
+		if (typeof args[0] === "string" && args[0].startsWith(PER_LOOP_WARNING)) {
+			if (printed) return
+			printed = true
+		}
+		warn(...args)
+	}
+}
 
 // One Mozaik Cloud session for the whole run: an exporter participant that sees every event (agent loops and
 // ours) under one sessionId, instead of core's separate session per runLoop. Takes the key core would use
@@ -25,7 +43,10 @@ export function startCloudSession(participants: () => readonly Participant[], de
 	if (env.BRINGUP_CLOUD === "off") return null
 	const endpoint = (env.MOZAIK_CLOUD_ENDPOINT || DEFAULT_ENDPOINT).replace(/\/$/, "")
 	const projectKey = env.BRINGUP_CLOUD_KEY || env.MOZAIK_API_KEY || env.MOZAIK_PROJECT_KEY || (deps.readCached ?? readCachedCredentials)(endpoint)?.projectKey
-	if (!projectKey) return null
+	if (!projectKey) {
+		if (env === process.env) onceNoKeyWarning(console)
+		return null
+	}
 
 	env.MOZAIK_API_KEY = ""
 	env.MOZAIK_PROJECT_KEY = ""

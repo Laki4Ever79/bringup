@@ -32,3 +32,9 @@ test("report: QEMU missing, --no-hardware, or nothing built", () => {
 	assert.match(report({ noHardware: true }), /^- Firmware boot \(QEMU\): not run \(--no-hardware\)$/m)
 	assert.match(report(), /^- Firmware boot \(QEMU\): not run \(no firmware compiled\)$/m)
 })
+
+// Real run 15: every QEMU boot printed SENSOR FAIL. QEMU has no I2C sensor, so that is expected, not a driver bug.
+test("a boot that printed SENSOR FAIL says it is expected in QEMU", () => {
+	const text = report({ booted: [{ revision: 41, booted: true, bootRevision: 41, serialTail: "bringup rev 41\nSENSOR FAIL" }] })
+	assert.match(text, /^- Firmware boot \(QEMU\): booted, printed revision 41; SENSOR FAIL is expected: QEMU emulates no I2C sensor$/m)
+})

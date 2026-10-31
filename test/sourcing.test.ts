@@ -130,3 +130,12 @@ test("a run writes bom.json before it returns, even with slow live lookups (7a's
 	const bom = JSON.parse(readFileSync(join(outDir, "bom.json"), "utf8")) as Bom
 	assert.ok(bom.readiness, "the final bom.json has the readiness summary")
 })
+
+test("without a lookup (mock run), a line with an LCSC number is at LCSC, and one without is still not listed", () => {
+	const r = orderReadiness([
+		{ ref: "U1", lcsc: "C2838502", stock: null, priceUsd: null, inStock: null },
+		{ ref: "J9", lcsc: null, stock: null, priceUsd: null, inStock: null },
+	], "mock run")
+	assert.equal(r.summary, "1/2 at LCSC/JLCPCB · stock not checked (mock run) · 1 not listed (J9: no LCSC number)")
+	assert.equal(r.warn, true, "a part with no LCSC number still needs attention")
+})

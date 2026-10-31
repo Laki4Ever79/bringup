@@ -48,10 +48,11 @@ test("the 60 mm request changes the outline, wakes board and enclosure, leaves f
 	assert.equal(r.text, "make the board 60 mm wide")
 	assert.equal(r.atMs, 17_000)
 	assert.deepEqual(r.fieldsChanged, ["outline"])
-	// The reviewer took a turn but changed nothing: checked, not woken.
 	assert.deepEqual(r.woke, ["architect", "build:board", "build:enclosure", "consistency"])
-	assert.deepEqual(r.checked, ["reviewer"])
-	assert.deepEqual(r.stayedIdle, ["parts", "firmware", "build:firmware", "grounding"])
+	// The reviewer's turn comes after design.ready: the review, not the change itself.
+	assert.deepEqual(r.checked, [])
+	assert.deepEqual(r.stayedIdle, ["parts", "firmware", "reviewer", "build:firmware", "grounding"])
+	assert.deepEqual(r.reviewFollowUps, { fieldsChanged: [], rounds: 0 })
 	assert.equal(r.violationsPeak, 2)
 	assert.equal(r.consistentAtMs, 30_000, "after the woken builders are done, not the 0 right after the change")
 	assert.equal(r.durationMs, 13_000)
@@ -130,6 +131,42 @@ test("a held proposal counts as woken; a participant outside the 9 lanes (the be
 	assert.equal(r.woke.length + r.checked.length + r.stayedIdle.length, 9)
 })
 
+// Real run 15: each re-settle re-arms the review, and its fix rounds changed requirements, rails and parts. Counted as
+// the request's ripple, they turned a 49 s width change into "430 s, 4 fields".
+test("a ripple ends at the first design.ready after its request; what the review rounds change after it is listed apart", () => {
+	const trace = [
+		ev(0, "run.started", {}),
+		checked(1, 19, 0),
+		ev(828_000, "change.requested", { id: "req-1", text: "make the board 40 mm wide" }),
+		turn(828_001, "architect"),
+		ev(831_000, "contract.changed", { field: "outline", version: 2, revision: 20, by: "architect" }),
+		checked(831_000, 20, 1),
+		ev(843_000, "artifact.ready", { kind: "enclosure", revision: 20 }),
+		checked(843_000, 20, 3),
+		ev(877_000, "artifact.ready", { kind: "board", revision: 20 }),
+		checked(877_000, 20, 0),
+		ev(879_000, "design.ready", { revision: 20, round: 1 }),
+		turn(879_100, "reviewer"),
+		ev(890_000, "review.completed", { revision: 20, verdict: "fail", findings: [] }),
+		turn(890_100, "parts"),
+		ev(899_000, "contract.changed", { field: "requirements", version: 3, revision: 21, by: "architect" }),
+		ev(913_000, "contract.changed", { field: "parts", version: 4, revision: 22, by: "parts" }),
+		checked(913_000, 22, 1),
+		ev(1_178_000, "design.ready", { revision: 22, round: 2 }),
+		ev(1_190_000, "review.completed", { revision: 22, verdict: "fail", findings: [] }),
+		ev(1_200_000, "contract.changed", { field: "rails", version: 3, revision: 23, by: "parts" }),
+		ev(1_250_000, "review.completed", { revision: 23, verdict: "fail", findings: [] }),
+	]
+	const [r] = changeRipples(trace)
+	assert.deepEqual(r.fieldsChanged, ["outline"])
+	assert.deepEqual(r.woke, ["architect", "build:board", "build:enclosure", "consistency"])
+	assert.deepEqual(r.checked, [])
+	assert.equal(r.violationsPeak, 3)
+	assert.equal(r.consistentAtMs, 877_000)
+	assert.equal(r.durationMs, 49_000)
+	assert.deepEqual(r.reviewFollowUps, { fieldsChanged: ["requirements", "parts", "rails"], rounds: 3 })
+})
+
 test("no change.requested, no ripples", () => {
 	assert.deepEqual(changeRipples(sixtyMmTrace().filter((e) => e.type !== "change.requested")), [])
 })
@@ -152,11 +189,13 @@ test("a mock run with a mid-run 60 mm request writes ripples.json and a Change r
 	assert.ok(ripple.stayedIdle.includes("build:firmware"), JSON.stringify(ripple))
 	assert.ok(ripple.checked.includes("firmware"), "the firmware agent reads every request, but changes nothing for a width")
 	assert.equal(typeof ripple.durationMs, "number")
+	assert.deepEqual(ripple.reviewFollowUps, { fieldsChanged: [], rounds: 1 }, "the mock reviewer passes the first review")
 	assert.ok(ripple.durationMs > 0)
 
 	const report = readFileSync(join(out, "report.md"), "utf8")
 	assert.match(report, /## Change requests/)
-	assert.match(report, /\| make the board 60 mm wide \| outline \| .* \(\d+ of 9; \d+ more checked, no change: [a-z, ]+\) \| \d+(\.\d)? s \|/)
+	assert.match(report, /\| Request \| Fields changed \| Woken \| Consistent again \| After it \|/)
+	assert.match(report, /\| make the board 60 mm wide \| outline \| .* \(\d+ of 9; \d+ more checked, no change: [a-z, ]+\) \| \d+(\.\d)? s \| then 1 review round changed nothing \|/)
 })
 
 test("each scripted change adds its own time to the run's default timeout", async () => {
@@ -189,5 +228,5 @@ test("a --mock --no-hardware run makes no network requests", { timeout: 60_000 }
 		globalThis.fetch = real
 	}
 	assert.deepEqual(urls, [])
-	assert.match(readFileSync(join(out, "report.md"), "utf8"), /^- Sourcing: .*stock not looked up \(mock run\)/m)
+	assert.match(readFileSync(join(out, "report.md"), "utf8"), /^- Sourcing: \d+\/\d+ at LCSC\/JLCPCB · stock not checked \(mock run\)$/m)
 })

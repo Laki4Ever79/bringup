@@ -26,3 +26,8 @@ test("the agents are told how to show charging state in hardware", () => {
 test("the agents are told connector width and height are the opening a part needs, with the USB-C size", () => {
 	assert.match(CONTRACT_SHAPES, /USB-C .*9 × 3\.2 mm/)
 })
+
+test("the agents are told behavior is exactly three numbers and what it cannot express", () => {
+	assert.match(CONTRACT_SHAPES, /behavior .*exactly these three numbers/)
+	assert.match(CONTRACT_SHAPES, /charging state/)
+})

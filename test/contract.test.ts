@@ -109,3 +109,12 @@ test("validate covers every rule propose enforces, so change control can check b
 	assert.match(c.validate({ field: "pins", value: [{ signal: "led", gpio: 1, partRef: "D1", partPin: "A" }], by: "architect" }) ?? "", /signal names must match/)
 	assert.match(c.validate({ field: "parts", value: [{ ref: "U9", role: "mcu", mpn: "NRF52840", lcsc: null, footprint: "x", pins: [] }], by: "parts" }) ?? "", /only catalog parts/)
 })
+
+test("a wrong behavior shape is refused with the exact shape and an example, and extra keys are refused too", () => {
+	const c = new DesignContract()
+	const reason = c.validate({ field: "behavior", value: { blinkOnRead: true } as never, by: "firmware" }) ?? ""
+	assert.match(reason, /exactly \{blinkMs, tiltBlinkMs, tiltDeg\}/)
+	assert.match(reason, /e\.g\. \{"blinkMs":1000,"tiltBlinkMs":200,"tiltDeg":20\}/)
+	assert.match(c.validate({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 200, tiltDeg: 20, chargeLed: true } as never, by: "firmware" }) ?? "", /chargeLed/)
+	assert.equal(c.validate({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 200, tiltDeg: 20 }, by: "firmware" }), null)
+})

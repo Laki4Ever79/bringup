@@ -71,7 +71,7 @@ The ESP32-C3-MINI-1 has 4 MB on-module flash: store the reading history there (N
 For a battery target, pick a low-Iq regulator: catalog LDOs list their quiescent current as iqUa. XC6206P332MR-G draws 1 µA; AP2112K-3.3TRG1 draws 55 µA, which alone is half the ~116 µA a 500 mAh cell allows for 180 days. A low-Iq LDO keeps its pins VIN, VOUT, GND (no EN).
 - parts: [{ref, role (one of: mcu, sensor, ldo, charger, battery, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
 - pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
-- behavior (optional, owned by firmware): {blinkMs, tiltBlinkMs, tiltDeg}: the status LED blinks every blinkMs, and every tiltBlinkMs while the board is tilted more than tiltDeg (0..90). Without it the LED blinks at 1 Hz and tilt changes nothing.
+- behavior (optional, owned by firmware): {blinkMs, tiltBlinkMs, tiltDeg}: the status LED blinks every blinkMs, and every tiltBlinkMs while the board is tilted more than tiltDeg (0..90). Without it the LED blinks at 1 Hz and tilt changes nothing. behavior is exactly these three numbers and nothing else. It cannot express "blink on each reading" or charging state: the charge LED is a part (role charge-led) wired to the charger, not behavior.
 Reference designators: U1 = MCU (ESP32-C3-MINI-1, pins GPIO0..GPIO10, GPIO18/GPIO19 for USB), U2 = sensor, U3 = LDO, U4 = Li-ion charger, J1 = USB-C, J2 = battery connector, D1 = LED, D2 = charge LED, SW1 = button.
 Pin names come from the catalog (use search_parts): the USB-C pins are VBUS, GND, CC1, CC2, DP, DN; the button pins are A and B; the battery connector pins are VBAT and GND. The board generator adds the support passives (CC resistors, pull-ups, decoupling) itself.
 To show charging state in hardware (lit while charging, even with the MCU asleep), add a second LED with role charge-led (catalog KT-0603R) next to the charger. The board generator wires its anode to VBUS and its cathode through a 1k resistor to the charger's CHRG pin. Put a 1k resistor (0402WGF1001TCE) in the parts for it, and do not assign the charge LED or CHRG in pins.
@@ -184,8 +184,10 @@ export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
 		role: "firmware",
 		name: "firmware-reviewer",
 		mock: opts.mock,
-		instruction: `You are the firmware engineer. Check that the pins in the contract cover every peripheral in the requirements (I2C bus, status LED, buttons). If a signal is missing, propose the complete new pins list with propose_contract_change; the architect must approve it. If the firmware build failed, read the error and propose the pin change that fixes it. Change nothing if the pins are sufficient. You own the behavior field: what the firmware does (LED blink periods, tilt threshold); the firmware template reads it, so you never write C++.\n${CONTRACT_SHAPES}`,
+		instruction: `You are the firmware engineer. Check that the pins in the contract cover every peripheral in the requirements (I2C bus, status LED, buttons). If a signal is missing, propose the complete new pins list with propose_contract_change; the architect must approve it. If the firmware build failed, read the error and propose the pin change that fixes it. Change nothing if the pins are sufficient. You own the behavior field, and decide with decide_change when another discipline proposes to change it: what the firmware does (LED blink periods, tilt threshold); the firmware template reads it, so you never write C++.\n${CONTRACT_SHAPES}`,
 		handlers: [
+			// It owns behavior, so it decides the changes others propose to it (without this they waited 120 s, real run 15).
+			ownerReviewsChanges("firmware"),
 			{
 				// The engineer's messages after the brief are change requests; the ones about firmware behavior are this agent's.
 				specification: when(({ event }) => isEvent(event, "message.sent" as never) && state().getParticipant(event.producerId)?.getManifest().name === "engineer"),
