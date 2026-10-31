@@ -102,7 +102,7 @@ export function firmwareFacts(s: ContractSnapshot): string[] {
 	if (![blinkMs, days, periodS].every(Number.isFinite)) return []
 	const from = contractPeriod !== undefined && contractPeriod > 0 ? "requirements.dutyCycle.periodS" : "the template's default; the contract has no duty cycle"
 	return [
-		`- Firmware (product build of templates/fw): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash (LittleFS, the last ${Math.floor((days * 86400) / periodS)} readings: ${days} days at ${periodS} s), blinks the status LED ${blinkMs} ms (a double blink if the sensor fails), then deep-sleeps ${periodS} s (${from}). It does not implement BLE yet.`,
+		`- Firmware (product build of templates/fw): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash (LittleFS, the last ${Math.floor((days * 86400) / periodS)} readings: ${days} days at ${periodS} s), blinks the status LED ${blinkMs} ms (a double blink if the sensor fails), then deep-sleeps ${periodS} s (${from}). It does not implement BLE yet. The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
 	]
 }
 
