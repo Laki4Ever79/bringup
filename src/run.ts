@@ -77,6 +77,12 @@ const BOM_GRACE_MS = 15_000
 // How long a scripted change request may take to re-settle the design before the next one is sent anyway.
 const CHANGE_TIMEOUT_MS = 20 * 60_000
 
+// A scripted change needs a whole design to ripple through: one that settled, or at least got to the brief review
+// (real runs usually end with review findings open). A run stuck before that (real-11: pins never written) ends.
+export function changesMayStart(first: Settlement, reviewRound: number): boolean {
+	return first.settled || reviewRound > 0
+}
+
 // The whole run's time limit: 30 min for the design, plus one change timeout per scripted change request.
 export function runTimeoutMs(opts: Pick<RunOptions, "timeoutMs" | "changes" | "changeTimeoutMs">): number {
 	return opts.timeoutMs ?? 30 * 60_000 + (opts.changes ?? []).length * (opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
@@ -129,7 +135,12 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		latest = s
 		if (opts.bench || scripted) writeOutputs(s.settled)
 		if (first) resolveSettled(s)
-		if (scripted) nextChange()
+		if (!scripted) return
+		if (first && !changesMayStart(s, state.review.round)) {
+			console.warn("bringup: the design never got consistent, so the scripted change requests are not sent")
+			changes.length = 0
+		}
+		nextChange()
 	}
 
 	joinRuntime(createChangeDesk())
@@ -145,7 +156,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const emulator = emulatorEnabled(env, opts.noHardware ?? false) ? createEmulatorCheck(env) : null
 	if (emulator) joinRuntime(emulator)
 	joinRuntime(createGroundingCheck(env))
-	const bom = createBomWriter({ root: env.root, fetch: opts.bomFetch })
+	const bom = createBomWriter({ root: env.root, fetch: opts.bomFetch, live: !opts.mock || opts.bomFetch !== undefined })
 	joinRuntime(bom)
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })

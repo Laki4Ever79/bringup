@@ -21,8 +21,11 @@ export interface Ripple {
 	atMs: number
 	// Contract fields bumped by this request and its follow-ups (until the next request).
 	fieldsChanged: string[]
-	// Participants that did work because of it: agents that took a turn, builders whose inputs changed.
+	// Participants that reworked something because of it: agents that changed or proposed a contract field, builders
+	// whose inputs changed, grounding (parts or pins changed), consistency (any field changed).
 	woke: string[]
+	// Agents that took a turn on it but changed and proposed nothing.
+	checked: string[]
 	stayedIdle: string[]
 	violationsPeak: number
 	// When the design was consistent again after the last change in the window: the latest consistency check is clean
@@ -44,6 +47,7 @@ function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, last
 	const atMs = Date.parse(request.at) - startMs
 	const fields: string[] = []
 	const woke = new Set<string>()
+	const turned = new Set<string>()
 	// The revision each woken builder still has to reach.
 	const pending = new Map<ArtifactKind, number>()
 	let violationsPeak = 0
@@ -56,10 +60,14 @@ function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, last
 	for (const e of window) {
 		switch (e.type) {
 			case "agent.activity":
-				if (e.payload.phase === "turn") woke.add(e.payload.role)
+				if (e.payload.phase === "turn") turned.add(e.payload.role)
+				break
+			case "change.proposed":
+				woke.add(e.payload.by)
 				break
 			case "contract.changed": {
 				if (!fields.includes(e.payload.field)) fields.push(e.payload.field)
+				woke.add(e.payload.by)
 				// The same situations the participants wake on: consistency on every change, grounding on parts and pins,
 				// each builder on its inputs.
 				woke.add("consistency")
@@ -88,14 +96,15 @@ function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, last
 			}
 		}
 	}
-	const all = [...RIPPLE_PARTICIPANTS, ...[...woke].filter((p) => !RIPPLE_PARTICIPANTS.includes(p))]
 	return {
 		id: request.payload.id,
 		text: request.payload.text,
 		atMs,
 		fieldsChanged: fields,
-		woke: all.filter((p) => woke.has(p)),
-		stayedIdle: all.filter((p) => !woke.has(p)),
+		// Only the 9 lanes: a change by anyone else (the bench) still wakes the builders, but is not a lane of its own.
+		woke: RIPPLE_PARTICIPANTS.filter((p) => woke.has(p)),
+		checked: RIPPLE_PARTICIPANTS.filter((p) => !woke.has(p) && turned.has(p)),
+		stayedIdle: RIPPLE_PARTICIPANTS.filter((p) => !woke.has(p) && !turned.has(p)),
 		violationsPeak,
 		consistentAtMs: consistentAt,
 		durationMs: consistentAt === null ? null : consistentAt - atMs,

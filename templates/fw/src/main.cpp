@@ -14,8 +14,25 @@ static_assert(PIN_STATUS_LED >= 0 && PIN_STATUS_LED < SOC_GPIO_PIN_COUNT, "PIN_S
 #define HAS_LED 1
 #endif
 
-static const uint8_t SHT40_ADDR = 0x44;
+// The temperature/humidity sensor the contract's parts call for: pins.h defines SENSOR_SHTC3 or SENSOR_SHT40.
+// Without either (pins.h from before the sensor was recorded) it is the SHT40.
+#if defined(SENSOR_SHTC3)
+// SHTC3 datasheet v4 (Dec 2022): I2C address 0x70 (Table 8), wakeup 0x3517 (Table 10, up to 240 us), sleep 0xB098
+// (Table 9, 0.3 uA typ.), measure T first in normal mode without clock stretching 0x7866 (up to 12.1 ms).
+static const uint8_t SENSOR_ADDR = 0x70;
+#define SENSOR_NAME "shtc3"
+
+static bool shtc3Command(uint16_t cmd) {
+	Wire.beginTransmission(SENSOR_ADDR);
+	Wire.write(cmd >> 8);
+	Wire.write(cmd & 0xFF);
+	return Wire.endTransmission() == 0;
+}
+#else
+static const uint8_t SENSOR_ADDR = 0x44;
 static const uint8_t SHT40_MEASURE_HIGH = 0xFD;
+#define SENSOR_NAME "sht40"
+#endif
 
 // Sensirion CRC-8: polynomial 0x31, init 0xFF.
 static uint8_t crc8(const uint8_t *data, int len) {
@@ -27,18 +44,34 @@ static uint8_t crc8(const uint8_t *data, int len) {
 	return crc;
 }
 
-static bool readSht40(float *tempC, float *rh) {
+static bool readClimate(float *tempC, float *rh) {
 #ifdef HAS_I2C
-	Wire.beginTransmission(SHT40_ADDR);
+#if defined(SENSOR_SHTC3)
+	if (!shtc3Command(0x3517)) return false;
+	delayMicroseconds(240);
+	if (!shtc3Command(0x7866)) return false;
+	delay(13);
+#else
+	Wire.beginTransmission(SENSOR_ADDR);
 	Wire.write(SHT40_MEASURE_HIGH);
 	if (Wire.endTransmission() != 0) return false;
 	delay(10);
+#endif
 	uint8_t buf[6];
-	if (Wire.requestFrom(SHT40_ADDR, (uint8_t)6) != 6) return false;
+	if (Wire.requestFrom(SENSOR_ADDR, (uint8_t)6) != 6) return false;
 	for (int i = 0; i < 6; i++) buf[i] = Wire.read();
+#if defined(SENSOR_SHTC3)
+	shtc3Command(0xB098);
+#endif
 	if (crc8(buf, 2) != buf[2] || crc8(buf + 3, 2) != buf[5]) return false;
-	*tempC = -45 + 175 * ((buf[0] << 8 | buf[1]) / 65535.0f);
-	*rh = -6 + 125 * ((buf[3] << 8 | buf[4]) / 65535.0f);
+	const uint16_t rawT = buf[0] << 8 | buf[1], rawRh = buf[3] << 8 | buf[4];
+#if defined(SENSOR_SHTC3)
+	*tempC = -45 + 175 * (rawT / 65536.0f);
+	*rh = 100 * (rawRh / 65536.0f);
+#else
+	*tempC = -45 + 175 * (rawT / 65535.0f);
+	*rh = -6 + 125 * (rawRh / 65535.0f);
+#endif
 	return true;
 #else
 	return false;
@@ -170,12 +203,12 @@ static const char *resetName() {
 }
 
 // One "s" line. Tilt is measured from the pose the board had when the firmware started (its first good reading), not
-// from vertical, so it works however the MPU-6050 happens to sit on the breadboard. Temperature comes from the SHT40
+// from vertical, so it works however the MPU-6050 happens to sit on the breadboard. Temperature comes from the design's sensor
 // when the board has one, else the MPU's die.
 static float sampleLine(bool ledOn) {
 	float a[3] = {0, 0, 0}, mpuT = 0, t = 0, rh = 0;
 	bool imu = readMpu(a, &mpuT);
-	bool sht = readSht40(&t, &rh);
+	bool sht = readClimate(&t, &rh);
 	static float rest[3] = {0, 0, 0};
 	static bool haveRest = false;
 	static float lastMag = 1.0f;
@@ -203,7 +236,7 @@ static float sampleLine(bool ledOn) {
 	if (sht || imu) snprintf(temp, sizeof temp, "%.2f", sht ? t : mpuT);
 	else snprintf(temp, sizeof temp, "null");
 	tele("{\"k\":\"s\",\"rev\":%d,\"ms\":%lu,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"tilt\":%.1f,\"shake\":%d,\"tC\":%s,\"tSrc\":\"%s\",\"led\":%d}\n",
-		BRINGUP_REVISION, (unsigned long)millis(), a[0], a[1], a[2], tilt, shaking() ? 1 : 0, temp, sht ? "sht40" : imu ? "mpu" : "none", ledOn ? 1 : 0);
+		BRINGUP_REVISION, (unsigned long)millis(), a[0], a[1], a[2], tilt, shaking() ? 1 : 0, temp, sht ? SENSOR_NAME : imu ? "mpu" : "none", ledOn ? 1 : 0);
 	return imu ? tilt : 0.0f;
 }
 
@@ -291,7 +324,7 @@ void setup() {
 
 void loop() {
 	float t, rh;
-	bool ok = readSht40(&t, &rh);
+	bool ok = readClimate(&t, &rh);
 	if (ok) Serial.printf("SENSOR OK %.2f C %.1f %%RH\n", t, rh);
 	else Serial.println("SENSOR FAIL");
 	blinkPeriod(ok);
