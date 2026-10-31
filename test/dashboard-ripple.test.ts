@@ -263,6 +263,13 @@ test("ripple: the window ends at the first design.ready after the request; later
 	assert.deepEqual(mergeRipples([r], file, T0)[0].reviewFollowUps, { fieldsChanged: ["rails"], rounds: 3 })
 })
 
+test("result line: under a second reads \"under 1 s\", and stubbed hardware says so", () => {
+	const r = { ...liveRipples([...initial, ...ripple], [request], T0 + 200_000)[0], durationMs: 400 }
+	assert.equal(resultLine(r, T0 + 200_000).headline, "Consistent again in under 1 s")
+	assert.equal(resultLine(r, T0 + 200_000, { stubbed: true }).detail, "4 of 9 agents woke · hardware stubbed")
+	assert.equal(resultLine({ ...r, durationMs: 38_000 }, T0 + 200_000).headline, "Consistent again in 38 s")
+})
+
 test("what moved: outline, connectors, pins and parts, before → after", () => {
 	const before = {
 		outline: { widthMm: 50, heightMm: 30 },

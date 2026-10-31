@@ -1708,7 +1708,7 @@
 				? r.checks.map((c) => `<li class="${esc(c.state)}"><span class="mark">${MARK[c.state] ?? ""}</span><span class="what">${esc(c.label)}${c.seq?.length ? `<span class="seq">${c.seq.map((n) => `<i class="${n ? "" : "z"}">${n}</i>`).join("<s>→</s>")}</span>` : ""}</span><span class="detail" title="${esc(c.detail)}">${esc(c.detail)}</span></li>`).join("")
 				: `<li class="pending"><span class="mark">·</span><span class="what">Waiting</span><span class="detail">checks run once a field changes</span></li>`
 			setHtml("rip-checks", checksHtml)
-			const line = resultLine(r, Date.now())
+			const line = resultLine(r, Date.now(), { stubbed: S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true })
 			setResult(r.state, line.headline, line.detail)
 			renderMoved(r)
 		}

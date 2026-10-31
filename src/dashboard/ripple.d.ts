@@ -23,7 +23,7 @@ type Ev = { type: string; at: string; payload?: any }
 export function runStart(events: Ev[]): number | null
 export function liveRipples(events: Ev[], requests: { at: string; text: string }[], now?: number): Ripple[]
 export function mergeRipples(live: Ripple[], file: RipplesFile | null, t0: number): Ripple[]
-export function resultLine(r: Ripple, now?: number): { headline: string; detail: string; text: string }
+export function resultLine(r: Ripple, now?: number, opts?: { stubbed?: boolean }): { headline: string; detail: string; text: string }
 export interface Moved {
 	outline: { before: { w: number; h: number }; after: { w: number; h: number } } | null
 	connectors: { ref: string; kind: string; before: { edge: string; offsetMm: number; widthMm: number } | null; after: { edge: string; offsetMm: number; widthMm: number } | null }[]
