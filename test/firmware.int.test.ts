@@ -102,3 +102,16 @@ test("the product firmware compiles its duty cycle: the period from the contract
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+test("the firmware compiles with the contract's 180-day history", { skip, timeout: 600_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	try {
+		const c = fixtureContract()
+		c.values.requirements = { ...c.values.requirements!, historyDays: 180, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
+		const firmware = await buildFirmware(pio!, root, dir, c, 9)
+		assert.equal(firmware.ok, true, firmware.log)
+		assert.match(readFileSync(join(dir, "include/pins.h"), "utf8"), /^#define HISTORY_DAYS 180$/m)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})

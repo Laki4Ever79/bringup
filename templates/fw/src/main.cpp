@@ -98,7 +98,9 @@ static void led(bool on) {
 static const uint32_t READING_BLINK_MS = 20;
 // The history: a ring buffer of HISTORY_DAYS of readings in /history.bin on the flash's LittleFS partition, one
 // 4-byte record per reading; the next slot to write is kept in NVS, so it survives deep sleep and power loss.
-static const uint32_t HISTORY_DAYS = 30;
+#ifndef HISTORY_DAYS
+#define HISTORY_DAYS 30  // pins.h sets it from requirements.historyDays
+#endif
 static const uint32_t HISTORY_SLOTS = HISTORY_DAYS * 86400UL / DUTY_PERIOD_S;
 static const char *HISTORY_FILE = "/history.bin";
 

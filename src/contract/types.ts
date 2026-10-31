@@ -32,6 +32,8 @@ export interface Requirements {
 	// Battery capacity, when the brief does not state it in mAh.
 	batteryMah?: number
 	dutyCycle?: DutyCycle
+	// Days of readings the logger keeps in its flash history; the firmware stores this many (template default 30).
+	historyDays?: number
 }
 
 export interface Outline {

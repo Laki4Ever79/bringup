@@ -119,6 +119,7 @@ function shapeError(field: FieldName, value: unknown): string | null {
 		case "requirements": {
 			if (!(obj(value) && isStr(value.summary) && Array.isArray(value.peripherals))) return "requirements must be {summary, peripherals[], batteryLifeDays}"
 			if (value.batteryMah !== undefined && !(isNum(value.batteryMah) && (value.batteryMah as number) > 0)) return "requirements.batteryMah must be a positive number of mAh"
+			if (value.historyDays !== undefined && !(Number.isInteger(value.historyDays) && (value.historyDays as number) >= 1)) return "requirements.historyDays must be a whole number of days, at least 1"
 			const d = value.dutyCycle
 			if (d === undefined) return null
 			const ok = obj(d) && isNum(d.activeMs) && isNum(d.periodS) && isNum(d.sleepUa) && (d.activeMs as number) > 0 && (d.periodS as number) > 0 && (d.sleepUa as number) >= 0
