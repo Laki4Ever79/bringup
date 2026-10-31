@@ -124,7 +124,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	let latest: Settlement | null = null
 	const writeOutputs = (settled: boolean) => {
 		writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
-		return writeReport(opts.outDir, state, env, settled, { noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench) })
+		return writeReport(opts.outDir, state, env, settled, { noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench), mock: opts.mock })
 	}
 	// Scripted change requests (--change): each goes out through requests.jsonl, like one from the CLI or the MCP.
 	const changes = [...(opts.changes ?? [])]
