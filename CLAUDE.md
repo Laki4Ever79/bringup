@@ -104,10 +104,11 @@ Pitfalls:
 | **Sat 20:00** | **Submissions close** |
 
 ## Current state (Sat 31 Oct, 10:30)
-- **The one line (user-chosen 31 Oct, 15:15):** "Describe a device. Agents design all of it at once: board, case,
-  firmware and parts. Change anything, and it all follows." It replaced "Change one thing, and the whole design
-  follows…", which the user rejected because it hid that we design from scratch. "Change “one thing”" stays as the demo
-  moment and the composer label. Spec: `docs/superpowers/specs/2026-10-31-change-ripple-design.md`.
+- **The one line (final, user-chosen 31 Oct ~15:55):** "Change “one thing”, and the whole hardware design follows:
+  board, case, firmware and parts, in parallel." (Briefly it was
+  "Describe a device…"; the user reverted to change-one-thing as primary, with from-scratch secondary.)
+- **The live talk:** slide 1 + the dashboards, 3 tab switches; script = cue cards
+  https://claude.ai/artifact/4rRiTVHBb84JgnDRzq8sVv. Spec: `docs/superpowers/specs/2026-10-31-change-ripple-design.md`.
 - `main` = branch `bringup-core`: 612 tests pass, 0 skipped. Lead pushes only through a guarded full suite.
 - Added 31 Oct:
   - ripples.json + report "Change requests" table (`src/runner/ripple.ts`); `--change` (sent after settle), `--stay`
