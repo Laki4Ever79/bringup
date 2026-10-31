@@ -225,10 +225,14 @@ npm run bringup -- briefs/logger.md
 # The run stays up afterwards: type your own change in the dashboard ("make it 40 mm wide"). Stop ends it.
 npm run demo
 
+# With nothing but `npm ci` (hardware stubbed): the same settle → change → ripple → consistent story, in about 10 s.
+npm run demo -- --no-hardware
+
 # The same from the CLI: each --change is sent after the design settles, and the run ends once the last one re-settles.
 npm run bringup -- briefs/logger.md --mock --change "make the board 40 mm wide"
 
-# Dashboard for any run, live or finished (http://localhost:4317)
+# Dashboard for any run, live or finished (http://localhost:4317; if that port is taken it picks a free one and
+# prints the URL, or pass a port: `npx tsx src/dashboard/cli.ts out/quick 4400`)
 npx tsx src/dashboard/cli.ts
 ```
 
