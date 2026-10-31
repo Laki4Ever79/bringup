@@ -1,3 +1,4 @@
+import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { partPads } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
@@ -75,6 +76,7 @@ export type ViolationKind =
 	| "history-overflow"
 	| "vent-missing"
 	| "sensor-unwired"
+	| "battery-short"
 
 export interface Violation {
 	kind: ViolationKind
@@ -94,8 +96,21 @@ const MOUNTING_PAIR_MM = 5
 
 // Plain-code check of every artifact against the contract. Each rule runs only when its inputs exist,
 // so a half-built design reports what is wrong so far rather than what is missing.
-export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[] {
+// brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
+export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
+	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
+	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
+	const power = estimatePower(c, brief)
+	if (power.days !== null && power.targetDays !== null && power.days < power.targetDays) {
+		const check = dutyCycleCheckLines(power).find((l) => l.startsWith("- Average"))
+		v.push({
+			kind: "battery-short",
+			message: `the stated rail averages give ${Math.round(power.days)} days of battery life, short of the ${power.targetDays}-day target${check ? `; the duty-cycle check (peak current for the whole wake) gives ${check.replace(/^- Average /, "an average of ")}` : ""}`,
+			fields: ["requirements", "rails", "parts"],
+			affects: ["architect"],
+		})
+	}
 	const { outline, pins, parts, connectors, rails } = c.values
 
 	if (a.board && outline) {
