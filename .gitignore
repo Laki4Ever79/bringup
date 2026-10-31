@@ -7,3 +7,6 @@ skidl_*
 .superpowers/
 .playwright-mcp/
 *.log
+
+# PlatformIO libraries installed into the template by npm run setup (pio pkg install)
+templates/fw/.pio/
