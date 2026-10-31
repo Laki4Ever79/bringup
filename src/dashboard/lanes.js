@@ -37,14 +37,15 @@ export function createLanes() {
 // Updates that count as an outcome for the card's "last result" line.
 const RESULT = new Set(["done", "failed"])
 
-function set(lanes, key, status, text, at, result = RESULT.has(status)) {
+// `detail`: the longer story behind a short tile text (the tile's history popover shows it).
+function set(lanes, key, status, text, at, result = RESULT.has(status), detail) {
 	const lane = lanes[key]
 	if (!lane) return []
 	lane.status = status
 	lane.text = text
 	if (result) lane.lastResult = text
 	lane.at = at
-	lane.history.push({ status, text, at })
+	lane.history.push(detail ? { status, text, at, detail } : { status, text, at })
 	if (lane.history.length > HISTORY) lane.history.splice(0, lane.history.length - HISTORY)
 	return [key]
 }
@@ -73,7 +74,7 @@ export function applyLaneEvent(lanes, e) {
 					lanes.pending[kind] = p.revision
 					changed.push(...set(lanes, `build:${kind}`, "building", `building rev ${p.revision}…`, e.at))
 				}
-				else changed.push(...set(lanes, `build:${kind}`, "idle", `waiting for ${missing.join(", ")}`, e.at))
+				else changed.push(...set(lanes, `build:${kind}`, "idle", `needs ${missing.join(", ")}`, e.at))
 			}
 			if (p.field === "parts" || p.field === "pins") changed.push(...set(lanes, "grounding", "checking", `checking rev ${p.revision}…`, e.at))
 			return changed
@@ -81,37 +82,43 @@ export function applyLaneEvent(lanes, e) {
 		case "artifact.ready": {
 			// The Rebuilder queues one rebuild for the newest revision; an older build finishing isn't the end.
 			const next = lanes.pending[p.kind]
-			if (next !== undefined && next > p.revision) return set(lanes, `build:${p.kind}`, "building", `rev ${p.revision} built · building rev ${next}…`, e.at)
-			return set(lanes, `build:${p.kind}`, "done", `rev ${p.revision} built`, e.at)
+			if (next !== undefined && next > p.revision) return set(lanes, `build:${p.kind}`, "building", `building rev ${next}…`, e.at, false, `rev ${p.revision} built`)
+			// The board's DRC rides on its tile (what 04 used to show): clean = no errors; warnings go in the history.
+			const drc = p.kind === "board" ? p.drc : null
+			const text = !drc ? `rev ${p.revision} built` : drc.errors ? `DRC: ${plural(drc.errors, "error")}` : `rev ${p.revision} · DRC clean`
+			const detail = drc ? `rev ${p.revision}: ${plural(drc.errors, "error")}, ${plural(drc.warnings ?? 0, "warning")}, ${drc.unconnected ?? 0} unconnected (${drc.rules ?? "default"} rules)` : undefined
+			return set(lanes, `build:${p.kind}`, "done", text, e.at, true, detail)
 		}
 		case "artifact.failed":
-			return set(lanes, `build:${p.kind}`, "failed", `rev ${p.revision} failed: ${firstLine(p.error)}`, e.at)
+			return set(lanes, `build:${p.kind}`, "failed", `rev ${p.revision} failed`, e.at, true, firstLine(p.error))
 		case "firmware.booted": {
-			// A badge on the build card; the build's own status and text stay as they are.
+			// The QEMU boot goes on the build tile's line (what 04 used to show); the build's status stays as it is.
 			const lane = lanes["build:firmware"]
 			const lines = String(p.serialTail ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
 			lane.boot = { ok: p.booted === true, revision: p.revision, bootRevision: p.bootRevision ?? null, lastLine: lines.at(-1) ?? "", tail: p.serialTail ?? "" }
+			lane.text = `rev ${p.revision} · QEMU ${lane.boot.ok ? "✓" : "✗"}`
 			lane.history.push({ status: lane.status, text: lane.boot.ok ? `boots in QEMU, prints rev ${lane.boot.bootRevision}` : `did not boot (rev ${p.revision}): ${lane.boot.lastLine}`, at: e.at })
 			if (lane.history.length > HISTORY) lane.history.splice(0, lane.history.length - HISTORY)
 			return ["build:firmware"]
 		}
 		case "grounding.checked": {
 			const n = (p.findings ?? []).length
-			return set(lanes, "grounding", n ? "failed" : "done", n ? `rev ${p.revision}: ${plural(n, "ungrounded claim")}` : `rev ${p.revision}: every part and pin grounded`, e.at)
+			return set(lanes, "grounding", n ? "failed" : "done", n ? `rev ${p.revision}: ${n} ungrounded` : `rev ${p.revision}: all grounded`, e.at)
 		}
 		case "consistency.checked": {
 			const v = p.violations ?? []
-			return set(lanes, "consistency", v.length ? "failed" : "done", v.length ? `rev ${p.revision}: ${plural(v.length, "violation")} (${[...new Set(v.map((x) => x.kind))].join(", ")})` : `rev ${p.revision}: consistent`, e.at)
+			const status = v.length ? "failed" : "done"
+			return set(lanes, "consistency", status, v.length ? `rev ${p.revision}: ${plural(v.length, "violation")}` : `rev ${p.revision}: consistent`, e.at, RESULT.has(status), v.length ? [...new Set(v.map((x) => x.kind))].join(", ") : undefined)
 		}
 		case "design.ready":
-			return set(lanes, "consistency", "held", `rev ${p.revision} ready: waiting for the brief review`, e.at)
+			return set(lanes, "consistency", "held", "waiting for review", e.at, false, `rev ${p.revision} ready: waiting for the brief review`)
 		case "review.completed":
-			return set(lanes, "reviewer", p.verdict === "pass" ? "done" : "failed", `review ${p.verdict}: ${plural((p.findings ?? []).length, "finding")}`, e.at)
+			return set(lanes, "reviewer", p.verdict === "pass" ? "done" : "failed", `${p.verdict} · ${plural((p.findings ?? []).length, "finding")}`, e.at)
 		case "design.settled": {
 			// The run is over: nobody is still thinking, whatever their last loop event said.
 			lanes.ended = true
 			const ended = ["architect", "parts", "firmware", "reviewer"].filter((k) => ["thinking", "tool", "held"].includes(lanes[k].status)).flatMap((k) => set(lanes, k, "idle", "run ended", e.at, false))
-			return [...ended, ...set(lanes, "consistency", p.settled ? "done" : "failed", p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`, e.at)]
+			return [...ended, ...set(lanes, "consistency", p.settled ? "done" : "failed", p.settled ? `settled at rev ${p.revision}` : `unsettled at rev ${p.revision}`, e.at)]
 		}
 		case "agent.halted":
 			return lanes.agents[p.agentId] ? set(lanes, lanes.agents[p.agentId], "failed", `halted: ${firstLine(p.error)}`, e.at) : []

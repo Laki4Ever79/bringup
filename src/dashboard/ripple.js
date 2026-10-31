@@ -177,12 +177,13 @@ function benchCheck(source, events, changes) {
 	const last = (type) => events.filter((e) => e.type === type && e.payload.revision >= need).at(-1)?.payload
 	const blink = last("bench.blink"), flashed = last("bench.flashed"), flashing = last("bench.flashing")
 	if (blink) {
-		if (!blink.pass) return { key: "bench", label, state: "error", detail: `rev ${blink.revision} · ${blink.detail}` }
-		return { key: "bench", label, state: "ok", detail: `rev ${blink.revision} running · ${typeof blink.tiltBlinkMs === "number" ? `tilted ${blink.tiltBlinkMs} ms` : `blink ${blink.blinkMs} ms`} measured` }
+		const what = typeof blink.tiltBlinkMs === "number" ? `tilted ${blink.tiltBlinkMs} ms` : `blink ${blink.blinkMs} ms`
+		if (!blink.pass) return { key: "bench", label, state: "error", detail: `rev ${blink.revision} · ${blink.detail}`, short: `${what} ✗` }
+		return { key: "bench", label, state: "ok", detail: `rev ${blink.revision} running · ${what} measured`, short: `${what} ✓` }
 	}
-	if (flashed) return flashed.ok ? { key: "bench", label, state: "running", detail: `rev ${flashed.revision} running · measuring the blink` } : { key: "bench", label, state: "error", detail: `rev ${flashed.revision} flash failed: ${flashed.error}` }
-	if (flashing) return { key: "bench", label, state: "running", detail: `flashing rev ${flashing.revision} · ${flashing.stage} ${flashing.pct} %` }
-	return { key: "bench", label, state: "running", detail: `waiting to flash rev ${need}` }
+	if (flashed) return flashed.ok ? { key: "bench", label, state: "running", detail: `rev ${flashed.revision} running · measuring the blink`, short: "running · measuring" } : { key: "bench", label, state: "error", detail: `rev ${flashed.revision} flash failed: ${flashed.error}`, short: "flash failed" }
+	if (flashing) return { key: "bench", label, state: "running", detail: `flashing rev ${flashing.revision} · ${flashing.stage} ${flashing.pct} %`, short: `flashing ${flashing.pct} %` }
+	return { key: "bench", label, state: "running", detail: `waiting to flash rev ${need}`, short: "waiting to flash" }
 }
 
 function groundingCheck(events) {

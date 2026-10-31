@@ -107,11 +107,6 @@
 	#change-input { flex: 1; min-width: 160px; height: 58px; padding: 0 18px; border: 0; outline: none; background: transparent; font: 500 clamp(17px, 1.35vw, 22px)/1 var(--sans); }
 	#change-input::placeholder { color: var(--ink-3); }
 	#change-input:disabled { cursor: not-allowed; }
-	.suggest { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-left: 1.5px solid var(--rule-2); }
-	.suggest .lead { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
-	.suggest button { height: 36px; padding: 0 12px; border: 1.5px solid var(--ink); background: transparent; font: 600 14px/1 var(--sans); cursor: pointer; white-space: nowrap; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
-	.suggest button:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
-	.suggest button:disabled { opacity: .35; cursor: default; }
 	#send-btn { border: 0; border-left: 2px solid var(--ink); background: var(--ink); color: var(--paper); padding: 0 22px; font: 800 20px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
 	#send-btn:hover:not(:disabled) { background: var(--signal); }
 	#send-btn:disabled { opacity: .35; cursor: default; }
@@ -120,12 +115,12 @@
 	#run { display: grid; grid-template-rows: clamp(250px, 33vh, 352px) minmax(0, 1fr); gap: var(--gap); padding: var(--gap); min-height: 0; }
 
 	/* The ripple: change → fields → agents → checks, then the result line. */
-	#ripple { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .9fr) minmax(0, 1.75fr) minmax(0, 1.1fr); grid-template-rows: minmax(0, 1fr) auto; }
+	#ripple { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .9fr) minmax(0, 2.85fr); grid-template-rows: minmax(0, 1fr) auto; }
 	#ripple > .col { position: relative; padding: 12px 16px 10px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-width: 0; min-height: 0; border-right: 1.5px solid var(--ink); }
-	#ripple > .col:nth-child(4) { border-right: 0; }
+	#ripple > .col:nth-child(3) { border-right: 0; }
 	/* The flow arrow between the stages. */
-	#ripple > .col:not(:nth-child(4))::after { content: ""; position: absolute; right: -11px; top: 50%; width: 20px; height: 20px; margin-top: -10px; background: var(--paper); border: 1.5px solid var(--ink); border-left: 0; border-bottom: 0; transform: rotate(45deg); z-index: 2; }
-	#ripple.flowing > .col:not(:nth-child(4))::after { background: var(--signal); }
+	#ripple > .col:not(:nth-child(3))::after { content: ""; position: absolute; right: -11px; top: 50%; width: 20px; height: 20px; margin-top: -10px; background: var(--paper); border: 1.5px solid var(--ink); border-left: 0; border-bottom: 0; transform: rotate(45deg); z-index: 2; }
+	#ripple.flowing > .col:not(:nth-child(3))::after { background: var(--signal); }
 	#rip-change { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
 	#rip-text { margin: 6px 0 0; font: 700 clamp(24px, 2.1vw, 38px)/1.02 var(--display); text-transform: uppercase; letter-spacing: .01em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 	#rip-file { display: inline-block; margin-top: 6px; padding: 4px 8px; font: 700 13px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; background: var(--ink); color: var(--paper); }
@@ -152,7 +147,7 @@
 	.tile .top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 	.tile .name { font: 700 clamp(16px, 1.25vw, 22px)/.95 var(--display); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.tile .status { margin-left: auto; font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: var(--ink-2); }
-	.tile .task { align-self: start; font-size: 14px; line-height: 1.15; color: var(--ink-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+	.tile .task { align-self: start; min-width: 0; font-size: 14px; line-height: 1.2; color: var(--ink-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 	.tile.woke { background: var(--ink); color: var(--paper); }
 	.tile.woke .task { color: var(--paper); } .tile.woke .status { color: var(--signal); }
 	.tile.woke.done .status { color: #7fe0a8; }
@@ -169,22 +164,12 @@
 	.tile.asleep .name { color: var(--ink-2); }
 	.tile.failed { box-shadow: inset 0 0 0 2px var(--error); } .tile.failed .status { color: var(--error); }
 	.tile.held .status { color: var(--warn); }
-	.tile .boot { position: absolute; right: 6px; bottom: 5px; font: 700 10px/1 var(--mono); padding: 3px 5px; cursor: help; }
-	.tile .boot.ok { background: var(--ok); color: #fff; } .tile .boot.bad { background: var(--error); color: #fff; }
+	/* With a bench attached, a tenth tile: four to a row. */
+	#agents.bench { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 	.tile .hist { position: fixed; z-index: 45; width: 420px; max-height: 340px; overflow: auto; padding: 10px 12px; background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); box-shadow: 8px 8px 0 rgba(22, 20, 15, .18); cursor: default; animation: fadein var(--t) var(--ease); }
 	.tile .hist ul { margin: 0; padding: 0; } .tile .hist li { list-style: none; font-size: 12.5px; color: var(--ink-2); margin: 0 0 4px; }
 	.tile .hist b { margin-right: 6px; }
 
-	#rip-checks { list-style: none; margin: 0; padding: 0; display: grid; align-content: start; gap: 6px; overflow: hidden; }
-	#rip-checks li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; align-items: center; }
-	#rip-checks .mark { grid-row: span 2; width: 22px; height: 22px; display: grid; place-items: center; border: 1.5px solid var(--ink); font: 800 13px/1 var(--mono); }
-	#rip-checks .ok .mark { background: var(--ok); border-color: var(--ok); color: #fff; animation: stamp 420ms var(--ease); }
-	#rip-checks .error .mark { background: var(--error); border-color: var(--error); color: #fff; }
-	#rip-checks .warn .mark { background: var(--warn); border-color: var(--warn); color: #fff; }
-	#rip-checks .running .mark { border-color: var(--signal); color: var(--signal); }
-	#rip-checks .running .mark::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--signal); animation: blink 1s steps(2) infinite; }
-	#rip-checks .what { font: 700 clamp(15px, 1.1vw, 19px)/1 var(--display); text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; min-width: 0; }
-	#rip-checks .detail { font: 500 12px/1.2 var(--mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.seq { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
 	.seq i { font: 700 12px/1 var(--mono); font-style: normal; min-width: 20px; height: 20px; padding: 0 4px; display: inline-grid; place-items: center; color: #fff; background: var(--error); }
 	.seq i.z { background: var(--ok); }
@@ -208,8 +193,8 @@
 	#rip-proof .src { color: var(--ink-3); font-size: 11px; }
 	#held .pill { background: var(--warn); border-color: var(--warn); color: #fff; height: 38px; font-size: 15px; }
 
-	/* Lower deck: the stage screen, what moved, the case and the parts. */
-	#deck { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .5fr) minmax(0, .46fr); gap: var(--gap); min-height: 0; }
+	/* Lower deck: the stage screen, then the case and the parts. */
+	#deck { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--gap); min-height: 0; }
 	#stage { display: grid; grid-template-rows: auto minmax(0, 1fr) 40px; min-height: 0; background: var(--screen); color: var(--screen-text); border: 1.5px solid var(--ink); }
 	.stage-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-width: 0; border-bottom: 1px solid var(--screen-rule); }
 	.tabs { display: inline-flex; border: 1px solid var(--screen-rule); }
@@ -272,24 +257,6 @@
 	#live-btn { height: 26px; padding: 0 12px; font: 700 13px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; background: transparent; color: var(--screen-text); border: 1px solid var(--screen-rule); cursor: pointer; }
 	#live-btn:disabled { opacity: .35; cursor: default; }
 
-	/* What moved: the outline, the cutouts and the pins, before (dashed) and after (solid). */
-	#moved { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding: 12px 14px; }
-	#moved-svg { width: 100%; height: 100%; min-height: 0; }
-	#moved-svg .before { fill: none; stroke: var(--ink-3); stroke-width: 1.4; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
-	#moved-svg .after { fill: rgba(255, 74, 23, .07); stroke: var(--ink); stroke-width: 2.2; vector-effect: non-scaling-stroke; }
-	#moved-svg .cut-before { fill: none; stroke: var(--ink-3); stroke-width: 1.2; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
-	#moved-svg .cut-after { fill: var(--signal); stroke: var(--ink); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-	#moved-svg .cut-same { fill: var(--paper-3); stroke: var(--ink-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
-	#moved-svg .arrow { stroke: var(--signal); stroke-width: 1.8; fill: none; vector-effect: non-scaling-stroke; marker-end: url(#arrowhead); }
-	#moved-svg text { font-family: var(--mono); fill: var(--ink-2); }
-	#moved-svg .axis { stroke: var(--ink-2); stroke-width: 1; fill: none; vector-effect: non-scaling-stroke; }
-	#moved-svg .dim { font-weight: 700; fill: var(--ink); }
-	#moved-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 9.5em; overflow: auto; font: 500 clamp(13px, .95vw, 16px)/1.3 var(--mono); }
-	#moved-list li { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 8px; padding: 4px 0; border-top: 1px dashed var(--rule-2); }
-	#moved-list li b { color: var(--ink); }
-	#moved-list .was { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--signal); }
-	#moved-list .now { color: var(--signal-ink); font-weight: 700; }
-	#moved .empty { display: grid; place-items: center; text-align: center; color: var(--ink-3); font: 500 14px/1.45 var(--sans); padding: 10px; }
 
 	#side { display: grid; grid-template-rows: minmax(0, 52fr) minmax(0, 48fr); gap: var(--gap); min-height: 0; }
 	#scene-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--screen); color: var(--screen-text); border: 1.5px solid var(--ink); min-height: 0; }
@@ -300,7 +267,15 @@
 	#explode { width: 90px; accent-color: var(--signal); vertical-align: middle; }
 	#parts-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); padding-top: 10px; }
 	#parts-panel > .label { padding: 0 12px; }
-	#parts-total { font: 800 22px/1 var(--display); color: var(--ink); }
+	/* Folds: a one-line header that opens and closes the parts list and the revisions strip (remembered per browser). */
+	.fold-head { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+	.fold-head .caret { margin-left: auto; transition: transform var(--t) var(--ease); }
+	.fold-head[aria-expanded="true"] .caret { transform: rotate(90deg); }
+	#scrubber .fold-head { width: auto; flex: none; }
+	#parts-panel.folded #parts-ready, #parts-panel.folded #parts { display: none; }
+	#parts-panel.folded { padding-bottom: 10px; }
+	#side:has(#parts-panel.folded) { grid-template-rows: minmax(0, 1fr) auto; }
+	#scrubber.folded #dots, #scrubber.folded #live-btn { display: none; }
 	#parts-ready { padding: 4px 12px 0; font: 500 12px/1.2 var(--mono); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	#parts-ready.warn { color: var(--warn); }
 	#parts { overflow-y: auto; padding: 4px 6px 6px; position: relative; }
@@ -357,7 +332,7 @@
 	#ask-answer.error { border-color: var(--error); color: var(--error); }
 	#ask-answer a { color: var(--signal-ink); text-decoration: underline; cursor: pointer; font-family: var(--mono); }
 	#why-list .none { color: var(--ink-3); font-size: 14px; padding: 6px 2px; }
-	#moved-revs.link, #rip-meta .link { cursor: pointer; text-decoration: underline; text-decoration-color: var(--signal); text-underline-offset: 3px; }
+	#rip-meta .link { cursor: pointer; text-decoration: underline; text-decoration-color: var(--signal); text-underline-offset: 3px; }
 	/* A touched field's why, on hover. */
 	#rip-fields li .why { display: none; grid-column: 1 / -1; font: 500 12px/1.35 var(--sans); color: #e8e1cf; white-space: normal; }
 	#rip-fields li.touched:hover .why { display: block; }
@@ -528,16 +503,11 @@
 		header .pill { padding: 0 8px; font-size: 12px; height: 28px; }
 		.logo { font-size: 24px; }
 		#elapsed { display: none; }
-		.suggest .lead { display: none; }
-		.suggest button:nth-child(n+4) { display: none; }
-		#deck { grid-template-columns: minmax(0, 1fr) minmax(0, .52fr) minmax(0, .5fr); }
-		.tile .task { -webkit-line-clamp: 1; }
 		/* Narrow: the state goes on its own line under the name, so STAYED IDLE / CHECKED still read. */
 		#agents { grid-auto-rows: minmax(62px, 1fr); }
 		.tile .top { flex-wrap: wrap; row-gap: 2px; }
 		.tile .name { font-size: 16px; }
 		.tile .status { margin-left: 0; flex-basis: 100%; }
-		.tile .task { line-height: 1.2; }
 		#checks .check { padding: 0 8px; }
 	}
 	@media (max-height: 950px) {
@@ -575,7 +545,6 @@
 	<footer id="changebar" class="hidden">
 		<span class="who">Change one thing</span>
 		<div class="box"><input id="change-input" placeholder="Ask for a change while the agents work…" autocomplete="off" maxlength="500" aria-label="Change request"></div>
-		<div class="suggest" id="suggest"></div>
 		<button id="send-btn" title="Send the change (Enter); ⌘K focuses the box">Send ⏎</button>
 	</footer>
 
@@ -644,10 +613,6 @@
 				<div class="label"><b>03</b> Agents<span class="right" id="rip-agents-note"></span></div>
 				<section id="agents"></section>
 			</div>
-			<div class="col">
-				<div class="label"><b>04</b> Checks</div>
-				<ul id="rip-checks"></ul>
-			</div>
 			<div id="rip-result" class="initial"><span class="stampbox" id="rip-stamp">·</span><div style="min-width:0"><div id="rip-headline">Waiting for the first event</div><div id="rip-detail"></div></div><div id="rip-proof" class="hidden"></div><div id="held" class="hidden"></div></div>
 		</section>
 
@@ -680,12 +645,7 @@
 					<div id="bench-ask" class="hidden" role="alert"><span class="hand">✋</span><div><b id="bench-ask-text"></b><span class="t2" id="bench-ask-note"></span></div></div>
 					<span id="led-mirror" class="pill hidden"><i></i><span></span></span>
 				</div>
-				<div id="scrubber"><span class="label">Revisions</span><div id="dots"></div><button id="live-btn">Live</button></div>
-			</section>
-			<section id="moved" class="sheet">
-				<div class="label"><b>05</b> What moved<span class="right" id="moved-revs"></span></div>
-				<svg id="moved-svg" role="img" aria-label="Board outline and connector cutouts, before and after the change"></svg>
-				<ul id="moved-list"></ul>
+				<div id="scrubber"><button class="fold-head label" id="revs-fold" aria-expanded="false"><span id="revs-head">Revisions</span><span class="caret">▸</span></button><div id="dots"></div><button id="live-btn">Live</button></div>
 			</section>
 			<aside id="side">
 				<section id="scene-panel">
@@ -693,7 +653,7 @@
 					<div id="scene-body"><div id="scene-host"></div><div id="scene-empty" class="empty-state">waiting for the first enclosure build</div></div>
 				</section>
 				<section id="parts-panel" class="sheet">
-					<div class="label">Parts<span class="right">total <span id="parts-total" class="num">—</span></span></div>
+					<button class="fold-head label" id="parts-fold" aria-expanded="false"><span id="parts-head">Parts</span><span class="caret">▸</span></button>
 					<div id="parts-ready"></div>
 					<div id="parts"><div class="t3" style="padding:12px">waiting for the parts list</div></div>
 				</section>
@@ -710,11 +670,11 @@
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	import { liveRipples, mergeRipples, resultLine, runStart, whatMoved } from "/ripple.js"
+	import { liveRipples, mergeRipples, resultLine, runStart } from "/ripple.js"
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { matchTrial, proofSummary } from "/proof.js"
 	import { changeLog, defaultRange, fileDrift } from "/changelog.js"
-	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, foldHeader, foldOpen, lowPass, setFold, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -858,15 +818,15 @@
 			const input = $("change-input")
 			const state = phase().bar
 			// The prompt also depends on whether the design settled clean.
-			const key = `${state}|${S.settled?.settled}`
+			const key = `${state}|${S.settled?.settled}|${S.mock}`
 			if (key === barKey) return
 			barKey = key
 			input.disabled = !phase().open
 			setBarButtons(input.disabled)
-			input.placeholder = composerPrompt(state, S.settled)
+			input.placeholder = composerPrompt(state, S.settled, { scripted: S.mock })
 			schedule()
 		}
-		function setBarButtons(off) { for (const b of [$("send-btn"), ...$("suggest").querySelectorAll("button")]) b.disabled = off }
+		function setBarButtons(off) { $("send-btn").disabled = off }
 		setInterval(() => S.settled && syncChangeBar(), 3000)
 
 		fetch(file("brief.md")).then((r) => (r.ok ? r.text() : "")).then((t) => {
@@ -1106,7 +1066,7 @@
 			pcb?.setParts?.(parts)
 			scene?.setParts?.(parts)
 			const total = S.bom && !Array.isArray(S.bom) ? S.bom.totalUsd : null
-			$("parts-total").textContent = typeof total === "number" ? `$${total.toFixed(2)}` : "—"
+			$("parts-head").textContent = foldHeader("parts", { count: items.length, totalUsd: total })
 			const ready = S.bom && !Array.isArray(S.bom) ? S.bom.readiness : null
 			$("parts-ready").textContent = readinessShort(ready)
 			$("parts-ready").title = ready?.summary ?? ""
@@ -1439,6 +1399,13 @@
 			openWhy({ from: rev - 1, to: rev })
 			schedule()
 		})
+		// Folds: collapsed until opened; the choice is kept per browser (no storage, e.g. a sandboxed frame: always collapsed).
+		const store = (() => { try { return localStorage } catch { return null } })()
+		for (const [kind, box, btn] of [["parts", "parts-panel", "parts-fold"], ["revisions", "scrubber", "revs-fold"]]) {
+			const apply = (open) => { $(box).classList.toggle("folded", !open); $(btn).setAttribute("aria-expanded", String(open)) }
+			apply(foldOpen(store, kind))
+			$(btn).addEventListener("click", () => { const open = $(box).classList.contains("folded"); setFold(store, kind, open); apply(open); pcb?.fit?.() })
+		}
 		const goLive = () => { S.selected = null; syncArtifacts(); schedule() }
 		$("live-btn").addEventListener("click", goLive)
 		$("viewing-pill").addEventListener("click", goLive)
@@ -1448,6 +1415,7 @@
 			const key = `${m.dots.length}|${m.boards.join(",")}|${S.selected}`
 			if (key !== dotsKey) {
 				dotsKey = key
+				$("revs-head").textContent = foldHeader("revisions", { count: m.dots.length })
 				$("dots").innerHTML = m.dots.map((d) => {
 					const sel = S.selected === null ? d === m.dots.at(-1) : d.revision === S.selected
 					return `<button data-rev="${d.revision}" class="${d.board ? "board" : ""}${sel ? " sel" : ""}" style="--dc:${d.color}" aria-label="revision ${d.revision}"><i></i><span class="tip">rev ${d.revision} · ${esc(d.field)} v${d.version} · ${esc(WHO[d.by]?.[0] ?? d.by)}${d.board ? " · board built" : ""}</span></button>`
@@ -1533,6 +1501,27 @@
 			$("agents").append(el)
 			cards[k] = el
 		}
+		// The bench is a participant too: a tile while one is attached, following the change onto the board. A click opens the Bench tab.
+		const benchTile = document.createElement("div")
+		benchTile.className = "tile asleep hidden"
+		benchTile.style.setProperty("--ac", "#f3b43f")
+		benchTile.innerHTML = `<div class="top"><span class="name">Bench</span><span class="status">idle</span></div><div class="task">attached</div>`
+		benchTile.addEventListener("click", () => setTab("bench"))
+		$("agents").append(benchTile)
+		function paintBench(r) {
+			$("agents").classList.toggle("bench", Boolean(S.bench))
+			benchTile.classList.toggle("hidden", !S.bench)
+			if (!S.bench) return
+			const c = r?.checks.find((x) => x.key === "bench")
+			const [cls, status] = !c ? ["asleep", "idle"] : c.state === "ok" ? ["woke done", "measured ✓"] : c.state === "error" ? ["woke failed", "failed"] : ["woke working", "working"]
+			const next = `tile ${cls}`
+			if (benchTile.className !== next) benchTile.className = next
+			benchTile.querySelector(".name").textContent = c?.label === "Real board" ? "Real board" : "Bench"
+			benchTile.querySelector(".status").textContent = status
+			const task = benchTile.querySelector(".task")
+			task.textContent = c?.short ?? "attached"
+			task.title = c?.detail ?? "a board is attached: a firmware change is flashed and measured"
+		}
 		document.addEventListener("click", (e) => { if (!e.target.closest(".tile")) for (const h of $("agents").querySelectorAll(".hist")) h.remove() })
 		function renderCard(k) {
 			const lane = S.lanes[k], el = cards[k]
@@ -1540,18 +1529,12 @@
 			const task = el.querySelector(".task")
 			task.textContent = lane.text || "waiting"
 			task.title = lane.text
-			if (lane.boot) {
-				let b = el.querySelector(".boot")
-				if (!b) { b = document.createElement("span"); el.append(b) }
-				b.className = `boot ${lane.boot.ok ? "ok" : "bad"}`
-				b.textContent = lane.boot.ok ? `QEMU ✓ rev ${lane.boot.bootRevision}` : "✗ no boot"
-				b.title = `QEMU serial (firmware rev ${lane.boot.revision}):\n${lane.boot.tail}`
-			}
+			if (lane.boot) task.title = `QEMU serial (firmware rev ${lane.boot.revision}):\n${lane.boot.tail}`
 			if (el.querySelector(".hist")) renderHistory(k)
 		}
 		function renderHistory(k) {
 			const ul = cards[k].querySelector(".hist ul")
-			if (ul) ul.innerHTML = S.lanes[k].history.slice().reverse().map((h) => `<li><b style="color:${h.status === "failed" ? "var(--error)" : h.status === "done" ? "var(--ok)" : "var(--ink)"}">${esc(STATUS[h.status] ?? h.status)}</b><span class="t3">${esc(time(h.at))}</span> · ${esc(h.text)}</li>`).join("") || `<li>nothing yet</li>`
+			if (ul) ul.innerHTML = S.lanes[k].history.slice().reverse().map((h) => `<li><b style="color:${h.status === "failed" ? "var(--error)" : h.status === "done" ? "var(--ok)" : "var(--ink)"}">${esc(STATUS[h.status] ?? h.status)}</b><span class="t3">${esc(time(h.at))}</span> · ${esc(h.text)}${h.detail ? ` <span class="t3">(${esc(h.detail)})</span>` : ""}</li>`).join("") || `<li>nothing yet</li>`
 		}
 		// Ripple mode: woke vs stayed idle; before any request: who is working on the first design.
 		function paintTiles(r) {
@@ -1658,7 +1641,6 @@
 		const FIELDS = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior"]
 		const secs = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s` }
 		const STAMP = { consistent: "✓", rippling: "↯", sent: "→", unsettled: "✗", "no-change": "=", initial: "·" }
-		const MARK = { ok: "✓", error: "✗", warn: "!", running: "", pending: "·", off: "–" }
 
 		function ripples() {
 			return mergeRipples(liveRipples(S.events, S.requests, Date.now()), S.ripplesFile, runStart(S.events) ?? 0)
@@ -1699,6 +1681,7 @@
 			$("rip-history").innerHTML = rs.length > 1 ? rs.map((x, i) => `<button data-id="${esc(x.id)}" class="${x === r ? "on " : ""}${esc(x.state)}" title="${esc(x.text)}">#${i + 1}</button>`).join("") : ""
 			$("ripple").classList.toggle("flowing", r ? r.state === "rippling" || r.state === "sent" : !S.settled)
 			paintTiles(r)
+			paintBench(r)
 			if (!r) return renderInitial()
 			const idx = rs.indexOf(r)
 			const until = rs[idx + 1]?.atMs ?? Infinity
@@ -1732,13 +1715,9 @@
 			}).join("")
 			setHtml("rip-fields", fieldsHtml)
 			$("rip-agents-note").textContent = r.state === "sent" ? "" : `${r.woke.length} woke${r.reading?.length ? ` · ${r.reading.length} reading` : ""}${r.checked?.length ? ` · ${r.checked.length} checked` : ""} · ${r.stayedIdle.length} idle`
-			const checksHtml = r.checks.length
-				? r.checks.map((c) => `<li class="${esc(c.state)}"><span class="mark">${MARK[c.state] ?? ""}</span><span class="what">${esc(c.label)}${c.seq?.length ? `<span class="seq">${c.seq.map((n) => `<i class="${n ? "" : "z"}">${n}</i>`).join("<s>→</s>")}</span>` : ""}</span><span class="detail" title="${esc(c.detail)}">${esc(c.detail)}</span></li>`).join("")
-				: `<li class="pending"><span class="mark">·</span><span class="what">Waiting</span><span class="detail">checks run once a field changes</span></li>`
-			setHtml("rip-checks", checksHtml)
 			const line = resultLine(r, Date.now(), { stubbed: S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true })
 			setResult(r.state, line.headline, line.detail)
-			renderMoved(r)
+			renderProof(r)
 		}
 
 		// Before any request: the first design being built, and an invitation to change it.
@@ -1747,7 +1726,7 @@
 			if ($("rip-text").textContent !== title) $("rip-text").textContent = title
 			$("rip-text").className = ""
 			$("rip-when").textContent = "the brief"
-			setHtml("rip-meta", esc(S.settled ? "No change requested yet: type one above, or pick a suggestion." : "Every agent works the brief at once, against one contract."))
+			setHtml("rip-meta", esc(S.settled ? "No change requested yet: type one above." : "Every agent works the brief at once, against one contract."))
 			const fieldsHtml = FIELDS.map((f) => {
 				const v = S.contract?.versions?.[f]
 				return `<li class="${v ? "set" : "missing"}"><span>${esc(f)}</span><span class="v">${v ? `v${v}` : "—"}</span></li>`
@@ -1755,116 +1734,34 @@
 			setHtml("rip-fields", fieldsHtml)
 			const working = CARD_KEYS.filter((k) => ACTIVE.has(S.lanes[k].status)).length
 			$("rip-agents-note").textContent = S.settled ? "" : `${working} working now`
-			const pills = checkPills(S.events)
-			const checksHtml = pills.map((p) => {
-				const state = p.state === "pending" ? "pending" : p.state
-				const detail = p.state === "off" ? "off for this run" : p.state === "pending" ? "not run yet" : p.state === "running" ? "running" : p.state === "ok" ? (p.revision !== null ? `clean at rev ${p.revision}` : "clean") : p.items[0] ?? `${p.count}`
-				return `<li class="${esc(state)}"><span class="mark">${MARK[state] ?? ""}</span><span class="what">${esc(p.label)}${p.count && p.state !== "ok" ? `<span class="seq"><i>${p.count}</i></span>` : ""}</span><span class="detail" title="${esc(detail)}">${esc(detail)}</span></li>`
-			}).join("")
-			setHtml("rip-checks", checksHtml)
 			const took = S.firstAt && S.endAt ? secs(S.endAt - S.firstAt) : ""
 			if (!S.firstAt) setResult("initial", "Waiting for the first event", "")
 			else if (!S.settled) setResult("rippling", `Designing · rev ${S.revision}`, `${working} of ${CARD_KEYS.length} agents working · ${secs(Date.now() - S.firstAt)}`)
 			else if (S.settled.settled) setResult("consistent", `Consistent at rev ${S.settled.revision}${took ? ` in ${took}` : ""}`, phase().open ? "Now change one thing ↑" : "This run has ended")
 			else setResult("unsettled", `Stopped unsettled at rev ${S.settled.revision}`, "See the checks")
-			renderMoved(null)
+			renderProof(null)
 		}
 
-		// ── What moved: outline, cutouts and pins, before (dashed) → after (solid) ──
-		let movedKey = ""
 		function ensureRevision(rev) {
 			if (rev < 1 || S.snapshots.has(rev) || S.triedRevs.has(rev)) return
 			S.triedRevs.add(rev)
 			fetchRevision(rev)
 		}
-		function renderMoved(r) {
-			let before = null, after = S.contract?.values ?? null, label = "the design now"
+		// The proof line: the same change in the experiment (exactly it, from the same starting design), or nothing.
+		function renderProof(r) {
+			let before = null, after = S.contract?.values ?? null
 			if (r?.revisions) {
 				ensureRevision(r.revisions.from - 1)
 				ensureRevision(r.revisions.to)
 				before = S.snapshots.get(r.revisions.from - 1)?.values ?? null
 				after = snapAt(r.revisions.to)?.values ?? after
-				label = `rev ${r.revisions.from - 1} → ${r.revisions.to}`
 			}
-			const m = whatMoved(before, after)
-			// The same change in the experiment (exactly it, from the same starting design), or nothing.
 			const trial = r && r.state === "consistent" ? matchTrial({ brief: $("brief-title").textContent, before, after }, S.experiment) : null
 			$("rip-proof").classList.toggle("hidden", !trial)
 			if (trial) $("rip-proof").innerHTML = `<b>Without the shared contract: ${trial.shipped} mismatch${trial.shipped === 1 ? "" : "es"} would ship</b><span class="v" title="${esc(trial.vivid ?? "")}">${esc(trial.vivid ?? "")}</span><span class="src">same change in the experiment (“${esc(trial.label)}”) · npm run experiment</span>`
-			const key = JSON.stringify([label, r?.id ?? null, r?.fieldsChanged ?? null, Boolean(before), after?.outline, after?.connectors, m])
-			if (key === movedKey) return
-			movedKey = key
-			$("moved-revs").textContent = label
-			$("moved-revs").classList.toggle("link", /→/.test(label))
-			$("moved-revs").title = /→/.test(label) ? "What changed and why between these revisions" : ""
-			drawMoved(before, after, m)
-			const was = (s) => `<span class="was">${esc(s)}</span>`, now = (s) => `<span class="now">${esc(s)}</span>`
-			const place = (c) => (c ? `${c.edge} @ ${c.offsetMm}` : "—")
-			const rows = []
-			if (m.outline) rows.push(`<li><b>outline</b><span>${was(`${m.outline.before.w} × ${m.outline.before.h}`)} → ${now(`${m.outline.after.w} × ${m.outline.after.h} mm`)}</span></li>`)
-			for (const c of m.connectors) rows.push(`<li><b>${esc(c.ref)}</b><span>${c.before ? was(place(c.before)) : "added"} → ${c.after ? now(`${place(c.after)} mm`) : now("removed")}</span></li>`)
-			for (const p of m.pins) rows.push(`<li><b>${esc(p.signal)}</b><span>${p.before !== null ? was(`GPIO${p.before}`) : "new"} → ${p.after !== null ? now(`GPIO${p.after}`) : now("removed")}</span></li>`)
-			for (const p of m.parts) rows.push(`<li><b>${esc(p.ref)}</b><span>${p.before ? was(p.before) : "new"} → ${p.after ? now(p.after) : now("removed")}</span></li>`)
-			const note = !r ? "Nothing has moved yet. After a change, the board's outline, its cutouts and the pin map show here, before → after."
-				: !r.revisions ? "No field has changed yet."
-				: !before ? "Loading the revision before the change…"
-				: rows.length ? "" : `Nothing physical moved: the change stayed in ${r.fieldsChanged.join(", ")}.`
-			$("moved-list").innerHTML = rows.join("") + (note ? `<li class="t3" style="display:block;border:0">${esc(note)}</li>` : "")
-		}
-		function drawMoved(before, after, m) {
-			const svg = $("moved-svg")
-			const o = after?.outline
-			if (!o) { svg.innerHTML = ""; return }
-			const bo = before?.outline ?? o
-			const W = Math.max(o.widthMm, bo.widthMm), H = Math.max(o.heightMm, bo.heightMm)
-			const pad = Math.max(W, H) * 0.24, fs = Math.max(W, H) * 0.05, depth = Math.max(2.5, Math.max(W, H) * 0.05)
-			svg.setAttribute("viewBox", `${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}`)
-			svg.setAttribute("preserveAspectRatio", "xMidYMid meet")
-			// Contract coordinates run from the bottom-left corner, y up (codegen/circuit.ts); the SVG's y runs down.
-			const Y = (y) => H - y
-			const rect = (w, h, cls) => `<rect class="${cls}" x="0" y="${Y(h)}" width="${w}" height="${h}"/>`
-			const centre = (c, outline) => (c.edge === "left" ? [0, c.offsetMm] : c.edge === "right" ? [outline.widthMm, c.offsetMm] : c.edge === "bottom" ? [c.offsetMm, 0] : [c.offsetMm, outline.heightMm])
-			const cut = (c, outline, cls) => {
-				const [x, y] = centre(c, outline)
-				const along = c.widthMm ?? 8, vertical = c.edge === "left" || c.edge === "right"
-				const w = vertical ? depth : along, h = vertical ? along : depth
-				return `<rect class="${cls}" x="${x - w / 2}" y="${Y(y) - h / 2}" width="${w}" height="${h}"/>`
-			}
-			const moved = new Map(m.connectors.map((c) => [c.ref, c]))
-			let out = `<defs><marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="${fs * 0.9}" markerHeight="${fs * 0.9}" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--signal)"/></marker></defs>`
-			if (m.outline) out += rect(bo.widthMm, bo.heightMm, "before")
-			out += rect(o.widthMm, o.heightMm, "after")
-			for (const c of after.connectors ?? []) {
-				const mv = moved.get(c.ref)
-				if (mv?.before) out += cut({ ...mv.before }, bo, "cut-before")
-				out += cut(c, o, mv ? "cut-after" : "cut-same")
-				if (mv?.before) {
-					const [x1, y1] = centre(mv.before, bo), [x2, y2] = centre(c, o)
-					if (Math.hypot(x2 - x1, y2 - y1) > depth) out += `<path class="arrow" d="M${x1} ${Y(y1)} Q ${(x1 + x2) / 2 + (y2 - y1) * 0.25} ${(Y(y1) + Y(y2)) / 2 - (x2 - x1) * 0.25} ${x2} ${Y(y2)}"/>`
-				}
-				const [x, y] = centre(c, o)
-				const dx = c.edge === "left" ? depth : c.edge === "right" ? -depth : 0, dy = c.edge === "bottom" ? -depth : c.edge === "top" ? depth : 0
-				out += `<text x="${x + dx}" y="${Y(y + dy) + fs * 0.35}" font-size="${fs}" text-anchor="${c.edge === "left" ? "start" : c.edge === "right" ? "end" : "middle"}">${esc(c.ref)}</text>`
-			}
-			for (const c of m.connectors) if (!c.after && c.before) out += cut(c.before, bo, "cut-before")
-			// mm axes along the top and left edges of the drawing, origin at the board's bottom-left corner.
-			const ppm = (svg.clientWidth || 300) / (W + 2 * pad)
-			const step = tickStep(Math.min(ppm, (svg.clientHeight || 200) / (H + 2 * pad)) * 0.8)
-			const top = -pad * 0.35, left = -pad * 0.35, tick = fs * 0.45
-			out += `<path class="axis" d="M0 ${top} H${W} M${left} ${Y(0)} V${Y(H)}"/>`
-			for (const t of rulerTicks(0, W, step)) out += `<path class="axis" d="M${t.mm} ${top} v${t.major ? -tick : -tick / 2}"/>` + (t.major ? `<text x="${t.mm}" y="${top - tick * 1.4}" font-size="${fs * 0.7}" text-anchor="middle">${t.label}</text>` : "")
-			for (const t of rulerTicks(0, H, step)) out += `<path class="axis" d="M${left} ${Y(t.mm)} h${t.major ? -tick : -tick / 2}"/>` + (t.major ? `<text x="${left - tick * 1.4}" y="${Y(t.mm) + fs * 0.25}" font-size="${fs * 0.7}" text-anchor="end">${t.label}</text>` : "")
-			const wText = m.outline && m.outline.before.w !== m.outline.after.w ? `${m.outline.before.w} → ${m.outline.after.w} mm` : `${o.widthMm} mm`
-			const hText = m.outline && m.outline.before.h !== m.outline.after.h ? `${m.outline.before.h} → ${m.outline.after.h} mm` : `${o.heightMm} mm`
-			out += `<text class="dim" x="${o.widthMm / 2}" y="${H + pad * 0.62}" font-size="${fs * 1.15}" text-anchor="middle">${esc(wText)}</text>`
-			out += `<text class="dim" transform="translate(${-pad * 0.82} ${Y(o.heightMm / 2)}) rotate(-90)" font-size="${fs * 1.15}" text-anchor="middle">${esc(hText)}</text>`
-			svg.innerHTML = out
 		}
 
-		// ── The composer: one-click suggestions that the scripted agents handle too ──
-		const SUGGEST = ["make it 40 mm wide", "make it 60 mm wide", "blink faster when tilted"]
-		$("suggest").innerHTML = `<span class="lead">one click</span>` + SUGGEST.map((s) => `<button>${esc(s)}</button>`).join("")
-		$("suggest").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !b.disabled) sendChange(b.textContent) })
+		// ── The composer: its placeholder says what this run's agents can act on ──
 		$("send-btn").addEventListener("click", () => sendChange($("change-input").value))
 		document.addEventListener("keydown", (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("change-input").focus() }
@@ -1962,7 +1859,6 @@
 		$("ask-answer").addEventListener("click", (e) => { const a = e.target.closest("a[data-rev]"); if (a) { const rev = Number(a.dataset.rev); S.why = { from: rev - 1, to: rev, follow: false }; renderWhy() } })
 
 		// "rev 7 → 8" anywhere opens it on that range.
-		$("moved-revs").addEventListener("click", () => { const m = /rev (\d+) → (\d+)/.exec($("moved-revs").textContent); if (m) openWhy({ from: Number(m[1]), to: Number(m[2]) }) })
 		$("rip-meta").addEventListener("click", (e) => { const l = e.target.closest(".link"); if (l) openWhy({ from: Number(l.dataset.from), to: Number(l.dataset.to) }) })
 
 		// ── Drawers: change control and the event feed ──
@@ -2108,6 +2004,8 @@
 					break
 				case "run.started":
 					S.stay = p.stay === true
+					S.mock = p.mock === true
+					syncChangeBar()
 					if (S.stay) showStop()
 					break
 				case "file.drift":
@@ -2129,7 +2027,7 @@
 			}
 			schedule()
 		}
-		fetch("/api/experiment").then((r) => (r.ok ? r.json() : null)).then((x) => { S.experiment = x; movedKey = ""; schedule() }).catch(() => {})
+		fetch("/api/experiment").then((r) => (r.ok ? r.json() : null)).then((x) => { S.experiment = x; schedule() }).catch(() => {})
 		fetchSnapshot()
 		fetchBom()
 		fetchReport()

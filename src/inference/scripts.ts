@@ -76,7 +76,7 @@ export function mockScripts(): Record<string, Script> {
 			if (instruction.startsWith("Change request from the engineer:")) {
 				const width = /(\d+(?:\.\d+)?)\s*mm wide/.exec(instruction)?.[1]
 				const outline = state().contract.get("outline")
-				if (step > 0 || !width || !outline) return say(width ? "outline updated" : "no field I own covers that request")
+				if (step > 0 || !width || !outline) return say(width ? "outline updated" : "no outline change")
 				return propose("outline", { ...outline, widthMm: Number(width) }, `engineer asked for ${width} mm wide`)
 			}
 			if (instruction.startsWith("Change request")) {
@@ -125,7 +125,7 @@ export function mockScripts(): Record<string, Script> {
 				// The request is the line after the prefix. "blink faster when tilted": a 250 ms blink past 20°, slow enough
 				// that the bench can still time it from 50 ms telemetry samples (bench/blink.ts).
 				const request = instruction.split("\n")[1] ?? ""
-				if (stepsTaken(items) > 0 || !/blink/i.test(request)) return say(/blink/i.test(request) ? "behavior updated" : "not a firmware behavior change")
+				if (stepsTaken(items) > 0 || !/blink/i.test(request)) return say(/blink/i.test(request) ? "behavior updated" : "no behavior change")
 				const current = state().contract.get("behavior") ?? DEFAULT_BEHAVIOR
 				const value = /tilt/i.test(request) ? { ...current, tiltBlinkMs: 250, tiltDeg: 20 } : { ...current, blinkMs: Math.max(100, Math.round(current.blinkMs / 2)) }
 				return propose("behavior", value, `engineer asked: ${request}`)
