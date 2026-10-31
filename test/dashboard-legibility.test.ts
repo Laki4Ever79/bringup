@@ -35,3 +35,12 @@ test("the task line is ONE line with an ellipsis at every size (the full text is
 	assert.equal(prop(".tile .task", "overflow"), "hidden")
 	assert.ok(!/-webkit-line-clamp/.test(rule(".tile .task")), "no line clamp anywhere brings back a second line")
 })
+
+test("the board/case row never crushes: it has a floor, and the page scrolls below it instead of squeezing the PCB", () => {
+	// #app fills the window (dynamic viewport, for browser chrome and fractional scaling) but may grow past it.
+	assert.match(rule("#app"), /min-height:\s*100dvh/)
+	assert.doesNotMatch(rule("#app"), /(^|;|\s)height:\s*100vh/)
+	// The deck's row: a floor tall enough to read the board, then whatever height is left.
+	const deck = /minmax\(clamp\([^)]*\), auto\) minmax\((\d+)px, 1fr\)/.exec(prop("#run", "grid-template-rows") ?? "")
+	assert.ok(deck && Number(deck[1]) >= 320, `the deck row's floor: ${prop("#run", "grid-template-rows")}`)
+})

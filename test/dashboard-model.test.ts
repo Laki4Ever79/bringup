@@ -227,6 +227,9 @@ test("folds: the parts list and the revisions strip start collapsed, with a one-
 	assert.equal(foldHeader("parts", { count: 18, totalUsd: 5.41 }), "Parts · 18 · $5.41")
 	assert.equal(foldHeader("parts", { count: 18, totalUsd: null }), "Parts · 18")
 	assert.equal(foldHeader("parts", { count: 0 }), "Parts")
+	// The change on screen added parts: the collapsed bar says so.
+	assert.equal(foldHeader("parts", { count: 19, totalUsd: 5.41, added: 2 }), "Parts · 19 · $5.41 · 2 new")
+	assert.equal(foldHeader("parts", { count: 19, added: 1, changed: 1 }), "Parts · 19 · 1 new · 1 changed")
 	assert.equal(foldHeader("revisions", { count: 9 }), "Revisions · 9")
 	assert.equal(foldHeader("register", { count: 12 }), "Drawing register · 12 runs")
 	assert.equal(foldHeader("register", { count: 1 }), "Drawing register · 1 run")
