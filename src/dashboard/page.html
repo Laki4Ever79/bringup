@@ -179,7 +179,7 @@
 	.stage-bar .sec-num { align-self: center; padding: 0 6px 0 2px; color: var(--screen-text-2); }
 	#rip-result { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 8px 18px; border-top: 2px solid var(--ink); background: var(--paper-2); min-width: 0; }
 	#rip-result .stampbox { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 2.5px solid currentColor; font: 900 26px/1 var(--display); }
-	#rip-headline { font: 800 clamp(30px, 3.1vw, 58px)/1 var(--display); text-transform: uppercase; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#rip-headline { font: 800 clamp(28px, 2.7vw, 52px)/1 var(--display); text-transform: uppercase; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	#rip-detail { font: 600 clamp(15px, 1.15vw, 21px)/1.1 var(--sans); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	#rip-result.consistent { color: var(--ok); } #rip-result.consistent #rip-headline { color: var(--ink); }
 	#rip-result.consistent .stampbox { animation: stamp 520ms var(--ease); }
@@ -668,7 +668,7 @@
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	import { liveRipples, mergeRipples, resultLine, runStart } from "/ripple.js"
+	import { liveRipples, mergeRipples, runStart, statusLine } from "/ripple.js"
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { matchTrial, proofSummary } from "/proof.js"
 	import { changeLog, defaultRange, fileDrift } from "/changelog.js"
@@ -1658,6 +1658,16 @@
 			$(id).innerHTML = html
 		}
 		let resultKey = ""
+		// 04 Result: the live status line (statusLine in ripple.js says what is happening, then how the change ended).
+		function showStatus(r, working = 0) {
+			const latest = S.events.findLast((e) => e.type === "consistency.checked")
+			const s = statusLine({
+				ripple: r, now: Date.now(), stubbed: S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true,
+				violations: latest?.payload?.violations ?? [], settled: S.settled, revision: S.revision, firstAtMs: S.firstAt, endAtMs: S.endAt,
+				workingCount: working, open: phase().open, benchAsk: S.bench?.instruction?.action ?? null,
+			})
+			setResult(s.state, s.headline, s.detail)
+		}
 		function setResult(state, headline, detail) {
 			const key = `${state}|${headline}|${detail}`
 			if (key === resultKey) return
@@ -1712,8 +1722,7 @@
 			}).join("")
 			setHtml("rip-fields", fieldsHtml)
 			$("rip-agents-note").textContent = r.state === "sent" ? "" : `${r.woke.length} woke${r.reading?.length ? ` · ${r.reading.length} reading` : ""}${r.checked?.length ? ` · ${r.checked.length} checked` : ""} · ${r.stayedIdle.length} idle`
-			const line = resultLine(r, Date.now(), { stubbed: S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true })
-			setResult(r.state, line.headline, line.detail)
+			showStatus(r)
 			renderProof(r)
 		}
 
@@ -1731,11 +1740,7 @@
 			setHtml("rip-fields", fieldsHtml)
 			const working = CARD_KEYS.filter((k) => ACTIVE.has(S.lanes[k].status)).length
 			$("rip-agents-note").textContent = S.settled ? "" : `${working} working now`
-			const took = S.firstAt && S.endAt ? secs(S.endAt - S.firstAt) : ""
-			if (!S.firstAt) setResult("initial", "Waiting for the first event", "")
-			else if (!S.settled) setResult("rippling", `Designing · rev ${S.revision}`, `${working} of ${CARD_KEYS.length} agents working · ${secs(Date.now() - S.firstAt)}`)
-			else if (S.settled.settled) setResult("consistent", `Consistent at rev ${S.settled.revision}${took ? ` in ${took}` : ""}`, phase().open ? "Now change one thing ↑" : "This run has ended")
-			else setResult("unsettled", `Stopped unsettled at rev ${S.settled.revision}`, "See the checks")
+			showStatus(null, working)
 			renderProof(null)
 		}
 

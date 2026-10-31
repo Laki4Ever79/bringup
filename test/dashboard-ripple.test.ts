@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { liveRipples, mergeRipples, resultLine, runStart, whatMoved } from "../src/dashboard/ripple.js"
+import { liveRipples, mergeRipples, runStart, whatMoved } from "../src/dashboard/ripple.js"
 
 const T0 = Date.parse("2026-10-31T12:00:00.000Z")
 let seq = 0
@@ -59,7 +59,6 @@ test("ripple: consistent again once the contract is clean and every woken build 
 	assert.equal(r.state, "consistent")
 	assert.equal(r.consistentAtMs, T0 + 138_000)
 	assert.equal(r.durationMs, 38_000)
-	assert.deepEqual(resultLine(r, T0 + 200_000), { headline: "Consistent again in 38 s", detail: "4 of 9 agents woke", text: "Consistent again in 38 s · 4 of 9 agents woke" })
 })
 
 test("ripple: in flight, red checks and agents still working", () => {
@@ -72,8 +71,6 @@ test("ripple: in flight, red checks and agents still working", () => {
 	assert.deepEqual(r.working, ["build:board", "build:enclosure"])
 	const board = r.checks.find((c) => c.key === "build:board")
 	assert.equal(board?.state, "running")
-	assert.equal(resultLine(r, now).headline, "Rippling · 12 s")
-	assert.equal(resultLine(r, now).detail, "4 of 9 agents woke · 2 still working")
 })
 
 test("ripple: checks go red then green, the board's DRC rides along", () => {
@@ -93,14 +90,12 @@ test("ripple: a request nobody has picked up yet, and one that changed nothing",
 	assert.deepEqual(sent.checked, [])
 	assert.equal(sent.state, "sent")
 	assert.deepEqual(sent.woke, [])
-	assert.equal(resultLine(sent, now).headline, "Sent to the agents")
 	const quiet = [...initial, activity(101, "architect", "turn"), activity(104, "architect", "answer"), ev(110, "design.settled", { settled: true, revision: 5 })]
 	const [none] = liveRipples(quiet, [request], T0 + 120_000)
 	assert.equal(none.state, "no-change")
 	// Took a turn, changed nothing: checked, not woke.
 	assert.deepEqual(none.woke, [])
 	assert.deepEqual(none.checked, ["architect"])
-	assert.equal(resultLine(none, T0 + 120_000).headline, "No change to the design")
 })
 
 test("ripple: each request owns the events until the next one", () => {
@@ -120,7 +115,6 @@ test("ripple: woke = changed or proposed a field; checked = took a turn and chan
 	assert.deepEqual(r.woke, ["architect", "firmware", "build:board", "build:enclosure", "consistency"])
 	assert.deepEqual(r.checked, ["reviewer"])
 	assert.deepEqual(r.stayedIdle, ["parts", "build:firmware", "grounding"])
-	assert.equal(resultLine(r, T0 + 106_000).detail, "5 of 9 agents woke · 1 checked, no change · 3 still working")
 })
 
 test("ripple: an agent that took a turn and is still at it is 'reading', not yet woke or checked", () => {
@@ -143,7 +137,6 @@ test("ripple: a design that ends unsettled says so", () => {
 	const bad = [...initial, activity(101, "architect", "turn"), changed(104, "outline", 2, 6, "architect"), checked(105, 6, 3), ev(130, "design.settled", { settled: false, revision: 6 })]
 	const [r] = liveRipples(bad, [request], T0 + 140_000)
 	assert.equal(r.state, "unsettled")
-	assert.equal(resultLine(r, T0 + 140_000).headline, "Not consistent: 3 violations left")
 })
 
 test("ripple: a clean contract carries in (checks only report changes), and a dirty check resets it", () => {
@@ -261,13 +254,6 @@ test("ripple: the window ends at the first design.ready after the request; later
 	// The runner's file carries the same field; it wins when present.
 	const file = { requests: [{ id: "req-1", text: request.text, atMs: 100_000, fieldsChanged: ["outline"], woke: r.woke, checked: [], stayedIdle: r.stayedIdle, violationsPeak: 0, consistentAtMs: 111_000, durationMs: 11_000, reviewFollowUps: { fieldsChanged: ["rails"], rounds: 3 } }] }
 	assert.deepEqual(mergeRipples([r], file, T0)[0].reviewFollowUps, { fieldsChanged: ["rails"], rounds: 3 })
-})
-
-test("result line: under a second reads \"under 1 s\", and stubbed hardware says so", () => {
-	const r = { ...liveRipples([...initial, ...ripple], [request], T0 + 200_000)[0], durationMs: 400 }
-	assert.equal(resultLine(r, T0 + 200_000).headline, "Consistent again in under 1 s")
-	assert.equal(resultLine(r, T0 + 200_000, { stubbed: true }).detail, "4 of 9 agents woke · hardware stubbed")
-	assert.equal(resultLine({ ...r, durationMs: 38_000 }, T0 + 200_000).headline, "Consistent again in 38 s")
 })
 
 test("what moved: outline, connectors, pins and parts, before → after", () => {
