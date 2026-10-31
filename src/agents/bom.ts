@@ -89,7 +89,7 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 			revision: snapshot.revision,
 			totalUsd: priced.length > 0 ? Math.round(priced.reduce((sum, i) => sum + i.priceUsd!, 0) * 1e4) / 1e4 : null,
 			items,
-			readiness: orderReadiness(items, live ? undefined : "stock not looked up (mock run)"),
+			readiness: orderReadiness(items, live ? undefined : "mock run"),
 			liveStock: live,
 		}
 		// Write then rename, so the page never reads half a file.
