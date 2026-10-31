@@ -67,3 +67,16 @@ test("the standoff rule waits until both the board and the case report their hol
 	a.enclosure!.standoffs = []
 	assert.deepEqual(checkConsistency(fixtureContract(), a), [])
 })
+
+// Real run 13: the board wired J1.DN to its pads pin9 and pin11 (the USB-C footprint has no DN port), and the check
+// still asked for "J1.DN", a violation nobody could fix.
+test("a pin on the USB-C connector is connected when the net reaches that signal's pads", () => {
+	const c = fixtureContract()
+	c.values.parts!.push({ ref: "J1", role: "usb-c", mpn: "TYPE-C-31-M-12", lcsc: "C165948", footprint: "usbc", pins: ["VBUS", "GND", "CC1", "CC2", "DP", "DN"] })
+	c.values.pins!.push({ signal: "USB_DN", gpio: 18, partRef: "J1", partPin: "DN" })
+	const a = fixtureArtifacts()
+	a.board!.nets.USB_DN = ["U1.GPIO18", "J1.pin9", "J1.pin11"]
+	assert.deepEqual(checkConsistency(c, a).filter((v) => v.kind === "net-missing"), [])
+	a.board!.nets.USB_DN = ["U1.GPIO18"]
+	assert.match(checkConsistency(c, a).find((v) => v.kind === "net-missing")!.message, /J1\.DN/)
+})
