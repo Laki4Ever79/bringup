@@ -7,12 +7,12 @@ const results = JSON.parse(readFileSync("docs/experiment-results.json", "utf8"))
 
 test("the proof line: changes, arm A's violations and time range, arm B's shipped mismatches", () => {
 	const p = proofSummary(results)!
-	assert.equal(p.changes, 5)
+	assert.equal(p.changes, 6)
 	assert.equal(p.violations, 0)
-	assert.deepEqual(p.rangeS, [31, 84])
-	assert.equal(p.shipped, 14)
-	assert.equal(p.headline, "5 real changes · with the shared contract: 0 violations, consistent again in 31–84 s · each team on its own copy: 14 mismatches would ship")
-	assert.equal(p.rows.length, 5)
+	assert.deepEqual(p.rangeS, [31, 72])
+	assert.equal(p.shipped, 16)
+	assert.equal(p.headline, "6 real changes · with the shared contract: 0 violations, consistent again in 31–72 s · each team on its own copy: 16 mismatches would ship")
+	assert.equal(p.rows.length, 6)
 	assert.deepEqual(p.rows[2], { id: "usb-edge", label: "Move the USB-C port to the bottom edge", seconds: 52, woken: 2, workers: 7, shipped: 1, vivid: "cutout for J1 is left@15 mm 10×4.5, connector is bottom@25 mm 9×3.5" })
 	assert.equal(proofSummary(null), null)
 	assert.equal(proofSummary({ results: [] }), null)

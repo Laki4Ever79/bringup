@@ -20,6 +20,8 @@ export interface BoardArtifact {
 	fabError?: string
 	// Drilled mounting holes, from the board's bottom-left corner (read from tscircuit's circuit.json).
 	holes?: { xMm: number; yMm: number; diameterMm: number }[]
+	// What was placed, by reference designator (circuit.json): the MPN (null when the board has none) and the pins.
+	parts?: Record<string, { mpn: string | null; pins: string[] }>
 }
 
 export interface PrintCheck {
@@ -61,6 +63,7 @@ export type ViolationKind =
 	| "cutout-missing"
 	| "cutout-misaligned"
 	| "standoff-mismatch"
+	| "part-mismatch"
 	| "rail-overload"
 	| "firmware-build-failed"
 	| "sensor-mismatch"
@@ -185,6 +188,20 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 			} else mismatch(`board hole at ${at(h)} has no standoff under it`)
 		}
 		for (const p of lonePosts) mismatch(`standoff at ${at(p)} has no board hole over it`)
+	}
+
+	// The board must carry the contract's parts list: every part placed, and the same part (by MPN) where it says.
+	const placed = a.board?.parts
+	if (placed && parts) {
+		for (const p of parts) {
+			const got = placed[p.ref]
+			const message = !got
+				? `board has no ${p.ref} (${p.mpn})`
+				: got.mpn !== null && got.mpn.toLowerCase() !== p.mpn.toLowerCase()
+					? `board places ${got.mpn} as ${p.ref}, contract says ${p.mpn}`
+					: null
+			if (message) v.push({ kind: "part-mismatch", message, fields: ["parts"], affects: ["board"] })
+		}
 	}
 
 	for (const rail of rails ?? []) {

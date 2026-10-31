@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { test } from "node:test"
-import { holesFromCircuitJson, netsFromCircuitJson } from "../src/tools/board-nets.ts"
+import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson } from "../src/tools/board-nets.ts"
 
 // Built by tsci from circuitFromContract(fixtureContract()).
 const elements = JSON.parse(readFileSync(new URL("./data/fixture.circuit.json", import.meta.url), "utf8"))
@@ -26,4 +26,15 @@ test("holes come back in the contract frame: from the board's bottom-left corner
 		{ type: "pcb_hole", hole_shape: "circle", hole_diameter: 0.7, x: -17.9, y: 2.9, pcb_component_id: "pcb_component_3" },
 	])
 	assert.deepEqual(holes, [{ xMm: 3, yMm: 3, diameterMm: 2.2 }, { xMm: 47, yMm: 27, diameterMm: 2.2 }])
+})
+
+test("parts come back as placed: each component's MPN (null when the board has none) and its pins", () => {
+	const parts = partsFromCircuitJson([
+		{ type: "source_component", source_component_id: "c1", name: "U3", manufacturer_part_number: "AP2112K-3.3TRG1" },
+		{ type: "source_component", source_component_id: "c2", name: "R1" },
+		{ type: "source_port", source_port_id: "p1", source_component_id: "c1", name: "VIN" },
+		{ type: "source_port", source_port_id: "p2", source_component_id: "c1", name: "VOUT" },
+		{ type: "source_port", source_port_id: "p3", source_component_id: "c2", name: "pin1" },
+	])
+	assert.deepEqual(parts, { U3: { mpn: "AP2112K-3.3TRG1", pins: ["VIN", "VOUT"] }, R1: { mpn: null, pins: ["pin1"] } })
 })
