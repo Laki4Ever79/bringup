@@ -103,10 +103,10 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""):
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
 	if (power.days !== null && power.targetDays !== null && power.days < power.targetDays) {
-		const check = dutyCycleCheckLines(power).find((l) => l.startsWith("- Average"))
+		const check = dutyCycleCheckLines(power, c).find((l) => l.startsWith("- Average"))
 		v.push({
 			kind: "battery-short",
-			message: `the stated rail averages give ${Math.round(power.days)} days of battery life, short of the ${power.targetDays}-day target${check ? `; the duty-cycle check (peak current for the whole wake) gives ${check.replace(/^- Average /, "an average of ")}` : ""}`,
+			message: `the stated rail averages give ${Math.round(power.days)} days of battery life, short of the ${power.targetDays}-day target${check ? `; the duty-cycle check gives ${check.replace(/^- Average /, "an average of ")}` : ""}`,
 			fields: ["requirements", "rails", "parts"],
 			affects: ["architect"],
 		})

@@ -243,3 +243,22 @@ test("a battery rail stating the same average as the rail behind its LDO is coun
 	c.values.rails[0].averageMa = 0.002
 	assert.equal(estimatePower(c, "around 500 mAh").averageMa, 0.0327, "different averages still add up")
 })
+
+// Charging the whole wake at the rail's peak (a regulator sizing figure) was our modelling error, and the reviewer
+// trusted it. With the MCU's datasheet currents in the catalog, the check charges each phase at its own current.
+test("dutyCycleCheckLines charges the reading at the CPU current and the advertising window at the radio current, and keeps the peak as a labelled worst case", async () => {
+	const { dutyCycleCheckLines } = await import("../src/contract/power.ts")
+	const s = fixtureContract()
+	s.values.requirements = { summary: "beacon", peripherals: [], batteryLifeDays: 90, batteryMah: 500, dutyCycle: { activeMs: 80, periodS: 60, sleepUa: 5 } }
+	s.values.rails = [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 200, loadMa: 200, averageMa: 0.12 }]
+	s.values.parts = [...s.values.parts!, { ref: "U3", role: "ldo", mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] }]
+	const text = dutyCycleCheckLines(estimatePower(s, ""), s).join("\n")
+	assert.match(text, /^Battery-life check \(computed in code from the duty cycle and U1 ESP32-C3-MINI-1's datasheet currents, not from the rails' stated averages\):$/m)
+	assert.match(text, /^- Reading: 30 ms at 28 mA \(CPU running, datasheet\) = 0\.84 mC$/m)
+	assert.match(text, /^- Advertising: 50 ms at 84 mA \(radio receiving, datasheet; it gives no Bluetooth LE figure, so the receive current stands in for the whole window, which keeps the radio on while advertising transmits in short bursts\) = 4\.2 mC$/m)
+	// (0.84 + 4.2) mC / 60 s + (1 − 80/60000) × 0.005 mA + 0.001 mA = 0.0900 mA; 500 / 0.09 / 24 = 231 days
+	assert.match(text, /^- Average 0\.09 mA; 500 mAh \/ 0\.09 mA \/ 24 h = 231 days vs target 90 days$/m)
+	assert.match(text, /^- Worst case, the busiest battery-fed rail's peak \(200 mA, a regulator sizing figure\) for the whole 80 ms wake:$/m)
+	// 80/60000 × 200 + (1 − 80/60000) × 0.005 + 0.001 = 0.273 mA; 76 days
+	assert.match(text, /^- {3}worst-case average 0\.273 mA; 500 mAh \/ 0\.273 mA \/ 24 h = 76 days vs target 90 days$/m)
+})
