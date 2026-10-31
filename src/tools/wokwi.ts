@@ -45,7 +45,7 @@ export async function simulateFirmware(env: Env, fwDir: string, s: ContractSnaps
 	const timeoutMs = opts.timeoutMs ?? SIM_TIMEOUT_MS
 	// The CLI reads WOKWI_CLI_TOKEN from the environment it inherits; it is never put on the command line.
 	// A fresh simulated flash: the first reading goes to slot 0; -1 means the store failed.
-	const r = await run(env.wokwi!, [project, "--timeout", String(timeoutMs), "--expect-text", "HISTORY slot 0", "--fail-text", "HISTORY slot -1"], { timeoutMs: timeoutMs + 30_000 })
+	const r = await run(env.wokwi!, [project, "--timeout", String(timeoutMs), "--expect-text", "HISTORY slot 0", "--fail-text", "HISTORY slot -1"], { timeoutMs: timeoutMs + 150_000 }) // the upload of the 4 MB flash image comes first; only the simulation counts against the plan
 	const serial = `${r.stdout}\n${r.stderr}`
 	return { ran: true, passed: r.code === 0 && serial.includes(EXPECTED_LINE), serial: tail(serial, 40) }
 }

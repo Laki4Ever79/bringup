@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "author": "Bringup",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-c3-devkitm-1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chip-sht40",
+      "id": "U2",
+      "top": 0,
+      "left": 200,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [
+      "esp:TX",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "esp:8",
+      "U2:SDA",
+      "green",
+      []
+    ],
+    [
+      "esp:9",
+      "U2:SCL",
+      "blue",
+      []
+    ],
+    [
+      "esp:3V3.1",
+      "U2:VDD",
+      "red",
+      []
+    ],
+    [
+      "esp:GND.1",
+      "U2:GND",
+      "black",
+      []
+    ]
+  ]
+}

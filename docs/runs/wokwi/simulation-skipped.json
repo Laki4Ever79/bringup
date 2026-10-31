@@ -1,0 +1,7 @@
+{
+  "backend": "wokwi",
+  "revision": 8,
+  "at": "2026-10-31T13:30:29.390Z",
+  "ran": false,
+  "reason": "no WOKWI_CLI_TOKEN in .env; optional, see NOTES.md"
+}
