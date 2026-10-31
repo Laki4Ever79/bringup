@@ -1,13 +1,13 @@
 # Bringup
 
-**Change “one thing”, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still
-consistent.**
+**Describe a device. Agents design all of it at once: board, case, firmware and parts. Change anything, and it all follows.**
 
 <!-- IMG hero: docs/img/hero.gif (≤5 MB): a change goes in → only the affected agents wake → the checks go red, then green → the board and case update. Cut from 7a's frozen-layout footage. -->
 
 A short product brief goes in. Concurrent [Mozaik](https://www.npmjs.com/package/@mozaik-ai/core) agents turn it into
 in-stock parts, a routed PCB, a printable case whose cutouts match the board, and firmware that compiles against the
-real pin map. Then the design changes, the way real designs always do, and Bringup keeps every part of it consistent.
+real pin map. Then the design changes, the way real designs always do: change “one thing”, and Bringup keeps every part
+of it consistent. The first design is itself just the first change: the beacon's took 7 contract revisions.
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
@@ -139,7 +139,13 @@ have scored 0 by not looking.
 | real-19 | the same sensor swap | parts | 6 | 52 s, after a `sensor-mismatch` was caught and cleared |
 | real-15 | "make the board 40 mm wide" | outline | 4 | 49 s |
 
-Reports, ripples and full traces: `docs/runs/real-15`, `real-19`, `real-20`. Each ends with 0 violations, but **no
+| add-sensor-real-2 | "add a temperature/humidity sensor" | requirements, parts | 7 | 79 s; the review, judging against the brief as amended by the request, made the agents wire the sensor (I2C on GPIO6/7) |
+
+With real models, an engineer's request now amends the brief: the reviewer stopped calling the sensor out of scope and
+made the agents wire it. (In that run the parts agent had already added a sensor before the request, against the
+beacon brief; the request made it legitimate. It still ended unsettled on battery life.)
+
+Reports, ripples and full traces: `docs/runs/real-15`, `real-19`, `real-20`, `add-sensor-real-2`. Each ends with 0 violations, but **no
 real-model run has passed the final brief review yet** (see [Limits](#limits)). This README does not claim results that
 haven't run.
 
