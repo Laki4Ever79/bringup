@@ -100,8 +100,9 @@ test("public: any host may read; the page carries the banner; every POST but Try
 		}
 		assert.equal((await call(hub.url, "/api/runs/add-sensor/ready-to-order")).status, 403)
 		// The page's optional probes answer 204 when a recorded run doesn't have them, so the browser logs no errors;
-		// anything else that is missing is still a 404.
-		for (const path of ["/runs/add-sensor/files/cloud.jsonl", "/runs/add-sensor/files/fab/README.txt", "/runs/add-sensor/files/bom.json", "/runs/add-sensor/files/requests.jsonl", "/runs/add-sensor/files/enclosure/rev-4/vents.json", "/runs/add-sensor/files/contracts/rev-3.json", "/runs/add-sensor/files/brief.md", "/favicon.ico"])
+		// anything else that is missing is still a 404. A live Try it run asks for report.md and contract.json before it has
+			// written them.
+		for (const path of ["/runs/add-sensor/files/cloud.jsonl", "/runs/add-sensor/files/fab/README.txt", "/runs/add-sensor/files/bom.json", "/runs/add-sensor/files/requests.jsonl", "/runs/add-sensor/files/enclosure/rev-4/vents.json", "/runs/add-sensor/files/contracts/rev-3.json", "/runs/add-sensor/files/brief.md", "/runs/add-sensor/files/report.md", "/runs/add-sensor/files/contract.json", "/favicon.ico"])
 			assert.equal((await call(hub.url, path)).status, 204, path)
 		assert.equal((await call(hub.url, "/runs/add-sensor/files/board/rev-9/board.png")).status, 404)
 		// Try it ignores the brief and the switches, so the start form hides them and says what a run here is.
