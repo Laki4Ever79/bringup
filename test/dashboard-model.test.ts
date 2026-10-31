@@ -255,3 +255,11 @@ test("scripted mode offers the two scripted briefs, the beacon (then add a senso
 	// Only what exists: no beacon in an older checkout, just the logger.
 	assert.deepEqual(scriptedBriefs(briefs.filter((b) => b.name !== "beacon.md")).map((b) => b.name), ["logger.md"])
 })
+
+test("the battery label has a short form for narrow stages", async () => {
+	const { batteryLabel } = await import("../src/dashboard/model.js")
+	assert.equal(batteryLabel({ days: 103, targetDays: 90, measured: false }), "103 days vs 90 target")
+	assert.equal(batteryLabel({ days: 103, targetDays: 90, measured: false, short: true }), "103 d / 90 d")
+	assert.equal(batteryLabel({ days: 64.4, targetDays: null, measured: true, source: "fake" }), "64 days measured (fake)")
+	assert.equal(batteryLabel({ days: 64.4, targetDays: null, measured: false, short: true }), "64 d est.")
+})
