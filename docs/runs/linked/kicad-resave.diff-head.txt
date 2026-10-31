@@ -1,0 +1,30 @@
+diff --git a/board/board.kicad_pcb b/board/board.kicad_pcb
+index af0a6d5..e9fc20d 100644
+--- a/board/board.kicad_pcb
++++ b/board/board.kicad_pcb
+@@ -1,6152 +1,6152 @@
+ (kicad_pcb
+-  (version 20241229)
+-  (generator circuit-json-to-kicad)
+-  (generator_version 0.0.1)
+-  (general
+-    (thickness 1.4)
+-  )
+-  (paper
+-    A4
+-  )
+-  (layers
+-    (0 "F.Cu" signal)
+-    (31 "B.Cu" signal)
+-    (32 "B.Adhes" user)
+-    (33 "F.Adhes" user)
+-    (34 "B.Paste" user)
+-    (35 "F.Paste" user)
+-    (36 "B.SilkS" user)
+-    (37 "F.SilkS" user)
+-    (38 "B.Mask" user)
+-    (39 "F.Mask" user)
+-    (40 "Dwgs.User" user)
+-    (41 "Cmts.User" user)
+-    (42 "Eco1.User" user)
+-    (43 "Eco2.User" user)

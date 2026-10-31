@@ -1,0 +1,1 @@
+{"at":"2026-10-31T12:50:03.210Z","text":"edited pins.h: I2C_SDA GPIO5 → GPIO6","source":{"kind":"file","path":"firmware/rev-14/include/pins.h","revision":14,"items":["I2C_SDA GPIO5 → GPIO6"]}}
