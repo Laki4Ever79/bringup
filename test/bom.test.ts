@@ -98,7 +98,9 @@ test("without live lookups the BOM makes no requests and says stock was not look
 	assert.deepEqual(calls, [])
 	assert.equal(bom.liveStock, false)
 	assert.ok(bom.items.every((i) => i.stock === null && i.priceUsd === null))
-	assert.match(bom.readiness!.summary, /stock not looked up \(mock run\)/)
+	// Like the dashboard: how many lines LCSC lists, then that stock wasn't checked. "0/18 listed" read like a failure.
+	const n = LOGGER_DESIGN.parts.length
+	assert.equal(bom.readiness!.summary, `${n}/${n} at LCSC/JLCPCB · stock not checked (mock run)`)
 	assert.equal(bom.readiness!.warn, false)
 	assert.ok(bom.items.find((i) => i.role === "sensor")!.alternatives!.some((a) => a.mpn === "SHTC3-TR-2.5KS"), "alternatives still come from the catalog")
 })

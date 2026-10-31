@@ -60,7 +60,8 @@ export function alternativesFor(
 // What one LCSC/JLCPCB order (and JLC assembly) could cover. "Listed" means an LCSC number and a live price.
 // Stock jlcsearch didn't report is "stock unknown", and a part with an LCSC number but no live data at all (offline,
 // or not returned) is "not checked": neither is a sourcing failure, so neither sets warn.
-// skipped: why nothing was looked up (a mock run), said in place of the per-line "no live data".
+// skipped: why nothing was looked up ("mock run"). Then the summary counts the lines LCSC lists (they have an LCSC
+// number) and says stock was not checked, as the dashboard does, instead of "0/N listed … not checked".
 export function orderReadiness(items: { ref: string; lcsc: string | null; stock: number | null; priceUsd: number | null; inStock: boolean | null }[], skipped?: string): Readiness {
 	const status = (i: (typeof items)[number]): LineStatus => {
 		if (!i.lcsc || !LCSC_NUMBER.test(i.lcsc)) return "not listed"
@@ -77,6 +78,14 @@ export function orderReadiness(items: { ref: string; lcsc: string | null; stock:
 		outOfStock: refs("out of stock").length,
 		notListed: refs("not listed").length,
 		notChecked: refs("not checked").length,
+	}
+	if (skipped) {
+		const atLcsc = items.length - counts.notListed
+		const summary = [
+			`${atLcsc}/${items.length} at ${ORDER_SUPPLIER} · stock not checked (${skipped})`,
+			counts.notListed ? `${counts.notListed} not listed (${refs("not listed").map((r) => `${r}: no LCSC number`).join(", ")})` : "",
+		]
+		return { supplier: ORDER_SUPPLIER, total: items.length, counts, lines, warn: counts.notListed > 0, summary: summary.filter(Boolean).join(" · ") }
 	}
 	const parts = [
 		`${counts.listed}/${items.length} listed at ${ORDER_SUPPLIER}`,

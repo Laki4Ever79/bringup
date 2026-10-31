@@ -228,5 +228,5 @@ test("a --mock --no-hardware run makes no network requests", { timeout: 60_000 }
 		globalThis.fetch = real
 	}
 	assert.deepEqual(urls, [])
-	assert.match(readFileSync(join(out, "report.md"), "utf8"), /^- Sourcing: .*stock not looked up \(mock run\)/m)
+	assert.match(readFileSync(join(out, "report.md"), "utf8"), /^- Sourcing: \d+\/\d+ at LCSC\/JLCPCB · stock not checked \(mock run\)$/m)
 })
