@@ -145,7 +145,7 @@ Gotchas:
 Install the prebuilt fork user-level (no sudo) into the main checkout's gitignored `tools/`:
 
 ```bash
-cd tools
+mkdir -p tools && cd tools
 curl -LO https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417/qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
 tar xf qemu-riscv32-softmmu-*.tar.xz   # unpacks to tools/qemu/bin/qemu-system-riscv32
 rm qemu-riscv32-softmmu-*.tar.xz
@@ -156,7 +156,7 @@ LD_LIBRARY_PATH=$PWD/qemu/lib qemu/bin/qemu-system-riscv32 -machine help | grep 
 ```
 
 `bootFirmware` puts `tools/qemu/lib` on `LD_LIBRARY_PATH` itself. Verified on 30 Oct 2026: QEMU 9.2.2
-(esp_develop_9.2.2_20260417) boots the fixture firmware to `bringup rev 6`, then `SENSOR FAIL` every 2 s.
+(esp_develop_9.2.2_20260417) boots the fixture firmware to `bringup rev 6`, then `SENSOR FAIL`, then deep-sleeps for `DUTY_PERIOD_S` (QEMU doesn't emulate the timer wake).
 It took two fixes:
 - `templates/fw/platformio.ini` sets `board_build.flash_mode = dio`. With the board's default QIO, the image asserts in
   `init_flash` ("Failed to set QIE bit"), because QEMU's flash model can't enable QIO.
