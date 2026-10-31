@@ -17,6 +17,10 @@ test("each Mozaik loop event maps to a phase and a short text", () => {
 	assert.deepEqual(describeLoopEvent("model.answer", { answer: { type: "message", role: "assistant", content: { text: "Contract drafted." } } }), { phase: "answer", text: "Contract drafted." })
 	assert.deepEqual(describeLoopEvent("interception.started", { nextStateId: "function_call", input: call("propose_contract_change", { field: "pins", value: [], baseVersion: 1, reason: "" }) }), { phase: "held", text: "held for approval: propose_contract_change pins" })
 	assert.deepEqual(describeLoopEvent("interception.finished", { nextStateId: "function_call", input: call("propose_contract_change", { field: "pins" }) }), { phase: "released", text: "released: propose_contract_change" })
+	// Turned back to the model instead (rejected by the owner, or refused before holding): say what it was told.
+	const back = (text: string) => ({ nextStateId: "inference", input: { context: { getItems: () => [{ output: { text } }] } } })
+	assert.deepEqual(describeLoopEvent("interception.finished", back('{"status":"invalid","reason":"partRef must be the part"}')), { phase: "released", text: "returned: invalid: partRef must be the part" })
+	assert.deepEqual(describeLoopEvent("interception.finished", back("rejected: pin reserved")), { phase: "released", text: "returned: rejected: pin reserved" })
 	assert.equal(describeLoopEvent("inference.stream", {}), null)
 	assert.equal(describeLoopEvent("contract.changed", {}), null)
 })
