@@ -46,6 +46,7 @@ test("ripple: the fields a request touched, who woke and who stayed idle", () =>
 	assert.equal(r.atMs, T0 + 100_000)
 	assert.deepEqual(r.fieldsChanged, ["outline", "connectors"])
 	assert.deepEqual(r.woke, ["architect", "build:board", "build:enclosure", "consistency"])
+	assert.deepEqual(r.checked, [])
 	assert.deepEqual(r.stayedIdle, ["parts", "firmware", "reviewer", "build:firmware", "grounding"])
 	assert.equal(r.violationsPeak, 2)
 	assert.deepEqual(r.violations, [2, 0])
@@ -88,13 +89,16 @@ test("ripple: checks go red then green, the board's DRC rides along", () => {
 test("ripple: a request nobody has picked up yet, and one that changed nothing", () => {
 	const now = T0 + 100_500
 	const [sent] = liveRipples(initial, [request], now)
+	assert.deepEqual(sent.checked, [])
 	assert.equal(sent.state, "sent")
 	assert.deepEqual(sent.woke, [])
 	assert.equal(resultLine(sent, now).headline, "Sent to the agents")
 	const quiet = [...initial, activity(101, "architect", "turn"), activity(104, "architect", "answer"), ev(110, "design.settled", { settled: true, revision: 5 })]
 	const [none] = liveRipples(quiet, [request], T0 + 120_000)
 	assert.equal(none.state, "no-change")
-	assert.deepEqual(none.woke, ["architect"])
+	// Took a turn, changed nothing: checked, not woke.
+	assert.deepEqual(none.woke, [])
+	assert.deepEqual(none.checked, ["architect"])
 	assert.equal(resultLine(none, T0 + 120_000).headline, "No change to the design")
 })
 
@@ -107,6 +111,15 @@ test("ripple: each request owns the events until the next one", () => {
 	assert.deepEqual(rs[1].fieldsChanged, ["parts"])
 	assert.ok(rs[1].woke.includes("parts"))
 	assert.ok(!rs[1].woke.includes("architect"))
+})
+
+test("ripple: woke = changed or proposed a field; checked = took a turn and changed nothing", () => {
+	const events = [...initial, activity(101, "architect", "turn"), activity(101, "firmware", "turn"), activity(101, "reviewer", "turn"), ev(103, "change.proposed", { proposalId: "p1", by: "firmware", field: "pins", reason: "x" }), changed(104, "outline", 2, 6, "architect"), activity(105, "firmware", "answer"), activity(105, "reviewer", "answer")]
+	const [r] = liveRipples(events, [request], T0 + 106_000)
+	assert.deepEqual(r.woke, ["architect", "firmware", "build:board", "build:enclosure", "consistency"])
+	assert.deepEqual(r.checked, ["reviewer"])
+	assert.deepEqual(r.stayedIdle, ["parts", "build:firmware", "grounding"])
+	assert.equal(resultLine(r, T0 + 106_000).detail, "5 of 9 agents woke · 1 checked, no change · 3 still working")
 })
 
 test("ripple: a design that ends unsettled says so", () => {
@@ -132,14 +145,15 @@ test("ripples.json from the runner wins where it has an answer; the live trace f
 	// The runner's file: ids req-N (Nth line of requests.jsonl), times in ms from run.started.
 	const live = liveRipples([...initial, ...ripple.slice(0, 4)], [request], T0 + 106_000)
 	assert.equal(live[0].id, "req-1")
-	const file = { requests: [{ id: "req-1", text: "make it 60 mm wide", atMs: 100_200, fieldsChanged: ["outline", "connectors"], woke: ["architect", "parts", "build:board", "build:enclosure", "consistency"], stayedIdle: ["firmware", "reviewer", "build:firmware", "grounding"], violationsPeak: 2, consistentAtMs: 140_000, durationMs: 39_800 }] }
+	const file = { requests: [{ id: "req-1", text: "make it 60 mm wide", atMs: 100_200, fieldsChanged: ["outline", "connectors"], woke: ["architect", "parts", "build:board", "build:enclosure", "consistency"], checked: ["firmware"], stayedIdle: ["reviewer", "build:firmware", "grounding"], violationsPeak: 2, consistentAtMs: 140_000, durationMs: 39_800 }] }
 	const [m] = mergeRipples(live, file, runStart([...initial, ...ripple]) ?? 0)
 	assert.equal(m.state, "consistent")
 	assert.equal(m.atMs, T0 + 100_200)
 	assert.equal(m.consistentAtMs, T0 + 140_000)
 	assert.equal(m.durationMs, 39_800)
 	assert.deepEqual(m.woke, ["architect", "parts", "build:board", "build:enclosure", "consistency"])
-	assert.deepEqual(m.stayedIdle, ["firmware", "reviewer", "build:firmware", "grounding"])
+	assert.deepEqual(m.checked, ["firmware"])
+	assert.deepEqual(m.stayedIdle, ["reviewer", "build:firmware", "grounding"])
 	// Live details the file doesn't carry stay.
 	assert.deepEqual(m.violations, live[0].violations)
 	// Still in flight in the file: the live view stays.

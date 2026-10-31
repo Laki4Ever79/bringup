@@ -332,6 +332,14 @@ export function sourcingRows(item) {
 	}
 }
 
+// The line under the parts total: "18/18 listed at LCSC/JLCPCB", plus the lines that block the order, if any.
+// The full summary (stock confirmed / unknown) stays in the tooltip and the per-part popover.
+export function readinessShort(readiness) {
+	if (!readiness) return ""
+	const blocking = (readiness.lines ?? []).filter((l) => l.status === "out of stock" || l.status === "not listed").map((l) => `${l.ref} ${l.status}`)
+	return [`${readiness.counts.listed}/${readiness.total} listed at ${readiness.supplier}`, ...blocking].join(" · ")
+}
+
 // One part's line in bom.json's order readiness. Amber only when the part can't be ordered as listed.
 export function readinessLine(readiness, ref) {
 	const line = (readiness?.lines ?? []).find((l) => l.ref === ref)

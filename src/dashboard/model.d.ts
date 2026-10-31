@@ -31,3 +31,4 @@ export function statusLedRef(contract: any): string | null
 export function ledMirror(input: { contract: any; bench: any; led: { at: number; led: number; shake?: number }[] }): { ref: string; on: boolean; color: "red" | "green"; label: string } | null
 export function relativeGravity(g0: number[], g: number[]): number[]
 export function toggleOpen(open: string | null, clicked: string | null): string | null
+export function readinessShort(readiness: { supplier: string; total: number; counts: { listed: number }; lines?: { ref: string; status: string }[] } | null): string

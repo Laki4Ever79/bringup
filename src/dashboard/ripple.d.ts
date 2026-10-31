@@ -5,6 +5,7 @@ export interface Ripple {
 	atMs: number
 	fieldsChanged: string[]
 	woke: string[]
+	checked: string[]
 	stayedIdle: string[]
 	working: string[]
 	violationsPeak: number
@@ -15,7 +16,7 @@ export interface Ripple {
 	checks: RippleCheck[]
 	state: "sent" | "rippling" | "consistent" | "no-change" | "unsettled"
 }
-export interface RipplesFile { requests: { id: string; text: string; atMs: number; fieldsChanged: string[]; woke: string[]; stayedIdle: string[]; violationsPeak: number; consistentAtMs: number | null; durationMs: number | null }[] }
+export interface RipplesFile { requests: { id: string; text: string; atMs: number; fieldsChanged: string[]; woke: string[]; checked?: string[]; stayedIdle: string[]; violationsPeak: number; consistentAtMs: number | null; durationMs: number | null }[] }
 type Ev = { type: string; at: string; payload?: any }
 export function runStart(events: Ev[]): number | null
 export function liveRipples(events: Ev[], requests: { at: string; text: string }[], now?: number): Ripple[]
