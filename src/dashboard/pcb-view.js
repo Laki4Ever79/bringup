@@ -224,7 +224,13 @@ export function mountPcb(host, opts = {}) {
 	let userMoved = false // set by wheel or drag; a resize refits until then
 	const byRef = new Map() // ref -> { group, outline }
 
-	const setViewBox = () => view && svg.setAttribute("viewBox", view.map((v) => v.toFixed(3)).join(" "))
+	// Extension: opts.onView({ view, width, height, board }) after every zoom, pan or refit (the page's rulers).
+	const setViewBox = () => {
+		if (!view) return
+		svg.setAttribute("viewBox", view.map((v) => v.toFixed(3)).join(" "))
+		const r = svg.getBoundingClientRect()
+		opts.onView?.({ view: [...view], width: r.width || host.clientWidth, height: r.height || host.clientHeight, board: ix && indexBounds(ix) })
+	}
 
 	const fit = () => {
 		if (!ix) return
@@ -461,6 +467,15 @@ export function mountPcb(host, opts = {}) {
 		setLit(ref, color) {
 			lit = ref && color ? { ref, color } : null
 			applyLit()
+		},
+		// Extension: refit the board to the view (as a double-click does).
+		fit() {
+			fit()
+		},
+		// Extension: a part's footprint extent in board mm ({x0, y0, x1, y1}), or null.
+		extentOf(ref) {
+			const c = ix?.components.find((x) => x.ref === ref)
+			return c ? { x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 } : null
 		},
 		// Extension: parts from contract.json or bom.json ({ref, mpn, role}) for the tooltip.
 		setParts(list) {
