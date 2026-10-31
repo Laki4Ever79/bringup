@@ -37,3 +37,15 @@ at x = 125 moved to x = 130 (`board/board-edit.diff`), the way KiCad's PCB edito
 firmware build and grounding stayed idle; peak 3 violations; consistent again 20.9 s after the save. The board is read
 back with af's `readBoardEdits` (`src/tools/kicad-read.ts`). Tests: `test/file-sync.test.ts` and
 `test/file-sync.int.test.ts` (the outline edit with the real tools).
+
+## Drift: edits that are not applied (`drift/`)
+
+A mock `--stay --no-hardware` run from wt/firmware d3a0fed (stub builders; the point is the events). After the first
+settle, two saves, neither of which becomes a change request:
+
+| When (UTC) | Save | Event |
+|---|---|---|
+| 11:50:42.5 | `#define DEBUG_LOG 1` added to the newest `firmware/rev-7/include/pins.h` | `file.drift` reason `not-in-contract`, items `["+ #define DEBUG_LOG 1"]`: "this edit isn't in the design contract; the next rebuild will overwrite it" |
+| 11:50:42.9 | `PIN_I2C_SCL` moved to 3 in the older `firmware/rev-6/include/pins.h` (the pins changed at rev 7) | `file.drift` reason `stale`, items `["I2C_SCL GPIO9 → GPIO3"]`: "saved against rev 6, the design is at rev 7"; not applied |
+
+There is no `change.requested` and no `requests.jsonl` in this run.
