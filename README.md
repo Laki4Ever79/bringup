@@ -16,6 +16,19 @@ you change one thing ("make it 40 mm wide", "the sensor is out of stock", "blink
 that change affects wake up, rework their part at the same time, and the design is consistent again, with every
 other part left alone.
 
+**What one run hands you, ready for a prototype:**
+
+| Output | Ready for | Where |
+|---|---|---|
+| Printable case and lid (`case.stl`, `lid.stl`, plus STEP), with a print check (minimum wall 1.6 mm, lid clearance, print orientation) and M2 standoffs that line up with the board's holes | Your own 3D printer today, or a print service | `out/<run>/enclosure/rev-N/` |
+| Fab package in JLCPCB's assembly format (Gerbers + drill, `bom.csv`, `cpl.csv`, a pre-order checklist), every part an LCSC number, with stock checked live in real-model runs | Ordering the assembled PCB, with the case ordered alongside | `out/<run>/fab/` |
+| Firmware, compiled against the board's actual pin map, then **booted in QEMU** (Espressif's ESP32-C3 emulator) at every revision | Flashing the real board | `out/<run>/firmware/rev-N/` |
+| **SPICE power simulation** (ngspice): each regulator's output under load at the battery's low end, fed to the reviewer, which cites it (e.g. "3.277 V at 3.5 V battery, −23 mV headroom") | Catching a brown-out before it reaches a prototype | `report.md` |
+| Routed KiCad board, DRC against JLCPCB's rules, a 3D render | Review in KiCad | `out/<run>/board/rev-N/` |
+
+Every change re-makes the affected outputs: a narrower board means a new case STL, new Gerbers and new standoffs, and
+nothing else.
+
 ## The proof: one change, with and without the shared contract
 
 We applied 5 real changes to a settled design twice (`npm run experiment`, [docs/experiment.md](docs/experiment.md)).

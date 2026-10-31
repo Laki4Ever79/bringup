@@ -35,7 +35,8 @@ Before recording:
 | On screen | Voice-over |
 |---|---|
 | Start the logger brief. The agent tiles light up together; the board, case and firmware build. | "One brief in. Nine participants, each its own Mozaik loop, all running at once, all working against one shared design contract." |
-| "Consistent at rev 7 · Now change one thing ↑". PCB with rulers; 3D case. | "A routed board, a printable case and firmware that compiles against the real pin map. Now the interesting part." |
+| "Consistent at rev 7 · Now change one thing ↑". PCB with rulers; 3D case. | "A routed board, a printable case and firmware that compiles against the real pin map." |
+| Quick cut: the run folder showing `case.stl` + `lid.stl`, `fab/gerbers.zip` + `bom.csv`; the report's QEMU boot line and SPICE line. | "Everything for a prototype: STLs ready to print, or to order alongside the assembled PCB; the firmware booted in an emulator; the power rails simulated in SPICE. Now the interesting part." |
 
 ## Act 3: change one thing (0:50–1:50)
 
