@@ -103,27 +103,28 @@ Pitfalls:
 | Sat 17:00 | Optional live demos at NTP |
 | **Sat 20:00** | **Submissions close** |
 
-## Current state (30 Oct, late night)
-- `main` = branch `bringup-core`: 456 tests pass, nothing skipped (with tools, QEMU, Docker). Pushed to github.com/Laki4Ever79/bringup.
-- Built:
-  - contract + change control (+ engineer approval)
-  - agents
-  - builders (tscircuit/KiCad with DRC vs JLCPCB, build123d case + lid + standoffs + print check, PlatformIO)
-  - checks (consistency, grounding, brief reviewer)
-  - SPICE, QEMU boot per run, fab files, sourcing
-  - dashboard hub (:4317, `npm run demo`)
-  - MCP server, tournament
-  - live bench (docs/design/bench.md, docs/bench-wiring.md; --bench real|fake|replay)
-- Presentation: one line + three acts (docs/submission.md, docs/video.md). Act 3 = bring-up on the real ESP32-S3.
-- Real runs 1-10 are in out/real-*; none passed the final brief review yet (see the plan doc's runs table).
-- Helper sessions: agent-mesh-7a (dashboard/host, ../wt-board), agent-mesh-af (bench hardware/firmware/enclosure, ../wt-enclosure), agent-mesh-5b (power/catalog/docs, ../wt-firmware). The lead merges.
-- Waiting on the user: log back in (dialout), wire the bench, say go to af before first power-on; record the video; submit by Sat 20:00.
+## Current state (Sat 31 Oct, 10:30)
+- **The one point (user-approved 31 Oct):** "Change one thing, and the whole hardware design follows: board, case,
+  firmware and parts, in parallel, and still consistent." Spec: `docs/superpowers/specs/2026-10-31-change-ripple-design.md`.
+- `main` = branch `bringup-core`: 612 tests pass, 0 skipped. Lead pushes only through a guarded full suite.
+- Added 31 Oct:
+  - ripples.json + report "Change requests" table (`src/runner/ripple.ts`); `--change` (sent after settle), `--stay`
+  - A/B experiment (`npm run experiment`, `docs/experiment.md`): 6 changes, shared contract 0 violations vs 16 mismatches
+  - dashboard rebuilt with Anthropic's frontend-design skill: change composer, ripple band, rulers, proof band,
+    "What changed & why" drawer with an Ask box (POST /api/runs/:id/ask)
+  - part-mismatch check, SHTC3 alternative sensor, product firmware duty-cycles (LittleFS history, deep sleep)
+  - Act 3 on the real ESP32-S3: "blink faster when tilted" → reflash → measured 244 ms vs 250 ms
+- Real runs: real-15 is the first real-model run with mid-run changes (40 mm: 49 s; sensor swap: 133 s), evidence in
+  `docs/runs/real-15/`. No real run has passed the final brief review yet.
+- Helper windows (the user sees these titles, not the agent-mesh-xx ids): "Wiring layout and conventions" = af
+  (bench, firmware BLE, ../wt-enclosure); "claude code" = 7a (dashboard, footage, ../wt-board); "Approval granted" = 5b
+  (ripple, real runs, reviewer facts, ../wt-firmware). Hardware go is given in af's window.
 
 ## Open items for the user
 - Answer the "Shiva" team invite on the dashboard (https://build.jigjoy.ai/dashboard).
 - Repo: https://github.com/Laki4Ever79/bringup (public; `bringup-core` is pushed as `main`).
-- Get a Wokwi token, or choose QEMU (QEMU install is waiting for the user's approval in agent-mesh-5b's window).
-- Before submitting: a fresh-machine check of the README install path (clone into an empty dir, `npm ci`, `--no-hardware`, then the full toolchain install and `--mock`).
+- Before submitting: rerun the fresh-clone check (done 31 Oct 09:20 for the quick look; the full toolchain install is not yet checked on a fresh machine).
+- Record Act 5 (the real board) for the video; footage for Acts 1–4 is being recorded by 7a.
 - Find a channel to a teammate's agent (see the plan doc).
 
 ## Commands

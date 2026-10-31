@@ -19,3 +19,41 @@ test("signal names are upper-cased and non-alphanumerics become _", () => {
 test("parsePinsHeader round-trips the fixture", () => {
 	assert.deepEqual(parsePinsHeader(pinsHeader(fixtureContract())), { I2C_SDA: 8, I2C_SCL: 9 })
 })
+
+// The product firmware deep-sleeps between readings for the contract's period (requirements.dutyCycle.periodS).
+test("pins.h carries the duty-cycle period from the contract, and leaves it to the template's default without one", () => {
+	const c = fixtureContract()
+	c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
+	assert.match(pinsHeader(c), /^#define DUTY_PERIOD_S 300$/m)
+	c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 100, periodS: 120.4, sleepUa: 5 } }
+	assert.match(pinsHeader(c), /^#define DUTY_PERIOD_S 120$/m, "whole seconds")
+	assert.doesNotMatch(pinsHeader(fixtureContract()), /DUTY_PERIOD_S/)
+})
+
+// The product firmware advertises over BLE for the rest of the contract's wake: activeMs minus the 30 ms reading, so the
+// firmware spends exactly the awake time the battery math assumes (at least 50 ms, a few advertising packets).
+test("pins.h carries the BLE advertising window, from the contract's wake time minus the reading", () => {
+	const c = fixtureContract()
+	c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 330, periodS: 300, sleepUa: 5 } }
+	assert.match(pinsHeader(c), /^#define BLE_ADVERTISE_MS 300$/m)
+	c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 40, periodS: 300, sleepUa: 5 } }
+	assert.match(pinsHeader(c), /^#define BLE_ADVERTISE_MS 50$/m, "never shorter than 50 ms")
+	assert.doesNotMatch(pinsHeader(fixtureContract()), /BLE_ADVERTISE_MS/)
+})
+
+// The history depth is the architect's claim (requirements.historyDays); the firmware stores that many days.
+test("pins.h carries the history depth from the contract, and leaves the template's 30-day default without one", () => {
+	const c = fixtureContract()
+	c.values.requirements = { ...c.values.requirements!, historyDays: 180 }
+	assert.match(pinsHeader(c), /^#define HISTORY_DAYS 180$/m)
+	assert.doesNotMatch(pinsHeader(fixtureContract()), /HISTORY_DAYS/)
+})
+
+// The compiler and Arduino core come from the platform: unpinned, a fresh clone could build with a different toolchain.
+test("every firmware env pins the ESP32 platform version", async () => {
+	const { readFileSync } = await import("node:fs")
+	const ini = readFileSync(new URL("../templates/fw/platformio.ini", import.meta.url), "utf8")
+	const platforms = [...ini.matchAll(/^platform\s*=\s*(.+)$/gm)].map((m) => m[1].trim())
+	assert.equal(platforms.length, 2, "esp32c3 and esp32s3_bench")
+	for (const p of platforms) assert.equal(p, "espressif32@8.0.0")
+})

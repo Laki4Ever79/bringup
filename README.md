@@ -3,7 +3,7 @@
 **Change one thing, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still
 consistent.**
 
-> **Quick look: needs only Node 24, no API key; about 1 min for `npm ci`, then about 10 s.**
+> **Quick look: needs only Node 24, no API key; about 1 min for `npm ci`, then 10–20 s.**
 > ```bash
 > git clone https://github.com/Laki4Ever79/bringup && cd bringup && npm ci
 > npm run bringup -- briefs/logger.md --mock --no-hardware --out out/quick
@@ -31,7 +31,7 @@ nothing else.
 
 ## The proof: one change, with and without the shared contract
 
-We applied 5 real changes to a settled design twice (`npm run experiment`, [docs/experiment.md](docs/experiment.md)).
+We applied 6 real changes to a settled design twice (`npm run experiment`, [docs/experiment.md](docs/experiment.md)).
 In arm A the agents share one live design contract and Mozaik situations wake the affected ones. In arm B only the
 domain that heard the change updates, and every other team keeps working from its own copy. The same plain-code checks
 then compare what was actually built:
@@ -42,21 +42,33 @@ then compare what was actually built:
 | Board 6 mm taller | 31 s · 2 of 7 · 0 | 5: the board is 50×30 mm, the contract says 50×36 mm, and 4 hole/standoff misses |
 | USB-C to the bottom edge | 52 s · 2 of 7 · 0 | 1: the case cutout for J1 is left@15 mm, the connector is bottom@25 mm |
 | Sensor I2C to GPIO4/5 | 72 s · 4 of 7 · 0 | 2: the board's I2C_SDA and I2C_SCL nets don't reach GPIO4 and GPIO5 |
-| Add a button | 84 s · 5 of 7 · 0 | 2: the BUTTON net doesn't reach GPIO3 or SW1, and the case has no hole for SW1 |
-| **Total** | **0 violations** | **14 mismatches** |
+| Swap the regulator for a low-Iq XC6206 | 31 s · 3 of 7 · 0 | 1: the board still places the AP2112K as U3, the contract says XC6206 |
+| Add a button | 68 s · 5 of 7 · 0 | 3: the BUTTON net doesn't reach GPIO3 or SW1, the board has no SW1, and the case has no hole for it |
+| **Total** | **0 violations** | **16 mismatches** |
 
 The agents are scripted (the keyless mock models) and the tools are real: tscircuit + KiCad, build123d, PlatformIO.
-Each cell is one run on one laptop. With the builders made to take turns instead of running in parallel, the same
-changes took 64–310 s instead of 31–84 s. A part swap is left out because no check compares the board's parts to the
-parts list yet, and it would score 0 by not looking.
+Each cell is one run on one laptop, with other jobs sharing the CPU, so read the times as tens of seconds. With the
+builders made to take turns instead of running in parallel, the same changes took 36–94 s instead of 31–72 s. The
+regulator swap was added once a check compared the board's actual parts with the parts list; before that, it would
+have scored 0 by not looking.
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
 > **Status, honestly.** Scripted runs settle with 0 violations and take mid-run changes, with real board, case and
-> firmware builds (and a QEMU boot when QEMU is installed). The latest real-model runs (11–14) all stalled before
-> their first settle, each on a different bug at a seam between domains, now fixed one by one, so **no real-model run
-> has taken a mid-run change yet**. No real-model run has passed the final brief review either. See
-> `docs/submission.md`. This README does not claim results that haven't run.
+> firmware builds (and a QEMU boot when QEMU is installed). **Real models take mid-run changes too:**
+>
+> | Run | Change | Touched | Woke (of 9) | Consistent again |
+> |---|---|---|---|---|
+> | real-20 | "our temperature/humidity sensor is out of stock; switch to the other one" | parts | parts, board, firmware build, grounding, consistency (5) | 75 s, after `sensor-mismatch` and `part-mismatch` were caught and cleared |
+> | real-20 | "make the board 40 mm wide" | outline | architect, board, case, consistency (4) | 28 s |
+> | real-19 | the same sensor swap | parts | 6 | 52 s, after a `sensor-mismatch` was caught and cleared |
+> | real-15 | "make the board 40 mm wide" | outline | 4 | 49 s |
+>
+> Reports, ripples and full traces: `docs/runs/real-15`, `real-19`, `real-20`. Each ends with 0 violations, but **no
+> real-model run has passed the final brief review yet.** The fresh-context reviewer's open points in real-20: it reads
+> the bench-only `behavior` field as the product LED (one field meaning two builds), it calls two rails' stated
+> averages double-counted, and in one round it caught a 250 mA charge current that is too high for a 500 mAh cell.
+> This README does not claim results that haven't run.
 
 ## Every change has a checker other than its author
 
@@ -115,7 +127,7 @@ once, exactly one applies and the other gets `stale` and re-reads.
 
 | Event | Meaning |
 |---|---|
-| `contract.changed` | A field got a new version (field, version, revision, by whom) |
+| `contract.changed` | A field got a new version: field, version, revision, by whom, the writer's own `reason`, `before`/`after`, and the `cause` that woke it (the brief, an engineer request, a violation, a review finding, a failed build, an approval). The dashboard's "What changed & why" drawer reads this |
 | `change.proposed` | A non-owner asked to change a field; its loop is held |
 | `change.decided` | The owner approved or rejected it |
 | `artifact.ready` / `artifact.failed` | A board, enclosure or firmware build finished for a revision |
@@ -124,10 +136,16 @@ once, exactly one applies and the other gets `stale` and re-reads.
 | `design.ready` | The design is consistent and quiet; the brief reviewer judges it before it settles |
 | `review.completed` | The reviewer's verdict (`pass`/`fail`) with findings, each naming the contract fields it concerns |
 | `design.settled` | Every artifact is built against the latest revision with no violations, and the review is done |
+| `change.requested` | An engineer's mid-run change request (`req-N`), from the dashboard, the CLI's `--change`, `src/request.ts` or the MCP server. Its ripple ends at the next `design.ready` |
+| `firmware.booted` | The newest firmware booted in QEMU and printed its revision |
+| `bench.*` | The real board: `flashing`, `flashed`, `telemetry`, `blink` (LED period measured from telemetry), `instruction` ("tilt the board"), `measured`, `verdict` |
 | `agent.halted` | An agent loop crashed (Mozaik #114 workaround) |
+| `run.ended` | A run kept up with `--stay` or `--bench` was stopped |
 
 **Cross-domain checks** (`src/contract/consistency.ts`): `outline-mismatch`, `net-missing`, `pin-mismatch`,
-`cutout-missing`, `cutout-misaligned`, `rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
+`part-mismatch` (the board places a different part than the parts list), `sensor-mismatch` (firmware built with the
+other sensor's driver), `cutout-missing`, `cutout-misaligned`, `standoff-mismatch` (case standoffs vs board holes),
+`rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
 were actually built. For example, the firmware's pins are parsed back out of the `pins.h` it compiled.
 
 ### Three checks
@@ -183,15 +201,17 @@ The Quick look above needs only Node. The full toolchain adds real board, enclos
 ```bash
 npm ci
 uv venv --python 3.12 .venv && uv pip install platformio==6.2.0 build123d==0.13.0
-npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4    # pinned: tscircuit releases daily
-docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngspice; 0.8 GB download
-.venv/bin/pio pkg install -d templates/fw                 # pre-downloads the ESP32-C3 toolchain into ~/.platformio
+npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4    # pinned: tscircuit releases daily; ERESOLVE peer warnings are expected
+docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngspice; 0.8 GB download, a few minutes
+.venv/bin/pio pkg install -d templates/fw -e esp32c3      # ESP32-C3 toolchain + libraries into ~/.platformio, about 4 min
 ```
 
 Repo-local installs go in `.venv/` and `tools/node/`, both gitignored. The exceptions are PlatformIO's package cache
 (`~/.platformio`) and Docker's image store. The last command downloads the toolchain up front, so the first run
 doesn't stall on it. Without it, the first firmware build downloads it and takes several minutes; later builds take
-about 5 s.
+about 5 s. `-e esp32c3` matters: without it PlatformIO also fetches the ESP32-S3 toolchain for the bench build (5.7 GB
+instead of about 2.8 GB). Checked on a fresh clone on 31 Oct: every step exits 0, and `--mock` then settles in about
+80 s.
 
 Optional: Espressif QEMU, to boot the built firmware headless. Install steps are in `NOTES.md` ("Firmware emulation").
 
@@ -203,7 +223,7 @@ message, not a crash.
 ## Run
 
 ```bash
-# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. About 10 s (5 s on an idle machine).
+# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. 10–20 s (5 s on an idle machine).
 npm run bringup -- briefs/logger.md --mock --no-hardware
 
 # Skip the brief reviewer gate (the consistency and grounding checks still run)
@@ -310,9 +330,12 @@ The pieces are not new on their own. We credit:
 - **[tscircuit](https://tscircuit.com)** (circuits as code, autorouting) and **[KiCad](https://www.kicad.org)** (DRC,
   ERC, exports), which do the real EDA work.
 
-What Bringup adds: the consistency checks run **live, mid-run, as events** that wake only the affected agents, instead
-of as a final pipeline stage. Contract fields have **owners and versions**, and cross-owner edits go through
-**change control built on Mozaik interception**, the way engineering change orders work.
+What Bringup adds is **change propagation**: change one thing mid-run and only the affected domains wake, rework in
+parallel and converge, with the checks running **live as events** instead of as a final pipeline stage. Contract
+fields have **owners and versions**, and cross-owner edits go through **change control built on Mozaik
+interception**, the way engineering change orders work. Flux described this as a vision in September 2026 ("moving
+a connector 5 mm means the ME changes the enclosure and the EE changes the PCB"); Siemens' Fuse EDA agent orchestrates
+chip and PCB tools but not the case or firmware. The A/B experiment above measures what the shared contract buys.
 
 ## Limits
 
@@ -329,9 +352,17 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
 - **Small boards only.** Placement and routing are proven on 45–70 × 30 mm boards with up to about 20 parts.
 - **QEMU is optional.** It is not installed by default; without it the report says "not run" and the QEMU tests
   skip. Installed, every run boots its newest firmware to `bringup rev N` (event `firmware.booted`). There is no SHT40
-  in emulation, so the firmware then prints `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token.
+  in emulation, so the firmware then prints `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token. The
+  product firmware deep-sleeps between readings; QEMU doesn't emulate the timer wake, so that part is untested.
+- **BLE is verified on a dev board, not on the design.** The product firmware advertises for the wake window the
+  battery maths assumes and serves the latest reading and the history over a GATT service (NimBLE 2.5.2). On the
+  desk's ESP32-S3, a laptop found it and read the latest reading and the history; no real sensor was fitted, and
+  connection hold with a phone is untested.
+- **No real-model run has passed the final brief review yet.** Real runs 15–17 took mid-run changes and ended with 0
+  violations, but the fresh-context reviewer still blocked on brief-vs-design arguments (battery life, LED behaviour,
+  history depth). The reviewer now gets computed and datasheet-checked facts for those; each report lists what's open.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
-  can only choose from the vetted catalog (one MCU family today).
+  can only choose from the vetted catalog (one MCU family, two temperature/humidity sensors today).
 
 ## Use from Claude Code
 

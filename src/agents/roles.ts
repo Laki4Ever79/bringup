@@ -72,6 +72,8 @@ The ESP32-C3-MINI-1 has 4 MB on-module flash: store the reading history there (N
 For a battery target, pick a low-Iq regulator: catalog LDOs list their quiescent current as iqUa. XC6206P332MR-G draws 1 µA; AP2112K-3.3TRG1 draws 55 µA, which alone is half the ~116 µA a 500 mAh cell allows for 180 days. A low-Iq LDO keeps its pins VIN, VOUT, GND (no EN).
 - parts: [{ref, role (one of: mcu, sensor, ldo, charger, battery, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
 - pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
+- search_parts stock: a number is live from LCSC; stock null means unknown, not out of stock.
+- requirements.historyDays (optional, whole days): how many days of readings the firmware keeps in flash; without it, 30. Claim only what the history must hold: the check compares it with the flash at the reading period.
 - behavior (optional, owned by firmware): {blinkMs, tiltBlinkMs, tiltDeg}: the status LED blinks every blinkMs, and every tiltBlinkMs while the board is tilted more than tiltDeg (0..90). Without it the LED blinks at 1 Hz and tilt changes nothing. behavior is exactly these three numbers and nothing else. It cannot express "blink on each reading" or charging state: the charge LED is a part (role charge-led) wired to the charger, not behavior.
 Reference designators: U1 = MCU (ESP32-C3-MINI-1, pins GPIO0..GPIO10, GPIO18/GPIO19 for USB), U2 = sensor, U3 = LDO, U4 = Li-ion charger, J1 = USB-C, J2 = battery connector, D1 = LED, D2 = charge LED, SW1 = button.
 Pin names come from the catalog (use search_parts): the USB-C pins are VBUS, GND, CC1, CC2, DP, DN; the button pins are A and B; the battery connector pins are VBAT and GND. The board generator adds the support passives (CC resistors, pull-ups, decoupling) itself.
@@ -151,6 +153,25 @@ function searchPartsTool(): Tool {
 	}
 }
 
+// The engineer's messages after the brief are change requests: each one starts a turn with the role's guidance. The
+// first message is the brief, which reaches the agents another way.
+function engineerRequests(guidance: string): SituationHandler {
+	let briefSeen = false
+	return {
+		specification: when(({ event }) => isEvent(event, "message.sent" as never) && state().getParticipant(event.producerId)?.getManifest().name === "engineer"),
+		processor: {
+			apply: ({ event, participant }) => {
+				if (!briefSeen) {
+					briefSeen = true
+					return
+				}
+				const message = (event.payload as { message: string }).message
+				startTurn(participant as Agent, `${ENGINEER_REQUEST_PREFIX}\n${message}\n${guidance}`, requestCause(message))
+			},
+		},
+	}
+}
+
 export function createPartsAgent(opts: { mock: boolean }): Agent {
 	return createRoleAgent({
 		role: "parts",
@@ -161,6 +182,10 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 			ownerFixesReview("parts"),
 			ownerReviewsChanges("parts"),
 			onBuildFailed(["board", "firmware"], "parts"),
+			// The parts list's owner hears the engineer directly (real run 18: it only saw the architect's proposal).
+			engineerRequests(
+				"If it is about the parts (stock, a different or extra part), meet it by changing the parts list you own: call read_contract and search_parts, then propose_contract_change with the parts' current baseVersion, keeping every part the request does not mention. The engineer's word on stock counts over search_parts: the lookup can lag or not know. Otherwise change nothing; the architect handles the rest.",
+			),
 			{
 				specification: when(({ event }) => isEvent(event, "contract.changed") && (event.payload.field === "requirements" || event.payload.field === "rails")),
 				processor: {
@@ -187,7 +212,6 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 // The firmware discipline's reasoning side: it checks that the pin map gives firmware what the
 // requirements need and asks the architect (through change control) for anything missing.
 export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
-	let briefSeen = false
 	return createRoleAgent({
 		role: "firmware",
 		name: "firmware-reviewer",
@@ -196,24 +220,10 @@ export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
 		handlers: [
 			// It owns behavior, so it decides the changes others propose to it (without this they waited 120 s, real run 15).
 			ownerReviewsChanges("firmware"),
-			{
-				// The engineer's messages after the brief are change requests; the ones about firmware behavior are this agent's.
-				specification: when(({ event }) => isEvent(event, "message.sent" as never) && state().getParticipant(event.producerId)?.getManifest().name === "engineer"),
-				processor: {
-					apply: ({ event, participant }) => {
-						if (!briefSeen) {
-							briefSeen = true
-							return
-						}
-						const message = (event.payload as { message: string }).message
-						startTurn(
-							participant as Agent,
-							`${ENGINEER_REQUEST_PREFIX}\n${message}\nIf it is about what the firmware does (the LED, blinking, tilt), meet it by changing the behavior field you own: call read_contract, then propose_contract_change with its current baseVersion, keeping what the request does not mention. Otherwise change nothing; the architect handles the rest.`,
-							requestCause(message),
-						)
-					},
-				},
-			},
+			// The engineer's messages after the brief are change requests; the ones about firmware behavior are this agent's.
+			engineerRequests(
+				"If it is about what the firmware does (the LED, blinking, tilt), meet it by changing the behavior field you own: call read_contract, then propose_contract_change with its current baseVersion, keeping what the request does not mention. Otherwise change nothing; the architect handles the rest.",
+			),
 			{
 				specification: when(({ event }) => isEvent(event, "contract.changed") && event.payload.field === "pins"),
 				processor: { apply: ({ participant }) => requestTurn(participant as Agent, `pins@${state().contract.version("pins")}`, "The pin map changed. Review it against the requirements.", { kind: "field-changed", fields: ["pins"] }) },

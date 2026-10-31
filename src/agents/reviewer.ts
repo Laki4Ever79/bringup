@@ -3,7 +3,8 @@ import { join, resolve } from "node:path"
 import { createAgent, DeveloperMessageItem, ModelContext, type Agent, type Tool } from "@mozaik-ai/core"
 import { generatedNets, supportParts, usbPadSignal, usbRef } from "../codegen/circuit.ts"
 import { checkConsistency, type BoardArtifact } from "../contract/consistency.ts"
-import { estimatePower, powerBudgetLines } from "../contract/power.ts"
+import { bleAdvertiseMs } from "../codegen/firmware.ts"
+import { dutyCycleCheckLines, estimatePower, powerBudgetLines } from "../contract/power.ts"
 import { FIELDS, type ContractSnapshot, type FieldName } from "../contract/types.ts"
 import { isEvent, makeEvent, type ArtifactKind, type ReviewFinding } from "../events.ts"
 import { BUILD_INPUTS } from "./builders.ts"
@@ -76,13 +77,50 @@ export function wiringSection(s: ContractSnapshot, board: BoardArtifact | undefi
 
 // Catalog facts about the contract's parts that the contract itself doesn't carry, e.g. that the MCU module's 4 MB
 // flash holds the reading history (real run 10's reviewer blocked "no nonvolatile storage").
+// A charge LED the board generator wires from VBUS to the charger's CHRG pin shows charging state by itself. Derived
+// from the generated wiring, so it is only said when the board really wires it (real runs 15 and 16 blocked on it).
+function chargeLedFacts(s: ContractSnapshot): string[] {
+	const parts = s.values.parts ?? []
+	const vbus = generatedNets(s).get("VBUS") ?? []
+	return supportParts(s).flatMap((sp) => {
+		const led = "ref" in sp.a ? parts.find((p) => p.ref === (sp.a as { ref: string }).ref && p.role === "charge-led") : undefined
+		const to = "ref" in sp.b ? (sp.b as { ref: string; pin: string }) : undefined
+		const charger = to && to.pin === "CHRG" ? parts.find((p) => p.ref === to.ref && p.role === "charger") : undefined
+		if (!led || !charger || !vbus.includes(`${led.ref}.A`)) return []
+		return [`- ${led.ref} ${led.mpn} (charge-led): anode on VBUS, cathode through ${sp.ref} ${sp.spec.value} to ${charger.ref} CHRG (${charger.mpn}). CHRG pulls low while the cell charges, so ${led.ref} shows charging state in hardware, with no firmware.`]
+	})
+}
+
+// What the product firmware does on each reading, read from the template's own constants and the contract's period,
+// so it stays true if either changes.
+export function firmwareFacts(s: ContractSnapshot): string[] {
+	const main = readFileSync(resolve(import.meta.dirname, "../../templates/fw/src/main.cpp"), "utf8")
+	const num = (re: RegExp) => Number(re.exec(main)?.[1] ?? NaN)
+	const blinkMs = num(/READING_BLINK_MS = (\d+)/)
+	const contractDays = s.values.requirements?.historyDays
+	const days = contractDays ?? num(/#define HISTORY_DAYS (\d+)/)
+	const daysFrom = contractDays !== undefined ? "requirements.historyDays" : "the template's default; the contract has no historyDays"
+	const contractPeriod = s.values.requirements?.dutyCycle?.periodS
+	const periodS = contractPeriod !== undefined && contractPeriod > 0 ? Math.round(contractPeriod) : num(/#define DUTY_PERIOD_S (\d+)/)
+	const chunk = num(/HISTORY_CHUNK = (\d+)/)
+	const connectedS = num(/BLE_CONNECTED_MAX_MS = (\d+)/) / 1000
+	if (![blinkMs, days, periodS, chunk, connectedS].every(Number.isFinite)) return []
+	const from = contractPeriod !== undefined && contractPeriod > 0 ? "requirements.dutyCycle.periodS" : "the template's default; the contract has no duty cycle"
+	const duty = s.values.requirements?.dutyCycle
+	const advertise = duty ? `${bleAdvertiseMs(duty)} ms (activeMs minus the reading)` : `${num(/#define BLE_ADVERTISE_MS (\d+)/)} ms (the template's default; the contract has no duty cycle)`
+	return [
+		`- Firmware (product build of templates/fw): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash (LittleFS, the last ${Math.floor((days * 86400) / periodS)} readings: ${days} days at ${periodS} s (${daysFrom})), blinks the status LED ${blinkMs} ms (a double blink if the sensor fails), then advertises over BLE for ${advertise}, then deep-sleeps ${periodS} s (${from}). The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
+		`- Firmware BLE: a GATT service with the latest reading, the history count and the history read newest first in chunks of ${chunk} records; a phone that connects keeps the device awake until it disconnects or ${connectedS} s pass.`,
+	]
+}
+
 export function partFactsSection(s: ContractSnapshot): string[] {
 	const catalog = loadCatalog(resolve(import.meta.dirname, "../.."))
 	const facts = (s.values.parts ?? []).flatMap((p) => {
 		const notes = catalog.find((c) => c.mpn.toUpperCase() === p.mpn.toUpperCase())?.notes
 		return notes ? [`- ${p.ref} ${p.mpn}: ${notes}`] : []
 	})
-	return ["## Part facts (from the catalog)", ...(facts.length ? facts : ["- none"])]
+	return ["## Part facts (from the catalog)", ...(facts.length ? facts : ["- none"]), ...chargeLedFacts(s), ...firmwareFacts(s)]
 }
 
 // One artifact's status for the reviewer. An artifact built at an older revision is still current when none of its
@@ -139,6 +177,7 @@ export async function reviewMessage(env: Env | undefined, revision: number, roun
 		lines(s.groundingFindings, (f) => `${f.kind} on ${f.partRef}: ${f.detail}`, "- none"),
 		"Power budget (computed in code from the contract and the brief, not by a model):",
 		...powerBudgetLines(estimatePower(snapshot, brief)),
+		...dutyCycleCheckLines(estimatePower(snapshot, brief)),
 		"Power path simulation:",
 		power,
 		"",
