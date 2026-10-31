@@ -22,15 +22,15 @@ load_dotenv(os.environ.get("SONIOX_ENV", str(HERE.parent.parent.parent / "laik" 
 RATE = 24000
 LINES = {
     "b1": "Hardware is never designed just once. Add one sensor, and every part of the design has to change: the parts list, the board, the firmware, even the case. Hardware bugs live in the gaps between them.",
-    "b2": "Bringup. Describe a device, and agents design all of it at once: board, case, firmware and parts. Change anything, and it all follows.",
-    "b3": "One short brief in. Nine agents, each its own Mozaik loop, all working at once against one shared design contract. Out come parts in stock, a routed board, a printable case, and firmware for the real pin map.",
+    "b2": "Bringup. Change one thing, and the whole hardware design follows: board, case, firmware and parts, in parallel.",
+    "b3": "One short brief in. Even designing from scratch is just the first change: nine agents, each its own Mozaik loop, all working at once against one shared design contract. Out come parts, a routed board, a printable case, and firmware for the real pin map.",
     "b4": "Now, change one thing: add a temperature and humidity sensor.",
     "b5": "The parts agent picks one that's in stock, and the architect gives it pins. Only the agents this affects wake up, and they work at the same time. The checks catch nine conflicts, including one nobody asked about: the case has no vent over the sensor.",
     "b6": "A little over three minutes later: board, case and firmware agree. The new sensor is on the board, and the case grew a vent right above it.",
     "b7": "With real models: the sensor goes out of stock. The system catches two mismatches the swap caused, and clears them in seventy-five seconds. The case never woke, because nothing physical changed.",
     "b8": "Does the shared contract matter? We applied six changes twice. With it: zero violations. With every team on its own copy: sixteen mismatches would ship. Like a USB port that no longer meets its hole.",
     "b9": "And it reaches real hardware. One more change, in plain words. The firmware rebuilds, the board is reflashed, and the blink is measured on the board itself.",
-    "b10": "Describe it. Change anything. It all follows. That's Bringup.",
+    "b10": "Change one thing. The whole design follows. That's Bringup.",
 }
 
 

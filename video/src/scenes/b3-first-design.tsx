@@ -4,7 +4,7 @@ import {all, chain, createRef, sequence, waitFor} from '@motion-canvas/core';
 import {sceneClock, C, F, FULL, caption, fontsReady, footage, tag} from '../lib';
 
 // Source pixels in the 1920×1080 dashboard recording.
-const AGENTS = {x: 1100, y: 300, zoom: 1.5}; // fields + agents + timeline
+const AGENTS = {x: 960, y: 330, zoom: 1.25}; // the whole band: change, fields, agents, timeline
 const RESULT = {x: 760, y: 420, zoom: 1.35}; // the result line over the board
 
 export default makeScene2D(function* (view) {
@@ -32,7 +32,7 @@ export default makeScene2D(function* (view) {
       <Txt text="WHAT ONE RUN HANDS YOU" fontFamily={F.mono} fontWeight={700} fontSize={26} fill={C.ink3} letterSpacing={3} />
       {[
         ['case.stl  lid.stl', 'a printable case whose holes match the board'],
-        ['fab/gerbers.zip  bom.csv  cpl.csv', 'a JLCPCB fab package, every part in stock'],
+        ['fab/gerbers.zip  bom.csv  cpl.csv', 'a JLCPCB fab package, every part with an LCSC order number'],
         ['firmware rev N', 'compiled for the real pin map, booted in QEMU'],
         ['SPICE', 'each power rail simulated under load'],
       ].map(([a, b]) => (

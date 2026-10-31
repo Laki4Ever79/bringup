@@ -9,18 +9,20 @@
 
 ## The one line
 
-**Describe a device. Agents design all of it at once: board, case, firmware and parts. Change anything, and it all follows.**
+**Change “one thing”, and the whole hardware design follows: board, case, firmware and parts, in parallel.**
 
 ## Description (about 150 words)
 
-Move a connector five millimetres and three teams have work to do: the board, the case and the firmware. Hardware
-bugs live in that gap. Bringup gives each domain its own agent and puts every fact in one live design contract, held
-in Mozaik's shared `RuntimeState`. Agents run concurrently, each in its own `runLoop`.
+Add a sensor to a device, and four teams have work to do: the parts list, the board, the firmware and the case.
+Hardware bugs live in the gaps between them. Bringup gives each domain its own agent and puts every fact in one live
+design contract, held in Mozaik's shared `RuntimeState`. Agents run concurrently, each in its own `runLoop`. Even
+designing from scratch is just the first change: Bringup builds the first design from a short brief the same way.
 
-When you change something mid-run ("make it 40 mm wide", "our sensor is out of stock"), or simply edit and save a
-generated file (the firmware's `pins.h`, the board in KiCad), Mozaik situations wake only the agents it affects. They rework in parallel, and plain-code checks compare what was actually built until the design
-is consistent again. No agent edits a field it doesn't own: Mozaik interception holds the call until the owner
-approves.
+When you change something ("add a temperature/humidity sensor", "make it 40 mm wide"), or simply edit and save a
+generated file (the firmware's `pins.h`, the board in KiCad), Mozaik situations wake only the agents it affects. They
+rework in parallel, and plain-code checks compare what was actually built until the design is consistent again: in
+the add-a-sensor run, 7 of 9 agents woke, 9 mismatches were caught, and the case grew a vent over the new sensor. No
+agent edits a field it doesn't own: Mozaik interception holds the call until the owner approves.
 
 Across 6 changes, the shared contract ended with 0 violations; with each team on its own copy, 16 mismatches would
 have shipped. Each run produces printable case STLs, a JLCPCB fab package, firmware booted in QEMU, and a SPICE power
