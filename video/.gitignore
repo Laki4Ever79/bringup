@@ -1,0 +1,6 @@
+node_modules/
+output/
+public/*.webm
+public/*.mp4
+public/*.png
+public/fonts/
