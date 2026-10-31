@@ -31,3 +31,19 @@ test("battery-short: a live violation for the architect when even the stated ave
 	c.values.rails[0].averageMa = 0.05
 	assert.equal(checkConsistency(c, {}, "around 500 mAh").filter((v) => v.kind === "battery-short").length, 0, "met by the stated averages: not flagged")
 })
+
+// Real beacon run K: a second LED with role "led" (not charge-led) and two capacitors the generator never used sat on
+// the parts list connected to nothing; only the final review noticed. Now a live violation for the architect.
+test("part-unconnected: a part no pin uses and the board generator doesn't wire is a live violation", () => {
+	const c = fixtureContract()
+	assert.deepEqual(checkConsistency(c, {}).filter((v) => v.kind === "part-unconnected"), [], "the fixture's parts are all connected")
+	c.values.parts = [
+		...c.values.parts!,
+		{ ref: "D2", role: "led", mpn: "KT-0603R", lcsc: "C2286", footprint: "0603", pins: ["A", "K"] },
+		{ ref: "C9", role: "capacitor", mpn: "CL10A106KP8NNNC", lcsc: "C19702", footprint: "0603", pins: ["pin1", "pin2"] },
+	]
+	const found = checkConsistency(c, {}).filter((v) => v.kind === "part-unconnected")
+	assert.deepEqual(found.map((v) => [v.message.split(" ")[0], v.fields, v.affects]), [["D2", ["parts", "pins"], ["architect"]], ["C9", ["parts", "pins"], ["architect"]]])
+	assert.match(found[0].message, /a charging-state LED needs role charge-led$/)
+	assert.match(found[1].message, /reuses a contract part only with the same LCSC number: .*1k C11702/)
+})

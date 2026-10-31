@@ -1,5 +1,5 @@
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
-import { partPads } from "../codegen/circuit.ts"
+import { generatedNets, partPads, supportParts } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
 
@@ -77,6 +77,7 @@ export type ViolationKind =
 	| "vent-missing"
 	| "sensor-unwired"
 	| "battery-short"
+	| "part-unconnected"
 
 export interface Violation {
 	kind: ViolationKind
@@ -99,6 +100,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
+	v.push(...unconnectedParts(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -283,4 +285,28 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""):
 	}
 
 	return v
+}
+
+// A part in the list that nothing connects: no contract pin uses it and the board generator wires no net or support
+// part to it. It would sit on the board doing nothing, e.g. a second LED meant to show charging state but given role
+// "led" instead of "charge-led" (real beacon run K: the reviewer found CHRG unconnected at the final review).
+export function unconnectedParts(c: ContractSnapshot): Violation[] {
+	const parts = c.values.parts ?? []
+	// Only once both lists exist: parts are usually written before the pins that use them.
+	if (parts.length === 0 || !c.values.pins?.length) return []
+	const used = new Set<string>((c.values.pins ?? []).map((p) => p.partRef))
+	for (const ends of generatedNets(c).values()) for (const end of ends) used.add(end.split(".")[0])
+	for (const sp of supportParts(c)) {
+		if (!sp.added) used.add(sp.ref)
+		for (const end of [sp.a, sp.b]) if ("ref" in end) used.add((end as { ref: string }).ref)
+	}
+	const wanted = [...new Set(supportParts(c).map((sp) => `${sp.spec.value} ${sp.spec.lcsc}`))].join(", ")
+	return parts
+		.filter((p) => !used.has(p.ref))
+		.map((p) => ({
+			kind: "part-unconnected" as const,
+			message: `${p.ref} ${p.mpn} (role ${p.role}) is connected to nothing: no contract pin uses it and the board generator wires nothing to it${p.role === "resistor" || p.role === "capacitor" ? ` (it adds its own passives and reuses a contract part only with the same LCSC number: ${wanted}); remove it or use one of those` : p.role === "led" ? "; a charging-state LED needs role charge-led" : ""}`,
+			fields: ["parts", "pins"] as FieldName[],
+			affects: ["architect"] as AgentRole[],
+		}))
 }
