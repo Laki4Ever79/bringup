@@ -1,4 +1,22 @@
-import type { ContractSnapshot } from "../contract/types.ts"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+import type { ContractSnapshot, DutyCycle } from "../contract/types.ts"
+
+// A `static const uint32_t NAME = N;` of the firmware template (templates/fw/src/main.cpp), so what the reviewer and the
+// battery check are told about the firmware is read from the firmware itself. NaN if it is not there.
+export function templateConstant(name: string): number {
+	const main = readFileSync(resolve(import.meta.dirname, "../../templates/fw/src/main.cpp"), "utf8")
+	return Number(new RegExp(`static const uint32_t ${name} = (\\d+)`).exec(main)?.[1] ?? NaN)
+}
+
+// The product firmware's wake (templates/fw): the reading (sensor, flash write, LED blink) takes about BLE_READING_MS,
+// then it advertises over BLE for the rest of the contract's activeMs, never less than BLE_MIN_ADVERTISE_MS.
+export const BLE_READING_MS = 30
+export const BLE_MIN_ADVERTISE_MS = 50
+
+export function bleAdvertiseMs(d: DutyCycle): number {
+	return Math.max(BLE_MIN_ADVERTISE_MS, Math.round(d.activeMs - BLE_READING_MS))
+}
 
 function macroName(signal: string): string {
 	return `PIN_${signal.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`
@@ -21,6 +39,8 @@ export function pinsHeader(s: ContractSnapshot): string {
 	// The product firmware deep-sleeps this long between readings; without a duty cycle it keeps the template's default.
 	const period = s.values.requirements?.dutyCycle?.periodS
 	if (period !== undefined && period > 0) lines.push(`#define DUTY_PERIOD_S ${Math.round(period)}`)
+	const duty = s.values.requirements?.dutyCycle
+	if (duty) lines.push(`#define BLE_ADVERTISE_MS ${bleAdvertiseMs(duty)}`)
 	lines.push(`#define BRINGUP_REVISION ${s.revision}`, "")
 	return lines.join("\n")
 }
