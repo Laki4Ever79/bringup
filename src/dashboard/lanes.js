@@ -16,9 +16,11 @@ export const LANES = [
 const HISTORY = 40
 
 // Same as BUILD_INPUTS and BUILD_REQUIRES in src/agents/builders.ts.
-const BUILDS = {
+// A test holds these equal to the builders' (test/lanes.test.ts).
+export const BUILDS = {
 	board: { inputs: ["parts", "pins", "outline", "connectors"], requires: ["outline", "parts", "pins"] },
-	enclosure: { inputs: ["outline", "connectors"], requires: ["outline", "connectors"] },
+	// parts: the lid's vent sits over the sensor.
+	enclosure: { inputs: ["outline", "connectors", "parts"], requires: ["outline", "connectors"] },
 	firmware: { inputs: ["parts", "pins", "behavior", "requirements"], requires: ["parts", "pins"] },
 }
 
