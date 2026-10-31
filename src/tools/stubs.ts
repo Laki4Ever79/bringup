@@ -3,7 +3,7 @@ import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
 import { BUILD_INPUTS, BUILD_REQUIRES, createBuilder } from "../agents/builders.ts"
 import { mountingHoles } from "../codegen/circuit.ts"
-import { behaviorHeader, pinsHeader } from "../codegen/firmware.ts"
+import { behaviorHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { STANDOFF } from "./enclosure.ts"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
@@ -54,10 +54,11 @@ export function stubFirmware(s: ContractSnapshot, revision: number, dir: string)
 	note(dir, "firmware")
 	// The headers the real build compiles, so the bench (fake bridge) can "flash" a stubbed firmware too.
 	mkdirSync(join(dir, "include"), { recursive: true })
-	writeFileSync(join(dir, "include/pins.h"), pinsHeader(s))
+	const header = pinsHeader(s)
+	writeFileSync(join(dir, "include/pins.h"), header)
 	writeFileSync(join(dir, "include/behavior.h"), behaviorHeader(s))
 	const pins = Object.fromEntries((s.values.pins ?? []).map((p) => [p.signal, p.gpio]))
-	return { revision, ok: true, pins, log: "stubbed (--no-hardware): not compiled", stub: true }
+	return { revision, ok: true, pins, sensor: parseSensorHeader(header), log: "stubbed (--no-hardware): not compiled", stub: true }
 }
 
 // Same inputs and required fields as the real builders in agents/builders.ts, so the same contract changes wake them.
