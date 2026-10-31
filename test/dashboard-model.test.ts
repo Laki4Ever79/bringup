@@ -212,6 +212,7 @@ test("in a scripted run the composer says what the scripted agents understand: a
 	const { composerPrompt } = await import("../src/dashboard/model.js")
 	for (const bar of ["waiting", "live"]) {
 		const p = composerPrompt(bar, { settled: true }, { scripted: true })
+		assert.match(p, /add a temperature\/humidity sensor/)
 		assert.match(p, /make it 40 mm wide/)
 		assert.match(p, /blink faster when tilted/)
 		assert.doesNotMatch(p, /swap a part|move a connector/, "the scripted agents don't do those")

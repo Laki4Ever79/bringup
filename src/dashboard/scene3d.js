@@ -232,6 +232,10 @@ export function mountScene(host, opts = {}) {
 	let focused = null, hovered = null
 	// The change on screen: parts it added or changed, and the new case features (lid vents), drawn breathing.
 	let marks = { refs: [], vents: [] }
+	// The vent reveal: when a change brings new vents, the camera swings up, looks down at the lid and closes in on
+	// the grille for a few seconds, then eases back. Any drag or wheel ends it.
+	const REVEAL_MS = 7000
+	let reveal = null // { start, home: {pitch, distance, target} }
 	let drawn = [] // visible triangles of the last frame, far to near, for hit testing
 	let dirty = true
 	let w = 0, h = 0, dpr = 1
@@ -296,6 +300,22 @@ export function mountScene(host, opts = {}) {
 		if (Math.abs(explodeTarget - explode) > 1e-3) {
 			explode += (explodeTarget - explode) * (reduced ? 1 : Math.min(1, dt * 8))
 			dirty = true
+		}
+		if (reveal) {
+			const vc = ventCentre()
+			// Not in yet (the lid loads after the marks): wait for it, up to 20 s, and start the reveal then.
+			if (!vc) { if (now - reveal.asked > 20_000) reveal = null; else reveal.start = now }
+			else if (lastInteraction > reveal.asked) reveal = null
+			else {
+				const going = now - reveal.start < REVEAL_MS
+				const want = going ? { pitch: 1.2, distance: reveal.home.distance * 0.45, target: vc } : reveal.home
+				const k = reduced ? 1 : Math.min(1, dt * (going ? 2.2 : 1.6))
+				pitch += (want.pitch - pitch) * k
+				distance += (want.distance - distance) * k
+				target = target.map((v, i) => v + (want.target[i] - v) * k)
+				if (!going && Math.abs(distance - want.distance) < 0.5 && Math.abs(pitch - want.pitch) < 0.01) { pitch = want.pitch; distance = want.distance; target = want.target; reveal = null }
+				dirty = true
+			}
 		}
 		if (!dirty || !tris) return
 		dirty = false
@@ -453,6 +473,14 @@ export function mountScene(host, opts = {}) {
 		}
 	}
 
+	// The first marked vent's centre on the lid's top, in scene space; null until the board, spec and lid are in.
+	function ventCentre() {
+		const top = enclosureFrame(frameSpec)?.lidTopZ
+		const v = marks.vents[0]
+		if (!v || !board || top === undefined || !lidTris) return null
+		return [board.bounds.min[0] + offset[0] + v.xMm, board.bounds.min[1] + offset[1] + v.yMm, top]
+	}
+
 	let last = performance.now()
 	const loop = (now) => {
 		frame(now, Math.min(0.1, (now - last) / 1000))
@@ -581,7 +609,9 @@ export function mountScene(host, opts = {}) {
 		setMarks(next) {
 			const m = { refs: next?.refs ?? [], vents: next?.vents ?? [] }
 			if (JSON.stringify(m) === JSON.stringify(marks)) return
+			const newVents = m.vents.length > 0 && JSON.stringify(m.vents) !== JSON.stringify(marks.vents)
 			marks = m
+			if (newVents) reveal = { asked: performance.now(), start: performance.now(), home: { pitch, distance, target: [...target] } }
 			dirty = true
 		},
 		// Extension (bench): the board on the desk's attitude in radians, already low-pass filtered by the caller;
