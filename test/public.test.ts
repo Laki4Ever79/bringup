@@ -90,7 +90,7 @@ test("public: any host may read; the page carries the banner; every POST but Try
 		assert.ok(page.body.includes(PUBLIC_BANNER))
 		assert.ok(page.body.includes("window.BRINGUP_PUBLIC = true"), "the page knows it is the public demo (its empty views say why)")
 		// The replays ship no fab files and ordering is off: the two buttons are hidden, so nothing 404s.
-		assert.match(page.body, /<style>#fab, #order-btn \{ display: none !important \}<\/style>/)
+		assert.match(page.body, /<style>#fab, #order-btn \{ display: none !important \}/)
 		assert.match(PUBLIC_BANNER, /Public demo: recorded runs used the real tools \(KiCad, build123d, PlatformIO\); live runs here are stubbed\./)
 		assert.equal((await call(hub.url, "/api/runs")).status, 200)
 		for (const path of ["/api/runs/add-sensor/requests", "/api/runs/add-sensor/decisions", "/api/runs/add-sensor/ask", "/api/runs/add-sensor/stop", "/api/runs/add-sensor/drift/d1/revert"]) {
@@ -99,6 +99,14 @@ test("public: any host may read; the page carries the banner; every POST but Try
 			assert.match(r.body, /read-only demo/, path)
 		}
 		assert.equal((await call(hub.url, "/api/runs/add-sensor/ready-to-order")).status, 403)
+		// The page's optional probes answer 204 when a recorded run doesn't have them, so the browser logs no errors;
+		// anything else that is missing is still a 404.
+		for (const path of ["/runs/add-sensor/files/cloud.jsonl", "/runs/add-sensor/files/fab/README.txt", "/runs/add-sensor/files/bom.json", "/runs/add-sensor/files/requests.jsonl", "/runs/add-sensor/files/enclosure/rev-4/vents.json", "/runs/add-sensor/files/contracts/rev-3.json", "/runs/add-sensor/files/brief.md", "/favicon.ico"])
+			assert.equal((await call(hub.url, path)).status, 204, path)
+		assert.equal((await call(hub.url, "/runs/add-sensor/files/board/rev-9/board.png")).status, 404)
+		// Try it ignores the brief and the switches, so the start form hides them and says what a run here is.
+		assert.match(page.body, /#models, \.switch\[data-k\], #scripted-pick, #examples, #stop-btn, #ask \{ display: none !important \}/)
+		assert.match(page.body, /Try it runs the scripted beacon with hardware stubbed, then takes one change/)
 		const hubInfo = JSON.parse((await call(hub.url, "/api/hub")).body)
 		assert.equal(hubInfo.public, true)
 		assert.equal(s.calls.length, 0)

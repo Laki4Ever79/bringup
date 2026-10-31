@@ -1006,7 +1006,7 @@
 		// Why a board or case view is empty: a stubbed run (--no-hardware) has no files to show; a recorded run in the
 		// public demo ships its trace and change log, not its build files; otherwise the build hasn't landed yet.
 		function missingNote(kind) {
-			if (S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true) return `stubbed run: no ${kind === "board" ? "PCB" : "3D case"} (hardware tools off)`
+			if (stubbedRun()) return `stubbed run: no ${kind === "board" ? "PCB" : "3D case"} (hardware tools off)`
 			if (window.BRINGUP_PUBLIC) return `recorded run: ${kind} files not in the public demo`
 			return `waiting for the first ${kind} build`
 		}
@@ -1132,6 +1132,8 @@
 		const snapAt = (rev) => { let best = null; for (const [r, s] of S.snapshots) if (r <= rev && (!best || r > best.revision)) best = s; return best }
 
 		// ── Boards and enclosures per revision ──
+		// A stubbed run (--no-hardware) builds no files: don't fetch them (the empty views say why, missingNote).
+		function stubbedRun() { return S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true }
 		async function circuitFor(rev) {
 			if (S.boards.has(rev)) return S.boards.get(rev)
 			const tries = [`board/rev-${rev}/dist/board/circuit.json`, `board/rev-${rev}/circuit.json`, ...(rev === S.model.boards.at(-1) ? ["board/circuit.json"] : [])]
@@ -1141,7 +1143,7 @@
 			return null
 		}
 		async function showBoard(rev, prevRev) {
-			if (rev === null || rev === S.shownBoard) return
+			if (rev === null || rev === S.shownBoard || stubbedRun()) return
 			S.shownBoard = rev
 			const img = new Image()
 			img.onload = () => {
@@ -1158,7 +1160,7 @@
 			schedule()
 		}
 		async function showEnclosure(rev) {
-			if (rev === null || rev === S.shownEnclosure) return
+			if (rev === null || rev === S.shownEnclosure || stubbedRun()) return
 			S.shownEnclosure = rev
 			try {
 				const dir = `enclosure/rev-${rev}`

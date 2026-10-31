@@ -5,6 +5,8 @@ import { cpSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 
+// The start form's note in the public demo: Try it ignores the brief and the switches.
+export const PUBLIC_TRY_IT = "Try it runs the scripted beacon with hardware stubbed, then takes one change: add a temperature/humidity sensor, make it 40 mm wide, or blink faster when tilted. One run at a time; 3 minutes each."
 export const PUBLIC_BANNER = "Public demo: recorded runs used the real tools (KiCad, build123d, PlatformIO); live runs here are stubbed."
 
 // Recorded runs worth replaying, from docs/runs (each has a trace.jsonl).
