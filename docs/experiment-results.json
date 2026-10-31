@@ -234,11 +234,45 @@
       }
     },
     {
+      "change": "ldo-swap",
+      "label": "Swap the LDO for the low-Iq XC6206 (3 pins, no EN)",
+      "receiver": "firmware",
+      "armA": {
+        "ms": 31145,
+        "woken": [
+          "board-builder",
+          "firmware-builder",
+          "grounding-check"
+        ],
+        "workers": 7,
+        "violations": [],
+        "settled": true
+      },
+      "armB": {
+        "shipped": [
+          {
+            "kind": "part-mismatch",
+            "message": "board places AP2112K-3.3TRG1 as U3, contract says XC6206P332MR-G",
+            "fields": [
+              "parts"
+            ],
+            "affects": [
+              "board"
+            ]
+          }
+        ]
+      },
+      "armC": {
+        "ms": 35592,
+        "settled": true
+      }
+    },
+    {
       "change": "add-button",
       "label": "Add a user button (GPIO3, reachable through the case)",
       "receiver": "firmware",
       "armA": {
-        "ms": 84153,
+        "ms": 67918,
         "woken": [
           "firmware-reviewer",
           "board-builder",
@@ -271,11 +305,21 @@
             "affects": [
               "enclosure"
             ]
+          },
+          {
+            "kind": "part-mismatch",
+            "message": "board has no SW1 (TS-1187A-B-A-B)",
+            "fields": [
+              "parts"
+            ],
+            "affects": [
+              "board"
+            ]
           }
         ]
       },
       "armC": {
-        "ms": 310423,
+        "ms": 93743,
         "settled": true
       }
     }
@@ -325,14 +369,25 @@
         "violations": 0
       }
     },
+    "ldo-swap": {
+      "A": {
+        "baseMs": 62253,
+        "changeRevisions": 1,
+        "laterRevisions": 0
+      },
+      "C": {
+        "baseMs": 70163,
+        "violations": 0
+      }
+    },
     "add-button": {
       "A": {
-        "baseMs": 100336,
+        "baseMs": 56593,
         "changeRevisions": 3,
         "laterRevisions": 0
       },
       "C": {
-        "baseMs": 281849,
+        "baseMs": 77113,
         "violations": 0
       }
     }
