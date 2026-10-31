@@ -39,12 +39,35 @@ export class DesignContract {
 		return structuredClone({ revision: this.rev, values: this.values, versions: this.versions })
 	}
 
-	// The shape check, and for the bench its scope: what propose would refuse as invalid before looking at the catalog
-	// or versions. Plain-code proposers call it before holding a change for its owner.
+	// Every check on the value itself: its shape, the bench's scope, catalog-only parts, and pins that name the
+	// peripheral (not the MCU) with valid signal names. propose refuses what this refuses; change control calls it
+	// before holding a change, so an owner is never asked to approve a value the contract would refuse.
 	validate<F extends FieldName>(p: Pick<Proposal<F>, "field" | "value" | "by">): string | null {
 		const shape = shapeError(p.field, p.value)
 		if (shape) return shape
-		return p.by === "bench" ? benchScopeError(p.field, this.values.rails, p.value) : null
+		if (p.by === "bench") {
+			const scope = benchScopeError(p.field, this.values.rails, p.value)
+			if (scope) return scope
+		}
+		if (p.field === "parts" && this.catalog) {
+			const known = new Set(this.catalog.map((c) => c.mpn.toLowerCase()))
+			const unknown = (p.value as ContractValues["parts"]).filter((part) => !known.has(part.mpn.toLowerCase()))
+			if (unknown.length > 0) {
+				const options = (role: string) =>
+					this.catalog!.filter((c) => c.role === role).map((c) => `${c.mpn} (${c.lcsc ?? "no LCSC"})`).join(", ") || "none in the catalog"
+				return `only catalog parts are allowed: ${unknown.map((u) => `${u.ref} ${u.mpn} is not in the catalog; options for role ${u.role}: ${options(u.role)}`).join("; ")}`
+			}
+		}
+		if (p.field === "pins") {
+			const mcus = new Set((this.values.parts ?? []).filter((part) => part.role === "mcu").map((part) => part.ref))
+			const onMcu = (p.value as ContractValues["pins"]).filter((pin) => mcus.has(pin.partRef))
+			if (onMcu.length > 0) {
+				return `partRef must be the part the GPIO connects to, not the MCU: ${onMcu.map((pin) => `${pin.signal} → ${pin.partRef}`).join(", ")}. Add the peripheral part first if it is missing.`
+			}
+			const bad = (p.value as ContractValues["pins"]).filter((pin) => !SIGNAL_PATTERN.test(pin.signal)).map((pin) => pin.signal)
+			if (bad.length > 0) return `signal names must match ${SIGNAL_PATTERN}: ${bad.join(", ")}`
+		}
+		return null
 	}
 
 	propose<F extends FieldName>(p: Proposal<F>): ProposalResult {
@@ -54,30 +77,6 @@ export class DesignContract {
 		}
 		const invalid = this.validate(p)
 		if (invalid) return { status: "invalid", reason: invalid }
-		if (p.field === "parts" && this.catalog) {
-			const known = new Set(this.catalog.map((c) => c.mpn.toLowerCase()))
-			const unknown = (p.value as ContractValues["parts"]).filter((part) => !known.has(part.mpn.toLowerCase()))
-			if (unknown.length > 0) {
-				const options = (role: string) =>
-					this.catalog!.filter((c) => c.role === role).map((c) => `${c.mpn} (${c.lcsc ?? "no LCSC"})`).join(", ") || "none in the catalog"
-				return {
-					status: "invalid",
-					reason: `only catalog parts are allowed: ${unknown.map((u) => `${u.ref} ${u.mpn} is not in the catalog; options for role ${u.role}: ${options(u.role)}`).join("; ")}`,
-				}
-			}
-		}
-		if (p.field === "pins") {
-			const mcus = new Set((this.values.parts ?? []).filter((part) => part.role === "mcu").map((part) => part.ref))
-			const onMcu = (p.value as ContractValues["pins"]).filter((pin) => mcus.has(pin.partRef))
-			if (onMcu.length > 0) {
-				return {
-					status: "invalid",
-					reason: `partRef must be the part the GPIO connects to, not the MCU: ${onMcu.map((pin) => `${pin.signal} → ${pin.partRef}`).join(", ")}. Add the peripheral part first if it is missing.`,
-				}
-			}
-			const bad = (p.value as ContractValues["pins"]).filter((pin) => !SIGNAL_PATTERN.test(pin.signal)).map((pin) => pin.signal)
-			if (bad.length > 0) return { status: "invalid", reason: `signal names must match ${SIGNAL_PATTERN}: ${bad.join(", ")}` }
-		}
 		if (isDeepStrictEqual(this.values[p.field], p.value)) {
 			return { status: "unchanged", version: this.versions[p.field] }
 		}

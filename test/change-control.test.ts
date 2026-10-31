@@ -165,3 +165,26 @@ test("a timed-out request is recorded as a rejected outcome", async () => {
 	const decide = t.architect.getTools().find((x) => x.name === "decide_change")!
 	assert.match(String(await decide.invoke({ proposalId: id, approve: true, reason: "late" })), /already decided/)
 })
+
+// Real run 11: a pins change was held, approved by its owner, and only then refused as invalid, so the requester
+// lost a whole approval round trip and the owner approved something the contract could never take.
+test("a value the contract would refuse is not held: the requester gets the reason at once", async () => {
+	const onMcu = [{ signal: "USB_DP", gpio: 19, partRef: "U1", partPin: "GPIO19" }]
+	const seen: string[] = []
+	const badProposer: Script = (items) => {
+		if (items.at(-1) instanceof FunctionCallOutputItem) {
+			seen.push(lastText(items))
+			return [ModelMessageItem.rehydrate({ text: "done" })]
+		}
+		return [toolCall("propose_contract_change", { field: "pins", value: onMcu, baseVersion: 0, reason: "native USB" })]
+	}
+	const t = setup({ "mock-architect": decider(true), "mock-firmware": badProposer })
+	const parts = [{ ref: "U1", role: "mcu", mpn: "ESP32-C3-MINI-1", lcsc: "C2838502", footprint: "x", pins: ["GPIO19"] }]
+	assert.equal(t.state.contract.propose({ field: "parts", value: parts, by: "parts", baseVersion: 0 }).status, "applied")
+	startTurn(t.firmware, "wire native USB")
+	await waitFor(() => seen.length > 0)
+	assert.ok(!t.types().includes("change.proposed"), "nothing was held for the owner")
+	assert.match(seen[0], /invalid/)
+	assert.match(seen[0], /partRef must be the part the GPIO connects to/)
+	assert.equal(t.state.contract.version("pins"), 0)
+})
