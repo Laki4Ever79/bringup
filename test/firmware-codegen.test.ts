@@ -48,3 +48,12 @@ test("pins.h carries the history depth from the contract, and leaves the templat
 	assert.match(pinsHeader(c), /^#define HISTORY_DAYS 180$/m)
 	assert.doesNotMatch(pinsHeader(fixtureContract()), /HISTORY_DAYS/)
 })
+
+// The compiler and Arduino core come from the platform: unpinned, a fresh clone could build with a different toolchain.
+test("every firmware env pins the ESP32 platform version", async () => {
+	const { readFileSync } = await import("node:fs")
+	const ini = readFileSync(new URL("../templates/fw/platformio.ini", import.meta.url), "utf8")
+	const platforms = [...ini.matchAll(/^platform\s*=\s*(.+)$/gm)].map((m) => m[1].trim())
+	assert.equal(platforms.length, 2, "esp32c3 and esp32s3_bench")
+	for (const p of platforms) assert.equal(p, "espressif32@8.0.0")
+})
