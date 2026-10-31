@@ -48,7 +48,10 @@ export interface RunProcessOptions {
 export function startRunProcess(args: RunProcessArgs, opts: RunProcessOptions = {}): RunProcess {
 	const [bin, ...prefix] = opts.command ?? defaultCommand()
 	const argv = [...prefix, args.briefPath, ...(args.mock ? ["--mock"] : []), ...(args.extraArgs ?? []), "--out", args.outDir]
-	const child = spawn(bin, argv, { cwd: opts.cwd ?? REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], env: process.env })
+	// stdin is a pipe this process never writes to: when it goes away, however it goes (Ctrl-C, SIGTERM, SIGKILL, a
+	// closed terminal), the OS closes the pipe and a run that stays up (--stay, --bench) ends instead of lingering.
+	const child = spawn(bin, argv, { cwd: opts.cwd ?? REPO_ROOT, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, BRINGUP_PARENT_PIPE: "1" } })
+	child.stdin.on("error", () => {}) // the run may exit first; nothing is ever written anyway
 	let stdout = ""
 	let stderr = ""
 	child.stdout.setEncoding("utf8")

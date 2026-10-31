@@ -1,0 +1,73 @@
+{
+  "requests": [
+    {
+      "id": "req-1",
+      "text": "make the board 40 mm wide",
+      "atMs": 828000,
+      "fieldsChanged": [
+        "outline"
+      ],
+      "woke": [
+        "architect",
+        "build:board",
+        "build:enclosure",
+        "consistency"
+      ],
+      "checked": [
+        "firmware"
+      ],
+      "stayedIdle": [
+        "parts",
+        "reviewer",
+        "build:firmware",
+        "grounding"
+      ],
+      "violationsPeak": 3,
+      "consistentAtMs": 877210,
+      "durationMs": 49210,
+      "reviewFollowUps": {
+        "fieldsChanged": [
+          "requirements",
+          "rails",
+          "parts"
+        ],
+        "rounds": 3
+      }
+    },
+    {
+      "id": "req-2",
+      "text": "the SHT40 is out of stock; use a different temperature/humidity sensor from the catalog",
+      "atMs": 1270189,
+      "fieldsChanged": [
+        "requirements",
+        "parts"
+      ],
+      "woke": [
+        "architect",
+        "build:board",
+        "build:firmware",
+        "grounding",
+        "consistency"
+      ],
+      "checked": [
+        "parts",
+        "firmware"
+      ],
+      "stayedIdle": [
+        "reviewer",
+        "build:enclosure"
+      ],
+      "violationsPeak": 1,
+      "consistentAtMs": 1402795,
+      "durationMs": 132606,
+      "reviewFollowUps": {
+        "fieldsChanged": [
+          "parts",
+          "requirements",
+          "rails"
+        ],
+        "rounds": 3
+      }
+    }
+  ]
+}

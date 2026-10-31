@@ -50,12 +50,17 @@ export interface RunOptions {
 	bench?: {
 		open: () => Promise<{ bridge: Bridge; hello: BridgeHello }>
 		until: Promise<void>
-		timings?: Pick<BenchOptions, "windowMs" | "liveCheckMs" | "bootTimeoutMs" | "batchMs">
+		timings?: Pick<BenchOptions, "windowMs" | "liveCheckMs" | "bootTimeoutMs" | "batchMs" | "blinkWaitMs">
 	}
 	// Engineer change requests sent one at a time: the first once the design has settled, each next one once it has
 	// settled again (or after changeTimeoutMs, for a request that changed nothing). The run ends after the last.
 	changes?: string[]
 	changeTimeoutMs?: number
+	// A pause after each settle before the next scripted change goes out, so the settled design can be seen first.
+	changeDelayMs?: number
+	// After settling (and after any scripted changes), keep taking change requests and re-settling until `until`
+	// (the dashboard's Stop, Ctrl-C). Without it the run ends at its first settle, as the CLI judge path expects.
+	stay?: { until: Promise<void> }
 	// Injected fetch for bom.json's live stock lookups (tests).
 	bomFetch?: typeof fetch
 }
@@ -130,21 +135,26 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		changeTimer = setTimeout(nextChange, opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
 	}
 	const scripted = changes.length > 0
+	const afterSettle = () => {
+		if (changeTimer) clearTimeout(changeTimer)
+		changeTimer = setTimeout(nextChange, opts.changeDelayMs ?? 0)
+	}
 	const onSettled = (s: Settlement) => {
 		const first = latest === null
 		latest = s
-		if (opts.bench || scripted) writeOutputs(s.settled)
+		if (opts.bench || scripted || opts.stay) writeOutputs(s.settled)
 		if (first) resolveSettled(s)
 		if (!scripted) return
 		if (first && !changesMayStart(s, state.review.round)) {
 			console.warn("bringup: the design never got consistent, so the scripted change requests are not sent")
 			changes.length = 0
+			return nextChange()
 		}
-		nextChange()
+		afterSettle()
 	}
 
 	joinRuntime(createChangeDesk())
-	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, keepRunning: Boolean(opts.bench) || scripted, onSettled }))
+	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, keepRunning: Boolean(opts.bench) || scripted || Boolean(opts.stay), onSettled }))
 	let bench: Bench | null = null
 	if (opts.bench) {
 		bench = createBench({ ...(await opts.bench.open()), ...opts.bench.timings })
@@ -165,12 +175,14 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const engineer = createEngineer()
 	joinRuntime(engineer)
 
-	emit(makeEvent("run.started", engineer.getId(), { review: state.review.enabled, engineerApproval: state.engineerApproval, noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench) }), engineer.getId())
+	emit(makeEvent("run.started", engineer.getId(), { review: state.review.enabled, engineerApproval: state.engineerApproval, noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench), stay: Boolean(opts.stay), mock: opts.mock }), engineer.getId())
 	sendMessage(opts.brief, engineer.getId())
 	// Mid-run change requests (tsx src/request.ts, MCP request_change) arrive as further engineer messages.
 	let requestCount = 0
 	const requests = watchRequests(opts.outDir, (r) => {
-		emit(makeEvent("change.requested", engineer.getId(), { id: `req-${++requestCount}`, text: r.text }), engineer.getId())
+		const request = { id: `req-${++requestCount}`, text: r.text }
+		emit(makeEvent("change.requested", engineer.getId(), request), engineer.getId())
+		state.currentRequest = request
 		sendMessage(r.text, engineer.getId())
 	})
 	// The engineer's Approve/Reject votes on held changes (dashboard, or appended by hand).
@@ -184,6 +196,10 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	if (changeTimer) clearTimeout(changeTimer)
 	// Bring-up: change requests keep arriving and the bench keeps flashing until the engineer stops the run.
 	if (opts.bench) await opts.bench.until
+	// A run that stays up: change requests keep arriving and re-settling the design until it is stopped.
+	if (opts.stay) await opts.stay.until
+	// The page closes its composer on this: nobody is taking change requests any more.
+	emit(makeEvent("run.ended", engineer.getId(), { settled: (latest as Settlement | null)?.settled ?? outcome.settled, revision: state.contract.revision }), engineer.getId())
 	requests.close()
 	decisions.close()
 	await bench?.close()

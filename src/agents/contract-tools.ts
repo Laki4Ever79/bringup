@@ -1,6 +1,7 @@
 import type { Tool } from "@mozaik-ai/core"
 import { FIELDS, OWNERS, type AgentRole, type ContractValues, type FieldName } from "../contract/types.ts"
-import { makeEvent } from "../events.ts"
+import { makeEvent, type Cause } from "../events.ts"
+import { causeOf } from "./common.ts"
 import { emit, state } from "../runtime.ts"
 
 // Tools every agent gets for reading and changing the shared design contract.
@@ -35,9 +36,13 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 			invoke: async (args: { field: FieldName; value: ContractValues[FieldName]; baseVersion: number; reason: string; approvalId?: string }) => {
 				const s = state()
 				const approvedBy = args.approvalId ? s.approvals.approverOf(args.approvalId, args.field, role, JSON.stringify(args.value)) : undefined
+				const before = s.contract.get(args.field) ?? null
 				const result = s.contract.propose({ field: args.field, value: args.value, by: role, baseVersion: args.baseVersion, approvedBy })
 				if (result.status === "applied") {
-					emit(makeEvent("contract.changed", self.id, { field: args.field, version: result.version, revision: result.revision, by: role }), self.id)
+					// Why: the writer's own reason, the field before and after, and what woke it (or the approval it wrote under).
+					const decision = args.approvalId && approvedBy ? s.approvals.decisionOf(args.approvalId) : undefined
+					const cause: Cause | undefined = decision ? { kind: "approval", proposalId: args.approvalId!, approvedBy: decision.decidedBy ?? [decision.by], reason: decision.reason } : causeOf(self.id)
+					emit(makeEvent("contract.changed", self.id, { field: args.field, version: result.version, revision: result.revision, by: role, reason: args.reason, before, after: args.value, ...(cause ? { cause } : {}) }), self.id)
 				}
 				return result
 			},

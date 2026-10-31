@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { safeUrl, sourcingRows } from "../src/dashboard/model.js"
+import { readinessShort, safeUrl, sourcingRows } from "../src/dashboard/model.js"
 
 test("only absolute http(s) links reach an href", () => {
 	assert.equal(safeUrl("https://www.lcsc.com/product-detail/C2838502.html"), "https://www.lcsc.com/product-detail/C2838502.html")
@@ -50,4 +50,19 @@ test("the sourcing popover toggles: the same row closes it, another row switches
 	assert.equal(toggleOpen("U1", "U1"), null)
 	assert.equal(toggleOpen("U1", "U2"), "U2")
 	assert.equal(toggleOpen("U1", null), null)
+})
+
+test("the parts readiness line: just the listed count, plus what blocks the order when something does", () => {
+	const ok = { supplier: "LCSC/JLCPCB", total: 18, counts: { listed: 18, stockConfirmed: 5, stockUnknown: 13, outOfStock: 0, notListed: 0, notChecked: 0 }, lines: [], warn: false, summary: "18/18 listed at LCSC/JLCPCB · 5 stock confirmed · 13 stock unknown (jlcsearch returned none)" }
+	assert.equal(readinessShort(ok), "18/18 listed at LCSC/JLCPCB")
+	const bad = { ...ok, counts: { ...ok.counts, listed: 17, outOfStock: 1, notListed: 1 }, warn: true, lines: [{ ref: "U2", status: "out of stock" }, { ref: "J3", status: "not listed" }] }
+	assert.equal(readinessShort(bad), "17/18 listed at LCSC/JLCPCB · U2 out of stock · J3 not listed")
+	assert.equal(readinessShort(null), "")
+})
+
+test("the readiness line when stock wasn't looked up (a scripted run): the parts with LCSC numbers, and that stock wasn't checked", () => {
+	const mock = { supplier: "LCSC/JLCPCB", total: 18, counts: { listed: 0, stockConfirmed: 0, stockUnknown: 0, outOfStock: 0, notListed: 0, notChecked: 18 }, lines: [], warn: false, summary: "0/18 listed at LCSC/JLCPCB · 18 not checked: stock not looked up (mock run)" }
+	assert.equal(readinessShort(mock), "18/18 at LCSC/JLCPCB · stock not checked")
+	const some = { ...mock, counts: { ...mock.counts, listed: 15, notChecked: 2, notListed: 1 }, lines: [{ ref: "J3", status: "not listed" }] }
+	assert.equal(readinessShort(some), "17/18 at LCSC/JLCPCB · 2 not checked · J3 not listed")
 })
