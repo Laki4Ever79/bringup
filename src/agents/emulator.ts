@@ -34,7 +34,7 @@ export function createEmulatorCheck(env: Env, opts: { boot?: typeof bootFirmware
 		if (!firmware?.ok || firmware.revision !== revision) return
 		// The firmware builder builds revision N in <out>/firmware/rev-N.
 		const r = await boot(env.root, join(s.outDir, "firmware", `rev-${revision}`))
-		const payload = { revision, booted: r.booted, bootRevision: r.revision, serialTail: tail(r.serial, SERIAL_TAIL_LINES) }
+		const payload = { revision, booted: r.booted, bootRevision: r.revision, serialTail: tail(r.serial, SERIAL_TAIL_LINES), backend: "qemu" as const }
 		emit(makeEvent("firmware.booted", self.id, payload), self.id)
 	})
 	const participant = createHuman({

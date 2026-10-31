@@ -70,6 +70,11 @@ export interface Payloads {
 	"change.requested": { id: string; text: string; source?: FileSource }
 	// A saved file that did not become a change request: an edit with no contract field, or a save against an older
 	// revision than the design is at. Never dropped silently.
+	// A drift entry (runner/drift.ts) settled by an action: reverted to the generated file, or adopted as request requestId.
+	"drift.resolved": { id: string; status: "adopted" | "reverted"; requestId?: string }
+	// A linked git working copy (runner/linked.ts): attached, and each settled revision committed there.
+	"linked.attached": { dir: string }
+	"linked.committed": { commit: string; revision: number; subject: string; files: string[] }
 	"file.drift": { path: string; savedRevision: number; designRevision: number; reason: "not-in-contract" | "stale"; items: string[]; message: string }
 	// reason, before, after and cause: why the field changed (older traces have only field, version, revision, by).
 	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole; reason?: string; before?: unknown; after?: unknown; cause?: Cause }
@@ -82,7 +87,8 @@ export interface Payloads {
 	"artifact.failed": { kind: ArtifactKind; revision: number; error: string }
 	// The newest compiled firmware booted in Espressif's QEMU (agents/emulator.ts). bootRevision is the contract
 	// revision the firmware printed on serial, null if it never got that far. Not an artifact: it never blocks settling.
-	"firmware.booted": { revision: number; booted: boolean; bootRevision: number | null; serialTail: string }
+	// backend: which simulator ran it (Espressif's QEMU boots it; Wokwi, on demand, is reported in simulation.json).
+	"firmware.booted": { revision: number; booted: boolean; bootRevision: number | null; serialTail: string; backend?: "qemu" | "wokwi" }
 	"consistency.checked": { revision: number; violations: Violation[] }
 	"grounding.checked": { revision: number; findings: GroundingFinding[] }
 	// The design is consistent and quiet; the brief reviewer judges it before it settles.

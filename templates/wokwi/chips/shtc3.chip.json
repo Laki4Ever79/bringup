@@ -1,0 +1,6 @@
+{
+  "name": "SHTC3 (Bringup stand-in)",
+  "author": "Bringup",
+  "pins": ["VDD", "GND", "SDA", "SCL"],
+  "controls": []
+}

@@ -8,7 +8,7 @@
 // `npm i --no-save playwright-core && npx playwright-core install chromium`, then PLAYWRIGHT_CORE=playwright-core.
 // Writes out/footage/act-1.webm … act-4.webm, a frame grab per act (act-N.png) and shots.md (timestamps).
 import { spawn } from "node:child_process"
-import { mkdirSync, renameSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -22,10 +22,14 @@ export interface Mark {
 	what: string
 }
 
-// The shot list: one line per mark, "act N  m:ss  what happens", in recording order.
-export function shotList(marks: Mark[]): string {
+// The shot list: one line per mark, "act N  m:ss  what happens", in act order. Re-recording some acts (--acts) keeps
+// the other acts' lines from the existing list (`keep`).
+export function shotList(marks: Mark[], { keep = "", acts = [] as number[] } = {}): string {
 	const t = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")}`
-	return ["# Footage shot list (times from the start of each act's file)", "", ...marks.map((m) => `- act-${m.act}.webm  ${t(m.atMs)}  ${m.what}`), ""].join("\n")
+	const kept = keep.split("\n").filter((l) => { const m = /^- act-(\d+)\.webm/.exec(l); return m && !acts.includes(Number(m[1])) })
+	const lines = [...kept, ...marks.map((m) => `- act-${m.act}.webm  ${t(m.atMs)}  ${m.what}`)]
+	const act = (l: string) => Number(/^- act-(\d+)/.exec(l)?.[1] ?? 0)
+	return ["# Footage shot list (times from the start of each act's file)", "", ...lines.map((l, i) => [l, i] as const).sort((a, b) => act(a[0]) - act(b[0]) || a[1] - b[1]).map(([l]) => l), ""].join("\n")
 }
 
 // A cursor drawn where the real mouse is, as a screen recorder would (headless video has none). Moves only on real
@@ -45,15 +49,16 @@ async function main(): Promise<void> {
 	const out = resolve(ROOT, arg("--out", "out/footage"))
 	const port = Number(arg("--port", "4398"))
 	const cursor = !argv.includes("--no-cursor")
+	// --acts 1,3: record only those; the other acts' files and shot-list lines stay.
+	const acts = arg("--acts", "1,2,3,4").split(",").map(Number)
 	mkdirSync(out, { recursive: true })
 	const pw = process.env.PLAYWRIGHT_CORE
 	if (!pw) throw new Error("set PLAYWRIGHT_CORE to a playwright-core install (see the header of this file)")
 	const { chromium } = await import(pw)
 
-	// The demo: scripted agents, real tools. The automatic change is "blink faster when tilted" (firmware only), so
-	// the board is still 50 × 30 mm when "make it 40 mm wide" is typed: exactly the experiment's "10 mm narrower" trial,
-	// which is what puts the proof line on screen.
-	const demo = spawn("npx", ["tsx", "src/demo.ts", "--no-open", "--port", String(port), "--change", "blink faster when tilted", "--after", "10"], { cwd: ROOT, stdio: ["ignore", "pipe", "inherit"], detached: true })
+	// The demo: scripted agents, real tools, the no-sensor beacon brief (briefs/beacon.md) and no automatic change:
+	// "add a temperature/humidity sensor" is typed by hand in Act 3, and the board, the case (a vent) and the firmware follow.
+	const demo = spawn("npx", ["tsx", "src/demo.ts", "--no-open", "--port", String(port), "--brief", "briefs/beacon.md", "--no-change"], { cwd: ROOT, stdio: ["ignore", "pipe", "inherit"], detached: true })
 	const runUrl = await new Promise<string>((ok, fail) => {
 		let buf = ""
 		demo.stdout.on("data", (c: Buffer) => {
@@ -74,6 +79,7 @@ async function main(): Promise<void> {
 		console.log(`[act ${act}] ${what}`)
 	}
 	const take = async (n: number, url: string, body: (page: any) => Promise<void>) => {
+		if (!acts.includes(n)) return
 		const ctx = await browser.newContext({ viewport: { width: W, height: H }, recordVideo: { dir: out, size: { width: W, height: H } } })
 		if (cursor) await ctx.addInitScript(CURSOR)
 		const page = await ctx.newPage()
@@ -96,54 +102,61 @@ async function main(): Promise<void> {
 	try {
 		// Act 2 (recorded first: the run is already starting): the first design building, then "Consistent at rev N".
 		await take(2, runUrl, async (page) => {
-			mark("the run page opens: Designing · rev N, agent tiles lighting up together")
+			mark("the beacon brief: 05 reads “Designing from the brief”, agent tiles lighting up together")
 			await page.waitForTimeout(4000)
 			await glide(page, "#agents")
 			mark("several agent tiles working at once")
 			await until(page, resultIs("consistent", false), 15 * 60_000)
-			mark("Consistent at rev N · Now change one thing ↑")
+			mark("05: “First design consistent at rev N” · now change one thing ↑")
 			await glide(page, "#pcb-host")
 			await page.waitForTimeout(3500)
 		})
 
-		// Act 3: the automatic change ripples; then "make it 40 mm wide" typed by hand; the proof line; the PCB; why.
+		// Act 3: "add a temperature/humidity sensor" typed by hand; the ripple; the new sensor glowing on the PCB, its vent
+		// breathing on the case; what changed and why.
+		const SENSOR = "add a temperature/humidity sensor"
 		await take(3, runUrl, async (page) => {
-			await until(page, `/blink/i.test(document.getElementById("rip-text").textContent)`, 120_000)
-			mark("the automatic change lands: “blink faster when tilted” (firmware only)")
-			await until(page, resultIs("consistent", true), 10 * 60_000)
-			mark("Consistent again: firmware woke, board and case stayed idle")
-			await page.waitForTimeout(3000)
+			await until(page, resultIs("consistent", false), 15 * 60_000)
+			mark("the beacon, settled: no sensor yet · 05 reads “First design consistent”")
+			await page.waitForTimeout(2500)
 			await glide(page, "#change-input")
 			await page.click("#change-input")
-			mark("typing “make it 40 mm wide”")
-			await page.keyboard.type("make it 40 mm wide", { delay: 90 })
+			mark(`typing “${SENSOR}”`)
+			await page.keyboard.type(SENSOR, { delay: 75 })
 			await page.waitForTimeout(600)
 			await page.keyboard.press("Enter")
-			await until(page, `/40 mm/.test(document.getElementById("rip-text").textContent) && ["rippling", "sent"].includes(document.getElementById("rip-result").className)`, 120_000)
-			mark("the ripple: outline v1 → v2, architect, board and case working, the rest idle")
-			await until(page, `/40 mm/.test(document.getElementById("rip-text").textContent) && document.getElementById("rip-result").className === "consistent"`, 10 * 60_000)
-			mark("Consistent again in … · the proof line: without the shared contract, 4 mismatches would ship")
-			await page.waitForTimeout(4000)
-			const u1 = page.locator('.pcb-root [data-ref="U1"]').first()
-			const b = await u1.boundingBox().catch(() => null)
+			await until(page, `/sensor/.test(document.getElementById("rip-text").textContent) && ["rippling", "sent"].includes(document.getElementById("rip-result").className)`, 120_000)
+			mark("the ripple: parts, pins and requirements change; 7 of 9 agents wake; 05 says who is rebuilding")
+			await until(page, `/sensor/.test(document.getElementById("rip-text").textContent) && document.getElementById("rip-result").className === "consistent"`, 15 * 60_000)
+			mark("05: “add a temperature/humidity sensor”: board, case and firmware agree")
+			// The case first, the pointer parked in an empty corner (over a part it would highlight that part everywhere).
+			const scene = await page.locator("#scene-host").boundingBox()
+			if (scene) await page.mouse.move(scene.x + 40, scene.y + 40, { steps: 25 })
+			mark("the case: the new vent grille breathes on the lid above the sensor")
+			await page.waitForTimeout(4500)
+			const u2 = page.locator('.pcb-root .pcb-part[data-ref="U2"]').first()
+			const b = await u2.boundingBox().catch(() => null)
 			if (b) await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 30 })
-			mark("the PCB at 40 mm: rulers, U1's size on hover")
-			await page.waitForTimeout(3000)
+			mark("the PCB: the new sensor U2 glows NEW (its pull-ups too), U1 CHANGED; hover names the part")
+			await page.waitForTimeout(4000)
 			await glide(page, "#why-btn")
 			await page.click("#why-btn")
-			mark("What changed & why: outline 50×30 → 40×30 mm, the architect's reason, caused by the request")
+			mark("What changed & why: parts + U2 SHT40, pins + I2C, each with its reason, caused by the request")
 			await page.waitForTimeout(5000)
 		})
 
 		// Act 1: the hub page, the evidence band, a slow scroll.
 		await take(1, hubUrl, async (page) => {
 			mark("the hub: Change one thing. The whole design follows.")
-			await page.waitForTimeout(3000)
-			for (let i = 0; i < 12; i++) {
+			await page.waitForTimeout(2000)
+			// The wheel scrolls what is under the pointer: bring it onto the page first (not the fixed header).
+			await page.mouse.move(W / 2, H * 0.55, { steps: 20 })
+			await page.waitForTimeout(800)
+			for (let i = 0; i < 15; i++) {
 				await page.mouse.wheel(0, 60)
 				await page.waitForTimeout(180)
 			}
-			mark("the evidence band comes into view")
+			mark("the evidence band, and below it the drawing register folded to one line")
 			await page.waitForTimeout(3000)
 		})
 
@@ -167,7 +180,8 @@ async function main(): Promise<void> {
 		await browser.close()
 		// npx → tsx → demo: signal the whole group, or the demo outlives its wrapper.
 		try { process.kill(-demo.pid!, "SIGTERM") } catch {}
-		writeFileSync(join(out, "shots.md"), shotList(marks.sort((a, b) => a.act - b.act || a.atMs - b.atMs)))
+		const keep = acts.length < 4 && existsSync(join(out, "shots.md")) ? readFileSync(join(out, "shots.md"), "utf8") : ""
+		writeFileSync(join(out, "shots.md"), shotList(marks.sort((a, b) => a.act - b.act || a.atMs - b.atMs), { keep, acts }))
 		console.log(`footage: ${out}`)
 	}
 }

@@ -18,7 +18,8 @@ import { loadCatalog } from "../tools/parts-search.ts"
 
 export const MAX_REVIEW_ROUNDS = 1
 
-const INSTRUCTION = `You are a demanding hardware design reviewer. Judge the design ONLY against the product brief: does the design contract meet every requirement the brief states, and does any choice clearly undermine one?
+export const REVIEW_INSTRUCTION = `You are a demanding hardware design reviewer. Judge the design ONLY against the product brief: does the design contract meet every requirement the brief states, and does any choice clearly undermine one?
+The engineer's change requests, listed after the brief, amend it and override it where they differ (the newest last): a design that follows an engineer change is not a brief violation, even where the original brief said otherwise. Judge against the brief as amended.
 You see the brief, the final design contract and the results of the deterministic checks (builds, consistency, pin grounding, power simulation). You do not see how the design was made, and you do not need to.
 - Check each "must have" in the brief against the contract: present, and plausibly met.
 - Battery life: start from the power budget computed in code (peak vs average current, regulator quiescent current, capacity, days). Rail loadMa is the PEAK, not a continuous draw. Judge whether the stated average and duty cycle are plausible for the parts and the brief, and show your numbers where you disagree. If no average is stated, say what is missing.
@@ -159,6 +160,27 @@ export function artifactLine(
 }
 
 // The reviewer's whole view of the run: the brief, the contract and the check results. Never an agent's turn.
+// The engineer's change requests since the brief (typed, file edits, adopted drift: all go through requests.jsonl, line
+// N being req-N), for the reviewer to read as amendments. Without them it judged a requested change as a brief
+// violation and the agents undid it (af's real-model add-sensor run).
+function amendmentLines(outDir: string): string[] {
+	const path = join(outDir, "requests.jsonl")
+	if (!existsSync(path)) return []
+	const requests = readFileSync(path, "utf8").split("\n").flatMap((l) => {
+		try {
+			return l.trim() ? [JSON.parse(l) as { text: string; source?: { kind: string; path: string } }] : []
+		} catch {
+			return []
+		}
+	})
+	if (requests.length === 0) return []
+	return [
+		"## Engineer changes since the brief (these override it)",
+		...requests.map((r, i) => `- req-${i + 1}: ${r.text}${r.source?.kind === "file" ? ` (a file edit: ${r.source.path})` : ""}`),
+		"",
+	]
+}
+
 export async function reviewMessage(env: Env | undefined, revision: number, round: number): Promise<string> {
 	const s = state()
 	const snapshot = s.contract.snapshot()
@@ -175,6 +197,7 @@ export async function reviewMessage(env: Env | undefined, revision: number, roun
 		"## Product brief",
 		brief,
 		"",
+		...amendmentLines(s.outDir),
 		"## Design contract",
 		"```json",
 		JSON.stringify(snapshot.values, null, 2),
@@ -252,7 +275,7 @@ export function createBriefReviewer(opts: { mock: boolean; env?: Env }): Agent {
 	const agent = createAgent({
 		name: "reviewer",
 		capabilities: [],
-		instruction: INSTRUCTION,
+		instruction: REVIEW_INSTRUCTION,
 		tools: [submitReviewTool(self, pending)],
 		handlers: [
 			{

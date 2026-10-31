@@ -21,7 +21,9 @@ test("outline-mismatch", () => only("outline-mismatch", ["board"], (_c, a) => { 
 
 test("net-missing", () => only("net-missing", ["board"], (_c, a) => { a.board!.nets.I2C_SDA = ["U2.SDA"] }))
 
-test("pin-mismatch", () => only("pin-mismatch", ["firmware"], (_c, a) => { a.firmware!.pins.I2C_SCL = 7 }))
+// The firmware is generated from the pins: a mismatch only means it has not been rebuilt yet, so it wakes no agent
+// (real run on file sync: the firmware agent "fixed" the contract to match a stale build).
+test("pin-mismatch", () => only("pin-mismatch", [], (_c, a) => { a.firmware!.pins.I2C_SCL = 7 }))
 
 test("cutout-missing", () => only("cutout-missing", ["enclosure"], (_c, a) => { a.enclosure!.cutouts = [] }))
 

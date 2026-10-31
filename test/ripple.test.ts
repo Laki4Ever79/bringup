@@ -68,6 +68,7 @@ test("a request that changes nothing never becomes 'consistent again', and a sec
 		ev(45_020, "contract.changed", { field: "pins", version: 3, revision: 10, by: "architect" }),
 		checked(45_020, 10, 1),
 		ev(46_000, "artifact.ready", { kind: "board", revision: 9 }),
+		ev(46_500, "artifact.ready", { kind: "enclosure", revision: 9 }),
 		ev(47_000, "artifact.ready", { kind: "firmware", revision: 10 }),
 		// The board built revision 9, before the pins changed: not done yet.
 		checked(47_000, 10, 0),
@@ -81,9 +82,9 @@ test("a request that changes nothing never becomes 'consistent again', and a sec
 	assert.equal(prettier.consistentAtMs, null)
 	assert.equal(prettier.durationMs, null)
 	assert.deepEqual(sensor.fieldsChanged, ["parts", "pins"])
-	assert.deepEqual(sensor.woke, ["architect", "parts", "build:board", "build:firmware", "grounding", "consistency"], "agents that changed a field woke, turn or not")
+	// The case depends on the parts too (a sensor gets a vent over it), so a parts change wakes the enclosure builder.
+	assert.deepEqual(sensor.woke, ["architect", "parts", "build:board", "build:enclosure", "build:firmware", "grounding", "consistency"], "agents that changed a field woke, turn or not")
 	assert.deepEqual(sensor.checked, [])
-	assert.ok(sensor.stayedIdle.includes("build:enclosure"))
 	assert.equal(sensor.violationsPeak, 1)
 	assert.equal(sensor.consistentAtMs, 50_000)
 	assert.equal(sensor.durationMs, 5_000)

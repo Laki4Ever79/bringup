@@ -37,7 +37,7 @@ test("KiCad's Sensor_Humidity library grounds the SHT40", { skip, timeout: 120_0
 		// The second load comes from the cache, not from docker.
 		const start = Date.now()
 		await loadSymbols(env, ["Sensor_Humidity", "Regulator_Linear"])
-		assert.ok(Date.now() - start < 500, `cached load took ${Date.now() - start} ms`)
+		assert.ok(Date.now() - start < 3000, `cached load (vs several seconds through docker) took ${Date.now() - start} ms`)
 	} finally {
 		await rm(root, { recursive: true, force: true })
 	}

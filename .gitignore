@@ -10,3 +10,5 @@ skidl_*
 
 # PlatformIO libraries installed into the template by npm run setup (pio pkg install)
 templates/fw/.pio/
+# Downloaded by `wokwi-cli chip compile` (NOTES.md); not ours to commit.
+templates/wokwi/chips/wokwi-api.h
