@@ -266,3 +266,8 @@ test("every lane text a run produces fits one line (failures carry their error i
 	apply(ev("design.settled", { revision: 12, settled: false }))
 	for (const t of texts) assert.ok(t.slice(t.indexOf(": ") + 2).length <= TILE_BUDGET, `"${t}"`)
 })
+
+test("the case rebuilds on a parts change: the vent follows the sensor", async () => {
+	const { BUILD_INPUTS } = await import("../src/agents/builders.ts")
+	assert.ok(BUILD_INPUTS.enclosure.includes("parts"))
+})

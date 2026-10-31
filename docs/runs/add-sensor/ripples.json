@@ -1,0 +1,36 @@
+{
+  "requests": [
+    {
+      "id": "req-1",
+      "text": "add a temperature/humidity sensor",
+      "atMs": 268472,
+      "fieldsChanged": [
+        "requirements",
+        "parts",
+        "pins"
+      ],
+      "woke": [
+        "architect",
+        "parts",
+        "build:board",
+        "build:enclosure",
+        "build:firmware",
+        "grounding",
+        "consistency"
+      ],
+      "checked": [
+        "firmware"
+      ],
+      "stayedIdle": [
+        "reviewer"
+      ],
+      "violationsPeak": 9,
+      "consistentAtMs": 463609,
+      "durationMs": 195137,
+      "reviewFollowUps": {
+        "fieldsChanged": [],
+        "rounds": 1
+      }
+    }
+  ]
+}
