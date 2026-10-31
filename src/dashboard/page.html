@@ -24,6 +24,8 @@
 		--sans: "Instrument", "Helvetica Neue", sans-serif;
 		--mono: "JBMono", ui-monospace, monospace;
 		--ease: cubic-bezier(.2, .8, .2, 1); --t: 160ms;
+		/* Apple-style motion: the iOS sheet curve, slower and softer than --ease. */
+		--spring: cubic-bezier(.32, .72, 0, 1);
 		--gap: clamp(8px, .7vw, 14px);
 	}
 	* { box-sizing: border-box; }
@@ -69,6 +71,11 @@
 	@keyframes ignite { 0% { background: var(--signal); color: #fff; } 100% { } }
 	@keyframes stamp { 0% { transform: scale(1.18); opacity: 0; } 60% { transform: scale(.98); opacity: 1; } 100% { transform: none; } }
 	@keyframes blink { 50% { opacity: .25; } }
+	/* New text rises in from a soft blur; a tile that wakes settles in with a small pop; a working tile's edge glows. */
+	@keyframes rise { from { opacity: 0; transform: translateY(10px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+	@keyframes pop { 0% { transform: scale(.965); } 55% { transform: scale(1.018); } 100% { transform: none; } }
+	@property --glow { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+	@keyframes orbit { to { --glow: 360deg; } }
 	.popover { position: absolute; top: 38px; right: 0; width: 440px; max-height: 380px; overflow: auto; padding: 12px; background: var(--paper); border: 1.5px solid var(--ink); box-shadow: 8px 8px 0 rgba(22, 20, 15, .16); color: var(--ink); white-space: normal; z-index: 40; animation: fadein var(--t) var(--ease); cursor: default; text-align: left; }
 	.popover h4 { margin: 0 0 8px; font: 600 12px/1.2 var(--mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .12em; }
 	.popover li { margin: 0 0 6px; font-size: 13px; color: var(--ink-2); font-weight: 500; }
@@ -115,12 +122,12 @@
 	#run { display: grid; grid-template-rows: minmax(clamp(250px, 33vh, 352px), auto) minmax(0, 1fr); gap: var(--gap); padding: var(--gap); min-height: 0; }
 
 	/* The ripple: change → fields → agents → checks, then the result line. */
-	#ripple { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .9fr) minmax(0, 2.85fr); grid-template-rows: minmax(0, 1fr) auto; }
+	#ripple { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr) minmax(0, 1.6fr) minmax(0, 1.1fr); grid-template-rows: minmax(0, 1fr) auto; }
 	#ripple > .col { position: relative; padding: 12px 16px 10px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-width: 0; min-height: 0; border-right: 1.5px solid var(--ink); }
-	#ripple > .col:nth-child(3) { border-right: 0; }
+	#ripple > .col:nth-child(4) { border-right: 0; }
 	/* The flow arrow between the stages. */
-	#ripple > .col:not(:nth-child(3))::after { content: ""; position: absolute; right: -11px; top: 50%; width: 20px; height: 20px; margin-top: -10px; background: var(--paper); border: 1.5px solid var(--ink); border-left: 0; border-bottom: 0; transform: rotate(45deg); z-index: 2; }
-	#ripple.flowing > .col:not(:nth-child(3))::after { background: var(--signal); }
+	#ripple > .col:not(:nth-child(4))::after { content: ""; position: absolute; right: -11px; top: 50%; width: 20px; height: 20px; margin-top: -10px; background: var(--paper); border: 1.5px solid var(--ink); border-left: 0; border-bottom: 0; transform: rotate(45deg); z-index: 2; }
+	#ripple.flowing > .col:not(:nth-child(4))::after { background: var(--signal); }
 	#rip-change { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
 	#rip-text { margin: 6px 0 0; font: 700 clamp(24px, 2.1vw, 38px)/1.02 var(--display); text-transform: uppercase; letter-spacing: .01em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 	#rip-file { display: inline-block; margin-top: 6px; padding: 4px 8px; font: 700 13px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; background: var(--ink); color: var(--paper); }
@@ -144,13 +151,14 @@
 	#rip-fields li.touched .v { color: var(--signal); }
 	#rip-fields li.missing { opacity: .55; }
 
-	/* Five to a row, two rows: you and the four agents that decide; below, what builds and checks. A bench adds a tall
-	   sixth column (it follows every firmware change onto the board). */
-	#agents { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: minmax(64px, 1fr); gap: 6px; min-height: 0; }
-	.tile { position: relative; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 1px; padding: 5px 10px 3px 14px; border: 1.5px solid var(--ink); background: var(--paper); cursor: pointer; min-width: 0; transition: opacity 400ms var(--ease), background 300ms var(--ease), color 300ms var(--ease); }
+	/* Three by three: the four agents that decide, then what builds, then what checks. A bench adds a tall fourth
+	   column (it follows every firmware change onto the board). */
+	#agents { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(64px, 1fr); gap: 6px; min-height: 0; }
+	.tile { position: relative; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 1px; padding: 5px 10px 3px 14px; border: 1.5px solid var(--ink); background: var(--paper); cursor: pointer; min-width: 0; transition: background 550ms var(--spring), color 550ms var(--spring), border-color 550ms var(--spring); }
 	.tile::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--ac); }
-	#agents.bench { grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, .9fr); }
-	#agents .bench-tile { grid-column: 6; grid-row: 1 / span 2; }
+	#agents.bench { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, .9fr); }
+	#agents .bench-tile { grid-column: 4; grid-row: 1 / span 3; }
+	#agents .bench-tile .task { white-space: normal; }
 	.tile .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; min-width: 0; }
 	.tile .name { font: 700 clamp(16px, 1.25vw, 22px)/.95 var(--display); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.tile .status { flex-basis: 100%; font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: var(--ink-2); }
@@ -158,7 +166,9 @@
 	.tile.woke { background: var(--ink); color: var(--paper); }
 	.tile.woke .task { color: var(--paper); } .tile.woke .status { color: var(--signal); }
 	.tile.woke.done .status { color: #7fe0a8; }
-	.tile.working::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 40%; background: var(--signal); animation: sweep 1.1s linear infinite; }
+	/* Working: a light that circles the tile's edge (masked to a 2px ring), instead of a bar. */
+	.tile.working::after { content: ""; position: absolute; inset: 0; padding: 2px; pointer-events: none; background: conic-gradient(from var(--glow), transparent 0 55%, rgba(255, 74, 23, .35) 70%, var(--signal) 85%, #ffd2b8 92%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: orbit 2.2s linear infinite; }
+	.tile.woke { animation: pop 600ms var(--spring); }
 	/* Took a turn, changed nothing: present, but not lit. */
 	.tile.checked { background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(22, 20, 15, .06) 6px 7px); }
 	.tile.checked .status { color: var(--ink-2); }
@@ -171,8 +181,6 @@
 	.tile.asleep .name { color: var(--ink-2); }
 	.tile.failed { box-shadow: inset 0 0 0 2px var(--error); } .tile.failed .status { color: var(--error); }
 	.tile.held .status { color: var(--warn); }
-	/* Your turn (a change to approve, a board to tilt): the bench's amber, so it can't be missed. */
-	.tile.you.held { background: #f3b43f; color: var(--ink); } .tile.you.held .task, .tile.you.held .status { color: var(--ink); }
 	.tile .hist { position: fixed; z-index: 45; width: 420px; max-height: 340px; overflow: auto; padding: 10px 12px; background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); box-shadow: 8px 8px 0 rgba(22, 20, 15, .18); cursor: default; animation: fadein var(--t) var(--ease); }
 	.tile .hist ul { margin: 0; padding: 0; } .tile .hist li { list-style: none; font-size: 12.5px; color: var(--ink-2); margin: 0 0 4px; }
 	.tile .hist b { margin-right: 6px; }
@@ -182,11 +190,21 @@
 	.seq i.z { background: var(--ok); }
 	.seq s { text-decoration: none; color: var(--ink-3); font: 600 12px/1 var(--mono); }
 
-	/* The numbered flow carries on below the band: 04 the result, 05 the board, 06 the case, 07 the parts. */
+	/* The numbered flow carries on below the band: 05 the result, 06 the board, 07 the case, 08 the parts. */
 	.sec-num { flex: none; align-self: flex-start; padding-top: 6px; }
 	.stage-bar .sec-num { align-self: center; padding: 0 6px 0 2px; color: var(--screen-text-2); }
+	/* 04 Timeline: how the change travelled. Quiet type; the newest step in ink, older ones fade back. */
+	#rip-timeline { list-style: none; margin: 0; padding: 0; display: grid; align-content: start; gap: 5px; overflow: hidden; min-height: 0; }
+	#rip-timeline li { display: grid; grid-template-columns: 4.2em minmax(0, 1fr); gap: 10px; align-items: baseline; color: var(--ink-3); transition: color 600ms var(--spring); }
+	#rip-timeline li .t { font: 600 12px/1.3 var(--mono); text-align: right; color: var(--ink-3); }
+	#rip-timeline li .x { font: 500 14px/1.3 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#rip-timeline li:last-child { color: var(--ink); } #rip-timeline li:last-child .t { color: var(--signal-ink); }
+	#rip-timeline li.done .x { color: var(--ok); font-weight: 700; }
+	#rip-timeline li.in { animation: rise 650ms var(--spring) both; }
 	#rip-result { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 8px 18px; border-top: 2px solid var(--ink); background: var(--paper-2); min-width: 0; }
 	#rip-result .stampbox { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 2.5px solid currentColor; font: 900 26px/1 var(--display); }
+	#rip-headline.in, #rip-detail.in { animation: rise 600ms var(--spring) both; }
+	#rip-detail.in { animation-delay: 70ms; }
 	#rip-headline { font: 800 clamp(28px, 2.7vw, 52px)/1 var(--display); text-transform: uppercase; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	#rip-detail { font: 600 clamp(15px, 1.15vw, 21px)/1.1 var(--sans); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	#rip-result.consistent { color: var(--ok); } #rip-result.consistent #rip-headline { color: var(--ink); }
@@ -514,6 +532,8 @@
 		.logo { font-size: 24px; }
 		#elapsed { display: none; }
 		#checks .check { padding: 0 8px; }
+		/* Narrow: the agents get the room; the timeline and the fields give a little. */
+		#ripple { grid-template-columns: minmax(0, .95fr) minmax(0, .72fr) minmax(0, 1.8fr) minmax(0, .95fr); }
 	}
 	@media (max-height: 950px) {
 		#app { grid-template-rows: 50px auto minmax(0, 1fr); }
@@ -618,13 +638,17 @@
 				<div class="label"><b>03</b> Agents<span class="right" id="rip-agents-note"></span></div>
 				<section id="agents"></section>
 			</div>
-			<div id="rip-result" class="initial"><span class="label sec-num"><b>04</b> Result</span><span class="stampbox" id="rip-stamp">·</span><div style="min-width:0"><div id="rip-headline">Waiting for the first event</div><div id="rip-detail"></div></div><div id="rip-proof" class="hidden"></div><div id="held" class="hidden"></div></div>
+			<div class="col" id="rip-time-col">
+				<div class="label"><b>04</b> Timeline<span class="right" id="rip-time-note"></span></div>
+				<ol id="rip-timeline"></ol>
+			</div>
+			<div id="rip-result" class="initial"><span class="label sec-num"><b>05</b> Result</span><span class="stampbox" id="rip-stamp">·</span><div style="min-width:0"><div id="rip-headline">Waiting for the first event</div><div id="rip-detail"></div></div><div id="rip-proof" class="hidden"></div><div id="held" class="hidden"></div></div>
 		</section>
 
 		<section id="deck">
 			<section id="stage">
 				<div class="stage-bar">
-					<span class="label sec-num"><b>05</b> Board</span>
+					<span class="label sec-num"><b>06</b> Board</span>
 					<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="bench" class="hidden">Bench</button></div>
 					<span id="dims" class="num"></span>
 					<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
@@ -655,11 +679,11 @@
 			</section>
 			<aside id="side">
 				<section id="scene-panel">
-					<div class="label"><b>06</b> Case + board<span class="right"><label>explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
+					<div class="label"><b>07</b> Case + board<span class="right"><label>explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
 					<div id="scene-body"><div id="scene-host"></div><div id="scene-empty" class="empty-state">waiting for the first enclosure build</div></div>
 				</section>
 				<section id="parts-panel" class="sheet">
-					<button class="fold-head label" id="parts-fold" aria-expanded="false"><b>07</b><span id="parts-head">Parts</span><span class="caret">▸</span></button>
+					<button class="fold-head label" id="parts-fold" aria-expanded="false"><b>08</b><span id="parts-head">Parts</span><span class="caret">▸</span></button>
 					<div id="parts-ready"></div>
 					<div id="parts"><div class="t3" style="padding:12px">waiting for the parts list</div></div>
 				</section>
@@ -679,8 +703,8 @@
 	import { liveRipples, mergeRipples, runStart, statusLine } from "/ripple.js"
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { matchTrial, proofSummary } from "/proof.js"
-	import { changeLog, defaultRange, fileDrift } from "/changelog.js"
-	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, foldHeader, foldOpen, lowPass, setFold, youTile, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { changeLog, defaultRange, fileDrift, rippleTimeline } from "/changelog.js"
+	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, foldHeader, foldOpen, lowPass, setFold, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -1507,23 +1531,6 @@
 			$("agents").append(el)
 			cards[k] = el
 		}
-		// You are a participant too: first in the top row (you, then the four agents that decide; below them what builds
-		// and checks). A click puts you in the change box.
-		const youEl = document.createElement("div")
-		youEl.className = "tile asleep you"
-		youEl.style.setProperty("--ac", "var(--signal)")
-		youEl.innerHTML = `<div class="top"><span class="name">You</span><span class="status">watching</span></div><div class="task">agents at work</div>`
-		youEl.addEventListener("click", () => (S.waitingForYou ? $("changes").classList.add("open") : $("change-input").focus()))
-		$("agents").prepend(youEl)
-		function paintYou(r) {
-			const t = youTile({ ripple: r, settled: S.settled, open: phase().open, waitingForYou: S.waitingForYou ?? 0, benchAsk: S.bench?.instruction?.action ?? null })
-			const next = `tile you ${t.cls}`
-			if (youEl.className !== next) youEl.className = next
-			youEl.querySelector(".status").textContent = t.status
-			const task = youEl.querySelector(".task")
-			task.textContent = t.task
-			task.title = r?.text ?? ""
-		}
 		// The bench is a participant too: a tile while one is attached, following the change onto the board. A click opens the Bench tab.
 		const benchTile = document.createElement("div")
 		benchTile.className = "tile asleep bench-tile hidden"
@@ -1599,7 +1606,6 @@
 			const list = prCards(S.events, S.snapshots).reverse()
 			const open = list.filter((c) => c.status === "pending" || c.status === "waiting").length
 			const waiting = list.filter((c) => c.status === "waiting" && !S.myVotes.has(c.id)).length
-			S.waitingForYou = waiting
 			$("changes-count").textContent = list.length ? (open ? `${open} open` : `${list.length}`) : ""
 			$("changes-btn").title = list.length ? `${list.filter((c) => c.status === "approved").length} approved · ${list.filter((c) => c.status === "rejected").length} rejected · ${open} open` : "No cross-team changes yet"
 			$("changes-btn").classList.toggle("waiting", waiting > 0)
@@ -1685,7 +1691,18 @@
 			$(id).innerHTML = html
 		}
 		let resultKey = ""
-		// 04 Result: the live status line (statusLine in ripple.js says what is happening, then how the change ended).
+		// 04 Timeline: how the change travelled. Keyed by step, so only a new step rises in.
+		function renderTimeline(steps, note) {
+			const ol = $("rip-timeline")
+			const keys = steps.map((st) => st.key).join("|")
+			$("rip-time-note").textContent = note
+			if (ol.dataset.keys === keys) return
+			const had = new Set((ol.dataset.keys ?? "").split("|"))
+			const fresh = ol.dataset.keys !== undefined
+			ol.dataset.keys = keys
+			ol.innerHTML = steps.map((st) => `<li class="${st.key === "done" ? "done" : ""}${fresh && !had.has(st.key) ? " in" : ""}"><span class="t">${esc(st.t)}</span><span class="x" title="${esc(st.text)}">${esc(st.text)}</span></li>`).join("")
+		}
+		// 05 Result: the live status line (statusLine in ripple.js says what is happening, then how the change ended).
 		function showStatus(r, working = 0) {
 			const latest = S.events.findLast((e) => e.type === "consistency.checked")
 			const s = statusLine({
@@ -1703,8 +1720,15 @@
 			const box = $("rip-result")
 			box.className = state
 			$("rip-stamp").textContent = STAMP[state] ?? "·"
-			$("rip-headline").textContent = headline
-			$("rip-detail").textContent = detail
+			const rise = (id, text) => {
+				const el = $(id)
+				if (el.textContent === text) return
+				el.textContent = text
+				if (reduceMotion) return
+				el.classList.remove("in"); void el.offsetWidth; el.classList.add("in")
+			}
+			rise("rip-headline", headline)
+			rise("rip-detail", detail)
 			// Replay the stamp when the state changes (CSS animation restarts on a re-added class).
 			if (restamp && !reduceMotion) { const s = $("rip-stamp"); s.style.animation = "none"; void s.offsetWidth; s.style.animation = "" }
 		}
@@ -1715,7 +1739,6 @@
 			$("rip-history").innerHTML = rs.length > 1 ? rs.map((x, i) => `<button data-id="${esc(x.id)}" class="${x === r ? "on " : ""}${esc(x.state)}" title="${esc(x.text)}">#${i + 1}</button>`).join("") : ""
 			$("ripple").classList.toggle("flowing", r ? r.state === "rippling" || r.state === "sent" : !S.settled)
 			paintTiles(r)
-			paintYou(r)
 			paintBench(r)
 			if (!r) return renderInitial()
 			const idx = rs.indexOf(r)
@@ -1751,6 +1774,7 @@
 			setHtml("rip-fields", fieldsHtml)
 			$("rip-agents-note").textContent = r.state === "sent" ? "" : `${r.woke.length} woke${r.reading?.length ? ` · ${r.reading.length} reading` : ""}${r.checked?.length ? ` · ${r.checked.length} checked` : ""} · ${r.stayedIdle.length} idle`
 			showStatus(r)
+			renderTimeline(rippleTimeline(S.events, { fromMs: r.atMs, toMs: until, consistentAtMs: r.consistentAtMs }), r.state === "consistent" ? `in ${secs(r.durationMs ?? 0)}` : "")
 			renderProof(r)
 		}
 
@@ -1769,6 +1793,7 @@
 			const working = CARD_KEYS.filter((k) => ACTIVE.has(S.lanes[k].status)).length
 			$("rip-agents-note").textContent = S.settled ? "" : `${working} working now`
 			showStatus(null, working)
+			if (S.firstAt) renderTimeline(rippleTimeline(S.events, { fromMs: S.firstAt, start: `the brief: ${title}`, consistentAtMs: S.settled?.settled ? S.endAt : null }), "the first design")
 			renderProof(null)
 		}
 

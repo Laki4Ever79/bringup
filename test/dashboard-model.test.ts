@@ -238,17 +238,3 @@ test("folds: the parts list and the revisions strip start collapsed, with a one-
 	assert.equal(foldOpen(broken, "parts"), false)
 	setFold(broken, "parts", true)
 })
-
-test("the YOU tile: the engineer is a participant too (asks, approves, edits a file, tilts the board)", async () => {
-	const { youTile } = await import("../src/dashboard/model.js")
-	assert.deepEqual(youTile({ ripple: null, settled: null }), { cls: "asleep", status: "watching", task: "agents at work" })
-	assert.deepEqual(youTile({ ripple: null, settled: { settled: true }, open: true }), { cls: "asleep", status: "your move", task: "change one thing ↑" })
-	assert.deepEqual(youTile({ ripple: null, settled: { settled: true }, open: false }), { cls: "asleep", status: "idle", task: "the run has ended" })
-	const asked = { text: "make it 40 mm wide", file: null, state: "rippling" }
-	assert.deepEqual(youTile({ ripple: asked }), { cls: "woke done", status: "asked ✓", task: "make it 40 mm wide" })
-	assert.deepEqual(youTile({ ripple: { ...asked, file: { name: "pins.h", items: ["I2C_SDA GPIO8 → GPIO4"] } } }), { cls: "woke done", status: "edited ✓", task: "pins.h" })
-	// Your turn wins over everything else: a held change waiting for you, or the bench asking for a tilt.
-	assert.deepEqual(youTile({ ripple: asked, waitingForYou: 1 }), { cls: "woke working held", status: "your turn", task: "1 change to approve" })
-	assert.deepEqual(youTile({ ripple: asked, benchAsk: "tilt" }), { cls: "woke working held", status: "your turn", task: "tilt the board" })
-	for (const t of [youTile({ ripple: asked, waitingForYou: 3 }), youTile({ ripple: null, settled: { settled: true }, open: true })]) assert.ok(t.task.length <= 20, t.task)
-})
