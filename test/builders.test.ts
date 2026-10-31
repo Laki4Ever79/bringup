@@ -172,3 +172,14 @@ test("stubs report the board's mounting holes and the case's standoffs from the 
 	assert.deepEqual(enclosure.standoffs!.map((p) => [p.xMm, p.yMm]), board.holes!.map((h) => [h.xMm, h.yMm]))
 	assert.deepEqual(checkConsistency(s, { board, enclosure }).filter((v) => v.kind === "standoff-mismatch"), [])
 })
+
+test("stubs put a vent over each sensor where the board places it, and none without a sensor", () => {
+	const s = fixtureContract()
+	const dir = tempDir()
+	const board = stubBoard(s, 1, dir)
+	const enclosure = stubEnclosure(s, 1, dir)
+	assert.deepEqual(enclosure.vents!.map((v) => [v.ref, v.xMm, v.yMm]), [["U2", board.placements!.U2.xMm, board.placements!.U2.yMm]])
+	assert.deepEqual(checkConsistency(s, { board, enclosure }), [])
+	s.values.parts = s.values.parts!.filter((p) => p.role !== "sensor")
+	assert.deepEqual(stubEnclosure(s, 1, dir).vents, [])
+})

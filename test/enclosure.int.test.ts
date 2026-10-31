@@ -59,6 +59,31 @@ test("print-ready: a lid, a standoff under each board hole, raised cutouts and a
 	assert.ok(Math.abs(j1.zMm! - (2 + 3 + 1.6 + 3.5 / 2)) < 0.05, `J1 cutout centre at ${j1.zMm} mm`)
 })
 
+test("a sensor gets a slot vent in the lid right over it, and the print check still passes", { skip }, async () => {
+	const c = fixtureContract()
+	const enclosure = await buildEnclosure(python!, root, tmp(), c, c.revision)
+	const sensor = (enclosureSpec(c) as { sensors: { ref: string; xMm: number; yMm: number }[] }).sensors[0]
+	const vent = enclosure.vents!.find((v) => v.ref === "U2")!
+	// The grille stays inside the lid's lip, so near a corner its centre can sit a little off; the sensor stays under it.
+	const msg = `vent ${vent.widthMm}×${vent.heightMm} mm at (${vent.xMm}, ${vent.yMm}), sensor at (${sensor.xMm}, ${sensor.yMm})`
+	assert.ok(Math.abs(vent.xMm - sensor.xMm) <= vent.widthMm / 2 - 1 && Math.abs(vent.yMm - sensor.yMm) <= vent.heightMm / 2 - 1, msg)
+	assert.ok(Math.hypot(vent.xMm - sensor.xMm, vent.yMm - sensor.yMm) < 1.5, msg)
+	assert.ok(vent.widthMm >= 5 && vent.heightMm >= 5, msg)
+	assert.deepEqual(enclosure.printCheck, { ok: true, issues: [] })
+	const board = stubBoard(c, c.revision, tmp())
+	assert.ok(board.placements?.U2, "the stub board reports where the generator placed U2")
+	assert.deepEqual(checkConsistency(c, { board, enclosure }), [])
+})
+
+test("no sensor, no vent", { skip }, async () => {
+	const c = fixtureContract()
+	c.values.parts = c.values.parts!.filter((p) => p.role !== "sensor")
+	c.values.pins = []
+	const enclosure = await buildEnclosure(python!, root, tmp(), c, c.revision)
+	assert.deepEqual(enclosure.vents, [])
+	assert.deepEqual(enclosure.printCheck, { ok: true, issues: [] })
+})
+
 function printCheckOf(mutate: (spec: Record<string, any>) => void) {
 	const dir = tmp()
 	const spec = enclosureSpec(fixtureContract()) as Record<string, any>
