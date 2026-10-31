@@ -436,11 +436,11 @@ export function composerPrompt(bar, settled, { scripted = false } = {}) {
 
 // ── Folds: the parts list and the revisions strip, collapsed by default, remembered per browser ──────────────────
 
-export function foldHeader(kind, { count = 0, totalUsd = null } = {}) {
+export function foldHeader(kind, { count = 0, totalUsd = null, added = 0, changed = 0 } = {}) {
 	if (kind === "revisions") return `Revisions · ${count}`
 	if (kind === "register") return `Drawing register · ${count} run${count === 1 ? "" : "s"}`
 	if (!count) return "Parts"
-	return `Parts · ${count}${typeof totalUsd === "number" ? ` · $${totalUsd.toFixed(2)}` : ""}`
+	return `Parts · ${count}${typeof totalUsd === "number" ? ` · $${totalUsd.toFixed(2)}` : ""}${added ? ` · ${added} new` : ""}${changed ? ` · ${changed} changed` : ""}`
 }
 
 const foldKey = (kind) => `bringup.fold.${kind}`
