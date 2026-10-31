@@ -144,10 +144,13 @@
 	#rip-fields li.touched .v { color: var(--signal); }
 	#rip-fields li.missing { opacity: .55; }
 
-	/* Five to a row, two rows: nine agents, and the tenth place is the bench when one is attached. */
+	/* Five to a row, two rows: you and the four agents that decide; below, what builds and checks. A bench adds a tall
+	   sixth column (it follows every firmware change onto the board). */
 	#agents { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: minmax(64px, 1fr); gap: 6px; min-height: 0; }
 	.tile { position: relative; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 1px; padding: 5px 10px 3px 14px; border: 1.5px solid var(--ink); background: var(--paper); cursor: pointer; min-width: 0; transition: opacity 400ms var(--ease), background 300ms var(--ease), color 300ms var(--ease); }
 	.tile::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--ac); }
+	#agents.bench { grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, .9fr); }
+	#agents .bench-tile { grid-column: 6; grid-row: 1 / span 2; }
 	.tile .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; min-width: 0; }
 	.tile .name { font: 700 clamp(16px, 1.25vw, 22px)/.95 var(--display); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.tile .status { flex-basis: 100%; font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: var(--ink-2); }
@@ -168,6 +171,8 @@
 	.tile.asleep .name { color: var(--ink-2); }
 	.tile.failed { box-shadow: inset 0 0 0 2px var(--error); } .tile.failed .status { color: var(--error); }
 	.tile.held .status { color: var(--warn); }
+	/* Your turn (a change to approve, a board to tilt): the bench's amber, so it can't be missed. */
+	.tile.you.held { background: #f3b43f; color: var(--ink); } .tile.you.held .task, .tile.you.held .status { color: var(--ink); }
 	.tile .hist { position: fixed; z-index: 45; width: 420px; max-height: 340px; overflow: auto; padding: 10px 12px; background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); box-shadow: 8px 8px 0 rgba(22, 20, 15, .18); cursor: default; animation: fadein var(--t) var(--ease); }
 	.tile .hist ul { margin: 0; padding: 0; } .tile .hist li { list-style: none; font-size: 12.5px; color: var(--ink-2); margin: 0 0 4px; }
 	.tile .hist b { margin-right: 6px; }
@@ -675,7 +680,7 @@
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { matchTrial, proofSummary } from "/proof.js"
 	import { changeLog, defaultRange, fileDrift } from "/changelog.js"
-	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, foldHeader, foldOpen, lowPass, setFold, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, foldHeader, foldOpen, lowPass, setFold, youTile, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -1502,19 +1507,37 @@
 			$("agents").append(el)
 			cards[k] = el
 		}
+		// You are a participant too: first in the top row (you, then the four agents that decide; below them what builds
+		// and checks). A click puts you in the change box.
+		const youEl = document.createElement("div")
+		youEl.className = "tile asleep you"
+		youEl.style.setProperty("--ac", "var(--signal)")
+		youEl.innerHTML = `<div class="top"><span class="name">You</span><span class="status">watching</span></div><div class="task">agents at work</div>`
+		youEl.addEventListener("click", () => (S.waitingForYou ? $("changes").classList.add("open") : $("change-input").focus()))
+		$("agents").prepend(youEl)
+		function paintYou(r) {
+			const t = youTile({ ripple: r, settled: S.settled, open: phase().open, waitingForYou: S.waitingForYou ?? 0, benchAsk: S.bench?.instruction?.action ?? null })
+			const next = `tile you ${t.cls}`
+			if (youEl.className !== next) youEl.className = next
+			youEl.querySelector(".status").textContent = t.status
+			const task = youEl.querySelector(".task")
+			task.textContent = t.task
+			task.title = r?.text ?? ""
+		}
 		// The bench is a participant too: a tile while one is attached, following the change onto the board. A click opens the Bench tab.
 		const benchTile = document.createElement("div")
-		benchTile.className = "tile asleep hidden"
+		benchTile.className = "tile asleep bench-tile hidden"
 		benchTile.style.setProperty("--ac", "#f3b43f")
 		benchTile.innerHTML = `<div class="top"><span class="name">Bench</span><span class="status">idle</span></div><div class="task">attached</div>`
 		benchTile.addEventListener("click", () => setTab("bench"))
 		$("agents").append(benchTile)
 		function paintBench(r) {
+			$("agents").classList.toggle("bench", Boolean(S.bench))
 			benchTile.classList.toggle("hidden", !S.bench)
 			if (!S.bench) return
 			const c = r?.checks.find((x) => x.key === "bench")
 			const [cls, status] = !c ? ["asleep", "idle"] : c.state === "ok" ? ["woke done", "measured ✓"] : c.state === "error" ? ["woke failed", "failed"] : ["woke working", "working"]
-			const next = `tile ${cls}`
+			const next = `tile bench-tile ${cls}`
 			if (benchTile.className !== next) benchTile.className = next
 			benchTile.querySelector(".name").textContent = c?.label === "Real board" ? "Real board" : "Bench"
 			benchTile.querySelector(".status").textContent = status
@@ -1576,6 +1599,7 @@
 			const list = prCards(S.events, S.snapshots).reverse()
 			const open = list.filter((c) => c.status === "pending" || c.status === "waiting").length
 			const waiting = list.filter((c) => c.status === "waiting" && !S.myVotes.has(c.id)).length
+			S.waitingForYou = waiting
 			$("changes-count").textContent = list.length ? (open ? `${open} open` : `${list.length}`) : ""
 			$("changes-btn").title = list.length ? `${list.filter((c) => c.status === "approved").length} approved · ${list.filter((c) => c.status === "rejected").length} rejected · ${open} open` : "No cross-team changes yet"
 			$("changes-btn").classList.toggle("waiting", waiting > 0)
@@ -1691,6 +1715,7 @@
 			$("rip-history").innerHTML = rs.length > 1 ? rs.map((x, i) => `<button data-id="${esc(x.id)}" class="${x === r ? "on " : ""}${esc(x.state)}" title="${esc(x.text)}">#${i + 1}</button>`).join("") : ""
 			$("ripple").classList.toggle("flowing", r ? r.state === "rippling" || r.state === "sent" : !S.settled)
 			paintTiles(r)
+			paintYou(r)
 			paintBench(r)
 			if (!r) return renderInitial()
 			const idx = rs.indexOf(r)
