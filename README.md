@@ -31,7 +31,7 @@ nothing else.
 
 ## The proof: one change, with and without the shared contract
 
-We applied 5 real changes to a settled design twice (`npm run experiment`, [docs/experiment.md](docs/experiment.md)).
+We applied 6 real changes to a settled design twice (`npm run experiment`, [docs/experiment.md](docs/experiment.md)).
 In arm A the agents share one live design contract and Mozaik situations wake the affected ones. In arm B only the
 domain that heard the change updates, and every other team keeps working from its own copy. The same plain-code checks
 then compare what was actually built:
@@ -42,21 +42,25 @@ then compare what was actually built:
 | Board 6 mm taller | 31 s · 2 of 7 · 0 | 5: the board is 50×30 mm, the contract says 50×36 mm, and 4 hole/standoff misses |
 | USB-C to the bottom edge | 52 s · 2 of 7 · 0 | 1: the case cutout for J1 is left@15 mm, the connector is bottom@25 mm |
 | Sensor I2C to GPIO4/5 | 72 s · 4 of 7 · 0 | 2: the board's I2C_SDA and I2C_SCL nets don't reach GPIO4 and GPIO5 |
-| Add a button | 84 s · 5 of 7 · 0 | 2: the BUTTON net doesn't reach GPIO3 or SW1, and the case has no hole for SW1 |
-| **Total** | **0 violations** | **14 mismatches** |
+| Swap the regulator for a low-Iq XC6206 | 31 s · 3 of 7 · 0 | 1: the board still places the AP2112K as U3, the contract says XC6206 |
+| Add a button | 68 s · 5 of 7 · 0 | 3: the BUTTON net doesn't reach GPIO3 or SW1, the board has no SW1, and the case has no hole for it |
+| **Total** | **0 violations** | **16 mismatches** |
 
 The agents are scripted (the keyless mock models) and the tools are real: tscircuit + KiCad, build123d, PlatformIO.
-Each cell is one run on one laptop. With the builders made to take turns instead of running in parallel, the same
-changes took 64–310 s instead of 31–84 s. A part swap is left out because no check compares the board's parts to the
-parts list yet, and it would score 0 by not looking.
+Each cell is one run on one laptop, with other jobs sharing the CPU, so read the times as tens of seconds. With the
+builders made to take turns instead of running in parallel, the same changes took 36–94 s instead of 31–72 s. The
+regulator swap was added once a check compared the board's actual parts with the parts list; before that, it would
+have scored 0 by not looking.
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
 > **Status, honestly.** Scripted runs settle with 0 violations and take mid-run changes, with real board, case and
-> firmware builds (and a QEMU boot when QEMU is installed). The latest real-model runs (11–14) all stalled before
-> their first settle, each on a different bug at a seam between domains, now fixed one by one, so **no real-model run
-> has taken a mid-run change yet**. No real-model run has passed the final brief review either. See
-> `docs/submission.md`. This README does not claim results that haven't run.
+> firmware builds (and a QEMU boot when QEMU is installed). **Real models took mid-run changes too** in real run 15:
+> "make the board 40 mm wide" touched only the outline and was consistent again in 49 s (architect, board, case and
+> consistency worked; parts, firmware build and grounding stayed idle), and "the SHT40 is out of stock" swapped in the
+> SHTC3, tripped a real `sensor-mismatch` (firmware still built for the old driver) and was consistent again in 133 s.
+> That run still **did not pass the final brief review** (a charge-LED blocker and battery life), and no real-model run
+> has yet. See `docs/runs/real-15/` (report, ripples, trace) and `docs/submission.md`. This README does not claim results that haven't run.
 
 ## Every change has a checker other than its author
 
