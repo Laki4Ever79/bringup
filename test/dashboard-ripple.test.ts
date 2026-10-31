@@ -292,3 +292,10 @@ test("what moved: outline, connectors, pins and parts, before → after", () => 
 	assert.deepEqual(whatMoved(after, after), { outline: null, connectors: [], pins: [], parts: [], count: 0 })
 	assert.equal(whatMoved(null, after).count, 0)
 })
+
+test("ripple: a request that came from a saved file carries the file (name, path, revision, the mapped changes)", () => {
+	const fromFile = { at: at(100), text: "edited pins.h: I2C_SDA GPIO8 → GPIO4", source: { kind: "file", path: "firmware/rev-7/include/pins.h", revision: 7, items: ["I2C_SDA GPIO8 → GPIO4"] } }
+	const [typed, edited] = liveRipples([...initial, ...ripple], [{ at: at(90), text: "make it 60 mm wide" }, fromFile], T0 + 200_000)
+	assert.equal(typed.file, null)
+	assert.deepEqual(edited.file, { name: "pins.h", path: "firmware/rev-7/include/pins.h", revision: 7, items: ["I2C_SDA GPIO8 → GPIO4"] })
+})

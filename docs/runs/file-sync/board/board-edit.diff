@@ -1,0 +1,25 @@
+--- board.kicad_pcb.generated
++++ board.kicad_pcb.edited
+@@ -5823,18 +5823,18 @@
+   )
+   (gr_line
+     (start 75 115)
+-    (end 125 115)
++    (end 130 115)
+     (width 0.1)
+     (layer Edge.Cuts)
+   )
+   (gr_line
+-    (start 125 115)
+-    (end 125 85)
++    (start 130 115)
++    (end 130 85)
+     (width 0.1)
+     (layer Edge.Cuts)
+   )
+   (gr_line
+-    (start 125 85)
++    (start 130 85)
+     (end 75 85)
+     (width 0.1)
+     (layer Edge.Cuts)
