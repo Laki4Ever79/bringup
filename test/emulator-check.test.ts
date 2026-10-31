@@ -36,7 +36,7 @@ test("boots the firmware that was just built and reports the revision it printed
 	const t = setup(async (_root, dir) => (dirs.push(dir), ok(6)))
 	t.built(6)
 	await waitFor(() => t.booted().length === 1)
-	assert.deepEqual(t.booted()[0], { revision: 6, booted: true, bootRevision: 6, serialTail: "ESP-ROM:esp32c3\nbringup rev 6\nSENSOR FAIL" })
+	assert.deepEqual(t.booted()[0], { revision: 6, booted: true, bootRevision: 6, serialTail: "ESP-ROM:esp32c3\nbringup rev 6\nSENSOR FAIL", backend: "qemu" })
 	assert.deepEqual(dirs, [joinPath(t.state.outDir, "firmware", "rev-6")])
 })
 

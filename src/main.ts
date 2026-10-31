@@ -1,8 +1,9 @@
 import "dotenv/config"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { missingTools } from "./report.ts"
+import { missingTools, simulationLine } from "./report.ts"
+import { simulateFirmware } from "./tools/wokwi.ts"
 import { ROOT, runDesign } from "./run.ts"
 import { driftStatusLines, readDrift } from "./runner/drift.ts"
 import { linkedStatusLines, linkRun } from "./runner/linked.ts"
@@ -10,7 +11,7 @@ import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 import { openBench } from "./bench/open.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 
-const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>]"
+const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -90,6 +91,23 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		}
 		for (const line of [...linkedStatusLines(dir), ...driftStatusLines(readDrift(dir), dir)]) console.log(line)
 		return 0
+	}
+	// `bringup simulate <runDir>`: the run's newest firmware in Wokwi, on demand (tools/wokwi.ts); simulation.json.
+	if (argv[0] === "simulate") {
+		const dir = argv[1]
+		if (!dir || !existsSync(join(dir, "firmware"))) {
+			console.error("bringup: usage: bringup simulate <runDir> (a run with a built firmware)")
+			return 1
+		}
+		const revs = readdirSync(join(dir, "firmware")).filter((d) => /^rev-\d+$/.test(d) && existsSync(join(dir, "firmware", d, ".pio/build/esp32c3/firmware.bin"))).map((d) => Number(d.slice(4)))
+		const revision = revs.length ? Math.max(...revs) : null
+		const contract = revision === null ? null : JSON.parse(readFileSync(join(dir, "contracts", `rev-${revision}.json`), "utf8"))
+		const env = await (deps.detect ?? detectEnvironment)(ROOT)
+		const r = revision === null ? { ran: false, reason: "no compiled firmware in this run" } : await simulateFirmware(env, join(dir, "firmware", `rev-${revision}`), contract)
+		writeFileSync(join(dir, "simulation.json"), JSON.stringify({ backend: "wokwi", revision, at: new Date().toISOString(), ...r }, null, 2))
+		console.log(simulationLine(dir, env).replace(/^- /, ""))
+		if (r.serial) console.log(r.serial)
+		return r.ran && !r.passed ? 2 : 0
 	}
 	// `bringup link <runDir> <dir>`: a git working copy for the run's files (runner/linked.ts).
 	if (argv[0] === "link") {

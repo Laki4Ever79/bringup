@@ -13,6 +13,10 @@ export interface Env {
 	pio: string | null
 	// Espressif's QEMU in tools/qemu, only if it actually starts (it needs tools/qemu/lib, see NOTES.md). Optional.
 	qemu?: string | null
+	// Wokwi's CLI in tools/wokwi-cli (NOTES.md), and whether WOKWI_CLI_TOKEN is set (the token itself is never kept
+	// here or printed). Optional: with both, firmware can be simulated with the sensor answering.
+	wokwi?: string | null
+	wokwiToken?: boolean
 }
 
 const local = (root: string, rel: string) => (existsSync(join(root, rel)) ? join(root, rel) : null)
@@ -33,6 +37,8 @@ export async function detectEnvironment(root: string): Promise<Env> {
 		python: local(root, ".venv/bin/python"),
 		pio: local(root, ".venv/bin/pio"),
 		qemu: qemu?.code === 0 ? qemuPath : null,
+		wokwi: local(root, "tools/wokwi-cli/wokwi-cli"),
+		wokwiToken: Boolean(process.env.WOKWI_CLI_TOKEN),
 	}
 }
 
@@ -62,5 +68,13 @@ export function describeEnv(env: Env): string {
 		`python:    ${env.python ?? "missing"}`,
 		`pio:       ${env.pio ?? "missing"}`,
 		`QEMU:      ${env.qemu ?? "missing (optional)"}`,
+		`Wokwi:     ${env.wokwi && env.wokwiToken ? `${env.wokwi} (token set)` : "not set up (optional: WOKWI_CLI_TOKEN in .env and tools/wokwi-cli, see NOTES.md)"}`,
 	].join("\n")
+}
+
+// Which firmware simulator this machine has: Wokwi (the firmware runs with the sensor answering) when its CLI is in
+// tools/ and a token is set, else Espressif's QEMU (boot only, no sensor), else none.
+export function firmwareSimBackend(env: Env): "wokwi" | "qemu" | null {
+	if (env.wokwi && env.wokwiToken) return "wokwi"
+	return env.qemu ? "qemu" : null
 }
