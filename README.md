@@ -18,7 +18,9 @@ Bringup is a demonstrator for one product family: ESP32-C3 boards built from a s
 
 **The fastest way to see it: [bringup-demo.onrender.com](https://bringup-demo.onrender.com/)**, nothing to install. A read-only dashboard of recorded
 runs (the first load after idle takes about 30 s), or press **Try it**: a stubbed scripted run you can change once
-("add a temperature/humidity sensor"). The recorded runs used the real tools; live runs there are stubbed.
+("add a temperature/humidity sensor"). The recorded runs used the real tools; live runs there are stubbed, because
+the real toolchain (KiCad in Docker, the ESP32 compiler, about 9.6 GB and minutes of full CPU per build) doesn't fit a
+free web host. [Why, in detail](docs/details.md#why-the-live-demo-is-stubbed).
 
 ## Quick look (Node 24 only, no API key, about 1 min)
 
