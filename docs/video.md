@@ -1,7 +1,7 @@
 # Demo video (about 3:00, works on mute)
 
-**The one line, at the start and the end:** "Change “one thing”, and the whole hardware design follows: board, case, firmware and parts, in parallel. Even designing from scratch is just the first change."
-(Design from scratch is the secondary point: the first design is itself just the first change.)
+**The one line, at the start and the end:** "Change “one thing”, and the whole hardware design follows: board, case, firmware and parts, in parallel."
+(Designing from a brief is the secondary point, in the body text, not in the line.)
 
 Storyboard approved by the user on 31 Oct. Built in Motion Canvas (`video/`), on top of real screen recordings.
 
