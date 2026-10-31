@@ -1,5 +1,6 @@
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { generatedNets, partPads, supportParts } from "../codegen/circuit.ts"
+import { mcuCurrents } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
 
@@ -78,6 +79,7 @@ export type ViolationKind =
 	| "sensor-unwired"
 	| "battery-short"
 	| "part-unconnected"
+	| "rail-underrated"
 
 export interface Violation {
 	kind: ViolationKind
@@ -100,7 +102,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c))
+	v.push(...unconnectedParts(c), ...underratedRails(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -307,6 +309,21 @@ export function unconnectedParts(c: ContractSnapshot): Violation[] {
 			kind: "part-unconnected" as const,
 			message: `${p.ref} ${p.mpn} (role ${p.role}) is connected to nothing: no contract pin uses it and the board generator wires nothing to it${p.role === "resistor" || p.role === "capacitor" ? ` (it adds its own passives and reuses a contract part only with the same LCSC number: ${wanted}); remove it or use one of those` : p.role === "led" ? "; a charging-state LED needs role charge-led" : ""}`,
 			fields: ["parts", "pins"] as FieldName[],
+			affects: ["architect"] as AgentRole[],
+		}))
+}
+
+// A 3.3 V rail whose peak is below what the MCU itself draws with its radio on (datasheet): the regulator would be
+// sized for less than the chip needs (real beacon run M: 80 mA against the ESP32-C3's 84 mA receiving).
+export function underratedRails(c: ContractSnapshot): Violation[] {
+	const mcu = mcuCurrents(c)
+	if (!mcu) return []
+	return (c.values.rails ?? [])
+		.filter((r) => Math.abs(r.voltageV - 3.3) < 0.05 && r.loadMa < mcu.radioMa)
+		.map((r) => ({
+			kind: "rail-underrated" as const,
+			message: `rail ${r.name} is sized for a ${r.loadMa} mA peak, below ${mcu.ref} ${mcu.mpn}'s ${mcu.radioMa} mA with its radio receiving (datasheet; it gives Wi-Fi transmit peaks up to 335 mA and no Bluetooth LE figure)`,
+			fields: ["rails", "parts"] as FieldName[],
 			affects: ["architect"] as AgentRole[],
 		}))
 }
