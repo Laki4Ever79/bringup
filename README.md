@@ -109,14 +109,6 @@ of disk. `npm run setup` checks them first and says plainly what's missing. Opti
 `.env.example`). The manual install steps, every command (link, status, simulate, tournament, MCP), the run folder and
 the tests are in [docs/details.md](docs/details.md).
 
-## Honest status
-
-- Scripted runs settle with 0 violations and take mid-run changes, with the real board, case and firmware tools.
-- Real models take mid-run changes too (run 20: a sensor swap in 75 s, 40 mm wide in 28 s), but **no real-model run
-  has passed the final brief review yet**; each report lists what's open.
-- Boards need a human review before ordering (`fab/README.txt` lists every item); the parts catalog is small.
-- The 0-vs-16 A/B experiment ([docs/experiment.md](docs/experiment.md)) used scripted agents with the real tools.
-
 ## Credits
 
 Prior art we credit: Odem, MeshCue Forge, Copperhead, DRCY, Engineering Studio AI; tscircuit and KiCad do the real EDA
