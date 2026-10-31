@@ -8,7 +8,7 @@ import { createCloudRelay, parseDemoArgs, runDemo, summarize, type DemoDeps } fr
 const ev = (seq: number, type: string, payload: object) => JSON.stringify({ seq, at: new Date().toISOString(), type, producerId: "x", payload }) + "\n"
 
 test("defaults: mock, logger brief, one width change 8 s after the first design settles", () => {
-	assert.deepEqual(parseDemoArgs([]), { real: false, brief: "briefs/logger.md", change: "make the board 60 mm wide", afterS: 8, port: 4317, open: true })
+	assert.deepEqual(parseDemoArgs([]), { real: false, brief: "briefs/logger.md", change: "make the board 60 mm wide", afterS: 8, port: 4317, open: true, noHardware: false })
 })
 
 test("flags override the defaults", () => {
@@ -19,6 +19,7 @@ test("flags override the defaults", () => {
 		afterS: 5,
 		port: 5000,
 		open: false,
+		noHardware: false,
 	})
 	assert.equal(parseDemoArgs(["--no-change"]).change, null)
 	assert.equal(parseDemoArgs(["--after=7.5"]).afterS, 7.5)
@@ -187,6 +188,36 @@ test("runDemo relays the run's Cloud links and the dashboard can read them", { t
 		const page = await (await fetch(r.dashboard.url)).text()
 		assert.match(page, /file\("cloud\.jsonl"\)/)
 		assert.equal((await fetch(`${r.dashboard.url}/files/cloud.jsonl`)).status, 200)
+	} finally {
+		await r.dashboard.close()
+	}
+})
+
+test("--no-hardware: the whole story with only npm ci (stubbed builders), passed to the run", { timeout: 10_000 }, async () => {
+	assert.equal(parseDemoArgs(["--no-hardware"]).noHardware, true)
+	const stub = stubLaunch(50, 200)
+	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const r = await runDemo(parseDemoArgs(["--no-hardware", "--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
+	try {
+		assert.deepEqual(stub.seen.args.extraArgs, ["--stay", "--no-hardware", "--change", "make the board 60 mm wide", "--change-delay", "8"])
+	} finally {
+		await r.dashboard.close()
+	}
+})
+
+test("the run's own notices (\"bringup: …\") reach the demo's terminal, e.g. why the change was not sent", { timeout: 10_000 }, async () => {
+	const log: string[] = []
+	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const launch: DemoDeps["launch"] = (args, hooks) => {
+		writeFileSync(join(args.outDir, "trace.jsonl"), "")
+		hooks.onStdout("bringup: mock models (no API key)\nsome other line\n")
+		hooks.onStderr?.("bringup: the design never got consistent, so the scripted change requests are not sent\n")
+		return { done: Promise.resolve({ code: 2, stderr: "" }), kill: () => {} }
+	}
+	const r = await runDemo(parseDemoArgs(["--port", "0", "--no-open"]), { launch, outRoot, log: (l) => log.push(l), openUrl: () => {} })
+	try {
+		assert.ok(log.includes("bringup: the design never got consistent, so the scripted change requests are not sent"), log.join("\n"))
+		assert.ok(!log.includes("some other line"))
 	} finally {
 		await r.dashboard.close()
 	}

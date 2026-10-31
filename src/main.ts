@@ -60,6 +60,17 @@ export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}), ...(delayS !== undefined ? { changeDelayMs: delayS * 1000 } : {}), ...(argv.includes("--stay") ? { stay: true } : {}) }
 }
 
+// A run started by the hub or the demo (spawn-run.ts) has a stdin pipe from it: when that closes, its parent is
+// gone, so a run that stays up ends instead of lingering. null when there is no such pipe (started by hand).
+export function parentGone(stdin: NodeJS.ReadableStream, env: Record<string, string | undefined>): Promise<void> | null {
+	if (env.BRINGUP_PARENT_PIPE !== "1") return null
+	return new Promise((resolve) => {
+		stdin.once("end", () => resolve())
+		stdin.once("close", () => resolve())
+		stdin.resume()
+	})
+}
+
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
 // its builder reports artifact.failed and the run ends unsettled with a report naming what to install.
 export async function main(argv: string[], deps: { detect?: (root: string) => Promise<Env> } = {}): Promise<number> {
@@ -86,6 +97,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		if (!args.stay && !args.bench) return
 		process.once("SIGINT", () => resolve())
 		process.once("SIGTERM", () => resolve())
+		void parentGone(process.stdin, process.env)?.then(resolve)
 	})
 	if (args.stay) console.log("bringup: --stay; after the design settles the run keeps taking change requests. Ctrl-C ends it.")
 	let bench: Parameters<typeof runDesign>[0]["bench"]

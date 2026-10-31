@@ -109,3 +109,18 @@ test("parseArgs reads --bench-no-imu for the fake bench (a bare S3 with --bench-
 	const a = parseArgs([brief, "--bench", "fake", "--bench-no-meter", "--bench-no-imu"]) as { benchNoMeter?: boolean; benchNoImu?: boolean }
 	assert.deepEqual([a.benchNoMeter, a.benchNoImu], [true, true])
 })
+
+test("a run that stays up ends when the process that started it goes (its stdin pipe closes), not otherwise", async () => {
+	const { PassThrough } = await import("node:stream")
+	const { parentGone } = await import("../src/main.ts")
+	const pipe = new PassThrough()
+	let gone = false
+	void parentGone(pipe, { BRINGUP_PARENT_PIPE: "1" })?.then(() => (gone = true))
+	await new Promise((r) => setTimeout(r, 20))
+	assert.equal(gone, false)
+	pipe.end()
+	await new Promise((r) => setTimeout(r, 20))
+	assert.equal(gone, true)
+	// Started by hand from a terminal: no parent pipe to watch.
+	assert.equal(parentGone(new PassThrough(), {}), null)
+})
