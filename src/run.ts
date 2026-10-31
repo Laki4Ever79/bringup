@@ -14,7 +14,8 @@ import { inferenceConfig } from "./inference/models.ts"
 import { mockScripts } from "./inference/scripts.ts"
 import { writeReport } from "./report.ts"
 import { createEmulatorCheck, emulatorEnabled } from "./agents/emulator.ts"
-import { watchRequests } from "./runner/requests.ts"
+import { appendRequest, watchRequests } from "./runner/requests.ts"
+import { createRippleRecorder } from "./runner/ripple.ts"
 import { watchDecisions } from "./runner/decisions.ts"
 import { loadCatalog } from "./tools/parts-search.ts"
 import { createEngineer } from "./agents/engineer.ts"
@@ -51,6 +52,10 @@ export interface RunOptions {
 		until: Promise<void>
 		timings?: Pick<BenchOptions, "windowMs" | "liveCheckMs" | "bootTimeoutMs" | "batchMs">
 	}
+	// Engineer change requests sent one at a time: the first once the design has settled, each next one once it has
+	// settled again (or after changeTimeoutMs, for a request that changed nothing). The run ends after the last.
+	changes?: string[]
+	changeTimeoutMs?: number
 	// Injected fetch for bom.json's live stock lookups (tests).
 	bomFetch?: typeof fetch
 }
@@ -69,6 +74,13 @@ export const ROOT = fileURLToPath(new URL("..", import.meta.url))
 const EMULATOR_GRACE_MS = 30_000
 // How long, after settling, the run waits for bom.json's live stock lookups to finish.
 const BOM_GRACE_MS = 15_000
+// How long a scripted change request may take to re-settle the design before the next one is sent anyway.
+const CHANGE_TIMEOUT_MS = 20 * 60_000
+
+// The whole run's time limit: 30 min for the design, plus one change timeout per scripted change request.
+export function runTimeoutMs(opts: Pick<RunOptions, "timeoutMs" | "changes" | "changeTimeoutMs">): number {
+	return opts.timeoutMs ?? 30 * 60_000 + (opts.changes ?? []).length * (opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
+}
 
 // Runs one design from a brief until the consistency participant reports design.settled.
 // Everything after sendMessage is event-driven; this function only waits for the outcome.
@@ -87,6 +99,8 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const cloud = startCloudSession(() => state.getParticipants())
 	if (cloud) joinRuntime(cloud.participant)
 	joinRuntime(createActivityParticipant())
+	// Keeps <outDir>/ripples.json current once a change request arrives.
+	joinRuntime(createRippleRecorder(opts.outDir))
 
 	let resolveSettled: (s: Settlement) => void = () => {}
 	const settledPromise = new Promise<Settlement>((r) => (resolveSettled = r))
@@ -96,15 +110,30 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
 		return writeReport(opts.outDir, state, env, settled, { noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench) })
 	}
+	// Scripted change requests (--change): each goes out through requests.jsonl, like one from the CLI or the MCP.
+	const changes = [...(opts.changes ?? [])]
+	let changesDone: () => void = () => {}
+	const allChanged = new Promise<void>((r) => (changesDone = r))
+	let changeTimer: NodeJS.Timeout | null = null
+	const nextChange = () => {
+		if (changeTimer) clearTimeout(changeTimer)
+		const text = changes.shift()
+		if (text === undefined) return changesDone()
+		appendRequest(opts.outDir, text)
+		// A request the agents can't map to a field changes nothing, so the design never settles again: move on.
+		changeTimer = setTimeout(nextChange, opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
+	}
+	const scripted = changes.length > 0
 	const onSettled = (s: Settlement) => {
 		const first = latest === null
 		latest = s
-		if (opts.bench) writeOutputs(s.settled)
+		if (opts.bench || scripted) writeOutputs(s.settled)
 		if (first) resolveSettled(s)
+		if (scripted) nextChange()
 	}
 
 	joinRuntime(createChangeDesk())
-	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, keepRunning: Boolean(opts.bench), onSettled }))
+	joinRuntime(createConsistencyParticipant({ quietMs: 1500, maxRevisions: opts.maxRevisions ?? MAX_REVISIONS, keepRunning: Boolean(opts.bench) || scripted, onSettled }))
 	let bench: Bench | null = null
 	if (opts.bench) {
 		bench = createBench({ ...(await opts.bench.open()), ...opts.bench.timings })
@@ -128,15 +157,20 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	emit(makeEvent("run.started", engineer.getId(), { review: state.review.enabled, engineerApproval: state.engineerApproval, noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench) }), engineer.getId())
 	sendMessage(opts.brief, engineer.getId())
 	// Mid-run change requests (tsx src/request.ts, MCP request_change) arrive as further engineer messages.
-	const requests = watchRequests(opts.outDir, (r) => sendMessage(r.text, engineer.getId()))
+	let requestCount = 0
+	const requests = watchRequests(opts.outDir, (r) => {
+		emit(makeEvent("change.requested", engineer.getId(), { id: `req-${++requestCount}`, text: r.text }), engineer.getId())
+		sendMessage(r.text, engineer.getId())
+	})
 	// The engineer's Approve/Reject votes on held changes (dashboard, or appended by hand).
 	const decisions = watchDecisions(opts.outDir, (d) => engineer.decide(d))
 
-	const timeoutMs = opts.timeoutMs ?? 30 * 60_000
-	const outcome = await Promise.race([
-		settledPromise,
-		new Promise<Settlement>((r) => setTimeout(() => r({ settled: false, revision: state.contract.revision }), timeoutMs).unref()),
-	])
+	const timeoutMs = runTimeoutMs(opts)
+	const deadline = new Promise<Settlement>((r) => setTimeout(() => r({ settled: false, revision: state.contract.revision }), timeoutMs).unref())
+	const outcome = await Promise.race([settledPromise, deadline])
+	// Scripted changes, until the last one has settled or the run's time is up.
+	if (scripted) await Promise.race([allChanged, deadline])
+	if (changeTimer) clearTimeout(changeTimer)
 	// Bring-up: change requests keep arriving and the bench keeps flashing until the engineer stops the run.
 	if (opts.bench) await opts.bench.until
 	requests.close()
