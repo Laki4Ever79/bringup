@@ -193,7 +193,9 @@ static void serveBle(uint32_t latest) {
 	NimBLEService *service = server->createService(BLE_SERVICE_UUID);
 	service->createCharacteristic(BLE_LATEST_UUID, NIMBLE_PROPERTY::READ)->setValue(latest);
 	service->createCharacteristic(BLE_COUNT_UUID, NIMBLE_PROPERTY::READ)->setValue(historyCount);
-	service->createCharacteristic(BLE_OFFSET_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE)->setCallbacks(new OffsetCallbacks());
+	NimBLECharacteristic *offset = service->createCharacteristic(BLE_OFFSET_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE);
+	offset->setValue(historyOffset = 0);  // reads 0 until a phone writes one (it read empty on the S3)
+	offset->setCallbacks(new OffsetCallbacks());
 	service->createCharacteristic(BLE_HISTORY_UUID, NIMBLE_PROPERTY::READ)->setCallbacks(new HistoryCallbacks());
 	service->start();
 	NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
