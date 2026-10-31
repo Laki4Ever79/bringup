@@ -66,6 +66,20 @@ export const CHANGES: ExperimentChange[] = [
 		},
 	},
 	{
+		// Only the parts list changes: the rails keep the AP2112K's 600 mA rating, which no check compares with the
+		// part (the 120 mA peak fits the XC6206's 200 mA either way).
+		id: "ldo-swap",
+		label: "Swap the LDO for the low-Iq XC6206 (3 pins, no EN)",
+		receiver: "firmware",
+		proposals: (s) => [
+			{
+				field: "parts",
+				value: value(s, "parts").map((p) => (p.role === "ldo" ? { ...p, mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] } : p)),
+				by: "parts",
+			},
+		],
+	},
+	{
 		id: "add-button",
 		label: "Add a user button (GPIO3, reachable through the case)",
 		receiver: "firmware",
