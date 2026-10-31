@@ -15,7 +15,7 @@
 
 https://bringup-demo.onrender.com/: a read-only dashboard of the recorded runs (add a sensor, the real-model runs, the
 linked git folder…); the first load after idle takes about 30 s. The recorded runs used the real tools; live runs
-there are stubbed. Write actions are refused.
+there are stubbed. Or press **Try it**: a stubbed scripted run you can change once. Other write actions are refused.
 
 ## Description (about 150 words)
 
