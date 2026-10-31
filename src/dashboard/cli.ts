@@ -1,17 +1,34 @@
 import { randomBytes } from "node:crypto"
-import { existsSync } from "node:fs"
-import { networkInterfaces } from "node:os"
+import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { networkInterfaces, tmpdir } from "node:os"
+import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { startRunProcess } from "../runner/spawn-run.ts"
 import { notifierFromEnv, type TraceNotifier } from "./notify.ts"
+import { preparePublicRoot, PublicGate } from "./public.ts"
 import { listenWithFallback, serveDashboard, serveHub } from "./server.ts"
 
 // npx tsx src/dashboard/cli.ts                 the hub over out/: start runs, reopen old ones
 // npx tsx src/dashboard/cli.ts out/<runId>     the same hub, opened on that run
 // --lan                                        also listen on the network, for a phone's Approve/Reject (see notify.ts)
+// --public                                     the public demo (public.ts): read-only recorded runs + Try it, on $PORT
 const args = process.argv.slice(2)
+if (args.includes("--public")) {
+	// No keys on a public server, whatever the host's environment holds: Try it runs are scripted (--mock) anyway.
+	for (const k of Object.keys(process.env)) if (/_API_KEY$|^ANTHROPIC_BASE_URL$|^WOKWI_CLI_TOKEN$|^BRINGUP_NTFY_/.test(k)) delete process.env[k]
+	process.env.MOZAIK_CREDENTIALS_FILE = "/dev/null"
+	const outRoot = mkdtempSync(join(tmpdir(), "bringup-public-"))
+	const runs = preparePublicRoot(outRoot)
+	const briefPath = fileURLToPath(new URL("../../briefs/beacon.md", import.meta.url))
+	const dash = await serveHub({ outRoot, port: Number(process.env.PORT ?? 4317), launch: startRunProcess, public: { gate: new PublicGate(), briefPath } })
+	console.log(`public demo: ${dash.url.replace("127.0.0.1", "0.0.0.0")} serving ${runs.length} recorded runs (${runs.join(", ")}) from ${outRoot}`)
+	for (const signal of ["SIGINT", "SIGTERM"] as const) {
+		process.on(signal, () => void dash.close().then(() => (rmSync(outRoot, { recursive: true, force: true }), process.exit(0))))
+	}
+	await new Promise(() => {})
+}
 const lan = args.includes("--lan")
-const [runDir, port] = args.filter((a) => a !== "--lan")
+const [runDir, port] = args.filter((a) => a !== "--lan" && a !== "--public")
 if (runDir && !existsSync(runDir)) {
 	console.error("usage: tsx src/dashboard/cli.ts [out/<runId>] [port] [--lan]")
 	process.exit(1)
