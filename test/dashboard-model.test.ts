@@ -189,3 +189,14 @@ test("DRC with no errors is clean even with KiCad's warnings (silkscreen, librar
 	assert.equal(pill.state, "ok")
 	assert.match(pill.items.join("\n"), /0 errors · 92 warnings/)
 })
+
+test("the composer's prompt matches the run: settled and waiting, unsettled and waiting, live, bench, ended", async () => {
+	const { composerPrompt } = await import("../src/dashboard/model.js")
+	assert.match(composerPrompt("waiting", { settled: true }), /^Settled\. Now change one thing/)
+	assert.match(composerPrompt("waiting", { settled: false }), /^Not consistent yet/)
+	assert.doesNotMatch(composerPrompt("waiting", { settled: false }), /Settled\./)
+	assert.match(composerPrompt("live", null), /while the agents work/)
+	assert.match(composerPrompt("bench", { settled: true }), /reflashes the board/)
+	assert.match(composerPrompt("stopped", { settled: true }), /stopped/)
+	assert.match(composerPrompt("settled", { settled: false }), /ended/)
+})

@@ -666,7 +666,7 @@
 	import { liveRipples, mergeRipples, resultLine, runStart, whatMoved } from "/ripple.js"
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { matchTrial, proofSummary } from "/proof.js"
-	import { AGENT_COLORS, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -809,15 +809,13 @@
 		function syncChangeBar() {
 			const input = $("change-input")
 			const state = phase().bar
-			if (state === barKey) return
-			barKey = state
+			// The prompt also depends on whether the design settled clean.
+			const key = `${state}|${S.settled?.settled}`
+			if (key === barKey) return
+			barKey = key
 			input.disabled = !phase().open
 			setBarButtons(input.disabled)
-			if (state === "bench") input.placeholder = "Bring-up: ask for a change; a firmware change reflashes the board (try “blink faster when tilted”)"
-			else if (state === "waiting") input.placeholder = "Settled. Now change one thing: make it 40 mm wide, swap a part, move a connector…"
-			else if (state === "stopped") input.placeholder = "The run was stopped. Start a new design to change it."
-			else if (state === "settled") input.placeholder = "This run has ended. Start a new design to change it."
-			else input.placeholder = "Make it 40 mm wide, swap a part, move a connector… while the agents work"
+			input.placeholder = composerPrompt(state, S.settled)
 			schedule()
 		}
 		function setBarButtons(off) { for (const b of [$("send-btn"), ...$("suggest").querySelectorAll("button")]) b.disabled = off }

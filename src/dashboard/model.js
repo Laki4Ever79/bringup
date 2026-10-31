@@ -417,3 +417,12 @@ export function runPhase({ settled, stay, alive, benchLive, stopped }) {
 	if (stay && alive) return { bar: "waiting", pill: `${word} · waiting for a change`, open: true }
 	return { bar: "settled", pill: word, open: false }
 }
+
+// The composer's placeholder for the run's phase (runPhase().bar), honest about an unsettled design.
+export function composerPrompt(bar, settled) {
+	if (bar === "bench") return "Bring-up: ask for a change; a firmware change reflashes the board (try “blink faster when tilted”)"
+	if (bar === "waiting") return settled?.settled === false ? "Not consistent yet: ask for a change that fixes it (the checks say what is wrong), or try another…" : "Settled. Now change one thing: make it 40 mm wide, swap a part, move a connector…"
+	if (bar === "stopped") return "The run was stopped. Start a new design to change it."
+	if (bar === "settled") return "This run has ended. Start a new design to change it."
+	return "Make it 40 mm wide, swap a part, move a connector… while the agents work"
+}

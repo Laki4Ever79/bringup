@@ -420,7 +420,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	}, HEARTBEAT_MS)
 
 	await new Promise<void>((ok, fail) => {
-		server.once("error", fail)
+		// A port that is taken (EADDRINUSE): stop the polling timers too, or they keep the process alive for nothing.
+		server.once("error", (error) => {
+			clearInterval(timer)
+			clearInterval(heartbeat)
+			fail(error)
+		})
 		server.listen(port, "127.0.0.1", () => ok())
 	})
 	port = (server.address() as AddressInfo).port
@@ -443,6 +448,19 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			for (const run of live.values()) if (run.exit === null) run.kill?.()
 			await new Promise<void>((ok) => server.close(() => ok()))
 		},
+	}
+}
+
+// Starts a dashboard on `port`; if another process holds it (another hub, npm run demo), on a free port instead,
+// saying so, rather than dying with EADDRINUSE.
+export async function listenWithFallback(start: (port: number) => Promise<Dashboard>, port: number, log: (line: string) => void): Promise<Dashboard> {
+	try {
+		return await start(port)
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error
+		const dash = await start(0)
+		log(`dashboard: port ${port} is taken (another dashboard or npm run demo?), so this one is on ${new URL(dash.url).port}`)
+		return dash
 	}
 }
 

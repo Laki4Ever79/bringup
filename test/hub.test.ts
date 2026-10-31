@@ -335,3 +335,21 @@ test("the run list's revision is the contract's, not a bench board's recorded re
 		await hub.close()
 	}
 })
+
+test("the dashboard CLI's port: a taken port falls back to a free one and says so, instead of a stack trace", async () => {
+	const { createServer } = await import("node:net")
+	const { listenWithFallback } = await import("../src/dashboard/server.ts")
+	const blocker = createServer()
+	await new Promise<void>((r) => blocker.listen(0, "127.0.0.1", () => r()))
+	const taken = (blocker.address() as { port: number }).port
+	const log: string[] = []
+	const hub = await listenWithFallback((port) => serveHub({ outRoot: outRoot(), port }), taken, (l) => log.push(l))
+	try {
+		assert.notEqual(new URL(hub.url).port, String(taken))
+		assert.equal((await fetch(`${hub.url}/api/runs`)).status, 200)
+		assert.match(log.join("\n"), new RegExp(`port ${taken} is taken`))
+	} finally {
+		await hub.close()
+		blocker.close()
+	}
+})
