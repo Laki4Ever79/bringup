@@ -114,7 +114,7 @@ export function firmwareFacts(s: ContractSnapshot): string[] {
 	const pins = s.values.pins ?? []
 	const button = pins.find((p) => p.signal === "BUTTON" && p.gpio >= 0 && p.gpio <= 5)
 	const buttonFact = button
-		? `- Firmware button: BUTTON on GPIO${button.gpio} wakes it from deep sleep early (pressed = low, to GND).`
+		? `- Firmware button: BUTTON on GPIO${button.gpio} wakes it from deep sleep early (pressed = low, to GND). A button wake runs the same wake as the timer: it blinks and starts BLE advertising at once, not at the next period.`
 		: "- Firmware button: the firmware wakes on a pin named exactly BUTTON on GPIO0..5 (the ESP32-C3's deep-sleep wake pins); this design has none, so no button wakes it."
 	if (!(pins.some((p) => p.signal === "I2C_SDA") && pins.some((p) => p.signal === "I2C_SCL")))
 		return [
@@ -202,6 +202,7 @@ export async function reviewMessage(env: Env | undefined, revision: number, roun
 		"```json",
 		JSON.stringify(snapshot.values, null, 2),
 		"```",
+		...(snapshot.values.behavior ? ["Note: the behavior field is the bench demo build's blink and tilt settings, not the product's status LED; the product firmware ignores it (see the firmware facts below)."] : []),
 		"",
 		...partFactsSection(snapshot),
 		"",

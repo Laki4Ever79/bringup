@@ -83,6 +83,9 @@ export interface RailDraw {
 	source: "rail" | "measured" | "duty cycle" | null
 	// The firmware revision the bench measured it on, when source is "measured".
 	measuredRevision?: number
+	// Its stated average equals this lower-voltage rail's: read as including that rail's loads (the input of the LDO
+	// that feeds it), so it is counted once, not twice (real run 20).
+	sameAs?: string
 }
 
 export interface PowerEstimate {
@@ -117,9 +120,15 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 		if (dutyCycle) return { name: r.name, peakMa: r.loadMa, averageMa: dutyCycleAverageMa(dutyCycle, r.loadMa), source: "duty cycle" }
 		return { name: r.name, peakMa: r.loadMa, averageMa: null, source: null }
 	})
+	for (const d of draws) {
+		if (d.source !== "rail" || !(d.averageMa! > 0)) continue
+		const v = fed.find((r) => r.name === d.name)!.voltageV
+		const lower = draws.find((o) => o !== d && o.source === "rail" && o.averageMa === d.averageMa && fed.find((r) => r.name === o.name)!.voltageV < v)
+		if (lower) d.sameAs = lower.name
+	}
 	const busiest = fed.reduce<Rail | null>((best, r) => (best === null || r.loadMa > best.loadMa ? r : best), null)
 	const dutyCycleMa = dutyCycle && busiest ? dutyCycleAverageMa(dutyCycle, busiest.loadMa) : null
-	const averageMa = draws.length > 0 && draws.every((d) => d.averageMa !== null) ? draws.reduce((sum, d) => sum + d.averageMa!, 0) : null
+	const averageMa = draws.length > 0 && draws.every((d) => d.averageMa !== null) ? draws.reduce((sum, d) => sum + (d.sameAs ? 0 : d.averageMa!), 0) : null
 	const fromBrief = capacityFromBrief(brief)
 	const capacityMah = fromBrief ?? requirements?.batteryMah ?? null
 	const regulators = parts.filter((p) => p.role === "ldo").map((p) => regulatorIq(p))
@@ -154,7 +163,8 @@ export function powerBudgetLines(e: PowerEstimate): string[] {
 	if (e.rails.length > 0) out.push("- Battery-fed rails (each average is that rail's own loads, so they add up):")
 	for (const r of e.rails) {
 		const from = r.source === "measured" ? `measured on bench${r.measuredRevision !== undefined ? `, rev ${r.measuredRevision}` : ""}` : `from the ${r.source}`
-		out.push(`- Rail ${r.name}: peak ${ma(r.peakMa)}, average ${r.averageMa === null ? "not stated" : `${ma(r.averageMa)} (${from})`}`)
+		const same = r.sameAs ? `; the same as ${r.sameAs}'s, so read as including ${r.sameAs}'s loads and counted once` : ""
+		out.push(`- Rail ${r.name}: peak ${ma(r.peakMa)}, average ${r.averageMa === null ? "not stated" : `${ma(r.averageMa)} (${from}${same})`}`)
 	}
 	if (e.dutyCycle) {
 		const d = e.dutyCycle
@@ -167,7 +177,7 @@ export function powerBudgetLines(e: PowerEstimate): string[] {
 	if (e.days === null) {
 		out.push(`- Estimated battery life: ${batteryLifeSummary(e)}`)
 	} else {
-		const terms = [...e.rails.map((r) => ma(r.averageMa!)), ...(e.regulatorIqUa > 0 ? [ma(e.regulatorIqUa / 1000)] : [])]
+		const terms = [...e.rails.filter((r) => !r.sameAs).map((r) => ma(r.averageMa!)), ...(e.regulatorIqUa > 0 ? [ma(e.regulatorIqUa / 1000)] : [])]
 		out.push(`- Estimated battery life: ${e.capacityMah} mAh / (${terms.join(" + ")}) / 24 h = ${batteryLifeSummary(e)}`)
 	}
 	return out
@@ -200,6 +210,6 @@ export function dutyCycleCheckLines(e: PowerEstimate): string[] {
 		`- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs). A phone that connects keeps it awake up to ${connectedS} s, which this average leaves out.`,
 		`- Asleep the rest of the ${d.periodS} s period: ${mcuSleep}${ldo}`,
 		life,
-		"- Assumes the firmware sleeps between readings as requirements.dutyCycle says, and the peak current for the whole wake (an upper bound).",
+		"- Assumes the firmware sleeps between readings as requirements.dutyCycle says, and the peak current for the whole wake (an upper bound on current). So a result at or above the target shows the target is met; one below it does not by itself show it is missed: then judge the stated average against the parts.",
 	]
 }
