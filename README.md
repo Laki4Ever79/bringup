@@ -3,7 +3,7 @@
 **Change one thing, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still
 consistent.**
 
-> **Quick look: needs only Node 24, no API key; about 1 min for `npm ci`, then about 10 s.**
+> **Quick look: needs only Node 24, no API key; about 1 min for `npm ci`, then 10–20 s.**
 > ```bash
 > git clone https://github.com/Laki4Ever79/bringup && cd bringup && npm ci
 > npm run bringup -- briefs/logger.md --mock --no-hardware --out out/quick
@@ -193,15 +193,17 @@ The Quick look above needs only Node. The full toolchain adds real board, enclos
 ```bash
 npm ci
 uv venv --python 3.12 .venv && uv pip install platformio==6.2.0 build123d==0.13.0
-npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4    # pinned: tscircuit releases daily
-docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngspice; 0.8 GB download
-.venv/bin/pio pkg install -d templates/fw                 # pre-downloads the ESP32-C3 toolchain into ~/.platformio
+npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4    # pinned: tscircuit releases daily; ERESOLVE peer warnings are expected
+docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngspice; 0.8 GB download, a few minutes
+.venv/bin/pio pkg install -d templates/fw -e esp32c3      # ESP32-C3 toolchain + libraries into ~/.platformio, about 4 min
 ```
 
 Repo-local installs go in `.venv/` and `tools/node/`, both gitignored. The exceptions are PlatformIO's package cache
 (`~/.platformio`) and Docker's image store. The last command downloads the toolchain up front, so the first run
 doesn't stall on it. Without it, the first firmware build downloads it and takes several minutes; later builds take
-about 5 s.
+about 5 s. `-e esp32c3` matters: without it PlatformIO also fetches the ESP32-S3 toolchain for the bench build (5.7 GB
+instead of about 2.8 GB). Checked on a fresh clone on 31 Oct: every step exits 0, and `--mock` then settles in about
+80 s.
 
 Optional: Espressif QEMU, to boot the built firmware headless. Install steps are in `NOTES.md` ("Firmware emulation").
 
@@ -213,7 +215,7 @@ message, not a crash.
 ## Run
 
 ```bash
-# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. About 10 s (5 s on an idle machine).
+# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. 10–20 s (5 s on an idle machine).
 npm run bringup -- briefs/logger.md --mock --no-hardware
 
 # Skip the brief reviewer gate (the consistency and grounding checks still run)
