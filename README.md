@@ -72,6 +72,11 @@ It never overwrites your edits; Revert restores the committed bytes; commits are
 models (`docs/runs/file-sync/real/`), a `pins.h` edit reached the architect as an engineer request and was applied 5 s
 after the save, and the final design kept it; that run then churned and ended unsettled.
 
+**…and it runs in a simulator** (`docs/runs/wokwi/`). After "add a temperature/humidity sensor", `npm run bringup --
+simulate <runDir>` ran the new firmware in Wokwi, on a circuit generated from the contract: it printed `SENSOR OK 21.50 C
+48.0 %RH` and stored the reading. The firmware the agents generated reads the sensor they chose, on the pins they
+assigned. (Wokwi has no SHT40, so a small custom chip answers the datasheet's commands with fixed values.)
+
 ### 4. All the way to a real board
 
 <!-- IMG docs/img/bench.png: a still of the ESP32-S3 on the desk, tilted, with the measured blink. -->
@@ -272,6 +277,11 @@ instead of about 2.8 GB). Checked on a fresh clone on 31 Oct: every step exits 0
 
 Optional: Espressif QEMU, to boot the built firmware headless. Install steps are in `NOTES.md` ("Firmware emulation").
 
+Optional: **Wokwi firmware simulation**, to run the firmware with a simulated sensor. Create a free token at
+[wokwi.com/dashboard/ci](https://wokwi.com/dashboard/ci), add `WOKWI_CLI_TOKEN=…` to `.env`, and install the CLI as
+`NOTES.md` describes ("Optional: Wokwi firmware simulation"). The free plan has 50 simulation minutes a month, so
+simulation runs on demand, not on every build.
+
 **Environment detection** (`src/tools/env.ts`). At start, Bringup picks a backend for each tool from what the machine
 has, with repo-local tools first: `tools/node/.../tsci`, `.venv/bin/python`, `.venv/bin/pio`, and a local `kicad-cli`
 or else the `kicad/kicad:10.0` Docker image. A missing tool turns into an `artifact.failed` event with a clear
@@ -317,6 +327,14 @@ Each change gets a row in `ripples.json` and in the report's "Change requests" t
 the agents that reworked something, the ones that only checked it, the ones that stayed idle, and the time until the
 design was consistent again. The scripted agents understand "N mm wide" and "blink faster when tilted". Use real
 models for anything else.
+
+**Simulate the firmware with its sensor** (optional; needs `WOKWI_CLI_TOKEN`, see Install). The simulated circuit is
+generated from the contract: the ESP32-C3 plus the sensor the agents chose, on the pins they assigned. Without a token
+it reports "not run" and nothing fails.
+
+```bash
+npm run bringup -- simulate <runDir>
+```
 
 **Link a folder** (it becomes a git repo with one commit per settled revision; edit files there):
 
@@ -439,7 +457,8 @@ chip and PCB tools but not the case or firmware. The A/B experiment above measur
 - **Small boards only.** Placement and routing are proven on 45–70 × 30 mm boards with up to about 20 parts.
 - **QEMU is optional.** It is not installed by default; without it the report says "not run" and the QEMU tests
   skip. Installed, every run boots its newest firmware to `bringup rev N` (event `firmware.booted`). There is no SHT40
-  in emulation, so the firmware then prints `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token. The
+  in emulation, so the firmware then prints `SENSOR FAIL`. With a Wokwi token, `simulate` runs the firmware with a
+  stand-in sensor chip that answers with fixed values (not a real sensor), on demand rather than on every build. The
   product firmware deep-sleeps between readings; QEMU doesn't emulate the timer wake, so that part is untested.
 - **BLE is verified on a dev board, not on the design.** The product firmware advertises for the wake window the
   battery maths assumes and serves the latest reading and the history over a GATT service (NimBLE 2.5.2). On the
