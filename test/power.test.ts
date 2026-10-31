@@ -214,10 +214,15 @@ test("dutyCycleCheckLines derives battery life from the duty cycle, independent 
 	const text = dutyCycleCheckLines(estimatePower(s, "")).join("\n")
 	assert.match(text, /^Battery-life check \(computed in code from the duty cycle, not from the rails' stated averages\):$/m)
 	assert.match(text, /^- Each reading: 100 ms awake at up to 80 mA \(the busiest battery-fed rail's peak\) = 8 mC$/m)
+	assert.match(text, /^- The firmware's wake: the 30 ms reading, then 70 ms of BLE advertising \(BLE_ADVERTISE_MS, from activeMs\)\. A phone that connects keeps it awake up to 30 s, which this average leaves out\.$/m)
 	assert.match(text, /^- Asleep the rest of the 300 s period: 5 µA \(MCU deep sleep\) \+ 1 µA \(LDO quiescent\)$/m)
 	// 100/300000 × 80 mA + (1 − 1/3000) × 0.005 mA + 0.001 mA = 0.0327 mA; 500 mAh / 0.0327 mA / 24 h = 638 days
 	assert.match(text, /^- Average 0\.0327 mA; 500 mAh \/ 0\.0327 mA \/ 24 h = 638 days vs target 180 days$/m)
 	assert.match(text, /^- Assumes the firmware sleeps between readings as requirements\.dutyCycle says, and the peak current for the whole wake \(an upper bound\)\.$/m)
 	const none = fixtureContract()
 	assert.deepEqual(dutyCycleCheckLines(estimatePower(none, "")), ["Battery-life check: not computed (no requirements.dutyCycle)"])
+	// A wake too short for the reading and the shortest advertising window: the check charges what the firmware does.
+	s.values.requirements = { ...s.values.requirements!, dutyCycle: { activeMs: 40, periodS: 300, sleepUa: 5 } }
+	const short = dutyCycleCheckLines(estimatePower(s, "")).join("\n")
+	assert.match(short, /^- Each reading: 80 ms awake \(requirements\.dutyCycle\.activeMs says 40 ms\) at up to 80 mA \(the busiest battery-fed rail's peak\) = 6\.4 mC$/m)
 })
