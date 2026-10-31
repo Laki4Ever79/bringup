@@ -145,12 +145,12 @@
 	#rip-fields li.missing { opacity: .55; }
 
 	#agents { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 6px; min-height: 0; }
-	.tile { position: relative; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 2px; padding: 7px 10px 6px 14px; border: 1.5px solid var(--ink); background: var(--paper); cursor: pointer; min-width: 0; transition: opacity 400ms var(--ease), background 300ms var(--ease), color 300ms var(--ease); }
+	.tile { position: relative; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 1px; padding: 5px 10px 3px 14px; border: 1.5px solid var(--ink); background: var(--paper); cursor: pointer; min-width: 0; transition: opacity 400ms var(--ease), background 300ms var(--ease), color 300ms var(--ease); }
 	.tile::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--ac); }
 	.tile .top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-	.tile .name { font: 700 clamp(16px, 1.25vw, 22px)/1 var(--display); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.tile .name { font: 700 clamp(16px, 1.25vw, 22px)/.95 var(--display); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.tile .status { margin-left: auto; font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: var(--ink-2); }
-	.tile .task { font-size: 14px; line-height: 1.25; color: var(--ink-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+	.tile .task { align-self: start; font-size: 14px; line-height: 1.15; color: var(--ink-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 	.tile.woke { background: var(--ink); color: var(--paper); }
 	.tile.woke .task { color: var(--paper); } .tile.woke .status { color: var(--signal); }
 	.tile.woke.done .status { color: #7fe0a8; }
