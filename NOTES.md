@@ -186,10 +186,10 @@ to `<runDir>/simulation.json` and the report. Without the pieces below it is ski
    ```
 3. The sensor stand-ins: Wokwi has no SHT40 or SHTC3, so `templates/wokwi/chips/*.chip.c` are custom chips that answer
    each sensor's I2C commands with a fixed reading. Compile them to WebAssembly into `tools/wokwi-cli/chips/` with
-   Wokwi's clang image (not yet verified on this machine):
+   the CLI itself (verified here, 31 Oct). On first use it downloads a WASI-SDK into `~/.wokwi` (about 360 MB) and
+   `wokwi-api.h` beside the sources (gitignored):
    ```bash
    mkdir -p tools/wokwi-cli/chips
-   for c in sht40 shtc3; do docker run --rm -u $(id -u):$(id -g) -v "$PWD/templates/wokwi/chips":/src -v "$PWD/tools/wokwi-cli/chips":/out \
-     wokwi/builder-clang-wasm clang --target=wasm32-unknown-wasi -nostartfiles -Wl,--import-memory -Wl,--export-table \
-     -Wl,--no-entry -Werror -o /out/$c.chip.wasm /src/$c.chip.c; done
+   for c in sht40 shtc3; do tools/wokwi-cli/wokwi-cli chip compile -o tools/wokwi-cli/chips/$c.chip.wasm templates/wokwi/chips/$c.chip.c; done
    ```
+   The version, URL, checksum and chip list live in `src/tools/wokwi.ts` (`WOKWI_CLI`, `WOKWI_CHIPS`).

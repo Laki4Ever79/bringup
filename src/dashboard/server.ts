@@ -7,6 +7,7 @@ import { basename, dirname, extname, join, resolve, sep } from "node:path"
 import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
 import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "../runner/drift.ts"
+import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
@@ -446,6 +447,11 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (!p.ok) return json(res, 409, { error: p.reason })
 				res.writeHead(200, { "content-type": "application/zip", "content-disposition": `attachment; filename="${p.name}"`, "cache-control": "no-store" })
 				return res.end(p.zip)
+			}
+			const filesOf = /^\/api\/runs\/([^/]+)\/files$/.exec(path)
+			if (filesOf) {
+				const dir = await runDir(filesOf[1])
+				return dir ? json(res, 200, { linked: linkedInfo(dir), entries: readDrift(dir).entries }) : json(res, 404, { error: "unknown run" })
 			}
 			const driftOf = /^\/api\/runs\/([^/]+)\/drift$/.exec(path)
 			if (driftOf) {

@@ -1,0 +1,8 @@
+{
+  "backend": "wokwi",
+  "revision": 10,
+  "at": "2026-10-31T13:32:48.579Z",
+  "ran": true,
+  "passed": true,
+  "serial": "Wokwi CLI v0.29.1 (0aa185144b92)\nConnected to Wokwi Simulation API 1.0.0-20261026-g45f2303e\nStarting simulation...\nESP-ROM:esp32c3-api1-20210207\r\nBuild:Feb  7 2021\r\nrst:0x1 (POWERON),boot:0xc (SPI_FAST_FLASH_BOOT)\r\nSPIWP:0xee\r\nmode:DIO, clock div:1\r\nload:0x3fcd5820,len:0x1010\r\nload:0x403cbf10,len:0x9f4\r\nload:0x403ce710,len:0x2ea4\r\nentry 0x403cbf10\r\nbringup rev 10\nSENSOR OK 21.50 C 48.0 %RH\nE (56) esp_littlefs: ./managed_components/joltwallet__littlefs/src/littlefs/lfs.c:1383:error: Corrupted dir pair at {0x0, 0x1}\r\n\r\nE (57) esp_littlefs: mount failed,  (-84)\r\nE (61) esp_littlefs: Failed to initialize LittleFS\r\nHISTORY slot 0\n\n\nExpected text found: \"HISTORY slot 0\"\nTEST PASSED.\nBLE Bringup-1001 advertising 300 ms"
+}

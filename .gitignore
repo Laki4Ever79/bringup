@@ -7,3 +7,6 @@ skidl_*
 .superpowers/
 .playwright-mcp/
 *.log
+
+# Downloaded by `wokwi-cli chip compile` (NOTES.md); not ours to commit.
+templates/wokwi/chips/wokwi-api.h
