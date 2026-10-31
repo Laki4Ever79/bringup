@@ -107,6 +107,15 @@
 	.check.off { color: var(--ink-3); border-style: dashed; } .check.off .dot { background: transparent; border: 1.5px solid var(--ink-3); }
 	.check.running .dot { background: var(--signal); --ring: rgba(255, 74, 23, .5); animation: pulse 1.6s var(--ease) infinite; }
 	#drift-btn.open-drift { background: #f3b43f; border-color: var(--ink); }
+	#drift-list h3 { margin: 6px 2px 0; font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+	#drift-list .folder { font: 500 13px/1.4 var(--mono); padding: 8px 10px; background: var(--paper-2); overflow-wrap: anywhere; }
+	#drift-list .folder b { color: var(--ink); } #drift-list .folder .dirty { color: var(--warn); font-weight: 700; }
+	.dr.folded { padding: 6px 10px; } .dr.folded .diff, .dr.folded .path { display: none; }
+	.hist-row { display: grid; grid-template-columns: 5.4em 3.6em minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 6px 2px; border-bottom: 1px dashed var(--rule); font-size: 14px; }
+	.hist-row .id { font: 600 13px/1 var(--mono); color: var(--signal-ink); }
+	.hist-row .rev { font: 500 12px/1 var(--mono); color: var(--ink-3); }
+	.hist-row .src { margin-left: 6px; font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 2px 5px; border: 1px solid var(--rule-2); color: var(--ink-2); }
+	.hist-row .src.file { border-color: var(--signal); color: var(--signal-ink); }
 	#drift-list { display: grid; align-content: start; gap: 10px; overflow-y: auto; padding: 12px; }
 	#drift-list .none { color: var(--ink-3); font-size: 14px; padding: 6px 2px; }
 	.dr { padding: 10px 12px; background: var(--paper); border: 1.5px solid var(--ink); display: grid; gap: 6px; min-width: 0; }
@@ -629,7 +638,7 @@
 		<div id="checks" class="hidden"></div>
 		<button id="brief-btn" class="pill hidden" title="The brief this run started from">Brief</button>
 		<button id="why-btn" class="pill hidden" title="What changed between revisions, who changed it, their reason and what caused it">What changed &amp; why</button>
-		<button id="drift-btn" class="pill hidden" title="Saved edits outside the design contract">Drift <b id="drift-count" class="num"></b></button>
+		<button id="drift-btn" class="pill hidden" title="The design's files: the linked folder, your edits and the git history">Files <b id="drift-count" class="num"></b></button>
 		<button id="changes-btn" class="pill hidden" title="Change control: cross-team changes and their owners' decisions">Change control <b id="changes-count" class="num"></b></button>
 		<button id="stop-btn" class="pill hidden" title="End the bring-up phase and the run">■ Stop</button>
 		<button id="feed-btn" class="pill hidden" title="Event feed">Feed</button>
@@ -765,7 +774,7 @@
 	</main>
 </div>
 <section id="brief-panel" class="sheet hidden"><div class="label">Brief<span class="right"><button class="pill" id="brief-close">Close</button></span></div><pre id="brief-text"></pre></section>
-<aside id="drift" class="drawer"><div class="label"><b>DR</b> Drift: edits outside the contract<span class="right"><button class="pill" id="drift-close">Close</button></span></div><div id="drift-list"><div class="none">No saved edits outside the contract.</div></div></aside>
+<aside id="drift" class="drawer"><div class="label"><b>FI</b> Files<span class="right"><button class="pill" id="drift-close">Close</button></span></div><div id="drift-list"><div class="none">No linked folder and no edits.</div></div></aside>
 <aside id="changes" class="drawer"><div class="label"><b>CC</b> Change control<span class="right"><button class="pill" id="changes-close">Close</button></span></div><div id="prs"><div class="none">No cross-team changes yet. When an agent wants a field it doesn't own, it opens a request here and the owner decides.</div></div></aside>
 <aside id="why" class="drawer" aria-label="What changed and why"><div class="label">What changed &amp; why<span class="right"><button class="pill" id="why-prev" title="One revision earlier">‹</button><span id="why-range" class="num"></span><button class="pill" id="why-next" title="One revision later">›</button><button class="pill" id="why-close">Close</button></span></div><div id="why-list"></div><form id="ask" autocomplete="off"><label for="ask-input" class="label"><b>?</b> Ask about these changes</label><div class="row"><input id="ask-input" maxlength="500" placeholder="Why is the board narrower? What did the review change after the request?"><button class="btn primary" id="ask-btn">Ask</button></div><div id="ask-answer" class="hidden" aria-live="polite"></div></form></aside>
 <aside id="feed" class="drawer"><div class="label">Event feed<span class="right"><button class="pill" id="feed-close">Close</button></span></div><ul id="feed-list"></ul></aside>
@@ -778,7 +787,7 @@
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { matchTrial, proofSummary } from "/proof.js"
 	import { changeLog, defaultRange, fileDrift, rippleTimeline } from "/changelog.js"
-	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, batteryLabel, checkPills, driftView, rippleMarks, scriptedBriefs, flashSteps, foldHeader, foldOpen, lowPass, setFold, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, batteryLabel, checkPills, driftView, filesView, rippleMarks, scriptedBriefs, flashSteps, foldHeader, foldOpen, lowPass, setFold, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -2080,24 +2089,24 @@
 		// ── Drift: saved edits outside the contract (drift.json, owned by the run); Adopt / Revert go to the hub ──
 		let driftHtml = ""
 		async function fetchDrift() {
-			try {
-				const res = await fetch(`/api/runs/${encodeURIComponent(id)}/drift`, { cache: "no-store" })
-				S.drift = res.ok ? await res.json() : null
-			} catch { S.drift = null }
+			const get = async (what) => { try { const r = await fetch(`/api/runs/${encodeURIComponent(id)}/${what}`, { cache: "no-store" }); return r.ok ? await r.json() : null } catch { return null } }
+			;[S.drift, S.files] = await Promise.all([get("drift"), get("files")])
 			renderDrift()
 		}
 		function renderDrift() {
-			const v = driftView(S.drift)
-			$("drift-btn").classList.toggle("hidden", v.rows.length === 0)
+			const v = filesView(S.files ? { ...S.files, live: S.drift?.live !== false } : S.drift ? { linked: null, entries: S.drift.entries, live: S.drift.live } : null)
+			$("drift-btn").classList.toggle("hidden", !v.show)
 			$("drift-btn").classList.toggle("open-drift", v.open > 0)
-			$("drift-count").textContent = v.open ? `${v.open} open` : v.rows.length ? `${v.rows.length}` : ""
-			const btn = (kind, label, a, r) => `<button class="btn" data-act="${kind}" data-id="${esc(r.id)}" ${a.enabled ? "" : "disabled"} title="${esc(a.reason)}">${label}</button>`
-			const html = v.rows.length ? v.rows.map((r) => `<div class="dr ${esc(r.status)}"><div class="top"><b>${esc(r.name)}</b><span class="k">${esc(r.status === "open" ? r.kind : r.status)}</span><span class="when">${esc(time(r.at))}</span></div>` +
-				`<div class="path" title="${esc(r.path)}">${esc(r.path)}</div>` +
-				(r.items.length ? `<div class="diff">${r.items.slice(0, 6).map((i) => `<div title="${esc(i)}">${esc(i)}</div>`).join("")}${r.items.length > 6 ? `<div class="t3">+${r.items.length - 6} more</div>` : ""}</div>` : "") +
-				`<div class="msg">${r.requestId ? `<a data-ripple="${esc(r.requestId)}">${esc(r.message)} →</a>` : esc(r.message)}</div>` +
-				(r.status === "open" ? `<div class="act">${btn("revert", "Revert", r.revert, r)}${btn("adopt", "Adopt into the design", r.adopt, r)}${!r.adopt.enabled && r.adopt.reason ? `<span class="why">${esc(r.adopt.reason)}</span>` : ""}</div>` : "") + `</div>`).join("")
-				: `<div class="none">No saved edits outside the contract.</div>`
+			$("drift-count").textContent = v.chip.replace(/^files · /, "")
+			const btn = (e) => e.action ? `<button class="btn" data-act="${e.action}" data-id="${esc(e.id)}">${e.action === "adopt" ? "Adopt into the design" : "Revert"}</button>` : ""
+			const folder = v.folder ? `<h3>Linked folder</h3><div class="folder"><b>${esc(v.folder)}</b>${v.git ? " · git" : ""}${v.dirty ? ` · <span class="dirty">uncommitted edits</span>` : " · clean"}</div>` : ""
+			const edits = v.edits.length ? `<h3>Your edits</h3>` + v.edits.map((e) => `<div class="dr ${e.open ? "open" : "adopted"}${e.folded ? " folded" : ""}"><div class="top"><b>${esc(e.name)}</b><span class="when">${esc(time(e.at))}</span></div>` +
+				`<div class="path" title="${esc(e.path)}">${esc(e.path)}</div>` +
+				(e.items.length && !e.folded ? `<div class="diff">${e.items.slice(0, 6).map((i) => `<div title="${esc(i)}">${esc(i)}</div>`).join("")}</div>` : "") +
+				`<div class="msg">${e.requestId ? `<a data-ripple="${esc(e.requestId)}">${esc(e.says)} →</a>` : esc(e.says)}</div>` +
+				(e.action ? `<div class="act">${btn(e)}</div>` : "") + `</div>`).join("") : ""
+			const history = v.history.length ? `<h3>History</h3>` + v.history.map((h) => `<div class="hist-row"><span class="id">${esc(h.id)}</span><span class="rev">rev ${h.revision}</span><span>${esc(h.subject)}<span class="src ${esc(h.source)}">${esc(h.sourceLabel)}</span></span></div>`).join("") : ""
+			const html = folder + edits + history || `<div class="none">No linked folder and no edits.</div>`
 			if (html !== driftHtml) { driftHtml = html; $("drift-list").innerHTML = html }
 			renderFileNotice()
 		}
