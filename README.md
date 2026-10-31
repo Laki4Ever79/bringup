@@ -22,6 +22,16 @@ runs (the first load after idle takes about 30 s), or press **Try it**: a stubbe
 the real toolchain (KiCad in Docker, the ESP32 compiler, about 9.6 GB and minutes of full CPU per build) doesn't fit a
 free web host. [Why, in detail](docs/details.md#why-the-live-demo-is-stubbed).
 
+## What's real, what's scripted
+
+| Part | In the quick look | In the recorded runs (`docs/runs/`) | On the live site | Locally, fully installed |
+|---|---|---|---|---|
+| Agents | scripted | scripted (most) · real models (`real-*`, `add-sensor-real*`) | scripted | scripted or real models (your key in `.env`) |
+| Board, case, firmware builds | stubbed | real tools | real tools (recorded) · stubbed (Try it) | real tools |
+| Checks (consistency, grounding) | real | real | real | real |
+| Final brief review | scripted | scripted or a real model | scripted | scripted or a real model |
+| The ESP32 board | none | bench runs only | none | `--bench real` |
+
 ## Quick look (Node 24 only, no API key, about 1 min)
 
 ```bash
