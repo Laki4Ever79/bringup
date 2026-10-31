@@ -101,22 +101,25 @@ hidden, with the reason (`test/order.test.ts`).
 ![The board panel's toolbar with the "Ready to order" button next to "Fab & print files"](img/order.png)
 
 
-## The proof: one change, with and without the shared contract
+## The proof: parallel builds, and a simulated baseline
 
-We applied 6 real changes to a settled design twice (`npm run experiment`, [docs/experiment.md](experiment.md)).
-In arm A the agents share one live design contract and Mozaik situations wake the affected ones. In arm B only the
-domain that heard the change updates, and every other team keeps working from its own copy. The same plain-code checks
-then compare what was actually built:
+We applied 6 real changes to a settled design (`npm run experiment`, [docs/experiment.md](experiment.md)), with the
+agents sharing one live design contract and Mozaik situations waking only the affected ones. Every change ended with 0
+violations. **Run in parallel, the changes were consistent again in 31–72 s; with the same builds forced to take turns,
+36–94 s.** As a **simulated baseline**, we also replayed each change with only the domain that heard it updating, as if
+every other team kept working from its own stale copy, and counted with the same checks what would no longer match:
 
-| Change | With the shared contract | Each team on its own copy: mismatches that would ship |
-|---|---|---|
-| Board 10 mm narrower | consistent again in 53 s · 2 of 7 woke · 0 violations | 4: two board holes have no standoff under them, two standoffs have no hole |
-| Board 6 mm taller | 31 s · 2 of 7 · 0 | 5: the board is 50×30 mm, the contract says 50×36 mm, and 4 hole/standoff misses |
-| USB-C to the bottom edge | 52 s · 2 of 7 · 0 | 1: the case cutout for J1 is left@15 mm, the connector is bottom@25 mm |
-| Sensor I2C to GPIO4/5 | 72 s · 4 of 7 · 0 | 2: the board's I2C_SDA and I2C_SCL nets don't reach GPIO4 and GPIO5 |
-| Swap the regulator for a low-Iq XC6206 | 31 s · 3 of 7 · 0 | 1: the board still places the AP2112K as U3, the contract says XC6206 |
-| Add a button | 68 s · 5 of 7 · 0 | 3: the BUTTON net doesn't reach GPIO3 or SW1, the board has no SW1, and the case has no hole for it |
-| **Total** | **0 violations** | **16 mismatches** |
+| Change | Parallel (shared contract) | Builds one at a time | Simulated baseline: mismatches that would ship |
+|---|---|---|---|
+| Board 10 mm narrower | 53 s · 2 of 7 woke · 0 violations | 76 s | 4: two board holes have no standoff under them, two standoffs have no hole |
+| Board 6 mm taller | 31 s · 2 of 7 · 0 | 83 s | 5: the board is 50×30 mm, the contract says 50×36 mm, and 4 hole/standoff misses |
+| USB-C to the bottom edge | 52 s · 2 of 7 · 0 | 64 s | 1: the case cutout for J1 is left@15 mm, the connector is bottom@25 mm |
+| Sensor I2C to GPIO4/5 | 72 s · 4 of 7 · 0 | 91 s | 2: the board's I2C_SDA and I2C_SCL nets don't reach GPIO4 and GPIO5 |
+| Swap the regulator for a low-Iq XC6206 | 31 s · 3 of 7 · 0 | 36 s | 1: the board still places the AP2112K as U3, the contract says XC6206 |
+| Add a button | 68 s · 5 of 7 · 0 | 94 s | 3: the BUTTON net doesn't reach GPIO3 or SW1, the board has no SW1, and the case has no hole for it |
+| **Total** | **0 violations** | | **16 mismatches (simulated)** |
+
+The baseline is a simulation of teams drifting apart, not a measurement of real teams.
 
 The agents are scripted (the keyless mock models) and the tools are real: tscircuit + KiCad, build123d, PlatformIO.
 Each cell is one run on one laptop, with other jobs sharing the CPU, so read the times as tens of seconds. With the
