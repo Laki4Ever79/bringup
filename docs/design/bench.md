@@ -180,7 +180,7 @@ phone hotspot. **Cable is the default on stage**, because:
 - the LED toggles;
 - blink: the LED periods, plain and tilted, measured from the board's own sample clock, match the contract's
   `behavior` within max(50 ms, 20 %). On a real board that hasn't been tilted, the bench sends a `tilt`
-  `bench.instruction` and waits up to 30 s. A tilt nobody makes is reported as "not measured", not as a failure;
+  `bench.instruction` and waits up to 120 s. A tilt nobody makes is reported as "not measured", not as a failure;
 - measured battery life ≥ target.
 
 The full-rate streams go to `out/<run>/bench/{telemetry.jsonl,power.csv}`; Mozaik only sees the batches.
