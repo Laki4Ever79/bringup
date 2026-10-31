@@ -2,6 +2,10 @@
 // npm run doctor                           show what this machine has
 import "dotenv/config"
 import { spawn } from "node:child_process"
+import { createHash } from "node:crypto"
+import { existsSync } from "node:fs"
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { detectEnvironment } from "../tools/env.ts"
 import { run } from "../tools/exec.ts"
@@ -29,6 +33,21 @@ if (command === "doctor") {
 				child.on("exit", (code) => done(code ?? -1))
 			}),
 		log: (line) => console.log(line),
+		platform: `${process.platform}-${process.arch}`,
+		exists: async (p) => existsSync(join(root, p)),
+		sha256: async (p) => (existsSync(join(root, p)) ? createHash("sha256").update(await readFile(join(root, p))).digest("hex") : null),
+		download: async (url, to) => {
+			const res = await fetch(url).catch(() => null)
+			if (!res?.ok) return false
+			await mkdir(dirname(join(root, to)), { recursive: true })
+			await writeFile(join(root, to), Buffer.from(await res.arrayBuffer()))
+			return true
+		},
+		place: async (from, to) => {
+			await rename(join(root, from), join(root, to))
+			await chmod(join(root, to), 0o755)
+		},
+		remove: (p) => rm(join(root, p), { force: true }),
 	}
 	const summary = await runSetup(probe, { qemu: flags.includes("--qemu"), wokwi: flags.includes("--wokwi") })
 	console.log(`\nsetup summary:\n${summary.lines.map((l) => `  ${l}`).join("\n")}`)
