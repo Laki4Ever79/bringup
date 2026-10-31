@@ -674,6 +674,7 @@
 					<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="bench" class="hidden">Bench</button></div>
 					<span id="dims" class="num"></span>
 					<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
+					<button id="order-btn" class="pill hidden" disabled title="">Ready to order ↗</button>
 					<div id="battery" class="hidden"><span id="battery-text" class="num"></span><span class="bar"><span class="fill"></span><span class="target"></span></span></div>
 				</div>
 				<div id="stage-body">
@@ -1225,6 +1226,26 @@
 			return m.days === null || m.capacityMah === null ? avg : `${avg}; ${m.capacityMah} mAh / (${sig(m.averageMa)} mA + ${sig(m.regulatorIqUa / 1000)} mA LDO) / 24 h = ${Math.round(m.days)} days`
 		}
 		const FAB = [["gerbers.zip", "Gerbers"], ["bom.csv", "BOM (JLCPCB)"], ["cpl.csv", "Pick and place"], ["README.txt", "How to order"]]
+		// Ready to order: one zip (gerbers, BOM, CPL, case STLs, README) from the latest settled revision, then JLCPCB's
+		// quote page in a new tab. Nothing is uploaded or ordered; the hub refuses, with the reason, when it can't be done.
+		const JLCPCB_QUOTE = "https://cart.jlcpcb.com/quote"
+		async function checkOrder() {
+			try {
+				const c = await (await fetch(`/api/runs/${encodeURIComponent(id)}/ready-to-order/check`, { cache: "no-store" })).json()
+				// Shown only when everything is green (consistent, DRC clean, review passed); hidden otherwise.
+				const b = $("order-btn")
+				b.classList.toggle("hidden", !c.ok)
+				b.disabled = !c.ok
+				b.title = c.ok ? `Download the files for JLCPCB (board, assembly) and JLC3DP (case), rev ${c.revision}, and open JLCPCB's quote page. Nothing is uploaded.` : `Not ready: ${c.reason}`
+			} catch {}
+		}
+		$("order-btn").addEventListener("click", () => {
+			const a = document.createElement("a")
+			a.href = `/api/runs/${encodeURIComponent(id)}/ready-to-order`
+			a.download = ""
+			document.body.append(a); a.click(); a.remove()
+			window.open(JLCPCB_QUOTE, "_blank", "noopener")
+		})
 		async function probeFab() {
 			try { const r = await fetch(file("fab/README.txt"), { cache: "no-store" }); if (r.ok) { S.fab = true; $("fab").classList.remove("hidden") } } catch {}
 		}
@@ -2086,6 +2107,7 @@
 			if (e.type !== "agent.activity") addToFeed(e)
 			switch (e.type) {
 				case "contract.changed":
+					checkOrder()
 					// With the bench up or a run that stays, a change after settling un-settles the design: live again until it re-settles.
 					if (S.settled && (S.bench || S.stay)) { S.settled = null; S.endAt = null; syncChangeBar() }
 					S.revision = Math.max(S.revision, p.revision)
@@ -2143,6 +2165,7 @@
 					syncChangeBar()
 					break
 				case "design.settled":
+					checkOrder()
 					S.settled = p
 					S.endAt = Date.parse(e.at)
 					syncChangeBar()
@@ -2159,6 +2182,7 @@
 		fetchReport()
 		fetchRequests()
 		probeFab()
+		checkOrder()
 
 		function onTelemetry(p) {
 			S.telemetry.add(p.samples ?? [])

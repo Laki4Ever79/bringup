@@ -7,6 +7,7 @@ import { basename, dirname, extname, join, resolve, sep } from "node:path"
 import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
 import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "../runner/drift.ts"
+import { orderCheck, orderPackage } from "./order.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 
@@ -415,6 +416,20 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				return res.end(await readFile(new URL(`.${path}`, import.meta.url)))
 			}
 			if (path === "/api/runs") return json(res, 200, await listRuns())
+			// Ready to order (order.ts): the check for the button, and the zip itself, from the latest settled revision.
+			const order = /^\/api\/runs\/([^/]+)\/ready-to-order(\/check)?$/.exec(path)
+			if (order) {
+				const dir = await runDir(order[1])
+				if (!dir) return json(res, 404, { error: "unknown run" })
+				if (order[2]) {
+					const c = orderCheck(dir)
+					return json(res, 200, c.ok ? { ok: true, revision: c.revision } : c)
+				}
+				const p = orderPackage(dir)
+				if (!p.ok) return json(res, 409, { error: p.reason })
+				res.writeHead(200, { "content-type": "application/zip", "content-disposition": `attachment; filename="${p.name}"`, "cache-control": "no-store" })
+				return res.end(p.zip)
+			}
 			const driftOf = /^\/api\/runs\/([^/]+)\/drift$/.exec(path)
 			if (driftOf) {
 				const dir = await runDir(driftOf[1])
