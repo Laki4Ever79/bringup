@@ -228,6 +228,8 @@ test("folds: the parts list and the revisions strip start collapsed, with a one-
 	assert.equal(foldHeader("parts", { count: 18, totalUsd: null }), "Parts · 18")
 	assert.equal(foldHeader("parts", { count: 0 }), "Parts")
 	assert.equal(foldHeader("revisions", { count: 9 }), "Revisions · 9")
+	assert.equal(foldHeader("register", { count: 12 }), "Drawing register · 12 runs")
+	assert.equal(foldHeader("register", { count: 1 }), "Drawing register · 1 run")
 	const store = new Map<string, string>()
 	const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) }
 	assert.equal(foldOpen(storage, "parts"), false, "collapsed by default")
