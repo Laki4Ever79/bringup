@@ -66,7 +66,8 @@ export function createBench(opts: BenchOptions): Bench {
 	const windowMs = opts.windowMs ?? 60_000
 	const liveCheckMs = opts.liveCheckMs ?? 5_000
 	const bootTimeoutMs = opts.bootTimeoutMs ?? 10_000
-	const blinkWaitMs = opts.blinkWaitMs ?? 30_000
+	// Long enough for the person to notice the new firmware and pick the board up.
+	const blinkWaitMs = opts.blinkWaitMs ?? 120_000
 	const self = { id: "" }
 	const send = <T extends keyof Payloads>(type: T, payload: Payloads[T]) => emit(makeEvent(type, self.id, payload), self.id)
 
