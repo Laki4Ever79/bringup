@@ -25,6 +25,9 @@ export class FakeBridge implements Bridge {
 			recordedRev?: number
 			// The flash needs the person (factory firmware): an instruct line, then its outcome, before the ack.
 			instruct?: { action: string; text: string; done: boolean }
+			// Stream `seconds` of realistic live telemetry after each boot, the LED following the flashed include/behavior.h
+			// and tilt(ms) the board's angle. Without it a boot sends six samples with one LED toggle.
+			live?: { seconds: number; tilt: (ms: number) => number }
 		} = {},
 	) {
 		this.hello = Promise.resolve({ source: opts.source ?? "real", ports: { dut: "/dev/fake-dut", fixture: "/dev/fake-fixture", telemetry: "/dev/fake-uart" }, meter: opts.meter ?? true })
@@ -39,6 +42,7 @@ export class FakeBridge implements Bridge {
 	}
 
 	private rev = 0
+	private behavior = { blinkMs: 1000, tiltBlinkMs: 1000, tiltDeg: 90 }
 
 	async command(cmd: { cmd: string; [k: string]: unknown }): Promise<BridgeAck> {
 		this.commands.push(cmd)
@@ -59,6 +63,9 @@ export class FakeBridge implements Bridge {
 			const pins = join(dir, "include/pins.h")
 			const fromPins = existsSync(pins) ? Number(/BRINGUP_REVISION (\d+)/.exec(readFileSync(pins, "utf8"))?.[1]) : 0
 			this.rev = this.opts.recordedRev ?? this.opts.bootRev ?? fromPins
+			const behavior = join(dir, "include/behavior.h")
+			const define = (name: string, fallback: number) => (existsSync(behavior) ? Number(new RegExp(`BEHAVIOR_${name} (\\d+)`).exec(readFileSync(behavior, "utf8"))?.[1] ?? fallback) : fallback)
+			this.behavior = { blinkMs: define("BLINK_MS", 1000), tiltBlinkMs: define("TILT_BLINK_MS", define("BLINK_MS", 1000)), tiltDeg: define("TILT_DEG", 90) }
 			setTimeout(() => this.boot("live"), 5)
 			return ack
 		}
@@ -70,12 +77,16 @@ export class FakeBridge implements Bridge {
 
 	private boot(mode: string): void {
 		this.emit({ k: "boot", rev: this.rev, reset: "poweron", mode })
+		if (this.opts.live) {
+			for (const line of liveLines({ ...this.behavior, ...this.opts.live, rev: this.rev })) this.emit({ ...line, ax: 0.2, ay: 0, az: 0.98, tC: 24.6 })
+			return
+		}
 		for (let n = 0; n < 6; n++) {
 			const answers = this.opts.imu === undefined || this.opts.imu === true || (this.opts.imu === "stops" && n < 3)
-			if (answers) this.emit({ k: "s", rev: this.rev, ms: n * 50, ax: 0.2, ay: 0, az: 0.98, tilt: 12, tC: 24.6, led: n % 2 })
+			if (answers) this.emit({ k: "s", rev: this.rev, ms: n * 50, ax: 0.2, ay: 0, az: 0.98, tilt: 12, tC: 24.6, led: n < 3 ? 0 : 1 })
 			else {
 				this.emit({ k: "err", rev: this.rev, what: "imu", detail: "no ACK at 0x68" })
-				this.emit({ k: "s", rev: this.rev, ms: n * 50, ax: 0, ay: 0, az: 0, tilt: 0, tC: 0, led: n % 2 })
+				this.emit({ k: "s", rev: this.rev, ms: n * 50, ax: 0, ay: 0, az: 0, tilt: 0, tC: 0, led: n < 3 ? 0 : 1 })
 			}
 		}
 	}
@@ -95,4 +106,25 @@ export class FakeBridge implements Bridge {
 	async close(): Promise<void> {
 		this.closed = true
 	}
+}
+
+// Live-mode telemetry as main.cpp sends it: a sample every 50 ms (device ms), the LED toggled every half period, the
+// period picked at each toggle from the last sampled tilt (and SHAKE_BLINK_MS while shaking).
+export function liveLines(o: { blinkMs: number; tiltBlinkMs: number; tiltDeg: number; seconds: number; tilt: (ms: number) => number; shake?: (ms: number) => boolean; rev?: number }): BridgeLine[] {
+	const lines: BridgeLine[] = []
+	let led = 0
+	let nextToggle = 0
+	let tilt = 0
+	for (let ms = 0; ms <= o.seconds * 1000; ms++) {
+		const shaking = o.shake?.(ms) ?? false
+		if (ms >= nextToggle) {
+			led ^= 1
+			nextToggle = ms + (shaking ? 120 : tilt > o.tiltDeg ? o.tiltBlinkMs : o.blinkMs) / 2
+		}
+		if (ms % 50 === 0) {
+			tilt = o.tilt(ms)
+			lines.push({ k: "s", at: 1_700_000_000_000 + ms + Math.round(Math.random() * 40), rev: o.rev ?? 9, ms, tilt, shake: shaking ? 1 : 0, led })
+		}
+	}
+	return lines
 }
