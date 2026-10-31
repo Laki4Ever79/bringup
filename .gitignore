@@ -12,3 +12,9 @@ skidl_*
 templates/fw/.pio/
 # Downloaded by `wokwi-cli chip compile` (NOTES.md); not ours to commit.
 templates/wokwi/chips/wokwi-api.h
+
+# Internal notes kept locally, not published
+RESEARCH*.md
+docs/HANDOFF.md
+docs/superpowers/
+CLAUDE.md
