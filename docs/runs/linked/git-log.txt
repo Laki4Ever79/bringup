@@ -1,0 +1,60 @@
+commit 68d8b1b
+Author: Bringup <bringup@localhost>
+
+Bringup rev 10: edited pins.h at rev 8, rebased onto rev 9: I2C_SCL GPIO9 → GPIO3
+
+Fields: pins
+Woke: architect, build:board, build:firmware, grounding, consistency (checked, no change: parts, firmware)
+Consistent again: 113.2 s
+Checks: 0 violation(s); brief review pass
+
+Bringup-Revision: 10
+Bringup-Request: req-3
+Bringup-Source: file
+
+
+ board/board.kicad_pcb | 272 ++++++++++++++++++++++++++++----------------------
+ fab/README.txt        |   6 +-
+ fab/gerbers.zip       | Bin 62541 -> 62774 bytes
+ firmware/pins.h       |   4 +-
+ 4 files changed, 157 insertions(+), 125 deletions(-)
+commit 136cf9c
+Author: Bringup <bringup@localhost>
+
+Bringup rev 8: edited pins.h: I2C_SDA GPIO8 → GPIO4
+
+Fields: pins
+Woke: architect, build:board, build:firmware, grounding, consistency (checked, no change: parts, firmware)
+Consistent again: 120.6 s
+Checks: 0 violation(s); brief review pass
+
+Bringup-Revision: 8
+Bringup-Request: req-1
+Bringup-Source: file
+
+
+ board/board.kicad_pcb | 236 +++++++++++++++++++++++++++++---------------------
+ fab/README.txt        |   6 +-
+ fab/gerbers.zip       | Bin 62244 -> 62541 bytes
+ firmware/pins.h       |   4 +-
+ 4 files changed, 143 insertions(+), 103 deletions(-)
+commit 6c53df9
+Author: Bringup <bringup@localhost>
+
+Bringup rev 7: the design from the brief
+
+Checks: 0 violation(s); brief review pass
+
+Bringup-Revision: 7
+Bringup-Source: brief
+
+
+ board/board.kicad_pcb | 6080 +++++++++++++++++++++++++++++++++++++++++++++++++
+ enclosure/case.step   | 1967 ++++++++++++++++
+ enclosure/case.stl    |  Bin 0 -> 204084 bytes
+ fab/README.txt        |   29 +
+ fab/bom.csv           |   14 +
+ fab/cpl.csv           |   23 +
+ fab/gerbers.zip       |  Bin 0 -> 62244 bytes
+ firmware/pins.h       |   10 +
+ 8 files changed, 8123 insertions(+)

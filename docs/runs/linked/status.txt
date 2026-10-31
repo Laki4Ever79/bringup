@@ -1,0 +1,14 @@
+Linked folder out/linked-2-design (base 68d8b1b, rev 10; design at rev 10):
+  modified  firmware/pins.h  (not in the contract)
+              + #define DEBUG_LOG 1
+  modified  board/board.kicad_pcb  (re-saved, no design change)
+  6 file(s) as Bringup committed them
+Drift in out/linked-2 (run is live):
+  adopted   drift-1  firmware/pins.h  → req-1 (saved at rev 7)
+              I2C_SDA GPIO8 → GPIO4
+  rebased   drift-2  firmware/pins.h  → req-3 (saved at rev 8, rebased onto rev 9)
+              I2C_SCL GPIO9 → GPIO3
+  re-saved  drift-3  board/board.kicad_pcb  (re-saved, no design change)
+              re-saved, no design change
+  open      drift-4  firmware/pins.h  (not in the contract, saved at rev 10)
+              + #define DEBUG_LOG 1

@@ -143,7 +143,7 @@ export function mockScripts(): Record<string, Script> {
 					if (step < 2 && requirements && !requirements.peripherals.includes("i2c-sensor"))
 						return propose("requirements", { ...requirements, summary: `${requirements.summary} and temperature/humidity sensing`, peripherals: [...requirements.peripherals, "i2c-sensor"] }, "engineer asked for a temperature/humidity sensor")
 					if (step < 2 && !pins.some((p) => p.signal === "I2C_SDA")) return propose("pins", [...pins, ...SENSOR_PINS], "the sensor's I2C bus on GPIO8/GPIO9")
-					return say("sensor requirement and pins in place")
+					return say("sensor and pins set")
 				}
 				const width = /(\d+(?:\.\d+)?)\s*mm wide/.exec(instruction)?.[1]
 				const outline = state().contract.get("outline")

@@ -1,11 +1,14 @@
 import { randomBytes, timingSafeEqual } from "node:crypto"
-import { createReadStream, mkdirSync, watch, writeFileSync, type FSWatcher } from "node:fs"
+import { appendFileSync, createReadStream, mkdirSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
 import { basename, dirname, extname, join, resolve, sep } from "node:path"
 import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
+import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "../runner/drift.ts"
+import { linkedInfo } from "../runner/linked.ts"
+import { orderCheck, orderPackage } from "./order.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 import type { TraceNotifier } from "./notify.ts"
@@ -222,7 +225,8 @@ async function listBriefs(): Promise<{ name: string; title: string; text: string
 }
 
 // A hub over out/: GET / is the page (the page picks a run with ?run=<id>), /api/runs lists and starts runs,
-// /api/runs/<id>/requests and /decisions take the engineer's input, /runs/<id>/events streams a run's trace
+// /api/runs/<id>/requests and /decisions take the engineer's input, /api/runs/<id>/drift lists the run's drifted files and
+// /drift/<driftId>/revert|adopt queues an action on one, /runs/<id>/events streams a run's trace
 // as SSE and /runs/<id>/files/* serves its artifacts. Loopback only: every request must carry a loopback Host
 // (no DNS rebinding) and every POST must be same-origin JSON (no cross-site forms).
 export async function serveHub(opts: HubOptions): Promise<Dashboard> {
@@ -380,6 +384,20 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 						return e.code === "NO_KEY" ? json(res, 503, { error: new NoModelKey().message }) : json(res, 502, { error: e.message })
 					}
 				}
+				// Drift you can follow (runner/drift.ts): the run carries out the action; the hub checks it and queues it.
+				const d = /^\/api\/runs\/([^/]+)\/drift\/([\w-]+)\/(revert|adopt)$/.exec(path)
+				if (d) {
+					const dir = await runDir(d[1])
+					if (!dir) return json(res, 404, { error: "unknown run" })
+					const drift = readDrift(dir)
+					const entry = drift.entries.find((e) => e.id === d[2])
+					if (!entry) return json(res, 404, { error: "unknown drift entry" })
+					const action = d[3] as DriftAction["action"]
+					const refused = actionRefused(drift, entry, action)
+					if (refused) return json(res, 409, { error: refused })
+					appendFileSync(join(dir, DRIFT_ACTIONS_FILE), JSON.stringify({ at: new Date().toISOString(), driftId: entry.id, action }) + "\n")
+					return json(res, 202, { queued: true, id: entry.id, action })
+				}
 				const m = /^\/api\/runs\/([^/]+)\/(requests|decisions)$/.exec(path)
 				if (m) {
 					const dir = await runDir(m[1])
@@ -416,6 +434,30 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				return res.end(await readFile(new URL(`.${path}`, import.meta.url)))
 			}
 			if (path === "/api/runs") return json(res, 200, await listRuns())
+			// Ready to order (order.ts): the check for the button, and the zip itself, from the latest settled revision.
+			const order = /^\/api\/runs\/([^/]+)\/ready-to-order(\/check)?$/.exec(path)
+			if (order) {
+				const dir = await runDir(order[1])
+				if (!dir) return json(res, 404, { error: "unknown run" })
+				if (order[2]) {
+					const c = orderCheck(dir)
+					return json(res, 200, c.ok ? { ok: true, revision: c.revision } : c)
+				}
+				const p = orderPackage(dir)
+				if (!p.ok) return json(res, 409, { error: p.reason })
+				res.writeHead(200, { "content-type": "application/zip", "content-disposition": `attachment; filename="${p.name}"`, "cache-control": "no-store" })
+				return res.end(p.zip)
+			}
+			const filesOf = /^\/api\/runs\/([^/]+)\/files$/.exec(path)
+			if (filesOf) {
+				const dir = await runDir(filesOf[1])
+				return dir ? json(res, 200, { linked: linkedInfo(dir), entries: readDrift(dir).entries }) : json(res, 404, { error: "unknown run" })
+			}
+			const driftOf = /^\/api\/runs\/([^/]+)\/drift$/.exec(path)
+			if (driftOf) {
+				const dir = await runDir(driftOf[1])
+				return dir ? json(res, 200, readDrift(dir)) : json(res, 404, { error: "unknown run" })
+			}
 			if (path === "/api/briefs") return json(res, 200, await listBriefs())
 			if (path === "/api/experiment") {
 				const text = await readFile(EXPERIMENT, "utf8").catch(() => null)

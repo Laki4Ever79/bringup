@@ -271,3 +271,17 @@ test("the case rebuilds on a parts change: the vent follows the sensor", async (
 	const { BUILD_INPUTS } = await import("../src/agents/builders.ts")
 	assert.ok(BUILD_INPUTS.enclosure.includes("parts"))
 })
+
+test("a builder whose inputs didn't change says its build is current, not just older", () => {
+	const lanes = createLanes()
+	for (const [f, v, r] of [["outline", 1, 1], ["connectors", 1, 2], ["parts", 1, 3], ["pins", 1, 4]] as const) applyLaneEvent(lanes, changed(f, v, r))
+	applyLaneEvent(lanes, ev("artifact.ready", { kind: "enclosure", revision: 4 }))
+	assert.equal(lanes["build:enclosure"].text, "rev 4 built")
+	// pins and parts don't feed the case: still rev 4, and current.
+	applyLaneEvent(lanes, changed("pins", 2, 10))
+	assert.equal(lanes["build:enclosure"].text, "rev 4 · current")
+	assert.equal(lanes["build:enclosure"].status, "done")
+	// The outline does: it rebuilds.
+	applyLaneEvent(lanes, changed("outline", 2, 11))
+	assert.equal(lanes["build:enclosure"].status, "building")
+})

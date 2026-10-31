@@ -171,6 +171,12 @@ const STYLE = `
 .pcb-root .pcb-part .pcb-ref { fill: ${PCB_COLORS.silk}; fill-opacity: .8; font-family: ${MONO}; font-weight: 600; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .pcb-root .pcb-pulse { fill: none; stroke: ${PCB_COLORS.accent}; opacity: 0; pointer-events: none; animation: pcb-pulse ${GLOW_MS}ms ${EASE} forwards; }
 @keyframes pcb-pulse { 0% { opacity: 0 } 12% { opacity: 1 } 60% { opacity: .85 } 100% { opacity: 0 } }
+/* Marks: what the current change added (NEW) or changed, kept while that change is on screen; a slow breath. */
+.pcb-root .pcb-mark { fill: rgba(255,74,23,.10); stroke: #ff4a17; pointer-events: none; animation: pcb-breathe 2.4s cubic-bezier(.32,.72,0,1) infinite; }
+.pcb-root .pcb-mark.pcb-mark-changed { fill: rgba(245,158,11,.08); stroke: ${PCB_COLORS.accent}; }
+.pcb-root .pcb-mark-tag { font-family: ${MONO}; font-weight: 700; letter-spacing: .08em; fill: #ff4a17; pointer-events: none; text-anchor: middle; }
+.pcb-root .pcb-mark-tag.pcb-mark-changed { fill: ${PCB_COLORS.accent}; }
+@keyframes pcb-breathe { 0%, 100% { stroke-opacity: .55; stroke-width: .25; } 50% { stroke-opacity: 1; stroke-width: .5; } }
 .pcb-root.pcb-view-top .pcb-layer-bottom { opacity: .12; }
 .pcb-root.pcb-view-bottom .pcb-layer-top { opacity: .12; }
 .pcb-tip { position: absolute; pointer-events: none; padding: 8px 10px; border-radius: 8px; background: rgba(22,22,26,.86);
@@ -185,7 +191,7 @@ const STYLE = `
   font-size: 13px; color: #a1a1aa; pointer-events: none; }
 .pcb-legend span { display: inline-flex; align-items: center; gap: 6px; font-family: ${MONO}; font-variant-numeric: tabular-nums; }
 .pcb-legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
-@media (prefers-reduced-motion: reduce) { .pcb-root .pcb-pulse { animation-duration: 1ms; } .pcb-root * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .pcb-root .pcb-mark { animation: none; stroke-width: .4; } .pcb-root .pcb-pulse { animation-duration: 1ms; } .pcb-root * { transition: none !important; } }
 `
 
 function el(tag, attrs = {}, parent) {
@@ -377,6 +383,31 @@ export function mountPcb(host, opts = {}) {
 		for (const v of svg.querySelectorAll(".pcb-via")) v.classList.toggle("pcb-dim", on)
 	}
 
+	let marks = { added: [], changed: [] }
+	function applyMarks() {
+		for (const m of svg.querySelectorAll(".pcb-mark, .pcb-mark-tag")) m.remove()
+		// A tag that would sit on one already placed is left out: the glow still says it.
+		const placed = []
+		const free = (x0, x1, y) => !placed.some((p) => x0 < p.x1 && x1 > p.x0 && Math.abs(y - p.y) < 1.4)
+		const area = (ref) => { const o = byRef.get(ref)?.outline; return o ? Number(o.getAttribute("width")) * Number(o.getAttribute("height")) : 0 }
+		for (const [refs, kind, label] of [[marks.added, "new", "NEW"], [marks.changed, "changed", "CHANGED"]]) {
+			// One tag per kind, on the biggest part (the sensor, not its pull-ups); the rest glow without one.
+			const tagged = [...refs].sort((a, b) => area(b) - area(a))[0]
+			for (const ref of refs) {
+				const hit = byRef.get(ref)
+				if (!hit) continue
+				const o = hit.outline
+				const x = Number(o.getAttribute("x")), y = Number(o.getAttribute("y")), w = Number(o.getAttribute("width"))
+				el("rect", { class: `pcb-mark pcb-mark-${kind}`, x: x - 0.5, y: y - 0.5, width: w + 1, height: Number(o.getAttribute("height")) + 1, rx: 0.6, filter: "url(#pcb-glow)" }, hit.group)
+				const half = label.length * 0.42, tx = x + w / 2, ty = y - 0.9
+				if (ref !== tagged || !free(tx - half, tx + half, ty)) continue
+				placed.push({ x0: tx - half, x1: tx + half, y: ty })
+				const tag = el("text", { class: `pcb-mark-tag pcb-mark-${kind}`, x: tx, y: ty, "font-size": 1.15 }, hit.group)
+				tag.textContent = label
+			}
+		}
+	}
+
 	function pulse(refs) {
 		for (const ref of refs) {
 			const hit = byRef.get(ref)
@@ -449,6 +480,7 @@ export function mountPcb(host, opts = {}) {
 				lastKey = key
 				ix = circuitIndex(next)
 				render()
+				applyMarks()
 				const after = indexBounds(ix)
 				if (!before || before.maxX - before.minX !== after.maxX - after.minX || before.maxY - before.minY !== after.maxY - after.minY) fit()
 				else setViewBox()
@@ -458,6 +490,13 @@ export function mountPcb(host, opts = {}) {
 		highlight(ref) {
 			focused = ref
 			applyHighlight(ref)
+		},
+		// Extension: the parts the change on screen added ({added}) or changed ({changed}), kept until replaced.
+		setMarks(next) {
+			const m = { added: next?.added ?? [], changed: next?.changed ?? [] }
+			if (JSON.stringify(m) === JSON.stringify(marks)) return
+			marks = m
+			applyMarks()
 		},
 		setView(v) {
 			root.classList.remove("pcb-view-top", "pcb-view-bottom", "pcb-view-both")

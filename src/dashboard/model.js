@@ -421,8 +421,8 @@ export function runPhase({ settled, stay, alive, benchLive, stopped }) {
 }
 
 // The composer's placeholder for the run's phase (runPhase().bar), honest about an unsettled design.
-// Scripted agents act on a width ("make it N mm wide") and the blink; anything else they answer "no change".
-const SCRIPTED_ASK = "a width for the board (“make it 40 mm wide”) or the blink (“blink faster when tilted”)"
+// Scripted agents act on a sensor ("add a … sensor"), a width ("make it N mm wide") and the blink; anything else is "no change".
+const SCRIPTED_ASK = "“add a temperature/humidity sensor”, “make it 40 mm wide” or “blink faster when tilted”"
 
 export function composerPrompt(bar, settled, { scripted = false } = {}) {
 	if (scripted && bar === "waiting" && settled?.settled !== false) return `Settled. Change one thing: ${SCRIPTED_ASK}`
@@ -438,6 +438,7 @@ export function composerPrompt(bar, settled, { scripted = false } = {}) {
 
 export function foldHeader(kind, { count = 0, totalUsd = null } = {}) {
 	if (kind === "revisions") return `Revisions · ${count}`
+	if (kind === "register") return `Drawing register · ${count} run${count === 1 ? "" : "s"}`
 	if (!count) return "Parts"
 	return `Parts · ${count}${typeof totalUsd === "number" ? ` · $${totalUsd.toFixed(2)}` : ""}`
 }
@@ -448,4 +449,39 @@ export function foldOpen(storage, kind) {
 }
 export function setFold(storage, kind, open) {
 	try { storage?.setItem(foldKey(kind), open ? "open" : "closed") } catch {}
+}
+
+
+// ── Drift: saved edits outside the contract (drift.json, owned by the run), with Adopt / Revert ──────────────────
+const DRIFT_KIND = { "not-in-contract": "not in the design", stale: "stale save", adopted: "adopted" }
+export function driftView(drift) {
+	if (!drift) return { open: 0, rows: [], live: false }
+	const live = drift.live === true
+	const rows = [...(drift.entries ?? [])]
+		.sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
+		.map((e) => {
+			const open = e.status === "open"
+			const message = e.status === "adopted" ? `became change request #${String(e.requestId ?? "").replace(/^req-/, "") || "?"}`
+				: e.status === "reverted" ? "reverted to the generated file"
+				: e.kind === "stale" ? `saved against rev ${e.savedRevision}, the design is at rev ${e.designRevision}`
+				: "not in the design contract; the next rebuild will overwrite it"
+			const off = (reason) => ({ enabled: false, reason })
+			const act = !open ? off("") : !live ? off("the run has ended") : null
+			return {
+				id: e.id, name: e.path.split("/").pop(), path: e.path, at: e.savedAt, items: e.items ?? [],
+				kind: DRIFT_KIND[e.kind] ?? e.kind, message, status: e.status,
+				revert: act ?? { enabled: true, reason: "" },
+				adopt: act ?? (e.adoptable ? { enabled: true, reason: "" } : off(e.note ?? "this edit isn't in the design contract: nothing to adopt")),
+				requestId: e.requestId ?? null,
+			}
+		})
+	return { open: rows.filter((r) => r.status === "open").length, rows, live }
+}
+
+// ── What a ripple added or changed on the board: new refs glow as NEW, changed ones (moved pins, a swap) as CHANGED ──
+export function rippleMarks(before, after) {
+	if (!before || !after) return { added: [], changed: [] }
+	const had = new Set((before.parts ?? []).map((p) => p.ref))
+	const added = (after.parts ?? []).map((p) => p.ref).filter((r) => !had.has(r)).sort()
+	return { added, changed: changedRefs(before, after).filter((r) => !added.includes(r)) }
 }
