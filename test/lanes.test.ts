@@ -285,3 +285,18 @@ test("a builder whose inputs didn't change says its build is current, not just o
 	applyLaneEvent(lanes, changed("outline", 2, 11))
 	assert.equal(lanes["build:enclosure"].status, "building")
 })
+
+test("the dashboard's builder inputs are exactly the builders' (lanes.js and ripple.js), so woke/idle can't drift", async () => {
+	const { BUILD_INPUTS, BUILD_REQUIRES } = await import("../src/agents/builders.ts")
+	const { BUILDS } = await import("../src/dashboard/lanes.js")
+	for (const kind of ["board", "enclosure", "firmware"] as const) {
+		assert.deepEqual([...BUILDS[kind].inputs].sort(), [...BUILD_INPUTS[kind]].sort(), `lanes ${kind} inputs`)
+		assert.deepEqual([...BUILDS[kind].requires].sort(), [...BUILD_REQUIRES[kind]].sort(), `lanes ${kind} requires`)
+	}
+	// A parts-only change (the add-a-sensor ripple) wakes the case: its lid vent sits over the sensor.
+	const { liveRipples } = await import("../src/dashboard/ripple.js")
+	const at = (s: number) => new Date(Date.parse("2026-10-31T12:00:00Z") + s * 1000).toISOString()
+	const e = (s: number, type: string, payload: object) => ({ seq: s, at: at(s), type, producerId: "x", payload })
+	const r = liveRipples([e(0, "run.started", {}), e(11, "contract.changed", { field: "parts", version: 2, revision: 9, by: "parts" })] as any, [{ at: at(10), text: "add a temperature/humidity sensor" }], Date.parse(at(20)))[0]
+	assert.ok(r.woke.includes("build:enclosure"), `woke: ${r.woke}`)
+})
