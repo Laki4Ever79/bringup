@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net"
 import { basename, dirname, extname, join, resolve, sep } from "node:path"
 import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
+import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 
 const TRACE = "trace.jsonl"
@@ -174,7 +175,13 @@ export interface HubOptions {
 	launch?: HubLaunch
 	// The run that /events and /files/* serve, for single-run dashboards and the demo.
 	defaultRun?: { id: string; dir: string }
+	// The model behind POST /api/runs/<id>/ask (tests inject one); by default the runs' own provider (ask.ts).
+	ask?: (prompt: AskPrompt) => Promise<string>
 }
+
+// What a scripted run says to a question: its agents don't reason, so there is nothing to ask them.
+export const SCRIPTED_ANSWER = "Scripted mode: see the change log above. The scripted agents follow fixed scripts, so there is no model to ask; every write's reason and cause is listed there. Start a run with real models to ask questions."
+const MAX_QUESTION = 500
 
 interface RunSummary {
 	runId: string
@@ -332,6 +339,29 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					if (!run || run.exit !== null) return json(res, 409, { error: "that run is not running from this dashboard" })
 					run.kill?.()
 					return json(res, 200, { stopped: true })
+				}
+				const ask = /^\/api\/runs\/([^/]+)\/ask$/.exec(path)
+				if (ask) {
+					const dir = await runDir(ask[1])
+					if (!dir) return json(res, 404, { error: "unknown run" })
+					const body = await readJson(req)
+					const question = text(body.question, "question", MAX_QUESTION).trim()
+					const events = (await readFile(join(dir, TRACE), "utf8").catch(() => "")).split("\n").flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : [] } catch { return [] } })
+					if (events.find((e) => e.type === "run.started")?.payload?.mock === true) return json(res, 200, { scripted: true, answer: SCRIPTED_ANSWER })
+					const revs = events.filter((e) => e.type === "contract.changed").map((e) => e.payload.revision as number)
+					const to = typeof body.to === "number" ? body.to : Math.max(0, ...revs)
+					const from = typeof body.from === "number" ? body.from : to - 1
+					const snap = async (rev: number) => (rev > 0 ? readFile(join(dir, "contracts", `rev-${rev}.json`), "utf8").then((t) => JSON.parse(t), () => null) : null)
+					const brief = ((await readFile(join(dir, "brief.md"), "utf8").catch(() => "")).split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "")
+					try {
+						// An older trace has no values in its writes: the revision snapshots give each one its change.
+						const snapshots = new Map((await Promise.all(revisionsToLoad(events).map(async (rev) => [rev, await snap(rev)] as const))).filter(([, v]) => v))
+						const answer = await (opts.ask ?? ((p: AskPrompt) => callModel(p)))(askPrompt({ question, events, from: await snap(from), to: await snap(to), brief, snapshots }))
+						return json(res, 200, { scripted: false, answer, from, to })
+					} catch (error) {
+						const e = error as Error & { code?: string }
+						return e.code === "NO_KEY" ? json(res, 503, { error: new NoModelKey().message }) : json(res, 502, { error: e.message })
+					}
 				}
 				const m = /^\/api\/runs\/([^/]+)\/(requests|decisions)$/.exec(path)
 				if (m) {
