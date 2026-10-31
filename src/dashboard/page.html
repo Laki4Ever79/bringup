@@ -325,6 +325,9 @@
 	#parts-panel.folded { padding-bottom: 10px; }
 	#side:has(#parts-panel.folded) { grid-template-rows: minmax(0, 1fr) auto; }
 	#scrubber.folded #dots, #scrubber.folded #live-btn { display: none; }
+	/* The hub's drawing register: folded by default, one line with the run count (remembered per browser). */
+	.recent.folded .reg-head, .recent.folded #runs { display: none; }
+	#reg-fold { cursor: pointer; } #reg-fold .right { margin-left: auto; } #reg-fold .caret { margin-left: 12px; }
 	#parts-ready { padding: 4px 12px 0; font: 500 12px/1.2 var(--mono); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	#parts-ready.warn { color: var(--warn); }
 	#parts { overflow-y: auto; padding: 4px 6px 6px; position: relative; }
@@ -637,7 +640,7 @@
 			<div id="proof-rows"></div>
 		</section>
 		<div class="recent">
-			<h2 class="label"><b>02</b> Drawing register<span class="right" id="runs-count"></span></h2>
+			<h2 class="label fold-head" id="reg-fold" role="button" tabindex="0" aria-expanded="false"><b>02</b> <span id="reg-head">Drawing register</span><span class="right" id="runs-count"></span><span class="caret">▸</span></h2>
 			<div class="reg-head"><span>Status</span><span>Design</span><span>Rev</span><span>Changes</span><span>Last ripple</span><span>Started</span><span></span></div>
 			<div id="runs"><div class="t3" style="padding:10px">no runs yet</div></div>
 		</div>
@@ -753,6 +756,16 @@
 	// ═══ Start screen ══════════════════════════════════════════════════════════════════════════
 	async function startScreen() {
 		$("start").classList.remove("hidden")
+		// The drawing register: folded until opened; the choice is kept per browser.
+		{
+			const store = (() => { try { return localStorage } catch { return null } })()
+			const box = document.querySelector(".recent"), head = $("reg-fold")
+			const apply = (open) => { box.classList.toggle("folded", !open); head.setAttribute("aria-expanded", String(open)) }
+			apply(foldOpen(store, "register"))
+			const toggle = () => { const open = box.classList.contains("folded"); setFold(store, "register", open); apply(open) }
+			head.addEventListener("click", toggle)
+			head.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle() } })
+		}
 		$("app").style.gridTemplateRows = "54px minmax(0, 1fr)"
 		document.title = "Bringup · new design"
 		const opts = { mock: true, hardware: true, review: true, engineerApproval: false, bench: false }
@@ -807,7 +820,8 @@
 				if (runs.length === 0) return
 				const LIVE = new Set(["running", "bench live", "waiting for a change"])
 				const secs = (ms) => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s` }
-				$("runs-count").textContent = `${runs.length} run${runs.length === 1 ? "" : "s"} · ${runs.filter((r) => LIVE.has(r.status)).length} live`
+				$("runs-count").textContent = `${runs.filter((r) => LIVE.has(r.status)).length} live`
+				$("reg-head").textContent = foldHeader("register", { count: runs.length })
 				$("runs").innerHTML = runs.map((r) => {
 					const live = LIVE.has(r.status)
 					const ch = r.changes ?? { count: 0, lastDurationMs: null }
