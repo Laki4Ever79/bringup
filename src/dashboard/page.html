@@ -352,19 +352,31 @@
 	#stop-btn { color: var(--error); border-color: var(--error); }
 	#stop-btn:hover { background: var(--error); color: #fff; }
 
-	/* ── Start screen ─────────────────────────────────────── */
-	#start { overflow-y: auto; padding: clamp(24px, 5vh, 56px) 24px 40px; }
-	.composer { max-width: 1040px; margin: 0 auto; }
-	.composer h1 { font: 800 clamp(48px, 6vw, 92px)/.9 var(--display); text-transform: uppercase; letter-spacing: .005em; margin: 0 0 14px; }
-	.composer h1 em { font-style: normal; color: var(--signal); }
-	.composer .sub { color: var(--ink-2); margin: 0 0 26px; font-size: clamp(16px, 1.25vw, 20px); max-width: 760px; }
+	/* ── Start screen: a title sheet and the drawing register ── */
+	#start { overflow-y: auto; padding: clamp(24px, 4.5vh, 56px) clamp(20px, 3vw, 56px) 48px; }
+	.start-grid { max-width: 1560px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(24px, 3vw, 56px); align-items: start; }
+	.hero h1 { font: 800 clamp(48px, 4.4vw, 92px)/.88 var(--display); text-transform: uppercase; letter-spacing: .005em; margin: 0 0 18px; }
+	.hero h1 em { font-style: normal; color: var(--signal); }
+	.hero .sub { color: var(--ink-2); margin: 0 0 26px; font-size: clamp(16px, 1.2vw, 20px); max-width: 620px; }
+	.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1.5px solid var(--ink); background: var(--paper); }
+	.steps li { position: relative; padding: 12px 14px 12px; border-right: 1.5px solid var(--ink); display: grid; gap: 4px; align-content: start; min-width: 0; }
+	.steps li:last-child { border-right: 0; }
+	.steps li:not(:last-child)::after { content: ""; position: absolute; right: -9px; top: 50%; width: 16px; height: 16px; margin-top: -8px; background: var(--paper); border: 1.5px solid var(--ink); border-left: 0; border-bottom: 0; transform: rotate(45deg); z-index: 1; }
+	.steps b { font: 700 12px/1 var(--mono); color: var(--signal-ink); letter-spacing: .1em; }
+	.steps span { font: 800 clamp(17px, 1.35vw, 24px)/1 var(--display); text-transform: uppercase; }
+	.steps i { font: 500 12.5px/1.3 var(--sans); font-style: normal; color: var(--ink-2); }
+	.steps li:nth-child(3) { background: var(--signal); color: #fff; } .steps li:nth-child(3) b, .steps li:nth-child(3) i { color: #fff; }
+	.steps li:nth-child(3)::after { background: var(--signal); }
+	.steps li.end span::after { content: " ✓"; color: var(--ok); }
 	.compose-box { border: 2px solid var(--ink); background: var(--paper); box-shadow: 8px 8px 0 var(--ink); }
 	.compose-box > .label { padding: 12px 16px; border-bottom: 1.5px solid var(--ink); }
 	#scripted-note { font-size: 14px; color: var(--warn); margin: 0; padding: 10px 16px 0; font-weight: 600; }
-	#brief-input { display: block; width: 100%; min-height: 180px; resize: vertical; border: 0; outline: none; background: transparent; font: 17px/1.55 var(--sans); padding: 12px 16px; }
+	#brief-input { display: block; width: 100%; min-height: clamp(150px, 24vh, 260px); resize: vertical; border: 0; outline: none; background: transparent; font: 16px/1.55 var(--sans); padding: 12px 16px; }
 	#brief-input[readonly] { color: var(--ink-2); }
 	.examples { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 12px; }
 	.toggles { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-top: 1.5px solid var(--ink); padding: 12px 16px; background: var(--paper-2); }
+	.go-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-top: 1.5px solid var(--ink); }
+	.go-row .t3 { font-size: 13px; }
 	.seg { display: inline-flex; border: 1.5px solid var(--ink); }
 	.seg button { height: 32px; padding: 0 12px; border: 0; background: transparent; cursor: pointer; font-size: 13px; font-weight: 600; }
 	.seg button.on { background: var(--ink); color: var(--paper); }
@@ -372,17 +384,32 @@
 	.switch i { width: 28px; height: 14px; border: 1.5px solid var(--ink); position: relative; }
 	.switch i::after { content: ""; position: absolute; top: 1px; left: 1px; width: 10px; height: 9px; background: var(--ink-3); transition: transform var(--t) var(--ease), background var(--t) var(--ease); }
 	.switch.on i::after { transform: translateX(13px); background: var(--signal); }
-	#start-btn { margin-left: auto; height: 42px; padding: 0 24px; font: 800 20px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+	#start-btn { margin-left: auto; height: 48px; padding: 0 28px; font: 800 24px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
 	#start-error { color: var(--error); font-size: 14px; margin-top: 12px; font-weight: 600; }
-	.recent { max-width: 1040px; margin: 44px auto 0; }
-	.recent h2 { margin: 0 0 10px; }
-	.run-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 70px 80px auto; align-items: center; gap: 12px; padding: 9px 10px; border-bottom: 1px dashed var(--rule-2); text-decoration: none; transition: background var(--t) var(--ease); }
+	.recent { max-width: 1560px; margin: clamp(32px, 5vh, 56px) auto 0; border: 1.5px solid var(--ink); background: rgba(239, 233, 220, .85); }
+	.recent h2 { margin: 0; padding: 12px 14px; border-bottom: 1.5px solid var(--ink); }
+	.reg-head, .run-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 60px 90px 130px 90px 270px; align-items: center; gap: 14px; padding: 0 14px; }
+	.reg-head { height: 30px; font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--rule-2); }
+	.run-row { min-height: 46px; border-bottom: 1px dashed var(--rule-2); text-decoration: none; transition: background var(--t) var(--ease); }
+	.run-row:last-child { border-bottom: 0; }
 	.run-row:hover { background: var(--paper-2); }
-	.run-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-	.status-pill { font: 700 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 5px 8px; text-align: center; border: 1.5px solid currentColor; }
-	.st-running { color: var(--signal-ink); } .st-settled { color: var(--ok); }
+	.run-row.live { background: rgba(255, 74, 23, .06); }
+	.run-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 16px/1.2 var(--sans); }
+	.run-row .n { font: 600 13px/1 var(--mono); color: var(--ink-2); }
+	.run-row .n.big { font: 800 20px/1 var(--display); color: var(--ink); }
+	.run-row .acts { display: flex; gap: 6px; justify-content: flex-end; }
+	.status-pill { display: inline-flex; align-items: center; gap: 6px; font: 700 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 5px 8px; border: 1.5px solid currentColor; white-space: nowrap; justify-self: start; }
+	.status-pill.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; --ring: rgba(255, 74, 23, .5); animation: pulse 1.6s var(--ease) infinite; }
+	.st-running, .st-waiting-for-a-change { color: var(--signal-ink); } .st-settled { color: var(--ok); }
 	.st-unsettled, .st-failed { color: var(--error); } .st-stopped { color: var(--ink-3); } .st-bench-live { color: #0f766e; }
-	.run-row .reuse { height: 28px; font-size: 12px; padding: 0 10px; }
+	.run-row .btn { height: 30px; font-size: 12px; padding: 0 10px; }
+	.run-row .open { background: var(--ink); color: var(--paper); }
+	.run-row .open:hover { background: var(--signal); border-color: var(--signal); }
+	@media (max-width: 1500px) {
+		.start-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+		.reg-head, .run-row { grid-template-columns: 150px minmax(0, 1fr) 50px 80px 110px 80px 250px; gap: 10px; }
+		.steps i { display: none; }
+	}
 
 	/* Bench (bring-up on the desk): on the stage screen. */
 	#bench-view { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding: 10px 12px; }
@@ -472,26 +499,40 @@
 
 	<!-- Start screen: no run selected -->
 	<section id="start" class="hidden">
-		<div class="composer">
-			<h1>Change one thing.<br><em>The whole design follows.</em></h1>
-			<p class="sub">Describe a device. Concurrent agents pick the parts, route the board, shape the case and write the firmware against one shared contract. Then change anything mid-run and watch board, case, firmware and parts follow, in parallel, and stay consistent.</p>
-			<div class="compose-box">
-				<div class="label"><b>01</b> The brief</div>
-				<p id="scripted-note">Scripted demo: the scripted models always build the logger example, whatever the brief says. For your own brief, pick <b>Real models</b>.</p>
-				<textarea id="brief-input" placeholder="A pocket climate logger: temperature and humidity every minute, a USB-C port for charging, a status LED, and about six months on a small Li-ion cell. Must fit a 50 × 30 mm board."></textarea>
-				<div class="examples" id="examples"></div>
-				<div class="toggles">
-					<span class="seg" id="models"><button data-v="mock" class="on">Scripted demo: always builds the logger example</button><button data-v="real">Real models</button></span>
-					<span class="switch on" data-k="hardware"><i></i>Hardware tools</span>
-					<span class="switch on" data-k="review"><i></i>Brief review</span>
-					<span class="switch" data-k="engineerApproval"><i></i>Require my approval for cross-team changes</span>
-					<span class="switch" data-k="bench" title="After the design settles, flash the board on USB and measure it; with no board, a recorded session plays (badged REPLAY)"><i></i>Live bench</span>
-					<button id="start-btn" class="btn primary">Start design →</button>
-				</div>
+		<div class="start-grid">
+			<div class="hero">
+				<h1>Change one thing.<br><em>The whole design follows.</em></h1>
+				<p class="sub">Describe a device. Concurrent Mozaik agents pick the parts, route the board, shape the case and write the firmware against one shared contract. Then change anything, mid-run or after it settles, and watch board, case, firmware and parts follow in parallel and stay consistent.</p>
+				<ol class="steps" aria-label="How a run goes">
+					<li><b>01</b><span>Brief</span><i>one paragraph about the device</i></li>
+					<li><b>02</b><span>Nine agents</span><i>in parallel, one live contract</i></li>
+					<li><b>03</b><span>Change one thing</span><i>“make it 40 mm wide”</i></li>
+					<li class="end"><b>04</b><span>Consistent again</span><i>board, case, firmware, parts</i></li>
+				</ol>
 			</div>
-			<div id="start-error"></div>
+			<div class="compose-col">
+				<div class="compose-box">
+					<div class="label"><b>01</b> The brief<span class="right" id="brief-count"></span></div>
+					<p id="scripted-note">Scripted demo: the scripted models always build the logger example, whatever the brief says. For your own brief, pick <b>Real models</b>.</p>
+					<textarea id="brief-input" placeholder="A pocket climate logger: temperature and humidity every minute, a USB-C port for charging, a status LED, and about six months on a small Li-ion cell. Must fit a 50 × 30 mm board."></textarea>
+					<div class="examples" id="examples"></div>
+					<div class="toggles">
+						<span class="seg" id="models"><button data-v="mock" class="on">Scripted demo: always builds the logger example</button><button data-v="real">Real models</button></span>
+						<span class="switch on" data-k="hardware" title="tscircuit + KiCad, build123d and PlatformIO; off: stubbed builds"><i></i>Hardware tools</span>
+						<span class="switch on" data-k="review" title="A reviewer reads the settled design against the brief"><i></i>Brief review</span>
+						<span class="switch" data-k="engineerApproval" title="Cross-team changes wait for your Approve / Reject"><i></i>Require my approval for cross-team changes</span>
+						<span class="switch" data-k="bench" title="After the design settles, flash the board on USB and measure it; with no board, a recorded session plays (badged REPLAY)"><i></i>Live bench</span>
+					</div>
+					<div class="go-row"><span class="t3">The run stays up after it settles, so you can change one thing. Stop ends it.</span><button id="start-btn" class="btn primary">Start design →</button></div>
+				</div>
+				<div id="start-error"></div>
+			</div>
 		</div>
-		<div class="recent"><h2 class="label"><b>02</b> Recent runs</h2><div id="runs"><div class="t3">no runs yet</div></div></div>
+		<div class="recent">
+			<h2 class="label"><b>02</b> Drawing register<span class="right" id="runs-count"></span></h2>
+			<div class="reg-head"><span>Status</span><span>Design</span><span>Rev</span><span>Changes</span><span>Last ripple</span><span>Started</span><span></span></div>
+			<div id="runs"><div class="t3" style="padding:10px">no runs yet</div></div>
+		</div>
 	</section>
 
 	<!-- Run view -->
@@ -615,8 +656,11 @@
 			else if (input.value === loggerBrief) input.value = draft
 			$("scripted-note").classList.toggle("hidden", !opts.mock)
 			$("examples").classList.toggle("hidden", opts.mock)
+			countWords()
 			for (const x of $("models").children) x.classList.toggle("on", (x.dataset.v === "mock") === opts.mock)
 		}
+		const countWords = () => { const n = ($("brief-input").value.match(/\S+/g) ?? []).length; $("brief-count").textContent = opts.mock ? "logger.md · read-only in scripted mode" : `${n} word${n === 1 ? "" : "s"}` }
+		$("brief-input").addEventListener("input", countWords)
 		$("models").addEventListener("click", (e) => {
 			const b = e.target.closest("button"); if (!b) return
 			opts.mock = b.dataset.v === "mock"
@@ -650,7 +694,14 @@
 			try {
 				const runs = await (await fetch("/api/runs")).json()
 				if (runs.length === 0) return
-				$("runs").innerHTML = runs.map((r) => `<a class="run-row" href="/?run=${encodeURIComponent(r.runId)}"><span class="status-pill st-${esc(r.status.replace(/ /g, "-"))}">${esc(r.status)}</span><span class="t" title="${esc(r.title)}">${esc(r.title)}</span><span class="t2 num">rev ${esc(r.revision)}</span><span class="t3 num" style="text-align:right">${esc(ago(r.startedAt))}</span><button class="btn reuse" data-reuse="${esc(r.runId)}" title="Load this run's brief into the composer">Use this brief again</button></a>`).join("")
+				const LIVE = new Set(["running", "bench live", "waiting for a change"])
+				const secs = (ms) => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s` }
+				$("runs-count").textContent = `${runs.length} run${runs.length === 1 ? "" : "s"} · ${runs.filter((r) => LIVE.has(r.status)).length} live`
+				$("runs").innerHTML = runs.map((r) => {
+					const live = LIVE.has(r.status)
+					const ch = r.changes ?? { count: 0, lastDurationMs: null }
+					return `<a class="run-row${live ? " live" : ""}" href="/?run=${encodeURIComponent(r.runId)}"><span class="status-pill st-${esc(r.status.replace(/ /g, "-"))}${live ? " live" : ""}">${esc(r.status === "waiting for a change" ? "waiting" : r.status)}</span><span class="t" title="${esc(r.title)} · ${esc(r.runId)}">${esc(r.title)}</span><span class="n num">${esc(r.revision)}</span><span class="n ${ch.count ? "big" : ""} num">${ch.count || "—"}</span><span class="n num">${typeof ch.lastDurationMs === "number" ? `✓ in ${esc(secs(ch.lastDurationMs))}` : "—"}</span><span class="n num">${esc(ago(r.startedAt))}</span><span class="acts"><button class="btn reuse" data-reuse="${esc(r.runId)}" title="Load this run's brief into the composer">Use this brief</button><span class="btn open" style="display:inline-flex;align-items:center">${live ? "Open live →" : "Open →"}</span></span></a>`
+				}).join("")
 			} catch {}
 		}
 		$("runs").addEventListener("click", async (e) => {

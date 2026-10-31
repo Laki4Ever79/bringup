@@ -290,6 +290,26 @@ test("a run started elsewhere (npm run demo) can be adopted: its status is live 
 	}
 })
 
+test("the run list: the title without its \"Brief:\" prefix, how many changes were asked, and the last ripple's time", async () => {
+	const root = outRoot()
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const id = "20261031-140000-cccccc"
+		mkdirSync(join(root, id))
+		writeFileSync(join(root, id, "brief.md"), "# Brief: pocket climate logger\n")
+		writeFileSync(join(root, id, "trace.jsonl"), line(0, "run.started", { stay: true }) + line(1, "design.settled", { revision: 7, settled: true }) + line(2, "change.requested", { id: "req-1", text: "make it 60 mm wide" }) + line(3, "change.requested", { id: "req-2", text: "make it 40 mm wide" }))
+		writeFileSync(join(root, id, "ripples.json"), JSON.stringify({ requests: [{ id: "req-1", durationMs: 56_000, consistentAtMs: 80_000 }, { id: "req-2", durationMs: null, consistentAtMs: null }] }))
+		const runs = (await (await fetch(`${hub.url}/api/runs`)).json()) as any[]
+		const r = runs.find((x) => x.runId === id)
+		assert.equal(r.title, "pocket climate logger")
+		assert.deepEqual(r.changes, { count: 2, lastDurationMs: 56_000 })
+		const plain = runs.find((x) => x.runId === "20261031-120000-aaaaaa")
+		assert.deepEqual(plain.changes, { count: 0, lastDurationMs: null })
+	} finally {
+		await hub.close()
+	}
+})
+
 test("the run list's revision is the contract's, not a bench board's recorded rev", async () => {
 	const root = outRoot()
 	mkdirSync(join(root, "20261031-140000-cccccc"))

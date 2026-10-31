@@ -180,6 +180,8 @@ interface RunSummary {
 	// "waiting for a change": settled, and the run stays up (--stay) for the next change request until Stop.
 	status: "running" | "bench live" | "waiting for a change" | "settled" | "unsettled" | "failed" | "stopped"
 	bench: boolean
+	// Engineer change requests asked during the run, and the newest one's "consistent again in" time (ripples.json).
+	changes: { count: number; lastDurationMs: number | null }
 	revision: number
 	startedAt: string
 	title: string
@@ -253,6 +255,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		let settled: boolean | null = null
 		let bench = false
 		let stay = false
+		let changeCount = 0
 		for (const l of traceText.split("\n")) {
 			if (!l.trim()) continue
 			try {
@@ -263,16 +266,19 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (e.type === "design.settled") settled = e.payload.settled === true
 				if (e.type === "bench.connected") bench = true
 				if (e.type === "run.started") stay = e.payload?.stay === true
+				if (e.type === "change.requested") changeCount++
 				// A change landed after settling: running again until it re-settles.
 				if (e.type === "contract.changed" && stay) settled = null
 			} catch {}
 		}
 		const brief = await readFile(join(dir, "brief.md"), "utf8").catch(() => "")
-		const title = (brief.split("\n").find((l) => l.trim()) ?? id).replace(/^#+\s*/, "").trim().slice(0, 80)
+		const title = (brief.split("\n").find((l) => l.trim()) ?? id).replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "").trim().slice(0, 80)
+		const ripples = await readFile(join(dir, "ripples.json"), "utf8").then((t) => JSON.parse(t), () => null)
+		const durations = (Array.isArray(ripples?.requests) ? ripples.requests : []).map((r: { durationMs?: unknown }) => r.durationMs).filter((d: unknown): d is number => typeof d === "number")
 		const run = live.get(id)
 		const status: RunSummary["status"] =
 			run && run.exit === null ? (bench && settled !== null ? "bench live" : stay && settled !== null ? "waiting for a change" : "running") : settled !== null ? (settled ? "settled" : "unsettled") : run ? (run.exit === 0 ? "settled" : run.exit === 2 ? "unsettled" : "failed") : "stopped"
-		return { runId: id, status, revision, startedAt: startedAt ?? (await stat(dir)).mtime.toISOString(), title, bench }
+		return { runId: id, status, revision, startedAt: startedAt ?? (await stat(dir)).mtime.toISOString(), title, bench, changes: { count: changeCount, lastDurationMs: durations.at(-1) ?? null } }
 	}
 
 	const listRuns = async (): Promise<RunSummary[]> => {
