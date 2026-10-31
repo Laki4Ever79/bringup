@@ -111,7 +111,8 @@ There is no orchestrator: no agent calls or awaits another. How it uses Mozaik:
 - **`RuntimeState`** holds one live design contract per run; every field has an owner and a version.
 - **Situations are the dependency graph**: each participant's situations decide which changes wake it.
 - **`runLoop`** is fire-and-forget, so every agent turn runs concurrently with the others.
-- **`InterceptionHandler` is change control**: a change to another owner's field is held mid-loop until the owner decides.
+- **`InterceptionHandler` is change control**: a change to another owner's field is held mid-loop until the owner decides,
+  and owners do say no: in real run 7 interception held 18 changes and the owners rejected 8 ([docs/runs/real-7](docs/runs/real-7/report.md)).
 - **Plain-code participants** (builders and checks) and a custom `InferenceRunner` (`--mock` runs with no key).
 
 Events, checks, the full Mozaik table and our 4.1 workarounds (#113, #114, #115) are in [docs/details.md](docs/details.md).
@@ -137,7 +138,8 @@ the tests are in [docs/details.md](docs/details.md).
 ## Honest status
 
 - Scripted runs settle with 0 violations and take mid-run changes, with the real board, case and firmware tools.
-- Real models take mid-run changes too (run 20: a sensor swap in 75 s, 40 mm wide in 28 s).
+- Real models take mid-run changes too (run 20: a sensor swap rippled to consistent in 75 s, 40 mm wide in 28 s;
+  that run as a whole then failed the final review and did not settle).
 - **A real-model run has passed the final brief review**: run real-pass ([docs/runs/real-pass](docs/runs/real-pass/)) designed the beacon from its brief with real models and real tools, failed review 1, fixed itself, and passed review 2 (settled at rev 19, 0 violations, about 8 minutes). It is 1 pass out of 19 real runs started that night; the others ended unsettled. What got it there: the designers now see the same computed facts as the reviewer, and the review's computable checks run live during design.
 - Boards need a human review before ordering (`fab/README.txt` lists every item); the parts catalog is small.
 
