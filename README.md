@@ -264,7 +264,9 @@ npm run bringup -- briefs/beacon.md --mock    # then: scripted models, real tool
 `npm run setup` first checks the prerequisites and says plainly what's missing (Node 24, uv, and a Docker daemon that
 works without `sudo`: "Docker isn't running: start it, then re-run"). It installs the same pinned versions as the
 manual steps below, all repo-local (`.venv/`, `tools/`), never with `sudo` and never system-wide. Optional:
-`npm run setup -- --qemu` adds firmware emulation. A fresh machine takes about 20 min end to end (checked on a fresh
+`npm run setup -- --qemu` adds firmware emulation (QEMU), and `npm run setup -- --wokwi` adds Wokwi simulation (the
+pinned CLI, checked by sha256, plus the stand-in sensor chips; linux-x64; about 44 s, plus a ~360 MB toolchain download
+into `~/.wokwi` on a new machine), plus `WOKWI_CLI_TOKEN` in `.env`. A fresh machine takes about 20 min end to end (checked on a fresh
 clone on 31 Oct; every step exited 0).
 
 | Prerequisite | Tested with | Notes |
@@ -300,8 +302,8 @@ about 5 s. `-e esp32c3` matters: without it PlatformIO also fetches the ESP32-S3
 Optional: Espressif QEMU, to boot the built firmware headless. Install steps are in `NOTES.md` ("Firmware emulation").
 
 Optional: **Wokwi firmware simulation**, to run the firmware with a simulated sensor. Create a free token at
-[wokwi.com/dashboard/ci](https://wokwi.com/dashboard/ci), add `WOKWI_CLI_TOKEN=…` to `.env`, and install the CLI as
-`NOTES.md` describes ("Optional: Wokwi firmware simulation"). The free plan has 50 simulation minutes a month, so
+[wokwi.com/dashboard/ci](https://wokwi.com/dashboard/ci), add `WOKWI_CLI_TOKEN=…` to `.env`, and run
+`npm run setup -- --wokwi` (or install by hand as `NOTES.md` describes, "Optional: Wokwi firmware simulation"). The free plan has 50 simulation minutes a month, so
 simulation runs on demand, not on every build.
 
 **Environment detection** (`src/tools/env.ts`). At start, Bringup picks a backend for each tool from what the machine
