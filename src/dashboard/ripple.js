@@ -207,13 +207,15 @@ export function mergeRipples(live, file, t0) {
 }
 
 const secs = (ms) => {
+	if (ms < 1000) return "under 1 s"
 	const s = Math.max(0, Math.round(ms / 1000))
 	return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`
 }
 
 // The big line under the ripple: "Consistent again in 38 s · 4 of 9 agents woke".
-export function resultLine(r, now = Date.now()) {
-	const woke = `${r.woke.length} of ${KEYS.length} agents woke${r.checked?.length ? ` · ${r.checked.length} checked, no change` : ""}`
+// stubbed: the run's hardware is stubbed (--no-hardware), which is why a ripple can take under a second.
+export function resultLine(r, now = Date.now(), { stubbed = false } = {}) {
+	const woke = `${r.woke.length} of ${KEYS.length} agents woke${r.checked?.length ? ` · ${r.checked.length} checked, no change` : ""}${stubbed ? " · hardware stubbed" : ""}`
 	const [headline, detail] =
 		r.state === "consistent" ? [`Consistent again in ${secs(r.durationMs)}`, woke]
 		: r.state === "rippling" ? [`Rippling · ${secs(now - r.atMs)}`, `${woke}${r.working.length ? ` · ${r.working.length} still working` : ""}`]
