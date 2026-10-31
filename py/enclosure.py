@@ -2,7 +2,7 @@
 
 usage: enclosure.py <spec.json> <outdir>
 
-spec = {outline: {widthMm, heightMm, thicknessMm}, connectors: [Connector], holes: [{ref, xMm, yMm}],
+spec = {outline: {widthMm, heightMm, thicknessMm}, connectors: [Connector], holes: [{ref, xMm, yMm}], sensors: [{ref, xMm, yMm}],
         wallMm, clearanceMm, heightMm, standoff: {heightMm, outerMm, pilotMm},
         lid: {plateMm, lipMm, lipWallMm, clearanceMm}}
 
@@ -12,7 +12,7 @@ placed from contract coordinates; nothing is subtracted from a board mesh. cutou
 back from the finished solid, so they report what exists rather than echoing the spec.
 
 Outputs: case.step/.stl (printed open side up, as built), lid.step/.stl (printed plate down: z mirrored, so
-z_assembled = heightMm + lid.plateMm - z), cutouts.json, standoffs.json, print.json.
+z_assembled = heightMm + lid.plateMm - z), cutouts.json, standoffs.json, vents.json, print.json.
 """
 
 import json
@@ -29,6 +29,12 @@ MIN_WALL_MM = 1.2  # three 0.4 mm perimeters
 MAX_BRIDGE_MM = 12.0  # PLA/PETG bridge this far cleanly at 0.2 mm layers with part cooling
 OVERHANG_COS = 0.7071  # a face pointing down more than 45 degrees from vertical needs support
 LID_CLEARANCE_MM = (0.2, 0.3)
+# A slot grille through the lid over each temperature/humidity sensor. Sensirion's design guide for its humidity and
+# temperature sensors (HT_AN_SHTxx_STSxx Design Guide v1.1, May 2019, the one the SHT4x documents point to): give the
+# sensor a large opening to the environment, keep the dead volume around it small, and keep it away from heat sources
+# (the board generator already puts the sensor in the corner farthest from the MCU and the LDO). Slots, not one round
+# hole, so a finger can't reach the board; 1.2 mm is three perimeters wide and prints cleanly through a 2 mm plate.
+VENT = {"slots": 4, "slotMm": 1.2, "pitchMm": 2.4, "lengthMm": 6.0}
 
 
 def fail(msg):
@@ -48,14 +54,14 @@ def load(path):
             "plate": float(spec["lid"]["plateMm"]), "lip": float(spec["lid"]["lipMm"]),
             "lip_wall": float(spec["lid"]["lipWallMm"]), "lid_clear": float(spec["lid"]["clearanceMm"]),
         }
-        conns, holes = spec["connectors"], spec.get("holes", [])
+        conns, holes, sensors = spec["connectors"], spec.get("holes", []), spec.get("sensors", [])
     except (OSError, ValueError, KeyError, TypeError) as e:
         fail(f"bad spec {path}: {e!r}")
     if min(dims["w"], dims["h"], dims["t"], dims["wall"], dims["height"], dims["post_od"], dims["plate"]) <= 0 or dims["clear"] < 0:
         fail(f"outline, wall and height must be positive: {spec}")
     if dims["pilot"] >= dims["post_od"]:
         fail(f"pilot hole {dims['pilot']} mm does not fit in a {dims['post_od']} mm post")
-    return dims, conns, holes
+    return dims, conns, holes, sensors
 
 
 def board_z(d):
@@ -129,6 +135,48 @@ def build_lid(d, iw, ih):
     lip_outer = Pos(cx, cy, d["height"] - d["lip"] / 2) * Box(lw, lh, d["lip"])
     lip_inner = Pos(cx, cy, d["height"] - d["lip"] / 2) * Box(lw - 2 * d["lip_wall"], lh - 2 * d["lip_wall"], d["lip"])
     return plate + (lip_outer - lip_inner)
+
+
+def vent_cut(sensor, d):
+    """The grille's slots over one sensor, through the lid's plate, kept inside the lip so it never cuts it."""
+    n, slot, pitch, length = VENT["slots"], VENT["slotMm"], VENT["pitchMm"], VENT["lengthMm"]
+    span = (n - 1) * pitch + slot
+    inner = d["clear"] - d["lid_clear"] - d["lip_wall"] - 0.5  # the lip's inner face, from the board edge, with margin
+    x = min(max(float(sensor["xMm"]), span / 2 - inner), d["w"] + inner - span / 2)
+    y = min(max(float(sensor["yMm"]), length / 2 - inner), d["h"] + inner - length / 2)
+    z = d["height"] + d["plate"] / 2
+    cut = None
+    for i in range(n):
+        box = Pos(x - span / 2 + slot / 2 + i * pitch, y, z) * Box(slot, length, d["plate"] * 1.5)
+        cut = box if cut is None else cut + box
+    return cut
+
+
+def measure_vents(lid, d, sensors):
+    """Each grille's centre and size, read back from the open area in the built lid's plate."""
+    out = []
+    span = (VENT["slots"] - 1) * VENT["pitchMm"] + VENT["slotMm"]
+    for sensor in sensors:
+        x, y = float(sensor["xMm"]), float(sensor["yMm"])
+        z = d["height"] + d["plate"] / 2
+        # Only inside the lip: beyond the plate's edge there is air too, and it isn't a vent.
+        inner_w = d["w"] + 2 * (d["clear"] - d["lid_clear"] - d["lip_wall"])
+        inner_h = d["h"] + 2 * (d["clear"] - d["lid_clear"] - d["lip_wall"])
+        inside = Pos(d["w"] / 2, d["h"] / 2, z) * Box(inner_w, inner_h, d["plate"] * 0.98)
+        region = inside & (Pos(x, y, z) * Box(span + 4, VENT["lengthMm"] + 4, d["plate"] * 0.98))
+        opening = region - lid
+        if opening.volume <= 0:
+            fail(f"{sensor.get('ref', '?')}: no vent was cut over the sensor at ({x}, {y}) mm")
+        bb = opening.bounding_box()
+        out.append({
+            "ref": sensor.get("ref"),
+            "xMm": round((bb.min.X + bb.max.X) / 2, 3),
+            "yMm": round((bb.min.Y + bb.max.Y) / 2, 3),
+            "widthMm": round(bb.size.X, 3),
+            "heightMm": round(bb.size.Y, 3),
+            "openMm2": round(opening.volume / (d["plate"] * 0.98), 2),
+        })
+    return out
 
 
 def measure_standoffs(case, d, holes):
@@ -235,7 +283,7 @@ def lid_fit(case, lid, d):
 def main():
     if len(sys.argv) != 3:
         fail("usage: enclosure.py <spec.json> <outdir>")
-    d, conns, holes = load(sys.argv[1])
+    d, conns, holes, sensors = load(sys.argv[1])
     out = Path(sys.argv[2])
     out.mkdir(parents=True, exist_ok=True)
 
@@ -257,6 +305,9 @@ def main():
         fail(f"cutouts removed {removed:.1f} mm3, expected {expected:.1f} mm3 (overlapping slots?)")
 
     lid = build_lid(d, iw, ih)
+    for sensor in sensors:
+        lid = lid - vent_cut(sensor, d)
+    vents = measure_vents(lid, d, sensors)
     # Printed plate down: mirror through z = 0, then lift the plate onto the bed.
     lid_print = Pos(0, 0, d["height"] + d["plate"]) * mirror(lid, Plane.XY)
     standoffs = measure_standoffs(case, d, holes)
@@ -280,10 +331,11 @@ def main():
 
     (out / "cutouts.json").write_text(json.dumps(cutouts, indent=2) + "\n")
     (out / "standoffs.json").write_text(json.dumps(standoffs, indent=2) + "\n")
+    (out / "vents.json").write_text(json.dumps(vents, indent=2) + "\n")
     (out / "print.json").write_text(json.dumps(check, indent=2) + "\n")
     verdict = "print check ok" if check["ok"] else f"print check: {len(issues)} issue(s)"
     print(f"case {iw + 2 * d['wall']:.1f}x{ih + 2 * d['wall']:.1f}x{d['height']:.1f} mm + {d['plate']:.1f} mm lid, "
-          f"{len(cutouts)} cutouts, {len(standoffs)} standoffs; {verdict}")
+          f"{len(cutouts)} cutouts, {len(standoffs)} standoffs, {len(vents)} vents; {verdict}")
 
 
 if __name__ == "__main__":

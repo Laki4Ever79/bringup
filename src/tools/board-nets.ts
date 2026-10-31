@@ -38,6 +38,19 @@ export function holesFromCircuitJson(elements: any[]): { xMm: number; yMm: numbe
 		.map((e) => ({ xMm: +(e.x + w / 2).toFixed(3), yMm: +(e.y + h / 2).toFixed(3), diameterMm: e.hole_diameter ?? 0 }))
 }
 
+// Where each component's centre was placed, by reference designator, from the board's bottom-left corner.
+export function placementsFromCircuitJson(elements: any[]): Record<string, { xMm: number; yMm: number }> {
+	const board = elements.find((e) => e.type === "pcb_board")
+	const [w, h] = [board?.width ?? 0, board?.height ?? 0]
+	const refOf = new Map(elements.filter((e) => e.type === "source_component").map((c) => [c.source_component_id, c.name as string]))
+	const out: Record<string, { xMm: number; yMm: number }> = {}
+	for (const c of elements.filter((e) => e.type === "pcb_component" && e.center)) {
+		const ref = refOf.get(c.source_component_id)
+		if (ref) out[ref] = { xMm: +(c.center.x + w / 2).toFixed(3), yMm: +(c.center.y + h / 2).toFixed(3) }
+	}
+	return out
+}
+
 // Each placed component by reference designator: its MPN (null when the board has none) and its pins, in port order.
 export function partsFromCircuitJson(elements: any[]): Record<string, { mpn: string | null; pins: string[] }> {
 	const parts: Record<string, { mpn: string | null; pins: string[] }> = {}

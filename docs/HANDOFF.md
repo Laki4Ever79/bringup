@@ -68,5 +68,5 @@ My honest assessment, to start from (challenge it, don't just execute it):
 
 ## Do-not-break list
 - `npm run bringup -- briefs/logger.md --mock --no-hardware` must keep working (it's the judge path, about 3 s).
-- Keep the scripted mode honest (it always builds the logger, and the UI says so).
+- Keep the scripted mode honest (it builds one of two fixed designs, the beacon or the logger, chosen by the brief, and the UI says so).
 - Mozaik is pinned at exactly 4.1.0.
