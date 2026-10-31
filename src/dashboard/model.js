@@ -58,7 +58,8 @@ const LABEL = {
 // What a changed list entry shows after its key: the part of LABEL that can differ.
 const CHANGE = {
 	pins: (a, b) => (a.gpio !== b.gpio ? `GPIO${a.gpio} → GPIO${b.gpio}` : `${a.partRef}.${a.partPin} → ${b.partRef}.${b.partPin}`),
-	parts: (a, b) => (a.mpn !== b.mpn ? `${a.mpn} → ${b.mpn}` : `${a.footprint} → ${b.footprint}`),
+	// Same MPN and footprint: name what did change (pins, LCSC number, role…), not "SOT-23-5 → SOT-23-5".
+	parts: (a, b) => (a.mpn !== b.mpn ? `${a.mpn} → ${b.mpn}` : a.footprint !== b.footprint ? `${a.footprint} → ${b.footprint}` : `${b.mpn}: ${Object.keys({ ...a, ...b }).filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).sort().join(", ")} changed`),
 	connectors: (a, b) => `${a.kind} ${a.edge} @ ${a.offsetMm} mm → ${b.kind} ${b.edge} @ ${b.offsetMm} mm`,
 	rails: (a, b) => `${a.voltageV} V ${a.loadMa}/${a.regulatorMaxMa} mA → ${b.voltageV} V ${b.loadMa}/${b.regulatorMaxMa} mA`,
 }
@@ -416,4 +417,13 @@ export function runPhase({ settled, stay, alive, benchLive, stopped }) {
 	if (benchLive) return { bar: "bench", pill: `${word} · bench live`, open: true }
 	if (stay && alive) return { bar: "waiting", pill: `${word} · waiting for a change`, open: true }
 	return { bar: "settled", pill: word, open: false }
+}
+
+// The composer's placeholder for the run's phase (runPhase().bar), honest about an unsettled design.
+export function composerPrompt(bar, settled) {
+	if (bar === "bench") return "Bring-up: ask for a change; a firmware change reflashes the board (try “blink faster when tilted”)"
+	if (bar === "waiting") return settled?.settled === false ? "Not consistent yet: ask for a change that fixes it (the checks say what is wrong), or try another…" : "Settled. Now change one thing: make it 40 mm wide, swap a part, move a connector…"
+	if (bar === "stopped") return "The run was stopped. Start a new design to change it."
+	if (bar === "settled") return "This run has ended. Start a new design to change it."
+	return "Make it 40 mm wide, swap a part, move a connector… while the agents work"
 }

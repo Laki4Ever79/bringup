@@ -1,5 +1,10 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import { tmpdir } from "node:os"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { startRunProcess } from "../src/runner/spawn-run.ts"
 
 const args = { briefPath: "/tmp/b/brief.md", mock: true, outDir: "/tmp/b" }
@@ -72,4 +77,27 @@ test("onStdout and onStderr see output as it arrives, and done still has it", as
 test("extraArgs go between the brief flags and --out", async () => {
 	const { done } = startRunProcess({ ...args, extraArgs: ["--no-hardware", "--engineer-approval"] }, { command: node("console.error(JSON.stringify(process.argv.slice(1)))") })
 	assert.deepEqual(JSON.parse((await done).stderr), ["/tmp/b/brief.md", "--mock", "--no-hardware", "--engineer-approval", "--out", "/tmp/b"])
+})
+
+test("a run sees its parent go: its stdin is a pipe that closes when the parent process exits, however it exits", { timeout: 20_000 }, async () => {
+	const dir = mkdtempSync(join(tmpdir(), "bringup-orphan-"))
+	const marker = join(dir, "parent-gone")
+	// The "run": waits for its stdin to close (only when told it has a parent pipe), then leaves a marker.
+	const child = join(dir, "child.mjs")
+	writeFileSync(child, `import { writeFileSync } from "node:fs"
+if (process.env.BRINGUP_PARENT_PIPE !== "1") process.exit(3)
+process.stdin.on("end", () => { writeFileSync(${JSON.stringify(marker)}, "x"); process.exit(0) })
+process.stdin.resume()
+setTimeout(() => process.exit(4), 15000)
+`)
+	// The "demo": starts the run through startRunProcess, then dies abruptly without stopping it.
+	const parent = join(dir, "parent.mjs")
+	writeFileSync(parent, `import { startRunProcess } from ${JSON.stringify(new URL("../src/runner/spawn-run.ts", import.meta.url).href)}
+startRunProcess({ briefPath: "b.md", mock: false, outDir: "o" }, { command: [process.execPath, ${JSON.stringify(child)}] })
+setTimeout(() => process.kill(process.pid, "SIGKILL"), 500)
+`)
+	spawnSync(process.execPath, ["--import", "tsx", parent], { cwd: dirname(fileURLToPath(import.meta.url)), timeout: 10_000 })
+	const deadline = Date.now() + 8000
+	while (!existsSync(marker) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100))
+	assert.ok(existsSync(marker), "the orphaned run noticed its parent was gone")
 })

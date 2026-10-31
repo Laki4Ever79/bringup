@@ -228,6 +228,48 @@ test("ripple: a clean DRC that relies on the USB-C vendor rule reads clean, with
 	assert.equal(board.detail, "rev 7 · DRC clean (1 rule: USB-C vendor land pattern)")
 })
 
+test("ripple: the window ends at the first design.ready after the request; later review rounds are follow-ups", () => {
+	const events = [
+		...initial,
+		activity(101, "architect", "turn"),
+		changed(104, "outline", 2, 6, "architect"),
+		checked(105, 6, 0),
+		ev(110, "artifact.ready", { kind: "board", revision: 6 }),
+		ev(111, "artifact.ready", { kind: "enclosure", revision: 6 }),
+		ev(112, "design.ready", { revision: 6 }),
+		// After design.ready: the reviewer's round and what it changed belong to the review, not the request.
+		activity(113, "reviewer", "turn"),
+		ev(118, "review.completed", { revision: 6, verdict: "fail", findings: [{ severity: "major" }] }),
+		activity(119, "architect", "turn"),
+		changed(121, "rails", 2, 7, "architect"),
+		changed(122, "requirements", 2, 8, "architect"),
+		changed(123, "rails", 3, 9, "architect"),
+		ev(130, "review.completed", { revision: 9, verdict: "pass", findings: [] }),
+	]
+	const [r] = liveRipples(events, [request], T0 + 200_000)
+	assert.deepEqual(r.fieldsChanged, ["outline"])
+	assert.ok(r.stayedIdle.includes("reviewer"), "the re-review is not part of the request's ripple")
+	assert.ok(!r.woke.includes("build:firmware"))
+	assert.equal(r.consistentAtMs, T0 + 111_000)
+	assert.deepEqual(r.reviewFollowUps, { fieldsChanged: ["rails", "requirements"], rounds: 2 })
+	// No design.ready before the next request or the end: the window runs as before, with no follow-ups.
+	const [plain] = liveRipples([...initial, ...ripple], [request], T0 + 200_000)
+	assert.deepEqual(plain.reviewFollowUps, { fieldsChanged: [], rounds: 0 })
+	// A request that changed nothing, closed by design.ready: no change, not still "sent".
+	const quiet = [...initial, activity(101, "architect", "turn"), activity(104, "architect", "answer"), ev(112, "design.ready", { revision: 5 })]
+	assert.equal(liveRipples(quiet, [request], T0 + 200_000)[0].state, "no-change")
+	// The runner's file carries the same field; it wins when present.
+	const file = { requests: [{ id: "req-1", text: request.text, atMs: 100_000, fieldsChanged: ["outline"], woke: r.woke, checked: [], stayedIdle: r.stayedIdle, violationsPeak: 0, consistentAtMs: 111_000, durationMs: 11_000, reviewFollowUps: { fieldsChanged: ["rails"], rounds: 3 } }] }
+	assert.deepEqual(mergeRipples([r], file, T0)[0].reviewFollowUps, { fieldsChanged: ["rails"], rounds: 3 })
+})
+
+test("result line: under a second reads \"under 1 s\", and stubbed hardware says so", () => {
+	const r = { ...liveRipples([...initial, ...ripple], [request], T0 + 200_000)[0], durationMs: 400 }
+	assert.equal(resultLine(r, T0 + 200_000).headline, "Consistent again in under 1 s")
+	assert.equal(resultLine(r, T0 + 200_000, { stubbed: true }).detail, "4 of 9 agents woke · hardware stubbed")
+	assert.equal(resultLine({ ...r, durationMs: 38_000 }, T0 + 200_000).headline, "Consistent again in 38 s")
+})
+
 test("what moved: outline, connectors, pins and parts, before → after", () => {
 	const before = {
 		outline: { widthMm: 50, heightMm: 30 },
