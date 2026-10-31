@@ -174,6 +174,9 @@
 	.seq i.z { background: var(--ok); }
 	.seq s { text-decoration: none; color: var(--ink-3); font: 600 12px/1 var(--mono); }
 
+	/* The numbered flow carries on below the band: 04 the result, 05 the board, 06 the case, 07 the parts. */
+	.sec-num { flex: none; align-self: flex-start; padding-top: 6px; }
+	.stage-bar .sec-num { align-self: center; padding: 0 6px 0 2px; color: var(--screen-text-2); }
 	#rip-result { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 8px 18px; border-top: 2px solid var(--ink); background: var(--paper-2); min-width: 0; }
 	#rip-result .stampbox { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 2.5px solid currentColor; font: 900 26px/1 var(--display); }
 	#rip-headline { font: 800 clamp(30px, 3.1vw, 58px)/1 var(--display); text-transform: uppercase; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -607,12 +610,13 @@
 				<div class="label"><b>03</b> Agents<span class="right" id="rip-agents-note"></span></div>
 				<section id="agents"></section>
 			</div>
-			<div id="rip-result" class="initial"><span class="stampbox" id="rip-stamp">·</span><div style="min-width:0"><div id="rip-headline">Waiting for the first event</div><div id="rip-detail"></div></div><div id="rip-proof" class="hidden"></div><div id="held" class="hidden"></div></div>
+			<div id="rip-result" class="initial"><span class="label sec-num"><b>04</b> Result</span><span class="stampbox" id="rip-stamp">·</span><div style="min-width:0"><div id="rip-headline">Waiting for the first event</div><div id="rip-detail"></div></div><div id="rip-proof" class="hidden"></div><div id="held" class="hidden"></div></div>
 		</section>
 
 		<section id="deck">
 			<section id="stage">
 				<div class="stage-bar">
+					<span class="label sec-num"><b>05</b> Board</span>
 					<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="bench" class="hidden">Bench</button></div>
 					<span id="dims" class="num"></span>
 					<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
@@ -643,11 +647,11 @@
 			</section>
 			<aside id="side">
 				<section id="scene-panel">
-					<div class="label">Case + board<span class="right"><label>explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
+					<div class="label"><b>06</b> Case + board<span class="right"><label>explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
 					<div id="scene-body"><div id="scene-host"></div><div id="scene-empty" class="empty-state">waiting for the first enclosure build</div></div>
 				</section>
 				<section id="parts-panel" class="sheet">
-					<button class="fold-head label" id="parts-fold" aria-expanded="false"><span id="parts-head">Parts</span><span class="caret">▸</span></button>
+					<button class="fold-head label" id="parts-fold" aria-expanded="false"><b>07</b><span id="parts-head">Parts</span><span class="caret">▸</span></button>
 					<div id="parts-ready"></div>
 					<div id="parts"><div class="t3" style="padding:12px">waiting for the parts list</div></div>
 				</section>
