@@ -37,7 +37,7 @@ async function drafted() {
 		events.filter((e) => e.type === "message_received.started" && e.producerId === agentId).map((e) => String((e.payload as { content?: string }).content ?? ""))
 	const fail = (kind: "board" | "firmware" | "enclosure", revision: number, error: string) =>
 		emit(makeEvent("artifact.failed", desk.getId(), { kind, revision, error }), desk.getId())
-	return { state, events, architect, parts, firmware, desk, turns, fail }
+	return { state, events, architect, parts, firmware, desk, engineer, turns, fail }
 }
 
 test("a failed board build gives the architect and the parts agent a turn with the error", async () => {
@@ -108,4 +108,18 @@ test("a held behavior change asks its owner, the firmware agent, to decide", asy
 	emit(makeEvent("change.proposed", t.desk.getId(), { proposalId: id, field: "behavior", by: "architect", reason: "blink faster", needsEngineer: false }), t.desk.getId())
 	await waitFor(() => t.turns(t.firmware.getId()).some((m) => m.includes(`proposalId=${id}`)))
 	assert.ok(!t.turns(t.parts.getId()).some((m) => m.includes(`proposalId=${id}`)))
+})
+
+// Real run 18: "our sensor is out of stock" reached only the architect and firmware; the parts agent, who owns the parts
+// list, saw only the architect's proposal, trusted a lookup with unknown stock over the engineer, and rejected it.
+test("an engineer request reaches the parts agent too, and the engineer's word on stock counts over the lookup", async () => {
+	const t = await drafted()
+	const request = "our temperature/humidity sensor is out of stock; switch to the other one in the catalog"
+	sendMessage(request, t.engineer.getId())
+	await waitFor(() => t.turns(t.parts.getId()).some((m) => m.includes(request)))
+	const msg = t.turns(t.parts.getId()).find((m) => m.includes(request))!
+	assert.match(msg, /^Change request from the engineer:/)
+	assert.match(msg, /If it is about the parts \(stock, a different or extra part\), meet it by changing the parts list you own/)
+	assert.match(msg, /The engineer's word on stock counts over search_parts/)
+	assert.ok(!t.turns(t.parts.getId()).some((m) => m.includes("Battery BLE temperature logger")), "the brief itself is not a change request")
 })
