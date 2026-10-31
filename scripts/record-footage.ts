@@ -96,22 +96,22 @@ async function main(): Promise<void> {
 	try {
 		// Act 2 (recorded first: the run is already starting): the first design building, then "Consistent at rev N".
 		await take(2, runUrl, async (page) => {
-			mark("the run page opens: Designing · rev N, agent tiles lighting up together")
+			mark("the run page opens: 05 reads “Designing from the brief”, agent tiles lighting up together")
 			await page.waitForTimeout(4000)
 			await glide(page, "#agents")
 			mark("several agent tiles working at once")
 			await until(page, resultIs("consistent", false), 15 * 60_000)
-			mark("Consistent at rev N · Now change one thing ↑")
+			mark("05: “First design consistent at rev N” · now change one thing ↑")
 			await glide(page, "#pcb-host")
 			await page.waitForTimeout(3500)
 		})
 
-		// Act 3: the automatic change ripples; then "make it 40 mm wide" typed by hand; the proof line; what moved; why.
+		// Act 3: the automatic change ripples; then "make it 40 mm wide" typed by hand; the proof line; the PCB; why.
 		await take(3, runUrl, async (page) => {
 			await until(page, `/blink/i.test(document.getElementById("rip-text").textContent)`, 120_000)
 			mark("the automatic change lands: “blink faster when tilted” (firmware only)")
 			await until(page, resultIs("consistent", true), 10 * 60_000)
-			mark("Consistent again: firmware woke, board and case stayed idle")
+			mark("05: “blink faster when tilted”: board, case and firmware agree; firmware woke, board and case stayed idle")
 			await page.waitForTimeout(3000)
 			await glide(page, "#change-input")
 			await page.click("#change-input")
@@ -120,16 +120,14 @@ async function main(): Promise<void> {
 			await page.waitForTimeout(600)
 			await page.keyboard.press("Enter")
 			await until(page, `/40 mm/.test(document.getElementById("rip-text").textContent) && ["rippling", "sent"].includes(document.getElementById("rip-result").className)`, 120_000)
-			mark("the ripple: outline v1 → v2, architect, board and case working, the rest dimmed")
+			mark("the ripple: outline v1 → v2; 05 reads “Board and case rebuilding for 40 mm wide”")
 			await until(page, `/40 mm/.test(document.getElementById("rip-text").textContent) && document.getElementById("rip-result").className === "consistent"`, 10 * 60_000)
-			mark("Consistent again in … · the proof line: without the shared contract, 4 mismatches would ship")
+			mark("05: “40 mm wide: board, case and firmware agree” · the proof line: without the shared contract, 4 mismatches would ship")
 			await page.waitForTimeout(4000)
-			await glide(page, "#moved")
-			await page.waitForTimeout(2500)
 			const u1 = page.locator('.pcb-root [data-ref="U1"]').first()
 			const b = await u1.boundingBox().catch(() => null)
 			if (b) await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 30 })
-			mark("What moved 50 → 40 mm; PCB rulers with U1's size on hover")
+			mark("the PCB at 40 mm: rulers, U1's size on hover")
 			await page.waitForTimeout(3000)
 			await glide(page, "#why-btn")
 			await page.click("#why-btn")

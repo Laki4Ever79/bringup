@@ -16,6 +16,11 @@ you change one thing ("make it 40 mm wide", "the sensor is out of stock", "blink
 that change affects wake up, rework their part at the same time, and the design is consistent again, with every
 other part left alone.
 
+Or **edit and save a generated file**: the firmware's `pins.h`, or the board in KiCad. The save becomes the engineer's
+change request and the design follows (`docs/runs/file-sync`: a pin moved in `pins.h` rebuilt the board and firmware
+in 96 s; the board's edge dragged 5 mm in KiCad rebuilt the board and case in 21 s). An edit the contract can't hold,
+such as a hand-routed track, gets a warning that the next rebuild will overwrite it, instead of being dropped silently.
+
 **What one run hands you, ready for a prototype:**
 
 | Output | Ready for | Where |

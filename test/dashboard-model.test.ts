@@ -153,8 +153,8 @@ test("the Review pill says off when the run has the brief review disabled", () =
 test("the composer and the state pill: live, bench, waiting for a change, settled, stopped", async () => {
 	const { runPhase } = await import("../src/dashboard/model.js")
 	assert.deepEqual(runPhase({ settled: null, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "live", pill: "LIVE", open: true })
-	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "SETTLED · waiting for a change", open: true })
-	assert.deepEqual(runPhase({ settled: { settled: false }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "UNSETTLED · waiting for a change", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "SETTLED · open", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: false }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "UNSETTLED · open", open: true })
 	assert.deepEqual(runPhase({ settled: { settled: true }, stay: false, alive: true, benchLive: true, stopped: false }), { bar: "bench", pill: "SETTLED · bench live", open: true })
 	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: false, benchLive: false, stopped: false }), { bar: "settled", pill: "SETTLED", open: false })
 	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: true }), { bar: "stopped", pill: "SETTLED", open: false })
@@ -206,4 +206,35 @@ test("a part that keeps its MPN and footprint says what did change, not \"SOT-23
 	assert.deepEqual(contractDiff("parts", [a], [{ ...a, pins: ["VCC", "GND", "CHRG"] }]), ["~ U4 TP4054-42-SOT25R: pins changed"])
 	assert.deepEqual(contractDiff("parts", [a], [{ ...a, lcsc: "C1", pins: ["X"] }]), ["~ U4 TP4054-42-SOT25R: lcsc, pins changed"])
 	assert.deepEqual(contractDiff("parts", [a], [{ ...a, footprint: "SOT-23-6" }]), ["~ U4 SOT-23-5 → SOT-23-6"])
+})
+
+test("in a scripted run the composer says what the scripted agents understand: a width and the blink", async () => {
+	const { composerPrompt } = await import("../src/dashboard/model.js")
+	for (const bar of ["waiting", "live"]) {
+		const p = composerPrompt(bar, { settled: true }, { scripted: true })
+		assert.match(p, /make it 40 mm wide/)
+		assert.match(p, /blink faster when tilted/)
+		assert.doesNotMatch(p, /swap a part|move a connector/, "the scripted agents don't do those")
+	}
+	assert.match(composerPrompt("waiting", { settled: true }, { scripted: true }), /^Settled\. Change one thing/)
+	// A real-model run keeps the free prompt.
+	assert.match(composerPrompt("waiting", { settled: true }, { scripted: false }), /swap a part/)
+})
+
+test("folds: the parts list and the revisions strip start collapsed, with a one-line header, and remember the choice", async () => {
+	const { foldHeader, foldOpen, setFold } = await import("../src/dashboard/model.js")
+	assert.equal(foldHeader("parts", { count: 18, totalUsd: 5.41 }), "Parts · 18 · $5.41")
+	assert.equal(foldHeader("parts", { count: 18, totalUsd: null }), "Parts · 18")
+	assert.equal(foldHeader("parts", { count: 0 }), "Parts")
+	assert.equal(foldHeader("revisions", { count: 9 }), "Revisions · 9")
+	const store = new Map<string, string>()
+	const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) }
+	assert.equal(foldOpen(storage, "parts"), false, "collapsed by default")
+	setFold(storage, "parts", true)
+	assert.equal(foldOpen(storage, "parts"), true)
+	assert.equal(foldOpen(storage, "revisions"), false, "each fold on its own")
+	// No storage (private mode throws): collapsed, and no crash.
+	const broken = { getItem: () => { throw new Error("denied") }, setItem: () => { throw new Error("denied") } }
+	assert.equal(foldOpen(broken, "parts"), false)
+	setFold(broken, "parts", true)
 })
