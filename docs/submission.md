@@ -18,8 +18,8 @@ Move a connector five millimetres and three teams have work to do: the board, th
 bugs live in that gap. Bringup gives each domain its own agent and puts every fact in one live design contract, held
 in Mozaik's shared `RuntimeState`. Agents run concurrently, each in its own `runLoop`.
 
-When you change something mid-run ("make it 40 mm wide", "our sensor is out of stock"), Mozaik situations wake only
-the agents it affects. They rework in parallel, and plain-code checks compare what was actually built until the design
+When you change something mid-run ("make it 40 mm wide", "our sensor is out of stock"), or simply edit and save a
+generated file (the firmware's `pins.h`, the board in KiCad), Mozaik situations wake only the agents it affects. They rework in parallel, and plain-code checks compare what was actually built until the design
 is consistent again. No agent edits a field it doesn't own: Mozaik interception holds the call until the owner
 approves.
 
@@ -74,6 +74,20 @@ Each of these changes ended with 0 violations. Reports, ripples and full traces:
 The design settled and was flashed to an ESP32-S3 in 35 s; the LED blinked at 1000 ms (measured). "Blink faster when
 tilted" set the firmware's behaviour field; rev 8 was flashed in 16 s and booted; tilted, it blinked at **244 ms
 measured vs 250 ms** in the contract. The S3 dev board stands in for the design's C3.
+
+### Edit the file instead (`docs/runs/file-sync/`)
+
+A save of a generated file becomes the engineer's change request and goes through the same change control. Scripted
+agents, real tools; tests in `test/file-sync.test.ts` and `test/file-sync.int.test.ts`.
+
+| Saved | Became | Woke (of 9) | Consistent again |
+|---|---|---|---|
+| `pins.h`: `PIN_I2C_SDA 8` → `4` | "edited pins.h: I2C_SDA GPIO8 → GPIO4", 0.3 s after the save | 5; the case stayed idle | 96 s: the firmware rebuilt on GPIO4 and booted in QEMU, the board rebuilt DRC-clean |
+| `board.kicad_pcb`: right edge dragged out 5 mm | "edited board.kicad_pcb: outline 50×30 → 55×30 mm" | 4; firmware build and grounding stayed idle | 21 s |
+
+An edit the contract doesn't cover gets a drift warning ("this edit isn't in the design contract; the next rebuild
+will overwrite it"), and a save against an old revision is refused. Connector moves are mapped and unit-tested; only
+the outline was run end to end with real tools.
 
 ## How it uses Mozaik
 
