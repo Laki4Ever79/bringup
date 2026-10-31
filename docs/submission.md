@@ -3,6 +3,10 @@
 > For the 3ALET Hackathon, Freestyle track. Every claim below comes from a run in `docs/runs/`, from
 > `docs/experiment.md`, or from the test suite, and the source is named next to it.
 
+## Video
+
+https://youtu.be/b0B6R5KyZ64 (3 min)
+
 ## Name
 
 **Bringup**

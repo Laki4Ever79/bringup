@@ -2,6 +2,8 @@
 
 **Change “one thing”, and the whole hardware design follows: board, case, firmware and parts, in parallel.**
 
+**▶ Watch the 3-minute demo: [youtu.be/b0B6R5KyZ64](https://youtu.be/b0B6R5KyZ64)**
+
 ![The engineer types "add a temperature/humidity sensor": 7 of 9 agents wake, the checks find mismatches, and board, case and firmware agree again, with the new sensor on the board and a vent in the case](docs/img/hero.gif)
 
 <sub>Recorded run, scripted agents with the real tools (tscircuit + KiCad, build123d, PlatformIO). The waiting is cut: the
