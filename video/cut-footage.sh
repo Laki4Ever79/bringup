@@ -10,7 +10,7 @@ cut() { # name file start end
   echo "$1.mp4  $2 $3–$4"
 }
 # Times from shots.md of the final re-recording (frozen design; beacon brief → "add a temperature/humidity sensor").
-cut a1_hub     act-1.webm 0     8.9
+cut a1_hub     act-1.webm 0     16    # the hub, then the scroll to the evidence band (register folded)
 cut a2_start   act-2.webm 0     11
 cut a2_settle  act-2.webm 148   159   # "First design consistent" at 2:33
 cut a3_type    act-3.webm 2     7
