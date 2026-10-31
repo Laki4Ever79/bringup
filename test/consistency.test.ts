@@ -148,3 +148,24 @@ test("a case built before vents existed (no vents field) is not judged on them",
 	assert.equal(a.enclosure!.vents, undefined)
 	assert.deepEqual(checkConsistency(fixtureContract(), a), [])
 })
+
+// Real add-sensor run: the review removed the sensor's I2C pins and later the part came back without them.
+test("sensor-unwired: a sensor part whose SDA/SCL aren't assigned to MCU GPIOs", () =>
+	only("sensor-unwired", ["architect"], (c) => {
+		c.values.pins = c.values.pins!.filter((p) => p.partPin !== "SCL")
+	}))
+
+test("sensor-unwired names the sensor and the unwired bus pins", () => {
+	const c = fixtureContract()
+	c.values.pins = []
+	const v = checkConsistency(c, {}).find((x) => x.kind === "sensor-unwired")!
+	assert.match(v.message, /sensor U2 \(SHT40-AD1B-R2\) has no GPIO on SDA, SCL/)
+	assert.deepEqual(v.fields, ["pins"])
+})
+
+test("no sensor, nothing to wire", () => {
+	const c = fixtureContract()
+	c.values.parts = c.values.parts!.filter((p) => p.role !== "sensor")
+	c.values.pins = []
+	assert.ok(!checkConsistency(c, {}).some((x) => x.kind === "sensor-unwired"))
+})

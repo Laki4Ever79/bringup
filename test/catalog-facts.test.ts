@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { resolve } from "node:path"
 import { partFactsSection } from "../src/agents/reviewer.ts"
 import { CONTRACT_SHAPES } from "../src/agents/roles.ts"
-import { LOGGER_DESIGN } from "../src/inference/scripts.ts"
+import { BEACON_DESIGN, LOGGER_DESIGN } from "../src/inference/scripts.ts"
 import { loadCatalog } from "../src/tools/parts-search.ts"
 import { fixtureContract } from "./fixture.ts"
 
@@ -81,4 +81,28 @@ test("the firmware fact's history depth follows the contract's historyDays", asy
 	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
 	s.values.requirements = { ...s.values.requirements!, historyDays: 180, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
 	assert.match(firmwareFacts(s).join("\n"), /the last 51840 readings: 180 days at 300 s \(requirements\.historyDays\)/)
+})
+
+// Real add-sensor run: the reviewer was told a sensorless beacon "reads the sensor" each wake, and blocked on it.
+test("without I2C sensor pins the firmware fact says it reads nothing and keeps no history", async () => {
+	const { firmwareFacts } = await import("../src/agents/reviewer.ts")
+	const s = fixtureContract()
+	s.values = { ...s.values, ...structuredClone(BEACON_DESIGN) }
+	const text = firmwareFacts(s).join("\n")
+	assert.doesNotMatch(text, /reads the sensor|ring buffer/)
+	assert.match(text, /^- Firmware \(product build of templates\/fw\): the design has no sensor \(no I2C_SDA\/I2C_SCL pins\), so on each wake it reads nothing and stores nothing: it blinks the status LED 20 ms, then advertises over BLE for 300 ms \(activeMs minus the reading\), then deep-sleeps 60 s/m)
+	assert.match(text, /latest reading reads 0xFFFFFFFE \("no sensor"\) and the history stays empty/)
+})
+
+test("the firmware fact names the wake button: a BUTTON pin on GPIO0..5 wakes it early; any other name or GPIO does not", async () => {
+	const { firmwareFacts } = await import("../src/agents/reviewer.ts")
+	const s = fixtureContract()
+	s.values = { ...s.values, ...structuredClone(BEACON_DESIGN) }
+	assert.match(firmwareFacts(s).join("\n"), /^- Firmware button: BUTTON on GPIO3 wakes it from deep sleep early \(pressed = low, to GND\)\.$/m)
+	s.values.pins = [{ signal: "BUTTON_WAKE", gpio: 9, partRef: "SW1", partPin: "A" }]
+	assert.match(firmwareFacts(s).join("\n"), /^- Firmware button: the firmware wakes on a pin named exactly BUTTON on GPIO0\.\.5 \(the ESP32-C3's deep-sleep wake pins\); this design has none, so no button wakes it\.$/m)
+})
+
+test("the agents are told how the firmware recognises a wake button: signal BUTTON on GPIO0..5", () => {
+	assert.match(CONTRACT_SHAPES, /signal BUTTON on one of GPIO0\.\.5/)
 })
