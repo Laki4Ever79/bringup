@@ -1,0 +1,48 @@
+{
+  "live": false,
+  "entries": [
+    {
+      "id": "drift-1",
+      "savedAt": "2026-10-31T12:57:11.016Z",
+      "path": "firmware/pins.h",
+      "savedRevision": 7,
+      "designRevision": 7,
+      "kind": "adopted",
+      "items": [
+        "I2C_SDA GPIO8 → GPIO4"
+      ],
+      "status": "adopted",
+      "adoptable": true,
+      "requestId": "req-1"
+    },
+    {
+      "id": "drift-2",
+      "savedAt": "2026-10-31T12:59:19.420Z",
+      "path": "firmware/pins.h",
+      "savedRevision": 8,
+      "designRevision": 9,
+      "kind": "rebased",
+      "items": [
+        "I2C_SCL GPIO9 → GPIO3"
+      ],
+      "status": "rebased",
+      "adoptable": true,
+      "note": "rebased: behavior changed since rev 8, independent of pins",
+      "requestId": "req-3"
+    },
+    {
+      "id": "drift-3",
+      "savedAt": "2026-10-31T13:00:07.203Z",
+      "path": "board/board.kicad_pcb",
+      "savedRevision": 10,
+      "designRevision": 10,
+      "kind": "resaved",
+      "items": [
+        "re-saved, no design change"
+      ],
+      "status": "re-saved",
+      "adoptable": false,
+      "note": "re-saved, no design change; ignored"
+    }
+  ]
+}
