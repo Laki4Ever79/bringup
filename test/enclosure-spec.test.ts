@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { enclosureSpec } from "../src/tools/enclosure.ts"
+import { placeParts } from "../src/codegen/circuit.ts"
 import { fixtureContract } from "./fixture.ts"
 
 test("enclosure spec carries the outline, J1 and the shell defaults", () => {
@@ -23,4 +24,13 @@ test("enclosure spec puts an M2 standoff under each board hole, in the contract 
 	assert.deepEqual(spec.holes, [{ ref: "H1", xMm: 3, yMm: 3 }, { ref: "H2", xMm: 47, yMm: 3 }, { ref: "H3", xMm: 3, yMm: 27 }, { ref: "H4", xMm: 47, yMm: 27 }])
 	assert.deepEqual(spec.standoff, { heightMm: 3, outerMm: 5, pilotMm: 1.6 })
 	assert.deepEqual(spec.lid, { plateMm: 2, lipMm: 3, lipWallMm: 1.6, clearanceMm: 0.2 })
+})
+
+test("enclosure spec carries each sensor's position from the board generator's placement, for the vent", () => {
+	const c = fixtureContract()
+	const u2 = placeParts(c).find((p) => p.ref === "U2")!
+	const spec = enclosureSpec(c) as Record<string, any>
+	assert.deepEqual(spec.sensors, [{ ref: "U2", xMm: u2.x + 25, yMm: u2.y + 15 }])
+	c.values.parts = c.values.parts!.filter((p) => p.role !== "sensor")
+	assert.deepEqual((enclosureSpec(c) as Record<string, any>).sensors, [])
 })

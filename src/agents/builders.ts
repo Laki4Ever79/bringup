@@ -35,7 +35,8 @@ export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
 // Every field that shapes each artifact; a change to one rebuilds it. behavior is optional (behavior.h has defaults).
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	board: ["parts", "pins", "outline", "connectors"],
-	enclosure: ["outline", "connectors"],
+	// parts: the lid's vent sits over the sensor, wherever the board generator places it.
+	enclosure: ["outline", "connectors", "parts"],
 	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
 	firmware: ["parts", "pins", "behavior", "requirements"],
 }

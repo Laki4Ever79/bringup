@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { promisify } from "node:util"
 import type { EnclosureArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { mountingHoles } from "../codegen/circuit.ts"
+import { mountingHoles, placeParts } from "../codegen/circuit.ts"
 
 const run = promisify(execFile)
 
@@ -20,12 +20,16 @@ export const STANDOFF = { heightMm: 3, outerMm: 5, pilotMm: 1.6 }
 export const LID = { plateMm: 2, lipMm: 3, lipWallMm: 1.6, clearanceMm: 0.2 }
 
 // Input for py/enclosure.py. The outline, connectors and mounting holes come from the contract (the holes are the
-// ones the board codegen drills); the shell dimensions are fixed.
+// ones the board codegen drills); the shell dimensions are fixed. Each sensor's position is the board generator's own
+// placement (placeParts, which the board build also uses), so the lid's vent lands over it; the consistency check
+// compares the vent with where the built board really put the sensor.
 export function enclosureSpec(s: ContractSnapshot): object {
 	const { outline, connectors } = s.values
 	if (!outline) throw new Error("enclosure needs an outline in the contract")
 	const holes = mountingHoles(s).map((h) => ({ ref: h.ref, xMm: h.x + outline.widthMm / 2, yMm: h.y + outline.heightMm / 2 }))
-	return { outline, connectors: connectors ?? [], holes, wallMm: 2, clearanceMm: 2, heightMm: 14, standoff: STANDOFF, lid: LID }
+	const sensorRefs = new Set((s.values.parts ?? []).filter((p) => p.role === "sensor").map((p) => p.ref))
+	const sensors = sensorRefs.size ? placeParts(s).filter((p) => sensorRefs.has(p.ref)).map((p) => ({ ref: p.ref, xMm: p.x + outline.widthMm / 2, yMm: p.y + outline.heightMm / 2 })) : []
+	return { outline, connectors: connectors ?? [], holes, sensors, wallMm: 2, clearanceMm: 2, heightMm: 14, standoff: STANDOFF, lid: LID }
 }
 
 // Builds the case and lid (STEP + STL), cutouts.json, standoffs.json and print.json under dir. Cutouts and standoffs
@@ -46,6 +50,7 @@ export async function buildEnclosure(python: string, root: string, dir: string, 
 	const cutouts = await read<EnclosureArtifact["cutouts"]>("cutouts.json")
 	const standoffs = (await read<{ xMm: number; yMm: number; holeMm: number }[]>("standoffs.json")).map(({ xMm, yMm, holeMm }) => ({ xMm, yMm, holeMm }))
 	const { ok, issues } = await read<{ ok: boolean; issues: string[] }>("print.json")
+	const vents = await read<NonNullable<EnclosureArtifact["vents"]>>("vents.json")
 	return {
 		revision,
 		stlPath: join(dir, "case.stl"),
@@ -55,5 +60,6 @@ export async function buildEnclosure(python: string, root: string, dir: string, 
 		cutouts,
 		standoffs,
 		printCheck: { ok, issues },
+		vents,
 	}
 }
