@@ -262,3 +262,15 @@ test("dutyCycleCheckLines charges the reading at the CPU current and the adverti
 	// 80/60000 × 200 + (1 − 80/60000) × 0.005 + 0.001 = 0.273 mA; 76 days
 	assert.match(text, /^- {3}worst-case average 0\.273 mA; 500 mAh \/ 0\.273 mA \/ 24 h = 76 days vs target 90 days$/m)
 })
+
+// Real beacon run N: blocked on "the average leaves out connected time". The check now says what the target leaves for it.
+test("the duty-cycle check says how many full-length connections a day the battery target leaves room for", async () => {
+	const { dutyCycleCheckLines } = await import("../src/contract/power.ts")
+	const s = fixtureContract()
+	s.values.requirements = { summary: "beacon", peripherals: [], batteryLifeDays: 90, batteryMah: 500, dutyCycle: { activeMs: 80, periodS: 60, sleepUa: 5 } }
+	s.values.rails = [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 200, loadMa: 200, averageMa: 0.12 }]
+	s.values.parts = [...s.values.parts!, { ref: "U3", role: "ldo", mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] }]
+	const text = dutyCycleCheckLines(estimatePower(s, ""), s).join("\n")
+	// allowed 500 / (90 × 24) = 0.231 mA; spare 0.231 − 0.09 = 0.141 mA → 12200 mC a day / 2520 mC = 4 connections
+	assert.match(text, /^- Connections: a phone that connects keeps it awake up to 30 s at about 84 mA \(2520 mC each\)\. The 90-day target allows 0\.231 mA on average; 0\.141 mA above this average, which pays for 4 full-length connections a day \(the brief does not say how often a phone connects\)\.$/m)
+})
