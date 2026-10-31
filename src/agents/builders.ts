@@ -36,7 +36,8 @@ export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	board: ["parts", "pins", "outline", "connectors"],
 	enclosure: ["outline", "connectors"],
-	firmware: ["parts", "pins", "behavior"],
+	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
+	firmware: ["parts", "pins", "behavior", "requirements"],
 }
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with

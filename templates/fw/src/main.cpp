@@ -86,13 +86,54 @@ static void led(bool on) {
 }
 
 #ifndef BENCH
-// One 2 s reading period: a steady 1 Hz blink while the sensor answers, a double blink when it doesn't.
-static void blinkPeriod(bool sensorOk) {
-	if (sensorOk) {
-		for (int i = 0; i < 2; i++) { led(true); delay(500); led(false); delay(500); }
-	} else {
-		for (int i = 0; i < 2; i++) { led(true); delay(100); led(false); delay(150); }
-		delay(1500);
+// The product: one reading per wake. Read the sensor, store the reading, blink briefly, deep-sleep for the contract's
+// period (pins.h DUTY_PERIOD_S, from requirements.dutyCycle.periodS). Each wake starts again at setup().
+#include <esp_sleep.h>
+#include <LittleFS.h>
+#include <Preferences.h>
+
+#ifndef DUTY_PERIOD_S
+#define DUTY_PERIOD_S 300  // the brief's "a reading every few minutes"
+#endif
+static const uint32_t READING_BLINK_MS = 20;
+// The history: a ring buffer of HISTORY_DAYS of readings in /history.bin on the flash's LittleFS partition, one
+// 4-byte record per reading; the next slot to write is kept in NVS, so it survives deep sleep and power loss.
+static const uint32_t HISTORY_DAYS = 30;
+static const uint32_t HISTORY_SLOTS = HISTORY_DAYS * 86400UL / DUTY_PERIOD_S;
+static const char *HISTORY_FILE = "/history.bin";
+
+// Temperature in centi-degrees offset by +45 °C (the sensors' −45 °C floor) in the high half, RH in centi-percent in
+// the low half.
+static uint32_t packReading(float tempC, float rh) {
+	uint32_t t = (uint32_t)constrain(lroundf((tempC + 45) * 100), 0L, 65535L);
+	uint32_t h = (uint32_t)constrain(lroundf(rh * 100), 0L, 10000L);
+	return t << 16 | h;
+}
+
+// Returns the slot written, or -1 if the flash couldn't take it.
+static int32_t storeReading(float tempC, float rh) {
+	if (!LittleFS.begin(true)) return -1;  // formats the partition on the very first boot
+	Preferences prefs;
+	prefs.begin("history", false);
+	uint32_t slot = prefs.getUInt("next", 0) % HISTORY_SLOTS;
+	File f = LittleFS.open(HISTORY_FILE, LittleFS.exists(HISTORY_FILE) ? "r+" : "w+");
+	bool ok = f && f.seek(slot * sizeof(uint32_t));
+	uint32_t record = packReading(tempC, rh);
+	ok = ok && f.write((const uint8_t *)&record, sizeof record) == sizeof record;
+	if (f) f.close();
+	if (ok) prefs.putUInt("next", (slot + 1) % HISTORY_SLOTS);
+	prefs.end();
+	LittleFS.end();
+	return ok ? (int32_t)slot : -1;
+}
+
+// A brief blink when the reading worked, a double blink when the sensor didn't answer.
+static void readingBlink(bool sensorOk) {
+	for (int i = 0; i < (sensorOk ? 1 : 2); i++) {
+		led(true);
+		delay(READING_BLINK_MS);
+		led(false);
+		if (!sensorOk) delay(150);
 	}
 }
 #endif
@@ -320,13 +361,18 @@ void setup() {
 #ifdef HAS_LED
 	pinMode(PIN_STATUS_LED, OUTPUT);
 #endif
-}
-
-void loop() {
 	float t, rh;
 	bool ok = readClimate(&t, &rh);
 	if (ok) Serial.printf("SENSOR OK %.2f C %.1f %%RH\n", t, rh);
 	else Serial.println("SENSOR FAIL");
-	blinkPeriod(ok);
+	if (ok) Serial.printf("HISTORY slot %ld\n", (long)storeReading(t, rh));
+	readingBlink(ok);
+	Serial.printf("SLEEP %d s\n", DUTY_PERIOD_S);
+	Serial.flush();
+	esp_sleep_enable_timer_wakeup((uint64_t)DUTY_PERIOD_S * 1000000ULL);
+	esp_deep_sleep_start();
 }
+
+// Never reached: setup() ends in deep sleep, and the timer wake starts at setup() again.
+void loop() {}
 #endif

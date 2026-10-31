@@ -46,3 +46,12 @@ test("the reviewer learns from the generated wiring that a charge LED shows char
 	without.values.parts = without.values.parts!.filter((p) => p.role !== "charge-led")
 	assert.doesNotMatch(partFactsSection(without).join("\n"), /charge-led/)
 })
+
+test("the reviewer learns what the product firmware does on each reading, from the template's own defines", async () => {
+	const { firmwareFacts } = await import("../src/agents/reviewer.ts")
+	const s = fixtureContract()
+	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
+	s.values.requirements = { ...s.values.requirements!, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
+	const text = firmwareFacts(s).join("\n")
+	assert.match(text, /^- Firmware \(product build of templates\/fw\): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash \(LittleFS, the last 8640 readings: 30 days at 300 s\), blinks the status LED 20 ms \(a double blink if the sensor fails\), then deep-sleeps 300 s \(requirements\.dutyCycle\.periodS\)\. It does not implement BLE yet\.$/m)
+})

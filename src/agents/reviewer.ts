@@ -90,13 +90,29 @@ function chargeLedFacts(s: ContractSnapshot): string[] {
 	})
 }
 
+// What the product firmware does on each reading, read from the template's own constants and the contract's period,
+// so it stays true if either changes.
+export function firmwareFacts(s: ContractSnapshot): string[] {
+	const main = readFileSync(resolve(import.meta.dirname, "../../templates/fw/src/main.cpp"), "utf8")
+	const num = (re: RegExp) => Number(re.exec(main)?.[1] ?? NaN)
+	const blinkMs = num(/READING_BLINK_MS = (\d+)/)
+	const days = num(/HISTORY_DAYS = (\d+)/)
+	const contractPeriod = s.values.requirements?.dutyCycle?.periodS
+	const periodS = contractPeriod !== undefined && contractPeriod > 0 ? Math.round(contractPeriod) : num(/#define DUTY_PERIOD_S (\d+)/)
+	if (![blinkMs, days, periodS].every(Number.isFinite)) return []
+	const from = contractPeriod !== undefined && contractPeriod > 0 ? "requirements.dutyCycle.periodS" : "the template's default; the contract has no duty cycle"
+	return [
+		`- Firmware (product build of templates/fw): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash (LittleFS, the last ${Math.floor((days * 86400) / periodS)} readings: ${days} days at ${periodS} s), blinks the status LED ${blinkMs} ms (a double blink if the sensor fails), then deep-sleeps ${periodS} s (${from}). It does not implement BLE yet.`,
+	]
+}
+
 export function partFactsSection(s: ContractSnapshot): string[] {
 	const catalog = loadCatalog(resolve(import.meta.dirname, "../.."))
 	const facts = (s.values.parts ?? []).flatMap((p) => {
 		const notes = catalog.find((c) => c.mpn.toUpperCase() === p.mpn.toUpperCase())?.notes
 		return notes ? [`- ${p.ref} ${p.mpn}: ${notes}`] : []
 	})
-	return ["## Part facts (from the catalog)", ...(facts.length ? facts : ["- none"]), ...chargeLedFacts(s)]
+	return ["## Part facts (from the catalog)", ...(facts.length ? facts : ["- none"]), ...chargeLedFacts(s), ...firmwareFacts(s)]
 }
 
 // One artifact's status for the reviewer. An artifact built at an older revision is still current when none of its
