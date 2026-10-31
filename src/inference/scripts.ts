@@ -45,6 +45,42 @@ export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior"> & { parts
 	],
 }
 
+// The second scripted design, for briefs/beacon.md: the logger's board without the sensor (and its I2C pull-ups), plus
+// a button on the top edge that wakes it. ESP32-C3 deep sleep about 10 µA; every 60 s it wakes for a 300 ms BLE
+// advertising burst (plus the 30 ms wake) at about 25 mA: 25 mA × 330 ms / 60 s + 10 µA = 147.5 µA. With the
+// AP2112K's 55 µA, a 500 mAh cell lasts about 103 days, past the brief's 3 months.
+export const BEACON_DESIGN: typeof LOGGER_DESIGN = {
+	requirements: {
+		summary: "BLE beacon with a wake button",
+		peripherals: ["usb-c", "status-led", "button"],
+		batteryLifeDays: 90,
+		dutyCycle: { activeMs: 330, periodS: 60, sleepUa: 10 },
+	},
+	outline: LOGGER_DESIGN.outline,
+	connectors: [...LOGGER_DESIGN.connectors, { ref: "SW1", kind: "button", edge: "top", offsetMm: 25, widthMm: 4, heightMm: 3 }],
+	rails: [{ ...LOGGER_DESIGN.rails[0], averageMa: 0.1475 }],
+	pins: [{ signal: "BUTTON", gpio: 3, partRef: "SW1", partPin: "A" }],
+	parts: [
+		...LOGGER_DESIGN.parts.filter((p) => !["U2", "R5", "R6"].includes(p.ref)),
+		{ ref: "SW1", role: "button", mpn: "TS-1187A-B-A-B", lcsc: "C318884", footprint: "pushbutton", pins: ["A", "B"] },
+	],
+}
+
+// "add a temperature/humidity sensor": the logger's SHT40 with its two I2C pull-ups, on the logger's I2C pins.
+export const ADD_SENSOR_REQUEST = /add .*(temp|humid|sensor)/i
+const SENSOR_PARTS = LOGGER_DESIGN.parts.filter((p) => ["U2", "R5", "R6"].includes(p.ref))
+const SENSOR_PINS = LOGGER_DESIGN.pins.filter((p) => p.partRef === "U2")
+
+// Which scripted design a brief gets: the beacon for a brief that says so, the logger for anything else.
+export const scriptedDesignFor = (brief: string) => (/\bbeacon\b/i.test(brief) ? BEACON_DESIGN : LOGGER_DESIGN)
+
+// The beacon's parts for its current requirements: with a sensor once the requirements ask for one.
+function beaconParts(): ContractValues["parts"] {
+	const sensing = state().contract.get("requirements")?.peripherals.includes("i2c-sensor")
+	return sensing ? [...BEACON_DESIGN.parts, ...SENSOR_PARTS] : BEACON_DESIGN.parts
+}
+const isBeacon = () => (state().contract.get("requirements")?.peripherals ?? []).includes("button")
+
 const STATUS_LED = { signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" }
 
 function text(item: ContextItem | undefined): string {
@@ -100,6 +136,15 @@ export function mockScripts(): Record<string, Script> {
 					if (shifts.length > 0 && JSON.stringify(moved) !== JSON.stringify(connectorsNow)) return propose("connectors", moved, `engineer moved ${shifts.map((m) => m[1]).join(", ")} on the board`)
 					return say("board edits applied")
 				}
+				// "add a temperature/humidity sensor": a requirement line, then the sensor's I2C pins (parts adds the part).
+				if (ADD_SENSOR_REQUEST.test(instruction.split("\n")[1] ?? "")) {
+					const requirements = state().contract.get("requirements")
+					const pins = state().contract.get("pins") ?? []
+					if (step < 2 && requirements && !requirements.peripherals.includes("i2c-sensor"))
+						return propose("requirements", { ...requirements, summary: `${requirements.summary} and temperature/humidity sensing`, peripherals: [...requirements.peripherals, "i2c-sensor"] }, "engineer asked for a temperature/humidity sensor")
+					if (step < 2 && !pins.some((p) => p.signal === "I2C_SDA")) return propose("pins", [...pins, ...SENSOR_PINS], "the sensor's I2C bus on GPIO8/GPIO9")
+					return say("sensor requirement and pins in place")
+				}
 				const width = /(\d+(?:\.\d+)?)\s*mm wide/.exec(instruction)?.[1]
 				const outline = state().contract.get("outline")
 				if (step > 0 || !width || !outline) return say(width ? "outline updated" : "no outline change")
@@ -114,7 +159,8 @@ export function mockScripts(): Record<string, Script> {
 				const field = ARCHITECT_FIELDS[step]
 				// Tournament variants may cap the width: "Board must be at most <N> mm wide".
 				const maxWidth = Number(/Board must be at most (\d+(?:\.\d+)?) mm wide/i.exec(instruction)?.[1] ?? Infinity)
-				const value = field === "outline" ? { ...LOGGER_DESIGN.outline, widthMm: Math.min(LOGGER_DESIGN.outline.widthMm, maxWidth) } : LOGGER_DESIGN[field]
+				const design = scriptedDesignFor(instruction)
+				const value = field === "outline" ? { ...design.outline, widthMm: Math.min(design.outline.widthMm, maxWidth) } : design[field]
 				return field ? propose(field, value, `initial ${field} from the brief`) : say("contract drafted")
 			}
 			return say("noted")
@@ -122,6 +168,12 @@ export function mockScripts(): Record<string, Script> {
 		"mock-parts": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
 			if (instruction.startsWith("Build failed:")) return say("noted")
+			// The beacon's parts follow its requirements: the sensor joins when they ask for one (or the engineer does).
+			if (isBeacon() && (instruction.startsWith("The requirements or rails changed") || (instruction.startsWith("Change request from the engineer:") && ADD_SENSOR_REQUEST.test(instruction.split("\n")[1] ?? "")))) {
+				const value = ADD_SENSOR_REQUEST.test(instruction.split("\n")[1] ?? "") ? [...BEACON_DESIGN.parts, ...SENSOR_PARTS] : beaconParts()
+				const same = JSON.stringify(state().contract.get("parts")) === JSON.stringify(value)
+				return stepsTaken(items) === 0 && !same ? propose("parts", value, value.some((p) => p.role === "sensor") ? "the SHT40 temperature/humidity sensor and its I2C pull-ups" : "parts from the catalog") : say("parts chosen")
+			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")

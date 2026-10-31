@@ -112,3 +112,37 @@ test("a history depth the flash partition cannot hold at the contract's period i
 	assert.deepEqual([v.fields, v.affects], [["requirements"], ["architect"]])
 	assert.match(v.message, /3650 days at 60 s is 21\.0 MB of readings; the firmware's LittleFS partition holds 1\.30 MB/)
 })
+
+// A sensor sealed in the case measures the box, not the room: the case needs a vent over it.
+const U2_AT = { xMm: 46.5, yMm: 26 }
+const withVent = (a: ReturnType<typeof fixtureArtifacts>) => {
+	a.board!.placements = { U2: U2_AT }
+	a.enclosure!.vents = [{ ref: "U2", xMm: 46, yMm: 25.5, widthMm: 7, heightMm: 6 }]
+	return a
+}
+
+test("a vent over the sensor is consistent", () => {
+	assert.deepEqual(checkConsistency(fixtureContract(), withVent(fixtureArtifacts())), [])
+})
+
+test("vent-missing: a sensor and a case without a vent", () =>
+	only("vent-missing", ["enclosure"], (_c, a) => {
+		withVent(a).enclosure!.vents = []
+	}))
+
+test("vent-missing: the vent is not over where the board placed the sensor", () =>
+	only("vent-missing", ["enclosure"], (_c, a) => {
+		withVent(a).board!.placements = { U2: { xMm: 10, yMm: 5 } }
+	}))
+
+test("vent-missing names the sensor and both positions", () => {
+	const a = withVent(fixtureArtifacts())
+	a.board!.placements = { U2: { xMm: 10, yMm: 5 } }
+	assert.match(checkConsistency(fixtureContract(), a)[0].message, /U2.*\(10, 5\).*\(46, 25\.5\)/)
+})
+
+test("a case built before vents existed (no vents field) is not judged on them", () => {
+	const a = fixtureArtifacts()
+	assert.equal(a.enclosure!.vents, undefined)
+	assert.deepEqual(checkConsistency(fixtureContract(), a), [])
+})
