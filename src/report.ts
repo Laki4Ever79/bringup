@@ -7,6 +7,7 @@ import { describeEnv, type Env } from "./tools/env.ts"
 import { isStub } from "./tools/stubs.ts"
 import type { Payloads } from "./events.ts"
 import { bringupSection } from "./bench/report.ts"
+import { changeRipples, readTrace, RIPPLE_PARTICIPANTS } from "./runner/ripple.ts"
 
 function counts(tracePath: string): Record<string, number> {
 	const c: Record<string, number> = {}
@@ -103,6 +104,25 @@ function fabSection(s: BringupState, stubbed: boolean): string[] {
 	return ["## Fabrication", "", ...body, ""]
 }
 
+const cell = (text: string) => text.replace(/\|/g, "\\|").replace(/\s+/g, " ")
+
+// The engineer's mid-run change requests and what each one rippled through (the same rows as ripples.json).
+export function changeRequestsSection(outDir: string): string[] {
+	const ripples = changeRipples(readTrace(outDir))
+	if (ripples.length === 0) return []
+	return [
+		`## Change requests`,
+		``,
+		`| Request | Fields changed | Woken | Consistent again |`,
+		`|---|---|---|---|`,
+		...ripples.map((r) => {
+			const again = r.durationMs !== null ? `${(r.durationMs / 1000).toFixed(1)} s` : r.fieldsChanged.length === 0 ? "nothing changed" : "not reached"
+			return `| ${cell(r.text)} | ${r.fieldsChanged.join(", ") || "none"} | ${r.woke.join(", ") || "none"} (${r.woke.length} of ${RIPPLE_PARTICIPANTS.length}) | ${again} |`
+		}),
+		``,
+	]
+}
+
 export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean; bench?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
 	const violations = checkConsistency(snapshot, s.artifacts)
@@ -138,6 +158,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Rails (peak/rated): ${(v.rails ?? []).map((r) => `${r.name} ${r.loadMa}/${r.regulatorMaxMa} mA${r.averageMa !== undefined ? `, average ${r.averageMa} mA` : ""}`).join("; ")}`,
 		`- Estimated battery life: ${batteryLifeSummary(estimatePower(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""))}`,
 		``,
+		...changeRequestsSection(outDir),
 		...reviewSection(s),
 		`## Artifacts`,
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
