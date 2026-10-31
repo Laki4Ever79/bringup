@@ -2,7 +2,10 @@
 
 **Describe a device. Agents design all of it at once: board, case, firmware and parts. Change anything, and it all follows.**
 
-<!-- IMG hero: docs/img/hero.gif (≤5 MB): a change goes in → only the affected agents wake → the checks go red, then green → the board and case update. Cut from 7a's frozen-layout footage. -->
+![The engineer types "add a temperature/humidity sensor": 7 of 9 agents wake, the checks find mismatches, and board, case and firmware agree again, with the new sensor on the board and a vent in the case](docs/img/hero.gif)
+
+<sub>Recorded run, scripted agents with the real tools (tscircuit + KiCad, build123d, PlatformIO). The waiting is cut: the
+ripple took 3 min 15 s.</sub>
 
 A short product brief goes in. Concurrent [Mozaik](https://www.npmjs.com/package/@mozaik-ai/core) agents turn it into
 in-stock parts, a routed PCB, a printable case whose cutouts match the board, and firmware that compiles against the
