@@ -199,6 +199,27 @@ test("ripple: the board's DRC errors inside one part's own footprint are amber a
 	assert.match(real.detail, /DRC 3 errors/)
 })
 
+test("ripple: on a bench run, a 'real board' check follows the change onto the board: flashing, measuring, then the measured blink", () => {
+	const blinkReq = { at: at(100), text: "blink faster when tilted" }
+	const base = [...initial, ev(40, "bench.connected", { source: "real", ports: {}, meter: false }), activity(101, "firmware", "turn"), changed(104, "behavior", 2, 6, "firmware"), checked(105, 6, 0), ev(120, "artifact.ready", { kind: "firmware", revision: 6 })]
+	const check = (events: object[]) => liveRipples(events as any, [blinkReq], T0 + 200_000)[0].checks.find((c) => c.key === "bench")
+	assert.deepEqual(check(base), { key: "bench", label: "Real board", state: "running", detail: "waiting to flash rev 6" })
+	const flashing = [...base, ev(121, "bench.flashing", { revision: 6, stage: "write", pct: 40 })]
+	assert.deepEqual(check(flashing), { key: "bench", label: "Real board", state: "running", detail: "flashing rev 6 · write 40 %" })
+	const flashed = [...flashing, ev(130, "bench.flashed", { revision: 6, ok: true, ms: 9000 })]
+	assert.deepEqual(check(flashed), { key: "bench", label: "Real board", state: "running", detail: "rev 6 running · measuring the blink" })
+	const measured = [...flashed, ev(140, "bench.blink", { revision: 6, source: "real", blinkMs: 1000, tiltBlinkMs: 250, expected: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, pass: true, detail: "x" })]
+	assert.deepEqual(check(measured), { key: "bench", label: "Real board", state: "ok", detail: "rev 6 running · tilted 250 ms measured" })
+	const wrong = [...flashed, ev(140, "bench.blink", { revision: 6, source: "real", blinkMs: 1000, tiltBlinkMs: 1000, expected: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, pass: false, detail: "tilted 1000 ms, expected 250 ms" })]
+	assert.deepEqual(check(wrong), { key: "bench", label: "Real board", state: "error", detail: "rev 6 · tilted 1000 ms, expected 250 ms" })
+	const failed = [...flashing, ev(130, "bench.flashed", { revision: 6, ok: false, stage: "connect", error: "no port" })]
+	assert.deepEqual(check(failed), { key: "bench", label: "Real board", state: "error", detail: "rev 6 flash failed: no port" })
+	// A replay or the fake bench says so; no bench, no check.
+	const replay = base.map((e: any) => (e.type === "bench.connected" ? { ...e, payload: { ...e.payload, source: "replay" } } : e))
+	assert.equal(check(replay)?.label, "Bench (REPLAY)")
+	assert.equal(check(base.filter((e: any) => e.type !== "bench.connected")), undefined)
+})
+
 test("what moved: outline, connectors, pins and parts, before → after", () => {
 	const before = {
 		outline: { widthMm: 50, heightMm: 30 },

@@ -23,10 +23,13 @@ export function liveRipples(events, requests, now = Date.now()) {
 	const windows = requests.map((r, i) => ({ r, i, from: Date.parse(r.at), to: i + 1 < requests.length ? Date.parse(requests[i + 1].at) : Infinity, events: [], cleanIn: true }))
 	// consistency.checked only reports a change of result, so each window starts from the newest check before it.
 	let clean = true
+	let benchSource = null
 	for (const e of events) {
 		applyLaneEvent(lanes, e)
+		if (e.type === "bench.connected") benchSource = e.payload.source
 		const t = Date.parse(e.at)
 		for (const w of windows) if (t < w.from) w.cleanIn = clean
+		for (const w of windows) if (t < w.to) w.benchSource = benchSource
 		if (e.type === "consistency.checked") clean = (e.payload.violations ?? []).length === 0
 		const w = windows.find((x) => t >= x.from && t < x.to)
 		if (w) w.events.push(e)
@@ -34,7 +37,7 @@ export function liveRipples(events, requests, now = Date.now()) {
 	return windows.map((w) => ripple(w, lanes, now))
 }
 
-function ripple({ r, i, from, to, events, cleanIn }, lanes, now) {
+function ripple({ r, i, from, to, events, cleanIn, benchSource }, lanes, now) {
 	const fields = []
 	const changes = []
 	const turned = new Set()
@@ -90,6 +93,7 @@ function ripple({ r, i, from, to, events, cleanIn }, lanes, now) {
 	if (fields.length) checks.push({ key: "consistency", label: "Contract", seq, state: clean ? "ok" : "error", detail: clean ? "consistent" : `${lastCount} violation${lastCount === 1 ? "" : "s"}` })
 	for (const b of builds) checks.push({ key: b.key, label: b.label, state: b.state, detail: b.detail })
 	if (woke.includes("grounding")) checks.push(groundingCheck(events))
+	if (benchSource && woke.includes("build:firmware")) checks.push(benchCheck(benchSource, events, changes))
 	return {
 		id: `req-${i + 1}`,
 		text: r.text,
@@ -150,6 +154,22 @@ function buildCheck(key, events, changes) {
 	}
 	if (boot) return { key, label: BUILD_LABEL[key], state: boot.booted ? "ok" : "error", detail: boot.booted ? `rev ${done.payload.revision} · boots in QEMU` : `rev ${done.payload.revision} · did not boot`, doneAt }
 	return { key, label: BUILD_LABEL[key], state: "ok", detail: `rev ${done.payload.revision} built`, doneAt }
+}
+
+// On a bench run, the change followed onto the board: the firmware built from it flashed, booted, and its LED
+// measured against the contract's behavior (bench.blink).
+function benchCheck(source, events, changes) {
+	const label = source === "real" ? "Real board" : `Bench (${String(source).toUpperCase()})`
+	const need = Math.max(...changes.filter((c) => BUILD_INPUTS["build:firmware"].includes(c.field)).map((c) => c.revision))
+	const last = (type) => events.filter((e) => e.type === type && e.payload.revision >= need).at(-1)?.payload
+	const blink = last("bench.blink"), flashed = last("bench.flashed"), flashing = last("bench.flashing")
+	if (blink) {
+		if (!blink.pass) return { key: "bench", label, state: "error", detail: `rev ${blink.revision} · ${blink.detail}` }
+		return { key: "bench", label, state: "ok", detail: `rev ${blink.revision} running · ${typeof blink.tiltBlinkMs === "number" ? `tilted ${blink.tiltBlinkMs} ms` : `blink ${blink.blinkMs} ms`} measured` }
+	}
+	if (flashed) return flashed.ok ? { key: "bench", label, state: "running", detail: `rev ${flashed.revision} running · measuring the blink` } : { key: "bench", label, state: "error", detail: `rev ${flashed.revision} flash failed: ${flashed.error}` }
+	if (flashing) return { key: "bench", label, state: "running", detail: `flashing rev ${flashing.revision} · ${flashing.stage} ${flashing.pct} %` }
+	return { key: "bench", label, state: "running", detail: `waiting to flash rev ${need}` }
 }
 
 function groundingCheck(events) {
