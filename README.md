@@ -249,7 +249,23 @@ the inputs change mid-build, exactly one more build runs at the newest revision.
 
 ## Install
 
-The Quick look above needs only Node. The full toolchain adds real board, enclosure and firmware builds.
+The Quick look above needs only Node. The full toolchain adds real board, enclosure and firmware builds, and it is
+three commands after the clone:
+
+```bash
+npm ci              # about 12 s
+npm run setup       # installs only what's missing; about 13.5 min the first time (plus about 4 min for the KiCad
+                    # image download on a new machine), about 2 s on a re-run
+npm run doctor      # about 5 s: what each tool will use, and which optional settings are set (never their values)
+
+npm run bringup -- briefs/beacon.md --mock    # then: scripted models, real tools; settled with 0 violations in 131 s
+```
+
+`npm run setup` first checks the prerequisites and says plainly what's missing (Node 24, uv, and a Docker daemon that
+works without `sudo`: "Docker isn't running: start it, then re-run"). It installs the same pinned versions as the
+manual steps below, all repo-local (`.venv/`, `tools/`), never with `sudo` and never system-wide. Optional:
+`npm run setup -- --qemu` adds firmware emulation. A fresh machine takes about 20 min end to end (checked on a fresh
+clone on 31 Oct; every step exited 0).
 
 | Prerequisite | Tested with | Notes |
 |---|---|---|
@@ -257,8 +273,14 @@ The Quick look above needs only Node. The full toolchain adds real board, enclos
 | Node 24 + npm | Node 24.0.2, npm 11.3.0 | the only requirement for `--no-hardware` |
 | [uv](https://docs.astral.sh/uv/) + Python 3.12 | uv 0.10.2, CPython 3.12.3 | for build123d and PlatformIO |
 | Docker, with the daemon running and usable without `sudo` | Docker 29.6.1 | for KiCad and ngspice |
-| Disk | about 7 GB | `.venv` 1.1 GB, `tools/node` 0.8 GB, KiCad image 2.6 GB (0.8 GB download), ESP32-C3 toolchain about 2.8 GB in `~/.platformio` |
+| Disk | about 9.6 GB | `.venv` 0.9 GB, `tools/node` 0.8 GB, KiCad image 2.6 GB, `~/.platformio` about 5.3 GB (1.1 GB of it a download cache you can delete) |
 | Java 17+ (optional) | | only for the Freerouting fallback |
+
+**Optional settings** go in `.env` (copy `.env.example`): a model key for real models, `WOKWI_CLI_TOKEN` for Wokwi
+simulation, `BRINGUP_NTFY_TOPIC` (unguessable) / `BRINGUP_NTFY_SERVER` for phone approvals.
+
+<details>
+<summary>The same install by hand (what <code>npm run setup</code> runs)</summary>
 
 ```bash
 npm ci
@@ -271,9 +293,9 @@ docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngs
 Repo-local installs go in `.venv/` and `tools/node/`, both gitignored. The exceptions are PlatformIO's package cache
 (`~/.platformio`) and Docker's image store. The last command downloads the toolchain up front, so the first run
 doesn't stall on it. Without it, the first firmware build downloads it and takes several minutes; later builds take
-about 5 s. `-e esp32c3` matters: without it PlatformIO also fetches the ESP32-S3 toolchain for the bench build (5.7 GB
-instead of about 2.8 GB). Checked on a fresh clone on 31 Oct: every step exits 0, and `--mock` then settles in about
-80 s.
+about 5 s. `-e esp32c3` matters: without it PlatformIO also fetches the ESP32-S3 toolchain for the bench build.
+
+</details>
 
 Optional: Espressif QEMU, to boot the built firmware headless. Install steps are in `NOTES.md` ("Firmware emulation").
 
