@@ -391,7 +391,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		if (req.method !== "GET") return send(res, 405, "method not allowed")
 		if (/^\/api\/runs\/[^/]+\/ready-to-order$/.test(path)) return json(res, 403, { error: "read-only demo" })
 		if (path === "/") {
-			const page = (await readFile(PAGE, "utf8")).replace(/<body[^>]*>/, (tag) => `${tag}<script>window.BRINGUP_PUBLIC = true</script><div id="public-banner" style="position:fixed;left:12px;bottom:12px;z-index:9999;max-width:560px;padding:6px 12px;font:13px/1.4 system-ui,sans-serif;background:#fff4d6;color:#4a3800;border:1px solid #e6cf8a;border-radius:4px">${PUBLIC_BANNER}</div>`)
+			const page = (await readFile(PAGE, "utf8")).replace(/<body[^>]*>/, (tag) => `${tag}<script>window.BRINGUP_PUBLIC = true</script><style>#fab, #order-btn { display: none !important }</style><div id="public-banner" style="position:fixed;left:12px;bottom:12px;z-index:9999;max-width:560px;padding:6px 12px;font:13px/1.4 system-ui,sans-serif;background:#fff4d6;color:#4a3800;border:1px solid #e6cf8a;border-radius:4px">${PUBLIC_BANNER}</div>`)
 			res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 			return res.end(page)
 		}

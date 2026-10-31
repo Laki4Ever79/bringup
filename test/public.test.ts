@@ -89,6 +89,8 @@ test("public: any host may read; the page carries the banner; every POST but Try
 		assert.equal(page.status, 200)
 		assert.ok(page.body.includes(PUBLIC_BANNER))
 		assert.ok(page.body.includes("window.BRINGUP_PUBLIC = true"), "the page knows it is the public demo (its empty views say why)")
+		// The replays ship no fab files and ordering is off: the two buttons are hidden, so nothing 404s.
+		assert.match(page.body, /<style>#fab, #order-btn \{ display: none !important \}<\/style>/)
 		assert.match(PUBLIC_BANNER, /Public demo: recorded runs used the real tools \(KiCad, build123d, PlatformIO\); live runs here are stubbed\./)
 		assert.equal((await call(hub.url, "/api/runs")).status, 200)
 		for (const path of ["/api/runs/add-sensor/requests", "/api/runs/add-sensor/decisions", "/api/runs/add-sensor/ask", "/api/runs/add-sensor/stop", "/api/runs/add-sensor/drift/d1/revert"]) {
