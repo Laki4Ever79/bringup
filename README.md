@@ -14,6 +14,9 @@ designing from scratch is just the first change: the beacon's first design took 
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
+**Try it online: [bringup-demo.onrender.com](https://bringup-demo.onrender.com/)**, a read-only dashboard of recorded
+runs (the first load after idle takes about 30 s). The recorded runs used the real tools; live runs there are stubbed.
+
 > **Quick look: needs only Node 24, no API key; about 1 min for `npm ci`, then 10–20 s.**
 > ```bash
 > git clone https://github.com/Laki4Ever79/bringup && cd bringup && npm ci
