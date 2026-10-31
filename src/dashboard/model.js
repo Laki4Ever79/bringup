@@ -449,3 +449,14 @@ export function foldOpen(storage, kind) {
 export function setFold(storage, kind, open) {
 	try { storage?.setItem(foldKey(kind), open ? "open" : "closed") } catch {}
 }
+
+// ── The YOU tile: the engineer is a participant too ───────────────────────────────────────────────────────────────
+// You ask for changes (typed or by editing a generated file), approve held ones, and tilt the board when the bench
+// asks. Your turn (an approval or a tilt) wins over everything else.
+export function youTile({ ripple = null, settled = null, open = true, waitingForYou = 0, benchAsk = null } = {}) {
+	if (waitingForYou > 0) return { cls: "woke working held", status: "your turn", task: `${waitingForYou} change${waitingForYou === 1 ? "" : "s"} to approve` }
+	if (benchAsk === "tilt") return { cls: "woke working held", status: "your turn", task: "tilt the board" }
+	if (ripple) return ripple.file ? { cls: "woke done", status: "edited ✓", task: ripple.file.name } : { cls: "woke done", status: "asked ✓", task: ripple.text }
+	if (!settled) return { cls: "asleep", status: "watching", task: "agents at work" }
+	return open ? { cls: "asleep", status: "your move", task: "change one thing ↑" } : { cls: "asleep", status: "idle", task: "the run has ended" }
+}
