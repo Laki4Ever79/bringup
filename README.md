@@ -1,5 +1,8 @@
 # Bringup
 
+**Change one thing, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still
+consistent.**
+
 > **Quick look: needs only Node 24, takes about 5 s, no API key.**
 > ```bash
 > git clone https://github.com/Laki4Ever79/bringup && cd bringup && npm ci
@@ -7,23 +10,48 @@
 > cat out/quick/report.md   # "settled ... Violations: 0", plus the change requests held by interception
 > ```
 
-**A team of agents designs hardware around one shared contract, and every change is checked by someone other than the
-agent who made it.**
+Concurrent Mozaik agents turn a short product brief into in-stock parts, a
+routed PCB, a printable case whose cutouts match the board, and firmware that compiles against the real pin map. Then
+you change one thing ("make it 40 mm wide", "the sensor is out of stock", "blink faster when tilted"). Only the agents
+that change affects wake up, rework their part at the same time, and the design is consistent again, with every
+other part left alone.
 
-Concurrent Mozaik agents turn a short product brief into in-stock parts, a routed PCB, an enclosure whose cutouts match
-the board, firmware that compiles against the real pin map, and a consistency report. Every change has a checker other
-than its author:
-1. **The field's owner** approves or rejects it, through Mozaik interception (change control).
-2. **Plain code** checks what was actually built, and grounds every pin in the catalog and KiCad's symbols.
-3. **A fresh-context reviewer** judges the design against the brief.
-4. **The real board** (bench, in progress).
+## The proof: one change, with and without the shared contract
+
+We applied 5 real changes to a settled design twice (`npm run experiment`, [docs/experiment.md](docs/experiment.md)).
+In arm A the agents share one live design contract and Mozaik situations wake the affected ones. In arm B only the
+domain that heard the change updates, and every other team keeps working from its own copy. The same plain-code checks
+then compare what was actually built:
+
+| Change | With the shared contract | Each team on its own copy: mismatches that would ship |
+|---|---|---|
+| Board 10 mm narrower | consistent again in 53 s · 2 of 7 woke · 0 violations | 4: two board holes have no standoff under them, two standoffs have no hole |
+| Board 6 mm taller | 31 s · 2 of 7 · 0 | 5: the board is 50×30 mm, the contract says 50×36 mm, and 4 hole/standoff misses |
+| USB-C to the bottom edge | 52 s · 2 of 7 · 0 | 1: the case cutout for J1 is left@15 mm, the connector is bottom@25 mm |
+| Sensor I2C to GPIO4/5 | 72 s · 4 of 7 · 0 | 2: the board's I2C_SDA and I2C_SCL nets don't reach GPIO4 and GPIO5 |
+| Add a button | 84 s · 5 of 7 · 0 | 2: the BUTTON net doesn't reach GPIO3 or SW1, and the case has no hole for SW1 |
+| **Total** | **0 violations** | **14 mismatches** |
+
+The agents are scripted (the keyless mock models) and the tools are real: tscircuit + KiCad, build123d, PlatformIO.
+Each cell is one run on one laptop. With the builders made to take turns instead of running in parallel, the same
+changes took 64–310 s instead of 31–84 s. A part swap is left out because no check compares the board's parts to the
+parts list yet, and it would score 0 by not looking.
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
-> Status: mock runs settle with 0 violations from the commands below, with real board, enclosure and firmware builds.
-> With the optional QEMU installed, every run boots its newest firmware headless. The latest real-model runs (6, 7, 8) end with 0
-> consistency violations, but **none has passed the final brief review yet**; the report lists the open findings. See
-> `docs/submission.md` for the evidence. This README does not claim results that haven't run.
+> **Status, honestly.** Scripted runs settle with 0 violations and take mid-run changes, with real board, case and
+> firmware builds (and a QEMU boot when QEMU is installed). The latest real-model runs (11–14) all stalled before
+> their first settle, each on a different bug at a seam between domains, now fixed one by one, so **no real-model run
+> has taken a mid-run change yet**. No real-model run has passed the final brief review either. See
+> `docs/submission.md`. This README does not claim results that haven't run.
+
+## Every change has a checker other than its author
+
+1. **The field's owner** approves or rejects it, through Mozaik interception (change control). An invalid proposal is
+   returned with the reason before the owner is ever asked.
+2. **Plain code** checks what was actually built, and grounds every pin in the catalog and KiCad's symbols.
+3. **A fresh-context reviewer** judges the design against the brief.
+4. **The real board**: an ESP32-S3 on the bench runs the design's firmware and reports back (`--bench real`).
 
 ## The problem
 
@@ -176,6 +204,25 @@ npm run bringup -- briefs/logger.md --mock
 #   ANTHROPIC_API_KEY=... and ANTHROPIC_BASE_URL=...   (the event's Claude credit, build.jigjoy.ai/credits)
 npm run bringup -- briefs/logger.md
 ```
+
+**Change one thing yourself.**
+
+```bash
+# The demo: the dashboard opens, the first design settles, then "make it 60 mm wide" goes in and ripples.
+# The run stays up afterwards: type your own change in the dashboard ("make it 40 mm wide"). Stop ends it.
+npm run demo
+
+# The same from the CLI: each --change is sent after the design settles, and the run ends once the last one re-settles.
+npm run bringup -- briefs/logger.md --mock --change "make the board 40 mm wide"
+
+# Dashboard for any run, live or finished (http://localhost:4317)
+npx tsx src/dashboard/cli.ts
+```
+
+Each change gets a row in `ripples.json` and in the report's "Change requests" table: the contract fields it touched,
+the agents that reworked something, the ones that only checked it, the ones that stayed idle, and the time until the
+design was consistent again. The scripted agents understand "N mm wide" and "blink faster when tilted". Use real
+models for anything else.
 
 `--no-hardware` swaps the three builders for stubs (`src/tools/stubs.ts`). Each stub derives its artifact straight
 from the contract: board nets from the pin map, enclosure cutouts from the connectors, firmware pins from the pin
