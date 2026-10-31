@@ -127,3 +127,24 @@ test("the page is served at /", async () => {
 		await dash.close()
 	}
 })
+
+test("the ripple module and the vendored fonts are served; nothing else from the fonts folder", async () => {
+	const dash = await serveDashboard(tempRun([]), 0)
+	try {
+		const mod = await fetch(`${dash.url}/ripple.js`)
+		assert.equal(mod.status, 200)
+		assert.match(mod.headers.get("content-type") ?? "", /javascript/)
+		for (const f of ["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"]) {
+			const res = await fetch(`${dash.url}/fonts/${f}`)
+			assert.equal(res.status, 200, f)
+			assert.equal(res.headers.get("content-type"), "font/woff")
+			assert.ok((await res.arrayBuffer()).byteLength > 10_000)
+		}
+		for (const path of ["/fonts/OFL-BigShouldersDisplay.txt", "/fonts/nope.woff", "/fonts/../page.html", "/fonts/%2e%2e/server.ts"]) {
+			const status = await rawStatus(dash.url, path)
+			assert.ok(status === 403 || status === 404, `${path} → ${status}`)
+		}
+	} finally {
+		await dash.close()
+	}
+})
