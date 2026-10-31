@@ -1,0 +1,28 @@
+{
+  "revision": 1,
+  "values": {
+    "requirements": {
+      "summary": "BLE beacon with a wake button",
+      "peripherals": [
+        "usb-c",
+        "status-led",
+        "button"
+      ],
+      "batteryLifeDays": 90,
+      "dutyCycle": {
+        "activeMs": 330,
+        "periodS": 60,
+        "sleepUa": 10
+      }
+    }
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 0,
+    "connectors": 0,
+    "rails": 0,
+    "parts": 0,
+    "pins": 0,
+    "behavior": 0
+  }
+}

@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { circuitFromContract, LDO_FROM_USB_MM, type PlacementOptions } from "../codegen/circuit.ts"
 import type { BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson } from "./board-nets.ts"
+import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
 import { kicadCli, toolPath, type Env } from "./env.ts"
 import { runDrc } from "./drc.ts"
 import { run, tail } from "./exec.ts"
@@ -61,6 +61,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 		nets: netsFromCircuitJson(elements),
 		holes: holesFromCircuitJson(elements),
 		parts: partsFromCircuitJson(elements),
+		placements: placementsFromCircuitJson(elements),
 		drc,
 	}
 }
