@@ -42,6 +42,9 @@ test("tool arguments are summarised, never dumped", () => {
 test("tool results are summarised", () => {
 	assert.equal(summarizeResult('{"status":"stale","current":3}'), "stale (current v3)")
 	assert.equal(summarizeResult('{"status":"not-owner","owner":"architect"}'), "not-owner (architect decides)")
+	// The reason is the whole point of an invalid result: real-11's pins were rejected twice and the trace said only "invalid".
+	assert.equal(summarizeResult('{"status":"invalid","reason":"signal names must match /x/: usb-d+"}'), "invalid: signal names must match /x/: usb-d+")
+	assert.ok(summarizeResult(JSON.stringify({ status: "invalid", reason: "r".repeat(1000) })).length <= 300)
 	assert.equal(summarizeResult('{"revision":7,"values":{},"versions":{}}'), "contract at rev 7")
 	assert.equal(summarizeResult('[{"mpn":"a"},{"mpn":"b"}]'), "2 results")
 	assert.equal(summarizeResult("recorded"), "recorded")
