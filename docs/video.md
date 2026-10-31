@@ -1,7 +1,7 @@
 # Demo video (about 3:00, works on mute)
 
-**The one line, at the start and the end:** "Change one thing, and the whole hardware design follows: board, case,
-firmware and parts, in parallel, and still consistent."
+**The one line, at the start and the end:** "Describe a device. Agents design all of it at once: board, case, firmware and parts. Change anything, and it all follows."
+("Change “one thing”" stays as the demo moment and the dashboard's composer label.)
 
 Storyboard approved by the user on 31 Oct. Built in Motion Canvas (`video/`), on top of real screen recordings.
 
