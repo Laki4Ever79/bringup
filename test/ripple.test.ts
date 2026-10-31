@@ -48,7 +48,9 @@ test("the 60 mm request changes the outline, wakes board and enclosure, leaves f
 	assert.equal(r.text, "make the board 60 mm wide")
 	assert.equal(r.atMs, 17_000)
 	assert.deepEqual(r.fieldsChanged, ["outline"])
-	assert.deepEqual(r.woke, ["architect", "reviewer", "build:board", "build:enclosure", "consistency"])
+	// The reviewer took a turn but changed nothing: checked, not woken.
+	assert.deepEqual(r.woke, ["architect", "build:board", "build:enclosure", "consistency"])
+	assert.deepEqual(r.checked, ["reviewer"])
 	assert.deepEqual(r.stayedIdle, ["parts", "firmware", "build:firmware", "grounding"])
 	assert.equal(r.violationsPeak, 2)
 	assert.equal(r.consistentAtMs, 30_000, "after the woken builders are done, not the 0 right after the change")
@@ -73,11 +75,13 @@ test("a request that changes nothing never becomes 'consistent again', and a sec
 	]
 	const [, prettier, sensor] = changeRipples(trace)
 	assert.deepEqual(prettier.fieldsChanged, [])
-	assert.deepEqual(prettier.woke, ["architect"], "nothing changed, so not even the consistency check had work")
+	assert.deepEqual(prettier.woke, [], "nothing changed, so not even the consistency check had work")
+	assert.deepEqual(prettier.checked, ["architect"])
 	assert.equal(prettier.consistentAtMs, null)
 	assert.equal(prettier.durationMs, null)
 	assert.deepEqual(sensor.fieldsChanged, ["parts", "pins"])
-	assert.deepEqual(sensor.woke, ["build:board", "build:firmware", "grounding", "consistency"])
+	assert.deepEqual(sensor.woke, ["architect", "parts", "build:board", "build:firmware", "grounding", "consistency"], "agents that changed a field woke, turn or not")
+	assert.deepEqual(sensor.checked, [])
 	assert.ok(sensor.stayedIdle.includes("build:enclosure"))
 	assert.equal(sensor.violationsPeak, 1)
 	assert.equal(sensor.consistentAtMs, 50_000)
@@ -113,6 +117,19 @@ test("violations after the builds are done undo 'consistent' until a clean check
 	assert.equal(changeRipples(trace)[0].consistentAtMs, 4_000)
 })
 
+test("a held proposal counts as woken; a participant outside the 9 lanes (the bench) is left out", () => {
+	const trace = [
+		ev(0, "run.started", {}),
+		ev(1_000, "change.requested", { id: "req-1", text: "x" }),
+		turn(1_001, "firmware"),
+		ev(1_002, "change.proposed", { proposalId: "p1", field: "pins", by: "firmware", reason: "", needsEngineer: false }),
+		ev(1_003, "contract.changed", { field: "rails", version: 2, revision: 9, by: "bench" }),
+	]
+	const [r] = changeRipples(trace)
+	assert.deepEqual(r.woke, ["firmware", "consistency"])
+	assert.equal(r.woke.length + r.checked.length + r.stayedIdle.length, 9)
+})
+
 test("no change.requested, no ripples", () => {
 	assert.deepEqual(changeRipples(sixtyMmTrace().filter((e) => e.type !== "change.requested")), [])
 })
@@ -133,12 +150,13 @@ test("a mock run with a mid-run 60 mm request writes ripples.json and a Change r
 	assert.ok(ripple.fieldsChanged.includes("outline"))
 	assert.ok(ripple.woke.includes("build:board") && ripple.woke.includes("build:enclosure"), JSON.stringify(ripple))
 	assert.ok(ripple.stayedIdle.includes("build:firmware"), JSON.stringify(ripple))
+	assert.ok(ripple.checked.includes("firmware"), "the firmware agent reads every request, but changes nothing for a width")
 	assert.equal(typeof ripple.durationMs, "number")
 	assert.ok(ripple.durationMs > 0)
 
 	const report = readFileSync(join(out, "report.md"), "utf8")
 	assert.match(report, /## Change requests/)
-	assert.match(report, /\| make the board 60 mm wide \| outline \| .* \(\d+ of 9\) \| \d+(\.\d)? s \|/)
+	assert.match(report, /\| make the board 60 mm wide \| outline \| .* \(\d+ of 9; \d+ more checked, no change: [a-z, ]+\) \| \d+(\.\d)? s \|/)
 })
 
 test("each scripted change adds its own time to the run's default timeout", async () => {
@@ -146,4 +164,30 @@ test("each scripted change adds its own time to the run's default timeout", asyn
 	assert.equal(runTimeoutMs({}), 30 * 60_000)
 	assert.equal(runTimeoutMs({ changes: ["a", "b"] }), 70 * 60_000)
 	assert.equal(runTimeoutMs({ timeoutMs: 5_000, changes: ["a"] }), 5_000, "an explicit timeout wins")
+})
+
+test("scripted changes start only after a first settle that reached a consistent design", async () => {
+	const { changesMayStart } = await import("../src/run.ts")
+	assert.equal(changesMayStart({ settled: true, revision: 7 }, 0), true, "settled (no review)")
+	assert.equal(changesMayStart({ settled: false, revision: 9 }, 2), true, "reviewed and failed: still a whole design to change")
+	assert.equal(changesMayStart({ settled: false, revision: 5 }, 0), false, "stuck before design.ready (real-11: no pins), nothing to ripple through")
+})
+
+test("a --mock --no-hardware run makes no network requests", { timeout: 60_000 }, async () => {
+	const out = tempDir()
+	const env = await detectEnvironment(ROOT)
+	const real = globalThis.fetch
+	const urls: string[] = []
+	globalThis.fetch = (async (input: string | URL | Request) => {
+		urls.push(String(input))
+		throw new TypeError("no network in a mock run")
+	}) as typeof fetch
+	try {
+		const r = await runDesign({ brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"), mock: true, noHardware: true, outDir: out, env })
+		assert.ok(r.settled)
+	} finally {
+		globalThis.fetch = real
+	}
+	assert.deepEqual(urls, [])
+	assert.match(readFileSync(join(out, "report.md"), "utf8"), /^- Sourcing: .*stock not looked up \(mock run\)/m)
 })

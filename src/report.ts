@@ -117,7 +117,7 @@ export function changeRequestsSection(outDir: string): string[] {
 		`|---|---|---|---|`,
 		...ripples.map((r) => {
 			const again = r.durationMs !== null ? `${(r.durationMs / 1000).toFixed(1)} s` : r.fieldsChanged.length === 0 ? "nothing changed" : "not reached"
-			return `| ${cell(r.text)} | ${r.fieldsChanged.join(", ") || "none"} | ${r.woke.join(", ") || "none"} (${r.woke.length} of ${RIPPLE_PARTICIPANTS.length}) | ${again} |`
+			return `| ${cell(r.text)} | ${r.fieldsChanged.join(", ") || "none"} | ${r.woke.join(", ") || "none"} (${r.woke.length} of ${RIPPLE_PARTICIPANTS.length}${r.checked.length > 0 ? `; ${r.checked.length} more checked, no change: ${r.checked.join(", ")}` : ""}) | ${again} |`
 		}),
 		``,
 	]
