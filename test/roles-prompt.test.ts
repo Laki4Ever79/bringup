@@ -21,3 +21,8 @@ test("the agents are told how to show charging state in hardware", () => {
 	assert.match(CONTRACT_SHAPES, /charge-led/)
 	assert.match(CONTRACT_SHAPES, /CHRG/)
 })
+
+// Real run 14: the architect gave the USB-C connector heightMm 7.5, its cutout ran into the lid, and the case failed.
+test("the agents are told connector width and height are the opening a part needs, with the USB-C size", () => {
+	assert.match(CONTRACT_SHAPES, /USB-C .*9 × 3\.2 mm/)
+})
