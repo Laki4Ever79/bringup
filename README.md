@@ -159,7 +159,7 @@ haven't run.
 
 ```mermaid
 flowchart LR
-  E["Engineer<br/>brief · typed change · saved file"] -->|change.requested| C
+  E["Engineer<br/>brief · typed change · saved file"] -->|"change.requested"| C
   subgraph RS["Mozaik RuntimeState"]
     C[("Design contract<br/>fields with an owner and a version")]
   end
@@ -172,9 +172,9 @@ flowchart LR
   X --> K
   F --> K
   K -->|"violations wake the owners"| A
-  K -->|design.ready| R["brief reviewer<br/>(LLM, fresh context)"]
+  K -->|"design.ready"| R["brief reviewer<br/>(LLM, fresh context)"]
   R -->|"findings to the field owners"| A
-  A -. "a change to a field it doesn't own" .-> I{{"interception:<br/>held for the owner"}}
+  A -.->|"a change to a field it does not own"| I{{"interception:<br/>held for the owner"}}
 ```
 
 There is no orchestrator: no agent calls or awaits another. Agents coordinate only through events and the contract.
