@@ -40,13 +40,27 @@ export interface BenchCheck {
 	skipped?: true
 }
 
+// What woke the agent whose write this is: the turn's trigger (src/agents/common.ts startTurn), or for a held
+// change the approval it was written under.
+export type Cause =
+	| { kind: "brief" }
+	| { kind: "request"; id: string; text: string }
+	| { kind: "violation"; revision: number; items: { kind: string; message: string }[] }
+	| { kind: "grounding"; revision: number; items: { kind: string; partRef: string; detail: string }[] }
+	| { kind: "review"; revision: number; items: { severity: string; fields: string[]; issue: string }[] }
+	| { kind: "build-failed"; artifact: string; revision: number; error: string }
+	| { kind: "field-changed"; fields: string[] }
+	| { kind: "approval"; proposalId: string; approvedBy: string[]; reason: string }
+	| { kind: "measurement"; revision: number; detail: string }
+
 export interface Payloads {
 	// The run's options, first thing, so a dashboard can show what is switched off.
 	"run.started": { review: boolean; engineerApproval: boolean; noHardware: boolean; bench: boolean; stay?: boolean }
 	"run.ended": { settled: boolean; revision: number }
 	// An engineer change request (requests.jsonl, line N = req-N) as it is forwarded to the agents.
 	"change.requested": { id: string; text: string }
-	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole }
+	// reason, before, after and cause: why the field changed (older traces have only field, version, revision, by).
+	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole; reason?: string; before?: unknown; after?: unknown; cause?: Cause }
 	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string; needsEngineer: boolean }
 	// The final outcome of a held change (votes are change.decided), timeouts included.
 	"change.resolved": { proposalId: string; approved: boolean; reason: string; decidedBy: string[] }
