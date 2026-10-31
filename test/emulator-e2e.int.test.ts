@@ -22,5 +22,5 @@ test("a mock run boots its firmware in QEMU and the report says which revision p
 	assert.equal(boot.payload.booted, true, boot.payload.serialTail)
 	assert.equal(boot.payload.revision, firmware.payload.revision, "the newest firmware was booted")
 	assert.equal(boot.payload.bootRevision, firmware.payload.revision, "the firmware printed the contract revision it was built from")
-	assert.match(readFileSync(join(out, "report.md"), "utf8"), new RegExp(`^- Firmware boot \\(QEMU\\): booted, printed revision ${firmware.payload.revision}$`, "m"))
+	assert.match(readFileSync(join(out, "report.md"), "utf8"), new RegExp(`^- Firmware boot \\(QEMU\\): booted, printed revision ${firmware.payload.revision}; SENSOR FAIL is expected: QEMU emulates no I2C sensor$`, "m"))
 })
