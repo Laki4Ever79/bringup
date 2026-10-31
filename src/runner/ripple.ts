@@ -34,6 +34,9 @@ export interface Ripple {
 	// null if the request changed nothing or never got there.
 	consistentAtMs: number | null
 	durationMs: number | null
+	// After the first design.ready, a re-settle re-arms the brief review: what its fix rounds changed until the next
+	// request. Kept apart, so the request's own ripple isn't inflated by review work, and nothing is hidden.
+	reviewFollowUps: { fieldsChanged: string[]; rounds: number }
 }
 
 const KINDS: ArtifactKind[] = ["board", "enclosure", "firmware"]
@@ -43,7 +46,7 @@ const builderName = (kind: string) => `build:${kind}`
 // role, the three builders (the QEMU boot rides on build:firmware), the grounding check and the consistency check.
 export const RIPPLE_PARTICIPANTS = ["architect", "parts", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
 
-function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, lastCheckClean: boolean): Ripple {
+function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, lastCheckClean: boolean): Omit<Ripple, "reviewFollowUps"> {
 	const atMs = Date.parse(request.at) - startMs
 	const fields: string[] = []
 	const woke = new Set<string>()
@@ -111,7 +114,8 @@ function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, last
 	}
 }
 
-// One Ripple per change.requested, each over the events up to the next request. Pure: tests and the report use it
+// One Ripple per change.requested. Its ripple runs to the first design.ready after it (consistent and quiet again,
+// handed to the reviewer); the rest, up to the next request, is review follow-up. Pure: tests and the report use it
 // on a trace file, the live recorder on the events it has seen so far.
 export function changeRipples(trace: TraceEvent[]): Ripple[] {
 	const starts = trace.map((e, i) => (e.type === "change.requested" ? i : -1)).filter((i) => i >= 0)
@@ -120,7 +124,14 @@ export function changeRipples(trace: TraceEvent[]): Ripple[] {
 	const startMs = Date.parse(started.at)
 	return starts.map((start, k) => {
 		const lastCheck = trace.slice(0, start).findLast((e) => e.type === "consistency.checked")
-		return ripple(trace.slice(start + 1, starts[k + 1] ?? trace.length), trace[start], startMs, (lastCheck?.payload.violations.length ?? 1) === 0)
+		const window = trace.slice(start + 1, starts[k + 1] ?? trace.length)
+		const ready = window.findIndex((e) => e.type === "design.ready")
+		const own = ready < 0 ? window : window.slice(0, ready + 1)
+		const after = ready < 0 ? [] : window.slice(ready + 1)
+		const followFields = [...new Set(after.filter((e) => e.type === "contract.changed").map((e) => e.payload.field as string))]
+		// Every review round of the re-armed review; the first one starts right at the window's design.ready.
+		const rounds = (ready < 0 ? [] : window.slice(ready)).filter((e) => e.type === "review.completed").length
+		return { ...ripple(own, trace[start], startMs, (lastCheck?.payload.violations.length ?? 1) === 0), reviewFollowUps: { fieldsChanged: followFields, rounds } }
 	})
 }
 
