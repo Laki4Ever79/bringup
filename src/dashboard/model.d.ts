@@ -38,4 +38,3 @@ export function foldHeader(kind: "parts" | "revisions", data?: { count?: number;
 export interface FoldStorage { getItem(k: string): string | null; setItem(k: string, v: string): void }
 export function foldOpen(storage: FoldStorage | null | undefined, kind: string): boolean
 export function setFold(storage: FoldStorage | null | undefined, kind: string, open: boolean): void
-export function youTile(o?: { ripple?: { text: string; file: { name: string; items?: string[] } | null; state?: string } | null; settled?: { settled: boolean } | null; open?: boolean; waitingForYou?: number; benchAsk?: string | null }): { cls: string; status: string; task: string }

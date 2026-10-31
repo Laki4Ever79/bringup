@@ -250,7 +250,7 @@ export function whatMoved(before, after) {
 // doing), then how the change ended. Everything comes from the ripple and the latest consistency check.
 
 // The latest check's violations in words: the domains that disagree.
-const PROBLEM = {
+export const PROBLEM = {
 	"outline-mismatch": "board and case outlines differ",
 	"cutout-misaligned": "the case's cutouts don't line up with the board",
 	"cutout-missing": "the case is missing a cutout for a connector",
