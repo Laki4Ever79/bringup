@@ -97,7 +97,9 @@ export function firmwareFacts(s: ContractSnapshot): string[] {
 	const main = readFileSync(resolve(import.meta.dirname, "../../templates/fw/src/main.cpp"), "utf8")
 	const num = (re: RegExp) => Number(re.exec(main)?.[1] ?? NaN)
 	const blinkMs = num(/READING_BLINK_MS = (\d+)/)
-	const days = num(/HISTORY_DAYS = (\d+)/)
+	const contractDays = s.values.requirements?.historyDays
+	const days = contractDays ?? num(/#define HISTORY_DAYS (\d+)/)
+	const daysFrom = contractDays !== undefined ? "requirements.historyDays" : "the template's default; the contract has no historyDays"
 	const contractPeriod = s.values.requirements?.dutyCycle?.periodS
 	const periodS = contractPeriod !== undefined && contractPeriod > 0 ? Math.round(contractPeriod) : num(/#define DUTY_PERIOD_S (\d+)/)
 	const chunk = num(/HISTORY_CHUNK = (\d+)/)
@@ -107,7 +109,7 @@ export function firmwareFacts(s: ContractSnapshot): string[] {
 	const duty = s.values.requirements?.dutyCycle
 	const advertise = duty ? `${bleAdvertiseMs(duty)} ms (activeMs minus the reading)` : `${num(/#define BLE_ADVERTISE_MS (\d+)/)} ms (the template's default; the contract has no duty cycle)`
 	return [
-		`- Firmware (product build of templates/fw): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash (LittleFS, the last ${Math.floor((days * 86400) / periodS)} readings: ${days} days at ${periodS} s), blinks the status LED ${blinkMs} ms (a double blink if the sensor fails), then advertises over BLE for ${advertise}, then deep-sleeps ${periodS} s (${from}). The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
+		`- Firmware (product build of templates/fw): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash (LittleFS, the last ${Math.floor((days * 86400) / periodS)} readings: ${days} days at ${periodS} s (${daysFrom})), blinks the status LED ${blinkMs} ms (a double blink if the sensor fails), then advertises over BLE for ${advertise}, then deep-sleeps ${periodS} s (${from}). The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
 		`- Firmware BLE: a GATT service with the latest reading, the history count and the history read newest first in chunks of ${chunk} records; a phone that connects keeps the device awake until it disconnects or ${connectedS} s pass.`,
 	]
 }
