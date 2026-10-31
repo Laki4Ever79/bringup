@@ -171,3 +171,28 @@ export function powerBudgetLines(e: PowerEstimate): string[] {
 	}
 	return out
 }
+
+// For the reviewer, like DRC or SPICE: battery life derived from the duty cycle alone, with every input shown, so it
+// doesn't have to re-derive it by hand or trust the rails' stated averages (real runs 15 and 16).
+export function dutyCycleCheckLines(e: PowerEstimate): string[] {
+	const d = e.dutyCycle
+	const peak = Math.max(0, ...e.rails.map((r) => r.peakMa))
+	if (!d) return ["Battery-life check: not computed (no requirements.dutyCycle)"]
+	if (peak <= 0) return ["Battery-life check: not computed (no battery-fed rail with a peak current)"]
+	const n = (x: number) => Number(x.toPrecision(3))
+	const mcuSleep = e.sleep?.raisedFrom != null ? `${d.sleepUa} µA (MCU deep-sleep floor; ${e.sleep.raisedFrom} µA stated)` : `${d.sleepUa} µA (MCU deep sleep)`
+	const ldo = e.regulatorIqUa > 0 ? ` + ${e.regulatorIqUa} µA (LDO quiescent)` : ""
+	const averageMa = dutyCycleAverageMa(d, peak) + e.regulatorIqUa / 1000
+	const days = e.capacityMah !== null ? batteryLifeDays(e.capacityMah, dutyCycleAverageMa(d, peak), e.regulatorIqUa) : null
+	const life =
+		days === null || e.capacityMah === null
+			? `- Average ${ma(averageMa)}; battery life unknown (no capacity in the brief or requirements)`
+			: `- Average ${ma(averageMa)}; ${e.capacityMah} mAh / ${ma(averageMa)} / 24 h = ${Math.round(days)} days${e.targetDays !== null ? ` vs target ${e.targetDays} days` : ""}`
+	return [
+		"Battery-life check (computed in code from the duty cycle, not from the rails' stated averages):",
+		`- Each reading: ${d.activeMs} ms awake at up to ${ma(peak)} (the busiest battery-fed rail's peak) = ${n((peak * d.activeMs) / 1000)} mC`,
+		`- Asleep the rest of the ${d.periodS} s period: ${mcuSleep}${ldo}`,
+		life,
+		"- Assumes the firmware sleeps between readings as requirements.dutyCycle says, and the peak current for the whole wake (an upper bound).",
+	]
+}
