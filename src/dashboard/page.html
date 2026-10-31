@@ -643,6 +643,7 @@
 		<button id="stop-btn" class="pill hidden" title="End the bring-up phase and the run">■ Stop</button>
 		<button id="feed-btn" class="pill hidden" title="Event feed">Feed</button>
 		<a id="cloud-link" class="pill hidden" target="_blank" rel="noopener">Mozaik Cloud ↗</a>
+		<a id="stage-btn" class="pill hidden" href="/stage" title="Back to the talk's stage">← stage</a>
 		<a id="new-btn" class="pill hidden" href="/">＋ New</a>
 	</header>
 
@@ -931,6 +932,8 @@
 		const base = `/runs/${encodeURIComponent(id)}`
 		const file = (p) => `${base}/files/${p}`
 		for (const el of ["run", "changebar", "state-pill", "elapsed", "checks", "brief-btn", "why-btn", "changes-btn", "feed-btn", "new-btn"]) $(el).classList.remove("hidden")
+		// "← stage" only where a talk's stage is prepared (out/stage.json).
+		fetch("/api/stage").then((r) => (r.ok ? r.json() : null)).then((st) => { if (st && (st.sensor || st.board)) $("stage-btn").classList.remove("hidden") }).catch(() => {})
 
 		const S = {
 			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
