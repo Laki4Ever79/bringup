@@ -43,9 +43,10 @@ cat out/quick/report.md   # "settled ... Violations: 0", plus the change request
 ```
 
 This quick look stubs the hardware tools, so it builds no board or case. To see what the real tools produce without
-installing them, open the recorded run [docs/runs/add-sensor/](docs/runs/add-sensor/): its board renders
-(`board/rev-10/board.png`), the printable case and lid (`enclosure/rev-9/*.stl`, which GitHub shows in 3D), the
-report and the full trace.
+installing them, open the recorded run [docs/runs/add-sensor/](docs/runs/add-sensor/): the
+[board render](docs/runs/add-sensor/board/rev-10/board.png), the printable [case](docs/runs/add-sensor/enclosure/rev-9/case.stl)
+and [lid](docs/runs/add-sensor/enclosure/rev-9/lid.stl) (GitHub shows them in 3D), the
+[report](docs/runs/add-sensor/report.md) and the full trace.
 
 **Words used below.** *Contract*: the one shared design every agent reads and writes. *Settled*: every built file
 matches the contract and nothing is left to do. *Grounding*: checking every part and pin against the parts catalog and
