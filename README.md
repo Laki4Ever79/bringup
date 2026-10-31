@@ -1,7 +1,15 @@
 # Bringup
 
-**Change one thing, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still
+**Change “one thing”, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still
 consistent.**
+
+<!-- IMG hero: docs/img/hero.gif (≤5 MB): a change goes in → only the affected agents wake → the checks go red, then green → the board and case update. Cut from 7a's frozen-layout footage. -->
+
+A short product brief goes in. Concurrent [Mozaik](https://www.npmjs.com/package/@mozaik-ai/core) agents turn it into
+in-stock parts, a routed PCB, a printable case whose cutouts match the board, and firmware that compiles against the
+real pin map. Then the design changes, the way real designs always do, and Bringup keeps every part of it consistent.
+
+3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
 > **Quick look: needs only Node 24, no API key; about 1 min for `npm ci`, then 10–20 s.**
 > ```bash
@@ -10,18 +18,47 @@ consistent.**
 > cat out/quick/report.md   # "settled ... Violations: 0", plus the change requests held by interception
 > ```
 
-Concurrent Mozaik agents turn a short product brief into in-stock parts, a
-routed PCB, a printable case whose cutouts match the board, and firmware that compiles against the real pin map. Then
-you change one thing ("make it 40 mm wide", "the sensor is out of stock", "blink faster when tilted"). Only the agents
-that change affects wake up, rework their part at the same time, and the design is consistent again, with every
-other part left alone.
+## What it does
 
-Or **edit and save a generated file**: the firmware's `pins.h`, or the board in KiCad. The save becomes the engineer's
-change request and the design follows (`docs/runs/file-sync`: a pin moved in `pins.h` rebuilt the board and firmware
-in 96 s; the board's edge dragged 5 mm in KiCad rebuilt the board and case in 21 s). An edit the contract can't hold,
-such as a hand-routed track, gets a warning that the next rebuild will overwrite it, instead of being dropped silently.
+### 1. A brief becomes a whole design
 
-**What one run hands you, ready for a prototype:**
+<!-- IMG docs/img/design.png: the run view, settled after the first design (agent tiles, PCB, 3D case). -->
+
+Nine participants, each its own Mozaik loop, work at the same time against **one live design contract**. Out come
+parts with LCSC numbers, a routed KiCad board, a printable case and lid, and firmware for the board's actual pin map,
+booted in QEMU.
+
+### 2. Change one thing, and only what it affects wakes up
+
+<!-- IMG docs/img/ripple.png: mid-ripple: the change, the contract field it touched, the woken tiles lit and the idle ones dimmed, the status banner. -->
+
+Type a change mid-run ("make it 40 mm wide", "the sensor is out of stock", "blink faster when tilted"). It touches one
+or two contract fields. Mozaik situations wake only the agents those fields affect; they rework their part at the same
+time; plain-code checks compare what was actually built until the design is consistent again. No agent changes a field
+it doesn't own: Mozaik interception holds the call until the owner approves.
+
+### 3. Or just edit the file
+
+<!-- IMG docs/img/edits.png: the drift panel / "Your edits" with Adopt and Revert. -->
+
+Edit and save a generated file: the firmware's `pins.h`, or the board in KiCad. The save becomes the engineer's change
+request and the design follows (`docs/runs/file-sync`: a pin moved in `pins.h` rebuilt the board and firmware in 96 s;
+the board's edge dragged 5 mm in KiCad rebuilt the board and case in 21 s). An edit the contract can't hold, such as a
+hand-routed track, is listed in the **drift panel**, where you can revert it, instead of being dropped silently; an
+edit that maps to a contract field (pins, outline, connectors) can be adopted there as a change request.
+`npm run bringup -- status <run>` lists the same edits like `git status`.
+
+<!-- PENDING (cite only after the lead confirms): linked git working copy, rebase of independent stale edits, ready-to-order, phone approvals, add-a-sensor. -->
+
+### 4. All the way to a real board
+
+<!-- IMG docs/img/bench.png: a still of the ESP32-S3 on the desk, tilted, with the measured blink. -->
+
+"Blink faster when tilted" changed the firmware's behaviour field; the firmware rebuilt, the board was flashed in 16 s
+and booted, and tilted it blinked at **244 ms measured** against the 250 ms the contract asked for (`--bench real`).
+An ESP32-S3 dev board stands in for the design's ESP32-C3.
+
+## What one run hands you
 
 | Output | Ready for | Where |
 |---|---|---|
@@ -57,68 +94,39 @@ builders made to take turns instead of running in parallel, the same changes too
 regulator swap was added once a check compared the board's actual parts with the parts list; before that, it would
 have scored 0 by not looking.
 
-3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
+### With real models
 
-> **Status, honestly.** Scripted runs settle with 0 violations and take mid-run changes, with real board, case and
-> firmware builds (and a QEMU boot when QEMU is installed). **Real models take mid-run changes too:**
->
-> | Run | Change | Touched | Woke (of 9) | Consistent again |
-> |---|---|---|---|---|
-> | real-20 | "our temperature/humidity sensor is out of stock; switch to the other one" | parts | parts, board, firmware build, grounding, consistency (5) | 75 s, after `sensor-mismatch` and `part-mismatch` were caught and cleared |
-> | real-20 | "make the board 40 mm wide" | outline | architect, board, case, consistency (4) | 28 s |
-> | real-19 | the same sensor swap | parts | 6 | 52 s, after a `sensor-mismatch` was caught and cleared |
-> | real-15 | "make the board 40 mm wide" | outline | 4 | 49 s |
->
-> Reports, ripples and full traces: `docs/runs/real-15`, `real-19`, `real-20`. Each ends with 0 violations, but **no
-> real-model run has passed the final brief review yet.** The fresh-context reviewer's open points in real-20: it reads
-> the bench-only `behavior` field as the product LED (one field meaning two builds), it calls two rails' stated
-> averages double-counted, and in one round it caught a 250 mA charge current that is too high for a 500 mAh cell.
-> This README does not claim results that haven't run.
+| Run | Change | Touched | Woke (of 9) | Consistent again |
+|---|---|---|---|---|
+| real-20 | "our temperature/humidity sensor is out of stock; switch to the other one" | parts | parts, board, firmware build, grounding, consistency (5) | 75 s, after `sensor-mismatch` and `part-mismatch` were caught and cleared |
+| real-20 | "make the board 40 mm wide" | outline | architect, board, case, consistency (4) | 28 s |
+| real-19 | the same sensor swap | parts | 6 | 52 s, after a `sensor-mismatch` was caught and cleared |
+| real-15 | "make the board 40 mm wide" | outline | 4 | 49 s |
 
-## Every change has a checker other than its author
+Reports, ripples and full traces: `docs/runs/real-15`, `real-19`, `real-20`. Each ends with 0 violations, but **no
+real-model run has passed the final brief review yet** (see [Limits](#limits)). This README does not claim results that
+haven't run.
 
-1. **The field's owner** approves or rejects it, through Mozaik interception (change control). An invalid proposal is
-   returned with the reason before the owner is ever asked.
-2. **Plain code** checks what was actually built, and grounds every pin in the catalog and KiCad's symbols.
-3. **A fresh-context reviewer** judges the design against the brief.
-4. **The real board**: an ESP32-S3 on the bench runs the design's firmware and reports back (`--bench real`).
+## How it works
 
-## The problem
-
-A small board fails at bring-up for boring reasons, and they all come from domains drifting apart:
-
-- **Pin drift.** The schematic routes the sensor to GPIO8, but the firmware still says GPIO4.
-- **Fit.** The board grows 2 mm, and the USB-C cutout in the case no longer lines up.
-- **Power.** A part is added, and the 3.3 V regulator is now over its current budget.
-- **Parts.** The chosen part is out of stock, and its replacement has a different pinout.
-
-Today a human keeps these in sync by hand. In Bringup, each domain is an agent, every fact lives in **one live design
-contract**, and a change in one domain wakes exactly the agents it affects.
-
-## Architecture
-
-```
-                      engineer (human: brief, mid-run change requests)
-                                     │
-                                     ▼
-   ┌───────────┐   ┌──────────────── DesignContract ─────────────────┐   ┌───────────┐
-   │ architect │◀─▶│ requirements · outline · connectors · rails ·   │◀─▶│   parts   │
-   │   (LLM)   │   │ parts · pins   (owner + version per field)      │   │   (LLM)   │
-   └───────────┘   │          held in Mozaik RuntimeState            │   └───────────┘
-                   └──────▲───────────────▲───────────────▲──────────┘
-             contract.changed      contract.changed      contract.changed
-                   ┌──────┴────┐   ┌──────┴──────┐   ┌────┴──────┐
-                   │   board   │   │  enclosure  │   │ firmware  │
-                   │ tscircuit │   │  build123d  │   │PlatformIO │
-                   │  + KiCad  │   │             │   │  (+QEMU)  │
-                   └──────┬────┘   └──────┬──────┘   └────┬──────┘
-                          └─ artifact.ready / artifact.failed ┘
-                                         ▼
-                         consistency (plain code, no LLM)
-                    consistency.checked ──▶ wakes the affected agents
-                    design.ready        ──▶ brief reviewer (LLM, fresh context)
-                    review.completed    ──▶ fail: findings to the field owners
-                    design.settled      ──▶ report.md
+```mermaid
+flowchart LR
+  E["Engineer<br/>brief · typed change · saved file"] -->|change.requested| C
+  subgraph RS["Mozaik RuntimeState"]
+    C[("Design contract<br/>fields with an owner and a version")]
+  end
+  A["architect (LLM)"] <--> C
+  P["parts (LLM)"] <--> C
+  C -->|"contract.changed<br/>situations decide who wakes"| B["board<br/>tscircuit + KiCad"]
+  C --> X["case<br/>build123d"]
+  C --> F["firmware<br/>PlatformIO + QEMU"]
+  B --> K["consistency + grounding<br/>(plain code)"]
+  X --> K
+  F --> K
+  K -->|"violations wake the owners"| A
+  K -->|design.ready| R["brief reviewer<br/>(LLM, fresh context)"]
+  R -->|"findings to the field owners"| A
+  A -. "a change to a field it doesn't own" .-> I{{"interception:<br/>held for the owner"}}
 ```
 
 There is no orchestrator: no agent calls or awaits another. Agents coordinate only through events and the contract.
@@ -127,6 +135,33 @@ The full diagram is in the [plan doc](https://claude.ai/artifact/GpFMaa2NAE81hn9
 **The contract** (`src/contract/contract.ts`). Each field has one owning role (`parts` owns `parts`, `architect` owns
 the rest) and a version. A write must name the version it was based on, so when two agents write the same field at
 once, exactly one applies and the other gets `stale` and re-reads.
+
+### Every change has a checker other than its author
+
+1. **The field's owner** approves or rejects it, through Mozaik interception (change control). An invalid proposal is
+   returned with the reason before the owner is ever asked.
+2. **Plain code** checks what was actually built, and grounds every pin in the catalog and KiCad's symbols.
+3. **A fresh-context reviewer** judges the design against the brief.
+4. **The real board**: an ESP32-S3 on the bench runs the design's firmware and reports back (`--bench real`).
+
+| Check | What it compares | What it catches | How |
+|---|---|---|---|
+| **Consistency** (`src/contract/consistency.ts`) | The built artifacts against the contract | A board whose nets miss a pin assignment, a case cutout that misses the USB-C port, firmware built for another pin map, an overloaded rail | Plain code, after every build |
+| **Grounding** (`src/agents/grounding-check.ts`) | The contract against the parts catalog and KiCad 10's symbol library | Invented pinouts: a pin a part does not have, a GPIO the MCU lacks, a part no source knows | Plain code, after every parts or pins change |
+| **Brief reviewer** (`src/agents/reviewer.ts`) | The final design against the brief | A must-have the design does not meet, battery-life arithmetic that does not add up, a part choice that undermines the goal (for example an LDO's quiescent current against a 6-month target) | An LLM in a fresh context. It sees only the brief, the contract and the check results, never the agents' turns. |
+
+The first two keep the design self-consistent and real. Neither asks whether it is the *right* design, so the
+reviewer is the final gate. When the design is consistent and quiet, the consistency participant emits
+`design.ready` instead of settling. The reviewer answers with `review.completed`. A pass settles. A fail sends each
+finding to the owner of the fields it names and re-reviews the changed design. After one fix round (`maxReviewRounds`)
+the run settles anyway, with the findings in `report.md`, and it is unsettled only if a blocker remains. `--no-review`
+turns the gate off.
+
+**Cross-domain checks** (`src/contract/consistency.ts`): `outline-mismatch`, `net-missing`, `pin-mismatch`,
+`part-mismatch` (the board places a different part than the parts list), `sensor-mismatch` (firmware built with the
+other sensor's driver), `cutout-missing`, `cutout-misaligned`, `standoff-mismatch` (case standoffs vs board holes),
+`rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
+were actually built. For example, the firmware's pins are parsed back out of the `pins.h` it compiled.
 
 **Events** (`src/events.ts`):
 
@@ -147,26 +182,7 @@ once, exactly one applies and the other gets `stale` and re-reads.
 | `agent.halted` | An agent loop crashed (Mozaik #114 workaround) |
 | `run.ended` | A run kept up with `--stay` or `--bench` was stopped |
 
-**Cross-domain checks** (`src/contract/consistency.ts`): `outline-mismatch`, `net-missing`, `pin-mismatch`,
-`part-mismatch` (the board places a different part than the parts list), `sensor-mismatch` (firmware built with the
-other sensor's driver), `cutout-missing`, `cutout-misaligned`, `standoff-mismatch` (case standoffs vs board holes),
-`rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
-were actually built. For example, the firmware's pins are parsed back out of the `pins.h` it compiled.
-
-### Three checks
-
-| Check | What it compares | What it catches | How |
-|---|---|---|---|
-| **Consistency** (`src/contract/consistency.ts`) | The built artifacts against the contract | A board whose nets miss a pin assignment, a case cutout that misses the USB-C port, firmware built for another pin map, an overloaded rail | Plain code, after every build |
-| **Grounding** (`src/agents/grounding-check.ts`) | The contract against the parts catalog and KiCad 10's symbol library | Invented pinouts: a pin a part does not have, a GPIO the MCU lacks, a part no source knows | Plain code, after every parts or pins change |
-| **Brief reviewer** (`src/agents/reviewer.ts`) | The final design against the brief | A must-have the design does not meet, battery-life arithmetic that does not add up, a part choice that undermines the goal (for example an LDO's quiescent current against a 6-month target) | An LLM in a fresh context. It sees only the brief, the contract and the check results, never the agents' turns. |
-
-The first two keep the design self-consistent and real. Neither asks whether it is the *right* design, so the
-reviewer is the final gate. When the design is consistent and quiet, the consistency participant emits
-`design.ready` instead of settling. The reviewer answers with `review.completed`. A pass settles. A fail sends each
-finding to the owner of the fields it names and re-reviews the changed design. After one fix round (`maxReviewRounds`)
-the run settles anyway, with the findings in `report.md`, and it is unsettled only if a blocker remains. `--no-review`
-turns the gate off.
+<!-- LEAD: please add the file-sync events here (file.drift and any others) with their exact names; I didn't want to guess them. -->
 
 ## How it uses Mozaik
 
@@ -266,6 +282,8 @@ the agents that reworked something, the ones that only checked it, the ones that
 design was consistent again. The scripted agents understand "N mm wide" and "blink faster when tilted". Use real
 models for anything else.
 
+<!-- LEAD: add the exact file-sync / status / link commands here once confirmed (e.g. `npm run bringup -- status <run>`). -->
+
 `--no-hardware` swaps the three builders for stubs (`src/tools/stubs.ts`). Each stub derives its artifact straight
 from the contract: board nets from the pin map, enclosure cutouts from the connectors, firmware pins from the pin
 map. The agents, change control, the grounding check and the consistency checks all run as usual, and the report
@@ -304,6 +322,20 @@ settled designs first, then fewest violations, then BOM cost (live JLCPCB prices
 toolchain. With the four example variants and `--mock`, all four settle with 0 violations in about 80 s of wall time
 for the four concurrent runs. The 40 mm board ranks first on board area. The BOMs tie, because the scripted models
 pick the same parts for every variant.
+
+## Use from Claude Code
+
+Bringup is also an MCP server (stdio), so a coding agent can start runs and read their results. Register it from
+the repo root:
+
+```bash
+claude mcp add bringup -- "$PWD/node_modules/.bin/tsx" "$PWD/src/mcp/cli.ts"
+```
+
+Tools: `start_design {brief, mock?}` starts a run in the background and returns its `runId` at once (`mock` defaults to
+true: scripted models, no API key). `design_status`, `read_contract`, `get_report` and `list_events {sinceSeq?}` read
+`out/<runId>/`. Cursor and other MCP clients take the same command. Set `BRINGUP_OUT` to keep runs somewhere other than
+`out/`.
 
 ## Tests
 
@@ -363,22 +395,13 @@ chip and PCB tools but not the case or firmware. The A/B experiment above measur
   battery maths assumes and serves the latest reading and the history over a GATT service (NimBLE 2.5.2). On the
   desk's ESP32-S3, a laptop found it and read the latest reading and the history; no real sensor was fitted, and
   connection hold with a phone is untested.
-- **No real-model run has passed the final brief review yet.** Real runs 15–17 took mid-run changes and ended with 0
-  violations, but the fresh-context reviewer still blocked on brief-vs-design arguments (battery life, LED behaviour,
-  history depth). The reviewer now gets computed and datasheet-checked facts for those; each report lists what's open.
+- **No real-model run has passed the final brief review yet.** Real runs 15, 19 and 20 took mid-run changes and ended
+  with 0 violations, but the fresh-context reviewer still blocked. Its open points in real-20: it reads the bench-only
+  `behavior` field as the product LED (one field meaning two builds), it calls two rails' stated averages
+  double-counted, and in one round it caught a 250 mA charge current that is too high for a 500 mAh cell. Each report
+  lists what's open.
+- **File sync reads a few fields back.** A saved `pins.h` (pin numbers) and a saved `board.kicad_pcb` (outline,
+  connector positions) map to the contract; other edits are reported as drift. The file-sync runs used scripted agents
+  with the real tools.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
   can only choose from the vetted catalog (one MCU family, two temperature/humidity sensors today).
-
-## Use from Claude Code
-
-Bringup is also an MCP server (stdio), so a coding agent can start runs and read their results. Register it from
-the repo root:
-
-```bash
-claude mcp add bringup -- "$PWD/node_modules/.bin/tsx" "$PWD/src/mcp/cli.ts"
-```
-
-Tools: `start_design {brief, mock?}` starts a run in the background and returns its `runId` at once (`mock` defaults to
-true: scripted models, no API key). `design_status`, `read_contract`, `get_report` and `list_events {sinceSeq?}` read
-`out/<runId>/`. Cursor and other MCP clients take the same command. Set `BRINGUP_OUT` to keep runs somewhere other than
-`out/`.
