@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bringup · stage</title>
+<style>
+	@font-face { font-family: "Big Shoulders Display"; src: url("/fonts/BigShouldersDisplay.woff") format("woff"); font-weight: 100 900; }
+	@font-face { font-family: "Instrument Sans"; src: url("/fonts/InstrumentSans.woff") format("woff"); font-weight: 400 700; }
+	@font-face { font-family: "JetBrains Mono"; src: url("/fonts/JetBrainsMono.woff") format("woff"); font-weight: 400 800; }
+	:root { --paper: #efe9dc; --ink: #16140f; --ink-2: #4b463c; --signal: #ff4a17; --display: "Big Shoulders Display", sans-serif; --sans: "Instrument Sans", sans-serif; --mono: "JetBrains Mono", monospace; }
+	html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+	main { min-height: 100%; display: grid; grid-template-rows: auto 1fr; gap: 4vh; padding: 6vh 5vw; box-sizing: border-box; }
+	h1 { margin: 0; font: 800 clamp(40px, 5vw, 96px)/.9 var(--display); text-transform: uppercase; }
+	h1 q { quotes: "“" "”"; } h1 q::before, h1 q::after { color: var(--signal); }
+	#stage-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.4vw; }
+	.card { display: grid; grid-template-rows: auto 1fr auto; gap: 2vh; padding: 3.2vh 2vw; border: 3px solid var(--ink); background: var(--paper); color: var(--ink); text-decoration: none; cursor: pointer; font: inherit; text-align: left; box-shadow: 10px 10px 0 var(--ink); transition: transform 300ms cubic-bezier(.32,.72,0,1), box-shadow 300ms cubic-bezier(.32,.72,0,1); }
+	.card:hover, .card:focus-visible { transform: translate(-4px, -4px); box-shadow: 14px 14px 0 var(--signal); outline: none; }
+	.card .k { font: 800 clamp(64px, 8vw, 150px)/.8 var(--display); color: var(--signal); }
+	.card b { font: 800 clamp(30px, 3vw, 58px)/.95 var(--display); text-transform: uppercase; }
+	.card span { font-size: clamp(16px, 1.25vw, 24px); color: var(--ink-2); }
+	.card .key { font: 600 14px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+	.card.off { opacity: .45; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<main>
+	<h1>Change <q>one thing</q>.</h1>
+	<section id="stage-cards">
+		<button class="card" id="c1" data-k="1"><span class="k">1</span><div><b>Start a new design</b><br><span>the beacon brief, scripted agents, real tools: watch nine agents design it at once</span></div><span class="key">press 1</span></button>
+		<a class="card" id="c2" data-k="2"><span class="k">2</span><div><b>Add a sensor: finished</b><br><span>“add a temperature/humidity sensor”: board, case, firmware and parts followed</span></div><span class="key">press 2</span></a>
+		<a class="card" id="c3" data-k="3"><span class="k">3</span><div><b>The real board</b><br><span>“blink faster when tilted”: reflashed and measured on the ESP32. Tilt it.</span></div><span class="key">press 3</span></a>
+	</section>
+</main>
+<script type="module">
+	const $ = (id) => document.getElementById(id)
+	const runs = await fetch("/api/stage").then((r) => r.json()).catch(() => ({}))
+	for (const [id, run] of [["c2", runs.sensor], ["c3", runs.board]]) {
+		if (run) $(id).href = `/?run=${encodeURIComponent(run)}`
+		else { $(id).classList.add("off"); $(id).title = "not prepared: no run in out/stage.json" }
+	}
+	const BEACON = (await fetch("/api/briefs").then((r) => r.json()).catch(() => [])).find((b) => b.name === "beacon.md")?.text
+	async function start() {
+		$("c1").disabled = true
+		const res = await fetch("/api/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brief: BEACON, mock: true, hardware: true, review: true, engineerApproval: false, bench: false }) })
+		const body = await res.json().catch(() => ({}))
+		if (res.ok) location.href = `/?run=${encodeURIComponent(body.runId)}`
+		else { $("c1").disabled = false; $("c1").querySelector(".key").textContent = body.error ?? "could not start" }
+	}
+	$("c1").addEventListener("click", start)
+	addEventListener("keydown", (e) => {
+		if (e.key === "1") start()
+		if (e.key === "2" && $("c2").href) location.href = $("c2").href
+		if (e.key === "3" && $("c3").href) location.href = $("c3").href
+	})
+</script>
+</body>
+</html>

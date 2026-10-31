@@ -18,6 +18,7 @@ const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
 const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
+const STAGE_PAGE = new URL("./stage.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
 // af's A/B experiment (docs/experiment.md), committed so the hub can show the evidence without a run.
@@ -522,6 +523,16 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				return text ? json(res, 200, JSON.parse(text)) : json(res, 404, { error: "no experiment results" })
 			}
 			if (path === "/api/hub") return json(res, 200, { defaultRun: opts.defaultRun?.id ?? null, canStart: Boolean(opts.launch) })
+			// The talk's stage: three cards (stage.html); the finished runs come from <out>/stage.json, ids that exist only.
+			if (path === "/stage") {
+				res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" })
+				return res.end(await readFile(STAGE_PAGE))
+			}
+			if (path === "/api/stage") {
+				const saved = JSON.parse(await readFile(join(outRoot, "stage.json"), "utf8").catch(() => "{}"))
+				const ok = async (v: unknown) => (typeof v === "string" && (await runDir(v)) ? v : null)
+				return json(res, 200, { sensor: await ok(saved.sensor), board: await ok(saved.board) })
+			}
 
 			// Per-run routes, plus /events and /files/* for the default run.
 			let dir: string | null = null
