@@ -6,6 +6,7 @@ export interface Ripple {
 	fieldsChanged: string[]
 	woke: string[]
 	checked: string[]
+	reading: string[]
 	stayedIdle: string[]
 	working: string[]
 	violationsPeak: number
