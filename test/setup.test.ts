@@ -177,3 +177,11 @@ test("without --wokwi the summary says how to add it", async () => {
 	const s = await runSetup(m.probe, {})
 	assert.match(s.lines.join("\n"), /Wokwi CLI .*not installed \(optional: npm run setup -- --wokwi, plus WOKWI_CLI_TOKEN in \.env\)/)
 })
+
+test("doctor names the firmware simulator: Wokwi when its CLI and token are there, else QEMU, else none", () => {
+	const base = { root: "/r", tsci: "t", kicad: "docker" as const, python: "p", pio: "pio" }
+	const sim = (env: object) => doctorReport({ ...base, ...env }, {})
+	assert.match(sim({ wokwi: "/r/tools/wokwi-cli/wokwi-cli", wokwiToken: true, qemu: "/q" }), /Wokwi \(sim\)\s+local \(token set\)\n[\s\S]*firmware sim\s+→ Wokwi/)
+	assert.match(sim({ wokwi: null, wokwiToken: true, qemu: "/q" }), /Wokwi \(sim\)\s+CLI missing: npm run setup -- --wokwi[\s\S]*firmware sim\s+→ QEMU/)
+	assert.match(sim({ wokwi: "/w", wokwiToken: false, qemu: null }), /Wokwi \(sim\)\s+not set up \(WOKWI_CLI_TOKEN not set\)[\s\S]*firmware sim\s+→ none/)
+})
