@@ -255,3 +255,10 @@ function connectionLines(e: PowerEstimate, averageMa: number, radioMa: number, c
 	]
 }
 const n3 = (x: number) => Number(x.toPrecision(3))
+
+// The MCU's datasheet currents from the catalog, when it lists them.
+export function mcuCurrents(s: ContractSnapshot, entries: CatalogIq[] = catalog()): { ref: string; mpn: string; cpuMa: number; radioMa: number } | null {
+	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
+	const c = mcu ? entries.find((e) => e.mpn.toUpperCase() === mcu.mpn.toUpperCase()) : undefined
+	return mcu && typeof c?.cpuMa === "number" && typeof c.radioMa === "number" ? { ref: mcu.ref, mpn: mcu.mpn, cpuMa: c.cpuMa, radioMa: c.radioMa } : null
+}
