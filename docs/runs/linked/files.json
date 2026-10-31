@@ -1,0 +1,92 @@
+{
+  "linked": {
+    "dir": "out/linked-2-design",
+    "git": true,
+    "dirty": true,
+    "commits": [
+      {
+        "id": "68d8b1b",
+        "at": "2026-10-31T14:44:45+01:00",
+        "subject": "Bringup rev 10: edited pins.h at rev 8, rebased onto rev 9: I2C_SCL GPIO9 → GPIO3",
+        "revision": 10,
+        "source": "file",
+        "requestId": "req-3"
+      },
+      {
+        "id": "136cf9c",
+        "at": "2026-10-31T14:42:47+01:00",
+        "subject": "Bringup rev 8: edited pins.h: I2C_SDA GPIO8 → GPIO4",
+        "revision": 8,
+        "source": "file",
+        "requestId": "req-1"
+      },
+      {
+        "id": "6c53df9",
+        "at": "2026-10-31T14:40:43+01:00",
+        "subject": "Bringup rev 7: the design from the brief",
+        "revision": 7,
+        "source": "brief",
+        "requestId": null
+      }
+    ]
+  },
+  "entries": [
+    {
+      "id": "drift-1",
+      "savedAt": "2026-10-31T13:40:43.749Z",
+      "path": "firmware/pins.h",
+      "savedRevision": 7,
+      "designRevision": 7,
+      "kind": "adopted",
+      "items": [
+        "I2C_SDA GPIO8 → GPIO4"
+      ],
+      "status": "adopted",
+      "adoptable": true,
+      "requestId": "req-1"
+    },
+    {
+      "id": "drift-2",
+      "savedAt": "2026-10-31T13:42:48.369Z",
+      "path": "firmware/pins.h",
+      "savedRevision": 8,
+      "designRevision": 9,
+      "kind": "rebased",
+      "items": [
+        "I2C_SCL GPIO9 → GPIO3"
+      ],
+      "status": "rebased",
+      "adoptable": true,
+      "note": "rebased: behavior changed since rev 8, independent of pins",
+      "requestId": "req-3"
+    },
+    {
+      "id": "drift-3",
+      "savedAt": "2026-10-31T13:44:45.849Z",
+      "path": "board/board.kicad_pcb",
+      "savedRevision": 10,
+      "designRevision": 10,
+      "kind": "resaved",
+      "items": [
+        "re-saved, no design change"
+      ],
+      "status": "re-saved",
+      "adoptable": false,
+      "note": "re-saved, no design change; ignored"
+    },
+    {
+      "id": "drift-4",
+      "savedAt": "2026-10-31T13:44:46.291Z",
+      "path": "firmware/pins.h",
+      "savedRevision": 10,
+      "designRevision": 10,
+      "kind": "not-in-contract",
+      "items": [
+        "+ #define DEBUG_LOG 1"
+      ],
+      "status": "open",
+      "adoptable": false,
+      "note": "this edit isn't in the design contract; the next rebuild will overwrite it"
+    }
+  ]
+}
