@@ -14,7 +14,7 @@ export default makeScene2D(function* (view) {
   const n = createSignal(0);
   view.add(
     <Rect ref={card} layout direction="column" alignItems="center" gap={30} y={-40}>
-      <Txt text="6 CHANGES, APPLIED TWICE" fontFamily={F.mono} fontWeight={700} fontSize={34} fill={C.ink3} letterSpacing={4} />
+      <Txt text="0 VIOLATIONS IN PARALLEL · 16 IN A SIMULATED BASELINE" fontFamily={F.mono} fontWeight={700} fontSize={34} fill={C.ink3} letterSpacing={4} />
       <Rect layout gap={160}>
         <Rect layout direction="column" alignItems="center">
           <Txt text="0" fontFamily={F.display} fontWeight={900} fontSize={300} fill={C.ok} />
@@ -25,10 +25,10 @@ export default makeScene2D(function* (view) {
           <Txt text={'mismatches shipped\neach team on its own copy'} textAlign="center" fontFamily={F.sans} fontWeight={600} fontSize={38} fill={C.ink2} />
         </Rect>
       </Rect>
-      <Txt text="scripted agents · real tools · docs/experiment.md" fontFamily={F.mono} fontSize={24} fill={C.ink3} />
+      <Txt text="scripted agents, real tools · the 16 are a simulated baseline" fontFamily={F.mono} fontSize={24} fill={C.ink3} />
     </Rect>,
   );
-  const cap = caption(view, '0 violations vs 16 mismatches shipped.');
+  const cap = caption(view, '0 violations vs 16 mismatches in a simulated baseline.');
   yield* n(16, 2.2, easeOutCubic);
   yield* cap.in();
   yield* waitFor(7);
