@@ -140,3 +140,10 @@ test("a mock run with a mid-run 60 mm request writes ripples.json and a Change r
 	assert.match(report, /## Change requests/)
 	assert.match(report, /\| make the board 60 mm wide \| outline \| .* \(\d+ of 9\) \| \d+(\.\d)? s \|/)
 })
+
+test("each scripted change adds its own time to the run's default timeout", async () => {
+	const { runTimeoutMs } = await import("../src/run.ts")
+	assert.equal(runTimeoutMs({}), 30 * 60_000)
+	assert.equal(runTimeoutMs({ changes: ["a", "b"] }), 70 * 60_000)
+	assert.equal(runTimeoutMs({ timeoutMs: 5_000, changes: ["a"] }), 5_000, "an explicit timeout wins")
+})
