@@ -128,11 +128,13 @@ export function indexBounds(ix) {
 }
 
 // Board millimetres (y up) to container pixels (y down), fitted with `padding` px on every side.
-export function fitTransform(bounds, width, height, padding = 24) {
+// bottomInset: room kept free at the bottom (the net legend), so the board is never drawn under it.
+export function fitTransform(bounds, width, height, padding = 24, bottomInset = 0) {
 	const bw = bounds.maxX - bounds.minX || 1, bh = bounds.maxY - bounds.minY || 1
-	const scale = Math.max(1e-6, Math.min((width - 2 * padding) / bw, (height - 2 * padding) / bh))
+	const room = height - bottomInset
+	const scale = Math.max(1e-6, Math.min((width - 2 * padding) / bw, (room - 2 * padding) / bh))
 	const cx = (bounds.minX + bounds.maxX) / 2, cy = (bounds.minY + bounds.maxY) / 2
-	return { scale, apply: (x, y) => [width / 2 + (x - cx) * scale, height / 2 - (y - cy) * scale] }
+	return { scale, apply: (x, y) => [width / 2 + (x - cx) * scale, room / 2 - (y - cy) * scale] }
 }
 
 // Refs whose outline moved, that appeared, or whose pads now sit on different nets.
@@ -191,6 +193,11 @@ const STYLE = `
   font-size: 13px; color: #a1a1aa; pointer-events: none; }
 .pcb-legend span { display: inline-flex; align-items: center; gap: 6px; font-family: ${MONO}; font-variant-numeric: tabular-nums; }
 .pcb-legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+/* A short stage folds the legend into one "Nets ▸" chip (click to open it over the board, on request only). */
+.pcb-legend .pcb-nets-chip { display: none; pointer-events: auto; cursor: pointer; padding: 2px 8px; border: 1px solid #2e2e35; border-radius: 999px; color: #ededed; }
+.pcb-root.pcb-short .pcb-legend .pcb-nets-chip { display: inline-flex; }
+.pcb-root.pcb-short:not(.pcb-nets-open) .pcb-legend span:not(.pcb-nets-chip) { display: none; }
+.pcb-root.pcb-short.pcb-nets-open .pcb-legend { background: rgba(22,22,26,.92); padding: 8px 10px; border-radius: 8px; }
 @media (prefers-reduced-motion: reduce) { .pcb-root .pcb-mark { animation: none; stroke-width: .4; } .pcb-root .pcb-pulse { animation-duration: 1ms; } .pcb-root * { transition: none !important; } }
 `
 
@@ -242,10 +249,14 @@ export function mountPcb(host, opts = {}) {
 		if (!ix) return
 		const b = indexBounds(ix)
 		const w = host.clientWidth || 800, h = host.clientHeight || 500
-		const f = fitTransform(b, w, h, Math.max(24, Math.min(w, h) * 0.06))
+		// The legend's height stays free under the board: it never overlays the PCB.
+		const inset = legend.offsetHeight ? legend.offsetHeight + 16 : 0
+		// A short stage (a 720p screen) keeps tighter margins, so the board gets the room.
+		const pad = h < 320 ? 12 : Math.max(24, Math.min(w, h) * 0.06)
+		const f = fitTransform(b, w, h, pad, inset)
 		const vw = w / f.scale, vh = h / f.scale
 		const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2
-		base = [cx - vw / 2, -cy - vh / 2, vw, vh]
+		base = [cx - vw / 2, -cy - (h - inset) / 2 / f.scale, vw, vh]
 		view = [...base]
 		userMoved = false
 		setViewBox()
@@ -329,7 +340,7 @@ export function mountPcb(host, opts = {}) {
 			g.addEventListener("pointerleave", () => hideTip())
 		}
 
-		legend.innerHTML = ix.nets
+		legend.innerHTML = `<span class="pcb-nets-chip">Nets ${ix.nets.length} ▸</span>` + ix.nets
 			.map((n) => `<span><i style="background:${colors[n] ?? colorOf(n)}"></i>${html(n)}</span>`)
 			.join("")
 		if (focused) applyHighlight(focused)
@@ -467,8 +478,11 @@ export function mountPcb(host, opts = {}) {
 	svg.addEventListener("pointercancel", endDrag)
 	svg.addEventListener("dblclick", () => fit())
 	new ResizeObserver(() => {
+		// Under 320px of stage the legend folds into its chip, so the board keeps the room.
+		root.classList.toggle("pcb-short", host.clientHeight < 320)
 		if (!userMoved) fit()
 	}).observe(host)
+	legend.addEventListener("click", (e) => { if (e.target.closest(".pcb-nets-chip")) root.classList.toggle("pcb-nets-open") })
 
 	return {
 		update(next, changedRefs) {

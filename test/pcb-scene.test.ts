@@ -224,3 +224,13 @@ test("from below the board's plane, paint order falls back to depth alone", () =
 	assert.deepEqual(paintOrder(items, { boardDepth: 30, boardZ: 5, above: false }).map((e: { depth: number }) => e.depth), [50, 30, 10])
 })
 
+
+test("fitTransform keeps the board clear of the net legend: a bottom inset shrinks and lifts it", () => {
+	const b = { minX: -20, minY: -10, maxX: 20, maxY: 10 }
+	const plain = fitTransform(b, 1000, 600, 50)
+	const f = fitTransform(b, 1000, 600, 50, 100)
+	assert.ok(f.scale < plain.scale)
+	// The board's centre sits in the middle of what's left above the legend, and its bottom edge clears it.
+	assert.deepEqual(f.apply(0, 0).map((v) => Math.round(v)), [500, 250])
+	assert.ok(f.apply(0, -10)[1] <= 600 - 100 - 50 + 1e-9)
+})

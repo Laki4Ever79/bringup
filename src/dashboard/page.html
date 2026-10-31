@@ -245,7 +245,7 @@
 	/* Lower deck: the stage screen, then the case and the parts. */
 	#deck { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--gap); min-height: 0; }
 	#stage { display: grid; grid-template-rows: auto minmax(0, 1fr) 40px; min-height: 0; background: var(--screen); color: var(--screen-text); border: 1.5px solid var(--ink); }
-	.stage-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-width: 0; border-bottom: 1px solid var(--screen-rule); }
+	.stage-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-width: 0; overflow: hidden; border-bottom: 1px solid var(--screen-rule); }
 	.tabs { display: inline-flex; border: 1px solid var(--screen-rule); }
 	.tabs button { height: 30px; padding: 0 14px; border: 0; background: transparent; color: var(--screen-text-2); cursor: pointer; font: 700 15px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; }
 	.tabs button.on { background: var(--screen-text); color: var(--screen); }
@@ -259,7 +259,7 @@
 	#fab .popover { right: auto; left: 0; width: 330px; }
 	#fab a.row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 6px; text-decoration: none; font-size: 13px; font-weight: 600; }
 	#fab a.row:hover { background: var(--ink); color: var(--paper); }
-	#battery { margin-left: auto; display: flex; align-items: center; gap: 10px; font: 500 13px/1 var(--mono); color: var(--screen-text-2); white-space: nowrap; }
+	#battery { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; font: 500 13px/1 var(--mono); color: var(--screen-text-2); white-space: nowrap; }
 	#battery b { font-weight: 700; }
 	#battery .bar { width: 120px; height: 8px; background: var(--screen-2); border: 1px solid var(--screen-rule); position: relative; overflow: hidden; }
 	#battery .fill { position: absolute; inset: 0 auto 0 0; transition: width 600ms var(--ease); }
@@ -576,6 +576,9 @@
 		.logo { font-size: 24px; }
 		#elapsed { display: none; }
 		#checks .check { padding: 0 8px; }
+		/* Narrow: the stage bar keeps the tabs and buttons; the battery keeps its number and drops its bar. */
+		#battery .bar { display: none; }
+		#dims { display: none; }
 		/* Narrow: the agents get the room; the timeline and the fields give a little. */
 		#ripple { grid-template-columns: minmax(0, .95fr) minmax(0, .72fr) minmax(0, 1.8fr) minmax(0, .95fr); }
 	}
@@ -589,6 +592,13 @@
 		#rip-result .stampbox { width: 36px; height: 36px; font-size: 22px; }
 	}
 	/* Short windows (a laptop browser with its tabs and bar): a tighter change band, so the board keeps its room. */
+	/* 720p (a projector, a scaled laptop): the agents band gives up its spare height so the board gets it. */
+	@media (max-height: 760px) {
+		#run { grid-template-rows: minmax(200px, auto) minmax(300px, 1fr) !important; }
+		#agents { grid-auto-rows: minmax(50px, auto) !important; }
+		.tile { padding: 4px 8px 3px 12px; }
+		#rip-result { padding: 4px 14px; }
+	}
 	@media (max-height: 880px) {
 		#run { gap: 8px; padding: 8px; grid-template-rows: minmax(220px, auto) minmax(340px, 1fr); }
 		#ripple > .col { padding: 8px 12px 6px; gap: 6px; }
