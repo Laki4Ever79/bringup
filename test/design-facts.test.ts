@@ -11,7 +11,7 @@ test("designFacts gives the chosen parts' catalog facts, the field meanings and 
 	c.values.rails![0].averageMa = 0.05
 	c.values.requirements!.dutyCycle = { activeMs: 100, periodS: 60, sleepUa: 5 }
 	const text = designFacts(c, "around 500 mAh").join("\n")
-	assert.match(text, /## Part facts \(from the catalog\)\n- U1 ESP32-C3-MINI-1: .*3\.0–3\.6 V supply/)
+	assert.match(text, /## Part facts \(from the catalog\)\n- U1 ESP32-C3-MINI-1: .*3.0–3.6 V supply.*CPU running at 160 MHz with the radio off 23–28 mA \(Table 5-8\); radio receiving 84 mA.*The datasheet gives no Bluetooth LE current figure/)
 	assert.match(text, /- Firmware \(product build of templates\/fw\)/)
 	assert.match(text, /The behavior field is the bench demo build's blink and tilt settings, not the product's status LED/)
 	assert.match(text, /## Power budget \(computed in code/)
