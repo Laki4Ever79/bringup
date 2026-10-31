@@ -154,7 +154,7 @@ export function writeRipples(outDir: string, requests: Ripple[]): void {
 	renameSync(`${path}.tmp`, path)
 }
 
-const RECOMPUTE_ON = new Set(["change.requested", "contract.changed", "artifact.ready", "artifact.failed", "consistency.checked", "design.settled"])
+const RECOMPUTE_ON = new Set(["change.requested", "change.proposed", "contract.changed", "artifact.ready", "artifact.failed", "consistency.checked", "design.settled"])
 
 // A plain-code participant that keeps <outDir>/ripples.json current: it records every event it sees and, once a
 // change request has arrived, rewrites the file whenever one of the events a ripple depends on comes in.
@@ -171,7 +171,9 @@ export function createRippleRecorder(outDir: string): Human {
 					apply: ({ event }) => {
 						seen.push({ at: event.occurredAt.toISOString(), type: event.type, producerId: event.producerId, payload: event.payload })
 						if (event.type === "change.requested") requested = true
-						if (requested && RECOMPUTE_ON.has(event.type)) writeRipples(outDir, changeRipples(seen))
+						// An agent's turn changes woke/checked even when it changes nothing, so turns rewrite the file too.
+						const turn = event.type === "agent.activity" && (event.payload as { phase?: string }).phase === "turn"
+						if (requested && (RECOMPUTE_ON.has(event.type) || turn)) writeRipples(outDir, changeRipples(seen))
 					},
 				},
 			},

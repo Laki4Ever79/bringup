@@ -244,3 +244,21 @@ test("a scripted request that changes nothing re-settles as soon as the agents a
 	assert.deepEqual(row.fieldsChanged, [])
 	assert.deepEqual(row.checked.includes("architect"), true)
 })
+
+test("the live ripples.json picks up an agent's turn on a request that changes nothing", async () => {
+	const { createRippleRecorder } = await import("../src/runner/ripple.ts")
+	const { BringupState, emit, join: joinRt, startRuntime } = await import("../src/runtime.ts")
+	const { makeEvent } = await import("../src/events.ts")
+	const out = tempDir()
+	startRuntime(new BringupState(out), undefined, null)
+	const { createHuman } = await import("@mozaik-ai/core")
+	const sender = createHuman({ name: "sender", capabilities: [], handlers: [] })
+	joinRt(sender)
+	joinRt(createRippleRecorder(out))
+	const id = sender.getId()
+	emit(makeEvent("run.started", id, { review: true, engineerApproval: false, noHardware: true, bench: false }), id)
+	emit(makeEvent("change.requested", id, { id: "req-1", text: "x" }), id)
+	emit(makeEvent("agent.activity", id, { agentId: "a", role: "architect", name: "architect", phase: "turn", text: "x", at: new Date().toISOString() }), id)
+	const [row] = JSON.parse(readFileSync(join(out, "ripples.json"), "utf8")).requests
+	assert.deepEqual(row.checked, ["architect"])
+})
