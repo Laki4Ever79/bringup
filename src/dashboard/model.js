@@ -387,3 +387,16 @@ export function relativeGravity(g0, g) {
 export function toggleOpen(open, clicked) {
 	return clicked === null || clicked === open ? null : clicked
 }
+
+// ── Run phase: the composer and the state pill ───────────────────────────────────────────────────
+
+// Whether the composer takes a change, and what the state pill says. `stay`: the run keeps taking change requests
+// after settling (run.started.stay); `alive`: no run.ended yet; `benchLive`: the bench is streaming.
+export function runPhase({ settled, stay, alive, benchLive, stopped }) {
+	const word = settled ? (settled.settled ? "SETTLED" : "UNSETTLED") : "LIVE"
+	if (!settled) return { bar: "live", pill: "LIVE", open: true }
+	if (stopped) return { bar: "stopped", pill: word, open: false }
+	if (benchLive) return { bar: "bench", pill: `${word} · bench live`, open: true }
+	if (stay && alive) return { bar: "waiting", pill: `${word} · waiting for a change`, open: true }
+	return { bar: "settled", pill: word, open: false }
+}

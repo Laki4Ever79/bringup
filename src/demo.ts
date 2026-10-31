@@ -3,7 +3,6 @@ import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync } fro
 import { basename, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { serveDashboard, type Dashboard, type HubLaunch } from "./dashboard/server.ts"
-import { appendRequest } from "./runner/requests.ts"
 import { startRunProcess, type RunProcessArgs } from "./runner/spawn-run.ts"
 
 export interface DemoOptions {
@@ -30,12 +29,11 @@ export interface DemoResult {
 }
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url))
-const POLL_MS = 250
-const USAGE = `usage: npm run demo -- [--real] [--brief briefs/logger.md] [--change "make the board 60 mm wide" | --no-change] [--after 20] [--port 4317] [--no-open]`
+const USAGE = `usage: npm run demo -- [--real] [--brief briefs/logger.md] [--change "make the board 60 mm wide" | --no-change] [--after 8] [--port 4317] [--no-open]`
 
 // Pure: argv (after `npm run demo --`) to options. Throws with a message on anything it doesn't understand.
 export function parseDemoArgs(argv: string[]): DemoOptions {
-	const o: DemoOptions = { real: false, brief: "briefs/logger.md", change: "make the board 60 mm wide", afterS: 20, port: 4317, open: true }
+	const o: DemoOptions = { real: false, brief: "briefs/logger.md", change: "make the board 60 mm wide", afterS: 8, port: 4317, open: true }
 	const args = argv.flatMap((a) => (a.startsWith("--") && a.includes("=") ? [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] : [a]))
 	for (let i = 0; i < args.length; i++) {
 		const flag = args[i]
@@ -162,8 +160,10 @@ async function startDashboard(outDir: string, port: number, launch: HubLaunch): 
 	}
 }
 
-// One-command demo: a run in its own process, the live dashboard on its output, and one engineer change
-// request sent mid-run (after `afterS`, and not before the first artifact.ready, so there is something to change).
+// One-command demo: a run in its own process, the live dashboard on its output, and one engineer change request.
+// The run sends it itself (--change), `afterS` seconds after the first design has settled, so the dashboard shows
+// "Consistent at rev N" first and then the ripple. The run stays up after that (--stay) for changes typed on the
+// dashboard, until Stop or Ctrl-C.
 export async function runDemo(o: DemoOptions, deps: DemoDeps): Promise<DemoResult> {
 	const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-")
 	const outDir = join(deps.outRoot, `demo-${stamp}`)
@@ -178,28 +178,15 @@ export async function runDemo(o: DemoOptions, deps: DemoDeps): Promise<DemoResul
 
 	deps.log(`run: ${o.real ? "real models" : "mock models"}, brief ${o.brief}, output ${outDir}`)
 	const cloud = createCloudRelay(outDir, deps.log)
-	const run = deps.launch({ briefPath, mock: !o.real, outDir }, { onStdout: (chunk) => cloud.write(chunk) })
-	let exited = false
-
-	let trigger: NodeJS.Timeout | null = null
-	if (o.change) {
-		const change = o.change
-		const startedAt = Date.now()
-		trigger = setInterval(() => {
-			if (exited) return
-			if (Date.now() - startedAt < o.afterS * 1000) return
-			if (!parseTrace(readTrace(outDir)).some((e) => e.type === "artifact.ready")) return
-			clearInterval(trigger!)
-			trigger = null
-			appendRequest(outDir, change)
-			deps.log(`engineer: "${change}"`)
-		}, POLL_MS)
-	}
+	const extraArgs = ["--stay", ...(o.change ? ["--change", o.change, "--change-delay", String(o.afterS)] : [])]
+	const run = deps.launch({ briefPath, mock: !o.real, outDir, extraArgs }, { onStdout: (chunk) => cloud.write(chunk) })
+	// The hub knows it is live: "waiting for a change" once settled, and its Stop button ends it.
+	dashboard.adopt(basename(outDir), run)
+	if (o.change) deps.log(`engineer: "${o.change}", ${o.afterS} s after the design first settles`)
+	deps.log("the run stays up after settling: change things from the dashboard; Stop there, or Ctrl+C, ends it")
 
 	const { code, stderr } = await run.done
-	exited = true
 	cloud.end()
-	if (trigger) clearInterval(trigger)
 	if (code !== 0 && code !== 2) deps.log(`run failed (exit ${code}):\n${stderr.trimEnd().split("\n").slice(-15).join("\n")}`)
 	const summary = summarize(readTrace(outDir), code)
 	return { outDir, code, summary, dashboard }

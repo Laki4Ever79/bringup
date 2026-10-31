@@ -149,3 +149,14 @@ test("the Review pill says off when the run has the brief review disabled", () =
 	const on = checkPills([ev("run.started", { review: true, engineerApproval: false, noHardware: true, bench: false })]).find((p: any) => p.key === "review")
 	assert.equal(on.state, "pending")
 })
+
+test("the composer and the state pill: live, bench, waiting for a change, settled, stopped", async () => {
+	const { runPhase } = await import("../src/dashboard/model.js")
+	assert.deepEqual(runPhase({ settled: null, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "live", pill: "LIVE", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "SETTLED · waiting for a change", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: false }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "UNSETTLED · waiting for a change", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: false, alive: true, benchLive: true, stopped: false }), { bar: "bench", pill: "SETTLED · bench live", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: false, benchLive: false, stopped: false }), { bar: "settled", pill: "SETTLED", open: false })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: true }), { bar: "stopped", pill: "SETTLED", open: false })
+	assert.deepEqual(runPhase({ settled: { settled: false }, stay: false, alive: false, benchLive: false, stopped: false }), { bar: "settled", pill: "UNSETTLED", open: false })
+})

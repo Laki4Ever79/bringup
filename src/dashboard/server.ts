@@ -43,6 +43,8 @@ const TYPES: Record<string, string> = {
 export interface Dashboard {
 	url: string
 	close(): Promise<void>
+	// Tracks a run this process started some other way (npm run demo): its live status, and Stop reaches it.
+	adopt(runId: string, run: { done: Promise<{ code: number }>; kill?: () => void }): void
 }
 
 // Follows trace.jsonl from byte 0, keeping every complete line for replay. A half-written last line waits
@@ -175,7 +177,8 @@ export interface HubOptions {
 interface RunSummary {
 	runId: string
 	// "bench live": settled, with its bring-up phase still running (--bench keeps the run up until Stop).
-	status: "running" | "bench live" | "settled" | "unsettled" | "failed" | "stopped"
+	// "waiting for a change": settled, and the run stays up (--stay) for the next change request until Stop.
+	status: "running" | "bench live" | "waiting for a change" | "settled" | "unsettled" | "failed" | "stopped"
 	bench: boolean
 	revision: number
 	startedAt: string
@@ -249,6 +252,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		let startedAt: string | null = null
 		let settled: boolean | null = null
 		let bench = false
+		let stay = false
 		for (const l of traceText.split("\n")) {
 			if (!l.trim()) continue
 			try {
@@ -258,13 +262,16 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (typeof e.payload?.revision === "number" && !e.type.startsWith("bench.")) revision = Math.max(revision, e.payload.revision)
 				if (e.type === "design.settled") settled = e.payload.settled === true
 				if (e.type === "bench.connected") bench = true
+				if (e.type === "run.started") stay = e.payload?.stay === true
+				// A change landed after settling: running again until it re-settles.
+				if (e.type === "contract.changed" && stay) settled = null
 			} catch {}
 		}
 		const brief = await readFile(join(dir, "brief.md"), "utf8").catch(() => "")
 		const title = (brief.split("\n").find((l) => l.trim()) ?? id).replace(/^#+\s*/, "").trim().slice(0, 80)
 		const run = live.get(id)
 		const status: RunSummary["status"] =
-			run && run.exit === null ? (bench && settled !== null ? "bench live" : "running") : settled !== null ? (settled ? "settled" : "unsettled") : run ? (run.exit === 0 ? "settled" : run.exit === 2 ? "unsettled" : "failed") : "stopped"
+			run && run.exit === null ? (bench && settled !== null ? "bench live" : stay && settled !== null ? "waiting for a change" : "running") : settled !== null ? (settled ? "settled" : "unsettled") : run ? (run.exit === 0 ? "settled" : run.exit === 2 ? "unsettled" : "failed") : "stopped"
 		return { runId: id, status, revision, startedAt: startedAt ?? (await stat(dir)).mtime.toISOString(), title, bench }
 	}
 
@@ -291,7 +298,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		mkdirSync(outDir, { recursive: true })
 		const briefPath = join(outDir, "brief.md")
 		writeFileSync(briefPath, brief.endsWith("\n") ? brief : brief + "\n")
-		const extraArgs = [...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"]), ...(engineerApproval ? ["--engineer-approval"] : []), ...(bench ? ["--bench", bench as string] : [])]
+		// Runs started here stay up after settling: the point is to change one thing and watch it follow.
+		const extraArgs = ["--stay", ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"]), ...(engineerApproval ? ["--engineer-approval"] : []), ...(bench ? ["--bench", bench as string] : [])]
 		const run = opts.launch({ briefPath, mock, outDir, extraArgs })
 		const entry = { exit: null as number | null, kill: run.kill }
 		live.set(runId, entry)
@@ -406,6 +414,11 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	port = (server.address() as AddressInfo).port
 
 	return {
+		adopt: (runId, run) => {
+			const entry = { exit: null as number | null, kill: run.kill }
+			live.set(runId, entry)
+			void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
+		},
 		url: `http://127.0.0.1:${port}`,
 		close: async () => {
 			clearInterval(timer)

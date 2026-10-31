@@ -84,6 +84,8 @@
 	#state-pill.live { background: var(--ink); color: var(--paper); }
 	#state-pill.live .dot { background: var(--signal); --ring: rgba(255, 74, 23, .6); animation: pulse 1.6s var(--ease) infinite; }
 	#state-pill.settled .dot { background: var(--ok); }
+	#state-pill.waiting { background: var(--paper-2); }
+	#state-pill.waiting .dot { background: var(--ok); --ring: rgba(17, 128, 74, .5); animation: pulse 2.4s var(--ease) infinite; }
 	#state-pill.unsettled { color: var(--error); border-color: var(--error); }
 	#state-pill.unsettled .dot { background: var(--error); }
 	#rev-num.bump { display: inline-block; animation: tick 320ms var(--ease); }
@@ -549,7 +551,7 @@
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
 	import { liveRipples, mergeRipples, resultLine, runStart, whatMoved } from "/ripple.js"
-	import { AGENT_COLORS, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -657,7 +659,7 @@
 			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
 			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
 			hover: null, bom: null, contract: null,
-			fab: false, print: null, openPart: null, ripplesFile: null, ripplesText: "", pinned: null, triedRevs: new Set(),
+			fab: false, print: null, openPart: null, ripplesFile: null, ripplesText: "", pinned: null, triedRevs: new Set(), stay: false, ended: false,
 			bench: null, telemetry: new TelemetryBuffer(30_000), att: { pitch: 0, roll: 0 }, benchTabShown: false, batteryEst: null, stopped: false, lastSampleAt: 0, g0: null,
 		}
 		let benchDirty = false
@@ -666,17 +668,20 @@
 		// A flash in progress or a step waiting for the person counts too: the factory demo streams nothing meanwhile.
 		const benchLive = () => Boolean(S.bench) && !S.stopped && (Date.now() - S.lastSampleAt < 10_000 || Boolean(S.bench.instruction) || S.bench.flash?.ok === null)
 		let barKey = ""
+		const phase = () => runPhase({ settled: S.settled, stay: S.stay, alive: !S.ended, benchLive: benchLive(), stopped: S.stopped })
 		function syncChangeBar() {
 			const input = $("change-input")
-			const state = !S.settled ? "live" : benchLive() ? "bench" : S.stopped ? "stopped" : "settled"
+			const state = phase().bar
 			if (state === barKey) return
 			barKey = state
-			input.disabled = state === "settled" || state === "stopped"
+			input.disabled = !phase().open
 			setBarButtons(input.disabled)
 			if (state === "bench") input.placeholder = "Bring-up: ask for a change; a firmware change reflashes the board (try “blink faster when tilted”)"
+			else if (state === "waiting") input.placeholder = "Settled. Now change one thing: make it 40 mm wide, swap a part, move a connector…"
 			else if (state === "stopped") input.placeholder = "The run was stopped. Start a new design to change it."
-			else if (state === "settled") input.placeholder = "The design has settled. Start a new design to change it."
+			else if (state === "settled") input.placeholder = "This run has ended. Start a new design to change it."
 			else input.placeholder = "Make it 40 mm wide, swap a part, move a connector… while the agents work"
+			schedule()
 		}
 		function setBarButtons(off) { for (const b of [$("send-btn"), ...$("suggest").querySelectorAll("button")]) b.disabled = off }
 		setInterval(() => S.settled && syncChangeBar(), 3000)
@@ -1109,6 +1114,14 @@
 			g.fillText("−30 s", L, top + sh + 16); g.fillText("now", L + pw - 24, top + sh + 16)
 		}
 		new ResizeObserver(() => drawBenchChart()).observe($("bench-chart-box"))
+		// Stop only while this hub runs it (started here, or adopted by npm run demo): a reopened finished run has nothing to stop.
+		function showStop() {
+			if (S.stopped || S.ended) return
+			fetch("/api/runs").then((r) => r.json()).then((runs) => {
+				const me = runs.find((r) => r.runId === id)
+				if (me && ["running", "bench live", "waiting for a change"].includes(me.status) && !S.ended) $("stop-btn").classList.remove("hidden")
+			}).catch(() => {})
+		}
 		$("stop-btn").addEventListener("click", async () => {
 			$("stop-btn").disabled = true
 			try {
@@ -1164,8 +1177,9 @@
 		let pillsKey = ""
 		function renderTop() {
 			const st = S.settled ? (S.settled.settled ? "settled" : "unsettled") : "live"
-			$("state-pill").className = `pill ${st}`
-			$("state-text").textContent = st.toUpperCase()
+			const ph = phase()
+			$("state-pill").className = `pill ${st}${ph.bar === "waiting" ? " waiting" : ""}`
+			$("state-text").textContent = ph.pill
 			if (S.revision !== lastRev) {
 				$("rev-num").textContent = S.revision
 				if (!reduceMotion) { $("rev-num").classList.remove("bump"); void $("rev-num").offsetWidth; $("rev-num").classList.add("bump") }
@@ -1249,7 +1263,7 @@
 				const failed = lane.status === "failed" ? " failed" : lane.status === "held" ? " held" : ""
 				let cls, status
 				if (r) {
-					if (checked.has(k)) { cls = working.has(k) || ACTIVE.has(lane.status) ? "checked working" : "checked"; status = "checked" }
+					if (checked.has(k)) { cls = "checked"; status = "checked" }
 					else if (!woke.has(k)) { cls = "asleep"; status = "stayed idle" }
 					else if (working.has(k)) { cls = "woke working"; status = STATUS[lane.status] ?? lane.status }
 					else { cls = "woke done"; status = lane.status === "failed" ? "failed" : "woke ✓" }
@@ -1436,7 +1450,7 @@
 			const took = S.firstAt && S.endAt ? secs(S.endAt - S.firstAt) : ""
 			if (!S.firstAt) setResult("initial", "Waiting for the first event", "")
 			else if (!S.settled) setResult("rippling", `Designing · rev ${S.revision}`, `${working} of ${CARD_KEYS.length} agents working · ${secs(Date.now() - S.firstAt)}`)
-			else if (S.settled.settled) setResult("consistent", `Consistent at rev ${S.settled.revision}${took ? ` in ${took}` : ""}`, "Now change one thing ↑")
+			else if (S.settled.settled) setResult("consistent", `Consistent at rev ${S.settled.revision}${took ? ` in ${took}` : ""}`, phase().open ? "Now change one thing ↑" : "This run has ended")
 			else setResult("unsettled", `Stopped unsettled at rev ${S.settled.revision}`, "See the checks")
 			renderMoved(null)
 		}
@@ -1561,7 +1575,7 @@
 		function describe(e) {
 			const p = e.payload ?? {}
 			switch (e.type) {
-				case "run.started": return `run started: review ${p.review ? "on" : "off"}, engineer approval ${p.engineerApproval ? "on" : "off"}${p.noHardware ? ", hardware stubbed" : ""}${p.bench ? ", live bench" : ""}`
+				case "run.started": return `run started: review ${p.review ? "on" : "off"}, engineer approval ${p.engineerApproval ? "on" : "off"}${p.noHardware ? ", hardware stubbed" : ""}${p.bench ? ", live bench" : ""}${p.stay ? ", stays up for changes" : ""}`
 				case "contract.changed": return `${p.field} → v${p.version} by ${p.by}`
 				case "change.proposed": return `${p.by} asks to change ${p.field}: ${p.reason}${p.needsEngineer ? " (needs you)" : ""}`
 				case "change.decided": return `${p.by} votes ${p.approved ? "approve" : "reject"}: ${p.reason}`
@@ -1573,6 +1587,7 @@
 				case "design.ready": return `rev ${p.revision} ready for review`
 				case "review.completed": return `review ${p.verdict} at rev ${p.revision}`
 				case "firmware.booted": return p.booted ? `firmware rev ${p.revision} boots in QEMU, prints rev ${p.bootRevision}` : `firmware rev ${p.revision} did not boot`
+				case "run.ended": return `run ended at rev ${p.revision}: ${p.settled ? "settled" : "unsettled"}`
 				case "design.settled": return p.settled ? `settled at rev ${p.revision}` : `stopped unsettled at rev ${p.revision}`
 				case "agent.halted": return `${p.agentId} halted: ${p.error}`
 				case "bench.connected": return `bench: ${p.source}${p.meter ? "" : ", no meter"}`
@@ -1635,8 +1650,8 @@
 			if (e.type !== "agent.activity") addToFeed(e)
 			switch (e.type) {
 				case "contract.changed":
-					// With the bench up, a change after settling un-settles the design: live again until it re-settles.
-					if (S.settled && S.bench) { S.settled = null; S.endAt = null }
+					// With the bench up or a run that stays, a change after settling un-settles the design: live again until it re-settles.
+					if (S.settled && (S.bench || S.stay)) { S.settled = null; S.endAt = null; syncChangeBar() }
 					S.revision = Math.max(S.revision, p.revision)
 					if (Date.now() - Date.parse(e.at) < 15_000) flashChanged(p)
 					fetchSnapshot()
@@ -1663,11 +1678,7 @@
 					benchDirty = true
 					if (e.type === "bench.connected") {
 						$("tabs").querySelector('[data-tab="bench"]').classList.remove("hidden")
-						// Stop only while this dashboard runs it: a reopened finished run has nothing to stop.
-						if (hubInfo.canStart && !S.stopped) fetch("/api/runs").then((r) => r.json()).then((runs) => {
-							const me = runs.find((r) => r.runId === id)
-							if (me && (me.status === "running" || me.status === "bench live")) $("stop-btn").classList.remove("hidden")
-						}).catch(() => {})
+						showStop()
 					}
 					// The first live flash brings the Bench tab forward once; after that the engineer picks.
 					if (e.type === "bench.flashing" && !S.benchTabShown && Date.now() - Date.parse(e.at) < 60_000) { S.benchTabShown = true; setTab("bench") }
@@ -1675,6 +1686,15 @@
 					// A new firmware boots with a new reference pose.
 					if (e.type === "bench.flashed" && p.ok) S.g0 = null
 					if (S.settled) syncChangeBar()
+					break
+				case "run.started":
+					S.stay = p.stay === true
+					if (S.stay) showStop()
+					break
+				case "run.ended":
+					S.ended = true
+					$("stop-btn").classList.add("hidden")
+					syncChangeBar()
 					break
 				case "design.settled":
 					S.settled = p
