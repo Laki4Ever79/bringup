@@ -58,14 +58,16 @@ With the builders forced to take turns, the same changes took 36–94 s instead 
 
 ### Real-model runs with mid-run changes
 
-| Run | Change | Touched | Woke | Consistent again |
+| Run | Change | Touched | Woke (of 9) | Consistent again |
 |---|---|---|---|---|
-| `real-15` | make the board 40 mm wide | outline | architect, board, case, consistency (4 of 9) | 49 s |
-| `real-15` | the SHT40 is out of stock | requirements, parts | architect, board, firmware, grounding, consistency (5 of 9) | 133 s, after a real `sensor-mismatch` (firmware still built for the old driver) was caught and cleared |
-| `real-16` | make the board 40 mm wide | outline, connectors | architect, parts, board, case, consistency | 111 s: at 40 mm the button overlapped USB-C, so the architect moved the connectors |
-| `real-17` | make the board 40 mm wide | outline, connectors | architect, board, case, consistency (4 of 9) | 224 s: the button ended up off the edge; the case and board failed until the connectors moved |
+| `real-20` | "our temperature/humidity sensor is out of stock; switch to the other one" | parts | parts, board, firmware build, grounding, consistency (5); the case stayed idle | 75 s, after a `sensor-mismatch` and a `part-mismatch` were caught and cleared |
+| `real-20` | "make the board 40 mm wide" | outline | architect, board, case, consistency (4) | 28 s |
+| `real-19` | the same sensor swap | parts | 6; the case stayed idle | 52 s, after a `sensor-mismatch` (firmware still built for the old driver) was caught and cleared |
+| `real-19` | "make the board 40 mm wide" | outline, connectors | 5 | 102 s: the first 40 mm board failed, so the architect moved the connectors |
+| `real-15` | "make the board 40 mm wide" | outline | 4 | 49 s |
 
-Full report, ripples and trace for real-15: `docs/runs/real-15/`.
+Each of these changes ended with 0 violations. Reports, ripples and full traces: `docs/runs/real-15/`, `real-19/`,
+`real-20/`.
 
 ### The real board (Act 3, `--bench real`)
 
@@ -112,10 +114,11 @@ mm rulers on the board view, and 614 tests.
 
 ## Limits, honestly
 
-- **No real-model run has passed the final brief review yet.** Runs 15–17 took mid-run changes and ended with 0
-  violations; the fresh-context reviewer still blocked on brief-vs-design arguments (battery life, LED behaviour,
-  history depth).
-- The experiment uses scripted agents (real tools); real-model change times vary from 49 s to 224 s.
+- **No real-model run has passed the final brief review yet.** Runs 15, 19 and 20 took mid-run changes and ended with
+  0 violations; the fresh-context reviewer still blocked. Its open points in real-20: it reads the bench-only
+  `behavior` field as the product LED, it calls two rails' stated averages double-counted, and in one round it caught a
+  250 mA charge current that is too high for a 500 mAh cell.
+- The experiment uses scripted agents (real tools); real-model change times vary from 28 s to 224 s.
 - BLE was verified on an ESP32-S3 dev board (advertising, reading the latest record and the history), not on the C3 design; QEMU can't test the deep-sleep wake.
 - Boards need a human review before ordering (`fab/README.txt` lists every item).
 - Proven on 40–70 × 30 mm boards with about 20 parts; the catalog is small.
