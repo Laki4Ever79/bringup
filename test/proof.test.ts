@@ -52,3 +52,24 @@ test("a run's change cites a trial only when it is the same change on the same s
 	assert.equal(matchTrial({ brief: "pocket climate logger", before: null, after: narrower }, results), null)
 	assert.equal(matchTrial({ brief: "pocket climate logger", before: logger, after: narrower }, null), null)
 })
+
+test("the regulator swap and the added button match their trials exactly; anything extra matches nothing", () => {
+	const base = {
+		...logger,
+		parts: [{ ref: "U1", role: "mcu", mpn: "ESP32-C3-MINI-1" }, { ref: "U3", role: "ldo", mpn: "AP2112K-3.3TRG1", lcsc: "C51118", footprint: "sot23_5", pins: ["VIN", "GND", "EN", "NC", "VOUT"] }],
+		rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 120 }],
+	}
+	const swapped = { ...base, parts: [base.parts[0], { ref: "U3", role: "ldo", mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] }] }
+	assert.equal(matchTrial({ brief: "pocket climate logger", before: base, after: swapped }, results)?.id, "ldo-swap")
+	assert.equal(matchTrial({ brief: "pocket climate logger", before: base, after: { ...swapped, rails: [{ ...base.rails[0], regulatorMaxMa: 200 }] } }, results), null, "rails changed too: not the trial")
+	const button = {
+		...base,
+		parts: [...base.parts, { ref: "SW1", role: "button", mpn: "TS-1187A-B-A-B", lcsc: "C318884", footprint: "pushbutton", pins: ["A", "B"] }],
+		pins: [...base.pins, { signal: "BUTTON", gpio: 3, partRef: "SW1", partPin: "A" }],
+		connectors: [...base.connectors, { ref: "SW1", kind: "button", edge: "top", offsetMm: 25, widthMm: 4, heightMm: 3 }],
+	}
+	assert.equal(matchTrial({ brief: "pocket climate logger", before: base, after: button }, results)?.id, "add-button")
+	assert.equal(matchTrial({ brief: "pocket climate logger", before: base, after: { ...button, pins: [...base.pins, { signal: "BUTTON", gpio: 4, partRef: "SW1", partPin: "A" }] } }, results), null, "another GPIO: not the trial")
+	// The existing trials are strict the same way: narrower plus a rails change is no trial.
+	assert.equal(matchTrial({ brief: "pocket climate logger", before: base, after: { ...base, outline: { widthMm: 40, heightMm: 30 }, rails: [{ ...base.rails[0], loadMa: 90 }] } }, results), null)
+})
