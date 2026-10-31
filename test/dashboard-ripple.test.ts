@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { liveRipples, mergeRipples, resultLine, runStart, whatMoved } from "../src/dashboard/ripple.js"
+import { liveRipples, mergeRipples, runStart, whatMoved } from "../src/dashboard/ripple.js"
 
 const T0 = Date.parse("2026-10-31T12:00:00.000Z")
 let seq = 0
@@ -59,7 +59,6 @@ test("ripple: consistent again once the contract is clean and every woken build 
 	assert.equal(r.state, "consistent")
 	assert.equal(r.consistentAtMs, T0 + 138_000)
 	assert.equal(r.durationMs, 38_000)
-	assert.deepEqual(resultLine(r, T0 + 200_000), { headline: "Consistent again in 38 s", detail: "4 of 9 agents woke", text: "Consistent again in 38 s · 4 of 9 agents woke" })
 })
 
 test("ripple: in flight, red checks and agents still working", () => {
@@ -72,8 +71,6 @@ test("ripple: in flight, red checks and agents still working", () => {
 	assert.deepEqual(r.working, ["build:board", "build:enclosure"])
 	const board = r.checks.find((c) => c.key === "build:board")
 	assert.equal(board?.state, "running")
-	assert.equal(resultLine(r, now).headline, "Rippling · 12 s")
-	assert.equal(resultLine(r, now).detail, "4 of 9 agents woke · 2 still working")
 })
 
 test("ripple: checks go red then green, the board's DRC rides along", () => {
@@ -93,14 +90,12 @@ test("ripple: a request nobody has picked up yet, and one that changed nothing",
 	assert.deepEqual(sent.checked, [])
 	assert.equal(sent.state, "sent")
 	assert.deepEqual(sent.woke, [])
-	assert.equal(resultLine(sent, now).headline, "Sent to the agents")
 	const quiet = [...initial, activity(101, "architect", "turn"), activity(104, "architect", "answer"), ev(110, "design.settled", { settled: true, revision: 5 })]
 	const [none] = liveRipples(quiet, [request], T0 + 120_000)
 	assert.equal(none.state, "no-change")
 	// Took a turn, changed nothing: checked, not woke.
 	assert.deepEqual(none.woke, [])
 	assert.deepEqual(none.checked, ["architect"])
-	assert.equal(resultLine(none, T0 + 120_000).headline, "No change to the design")
 })
 
 test("ripple: each request owns the events until the next one", () => {
@@ -120,7 +115,6 @@ test("ripple: woke = changed or proposed a field; checked = took a turn and chan
 	assert.deepEqual(r.woke, ["architect", "firmware", "build:board", "build:enclosure", "consistency"])
 	assert.deepEqual(r.checked, ["reviewer"])
 	assert.deepEqual(r.stayedIdle, ["parts", "build:firmware", "grounding"])
-	assert.equal(resultLine(r, T0 + 106_000).detail, "5 of 9 agents woke · 1 checked, no change · 3 still working")
 })
 
 test("ripple: an agent that took a turn and is still at it is 'reading', not yet woke or checked", () => {
@@ -143,7 +137,6 @@ test("ripple: a design that ends unsettled says so", () => {
 	const bad = [...initial, activity(101, "architect", "turn"), changed(104, "outline", 2, 6, "architect"), checked(105, 6, 3), ev(130, "design.settled", { settled: false, revision: 6 })]
 	const [r] = liveRipples(bad, [request], T0 + 140_000)
 	assert.equal(r.state, "unsettled")
-	assert.equal(resultLine(r, T0 + 140_000).headline, "Not consistent: 3 violations left")
 })
 
 test("ripple: a clean contract carries in (checks only report changes), and a dirty check resets it", () => {
@@ -203,17 +196,17 @@ test("ripple: on a bench run, a 'real board' check follows the change onto the b
 	const blinkReq = { at: at(100), text: "blink faster when tilted" }
 	const base = [...initial, ev(40, "bench.connected", { source: "real", ports: {}, meter: false }), activity(101, "firmware", "turn"), changed(104, "behavior", 2, 6, "firmware"), checked(105, 6, 0), ev(120, "artifact.ready", { kind: "firmware", revision: 6 })]
 	const check = (events: object[]) => liveRipples(events as any, [blinkReq], T0 + 200_000)[0].checks.find((c) => c.key === "bench")
-	assert.deepEqual(check(base), { key: "bench", label: "Real board", state: "running", detail: "waiting to flash rev 6" })
+	assert.deepEqual(check(base), { key: "bench", label: "Real board", state: "running", detail: "waiting to flash rev 6", short: "waiting to flash" })
 	const flashing = [...base, ev(121, "bench.flashing", { revision: 6, stage: "write", pct: 40 })]
-	assert.deepEqual(check(flashing), { key: "bench", label: "Real board", state: "running", detail: "flashing rev 6 · write 40 %" })
+	assert.deepEqual(check(flashing), { key: "bench", label: "Real board", state: "running", detail: "flashing rev 6 · write 40 %", short: "flashing 40 %" })
 	const flashed = [...flashing, ev(130, "bench.flashed", { revision: 6, ok: true, ms: 9000 })]
-	assert.deepEqual(check(flashed), { key: "bench", label: "Real board", state: "running", detail: "rev 6 running · measuring the blink" })
+	assert.deepEqual(check(flashed), { key: "bench", label: "Real board", state: "running", detail: "rev 6 running · measuring the blink", short: "running · measuring" })
 	const measured = [...flashed, ev(140, "bench.blink", { revision: 6, source: "real", blinkMs: 1000, tiltBlinkMs: 250, expected: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, pass: true, detail: "x" })]
-	assert.deepEqual(check(measured), { key: "bench", label: "Real board", state: "ok", detail: "rev 6 running · tilted 250 ms measured" })
+	assert.deepEqual(check(measured), { key: "bench", label: "Real board", state: "ok", detail: "rev 6 running · tilted 250 ms measured", short: "tilted 250 ms ✓" })
 	const wrong = [...flashed, ev(140, "bench.blink", { revision: 6, source: "real", blinkMs: 1000, tiltBlinkMs: 1000, expected: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, pass: false, detail: "tilted 1000 ms, expected 250 ms" })]
-	assert.deepEqual(check(wrong), { key: "bench", label: "Real board", state: "error", detail: "rev 6 · tilted 1000 ms, expected 250 ms" })
+	assert.deepEqual(check(wrong), { key: "bench", label: "Real board", state: "error", detail: "rev 6 · tilted 1000 ms, expected 250 ms", short: "tilted 1000 ms ✗" })
 	const failed = [...flashing, ev(130, "bench.flashed", { revision: 6, ok: false, stage: "connect", error: "no port" })]
-	assert.deepEqual(check(failed), { key: "bench", label: "Real board", state: "error", detail: "rev 6 flash failed: no port" })
+	assert.deepEqual(check(failed), { key: "bench", label: "Real board", state: "error", detail: "rev 6 flash failed: no port", short: "flash failed" })
 	// A replay or the fake bench says so; no bench, no check.
 	const replay = base.map((e: any) => (e.type === "bench.connected" ? { ...e, payload: { ...e.payload, source: "replay" } } : e))
 	assert.equal(check(replay)?.label, "Bench (REPLAY)")
@@ -263,13 +256,6 @@ test("ripple: the window ends at the first design.ready after the request; later
 	assert.deepEqual(mergeRipples([r], file, T0)[0].reviewFollowUps, { fieldsChanged: ["rails"], rounds: 3 })
 })
 
-test("result line: under a second reads \"under 1 s\", and stubbed hardware says so", () => {
-	const r = { ...liveRipples([...initial, ...ripple], [request], T0 + 200_000)[0], durationMs: 400 }
-	assert.equal(resultLine(r, T0 + 200_000).headline, "Consistent again in under 1 s")
-	assert.equal(resultLine(r, T0 + 200_000, { stubbed: true }).detail, "4 of 9 agents woke · hardware stubbed")
-	assert.equal(resultLine({ ...r, durationMs: 38_000 }, T0 + 200_000).headline, "Consistent again in 38 s")
-})
-
 test("what moved: outline, connectors, pins and parts, before → after", () => {
 	const before = {
 		outline: { widthMm: 50, heightMm: 30 },
@@ -298,4 +284,25 @@ test("ripple: a request that came from a saved file carries the file (name, path
 	const [typed, edited] = liveRipples([...initial, ...ripple], [{ at: at(90), text: "make it 60 mm wide" }, fromFile], T0 + 200_000)
 	assert.equal(typed.file, null)
 	assert.deepEqual(edited.file, { name: "pins.h", path: "firmware/rev-7/include/pins.h", revision: 7, items: ["I2C_SDA GPIO8 → GPIO4"] })
+})
+
+test("the bench check has a short one-line form for the BENCH tile at every stage", () => {
+	const blinkReq = { at: at(100), text: "blink faster when tilted" }
+	const base = [...initial, ev(40, "bench.connected", { source: "real", ports: {}, meter: false }), activity(101, "firmware", "turn"), changed(104, "behavior", 2, 6, "firmware"), checked(105, 6, 0), ev(120, "artifact.ready", { kind: "firmware", revision: 6 })]
+	const short = (events: object[]) => (liveRipples(events as any, [blinkReq], T0 + 200_000)[0].checks.find((c) => c.key === "bench") as any)?.short
+	const flashing = [...base, ev(121, "bench.flashing", { revision: 6, stage: "write", pct: 40 })]
+	const flashed = [...flashing, ev(130, "bench.flashed", { revision: 6, ok: true, ms: 9000 })]
+	const blink = (tilt: number, pass: boolean) => [...flashed, ev(140, "bench.blink", { revision: 6, source: "real", blinkMs: 1000, tiltBlinkMs: tilt, expected: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, pass, detail: "x" })]
+	const cases: [object[], string][] = [
+		[base, "waiting to flash"],
+		[flashing, "flashing 40 %"],
+		[flashed, "running · measuring"],
+		[blink(250, true), "tilted 250 ms ✓"],
+		[blink(1000, false), "tilted 1000 ms ✗"],
+		[[...flashing, ev(130, "bench.flashed", { revision: 6, ok: false, stage: "connect", error: "no port" })], "flash failed"],
+	]
+	for (const [events, want] of cases) {
+		assert.equal(short(events), want)
+		assert.ok(want.length <= 20)
+	}
 })
