@@ -491,3 +491,10 @@ const SCRIPTED = [["beacon.md", "beacon.md (then add a sensor)"], ["logger.md", 
 export function scriptedBriefs(briefs) {
 	return SCRIPTED.flatMap(([name, label]) => { const b = (briefs ?? []).find((x) => x.name === name); return b ? [{ name, label, text: b.text }] : [] })
 }
+
+// The battery estimate on the stage bar; short (below 1366px) as "103 d / 90 d".
+export function batteryLabel({ days, targetDays = null, measured = false, source = "real", short = false }) {
+	const d = Math.round(days)
+	if (short) return targetDays !== null ? `${d} d / ${targetDays} d` : `${d} d${measured ? "" : " est."}`
+	return `${d} days${measured ? ` measured${source !== "real" ? ` (${source})` : ""}` : ""}${targetDays !== null ? ` vs ${targetDays} target` : measured ? "" : " estimated"}`
+}

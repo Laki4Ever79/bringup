@@ -128,6 +128,18 @@ export function indexBounds(ix) {
 }
 
 // Board millimetres (y up) to container pixels (y down), fitted with `padding` px on every side.
+// FIT: the board as large as the stage allows (padding ~6%, 12px on a short stage), with the legend's height kept free
+// only when the centred board would reach into the legend's columns. legend: {left, width, height} in px, or null.
+export function fitBoard(bounds, w, h, legend) {
+	const pad = h < 320 ? 12 : Math.max(24, Math.min(w, h) * 0.06)
+	const bw = bounds.maxX - bounds.minX || 1
+	const free = fitTransform(bounds, w, h, pad)
+	const reaches = legend && legend.height > 0 && (w - bw * free.scale) / 2 < legend.left + legend.width + 8
+	if (!reaches) return { scale: free.scale, inset: 0, pad }
+	const inset = legend.height + 16
+	return { scale: fitTransform(bounds, w, h, pad, inset).scale, inset, pad }
+}
+
 // bottomInset: room kept free at the bottom (the net legend), so the board is never drawn under it.
 export function fitTransform(bounds, width, height, padding = 24, bottomInset = 0) {
 	const bw = bounds.maxX - bounds.minX || 1, bh = bounds.maxY - bounds.minY || 1
@@ -249,11 +261,9 @@ export function mountPcb(host, opts = {}) {
 		if (!ix) return
 		const b = indexBounds(ix)
 		const w = host.clientWidth || 800, h = host.clientHeight || 500
-		// The legend's height stays free under the board: it never overlays the PCB.
-		const inset = legend.offsetHeight ? legend.offsetHeight + 16 : 0
-		// A short stage (a 720p screen) keeps tighter margins, so the board gets the room.
-		const pad = h < 320 ? 12 : Math.max(24, Math.min(w, h) * 0.06)
-		const f = fitTransform(b, w, h, pad, inset)
+		// The legend never overlays the PCB: fitBoard keeps its height free when the board would reach it.
+		const f = fitBoard(b, w, h, legend.offsetHeight ? { left: legend.offsetLeft, width: legend.offsetWidth, height: legend.offsetHeight } : null)
+		const inset = f.inset
 		const vw = w / f.scale, vh = h / f.scale
 		const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2
 		base = [cx - vw / 2, -cy - (h - inset) / 2 / f.scale, vw, vh]

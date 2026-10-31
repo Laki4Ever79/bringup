@@ -33,3 +33,4 @@ export function mountPcb(
 	el: HTMLElement,
 	opts?: { onHover?(ref: string | null): void; colors?: Record<string, string>; parts?: { ref: string; mpn?: string; role?: string }[] },
 ): PcbView
+export function fitBoard(bounds: Bounds, width: number, height: number, legend: { left: number; width: number; height: number } | null): { scale: number; inset: number; pad: number }

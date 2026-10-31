@@ -234,3 +234,16 @@ test("fitTransform keeps the board clear of the net legend: a bottom inset shrin
 	assert.deepEqual(f.apply(0, 0).map((v) => Math.round(v)), [500, 250])
 	assert.ok(f.apply(0, -10)[1] <= 600 - 100 - 50 + 1e-9)
 })
+
+test("fitBoard: the legend costs height only when the board would reach it; then the board fills ~88% of the stage", async () => {
+	const { fitBoard } = await import("../src/dashboard/pcb-view.js")
+	const b = { minX: 0, minY: 0, maxX: 50, maxY: 30 }
+	// 1280×720's stage: 730 × 201, the "Nets ▸" chip at the left (14 + 90 px). The board, centred, never reaches it.
+	const short = fitBoard(b, 730, 201, { left: 14, width: 90, height: 24 })
+	assert.equal(short.inset, 0)
+	assert.ok((30 * short.scale) / 201 >= 0.85, `board height ${(30 * short.scale).toFixed(0)} of 201`)
+	// 1920×1080's stage with the full legend spanning 70% of the width: the board would run into it, so it fits above.
+	const tall = fitBoard(b, 1150, 440, { left: 14, width: 800, height: 22 })
+	assert.ok(tall.inset > 0)
+	assert.ok(30 * tall.scale <= 440 - tall.inset)
+})

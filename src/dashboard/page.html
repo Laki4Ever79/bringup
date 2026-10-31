@@ -448,7 +448,9 @@
 	/* ── Start screen: a title sheet and the drawing register ── */
 	#start { overflow-y: auto; padding: clamp(24px, 4.5vh, 56px) clamp(20px, 3vw, 56px) 48px; }
 	.start-grid { max-width: 1560px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(24px, 3vw, 56px); align-items: start; }
-	.hero h1 { font: 800 clamp(48px, 4.4vw, 92px)/.88 var(--display); text-transform: uppercase; letter-spacing: .005em; margin: 0 0 18px; }
+	.hero h1 { font: 800 clamp(40px, 3.4vw, 70px)/.9 var(--display); text-transform: uppercase; letter-spacing: .005em; margin: 0 0 18px; }
+	/* The middle sentence carries the detail: a size down, in ink-2, so the first and last lines lead. */
+	.hero h1 .mid { display: inline-block; margin: .12em 0; font-size: .62em; line-height: 1; color: var(--ink-2); }
 	.hero h1 em { font-style: normal; color: var(--signal); }
 	.hero .sub { color: var(--ink-2); margin: 0 0 26px; font-size: clamp(16px, 1.2vw, 20px); max-width: 620px; }
 	.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1.5px solid var(--ink); background: var(--paper); }
@@ -646,13 +648,13 @@
 	<section id="start" class="hidden">
 		<div class="start-grid">
 			<div class="hero">
-				<h1>Change <q>one thing</q>.<br><em>The whole design follows.</em></h1>
-				<p class="sub">Describe a device. Concurrent Mozaik agents pick the parts, route the board, shape the case and write the firmware against one shared contract. Then change anything, mid-run or after it settles, and watch board, case, firmware and parts follow in parallel and stay consistent.</p>
+				<h1>Describe a device.<br><span class="mid">Agents design all of it at once: board, case, firmware and parts.</span><br><em>Change anything, and it all follows.</em></h1>
+				<p class="sub">Concurrent Mozaik agents pick the parts, route the board, shape the case and write the firmware against one shared design contract. A change, typed or saved in a file, mid-run or after it settles, wakes only the agents it affects, and everything stays consistent.</p>
 				<ol class="steps" aria-label="How a run goes">
 					<li><b>01</b><span>Brief</span><i>one paragraph about the device</i></li>
 					<li><b>02</b><span>Nine agents</span><i>in parallel, one live contract</i></li>
-					<li><b>03</b><span>Change one thing</span><i>“make it 40 mm wide”</i></li>
-					<li class="end"><b>04</b><span>Consistent again</span><i>board, case, firmware, parts</i></li>
+					<li><b>03</b><span>Change anything</span><i>“add a sensor”</i></li>
+					<li class="end"><b>04</b><span>It all follows</span><i>board, case, firmware, parts, consistent</i></li>
 				</ol>
 			</div>
 			<div class="compose-col">
@@ -776,7 +778,7 @@
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { matchTrial, proofSummary } from "/proof.js"
 	import { changeLog, defaultRange, fileDrift, rippleTimeline } from "/changelog.js"
-	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, driftView, rippleMarks, scriptedBriefs, flashSteps, foldHeader, foldOpen, lowPass, setFold, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, batteryLabel, checkPills, driftView, rippleMarks, scriptedBriefs, flashSteps, foldHeader, foldOpen, lowPass, setFold, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -1277,6 +1279,7 @@
 			} catch {}
 		}
 		// Estimated (report.md) and, once the bench has measured it, measured battery life.
+		addEventListener("resize", () => renderBattery())
 		function renderBattery() {
 			const b = S.batteryEst, m = S.bench?.measured
 			const measured = typeof m?.days === "number"
@@ -1287,7 +1290,10 @@
 			const target = targetDays ?? days
 			const max = Math.max(days, target, b?.days ?? 0) * 1.15
 			const okay = targetDays === null || days >= targetDays
-			$("battery-text").innerHTML = `🔋 <b style="color:${okay ? "var(--ok)" : "var(--warn)"}">${Math.round(days)} days</b>${measured ? ` measured${m.source !== "real" ? ` (${esc(m.source)})` : ""}` : ""}${targetDays !== null ? ` vs ${targetDays} target` : measured ? "" : " estimated"}`
+			const label = batteryLabel({ days, targetDays, measured, source: m?.source, short: innerWidth < 1366 })
+			const [lead, ...rest] = label.split(" ")
+			$("battery-text").innerHTML = `🔋 <b style="color:${okay ? "var(--ok)" : "var(--warn)"}">${esc(lead)} ${esc(rest.shift() ?? "")}</b> ${esc(rest.join(" "))}`
+			$("battery-text").title = batteryLabel({ days, targetDays, measured, source: m?.source })
 			$("battery").title = [b ? `estimated: ${Math.round(b.days)} days (report.md)` : null, measured ? `measured on the bench: ${batteryMath(m)}` : null].filter(Boolean).join("\n")
 			$("battery").querySelector(".fill").style.cssText = `width:${(days / max) * 100}%;background:${okay ? "var(--ok)" : "var(--warn)"}`
 			$("battery").querySelector(".target").style.left = `${(target / max) * 100}%`
