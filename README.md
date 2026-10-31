@@ -119,7 +119,7 @@ once, exactly one applies and the other gets `stale` and re-reads.
 
 | Event | Meaning |
 |---|---|
-| `contract.changed` | A field got a new version (field, version, revision, by whom) |
+| `contract.changed` | A field got a new version: field, version, revision, by whom, the writer's own `reason`, `before`/`after`, and the `cause` that woke it (the brief, an engineer request, a violation, a review finding, a failed build, an approval). The dashboard's "What changed & why" drawer reads this |
 | `change.proposed` | A non-owner asked to change a field; its loop is held |
 | `change.decided` | The owner approved or rejected it |
 | `artifact.ready` / `artifact.failed` | A board, enclosure or firmware build finished for a revision |
@@ -128,10 +128,16 @@ once, exactly one applies and the other gets `stale` and re-reads.
 | `design.ready` | The design is consistent and quiet; the brief reviewer judges it before it settles |
 | `review.completed` | The reviewer's verdict (`pass`/`fail`) with findings, each naming the contract fields it concerns |
 | `design.settled` | Every artifact is built against the latest revision with no violations, and the review is done |
+| `change.requested` | An engineer's mid-run change request (`req-N`), from the dashboard, the CLI's `--change`, `src/request.ts` or the MCP server. Its ripple ends at the next `design.ready` |
+| `firmware.booted` | The newest firmware booted in QEMU and printed its revision |
+| `bench.*` | The real board: `flashing`, `flashed`, `telemetry`, `blink` (LED period measured from telemetry), `instruction` ("tilt the board"), `measured`, `verdict` |
 | `agent.halted` | An agent loop crashed (Mozaik #114 workaround) |
+| `run.ended` | A run kept up with `--stay` or `--bench` was stopped |
 
 **Cross-domain checks** (`src/contract/consistency.ts`): `outline-mismatch`, `net-missing`, `pin-mismatch`,
-`cutout-missing`, `cutout-misaligned`, `rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
+`part-mismatch` (the board places a different part than the parts list), `sensor-mismatch` (firmware built with the
+other sensor's driver), `cutout-missing`, `cutout-misaligned`, `standoff-mismatch` (case standoffs vs board holes),
+`rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
 were actually built. For example, the firmware's pins are parsed back out of the `pins.h` it compiled.
 
 ### Three checks
@@ -314,9 +320,12 @@ The pieces are not new on their own. We credit:
 - **[tscircuit](https://tscircuit.com)** (circuits as code, autorouting) and **[KiCad](https://www.kicad.org)** (DRC,
   ERC, exports), which do the real EDA work.
 
-What Bringup adds: the consistency checks run **live, mid-run, as events** that wake only the affected agents, instead
-of as a final pipeline stage. Contract fields have **owners and versions**, and cross-owner edits go through
-**change control built on Mozaik interception**, the way engineering change orders work.
+What Bringup adds is **change propagation**: change one thing mid-run and only the affected domains wake, rework in
+parallel and converge, with the checks running **live as events** instead of as a final pipeline stage. Contract
+fields have **owners and versions**, and cross-owner edits go through **change control built on Mozaik
+interception**, the way engineering change orders work. Flux described this as a vision in September 2026 ("moving
+a connector 5 mm means the ME changes the enclosure and the EE changes the PCB"); Siemens' Fuse EDA agent orchestrates
+chip and PCB tools but not the case or firmware. The A/B experiment above measures what the shared contract buys.
 
 ## Limits
 
@@ -333,9 +342,15 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
 - **Small boards only.** Placement and routing are proven on 45–70 × 30 mm boards with up to about 20 parts.
 - **QEMU is optional.** It is not installed by default; without it the report says "not run" and the QEMU tests
   skip. Installed, every run boots its newest firmware to `bringup rev N` (event `firmware.booted`). There is no SHT40
-  in emulation, so the firmware then prints `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token.
+  in emulation, so the firmware then prints `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token. The
+  product firmware deep-sleeps between readings; QEMU doesn't emulate the timer wake, so that part is untested.
+- **BLE.** The brief asks for a phone to read the history over BLE. The product firmware stores the history on flash;
+  BLE is being added (see the report's firmware facts for what a given run's firmware actually does).
+- **No real-model run has passed the final brief review yet.** Real runs 15–17 took mid-run changes and ended with 0
+  violations, but the fresh-context reviewer still blocked on brief-vs-design arguments (battery life, LED behaviour,
+  history depth). The reviewer now gets computed and datasheet-checked facts for those; each report lists what's open.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
-  can only choose from the vetted catalog (one MCU family today).
+  can only choose from the vetted catalog (one MCU family, two temperature/humidity sensors today).
 
 ## Use from Claude Code
 
