@@ -1,15 +1,17 @@
 import "dotenv/config"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { missingTools } from "./report.ts"
+import { missingTools, simulationLine } from "./report.ts"
+import { simulateFirmware } from "./tools/wokwi.ts"
 import { ROOT, runDesign } from "./run.ts"
 import { driftStatusLines, readDrift } from "./runner/drift.ts"
+import { linkedStatusLines, linkRun } from "./runner/linked.ts"
 import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 import { openBench } from "./bench/open.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 
-const USAGE = "usage: npm run bringup -- status <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay]"
+const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -34,6 +36,8 @@ export interface CliArgs {
 	changeDelayMs?: number
 	// After settling (and after the --change requests), keep taking change requests until Ctrl-C or SIGTERM.
 	stay?: boolean
+	// --link <dir>: commit each settled revision into this git working copy and sync its edits (runner/linked.ts).
+	link?: string
 }
 
 export function parseArgs(argv: string[]): CliArgs | { error: string } {
@@ -48,17 +52,20 @@ export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	const replayIndex = argv.indexOf("--bench-replay")
 	const benchReplay = replayIndex >= 0 ? argv[replayIndex + 1] : undefined
 	if (replayIndex >= 0 && (!benchReplay || benchReplay.startsWith("--"))) return { error: "--bench-replay needs a recorded bench.jsonl" }
+	const linkIndex = argv.indexOf("--link")
+	const link = linkIndex >= 0 ? argv[linkIndex + 1] : undefined
+	if (linkIndex >= 0 && (!link || link.startsWith("--"))) return { error: "--link needs a folder" }
 	const changeIndexes = argv.flatMap((a, i) => (a === "--change" ? [i] : []))
 	const changes = changeIndexes.map((i) => argv[i + 1]?.trim() ?? "")
 	if (changes.some((c) => !c || c.startsWith("--"))) return { error: "--change needs the request text" }
 	const delayIndex = argv.indexOf("--change-delay")
 	const delayS = delayIndex >= 0 ? Number(argv[delayIndex + 1]) : undefined
 	if (delayIndex >= 0 && !(Number.isFinite(delayS) && delayS! >= 0)) return { error: "--change-delay needs a number of seconds" }
-	const valueAt = new Set([outIndex, roundsIndex, replayIndex, delayIndex, ...changeIndexes, ...(benchSource ? [benchIndex] : [])].filter((i) => i >= 0).map((i) => i + 1))
+	const valueAt = new Set([outIndex, linkIndex, roundsIndex, replayIndex, delayIndex, ...changeIndexes, ...(benchSource ? [benchIndex] : [])].filter((i) => i >= 0).map((i) => i + 1))
 	const briefPath = argv.find((a, i) => !a.startsWith("--") && !valueAt.has(i))
 	if (!briefPath) return { error: "no brief given" }
 	if (!existsSync(briefPath)) return { error: `brief not found: ${briefPath}` }
-	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}), ...(delayS !== undefined ? { changeDelayMs: delayS * 1000 } : {}), ...(argv.includes("--stay") ? { stay: true } : {}) }
+	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}), ...(delayS !== undefined ? { changeDelayMs: delayS * 1000 } : {}), ...(argv.includes("--stay") ? { stay: true } : {}), ...(link ? { link } : {}) }
 }
 
 // A run started by the hub or the demo (spawn-run.ts) has a stdin pipe from it: when that closes, its parent is
@@ -82,7 +89,34 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			console.error(`bringup: status needs a run folder${dir ? `; ${dir} does not exist` : ""}`)
 			return 1
 		}
-		for (const line of driftStatusLines(readDrift(dir), dir)) console.log(line)
+		for (const line of [...linkedStatusLines(dir), ...driftStatusLines(readDrift(dir), dir)]) console.log(line)
+		return 0
+	}
+	// `bringup simulate <runDir>`: the run's newest firmware in Wokwi, on demand (tools/wokwi.ts); simulation.json.
+	if (argv[0] === "simulate") {
+		const dir = argv[1]
+		if (!dir || !existsSync(join(dir, "firmware"))) {
+			console.error("bringup: usage: bringup simulate <runDir> (a run with a built firmware)")
+			return 1
+		}
+		const revs = readdirSync(join(dir, "firmware")).filter((d) => /^rev-\d+$/.test(d) && existsSync(join(dir, "firmware", d, ".pio/build/esp32c3/firmware.bin"))).map((d) => Number(d.slice(4)))
+		const revision = revs.length ? Math.max(...revs) : null
+		const contract = revision === null ? null : JSON.parse(readFileSync(join(dir, "contracts", `rev-${revision}.json`), "utf8"))
+		const env = await (deps.detect ?? detectEnvironment)(ROOT)
+		const r = revision === null ? { ran: false, reason: "no compiled firmware in this run" } : await simulateFirmware(env, join(dir, "firmware", `rev-${revision}`), contract)
+		writeFileSync(join(dir, "simulation.json"), JSON.stringify({ backend: "wokwi", revision, at: new Date().toISOString(), ...r }, null, 2))
+		console.log(simulationLine(dir, env).replace(/^- /, ""))
+		if (r.serial) console.log(r.serial)
+		return r.ran && !r.passed ? 2 : 0
+	}
+	// `bringup link <runDir> <dir>`: a git working copy for the run's files (runner/linked.ts).
+	if (argv[0] === "link") {
+		const [run, to] = [argv[1], argv[2]]
+		if (!run || !to || !existsSync(run)) {
+			console.error("bringup: usage: bringup link <runDir> <dir>")
+			return 1
+		}
+		console.log(linkRun(resolve(run), resolve(to), readDrift(run).live))
 		return 0
 	}
 	const args = parseArgs(argv)
@@ -125,7 +159,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			open: () => openBench({ root: ROOT, source, outDir, replay: args.benchReplay, extraArgs: [...(args.benchNoMeter ? ["--no-meter"] : []), ...(args.benchNoImu ? ["--no-imu"] : [])], start: (a) => startBridge(python, a, { cwd: ROOT, onStderr: (t) => process.stderr.write(`[bench.py] ${t}`) }) }),
 		}
 	}
-	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}) })
+	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}), ...(args.link ? { link: resolve(args.link) } : {}) })
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)\nreport: ${result.reportPath}`)
 	return result.settled ? 0 : 2
 }

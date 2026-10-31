@@ -3,7 +3,8 @@ import { join } from "node:path"
 import { checkConsistency, type EnclosureArtifact } from "./contract/consistency.ts"
 import { batteryLifeSummary, estimatePower } from "./contract/power.ts"
 import type { BringupState } from "./runtime.ts"
-import { describeEnv, type Env } from "./tools/env.ts"
+import { describeEnv, firmwareSimBackend, type Env } from "./tools/env.ts"
+import { EXPECTED_LINE } from "./tools/wokwi.ts"
 import { isStub } from "./tools/stubs.ts"
 import type { Payloads } from "./events.ts"
 import { bringupSection } from "./bench/report.ts"
@@ -52,6 +53,19 @@ function reviewSection(s: BringupState): string[] {
 }
 
 // The last firmware.booted event in the trace, as one report line.
+// The on-demand Wokwi simulation (`bringup simulate`, tools/wokwi.ts), or why it can't run on this machine.
+export function simulationLine(outDir: string, env: Env): string {
+	const label = "- Firmware simulation (Wokwi):"
+	const path = join(outDir, "simulation.json")
+	if (existsSync(path)) {
+		const r = JSON.parse(readFileSync(path, "utf8")) as { ran: boolean; passed?: boolean; revision: number; reason?: string }
+		if (!r.ran) return `${label} not run (${r.reason})`
+		return r.passed ? `${label} rev ${r.revision} passed: ${EXPECTED_LINE} from the simulated sensor, and a history slot stored` : `${label} rev ${r.revision} FAILED: the firmware did not print ${EXPECTED_LINE} and store it`
+	}
+	if (firmwareSimBackend(env) !== "wokwi") return `${label} not run (${env.wokwiToken ? "wokwi-cli is not installed in tools/wokwi-cli" : "no WOKWI_CLI_TOKEN in .env"}; optional, see NOTES.md)`
+	return `${label} not run yet (npm run bringup -- simulate <run>)`
+}
+
 function bootLine(tracePath: string, env: Env, noHardware: boolean): string {
 	const label = "- Firmware boot (QEMU):"
 	if (noHardware) return `${label} not run (--no-hardware)`
@@ -176,6 +190,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...printLines(s.artifacts.enclosure, stubbed),
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		bootLine(join(outDir, "trace.jsonl"), env, stubbed),
+		simulationLine(outDir, env),
 		sourcingLine(join(outDir, "bom.json")),
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
 		``,

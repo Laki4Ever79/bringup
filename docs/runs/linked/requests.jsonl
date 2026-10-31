@@ -1,0 +1,3 @@
+{"at":"2026-10-31T12:57:11.015Z","text":"edited pins.h: I2C_SDA GPIO8 → GPIO4","source":{"kind":"file","path":"firmware/pins.h","revision":7,"items":["I2C_SDA GPIO8 → GPIO4"]}}
+{"at":"2026-10-31T12:59:18.601Z","text":"blink faster"}
+{"at":"2026-10-31T12:59:19.420Z","text":"edited pins.h at rev 8, rebased onto rev 9: I2C_SCL GPIO9 → GPIO3","source":{"kind":"file","path":"firmware/pins.h","revision":8,"items":["I2C_SCL GPIO9 → GPIO3"]}}

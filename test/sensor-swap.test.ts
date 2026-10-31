@@ -42,10 +42,10 @@ test("pins.h selects the sensor driver from the contract's parts, and it reads b
 	assert.equal(parseSensorHeader(pinsHeader(none)), null)
 })
 
-test("firmware compiled for the old sensor is a violation for the firmware until it is rebuilt", () => {
+test("firmware compiled for the old sensor is a violation until it is rebuilt, for no agent: the builder rebuilds", () => {
 	const firmware = { ...fixtureArtifacts().firmware!, sensor: "SHT40" }
 	const v = checkConsistency(withSensor("SHTC3-TR-2.5KS"), { firmware })
-	assert.deepEqual(v.map((x) => [x.kind, x.affects]), [["sensor-mismatch", ["firmware"]]])
+	assert.deepEqual(v.map((x) => [x.kind, x.affects]), [["sensor-mismatch", []]])
 	assert.match(v[0].message, /SHT40.*SHTC3/)
 	assert.deepEqual(checkConsistency(withSensor("SHTC3-TR-2.5KS"), { firmware: { ...firmware, sensor: "SHTC3" } }), [])
 	// Artifacts from before this check (no sensor recorded) are not flagged.
