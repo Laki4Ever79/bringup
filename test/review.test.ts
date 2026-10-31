@@ -69,7 +69,7 @@ test("the default mock reviewer passes and the verdict is in the report", { time
 	assert.equal(r.reviews[0].findings.length, 1)
 	assert.equal(r.reviews[0].findings[0].severity, "minor")
 	assert.match(r.report, /## Brief review/)
-	assert.match(r.report, /Verdict: pass after 1 review/)
+	assert.match(r.report, /Verdict: pass \(scripted reviewer, not a model verdict\) after 1 review/)
 	const settledAt = r.trace.findIndex((e) => e.type === "design.settled")
 	assert.ok(r.trace.findIndex((e) => e.type === "review.completed") < settledAt, "settles only after the review")
 })
@@ -82,14 +82,14 @@ test("a failing review sends the finding to the field's owner, and the fixed des
 	assert.equal(outlineChanges.at(-1).payload.by, "architect")
 	assert.equal(JSON.parse(readFileSync(join(r.result.outDir, "contract.json"), "utf8")).values.outline.widthMm, 45)
 	assert.ok(r.reviews[1].revision > r.reviews[0].revision, "the second review saw the changed design")
-	assert.match(r.report, /Verdict: pass after 2 reviews/)
+	assert.match(r.report, /Verdict: pass \(scripted reviewer, not a model verdict\) after 2 reviews/)
 })
 
 test("still failing after the last fix round: settles with the findings recorded, settled when no blocker", { timeout: 90_000 }, async () => {
 	const r = await run({ scripts: { "mock-reviewer": reviewer([{ verdict: "fail", findings: [major] }]), "mock-architect": architectThatFixes() } })
 	assert.deepEqual(r.reviews.map((x) => x.verdict), ["fail", "fail"])
 	assert.equal(r.result.settled, true)
-	assert.match(r.report, /Verdict: fail after 2 reviews/)
+	assert.match(r.report, /Verdict: fail \(scripted reviewer, not a model verdict\) after 2 reviews/)
 	assert.match(r.report, /major.*outline.*wider than the pocket case/)
 })
 
@@ -104,7 +104,7 @@ test("an owner that changes nothing after a failing review ends the run with the
 	const r = await run({ scripts: { "mock-reviewer": reviewer([{ verdict: "fail", findings: [major] }]) } })
 	assert.deepEqual(r.reviews.map((x) => x.verdict), ["fail"])
 	assert.equal(r.result.settled, true)
-	assert.match(r.report, /Verdict: fail after 1 review/)
+	assert.match(r.report, /Verdict: fail \(scripted reviewer, not a model verdict\) after 1 review/)
 })
 
 test("a reviewer that never submits a verdict does not hang the run", { timeout: 90_000 }, async () => {
