@@ -42,3 +42,4 @@ export interface DriftRow { id: string; name: string; path: string; at: string; 
 export function driftView(drift: { live?: boolean; entries?: any[] } | null): { open: number; rows: DriftRow[]; live: boolean }
 export function rippleMarks(before: any, after: any): { added: string[]; changed: string[] }
 export function scriptedBriefs(briefs: { name: string; text: string }[]): { name: string; label: string; text: string }[]
+export function batteryLabel(o: { days: number; targetDays?: number | null; measured?: boolean; source?: string; short?: boolean }): string
