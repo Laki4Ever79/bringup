@@ -118,3 +118,10 @@ test("a wrong behavior shape is refused with the exact shape and an example, and
 	assert.match(c.validate({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 200, tiltDeg: 20, chargeLed: true } as never, by: "firmware" }) ?? "", /chargeLed/)
 	assert.equal(c.validate({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 200, tiltDeg: 20 }, by: "firmware" }), null)
 })
+
+test("requirements.historyDays must be a whole number of days, at least 1", () => {
+	const c = new DesignContract()
+	const req = { summary: "x", peripherals: [], batteryLifeDays: 180 }
+	assert.equal(c.validate({ field: "requirements", value: { ...req, historyDays: 180 }, by: "architect" }), null)
+	assert.match(c.validate({ field: "requirements", value: { ...req, historyDays: 0.5 }, by: "architect" }) ?? "", /historyDays/)
+})

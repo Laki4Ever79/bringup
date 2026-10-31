@@ -1,0 +1,73 @@
+{
+  "requests": [
+    {
+      "id": "req-1",
+      "text": "our temperature/humidity sensor is out of stock; switch to the other one in the catalog",
+      "atMs": 477014,
+      "fieldsChanged": [
+        "parts"
+      ],
+      "woke": [
+        "parts",
+        "firmware",
+        "build:board",
+        "build:firmware",
+        "grounding",
+        "consistency"
+      ],
+      "checked": [
+        "architect"
+      ],
+      "stayedIdle": [
+        "reviewer",
+        "build:enclosure"
+      ],
+      "violationsPeak": 2,
+      "consistentAtMs": 528506,
+      "durationMs": 51492,
+      "reviewFollowUps": {
+        "fieldsChanged": [
+          "requirements",
+          "rails",
+          "behavior"
+        ],
+        "rounds": 3
+      }
+    },
+    {
+      "id": "req-2",
+      "text": "make the board 40 mm wide",
+      "atMs": 662686,
+      "fieldsChanged": [
+        "outline",
+        "connectors"
+      ],
+      "woke": [
+        "architect",
+        "parts",
+        "build:board",
+        "build:enclosure",
+        "consistency"
+      ],
+      "checked": [
+        "firmware"
+      ],
+      "stayedIdle": [
+        "reviewer",
+        "build:firmware",
+        "grounding"
+      ],
+      "violationsPeak": 4,
+      "consistentAtMs": 764396,
+      "durationMs": 101710,
+      "reviewFollowUps": {
+        "fieldsChanged": [
+          "requirements",
+          "rails",
+          "parts"
+        ],
+        "rounds": 3
+      }
+    }
+  ]
+}

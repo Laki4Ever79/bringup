@@ -83,3 +83,35 @@ test("an SHTC3 in the parts compiles the SHTC3 driver, and the firmware reports 
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+// The product path: wake, read, store the reading, blink, deep-sleep for the contract's period.
+test("the product firmware compiles its duty cycle: the period from the contract, deep sleep and the history", { skip, timeout: 600_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	try {
+		const c = fixtureContract()
+		c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 100, periodS: 240, sleepUa: 5 } }
+		const firmware = await buildFirmware(pio!, root, dir, c, 9)
+		assert.equal(firmware.ok, true, firmware.log)
+		assert.match(readFileSync(join(dir, "include/pins.h"), "utf8"), /^#define DUTY_PERIOD_S 240$/m)
+		const main = readFileSync(join(dir, "src/main.cpp"), "utf8")
+		for (const needle of ["esp_deep_sleep_start", "esp_sleep_enable_timer_wakeup", "LittleFS", "READING_BLINK_MS = 20"]) assert.ok(main.includes(needle), needle)
+		// BLE after each reading, for the rest of the contract's wake (100 ms minus the 30 ms reading), with NimBLE pinned.
+		assert.match(readFileSync(join(dir, "include/pins.h"), "utf8"), /^#define BLE_ADVERTISE_MS 70$/m)
+		assert.match(readFileSync(join(dir, ".pio/libdeps/esp32c3/NimBLE-Arduino/library.properties"), "utf8"), /^version=2\.5\.2$/m)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})
+
+test("the firmware compiles with the contract's 180-day history", { skip, timeout: 600_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	try {
+		const c = fixtureContract()
+		c.values.requirements = { ...c.values.requirements!, historyDays: 180, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
+		const firmware = await buildFirmware(pio!, root, dir, c, 9)
+		assert.equal(firmware.ok, true, firmware.log)
+		assert.match(readFileSync(join(dir, "include/pins.h"), "utf8"), /^#define HISTORY_DAYS 180$/m)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})

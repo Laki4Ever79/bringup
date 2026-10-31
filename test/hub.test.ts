@@ -317,7 +317,7 @@ test("the experiment's results (docs/experiment-results.json) and the proof modu
 		const res = await fetch(`${hub.url}/api/experiment`)
 		assert.equal(res.status, 200)
 		const body = (await res.json()) as any
-		assert.equal(body.results.length, 5)
+		assert.equal(body.results.length, JSON.parse(readFileSync(new URL("../docs/experiment-results.json", import.meta.url), "utf8")).results.length)
 		assert.equal((await fetch(`${hub.url}/proof.js`)).status, 200)
 	} finally {
 		await hub.close()
