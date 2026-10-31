@@ -17,6 +17,7 @@ import { createEmulatorCheck, emulatorEnabled } from "./agents/emulator.ts"
 import { appendRequest, watchRequests } from "./runner/requests.ts"
 import { createRippleRecorder } from "./runner/ripple.ts"
 import { createFileSync } from "./runner/file-sync.ts"
+import { createLinkedSync } from "./runner/linked.ts"
 import { watchDecisions } from "./runner/decisions.ts"
 import { loadCatalog } from "./tools/parts-search.ts"
 import { createEngineer } from "./agents/engineer.ts"
@@ -62,6 +63,9 @@ export interface RunOptions {
 	// After settling (and after any scripted changes), keep taking change requests and re-settling until `until`
 	// (the dashboard's Stop, Ctrl-C). Without it the run ends at its first settle, as the CLI judge path expects.
 	stay?: { until: Promise<void> }
+	// A git working copy the engineer owns (runner/linked.ts): each settled revision is committed there, and edits to
+	// it sync back. Without it, a staying run can still be linked later with `bringup link <run> <dir>`.
+	link?: string
 	// Injected fetch for bom.json's live stock lookups (tests).
 	bomFetch?: typeof fetch
 }
@@ -166,6 +170,9 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	// A run that stays up syncs edits to its generated files back into the design (runner/file-sync.ts).
 	const files = opts.stay || opts.bench ? createFileSync({ outDir: opts.outDir }) : null
 	if (files) joinRuntime(files)
+	// Once a folder is linked, it is the one place edits sync from: the per-revision watcher above stops.
+	const linked = opts.stay || opts.bench ? createLinkedSync({ outDir: opts.outDir, linkDir: opts.link, onAttach: () => files?.close() }) : null
+	if (linked) joinRuntime(linked)
 	// Boots each new compiled firmware in QEMU when it is installed; never holds up settling.
 	const emulator = emulatorEnabled(env, opts.noHardware ?? false) ? createEmulatorCheck(env) : null
 	if (emulator) joinRuntime(emulator)
@@ -204,6 +211,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	if (opts.stay) await opts.stay.until
 	// The page closes its composer on this: nobody is taking change requests any more.
 	files?.close()
+	linked?.close()
 	emit(makeEvent("run.ended", engineer.getId(), { settled: (latest as Settlement | null)?.settled ?? outcome.settled, revision: state.contract.revision }), engineer.getId())
 	requests.close()
 	decisions.close()
