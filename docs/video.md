@@ -52,7 +52,7 @@ Before recording:
 
 | On screen | Voice-over |
 |---|---|
-| The hub's proof strip: 5 changes; 0 violations against 14 mismatches. | "Does the shared contract matter? We applied five changes twice. With it: zero violations. With every team on its own copy: fourteen mismatches would ship." |
+| The hub's proof strip: 6 changes; 0 violations against 16 mismatches. | "Does the shared contract matter? We applied six changes twice. With it: zero violations. With every team on its own copy: sixteen mismatches would ship." |
 | Zoom in on one row: "cutout for J1 is left@15 mm, connector is bottom@25 mm". | "Like a USB port that no longer meets its hole in the case." |
 
 ## Act 5: the real board (2:20–2:50)
