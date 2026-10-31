@@ -535,7 +535,11 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		if (!mcuRef) throw new Error("circuitFromContract: pin assignments need a part with role mcu")
 		lines.push(`<net name=${q(pin.signal)} />`)
 		lines.push(`<trace name=${q(`${pin.signal}_mcu`)} from=${q(`.${mcuRef} > .GPIO${pin.gpio}`)} to=${q(`net.${pin.signal}`)} />`)
-		lines.push(`<trace name=${q(`${pin.signal}_part`)} from=${q(`.${pin.partRef} > .${pin.partPin}`)} to=${q(`net.${pin.signal}`)} />`)
+		// The USB-C footprint has numbered pads only: a contract pin on it (J1.DP) goes to each pad carrying that signal.
+		const part = parts.find((p) => p.ref === pin.partRef)
+		const pads = part && footprintFor(part) === USBC_FOOTPRINT ? USBC_PADS[pin.partPin as keyof typeof USBC_PADS] : undefined
+		for (const pad of pads ?? [pin.partPin])
+			lines.push(`<trace name=${q(`${pin.signal}_part${pads && pads.length > 1 ? `_${pad}` : ""}`)} from=${q(`.${pin.partRef} > .${pad}`)} to=${q(`net.${pin.signal}`)} />`)
 	}
 
 	lines.push(...powerLines(s, placement))
