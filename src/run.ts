@@ -16,6 +16,7 @@ import { writeReport } from "./report.ts"
 import { createEmulatorCheck, emulatorEnabled } from "./agents/emulator.ts"
 import { appendRequest, watchRequests } from "./runner/requests.ts"
 import { createRippleRecorder } from "./runner/ripple.ts"
+import { createFileSync } from "./runner/file-sync.ts"
 import { watchDecisions } from "./runner/decisions.ts"
 import { loadCatalog } from "./tools/parts-search.ts"
 import { createEngineer } from "./agents/engineer.ts"
@@ -162,6 +163,9 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	}
 	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env)]
 	for (const b of builders) joinRuntime(b)
+	// A run that stays up syncs edits to its generated files back into the design (runner/file-sync.ts).
+	const files = opts.stay || opts.bench ? createFileSync({ outDir: opts.outDir }) : null
+	if (files) joinRuntime(files)
 	// Boots each new compiled firmware in QEMU when it is installed; never holds up settling.
 	const emulator = emulatorEnabled(env, opts.noHardware ?? false) ? createEmulatorCheck(env) : null
 	if (emulator) joinRuntime(emulator)
@@ -180,7 +184,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	// Mid-run change requests (tsx src/request.ts, MCP request_change) arrive as further engineer messages.
 	let requestCount = 0
 	const requests = watchRequests(opts.outDir, (r) => {
-		const request = { id: `req-${++requestCount}`, text: r.text }
+		const request = { id: `req-${++requestCount}`, text: r.text, ...(r.source ? { source: r.source } : {}) }
 		emit(makeEvent("change.requested", engineer.getId(), request), engineer.getId())
 		state.currentRequest = request
 		sendMessage(r.text, engineer.getId())
@@ -199,6 +203,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	// A run that stays up: change requests keep arriving and re-settling the design until it is stopped.
 	if (opts.stay) await opts.stay.until
 	// The page closes its composer on this: nobody is taking change requests any more.
+	files?.close()
 	emit(makeEvent("run.ended", engineer.getId(), { settled: (latest as Settlement | null)?.settled ?? outcome.settled, revision: state.contract.revision }), engineer.getId())
 	requests.close()
 	decisions.close()

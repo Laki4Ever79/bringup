@@ -18,7 +18,7 @@ export function bleAdvertiseMs(d: DutyCycle): number {
 	return Math.max(BLE_MIN_ADVERTISE_MS, Math.round(d.activeMs - BLE_READING_MS))
 }
 
-function macroName(signal: string): string {
+export function macroName(signal: string): string {
 	return `PIN_${signal.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`
 }
 

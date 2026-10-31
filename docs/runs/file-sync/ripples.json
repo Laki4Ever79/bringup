@@ -1,0 +1,34 @@
+{
+  "requests": [
+    {
+      "id": "req-1",
+      "text": "edited pins.h: I2C_SDA GPIO8 → GPIO4",
+      "atMs": 255027,
+      "fieldsChanged": [
+        "pins"
+      ],
+      "woke": [
+        "architect",
+        "build:board",
+        "build:firmware",
+        "grounding",
+        "consistency"
+      ],
+      "checked": [
+        "parts",
+        "firmware"
+      ],
+      "stayedIdle": [
+        "reviewer",
+        "build:enclosure"
+      ],
+      "violationsPeak": 2,
+      "consistentAtMs": 351300,
+      "durationMs": 96273,
+      "reviewFollowUps": {
+        "fieldsChanged": [],
+        "rounds": 1
+      }
+    }
+  ]
+}

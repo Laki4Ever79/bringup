@@ -1,0 +1,13 @@
+{
+  "_doc": "Scene lengths (s) and where each voice line starts inside its scene. Read by the scenes (fill to length) and by tools/mux.sh.",
+  "scenes": [
+    {"scene": "b1-problem",      "length": 13, "voice": [["b1", 0.6]]},
+    {"scene": "b2-title",        "length": 12, "voice": [["b2", 0.6]]},
+    {"scene": "b3-first-design", "length": 25, "voice": [["b3", 1.0]]},
+    {"scene": "b4-change",       "length": 56, "voice": [["b4", 0.3], ["b5", 6.0], ["b6", 36.5]]},
+    {"scene": "b7-real-models",  "length": 24, "voice": [["b7", 1.0]]},
+    {"scene": "b8-proof",        "length": 23, "voice": [["b8", 0.8]]},
+    {"scene": "b9-board",        "length": 20, "voice": [["b9", 1.0]]},
+    {"scene": "b10-end",         "length": 6,  "voice": [["b10", 0.4]]}
+  ]
+}

@@ -1,0 +1,7 @@
+Drift in out/drift-panel-2 (run is live):
+  reverted  drift-1  firmware/rev-7/include/pins.h  (not in the contract, saved at rev 7)
+              + #define DEBUG_LOG 1
+  adopted   drift-2  firmware/rev-6/include/pins.h  → req-1 (stale, saved at rev 6, design at rev 7)
+              I2C_SCL GPIO9 → GPIO3
+  open      drift-3  firmware/rev-8/include/pins.h  (not in the contract, saved at rev 8)
+              + // tuned by hand

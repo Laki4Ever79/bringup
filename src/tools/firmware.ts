@@ -7,6 +7,16 @@ import type { ContractSnapshot } from "../contract/types.ts"
 
 const TIMEOUT_MS = 600_000
 const LOG_LINES = 60
+const ERROR_LINES = 20
+
+// The build's tail, preceded by its compiler errors when they scrolled out of it. With NimBLE in the build, hundreds of
+// library compile lines can follow the error, and the agents read this log when a firmware build fails.
+export function buildLog(output: string): string {
+	const lines = output.trimEnd().split("\n")
+	const tail = lines.slice(-LOG_LINES)
+	const errors = lines.slice(0, -LOG_LINES).filter((l) => /\berror\b|static assertion/i.test(l)).slice(0, ERROR_LINES)
+	return [...(errors.length ? [...errors, "…"] : []), ...tail].join("\n")
+}
 
 function run(cmd: string, args: string[]): Promise<{ code: number | null; output: string }> {
 	return new Promise((resolve) => {
@@ -32,6 +42,6 @@ export async function buildFirmware(pio: string, root: string, dir: string, s: C
 		ok: code === 0,
 		pins: parsePinsHeader(header),
 		sensor: parseSensorHeader(header),
-		log: output.trimEnd().split("\n").slice(-LOG_LINES).join("\n"),
+		log: buildLog(output),
 	}
 }
