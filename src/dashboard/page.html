@@ -5,308 +5,419 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bringup</title>
 <style>
-	/* Tokens: docs/design/dashboard.md */
+	/* Bringup: an engineering change notice on drafting paper, with the live views as dark instrument screens.
+	   Fonts are vendored (src/dashboard/fonts, OFL). Built for a projector: 1920×1080 and 1440×900. */
+	@font-face { font-family: "Shoulders"; src: url("/fonts/BigShouldersDisplay.woff") format("woff"); font-weight: 100 900; font-display: swap; }
+	@font-face { font-family: "Instrument"; src: url("/fonts/InstrumentSans.woff") format("woff"); font-weight: 400 700; font-stretch: 75% 100%; font-display: swap; }
+	@font-face { font-family: "JBMono"; src: url("/fonts/JetBrainsMono.woff") format("woff"); font-weight: 100 800; font-display: swap; }
 	:root {
-		--bg: #0a0a0a; --panel: #111113; --raised: #16161a; --border: #232327; --border-hover: #2e2e35;
-		--text: #ededed; --text-2: #a1a1aa; --text-3: #6b6b76;
-		--ok: #22c55e; --warn: #f59e0b; --error: #ef4444; --info: #3b82f6;
+		--paper: #efe9dc; --paper-2: #e6dfcf; --paper-3: #dcd3c0; --rule: #c9bea7; --rule-2: #b3a78d;
+		--ink: #16140f; --ink-2: #4b463c; --ink-3: #807865;
+		--signal: #ff4a17; --signal-ink: #c2330a; --signal-wash: rgba(255, 74, 23, .12);
+		--ok: #11804a; --ok-wash: rgba(17, 128, 74, .13); --warn: #b86e00; --warn-wash: rgba(184, 110, 0, .14); --error: #c8231a; --error-wash: rgba(200, 35, 26, .12); --info: #1f5fbf;
+		--screen: #0d0f0c; --screen-2: #171a15; --screen-rule: #2a2f26; --screen-text: #e8e4d6; --screen-text-2: #9d9a8c;
+		/* Kept for the modules that read them (bench chart, wireframe). */
+		--text: var(--ink); --text-2: var(--ink-2); --text-3: var(--ink-3); --border: var(--rule); --border-hover: var(--rule-2); --raised: var(--paper-2); --panel: var(--paper);
 		--c-architect: #3b82f6; --c-parts: #a855f7; --c-firmware: #14b8a6; --c-reviewer: #f59e0b; --c-board: #22c55e;
-		--c-enclosure: #ec4899; --c-fwbuild: #06b6d4; --c-grounding: #eab308; --c-consistency: #f97316; --c-engineer: #e5e7eb;
-		--sans: ui-sans-serif, -apple-system, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif;
-		--mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+		--c-enclosure: #ec4899; --c-fwbuild: #06b6d4; --c-grounding: #eab308; --c-consistency: #f97316; --c-engineer: #16140f;
+		--display: "Shoulders", "Arial Narrow", sans-serif;
+		--sans: "Instrument", "Helvetica Neue", sans-serif;
+		--mono: "JBMono", ui-monospace, monospace;
 		--ease: cubic-bezier(.2, .8, .2, 1); --t: 160ms;
-		--r-panel: 12px; --r-card: 8px;
+		--gap: clamp(8px, .7vw, 14px);
 	}
 	* { box-sizing: border-box; }
 	html, body { height: 100%; }
 	body {
-		margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 var(--sans); -webkit-font-smoothing: antialiased;
-		background-image: radial-gradient(1200px 700px at 0% 0%, rgba(30, 41, 59, .06), transparent 70%);
+		margin: 0; color: var(--ink); font: 15px/1.4 var(--sans); -webkit-font-smoothing: antialiased; background-color: var(--paper);
+		/* Drafting sheet: a 5 mm grid, a 25 mm major grid, and paper grain. */
+		background-image:
+			url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .2 0 0 0 0 .17 0 0 0 0 .1 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E"),
+			linear-gradient(rgba(120, 104, 70, .09) 1px, transparent 1px), linear-gradient(90deg, rgba(120, 104, 70, .09) 1px, transparent 1px),
+			linear-gradient(rgba(120, 104, 70, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(120, 104, 70, .05) 1px, transparent 1px);
+		background-size: 180px 180px, 100px 100px, 100px 100px, 20px 20px, 20px 20px;
 	}
 	button, input, textarea { font: inherit; color: inherit; }
 	a { color: inherit; }
+	::selection { background: var(--signal); color: #fff; }
 	.num { font-variant-numeric: tabular-nums; }
 	.mono { font-family: var(--mono); }
-	.t2 { color: var(--text-2); } .t3 { color: var(--text-3); }
+	.t2 { color: var(--ink-2); } .t3 { color: var(--ink-3); }
 	.hidden { display: none !important; }
-	.panel { background: rgba(17, 17, 19, .86); border: 1px solid var(--border); border-radius: var(--r-panel); backdrop-filter: blur(12px); min-width: 0; min-height: 0; }
-	.panel-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px 0; font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
-	.panel-head .right { margin-left: auto; text-transform: none; letter-spacing: 0; color: var(--text-2); }
-	.pill { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--raised); font-size: 13px; white-space: nowrap; transition: border-color var(--t) var(--ease), background var(--t) var(--ease), color var(--t) var(--ease); }
-	.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
-	button.pill { cursor: pointer; }
-	button.pill:hover { border-color: var(--border-hover); }
-	.btn { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--raised); cursor: pointer; transition: border-color var(--t) var(--ease), background var(--t) var(--ease); }
-	.btn:hover { border-color: var(--border-hover); background: #1c1c21; }
-	.btn.primary { background: var(--text); color: #0a0a0a; border-color: var(--text); font-weight: 600; }
-	.btn.primary:hover { background: #fff; }
-	.btn:disabled { opacity: .45; cursor: default; }
-	.avatar { width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; color: #0a0a0a; flex: 0 0 auto; }
+	:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+	/* Sheet furniture: ink-ruled boxes with a numbered label, like a drawing's title block. */
+	.sheet { position: relative; border: 1.5px solid var(--ink); background: rgba(239, 233, 220, .82); min-width: 0; min-height: 0; }
+	.label { display: flex; align-items: baseline; gap: 10px; font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+	.label b { color: var(--signal-ink); font-weight: 700; }
+	.label .right { margin-left: auto; letter-spacing: .04em; text-transform: none; font-weight: 500; }
+	.pill { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1.5px solid var(--ink); background: var(--paper); font: 600 13px/1 var(--sans); white-space: nowrap; text-decoration: none; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+	.pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-3); }
+	button.pill, a.pill { cursor: pointer; }
+	button.pill:hover, a.pill:hover { background: var(--ink); color: var(--paper); }
+	.btn { height: 34px; padding: 0 16px; border: 1.5px solid var(--ink); background: var(--paper); cursor: pointer; font-weight: 600; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+	.btn:hover { background: var(--ink); color: var(--paper); }
+	.btn.primary { background: var(--ink); color: var(--paper); }
+	.btn.primary:hover { background: var(--signal); border-color: var(--signal); color: #fff; }
+	.btn:disabled { opacity: .4; cursor: default; }
+	.btn:disabled:hover { background: var(--paper); color: var(--ink); }
+	.avatar { width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; flex: 0 0 auto; border: 1.5px solid var(--ink); }
 	@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--ring); } 50% { box-shadow: 0 0 0 6px transparent; } }
 	@keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 	@keyframes tick { 0% { transform: translateY(-3px); opacity: .4; } 100% { transform: none; opacity: 1; } }
-	.popover { position: absolute; top: 34px; right: 0; width: 420px; max-height: 360px; overflow: auto; padding: 10px; background: var(--raised); border: 1px solid var(--border-hover); border-radius: var(--r-card); box-shadow: 0 20px 50px rgba(0, 0, 0, .5); color: var(--text); white-space: normal; z-index: 20; animation: fadein var(--t) var(--ease); cursor: default; }
-	.popover h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
-	.popover li { margin: 0 0 6px; font-size: 13px; color: var(--text-2); }
+	@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+	@keyframes ignite { 0% { background: var(--signal); color: #fff; } 100% { } }
+	@keyframes stamp { 0% { transform: scale(1.18); opacity: 0; } 60% { transform: scale(.98); opacity: 1; } 100% { transform: none; } }
+	@keyframes blink { 50% { opacity: .25; } }
+	.popover { position: absolute; top: 38px; right: 0; width: 440px; max-height: 380px; overflow: auto; padding: 12px; background: var(--paper); border: 1.5px solid var(--ink); box-shadow: 8px 8px 0 rgba(22, 20, 15, .16); color: var(--ink); white-space: normal; z-index: 40; animation: fadein var(--t) var(--ease); cursor: default; text-align: left; }
+	.popover h4 { margin: 0 0 8px; font: 600 12px/1.2 var(--mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .12em; }
+	.popover li { margin: 0 0 6px; font-size: 13px; color: var(--ink-2); font-weight: 500; }
 	.popover ul { margin: 0; padding-left: 16px; }
 
-	/* ── App frame ───────────────────────────────────────────── */
-	#app { height: 100vh; display: grid; grid-template-rows: 56px 1fr auto; }
-	header { display: flex; align-items: center; gap: 14px; padding: 0 20px; border-bottom: 1px solid var(--border); background: rgba(10, 10, 10, .7); backdrop-filter: blur(12px); position: relative; z-index: 5; }
-	.logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 18px; letter-spacing: -.01em; text-decoration: none; }
-	.logo i { width: 12px; height: 12px; border-radius: 4px; background: conic-gradient(from 200deg, var(--c-architect), var(--c-parts), var(--c-enclosure), var(--c-board), var(--c-architect)); }
-	#brief-title { color: var(--text-2); max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	#state-pill { font-weight: 600; letter-spacing: .02em; }
-	#state-pill.live { color: var(--ok); border-color: rgba(34, 197, 94, .35); background: rgba(34, 197, 94, .08); }
-	#state-pill.live .dot { background: var(--ok); --ring: rgba(34, 197, 94, .5); animation: pulse 1.6s var(--ease) infinite; }
-	#state-pill.settled { color: var(--ok); border-color: rgba(34, 197, 94, .35); }
+	/* ── App frame ─────────────────────────────────────────── */
+	#app { height: 100vh; display: grid; grid-template-rows: 54px auto minmax(0, 1fr); }
+	header { display: flex; align-items: center; gap: 12px; padding: 0 var(--gap); border-bottom: 1.5px solid var(--ink); background: var(--paper); position: relative; z-index: 6; min-width: 0; }
+	.logo { display: flex; align-items: center; gap: 10px; font: 800 28px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; text-decoration: none; }
+	.logo i { width: 16px; height: 16px; background: var(--signal); box-shadow: 3px 3px 0 var(--ink); }
+	#brief-title { font: 500 15px/1.2 var(--sans); color: var(--ink-2); max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; }
+	#state-pill { font-family: var(--mono); letter-spacing: .06em; }
+	#state-pill.live { background: var(--ink); color: var(--paper); }
+	#state-pill.live .dot { background: var(--signal); --ring: rgba(255, 74, 23, .6); animation: pulse 1.6s var(--ease) infinite; }
 	#state-pill.settled .dot { background: var(--ok); }
-	#state-pill.unsettled { color: var(--error); border-color: rgba(239, 68, 68, .4); }
+	#state-pill.unsettled { color: var(--error); border-color: var(--error); }
 	#state-pill.unsettled .dot { background: var(--error); }
 	#rev-num.bump { display: inline-block; animation: tick 320ms var(--ease); }
-	#elapsed { color: var(--text-2); font-size: 15px; }
-	#checks { display: flex; gap: 8px; margin-left: auto; }
-	.check { cursor: pointer; position: relative; }
-	.check.ok { color: var(--ok); } .check.ok .dot { background: var(--ok); }
-	.check.warn { color: var(--warn); border-color: rgba(245, 158, 11, .4); } .check.warn .dot { background: var(--warn); }
-	.check.error { color: var(--error); border-color: rgba(239, 68, 68, .45); } .check.error .dot { background: var(--error); }
-	.check.off { color: var(--text-3); } .check.off .dot { background: transparent; border: 1px solid var(--text-3); }
-	.check.running .dot { background: var(--info); --ring: rgba(59, 130, 246, .5); animation: pulse 1.6s var(--ease) infinite; }
-	#cloud-link { text-decoration: none; }
-	#cloud-link:hover { border-color: var(--border-hover); }
+	#elapsed { font: 600 15px/1 var(--mono); color: var(--ink-2); }
+	#checks { display: flex; gap: 6px; margin-left: auto; }
+	.check { cursor: pointer; position: relative; font-size: 13px; }
+	.check b { font-family: var(--mono); }
+	.check.ok .dot { background: var(--ok); }
+	.check.warn { color: var(--warn); border-color: var(--warn); } .check.warn .dot { background: var(--warn); }
+	.check.error { color: var(--error); border-color: var(--error); background: var(--error-wash); } .check.error .dot { background: var(--error); }
+	.check.off { color: var(--ink-3); border-style: dashed; } .check.off .dot { background: transparent; border: 1.5px solid var(--ink-3); }
+	.check.running .dot { background: var(--signal); --ring: rgba(255, 74, 23, .5); animation: pulse 1.6s var(--ease) infinite; }
+	#changes-btn.waiting { background: var(--warn); border-color: var(--warn); color: #fff; animation: blink 1.4s steps(2) infinite; }
 
-	/* ── Run view ───────────────────────────────────────────── */
-	#run { display: grid; grid-template-columns: minmax(0, 62fr) minmax(0, 38fr); grid-template-rows: minmax(0, 1fr) 124px 168px; gap: 12px; padding: 12px 16px; min-height: 0; }
-	#stage { grid-row: 1; grid-column: 1; display: grid; grid-template-rows: auto minmax(0, 1fr) 46px; }
-	.stage-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px 6px; min-width: 0; }
-	.tabs { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); }
-	.tabs button { height: 28px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--text-2); cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
-	.tabs button.on { background: #26262c; color: var(--text); }
-	.tabs button:disabled { opacity: .35; cursor: default; }
-	#dims { color: var(--text-2); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+	/* ── The composer: always there during a run ─────────── */
+	#changebar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: stretch; gap: 0; margin: var(--gap) var(--gap) 0; border: 2px solid var(--ink); background: var(--paper); box-shadow: 6px 6px 0 var(--ink); }
+	#changebar .who { display: grid; place-items: center; padding: 0 18px; background: var(--signal); color: #fff; font: 800 22px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+	#changebar .box { display: flex; align-items: center; min-width: 0; }
+	#change-input { flex: 1; min-width: 160px; height: 58px; padding: 0 18px; border: 0; outline: none; background: transparent; font: 500 clamp(17px, 1.35vw, 22px)/1 var(--sans); }
+	#change-input::placeholder { color: var(--ink-3); }
+	#change-input:disabled { cursor: not-allowed; }
+	.suggest { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-left: 1.5px solid var(--rule-2); }
+	.suggest .lead { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+	.suggest button { height: 36px; padding: 0 12px; border: 1.5px solid var(--ink); background: transparent; font: 600 14px/1 var(--sans); cursor: pointer; white-space: nowrap; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+	.suggest button:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+	.suggest button:disabled { opacity: .35; cursor: default; }
+	#send-btn { border: 0; border-left: 2px solid var(--ink); background: var(--ink); color: var(--paper); padding: 0 22px; font: 800 20px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+	#send-btn:hover:not(:disabled) { background: var(--signal); }
+	#send-btn:disabled { opacity: .35; cursor: default; }
+
+	/* ── Run view ─────────────────────────────────────────── */
+	#run { display: grid; grid-template-rows: clamp(250px, 33vh, 352px) minmax(0, 1fr); gap: var(--gap); padding: var(--gap); min-height: 0; }
+
+	/* The ripple: change → fields → agents → checks, then the result line. */
+	#ripple { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .9fr) minmax(0, 1.75fr) minmax(0, 1.1fr); grid-template-rows: minmax(0, 1fr) auto; }
+	#ripple > .col { position: relative; padding: 12px 16px 10px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-width: 0; min-height: 0; border-right: 1.5px solid var(--ink); }
+	#ripple > .col:nth-child(4) { border-right: 0; }
+	/* The flow arrow between the stages. */
+	#ripple > .col:not(:nth-child(4))::after { content: ""; position: absolute; right: -11px; top: 50%; width: 20px; height: 20px; margin-top: -10px; background: var(--paper); border: 1.5px solid var(--ink); border-left: 0; border-bottom: 0; transform: rotate(45deg); z-index: 2; }
+	#ripple.flowing > .col:not(:nth-child(4))::after { background: var(--signal); }
+	#rip-change { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+	#rip-text { margin: 6px 0 0; font: 700 clamp(24px, 2.1vw, 38px)/1.02 var(--display); text-transform: uppercase; letter-spacing: .01em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+	#rip-text.quote::before { content: "“"; color: var(--signal); } #rip-text.quote::after { content: "”"; color: var(--signal); }
+	#rip-meta { font: 500 13px/1.35 var(--mono); color: var(--ink-2); align-self: end; }
+	#rip-history { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+	#rip-history button { height: 24px; padding: 0 8px; border: 1.5px solid var(--ink); background: transparent; font: 600 12px/1 var(--mono); cursor: pointer; }
+	#rip-history button.on { background: var(--ink); color: var(--paper); }
+	#rip-history button.consistent::after { content: " ✓"; color: var(--ok); }
+	#rip-history button.on.consistent::after { color: #7fe0a8; }
+
+	#rip-fields { list-style: none; margin: 0; padding: 0; display: grid; align-content: start; gap: 3px; overflow: hidden; }
+	#rip-fields li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 4px 8px; border: 1.5px solid transparent; font: 500 clamp(13px, .9vw, 16px)/1.15 var(--mono); color: var(--ink-3); transition: background 300ms var(--ease), color 300ms var(--ease); }
+	#rip-fields li .v { font-size: .86em; }
+	#rip-fields li.set { color: var(--ink); }
+	#rip-fields li.touched { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; animation: ignite 900ms var(--ease); }
+	#rip-fields li.touched .v { color: var(--signal); }
+	#rip-fields li.missing { opacity: .55; }
+
+	#agents { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 6px; min-height: 0; }
+	.tile { position: relative; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 2px; padding: 7px 10px 6px 14px; border: 1.5px solid var(--ink); background: var(--paper); cursor: pointer; min-width: 0; transition: opacity 400ms var(--ease), background 300ms var(--ease), color 300ms var(--ease); }
+	.tile::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--ac); }
+	.tile .top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+	.tile .name { font: 700 clamp(16px, 1.25vw, 22px)/1 var(--display); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.tile .status { margin-left: auto; font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; color: var(--ink-3); }
+	.tile .task { font-size: 12.5px; line-height: 1.25; color: var(--ink-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+	.tile.woke { background: var(--ink); color: var(--paper); }
+	.tile.woke .task { color: #cfc8b6; } .tile.woke .status { color: var(--signal); }
+	.tile.woke.done .status { color: #7fe0a8; }
+	.tile.working::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 40%; background: var(--signal); animation: sweep 1.1s linear infinite; }
+	/* Took a turn, changed nothing: present, but not lit. */
+	.tile.checked { background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(22, 20, 15, .06) 6px 7px); }
+	.tile.checked .status { color: var(--ink-2); }
+	.tile.asleep { opacity: .32; border-style: dashed; background: transparent; }
+	.tile.asleep::before { background: var(--ink-3); }
+	.tile.failed { box-shadow: inset 0 0 0 2px var(--error); } .tile.failed .status { color: var(--error); }
+	.tile.held .status { color: var(--warn); }
+	.tile .boot { position: absolute; right: 6px; bottom: 5px; font: 700 10px/1 var(--mono); padding: 3px 5px; cursor: help; }
+	.tile .boot.ok { background: var(--ok); color: #fff; } .tile .boot.bad { background: var(--error); color: #fff; }
+	.tile .hist { position: fixed; z-index: 45; width: 420px; max-height: 340px; overflow: auto; padding: 10px 12px; background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); box-shadow: 8px 8px 0 rgba(22, 20, 15, .18); cursor: default; animation: fadein var(--t) var(--ease); }
+	.tile .hist ul { margin: 0; padding: 0; } .tile .hist li { list-style: none; font-size: 12.5px; color: var(--ink-2); margin: 0 0 4px; }
+	.tile .hist b { margin-right: 6px; }
+
+	#rip-checks { list-style: none; margin: 0; padding: 0; display: grid; align-content: start; gap: 6px; overflow: hidden; }
+	#rip-checks li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; align-items: center; }
+	#rip-checks .mark { grid-row: span 2; width: 22px; height: 22px; display: grid; place-items: center; border: 1.5px solid var(--ink); font: 800 13px/1 var(--mono); }
+	#rip-checks .ok .mark { background: var(--ok); border-color: var(--ok); color: #fff; animation: stamp 420ms var(--ease); }
+	#rip-checks .error .mark { background: var(--error); border-color: var(--error); color: #fff; }
+	#rip-checks .warn .mark { background: var(--warn); border-color: var(--warn); color: #fff; }
+	#rip-checks .running .mark { border-color: var(--signal); color: var(--signal); }
+	#rip-checks .running .mark::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--signal); animation: blink 1s steps(2) infinite; }
+	#rip-checks .what { font: 700 clamp(15px, 1.1vw, 19px)/1 var(--display); text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; min-width: 0; }
+	#rip-checks .detail { font: 500 12px/1.2 var(--mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.seq { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
+	.seq i { font: 700 12px/1 var(--mono); font-style: normal; min-width: 20px; height: 20px; padding: 0 4px; display: inline-grid; place-items: center; color: #fff; background: var(--error); }
+	.seq i.z { background: var(--ok); }
+	.seq s { text-decoration: none; color: var(--ink-3); font: 600 12px/1 var(--mono); }
+
+	#rip-result { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 8px 18px; border-top: 2px solid var(--ink); background: var(--paper-2); min-width: 0; }
+	#rip-result .stampbox { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 2.5px solid currentColor; font: 900 26px/1 var(--display); }
+	#rip-headline { font: 800 clamp(30px, 3.1vw, 58px)/1 var(--display); text-transform: uppercase; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#rip-detail { font: 600 clamp(15px, 1.15vw, 21px)/1.1 var(--sans); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#rip-result.consistent { color: var(--ok); } #rip-result.consistent #rip-headline { color: var(--ink); }
+	#rip-result.consistent .stampbox { animation: stamp 520ms var(--ease); }
+	#rip-result.rippling, #rip-result.sent { color: var(--signal); }
+	#rip-result.rippling .stampbox { animation: blink 1s steps(2) infinite; }
+	#rip-result.unsettled { color: var(--error); } #rip-result.unsettled #rip-headline { color: var(--error); }
+	#rip-result.no-change, #rip-result.initial { color: var(--ink-2); }
+	#held { margin-left: auto; flex: 0 0 auto; }
+	#held .pill { background: var(--warn); border-color: var(--warn); color: #fff; height: 38px; font-size: 15px; }
+
+	/* Lower deck: the stage screen, what moved, the case and the parts. */
+	#deck { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .5fr) minmax(0, .46fr); gap: var(--gap); min-height: 0; }
+	#stage { display: grid; grid-template-rows: auto minmax(0, 1fr) 40px; min-height: 0; background: var(--screen); color: var(--screen-text); border: 1.5px solid var(--ink); }
+	.stage-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-width: 0; border-bottom: 1px solid var(--screen-rule); }
+	.tabs { display: inline-flex; border: 1px solid var(--screen-rule); }
+	.tabs button { height: 30px; padding: 0 14px; border: 0; background: transparent; color: var(--screen-text-2); cursor: pointer; font: 700 15px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; }
+	.tabs button.on { background: var(--screen-text); color: var(--screen); }
+	.tabs button:disabled { opacity: .3; cursor: default; }
+	#dims { font: 500 13px/1 var(--mono); color: var(--screen-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
 	.stage-bar > * { flex-shrink: 0; }
 	.stage-bar > #dims { flex-shrink: 1; }
+	#stage .pill { background: transparent; color: var(--screen-text); border-color: var(--screen-rule); }
+	#stage button.pill:hover { background: var(--screen-text); color: var(--screen); }
 	#fab { position: relative; }
-	#fab .popover { right: auto; left: 0; width: 320px; }
-	#fab a.row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 6px; border-radius: 6px; text-decoration: none; font-size: 13px; }
-	#fab a.row:hover { background: #1c1c21; color: var(--info); }
-	#battery { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
-	#battery .bar { width: 140px; height: 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--border); position: relative; overflow: hidden; }
-	#battery .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; transition: width 600ms var(--ease); }
-	#battery .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .7; }
-	#stage-body { position: relative; margin: 0 14px; border-radius: var(--r-card); background: #0c0d0e; border: 1px solid var(--border); overflow: hidden; }
+	#fab .popover { right: auto; left: 0; width: 330px; }
+	#fab a.row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 6px; text-decoration: none; font-size: 13px; font-weight: 600; }
+	#fab a.row:hover { background: var(--ink); color: var(--paper); }
+	#battery { margin-left: auto; display: flex; align-items: center; gap: 10px; font: 500 13px/1 var(--mono); color: var(--screen-text-2); white-space: nowrap; }
+	#battery b { font-weight: 700; }
+	#battery .bar { width: 120px; height: 8px; background: var(--screen-2); border: 1px solid var(--screen-rule); position: relative; overflow: hidden; }
+	#battery .fill { position: absolute; inset: 0 auto 0 0; transition: width 600ms var(--ease); }
+	#battery .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--screen-text); opacity: .7; }
+	#stage-body { position: relative; overflow: hidden; background: var(--screen); }
 	#stage-body > .view { position: absolute; inset: 0; }
 	#render-view { display: grid; place-items: center; }
 	#render-view img { max-width: 100%; max-height: 100%; object-fit: contain; }
-	.empty-state { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); font-size: 15px; text-align: center; padding: 20px; }
-	#changed-pill { position: absolute; top: 12px; left: 12px; z-index: 3; opacity: 0; transform: translateY(-4px); transition: opacity 300ms var(--ease), transform 300ms var(--ease); pointer-events: none; font-weight: 600; }
+	.empty-state { position: absolute; inset: 0; display: grid; place-items: center; color: var(--screen-text-2); font: 500 14px/1.4 var(--mono); text-align: center; padding: 20px; }
+	#changed-pill { position: absolute; top: 10px; left: 10px; z-index: 3; opacity: 0; transform: translateY(-4px); transition: opacity 300ms var(--ease), transform 300ms var(--ease); pointer-events: none; background: var(--signal) !important; color: #fff !important; border-color: var(--signal) !important; font-family: var(--mono); }
 	#changed-pill.on { opacity: 1; transform: none; }
-	#viewing-pill { position: absolute; top: 12px; right: 12px; z-index: 3; cursor: pointer; }
-	#request-toast { position: absolute; right: 12px; bottom: 12px; z-index: 3; max-width: 55%; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-	/* On the Bench tab the bottom holds the gauge and the checks: the toast moves up into the chart's empty top right. */
-	#stage-body.on-bench #request-toast { top: 52px; bottom: auto; right: 64px; max-width: 46%; }
-	/* …and the "what changed" pill leaves the source badge (REPLAY/FAKE) visible, between the legend and the toast. */
+	#viewing-pill { position: absolute; top: 10px; right: 10px; z-index: 3; cursor: pointer; background: var(--screen-text) !important; color: var(--screen) !important; }
 	#stage-body.on-bench #changed-pill { top: 52px; left: 38%; }
-	#request-toast .req { padding: 8px 12px; border-radius: var(--r-card); background: rgba(22, 22, 26, .92); border: 1px solid var(--border); font-size: 13px; animation: fadein var(--t) var(--ease); }
-	#request-toast .req b { color: var(--c-engineer); }
-	#request-toast .req .eff { color: var(--c-architect); }
-	#scrubber { display: flex; align-items: center; gap: 10px; padding: 0 14px; }
-	#scrubber .label { font-size: 13px; color: var(--text-3); white-space: nowrap; }
+	#scrubber { display: flex; align-items: center; gap: 10px; padding: 0 10px; border-top: 1px solid var(--screen-rule); }
+	#scrubber .label { color: var(--screen-text-2); }
 	#dots { flex: 1; display: flex; align-items: center; position: relative; height: 28px; }
-	#dots::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--border); }
-	#dots button { position: relative; flex: 1; max-width: 64px; height: 28px; border: 0; background: transparent; cursor: pointer; padding: 0; }
-	#dots button i { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--dc); transition: transform var(--t) var(--ease), box-shadow var(--t) var(--ease); }
-	#dots button.board i { box-shadow: 0 0 0 2px #0a0a0a, 0 0 0 3px var(--dc); }
+	#dots::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--screen-rule); }
+	#dots button { position: relative; flex: 1; max-width: 56px; height: 28px; border: 0; background: transparent; cursor: pointer; padding: 0; }
+	#dots button i { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; background: var(--dc); transition: transform var(--t) var(--ease); }
+	#dots button.board i { border-radius: 50%; }
+	#dots button.req::after { content: ""; position: absolute; left: 50%; top: 0; width: 2px; height: 7px; margin-left: -1px; background: var(--signal); }
 	#dots button:hover i { transform: scale(1.5); }
-	#dots button.sel i { transform: scale(1.6); box-shadow: 0 0 0 2px #0a0a0a, 0 0 0 4px var(--text); }
-	#dots button .tip { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; padding: 4px 8px; border-radius: 6px; background: var(--raised); border: 1px solid var(--border-hover); opacity: 0; pointer-events: none; transition: opacity var(--t) var(--ease); z-index: 4; }
+	#dots button.sel i { transform: scale(1.5); box-shadow: 0 0 0 2px var(--screen), 0 0 0 4px var(--screen-text); }
+	#dots button .tip { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 500 12px/1 var(--mono); padding: 6px 8px; background: var(--screen-text); color: var(--screen); opacity: 0; pointer-events: none; transition: opacity var(--t) var(--ease); z-index: 4; }
 	#dots button:hover .tip { opacity: 1; }
-	#live-btn { height: 26px; font-size: 13px; padding: 0 12px; }
+	#live-btn { height: 26px; padding: 0 12px; font: 700 13px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; background: transparent; color: var(--screen-text); border: 1px solid var(--screen-rule); cursor: pointer; }
+	#live-btn:disabled { opacity: .35; cursor: default; }
 
-	#side { grid-row: 1; grid-column: 2; display: grid; grid-template-rows: minmax(0, 45fr) minmax(0, 55fr); gap: 12px; min-height: 0; }
-	#scene-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-	#scene-body { position: relative; margin: 8px 12px 12px; border-radius: var(--r-card); background: #0c0d0e; border: 1px solid var(--border); overflow: hidden; }
+	/* What moved: the outline, the cutouts and the pins, before (dashed) and after (solid). */
+	#moved { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding: 12px 14px; }
+	#moved-svg { width: 100%; height: 100%; min-height: 0; }
+	#moved-svg .before { fill: none; stroke: var(--ink-3); stroke-width: 1.4; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+	#moved-svg .after { fill: rgba(255, 74, 23, .07); stroke: var(--ink); stroke-width: 2.2; vector-effect: non-scaling-stroke; }
+	#moved-svg .cut-before { fill: none; stroke: var(--ink-3); stroke-width: 1.2; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
+	#moved-svg .cut-after { fill: var(--signal); stroke: var(--ink); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+	#moved-svg .cut-same { fill: var(--paper-3); stroke: var(--ink-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+	#moved-svg .arrow { stroke: var(--signal); stroke-width: 1.8; fill: none; vector-effect: non-scaling-stroke; marker-end: url(#arrowhead); }
+	#moved-svg text { font-family: var(--mono); fill: var(--ink-2); }
+	#moved-svg .dim { font-weight: 700; fill: var(--ink); }
+	#moved-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 9.5em; overflow: auto; font: 500 clamp(13px, .95vw, 16px)/1.3 var(--mono); }
+	#moved-list li { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 8px; padding: 4px 0; border-top: 1px dashed var(--rule-2); }
+	#moved-list li b { color: var(--ink); }
+	#moved-list .was { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--signal); }
+	#moved-list .now { color: var(--signal-ink); font-weight: 700; }
+	#moved .empty { display: grid; place-items: center; text-align: center; color: var(--ink-3); font: 500 14px/1.45 var(--sans); padding: 10px; }
+
+	#side { display: grid; grid-template-rows: minmax(0, 52fr) minmax(0, 48fr); gap: var(--gap); min-height: 0; }
+	#scene-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--screen); color: var(--screen-text); border: 1.5px solid var(--ink); min-height: 0; }
+	#scene-panel .label { color: var(--screen-text-2); padding: 9px 10px 0; }
+	#scene-panel .label .right { color: var(--screen-text-2); }
+	#scene-body { position: relative; margin: 6px; overflow: hidden; background: var(--screen); }
 	#scene-host, #stage-3d { position: absolute; inset: 0; }
-	#explode { width: 110px; accent-color: var(--c-enclosure); vertical-align: middle; }
-	#parts-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
-	#parts-ready { padding: 2px 16px 0; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#explode { width: 90px; accent-color: var(--signal); vertical-align: middle; }
+	#parts-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); padding-top: 10px; }
+	#parts-panel > .label { padding: 0 12px; }
+	#parts-total { font: 800 22px/1 var(--display); color: var(--ink); }
+	#parts-ready { padding: 4px 12px 0; font: 500 12px/1.2 var(--mono); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	#parts-ready.warn { color: var(--warn); }
-	#parts .part { cursor: pointer; }
-	.src-pop { position: absolute; left: 8px; right: 8px; z-index: 20; padding: 10px 12px; background: var(--raised); border: 1px solid var(--border-hover); border-radius: var(--r-card); box-shadow: 0 20px 50px rgba(0, 0, 0, .55); animation: fadein var(--t) var(--ease); cursor: default; }
-	/* Expanded state: the row's chevron turns down; the popover has a close button. */
-	#parts .chev { color: var(--text-3); font-size: 14px; line-height: 1; transition: transform var(--t) var(--ease); }
-	#parts .part.open { background: var(--raised); box-shadow: inset 0 0 0 1px var(--border-hover); }
-	#parts .part.open .chev { transform: rotate(90deg); color: var(--text); }
-	.src-pop .close { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 6px; border: 0; background: transparent; color: var(--text-2); font-size: 18px; line-height: 1; cursor: pointer; }
-	.src-pop .close:hover { background: #26262c; color: var(--text); }
-	.src-pop h4 { padding-right: 30px; }
+	#parts { overflow-y: auto; padding: 4px 6px 6px; position: relative; }
+	#parts .part { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto 18px 10px; align-items: center; gap: 6px; padding: 5px 6px; cursor: pointer; border-bottom: 1px dashed var(--rule); transition: background var(--t) var(--ease); }
+	#parts .part:hover, #parts .part.hl { background: var(--paper-2); }
+	#parts .part.hl { box-shadow: inset 3px 0 0 var(--signal); }
+	#parts .ref { font: 700 12px/1 var(--mono); padding: 3px 4px; background: var(--ink); color: var(--paper); text-align: center; }
+	#parts .mpn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+	#parts .mpn a { color: var(--ink-3); text-decoration: none; font: 500 11px/1 var(--mono); margin-left: 5px; }
+	#parts .mpn a:hover { color: var(--signal-ink); }
+	#parts .chev { color: var(--ink-3); font-size: 14px; line-height: 1; transition: transform var(--t) var(--ease); }
+	#parts .part.open { background: var(--paper-2); box-shadow: inset 3px 0 0 var(--ink); }
+	#parts .part.open .chev { transform: rotate(90deg); color: var(--ink); }
+	.chip { font: 600 12px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--rule-2); color: var(--ink-2); white-space: nowrap; }
+	.chip.warn { color: var(--warn); border-color: var(--warn); }
+	.chip.ok { color: var(--ok); border-color: var(--ok); } .chip.bad { color: var(--error); border-color: var(--error); }
+	.ground { text-align: center; font-size: 14px; font-weight: 700; } .ground.ok { color: var(--ok); } .ground.warn { color: var(--warn); }
+	.src-pop { position: absolute; left: 6px; right: 6px; z-index: 20; padding: 10px 12px; background: var(--paper); border: 1.5px solid var(--ink); box-shadow: 6px 6px 0 rgba(22, 20, 15, .16); animation: fadein var(--t) var(--ease); cursor: default; }
+	.src-pop .close { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border: 0; background: transparent; color: var(--ink-2); font-size: 18px; line-height: 1; cursor: pointer; }
+	.src-pop .close:hover { background: var(--ink); color: var(--paper); }
+	.src-pop h4 { margin: 0 0 6px; padding-right: 30px; font: 600 12px/1.3 var(--mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .1em; }
 	.src-pop h4 .chip { text-transform: none; letter-spacing: 0; margin-left: 6px; }
-	.src-pop h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
-	.src-pop .row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 90px; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 13px; text-decoration: none; }
-	.src-pop a.row:hover { background: #1c1c21; color: var(--info); }
-	.src-pop .nc { color: var(--text-3); }
-	#parts-total { font-size: 18px; color: var(--text); font-weight: 600; }
-	#parts { overflow-y: auto; padding: 6px 8px 8px; position: relative; }
-	#parts .part { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto 22px 12px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-card); transition: background var(--t) var(--ease); cursor: default; }
-	#parts .part:hover, #parts .part.hl { background: var(--raised); }
-	#parts .part.hl { box-shadow: inset 0 0 0 1px var(--border-hover); }
-	#parts .ref { font-family: var(--mono); font-size: 13px; padding: 2px 6px; border-radius: 6px; background: #1c1c21; color: var(--text); text-align: center; }
-	#parts .mpn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	#parts .mpn a { color: var(--text-3); text-decoration: none; font-family: var(--mono); font-size: 12px; margin-left: 6px; }
-	#parts .mpn a:hover { color: var(--info); }
-	.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
-	.chip.warn { color: var(--warn); border-color: rgba(245, 158, 11, .4); }
-	.chip.ok { color: var(--ok); border-color: rgba(34, 197, 94, .3); } .chip.bad { color: var(--error); border-color: rgba(239, 68, 68, .35); }
-	.ground { text-align: center; font-size: 14px; } .ground.ok { color: var(--ok); } .ground.warn { color: var(--warn); }
+	.src-pop .row { display: grid; grid-template-columns: minmax(0, 1fr) 100px 80px; gap: 8px; padding: 5px 4px; font-size: 13px; text-decoration: none; }
+	.src-pop a.row:hover { background: var(--ink); color: var(--paper); }
+	.src-pop .nc { color: var(--ink-3); }
 
-	#agents { grid-row: 2; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px; }
-	.card { position: relative; padding: 12px 12px 10px; border-radius: var(--r-card); background: rgba(17, 17, 19, .86); border: 1px solid var(--border); cursor: pointer; display: grid; grid-template-rows: auto auto auto 1fr; gap: 4px; min-width: 0; transition: border-color var(--t) var(--ease), background var(--t) var(--ease); }
-	.card:hover { border-color: var(--border-hover); }
-	.card.active { border-color: color-mix(in srgb, var(--ac) 45%, var(--border)); background: color-mix(in srgb, var(--ac) 6%, rgba(17, 17, 19, .86)); }
-	.card .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
-	.card .av { width: 14px; height: 14px; border-radius: 50%; background: var(--ac); box-shadow: 0 0 0 3px #0a0a0a, 0 0 0 4px var(--ring-c, var(--border)); --ring: color-mix(in srgb, var(--ac) 60%, transparent); flex: 0 0 auto; transition: box-shadow var(--t) var(--ease); }
-	.card.active .av { --ring-c: var(--ac); animation: pulse 1.6s var(--ease) infinite; }
-	.card.held .av { --ring-c: var(--warn); } .card.failed .av { --ring-c: var(--error); } .card.done .av { --ring-c: var(--ok); }
-	.card .name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.card .status { margin-left: auto; font-size: 12px; color: var(--text-3); white-space: nowrap; }
-	.card.active .status { color: var(--ac); } .card.held .status { color: var(--warn); } .card.failed .status { color: var(--error); } .card.done .status { color: var(--ok); }
-	.card .task { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.card .result { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.card .boot { position: absolute; right: 10px; bottom: 9px; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; cursor: help; }
-	.card .boot.ok { color: var(--ok); background: rgba(34, 197, 94, .12); } .card .boot.bad { color: var(--error); background: rgba(239, 68, 68, .12); }
-	.card .bars { display: flex; align-items: flex-end; gap: 2px; height: 18px; align-self: end; }
-	.card .bars i { flex: 1; border-radius: 2px; min-width: 2px; max-width: 8px; }
-	.card .hist { position: absolute; left: 0; bottom: calc(100% + 8px); max-height: 320px; overflow: auto; padding: 10px 12px; background: var(--raised); border: 1px solid var(--border-hover); border-radius: var(--r-card); box-shadow: 0 20px 50px rgba(0, 0, 0, .55); z-index: 15; width: max(100%, 380px); cursor: default; animation: fadein var(--t) var(--ease); }
-	.card:nth-last-child(-n+3) .hist { left: auto; right: 0; }
-	.card .hist li { font-size: 12px; color: var(--text-2); margin: 0 0 4px; list-style: none; }
-	.card .hist ul { margin: 0; padding: 0; }
-	.card .hist b { font-weight: 600; margin-right: 6px; }
-
-	#changes-panel { grid-row: 3; grid-column: 1 / -1; display: grid; grid-template-rows: auto minmax(0, 1fr); }
-	#prs { display: flex; gap: 10px; overflow-x: auto; padding: 8px 12px 12px; }
-	.pr { flex: 0 0 380px; grid-template-columns: minmax(0, 1fr); padding: 10px 12px; border-radius: var(--r-card); background: var(--raised); border: 1px solid var(--border); display: grid; grid-template-rows: auto auto 1fr auto; gap: 5px; animation: fadein var(--t) var(--ease); min-width: 0; }
-	.pr.waiting { border-color: rgba(245, 158, 11, .55); box-shadow: 0 0 0 1px rgba(245, 158, 11, .15), 0 0 30px rgba(245, 158, 11, .06); }
-	.pr .who { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
-	.pr .who .avatar { width: 20px; height: 20px; font-size: 10px; }
-	.pr .field { margin-left: 4px; font-family: var(--mono); font-size: 12px; padding: 1px 6px; border-radius: 6px; background: #1c1c21; color: var(--text); }
-	.badge { margin-left: auto; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
-	.badge.approved { color: var(--ok); background: rgba(34, 197, 94, .1); } .badge.rejected { color: var(--error); background: rgba(239, 68, 68, .1); }
-	.badge.pending { color: var(--info); background: rgba(59, 130, 246, .1); } .badge.waiting { color: var(--warn); background: rgba(245, 158, 11, .12); }
-	.pr .reason { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.pr .diff { font-family: var(--mono); font-size: 12px; line-height: 1.5; overflow: hidden; min-height: 0; }
+	/* Drawers: change control and the event feed. */
+	.drawer { position: fixed; top: 54px; right: 0; bottom: 0; width: min(460px, 92vw); background: var(--paper); border-left: 2px solid var(--ink); box-shadow: -10px 0 0 rgba(22, 20, 15, .08); z-index: 30; transform: translateX(104%); transition: transform 220ms var(--ease); display: grid; grid-template-rows: auto minmax(0, 1fr); }
+	.drawer.open { transform: none; }
+	.drawer > .label { padding: 14px 16px 10px; border-bottom: 1.5px solid var(--ink); }
+	#feed ul { list-style: none; margin: 0; padding: 8px 14px; overflow-y: auto; }
+	#feed li { padding: 6px 0 6px 10px; border-left: 3px solid var(--fc, var(--rule)); margin-bottom: 4px; font-size: 13px; }
+	#feed li .t { font: 700 12px/1.2 var(--mono); } #feed li .m { color: var(--ink-3); font-size: 12px; }
+	#prs { display: grid; align-content: start; gap: 10px; overflow-y: auto; padding: 12px; }
+	.pr { padding: 10px 12px; background: var(--paper); border: 1.5px solid var(--ink); display: grid; gap: 6px; animation: fadein var(--t) var(--ease); min-width: 0; }
+	.pr.waiting { border-color: var(--warn); box-shadow: 5px 5px 0 var(--warn); }
+	.pr .who { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+	.pr .who .avatar { width: 20px; height: 20px; font-size: 9px; }
+	.pr .field { margin-left: 4px; font: 700 12px/1 var(--mono); padding: 3px 6px; background: var(--ink); color: var(--paper); }
+	.badge { margin-left: auto; font: 700 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px; white-space: nowrap; }
+	.badge.approved { color: #fff; background: var(--ok); } .badge.rejected { color: #fff; background: var(--error); }
+	.badge.pending { color: var(--ink); border: 1px solid var(--ink); } .badge.waiting { color: #fff; background: var(--warn); }
+	.pr .reason { font-size: 13px; color: var(--ink-2); }
+	.pr .diff { font: 500 12px/1.5 var(--mono); }
 	.pr .diff div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.add { color: var(--ok); } .del { color: var(--error); } .mod { color: var(--warn); }
-	.pr .foot { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); min-width: 0; }
+	.pr .foot { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); min-width: 0; }
 	.pr .foot .why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.vote { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px 1px 2px; border-radius: 999px; background: #1c1c21; font-size: 12px; white-space: nowrap; }
-	.vote .avatar { width: 16px; height: 16px; font-size: 9px; }
+	.vote { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px 1px 2px; background: var(--paper-2); font-size: 12px; white-space: nowrap; }
+	.vote .avatar { width: 16px; height: 16px; font-size: 8px; }
 	.pr .act { display: flex; gap: 6px; align-items: center; }
-	.pr .act input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border); background: #0f0f12; font-size: 13px; outline: none; }
-	.pr .act input:focus { border-color: #3f3f46; }
-	.pr .act .btn { height: 30px; font-size: 13px; }
-	.btn.approve { color: var(--ok); border-color: rgba(34, 197, 94, .4); } .btn.reject { color: var(--error); border-color: rgba(239, 68, 68, .4); }
-	#prs .none { color: var(--text-3); font-size: 13px; padding: 14px 4px; }
+	.pr .act input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1.5px solid var(--ink); background: var(--paper); font-size: 13px; outline: none; }
+	.pr .act .btn { height: 32px; font-size: 13px; }
+	.btn.approve { background: var(--ok); border-color: var(--ok); color: #fff; } .btn.reject { color: var(--error); border-color: var(--error); }
+	#prs .none { color: var(--ink-3); font-size: 14px; padding: 6px 2px; }
 
-	/* Change bar */
-	#changebar { display: flex; align-items: center; gap: 10px; padding: 0 16px 12px; }
-	#changebar .box { flex: 1; display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 8px 0 16px; border-radius: 999px; border: 1px solid var(--border); background: rgba(22, 22, 26, .9); backdrop-filter: blur(12px); transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease); min-width: 0; }
-	#changebar .box:focus-within { border-color: #3f3f46; box-shadow: 0 0 0 4px rgba(59, 130, 246, .12); }
-	#changebar .who { font-size: 13px; color: var(--text-3); white-space: nowrap; }
-	#change-input { flex: 1; min-width: 200px; height: 40px; border: 0; outline: none; background: transparent; font-size: 15px; }
-	#changebar kbd { font-family: var(--mono); font-size: 12px; color: var(--text-3); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; }
-	.suggest { display: flex; gap: 6px; overflow: hidden; min-width: 0; }
-	.suggest button { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; white-space: nowrap; transition: border-color var(--t) var(--ease), color var(--t) var(--ease); }
-	.suggest button:hover { border-color: var(--border-hover); color: var(--text); }
-
-	/* Feed drawer */
-	#feed { position: fixed; top: 56px; right: 0; bottom: 0; width: 420px; background: rgba(13, 13, 15, .96); border-left: 1px solid var(--border); backdrop-filter: blur(12px); z-index: 12; transform: translateX(100%); transition: transform 220ms var(--ease); display: grid; grid-template-rows: auto 1fr; }
-	#feed.open { transform: none; }
-	#feed ul { list-style: none; margin: 0; padding: 8px 14px; overflow-y: auto; }
-	#feed li { padding: 6px 0 6px 10px; border-left: 2px solid var(--fc, var(--border)); margin-bottom: 4px; font-size: 13px; }
-	#feed li .t { font-weight: 600; } #feed li .m { color: var(--text-3); font-size: 12px; }
-
-	/* Overlay */
-	#overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .85); display: none; align-items: center; justify-content: center; z-index: 30; cursor: zoom-out; }
+	/* Overlay and brief panel */
+	#overlay { position: fixed; inset: 0; background: rgba(13, 15, 12, .9); display: none; align-items: center; justify-content: center; z-index: 50; cursor: zoom-out; }
 	#overlay.open { display: flex; }
-	#overlay img { max-width: 92vw; max-height: 88vh; border-radius: 8px; }
+	#overlay img { max-width: 92vw; max-height: 88vh; }
+	#brief-panel { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); width: min(760px, 92vw); max-height: 70vh; display: grid; grid-template-rows: auto minmax(0, 1fr); z-index: 45; background: var(--paper); box-shadow: 10px 10px 0 rgba(22, 20, 15, .2); animation: fadein var(--t) var(--ease); }
+	#brief-panel > .label { padding: 12px 16px; border-bottom: 1.5px solid var(--ink); }
+	#brief-panel pre { margin: 0; padding: 14px 18px 18px; overflow: auto; white-space: pre-wrap; font: 15px/1.6 var(--sans); }
+	#stop-btn { color: var(--error); border-color: var(--error); }
+	#stop-btn:hover { background: var(--error); color: #fff; }
 
-	/* ── Start screen ───────────────────────────────────────── */
-	#start { overflow-y: auto; padding: 48px 20px 40px; }
-	.composer { max-width: 860px; margin: 0 auto; }
-	.composer h1 { font-size: 32px; letter-spacing: -.02em; margin: 0 0 6px; }
-	.composer .sub { color: var(--text-2); margin: 0 0 22px; font-size: 18px; }
-	.compose-box { padding: 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--border); transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease); }
-	.compose-box:focus-within { border-color: #3f3f46; box-shadow: 0 0 0 4px rgba(59, 130, 246, .1); }
-	#brief-input { width: 100%; min-height: 190px; resize: vertical; border: 0; outline: none; background: transparent; font-size: 15px; line-height: 1.6; }
-	.examples { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 12px; }
-	.toggles { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--border); padding-top: 12px; }
-	.seg { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--raised); }
-	.seg button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--text-2); cursor: pointer; font-size: 13px; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
-	.seg button.on { background: #26262c; color: var(--text); }
-	.switch { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--raised); cursor: pointer; font-size: 13px; color: var(--text-2); user-select: none; }
-	.switch i { width: 28px; height: 16px; border-radius: 999px; background: #2a2a30; position: relative; transition: background var(--t) var(--ease); }
-	.switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-2); transition: transform var(--t) var(--ease), background var(--t) var(--ease); }
-	.switch.on { color: var(--text); } .switch.on i { background: var(--info); } .switch.on i::after { transform: translateX(12px); background: #fff; }
-	#start-btn { margin-left: auto; height: 38px; padding: 0 22px; }
-	#start-error { color: var(--error); font-size: 13px; margin-top: 8px; }
-	.recent { max-width: 860px; margin: 34px auto 0; }
-	.recent h2 { font-size: 13px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; font-weight: 500; }
-	.run-row { display: grid; grid-template-columns: 104px minmax(0, 1fr) 80px 90px auto; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r-card); border: 1px solid transparent; text-decoration: none; transition: background var(--t) var(--ease), border-color var(--t) var(--ease); }
-	.run-row:hover { background: var(--panel); border-color: var(--border); }
-	.run-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.status-pill { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; text-align: center; }
-	.st-running { color: var(--info); background: rgba(59, 130, 246, .12); } .st-settled { color: var(--ok); background: rgba(34, 197, 94, .1); }
-	.st-unsettled, .st-failed { color: var(--error); background: rgba(239, 68, 68, .1); } .st-stopped { color: var(--text-3); background: #1c1c21; }
+	/* ── Start screen ─────────────────────────────────────── */
+	#start { overflow-y: auto; padding: clamp(24px, 5vh, 56px) 24px 40px; }
+	.composer { max-width: 1040px; margin: 0 auto; }
+	.composer h1 { font: 800 clamp(48px, 6vw, 92px)/.9 var(--display); text-transform: uppercase; letter-spacing: .005em; margin: 0 0 14px; }
+	.composer h1 em { font-style: normal; color: var(--signal); }
+	.composer .sub { color: var(--ink-2); margin: 0 0 26px; font-size: clamp(16px, 1.25vw, 20px); max-width: 760px; }
+	.compose-box { border: 2px solid var(--ink); background: var(--paper); box-shadow: 8px 8px 0 var(--ink); }
+	.compose-box > .label { padding: 12px 16px; border-bottom: 1.5px solid var(--ink); }
+	#scripted-note { font-size: 14px; color: var(--warn); margin: 0; padding: 10px 16px 0; font-weight: 600; }
+	#brief-input { display: block; width: 100%; min-height: 180px; resize: vertical; border: 0; outline: none; background: transparent; font: 17px/1.55 var(--sans); padding: 12px 16px; }
+	#brief-input[readonly] { color: var(--ink-2); }
+	.examples { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 12px; }
+	.toggles { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-top: 1.5px solid var(--ink); padding: 12px 16px; background: var(--paper-2); }
+	.seg { display: inline-flex; border: 1.5px solid var(--ink); }
+	.seg button { height: 32px; padding: 0 12px; border: 0; background: transparent; cursor: pointer; font-size: 13px; font-weight: 600; }
+	.seg button.on { background: var(--ink); color: var(--paper); }
+	.switch { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1.5px solid var(--ink); background: var(--paper); cursor: pointer; font-size: 13px; font-weight: 600; user-select: none; }
+	.switch i { width: 28px; height: 14px; border: 1.5px solid var(--ink); position: relative; }
+	.switch i::after { content: ""; position: absolute; top: 1px; left: 1px; width: 10px; height: 9px; background: var(--ink-3); transition: transform var(--t) var(--ease), background var(--t) var(--ease); }
+	.switch.on i::after { transform: translateX(13px); background: var(--signal); }
+	#start-btn { margin-left: auto; height: 42px; padding: 0 24px; font: 800 20px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+	#start-error { color: var(--error); font-size: 14px; margin-top: 12px; font-weight: 600; }
+	.recent { max-width: 1040px; margin: 44px auto 0; }
+	.recent h2 { margin: 0 0 10px; }
+	.run-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 70px 80px auto; align-items: center; gap: 12px; padding: 9px 10px; border-bottom: 1px dashed var(--rule-2); text-decoration: none; transition: background var(--t) var(--ease); }
+	.run-row:hover { background: var(--paper-2); }
+	.run-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+	.status-pill { font: 700 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 5px 8px; text-align: center; border: 1.5px solid currentColor; }
+	.st-running { color: var(--signal-ink); } .st-settled { color: var(--ok); }
+	.st-unsettled, .st-failed { color: var(--error); } .st-stopped { color: var(--ink-3); } .st-bench-live { color: #0f766e; }
+	.run-row .reuse { height: 28px; font-size: 12px; padding: 0 10px; }
 
-	/* Brief panel */
-	#brief-panel { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); width: min(760px, 92vw); max-height: 70vh; display: grid; grid-template-rows: auto minmax(0, 1fr); z-index: 25; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); background: var(--raised); animation: fadein var(--t) var(--ease); }
-	#brief-panel pre { margin: 0; padding: 12px 16px 16px; overflow: auto; white-space: pre-wrap; font: 14px/1.6 var(--sans); color: var(--text); }
-	#stop-btn { color: var(--error); border-color: rgba(239, 68, 68, .4); }
-	.st-bench-live { color: var(--c-firmware); background: rgba(20, 184, 166, .12); }
-	.run-row .reuse { height: 26px; font-size: 12px; padding: 0 10px; }
-	#scripted-note { font-size: 13px; color: var(--warn); margin: 0 0 8px; }
-	#brief-input[readonly] { color: var(--text-2); }
-
-	/* Bench (bring-up on the desk) */
+	/* Bench (bring-up on the desk): on the stage screen. */
 	#bench-view { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding: 10px 12px; }
-	.bench-top { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13px; color: var(--text-2); }
-	.src-badge { font-size: 12px; font-weight: 700; letter-spacing: .06em; padding: 2px 9px; border-radius: 999px; }
-	.src-badge.real { color: var(--ok); background: rgba(34, 197, 94, .12); } .src-badge.replay, .src-badge.fake { color: var(--warn); background: rgba(245, 158, 11, .14); }
+	.bench-top { display: flex; align-items: center; gap: 10px; min-width: 0; font: 500 13px/1 var(--mono); color: var(--screen-text-2); }
+	#bench-view .t3 { color: var(--screen-text-2); }
+	.src-badge { font: 700 12px/1 var(--mono); letter-spacing: .08em; padding: 4px 8px; }
+	.src-badge.real { color: #0d0f0c; background: #7fe0a8; } .src-badge.replay, .src-badge.fake { color: #0d0f0c; background: #f3b43f; }
 	.flash-bar { display: flex; gap: 4px; margin-left: auto; }
-	.flash-bar span { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-3); white-space: nowrap; }
-	.flash-bar .done { color: var(--ok); border-color: rgba(34, 197, 94, .35); } .flash-bar .active { color: var(--info); border-color: rgba(59, 130, 246, .5); }
-	.flash-bar .failed { color: var(--error); border-color: rgba(239, 68, 68, .5); }
-	/* The bench needs the person: the most important thing on the panel until it is answered. */
-	#bench-ask { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 6; backdrop-filter: blur(10px); background-color: rgba(30, 22, 8, .92); display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: var(--r-card); background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .6); box-shadow: 0 0 0 4px rgba(245, 158, 11, .08); animation: fadein var(--t) var(--ease); }
+	.flash-bar span { font: 600 12px/1 var(--mono); padding: 5px 8px; border: 1px solid var(--screen-rule); color: var(--screen-text-2); white-space: nowrap; }
+	.flash-bar .done { color: #7fe0a8; border-color: #2f6b49; } .flash-bar .active { color: var(--signal); border-color: var(--signal); }
+	.flash-bar .failed { color: #ff7b72; border-color: #ff7b72; }
+	#bench-ask { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 6; display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: #f3b43f; color: var(--ink); border: 2px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); animation: fadein var(--t) var(--ease); }
 	#bench-ask .hand { font-size: 26px; }
-	#bench-ask b { display: block; font-size: 17px; color: var(--text); }
-	#bench-ask .t2 { font-size: 13px; }
-	/* The design's status LED mirrors the bench's: a small label, its dot lit with the LED. */
-	#led-mirror { position: absolute; left: 12px; bottom: 44px; z-index: 3; font-size: 12px; color: var(--text-2); }
+	#bench-ask b { display: block; font: 800 22px/1.05 var(--display); text-transform: uppercase; }
+	#bench-ask .t2 { font-size: 13px; color: var(--ink); }
+	#led-mirror { position: absolute; left: 10px; bottom: 44px; z-index: 3; font-size: 12px; }
 	#led-mirror i { width: 9px; height: 9px; border-radius: 50%; background: #3a2a2a; transition: background 80ms linear, box-shadow 80ms linear; }
 	#led-mirror.on i { background: var(--lc, #4ade80); box-shadow: 0 0 8px 2px var(--lc, #4ade80); }
 	#stage-body.on-bench #led-mirror { display: none; }
+	#shake-chip { color: var(--screen-text-2); border-color: var(--screen-rule); }
 	#shake-chip.shaking { color: #fff; background: #ef4444; border-color: #ef4444; font-weight: 700; letter-spacing: .06em; }
-	#bench-chart-box { position: relative; min-height: 0; border-radius: var(--r-card); border: 1px solid var(--border); background: #0a0b0c; }
+	#bench-chart-box { position: relative; min-height: 0; border: 1px solid var(--screen-rule); background: #0a0b0a; }
 	#bench-chart { position: absolute; inset: 0; width: 100%; height: 100%; }
-	#bench-chart-box .src-badge { position: absolute; top: 8px; right: 8px; }
-	.bench-bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; font-size: 13px; }
-	.gauge-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 128px; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text-2); cursor: help; }
-	.gauge-row .bar { height: 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--border); position: relative; overflow: hidden; }
-	.gauge-row .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; transition: width 600ms var(--ease); }
-	.gauge-row .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .7; }
+	.bench-bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; font-size: 13px; color: var(--screen-text); }
+	.gauge-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 128px; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--screen-text-2); cursor: help; }
+	.gauge-row .bar { height: 8px; background: var(--screen-2); border: 1px solid var(--screen-rule); position: relative; overflow: hidden; }
+	.gauge-row .fill { position: absolute; inset: 0 auto 0 0; transition: width 600ms var(--ease); }
+	.gauge-row .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--screen-text); opacity: .7; }
 	.bench-checks { margin: 0; padding: 0; list-style: none; }
-	.bench-checks li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; color: var(--text-2); }
-	.bench-checks .ok { color: var(--ok); } .bench-checks .bad { color: var(--error); }
+	.bench-checks li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; color: var(--screen-text-2); }
+	.bench-checks .ok { color: #7fe0a8; } .bench-checks .bad { color: #ff7b72; }
+	#bench-view { --ok: #7fe0a8; --warn: #f3b43f; }
 
 	@media (max-width: 1500px) {
-		#run { grid-template-rows: minmax(0, 1fr) 100px 168px; }
-		#battery .bar { width: 64px; }
-		.card .result { display: none; }
-		.pr { flex-basis: 340px; }
-		#brief-title { max-width: 200px; }
-		.suggest button:nth-child(n+3) { display: none; }
+		#battery .bar { width: 56px; }
+		#brief-title { max-width: 18vw; }
 		#elapsed { display: none; }
+		.suggest .lead { display: none; }
+		.suggest button:nth-child(n+4) { display: none; }
+		#deck { grid-template-columns: minmax(0, 1fr) minmax(0, .52fr) minmax(0, .5fr); }
+		.tile .task { -webkit-line-clamp: 1; }
+		/* Narrow: the tile's look carries its state (dark = woke, sweep = working, dashed = stayed idle); the name gets the room. */
+		.tile .status { display: none; }
+		#checks .check { padding: 0 8px; }
+	}
+	@media (max-height: 950px) {
+		#app { grid-template-rows: 50px auto minmax(0, 1fr); }
+		#change-input { height: 50px; }
+		.tile { padding: 5px 8px 4px 12px; }
+		#rip-result { padding: 6px 16px; }
+		#rip-fields li { padding: 2px 8px; font-size: 13px; }
+		#ripple > .col { padding: 10px 14px 8px; }
+		#rip-result .stampbox { width: 36px; height: 36px; font-size: 22px; }
 	}
 	@media (prefers-reduced-motion: reduce) {
 		*, *::before, *::after { animation: none !important; transition: none !important; }
@@ -318,22 +429,32 @@
 	<header>
 		<a class="logo" href="/"><i></i>Bringup</a>
 		<span id="brief-title"></span>
-		<span id="state-pill" class="pill hidden"><span class="dot"></span><span id="state-text">LIVE</span> · rev <span id="rev-num" class="num">0</span></span>
+		<span id="state-pill" class="pill hidden"><span class="dot"></span><span id="state-text">LIVE</span> · REV <span id="rev-num" class="num">0</span></span>
 		<span id="elapsed" class="num hidden"></span>
 		<div id="checks" class="hidden"></div>
 		<button id="brief-btn" class="pill hidden" title="The brief this run started from">Brief</button>
+		<button id="changes-btn" class="pill hidden" title="Change control: cross-team changes and their owners' decisions">Change control <b id="changes-count" class="num"></b></button>
 		<button id="stop-btn" class="pill hidden" title="End the bring-up phase and the run">■ Stop</button>
 		<button id="feed-btn" class="pill hidden" title="Event feed">Feed</button>
 		<a id="cloud-link" class="pill hidden" target="_blank" rel="noopener">Mozaik Cloud ↗</a>
-		<a id="new-btn" class="pill hidden" href="/" style="text-decoration:none">＋ New design</a>
+		<a id="new-btn" class="pill hidden" href="/">＋ New</a>
 	</header>
+
+	<!-- The composer: change one thing, any time during the run -->
+	<footer id="changebar" class="hidden">
+		<span class="who">Change one thing</span>
+		<div class="box"><input id="change-input" placeholder="Ask for a change while the agents work…" autocomplete="off" maxlength="500" aria-label="Change request"></div>
+		<div class="suggest" id="suggest"></div>
+		<button id="send-btn" title="Send the change (Enter); ⌘K focuses the box">Send ⏎</button>
+	</footer>
 
 	<!-- Start screen: no run selected -->
 	<section id="start" class="hidden">
 		<div class="composer">
-			<h1>New design</h1>
-			<p class="sub">Describe the device. Agents pick the parts, route the board, shape the case and write the firmware, all at once, against one shared contract.</p>
+			<h1>Change one thing.<br><em>The whole design follows.</em></h1>
+			<p class="sub">Describe a device. Concurrent agents pick the parts, route the board, shape the case and write the firmware against one shared contract. Then change anything mid-run and watch board, case, firmware and parts follow, in parallel, and stay consistent.</p>
 			<div class="compose-box">
+				<div class="label"><b>01</b> The brief</div>
 				<p id="scripted-note">Scripted demo: the scripted models always build the logger example, whatever the brief says. For your own brief, pick <b>Real models</b>.</p>
 				<textarea id="brief-input" placeholder="A pocket climate logger: temperature and humidity every minute, a USB-C port for charging, a status LED, and about six months on a small Li-ion cell. Must fit a 50 × 30 mm board."></textarea>
 				<div class="examples" id="examples"></div>
@@ -348,71 +469,87 @@
 			</div>
 			<div id="start-error"></div>
 		</div>
-		<div class="recent"><h2>Recent runs</h2><div id="runs"><div class="t3">no runs yet</div></div></div>
+		<div class="recent"><h2 class="label"><b>02</b> Recent runs</h2><div id="runs"><div class="t3">no runs yet</div></div></div>
 	</section>
 
 	<!-- Run view -->
 	<main id="run" class="hidden">
-		<section id="stage" class="panel">
-			<div class="stage-bar">
-				<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="bench" class="hidden">Bench</button></div>
-				<span id="dims" class="num"></span>
-				<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
-				<div id="battery" class="hidden"><span id="battery-text" class="num"></span><span class="bar"><span class="fill"></span><span class="target"></span></span></div>
+		<section id="ripple" class="sheet" aria-live="polite">
+			<div class="col" id="rip-change">
+				<div class="label"><b>01</b> The change<span class="right" id="rip-when"></span></div>
+				<p id="rip-text"></p>
+				<div id="rip-history"></div>
+				<div id="rip-meta"></div>
 			</div>
-			<div id="stage-body">
-				<div id="pcb-host" class="view"></div>
-				<div id="pcb-empty" class="empty-state">waiting for the first board build</div>
-				<div id="render-view" class="view hidden"><div class="empty-state">waiting for the first board build</div></div>
-				<div id="stage-3d" class="view hidden"></div>
-				<div id="bench-view" class="view hidden">
-					<div class="bench-top"><span id="bench-src" class="src-badge"></span><span id="bench-ports" class="t3"></span><span id="shake-chip" class="chip hidden" title="The board's LED blinks red while it is being shaken">steady</span><div class="flash-bar" id="flash-bar"></div></div>
-					<div id="bench-chart-box"><canvas id="bench-chart"></canvas></div>
-					<div class="bench-bottom"><div id="bench-gauge"><div class="t3">measured vs estimated battery life: waiting for a duty-cycle measurement</div></div><ul class="bench-checks" id="bench-checks"><li class="t3">checks: waiting for the first flash (after the design settles)</li></ul></div>
-				</div>
-				<span id="changed-pill" class="pill"></span>
-				<span id="viewing-pill" class="pill hidden" title="Back to live"></span>
-				<div id="request-toast"></div>
-				<div id="bench-ask" class="hidden" role="alert"><span class="hand">✋</span><div><b id="bench-ask-text"></b><span class="t2" id="bench-ask-note"></span></div></div>
-				<span id="led-mirror" class="pill hidden"><i></i><span></span></span>
+			<div class="col">
+				<div class="label"><b>02</b> Contract fields</div>
+				<ul id="rip-fields"></ul>
 			</div>
-			<div id="scrubber"><span class="label">Revisions</span><div id="dots"></div><button id="live-btn" class="btn">Live</button></div>
+			<div class="col">
+				<div class="label"><b>03</b> Agents<span class="right" id="rip-agents-note"></span></div>
+				<section id="agents"></section>
+			</div>
+			<div class="col">
+				<div class="label"><b>04</b> Checks</div>
+				<ul id="rip-checks"></ul>
+			</div>
+			<div id="rip-result" class="initial"><span class="stampbox" id="rip-stamp">·</span><div style="min-width:0"><div id="rip-headline">Waiting for the first event</div><div id="rip-detail"></div></div><div id="held" class="hidden"></div></div>
 		</section>
-		<aside id="side">
-			<section id="scene-panel" class="panel">
-				<div class="panel-head">3D · case + board<span class="right"><label class="t3" style="font-size:13px">explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
-				<div id="scene-body"><div id="scene-host"></div><div id="scene-empty" class="empty-state">waiting for the first enclosure build</div></div>
+
+		<section id="deck">
+			<section id="stage">
+				<div class="stage-bar">
+					<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="bench" class="hidden">Bench</button></div>
+					<span id="dims" class="num"></span>
+					<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
+					<div id="battery" class="hidden"><span id="battery-text" class="num"></span><span class="bar"><span class="fill"></span><span class="target"></span></span></div>
+				</div>
+				<div id="stage-body">
+					<div id="pcb-host" class="view"></div>
+					<div id="pcb-empty" class="empty-state">waiting for the first board build</div>
+					<div id="render-view" class="view hidden"><div class="empty-state">waiting for the first board build</div></div>
+					<div id="stage-3d" class="view hidden"></div>
+					<div id="bench-view" class="view hidden">
+						<div class="bench-top"><span id="bench-src" class="src-badge"></span><span id="bench-ports" class="t3"></span><span id="shake-chip" class="pill hidden" title="The board's LED blinks red while it is being shaken">steady</span><div class="flash-bar" id="flash-bar"></div></div>
+						<div id="bench-chart-box"><canvas id="bench-chart"></canvas></div>
+						<div class="bench-bottom"><div id="bench-gauge"><div class="t3">measured vs estimated battery life: waiting for a duty-cycle measurement</div></div><ul class="bench-checks" id="bench-checks"><li class="t3">checks: waiting for the first flash (after the design settles)</li></ul></div>
+					</div>
+					<span id="changed-pill" class="pill"></span>
+					<span id="viewing-pill" class="pill hidden" title="Back to live"></span>
+					<div id="bench-ask" class="hidden" role="alert"><span class="hand">✋</span><div><b id="bench-ask-text"></b><span class="t2" id="bench-ask-note"></span></div></div>
+					<span id="led-mirror" class="pill hidden"><i></i><span></span></span>
+				</div>
+				<div id="scrubber"><span class="label">Revisions</span><div id="dots"></div><button id="live-btn">Live</button></div>
 			</section>
-			<section id="parts-panel" class="panel">
-				<div class="panel-head">Parts<span class="right">total <span id="parts-total" class="num">—</span></span></div>
-				<div id="parts-ready"></div>
-				<div id="parts"><div class="empty-state">waiting for the parts list</div></div>
+			<section id="moved" class="sheet">
+				<div class="label"><b>05</b> What moved<span class="right" id="moved-revs"></span></div>
+				<svg id="moved-svg" role="img" aria-label="Board outline and connector cutouts, before and after the change"></svg>
+				<ul id="moved-list"></ul>
 			</section>
-		</aside>
-		<section id="agents"></section>
-		<section id="changes-panel" class="panel">
-			<div class="panel-head">Change control<span class="right" id="changes-count"></span></div>
-			<div id="prs"><div class="none">No cross-team changes yet. When an agent wants a field it doesn't own, it opens a request here and the owner decides.</div></div>
+			<aside id="side">
+				<section id="scene-panel">
+					<div class="label">Case + board<span class="right"><label>explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
+					<div id="scene-body"><div id="scene-host"></div><div id="scene-empty" class="empty-state">waiting for the first enclosure build</div></div>
+				</section>
+				<section id="parts-panel" class="sheet">
+					<div class="label">Parts<span class="right">total <span id="parts-total" class="num">—</span></span></div>
+					<div id="parts-ready"></div>
+					<div id="parts"><div class="t3" style="padding:12px">waiting for the parts list</div></div>
+				</section>
+			</aside>
 		</section>
 	</main>
-
-	<footer id="changebar" class="hidden">
-		<div class="box">
-			<span class="who">engineer ›</span>
-			<input id="change-input" placeholder="Ask for a change while the agents work…" autocomplete="off" maxlength="500">
-			<div class="suggest" id="suggest"></div>
-			<kbd>⌘K</kbd>
-		</div>
-	</footer>
 </div>
-<section id="brief-panel" class="panel hidden"><div class="panel-head">Brief<span class="right"><button class="pill" id="brief-close">Close</button></span></div><pre id="brief-text"></pre></section>
-<aside id="feed"><div class="panel-head" style="padding-bottom:6px">Event feed<span class="right"><button class="pill" id="feed-close">Close</button></span></div><ul id="feed-list"></ul></aside>
+<section id="brief-panel" class="sheet hidden"><div class="label">Brief<span class="right"><button class="pill" id="brief-close">Close</button></span></div><pre id="brief-text"></pre></section>
+<aside id="changes" class="drawer"><div class="label"><b>CC</b> Change control<span class="right"><button class="pill" id="changes-close">Close</button></span></div><div id="prs"><div class="none">No cross-team changes yet. When an agent wants a field it doesn't own, it opens a request here and the owner decides.</div></div></aside>
+<aside id="feed" class="drawer"><div class="label">Event feed<span class="right"><button class="pill" id="feed-close">Close</button></span></div><ul id="feed-list"></ul></aside>
 <div id="overlay"><img alt=""></div>
 
 <script type="module">
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
-	import { AGENT_COLORS, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { liveRipples, mergeRipples, resultLine, runStart, whatMoved } from "/ripple.js"
+	import { AGENT_COLORS, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, flashSteps, lowPass, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -423,7 +560,7 @@
 	// Who's who: short names and initials for avatars (agent roles and lane keys); colours from model.js.
 	const WHO = {
 		architect: ["Architect", "A"], parts: ["Parts", "P"], firmware: ["Firmware", "F"], reviewer: ["Reviewer", "R"],
-		"build:board": ["Board", "B"], "build:enclosure": ["Case", "C"], "build:firmware": ["Build", "⚙"], grounding: ["Grounding", "G"],
+		"build:board": ["Board", "B"], "build:enclosure": ["Case", "C"], "build:firmware": ["FW build", "⚙"], grounding: ["Grounding", "G"],
 		consistency: ["Consistency", "✓"], engineer: ["You", "you"], enclosure: ["Case", "C"],
 	}
 	const color = (k) => AGENT_COLORS[k] ?? AGENT_COLORS[`build:${k}`] ?? AGENT_COLORS.engineer
@@ -437,7 +574,7 @@
 	// ═══ Start screen ══════════════════════════════════════════════════════════════════════════
 	async function startScreen() {
 		$("start").classList.remove("hidden")
-		$("app").style.gridTemplateRows = "56px 1fr"
+		$("app").style.gridTemplateRows = "54px minmax(0, 1fr)"
 		document.title = "Bringup · new design"
 		const opts = { mock: true, hardware: true, review: true, engineerApproval: false, bench: false }
 		// The scripted models always build the logger whatever the brief says, so in that mode the brief is the
@@ -514,13 +651,13 @@
 	async function startRunView(id) {
 		const base = `/runs/${encodeURIComponent(id)}`
 		const file = (p) => `${base}/files/${p}`
-		for (const el of ["run", "changebar", "state-pill", "elapsed", "checks", "brief-btn", "feed-btn", "new-btn"]) $(el).classList.remove("hidden")
+		for (const el of ["run", "changebar", "state-pill", "elapsed", "checks", "brief-btn", "changes-btn", "feed-btn", "new-btn"]) $(el).classList.remove("hidden")
 
 		const S = {
 			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
 			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
 			hover: null, bom: null, contract: null,
-			fab: false, print: null, openPart: null,
+			fab: false, print: null, openPart: null, ripplesFile: null, ripplesText: "", pinned: null, triedRevs: new Set(),
 			bench: null, telemetry: new TelemetryBuffer(30_000), att: { pitch: 0, roll: 0 }, benchTabShown: false, batteryEst: null, stopped: false, lastSampleAt: 0, g0: null,
 		}
 		let benchDirty = false
@@ -535,11 +672,13 @@
 			if (state === barKey) return
 			barKey = state
 			input.disabled = state === "settled" || state === "stopped"
+			setBarButtons(input.disabled)
 			if (state === "bench") input.placeholder = "Bring-up: ask for a change; a firmware change reflashes the board (try “blink faster when tilted”)"
 			else if (state === "stopped") input.placeholder = "The run was stopped. Start a new design to change it."
 			else if (state === "settled") input.placeholder = "The design has settled. Start a new design to change it."
-			else input.placeholder = "Ask for a change while the agents work…"
+			else input.placeholder = "Make it 40 mm wide, swap a part, move a connector… while the agents work"
 		}
+		function setBarButtons(off) { for (const b of [$("send-btn"), ...$("suggest").querySelectorAll("button")]) b.disabled = off }
 		setInterval(() => S.settled && syncChangeBar(), 3000)
 
 		fetch(file("brief.md")).then((r) => (r.ok ? r.text() : "")).then((t) => {
@@ -697,7 +836,7 @@
 			const total = S.bom && !Array.isArray(S.bom) ? S.bom.totalUsd : null
 			$("parts-total").textContent = typeof total === "number" ? `$${total.toFixed(2)}` : "—"
 			const ready = S.bom && !Array.isArray(S.bom) ? S.bom.readiness : null
-			$("parts-ready").textContent = ready?.summary ?? ""
+			$("parts-ready").textContent = readinessShort(ready)
 			$("parts-ready").title = ready?.summary ?? ""
 			$("parts-ready").className = ready?.warn ? "warn" : ""
 			$("parts").innerHTML = items.map((p) => {
@@ -1056,52 +1195,72 @@
 			$("elapsed").textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
 		}, 500)
 
-		// ── Agent cards (the task list) ──
-		const CARD_KEYS = LANES.map((l) => l.key).filter((k) => k !== "consistency")
+		// ── Agents: nine tiles in the ripple, lit when they woke, dimmed when they stayed idle ──
+		const CARD_KEYS = LANES.map((l) => l.key)
 		const ACTIVE = new Set(["thinking", "tool", "building", "checking"])
-		const STATUS = { idle: "idle", thinking: "thinking", tool: "calling a tool", held: "held", building: "building", checking: "checking", done: "done", failed: "failed" }
-		const BAR = { thinking: [0.55, "var(--info)"], tool: [1, "var(--ac)"], held: [0.8, "var(--warn)"], building: [0.9, "var(--ac)"], checking: [0.7, "var(--ac)"], done: [0.45, "var(--ok)"], failed: [1, "var(--error)"], idle: [0.2, "var(--text-3)"] }
+		const STATUS = { idle: "idle", thinking: "thinking", tool: "tool call", held: "held", building: "building", checking: "checking", done: "done", failed: "failed" }
 		const cards = {}
 		for (const k of CARD_KEYS) {
 			const el = document.createElement("div")
-			el.className = "card"
+			el.className = "tile"
 			el.style.setProperty("--ac", color(k))
-			el.innerHTML = `<div class="top"><span class="av"></span><span class="name">${esc(WHO[k][0])}</span><span class="status">idle</span></div><div class="task t3">waiting</div><div class="result"></div><div class="bars"></div>`
+			el.innerHTML = `<div class="top"><span class="name">${esc(WHO[k][0])}</span><span class="status">idle</span></div><div class="task">waiting</div>`
 			el.addEventListener("click", (e) => {
 				if (e.target.closest(".hist")) return
 				const open = el.querySelector(".hist")
 				for (const h of $("agents").querySelectorAll(".hist")) h.remove()
-				if (!open) { el.insertAdjacentHTML("beforeend", `<div class="hist"><ul></ul></div>`); renderHistory(k) }
+				if (open) return
+				el.insertAdjacentHTML("beforeend", `<div class="hist"><ul></ul></div>`)
+				// Fixed, so the ripple's clipping doesn't cut it: under the tile, or above it near the bottom of the screen.
+				const r = el.getBoundingClientRect(), h = el.querySelector(".hist")
+				h.style.left = `${Math.min(r.left, innerWidth - 440)}px`
+				if (r.bottom + 350 < innerHeight) h.style.top = `${r.bottom + 6}px`
+				else h.style.bottom = `${innerHeight - r.top + 6}px`
+				renderHistory(k)
 			})
 			$("agents").append(el)
 			cards[k] = el
 		}
-		document.addEventListener("click", (e) => { if (!e.target.closest(".card")) for (const h of $("agents").querySelectorAll(".hist")) h.remove() })
+		document.addEventListener("click", (e) => { if (!e.target.closest(".tile")) for (const h of $("agents").querySelectorAll(".hist")) h.remove() })
 		function renderCard(k) {
 			const lane = S.lanes[k], el = cards[k]
 			if (!lane || !el) return
-			const hist = el.querySelector(".hist")
-			el.className = `card ${ACTIVE.has(lane.status) ? "active" : lane.status}`
-			el.querySelector(".status").textContent = STATUS[lane.status] ?? lane.status
 			const task = el.querySelector(".task")
 			task.textContent = lane.text || "waiting"
 			task.title = lane.text
-			task.classList.toggle("t3", !lane.text)
-			el.querySelector(".result").textContent = lane.lastResult ? `→ ${lane.lastResult}` : ""
-			el.querySelector(".result").title = lane.lastResult
 			if (lane.boot) {
 				let b = el.querySelector(".boot")
 				if (!b) { b = document.createElement("span"); el.append(b) }
 				b.className = `boot ${lane.boot.ok ? "ok" : "bad"}`
-				b.textContent = lane.boot.ok ? `boots ✓ rev ${lane.boot.bootRevision}` : "✗ no boot"
+				b.textContent = lane.boot.ok ? `QEMU ✓ rev ${lane.boot.bootRevision}` : "✗ no boot"
 				b.title = `QEMU serial (firmware rev ${lane.boot.revision}):\n${lane.boot.tail}`
 			}
-			el.querySelector(".bars").innerHTML = lane.history.slice(-28).map((h) => { const [ht, c] = BAR[h.status] ?? BAR.idle; return `<i style="height:${Math.round(ht * 100)}%;background:${c};opacity:${h.status === "idle" ? 0.3 : 0.85}"></i>` }).join("")
-			if (hist) renderHistory(k)
+			if (el.querySelector(".hist")) renderHistory(k)
 		}
 		function renderHistory(k) {
 			const ul = cards[k].querySelector(".hist ul")
-			if (ul) ul.innerHTML = S.lanes[k].history.slice().reverse().map((h) => `<li><b style="color:${h.status === "failed" ? "var(--error)" : h.status === "done" ? "var(--ok)" : "var(--text)"}">${esc(STATUS[h.status] ?? h.status)}</b><span class="t3">${esc(time(h.at))}</span> · ${esc(h.text)}</li>`).join("") || `<li>nothing yet</li>`
+			if (ul) ul.innerHTML = S.lanes[k].history.slice().reverse().map((h) => `<li><b style="color:${h.status === "failed" ? "var(--error)" : h.status === "done" ? "var(--ok)" : "var(--ink)"}">${esc(STATUS[h.status] ?? h.status)}</b><span class="t3">${esc(time(h.at))}</span> · ${esc(h.text)}</li>`).join("") || `<li>nothing yet</li>`
+		}
+		// Ripple mode: woke vs stayed idle; before any request: who is working on the first design.
+		function paintTiles(r) {
+			const woke = new Set(r?.woke ?? []), working = new Set(r?.working ?? []), checked = new Set(r?.checked ?? [])
+			for (const k of CARD_KEYS) {
+				const lane = S.lanes[k], el = cards[k]
+				const failed = lane.status === "failed" ? " failed" : lane.status === "held" ? " held" : ""
+				let cls, status
+				if (r) {
+					if (checked.has(k)) { cls = working.has(k) || ACTIVE.has(lane.status) ? "checked working" : "checked"; status = "checked" }
+					else if (!woke.has(k)) { cls = "asleep"; status = "stayed idle" }
+					else if (working.has(k)) { cls = "woke working"; status = STATUS[lane.status] ?? lane.status }
+					else { cls = "woke done"; status = lane.status === "failed" ? "failed" : "woke ✓" }
+				} else {
+					cls = ACTIVE.has(lane.status) ? "woke working" : lane.status === "done" ? "woke done" : lane.history.length ? "" : "asleep"
+					status = STATUS[lane.status] ?? lane.status
+				}
+				const next = `tile ${cls}${failed}`
+				if (el.className !== next) el.className = next
+				el.querySelector(".status").textContent = status
+			}
 		}
 
 		// ── Change control: pull-request cards ──
@@ -1120,7 +1279,12 @@
 		function renderPRs() {
 			const list = prCards(S.events, S.snapshots).reverse()
 			const open = list.filter((c) => c.status === "pending" || c.status === "waiting").length
-			$("changes-count").textContent = list.length ? `${list.filter((c) => c.status === "approved").length} approved · ${list.filter((c) => c.status === "rejected").length} rejected · ${open} open` : ""
+			const waiting = list.filter((c) => c.status === "waiting" && !S.myVotes.has(c.id)).length
+			$("changes-count").textContent = list.length ? (open ? `${open} open` : `${list.length}`) : ""
+			$("changes-btn").title = list.length ? `${list.filter((c) => c.status === "approved").length} approved · ${list.filter((c) => c.status === "rejected").length} rejected · ${open} open` : "No cross-team changes yet"
+			$("changes-btn").classList.toggle("waiting", waiting > 0)
+			$("held").classList.toggle("hidden", waiting === 0)
+			if (waiting) $("held").innerHTML = `<button class="pill">⚑ ${waiting} change${waiting === 1 ? "" : "s"} waiting for you →</button>`
 			if (list.length === 0) return
 			const prs = $("prs")
 			prs.querySelector(".none")?.remove()
@@ -1151,58 +1315,246 @@
 			} catch (err) { for (const x of card.querySelectorAll(".act .btn")) x.disabled = false; card.querySelector(".reason").textContent = `couldn't send: ${err.message ?? err}` }
 		})
 
-		// ── Engineer requests on the stage ──
+		// ── The ripple: the change → contract fields → agents → checks → "consistent again in N s" ──
 		async function fetchRequests() {
 			try {
 				const r = await fetch(file("requests.jsonl"), { cache: "no-store" })
 				if (!r.ok) return
 				const reqs = (await r.text()).split("\n").flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : [] } catch { return [] } })
-				if (reqs.length !== S.requests.length) { S.requests = reqs; renderRequests() }
+				if (reqs.length !== S.requests.length) { S.requests = reqs; schedule() }
 			} catch {}
 		}
-		let requestsKey = ""
-		function renderRequests() {
-			// Requests reach the architect and the firmware agent (behavior); either may act on one.
-			const changes = S.events.filter((e) => e.type === "contract.changed" && (e.payload.by === "architect" || e.payload.by === "firmware"))
-			const html = S.requests.slice(-2).map((r) => {
-				const from = Date.parse(r.at)
-				const next = S.requests[S.requests.indexOf(r) + 1]
-				const to = next ? Date.parse(next.at) : Infinity
-				const caused = changes.filter((c) => Date.parse(c.at) >= from && Date.parse(c.at) < to)
-				const eff = caused.length ? caused.map((c) => `${esc(c.payload.field)} v${c.payload.version}`).join(", ") : S.settled ? "no change" : "the agents are on it…"
-				return `<div class="req"><b>engineer:</b> ${esc(r.text)} <span class="eff">→ ${eff}</span></div>`
-			}).join("")
-			if (html !== requestsKey) { requestsKey = html; $("request-toast").innerHTML = html }
-		}
 		setInterval(fetchRequests, 2000)
+		// The runner's own account of each ripple (src/runner/ripple.ts); the live trace stands in until it has one.
+		async function fetchRipples() {
+			if (!S.requests.length) return
+			try {
+				const r = await fetch(file("ripples.json"), { cache: "no-store" })
+				if (!r.ok) return
+				const text = await r.text()
+				if (text === S.ripplesText) return
+				S.ripplesText = text
+				S.ripplesFile = JSON.parse(text)
+				schedule()
+			} catch {}
+		}
+		setInterval(fetchRipples, 2000)
+		// A ripple in flight counts up every second.
+		setInterval(() => { if (S.requests.length || !S.settled) schedule() }, 1000)
 
-		// ── Change bar ──
-		const SUGGEST = ["make it 60 mm wide", "add a user button", "U2 is out of stock, pick another sensor", "move USB-C to the bottom edge"]
-		$("suggest").innerHTML = SUGGEST.map((s) => `<button>${esc(s)}</button>`).join("")
-		$("suggest").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !$("change-input").disabled) { $("change-input").value = b.textContent; $("change-input").focus() } })
+		const FIELDS = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior"]
+		const secs = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s` }
+		const STAMP = { consistent: "✓", rippling: "↯", sent: "→", unsettled: "✗", "no-change": "=", initial: "·" }
+		const MARK = { ok: "✓", error: "✗", warn: "!", running: "", pending: "·", off: "–" }
+
+		function ripples() {
+			return mergeRipples(liveRipples(S.events, S.requests, Date.now()), S.ripplesFile, runStart(S.events) ?? 0)
+		}
+		$("rip-history").addEventListener("click", (e) => {
+			const b = e.target.closest("button"); if (!b) return
+			const rs = ripples()
+			S.pinned = b.dataset.id === rs.at(-1)?.id ? null : b.dataset.id
+			schedule()
+		})
+
+		let resultKey = ""
+		function setResult(state, headline, detail) {
+			const key = `${state}|${headline}|${detail}`
+			if (key === resultKey) return
+			const restamp = !resultKey.startsWith(`${state}|`)
+			resultKey = key
+			const box = $("rip-result")
+			box.className = state
+			$("rip-stamp").textContent = STAMP[state] ?? "·"
+			$("rip-headline").textContent = headline
+			$("rip-detail").textContent = detail
+			// Replay the stamp when the state changes (CSS animation restarts on a re-added class).
+			if (restamp && !reduceMotion) { const s = $("rip-stamp"); s.style.animation = "none"; void s.offsetWidth; s.style.animation = "" }
+		}
+
+		function renderRipple() {
+			const rs = ripples()
+			const r = rs.find((x) => x.id === S.pinned) ?? rs.at(-1) ?? null
+			$("rip-history").innerHTML = rs.length > 1 ? rs.map((x, i) => `<button data-id="${esc(x.id)}" class="${x === r ? "on " : ""}${esc(x.state)}" title="${esc(x.text)}">#${i + 1}</button>`).join("") : ""
+			$("ripple").classList.toggle("flowing", r ? r.state === "rippling" || r.state === "sent" : !S.settled)
+			paintTiles(r)
+			if (!r) return renderInitial()
+			const idx = rs.indexOf(r)
+			const until = rs[idx + 1]?.atMs ?? Infinity
+			// The fields this request touched, version before → after.
+			const touched = new Map()
+			for (const e of S.events) {
+				if (e.type !== "contract.changed") continue
+				const t = Date.parse(e.at)
+				if (t < r.atMs || t >= until) continue
+				const f = touched.get(e.payload.field)
+				touched.set(e.payload.field, { from: f?.from ?? e.payload.version - 1, to: e.payload.version, by: e.payload.by })
+			}
+			for (const f of r.fieldsChanged) if (!touched.has(f)) touched.set(f, null)
+			const textEl = $("rip-text")
+			if (textEl.textContent !== r.text) textEl.textContent = r.text
+			textEl.className = "quote"
+			$("rip-when").textContent = `#${idx + 1} · ${time(r.atMs)}`
+			$("rip-meta").textContent = r.revisions ? `contract rev ${r.revisions.from === r.revisions.to ? r.revisions.from : `${r.revisions.from}–${r.revisions.to}`}` : r.state === "sent" ? "the architect and the firmware agent are reading it" : ""
+			const fieldsHtml = FIELDS.map((f) => {
+				const t = touched.get(f)
+				if (touched.has(f)) return `<li class="touched"><span>${esc(f)}</span><span class="v">${t ? `v${t.from} → v${t.to}` : "changed"}</span></li>`
+				return `<li><span>${esc(f)}</span><span class="v">${S.contract?.versions?.[f] ? `v${S.contract.versions[f]}` : "—"}</span></li>`
+			}).join("")
+			if ($("rip-fields").innerHTML !== fieldsHtml) $("rip-fields").innerHTML = fieldsHtml
+			$("rip-agents-note").textContent = r.state === "sent" ? "" : `${r.woke.length} woke${r.checked?.length ? ` · ${r.checked.length} checked` : ""} · ${r.stayedIdle.length} idle`
+			const checksHtml = r.checks.length
+				? r.checks.map((c) => `<li class="${esc(c.state)}"><span class="mark">${MARK[c.state] ?? ""}</span><span class="what">${esc(c.label)}${c.seq?.length ? `<span class="seq">${c.seq.map((n) => `<i class="${n ? "" : "z"}">${n}</i>`).join("<s>→</s>")}</span>` : ""}</span><span class="detail" title="${esc(c.detail)}">${esc(c.detail)}</span></li>`).join("")
+				: `<li class="pending"><span class="mark">·</span><span class="what">Waiting</span><span class="detail">checks run once a field changes</span></li>`
+			if ($("rip-checks").innerHTML !== checksHtml) $("rip-checks").innerHTML = checksHtml
+			const line = resultLine(r, Date.now())
+			setResult(r.state, line.headline, line.detail)
+			renderMoved(r)
+		}
+
+		// Before any request: the first design being built, and an invitation to change it.
+		function renderInitial() {
+			const title = $("brief-title").textContent.replace(/[“”]/g, "") || "The first design"
+			if ($("rip-text").textContent !== title) $("rip-text").textContent = title
+			$("rip-text").className = ""
+			$("rip-when").textContent = "the brief"
+			$("rip-meta").textContent = S.settled ? "No change requested yet: type one above, or pick a suggestion." : "Every agent works the brief at once, against one contract."
+			const fieldsHtml = FIELDS.map((f) => {
+				const v = S.contract?.versions?.[f]
+				return `<li class="${v ? "set" : "missing"}"><span>${esc(f)}</span><span class="v">${v ? `v${v}` : "—"}</span></li>`
+			}).join("")
+			if ($("rip-fields").innerHTML !== fieldsHtml) $("rip-fields").innerHTML = fieldsHtml
+			const working = CARD_KEYS.filter((k) => ACTIVE.has(S.lanes[k].status)).length
+			$("rip-agents-note").textContent = S.settled ? "" : `${working} working now`
+			const pills = checkPills(S.events)
+			const checksHtml = pills.map((p) => {
+				const state = p.state === "pending" ? "pending" : p.state
+				const detail = p.state === "off" ? "off for this run" : p.state === "pending" ? "not run yet" : p.state === "running" ? "running" : p.state === "ok" ? (p.revision !== null ? `clean at rev ${p.revision}` : "clean") : p.items[0] ?? `${p.count}`
+				return `<li class="${esc(state)}"><span class="mark">${MARK[state] ?? ""}</span><span class="what">${esc(p.label)}${p.count && p.state !== "ok" ? `<span class="seq"><i>${p.count}</i></span>` : ""}</span><span class="detail" title="${esc(detail)}">${esc(detail)}</span></li>`
+			}).join("")
+			if ($("rip-checks").innerHTML !== checksHtml) $("rip-checks").innerHTML = checksHtml
+			const took = S.firstAt && S.endAt ? secs(S.endAt - S.firstAt) : ""
+			if (!S.firstAt) setResult("initial", "Waiting for the first event", "")
+			else if (!S.settled) setResult("rippling", `Designing · rev ${S.revision}`, `${working} of ${CARD_KEYS.length} agents working · ${secs(Date.now() - S.firstAt)}`)
+			else if (S.settled.settled) setResult("consistent", `Consistent at rev ${S.settled.revision}${took ? ` in ${took}` : ""}`, "Now change one thing ↑")
+			else setResult("unsettled", `Stopped unsettled at rev ${S.settled.revision}`, "See the checks")
+			renderMoved(null)
+		}
+
+		// ── What moved: outline, cutouts and pins, before (dashed) → after (solid) ──
+		let movedKey = ""
+		function ensureRevision(rev) {
+			if (rev < 1 || S.snapshots.has(rev) || S.triedRevs.has(rev)) return
+			S.triedRevs.add(rev)
+			fetchRevision(rev)
+		}
+		function renderMoved(r) {
+			let before = null, after = S.contract?.values ?? null, label = "the design now"
+			if (r?.revisions) {
+				ensureRevision(r.revisions.from - 1)
+				ensureRevision(r.revisions.to)
+				before = S.snapshots.get(r.revisions.from - 1)?.values ?? null
+				after = snapAt(r.revisions.to)?.values ?? after
+				label = `rev ${r.revisions.from - 1} → ${r.revisions.to}`
+			}
+			const m = whatMoved(before, after)
+			const key = JSON.stringify([label, r?.id ?? null, r?.fieldsChanged ?? null, Boolean(before), after?.outline, after?.connectors, m])
+			if (key === movedKey) return
+			movedKey = key
+			$("moved-revs").textContent = label
+			drawMoved(before, after, m)
+			const was = (s) => `<span class="was">${esc(s)}</span>`, now = (s) => `<span class="now">${esc(s)}</span>`
+			const place = (c) => (c ? `${c.edge} @ ${c.offsetMm}` : "—")
+			const rows = []
+			if (m.outline) rows.push(`<li><b>outline</b><span>${was(`${m.outline.before.w} × ${m.outline.before.h}`)} → ${now(`${m.outline.after.w} × ${m.outline.after.h} mm`)}</span></li>`)
+			for (const c of m.connectors) rows.push(`<li><b>${esc(c.ref)}</b><span>${c.before ? was(place(c.before)) : "added"} → ${c.after ? now(`${place(c.after)} mm`) : now("removed")}</span></li>`)
+			for (const p of m.pins) rows.push(`<li><b>${esc(p.signal)}</b><span>${p.before !== null ? was(`GPIO${p.before}`) : "new"} → ${p.after !== null ? now(`GPIO${p.after}`) : now("removed")}</span></li>`)
+			for (const p of m.parts) rows.push(`<li><b>${esc(p.ref)}</b><span>${p.before ? was(p.before) : "new"} → ${p.after ? now(p.after) : now("removed")}</span></li>`)
+			const note = !r ? "Nothing has moved yet. After a change, the board's outline, its cutouts and the pin map show here, before → after."
+				: !r.revisions ? "No field has changed yet."
+				: !before ? "Loading the revision before the change…"
+				: rows.length ? "" : `Nothing physical moved: the change stayed in ${r.fieldsChanged.join(", ")}.`
+			$("moved-list").innerHTML = rows.join("") + (note ? `<li class="t3" style="display:block;border:0">${esc(note)}</li>` : "")
+		}
+		function drawMoved(before, after, m) {
+			const svg = $("moved-svg")
+			const o = after?.outline
+			if (!o) { svg.innerHTML = ""; return }
+			const bo = before?.outline ?? o
+			const W = Math.max(o.widthMm, bo.widthMm), H = Math.max(o.heightMm, bo.heightMm)
+			const pad = Math.max(W, H) * 0.16, fs = Math.max(W, H) * 0.05, depth = Math.max(2.5, Math.max(W, H) * 0.05)
+			svg.setAttribute("viewBox", `${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}`)
+			svg.setAttribute("preserveAspectRatio", "xMidYMid meet")
+			// Contract coordinates run from the bottom-left corner, y up (codegen/circuit.ts); the SVG's y runs down.
+			const Y = (y) => H - y
+			const rect = (w, h, cls) => `<rect class="${cls}" x="0" y="${Y(h)}" width="${w}" height="${h}"/>`
+			const centre = (c, outline) => (c.edge === "left" ? [0, c.offsetMm] : c.edge === "right" ? [outline.widthMm, c.offsetMm] : c.edge === "bottom" ? [c.offsetMm, 0] : [c.offsetMm, outline.heightMm])
+			const cut = (c, outline, cls) => {
+				const [x, y] = centre(c, outline)
+				const along = c.widthMm ?? 8, vertical = c.edge === "left" || c.edge === "right"
+				const w = vertical ? depth : along, h = vertical ? along : depth
+				return `<rect class="${cls}" x="${x - w / 2}" y="${Y(y) - h / 2}" width="${w}" height="${h}"/>`
+			}
+			const moved = new Map(m.connectors.map((c) => [c.ref, c]))
+			let out = `<defs><marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="${fs * 0.9}" markerHeight="${fs * 0.9}" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--signal)"/></marker></defs>`
+			if (m.outline) out += rect(bo.widthMm, bo.heightMm, "before")
+			out += rect(o.widthMm, o.heightMm, "after")
+			for (const c of after.connectors ?? []) {
+				const mv = moved.get(c.ref)
+				if (mv?.before) out += cut({ ...mv.before }, bo, "cut-before")
+				out += cut(c, o, mv ? "cut-after" : "cut-same")
+				if (mv?.before) {
+					const [x1, y1] = centre(mv.before, bo), [x2, y2] = centre(c, o)
+					if (Math.hypot(x2 - x1, y2 - y1) > depth) out += `<path class="arrow" d="M${x1} ${Y(y1)} Q ${(x1 + x2) / 2 + (y2 - y1) * 0.25} ${(Y(y1) + Y(y2)) / 2 - (x2 - x1) * 0.25} ${x2} ${Y(y2)}"/>`
+				}
+				const [x, y] = centre(c, o)
+				const dx = c.edge === "left" ? depth : c.edge === "right" ? -depth : 0, dy = c.edge === "bottom" ? -depth : c.edge === "top" ? depth : 0
+				out += `<text x="${x + dx}" y="${Y(y + dy) + fs * 0.35}" font-size="${fs}" text-anchor="${c.edge === "left" ? "start" : c.edge === "right" ? "end" : "middle"}">${esc(c.ref)}</text>`
+			}
+			for (const c of m.connectors) if (!c.after && c.before) out += cut(c.before, bo, "cut-before")
+			const wText = m.outline && m.outline.before.w !== m.outline.after.w ? `${m.outline.before.w} → ${m.outline.after.w} mm` : `${o.widthMm} mm`
+			const hText = m.outline && m.outline.before.h !== m.outline.after.h ? `${m.outline.before.h} → ${m.outline.after.h} mm` : `${o.heightMm} mm`
+			out += `<text class="dim" x="${o.widthMm / 2}" y="${H + pad * 0.62}" font-size="${fs * 1.15}" text-anchor="middle">${esc(wText)}</text>`
+			out += `<text class="dim" transform="translate(${-pad * 0.42} ${Y(o.heightMm / 2)}) rotate(-90)" font-size="${fs * 1.15}" text-anchor="middle">${esc(hText)}</text>`
+			svg.innerHTML = out
+		}
+
+		// ── The composer: one-click suggestions that the scripted agents handle too ──
+		const SUGGEST = ["make it 40 mm wide", "make it 60 mm wide", "blink faster when tilted"]
+		$("suggest").innerHTML = `<span class="lead">one click</span>` + SUGGEST.map((s) => `<button>${esc(s)}</button>`).join("")
+		$("suggest").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !b.disabled) sendChange(b.textContent) })
+		$("send-btn").addEventListener("click", () => sendChange($("change-input").value))
 		document.addEventListener("keydown", (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("change-input").focus() }
-			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("brief-panel").classList.add("hidden"); if (S.openPart) showSourcing(null) }
+			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("changes").classList.remove("open"); $("brief-panel").classList.add("hidden"); if (S.openPart) showSourcing(null) }
 		})
-		$("change-input").addEventListener("keydown", async (e) => {
-			if (e.key !== "Enter") return
-			const text = $("change-input").value.trim()
-			if (!text) return
+		$("change-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChange($("change-input").value) })
+		async function sendChange(raw) {
+			const text = String(raw ?? "").trim()
+			if (!text || $("change-input").disabled) return
 			$("change-input").disabled = true
+			setBarButtons(true)
 			try {
 				const res = await fetch(`/api/runs/${encodeURIComponent(id)}/requests`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) })
 				if (!res.ok) throw new Error((await res.json()).error)
 				$("change-input").value = ""
+				// The newest ripple takes the stage.
+				S.pinned = null
 				fetchRequests()
 			} catch (err) { $("change-input").value = text; $("change-input").placeholder = `couldn't send: ${err.message ?? err}` }
 			// Sending disabled the input: force a refresh.
 			barKey = ""
 			syncChangeBar()
 			if (!$("change-input").disabled) $("change-input").focus()
-		})
+		}
+
+		// ── Drawers: change control and the event feed ──
+		$("changes-btn").addEventListener("click", () => { $("feed").classList.remove("open"); $("changes").classList.toggle("open") })
+		$("changes-close").addEventListener("click", () => $("changes").classList.remove("open"))
+		$("held").addEventListener("click", () => { $("feed").classList.remove("open"); $("changes").classList.add("open") })
 
 		// ── Feed drawer ──
-		$("feed-btn").addEventListener("click", () => $("feed").classList.toggle("open"))
+		$("feed-btn").addEventListener("click", () => { $("changes").classList.remove("open"); $("feed").classList.toggle("open") })
 		$("feed-close").addEventListener("click", () => $("feed").classList.remove("open"))
 		$("overlay").addEventListener("click", () => $("overlay").classList.remove("open"))
 		const FEED_COLOR = { "contract.changed": "var(--info)", "change.proposed": "var(--warn)", "change.resolved": "var(--ok)", "artifact.ready": "var(--c-board)", "artifact.failed": "var(--error)", "design.settled": "var(--ok)", "agent.halted": "var(--error)" }
@@ -1265,7 +1617,7 @@
 			for (const k of dirty) renderCard(k)
 			dirty.clear()
 			renderPRs()
-			renderRequests()
+			renderRipple()
 			if (benchDirty) renderBench()
 		}
 		let lastSeq = -1

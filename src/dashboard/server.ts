@@ -16,7 +16,9 @@ const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["lanes.js", "stl.js", "model.js", "pcb-view.js", "scene3d.js"])
+const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "pcb-view.js", "scene3d.js"])
+// Vendored OFL fonts (fonts/README.md), by exact name.
+const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
 const PROPOSAL_ID = /^[\w-]{1,100}$/
 const MAX_BODY = 64 * 1024
@@ -345,6 +347,10 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (!source) return send(res, 404, "not found")
 				res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" })
 				return res.end(source)
+			}
+			if (path.startsWith("/fonts/") && FONTS.has(path.slice("/fonts/".length))) {
+				res.writeHead(200, { "content-type": "font/woff", "cache-control": "max-age=86400" })
+				return res.end(await readFile(new URL(`.${path}`, import.meta.url)))
 			}
 			if (path === "/api/runs") return json(res, 200, await listRuns())
 			if (path === "/api/briefs") return json(res, 200, await listBriefs())
