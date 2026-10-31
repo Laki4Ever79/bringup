@@ -19,7 +19,7 @@ const HISTORY = 40
 const BUILDS = {
 	board: { inputs: ["parts", "pins", "outline", "connectors"], requires: ["outline", "parts", "pins"] },
 	enclosure: { inputs: ["outline", "connectors"], requires: ["outline", "connectors"] },
-	firmware: { inputs: ["parts", "pins", "behavior"], requires: ["parts", "pins"] },
+	firmware: { inputs: ["parts", "pins", "behavior", "requirements"], requires: ["parts", "pins"] },
 }
 
 // agent.activity phase → lane status
