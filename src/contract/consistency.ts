@@ -119,6 +119,8 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 		}
 	}
 
+	// The firmware is generated from the contract (pins.h), so a pin or sensor-driver mismatch only means it hasn't been
+	// rebuilt yet: the builder fixes it, and no agent is woken (an agent would "fix" the contract to match a stale build).
 	if (a.firmware && pins) {
 		for (const pin of pins) {
 			const built = a.firmware.pins[pin.signal]
@@ -127,7 +129,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 					kind: "pin-mismatch",
 					message: `firmware drives ${pin.signal} on GPIO${built ?? "?"}, contract says GPIO${pin.gpio}`,
 					fields: ["pins"],
-					affects: ["firmware"],
+					affects: [],
 				})
 			}
 		}
@@ -141,7 +143,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 				kind: "sensor-mismatch",
 				message: `firmware reads the sensor with the ${a.firmware.sensor ?? "no"} driver, contract's ${sensor.ref} is ${sensor.mpn} (${wanted ?? "no driver"})`,
 				fields: ["parts"],
-				affects: ["firmware"],
+				affects: [],
 			})
 		}
 	}
