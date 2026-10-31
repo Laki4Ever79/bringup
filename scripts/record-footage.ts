@@ -106,7 +106,7 @@ async function main(): Promise<void> {
 			await page.waitForTimeout(3500)
 		})
 
-		// Act 3: the automatic change ripples; then "make it 40 mm wide" typed by hand; the proof line; what moved; why.
+		// Act 3: the automatic change ripples; then "make it 40 mm wide" typed by hand; the proof line; the PCB; why.
 		await take(3, runUrl, async (page) => {
 			await until(page, `/blink/i.test(document.getElementById("rip-text").textContent)`, 120_000)
 			mark("the automatic change lands: “blink faster when tilted” (firmware only)")
@@ -120,16 +120,14 @@ async function main(): Promise<void> {
 			await page.waitForTimeout(600)
 			await page.keyboard.press("Enter")
 			await until(page, `/40 mm/.test(document.getElementById("rip-text").textContent) && ["rippling", "sent"].includes(document.getElementById("rip-result").className)`, 120_000)
-			mark("the ripple: outline v1 → v2, architect, board and case working, the rest dimmed")
+			mark("the ripple: outline v1 → v2, architect, board and case working, the rest idle")
 			await until(page, `/40 mm/.test(document.getElementById("rip-text").textContent) && document.getElementById("rip-result").className === "consistent"`, 10 * 60_000)
 			mark("Consistent again in … · the proof line: without the shared contract, 4 mismatches would ship")
 			await page.waitForTimeout(4000)
-			await glide(page, "#moved")
-			await page.waitForTimeout(2500)
 			const u1 = page.locator('.pcb-root [data-ref="U1"]').first()
 			const b = await u1.boundingBox().catch(() => null)
 			if (b) await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 30 })
-			mark("What moved 50 → 40 mm; PCB rulers with U1's size on hover")
+			mark("the PCB at 40 mm: rulers, U1's size on hover")
 			await page.waitForTimeout(3000)
 			await glide(page, "#why-btn")
 			await page.click("#why-btn")

@@ -47,7 +47,8 @@ test("builders show building only once their required fields exist, then done or
 	assert.match(lanes["build:board"].text, /rev 6/)
 	applyLaneEvent(lanes, ev("artifact.failed", { kind: "firmware", revision: 6, error: "main.cpp:3: error: x\nmore" }))
 	assert.equal(lanes["build:firmware"].status, "failed")
-	assert.equal(lanes["build:firmware"].text, "rev 6 failed: main.cpp:3: error: x")
+	assert.equal(lanes["build:firmware"].text, "rev 6 failed")
+	assert.equal(lanes["build:firmware"].history.at(-1).detail, "main.cpp:3: error: x", "the error stays in the history popover")
 })
 
 test("an older build finishing keeps the lane building while a newer one is queued", () => {
@@ -57,7 +58,7 @@ test("an older build finishing keeps the lane building while a newer one is queu
 	applyLaneEvent(lanes, changed("pins", 2, 7))
 	applyLaneEvent(lanes, ev("artifact.ready", { kind: "firmware", revision: 6 }))
 	assert.equal(lanes["build:firmware"].status, "building")
-	assert.equal(lanes["build:firmware"].text, "rev 6 built · building rev 7…")
+	assert.equal(lanes["build:firmware"].text, "building rev 7…")
 	applyLaneEvent(lanes, ev("artifact.ready", { kind: "firmware", revision: 7 }))
 	assert.equal(lanes["build:firmware"].status, "done")
 })
@@ -219,4 +220,49 @@ test("the firmware lane builds again when the requirements change (the duty-cycl
 	applyLaneEvent(lanes, ev("artifact.ready", { kind: "firmware", revision: 2 }))
 	applyLaneEvent(lanes, changed("requirements", 2, 3))
 	assert.equal(lanes["build:firmware"].status, "building")
+})
+
+// A tile shows its text on ONE line (ellipsis, full text on hover). At 1440 a tile has ~140px for it: 20 characters.
+const TILE_BUDGET = 20
+
+test("tile texts from checks fit one line: consistency counts violations (the kinds stay in the history), grounding is short", () => {
+	const lanes = createLanes()
+	applyLaneEvent(lanes, ev("consistency.checked", { revision: 9, violations: [{ kind: "outline-mismatch", message: "a" }, { kind: "standoff", message: "b" }, { kind: "standoff", message: "c" }, { kind: "fit", message: "d" }, { kind: "cutout-misaligned", message: "e" }] }))
+	assert.equal(lanes.consistency.text, "rev 9: 5 violations")
+	assert.equal(lanes.consistency.history.at(-1).detail, "outline-mismatch, standoff, fit, cutout-misaligned")
+	applyLaneEvent(lanes, ev("grounding.checked", { revision: 7, findings: [] }))
+	assert.equal(lanes.grounding.text, "rev 7: all grounded")
+	applyLaneEvent(lanes, ev("grounding.checked", { revision: 12, findings: [{ kind: "unknown-pin" }, { kind: "unknown-pin" }] }))
+	for (const k of ["consistency", "grounding"]) assert.ok(lanes[k].text.length <= TILE_BUDGET, `${k}: "${lanes[k].text}"`)
+})
+
+test("the scripted agents' replies (their tile text) fit one line", async () => {
+	const { readFileSync } = await import("node:fs")
+	const src = readFileSync(new URL("../src/inference/scripts.ts", import.meta.url), "utf8")
+	const replies = [...src.matchAll(/say\(([^)]*)\)/g)].flatMap((m) => [...m[1].matchAll(/"([^"]*)"/g)].map((q) => q[1]))
+	assert.ok(replies.length > 5)
+	for (const r of replies) assert.ok(r.length <= TILE_BUDGET, `"${r}" is ${r.length} characters`)
+})
+
+test("every lane text a run produces fits one line (failures carry their error in the history, not the tile)", () => {
+	const lanes = createLanes()
+	const texts: string[] = []
+	const apply = (e: object) => { for (const k of applyLaneEvent(lanes, e as any)) texts.push(`${k}: ${(lanes as any)[k].text}`) }
+	for (const [f, v, r] of [["outline", 1, 1], ["connectors", 1, 2], ["parts", 1, 3], ["pins", 1, 4], ["behavior", 1, 5], ["requirements", 1, 6]] as const) apply(changed(f, v, r))
+	apply(changed("outline", 2, 12))
+	apply(ev("artifact.ready", { kind: "board", revision: 11, drc: { errors: 0, warnings: 92, unconnected: 0, rules: "jlcpcb" } }))
+	apply(ev("artifact.ready", { kind: "board", revision: 12, drc: { errors: 0, warnings: 92, unconnected: 0, rules: "jlcpcb" } }))
+	assert.equal(lanes["build:board"].text, "rev 12 · DRC clean")
+	apply(ev("artifact.ready", { kind: "board", revision: 12, drc: { errors: 3, warnings: 0, unconnected: 1, rules: "jlcpcb" } }))
+	assert.equal(lanes["build:board"].text, "DRC: 3 errors")
+	apply(ev("artifact.ready", { kind: "firmware", revision: 12 }))
+	apply(ev("firmware.booted", { revision: 12, booted: true, bootRevision: 12, serialTail: "rev 12\n" }))
+	assert.equal(lanes["build:firmware"].text, "rev 12 · QEMU ✓")
+	apply(ev("firmware.booted", { revision: 12, booted: false, serialTail: "panic\n" }))
+	assert.equal(lanes["build:firmware"].text, "rev 12 · QEMU ✗")
+	apply(ev("artifact.ready", { kind: "enclosure", revision: 12 }))
+	apply(ev("design.ready", { revision: 12 }))
+	apply(ev("review.completed", { revision: 12, verdict: "fail", findings: [{}, {}, {}] }))
+	apply(ev("design.settled", { revision: 12, settled: false }))
+	for (const t of texts) assert.ok(t.slice(t.indexOf(": ") + 2).length <= TILE_BUDGET, `"${t}"`)
 })

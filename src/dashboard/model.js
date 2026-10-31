@@ -415,15 +415,37 @@ export function runPhase({ settled, stay, alive, benchLive, stopped }) {
 	if (!settled) return { bar: "live", pill: "LIVE", open: true }
 	if (stopped) return { bar: "stopped", pill: word, open: false }
 	if (benchLive) return { bar: "bench", pill: `${word} · bench live`, open: true }
-	if (stay && alive) return { bar: "waiting", pill: `${word} · waiting for a change`, open: true }
+	// "open": it still takes changes (the composer says so at length; the header stays compact).
+	if (stay && alive) return { bar: "waiting", pill: `${word} · open`, open: true }
 	return { bar: "settled", pill: word, open: false }
 }
 
 // The composer's placeholder for the run's phase (runPhase().bar), honest about an unsettled design.
-export function composerPrompt(bar, settled) {
+// Scripted agents act on a width ("make it N mm wide") and the blink; anything else they answer "no change".
+const SCRIPTED_ASK = "a width for the board (“make it 40 mm wide”) or the blink (“blink faster when tilted”)"
+
+export function composerPrompt(bar, settled, { scripted = false } = {}) {
+	if (scripted && bar === "waiting" && settled?.settled !== false) return `Settled. Change one thing: ${SCRIPTED_ASK}`
+	if (scripted && bar === "live") return `Change one thing: ${SCRIPTED_ASK}`
 	if (bar === "bench") return "Bring-up: ask for a change; a firmware change reflashes the board (try “blink faster when tilted”)"
 	if (bar === "waiting") return settled?.settled === false ? "Not consistent yet: ask for a change that fixes it (the checks say what is wrong), or try another…" : "Settled. Now change one thing: make it 40 mm wide, swap a part, move a connector…"
 	if (bar === "stopped") return "The run was stopped. Start a new design to change it."
 	if (bar === "settled") return "This run has ended. Start a new design to change it."
 	return "Make it 40 mm wide, swap a part, move a connector… while the agents work"
+}
+
+// ── Folds: the parts list and the revisions strip, collapsed by default, remembered per browser ──────────────────
+
+export function foldHeader(kind, { count = 0, totalUsd = null } = {}) {
+	if (kind === "revisions") return `Revisions · ${count}`
+	if (!count) return "Parts"
+	return `Parts · ${count}${typeof totalUsd === "number" ? ` · $${totalUsd.toFixed(2)}` : ""}`
+}
+
+const foldKey = (kind) => `bringup.fold.${kind}`
+export function foldOpen(storage, kind) {
+	try { return storage?.getItem(foldKey(kind)) === "open" } catch { return false }
+}
+export function setFold(storage, kind, open) {
+	try { storage?.setItem(foldKey(kind), open ? "open" : "closed") } catch {}
 }

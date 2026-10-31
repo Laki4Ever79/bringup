@@ -177,12 +177,13 @@ function benchCheck(source, events, changes) {
 	const last = (type) => events.filter((e) => e.type === type && e.payload.revision >= need).at(-1)?.payload
 	const blink = last("bench.blink"), flashed = last("bench.flashed"), flashing = last("bench.flashing")
 	if (blink) {
-		if (!blink.pass) return { key: "bench", label, state: "error", detail: `rev ${blink.revision} · ${blink.detail}` }
-		return { key: "bench", label, state: "ok", detail: `rev ${blink.revision} running · ${typeof blink.tiltBlinkMs === "number" ? `tilted ${blink.tiltBlinkMs} ms` : `blink ${blink.blinkMs} ms`} measured` }
+		const what = typeof blink.tiltBlinkMs === "number" ? `tilted ${blink.tiltBlinkMs} ms` : `blink ${blink.blinkMs} ms`
+		if (!blink.pass) return { key: "bench", label, state: "error", detail: `rev ${blink.revision} · ${blink.detail}`, short: `${what} ✗` }
+		return { key: "bench", label, state: "ok", detail: `rev ${blink.revision} running · ${what} measured`, short: `${what} ✓` }
 	}
-	if (flashed) return flashed.ok ? { key: "bench", label, state: "running", detail: `rev ${flashed.revision} running · measuring the blink` } : { key: "bench", label, state: "error", detail: `rev ${flashed.revision} flash failed: ${flashed.error}` }
-	if (flashing) return { key: "bench", label, state: "running", detail: `flashing rev ${flashing.revision} · ${flashing.stage} ${flashing.pct} %` }
-	return { key: "bench", label, state: "running", detail: `waiting to flash rev ${need}` }
+	if (flashed) return flashed.ok ? { key: "bench", label, state: "running", detail: `rev ${flashed.revision} running · measuring the blink`, short: "running · measuring" } : { key: "bench", label, state: "error", detail: `rev ${flashed.revision} flash failed: ${flashed.error}`, short: "flash failed" }
+	if (flashing) return { key: "bench", label, state: "running", detail: `flashing rev ${flashing.revision} · ${flashing.stage} ${flashing.pct} %`, short: `flashing ${flashing.pct} %` }
+	return { key: "bench", label, state: "running", detail: `waiting to flash rev ${need}`, short: "waiting to flash" }
 }
 
 function groundingCheck(events) {
@@ -214,18 +215,6 @@ const secs = (ms) => {
 	return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`
 }
 
-// The big line under the ripple: "Consistent again in 38 s · 4 of 9 agents woke".
-// stubbed: the run's hardware is stubbed (--no-hardware), which is why a ripple can take under a second.
-export function resultLine(r, now = Date.now(), { stubbed = false } = {}) {
-	const woke = `${r.woke.length} of ${KEYS.length} agents woke${r.checked?.length ? ` · ${r.checked.length} checked, no change` : ""}${stubbed ? " · hardware stubbed" : ""}`
-	const [headline, detail] =
-		r.state === "consistent" ? [`Consistent again in ${secs(r.durationMs)}`, woke]
-		: r.state === "rippling" ? [`Rippling · ${secs(now - r.atMs)}`, `${woke}${r.working.length ? ` · ${r.working.length} still working` : ""}`]
-		: r.state === "unsettled" ? [`Not consistent: ${r.violations.at(-1) ?? r.violationsPeak} violation${(r.violations.at(-1) ?? r.violationsPeak) === 1 ? "" : "s"} left`, woke]
-		: r.state === "no-change" ? ["No change to the design", r.checked?.length ? `${r.checked.length} agent${r.checked.length === 1 ? "" : "s"} checked it; none touched the contract` : "no agent touched the contract"]
-		: ["Sent to the agents", r.woke.length ? woke : "waiting for an agent to pick it up"]
-	return { headline, detail, text: `${headline} · ${detail}` }
-}
 
 // ── Before → after ────────────────────────────────────────────────────────────────────────────────
 
@@ -254,4 +243,77 @@ export function whatMoved(before, after) {
 	const parts = []
 	for (const ref of new Set([...bm.keys(), ...am.keys()])) if (bm.get(ref) !== am.get(ref)) parts.push({ ref, before: bm.get(ref) ?? null, after: am.get(ref) ?? null })
 	return { outline, connectors, pins, parts, count: (outline ? 1 : 0) + connectors.length + pins.length + parts.length }
+}
+
+// ── The 04 Result banner as a live status line ──────────────────────────────────────────────────────────────────
+// What is happening now, in plain words (who is rebuilding for what, what doesn't line up yet, what the bench is
+// doing), then how the change ended. Everything comes from the ripple and the latest consistency check.
+
+// The latest check's violations in words: the domains that disagree.
+const PROBLEM = {
+	"outline-mismatch": "board and case outlines differ",
+	"cutout-misaligned": "the case's cutouts don't line up with the board",
+	"cutout-missing": "the case is missing a cutout for a connector",
+	"standoff-mismatch": "the case's standoffs don't meet the board's holes",
+	"pin-mismatch": "the firmware's pins don't match the board",
+	"net-missing": "the board is missing a connection",
+	"part-mismatch": "the board's parts don't match the parts list",
+	"sensor-mismatch": "the firmware drives a different sensor than the board has",
+	"firmware-build-failed": "the firmware doesn't build",
+	"history-overflow": "the history doesn't fit in flash",
+}
+const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", grounding: "datasheet check", consistency: "consistency check" }
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
+const and = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`)
+const mismatches = (n) => `${n} mismatch${n === 1 ? "" : "es"}`
+
+// The change in a few words: a width, a file edit, or the request itself in quotes.
+function changeLabel(r) {
+	if (r.file) return `${r.file.name} edit (${r.file.items.join("; ")})`
+	const w = /(\d+(?:\.\d+)?)\s*mm wide/i.exec(r.text)
+	return w ? `${w[1]} mm wide` : `“${r.text}”`
+}
+function problem(violations, n) {
+	const kinds = [...new Set((violations ?? []).map((v) => v.kind))]
+	return kinds.length && PROBLEM[kinds[0]] ? PROBLEM[kinds[0]] : null
+}
+
+export function statusLine({ ripple: r, now = Date.now(), stubbed = false, violations = [], settled = null, revision = 0, firstAtMs = null, endAtMs = null, workingCount = 0, open = true, benchAsk = null }) {
+	if (!r) {
+		if (firstAtMs === null) return { state: "initial", headline: "Starting up", detail: "" }
+		if (!settled) return { state: "rippling", headline: "Designing from the brief", detail: `${workingCount} agent${workingCount === 1 ? "" : "s"} working · rev ${revision} · ${secs(now - firstAtMs)}` }
+		if (settled.settled) return { state: "consistent", headline: `First design consistent at rev ${settled.revision}`, detail: `${secs((endAtMs ?? now) - firstAtMs)} from the brief · ${open ? "now change one thing ↑" : "this run has ended"}` }
+		return { state: "unsettled", headline: `Stopped: not consistent at rev ${settled.revision}`, detail: problem(violations) ?? "see the Consistency tile" }
+	}
+	const label = changeLabel(r)
+	const bench = r.checks?.find((c) => c.key === "bench")
+	if (r.state === "consistent" && bench) {
+		const board = bench.label === "Real board" ? "the real board" : bench.label.toLowerCase()
+		const done = `${label} · consistent in ${secs(r.durationMs)}`
+		if (bench.state === "ok") return { state: "consistent", headline: `Measured on ${board}: ${bench.short}`, detail: `${done} · ${bench.detail.split(" · ")[0]}` }
+		if (bench.state === "error") return { state: "unsettled", headline: `${cap(board.replace(/^the /, ""))}: ${bench.detail.replace(/^rev \d+ · /, "").replace(/^rev \d+ /, "")}`, detail: `${label} · the design is consistent, the board disagrees` }
+		const headline = benchAsk === "tilt" ? "Your turn: tilt the board"
+			: bench.short === "waiting to flash" ? `Flashing ${board} next`
+			: bench.short.startsWith("flashing") ? `Flashing ${board} · ${bench.short.replace(/^flashing /, "")}`
+			: `Measuring the blink on ${board}`
+		return { state: "rippling", headline, detail: `${done} · now on ${board}` }
+	}
+	const acted = `${r.woke.length} of ${KEYS.length} agents had to act`
+	switch (r.state) {
+		case "sent": return { state: "sent", headline: `Agents reading ${label}`, detail: "deciding which fields it touches" }
+		case "consistent": return { state: "consistent", headline: `${label}: board, case and firmware agree`, detail: `in ${secs(r.durationMs)}${stubbed ? " · hardware stubbed" : ""} · ${acted}` }
+		case "no-change": return { state: "no-change", headline: `Nothing to change for ${label}`, detail: `${r.checked?.length ?? 0} agent${r.checked?.length === 1 ? "" : "s"} checked it · no field moved` }
+		case "unsettled": {
+			const n = r.violations.at(-1) ?? r.violationsPeak
+			return { state: "unsettled", headline: `Stopped: ${mismatches(n)} left after ${label}`, detail: problem(violations) ?? "see the Consistency tile" }
+		}
+	}
+	// Rippling: a mismatch in words if there is one, else who is working on it.
+	const n = r.violations.at(-1) ?? 0
+	const took = secs(now - r.atMs)
+	if (n > 0) return { state: "rippling", headline: cap(problem(violations) ?? `${mismatches(n)} to fix`), detail: `${label} · ${mismatches(n)} · the agents are fixing it · ${took}` }
+	const builders = r.working.filter((k) => k.startsWith("build:")).map((k) => WHO_SHORT[k])
+	const agents = r.working.filter((k) => !k.startsWith("build:")).map((k) => WHO_SHORT[k] ?? k)
+	const headline = builders.length ? `${cap(and(builders))} rebuilding for ${label}` : agents.length ? `${cap(and(agents))} working on ${label}` : `Checking ${label}`
+	return { state: "rippling", headline, detail: `${r.fieldsChanged.join(", ") || "no field"} changed · ${r.stayedIdle.length} agent${r.stayedIdle.length === 1 ? "" : "s"} not affected · ${took}` }
 }
