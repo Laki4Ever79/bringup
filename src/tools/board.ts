@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { circuitFromContract, LDO_FROM_USB_MM, type PlacementOptions } from "../codegen/circuit.ts"
 import type { BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { holesFromCircuitJson, netsFromCircuitJson } from "./board-nets.ts"
+import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson } from "./board-nets.ts"
 import { kicadCli, toolPath, type Env } from "./env.ts"
 import { runDrc } from "./drc.ts"
 import { run, tail } from "./exec.ts"
@@ -46,7 +46,8 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 
 	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], work, 180_000)
 	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], work, 180_000)
-	const drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro")
+	const usbRefs = (s.values.connectors ?? []).filter((c) => c.kind === "usb-c").map((c) => c.ref)
+	const drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro", usbRefs)
 	cpSync(work, dir, { recursive: true })
 
 	return {
@@ -59,6 +60,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 		heightMm: pcb?.height ?? 0,
 		nets: netsFromCircuitJson(elements),
 		holes: holesFromCircuitJson(elements),
+		parts: partsFromCircuitJson(elements),
 		drc,
 	}
 }

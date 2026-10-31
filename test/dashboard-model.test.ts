@@ -149,3 +149,61 @@ test("the Review pill says off when the run has the brief review disabled", () =
 	const on = checkPills([ev("run.started", { review: true, engineerApproval: false, noHardware: true, bench: false })]).find((p: any) => p.key === "review")
 	assert.equal(on.state, "pending")
 })
+
+test("the composer and the state pill: live, bench, waiting for a change, settled, stopped", async () => {
+	const { runPhase } = await import("../src/dashboard/model.js")
+	assert.deepEqual(runPhase({ settled: null, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "live", pill: "LIVE", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "SETTLED · waiting for a change", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: false }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "UNSETTLED · waiting for a change", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: false, alive: true, benchLive: true, stopped: false }), { bar: "bench", pill: "SETTLED · bench live", open: true })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: false, benchLive: false, stopped: false }), { bar: "settled", pill: "SETTLED", open: false })
+	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: true }), { bar: "stopped", pill: "SETTLED", open: false })
+	assert.deepEqual(runPhase({ settled: { settled: false }, stay: false, alive: false, benchLive: false, stopped: false }), { bar: "settled", pill: "UNSETTLED", open: false })
+})
+
+test("DRC errors inside one part's own footprint read amber with the reason; any other error stays red", () => {
+	const board = (drc: object) => [{ seq: 1, at: "2026-10-31T12:00:01.000Z", type: "artifact.ready", producerId: "x", payload: { kind: "board", revision: 8, drc } }]
+	const own = { rules: "JLCPCB 2-layer", errors: 2, warnings: 91, unconnected: 0, byType: { hole_clearance: 2 }, firstError: "Hole clearance violation (board setup constraints hole clearance 0.2000 mm; actual 0.1712 mm)", ownFootprint: { J1: 2 } }
+	const pill = checkPills(board(own)).find((p) => p.key === "drc")!
+	assert.equal(pill.state, "warn")
+	assert.equal(pill.count, 2)
+	assert.match(pill.items[0], /2 inside J1's own footprint/)
+	assert.match(pill.items.join("\n"), /vendor land pattern/)
+	const real = checkPills(board({ ...own, errors: 3 })).find((p) => p.key === "drc")!
+	assert.equal(real.state, "error", "an error between parts is a real one")
+	assert.equal(checkPills(board({ ...own, ownFootprint: undefined })).find((p) => p.key === "drc")!.state, "error", "older traces without the field stay as they were")
+})
+
+test("a clean DRC that relies on the USB-C vendor rule says so in the pill", () => {
+	const board = (drc: object) => [{ seq: 1, at: "2026-10-31T12:00:01.000Z", type: "artifact.ready", producerId: "x", payload: { kind: "board", revision: 9, drc } }]
+	const clean = { rules: "JLCPCB 2-layer", errors: 0, warnings: 0, unconnected: 0, byType: {}, firstError: null, ownFootprint: {}, exemptions: ["USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm"] }
+	const pill = checkPills(board(clean)).find((p) => p.key === "drc")!
+	assert.equal(pill.state, "ok")
+	assert.equal(pill.items[0], "DRC clean · 1 rule: USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm")
+})
+
+test("DRC with no errors is clean even with KiCad's warnings (silkscreen, library notes); they stay in the popover", () => {
+	const board = (drc: object) => [{ seq: 1, at: "2026-10-31T12:00:01.000Z", type: "artifact.ready", producerId: "x", payload: { kind: "board", revision: 8, drc } }]
+	const drc = { rules: "JLCPCB 2-layer", errors: 0, warnings: 92, unconnected: 0, byType: { silk_over_copper: 50, lib_footprint_issues: 22, text_height: 17, silk_overlap: 3 }, firstError: null, ownFootprint: {}, exemptions: ["USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm"] }
+	const pill = checkPills(board(drc)).find((p) => p.key === "drc")!
+	assert.equal(pill.state, "ok")
+	assert.match(pill.items.join("\n"), /0 errors · 92 warnings/)
+})
+
+test("the composer's prompt matches the run: settled and waiting, unsettled and waiting, live, bench, ended", async () => {
+	const { composerPrompt } = await import("../src/dashboard/model.js")
+	assert.match(composerPrompt("waiting", { settled: true }), /^Settled\. Now change one thing/)
+	assert.match(composerPrompt("waiting", { settled: false }), /^Not consistent yet/)
+	assert.doesNotMatch(composerPrompt("waiting", { settled: false }), /Settled\./)
+	assert.match(composerPrompt("live", null), /while the agents work/)
+	assert.match(composerPrompt("bench", { settled: true }), /reflashes the board/)
+	assert.match(composerPrompt("stopped", { settled: true }), /stopped/)
+	assert.match(composerPrompt("settled", { settled: false }), /ended/)
+})
+
+test("a part that keeps its MPN and footprint says what did change, not \"SOT-23-5 → SOT-23-5\"", () => {
+	const a = { ref: "U4", role: "charger", mpn: "TP4054-42-SOT25R", lcsc: "C32574", footprint: "SOT-23-5", pins: ["VCC", "GND"] }
+	assert.deepEqual(contractDiff("parts", [a], [{ ...a, pins: ["VCC", "GND", "CHRG"] }]), ["~ U4 TP4054-42-SOT25R: pins changed"])
+	assert.deepEqual(contractDiff("parts", [a], [{ ...a, lcsc: "C1", pins: ["X"] }]), ["~ U4 TP4054-42-SOT25R: lcsc, pins changed"])
+	assert.deepEqual(contractDiff("parts", [a], [{ ...a, footprint: "SOT-23-6" }]), ["~ U4 SOT-23-5 → SOT-23-6"])
+})

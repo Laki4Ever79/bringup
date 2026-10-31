@@ -1,3 +1,4 @@
+import { BLE_READING_MS, bleAdvertiseMs, templateConstant } from "../codegen/firmware.ts"
 import { readFileSync } from "node:fs"
 import { DROPOUT_MV, QUIESCENT_A, type LdoModel } from "../codegen/spice.ts"
 import type { ContractSnapshot, DutyCycle, Part, Rail } from "./types.ts"
@@ -182,15 +183,21 @@ export function dutyCycleCheckLines(e: PowerEstimate): string[] {
 	const n = (x: number) => Number(x.toPrecision(3))
 	const mcuSleep = e.sleep?.raisedFrom != null ? `${d.sleepUa} µA (MCU deep-sleep floor; ${e.sleep.raisedFrom} µA stated)` : `${d.sleepUa} µA (MCU deep sleep)`
 	const ldo = e.regulatorIqUa > 0 ? ` + ${e.regulatorIqUa} µA (LDO quiescent)` : ""
-	const averageMa = dutyCycleAverageMa(d, peak) + e.regulatorIqUa / 1000
-	const days = e.capacityMah !== null ? batteryLifeDays(e.capacityMah, dutyCycleAverageMa(d, peak), e.regulatorIqUa) : null
+	// The firmware is awake for the reading plus its BLE window: activeMs, unless that is too short for both.
+	const advertiseMs = bleAdvertiseMs(d)
+	const wakeMs = Math.max(d.activeMs, BLE_READING_MS + advertiseMs)
+	const wake = { ...d, activeMs: wakeMs }
+	const connectedS = templateConstant("BLE_CONNECTED_MAX_MS") / 1000
+	const averageMa = dutyCycleAverageMa(wake, peak) + e.regulatorIqUa / 1000
+	const days = e.capacityMah !== null ? batteryLifeDays(e.capacityMah, dutyCycleAverageMa(wake, peak), e.regulatorIqUa) : null
 	const life =
 		days === null || e.capacityMah === null
 			? `- Average ${ma(averageMa)}; battery life unknown (no capacity in the brief or requirements)`
 			: `- Average ${ma(averageMa)}; ${e.capacityMah} mAh / ${ma(averageMa)} / 24 h = ${Math.round(days)} days${e.targetDays !== null ? ` vs target ${e.targetDays} days` : ""}`
 	return [
 		"Battery-life check (computed in code from the duty cycle, not from the rails' stated averages):",
-		`- Each reading: ${d.activeMs} ms awake at up to ${ma(peak)} (the busiest battery-fed rail's peak) = ${n((peak * d.activeMs) / 1000)} mC`,
+		`- Each reading: ${wakeMs} ms awake${wakeMs > d.activeMs ? ` (requirements.dutyCycle.activeMs says ${d.activeMs} ms)` : ""} at up to ${ma(peak)} (the busiest battery-fed rail's peak) = ${n((peak * wakeMs) / 1000)} mC`,
+		`- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs). A phone that connects keeps it awake up to ${connectedS} s, which this average leaves out.`,
 		`- Asleep the rest of the ${d.periodS} s period: ${mcuSleep}${ldo}`,
 		life,
 		"- Assumes the firmware sleeps between readings as requirements.dutyCycle says, and the peak current for the whole wake (an upper bound).",

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
-import { BUILD_INPUTS, BUILD_REQUIRES, createBuilder } from "../agents/builders.ts"
+import { BUILD_INPUTS, BUILD_REQUIRES, createBuilder, type BuildLock } from "../agents/builders.ts"
 import { mountingHoles } from "../codegen/circuit.ts"
 import { behaviorHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { STANDOFF } from "./enclosure.ts"
@@ -34,7 +34,7 @@ export function stubBoard(s: ContractSnapshot, revision: number, dir: string): S
 	const mcu = parts?.find((p) => p.role === "mcu")?.ref ?? "U1"
 	const nets: Record<string, string[]> = {}
 	for (const p of pins ?? []) nets[p.signal] = [`${mcu}.GPIO${p.gpio}`, `${p.partRef}.${p.partPin}`]
-	return { revision, dir, pcbPath: note(dir, "board"), stepPath: null, renderPath: null, widthMm: outline?.widthMm ?? 0, heightMm: outline?.heightMm ?? 0, nets, holes: holesOf(s), stub: true }
+	return { revision, dir, pcbPath: note(dir, "board"), stepPath: null, renderPath: null, widthMm: outline?.widthMm ?? 0, heightMm: outline?.heightMm ?? 0, nets, holes: holesOf(s), parts: Object.fromEntries((parts ?? []).map((p) => [p.ref, { mpn: p.mpn, pins: p.pins }])), stub: true }
 }
 
 export function stubEnclosure(s: ContractSnapshot, revision: number, dir: string): Stub<EnclosureArtifact> {
@@ -62,11 +62,11 @@ export function stubFirmware(s: ContractSnapshot, revision: number, dir: string)
 }
 
 // Same inputs and required fields as the real builders in agents/builders.ts, so the same contract changes wake them.
-export function createStubBuilders(): Human[] {
+export function createStubBuilders(lock?: BuildLock): Human[] {
 	return [
-		createBuilder({ kind: "board", inputs: BUILD_INPUTS.board, requires: BUILD_REQUIRES.board, build: async ({ snapshot, revision, dir }) => stubBoard(snapshot, revision, dir) }),
-		createBuilder({ kind: "enclosure", inputs: BUILD_INPUTS.enclosure, requires: BUILD_REQUIRES.enclosure, build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
-		createBuilder({ kind: "firmware", inputs: BUILD_INPUTS.firmware, requires: BUILD_REQUIRES.firmware, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
+		createBuilder({ kind: "board", inputs: BUILD_INPUTS.board, requires: BUILD_REQUIRES.board, lock, build: async ({ snapshot, revision, dir }) => stubBoard(snapshot, revision, dir) }),
+		createBuilder({ kind: "enclosure", inputs: BUILD_INPUTS.enclosure, requires: BUILD_REQUIRES.enclosure, lock, build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
+		createBuilder({ kind: "firmware", inputs: BUILD_INPUTS.firmware, requires: BUILD_REQUIRES.firmware, lock, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
 	]
 }
 

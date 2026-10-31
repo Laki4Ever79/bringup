@@ -37,3 +37,18 @@ export function holesFromCircuitJson(elements: any[]): { xMm: number; yMm: numbe
 		.filter((e) => e.type === "pcb_hole" && !e.pcb_component_id) // footprint holes (USB-C pegs) belong to their part
 		.map((e) => ({ xMm: +(e.x + w / 2).toFixed(3), yMm: +(e.y + h / 2).toFixed(3), diameterMm: e.hole_diameter ?? 0 }))
 }
+
+// Each placed component by reference designator: its MPN (null when the board has none) and its pins, in port order.
+export function partsFromCircuitJson(elements: any[]): Record<string, { mpn: string | null; pins: string[] }> {
+	const parts: Record<string, { mpn: string | null; pins: string[] }> = {}
+	const refOf = new Map<string, string>()
+	for (const c of elements.filter((e) => e.type === "source_component")) {
+		refOf.set(c.source_component_id, c.name)
+		parts[c.name] = { mpn: typeof c.manufacturer_part_number === "string" ? c.manufacturer_part_number : null, pins: [] }
+	}
+	for (const port of elements.filter((e) => e.type === "source_port")) {
+		const ref = refOf.get(port.source_component_id)
+		if (ref) parts[ref].pins.push(port.name)
+	}
+	return parts
+}

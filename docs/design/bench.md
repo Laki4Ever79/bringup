@@ -171,12 +171,16 @@ phone hotspot. **Cable is the default on stage**, because:
 | `bench.flashed` | `{revision, ok, stage?, ms, error?}` | dashboard; firmware agent on `ok:false` (stretch) |
 | `bench.telemetry` | `{revision, samples:[{at, mA?, tilt?, ax, ay, az, tC?, led?}]}`, batched every 250 ms | dashboard only (chart, 3D tilt) |
 | `bench.measured` | `{revision, rail, cycles, awakeMs, chargeUc, floorMa, averageMa, estimateMa, source: real\|replay}` | bench proposes `rails` (below); dashboard |
+| `bench.blink` | `{revision, source, blinkMs, tiltBlinkMs, expected:{blinkMs, tiltBlinkMs, tiltDeg}, pass, detail}`: the LED periods measured from live telemetry (`src/bench/blink.ts`), null when not enough clean toggles | dashboard Bench tab ("tilt blink 250 ms (measured)") |
 | `bench.verdict` | `{revision, pass, checks:[{name, pass, detail}]}` | dashboard pill; report.md "Bring-up" section |
 
 `bench.verdict` checks:
 - boots with the right `rev`;
 - the IMU answers;
 - the LED toggles;
+- blink: the LED periods, plain and tilted, measured from the board's own sample clock, match the contract's
+  `behavior` within max(50 ms, 20 %). On a real board that hasn't been tilted, the bench sends a `tilt`
+  `bench.instruction` and waits up to 120 s. A tilt nobody makes is reported as "not measured", not as a failure;
 - measured battery life ≥ target.
 
 The full-rate streams go to `out/<run>/bench/{telemetry.jsonl,power.csv}`; Mozaik only sees the batches.

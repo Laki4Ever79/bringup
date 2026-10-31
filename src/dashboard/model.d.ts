@@ -6,7 +6,7 @@ export function changedRefs(before: any, after: any): string[]
 export function prCards(events: any[], snapshots: Map<number, any>): any[]
 export function checkPills(events: any[]): any[]
 export function parseBattery(reportText: string): { days: number; targetDays: number | null } | null
-export function benchState(events: any[]): { source: "real" | "fake" | "replay"; meter: boolean; ports: any; flash: any; verdict: any; measured: any; instruction: { revision: number | null; action: string; text: string } | null } | null
+export function benchState(events: any[]): { source: "real" | "fake" | "replay"; meter: boolean; ports: any; flash: any; verdict: any; measured: any; instruction: { revision: number | null; action: string; text: string } | null; blink: { revision: number; source: string; blinkMs: number | null; tiltBlinkMs: number | null; expected: { blinkMs: number; tiltBlinkMs: number; tiltDeg: number }; pass: boolean; detail: string } | null } | null
 export function flashSteps(flash: any): { key: string; label: string; state: "done" | "active" | "failed" | "todo" }[]
 export function attitude(ax: number, ay: number, az: number): { pitch: number; roll: number }
 export function lowPass(prev: { pitch: number; roll: number }, next: { pitch: number; roll: number }, k: number): { pitch: number; roll: number }
@@ -31,3 +31,6 @@ export function statusLedRef(contract: any): string | null
 export function ledMirror(input: { contract: any; bench: any; led: { at: number; led: number; shake?: number }[] }): { ref: string; on: boolean; color: "red" | "green"; label: string } | null
 export function relativeGravity(g0: number[], g: number[]): number[]
 export function toggleOpen(open: string | null, clicked: string | null): string | null
+export function readinessShort(readiness: { supplier: string; total: number; counts: { listed: number }; lines?: { ref: string; status: string }[] } | null): string
+export function runPhase(s: { settled: { settled: boolean } | null; stay: boolean; alive: boolean; benchLive: boolean; stopped: boolean }): { bar: "live" | "bench" | "waiting" | "stopped" | "settled"; pill: string; open: boolean }
+export function composerPrompt(bar: string, settled: { settled: boolean } | null): string

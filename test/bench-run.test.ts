@@ -56,9 +56,9 @@ test("--bench keeps the run alive after settling: flash, measure, the architect 
 	assert.ok(fake.closed, "the bridge is closed when the run ends")
 })
 
-test("--bench reflashes when a change request changes the firmware behavior after settling", { timeout: 120_000 }, async () => {
+test("Act 3: a mid-run \"blink faster when tilted\" reflashes the board, which then runs rev N+1 with a measured 250 ms tilt blink", { timeout: 120_000 }, async () => {
 	const out = tempDir()
-	const fake = new FakeBridge({ meter: false })
+	const fake = new FakeBridge({ meter: false, live: { seconds: 16, tilt: (ms) => Math.abs(35 * Math.sin((2 * Math.PI * ms) / 8000)) } })
 	let stop: () => void = () => {}
 	const until = new Promise<void>((r) => (stop = r))
 	const run = runDesign({
@@ -68,7 +68,7 @@ test("--bench reflashes when a change request changes the firmware behavior afte
 		env: bare,
 		noHardware: true,
 		review: false,
-		bench: { open: async () => ({ bridge: fake, hello: await fake.hello }), until, timings: { windowMs: 40, liveCheckMs: 30, bootTimeoutMs: 1000, batchMs: 50 } },
+		bench: { open: async () => ({ bridge: fake, hello: await fake.hello }), until, timings: { windowMs: 40, liveCheckMs: 30, bootTimeoutMs: 1000, batchMs: 50, blinkWaitMs: 200 } },
 	})
 	await waitFor(() => traceOf(out).some((e) => e.type === "bench.verdict"), 60_000)
 	appendRequest(out, "blink faster when tilted")
@@ -76,10 +76,18 @@ test("--bench reflashes when a change request changes the firmware behavior afte
 	stop()
 	await run
 	const contract = JSON.parse(readFileSync(join(out, "contract.json"), "utf8"))
-	assert.deepEqual(contract.values.behavior, { blinkMs: 1000, tiltBlinkMs: 100, tiltDeg: 20 })
+	assert.deepEqual(contract.values.behavior, { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 })
 	const flashes = fake.commands.filter((c) => c.cmd === "flash").map((c) => c.dir as string)
 	assert.equal(flashes.length, 2)
-	assert.match(readFileSync(join(flashes[1], "include/behavior.h"), "utf8"), /BEHAVIOR_TILT_BLINK_MS 100/)
+	assert.match(readFileSync(join(flashes[1], "include/behavior.h"), "utf8"), /BEHAVIOR_TILT_BLINK_MS 250/)
+	// What the board runs, from its telemetry: the new revision, and the tilted blink at the new period.
+	const verdicts = traceOf(out).filter((e) => e.type === "bench.verdict").map((e) => e.payload)
+	const blinks = traceOf(out).filter((e) => e.type === "bench.blink").map((e) => e.payload)
+	assert.equal(blinks.length, 2)
+	assert.equal(blinks[0].tiltBlinkMs, null, "rev N blinks at 1 Hz whatever the tilt (no behavior yet)")
+	assert.equal(blinks[1].revision, verdicts[1].revision)
+	assert.ok(blinks[1].tiltBlinkMs !== null && Math.abs(blinks[1].tiltBlinkMs - 250) <= 50, `tiltBlinkMs ${blinks[1].tiltBlinkMs}`)
+	assert.equal(verdicts[1].checks.find((c: { name: string }) => c.name === "blink").pass, true)
 	const changed = traceOf(out).find((e) => e.type === "contract.changed" && e.payload.field === "behavior")
 	assert.equal(changed?.payload.by, "firmware")
 })

@@ -202,6 +202,7 @@ function drcLines(drc: import("./tools/drc.ts").DrcSummary | null | undefined): 
 	if (drc === undefined) return []
 	if (drc === null) return ["- Design rules (KiCad): not checked (KiCad could not run)"]
 	const types = Object.entries(drc.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(", ")
-	return [`- Design rules (KiCad, ${drc.rules}): ${drc.errors} errors, ${drc.warnings} warnings, ${drc.unconnected} unconnected${types ? ` (${types})` : ""}`]
+	const own = Object.entries(drc.ownFootprint ?? {}).map(([ref, n]) => `${n === drc.errors ? `${n} of them` : n} inside ${ref}'s own footprint`)
+	return [`- Design rules (KiCad, ${drc.rules}): ${drc.errors} errors, ${drc.warnings} warnings, ${drc.unconnected} unconnected${types ? ` (${types})` : ""}${own.length ? `; ${own.join(", ")} (its vendor land pattern against the fab's generic rule, not the layout)` : ""}${drc.exemptions?.length ? `; ${drc.exemptions.length} rule${drc.exemptions.length === 1 ? "" : "s"}: ${drc.exemptions.join("; ")}` : ""}`]
 }
 export const drcReportLinesForTest = drcLines

@@ -28,6 +28,16 @@ test("parseArgs reads repeated --change requests, in order, without taking one f
 	assert.match((parseArgs([brief, "--change", "--mock"]) as { error: string }).error, /--change/)
 })
 
+test("parseArgs reads --stay: after settling, the run waits for change requests until stopped", () => {
+	assert.equal((parseArgs([brief, "--mock", "--stay"]) as { stay?: boolean }).stay, true)
+	assert.equal((parseArgs([brief, "--mock"]) as { stay?: boolean }).stay, undefined, "the CLI judge path still exits on its own")
+})
+
+test("parseArgs reads --change-delay in seconds", () => {
+	assert.equal((parseArgs([brief, "--change", "make it 40 mm wide", "--change-delay", "6"]) as { changeDelayMs?: number }).changeDelayMs, 6000)
+	assert.match((parseArgs([brief, "--change-delay", "soon"]) as { error: string }).error, /--change-delay/)
+})
+
 test("parseArgs rejects --out without a value instead of crashing", () => {
 	assert.match((parseArgs([brief, "--out"]) as { error: string }).error, /--out/)
 	assert.match((parseArgs([brief, "--out", "--mock"]) as { error: string }).error, /--out/)
@@ -56,7 +66,7 @@ test("a run with no tools at all and --no-hardware settles with 0 violations", {
 	const ready = new Set(trace.filter((e) => e.type === "artifact.ready").map((e) => e.payload.kind))
 	assert.deepEqual([...ready].sort(), ["board", "enclosure", "firmware"])
 	assert.ok(trace.some((e) => e.type === "change.decided"), "change control still runs")
-	assert.deepEqual(trace.find((e) => e.type === "run.started")?.payload, { review: true, engineerApproval: false, noHardware: true, bench: false }, "the run's options are in the trace, for the dashboard")
+	assert.deepEqual(trace.find((e) => e.type === "run.started")?.payload, { review: true, engineerApproval: false, noHardware: true, bench: false, stay: false, mock: true }, "the run's options are in the trace, for the dashboard; the CLI judge path doesn't stay")
 	console.log(`no-hardware run took ${Date.now() - start} ms`)
 })
 
@@ -98,4 +108,19 @@ test("parseArgs reads --bench-no-imu for the fake bench (a bare S3 with --bench-
 	const brief = new URL("../briefs/logger.md", import.meta.url).pathname
 	const a = parseArgs([brief, "--bench", "fake", "--bench-no-meter", "--bench-no-imu"]) as { benchNoMeter?: boolean; benchNoImu?: boolean }
 	assert.deepEqual([a.benchNoMeter, a.benchNoImu], [true, true])
+})
+
+test("a run that stays up ends when the process that started it goes (its stdin pipe closes), not otherwise", async () => {
+	const { PassThrough } = await import("node:stream")
+	const { parentGone } = await import("../src/main.ts")
+	const pipe = new PassThrough()
+	let gone = false
+	void parentGone(pipe, { BRINGUP_PARENT_PIPE: "1" })?.then(() => (gone = true))
+	await new Promise((r) => setTimeout(r, 20))
+	assert.equal(gone, false)
+	pipe.end()
+	await new Promise((r) => setTimeout(r, 20))
+	assert.equal(gone, true)
+	// Started by hand from a terminal: no parent pipe to watch.
+	assert.equal(parentGone(new PassThrough(), {}), null)
 })

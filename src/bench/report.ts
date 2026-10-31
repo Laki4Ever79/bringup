@@ -46,7 +46,7 @@ export function bringupSection(tracePath: string): string[] {
 	// What the person at the desk was asked to do, and whether they did.
 	for (const e of trace.filter((x) => x.type === "bench.instruction" && x.payload.state !== "waiting")) {
 		const p = e.payload as Payloads["bench.instruction"]
-		out.push(`- Asked the person${p.revision !== null ? ` (rev ${p.revision})` : ""}: ${p.text}: ${p.state === "done" ? "done" : "nobody did it within 180 s"}`)
+		out.push(`- Asked the person${p.revision !== null ? ` (rev ${p.revision})` : ""}: ${p.text}: ${p.state === "done" ? "done" : "nobody did it in time"}`)
 	}
 	for (const c of verdict?.checks ?? []) out.push(c.skipped ? `- ${c.name}: not checked, ${c.detail}` : `- ${c.name}: ${c.pass ? "ok" : "FAIL"}, ${c.detail}`)
 	if (measured) {

@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net"
 import { basename, dirname, extname, join, resolve, sep } from "node:path"
 import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
+import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 
 const TRACE = "trace.jsonl"
@@ -14,9 +15,13 @@ const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
+// af's A/B experiment (docs/experiment.md), committed so the hub can show the evidence without a run.
+const EXPERIMENT = new URL("../../docs/experiment-results.json", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["lanes.js", "stl.js", "model.js", "pcb-view.js", "scene3d.js"])
+const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js"])
+// Vendored OFL fonts (fonts/README.md), by exact name.
+const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
 const PROPOSAL_ID = /^[\w-]{1,100}$/
 const MAX_BODY = 64 * 1024
@@ -41,6 +46,8 @@ const TYPES: Record<string, string> = {
 export interface Dashboard {
 	url: string
 	close(): Promise<void>
+	// Tracks a run this process started some other way (npm run demo): its live status, and Stop reaches it.
+	adopt(runId: string, run: { done: Promise<{ code: number }>; kill?: () => void }): void
 }
 
 // Follows trace.jsonl from byte 0, keeping every complete line for replay. A half-written last line waits
@@ -168,13 +175,22 @@ export interface HubOptions {
 	launch?: HubLaunch
 	// The run that /events and /files/* serve, for single-run dashboards and the demo.
 	defaultRun?: { id: string; dir: string }
+	// The model behind POST /api/runs/<id>/ask (tests inject one); by default the runs' own provider (ask.ts).
+	ask?: (prompt: AskPrompt) => Promise<string>
 }
+
+// What a scripted run says to a question: its agents don't reason, so there is nothing to ask them.
+export const SCRIPTED_ANSWER = "Scripted mode: see the change log above. The scripted agents follow fixed scripts, so there is no model to ask; every write's reason and cause is listed there. Start a run with real models to ask questions."
+const MAX_QUESTION = 500
 
 interface RunSummary {
 	runId: string
 	// "bench live": settled, with its bring-up phase still running (--bench keeps the run up until Stop).
-	status: "running" | "bench live" | "settled" | "unsettled" | "failed" | "stopped"
+	// "waiting for a change": settled, and the run stays up (--stay) for the next change request until Stop.
+	status: "running" | "bench live" | "waiting for a change" | "settled" | "unsettled" | "failed" | "stopped"
 	bench: boolean
+	// Engineer change requests asked during the run, and the newest one's "consistent again in" time (ripples.json).
+	changes: { count: number; lastDurationMs: number | null }
 	revision: number
 	startedAt: string
 	title: string
@@ -247,6 +263,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		let startedAt: string | null = null
 		let settled: boolean | null = null
 		let bench = false
+		let stay = false
+		let changeCount = 0
 		for (const l of traceText.split("\n")) {
 			if (!l.trim()) continue
 			try {
@@ -256,14 +274,20 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (typeof e.payload?.revision === "number" && !e.type.startsWith("bench.")) revision = Math.max(revision, e.payload.revision)
 				if (e.type === "design.settled") settled = e.payload.settled === true
 				if (e.type === "bench.connected") bench = true
+				if (e.type === "run.started") stay = e.payload?.stay === true
+				if (e.type === "change.requested") changeCount++
+				// A change landed after settling: running again until it re-settles.
+				if (e.type === "contract.changed" && stay) settled = null
 			} catch {}
 		}
 		const brief = await readFile(join(dir, "brief.md"), "utf8").catch(() => "")
-		const title = (brief.split("\n").find((l) => l.trim()) ?? id).replace(/^#+\s*/, "").trim().slice(0, 80)
+		const title = (brief.split("\n").find((l) => l.trim()) ?? id).replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "").trim().slice(0, 80)
+		const ripples = await readFile(join(dir, "ripples.json"), "utf8").then((t) => JSON.parse(t), () => null)
+		const durations = (Array.isArray(ripples?.requests) ? ripples.requests : []).map((r: { durationMs?: unknown }) => r.durationMs).filter((d: unknown): d is number => typeof d === "number")
 		const run = live.get(id)
 		const status: RunSummary["status"] =
-			run && run.exit === null ? (bench && settled !== null ? "bench live" : "running") : settled !== null ? (settled ? "settled" : "unsettled") : run ? (run.exit === 0 ? "settled" : run.exit === 2 ? "unsettled" : "failed") : "stopped"
-		return { runId: id, status, revision, startedAt: startedAt ?? (await stat(dir)).mtime.toISOString(), title, bench }
+			run && run.exit === null ? (bench && settled !== null ? "bench live" : stay && settled !== null ? "waiting for a change" : "running") : settled !== null ? (settled ? "settled" : "unsettled") : run ? (run.exit === 0 ? "settled" : run.exit === 2 ? "unsettled" : "failed") : "stopped"
+		return { runId: id, status, revision, startedAt: startedAt ?? (await stat(dir)).mtime.toISOString(), title, bench, changes: { count: changeCount, lastDurationMs: durations.at(-1) ?? null } }
 	}
 
 	const listRuns = async (): Promise<RunSummary[]> => {
@@ -289,7 +313,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		mkdirSync(outDir, { recursive: true })
 		const briefPath = join(outDir, "brief.md")
 		writeFileSync(briefPath, brief.endsWith("\n") ? brief : brief + "\n")
-		const extraArgs = [...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"]), ...(engineerApproval ? ["--engineer-approval"] : []), ...(bench ? ["--bench", bench as string] : [])]
+		// Runs started here stay up after settling: the point is to change one thing and watch it follow.
+		const extraArgs = ["--stay", ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"]), ...(engineerApproval ? ["--engineer-approval"] : []), ...(bench ? ["--bench", bench as string] : [])]
 		const run = opts.launch({ briefPath, mock, outDir, extraArgs })
 		const entry = { exit: null as number | null, kill: run.kill }
 		live.set(runId, entry)
@@ -314,6 +339,29 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					if (!run || run.exit !== null) return json(res, 409, { error: "that run is not running from this dashboard" })
 					run.kill?.()
 					return json(res, 200, { stopped: true })
+				}
+				const ask = /^\/api\/runs\/([^/]+)\/ask$/.exec(path)
+				if (ask) {
+					const dir = await runDir(ask[1])
+					if (!dir) return json(res, 404, { error: "unknown run" })
+					const body = await readJson(req)
+					const question = text(body.question, "question", MAX_QUESTION).trim()
+					const events = (await readFile(join(dir, TRACE), "utf8").catch(() => "")).split("\n").flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : [] } catch { return [] } })
+					if (events.find((e) => e.type === "run.started")?.payload?.mock === true) return json(res, 200, { scripted: true, answer: SCRIPTED_ANSWER })
+					const revs = events.filter((e) => e.type === "contract.changed").map((e) => e.payload.revision as number)
+					const to = typeof body.to === "number" ? body.to : Math.max(0, ...revs)
+					const from = typeof body.from === "number" ? body.from : to - 1
+					const snap = async (rev: number) => (rev > 0 ? readFile(join(dir, "contracts", `rev-${rev}.json`), "utf8").then((t) => JSON.parse(t), () => null) : null)
+					const brief = ((await readFile(join(dir, "brief.md"), "utf8").catch(() => "")).split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "")
+					try {
+						// An older trace has no values in its writes: the revision snapshots give each one its change.
+						const snapshots = new Map((await Promise.all(revisionsToLoad(events).map(async (rev) => [rev, await snap(rev)] as const))).filter(([, v]) => v))
+						const answer = await (opts.ask ?? ((p: AskPrompt) => callModel(p)))(askPrompt({ question, events, from: await snap(from), to: await snap(to), brief, snapshots }))
+						return json(res, 200, { scripted: false, answer, from, to })
+					} catch (error) {
+						const e = error as Error & { code?: string }
+						return e.code === "NO_KEY" ? json(res, 503, { error: new NoModelKey().message }) : json(res, 502, { error: e.message })
+					}
 				}
 				const m = /^\/api\/runs\/([^/]+)\/(requests|decisions)$/.exec(path)
 				if (m) {
@@ -346,8 +394,16 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" })
 				return res.end(source)
 			}
+			if (path.startsWith("/fonts/") && FONTS.has(path.slice("/fonts/".length))) {
+				res.writeHead(200, { "content-type": "font/woff", "cache-control": "max-age=86400" })
+				return res.end(await readFile(new URL(`.${path}`, import.meta.url)))
+			}
 			if (path === "/api/runs") return json(res, 200, await listRuns())
 			if (path === "/api/briefs") return json(res, 200, await listBriefs())
+			if (path === "/api/experiment") {
+				const text = await readFile(EXPERIMENT, "utf8").catch(() => null)
+				return text ? json(res, 200, JSON.parse(text)) : json(res, 404, { error: "no experiment results" })
+			}
 			if (path === "/api/hub") return json(res, 200, { defaultRun: opts.defaultRun?.id ?? null, canStart: Boolean(opts.launch) })
 
 			// Per-run routes, plus /events and /files/* for the default run.
@@ -394,12 +450,22 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	}, HEARTBEAT_MS)
 
 	await new Promise<void>((ok, fail) => {
-		server.once("error", fail)
+		// A port that is taken (EADDRINUSE): stop the polling timers too, or they keep the process alive for nothing.
+		server.once("error", (error) => {
+			clearInterval(timer)
+			clearInterval(heartbeat)
+			fail(error)
+		})
 		server.listen(port, "127.0.0.1", () => ok())
 	})
 	port = (server.address() as AddressInfo).port
 
 	return {
+		adopt: (runId, run) => {
+			const entry = { exit: null as number | null, kill: run.kill }
+			live.set(runId, entry)
+			void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
+		},
 		url: `http://127.0.0.1:${port}`,
 		close: async () => {
 			clearInterval(timer)
@@ -412,6 +478,19 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			for (const run of live.values()) if (run.exit === null) run.kill?.()
 			await new Promise<void>((ok) => server.close(() => ok()))
 		},
+	}
+}
+
+// Starts a dashboard on `port`; if another process holds it (another hub, npm run demo), on a free port instead,
+// saying so, rather than dying with EADDRINUSE.
+export async function listenWithFallback(start: (port: number) => Promise<Dashboard>, port: number, log: (line: string) => void): Promise<Dashboard> {
+	try {
+		return await start(port)
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error
+		const dash = await start(0)
+		log(`dashboard: port ${port} is taken (another dashboard or npm run demo?), so this one is on ${new URL(dash.url).port}`)
+		return dash
 	}
 }
 

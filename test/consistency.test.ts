@@ -80,3 +80,22 @@ test("a pin on the USB-C connector is connected when the net reaches that signal
 	a.board!.nets.USB_DN = ["U1.GPIO18"]
 	assert.match(checkConsistency(c, a).find((v) => v.kind === "net-missing")!.message, /J1\.DN/)
 })
+
+test("part-mismatch: the board places another part than the contract lists", () =>
+	only("part-mismatch", ["board"], (c, a) => {
+		a.board!.parts = Object.fromEntries(c.values.parts!.map((p) => [p.ref, { mpn: p.mpn, pins: p.pins }]))
+		// The board was built before the sensor swap; the contract has the new one.
+		c.values.parts = c.values.parts!.map((p) => (p.ref === "U2" ? { ...p, mpn: "BME280", lcsc: "C92489" } : p))
+	}))
+
+test("part-mismatch: a contract part the board does not have", () =>
+	only("part-mismatch", ["board"], (c, a) => {
+		a.board!.parts = Object.fromEntries(c.values.parts!.filter((p) => p.ref !== "D1").map((p) => [p.ref, { mpn: p.mpn, pins: p.pins }]))
+	}))
+
+test("a board part with no MPN on record is not called a mismatch, and MPNs compare case-insensitively", () => {
+	const c = fixtureContract()
+	const a = fixtureArtifacts()
+	a.board!.parts = Object.fromEntries(c.values.parts!.map((p, i) => [p.ref, { mpn: i === 0 ? null : p.mpn.toLowerCase(), pins: p.pins }]))
+	assert.deepEqual(checkConsistency(c, a), [])
+})

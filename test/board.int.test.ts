@@ -7,7 +7,7 @@ import { test } from "node:test"
 import { fileURLToPath } from "node:url"
 import { boardParts, circuitFromContract } from "../src/codegen/circuit.ts"
 import { checkConsistency } from "../src/contract/consistency.ts"
-import { netsFromCircuitJson } from "../src/tools/board-nets.ts"
+import { netsFromCircuitJson, partsFromCircuitJson } from "../src/tools/board-nets.ts"
 import { fixtureContract } from "./fixture.ts"
 
 const KICAD_IMAGE = "kicad/kicad:10.0"
@@ -32,10 +32,13 @@ test("board builds and passes consistency", { skip: !(hasTsci && hasKicad) && "t
 		KICAD_IMAGE, "kicad-cli", "pcb", "drc", "--format", "json", "-o", "drc.json", "dist/board/kicad/board.kicad_pcb"], { stdio: "pipe" })
 	assert.ok(existsSync(join(dir, "drc.json")))
 
-	const board = { revision: s.revision, dir, pcbPath, stepPath: null, renderPath: null, widthMm: pcb.width, heightMm: pcb.height, nets: netsFromCircuitJson(elements) }
+	const board = { revision: s.revision, dir, pcbPath, stepPath: null, renderPath: null, widthMm: pcb.width, heightMm: pcb.height, nets: netsFromCircuitJson(elements), parts: partsFromCircuitJson(elements) }
+	// The real build carries each part's MPN, so the part check compares MPNs rather than skipping them.
+	for (const p of s.values.parts!) assert.equal(board.parts[p.ref]?.mpn, p.mpn, p.ref)
 	const kinds = checkConsistency(s, { board }).map((v) => v.kind)
 	assert.ok(!kinds.includes("net-missing"), `violations: ${kinds}`)
 	assert.ok(!kinds.includes("outline-mismatch"), `violations: ${kinds}`)
+	assert.ok(!kinds.includes("part-mismatch"), `violations: ${kinds}`)
 })
 
 // The shape of a real mock run: LDO, USB-C on the bottom, a button on top, a status LED and 14 passives.

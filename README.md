@@ -1,29 +1,74 @@
 # Bringup
 
-> **Quick look: needs only Node 24, takes about 5 s, no API key.**
+**Change one thing, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still
+consistent.**
+
+> **Quick look: needs only Node 24, no API key; about 1 min for `npm ci`, then about 10 s.**
 > ```bash
 > git clone https://github.com/Laki4Ever79/bringup && cd bringup && npm ci
 > npm run bringup -- briefs/logger.md --mock --no-hardware --out out/quick
 > cat out/quick/report.md   # "settled ... Violations: 0", plus the change requests held by interception
 > ```
 
-**A team of agents designs hardware around one shared contract, and every change is checked by someone other than the
-agent who made it.**
+Concurrent Mozaik agents turn a short product brief into in-stock parts, a
+routed PCB, a printable case whose cutouts match the board, and firmware that compiles against the real pin map. Then
+you change one thing ("make it 40 mm wide", "the sensor is out of stock", "blink faster when tilted"). Only the agents
+that change affects wake up, rework their part at the same time, and the design is consistent again, with every
+other part left alone.
 
-Concurrent Mozaik agents turn a short product brief into in-stock parts, a routed PCB, an enclosure whose cutouts match
-the board, firmware that compiles against the real pin map, and a consistency report. Every change has a checker other
-than its author:
-1. **The field's owner** approves or rejects it, through Mozaik interception (change control).
-2. **Plain code** checks what was actually built, and grounds every pin in the catalog and KiCad's symbols.
-3. **A fresh-context reviewer** judges the design against the brief.
-4. **The real board** (bench, in progress).
+**What one run hands you, ready for a prototype:**
+
+| Output | Ready for | Where |
+|---|---|---|
+| Printable case and lid (`case.stl`, `lid.stl`, plus STEP), with a print check (minimum wall 1.6 mm, lid clearance, print orientation) and M2 standoffs that line up with the board's holes | Your own 3D printer today, or a print service | `out/<run>/enclosure/rev-N/` |
+| Fab package in JLCPCB's assembly format (Gerbers + drill, `bom.csv`, `cpl.csv`, a pre-order checklist), every part an LCSC number, with stock checked live in real-model runs | Ordering the assembled PCB, with the case ordered alongside | `out/<run>/fab/` |
+| Firmware, compiled against the board's actual pin map, then **booted in QEMU** (Espressif's ESP32-C3 emulator) at every revision | Flashing the real board | `out/<run>/firmware/rev-N/` |
+| **SPICE power simulation** (ngspice): each regulator's output under load at the battery's low end, fed to the reviewer, which cites it (e.g. "3.277 V at 3.5 V battery, −23 mV headroom") | Catching a brown-out before it reaches a prototype | `report.md` |
+| Routed KiCad board, DRC against JLCPCB's rules, a 3D render | Review in KiCad | `out/<run>/board/rev-N/` |
+
+Every change re-makes the affected outputs: a narrower board means a new case STL, new Gerbers and new standoffs, and
+nothing else.
+
+## The proof: one change, with and without the shared contract
+
+We applied 6 real changes to a settled design twice (`npm run experiment`, [docs/experiment.md](docs/experiment.md)).
+In arm A the agents share one live design contract and Mozaik situations wake the affected ones. In arm B only the
+domain that heard the change updates, and every other team keeps working from its own copy. The same plain-code checks
+then compare what was actually built:
+
+| Change | With the shared contract | Each team on its own copy: mismatches that would ship |
+|---|---|---|
+| Board 10 mm narrower | consistent again in 53 s · 2 of 7 woke · 0 violations | 4: two board holes have no standoff under them, two standoffs have no hole |
+| Board 6 mm taller | 31 s · 2 of 7 · 0 | 5: the board is 50×30 mm, the contract says 50×36 mm, and 4 hole/standoff misses |
+| USB-C to the bottom edge | 52 s · 2 of 7 · 0 | 1: the case cutout for J1 is left@15 mm, the connector is bottom@25 mm |
+| Sensor I2C to GPIO4/5 | 72 s · 4 of 7 · 0 | 2: the board's I2C_SDA and I2C_SCL nets don't reach GPIO4 and GPIO5 |
+| Swap the regulator for a low-Iq XC6206 | 31 s · 3 of 7 · 0 | 1: the board still places the AP2112K as U3, the contract says XC6206 |
+| Add a button | 68 s · 5 of 7 · 0 | 3: the BUTTON net doesn't reach GPIO3 or SW1, the board has no SW1, and the case has no hole for it |
+| **Total** | **0 violations** | **16 mismatches** |
+
+The agents are scripted (the keyless mock models) and the tools are real: tscircuit + KiCad, build123d, PlatformIO.
+Each cell is one run on one laptop, with other jobs sharing the CPU, so read the times as tens of seconds. With the
+builders made to take turns instead of running in parallel, the same changes took 36–94 s instead of 31–72 s. The
+regulator swap was added once a check compared the board's actual parts with the parts list; before that, it would
+have scored 0 by not looking.
 
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0.
 
-> Status: mock runs settle with 0 violations from the commands below, with real board, enclosure and firmware builds.
-> With the optional QEMU installed, every run boots its newest firmware headless. The latest real-model runs (6, 7, 8) end with 0
-> consistency violations, but **none has passed the final brief review yet**; the report lists the open findings. See
-> `docs/submission.md` for the evidence. This README does not claim results that haven't run.
+> **Status, honestly.** Scripted runs settle with 0 violations and take mid-run changes, with real board, case and
+> firmware builds (and a QEMU boot when QEMU is installed). **Real models took mid-run changes too** in real run 15:
+> "make the board 40 mm wide" touched only the outline and was consistent again in 49 s (architect, board, case and
+> consistency worked; parts, firmware build and grounding stayed idle), and "the SHT40 is out of stock" swapped in the
+> SHTC3, tripped a real `sensor-mismatch` (firmware still built for the old driver) and was consistent again in 133 s.
+> That run still **did not pass the final brief review** (a charge-LED blocker and battery life), and no real-model run
+> has yet. See `docs/runs/real-15/` (report, ripples, trace) and `docs/submission.md`. This README does not claim results that haven't run.
+
+## Every change has a checker other than its author
+
+1. **The field's owner** approves or rejects it, through Mozaik interception (change control). An invalid proposal is
+   returned with the reason before the owner is ever asked.
+2. **Plain code** checks what was actually built, and grounds every pin in the catalog and KiCad's symbols.
+3. **A fresh-context reviewer** judges the design against the brief.
+4. **The real board**: an ESP32-S3 on the bench runs the design's firmware and reports back (`--bench real`).
 
 ## The problem
 
@@ -74,7 +119,7 @@ once, exactly one applies and the other gets `stale` and re-reads.
 
 | Event | Meaning |
 |---|---|
-| `contract.changed` | A field got a new version (field, version, revision, by whom) |
+| `contract.changed` | A field got a new version: field, version, revision, by whom, the writer's own `reason`, `before`/`after`, and the `cause` that woke it (the brief, an engineer request, a violation, a review finding, a failed build, an approval). The dashboard's "What changed & why" drawer reads this |
 | `change.proposed` | A non-owner asked to change a field; its loop is held |
 | `change.decided` | The owner approved or rejected it |
 | `artifact.ready` / `artifact.failed` | A board, enclosure or firmware build finished for a revision |
@@ -83,10 +128,16 @@ once, exactly one applies and the other gets `stale` and re-reads.
 | `design.ready` | The design is consistent and quiet; the brief reviewer judges it before it settles |
 | `review.completed` | The reviewer's verdict (`pass`/`fail`) with findings, each naming the contract fields it concerns |
 | `design.settled` | Every artifact is built against the latest revision with no violations, and the review is done |
+| `change.requested` | An engineer's mid-run change request (`req-N`), from the dashboard, the CLI's `--change`, `src/request.ts` or the MCP server. Its ripple ends at the next `design.ready` |
+| `firmware.booted` | The newest firmware booted in QEMU and printed its revision |
+| `bench.*` | The real board: `flashing`, `flashed`, `telemetry`, `blink` (LED period measured from telemetry), `instruction` ("tilt the board"), `measured`, `verdict` |
 | `agent.halted` | An agent loop crashed (Mozaik #114 workaround) |
+| `run.ended` | A run kept up with `--stay` or `--bench` was stopped |
 
 **Cross-domain checks** (`src/contract/consistency.ts`): `outline-mismatch`, `net-missing`, `pin-mismatch`,
-`cutout-missing`, `cutout-misaligned`, `rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
+`part-mismatch` (the board places a different part than the parts list), `sensor-mismatch` (firmware built with the
+other sensor's driver), `cutout-missing`, `cutout-misaligned`, `standoff-mismatch` (case standoffs vs board holes),
+`rail-overload`, `firmware-build-failed`. Each check reads the artifacts that
 were actually built. For example, the firmware's pins are parsed back out of the `pins.h` it compiled.
 
 ### Three checks
@@ -162,13 +213,13 @@ message, not a crash.
 ## Run
 
 ```bash
-# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. About 4 s.
+# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. About 10 s (5 s on an idle machine).
 npm run bringup -- briefs/logger.md --mock --no-hardware
 
 # Skip the brief reviewer gate (the consistency and grounding checks still run)
 npm run bringup -- briefs/logger.md --mock --no-review
 
-# No API key needed: scripted models, real tools. About 35–45 s once the tools are installed.
+# No API key needed: scripted models, real tools. About 1–3 min once the tools are installed.
 npm run bringup -- briefs/logger.md --mock
 
 # Real models: copy .env.example to .env and set one of
@@ -176,6 +227,29 @@ npm run bringup -- briefs/logger.md --mock
 #   ANTHROPIC_API_KEY=... and ANTHROPIC_BASE_URL=...   (the event's Claude credit, build.jigjoy.ai/credits)
 npm run bringup -- briefs/logger.md
 ```
+
+**Change one thing yourself.**
+
+```bash
+# The demo: the dashboard opens, the first design settles, then "make it 60 mm wide" goes in and ripples.
+# The run stays up afterwards: type your own change in the dashboard ("make it 40 mm wide"). Stop ends it.
+npm run demo
+
+# With nothing but `npm ci` (hardware stubbed): the same settle → change → ripple → consistent story, in about 10 s.
+npm run demo -- --no-hardware
+
+# The same from the CLI: each --change is sent after the design settles, and the run ends once the last one re-settles.
+npm run bringup -- briefs/logger.md --mock --change "make the board 40 mm wide"
+
+# Dashboard for any run, live or finished (http://localhost:4317; if that port is taken it picks a free one and
+# prints the URL, or pass a port: `npx tsx src/dashboard/cli.ts out/quick 4400`)
+npx tsx src/dashboard/cli.ts
+```
+
+Each change gets a row in `ripples.json` and in the report's "Change requests" table: the contract fields it touched,
+the agents that reworked something, the ones that only checked it, the ones that stayed idle, and the time until the
+design was consistent again. The scripted agents understand "N mm wide" and "blink faster when tilted". Use real
+models for anything else.
 
 `--no-hardware` swaps the three builders for stubs (`src/tools/stubs.ts`). Each stub derives its artifact straight
 from the contract: board nets from the pin map, enclosure cutouts from the connectors, firmware pins from the pin
@@ -246,9 +320,12 @@ The pieces are not new on their own. We credit:
 - **[tscircuit](https://tscircuit.com)** (circuits as code, autorouting) and **[KiCad](https://www.kicad.org)** (DRC,
   ERC, exports), which do the real EDA work.
 
-What Bringup adds: the consistency checks run **live, mid-run, as events** that wake only the affected agents, instead
-of as a final pipeline stage. Contract fields have **owners and versions**, and cross-owner edits go through
-**change control built on Mozaik interception**, the way engineering change orders work.
+What Bringup adds is **change propagation**: change one thing mid-run and only the affected domains wake, rework in
+parallel and converge, with the checks running **live as events** instead of as a final pipeline stage. Contract
+fields have **owners and versions**, and cross-owner edits go through **change control built on Mozaik
+interception**, the way engineering change orders work. Flux described this as a vision in September 2026 ("moving
+a connector 5 mm means the ME changes the enclosure and the EE changes the PCB"); Siemens' Fuse EDA agent orchestrates
+chip and PCB tools but not the case or firmware. The A/B experiment above measures what the shared contract buys.
 
 ## Limits
 
@@ -265,9 +342,15 @@ of as a final pipeline stage. Contract fields have **owners and versions**, and 
 - **Small boards only.** Placement and routing are proven on 45–70 × 30 mm boards with up to about 20 parts.
 - **QEMU is optional.** It is not installed by default; without it the report says "not run" and the QEMU tests
   skip. Installed, every run boots its newest firmware to `bringup rev N` (event `firmware.booted`). There is no SHT40
-  in emulation, so the firmware then prints `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token.
+  in emulation, so the firmware then prints `SENSOR FAIL`. Wokwi could simulate the sensor but needs a token. The
+  product firmware deep-sleeps between readings; QEMU doesn't emulate the timer wake, so that part is untested.
+- **BLE.** The brief asks for a phone to read the history over BLE. The product firmware stores the history on flash;
+  BLE is being added (see the report's firmware facts for what a given run's firmware actually does).
+- **No real-model run has passed the final brief review yet.** Real runs 15–17 took mid-run changes and ended with 0
+  violations, but the fresh-context reviewer still blocked on brief-vs-design arguments (battery life, LED behaviour,
+  history depth). The reviewer now gets computed and datasheet-checked facts for those; each report lists what's open.
 - **Stock is live, the catalog is small.** The part selector checks live JLCPCB stock and price by LCSC number, but it
-  can only choose from the vetted catalog (one MCU family today).
+  can only choose from the vetted catalog (one MCU family, two temperature/humidity sensors today).
 
 ## Use from Claude Code
 

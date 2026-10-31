@@ -58,7 +58,8 @@ const LABEL = {
 // What a changed list entry shows after its key: the part of LABEL that can differ.
 const CHANGE = {
 	pins: (a, b) => (a.gpio !== b.gpio ? `GPIO${a.gpio} → GPIO${b.gpio}` : `${a.partRef}.${a.partPin} → ${b.partRef}.${b.partPin}`),
-	parts: (a, b) => (a.mpn !== b.mpn ? `${a.mpn} → ${b.mpn}` : `${a.footprint} → ${b.footprint}`),
+	// Same MPN and footprint: name what did change (pins, LCSC number, role…), not "SOT-23-5 → SOT-23-5".
+	parts: (a, b) => (a.mpn !== b.mpn ? `${a.mpn} → ${b.mpn}` : a.footprint !== b.footprint ? `${a.footprint} → ${b.footprint}` : `${b.mpn}: ${Object.keys({ ...a, ...b }).filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).sort().join(", ")} changed`),
 	connectors: (a, b) => `${a.kind} ${a.edge} @ ${a.offsetMm} mm → ${b.kind} ${b.edge} @ ${b.offsetMm} mm`,
 	rails: (a, b) => `${a.voltageV} V ${a.loadMa}/${a.regulatorMaxMa} mA → ${b.voltageV} V ${b.loadMa}/${b.regulatorMaxMa} mA`,
 }
@@ -182,13 +183,20 @@ export function checkPills(events) {
 	const drc = board?.drc
 	if (drc) {
 		const bad = drc.errors + drc.unconnected
+		// Errors inside one part's own footprint: amber with the reason. Any other error, or an unconnected net, is red.
+		const own = Object.entries(drc.ownFootprint ?? {})
+		const ownCount = own.reduce((n, [, c]) => n + c, 0)
+		const ownOnly = drc.errors > 0 && ownCount === drc.errors && drc.unconnected === 0
 		pills.push({
 			key: "drc",
 			label: "DRC",
-			state: bad > 0 ? "error" : drc.warnings > 0 ? "warn" : "ok",
+			// KiCad's warnings (silkscreen over copper, library notes, text height) don't stop the fab: no errors is clean.
+			state: ownOnly ? "warn" : bad > 0 ? "error" : "ok",
 			count: bad > 0 ? bad : drc.warnings,
 			revision: board.revision,
 			items: [
+				...(bad === 0 && drc.exemptions?.length ? [`DRC clean · ${drc.exemptions.length} rule${drc.exemptions.length === 1 ? "" : "s"}: ${drc.exemptions.join("; ")}`] : []),
+				...(ownCount ? [`${own.map(([ref, n]) => `${n} inside ${ref}'s own footprint`).join(", ")}: the part's vendor land pattern against the fab's generic rule, not the layout`] : []),
 				`${drc.errors} errors · ${drc.warnings} warnings · ${drc.unconnected} unconnected (${drc.rules})`,
 				...Object.entries(drc.byType ?? {}).map(([type, n]) => `${type} × ${n}`),
 				...(drc.firstError ? [`first: ${drc.firstError}`] : []),
@@ -223,7 +231,7 @@ export function benchState(events) {
 		const p = e.payload
 		switch (e.type) {
 			case "bench.connected":
-				state = { source: p.source, meter: p.meter, ports: p.ports, flash: null, verdict: null, measured: null, instruction: null }
+				state = { source: p.source, meter: p.meter, ports: p.ports, flash: null, verdict: null, measured: null, instruction: null, blink: null }
 				break
 			case "bench.flashing":
 				if (!state) break
@@ -243,6 +251,10 @@ export function benchState(events) {
 				break
 			case "bench.measured":
 				if (state) state.measured = p
+				break
+			// The LED periods measured on the board against the contract's behavior (Act 3).
+			case "bench.blink":
+				if (state) state.blink = p
 				break
 		}
 	}
@@ -332,6 +344,20 @@ export function sourcingRows(item) {
 	}
 }
 
+// The line under the parts total: "18/18 listed at LCSC/JLCPCB", plus the lines that block the order, if any.
+// The full summary (stock confirmed / unknown) stays in the tooltip and the per-part popover.
+export function readinessShort(readiness) {
+	if (!readiness) return ""
+	const blocking = (readiness.lines ?? []).filter((l) => l.status === "out of stock" || l.status === "not listed").map((l) => `${l.ref} ${l.status}`)
+	const c = readiness.counts
+	// Stock not looked up (a scripted run, or offline): the parts that have an LCSC number, and say so; never "0/18 listed".
+	if (c.notChecked) {
+		const at = `${c.listed + c.notChecked}/${readiness.total} at ${readiness.supplier}`
+		return [at, c.notChecked === c.listed + c.notChecked ? "stock not checked" : `${c.notChecked} not checked`, ...blocking].join(" · ")
+	}
+	return [`${c.listed}/${readiness.total} listed at ${readiness.supplier}`, ...blocking].join(" · ")
+}
+
 // One part's line in bom.json's order readiness. Amber only when the part can't be ordered as listed.
 export function readinessLine(readiness, ref) {
 	const line = (readiness?.lines ?? []).find((l) => l.ref === ref)
@@ -378,4 +404,26 @@ export function relativeGravity(g0, g) {
 // Which part's sourcing popover is open after a click on a row (null: Esc, a click outside, or the × button).
 export function toggleOpen(open, clicked) {
 	return clicked === null || clicked === open ? null : clicked
+}
+
+// ── Run phase: the composer and the state pill ───────────────────────────────────────────────────
+
+// Whether the composer takes a change, and what the state pill says. `stay`: the run keeps taking change requests
+// after settling (run.started.stay); `alive`: no run.ended yet; `benchLive`: the bench is streaming.
+export function runPhase({ settled, stay, alive, benchLive, stopped }) {
+	const word = settled ? (settled.settled ? "SETTLED" : "UNSETTLED") : "LIVE"
+	if (!settled) return { bar: "live", pill: "LIVE", open: true }
+	if (stopped) return { bar: "stopped", pill: word, open: false }
+	if (benchLive) return { bar: "bench", pill: `${word} · bench live`, open: true }
+	if (stay && alive) return { bar: "waiting", pill: `${word} · waiting for a change`, open: true }
+	return { bar: "settled", pill: word, open: false }
+}
+
+// The composer's placeholder for the run's phase (runPhase().bar), honest about an unsettled design.
+export function composerPrompt(bar, settled) {
+	if (bar === "bench") return "Bring-up: ask for a change; a firmware change reflashes the board (try “blink faster when tilted”)"
+	if (bar === "waiting") return settled?.settled === false ? "Not consistent yet: ask for a change that fixes it (the checks say what is wrong), or try another…" : "Settled. Now change one thing: make it 40 mm wide, swap a part, move a connector…"
+	if (bar === "stopped") return "The run was stopped. Start a new design to change it."
+	if (bar === "settled") return "This run has ended. Start a new design to change it."
+	return "Make it 40 mm wide, swap a part, move a connector… while the agents work"
 }

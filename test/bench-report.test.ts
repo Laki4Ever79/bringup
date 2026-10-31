@@ -91,5 +91,5 @@ test("steps the person had to do at the bench are in the report, with what came 
 	])
 	const text = bringupSection(path).join("\n")
 	assert.match(text, /- Asked the person \(rev 2\): Hold BOOT, tap RST, release BOOT: done/)
-	assert.match(text, /- Asked the person \(rev 3\): Tap RST: nobody did it within 180 s/)
+	assert.match(text, /- Asked the person \(rev 3\): Tap RST: nobody did it in time/)
 })
