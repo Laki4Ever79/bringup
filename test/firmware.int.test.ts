@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -63,6 +63,22 @@ test("a STATUS_LED on a non-existent GPIO fails the static_assert", { skip, time
 		const firmware = await buildFirmware(pio!, root, dir, withStatusLed(99), 7)
 		assert.equal(firmware.ok, false)
 		assert.match(firmware.log, /PIN_STATUS_LED is not a GPIO on this chip/)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})
+
+test("an SHTC3 in the parts compiles the SHTC3 driver, and the firmware reports it", { skip, timeout: 600_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	try {
+		const c = fixtureContract()
+		c.values.parts = c.values.parts!.map((p) => (p.role === "sensor" ? { ...p, mpn: "SHTC3-TR-2.5KS", lcsc: "C194656", pins: ["VDD", "SCL", "SDA", "VSS"] } : p))
+		const firmware = await buildFirmware(pio!, root, dir, c, 9)
+		assert.equal(firmware.ok, true, firmware.log)
+		assert.equal(firmware.sensor, "SHTC3")
+		assert.deepEqual(checkConsistency(c, { firmware }), [])
+		const main = readFileSync(join(dir, "src/main.cpp"), "utf8")
+		assert.match(main, /0x70/, "the SHTC3's I2C address (datasheet v4 Table 8)")
 	} finally {
 		await rm(dir, { recursive: true, force: true })
 	}

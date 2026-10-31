@@ -162,7 +162,7 @@ CHECKLIST: known unverified items. Review the board in KiCad before ordering.
   [ ] TP4054 charger pin order (CHRG, GND, BAT, VCC, PROG) is from the pin-compatible LTC4054 symbol, not checked
       against the TP4054 datasheet. PROG 4.7k sets about 210 mA.
   [ ] JST-PH battery polarity: pad 1 is VBAT (+). Battery packs disagree; check the pack before plugging in.
-  [ ] SHT40 uses a generic dfn4 footprint and the button a THT stand-in footprint; replace them with the real land patterns.
+  [ ] The humidity sensor (SHT40 or SHTC3) uses a generic dfn4 footprint and the button a THT stand-in footprint; replace them with the real land patterns.
   [ ] ESP32-C3 EN is tied straight to 3V3; Espressif recommends a 10k / 1uF RC delay.
   [ ] tscircuit routes 0.15 mm tracks. Run DRC with the fab's rules (JLC's minimum is 0.127 mm on 2 layers).
   [ ] CPL rotations are KiCad's. JLC's zero orientation differs per footprint, so check every part in JLC's placement
