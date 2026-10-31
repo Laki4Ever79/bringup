@@ -1,0 +1,1 @@
+{"at":"2026-10-31T12:37:40.546Z","text":"edited pins.h: I2C_SCL GPIO9 → GPIO3","source":{"kind":"file","path":"firmware/rev-6/include/pins.h","revision":6,"items":["I2C_SCL GPIO9 → GPIO3"]}}
