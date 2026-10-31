@@ -1,0 +1,13 @@
+# The public demo on Render (not deployed; see docs/design/public-demo.md). Read-only recorded runs plus a scripted,
+# stubbed "Try it". No secrets: the server strips model keys at start, and Try it runs are --mock --no-hardware.
+services:
+  - type: web
+    name: bringup-demo
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npx tsx src/dashboard/cli.ts --public
+    healthCheckPath: /api/hub
+    envVars:
+      - key: NODE_VERSION
+        value: "24"

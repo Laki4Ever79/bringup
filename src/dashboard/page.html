@@ -991,7 +991,15 @@
 			const note = $("scene-empty")
 			if (tab === "3d") { note.textContent = "shown on the stage"; note.classList.remove("hidden") }
 			else if (S.shownEnclosure !== null) note.classList.add("hidden")
-			else note.textContent = "waiting for the first enclosure build"
+			else note.textContent = missingNote("enclosure")
+		}
+
+		// Why a board or case view is empty: a stubbed run (--no-hardware) has no files to show; a recorded run in the
+		// public demo ships its trace and change log, not its build files; otherwise the build hasn't landed yet.
+		function missingNote(kind) {
+			if (S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true) return `stubbed run: no ${kind === "board" ? "PCB" : "3D case"} (hardware tools off)`
+			if (window.BRINGUP_PUBLIC) return `recorded run: ${kind} files not in the public demo`
+			return `waiting for the first ${kind} build`
 		}
 
 		// ── Rulers: mm from the board's bottom-left corner, tracking zoom and pan; the hovered part's extent on both ──
@@ -2196,6 +2204,8 @@
 		let frame = null
 		function schedule() { if (!frame) frame = requestAnimationFrame(render) }
 		function render() {
+			for (const [id, kind] of [["pcb-empty", "board"], ["scene-empty", "enclosure"]]) if ($(id).textContent !== "shown on the stage") $(id).textContent = missingNote(kind)
+			$("render-view").querySelector(".empty-state")?.replaceChildren(missingNote("board"))
 			frame = null
 			S.model = scrubberModel(S.events)
 			renderTop()
