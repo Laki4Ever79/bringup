@@ -36,7 +36,8 @@ export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	board: ["parts", "pins", "outline", "connectors"],
 	enclosure: ["outline", "connectors"],
-	firmware: ["parts", "pins", "behavior"],
+	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
+	firmware: ["parts", "pins", "behavior", "requirements"],
 }
 
 // A plain-code participant that keeps one artifact in step with the contract. It wakes on

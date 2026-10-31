@@ -83,3 +83,19 @@ test("an SHTC3 in the parts compiles the SHTC3 driver, and the firmware reports 
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+// The product path: wake, read, store the reading, blink, deep-sleep for the contract's period.
+test("the product firmware compiles its duty cycle: the period from the contract, deep sleep and the history", { skip, timeout: 600_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	try {
+		const c = fixtureContract()
+		c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 100, periodS: 240, sleepUa: 5 } }
+		const firmware = await buildFirmware(pio!, root, dir, c, 9)
+		assert.equal(firmware.ok, true, firmware.log)
+		assert.match(readFileSync(join(dir, "include/pins.h"), "utf8"), /^#define DUTY_PERIOD_S 240$/m)
+		const main = readFileSync(join(dir, "src/main.cpp"), "utf8")
+		for (const needle of ["esp_deep_sleep_start", "esp_sleep_enable_timer_wakeup", "LittleFS", "READING_BLINK_MS = 20"]) assert.ok(main.includes(needle), needle)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})
