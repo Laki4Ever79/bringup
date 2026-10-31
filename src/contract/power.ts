@@ -225,6 +225,7 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 			`- Advertising: ${advertiseMs} ms at ${figures.radioMa} mA (radio receiving, datasheet; it gives no Bluetooth LE figure, so the receive current stands in for the whole window, which keeps the radio on while advertising transmits in short bursts) = ${n(advertiseMc)} mC`,
 			asleep,
 			lifeLine(averageMa, "Average"),
+			...connectionLines(e, averageMa, figures.radioMa, connectedS),
 			"- Leaves out the status LED's blink and the other parts' currents while awake.",
 			`- Worst case, the busiest battery-fed rail's peak (${ma(peak)}, a regulator sizing figure) for the whole ${wakeMs} ms wake:`,
 			lifeLine(worstMa, "  worst-case average"),
@@ -239,3 +240,18 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 		"- Assumes the firmware sleeps between readings as requirements.dutyCycle says, and the peak current for the whole wake (an upper bound on current). So a result at or above the target shows the target is met; one below it does not by itself show it is missed: then judge the stated average against the parts.",
 	]
 }
+
+// The brief requires accepting a connection, but not how often one comes, so the check can't charge for it. Instead it
+// says how many full-length connections a day the target leaves room for (real beacon run N: blocked on "the average
+// leaves out connected time").
+function connectionLines(e: PowerEstimate, averageMa: number, radioMa: number, connectedS: number): string[] {
+	if (e.capacityMah === null || e.targetDays === null || !(e.targetDays > 0)) return []
+	const allowedMa = e.capacityMah / (e.targetDays * 24)
+	const eachMc = radioMa * connectedS
+	const spareMa = allowedMa - averageMa
+	const perDay = spareMa > 0 ? Math.floor((spareMa * 86400) / eachMc) : 0
+	return [
+		`- Connections: a phone that connects keeps it awake up to ${connectedS} s at about ${radioMa} mA (${n3(eachMc)} mC each). The ${e.targetDays}-day target allows ${ma(allowedMa)} on average; ${spareMa > 0 ? `${ma(spareMa)} above this average, which pays for ${perDay} full-length connection${perDay === 1 ? "" : "s"} a day` : "this average already uses all of it"} (the brief does not say how often a phone connects).`,
+	]
+}
+const n3 = (x: number) => Number(x.toPrecision(3))
