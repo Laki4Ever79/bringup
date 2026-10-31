@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import { checkConsistency, type Violation } from "../contract/consistency.ts"
@@ -6,6 +6,8 @@ import { isEvent, makeEvent, type ArtifactKind, type Payloads } from "../events.
 import { emit, roleOf, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 import { BUILD_REQUIRES } from "./builders.ts"
+
+const readBrief = (outDir: string) => (existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : "")
 
 export const MAX_REVISIONS = 25
 const KINDS: ArtifactKind[] = ["board", "enclosure", "firmware"]
@@ -76,7 +78,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		const snapshot = s.contract.snapshot()
 		writeFileSync(join(s.outDir, "contract.json"), JSON.stringify(snapshot, null, 2))
 		writeRevisions(snapshot.revision)
-		violations = checkConsistency(snapshot, s.artifacts)
+		violations = checkConsistency(snapshot, s.artifacts, readBrief(s.outDir))
 		const report = JSON.stringify({ revision: snapshot.revision, violations })
 		if (report !== lastReport) {
 			lastReport = report
