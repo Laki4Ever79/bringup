@@ -475,6 +475,13 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	return new Map([...nets].filter(([, ends]) => new Set(ends.map((e) => e.split(".")[0])).size >= 2))
 }
 
+// The board ports a contract pin lands on: each pad carrying the signal on the USB-C footprint (which has numbered
+// pads only, D- on pin9 and pin11), else the pin's own label. Codegen wires them; the consistency check looks for them.
+export function partPads(part: Part | undefined, pin: string): string[] {
+	const pads = part && footprintFor(part) === USBC_FOOTPRINT ? USBC_PADS[pin as keyof typeof USBC_PADS] : undefined
+	return pads ?? [pin]
+}
+
 // What USB-C pad pinN carries, for people reading generated nets ("J1.pin10" is D+).
 export function usbPadSignal(pin: string): string | undefined {
 	return (Object.entries(USBC_PADS) as [string, string[]][]).find(([, pads]) => pads.includes(pin))?.[0].replace(/^DP$/, "D+").replace(/^DN$/, "D-")
@@ -536,10 +543,9 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		lines.push(`<net name=${q(pin.signal)} />`)
 		lines.push(`<trace name=${q(`${pin.signal}_mcu`)} from=${q(`.${mcuRef} > .GPIO${pin.gpio}`)} to=${q(`net.${pin.signal}`)} />`)
 		// The USB-C footprint has numbered pads only: a contract pin on it (J1.DP) goes to each pad carrying that signal.
-		const part = parts.find((p) => p.ref === pin.partRef)
-		const pads = part && footprintFor(part) === USBC_FOOTPRINT ? USBC_PADS[pin.partPin as keyof typeof USBC_PADS] : undefined
-		for (const pad of pads ?? [pin.partPin])
-			lines.push(`<trace name=${q(`${pin.signal}_part${pads && pads.length > 1 ? `_${pad}` : ""}`)} from=${q(`.${pin.partRef} > .${pad}`)} to=${q(`net.${pin.signal}`)} />`)
+		const pads = partPads(parts.find((p) => p.ref === pin.partRef), pin.partPin)
+		for (const pad of pads)
+			lines.push(`<trace name=${q(`${pin.signal}_part${pads.length > 1 ? `_${pad}` : ""}`)} from=${q(`.${pin.partRef} > .${pad}`)} to=${q(`net.${pin.signal}`)} />`)
 	}
 
 	lines.push(...powerLines(s, placement))

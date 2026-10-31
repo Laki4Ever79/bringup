@@ -1,3 +1,4 @@
+import { partPads } from "../codegen/circuit.ts"
 import { sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
 
@@ -99,7 +100,10 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 	if (a.board && pins && mcuRef) {
 		for (const pin of pins) {
 			const net = a.board.nets[pin.signal] ?? []
-			const missing = [`${mcuRef}.GPIO${pin.gpio}`, `${pin.partRef}.${pin.partPin}`].filter((end) => !net.includes(end))
+			const mcuEnd = `${mcuRef}.GPIO${pin.gpio}`
+			// On a USB-C connector the pin lands on numbered pads (J1.DN on pin9 and pin11): any of them counts.
+			const pads = partPads(parts?.find((p) => p.ref === pin.partRef), pin.partPin).map((pad) => `${pin.partRef}.${pad}`)
+			const missing = [...(net.includes(mcuEnd) ? [] : [mcuEnd]), ...(pads.some((end) => net.includes(end)) ? [] : [`${pin.partRef}.${pin.partPin}`])]
 			if (missing.length > 0) {
 				v.push({
 					kind: "net-missing",
