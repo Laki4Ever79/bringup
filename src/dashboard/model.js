@@ -189,10 +189,12 @@ export function checkPills(events) {
 		pills.push({
 			key: "drc",
 			label: "DRC",
-			state: ownOnly ? "warn" : bad > 0 ? "error" : drc.warnings > 0 ? "warn" : "ok",
+			// KiCad's warnings (silkscreen over copper, library notes, text height) don't stop the fab: no errors is clean.
+			state: ownOnly ? "warn" : bad > 0 ? "error" : "ok",
 			count: bad > 0 ? bad : drc.warnings,
 			revision: board.revision,
 			items: [
+				...(bad === 0 && drc.exemptions?.length ? [`DRC clean · ${drc.exemptions.length} rule${drc.exemptions.length === 1 ? "" : "s"}: ${drc.exemptions.join("; ")}`] : []),
 				...(ownCount ? [`${own.map(([ref, n]) => `${n} inside ${ref}'s own footprint`).join(", ")}: the part's vendor land pattern against the fab's generic rule, not the layout`] : []),
 				`${drc.errors} errors · ${drc.warnings} warnings · ${drc.unconnected} unconnected (${drc.rules})`,
 				...Object.entries(drc.byType ?? {}).map(([type, n]) => `${type} × ${n}`),
