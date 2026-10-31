@@ -4,11 +4,12 @@ import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { missingTools } from "./report.ts"
 import { ROOT, runDesign } from "./run.ts"
+import { driftStatusLines, readDrift } from "./runner/drift.ts"
 import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 import { openBench } from "./bench/open.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 
-const USAGE = "usage: npm run bringup -- <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay]"
+const USAGE = "usage: npm run bringup -- status <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -74,6 +75,16 @@ export function parentGone(stdin: NodeJS.ReadableStream, env: Record<string, str
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
 // its builder reports artifact.failed and the run ends unsettled with a report naming what to install.
 export async function main(argv: string[], deps: { detect?: (root: string) => Promise<Env> } = {}): Promise<number> {
+	// `bringup status <runDir>`: the run's drifted files, like git status (runner/drift.ts).
+	if (argv[0] === "status") {
+		const dir = argv[1]
+		if (!dir || !existsSync(dir)) {
+			console.error(`bringup: status needs a run folder${dir ? `; ${dir} does not exist` : ""}`)
+			return 1
+		}
+		for (const line of driftStatusLines(readDrift(dir), dir)) console.log(line)
+		return 0
+	}
 	const args = parseArgs(argv)
 	if ("error" in args) {
 		console.error(`bringup: ${args.error}\n${USAGE}`)
