@@ -438,6 +438,7 @@ export function composerPrompt(bar, settled, { scripted = false } = {}) {
 
 export function foldHeader(kind, { count = 0, totalUsd = null } = {}) {
 	if (kind === "revisions") return `Revisions · ${count}`
+	if (kind === "register") return `Drawing register · ${count} run${count === 1 ? "" : "s"}`
 	if (!count) return "Parts"
 	return `Parts · ${count}${typeof totalUsd === "number" ? ` · $${totalUsd.toFixed(2)}` : ""}`
 }
