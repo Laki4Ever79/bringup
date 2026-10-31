@@ -1,5 +1,6 @@
-// Beats 4–6 (0:50–1:45): "make it 40 mm wide" → one field → only the affected agents wake → red, then green.
-// The ripple plays in real time with no cuts (act-3 0:21–0:58: typed → consistent again in 31 s).
+// Beats 4–6: "add a temperature/humidity sensor" → parts, pins, requirements → 7 of 9 agents wake → 9 conflicts
+// (incl. the case vent) → consistent in 3 min 15 s. The wait is cut and labelled; the dashboard's clock stays real.
+// FOOTAGE TIMINGS: re-set from 7a's re-recorded act-3 (beacon brief) before rendering.
 import {Node, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef, waitFor} from '@motion-canvas/core';
 import {sceneClock, FULL, caption, fontsReady, footage, tag} from '../lib';
@@ -18,10 +19,10 @@ export default makeScene2D(function* (view) {
   const stage = createRef<Node>();
   view.add(<Node ref={stage} />);
   const t = tag(view, 'SCRIPTED AGENTS · REAL TOOLS');
-  const c4 = caption(view, 'Change “one thing”.');
-  const c5 = caption(view, 'Only the affected agents wake, and they work at the same time.', 'REAL TIME · NO CUTS');
-  const c5b = caption(view, 'The checks go red, then the builders catch up.', 'REAL TIME · NO CUTS');
-  const c6 = caption(view, 'Consistent again. Nobody coordinated by hand.');
+  const c4 = caption(view, 'Change “one thing”: add a sensor.');
+  const c5 = caption(view, 'Only the affected agents wake, and they work at the same time.');
+  const c5b = caption(view, '9 conflicts caught, even: the case has no vent over the sensor.', 'WAITING CUT · THE CLOCK ON SCREEN IS REAL');
+  const c6 = caption(view, 'Board, case and firmware agree. The case grew a vent.');
   yield* t().opacity(1, 0.3);
 
   // Beat 4: typing the change.
