@@ -260,7 +260,9 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts): Violation[]
 
 	// A sensor is only useful on its bus: each of its SDA/SCL pins needs a GPIO in the pins field. (A real run's review
 	// removed the I2C pins, and the sensor part came back without them.)
-	for (const sensor of (parts ?? []).filter((p) => p.role === "sensor")) {
+	// Only once the pin map exists: before the architect has assigned any pins, nothing is "unwired" yet, and waking
+	// the architect then would only interrupt its first design.
+	for (const sensor of pins === undefined ? [] : (parts ?? []).filter((p) => p.role === "sensor")) {
 		const unwired = ["SDA", "SCL"].filter((bus) => sensor.pins.includes(bus) && !(pins ?? []).some((p) => p.partRef === sensor.ref && p.partPin === bus))
 		if (unwired.length > 0) v.push({ kind: "sensor-unwired", message: `sensor ${sensor.ref} (${sensor.mpn}) has no GPIO on ${unwired.join(", ")}`, fields: ["pins"], affects: ["architect"] })
 	}
