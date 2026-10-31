@@ -2,12 +2,13 @@
 // Until it exists, a placeholder card says so; it must never ship in the final render.
 import {Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef, waitFor} from '@motion-canvas/core';
-import {C, F, caption, fontsReady, footage, tag} from '../lib';
+import {sceneClock, C, F, caption, fontsReady, footage, tag} from '../lib';
 
 export const HAVE_BOARD_CLIP = false;
-const BOARD_SECONDS = 20;
+const BOARD_SECONDS = 19.5;
 
 export default makeScene2D(function* (view) {
+  const clock = sceneClock('b9-board');
   yield* fontsReady();
   const stage = createRef<Node>();
   view.add(<Node ref={stage} />);
@@ -32,4 +33,5 @@ export default makeScene2D(function* (view) {
         yield* waitFor(BOARD_SECONDS);
       })();
   yield* all(clip, chain(waitFor(2), cap.in(), waitFor(6), cap.out(), waitFor(5), result().opacity(1, 0.4)));
+  yield* clock.end();
 });

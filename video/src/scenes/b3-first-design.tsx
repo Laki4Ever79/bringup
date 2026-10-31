@@ -1,13 +1,14 @@
 // Beat 3 (0:22–0:50): one brief in, nine participants at once, the design settles; what a run hands you.
 import {Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef, sequence, waitFor} from '@motion-canvas/core';
-import {C, F, FULL, caption, fontsReady, footage, tag} from '../lib';
+import {sceneClock, C, F, FULL, caption, fontsReady, footage, tag} from '../lib';
 
 // Source pixels in the 1920×1080 dashboard recording.
 const AGENTS = {x: 900, y: 290, zoom: 1.75};
 const RESULT = {x: 520, y: 450, zoom: 1.55};
 
 export default makeScene2D(function* (view) {
+  const clock = sceneClock('b3-first-design');
   yield* fontsReady();
   const stage = createRef<Node>();
   view.add(<Node ref={stage} />);
@@ -17,12 +18,12 @@ export default makeScene2D(function* (view) {
   yield* t().opacity(1, 0.3);
   yield* all(
     chain(
-      footage(stage(), '/a2_start.mp4', 12, [{at: 2.5, to: AGENTS, dur: 1.2}], FULL),
+      footage(stage(), '/a2_start.mp4', 10, [{at: 2, to: AGENTS, dur: 1.2}], FULL),
       // (cut: the first design keeps building; the board appears)
       footage(stage(), '/a2_board.mp4', 5),
-      footage(stage(), '/a2_settle.mp4', 5, [{at: 0.8, to: RESULT, dur: 1}]),
+      footage(stage(), '/a2_settle.mp4', 5, [{at: 2.2, to: RESULT, dur: 1}]),
     ),
-    chain(waitFor(4), cap.in(), waitFor(7), cap.out()),
+    chain(waitFor(3), cap.in(), waitFor(9), cap.out()),
   );
 
   // What one run hands you (README "What one run hands you").
@@ -45,7 +46,5 @@ export default makeScene2D(function* (view) {
   );
   yield* card().opacity(1, 0.4);
   yield* sequence(0.35, ...card().children().slice(1).map(c => c.opacity(1, 0.3)));
-  yield* waitFor(1.5);
-  yield* card().opacity(0, 0.3);
-  yield* waitFor(0.6);
+  yield* clock.end();
 });

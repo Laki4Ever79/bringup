@@ -1,10 +1,11 @@
 // Beat 1 (0:00–0:15): a USB-C port moves 5 mm and no longer meets its hole in the case. An illustration, labelled so.
 import {Rect, Txt, makeScene2D, Line} from '@motion-canvas/2d';
 import {all, createRef, easeInOutCubic, sequence, waitFor} from '@motion-canvas/core';
-import {C, F, caption, fontsReady, tag} from '../lib';
+import {sceneClock, C, F, caption, fontsReady, tag} from '../lib';
 
 export default makeScene2D(function* (view) {
   view.fill(C.paper);
+  const clock = sceneClock('b1-problem');
   yield* fontsReady();
 
   const board = createRef<Rect>();
@@ -35,7 +36,7 @@ export default makeScene2D(function* (view) {
   const cap = caption(view, 'Move a connector 5 mm. Three teams have work to do.');
 
   view.add(
-    <Rect ref={teams} layout gap={28} x={0} y={290} opacity={0}>
+    <Rect ref={teams} layout gap={28} x={0} y={300} opacity={0}>
       {['BOARD: re-route', 'CASE: move the hole', 'FIRMWARE: check the pins'].map(t => (
         <Rect layout fill={C.paper2} stroke={C.signal} lineWidth={3} padding={[12, 22]}>
           <Txt text={t} fontFamily={F.mono} fontWeight={700} fontSize={28} fill={C.ink} />
@@ -58,8 +59,7 @@ export default makeScene2D(function* (view) {
   );
   yield* cap.in();
   yield* waitFor(1.5);
-  yield* cap.out();
   yield* teams().opacity(1, 0.5);
   yield* sequence(0.15, ...teams().children().map(c => (c as Rect).fill('#fbe1d7', 0.3)));
-  yield* waitFor(6.6);
+  yield* clock.end();
 });

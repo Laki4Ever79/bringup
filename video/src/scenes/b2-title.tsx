@@ -1,10 +1,11 @@
 // Beat 2 (0:15–0:22): the title and the one line.
 import {Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, createRef, waitFor} from '@motion-canvas/core';
-import {C, F, fontsReady} from '../lib';
+import {sceneClock, C, F, fontsReady} from '../lib';
 
 export default makeScene2D(function* (view) {
   view.fill(C.ink);
+  const clock = sceneClock('b2-title');
   yield* fontsReady();
   const title = createRef<Txt>();
   const line = createRef<Txt>();
@@ -27,5 +28,5 @@ export default makeScene2D(function* (view) {
   );
   yield* all(bar().width(420, 0.6), title().opacity(1, 0.6));
   yield* line().opacity(1, 0.8);
-  yield* waitFor(5.4);
+  yield* clock.end();
 });
