@@ -3,7 +3,7 @@
 **Change one thing, and the whole hardware design follows: board, case, firmware and parts, in parallel, and still
 consistent.**
 
-> **Quick look: needs only Node 24, takes about 5 s, no API key.**
+> **Quick look: needs only Node 24, no API key; about 1 min for `npm ci`, then about 10 s.**
 > ```bash
 > git clone https://github.com/Laki4Ever79/bringup && cd bringup && npm ci
 > npm run bringup -- briefs/logger.md --mock --no-hardware --out out/quick
@@ -203,13 +203,13 @@ message, not a crash.
 ## Run
 
 ```bash
-# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. About 4 s.
+# Fastest look, with nothing but `npm ci`: scripted models, hardware stubbed. About 10 s (5 s on an idle machine).
 npm run bringup -- briefs/logger.md --mock --no-hardware
 
 # Skip the brief reviewer gate (the consistency and grounding checks still run)
 npm run bringup -- briefs/logger.md --mock --no-review
 
-# No API key needed: scripted models, real tools. About 35–45 s once the tools are installed.
+# No API key needed: scripted models, real tools. About 1–3 min once the tools are installed.
 npm run bringup -- briefs/logger.md --mock
 
 # Real models: copy .env.example to .env and set one of
@@ -225,10 +225,14 @@ npm run bringup -- briefs/logger.md
 # The run stays up afterwards: type your own change in the dashboard ("make it 40 mm wide"). Stop ends it.
 npm run demo
 
+# With nothing but `npm ci` (hardware stubbed): the same settle → change → ripple → consistent story, in about 10 s.
+npm run demo -- --no-hardware
+
 # The same from the CLI: each --change is sent after the design settles, and the run ends once the last one re-settles.
 npm run bringup -- briefs/logger.md --mock --change "make the board 40 mm wide"
 
-# Dashboard for any run, live or finished (http://localhost:4317)
+# Dashboard for any run, live or finished (http://localhost:4317; if that port is taken it picks a free one and
+# prints the URL, or pass a port: `npx tsx src/dashboard/cli.ts out/quick 4400`)
 npx tsx src/dashboard/cli.ts
 ```
 
