@@ -1,0 +1,256 @@
+{
+  "revision": 30,
+  "values": {
+    "requirements": {
+      "summary": "Pocket battery-powered climate logger with BLE phone access, logging temperature and humidity for cellar/greenhouse/shipping-box use.",
+      "peripherals": [
+        "temperature/humidity sensor",
+        "Bluetooth Low Energy",
+        "Li-ion battery charging over USB-C",
+        "USB flashing",
+        "status LED",
+        "charge status LED"
+      ],
+      "batteryLifeDays": 180,
+      "batteryMah": 500,
+      "dutyCycle": {
+        "activeMs": 80,
+        "periodS": 900,
+        "sleepUa": 5
+      },
+      "historyDays": 30
+    },
+    "outline": {
+      "widthMm": 40,
+      "heightMm": 30,
+      "thicknessMm": 1.6
+    },
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 25,
+        "widthMm": 9,
+        "heightMm": 3.2
+      },
+      {
+        "ref": "SW1",
+        "kind": "button",
+        "edge": "top",
+        "offsetMm": 25,
+        "widthMm": 3.5,
+        "heightMm": 2
+      }
+    ],
+    "rails": [
+      {
+        "name": "VBUS",
+        "voltageV": 5,
+        "regulatorMaxMa": 500,
+        "loadMa": 0
+      },
+      {
+        "name": "VBAT",
+        "voltageV": 3.7,
+        "regulatorMaxMa": 1000,
+        "loadMa": 100,
+        "averageMa": 0.0307
+      },
+      {
+        "name": "VCC_3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 200,
+        "loadMa": 80,
+        "averageMa": 0.0307
+      }
+    ],
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-C3-MINI-1",
+        "lcsc": "C2838502",
+        "footprint": "esp32_c3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO18",
+          "GPIO19",
+          "EN",
+          "3V3",
+          "GND"
+        ]
+      },
+      {
+        "ref": "U2",
+        "role": "sensor",
+        "mpn": "SHTC3-TR-2.5KS",
+        "lcsc": "C194656",
+        "footprint": "dfn4",
+        "pins": [
+          "VDD",
+          "SCL",
+          "SDA",
+          "VSS"
+        ]
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "XC6206P332MR-G",
+        "lcsc": "C5446",
+        "footprint": "sot23",
+        "pins": [
+          "GND",
+          "VOUT",
+          "VIN"
+        ]
+      },
+      {
+        "ref": "U4",
+        "role": "charger",
+        "mpn": "TP4054-42-SOT25R",
+        "lcsc": "C32574",
+        "footprint": "sot23_5",
+        "pins": [
+          "CHRG",
+          "GND",
+          "BAT",
+          "VCC",
+          "PROG"
+        ]
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ]
+      },
+      {
+        "ref": "J2",
+        "role": "battery",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ]
+      },
+      {
+        "ref": "D1",
+        "role": "led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ]
+      },
+      {
+        "ref": "D2",
+        "role": "charge-led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ]
+      },
+      {
+        "ref": "R1",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ]
+      },
+      {
+        "ref": "R2",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ]
+      },
+      {
+        "ref": "SW1",
+        "role": "button",
+        "mpn": "TS-1187A-B-A-B",
+        "lcsc": "C318884",
+        "footprint": "SW-SMD_4P-L3.5-W2.9",
+        "pins": [
+          "A",
+          "B"
+        ]
+      }
+    ],
+    "pins": [
+      {
+        "signal": "I2C_SCL",
+        "gpio": 4,
+        "partRef": "U2",
+        "partPin": "SCL"
+      },
+      {
+        "signal": "I2C_SDA",
+        "gpio": 5,
+        "partRef": "U2",
+        "partPin": "SDA"
+      },
+      {
+        "signal": "STATUS_LED",
+        "gpio": 8,
+        "partRef": "D1",
+        "partPin": "A"
+      },
+      {
+        "signal": "BOOT_BUTTON",
+        "gpio": 9,
+        "partRef": "SW1",
+        "partPin": "A"
+      }
+    ],
+    "behavior": {
+      "blinkMs": 900000,
+      "tiltBlinkMs": 900000,
+      "tiltDeg": 90
+    }
+  },
+  "versions": {
+    "requirements": 5,
+    "outline": 2,
+    "connectors": 1,
+    "rails": 6,
+    "parts": 10,
+    "pins": 1,
+    "behavior": 5
+  }
+}

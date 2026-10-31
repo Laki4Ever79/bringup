@@ -1,0 +1,38 @@
+{
+  "revision": 2,
+  "values": {
+    "requirements": {
+      "summary": "Pocket battery-powered climate logger with BLE phone access, logging temperature and humidity for cellar/greenhouse/shipping-box use.",
+      "peripherals": [
+        "temperature/humidity sensor",
+        "Bluetooth Low Energy",
+        "Li-ion battery charging over USB-C",
+        "USB flashing",
+        "status LED",
+        "charge status LED"
+      ],
+      "batteryLifeDays": 180,
+      "batteryMah": 500,
+      "dutyCycle": {
+        "activeMs": 150,
+        "periodS": 300,
+        "sleepUa": 5
+      },
+      "historyDays": 30
+    },
+    "outline": {
+      "widthMm": 50,
+      "heightMm": 30,
+      "thicknessMm": 1.6
+    }
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 1,
+    "connectors": 0,
+    "rails": 0,
+    "parts": 0,
+    "pins": 0,
+    "behavior": 0
+  }
+}

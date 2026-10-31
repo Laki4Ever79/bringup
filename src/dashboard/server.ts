@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto"
-import { appendFileSync, copyFileSync, createReadStream, mkdirSync, rmSync, watch, writeFileSync, type FSWatcher } from "node:fs"
+import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, rmSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
@@ -12,7 +12,7 @@ import { orderCheck, orderPackage } from "./order.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 import type { TraceNotifier } from "./notify.ts"
-import { clientIp, PUBLIC_BANNER, type PublicGate } from "./public.ts"
+import { clientIp, PUBLIC_BANNER, PUBLIC_TRY_IT, type PublicGate } from "./public.ts"
 
 const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
@@ -391,8 +391,16 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		}
 		if (req.method !== "GET") return send(res, 405, "method not allowed")
 		if (/^\/api\/runs\/[^/]+\/ready-to-order$/.test(path)) return json(res, 403, { error: "read-only demo" })
+		// The page probes optional files (Cloud links, fab files, the BOM, change requests, lid vents, revision snapshots) that recorded runs
+		// may not carry: an empty 204 instead of a 404, so a visitor's console stays clean. Anything else missing is a 404.
+		if (path === "/favicon.ico") return send(res, 204, "")
+		const probe = /^\/runs\/([^/]+)\/files\/(brief\.md|cloud\.jsonl|fab\/README\.txt|bom\.json|requests\.jsonl|enclosure\/rev-\d+\/vents\.json|contracts\/rev-\d+\.json)$/.exec(path)
+		if (probe) {
+			const dir = await runDir(probe[1])
+			if (dir && !existsSync(join(dir, probe[2]))) return send(res, 204, "")
+		}
 		if (path === "/") {
-			const page = (await readFile(PAGE, "utf8")).replace(/<body[^>]*>/, (tag) => `${tag}<script>window.BRINGUP_PUBLIC = true</script><style>#fab, #order-btn { display: none !important }</style><div id="public-banner" style="position:fixed;left:12px;bottom:12px;z-index:9999;max-width:560px;padding:6px 12px;font:13px/1.4 system-ui,sans-serif;background:#fff4d6;color:#4a3800;border:1px solid #e6cf8a;border-radius:4px">${PUBLIC_BANNER}</div>`)
+			const page = (await readFile(PAGE, "utf8")).replace(/<body[^>]*>/, (tag) => `${tag}<script>window.BRINGUP_PUBLIC = true; addEventListener("DOMContentLoaded", () => { const n = document.getElementById("scripted-note"); if (n) n.textContent = "${PUBLIC_TRY_IT}"; const b = document.getElementById("brief-input"); if (b) b.readOnly = true })</script><style>#fab, #order-btn { display: none !important } #models, .switch[data-k], #scripted-pick, #examples, #stop-btn, #ask { display: none !important }</style><div id="public-banner" style="position:fixed;left:12px;bottom:12px;z-index:9999;max-width:560px;padding:6px 12px;font:13px/1.4 system-ui,sans-serif;background:#fff4d6;color:#4a3800;border:1px solid #e6cf8a;border-radius:4px">${PUBLIC_BANNER}</div>`)
 			res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 			return res.end(page)
 		}
