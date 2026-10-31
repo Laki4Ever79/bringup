@@ -82,7 +82,8 @@
 	.popover ul { margin: 0; padding-left: 16px; }
 
 	/* ── App frame ─────────────────────────────────────────── */
-	#app { height: 100vh; display: grid; grid-template-rows: 54px auto minmax(0, 1fr); }
+	/* The window's height (dvh: browser chrome and fractional scaling count), growing past it rather than crushing. */
+	#app { min-height: 100vh; min-height: 100dvh; display: grid; grid-template-rows: 54px auto minmax(0, 1fr); }
 	header { display: flex; align-items: center; gap: 12px; padding: 0 var(--gap); border-bottom: 1.5px solid var(--ink); background: var(--paper); position: relative; z-index: 6; min-width: 0; }
 	.logo { display: flex; align-items: center; gap: 10px; font: 800 28px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; text-decoration: none; }
 	.logo i { width: 16px; height: 16px; background: var(--signal); box-shadow: 3px 3px 0 var(--ink); }
@@ -138,7 +139,8 @@
 	#send-btn:disabled { opacity: .35; cursor: default; }
 
 	/* ── Run view ─────────────────────────────────────────── */
-	#run { display: grid; grid-template-rows: minmax(clamp(250px, 33vh, 352px), auto) minmax(0, 1fr); gap: var(--gap); padding: var(--gap); min-height: 0; }
+	/* The board and case get what is left, but never less than 340px: below that the page scrolls. */
+	#run { display: grid; grid-template-rows: minmax(clamp(250px, 33vh, 352px), auto) minmax(340px, 1fr); gap: var(--gap); padding: var(--gap); min-height: 0; }
 
 	/* The ripple: change → fields → agents → checks, then the result line. */
 	#ripple { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr) minmax(0, 1.6fr) minmax(0, 1.1fr); grid-template-rows: minmax(0, 1fr) auto; }
@@ -567,6 +569,19 @@
 		#rip-fields li { padding: 2px 8px; font-size: 13px; }
 		#ripple > .col { padding: 10px 14px 8px; }
 		#rip-result .stampbox { width: 36px; height: 36px; font-size: 22px; }
+	}
+	/* Short windows (a laptop browser with its tabs and bar): a tighter change band, so the board keeps its room. */
+	@media (max-height: 880px) {
+		#run { gap: 8px; padding: 8px; grid-template-rows: minmax(220px, auto) minmax(340px, 1fr); }
+		#ripple > .col { padding: 8px 12px 6px; gap: 6px; }
+		#agents { grid-auto-rows: minmax(54px, 1fr); gap: 5px; }
+		.tile .name { font-size: 16px; }
+		.tile .task { font-size: 13px; }
+		#rip-text { font-size: clamp(20px, 1.8vw, 30px); }
+		#rip-headline { font-size: clamp(22px, 2.2vw, 38px); }
+		#rip-detail { font-size: 14px; }
+		#rip-fields li { padding: 1px 8px; font-size: 12.5px; }
+		#rip-timeline { gap: 3px; } #rip-timeline li .x { font-size: 13px; }
 	}
 	@media (prefers-reduced-motion: reduce) {
 		*, *::before, *::after { animation: none !important; transition: none !important; }
