@@ -60,7 +60,7 @@ timeline from `video/src/timing.json` by `video/tools/mux.sh`. The captions carr
 | 0:40–2:20 | A judge types "make it 40 mm wide"; narrate the ripple and the Mozaik point | live dashboard, scripted mode, said aloud |
 | 2:20–3:00 | 0 vs 16; real models (run 20): sensor swap 75 s, 40 mm 28 s | 1 slide |
 | 3:00–4:20 | The board in a judge's hand: "blink faster when tilted", reflash, tilt, 244 ms | live; beat 9's clip as the fallback |
-| 4:20–5:00 | Honest limit (1 of 19 real runs passed the final review) + close | 1 slide |
+| 4:20–5:00 | Honest limit (1 of 21 real runs passed the final review) + close | 1 slide |
 
 Ready for Q&A: the "What changed & why" drawer, real-20's trace, the BLE phone read, parallel vs taking turns
 (31–72 s vs 36–94 s), the reviewer's catches.
