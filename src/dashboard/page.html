@@ -728,7 +728,7 @@
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
 	import { matchTrial, proofSummary } from "/proof.js"
 	import { changeLog, defaultRange, fileDrift, rippleTimeline } from "/changelog.js"
-	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, driftView, flashSteps, foldHeader, foldOpen, lowPass, setFold, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
+	import { AGENT_COLORS, composerPrompt, runPhase, readinessShort, toggleOpen, ledMirror, relativeGravity, readinessLine, safeUrl, sourcingRows, attitude, benchState, boardFor, changedRefs, checkPills, driftView, rippleMarks, flashSteps, foldHeader, foldOpen, lowPass, setFold, parseBattery, prCards, scrubberModel, TelemetryBuffer } from "/model.js"
 
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -1081,7 +1081,9 @@
 				const buf = await r.arrayBuffer()
 				// The lid, the spec (heights) and the measured standoffs: optional, older runs have none of them.
 				const opt = async (p, as) => { try { const x = await fetch(file(`${dir}/${p}`)); return x.ok ? await x[as]() : null } catch { return null } }
-				const [lid, spec, standoffs, print] = await Promise.all([opt("lid.stl", "arrayBuffer"), opt("spec.json", "json"), opt("standoffs.json", "json"), opt("print.json", "json")])
+				const [lid, spec, standoffs, print, vents] = await Promise.all([opt("lid.stl", "arrayBuffer"), opt("spec.json", "json"), opt("standoffs.json", "json"), opt("print.json", "json"), opt("vents.json", "json")])
+				S.vents = Array.isArray(vents) ? vents : []
+				applyMarks()
 				$("scene-empty").classList.add("hidden")
 				if (scene) scene.update({ caseStl: buf, lidStl: lid, enclosure: { spec, standoffs } })
 				else wire.load(buf)
@@ -1735,6 +1737,14 @@
 			$(id).innerHTML = html
 		}
 		let resultKey = ""
+		// The change on screen, shown off: its new/changed parts glow on the PCB (NEW / CHANGED) and in 3D, and the lid
+		// vents over a new or changed part (af's vents.json) breathe on the case.
+		function applyMarks() {
+			const m = S.marks ?? { added: [], changed: [] }
+			pcb?.setMarks?.(m)
+			const refs = [...m.added, ...m.changed]
+			scene?.setMarks?.({ refs, vents: (S.vents ?? []).filter((v) => refs.includes(v.ref)) })
+		}
 		// 04 Timeline: how the change travelled. Keyed by step, so only a new step rises in.
 		function renderTimeline(steps, note) {
 			const ol = $("rip-timeline")
@@ -1818,6 +1828,8 @@
 			setHtml("rip-fields", fieldsHtml)
 			$("rip-agents-note").textContent = r.state === "sent" ? "" : `${r.woke.length} woke${r.reading?.length ? ` · ${r.reading.length} reading` : ""}${r.checked?.length ? ` · ${r.checked.length} checked` : ""} · ${r.stayedIdle.length} idle`
 			showStatus(r)
+			S.marks = r.revisions ? rippleMarks(S.snapshots.get(r.revisions.from - 1)?.values ?? null, snapAt(r.revisions.to)?.values ?? null) : { added: [], changed: [] }
+			applyMarks()
 			renderTimeline(rippleTimeline(S.events, { fromMs: r.atMs, toMs: until, consistentAtMs: r.consistentAtMs }), r.state === "consistent" ? `in ${secs(r.durationMs ?? 0)}` : "")
 			renderProof(r)
 		}
@@ -1837,6 +1849,8 @@
 			const working = CARD_KEYS.filter((k) => ACTIVE.has(S.lanes[k].status)).length
 			$("rip-agents-note").textContent = S.settled ? "" : `${working} working now`
 			showStatus(null, working)
+			S.marks = { added: [], changed: [] }
+			applyMarks()
 			if (S.firstAt) renderTimeline(rippleTimeline(S.events, { fromMs: S.firstAt, start: `the brief: ${title}`, consistentAtMs: S.settled?.settled ? S.endAt : null }), "the first design")
 			renderProof(null)
 		}

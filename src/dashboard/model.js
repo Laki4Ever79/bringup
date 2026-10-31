@@ -421,8 +421,8 @@ export function runPhase({ settled, stay, alive, benchLive, stopped }) {
 }
 
 // The composer's placeholder for the run's phase (runPhase().bar), honest about an unsettled design.
-// Scripted agents act on a width ("make it N mm wide") and the blink; anything else they answer "no change".
-const SCRIPTED_ASK = "a width for the board (“make it 40 mm wide”) or the blink (“blink faster when tilted”)"
+// Scripted agents act on a sensor ("add a … sensor"), a width ("make it N mm wide") and the blink; anything else is "no change".
+const SCRIPTED_ASK = "“add a temperature/humidity sensor”, “make it 40 mm wide” or “blink faster when tilted”"
 
 export function composerPrompt(bar, settled, { scripted = false } = {}) {
 	if (scripted && bar === "waiting" && settled?.settled !== false) return `Settled. Change one thing: ${SCRIPTED_ASK}`
@@ -475,4 +475,12 @@ export function driftView(drift) {
 			}
 		})
 	return { open: rows.filter((r) => r.status === "open").length, rows, live }
+}
+
+// ── What a ripple added or changed on the board: new refs glow as NEW, changed ones (moved pins, a swap) as CHANGED ──
+export function rippleMarks(before, after) {
+	if (!before || !after) return { added: [], changed: [] }
+	const had = new Set((before.parts ?? []).map((p) => p.ref))
+	const added = (after.parts ?? []).map((p) => p.ref).filter((r) => !had.has(r)).sort()
+	return { added, changed: changedRefs(before, after).filter((r) => !added.includes(r)) }
 }

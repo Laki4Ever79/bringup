@@ -36,3 +36,4 @@ export interface PaintItem {
 	z: number
 }
 export function paintOrder<T extends PaintItem>(items: T[], opts: { boardDepth: number; boardZ: number; above: boolean }): T[]
+export function ventOutline(vent: { ref?: string; xMm: number; yMm: number; widthMm: number; heightMm: number; openMm2?: number }, origin: number[], z: number): { box: number[][]; slots: number[][][] }
