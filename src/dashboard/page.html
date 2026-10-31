@@ -82,7 +82,8 @@
 	.popover ul { margin: 0; padding-left: 16px; }
 
 	/* ── App frame ─────────────────────────────────────────── */
-	#app { height: 100vh; display: grid; grid-template-rows: 54px auto minmax(0, 1fr); }
+	/* The window's height (dvh: browser chrome and fractional scaling count), growing past it rather than crushing. */
+	#app { min-height: 100vh; min-height: 100dvh; display: grid; grid-template-rows: 54px auto minmax(0, 1fr); }
 	header { display: flex; align-items: center; gap: 12px; padding: 0 var(--gap); border-bottom: 1.5px solid var(--ink); background: var(--paper); position: relative; z-index: 6; min-width: 0; }
 	.logo { display: flex; align-items: center; gap: 10px; font: 800 28px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; text-decoration: none; }
 	.logo i { width: 16px; height: 16px; background: var(--signal); box-shadow: 3px 3px 0 var(--ink); }
@@ -138,7 +139,8 @@
 	#send-btn:disabled { opacity: .35; cursor: default; }
 
 	/* ── Run view ─────────────────────────────────────────── */
-	#run { display: grid; grid-template-rows: minmax(clamp(250px, 33vh, 352px), auto) minmax(0, 1fr); gap: var(--gap); padding: var(--gap); min-height: 0; }
+	/* The board and case get what is left, but never less than 340px: below that the page scrolls. */
+	#run { display: grid; grid-template-rows: minmax(clamp(250px, 33vh, 352px), auto) minmax(340px, 1fr); gap: var(--gap); padding: var(--gap); min-height: 0; }
 
 	/* The ripple: change → fields → agents → checks, then the result line. */
 	#ripple { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr) minmax(0, 1.6fr) minmax(0, 1.1fr); grid-template-rows: minmax(0, 1fr) auto; }
@@ -322,8 +324,26 @@
 	.fold-head[aria-expanded="true"] .caret { transform: rotate(90deg); }
 	#scrubber .fold-head { width: auto; flex: none; }
 	#parts-panel.folded #parts-ready, #parts-panel.folded #parts { display: none; }
+	/* Parts, opened: a large sheet over the deck (the deck keeps its layout), 15–16px rows; Esc or a click outside closes it. */
+	#parts-panel:not(.folded) { position: fixed; z-index: 46; left: max(3vw, calc(50% - 590px)); right: max(3vw, calc(50% - 590px)); bottom: 20px; height: 66vh; padding: 14px 16px; background: var(--paper); border: 2px solid var(--ink); box-shadow: 0 30px 90px rgba(22, 20, 15, .45); animation: rise 420ms var(--spring) both; }
+	#parts-panel:not(.folded) > .label { font-size: 14px; padding: 0 4px 6px; }
+	#parts-panel:not(.folded) #parts-ready { font-size: 14px; padding: 0 4px 8px; }
+	#parts-panel:not(.folded) #parts .part { grid-template-columns: 64px minmax(0, 1.4fr) minmax(0, .8fr) auto 26px 14px; gap: 12px; padding: 9px 10px; }
+	#parts-panel:not(.folded) #parts .ref { font-size: 15px; padding: 5px 6px; }
+	#parts-panel:not(.folded) #parts .mpn { font-size: 16px; }
+	#parts-panel:not(.folded) #parts .mpn a { font-size: 14px; }
+	#parts-panel:not(.folded) #parts .chip, #parts-panel:not(.folded) #parts .stock { font-size: 15px; }
+	#parts .stock { display: none; font: 500 13px/1.2 var(--mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#parts-panel:not(.folded) #parts .stock { display: block; }
+	#parts .tag { margin-left: 8px; font: 700 11px/1 var(--mono); letter-spacing: .08em; padding: 3px 5px; vertical-align: 2px; }
+	#parts .tag.new { background: var(--signal); color: #fff; } #parts .tag.changed { background: #f3b43f; color: var(--ink); }
+	/* Board and case, maximised: most of the screen, over everything; Esc or the button returns. */
+	#stage.maxed, #scene-panel.maxed { position: fixed; z-index: 46; inset: 64px 16px 16px; box-shadow: 0 30px 90px rgba(0, 0, 0, .5); }
+	.max-btn { margin-left: 6px; height: 26px; min-width: 30px; padding: 0 8px; border: 1px solid var(--screen-rule); background: transparent; color: var(--screen-text); font: 700 14px/1 var(--mono); cursor: pointer; }
+	.max-btn:hover { border-color: var(--signal); color: var(--signal); }
+	#dim { position: fixed; inset: 0; z-index: 45; background: rgba(22, 20, 15, .38); backdrop-filter: blur(2px); animation: fadein 240ms var(--ease); }
 	#parts-panel.folded { padding-bottom: 10px; }
-	#side:has(#parts-panel.folded) { grid-template-rows: minmax(0, 1fr) auto; }
+	#side { grid-template-rows: minmax(0, 1fr) auto !important; }
 	#scrubber.folded #dots, #scrubber.folded #live-btn { display: none; }
 	/* The hub's drawing register: folded by default, one line with the run count (remembered per browser). */
 	.recent.folded .reg-head, .recent.folded #runs { display: none; }
@@ -568,6 +588,19 @@
 		#ripple > .col { padding: 10px 14px 8px; }
 		#rip-result .stampbox { width: 36px; height: 36px; font-size: 22px; }
 	}
+	/* Short windows (a laptop browser with its tabs and bar): a tighter change band, so the board keeps its room. */
+	@media (max-height: 880px) {
+		#run { gap: 8px; padding: 8px; grid-template-rows: minmax(220px, auto) minmax(340px, 1fr); }
+		#ripple > .col { padding: 8px 12px 6px; gap: 6px; }
+		#agents { grid-auto-rows: minmax(54px, 1fr); gap: 5px; }
+		.tile .name { font-size: 16px; }
+		.tile .task { font-size: 13px; }
+		#rip-text { font-size: clamp(20px, 1.8vw, 30px); }
+		#rip-headline { font-size: clamp(22px, 2.2vw, 38px); }
+		#rip-detail { font-size: 14px; }
+		#rip-fields li { padding: 1px 8px; font-size: 12.5px; }
+		#rip-timeline { gap: 3px; } #rip-timeline li .x { font-size: 13px; }
+	}
 	@media (prefers-reduced-motion: reduce) {
 		*, *::before, *::after { animation: none !important; transition: none !important; }
 	}
@@ -678,6 +711,7 @@
 					<span id="dims" class="num"></span>
 					<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
 					<button id="order-btn" class="pill hidden" disabled title="">Ready to order ↗</button>
+					<button id="max-board" class="max-btn" title="Maximise the board (double-click the board too; Esc returns)">⤢</button>
 					<div id="battery" class="hidden"><span id="battery-text" class="num"></span><span class="bar"><span class="fill"></span><span class="target"></span></span></div>
 				</div>
 				<div id="stage-body">
@@ -705,7 +739,7 @@
 			</section>
 			<aside id="side">
 				<section id="scene-panel">
-					<div class="label"><b>07</b> Case + board<span class="right"><label>explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label></span></div>
+					<div class="label"><b>07</b> Case + board<span class="right"><label>explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label><button id="max-case" class="max-btn" title="Maximise the case (Esc returns)">⤢</button></span></div>
 					<div id="scene-body"><div id="scene-host"></div><div id="scene-empty" class="empty-state">waiting for the first enclosure build</div></div>
 				</section>
 				<section id="parts-panel" class="sheet">
@@ -1136,16 +1170,21 @@
 			pcb?.setParts?.(parts)
 			scene?.setParts?.(parts)
 			const total = S.bom && !Array.isArray(S.bom) ? S.bom.totalUsd : null
-			$("parts-head").textContent = foldHeader("parts", { count: items.length, totalUsd: total })
+			const refs = new Set(items.map((p) => p.ref))
+			$("parts-head").textContent = foldHeader("parts", { count: items.length, totalUsd: total, added: (S.marks?.added ?? []).filter((r) => refs.has(r)).length, changed: (S.marks?.changed ?? []).filter((r) => refs.has(r)).length })
 			const ready = S.bom && !Array.isArray(S.bom) ? S.bom.readiness : null
 			$("parts-ready").textContent = readinessShort(ready)
 			$("parts-ready").title = ready?.summary ?? ""
 			$("parts-ready").className = ready?.warn ? "warn" : ""
-			$("parts").innerHTML = items.map((p) => {
+			// What the change on screen added or changed comes first.
+			const rank = (p) => (S.marks?.added?.includes(p.ref) ? 0 : S.marks?.changed?.includes(p.ref) ? 1 : 2)
+			$("parts").innerHTML = [...items].sort((a, b) => rank(a) - rank(b)).map((p) => {
 				const price = typeof p.priceUsd === "number" ? `<span class="chip num">$${p.priceUsd.toFixed(p.priceUsd < 0.1 ? 3 : 2)}</span>` : `<span class="chip t3">$ —</span>`
 				const g = p.grounded === true ? `<span class="ground ok" title="every pin backed by a datasheet source">✓</span>` : p.grounded === false ? `<span class="ground warn" title="${esc(p.finding ?? "not grounded")}">⚠</span>` : `<span class="ground t3">·</span>`
 				const lcsc = p.lcsc ? `<a href="https://www.lcsc.com/product-detail/${encodeURIComponent(p.lcsc)}.html" target="_blank" rel="noopener">${esc(p.lcsc)} ↗</a>` : ""
-				return `<div class="part${S.hover === p.ref ? " hl" : ""}" data-ref="${esc(p.ref)}" title="Where to buy ${esc(p.ref)}"><span class="ref">${esc(p.ref)}</span><span class="mpn" title="${esc(p.role)} · ${esc(p.footprint)}">${esc(p.mpn)}${lcsc}</span>${price}${g}<span class="chev" aria-hidden="true">›</span></div>`
+				const tag = S.marks?.added?.includes(p.ref) ? `<span class="tag new">NEW</span>` : S.marks?.changed?.includes(p.ref) ? `<span class="tag changed">CHANGED</span>` : ""
+				const stock = typeof p.stock === "number" ? `${p.stock.toLocaleString("en")} in stock` : p.stock ? String(p.stock) : "stock not checked"
+				return `<div class="part${S.hover === p.ref ? " hl" : ""}" data-ref="${esc(p.ref)}" title="Where to buy ${esc(p.ref)}"><span class="ref">${esc(p.ref)}</span><span class="mpn" title="${esc(p.role)} · ${esc(p.footprint)}">${esc(p.mpn)}${lcsc}${tag}</span><span class="stock">${esc(stock)}</span>${price}${g}<span class="chev" aria-hidden="true">›</span></div>`
 			}).join("")
 			// The list is rebuilt whenever bom.json updates; the open part is state, not DOM, so it survives that.
 			showSourcing(S.openPart, false)
@@ -1491,11 +1530,32 @@
 		})
 		// Folds: collapsed until opened; the choice is kept per browser (no storage, e.g. a sandboxed frame: always collapsed).
 		const store = (() => { try { return localStorage } catch { return null } })()
-		for (const [kind, box, btn] of [["parts", "parts-panel", "parts-fold"], ["revisions", "scrubber", "revs-fold"]]) {
-			const apply = (open) => { $(box).classList.toggle("folded", !open); $(btn).setAttribute("aria-expanded", String(open)) }
-			apply(foldOpen(store, kind))
-			$(btn).addEventListener("click", () => { const open = $(box).classList.contains("folded"); setFold(store, kind, open); apply(open); pcb?.fit?.() })
+		// Overlays (Parts opened, the board or case maximised): a dim backdrop; a click on it or Esc closes them.
+		const dim = document.createElement("div")
+		dim.id = "dim"
+		dim.className = "hidden"
+		document.body.append(dim)
+		function overlay() {
+			const any = !$("parts-panel").classList.contains("folded") || $("stage").classList.contains("maxed") || $("scene-panel").classList.contains("maxed")
+			dim.classList.toggle("hidden", !any)
 		}
+		function closeOverlays() {
+			$("parts-panel").classList.add("folded"); $("parts-fold").setAttribute("aria-expanded", "false")
+			for (const id of ["stage", "scene-panel"]) $(id).classList.remove("maxed")
+			overlay()
+		}
+		for (const [kind, box, btn] of [["parts", "parts-panel", "parts-fold"], ["revisions", "scrubber", "revs-fold"]]) {
+			// Parts opens as an overlay, so it always starts closed; the revisions strip remembers.
+			const remember = kind !== "parts"
+			const apply = (open) => { $(box).classList.toggle("folded", !open); $(btn).setAttribute("aria-expanded", String(open)); if (kind === "parts") overlay() }
+			apply(remember && foldOpen(store, kind))
+			$(btn).addEventListener("click", (e) => { e.stopPropagation(); const open = $(box).classList.contains("folded"); if (remember) setFold(store, kind, open); apply(open); pcb?.fit?.() })
+		}
+		dim.addEventListener("click", closeOverlays)
+		const maximise = (id) => { const el = $(id), on = !el.classList.contains("maxed"); closeOverlays(); el.classList.toggle("maxed", on); overlay() }
+		$("max-board").addEventListener("click", () => maximise("stage"))
+		$("max-case").addEventListener("click", () => maximise("scene-panel"))
+		$("pcb-host").addEventListener("dblclick", () => maximise("stage"))
 		const goLive = () => { S.selected = null; syncArtifacts(); schedule() }
 		$("live-btn").addEventListener("click", goLive)
 		$("viewing-pill").addEventListener("click", goLive)
@@ -1756,6 +1816,8 @@
 		function applyMarks() {
 			const m = S.marks ?? { added: [], changed: [] }
 			pcb?.setMarks?.(m)
+			const key = JSON.stringify(m)
+			if (key !== S.marksKey) { S.marksKey = key; renderParts() }
 			const refs = [...m.added, ...m.changed]
 			scene?.setMarks?.({ refs, vents: (S.vents ?? []).filter((v) => refs.includes(v.ref)) })
 		}
@@ -1892,7 +1954,7 @@
 		$("send-btn").addEventListener("click", () => sendChange($("change-input").value))
 		document.addEventListener("keydown", (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("change-input").focus() }
-			if (e.key === "Escape") { $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("changes").classList.remove("open"); $("drift").classList.remove("open"); $("why").classList.remove("open"); $("brief-panel").classList.add("hidden"); if (S.openPart) showSourcing(null) }
+			if (e.key === "Escape") { closeOverlays(); $("overlay").classList.remove("open"); $("feed").classList.remove("open"); $("changes").classList.remove("open"); $("drift").classList.remove("open"); $("why").classList.remove("open"); $("brief-panel").classList.add("hidden"); if (S.openPart) showSourcing(null) }
 		})
 		$("change-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChange($("change-input").value) })
 		async function sendChange(raw) {
