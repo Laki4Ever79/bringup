@@ -8,7 +8,7 @@
 ripple took 3 min 15 s.</sub>
 
 A short product brief goes in. Concurrent [Mozaik](https://www.npmjs.com/package/@mozaik-ai/core) agents turn it into
-in-stock parts, a routed PCB, a printable case whose cutouts match the board, and firmware that compiles against the
+parts with JLCPCB order numbers (stock checked live with real models), a routed PCB, a printable case whose cutouts match the board, and firmware that compiles against the
 real pin map. Then the design changes, the way real designs always do: change “one thing”, and Bringup keeps every part
 of it consistent. The first design is itself just the first change: the beacon's took 7 contract revisions.
 
