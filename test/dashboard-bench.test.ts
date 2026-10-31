@@ -199,3 +199,15 @@ test("the 3D board tilts from its pose at boot: the boot reading is level, whate
 	assert.ok(Math.abs(Math.abs(p.pitch) - Math.PI / 6) < 1e-6, String(p.pitch))
 	assert.ok(Math.abs(p.roll) < 1e-6)
 })
+
+test("bench state keeps the latest blink measurement, and a tilt request while it waits", () => {
+	const blink = ev("bench.blink", { revision: 9, source: "real", blinkMs: 1000, tiltBlinkMs: 250, expected: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, pass: true, detail: "blink 1000 ms, tilted 250 ms past 20° (measured from 34 LED toggles)" })
+	const tilt = (state: string) => ev("bench.instruction", { revision: 9, action: "tilt", text: "Tilt the board more than 20° and hold it there for 3 s, so the bench can time the tilted blink.", state })
+	const s = benchState([connected(), tilt("waiting")])!
+	assert.equal(s.instruction?.action, "tilt")
+	assert.equal(s.blink, null)
+	const t = benchState([connected(), tilt("waiting"), tilt("done"), blink])!
+	assert.equal(t.instruction, null)
+	assert.equal(t.blink?.tiltBlinkMs, 250)
+	assert.equal(t.blink?.revision, 9)
+})

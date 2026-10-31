@@ -228,7 +228,7 @@ export function benchState(events) {
 		const p = e.payload
 		switch (e.type) {
 			case "bench.connected":
-				state = { source: p.source, meter: p.meter, ports: p.ports, flash: null, verdict: null, measured: null, instruction: null }
+				state = { source: p.source, meter: p.meter, ports: p.ports, flash: null, verdict: null, measured: null, instruction: null, blink: null }
 				break
 			case "bench.flashing":
 				if (!state) break
@@ -248,6 +248,10 @@ export function benchState(events) {
 				break
 			case "bench.measured":
 				if (state) state.measured = p
+				break
+			// The LED periods measured on the board against the contract's behavior (Act 3).
+			case "bench.blink":
+				if (state) state.blink = p
 				break
 		}
 	}

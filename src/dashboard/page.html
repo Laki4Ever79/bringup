@@ -433,7 +433,23 @@
 	}
 
 	/* Bench (bring-up on the desk): on the stage screen. */
-	#bench-view { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding: 10px 12px; }
+	#bench-view { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 8px; padding: 10px 12px; }
+	/* Measured vs expected LED periods (Act 3). */
+	#bench-blink { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--screen-rule); font: 500 13px/1.3 var(--mono); color: var(--screen-text-2); }
+	#bench-blink b { font: 800 20px/1 var(--display); color: var(--screen-text); letter-spacing: .02em; }
+	#bench-blink .ok { color: #7fe0a8; } #bench-blink .bad { color: #ff7b72; }
+	/* The person holds the board: the request takes the whole stage until it is done. */
+	#tilt-ask { position: absolute; inset: 0; z-index: 8; display: grid; align-content: center; justify-items: center; gap: 14px; padding: 24px; text-align: center; background: #f3b43f; color: var(--ink); }
+	#tilt-ask .kicker { font: 700 13px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+	#tilt-ask b { font: 900 clamp(56px, 7vw, 132px)/.9 var(--display); text-transform: uppercase; letter-spacing: .01em; animation: blink 1.4s steps(2) infinite; }
+	#tilt-ask .how { font: 600 clamp(16px, 1.3vw, 22px)/1.35 var(--sans); max-width: 760px; }
+	#tilt-ask .meter { display: grid; grid-template-columns: auto minmax(200px, 520px) auto; gap: 14px; align-items: center; width: min(820px, 92%); }
+	#tilt-ask .now { font: 800 clamp(30px, 3vw, 54px)/1 var(--display); min-width: 3ch; text-align: right; }
+	#tilt-ask .need { font: 700 15px/1 var(--mono); }
+	#tilt-ask .bar { position: relative; height: 18px; border: 2px solid var(--ink); background: var(--paper); }
+	#tilt-ask .fill { position: absolute; inset: 0 auto 0 0; background: var(--ink); transition: width 120ms linear; }
+	#tilt-ask .fill.past { background: var(--ok); }
+	#tilt-ask .mark { position: absolute; top: -6px; bottom: -6px; width: 3px; background: var(--signal); }
 	.bench-top { display: flex; align-items: center; gap: 10px; min-width: 0; font: 500 13px/1 var(--mono); color: var(--screen-text-2); }
 	#bench-view .t3 { color: var(--screen-text-2); }
 	.src-badge { font: 700 12px/1 var(--mono); letter-spacing: .08em; padding: 4px 8px; }
@@ -610,10 +626,11 @@
 					<div id="bench-view" class="view hidden">
 						<div class="bench-top"><span id="bench-src" class="src-badge"></span><span id="bench-ports" class="t3"></span><span id="shake-chip" class="pill hidden" title="The board's LED blinks red while it is being shaken">steady</span><div class="flash-bar" id="flash-bar"></div></div>
 						<div id="bench-chart-box"><canvas id="bench-chart"></canvas></div>
-						<div class="bench-bottom"><div id="bench-gauge"><div class="t3">measured vs estimated battery life: waiting for a duty-cycle measurement</div></div><ul class="bench-checks" id="bench-checks"><li class="t3">checks: waiting for the first flash (after the design settles)</li></ul></div>
+						<div id="bench-blink" class="hidden"></div><div class="bench-bottom"><div id="bench-gauge"><div class="t3">measured vs estimated battery life: waiting for a duty-cycle measurement</div></div><ul class="bench-checks" id="bench-checks"><li class="t3">checks: waiting for the first flash (after the design settles)</li></ul></div>
 					</div>
 					<span id="changed-pill" class="pill"></span>
 					<span id="viewing-pill" class="pill hidden" title="Back to live"></span>
+					<div id="tilt-ask" class="hidden" role="alert"><span class="kicker">The bench needs you · firmware rev <span id="tilt-rev"></span></span><b>Tilt the board</b><span class="how" id="tilt-text"></span><div class="meter"><span class="now" id="tilt-now">—</span><span class="bar"><span class="fill" id="tilt-fill"></span><span class="mark" id="tilt-mark"></span></span><span class="need" id="tilt-need"></span></div></div>
 					<div id="bench-ask" class="hidden" role="alert"><span class="hand">✋</span><div><b id="bench-ask-text"></b><span class="t2" id="bench-ask-note"></span></div></div>
 					<span id="led-mirror" class="pill hidden"><i></i><span></span></span>
 				</div>
@@ -1184,10 +1201,26 @@
 			$("flash-bar").innerHTML = b.flash ? flashSteps(b.flash).map((st) => `<span class="${st.state}" title="${esc(st.state === "failed" ? (b.flash.error ?? "") : "")}">${st.state === "done" ? "✓ " : st.state === "failed" ? "✗ " : ""}${esc(st.label)}</span>`).join("") : `<span>waiting for the design to settle</span>`
 			// A step for the person at the desk (the bridge can't reset this board into flashing mode by itself).
 			const ask = b.instruction
-			$("bench-ask").classList.toggle("hidden", !ask)
-			if (ask) {
+			const tilt = ask?.action === "tilt"
+			$("tilt-ask").classList.toggle("hidden", !tilt)
+			$("bench-ask").classList.toggle("hidden", !ask || tilt)
+			if (tilt) {
+				$("tilt-rev").textContent = ask.revision ?? "?"
+				$("tilt-text").textContent = ask.text
+				renderTiltMeter()
+			} else if (ask) {
 				$("bench-ask-text").textContent = ask.text
 				$("bench-ask-note").textContent = `At the board on the desk, for firmware rev ${ask.revision ?? "?"}. The flash carries on by itself once it's done; the bench gives up after 3 minutes.`
+			}
+			const k = b.blink
+			$("bench-blink").classList.toggle("hidden", !k)
+			if (k) {
+				const ms = (x) => (typeof x === "number" ? `${x} ms` : "not seen")
+				const tiltRow = k.expected.tiltDeg < 90 && k.expected.tiltBlinkMs !== k.expected.blinkMs
+				$("bench-blink").innerHTML = `<span class="${k.pass ? "ok" : "bad"}">${k.pass ? "✓" : "✗"} LED, firmware rev ${esc(k.revision)}${k.source !== "real" ? ` (${esc(k.source.toUpperCase())})` : ""}</span>` +
+					`<span>blink <b>${esc(ms(k.blinkMs))}</b> measured · ${esc(k.expected.blinkMs)} ms expected</span>` +
+					(tiltRow ? `<span>tilted past ${esc(k.expected.tiltDeg)}° <b>${esc(ms(k.tiltBlinkMs))}</b> measured · ${esc(k.expected.tiltBlinkMs)} ms expected</span>` : "") +
+					`<span class="t3" title="${esc(k.detail)}">${esc(k.detail)}</span>`
 			}
 			const v = b.verdict
 			$("bench-checks").innerHTML = v
@@ -1299,8 +1332,10 @@
 			g.fillStyle = "#6b6b76"
 			g.fillText("90°", 8, top + 10); g.fillText("0°", 14, top + ph); g.fillText("LED", 8, sy + 13)
 			g.fillText("−30 s", L, h - 4); g.fillText("now", L + pw - 24, h - 4)
-			g.fillStyle = AGENT_COLORS["build:enclosure"]; g.fillText(`tilt from boot pose${tl.length ? ` ${Math.round(tl.at(-1).tilt)}°` : ""}${typeof tiltDeg === "number" && tiltDeg < 90 ? ` (fast blink past ${tiltDeg}°)` : ""}`, L, 15)
-			g.fillStyle = led.length ? ledCss(led.at(-1)) : "#4ade80"; g.fillText(`LED${led.length ? (led.at(-1).led ? " on" : " off") : ""}`, L + 220, 15)
+			const tiltLabel = `tilt from boot pose${tl.length ? ` ${Math.round(tl.at(-1).tilt)}°` : ""}${typeof tiltDeg === "number" && tiltDeg < 90 ? ` (fast blink past ${tiltDeg}°)` : ""}`
+			g.fillStyle = AGENT_COLORS["build:enclosure"]; g.fillText(tiltLabel, L, 15)
+			// The LED label after the tilt one, however long that is.
+			g.fillStyle = led.length ? ledCss(led.at(-1)) : "#4ade80"; g.fillText(`LED${led.length ? (led.at(-1).led ? " on" : " off") : ""}`, L + g.measureText(tiltLabel).width + 18, 15)
 		}
 		// A bare board (no IMU fitted): the LED is all there is to see, so it gets the chart, as a tall strip.
 		function drawLedOnly(g, w, h, from, end) {
@@ -1318,6 +1353,18 @@
 			g.fillText("−30 s", L, top + sh + 16); g.fillText("now", L + pw - 24, top + sh + 16)
 		}
 		new ResizeObserver(() => drawBenchChart()).observe($("bench-chart-box"))
+		// How far the board is tilted now (from its boot pose) against what the bench asked for.
+		function renderTiltMeter() {
+			if (S.bench?.instruction?.action !== "tilt") return
+			const need = S.contract?.values?.behavior?.tiltDeg ?? Number(/(\d+)°/.exec(S.bench.instruction.text)?.[1] ?? 20)
+			const now = S.telemetry.tilt.at(-1)?.tilt ?? null
+			const max = Math.max(need * 2, 45)
+			$("tilt-now").textContent = now === null ? "—" : `${Math.round(now)}°`
+			$("tilt-fill").style.width = `${Math.min(100, ((now ?? 0) / max) * 100)}%`
+			$("tilt-fill").classList.toggle("past", now !== null && now > need)
+			$("tilt-mark").style.left = `${(need / max) * 100}%`
+			$("tilt-need").textContent = now !== null && now > need ? `past ${need}° · hold it` : `past ${need}°`
+		}
 		// Stop only while this hub runs it (started here, or adopted by npm run demo): a reopened finished run has nothing to stop.
 		function showStop() {
 			if (S.stopped || S.ended) return
@@ -1819,6 +1866,7 @@
 				case "bench.flashed": return p.ok ? `rev ${p.revision} flashed${p.simulated ? " (replay)" : ` in ${(p.ms / 1000).toFixed(1)} s`}` : `rev ${p.revision} flash failed at ${p.stage}: ${p.error}`
 				case "bench.measured": return `measured ${p.averageMa.toPrecision(3)} mA (${p.source}), ${p.cycles} wakes`
 				case "bench.verdict": return `bench ${p.pass ? "pass" : "FAIL"} at rev ${p.revision}`
+				case "bench.blink": return `LED on rev ${p.revision}: ${p.detail}`
 				case "bench.instruction": return p.state === "waiting" ? `the bench asks: ${p.text}` : p.state === "done" ? `done: ${p.text}` : `nobody did it within 180 s: ${p.text}`
 				default: return ""
 			}
@@ -1898,6 +1946,7 @@
 				case "bench.measured":
 				case "bench.verdict":
 				case "bench.instruction":
+				case "bench.blink":
 					S.bench = benchState(S.events)
 					benchDirty = true
 					if (e.type === "bench.connected") {
@@ -1952,6 +2001,7 @@
 				scene.setOrientation(S.att.pitch, S.att.roll)
 			}
 			if (!$("bench-view").classList.contains("hidden")) drawBenchChart()
+			renderTiltMeter()
 			mirrorLed()
 			const shaking = S.telemetry.shake
 			$("shake-chip").classList.toggle("hidden", shaking === null)
