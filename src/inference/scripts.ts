@@ -122,11 +122,12 @@ export function mockScripts(): Record<string, Script> {
 		"mock-firmware": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
 			if (instruction.startsWith("Change request from the engineer:")) {
-				// The request is the line after the prefix. "blink faster when tilted": a faster blink past 20°.
+				// The request is the line after the prefix. "blink faster when tilted": a 250 ms blink past 20°, slow enough
+				// that the bench can still time it from 50 ms telemetry samples (bench/blink.ts).
 				const request = instruction.split("\n")[1] ?? ""
 				if (stepsTaken(items) > 0 || !/blink/i.test(request)) return say(/blink/i.test(request) ? "behavior updated" : "not a firmware behavior change")
 				const current = state().contract.get("behavior") ?? DEFAULT_BEHAVIOR
-				const value = /tilt/i.test(request) ? { ...current, tiltBlinkMs: 100, tiltDeg: 20 } : { ...current, blinkMs: Math.max(100, Math.round(current.blinkMs / 2)) }
+				const value = /tilt/i.test(request) ? { ...current, tiltBlinkMs: 250, tiltDeg: 20 } : { ...current, blinkMs: Math.max(100, Math.round(current.blinkMs / 2)) }
 				return propose("behavior", value, `engineer asked: ${request}`)
 			}
 			if (stepsTaken(items) > 0) return say("requested")

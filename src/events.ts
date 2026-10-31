@@ -33,7 +33,7 @@ export interface BenchSample {
 }
 
 export interface BenchCheck {
-	name: "boot" | "imu" | "led" | "battery"
+	name: "boot" | "imu" | "led" | "blink" | "battery"
 	pass: boolean
 	detail: string
 	// Not checked because the part isn't on this bench (a bare S3 has no IMU): neutral, never a failure.
@@ -90,6 +90,9 @@ export interface Payloads {
 		capacityMah: number | null
 		regulatorIqUa: number
 	}
+	// The LED periods measured from live telemetry (bench/blink.ts) against the contract's behavior; null: not enough
+	// clean toggles (tiltBlinkMs: the board was never tilted past expected.tiltDeg).
+	"bench.blink": { revision: number; source: BenchSourceName; blinkMs: number | null; tiltBlinkMs: number | null; expected: { blinkMs: number; tiltBlinkMs: number; tiltDeg: number }; pass: boolean; detail: string }
 	"bench.verdict": { revision: number; pass: boolean; source: BenchSourceName; checks: BenchCheck[] }
 	// What an agent is doing right now, from Mozaik's loop events (agents/activity.ts). For the dashboard lanes.
 	"agent.activity": {
