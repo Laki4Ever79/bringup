@@ -175,7 +175,9 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 						if (type === "message_received.started") turns.set(event.producerId, (turns.get(event.producerId) ?? 0) + 1)
 						if (type === "model.answer") turns.set(event.producerId, Math.max(0, (turns.get(event.producerId) ?? 0) - 1))
 						if (done) {
-							if (!(isEvent(event, "contract.changed") || isEvent(event, "change.proposed"))) return
+							// An engineer's change request re-arms too: one the agents meet without changing anything
+							// must still settle again, or the run waits out the change timeout (real run 16).
+							if (!(isEvent(event, "contract.changed") || isEvent(event, "change.proposed") || isEvent(event, "change.requested"))) return
 							rearm()
 						}
 						if (isEvent(event, "contract.changed") || isEvent(event, "artifact.ready") || isEvent(event, "artifact.failed")) check()
