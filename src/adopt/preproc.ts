@@ -6,6 +6,8 @@
 export interface Cond {
 	expr: string
 	want: boolean
+	// Set on an #ifndef X: a "#define X" right under it is X's default value, overridable by -D X.
+	defaultOf?: string
 }
 
 interface Frame {
@@ -18,6 +20,7 @@ interface Frame {
 // Feeds lines in order; conds() is what the current line depends on. Include guards are skipped.
 export class CondTracker {
 	private stack: Frame[] = []
+	private seen = false
 	// Returns true if the line was a preprocessor conditional (and so holds no definition).
 	line(text: string, next: string): boolean {
 		const m = /^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b\s*(.*?)\s*(?:\/\/.*|\/\*.*)?$/.exec(text)
@@ -25,8 +28,12 @@ export class CondTracker {
 		const [, kw, rest] = m
 		if (kw === "if" || kw === "ifdef" || kw === "ifndef") {
 			const expr = kw === "if" ? rest : kw === "ifdef" ? `defined(${rest})` : `!defined(${rest})`
-			const guard = kw === "ifndef" && new RegExp(`^\\s*#\\s*define\\s+${rest.replace(/\W/g, "")}\\b`).test(next)
-			this.stack.push({ prior: [expr], current: guard ? [] : [{ expr, want: true }], guard })
+			// #ifndef X / #define X is an include guard only as a file's first conditional with a valueless define;
+			// "#ifndef PIN / #define PIN 14" anywhere is a default value, and stays a condition.
+			const name = rest.replace(/\W/g, "")
+			const guard = kw === "ifndef" && !this.seen && this.stack.length === 0 && new RegExp(`^\\s*#\\s*define\\s+${name}\\s*(?:\\/\\/.*)?$`).test(next)
+			this.seen = true
+			this.stack.push({ prior: [expr], current: guard ? [] : [{ expr, want: true, ...(kw === "ifndef" ? { defaultOf: name } : {}) }], guard })
 		} else if (kw === "elif") {
 			const f = this.stack[this.stack.length - 1]
 			if (f) {
@@ -51,6 +58,8 @@ export interface BuildContext {
 	family: Family | null
 	// Build selectors: names some build passes as -D (BOARD_REV4). A build that doesn't pass one doesn't define it.
 	selectors?: Set<string>
+	// Macros the sources define, where every definition agrees (ENABLE_INMP441_MICS 0): known unless -D overrides.
+	source?: Map<string, string>
 }
 
 export type Family = "esp32" | "esp8266" | "avr" | "rp2040" | "stm32" | "nrf52" | "samd"
@@ -95,6 +104,7 @@ type Tri = number | undefined
 
 function isDefined(ctx: BuildContext, name: string): boolean | undefined {
 	if (ctx.defines.has(name)) return true
+	if (ctx.source?.has(name)) return true
 	if (ctx.selectors?.has(name)) return false
 	if (!ctx.family) return undefined
 	if (FAMILY[ctx.family].defined.includes(name)) return true
@@ -105,7 +115,7 @@ function isDefined(ctx: BuildContext, name: string): boolean | undefined {
 function valueOf(ctx: BuildContext, name: string): Tri {
 	if (name === "true") return 1
 	if (name === "false") return 0
-	const v = ctx.defines.get(name)
+	const v = ctx.defines.get(name) ?? ctx.source?.get(name)
 	if (v !== undefined) {
 		if (v === "true") return 1
 		if (v === "false") return 0
