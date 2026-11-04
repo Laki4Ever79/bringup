@@ -296,3 +296,12 @@ export function fitScore(checks: PinCheck[]): number {
 	}
 	return s
 }
+
+// Every firmware build checked against the board, best fit first. `only` pins the pairing (an env or variant id).
+export function rankVariants(b: Board, mcus: Footprint[], variants: FirmwareVariant[], only?: string): { v: FirmwareVariant; checks: PinCheck[]; score: number }[] {
+	return variants
+		.filter((v) => !only || v.id === only || v.id.endsWith(`:${only}`))
+		.map((v) => ({ v, checks: checkVariant(b, mcus, v) }))
+		.map((r) => ({ ...r, score: fitScore(r.checks) }))
+		.sort((a, b) => b.score - a.score)
+}

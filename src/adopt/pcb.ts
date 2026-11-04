@@ -1,5 +1,7 @@
 // Reads any KiCad board (5 through 9) into the facts adopt needs: the outline's bounding box and every footprint with
 // its pads, each pad's net and pin name. Unlike tools/kicad-read.ts it assumes nothing about who drew the board.
+import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { basename, dirname, join } from "node:path"
 import { parse, type Sexp } from "../tools/kicad-read.ts"
 
 export interface Pad {
@@ -17,6 +19,8 @@ export interface Footprint {
 	y: number
 	rot: number
 	pads: Pad[]
+	// The pads' extent in board axes (rotation applied), a stand-in for the part's body: enough to size a cutout.
+	size: { w: number; h: number }
 }
 
 export interface Board {
@@ -24,6 +28,8 @@ export interface Board {
 	footprints: Footprint[]
 	// KiCad file format version, e.g. 20211014 (6), 20171130 (5).
 	version: number
+	// Board thickness from the file's general section (1.6 when absent).
+	thicknessMm: number
 }
 
 const head = (e: Sexp): string | undefined => (Array.isArray(e) && typeof e[0] === "string" ? e[0] : undefined)
@@ -71,6 +77,7 @@ export function readBoard(text: string): Board {
 		if (!Array.isArray(e) || (head(e) !== "footprint" && head(e) !== "module")) continue
 		const [x, y, rot = 0] = nums(child(e, "at"))
 		const pads: Pad[] = []
+		const corners: [number, number][] = []
 		for (const p of e) {
 			if (head(p) !== "pad") continue
 			const pad = p as Sexp[]
@@ -82,10 +89,17 @@ export function readBoard(text: string): Board {
 			// KiCad 10 writes the pin name with the pad number after it (PC13_2 for pin PC13 on pad 2).
 			if (version >= 20251000 && fn.endsWith(`_${pad[1]}`)) fn = fn.slice(0, -`_${pad[1]}`.length)
 			pads.push({ number: String(pad[1]), net, fn })
+			const [px = 0, py = 0] = nums(child(pad, "at"))
+			const [sw = 0, sh = 0] = nums(child(pad, "size"))
+			corners.push([px - sw / 2, py - sh / 2], [px + sw / 2, py + sh / 2])
 		}
-		footprints.push({ ref: textOf(e, "reference"), value: textOf(e, "value"), lib: String(e[1]), x, y, rot, pads })
+		const span = (k: 0 | 1) => (corners.length ? Math.max(...corners.map((c) => c[k])) - Math.min(...corners.map((c) => c[k])) : 0)
+		const turned = Math.round(((rot % 180) + 180) % 180) === 90
+		const size = { w: +(turned ? span(1) : span(0)).toFixed(2), h: +(turned ? span(0) : span(1)).toFixed(2) }
+		footprints.push({ ref: textOf(e, "reference"), value: textOf(e, "value"), lib: String(e[1]), x, y, rot, pads, size })
 	}
-	return { outline, footprints, version }
+	const thickness = Number(child(child(board, "general") ?? [], "thickness")?.[1])
+	return { outline, footprints, version, thicknessMm: Number.isFinite(thickness) && thickness > 0 ? thickness : 1.6 }
 }
 
 // Every pad on each net, so an unnamed net can still say what it connects to.
@@ -129,4 +143,15 @@ export function nameLegacyPads(b: Board, schTexts: string[], cacheLib: string): 
 			}
 	}
 	return named
+}
+
+// A board file as adopt reads it: parsed, and on KiCad 5 named from the project's schematic and symbol cache.
+export function loadBoardFile(file: string): Board {
+	const b = readBoard(readFileSync(file, "utf8"))
+	const cache = join(dirname(file), `${basename(file, ".kicad_pcb")}-cache.lib`)
+	if (b.version < 20200000 && existsSync(cache)) {
+		const schs = readdirSync(dirname(file)).filter((n) => n.endsWith(".sch")).map((n) => readFileSync(join(dirname(file), n), "utf8"))
+		nameLegacyPads(b, schs, readFileSync(cache, "utf8"))
+	}
+	return b
 }
