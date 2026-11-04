@@ -1,7 +1,7 @@
 // bringup adopt <repo> [--json out.json]: read an existing hardware repo (KiCad boards, firmware, case files), infer
 // the design contract it implies and list where the domains disagree. Read-only: it never writes into the repo.
-import { readdirSync, statSync, writeFileSync } from "node:fs"
-import { basename, join, relative } from "node:path"
+import { appendFileSync, existsSync, readdirSync, statSync, writeFileSync } from "node:fs"
+import { basename, join, relative, resolve } from "node:path"
 import { firmwareVariants, type FirmwareVariant } from "./firmware.ts"
 import { findMcus, gpioOfPad, rankVariants, type PinCheck } from "./match.ts"
 import { pinLabel } from "./pins.ts"
@@ -83,7 +83,7 @@ export function adopt(repo: string, opts: { variant?: string } = {}): { repo: st
 			}
 		boards.push(rep)
 	}
-	return { repo: basename(repo), variants: variants.length, boards }
+	return { repo: basename(resolve(repo)), variants: variants.length, boards }
 }
 
 const MARK: Record<PinCheck["verdict"], string> = { "clock-mode": "✗", "other-revision": "✓", "inside-module": "✓", "module-conflict": "✗", unconnected: "✗", power: "✗", "not-on-pads": "?", "name-differs": "≠", unnamed: "·", agrees: "✓" }
@@ -122,6 +122,29 @@ export function renderCheck(results: CheckResult[]): string {
 	return out.join("\n")
 }
 
+// A pull request's job summary: the verdict against the agreed contract first (what gates the PR), then the design
+// changes it makes, then every board's pin report folded away. Markdown, so it reads the same in GitHub and a file.
+export function markdown(r: ReturnType<typeof adopt>, results: CheckResult[] | null, contractDir: string): string {
+	const out: string[] = []
+	const failing = results?.filter((x) => x.violations.length || x.missing) ?? []
+	out.push(`## Bringup adopt: ${r.repo}`, "")
+	if (!results) {
+		out.push(`No agreed contract in \`${contractDir}\` yet, so nothing gates this change. To agree on the design as it is now, run`, "", "```", `npx tsx src/adopt/cli.ts . --contract ${contractDir}`, "```", "", "and commit the folder. From then on, a change that breaks it fails this check.", "")
+	} else {
+		out.push(failing.length ? `**✗ ${failing.length} board(s) break the agreed contract** (\`${contractDir}\`).` : `**✓ Every board matches the agreed contract** (\`${contractDir}\`).`, "")
+		for (const x of results) {
+			if (!x.missing && !x.violations.length && !x.changes.length) continue
+			out.push(`### \`${x.board}\``)
+			if (x.missing) out.push(`- ✗ ${x.missing}`)
+			for (const v of x.violations) out.push(`- ✗ **${v.kind}**: ${v.message}`)
+			if (x.changes.length) out.push("", "Design changes in this revision (accept them by re-running `--contract` and committing the result):", ...x.changes.map((c) => `- ${c.field}: ${c.what}`))
+			out.push("")
+		}
+	}
+	out.push("<details><summary>Every firmware pin against every board</summary>", "", "```", render(r), "```", "", "</details>", "")
+	return out.join("\n")
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
 	const args = process.argv.slice(2)
 	const opt = (name: string) => {
@@ -132,20 +155,25 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	const variant = opt("--variant")
 	const contractDir = opt("--contract")
 	const checkDir = opt("--check")
+	const md = opt("--markdown")
 	const repo = args[0]
 	if (!repo) {
-		console.error("usage: adopt <repo> [--variant <env or id>] [--json out.json] [--contract <dir> | --check <dir>]")
+		console.error("usage: adopt <repo> [--variant <env or id>] [--json out.json] [--markdown summary.md] [--contract <dir> | --check <dir>]")
 		process.exit(2)
 	}
 	if (checkDir) {
-		// The repo now against the agreed contract: exit 1 when Bringup's checks find a violation.
-		const results = checkAgainst(repo, checkDir)
-		console.log(renderCheck(results))
-		process.exit(results.some((r) => r.violations.length > 0 || r.missing) ? 1 : 0)
+		// The repo now against the agreed contract: exit 1 when Bringup's checks find a violation. With no contract
+		// agreed yet there is nothing to break: report, say how to agree, exit 0.
+		const agreed = existsSync(join(checkDir, "index.json"))
+		const results = agreed ? checkAgainst(repo, checkDir) : null
+		console.log(results ? renderCheck(results) : `no agreed contract in ${checkDir}: run --contract ${checkDir} and commit it`)
+		if (md) appendFileSync(md, markdown(adopt(repo, { variant }), results, checkDir))
+		process.exit(results?.some((r) => r.violations.length > 0 || r.missing) ? 1 : 0)
 	}
 	const r = adopt(repo, { variant })
 	console.log(render(r))
 	if (json) writeFileSync(json, JSON.stringify(r, null, 2))
+	if (md) appendFileSync(md, markdown(r, null, contractDir ?? ".bringup/adopt"))
 	if (contractDir) {
 		const written = writeContracts(repo, find(repo, (n) => n.endsWith(".kicad_pcb")), contractDir, variant)
 		console.log("")

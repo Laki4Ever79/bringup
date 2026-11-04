@@ -1,0 +1,17 @@
+# Copy to .github/workflows/bringup-adopt.yml in a hardware repo. Once, agree on the design as it is:
+#   npx tsx <bringup>/src/adopt/cli.ts . --contract .bringup/adopt   (then commit .bringup/adopt)
+# From then on every pull request is checked against it. To accept a deliberate change, re-run --contract in the PR:
+# the contract.json diff is the reviewed design change.
+name: Bringup adopt
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  adopt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Laki4Ever79/bringup/adopt@adopt
+        with:
+          contract: .bringup/adopt
