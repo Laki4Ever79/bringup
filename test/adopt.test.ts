@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { adopt } from "../src/adopt/cli.ts"
 import { cmakeBuild, envSourceDirs, firmwareVariants, iocPins, platformioVariants, sourcePins } from "../src/adopt/firmware.ts"
@@ -10,6 +11,7 @@ import { checkAgainst, signalName, writeContracts } from "../src/adopt/contract.
 import { boardFits, stlBox } from "../src/adopt/mech.ts"
 import { nameLegacyPads, readBoard } from "../src/adopt/pcb.ts"
 import { active, CondTracker, evaluate } from "../src/adopt/preproc.ts"
+import { ROOT } from "../src/run.ts"
 import { tempDir } from "./helpers.ts"
 
 // A KiCad 6 board: an ESP32 module (U1) with named GPIO pads, an LED behind a resistor, a button, a rail sense.
@@ -318,4 +320,31 @@ test("adopt → contract: Bringup's own contract accepts it, and the repo checks
 	const [r2] = checkAgainst(repo, dir)
 	assert.ok(!r2.changes.some((c) => /still drives/.test(c.what)))
 	assert.ok(r2.violations.some((x) => x.kind === "pin-mismatch" && /LCD_DC on GPIO2, contract says GPIO1/.test(x.message)))
+})
+
+test("the CI check (adopt/check.sh, as the Action runs it): passes with no contract, fails a change that breaks it, passes once it is re-agreed", () => {
+	const repo = tempDir()
+	mkdirSync(join(repo, "hw"), { recursive: true })
+	mkdirSync(join(repo, "src"), { recursive: true })
+	writeFileSync(join(repo, "hw", "b.kicad_pcb"), BOARD)
+	writeFileSync(join(repo, "platformio.ini"), "[env:x]\nplatform = espressif32\nbuild_flags = -DPIN_LCD_DC=1\n")
+	writeFileSync(join(repo, "src", "main.cpp"), "int main() { return PIN_LCD_DC; }\n")
+	const summary = join(repo, "summary.md")
+	const ci = () => {
+		writeFileSync(summary, "")
+		const r = spawnSync("bash", [join(ROOT, "adopt", "check.sh")], {
+			env: { ...process.env, GITHUB_ACTION_PATH: join(ROOT, "adopt"), GITHUB_WORKSPACE: repo, GITHUB_STEP_SUMMARY: summary, INPUT_PATH: ".", INPUT_CONTRACT: ".bringup/adopt" },
+			encoding: "utf8",
+		})
+		return { code: r.status, md: readFileSync(summary, "utf8") }
+	}
+	const first = ci()
+	assert.equal(first.code, 0)
+	assert.match(first.md, /No agreed contract in `\.bringup\/adopt` yet/)
+	writeContracts(repo, [join(repo, "hw", "b.kicad_pcb")], join(repo, ".bringup", "adopt"))
+	assert.match(ci().md, /✓ Every board matches the agreed contract/)
+	writeFileSync(join(repo, "platformio.ini"), "[env:x]\nplatform = espressif32\nbuild_flags = -DPIN_LCD_DC=2\n")
+	const broken = ci()
+	assert.equal(broken.code, 1)
+	assert.match(broken.md, /✗ \*\*pin-mismatch\*\*: firmware drives LCD_DC on GPIO2, contract says GPIO1/)
 })

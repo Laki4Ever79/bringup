@@ -1,0 +1,28 @@
+name: Bringup adopt check
+description: Checks a hardware repo's KiCad boards and firmware pins against the design contract it agreed on, and lists what changed.
+inputs:
+  path:
+    description: The hardware repo to read, relative to the workspace.
+    default: "."
+  contract:
+    description: The agreed contract folder (written by `adopt --contract` and committed), relative to the workspace.
+    default: ".bringup/adopt"
+  variant:
+    description: Pin the firmware build (a PlatformIO env, "cmake" or "src:<dir>") instead of letting adopt pick the best fit.
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+    - name: Install Bringup
+      shell: bash
+      run: npm ci --prefix "$GITHUB_ACTION_PATH/.." --no-audit --no-fund
+    - name: Check against the agreed contract
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_CONTRACT: ${{ inputs.contract }}
+        INPUT_VARIANT: ${{ inputs.variant }}
+      run: bash "$GITHUB_ACTION_PATH/check.sh"
