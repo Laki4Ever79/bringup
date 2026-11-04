@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { CondTracker, familyOfPlatform, type Cond, type Family } from "./preproc.ts"
+import { parsePortPin, portPin } from "./pins.ts"
 
 export interface FirmwarePin {
 	name: string
@@ -14,8 +15,10 @@ export interface FirmwarePin {
 	conds?: Cond[]
 	// Set by the check: under #if branches whose outcome for this build adopt can't tell.
 	conditional?: boolean
-	// Defined but never referenced by any source: it can't miswire anything.
+	// Set by the check: no use of it is compiled in this build, so it can't miswire anything.
 	unused?: boolean
+	// Each place a source names it, as the #if conditions there.
+	uses?: Cond[][]
 	// Came from the build system (a -D flag, a CMake compile definition), not from a source file.
 	fromBuild?: boolean
 	// Its value says it is a GPIO (GPIO_NUM_25, a gpio_num_t), whatever its name.
@@ -30,12 +33,14 @@ export interface FirmwareVariant {
 	defines?: Map<string, string>
 	// Every name any build of this repo passes as -D: one this build doesn't pass is known undefined here.
 	selectors?: Set<string>
+	// Macros the sources define with one agreed value.
+	source?: Map<string, string>
 	family?: Family | null
 }
 
 // A name that says it is a pin. Deliberately narrow: a false pin costs more than a missed one.
 const PIN_NAME = /(^|_)(PIN|GPIO|IO)(_|$|\d)|PIN$|^PIN|_(SDA|SCL|MOSI|MISO|SCK|SCLK|CS|CSN|SS|DC|RST|BL|TX|RX|LED|BTN|BUTTON|IRQ|INT)$|^(SDA|SCL|MOSI|MISO|SCK|SCLK|TFT_[A-Z]+|LED|BUTTON)(_|$)/
-const NOT_PIN = /BUFSIZE|_EPIN|INDEX|COUNT|^NUM_|FREQ|MASK|SIZE|_MS$|_US$|BAUD|SPEED|WIDTH|HEIGHT|OFFSET|CHANNEL|_BIT$|_BITS$|LEVEL|VERSION|ENABLED?$|DRIVER$/
+const NOT_PIN = /^(ENABLE|HAS|USE|IS|MAX|MIN|DEFAULT_NUM)_|BUFSIZE|_EPIN|INDEX|COUNT|^NUM_|FREQ|MASK|SIZE|_MS$|_US$|BAUD|SPEED|WIDTH|HEIGHT|OFFSET|CHANNEL|_BIT$|_BITS$|LEVEL|VERSION|ENABLED?$|DRIVER$/
 // Highest GPIO number on the chips adopt knows (ESP32-S3: 48).
 const MAX_GPIO = 48
 
@@ -48,6 +53,9 @@ export function looksLikePin(name: string): boolean {
 }
 
 function gpioValue(v: string): number | null {
+	// STM32-style port pins (Arduino STM32: #define LED PC13).
+	const port = parsePortPin(v.trim().replace(/^\(\s*|\s*\)$/g, ""))
+	if (port !== null) return port
 	const m = /^\(?\s*(?:\(gpio_num_t\)\s*)?(?:GPIO_NUM_|GPIO|IO)?(\d+)[uUlL]*\s*\)?$/.exec(v.trim())
 	if (!m) return null
 	const n = Number(m[1])
@@ -187,7 +195,7 @@ export function platformioVariants(text: string, file: string, sourceByDir: Map<
 	return variants
 }
 
-const DEFINE = /^\s*#\s*define\s+([A-Za-z_]\w*)\s+(\(?\s*(?:\(gpio_num_t\)\s*)?(?:GPIO_NUM_|GPIO)?\d+[uUlL]*\s*\)?)\s*(?:\/\/.*|\/\*.*)?$/
+const DEFINE = /^\s*#\s*define\s+([A-Za-z_]\w*)\s+(\(?\s*(?:\(gpio_num_t\)\s*)?(?:GPIO_NUM_|GPIO)?\d+[uUlL]*\s*\)?|\(?\s*P[A-K]\d{1,2}\s*\)?)\s*(?:\/\/.*|\/\*.*)?$/
 const CONST = /^\s*(?:static\s+)?(?:const(?:expr)?\s+)(?:static\s+)?(?:unsigned\s+)?(?:int|uint8_t|uint16_t|uint32_t|uint|int8_t|gpio_num_t|pin_size_t|byte|auto)\s+([A-Za-z_]\w*)\s*=\s*((?:GPIO_NUM_|GPIO)?\d+[uUlL]*)\s*;/
 
 export function sourcePins(text: string, file: string): FirmwarePin[] {
@@ -198,12 +206,21 @@ export function sourcePins(text: string, file: string): FirmwarePin[] {
 		if (cond.line(line, lines[i + 1] ?? "")) return
 		const m = DEFINE.exec(line) ?? CONST.exec(line)
 		if (!m) return
-		// GPIO_NUM_25 or a gpio_num_t constant is a pin whatever its name (NES_LATCH); a bare number needs a pin-like name.
-		const proven = /GPIO_NUM_|^\(?\s*GPIO\d/.test(m[2]) || /gpio_num_t/.test(line)
+		// GPIO_NUM_25, PA0 or a gpio_num_t constant is a pin whatever its name (NES_LATCH); a bare number needs a pin-like name.
+		const proven = /GPIO_NUM_|^\(?\s*GPIO\d|^\(?\s*P[A-K]\d/.test(m[2]) || /gpio_num_t/.test(line)
 		if (EXPANDER.test(m[1].toUpperCase()) || (!proven && !looksLikePin(m[1].toUpperCase()))) return
 		const gpio = gpioValue(m[2])
-		const conds = cond.conds()
+		// Under its own #ifndef it is a default: compiled unless a build passes -D of the same name (which then wins).
+		const conds = cond.conds().filter((c) => c.defaultOf !== m[1])
 		if (gpio !== null) out.push({ name: m[1], gpio, file, line: i + 1, ...(conds.length ? { conds } : {}), ...(proven ? { proven: true } : {}) })
+	})
+	// STM32 HAL (CubeMX main.h): #define LED_Pin GPIO_PIN_13 with #define LED_GPIO_Port GPIOC is pin PC13, named LED.
+	const ports = new Map<string, string>()
+	for (const m of text.matchAll(/^\s*#\s*define\s+(\w+)_GPIO_Port\s+GPIO([A-K])\b/gm)) ports.set(m[1], m[2])
+	lines.forEach((line, i) => {
+		const m = /^\s*#\s*define\s+(\w+)_Pin\s+GPIO_PIN_(\d+)\b/.exec(line)
+		const port = m && ports.get(m[1])
+		if (m && port) out.push({ name: m[1], gpio: portPin(port, Number(m[2])), file, line: i + 1, proven: true })
 	})
 	// A run of 4+ name-matched constants valued 0, 1, 2, … on consecutive lines is an index list (NES button indices),
 	// not pins.
@@ -242,9 +259,30 @@ export function cmakeBuild(text: string, file: string): { pins: FirmwarePin[]; d
 	return { pins, defines, family }
 }
 
+// An STM32CubeMX project (.ioc): every configured pin with its user label, or else its peripheral signal
+// (PA5.Signal=SPI1_SCK). It is the chip's pin configuration, so its pins are build pins and never "unused".
+export function iocPins(text: string, file: string): FirmwarePin[] {
+	const label = new Map<string, { value: string; line: number }>()
+	const signal = new Map<string, { value: string; line: number }>()
+	text.split("\n").forEach((line, i) => {
+		const m = /^(P[A-K]\d{1,2})(?:-[\w-]+)?\.(Signal|GPIO_Label)=(.+?)\s*$/.exec(line)
+		if (m) (m[2] === "GPIO_Label" ? label : signal).set(m[1], { value: m[3], line: i + 1 })
+	})
+	const out: FirmwarePin[] = []
+	for (const pin of new Set([...label.keys(), ...signal.keys()])) {
+		const l = label.get(pin)
+		const s = signal.get(pin)
+		// A bare GPIO_Output or EXTI line with no label says nothing to check a net name against.
+		const named = l ?? (s && !/^(GPIO_\w+|GPXTI\d+)$/.test(s.value) ? s : undefined)
+		const gpio = parsePortPin(pin)
+		if (named && gpio !== null) out.push({ name: named.value, gpio, file, line: named.line, proven: true, fromBuild: true })
+	}
+	return out
+}
+
 // Directories that hold other people's code: SDKs, vendored libraries, build output.
 const SKIP_DIR = /^(\.git|\.pio|node_modules|lib|libs|third[_-]?party|vendor|external|managed_components|build|dist|.*sdk.*|Pico-PIO-USB|tinyusb|freertos.*|esp-idf|arduino-esp32|\.venv|electronics|pcb|hardware|case|enclosure|3d|cad|docs?)$/i
-const SOURCE = /\.(h|hpp|hh|c|cc|cpp|ino)$/
+const SOURCE = /\.(h|hpp|hh|c|cc|cpp|ino|ioc)$/
 
 function walk(dir: string, root: string, files: string[]): void {
 	for (const name of readdirSync(dir)) {
@@ -257,7 +295,7 @@ function walk(dir: string, root: string, files: string[]): void {
 		}
 		if (st.isDirectory()) {
 			if (!SKIP_DIR.test(name)) walk(p, root, files)
-		} else if (SOURCE.test(name) || name === "platformio.ini") files.push(relative(root, p))
+		} else if ((SOURCE.test(name) || name === "platformio.ini") && !/[._-](example|sample|template)\./i.test(name)) files.push(relative(root, p))
 	}
 }
 
@@ -271,7 +309,8 @@ export function firmwareVariants(repo: string): FirmwareVariant[] {
 	const inis = files.filter((x) => x.endsWith("platformio.ini"))
 	for (const f of files) {
 		if (f.endsWith("platformio.ini")) continue
-		const pins = sourcePins(readFileSync(join(repo, f), "utf8"), f)
+		const text = readFileSync(join(repo, f), "utf8")
+		const pins = f.endsWith(".ioc") ? iocPins(text, f) : sourcePins(text, f)
 		if (!pins.length) continue
 		const dir = dirname(f)
 		byDir.set(dir, [...(byDir.get(dir) ?? []), ...pins])
@@ -305,18 +344,31 @@ export function firmwareVariants(repo: string): FirmwareVariant[] {
 	}
 	for (const v of variants) if (v.defines) v.selectors = selectors
 
-	// A pin no code ever names again is dead (DeskHop's PIO_USB_DP_PIN: setup.c reads PIO_USB_DP_PIN_DEFAULT from
-	// CMake instead). Uses are mentions outside a #define of the same name. Build flags (-D, CMake definitions) never
-	// count as unused: libraries adopt doesn't scan read them (TFT_eSPI reads TFT_MOSI).
+	// Where each pin is used, with the #if conditions of each use, so a build can tell whether it compiles any use
+	// (HiveHub's INMP441 pins exist on the C6 but every use is under ENABLE_INMP441_MICS, which is 0 there). Uses are
+	// mentions outside a #define of the same name. And the macros sources define, kept where all definitions agree.
 	const names = new Set(variants.flatMap((v) => v.pins.map((p) => p.name)))
-	const used = new Set<string>()
+	const uses = new Map<string, Cond[][]>()
+	const values = new Map<string, Set<string>>()
 	for (const f of files) {
-		if (f.endsWith("platformio.ini")) continue
-		for (const line of readFileSync(join(repo, f), "utf8").split("\n")) {
-			const defined = /^\s*#\s*define\s+(\w+)/.exec(line)?.[1]
-			for (const w of line.match(/[A-Za-z_]\w*/g) ?? []) if (names.has(w) && w !== defined) used.add(w)
-		}
+		if (f.endsWith("platformio.ini") || f.endsWith(".ioc")) continue
+		const lines = readFileSync(join(repo, f), "utf8").split("\n")
+		const t = new CondTracker()
+		lines.forEach((line, i) => {
+			if (t.line(line, lines[i + 1] ?? "")) return
+			const def = /^\s*#\s*(define|undef)\s+(\w+)\s*(\S*)/.exec(line)
+			if (def?.[1] === "define") {
+				const v = def[3] === "" ? "1" : /^(-?\d+[uUlL]*|true|false)$/.test(def[3]) ? def[3].replace(/[uUlL]+$/, "") : "?"
+				values.set(def[2], (values.get(def[2]) ?? new Set()).add(v))
+			}
+			for (const w of new Set(line.match(/[A-Za-z_]\w*/g) ?? []))
+				if (names.has(w) && w !== def?.[2]) uses.set(w, [...(uses.get(w) ?? []), t.conds()])
+		})
 	}
-	for (const v of variants) for (const p of v.pins) if (!p.fromBuild && !used.has(p.name)) p.unused = true
+	const source = new Map([...values].filter(([, v]) => v.size === 1 && !v.has("?")).map(([k, v]) => [k, [...v][0]]))
+	for (const v of variants) {
+		v.source = source
+		for (const p of v.pins) p.uses = uses.get(p.name) ?? []
+	}
 	return variants
 }

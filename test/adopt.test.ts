@@ -3,8 +3,9 @@ import assert from "node:assert/strict"
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { adopt } from "../src/adopt/cli.ts"
-import { cmakeBuild, envSourceDirs, platformioVariants, sourcePins } from "../src/adopt/firmware.ts"
-import { checkVariant, findMcus, namesAgree, padGpio } from "../src/adopt/match.ts"
+import { cmakeBuild, envSourceDirs, firmwareVariants, iocPins, platformioVariants, sourcePins } from "../src/adopt/firmware.ts"
+import { checkVariant, findMcus, gpioOfPad, namesAgree, padGpio } from "../src/adopt/match.ts"
+import { pinLabel } from "../src/adopt/pins.ts"
 import { boardFits, stlBox } from "../src/adopt/mech.ts"
 import { nameLegacyPads, readBoard } from "../src/adopt/pcb.ts"
 import { active, CondTracker, evaluate } from "../src/adopt/preproc.ts"
@@ -211,4 +212,68 @@ test("adopt on a repo: pairs each board with the firmware build that explains it
 	assert.equal(r.boards[0].variant?.id, "env:right")
 	assert.ok(r.boards[0].checks.every((c) => c.verdict === "agrees"))
 	assert.ok(r.boards[0].inferred.pins.some((p) => p.signal === "LCD_DC" && p.gpio === 1 && p.partRef === "U1"))
+})
+
+test("KiCad 10 pin names lose the pad-number suffix it adds (PC13_2 on pad 2 is PC13)", () => {
+	const b = readBoard(`(kicad_pcb (version 20260206) ${fp("U1", "STM32F103C8Tx", 0, 0, [pad("2", "/LED", "PC13_2"), pad("34", "/A", "GPIO28_ADC2")])})`)
+	assert.deepEqual(b.footprints[0].pads.map((p) => p.fn), ["PC13", "GPIO28_ADC2"])
+	assert.equal(pinLabel(padGpio("PC13", "")!), "PC13")
+})
+
+test("a dev board's pads (D6, TX/D6) map to GPIOs through arduino-esp32's variant table", () => {
+	const xiao = fp("U1", "113991254", 0, 0, ["D0", "D1", "D2", "D3", "D4", "TX/D6"].map((n, i) => pad(`${i + 1}`, `/${n.split("/").pop()}`, n)))
+	const b = readBoard(`(kicad_pcb (version 20221018) ${xiao})`)
+	const u1 = b.footprints[0]
+	assert.deepEqual(u1.pads.map((p) => gpioOfPad(u1, p)), [0, 1, 2, 21, 22, 16])
+	// Its own LED (LED_BUILTIN, GPIO15) is on no pad but is on the board.
+	const [c] = checkVariant(b, findMcus(b), { id: "x", pins: [pin("STATUS_LED", 15)] })
+	assert.equal(c.verdict, "inside-module")
+})
+
+test("STM32: CubeMX .ioc labels and signals, and main.h's _Pin/_GPIO_Port pairs, are port pins", () => {
+	const ioc = "PA5.Signal=SPI1_SCK\nPC13-TAMPER-RTC.GPIO_Label=MCU_STATE\nPC13-TAMPER-RTC.Signal=GPIO_Output\nPA8.Signal=GPXTI8\n"
+	assert.deepEqual(iocPins(ioc, "x.ioc").map((p) => [p.name, pinLabel(p.gpio)]).sort(), [["MCU_STATE", "PC13"], ["SPI1_SCK", "PA5"]])
+	const mainH = "#define LED_Pin GPIO_PIN_13\n#define LED_GPIO_Port GPIOC\n#define BTN PA0\n"
+	assert.deepEqual(sourcePins(mainH, "main.h").map((p) => [p.name, pinLabel(p.gpio)]).sort(), [["BTN", "PA0"], ["LED", "PC13"]])
+})
+
+test("STM32 clock: crystal mode configured but OSC_IN driven by an oscillator is reported as needing HSE bypass", () => {
+	const b = readBoard(`(kicad_pcb (version 20221018)
+ ${fp("U1", "STM32F103C8Tx", 0, 0, [pad("5", "/XTAL0", "PD0"), pad("6", "unconnected-(U1-PD1-Pad6)", "PD1"), ...Array.from({ length: 6 }, (_, i) => pad(`${10 + i}`, "", `PA${i}`))])}
+ ${fp("R1", "10", 0, 0, [pad("1", "/XTAL0", ""), pad("2", "Net-(Y1-OUT)", "")])}
+ ${fp("Y1", "SG-8002CA", 0, 0, [pad("3", "Net-(Y1-OUT)", "OUT"), pad("2", "GND", "GND")]).replace("lib:SG-8002CA", "Oscillator:SG8002")}
+)`)
+	const checks = checkVariant(b, findMcus(b), { id: "ioc", pins: [pin("RCC_OSC_IN", padGpio("PD0", "")!), pin("RCC_OSC_OUT", padGpio("PD1", "")!)] })
+	assert.equal(checks[1].verdict, "clock-mode")
+	assert.match(checks[1].net, /RCC_HSE_BYPASS/)
+})
+
+test("UART lines cross: the MCU's TX on the peer's RXD agrees, on the peer's TXD it doesn't", () => {
+	const board = (peerPin: string) =>
+		readBoard(`(kicad_pcb (version 20221018) ${fp("U1", "ESP32", 0, 0, [pad("1", "/GNSS_LINK", "IO1"), ...Array.from({ length: 6 }, (_, i) => pad(`${10 + i}`, "", `IO${20 + i}`))])} ${fp("U2", "NEO-M8", 0, 0, [pad("1", "/GNSS_LINK", peerPin)])})`)
+	const verdict = (peerPin: string) => checkVariant(board(peerPin), findMcus(board(peerPin)), { id: "x", pins: [pin("USART2_TX", 1)] })[0].verdict
+	assert.equal(verdict("RXD/SPI_MOSI"), "agrees")
+	assert.equal(verdict("TXD/SPI_MISO"), "name-differs")
+})
+
+test("#ifndef X / #define X 14 is a default, not an include guard; a pin whose uses are all compiled out is unused", () => {
+	const src = `#ifndef CONFIG_H
+#define CONFIG_H
+#ifndef MIC_PIN
+#define MIC_PIN 14
+#endif
+#endif`
+	const [p] = sourcePins(src, "config.h")
+	assert.equal(p.name, "MIC_PIN")
+	assert.equal(p.conds, undefined)
+	const repo = tempDir()
+	mkdirSync(join(repo, "src"), { recursive: true })
+	writeFileSync(join(repo, "src", "config.h"), `${src}\n#ifndef ENABLE_MIC\n#define ENABLE_MIC 0\n#endif\n`)
+	writeFileSync(join(repo, "src", "main.cpp"), "#if ENABLE_MIC\nvoid mic() { pinMode(MIC_PIN, INPUT); }\n#endif\n")
+	writeFileSync(join(repo, "platformio.ini"), "[env:off]\nplatform = espressif32\n\n[env:on]\nplatform = espressif32\nbuild_flags = -DENABLE_MIC=1\n")
+	const b = readBoard(BOARD)
+	const vs = firmwareVariants(repo)
+	const unused = (id: string) => checkVariant(b, findMcus(b), vs.find((v) => v.id === id)!).find((c) => c.pin.name === "MIC_PIN")!.pin.unused
+	assert.equal(unused("env:off"), true)
+	assert.equal(unused("env:on"), false)
 })

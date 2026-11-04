@@ -3,6 +3,15 @@ import type { Board, Footprint } from "./pcb.ts"
 import { netMembers } from "./pcb.ts"
 import type { FirmwarePin, FirmwareVariant } from "./firmware.ts"
 import { active, familyOfPart } from "./preproc.ts"
+import { parsePortPin } from "./pins.ts"
+import BOARDS from "./boards.json" with { type: "json" }
+
+// Dev boards whose pads carry board names (D6, TX/D6): their GPIOs, from arduino-esp32's variant headers
+// (scripts/adopt-boards.ts).
+const DEV_BOARDS = BOARDS.boards.map((b) => ({ ...b, re: new RegExp(b.footprint, "i") }))
+export function devBoardPins(f: Footprint): Record<string, number> | undefined {
+	return DEV_BOARDS.find((b) => b.re.test(`${f.value} ${f.lib}`))?.pins as Record<string, number> | undefined
+}
 
 const MCU = /ESP32|ESP8266|RP2040|RP2350|PICO|STM32|NRF5|ATMEGA|ATTINY|SAMD|SAM[DE]\d|CH32|GD32/i
 
@@ -12,15 +21,21 @@ const ESP32_ALIASES: Record<string, number> = {
 	TXD0: 1, U0TXD: 1, RXD0: 3, U0RXD: 3, MTDI: 12, MTCK: 13, MTMS: 14, MTDO: 15,
 }
 
-// The GPIO a pad is, from its pin name (IO26, GPIO28_ADC2, IO36/SVP) or, failing that, its unconnected-net name
-// (KiCad writes unconnected-(U1-GPIO6-Pad9)).
-export function padGpio(fn: string, net: string): number | null {
+// The pin a pad is (see pins.ts), from its pin name (IO26, GPIO28_ADC2, IO36/SVP, PC13, or a dev board's D6) or,
+// failing that, its unconnected-net name (KiCad writes unconnected-(U1-GPIO6-Pad9)).
+export function padGpio(fn: string, net: string, board?: Record<string, number>): number | null {
 	const fromName = (s: string): number | null => {
 		for (const tok of s.split(/[\/_\s,()-]+/)) {
 			const m = /^(?:GPIO|IO|GP)(\d+)$/i.exec(tok)
 			if (m) return Number(m[1])
+			const port = parsePortPin(tok)
+			if (port !== null) return port
 		}
-		for (const tok of s.split(/[\/\s,()-]+/)) if (tok.toUpperCase() in ESP32_ALIASES) return ESP32_ALIASES[tok.toUpperCase()]
+		for (const tok of s.split(/[\/\s,()-]+/)) {
+			const t = tok.toUpperCase()
+			if (board && t in board) return board[t]
+			if (t in ESP32_ALIASES) return ESP32_ALIASES[t]
+		}
 		return null
 	}
 	const u = /^unconnected-\([^-]+-(.+)-Pad[^)]*\)$/.exec(net)
@@ -29,8 +44,12 @@ export function padGpio(fn: string, net: string): number | null {
 
 // The parts that are MCUs: whatever has the most GPIO-named pads (modules are named anything, e.g. T-Micro32_Plus);
 // a known chip name only breaks ties.
+export function gpioOfPad(f: Footprint, p: { fn: string; net: string }): number | null {
+	return padGpio(p.fn, p.net, devBoardPins(f))
+}
+
 export function findMcus(b: Board): Footprint[] {
-	const gpioPads = (f: Footprint) => f.pads.filter((p) => padGpio(p.fn, p.net) !== null).length
+	const gpioPads = (f: Footprint) => f.pads.filter((p) => gpioOfPad(f, p) !== null).length
 	return b.footprints
 		.filter((f) => gpioPads(f) >= 6)
 		.sort((a, b) => gpioPads(b) - gpioPads(a) || Number(MCU.test(`${b.value} ${b.lib}`)) - Number(MCU.test(`${a.value} ${a.lib}`)))
@@ -56,6 +75,8 @@ export type Verdict =
 	| "inside-module"
 	// A per-revision pin whose sibling (X_REV21 for X_REV20) fits this board.
 	| "other-revision"
+	// The firmware's clock mode doesn't suit the board's clock source (crystal mode on an oscillator).
+	| "clock-mode"
 	// The module already uses this GPIO for something else (T-Display's GPIO5 is its display's CS).
 	| "module-conflict"
 
@@ -91,6 +112,9 @@ const SYNONYMS: string[][] = [
 	["dp", "usbdp", "usb_dp"],
 	["dm", "dn", "usbdm"],
 	["rx", "rxd"],
+	["osc", "xtal", "crystal"],
+	["swdio", "swd", "tms"],
+	["swclk", "tck"],
 	["btn", "button", "sw", "key"],
 	["int", "irq", "intr"],
 ]
@@ -135,7 +159,7 @@ export function namesAgree(firmwareName: string, net: string): boolean {
 }
 
 // A net with no name, or named only after the GPIO it is on (GPIO19, ESP_GPIO13, IO5): says nothing about its use.
-const unnamedNet = (net: string) => /^Net-\(|^\/?N\$|^N-\d|^Net\d/.test(net) || /^(?:[A-Z0-9]+_)?(?:GPIO|IO|GP)\d+$/i.test(net.split("/").pop()!)
+const unnamedNet = (net: string) => /^Net-\(|^\/?N\$|^N-\d|^Net\d/.test(net) || /^(?:[A-Z0-9]+_)?(?:GPIO|IO|GP)\d+$|^[DA]\d+$/i.test(net.split("/").pop()!)
 
 // What a part is, from its reference and value, as words a firmware name might use.
 function partRole(f: Footprint | undefined): string[] {
@@ -152,11 +176,16 @@ function partRole(f: Footprint | undefined): string[] {
 // GPIOs a module wires up inside itself, so no pad carries them.
 const MODULE_INTERNAL: { part: RegExp; gpios: Record<number, string> }[] = [
 	{ part: /t-?display/i, gpios: { 0: "the module's left button", 35: "the module's right button", 4: "the module's display backlight", 5: "the module's display (CS)", 16: "the module's display (DC)", 18: "the module's display (SCLK)", 19: "the module's display (MOSI)", 23: "the module's display (RST)", 14: "the module's battery-sense enable", 34: "the module's battery sense" } },
+	// XIAO ESP32-C6: BOOT button on GPIO9, RF switch power and antenna select on GPIO3/GPIO14 (Seeed's external-antenna
+	// example drives exactly these).
+	{ part: /xiao.{0,12}esp32.?c6|113991254/i, gpios: { 9: "the board's boot button", 3: "the board's RF switch enable", 14: "the board's antenna select switch" } },
 	{ part: /pico/i, gpios: { 23: "the module's SMPS mode pin", 24: "the module's VBUS sense", 25: "the module's on-board LED", 29: "the module's VSYS/3 divider" } },
 ]
 
 const connected = (net: string) => !!net && !net.startsWith("unconnected-")
-const RANK: Verdict[] = ["agrees", "inside-module", "other-revision", "unnamed", "name-differs", "not-on-pads", "module-conflict", "power", "unconnected"]
+// Best first. "not-on-pads" is last: a pin that exists on some MCU (even unconnected) says more than its absence on
+// another (IoT12's ESP32 pins against its SAMD21 module).
+const RANK: Verdict[] = ["agrees", "inside-module", "other-revision", "unnamed", "name-differs", "module-conflict", "clock-mode", "power", "unconnected", "not-on-pads"]
 
 // Each firmware pin against every MCU on the board, keeping the best fit: one binary often serves several chips by
 // role (DeskHop's two Picos). That can hide a pin that is wrong for its own chip but right for another; the report
@@ -167,9 +196,12 @@ export function checkVariant(b: Board, mcus: Footprint[], v: FirmwareVariant): P
 	const one = (mcu: Footprint, pin: FirmwarePin): PinCheck => {
 		let at: { pad: string; net: string } | undefined
 		for (const p of mcu.pads)
-			if (padGpio(p.fn, p.net) === pin.gpio && (!at || (!connected(at.net) && connected(p.net)))) at = { pad: p.number, net: p.net }
+			if (gpioOfPad(mcu, p) === pin.gpio && (!at || (!connected(at.net) && connected(p.net)))) at = { pad: p.number, net: p.net }
 		if (!at) {
-			const inside = MODULE_INTERNAL.find((m) => m.part.test(`${mcu.value} ${mcu.lib}`))?.gpios[pin.gpio]
+			// A dev board's own parts (its LED_BUILTIN, BOOT_PIN): in its pin table but on no pad.
+			const board = devBoardPins(mcu)
+			const own = board && Object.entries(board).find(([name, g]) => g === pin.gpio && !/^(D|A)\d+$|^(TX|RX|SDA|SCL|SCK|MISO|MOSI|SS)$/.test(name))?.[0]
+			const inside = MODULE_INTERNAL.find((m) => m.part.test(`${mcu.value} ${mcu.lib}`))?.gpios[pin.gpio] ?? (own && `the board's own ${own.toLowerCase().replace(/_/g, " ")}`)
 			const verdict: Verdict = !inside ? "not-on-pads" : namesAgree(pin.name, inside) ? "inside-module" : "module-conflict"
 			return { pin, mcu: mcu.ref, verdict, net: inside ?? "", pad: "", reaches: [] }
 		}
@@ -196,7 +228,12 @@ export function checkVariant(b: Board, mcus: Footprint[], v: FirmwareVariant): P
 		// A GPIO on a rail is wrong unless the firmware says it is that rail (PIN_3V3_FUSED senses /3V3_FUSED).
 		const rail = POWER.test(leaf) && !CONTROL.test(leaf)
 		// Evidence beyond the net's name: the far-end pins (MK1.BCLK) and what the parts are (SW1 is a button).
-		const evidence = [named, ...reaches.map((x) => x.split(".").slice(1).join(".")), ...[...others(at.net), ...farParts].flatMap((m) => partRole(byRef.get(m.ref)))]
+		// A far-end pin names the signal from the other chip's side, where UART lines cross: the MCU's TX meets the
+		// peer's RXD. So far-end names count with TX and RX swapped (and a peer's TX on our TX then disagrees).
+		const crossed = (fn: string) => fn.replace(/\b(U?S?ART\d*_?)?(T|R)X(D?)\b/gi, (_m, pre: string | undefined, d: string, x: string) => `${pre ?? ""}${d.toUpperCase() === "T" ? "R" : "T"}X${x}`)
+		// A pin name lists alternate functions with "/" (RXD/SPI_MOSI): each is its own name.
+		const farNames = reaches.flatMap((x) => crossed(x.split(".").slice(1).join(".")).split("/").filter(Boolean))
+		const evidence = [named, ...farNames, ...[...others(at.net), ...farParts].flatMap((m) => partRole(byRef.get(m.ref)))]
 		const agrees = evidence.some((e) => e && !/^\d+$/.test(e) && namesAgree(pin.name, e))
 		const verdict: Verdict = !connected(at.net) || reaches.length === 0 ? "unconnected" : agrees ? "agrees" : unnamedNet(named) ? "unnamed" : rail ? "power" : "name-differs"
 		return { pin, mcu: mcu.ref, verdict, net, pad, reaches }
@@ -204,11 +241,14 @@ export function checkVariant(b: Board, mcus: Footprint[], v: FirmwareVariant): P
 	const best = (pin: FirmwarePin) => mcus.map((m) => one(m, pin)).sort((a, b) => RANK.indexOf(a.verdict) - RANK.indexOf(b.verdict))[0]
 	// Only the definitions this build compiles: #if branches evaluated against the env's -D flags and chip family
 	// (from the env's platform, or the board's MCU for a bare source tree). Unknown outcomes stay, marked conditional.
-	const ctx = { defines: v.defines ?? new Map<string, string>(), selectors: v.selectors, family: v.family ?? familyOfPart(mcus.map((m) => `${m.value} ${m.lib}`).join(" ")) }
+	const ctx = { defines: v.defines ?? new Map<string, string>(), selectors: v.selectors, source: v.source, family: v.family ?? familyOfPart(mcus.map((m) => `${m.value} ${m.lib}`).join(" ")) }
 	const compiled: FirmwarePin[] = []
 	for (const pin of v.pins) {
 		const on = pin.conds ? active(pin.conds, ctx) : true
-		if (on !== false) compiled.push(on === undefined ? { ...pin, conditional: true } : pin)
+		if (on === false) continue
+		// Used in this build if any use compiles (or might); build flags are read by libraries adopt doesn't scan.
+		const unused = !pin.fromBuild && pin.uses !== undefined && !pin.uses.some((c) => active(c, ctx) !== false)
+		compiled.push({ ...pin, ...(on === undefined ? { conditional: true } : {}), unused })
 	}
 	// One name defined several times in one file is #if branches adopt couldn't decide: keep the branch that fits.
 	const groups = new Map<string, FirmwarePin[]>()
@@ -216,16 +256,30 @@ export function checkVariant(b: Board, mcus: Footprint[], v: FirmwareVariant): P
 		const k = `${pin.file}\0${pin.name}`
 		groups.set(k, [...(groups.get(k) ?? []), pin])
 	}
-	const checks = [...groups.values()].map((pins) => {
+	const checks: PinCheck[] = [...groups.values()].map((pins) => {
 		const c = pins.map(best).sort((a, b) => RANK.indexOf(a.verdict) - RANK.indexOf(b.verdict))[0]
 		return pins.length > 1 ? { ...c, branches: pins.length } : c
 	})
+	// STM32 clock: the firmware configures OSC_OUT (HSE in crystal mode, RCC_HSE_ON) but OSC_IN is driven by an active
+	// oscillator (a part with an OUT pin) and OSC_OUT goes nowhere. An external clock wants HSE bypass.
+	const oscIn = checks.find((c) => /RCC_OSC_IN/i.test(c.pin.name))
+	const oscOut = checks.find((c) => /RCC_OSC_OUT/i.test(c.pin.name))
+	if (oscIn && oscOut && oscOut.verdict === "unconnected") {
+		const inNet = oscIn.net.split(" → ")[0]
+		const hop = (members.get(inNet) ?? []).flatMap((m) => {
+			const f = byRef.get(m.ref)
+			if (f && /^R\d/.test(f.ref) && f.pads.length === 2) return members.get(f.pads.find((p) => p.number !== m.pad)?.net ?? "") ?? []
+			return [m]
+		})
+		const osc = hop.map((m) => byRef.get(m.ref)).find((f) => f && f.pads.some((p) => /^OUT$/i.test(p.fn)) && /osc|^X\d|^Y\d/i.test(`${f.lib} ${f.ref}`))
+		if (osc) Object.assign(oscOut, { verdict: "clock-mode" as const, net: `OSC_IN is driven by ${osc.ref} (${osc.value}), an oscillator, and OSC_OUT is unconnected: configure HSE bypass (RCC_HSE_BYPASS), not crystal mode` })
+	}
 	// Pins kept per board revision (CHG_STAT_REV20 / CHG_STAT_REV21, picked at runtime): when a sibling fits this
 	// board, a broken one is the other revision's, not a fault.
 	const REV = /_(?:REV|R|V|VER)_?\d+[A-Z]?$/i
 	const stem = (n: string) => n.replace(REV, "")
 	return checks.map((c) => {
-		if (!REV.test(c.pin.name) || RANK.indexOf(c.verdict) < RANK.indexOf("not-on-pads")) return c
+		if (!REV.test(c.pin.name) || !["unconnected", "not-on-pads", "power", "module-conflict"].includes(c.verdict)) return c
 		const sibling = checks.find((o) => o !== c && REV.test(o.pin.name) && stem(o.pin.name) === stem(c.pin.name) && o.verdict === "agrees")
 		return sibling ? { ...c, verdict: "other-revision" as const, net: `${c.net} (${sibling.pin.name} fits this board)` } : c
 	})

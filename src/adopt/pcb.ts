@@ -77,8 +77,11 @@ export function readBoard(text: string): Board {
 			// (net 5 "name") through KiCad 8, (net "name") from 9.
 			const netE = child(pad, "net")
 			const net = netE ? String(netE[netE.length - 1]) : ""
-			const fn = child(pad, "pinfunction")?.[1]
-			pads.push({ number: String(pad[1]), net, fn: typeof fn === "string" ? fn : "" })
+			const raw = child(pad, "pinfunction")?.[1]
+			let fn = typeof raw === "string" ? raw : ""
+			// KiCad 10 writes the pin name with the pad number after it (PC13_2 for pin PC13 on pad 2).
+			if (version >= 20251000 && fn.endsWith(`_${pad[1]}`)) fn = fn.slice(0, -`_${pad[1]}`.length)
+			pads.push({ number: String(pad[1]), net, fn })
 		}
 		footprints.push({ ref: textOf(e, "reference"), value: textOf(e, "value"), lib: String(e[1]), x, y, rot, pads })
 	}

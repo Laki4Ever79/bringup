@@ -3,7 +3,8 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { basename, dirname, join, relative } from "node:path"
 import { firmwareVariants, type FirmwareVariant } from "./firmware.ts"
-import { checkVariant, findMcus, fitScore, padGpio, type PinCheck } from "./match.ts"
+import { checkVariant, findMcus, fitScore, gpioOfPad, type PinCheck } from "./match.ts"
+import { pinLabel } from "./pins.ts"
 import { boardFits, stlBox } from "./mech.ts"
 import { nameLegacyPads, readBoard } from "./pcb.ts"
 
@@ -57,7 +58,7 @@ export function adopt(repo: string, opts: { variant?: string } = {}): { repo: st
 			kicadVersion: b.version,
 			outline: b.outline && { widthMm: b.outline.widthMm, heightMm: b.outline.heightMm },
 			mcus: mcus.map((m) => `${m.ref} ${m.value}`),
-			mcu: mcu && { ref: mcu.ref, value: mcu.value, gpioPads: mcu.pads.filter((p) => padGpio(p.fn, p.net) !== null).length },
+			mcu: mcu && { ref: mcu.ref, value: mcu.value, gpioPads: mcu.pads.filter((p) => gpioOfPad(mcu, p) !== null).length },
 			variant: null,
 			runnersUp: [],
 			checks: [],
@@ -68,7 +69,7 @@ export function adopt(repo: string, opts: { variant?: string } = {}): { repo: st
 		else {
 			// The board's own pin map: every MCU GPIO pad on a named, connected net. This is what the contract would hold.
 			for (const m of mcus) for (const p of m.pads) {
-				const g = padGpio(p.fn, p.net)
+				const g = gpioOfPad(m, p)
 				if (g === null || !p.net || p.net.startsWith("unconnected-") || /^Net-\(/.test(p.net)) continue
 				rep.inferred.pins.push({ signal: p.net.split("/").pop()!, gpio: g, partRef: m.ref, partPin: p.number })
 			}
@@ -94,7 +95,7 @@ export function adopt(repo: string, opts: { variant?: string } = {}): { repo: st
 	return { repo: basename(repo), variants: variants.length, boards }
 }
 
-const MARK: Record<PinCheck["verdict"], string> = { "other-revision": "✓", "inside-module": "✓", "module-conflict": "✗", unconnected: "✗", power: "✗", "not-on-pads": "?", "name-differs": "≠", unnamed: "·", agrees: "✓" }
+const MARK: Record<PinCheck["verdict"], string> = { "clock-mode": "✗", "other-revision": "✓", "inside-module": "✓", "module-conflict": "✗", unconnected: "✗", power: "✗", "not-on-pads": "?", "name-differs": "≠", unnamed: "·", agrees: "✓" }
 
 export function render(r: ReturnType<typeof adopt>): string {
 	const out: string[] = [`# ${r.repo}: ${r.boards.length} board(s), ${r.variants} firmware variant(s)`]
@@ -105,10 +106,10 @@ export function render(r: ReturnType<typeof adopt>): string {
 		if (b.variant) {
 			out.push(`  best-matching firmware: ${b.variant.id} (fit ${b.variant.score})${b.runnersUp.length ? `; next: ${b.runnersUp.map((x) => `${x.id} ${x.score}`).join(", ")}` : ""}`)
 			for (const c of b.checks) {
-				const where = c.verdict === "not-on-pads" ? "no pad is this GPIO" : c.verdict === "inside-module" ? c.net : c.verdict === "module-conflict" ? `taken by ${c.net}` : `${c.mcu}.${c.pad} → ${c.net || "(no net)"}${c.verdict === "unnamed" || c.verdict === "name-differs" ? `  [reaches ${c.reaches.slice(0, 4).join(", ")}]` : ""}`
+				const where = c.verdict === "not-on-pads" ? "no pad is this GPIO" : c.verdict === "inside-module" || c.verdict === "clock-mode" ? c.net : c.verdict === "module-conflict" ? `taken by ${c.net}` : `${c.mcu}.${c.pad} → ${c.net || "(no net)"}${c.verdict === "unnamed" || c.verdict === "name-differs" ? `  [reaches ${c.reaches.slice(0, 4).join(", ")}]` : ""}`
 				// A broken pin defined under #if may be another board's branch: shown, but marked as a question.
 				const mark = c.pin.unused && MARK[c.verdict] !== "✓" ? "–" : c.pin.conditional && MARK[c.verdict] === "✗" ? "?" : MARK[c.verdict]
-				out.push(`  ${mark} ${c.pin.name}=GPIO${c.pin.gpio}  ${where}  (${c.pin.file}:${c.pin.line}${c.branches ? `, best of ${c.branches} #if branches` : c.pin.conditional ? ", under #if" : ""}${c.pin.unused ? ", never used" : ""})`)
+				out.push(`  ${mark} ${c.pin.name}=${pinLabel(c.pin.gpio)}  ${where}  (${c.pin.file}:${c.pin.line}${c.branches ? `, best of ${c.branches} #if branches` : c.pin.conditional ? ", under #if" : ""}${c.pin.unused ? ", not used in this build" : ""})`)
 			}
 		}
 		// Repos hold several printed parts (Plant133's sensor cap); the board needs one case that fits, so report the best.
