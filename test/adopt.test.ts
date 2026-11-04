@@ -6,6 +6,7 @@ import { adopt } from "../src/adopt/cli.ts"
 import { cmakeBuild, envSourceDirs, firmwareVariants, iocPins, platformioVariants, sourcePins } from "../src/adopt/firmware.ts"
 import { checkVariant, findMcus, gpioOfPad, namesAgree, padGpio } from "../src/adopt/match.ts"
 import { pinLabel } from "../src/adopt/pins.ts"
+import { checkAgainst, signalName, writeContracts } from "../src/adopt/contract.ts"
 import { boardFits, stlBox } from "../src/adopt/mech.ts"
 import { nameLegacyPads, readBoard } from "../src/adopt/pcb.ts"
 import { active, CondTracker, evaluate } from "../src/adopt/preproc.ts"
@@ -276,4 +277,45 @@ test("#ifndef X / #define X 14 is a default, not an include guard; a pin whose u
 	const unused = (id: string) => checkVariant(b, findMcus(b), vs.find((v) => v.id === id)!).find((c) => c.pin.name === "MIC_PIN")!.pin.unused
 	assert.equal(unused("env:off"), true)
 	assert.equal(unused("env:on"), false)
+})
+
+test("contract signal names are UPPER_SNAKE from net names", () => {
+	assert.equal(signalName("/MCU Controller/MCU_SCLK"), "MCU_SCLK")
+	assert.equal(signalName("TFT_~{RST}"), "TFT_RST")
+	assert.equal(signalName("UART A TX"), "UART_A_TX")
+	assert.equal(signalName("/AD+"), "AD_P")
+	assert.equal(signalName("3V3_SENSE"), "N_3V3_SENSE")
+})
+
+test("adopt → contract: Bringup's own contract accepts it, and the repo checks clean against it until a domain moves", () => {
+	const repo = tempDir()
+	mkdirSync(join(repo, "hw"), { recursive: true })
+	mkdirSync(join(repo, "src"), { recursive: true })
+	writeFileSync(join(repo, "hw", "b.kicad_pcb"), BOARD)
+	writeFileSync(join(repo, "platformio.ini"), "[env:x]\nplatform = espressif32\nbuild_flags = -DPIN_LCD_DC=1 -DPIN_LCD_RST=2 -DPIN_LED=4\n")
+	writeFileSync(join(repo, "src", "main.cpp"), "int main() { return PIN_LCD_DC + PIN_LCD_RST + PIN_LED; }\n")
+	const dir = join(tempDir(), "contract")
+	const [w] = writeContracts(repo, [join(repo, "hw", "b.kicad_pcb")], dir)
+	assert.deepEqual(w.inferred.refused, [])
+	const v = w.inferred.snapshot.values
+	assert.deepEqual(v.outline, { widthMm: 50, heightMm: 30, thicknessMm: 1.6 })
+	assert.equal(v.parts?.find((p) => p.role === "mcu")?.ref, "U1")
+	// The LED is behind R1: the contract names the LED, and the check joins the resistor's two nets.
+	assert.deepEqual(v.pins?.find((p) => p.gpio === 4), { signal: "PIN_LED", gpio: 4, partRef: "D1", partPin: "A" })
+	assert.deepEqual(v.pins?.find((p) => p.gpio === 1), { signal: "LCD_DC", gpio: 1, partRef: "J1", partPin: "Pin_1" })
+	assert.equal(w.inferred.links.signals.LCD_DC.firmware?.name, "PIN_LCD_DC")
+	assert.deepEqual(checkAgainst(repo, dir).map((r) => [r.violations, r.changes]), [[[], []]])
+
+	// The board swaps DC and RST; the firmware is left as it was.
+	writeFileSync(join(repo, "hw", "b.kicad_pcb"), BOARD.replace('(net 1 "/LCD_DC") (pinfunction "IO1")', '(net 1 "/LCD_RST") (pinfunction "IO1")').replace('(net 1 "/LCD_RST") (pinfunction "IO2")', '(net 1 "/LCD_DC") (pinfunction "IO2")'))
+	const [r] = checkAgainst(repo, dir)
+	assert.deepEqual(r.violations.map((x) => x.kind).sort(), ["net-missing", "net-missing"])
+	assert.ok(r.changes.some((c) => c.what === "LCD_DC moved: GPIO1 → GPIO2"))
+	assert.ok(r.changes.some((c) => /the board moved LCD_DC to GPIO2, but the firmware still drives it on GPIO1 \(PIN_LCD_DC, platformio.ini:3\)/.test(c.what)))
+
+	// Then the firmware follows; only the (now agreed) board change remains, as a change, with nothing left behind.
+	writeFileSync(join(repo, "platformio.ini"), "[env:x]\nplatform = espressif32\nbuild_flags = -DPIN_LCD_DC=2 -DPIN_LCD_RST=1 -DPIN_LED=4\n")
+	const [r2] = checkAgainst(repo, dir)
+	assert.ok(!r2.changes.some((c) => /still drives/.test(c.what)))
+	assert.ok(r2.violations.some((x) => x.kind === "pin-mismatch" && /LCD_DC on GPIO2, contract says GPIO1/.test(x.message)))
 })

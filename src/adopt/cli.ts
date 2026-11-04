@@ -1,14 +1,15 @@
 // bringup adopt <repo> [--json out.json]: read an existing hardware repo (KiCad boards, firmware, case files), infer
 // the design contract it implies and list where the domains disagree. Read-only: it never writes into the repo.
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { basename, dirname, join, relative } from "node:path"
+import { readdirSync, statSync, writeFileSync } from "node:fs"
+import { basename, join, relative } from "node:path"
 import { firmwareVariants, type FirmwareVariant } from "./firmware.ts"
-import { checkVariant, findMcus, fitScore, gpioOfPad, type PinCheck } from "./match.ts"
+import { findMcus, gpioOfPad, rankVariants, type PinCheck } from "./match.ts"
 import { pinLabel } from "./pins.ts"
+import { checkAgainst, writeContracts, type CheckResult } from "./contract.ts"
 import { boardFits, stlBox } from "./mech.ts"
-import { nameLegacyPads, readBoard } from "./pcb.ts"
+import { loadBoardFile } from "./pcb.ts"
 
-function find(dir: string, test: (name: string) => boolean, out: string[] = []): string[] {
+export function find(dir: string, test: (name: string) => boolean, out: string[] = []): string[] {
 	for (const name of readdirSync(dir)) {
 		if (name === ".git" || name === "node_modules" || name === ".pio") continue
 		const p = join(dir, name)
@@ -44,13 +45,7 @@ export function adopt(repo: string, opts: { variant?: string } = {}): { repo: st
 	const cases = find(repo, (n) => /\.stl$/i.test(n)).filter((p) => /case|enclosure|housing|shell|body|bottom|base/i.test(relative(repo, p)))
 	const boards: BoardReport[] = []
 	for (const file of find(repo, (n) => n.endsWith(".kicad_pcb"))) {
-		const b = readBoard(readFileSync(file, "utf8"))
-		// KiCad 5: pin names come from the project's schematic and symbol cache.
-		const cache = join(dirname(file), `${basename(file, ".kicad_pcb")}-cache.lib`)
-		if (b.version < 20200000 && existsSync(cache)) {
-			const schs = readdirSync(dirname(file)).filter((n) => n.endsWith(".sch")).map((n) => readFileSync(join(dirname(file), n), "utf8"))
-			nameLegacyPads(b, schs, readFileSync(cache, "utf8"))
-		}
+		const b = loadBoardFile(file)
 		const mcus = findMcus(b)
 		const mcu = mcus[0] ?? null
 		const rep: BoardReport = {
@@ -74,11 +69,7 @@ export function adopt(repo: string, opts: { variant?: string } = {}): { repo: st
 				rep.inferred.pins.push({ signal: p.net.split("/").pop()!, gpio: g, partRef: m.ref, partPin: p.number })
 			}
 			// --variant pins the pairing when a person knows which firmware runs on the board.
-			const ranked = variants
-				.filter((v) => !opts.variant || v.id === opts.variant || v.id.endsWith(`:${opts.variant}`))
-				.map((v) => ({ v, checks: checkVariant(b, mcus, v) }))
-				.map((r) => ({ ...r, score: fitScore(r.checks) }))
-				.sort((a, b) => b.score - a.score)
+			const ranked = rankVariants(b, mcus, variants, opts.variant)
 			if (ranked.length) {
 				rep.variant = { id: ranked[0].v.id, score: +ranked[0].score.toFixed(2) }
 				rep.runnersUp = ranked.slice(1, 4).map((r) => ({ id: r.v.id, score: +r.score.toFixed(2) }))
@@ -119,6 +110,18 @@ export function render(r: ReturnType<typeof adopt>): string {
 	return out.join("\n")
 }
 
+export function renderCheck(results: CheckResult[]): string {
+	const out: string[] = []
+	for (const r of results) {
+		out.push(`## ${r.board}`)
+		if (r.missing) out.push(`  ✗ ${r.missing}`)
+		for (const v of r.violations) out.push(`  ✗ ${v.kind}: ${v.message}`)
+		for (const c of r.changes) out.push(`  ~ ${c.field}: ${c.what}`)
+		if (!r.missing && !r.violations.length && !r.changes.length) out.push("  ✓ matches the agreed contract")
+	}
+	return out.join("\n")
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
 	const args = process.argv.slice(2)
 	const opt = (name: string) => {
@@ -127,12 +130,29 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	}
 	const json = opt("--json")
 	const variant = opt("--variant")
+	const contractDir = opt("--contract")
+	const checkDir = opt("--check")
 	const repo = args[0]
 	if (!repo) {
-		console.error("usage: adopt <repo> [--variant <env or id>] [--json out.json]")
+		console.error("usage: adopt <repo> [--variant <env or id>] [--json out.json] [--contract <dir> | --check <dir>]")
 		process.exit(2)
+	}
+	if (checkDir) {
+		// The repo now against the agreed contract: exit 1 when Bringup's checks find a violation.
+		const results = checkAgainst(repo, checkDir)
+		console.log(renderCheck(results))
+		process.exit(results.some((r) => r.violations.length > 0 || r.missing) ? 1 : 0)
 	}
 	const r = adopt(repo, { variant })
 	console.log(render(r))
 	if (json) writeFileSync(json, JSON.stringify(r, null, 2))
+	if (contractDir) {
+		const written = writeContracts(repo, find(repo, (n) => n.endsWith(".kicad_pcb")), contractDir, variant)
+		console.log("")
+		for (const w of written) {
+			const v = w.inferred.snapshot.values
+			console.log(`contract ${contractDir}/${w.entry}: ${v.pins?.length ?? 0} pins, ${v.parts?.length ?? 0} parts, ${v.connectors?.length ?? 0} edge connectors, firmware ${w.inferred.links.variant ?? "none"}`)
+			for (const f of w.inferred.refused) console.log(`  the contract refused ${f.field}: ${f.reason}`)
+		}
+	}
 }
