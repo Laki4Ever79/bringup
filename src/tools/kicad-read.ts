@@ -7,10 +7,10 @@ export interface BoardEdits {
 	connectors: { ref: string; edge: Connector["edge"]; offsetMm: number }[]
 }
 
-type Sexp = string | Sexp[]
+export type Sexp = string | Sexp[]
 
 // A minimal s-expression reader: lists, quoted strings (with \" escapes) and bare atoms. Formatting doesn't matter.
-function parse(text: string): Sexp[] {
+export function parse(text: string): Sexp[] {
 	const root: Sexp[] = []
 	const stack: Sexp[][] = [root]
 	const re = /\s*(?:(\()|(\))|"((?:[^"\\]|\\.)*)"|([^\s()"]+))/gy
