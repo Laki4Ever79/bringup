@@ -9,9 +9,11 @@ import { driftStatusLines, readDrift } from "./runner/drift.ts"
 import { linkedStatusLines, linkRun } from "./runner/linked.ts"
 import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 import { openBench } from "./bench/open.ts"
+import { verifyConverted, type ConvertedModel } from "./contract/verify-model.ts"
+import { buildFirmware } from "./tools/firmware.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 
-const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>]"
+const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir>] | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -108,6 +110,37 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		console.log(simulationLine(dir, env).replace(/^- /, ""))
 		if (r.serial) console.log(r.serial)
 		return r.ran && !r.passed ? 2 : 0
+	}
+	// `bringup verify-model <modelDir> <contract.json> [--firmware <dir>]`: py/quantize.py's converted model against the
+	// design (contract/verify-model.ts); with --firmware, the real model compiled into the firmware, measured by pio.
+	if (argv[0] === "verify-model") {
+		const [dir, contractPath] = [argv[1], argv[2]]
+		if (!dir || !contractPath || !existsSync(join(dir, "model.json")) || !existsSync(contractPath)) {
+			console.error("bringup: usage: bringup verify-model <modelDir> <contract.json> [--firmware <dir>] (modelDir from py/quantize.py)")
+			return 1
+		}
+		const facts = JSON.parse(readFileSync(join(dir, "model.json"), "utf8")) as ConvertedModel
+		const snapshot = JSON.parse(readFileSync(contractPath, "utf8"))
+		const v = verifyConverted(facts, snapshot)
+		for (const x of v.verdicts) console.log(`${x.level === "ok" ? "ok  " : x.level === "warn" ? "warn" : "FAIL"}  ${x.text}`)
+		if (v.proposal) console.log(`plan → measured: weightsKb ${snapshot.values.model.weightsKb} → ${v.proposal.weightsKb}, arenaKb ${snapshot.values.model.arenaKb} → ${v.proposal.arenaKb}`)
+		const fwAt = argv.indexOf("--firmware")
+		let firmware: { ok: boolean; ram?: number; flash?: number } | undefined
+		if (fwAt > 0 && argv[fwAt + 1]) {
+			const env = await (deps.detect ?? detectEnvironment)(ROOT)
+			if (!env.pio) {
+				console.error("bringup: --firmware needs PlatformIO (.venv/bin/pio)")
+				return 1
+			}
+			// Built with the measured sizes, so the arena it reserves is the one the model needs.
+			const measured = v.proposal ? { ...snapshot, values: { ...snapshot.values, model: v.proposal } } : snapshot
+			const fw = await buildFirmware(env.pio, ROOT, resolve(argv[fwAt + 1]), measured, snapshot.revision, { modelData: join(dir, "model_data.cc") })
+			const used = (what: string) => Number(new RegExp(`${what}:.*used (\\d+) bytes`).exec(fw.log)?.[1])
+			firmware = { ok: fw.ok, ram: used("RAM"), flash: used("Flash") }
+			console.log(fw.ok ? `firmware with the real model compiles: RAM ${firmware.ram} B, flash ${firmware.flash} B (pio)` : `firmware with the real model does NOT compile:\n${fw.log}`)
+		}
+		writeFileSync(join(dir, "verify.json"), JSON.stringify({ ...v, firmware }, null, 2) + "\n")
+		return v.fits && (firmware?.ok ?? true) ? 0 : 2
 	}
 	// `bringup link <runDir> <dir>`: a git working copy for the run's files (runner/linked.ts).
 	if (argv[0] === "link") {
