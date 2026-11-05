@@ -61,6 +61,20 @@ const USBC_PADS: Record<"GND" | "VBUS" | "CC1" | "CC2" | "DN" | "DP", string[]> 
 	GND: ["pin5", "pin16"], VBUS: ["pin6", "pin15"], CC1: ["pin8"], CC2: ["pin14"], DN: ["pin9", "pin11"], DP: ["pin10", "pin12"],
 }
 const USBC_FOOTPRINT = "usbcmidmount"
+// Its two plastic locating holes (NPTH ø0.7 mm), from the built KiCad footprint, in tscircuit's frame (y up) at
+// rotation 0. tscircuit's autorouter doesn't see them and dropped VBUS vias beside one (the first wake-word board, 4
+// hole_clearance errors), so each can get a routing keepout: ø0.7 hole + 0.2 mm hole clearance + the via's own copper (0 errors on that board).
+const USBC_LOCATING_HOLES: [number, number][] = [[-2.89, 1.055], [2.89, 1.055]]
+const USBC_KEEPOUT_RADIUS_MM = 0.9
+function usbKeepouts(x: number, y: number, rotationDeg: number): string[] {
+	const t = (rotationDeg * Math.PI) / 180
+	return USBC_LOCATING_HOLES.map(([lx, ly]) => {
+		const kx = +(x + lx * Math.cos(t) - ly * Math.sin(t)).toFixed(3)
+		const ky = +(y + lx * Math.sin(t) + ly * Math.cos(t)).toFixed(3)
+		// The connector's own pads sit 0.17 mm from the hole: placements are allowed, traces and vias are not.
+		return `<keepout shape="circle" radius={${USBC_KEEPOUT_RADIUS_MM}} pcbX={${kx}} pcbY={${ky}} layers={["top", "bottom"]} allowPlacements />`
+	})
+}
 
 // pushbutton pads 1-2 and 3-4 are internally connected; the switch closes between the two sides.
 const BUTTON_FOOTPRINT = "pushbutton"
@@ -93,6 +107,9 @@ const SUPPORT = {
 	pullup: { kind: "resistor", value: "10k", lcsc: "C25744", mpn: "0402WGF1002TCE", footprint: "0402" },
 	bypass: { kind: "capacitor", value: "1uF", lcsc: "C52923", mpn: "CL05A105KA5NQNC", footprint: "0402" },
 	bulk: { kind: "capacitor", value: "10uF", lcsc: "C19702", mpn: "CL10A106KP8NNNC", footprint: "0603" },
+	// The ICS-43434's SD pull-down and VDD decoupling (DS-000069 Table 8).
+	pulldown: { kind: "resistor", value: "100k", lcsc: "C25741", mpn: "0402WGF1003TCE", footprint: "0402" },
+	decouple: { kind: "capacitor", value: "100nF", lcsc: "C1525", mpn: "CL05B104KO5NNNC", footprint: "0402" },
 } satisfies Record<string, SupportSpec>
 
 type End = { net: string } | { ref: string; pin: string }
@@ -140,6 +157,12 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	if (usb) for (const cc of ["CC1", "CC2"] as const) jobs.push({ job: `USB-C ${cc} (${usb}.${USBC_PADS[cc][0]})`, spec: SUPPORT.cc, a: { ref: usb, pin: USBC_PADS[cc][0] }, b: GND, near: usb })
 	if (charger?.pins.includes("PROG")) jobs.push({ job: `charger PROG (${charger.ref}.PROG), sets the charge current`, spec: SUPPORT.prog, a: { ref: charger.ref, pin: "PROG" }, b: GND, near: charger.ref })
 	if (supply) for (const p of pins) if (/^I2C_(SDA|SCL)$/.test(p.signal)) jobs.push({ job: `${p.signal} pull-up`, spec: SUPPORT.pullup, a: { net: p.signal }, b: { net: supply }, near: p.partRef })
+	// An I2S microphone: its SD line pulled down (it tristates between frames) and VDD decoupled right at the part.
+	for (const mic of parts.filter((p) => p.role === "microphone")) {
+		const sd = pins.find((p) => p.partRef === mic.ref && p.partPin === "SD")
+		if (sd) jobs.push({ job: `${sd.signal} pull-down (${mic.ref}.SD tristates between frames)`, spec: SUPPORT.pulldown, a: { net: sd.signal }, b: GND, near: mic.ref })
+		if (supply && mic.pins.includes("VDD")) jobs.push({ job: `decoupling on ${mic.ref}.VDD`, spec: SUPPORT.decouple, a: { net: supply }, b: GND, near: mic.ref })
+	}
 	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
 	if (ldo) jobs.push({ job: `decoupling on ${charger ? "VBAT" : "VBUS"} (LDO input)`, spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
 	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
@@ -220,6 +243,30 @@ function moduleFootprint(): string {
 	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[${antenna}]} /></footprint>}`
 }
 
+// ICS-43434 I2S microphone (TDK DS-000069 Rev 1.2, Figure 13 land pattern, Figure 3 pin configuration, Figure 15
+// package). Origin at the package centre, the long side along x. Five 0.522 × 0.600 mm pads in two columns 0.822 mm
+// apart, rows at +0.9, 0 and -0.9 mm; the GND ring (ø1.625 mm) is centred 1.252 mm past the second column, 1.040 mm in
+// from the package's end. Figure 3 turned 90° clockwise to match Figure 13 (both top views) puts VDD, SD, WS down the
+// first column and SCK, LR down the second. The ring is a plated ring around the sound hole: the datasheet asks for a
+// hole larger than the 0.375 mm port and at least 0.5 mm; 0.6 mm here. Plating runs to the hole's edge, where the
+// datasheet's pattern keeps copper 1.025 mm wide clear (tscircuit has no annular SMT pad); the paste stencil keeps
+// solder out of it either way.
+export const MIC_FOOTPRINT = "ics43434"
+export const MIC_BODY = { w: 3.5, h: 2.65 }
+// The sound hole, from the package centre at rotation 0.
+export const MIC_PORT = { x: 0.71, y: 0, holeMm: 0.6 }
+function micFootprint(): string {
+	const n = (v: number) => `${+v.toFixed(3)}mm`
+	const c1 = MIC_PORT.x - 1.252 - 0.822
+	const c2 = MIC_PORT.x - 1.252
+	const pads: [number, number, number][] = [[5, c1, 0.9], [6, c1, 0], [1, c1, -0.9], [4, c2, 0.9], [2, c2, -0.9]]
+	const smt = pads.map(([pin, x, y]) => `<smtpad portHints={["pin${pin}"]} pcbX="${n(x)}" pcbY="${n(y)}" width="0.522mm" height="0.6mm" shape="rect" />`).join("")
+	const ring = `<platedhole portHints={["pin3"]} pcbX="${n(MIC_PORT.x)}" pcbY="${n(MIC_PORT.y)}" holeDiameter="${n(MIC_PORT.holeMm)}" outerDiameter="1.625mm" shape="circle" />`
+	const [hw, hh] = [MIC_BODY.w / 2, MIC_BODY.h / 2]
+	const outline = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+	return `{<footprint>${smt}${ring}<silkscreenpath route={[${outline}]} /></footprint>}`
+}
+
 function modulePinLabels(pins: string[]): string {
 	const known = pins.filter((name) => MODULE_PINS[name] !== undefined)
 	return `{{ ${known.map((name) => `pin${MODULE_PINS[name]}: ${q(name)}`).join(", ")} }}`
@@ -247,6 +294,7 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	jst2_ph: [6, 5], // pads are 3.2 x 1.75; this reserves the S2B-PH-K housing
 	// The USB-C courtyard, not its pads: the body reaches 5.5 mm behind the pad row (footprinter usbcmidmount.ts).
 	usbcmidmount: [10.35, 8.4],
+	[MIC_FOOTPRINT]: [MIC_BODY.w, MIC_BODY.h],
 }
 const DEFAULT_SIZE: [number, number] = [3, 3]
 
@@ -273,6 +321,10 @@ export const LDO_FROM_USB_MM = 8
 export interface PlacementOptions {
 	// Distance from the USB-C connector centre to the LDO target.
 	ldoFromUsbMm?: number
+	// Routing keepouts at the USB-C locating holes. Off by default: on some layouts J1's own pad traces run too close
+	// to them and tscircuit refuses the build (the 45 mm logger), so the board build tries them only after a layout
+	// routes with DRC errors.
+	usbKeepouts?: boolean
 }
 
 // Board mounting holes for M2 screws: 2.2 mm clearance holes, centred 3 mm in from each corner. Nothing is placed
@@ -388,6 +440,8 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 	put(byRole("battery"), frame(4, usbV - ledSide * 10))
 	put(byRole("charger"), frame(11, usbV - ledSide * 7))
 	put(byRole("button"), frame(depth - 4, mcuV < span / 2 ? 4 : span - 4))
+	// The microphone goes toward the far edge, away from the MCU's noise, on the side the sensor doesn't take.
+	put(byRole("microphone"), frame(depth - 9, mcuV < span / 2 ? span - 6 : 6))
 	// Each support passive sits next to the part it serves.
 	const boxOf = (ref: string) => placed.find((b) => b.ref === ref)
 	for (const sp of supportParts(s)) {
@@ -462,6 +516,10 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		}
 	}
 
+	// A microphone's LR select tied low puts its data in the I2S frame's left channel (DS-000069 Table 8).
+	for (const m of parts.filter((p) => p.role === "microphone" && p.pins.includes("LR")))
+		if (!pins.some((p) => p.partRef === m.ref && p.partPin === "LR")) join("GND", m.ref, "LR")
+
 	// A button closes between its two sides: the side a pin assignment uses goes to the GPIO, the other to GND.
 	for (const b of parts.filter((p) => p.role === "button" && p.pins.includes("A") && p.pins.includes("B"))) {
 		const used = new Set(pins.filter((p) => p.partRef === b.ref).map((p) => p.partPin))
@@ -528,9 +586,11 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		const footprint = footprintFor(p)
 		if (footprint === USBC_FOOTPRINT) {
 			lines.push(`<connector name=${q(p.ref)}${mpnOf(p)}${at(placement, p.ref)} footprint=${q(footprint)} />`)
+			const b = placement.get(p.ref)
+			if (b && opts.usbKeepouts) lines.push(...usbKeepouts(b.x, b.y, b.rotation))
 			continue
 		}
-		const fp = footprint === MODULE_FOOTPRINT ? moduleFootprint() : q(footprint)
+		const fp = footprint === MODULE_FOOTPRINT ? moduleFootprint() : footprint === MIC_FOOTPRINT ? micFootprint() : q(footprint)
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
 	}
 
@@ -540,6 +600,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		const labels = part ? labelsFor(part, footprint) : ""
 		const { x, y } = connectorPosition(c, outline.widthMm, outline.heightMm)
 		lines.push(`<connector name=${q(c.ref)}${labels}${part ? mpnOf(part) : ""} footprint=${q(footprint)} pcbX={${x}} pcbY={${y}} pcbRotation={${EDGE_ROTATION[c.edge]}} />`)
+		if (footprint === USBC_FOOTPRINT && opts.usbKeepouts) lines.push(...usbKeepouts(x, y, EDGE_ROTATION[c.edge]))
 	}
 
 	for (const pin of pins) {
