@@ -13,12 +13,16 @@ npx tsx src/adopt/cli.ts <repo> --check <dir>            # check: the repo now a
 
 ## What it reads
 
-- **Boards:** KiCad 5 to 10. KiCad 5 pin names come from the project's schematic and symbol cache.
-- **The MCU:** the part with the most GPIO pads (ESP32 and RP2040 `IO5`/`GPIO5`, STM32 `PC13`). A dev board on
+- **Boards:** KiCad 5 to 10. Pads without pin names get them from the project's schematics: the KiCad 5 symbol
+  cache, or the symbols each KiCad 6+ `.kicad_sch` embeds.
+- **The MCU:** the part with the most GPIO pads (ESP32 and RP2040 `IO5`/`GPIO5`, STM32 `PC13`, AVR `PB5`, nRF `P0.13`). A dev board on
   headers (XIAO, Feather, QT Py, S2 mini) counts too: its pad names (`D6`, `TX/D6`) map to GPIOs through arduino-esp32's
   variant headers (`scripts/adopt-boards.ts` regenerates `src/adopt/boards.json`).
 - **Firmware:** PlatformIO envs (`extends`, `${sec.key}`, `build_src_filter`), CMake compile definitions,
-  C/C++ pin defines and constants, STM32CubeMX `.ioc` files and `main.h` `_Pin`/`_GPIO_Port` pairs.
+  C/C++ pin defines and constants, STM32CubeMX `.ioc` files and `main.h` `_Pin`/`_GPIO_Port` pairs, Arduino pin
+  numbers and `A0` (resolved through ArduinoCore-avr's tables on AVR), and Zephyr devicetree (`NRF_PSEL` in pinctrl,
+  `<name>-gpios`). Each revision overlay is a build of its own; disabled nodes, and RTS/CTS without
+  `hw-flow-control`, are unused.
   `#if` branches are evaluated per build: the env's `-D` flags, its chip family, and macros the sources agree on.
 - **Case:** an STL's bounding box, for a rough "does the board fit" check.
 
@@ -33,7 +37,9 @@ npx tsx src/adopt/cli.ts <repo> --check <dir>            # check: the repo now a
 | ? | Not on any pad, or broken only under an `#if` adopt can't decide |
 | – | Not used in this build |
 
-Each board is paired with the firmware build that explains most of it; `--variant` overrides the choice.
+Each board is paired with the firmware build that explains most of it; `--variant` overrides the choice. A board no
+build fits is reported as unpaired, and its broken pins become questions. Across a build, adopt also flags one pin
+given two jobs, a devicetree sleep state that moves a line, and a console UART whose pins go nowhere.
 
 ## The contract and the check
 
@@ -61,8 +67,7 @@ variables. `adopt/example-workflow.yml` shows the setup:
 ## Limits
 
 - One MCU per contract (the board's first). Other MCUs are still checked by the report.
-- Pin numbers for ESP32/ESP8266/RP2040 GPIOs, STM32-style ports and AVR (ATmega328P/2560/32U4 and the Arduino boards on
-  them, through ArduinoCore-avr's tables). Not yet nRF52 `P0.13`, ATtiny,
-  or Python and MicroPython firmware.
+- Pin numbers for ESP32/ESP8266/RP2040 GPIOs, STM32-style ports, AVR (ATmega328P/2560/32U4 and the Arduino boards on
+  them) and nRF52/nRF54 port pins. Not yet ATtiny, ZMK's `&pro_micro` references, or Python and MicroPython firmware.
 - Connector positions come from the footprint origin and pad extent, not the courtyard.
 - The case check is a bounding box, not cutouts.

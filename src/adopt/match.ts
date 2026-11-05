@@ -3,7 +3,7 @@ import type { Board, Footprint } from "./pcb.ts"
 import { netMembers } from "./pcb.ts"
 import type { FirmwarePin, FirmwareVariant } from "./firmware.ts"
 import { active, familyOfPart } from "./preproc.ts"
-import { ANALOG_BASE, AVR_BASE, STM32_BASE, parseAvrPin, parsePortPin, pinLabel } from "./pins.ts"
+import { ANALOG_BASE, AVR_BASE, STM32_BASE, parseAvrPin, parseNrfPin, parsePortPin, pinLabel } from "./pins.ts"
 import BOARDS from "./boards.json" with { type: "json" }
 
 // Dev boards whose pads carry board names (D6, TX/D6): their GPIOs, from arduino-esp32's variant headers
@@ -85,6 +85,11 @@ const ESP32_ALIASES: Record<string, number> = {
 // failing that, its unconnected-net name (KiCad writes unconnected-(U1-GPIO6-Pad9)).
 export function padGpio(fn: string, net: string, board?: Record<string, number>, avr = false): number | null {
 	const fromName = (s: string): number | null => {
+		// nRF pins before splitting, since P0_13 would split apart: P0.13, P1.04, P0_13/AIN5.
+		for (const tok of s.split(/[\/\s,()-]+/)) {
+			const nrf = parseNrfPin(tok) ?? parseNrfPin(tok.split(/_(?=[A-Z])/)[0])
+			if (nrf !== null) return nrf
+		}
 		for (const tok of s.split(/[\/_\s,()-]+/)) {
 			const m = /^(?:GPIO|IO|GP)(\d+)$/i.exec(tok)
 			if (m) return Number(m[1])
@@ -137,6 +142,9 @@ export type Verdict =
 	| "inside-module"
 	// A per-revision pin whose sibling (X_REV21 for X_REV20) fits this board.
 	| "other-revision"
+	// A peripheral's pin assignment (devicetree pinctrl) that goes nowhere: drivers need every line assigned even when
+	// the design uses only some (a WS2812 on SPI uses MOSI alone).
+	| "assigned-unwired"
 	// The firmware's clock mode doesn't suit the board's clock source (crystal mode on an oscillator).
 	| "clock-mode"
 	// The module already uses this GPIO for something else (T-Display's GPIO5 is its display's CS).
@@ -153,6 +161,8 @@ export interface PinCheck {
 	reaches: string[]
 	// Set when the name had several #if definitions in its file; this is the best-fitting one.
 	branches?: number
+	// Another firmware name on the same pin in this build.
+	sharedWith?: string
 }
 
 // Words that mean the same signal.
@@ -171,6 +181,8 @@ const SYNONYMS: string[][] = [
 	["rst", "reset", "res", "nrst"],
 	["dc", "rs", "cmd"],
 	["tx", "txd"],
+	["rts", "rtsn"],
+	["cts", "ctsn"],
 	["dp", "usbdp", "usb_dp"],
 	["dm", "dn", "usbdm"],
 	["rx", "rxd"],
@@ -206,7 +218,9 @@ export function tokens(name: string): Set<string> {
 
 // Words that name a signal's function on its bus. When both names carry one, they must share it: LCD_RST on the
 // LCD_DC net is a swap, however much else ("lcd") the names share.
-const FUNCTION = new Set(["sck", "ws", "cs", "mosi", "miso", "rst", "dc", "tx", "rx", "dp", "dm", "int", "bl"])
+const FUNCTION = new Set(["sck", "ws", "cs", "mosi", "miso", "rst", "dc", "tx", "rx", "rts", "cts", "dp", "dm", "int", "bl"])
+// Bus and board words that name no peer.
+const GENERIC_BUS = new Set(["uart", "usart", "serial", "mcu", "cpu", "main", "host", "dbg", "debug", "spi", "i2c", "twi", "bus", "line", "sig", "signal"])
 
 export function namesAgree(firmwareName: string, net: string): boolean {
 	const a = tokens(firmwareName)
@@ -247,7 +261,7 @@ const MODULE_INTERNAL: { part: RegExp; gpios: Record<number, string> }[] = [
 const connected = (net: string) => !!net && !net.startsWith("unconnected-")
 // Best first. "not-on-pads" is last: a pin that exists on some MCU (even unconnected) says more than its absence on
 // another (IoT12's ESP32 pins against its SAMD21 module).
-const RANK: Verdict[] = ["agrees", "inside-module", "other-revision", "unnamed", "name-differs", "module-conflict", "clock-mode", "power", "unconnected", "not-on-pads"]
+const RANK: Verdict[] = ["agrees", "inside-module", "other-revision", "unnamed", "assigned-unwired", "name-differs", "module-conflict", "clock-mode", "power", "unconnected", "not-on-pads"]
 
 // Each firmware pin against every MCU on the board, keeping the best fit: one binary often serves several chips by
 // role (DeskHop's two Picos). That can hide a pin that is wrong for its own chip but right for another; the report
@@ -295,12 +309,19 @@ export function checkVariant(b: Board, mcus: Footprint[], v: FirmwareVariant): P
 		// Evidence beyond the net's name: the far-end pins (MK1.BCLK) and what the parts are (SW1 is a button).
 		// A far-end pin names the signal from the other chip's side, where UART lines cross: the MCU's TX meets the
 		// peer's RXD. So far-end names count with TX and RX swapped (and a peer's TX on our TX then disagrees).
-		const crossed = (fn: string) => fn.replace(/\b(U?S?ART\d*_?)?(T|R)X(D?)\b/gi, (_m, pre: string | undefined, d: string, x: string) => `${pre ?? ""}${d.toUpperCase() === "T" ? "R" : "T"}X${x}`)
+		const crossed = (fn: string) =>
+			fn
+				// Letters bound the words, not \b: an underscore is a word character, so \b never splits RX from _ESP.
+				.replace(/(?<![A-Za-z])(U?S?ART\d*_?)?(T|R)X(D?)(?![A-Za-z])/gi, (_m, pre: string | undefined, d: string, x: string) => `${pre ?? ""}${d.toUpperCase() === "T" ? "R" : "T"}X${x}`)
+				.replace(/(?<![A-Za-z])(RTS|CTS)(?![A-Za-z])/gi, (m: string) => (m.toUpperCase() === "RTS" ? "CTS" : "RTS"))
 		// A pin name lists alternate functions with "/" (RXD/SPI_MOSI): each is its own name.
 		const farNames = reaches.flatMap((x) => crossed(x.split(".").slice(1).join(".")).split("/").filter(Boolean))
-		const evidence = [named, ...farNames, ...[...others(at.net), ...farParts].flatMap((m) => partRole(byRef.get(m.ref)))]
+		// A net named after the peer (RX_ESP, GNSS_TXD) is seen from the peer's side too: crossed, it can agree. A net
+		// named only with bus words (UART_RX) says nothing about whose side, so it doesn't cross.
+		const peerNamed = [...tokens(named)].some((t) => !FUNCTION.has(t) && !GENERIC_BUS.has(t))
+		const evidence = [named, ...(peerNamed ? [crossed(named)] : []), ...farNames, ...[...others(at.net), ...farParts].flatMap((m) => partRole(byRef.get(m.ref)))]
 		const agrees = evidence.some((e) => e && !/^\d+$/.test(e) && namesAgree(pin.name, e))
-		const verdict: Verdict = !connected(at.net) || reaches.length === 0 ? "unconnected" : agrees ? "agrees" : unnamedNet(named) ? "unnamed" : rail ? "power" : "name-differs"
+		const verdict: Verdict = !connected(at.net) || reaches.length === 0 ? (pin.assigned && !pin.console ? "assigned-unwired" : "unconnected") : agrees ? "agrees" : unnamedNet(named) ? "unnamed" : rail ? "power" : "name-differs"
 		return { pin, mcu: mcu.ref, verdict, net, pad, reaches }
 	}
 	const best = (pin: FirmwarePin) => mcus.map((m) => one(m, pin)).sort((a, b) => RANK.indexOf(a.verdict) - RANK.indexOf(b.verdict))[0]
@@ -313,7 +334,7 @@ export function checkVariant(b: Board, mcus: Footprint[], v: FirmwareVariant): P
 		const on = pin.conds ? active(pin.conds, ctx) : true
 		if (on === false) continue
 		// Used in this build if any use compiles (or might); build flags are read by libraries adopt doesn't scan.
-		const unused = !pin.fromBuild && pin.uses !== undefined && !pin.uses.some((c) => active(c, ctx) !== false)
+		const unused = Boolean(pin.disabled) || (!pin.fromBuild && pin.uses !== undefined && !pin.uses.some((c) => active(c, ctx) !== false))
 		compiled.push({ ...pin, ...(on === undefined ? { conditional: true } : {}), unused })
 	}
 	// One name defined several times in one file is #if branches adopt couldn't decide: keep the branch that fits.
@@ -344,6 +365,13 @@ export function checkVariant(b: Board, mcus: Footprint[], v: FirmwareVariant): P
 	// board, a broken one is the other revision's, not a fault.
 	const REV = /_(?:REV|R|V|VER)_?\d+[A-Z]?$/i
 	const stem = (n: string) => n.replace(REV, "")
+	// One pin, two jobs: two different names on the same pin of the same MCU in one build (HexGateway's P0.04 as UART0's
+	// CTS and the Ethernet chip's CS). Unused pins and per-revision siblings don't count.
+	for (const c of checks) {
+		if (c.pin.unused || !c.pad) continue
+		const other = checks.find((o) => o !== c && !o.pin.unused && o.mcu === c.mcu && o.pin.gpio === c.pin.gpio && o.pin.name !== c.pin.name && !(REV.test(o.pin.name) && stem(o.pin.name) === stem(c.pin.name)))
+		if (other) c.sharedWith = other.pin.name
+	}
 	return checks.map((c) => {
 		if (!REV.test(c.pin.name) || !["unconnected", "not-on-pads", "power", "module-conflict"].includes(c.verdict)) return c
 		const sibling = checks.find((o) => o !== c && REV.test(o.pin.name) && stem(o.pin.name) === stem(c.pin.name) && o.verdict === "agrees")
@@ -368,6 +396,7 @@ export function rankVariants(b: Board, mcus: Footprint[], variants: FirmwareVari
 	return variants
 		.filter((v) => !only || v.id === only || v.id.endsWith(`:${only}`))
 		.map((v) => ({ v, checks: checkVariant(b, mcus, v) }))
-		.map((r) => ({ ...r, score: fitScore(r.checks) }))
-		.sort((a, b) => b.score - a.score)
+		.map((r) => ({ ...r, score: fitScore(r.checks), broken: r.checks.filter((c) => !c.pin.unused && ["unconnected", "power", "module-conflict", "clock-mode", "not-on-pads"].includes(c.verdict)).length }))
+		// Ties go to the build with fewer broken pins (BeeLight's revision overlays score alike; one has a dead SDA).
+		.sort((a, b) => b.score - a.score || a.broken - b.broken)
 }

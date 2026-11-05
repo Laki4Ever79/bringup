@@ -97,7 +97,7 @@ export function familyOfPart(text: string): Family | null {
 	if (/RP2040|RP2350|PICO/.test(t)) return "rp2040"
 	if (/ATMEGA|ATTINY|ARDUINO.?(NANO|UNO|PRO.?MINI|MEGA|LEONARDO|MICRO)(?!.?(EVERY|ESP32|33|RP2040|MATTER|R4))|PRO.?MICRO/.test(t)) return "avr"
 	if (/STM32/.test(t)) return "stm32"
-	if (/NRF52/.test(t)) return "nrf52"
+	if (/NRF5[234]|MDBT5\d|BL65\d|RAYTAC|NICE.?NANO|XIAO.{0,12}NRF52/.test(t)) return "nrf52"
 	if (/SAMD|ATSAMD/.test(t)) return "samd"
 	return null
 }

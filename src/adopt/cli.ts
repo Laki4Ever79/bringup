@@ -86,7 +86,7 @@ export function adopt(repo: string, opts: { variant?: string } = {}): { repo: st
 	return { repo: basename(resolve(repo)), variants: variants.length, boards }
 }
 
-const MARK: Record<PinCheck["verdict"], string> = { "clock-mode": "✗", "other-revision": "✓", "inside-module": "✓", "module-conflict": "✗", unconnected: "✗", power: "✗", "not-on-pads": "?", "name-differs": "≠", unnamed: "·", agrees: "✓" }
+const MARK: Record<PinCheck["verdict"], string> = { "assigned-unwired": "·", "clock-mode": "✗", "other-revision": "✓", "inside-module": "✓", "module-conflict": "✗", unconnected: "✗", power: "✗", "not-on-pads": "?", "name-differs": "≠", unnamed: "·", agrees: "✓" }
 
 export function render(r: ReturnType<typeof adopt>): string {
 	const out: string[] = [`# ${r.repo}: ${r.boards.length} board(s), ${r.variants} firmware variant(s)`]
@@ -102,7 +102,7 @@ export function render(r: ReturnType<typeof adopt>): string {
 				? `  no firmware build here fits this board (best: ${b.variant.id}, fit ${b.variant.score}); its firmware may be elsewhere, so the pins below are questions, not faults`
 				: `  best-matching firmware: ${b.variant.id} (fit ${b.variant.score})${b.runnersUp.length ? `; next: ${b.runnersUp.map((x) => `${x.id} ${x.score}`).join(", ")}` : ""}`)
 			for (const c of b.checks) {
-				const where = c.verdict === "not-on-pads" ? "no pad is this GPIO" : c.verdict === "inside-module" || c.verdict === "clock-mode" ? c.net : c.verdict === "module-conflict" ? `taken by ${c.net}` : `${c.mcu}.${c.pad} → ${c.net || "(no net)"}${c.verdict === "unnamed" || c.verdict === "name-differs" ? `  [reaches ${c.reaches.slice(0, 4).join(", ")}]` : ""}`
+				const where = c.verdict === "not-on-pads" ? "no pad is this GPIO" : c.verdict === "inside-module" || c.verdict === "clock-mode" ? c.net : c.verdict === "module-conflict" ? `taken by ${c.net}` : `${c.mcu}.${c.pad} → ${c.net || "(no net)"}${c.verdict === "assigned-unwired" ? "  (assigned to its peripheral, not wired: drivers need every line assigned)" : ""}${c.pin.console && c.verdict === "unconnected" && !c.pin.unused ? "  (the console: its output goes nowhere)" : ""}${c.sharedWith ? `  ✗ also ${c.sharedWith}: one pin, two jobs` : ""}${c.pin.sleepPin !== undefined ? `  ${c.pin.unused ? "" : "✗ "}its sleep state puts it on ${pinLabel(c.pin.sleepPin)}` : ""}${c.verdict === "unnamed" || c.verdict === "name-differs" ? `  [reaches ${c.reaches.slice(0, 4).join(", ")}]` : ""}`
 				// A broken pin defined under #if may be another board's branch: shown, but marked as a question.
 				const mark = c.pin.unused && MARK[c.verdict] !== "✓" ? "–" : (c.pin.conditional || unpaired) && MARK[c.verdict] === "✗" ? "?" : MARK[c.verdict]
 				out.push(`  ${mark} ${c.pin.name}=${c.pin.as ? `${c.pin.as} (${pinLabel(c.pin.gpio)})` : pinLabel(c.pin.gpio)}  ${where}  (${c.pin.file}:${c.pin.line}${c.branches ? `, best of ${c.branches} #if branches` : c.pin.conditional ? ", under #if" : ""}${c.pin.unused ? ", not used in this build" : ""})`)
