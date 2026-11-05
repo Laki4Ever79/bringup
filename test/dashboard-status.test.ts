@@ -4,7 +4,7 @@ import { statusLine } from "../src/dashboard/ripple.js"
 
 // The 04 Result banner as a live status line: what is happening now, in plain words, then how the change ended.
 const T0 = Date.parse("2026-10-31T12:00:00.000Z")
-const ripple = (o: object): any => ({ id: "req-1", text: "make it 40 mm wide", file: null, atMs: T0, fieldsChanged: ["outline"], woke: ["architect", "build:board", "build:enclosure", "consistency"], checked: [], reading: [], stayedIdle: ["parts", "firmware", "reviewer", "build:firmware", "grounding"], working: [], violations: [], violationsPeak: 0, consistentAtMs: null, durationMs: null, checks: [], state: "rippling", ...o })
+const ripple = (o: object): any => ({ id: "req-1", text: "make it 40 mm wide", file: null, atMs: T0, fieldsChanged: ["outline"], woke: ["architect", "build:board", "build:enclosure", "consistency"], checked: [], reading: [], stayedIdle: ["parts", "ml", "firmware", "reviewer", "build:firmware", "grounding"], working: [], violations: [], violationsPeak: 0, consistentAtMs: null, durationMs: null, checks: [], state: "rippling", ...o })
 const at = (s: number) => T0 + s * 1000
 
 test("before any change: designing from the brief, then the first design, and what to do next", () => {
@@ -17,7 +17,7 @@ test("before any change: designing from the brief, then the first design, and wh
 
 test("a change in flight says who is rebuilding for what, and what isn't affected", () => {
 	const s = statusLine({ ripple: ripple({ working: ["build:board", "build:enclosure"] }), now: at(12) })
-	assert.deepEqual(s, { state: "rippling", headline: "Board and case rebuilding for 40 mm wide", detail: "outline changed · 5 agents not affected · 12 s" })
+	assert.deepEqual(s, { state: "rippling", headline: "Board and case rebuilding for 40 mm wide", detail: "outline changed · 6 agents not affected · 12 s" })
 	assert.equal(statusLine({ ripple: ripple({ working: ["architect"] }), now: at(3) }).headline, "Architect working on 40 mm wide")
 	assert.equal(statusLine({ ripple: ripple({ working: ["build:firmware"], text: "blink faster when tilted", fieldsChanged: ["behavior"] }), now: at(3) }).headline, "Firmware rebuilding for “blink faster when tilted”")
 	assert.deepEqual(statusLine({ ripple: ripple({ state: "sent", woke: [], fieldsChanged: [] }), now: at(1) }), { state: "sent", headline: "Agents reading 40 mm wide", detail: "deciding which fields it touches" })
@@ -32,8 +32,8 @@ test("a problem mid-way names it in words, not a count", () => {
 
 test("done: the change, everything agreeing, how long, how many agents had to act", () => {
 	const s = statusLine({ ripple: ripple({ state: "consistent", durationMs: 32_000 }), now: at(40) })
-	assert.deepEqual(s, { state: "consistent", headline: "40 mm wide: board, case and firmware agree", detail: "in 32 s · 4 of 9 agents had to act" })
-	assert.equal(statusLine({ ripple: ripple({ state: "consistent", durationMs: 300 }), now: at(40), stubbed: true }).detail, "in under 1 s · hardware stubbed · 4 of 9 agents had to act")
+	assert.deepEqual(s, { state: "consistent", headline: "40 mm wide: board, case and firmware agree", detail: "in 32 s · 4 of 10 agents had to act" })
+	assert.equal(statusLine({ ripple: ripple({ state: "consistent", durationMs: 300 }), now: at(40), stubbed: true }).detail, "in under 1 s · hardware stubbed · 4 of 10 agents had to act")
 	assert.deepEqual(statusLine({ ripple: ripple({ state: "no-change", woke: [], checked: ["architect", "firmware"], fieldsChanged: [], text: "paint it blue" }), now: at(40) }), { state: "no-change", headline: "Nothing to change for “paint it blue”", detail: "2 agents checked it · no field moved" })
 	assert.deepEqual(statusLine({ ripple: ripple({ state: "unsettled", violations: [3] }), violations: [{ kind: "pin-mismatch" }], now: at(40) }), { state: "unsettled", headline: "Stopped: 3 mismatches left after 40 mm wide", detail: "the firmware's pins don't match the board" })
 })

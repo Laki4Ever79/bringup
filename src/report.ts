@@ -180,6 +180,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Board ${v.outline?.widthMm}×${v.outline?.heightMm} mm; connectors: ${(v.connectors ?? []).map((x) => `${x.ref} ${x.kind} on ${x.edge}`).join(", ") || "none"}`,
 		`- Parts: ${(v.parts ?? []).map((p) => `${p.ref} ${p.mpn}${p.lcsc ? ` (${p.lcsc})` : ""}`).join(", ")}`,
 		`- Pins: ${(v.pins ?? []).map((p) => `${p.signal}=GPIO${p.gpio}→${p.partRef}.${p.partPin}`).join(", ")}`,
+		...(v.model ? [`- Model: ${v.model.task} (${v.model.sensor} at ${v.model.sampleRateHz} Hz, ${v.model.windowMs} ms window), weights ${v.model.weightsKb} KB, arena ${v.model.arenaKb} KB, ${v.model.quantization} ${v.model.runtime}, listening ${v.model.listening}`] : []),
 		`- Rails (peak/rated): ${(v.rails ?? []).map((r) => `${r.name} ${r.loadMa}/${r.regulatorMaxMa} mA${r.averageMa !== undefined ? `, average ${r.averageMa} mA` : ""}`).join("; ")}`,
 		`- Estimated battery life: ${batteryLifeSummary(estimatePower(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""))}`,
 		``,

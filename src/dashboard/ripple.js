@@ -6,7 +6,7 @@
 import { BUILDS, LANES, applyLaneEvent, createLanes } from "./lanes.js"
 
 const KEYS = LANES.map((l) => l.key)
-const AGENTS = new Set(["architect", "parts", "firmware", "reviewer"])
+const AGENTS = new Set(["architect", "parts", "ml", "firmware", "reviewer"])
 // Same as BUILD_INPUTS in src/agents/builders.ts.
 // The builders' inputs, from lanes.js (held equal to src/agents/builders.ts by a test).
 const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b]) => [`build:${k}`, b.inputs]))

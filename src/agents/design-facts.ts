@@ -4,6 +4,7 @@ import { generatedNets, supportParts } from "../codegen/circuit.ts"
 import { bleAdvertiseMs } from "../codegen/firmware.ts"
 import { dutyCycleCheckLines, estimatePower, powerBudgetLines } from "../contract/power.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
+import { modelFactLines } from "../contract/model.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 
 // The facts and computed checks about the current contract, one source for everyone who judges or changes it: the
@@ -15,6 +16,7 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 	return [
 		...partFactsSection(s),
 		...fieldMeaningLines(s),
+		...(s.values.model ? ["", "## The on-device model (checked in code against the flash and RAM the firmware leaves, the sensor and its pins, and the battery)", ...modelFactLines(s)] : []),
 		"",
 		"## Power budget (computed in code from the contract and the brief, not by a model)",
 		...powerBudgetLines(power),

@@ -6,6 +6,7 @@
 export const AGENT_COLORS = {
 	architect: "#3b82f6",
 	parts: "#a855f7",
+	ml: "#84cc16",
 	firmware: "#14b8a6",
 	reviewer: "#f59e0b",
 	"build:board": "#22c55e",
@@ -17,7 +18,7 @@ export const AGENT_COLORS = {
 }
 
 // Who owns each contract field (src/contract/types.ts OWNERS).
-const OWNERS = { requirements: "architect", outline: "architect", connectors: "architect", rails: "architect", parts: "parts", pins: "architect" }
+const OWNERS = { requirements: "architect", outline: "architect", connectors: "architect", rails: "architect", parts: "parts", pins: "architect", behavior: "firmware", model: "ml" }
 
 // ── Revision scrubber ────────────────────────────────────────────────────────────────────────────
 

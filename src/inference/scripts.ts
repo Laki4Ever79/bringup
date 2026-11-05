@@ -5,7 +5,7 @@ import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
-export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior"> & { parts: ContractValues["parts"] } = {
+export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model"> & { parts: ContractValues["parts"] } = {
 	// ESP32-C3 deep sleep about 10 µA; every 5 min it wakes for a 30 ms reading and a 300 ms BLE advertising burst at
 	// about 25 mA. Average: 25 mA × 330 ms / 300 s + 10 µA = 37.5 µA, before the LDO's own quiescent current.
 	requirements: {
@@ -83,6 +83,19 @@ const isBeacon = () => (state().contract.get("requirements")?.peripherals ?? [])
 
 const STATUS_LED = { signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" }
 
+// "add a wake word": the ml agent writes a keyword-spotting model (sizes planned from MLPerf Tiny's DS-CNN keyword
+// spotter, int8), always listening; the checks then wake parts (no microphone), the architect (its I2S lines, and the
+// battery target always-on listening can't meet). Each step is the owner's own field.
+export const WAKE_WORD_REQUEST = /wake ?word|keyword|voice command|listen for/i
+export const WAKE_WORD_MODEL = { task: "wake word", sensor: "microphone", sampleRateHz: 16000, windowMs: 1000, channels: 1, weightsKb: 53, arenaKb: 23, runtime: "tflite-micro", quantization: "int8", listening: "always" } as const
+export const MIC_PART = { ref: "U5", role: "microphone", mpn: "ICS-43434", lcsc: "C5656610", footprint: "ics43434", pins: ["WS", "LR", "GND", "SCK", "VDD", "SD"] }
+export const MIC_PINS = [
+	{ signal: "MIC_SCK", gpio: 4, partRef: "U5", partPin: "SCK" },
+	{ signal: "MIC_WS", gpio: 5, partRef: "U5", partPin: "WS" },
+	{ signal: "MIC_SD", gpio: 6, partRef: "U5", partPin: "SD" },
+]
+const violationKinds = (instruction: string) => new Set([...instruction.matchAll(/^- ([\w-]+):/gm)].map((m) => m[1]))
+
 function text(item: ContextItem | undefined): string {
 	if (item instanceof UserMessageItem) return item.content.text
 	if (item instanceof FunctionCallOutputItem) return item.output.text
@@ -109,6 +122,21 @@ export function mockScripts(): Record<string, Script> {
 		"mock-architect": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
 			const step = stepsTaken(items)
+			if (instruction.startsWith("Consistency violations for you")) {
+				const kinds = violationKinds(instruction)
+				const pins = state().contract.get("pins") ?? []
+				const requirements = state().contract.get("requirements")
+				const model = state().contract.get("model")
+				if (step === 0 && kinds.has("model-sensor-unwired") && !pins.some((p) => p.signal === "MIC_SD")) return propose("pins", [...pins, ...MIC_PINS], "the microphone's I2S SCK, WS and SD on GPIO4-6, free of the I2C bus and the LED")
+				// Always-on listening keeps the MCU awake: no cell this size meets the target, so the design runs from USB.
+				if (step === 0 && kinds.has("battery-short") && model?.listening === "always" && requirements && requirements.batteryLifeDays !== null)
+					return propose(
+						"requirements",
+						{ ...requirements, summary: `${requirements.summary}, listening for a wake word (always on, so powered from USB)`, peripherals: [...new Set([...requirements.peripherals, "microphone"])], batteryLifeDays: null },
+						"always-on listening keeps the MCU awake at about 28 mA: the battery lasts under a day, so the target becomes USB power",
+					)
+				return say("violations handled")
+			}
 			if (instruction.startsWith("Change request from the engineer:")) {
 				// A saved pins.h (runner/file-sync.ts): "edited pins.h: I2C_SDA GPIO8 → GPIO4; …".
 				const moves = [...instruction.matchAll(/(\w+) GPIO(\d+) → GPIO(\d+)/g)]
@@ -168,6 +196,12 @@ export function mockScripts(): Record<string, Script> {
 		"mock-parts": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
 			if (instruction.startsWith("Build failed:")) return say("noted")
+			if (instruction.startsWith("Consistency violations for you")) {
+				const parts = state().contract.get("parts") ?? []
+				if (stepsTaken(items) === 0 && violationKinds(instruction).has("model-sensor-missing") && !parts.some((p) => p.role === "microphone"))
+					return propose("parts", [...parts, MIC_PART], "the model listens: the ICS-43434 I2S microphone (catalog)")
+				return say("noted")
+			}
 			// The beacon's parts follow its requirements: the sensor joins when they ask for one (or the engineer does).
 			if (isBeacon() && (instruction.startsWith("The requirements or rails changed") || (instruction.startsWith("Change request from the engineer:") && ADD_SENSOR_REQUEST.test(instruction.split("\n")[1] ?? "")))) {
 				const value = ADD_SENSOR_REQUEST.test(instruction.split("\n")[1] ?? "") ? [...BEACON_DESIGN.parts, ...SENSOR_PARTS] : beaconParts()
@@ -178,7 +212,28 @@ export function mockScripts(): Record<string, Script> {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
 			}
-			return stepsTaken(items) === 0 ? propose("parts", LOGGER_DESIGN.parts, "parts from the catalog") : say("parts chosen")
+			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
+			const wanted = state().contract.get("model")?.sensor === "microphone" ? [...LOGGER_DESIGN.parts, MIC_PART] : LOGGER_DESIGN.parts
+			if (stepsTaken(items) > 0) return say("parts chosen")
+			return JSON.stringify(state().contract.get("parts")) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")
+		},
+		"mock-ml": (items) => {
+			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
+			const step = stepsTaken(items)
+			const model = state().contract.get("model")
+			if (instruction.startsWith("Change request from the engineer:")) {
+				const request = instruction.split("\n")[1] ?? ""
+				if (step > 0 || !WAKE_WORD_REQUEST.test(request)) return say(WAKE_WORD_REQUEST.test(request) ? "model written" : "no model change")
+				return propose("model", WAKE_WORD_MODEL, `engineer asked: ${request}`)
+			}
+			if (instruction.startsWith("Consistency violations for you") && model && step === 0) {
+				const kinds = violationKinds(instruction)
+				// Each fix is the textbook one: int8 quarters float32 weights; a rate the sensor supports; a shorter window.
+				if (kinds.has("model-flash") && model.quantization === "float32") return propose("model", { ...model, quantization: "int8", weightsKb: Math.ceil(model.weightsKb / 4) }, "int8 quantization: about a quarter of the float32 weights")
+				if (kinds.has("model-rate")) return propose("model", { ...model, sampleRateHz: 16000 }, "16 kHz, inside the microphone's low-power range")
+				if (kinds.has("model-ram")) return propose("model", { ...model, windowMs: Math.round(model.windowMs / 2), arenaKb: Math.ceil(model.arenaKb / 2) }, "half the window halves the arena")
+			}
+			return say("model unchanged")
 		},
 		// Passes with one minor finding, so mock runs settle and still show a verdict. 55 µA × 24 h × 183 days ≈ 242 mAh.
 		"mock-reviewer": (items) =>

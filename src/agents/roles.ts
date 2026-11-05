@@ -71,7 +71,7 @@ The reviewer also gets a second check from the duty cycle alone: each wake lasts
 dutyCycle.sleepUa is the whole board asleep, excluding the regulator's quiescent current (counted separately). It can't be below the MCU's deep-sleep floor (catalog sleepUa; ESP32-C3-MINI-1: 5 µA), and a lower figure is raised to that floor.
 The ESP32-C3-MINI-1 has 4 MB on-module flash: if the design keeps a reading history, it goes there (NVS or LittleFS); no external memory part is needed.
 For a battery target, pick a low-Iq regulator: catalog LDOs list their quiescent current as iqUa. XC6206P332MR-G draws 1 µA; AP2112K-3.3TRG1 draws 55 µA (e.g. for a 180-day target on 500 mAh, that alone is half the ~116 µA allowed). A low-Iq LDO keeps its pins VIN, VOUT, GND (no EN).
-- parts: [{ref, role (one of: mcu, sensor, ldo, charger, battery, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
+- parts: [{ref, role (one of: mcu, sensor, microphone, ldo, charger, battery, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
 - pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
 - search_parts stock: a number is live from LCSC; stock null means unknown, not out of stock.
 - requirements.historyDays (optional, whole days): how many days of readings the firmware keeps in flash; without it, 30. Claim only what the history must hold: the check compares it with the flash at the reading period.
@@ -156,6 +156,20 @@ function searchPartsTool(): Tool {
 	}
 }
 
+// Consistency violations addressed to a role wake it once per revision, with what to do about them.
+function violationsFor(role: AgentRole, guidance: string): SituationHandler {
+	return {
+		specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some((v) => v.affects.includes(role))),
+		processor: {
+			apply: ({ event, participant }) => {
+				if (!isEvent(event, "consistency.checked")) return
+				const mine = event.payload.violations.filter((v) => v.affects.includes(role))
+				requestTurn(participant as Agent, `${role}-violations@${event.payload.revision}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\n${guidance}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
+			},
+		},
+	}
+}
+
 // The engineer's messages after the brief are change requests: each one starts a turn with the role's guidance. The
 // first message is the brief, which reaches the agents another way.
 function engineerRequests(guidance: string): SituationHandler {
@@ -198,6 +212,9 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 					},
 				},
 			},
+			// Violations the parts list can fix (a model's missing sensor, a rail its regulator can't carry). Before, no
+			// handler woke parts, so a violation that named it reached only the architect.
+			violationsFor("parts", "Fix them by changing the parts list you own: use search_parts, then propose_contract_change with the parts' current baseVersion, keeping every other part."),
 			{
 				specification: when(({ event }) => isEvent(event, "grounding.checked") && groundingFor(event.payload.findings, false).length > 0),
 				processor: {
@@ -241,6 +258,31 @@ export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
 					},
 				},
 			},
+		],
+	})
+}
+
+export const MODEL_SHAPE = `The model field (you own it): {task, sensor: "microphone"|"motion"|"camera", sampleRateHz, windowMs, channels, weightsKb, arenaKb, runtime, quantization: "int8"|"float32", listening: "always"|"on-wake"}.
+- weightsKb is the model in flash, arenaKb the tensor arena in RAM. Until a model is trained these are planning figures; the bench measures the real ones.
+- listening "always" keeps the microphone and the MCU awake to listen (a wake word); "on-wake" listens one window per duty-cycle wake.
+- Code checks it: weights and arena against the flash and static RAM the firmware leaves on the MCU (measured), a sensor of its kind in the parts list with its data lines in pins, the sensor's supported sample rates (the ICS-43434: 6.25–18.75 kHz low-power or 23–51.6 kHz), and the battery budget with listening counted. The design facts at the end of each turn give the numbers.
+- To make a model fit: int8 quantization is about a quarter of float32 weights; pruning and a shorter window shrink weights and arena.`
+
+// The ML discipline: it owns the model field. It writes the model a request calls for, keeps it fitting the MCU's
+// flash and RAM and the sensor's rates as the design changes, and leaves the sensor part to parts and its pins to the
+// architect, whom the checks wake.
+export function createMlAgent(opts: { mock: boolean }): Agent {
+	return createRoleAgent({
+		role: "ml",
+		mock: opts.mock,
+		instruction: `You are the ML engineer of a small hardware product: you own the on-device model. Write it with propose_contract_change when the engineer asks for on-device intelligence (a wake word, keywords, a gesture, a sound or image classifier), and keep it fitting the design. You don't add the sensor part or its pins: the consistency check wakes parts and the architect for those. When another discipline proposes a change to the model, decide with decide_change.\n${MODEL_SHAPE}\n${CONTRACT_SHAPES}`,
+		handlers: [
+			ownerReviewsChanges("ml"),
+			ownerFixesReview("ml"),
+			engineerRequests(
+				"If it asks for on-device intelligence (a wake word, voice commands, a gesture, sound or image recognition), meet it by writing the model field you own: call read_contract, then propose_contract_change with its current baseVersion. Otherwise change nothing.",
+			),
+			violationsFor("ml", "Fix them by changing the model you own (quantize, prune, shorten the window, or pick a rate the sensor supports), with propose_contract_change and its current baseVersion."),
 		],
 	})
 }

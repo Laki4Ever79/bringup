@@ -44,7 +44,7 @@ const builderName = (kind: string) => `build:${kind}`
 
 // Everyone a request could wake, keyed like the dashboard's lanes (src/dashboard/lanes.js): the four LLM agents by
 // role, the three builders (the QEMU boot rides on build:firmware), the grounding check and the consistency check.
-export const RIPPLE_PARTICIPANTS = ["architect", "parts", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
+export const RIPPLE_PARTICIPANTS = ["architect", "parts", "ml", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
 
 function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, lastCheckClean: boolean): Omit<Ripple, "reviewFollowUps"> {
 	const atMs = Date.parse(request.at) - startMs

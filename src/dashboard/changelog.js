@@ -5,7 +5,7 @@
 import { contractDiff } from "./model.js"
 import { PROBLEM } from "./ripple.js"
 
-const WHO = { architect: "Architect", parts: "Parts", firmware: "Firmware", reviewer: "Reviewer", engineer: "You", bench: "Bench", consistency: "Consistency" }
+const WHO = { architect: "Architect", parts: "Parts", ml: "ML engineer", firmware: "Firmware", reviewer: "Reviewer", engineer: "You", bench: "Bench", consistency: "Consistency" }
 const who = (role) => WHO[role] ?? role
 
 const dims = (o) => `${o.widthMm}×${o.heightMm}`
@@ -79,7 +79,7 @@ export function fileDrift(events) {
 }
 
 // ── The timeline beside 03 Agents: how a change travelled, step by step, with times from the request ──────────────
-const ACTOR = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", engineer: "you", bench: "bench" }
+const ACTOR = { architect: "architect", parts: "parts", ml: "ML engineer", firmware: "firmware agent", reviewer: "reviewer", engineer: "you", bench: "bench" }
 const BUILT = { board: "board", enclosure: "case", firmware: "firmware" }
 const since = (ms) => (ms < 10_000 ? `+${(Math.max(0, ms) / 1000).toFixed(1)} s` : ms < 60_000 ? `+${Math.round(ms / 1000)} s` : `+${Math.floor(ms / 60_000)}:${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}`)
 
