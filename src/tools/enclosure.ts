@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process"
+import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { promisify } from "node:util"
 import type { EnclosureArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { mountingHoles, placeParts } from "../codegen/circuit.ts"
+import { micPorts, mountingHoles, placedByRole } from "../codegen/circuit.ts"
 
 const run = promisify(execFile)
 
@@ -18,6 +19,8 @@ export const STANDOFF = { heightMm: 3, outerMm: 5, pilotMm: 1.6 }
 // no overhangs, and at 0.2 mm layers the first-layer squish takes up most of the gap, so it sits as a light press
 // fit. A snap-fit was the alternative; its cantilevers are brittle in PLA and need tuning per printer.
 export const LID = { plateMm: 2, lipMm: 3, lipWallMm: 1.6, clearanceMm: 0.2 }
+// The round opening through the floor under a bottom-port microphone (py/enclosure.py PORT_MM; the stub uses this).
+export const PORT_MM = 2
 
 // Input for py/enclosure.py. The outline, connectors and mounting holes come from the contract (the holes are the
 // ones the board codegen drills); the shell dimensions are fixed. Each sensor's position is the board generator's own
@@ -27,9 +30,10 @@ export function enclosureSpec(s: ContractSnapshot): object {
 	const { outline, connectors } = s.values
 	if (!outline) throw new Error("enclosure needs an outline in the contract")
 	const holes = mountingHoles(s).map((h) => ({ ref: h.ref, xMm: h.x + outline.widthMm / 2, yMm: h.y + outline.heightMm / 2 }))
-	const sensorRefs = new Set((s.values.parts ?? []).filter((p) => p.role === "sensor").map((p) => p.ref))
-	const sensors = sensorRefs.size ? placeParts(s).filter((p) => sensorRefs.has(p.ref)).map((p) => ({ ref: p.ref, xMm: p.x + outline.widthMm / 2, yMm: p.y + outline.heightMm / 2 })) : []
-	return { outline, connectors: connectors ?? [], holes, sensors, wallMm: 2, clearanceMm: 2, heightMm: 14, standoff: STANDOFF, lid: LID }
+	const sensors = placedByRole(s, "sensor").map(({ ref, xMm, yMm }) => ({ ref, xMm, yMm }))
+	// A bottom-port microphone's sound hole gets an opening through the floor.
+	const ports = micPorts(s)
+	return { outline, connectors: connectors ?? [], holes, sensors, ports, wallMm: 2, clearanceMm: 2, heightMm: 14, standoff: STANDOFF, lid: LID }
 }
 
 // Builds the case and lid (STEP + STL), cutouts.json, standoffs.json and print.json under dir. Cutouts and standoffs
@@ -51,6 +55,7 @@ export async function buildEnclosure(python: string, root: string, dir: string, 
 	const standoffs = (await read<{ xMm: number; yMm: number; holeMm: number }[]>("standoffs.json")).map(({ xMm, yMm, holeMm }) => ({ xMm, yMm, holeMm }))
 	const { ok, issues } = await read<{ ok: boolean; issues: string[] }>("print.json")
 	const vents = await read<NonNullable<EnclosureArtifact["vents"]>>("vents.json")
+	const ports = existsSync(join(dir, "ports.json")) ? await read<NonNullable<EnclosureArtifact["ports"]>>("ports.json") : []
 	return {
 		revision,
 		stlPath: join(dir, "case.stl"),
@@ -61,5 +66,6 @@ export async function buildEnclosure(python: string, root: string, dir: string, 
 		standoffs,
 		printCheck: { ok, issues },
 		vents,
+		ports,
 	}
 }

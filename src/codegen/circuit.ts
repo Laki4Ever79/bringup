@@ -370,6 +370,25 @@ export function mountingHoles(s: ContractSnapshot): MountingHole[] {
 		.filter((h) => !taken.some((b) => overlaps(b, { x: h.x, y: h.y, w: k, h: k })))
 }
 
+// Where the board generator places each part with this role, in the contract frame (origin at the board's
+// bottom-left corner). The case and the stub builders read positions from here, so they agree with the board.
+export function placedByRole(s: ContractSnapshot, role: string): { ref: string; xMm: number; yMm: number; rotation: number }[] {
+	const { outline, parts = [] } = s.values
+	const refs = new Set(parts.filter((p) => p.role === role).map((p) => p.ref))
+	if (!outline || refs.size === 0) return []
+	return placeParts(s).filter((p) => refs.has(p.ref)).map((p) => ({ ref: p.ref, xMm: p.x + outline.widthMm / 2, yMm: p.y + outline.heightMm / 2, rotation: p.rotation }))
+}
+
+// Each bottom-port microphone's sound hole, in the contract frame: MIC_PORT turned by the part's rotation.
+export function micPorts(s: ContractSnapshot): { ref: string; xMm: number; yMm: number }[] {
+	return placedByRole(s, "microphone").map((p) => {
+		const r = (p.rotation * Math.PI) / 180
+		const dx = MIC_PORT.x * Math.cos(r) - MIC_PORT.y * Math.sin(r)
+		const dy = MIC_PORT.x * Math.sin(r) + MIC_PORT.y * Math.cos(r)
+		return { ref: p.ref, xMm: +(p.xMm + dx).toFixed(3), yMm: +(p.yMm + dy).toFixed(3) }
+	})
+}
+
 export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Placed[] {
 	const { outline, parts = [], connectors = [] } = s.values
 	if (!outline) throw new Error("placeParts: contract has no outline")

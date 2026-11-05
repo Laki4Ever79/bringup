@@ -36,6 +36,11 @@ LID_CLEARANCE_MM = (0.2, 0.3)
 # hole, so a finger can't reach the board; 1.2 mm is three perimeters wide and prints cleanly through a 2 mm plate.
 VENT = {"slots": 4, "slotMm": 1.2, "pitchMm": 2.4, "lengthMm": 6.0}
 
+# A round opening through the floor under each bottom-port microphone's sound hole (ICS-43434: the port faces the PCB,
+# which has a hole under it, so sound comes from below the board). 2 mm: well over the 0.6 mm PCB hole, and it prints
+# as a clean round hole through the 2 mm floor. A first acoustic path, not a sealed gasket.
+PORT_MM = 2.0
+
 
 def fail(msg):
     print(f"enclosure: {msg}", file=sys.stderr)
@@ -55,12 +60,14 @@ def load(path):
             "lip_wall": float(spec["lid"]["lipWallMm"]), "lid_clear": float(spec["lid"]["clearanceMm"]),
         }
         conns, holes, sensors = spec["connectors"], spec.get("holes", []), spec.get("sensors", [])
+        d_ports = spec.get("ports", [])
     except (OSError, ValueError, KeyError, TypeError) as e:
         fail(f"bad spec {path}: {e!r}")
     if min(dims["w"], dims["h"], dims["t"], dims["wall"], dims["height"], dims["post_od"], dims["plate"]) <= 0 or dims["clear"] < 0:
         fail(f"outline, wall and height must be positive: {spec}")
     if dims["pilot"] >= dims["post_od"]:
         fail(f"pilot hole {dims['pilot']} mm does not fit in a {dims['post_od']} mm post")
+    dims["ports"] = d_ports
     return dims, conns, holes, sensors
 
 
@@ -150,6 +157,20 @@ def vent_cut(sensor, d):
         box = Pos(x - span / 2 + slot / 2 + i * pitch, y, z) * Box(slot, length, d["plate"] * 1.5)
         cut = box if cut is None else cut + box
     return cut
+
+
+def measure_ports(case, d):
+    """Each floor opening's centre and diameter, read back from the open area in the built case's floor."""
+    out = []
+    for port in d["ports"]:
+        x, y = float(port["xMm"]), float(port["yMm"])
+        region = Pos(x, y, d["wall"] / 2) * Box(PORT_MM + 4, PORT_MM + 4, d["wall"] * 0.98)
+        opening = region - case
+        if opening.volume <= 0:
+            fail(f"{port.get('ref', '?')}: no opening was cut under the microphone at ({x}, {y}) mm")
+        bb = opening.bounding_box()
+        out.append({"ref": port.get("ref"), "xMm": round((bb.min.X + bb.max.X) / 2, 3), "yMm": round((bb.min.Y + bb.max.Y) / 2, 3), "diameterMm": round(bb.size.X, 3)})
+    return out
 
 
 def measure_vents(lid, d, sensors):
@@ -304,6 +325,10 @@ def main():
     if abs(removed - expected) > 0.01 * max(expected, 1):
         fail(f"cutouts removed {removed:.1f} mm3, expected {expected:.1f} mm3 (overlapping slots?)")
 
+    for port in d["ports"]:
+        case = case - Pos(float(port["xMm"]), float(port["yMm"]), d["wall"] / 2) * Cylinder(PORT_MM / 2, d["wall"] * 3)
+    ports = measure_ports(case, d)
+
     lid = build_lid(d, iw, ih)
     for sensor in sensors:
         lid = lid - vent_cut(sensor, d)
@@ -332,6 +357,7 @@ def main():
     (out / "cutouts.json").write_text(json.dumps(cutouts, indent=2) + "\n")
     (out / "standoffs.json").write_text(json.dumps(standoffs, indent=2) + "\n")
     (out / "vents.json").write_text(json.dumps(vents, indent=2) + "\n")
+    (out / "ports.json").write_text(json.dumps(ports, indent=2) + "\n")
     (out / "print.json").write_text(json.dumps(check, indent=2) + "\n")
     verdict = "print check ok" if check["ok"] else f"print check: {len(issues)} issue(s)"
     print(f"case {iw + 2 * d['wall']:.1f}x{ih + 2 * d['wall']:.1f}x{d['height']:.1f} mm + {d['plate']:.1f} mm lid, "

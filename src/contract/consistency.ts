@@ -1,5 +1,5 @@
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
-import { generatedNets, partPads, supportParts } from "../codegen/circuit.ts"
+import { generatedNets, MIC_PORT, partPads, supportParts } from "../codegen/circuit.ts"
 import { mcuCurrents } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
@@ -47,6 +47,8 @@ export interface EnclosureArtifact {
 	// Slot vents in the lid, one per sensor, measured from the built lid: centre from the board's bottom-left corner and
 	// the grille's size. Absent on cases built before vents existed.
 	vents?: { ref: string; xMm: number; yMm: number; widthMm: number; heightMm: number }[]
+	// Openings through the floor under bottom-port microphones, measured from the built case.
+	ports?: { ref: string; xMm: number; yMm: number; diameterMm: number }[]
 }
 
 export interface FirmwareArtifact {
@@ -77,6 +79,7 @@ export type ViolationKind =
 	| "sensor-mismatch"
 	| "history-overflow"
 	| "vent-missing"
+	| "port-missing"
 	| "sensor-unwired"
 	| "battery-short"
 	| "part-unconnected"
@@ -94,6 +97,8 @@ const OUTLINE_TOLERANCE_MM = 0.1
 const CUTOUT_TOLERANCE_MM = 0.5
 // A sensor counts as vented when its centre lies under the grille or within this distance of its edge.
 const VENT_TOLERANCE_MM = 1
+// A floor opening counts as under the sound hole when the hole is within its radius plus this.
+const PORT_TOLERANCE_MM = 0.5
 // An M2 screw through a 2.2 mm hole forgives about 0.3 mm of misplacement.
 const STANDOFF_TOLERANCE_MM = 0.3
 // A post within this distance of an unmatched hole is reported as that hole's post, moved.
@@ -231,6 +236,21 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""):
 			const where = at ? ` at (${+at.xMm.toFixed(1)}, ${+at.yMm.toFixed(1)}) mm` : ""
 			const nearest = vent ? `; its vent is at (${+vent.xMm.toFixed(1)}, ${+vent.yMm.toFixed(1)}) mm` : ""
 			v.push({ kind: "vent-missing", message: `case has no vent over the sensor ${sensor.ref}${where}${nearest}`, fields: ["parts"], affects: ["enclosure"] })
+		}
+	}
+
+	// A bottom-port microphone hears through the PCB: the case needs an opening under its sound hole, where the built
+	// board put it.
+	const ports = a.enclosure?.ports
+	if (ports) {
+		for (const mic of (parts ?? []).filter((p) => p.role === "microphone")) {
+			const port = ports.find((x) => x.ref === mic.ref)
+			const at = a.board?.placements?.[mic.ref]
+			const hole = at && { x: at.xMm + MIC_PORT.x, y: at.yMm + MIC_PORT.y }
+			const under = port && (!hole || Math.hypot(hole.x - port.xMm, hole.y - port.yMm) <= port.diameterMm / 2 + PORT_TOLERANCE_MM)
+			if (under) continue
+			const where = hole ? ` at (${+hole.x.toFixed(1)}, ${+hole.y.toFixed(1)}) mm` : ""
+			v.push({ kind: "port-missing", message: `case has no opening under the microphone ${mic.ref}'s sound hole${where}${port ? `; its opening is at (${+port.xMm.toFixed(1)}, ${+port.yMm.toFixed(1)}) mm` : ""}`, fields: ["parts"], affects: ["enclosure"] })
 		}
 	}
 

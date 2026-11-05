@@ -8,6 +8,7 @@ import { checkConsistency } from "../src/contract/consistency.ts"
 import { buildEnclosure, enclosureSpec } from "../src/tools/enclosure.ts"
 import { stubBoard } from "../src/tools/stubs.ts"
 import { fixtureContract } from "./fixture.ts"
+import { MIC_PART } from "../src/inference/scripts.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const python = [join(root, ".venv/bin/python")].find(existsSync)
@@ -82,6 +83,27 @@ test("no sensor, no vent", { skip }, async () => {
 	const enclosure = await buildEnclosure(python!, root, tmp(), c, c.revision)
 	assert.deepEqual(enclosure.vents, [])
 	assert.deepEqual(enclosure.printCheck, { ok: true, issues: [] })
+})
+
+test("a microphone gets a round opening through the floor under its sound hole, and the print check still passes", { skip }, async () => {
+	const c = fixtureContract()
+	c.values.parts = [...c.values.parts!, MIC_PART]
+	const enclosure = await buildEnclosure(python!, root, tmp(), c, c.revision)
+	const hole = (enclosureSpec(c) as { ports: { ref: string; xMm: number; yMm: number }[] }).ports[0]
+	const port = enclosure.ports!.find((p) => p.ref === "U5")!
+	assert.ok(port, `ports: ${JSON.stringify(enclosure.ports)}`)
+	assert.ok(Math.hypot(port.xMm - hole.xMm, port.yMm - hole.yMm) < 0.05, `opening at (${port.xMm}, ${port.yMm}), sound hole at (${hole.xMm}, ${hole.yMm})`)
+	assert.ok(Math.abs(port.diameterMm - 2) < 0.05, `opening ø${port.diameterMm} mm`)
+	assert.deepEqual(enclosure.printCheck, { ok: true, issues: [] })
+	const board = stubBoard(c, c.revision, tmp())
+	assert.ok(board.placements?.U5, "the stub board reports where the generator placed U5")
+	assert.deepEqual(checkConsistency(c, { board, enclosure }).filter((v) => v.kind === "port-missing"), [])
+})
+
+test("no microphone, no opening in the floor", { skip }, async () => {
+	const c = fixtureContract()
+	const enclosure = await buildEnclosure(python!, root, tmp(), c, c.revision)
+	assert.deepEqual(enclosure.ports, [])
 })
 
 function printCheckOf(mutate: (spec: Record<string, any>) => void) {

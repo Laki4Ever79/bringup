@@ -2,6 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { checkConsistency, type ViolationKind } from "../src/contract/consistency.ts"
 import { fixtureArtifacts, fixtureContract } from "./fixture.ts"
+import { MIC_PART } from "../src/inference/scripts.ts"
 
 function only(kind: ViolationKind, affects: string[], mutate: (c: ReturnType<typeof fixtureContract>, a: ReturnType<typeof fixtureArtifacts>) => void) {
 	const c = fixtureContract()
@@ -147,6 +148,42 @@ test("a case built before vents existed (no vents field) is not judged on them",
 	const a = fixtureArtifacts()
 	assert.equal(a.enclosure!.vents, undefined)
 	assert.deepEqual(checkConsistency(fixtureContract(), a), [])
+})
+
+// A bottom-port microphone hears through the PCB: the case needs an opening in the floor under its sound hole.
+const U5_AT = { xMm: 40.5, yMm: 6 }
+const withMic = (c: ReturnType<typeof fixtureContract>, a: ReturnType<typeof fixtureArtifacts>) => {
+	c.values.parts = [...c.values.parts!, MIC_PART]
+	a.board!.placements = { U5: U5_AT }
+	a.enclosure!.ports = [{ ref: "U5", xMm: 41.2, yMm: 6, diameterMm: 2 }]
+}
+
+test("an opening under the microphone's sound hole is consistent", () => {
+	const [c, a] = [fixtureContract(), fixtureArtifacts()]
+	withMic(c, a)
+	assert.deepEqual(checkConsistency(c, a), [])
+})
+
+test("port-missing: a microphone and a case with no opening in the floor", () =>
+	only("port-missing", ["enclosure"], (c, a) => {
+		withMic(c, a)
+		a.enclosure!.ports = []
+	}))
+
+test("port-missing: the opening is not under where the board placed the microphone, and the message says both", () => {
+	const [c, a] = [fixtureContract(), fixtureArtifacts()]
+	withMic(c, a)
+	a.board!.placements = { U5: { xMm: 10, yMm: 20 } }
+	const v = checkConsistency(c, a)
+	assert.deepEqual(v.map((x) => x.kind), ["port-missing"])
+	assert.match(v[0].message, /U5.*\(10\.7, 20\) mm.*\(41\.2, 6\) mm/)
+})
+
+test("a case built before floor openings existed (no ports field) is not judged on them", () => {
+	const [c, a] = [fixtureContract(), fixtureArtifacts()]
+	withMic(c, a)
+	delete a.enclosure!.ports
+	assert.deepEqual(checkConsistency(c, a), [])
 })
 
 // Real add-sensor run: the review removed the sensor's I2C pins and later the part came back without them.
