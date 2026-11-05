@@ -266,7 +266,8 @@ export const MODEL_SHAPE = `The model field (you own it): {task, sensor: "microp
 - weightsKb is the model in flash, arenaKb the tensor arena in RAM. Until a model is trained these are planning figures; the bench measures the real ones.
 - listening "always" keeps the microphone and the MCU awake to listen (a wake word); "on-wake" listens one window per duty-cycle wake.
 - Code checks it: weights and arena against the flash and static RAM the firmware leaves on the MCU (measured), a sensor of its kind in the parts list with its data lines in pins, the sensor's supported sample rates (the ICS-43434: 6.25–18.75 kHz low-power or 23–51.6 kHz), and the battery budget with listening counted. The design facts at the end of each turn give the numbers.
-- To make a model fit: int8 quantization is about a quarter of float32 weights; pruning and a shorter window shrink weights and arena.`
+- To make a model fit: int8 quantization is about a quarter of float32 weights; pruning and a shorter window shrink weights and arena.
+- Optional data: {status: "recorded"|"needed", revision, pathHash, path}, the sensor path the training data was recorded on (or must be). Copy revision, pathHash and path from the design facts' "sensor path now" line. When the hardware moves under recorded data (model-stale), you can't retrain during the design: set status "needed" on the new path, so the data-collection firmware records it.`
 
 // The ML discipline: it owns the model field. It writes the model a request calls for, keeps it fitting the MCU's
 // flash and RAM and the sensor's rates as the design changes, and leaves the sensor part to parts and its pins to the
@@ -280,9 +281,9 @@ export function createMlAgent(opts: { mock: boolean }): Agent {
 			ownerReviewsChanges("ml"),
 			ownerFixesReview("ml"),
 			engineerRequests(
-				"If it asks for on-device intelligence (a wake word, voice commands, a gesture, sound or image recognition), meet it by writing the model field you own: call read_contract, then propose_contract_change with its current baseVersion. Otherwise change nothing.",
+				"If it asks for on-device intelligence (a wake word, voice commands, a gesture, sound or image recognition), meet it by writing the model field you own: call read_contract, then propose_contract_change with its current baseVersion. If it says the training data has been recorded, set the model's data to status \"recorded\" on the sensor path in the design facts. Otherwise change nothing.",
 			),
-			violationsFor("ml", "Fix them by changing the model you own (quantize, prune, shorten the window, or pick a rate the sensor supports), with propose_contract_change and its current baseVersion."),
+			violationsFor("ml", "Fix them by changing the model you own (quantize, prune, shorten the window, pick a rate the sensor supports, or mark its data needed on the new sensor path), with propose_contract_change and its current baseVersion."),
 		],
 	})
 }

@@ -74,3 +74,13 @@ test("the design facts every agent sees state the model, its fit and its power",
 	assert.match(lines, /weights 11% of the 45\d KB flash and arena 10% of the 29\d KB static RAM/)
 	assert.match(lines, /Listening adds 0.106 mA on average/)
 })
+
+test("model.data is optional, and when present must name its status, revision, path hash and path", () => {
+	const c = new DesignContract()
+	const path = { sensor: "microphone", mpn: "ICS-43434", xMm: 40.5, yMm: 6, rotation: 0, sampleRateHz: 16000, channels: 1 } as const
+	assert.equal(c.propose({ field: "model", value: { ...KWS, data: { status: "recorded", revision: 3, pathHash: "80722b24d856", path } }, by: "ml", baseVersion: 0 }).status, "applied")
+	for (const data of [{ status: "maybe", revision: 3, pathHash: "x", path }, { status: "needed", revision: 3, path }, { status: "needed", revision: 3, pathHash: "x" }]) {
+		const r = c.propose({ field: "model", value: { ...KWS, data } as unknown as ModelSpec, by: "ml", baseVersion: 1 })
+		assert.equal(r.status, "invalid", JSON.stringify(data))
+	}
+})

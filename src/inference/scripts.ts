@@ -1,3 +1,4 @@
+import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
 import type { ContractValues, FieldName } from "../contract/types.ts"
 import { state } from "../runtime.ts"
@@ -86,6 +87,13 @@ const STATUS_LED = { signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A"
 // "add a wake word": the ml agent writes a keyword-spotting model (sizes planned from MLPerf Tiny's DS-CNN keyword
 // spotter, int8), always listening; the checks then wake parts (no microphone), the architect (its I2S lines, and the
 // battery target always-on listening can't meet). Each step is the owner's own field.
+export const DATA_RECORDED_REQUEST = /\bdata (?:is |was |has been )?recorded|recorded the (?:training )?data/i
+// The model's data on the sensor path the contract describes now, or null when there is none to record on.
+function dataOn(status: "recorded" | "needed") {
+	const s = state().contract.snapshot()
+	const path = sensorPath(s)
+	return path ? { status, revision: s.revision, pathHash: pathHash(path), path } : null
+}
 export const WAKE_WORD_REQUEST = /wake ?word|keyword|voice command|listen for/i
 export const WAKE_WORD_MODEL = { task: "wake word", sensor: "microphone", sampleRateHz: 16000, windowMs: 1000, channels: 1, weightsKb: 53, arenaKb: 23, runtime: "tflite-micro", quantization: "int8", listening: "always" } as const
 export const MIC_PART = { ref: "U5", role: "microphone", mpn: "ICS-43434", lcsc: "C5656610", footprint: "ics43434", pins: ["WS", "LR", "GND", "SCK", "VDD", "SD"] }
@@ -223,6 +231,12 @@ export function mockScripts(): Record<string, Script> {
 			const model = state().contract.get("model")
 			if (instruction.startsWith("Change request from the engineer:")) {
 				const request = instruction.split("\n")[1] ?? ""
+				// "the wake-word data is recorded": the dataset now belongs to the sensor path the design has today.
+				if (DATA_RECORDED_REQUEST.test(request) && model) {
+					const data = dataOn("recorded")
+					if (step > 0 || !data) return say(data ? "data recorded" : "no sensor to record")
+					return propose("model", { ...model, data }, `engineer asked: ${request}`)
+				}
 				if (step > 0 || !WAKE_WORD_REQUEST.test(request)) return say(WAKE_WORD_REQUEST.test(request) ? "model written" : "no model change")
 				return propose("model", WAKE_WORD_MODEL, `engineer asked: ${request}`)
 			}
@@ -232,6 +246,10 @@ export function mockScripts(): Record<string, Script> {
 				if (kinds.has("model-flash") && model.quantization === "float32") return propose("model", { ...model, quantization: "int8", weightsKb: Math.ceil(model.weightsKb / 4) }, "int8 quantization: about a quarter of the float32 weights")
 				if (kinds.has("model-rate")) return propose("model", { ...model, sampleRateHz: 16000 }, "16 kHz, inside the microphone's low-power range")
 				if (kinds.has("model-ram")) return propose("model", { ...model, windowMs: Math.round(model.windowMs / 2), arenaKb: Math.ceil(model.arenaKb / 2) }, "half the window halves the arena")
+				// The hardware moved under the training data: retraining can't happen in the run, so the honest fix is to
+				// mark the data needed on the new path, which the data-collection firmware then records.
+				const needed = kinds.has("model-stale") && dataOn("needed")
+				if (needed) return propose("model", { ...model, data: needed }, "the sensor path changed: the data must be recorded again on the new path")
 			}
 			return say("model unchanged")
 		},

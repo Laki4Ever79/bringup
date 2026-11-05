@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import type { ContractSnapshot, DutyCycle } from "../contract/types.ts"
+import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 
 // A `static const uint32_t NAME = N;` of the firmware template (templates/fw/src/main.cpp), so what the reviewer and the
 // battery check are told about the firmware is read from the firmware itself. NaN if it is not there.
@@ -105,7 +106,17 @@ export function modelHeader(s: ContractSnapshot): string {
 		`#define MODEL_WEIGHTS_BYTES ${Math.round(m.weightsKb * 1024)}`,
 		`#define MODEL_INT8 ${m.quantization === "int8" ? 1 : 0}`,
 		`#define MODEL_LISTEN_ALWAYS ${m.listening === "always" ? 1 : 0}`,
+		...pathLines(s),
 		"",
 	].join("\n")
+}
+
+// The sensor path's hash, which the data-collection firmware stamps on every recording, and how it reads a microphone.
+function pathLines(s: ContractSnapshot): string[] {
+	const path = sensorPath(s)
+	if (!path) return []
+	const out = ["", `// Sensor path ${JSON.stringify(path)}`, `#define MODEL_PATH_HASH "${pathHash(path)}"`]
+	if (path.capture) out.push(`#define MIC_SLOT_BITS ${path.capture.slotBits}`, `#define MIC_SAMPLE_BITS ${path.capture.sampleBits}`, `#define MIC_SHIFT ${path.capture.shift}`, `#define MIC_CHANNEL_LEFT ${path.capture.channel === "left" ? 1 : 0}`)
+	return out
 }
 
