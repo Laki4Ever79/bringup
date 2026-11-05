@@ -95,12 +95,17 @@ export function render(r: ReturnType<typeof adopt>): string {
 		if (b.note) out.push(`  ${b.note}`)
 		if (b.mcu) out.push(`  MCU${b.mcus.length > 1 ? "s" : ""} ${b.mcus.join(", ")}: ${b.inferred.pins.length} GPIO pads on named nets`)
 		if (b.variant) {
-			out.push(`  best-matching firmware: ${b.variant.id} (fit ${b.variant.score})${b.runnersUp.length ? `; next: ${b.runnersUp.map((x) => `${x.id} ${x.score}`).join(", ")}` : ""}`)
+			// No build explains the board (every fit at or below zero): its firmware is likely elsewhere, so a broken pin
+			// is a question about the pairing, not a wiring fault.
+			const unpaired = b.variant.score <= 0
+			out.push(unpaired
+				? `  no firmware build here fits this board (best: ${b.variant.id}, fit ${b.variant.score}); its firmware may be elsewhere, so the pins below are questions, not faults`
+				: `  best-matching firmware: ${b.variant.id} (fit ${b.variant.score})${b.runnersUp.length ? `; next: ${b.runnersUp.map((x) => `${x.id} ${x.score}`).join(", ")}` : ""}`)
 			for (const c of b.checks) {
 				const where = c.verdict === "not-on-pads" ? "no pad is this GPIO" : c.verdict === "inside-module" || c.verdict === "clock-mode" ? c.net : c.verdict === "module-conflict" ? `taken by ${c.net}` : `${c.mcu}.${c.pad} → ${c.net || "(no net)"}${c.verdict === "unnamed" || c.verdict === "name-differs" ? `  [reaches ${c.reaches.slice(0, 4).join(", ")}]` : ""}`
 				// A broken pin defined under #if may be another board's branch: shown, but marked as a question.
-				const mark = c.pin.unused && MARK[c.verdict] !== "✓" ? "–" : c.pin.conditional && MARK[c.verdict] === "✗" ? "?" : MARK[c.verdict]
-				out.push(`  ${mark} ${c.pin.name}=${pinLabel(c.pin.gpio)}  ${where}  (${c.pin.file}:${c.pin.line}${c.branches ? `, best of ${c.branches} #if branches` : c.pin.conditional ? ", under #if" : ""}${c.pin.unused ? ", not used in this build" : ""})`)
+				const mark = c.pin.unused && MARK[c.verdict] !== "✓" ? "–" : (c.pin.conditional || unpaired) && MARK[c.verdict] === "✗" ? "?" : MARK[c.verdict]
+				out.push(`  ${mark} ${c.pin.name}=${c.pin.as ? `${c.pin.as} (${pinLabel(c.pin.gpio)})` : pinLabel(c.pin.gpio)}  ${where}  (${c.pin.file}:${c.pin.line}${c.branches ? `, best of ${c.branches} #if branches` : c.pin.conditional ? ", under #if" : ""}${c.pin.unused ? ", not used in this build" : ""})`)
 			}
 		}
 		// Repos hold several printed parts (Plant133's sensor cap); the board needs one case that fits, so report the best.

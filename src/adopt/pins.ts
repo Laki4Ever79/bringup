@@ -8,12 +8,28 @@ export function portPin(port: string, n: number): number {
 
 // PA5, PC13 (also PC13-TAMPER-RTC's first part): an STM32-style port pin, or null.
 export function parsePortPin(tok: string): number | null {
-	const m = /^P([A-K])(\d{1,2})$/i.exec(tok)
+	const m = /^P([A-L])(\d{1,2})$/i.exec(tok)
 	return m && Number(m[2]) < 16 ? portPin(m[1], Number(m[2])) : null
 }
 
-// How a person names the pin: GPIO5, PC13.
+// An AVR port pin (PB5: port B, bit 5) is 2000 + port × 8 + bit; an Arduino analog name (A0) that hasn't been
+// resolved to a chip pin yet is 3000 + n.
+export const AVR_BASE = 2000
+export const ANALOG_BASE = 3000
+
+export function avrPin(port: string, bit: number): number {
+	return AVR_BASE + (port.toUpperCase().charCodeAt(0) - 65) * 8 + bit
+}
+
+export function parseAvrPin(tok: string): number | null {
+	const m = /^P([A-L])([0-7])$/i.exec(tok)
+	return m ? avrPin(m[1], Number(m[2])) : null
+}
+
+// How a person names the pin: GPIO5, PC13, PB5 (AVR), A0.
 export function pinLabel(n: number): string {
+	if (n >= AVR_BASE && n < AVR_BASE + 12 * 8) return `P${String.fromCharCode(65 + Math.floor((n - AVR_BASE) / 8))}${(n - AVR_BASE) % 8}`
+	if (n >= ANALOG_BASE && n < ANALOG_BASE + 100) return `A${n - ANALOG_BASE}`
 	if (n >= STM32_BASE && n < STM32_BASE + 11 * 16) return `P${String.fromCharCode(65 + Math.floor((n - STM32_BASE) / 16))}${(n - STM32_BASE) % 16}`
 	return `GPIO${n}`
 }

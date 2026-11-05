@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { CondTracker, familyOfPlatform, type Cond, type Family } from "./preproc.ts"
-import { parsePortPin, portPin } from "./pins.ts"
+import { ANALOG_BASE, parsePortPin, portPin } from "./pins.ts"
 
 export interface FirmwarePin {
 	name: string
@@ -23,6 +23,8 @@ export interface FirmwarePin {
 	fromBuild?: boolean
 	// Its value says it is a GPIO (GPIO_NUM_25, a gpio_num_t), whatever its name.
 	proven?: boolean
+	// The value as written, when the check resolved it to another pin (Arduino 13 → PB5 on an Uno).
+	as?: string
 }
 
 export interface FirmwareVariant {
@@ -41,8 +43,8 @@ export interface FirmwareVariant {
 // A name that says it is a pin. Deliberately narrow: a false pin costs more than a missed one.
 const PIN_NAME = /(^|_)(PIN|GPIO|IO)(_|$|\d)|PIN$|^PIN|_(SDA|SCL|MOSI|MISO|SCK|SCLK|CS|CSN|SS|DC|RST|BL|TX|RX|LED|BTN|BUTTON|IRQ|INT)$|^(SDA|SCL|MOSI|MISO|SCK|SCLK|TFT_[A-Z]+|LED|BUTTON)(_|$)/
 const NOT_PIN = /^(ENABLE|HAS|USE|IS|MAX|MIN|DEFAULT_NUM)_|BUFSIZE|_EPIN|INDEX|COUNT|^NUM_|FREQ|MASK|SIZE|_MS$|_US$|BAUD|SPEED|WIDTH|HEIGHT|OFFSET|CHANNEL|_BIT$|_BITS$|LEVEL|VERSION|ENABLED?$|DRIVER$/
-// Highest GPIO number on the chips adopt knows (ESP32-S3: 48).
-const MAX_GPIO = 48
+// Highest pin number on the chips adopt knows: ESP32-S3 GPIO48, Arduino Mega digital pin 69.
+const MAX_GPIO = 69
 
 // Pins on an I/O expander or shift register (MCP_PIN_CLAMP), not the MCU's own GPIOs. PIN_MCP_NRESET still counts:
 // it is the MCU's pin that drives the expander.
@@ -54,8 +56,12 @@ export function looksLikePin(name: string): boolean {
 
 function gpioValue(v: string): number | null {
 	// STM32-style port pins (Arduino STM32: #define LED PC13).
-	const port = parsePortPin(v.trim().replace(/^\(\s*|\s*\)$/g, ""))
+	const bare = v.trim().replace(/^\(\s*|\s*\)$/g, "")
+	const port = parsePortPin(bare)
 	if (port !== null) return port
+	// Arduino analog names (A0): resolved to a chip pin per board in match.ts.
+	const analog = /^A(\d{1,2})$/.exec(bare)
+	if (analog) return ANALOG_BASE + Number(analog[1])
 	const m = /^\(?\s*(?:\(gpio_num_t\)\s*)?(?:GPIO_NUM_|GPIO|IO)?(\d+)[uUlL]*\s*\)?$/.exec(v.trim())
 	if (!m) return null
 	const n = Number(m[1])
@@ -195,8 +201,8 @@ export function platformioVariants(text: string, file: string, sourceByDir: Map<
 	return variants
 }
 
-const DEFINE = /^\s*#\s*define\s+([A-Za-z_]\w*)\s+(\(?\s*(?:\(gpio_num_t\)\s*)?(?:GPIO_NUM_|GPIO)?\d+[uUlL]*\s*\)?|\(?\s*P[A-K]\d{1,2}\s*\)?)\s*(?:\/\/.*|\/\*.*)?$/
-const CONST = /^\s*(?:static\s+)?(?:const(?:expr)?\s+)(?:static\s+)?(?:unsigned\s+)?(?:int|uint8_t|uint16_t|uint32_t|uint|int8_t|gpio_num_t|pin_size_t|byte|auto)\s+([A-Za-z_]\w*)\s*=\s*((?:GPIO_NUM_|GPIO)?\d+[uUlL]*)\s*;/
+const DEFINE = /^\s*#\s*define\s+([A-Za-z_]\w*)\s+(\(?\s*(?:\(gpio_num_t\)\s*)?(?:GPIO_NUM_|GPIO)?\d+[uUlL]*\s*\)?|\(?\s*P[A-L]\d{1,2}\s*\)?|A\d{1,2})\s*(?:\/\/.*|\/\*.*)?$/
+const CONST = /^\s*(?:static\s+)?(?:const(?:expr)?\s+)(?:static\s+)?(?:unsigned\s+)?(?:int|uint8_t|uint16_t|uint32_t|uint|int8_t|gpio_num_t|pin_size_t|byte|auto)\s+([A-Za-z_]\w*)\s*=\s*((?:GPIO_NUM_|GPIO)?\d+[uUlL]*|A\d{1,2}|P[A-L]\d{1,2})\s*;/
 
 export function sourcePins(text: string, file: string): FirmwarePin[] {
 	const out: FirmwarePin[] = []
