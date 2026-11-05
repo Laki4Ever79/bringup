@@ -6,6 +6,8 @@ import { firmwareVariants, type FirmwareVariant } from "./firmware.ts"
 import { findMcus, gpioOfPad, rankVariants, type PinCheck } from "./match.ts"
 import { pinLabel } from "./pins.ts"
 import { checkAgainst, writeContracts, type CheckResult } from "./contract.ts"
+import { checkModel, checkModelOnBoard, describeModel, findModels, firmwareFacts, walkRepo, type MlFinding, type ModelFacts } from "./ml.ts"
+import { avrOf, devBoardPins } from "./match.ts"
 import { boardFits, stlBox } from "./mech.ts"
 import { loadBoardFile } from "./pcb.ts"
 
@@ -37,11 +39,22 @@ export interface BoardReport {
 	checks: PinCheck[]
 	case: { file: string; box: { x: number; y: number; z: number }; fits: boolean; marginMm: number }[]
 	inferred: { pins: { signal: string; gpio: number; partRef: string; partPin: string }[] }
+	// The model against this board: its sensor, and the chip's RAM and flash.
+	ml: MlFinding[]
 	note?: string
 }
 
-export function adopt(repo: string, opts: { variant?: string } = {}): { repo: string; variants: number; boards: BoardReport[] } {
+export interface MlReport {
+	models: ModelFacts[]
+	// The model against the firmware: the input it is handed, the rate it is sampled at.
+	findings: MlFinding[]
+}
+
+export function adopt(repo: string, opts: { variant?: string } = {}): { repo: string; variants: number; boards: BoardReport[]; ml: MlReport | null } {
 	const variants: FirmwareVariant[] = firmwareVariants(repo)
+	const files = walkRepo(repo)
+	const models = findModels(repo, files)
+	const ml: MlReport | null = models.length ? { models, findings: models.flatMap((m) => checkModel(m, firmwareFacts(repo, files, m.program)).map((f) => ({ ...f, program: m.program, model: m.file }))) } : null
 	const cases = find(repo, (n) => /\.stl$/i.test(n)).filter((p) => /case|enclosure|housing|shell|body|bottom|base/i.test(relative(repo, p)))
 	const boards: BoardReport[] = []
 	for (const file of find(repo, (n) => n.endsWith(".kicad_pcb"))) {
@@ -59,6 +72,8 @@ export function adopt(repo: string, opts: { variant?: string } = {}): { repo: st
 			checks: [],
 			case: [],
 			inferred: { pins: [] },
+			// A socketed dev board (or a board with no MCU, a carrier) may carry the sensor itself.
+			ml: models.flatMap((m) => checkModelOnBoard(m, b, mcu, Boolean(mcu && (devBoardPins(mcu) || avrOf(mcu)?.board)))),
 		}
 		if (!mcu) rep.note = b.version < 20200000 ? "KiCad 5 board: pads carry no pin names, so an MCU's GPIOs can't be read from the board alone" : "no MCU on this board (a breakout or a passive board)"
 		else {
@@ -83,13 +98,21 @@ export function adopt(repo: string, opts: { variant?: string } = {}): { repo: st
 			}
 		boards.push(rep)
 	}
-	return { repo: basename(resolve(repo)), variants: variants.length, boards }
+	return { repo: basename(resolve(repo)), variants: variants.length, boards, ml }
 }
 
 const MARK: Record<PinCheck["verdict"], string> = { "assigned-unwired": "·", "clock-mode": "✗", "other-revision": "✓", "inside-module": "✓", "module-conflict": "✗", unconnected: "✗", power: "✗", "not-on-pads": "?", "name-differs": "≠", unnamed: "·", agrees: "✓" }
 
 export function render(r: ReturnType<typeof adopt>): string {
 	const out: string[] = [`# ${r.repo}: ${r.boards.length} board(s), ${r.variants} firmware variant(s)`]
+	if (r.ml) {
+		out.push("", "## The model on the device")
+		// Grouped by the program that builds each model (a repo may keep old copies in archive/ or prototypes/).
+		for (const m of r.ml.models) {
+			out.push(`  ${m.program || "(repo root)"}: ${describeModel(m)}  (${m.file})`)
+			for (const f of r.ml.findings.filter((x) => x.model === m.file)) out.push(`    ${f.mark} ${f.what}${f.where ? `  (${f.where})` : ""}`)
+		}
+	}
 	for (const b of r.boards) {
 		out.push("", `## ${b.file}  (KiCad ${b.kicadVersion}${b.outline ? `, ${b.outline.widthMm} × ${b.outline.heightMm} mm` : ""})`)
 		if (b.note) out.push(`  ${b.note}`)
@@ -108,6 +131,7 @@ export function render(r: ReturnType<typeof adopt>): string {
 				out.push(`  ${mark} ${c.pin.name}=${c.pin.as ? `${c.pin.as} (${pinLabel(c.pin.gpio)})` : pinLabel(c.pin.gpio)}  ${where}  (${c.pin.file}:${c.pin.line}${c.branches ? `, best of ${c.branches} #if branches` : c.pin.conditional ? ", under #if" : ""}${c.pin.unused ? ", not used in this build" : ""})`)
 			}
 		}
+		if (b.mcu || b.ml.some((f) => f.mark !== "?")) for (const f of b.ml) out.push(`  ${f.mark} model: ${f.what}`)
 		// Repos hold several printed parts (Plant133's sensor cap); the board needs one case that fits, so report the best.
 		const best = [...b.case].sort((x, y) => y.marginMm - x.marginMm)[0]
 		if (best) out.push(`  case: ${best.fits ? `board fits ${best.file} (${best.box.x}×${best.box.y}×${best.box.z} mm, tightest margin ${best.marginMm} mm)` : `✗ board fits none of ${b.case.length} case part(s); closest ${best.file} is short by ${-best.marginMm} mm`}`)

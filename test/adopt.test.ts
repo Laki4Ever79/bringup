@@ -8,6 +8,7 @@ import { cmakeBuild, dtsPins, envSourceDirs, firmwareVariants, iocPins, platform
 import { checkVariant, chipPin, findMcus, gpioOfPad, namesAgree, padGpio } from "../src/adopt/match.ts"
 import { ANALOG_BASE, pinLabel } from "../src/adopt/pins.ts"
 import { checkAgainst, signalName, writeContracts } from "../src/adopt/contract.ts"
+import { checkModel, checkModelOnBoard, chipMemory, collectMacros, evalC, findModels, firmwareFacts } from "../src/adopt/ml.ts"
 import { boardFits, stlBox } from "../src/adopt/mech.ts"
 import { nameFromSchematics, nameLegacyPads, readBoard } from "../src/adopt/pcb.ts"
 import { active, CondTracker, evaluate } from "../src/adopt/preproc.ts"
@@ -479,4 +480,110 @@ test("one pin, two jobs: two names on the same pin of one MCU in one build are f
 	const b = readBoard(BOARD)
 	const checks = checkVariant(b, findMcus(b), { id: "x", pins: [pin("PIN_LCD_DC", 1), pin("PIN_BACKLIGHT", 1)] })
 	assert.deepEqual(checks.map((c) => c.sharedWith), ["PIN_BACKLIGHT", "PIN_LCD_DC"])
+})
+
+test("model check: C constants evaluate with C's integer division, across macros; conflicting definitions are unknown", () => {
+	const macros = collectMacros([
+		{ path: "a.h", text: "#define WINDOW_MS 1650\n#define RATE_HZ 74\n#define SAMPLES ((WINDOW_MS * RATE_HZ) / 1000)\n#define AXES 6\n#define FEATURES (SAMPLES * AXES)\n#define HALF 1.5f\n#define TWO 2\n#define TWO 3\n" },
+		{ path: "b.cpp", text: "constexpr int kTensorArenaSize = 136 * 1024;\n" },
+	])
+	assert.equal(evalC("FEATURES", macros), 732)
+	assert.equal(evalC("kTensorArenaSize", macros), 139264)
+	assert.equal(evalC("HALF * 2", macros), 3)
+	assert.equal(evalC("TWO", macros), null)
+	assert.equal(evalC("UNKNOWN + 1", macros), null)
+})
+
+const EI_META = `#define EI_CLASSIFIER_PROJECT_NAME "wand"
+#define EI_CLASSIFIER_RAW_SAMPLE_COUNT 125
+#define EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME 6
+#define EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE (EI_CLASSIFIER_RAW_SAMPLE_COUNT * EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME)
+#define EI_CLASSIFIER_FREQUENCY 74
+#define EI_CLASSIFIER_SENSOR EI_CLASSIFIER_SENSOR_FUSION
+#define EI_CLASSIFIER_TFLITE_LARGEST_ARENA_SIZE 4153
+#define EI_CLASSIFIER_TFLITE_INPUT_DATATYPE EI_CLASSIFIER_DATATYPE_FLOAT32
+`
+
+function eiRepo(firmware: string): string {
+	const repo = tempDir()
+	const model = join(repo, "fw", "lib", "edge-impulse-model")
+	mkdirSync(join(model, "model-parameters"), { recursive: true })
+	mkdirSync(join(model, "tflite-model"), { recursive: true })
+	mkdirSync(join(repo, "fw", "src"), { recursive: true })
+	writeFileSync(join(model, "model-parameters", "model_metadata.h"), EI_META)
+	writeFileSync(join(model, "tflite-model", "m.cpp"), "const ALIGN(16) float tensor_data1[64*216] = { 0.1, };\nconst ALIGN(16) float tensor_data2[32] = { 0.1, };\n")
+	// The export's own CMakeLists makes it a library, not a program.
+	writeFileSync(join(model, "CMakeLists.txt"), "add_library(model)\n")
+	writeFileSync(join(repo, "fw", "platformio.ini"), "[env:x]\nplatform = raspberrypi\n")
+	writeFileSync(join(repo, "fw", "src", "main.c"), firmware)
+	// A vendored sensor library whose constants are not sampling rates.
+	mkdirSync(join(repo, "fw", "lib", "BNO08x"), { recursive: true })
+	writeFileSync(join(repo, "fw", "lib", "BNO08x", "library.properties"), "name=BNO08x\n")
+	writeFileSync(join(repo, "fw", "lib", "BNO08x", "sh2.h"), "#define GYRO_INTEGRATED_RV_CONFIG (0xA1A2)\n#define SH2_SAMPLE_RATE_HZ 400\n")
+	return repo
+}
+
+test("model check: an Edge Impulse export's facts, its program, and the window and rate the firmware feeds it", () => {
+	const repo = eiRepo("#define SENSOR_POLL_RATE_HZ 74\n#define WINDOW_MS 1650\n#define SAMPLES_PER_WINDOW ((WINDOW_MS * SENSOR_POLL_RATE_HZ) / 1000)\n#define AXES_COUNT 6\n#define EI_FEATURE_SIZE (SAMPLES_PER_WINDOW * AXES_COUNT)\nvoid loop() { res = ei_bridge_run_inference(buf, EI_FEATURE_SIZE); }\n")
+	const [m] = findModels(repo)
+	assert.deepEqual(
+		{ kind: m.kind, program: m.program, name: m.name, rate: m.rateHz, samples: m.samples, axes: m.axes, input: m.inputValues, arena: m.arenaBytes, weights: m.weightsBytes, sensor: m.sensor, dtype: m.dtype },
+		{ kind: "edge-impulse", program: "fw", name: "wand", rate: 74, samples: 125, axes: 6, input: 750, arena: 4153, weights: (64 * 216 + 32) * 4, sensor: "motion", dtype: "float32" },
+	)
+	const findings = checkModel(m, firmwareFacts(repo, undefined, m.program))
+	assert.deepEqual(
+		findings.map((f) => [f.mark, f.where]),
+		[
+			["✗", "fw/src/main.c:6"],
+			["✓", "fw/src/main.c:1"],
+		],
+	)
+	assert.match(findings[0].what, /passes 732 values \(EI_FEATURE_SIZE\) where the model takes 750 \(6 axes: 122 samples, not 125\)/)
+	// The vendored sensor library's constants are not the firmware's rates; INTEGRATED doesn't read as RATE.
+	assert.deepEqual(firmwareFacts(repo, undefined, m.program).rates.map((r) => r.name), ["SENSOR_POLL_RATE_HZ"])
+	// With the window right, the input check passes.
+	const ok = eiRepo("#define SENSOR_POLL_RATE_HZ 74\n#define EI_FEATURE_SIZE (125 * 6)\nvoid loop() { run_inference(buf, EI_FEATURE_SIZE); }\n")
+	const [m2] = findModels(ok)
+	assert.deepEqual(checkModel(m2, firmwareFacts(ok, undefined, m2.program)).map((f) => f.mark), ["✓", "✓"])
+})
+
+test("model check: TFLite Micro models, one per distinct blob, with a shared arena and each one's sensor", () => {
+	const repo = tempDir()
+	const dir = join(repo, "sketch")
+	mkdirSync(join(dir, "models"), { recursive: true })
+	writeFileSync(join(dir, "sketch.ino"), "#include <TensorFlowLite.h>\nconstexpr int kTensorArenaSize = 136 * 1024;\nstatic uint8_t tensor_arena[kTensorArenaSize];\ntflite::MicroInterpreter* interpreter;\nvoid setup() { PDM.begin(1, kAudioSampleFrequency); }\n")
+	writeFileSync(join(dir, "settings.h"), "constexpr int kAudioSampleFrequency = 16000;\n")
+	writeFileSync(join(dir, "micro_features_model.cpp"), "const unsigned char g_model[] DATA_ALIGN_ATTRIBUTE = {\n0x1c, 0x00, 0x00, 0x00};\nconst int g_model_len = 4;\n")
+	writeFileSync(join(dir, "person_detect_model_data.cpp"), "alignas(8) const unsigned char g_person_detect_model_data[] = {\n0x01, 0x02, 0x03};\n")
+	// The same keyword model, kept as a file too: not a second model.
+	writeFileSync(join(dir, "models", "kws.tflite"), Buffer.from([0x1c, 0, 0, 0]))
+	const models = findModels(repo).map((m) => [m.name, m.weightsBytes, m.arenaBytes, m.sensor, m.rateHz])
+	assert.deepEqual(models.sort(), [
+		["g_model", 4, 139264, "microphone", 16000],
+		["g_person_detect_model_data", 3, 139264, "camera", undefined],
+	])
+})
+
+test("model check on a board: the sensor it needs, and the arena and weights against the chip's RAM and flash", () => {
+	const board = (mcu: string, extra = "") => readBoard(`(kicad_pcb (version 20221018) ${fp("U1", mcu, 0, 0, Array.from({ length: 8 }, (_, i) => pad(`${i + 1}`, `/S${i}`, `IO${i}`)))} ${extra})`)
+	const model = { kind: "tflite-micro" as const, program: "", file: "m.cpp", weightsBytes: 300 * 1024, arenaBytes: 136 * 1024, sensor: "microphone" as const }
+	assert.deepEqual(chipMemory({ value: "ESP32-S3-WROOM-1-N8R2", lib: "" }), { chip: "ESP32-S3", ramKB: 512, flashKB: 8192, psramKB: 2048 })
+	assert.deepEqual(chipMemory({ value: "STM32F103C8T6", lib: "" }), { chip: "STM32F103", ramKB: 20, flashKB: 64 })
+
+	const s3 = board("ESP32-S3-WROOM-1-N8R2", fp("MK1", "INMP441", 0, 0, [pad("1", "/MIC_SD", "SD")]))
+	const ok = checkModelOnBoard(model, s3, findMcus(s3)[0], false)
+	assert.deepEqual(ok.map((f) => f.mark), ["✓", "✓", "✓"])
+	assert.match(ok[0].what, /has MK1 \(INMP441\)/)
+	assert.match(ok[1].what, /tensor arena 136.0 KB is 27% of the ESP32-S3's 512.0 KB RAM \(\+ 2.0 MB PSRAM\)/)
+
+	// On a bare nRF52832 with no mic: the sensor is missing and the arena takes more than the chip has.
+	const nrf = board("nRF52832-QFAA")
+	const bad = checkModelOnBoard(model, nrf, findMcus(nrf)[0], false)
+	assert.deepEqual(bad.map((f) => f.mark), ["✗", "✗", "?"])
+	assert.match(bad[1].what, /doesn't fit/)
+
+	// On a dev board the sensor may be on the dev board itself; an unknown chip's memory isn't guessed.
+	assert.equal(checkModelOnBoard(model, nrf, findMcus(nrf)[0], true)[0].mark, "?")
+	const odd = board("ESP32-XYZ-unknown-chip".replace("ESP32", "FOO"))
+	assert.ok(checkModelOnBoard(model, odd, findMcus(odd)[0], false).some((f) => f.mark === "?" && /isn't in adopt's chip table/.test(f.what)))
 })
