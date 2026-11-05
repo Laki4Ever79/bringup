@@ -159,7 +159,12 @@ function shapeError(field: FieldName, value: unknown): string | null {
 				isStr(value.runtime) &&
 				["int8", "float32"].includes(value.quantization as string) &&
 				["always", "on-wake"].includes(value.listening as string)
-			return ok ? null : shape
+			if (!ok) return shape
+			const d = value.data
+			if (d === undefined) return null
+			return obj(d) && ["recorded", "needed"].includes(d.status as string) && isNum(d.revision) && isStr(d.pathHash) && obj(d.path)
+				? null
+				: `model.data must be {status: "recorded"|"needed", revision, pathHash, path}: the sensor path the training data was (or must be) recorded on`
 		}
 		case "behavior": {
 			const shape = 'behavior must be exactly {blinkMs, tiltBlinkMs, tiltDeg}: numbers, blinkMs > 0, tiltBlinkMs > 0, tiltDeg from 0 to 90, e.g. {"blinkMs":1000,"tiltBlinkMs":200,"tiltDeg":20}. It sets only the status LED blink period and the tilt threshold'

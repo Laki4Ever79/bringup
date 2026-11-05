@@ -104,6 +104,17 @@ export interface ModelSpec {
 	quantization: "int8" | "float32"
 	// "always": the sensor and the MCU stay awake to listen; "on-wake": it listens one window per duty-cycle wake.
 	listening: "always" | "on-wake"
+	// The training data's sensor path (contract/sensor-path.ts): "recorded" = the dataset was recorded on this path;
+	// "needed" = the hardware moved, and data must be recorded on this path with the data-collection firmware.
+	data?: ModelData
+}
+
+export interface ModelData {
+	status: "recorded" | "needed"
+	// The contract revision the path was taken at, its hash (stamped on every recording) and the path itself.
+	revision: number
+	pathHash: string
+	path: import("./sensor-path.ts").SensorPath
 }
 
 export interface Behavior {

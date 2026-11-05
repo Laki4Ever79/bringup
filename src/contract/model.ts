@@ -3,7 +3,8 @@
 // listening counts in the battery budget. Each failure is a violation that wakes the agent who can fix it.
 import { resolve } from "node:path"
 import { loadCatalog } from "../tools/parts-search.ts"
-import type { AgentRole, ContractSnapshot, FieldName, ModelSpec, Part } from "./types.ts"
+import type { AgentRole, ContractSnapshot, FieldName, ModelSpec } from "./types.ts"
+import { pathDiff, pathHash, sensorPath, SENSOR_ROLE } from "./sensor-path.ts"
 
 // What Bringup's own firmware leaves for a model on the ESP32-C3 (env esp32c3 in templates/fw/platformio.ini:
 // espressif32@8.0.0, Arduino, NimBLE), measured with `pio run` on the logger design (5 Nov 2026): flash 841,627 of the
@@ -31,8 +32,6 @@ export function modelBudget(m: ModelSpec): ModelBudget {
 	return { flashFreeKb, ramFreeKb, weightsShare: m.weightsKb / flashFreeKb, arenaShare: m.arenaKb / ramFreeKb }
 }
 
-// The sensor parts a model can read, by its kind.
-const SENSOR_ROLE: Record<ModelSpec["sensor"], Part["role"][]> = { microphone: ["microphone"], motion: ["sensor"], camera: ["other"] }
 
 // The I2S lines a microphone's data needs, by the catalog's pin names.
 const I2S_LINES = ["SCK", "WS", "SD"]
@@ -49,7 +48,7 @@ interface CatalogMic {
 const catalog = () => loadCatalog(resolve(import.meta.dirname, "../..")) as unknown as (CatalogMic & { role: string; cpuMa?: number })[]
 
 export interface ModelViolation {
-	kind: "model-flash" | "model-ram" | "model-sensor-missing" | "model-sensor-unwired" | "model-rate"
+	kind: "model-flash" | "model-ram" | "model-sensor-missing" | "model-sensor-unwired" | "model-rate" | "model-stale"
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]
@@ -85,6 +84,20 @@ export function modelChecks(s: ContractSnapshot): ModelViolation[] {
 		const ranges = catalog().find((c) => c.mpn === sensor.mpn)?.rateRangesHz
 		if (ranges && !ranges.some(([lo, hi]) => m.sampleRateHz >= lo && m.sampleRateHz <= hi))
 			out.push({ kind: "model-rate", message: `the model samples at ${m.sampleRateHz} Hz, which the ${sensor.mpn} doesn't support (${ranges.map(([lo, hi]) => `${lo}–${hi} Hz`).join(" or ")}): resample the training data to a supported rate`, fields: ["model"], affects: ["ml"] })
+	}
+	// The training data belongs to the sensor path it was recorded on. A board or case change that moves the path
+	// leaves the model trained for a device that no longer exists, which no accuracy number in the build shows.
+	const now = sensorPath(s)
+	if (m.data && now && m.data.pathHash !== pathHash(now)) {
+		const changed = pathDiff(m.data.path, now).join(", ")
+		out.push({
+			kind: "model-stale",
+			message: m.data.status === "recorded"
+				? `the model's training data was recorded on rev ${m.data.revision}'s sensor path (${m.data.pathHash}), and the hardware has moved since (${changed}): mark the data needed on the new path (${pathHash(now)}), so the data-collection firmware records it`
+				: `the data collection targets rev ${m.data.revision}'s sensor path (${m.data.pathHash}), and the hardware has moved since (${changed}): retarget it to the new path (${pathHash(now)})`,
+			fields: ["model"],
+			affects: ["ml"],
+		})
 	}
 	return out
 }
@@ -122,6 +135,12 @@ export function modelFactLines(s: ContractSnapshot): string[] {
 		const b = modelBudget(m)
 		out.push(`- It fits: weights ${(b.weightsShare * 100).toFixed(0)}% of the ${kb(b.flashFreeKb)} flash and arena ${(b.arenaShare * 100).toFixed(0)}% of the ${kb(b.ramFreeKb)} static RAM the firmware leaves (measured: ${FIRMWARE_BUDGET.measured}).${b.arenaShare > 0.5 ? " The BLE stack's runtime heap isn't in that figure, so above half is tight." : ""}`)
 	} else out.push(`- Its fit isn't checked: the firmware's flash and RAM use is measured only for the ${FIRMWARE_BUDGET.mcu}.`)
+	const path = sensorPath(s)
+	if (path) {
+		const hash = pathHash(path)
+		const data = m.data ? (m.data.pathHash === hash ? `the training data is ${m.data.status} on this path (rev ${m.data.revision})` : `the training data is ${m.data.status} on an older path (${m.data.pathHash}, rev ${m.data.revision})`) : "no training data is recorded against it yet"
+		out.push(`- The model's sensor path now (hash ${hash}): ${JSON.stringify(path)}; ${data}.`)
+	}
 	const power = modelCurrentMa(s)
 	if (power) out.push(`- Listening adds ${Number(power.averageMa.toPrecision(3))} mA on average to the battery budget (${power.how}).`)
 	return out
