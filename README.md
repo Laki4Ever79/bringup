@@ -85,6 +85,20 @@ silently overwritten (`docs/runs/file-sync/`, `docs/runs/linked/`).
 hands you case and lid STLs, a JLCPCB fab package and firmware; on a fully green run, **Ready to order** zips exactly
 the files JLCPCB asks for and opens the quote page (nothing is uploaded or ordered).
 
+### 5. An on-device model is one more domain that follows
+
+"Add a wake word" asks only for a model. The checks carry it through the rest of the design:
+
+- the parts add a microphone, and the board places it on the maker's land pattern
+- the case gets an opening under the sound hole
+- the firmware reserves the model's memory, so `pio` counts it
+- power moves to USB, because always-on listening breaks the battery target
+
+The model is tied to the sensor path its data was recorded on. A later change such as "make it 40 mm wide" moves the
+microphone, and the ml agent marks the data as needing re-recording. Bringup also generates the data-collection
+firmware, and checks a TFLite int8 model against the board (`bringup verify-model`). Details:
+[docs/edge-ai.md](docs/edge-ai.md).
+
 ## Architecture
 
 ```mermaid

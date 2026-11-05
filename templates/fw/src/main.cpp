@@ -12,7 +12,15 @@
 // placeholder until a converted model (model_data.cc) replaces them; the first byte is non-zero so the array stays
 // in flash (.rodata) rather than being treated as zero-filled data.
 alignas(16) static uint8_t modelArena[MODEL_ARENA_BYTES];
+#if __has_include("model_data.h")
+// The converted model itself (py/quantize.py's model_data.cc, linked by the build): flash holds the real model.
+#include "model_data.h"
+#define modelWeights g_model
+#define MODEL_WEIGHTS_LINKED_BYTES g_model_len
+#else
 static const uint8_t modelWeights[MODEL_WEIGHTS_BYTES] = {1};
+#define MODEL_WEIGHTS_LINKED_BYTES sizeof modelWeights
+#endif
 #endif
 
 #if defined(PIN_I2C_SDA) && defined(PIN_I2C_SCL)
@@ -467,7 +475,7 @@ void setup() {
 	Serial.printf("bringup rev %d\n", BRINGUP_REVISION);
 #if defined(MODEL_PRESENT) && MODEL_PRESENT
 	// Taking the addresses keeps both arrays in the image (the linker drops unreferenced sections).
-	Serial.printf("MODEL arena %u B at %p, weights %u B at %p, %d Hz x %d ms\n", (unsigned)sizeof modelArena, (void *)modelArena, (unsigned)sizeof modelWeights, (const void *)modelWeights, MODEL_SAMPLE_RATE_HZ, MODEL_WINDOW_MS);
+	Serial.printf("MODEL arena %u B at %p, weights %u B at %p, %d Hz x %d ms\n", (unsigned)sizeof modelArena, (void *)modelArena, (unsigned)MODEL_WEIGHTS_LINKED_BYTES, (const void *)modelWeights, MODEL_SAMPLE_RATE_HZ, MODEL_WINDOW_MS);
 #endif
 #ifdef HAS_I2C
 	Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
