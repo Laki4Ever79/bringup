@@ -41,6 +41,23 @@ Each board is paired with the firmware build that explains most of it; `--varian
 build fits is reported as unpaired, and its broken pins become questions. Across a build, adopt also flags one pin
 given two jobs, a devicetree sleep state that moves a line, and a console UART whose pins go nowhere.
 
+## The model on the device
+
+When the firmware deploys an ML model, adopt reads the model and checks it against the firmware and each board:
+
+- **Finds the model:** an Edge Impulse export (`model_metadata.h`: sensor, sample rate, window, axes, arena, data
+  type; weights from its compiled arrays), or TFLite Micro models (each `.tflite` or model C array, the
+  `kTensorArenaSize` the firmware gives the interpreter). Each model belongs to the program that builds it: the nearest
+  folder above it with a `platformio.ini`, `CMakeLists.txt` or `.ino` (a library's own build files don't count).
+- **Against the firmware:** the number of values the firmware hands the classifier, against the model's input. Its
+  constants are evaluated with C's integer division: a 1650 ms window at 74 Hz is 122 samples, not 125. It also
+  checks the rate the firmware samples at, against the rate the model was trained at. Third-party libraries (a folder
+  with `library.json` or `library.properties`) are not the firmware.
+- **Against the board:** a sensor of the kind the model reads (microphone, IMU, camera). On a socketed dev board it
+  may be on the dev board, so a missing one is a question there. Also the tensor arena against the chip's RAM, and the
+  weights against its flash. These come from datasheet figures built in, plus ESP32 module codes (`-N8R2`: 8 MB flash,
+  2 MB PSRAM). An unknown chip is a question, never a guess.
+
 ## The contract and the check
 
 `--contract` writes, per board with an MCU, `contract.json` (outline, edge connectors, the MCU and the parts its GPIOs
