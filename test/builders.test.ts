@@ -7,6 +7,7 @@ import { stubBoard, stubEnclosure } from "../src/tools/stubs.ts"
 import { createChangeDesk } from "../src/change-control.ts"
 import { makeEvent } from "../src/events.ts"
 import { fixtureArtifacts, fixtureContract } from "./fixture.ts"
+import { MIC_PART } from "../src/inference/scripts.ts"
 import { recorder, tempDir, waitFor } from "./helpers.ts"
 
 function setup(build: (revision: number) => Promise<unknown>) {
@@ -182,4 +183,20 @@ test("stubs put a vent over each sensor where the board places it, and none with
 	assert.deepEqual(checkConsistency(s, { board, enclosure }), [])
 	s.values.parts = s.values.parts!.filter((p) => p.role !== "sensor")
 	assert.deepEqual(stubEnclosure(s, 1, dir).vents, [])
+})
+
+// --no-hardware runs used to skip the microphone: the stub case had no ports field, so port-missing never ran.
+test("stubs open the floor under each microphone where the board places it, and a stale case is caught", () => {
+	const s = fixtureContract()
+	const dir = tempDir()
+	const stale = stubEnclosure(s, 1, dir)
+	assert.deepEqual(stale.ports, [])
+	s.values.parts = [...s.values.parts!, MIC_PART]
+	const board = stubBoard(s, 2, dir)
+	const enclosure = stubEnclosure(s, 2, dir)
+	assert.ok(board.placements!.U5, "the stub board reports U5's placement")
+	assert.deepEqual(enclosure.ports!.map((p) => p.ref), ["U5"])
+	assert.deepEqual(checkConsistency(s, { board, enclosure }).filter((v) => v.kind === "port-missing"), [])
+	const v = checkConsistency(s, { board, enclosure: stale }).filter((x) => x.kind === "port-missing")
+	assert.deepEqual(v.map((x) => x.affects), [["enclosure"]])
 })

@@ -2,9 +2,9 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
 import { BUILD_INPUTS, BUILD_REQUIRES, createBuilder, type BuildLock } from "../agents/builders.ts"
-import { mountingHoles, placeParts } from "../codegen/circuit.ts"
+import { micPorts, mountingHoles, placedByRole } from "../codegen/circuit.ts"
 import { behaviorHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
-import { STANDOFF } from "./enclosure.ts"
+import { PORT_MM, STANDOFF } from "./enclosure.ts"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
@@ -30,19 +30,16 @@ function holesOf(s: ContractSnapshot): { xMm: number; yMm: number; diameterMm: n
 }
 
 // Each sensor where the board generator places it, in the contract frame.
-function sensorsOf(s: ContractSnapshot): { ref: string; xMm: number; yMm: number }[] {
-	const { outline, parts = [] } = s.values
-	const refs = new Set(parts.filter((p) => p.role === "sensor").map((p) => p.ref))
-	if (!outline || refs.size === 0) return []
-	return placeParts(s).filter((p) => refs.has(p.ref)).map((p) => ({ ref: p.ref, xMm: p.x + outline.widthMm / 2, yMm: p.y + outline.heightMm / 2 }))
-}
+const sensorsOf = (s: ContractSnapshot) => placedByRole(s, "sensor").map(({ ref, xMm, yMm }) => ({ ref, xMm, yMm }))
+// The parts whose position the case depends on: sensors (lid vent) and microphones (floor opening).
+const placedForCase = (s: ContractSnapshot) => [...placedByRole(s, "sensor"), ...placedByRole(s, "microphone")]
 
 export function stubBoard(s: ContractSnapshot, revision: number, dir: string): Stub<BoardArtifact> {
 	const { outline, parts, pins } = s.values
 	const mcu = parts?.find((p) => p.role === "mcu")?.ref ?? "U1"
 	const nets: Record<string, string[]> = {}
 	for (const p of pins ?? []) nets[p.signal] = [`${mcu}.GPIO${p.gpio}`, `${p.partRef}.${p.partPin}`]
-	return { revision, dir, pcbPath: note(dir, "board"), stepPath: null, renderPath: null, widthMm: outline?.widthMm ?? 0, heightMm: outline?.heightMm ?? 0, nets, holes: holesOf(s), parts: Object.fromEntries((parts ?? []).map((p) => [p.ref, { mpn: p.mpn, pins: p.pins }])), placements: Object.fromEntries(sensorsOf(s).map(({ ref, xMm, yMm }) => [ref, { xMm, yMm }])), stub: true }
+	return { revision, dir, pcbPath: note(dir, "board"), stepPath: null, renderPath: null, widthMm: outline?.widthMm ?? 0, heightMm: outline?.heightMm ?? 0, nets, holes: holesOf(s), parts: Object.fromEntries((parts ?? []).map((p) => [p.ref, { mpn: p.mpn, pins: p.pins }])), placements: Object.fromEntries(placedForCase(s).map(({ ref, xMm, yMm }) => [ref, { xMm, yMm }])), stub: true }
 }
 
 export function stubEnclosure(s: ContractSnapshot, revision: number, dir: string): Stub<EnclosureArtifact> {
@@ -56,7 +53,8 @@ export function stubEnclosure(s: ContractSnapshot, revision: number, dir: string
 	}))
 	const standoffs = holesOf(s).map((h) => ({ xMm: h.xMm, yMm: h.yMm, holeMm: STANDOFF.pilotMm }))
 	const vents = sensorsOf(s).map((v) => ({ ...v, widthMm: 8.4, heightMm: 6 }))
-	return { revision, stlPath: path, stepPath: path, cutouts, standoffs, vents, stub: true }
+	const ports = micPorts(s).map((p) => ({ ...p, diameterMm: PORT_MM }))
+	return { revision, stlPath: path, stepPath: path, cutouts, standoffs, vents, ports, stub: true }
 }
 
 export function stubFirmware(s: ContractSnapshot, revision: number, dir: string): Stub<FirmwareArtifact> {
