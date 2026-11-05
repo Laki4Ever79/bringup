@@ -7,6 +7,7 @@ import { behaviorHeader, modelHeader, parseSensorHeader, pinsHeader } from "../c
 import { PORT_MM, STANDOFF } from "./enclosure.ts"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
+import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 
 // --no-hardware: each builder derives its artifact straight from the contract instead of running tscircuit,
 // build123d or PlatformIO. The agents, change control, the grounding check and the consistency checks all run as
@@ -66,7 +67,9 @@ export function stubFirmware(s: ContractSnapshot, revision: number, dir: string)
 	writeFileSync(join(dir, "include/behavior.h"), behaviorHeader(s))
 	writeFileSync(join(dir, "include/model.h"), modelHeader(s))
 	const pins = Object.fromEntries((s.values.pins ?? []).map((p) => [p.signal, p.gpio]))
-	return { revision, ok: true, pins, sensor: parseSensorHeader(header), log: "stubbed (--no-hardware): not compiled", stub: true }
+	const path = s.values.model?.sensor === "microphone" ? sensorPath(s) : null
+	const collect = path ? { ok: true, pathHash: pathHash(path), log: "stubbed (--no-hardware): not compiled" } : undefined
+	return { revision, ok: true, pins, sensor: parseSensorHeader(header), log: "stubbed (--no-hardware): not compiled", ...(collect && { collect }), stub: true }
 }
 
 // Same inputs and required fields as the real builders in agents/builders.ts, so the same contract changes wake them.

@@ -58,6 +58,9 @@ export interface FirmwareArtifact {
 	// The sensor driver compiled in (SENSOR_* in pins.h), null for none; absent on artifacts that don't record it.
 	sensor?: string | null
 	log: string
+	// The data-collection firmware (env esp32c3_collect), built when the model reads a microphone: whether it compiled,
+	// the sensor path hash it stamps on every recording, and its build log's tail.
+	collect?: { ok: boolean; pathHash: string; log: string }
 }
 
 export interface Artifacts {

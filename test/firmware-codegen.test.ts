@@ -55,7 +55,9 @@ test("every firmware env pins the ESP32 platform version", async () => {
 	const { readFileSync } = await import("node:fs")
 	const ini = readFileSync(new URL("../templates/fw/platformio.ini", import.meta.url), "utf8")
 	const platforms = [...ini.matchAll(/^platform\s*=\s*(.+)$/gm)].map((m) => m[1].trim())
-	assert.equal(platforms.length, 2, "esp32c3 and esp32s3_bench")
+	const envs = [...ini.matchAll(/^\[env:([^\]]+)\]$/gm)].map((m) => m[1])
+	assert.deepEqual(envs, ["esp32c3", "esp32c3_collect", "esp32s3_bench"])
+	assert.equal(platforms.length, envs.length, "one platform line per env")
 	for (const p of platforms) assert.equal(p, "espressif32@8.0.0")
 })
 

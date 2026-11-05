@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { behaviorHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import type { FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
+import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 
 const TIMEOUT_MS = 600_000
 const LOG_LINES = 60
@@ -29,7 +30,8 @@ function run(cmd: string, args: string[]): Promise<{ code: number | null; output
 	})
 }
 
-// Copies templates/fw into dir, writes include/pins.h, include/behavior.h and include/model.h and compiles it. A failed build returns ok: false.
+// Copies templates/fw into dir, writes include/pins.h, include/behavior.h and include/model.h and compiles it. A failed
+// build returns ok: false. With a microphone model it also compiles the data-collection firmware (artifact.collect).
 export async function buildFirmware(pio: string, root: string, dir: string, s: ContractSnapshot, revision: number): Promise<FirmwareArtifact> {
 	const header = pinsHeader(s)
 	await cp(join(root, "templates/fw"), dir, { recursive: true })
@@ -38,11 +40,18 @@ export async function buildFirmware(pio: string, root: string, dir: string, s: C
 	await writeFile(join(dir, "include/behavior.h"), behaviorHeader(s))
 	await writeFile(join(dir, "include/model.h"), modelHeader(s))
 	const { code, output } = await run(pio, ["run", "-d", dir])
-	return {
+	const artifact: FirmwareArtifact = {
 		revision,
 		ok: code === 0,
 		pins: parsePinsHeader(header),
 		sensor: parseSensorHeader(header),
 		log: buildLog(output),
 	}
+	// With a microphone model, the data-collection firmware for this exact sensor path too (src/collect.cpp).
+	const path = s.values.model?.sensor === "microphone" ? sensorPath(s) : null
+	if (path) {
+		const collect = await run(pio, ["run", "-d", dir, "-e", "esp32c3_collect"])
+		artifact.collect = { ok: collect.code === 0, pathHash: pathHash(path), log: buildLog(collect.output) }
+	}
+	return artifact
 }
