@@ -7,7 +7,8 @@
 // The stream: a text line
 //   BRINGUP-COLLECT rev=<n> path=<hash> sensor=microphone rate=<Hz> channels=<n> bits=16 samples=<per window>
 // at boot and every HEADER_EVERY windows, and between those, one binary frame per window:
-//   "BRW1", uint32 seq, uint32 samples (little-endian), then samples × int16 (little-endian).
+//   "BRW1", uint32 seq, uint32 samples (little-endian), then samples × int16 (little-endian),
+// and a line "BRINGUP-COLLECT WARN silent seq=<n> peak-to-peak=<counts>" before a window the microphone didn't hear.
 #ifdef COLLECT
 #include <Arduino.h>
 #include <ESP_I2S.h>
@@ -28,8 +29,14 @@
 #endif
 
 static const uint32_t HEADER_EVERY = 10;
-// The ESP32-C3's USB Serial/JTAG ignores the rate; a board behind a UART bridge needs it: 16 kHz × 16 bit is 32 KB/s.
+// Serial is the C3's native USB Serial/JTAG here (platformio.ini), which ignores the rate. Writing a window takes
+// longer than the I2S DMA buffers hold, so windows are separate clips, not one continuous recording.
 static const uint32_t SERIAL_BAUD = 921600;
+// The first windows after I2S starts hold the microphone's start-up and settling (DS-000069: start-up time): dropped.
+static const uint32_t SETTLE_WINDOWS = 2;
+// A window whose peak-to-peak is below this many counts is a dead or unwired microphone (SD floating or held), not
+// silence: a real room is never that quiet at this gain.
+static const int32_t SILENT_PEAK_TO_PEAK = 4;
 
 static I2SClass i2s;
 static int16_t window[MODEL_WINDOW_SAMPLES];
@@ -49,6 +56,7 @@ void setup() {
 	// The ICS-43434 is an I2S receive-only part: no data out from the MCU, no master clock.
 	i2s.setPins(PIN_MIC_SCK, PIN_MIC_WS, -1, PIN_MIC_SD);
 	static_assert(MIC_SLOT_BITS == 32, "the ICS-43434 sends 24-bit samples in a 32-bit slot");
+	static_assert(MIC_SAMPLE_BITS == 16 && MIC_SHIFT == MIC_SLOT_BITS - MIC_SAMPLE_BITS, "the window holds int16 samples: the top 16 bits of the slot");
 	if (!i2s.begin(I2S_MODE_STD, MODEL_SAMPLE_RATE_HZ, I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_MONO, MIC_CHANNEL_LEFT ? I2S_STD_SLOT_LEFT : I2S_STD_SLOT_RIGHT)) {
 		for (;;) {
 			Serial.println("BRINGUP-COLLECT FAIL i2s begin");
@@ -58,18 +66,36 @@ void setup() {
 	header();
 }
 
-void loop() {
-	// One window of samples: the top MIC_SAMPLE_BITS of each MSB-aligned 24-bit sample (a fixed gain, part of the path).
+// One window of samples: the top MIC_SAMPLE_BITS of each MSB-aligned 24-bit sample (a fixed gain, part of the path).
+static int32_t readWindow() {
 	size_t n = 0;
+	int16_t lo = INT16_MAX, hi = INT16_MIN;
 	while (n < MODEL_WINDOW_SAMPLES) {
 		int32_t raw[64];
 		const size_t got = i2s.readBytes((char *)raw, sizeof raw) / sizeof raw[0];
-		for (size_t i = 0; i < got && n < MODEL_WINDOW_SAMPLES; i++) window[n++] = (int16_t)(raw[i] >> MIC_SHIFT);
+		for (size_t i = 0; i < got && n < MODEL_WINDOW_SAMPLES; i++) {
+			const int16_t v = (int16_t)(raw[i] >> MIC_SHIFT);
+			window[n++] = v;
+			lo = v < lo ? v : lo;
+			hi = v > hi ? v : hi;
+		}
 	}
+	return (int32_t)hi - lo;
+}
+
+void loop() {
+	static uint32_t settled = 0;
+	const int32_t peakToPeak = readWindow();
+	if (settled < SETTLE_WINDOWS) {
+		settled++;
+		return;
+	}
+	// Recorded anyway, so the host decides; the line tells it the microphone isn't hearing anything.
+	if (peakToPeak < SILENT_PEAK_TO_PEAK) Serial.printf("BRINGUP-COLLECT WARN silent seq=%lu peak-to-peak=%ld\n", (unsigned long)seq, (long)peakToPeak);
 	Serial.write((const uint8_t *)"BRW1", 4);
 	writeU32(seq);
-	writeU32(n);
-	Serial.write((const uint8_t *)window, n * sizeof window[0]);
+	writeU32(MODEL_WINDOW_SAMPLES);
+	Serial.write((const uint8_t *)window, sizeof window);
 	if (++seq % HEADER_EVERY == 0) header();
 }
 #endif

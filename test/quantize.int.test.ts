@@ -12,6 +12,7 @@ const root = resolve(import.meta.dirname, "..")
 const mlPython = join(root, "tools/mlvenv/bin/python")
 const pio = join(root, ".venv/bin/pio")
 const skip = !existsSync(mlPython) ? "no tools/mlvenv (TensorFlow + tflite-micro; docs/edge-ai.md)" : !existsSync(pio) ? "pio not found" : false
+const noQemu = !existsSync(join(root, "tools/qemu/bin/qemu-system-riscv32"))
 
 // The real chain: TensorFlow's int8 converter on the MLPerf Tiny DS-CNN, TFLite Micro's own arena figure, then the
 // converted model compiled into the firmware in place of the placeholder, measured by pio.
@@ -29,12 +30,19 @@ test("quantize → verify-model → firmware with the real model: the sizes reco
 	c.values.parts = [...c.values.parts!, MIC_PART]
 	c.values.pins = [...c.values.pins!, ...MIC_PINS]
 	writeFileSync(join(dir, "contract.json"), JSON.stringify(c))
-	const code = await main(["verify-model", join(dir, "model"), join(dir, "contract.json"), "--firmware", join(dir, "fw")])
+	const code = await main(["verify-model", join(dir, "model"), join(dir, "contract.json"), "--firmware", join(dir, "fw"), ...(noQemu ? [] : ["--device"])])
 	assert.equal(code, 0)
 	const v = JSON.parse(readFileSync(join(dir, "model/verify.json"), "utf8"))
 	assert.equal(v.firmware.ok, true)
+	if (!noQemu) {
+		// The target's own allocator: 32-bit bookkeeping, so below the host's figure (22,684 B against 24,208 B here).
+		assert.equal(v.device.ok, true, v.device.log)
+		assert.ok(v.device.arenaUsedBytes > 10_000 && v.device.arenaUsedBytes < facts.arenaBytes, `device ${v.device.arenaUsedBytes} B, host ${facts.arenaBytes} B`)
+		assert.equal(v.proposal?.arenaKb ?? WAKE_WORD_MODEL.arenaKb, Math.ceil(v.device.arenaUsedBytes / 1024), "the device figure sets the plan")
+	}
 	assert.ok(existsSync(join(dir, "fw/src/model_data.cc")), "the real model was linked")
 	// The arena reserved is the measured one, rounded up to whole KB.
-	assert.equal(v.proposal.arenaKb, Math.ceil(facts.arenaBytes / 1024))
-	assert.match(readFileSync(join(dir, "fw/include/model.h"), "utf8"), new RegExp(`MODEL_ARENA_BYTES ${v.proposal.arenaKb * 1024}`))
+	const arenaKb = v.proposal?.arenaKb ?? WAKE_WORD_MODEL.arenaKb
+	if (noQemu) assert.equal(arenaKb, Math.ceil(facts.arenaBytes / 1024))
+	assert.match(readFileSync(join(dir, "fw/include/model.h"), "utf8"), new RegExp(`MODEL_ARENA_BYTES ${arenaKb * 1024}`))
 })

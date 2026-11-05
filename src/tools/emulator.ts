@@ -53,8 +53,8 @@ function run(cmd: string, args: string[], timeoutMs: number, until?: RegExp, env
 }
 
 // Merges bootloader, partitions, boot_app0 and the app into one image QEMU can mount as flash.
-export async function mergeFlash(fwDir: string): Promise<{ image: string | null; log: string }> {
-	const build = join(fwDir, ".pio/build/esp32c3")
+export async function mergeFlash(fwDir: string, env = "esp32c3"): Promise<{ image: string | null; log: string }> {
+	const build = join(fwDir, ".pio/build", env)
 	const parts: [string, string][] = [
 		["0x0", join(build, "bootloader.bin")],
 		["0x8000", join(build, "partitions.bin")],
@@ -69,19 +69,27 @@ export async function mergeFlash(fwDir: string): Promise<{ image: string | null;
 	return { image: code === 0 ? image : null, log: output }
 }
 
-export async function bootFirmware(root: string, fwDir: string, timeoutMs = 15000): Promise<BootResult> {
+// Runs a merged flash image in QEMU (machine esp32c3) until `until` matches UART0's output, or the timeout. Time inside
+// is virtual (-icount): don't read timings from it. null when QEMU isn't installed.
+export async function runImage(root: string, image: string, until: RegExp, timeoutMs: number): Promise<string | null> {
 	const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
-	if (!existsSync(qemu)) return { booted: false, serial: `qemu not found at ${qemu}`, revision: null, backend: "qemu" }
-	const { image, log } = await mergeFlash(fwDir)
-	if (!image) return { booted: false, serial: log, revision: null, backend: "qemu" }
+	if (!existsSync(qemu)) return null
 	const args = [
 		// -nographic, not "-display none -serial stdio": with the latter the ESP32-C3's UART0 never reaches stdout.
 		"-nographic", "-machine", "esp32c3", "-icount", "3",
 		"-drive", `file=${image},if=mtd,format=raw`,
 		"-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true",
 	]
+	return (await run(qemu, args, timeoutMs, until, { ...process.env, ...qemuEnv(root) })).output
+}
+
+export async function bootFirmware(root: string, fwDir: string, timeoutMs = 15000): Promise<BootResult> {
+	const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
+	if (!existsSync(qemu)) return { booted: false, serial: `qemu not found at ${qemu}`, revision: null, backend: "qemu" }
+	const { image, log } = await mergeFlash(fwDir)
+	if (!image) return { booted: false, serial: log, revision: null, backend: "qemu" }
 	// Stop at the first sensor line: by then the boot banner and setup() have run.
-	const { output } = await run(qemu, args, timeoutMs, /SENSOR (OK|FAIL)/, { ...process.env, ...qemuEnv(root) })
+	const output = (await runImage(root, image, /SENSOR (OK|FAIL)/, timeoutMs)) ?? ""
 	const m = output.match(/bringup rev (\d+)/)
 	return { booted: m !== null, serial: output, revision: m ? Number(m[1]) : null, backend: "qemu" }
 }

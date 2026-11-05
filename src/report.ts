@@ -193,7 +193,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}`,
 		...printLines(s.artifacts.enclosure, stubbed),
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
-		...(s.artifacts.firmware?.collect ? [`- Data-collection firmware: ${s.artifacts.firmware.collect.ok ? "compiles" : "does NOT compile"}, stamps sensor path ${s.artifacts.firmware.collect.pathHash} (\`pio run -e esp32c3_collect -t upload\`, then py/collect.py)`] : []),
+		...(v.model?.sensor === "microphone" && s.artifacts.firmware && !isStub(s.artifacts.firmware) ? [`- Data-collection firmware: \`npm run bringup -- collect-firmware ${outDir}\` builds it for this design's sensor path (docs/edge-ai.md)`] : []),
 		bootLine(join(outDir, "trace.jsonl"), env, stubbed),
 		simulationLine(outDir, env),
 		sourcingLine(join(outDir, "bom.json")),

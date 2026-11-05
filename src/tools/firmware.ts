@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process"
-import { cp, mkdir, writeFile } from "node:fs/promises"
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { behaviorHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import type { FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { pathHash, sensorPath } from "../contract/sensor-path.ts"
+import { mergeFlash, runImage } from "./emulator.ts"
 
 const TIMEOUT_MS = 600_000
 
@@ -34,15 +34,19 @@ function run(cmd: string, args: string[]): Promise<{ code: number | null; output
 }
 
 // Copies templates/fw into dir, writes include/pins.h, include/behavior.h and include/model.h and compiles it. A failed
-// build returns ok: false. With a microphone model it also compiles the data-collection firmware (artifact.collect).
+// build returns ok: false.
 export async function buildFirmware(pio: string, root: string, dir: string, s: ContractSnapshot, revision: number, opts: { modelData?: string } = {}): Promise<FirmwareArtifact> {
 	const header = pinsHeader(s)
 	await cp(join(root, "templates/fw"), dir, { recursive: true })
 	await mkdir(join(dir, "include"), { recursive: true })
 	// A converted model (py/quantize.py model_data.cc) replaces the weights placeholder, so flash holds the real model.
+	// Without one, a model left in a reused dir is removed, or __has_include would link it silently.
 	if (opts.modelData && s.values.model) {
 		await cp(opts.modelData, join(dir, "src/model_data.cc"))
 		await writeFile(join(dir, "include/model_data.h"), MODEL_DATA_HEADER)
+	} else {
+		await rm(join(dir, "src/model_data.cc"), { force: true })
+		await rm(join(dir, "include/model_data.h"), { force: true })
 	}
 	await writeFile(join(dir, "include/pins.h"), header)
 	await writeFile(join(dir, "include/behavior.h"), behaviorHeader(s))
@@ -55,11 +59,48 @@ export async function buildFirmware(pio: string, root: string, dir: string, s: C
 		sensor: parseSensorHeader(header),
 		log: buildLog(output),
 	}
-	// With a microphone model, the data-collection firmware for this exact sensor path too (src/collect.cpp).
-	const path = s.values.model?.sensor === "microphone" ? sensorPath(s) : null
-	if (path) {
-		const collect = await run(pio, ["run", "-d", dir, "-e", "esp32c3_collect"])
-		artifact.collect = { ok: collect.code === 0, pathHash: pathHash(path), log: buildLog(collect.output) }
-	}
 	return artifact
 }
+
+export interface CollectFirmware {
+	ok: boolean
+	revision: number
+	pathHash: string | null
+	log: string
+}
+
+// The data-collection firmware (env esp32c3_collect, src/collect.cpp) in a firmware dir buildFirmware already wrote:
+// the same pins.h and model.h, so it reads the sensor exactly as the design says. On demand (bringup
+// collect-firmware), not on every rebuild: each revision's dir is a fresh copy, so it would compile the Arduino core
+// a second time per revision.
+export async function buildCollectFirmware(pio: string, dir: string, revision: number): Promise<CollectFirmware> {
+	const header = await readFile(join(dir, "include/model.h"), "utf8").catch(() => "")
+	const pathHash = /#define MODEL_PATH_HASH "([0-9a-f]{12})"/.exec(header)?.[1] ?? null
+	if (!pathHash) return { ok: false, revision, pathHash, log: "model.h has no sensor path: the design has no model with a microphone" }
+	const { code, output } = await run(pio, ["run", "-d", dir, "-e", "esp32c3_collect"])
+	return { ok: code === 0, revision, pathHash, log: buildLog(output) }
+}
+
+export interface DeviceModelCheck {
+	ran: boolean
+	ok: boolean
+	// What TensorFlow Lite Micro allocated on the target (arena_used_bytes), bytes.
+	arenaUsedBytes?: number
+	log: string
+}
+
+// The converted model run once on the design's MCU (env esp32c3_infer, src/infer.cpp, in QEMU) in a firmware dir that
+// buildFirmware wrote with the model linked (opts.modelData). Not run when QEMU isn't installed.
+export async function checkModelOnDevice(pio: string, root: string, dir: string): Promise<DeviceModelCheck> {
+	const build = await run(pio, ["run", "-d", dir, "-e", "esp32c3_infer"])
+	if (build.code !== 0) return { ran: false, ok: false, log: buildLog(build.output) }
+	const { image, log } = await mergeFlash(dir, "esp32c3_infer")
+	if (!image) return { ran: false, ok: false, log }
+	const serial = await runImage(root, image, /BRINGUP-INFER (ok|FAIL)[^\n]*\n/, 180_000)
+	if (serial === null) return { ran: false, ok: false, log: "QEMU is not installed (tools/qemu)" }
+	const line = /BRINGUP-INFER (ok|FAIL)([^\n]*)/.exec(serial)
+	if (!line) return { ran: true, ok: false, log: serial.slice(-2000) }
+	const used = /arena_used=(\d+)/.exec(line[2])
+	return { ran: true, ok: line[1] === "ok", arenaUsedBytes: used ? Number(used[1]) : undefined, log: line[0] }
+}
+
