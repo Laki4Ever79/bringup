@@ -5,8 +5,8 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { adopt } from "../src/adopt/cli.ts"
 import { cmakeBuild, envSourceDirs, firmwareVariants, iocPins, platformioVariants, sourcePins } from "../src/adopt/firmware.ts"
-import { checkVariant, findMcus, gpioOfPad, namesAgree, padGpio } from "../src/adopt/match.ts"
-import { pinLabel } from "../src/adopt/pins.ts"
+import { checkVariant, chipPin, findMcus, gpioOfPad, namesAgree, padGpio } from "../src/adopt/match.ts"
+import { ANALOG_BASE, pinLabel } from "../src/adopt/pins.ts"
 import { checkAgainst, signalName, writeContracts } from "../src/adopt/contract.ts"
 import { boardFits, stlBox } from "../src/adopt/mech.ts"
 import { nameLegacyPads, readBoard } from "../src/adopt/pcb.ts"
@@ -347,4 +347,34 @@ test("the CI check (adopt/check.sh, as the Action runs it): passes with no contr
 	const broken = ci()
 	assert.equal(broken.code, 1)
 	assert.match(broken.md, /✗ \*\*pin-mismatch\*\*: firmware drives LCD_DC on GPIO2, contract says GPIO1/)
+})
+
+test("AVR: Arduino pin numbers and A0 resolve through ArduinoCore-avr's tables; PB5 is an AVR pin on an ATmega only", () => {
+	const uno = { ref: "U1", value: "ATmega328P-AU", lib: "Package_QFP:TQFP-32", x: 0, y: 0, rot: 0, pads: [], size: { w: 0, h: 0 } }
+	const leo = { ...uno, value: "ATmega32U4-AU" }
+	assert.equal(pinLabel(chipPin(uno, 13)), "PB5")
+	assert.equal(pinLabel(chipPin(uno, ANALOG_BASE)), "PC0")
+	// The Leonardo's table is scrambled: Arduino D0 is PD2.
+	assert.equal(pinLabel(chipPin(leo, 0)), "PD2")
+	// A firmware PB5 (read as an STM32-style port) is the ATmega's PB5.
+	assert.equal(pinLabel(chipPin(uno, padGpio("PB5", "")!)), "PB5")
+	assert.equal(pinLabel(gpioOfPad(uno, { fn: "PB5", net: "/LED" })!), "PB5")
+	// Elsewhere PB5 stays an STM32 port pin.
+	assert.equal(padGpio("PB5", "")! < 2000, true)
+})
+
+test("AVR: an Arduino Nano footprint's D13/A0 pads, an Arduino sketch's pins, and the chip macro deciding #if", () => {
+	const nano = fp("A1", "Arduino_Nano", 0, 0, ["D13", "A0", "D2", "D3", "D4", "D5", "D6"].map((n, i) => pad(`${i + 1}`, i === 0 ? "/LED" : i === 1 ? "/NTC" : "", n)))
+	const b = readBoard(`(kicad_pcb (version 20221018) ${nano} ${fp("D1", "LED", 0, 0, [pad("1", "/LED", "A")])} ${fp("TH1", "NTC", 0, 0, [pad("1", "/NTC", "1")])})`)
+	const src = `#if defined(__AVR_ATmega328P__)
+const int LED_PIN = 13;
+#define NTC_PIN A0
+#elif defined(__AVR_ATmega2560__)
+const int LED_PIN = 52;
+#endif`
+	const checks = checkVariant(b, findMcus(b), { id: "src", pins: sourcePins(src, "sketch.ino") })
+	assert.deepEqual(checks.map((c) => [c.pin.name, c.pin.as, pinLabel(c.pin.gpio), c.verdict]), [
+		["LED_PIN", "13", "PB5", "agrees"],
+		["NTC_PIN", "A0", "PC0", "agrees"],
+	])
 })

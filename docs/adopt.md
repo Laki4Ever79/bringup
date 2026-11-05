@@ -61,7 +61,8 @@ variables. `adopt/example-workflow.yml` shows the setup:
 ## Limits
 
 - One MCU per contract (the board's first). Other MCUs are still checked by the report.
-- Pin numbers only for ESP32/ESP8266/RP2040 GPIOs and STM32-style ports. Not yet nRF52 `P0.13`, AVR `PB5`
-  (it reads as an STM32 port), or Python and MicroPython firmware.
+- Pin numbers for ESP32/ESP8266/RP2040 GPIOs, STM32-style ports and AVR (ATmega328P/2560/32U4 and the Arduino boards on
+  them, through ArduinoCore-avr's tables). Not yet nRF52 `P0.13`, ATtiny,
+  or Python and MicroPython firmware.
 - Connector positions come from the footprint origin and pad extent, not the courtyard.
 - The case check is a bounding box, not cutouts.

@@ -60,6 +60,8 @@ export interface BuildContext {
 	selectors?: Set<string>
 	// Macros the sources define, where every definition agrees (ENABLE_INMP441_MICS 0): known unless -D overrides.
 	source?: Map<string, string>
+	// The chip's own macro when the board names it (__AVR_ATmega328P__): every other chip macro is then undefined.
+	chip?: string
 }
 
 export type Family = "esp32" | "esp8266" | "avr" | "rp2040" | "stm32" | "nrf52" | "samd"
@@ -93,7 +95,7 @@ export function familyOfPart(text: string): Family | null {
 	if (/ESP32|T-?MICRO32|T-?DISPLAY|TTGO/.test(t)) return "esp32"
 	if (/ESP8266|ESP-?12|WEMOS|D1.?MINI/.test(t)) return "esp8266"
 	if (/RP2040|RP2350|PICO/.test(t)) return "rp2040"
-	if (/ATMEGA|ATTINY/.test(t)) return "avr"
+	if (/ATMEGA|ATTINY|ARDUINO.?(NANO|UNO|PRO.?MINI|MEGA|LEONARDO|MICRO)(?!.?(EVERY|ESP32|33|RP2040|MATTER|R4))|PRO.?MICRO/.test(t)) return "avr"
 	if (/STM32/.test(t)) return "stm32"
 	if (/NRF52/.test(t)) return "nrf52"
 	if (/SAMD|ATSAMD/.test(t)) return "samd"
@@ -106,6 +108,7 @@ function isDefined(ctx: BuildContext, name: string): boolean | undefined {
 	if (ctx.defines.has(name)) return true
 	if (ctx.source?.has(name)) return true
 	if (ctx.selectors?.has(name)) return false
+	if (ctx.chip && /^__AVR_AT\w+__$/.test(name)) return name === ctx.chip
 	if (!ctx.family) return undefined
 	if (FAMILY[ctx.family].defined.includes(name)) return true
 	for (const [fam, f] of Object.entries(FAMILY)) if (f.owns.test(name)) return fam === ctx.family ? undefined : false

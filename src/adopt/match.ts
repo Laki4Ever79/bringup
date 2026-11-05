@@ -3,14 +3,74 @@ import type { Board, Footprint } from "./pcb.ts"
 import { netMembers } from "./pcb.ts"
 import type { FirmwarePin, FirmwareVariant } from "./firmware.ts"
 import { active, familyOfPart } from "./preproc.ts"
-import { parsePortPin } from "./pins.ts"
+import { ANALOG_BASE, AVR_BASE, STM32_BASE, parseAvrPin, parsePortPin, pinLabel } from "./pins.ts"
 import BOARDS from "./boards.json" with { type: "json" }
 
 // Dev boards whose pads carry board names (D6, TX/D6): their GPIOs, from arduino-esp32's variant headers
 // (scripts/adopt-boards.ts).
 const DEV_BOARDS = BOARDS.boards.map((b) => ({ ...b, re: new RegExp(b.footprint, "i") }))
 export function devBoardPins(f: Footprint): Record<string, number> | undefined {
+	const avr = avrOf(f)
+	if (avr?.board) return avr.boardPins
 	return DEV_BOARDS.find((b) => b.re.test(`${f.value} ${f.lib}`))?.pins as Record<string, number> | undefined
+}
+
+// AVR chips, and Arduino boards built on them, with ArduinoCore-avr's table: Arduino pin n is port pin digital[n].
+const AVR_VARIANTS = BOARDS.avr.map((a) => ({ ...a, chipRe: new RegExp(a.chip, "i"), boardRe: new RegExp(a.board, "i") }))
+// The macro avr-gcc defines for each variant's usual chip, for a board that names only the Arduino.
+const AVR_CHIP_MACRO: Record<string, string> = { standard: "__AVR_ATmega328P__", mega: "__AVR_ATmega2560__", leonardo: "__AVR_ATmega32U4__" }
+export interface AvrPart {
+	variant: (typeof AVR_VARIANTS)[number]
+	board: boolean
+	// The chip's own macro (__AVR_ATmega328P__), so #if defined(...) branches resolve.
+	chipMacro: string
+	// For an Arduino board: its pad names (D13, A0, LED_BUILTIN) as chip pins.
+	boardPins: Record<string, number>
+}
+const avrCache = new Map<string, AvrPart | null>()
+export function avrOf(f: Pick<Footprint, "value" | "lib">): AvrPart | null {
+	const t = `${f.value} ${f.lib}`
+	if (avrCache.has(t)) return avrCache.get(t)!
+	let r: AvrPart | null = null
+	for (const v of AVR_VARIANTS) {
+		const chip = v.chipRe.exec(t)
+		const board = !chip && v.boardRe.test(t)
+		if (!chip && !board) continue
+		const enc = (name: string) => parseAvrPin(name)
+		const boardPins: Record<string, number> = {}
+		v.digital.forEach((pn, i) => {
+			const e = enc(pn)
+			if (e === null) return
+			boardPins[`D${i}`] = e
+			if (i >= v.a0) boardPins[`A${i - v.a0}`] = e
+		})
+		for (const [name, i] of Object.entries(v.pins)) {
+			const e = enc(v.digital[i as number] ?? "")
+			if (e !== null) boardPins[name.replace(/^PIN_(SPI|WIRE)_/, "")] = e
+		}
+		const macro = chip ? `__AVR_ATmega${chip[0].replace(/^atmega/i, "").toUpperCase().replace(/(\d)U(\d)/, "$1U$2")}__` : AVR_CHIP_MACRO[v.variant]
+		r = { variant: v, board, chipMacro: macro, boardPins }
+		break
+	}
+	avrCache.set(t, r)
+	return r
+}
+
+// A firmware pin value as this MCU's pin. On AVR an Arduino pin number (13) or analog name (A0) is a port pin through
+// the variant table, and PB5 (read as an STM32-style port) is the AVR port pin; on a dev board A0 is its table's A0.
+export function chipPin(mcu: Footprint, gpio: number): number {
+	const avr = avrOf(mcu)
+	if (avr) {
+		const v = avr.variant
+		if (gpio >= STM32_BASE && gpio < STM32_BASE + 12 * 16) {
+			const bit = (gpio - STM32_BASE) % 16
+			return bit < 8 ? AVR_BASE + Math.floor((gpio - STM32_BASE) / 16) * 8 + bit : gpio
+		}
+		const n = gpio >= ANALOG_BASE && gpio < ANALOG_BASE + 100 ? v.a0 + gpio - ANALOG_BASE : gpio < STM32_BASE ? gpio : -1
+		return (n >= 0 ? parseAvrPin(v.digital[n] ?? "") : null) ?? gpio
+	}
+	if (gpio >= ANALOG_BASE && gpio < ANALOG_BASE + 100) return devBoardPins(mcu)?.[`A${gpio - ANALOG_BASE}`] ?? gpio
+	return gpio
 }
 
 const MCU = /ESP32|ESP8266|RP2040|RP2350|PICO|STM32|NRF5|ATMEGA|ATTINY|SAMD|SAM[DE]\d|CH32|GD32/i
@@ -23,12 +83,13 @@ const ESP32_ALIASES: Record<string, number> = {
 
 // The pin a pad is (see pins.ts), from its pin name (IO26, GPIO28_ADC2, IO36/SVP, PC13, or a dev board's D6) or,
 // failing that, its unconnected-net name (KiCad writes unconnected-(U1-GPIO6-Pad9)).
-export function padGpio(fn: string, net: string, board?: Record<string, number>): number | null {
+export function padGpio(fn: string, net: string, board?: Record<string, number>, avr = false): number | null {
 	const fromName = (s: string): number | null => {
 		for (const tok of s.split(/[\/_\s,()-]+/)) {
 			const m = /^(?:GPIO|IO|GP)(\d+)$/i.exec(tok)
 			if (m) return Number(m[1])
-			const port = parsePortPin(tok)
+			// PB5 is an AVR port pin on an AVR, an STM32-style one everywhere else.
+			const port = avr ? parseAvrPin(tok) : parsePortPin(tok)
 			if (port !== null) return port
 		}
 		for (const tok of s.split(/[\/\s,()-]+/)) {
@@ -45,7 +106,8 @@ export function padGpio(fn: string, net: string, board?: Record<string, number>)
 // The parts that are MCUs: whatever has the most GPIO-named pads (modules are named anything, e.g. T-Micro32_Plus);
 // a known chip name only breaks ties.
 export function gpioOfPad(f: Footprint, p: { fn: string; net: string }): number | null {
-	return padGpio(p.fn, p.net, devBoardPins(f))
+	const avr = avrOf(f)
+	return padGpio(p.fn, p.net, devBoardPins(f), Boolean(avr && !avr.board))
 }
 
 export function findMcus(b: Board): Footprint[] {
@@ -193,7 +255,10 @@ const RANK: Verdict[] = ["agrees", "inside-module", "other-revision", "unnamed",
 export function checkVariant(b: Board, mcus: Footprint[], v: FirmwareVariant): PinCheck[] {
 	const members = netMembers(b)
 	const byRef = new Map(b.footprints.map((f) => [f.ref, f]))
-	const one = (mcu: Footprint, pin: FirmwarePin): PinCheck => {
+	const one = (mcu: Footprint, raw: FirmwarePin): PinCheck => {
+		// The firmware's value as this MCU's pin (Arduino 13 on an Uno is PB5); the value as written stays in `as`.
+		const g = chipPin(mcu, raw.gpio)
+		const pin: FirmwarePin = g === raw.gpio ? raw : { ...raw, gpio: g, as: raw.as ?? (raw.gpio < STM32_BASE ? String(raw.gpio) : pinLabel(raw.gpio)) }
 		let at: { pad: string; net: string } | undefined
 		for (const p of mcu.pads)
 			if (gpioOfPad(mcu, p) === pin.gpio && (!at || (!connected(at.net) && connected(p.net)))) at = { pad: p.number, net: p.net }
@@ -241,7 +306,8 @@ export function checkVariant(b: Board, mcus: Footprint[], v: FirmwareVariant): P
 	const best = (pin: FirmwarePin) => mcus.map((m) => one(m, pin)).sort((a, b) => RANK.indexOf(a.verdict) - RANK.indexOf(b.verdict))[0]
 	// Only the definitions this build compiles: #if branches evaluated against the env's -D flags and chip family
 	// (from the env's platform, or the board's MCU for a bare source tree). Unknown outcomes stay, marked conditional.
-	const ctx = { defines: v.defines ?? new Map<string, string>(), selectors: v.selectors, source: v.source, family: v.family ?? familyOfPart(mcus.map((m) => `${m.value} ${m.lib}`).join(" ")) }
+	const chip = mcus.map((m) => avrOf(m)?.chipMacro).find(Boolean)
+	const ctx = { defines: v.defines ?? new Map<string, string>(), selectors: v.selectors, source: v.source, chip, family: v.family ?? familyOfPart(mcus.map((m) => `${m.value} ${m.lib}`).join(" ")) }
 	const compiled: FirmwarePin[] = []
 	for (const pin of v.pins) {
 		const on = pin.conds ? active(pin.conds, ctx) : true

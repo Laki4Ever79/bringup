@@ -116,7 +116,10 @@ export function infer(repo: string, boardFile: string, variants: FirmwareVariant
 	if (!b.outline || !mcus.length) return null
 	const mcu = mcus[0]
 	const mcuRefs = new Set(mcus.map((m) => m.ref))
-	const best = rankVariants(b, mcus, variants, only)[0]
+	// A build that doesn't fit (score at or below zero) isn't this board's firmware: the contract links none, unless
+	// the person pinned one.
+	const ranked = rankVariants(b, mcus, variants, only)[0]
+	const best = ranked && (ranked.score > 0 || only) ? ranked : undefined
 	const notes: string[] = [
 		"rails, requirements and behavior are not in the contract: a board file has no current ratings or product intent",
 		"connector cutout heights are estimates per kind (usb-c 3.3, button 3.5, header 8.5 mm)",
