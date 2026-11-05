@@ -33,7 +33,8 @@ export interface ModelVerification {
 
 const kb = (bytes: number) => `${(bytes / 1024).toFixed(1)} KB`
 
-export function verifyConverted(f: ConvertedModel, s: ContractSnapshot): ModelVerification {
+// device: the arena TensorFlow Lite Micro used on the design's MCU (bringup verify-model --device), when it ran.
+export function verifyConverted(f: ConvertedModel, s: ContractSnapshot, device?: { arenaUsedBytes: number }): ModelVerification {
 	const m = s.values.model
 	const out: Verdict[] = []
 	if (!m) return { fits: false, verdicts: [{ level: "fail", text: "the contract has no model to verify against" }], proposal: null }
@@ -65,20 +66,24 @@ export function verifyConverted(f: ConvertedModel, s: ContractSnapshot): ModelVe
 	const plannedW = m.weightsKb * 1024
 	const plannedA = m.arenaKb * 1024
 	out.push({ level: f.weightsBytes > plannedW ? "warn" : "ok", text: `weights measured ${f.weightsBytes} B against the planned ${plannedW} B (${m.weightsKb} KB)${f.weightsBytes > plannedW ? ": the plan is short" : ""}` })
-	if (f.arenaBytes !== null) out.push({ level: f.arenaBytes > plannedA ? "warn" : "ok", text: `arena measured ${f.arenaBytes} B against the planned ${plannedA} B (${m.arenaKb} KB)${f.arenaBytes > plannedA ? `: the plan is short by ${f.arenaBytes - plannedA} B` : ""}${f.arenaMeasuredWith ? ` (${f.arenaMeasuredWith})` : ""}` })
+	if (f.arenaBytes !== null) out.push({ level: f.arenaBytes > plannedA && !device ? "warn" : "ok", text: `arena measured ${f.arenaBytes} B against the planned ${plannedA} B (${m.arenaKb} KB)${f.arenaBytes > plannedA ? (device ? ": above the plan on the host, which overstates the device (next line)" : `: the plan is short by ${f.arenaBytes - plannedA} B`) : ""}${f.arenaMeasuredWith ? ` (${f.arenaMeasuredWith})` : ""}` })
+	// The target's own figure settles it: the host's bookkeeping is 64-bit, the MCU's is not.
+	if (device) out.push({ level: device.arenaUsedBytes > plannedA ? "warn" : "ok", text: `on the ${mcu?.mpn ?? "MCU"}, TensorFlow Lite Micro used ${device.arenaUsedBytes} B of arena against the planned ${plannedA} B${device.arenaUsedBytes > plannedA ? `: the plan is short by ${device.arenaUsedBytes - plannedA} B` : ""}` })
 
 	// The data the model learned from (or was calibrated on) belongs to one sensor path.
 	const path = sensorPath(s)
 	const now = path && pathHash(path)
 	if (!f.trained) out.push({ level: "warn", text: `${f.model}: the sizes are real, its answers are not` })
 	if (!f.dataset) out.push({ level: "warn", text: `calibration: ${f.calibration}` })
-	else if (now && f.dataset.pathHash !== now) {
+	else if (!now) out.push({ level: "warn", text: `the dataset was recorded on sensor path ${f.dataset.pathHash}, and the design has no sensor path to compare it with (no ${m.sensor} part placed)` })
+	else if (f.dataset.pathHash !== now) {
 		out.push({ level: "fail", text: `the dataset was recorded on sensor path ${f.dataset.pathHash} (rev ${f.dataset.revision}); the design's path is ${now}: record data on this hardware first` })
 		fits = false
 	} else out.push({ level: "ok", text: `the dataset (${f.dataset.clips} clips) was recorded on the design's sensor path ${f.dataset.pathHash}` })
 
 	const weightsKb = Math.ceil(f.weightsBytes / 1024)
-	const arenaKb = f.arenaBytes === null ? m.arenaKb : Math.ceil(f.arenaBytes / 1024)
+	const measuredArena = device?.arenaUsedBytes ?? f.arenaBytes
+	const arenaKb = measuredArena === null ? m.arenaKb : Math.ceil(measuredArena / 1024)
 	const proposal = weightsKb !== m.weightsKb || arenaKb !== m.arenaKb ? { ...m, weightsKb, arenaKb } : null
 	return { fits, verdicts: out, proposal }
 }

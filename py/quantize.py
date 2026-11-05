@@ -38,7 +38,8 @@ def reference_model(classes):
     from tensorflow.keras import layers
 
     frames = int((CLIP_S * 1000 - FRAME_MS) / STRIDE_MS) + 1
-    inp = layers.Input(shape=(frames, MFCCS, 1))
+    # A fixed batch of 1, as on the device: a dynamic batch makes Flatten emit SHAPE/STRIDED_SLICE/PACK ops.
+    inp = layers.Input(shape=(frames, MFCCS, 1), batch_size=1)
     x = layers.Conv2D(64, (10, 4), strides=(2, 2), padding="same")(inp)
     x = layers.BatchNormalization()(x)
     x = layers.Activation("relu")(x)
@@ -69,11 +70,24 @@ def mfcc(pcm):
 
 
 def dataset_clips(path, limit=200):
+    """The calibration clips: silent ones (a dead microphone) left out, taken in turn from each label so one label
+    can't fill the set."""
     manifest = json.loads((Path(path) / "manifest.json").read_text())
     if manifest.get("rateHz") != RATE_HZ:
         sys.exit(f"quantize: the dataset is at {manifest.get('rateHz')} Hz; this front end takes {RATE_HZ} Hz")
+    if manifest.get("samplesPerClip") != int(RATE_HZ * CLIP_S):
+        sys.exit(f"quantize: the dataset's clips are {manifest.get('samplesPerClip')} samples; this front end takes {int(RATE_HZ * CLIP_S)} ({CLIP_S} s)")
+    by_label = {}
+    for c in manifest["clips"]:
+        if not c.get("silent"):
+            by_label.setdefault(c["label"], []).append(c)
+    picked = []
+    while len(picked) < limit and any(by_label.values()):
+        for label in list(by_label):
+            if by_label[label] and len(picked) < limit:
+                picked.append(by_label[label].pop(0))
     clips = []
-    for c in manifest["clips"][:limit]:
+    for c in picked:
         with wave.open(str(Path(path) / c["file"])) as w:
             clips.append(np.frombuffer(w.readframes(w.getnframes()), dtype="<i2"))
     return manifest, clips
@@ -88,46 +102,43 @@ def representative(shape, clips):
     return lambda: ([rng.normal(0, 1, (1, *shape)).astype(np.float32)] for _ in range(100))
 
 
+# One arena attempt, in its own process: after a failed allocation TFLite Micro's allocator can be left in a state
+# where the next attempt segfaults, which would take the whole conversion down with it.
+_ARENA_ATTEMPT = r"""
+import os, re, sys, tempfile
+import numpy as np
+from tflite_micro.python.tflite_micro import runtime
+interp = runtime.Interpreter.from_file(sys.argv[1], arena_size=int(sys.argv[2]))
+d = interp.get_input_details(0)
+interp.set_input(np.zeros(d["shape"], dtype=d["dtype"]), 0)
+interp.invoke()
+fd, tmp = tempfile.mkstemp()
+sys.stderr.flush()
+os.dup2(fd, 2)
+interp.print_allocations()
+m = re.search(r"Arena allocation total (\d+) bytes", open(tmp).read())
+print(m.group(1) if m else "")
+"""
+
+
 def tflm_arena(tflite_path):
     """The tensor arena TFLite Micro itself allocates for the model: its interpreter (the tflite-micro package, host
     build) prepares and runs the model once, and its recording allocator reports the arena used. On the 64-bit host
     its bookkeeping structs are larger than on a 32-bit MCU, so this is a little above the device's figure.
-    None when the tflite-micro package isn't installed."""
+    None when the tflite-micro package isn't installed or no arena up to 4 MB works."""
+    import subprocess
+
     try:
-        from tflite_micro.python.tflite_micro import runtime
+        import tflite_micro  # noqa: F401
     except ImportError:
         return None
-    import os
-    import tempfile
-
-    arena = 4096
+    arena = 16 * 1024
     while arena <= 4 * 1024 * 1024:
-        try:
-            interp = runtime.Interpreter.from_file(str(tflite_path), arena_size=arena)
-            d = interp.get_input_details(0)
-            interp.set_input(np.zeros(d["shape"], dtype=d["dtype"]), 0)
-            interp.invoke()
-            break
-        except Exception:
-            arena *= 2
-    else:
-        return None
-    # print_allocations logs from C++ to stderr (file descriptor 2): capture it.
-    fd, tmp = tempfile.mkstemp()
-    sys.stderr.flush()
-    saved = os.dup(2)
-    os.dup2(fd, 2)
-    try:
-        interp.print_allocations()
-        sys.stderr.flush()
-    finally:
-        os.dup2(saved, 2)
-        os.close(saved)
-        os.close(fd)
-    text = Path(tmp).read_text()
-    os.unlink(tmp)
-    m = re.search(r"Arena allocation total (\d+) bytes", text)
-    return int(m.group(1)) if m else None
+        r = subprocess.run([sys.executable, "-c", _ARENA_ATTEMPT, str(tflite_path), str(arena)], capture_output=True, text=True, timeout=300)
+        if r.returncode == 0 and r.stdout.strip().isdigit():
+            return int(r.stdout.strip())
+        arena *= 2
+    return None
 
 
 def main():
@@ -148,7 +159,11 @@ def main():
     conv.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
     conv.inference_input_type = tf.int8
     conv.inference_output_type = tf.int8
-    tflite = conv.convert()
+    # The converter prints its saved-model listing to stdout; keep stdout for the facts line alone.
+    import contextlib
+
+    with contextlib.redirect_stdout(sys.stderr):
+        tflite = conv.convert()
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

@@ -1,7 +1,11 @@
 // The sensor path a model's training data travels: which part hears or feels the world, where the board puts it and
-// how it is turned, what the case puts in front of it, and how the firmware samples it. A model is only as good as the
-// match between the path its data was recorded on and the device it runs on. Bringup computes the path from the
-// contract, so a board or case change that moves it shows up as a different hash, and the model's data goes stale.
+// how it is turned, the opening the case generator cuts in front of it, and how the firmware samples it. A model is
+// only as good as the match between the path its data was recorded on and the device it runs on. Bringup computes the
+// path from the contract, so a change that touches it shows up as a different hash, and the model's data goes stale.
+//
+// Deliberately conservative: the position is the part's place on the board, so any move counts, even one the
+// acoustics might not notice. The case opening is the generator's (its fixed diameter and floor), not read back from
+// a built case; the port-missing check covers a case that doesn't have it.
 import { createHash } from "node:crypto"
 import { micPorts, placedByRole } from "../codegen/circuit.ts"
 import { PORT_MM } from "../tools/enclosure.ts"
@@ -34,7 +38,7 @@ export interface SensorPath {
 
 const mm = (x: number) => Math.round(x * 10) / 10
 
-// The path from the contract, or null when the model has no sensor part to read yet.
+// The path from the contract, or null when the model has no sensor part, or the board hasn't placed it.
 export function sensorPath(s: ContractSnapshot): SensorPath | null {
 	const m = s.values.model
 	if (!m) return null
@@ -42,7 +46,9 @@ export function sensorPath(s: ContractSnapshot): SensorPath | null {
 	const part = (s.values.parts ?? []).find((p) => roles.includes(p.role))
 	if (!part) return null
 	const at = roles.flatMap((r) => placedByRole(s, r)).find((p) => p.ref === part.ref)
-	const path: SensorPath = { sensor: m.sensor, mpn: part.mpn, xMm: mm(at?.xMm ?? NaN), yMm: mm(at?.yMm ?? NaN), rotation: at?.rotation ?? 0, sampleRateHz: m.sampleRateHz, channels: m.channels }
+	// An unplaced part (no outline yet, or no room on the board) has no path to fingerprint.
+	if (!at) return null
+	const path: SensorPath = { sensor: m.sensor, mpn: part.mpn, xMm: mm(at.xMm), yMm: mm(at.yMm), rotation: ((at.rotation % 360) + 360) % 360, sampleRateHz: m.sampleRateHz, channels: m.channels }
 	if (m.sensor === "microphone") {
 		if (micPorts(s).some((p) => p.ref === part.ref)) path.opening = { diameterMm: PORT_MM, floorMm: FLOOR_MM }
 		path.capture = MIC_CAPTURE

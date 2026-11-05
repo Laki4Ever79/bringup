@@ -59,6 +59,12 @@ test("model-stale: another microphone part, or another sample rate, touches the 
 	}
 })
 
+test("an unplaced microphone has no sensor path, rather than one with NaN coordinates", () => {
+	const c = wakeWord()
+	delete c.values.outline
+	assert.equal(sensorPath(c), null)
+})
+
 test("pathDiff lists only what changed", () => {
 	const a = sensorPath(wakeWord())!
 	assert.deepEqual(pathDiff(a, { ...a, rotation: 90 }), ["rotation 0 → 90"])

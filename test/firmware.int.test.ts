@@ -167,25 +167,29 @@ test("the model's arena and weights are counted in the firmware's own RAM and fl
 	assert.ok(flash >= 53 * 1024 && flash < 53 * 1024 + 1024, `flash grows by the weights (+${flash} B)`)
 })
 
-test("with a microphone model, the data-collection firmware compiles and stamps the sensor path's hash", { skip, timeout: 900_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+test("with a microphone model, bringup collect-firmware builds the data-collection firmware and records its sensor path", { skip, timeout: 900_000 }, async () => {
+	const { main } = await import("../src/main.ts")
+	const { mkdir, writeFile } = await import("node:fs/promises")
+	const run = await mkdtemp(join(tmpdir(), "bringup-run-"))
 	try {
 		const c = fixtureContract()
 		c.values.model = { ...WAKE_WORD_MODEL }
 		c.values.parts = [...c.values.parts!, MIC_PART]
 		c.values.pins = [...c.values.pins!, ...MIC_PINS]
-		const firmware = await buildFirmware(pio!, root, dir, c, 6)
+		await mkdir(join(run, "firmware"), { recursive: true })
+		await writeFile(join(run, "contract.json"), JSON.stringify(c))
+		const firmware = await buildFirmware(pio!, root, join(run, "firmware/rev-6"), c, 6)
 		assert.equal(firmware.ok, true, firmware.log)
-		assert.equal(firmware.collect?.ok, true, firmware.collect?.log)
-		assert.equal(firmware.collect!.pathHash, pathHash(sensorPath(c)!))
-		assert.match(readFileSync(join(dir, "include/model.h"), "utf8"), new RegExp(`MODEL_PATH_HASH "${firmware.collect!.pathHash}"`))
+		assert.equal(await main(["collect-firmware", run]), 0)
+		const collect = JSON.parse(readFileSync(join(run, "collect.json"), "utf8"))
+		assert.deepEqual([collect.ok, collect.revision, collect.pathHash], [true, 6, pathHash(sensorPath(c)!)])
+		assert.ok(existsSync(join(run, "firmware/rev-6/.pio/build/esp32c3_collect/firmware.bin")))
 		// Without the mic's I2S pins it can't read the microphone, and the build says why.
 		c.values.pins = c.values.pins!.filter((p) => p.partRef !== "U5")
-		const unwired = await buildFirmware(pio!, root, dir, c, 7)
-		assert.equal(unwired.ok, true, "the product firmware doesn't need the mic")
-		assert.equal(unwired.collect?.ok, false)
-		assert.match(unwired.collect!.log, /I2S SCK, WS and SD must be assigned/)
+		await buildFirmware(pio!, root, join(run, "firmware/rev-7"), c, 7)
+		assert.equal(await main(["collect-firmware", run]), 2)
+		assert.equal(JSON.parse(readFileSync(join(run, "collect.json"), "utf8")).ok, false)
 	} finally {
-		await rm(dir, { recursive: true, force: true })
+		await rm(run, { recursive: true, force: true })
 	}
 })
