@@ -7,7 +7,8 @@ import { join, resolve } from "node:path"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { buildFirmware } from "../src/tools/firmware.ts"
 import { fixtureContract } from "./fixture.ts"
-import { WAKE_WORD_MODEL } from "../src/inference/scripts.ts"
+import { MIC_PART, MIC_PINS, WAKE_WORD_MODEL } from "../src/inference/scripts.ts"
+import { pathHash, sensorPath } from "../src/contract/sensor-path.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const pio = [join(root, ".venv/bin/pio")].find(existsSync)
@@ -164,4 +165,27 @@ test("the model's arena and weights are counted in the firmware's own RAM and fl
 	assert.equal(withModel.ram - without.ram, 23 * 1024, "RAM grows by the arena")
 	const flash = withModel.flash - without.flash
 	assert.ok(flash >= 53 * 1024 && flash < 53 * 1024 + 1024, `flash grows by the weights (+${flash} B)`)
+})
+
+test("with a microphone model, the data-collection firmware compiles and stamps the sensor path's hash", { skip, timeout: 900_000 }, async () => {
+	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	try {
+		const c = fixtureContract()
+		c.values.model = { ...WAKE_WORD_MODEL }
+		c.values.parts = [...c.values.parts!, MIC_PART]
+		c.values.pins = [...c.values.pins!, ...MIC_PINS]
+		const firmware = await buildFirmware(pio!, root, dir, c, 6)
+		assert.equal(firmware.ok, true, firmware.log)
+		assert.equal(firmware.collect?.ok, true, firmware.collect?.log)
+		assert.equal(firmware.collect!.pathHash, pathHash(sensorPath(c)!))
+		assert.match(readFileSync(join(dir, "include/model.h"), "utf8"), new RegExp(`MODEL_PATH_HASH "${firmware.collect!.pathHash}"`))
+		// Without the mic's I2S pins it can't read the microphone, and the build says why.
+		c.values.pins = c.values.pins!.filter((p) => p.partRef !== "U5")
+		const unwired = await buildFirmware(pio!, root, dir, c, 7)
+		assert.equal(unwired.ok, true, "the product firmware doesn't need the mic")
+		assert.equal(unwired.collect?.ok, false)
+		assert.match(unwired.collect!.log, /I2S SCK, WS and SD must be assigned/)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
 })
