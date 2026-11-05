@@ -149,6 +149,18 @@ function shapeError(field: FieldName, value: unknown): string | null {
 		}
 		case "pins":
 			return list((x) => isStr(x.signal) && isNum(x.gpio) && isStr(x.partRef) && isStr(x.partPin), "{signal, gpio, partRef, partPin}")
+		case "model": {
+			const shape = 'model must be {task, sensor: "microphone"|"motion"|"camera", sampleRateHz, windowMs, channels, weightsKb, arenaKb, runtime, quantization: "int8"|"float32", listening: "always"|"on-wake"}, numbers positive'
+			if (!obj(value)) return shape
+			const ok =
+				isStr(value.task) &&
+				["microphone", "motion", "camera"].includes(value.sensor as string) &&
+				["sampleRateHz", "windowMs", "channels", "weightsKb", "arenaKb"].every((k) => isNum(value[k]) && (value[k] as number) > 0) &&
+				isStr(value.runtime) &&
+				["int8", "float32"].includes(value.quantization as string) &&
+				["always", "on-wake"].includes(value.listening as string)
+			return ok ? null : shape
+		}
 		case "behavior": {
 			const shape = 'behavior must be exactly {blinkMs, tiltBlinkMs, tiltDeg}: numbers, blinkMs > 0, tiltBlinkMs > 0, tiltDeg from 0 to 90, e.g. {"blinkMs":1000,"tiltBlinkMs":200,"tiltDeg":20}. It sets only the status LED blink period and the tilt threshold'
 			if (!obj(value)) return shape

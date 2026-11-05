@@ -1,3 +1,4 @@
+import { modelCurrentMa } from "./model.ts"
 import { BLE_READING_MS, bleAdvertiseMs, templateConstant } from "../codegen/firmware.ts"
 import { readFileSync } from "node:fs"
 import { DROPOUT_MV, QUIESCENT_A, type LdoModel } from "../codegen/spice.ts"
@@ -106,6 +107,8 @@ export interface PowerEstimate {
 	capacitySource: "brief" | "requirements" | null
 	days: number | null
 	targetDays: number | null
+	// What the on-device model's listening adds on top of the rails, in mA (null without a model).
+	model: { averageMa: number; how: string } | null
 }
 
 const batteryFed = (rails: Rail[]) => rails.filter((r) => !/VBUS|USB/i.test(r.name))
@@ -134,6 +137,8 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 	const capacityMah = fromBrief ?? requirements?.batteryMah ?? null
 	const regulators = parts.filter((p) => p.role === "ldo").map((p) => regulatorIq(p))
 	const regulatorIqUa = regulators.reduce((sum, r) => sum + r.iqUa, 0)
+	// Listening is the model's own load: always-on keeps the MCU awake, which no rail average states.
+	const model = modelCurrentMa(s)
 	return {
 		rails: draws,
 		averageMa,
@@ -144,8 +149,9 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 		regulators,
 		capacityMah,
 		capacitySource: fromBrief !== null ? "brief" : requirements?.batteryMah !== undefined ? "requirements" : null,
-		days: capacityMah !== null && averageMa !== null ? batteryLifeDays(capacityMah, averageMa, regulatorIqUa) : null,
+		days: capacityMah !== null && averageMa !== null ? batteryLifeDays(capacityMah, averageMa + (model?.averageMa ?? 0), regulatorIqUa) : null,
 		targetDays: requirements?.batteryLifeDays ?? null,
+		model,
 	}
 }
 
@@ -161,6 +167,7 @@ export function batteryLifeSummary(e: PowerEstimate): string {
 
 export function powerBudgetLines(e: PowerEstimate): string[] {
 	const out: string[] = []
+	if (e.model) out.push(`- The model's listening: ${ma(e.model.averageMa)} on average (${e.model.how}), counted in the battery life below.`)
 	if (e.rails.length > 0) out.push("- Battery-fed rails (each average is that rail's own loads, so they add up):")
 	for (const r of e.rails) {
 		const from = r.source === "measured" ? `measured on bench${r.measuredRevision !== undefined ? `, rev ${r.measuredRevision}` : ""}` : `from the ${r.source}`

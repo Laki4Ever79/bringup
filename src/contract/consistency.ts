@@ -3,6 +3,7 @@ import { generatedNets, partPads, supportParts } from "../codegen/circuit.ts"
 import { mcuCurrents } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
+import { modelChecks, type ModelViolation } from "./model.ts"
 
 export interface BoardArtifact {
 	revision: number
@@ -80,6 +81,7 @@ export type ViolationKind =
 	| "battery-short"
 	| "part-unconnected"
 	| "rail-underrated"
+	| ModelViolation["kind"]
 
 export interface Violation {
 	kind: ViolationKind
@@ -102,7 +104,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...underratedRails(c))
+	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)

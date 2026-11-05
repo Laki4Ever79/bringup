@@ -7,7 +7,7 @@ import { createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder } fro
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
 import { createGroundingCheck } from "./agents/grounding-check.ts"
 import { createBomWriter } from "./agents/bom.ts"
-import { createArchitectAgent, createFirmwareReviewer, createPartsAgent } from "./agents/roles.ts"
+import { createArchitectAgent, createFirmwareReviewer, createMlAgent, createPartsAgent } from "./agents/roles.ts"
 import { createBriefReviewer, MAX_REVIEW_ROUNDS } from "./agents/reviewer.ts"
 import type { Script } from "./inference/scripted-runner.ts"
 import { inferenceConfig } from "./inference/models.ts"
@@ -181,6 +181,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	joinRuntime(bom)
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })
+	createMlAgent({ mock: opts.mock })
 	createFirmwareReviewer({ mock: opts.mock })
 	if (state.review.enabled) createBriefReviewer({ mock: opts.mock, env })
 	const engineer = createEngineer()

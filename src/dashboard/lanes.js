@@ -4,6 +4,7 @@
 export const LANES = [
 	{ key: "architect", label: "Architect" },
 	{ key: "parts", label: "Part selector" },
+	{ key: "ml", label: "ML engineer" },
 	{ key: "firmware", label: "Firmware reviewer" },
 	{ key: "reviewer", label: "Brief reviewer" },
 	{ key: "build:board", label: "Board" },
@@ -125,7 +126,7 @@ export function applyLaneEvent(lanes, e) {
 		case "design.settled": {
 			// The run is over: nobody is still thinking, whatever their last loop event said.
 			lanes.ended = true
-			const ended = ["architect", "parts", "firmware", "reviewer"].filter((k) => ["thinking", "tool", "held"].includes(lanes[k].status)).flatMap((k) => set(lanes, k, "idle", "run ended", e.at, false))
+			const ended = ["architect", "parts", "ml", "firmware", "reviewer"].filter((k) => ["thinking", "tool", "held"].includes(lanes[k].status)).flatMap((k) => set(lanes, k, "idle", "run ended", e.at, false))
 			return [...ended, ...set(lanes, "consistency", p.settled ? "done" : "failed", p.settled ? `settled at rev ${p.revision}` : `unsettled at rev ${p.revision}`, e.at)]
 		}
 		case "agent.halted":

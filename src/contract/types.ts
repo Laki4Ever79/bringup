@@ -1,9 +1,10 @@
-// "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field.
-export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench"
+// "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field. "ml" owns
+// the on-device model.
+export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml"
 
-export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior"
+export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model"
 
-export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior"]
+export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model"]
 
 // The fields every design writes; behavior is optional (the firmware has defaults).
 export const CORE_FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
@@ -16,6 +17,7 @@ export const OWNERS: Record<FieldName, AgentRole> = {
 	parts: "parts",
 	pins: "architect",
 	behavior: "firmware",
+	model: "ml",
 }
 
 // How the device spends its time: awake for activeMs every periodS seconds, drawing sleepUa in between.
@@ -84,6 +86,26 @@ export interface PinAssignment {
 
 // What the firmware does, as numbers the template reads from include/behavior.h: the LED blinks every blinkMs,
 // and every tiltBlinkMs while the board is tilted more than tiltDeg. No model writes C++.
+// The ML model the device runs: what it reads, how big it is, and when it listens. Owned by the ml agent and checked in
+// code against the parts (a sensor of its kind, wired), the MCU's flash and RAM left by the firmware, the sensor's
+// supported sample rates, and the battery budget (always-on listening keeps the MCU awake).
+export interface ModelSpec {
+	// What it recognises, e.g. "wake word: hey bringup".
+	task: string
+	sensor: "microphone" | "motion" | "camera"
+	sampleRateHz: number
+	// The window one inference sees, and the values per sample (1 for a mic, 6 for an IMU).
+	windowMs: number
+	channels: number
+	// Model weights in flash and the tensor arena in RAM, KB.
+	weightsKb: number
+	arenaKb: number
+	runtime: string
+	quantization: "int8" | "float32"
+	// "always": the sensor and the MCU stay awake to listen; "on-wake": it listens one window per duty-cycle wake.
+	listening: "always" | "on-wake"
+}
+
 export interface Behavior {
 	blinkMs: number
 	tiltBlinkMs: number
@@ -98,6 +120,7 @@ export type ContractValues = {
 	parts: Part[]
 	pins: PinAssignment[]
 	behavior: Behavior
+	model: ModelSpec
 }
 
 export interface ContractSnapshot {
@@ -114,7 +137,7 @@ export type ProposalResult =
 	| { status: "unchanged"; version: number }
 
 // Part roles the board codegen, catalog and checks understand.
-export const PART_ROLES = ["mcu", "sensor", "ldo", "charger", "battery", "usb-c", "led", "charge-led", "resistor", "capacitor", "button", "connector", "other"] as const
+export const PART_ROLES = ["mcu", "sensor", "microphone", "ldo", "charger", "battery", "usb-c", "led", "charge-led", "resistor", "capacitor", "button", "connector", "other"] as const
 
 // Signals become C macros (PIN_<SIGNAL>) and net names, so they must be UPPER_SNAKE.
 export const SIGNAL_PATTERN = /^[A-Z][A-Z0-9_]*$/
