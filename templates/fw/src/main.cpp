@@ -2,6 +2,18 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "pins.h"
+#if __has_include("model.h")
+#include "model.h"
+#endif
+
+#if defined(MODEL_PRESENT) && MODEL_PRESENT
+// The on-device model's memory, sized from the contract (model.h): the tensor arena in RAM and the weights in flash, so
+// the build's own RAM and flash figures include the model and one that doesn't fit fails the link. The weights are a
+// placeholder until a converted model (model_data.cc) replaces them; the first byte is non-zero so the array stays
+// in flash (.rodata) rather than being treated as zero-filled data.
+alignas(16) static uint8_t modelArena[MODEL_ARENA_BYTES];
+static const uint8_t modelWeights[MODEL_WEIGHTS_BYTES] = {1};
+#endif
 
 #if defined(PIN_I2C_SDA) && defined(PIN_I2C_SCL)
 static_assert(PIN_I2C_SDA >= 0 && PIN_I2C_SDA < SOC_GPIO_PIN_COUNT, "PIN_I2C_SDA is not a GPIO on this chip");
@@ -453,6 +465,10 @@ void loop() {
 void setup() {
 	Serial.begin(115200);
 	Serial.printf("bringup rev %d\n", BRINGUP_REVISION);
+#if defined(MODEL_PRESENT) && MODEL_PRESENT
+	// Taking the addresses keeps both arrays in the image (the linker drops unreferenced sections).
+	Serial.printf("MODEL arena %u B at %p, weights %u B at %p, %d Hz x %d ms\n", (unsigned)sizeof modelArena, (void *)modelArena, (unsigned)sizeof modelWeights, (const void *)modelWeights, MODEL_SAMPLE_RATE_HZ, MODEL_WINDOW_MS);
+#endif
 #ifdef HAS_I2C
 	Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 #endif

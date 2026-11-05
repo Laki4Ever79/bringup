@@ -7,6 +7,7 @@ import { join, resolve } from "node:path"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { buildFirmware } from "../src/tools/firmware.ts"
 import { fixtureContract } from "./fixture.ts"
+import { WAKE_WORD_MODEL } from "../src/inference/scripts.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const pio = [join(root, ".venv/bin/pio")].find(existsSync)
@@ -138,4 +139,29 @@ test("a design with no sensor compiles the no-sensor product path: no reading, n
 	} finally {
 		await rm(dir, { recursive: true, force: true })
 	}
+})
+
+// model.h sizes a tensor arena in RAM and a weights placeholder in flash, so the build's own figures include the model.
+// Measured 5 Nov 2026 on the wake-word design: RAM +23,552 B (the arena exactly), flash +54,396 B (54,272 B of weights
+// and the boot line).
+test("the model's arena and weights are counted in the firmware's own RAM and flash", { skip, timeout: 900_000 }, async () => {
+	const used = (log: string, what: "RAM" | "Flash") => Number(new RegExp(`${what}:.*used (\\d+) bytes`).exec(log)?.[1])
+	const sizes = async (withModel: boolean) => {
+		const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+		try {
+			const c = fixtureContract()
+			if (withModel) c.values.model = { ...WAKE_WORD_MODEL }
+			const firmware = await buildFirmware(pio!, root, dir, c, 6)
+			assert.equal(firmware.ok, true, firmware.log)
+			assert.match(readFileSync(join(dir, "include/model.h"), "utf8"), withModel ? /MODEL_ARENA_BYTES 23552/ : /MODEL_PRESENT 0/)
+			return { ram: used(firmware.log, "RAM"), flash: used(firmware.log, "Flash") }
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	}
+	const [without, withModel] = [await sizes(false), await sizes(true)]
+	assert.ok(Number.isFinite(without.ram) && Number.isFinite(withModel.flash), JSON.stringify({ without, withModel }))
+	assert.equal(withModel.ram - without.ram, 23 * 1024, "RAM grows by the arena")
+	const flash = withModel.flash - without.flash
+	assert.ok(flash >= 53 * 1024 && flash < 53 * 1024 + 1024, `flash grows by the weights (+${flash} B)`)
 })

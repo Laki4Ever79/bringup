@@ -32,13 +32,14 @@ export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
 	firmware: ["parts", "pins"],
 }
 
-// Every field that shapes each artifact; a change to one rebuilds it. behavior is optional (behavior.h has defaults).
+// Every field that shapes each artifact; a change to one rebuilds it. behavior and model are optional (behavior.h has defaults; model.h says MODEL_PRESENT 0).
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	board: ["parts", "pins", "outline", "connectors"],
 	// parts: the lid's vent sits over the sensor, wherever the board generator places it.
 	enclosure: ["outline", "connectors", "parts"],
 	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
-	firmware: ["parts", "pins", "behavior", "requirements"],
+	// model: model.h sizes the tensor arena and the weights the firmware reserves.
+	firmware: ["parts", "pins", "behavior", "requirements", "model"],
 }
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with

@@ -68,6 +68,13 @@ test("behavior.h has defaults without a behavior field, and the contract's value
 	assert.match(behaviorHeader(s), /^#define BEHAVIOR_TILT_DEG 20$/m)
 })
 
+test("a model change rebuilds the firmware: model is one of its build inputs", async () => {
+	const { BUILD_INPUTS } = await import("../src/agents/builders.ts")
+	const { BUILDS } = await import("../src/dashboard/lanes.js")
+	assert.ok(BUILD_INPUTS.firmware.includes("model"))
+	assert.ok(BUILDS.firmware.inputs.includes("model"), "the dashboard's firmware lane wakes on it too")
+})
+
 test("a behavior change rebuilds the firmware, and the stub writes pins.h and behavior.h for the bench", async () => {
 	const { BringupState, emit, join, startRuntime } = await import("../src/runtime.ts")
 	const { createStubBuilders } = await import("../src/tools/stubs.ts")
@@ -96,5 +103,6 @@ test("a behavior change rebuilds the firmware, and the stub writes pins.h and be
 	const dir = path(state.outDir, "firmware", "rev-3")
 	assert.match(readFileSync(path(dir, "include/behavior.h"), "utf8"), /BEHAVIOR_TILT_BLINK_MS 100/)
 	assert.match(readFileSync(path(dir, "include/pins.h"), "utf8"), /BRINGUP_REVISION 3/)
+	assert.match(readFileSync(path(dir, "include/model.h"), "utf8"), /MODEL_PRESENT 0/, "the stub writes model.h too")
 	assert.ok(existsSync(path(dir, "STUB.md")))
 })

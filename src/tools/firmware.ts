@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { cp, mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { behaviorHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
+import { behaviorHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import type { FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
@@ -29,13 +29,14 @@ function run(cmd: string, args: string[]): Promise<{ code: number | null; output
 	})
 }
 
-// Copies templates/fw into dir, writes include/pins.h and include/behavior.h and compiles it. A failed build returns ok: false.
+// Copies templates/fw into dir, writes include/pins.h, include/behavior.h and include/model.h and compiles it. A failed build returns ok: false.
 export async function buildFirmware(pio: string, root: string, dir: string, s: ContractSnapshot, revision: number): Promise<FirmwareArtifact> {
 	const header = pinsHeader(s)
 	await cp(join(root, "templates/fw"), dir, { recursive: true })
 	await mkdir(join(dir, "include"), { recursive: true })
 	await writeFile(join(dir, "include/pins.h"), header)
 	await writeFile(join(dir, "include/behavior.h"), behaviorHeader(s))
+	await writeFile(join(dir, "include/model.h"), modelHeader(s))
 	const { code, output } = await run(pio, ["run", "-d", dir])
 	return {
 		revision,
