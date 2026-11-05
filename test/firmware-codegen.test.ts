@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { parsePinsHeader, pinsHeader } from "../src/codegen/firmware.ts"
+import { modelHeader, parsePinsHeader, pinsHeader } from "../src/codegen/firmware.ts"
+import { WAKE_WORD_MODEL } from "../src/inference/scripts.ts"
 import { fixtureContract } from "./fixture.ts"
 
 test("pins header defines one PIN_ per assignment and the revision", () => {
@@ -56,4 +57,14 @@ test("every firmware env pins the ESP32 platform version", async () => {
 	const platforms = [...ini.matchAll(/^platform\s*=\s*(.+)$/gm)].map((m) => m[1].trim())
 	assert.equal(platforms.length, 2, "esp32c3 and esp32s3_bench")
 	for (const p of platforms) assert.equal(p, "espressif32@8.0.0")
+})
+
+test("model.h: MODEL_PRESENT 0 without a model, the contract's sizes and rates with one", () => {
+	const s = fixtureContract()
+	assert.match(modelHeader(s), /^#define MODEL_PRESENT 0$/m)
+	assert.doesNotMatch(modelHeader(s), /MODEL_ARENA_BYTES/)
+	s.values.model = { ...WAKE_WORD_MODEL }
+	const h = modelHeader(s)
+	for (const line of ["MODEL_PRESENT 1", "MODEL_SENSOR_MICROPHONE 1", "MODEL_SAMPLE_RATE_HZ 16000", "MODEL_WINDOW_MS 1000", "MODEL_CHANNELS 1", "MODEL_WINDOW_SAMPLES 16000", "MODEL_ARENA_BYTES 23552", "MODEL_WEIGHTS_BYTES 54272", "MODEL_INT8 1", "MODEL_LISTEN_ALWAYS 1"])
+		assert.match(h, new RegExp(`^#define ${line}$`, "m"))
 })

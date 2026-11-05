@@ -22,7 +22,7 @@ export const BUILDS = {
 	board: { inputs: ["parts", "pins", "outline", "connectors"], requires: ["outline", "parts", "pins"] },
 	// parts: the lid's vent sits over the sensor.
 	enclosure: { inputs: ["outline", "connectors", "parts"], requires: ["outline", "connectors"] },
-	firmware: { inputs: ["parts", "pins", "behavior", "requirements"], requires: ["parts", "pins"] },
+	firmware: { inputs: ["parts", "pins", "behavior", "requirements", "model"], requires: ["parts", "pins"] },
 }
 
 // agent.activity phase → lane status

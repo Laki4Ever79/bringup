@@ -3,7 +3,7 @@ import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
 import { BUILD_INPUTS, BUILD_REQUIRES, createBuilder, type BuildLock } from "../agents/builders.ts"
 import { micPorts, mountingHoles, placedByRole } from "../codegen/circuit.ts"
-import { behaviorHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
+import { behaviorHeader, modelHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { PORT_MM, STANDOFF } from "./enclosure.ts"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
@@ -64,6 +64,7 @@ export function stubFirmware(s: ContractSnapshot, revision: number, dir: string)
 	const header = pinsHeader(s)
 	writeFileSync(join(dir, "include/pins.h"), header)
 	writeFileSync(join(dir, "include/behavior.h"), behaviorHeader(s))
+	writeFileSync(join(dir, "include/model.h"), modelHeader(s))
 	const pins = Object.fromEntries((s.values.pins ?? []).map((p) => [p.signal, p.gpio]))
 	return { revision, ok: true, pins, sensor: parseSensorHeader(header), log: "stubbed (--no-hardware): not compiled", stub: true }
 }
