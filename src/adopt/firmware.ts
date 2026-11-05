@@ -1,9 +1,9 @@
 // Finds the pin assignments a firmware tree makes, without compiling it: platformio.ini build flags (one variant per
 // [env:...], extends resolved) and C/C++ defines and constants whose names say they are pins.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
-import { dirname, join, relative } from "node:path"
+import { basename, dirname, join, relative } from "node:path"
 import { CondTracker, familyOfPlatform, type Cond, type Family } from "./preproc.ts"
-import { ANALOG_BASE, parsePortPin, portPin } from "./pins.ts"
+import { ANALOG_BASE, nrfPin, parsePortPin, portPin } from "./pins.ts"
 
 export interface FirmwarePin {
 	name: string
@@ -25,6 +25,14 @@ export interface FirmwarePin {
 	proven?: boolean
 	// The value as written, when the check resolved it to another pin (Arduino 13 → PB5 on an Uno).
 	as?: string
+	// Devicetree: the peripheral a pinctrl line belongs to (uart0), whether it is only an assignment (pinctrl), whether
+	// that peripheral is the console (zephyr,console), and whether its node is disabled.
+	peripheral?: string
+	assigned?: boolean
+	console?: boolean
+	disabled?: boolean
+	// Devicetree: the pin the peripheral's sleep state puts this line on, when it differs from the default state's.
+	sleepPin?: number
 }
 
 export interface FirmwareVariant {
@@ -194,7 +202,10 @@ export function platformioVariants(text: string, file: string, sourceByDir: Map<
 		// The env's source tree: its pins first, so a -D of the same name (which an #ifndef default yields to) wins.
 		const dirs = envSourceDirs(text, file, s.name)
 		const fromSource: FirmwarePin[] = []
-		for (const [dir, pins] of sourceByDir) if (dirs.some((d) => dir === d || dir.startsWith(`${d}/`))) fromSource.push(...pins.filter((p) => !last.has(p.name)))
+		for (const [key, pins] of sourceByDir) {
+			const dir = key.split(":")[0]
+			if (dirs.some((d) => dir === d || dir.startsWith(`${d}/`))) fromSource.push(...pins.filter((p) => !last.has(p.name)))
+		}
 		const family = familyOfPlatform(resolveKey(byName, s, "platform"))
 		if (last.size || fromSource.length) variants.push({ id: s.name, pins: [...fromSource, ...last.values()], defines: all, family })
 	}
@@ -265,6 +276,80 @@ export function cmakeBuild(text: string, file: string): { pins: FirmwarePin[]; d
 	return { pins, defines, family }
 }
 
+// Zephyr devicetree (.dts, .dtsi, .overlay): pinctrl's NRF_PSEL(UART_TX, 1, 4), named after the group's peripheral
+// instance (uart20_default → UART20_TX; sleep groups repeat default ones and are dropped), and <name>-gpios =
+// <&gpio0 15 flags>, named after the property and its node (led-gpios in a board's node → LED; gpios under led0 →
+// LED0; a list → ROW0, ROW1). Devicetree is build configuration: its pins are build pins, never "unused".
+export function dtsPins(text: string, file: string): FirmwarePin[] {
+	const out: FirmwarePin[] = []
+	const seen = new Set<string>()
+	const stack: string[] = []
+	const sleep = new Map<string, number>()
+	const add = (name: string, port: number, pin: number, line: number) => {
+		const key = `${name}@${port}.${pin}`
+		if (seen.has(key) || pin > 31 || port > 3) return
+		seen.add(key)
+		out.push({ name: name.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, ""), gpio: nrfPin(port, pin), file, line, proven: true, fromBuild: true })
+	}
+	const clean = text.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " ")).replace(/\/\/.*$/gm, "")
+	clean.split("\n").forEach((line, i) => {
+		// Node openings and closings, so each property knows the nodes it is in.
+		for (const m of line.matchAll(/(?:([\w,.-]+)\s*:\s*)?(&?[\w,.@-]+)\s*\{|\}/g)) {
+			if (m[0] === "}") stack.pop()
+			else stack.push((m[1] ?? m[2]).replace(/^&/, "").replace(/@.*$/, ""))
+		}
+		const node = stack[stack.length - 1] ?? ""
+		const sleepGroup = stack.find((n) => /_sleep$/.test(n))
+		if (sleepGroup) {
+			// Kept aside: the sleep state should put each line where the default state does.
+			for (const m of line.matchAll(/NRF_PSEL\s*\(\s*(\w+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/g))
+				sleep.set(`${sleepGroup.replace(/_sleep$/, "")}_${m[1].replace(/^[A-Z0-9]+?_(?=[A-Z])/, "")}`.toUpperCase(), nrfPin(Number(m[2]), Number(m[3])))
+			return
+		}
+		for (const m of line.matchAll(/NRF_PSEL\s*\(\s*(\w+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/g)) {
+			const group = stack.find((n) => /_default$/.test(n))?.replace(/_default$/, "") ?? ""
+			// UART_TX in uart20_default → UART20_TX; TWIM_SDA in i2c0_default → I2C0_SDA.
+			const fn = m[1].replace(/^[A-Z0-9]+?_(?=[A-Z])/, "")
+			add(group ? `${group}_${fn}` : m[1], Number(m[2]), Number(m[3]), i + 1)
+			const last = out[out.length - 1]
+			if (last && last.line === i + 1) Object.assign(last, { assigned: true, ...(group ? { peripheral: group } : {}) })
+		}
+		const g = /^\s*([\w,-]*?)-?gpios\s*=\s*(.*)$/.exec(line)
+		if (g) {
+			const refs = [...g[2].matchAll(/<\s*&gpio(\d)\s+(\d+)[^>]*>/g)]
+			const prop = g[1].replace(/^.*,/, "")
+			const base = prop ? (stack.length > 1 && !/^(zephyr_user|soc|root|\/)$/.test(node) && !prop.includes(node) ? `${node}_${prop}` : prop) : node
+			refs.forEach((r, k) => add(refs.length > 1 ? `${base}${k}` : base, Number(r[1]), Number(r[2]), i + 1))
+		}
+	})
+	for (const p of out) {
+		const asleep = sleep.get(p.name)
+		if (asleep !== undefined && asleep !== p.gpio) p.sleepPin = asleep
+	}
+	return out
+}
+
+// Across a build's devicetree files: which peripherals are disabled (&uart0 { status = "disabled"; }) and which one
+// is the console (chosen { zephyr,console = &uart0; }).
+export function dtsFacts(texts: string[]): { disabled: Set<string>; console: string | null; flowControl: Set<string> } {
+	const disabled = new Set<string>()
+	// UARTs with hw-flow-control: on the others RTS and CTS are assigned but unused.
+	const flowControl = new Set<string>()
+	let console: string | null = null
+	for (const t of texts) {
+		const clean = t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")
+		// A node's own properties come before its first child node, so its status is in that first part.
+		for (const m of clean.matchAll(/&(\w+)\s*\{([^{}]*)/g)) {
+			const st = /status\s*=\s*"(\w+)"/.exec(m[2])?.[1]
+			if (st === "disabled") disabled.add(m[1])
+			else if (st === "okay") disabled.delete(m[1])
+			if (/\bhw-flow-control\b/.test(m[2])) flowControl.add(m[1])
+		}
+		console = /zephyr,console\s*=\s*&(\w+)/.exec(clean)?.[1] ?? console
+	}
+	return { disabled, console, flowControl }
+}
+
 // An STM32CubeMX project (.ioc): every configured pin with its user label, or else its peripheral signal
 // (PA5.Signal=SPI1_SCK). It is the chip's pin configuration, so its pins are build pins and never "unused".
 export function iocPins(text: string, file: string): FirmwarePin[] {
@@ -288,7 +373,7 @@ export function iocPins(text: string, file: string): FirmwarePin[] {
 
 // Directories that hold other people's code: SDKs, vendored libraries, build output.
 const SKIP_DIR = /^(\.git|\.pio|node_modules|lib|libs|third[_-]?party|vendor|external|managed_components|build|dist|.*sdk.*|Pico-PIO-USB|tinyusb|freertos.*|esp-idf|arduino-esp32|\.venv|electronics|pcb|hardware|case|enclosure|3d|cad|docs?)$/i
-const SOURCE = /\.(h|hpp|hh|c|cc|cpp|ino|ioc)$/
+const SOURCE = /\.(h|hpp|hh|c|cc|cpp|ino|ioc|dts|dtsi|overlay)$/
 
 function walk(dir: string, root: string, files: string[]): void {
 	for (const name of readdirSync(dir)) {
@@ -312,14 +397,42 @@ export function firmwareVariants(repo: string): FirmwareVariant[] {
 	// Source pins grouped by directory. A PlatformIO env takes the directories it compiles; directories no env claims
 	// become variants of their own, since a repo often holds several programs, each for its own board.
 	const byDir = new Map<string, FirmwarePin[]>()
+	const overlays = new Map<string, FirmwarePin[]>()
+	const dtsTexts = new Map<string, string>()
 	const inis = files.filter((x) => x.endsWith("platformio.ini"))
 	for (const f of files) {
 		if (f.endsWith("platformio.ini")) continue
 		const text = readFileSync(join(repo, f), "utf8")
-		const pins = f.endsWith(".ioc") ? iocPins(text, f) : sourcePins(text, f)
+		const pins = f.endsWith(".ioc") ? iocPins(text, f) : /\.(dts|dtsi|overlay)$/.test(f) ? dtsPins(text, f) : sourcePins(text, f)
+		if (/\.(dts|dtsi|overlay)$/.test(f)) dtsTexts.set(f, text)
 		if (!pins.length) continue
+		// Each overlay is a build of its own (Zephyr board revisions: beelight_nrf54l15_cpuapp_1.overlay), on top of
+		// its directory's board files; it is merged with them below.
+		if (f.endsWith(".overlay")) {
+			overlays.set(f, pins)
+			continue
+		}
 		const dir = dirname(f)
 		byDir.set(dir, [...(byDir.get(dir) ?? []), ...pins])
+	}
+	for (const [f, pins] of overlays) {
+		const dir = dirname(f)
+		const base = (byDir.get(dir) ?? []).filter((p) => /\.(dts|dtsi)$/.test(p.file) && !pins.some((o) => o.name === p.name))
+		byDir.set(`${dir}:${basename(f)}`, [...base, ...pins])
+	}
+	// A board directory with overlays builds once per overlay; its bare board files are no build of their own.
+	for (const dir of new Set([...overlays.keys()].map((f) => dirname(f)))) if ([...(byDir.get(dir) ?? [])].every((p) => /\.(dts|dtsi)$/.test(p.file))) byDir.delete(dir)
+	// Disabled peripherals' pins are unused; the console's unwired pins stay a finding (logs that go nowhere).
+	for (const [key, pins] of byDir) {
+		const dir = key.split(":")[0]
+		const texts = [...dtsTexts].filter(([f]) => dirname(f) === dir && (!f.endsWith(".overlay") || key.endsWith(`:${basename(f)}`))).map(([, t]) => t)
+		if (!texts.length) continue
+		const facts = dtsFacts(texts)
+		for (const p of pins) {
+			if (p.peripheral && facts.disabled.has(p.peripheral)) p.disabled = true
+			if (p.peripheral && /^u?art/i.test(p.peripheral) && /_(RTS|CTS)$/.test(p.name) && !facts.flowControl.has(p.peripheral)) p.disabled = true
+			if (p.peripheral && p.peripheral === facts.console) p.console = true
+		}
 	}
 	const claimed = new Set<string>()
 	for (const f of inis) {
@@ -327,7 +440,10 @@ export function firmwareVariants(repo: string): FirmwareVariant[] {
 		for (const v of platformioVariants(text, f, byDir)) {
 			variants.push({ ...v, id: inis.length > 1 ? `${f}:${v.id}` : v.id })
 			const dirs = envSourceDirs(text, f, v.id)
-			for (const dir of byDir.keys()) if (dirs.some((d) => dir === d || dir.startsWith(`${d}/`))) claimed.add(dir)
+			for (const key of byDir.keys()) {
+				const dir = key.split(":")[0]
+				if (dirs.some((d) => dir === d || dir.startsWith(`${d}/`))) claimed.add(key)
+			}
 		}
 	}
 	for (const dir of claimed) byDir.delete(dir)
@@ -357,7 +473,7 @@ export function firmwareVariants(repo: string): FirmwareVariant[] {
 	const uses = new Map<string, Cond[][]>()
 	const values = new Map<string, Set<string>>()
 	for (const f of files) {
-		if (f.endsWith("platformio.ini") || f.endsWith(".ioc")) continue
+		if (f.endsWith("platformio.ini") || /\.(ioc|dts|dtsi|overlay)$/.test(f)) continue
 		const lines = readFileSync(join(repo, f), "utf8").split("\n")
 		const t = new CondTracker()
 		lines.forEach((line, i) => {

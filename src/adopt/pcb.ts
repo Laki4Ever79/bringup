@@ -145,13 +145,65 @@ export function nameLegacyPads(b: Board, schTexts: string[], cacheLib: string): 
 	return named
 }
 
-// A board file as adopt reads it: parsed, and on KiCad 5 named from the project's schematic and symbol cache.
+// KiCad 6+ boards whose pads lost their pin names (often converted from KiCad 5): each .kicad_sch embeds every symbol
+// it uses (lib_symbols, with each pin's name and number) and places them by lib_id with a Reference. Joins the two
+// and fills in each unnamed pad's fn. Returns how many pads it named.
+export function nameFromSchematics(b: Board, schTexts: string[]): number {
+	const pinsOf = new Map<string, Map<string, string>>()
+	const libOf = new Map<string, string>()
+	const collect = (e: Sexp[], into: Map<string, string>) => {
+		for (const c of e) {
+			if (!Array.isArray(c)) continue
+			if (head(c) === "pin") {
+				const name = child(c, "name")?.[1]
+				const number = child(c, "number")?.[1]
+				if (typeof name === "string" && typeof number === "string" && name !== "~") into.set(number, name)
+			} else if (head(c) === "symbol") collect(c, into)
+		}
+	}
+	for (const text of schTexts) {
+		const sch = (parse(text).find((e) => head(e) === "kicad_sch") as Sexp[] | undefined) ?? []
+		for (const sym of child(sch, "lib_symbols") ?? []) {
+			if (head(sym) !== "symbol" || typeof (sym as Sexp[])[1] !== "string") continue
+			const pins = new Map<string, string>()
+			collect(sym as Sexp[], pins)
+			pinsOf.set((sym as Sexp[])[1] as string, pins)
+		}
+		for (const e of sch) {
+			if (head(e) !== "symbol") continue
+			const lib = child(e as Sexp[], "lib_id")?.[1]
+			const ref = (e as Sexp[]).find((c) => Array.isArray(c) && c[0] === "property" && c[1] === "Reference") as Sexp[] | undefined
+			if (typeof lib === "string" && typeof ref?.[2] === "string") libOf.set(ref[2], lib)
+		}
+	}
+	let named = 0
+	for (const f of b.footprints) {
+		const pins = pinsOf.get(libOf.get(f.ref) ?? "")
+		if (!pins) continue
+		for (const p of f.pads)
+			if (!p.fn && pins.has(p.number)) {
+				p.fn = pins.get(p.number)!
+				named++
+			}
+	}
+	return named
+}
+
+// A board file as adopt reads it: parsed, and its unnamed pads named from the project's schematics (KiCad 5: the
+// schematic and symbol cache; KiCad 6+: the symbols each .kicad_sch embeds).
 export function loadBoardFile(file: string): Board {
 	const b = readBoard(readFileSync(file, "utf8"))
-	const cache = join(dirname(file), `${basename(file, ".kicad_pcb")}-cache.lib`)
+	const dir = dirname(file)
+	const cache = join(dir, `${basename(file, ".kicad_pcb")}-cache.lib`)
 	if (b.version < 20200000 && existsSync(cache)) {
-		const schs = readdirSync(dirname(file)).filter((n) => n.endsWith(".sch")).map((n) => readFileSync(join(dirname(file), n), "utf8"))
+		const schs = readdirSync(dir).filter((n) => n.endsWith(".sch")).map((n) => readFileSync(join(dir, n), "utf8"))
 		nameLegacyPads(b, schs, readFileSync(cache, "utf8"))
+	}
+	// Only when a part with many pads has none named: reading schematics costs time on big projects.
+	const unnamed = b.footprints.some((f) => f.pads.length >= 8 && f.pads.every((p) => !p.fn))
+	if (b.version >= 20200000 && unnamed) {
+		const schs = readdirSync(dir).filter((n) => n.endsWith(".kicad_sch")).map((n) => readFileSync(join(dir, n), "utf8"))
+		if (schs.length) nameFromSchematics(b, schs)
 	}
 	return b
 }

@@ -4,12 +4,12 @@ import { spawnSync } from "node:child_process"
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { adopt } from "../src/adopt/cli.ts"
-import { cmakeBuild, envSourceDirs, firmwareVariants, iocPins, platformioVariants, sourcePins } from "../src/adopt/firmware.ts"
+import { cmakeBuild, dtsPins, envSourceDirs, firmwareVariants, iocPins, platformioVariants, sourcePins } from "../src/adopt/firmware.ts"
 import { checkVariant, chipPin, findMcus, gpioOfPad, namesAgree, padGpio } from "../src/adopt/match.ts"
 import { ANALOG_BASE, pinLabel } from "../src/adopt/pins.ts"
 import { checkAgainst, signalName, writeContracts } from "../src/adopt/contract.ts"
 import { boardFits, stlBox } from "../src/adopt/mech.ts"
-import { nameLegacyPads, readBoard } from "../src/adopt/pcb.ts"
+import { nameFromSchematics, nameLegacyPads, readBoard } from "../src/adopt/pcb.ts"
 import { active, CondTracker, evaluate } from "../src/adopt/preproc.ts"
 import { ROOT } from "../src/run.ts"
 import { tempDir } from "./helpers.ts"
@@ -377,4 +377,106 @@ const int LED_PIN = 52;
 		["LED_PIN", "13", "PB5", "agrees"],
 		["NTC_PIN", "A0", "PC0", "agrees"],
 	])
+})
+
+test("nRF: P0.13/P1.04 pads, and devicetree pins (pinctrl by peripheral, <name>-gpios by node, sleep state compared)", () => {
+	assert.equal(pinLabel(padGpio("P1.04", "")!), "P1.04")
+	assert.equal(pinLabel(padGpio("P0.18/~{RESET}", "")!), "P0.18")
+	assert.equal(pinLabel(padGpio("", "unconnected-(U1-P0_13-Pad5)")!), "P0.13")
+	const dts = `&pinctrl {
+	uart1_default: uart1_default {
+		group1 {
+			psels = <NRF_PSEL(UART_TX, 0, 17)>,
+				<NRF_PSEL(UART_RTS, 0, 20)>;
+		};
+	};
+	uart1_sleep: uart1_sleep {
+		group1 {
+			psels = <NRF_PSEL(UART_TX, 0, 17)>,
+				<NRF_PSEL(UART_RTS, 0, 21)>;
+		};
+	};
+};
+/ {
+	leds {
+		led0: led_0 {
+			gpios = <&gpio0 13 GPIO_ACTIVE_LOW>;
+		};
+	};
+	zephyr,user {
+		chg-gpios = <&gpio1 4 0>;
+	};
+};
+&kscan {
+	row-gpios = <&gpio0 2 0>, <&gpio0 3 0>;
+};`
+	const pins = dtsPins(dts, "board.dts")
+	assert.deepEqual(pins.map((p) => [p.name, pinLabel(p.gpio)]), [["UART1_TX", "P0.17"], ["UART1_RTS", "P0.20"], ["LED0", "P0.13"], ["CHG", "P1.04"], ["ROW0", "P0.02"], ["ROW1", "P0.03"]])
+	assert.equal(pins[1].sleepPin !== undefined && pinLabel(pins[1].sleepPin), "P0.21")
+	assert.equal(pins[0].sleepPin, undefined)
+	assert.ok(pins.every((p) => p.fromBuild))
+})
+
+test("devicetree builds: one per revision overlay on its board files; disabled nodes and flow-control-less RTS/CTS are unused", () => {
+	const repo = tempDir()
+	const dir = join(repo, "boards", "acme", "b1")
+	mkdirSync(dir, { recursive: true })
+	writeFileSync(
+		join(dir, "b1.dts"),
+		`&pinctrl {
+	uart0_default: uart0_default {
+		group1 {
+			psels = <NRF_PSEL(UART_TX, 0, 5)>,
+				<NRF_PSEL(UART_CTS, 0, 4)>;
+		};
+	};
+	spi2_default: spi2_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 9)>;
+		};
+	};
+};
+&uart0 {
+	status = "okay";
+};
+&spi2 {
+	status = "disabled";
+};
+`,
+	)
+	const overlay = (pin: number) => `/ {
+	leds {
+		led0: led_0 {
+			gpios = <&gpio0 ${pin} 0>;
+		};
+	};
+};
+`
+	writeFileSync(join(dir, "b1_0.overlay"), overlay(13))
+	writeFileSync(join(dir, "b1_1.overlay"), overlay(14))
+	const vs = firmwareVariants(repo).filter((v) => v.id.startsWith("src:boards/acme/b1"))
+	assert.deepEqual(vs.map((v) => v.id).sort(), ["src:boards/acme/b1:b1_0.overlay", "src:boards/acme/b1:b1_1.overlay"])
+	const v1 = vs.find((v) => v.id.endsWith("b1_1.overlay"))!
+	const by = Object.fromEntries(v1.pins.map((p) => [p.name, p]))
+	assert.equal(pinLabel(by.LED0.gpio), "P0.14")
+	assert.equal(by.UART0_TX.disabled, undefined)
+	assert.equal(by.UART0_CTS.disabled, true)
+	assert.equal(by.SPI2_SCK.disabled, true)
+})
+
+test("KiCad 6+ pads without pin names get them from the project's .kicad_sch embedded symbols", () => {
+	const b = readBoard(`(kicad_pcb (version 20221018) ${fp("U1", "nRF52840", 0, 0, [pad("AC11", "/BTN", ""), pad("K2", "/TX", "")])})`)
+	const sch = `(kicad_sch (version 20230121)
+ (lib_symbols (symbol "MCU_Nordic:nRF52840" (symbol "nRF52840_1_1"
+   (pin bidirectional line (at 0 0 0) (length 2.54) (name "P0.16" (effects)) (number "AC11" (effects)))
+   (pin bidirectional line (at 0 0 0) (length 2.54) (name "P0.05/AIN3" (effects)) (number "K2" (effects))))))
+ (symbol (lib_id "MCU_Nordic:nRF52840") (at 0 0 0) (unit 1) (property "Reference" "U1" (at 0 0 0))))`
+	assert.equal(nameFromSchematics(b, [sch]), 2)
+	assert.deepEqual(b.footprints[0].pads.map((p) => pinLabel(padGpio(p.fn, p.net)!)), ["P0.16", "P0.05"])
+})
+
+test("one pin, two jobs: two names on the same pin of one MCU in one build are flagged on both", () => {
+	const b = readBoard(BOARD)
+	const checks = checkVariant(b, findMcus(b), { id: "x", pins: [pin("PIN_LCD_DC", 1), pin("PIN_BACKLIGHT", 1)] })
+	assert.deepEqual(checks.map((c) => c.sharedWith), ["PIN_BACKLIGHT", "PIN_LCD_DC"])
 })
