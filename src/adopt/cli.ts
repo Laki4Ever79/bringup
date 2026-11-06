@@ -9,6 +9,7 @@ import { checkAgainst, writeContracts, type CheckResult } from "./contract.ts"
 import { checkModel, checkModelOnBoard, describeModel, findModels, firmwareFacts, walkRepo, type MlFinding, type ModelFacts } from "./ml.ts"
 import { avrOf, devBoardPins } from "./match.ts"
 import { boardFits, stlBox } from "./mech.ts"
+import { impactMarkdown, impactText } from "./impact.ts"
 import { loadBoardFile } from "./pcb.ts"
 
 export function find(dir: string, test: (name: string) => boolean, out: string[] = []): string[] {
@@ -151,12 +152,14 @@ export function renderCheck(results: CheckResult[]): string {
 	return out.join("\n")
 }
 
-// A pull request's job summary: the verdict against the agreed contract first (what gates the PR), then the design
-// changes it makes, then every board's pin report folded away. Markdown, so it reads the same in GitHub and a file.
+// A pull request's job summary: what the change means for each domain first (what a reviewer reads), then the verdict
+// against the agreed contract (what gates the PR), the design changes it makes, and every board's pin report folded
+// away. Markdown, so it reads the same in GitHub and a file.
 export function markdown(r: ReturnType<typeof adopt>, results: CheckResult[] | null, contractDir: string): string {
 	const out: string[] = []
 	const failing = results?.filter((x) => x.violations.length || x.missing) ?? []
 	out.push(`## Bringup adopt: ${r.repo}`, "")
+	if (results) out.push(impactMarkdown(results, r, contractDir))
 	if (!results) {
 		out.push(`No agreed contract in \`${contractDir}\` yet, so nothing gates this change. To agree on the design as it is now, run`, "", "```", `npx tsx src/adopt/cli.ts . --contract ${contractDir}`, "```", "", "and commit the folder. From then on, a change that breaks it fails this check.", "")
 	} else {
@@ -185,9 +188,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	const contractDir = opt("--contract")
 	const checkDir = opt("--check")
 	const md = opt("--markdown")
+	const impactMd = opt("--impact")
 	const repo = args[0]
 	if (!repo) {
-		console.error("usage: adopt <repo> [--variant <env or id>] [--json out.json] [--markdown summary.md] [--contract <dir> | --check <dir>]")
+		console.error("usage: adopt <repo> [--variant <env or id>] [--json out.json] [--markdown summary.md] [--contract <dir> | --check <dir> [--impact impact.md]]")
 		process.exit(2)
 	}
 	if (checkDir) {
@@ -195,8 +199,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 		// agreed yet there is nothing to break: report, say how to agree, exit 0.
 		const agreed = existsSync(join(checkDir, "index.json"))
 		const results = agreed ? checkAgainst(repo, checkDir) : null
+		// The full report too: the impact needs each board's case fit.
+		const r = adopt(repo, { variant })
+		if (results) console.log(`${impactText(results, r)}\n`)
 		console.log(results ? renderCheck(results) : `no agreed contract in ${checkDir}: run --contract ${checkDir} and commit it`)
-		if (md) appendFileSync(md, markdown(adopt(repo, { variant }), results, checkDir))
+		if (md) appendFileSync(md, markdown(r, results, checkDir))
+		// The pull-request comment's body (adopt/check.sh posts it): the impact alone, behind a marker so one comment is updated.
+		if (impactMd) writeFileSync(impactMd, `<!-- bringup-impact -->\n## Bringup: change impact\n\n${impactMarkdown(results, r, checkDir)}\nThe full report is in this check's job summary.\n`)
 		process.exit(results?.some((r) => r.violations.length > 0 || r.missing) ? 1 : 0)
 	}
 	const r = adopt(repo, { variant })

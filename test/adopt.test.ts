@@ -3,13 +3,15 @@ import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { adopt } from "../src/adopt/cli.ts"
+import { adopt, markdown } from "../src/adopt/cli.ts"
 import { cmakeBuild, dtsPins, envSourceDirs, firmwareVariants, iocPins, platformioVariants, sourcePins } from "../src/adopt/firmware.ts"
 import { checkVariant, chipPin, findMcus, gpioOfPad, namesAgree, padGpio } from "../src/adopt/match.ts"
 import { ANALOG_BASE, pinLabel } from "../src/adopt/pins.ts"
 import { checkAgainst, signalName, writeContracts } from "../src/adopt/contract.ts"
 import { checkModel, checkModelOnBoard, chipMemory, collectMacros, evalC, findModels, firmwareFacts } from "../src/adopt/ml.ts"
 import { boardFits, stlBox } from "../src/adopt/mech.ts"
+import { impactMarkdown, impactOf, impactText, READERS, type ChangeImpact, type Domain } from "../src/adopt/impact.ts"
+import { BUILD_INPUTS } from "../src/agents/builders.ts"
 import { nameFromSchematics, nameLegacyPads, readBoard } from "../src/adopt/pcb.ts"
 import { active, CondTracker, evaluate } from "../src/adopt/preproc.ts"
 import { ROOT } from "../src/run.ts"
@@ -348,6 +350,109 @@ test("the CI check (adopt/check.sh, as the Action runs it): passes with no contr
 	const broken = ci()
 	assert.equal(broken.code, 1)
 	assert.match(broken.md, /✗ \*\*pin-mismatch\*\*: firmware drives LCD_DC on GPIO2, contract says GPIO1/)
+})
+
+// A board with a display header (J1), a sensor (U2) and a USB-C port on the bottom edge (J2), its firmware pins in
+// src/main.cpp, and a case STL 52 × 31.2 mm: the board (50 × 30) fits with 1.2 mm to spare.
+const impactBoard = (o: { dc?: "IO1" | "IO3"; usbX?: number; sensor?: string } = {}) => `(kicad_pcb (version 20221018) (generator pcbnew)
+ (gr_rect (start 0 0) (end 50 30) (layer "Edge.Cuts"))
+ ${fp("U1", "ESP32-C3-MINI-1", 20, 15, [
+		pad("1", o.dc === "IO3" ? "unconnected-(U1-IO1-Pad1)" : "/LCD_DC", "IO1"),
+		pad("2", "/LCD_RST", "IO2"),
+		pad("3", o.dc === "IO3" ? "/LCD_DC" : "unconnected-(U1-IO3-Pad3)", "IO3"),
+		pad("4", "/SDA", "IO4"),
+		pad("5", "/USB_DP", "IO5"),
+		pad("6", "unconnected-(U1-IO6-Pad6)", "IO6"),
+	])}
+ ${fp("J1", "Conn", 45, 15, [pad("1", "/LCD_DC", "Pin_1"), pad("2", "/LCD_RST", "Pin_2")])}
+ ${fp("U2", o.sensor ?? "SHT40", 35, 10, [pad("1", "/SDA", "SDA"), pad("2", "GND", "GND")])}
+ ${fp("J2", "USB_C_Receptacle", o.usbX ?? 20, 29, [pad("A6", "/USB_DP", "DP1"), pad("A1", "GND", "GND")])}
+)`
+const impactMain = (dc: number) => `#include <Arduino.h>\n${"\n".repeat(11)}#define PIN_LCD_DC ${dc}\n#define PIN_LCD_RST 2\n\nvoid setup() { pinMode(PIN_LCD_DC, OUTPUT); pinMode(PIN_LCD_RST, OUTPUT); }\nvoid loop() {}\n`
+
+function impactRepo(): { repo: string; check: () => { results: ReturnType<typeof checkAgainst>; report: ReturnType<typeof adopt> } } {
+	const repo = tempDir()
+	for (const d of ["hw", "src", "case"]) mkdirSync(join(repo, d))
+	writeFileSync(join(repo, "hw", "b.kicad_pcb"), impactBoard())
+	writeFileSync(join(repo, "platformio.ini"), "[env:x]\nplatform = espressif32\n")
+	writeFileSync(join(repo, "src", "main.cpp"), impactMain(1))
+	const tri = (z: number) => `facet normal 0 0 1\nouter loop\nvertex 0 0 ${z}\nvertex 52 0 ${z}\nvertex 0 31.2 ${z}\nendloop\nendfacet`
+	writeFileSync(join(repo, "case", "bottom.stl"), `solid c\n${tri(0)}\n${tri(12)}\nendsolid c`)
+	writeContracts(repo, [join(repo, "hw", "b.kicad_pcb")], join(repo, ".bringup", "adopt"))
+	return { repo, check: () => ({ results: checkAgainst(repo, join(repo, ".bringup", "adopt")), report: adopt(repo) }) }
+}
+const domain = (item: ChangeImpact, d: Domain) => item.domains.find((x) => x.domain === d)!
+
+test("change impact: no change matches the agreed contract, and says nothing has to follow", () => {
+	const { check } = impactRepo()
+	const { results, report } = check()
+	assert.deepEqual(impactOf(results, report), [])
+	assert.match(impactMarkdown(results, report, ".bringup/adopt"), /\*\*Change impact: none\.\*\* Every board matches the agreed contract/)
+	assert.equal(impactText(results, report), "Change impact: none (every board matches the agreed contract)")
+	assert.match(impactMarkdown(null, report, ".bringup/adopt"), /no agreed contract/)
+})
+
+test("change impact: a pin the board moved and the firmware didn't follow names the firmware's file:line", () => {
+	const { repo, check } = impactRepo()
+	writeFileSync(join(repo, "hw", "b.kicad_pcb"), impactBoard({ dc: "IO3" }))
+	const { results, report } = check()
+	const [item, ...rest] = impactOf(results, report)
+	// The net-missing violation is the same move, said once.
+	assert.deepEqual(rest, [])
+	assert.equal(item.headline, "LCD_DC moved GPIO1 → GPIO3")
+	assert.deepEqual(domain(item, "firmware"), { domain: "firmware", status: "update", says: "`src/main.cpp:13` still drives GPIO1 (PIN_LCD_DC): update it to GPIO3" })
+	assert.equal(domain(item, "case").status, "unaffected")
+	assert.equal(domain(item, "bom").status, "unaffected")
+	// The impact heads the job summary, above the verdict.
+	const md = markdown(report, results, ".bringup/adopt")
+	assert.ok(md.indexOf("**Change impact**") < md.indexOf("break the agreed contract"))
+	assert.match(md, /- \*\*LCD_DC moved GPIO1 → GPIO3\*\*\. Firmware: `src\/main\.cpp:13` still drives GPIO1 \(PIN_LCD_DC\): update it to GPIO3\. Case, BOM: unaffected \(they don't read pins\)\./)
+
+	// The firmware follows: checked, and said so.
+	writeFileSync(join(repo, "src", "main.cpp"), impactMain(3))
+	const after = check()
+	assert.deepEqual(domain(impactOf(after.results, after.report)[0], "firmware").status, "ok")
+	assert.match(impactText(after.results, after.report), /Firmware: follows, PIN_LCD_DC drives GPIO3 \(src\/main\.cpp:13\)/)
+})
+
+test("change impact: the firmware moving a pin on its own asks the board to follow", () => {
+	const { repo, check } = impactRepo()
+	writeFileSync(join(repo, "src", "main.cpp"), impactMain(3))
+	const { results, report } = check()
+	const [item] = impactOf(results, report)
+	assert.match(item.headline, /^the firmware moved LCD_DC: PIN_LCD_DC drives GPIO3 \(`src\/main\.cpp:13`\), the board still has GPIO1$/)
+	assert.equal(domain(item, "firmware").status, "changed")
+	assert.equal(domain(item, "board").status, "update")
+})
+
+test("change impact: a connector move names the case file to change, and the board's fit in it", () => {
+	const { repo, check } = impactRepo()
+	writeFileSync(join(repo, "hw", "b.kicad_pcb"), impactBoard({ usbX: 22 }))
+	const { results, report } = check()
+	const [item, ...rest] = impactOf(results, report)
+	assert.deepEqual(rest, [])
+	assert.equal(item.headline, "J2 (USB-C) moved 2 mm along the bottom edge (20 → 22 mm from its left end)")
+	assert.equal(domain(item, "case").status, "update")
+	assert.match(domain(item, "case").says, /^`case\/bottom\.stl` needs its J2 cutout moved to the bottom edge at 22 mm \(the board still fits, 1\.2 mm margin;/)
+	assert.deepEqual([domain(item, "firmware").status, domain(item, "bom").status], ["unaffected", "unaffected"])
+})
+
+test("change impact: a part swap names the BOM line; firmware and case read parts but adopt can't check them", () => {
+	const { repo, check } = impactRepo()
+	writeFileSync(join(repo, "hw", "b.kicad_pcb"), impactBoard({ sensor: "SHTC3" }))
+	const { results, report } = check()
+	const [item, ...rest] = impactOf(results, report)
+	assert.deepEqual(rest, [])
+	assert.equal(item.headline, "U2 is now SHTC3 (was SHT40)")
+	assert.equal(domain(item, "bom").status, "update")
+	assert.match(domain(item, "bom").says, /^update U2's line: SHT40 → SHTC3/)
+	assert.deepEqual([domain(item, "firmware").status, domain(item, "case").status], ["not checked", "not checked"])
+})
+
+test("change impact: the domains a change reaches are the fields Bringup's builders read", () => {
+	assert.deepEqual([...READERS.case].sort(), [...BUILD_INPUTS.enclosure].sort())
+	assert.ok(!READERS.firmware.includes("connectors") && READERS.firmware.includes("pins"))
+	assert.deepEqual(READERS.bom, ["parts"])
 })
 
 test("AVR: Arduino pin numbers and A0 resolve through ArduinoCore-avr's tables; PB5 is an AVR pin on an ATmega only", () => {
