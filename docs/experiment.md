@@ -13,6 +13,10 @@ Across 6 changes: arm A ended with 0 violation(s); arm B would have shipped 16 c
 | Swap the LDO for the low-Iq XC6206 (3 pins, no EN) | 31.1 s | 3 of 7 (board-builder, firmware-builder, grounding-check) | 0 | 35.6 s | firmware | 1: board places AP2112K-3.3TRG1 as U3, contract says XC6206P332MR-G |
 | Add a user button (GPIO3, reachable through the case) | 67.9 s | 5 of 7 (firmware-reviewer, board-builder, enclosure-builder, firmware-builder, grounding-check) | 0 | 93.7 s | firmware | 3: net BUTTON does not connect U1.GPIO3, SW1.A; enclosure has no cutout for SW1; board has no SW1 (TS-1187A-B-A-B) |
 
+> **6 Nov 2026:** the LDO-swap trial's change is now invalid in its own right. The ESP32-C3-MINI-1 datasheet v2.2
+> asks for a supply that can deliver 0.5 A, and the XC6206 is rated 200 mA, so the shared contract flags it
+> (`supply-underrated`). The row above is the 31 Oct run as it was. A rerun needs a different part change.
+
 **Method.** The models are scripted (the keyless mock agents); the tools are real. Each trial starts from a freshly settled
 logger design (briefs/logger.md). The change's contract writes are then made by the fields' owners, exactly as the
 agents' propose_contract_change tool makes them. **Arm A** is the normal runtime: the shared contract plus Mozaik

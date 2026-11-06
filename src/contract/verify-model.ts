@@ -2,7 +2,7 @@
 // planning figures, the flash and RAM the firmware leaves, and the sensor path the design has now. Plain code; the
 // result says what fits, what the plan got wrong, and the model field with the measured sizes in place of the plan.
 import type { ContractSnapshot, ModelSpec } from "./types.ts"
-import { FIRMWARE_BUDGET } from "./model.ts"
+import { FIRMWARE_BUDGET, firmwareBudget } from "./model.ts"
 import { pathHash, sensorPath } from "./sensor-path.ts"
 
 // py/quantize.py's model.json.
@@ -48,8 +48,9 @@ export function verifyConverted(f: ConvertedModel, s: ContractSnapshot, device?:
 
 	// Flash and RAM: the measured sizes against what the firmware leaves (measured with pio for one MCU).
 	if (mcu?.mpn === FIRMWARE_BUDGET.mcu) {
-		const flashFree = FIRMWARE_BUDGET.appFlashBytes - FIRMWARE_BUDGET.firmwareFlashBytes
-		const ramFree = FIRMWARE_BUDGET.staticRamBytes - FIRMWARE_BUDGET.firmwareRamBytes
+		const b = firmwareBudget(s)
+		const flashFree = b.appFlashBytes - b.firmwareFlashBytes
+		const ramFree = b.staticRamBytes - b.firmwareRamBytes
 		const w = f.weightsBytes <= flashFree
 		out.push({ level: w ? "ok" : "fail", text: `weights ${kb(f.weightsBytes)} ${w ? "fit" : "don't fit"} the ${kb(flashFree)} of flash the firmware leaves on the ${mcu.mpn}` })
 		fits &&= w

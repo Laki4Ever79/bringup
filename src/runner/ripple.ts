@@ -44,7 +44,7 @@ const builderName = (kind: string) => `build:${kind}`
 
 // Everyone a request could wake, keyed like the dashboard's lanes (src/dashboard/lanes.js): the four LLM agents by
 // role, the three builders (the QEMU boot rides on build:firmware), the grounding check and the consistency check.
-export const RIPPLE_PARTICIPANTS = ["architect", "parts", "ml", "test", "enclosure", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
+export const RIPPLE_PARTICIPANTS = ["architect", "parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
 
 // written: the fields some agent had written before the request; an optional builder (the test kit) wakes only once its
 // field exists, as the builder itself does.

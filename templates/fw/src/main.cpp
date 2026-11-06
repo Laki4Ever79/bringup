@@ -2,6 +2,15 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "pins.h"
+// The radio and how readings leave the device (contract field connectivity, codegen/firmware.ts connectivityHeader).
+// Without it: Bluetooth LE with the GATT service, as the template always had.
+#if __has_include("connectivity.h")
+#include "connectivity.h"
+#endif
+#if !defined(RADIO_BLE) && !defined(RADIO_WIFI)
+#define RADIO_BLE 1
+#define REPORT_GATT 1
+#endif
 #if __has_include("model.h")
 #include "model.h"
 #endif
@@ -165,7 +174,13 @@ static int32_t storeReading(float tempC, float rh) {
 // - count (read): how many readings the history holds;
 // - offset (read/write): how many of the newest records the next history read skips;
 // - history (read): up to HISTORY_CHUNK records, newest first, from offset on. Records are packReading()'s, little-endian.
+#ifdef RADIO_BLE
 #include <NimBLEDevice.h>
+#ifdef REPORT_BTHOME
+#include "bthome.h"
+// The packet id Home Assistant uses to drop repeats: one per reading, kept across deep sleep.
+RTC_DATA_ATTR static uint8_t bthomePacketId = 0;
+#endif
 
 #ifndef BLE_ADVERTISE_MS
 #define BLE_ADVERTISE_MS 300  // the logger brief's 300 ms advertising burst, without a contract duty cycle
@@ -207,7 +222,8 @@ class HistoryCallbacks : public NimBLECharacteristicCallbacks {
 	}
 };
 
-static void serveBle(uint32_t latest) {
+// latest: the packed reading for the GATT service; ok, tempC and rh: the same reading for BTHome.
+static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 	Preferences prefs;
 	prefs.begin("history", true);
 	historyNext = prefs.getUInt("next", 0);
@@ -217,6 +233,32 @@ static void serveBle(uint32_t latest) {
 	char name[16];
 	snprintf(name, sizeof name, "Bringup-%04X", (unsigned)(ESP.getEfuseMac() >> 32) & 0xFFFF);
 	NimBLEDevice::init(name);
+	NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
+#ifdef REPORT_BTHOME
+	// The reading as BTHome v2 service data, with the flags BlueZ needs and the name: 3 + 13 + 14 bytes, inside the
+	// 31 a legacy advertisement holds. The GATT service's 128-bit UUID moves to the scan response.
+	uint8_t bthome[12];
+	const size_t bthomeLen = bthomeServiceData(bthome, bthomePacketId++, ok, tempC, rh);
+	NimBLEAdvertisementData advData;
+	advData.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+	advData.setServiceData(NimBLEUUID(BTHOME_UUID), bthome, bthomeLen);
+	advData.setName(name);
+	adv->setAdvertisementData(advData);
+#ifdef REPORT_GATT
+	NimBLEAdvertisementData scanData;
+	scanData.addServiceUUID(BLE_SERVICE_UUID);
+	adv->setScanResponseData(scanData);
+	adv->enableScanResponse(true);
+#else
+	// BTHome only: a broadcast nobody connects to.
+	adv->setConnectableMode(BLE_GAP_CONN_MODE_NON);
+#endif
+#else
+	(void)ok;
+	(void)tempC;
+	(void)rh;
+#endif
+#ifdef REPORT_GATT
 	NimBLEServer *server = NimBLEDevice::createServer();
 	server->setCallbacks(new ServerCallbacks());
 	NimBLEService *service = server->createService(BLE_SERVICE_UUID);
@@ -227,9 +269,13 @@ static void serveBle(uint32_t latest) {
 	offset->setCallbacks(new OffsetCallbacks());
 	service->createCharacteristic(BLE_HISTORY_UUID, NIMBLE_PROPERTY::READ)->setCallbacks(new HistoryCallbacks());
 	service->start();
-	NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
+#ifndef REPORT_BTHOME
 	adv->setName(name);
 	adv->addServiceUUID(BLE_SERVICE_UUID);
+#endif
+#else
+	(void)latest;
+#endif
 	adv->start();
 	Serial.printf("BLE %s advertising %d ms\n", name, BLE_ADVERTISE_MS);
 	const uint32_t start = millis();
@@ -244,6 +290,134 @@ static void serveBle(uint32_t latest) {
 	NimBLEDevice::deinit(true);
 	LittleFS.end();
 }
+
+#endif  // RADIO_BLE
+
+#ifdef RADIO_WIFI
+// Wi-Fi: every wake reads and stores; every UPLOAD_EVERY wakes the device connects once and uploads, because joining
+// a network costs seconds of radio time. Credentials come from include/secrets.h, which the engineer provides and
+// nothing generates or commits (WIFI_SSID, WIFI_PASS, MQTT_HOST, MQTT_PORT, optional MQTT_USER, MQTT_PASS, OTA_URL).
+// Without it the firmware still builds, and says it isn't provisioned.
+#include <WiFi.h>
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+#ifndef UPLOAD_EVERY
+#define UPLOAD_EVERY 12
+#endif
+static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 10000;
+// Wakes since the last upload, kept across deep sleep; the first wake after power-up uploads straight away.
+RTC_DATA_ATTR static uint32_t wakesSinceUpload = UPLOAD_EVERY;
+
+#ifdef REPORT_MQTT
+#include <PubSubClient.h>
+// Home Assistant's MQTT discovery: one retained config message per sensor tells Home Assistant what the state topic
+// holds; then each upload publishes the newest reading as the state, and the readings since the last upload as a batch
+// (packed records, oldest first, PERIOD_S apart) that the generated reader decodes.
+static void publishMqtt(PubSubClient &mqtt, const char *id, bool ok, float tempC, float rh) {
+	char topic[96], body[512], state[48];
+	snprintf(state, sizeof state, "bringup/%s/state", id);
+	const char *names[] = {"temperature", "humidity"};
+	const char *units[] = {"\xC2\xB0" "C", "%"};
+	for (int i = 0; i < 2; i++) {
+		snprintf(topic, sizeof topic, "homeassistant/sensor/%s_%s/config", id, names[i]);
+		snprintf(body, sizeof body,
+			"{\"name\":\"%s\",\"unique_id\":\"%s_%s\",\"state_topic\":\"%s\",\"device_class\":\"%s\",\"unit_of_measurement\":\"%s\","
+			"\"value_template\":\"{{ value_json.%s }}\",\"expire_after\":%lu,"
+			"\"device\":{\"identifiers\":[\"%s\"],\"name\":\"Bringup %s\",\"manufacturer\":\"Bringup\",\"sw_version\":\"rev %d\"}}",
+			names[i], id, names[i], state, names[i], units[i], names[i], (unsigned long)UPLOAD_EVERY * DUTY_PERIOD_S * 2 + 60, id, id, BRINGUP_REVISION);
+		mqtt.publish(topic, body, true);
+	}
+	if (ok) {
+		snprintf(body, sizeof body, "{\"temperature\":%.2f,\"humidity\":%.2f}", tempC, rh);
+		mqtt.publish(state, body, true);
+	}
+#ifdef HAS_SENSOR
+	// The batch: the newest UPLOAD_EVERY records, oldest first, straight from /history.bin.
+	Preferences prefs;
+	prefs.begin("history", true);
+	const uint32_t next = prefs.getUInt("next", 0), count = prefs.getUInt("count", 0);
+	prefs.end();
+	const uint32_t n = min((uint32_t)UPLOAD_EVERY, count);
+	int len = snprintf(body, sizeof body, "{\"periodS\":%d,\"records\":[", DUTY_PERIOD_S);
+	if (LittleFS.begin(false)) {
+		File f = LittleFS.open(HISTORY_FILE, "r");
+		for (uint32_t i = 0; f && i < n && len < (int)sizeof body - 16; i++) {
+			uint32_t slot = (next + HISTORY_SLOTS - n + i) % HISTORY_SLOTS, record = 0;
+			if (!f.seek(slot * sizeof record) || f.read((uint8_t *)&record, sizeof record) != sizeof record) break;
+			len += snprintf(body + len, sizeof body - len, "%s%lu", i ? "," : "", (unsigned long)record);
+		}
+		if (f) f.close();
+		LittleFS.end();
+	}
+	snprintf(body + len, sizeof body - len, "]}");
+	snprintf(topic, sizeof topic, "bringup/%s/history", id);
+	mqtt.publish(topic, body, false);
+#endif
+}
+#endif
+
+#ifdef UPDATES_OTA
+#include <HTTPUpdate.h>
+#endif
+
+static void serveWifi(bool ok, float tempC, float rh) {
+	if (++wakesSinceUpload < UPLOAD_EVERY) {
+		Serial.printf("WIFI upload in %lu wakes\n", (unsigned long)(UPLOAD_EVERY - wakesSinceUpload));
+		return;
+	}
+	wakesSinceUpload = 0;
+#if !defined(WIFI_SSID) || !defined(WIFI_PASS)
+	(void)ok;
+	(void)tempC;
+	(void)rh;
+	Serial.println("WIFI not provisioned: include/secrets.h has no WIFI_SSID/WIFI_PASS");
+#else
+	WiFi.mode(WIFI_STA);
+	WiFi.begin(WIFI_SSID, WIFI_PASS);
+	const uint32_t start = millis();
+	while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) delay(20);
+	if (WiFi.status() != WL_CONNECTED) {
+		Serial.printf("WIFI no connection after %lu ms\n", (unsigned long)(millis() - start));
+		WiFi.mode(WIFI_OFF);
+		return;
+	}
+	Serial.printf("WIFI connected in %lu ms\n", (unsigned long)(millis() - start));
+	char id[20];
+	snprintf(id, sizeof id, "bringup_%06llx", (unsigned long long)(ESP.getEfuseMac() & 0xFFFFFF));
+#if defined(REPORT_MQTT) && defined(MQTT_HOST)
+	WiFiClient net;
+	PubSubClient mqtt(net);
+	mqtt.setServer(MQTT_HOST, MQTT_PORT);
+	mqtt.setBufferSize(640);
+#if defined(MQTT_USER) && defined(MQTT_PASS)
+	const bool joined = mqtt.connect(id, MQTT_USER, MQTT_PASS);
+#else
+	const bool joined = mqtt.connect(id);
+#endif
+	if (joined) {
+		publishMqtt(mqtt, id, ok, tempC, rh);
+		mqtt.loop();
+		mqtt.disconnect();
+		Serial.println("MQTT published");
+	} else Serial.printf("MQTT connect failed (%d)\n", mqtt.state());
+#else
+	(void)ok;
+	(void)tempC;
+	(void)rh;
+#endif
+#if defined(UPDATES_OTA) && defined(OTA_URL)
+	// The update server answers with a newer image or 304; the current revision goes along as x-ESP32-version.
+	WiFiClient ota;
+	httpUpdate.rebootOnUpdate(true);
+	const t_httpUpdate_return r = httpUpdate.update(ota, OTA_URL, String(BRINGUP_REVISION));
+	Serial.printf("OTA %s\n", r == HTTP_UPDATE_NO_UPDATES ? "up to date" : r == HTTP_UPDATE_OK ? "updated" : httpUpdate.getLastErrorString().c_str());
+#endif
+	WiFi.disconnect(true);
+	WiFi.mode(WIFI_OFF);
+#endif
+}
+#endif  // RADIO_WIFI
 
 // A brief blink when the reading worked, a double blink when the sensor didn't answer.
 static void readingBlink(bool sensorOk) {
@@ -490,12 +664,20 @@ void setup() {
 	else Serial.println("SENSOR FAIL");
 	if (ok) Serial.printf("HISTORY slot %ld\n", (long)storeReading(t, rh));
 	readingBlink(ok);
-	serveBle(ok ? packReading(t, rh) : LATEST_SENSOR_FAILED);
+#ifdef RADIO_BLE
+	serveBle(ok ? packReading(t, rh) : LATEST_SENSOR_FAILED, ok, t, rh);
 #else
-	// No sensor: nothing to read or store. Blink once and advertise.
+	serveWifi(ok, t, rh);
+#endif
+#else
+	// No sensor: nothing to read or store. Blink once and advertise (or upload).
 	Serial.println("SENSOR NONE");
 	readingBlink(true);
-	serveBle(LATEST_NO_SENSOR);
+#ifdef RADIO_BLE
+	serveBle(LATEST_NO_SENSOR, false, 0, 0);
+#else
+	serveWifi(false, 0, 0);
+#endif
 #endif
 	Serial.printf("SLEEP %d s\n", DUTY_PERIOD_S);
 	Serial.flush();

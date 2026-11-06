@@ -5,6 +5,7 @@ import { resolve } from "node:path"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { AgentRole, ContractSnapshot, FieldName, ModelSpec } from "./types.ts"
 import { pathDiff, pathHash, sensorPath, SENSOR_ROLE } from "./sensor-path.ts"
+import { partitionLayout } from "./connectivity.ts"
 
 // What Bringup's own firmware leaves for a model on the ESP32-C3 (env esp32c3 in templates/fw/platformio.ini:
 // espressif32@8.0.0, Arduino, NimBLE), measured with `pio run` on the logger design (5 Nov 2026): flash 841,627 of the
@@ -19,6 +20,24 @@ export const FIRMWARE_BUDGET = {
 	measured: "pio run, logger design, espressif32@8.0.0 + NimBLE-Arduino 2.5.2, 5 Nov 2026",
 }
 
+// What the firmware takes for each connectivity choice, measured with `pio run` on the logger design (6 Nov 2026,
+// espressif32@8.0.0, NimBLE-Arduino 2.5.2, PubSubClient 2.8; the Wi-Fi builds with test credentials so every path
+// compiles). The slot comes from the partition table the update choice selects (contract/connectivity.ts).
+export const FIRMWARE_FLASH = {
+	ble: { flashBytes: 818_719, ramBytes: 24_660, measured: "BLE, GATT + BTHome, no_ota.csv" },
+	wifi: { flashBytes: 1_086_059, ramBytes: 37_596, measured: "Wi-Fi, MQTT, no_ota.csv" },
+	wifiOta: { flashBytes: 1_188_472, ramBytes: 39_104, measured: "Wi-Fi, MQTT + HTTP update, default.csv" },
+}
+
+// The flash and RAM the firmware leaves for a model in this design: the slot the partition table gives, less the
+// firmware measured for its radio. Without a connectivity field: the template as it always was (FIRMWARE_BUDGET).
+export function firmwareBudget(s?: ContractSnapshot): typeof FIRMWARE_BUDGET {
+	const c = s?.values.connectivity
+	if (!s || !c) return FIRMWARE_BUDGET
+	const fw = c.radio === "ble" ? FIRMWARE_FLASH.ble : c.updates === "ota" ? FIRMWARE_FLASH.wifiOta : FIRMWARE_FLASH.wifi
+	return { ...FIRMWARE_BUDGET, appFlashBytes: partitionLayout(s).appBytes, firmwareFlashBytes: fw.flashBytes, firmwareRamBytes: fw.ramBytes, measured: `pio run, logger design, ${fw.measured}, 6 Nov 2026` }
+}
+
 export interface ModelBudget {
 	flashFreeKb: number
 	ramFreeKb: number
@@ -26,9 +45,10 @@ export interface ModelBudget {
 	arenaShare: number
 }
 
-export function modelBudget(m: ModelSpec): ModelBudget {
-	const flashFreeKb = (FIRMWARE_BUDGET.appFlashBytes - FIRMWARE_BUDGET.firmwareFlashBytes) / 1024
-	const ramFreeKb = (FIRMWARE_BUDGET.staticRamBytes - FIRMWARE_BUDGET.firmwareRamBytes) / 1024
+export function modelBudget(m: ModelSpec, s?: ContractSnapshot): ModelBudget {
+	const b = firmwareBudget(s)
+	const flashFreeKb = (b.appFlashBytes - b.firmwareFlashBytes) / 1024
+	const ramFreeKb = (b.staticRamBytes - b.firmwareRamBytes) / 1024
 	return { flashFreeKb, ramFreeKb, weightsShare: m.weightsKb / flashFreeKb, arenaShare: m.arenaKb / ramFreeKb }
 }
 
@@ -65,9 +85,14 @@ export function modelChecks(s: ContractSnapshot): ModelViolation[] {
 	const mcu = parts.find((p) => p.role === "mcu")
 	// The budget is measured for one MCU; on another the fit can't be checked yet (the facts say so).
 	if (mcu?.mpn === FIRMWARE_BUDGET.mcu) {
-		const b = modelBudget(m)
-		if (b.weightsShare > 1)
-			out.push({ kind: "model-flash", message: `model weights ${kb(m.weightsKb)} don't fit the ${kb(b.flashFreeKb)} of flash the firmware leaves on the ${mcu.mpn}: quantize (int8 is about a quarter of float32), prune, or pick a smaller model`, fields: ["model"], affects: ["ml"] })
+		const b = modelBudget(m, s)
+		if (b.weightsShare > 1) {
+			// With field updates on, the flash holds two firmware slots: one slot with no updates might hold the model.
+			const c = s.values.connectivity
+			const without = c?.updates === "ota" ? modelBudget(m, { ...s, values: { ...s.values, connectivity: { ...c, updates: "none" } } }) : null
+			const slot = without && without.weightsShare <= 1 ? `; with no field updates (connectivity.updates "none") the firmware gets one bigger slot, which leaves ${kb(without.flashFreeKb)}` : ""
+			out.push({ kind: "model-flash", message: `model weights ${kb(m.weightsKb)} don't fit the ${kb(b.flashFreeKb)} of flash the firmware leaves on the ${mcu.mpn}: quantize (int8 is about a quarter of float32), prune, or pick a smaller model${slot}`, fields: slot ? ["model", "connectivity"] : ["model"], affects: slot ? ["ml", "connectivity"] : ["ml"] })
+		}
 		if (b.arenaShare > 1)
 			out.push({ kind: "model-ram", message: `the tensor arena ${kb(m.arenaKb)} doesn't fit the ${kb(b.ramFreeKb)} of static RAM the firmware leaves on the ${mcu.mpn}: shrink the input window or the model`, fields: ["model"], affects: ["ml"] })
 	}
@@ -132,7 +157,7 @@ export function modelFactLines(s: ContractSnapshot): string[] {
 	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
 	const out = [`- Model: ${m.task}; ${m.sensor} at ${m.sampleRateHz} Hz, ${m.windowMs} ms window × ${m.channels}; weights ${kb(m.weightsKb)}, arena ${kb(m.arenaKb)} (${m.quantization}, ${m.runtime}); listening ${m.listening}.`]
 	if (mcu?.mpn === FIRMWARE_BUDGET.mcu) {
-		const b = modelBudget(m)
+		const b = modelBudget(m, s)
 		out.push(`- It fits: weights ${(b.weightsShare * 100).toFixed(0)}% of the ${kb(b.flashFreeKb)} flash and arena ${(b.arenaShare * 100).toFixed(0)}% of the ${kb(b.ramFreeKb)} static RAM the firmware leaves (measured: ${FIRMWARE_BUDGET.measured}).${b.arenaShare > 0.5 ? " The BLE stack's runtime heap isn't in that figure, so above half is tight." : ""}`)
 	} else out.push(`- Its fit isn't checked: the firmware's flash and RAM use is measured only for the ${FIRMWARE_BUDGET.mcu}.`)
 	const path = sensorPath(s)

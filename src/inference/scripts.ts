@@ -10,7 +10,7 @@ import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
-export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case"> & { parts: ContractValues["parts"] } = {
+export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case" | "connectivity"> & { parts: ContractValues["parts"] } = {
 	// ESP32-C3 deep sleep about 10 µA; every 5 min it wakes for a 30 ms reading and a 300 ms BLE advertising burst at
 	// about 25 mA. Average: 25 mA × 330 ms / 300 s + 10 µA = 37.5 µA, before the LDO's own quiescent current.
 	requirements: {
@@ -22,7 +22,8 @@ export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" 
 	// The brief asks for this size (space rules: the engineer's size is the reason the board is over the minimum).
 	outline: { widthMm: 50, heightMm: 30, thicknessMm: 1.6, sizeReason: { kind: "engineer-size", detail: "the brief asks for about 50 × 30 mm" } },
 	connectors: [{ ref: "J1", kind: "usb-c", edge: "left", offsetMm: 15, widthMm: 9, heightMm: 3.5 }],
-	rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 120, averageMa: 0.0375 }],
+	// loadMa: the module transmitting Bluetooth LE at 0 dBm peaks at 170 mA (ESP32-C3-MINI-1 datasheet v2.2), plus the rest.
+	rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 200, averageMa: 0.0375 }],
 	pins: [
 		{ signal: "I2C_SDA", gpio: 8, partRef: "U2", partPin: "SDA" },
 		{ signal: "I2C_SCL", gpio: 9, partRef: "U2", partPin: "SCL" },
@@ -194,6 +195,24 @@ function caseFollows(s: ContractSnapshot): CaseSpec {
 	return c
 }
 
+// A request about how the device connects: the connectivity engineer's.
+export const CONNECTIVITY_REQUEST = /home assistant|bthome|wi-?fi|mqtt|bluetooth|\bble\b|\bota\b|firmware updates?|over.the.air|phone app/i
+
+// The scripted connectivity engineer's reading of a request. Home Assistant without Wi-Fi: BTHome over Bluetooth LE
+// (no app, no hub beyond Home Assistant's own Bluetooth). Wi-Fi or MQTT: MQTT with Home Assistant discovery, hourly
+// unless the request says how often. Updates need Wi-Fi.
+export function connectivityFromRequest(request: string, current: ContractValues["connectivity"] | undefined): ContractValues["connectivity"] {
+	const wantsUpdates = /\bota\b|firmware updates?|over.the.air|update(?:s|d)? in the field/i.test(request)
+	if (/wi-?fi|mqtt/i.test(request) || wantsUpdates) {
+		const every = /every (\d+) ?(min|minute|minutes|h|hour|hours)\b/i.exec(request)
+		const uploadPeriodS = every ? Number(every[1]) * (/^h/i.test(every[2]) ? 3600 : 60) : current?.uploadPeriodS ?? 3600
+		return { radio: "wifi", report: ["mqtt"], uploadPeriodS, updates: wantsUpdates ? "ota" : current?.updates === "ota" ? "ota" : "none" }
+	}
+	const report = new Set<"gatt" | "bthome">(current?.radio === "ble" ? (current.report as ("gatt" | "bthome")[]) : ["gatt"])
+	if (/home assistant|bthome/i.test(request)) report.add("bthome")
+	return { radio: "ble", report: [...report], updates: "none" }
+}
+
 export const WAKE_WORD_REQUEST = /wake ?word|keyword|voice command|listen for/i
 export const WAKE_WORD_MODEL = { task: "wake word", sensor: "microphone", sampleRateHz: 16000, windowMs: 1000, channels: 1, weightsKb: 53, arenaKb: 23, runtime: "tflite-micro", quantization: "int8", listening: "always" } as const
 export const MIC_PART = { ref: "U5", role: "microphone", mpn: "ICS-43434", lcsc: "C5656610", footprint: "ics43434", pins: ["WS", "LR", "GND", "SCK", "VDD", "SD"] }
@@ -248,6 +267,13 @@ export function mockScripts(): Record<string, Script> {
 						"always-on listening keeps the MCU awake at about 28 mA: the battery lasts under a day, so the target becomes USB power",
 					)
 				// No reason for the board's slack: shrink it to the smallest it can be, connectors first when the height changes.
+				// The rail's peak below the radio's transmit peak: raise it to that, with a fifth on top for the rest.
+				const under = /^- rail-underrated: rail (\S+) is sized for a [\d.]+ mA peak, below (\d+) mA/m.exec(instruction)
+				const railsNow = state().contract.get("rails")
+				if (step === 0 && under && railsNow) {
+					const need = Math.ceil((Number(under[2]) * 1.2) / 10) * 10
+					return propose("rails", railsNow.map((r) => (r.name === under[1] ? { ...r, loadMa: Math.max(r.loadMa, need) } : r)), `the radio's transmit peak is ${under[2]} mA: the rail's peak covers it, with a fifth on top for the rest of the board`)
+				}
 				// KiCad's DRC failed on the board at this size: room for the router, 2 mm wider at a time, with the failed
 				// build as the reason (space rules: a measured routing failure). Five tries, then it stops and says so.
 				const drcLine = /^- drc-errors: (.*)$/m.exec(instruction)?.[1]
@@ -418,6 +444,26 @@ export function mockScripts(): Record<string, Script> {
 				if (JSON.stringify(fixed) !== JSON.stringify(test)) return propose("test", fixed, `the test follows the design: ${[...violationKinds(instruction)].join(", ")}`)
 			}
 			return say("test unchanged")
+		},
+		"mock-connectivity": (items) => {
+			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
+			const step = stepsTaken(items)
+			const current = state().contract.get("connectivity")
+			if (instruction.startsWith("Change request from the engineer:")) {
+				const request = instruction.split("\n")[1] ?? ""
+				if (step > 0 || !CONNECTIVITY_REQUEST.test(request)) return say(CONNECTIVITY_REQUEST.test(request) ? "connectivity set" : "no radio change")
+				return propose("connectivity", connectivityFromRequest(request, current), `engineer asked: ${request}`)
+			}
+			// Wi-Fi uploads cost the battery its target: upload half as often, up to once a day.
+			if (instruction.startsWith("Consistency violations for you") && step === 0 && current?.radio === "wifi" && violationKinds(instruction).has("battery-short")) {
+				const next = Math.min(86400, (current.uploadPeriodS ?? 3600) * 2)
+				if (next !== current.uploadPeriodS) return propose("connectivity", { ...current, uploadPeriodS: next }, `uploads every ${next / 3600} h: each one joins Wi-Fi for seconds, and the battery target can't pay for them more often`)
+			}
+			if (instruction.startsWith("Change request")) {
+				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
+				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "the radio still fits" })] : say("decided")
+			}
+			return say("radio unchanged")
 		},
 		"mock-enclosure": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))

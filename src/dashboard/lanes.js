@@ -7,6 +7,7 @@ export const LANES = [
 	{ key: "ml", label: "ML engineer" },
 	{ key: "test", label: "Test engineer" },
 	{ key: "enclosure", label: "Case designer" },
+	{ key: "connectivity", label: "Connectivity" },
 	{ key: "firmware", label: "Firmware reviewer" },
 	{ key: "reviewer", label: "Brief reviewer" },
 	{ key: "build:board", label: "Board" },
@@ -25,7 +26,7 @@ export const BUILDS = {
 	board: { inputs: ["parts", "pins", "outline", "connectors", "test"], requires: ["outline", "parts", "pins"] },
 	// parts: the lid's vent sits over the sensor; case: the case designer's walls, height and features.
 	enclosure: { inputs: ["outline", "connectors", "parts", "case"], requires: ["outline", "connectors"] },
-	firmware: { inputs: ["parts", "pins", "behavior", "requirements", "model"], requires: ["parts", "pins"] },
+	firmware: { inputs: ["parts", "pins", "behavior", "requirements", "model", "connectivity"], requires: ["parts", "pins"] },
 	// Only when the contract has a test field (OPTIONAL_KINDS in builders.ts).
 	testkit: { inputs: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"], requires: ["test", "outline", "pins"], optional: "test" },
 }
@@ -131,7 +132,7 @@ export function applyLaneEvent(lanes, e) {
 		case "design.settled": {
 			// The run is over: nobody is still thinking, whatever their last loop event said.
 			lanes.ended = true
-			const ended = ["architect", "parts", "ml", "test", "enclosure", "firmware", "reviewer"].filter((k) => ["thinking", "tool", "held"].includes(lanes[k].status)).flatMap((k) => set(lanes, k, "idle", "run ended", e.at, false))
+			const ended = ["architect", "parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer"].filter((k) => ["thinking", "tool", "held"].includes(lanes[k].status)).flatMap((k) => set(lanes, k, "idle", "run ended", e.at, false))
 			return [...ended, ...set(lanes, "consistency", p.settled ? "done" : "failed", p.settled ? `settled at rev ${p.revision}` : `unsettled at rev ${p.revision}`, e.at)]
 		}
 		case "agent.halted":

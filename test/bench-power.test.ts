@@ -43,7 +43,7 @@ test("a bench measurement flows into the contract, the power budget and the revi
 	assert.ok(measured.days! < estimated.days!, `the measurement (${measured.days} days) is worse than the estimate (${estimated.days} days)`)
 
 	const budget = powerBudgetLines(measured).join("\n")
-	assert.match(budget, new RegExp(`Rail 3V3: peak 120 mA, average ${Number(averageMa.toPrecision(3))} mA \\(measured on bench, rev ${before.revision}\\)`))
+	assert.match(budget, new RegExp(`Rail 3V3: peak 200 mA, average ${Number(averageMa.toPrecision(3))} mA \\(measured on bench, rev ${before.revision}\\)`))
 
 	// The battery-life line (report.md and the budget) says the figure rests on a measurement.
 	assert.equal(batteryLifeSummary(measured), `${Math.round(measured.days!)} days vs target 180 days (3V3 measured on bench, rev ${before.revision})`)

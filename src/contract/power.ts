@@ -26,7 +26,7 @@ export function capacityFromBrief(brief: string): number | null {
 // An LDO's typical quiescent current: the catalog's iqUa when it lists the part, else AP2112K-class 55 µA.
 const ASSUMED_IQ_UA = Math.round(QUIESCENT_A * 1e6)
 // cpuMa / radioMa: an MCU's datasheet current with the CPU running and with the radio on, for the duty-cycle check.
-type CatalogIq = { mpn: string; iqUa?: number; sleepUa?: number; cpuMa?: number; radioMa?: number; dropoutMv?: number; dropoutAtMa?: number }
+type CatalogIq = { mpn: string; iqUa?: number; sleepUa?: number; cpuMa?: number; radioMa?: number; dropoutMv?: number; dropoutAtMa?: number; maxMa?: number; maxMaSource?: string; bleTxMa?: number; bleRxMa?: number; wifiTxMa?: number; supplyMinMa?: number; radioSource?: string }
 let catalogCache: CatalogIq[] | null = null
 function catalog(): CatalogIq[] {
 	return (catalogCache ??= JSON.parse(readFileSync(new URL("../../catalog/parts.json", import.meta.url), "utf8")))
@@ -109,6 +109,20 @@ export interface PowerEstimate {
 	targetDays: number | null
 	// What the on-device model's listening adds on top of the rails, in mA (null without a model).
 	model: { averageMa: number; how: string } | null
+	// What Wi-Fi uploads add on top of the rails, in mA (null unless connectivity.radio is Wi-Fi).
+	wifi: { averageMa: number; how: string } | null
+}
+
+// One Wi-Fi upload from deep sleep: joining the network, getting an address and publishing. An ESTIMATE, not a
+// datasheet figure: community measurements of ESP32 joins from deep sleep run 1-4 s at about 70-150 mA, and Espressif
+// publishes no figure for it. Caching the access point's channel and BSSID and a static IP shorten it.
+export const WIFI_UPLOAD = { seconds: 3, ma: 120, source: "estimate from community measurements of ESP32 Wi-Fi joins from deep sleep (1-4 s at 70-150 mA); Espressif publishes no figure" }
+
+export function wifiUploadMa(s: ContractSnapshot): { averageMa: number; how: string } | null {
+	const c = s.values.connectivity
+	if (c?.radio !== "wifi" || !c.uploadPeriodS) return null
+	const mc = WIFI_UPLOAD.seconds * WIFI_UPLOAD.ma
+	return { averageMa: mc / c.uploadPeriodS, how: `one upload every ${c.uploadPeriodS} s, each about ${WIFI_UPLOAD.seconds} s at ${WIFI_UPLOAD.ma} mA = ${mc} mC (${WIFI_UPLOAD.source})` }
 }
 
 const batteryFed = (rails: Rail[]) => rails.filter((r) => !/VBUS|USB/i.test(r.name))
@@ -139,6 +153,7 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 	const regulatorIqUa = regulators.reduce((sum, r) => sum + r.iqUa, 0)
 	// Listening is the model's own load: always-on keeps the MCU awake, which no rail average states.
 	const model = modelCurrentMa(s)
+	const wifi = wifiUploadMa(s)
 	return {
 		rails: draws,
 		averageMa,
@@ -149,9 +164,10 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 		regulators,
 		capacityMah,
 		capacitySource: fromBrief !== null ? "brief" : requirements?.batteryMah !== undefined ? "requirements" : null,
-		days: capacityMah !== null && averageMa !== null ? batteryLifeDays(capacityMah, averageMa + (model?.averageMa ?? 0), regulatorIqUa) : null,
+		days: capacityMah !== null && averageMa !== null ? batteryLifeDays(capacityMah, averageMa + (model?.averageMa ?? 0) + (wifi?.averageMa ?? 0), regulatorIqUa) : null,
 		targetDays: requirements?.batteryLifeDays ?? null,
 		model,
+		wifi,
 	}
 }
 
@@ -168,6 +184,7 @@ export function batteryLifeSummary(e: PowerEstimate): string {
 export function powerBudgetLines(e: PowerEstimate): string[] {
 	const out: string[] = []
 	if (e.model) out.push(`- The model's listening: ${ma(e.model.averageMa)} on average (${e.model.how}), counted in the battery life below.`)
+	if (e.wifi) out.push(`- Wi-Fi uploads: ${ma(e.wifi.averageMa)} on average (${e.wifi.how}), counted in the battery life below.`)
 	if (e.rails.length > 0) out.push("- Battery-fed rails (each average is that rail's own loads, so they add up):")
 	for (const r of e.rails) {
 		const from = r.source === "measured" ? `measured on bench${r.measuredRevision !== undefined ? `, rev ${r.measuredRevision}` : ""}` : `from the ${r.source}`
@@ -201,8 +218,9 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 	const n = (x: number) => Number(x.toPrecision(3))
 	const mcuSleep = e.sleep?.raisedFrom != null ? `${d.sleepUa} µA (MCU deep-sleep floor; ${e.sleep.raisedFrom} µA stated)` : `${d.sleepUa} µA (MCU deep sleep)`
 	const ldo = e.regulatorIqUa > 0 ? ` + ${e.regulatorIqUa} µA (LDO quiescent)` : ""
-	// The firmware is awake for the reading plus its BLE window: activeMs, unless that is too short for both.
-	const advertiseMs = bleAdvertiseMs(d)
+	// The firmware is awake for the reading plus its BLE window: activeMs, unless that is too short for both. On Wi-Fi it
+	// doesn't advertise: it reads and sleeps, and connects once per upload (counted separately, e.wifi).
+	const advertiseMs = s?.values.connectivity?.radio === "wifi" ? 0 : bleAdvertiseMs(d)
 	const wakeMs = Math.max(d.activeMs, BLE_READING_MS + advertiseMs)
 	const wake = { ...d, activeMs: wakeMs }
 	const connectedS = templateConstant("BLE_CONNECTED_MAX_MS") / 1000
@@ -212,7 +230,10 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 			? `- ${label} ${ma(averageMa)}; battery life unknown (no capacity in the brief or requirements)`
 			: `- ${label} ${ma(averageMa)}; ${e.capacityMah} mAh / ${ma(averageMa)} / 24 h = ${Math.round(days)} days${e.targetDays !== null ? ` vs target ${e.targetDays} days` : ""}`
 	}
-	const firmwareWake = `- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs)${wakeMs > d.activeMs ? `, ${wakeMs} ms in all (requirements.dutyCycle.activeMs says ${d.activeMs} ms)` : ""}. A phone that connects keeps it awake up to ${connectedS} s, which this average leaves out.`
+	const firmwareWake =
+		advertiseMs === 0
+			? `- The firmware's wake: the ${BLE_READING_MS} ms reading, then straight back to sleep: on Wi-Fi it doesn't advertise, and it connects only for each upload.`
+			: `- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs)${wakeMs > d.activeMs ? `, ${wakeMs} ms in all (requirements.dutyCycle.activeMs says ${d.activeMs} ms)` : ""}. A phone that connects keeps it awake up to ${connectedS} s, which this average leaves out.`
 	const asleep = `- Asleep the rest of the ${d.periodS} s period: ${mcuSleep}${ldo}`
 	const worstMa = dutyCycleAverageMa(wake, peak) + e.regulatorIqUa / 1000
 	// The MCU's datasheet currents per phase, when the catalog lists them: the reading with the CPU running, the
@@ -222,23 +243,27 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 	const figures = mcu ? entries.find((c) => c.mpn.toUpperCase() === mcu.mpn.toUpperCase()) : undefined
 	if (mcu && typeof figures?.cpuMa === "number" && typeof figures.radioMa === "number") {
 		const readingMc = (figures.cpuMa * BLE_READING_MS) / 1000
-		const advertiseMc = (figures.radioMa * advertiseMs) / 1000
+		// Bluetooth LE receiving (module datasheet), which stands in for the advertising window; the chip's radio figure
+		// where the catalog has no Bluetooth one.
+		const bleMa = typeof figures.bleRxMa === "number" ? figures.bleRxMa : figures.radioMa
+		const advertiseMc = (bleMa * advertiseMs) / 1000
 		const asleepMa = (1 - wakeMs / (d.periodS * 1000)) * (d.sleepUa / 1000)
 		// The status LED's blink, bounded without the LED's data: 3.3 V across the board generator's 1k resistor.
 		const hasLed = (s!.values.parts ?? []).some((p) => p.role === "led")
 		const blinkMs = templateConstant("READING_BLINK_MS")
 		const ledMa = 3.3 / 1
 		const ledMc = hasLed && Number.isFinite(blinkMs) ? (ledMa * blinkMs) / 1000 : 0
-		const averageMa = (readingMc + advertiseMc + ledMc) / d.periodS + asleepMa + e.regulatorIqUa / 1000
+		const averageMa = (readingMc + advertiseMc + ledMc) / d.periodS + asleepMa + e.regulatorIqUa / 1000 + (e.wifi?.averageMa ?? 0)
 		return [
 			`Battery-life check (computed in code from the duty cycle and ${mcu.ref} ${mcu.mpn}'s datasheet currents, not from the rails' stated averages):`,
 			firmwareWake,
 			`- Reading: ${BLE_READING_MS} ms at ${figures.cpuMa} mA (CPU running, datasheet) = ${n(readingMc)} mC`,
-			`- Advertising: ${advertiseMs} ms at ${figures.radioMa} mA (radio receiving, datasheet; it gives no Bluetooth LE figure, so the receive current stands in for the whole window, which keeps the radio on while advertising transmits in short bursts) = ${n(advertiseMc)} mC`,
+			...(advertiseMs > 0 ? [`- Advertising: ${advertiseMs} ms at ${bleMa} mA (Bluetooth LE receiving, module datasheet: it stands in for the whole window, which keeps the radio on; the transmit bursts within it peak at ${figures.bleTxMa ?? "?"} mA but last well under a millisecond each) = ${n(advertiseMc)} mC`] : []),
 			...(ledMc > 0 ? [`- Status LED blink: ${blinkMs} ms at no more than ${ledMa} mA (3.3 V across its 1k resistor; the LED's own forward drop only lowers it) = ${n(ledMc)} mC`] : []),
+			...(e.wifi ? [`- Wi-Fi uploads: ${ma(e.wifi.averageMa)} on average (${e.wifi.how})`] : []),
 			asleep,
 			lifeLine(averageMa, "Average"),
-			...connectionLines(e, averageMa, figures.radioMa, connectedS),
+			...connectionLines(e, averageMa, bleMa, connectedS),
 			"- Leaves out the other parts' currents while awake (charger and LDO idle, button pull-up).",
 			`- Worst case, the busiest battery-fed rail's peak (${ma(peak)}, a regulator sizing figure) for the whole ${wakeMs} ms wake:`,
 			lifeLine(worstMa, "  worst-case average"),
@@ -268,6 +293,32 @@ function connectionLines(e: PowerEstimate, averageMa: number, radioMa: number, c
 	]
 }
 const n3 = (x: number) => Number(x.toPrecision(3))
+
+// The regulator part's own output rating (catalog maxMa, with its source), when the catalog lists it.
+export function regulatorRating(part: Part, entries: CatalogIq[] = catalog()): { maxMa: number; source: string } | null {
+	const c = entries.find((e) => e.mpn.toUpperCase() === part.mpn.toUpperCase())
+	return typeof c?.maxMa === "number" ? { maxMa: c.maxMa, source: c.maxMaSource ?? "catalog" } : null
+}
+
+// What the MCU module's radio and supply need (catalog, module datasheet), when the catalog lists them.
+export interface RadioFigures {
+	ref: string
+	mpn: string
+	bleTxMa: number
+	bleRxMa: number
+	wifiTxMa: number
+	supplyMinMa: number
+	source: string
+}
+
+export function radioFigures(s: ContractSnapshot, entries: CatalogIq[] = catalog()): RadioFigures | null {
+	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
+	const c = mcu ? entries.find((e) => e.mpn.toUpperCase() === mcu.mpn.toUpperCase()) : undefined
+	if (!mcu || !c || typeof c.bleTxMa !== "number" || typeof c.bleRxMa !== "number" || typeof c.wifiTxMa !== "number" || typeof c.supplyMinMa !== "number") return null
+	// The document only (up to its first colon): the figures themselves are in the message already.
+	const source = (c.radioSource ?? "catalog").split(":")[0]
+	return { ref: mcu.ref, mpn: mcu.mpn, bleTxMa: c.bleTxMa, bleRxMa: c.bleRxMa, wifiTxMa: c.wifiTxMa, supplyMinMa: c.supplyMinMa, source }
+}
 
 // The MCU's datasheet currents from the catalog, when it lists them.
 export function mcuCurrents(s: ContractSnapshot, entries: CatalogIq[] = catalog()): { ref: string; mpn: string; cpuMa: number; radioMa: number } | null {

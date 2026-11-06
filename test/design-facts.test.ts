@@ -11,7 +11,7 @@ test("designFacts gives the chosen parts' catalog facts, the field meanings and 
 	c.values.rails![0].averageMa = 0.05
 	c.values.requirements!.dutyCycle = { activeMs: 100, periodS: 60, sleepUa: 5 }
 	const text = designFacts(c, "around 500 mAh").join("\n")
-	assert.match(text, /## Part facts \(from the catalog\)\n- U1 ESP32-C3-MINI-1: .*3.0–3.6 V supply.*CPU running at 160 MHz with the radio off 23–28 mA \(Table 5-8\); radio receiving 84 mA.*The datasheet gives no Bluetooth LE current figure/)
+	assert.match(text, /## Part facts \(from the catalog\)\n- U1 ESP32-C3-MINI-1: .*3.0–3.6 V supply.*CPU running at 160 MHz with the radio off 23–28 mA \(Table 5-8\); radio receiving 84 mA.*The chip datasheet gives no Bluetooth LE current figure; the module datasheet v2\.2 does/)
 	assert.match(text, /- Firmware \(product build of templates\/fw\)/)
 	assert.match(text, /The behavior field is the bench demo build's blink and tilt settings, not the product's status LED/)
 	assert.match(text, /## Power budget \(computed in code/)
@@ -49,14 +49,15 @@ test("part-unconnected: a part no pin uses and the board generator doesn't wire 
 })
 
 // Real beacon run M: a 3V3 rail sized for 80 mA under an MCU that draws 84 mA receiving; only the final review saw it.
-test("rail-underrated: a 3.3 V rail whose peak is below the MCU's datasheet radio current is a live violation", () => {
+// Since the module datasheet v2.2's Bluetooth figures: the rail must cover transmitting, 170 mA at 0 dBm.
+test("rail-underrated: a 3.3 V rail whose peak is below the radio's transmit peak (module datasheet) is a live violation", () => {
 	const c = fixtureContract()
 	c.values.rails = [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 200, loadMa: 80 }]
 	const found = checkConsistency(c, {}).filter((v) => v.kind === "rail-underrated")
 	assert.equal(found.length, 1)
-	assert.equal(found[0].message, "rail 3V3 is sized for a 80 mA peak, below U1 ESP32-C3-MINI-1's 84 mA with its radio receiving (datasheet; it gives Wi-Fi transmit peaks up to 335 mA and no Bluetooth LE figure)")
+	assert.equal(found[0].message, "rail 3V3 is sized for a 80 mA peak, below 170 mA with U1 ESP32-C3-MINI-1 transmitting Bluetooth LE at 0 dBm (ESP32-C3-MINI-1 & MINI-1U datasheet v2.2 (2026-05-06))")
 	assert.deepEqual([found[0].fields, found[0].affects], [["rails", "parts"], ["architect"]])
-	c.values.rails[0].loadMa = 120
+	c.values.rails[0].loadMa = 200
 	assert.equal(checkConsistency(c, {}).filter((v) => v.kind === "rail-underrated").length, 0)
 })
 

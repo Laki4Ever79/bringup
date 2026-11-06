@@ -128,6 +128,14 @@ router can't finish, wakes the architect to give it room. The ESP32-C3 module si
 USB-C port, its antenna hanging past the edge as Espressif recommends; the case and the test fixture leave it room.
 Rules and sources: [docs/space-rules.md](docs/space-rules.md).
 
+### 8. And how it connects
+
+"Show the readings in Home Assistant": the connectivity engineer adds BTHome to the Bluetooth broadcast, and Home
+Assistant picks the device up with no app. "Send them over Wi-Fi every hour": the firmware switches to Wi-Fi and MQTT
+with Home Assistant discovery. The checks then follow the radio: Wi-Fi's 350 mA transmit peak raises the rail, the
+hourly uploads break the 180-day battery target until they're stretched, and field updates cost a second firmware
+slot that a bigger model may not fit. Details: [docs/connectivity.md](docs/connectivity.md).
+
 ## Architecture
 
 ```mermaid

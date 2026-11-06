@@ -1,6 +1,6 @@
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { generatedNets, MIC_PORT, partPads, supportParts } from "../codegen/circuit.ts"
-import { mcuCurrents } from "./power.ts"
+import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
 import { modelChecks, type ModelViolation } from "./model.ts"
@@ -8,6 +8,7 @@ import { fixtureChecks, testChecks, type TestViolation } from "./testkit.ts"
 import { builtFeatureChecks, caseChecks, type BuiltFeature, type CaseViolation } from "./case.ts"
 import type { CaseFeature } from "./types.ts"
 import { spaceChecks, type SpaceViolation } from "./space.ts"
+import { connectivityChecks, radioPeakMa, type ConnectivityViolation } from "./connectivity.ts"
 import type { TestPoint } from "../codegen/circuit.ts"
 
 export interface BoardArtifact {
@@ -102,6 +103,7 @@ export type ViolationKind =
 	| "standoff-mismatch"
 	| "part-mismatch"
 	| "rail-overload"
+	| "regulator-overclaimed"
 	| "firmware-build-failed"
 	| "sensor-mismatch"
 	| "history-overflow"
@@ -115,6 +117,7 @@ export type ViolationKind =
 	| TestViolation["kind"]
 	| CaseViolation["kind"]
 	| SpaceViolation["kind"]
+	| ConnectivityViolation["kind"]
 
 export interface Violation {
 	kind: ViolationKind
@@ -139,7 +142,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c))
+	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -147,9 +150,10 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""):
 		const check = dutyCycleCheckLines(power, c).find((l) => l.startsWith("- Average"))
 		v.push({
 			kind: "battery-short",
-			message: `the stated rail averages give ${Math.round(power.days)} days of battery life, short of the ${power.targetDays}-day target${check ? `; the duty-cycle check gives ${check.replace(/^- Average /, "an average of ")}` : ""}`,
-			fields: ["requirements", "rails", "parts"],
-			affects: ["architect"],
+			message: `the stated rail averages give ${Math.round(power.days)} days of battery life, short of the ${power.targetDays}-day target${power.wifi ? `, with Wi-Fi uploads adding ${Number(power.wifi.averageMa.toPrecision(3))} mA (${power.wifi.how})` : ""}${check ? `; the duty-cycle check gives ${check.replace(/^- Average /, "an average of ")}` : ""}`,
+			// Wi-Fi uploads are the connectivity engineer's lever (a longer upload period), as much as the architect's.
+			fields: power.wifi ? ["requirements", "rails", "parts", "connectivity"] : ["requirements", "rails", "parts"],
+			affects: power.wifi ? ["architect", "connectivity"] : ["architect"],
 		})
 	}
 	const { outline, pins, parts, connectors, rails } = c.values
@@ -330,6 +334,18 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""):
 	}
 
 	for (const rail of rails ?? []) {
+		// The rating a rail claims is the architect's number; the regulator part has its own. A claim above the part's
+		// rating made every load check below it meaningless (an XC6206 rated 200 mA could be written as 600).
+		const ldo = parts?.find((p) => p.role === "ldo")
+		const rating = ldo && Math.abs(rail.voltageV - 3.3) < 0.05 ? regulatorRating(ldo) : null
+		if (rating && rail.regulatorMaxMa > rating.maxMa) {
+			v.push({
+				kind: "regulator-overclaimed",
+				message: `${rail.name} claims a ${rail.regulatorMaxMa} mA regulator, but ${ldo!.ref} ${ldo!.mpn} is rated ${rating.maxMa} mA (${rating.source})`,
+				fields: ["rails", "parts"],
+				affects: ["architect"],
+			})
+		}
 		if (rail.loadMa > rail.regulatorMaxMa) {
 			v.push({
 				kind: "rail-overload",
@@ -378,14 +394,17 @@ export function unconnectedParts(c: ContractSnapshot): Violation[] {
 
 // A 3.3 V rail whose peak is below what the MCU itself draws with its radio on (datasheet): the regulator would be
 // sized for less than the chip needs (real beacon run M: 80 mA against the ESP32-C3's 84 mA receiving).
+// The 3V3 rail's stated peak must cover the radio's transmit peak (connectivity.radio: Bluetooth LE or Wi-Fi), from the
+// module's datasheet. Before, it was checked against the radio's receive current, since the chip datasheet gave no
+// Bluetooth LE figure; the module datasheet v2.2 does, and transmitting at 0 dBm peaks at twice the receive current.
 export function underratedRails(c: ContractSnapshot): Violation[] {
-	const mcu = mcuCurrents(c)
-	if (!mcu) return []
+	const peak = radioPeakMa(c)
+	if (!peak) return []
 	return (c.values.rails ?? [])
-		.filter((r) => Math.abs(r.voltageV - 3.3) < 0.05 && r.loadMa < mcu.radioMa)
+		.filter((r) => Math.abs(r.voltageV - 3.3) < 0.05 && r.loadMa < peak.ma)
 		.map((r) => ({
 			kind: "rail-underrated" as const,
-			message: `rail ${r.name} is sized for a ${r.loadMa} mA peak, below ${mcu.ref} ${mcu.mpn}'s ${mcu.radioMa} mA with its radio receiving (datasheet; it gives Wi-Fi transmit peaks up to 335 mA and no Bluetooth LE figure)`,
+			message: `rail ${r.name} is sized for a ${r.loadMa} mA peak, below ${peak.ma} mA with ${peak.what} (${peak.source})`,
 			fields: ["rails", "parts"] as FieldName[],
 			affects: ["architect"] as AgentRole[],
 		}))

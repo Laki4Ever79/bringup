@@ -66,8 +66,8 @@ export const CHANGES: ExperimentChange[] = [
 		},
 	},
 	{
-		// Only the parts list changes: the rails keep the AP2112K's 600 mA rating, which no check compares with the
-		// part (the 120 mA peak fits the XC6206's 200 mA either way).
+		// The part, and the rail's rating with it: a rail claiming the AP2112K's 600 mA over an XC6206 rated 200 mA is
+		// regulator-overclaimed (the 120 mA peak fits either way).
 		id: "ldo-swap",
 		label: "Swap the LDO for the low-Iq XC6206 (3 pins, no EN)",
 		receiver: "firmware",
@@ -77,6 +77,7 @@ export const CHANGES: ExperimentChange[] = [
 				value: value(s, "parts").map((p) => (p.role === "ldo" ? { ...p, mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] } : p)),
 				by: "parts",
 			},
+			{ field: "rails", value: value(s, "rails").map((r) => (r.name === "3V3" ? { ...r, regulatorMaxMa: 200 } : r)), by: "architect" },
 		],
 	},
 	{
