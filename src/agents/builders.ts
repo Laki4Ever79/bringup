@@ -47,7 +47,8 @@ export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	enclosure: ["outline", "connectors", "parts", "case"],
 	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
 	// model: model.h sizes the tensor arena and the weights the firmware reserves.
-	firmware: ["parts", "pins", "behavior", "requirements", "model"],
+	// connectivity: the radio code, the reports and the partition table (connectivity.h, platformio.ini).
+	firmware: ["parts", "pins", "behavior", "requirements", "model", "connectivity"],
 	// The test pads follow the board's placement (outline, connectors, parts); the limits follow the power budget (rails,
 	// requirements); the self-tests follow the pins and parts.
 	testkit: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"],

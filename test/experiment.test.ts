@@ -156,7 +156,10 @@ test("arm B: an LDO swap only the firmware heard of ships a board with the old r
 	const dir = tempDir()
 	const base = { board: stubBoard(baseSnap, 1, dir), enclosure: stubEnclosure(baseSnap, 1, dir), firmware: stubFirmware(baseSnap, 1, dir) }
 	const shipped = shippedMismatches(truth, base, "firmware", stubFirmware(truth, 2, dir))
-	assert.deepEqual(shipped.map((v) => v.message), ["board places AP2112K-3.3TRG1 as U3, contract says XC6206P332MR-G"])
+	// The cross-domain mismatch the silo ships, and since 6 Nov the swap itself: the XC6206's 200 mA is below the
+	// module's 0.5 A supply requirement (ESP32-C3-MINI-1 datasheet v2.2), which every arm sees.
+	assert.deepEqual(shipped.map((v) => v.kind), ["supply-underrated", "part-mismatch"])
+	assert.equal(shipped[1].message, "board places AP2112K-3.3TRG1 as U3, contract says XC6206P332MR-G")
 })
 
 test("--only merges its trials into the saved results, keeping the change order and the other trials", { timeout: 120_000 }, async () => {

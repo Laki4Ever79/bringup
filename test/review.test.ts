@@ -149,7 +149,7 @@ test("the reviewer gets peak, average and the battery-life arithmetic computed i
 	const r = await run({ scripts: { "mock-reviewer": reviewer([{ verdict: "pass", findings: [] }], seen) } })
 	const text = lastUserText(seen[0])
 	assert.match(text, /Power budget \(computed in code/)
-	assert.match(text, /3V3: peak 120 mA, average 0\.0\d+ mA/)
+	assert.match(text, /3V3: peak 200 mA, average 0\.0\d+ mA/)
 	assert.match(text, /Duty cycle: \d+ ms active every 300 s/)
 	assert.match(text, /Estimated battery life: 500 mAh \/ .* = \d+ days vs target 180 days/)
 	assert.match(r.report, /^- Estimated battery life: \d+ days vs target 180 days/m)

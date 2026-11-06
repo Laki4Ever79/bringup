@@ -5,12 +5,13 @@ import type { ContractSnapshot } from "../src/contract/types.ts"
 export function fixtureContract(): ContractSnapshot {
 	return {
 		revision: 6,
-		versions: { requirements: 1, outline: 1, connectors: 1, rails: 1, parts: 1, pins: 1, behavior: 0, model: 0, test: 0, case: 0 },
+		versions: { requirements: 1, outline: 1, connectors: 1, rails: 1, parts: 1, pins: 1, behavior: 0, model: 0, test: 0, case: 0, connectivity: 0 },
 		values: {
 			requirements: { summary: "BLE temperature logger", peripherals: ["i2c-sensor", "usb-c"], batteryLifeDays: 180 },
 			outline: { widthMm: 50, heightMm: 30, thicknessMm: 1.6, sizeReason: { kind: "engineer-size", detail: "the brief asks for about 50 × 30 mm" } },
 			connectors: [{ ref: "J1", kind: "usb-c", edge: "left", offsetMm: 15, widthMm: 9, heightMm: 3.5 }],
-			rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 500, loadMa: 120 }],
+			// 200 mA: the module transmitting Bluetooth LE peaks at 170 mA (ESP32-C3-MINI-1 datasheet v2.2).
+			rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 500, loadMa: 200 }],
 			parts: [
 				{ ref: "U1", role: "mcu", mpn: "ESP32-C3-MINI-1", lcsc: "C2838502", footprint: "module", pins: ["GPIO8", "GPIO9", "GPIO10", "3V3", "GND"] },
 				{ ref: "U2", role: "sensor", mpn: "SHT40-AD1B-R2", lcsc: "C2909890", footprint: "dfn4", pins: ["SDA", "SCL", "VDD", "VSS"] },

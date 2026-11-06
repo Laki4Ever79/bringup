@@ -116,7 +116,7 @@ test("the measured average goes to the contract through change control, once, wh
 	assert.equal(rail.averageSource, "measured")
 	assert.equal(rail.measuredRevision, rev)
 	assert.equal(rail.averageMa, m.averageMa)
-	assert.equal(rail.loadMa, 120, "nothing but the measurement changed")
+	assert.equal(rail.loadMa, 200, "nothing but the measurement changed")
 	// The same firmware measured again proposes nothing more.
 	t.send("design.settled", { revision: t.state.contract.revision, settled: true })
 	await new Promise((r) => setTimeout(r, 200))

@@ -6,6 +6,7 @@ import { state } from "../runtime.ts"
 import { searchParts } from "../tools/parts-search.ts"
 import { CASE_SHAPE } from "../contract/case.ts"
 import { ROUTING_FAILURE } from "../contract/space.ts"
+import { CONNECTIVITY_SHAPE } from "../contract/connectivity.ts"
 import { createRoleAgent, requestTurn, startTurn } from "./common.ts"
 import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
@@ -74,7 +75,7 @@ When the brief sets a battery-life target, estimate the duty cycle (requirements
 The reviewer also gets a second check from the duty cycle alone: each wake lasts activeMs (at least the firmware's 30 ms reading plus 50 ms of BLE advertising; the advertising window is activeMs minus the reading) at the busiest battery-fed rail's loadMa, then sleepUa plus LDO quiescent current for the rest of periodS. State averages consistent with that arithmetic, a loadMa that is the real peak, and an activeMs no longer than the wake needs: a long wake costs battery life directly.
 dutyCycle.sleepUa is the whole board asleep, excluding the regulator's quiescent current (counted separately). It can't be below the MCU's deep-sleep floor (catalog sleepUa; ESP32-C3-MINI-1: 5 µA), and a lower figure is raised to that floor.
 The ESP32-C3-MINI-1 has 4 MB on-module flash: if the design keeps a reading history, it goes there (NVS or LittleFS); no external memory part is needed.
-For a battery target, pick a low-Iq regulator: catalog LDOs list their quiescent current as iqUa. XC6206P332MR-G draws 1 µA; AP2112K-3.3TRG1 draws 55 µA (e.g. for a 180-day target on 500 mAh, that alone is half the ~116 µA allowed). A low-Iq LDO keeps its pins VIN, VOUT, GND (no EN).
+The ESP32-C3-MINI-1 needs a supply that can deliver 0.5 A (module datasheet v2.2): its radio bursts are short and high. So its regulator must be rated 500 mA or more: in the catalog only AP2112K-3.3TRG1 (600 mA) is; XC6206P332MR-G (200 mA) browns it out, low quiescent current or not. Catalog LDOs list their quiescent current as iqUa (AP2112K-3.3TRG1: 55 µA; for a 180-day target on 500 mAh that alone is half the ~116 µA allowed, so a battery target may need a bigger cell or a longer period). A rail's regulatorMaxMa is its regulator's own rating (catalog maxMa); a higher claim is a violation. The 3V3 rail's loadMa must cover the radio's transmit peak: 170 mA for Bluetooth LE at 0 dBm, 350 mA for Wi-Fi (the design facts give it).
 - parts: [{ref, role (one of: mcu, sensor, microphone, ldo, charger, battery, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
 - pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
 - search_parts stock: a number is live from LCSC; stock null means unknown, not out of stock.
@@ -340,6 +341,32 @@ export function createCaseAgent(opts: { mock: boolean }): Agent {
 				"If it is about the case (its outer size, walls, height, lid, lettering on it, wall-mount tabs, a lanyard loop, a hole for a cable or a cable gland), meet it: call read_contract, then propose_contract_change on the case field with its current baseVersion (a new case field has baseVersion 0, starting from walls 2 mm, height 14 mm, no features), keeping every feature the request does not mention. If it sets the case's outer size, also propose the board outline that gives it. Otherwise change nothing.",
 			),
 			violationsFor("enclosure", "Fix them by changing the case field you own (move or resize a hole, a taller or lower body, tabs on other walls, or a sizeReason when the room is wanted), with propose_contract_change and its current baseVersion.", (kind) => kind.startsWith("case-") || kind === "space-slack"),
+		],
+	})
+}
+
+export const CONNECTIVITY_DESIGN = `${CONNECTIVITY_SHAPE}.
+- Bluetooth LE: "bthome" is how a consumer device reaches Home Assistant with no app (its built-in BTHome integration reads the broadcast); "gatt" lets a phone app read the stored history. Both can run together.
+- Wi-Fi: each upload joins the network, which costs seconds of radio time (an estimate: about 3 s at 120 mA; Espressif gives no figure), so uploads are batched: uploadPeriodS is a whole multiple of the duty cycle's period. The 3V3 rail's peak must cover Wi-Fi transmitting (350 mA), and the regulator must deliver the module's 0.5 A either way. A battery target that Wi-Fi can't meet goes to the architect (a longer upload period, a bigger cell, or USB power).
+- updates "ota" keeps two firmware slots in flash (1.25 MB each instead of one 2 MB slot), which a large model may not fit; it needs Wi-Fi. "none" can't fix a bug in the field.
+- The design facts give the battery check with the radio counted, and the flash each choice leaves.`
+
+// The connectivity engineer: owns how the product reaches its owner (the radio, how readings leave, field updates).
+// A change ripples through the checks: the radio's transmit peak against the rail and the regulator, Wi-Fi uploads
+// against the battery target, an update slot against the flash a model needs, and the firmware rebuilds.
+export function createConnectivityAgent(opts: { mock: boolean }): Agent {
+	return createRoleAgent({
+		role: "connectivity",
+		name: "connectivity-engineer",
+		mock: opts.mock,
+		instruction: `You are the connectivity engineer of a small consumer hardware product: you own the connectivity field, how the device reaches its owner. Write it with propose_contract_change when the engineer asks about the radio, Bluetooth or Wi-Fi, Home Assistant, a phone app, uploads or firmware updates. You don't change the parts, rails or requirements: the checks wake their owners. When another discipline proposes a change to connectivity, decide with decide_change.\n${CONNECTIVITY_DESIGN}\n${CONTRACT_SHAPES}`,
+		handlers: [
+			ownerReviewsChanges("connectivity"),
+			ownerFixesReview("connectivity"),
+			engineerRequests(
+				"If it is about how the device connects (Bluetooth, BTHome, Home Assistant, Wi-Fi, MQTT, a phone app, uploads, firmware updates), meet it by writing the connectivity field you own: call read_contract, then propose_contract_change with its current baseVersion (0 when there is none yet; without it the device is Bluetooth LE with the GATT service and no updates). Otherwise change nothing.",
+			),
+			violationsFor("connectivity", "Fix them by changing the connectivity field you own (a longer upload period, Bluetooth instead of Wi-Fi, no update slot), with propose_contract_change and its current baseVersion; leave other fields to their owners."),
 		],
 	})
 }

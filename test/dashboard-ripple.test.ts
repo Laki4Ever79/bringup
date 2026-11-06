@@ -48,7 +48,7 @@ test("ripple: the fields a request touched, who woke and who stayed idle", () =>
 	assert.deepEqual(r.woke, ["architect", "build:board", "build:enclosure", "consistency"])
 	assert.deepEqual(r.checked, [])
 	assert.deepEqual(r.reading, [])
-	assert.deepEqual(r.stayedIdle, ["parts", "ml", "test", "enclosure", "firmware", "reviewer", "build:firmware", "build:testkit", "grounding"])
+	assert.deepEqual(r.stayedIdle, ["parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer", "build:firmware", "build:testkit", "grounding"])
 	assert.equal(r.violationsPeak, 2)
 	assert.deepEqual(r.violations, [2, 0])
 	assert.deepEqual(r.revisions, { from: 6, to: 7 })
@@ -114,7 +114,7 @@ test("ripple: woke = changed or proposed a field; checked = took a turn and chan
 	const [r] = liveRipples(events, [request], T0 + 106_000)
 	assert.deepEqual(r.woke, ["architect", "firmware", "build:board", "build:enclosure", "consistency"])
 	assert.deepEqual(r.checked, ["reviewer"])
-	assert.deepEqual(r.stayedIdle, ["parts", "ml", "test", "enclosure", "build:firmware", "build:testkit", "grounding"])
+	assert.deepEqual(r.stayedIdle, ["parts", "ml", "test", "enclosure", "connectivity", "build:firmware", "build:testkit", "grounding"])
 })
 
 test("ripple: an agent that took a turn and is still at it is 'reading', not yet woke or checked", () => {

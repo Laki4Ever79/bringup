@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util"
 import { caseShapeError } from "./case.ts"
+import { connectivityShapeError } from "./connectivity.ts"
 import { sizeReasonError } from "./space.ts"
 import { FIELDS, OWNERS, PART_ROLES, SIGNAL_PATTERN, type ContractSnapshot, type ContractValues, type FieldName, type Proposal, type ProposalResult } from "./types.ts"
 
@@ -177,6 +178,8 @@ function shapeError(field: FieldName, value: unknown): string | null {
 		}
 		case "case":
 			return caseShapeError(value)
+		case "connectivity":
+			return connectivityShapeError(value)
 		case "behavior": {
 			const shape = 'behavior must be exactly {blinkMs, tiltBlinkMs, tiltDeg}: numbers, blinkMs > 0, tiltBlinkMs > 0, tiltDeg from 0 to 90, e.g. {"blinkMs":1000,"tiltBlinkMs":200,"tiltDeg":20}. It sets only the status LED blink period and the tilt threshold'
 			if (!obj(value)) return shape

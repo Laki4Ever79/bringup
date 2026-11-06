@@ -1,11 +1,11 @@
 // "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field. "ml" owns
 // the on-device model, "test" the production test (test pads, pass limits), "enclosure" the case designer's field (case:
 // walls, height, added features); the enclosure builder makes the case from it.
-export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml" | "test"
+export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml" | "test" | "connectivity"
 
-export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test" | "case"
+export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test" | "case" | "connectivity"
 
-export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case"]
+export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case", "connectivity"]
 
 // The fields every design writes; behavior is optional (the firmware has defaults).
 export const CORE_FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
@@ -21,6 +21,7 @@ export const OWNERS: Record<FieldName, AgentRole> = {
 	model: "ml",
 	test: "test",
 	case: "enclosure",
+	connectivity: "connectivity",
 }
 
 // How the device spends its time: awake for activeMs every periodS seconds, drawing sleepUa in between.
@@ -165,6 +166,23 @@ export type CaseFeature =
 	// connectors' frame, halfway up the wall's free height.
 	| { id: string; kind: "hole"; edge: "left" | "right" | "top" | "bottom"; offsetMm: number; diameterMm: number }
 
+// How the product reaches its owner: the radio, how the readings leave the device, and whether its firmware can be
+// updated in the field. Owned by the connectivity engineer; checked in code against the power budget (the radio's
+// transmit peak and, for Wi-Fi, each connection's energy) and the flash (an update needs a second firmware slot).
+// Optional: without it the device is what it always was, Bluetooth LE with its GATT service, no updates.
+export interface Connectivity {
+	radio: "ble" | "wifi"
+	// "gatt": a phone connects and reads the history (BLE). "bthome": each reading is broadcast in BTHome v2 advertising,
+	// which Home Assistant picks up with no app (BLE). "mqtt": readings are published to an MQTT broker with Home
+	// Assistant discovery (Wi-Fi).
+	report: ("gatt" | "bthome" | "mqtt")[]
+	// Wi-Fi only: the device connects once per uploadPeriodS and uploads what it stored since, a whole multiple of the
+	// duty cycle's period. Connecting costs seconds of radio time, so every reading would cost the battery far more.
+	uploadPeriodS?: number
+	// "ota": the firmware can be updated over Wi-Fi, so the flash keeps two firmware slots. "none": one bigger slot.
+	updates: "none" | "ota"
+}
+
 export interface Behavior {
 	blinkMs: number
 	tiltBlinkMs: number
@@ -182,6 +200,7 @@ export type ContractValues = {
 	model: ModelSpec
 	test: TestSpec
 	case: CaseSpec
+	connectivity: Connectivity
 }
 
 export interface ContractSnapshot {

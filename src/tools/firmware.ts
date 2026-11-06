@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process"
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
-import { join } from "node:path"
-import { behaviorHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
+import { existsSync } from "node:fs"
+import { join, resolve as resolvePath } from "node:path"
+import { behaviorHeader, connectivityHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
+import { partitionTable } from "../contract/connectivity.ts"
 import type { FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { mergeFlash, runImage } from "./emulator.ts"
@@ -23,10 +25,20 @@ export function buildLog(output: string): string {
 	return [...(errors.length ? [...errors, "…"] : []), ...tail].join("\n")
 }
 
+// The engineer's Wi-Fi and MQTT credentials (BRINGUP_SECRETS: a secrets.h of their own) are force-included by the
+// compiler from where they are, never copied into the firmware folder: a linked folder is a git repo that commits
+// what is generated there.
+function secretsFlags(): Record<string, string> {
+	const path = process.env.BRINGUP_SECRETS
+	if (!path || !existsSync(path)) return {}
+	const own = process.env.PLATFORMIO_BUILD_FLAGS ? `${process.env.PLATFORMIO_BUILD_FLAGS} ` : ""
+	return { PLATFORMIO_BUILD_FLAGS: `${own}-include "${resolvePath(path)}"` }
+}
+
 function run(cmd: string, args: string[]): Promise<{ code: number | null; output: string }> {
 	return new Promise((resolve) => {
 		let output = ""
-		const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], timeout: TIMEOUT_MS })
+		const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], timeout: TIMEOUT_MS, env: { ...process.env, ...secretsFlags() } })
 		child.stdout.on("data", (d) => { output += d })
 		child.stderr.on("data", (d) => { output += d })
 		child.on("error", (e) => { output += `\n${e.message}`; resolve({ code: null, output }) })
@@ -67,6 +79,12 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 	await writeFile(join(dir, "include/pins.h"), header)
 	await writeFile(join(dir, "include/behavior.h"), behaviorHeader(s))
 	await writeFile(join(dir, "include/model.h"), modelHeader(s))
+	await writeFile(join(dir, "include/connectivity.h"), connectivityHeader(s))
+	// The product firmware's partition table follows connectivity.updates: two firmware slots for updates, else one.
+	const ini = join(dir, "platformio.ini")
+	const table = partitionTable(s)
+	const text = await readFile(ini, "utf8")
+	await writeFile(ini, text.replace(/(\[env:esp32c3\]\n(?:[^\[]*?\n)?board = esp32-c3-devkitm-1\n)(board_build\.partitions = .*\n)?/, `$1board_build.partitions = ${table}\n`))
 	return header
 }
 

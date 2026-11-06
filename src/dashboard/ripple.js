@@ -6,7 +6,7 @@
 import { BUILDS, LANES, applyLaneEvent, createLanes } from "./lanes.js"
 
 const KEYS = LANES.map((l) => l.key)
-const AGENTS = new Set(["architect", "parts", "ml", "test", "enclosure", "firmware", "reviewer"])
+const AGENTS = new Set(["architect", "parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer"])
 // Same as BUILD_INPUTS in src/agents/builders.ts.
 // The builders' inputs, from lanes.js (held equal to src/agents/builders.ts by a test).
 const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b]) => [`build:${k}`, b.inputs]))
@@ -273,7 +273,7 @@ export const PROBLEM = {
 	"rail-underrated": "a rail is sized below the chip's current",
 	"battery-short": "the battery won't last the target",
 }
-const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", "build:testkit": "test kit", test: "test engineer", enclosure: "case designer", ml: "ML engineer", grounding: "datasheet check", consistency: "consistency check" }
+const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", "build:testkit": "test kit", test: "test engineer", enclosure: "case designer", connectivity: "connectivity engineer", ml: "ML engineer", grounding: "datasheet check", consistency: "consistency check" }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 const and = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`)
 const mismatches = (n) => `${n} mismatch${n === 1 ? "" : "es"}`

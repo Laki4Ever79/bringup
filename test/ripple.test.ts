@@ -51,7 +51,7 @@ test("the 60 mm request changes the outline, wakes board and enclosure, leaves f
 	assert.deepEqual(r.woke, ["architect", "build:board", "build:enclosure", "consistency"])
 	// The reviewer's turn comes after design.ready: the review, not the change itself.
 	assert.deepEqual(r.checked, [])
-	assert.deepEqual(r.stayedIdle, ["parts", "ml", "test", "enclosure", "firmware", "reviewer", "build:firmware", "build:testkit", "grounding"])
+	assert.deepEqual(r.stayedIdle, ["parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer", "build:firmware", "build:testkit", "grounding"])
 	assert.deepEqual(r.reviewFollowUps, { fieldsChanged: [], rounds: 0 })
 	assert.equal(r.violationsPeak, 2)
 	assert.equal(r.consistentAtMs, 30_000, "after the woken builders are done, not the 0 right after the change")
@@ -119,7 +119,7 @@ test("violations after the builds are done undo 'consistent' until a clean check
 	assert.equal(changeRipples(trace)[0].consistentAtMs, 4_000)
 })
 
-test("a held proposal counts as woken; a participant outside the 13 lanes (the bench) is left out", () => {
+test("a held proposal counts as woken; a participant outside the 14 lanes (the bench) is left out", () => {
 	const trace = [
 		ev(0, "run.started", {}),
 		ev(1_000, "change.requested", { id: "req-1", text: "x" }),
@@ -129,7 +129,7 @@ test("a held proposal counts as woken; a participant outside the 13 lanes (the b
 	]
 	const [r] = changeRipples(trace)
 	assert.deepEqual(r.woke, ["firmware", "consistency"])
-	assert.equal(r.woke.length + r.checked.length + r.stayedIdle.length, 13)
+	assert.equal(r.woke.length + r.checked.length + r.stayedIdle.length, 14)
 })
 
 // Real run 15: each re-settle re-arms the review, and its fix rounds changed requirements, rails and parts. Counted as
@@ -196,7 +196,7 @@ test("a mock run with a mid-run 60 mm request writes ripples.json and a Change r
 	const report = readFileSync(join(out, "report.md"), "utf8")
 	assert.match(report, /## Change requests/)
 	assert.match(report, /\| Request \| Fields changed \| Woken \| Consistent again \| After it \|/)
-	assert.match(report, /\| make the board 60 mm wide \| outline \| .* \(\d+ of 13; \d+ more checked, no change: [a-z, ]+\) \| \d+(\.\d)? s \| then 1 review round changed nothing \|/)
+	assert.match(report, /\| make the board 60 mm wide \| outline \| .* \(\d+ of 14; \d+ more checked, no change: [a-z, ]+\) \| \d+(\.\d)? s \| then 1 review round changed nothing \|/)
 })
 
 test("each scripted change adds its own time to the run's default timeout", async () => {
