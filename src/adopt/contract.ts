@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { basename, dirname, join, relative } from "node:path"
 import { DesignContract } from "../contract/contract.ts"
 import { checkConsistency, type Artifacts, type Violation } from "../contract/consistency.ts"
-import { OWNERS, type Connector, type ContractSnapshot, type ContractValues, type FieldName, type Part, type PinAssignment } from "../contract/types.ts"
+import { OWNERS, type Connector, type ContractSnapshot, type ContractValues, type FieldName, type Outline, type Part, type PinAssignment } from "../contract/types.ts"
 import { firmwareVariants, type FirmwareVariant } from "./firmware.ts"
 import { checkVariant, findMcus, gpioOfPad, rankVariants, type PinCheck } from "./match.ts"
 import { loadBoardFile, netMembers, type Board, type Footprint } from "./pcb.ts"
@@ -194,24 +194,45 @@ export function artifactsOf(repo: string, links: Links, agreed: ContractSnapshot
 		const pad = mcu.pads.find((p) => gpioOfPad(mcu, p) === pin.gpio)
 		if (pad && generic(pad.net) && !pad.net.startsWith("unconnected-")) nets[pin.signal] = signalEnds(b, pad.net).map((m) => endOf(m, pad.net))
 	}
-	// The firmware's pins as this build compiles them (#if branches evaluated against this board), by linked name.
 	const v = variants.find((x) => x.id === links.variant)
-	const mcus = findMcus(b)
-	const compiled = v && mcus.length ? checkVariant(b, mcus, v).map((c) => c.pin) : []
 	const fwPins: Record<string, number> = {}
-	for (const [signal, l] of Object.entries(links.signals)) {
-		const p = l.firmware && compiled.find((x) => x.name === l.firmware!.name)
-		if (p) fwPins[signal] = p.gpio
-	}
+	for (const [signal, p] of Object.entries(firmwarePins(b, links, v))) if (p.gpio !== null) fwPins[signal] = p.gpio
 	return {
 		board: { revision: 0, dir: dirname(file), pcbPath: file, stepPath: null, renderPath: null, widthMm: b.outline.widthMm, heightMm: b.outline.heightMm, nets },
 		...(v ? { firmware: { revision: 0, ok: true, pins: fwPins, log: "" } } : {}),
 	}
 }
 
+// Each linked signal's firmware name as this build compiles it (#if branches evaluated against this board): the
+// GPIO it drives now and where that is defined now (the link's file:line is where it was when the contract was
+// agreed). gpio is null when the build no longer has the name.
+export type FirmwarePins = Record<string, { name: string; file: string; line: number; gpio: number | null }>
+
+export function firmwarePins(b: Board, links: Links, v: FirmwareVariant | undefined): FirmwarePins {
+	const mcus = findMcus(b)
+	const compiled = v && mcus.length ? checkVariant(b, mcus, v).map((c) => c.pin) : []
+	const out: FirmwarePins = {}
+	for (const [signal, l] of Object.entries(links.signals)) {
+		if (!l.firmware) continue
+		const p = compiled.find((x) => x.name === l.firmware!.name)
+		out[signal] = p ? { name: p.name, file: p.file, line: p.line, gpio: p.gpio } : { ...l.firmware, gpio: null }
+	}
+	return out
+}
+
+// The change in the contract's own terms, so the impact summary (impact.ts) can name what moved without parsing `what`.
+export type ChangeDetail =
+	| { field: "outline"; from: Outline; to: Outline }
+	| { field: "connectors"; ref: string; from: Connector | null; to: Connector | null }
+	| { field: "parts"; ref: string; from: Part; to: Part }
+	| { field: "pins"; signal: string; from: PinAssignment | null; to: PinAssignment | null }
+
 export interface FieldChange {
 	field: FieldName
 	what: string
+	detail?: ChangeDetail
+	// The firmware still on the old pin after a board move: a consequence of a change, not a change of its own.
+	stale?: true
 }
 
 // What moved between the agreed contract and the repo now, in the contract's terms: the semantic diff git can't give.
@@ -220,31 +241,33 @@ export function diffValues(agreed: Partial<ContractValues>, now: Partial<Contrac
 	const o1 = agreed.outline
 	const o2 = now.outline
 	if (o1 && o2 && (o1.widthMm !== o2.widthMm || o1.heightMm !== o2.heightMm || o1.thicknessMm !== o2.thicknessMm))
-		out.push({ field: "outline", what: `board ${o1.widthMm} × ${o1.heightMm} × ${o1.thicknessMm} mm → ${o2.widthMm} × ${o2.heightMm} × ${o2.thicknessMm} mm` })
+		out.push({ field: "outline", what: `board ${o1.widthMm} × ${o1.heightMm} × ${o1.thicknessMm} mm → ${o2.widthMm} × ${o2.heightMm} × ${o2.thicknessMm} mm`, detail: { field: "outline", from: o1, to: o2 } })
 	const byRef = <T extends { ref: string }>(xs: T[] | undefined) => new Map((xs ?? []).map((x) => [x.ref, x]))
 	const c1 = byRef(agreed.connectors)
 	const c2 = byRef(now.connectors)
 	for (const [ref, a] of c1) {
 		const b = c2.get(ref)
-		if (!b) out.push({ field: "connectors", what: `${ref} is gone from the ${a.edge} edge` })
-		else if (a.edge !== b.edge || Math.abs(a.offsetMm - b.offsetMm) > 0.1) out.push({ field: "connectors", what: `${ref} moved: ${a.edge} edge at ${a.offsetMm} mm → ${b.edge} edge at ${b.offsetMm} mm` })
+		const detail = { field: "connectors" as const, ref, from: a, to: b ?? null }
+		if (!b) out.push({ field: "connectors", what: `${ref} is gone from the ${a.edge} edge`, detail })
+		else if (a.edge !== b.edge || Math.abs(a.offsetMm - b.offsetMm) > 0.1) out.push({ field: "connectors", what: `${ref} moved: ${a.edge} edge at ${a.offsetMm} mm → ${b.edge} edge at ${b.offsetMm} mm`, detail })
 	}
-	for (const [ref, b] of c2) if (!c1.has(ref)) out.push({ field: "connectors", what: `${ref} is new, on the ${b.edge} edge at ${b.offsetMm} mm` })
+	for (const [ref, b] of c2) if (!c1.has(ref)) out.push({ field: "connectors", what: `${ref} is new, on the ${b.edge} edge at ${b.offsetMm} mm`, detail: { field: "connectors", ref, from: null, to: b } })
 	const p1 = byRef(agreed.parts)
 	const p2 = byRef(now.parts)
 	for (const [ref, a] of p1) {
 		const b = p2.get(ref)
-		if (b && a.mpn !== b.mpn) out.push({ field: "parts", what: `${ref} changed: ${a.mpn} → ${b.mpn}` })
+		if (b && a.mpn !== b.mpn) out.push({ field: "parts", what: `${ref} changed: ${a.mpn} → ${b.mpn}`, detail: { field: "parts", ref, from: a, to: b } })
 	}
 	const s1 = new Map((agreed.pins ?? []).map((p) => [p.signal, p]))
 	const s2 = new Map((now.pins ?? []).map((p) => [p.signal, p]))
 	for (const [sig, a] of s1) {
 		const b = s2.get(sig)
-		if (!b) out.push({ field: "pins", what: `${sig} (${pinLabel(a.gpio)}) is gone from the board` })
-		else if (a.gpio !== b.gpio) out.push({ field: "pins", what: `${sig} moved: ${pinLabel(a.gpio)} → ${pinLabel(b.gpio)}` })
-		else if (a.partRef !== b.partRef || a.partPin !== b.partPin) out.push({ field: "pins", what: `${sig} now goes to ${b.partRef}.${b.partPin} (was ${a.partRef}.${a.partPin})` })
+		const detail = { field: "pins" as const, signal: sig, from: a, to: b ?? null }
+		if (!b) out.push({ field: "pins", what: `${sig} (${pinLabel(a.gpio)}) is gone from the board`, detail })
+		else if (a.gpio !== b.gpio) out.push({ field: "pins", what: `${sig} moved: ${pinLabel(a.gpio)} → ${pinLabel(b.gpio)}`, detail })
+		else if (a.partRef !== b.partRef || a.partPin !== b.partPin) out.push({ field: "pins", what: `${sig} now goes to ${b.partRef}.${b.partPin} (was ${a.partRef}.${a.partPin})`, detail })
 	}
-	for (const [sig, b] of s2) if (!s1.has(sig)) out.push({ field: "pins", what: `${sig} is new on ${pinLabel(b.gpio)}` })
+	for (const [sig, b] of s2) if (!s1.has(sig)) out.push({ field: "pins", what: `${sig} is new on ${pinLabel(b.gpio)}`, detail: { field: "pins", signal: sig, from: null, to: b } })
 	return out
 }
 
@@ -253,6 +276,10 @@ export interface CheckResult {
 	violations: Violation[]
 	changes: FieldChange[]
 	missing?: string
+	// The firmware build paired with the board when the contract was agreed (null: none fit), and its linked pins
+	// now: what the impact summary needs to say whether the firmware followed a pin move.
+	variant?: string | null
+	firmware?: FirmwarePins
 }
 
 // Bringup's checks of the repo now against the agreed contract. Only the checks whose inputs a foreign repo has:
@@ -277,15 +304,15 @@ export function checkAgainst(repo: string, dir: string): CheckResult[] {
 		for (const v of violations) v.message = v.message.replace(/GPIO(\d{4})/g, (_, n: string) => pinLabel(Number(n)))
 		const now = infer(repo, join(repo, links.board), variants, links.variant ?? undefined)
 		const changes = now ? diffValues(snapshot.values, now.values) : []
-		// The ripple: a pin the board moved that the firmware still drives where it was.
-		const fw = a.firmware?.pins ?? {}
+		// The ripple: a pin the board moved that the firmware still drives where it was, at where it is defined now.
+		const fw = firmwarePins(loadBoardFile(join(repo, links.board)), links, variants.find((x) => x.id === links.variant))
 		for (const pin of now?.values.pins ?? []) {
 			const was = snapshot.values.pins?.find((p) => p.signal === pin.signal)
-			const l = links.signals[pin.signal]?.firmware
-			if (was && l && was.gpio !== pin.gpio && fw[pin.signal] === was.gpio)
-				changes.push({ field: "pins", what: `the board moved ${pin.signal} to ${pinLabel(pin.gpio)}, but the firmware still drives it on ${pinLabel(was.gpio)} (${l.name}, ${l.file}:${l.line}): update it` })
+			const l = fw[pin.signal]
+			if (was && l && was.gpio !== pin.gpio && l.gpio === was.gpio)
+				changes.push({ field: "pins", what: `the board moved ${pin.signal} to ${pinLabel(pin.gpio)}, but the firmware still drives it on ${pinLabel(was.gpio)} (${l.name}, ${l.file}:${l.line}): update it`, stale: true })
 		}
-		out.push({ board: links.board, violations, changes })
+		out.push({ board: links.board, violations, changes, variant: links.variant, firmware: fw })
 	}
 	return out
 }
