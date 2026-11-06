@@ -34,7 +34,7 @@ export const CHANGES: ExperimentChange[] = [
 		receiver: "board",
 		proposals: (s) => {
 			const o = value(s, "outline")
-			return [{ field: "outline", value: { ...o, widthMm: o.widthMm - 10 }, by: "architect" }]
+			return [{ field: "outline", value: { ...o, widthMm: o.widthMm - 10, sizeReason: { kind: "engineer-size", detail: "the engineer asked for 10 mm narrower" } }, by: "architect" }]
 		},
 	},
 	{
@@ -43,7 +43,7 @@ export const CHANGES: ExperimentChange[] = [
 		receiver: "enclosure",
 		proposals: (s) => {
 			const o = value(s, "outline")
-			return [{ field: "outline", value: { ...o, heightMm: o.heightMm + 6 }, by: "architect" }]
+			return [{ field: "outline", value: { ...o, heightMm: o.heightMm + 6, sizeReason: { kind: "engineer-size", detail: "the engineer asked for 6 mm taller" } }, by: "architect" }]
 		},
 	},
 	{

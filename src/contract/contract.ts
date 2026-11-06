@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util"
 import { caseShapeError } from "./case.ts"
+import { sizeReasonError } from "./space.ts"
 import { FIELDS, OWNERS, PART_ROLES, SIGNAL_PATTERN, type ContractSnapshot, type ContractValues, type FieldName, type Proposal, type ProposalResult } from "./types.ts"
 
 // Single source of truth for the design. Each field has one owning role and a version;
@@ -129,7 +130,8 @@ function shapeError(field: FieldName, value: unknown): string | null {
 				: "requirements.dutyCycle must be {activeMs > 0, periodS > 0, sleepUa >= 0} with activeMs no longer than the period"
 		}
 		case "outline":
-			return obj(value) && isNum(value.widthMm) && isNum(value.heightMm) && isNum(value.thicknessMm) ? null : "outline must be {widthMm, heightMm, thicknessMm} numbers"
+			if (!(obj(value) && isNum(value.widthMm) && isNum(value.heightMm) && isNum(value.thicknessMm))) return "outline must be {widthMm, heightMm, thicknessMm} numbers, optional sizeReason"
+			return sizeReasonError(value.sizeReason)
 		case "connectors":
 			return list((x) => isStr(x.ref) && isStr(x.edge) && isNum(x.offsetMm) && isNum(x.widthMm) && isNum(x.heightMm), "{ref, kind, edge, offsetMm, widthMm, heightMm}")
 		case "rails": {

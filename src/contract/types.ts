@@ -45,6 +45,14 @@ export interface Outline {
 	widthMm: number
 	heightMm: number
 	thicknessMm: number
+	// Why the board is more than 15% over the smallest it can be (contract/space.ts); absent when it isn't.
+	sizeReason?: SizeReason
+}
+
+// A recorded reason for space over the minimum (docs/space-rules.md): one of the listed kinds, and what it is here.
+export interface SizeReason {
+	kind: "engineer-size" | "usability" | "standard-fit" | "function" | "assembly-test" | "expansion" | "routing"
+	detail: string
 }
 
 export interface Connector {
@@ -142,6 +150,8 @@ export interface CaseSpec {
 	// The body's outer height, floor underside to the lid's seat (the lid's plate adds its own 2 mm).
 	heightMm: number
 	features: CaseFeature[]
+	// Why the body is more than 15% taller than its contents need (contract/space.ts).
+	sizeReason?: SizeReason
 }
 
 export type CaseFeature =

@@ -4,6 +4,7 @@ import { testPoints } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
 import type { CaseSpec, ContractSnapshot, ContractValues, FieldName } from "../contract/types.ts"
 import { boardFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
+import { compactOutline, SLACK_LIMIT } from "../contract/space.ts"
 import { state } from "../runtime.ts"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
@@ -18,7 +19,8 @@ export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" 
 		batteryLifeDays: 180,
 		dutyCycle: { activeMs: 330, periodS: 300, sleepUa: 10 },
 	},
-	outline: { widthMm: 50, heightMm: 30, thicknessMm: 1.6 },
+	// The brief asks for this size (space rules: the engineer's size is the reason the board is over the minimum).
+	outline: { widthMm: 50, heightMm: 30, thicknessMm: 1.6, sizeReason: { kind: "engineer-size", detail: "the brief asks for about 50 × 30 mm" } },
 	connectors: [{ ref: "J1", kind: "usb-c", edge: "left", offsetMm: 15, widthMm: 9, heightMm: 3.5 }],
 	rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 120, averageMa: 0.0375 }],
 	pins: [
@@ -154,6 +156,8 @@ export function caseFromRequest(request: string, s: ContractSnapshot): CaseSpec 
 	const tall = /(\d+(?:\.\d+)?)\s*mm (?:tall|high)/i.exec(request)
 	if (tall) c.heightMm = Number(tall[1])
 	else if (/\b(taller|higher)\b/i.test(request)) c.heightMm += 4
+	// The engineer's own height is the reason the body is that tall (space rules).
+	if (tall || /\b(taller|higher)\b/i.test(request)) c.sizeReason = { kind: "engineer-size", detail: `the engineer asked: ${request}` }
 	else if (/\b(lower|slimmer|flatter|thinner case)\b/i.test(request)) c.heightMm = Math.max(minCaseHeight(s, c), c.heightMm - 3)
 	const add = (f: CaseSpec["features"][number]) => (c = { ...c, features: [...c.features.filter((x) => x.id !== f.id), f] })
 	if (/wall.?mount|mounting (tabs?|ears?)|screw it to a wall/i.test(request))
@@ -183,7 +187,9 @@ export function caseFromRequest(request: string, s: ContractSnapshot): CaseSpec 
 // The scripted case designer's fix for its own violations: a body tall enough, every hole moved to where it fits.
 function caseFollows(s: ContractSnapshot): CaseSpec {
 	let c: CaseSpec = structuredClone(caseOf(s))
-	c.heightMm = Math.max(c.heightMm, minCaseHeight(s, c))
+	const need = minCaseHeight(s, c)
+	// Compact by default: a body taller than its contents need, with no reason, comes down to what they need.
+	c.heightMm = !c.sizeReason && c.heightMm > need * (1 + SLACK_LIMIT) ? Math.ceil(need) : Math.max(c.heightMm, need)
 	for (const f of c.features) if (f.kind === "hole" && !clean(c, s, f.id)) c = placeHole(c, s, f.id, [f.edge, ...EDGE_ORDER.filter((e) => e !== f.edge)])
 	return c
 }
@@ -220,6 +226,8 @@ const ARCHITECT_FIELDS = ["requirements", "outline", "connectors", "rails", "pin
 
 // Deterministic stand-ins for each role's model, so a full run needs no API key.
 export function mockScripts(): Record<string, Script> {
+	// The outline the scripted architect shrank from, until it has moved the connectors to match (space rules).
+	let shrinkFrom: { widthMm: number; heightMm: number } | null = null
 	return {
 		"mock-architect": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
@@ -237,6 +245,25 @@ export function mockScripts(): Record<string, Script> {
 						{ ...requirements, summary: `${requirements.summary}, listening for a wake word (always on, so powered from USB)`, peripherals: [...new Set([...requirements.peripherals, "microphone"])], batteryLifeDays: null },
 						"always-on listening keeps the MCU awake at about 28 mA: the battery lasts under a day, so the target becomes USB power",
 					)
+				// No reason for the board's slack: shrink it to the smallest it can be, connectors first when the height changes.
+				// The outline first, then the connectors scaled from the old outline to the new one: their place along each
+				// edge stays the same. (Moving the connectors first changed the minimum under the next turn.)
+				const o = state().contract.get("outline")
+				if (step === 1 && shrinkFrom && o) {
+					const from = shrinkFrom
+					shrinkFrom = null
+					const connectors = state().contract.get("connectors") ?? []
+					const scaled = connectors.map((c) => {
+						const [a, b] = c.edge === "left" || c.edge === "right" ? [from.heightMm, o.heightMm] : [from.widthMm, o.widthMm]
+						return { ...c, offsetMm: Math.round(((c.offsetMm * b) / a) * 2) / 2 }
+					})
+					if (JSON.stringify(scaled) !== JSON.stringify(connectors)) return propose("connectors", scaled, `the connectors keep their place along the edges of the ${o.widthMm}×${o.heightMm} mm board`)
+				}
+				const target = step === 0 && kinds.has("space-slack") && o && !o.sizeReason ? compactOutline(state().contract.snapshot()) : null
+				if (target && o && (o.widthMm * o.heightMm) / (target.widthMm * target.heightMm) - 1 > SLACK_LIMIT) {
+					shrinkFrom = { widthMm: o.widthMm, heightMm: o.heightMm }
+					return propose("outline", { ...o, widthMm: target.widthMm, heightMm: target.heightMm }, `compact by default: the parts place on ${target.widthMm}×${target.heightMm} mm, and nothing asks for more`)
+				}
 				return say("violations handled")
 			}
 			if (instruction.startsWith("Change request from the engineer:")) {
@@ -258,7 +285,7 @@ export function mockScripts(): Record<string, Script> {
 					const outlineNow = state().contract.get("outline")
 					const connectorsNow = state().contract.get("connectors") ?? []
 					if (resized && outlineNow && (outlineNow.widthMm !== Number(resized[1]) || outlineNow.heightMm !== Number(resized[2])))
-						return propose("outline", { ...outlineNow, widthMm: Number(resized[1]), heightMm: Number(resized[2]) }, `engineer edited the board outline: ${resized[0]}`)
+						return propose("outline", { ...outlineNow, widthMm: Number(resized[1]), heightMm: Number(resized[2]), sizeReason: { kind: "engineer-size", detail: `the engineer drew the board ${resized[1]}×${resized[2]} mm in KiCad` } }, `engineer edited the board outline: ${resized[0]}`)
 					const moved = connectorsNow.map((c) => {
 						const m = shifts.find((x) => x[1] === c.ref)
 						return m ? { ...c, edge: m[3] as typeof c.edge, offsetMm: Number(m[4]) } : c
@@ -280,7 +307,7 @@ export function mockScripts(): Record<string, Script> {
 				const width = /(\d+(?:\.\d+)?)\s*mm wide/.exec(instruction)?.[1]
 				const outline = state().contract.get("outline")
 				if (step > 0 || !width || !outline) return say(width ? "outline updated" : "no outline change")
-				return propose("outline", { ...outline, widthMm: Number(width) }, `engineer asked for ${width} mm wide`)
+				return propose("outline", { ...outline, widthMm: Number(width), sizeReason: { kind: "engineer-size", detail: `the engineer asked for ${width} mm wide` } }, `engineer asked for ${width} mm wide`)
 			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
@@ -292,7 +319,11 @@ export function mockScripts(): Record<string, Script> {
 				// Tournament variants may cap the width: "Board must be at most <N> mm wide".
 				const maxWidth = Number(/Board must be at most (\d+(?:\.\d+)?) mm wide/i.exec(instruction)?.[1] ?? Infinity)
 				const design = scriptedDesignFor(instruction)
-				const value = field === "outline" ? { ...design.outline, widthMm: Math.min(design.outline.widthMm, maxWidth) } : design[field]
+				// The brief's own size ("about 50 × 30 mm") is the engineer's: recorded as the reason the board is that big.
+				const stated = /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/.exec(instruction)
+				const { sizeReason: _reason, ...plain } = design.outline
+				const sized = stated ? { sizeReason: { kind: "engineer-size" as const, detail: `the brief asks for about ${stated[1]} × ${stated[2]} mm` } } : {}
+				const value = field === "outline" ? { ...plain, widthMm: Math.min(design.outline.widthMm, maxWidth), ...sized } : design[field]
 				return field ? propose(field, value, `initial ${field} from the brief`) : say("contract drafted")
 			}
 			return say("noted")
@@ -381,7 +412,7 @@ export function mockScripts(): Record<string, Script> {
 				// The outer size follows the board: the board the case needs, asked of the architect (and the engineer).
 				const outer = requestedCaseWidth(request)
 				const board = outer === null ? null : boardFor(outer, caseOf(s))
-				if (step < 2 && board !== null && board !== s.values.outline.widthMm) return propose("outline", { ...s.values.outline, widthMm: board }, `a ${outer} mm wide case holds a ${board} mm board (2 mm clearance and ${caseOf(s).wallMm} mm walls each side)`)
+				if (step < 2 && board !== null && board !== s.values.outline.widthMm) return propose("outline", { ...s.values.outline, widthMm: board, sizeReason: { kind: "engineer-size", detail: `the engineer asked for a ${outer} mm wide case` } }, `a ${outer} mm wide case holds a ${board} mm board (2 mm clearance and ${caseOf(s).wallMm} mm walls each side)`)
 				return say("case updated")
 			}
 			if (instruction.startsWith("Consistency violations for you") && current && step === 0) {

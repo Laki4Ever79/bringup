@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util"
+import { sizeReasonError } from "./space.ts"
 import type { AgentRole, CaseFeature, CaseSpec, ContractSnapshot, ContractValues, FieldName } from "./types.ts"
 
 // The case's fixed geometry, shared by the checks, the stub and py/enclosure.py (which gets a copy in its spec).
@@ -50,7 +51,7 @@ const round = (x: number) => Math.round(x * 100) / 100
 const obj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
 const num = (v: unknown, [lo, hi]: readonly [number, number]) => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi
 
-export const CASE_SHAPE = `case must be {wallMm (${WALL_RANGE[0]}-${WALL_RANGE[1]}), heightMm (${HEIGHT_RANGE[0]}-${HEIGHT_RANGE[1]}), features: [feature]} with each feature one of {id, kind: "wall-mount", sides: "left-right"|"top-bottom"}, {id, kind: "lanyard", corner: "top-left"|"top-right"|"bottom-left"|"bottom-right"}, {id, kind: "text", text (1-24 letters, digits, spaces, .,:!?&+#/-)}, {id, kind: "hole", edge: "left"|"right"|"top"|"bottom", offsetMm, diameterMm (${HOLE_RANGE[0]}-${HOLE_RANGE[1]})}; ids unique; at most one wall-mount and one text`
+export const CASE_SHAPE = `case must be {wallMm (${WALL_RANGE[0]}-${WALL_RANGE[1]}), heightMm (${HEIGHT_RANGE[0]}-${HEIGHT_RANGE[1]}), features: [feature]} plus an optional sizeReason {kind, detail} (space rules), with each feature one of {id, kind: "wall-mount", sides: "left-right"|"top-bottom"}, {id, kind: "lanyard", corner: "top-left"|"top-right"|"bottom-left"|"bottom-right"}, {id, kind: "text", text (1-24 letters, digits, spaces, .,:!?&+#/-)}, {id, kind: "hole", edge: "left"|"right"|"top"|"bottom", offsetMm, diameterMm (${HOLE_RANGE[0]}-${HOLE_RANGE[1]})}; ids unique; at most one wall-mount and one text`
 
 function featureOk(f: unknown): f is CaseFeature {
 	if (!obj(f) || typeof f.id !== "string" || f.id.length === 0) return false
@@ -71,6 +72,8 @@ function featureOk(f: unknown): f is CaseFeature {
 // The value's own shape; the checks below judge it against the board.
 export function caseShapeError(value: unknown): string | null {
 	if (!obj(value) || !num(value.wallMm, WALL_RANGE) || !num(value.heightMm, HEIGHT_RANGE) || !Array.isArray(value.features)) return CASE_SHAPE
+	const reason = sizeReasonError(value.sizeReason)
+	if (reason) return `${CASE_SHAPE}; ${reason}`
 	const bad = value.features.filter((f) => !featureOk(f))
 	if (bad.length > 0) return `${CASE_SHAPE}; not a feature: ${JSON.stringify(bad[0])}`
 	const features = value.features as CaseFeature[]
@@ -90,11 +93,13 @@ function cutoutTop(c: CaseSpec, outline: ContractValues["outline"], heightMm: nu
 }
 
 // The lowest body that clears every connector's cutout under the lid's lip.
+// The lowest body that clears every connector's cutout under the lid's lip, and gives every wall hole its wall.
 export function minCaseHeight(s: ContractSnapshot, c = caseOf(s)): number {
 	const outline = s.values.outline
 	if (!outline) return 0
 	const tallest = Math.max(0, ...(s.values.connectors ?? []).map((k) => k.heightMm))
-	return round(cutoutTop(c, outline, tallest) + LID.lipMm)
+	const holes = c.features.map((f) => (f.kind === "hole" ? f.diameterMm + 1 + LID.lipMm + c.wallMm : 0))
+	return round(Math.max(cutoutTop(c, outline, tallest) + LID.lipMm, ...holes))
 }
 
 // A wall hole's centre height: halfway up the wall's free height, between the floor and the lid's lip.

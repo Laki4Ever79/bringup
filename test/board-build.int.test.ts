@@ -53,7 +53,7 @@ test("the logger board routes at every width from 45 to 70 mm", { skip: !(env.ts
 	await Promise.all(
 		[45, 50, 55, 60, 65, 70].map(async (width) => {
 			const s = fixtureContract()
-			s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN), outline: { ...LOGGER_DESIGN.outline, widthMm: width } }
+			s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN), outline: { ...LOGGER_DESIGN.outline, widthMm: width, sizeReason: { kind: "engineer-size", detail: `the test sets ${width} mm wide` } } }
 			try {
 				const board = await buildBoard(env, tempDir(), s, s.revision)
 				const v = checkConsistency(s, { board })

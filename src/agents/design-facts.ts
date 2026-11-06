@@ -8,6 +8,7 @@ import { modelFactLines } from "../contract/model.ts"
 import { expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { testPoints } from "../codegen/circuit.ts"
 import { caseFactLines } from "../contract/case.ts"
+import { spaceFactLines } from "../contract/space.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 
 // The facts and computed checks about the current contract, one source for everyone who judges or changes it: the
@@ -20,6 +21,7 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 		...partFactsSection(s),
 		...fieldMeaningLines(s),
 		...testFactLines(s),
+		...(s.values.outline ? ["", "## Space (computed in code: the smallest board the parts place on, the case's contents)", ...spaceFactLines(s).map((l) => `- ${l}`)] : []),
 		...(s.values.outline ? ["", "## The case (computed in code from the outline, the connectors and the case field)", ...caseFactLines(s).map((l) => `- ${l}`)] : []),
 		...(s.values.model ? ["", "## The on-device model (checked in code against the flash and RAM the firmware leaves, the sensor and its pins, and the battery)", ...modelFactLines(s)] : []),
 		"",
