@@ -36,7 +36,7 @@ limits are the battery-fed rails' current, and with USB in, the charger would ad
 VBUS is optional: the station powers the board through its USB-C port, which it needs anyway to read the factory
 test's output. A VBUS pad also pulled a via beside the connector's locating hole on the 45 mm logger.
 
-## Measured (6 Nov 2026)
+## Measured (6 Nov 2026, measured again after the module moved to the board edge: the same results)
 
 The logger design with its default test (pads on I2C_SDA, I2C_SCL, STATUS_LED, GND, 3V3, VBAT), built with tscircuit
 and checked by KiCad's DRC on JLCPCB 2-layer rules:
@@ -51,7 +51,11 @@ and checked by KiCad's DRC on JLCPCB 2-layer rules:
 
 The same 45 mm board without pads has 0. The pads change the autorouter's choices near the USB-C connector, and it
 drops a via next to a locating hole, which tscircuit doesn't model (the first wake-word board hit the same, 4 errors).
-Not fixed yet. The board build keeps the layout with the fewest errors and reports them.
+The router's quirk is not fixed, but a DRC error no longer settles quietly: it wakes the architect, who gives the
+router room (2 mm wider, with the failed build recorded as the reason). The 47 mm board it then builds routes with
+0 DRC errors (measured).
+
+The fixture's nest wall has a notch where the module's antenna hangs past the board edge, so the board seats.
 
 Test kit build on this laptop: plan, fixture and factory-test firmware in about 12 s (firmware from a warm PlatformIO
 cache).

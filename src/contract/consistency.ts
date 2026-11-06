@@ -93,6 +93,7 @@ export interface Artifacts {
 }
 
 export type ViolationKind =
+	| "drc-errors"
 	| "outline-mismatch"
 	| "net-missing"
 	| "pin-mismatch"
@@ -153,6 +154,17 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""):
 	}
 	const { outline, pins, parts, connectors, rails } = c.values
 
+	// KiCad's DRC found errors, or nets left unrouted, on the board built at this size: the architect decides (the
+	// engineer, 6 Nov 2026). A built board of another size is a rebuild under way, not this board's fault.
+	const drc = a.board?.drc
+	if (a.board && outline && drc && (drc.errors > 0 || drc.unconnected > 0) && Math.abs(a.board.widthMm - outline.widthMm) <= OUTLINE_TOLERANCE_MM && Math.abs(a.board.heightMm - outline.heightMm) <= OUTLINE_TOLERANCE_MM) {
+		v.push({
+			kind: "drc-errors",
+			message: `the ${outline.widthMm}×${outline.heightMm} mm board (rev ${a.board.revision}) fails ${drc.rules}: ${drc.errors} error(s), ${drc.unconnected} unconnected${drc.firstError ? `; first: ${drc.firstError}` : ""}. Give the router room (a bigger board, with outline.sizeReason "routing" naming this build) or change what crowds it (connectors, pins)`,
+			fields: ["outline", "connectors", "pins"],
+			affects: ["architect"],
+		})
+	}
 	if (a.board && outline) {
 		if (Math.abs(a.board.widthMm - outline.widthMm) > OUTLINE_TOLERANCE_MM || Math.abs(a.board.heightMm - outline.heightMm) > OUTLINE_TOLERANCE_MM) {
 			v.push({

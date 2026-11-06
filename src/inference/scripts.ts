@@ -3,8 +3,8 @@ import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/te
 import { testPoints } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
 import type { CaseSpec, ContractSnapshot, ContractValues, FieldName } from "../contract/types.ts"
-import { boardFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
-import { compactOutline, SLACK_LIMIT } from "../contract/space.ts"
+import { boardWidthFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
+import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT } from "../contract/space.ts"
 import { state } from "../runtime.ts"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
@@ -228,6 +228,8 @@ const ARCHITECT_FIELDS = ["requirements", "outline", "connectors", "rails", "pin
 export function mockScripts(): Record<string, Script> {
 	// The outline the scripted architect shrank from, until it has moved the connectors to match (space rules).
 	let shrinkFrom: { widthMm: number; heightMm: number } | null = null
+	// How many times the scripted architect has widened the board after a failed DRC in this run.
+	let drcGrows = 0
 	return {
 		"mock-architect": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
@@ -246,6 +248,18 @@ export function mockScripts(): Record<string, Script> {
 						"always-on listening keeps the MCU awake at about 28 mA: the battery lasts under a day, so the target becomes USB power",
 					)
 				// No reason for the board's slack: shrink it to the smallest it can be, connectors first when the height changes.
+				// KiCad's DRC failed on the board at this size: room for the router, 2 mm wider at a time, with the failed
+				// build as the reason (space rules: a measured routing failure). Five tries, then it stops and says so.
+				const drcLine = /^- drc-errors: (.*)$/m.exec(instruction)?.[1]
+				const now = state().contract.get("outline")
+				if (step === 0 && drcLine && now) {
+					if (drcGrows >= 5) return say("can't route it")
+					drcGrows++
+					const build = /^(the [\d.]+×[\d.]+ mm board \(rev \d+\))/.exec(drcLine)?.[1] ?? "the last build"
+					// The first error runs to the sentence that follows it (it has decimals of its own: "actual 0.1412 mm").
+					const first = /first: (.*?)\. Give the router room/.exec(drcLine)?.[1]
+					return propose("outline", { ...now, widthMm: now.widthMm + 2, sizeReason: { kind: "routing", detail: `${build} failed KiCad DRC${first ? `: ${first}` : ""}` } }, `2 mm wider so the router has room: ${build} failed DRC`)
+				}
 				// The outline first, then the connectors scaled from the old outline to the new one: their place along each
 				// edge stays the same. (Moving the connectors first changed the minimum under the next turn.)
 				const o = state().contract.get("outline")
@@ -313,6 +327,16 @@ export function mockScripts(): Record<string, Script> {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
 				const why = /change "rails"/.test(instruction) ? "a measurement beats the estimate" : /change "outline"/.test(instruction) ? "the board takes the size the case needs; the board build shows whether the parts still fit" : "GPIO10 is free"
 				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: why })] : say("decided")
+			}
+			// The board didn't route at this size: the same answer as a failed DRC, 2 mm wider with the build as the reason.
+			const routingFail = instruction.startsWith("Build failed: the board build failed at revision") && ROUTING_FAILURE.test(instruction)
+			const grown = state().contract.get("outline")
+			if (routingFail && grown) {
+				if (stepsTaken(items) > 0) return say("board widened")
+				if (drcGrows >= 5) return say("can't route it")
+				drcGrows++
+				const rev = /at revision (\d+)/.exec(instruction)?.[1]
+				return propose("outline", { ...grown, widthMm: grown.widthMm + 2, sizeReason: { kind: "routing", detail: `the ${grown.widthMm}×${grown.heightMm} mm board (rev ${rev}) didn't route: tscircuit left pins without a trace` } }, `2 mm wider so the router has room: the rev ${rev} board didn't route`)
 			}
 			if (instruction.startsWith("Brief")) {
 				const field = ARCHITECT_FIELDS[step]
@@ -411,8 +435,8 @@ export function mockScripts(): Record<string, Script> {
 				}
 				// The outer size follows the board: the board the case needs, asked of the architect (and the engineer).
 				const outer = requestedCaseWidth(request)
-				const board = outer === null ? null : boardFor(outer, caseOf(s))
-				if (step < 2 && board !== null && board !== s.values.outline.widthMm) return propose("outline", { ...s.values.outline, widthMm: board, sizeReason: { kind: "engineer-size", detail: `the engineer asked for a ${outer} mm wide case` } }, `a ${outer} mm wide case holds a ${board} mm board (2 mm clearance and ${caseOf(s).wallMm} mm walls each side)`)
+				const board = outer === null ? null : boardWidthFor(outer, s)
+				if (step < 2 && board !== null && board !== s.values.outline.widthMm) return propose("outline", { ...s.values.outline, widthMm: board, sizeReason: { kind: "engineer-size", detail: `the engineer asked for a ${outer} mm wide case` } }, `a ${outer} mm wide case holds a ${board} mm board (2 mm clearance and ${caseOf(s).wallMm} mm walls each side, and the antenna's reach)`)
 				return say("case updated")
 			}
 			if (instruction.startsWith("Consistency violations for you") && current && step === 0) {

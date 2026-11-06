@@ -50,9 +50,14 @@ test("a failed board build gives the architect and the parts agent a turn with t
 	assert.match(msg, /board build failed at revision \d+/)
 	assert.match(msg, /a contract field you own \(outline, connectors, rails, pins\)/)
 	assert.match(msg, /Otherwise change nothing/)
+	// A via dropped on a pad is the router running out of room: the architect is told so, and gives it 2 mm.
+	assert.match(msg, /the autorouter running out of room/)
+	const before = t.state.contract.get("outline")!
+	await waitFor(() => t.state.contract.get("outline")!.widthMm === before.widthMm + 2)
+	assert.equal(t.state.contract.get("outline")!.sizeReason?.kind, "routing")
 	await new Promise((r) => setTimeout(r, 300))
 	assert.equal(t.state.contract.version("parts"), partsVersion, "the mock parts agent only notes the failure")
-	assert.equal(t.state.contract.revision, revision, "nothing changed in the mock run")
+	assert.equal(t.state.contract.revision, revision + 1, "only the outline changed")
 })
 
 test("the same failure wakes each agent once", async () => {

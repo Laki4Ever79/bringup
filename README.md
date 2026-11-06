@@ -116,14 +116,17 @@ then a catalog drop-in with what switching would change.
 
 "Add wall-mount tabs", "engrave "BRINGUP" on the lid", "add a cable gland": a case designer agent owns the case's
 walls, height and added features, and the case is rebuilt around the board with them. Each feature is measured on the
-built solid. A case change that needs a different board ("make the case 50 mm wide" means a 42 mm board) never
+built solid. A case change that needs a different board ("make the case 50 mm wide" means a 37.1 mm board, since the
+module's antenna hangs past the board's edge) never
 happens silently: you get a warning that the PCB will change, and it goes ahead only if you approve it. Details:
 [docs/case-editing.md](docs/case-editing.md).
 
 Board and case are compact by default: code computes the smallest board the parts place on, and anything more than
 15% over it needs a recorded reason (your size, usability, a standard fit, function, assembly and test, expansion, or
-a measured routing failure). The report says what the size costs. Rules and sources:
-[docs/space-rules.md](docs/space-rules.md).
+a measured routing failure). The report says what the size costs. A board that fails KiCad's DRC, or that the
+router can't finish, wakes the architect to give it room. The ESP32-C3 module sits at the board edge opposite the
+USB-C port, its antenna hanging past the edge as Espressif recommends; the case and the test fixture leave it room.
+Rules and sources: [docs/space-rules.md](docs/space-rules.md).
 
 ## Architecture
 

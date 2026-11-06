@@ -10,7 +10,9 @@ test("enclosure spec carries the outline, J1 and the shell defaults", () => {
 	assert.equal(spec.wallMm, 2)
 	assert.equal(spec.clearanceMm, 2)
 	assert.equal(spec.heightMm, 14, "board on 3 mm standoffs, room for the tallest part under the lid")
-	assert.deepEqual(spec.outline, { widthMm: 50, heightMm: 30, thicknessMm: 1.6 })
+	// The case board: the 50 mm board plus the module's antenna, 4.9 mm past the right edge (J1 is on the left).
+	assert.deepEqual(spec.outline, { widthMm: 54.9, heightMm: 30, thicknessMm: 1.6 })
+	assert.deepEqual(spec.frameShiftMm, [0, 0])
 	assert.deepEqual(spec.connectors.map((c: { ref: string }) => c.ref), ["J1"])
 })
 
@@ -44,4 +46,17 @@ test("enclosure spec carries each microphone's sound hole (the part's placement 
 	assert.equal(u5.rotation, 0)
 	const spec = enclosureSpec(c) as Record<string, any>
 	assert.deepEqual(spec.ports, [{ ref: "U5", xMm: +(u5.x + MIC_PORT.x + 25).toFixed(3), yMm: +(u5.y + MIC_PORT.y + 15).toFixed(3) }])
+})
+
+test("with the antenna on the left (USB-C on the right), the case board starts 4.9 mm left of the board's own origin", async () => {
+	const { caseView } = await import("../src/contract/case.ts")
+	const c = fixtureContract()
+	c.values.connectors = [{ ...c.values.connectors![0], edge: "right" }]
+	const spec = enclosureSpec(c) as Record<string, any>
+	assert.deepEqual(spec.frameShiftMm, [4.9, 0])
+	assert.equal(spec.outline.widthMm, 54.9)
+	// Positions move with the frame: each mounting hole is 4.9 mm further right in the case frame.
+	const v = caseView(c)
+	assert.equal(v.antenna?.edge, "left")
+	assert.equal(spec.holes[0].xMm, 3 + 4.9)
 })

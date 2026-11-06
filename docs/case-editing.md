@@ -38,7 +38,8 @@ case designer moves the hole along the wall.
 ## When a case change would change the PCB, you confirm it first
 
 The case's outer size is the board plus 2 mm clearance and a wall on each side. A case that must be a given size
-therefore needs a different board: "make the case 50 mm wide" with 2 mm walls needs a 42 mm board. The same goes for
+therefore needs a different board: "make the case 50 mm wide" with 2 mm walls needs a 37.1 mm board (the ESP32-C3
+module's antenna hangs 4.9 mm past the board's edge, and the case leaves it room too). The same goes for
 moving a connector to make room for a hole.
 
 The case designer never edits the board itself. It proposes the change to the field's owner, the architect, through
@@ -46,7 +47,7 @@ change control. A change from the case designer to any field the board is built 
 pins, test) also waits for **your** confirmation, whether or not engineer approval is on for the run:
 
 - The dashboard's change card shows a red warning, for example "This case change changes the PCB: the board outline
-  50×30 → 42×30 mm. The board is placed and routed again, and what follows it (firmware, test kit) rebuilds. It goes
+  50×30 → 37.1×30 mm. The board is placed and routed again, and what follows it (firmware, test kit) rebuilds. It goes
   ahead only if you confirm." Under it are **Approve** and **Reject**.
 - With phone notifications on, the same warning arrives with Approve and Reject buttons.
 - The change applies only when both the architect and you approve it. If you reject it, or don't answer within
@@ -55,7 +56,7 @@ pins, test) also waits for **your** confirmation, whether or not engineer approv
 The rule is in `src/contract/case.ts` (`boardChangeWarning`, `BOARD_FIELDS`; a test keeps `BOARD_FIELDS` equal to
 the board build's inputs) and is applied in `src/change-control.ts` for agents and for plain-code participants alike.
 
-## Measured (6 Nov 2026)
+## Measured (6 Nov 2026, before the module moved to the board edge; the 50 mm case then meant a 42 mm board)
 
 These are logger runs with scripted agents and the real tools: tscircuit with KiCad, build123d, PlatformIO.
 

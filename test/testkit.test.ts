@@ -149,9 +149,11 @@ test("without a test field nothing waits for a test kit: the logger settles as b
 
 test("a crowded board settles: a net with no room for a pad is not owed one (no add/drop loop)", () => {
 	const c = withTest()
-	c.values.outline = { ...c.values.outline!, widthMm: 35, heightMm: 20 }
+	// 24×25 places every part (the module at the edge) but leaves no grid cell for some pads.
+	c.values.outline = { ...c.values.outline!, widthMm: 24, heightMm: 25 }
+	c.values.connectors = [{ ...c.values.connectors![0], offsetMm: 12.5 }]
 	const { unplaced } = testPoints(c)
-	assert.ok(unplaced.length > 0, "the 35x20 board can't fit every pad")
+	assert.ok(unplaced.length > 0, "the 24x25 board can't fit every pad")
 	c.values.test = { ...c.values.test!, points: c.values.test!.points.filter((p) => !unplaced.includes(p)) }
 	assert.deepEqual(kinds(c), [], "after dropping what doesn't fit, nothing is left to fix")
 })

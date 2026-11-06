@@ -153,3 +153,14 @@ test("the case field's features are built and measured on the solid, and the cas
 	assert.ok(Math.abs(byId.mount.diameterMm! - 4.5) < 0.1 && Math.abs(Math.abs(byId.mount.yMm! - 15) - 24) < 0.1, JSON.stringify(byId.mount))
 	assert.deepEqual(checkConsistency(c, { enclosure }).filter((v) => v.kind.startsWith("case-")), [])
 })
+
+test("the module's antenna hangs past the board edge, and the built case and lid leave it clear (either side)", { skip }, async () => {
+	for (const edge of ["left", "right"] as const) {
+		const c = fixtureContract()
+		c.values.connectors = [{ ...c.values.connectors![0], edge }]
+		const enclosure = await buildEnclosure(python!, root, tmp(), c, c.revision)
+		assert.deepEqual(enclosure.printCheck, { ok: true, issues: [] }, `USB-C on the ${edge}`)
+		// Measured back in the contract's frame: the cutout and the posts are where the board has them.
+		assert.deepEqual(checkConsistency(c, { enclosure }).filter((v) => /cutout|standoff|vent|port/.test(v.kind)), [], `USB-C on the ${edge}`)
+	}
+})

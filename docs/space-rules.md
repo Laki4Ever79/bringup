@@ -36,48 +36,79 @@ design several times in a row.
 
 - **Board:** for each height in 1 mm steps, the narrowest width the board generator places every part on. Generated
   support parts count, and so do the mounting-hole keep-outs, connectors kept at the same relative place along their
-  edges, and the generator's 1.5 mm gap between parts. The smallest of those areas is the minimum. A board whose
-  courtyards (IPC-7351 nominal, 0.25 mm per side) would cover more than **70%** of it doesn't count as feasible.
+  edges, and the generator's 1.5 mm gap between parts. Each part reserves what tscircuit counts as its extent: its
+  courtyard, measured from real builds (before, pad boxes alone let the battery connector reach 0.3 mm past a 25 mm
+  board's edge, and tscircuit then skipped routing altogether). The smallest of those areas is the minimum. A board
+  whose courtyards (IPC-7351 nominal, 0.25 mm per side) would cover more than **70%** of it doesn't count as feasible.
   This takes about 0.3 s and is cached.
+- **The module's antenna hangs past the edge** (below), so only the module's pad area takes board space.
 - **Shrinking keeps the shape.** Among the shapes within the limit, the scripted architect takes the one closest to
-  the board's current proportions, so a 50 × 30 board shrinks to 36 × 21, not to a 47 × 16 strip.
+  the board's current proportions (a 50 × 30 logger shrinks to 33 × 25, not to a strip).
 - **Case:** its body height must clear the connectors' cutouts under the lid's lip and give each wall hole its wall.
-  Its footprint follows the board.
+  Its footprint follows the board and the antenna.
 
 Placement doesn't prove routing. Only a real board build proves the chosen size, and the router can fail at a given
-size for reasons that have nothing to do with density. That is what the `routing` reason is for.
+size for reasons that have nothing to do with density. That is what the `routing` reason is for, and the checks
+supply the evidence:
+
+- **KiCad DRC errors wake the architect** (`drc-errors`, from the board built at the contract's current size), as
+  does a board build the router couldn't finish: unrouted pins, a via dropped on a pad, no spot for a part. The
+  architect gives the router room (the scripted one: 2 mm wider, up to five times) and records `routing` with the
+  failed build. A layout that would leave a part out is never built: tscircuit would drop that part at the board's
+  centre, on top of another.
+
+## The antenna: at the board edge, hanging past it
+
+Espressif, *ESP32-C3 Hardware Design Guidelines*, "Positioning a Module on a Base Board": "place the module's on-board
+PCB antenna outside the base board", "the feed point of the antenna close to the edge of the base board", "the module
+should not be placed in the center of the board", and keep the USB port "as far away from the antenna as possible".
+
+The board generator puts the ESP32-C3-MINI-1 at the edge opposite the USB-C port, centred along it (or at the
+nearest free spot along it). The pad area stays 0.5 mm inside the edge (copper to edge), so 4.9 mm of the 5.4 mm
+antenna hangs past the board. The silkscreen stops at the edge. The sensor sits halfway between the regulator and the
+module against a side edge, at least 15 mm from both on the 50 × 30 logger. The microphone sits against the other
+side edge.
+
+What follows the antenna:
+
+- **The case** leaves it the same 2 mm clearance as the board's edges: it is built around the board plus the
+  overhang. Code checks on the built solids that nothing of the case or lid touches the antenna. A "make the case
+  50 mm wide" request now means a 37.1 mm board (50 − 2 × 4 mm of wall and clearance − 4.9 mm of antenna).
+- **The test fixture's** nest wall has a notch where the antenna passes (measured: no material in its path).
+- **Not done:** Espressif also recommends "a clearance of at least 15 mm in all directions" inside the housing, and
+  ground copper with vias near the antenna. The case gives 2 mm, and the board has no ground pour. Keeping 15 mm of
+  room would be a `function` reason to make the case bigger. The guide asks for the end product to be tested for
+  range and throughput; nothing here was.
 
 ## Why these numbers
 
 | Number | Source | Status |
 | --- | --- | --- |
 | 70% courtyard density ceiling for 2-layer routing | J. Watson (Altium), "Density Feasibility: Putting 10 lbs in a 5 lb bag", I-Connect007, 18 Nov 2020, citing IPC-2221 §3.6.2 (Level A 70%, B 80%, C 90%). PCBWay's glossary: above 75-80%, a board may need more layers | Rule of thumb. The IPC text itself is paywalled; we did not see it |
-| 0.25 mm courtyard excess | IPC-7351B nominal level, through secondary sources (they quote 0.10-0.25 mm for small chips) | The larger value, so the minimum errs bigger |
-| 15% allowance | No standard gives a percentage over the minimum outline. This is project policy, applied on top of a minimum that already includes the density ceiling and the keep-outs. That keeps final density near 60-70% at worst | Policy |
-| Antenna at the board edge, 15 mm clear in front | Espressif, *ESP32-C3 Hardware Design Guidelines*, §1.4.7 | Manufacturer guidance; **our placer doesn't follow it yet** (below) |
+| 0.25 mm courtyard excess | IPC-7351B nominal level, through secondary sources (they quote 0.10-0.25 mm for small chips) | Added on top of the measured courtyards, so the minimum errs bigger |
+| 15% allowance | No standard gives a percentage over the minimum outline. This is project policy, applied on top of a minimum that already includes the density ceiling and the keep-outs | Policy |
+| Antenna past the board edge | Espressif, *ESP32-C3 Hardware Design Guidelines* (above) | Followed |
+| 15 mm clearance around the antenna in the housing | Same guide | Not met (2 mm); see above |
 | Sensor away from MCU and regulator heat | Sensirion, *SHTxx/STSxx Design Guide* v1.1 (2019): "sufficient distance", slits; **no mm figure** | Why `function` is a reason, not a number |
 
-## Measured (6 Nov 2026, the logger, real tscircuit + KiCad builds, JLCPCB 2-layer rules)
+## Measured (6 Nov 2026, real tscircuit + KiCad builds, JLCPCB 2-layer rules, the antenna at the edge)
 
-| Board | Courtyard density | KiCad DRC |
+| Design | Size | KiCad DRC |
 | --- | --- | --- |
-| 50 × 30 mm (the brief's size) | 29% | 0 errors |
-| 38 × 30, 35 × 30, 32 × 30 | 38-46% | 0 errors |
-| 28 × 30 | 52% | 0 errors |
-| 36 × 21 (the computed minimum) | 58% | 2 errors: a VBUS via beside J1's locating hole (the known autorouter issue, also seen at 45 mm with test pads) |
-| Beacon at its minimum, 34 × 26 | 54% | 0 errors |
+| Logger | 50 × 30 (the brief's), 45 × 30 | 0 errors |
+| Logger | 33 × 25 (compact), 30 × 27 (the computed minimum) | 0 errors |
+| Beacon | 50 × 30, 37 × 25 (compact), 34 × 26 (minimum) | 0 errors |
+| Wake-word logger | 50 × 30, 35 × 26, 37 × 26 | 0 errors |
+| Wake-word logger | 33 × 26 (minimum) | 2 errors: a VBUS via beside J1's locating hole. The architect widens to 35 × 26, which routes clean |
+| Wake-word logger | 35 × 25 (compact) | Build fails: the router dropped a via on a module pad. The architect widens it |
 
 The logger's brief asks for "about 50 × 30 mm", so the scripted architect records `engineer-size` and the board
-stays at that size. The report shows what that costs: 98% over the smallest it can be. A brief that sets no size gets
-36 × 21 mm.
+stays at that size. The report shows what that costs: 85% over the smallest it can be. A brief that sets no size gets
+33 × 25 mm.
 
 ## Open
 
-- **The antenna.** The board generator centres the ESP32-C3 module, so its antenna ends up mid-board (16.7 mm from
-  the edge at 50 mm), with traces running past it. Espressif wants it at the edge. Fixing this moves every part on
-  every board, so it is a separate step.
-- **DRC errors don't stop a design from settling.** They show in the DRC pill and the report, and in `fab/README.txt`
-  for review before ordering. Compact-by-default makes this matter more: at 36 × 21 nothing wakes the architect to
-  record `routing` and grow the board.
-- At the minimum size, the sensor ends up about 5 mm from the regulator. Sensirion gives no number to check that
-  against, so it is a `function` reason an agent or the engineer has to give.
+- On a compact board the sensor ends up closer to the heat: on the 33 × 25 logger, 9.8 mm from the regulator and
+  14.3 mm from the module, against 16.3 and 22.6 mm at 50 × 30. Sensirion gives no number to check that against, so
+  keeping it further away is a `function` reason an agent or the engineer has to give.
+- The 15 mm antenna clearance inside the housing and a ground pour near the antenna (above).

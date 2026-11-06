@@ -69,7 +69,8 @@ test("a hole must keep wall from the connector's cutout, fit the wall's height a
 	const tooBig = caseKinds(withCase({ ...DEFAULT_CASE, features: [{ id: "h1", kind: "hole", edge: "right", offsetMm: 15, diameterMm: 12 }] }))
 	assert.ok(tooBig.some((v) => /9 mm between the floor and the lid's lip/.test(v.message)), tooBig.map((v) => v.message).join("; "))
 	assert.ok(tooBig.some((v) => v.kind === "case-too-low" && /need 18 mm/.test(v.message)))
-	const off = caseKinds(withCase({ ...DEFAULT_CASE, features: [{ id: "h1", kind: "hole", edge: "top", offsetMm: 51, diameterMm: 4 }] }))
+	// The top wall runs from -2 to 56.9 mm: the board's 50 mm, the antenna's 4.9 mm past the right edge, 2 mm each end.
+	const off = caseKinds(withCase({ ...DEFAULT_CASE, features: [{ id: "h1", kind: "hole", edge: "top", offsetMm: 56, diameterMm: 4 }] }))
 	assert.match(off[0].message, /runs off the top wall/)
 })
 
@@ -160,11 +161,11 @@ test("case features, then a case size the board must follow: the engineer is war
 	assert.deepEqual(r.violations, [])
 	const contract = JSON.parse(readFileSync(join(out, "contract.json"), "utf8"))
 	assert.deepEqual(contract.values.case.features.map((f: { kind: string }) => f.kind).sort(), ["text", "wall-mount"])
-	// 50 mm case = board + 2 × (2 mm clearance + 2 mm wall).
-	assert.equal(contract.values.outline.widthMm, 42)
-	assert.equal(caseOuter(contract.values.outline, contract.values.case).widthMm, 50)
+	// 50 mm case = board + 2 × (2 mm clearance + 2 mm wall) + the module's antenna, 4.9 mm past the board's edge.
+	assert.equal(contract.values.outline.widthMm, 37.1)
+	assert.equal(caseOuter(contract).widthMm, 50)
 	assert.equal(you.warnings.length, 1, "one board change, one question")
-	assert.match(you.warnings[0], /changes the PCB: the board outline 50×30 → 42×30 mm/)
+	assert.match(you.warnings[0], /changes the PCB: the board outline 50×30 → 37.1×30 mm/)
 	const events = trace(out)
 	// The features alone never asked the engineer: only the board change did.
 	const proposals = events.filter((e) => e.type === "change.proposed")
