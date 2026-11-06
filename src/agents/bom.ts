@@ -5,7 +5,8 @@ import { isEvent } from "../events.ts"
 import { state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 import { loadCatalog, searchParts } from "../tools/parts-search.ts"
-import { alternativesFor, orderReadiness, sourcesFor, type Alternative, type Readiness, type Source } from "../tools/sourcing.ts"
+import { alternativesFor, orderReadiness, sourcesFor, stockSuggestion, swapEffects, type Alternative, type Readiness, type Source, type StockSuggestion } from "../tools/sourcing.ts"
+import { sensorDriver } from "../codegen/firmware.ts"
 
 export interface BomItem {
 	ref: string
@@ -20,8 +21,10 @@ export interface BomItem {
 	finding?: string
 	// Where to buy it: LCSC with live data, other suppliers as unchecked search links (tools/sourcing.ts).
 	sources?: Source[]
-	// Other catalog parts with the same role.
+	// Other catalog parts with the same role, each with what switching to it would change.
 	alternatives?: Alternative[]
+	// Out of stock at LCSC: other suppliers first, then a drop-in from the catalog and a change request to send.
+	suggestion?: StockSuggestion
 }
 
 export interface Bom {
@@ -61,13 +64,21 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 		const parts = snapshot.values.parts ?? []
 		const findings = s.groundingFindings
 		const byRole = new Map<string, Awaited<ReturnType<typeof searchParts>>>()
-		const catalog = live ? [] : loadCatalog(opts.root ?? process.cwd())
+		const catalog = loadCatalog(opts.root ?? process.cwd())
 		for (const role of new Set(parts.map((p) => p.role)))
 			byRole.set(role, live ? await searchParts(role, { fetch: opts.fetch, root: opts.root }) : catalog.filter((c) => c.role === role))
+		// The contract's own part against a catalog part, by MPN: what a swap would change (null when either is unknown).
+		const effects = (p: (typeof parts)[number]) => (to: string) => {
+			const target = catalog.find((c) => c.mpn === to)
+			return target ? swapEffects({ ...p, ...catalog.find((c) => c.mpn === p.mpn) }, target, sensorDriver) : null
+		}
 		const items: BomItem[] = parts.map((p) => {
 			const hit = p.lcsc ? byRole.get(p.role)?.find((c) => c.lcsc === p.lcsc) : undefined
 			const finding = findings.find((f) => f.partRef === p.ref)
 			const roleParts = byRole.get(p.role) ?? []
+			const sources = sourcesFor(p, hit)
+			const alternatives = alternativesFor(p, roleParts, effects(p))
+			const out = hit !== undefined && hit.stock !== null && (hit.inStock === false || hit.stock <= 0)
 			return {
 				ref: p.ref,
 				role: p.role,
@@ -79,9 +90,10 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 				inStock: hit?.inStock ?? null,
 				grounded: !finding,
 				...(finding ? { finding: finding.detail } : {}),
-				sources: sourcesFor(p, hit),
+				sources,
 				// The same per-role lookup feeds the alternatives, so they cost no extra requests.
-				alternatives: alternativesFor(p, roleParts),
+				alternatives,
+				...(out ? { suggestion: stockSuggestion(p, sources, alternatives) } : {}),
 			}
 		})
 		const priced = items.filter((i) => i.priceUsd !== null)

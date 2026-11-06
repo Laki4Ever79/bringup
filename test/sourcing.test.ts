@@ -7,7 +7,10 @@ import { createChangeDesk } from "../src/change-control.ts"
 import { makeEvent } from "../src/events.ts"
 import { LOGGER_DESIGN } from "../src/inference/scripts.ts"
 import { BringupState, emit, join as joinRuntime, startRuntime } from "../src/runtime.ts"
-import { alternativesFor, orderReadiness, sourcesFor } from "../src/tools/sourcing.ts"
+import { alternativesFor, orderReadiness, sourcesFor, stockSuggestion, swapEffects } from "../src/tools/sourcing.ts"
+import { sensorDriver } from "../src/codegen/firmware.ts"
+import { sourcingLine } from "../src/report.ts"
+import { loadCatalog } from "../src/tools/parts-search.ts"
 import { tempDir, waitFor } from "./helpers.ts"
 
 afterEach(() => new Promise((r) => setTimeout(r, 100)))
@@ -138,4 +141,54 @@ test("without a lookup (mock run), a line with an LCSC number is at LCSC, and on
 	], "mock run")
 	assert.equal(r.summary, "1/2 at LCSC/JLCPCB · stock not checked (mock run) · 1 not listed (J9: no LCSC number)")
 	assert.equal(r.warn, true, "a part with no LCSC number still needs attention")
+})
+
+const cat = (mpn: string) => loadCatalog(root).find((c) => c.mpn === mpn)!
+
+test("what a swap changes comes from the catalog: SHT40 → SHTC3 keeps the footprint, re-orders pins, changes driver and address", () => {
+	const fx = swapEffects(cat("SHT40-AD1B-R2"), cat("SHTC3-TR-2.5KS"), sensorDriver)
+	assert.deepEqual(fx, ["same footprint (dfn4): the board keeps its land pattern", "same pin names in another order: the board wires them by name", "firmware driver SHT40 → SHTC3: pins.h selects it and the firmware rebuilds", "I2C address 0x44 → 0x70"])
+	const ldo = swapEffects(cat("AP2112K-3.3TRG1"), cat("XC6206P332MR-G"), sensorDriver)
+	assert.ok(ldo.some((x) => /sot23_5 → sot23/.test(x)))
+	assert.ok(ldo.some((x) => /no EN, NC pins/.test(x)), ldo.join(" | "))
+	assert.ok(ldo.some((x) => /quiescent current 55 → 1 µA/.test(x)))
+})
+
+test("out of stock: other suppliers first, then an in-stock drop-in and a request a person can send", () => {
+	const sources = sourcesFor({ mpn: "SHT40-AD1B-R2", lcsc: "C2909890" }, { stock: 0, priceUsd: 0.5 })
+	const alts = [{ mpn: "SHTC3-TR-2.5KS", lcsc: "C194656", stock: 1200, priceUsd: 0.4, inStock: true, changes: ["x"] }]
+	const g = stockSuggestion({ ref: "U2", mpn: "SHT40-AD1B-R2" }, sources, alts)
+	assert.deepEqual(g.elsewhere.map((x) => x.supplier), ["Digi-Key", "Mouser"])
+	assert.equal(g.alternative?.mpn, "SHTC3-TR-2.5KS")
+	assert.equal(g.request, "U2 SHT40-AD1B-R2 is out of stock at LCSC/JLCPCB: swap it for the SHTC3-TR-2.5KS (C194656) from the catalog")
+	assert.equal(stockSuggestion({ ref: "U2", mpn: "SHT40-AD1B-R2" }, sources, [{ ...alts[0], stock: 0, inStock: false }]).request, null, "no drop-in that is itself out of stock")
+})
+
+test("bom.json and the report name the out-of-stock line's options, and nothing is requested on their own", async () => {
+	const f = (async (input: string | URL | Request) => {
+		const q = new URL(String(input)).searchParams.get("q") ?? ""
+		const table: Record<string, { stock: number; price: number }> = { C2909890: { stock: 0, price: 0.5 }, C194656: { stock: 1200, price: 0.4 } }
+		const hit = table[q]
+		return new Response(JSON.stringify({ components: hit ? [{ lcsc: Number(q.slice(1)), stock: hit.stock, price: hit.price }] : [] }))
+	}) as typeof fetch
+	const state = new BringupState(tempDir())
+	startRuntime(state, undefined, null)
+	const desk = createChangeDesk()
+	joinRuntime(desk)
+	joinRuntime(createBomWriter({ fetch: f, debounceMs: 20, root }))
+	const r = state.contract.propose({ field: "parts", value: LOGGER_DESIGN.parts, by: "parts", baseVersion: 0 })
+	if (r.status !== "applied") throw new Error(r.status)
+	emit(makeEvent("contract.changed", desk.getId(), { field: "parts", version: r.version, revision: r.revision, by: "parts" }), desk.getId())
+	const path = join(state.outDir, "bom.json")
+	await waitFor(() => existsSync(path))
+	const bom = JSON.parse(readFileSync(path, "utf8")) as Bom
+	const u2 = bom.items.find((i) => i.ref === "U2")!
+	assert.equal(u2.suggestion?.alternative?.mpn, "SHTC3-TR-2.5KS")
+	assert.ok(u2.suggestion!.alternative!.changes!.includes("I2C address 0x44 → 0x70"))
+	assert.equal(bom.items.find((i) => i.ref === "U1")!.suggestion, undefined, "in-stock or unchecked lines get no suggestion")
+	const line = sourcingLine(path)
+	assert.match(line, /U2 SHT40-AD1B-R2 is out of stock at LCSC\. Try Digi-Key or Mouser first/)
+	assert.match(line, /Or switch to SHTC3-TR-2\.5KS \(C194656, 1200 in stock\): same footprint/)
+	assert.match(line, /src\/request\.ts .* "U2 SHT40-AD1B-R2 is out of stock/)
+	assert.equal(existsSync(join(state.outDir, "requests.jsonl")), false, "the suggestion is never sent on its own")
 })

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import type { StockSuggestion } from "./tools/sourcing.ts"
+import { dirname, join } from "node:path"
 import { checkConsistency, type EnclosureArtifact } from "./contract/consistency.ts"
 import { batteryLifeSummary, estimatePower } from "./contract/power.ts"
 import type { BringupState } from "./runtime.ts"
@@ -98,10 +99,21 @@ function printLines(e: EnclosureArtifact | undefined, stubbed: boolean): string[
 }
 
 // The parts list's order-readiness summary (agents/bom.ts). "needs attention" only for out-of-stock or unlisted lines.
-function sourcingLine(bomPath: string): string {
+// Each out-of-stock line follows with what to do: other suppliers first, then the catalog's drop-in and what switching
+// would change, as a change request the engineer can send. Nothing is sent for them.
+export function sourcingLine(bomPath: string): string {
 	if (!existsSync(bomPath)) return "- Sourcing: no bom.json (no parts yet)"
-	const r = (JSON.parse(readFileSync(bomPath, "utf8")) as { readiness?: { summary: string; warn: boolean } }).readiness
-	return r ? `- Sourcing: ${r.warn ? "needs attention: " : ""}${r.summary}` : "- Sourcing: bom.json has no readiness summary"
+	const bom = JSON.parse(readFileSync(bomPath, "utf8")) as { readiness?: { summary: string; warn: boolean }; items?: { ref: string; mpn: string; suggestion?: StockSuggestion }[] }
+	const r = bom.readiness
+	const lines = [r ? `- Sourcing: ${r.warn ? "needs attention: " : ""}${r.summary}` : "- Sourcing: bom.json has no readiness summary"]
+	for (const i of bom.items ?? []) {
+		const g = i.suggestion
+		if (!g) continue
+		lines.push(`  - ${i.ref} ${i.mpn} is out of stock at LCSC. Try ${g.elsewhere.map((x) => x.supplier).join(" or ") || "another supplier"} first (not checked here).`)
+		if (g.alternative) lines.push(`    Or switch to ${g.alternative.mpn}${g.alternative.lcsc ? ` (${g.alternative.lcsc}, ${g.alternative.stock ?? "?"} in stock)` : ""}${g.alternative.changes?.length ? `: ${g.alternative.changes.join("; ")}` : ""}.`, `    To switch: \`npx tsx src/request.ts ${dirname(bomPath)} "${g.request}"\``)
+		else lines.push("    No in-stock alternative in the catalog for this role.")
+	}
+	return lines.join("\n")
 }
 
 function fabSection(s: BringupState, stubbed: boolean): string[] {

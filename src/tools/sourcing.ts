@@ -19,6 +19,61 @@ export interface Alternative {
 	stock: number | null
 	priceUsd: number | null
 	inStock: boolean | null
+	// What switching to it would change in the rest of the design (swapEffects); absent when its catalog data is.
+	changes?: string[]
+}
+
+// What a part in the catalog says about itself, as far as a swap is concerned.
+export interface SwapSide {
+	mpn: string
+	role: string
+	footprint: string
+	pins: string[]
+	iqUa?: number
+	sleepUa?: number
+	notes?: string
+}
+
+const i2cAddress = (notes = "") => /I2C address (0x[0-9a-f]+)/i.exec(notes)?.[1] ?? null
+
+// What switching from one catalog part to another changes in the rest of the design, in plain words: the board (land
+// pattern, pins), the firmware (driver, I2C address) and the power budget (quiescent or sleep current). Facts from the
+// catalog only; an unknown is said to be unknown.
+export function swapEffects(from: SwapSide, to: SwapSide, driverOf: (mpn: string) => string | null): string[] {
+	const out: string[] = []
+	out.push(from.footprint === to.footprint ? `same footprint (${to.footprint}): the board keeps its land pattern` : `footprint ${from.footprint} → ${to.footprint}: the board is re-placed and re-routed`)
+	const same = from.pins.length === to.pins.length && from.pins.every((p, i) => p === to.pins[i])
+	const missing = from.pins.filter((p) => !to.pins.includes(p))
+	if (same) out.push("same pinout")
+	else if (missing.length === 0) out.push("same pin names in another order: the board wires them by name")
+	else out.push(`no ${missing.join(", ")} pin${missing.length > 1 ? "s" : ""}: pins assigned to ${missing.length > 1 ? "them" : "it"} must move`)
+	const [d1, d2] = [driverOf(from.mpn), driverOf(to.mpn)]
+	if (from.role === "sensor" || d1 || d2) {
+		if (d1 !== d2) out.push(d2 ? `firmware driver ${d1 ?? "none"} → ${d2}: pins.h selects it and the firmware rebuilds` : `no firmware driver for ${to.mpn}: the firmware can't read it yet`)
+		const [a1, a2] = [i2cAddress(from.notes), i2cAddress(to.notes)]
+		if (a1 && a2 && a1 !== a2) out.push(`I2C address ${a1} → ${a2}`)
+	}
+	if (from.iqUa !== undefined && to.iqUa !== undefined && from.iqUa !== to.iqUa) out.push(`quiescent current ${from.iqUa} → ${to.iqUa} µA: the battery estimate changes`)
+	if (from.sleepUa !== undefined && to.sleepUa !== undefined && from.sleepUa !== to.sleepUa) out.push(`sleep current ${from.sleepUa} → ${to.sleepUa} µA: the battery estimate changes`)
+	return out
+}
+
+// For a line out of stock at LCSC: the same part from another supplier first (their stock isn't checked here, so
+// these are links), then an in-stock catalog part for the same role with what switching would change, and a change
+// request a person can send. Bringup never sends it on its own: buying elsewhere is often the better answer.
+export interface StockSuggestion {
+	elsewhere: Source[]
+	alternative: Alternative | null
+	request: string | null
+}
+
+export function stockSuggestion(part: { ref: string; mpn: string }, sources: Source[], alternatives: Alternative[]): StockSuggestion {
+	const alternative = alternatives.find((a) => a.inStock === true || (a.stock ?? 0) > 0) ?? null
+	return {
+		elsewhere: sources.filter((x) => x.supplier !== ORDER_SUPPLIER),
+		alternative,
+		request: alternative ? `${part.ref} ${part.mpn} is out of stock at ${ORDER_SUPPLIER}: swap it for the ${alternative.mpn}${alternative.lcsc ? ` (${alternative.lcsc})` : ""} from the catalog` : null,
+	}
 }
 
 export type LineStatus = "stock confirmed" | "stock unknown" | "out of stock" | "not listed" | "not checked"
@@ -48,13 +103,18 @@ export function sourcesFor(part: { mpn: string; lcsc: string | null }, live: { s
 }
 
 // Other catalog parts that could fill the same role, with their live data where known.
+// effects: what switching would change, when both parts' catalog data is known (swapEffects).
 export function alternativesFor(
 	part: { mpn: string; role: string },
 	sameRole: { role: string; mpn: string; lcsc: string | null; stock: number | null; priceUsd: number | null; inStock: boolean | null }[],
+	effects?: (to: string) => string[] | null,
 ): Alternative[] {
 	return sameRole
 		.filter((c) => c.role === part.role && c.mpn.toUpperCase() !== part.mpn.toUpperCase())
-		.map((c) => ({ mpn: c.mpn, lcsc: c.lcsc, stock: c.stock, priceUsd: c.priceUsd, inStock: c.inStock }))
+		.map((c) => {
+			const changes = effects?.(c.mpn)
+			return { mpn: c.mpn, lcsc: c.lcsc, stock: c.stock, priceUsd: c.priceUsd, inStock: c.inStock, ...(changes ? { changes } : {}) }
+		})
 }
 
 // What one LCSC/JLCPCB order (and JLC assembly) could cover. "Listed" means an LCSC number and a live price.

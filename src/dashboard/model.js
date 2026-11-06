@@ -344,7 +344,9 @@ const priceText = (p) => (typeof p !== "number" ? "not checked" : `$${p.toFixed(
 export function sourcingRows(item) {
 	return {
 		sources: (item.sources ?? []).map((s) => ({ supplier: s.supplier, url: safeUrl(s.url), stock: stockText(s.stock), price: priceText(s.priceUsd), note: s.note ?? null })),
-		alternatives: (item.alternatives ?? []).map((a) => ({ mpn: a.mpn, lcsc: a.lcsc ?? null, stock: stockText(a.stock), price: priceText(a.priceUsd) })),
+		alternatives: (item.alternatives ?? []).map((a) => ({ mpn: a.mpn, lcsc: a.lcsc ?? null, stock: stockText(a.stock), price: priceText(a.priceUsd), changes: Array.isArray(a.changes) ? a.changes : [] })),
+		// Out of stock: buy elsewhere first; the drop-in and its change request are the second choice, sent only by a person.
+		suggestion: item.suggestion ? { elsewhere: (item.suggestion.elsewhere ?? []).map((s) => s.supplier), alternative: item.suggestion.alternative?.mpn ?? null, request: item.suggestion.request ?? null } : null,
 	}
 }
 
