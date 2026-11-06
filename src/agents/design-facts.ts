@@ -8,6 +8,8 @@ import { modelFactLines } from "../contract/model.ts"
 import { expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { testPoints } from "../codegen/circuit.ts"
 import { caseFactLines } from "../contract/case.ts"
+import { connectivityOf } from "../contract/connectivity.ts"
+import { DATA_FORMAT } from "../codegen/data-format.ts"
 import { spaceFactLines } from "../contract/space.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 
@@ -63,12 +65,24 @@ export function firmwareFacts(s: ContractSnapshot): string[] {
 	const daysFrom = contractDays !== undefined ? "requirements.historyDays" : "the template's default; the contract has no historyDays"
 	const contractPeriod = s.values.requirements?.dutyCycle?.periodS
 	const periodS = contractPeriod !== undefined && contractPeriod > 0 ? Math.round(contractPeriod) : num(/#define DUTY_PERIOD_S (\d+)/)
-	const chunk = num(/HISTORY_CHUNK = (\d+)/)
+	// From the data format, the firmware's own source for it (it used to be a literal in main.cpp, which this parsed).
+	const chunk = DATA_FORMAT.gatt.chunk
 	const connectedS = num(/BLE_CONNECTED_MAX_MS = (\d+)/) / 1000
 	if (![blinkMs, days, periodS, chunk, connectedS].every(Number.isFinite)) return []
 	const from = contractPeriod !== undefined && contractPeriod > 0 ? "requirements.dutyCycle.periodS" : "the template's default; the contract has no duty cycle"
 	const duty = s.values.requirements?.dutyCycle
-	const advertise = duty ? `${bleAdvertiseMs(duty)} ms (activeMs minus the reading)` : `${num(/#define BLE_ADVERTISE_MS (\d+)/)} ms (the template's default; the contract has no duty cycle)`
+	const advertiseMs = duty ? `${bleAdvertiseMs(duty)} ms (activeMs minus the reading)` : `${num(/#define BLE_ADVERTISE_MS (\d+)/)} ms (the template's default; the contract has no duty cycle)`
+	// The radio step of each wake, from the connectivity field: advertising (BTHome in it too), or a Wi-Fi upload every N.
+	const c = connectivityOf(s)
+	const every = c.radio === "wifi" ? Math.max(1, Math.round((c.uploadPeriodS ?? periodS) / periodS)) : 0
+	const advertise = c.radio === "wifi" ? null : `${advertiseMs}${c.report.includes("bthome") ? ", with the reading in BTHome v2 service data" : ""}`
+	const radioStep = advertise ? `advertises over BLE for ${advertise}` : `every ${every} wakes (${c.uploadPeriodS} s) joins Wi-Fi and uploads by MQTT${c.updates === "ota" ? ", then checks for a firmware update" : ""}`
+	const radioFact =
+		c.radio === "wifi"
+			? `- Firmware Wi-Fi: MQTT with Home Assistant discovery; each upload publishes the latest reading and the batch since the last upload. No BLE.`
+			: c.report.includes("gatt")
+				? null
+				: `- Firmware BLE: BTHome broadcast only (not connectable): no GATT service, so a phone can't read the stored history.`
 	// The firmware has a sensor exactly when pins.h has both I2C pins (main.cpp HAS_SENSOR), and wakes early on a pin
 	// named BUTTON on GPIO0..5.
 	const pins = s.values.pins ?? []
@@ -78,13 +92,13 @@ export function firmwareFacts(s: ContractSnapshot): string[] {
 		: "- Firmware button: the firmware wakes on a pin named exactly BUTTON on GPIO0..5 (the ESP32-C3's deep-sleep wake pins); this design has none, so no button wakes it."
 	if (!(pins.some((p) => p.signal === "I2C_SDA") && pins.some((p) => p.signal === "I2C_SCL")))
 		return [
-			`- Firmware (product build of templates/fw): the design has no sensor (no I2C_SDA/I2C_SCL pins), so on each wake it reads nothing and stores nothing: it blinks the status LED ${blinkMs} ms, then advertises over BLE for ${advertise}, then deep-sleeps ${periodS} s (${from}). The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
-			`- Firmware BLE: the same GATT service as with a sensor, but the latest reading reads 0xFFFFFFFE ("no sensor") and the history stays empty; a phone that connects keeps the device awake until it disconnects or ${connectedS} s pass.`,
+			`- Firmware (product build of templates/fw): the design has no sensor (no I2C_SDA/I2C_SCL pins), so on each wake it reads nothing and stores nothing: it blinks the status LED ${blinkMs} ms, then ${radioStep}, then deep-sleeps ${periodS} s (${from}). The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
+			radioFact ?? `- Firmware BLE: the same GATT service as with a sensor, but the latest reading reads 0xFFFFFFFE ("no sensor") and the history stays empty; a phone that connects keeps the device awake until it disconnects or ${connectedS} s pass.`,
 			buttonFact,
 		]
 	return [
-		`- Firmware (product build of templates/fw): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash (LittleFS, the last ${Math.floor((days * 86400) / periodS)} readings: ${days} days at ${periodS} s (${daysFrom})), blinks the status LED ${blinkMs} ms (a double blink if the sensor fails), then advertises over BLE for ${advertise}, then deep-sleeps ${periodS} s (${from}). The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
-		`- Firmware BLE: a GATT service with the latest reading, the history count and the history read newest first in chunks of ${chunk} records; a phone that connects keeps the device awake until it disconnects or ${connectedS} s pass.`,
+		`- Firmware (product build of templates/fw): on each wake it reads the sensor, stores the reading in a ring buffer on the module's flash (LittleFS, the last ${Math.floor((days * 86400) / periodS)} readings: ${days} days at ${periodS} s (${daysFrom})), blinks the status LED ${blinkMs} ms (a double blink if the sensor fails), then ${radioStep}, then deep-sleeps ${periodS} s (${from}). The behavior field (blinkMs, tiltBlinkMs, tiltDeg) only drives the bench build; the product build ignores it.`,
+		radioFact ?? `- Firmware BLE: a GATT service with the latest reading, the history count and the history read newest first in chunks of ${chunk} records; a phone that connects keeps the device awake until it disconnects or ${connectedS} s pass.`,
 		buttonFact,
 	]
 }

@@ -114,3 +114,14 @@ test("Home Assistant over Wi-Fi: the rail grows for the radio, uploads stretch u
 	assert.ok(seen.has("rail-underrated") && seen.has("battery-short"), [...seen].join(","))
 	assert.ok(trace.some((e) => e.type === "artifact.ready" && e.payload.kind === "firmware" && e.payload.revision > 7), "the firmware rebuilt")
 })
+
+test("the firmware fact tells the designers and the reviewer how this design's firmware reaches the owner", async () => {
+	const { firmwareFacts } = await import("../src/agents/design-facts.ts")
+	const ble = firmwareFacts(logger({ radio: "ble", report: ["gatt", "bthome"], updates: "none" })).join("\n")
+	assert.match(ble, /advertises over BLE for \d+ ms \(activeMs minus the reading\), with the reading in BTHome v2 service data/)
+	assert.match(ble, /GATT service with the latest reading/)
+	const wifi = firmwareFacts(logger({ ...WIFI, updates: "ota" })).join("\n")
+	assert.match(wifi, /every 12 wakes \(3600 s\) joins Wi-Fi and uploads by MQTT, then checks for a firmware update/)
+	assert.match(wifi, /Firmware Wi-Fi: MQTT with Home Assistant discovery/)
+	assert.doesNotMatch(wifi, /advertises over BLE/)
+})
