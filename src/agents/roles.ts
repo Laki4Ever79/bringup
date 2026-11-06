@@ -63,7 +63,8 @@ function ownerFixesReview(role: AgentRole): SituationHandler {
 
 export const CONTRACT_SHAPES = `Contract field shapes (units: mm, V, mA):
 - requirements: {summary: string, peripherals: string[], batteryLifeDays: number|null, batteryMah?: number, dutyCycle?: {activeMs, periodS, sleepUa}}
-- outline: {widthMm, heightMm, thicknessMm}
+- outline: {widthMm, heightMm, thicknessMm, sizeReason?: {kind, detail}}
+  Space rules: the board is compact by default, at most 15% over the smallest it can be (the design facts compute it). More than that needs outline.sizeReason, one of: "engineer-size" (the brief or the engineer set the size; say where), "usability", "standard-fit", "function" (e.g. keeping the sensor away from the MCU and regulator heat), "assembly-test", "expansion", "routing" (a smaller board was built and failed its checks: name the build). The engineer's own words outrank compactness; compactness outranks cost.
 - connectors: [{ref, kind: "usb-c"|"header"|"button", edge: "left"|"right"|"top"|"bottom", offsetMm (centre along the edge, from bottom or left), widthMm, heightMm}]
   widthMm and heightMm are the part's own opening seen from that edge, not the case: the USB-C receptacle (TYPE-C-31-M-12) is about 9 × 3.2 mm. The case adds its own clearance, and a cutout too tall runs into the lid.
 - rails: [{name, voltageV, regulatorMaxMa, loadMa (peak), averageMa? (long-run average including sleep, of this rail's OWN loads only: do not include the current of rails it feeds, nor the regulator's quiescent current)}]
@@ -318,7 +319,8 @@ export function createTestAgent(opts: { mock: boolean }): Agent {
 export const CASE_DESIGN = `${CASE_SHAPE}.
 - Frame: the board's bottom-left corner is the origin; a hole's offsetMm runs along its edge like a connector's (from the bottom on left/right, from the left on top/bottom), and the wall extends 2 mm past the board at each end.
 - The case's outer size is the board outline plus 2 × (2 mm clearance + wallMm) each way, and it follows the board: you don't set it directly. A case that must be a given outer size needs a different board outline (the architect's field): propose the outline that gives it. That changes the PCB, so it also waits for the engineer's confirmation; if it is rejected, keep the board and say so.
-- Code checks the case field: the body tall enough for the connectors' cutouts under the lid's 3 mm lip, a hole that fits its wall's free height and keeps 1.2 mm of wall from every cutout and other hole, tabs that fit their wall and don't overlap. The design facts give the numbers (outer size, the lowest body, the largest hole). Fix your own field first: move a hole along its wall or to another wall, make the body taller. Ask to move a connector (the architect's connectors field, a PCB change the engineer must confirm) only when the engineer wants the hole exactly there.`
+- Code checks the case field: the body tall enough for the connectors' cutouts under the lid's 3 mm lip, a hole that fits its wall's free height and keeps 1.2 mm of wall from every cutout and other hole, tabs that fit their wall and don't overlap. The design facts give the numbers (outer size, the lowest body, the largest hole). Fix your own field first: move a hole along its wall or to another wall, make the body taller. Ask to move a connector (the architect's connectors field, a PCB change the engineer must confirm) only when the engineer wants the hole exactly there.
+- Space rules: the body is at most 15% taller than its contents need (the design facts give it); taller needs case.sizeReason ("engineer-size" when the engineer asked for it, or another listed reason).`
 
 // The case designer: it owns the case field (walls, height, added features). The enclosure builder makes the case from
 // the board and this field; a case request that needs a different board goes to the architect through change control,
@@ -335,7 +337,7 @@ export function createCaseAgent(opts: { mock: boolean }): Agent {
 			engineerRequests(
 				"If it is about the case (its outer size, walls, height, lid, lettering on it, wall-mount tabs, a lanyard loop, a hole for a cable or a cable gland), meet it: call read_contract, then propose_contract_change on the case field with its current baseVersion (a new case field has baseVersion 0, starting from walls 2 mm, height 14 mm, no features), keeping every feature the request does not mention. If it sets the case's outer size, also propose the board outline that gives it. Otherwise change nothing.",
 			),
-			violationsFor("enclosure", "Fix them by changing the case field you own (move or resize a hole, a taller body, tabs on other walls), with propose_contract_change and its current baseVersion.", (kind) => kind.startsWith("case-")),
+			violationsFor("enclosure", "Fix them by changing the case field you own (move or resize a hole, a taller or lower body, tabs on other walls, or a sizeReason when the room is wanted), with propose_contract_change and its current baseVersion.", (kind) => kind.startsWith("case-") || kind === "space-slack"),
 		],
 	})
 }

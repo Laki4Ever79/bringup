@@ -32,7 +32,8 @@ export function enclosureSpec(s: ContractSnapshot): object {
 	const c = caseOf(s)
 	// A copy: the caller may edit its spec (the print-check tests do), never the shared geometry.
 	return structuredClone({
-		outline,
+		// The size only: py/enclosure.py has no use for the reason behind it.
+		outline: { widthMm: outline.widthMm, heightMm: outline.heightMm, thicknessMm: outline.thicknessMm },
 		connectors: connectors ?? [],
 		holes,
 		sensors,

@@ -120,6 +120,11 @@ built solid. A case change that needs a different board ("make the case 50 mm wi
 happens silently: you get a warning that the PCB will change, and it goes ahead only if you approve it. Details:
 [docs/case-editing.md](docs/case-editing.md).
 
+Board and case are compact by default: code computes the smallest board the parts place on, and anything more than
+15% over it needs a recorded reason (your size, usability, a standard fit, function, assembly and test, expansion, or
+a measured routing failure). The report says what the size costs. Rules and sources:
+[docs/space-rules.md](docs/space-rules.md).
+
 ## Architecture
 
 ```mermaid

@@ -65,8 +65,10 @@ test("a hole must keep wall from the connector's cutout, fit the wall's height a
 	assert.match(into[0].message, /runs into J1's cutout/)
 	const clear = caseKinds(withCase({ ...DEFAULT_CASE, features: [{ id: "h1", kind: "hole", edge: "left", offsetMm: 25, diameterMm: 5 }] }))
 	assert.deepEqual(clear, [])
+	// Too big for a 14 mm body: the hole doesn't fit its wall, and the body is too low for it.
 	const tooBig = caseKinds(withCase({ ...DEFAULT_CASE, features: [{ id: "h1", kind: "hole", edge: "right", offsetMm: 15, diameterMm: 12 }] }))
-	assert.match(tooBig[0].message, /9 mm between the floor and the lid's lip/)
+	assert.ok(tooBig.some((v) => /9 mm between the floor and the lid's lip/.test(v.message)), tooBig.map((v) => v.message).join("; "))
+	assert.ok(tooBig.some((v) => v.kind === "case-too-low" && /need 18 mm/.test(v.message)))
 	const off = caseKinds(withCase({ ...DEFAULT_CASE, features: [{ id: "h1", kind: "hole", edge: "top", offsetMm: 51, diameterMm: 4 }] }))
 	assert.match(off[0].message, /runs off the top wall/)
 })

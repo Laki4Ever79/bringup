@@ -94,7 +94,9 @@ export function boardEdits(saved: BoardEdits, s: ContractSnapshot): BoardFileEdi
 	const mapped: string[] = []
 	let newOutline: Outline | null = null
 	if (outline && !(near(saved.outline.widthMm, outline.widthMm) && near(saved.outline.heightMm, outline.heightMm))) {
-		newOutline = { ...outline, widthMm: mm(saved.outline.widthMm), heightMm: mm(saved.outline.heightMm) }
+		// The engineer drew this size, which is now the reason for it: the old reason described the old size.
+		const [w, h] = [mm(saved.outline.widthMm), mm(saved.outline.heightMm)]
+		newOutline = { ...outline, widthMm: w, heightMm: h, sizeReason: { kind: "engineer-size", detail: `the engineer drew the board ${w}×${h} mm in KiCad` } }
 		mapped.push(`outline ${outline.widthMm}×${outline.heightMm} → ${newOutline.widthMm}×${newOutline.heightMm} mm`)
 	}
 	let moved = false

@@ -7,6 +7,7 @@ import { modelChecks, type ModelViolation } from "./model.ts"
 import { fixtureChecks, testChecks, type TestViolation } from "./testkit.ts"
 import { builtFeatureChecks, caseChecks, type BuiltFeature, type CaseViolation } from "./case.ts"
 import type { CaseFeature } from "./types.ts"
+import { spaceChecks, type SpaceViolation } from "./space.ts"
 import type { TestPoint } from "../codegen/circuit.ts"
 
 export interface BoardArtifact {
@@ -112,6 +113,7 @@ export type ViolationKind =
 	| ModelViolation["kind"]
 	| TestViolation["kind"]
 	| CaseViolation["kind"]
+	| SpaceViolation["kind"]
 
 export interface Violation {
 	kind: ViolationKind
@@ -136,7 +138,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure))
+	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)

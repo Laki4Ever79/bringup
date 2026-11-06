@@ -1,4 +1,5 @@
 import { caseOuter } from "./contract/case.ts"
+import { minimumBoard } from "./contract/space.ts"
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import type { StockSuggestion } from "./tools/sourcing.ts"
 import { dirname, join } from "node:path"
@@ -196,6 +197,12 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Board ${v.outline?.widthMm}×${v.outline?.heightMm} mm; connectors: ${(v.connectors ?? []).map((x) => `${x.ref} ${x.kind} on ${x.edge}`).join(", ") || "none"}`,
 		`- Parts: ${(v.parts ?? []).map((p) => `${p.ref} ${p.mpn}${p.lcsc ? ` (${p.lcsc})` : ""}`).join(", ")}`,
 		`- Pins: ${(v.pins ?? []).map((p) => `${p.signal}=GPIO${p.gpio}→${p.partRef}.${p.partPin}`).join(", ")}`,
+		...(() => {
+			const min = v.outline ? minimumBoard(s.contract.snapshot()) : null
+			if (!v.outline || !min) return []
+			const slack = Math.round(((v.outline.widthMm * v.outline.heightMm) / min.areaMm2 - 1) * 100)
+			return [`- Space: board ${v.outline.widthMm}×${v.outline.heightMm} mm is ${slack}% over the smallest it can be (${min.areaMm2} mm², every part placed at ${min.widthMm}×${min.heightMm} mm, routing not proven at that size)${v.outline.sizeReason ? `; kept for a reason: ${v.outline.sizeReason.kind}, ${v.outline.sizeReason.detail}` : ""}`]
+		})(),
 		...(v.case && v.outline ? [`- Case: outer ${caseOuter(v.outline, v.case).widthMm}×${caseOuter(v.outline, v.case).heightMm}×${v.case.heightMm} mm, ${v.case.wallMm} mm walls; features: ${v.case.features.map((f) => `${f.id} (${f.kind}${f.kind === "text" ? ` "${f.text}"` : f.kind === "hole" ? ` ${f.diameterMm} mm on the ${f.edge}` : ""})`).join(", ") || "none"}`] : []),
 		...(v.test ? [`- Production test: ${v.test.points.length} test pads (${v.test.points.join(", ")}); limits awake ≤ ${v.test.awakeMaxMa} mA, asleep ≤ ${v.test.sleepMaxUa} µA${s.artifacts.testkit ? `; kit in ${s.artifacts.testkit.dir} (test-plan.md, fixture.stl, factory-test firmware ${s.artifacts.testkit.firmware.ok ? "compiles" : "FAILS"})` : ""}`] : []),
 		...(v.model ? [`- Model: ${v.model.task} (${v.model.sensor} at ${v.model.sampleRateHz} Hz, ${v.model.windowMs} ms window), weights ${v.model.weightsKb} KB, arena ${v.model.arenaKb} KB, ${v.model.quantization} ${v.model.runtime}, listening ${v.model.listening}`] : []),

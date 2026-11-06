@@ -124,6 +124,6 @@ test("boardEdits maps a saved board's outline and connector moves to the contrac
 	const moved = { outline: { widthMm: 45, heightMm: 30 }, connectors: [{ ref: "J1", edge: "left" as const, offsetMm: 12 }] }
 	const e = boardEdits(moved, c)
 	assert.deepEqual(e.mapped, ["outline 50×30 → 45×30 mm", "J1 left@15 → left@12 mm"])
-	assert.deepEqual(e.outline, { widthMm: 45, heightMm: 30, thicknessMm: 1.6 })
+	assert.deepEqual(e.outline, { widthMm: 45, heightMm: 30, thicknessMm: 1.6, sizeReason: { kind: "engineer-size", detail: "the engineer drew the board 45×30 mm in KiCad" } })
 	assert.deepEqual(e.connectors![0], { ...c.values.connectors![0], edge: "left", offsetMm: 12 })
 })
