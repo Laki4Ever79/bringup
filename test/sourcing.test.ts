@@ -189,6 +189,14 @@ test("bom.json and the report name the out-of-stock line's options, and nothing 
 	const line = sourcingLine(path)
 	assert.match(line, /U2 SHT40-AD1B-R2 is out of stock at LCSC\. Try Digi-Key or Mouser first/)
 	assert.match(line, /Or switch to SHTC3-TR-2\.5KS \(C194656, 1200 in stock\): same footprint/)
-	assert.match(line, /src\/request\.ts .* "U2 SHT40-AD1B-R2 is out of stock/)
+	assert.match(line, /src\/request\.ts .* 'U2 SHT40-AD1B-R2 is out of stock/)
 	assert.equal(existsSync(join(state.outDir, "requests.jsonl")), false, "the suggestion is never sent on its own")
+})
+
+test("the suggested drop-in is one the firmware can drive, when there is one", () => {
+	const sources = sourcesFor({ mpn: "SHT40-AD1B-R2", lcsc: "C2909890" }, { stock: 0, priceUsd: 0.5 })
+	const noDriver = { mpn: "BME280", lcsc: "C92489", stock: 900, priceUsd: 2, inStock: true, changes: ["no firmware driver for BME280: the firmware can't read it yet"] }
+	const driven = { mpn: "SHTC3-TR-2.5KS", lcsc: "C194656", stock: 50, priceUsd: 0.4, inStock: true, changes: ["firmware driver SHT40 → SHTC3: pins.h selects it and the firmware rebuilds"] }
+	assert.equal(stockSuggestion({ ref: "U2", mpn: "SHT40-AD1B-R2" }, sources, [noDriver, driven]).alternative?.mpn, "SHTC3-TR-2.5KS")
+	assert.equal(stockSuggestion({ ref: "U2", mpn: "SHT40-AD1B-R2" }, sources, [noDriver]).alternative?.mpn, "BME280", "still offered when it is the only one")
 })

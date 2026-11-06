@@ -51,7 +51,11 @@ export function testChecks(s: ContractSnapshot): TestViolation[] {
 	if (!t) return []
 	const out: TestViolation[] = []
 	const { signals, power } = probeableNets(s)
-	const uncovered = [...signals, ...power.filter((n) => !OPTIONAL_POWER.has(n))].filter((n) => !t.points.includes(n))
+	// A net is owed a pad only if the board has room for one: with every required net asked for, the ones the
+	// placement can't fit are waived, or "add it" and "no room for it" would contradict each other forever.
+	const required = [...signals, ...power.filter((n) => !OPTIONAL_POWER.has(n))]
+	const noRoom = new Set(testPoints({ ...s, values: { ...s.values, test: { ...t, points: [...new Set([...t.points, ...required])] } } }).unplaced)
+	const uncovered = required.filter((n) => !t.points.includes(n) && !noRoom.has(n))
 	if (uncovered.length)
 		out.push({ kind: "test-uncovered", message: `the fixture can't reach ${uncovered.join(", ")}: no test pad on ${uncovered.length > 1 ? "these nets" : "this net"}; add ${uncovered.length > 1 ? "them" : "it"} to test.points`, fields: ["test", "pins"], affects: ["test"] })
 	const orphans = t.points.filter((n) => !signals.includes(n) && !power.includes(n))
@@ -111,16 +115,20 @@ export function testPlan(s: ContractSnapshot): TestPlan {
 	const steps: TestStep[] = []
 	if (!t) return { revision: s.revision, probes: placed, steps }
 	const parts = s.values.parts ?? []
+	// The limits are the battery-fed rails' current (expectedCurrents). With a charger on the board, USB would also be
+	// charging whatever sits on VBAT, so the current steps run from a battery simulator on the VBAT pad, USB unplugged.
+	const battery = t.points.includes("VBAT")
+	const from = battery ? "drawn from a battery simulator on the VBAT pad (3.7 V), USB unplugged" : "drawn from the USB supply"
+	if (t.points.includes("GND")) steps.push({ id: "gnd", by: "fixture", what: "board ground to the station's ground", pass: "< 1 Ω", probe: tp("GND") })
 	steps.push({ id: "vbus", by: "fixture", what: t.points.includes("VBUS") ? "USB supply at the board" : "USB supply, at the station's USB-C cable that powers the board", pass: "4.75–5.25 V (USB 2.0 VBUS range)", probe: tp("VBUS") })
 	if (t.points.includes("3V3")) steps.push({ id: "3v3", by: "fixture", what: "3V3 rail from the regulator", pass: "3.20–3.40 V (3.3 V ±3 %)", probe: tp("3V3") })
-	if (t.points.includes("VBAT")) steps.push({ id: "vbat", by: "fixture", what: "battery node at the charger output, with a cell or a battery simulator on the pad", pass: "3.0–4.25 V (single Li-ion/LiPo cell)", probe: tp("VBAT") })
-	if (t.points.includes("GND")) steps.push({ id: "gnd", by: "fixture", what: "board ground to the station's ground", pass: "< 1 Ω", probe: tp("GND") })
-	steps.push({ id: "awake", by: "fixture", what: "supply current while the self-test runs", pass: `≤ ${t.awakeMaxMa} mA` })
-	steps.push({ id: "sleep", by: "fixture", what: "supply current in deep sleep, after the self-test", pass: `≤ ${t.sleepMaxUa} µA` })
+	if (battery) steps.push({ id: "vbat", by: "fixture", what: "charger output on the VBAT pad, USB in, the battery simulator sinking current", pass: "4.1–4.3 V (Li-ion charge voltage)", probe: tp("VBAT") })
+	steps.push({ id: "awake", by: "fixture", what: `supply current while the self-test runs, ${from}`, pass: `≤ ${t.awakeMaxMa} mA` })
+	steps.push({ id: "sleep", by: "fixture", what: `supply current in deep sleep after the self-test, ${from}`, pass: `≤ ${t.sleepMaxUa} µA` })
 	for (const p of s.values.pins ?? []) {
 		const role = parts.find((x) => x.ref === p.partRef)?.role
 		const probe = tp(p.signal)
-		if (role === "led") steps.push({ id: `out-${p.signal}`, by: "firmware", what: `${p.signal} (GPIO${p.gpio}) drives ${p.partRef}: the firmware drives it high and low and reads the pad back`, pass: "reads back what it drove; the fixture sees 0 V then 3.3 V", probe })
+		if (role === "led") steps.push({ id: `out-${p.signal}`, by: "firmware", what: `${p.signal} (GPIO${p.gpio}) drives ${p.partRef}: the firmware drives it high and low and reads the pin back (a pin shorted to a rail fails)`, pass: "reads back what it drove; the fixture sees 0 V then 3.3 V on the pad, which proves the trace", probe })
 		else if (role === "button") steps.push({ id: `in-${p.signal}`, by: "firmware", what: `${p.signal} (GPIO${p.gpio}) from ${p.partRef}: idle level with the pull-up`, pass: "reads high (not shorted to GND)", probe })
 		// One firmware step proves a bus: the sensor's ACK needs both I2C lines, the mic's samples need its clock and data.
 		else if (role === "sensor" && p.partPin === "SDA") steps.push({ id: "i2c-sensor", by: "firmware", what: `the ${parts.find((x) => x.ref === p.partRef)?.mpn} answers at its I2C address (proves SDA, SCL, their pull-ups and its supply)`, pass: "ACK", probe })

@@ -20,11 +20,18 @@ Checks in plain code, like the rest of the contract:
 - `test-orphan`: a pad on a net the design no longer has. Wakes the test agent.
 - `test-limit`: a current limit below the design's own peak or sleep current, so every good board would fail. Wakes the
   test agent.
-- `test-unplaced`: no room on the underside for a pad. Wakes the test agent.
-- `fixture-mismatch`: a fixture probe not over the pad the built board has, or on another net. The builders rebuild.
+- `test-unplaced`: no room on the underside for a pad. Wakes the test agent, which drops it. A net the board has no
+  room for is then not owed a pad, so the two checks never contradict each other.
+- `fixture-mismatch`: a fixture probe not over the pad the built board has, or on another net. Nobody can fix this in
+  the run: the fixture and the board come from the same placement code, so it would mean tscircuit put a pad
+  somewhere else, a bug to report. Checked on a real build: tscircuit places the bottom pads at exactly the requested
+  coordinates.
 
 "Make it 40 mm wide" moves the pads with the parts; the board and the test kit rebuild from the same revision, so the
 fixture's holes land under the new pads.
+
+With a charger on the board, the current steps run from a battery simulator on the VBAT pad with USB unplugged: the
+limits are the battery-fed rails' current, and with USB in, the charger would add whatever it is charging.
 
 VBUS is optional: the station powers the board through its USB-C port, which it needs anyway to read the factory
 test's output. A VBUS pad also pulled a via beside the connector's locating hole on the 45 mm logger.

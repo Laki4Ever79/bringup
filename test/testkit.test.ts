@@ -146,3 +146,22 @@ test("without a test field nothing waits for a test kit: the logger settles as b
 	const trace = readFileSync(join(out, "trace.jsonl"), "utf8")
 	assert.doesNotMatch(trace, /"kind":"testkit"/)
 })
+
+test("a crowded board settles: a net with no room for a pad is not owed one (no add/drop loop)", () => {
+	const c = withTest()
+	c.values.outline = { ...c.values.outline!, widthMm: 35, heightMm: 20 }
+	const { unplaced } = testPoints(c)
+	assert.ok(unplaced.length > 0, "the 35x20 board can't fit every pad")
+	c.values.test = { ...c.values.test!, points: c.values.test!.points.filter((p) => !unplaced.includes(p)) }
+	assert.deepEqual(kinds(c), [], "after dropping what doesn't fit, nothing is left to fix")
+})
+
+test("with a charger, the current steps run from a battery simulator on VBAT, USB unplugged", async () => {
+	const { LOGGER_DESIGN } = await import("../src/inference/scripts.ts")
+	const c = fixtureContract()
+	c.values.parts = structuredClone(LOGGER_DESIGN.parts)
+	c.values.test = defaultTestSpec(c)
+	assert.ok(c.values.test.points.includes("VBAT"))
+	const awake = testPlan(c).steps.find((x) => x.id === "awake")!
+	assert.match(awake.what, /battery simulator on the VBAT pad.*USB unplugged/)
+})

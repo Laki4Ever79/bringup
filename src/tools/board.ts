@@ -37,8 +37,9 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 			} else rmSync(out, { recursive: true, force: true })
 			if (errors === 0) break
 		} catch (error) {
-			// The failed attempt's log goes to the run's folder, and the message points there.
-			if (existsSync(join(out, "build.log"))) {
+			// The failed attempt's log goes to the run's folder, and the message points there. Not when an earlier layout
+			// built: its board is what lands in the folder, and a failed layout's log beside it would mislead.
+			if (!best && existsSync(join(out, "build.log"))) {
 				mkdirSync(dir, { recursive: true })
 				cpSync(join(out, "build.log"), join(dir, "build.log"))
 			}

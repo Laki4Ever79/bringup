@@ -508,6 +508,8 @@ export function testPoints(s: ContractSnapshot): { placed: TestPoint[]; unplaced
 			connectorRefs.has(b.ref) || parts.find((p) => p.ref === b.ref)?.role === "usb-c" ? { ...b, w: b.w + 2 * TEST_PAD.usbClearMm, h: b.h + 2 * TEST_PAD.usbClearMm } : b),
 		...mountingHoles(s).map((h) => ({ x: h.x, y: h.y, w: MOUNTING_HOLE.keepoutMm, h: MOUNTING_HOLE.keepoutMm })),
 		...micPorts(s).map((m) => ({ x: m.xMm - W / 2, y: m.yMm - H / 2, w: 3, h: 3 })),
+		// Without mounting holes the fixture rests the board on corner supports (py/fixture.py: 5 mm, 3 mm in).
+		...(mountingHoles(s).length ? [] : [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => ({ x: sx * (W / 2 - 3), y: sy * (H / 2 - 3), w: 5, h: 5 }))),
 	]
 	// Where each net is wanted: next to the part it serves, so its trace stays short. VBUS at the charger or LDO input,
 	// not at the USB-C connector: there its via landed beside the connector's locating hole (45 mm logger, 2 errors).

@@ -101,6 +101,9 @@ function printLines(e: EnclosureArtifact | undefined, stubbed: boolean): string[
 // The parts list's order-readiness summary (agents/bom.ts). "needs attention" only for out-of-stock or unlisted lines.
 // Each out-of-stock line follows with what to do: other suppliers first, then the catalog's drop-in and what switching
 // would change, as a change request the engineer can send. Nothing is sent for them.
+// Single-quoted for a POSIX shell: the request carries part numbers from live supplier data.
+const shellQuote = (x: string) => `'${x.replaceAll("'", `'\\''`)}'`
+
 export function sourcingLine(bomPath: string): string {
 	if (!existsSync(bomPath)) return "- Sourcing: no bom.json (no parts yet)"
 	const bom = JSON.parse(readFileSync(bomPath, "utf8")) as { readiness?: { summary: string; warn: boolean }; items?: { ref: string; mpn: string; suggestion?: StockSuggestion }[] }
@@ -110,7 +113,7 @@ export function sourcingLine(bomPath: string): string {
 		const g = i.suggestion
 		if (!g) continue
 		lines.push(`  - ${i.ref} ${i.mpn} is out of stock at LCSC. Try ${g.elsewhere.map((x) => x.supplier).join(" or ") || "another supplier"} first (not checked here).`)
-		if (g.alternative) lines.push(`    Or switch to ${g.alternative.mpn}${g.alternative.lcsc ? ` (${g.alternative.lcsc}, ${g.alternative.stock ?? "?"} in stock)` : ""}${g.alternative.changes?.length ? `: ${g.alternative.changes.join("; ")}` : ""}.`, `    To switch: \`npx tsx src/request.ts ${dirname(bomPath)} "${g.request}"\``)
+		if (g.alternative) lines.push(`    Or switch to ${g.alternative.mpn}${g.alternative.lcsc ? ` (${g.alternative.lcsc}, ${g.alternative.stock ?? "?"} in stock)` : ""}${g.alternative.changes?.length ? `: ${g.alternative.changes.join("; ")}` : ""}.`, `    To switch: \`npx tsx src/request.ts ${shellQuote(dirname(bomPath))} ${shellQuote(g.request ?? "")}\``)
 		else lines.push("    No in-stock alternative in the catalog for this role.")
 	}
 	return lines.join("\n")
