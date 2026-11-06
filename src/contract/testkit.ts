@@ -2,6 +2,7 @@
 // current limits a board passes at; from the same contract Bringup generates the board's bottom-side test pads, the
 // bed-of-nails fixture that probes them, the factory-test firmware and the test plan. When the board changes, all four
 // follow, and these checks wake the test agent when its own field no longer fits the design.
+import { MODULE_FCC_ID } from "./compliance.ts"
 import { generatedNets, testPoints, type TestPoint } from "../codegen/circuit.ts"
 import { estimatePower } from "./power.ts"
 import type { AgentRole, ContractSnapshot, FieldName, TestSpec } from "./types.ts"
@@ -164,6 +165,9 @@ export function testPlanMarkdown(p: TestPlan, s: ContractSnapshot): string {
 		"The firmware steps print `BRINGUP-TEST <id> PASS|FAIL <detail>` and a final `BRINGUP-TEST done <passed>/<total>` on",
 		"the board's USB serial. Fixture: 1.5 mm pads on a 2.54 mm grid suit common 100-mil pogo pins; the probe holes in",
 		"fixture.stl are sized for press-fit receptacles (see fixture.json), so check them against the probes you buy.",
+		"",
+		"Label: the firmware also prints `BRINGUP-TEST identity mac=<MAC> passkey=<6 digits>`, the device's own Bluetooth",
+		`passkey, made on the line by its hardware random generator and kept in its flash. Print it on the device's label, with "Contains FCC ID: ${MODULE_FCC_ID}" (the ESP32-C3-MINI-1's modular grant), and keep the MAC with it in your records.`,
 		"",
 	].join("\n")
 }
