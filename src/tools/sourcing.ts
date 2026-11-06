@@ -68,7 +68,9 @@ export interface StockSuggestion {
 }
 
 export function stockSuggestion(part: { ref: string; mpn: string }, sources: Source[], alternatives: Alternative[]): StockSuggestion {
-	const alternative = alternatives.find((a) => a.inStock === true || (a.stock ?? 0) > 0) ?? null
+	// In stock, and preferably one the firmware can drive: a part with no driver would trade a purchase for a rewrite.
+	const inStock = alternatives.filter((a) => a.inStock === true || (a.stock ?? 0) > 0)
+	const alternative = inStock.find((a) => !a.changes?.some((c) => c.startsWith("no firmware driver"))) ?? inStock[0] ?? null
 	return {
 		elsewhere: sources.filter((x) => x.supplier !== ORDER_SUPPLIER),
 		alternative,

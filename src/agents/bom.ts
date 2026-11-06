@@ -69,8 +69,10 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 			byRole.set(role, live ? await searchParts(role, { fetch: opts.fetch, root: opts.root }) : catalog.filter((c) => c.role === role))
 		// The contract's own part against a catalog part, by MPN: what a swap would change (null when either is unknown).
 		const effects = (p: (typeof parts)[number]) => (to: string) => {
-			const target = catalog.find((c) => c.mpn === to)
-			return target ? swapEffects({ ...p, ...catalog.find((c) => c.mpn === p.mpn) }, target, sensorDriver) : null
+			// By MPN, case ignored, as alternativesFor and the power budget match.
+			const same = (a: string, b: string) => a.toUpperCase() === b.toUpperCase()
+			const target = catalog.find((c) => same(c.mpn, to))
+			return target ? swapEffects({ ...p, ...catalog.find((c) => same(c.mpn, p.mpn)) }, target, sensorDriver) : null
 		}
 		const items: BomItem[] = parts.map((p) => {
 			const hit = p.lcsc ? byRole.get(p.role)?.find((c) => c.lcsc === p.lcsc) : undefined

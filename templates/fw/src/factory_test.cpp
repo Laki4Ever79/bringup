@@ -1,6 +1,7 @@
 // Factory-test firmware (env esp32c3_test), generated per design: include/testkit.h names the self-tests the contract's
 // parts call for and pins.h where they are wired. The board sits on the bed-of-nails fixture; the station powers it
-// through the pogo pins, measures the rails and the current on the test pads, and reads these lines on USB serial:
+// through its USB-C port (or a battery simulator on the VBAT pad for the current steps, see test-plan.md), measures the
+// rails on the test pads, and reads these lines on USB serial:
 //
 //   BRINGUP-TEST <id> PASS|FAIL <detail>
 //   BRINGUP-TEST done <passed>/<total>
@@ -25,8 +26,9 @@ static void report(const char *id, bool ok, const char *detail) {
 }
 
 #if TEST_OUTPUT_COUNT > 0
-// Drive each output high and low and read the pad back: a pad shorted to a rail or to its neighbour reads the other
-// level. The fixture sees the same levels on the test pad, which proves the trace from the MCU to the part.
+// Drive each output high and low and read the pin back: a pin shorted hard to a rail or a neighbour reads the other
+// level. This reads the MCU's own pin, so an open trace still passes; the fixture's reading on the test pad is what
+// proves the trace from the MCU to the part.
 static void testOutputs() {
 	const int pins[] = TEST_OUTPUTS;
 	const char *names[] = TEST_OUTPUT_NAMES;

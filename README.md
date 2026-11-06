@@ -99,6 +99,19 @@ microphone, and the ml agent marks the data as needing re-recording. Bringup als
 firmware, and checks a TFLite int8 model against the board (`bringup verify-model`). Details:
 [docs/edge-ai.md](docs/edge-ai.md).
 
+### 6. So does the production test
+
+"Add a production test fixture" wakes a test agent, which owns the test: which nets get a test pad, and the current
+a good board stays under. The board gets pogo pads on its underside, and a test kit is built beside it: a printable
+bed-of-nails fixture, factory-test firmware and a test plan with pass limits. "Add a wake word" adds mic pins, and the
+test agent gives them pads. "Make it 40 mm wide" moves the pads, and the fixture's holes move with them. Details:
+[docs/test-kit.md](docs/test-kit.md).
+
+On an existing KiCad repo, the `adopt` GitHub Action can now comment on a pull request with its change impact: what
+the change moved, and which of board, case, firmware and BOM must follow, down to the firmware line
+([docs/adopt.md](docs/adopt.md)). And a part out of stock gets options, not an automatic change: other suppliers first,
+then a catalog drop-in with what switching would change.
+
 ## Architecture
 
 ```mermaid
