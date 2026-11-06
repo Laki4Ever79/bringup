@@ -9,6 +9,7 @@ npx tsx src/adopt/cli.ts <repo>                          # report: every firmwar
 npx tsx src/adopt/cli.ts <repo> --contract <dir>         # agree: write the contract the repo implies
 npx tsx src/adopt/cli.ts <repo> --check <dir>            # check: the repo now against the agreed contract (exit 1 if broken)
 #   --variant <env>   pin the firmware build    --json out.json    --markdown summary.md
+#   --impact impact.md   with --check: the change impact alone, as the pull-request comment posts it
 ```
 
 ## What it reads
@@ -70,16 +71,55 @@ Connector cutout heights are estimates.
 contract (outline, nets, firmware pins). It adds a field-by-field diff of what moved, and names firmware left behind
 when the board moves a pin.
 
+## Change impact
+
+`--check` opens with the change impact: for each design change, which other domains have to follow and where.
+The same block heads the job summary, and is what the pull-request comment says:
+
+```
+Change impact:
+  LCD_DC moved GPIO1 → GPIO3
+    Firmware: src/main.cpp:14 still drives GPIO1 (PIN_LCD_DC): update it to GPIO3
+    Case, BOM: unaffected (they don't read pins)
+```
+
+A domain is affected when it reads the changed field. These are the fields Bringup's own builders rebuild on
+(`BUILD_INPUTS` in `src/agents/builders.ts`), and parts for the BOM:
+
+| Change | Board | Case | Firmware | BOM |
+|---|---|---|---|---|
+| a pin | changed | unaffected | the pin's firmware name: follows, or `file:line` still drives the old pin | unaffected |
+| an edge connector | changed | the case STL that fits best needs its cutout moved (and whether the board still fits) | unaffected | unaffected |
+| the outline | changed | whether the board still fits the case STL, and the margin | unaffected | unaffected |
+| a part's value | changed | not checked (vents and openings aren't read) | not checked (drivers aren't read) | that part's line |
+
+"Unaffected" means the domain doesn't read the field. "Not checked" means it does, but adopt can't see whether it
+followed: a cutout inside an STL, a sensor driver, a signal no firmware name is linked to. A firmware pin moved with
+no board change is reported the other way round: the board has to follow, or the firmware goes back.
+
 ## On pull requests
 
 `adopt/action.yml` is a GitHub Action that runs `adopt/check.sh`. That script can also be run locally with the same
 variables. `adopt/example-workflow.yml` shows the setup:
 
 1. Agree once: `--contract .bringup/adopt`, then commit the folder.
-2. Every pull request is checked against it. A broken contract fails the job. The design changes and the per-pin
-   report go to the job summary.
+2. Every pull request is checked against it. A broken contract fails the job. The change impact, the design
+   changes and the per-pin report go to the job summary.
 3. To accept a deliberate change, re-run `--contract` in the pull request. The `contract.json` diff is the reviewed
    design change.
+
+With `comment: true` the Action also keeps one comment on the pull request with the change impact. A hidden marker
+(`<!-- bringup-impact -->`) finds it again, so each push updates the comment instead of adding another. It posts with
+the workflow's `GITHUB_TOKEN` through `gh api`, which needs this in the workflow:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+```
+
+The comment never changes the job's result; if it can't be posted, the job logs a warning. `BRINGUP_DRY_RUN=1
+adopt/check.sh` prints the API calls and the comment instead of making them.
 
 ## Limits
 
@@ -87,4 +127,5 @@ variables. `adopt/example-workflow.yml` shows the setup:
 - Pin numbers for ESP32/ESP8266/RP2040 GPIOs, STM32-style ports, AVR (ATmega328P/2560/32U4 and the Arduino boards on
   them) and nRF52/nRF54 port pins. Not yet ATtiny, ZMK's `&pro_micro` references, or Python and MicroPython firmware.
 - Connector positions come from the footprint origin and pad extent, not the courtyard.
-- The case check is a bounding box, not cutouts.
+- The case check is a bounding box, not cutouts: the impact says which case file needs a cutout moved, not that it
+  has one.

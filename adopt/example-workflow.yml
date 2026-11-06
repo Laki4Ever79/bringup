@@ -7,11 +7,17 @@ on:
   pull_request:
   push:
     branches: [main]
+# comment: true keeps one comment on the PR with the change impact (which domains must follow, and where); it needs
+# the pull-requests: write permission below. Leave both out for the job summary only.
 jobs:
   adopt:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: Laki4Ever79/bringup/adopt@adopt
         with:
           contract: .bringup/adopt
+          comment: true
