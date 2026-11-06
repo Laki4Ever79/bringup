@@ -73,6 +73,8 @@ def load(path):
     dims["ports"] = d_ports
     dims["features"] = spec.get("features", [])
     dims["fg"] = spec.get("featureGeometry")
+    dims["shift"] = spec.get("frameShiftMm", [0, 0])
+    dims["antenna"] = spec.get("antenna")
     if dims["features"] and not dims["fg"]:
         fail("features need featureGeometry")
     return dims, conns, holes, sensors
@@ -499,10 +501,14 @@ def main():
     lid_print = Pos(0, 0, d["height"] + d["plate"]) * mirror(lid, Plane.XY)
     standoffs = measure_standoffs(case, d, holes)
 
-    export_step(case, str(out / "case.step"))
-    export_stl(case, str(out / "case.stl"))
-    export_step(lid_print, str(out / "lid.step"))
-    export_stl(lid_print, str(out / "lid.stl"))
+    # Built in the case view's frame (the board plus the module's antenna); the files go out in the contract's frame,
+    # the board's bottom-left corner at the origin. The measured JSON stays in the case frame: the caller shifts it.
+    sx, sy = (float(v) for v in d["shift"])
+    case_out, lid_out = Pos(-sx, -sy, 0) * case, Pos(-sx, -sy, 0) * lid_print
+    export_step(case_out, str(out / "case.step"))
+    export_stl(case_out, str(out / "case.stl"))
+    export_step(lid_out, str(out / "lid.step"))
+    export_stl(lid_out, str(out / "lid.stl"))
 
     issues, min_wall = thin_wall_issues(d, conns)
     for name, solid in (("case", case), ("lid", lid_print)):
@@ -510,6 +516,13 @@ def main():
             issues.append(f"{name}: the solid is not valid")
     issues += stl_manifold_issues(out / "case.stl", "case") + stl_manifold_issues(out / "lid.stl", "lid")
     issues += overhang_issues(case, "case", slots) + overhang_issues(lid_print, "lid", [])
+    # The module's antenna hangs past the board edge: measured on the solids, nothing of the case or lid may touch it.
+    a = d["antenna"]
+    if a:
+        box = Pos((a["xMin"] + a["xMax"]) / 2, (a["yMin"] + a["yMax"]) / 2, (a["zMin"] + a["zMax"]) / 2) * Box(a["xMax"] - a["xMin"], a["yMax"] - a["yMin"], a["zMax"] - a["zMin"])
+        for name, solid in (("case", case), ("lid", lid)):
+            if (solid & box).volume > 1e-6:
+                issues.append(f"{name}: runs into the module's antenna, which hangs past the board edge")
     clearance = lid_fit(case, lid, d)
     lo, hi = LID_CLEARANCE_MM
     if not lo - 1e-3 <= clearance <= hi + 1e-3:

@@ -237,10 +237,11 @@ function modulePads(): { pin: number; x: number; y: number; w: number; h: number
 function moduleFootprint(): string {
 	const n = (v: number) => `${+v.toFixed(2)}mm`
 	const pads = modulePads().map((p) => `<smtpad portHints={["pin${p.pin}"]} pcbX="${n(p.x)}" pcbY="${n(p.y)}" width="${n(p.w)}" height="${n(p.h)}" shape="rect" />`)
+	// Silkscreen on the board only: the antenna hangs past the edge (placeParts), where the fab would cut it away.
 	const [hw, hh] = [MODULE_BODY.w / 2, MODULE_BODY.h / 2]
-	const outline = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
-	const antenna = `{ x: ${-hw}, y: ${MODULE_PAD_AREA_TOP} }, { x: ${hw}, y: ${MODULE_PAD_AREA_TOP} }`
-	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[${antenna}]} /></footprint>}`
+	const top = +(MODULE_PAD_AREA_TOP + MODULE_EDGE_MM - 0.25).toFixed(2)
+	const outline = [[-hw, top], [-hw, -hh], [hw, -hh], [hw, top]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
 }
 
 // ICS-43434 I2S microphone (TDK DS-000069 Rev 1.2, Figure 13 land pattern, Figure 3 pin configuration, Figure 15
@@ -281,25 +282,32 @@ export interface Placed {
 	w: number // reserved size along x and y, after rotation
 	h: number
 	rotation: number
+	// The part's own origin, when it isn't the reserved box's centre: the module, whose antenna hangs off the board.
+	ox?: number
+	oy?: number
 }
 
 const GAP_MM = 1.5
 const EDGE_MARGIN_MM = 0.5
 const GRID_MM = 0.5
 
-// Pad bounding boxes at rotation 0, measured from tscircuit 0.0.3042 builds.
+// What tscircuit counts as each part's extent at rotation 0: its courtyard where it has one, else its pads, measured
+// from circuit.json of tscircuit 0.0.3042 builds (6 Nov 2026). Pad boxes alone left parts reaching past the board edge
+// (J2 by 0.3 mm on 25 mm boards: tscircuit then skips autorouting altogether).
 const FOOTPRINT_SIZE: Record<string, [number, number]> = {
-	dfn4: [5.3, 1.87], sot23_5: [3.6, 2.5], sot23: [3.6, 2.5], "0402": [1.56, 0.64], "0603": [2.45, 0.95], qfn32: [5.8, 5.8],
-	pinrow4: [9.12, 1.5], pushbutton: [6, 8], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
-	jst2_ph: [6, 5], // pads are 3.2 x 1.75; this reserves the S2B-PH-K housing
-	// The USB-C courtyard, not its pads: the body reaches 5.5 mm behind the pad row (footprinter usbcmidmount.ts).
-	usbcmidmount: [10.35, 8.4],
+	dfn4: [5.8, 2.8], sot23_5: [3.6, 2.5], sot23: [3.6, 2.5], "0402": [1.86, 0.94], "0603": [2.96, 1.46], qfn32: [5.8, 5.8],
+	pinrow4: [9.12, 1.5], pushbutton: [7, 9], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
+	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
+	jst2_ph: [6.9, 5.5],
+	// The USB-C courtyard, not its pads: 9.84 mm along the edge (the shell's plated tabs) and 10.35 mm into the board,
+	// measured at rotation 270 on a left edge and turned back to rotation 0 here.
+	usbcmidmount: [9.84, 10.35],
 	[MIC_FOOTPRINT]: [MIC_BODY.w, MIC_BODY.h],
 }
 const DEFAULT_SIZE: [number, number] = [3, 3]
 
 // Centre of the reserved box relative to the part's origin, at rotation 0.
-const FOOTPRINT_OFFSET: Record<string, [number, number]> = { usbcmidmount: [0, -1.275] }
+const FOOTPRINT_OFFSET: Record<string, [number, number]> = { usbcmidmount: [0, -0.855], jst2_ph: [0, -0.55] }
 
 function offsetAt(footprint: string, rotation: number): { dx: number; dy: number } {
 	const [ox, oy] = FOOTPRINT_OFFSET[footprint] ?? [0, 0]
@@ -309,6 +317,27 @@ function offsetAt(footprint: string, rotation: number): { dx: number; dy: number
 
 // Turns the module's antenna away from the USB-C edge.
 const MODULE_ROTATION: Record<Connector["edge"], number> = { left: -90, right: 90, bottom: 0, top: 180 }
+const OPPOSITE: Record<Connector["edge"], Connector["edge"]> = { left: "right", right: "left", bottom: "top", top: "bottom" }
+// The module sits at the edge opposite the USB-C port, its PCB antenna hanging past the board edge. Espressif, ESP32-C3
+// Hardware Design Guidelines, "Positioning a Module on a Base Board": "place the module's on-board PCB antenna outside
+// the base board", "the feed point of the antenna close to the edge", "the module should not be placed in the center
+// of the board", and keep the USB port "as far away from the antenna as possible". The pad area's top row stays
+// MODULE_EDGE_MM inside the edge (copper to board edge), so 0.5 mm of the 5.4 mm antenna is over the board.
+export const MODULE_EDGE_MM = 0.5
+export const ANTENNA_MM = MODULE_BODY.h / 2 - MODULE_PAD_AREA_TOP
+// How far the antenna reaches past the board edge, which edge, and where along it (contract frame, its centre), for
+// the case and the test fixture, which must leave it room. null when the design has no ESP32-C3 module.
+export function antennaOverhang(s: ContractSnapshot): { edge: Connector["edge"]; alongMm: number; widthMm: number; overhangMm: number } | null {
+	const { outline, parts = [] } = s.values
+	const mcu = parts.find((p) => p.role === "mcu")
+	if (!outline || !mcu || footprintFor(mcu) !== MODULE_FOOTPRINT) return null
+	const b = placeParts(s).find((p) => p.ref === mcu.ref)
+	if (!b) return null
+	const usb = (s.values.connectors ?? []).find((c) => c.kind === "usb-c")
+	const edge = OPPOSITE[usb?.edge ?? "left"]
+	const along = edge === "left" || edge === "right" ? (b.oy ?? b.y) + outline.heightMm / 2 : (b.ox ?? b.x) + outline.widthMm / 2
+	return { edge, alongMm: +along.toFixed(3), widthMm: MODULE_BODY.w, overhangMm: +(ANTENNA_MM - MODULE_EDGE_MM).toFixed(3) }
+}
 
 function sizeAt(footprint: string, rotation: number): [number, number] {
 	const [w, h] = FOOTPRINT_SIZE[footprint] ?? DEFAULT_SIZE
@@ -376,7 +405,7 @@ export function placedByRole(s: ContractSnapshot, role: string): { ref: string; 
 	const { outline, parts = [] } = s.values
 	const refs = new Set(parts.filter((p) => p.role === role).map((p) => p.ref))
 	if (!outline || refs.size === 0) return []
-	return placeParts(s).filter((p) => refs.has(p.ref)).map((p) => ({ ref: p.ref, xMm: p.x + outline.widthMm / 2, yMm: p.y + outline.heightMm / 2, rotation: p.rotation }))
+	return placeParts(s).filter((p) => refs.has(p.ref)).map((p) => ({ ref: p.ref, xMm: (p.ox ?? p.x) + outline.widthMm / 2, yMm: (p.oy ?? p.y) + outline.heightMm / 2, rotation: p.rotation }))
 }
 
 // Each bottom-port microphone's sound hole, in the contract frame: MIC_PORT turned by the part's rotation.
@@ -418,6 +447,8 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 
 	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }): Placed | undefined => {
 		const [w, h] = sizeAt(footprint, rotation)
+		// A footprint whose extent isn't centred on its origin (FOOTPRINT_OFFSET): the box is placed, the part sits off it.
+		const { dx, dy } = offsetAt(footprint, rotation)
 		let best: Placed | undefined
 		let bestD = Infinity
 		for (let i = 0; i <= W / GRID_MM; i++) {
@@ -427,6 +458,7 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 				if (d < bestD - 1e-9 && fits(b)) [best, bestD] = [b, d]
 			}
 		}
+		if (best && (dx !== 0 || dy !== 0)) best = { ...best, ox: +(best.x - dx).toFixed(3), oy: +(best.y - dy).toFixed(3) }
 		if (best) placed.push(best)
 		return best
 	}
@@ -442,15 +474,39 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 		return place(p.ref, footprint, rotation, want)
 	}
 
-	const mcu = put(byRole("mcu"), { x: 0, y: 0 }, MODULE_ROTATION[edge])
+	// The module: at the far edge, centred along it, its antenna past the edge (MODULE_ROTATION, antennaOverhang).
+	// Only its on-board part reserves room; a module that collides with a connector or a hole keep-out isn't placed.
+	// Centred along the edge, or the nearest free spot along it (a connector on that edge, a hole keep-out).
+	const placeModule = (p: Part): Placed | undefined => {
+		done.add(p.ref)
+		const rotation = MODULE_ROTATION[edge]
+		const onBoard = MODULE_BODY.h / 2 + MODULE_PAD_AREA_TOP + MODULE_EDGE_MM
+		const [w, h] = edge === "left" || edge === "right" ? [onBoard, MODULE_BODY.w] : [MODULE_BODY.w, onBoard]
+		const half = MODULE_BODY.w / 2 + EDGE_MARGIN_MM
+		for (let k = 0; k <= span / GRID_MM; k++) {
+			const v = span / 2 + (k % 2 === 0 ? k / 2 : -(k + 1) / 2) * GRID_MM
+			if (v < half || v > span - half) continue
+			const c = frame(depth - MODULE_PAD_AREA_TOP - MODULE_EDGE_MM, v)
+			const box = frame(depth - onBoard / 2, v)
+			const b: Placed = { ref: p.ref, x: box.x, y: box.y, w, h, rotation, ox: c.x, oy: c.y }
+			const clear = placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= GAP_MM) && keepouts.every((o) => !overlaps(b, o))
+			if (!clear) continue
+			placed.push(b)
+			return b
+		}
+		return undefined
+	}
+	const mcuPart = byRole("mcu")
+	const mcu = mcuPart && footprintFor(mcuPart) === MODULE_FOOTPRINT ? placeModule(mcuPart) : put(mcuPart, { x: 0, y: 0 }, MODULE_ROTATION[edge])
 	const centre = mcu ?? { x: 0, y: 0 }
 	// The LDO sits a fixed distance in from the USB-C connector, not halfway to the MCU: on wider boards the
 	// halfway point left a gap where tscircuit's router dropped a via onto the VBUS pad (55–60 mm boards).
 	const inward = { left: [1, 0], right: [-1, 0], bottom: [0, 1], top: [0, -1] }[edge]
 	put(byRole("ldo"), usbBox ? { x: usbBox.x + inward[0] * (opts.ldoFromUsbMm ?? LDO_FROM_USB_MM), y: usbBox.y + inward[1] * (opts.ldoFromUsbMm ?? LDO_FROM_USB_MM) } : frame(10, span / 2))
-	// The sensor goes to the far edge, in the corner away from the MCU, so neither the MCU nor the LDO heats it.
+	// The sensor goes halfway between the USB-C edge (the LDO) and the far edge (the module), against a side edge, so
+	// neither heats it much (Sensirion's design guide asks for distance from heat sources, without a figure).
 	const mcuV = edge === "left" || edge === "right" ? centre.y + H / 2 : centre.x + W / 2
-	put(byRole("sensor"), frame(depth - 3, mcuV < span / 2 ? span - 4 : 4))
+	put(byRole("sensor"), frame(depth / 2, span - 3))
 	// The LED goes beside the USB-C port; the battery connector and its charger go on the port's other side.
 	const usbV = usb?.offsetMm ?? span / 2
 	const ledSide = usbV + 9 <= span - 3 ? 1 : -1
@@ -459,8 +515,8 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 	put(byRole("battery"), frame(4, usbV - ledSide * 10))
 	put(byRole("charger"), frame(11, usbV - ledSide * 7))
 	put(byRole("button"), frame(depth - 4, mcuV < span / 2 ? 4 : span - 4))
-	// The microphone goes toward the far edge, away from the MCU's noise, on the side the sensor doesn't take.
-	put(byRole("microphone"), frame(depth - 9, mcuV < span / 2 ? span - 6 : 6))
+	// The microphone goes halfway along, against the other side edge from the sensor, away from the module's noise.
+	put(byRole("microphone"), frame(depth / 2, 4))
 	// Each support passive sits next to the part it serves.
 	const boxOf = (ref: string) => placed.find((b) => b.ref === ref)
 	for (const sp of supportParts(s)) {
@@ -545,7 +601,7 @@ export function testPoints(s: ContractSnapshot): { placed: TestPoint[]; unplaced
 
 function at(placement: Map<string, Placed>, ref: string): string {
 	const b = placement.get(ref)
-	return b ? ` pcbX={${+b.x.toFixed(2)}} pcbY={${+b.y.toFixed(2)}} pcbRotation={${b.rotation}}` : ""
+	return b ? ` pcbX={${+(b.ox ?? b.x).toFixed(2)}} pcbY={${+(b.oy ?? b.y).toFixed(2)}} pcbRotation={${b.rotation}}` : ""
 }
 
 // The power and USB nets the generator wires on top of the contract's own signals: GND, the 3V3 rail, VBUS, VBAT (when

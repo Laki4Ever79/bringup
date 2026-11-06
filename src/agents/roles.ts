@@ -5,6 +5,7 @@ import { ownerReviewsChanges, when } from "../change-control.ts"
 import { state } from "../runtime.ts"
 import { searchParts } from "../tools/parts-search.ts"
 import { CASE_SHAPE } from "../contract/case.ts"
+import { ROUTING_FAILURE } from "../contract/space.ts"
 import { createRoleAgent, requestTurn, startTurn } from "./common.ts"
 import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
@@ -30,7 +31,8 @@ function onBuildFailed(kinds: ArtifactKind[], owns: string): SituationHandler {
 					participant as Agent,
 					`build-failed@${kind}@${revision}`,
 					`${BUILD_FAILED_PREFIX} the ${kind} build failed at revision ${revision}:\n${error}\n` +
-						`If the failure comes from a contract field you own (${owns}), for example an unknown footprint, a missing part or a pin on a part that doesn't exist, fix it with propose_contract_change. Otherwise change nothing.`,
+						`If the failure comes from a contract field you own (${owns}), for example an unknown footprint, a missing part or a pin on a part that doesn't exist, fix it with propose_contract_change. Otherwise change nothing.` +
+						(kind === "board" && ROUTING_FAILURE.test(String(error)) && owns.includes("outline") ? ` This one is the autorouter running out of room: give it room (a bigger outline, with sizeReason "routing" naming this build) or change what crowds it.` : ""),
 					{ kind: "build-failed", artifact: kind, revision, error: String(error).split("\n")[0] },
 				)
 			},

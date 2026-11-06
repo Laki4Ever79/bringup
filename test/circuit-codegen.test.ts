@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { boardParts, circuitFromContract, MOUNTING_HOLE, mountingHoles, placeParts, type Placed } from "../src/codegen/circuit.ts"
+import { antennaOverhang, boardParts, circuitFromContract, MOUNTING_HOLE, mountingHoles, placeParts, type Placed } from "../src/codegen/circuit.ts"
 import { LOGGER_DESIGN } from "../src/inference/scripts.ts"
 import { fixtureContract } from "./fixture.ts"
 
@@ -127,7 +127,10 @@ const GAP_MM = 1.5
 
 function assertSpaced(boxes: Placed[], w: number, h: number) {
 	for (const b of boxes) {
-		assert.ok(Math.abs(b.x) + b.w / 2 <= w / 2 && Math.abs(b.y) + b.h / 2 <= h / 2, `${b.ref} is outside the board`)
+		// A connector sits at its edge by design: its courtyard (the USB-C shell) may reach 0.03 mm past it, which
+		// tscircuit accepts (real 50 mm build); nothing else may.
+		const slack = /^(J|SW)\d/.test(b.ref) ? 0.05 : 1e-6
+		assert.ok(Math.abs(b.x) + b.w / 2 <= w / 2 + slack && Math.abs(b.y) + b.h / 2 <= h / 2 + slack, `${b.ref} is outside the board`)
 	}
 	for (let i = 0; i < boxes.length; i++) {
 		for (let j = i + 1; j < boxes.length; j++) {
@@ -152,13 +155,12 @@ test("placement is deterministic", () => {
 	assert.deepEqual(placeParts(busyContract()), placeParts(busyContract()))
 })
 
-test("placement follows the roles: LDO between USB-C and MCU, sensor on the far side, LED by an edge", () => {
+test("placement follows the roles: LDO between USB-C and MCU, sensor between them away from both, LED by an edge", () => {
 	for (const s of [withLdo(), busyContract()]) {
 		const at = (ref: string) => placeParts(s).find((b) => b.ref === ref)!
 		const usb = at("J1"), mcu = at("U1"), ldo = at("U3"), sensor = at("U2"), led = at("D1")
 		const dist = (a: Placed, b: Placed) => Math.hypot(a.x - b.x, a.y - b.y)
 		assert.ok(dist(ldo, usb) < dist(mcu, usb), "LDO is not nearer the USB-C than the MCU is")
-		assert.ok(dist(sensor, usb) > dist(mcu, usb), "sensor is not on the far side of the MCU from USB-C")
 		assert.ok(dist(sensor, mcu) >= 15 && dist(sensor, ldo) >= 15, "sensor is within 15 mm of a heat source")
 		const { widthMm: w, heightMm: h } = s.values.outline!
 		const edgeGap = Math.min(w / 2 - Math.abs(led.x) - led.w / 2, h / 2 - Math.abs(led.y) - led.h / 2)
@@ -166,10 +168,22 @@ test("placement follows the roles: LDO between USB-C and MCU, sensor on the far 
 	}
 })
 
-test("MCU sits near the board centre and reserves the whole 13.2 x 16.6 mm module", () => {
-	const mcu = placeParts(fixtureContract()).find((b) => b.ref === "U1")!
-	assert.deepEqual([mcu.w, mcu.h].sort(), [13.2, 16.6])
-	assert.ok(Math.hypot(mcu.x, mcu.y) <= 8, `MCU is ${Math.hypot(mcu.x, mcu.y)} mm from the centre`)
+test("the module sits at the edge opposite USB-C, its antenna past the board edge (Espressif's preferred placement)", () => {
+	for (const s of [fixtureContract(), busyContract()]) {
+		const mcu = placeParts(s).find((b) => b.ref === "U1")!
+		const { widthMm: w, heightMm: h } = s.values.outline!
+		const usb = s.values.connectors!.find((c) => c.kind === "usb-c")!
+		// Only the on-board part is reserved: 13.2 mm wide, 16.6 - 5.4 (antenna) + 0.5 (antenna start inside the edge).
+		assert.deepEqual([mcu.w, mcu.h].map((x) => +x.toFixed(2)).sort(), [11.7, 13.2])
+		const far = { left: w / 2 - (mcu.x + mcu.w / 2), right: w / 2 + (mcu.x - mcu.w / 2), bottom: h / 2 - (mcu.y + mcu.h / 2), top: h / 2 + (mcu.y - mcu.h / 2) }[usb.edge]
+		assert.ok(Math.abs(far) < 1e-6, `the module is ${far} mm from the far edge`)
+		const a = antennaOverhang(s)!
+		assert.equal(a.edge, { left: "right", right: "left", bottom: "top", top: "bottom" }[usb.edge])
+		assert.equal(a.overhangMm, 4.9)
+	}
+	// The busy design has a button on that edge's middle: the module slides along the edge to clear it.
+	const busy = placeParts(busyContract())
+	assert.ok(busy.some((b) => b.ref === "U1") && Math.abs(busy.find((b) => b.ref === "U1")!.x) > 1)
 })
 
 test("every chip and the added resistor get a fixed position", () => {

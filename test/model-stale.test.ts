@@ -47,7 +47,7 @@ test("model-stale: a narrower board moves the microphone under recorded data, an
 	const [v] = stale(c)
 	assert.ok(v, "a stale model is reported")
 	assert.deepEqual(v.affects, ["ml"])
-	assert.match(v.message, /recorded on rev 6's sensor path .*xMm 40\.5 → 30\.5.*mark the data needed/)
+	assert.match(v.message, /recorded on rev 6's sensor path .*xMm 25 → 20.*mark the data needed/)
 })
 
 test("model-stale: another microphone part, or another sample rate, touches the model's input too", () => {

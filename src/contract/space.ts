@@ -1,4 +1,4 @@
-import { boardParts, placeParts } from "../codegen/circuit.ts"
+import { antennaOverhang, boardParts, placeParts } from "../codegen/circuit.ts"
 import { caseOf, minCaseHeight } from "./case.ts"
 import type { AgentRole, ContractSnapshot, FieldName, SizeReason } from "./types.ts"
 
@@ -167,6 +167,11 @@ export function spaceChecks(s: ContractSnapshot): SpaceViolation[] {
 	return v
 }
 
+// tscircuit's autorouter gives up with these: the board needs room (or less in it), the same as a DRC failure.
+// Also the router dropping a via onto a pad (the wake-word board at 35×25 mm: "Via hole at … overlaps SMD pad
+// U1.GPIO9"), and the placer finding no free spot for a part (tools/board.ts): the same answer, more room.
+export const ROUTING_FAILURE = /missing a trace|could not (?:be )?route|failed to route|no route|no room on the board|via hole at .* overlaps/i
+
 export const SIZE_REASON_SHAPE = `sizeReason (optional): {kind: ${Object.keys(SIZE_REASONS).map((k) => `"${k}"`).join("|")}, detail: string}`
 
 export function sizeReasonError(r: unknown): string | null {
@@ -187,6 +192,8 @@ export function spaceFactLines(s: ContractSnapshot): string[] {
 	const c = caseOf(s)
 	const need = minCaseHeight(s, c)
 	if (need > 0) lines.push(`Case body: ${c.heightMm} mm tall; its contents need ${need} mm; slack ${pct(c.heightMm / need - 1)}, limit ${pct(SLACK_LIMIT)}${s.values.case?.sizeReason ? `, reason: ${s.values.case.sizeReason.kind} (${s.values.case.sizeReason.detail})` : ""}.`)
+	const a = antennaOverhang(s)
+	if (a) lines.push(`Antenna: the ESP32-C3 module sits at the ${a.edge} edge, opposite the USB-C port, its PCB antenna ${a.overhangMm} mm past the board edge (Espressif's preferred placement); the case leaves it 2 mm and the test fixture a notch. Espressif also recommends 15 mm of clearance around the antenna inside the housing, which the case does not give: more room there would be a "function" reason.`)
 	lines.push(`Space rules: compact by default; more than ${pct(SLACK_LIMIT)} over the minimum needs sizeReason, one of: ${Object.entries(SIZE_REASONS).map(([k, d]) => `${k} (${d})`).join("; ")}. Priority when rules conflict: safety and manufacturability, the engineer's own words, function, usability, compactness, cost.`)
 	return lines
 }

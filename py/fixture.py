@@ -4,7 +4,11 @@ mounting hole.
 
 usage: fixture.py <spec.json> <outdir>
 
-spec = {outline: {widthMm, heightMm, thicknessMm}, probes: [{ref, net, xMm, yMm}], holes: [{ref, xMm, yMm, diameterMm}]}
+spec = {outline: {widthMm, heightMm, thicknessMm}, probes: [{ref, net, xMm, yMm}], holes: [{ref, xMm, yMm, diameterMm}],
+        antenna: {edge, alongMm, widthMm, overhangMm} | null}
+
+The module's PCB antenna hangs past one board edge (Espressif's preferred placement): the nest's wall gets a notch
+there, the antenna's width plus clearance, so the board seats and the antenna touches nothing.
 
 Frame: the board's bottom-left corner is the origin, top view (x along widthMm, y along heightMm), the same frame as
 the contract and the case. The plate's underside is z = 0. The board lies face up on the supports, so each probe points
@@ -30,6 +34,7 @@ SUPPORT_MM = 3.0  # the board's underside sits this far above the plate: room fo
 SUPPORT_DIA_MM = 5.0
 PIN_CLEARANCE_MM = 0.2  # alignment pin diameter = mounting hole - this
 PIN_MM = 3.0  # how far the pin rises above the support: through a 1.6 mm board with lead-in
+NOTCH_CLEARANCE_MM = 1.0  # each side of the antenna, in the nest's notch
 RECEPTACLE_MM = 1.7  # typical press-fit hole for a 100-mil-series receptacle (assumption, see above)
 
 
@@ -54,6 +59,17 @@ def main():
     rim_h = SUPPORT_MM + NEST_MM
     rim = Pos(w / 2, h / 2, PLATE_MM + rim_h / 2) * (Box(ow, oh, rim_h) - Box(w + 2 * CLEARANCE_MM, h + 2 * CLEARANCE_MM, rim_h))
     fixture = plate + rim
+    a = spec.get("antenna")
+    if a:
+        span = float(a["widthMm"]) + 2 * NOTCH_CLEARANCE_MM
+        along, deep = float(a["alongMm"]), 2 * (CLEARANCE_MM + RIM_MM) + 1
+        zc, zs = PLATE_MM + SUPPORT_MM + NEST_MM / 2 + 0.5, NEST_MM + 1
+        if a["edge"] in ("left", "right"):
+            x = -CLEARANCE_MM - RIM_MM / 2 if a["edge"] == "left" else w + CLEARANCE_MM + RIM_MM / 2
+            fixture = fixture - Pos(x, along, zc) * Box(deep, span, zs)
+        else:
+            y = -CLEARANCE_MM - RIM_MM / 2 if a["edge"] == "bottom" else h + CLEARANCE_MM + RIM_MM / 2
+            fixture = fixture - Pos(along, y, zc) * Box(span, deep, zs)
 
     # Supports under the board: at the mounting holes, with a pin through each; without holes, at the four corners.
     top = PLATE_MM + SUPPORT_MM

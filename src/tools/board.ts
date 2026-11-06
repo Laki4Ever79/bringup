@@ -1,7 +1,8 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { circuitFromContract, LDO_FROM_USB_MM, type PlacementOptions } from "../codegen/circuit.ts"
+import { boardParts, circuitFromContract, LDO_FROM_USB_MM, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
 import type { BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
@@ -25,7 +26,16 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	// The default layout first; then the same with keepouts at the USB-C locating holes (the fix for vias beside
 	// them); then the other LDO distances.
 	const attempts: PlacementOptions[] = [{ ldoFromUsbMm: LDO_FROM_USB_MM }, { ldoFromUsbMm: LDO_FROM_USB_MM, usbKeepouts: true }, ...[7, 9.5, 11].map((ldoFromUsbMm) => ({ ldoFromUsbMm }))]
-	for (const placement of attempts) {
+	// A layout that leaves a part out is never built: tscircuit would drop the part at the board's centre, onto whatever
+	// is there (the wake-word board at 35×25 mm, LDO 11 mm from J1: "C3 overlaps U3", and autorouting skipped).
+	const count = boardParts(s).length
+	const fitting = attempts.filter((placement) => placeParts(s, placement).length >= count)
+	if (fitting.length === 0) {
+		const placed = new Set(placeParts(s).map((b) => b.ref))
+		const left = boardParts(s).map((p) => p.ref).filter((ref) => !placed.has(ref))
+		throw new Error(`tscircuit build failed: no room on the board for ${left.join(", ")} at ${s.values.outline?.widthMm}×${s.values.outline?.heightMm} mm (the placer found no free spot)`)
+	}
+	for (const placement of fitting) {
 		const work = mkdtempSync(join(tmpdir(), "bringup-board-"))
 		const out = mkdtempSync(join(tmpdir(), "bringup-board-out-"))
 		try {
@@ -124,9 +134,17 @@ export function stripKeepouts(pcb: string): string {
 // tscircuit prints many advisory warnings before the real error; keep the lines that explain the failure.
 const NOISE = /underspecified|requires_power|missing a trace|missing a manufacturer part|does not match supplier footprint|schematicsheet|is missing a name|Failed to load 3D model/i
 const SIGNAL = /error|overlap|clearance|too close|outside|fail|fatal|cannot|skipped/i
+const SUMMARY = /^Circuits\s+\d+ passed \d+ failed/
 
+// The lines that explain a failed build. The router's "missing a trace" lines also follow other errors (a via on a
+// pad), so they count only when nothing more specific explains it: then the router ran out of room, and without them
+// the architect saw only "0 passed 1 failed".
 export function buildErrors(output: string): string {
 	const lines = output.split("\n").map((l) => l.trim()).filter(Boolean)
 	const relevant = lines.filter((l) => SIGNAL.test(l) && !NOISE.test(l))
+	if (relevant.every((l) => SUMMARY.test(l))) {
+		const unrouted = lines.filter((l) => ROUTING_FAILURE.test(l))
+		if (unrouted.length > 0) return [...unrouted.slice(0, 8), ...(unrouted.length > 8 ? [`(${unrouted.length - 8} more pins without a trace)`] : []), ...relevant].join("\n")
+	}
 	return (relevant.length > 0 ? relevant : lines).slice(-20).join("\n")
 }

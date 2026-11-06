@@ -3,7 +3,7 @@ import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { promisify } from "node:util"
-import { mountingHoles, testPoints } from "../codegen/circuit.ts"
+import { mountingHoles, testPoints, antennaOverhang } from "../codegen/circuit.ts"
 import type { TestkitArtifact } from "../contract/consistency.ts"
 import { testPlan, testPlanMarkdown } from "../contract/testkit.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
@@ -19,7 +19,9 @@ export function fixtureSpec(s: ContractSnapshot): object {
 	if (!outline) throw new Error("the fixture needs an outline in the contract")
 	const probes = testPoints(s).placed.map(({ ref, net, xMm, yMm }) => ({ ref, net, xMm, yMm }))
 	const holes = mountingHoles(s).map((h) => ({ ref: h.ref, xMm: +(h.x + outline.widthMm / 2).toFixed(3), yMm: +(h.y + outline.heightMm / 2).toFixed(3), diameterMm: h.diameterMm }))
-	return { outline, probes, holes }
+	// The module's antenna hangs past one edge: the nest's wall gets a notch there, or the board wouldn't seat.
+	const antenna = antennaOverhang(s)
+	return { outline: { widthMm: outline.widthMm, heightMm: outline.heightMm, thicknessMm: outline.thicknessMm }, probes, holes, antenna }
 }
 
 // The production-test kit for one revision: test-plan.md/.json, the fixture (STEP + STL, its probe holes measured back)

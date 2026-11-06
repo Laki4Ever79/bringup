@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util"
+import { antennaOverhang } from "../codegen/circuit.ts"
 import { sizeReasonError } from "./space.ts"
 import type { AgentRole, CaseFeature, CaseSpec, ContractSnapshot, ContractValues, FieldName } from "./types.ts"
 
@@ -35,15 +36,53 @@ const CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] as cons
 
 export const caseOf = (s: ContractSnapshot): CaseSpec => s.values.case ?? structuredClone(DEFAULT_CASE as CaseSpec)
 
-// The case's outer footprint: the board plus clearance and a wall on each side.
-export function caseOuter(outline: ContractValues["outline"], c: CaseSpec): { widthMm: number; heightMm: number } {
-	const add = 2 * (CASE_CLEARANCE_MM + c.wallMm)
-	return { widthMm: round(outline.widthMm + add), heightMm: round(outline.heightMm + add) }
+// The design as the case sees it: the board extended by the module's antenna, which hangs past one edge
+// (codegen/circuit.ts antennaOverhang), so the case leaves it the same clearance as the board's edges. Connectors and
+// wall holes are shifted along their edges to match; dx, dy is where the board's own origin sits in this frame. Every
+// case calculation works on the view; coordinates leaving it are shifted back by dx, dy.
+export interface CaseView {
+	view: ContractSnapshot
+	dx: number
+	dy: number
+	// How far the case board reaches past the real board on the antenna's edge.
+	antenna: { edge: (typeof EDGES)[number]; mm: number } | null
 }
 
-// The board outline a case of this outer size holds (the inverse of caseOuter).
-export function boardFor(outer: number, c: CaseSpec): number {
-	return round(outer - 2 * (CASE_CLEARANCE_MM + c.wallMm))
+export function caseView(s: ContractSnapshot): CaseView {
+	const o = s.values.outline
+	const a = o ? antennaOverhang(s) : null
+	if (!o || !a) return { view: s, dx: 0, dy: 0, antenna: null }
+	const ext = a.overhangMm
+	const sideways = a.edge === "left" || a.edge === "right"
+	const dx = a.edge === "left" ? ext : 0
+	const dy = a.edge === "bottom" ? ext : 0
+	const along = (edge: (typeof EDGES)[number], off: number) => off + (edge === "left" || edge === "right" ? dy : dx)
+	const connectors = (s.values.connectors ?? []).map((k) => ({ ...k, offsetMm: along(k.edge, k.offsetMm) }))
+	const c = s.values.case
+	const view: ContractSnapshot = {
+		...s,
+		values: {
+			...s.values,
+			outline: { ...o, widthMm: round(o.widthMm + (sideways ? ext : 0)), heightMm: round(o.heightMm + (sideways ? 0 : ext)) },
+			connectors,
+			...(c ? { case: { ...c, features: c.features.map((f) => (f.kind === "hole" ? { ...f, offsetMm: along(f.edge, f.offsetMm) } : f)) } } : {}),
+		},
+	}
+	return { view, dx, dy, antenna: { edge: a.edge, mm: ext } }
+}
+
+// The case's outer footprint: the case board plus clearance and a wall on each side.
+export function caseOuter(s: ContractSnapshot): { widthMm: number; heightMm: number } {
+	const o = caseView(s).view.values.outline!
+	const add = 2 * (CASE_CLEARANCE_MM + caseOf(s).wallMm)
+	return { widthMm: round(o.widthMm + add), heightMm: round(o.heightMm + add) }
+}
+
+// The board width a case this wide holds (the inverse of caseOuter along x).
+export function boardWidthFor(outerWidth: number, s: ContractSnapshot): number {
+	const v = caseView(s)
+	const extra = v.antenna && (v.antenna.edge === "left" || v.antenna.edge === "right") ? v.antenna.mm : 0
+	return round(outerWidth - 2 * (CASE_CLEARANCE_MM + caseOf(s).wallMm) - extra)
 }
 
 const round = (x: number) => Math.round(x * 100) / 100
@@ -116,9 +155,11 @@ interface TabSpan {
 	to: number
 }
 
+// s: the case view.
 function tabSpans(s: ContractSnapshot, c: CaseSpec): TabSpan[] {
 	const outline = s.values.outline!
-	const outer = caseOuter(outline, c)
+	const add = 2 * (CASE_CLEARANCE_MM + c.wallMm)
+	const outer = { widthMm: outline.widthMm + add, heightMm: outline.heightMm + add }
 	const out: TabSpan[] = []
 	for (const f of c.features) {
 		if (f.kind === "wall-mount") {
@@ -138,9 +179,10 @@ function tabSpans(s: ContractSnapshot, c: CaseSpec): TabSpan[] {
 }
 
 // Where a tab or a lanyard loop sits: its hole's centre, in the contract's frame (the stub reports these).
-export function tabHoles(s: ContractSnapshot, c = caseOf(s)): { id: string; xMm: number; yMm: number; diameterMm: number }[] {
-	const outline = s.values.outline
-	if (!outline) return []
+export function tabHoles(real: ContractSnapshot, c = caseOf(real)): { id: string; xMm: number; yMm: number; diameterMm: number }[] {
+	if (!real.values.outline) return []
+	const { view: s, dx, dy } = caseView(real)
+	const outline = s.values.outline!
 	const side = CASE_CLEARANCE_MM + c.wallMm
 	return tabSpans(s, c).map((t) => {
 		const along = (t.from + t.to) / 2 - side
@@ -148,7 +190,7 @@ export function tabHoles(s: ContractSnapshot, c = caseOf(s)): { id: string; xMm:
 		const holeMm = t.tab.holeMm
 		const xy =
 			t.wall === "left" ? [-side - out, along] : t.wall === "right" ? [outline.widthMm + side + out, along] : t.wall === "bottom" ? [along, -side - out] : [along, outline.heightMm + side + out]
-		return { id: t.id, xMm: round(xy[0]), yMm: round(xy[1]), diameterMm: holeMm }
+		return { id: t.id, xMm: round(xy[0] - dx), yMm: round(xy[1] - dy), diameterMm: holeMm }
 	})
 }
 
@@ -164,10 +206,13 @@ export interface CaseViolation {
 // The case field against the board: the body tall enough for the connectors, each feature on its wall clear of the
 // connectors' cutouts and the other features. Every one wakes the case designer, who owns the field; a fix that would
 // need the board to change goes through change control and the engineer's confirmation (boardChangeWarning).
-export function caseChecks(s: ContractSnapshot): CaseViolation[] {
-	const c = s.values.case
-	const outline = s.values.outline
-	if (!c || !outline) return []
+export function caseChecks(real: ContractSnapshot): CaseViolation[] {
+	if (!real.values.case || !real.values.outline) return []
+	// On the case view (the antenna's reach included); a hole's numbers are reported in the contract's frame.
+	const { view: s, dx, dy } = caseView(real)
+	const c = s.values.case!
+	const outline = s.values.outline!
+	const shiftOf = (edge: (typeof EDGES)[number]) => (edge === "left" || edge === "right" ? dy : dx)
 	const v: CaseViolation[] = []
 	const push = (kind: CaseViolationKind, message: string) => v.push({ kind, message, fields: ["case"], affects: ["enclosure"] })
 	const need = minCaseHeight(s, c)
@@ -182,15 +227,16 @@ export function caseChecks(s: ContractSnapshot): CaseViolation[] {
 		const len = edgeLength(outline, f.edge)
 		const from = f.offsetMm - f.diameterMm / 2
 		const to = f.offsetMm + f.diameterMm / 2
+		const k = shiftOf(f.edge)
 		if (from < -CASE_CLEARANCE_MM + MIN_WALL_MM || to > len + CASE_CLEARANCE_MM - MIN_WALL_MM)
-			push("case-feature-collision", `hole ${f.id} (${f.diameterMm} mm at ${f.offsetMm} mm) runs off the ${f.edge} wall, which is ${len} mm along the board plus ${CASE_CLEARANCE_MM} mm each end`)
+			push("case-feature-collision", `hole ${f.id} (${f.diameterMm} mm at ${round(f.offsetMm - k)} mm) runs off the ${f.edge} wall, which runs from ${round(-k - CASE_CLEARANCE_MM)} to ${round(len - k + CASE_CLEARANCE_MM)} mm along the board`)
 		if (f.diameterMm > free - 1) push("case-feature-collision", `hole ${f.id} is ${f.diameterMm} mm across, but the ${f.edge} wall has ${round(free)} mm between the floor and the lid's lip (at most ${round(free - 1)} mm)`)
-		for (const o of spans) if (o.wall === f.edge && from < o.to + MIN_WALL_MM && to > o.from - MIN_WALL_MM) push("case-feature-collision", `hole ${f.id} (${round(from)}-${round(to)} mm along the ${f.edge} wall) runs into ${o.what} (${round(o.from)}-${round(o.to)} mm); keep ${MIN_WALL_MM} mm of wall between them`)
+		for (const o of spans) if (o.wall === f.edge && from < o.to + MIN_WALL_MM && to > o.from - MIN_WALL_MM) push("case-feature-collision", `hole ${f.id} (${round(from - k)}-${round(to - k)} mm along the ${f.edge} wall) runs into ${o.what} (${round(o.from - k)}-${round(o.to - k)} mm); keep ${MIN_WALL_MM} mm of wall between them`)
 		spans.push({ wall: f.edge, from, to, what: `hole ${f.id}` })
 	}
 
 	const tabs = tabSpans(s, c)
-	const outer = caseOuter(outline, c)
+	const outer = caseOuter(real)
 	for (const t of tabs) {
 		const len = t.wall === "left" || t.wall === "right" ? outer.heightMm : outer.widthMm
 		if (t.from < 0 || t.to > len) push("case-feature-collision", `${t.id}'s tab is ${round(t.to - t.from)} mm along, longer than the ${len} mm ${t.wall} wall`)
@@ -261,10 +307,11 @@ export function caseFactLines(s: ContractSnapshot): string[] {
 	const outline = s.values.outline
 	if (!outline) return []
 	const c = caseOf(s)
-	const outer = caseOuter(outline, c)
+	const outer = caseOuter(s)
+	const v = caseView(s)
 	const features = c.features.length > 0 ? c.features.map((f) => `${f.id} (${f.kind}${f.kind === "hole" ? ` ${f.diameterMm} mm, ${f.edge}@${f.offsetMm} mm` : f.kind === "text" ? ` "${f.text}"` : f.kind === "lanyard" ? ` ${f.corner}` : ` ${f.sides}`})`).join(", ") : "none"
 	return [
-		`Case${s.values.case ? "" : " (defaults, no case field yet)"}: outer ${outer.widthMm}×${outer.heightMm}×${c.heightMm} mm plus a ${LID.plateMm} mm lid; walls ${c.wallMm} mm; ${CASE_CLEARANCE_MM} mm clearance around the board, so outer = board + ${round(2 * (CASE_CLEARANCE_MM + c.wallMm))} mm each way.`,
+		`Case${s.values.case ? "" : " (defaults, no case field yet)"}: outer ${outer.widthMm}×${outer.heightMm}×${c.heightMm} mm plus a ${LID.plateMm} mm lid; walls ${c.wallMm} mm; ${CASE_CLEARANCE_MM} mm clearance around the board, so outer = board + ${round(2 * (CASE_CLEARANCE_MM + c.wallMm))} mm each way${v.antenna ? `, plus ${v.antenna.mm} mm on the ${v.antenna.edge} for the module's antenna, which hangs past the board edge` : ""}.`,
 		`Case features: ${features}. The lowest body the connectors allow: ${minCaseHeight(s, c)} mm. A wall hole's centre sits ${holeCentreZ(c)} mm up; its diameter can be at most ${round(c.heightMm - LID.lipMm - c.wallMm - 1)} mm.`,
 	]
 }
