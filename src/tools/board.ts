@@ -44,7 +44,10 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 			}
 			rmSync(out, { recursive: true, force: true })
 			lastError = error instanceof Error ? new Error(error.message.replaceAll(out, dir)) : error
-			if (!/overlap|clearance|keepout/i.test(String(error))) throw error
+			// Once an earlier layout has built, a later one failing only means it isn't better: keep the board we have
+			// (before, a keepout attempt that failed threw, and the built board with a few DRC errors was lost).
+			if (best) continue
+			if (!/overlap|clearance|keepout|too close/i.test(String(error))) throw error
 		} finally {
 			rmSync(work, { recursive: true, force: true })
 		}
@@ -119,7 +122,7 @@ export function stripKeepouts(pcb: string): string {
 
 // tscircuit prints many advisory warnings before the real error; keep the lines that explain the failure.
 const NOISE = /underspecified|requires_power|missing a trace|missing a manufacturer part|does not match supplier footprint|schematicsheet|is missing a name|Failed to load 3D model/i
-const SIGNAL = /error|overlap|clearance|outside|fail|fatal|cannot|skipped/i
+const SIGNAL = /error|overlap|clearance|too close|outside|fail|fatal|cannot|skipped/i
 
 export function buildErrors(output: string): string {
 	const lines = output.split("\n").map((l) => l.trim()).filter(Boolean)
