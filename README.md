@@ -112,6 +112,14 @@ the change moved, and which of board, case, firmware and BOM must follow, down t
 ([docs/adopt.md](docs/adopt.md)). And a part out of stock gets options, not an automatic change: other suppliers first,
 then a catalog drop-in with what switching would change.
 
+### 7. Ask for the case you want
+
+"Add wall-mount tabs", "engrave "BRINGUP" on the lid", "add a cable gland": a case designer agent owns the case's
+walls, height and added features, and the case is rebuilt around the board with them. Each feature is measured on the
+built solid. A case change that needs a different board ("make the case 50 mm wide" means a 42 mm board) never
+happens silently: you get a warning that the PCB will change, and it goes ahead only if you approve it. Details:
+[docs/case-editing.md](docs/case-editing.md).
+
 ## Architecture
 
 ```mermaid

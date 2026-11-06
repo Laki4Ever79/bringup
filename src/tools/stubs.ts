@@ -6,6 +6,7 @@ import { micPorts, mountingHoles, placedByRole, testPoints } from "../codegen/ci
 import { testPlan, testPlanMarkdown } from "../contract/testkit.ts"
 import { behaviorHeader, modelHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { PORT_MM, STANDOFF } from "./enclosure.ts"
+import { caseOf, holeCentreZ, tabHoles, TEXT, type BuiltFeature } from "../contract/case.ts"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact, TestkitArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
@@ -58,7 +59,16 @@ export function stubEnclosure(s: ContractSnapshot, revision: number, dir: string
 	const standoffs = holesOf(s).map((h) => ({ xMm: h.xMm, yMm: h.yMm, holeMm: STANDOFF.pilotMm }))
 	const vents = sensorsOf(s).map((v) => ({ ...v, widthMm: 8.4, heightMm: 6 }))
 	const ports = micPorts(s).map((p) => ({ ...p, diameterMm: PORT_MM }))
-	return { revision, stlPath: path, stepPath: path, cutouts, standoffs, vents, ports, stub: true }
+	// Each feature as the real build would report it: tabs at their holes, wall holes at their offsets, text engraved.
+	const c = caseOf(s)
+	const tabs = tabHoles(s, c)
+	const features: BuiltFeature[] = c.features.map((f) => {
+		if (f.kind === "hole") return { id: f.id, kind: f.kind, ok: true, edge: f.edge, offsetMm: f.offsetMm, zMm: holeCentreZ(c), diameterMm: f.diameterMm }
+		if (f.kind === "text") return { id: f.id, kind: f.kind, ok: true, textMm: TEXT.maxMm }
+		const t = tabs.find((x) => x.id === f.id)
+		return { id: f.id, kind: f.kind, ok: Boolean(t), ...(t ? { xMm: t.xMm, yMm: t.yMm, diameterMm: t.diameterMm } : {}) }
+	})
+	return { revision, stlPath: path, stepPath: path, cutouts, standoffs, vents, ports, features, featuresAsked: c.features, stub: true }
 }
 
 export function stubFirmware(s: ContractSnapshot, revision: number, dir: string): Stub<FirmwareArtifact> {

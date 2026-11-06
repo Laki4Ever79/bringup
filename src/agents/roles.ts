@@ -4,6 +4,7 @@ import { OWNERS, type AgentRole } from "../contract/types.ts"
 import { ownerReviewsChanges, when } from "../change-control.ts"
 import { state } from "../runtime.ts"
 import { searchParts } from "../tools/parts-search.ts"
+import { CASE_SHAPE } from "../contract/case.ts"
 import { createRoleAgent, requestTurn, startTurn } from "./common.ts"
 import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
@@ -111,7 +112,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 						}
 						startTurn(
 							participant as Agent,
-							`${ENGINEER_REQUEST_PREFIX}\n${message}\nMeet it by changing the fields you own: call read_contract, then propose_contract_change with each field's current baseVersion. Keep everything the request does not mention. If no field you own can meet it, change nothing and say why.`,
+							`${ENGINEER_REQUEST_PREFIX}\n${message}\nMeet it by changing the fields you own: call read_contract, then propose_contract_change with each field's current baseVersion. Keep everything the request does not mention. If no field you own can meet it, change nothing and say why. A request about the case itself (its size, walls, height, lid, lettering, mounting tabs, a lanyard loop, a hole in it) is the case designer's: change nothing for it. If the case needs a different board, the case designer proposes it to you.`,
 							requestCause(message),
 						)
 					},
@@ -157,13 +158,16 @@ function searchPartsTool(): Tool {
 }
 
 // Consistency violations addressed to a role wake it once per revision, with what to do about them.
-function violationsFor(role: AgentRole, guidance: string): SituationHandler {
+// only: which of the role's violations it can act on (the case designer shares the "enclosure" role with the case
+// builder, whose cutout and vent violations a rebuild fixes).
+function violationsFor(role: AgentRole, guidance: string, only: (kind: string) => boolean = () => true): SituationHandler {
+	const ours = (v: { kind: string; affects: AgentRole[] }) => v.affects.includes(role) && only(v.kind)
 	return {
-		specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some((v) => v.affects.includes(role))),
+		specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some(ours)),
 		processor: {
 			apply: ({ event, participant }) => {
 				if (!isEvent(event, "consistency.checked")) return
-				const mine = event.payload.violations.filter((v) => v.affects.includes(role))
+				const mine = event.payload.violations.filter(ours)
 				requestTurn(participant as Agent, `${role}-violations@${event.payload.revision}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\n${guidance}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
 			},
 		},
@@ -307,6 +311,31 @@ export function createTestAgent(opts: { mock: boolean }): Agent {
 				"If it asks for a production or factory test, a test fixture, a bed of nails or test pads, meet it by writing the test field you own: call read_contract, then propose_contract_change with its current baseVersion, probing every signal and power net, with limits from the design facts plus margin. Otherwise change nothing.",
 			),
 			violationsFor("test", "Fix them by changing the test field you own (add or drop points, raise a limit to the design's own current plus margin), with propose_contract_change and its current baseVersion."),
+		],
+	})
+}
+
+export const CASE_DESIGN = `${CASE_SHAPE}.
+- Frame: the board's bottom-left corner is the origin; a hole's offsetMm runs along its edge like a connector's (from the bottom on left/right, from the left on top/bottom), and the wall extends 2 mm past the board at each end.
+- The case's outer size is the board outline plus 2 × (2 mm clearance + wallMm) each way, and it follows the board: you don't set it directly. A case that must be a given outer size needs a different board outline (the architect's field): propose the outline that gives it. That changes the PCB, so it also waits for the engineer's confirmation; if it is rejected, keep the board and say so.
+- Code checks the case field: the body tall enough for the connectors' cutouts under the lid's 3 mm lip, a hole that fits its wall's free height and keeps 1.2 mm of wall from every cutout and other hole, tabs that fit their wall and don't overlap. The design facts give the numbers (outer size, the lowest body, the largest hole). Fix your own field first: move a hole along its wall or to another wall, make the body taller. Ask to move a connector (the architect's connectors field, a PCB change the engineer must confirm) only when the engineer wants the hole exactly there.`
+
+// The case designer: it owns the case field (walls, height, added features). The enclosure builder makes the case from
+// the board and this field; a case request that needs a different board goes to the architect through change control,
+// and since it changes the PCB, it also waits for the engineer's confirmation (contract/case.ts boardChangeWarning).
+export function createCaseAgent(opts: { mock: boolean }): Agent {
+	return createRoleAgent({
+		role: "enclosure",
+		name: "case-designer",
+		mock: opts.mock,
+		instruction: `You are the case designer of a small hardware product: you own the case field. The case is generated around the board (cutouts, vents, standoffs, lid); you set its walls, its height and the features added to it, with propose_contract_change, when the engineer asks for something about the case. You never edit the board yourself. When another discipline proposes a change to the case field, decide with decide_change.\n${CASE_DESIGN}\n${CONTRACT_SHAPES}`,
+		handlers: [
+			ownerReviewsChanges("enclosure"),
+			ownerFixesReview("enclosure"),
+			engineerRequests(
+				"If it is about the case (its outer size, walls, height, lid, lettering on it, wall-mount tabs, a lanyard loop, a hole for a cable or a cable gland), meet it: call read_contract, then propose_contract_change on the case field with its current baseVersion (a new case field has baseVersion 0, starting from walls 2 mm, height 14 mm, no features), keeping every feature the request does not mention. If it sets the case's outer size, also propose the board outline that gives it. Otherwise change nothing.",
+			),
+			violationsFor("enclosure", "Fix them by changing the case field you own (move or resize a hole, a taller body, tabs on other walls), with propose_contract_change and its current baseVersion.", (kind) => kind.startsWith("case-")),
 		],
 	})
 }

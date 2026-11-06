@@ -78,7 +78,9 @@ export interface Payloads {
 	"file.drift": { path: string; savedRevision: number; designRevision: number; reason: "not-in-contract" | "stale"; items: string[]; message: string }
 	// reason, before, after and cause: why the field changed (older traces have only field, version, revision, by).
 	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole; reason?: string; before?: unknown; after?: unknown; cause?: Cause }
-	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string; needsEngineer: boolean }
+	// warning: what the change does beyond its field, shown to the engineer who must confirm it (a case change that
+	// changes the PCB, contract/case.ts boardChangeWarning).
+	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string; needsEngineer: boolean; warning?: string }
 	// The final outcome of a held change (votes are change.decided), timeouts included.
 	"change.resolved": { proposalId: string; approved: boolean; reason: string; decidedBy: string[] }
 	"change.decided": { proposalId: string; approved: boolean; by: AgentRole; reason: string }

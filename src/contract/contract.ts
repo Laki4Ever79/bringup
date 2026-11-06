@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util"
+import { caseShapeError } from "./case.ts"
 import { FIELDS, OWNERS, PART_ROLES, SIGNAL_PATTERN, type ContractSnapshot, type ContractValues, type FieldName, type Proposal, type ProposalResult } from "./types.ts"
 
 // Single source of truth for the design. Each field has one owning role and a version;
@@ -172,6 +173,8 @@ function shapeError(field: FieldName, value: unknown): string | null {
 			const ok = Array.isArray(value.points) && value.points.length > 0 && value.points.every(isStr) && new Set(value.points).size === value.points.length && isNum(value.awakeMaxMa) && (value.awakeMaxMa as number) > 0 && isNum(value.sleepMaxUa) && (value.sleepMaxUa as number) > 0
 			return ok ? null : shape
 		}
+		case "case":
+			return caseShapeError(value)
 		case "behavior": {
 			const shape = 'behavior must be exactly {blinkMs, tiltBlinkMs, tiltDeg}: numbers, blinkMs > 0, tiltBlinkMs > 0, tiltDeg from 0 to 90, e.g. {"blinkMs":1000,"tiltBlinkMs":200,"tiltDeg":20}. It sets only the status LED blink period and the tilt threshold'
 			if (!obj(value)) return shape

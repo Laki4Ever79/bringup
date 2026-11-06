@@ -4,7 +4,9 @@ usage: enclosure.py <spec.json> <outdir>
 
 spec = {outline: {widthMm, heightMm, thicknessMm}, connectors: [Connector], holes: [{ref, xMm, yMm}], sensors: [{ref, xMm, yMm}],
         wallMm, clearanceMm, heightMm, standoff: {heightMm, outerMm, pilotMm},
-        lid: {plateMm, lipMm, lipWallMm, clearanceMm}}
+        lid: {plateMm, lipMm, lipWallMm, clearanceMm},
+        features: [CaseFeature] (optional: wall-mount, lanyard, text, hole; src/contract/types.ts),
+        featureGeometry: {mountTab, lanyardTab: {outMm, alongMm, thickMm, holeMm}, text: {depthMm, minMm, maxMm}, holeZMm}}
 
 Frame: the board's bottom-left corner is the origin, X runs along widthMm, Y along heightMm, and the floor's underside
 is z = 0. The board's underside rests on the standoffs at z = wallMm + standoff.heightMm. Every cutout and post is
@@ -12,7 +14,8 @@ placed from contract coordinates; nothing is subtracted from a board mesh. cutou
 back from the finished solid, so they report what exists rather than echoing the spec.
 
 Outputs: case.step/.stl (printed open side up, as built), lid.step/.stl (printed plate down: z mirrored, so
-z_assembled = heightMm + lid.plateMm - z), cutouts.json, standoffs.json, vents.json, print.json.
+z_assembled = heightMm + lid.plateMm - z), cutouts.json, standoffs.json, vents.json, features.json, print.json.
+A feature that can't be built is reported in features.json (ok false, with the reason) rather than failing the build.
 """
 
 import json
@@ -21,13 +24,13 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from build123d import Box, Cylinder, Plane, Pos, export_step, export_stl, mirror
+from build123d import Box, Cylinder, Plane, Pos, Rot, Text, export_step, export_stl, extrude, mirror
 
 SLOT_MARGIN_MM = 0.5  # each way around the connector
 EDGES = ("left", "right", "top", "bottom")
 MIN_WALL_MM = 1.2  # three 0.4 mm perimeters
 MAX_BRIDGE_MM = 12.0  # PLA/PETG bridge this far cleanly at 0.2 mm layers with part cooling
-OVERHANG_COS = 0.7071  # a face pointing down more than 45 degrees from vertical needs support
+OVERHANG_COS = 0.5 ** 0.5  # cos 45°: a face pointing down more than 45 degrees from vertical needs support
 LID_CLEARANCE_MM = (0.2, 0.3)
 # A slot grille through the lid over each temperature/humidity sensor. Sensirion's design guide for its humidity and
 # temperature sensors (HT_AN_SHTxx_STSxx Design Guide v1.1, May 2019, the one the SHT4x documents point to): give the
@@ -68,6 +71,10 @@ def load(path):
     if dims["pilot"] >= dims["post_od"]:
         fail(f"pilot hole {dims['pilot']} mm does not fit in a {dims['post_od']} mm post")
     dims["ports"] = d_ports
+    dims["features"] = spec.get("features", [])
+    dims["fg"] = spec.get("featureGeometry")
+    if dims["features"] and not dims["fg"]:
+        fail("features need featureGeometry")
     return dims, conns, holes, sensors
 
 
@@ -220,6 +227,158 @@ def measure_standoffs(case, d, holes):
     return out
 
 
+# ---- added features (the case field) --------------------------------------------------------------------------
+
+def _wall_frame(edge, d):
+    """(x, y) of a point on the wall's centre plane, as a function of the offset along the edge, and the axis through it."""
+    mid = d["clear"] + d["wall"] / 2
+    if edge == "left":
+        return (lambda off: (-mid, off)), "x"
+    if edge == "right":
+        return (lambda off: (d["w"] + mid, off)), "x"
+    if edge == "bottom":
+        return (lambda off: (off, -mid)), "y"
+    return (lambda off: (off, d["h"] + mid)), "y"
+
+
+def teardrop(edge, off, dia, d):
+    """A round hole through a wall with a 45-degree roof: prints without support, the usual shape for a horizontal
+    hole. The roof is a square with one corner at the centre, so its sides meet the circle where it turns 45 degrees."""
+    at, axis = _wall_frame(edge, d)
+    x, y = at(off)
+    z = d["fg"]["holeZMm"]
+    r, depth = dia / 2, 3 * d["wall"]
+    if axis == "x":
+        bore = Pos(x, y, z) * Rot(0, 90, 0) * Cylinder(r, depth)
+        roof = Pos(x, y, z + r / 2 ** 0.5) * Rot(45, 0, 0) * Box(depth, r, r)
+    else:
+        bore = Pos(x, y, z) * Rot(90, 0, 0) * Cylinder(r, depth)
+        roof = Pos(x, y, z + r / 2 ** 0.5) * Rot(0, 45, 0) * Box(r, depth, r)
+    return bore + roof
+
+
+def tab(wall, centre, t, d):
+    """A flat tab flush with the floor, outside a wall, with a vertical hole: (solid, hole cylinder, hole centre)."""
+    side = d["clear"] + d["wall"]
+    out, along, thick, hole = t["outMm"], t["alongMm"], t["thickMm"], t["holeMm"]
+    if wall == "left":
+        cx, cy, sx, sy = -side - out / 2, centre, out, along
+    elif wall == "right":
+        cx, cy, sx, sy = d["w"] + side + out / 2, centre, out, along
+    elif wall == "bottom":
+        cx, cy, sx, sy = centre, -side - out / 2, along, out
+    else:
+        cx, cy, sx, sy = centre, d["h"] + side + out / 2, along, out
+    # Overlap the wall by 0.5 mm so the tab fuses into it.
+    grow = 0.5
+    if wall in ("left", "right"):
+        body = Pos(cx + (grow / 2 if wall == "left" else -grow / 2), cy, thick / 2) * Box(sx + grow, sy, thick)
+    else:
+        body = Pos(cx, cy + (grow / 2 if wall == "bottom" else -grow / 2), thick / 2) * Box(sx, sy + grow, thick)
+    return body, Pos(cx, cy, thick / 2) * Cylinder(hole / 2, thick * 3), (cx, cy)
+
+
+def tab_centres(f, d):
+    """[(wall, centre along the wall in the contract frame, tab geometry)] for a wall-mount or a lanyard feature."""
+    side = d["clear"] + d["wall"]
+    if f["kind"] == "wall-mount":
+        t = d["fg"]["mountTab"]
+        walls = ("left", "right") if f["sides"] == "left-right" else ("top", "bottom")
+        return [(w, (d["h"] if w in ("left", "right") else d["w"]) / 2, t) for w in walls]
+    t = d["fg"]["lanyardTab"]
+    wall = "left" if f["corner"].endswith("left") else "right"
+    top = f["corner"].startswith("top")
+    return [(wall, d["h"] + side - t["alongMm"] / 2 if top else -side + t["alongMm"] / 2, t)]
+
+
+def open_centre(region, solid):
+    """Centre and width of the open space inside region (a box around a hole), or None when it is closed."""
+    opening = region - solid
+    if opening.volume <= 1e-6:
+        return None
+    bb = opening.bounding_box()
+    return (bb.min.X + bb.max.X) / 2, (bb.min.Y + bb.max.Y) / 2, (bb.min.Z + bb.max.Z) / 2, bb.size
+
+
+def add_case_features(case, d):
+    """Tabs, loops and wall holes on the case; each measured back from the solid. Returns (case, reports, tab bodies)."""
+    reports = []
+    for f in d["features"]:
+        kind = f.get("kind")
+        if kind in ("wall-mount", "lanyard"):
+            holes = []
+            for wall, centre, t in tab_centres(f, d):
+                body, bore, (cx, cy) = tab(wall, centre, t, d)
+                case = case + body - bore
+                holes.append((cx, cy, t))
+            measured = []
+            for cx, cy, t in holes:
+                got = open_centre(Pos(cx, cy, t["thickMm"] / 2) * Box(t["holeMm"] + 1, t["holeMm"] + 1, t["thickMm"] * 0.98), case)
+                measured.append(got)
+            if any(m is None for m in measured):
+                reports.append({"id": f["id"], "kind": kind, "ok": False, "issue": "a tab's screw hole is closed"})
+                continue
+            x, y, _, size = measured[0]
+            reports.append({"id": f["id"], "kind": kind, "ok": True, "xMm": round(x, 3), "yMm": round(y, 3), "diameterMm": round(size.X, 3), "tabs": len(measured)})
+        elif kind == "hole":
+            edge, off, dia = f["edge"], float(f["offsetMm"]), float(f["diameterMm"])
+            case = case - teardrop(edge, off, dia, d)
+            at, axis = _wall_frame(edge, d)
+            x, y = at(off)
+            z = d["fg"]["holeZMm"]
+            # Just around the teardrop (its tip is r*sqrt(2) above the centre), so a neighbouring cutout or the air
+            # above the wall never counts as this hole.
+            r = dia / 2
+            lo, hi = z - r - 0.3, z + r * 2 ** 0.5 + 0.3
+            zc, zs = (lo + hi) / 2, hi - lo
+            region = Pos(x, y, zc) * (Box(d["wall"] * 0.98, dia + 0.6, zs) if axis == "x" else Box(dia + 0.6, d["wall"] * 0.98, zs))
+            got = open_centre(region, case)
+            if got is None:
+                reports.append({"id": f["id"], "kind": kind, "ok": False, "issue": f"no opening was cut through the {edge} wall"})
+                continue
+            cx, cy, _, size = got
+            reports.append({"id": f["id"], "kind": kind, "ok": True, "edge": edge, "offsetMm": round(cy if axis == "x" else cx, 3), "zMm": round(z, 3), "diameterMm": round(size.Y if axis == "x" else size.X, 3)})
+    return case, reports
+
+
+def add_text(lid, d, vents):
+    """Engraves the text feature into the lid's top (assembled pose), sized to fit and kept off the vents."""
+    feats = [f for f in d["features"] if f.get("kind") == "text"]
+    if not feats:
+        return lid, []
+    f, g = feats[0], d["fg"]["text"]
+    top = d["height"] + d["plate"]
+    plate_w, plate_h = d["w"] + 2 * (d["clear"] + d["wall"]), d["h"] + 2 * (d["clear"] + d["wall"])
+    margin = 2.0
+    size = g["maxMm"]
+    glyphs = Text(f["text"], font_size=size)
+    while glyphs.bounding_box().size.X > plate_w - 2 * margin and size > g["minMm"]:
+        size = max(g["minMm"], size - 0.5)
+        glyphs = Text(f["text"], font_size=size)
+    bb = glyphs.bounding_box()
+    if bb.size.X > plate_w - 2 * margin or bb.size.Y > plate_h - 2 * margin:
+        return lid, [{"id": f["id"], "kind": "text", "ok": False, "issue": f"\"{f['text']}\" does not fit on the {plate_w:.0f} mm lid at {g['minMm']} mm letters"}]
+    # Keep 1 mm of plate between the lettering and any vent: try the middle, then step away from it.
+    def clear_of_vents(y):
+        x0, x1 = d["w"] / 2 - bb.size.X / 2 - 1, d["w"] / 2 + bb.size.X / 2 + 1
+        y0, y1 = y - bb.size.Y / 2 - 1, y + bb.size.Y / 2 + 1
+        return all(x1 < v["xMm"] - v["widthMm"] / 2 or x0 > v["xMm"] + v["widthMm"] / 2 or y1 < v["yMm"] - v["heightMm"] / 2 or y0 > v["yMm"] + v["heightMm"] / 2 for v in vents)
+    lo, hi = -d["clear"] - d["wall"] + margin + bb.size.Y / 2, d["h"] + d["clear"] + d["wall"] - margin - bb.size.Y / 2
+    candidates = [d["h"] / 2 + s * k * 0.5 for k in range(0, int(plate_h * 2)) for s in (1, -1)]
+    y = next((c for c in candidates if lo <= c <= hi and clear_of_vents(c)), None)
+    if y is None:
+        return lid, [{"id": f["id"], "kind": "text", "ok": False, "issue": "no room on the lid clear of the vents"}]
+    # Centre the glyphs' own bounding box on (w/2, y): Text's origin is its alignment point, not the ink's centre.
+    ox, oy = d["w"] / 2 - (bb.min.X + bb.max.X) / 2, y - (bb.min.Y + bb.max.Y) / 2
+    cut = Pos(ox, oy, top - g["depthMm"]) * extrude(glyphs, amount=g["depthMm"] + 0.5)
+    before = lid.volume
+    lid = lid - cut
+    removed = before - lid.volume
+    if removed <= 1e-6:
+        return lid, [{"id": f["id"], "kind": "text", "ok": False, "issue": "the engraving removed nothing"}]
+    return lid, [{"id": f["id"], "kind": "text", "ok": True, "xMm": round(d["w"] / 2, 3), "yMm": round(y, 3), "textMm": size, "depthMm": g["depthMm"], "engravedMm3": round(removed, 2)}]
+
+
 # ---- print check ----------------------------------------------------------------------------------------------
 
 def stl_manifold_issues(path, name):
@@ -251,8 +410,8 @@ def overhang_issues(solid, name, slots):
             n = face.normal_at(face.center())
         except Exception:
             continue  # not a surface we can orient (none in this design)
-        if n.Z > -OVERHANG_COS:
-            continue
+        if n.Z > -OVERHANG_COS - 1e-6:
+            continue  # 45 degrees or less from vertical prints without support
         if n.Z < -0.999:
             c = face.center()
             ref = next((r for r, s in slots if _over(s.bounding_box(), c)), None)
@@ -328,11 +487,14 @@ def main():
     for port in d["ports"]:
         case = case - Pos(float(port["xMm"]), float(port["yMm"]), d["wall"] / 2) * Cylinder(PORT_MM / 2, d["wall"] * 3)
     ports = measure_ports(case, d)
+    case, features = add_case_features(case, d)
 
     lid = build_lid(d, iw, ih)
     for sensor in sensors:
         lid = lid - vent_cut(sensor, d)
     vents = measure_vents(lid, d, sensors)
+    lid, text = add_text(lid, d, vents)
+    features += text
     # Printed plate down: mirror through z = 0, then lift the plate onto the bed.
     lid_print = Pos(0, 0, d["height"] + d["plate"]) * mirror(lid, Plane.XY)
     standoffs = measure_standoffs(case, d, holes)
@@ -358,10 +520,11 @@ def main():
     (out / "standoffs.json").write_text(json.dumps(standoffs, indent=2) + "\n")
     (out / "vents.json").write_text(json.dumps(vents, indent=2) + "\n")
     (out / "ports.json").write_text(json.dumps(ports, indent=2) + "\n")
+    (out / "features.json").write_text(json.dumps(features, indent=2) + "\n")
     (out / "print.json").write_text(json.dumps(check, indent=2) + "\n")
     verdict = "print check ok" if check["ok"] else f"print check: {len(issues)} issue(s)"
     print(f"case {iw + 2 * d['wall']:.1f}x{ih + 2 * d['wall']:.1f}x{d['height']:.1f} mm + {d['plate']:.1f} mm lid, "
-          f"{len(cutouts)} cutouts, {len(standoffs)} standoffs, {len(vents)} vents; {verdict}")
+          f"{len(cutouts)} cutouts, {len(standoffs)} standoffs, {len(vents)} vents, {sum(f['ok'] for f in features)}/{len(features)} features; {verdict}")
 
 
 if __name__ == "__main__":

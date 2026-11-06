@@ -12,6 +12,7 @@ import {
 } from "@mozaik-ai/core"
 import { OWNERS, type AgentRole, type ContractValues, type FieldName, type ProposalResult } from "./contract/types.ts"
 import { isEvent, makeEvent } from "./events.ts"
+import { boardChangeWarning } from "./contract/case.ts"
 import { emit, roleOf, state } from "./runtime.ts"
 import { startTurn } from "./agents/common.ts"
 import type { Agent } from "@mozaik-ai/core"
@@ -55,9 +56,11 @@ export class ChangeControl implements InterceptionHandler {
 			inferenceInput.context.addContextItems([call, FunctionCallOutputItem.create(call.callId, JSON.stringify({ status: "invalid", reason: invalid }))])
 			return { nextStateId: "inference", input: inferenceInput }
 		}
-		const needsEngineer = s.engineerApproval
+		// A case change that would change the PCB always waits for the engineer too, with a warning saying so.
+		const warning = boardChangeWarning(requester, args.field!, s.contract.get(args.field!), args.value)
+		const needsEngineer = s.engineerApproval || warning !== null
 		const proposalId = s.approvals.open(args.field!, requester, JSON.stringify(args.value), needsEngineer)
-		emit(makeEvent("change.proposed", this.agentId, { proposalId, field: args.field!, by: requester, reason: args.reason ?? "", needsEngineer }), this.agentId)
+		emit(makeEvent("change.proposed", this.agentId, { proposalId, field: args.field!, by: requester, reason: args.reason ?? "", needsEngineer, ...(warning ? { warning } : {}) }), this.agentId)
 
 		const decision = await s.approvals.wait(proposalId, needsEngineer ? s.engineerTimeoutMs : s.approvalTimeoutMs)
 		emit(makeEvent("change.resolved", this.agentId, { proposalId, approved: decision.approved, reason: decision.reason, decidedBy: decision.decidedBy ?? [decision.by] }), this.agentId)
@@ -136,9 +139,10 @@ export async function proposeHeld<F extends FieldName>(p: { selfId: string; role
 	if (invalid) return { status: "invalid", reason: invalid }
 	if (isDeepStrictEqual(s.contract.get(p.field), p.value)) return { status: "unchanged", version: s.contract.version(p.field) }
 	const valueKey = JSON.stringify(p.value)
-	const needsEngineer = s.engineerApproval
+	const warning = boardChangeWarning(p.role, p.field, s.contract.get(p.field), p.value)
+	const needsEngineer = s.engineerApproval || warning !== null
 	const proposalId = s.approvals.open(p.field, p.role, valueKey, needsEngineer)
-	emit(makeEvent("change.proposed", p.selfId, { proposalId, field: p.field, by: p.role, reason: p.reason, needsEngineer }), p.selfId)
+	emit(makeEvent("change.proposed", p.selfId, { proposalId, field: p.field, by: p.role, reason: p.reason, needsEngineer, ...(warning ? { warning } : {}) }), p.selfId)
 	const decision = await s.approvals.wait(proposalId, needsEngineer ? s.engineerTimeoutMs : s.approvalTimeoutMs)
 	emit(makeEvent("change.resolved", p.selfId, { proposalId, approved: decision.approved, reason: decision.reason, decidedBy: decision.decidedBy ?? [decision.by] }), p.selfId)
 	if (!decision.approved) return { status: "rejected", reason: decision.reason }
