@@ -1,5 +1,6 @@
 import { caseOuter } from "./contract/case.ts"
 import { minimumBoard } from "./contract/space.ts"
+import { complianceItems } from "./contract/compliance.ts"
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import type { StockSuggestion } from "./tools/sourcing.ts"
 import { dirname, join } from "node:path"
@@ -202,6 +203,11 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 			if (!v.outline || !min) return []
 			const slack = Math.round(((v.outline.widthMm * v.outline.heightMm) / min.areaMm2 - 1) * 100)
 			return [`- Space: board ${v.outline.widthMm}×${v.outline.heightMm} mm is ${slack}% over the smallest it can be (${min.areaMm2} mm², every part placed at ${min.widthMm}×${min.heightMm} mm, routing not proven at that size)${v.outline.sizeReason ? `; kept for a reason: ${v.outline.sizeReason.kind}, ${v.outline.sizeReason.detail}` : ""}`]
+		})(),
+		...(() => {
+			const items = complianceItems(snapshot)
+			const open = items.filter((i) => i.status === "open")
+			return [`- Compliance (not legal advice): ${items.filter((i) => i.status === "met").length} met, ${open.length} open (${open.map((i) => i.item).join("; ")}), ${items.filter((i) => i.status === "check").length} to check; compliance.md and sbom.cdx.json beside the firmware`]
 		})(),
 		...(v.case && v.outline ? [`- Case: outer ${caseOuter(snapshot).widthMm}×${caseOuter(snapshot).heightMm}×${v.case.heightMm} mm, ${v.case.wallMm} mm walls; features: ${v.case.features.map((f) => `${f.id} (${f.kind}${f.kind === "text" ? ` "${f.text}"` : f.kind === "hole" ? ` ${f.diameterMm} mm on the ${f.edge}` : ""})`).join(", ") || "none"}`] : []),
 		...(v.test ? [`- Production test: ${v.test.points.length} test pads (${v.test.points.join(", ")}); limits awake ≤ ${v.test.awakeMaxMa} mA, asleep ≤ ${v.test.sleepMaxUa} µA${s.artifacts.testkit ? `; kit in ${s.artifacts.testkit.dir} (test-plan.md, fixture.stl, factory-test firmware ${s.artifacts.testkit.firmware.ok ? "compiles" : "FAILS"})` : ""}`] : []),

@@ -21,12 +21,14 @@ export const FIRMWARE_BUDGET = {
 }
 
 // What the firmware takes for each connectivity choice, measured with `pio run` on the logger design (6 Nov 2026,
-// espressif32@8.0.0, NimBLE-Arduino 2.5.2, PubSubClient 2.8; the Wi-Fi builds with test credentials so every path
-// compiles). The slot comes from the partition table the update choice selects (contract/connectivity.ts).
+// espressif32@8.0.0, NimBLE-Arduino 2.5.2, PubSubClient 2.8; the Wi-Fi builds with test credentials and CA
+// certificates, so the secure-by-default TLS paths compile, as a provisioned device has them). TLS costs about
+// 235 KB: with field updates the 1.25 MB slot is 98.5% full. The slot comes from the partition table the update
+// choice selects (contract/connectivity.ts).
 export const FIRMWARE_FLASH = {
-	ble: { flashBytes: 818_569, ramBytes: 24_660, measured: "BLE, GATT + BTHome, no_ota.csv" },
-	wifi: { flashBytes: 1_086_059, ramBytes: 37_596, measured: "Wi-Fi, MQTT, no_ota.csv" },
-	wifiOta: { flashBytes: 1_188_320, ramBytes: 39_104, measured: "Wi-Fi, MQTT + HTTP update, default.csv" },
+	ble: { flashBytes: 819_217, ramBytes: 24_660, measured: "BLE, GATT (paired, passkey) + BTHome, no_ota.csv" },
+	wifi: { flashBytes: 1_190_133, ramBytes: 38_076, measured: "Wi-Fi, MQTT over TLS, no_ota.csv" },
+	wifiOta: { flashBytes: 1_291_324, ramBytes: 39_584, measured: "Wi-Fi, MQTT over TLS + HTTPS update, default.csv" },
 }
 
 // The flash and RAM the firmware leaves for a model in this design: the slot the partition table gives, less the

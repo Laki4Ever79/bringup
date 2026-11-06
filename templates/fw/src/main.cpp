@@ -171,6 +171,7 @@ static int32_t storeReading(float tempC, float rh) {
 // - history (read): up to HISTORY_CHUNK records, newest first, from offset on. Records are packReading()'s, little-endian.
 #ifdef RADIO_BLE
 #include <NimBLEDevice.h>
+#include "identity.h"
 #ifdef REPORT_BTHOME
 #include "bthome.h"
 // The packet id Home Assistant uses to drop repeats: one per reading, kept across deep sleep.
@@ -256,15 +257,25 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 	(void)rh;
 #endif
 #ifdef REPORT_GATT
+	// The history is readable only over an authenticated, encrypted link: LE Secure Connections with this device's own
+	// passkey (identity.h), which the phone's owner types in once; the bond is kept.
+	bool madePasskey = false;
+	const uint32_t passkey = devicePasskey(&madePasskey);
+	if (madePasskey) Serial.printf("BLE passkey %06lu (new: label the device with it)\n", (unsigned long)passkey);
+	NimBLEDevice::setSecurityAuth(true, true, true);
+	NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+	NimBLEDevice::setSecurityPasskey(passkey);
 	NimBLEServer *server = NimBLEDevice::createServer();
 	server->setCallbacks(new ServerCallbacks());
 	NimBLEService *service = server->createService(BLE_SERVICE_UUID);
-	service->createCharacteristic(BLE_LATEST_UUID, NIMBLE_PROPERTY::READ)->setValue(latest);
-	service->createCharacteristic(BLE_COUNT_UUID, NIMBLE_PROPERTY::READ)->setValue(historyCount);
-	NimBLECharacteristic *offset = service->createCharacteristic(BLE_OFFSET_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE);
+	const uint32_t SECURE_READ = NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN;
+	const uint32_t SECURE_WRITE = NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN;
+	service->createCharacteristic(BLE_LATEST_UUID, SECURE_READ)->setValue(latest);
+	service->createCharacteristic(BLE_COUNT_UUID, SECURE_READ)->setValue(historyCount);
+	NimBLECharacteristic *offset = service->createCharacteristic(BLE_OFFSET_UUID, SECURE_READ | SECURE_WRITE);
 	offset->setValue(historyOffset = 0);  // reads 0 until a phone writes one (it read empty on the S3)
 	offset->setCallbacks(new OffsetCallbacks());
-	service->createCharacteristic(BLE_HISTORY_UUID, NIMBLE_PROPERTY::READ)->setCallbacks(new HistoryCallbacks());
+	service->createCharacteristic(BLE_HISTORY_UUID, SECURE_READ)->setCallbacks(new HistoryCallbacks());
 	service->start();
 #ifndef REPORT_BTHOME
 	adv->setName(name);
@@ -296,6 +307,7 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 // nothing generates or commits (WIFI_SSID, WIFI_PASS, MQTT_HOST, MQTT_PORT, optional MQTT_USER, MQTT_PASS, OTA_URL).
 // Without it the firmware still builds, and says it isn't provisioned.
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #if __has_include("secrets.h")
 #include "secrets.h"
 #endif
@@ -384,7 +396,15 @@ static void serveWifi(bool ok, float tempC, float rh) {
 	char id[20];
 	snprintf(id, sizeof id, "bringup_%06llx", (unsigned long long)(ESP.getEfuseMac() & 0xFFFFFF));
 #if defined(REPORT_MQTT) && defined(MQTT_HOST)
+	// Secure by default: TLS against the broker's CA (MQTT_CA); plain MQTT only when the engineer sets
+	// MQTT_ALLOW_PLAINTEXT (a broker on a closed home network), and never by accident.
+#if defined(MQTT_CA)
+	WiFiClientSecure net;
+	net.setCACert(MQTT_CA);
+#elif defined(MQTT_ALLOW_PLAINTEXT)
 	WiFiClient net;
+#endif
+#if defined(MQTT_CA) || defined(MQTT_ALLOW_PLAINTEXT)
 	PubSubClient mqtt(net);
 	mqtt.setServer(MQTT_HOST, MQTT_PORT);
 	mqtt.setBufferSize(640);
@@ -403,13 +423,29 @@ static void serveWifi(bool ok, float tempC, float rh) {
 	(void)ok;
 	(void)tempC;
 	(void)rh;
+	Serial.println("MQTT refused: no MQTT_CA for TLS, and MQTT_ALLOW_PLAINTEXT not set");
+#endif
+#else
+	(void)ok;
+	(void)tempC;
+	(void)rh;
 #endif
 #if defined(UPDATES_OTA) && defined(OTA_URL)
-	// The update server answers with a newer image or 304; the current revision goes along as x-ESP32-version.
+	// The update server answers with a newer image or 304; the current revision goes along as x-ESP32-version. Over
+	// HTTPS against OTA_CA by default; plain HTTP only with OTA_ALLOW_PLAINTEXT.
+#if defined(OTA_CA)
+	WiFiClientSecure ota;
+	ota.setCACert(OTA_CA);
+#elif defined(OTA_ALLOW_PLAINTEXT)
 	WiFiClient ota;
+#endif
+#if defined(OTA_CA) || defined(OTA_ALLOW_PLAINTEXT)
 	httpUpdate.rebootOnUpdate(true);
 	const t_httpUpdate_return r = httpUpdate.update(ota, OTA_URL, String(BRINGUP_REVISION));
 	Serial.printf("OTA %s\n", r == HTTP_UPDATE_NO_UPDATES ? "up to date" : r == HTTP_UPDATE_OK ? "updated" : httpUpdate.getLastErrorString().c_str());
+#else
+	Serial.println("OTA refused: no OTA_CA for HTTPS, and OTA_ALLOW_PLAINTEXT not set");
+#endif
 #endif
 	WiFi.disconnect(true);
 	WiFi.mode(WIFI_OFF);

@@ -5,6 +5,8 @@ import { join, resolve as resolvePath } from "node:path"
 import { behaviorHeader, connectivityHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { partitionTable } from "../contract/connectivity.ts"
 import { dataFormatHeader, readerPython } from "../codegen/data-format.ts"
+import { complianceMarkdown } from "../contract/compliance.ts"
+import { sbomJson } from "./sbom.ts"
 import type { FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { mergeFlash, runImage } from "./emulator.ts"
@@ -85,10 +87,13 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 	await writeFile(join(dir, "include/dataformat.h"), dataFormatHeader())
 	await mkdir(join(dir, "reader"), { recursive: true })
 	await writeFile(join(dir, "reader/bringup_reader.py"), readerPython(s))
+	// What the firmware is built from (CycloneDX), and where the design stands against the radio-product rules.
+	await writeFile(join(dir, "compliance.md"), complianceMarkdown(s))
 	// The product firmware's partition table follows connectivity.updates: two firmware slots for updates, else one.
 	const ini = join(dir, "platformio.ini")
 	const table = partitionTable(s)
 	const text = await readFile(ini, "utf8")
+	await writeFile(join(dir, "sbom.cdx.json"), sbomJson(s, text, s.revision))
 	await writeFile(ini, text.replace(/(\[env:esp32c3\]\n(?:[^\[]*?\n)?board = esp32-c3-devkitm-1\n)(board_build\.partitions = .*\n)?/, `$1board_build.partitions = ${table}\n`))
 	return header
 }

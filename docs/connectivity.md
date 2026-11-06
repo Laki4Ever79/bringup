@@ -77,13 +77,47 @@ Measured with `pio run` on the logger (6 Nov 2026):
 
 | Connectivity | Table | Firmware / slot | Left for a model |
 | --- | --- | --- | --- |
-| None (as before) | default.csv | 818,177 / 1,310,720 | 480 KB |
-| Bluetooth LE, GATT + BTHome | no_ota.csv | 818,569 / 2,097,152 | 1.2 MB |
-| Wi-Fi, MQTT | no_ota.csv | 1,086,059 / 2,097,152 | 987 KB |
-| Wi-Fi, MQTT, updates | default.csv | 1,188,320 / 1,310,720 | **119 KB** |
+| None (as before) | default.csv | 818,677 / 1,310,720 | 480 KB |
+| Bluetooth LE, GATT (paired) + BTHome | no_ota.csv | 819,217 / 2,097,152 | 1.2 MB |
+| Wi-Fi, MQTT over TLS | no_ota.csv | 1,190,133 / 2,097,152 | 886 KB |
+| Wi-Fi, MQTT over TLS, HTTPS updates | default.csv | 1,291,324 / 1,310,720 | **19 KB** |
+
+(Measured with the TLS paths compiled, as a provisioned device has them. Plain MQTT and HTTP, only when explicitly
+allowed, take about 235 KB less.)
 
 A model that doesn't fit beside two slots, but would fit in one, is a `model-flash` violation for both the ML
 engineer and the connectivity engineer, which says so.
+
+## Security and regulation: secure by default, and a checklist from the design
+
+The firmware ships with no shared password and refuses plaintext unless told to:
+
+- **Bluetooth LE:** the GATT history is readable only after pairing (LE Secure Connections, authenticated) with the
+  device's own six-digit passkey. The passkey is made by its hardware random generator (`include/identity.h`) and
+  kept in flash. The factory test makes it on the line and prints `BRINGUP-TEST identity mac=… passkey=…` for the
+  label. A board that skipped the line makes one on first boot.
+- **MQTT** runs over TLS against `MQTT_CA`, and **updates** over HTTPS against `OTA_CA`. A plain connection only
+  happens with `MQTT_ALLOW_PLAINTEXT` or `OTA_ALLOW_PLAINTEXT` set in your secrets. Otherwise the firmware refuses
+  and says why.
+- **TLS costs flash**, about 235 KB measured. With field updates, the 1.25 MB slot is 98.5% full (1,291,324 bytes),
+  leaving 19 KB for a model. The model check uses these secure-by-default figures.
+
+Each firmware build also writes:
+
+- `sbom.cdx.json`: a CycloneDX software bill of materials from the installed and pinned versions (Arduino-ESP32
+  3.3.12, ESP-IDF 5.5.5, platform espressif32 8.0.0, the toolchain, and NimBLE or PubSubClient as the design uses
+  them). The EU Cyber Resilience Act asks for one.
+- `compliance.md`: where the design stands against the FCC module grant (label "Contains FCC ID: 2AC7Z-ESPC3MINI1",
+  the 20 cm condition), the EU Radio Equipment Directive's cybersecurity rules (EN 18031) and the Cyber Resilience
+  Act. Each item is marked met, open or check, with the reason. It is not legal advice.
+
+What stays **open** in the checklist, because a stock Arduino build can't do it or it isn't built:
+
+- signed update images, and Secure Boot
+- flash encryption for the stored readings
+- a factory reset that erases data and settings
+- BTHome's own encryption (a key per device); today the broadcast is readable by anyone nearby
+- the manufacturer's vulnerability contact and disclosure process
 
 ## Not done yet
 
@@ -92,10 +126,6 @@ engineer and the connectivity engineer, which says so.
 - **The regulator gap:** with the 0.5 A requirement, the catalog's only fitting regulator is the AP2112K, which draws
   55 µA of its own. A low-quiescent regulator rated 0.5 A or more would need adding to the catalog, with its
   datasheet checked.
-- **Security:** BLE is open (no pairing), MQTT uses no TLS, and updates come over plain HTTP with no signature. The EU
-  Radio Equipment Directive's cybersecurity requirements (since 1 Aug 2025) and the Cyber Resilience Act (reporting
-  from 11 Sep 2026, everything else from 11 Dec 2027) make this a requirement, not a nice-to-have. It is the next
-  step.
 - **Provisioning:** credentials are compiled in from your own file. Setting them on a finished device (over
   Bluetooth, or a setup page) is not built.
 - The Wi-Fi connection cost is an estimate until measured on the bench.

@@ -12,6 +12,8 @@
 #include <Wire.h>
 #include "pins.h"
 #include "testkit.h"
+#include "identity.h"
+#include <bootloader_random.h>
 #ifdef TEST_MIC
 #include <ESP_I2S.h>
 #endif
@@ -117,6 +119,13 @@ void setup() {
 	// The station opens the port after power-up; give it a moment, without waiting forever on a board with no host.
 	for (int i = 0; i < 30 && !Serial; i++) delay(100);
 	Serial.printf("BRINGUP-TEST start rev=%d\n", TEST_REVISION);
+	// The device's identity, made here on the line: its own Bluetooth passkey (identity.h), with the hardware random
+	// source on (the radio is off in this firmware). The station prints it on the device's label with the FCC ID.
+	bootloader_random_enable();
+	bool madePasskey = false;
+	const uint32_t passkey = devicePasskey(&madePasskey);
+	bootloader_random_disable();
+	Serial.printf("BRINGUP-TEST identity mac=%012llx passkey=%06lu %s\n", (unsigned long long)ESP.getEfuseMac(), (unsigned long)passkey, madePasskey ? "new" : "kept");
 #if TEST_OUTPUT_COUNT > 0
 	testOutputs();
 #endif
