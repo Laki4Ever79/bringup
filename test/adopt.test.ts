@@ -455,6 +455,35 @@ test("change impact: the domains a change reaches are the fields Bringup's build
 	assert.deepEqual(READERS.bom, ["parts"])
 })
 
+test("the CI check comments the impact on a pull request: one comment, found by its marker and updated (dry run)", () => {
+	const { repo } = impactRepo()
+	writeFileSync(join(repo, "hw", "b.kicad_pcb"), impactBoard({ dc: "IO3" }))
+	const event = join(repo, "event.json")
+	writeFileSync(event, JSON.stringify({ pull_request: { number: 7 } }))
+	const ci = (env: Record<string, string>) => {
+		const r = spawnSync("bash", [join(ROOT, "adopt", "check.sh")], {
+			env: { ...process.env, GITHUB_ACTION_PATH: join(ROOT, "adopt"), GITHUB_WORKSPACE: repo, INPUT_PATH: ".", INPUT_CONTRACT: ".bringup/adopt", INPUT_COMMENT: "true", GITHUB_EVENT_NAME: "pull_request", GITHUB_EVENT_PATH: event, GITHUB_REPOSITORY: "owner/hw", BRINGUP_DRY_RUN: "1", ...env },
+			encoding: "utf8",
+		})
+		return { code: r.status, out: r.stdout, err: r.stderr }
+	}
+	const first = ci({})
+	// The comment never changes the check's exit code: the board broke the contract.
+	assert.equal(first.code, 1)
+	assert.match(first.out, /^Change impact:\n {2}LCD_DC moved GPIO1 → GPIO3\n {4}Firmware: src\/main\.cpp:13 still drives GPIO1/m)
+	assert.match(first.out, /dry run: comment body:\n<!-- bringup-impact -->\n/)
+	assert.match(first.out, /LCD_DC moved GPIO1 → GPIO3\*\*\. Firmware: `src\/main\.cpp:13`/)
+	assert.match(first.err, /gh api repos\/owner\/hw\/issues\/7\/comments --paginate/)
+	assert.match(first.err, /gh api -X POST repos\/owner\/hw\/issues\/7\/comments -f body=<!-- bringup-impact -->/)
+	assert.match(first.out, /commented the change impact on PR #7/)
+	const again = ci({ BRINGUP_DRY_RUN_COMMENT_ID: "42" })
+	assert.match(again.err, /gh api -X PATCH repos\/owner\/hw\/issues\/comments\/42 -f body=/)
+	assert.doesNotMatch(again.err, /-X POST/)
+	// Not a pull request, or comment off: no GitHub call at all.
+	assert.doesNotMatch(ci({ GITHUB_EVENT_NAME: "push" }).err, /gh api/)
+	assert.doesNotMatch(ci({ INPUT_COMMENT: "false" }).err, /gh api/)
+})
+
 test("AVR: Arduino pin numbers and A0 resolve through ArduinoCore-avr's tables; PB5 is an AVR pin on an ATmega only", () => {
 	const uno = { ref: "U1", value: "ATmega328P-AU", lib: "Package_QFP:TQFP-32", x: 0, y: 0, rot: 0, pads: [], size: { w: 0, h: 0 } }
 	const leo = { ...uno, value: "ATmega32U4-AU" }

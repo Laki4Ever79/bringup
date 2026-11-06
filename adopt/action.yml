@@ -10,6 +10,9 @@ inputs:
   variant:
     description: Pin the firmware build (a PlatformIO env, "cmake" or "src:<dir>") instead of letting adopt pick the best fit.
     default: ""
+  comment:
+    description: On a pull request, keep one PR comment with the change impact (updated on each push, never duplicated). Needs `permissions: pull-requests: write` in the workflow.
+    default: "false"
 runs:
   using: composite
   steps:
@@ -25,4 +28,6 @@ runs:
         INPUT_PATH: ${{ inputs.path }}
         INPUT_CONTRACT: ${{ inputs.contract }}
         INPUT_VARIANT: ${{ inputs.variant }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        GH_TOKEN: ${{ github.token }}
       run: bash "$GITHUB_ACTION_PATH/check.sh"
