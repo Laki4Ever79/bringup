@@ -4,6 +4,7 @@ import { existsSync } from "node:fs"
 import { join, resolve as resolvePath } from "node:path"
 import { behaviorHeader, connectivityHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { partitionTable } from "../contract/connectivity.ts"
+import { dataFormatHeader, readerPython } from "../codegen/data-format.ts"
 import type { FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { mergeFlash, runImage } from "./emulator.ts"
@@ -80,6 +81,10 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 	await writeFile(join(dir, "include/behavior.h"), behaviorHeader(s))
 	await writeFile(join(dir, "include/model.h"), modelHeader(s))
 	await writeFile(join(dir, "include/connectivity.h"), connectivityHeader(s))
+	// The data format, and the reader made from the same source: whoever reads the device decodes what it writes.
+	await writeFile(join(dir, "include/dataformat.h"), dataFormatHeader())
+	await mkdir(join(dir, "reader"), { recursive: true })
+	await writeFile(join(dir, "reader/bringup_reader.py"), readerPython(s))
 	// The product firmware's partition table follows connectivity.updates: two firmware slots for updates, else one.
 	const ini = join(dir, "platformio.ini")
 	const table = partitionTable(s)

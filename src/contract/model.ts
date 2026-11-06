@@ -24,9 +24,9 @@ export const FIRMWARE_BUDGET = {
 // espressif32@8.0.0, NimBLE-Arduino 2.5.2, PubSubClient 2.8; the Wi-Fi builds with test credentials so every path
 // compiles). The slot comes from the partition table the update choice selects (contract/connectivity.ts).
 export const FIRMWARE_FLASH = {
-	ble: { flashBytes: 818_719, ramBytes: 24_660, measured: "BLE, GATT + BTHome, no_ota.csv" },
+	ble: { flashBytes: 818_569, ramBytes: 24_660, measured: "BLE, GATT + BTHome, no_ota.csv" },
 	wifi: { flashBytes: 1_086_059, ramBytes: 37_596, measured: "Wi-Fi, MQTT, no_ota.csv" },
-	wifiOta: { flashBytes: 1_188_472, ramBytes: 39_104, measured: "Wi-Fi, MQTT + HTTP update, default.csv" },
+	wifiOta: { flashBytes: 1_188_320, ramBytes: 39_104, measured: "Wi-Fi, MQTT + HTTP update, default.csv" },
 }
 
 // The flash and RAM the firmware leaves for a model in this design: the slot the partition table gives, less the

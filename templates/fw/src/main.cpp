@@ -137,13 +137,8 @@ static const uint32_t HISTORY_SLOTS = HISTORY_DAYS * 86400UL / DUTY_PERIOD_S;
 static const char *HISTORY_FILE = "/history.bin";
 
 #ifdef HAS_SENSOR
-// Temperature in centi-degrees offset by +45 °C (the sensors' −45 °C floor) in the high half, RH in centi-percent in
-// the low half.
-static uint32_t packReading(float tempC, float rh) {
-	uint32_t t = (uint32_t)constrain(lroundf((tempC + 45) * 100), 0L, 65535L);
-	uint32_t h = (uint32_t)constrain(lroundf(rh * 100), 0L, 10000L);
-	return t << 16 | h;
-}
+// The record layout is the generated data format's (include/dataformat.h, record.h): the reader decodes the same.
+#include "record.h"
 
 // Returns the slot written, or -1 if the flash couldn't take it. NVS also keeps how many slots hold a reading, for BLE.
 static int32_t storeReading(float tempC, float rh) {
@@ -186,13 +181,15 @@ RTC_DATA_ATTR static uint8_t bthomePacketId = 0;
 #define BLE_ADVERTISE_MS 300  // the logger brief's 300 ms advertising burst, without a contract duty cycle
 #endif
 static const uint32_t BLE_CONNECTED_MAX_MS = 30000;
-static const uint32_t HISTORY_CHUNK = 100;
-static const uint32_t LATEST_SENSOR_FAILED = 0xFFFFFFFF, LATEST_NO_SENSOR = 0xFFFFFFFE;
-static const char *BLE_SERVICE_UUID = "b7e10001-5c2e-4f1a-9d3b-6a8e2f40c0de";
-static const char *BLE_LATEST_UUID = "b7e10002-5c2e-4f1a-9d3b-6a8e2f40c0de";
-static const char *BLE_COUNT_UUID = "b7e10003-5c2e-4f1a-9d3b-6a8e2f40c0de";
-static const char *BLE_OFFSET_UUID = "b7e10004-5c2e-4f1a-9d3b-6a8e2f40c0de";
-static const char *BLE_HISTORY_UUID = "b7e10005-5c2e-4f1a-9d3b-6a8e2f40c0de";
+// UUIDs and limits from the generated data format (include/dataformat.h), the source the reader is made from too.
+#include "dataformat.h"
+static const uint32_t HISTORY_CHUNK = DF_HISTORY_CHUNK;
+static const uint32_t LATEST_SENSOR_FAILED = DF_LATEST_SENSOR_FAILED, LATEST_NO_SENSOR = DF_LATEST_NO_SENSOR;
+static const char *BLE_SERVICE_UUID = DF_GATT_SERVICE;
+static const char *BLE_LATEST_UUID = DF_GATT_LATEST;
+static const char *BLE_COUNT_UUID = DF_GATT_COUNT;
+static const char *BLE_OFFSET_UUID = DF_GATT_OFFSET;
+static const char *BLE_HISTORY_UUID = DF_GATT_HISTORY;
 
 static volatile bool bleConnected = false;
 static uint32_t historyNext = 0, historyCount = 0, historyOffset = 0;
@@ -311,16 +308,17 @@ RTC_DATA_ATTR static uint32_t wakesSinceUpload = UPLOAD_EVERY;
 
 #ifdef REPORT_MQTT
 #include <PubSubClient.h>
+#include "dataformat.h"
 // Home Assistant's MQTT discovery: one retained config message per sensor tells Home Assistant what the state topic
 // holds; then each upload publishes the newest reading as the state, and the readings since the last upload as a batch
 // (packed records, oldest first, PERIOD_S apart) that the generated reader decodes.
 static void publishMqtt(PubSubClient &mqtt, const char *id, bool ok, float tempC, float rh) {
 	char topic[96], body[512], state[48];
-	snprintf(state, sizeof state, "bringup/%s/state", id);
+	snprintf(state, sizeof state, DF_MQTT_PREFIX "/%s/state", id);
 	const char *names[] = {"temperature", "humidity"};
 	const char *units[] = {"\xC2\xB0" "C", "%"};
 	for (int i = 0; i < 2; i++) {
-		snprintf(topic, sizeof topic, "homeassistant/sensor/%s_%s/config", id, names[i]);
+		snprintf(topic, sizeof topic, DF_MQTT_DISCOVERY "/sensor/%s_%s/config", id, names[i]);
 		snprintf(body, sizeof body,
 			"{\"name\":\"%s\",\"unique_id\":\"%s_%s\",\"state_topic\":\"%s\",\"device_class\":\"%s\",\"unit_of_measurement\":\"%s\","
 			"\"value_template\":\"{{ value_json.%s }}\",\"expire_after\":%lu,"
@@ -351,7 +349,7 @@ static void publishMqtt(PubSubClient &mqtt, const char *id, bool ok, float tempC
 		LittleFS.end();
 	}
 	snprintf(body + len, sizeof body - len, "]}");
-	snprintf(topic, sizeof topic, "bringup/%s/history", id);
+	snprintf(topic, sizeof topic, DF_MQTT_PREFIX "/%s/history", id);
 	mqtt.publish(topic, body, false);
 #endif
 }
