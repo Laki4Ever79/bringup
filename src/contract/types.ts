@@ -1,10 +1,10 @@
 // "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field. "ml" owns
-// the on-device model.
-export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml"
+// the on-device model, "test" the production test (test pads, pass limits).
+export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml" | "test"
 
-export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model"
+export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test"
 
-export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model"]
+export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test"]
 
 // The fields every design writes; behavior is optional (the firmware has defaults).
 export const CORE_FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
@@ -18,6 +18,7 @@ export const OWNERS: Record<FieldName, AgentRole> = {
 	pins: "architect",
 	behavior: "firmware",
 	model: "ml",
+	test: "test",
 }
 
 // How the device spends its time: awake for activeMs every periodS seconds, drawing sleepUa in between.
@@ -117,6 +118,17 @@ export interface ModelData {
 	path: import("./sensor-path.ts").SensorPath
 }
 
+// The production test: which nets get a bottom-side test pad for the fixture's pogo pins, and the current limits the
+// factory test passes a board at. Owned by the test agent; checked in code against the pins (every signal probed), the
+// generated power nets, and the power budget (a limit below the design's own current fails every good board).
+export interface TestSpec {
+	// Net names: contract signals (I2C_SDA) and generated power nets (GND, 3V3, VBUS, VBAT).
+	points: string[]
+	// The board's supply current while awake, and asleep, at or below which it passes.
+	awakeMaxMa: number
+	sleepMaxUa: number
+}
+
 export interface Behavior {
 	blinkMs: number
 	tiltBlinkMs: number
@@ -132,6 +144,7 @@ export type ContractValues = {
 	pins: PinAssignment[]
 	behavior: Behavior
 	model: ModelSpec
+	test: TestSpec
 }
 
 export interface ContractSnapshot {

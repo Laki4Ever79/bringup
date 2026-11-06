@@ -3,11 +3,11 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
-import { createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder } from "./agents/builders.ts"
+import { createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
 import { createGroundingCheck } from "./agents/grounding-check.ts"
 import { createBomWriter } from "./agents/bom.ts"
-import { createArchitectAgent, createFirmwareReviewer, createMlAgent, createPartsAgent } from "./agents/roles.ts"
+import { createArchitectAgent, createFirmwareReviewer, createMlAgent, createPartsAgent, createTestAgent } from "./agents/roles.ts"
 import { createBriefReviewer, MAX_REVIEW_ROUNDS } from "./agents/reviewer.ts"
 import type { Script } from "./inference/scripted-runner.ts"
 import { inferenceConfig } from "./inference/models.ts"
@@ -165,7 +165,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		bench = createBench({ ...(await opts.bench.open()), ...opts.bench.timings })
 		joinRuntime(bench)
 	}
-	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env)]
+	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env), createTestkitBuilder(env)]
 	for (const b of builders) joinRuntime(b)
 	// A run that stays up syncs edits to its generated files back into the design (runner/file-sync.ts).
 	const files = opts.stay || opts.bench ? createFileSync({ outDir: opts.outDir }) : null
@@ -182,6 +182,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	createArchitectAgent({ mock: opts.mock })
 	createPartsAgent({ mock: opts.mock })
 	createMlAgent({ mock: opts.mock })
+	createTestAgent({ mock: opts.mock })
 	createFirmwareReviewer({ mock: opts.mock })
 	if (state.review.enabled) createBriefReviewer({ mock: opts.mock, env })
 	const engineer = createEngineer()

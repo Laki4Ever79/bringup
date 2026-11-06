@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type SemanticEvent } from "@mozaik-ai/core"
-import { BuildLock, createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder } from "../agents/builders.ts"
+import { BuildLock, createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "../agents/builders.ts"
 import { createConsistencyParticipant, type Settlement } from "../agents/consistency.ts"
 import { createGroundingCheck } from "../agents/grounding-check.ts"
 import { createArchitectAgent, createFirmwareReviewer, createPartsAgent } from "../agents/roles.ts"
@@ -73,7 +73,7 @@ export async function runTrial(opts: { change: ExperimentChange; arm: "A" | "C";
 	joinRuntime(createChangeDesk())
 	joinRuntime(createConsistencyParticipant({ quietMs: QUIET_MS, keepRunning: true, onSettled: (s) => (settlements.push(s), wake()) }))
 	const lock = opts.arm === "C" ? new BuildLock() : undefined
-	const builders = opts.noHardware ? createStubBuilders(lock) : [createBoardBuilder(env, lock), createEnclosureBuilder(env, lock), createFirmwareBuilder(env, lock)]
+	const builders = opts.noHardware ? createStubBuilders(lock) : [createBoardBuilder(env, lock), createEnclosureBuilder(env, lock), createFirmwareBuilder(env, lock), createTestkitBuilder(env, lock)]
 	for (const b of builders) joinRuntime(b)
 	joinRuntime(createGroundingCheck(env))
 	createArchitectAgent({ mock: true })

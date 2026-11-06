@@ -1,7 +1,7 @@
 import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
-import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
+import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact, TestkitArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot, FieldName } from "../contract/types.ts"
 import { isEvent, makeEvent, type ArtifactKind } from "../events.ts"
 import { emit, state } from "../runtime.ts"
@@ -12,10 +12,11 @@ import { buildBoard } from "../tools/board.ts"
 import { exportFab } from "../tools/fab.ts"
 import { buildEnclosure } from "../tools/enclosure.ts"
 import { buildFirmware } from "../tools/firmware.ts"
+import { buildTestkit } from "../tools/testkit.ts"
 import type { Env } from "../tools/env.ts"
 import type { DrcSummary } from "../tools/drc.ts"
 
-type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact }
+type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact }
 
 export interface BuildContext {
 	revision: number
@@ -30,16 +31,26 @@ export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
 	board: ["outline", "parts", "pins"],
 	enclosure: ["outline", "connectors"],
 	firmware: ["parts", "pins"],
+	testkit: ["test", "outline", "pins"],
 }
+
+// Artifacts a design has only when it asks for them: the test kit exists once the contract has a test field. Without
+// that field the kind counts as current (nothing to build), so it never holds a design from settling.
+export const OPTIONAL_KINDS: Partial<Record<ArtifactKind, FieldName>> = { testkit: "test" }
+export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit"]
 
 // Every field that shapes each artifact; a change to one rebuilds it. behavior and model are optional (behavior.h has defaults; model.h says MODEL_PRESENT 0).
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
-	board: ["parts", "pins", "outline", "connectors"],
+	// test: the board carries a bottom-side test pad for each net the test field names.
+	board: ["parts", "pins", "outline", "connectors", "test"],
 	// parts: the lid's vent sits over the sensor, wherever the board generator places it.
 	enclosure: ["outline", "connectors", "parts"],
 	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
 	// model: model.h sizes the tensor arena and the weights the firmware reserves.
 	firmware: ["parts", "pins", "behavior", "requirements", "model"],
+	// The test pads follow the board's placement (outline, connectors, parts); the limits follow the power budget (rails,
+	// requirements); the self-tests follow the pins and parts.
+	testkit: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"],
 }
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
@@ -171,5 +182,18 @@ export function createFirmwareBuilder(env: Env, lock?: BuildLock): Human {
 			return buildFirmware(env.pio, env.root, dir, snapshot, revision)
 		},
 		failure: (fw) => (fw.ok ? null : `firmware does not compile:\n${fw.log}`),
+	})
+}
+
+// The production-test kit: the plan, the fixture and the factory-test firmware, from the same revision as the board's
+// test pads. Fails only when the fixture or the firmware can't be made, not when a tool is missing (that is recorded).
+export function createTestkitBuilder(env: Env, lock?: BuildLock): Human {
+	return createBuilder({
+		kind: "testkit",
+		lock,
+		inputs: BUILD_INPUTS.testkit,
+		requires: BUILD_REQUIRES.testkit,
+		build: ({ dir, snapshot, revision }) => buildTestkit(env, env.root, dir, snapshot, revision),
+		failure: (kit) => (env.pio && !kit.firmware.ok ? `factory-test firmware does not compile:\n${kit.firmware.log}` : kit.fixtureIssues.find((i) => !/not installed/.test(i)) ?? null),
 	})
 }

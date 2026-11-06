@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, writeFileSync, renameSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
-import { BUILD_INPUTS } from "../agents/builders.ts"
+import { ALL_KINDS, BUILD_INPUTS, OPTIONAL_KINDS } from "../agents/builders.ts"
 import type { ArtifactKind } from "../events.ts"
 
 export const RIPPLES_FILE = "ripples.json"
@@ -39,14 +39,16 @@ export interface Ripple {
 	reviewFollowUps: { fieldsChanged: string[]; rounds: number }
 }
 
-const KINDS: ArtifactKind[] = ["board", "enclosure", "firmware"]
+const KINDS: ArtifactKind[] = ALL_KINDS
 const builderName = (kind: string) => `build:${kind}`
 
 // Everyone a request could wake, keyed like the dashboard's lanes (src/dashboard/lanes.js): the four LLM agents by
 // role, the three builders (the QEMU boot rides on build:firmware), the grounding check and the consistency check.
-export const RIPPLE_PARTICIPANTS = ["architect", "parts", "ml", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
+export const RIPPLE_PARTICIPANTS = ["architect", "parts", "ml", "test", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
 
-function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, lastCheckClean: boolean): Omit<Ripple, "reviewFollowUps"> {
+// written: the fields some agent had written before the request; an optional builder (the test kit) wakes only once its
+// field exists, as the builder itself does.
+function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, lastCheckClean: boolean, written = new Set<string>()): Omit<Ripple, "reviewFollowUps"> {
 	const atMs = Date.parse(request.at) - startMs
 	const fields: string[] = []
 	const woke = new Set<string>()
@@ -70,6 +72,7 @@ function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, last
 				break
 			case "contract.changed": {
 				if (!fields.includes(e.payload.field)) fields.push(e.payload.field)
+				written.add(e.payload.field)
 				woke.add(e.payload.by)
 				// The same situations the participants wake on: consistency on every change, grounding on parts and pins,
 				// each builder on its inputs.
@@ -77,6 +80,8 @@ function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, last
 				if (e.payload.field === "parts" || e.payload.field === "pins") woke.add("grounding")
 				for (const kind of KINDS) {
 					if (!BUILD_INPUTS[kind].includes(e.payload.field)) continue
+					const gate = OPTIONAL_KINDS[kind]
+					if (gate && !written.has(gate)) continue
 					woke.add(builderName(kind))
 					pending.set(kind, e.payload.revision)
 				}
@@ -104,7 +109,7 @@ function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, last
 		text: request.payload.text,
 		atMs,
 		fieldsChanged: fields,
-		// Only the 9 lanes: a change by anyone else (the bench) still wakes the builders, but is not a lane of its own.
+		// Only the lanes: a change by anyone else (the bench) still wakes the builders, but is not a lane of its own.
 		woke: RIPPLE_PARTICIPANTS.filter((p) => woke.has(p)),
 		checked: RIPPLE_PARTICIPANTS.filter((p) => !woke.has(p) && turned.has(p)),
 		stayedIdle: RIPPLE_PARTICIPANTS.filter((p) => !woke.has(p) && !turned.has(p)),
@@ -131,7 +136,8 @@ export function changeRipples(trace: TraceEvent[]): Ripple[] {
 		const followFields = [...new Set(after.filter((e) => e.type === "contract.changed").map((e) => e.payload.field as string))]
 		// Every review round of the re-armed review; the first one starts right at the window's design.ready.
 		const rounds = (ready < 0 ? [] : window.slice(ready)).filter((e) => e.type === "review.completed").length
-		return { ...ripple(own, trace[start], startMs, (lastCheck?.payload.violations.length ?? 1) === 0), reviewFollowUps: { fieldsChanged: followFields, rounds } }
+		const written = new Set(trace.slice(0, start).filter((e) => e.type === "contract.changed").map((e) => e.payload.field as string))
+		return { ...ripple(own, trace[start], startMs, (lastCheck?.payload.violations.length ?? 1) === 0, written), reviewFollowUps: { fieldsChanged: followFields, rounds } }
 	})
 }
 

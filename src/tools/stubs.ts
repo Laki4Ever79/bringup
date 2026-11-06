@@ -2,10 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
 import { BUILD_INPUTS, BUILD_REQUIRES, createBuilder, type BuildLock } from "../agents/builders.ts"
-import { micPorts, mountingHoles, placedByRole } from "../codegen/circuit.ts"
+import { micPorts, mountingHoles, placedByRole, testPoints } from "../codegen/circuit.ts"
+import { testPlan, testPlanMarkdown } from "../contract/testkit.ts"
 import { behaviorHeader, modelHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { PORT_MM, STANDOFF } from "./enclosure.ts"
-import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact } from "../contract/consistency.ts"
+import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact, TestkitArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
 // --no-hardware: each builder derives its artifact straight from the contract instead of running tscircuit,
@@ -39,7 +40,10 @@ export function stubBoard(s: ContractSnapshot, revision: number, dir: string): S
 	const mcu = parts?.find((p) => p.role === "mcu")?.ref ?? "U1"
 	const nets: Record<string, string[]> = {}
 	for (const p of pins ?? []) nets[p.signal] = [`${mcu}.GPIO${p.gpio}`, `${p.partRef}.${p.partPin}`]
-	return { revision, dir, pcbPath: note(dir, "board"), stepPath: null, renderPath: null, widthMm: outline?.widthMm ?? 0, heightMm: outline?.heightMm ?? 0, nets, holes: holesOf(s), parts: Object.fromEntries((parts ?? []).map((p) => [p.ref, { mpn: p.mpn, pins: p.pins }])), placements: Object.fromEntries(placedForCase(s).map(({ ref, xMm, yMm }) => [ref, { xMm, yMm }])), stub: true }
+	// The test pads the board generator would place, on their nets (rails by the generator's names: 3V3 is V3V3).
+	const pads = testPoints(s).placed
+	for (const t of pads) (nets[/^\d/.test(t.net) ? `V${t.net}` : t.net] ??= []).push(`${t.ref}.pin1`)
+	return { revision, dir, pcbPath: note(dir, "board"), stepPath: null, renderPath: null, widthMm: outline?.widthMm ?? 0, heightMm: outline?.heightMm ?? 0, nets, holes: holesOf(s), parts: Object.fromEntries((parts ?? []).map((p) => [p.ref, { mpn: p.mpn, pins: p.pins }])), placements: Object.fromEntries([...placedForCase(s), ...pads].map(({ ref, xMm, yMm }) => [ref, { xMm, yMm }])), stub: true }
 }
 
 export function stubEnclosure(s: ContractSnapshot, revision: number, dir: string): Stub<EnclosureArtifact> {
@@ -69,12 +73,22 @@ export function stubFirmware(s: ContractSnapshot, revision: number, dir: string)
 	return { revision, ok: true, pins, sensor: parseSensorHeader(header), log: "stubbed (--no-hardware): not compiled", stub: true }
 }
 
+export function stubTestkit(s: ContractSnapshot, revision: number, dir: string): Stub<TestkitArtifact> {
+	note(dir, "test kit")
+	const plan = testPlan(s)
+	writeFileSync(join(dir, "test-plan.json"), JSON.stringify(plan, null, 2))
+	writeFileSync(join(dir, "test-plan.md"), testPlanMarkdown(plan, s))
+	const pins = Object.fromEntries((s.values.pins ?? []).map((p) => [p.signal, p.gpio]))
+	return { revision, dir, probes: plan.probes, planPath: join(dir, "test-plan.md"), fixtureStlPath: null, fixtureStepPath: null, firmware: { ok: true, log: "stubbed (--no-hardware): not compiled", pins }, fixtureIssues: [], stub: true }
+}
+
 // Same inputs and required fields as the real builders in agents/builders.ts, so the same contract changes wake them.
 export function createStubBuilders(lock?: BuildLock): Human[] {
 	return [
 		createBuilder({ kind: "board", inputs: BUILD_INPUTS.board, requires: BUILD_REQUIRES.board, lock, build: async ({ snapshot, revision, dir }) => stubBoard(snapshot, revision, dir) }),
 		createBuilder({ kind: "enclosure", inputs: BUILD_INPUTS.enclosure, requires: BUILD_REQUIRES.enclosure, lock, build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
 		createBuilder({ kind: "firmware", inputs: BUILD_INPUTS.firmware, requires: BUILD_REQUIRES.firmware, lock, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
+		createBuilder({ kind: "testkit", inputs: BUILD_INPUTS.testkit, requires: BUILD_REQUIRES.testkit, lock, build: async ({ snapshot, revision, dir }) => stubTestkit(snapshot, revision, dir) }),
 	]
 }
 

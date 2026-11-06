@@ -798,8 +798,8 @@
 
 	// Who's who: short names and initials for avatars (agent roles and lane keys); colours from model.js.
 	const WHO = {
-		architect: ["Architect", "A"], parts: ["Parts", "P"], firmware: ["Firmware", "F"], reviewer: ["Reviewer", "R"],
-		"build:board": ["Board", "B"], "build:enclosure": ["Case", "C"], "build:firmware": ["FW build", "⚙"], grounding: ["Grounding", "G"],
+		architect: ["Architect", "A"], parts: ["Parts", "P"], ml: ["ML engineer", "M"], test: ["Test engineer", "T"], firmware: ["Firmware", "F"], reviewer: ["Reviewer", "R"],
+		"build:board": ["Board", "B"], "build:enclosure": ["Case", "C"], "build:firmware": ["FW build", "⚙"], "build:testkit": ["Test kit", "K"], grounding: ["Grounding", "G"],
 		consistency: ["Consistency", "✓"], engineer: ["You", "you"], enclosure: ["Case", "C"],
 	}
 	const color = (k) => AGENT_COLORS[k] ?? AGENT_COLORS[`build:${k}`] ?? AGENT_COLORS.engineer

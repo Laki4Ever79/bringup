@@ -1,4 +1,6 @@
 import { pathHash, sensorPath } from "../contract/sensor-path.ts"
+import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
+import { testPoints } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
 import type { ContractValues, FieldName } from "../contract/types.ts"
 import { state } from "../runtime.ts"
@@ -6,7 +8,7 @@ import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
-export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model"> & { parts: ContractValues["parts"] } = {
+export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test"> & { parts: ContractValues["parts"] } = {
 	// ESP32-C3 deep sleep about 10 µA; every 5 min it wakes for a 30 ms reading and a 300 ms BLE advertising burst at
 	// about 25 mA. Average: 25 mA × 330 ms / 300 s + 10 µA = 37.5 µA, before the LDO's own quiescent current.
 	requirements: {
@@ -88,6 +90,25 @@ const STATUS_LED = { signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A"
 // spotter, int8), always listening; the checks then wake parts (no microphone), the architect (its I2S lines, and the
 // battery target always-on listening can't meet). Each step is the owner's own field.
 export const DATA_RECORDED_REQUEST = /\bdata (?:is |was |has been )?recorded|recorded the (?:training )?data/i
+// "add a production test" / "we need a test fixture": the test agent's request.
+export const TEST_REQUEST = /(production|factory|end.of.line) test|test (fixture|jig|kit|pads?)|bed.of.nails|pogo/i
+
+// The test agent's fix for its own violations: probe every net the design has (dropping ones it lost, adding new ones,
+// in the design's order), keep limits at least the design's own currents with margin, and drop what can't be placed.
+function followDesign(t: ContractValues["test"]): ContractValues["test"] {
+	const s = state().contract.snapshot()
+	const { signals, power } = probeableNets(s)
+	const wanted = [...signals, ...power.filter((n) => n !== "VBUS" || t.points.includes("VBUS"))]
+	const { awakeMa, sleepUa } = expectedCurrents(s)
+	const next = {
+		points: [...t.points.filter((p) => wanted.includes(p)), ...wanted.filter((p) => !t.points.includes(p))],
+		awakeMaxMa: awakeMa !== null && t.awakeMaxMa < awakeMa ? Math.ceil(awakeMa * 1.2) : t.awakeMaxMa,
+		sleepMaxUa: sleepUa !== null && t.sleepMaxUa < sleepUa ? Math.ceil(sleepUa * 1.5) : t.sleepMaxUa,
+	}
+	const { unplaced } = testPoints({ ...s, values: { ...s.values, test: next } })
+	return { ...next, points: next.points.filter((p) => !unplaced.includes(p)) }
+}
+
 // The model's data on the sensor path the contract describes now, or null when there is none to record on.
 function dataOn(status: "recorded" | "needed") {
 	const s = state().contract.snapshot()
@@ -252,6 +273,21 @@ export function mockScripts(): Record<string, Script> {
 				if (needed) return propose("model", { ...model, data: needed }, "the sensor path changed: the data must be recorded again on the new path")
 			}
 			return say("model unchanged")
+		},
+		"mock-test": (items) => {
+			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
+			const step = stepsTaken(items)
+			const test = state().contract.get("test")
+			if (instruction.startsWith("Change request from the engineer:")) {
+				const request = instruction.split("\n")[1] ?? ""
+				if (step > 0 || !TEST_REQUEST.test(request)) return say(TEST_REQUEST.test(request) ? "test written" : "no test change")
+				return propose("test", defaultTestSpec(state().contract.snapshot()), `engineer asked: ${request}`)
+			}
+			if (instruction.startsWith("Consistency violations for you") && test && step === 0) {
+				const fixed = followDesign(test)
+				if (JSON.stringify(fixed) !== JSON.stringify(test)) return propose("test", fixed, `the test follows the design: ${[...violationKinds(instruction)].join(", ")}`)
+			}
+			return say("test unchanged")
 		},
 		// Passes with one minor finding, so mock runs settle and still show a verdict. 55 µA × 24 h × 183 days ≈ 242 mAh.
 		"mock-reviewer": (items) =>

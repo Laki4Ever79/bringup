@@ -476,6 +476,71 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 	return placed
 }
 
+// Production-test pads (contract field test): one round copper pad per probed net on the bottom layer, where a
+// bed-of-nails fixture's pogo pins reach the board lying face up on it. On a 2.54 mm grid, a common pogo pitch, and
+// at least 3 mm in from the edge (the fixture's nest holds the board by its edge). None goes under the module (its antenna
+// wants no copper), a connector, the microphone's sound hole, or a mounting hole's keep-out.
+export const TEST_PAD = { diameterMm: 1.5, pitchMm: 2.54, edgeMm: 3, clearMm: 1, usbClearMm: 3 }
+
+export interface TestPoint {
+	ref: string
+	net: string
+	// Board-centred, like pcbX/pcbY, and in the contract frame (origin at the board's bottom-left corner), top view.
+	x: number
+	y: number
+	xMm: number
+	yMm: number
+}
+
+export function testPoints(s: ContractSnapshot): { placed: TestPoint[]; unplaced: string[] } {
+	const { outline, test, parts = [], pins = [] } = s.values
+	if (!outline || !test) return { placed: [], unplaced: [] }
+	const [W, H] = [outline.widthMm, outline.heightMm]
+	const boxes = placeParts(s)
+	const byRef = new Map(boxes.map((b) => [b.ref, b]))
+	const connectorRefs = new Set((s.values.connectors ?? []).map((c) => c.ref))
+	const roleBox = (...roles: string[]) => roles.map((r) => parts.find((p) => p.role === r)).map((p) => p && byRef.get(p.ref)).find(Boolean)
+	const blocked: { x: number; y: number; w: number; h: number }[] = [
+		// Parts with a body or holes below the board's bottom face, or (the module) an antenna over it.
+		...boxes.filter((b) => connectorRefs.has(b.ref) || ["mcu", "usb-c", "connector", "button", "battery"].includes(parts.find((p) => p.ref === b.ref)?.role ?? "")).map((b) =>
+			// The USB-C connector's pads and locating holes leave its routing little room; a pad beside it pushed a via
+			// next to a locating hole (45 mm logger: 2 hole-clearance errors, 0 without the pads).
+			connectorRefs.has(b.ref) || parts.find((p) => p.ref === b.ref)?.role === "usb-c" ? { ...b, w: b.w + 2 * TEST_PAD.usbClearMm, h: b.h + 2 * TEST_PAD.usbClearMm } : b),
+		...mountingHoles(s).map((h) => ({ x: h.x, y: h.y, w: MOUNTING_HOLE.keepoutMm, h: MOUNTING_HOLE.keepoutMm })),
+		...micPorts(s).map((m) => ({ x: m.xMm - W / 2, y: m.yMm - H / 2, w: 3, h: 3 })),
+	]
+	// Where each net is wanted: next to the part it serves, so its trace stays short. VBUS at the charger or LDO input,
+	// not at the USB-C connector: there its via landed beside the connector's locating hole (45 mm logger, 2 errors).
+	const anchor = (net: string): { x: number; y: number } => {
+		const pin = pins.find((p) => p.signal === net)
+		const box = pin ? byRef.get(pin.partRef) : net === "VBUS" ? roleBox("charger", "ldo") : net === "VBAT" ? roleBox("battery", "charger") : roleBox("ldo", "mcu")
+		return box ?? { x: 0, y: 0 }
+	}
+	const P = TEST_PAD.pitchMm
+	const half = TEST_PAD.diameterMm / 2 + TEST_PAD.clearMm
+	const cells: { x: number; y: number }[] = []
+	for (let i = -Math.floor(W / 2 / P); i <= Math.floor(W / 2 / P); i++)
+		for (let j = -Math.floor(H / 2 / P); j <= Math.floor(H / 2 / P); j++) {
+			const c = { x: +(i * P).toFixed(3), y: +(j * P).toFixed(3) }
+			if (Math.abs(c.x) > W / 2 - TEST_PAD.edgeMm || Math.abs(c.y) > H / 2 - TEST_PAD.edgeMm) continue
+			if (blocked.some((b) => Math.abs(c.x - b.x) < b.w / 2 + half && Math.abs(c.y - b.y) < b.h / 2 + half)) continue
+			cells.push(c)
+		}
+	const placed: TestPoint[] = []
+	const unplaced: string[] = []
+	const used = new Set<number>()
+	test.points.forEach((net, i) => {
+		const want = anchor(net)
+		let best = -1
+		for (let k = 0; k < cells.length; k++) if (!used.has(k) && (best < 0 || Math.hypot(cells[k].x - want.x, cells[k].y - want.y) < Math.hypot(cells[best].x - want.x, cells[best].y - want.y) - 1e-9)) best = k
+		if (best < 0) return void unplaced.push(net)
+		used.add(best)
+		const c = cells[best]
+		placed.push({ ref: `TP${i + 1}`, net, x: c.x, y: c.y, xMm: +(c.x + W / 2).toFixed(3), yMm: +(c.y + H / 2).toFixed(3) })
+	})
+	return { placed, unplaced }
+}
+
 function at(placement: Map<string, Placed>, ref: string): string {
 	const b = placement.get(ref)
 	return b ? ` pcbX={${+b.x.toFixed(2)}} pcbY={${+b.y.toFixed(2)}} pcbRotation={${b.rotation}}` : ""
@@ -633,6 +698,12 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	}
 
 	lines.push(...powerLines(s, placement))
+	// Test pads join their net by name: a contract signal's net, or a generated power net (one that reaches two parts).
+	const nets = new Set([...pins.map((p) => p.signal), ...generatedNets(s).keys()])
+	for (const tp of testPoints(s).placed.map((t) => ({ ...t, net: nets.has(t.net) ? t.net : netName(t.net) })).filter((t) => nets.has(t.net))) {
+		lines.push(`<testpoint name=${q(tp.ref)} footprintVariant="pad" padShape="circle" padDiameter="${TEST_PAD.diameterMm}mm" layer="bottom" pcbX={${tp.x}} pcbY={${tp.y}} />`)
+		lines.push(`<trace name=${q(`${tp.net}_${tp.ref}`)} from=${q(`.${tp.ref} > .pin1`)} to=${q(`net.${tp.net}`)} />`)
+	}
 	for (const h of mountingHoles(s)) lines.push(`<hole pcbX={${h.x}} pcbY={${h.y}} diameter="${h.diameterMm}mm" />`)
 
 	return [

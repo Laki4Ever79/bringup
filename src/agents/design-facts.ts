@@ -5,6 +5,8 @@ import { bleAdvertiseMs } from "../codegen/firmware.ts"
 import { dutyCycleCheckLines, estimatePower, powerBudgetLines } from "../contract/power.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { modelFactLines } from "../contract/model.ts"
+import { expectedCurrents, probeableNets } from "../contract/testkit.ts"
+import { testPoints } from "../codegen/circuit.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 
 // The facts and computed checks about the current contract, one source for everyone who judges or changes it: the
@@ -16,6 +18,7 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 	return [
 		...partFactsSection(s),
 		...fieldMeaningLines(s),
+		...testFactLines(s),
 		...(s.values.model ? ["", "## The on-device model (checked in code against the flash and RAM the firmware leaves, the sensor and its pins, and the battery)", ...modelFactLines(s)] : []),
 		"",
 		"## Power budget (computed in code from the contract and the brief, not by a model)",
@@ -89,4 +92,16 @@ export function partFactsSection(s: ContractSnapshot): string[] {
 		return notes ? [`- ${p.ref} ${p.mpn}: ${notes}`] : []
 	})
 	return ["## Part facts (from the catalog)", ...(facts.length ? facts : ["- none"]), ...chargeLedFacts(s), ...firmwareFacts(s)]
+}
+
+// For the test agent: what the design can probe, its own currents (the floor for the limits) and where the pads went.
+function testFactLines(s: ContractSnapshot): string[] {
+	const { signals, power } = probeableNets(s)
+	const { awakeMa, sleepUa } = expectedCurrents(s)
+	const lines = ["", "## Production test (computed in code)", `- Nets the fixture can probe: signals ${signals.join(", ") || "none"}; power ${power.join(", ") || "none"}.`, `- The design's own current: peak ${awakeMa ?? "unknown"} mA awake, ${sleepUa === null ? "unknown" : +sleepUa.toFixed(1)} µA asleep (MCU floor and regulators). test limits below these fail every good board.`]
+	if (s.values.test) {
+		const { placed, unplaced } = testPoints(s)
+		lines.push(`- Test pads placed: ${placed.map((p) => `${p.ref} ${p.net} (${p.xMm}, ${p.yMm})`).join(", ") || "none"}${unplaced.length ? `; no room for ${unplaced.join(", ")}` : ""}.`)
+	}
+	return lines
 }

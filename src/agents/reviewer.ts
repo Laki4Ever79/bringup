@@ -126,7 +126,7 @@ export async function reviewMessage(env: Env | undefined, revision: number, roun
 	const snapshot = s.contract.snapshot()
 	const briefPath = join(s.outDir, "brief.md")
 	const brief = existsSync(briefPath) ? readFileSync(briefPath, "utf8").trim() : "(brief missing)"
-	const artifacts = (["board", "enclosure", "firmware"] as const).map((k) =>
+	const artifacts = (["board", "enclosure", "firmware", ...(snapshot.values.test ? ["testkit" as const] : [])] as const).map((k) =>
 		artifactLine(k, s.artifacts[k], s.artifactFailures[k], s.artifactInputs[k], snapshot.versions, revision),
 	)
 	const violations = checkConsistency(snapshot, s.artifacts, brief)
