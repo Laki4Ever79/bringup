@@ -29,6 +29,20 @@ your own `secrets.h` (`WIFI_SSID`, `WIFI_PASS`, `MQTT_HOST`, `MQTT_PORT`, option
 `OTA_URL`) and set `BRINGUP_SECRETS` to its path. The compiler force-includes it from there. Without it, the firmware
 builds and reports that it isn't provisioned.
 
+## One data format, the firmware and the reader made from it
+
+The record layout, the GATT UUIDs and the MQTT topics live in one place (`src/codegen/data-format.ts`). Each firmware
+build writes `include/dataformat.h`, which the firmware reads, and `reader/bringup_reader.py`, a small Python
+reader for that design:
+
+- `decode_record`
+- `decode_history`, for a GATT history read
+- `decode_mqtt_batch`, for the MQTT history batch, with each reading's age
+- `read_history(address)`, which reads every stored reading over Bluetooth LE (needs `pip install bleak`)
+
+A test packs readings with the firmware's own record code, compiled on the host, and decodes them with the generated
+reader. Before, the format lived only in `main.cpp`, so a reader had to copy it by hand.
+
 ## What the radio costs the rest of the design
 
 From the ESP32-C3-MINI-1 & MINI-1U datasheet v2.2 (2026-05-06), now in the parts catalog:
@@ -64,9 +78,9 @@ Measured with `pio run` on the logger (6 Nov 2026):
 | Connectivity | Table | Firmware / slot | Left for a model |
 | --- | --- | --- | --- |
 | None (as before) | default.csv | 818,177 / 1,310,720 | 480 KB |
-| Bluetooth LE, GATT + BTHome | no_ota.csv | 818,719 / 2,097,152 | 1.2 MB |
+| Bluetooth LE, GATT + BTHome | no_ota.csv | 818,569 / 2,097,152 | 1.2 MB |
 | Wi-Fi, MQTT | no_ota.csv | 1,086,059 / 2,097,152 | 987 KB |
-| Wi-Fi, MQTT, updates | default.csv | 1,188,472 / 1,310,720 | **119 KB** |
+| Wi-Fi, MQTT, updates | default.csv | 1,188,320 / 1,310,720 | **119 KB** |
 
 A model that doesn't fit beside two slots, but would fit in one, is a `model-flash` violation for both the ML
 engineer and the connectivity engineer, which says so.

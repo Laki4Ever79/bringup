@@ -72,7 +72,7 @@ test("the update choice picks the partition table, and the flash a model gets fo
 	assert.deepEqual([partitionLayout(logger(WIFI)).table, partitionLayout(logger(WIFI)).appBytes], ["no_ota.csv", 0x200000])
 	assert.equal(partitionLayout(logger({ ...WIFI, updates: "ota" })).table, "default.csv")
 	const ota = firmwareBudget(logger({ ...WIFI, updates: "ota" }))
-	assert.equal(ota.appFlashBytes - ota.firmwareFlashBytes, 1_310_720 - 1_188_472)
+	assert.equal(ota.appFlashBytes - ota.firmwareFlashBytes, 1_310_720 - 1_188_320)
 	// A model with 200 KB of weights fits Wi-Fi without updates, not with: the check says the update slot is the cost.
 	const big = logger({ ...WIFI, updates: "ota" })
 	big.values.parts = [...big.values.parts!, MIC_PART]
