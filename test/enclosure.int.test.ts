@@ -129,3 +129,27 @@ test("the print check catches a thin wall, a long bridge and a lid that won't fi
 	assert.equal(tight.ok, false)
 	assert.ok(tight.issues.some((i) => /lid clearance 0\.05 mm/.test(i)), tight.issues.join("; "))
 })
+
+test("the case field's features are built and measured on the solid, and the case still passes the print check", { skip }, async () => {
+	const c = fixtureContract()
+	c.values.case = {
+		wallMm: 2,
+		heightMm: 16,
+		features: [
+			{ id: "mount", kind: "wall-mount", sides: "top-bottom" },
+			{ id: "loop", kind: "lanyard", corner: "top-right" },
+			{ id: "label", kind: "text", text: "BRINGUP" },
+			{ id: "gland", kind: "hole", edge: "right", offsetMm: 15, diameterMm: 6 },
+		],
+	}
+	c.versions.case = 1
+	const enclosure = await buildEnclosure(python!, root, tmp(), c, c.revision)
+	assert.deepEqual(enclosure.printCheck, { ok: true, issues: [] })
+	const byId = Object.fromEntries(enclosure.features!.map((f) => [f.id, f]))
+	for (const id of ["mount", "loop", "label", "gland"]) assert.equal(byId[id]?.ok, true, `${id}: ${JSON.stringify(byId[id])}`)
+	// The gland's hole, read back from the solid: 6 mm across, centred 15 mm along the right wall.
+	assert.ok(Math.abs(byId.gland.offsetMm! - 15) < 0.1 && Math.abs(byId.gland.diameterMm! - 6) < 0.1, JSON.stringify(byId.gland))
+	// The mount tabs' holes: 4.5 mm, centred on the top wall's tab (board 30 mm + 2 mm clearance + 2 mm wall + 5 mm).
+	assert.ok(Math.abs(byId.mount.diameterMm! - 4.5) < 0.1 && Math.abs(Math.abs(byId.mount.yMm! - 15) - 24) < 0.1, JSON.stringify(byId.mount))
+	assert.deepEqual(checkConsistency(c, { enclosure }).filter((v) => v.kind.startsWith("case-")), [])
+})

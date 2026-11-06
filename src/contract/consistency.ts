@@ -5,6 +5,8 @@ import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorD
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
 import { modelChecks, type ModelViolation } from "./model.ts"
 import { fixtureChecks, testChecks, type TestViolation } from "./testkit.ts"
+import { builtFeatureChecks, caseChecks, type BuiltFeature, type CaseViolation } from "./case.ts"
+import type { CaseFeature } from "./types.ts"
 import type { TestPoint } from "../codegen/circuit.ts"
 
 export interface BoardArtifact {
@@ -51,6 +53,10 @@ export interface EnclosureArtifact {
 	vents?: { ref: string; xMm: number; yMm: number; widthMm: number; heightMm: number }[]
 	// Openings through the floor under bottom-port microphones, measured from the built case.
 	ports?: { ref: string; xMm: number; yMm: number; diameterMm: number }[]
+	// The case field's features as built, each measured on the solid (contract/case.ts BuiltFeature).
+	features?: BuiltFeature[]
+	// The case field's features the build was given: the built ones are compared only while these are current.
+	featuresAsked?: CaseFeature[]
 }
 
 export interface FirmwareArtifact {
@@ -105,6 +111,7 @@ export type ViolationKind =
 	| "rail-underrated"
 	| ModelViolation["kind"]
 	| TestViolation["kind"]
+	| CaseViolation["kind"]
 
 export interface Violation {
 	kind: ViolationKind
@@ -129,7 +136,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit))
+	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)

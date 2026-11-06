@@ -1,10 +1,11 @@
 // "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field. "ml" owns
-// the on-device model, "test" the production test (test pads, pass limits).
+// the on-device model, "test" the production test (test pads, pass limits), "enclosure" the case designer's field (case:
+// walls, height, added features); the enclosure builder makes the case from it.
 export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml" | "test"
 
-export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test"
+export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test" | "case"
 
-export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test"]
+export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case"]
 
 // The fields every design writes; behavior is optional (the firmware has defaults).
 export const CORE_FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
@@ -19,6 +20,7 @@ export const OWNERS: Record<FieldName, AgentRole> = {
 	behavior: "firmware",
 	model: "ml",
 	test: "test",
+	case: "enclosure",
 }
 
 // How the device spends its time: awake for activeMs every periodS seconds, drawing sleepUa in between.
@@ -129,6 +131,30 @@ export interface TestSpec {
 	sleepMaxUa: number
 }
 
+// The case, as the case designer wants it: the enclosure builder (py/enclosure.py) makes the shell, the cutouts, the
+// standoffs and the lid from the board, and these settings and features on top. Optional: without it the case has 2 mm
+// walls, a 14 mm body and no features. The case's outer size is the board's outline plus clearance and walls on each
+// side, so a case that must be smaller means a smaller board: a change to the architect's outline, which also waits
+// for the engineer's confirmation (contract/case.ts).
+export interface CaseSpec {
+	// Wall and floor thickness.
+	wallMm: number
+	// The body's outer height, floor underside to the lid's seat (the lid's plate adds its own 2 mm).
+	heightMm: number
+	features: CaseFeature[]
+}
+
+export type CaseFeature =
+	// Two flat tabs with a screw hole, flush with the floor, on opposite sides: screws the case to a wall.
+	| { id: string; kind: "wall-mount"; sides: "left-right" | "top-bottom" }
+	// A flat tab with a hole for a lanyard or a key ring, at one corner on the left or right wall.
+	| { id: string; kind: "lanyard"; corner: "top-left" | "top-right" | "bottom-left" | "bottom-right" }
+	// Lettering engraved into the lid's top, centred.
+	| { id: string; kind: "text"; text: string }
+	// A round hole through a wall (a cable gland, a cable, a light pipe), centred offsetMm along the edge in the
+	// connectors' frame, halfway up the wall's free height.
+	| { id: string; kind: "hole"; edge: "left" | "right" | "top" | "bottom"; offsetMm: number; diameterMm: number }
+
 export interface Behavior {
 	blinkMs: number
 	tiltBlinkMs: number
@@ -145,6 +171,7 @@ export type ContractValues = {
 	behavior: Behavior
 	model: ModelSpec
 	test: TestSpec
+	case: CaseSpec
 }
 
 export interface ContractSnapshot {

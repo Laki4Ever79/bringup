@@ -8,6 +8,7 @@ export const AGENT_COLORS = {
 	parts: "#a855f7",
 	ml: "#84cc16",
 	test: "#f97316",
+	enclosure: "#f472b6",
 	firmware: "#14b8a6",
 	reviewer: "#f59e0b",
 	"build:board": "#22c55e",
@@ -20,7 +21,7 @@ export const AGENT_COLORS = {
 }
 
 // Who owns each contract field (src/contract/types.ts OWNERS).
-const OWNERS = { requirements: "architect", outline: "architect", connectors: "architect", rails: "architect", parts: "parts", pins: "architect", behavior: "firmware", model: "ml", test: "test" }
+const OWNERS = { requirements: "architect", outline: "architect", connectors: "architect", rails: "architect", parts: "parts", pins: "architect", behavior: "firmware", model: "ml", test: "test", case: "enclosure" }
 
 // ── Revision scrubber ────────────────────────────────────────────────────────────────────────────
 
@@ -128,7 +129,7 @@ export function prCards(events, snapshots) {
 		const p = e.payload ?? {}
 		if (e.type === "change.proposed") {
 			const needsEngineer = p.needsEngineer === true
-			cards.set(p.proposalId, { id: p.proposalId, field: p.field, requester: p.by, owner: OWNERS[p.field] ?? "architect", reason: p.reason, needsEngineer, status: needsEngineer ? "waiting" : "pending", resolved: false, votes: [], decidedBy: null, why: null, revision: null, diff: [], at: e.at })
+			cards.set(p.proposalId, { id: p.proposalId, field: p.field, requester: p.by, owner: OWNERS[p.field] ?? "architect", reason: p.reason, needsEngineer, ...(typeof p.warning === "string" ? { warning: p.warning } : {}), status: needsEngineer ? "waiting" : "pending", resolved: false, votes: [], decidedBy: null, why: null, revision: null, diff: [], at: e.at })
 		} else if (e.type === "change.decided" && cards.has(p.proposalId)) {
 			const c = cards.get(p.proposalId)
 			c.votes.push({ by: p.by, approved: p.approved, reason: p.reason })

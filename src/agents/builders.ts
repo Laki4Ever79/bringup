@@ -43,8 +43,8 @@ export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "tes
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	// test: the board carries a bottom-side test pad for each net the test field names.
 	board: ["parts", "pins", "outline", "connectors", "test"],
-	// parts: the lid's vent sits over the sensor, wherever the board generator places it.
-	enclosure: ["outline", "connectors", "parts"],
+	// parts: the lid's vent sits over the sensor, wherever the board generator places it. case: walls, height, features.
+	enclosure: ["outline", "connectors", "parts", "case"],
 	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
 	// model: model.h sizes the tensor arena and the weights the firmware reserves.
 	firmware: ["parts", "pins", "behavior", "requirements", "model"],

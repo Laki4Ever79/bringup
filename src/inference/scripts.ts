@@ -2,13 +2,14 @@ import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { testPoints } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
-import type { ContractValues, FieldName } from "../contract/types.ts"
+import type { CaseSpec, ContractSnapshot, ContractValues, FieldName } from "../contract/types.ts"
+import { boardFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
 import { state } from "../runtime.ts"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
-export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test"> & { parts: ContractValues["parts"] } = {
+export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case"> & { parts: ContractValues["parts"] } = {
 	// ESP32-C3 deep sleep about 10 µA; every 5 min it wakes for a 30 ms reading and a 300 ms BLE advertising burst at
 	// about 25 mA. Average: 25 mA × 330 ms / 300 s + 10 µA = 37.5 µA, before the LDO's own quiescent current.
 	requirements: {
@@ -115,6 +116,78 @@ function dataOn(status: "recorded" | "needed") {
 	const path = sensorPath(s)
 	return path ? { status, revision: s.revision, pathHash: pathHash(path), path } : null
 }
+// A request about the case: the case designer's. Its size, walls, height, lid, lettering, tabs, loops and holes.
+export const CASE_REQUEST = /\b(case|enclosure|housing|lid)\b|wall.?mount|lanyard|key ?ring|cable gland/i
+const EDGE_ORDER = ["right", "top", "bottom", "left"] as const
+
+// The case's outer width a request asks for ("make the case 45 mm wide"), if any.
+export function requestedCaseWidth(request: string): number | null {
+	const m = /(\d+(?:\.\d+)?)\s*mm wide/i.exec(request)
+	return m && CASE_REQUEST.test(request) ? Number(m[1]) : null
+}
+
+const clean = (c: CaseSpec, s: ContractSnapshot, id: string) => !caseChecks({ ...s, values: { ...s.values, case: c } }).some((v) => v.message.includes(` ${id} `) || v.message.startsWith(`${id} `))
+
+// Puts a hole where it fits: its own edge first, from the middle outwards in 1 mm steps, then the other edges.
+type Edge = (typeof EDGE_ORDER)[number]
+function placeHole(c: CaseSpec, s: ContractSnapshot, id: string, edges: readonly Edge[]): CaseSpec {
+	const outline = s.values.outline!
+	for (const edge of edges) {
+		const len = edge === "left" || edge === "right" ? outline.heightMm : outline.widthMm
+		for (let k = 0; k <= len; k++) {
+			const offsetMm = Math.round(len / 2 + (k % 2 === 0 ? k / 2 : -(k + 1) / 2))
+			const next = { ...c, features: c.features.map((f) => (f.id === id && f.kind === "hole" ? { ...f, edge, offsetMm } : f)) }
+			if (clean(next, s, id)) return next
+		}
+	}
+	return c
+}
+
+// The scripted case designer's reading of a request: the new case field. Deterministic, like every mock script.
+export function caseFromRequest(request: string, s: ContractSnapshot): CaseSpec {
+	let c: CaseSpec = structuredClone(caseOf(s))
+	const connectorEdges = new Set((s.values.connectors ?? []).map((k) => k.edge))
+	const walls = /(\d+(?:\.\d+)?)\s*mm(?: thick)? walls?/i.exec(request)
+	if (walls) c.wallMm = Number(walls[1])
+	else if (/(thicker|sturdier|stronger) walls?/i.test(request)) c.wallMm = Math.min(4, c.wallMm + 1)
+	else if (/thinner walls?/i.test(request)) c.wallMm = Math.max(1.2, c.wallMm - 0.5)
+	const tall = /(\d+(?:\.\d+)?)\s*mm (?:tall|high)/i.exec(request)
+	if (tall) c.heightMm = Number(tall[1])
+	else if (/\b(taller|higher)\b/i.test(request)) c.heightMm += 4
+	else if (/\b(lower|slimmer|flatter|thinner case)\b/i.test(request)) c.heightMm = Math.max(minCaseHeight(s, c), c.heightMm - 3)
+	const add = (f: CaseSpec["features"][number]) => (c = { ...c, features: [...c.features.filter((x) => x.id !== f.id), f] })
+	if (/wall.?mount|mounting (tabs?|ears?)|screw it to a wall/i.test(request))
+		add({ id: "wall-mount", kind: "wall-mount", sides: connectorEdges.has("left") || connectorEdges.has("right") ? "top-bottom" : "left-right" })
+	if (/lanyard|key ?ring|strap/i.test(request)) {
+		const corner = (["top-right", "bottom-right", "top-left", "bottom-left"] as const).find((k) => !connectorEdges.has(k.endsWith("left") ? "left" : "right")) ?? "top-right"
+		add({ id: "lanyard", kind: "lanyard", corner })
+	}
+	const quoted = /["“']([^"”']{1,24})["”']/.exec(request)?.[1]?.replace(/[^A-Za-z0-9 .,:!?&+#/-]/g, "").trim()
+	if (quoted && /engrave|text|label|logo|write|name|letter/i.test(request)) add({ id: "label", kind: "text", text: quoted })
+	if (/cable gland|\bhole\b/i.test(request)) {
+		// An M12 cable gland (the common size for a 3-6.5 mm cable) wants a 12.2 mm hole: a typical figure, check the
+		// gland's datasheet. A plain cable hole: 6 mm.
+		const given = /(\d+(?:\.\d+)?)\s*mm (?:hole|gland|cable gland)/i.exec(request)
+		const diameterMm = given ? Number(given[1]) : /gland/i.test(request) ? 12.2 : 6
+		const asked = /on the (left|right|top|bottom)/i.exec(request)?.[1]?.toLowerCase() as Edge | undefined
+		const edge = asked ?? EDGE_ORDER.find((e) => !connectorEdges.has(e)) ?? "right"
+		const id = `hole-${c.features.filter((f) => f.kind === "hole").length + 1}`
+		// A hole this big needs this much wall between the floor and the lid's lip.
+		c.heightMm = Math.max(c.heightMm, Math.ceil(diameterMm + 1 + LID.lipMm + c.wallMm))
+		add({ id, kind: "hole", edge, offsetMm: 0, diameterMm })
+		c = placeHole(c, s, id, asked ? [asked] : [edge, ...EDGE_ORDER.filter((e) => e !== edge)])
+	}
+	return c
+}
+
+// The scripted case designer's fix for its own violations: a body tall enough, every hole moved to where it fits.
+function caseFollows(s: ContractSnapshot): CaseSpec {
+	let c: CaseSpec = structuredClone(caseOf(s))
+	c.heightMm = Math.max(c.heightMm, minCaseHeight(s, c))
+	for (const f of c.features) if (f.kind === "hole" && !clean(c, s, f.id)) c = placeHole(c, s, f.id, [f.edge, ...EDGE_ORDER.filter((e) => e !== f.edge)])
+	return c
+}
+
 export const WAKE_WORD_REQUEST = /wake ?word|keyword|voice command|listen for/i
 export const WAKE_WORD_MODEL = { task: "wake word", sensor: "microphone", sampleRateHz: 16000, windowMs: 1000, channels: 1, weightsKb: 53, arenaKb: 23, runtime: "tflite-micro", quantization: "int8", listening: "always" } as const
 export const MIC_PART = { ref: "U5", role: "microphone", mpn: "ICS-43434", lcsc: "C5656610", footprint: "ics43434", pins: ["WS", "LR", "GND", "SCK", "VDD", "SD"] }
@@ -202,6 +275,8 @@ export function mockScripts(): Record<string, Script> {
 					if (step < 2 && !pins.some((p) => p.signal === "I2C_SDA")) return propose("pins", [...pins, ...SENSOR_PINS], "the sensor's I2C bus on GPIO8/GPIO9")
 					return say("sensor and pins set")
 				}
+				// The case designer's request; a board it needs comes back as its proposal.
+				if (CASE_REQUEST.test(instruction.split("\n")[1] ?? "")) return say("left to the case")
 				const width = /(\d+(?:\.\d+)?)\s*mm wide/.exec(instruction)?.[1]
 				const outline = state().contract.get("outline")
 				if (step > 0 || !width || !outline) return say(width ? "outline updated" : "no outline change")
@@ -209,7 +284,7 @@ export function mockScripts(): Record<string, Script> {
 			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
-				const why = /change "rails"/.test(instruction) ? "a measurement beats the estimate" : "GPIO10 is free"
+				const why = /change "rails"/.test(instruction) ? "a measurement beats the estimate" : /change "outline"/.test(instruction) ? "the board takes the size the case needs; the board build shows whether the parts still fit" : "GPIO10 is free"
 				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: why })] : say("decided")
 			}
 			if (instruction.startsWith("Brief")) {
@@ -288,6 +363,37 @@ export function mockScripts(): Record<string, Script> {
 				if (JSON.stringify(fixed) !== JSON.stringify(test)) return propose("test", fixed, `the test follows the design: ${[...violationKinds(instruction)].join(", ")}`)
 			}
 			return say("test unchanged")
+		},
+		"mock-enclosure": (items) => {
+			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
+			const step = stepsTaken(items)
+			const s = state().contract.snapshot()
+			const current = s.values.case
+			if (instruction.startsWith("Change request from the engineer:")) {
+				const request = instruction.split("\n")[1] ?? ""
+				if (!CASE_REQUEST.test(request) || !s.values.outline) return say("no case change")
+				const last = text(items.findLast((i) => i instanceof FunctionCallOutputItem))
+				if (last.startsWith("rejected")) return say("board kept as is")
+				if (step === 0) {
+					const value = caseFromRequest(request, s)
+					if (JSON.stringify(value) !== JSON.stringify(caseOf(s)) || !current) return propose("case", value, `engineer asked: ${request}`)
+				}
+				// The outer size follows the board: the board the case needs, asked of the architect (and the engineer).
+				const outer = requestedCaseWidth(request)
+				const board = outer === null ? null : boardFor(outer, caseOf(s))
+				if (step < 2 && board !== null && board !== s.values.outline.widthMm) return propose("outline", { ...s.values.outline, widthMm: board }, `a ${outer} mm wide case holds a ${board} mm board (2 mm clearance and ${caseOf(s).wallMm} mm walls each side)`)
+				return say("case updated")
+			}
+			if (instruction.startsWith("Consistency violations for you") && current && step === 0) {
+				const fixed = caseFollows(s)
+				if (JSON.stringify(fixed) !== JSON.stringify(current)) return propose("case", fixed, `the case follows the board: ${[...violationKinds(instruction)].join(", ")}`)
+				return say("no case fix")
+			}
+			if (instruction.startsWith("Change request")) {
+				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
+				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "the case still fits" })] : say("decided")
+			}
+			return say("case unchanged")
 		},
 		// Passes with one minor finding, so mock runs settle and still show a verdict. 55 µA × 24 h × 183 days ≈ 242 mAh.
 		"mock-reviewer": (items) =>

@@ -1,3 +1,4 @@
+import { caseOuter } from "./contract/case.ts"
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import type { StockSuggestion } from "./tools/sourcing.ts"
 import { dirname, join } from "node:path"
@@ -195,6 +196,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Board ${v.outline?.widthMm}×${v.outline?.heightMm} mm; connectors: ${(v.connectors ?? []).map((x) => `${x.ref} ${x.kind} on ${x.edge}`).join(", ") || "none"}`,
 		`- Parts: ${(v.parts ?? []).map((p) => `${p.ref} ${p.mpn}${p.lcsc ? ` (${p.lcsc})` : ""}`).join(", ")}`,
 		`- Pins: ${(v.pins ?? []).map((p) => `${p.signal}=GPIO${p.gpio}→${p.partRef}.${p.partPin}`).join(", ")}`,
+		...(v.case && v.outline ? [`- Case: outer ${caseOuter(v.outline, v.case).widthMm}×${caseOuter(v.outline, v.case).heightMm}×${v.case.heightMm} mm, ${v.case.wallMm} mm walls; features: ${v.case.features.map((f) => `${f.id} (${f.kind}${f.kind === "text" ? ` "${f.text}"` : f.kind === "hole" ? ` ${f.diameterMm} mm on the ${f.edge}` : ""})`).join(", ") || "none"}`] : []),
 		...(v.test ? [`- Production test: ${v.test.points.length} test pads (${v.test.points.join(", ")}); limits awake ≤ ${v.test.awakeMaxMa} mA, asleep ≤ ${v.test.sleepMaxUa} µA${s.artifacts.testkit ? `; kit in ${s.artifacts.testkit.dir} (test-plan.md, fixture.stl, factory-test firmware ${s.artifacts.testkit.firmware.ok ? "compiles" : "FAILS"})` : ""}`] : []),
 		...(v.model ? [`- Model: ${v.model.task} (${v.model.sensor} at ${v.model.sampleRateHz} Hz, ${v.model.windowMs} ms window), weights ${v.model.weightsKb} KB, arena ${v.model.arenaKb} KB, ${v.model.quantization} ${v.model.runtime}, listening ${v.model.listening}`] : []),
 		...(v.model?.data ? [`- Model data: ${v.model.data.status === "recorded" ? "recorded" : "NEEDED"} on sensor path ${v.model.data.pathHash} (rev ${v.model.data.revision})${v.model.data.status === "needed" ? ": the hardware moved under the model's training data; record it again with the data-collection firmware" : ""}`] : []),

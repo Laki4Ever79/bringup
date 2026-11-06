@@ -32,8 +32,8 @@ test("a problem mid-way names it in words, not a count", () => {
 
 test("done: the change, everything agreeing, how long, how many agents had to act", () => {
 	const s = statusLine({ ripple: ripple({ state: "consistent", durationMs: 32_000 }), now: at(40) })
-	assert.deepEqual(s, { state: "consistent", headline: "40 mm wide: board, case and firmware agree", detail: "in 32 s · 4 of 12 agents had to act" })
-	assert.equal(statusLine({ ripple: ripple({ state: "consistent", durationMs: 300 }), now: at(40), stubbed: true }).detail, "in under 1 s · hardware stubbed · 4 of 12 agents had to act")
+	assert.deepEqual(s, { state: "consistent", headline: "40 mm wide: board, case and firmware agree", detail: "in 32 s · 4 of 13 agents had to act" })
+	assert.equal(statusLine({ ripple: ripple({ state: "consistent", durationMs: 300 }), now: at(40), stubbed: true }).detail, "in under 1 s · hardware stubbed · 4 of 13 agents had to act")
 	assert.deepEqual(statusLine({ ripple: ripple({ state: "no-change", woke: [], checked: ["architect", "firmware"], fieldsChanged: [], text: "paint it blue" }), now: at(40) }), { state: "no-change", headline: "Nothing to change for “paint it blue”", detail: "2 agents checked it · no field moved" })
 	assert.deepEqual(statusLine({ ripple: ripple({ state: "unsettled", violations: [3] }), violations: [{ kind: "pin-mismatch" }], now: at(40) }), { state: "unsettled", headline: "Stopped: 3 mismatches left after 40 mm wide", detail: "the firmware's pins don't match the board" })
 })

@@ -13,7 +13,7 @@ const activity = (role: string, phase: string, text: string) => ev("agent.activi
 const changed = (field: string, version: number, revision: number) => ev("contract.changed", { field, version, revision, by: "architect" })
 
 test("lanes: one row per participant, agents first", () => {
-	assert.deepEqual(LANES.map((l: { label: string }) => l.label), ["Architect", "Part selector", "ML engineer", "Test engineer", "Firmware reviewer", "Brief reviewer", "Board", "Enclosure", "Firmware build", "Test kit", "Grounding check", "Consistency"])
+	assert.deepEqual(LANES.map((l: { label: string }) => l.label), ["Architect", "Part selector", "ML engineer", "Test engineer", "Case designer", "Firmware reviewer", "Brief reviewer", "Board", "Enclosure", "Firmware build", "Test kit", "Grounding check", "Consistency"])
 })
 
 test("an agent.activity line updates that agent's lane: status, text, history", () => {

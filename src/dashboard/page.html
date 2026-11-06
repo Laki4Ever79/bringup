@@ -431,6 +431,7 @@
 	.badge.approved { color: #fff; background: var(--ok); } .badge.rejected { color: #fff; background: var(--error); }
 	.badge.pending { color: var(--ink); border: 1px solid var(--ink); } .badge.waiting { color: #fff; background: var(--warn); }
 	.pr .reason { font-size: 13px; color: var(--ink-2); }
+	.pr .warn { font-size: 13px; font-weight: 600; color: #7f1d1d; background: #fee2e2; border-left: 4px solid #dc2626; padding: 6px 8px; margin-top: 6px; }
 	.pr .diff { font: 500 12px/1.5 var(--mono); }
 	.pr .diff div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.add { color: var(--ok); } .del { color: var(--error); } .mod { color: var(--warn); }
@@ -800,7 +801,7 @@
 	const WHO = {
 		architect: ["Architect", "A"], parts: ["Parts", "P"], ml: ["ML engineer", "M"], test: ["Test engineer", "T"], firmware: ["Firmware", "F"], reviewer: ["Reviewer", "R"],
 		"build:board": ["Board", "B"], "build:enclosure": ["Case", "C"], "build:firmware": ["FW build", "⚙"], "build:testkit": ["Test kit", "K"], grounding: ["Grounding", "G"],
-		consistency: ["Consistency", "✓"], engineer: ["You", "you"], enclosure: ["Case", "C"],
+		consistency: ["Consistency", "✓"], engineer: ["You", "you"], enclosure: ["Case designer", "C"],
 	}
 	const color = (k) => AGENT_COLORS[k] ?? AGENT_COLORS[`build:${k}`] ?? AGENT_COLORS.engineer
 	const avatar = (k) => `<span class="avatar" style="background:${color(k)}" title="${esc(WHO[k]?.[0] ?? k)}">${esc(WHO[k]?.[1] ?? String(k)[0]?.toUpperCase())}</span>`
@@ -1774,9 +1775,10 @@
 			const act = c.status === "waiting" && mine === undefined
 				? `<div class="act">${votes}<input placeholder="reason (optional)" maxlength="300"><button class="btn approve" data-v="1">Approve</button><button class="btn reject" data-v="0">Reject</button></div>`
 				: `<div class="foot">${votes}<span class="why">${c.why ? `“${esc(c.why)}”` : ""}</span></div>`
-			return `<div class="pr ${c.status}" data-id="${esc(c.id)}"><div class="who">${avatar(c.requester)}<span>→</span>${avatar(c.owner)}${c.needsEngineer ? `<span>+</span>${avatar("engineer")}` : ""}<span class="field">${esc(c.field)}</span><span class="badge ${c.status}">${esc(BADGE[c.status])}</span></div><div class="reason" title="${esc(c.reason)}">${esc(WHO[c.requester]?.[0] ?? c.requester)}: ${esc(c.reason)}</div><div class="diff">${diff}</div>${act}</div>`
+			return `<div class="pr ${c.status}" data-id="${esc(c.id)}"><div class="who">${avatar(c.requester)}<span>→</span>${avatar(c.owner)}${c.needsEngineer ? `<span>+</span>${avatar("engineer")}` : ""}<span class="field">${esc(c.field)}</span><span class="badge ${c.status}">${esc(BADGE[c.status])}</span></div><div class="reason" title="${esc(c.reason)}">${esc(WHO[c.requester]?.[0] ?? c.requester)}: ${esc(c.reason)}</div>${c.warning ? `<div class="warn">⚠ ${esc(c.warning)}</div>` : ""}<div class="diff">${diff}</div>${act}</div>`
 		}
 		const prHtml = new Map()
+		const warnedOpen = new Set()
 		function renderPRs() {
 			const list = prCards(S.events, S.snapshots).reverse()
 			const open = list.filter((c) => c.status === "pending" || c.status === "waiting").length
@@ -1786,6 +1788,13 @@
 			$("changes-btn").classList.toggle("waiting", waiting > 0)
 			$("held").classList.toggle("hidden", waiting === 0)
 			if (waiting) $("held").innerHTML = `<button class="pill">⚑ ${waiting} change${waiting === 1 ? "" : "s"} waiting for you →</button>`
+			// A change that would change the PCB opens the drawer by itself, once per card: it must not go unnoticed.
+			for (const c of list)
+				if (c.warning && c.status === "waiting" && !S.myVotes.has(c.id) && !warnedOpen.has(c.id)) {
+					warnedOpen.add(c.id)
+					for (const id of ["feed", "why", "drift"]) $(id).classList.remove("open")
+					$("changes").classList.add("open")
+				}
 			if (list.length === 0) return
 			const prs = $("prs")
 			prs.querySelector(".none")?.remove()
@@ -1843,7 +1852,8 @@
 		// A ripple in flight counts up every second.
 		setInterval(() => { if (S.requests.length || !S.settled) schedule() }, 1000)
 
-		const FIELDS = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior"]
+		// The contract's fields, in its order (src/contract/types.ts FIELDS; test/case.test.ts keeps them equal).
+		const FIELDS = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case"]
 		const secs = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s` }
 		const STAMP = { consistent: "✓", rippling: "↯", sent: "→", unsettled: "✗", "no-change": "=", initial: "·" }
 
@@ -2174,7 +2184,7 @@
 			switch (e.type) {
 				case "run.started": return `run started: review ${p.review ? "on" : "off"}, engineer approval ${p.engineerApproval ? "on" : "off"}${p.noHardware ? ", hardware stubbed" : ""}${p.bench ? ", live bench" : ""}${p.stay ? ", stays up for changes" : ""}`
 				case "contract.changed": return `${p.field} → v${p.version} by ${p.by}`
-				case "change.proposed": return `${p.by} asks to change ${p.field}: ${p.reason}${p.needsEngineer ? " (needs you)" : ""}`
+				case "change.proposed": return `${p.by} asks to change ${p.field}: ${p.reason}${p.needsEngineer ? " (needs you)" : ""}${p.warning ? ` ⚠ ${p.warning}` : ""}`
 				case "change.decided": return `${p.by} votes ${p.approved ? "approve" : "reject"}: ${p.reason}`
 				case "change.resolved": return `${p.approved ? "approved" : "rejected"}: ${p.reason}`
 				case "artifact.ready": return `${p.kind} built for rev ${p.revision}`

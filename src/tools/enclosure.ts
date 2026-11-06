@@ -6,19 +6,15 @@ import { promisify } from "node:util"
 import type { EnclosureArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { micPorts, mountingHoles, placedByRole } from "../codegen/circuit.ts"
+import { CASE_CLEARANCE_MM, caseOf, holeCentreZ, LANYARD_TAB, LID, MOUNT_TAB, STANDOFF, TEXT, type BuiltFeature } from "../contract/case.ts"
 
 const run = promisify(execFile)
 
 const TIMEOUT_MS = 120_000
 const STDERR_TAIL_LINES = 40
 
-// Board mounting: M2 self-tapping screws (ISO 7049 / PT style) straight into a 1.6 mm pilot hole in a 5 mm post.
-// No inserts and no soldering iron; PLA and PETG hold a few re-assemblies, which is what a prototype needs.
-export const STANDOFF = { heightMm: 3, outerMm: 5, pilotMm: 1.6 }
-// Lid: a flat plate with a lip that drops 3 mm into the case, 0.2 mm clearance per side. It prints plate-down with
-// no overhangs, and at 0.2 mm layers the first-layer squish takes up most of the gap, so it sits as a light press
-// fit. A snap-fit was the alternative; its cantilevers are brittle in PLA and need tuning per printer.
-export const LID = { plateMm: 2, lipMm: 3, lipWallMm: 1.6, clearanceMm: 0.2 }
+// The case's fixed geometry lives with its checks (contract/case.ts); re-exported for the stub and older imports.
+export { LID, STANDOFF } from "../contract/case.ts"
 // The round opening through the floor under a bottom-port microphone (py/enclosure.py PORT_MM; the stub uses this).
 export const PORT_MM = 2
 
@@ -33,7 +29,22 @@ export function enclosureSpec(s: ContractSnapshot): object {
 	const sensors = placedByRole(s, "sensor").map(({ ref, xMm, yMm }) => ({ ref, xMm, yMm }))
 	// A bottom-port microphone's sound hole gets an opening through the floor.
 	const ports = micPorts(s)
-	return { outline, connectors: connectors ?? [], holes, sensors, ports, wallMm: 2, clearanceMm: 2, heightMm: 14, standoff: STANDOFF, lid: LID }
+	const c = caseOf(s)
+	// A copy: the caller may edit its spec (the print-check tests do), never the shared geometry.
+	return structuredClone({
+		outline,
+		connectors: connectors ?? [],
+		holes,
+		sensors,
+		ports,
+		wallMm: c.wallMm,
+		clearanceMm: CASE_CLEARANCE_MM,
+		heightMm: c.heightMm,
+		standoff: STANDOFF,
+		lid: LID,
+		features: c.features,
+		featureGeometry: { mountTab: MOUNT_TAB, lanyardTab: LANYARD_TAB, text: TEXT, holeZMm: holeCentreZ(c) },
+	})
 }
 
 // Builds the case and lid (STEP + STL), cutouts.json, standoffs.json and print.json under dir. Cutouts and standoffs
@@ -56,6 +67,7 @@ export async function buildEnclosure(python: string, root: string, dir: string, 
 	const { ok, issues } = await read<{ ok: boolean; issues: string[] }>("print.json")
 	const vents = await read<NonNullable<EnclosureArtifact["vents"]>>("vents.json")
 	const ports = existsSync(join(dir, "ports.json")) ? await read<NonNullable<EnclosureArtifact["ports"]>>("ports.json") : []
+	const features = existsSync(join(dir, "features.json")) ? await read<BuiltFeature[]>("features.json") : []
 	return {
 		revision,
 		stlPath: join(dir, "case.stl"),
@@ -67,5 +79,7 @@ export async function buildEnclosure(python: string, root: string, dir: string, 
 		printCheck: { ok, issues },
 		vents,
 		ports,
+		features,
+		featuresAsked: caseOf(s).features,
 	}
 }

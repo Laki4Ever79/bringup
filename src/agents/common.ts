@@ -1,5 +1,5 @@
 import { createAgent, DeveloperMessageItem, ModelContext, type Agent, type InferenceInput, type SituationHandler, type Tool } from "@mozaik-ai/core"
-import type { AgentRole } from "../contract/types.ts"
+import { OWNERS, type AgentRole } from "../contract/types.ts"
 import type { Cause } from "../events.ts"
 import { modelFor } from "../inference/models.ts"
 import { join, safeRunLoop, state } from "../runtime.ts"
@@ -40,8 +40,10 @@ export function inferenceInputFor(agent: Agent): InferenceInput {
 const causes = new Map<string, Cause>()
 export const causeOf = (agentId: string): Cause | undefined => causes.get(agentId)
 
-// The designers whose turns carry the design facts, so they see what the reviewer will judge them on.
-export const FACT_ROLES: ReadonlySet<AgentRole> = new Set(["architect", "parts", "firmware"])
+// The designers whose turns carry the design facts, so they see what the reviewer will judge them on: every role that
+// owns a field. Derived, so a new designer gets them too (the ml and test agents were told "the design facts give the
+// numbers" but were left off a hand-kept list).
+export const FACT_ROLES: ReadonlySet<AgentRole> = new Set(Object.values(OWNERS))
 
 // The facts the reviewer judges on, recomputed from the contract as it is when the turn starts.
 export function withDesignFacts(role: AgentRole | undefined, message: string): string {

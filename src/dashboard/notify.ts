@@ -18,7 +18,7 @@ export function ntfyNotifier(opts: { topic: string; server?: string; hubUrl: str
 	const server = (opts.server ?? "https://ntfy.sh").replace(/\/+$/, "")
 	const sent = new Set<string>()
 	return async (runId, line) => {
-		let e: { type?: string; at?: string; payload?: { proposalId?: string; field?: string; by?: string; reason?: string; needsEngineer?: boolean } }
+		let e: { type?: string; at?: string; payload?: { proposalId?: string; field?: string; by?: string; reason?: string; needsEngineer?: boolean; warning?: string } }
 		try {
 			e = JSON.parse(line)
 		} catch {
@@ -45,8 +45,8 @@ export function ntfyNotifier(opts: { topic: string; server?: string; hubUrl: str
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					topic: opts.topic,
-					title: `Bringup: approve a change to ${p.field}?`,
-					message: `${p.by ?? "an agent"} wants to change ${p.field}${summary ? `: ${summary}` : ""}`,
+					title: p.warning ? `Bringup: a case change changes the PCB. Confirm?` : `Bringup: approve a change to ${p.field}?`,
+					message: `${p.by ?? "an agent"} wants to change ${p.field}${summary ? `: ${summary}` : ""}${p.warning ? `\n⚠ ${p.warning}` : ""}`,
 					tags: ["hammer_and_wrench"],
 					actions: [decide("Approve", true), decide("Reject", false)],
 				}),
