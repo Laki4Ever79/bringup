@@ -29,7 +29,7 @@ test("sources show live stock and price where known, 'not checked' otherwise, ne
 	])
 	assert.equal(r.sources[1].note, "search link, not checked")
 	assert.deepEqual(r.alternatives.map((a: any) => [a.mpn, a.stock, a.price]), [["ESP32-C3-WROOM-02", "out of stock", "$2.80"], ["X", "not checked", "not checked"]])
-	assert.deepEqual(sourcingRows({ ref: "R1", mpn: "0402" }), { sources: [], alternatives: [] }, "older bom.json without sourcing")
+	assert.deepEqual(sourcingRows({ ref: "R1", mpn: "0402" }), { sources: [], alternatives: [], suggestion: null }, "older bom.json without sourcing")
 })
 
 test("a part's order status: amber only for out of stock or not listed, neutral when stock is unknown or not checked", async () => {

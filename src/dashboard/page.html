@@ -1254,12 +1254,17 @@
 				? `<h4 style="margin-top:8px">Alternatives (same role)</h4>` + r.alternatives.map((a) => {
 						const url = a.lcsc ? safeUrl(`https://www.lcsc.com/product-detail/${encodeURIComponent(a.lcsc)}.html`) : null
 						const inner = `<span class="mono">${esc(a.mpn)}${a.lcsc ? ` <span class="nc">${esc(a.lcsc)}</span>` : ""}</span><span class="${a.stock === "not checked" ? "nc" : ""}">${esc(a.stock)}</span><span class="num ${a.price === "not checked" ? "nc" : ""}">${esc(a.price)}</span>`
-						return url ? `<a class="row" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="row">${inner}</div>`
+						const row = url ? `<a class="row" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="row">${inner}</div>`
+						return row + (a.changes.length ? `<div class="row nc" style="display:block;font-size:11px">switching: ${a.changes.map(esc).join("; ")}</div>` : "")
 					}).join("")
+				: ""
+			const g = r.suggestion
+			const hint = g
+				? `<div class="row" style="display:block"><b>Out of stock at LCSC.</b> Try ${esc(g.elsewhere.join(" or ") || "another supplier")} first.${g.request ? ` Or switch to ${esc(g.alternative)}: <button class="use-alt" data-request="${esc(g.request)}">put it in the change box</button>` : " No in-stock alternative in the catalog."}</div>`
 				: ""
 			const line = readinessLine(S.bom?.readiness, ref)
 			const badge = line ? ` <span class="chip ${line.warn ? "warn" : ""}">${esc(line.status)}</span>` : ""
-			row.insertAdjacentHTML("afterend", `<div class="src-pop" data-ref="${esc(ref)}" style="top:${row.offsetTop + row.offsetHeight + 4}px"><button class="close" aria-label="Close" title="Close (Esc)">×</button><h4>${esc(ref)} · ${esc(item.mpn)} · where to buy${badge}</h4>${src}${alts}</div>`)
+			row.insertAdjacentHTML("afterend", `<div class="src-pop" data-ref="${esc(ref)}" style="top:${row.offsetTop + row.offsetHeight + 4}px"><button class="close" aria-label="Close" title="Close (Esc)">×</button><h4>${esc(ref)} · ${esc(item.mpn)} · where to buy${badge}</h4>${hint}${src}${alts}</div>`)
 			if (!scroll) return
 			// Bring the popover into view, but never scroll its own row out of the top: the row is how it closes too.
 			const list = $("parts"), pop = list.querySelector(".src-pop")
@@ -1268,6 +1273,9 @@
 		}
 		$("parts").addEventListener("click", (e) => {
 			if (e.target.closest(".src-pop .close")) return showSourcing(null)
+			// The engineer decides: the request goes into the change box, not to the design.
+			const use = e.target.closest(".use-alt")
+			if (use) { const input = $("change-input"); if (!input.disabled) { input.value = use.dataset.request; input.focus() } return }
 			if (e.target.closest(".src-pop") || e.target.closest("a")) return
 			const row = e.target.closest(".part")
 			showSourcing(toggleOpen(S.openPart, row ? row.dataset.ref : null))
