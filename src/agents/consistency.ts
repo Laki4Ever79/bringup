@@ -5,12 +5,12 @@ import { checkConsistency, type Violation } from "../contract/consistency.ts"
 import { isEvent, makeEvent, type ArtifactKind, type Payloads } from "../events.ts"
 import { emit, roleOf, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
-import { BUILD_REQUIRES } from "./builders.ts"
+import { ALL_KINDS, BUILD_REQUIRES, OPTIONAL_KINDS } from "./builders.ts"
 
 const readBrief = (outDir: string) => (existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : "")
 
 export const MAX_REVISIONS = 25
-const KINDS: ArtifactKind[] = ["board", "enclosure", "firmware"]
+const KINDS: ArtifactKind[] = ALL_KINDS
 
 export interface Settlement {
 	settled: boolean
@@ -46,6 +46,9 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 
 	const current = (kind: ArtifactKind): boolean => {
 		const s = state()
+		// An optional artifact the design hasn't asked for has nothing to build.
+		const gate = OPTIONAL_KINDS[kind]
+		if (gate && s.contract.version(gate) === 0) return true
 		const inputs = s.artifactInputs[kind]
 		return inputs !== undefined && Object.entries(inputs).every(([field, version]) => s.contract.version(field as never) === version)
 	}

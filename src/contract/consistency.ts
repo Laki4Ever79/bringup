@@ -4,6 +4,8 @@ import { mcuCurrents } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
 import { modelChecks, type ModelViolation } from "./model.ts"
+import { fixtureChecks, testChecks, type TestViolation } from "./testkit.ts"
+import type { TestPoint } from "../codegen/circuit.ts"
 
 export interface BoardArtifact {
 	revision: number
@@ -60,10 +62,27 @@ export interface FirmwareArtifact {
 	log: string
 }
 
+// The production-test kit (contract field test): the plan, the bed-of-nails fixture and the factory-test firmware,
+// built together from one revision.
+export interface TestkitArtifact {
+	revision: number
+	dir: string
+	// The probes the fixture has, where the board generator put each test pad.
+	probes: TestPoint[]
+	planPath: string
+	fixtureStlPath: string | null
+	fixtureStepPath: string | null
+	// The factory-test firmware (env esp32c3_test): compiled against this revision's pins.h.
+	firmware: { ok: boolean; log: string; pins: Record<string, number> }
+	// What py/fixture.py found wrong with the fixture it built (a blocked probe hole), or why it wasn't built.
+	fixtureIssues: string[]
+}
+
 export interface Artifacts {
 	board?: BoardArtifact
 	enclosure?: EnclosureArtifact
 	firmware?: FirmwareArtifact
+	testkit?: TestkitArtifact
 }
 
 export type ViolationKind =
@@ -85,6 +104,7 @@ export type ViolationKind =
 	| "part-unconnected"
 	| "rail-underrated"
 	| ModelViolation["kind"]
+	| TestViolation["kind"]
 
 export interface Violation {
 	kind: ViolationKind
@@ -109,7 +129,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c))
+	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)

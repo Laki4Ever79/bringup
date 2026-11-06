@@ -6,10 +6,12 @@
 import { BUILDS, LANES, applyLaneEvent, createLanes } from "./lanes.js"
 
 const KEYS = LANES.map((l) => l.key)
-const AGENTS = new Set(["architect", "parts", "ml", "firmware", "reviewer"])
+const AGENTS = new Set(["architect", "parts", "ml", "test", "firmware", "reviewer"])
 // Same as BUILD_INPUTS in src/agents/builders.ts.
 // The builders' inputs, from lanes.js (held equal to src/agents/builders.ts by a test).
 const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b]) => [`build:${k}`, b.inputs]))
+// A builder the design only has once a field exists (the test kit, once there is a test field): OPTIONAL_KINDS.
+const BUILD_GATE = Object.fromEntries(Object.entries(BUILDS).filter(([, b]) => b.optional).map(([k, b]) => [`build:${k}`, b.optional]))
 const ACTIVE = new Set(["thinking", "tool", "building", "checking", "held"])
 
 // The run's clock: run.started, else the first event. ripples.json times are ms from it.
@@ -21,15 +23,17 @@ export function runStart(events) {
 // One ripple per request ({at, text}, requests.jsonl order), from the trace alone, as of `now` (epoch ms).
 export function liveRipples(events, requests, now = Date.now()) {
 	const lanes = createLanes()
-	const windows = requests.map((r, i) => ({ r, i, from: Date.parse(r.at), to: i + 1 < requests.length ? Date.parse(requests[i + 1].at) : Infinity, events: [], cleanIn: true }))
+	const windows = requests.map((r, i) => ({ r, i, from: Date.parse(r.at), to: i + 1 < requests.length ? Date.parse(requests[i + 1].at) : Infinity, events: [], cleanIn: true, writtenIn: new Set() }))
 	// consistency.checked only reports a change of result, so each window starts from the newest check before it.
 	let clean = true
 	let benchSource = null
+	const written = new Set()
 	for (const e of events) {
 		applyLaneEvent(lanes, e)
 		if (e.type === "bench.connected") benchSource = e.payload.source
 		const t = Date.parse(e.at)
-		for (const w of windows) if (t < w.from) w.cleanIn = clean
+		for (const w of windows) if (t < w.from) { w.cleanIn = clean; w.writtenIn = new Set(written) }
+		if (e.type === "contract.changed") written.add(e.payload.field)
 		for (const w of windows) if (t < w.to) w.benchSource = benchSource
 		if (e.type === "consistency.checked") clean = (e.payload.violations ?? []).length === 0
 		const w = windows.find((x) => t >= x.from && t < x.to)
@@ -38,7 +42,7 @@ export function liveRipples(events, requests, now = Date.now()) {
 	return windows.map((w) => ripple(w, lanes, now))
 }
 
-function ripple({ r, i, from, to, events: all, cleanIn, benchSource }, lanes, now) {
+function ripple({ r, i, from, to, events: all, cleanIn, benchSource, writtenIn = new Set() }, lanes, now) {
 	// The request's ripple ends at the first design.ready after it, inclusive (src/runner/ripple.ts): what the brief
 	// review changes after that is a follow-up, not the request. No design.ready yet: up to the next request.
 	const readyAt = all.findIndex((e) => e.type === "design.ready")
@@ -62,10 +66,12 @@ function ripple({ r, i, from, to, events: all, cleanIn, benchSource }, lanes, no
 		if (e.type === "agent.activity" && p.phase === "turn" && AGENTS.has(p.role)) turned.add(p.role)
 		if (e.type === "design.settled") (p.settled ? (settled = true) : (unsettled = true))
 	}
+	// An optional builder wakes only once its field exists, before the request or during it (as the builder does).
+	const exists = (k) => !BUILD_GATE[k] || writtenIn.has(BUILD_GATE[k]) || fields.includes(BUILD_GATE[k])
 	const touched = (inputs) => fields.some((f) => inputs.includes(f))
 	// Woke: changed or proposed a field (agents), or had its inputs change (builders, grounding, consistency).
 	// Checked: took a turn and changed nothing. Same three-way split as the runner's ripples.json.
-	const wakes = (k) => (AGENTS.has(k) ? acted.has(k) : BUILD_INPUTS[k] ? touched(BUILD_INPUTS[k]) : k === "grounding" ? touched(["parts", "pins"]) : fields.length > 0)
+	const wakes = (k) => (AGENTS.has(k) ? acted.has(k) : BUILD_INPUTS[k] ? exists(k) && touched(BUILD_INPUTS[k]) : k === "grounding" ? touched(["parts", "pins"]) : fields.length > 0)
 	const woke = KEYS.filter(wakes)
 	// Reading: took a turn, still at it, nothing changed or proposed yet; it ends as woke or checked. Live only.
 	const reading = to === Infinity && readyAt < 0 ? KEYS.filter((k) => turned.has(k) && !wakes(k) && ACTIVE.has(lanes[k]?.status)) : []
@@ -93,7 +99,7 @@ function ripple({ r, i, from, to, events: all, cleanIn, benchSource }, lanes, no
 			if (!clean) consistentAtMs = null
 		}
 		const sofar = changes.filter((c) => c.at <= t)
-		if (consistentAtMs === null && sofar.length && clean && caughtUp(seen, sofar)) consistentAtMs = t
+		if (consistentAtMs === null && sofar.length && clean && caughtUp(seen, sofar, exists)) consistentAtMs = t
 	}
 	const state = consistentAtMs !== null ? "consistent" : unsettled ? "unsettled" : fields.length ? "rippling" : settled || to !== Infinity || readyAt >= 0 ? "no-change" : "sent"
 	const checks = []
@@ -125,8 +131,9 @@ function ripple({ r, i, from, to, events: all, cleanIn, benchSource }, lanes, no
 }
 
 // Every builder that the changes so far woke has a build (ready or failed) at or past the last change to its inputs.
-function caughtUp(events, changes) {
+function caughtUp(events, changes, exists = () => true) {
 	for (const [key, inputs] of Object.entries(BUILD_INPUTS)) {
+		if (!exists(key)) continue
 		const need = changes.filter((c) => inputs.includes(c.field)).map((c) => c.revision)
 		if (!need.length) continue
 		const rev = Math.max(...need)
@@ -136,7 +143,7 @@ function caughtUp(events, changes) {
 	return true
 }
 
-const BUILD_LABEL = { "build:board": "Board", "build:enclosure": "Case", "build:firmware": "Firmware" }
+const BUILD_LABEL = { "build:board": "Board", "build:enclosure": "Case", "build:firmware": "Firmware", "build:testkit": "Test kit" }
 
 function buildCheck(key, events, changes) {
 	const kind = key.slice("build:".length)
@@ -266,7 +273,7 @@ export const PROBLEM = {
 	"rail-underrated": "a rail is sized below the chip's current",
 	"battery-short": "the battery won't last the target",
 }
-const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", grounding: "datasheet check", consistency: "consistency check" }
+const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", "build:testkit": "test kit", test: "test engineer", ml: "ML engineer", grounding: "datasheet check", consistency: "consistency check" }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 const and = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`)
 const mismatches = (n) => `${n} mismatch${n === 1 ? "" : "es"}`

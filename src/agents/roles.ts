@@ -287,3 +287,26 @@ export function createMlAgent(opts: { mock: boolean }): Agent {
 		],
 	})
 }
+
+export const TEST_SHAPE = `The test field (you own it): {points: string[], awakeMaxMa, sleepMaxUa}.
+- points: the nets the bed-of-nails fixture probes. Each gets a 1.5 mm test pad on the board's underside. Use contract signal names (I2C_SDA) and the power nets GND, 3V3 and VBAT (VBAT when the design has a battery charger). VBUS is optional: the station powers the board through its USB-C port, which it needs anyway for the factory test's output.
+- awakeMaxMa and sleepMaxUa: the supply current a good board stays at or below while its self-test runs, and in deep sleep. The design facts give the design's own peak and sleep currents; leave margin over them (part-to-part spread), or every good board fails.
+- Code checks it: every signal and power net probed, no net the design no longer has, limits at or above the design's own currents, and room on the board's underside for each pad (2.54 mm grid, 3 mm from the edge, clear of the module, connectors and holes). From it Bringup builds the test pads, the fixture, the factory-test firmware and the test plan.`
+
+// The test discipline: it owns the production test. It writes the test field when the engineer asks for a production
+// test or a fixture, and keeps it following the design (a new pin needs a pad; a lower-power part lowers the limit).
+export function createTestAgent(opts: { mock: boolean }): Agent {
+	return createRoleAgent({
+		role: "test",
+		mock: opts.mock,
+		instruction: `You are the test engineer of a small hardware product: you own its production test. Write it with propose_contract_change when the engineer asks for a production or factory test, a test fixture or test pads, and keep it following the design as it changes. You don't change the board, parts or pins: the board, the fixture and the factory-test firmware are built from your field. When another discipline proposes a change to the test field, decide with decide_change.\n${TEST_SHAPE}\n${CONTRACT_SHAPES}`,
+		handlers: [
+			ownerReviewsChanges("test"),
+			ownerFixesReview("test"),
+			engineerRequests(
+				"If it asks for a production or factory test, a test fixture, a bed of nails or test pads, meet it by writing the test field you own: call read_contract, then propose_contract_change with its current baseVersion, probing every signal and power net, with limits from the design facts plus margin. Otherwise change nothing.",
+			),
+			violationsFor("test", "Fix them by changing the test field you own (add or drop points, raise a limit to the design's own current plus margin), with propose_contract_change and its current baseVersion."),
+		],
+	})
+}

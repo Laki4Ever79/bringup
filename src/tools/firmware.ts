@@ -5,6 +5,7 @@ import { behaviorHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHe
 import type { FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { mergeFlash, runImage } from "./emulator.ts"
+import { testkitHeader } from "../contract/testkit.ts"
 
 const TIMEOUT_MS = 600_000
 
@@ -36,6 +37,21 @@ function run(cmd: string, args: string[]): Promise<{ code: number | null; output
 // Copies templates/fw into dir, writes include/pins.h, include/behavior.h and include/model.h and compiles it. A failed
 // build returns ok: false.
 export async function buildFirmware(pio: string, root: string, dir: string, s: ContractSnapshot, revision: number, opts: { modelData?: string } = {}): Promise<FirmwareArtifact> {
+	const header = await prepareFirmware(root, dir, s, opts)
+	const { code, output } = await run(pio, ["run", "-d", dir])
+	const artifact: FirmwareArtifact = {
+		revision,
+		ok: code === 0,
+		pins: parsePinsHeader(header),
+		sensor: parseSensorHeader(header),
+		log: buildLog(output),
+	}
+	return artifact
+}
+
+// The template copied into dir with the design's headers (pins.h, behavior.h, model.h); returns pins.h. Every env
+// in the template builds from these, so the product, data-collection and factory-test firmware agree on the pins.
+export async function prepareFirmware(root: string, dir: string, s: ContractSnapshot, opts: { modelData?: string } = {}): Promise<string> {
 	const header = pinsHeader(s)
 	await cp(join(root, "templates/fw"), dir, { recursive: true })
 	await mkdir(join(dir, "include"), { recursive: true })
@@ -51,15 +67,15 @@ export async function buildFirmware(pio: string, root: string, dir: string, s: C
 	await writeFile(join(dir, "include/pins.h"), header)
 	await writeFile(join(dir, "include/behavior.h"), behaviorHeader(s))
 	await writeFile(join(dir, "include/model.h"), modelHeader(s))
-	const { code, output } = await run(pio, ["run", "-d", dir])
-	const artifact: FirmwareArtifact = {
-		revision,
-		ok: code === 0,
-		pins: parsePinsHeader(header),
-		sensor: parseSensorHeader(header),
-		log: buildLog(output),
-	}
-	return artifact
+	return header
+}
+
+// The factory-test firmware (env esp32c3_test, src/factory_test.cpp) for this revision, in its own dir.
+export async function buildTestFirmware(pio: string, root: string, dir: string, s: ContractSnapshot): Promise<{ ok: boolean; log: string; pins: Record<string, number> }> {
+	const header = await prepareFirmware(root, dir, s)
+	await writeFile(join(dir, "include/testkit.h"), testkitHeader(s))
+	const { code, output } = await run(pio, ["run", "-d", dir, "-e", "esp32c3_test"])
+	return { ok: code === 0, log: buildLog(output), pins: parsePinsHeader(header) }
 }
 
 export interface CollectFirmware {
