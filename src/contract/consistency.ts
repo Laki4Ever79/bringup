@@ -112,6 +112,7 @@ export type ViolationKind =
 	| "sensor-unwired"
 	| "battery-short"
 	| "part-unconnected"
+	| "connector-without-part"
 	| "rail-underrated"
 	| ModelViolation["kind"]
 	| TestViolation["kind"]
@@ -142,7 +143,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -368,6 +369,35 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""):
 	return v
 }
 
+// A connector that is nothing: no part of its ref, no contract pin on it, and no net the board generator wires to it.
+// The board still places a footprint for it and the case cuts its opening, for nothing (real run 7 Nov: the button
+// connector SW1 stayed after the button was dropped, and the case kept a hole for it). A connector the generator wires
+// (USB-C J1 with no part entry) is not one of these.
+export function connectorsWithoutParts(c: ContractSnapshot): Violation[] {
+	const parts = c.values.parts ?? []
+	if (parts.length === 0 || !c.values.pins?.length) return []
+	const used = usedRefs(c)
+	return (c.values.connectors ?? [])
+		.filter((k) => !used.has(k.ref) && !parts.some((p) => p.ref === k.ref))
+		.map((k) => ({
+			kind: "connector-without-part" as const,
+			message: `connector ${k.ref} (${k.kind ?? "connector"}, ${k.edge} edge) has no part, no pin and no generated wiring, but the board still places it and the case cuts an opening for it: add the part and its pin, or remove the connector`,
+			fields: ["connectors", "parts"] as FieldName[],
+			affects: ["architect", "parts"] as AgentRole[],
+		}))
+}
+
+// Every ref something connects: a contract pin, a net the board generator wires, or a support part's end.
+function usedRefs(c: ContractSnapshot): Set<string> {
+	const used = new Set<string>((c.values.pins ?? []).map((p) => p.partRef))
+	for (const ends of generatedNets(c).values()) for (const end of ends) used.add(end.split(".")[0])
+	for (const sp of supportParts(c)) {
+		if (!sp.added) used.add(sp.ref)
+		for (const end of [sp.a, sp.b]) if ("ref" in end) used.add((end as { ref: string }).ref)
+	}
+	return used
+}
+
 // A part in the list that nothing connects: no contract pin uses it and the board generator wires no net or support
 // part to it. It would sit on the board doing nothing, e.g. a second LED meant to show charging state but given role
 // "led" instead of "charge-led" (real beacon run K: the reviewer found CHRG unconnected at the final review).
@@ -375,12 +405,7 @@ export function unconnectedParts(c: ContractSnapshot): Violation[] {
 	const parts = c.values.parts ?? []
 	// Only once both lists exist: parts are usually written before the pins that use them.
 	if (parts.length === 0 || !c.values.pins?.length) return []
-	const used = new Set<string>((c.values.pins ?? []).map((p) => p.partRef))
-	for (const ends of generatedNets(c).values()) for (const end of ends) used.add(end.split(".")[0])
-	for (const sp of supportParts(c)) {
-		if (!sp.added) used.add(sp.ref)
-		for (const end of [sp.a, sp.b]) if ("ref" in end) used.add((end as { ref: string }).ref)
-	}
+	const used = usedRefs(c)
 	const wanted = [...new Set(supportParts(c).map((sp) => `${sp.spec.value} ${sp.spec.lcsc}`))].join(", ")
 	return parts
 		.filter((p) => !used.has(p.ref))

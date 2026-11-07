@@ -206,3 +206,17 @@ test("no sensor, nothing to wire", () => {
 	c.values.pins = []
 	assert.ok(!checkConsistency(c, {}).some((x) => x.kind === "sensor-unwired"))
 })
+
+test("a connector nothing uses (no part, no pin, no generated net) is a violation; a generator-wired USB-C without a part is not", async () => {
+	const { connectorsWithoutParts } = await import("../src/contract/consistency.ts")
+	const { LOGGER_DESIGN } = await import("../src/inference/scripts.ts")
+	const { fixtureContract } = await import("./fixture.ts")
+	const s = fixtureContract()
+	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
+	assert.deepEqual(connectorsWithoutParts(s), [])
+	s.values.connectors = [...s.values.connectors!, { ref: "SW1", kind: "button", edge: "top", offsetMm: 20, widthMm: 6, heightMm: 4 }]
+	const v = connectorsWithoutParts(s)
+	assert.equal(v.length, 1)
+	assert.deepEqual(v[0].affects, ["architect", "parts"])
+	assert.match(v[0].message, /connector SW1 \(button, top edge\) has no part, no pin and no generated wiring/)
+})

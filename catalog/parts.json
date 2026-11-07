@@ -13,7 +13,7 @@
 	{ "role": "capacitor", "mpn": "CL05B104KO5NNNC", "lcsc": "C1525", "footprint": "0402", "pins": ["pin1", "pin2"] },
 	{ "role": "led", "mpn": "KT-0603R", "lcsc": "C2286", "footprint": "0603", "pins": ["A", "K"] },
 	{ "role": "charge-led", "mpn": "KT-0603R", "lcsc": "C2286", "footprint": "0603", "pins": ["A", "K"] },
-	{ "role": "charger", "mpn": "TP4054-42-SOT25R", "lcsc": "C32574", "footprint": "sot23_5", "pins": ["CHRG", "GND", "BAT", "VCC", "PROG"] },
+	{ "role": "charger", "mpn": "TP4054-42-SOT25R", "lcsc": "C32574", "footprint": "sot23_5", "pins": ["CHRG", "GND", "BAT", "VCC", "PROG"], "notes": "Single-cell Li-ion linear charger, 4.2 V float (4.158 to 4.242 V; the -42 suffix is this voltage, not a current). Charge current is set by the PROG resistor to ground, about 1000 V / RPROG: 10 kOhm 100 mA, 5 kOhm 200 mA, 2 kOhm 500 mA (465 to 535 mA), 1.4 kOhm 600 mA, 500 mA max by programming; the board generator fits 4.7 kOhm, about 210 mA (0.4 C on a 500 mAh cell). The 40 mA in its datasheet is only the test current for the float-voltage row. Pins (SOT-23-5): 1 CHRG open drain, low while charging, high impedance when done; 2 GND; 3 BAT; 4 VCC 4.25 to 6.5 V with at least 1 uF; 5 PROG. Ends the charge at 1/10 of the set current. With USB unplugged it draws 6 uA typ, 10 uA max from the battery (TP4054 datasheet, electrical characteristics, IBAT at VCC = 0 V)." },
 	{ "role": "battery", "mpn": "S2B-PH-K-S(LF)(SN)", "lcsc": "C173752", "footprint": "jst2_ph", "pins": ["VBAT", "GND"] },
 	{ "role": "button", "mpn": "TS-1187A-B-A-B", "lcsc": "C318884", "footprint": "pushbutton", "pins": ["A", "B"] },
 	{ "role": "resistor", "mpn": "0402WGF5101TCE", "lcsc": "C25905", "footprint": "0402", "pins": ["pin1", "pin2"] },
