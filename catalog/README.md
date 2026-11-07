@@ -77,6 +77,7 @@ catalog doesn't know is assumed to draw 55 µA, like the AP2112K.
 |---|---|---|---|---|---|---|
 | AP2112K-3.3TRG1 | C51118 | SOT-23-5: VIN, GND, EN, NC, VOUT | 55 µA | 400 mV at 600 mA (datasheet maximum) | 600 mA | EN tied to VIN |
 | XC6206P332MR-G | C5446 (JLC basic, 530,418 in stock) | SOT-23-3 (`sot23`): GND, VOUT, VIN | 1 µA | 250 mV at 100 mA (typical) | 200 mA | 6 V max in |
+| RT9080-33GJ5 | C841192 (JLC extended) | TSOT-23-5 (`sot23_5`): VIN, GND, EN, NC, VOUT | 2 µA (4 µA max) | 530 mV at 600 mA (datasheet maximum; 310 mV typical) | 600 mA | EN tied to VIN; the AP2112K's pins |
 
 The power simulation (`src/tools/spice.ts`) models dropout as a resistance, `dropoutMv / dropoutAtMa`. For the XC6206
 that's 2.5 Ω, so at a 180 mA peak it drops about 450 mV and has no headroom from a 3.7 V cell. That's a real limit of
@@ -92,6 +93,15 @@ AP2112K's 55 µA alone takes half of that (real run 7 failed its brief review on
 from KiCad 10's `XC6206PxxxMR` symbol (1 GND, 2 VO, 3 VI). Its 1 µA is the typical figure from the LCSC listing.
 200 mA covers the ESP32-C3's BLE peaks, but not Wi-Fi transmit (up to about 350 mA); use the AP2112K if the design needs
 Wi-Fi. A real-tool check on 30 Oct 2026: the logger with the XC6206 routes at every width from 45 to 70 mm.
+
+The RT9080-33GJ5 is the battery choice now. The ESP32-C3-MINI-1 needs a supply that can deliver 0.5 A (module
+datasheet v2.2, Table 6-2), which rules the XC6206 out, and the AP2112K's 55 µA costs most of a battery target. All
+RT9080 figures are from Richtek's datasheet DS9080-09 (Dec 2024): 600 mA for VIN at least 2.3 V, current limit 610 mA
+min, quiescent 2 µA typ and 4 µA max, at least 1 µF ceramic on each side (the board puts 10 µF on the output). Its
+TSOT-23-5 pins match the AP2112K's, so it drops into the same footprint and nets. The logger on 500 mAh: about 225
+days with the AP2112K, about 527 with the RT9080 (`estimatePower`). KiCad 10 has no RT9080 symbol, so its pins are
+grounded by this catalog entry. **Check before a production run:** one LCSC page flagged it "not recommended for new
+designs"; Richtek's product page gives no status.
 
 We asked for the HT7333-A (SOT-89, about 4 µA, 250 mA), but couldn't confirm an LCSC number for it: jlcsearch's free-text
 search and `list.json` don't return it. C14289, a number we tried, turned out to be the HT7533-1, a 100 mA part. So the
