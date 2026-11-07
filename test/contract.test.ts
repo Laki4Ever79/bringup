@@ -125,3 +125,27 @@ test("requirements.historyDays must be a whole number of days, at least 1", () =
 	assert.equal(c.validate({ field: "requirements", value: { ...req, historyDays: 180 }, by: "architect" }), null)
 	assert.match(c.validate({ field: "requirements", value: { ...req, historyDays: 0.5 }, by: "architect" }) ?? "", /historyDays/)
 })
+
+// Real run 7 Nov: agents typed pin names by hand ("1"/"2" for a resistor's pin1/pin2, RXD0 on the module), the
+// grounding check flagged them, and each fix rewrote the whole parts list, dropping the sensor, button or battery
+// connector on the way. A catalog part's pins are known, so the contract takes them from the catalog.
+test("a catalog part's pins, footprint and LCSC number come from the catalog, not from what the agent typed", () => {
+	const c = new DesignContract()
+	c.setCatalog([
+		{ role: "resistor", mpn: "0402WGF1001TCE", lcsc: "C11702", footprint: "0402", pins: ["pin1", "pin2"] },
+		{ role: "led", mpn: "KT-0603R", lcsc: "C2286", footprint: "0603", pins: ["A", "K"] },
+		{ role: "charge-led", mpn: "KT-0603R", lcsc: "C2286", footprint: "0603", pins: ["A", "K"] },
+	])
+	const typed = [
+		{ ref: "R1", role: "resistor", mpn: "0402wgf1001tce", lcsc: null, footprint: "r0402", pins: ["1", "2"] },
+		{ ref: "D2", role: "charge-led", mpn: "KT-0603R", lcsc: "C2286", footprint: "0603", pins: ["ANODE", "CATHODE"] },
+	]
+	assert.equal(c.propose({ field: "parts", value: typed, by: "parts", baseVersion: 0 }).status, "applied")
+	assert.deepEqual(c.get("parts"), [
+		{ ref: "R1", role: "resistor", mpn: "0402WGF1001TCE", lcsc: "C11702", footprint: "0402", pins: ["pin1", "pin2"] },
+		{ ref: "D2", role: "charge-led", mpn: "KT-0603R", lcsc: "C2286", footprint: "0603", pins: ["A", "K"] },
+	])
+	// Writing the same parts with the catalog's own pins is no change at all.
+	assert.equal(c.propose({ field: "parts", value: c.get("parts")!, by: "parts", baseVersion: 1 }).status, "unchanged")
+	assert.equal(c.propose({ field: "parts", value: typed, by: "parts", baseVersion: 1 }).status, "unchanged")
+})
