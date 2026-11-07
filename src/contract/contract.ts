@@ -4,20 +4,49 @@ import { connectivityShapeError } from "./connectivity.ts"
 import { sizeReasonError } from "./space.ts"
 import { FIELDS, OWNERS, PART_ROLES, SIGNAL_PATTERN, type ContractSnapshot, type ContractValues, type FieldName, type Proposal, type ProposalResult } from "./types.ts"
 
+// A vetted part as the catalog lists it; footprint and pins are optional so a test can give just the MPN.
+export interface CatalogEntry {
+	role: string
+	mpn: string
+	lcsc: string | null
+	footprint?: string
+	pins?: string[]
+}
+
 // Single source of truth for the design. Each field has one owning role and a version;
 // a write must name the version it was based on, so concurrent writers can't silently overwrite each other.
 export class DesignContract {
 	private values: Partial<ContractValues> = {}
 	private versions = Object.fromEntries(FIELDS.map((f) => [f, 0])) as Record<FieldName, number>
 	private rev = 0
-	private catalog: { role: string; mpn: string; lcsc: string | null }[] | null = null
+	private catalog: CatalogEntry[] | null = null
 	// Every revision as it was applied, so diffs between revisions can be shown after the fact.
 	private history: ContractSnapshot[] = []
 
 	// With a catalog set, every part must be a catalog part (matched by MPN, case-insensitive), so a model
 	// can't keep proposing parts nobody vetted; the refusal lists the catalog's options for that role.
-	setCatalog(catalog: { role: string; mpn: string; lcsc: string | null }[]): void {
+	setCatalog(catalog: CatalogEntry[]): void {
 		this.catalog = catalog
+	}
+
+	// A catalog part's identity is the catalog's: its MPN spelling, LCSC number, footprint and pin names are
+	// filled in from the entry, whatever the agent typed. Hand-typed pin names ("1" for pin1, RXD0 on the module)
+	// were the commonest grounding finding in real runs, and each fix rewrote the whole parts list.
+	private canonical<F extends FieldName>(field: F, value: ContractValues[F]): ContractValues[F] {
+		if (field !== "parts" || !this.catalog || !Array.isArray(value)) return value
+		const catalog = this.catalog
+		return (value as ContractValues["parts"]).map((part) => {
+			const same = catalog.filter((c) => c.mpn.toLowerCase() === part.mpn.toLowerCase())
+			const entry = same.find((c) => c.role === part.role) ?? same[0]
+			if (!entry) return part
+			return {
+				...part,
+				mpn: entry.mpn,
+				lcsc: entry.lcsc ?? part.lcsc,
+				...(entry.footprint ? { footprint: entry.footprint } : {}),
+				...(entry.pins && entry.pins.length > 0 ? { pins: [...entry.pins] } : {}),
+			}
+		}) as ContractValues[F]
 	}
 
 	get revision(): number {
@@ -80,6 +109,7 @@ export class DesignContract {
 		}
 		const invalid = this.validate(p)
 		if (invalid) return { status: "invalid", reason: invalid }
+		p = { ...p, value: this.canonical(p.field, p.value) }
 		if (isDeepStrictEqual(this.values[p.field], p.value)) {
 			return { status: "unchanged", version: this.versions[p.field] }
 		}
