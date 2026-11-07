@@ -30,3 +30,19 @@ test("a rail can't claim more than its regulator part is rated for", () => {
 	s.values.rails = s.values.rails!.map((r) => ({ ...r, regulatorMaxMa: 200 }))
 	assert.deepEqual(over(s), [])
 })
+
+test("the RT9080 is the low-Iq regulator the module can run from: rated 600 mA, 2 µA, the AP2112K's pins", async () => {
+	const { estimatePower } = await import("../src/contract/power.ts")
+	const rt = { ref: "U3", role: "ldo", mpn: "RT9080-33GJ5", lcsc: "C841192", footprint: "sot23_5", pins: ["VIN", "GND", "EN", "NC", "VOUT"] }
+	assert.equal(regulatorRating(rt)?.maxMa, 600)
+	assert.match(regulatorRating(rt)!.source, /DS9080-09/)
+	const ap = logger()
+	const s = logger()
+	s.values.parts = s.values.parts!.map((p) => (p.role === "ldo" ? { ...rt, ref: p.ref } : p))
+	// A drop-in: same pins, so the nets the architect wired to the AP2112K still land; no supply or rating violation.
+	const kinds = (x: ReturnType<typeof logger>) => checkConsistency(x, {}).map((v) => v.kind)
+	assert.deepEqual(kinds(s), kinds(ap))
+	for (const k of ["supply-underrated", "regulator-overclaimed", "rail-underrated"] as const) assert.ok(!kinds(s).includes(k), k)
+	const days = (x: ReturnType<typeof logger>) => estimatePower(x, "500 mAh").days!
+	assert.ok(days(s) > days(ap) * 1.5, `RT9080 ${Math.round(days(s))} days vs AP2112K ${Math.round(days(ap))}`)
+})

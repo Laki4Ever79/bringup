@@ -507,7 +507,7 @@ export function mockScripts(): Record<string, Script> {
 									severity: "minor",
 									fields: ["rails", "parts"],
 									issue: "The AP2112K draws about 55 µA quiescent: over 6 months that alone is about 242 mAh of the 500 mAh cell.",
-									suggestion: "Consider a low-Iq LDO (about 1 µA) to leave margin for the radio and the sensor.",
+									suggestion: "Consider the RT9080-33GJ5 (2 µA, rated 600 mA like the AP2112K, same pins) to leave margin for the radio and the sensor.",
 								},
 							],
 						}),

@@ -123,9 +123,8 @@ What stays **open** in the checklist, because a stock Arduino build can't do it 
 
 - **Nothing here has run on hardware.** The firmware compiles in every configuration, and the BTHome bytes match the
   spec, but no board has been seen in Home Assistant, joined Wi-Fi or taken an update.
-- **The regulator gap:** with the 0.5 A requirement, the catalog's only fitting regulator is the AP2112K, which draws
-  55 µA of its own. A low-quiescent regulator rated 0.5 A or more would need adding to the catalog, with its
-  datasheet checked.
+- **The regulator gap (closed 7 Nov):** the catalog now has the RT9080-33GJ5, rated 600 mA with 2 µA of its own
+  (Richtek DS9080-09), with the AP2112K's pins. See `catalog/README.md`. Its lifecycle status is unconfirmed.
 - **Provisioning:** credentials are compiled in from your own file. Setting them on a finished device (over
   Bluetooth, or a setup page) is not built.
 - The Wi-Fi connection cost is an estimate until measured on the bench.
