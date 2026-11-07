@@ -194,3 +194,16 @@ test("the dashboard's contract panel lists every contract field (it had missed m
 	const listed = JSON.parse(/const FIELDS = (\[[^\]]*\])/.exec(page)![1])
 	assert.deepEqual(listed, [...FIELDS])
 })
+
+// Real run 7 Nov: the facts said "Case features: none", the reviewer read that as no USB-C opening and blocked, and
+// the case designer added holes that a later review found misplaced. The connectors' openings are cut automatically.
+test("the case facts list the opening cut for every connector, apart from the case features", async () => {
+	const { caseFactLines } = await import("../src/contract/case.ts")
+	const { LOGGER_DESIGN } = await import("../src/inference/scripts.ts")
+	const { fixtureContract } = await import("./fixture.ts")
+	const s = fixtureContract()
+	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
+	const text = caseFactLines(s).join("\n")
+	assert.match(text, /Openings cut automatically, one per connector.*J1 usb-c on the left wall at 15 mm, 10×4\.5 mm/)
+	assert.match(text, /Case features \(added on top of those openings\): none/)
+})

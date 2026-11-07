@@ -312,6 +312,7 @@ export function caseFactLines(s: ContractSnapshot): string[] {
 	const features = c.features.length > 0 ? c.features.map((f) => `${f.id} (${f.kind}${f.kind === "hole" ? ` ${f.diameterMm} mm, ${f.edge}@${f.offsetMm} mm` : f.kind === "text" ? ` "${f.text}"` : f.kind === "lanyard" ? ` ${f.corner}` : ` ${f.sides}`})`).join(", ") : "none"
 	return [
 		`Case${s.values.case ? "" : " (defaults, no case field yet)"}: outer ${outer.widthMm}×${outer.heightMm}×${c.heightMm} mm plus a ${LID.plateMm} mm lid; walls ${c.wallMm} mm; ${CASE_CLEARANCE_MM} mm clearance around the board, so outer = board + ${round(2 * (CASE_CLEARANCE_MM + c.wallMm))} mm each way${v.antenna ? `, plus ${v.antenna.mm} mm on the ${v.antenna.edge} for the module's antenna, which hangs past the board edge` : ""}.`,
-		`Case features: ${features}. The lowest body the connectors allow: ${minCaseHeight(s, c)} mm. A wall hole's centre sits ${holeCentreZ(c)} mm up; its diameter can be at most ${round(c.heightMm - LID.lipMm - c.wallMm - 1)} mm.`,
+		`Openings cut automatically, one per connector, centred on it with ${SLOT_MARGIN_MM} mm around it each way (no case feature needed): ${(s.values.connectors ?? []).map((k) => `${k.ref} ${k.kind ?? "connector"} on the ${k.edge} wall at ${k.offsetMm} mm, ${round(k.widthMm + 2 * SLOT_MARGIN_MM)}×${round(k.heightMm + 2 * SLOT_MARGIN_MM)} mm`).join("; ") || "none (no connectors)"}.`,
+		`Case features (added on top of those openings): ${features}. The lowest body the connectors allow: ${minCaseHeight(s, c)} mm. A wall hole's centre sits ${holeCentreZ(c)} mm up; its diameter can be at most ${round(c.heightMm - LID.lipMm - c.wallMm - 1)} mm.`,
 	]
 }
