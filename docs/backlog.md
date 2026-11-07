@@ -7,8 +7,8 @@ firmware build writes (`compliance.md`) marks the security items as "open" until
 
 The checks and agents are tested piece by piece with scripted agents. What hasn't happened yet:
 
-- [ ] A real-model run from a brief to all outputs (board, case, firmware, report) under the space, case,
-      connectivity and security rules added 6–7 Nov. No real-model run has used them yet.
+- [ ] A real-model run that passes the final brief review under the space, case, connectivity and security rules
+      added 6–7 Nov. Three runs on 7 Nov (below) reach every output and a consistent design, but not a pass yet.
 - [ ] Order one generated board and bring it up: flash, the factory test, a Bluetooth read with the passkey, BTHome in
       Home Assistant. Nothing from the IoT work has run on hardware.
 - [ ] Measure on that board: deep-sleep current, the radio's peak against the RT9080 (rail droop at transmit), and a
