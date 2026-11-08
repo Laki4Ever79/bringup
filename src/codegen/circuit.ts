@@ -8,6 +8,7 @@ interface CatalogEntry {
 	lcsc: string | null
 	footprint: string
 	pins: string[]
+	bootPin?: string
 }
 
 const CATALOG: CatalogEntry[] = JSON.parse(readFileSync(new URL("../../catalog/parts.json", import.meta.url), "utf8"))
@@ -63,9 +64,11 @@ const USBC_PADS: Record<"GND" | "VBUS" | "CC1" | "CC2" | "DN" | "DP", string[]> 
 const USBC_FOOTPRINT = "usbcmidmount"
 // Its two plastic locating holes (NPTH ø0.7 mm), from the built KiCad footprint, in tscircuit's frame (y up) at
 // rotation 0. tscircuit's autorouter doesn't see them and dropped VBUS vias beside one (the first wake-word board, 4
-// hole_clearance errors), so each can get a routing keepout: ø0.7 hole + 0.2 mm hole clearance + the via's own copper (0 errors on that board).
+// hole_clearance errors), so each can get a routing keepout: ø0.7 hole + 0.2 mm hole clearance + the via's own copper
+// (0 errors on that board). 0.8 mm, not 0.9: at 0.9 tscircuit refused J1's own VBUS and GND traces 0.095 mm from it,
+// so the keepout layout never built (the 45 mm logger with recovery pads, 8 Nov: 2 hole_clearance errors, 0 at 0.8).
 const USBC_LOCATING_HOLES: [number, number][] = [[-2.89, 1.055], [2.89, 1.055]]
-const USBC_KEEPOUT_RADIUS_MM = 0.9
+const USBC_KEEPOUT_RADIUS_MM = 0.8
 function usbKeepouts(x: number, y: number, rotationDeg: number): string[] {
 	const t = (rotationDeg * Math.PI) / 180
 	return USBC_LOCATING_HOLES.map(([lx, ly]) => {
@@ -136,6 +139,20 @@ export function usbRef(s: ContractSnapshot): string | undefined {
 		parts.find((p) => footprintFor(p) === USBC_FOOTPRINT)?.ref
 	)
 }
+
+// The MCU's boot strapping pin (catalog bootPin, e.g. the ESP32-C3's GPIO9: held low at reset, it boots the ROM
+// downloader), when the firmware deep-sleeps. A deep-sleeping ESP32-C3 has its USB off, so without this pin a board can
+// only be reflashed while it happens to be awake, and never once a bad image stops it booting (real run 3, 7 Nov).
+export function recoveryBootPin(s: ContractSnapshot): { mcu: Part; pin: string; gpio: number } | null {
+	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
+	const pin = mcu ? CATALOG.find((c) => c.mpn.toUpperCase() === mcu.mpn.toUpperCase())?.bootPin : undefined
+	if (!mcu || !pin || !mcu.pins.includes(pin) || !s.values.requirements?.dutyCycle) return null
+	return { mcu, pin, gpio: Number(pin.replace(/\D/g, "")) }
+}
+
+// A signal the boot pin can share with the BOOT pad: an I2C line, which the board generator pulls up, so the pin reads
+// high at reset and the chip boots normally; shorting the pads only holds the open-drain bus low meanwhile.
+export const sharesBootPin = (signal: string) => /^I2C_(SDA|SCL)$/.test(signal)
 
 export function supportParts(s: ContractSnapshot): Support[] {
 	const { parts = [], connectors = [], pins = [], rails = [] } = s.values
@@ -549,8 +566,48 @@ export interface TestPoint {
 }
 
 export function testPoints(s: ContractSnapshot): { placed: TestPoint[]; unplaced: string[] } {
+	if (!s.values.outline || !s.values.test) return { placed: [], unplaced: [] }
+	const { placed, unplaced } = bottomPads(s)
+	return { placed: placed.filter((p) => !p.recovery).map(({ recovery: _r, ...p }) => p), unplaced: unplaced.filter((n) => !n.startsWith("recovery ")) }
+}
+
+// The recovery pads (engineer, 8 Nov 2026, over a 7×9 mm button that made the logger's smallest board 27% bigger): BOOT
+// on the MCU's boot pin and GND, bare copper on the bottom beside the production test pads. Shorted while the board
+// powers up, they start the ROM downloader. BOOT joins the net of the signal that shares the pin (I2C_SCL on the
+// logger), else its own net, BOOT.
+export const RECOVERY_BOOT_NET = "BOOT"
+export function recoveryPads(s: ContractSnapshot): { placed: TestPoint[]; unplaced: string[] } {
+	if (!s.values.outline || !recoveryBootNet(s)) return { placed: [], unplaced: [] }
+	const { placed, unplaced } = bottomPads(s)
+	return { placed: placed.filter((p) => p.recovery).map(({ recovery: _r, ...p }) => p), unplaced: unplaced.filter((n) => n.startsWith("recovery ")).map((n) => n.slice("recovery ".length)) }
+}
+
+export function recoveryBootNet(s: ContractSnapshot): string | null {
+	const boot = recoveryBootPin(s)
+	if (!boot) return null
+	const on = (s.values.pins ?? []).filter((p) => p.gpio === boot.gpio)
+	if (on.some((p) => !sharesBootPin(p.signal))) return null
+	return on[0]?.signal ?? RECOVERY_BOOT_NET
+}
+
+// Placing the parts is the slow step, and every consistency check and designer turn asks for the pads: the last few
+// results are kept, keyed on the whole contract (placement reads most of it).
+type BottomPads = { placed: (TestPoint & { recovery: boolean })[]; unplaced: string[] }
+const bottomPadsCache = new Map<string, BottomPads>()
+function bottomPads(s: ContractSnapshot): BottomPads {
+	const key = JSON.stringify(s.values)
+	const hit = bottomPadsCache.get(key)
+	if (hit) return structuredClone(hit)
+	const result = bottomPadsUncached(s)
+	if (bottomPadsCache.size >= 16) bottomPadsCache.delete(bottomPadsCache.keys().next().value!)
+	bottomPadsCache.set(key, result)
+	return structuredClone(result)
+}
+
+function bottomPadsUncached(s: ContractSnapshot): BottomPads {
 	const { outline, test, parts = [], pins = [] } = s.values
-	if (!outline || !test) return { placed: [], unplaced: [] }
+	const bootNet = recoveryBootNet(s)
+	if (!outline || (!test && !bootNet)) return { placed: [], unplaced: [] }
 	const [W, H] = [outline.widthMm, outline.heightMm]
 	const boxes = placeParts(s)
 	const byRef = new Map(boxes.map((b) => [b.ref, b]))
@@ -584,17 +641,24 @@ export function testPoints(s: ContractSnapshot): { placed: TestPoint[]; unplaced
 			if (blocked.some((b) => Math.abs(c.x - b.x) < b.w / 2 + half && Math.abs(c.y - b.y) < b.h / 2 + half)) continue
 			cells.push(c)
 		}
-	const placed: TestPoint[] = []
+	const placed: (TestPoint & { recovery: boolean })[] = []
 	const unplaced: string[] = []
 	const used = new Set<number>()
-	test.points.forEach((net, i) => {
-		const want = anchor(net)
+	const mcuBox = roleBox("mcu")
+	const wanted = [
+		...(test?.points ?? []).map((net, i) => ({ net, ref: `TP${i + 1}`, recovery: false, want: anchor(net) })),
+		// BOOT beside the part whose signal shares the pin (its trace stays short), else beside the module; GND next to it.
+		...(bootNet ? [bootNet, "GND"].map((net, i) => ({ net, ref: `TPR${i + 1}`, recovery: true, want: (i === 0 && bootNet !== RECOVERY_BOOT_NET ? anchor(net) : mcuBox) ?? { x: 0, y: 0 } })) : []),
+	]
+	wanted.forEach(({ net, ref, recovery, want: wanted }) => {
+		const prior = placed.find((p) => p.recovery)
+		const want = recovery && prior ? prior : wanted
 		let best = -1
 		for (let k = 0; k < cells.length; k++) if (!used.has(k) && (best < 0 || Math.hypot(cells[k].x - want.x, cells[k].y - want.y) < Math.hypot(cells[best].x - want.x, cells[best].y - want.y) - 1e-9)) best = k
-		if (best < 0) return void unplaced.push(net)
+		if (best < 0) return void unplaced.push(recovery ? `recovery ${net}` : net)
 		used.add(best)
 		const c = cells[best]
-		placed.push({ ref: `TP${i + 1}`, net, x: c.x, y: c.y, xMm: +(c.x + W / 2).toFixed(3), yMm: +(c.y + H / 2).toFixed(3) })
+		placed.push({ ref, net, recovery, x: c.x, y: c.y, xMm: +(c.x + W / 2).toFixed(3), yMm: +(c.y + H / 2).toFixed(3) })
 	})
 	return { placed, unplaced }
 }
@@ -758,7 +822,14 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	lines.push(...powerLines(s, placement))
 	// Test pads join their net by name: a contract signal's net, or a generated power net (one that reaches two parts).
 	const nets = new Set([...pins.map((p) => p.signal), ...generatedNets(s).keys()])
-	for (const tp of testPoints(s).placed.map((t) => ({ ...t, net: nets.has(t.net) ? t.net : netName(t.net) })).filter((t) => nets.has(t.net))) {
+	const bootNet = recoveryBootNet(s)
+	const boot = recoveryBootPin(s)
+	if (bootNet === RECOVERY_BOOT_NET && boot && recoveryPads(s).placed.length > 0) {
+		lines.push(`<net name=${q(bootNet)} />`)
+		lines.push(`<trace name=${q(`${bootNet}_mcu`)} from=${q(`.${boot.mcu.ref} > .${boot.pin}`)} to=${q(`net.${bootNet}`)} />`)
+		nets.add(bootNet)
+	}
+	for (const tp of [...testPoints(s).placed, ...recoveryPads(s).placed].map((t) => ({ ...t, net: nets.has(t.net) ? t.net : netName(t.net) })).filter((t) => nets.has(t.net))) {
 		lines.push(`<testpoint name=${q(tp.ref)} footprintVariant="pad" padShape="circle" padDiameter="${TEST_PAD.diameterMm}mm" layer="bottom" pcbX={${tp.x}} pcbY={${tp.y}} />`)
 		lines.push(`<trace name=${q(`${tp.net}_${tp.ref}`)} from=${q(`.${tp.ref} > .pin1`)} to=${q(`net.${tp.net}`)} />`)
 	}

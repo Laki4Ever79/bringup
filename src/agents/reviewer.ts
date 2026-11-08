@@ -122,7 +122,28 @@ function amendmentLines(outDir: string): string[] {
 	]
 }
 
-export async function reviewMessage(env: Env | undefined, revision: number, round: number): Promise<string> {
+export interface PastReview {
+	revision: number
+	verdict: string
+	findings: ReviewFinding[]
+}
+
+// The reviewer's own earlier verdicts on this run, so a fresh context re-checks what it raised instead of finding a new
+// blocker each round (real run 3, 7 Nov: four fix rounds, a different blocker each time).
+export function earlierReviewLines(past: PastReview[]): string[] {
+	if (past.length === 0) return []
+	return [
+		"## Your earlier reviews of this design",
+		"First re-check each earlier finding against this revision and say in its issue whether it is resolved. Then raise new findings only for what this revision changed, or for a must-have the design cannot meet. Something unchanged since your earlier reviews that you did not raise then is at most minor, unless it makes a must-have impossible.",
+		...past.flatMap((r) => [
+			`Revision ${r.revision}: ${r.verdict}`,
+			...(r.findings.length === 0 ? ["- no findings"] : r.findings.map((f) => `- ${f.severity} [${f.fields.join(", ")}]: ${f.issue}`)),
+		]),
+		"",
+	]
+}
+
+export async function reviewMessage(env: Env | undefined, revision: number, round: number, past: PastReview[] = []): Promise<string> {
 	const s = state()
 	const snapshot = s.contract.snapshot()
 	const briefPath = join(s.outDir, "brief.md")
@@ -157,10 +178,12 @@ export async function reviewMessage(env: Env | undefined, revision: number, roun
 		power,
 		"",
 		...wiringSection(snapshot, s.artifacts.board),
+		"",
+		...earlierReviewLines(past),
 	].join("\n")
 }
 
-function submitReviewTool(self: { id: string }, pending: { revision: number | null }): Tool {
+function submitReviewTool(self: { id: string }, pending: { revision: number | null }, past: PastReview[]): Tool {
 	return {
 		type: "function",
 		name: "submit_review",
@@ -197,6 +220,7 @@ function submitReviewTool(self: { id: string }, pending: { revision: number | nu
 			}))
 			const revision = pending.revision
 			pending.revision = null
+			past.push({ revision, verdict: args.verdict, findings })
 			emit(makeEvent("review.completed", self.id, { revision, verdict: args.verdict, findings }), self.id)
 			return { recorded: true, revision, verdict: args.verdict, findings: findings.length }
 		},
@@ -210,11 +234,12 @@ export function createBriefReviewer(opts: { mock: boolean; env?: Env }): Agent {
 	const self = { id: "" }
 	const pending: { revision: number | null } = { revision: null }
 	const reviewed = new Set<number>()
+	const past: PastReview[] = []
 	const agent = createAgent({
 		name: "reviewer",
 		capabilities: [],
 		instruction: REVIEW_INSTRUCTION,
-		tools: [submitReviewTool(self, pending)],
+		tools: [submitReviewTool(self, pending, past)],
 		handlers: [
 			{
 				specification: when(({ event }) => isEvent(event, "design.ready")),
@@ -223,7 +248,7 @@ export function createBriefReviewer(opts: { mock: boolean; env?: Env }): Agent {
 						if (!isEvent(event, "design.ready") || reviewed.has(event.payload.revision)) return
 						reviewed.add(event.payload.revision)
 						const { revision, round } = event.payload
-						void reviewMessage(opts.env, revision, round).then((message) => {
+						void reviewMessage(opts.env, revision, round, [...past]).then((message) => {
 							pending.revision = revision
 							const context = ModelContext.create().addContextItem(DeveloperMessageItem.create(agent.getDeveloperMessage()))
 							safeRunLoop(self.id, message, { model: modelFor("reviewer", opts.mock), context, tools: agent.getTools() })

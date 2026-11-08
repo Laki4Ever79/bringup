@@ -37,6 +37,7 @@ test("the RT9080 is the low-Iq regulator the module can run from: rated 600 mA, 
 	assert.equal(regulatorRating(rt)?.maxMa, 600)
 	assert.match(regulatorRating(rt)!.source, /DS9080-09/)
 	const ap = logger()
+	ap.values.parts = ap.values.parts!.map((p) => (p.role === "ldo" ? { ...p, mpn: "AP2112K-3.3TRG1", lcsc: "C51118" } : p))
 	const s = logger()
 	s.values.parts = s.values.parts!.map((p) => (p.role === "ldo" ? { ...rt, ref: p.ref } : p))
 	// A drop-in: same pins, so the nets the architect wired to the AP2112K still land; no supply or rating violation.

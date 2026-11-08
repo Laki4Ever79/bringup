@@ -106,9 +106,10 @@ test("the measured average goes to the contract through change control, once, wh
 	assert.ok(Math.abs(m.averageMa - 0.046) < 0.004, `averageMa ${m.averageMa}`)
 	assert.equal(m.estimateMa, 0.0375)
 	assert.equal(m.sleepUa, 10)
-	// For the dashboard's measured-vs-estimated gauge: 500 mAh / (0.046 mA + the AP2112K's 55 µA) / 24 h.
-	assert.deepEqual([m.capacityMah, m.regulatorIqUa, m.targetDays], [500, 55, 180])
-	assert.ok(Math.abs(m.days! - 500 / (m.averageMa + 0.055) / 24) < 0.01, `days ${m.days}`)
+	// For the dashboard's measured-vs-estimated gauge: 500 mAh / (0.046 mA + phone use + the RT9080's 2 µA + the
+	// charger's 6 µA) / 24 h.
+	assert.deepEqual([m.capacityMah, m.regulatorIqUa, m.targetDays], [500, 2, 180])
+	assert.ok(Math.abs(m.days! - 500 / (m.averageMa + 2580 / 86400 + 0.002 + 0.006) / 24) < 0.01, `days ${m.days}`)
 	const proposed = t.of("change.proposed")
 	assert.deepEqual(proposed.map((p) => [p.field, p.by]), [["rails", "bench"]])
 	await waitFor(() => t.of("contract.changed").length > 0)

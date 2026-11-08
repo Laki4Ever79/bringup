@@ -27,7 +27,7 @@ test("battery-short: a live violation for the architect when even the stated ave
 	const short = checkConsistency(c, {}, "around 500 mAh").filter((v) => v.kind === "battery-short")
 	assert.equal(short.length, 1)
 	assert.deepEqual([short[0].fields, short[0].affects], [["requirements", "rails", "parts"], ["architect"]])
-	assert.match(short[0].message, /^the stated rail averages give 42 days of battery life, short of the 90-day target; the duty-cycle check/)
+	assert.match(short[0].message, /^the stated rail averages give 39 days of battery life, short of the 90-day target; the duty-cycle check/)
 	c.values.rails[0].averageMa = 0.05
 	assert.equal(checkConsistency(c, {}, "around 500 mAh").filter((v) => v.kind === "battery-short").length, 0, "met by the stated averages: not flagged")
 })

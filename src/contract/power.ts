@@ -26,7 +26,7 @@ export function capacityFromBrief(brief: string): number | null {
 // An LDO's typical quiescent current: the catalog's iqUa when it lists the part, else AP2112K-class 55 µA.
 const ASSUMED_IQ_UA = Math.round(QUIESCENT_A * 1e6)
 // cpuMa / radioMa: an MCU's datasheet current with the CPU running and with the radio on, for the duty-cycle check.
-type CatalogIq = { mpn: string; iqUa?: number; sleepUa?: number; cpuMa?: number; radioMa?: number; dropoutMv?: number; dropoutAtMa?: number; maxMa?: number; maxMaSource?: string; bleTxMa?: number; bleRxMa?: number; wifiTxMa?: number; supplyMinMa?: number; radioSource?: string }
+type CatalogIq = { mpn: string; iqUa?: number; sleepUa?: number; cpuMa?: number; radioMa?: number; dropoutMv?: number; dropoutAtMa?: number; maxMa?: number; maxMaSource?: string; bleTxMa?: number; bleRxMa?: number; wifiTxMa?: number; supplyMinMa?: number; radioSource?: string; batteryDrainUa?: number; batteryDrainMaxUa?: number; batteryDrainSource?: string }
 let catalogCache: CatalogIq[] | null = null
 function catalog(): CatalogIq[] {
 	return (catalogCache ??= JSON.parse(readFileSync(new URL("../../catalog/parts.json", import.meta.url), "utf8")))
@@ -111,6 +111,38 @@ export interface PowerEstimate {
 	model: { averageMa: number; how: string } | null
 	// What Wi-Fi uploads add on top of the rails, in mA (null unless connectivity.radio is Wi-Fi).
 	wifi: { averageMa: number; how: string } | null
+	// What a phone reading the GATT history adds, at an assumed number of connections a day (null without GATT).
+	phone: { averageMa: number; how: string } | null
+	// What the charger draws from the cell with USB unplugged, in µA (catalog batteryDrainUa), like a regulator's own.
+	chargerDrainUa: number
+	chargers: { ref: string; mpn: string; drainUa: number; maxUa: number | null; source: string }[]
+}
+
+// The brief seldom says how often a phone reads the history, so the budget assumes this many full-length connections a
+// day (the engineer, 8 Nov 2026), each the firmware's whole connected window (BLE_CONNECTED_MAX_MS) at the module's
+// Bluetooth LE receive current. An assumption, and every line that uses it says so.
+export const PHONE_CONNECTIONS_PER_DAY = 1
+
+export function phoneUseMa(s: ContractSnapshot, entries: CatalogIq[] = catalog()): { averageMa: number; how: string } | null {
+	const c = s.values.connectivity ?? { radio: "ble", report: ["gatt"] }
+	if (c.radio !== "ble" || !c.report.includes("gatt")) return null
+	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
+	const f = mcu ? entries.find((e) => e.mpn.toUpperCase() === mcu.mpn.toUpperCase()) : undefined
+	const radioMa = typeof f?.bleRxMa === "number" ? f.bleRxMa : f?.radioMa
+	if (typeof radioMa !== "number") return null
+	const connectedS = templateConstant("BLE_CONNECTED_MAX_MS") / 1000
+	const mc = radioMa * connectedS * PHONE_CONNECTIONS_PER_DAY
+	const what = typeof f?.bleRxMa === "number" ? "Bluetooth LE receiving, module datasheet" : "radio on, chip datasheet"
+	return { averageMa: mc / 86400, how: `${PHONE_CONNECTIONS_PER_DAY} phone connection${PHONE_CONNECTIONS_PER_DAY === 1 ? "" : "s"} a day (an assumption: the brief doesn't say how often), each keeping it awake up to ${connectedS} s at ${radioMa} mA (${what}) = ${Number(mc.toPrecision(3))} mC a day` }
+}
+
+// The chargers' own draw on the cell when USB is unplugged (catalog batteryDrainUa, typical), like an LDO's quiescent.
+export function chargerDrain(parts: Part[], entries: CatalogIq[] = catalog()): PowerEstimate["chargers"] {
+	return parts.flatMap((p) => {
+		if (p.role !== "charger") return []
+		const c = entries.find((e) => e.mpn.toUpperCase() === p.mpn.toUpperCase())
+		return typeof c?.batteryDrainUa === "number" ? [{ ref: p.ref, mpn: p.mpn, drainUa: c.batteryDrainUa, maxUa: c.batteryDrainMaxUa ?? null, source: c.batteryDrainSource ?? "catalog" }] : []
+	})
 }
 
 // One Wi-Fi upload from deep sleep: joining the network, getting an address and publishing. An ESTIMATE, not a
@@ -154,6 +186,9 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 	// Listening is the model's own load: always-on keeps the MCU awake, which no rail average states.
 	const model = modelCurrentMa(s)
 	const wifi = wifiUploadMa(s)
+	const phone = phoneUseMa(s)
+	const chargers = chargerDrain(parts)
+	const chargerDrainUa = chargers.reduce((sum, c) => sum + c.drainUa, 0)
 	return {
 		rails: draws,
 		averageMa,
@@ -164,12 +199,18 @@ export function estimatePower(s: ContractSnapshot, brief: string): PowerEstimate
 		regulators,
 		capacityMah,
 		capacitySource: fromBrief !== null ? "brief" : requirements?.batteryMah !== undefined ? "requirements" : null,
-		days: capacityMah !== null && averageMa !== null ? batteryLifeDays(capacityMah, averageMa + (model?.averageMa ?? 0) + (wifi?.averageMa ?? 0), regulatorIqUa) : null,
+		days: capacityMah !== null && averageMa !== null ? batteryLifeDays(capacityMah, averageMa + (model?.averageMa ?? 0) + (wifi?.averageMa ?? 0) + (phone?.averageMa ?? 0), regulatorIqUa + chargerDrainUa) : null,
 		targetDays: requirements?.batteryLifeDays ?? null,
 		model,
 		wifi,
+		phone,
+		chargerDrainUa,
+		chargers,
 	}
 }
+
+const chargerLine = (e: PowerEstimate) =>
+	e.chargers.map((c) => `${c.ref} ${c.mpn} ${c.drainUa} µA typ${c.maxUa !== null ? `, ${c.maxUa} µA max` : ""} (${c.source})`).join("; ")
 
 const ma = (x: number) => `${Number(x.toPrecision(3))} mA`
 
@@ -185,6 +226,7 @@ export function powerBudgetLines(e: PowerEstimate): string[] {
 	const out: string[] = []
 	if (e.model) out.push(`- The model's listening: ${ma(e.model.averageMa)} on average (${e.model.how}), counted in the battery life below.`)
 	if (e.wifi) out.push(`- Wi-Fi uploads: ${ma(e.wifi.averageMa)} on average (${e.wifi.how}), counted in the battery life below.`)
+	if (e.phone) out.push(`- Phone use: ${ma(e.phone.averageMa)} on average (${e.phone.how}), counted in the battery life below.`)
 	if (e.rails.length > 0) out.push("- Battery-fed rails (each average is that rail's own loads, so they add up):")
 	for (const r of e.rails) {
 		const from = r.source === "measured" ? `measured on bench${r.measuredRevision !== undefined ? `, rev ${r.measuredRevision}` : ""}` : `from the ${r.source}`
@@ -198,11 +240,13 @@ export function powerBudgetLines(e: PowerEstimate): string[] {
 	}
 	const each = e.regulators.map((r) => `${r.ref} ${r.mpn} ${r.iqUa} µA, ${r.source === "catalog" ? "from the catalog" : "not in the catalog: assumed AP2112K-class"}`)
 	out.push(`- Regulator quiescent current: ${e.regulatorIqUa} µA (${each.length > 0 ? each.join("; ") : "no LDO in the parts"})`)
+	if (e.chargers.length > 0) out.push(`- Charger's draw on the cell with USB unplugged: ${e.chargerDrainUa} µA (${chargerLine(e)})`)
 	out.push(`- Battery: ${e.capacityMah === null ? "capacity not stated" : `${e.capacityMah} mAh (from the ${e.capacitySource})`}`)
 	if (e.days === null) {
 		out.push(`- Estimated battery life: ${batteryLifeSummary(e)}`)
 	} else {
-		const terms = [...e.rails.filter((r) => !r.sameAs).map((r) => ma(r.averageMa!)), ...(e.regulatorIqUa > 0 ? [ma(e.regulatorIqUa / 1000)] : [])]
+		const extra = [e.model, e.wifi, e.phone].filter((x) => x !== null).map((x) => ma(x.averageMa))
+		const terms = [...e.rails.filter((r) => !r.sameAs).map((r) => ma(r.averageMa!)), ...extra, ...(e.regulatorIqUa > 0 ? [ma(e.regulatorIqUa / 1000)] : []), ...(e.chargerDrainUa > 0 ? [ma(e.chargerDrainUa / 1000)] : [])]
 		out.push(`- Estimated battery life: ${e.capacityMah} mAh / (${terms.join(" + ")}) / 24 h = ${batteryLifeSummary(e)}`)
 	}
 	return out
@@ -217,7 +261,9 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 	if (peak <= 0) return ["Battery-life check: not computed (no battery-fed rail with a peak current)"]
 	const n = (x: number) => Number(x.toPrecision(3))
 	const mcuSleep = e.sleep?.raisedFrom != null ? `${d.sleepUa} µA (MCU deep-sleep floor; ${e.sleep.raisedFrom} µA stated)` : `${d.sleepUa} µA (MCU deep sleep)`
-	const ldo = e.regulatorIqUa > 0 ? ` + ${e.regulatorIqUa} µA (LDO quiescent)` : ""
+	const ldo = `${e.regulatorIqUa > 0 ? ` + ${e.regulatorIqUa} µA (LDO quiescent)` : ""}${e.chargerDrainUa > 0 ? ` + ${e.chargerDrainUa} µA (charger's draw with USB unplugged, typ; ${chargerLine(e)})` : ""}`
+	const standbyMa = (e.regulatorIqUa + e.chargerDrainUa) / 1000
+	const phoneMa = e.phone?.averageMa ?? 0
 	// The firmware is awake for the reading plus its BLE window: activeMs, unless that is too short for both. On Wi-Fi it
 	// doesn't advertise: it reads and sleeps, and connects once per upload (counted separately, e.wifi).
 	const advertiseMs = s?.values.connectivity?.radio === "wifi" ? 0 : bleAdvertiseMs(d)
@@ -233,9 +279,9 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 	const firmwareWake =
 		advertiseMs === 0
 			? `- The firmware's wake: the ${BLE_READING_MS} ms reading, then straight back to sleep: on Wi-Fi it doesn't advertise, and it connects only for each upload.`
-			: `- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs)${wakeMs > d.activeMs ? `, ${wakeMs} ms in all (requirements.dutyCycle.activeMs says ${d.activeMs} ms)` : ""}. A phone that connects keeps it awake up to ${connectedS} s, which this average leaves out.`
+			: `- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs)${wakeMs > d.activeMs ? `, ${wakeMs} ms in all (requirements.dutyCycle.activeMs says ${d.activeMs} ms)` : ""}. A phone that connects keeps it awake up to ${connectedS} s${e.phone ? `: counted below as phone use` : ", which this average leaves out"}.`
 	const asleep = `- Asleep the rest of the ${d.periodS} s period: ${mcuSleep}${ldo}`
-	const worstMa = dutyCycleAverageMa(wake, peak) + e.regulatorIqUa / 1000
+	const worstMa = dutyCycleAverageMa(wake, peak) + standbyMa + phoneMa
 	// The MCU's datasheet currents per phase, when the catalog lists them: the reading with the CPU running, the
 	// advertising window with the radio on. Charging the whole wake at the rail's peak (a regulator sizing figure) was
 	// a modelling error the reviewer then trusted; it stays below as the labelled worst case.
@@ -253,7 +299,7 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 		const blinkMs = templateConstant("READING_BLINK_MS")
 		const ledMa = 3.3 / 1
 		const ledMc = hasLed && Number.isFinite(blinkMs) ? (ledMa * blinkMs) / 1000 : 0
-		const averageMa = (readingMc + advertiseMc + ledMc) / d.periodS + asleepMa + e.regulatorIqUa / 1000 + (e.wifi?.averageMa ?? 0)
+		const averageMa = (readingMc + advertiseMc + ledMc) / d.periodS + asleepMa + standbyMa + (e.wifi?.averageMa ?? 0) + phoneMa
 		return [
 			`Battery-life check (computed in code from the duty cycle and ${mcu.ref} ${mcu.mpn}'s datasheet currents, not from the rails' stated averages):`,
 			firmwareWake,
@@ -261,10 +307,11 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 			...(advertiseMs > 0 ? [`- Advertising: ${advertiseMs} ms at ${bleMa} mA (Bluetooth LE receiving, module datasheet: it stands in for the whole window, which keeps the radio on; the transmit bursts within it peak at ${figures.bleTxMa ?? "?"} mA but last well under a millisecond each) = ${n(advertiseMc)} mC`] : []),
 			...(ledMc > 0 ? [`- Status LED blink: ${blinkMs} ms at no more than ${ledMa} mA (3.3 V across its 1k resistor; the LED's own forward drop only lowers it) = ${n(ledMc)} mC`] : []),
 			...(e.wifi ? [`- Wi-Fi uploads: ${ma(e.wifi.averageMa)} on average (${e.wifi.how})`] : []),
+			...(e.phone ? [`- Phone use: ${ma(e.phone.averageMa)} on average (${e.phone.how})`] : []),
 			asleep,
 			lifeLine(averageMa, "Average"),
 			...connectionLines(e, averageMa, bleMa, connectedS),
-			"- Leaves out the other parts' currents while awake (charger and LDO idle, button pull-up).",
+			"- Leaves out the other parts' currents while awake (the button's pull-up).",
 			`- Worst case, the busiest battery-fed rail's peak (${ma(peak)}, a regulator sizing figure) for the whole ${wakeMs} ms wake:`,
 			lifeLine(worstMa, "  worst-case average"),
 		]
@@ -272,7 +319,8 @@ export function dutyCycleCheckLines(e: PowerEstimate, s?: ContractSnapshot, entr
 	return [
 		"Battery-life check (computed in code from the duty cycle, not from the rails' stated averages):",
 		`- Each reading: ${wakeMs} ms awake${wakeMs > d.activeMs ? ` (requirements.dutyCycle.activeMs says ${d.activeMs} ms)` : ""} at up to ${ma(peak)} (the busiest battery-fed rail's peak) = ${n((peak * wakeMs) / 1000)} mC`,
-		`- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs). A phone that connects keeps it awake up to ${connectedS} s, which this average leaves out.`,
+		`- The firmware's wake: the ${BLE_READING_MS} ms reading, then ${advertiseMs} ms of BLE advertising (BLE_ADVERTISE_MS, from activeMs). A phone that connects keeps it awake up to ${connectedS} s${e.phone ? ": counted below as phone use" : ", which this average leaves out"}.`,
+		...(e.phone ? [`- Phone use: ${ma(e.phone.averageMa)} on average (${e.phone.how})`] : []),
 		asleep,
 		lifeLine(worstMa, "Average"),
 		"- Assumes the firmware sleeps between readings as requirements.dutyCycle says, and the peak current for the whole wake (an upper bound on current). So a result at or above the target shows the target is met; one below it does not by itself show it is missed: then judge the stated average against the parts.",
@@ -289,7 +337,7 @@ function connectionLines(e: PowerEstimate, averageMa: number, radioMa: number, c
 	const spareMa = allowedMa - averageMa
 	const perDay = spareMa > 0 ? Math.floor((spareMa * 86400) / eachMc) : 0
 	return [
-		`- Connections: a phone that connects keeps it awake up to ${connectedS} s at about ${radioMa} mA (${n3(eachMc)} mC each). The ${e.targetDays}-day target allows ${ma(allowedMa)} on average; ${spareMa > 0 ? `${ma(spareMa)} above this average, which pays for ${perDay} full-length connection${perDay === 1 ? "" : "s"} a day` : "this average already uses all of it"} (the brief does not say how often a phone connects).`,
+		`- Connections: a phone that connects keeps it awake up to ${connectedS} s at about ${radioMa} mA (${n3(eachMc)} mC each). The ${e.targetDays}-day target allows ${ma(allowedMa)} on average; ${spareMa > 0 ? `${ma(spareMa)} above this average, which pays for ${perDay} more full-length connection${perDay === 1 ? "" : "s"} a day${e.phone ? ` beyond the ${PHONE_CONNECTIONS_PER_DAY} counted` : ""}` : "this average already uses all of it"} (the brief does not say how often a phone connects).`,
 	]
 }
 const n3 = (x: number) => Number(x.toPrecision(3))

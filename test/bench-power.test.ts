@@ -38,8 +38,8 @@ test("a bench measurement flows into the contract, the power budget and the revi
 
 	const after = state.contract.snapshot()
 	const measured = estimatePower(after, BRIEF)
-	const iqMa = measured.regulatorIqUa / 1000
-	assert.ok(Math.abs(measured.days! - 500 / (averageMa + iqMa) / 24) < 1e-9, "days = capacity / (measured average + LDO Iq) / 24 h")
+	const iqMa = (measured.regulatorIqUa + measured.chargerDrainUa) / 1000
+	assert.ok(Math.abs(measured.days! - 500 / (averageMa + measured.phone!.averageMa + iqMa) / 24) < 1e-9, "days = capacity / (measured average + phone use + LDO Iq + charger drain) / 24 h")
 	assert.ok(measured.days! < estimated.days!, `the measurement (${measured.days} days) is worse than the estimate (${estimated.days} days)`)
 
 	const budget = powerBudgetLines(measured).join("\n")

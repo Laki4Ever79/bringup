@@ -6,6 +6,12 @@ import type { ContractValues } from "../src/contract/types.ts"
 import { LOGGER_DESIGN } from "../src/inference/scripts.ts"
 import { fixtureContract } from "./fixture.ts"
 
+// The AP2112K the scripted logger used before the RT9080, for the tests that check a 55 µA regulator's arithmetic.
+const AP2112K = { ref: "U3", role: "ldo", mpn: "AP2112K-3.3TRG1", lcsc: "C51118", footprint: "sot23_5", pins: ["VIN", "GND", "EN", "NC", "VOUT"] }
+const withAp2112k = (v: Partial<ContractValues>) => ({ ...v, parts: v.parts!.map((p) => (p.role === "ldo" ? AP2112K : p)) })
+// One phone connection a day, counted since 8 Nov: 30 s at 86 mA = 2580 mC / 86400 s.
+const PHONE_MA = 2580 / 86400
+
 test("batteryLifeDays divides capacity by the average draw plus regulator Iq", () => {
 	// 500 mAh / (0.045 mA + 0.055 mA) = 5000 h = 208.3 days
 	assert.equal(Math.round(batteryLifeDays(500, 0.045, 55)! * 10) / 10, 208.3)
@@ -40,15 +46,18 @@ test("estimatePower prefers the brief's capacity and the battery-side rail's ave
 	assert.equal(e.averageMa, 0.045)
 	assert.equal(e.regulatorIqUa, 0, "the fixture has no LDO")
 	assert.equal(e.targetDays, 180)
-	assert.equal(Math.round(e.days!), 463)
+	// 500 mAh / (0.045 mA + 0.0299 mA phone use) / 24 h; the fixture has no charger
+	assert.equal(Math.round(e.days!), 278)
+	assert.ok(Math.abs(e.phone!.averageMa - PHONE_MA) < 1e-12)
 	assert.equal(estimatePower(c, "no capacity stated").capacitySource, "requirements")
 })
 
 test("estimatePower adds the LDO's quiescent current and says when it cannot estimate", () => {
 	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
 	const e = estimatePower(s, "around 500 mAh")
-	assert.equal(e.regulatorIqUa, 55)
+	assert.equal(e.regulatorIqUa, 2, "the logger's RT9080")
 	assert.ok(e.days! > 180, `logger estimate ${e.days} days`)
+	assert.equal(estimatePower({ ...s, values: withAp2112k(s.values) }, "around 500 mAh").regulatorIqUa, 55)
 	delete s.values.rails![0].averageMa
 	delete s.values.requirements!.dutyCycle
 	assert.equal(estimatePower(s, "around 500 mAh").days, null)
@@ -56,7 +65,8 @@ test("estimatePower adds the LDO's quiescent current and says when it cannot est
 })
 
 // Real run 6: VBAT's own loads and the 3V3 rail behind the LDO both draw from the cell. The LDO's input current is
-// its output current, so the battery sees 0.02 + 0.106 mA plus the LDO's 55 µA: about 115 days, not 278.
+// its output current, so the battery sees 0.02 + 0.106 mA plus the LDO's 55 µA: about 115 days, not 278. Since 8 Nov
+// one phone connection a day (0.0299 mA) and the charger's 6 µA count too: 96 days.
 const REAL_6_RAILS = [
 	{ name: "VBAT", voltageV: 3.7, regulatorMaxMa: 500, loadMa: 350, averageMa: 0.02 },
 	{ name: "VDD_3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 180, averageMa: 0.106 },
@@ -64,17 +74,18 @@ const REAL_6_RAILS = [
 
 test("the battery current sums every battery-fed rail's own average, plus the LDO Iq (real run 6)", () => {
 	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	s.values = withAp2112k(s.values)
 	s.values.rails = structuredClone(REAL_6_RAILS)
 	s.values.requirements!.dutyCycle = { activeMs: 120, periodS: 300, sleepUa: 20 }
 	const e = estimatePower(s, "a small single-cell pouch, around 500 mAh")
 	assert.deepEqual(e.rails.map((r) => [r.name, r.averageMa]), [["VBAT", 0.02], ["VDD_3V3", 0.106]])
 	assert.equal(Math.round(e.averageMa! * 1000) / 1000, 0.126)
 	assert.equal(e.regulatorIqUa, 55)
-	assert.equal(Math.round(e.days!), 115)
+	assert.equal(Math.round(e.days!), 96)
 	const text = powerBudgetLines(e).join("\n")
 	assert.match(text, /Rail VBAT: peak 350 mA, average 0\.02 mA/)
 	assert.match(text, /Rail VDD_3V3: peak 180 mA, average 0\.106 mA/)
-	assert.match(text, /500 mAh \/ \(0\.02 mA \+ 0\.106 mA \+ 0\.055 mA\) \/ 24 h = 115 days vs target 180 days/)
+	assert.match(text, /500 mAh \/ \(0\.02 mA \+ 0\.106 mA \+ 0\.0299 mA \+ 0\.055 mA \+ 0\.006 mA\) \/ 24 h = 96 days vs target 180 days/)
 })
 
 test("a battery-fed rail with no average makes the estimate unknown instead of optimistic", () => {
@@ -89,7 +100,7 @@ test("a battery-fed rail with no average makes the estimate unknown instead of o
 test("each LDO adds its own quiescent current", () => {
 	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
 	s.values.parts = [...s.values.parts!, { ...s.values.parts!.find((p) => p.role === "ldo")!, ref: "U4" }]
-	assert.equal(estimatePower(s, "500 mAh").regulatorIqUa, 110)
+	assert.equal(estimatePower(s, "500 mAh").regulatorIqUa, 4, "two RT9080s")
 })
 
 test("powerBudgetLines shows peak, average and the arithmetic", () => {
@@ -97,8 +108,10 @@ test("powerBudgetLines shows peak, average and the arithmetic", () => {
 	const text = powerBudgetLines(estimatePower(s, "around 500 mAh")).join("\n")
 	assert.match(text, /3V3: peak 200 mA, average 0\.0\d+ mA/)
 	assert.match(text, /Battery: 500 mAh \(from the brief\)/)
-	assert.match(text, /Regulator quiescent current: 55 µA/)
-	assert.match(text, /Estimated battery life: 500 mAh \/ \(0\.\d+ mA \+ 0\.055 mA\) \/ 24 h = \d+ days vs target 180 days/)
+	assert.match(text, /Regulator quiescent current: 2 µA/)
+	assert.match(text, /Phone use: 0\.0299 mA on average \(1 phone connection a day \(an assumption/)
+	assert.match(text, /Charger's draw on the cell with USB unplugged: 6 µA \(U4 TP4054-42-SOT25R 6 µA typ, 10 µA max/)
+	assert.match(text, /Estimated battery life: 500 mAh \/ \(0\.0375 mA \+ 0\.0299 mA \+ 0\.002 mA \+ 0\.006 mA\) \/ 24 h = 276 days vs target 180 days/)
 })
 
 const propose = (field: "requirements" | "rails", value: unknown) => new DesignContract().propose({ field, value, by: "architect", baseVersion: 0 } as never)
@@ -136,7 +149,7 @@ test("an LDO's quiescent current comes from the catalog's iqUa", () => {
 	assert.deepEqual(e.regulators, [{ ref: "U3", mpn: "XC6206P332MR-G", iqUa: 1, source: "catalog" }])
 	const text = powerBudgetLines(e).join("\n")
 	assert.match(text, /Regulator quiescent current: 1 µA \(U3 XC6206P332MR-G 1 µA, from the catalog\)/)
-	assert.match(text, /\+ 0\.001 mA\) \/ 24 h/)
+	assert.match(text, /\+ 0\.001 mA \+ 0\.006 mA\) \/ 24 h/)
 })
 
 test("an LDO the catalog doesn't know is assumed to draw 55 uA", () => {
@@ -149,7 +162,7 @@ test("an LDO the catalog doesn't know is assumed to draw 55 uA", () => {
 })
 
 test("swapping the AP2112K for the low-Iq LDO buys battery life (500 mAh, real run 7's budget)", () => {
-	const s = { revision: 1, versions: fixtureContract().versions, values: structuredClone(LOGGER_DESIGN) as Partial<ContractValues> }
+	const s = { revision: 1, versions: fixtureContract().versions, values: withAp2112k(structuredClone(LOGGER_DESIGN) as Partial<ContractValues>) }
 	s.values.rails = [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 200, loadMa: 120, averageMa: 0.07 }]
 	const ap = estimatePower(s, "500 mAh").days!
 	s.values.parts = s.values.parts!.map((p) => (p.role === "ldo" ? LOW_IQ : p))
@@ -214,10 +227,11 @@ test("dutyCycleCheckLines derives battery life from the duty cycle, independent 
 	const text = dutyCycleCheckLines(estimatePower(s, "")).join("\n")
 	assert.match(text, /^Battery-life check \(computed in code from the duty cycle, not from the rails' stated averages\):$/m)
 	assert.match(text, /^- Each reading: 100 ms awake at up to 80 mA \(the busiest battery-fed rail's peak\) = 8 mC$/m)
-	assert.match(text, /^- The firmware's wake: the 30 ms reading, then 70 ms of BLE advertising \(BLE_ADVERTISE_MS, from activeMs\)\. A phone that connects keeps it awake up to 30 s, which this average leaves out\.$/m)
+	assert.match(text, /^- The firmware's wake: the 30 ms reading, then 70 ms of BLE advertising \(BLE_ADVERTISE_MS, from activeMs\)\. A phone that connects keeps it awake up to 30 s: counted below as phone use\.$/m)
+	assert.match(text, /^- Phone use: 0\.0299 mA on average /m)
 	assert.match(text, /^- Asleep the rest of the 300 s period: 5 µA \(MCU deep sleep\) \+ 1 µA \(LDO quiescent\)$/m)
-	// 100/300000 × 80 mA + (1 − 1/3000) × 0.005 mA + 0.001 mA = 0.0327 mA; 500 mAh / 0.0327 mA / 24 h = 638 days
-	assert.match(text, /^- Average 0\.0327 mA; 500 mAh \/ 0\.0327 mA \/ 24 h = 638 days vs target 180 days$/m)
+	// 100/300000 × 80 mA + (1 − 1/3000) × 0.005 mA + 0.001 mA + 0.0299 mA (phone) = 0.0625 mA; 500 / 0.0625 / 24 = 333 days
+	assert.match(text, /^- Average 0\.0625 mA; 500 mAh \/ 0\.0625 mA \/ 24 h = 333 days vs target 180 days$/m)
 	assert.match(text, /^- Assumes the firmware sleeps between readings as requirements\.dutyCycle says, and the peak current for the whole wake \(an upper bound on current\)\. So a result at or above the target shows the target is met; one below it does not by itself show it is missed: then judge the stated average against the parts\.$/m)
 	const none = fixtureContract()
 	assert.deepEqual(dutyCycleCheckLines(estimatePower(none, "")), ["Battery-life check: not computed (no requirements.dutyCycle)"])
@@ -239,7 +253,7 @@ test("a battery rail stating the same average as the rail behind its LDO is coun
 	assert.equal(e.rails[0].sameAs, "VCC_3V3")
 	const text = powerBudgetLines(e).join("\n")
 	assert.match(text, /Rail VBAT: .*the same as VCC_3V3's, so read as including VCC_3V3's loads and counted once/)
-	assert.match(text, /500 mAh \/ \(0\.0307 mA\) \/ 24 h/)
+	assert.match(text, /500 mAh \/ \(0\.0307 mA \+ 0\.0299 mA\) \/ 24 h/)
 	c.values.rails[0].averageMa = 0.002
 	assert.equal(estimatePower(c, "around 500 mAh").averageMa, 0.0327, "different averages still add up")
 })
@@ -258,11 +272,11 @@ test("dutyCycleCheckLines charges the reading at the CPU current and the adverti
 	assert.match(text, /^- Advertising: 50 ms at 86 mA \(Bluetooth LE receiving, module datasheet: it stands in for the whole window, which keeps the radio on; the transmit bursts within it peak at 170 mA but last well under a millisecond each\) = 4\.3 mC$/m)
 	// The fixture's D1 blinks 20 ms at no more than 3.3 V / 1k = 3.3 mA: 0.066 mC.
 	assert.match(text, /^- Status LED blink: 20 ms at no more than 3\.3 mA \(3\.3 V across its 1k resistor; the LED's own forward drop only lowers it\) = 0\.066 mC$/m)
-	// (0.84 + 4.2 + 0.066) mC / 60 s + (1 − 80/60000) × 0.005 mA + 0.001 mA = 0.0911 mA; 500 / 0.0911 / 24 = 229 days
-	assert.match(text, /^- Average 0\.0928 mA; 500 mAh \/ 0\.0928 mA \/ 24 h = 225 days vs target 90 days$/m)
+	// (0.84 + 4.3 + 0.066) mC / 60 s + (1 − 80/60000) × 0.005 mA + 0.001 mA + 0.0299 mA (phone) = 0.123 mA; 170 days
+	assert.match(text, /^- Average 0\.123 mA; 500 mAh \/ 0\.123 mA \/ 24 h = 170 days vs target 90 days$/m)
 	assert.match(text, /^- Worst case, the busiest battery-fed rail's peak \(200 mA, a regulator sizing figure\) for the whole 80 ms wake:$/m)
-	// 80/60000 × 200 + (1 − 80/60000) × 0.005 + 0.001 = 0.273 mA; 76 days
-	assert.match(text, /^- {3}worst-case average 0\.273 mA; 500 mAh \/ 0\.273 mA \/ 24 h = 76 days vs target 90 days$/m)
+	// 80/60000 × 200 + (1 − 80/60000) × 0.005 + 0.001 + 0.0299 (phone) = 0.303 mA; 69 days
+	assert.match(text, /^- {3}worst-case average 0\.303 mA; 500 mAh \/ 0\.303 mA \/ 24 h = 69 days vs target 90 days$/m)
 })
 
 // Real beacon run N: blocked on "the average leaves out connected time". The check now says what the target leaves for it.
@@ -273,6 +287,6 @@ test("the duty-cycle check says how many full-length connections a day the batte
 	s.values.rails = [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 200, loadMa: 200, averageMa: 0.12 }]
 	s.values.parts = [...s.values.parts!, { ref: "U3", role: "ldo", mpn: "XC6206P332MR-G", lcsc: "C5446", footprint: "sot23", pins: ["GND", "VOUT", "VIN"] }]
 	const text = dutyCycleCheckLines(estimatePower(s, ""), s).join("\n")
-	// allowed 500 / (90 × 24) = 0.231 mA; spare about 0.14 mA → about 12100 mC a day / 2580 mC (30 s at 86 mA) = 4 connections
-	assert.match(text, /^- Connections: a phone that connects keeps it awake up to 30 s at about 86 mA \(2580 mC each\)\. The 90-day target allows 0\.231 mA on average; 0\.139 mA above this average, which pays for 4 full-length connections a day \(the brief does not say how often a phone connects\)\.$/m)
+	// allowed 500 / (90 × 24) = 0.231 mA; spare 0.109 mA after the counted connection → 9400 mC a day / 2580 mC = 3 more
+	assert.match(text, /^- Connections: a phone that connects keeps it awake up to 30 s at about 86 mA \(2580 mC each\)\. The 90-day target allows 0\.231 mA on average; 0\.109 mA above this average, which pays for 3 more full-length connections a day beyond the 1 counted \(the brief does not say how often a phone connects\)\.$/m)
 })

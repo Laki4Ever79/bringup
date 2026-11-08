@@ -31,7 +31,7 @@ export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" 
 	parts: [
 		{ ref: "U1", role: "mcu", mpn: "ESP32-C3-MINI-1", lcsc: "C2838502", footprint: "esp32_c3_mini_1", pins: ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO18", "GPIO19", "EN", "3V3", "GND"] },
 		{ ref: "U2", role: "sensor", mpn: "SHT40-AD1B-R2", lcsc: "C2909890", footprint: "dfn4", pins: ["SDA", "SCL", "VDD", "VSS"] },
-		{ ref: "U3", role: "ldo", mpn: "AP2112K-3.3TRG1", lcsc: "C51118", footprint: "sot23_5", pins: ["VIN", "GND", "EN", "NC", "VOUT"] },
+		{ ref: "U3", role: "ldo", mpn: "RT9080-33GJ5", lcsc: "C841192", footprint: "sot23_5", pins: ["VIN", "GND", "EN", "NC", "VOUT"] },
 		{ ref: "U4", role: "charger", mpn: "TP4054-42-SOT25R", lcsc: "C32574", footprint: "sot23_5", pins: ["CHRG", "GND", "BAT", "VCC", "PROG"] },
 		{ ref: "J1", role: "usb-c", mpn: "TYPE-C-31-M-12", lcsc: "C165948", footprint: "usbcmidmount", pins: ["VBUS", "GND", "CC1", "CC2", "DP", "DN"] },
 		{ ref: "J2", role: "battery", mpn: "S2B-PH-K-S(LF)(SN)", lcsc: "C173752", footprint: "jst2_ph", pins: ["VBAT", "GND"] },
@@ -55,7 +55,8 @@ export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" 
 // The second scripted design, for briefs/beacon.md: the logger's board without the sensor (and its I2C pull-ups), plus
 // a button on the top edge that wakes it. ESP32-C3 deep sleep about 10 µA; every 60 s it wakes for a 300 ms BLE
 // advertising burst (plus the 30 ms wake) at about 25 mA: 25 mA × 330 ms / 60 s + 10 µA = 147.5 µA. With the
-// AP2112K's 55 µA, a 500 mAh cell lasts about 103 days, past the brief's 3 months.
+// RT9080's 2 µA, one phone connection a day (about 30 µA) and the charger's 6 µA, a 500 mAh cell lasts about 112 days,
+// past the brief's 3 months. (With the AP2112K's 55 µA it fell short once phone use and the charger were counted.)
 export const BEACON_DESIGN: typeof LOGGER_DESIGN = {
 	requirements: {
 		summary: "BLE beacon with a wake button",
@@ -496,7 +497,7 @@ export function mockScripts(): Record<string, Script> {
 			}
 			return say("case unchanged")
 		},
-		// Passes with one minor finding, so mock runs settle and still show a verdict. 55 µA × 24 h × 183 days ≈ 242 mAh.
+		// Passes with one minor finding, so mock runs settle and still show a verdict.
 		"mock-reviewer": (items) =>
 			stepsTaken(items) === 0
 				? [
@@ -506,8 +507,8 @@ export function mockScripts(): Record<string, Script> {
 								{
 									severity: "minor",
 									fields: ["rails", "parts"],
-									issue: "The AP2112K draws about 55 µA quiescent: over 6 months that alone is about 242 mAh of the 500 mAh cell.",
-									suggestion: "Consider the RT9080-33GJ5 (2 µA, rated 600 mA like the AP2112K, same pins) to leave margin for the radio and the sensor.",
+									issue: "The battery budget assumes one phone connection a day; the brief does not say how often the history is read.",
+									suggestion: "State the expected phone use in the brief, so the battery-life target is checked against it.",
 								},
 							],
 						}),

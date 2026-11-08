@@ -24,8 +24,9 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	let lastError: unknown
 	let best: { board: BoardArtifact; errors: number } | null = null
 	// The default layout first; then the same with keepouts at the USB-C locating holes (the fix for vias beside
-	// them); then the other LDO distances.
-	const attempts: PlacementOptions[] = [{ ldoFromUsbMm: LDO_FROM_USB_MM }, { ldoFromUsbMm: LDO_FROM_USB_MM, usbKeepouts: true }, ...[7, 9.5, 11].map((ldoFromUsbMm) => ({ ldoFromUsbMm }))]
+	// them); then the other LDO distances, each with and without the keepouts (the 60 mm logger with recovery pads,
+	// 8 Nov: only 9.5 mm with keepouts built clean).
+	const attempts: PlacementOptions[] = [{ ldoFromUsbMm: LDO_FROM_USB_MM }, { ldoFromUsbMm: LDO_FROM_USB_MM, usbKeepouts: true }, ...[7, 9.5, 11].flatMap((ldoFromUsbMm) => [{ ldoFromUsbMm }, { ldoFromUsbMm, usbKeepouts: true }])]
 	// A layout that leaves a part out is never built: tscircuit would drop the part at the board's centre, onto whatever
 	// is there (the wake-word board at 35×25 mm, LDO 11 mm from J1: "C3 overlaps U3", and autorouting skipped).
 	const count = boardParts(s).length
