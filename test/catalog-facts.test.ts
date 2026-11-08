@@ -27,7 +27,8 @@ test("the reviewer sees the catalog's facts about the contract's parts", () => {
 	const text = partFactsSection(s).join("\n")
 	assert.match(text, /^## Part facts \(from the catalog\)$/m)
 	assert.match(text, /^- U1 ESP32-C3-MINI-1: 4 MB on-module flash; .*history.*NVS.*LittleFS/m)
-	assert.doesNotMatch(text, /^- U3 /m, "parts without catalog notes are not listed")
+	assert.match(text, /^- U3 RT9080-33GJ5: /m)
+	assert.doesNotMatch(text, /^- D1 /m, "parts without catalog notes are not listed")
 })
 
 test("the agents are told the module's flash stores the history", () => {

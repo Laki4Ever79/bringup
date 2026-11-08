@@ -1,5 +1,5 @@
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
-import { generatedNets, MIC_PORT, partPads, supportParts } from "../codegen/circuit.ts"
+import { generatedNets, MIC_PORT, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
@@ -113,6 +113,7 @@ export type ViolationKind =
 	| "battery-short"
 	| "part-unconnected"
 	| "connector-without-part"
+	| "boot-pin-taken"
 	| "rail-underrated"
 	| ModelViolation["kind"]
 	| TestViolation["kind"]
@@ -143,7 +144,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -385,6 +386,34 @@ export function connectorsWithoutParts(c: ContractSnapshot): Violation[] {
 			fields: ["connectors", "parts"] as FieldName[],
 			affects: ["architect", "parts"] as AgentRole[],
 		}))
+}
+
+// A deep-sleeping design needs its MCU's boot pin free (an I2C line may share it): the board generator puts the recovery
+// BOOT pad there, and a signal on it would also decide how the chip boots (real run 3, 7 Nov: no way to reflash a
+// sleeping board). And the pads need room on the bottom.
+export function bootPinTaken(c: ContractSnapshot): Violation[] {
+	const boot = recoveryBootPin(c)
+	const taken = boot ? (c.values.pins ?? []).filter((p) => p.gpio === boot.gpio && !sharesBootPin(p.signal)) : []
+	if (!boot) return []
+	const { unplaced } = taken.length === 0 && c.values.outline ? recoveryPads(c) : { unplaced: [] }
+	if (unplaced.length > 0)
+		return [
+			{
+				kind: "boot-pin-taken",
+				message: `the recovery pads (${unplaced.join(", ")}) find no free spot on the bottom of the ${c.values.outline!.widthMm}×${c.values.outline!.heightMm} mm board, so a deep-sleeping board could not be reflashed: make the board larger or move parts`,
+				fields: ["outline", "parts"],
+				affects: ["architect"],
+			},
+		]
+	if (taken.length === 0) return []
+	return [
+		{
+			kind: "boot-pin-taken",
+			message: `${boot.mcu.ref} ${boot.pin} is the boot strapping pin, held low at reset it starts the ROM downloader; the board generator puts the recovery BOOT pad there, since a deep-sleeping board has its USB off. It is assigned to ${taken.map((p) => `${p.signal} (${p.partRef}.${p.partPin})`).join(", ")}: move that to another GPIO (an I2C line, pulled up, may stay)`,
+			fields: ["pins"],
+			affects: ["architect"],
+		},
+	]
 }
 
 // Every ref something connects: a contract pin, a net the board generator wires, or a support part's end.

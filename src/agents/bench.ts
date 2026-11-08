@@ -256,7 +256,8 @@ export function createBench(opts: BenchOptions): Bench {
 		const brief = existsSync(briefPath) ? readFileSync(briefPath, "utf8") : ""
 		const withMeasured: ContractSnapshot = rail ? { ...snapshot, values: { ...snapshot.values, rails: snapshot.values.rails!.map((r) => (r.name === rail.name ? { ...r, averageMa } : r)) } } : snapshot
 		const e = estimatePower(withMeasured, brief)
-		const days = rail && e.capacityMah !== null && e.averageMa !== null ? batteryLifeDays(e.capacityMah, e.averageMa, e.regulatorIqUa) : null
+		// The same budget as the design's (phone use, the charger's drain, Wi-Fi, the model), with the measured rail in it.
+		const days = rail ? e.days : null
 		const target = e.targetDays
 		const measured: Payloads["bench.measured"] = {
 			revision,

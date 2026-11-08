@@ -22,18 +22,20 @@ The checks and agents are tested piece by piece with scripted agents. What hasn'
 | 2 | consistent, every output built, the change rippled in 70 s; failed review 7 times | the case facts said "features: none", hiding the automatic USB-C opening; a true size reason still raised as major | 004a25f |
 | 3 | consistent through review; failed review on real design questions | a button connector left with no part, no pin and no wiring; the reviewer guessed the charger's current (no catalog facts) | connector check, TP4054 facts |
 
-Open from run 3, decisions for the engineer:
+Decisions from run 3, agreed with the engineer on 8 Nov and built:
 
-- [ ] **Recovery flashing:** the product firmware deep-sleeps, and the ESP32-C3's USB is off in deep sleep, so a
-      board can't be reflashed unless it is awake. The reviewer asked for GPIO9 (boot) access. Options: a boot button,
-      boot and reset test pads, or firmware that stays awake a few seconds after power-up.
-- [ ] **Phone use in the battery budget:** a phone connection keeps the device awake up to 30 s at about 86 mA, and the
-      battery check doesn't count it. The reviewer flagged it every round. It needs a stated assumption (for example,
-      one connection a day) counted like the Wi-Fi uploads.
-- [ ] **The charger's own drain:** with USB unplugged the TP4054 draws 6 µA typ, 10 µA max from the battery; the power
-      budget counts the regulator's quiescent current but not this.
-- [ ] **Review convergence:** each review starts fresh and finds new things, so four fix rounds can end on a
-      different blocker each time. Consider giving the reviewer its earlier findings.
+- [x] **Recovery flashing:** the product firmware deep-sleeps, and the ESP32-C3's USB is off in deep sleep. The board
+      generator now puts two bare pads on the bottom of every deep-sleeping design: BOOT on the MCU's boot strapping pin
+      (catalog `bootPin`, GPIO9) and GND. To reflash: open the case, unplug USB and the battery, short the pads while
+      reconnecting the battery, plug in USB; the ROM downloader works even when the firmware doesn't boot. An I2C line
+      (pulled up) may share the pin; any other signal there, or no room for the pads, is a `boot-pin-taken` violation.
+      A BOOT button was tried first and dropped: its 7×9 mm footprint made the logger's smallest board 27% bigger.
+- [x] **Phone use in the battery budget:** counted as an assumption of one full-length connection a day
+      (`PHONE_CONNECTIONS_PER_DAY`: 30 s at 86 mA, about 0.03 mA on average), on any design a phone reads over GATT.
+- [x] **The charger's own drain:** the TP4054's 6 µA typ (10 µA max) with USB unplugged is counted beside the
+      regulator's quiescent current (catalog `batteryDrainUa`).
+- [x] **Review convergence:** the reviewer now sees its own earlier verdicts and findings, re-checks those first, and
+      treats anything unchanged it didn't raise before as minor unless a must-have can't be met.
 
 ## 2. Security (needed before selling under the EU Cyber Resilience Act; vulnerability reporting from 11 Sep 2026, everything else from 11 Dec 2027)
 
@@ -60,5 +62,8 @@ is a change to the firmware toolchain, not just the code.
       ground copper is kept away from it yet either.
 - [ ] **RT9080 lifecycle:** one LCSC page flagged it "not recommended for new designs". Confirm with Richtek or a
       distributor, and name a second source.
+- [ ] **EN reset delay:** the generator ties the ESP32-C3's EN straight to 3V3; Espressif's reference design puts an
+      RC delay there (10 kΩ, 1 µF). A reset button on EN would also make recovery possible without unplugging the
+      battery.
 - [ ] **Bulk capacitance for Wi-Fi bursts:** the board has 10 µF on the 3V3 rail. Check against the rail droop measured
       above before adding more.

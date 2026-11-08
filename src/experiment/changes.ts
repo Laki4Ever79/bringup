@@ -66,8 +66,8 @@ export const CHANGES: ExperimentChange[] = [
 		},
 	},
 	{
-		// The part, and the rail's rating with it: a rail claiming the AP2112K's 600 mA over an XC6206 rated 200 mA is
-		// regulator-overclaimed (the 120 mA peak fits either way).
+		// The part, and the rail's rating with it: a rail claiming the base regulator's 600 mA (the RT9080 since 8 Nov, the
+		// AP2112K in the recorded runs) over an XC6206 rated 200 mA is regulator-overclaimed. The XC6206 has 3 pins, no EN.
 		id: "ldo-swap",
 		label: "Swap the LDO for the low-Iq XC6206 (3 pins, no EN)",
 		receiver: "firmware",
