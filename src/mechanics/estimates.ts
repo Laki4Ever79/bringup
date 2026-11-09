@@ -6,6 +6,8 @@ export const ESTIMATES = {
 	plaDensityGcm3: { value: 1.24, why: "PLA filament density as printed solid; infill lowers it, so this overstates the plate's mass slightly" },
 	motorOvervoltMax: { value: 1.5, why: "small brushed gearmotors are commonly run up to about 1.5× rated voltage with shorter life; beyond that, no" },
 	boardMassGPerCm2: { value: 0.35, why: "a 1.6 mm FR-4 board with small parts weighs roughly 0.3–0.4 g per cm²" },
+	packInternalOhm: { value: 0.15, why: "small 1S LiPo cells with protection circuits measure roughly 0.1–0.2 Ω; neither cell datasheet states it" },
+	packInternalOhm: { value: 0.15, why: "small 1S LiPo cells with protection circuits measure roughly 0.1–0.2 Ω; neither cell datasheet states it" },
 	standoffMm: { value: 10, why: "board standoffs above the plate, to clear the battery and wiring" },
 } as const
 
