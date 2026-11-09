@@ -23,10 +23,10 @@ const HISTORY = 40
 // Same as BUILD_INPUTS and BUILD_REQUIRES in src/agents/builders.ts.
 // A test holds these equal to the builders' (test/lanes.test.ts).
 export const BUILDS = {
-	board: { inputs: ["parts", "pins", "outline", "connectors", "test"], requires: ["outline", "parts", "pins"] },
+	board: { inputs: ["parts", "pins", "outline", "connectors", "test", "links"], requires: ["outline", "parts", "pins"] },
 	// parts: the lid's vent sits over the sensor; case: the case designer's walls, height and features.
 	enclosure: { inputs: ["outline", "connectors", "parts", "case"], requires: ["outline", "connectors"] },
-	firmware: { inputs: ["parts", "pins", "behavior", "requirements", "model", "connectivity"], requires: ["parts", "pins"] },
+	firmware: { inputs: ["parts", "pins", "behavior", "requirements", "model", "connectivity", "links"], requires: ["parts", "pins"] },
 	// Only when the contract has a test field (OPTIONAL_KINDS in builders.ts).
 	testkit: { inputs: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"], requires: ["test", "outline", "pins"], optional: "test" },
 }

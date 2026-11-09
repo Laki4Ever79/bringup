@@ -1,0 +1,18 @@
+{
+	"name": "logger and beacon over UART",
+	"boards": [
+		{ "name": "logger", "brief": "../logger.md" },
+		{ "name": "beacon", "brief": "../beacon.md" }
+	],
+	"links": [
+		{
+			"id": "L1",
+			"kind": "uart",
+			"a": { "board": "logger" },
+			"b": { "board": "beacon" },
+			"baud": 115200,
+			"cable": { "lengthMm": 300 },
+			"messages": [{ "name": "reading", "from": "logger", "fields": [{ "name": "tempCx100", "type": "i16" }, { "name": "rhx100", "type": "u16" }] }]
+		}
+	]
+}

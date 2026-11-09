@@ -1,4 +1,6 @@
 import "dotenv/config"
+import { loadSpec, specErrors } from "./system/spec.ts"
+import { runSystem } from "./system/run.ts"
 import { addedForYou } from "./contract/added.ts"
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
@@ -192,6 +194,29 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		}
 		console.log(`data-collection firmware for rev ${revision}, sensor path ${r.pathHash}: flash it with\n  .venv/bin/pio run -d ${fwDir} -e esp32c3_collect -t upload\nthen record with\n  .venv/bin/python py/collect.py --port /dev/ttyACM0 --label <word> --out <dataset> --contract ${join(dir, "contract.json")}`)
 		return 0
+	}
+	// `bringup system <system.json>`: a system of boards, each designed by its own run, and the links between them
+	// checked across boards (docs/system.md, src/system/run.ts).
+	if (argv[0] === "system") {
+		const path = argv[1]
+		if (!path || !existsSync(path)) {
+			console.error("bringup: usage: bringup system <system.json> [--mock] [--no-hardware] [--no-review] [--out <dir>]")
+			return 1
+		}
+		const spec = loadSpec(path)
+		const errors = specErrors(spec)
+		if (errors.length) {
+			console.error(`bringup: ${path}:\n${errors.map((e) => `- ${e}`).join("\n")}`)
+			return 1
+		}
+		const flag = (f: string) => argv.includes(f)
+		const outAt = argv.indexOf("--out")
+		const out = resolve(outAt > 0 ? argv[outAt + 1] : join(ROOT, "out", `system-${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}`))
+		console.log(`bringup system: ${spec.name}, ${spec.boards.length} boards, ${spec.links.length} links; output ${out}`)
+		const env = flag("--no-hardware") ? null : await (deps.detect ?? detectEnvironment)(ROOT)
+		const r = await runSystem({ spec, outDir: out, mock: flag("--mock"), boardArgs: [...(flag("--no-hardware") ? ["--no-hardware"] : []), ...(flag("--no-review") ? ["--no-review"] : [])], ...(env ? { linkTest: { root: ROOT, pio: env.pio, qemu: Boolean(env.qemu) } } : {}) })
+		console.log(`\n${r.ok ? "settled" : "UNSETTLED"}: ${r.findings.filter((f) => f.kind !== "link-pending").length} system finding(s)${r.linkTests.length ? `; link tests: ${r.linkTests.map((t) => `${t.link} ${!t.ran ? "not run" : t.passed ? "pass" : "FAIL"}`).join(", ")}` : ""}\nreport: ${r.reportPath}`)
+		return r.ok ? 0 : 2
 	}
 	// `bringup link <runDir> <dir>`: a git working copy for the run's files (runner/linked.ts).
 	if (argv[0] === "link") {

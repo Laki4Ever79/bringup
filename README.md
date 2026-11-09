@@ -136,6 +136,20 @@ with Home Assistant discovery. The checks then follow the radio: Wi-Fi's 350 mA 
 hourly uploads break the 180-day battery target until they're stretched, and field updates cost a second firmware
 slot that a bigger model may not fit. Details: [docs/connectivity.md](docs/connectivity.md).
 
+No case, or your own: "bare board, no case" builds and checks no case, and "it goes into our own housing" writes
+`interface.md` (outline, mounting holes, openings, lights, vents, antenna keep-out, label) instead. What Bringup adds
+without being asked (a case nobody mentioned, USB wake, recovery pads, a battery assumption) is listed in the report
+under "Added for you", with how it shows and how to turn it off.
+
+### 9. Several boards, one system
+
+`npm run bringup -- system briefs/systems/logger-beacon-uart.json` designs each board in its own run, in parallel,
+and joins them with UART or I2C links over a 4-pin JST SH cable. Each board gets one extra field, its side of each link;
+its own agents add the connector and pins. Code then checks the boards against each other: TX meets RX through the
+cable, matching speeds, one I2C controller, unique addresses, one set of pull-ups, the cable's length and voltage drop,
+and one message definition on both sides. Out come the cable drawing, a WireViz file and a shared message header, and
+each UART link's two firmwares are run together in QEMU over a virtual cable. Details: [docs/system.md](docs/system.md).
+
 ## Architecture
 
 ```mermaid

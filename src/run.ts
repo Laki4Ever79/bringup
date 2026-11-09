@@ -197,6 +197,15 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const requests = watchRequests(opts.outDir, (r) => {
 		const request = { id: `req-${++requestCount}`, text: r.text, ...(r.source ? { source: r.source } : {}) }
 		emit(makeEvent("change.requested", engineer.getId(), request), engineer.getId())
+		// A system of boards hands this board its links (docs/system.md): the integrator owns the field, so it is written
+		// as it is, and this board's own agents follow it through the checks it wakes, like any other change.
+		if (r.links) {
+			const before = state.contract.get("links") ?? null
+			const result = state.contract.propose({ field: "links", value: r.links, by: "integrator", baseVersion: state.contract.version("links") })
+			if (result.status === "applied") emit(makeEvent("contract.changed", engineer.getId(), { field: "links", version: result.version, revision: result.revision, by: "integrator", reason: r.text, before, after: r.links, cause: { kind: "request", id: request.id, text: r.text } }), engineer.getId())
+			else if (result.status !== "unchanged") console.error(`[system] links not applied: ${JSON.stringify(result)}`)
+			return
+		}
 		state.currentRequest = request
 		sendMessage(r.text, engineer.getId())
 	})

@@ -93,3 +93,38 @@ export async function bootFirmware(root: string, fwDir: string, timeoutMs = 1500
 	const m = output.match(/bringup rev (\d+)/)
 	return { booted: m !== null, serial: output, revision: m ? Number(m[1]) : null, backend: "qemu" }
 }
+
+// Two boards joined by a cable, in QEMU: board A's UART1 listens on a local TCP port and board B's connects to it, so
+// what one sends on its link UART the other receives (docs/system.md, the link test). Each UART0 goes to its own
+// file; both are returned once each prints `until` or the timeout passes. Time inside is virtual (-icount).
+export async function runLinkedPair(root: string, imageA: string, imageB: string, workDir: string, until: RegExp, timeoutMs: number): Promise<{ a: string; b: string } | null> {
+	const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
+	if (!existsSync(qemu)) return null
+	const { readFileSync, rmSync } = await import("node:fs")
+	const { createServer } = await import("node:net")
+	// A free port, picked by the OS.
+	const port = await new Promise<number>((resolve) => {
+		const s = createServer().listen(0, "127.0.0.1", () => {
+			const p = (s.address() as { port: number }).port
+			s.close(() => resolve(p))
+		})
+	})
+	const env = { ...process.env, ...qemuEnv(root) }
+	const outA = join(workDir, "uart0-a.txt")
+	const outB = join(workDir, "uart0-b.txt")
+	for (const f of [outA, outB]) rmSync(f, { force: true })
+	const args = (image: string, out: string, uart1: string) => ["-display", "none", "-machine", "esp32c3", "-icount", "3", "-drive", `file=${image},if=mtd,format=raw`, "-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true", "-serial", `file:${out}`, "-serial", uart1]
+	const a = spawn(qemu, args(imageA, outA, `tcp:127.0.0.1:${port},server=on,wait=on`), { stdio: "ignore", env })
+	// B connects once A listens; A waits for it before it starts (wait=on), so both start together.
+	await new Promise((r) => setTimeout(r, 500))
+	const b = spawn(qemu, args(imageB, outB, `tcp:127.0.0.1:${port}`), { stdio: "ignore", env })
+	const read = (f: string) => (existsSync(f) ? readFileSync(f, "latin1") : "")
+	const deadline = Date.now() + timeoutMs
+	try {
+		while (Date.now() < deadline && !(until.test(read(outA)) && until.test(read(outB)))) await new Promise((r) => setTimeout(r, 250))
+	} finally {
+		a.kill("SIGKILL")
+		b.kill("SIGKILL")
+	}
+	return { a: read(outA), b: read(outB) }
+}

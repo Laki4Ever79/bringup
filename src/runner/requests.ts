@@ -1,4 +1,5 @@
 import type { FileSource } from "../events.ts"
+import type { BoardLink } from "../contract/types.ts"
 import { appendFileSync, watch, type FSWatcher } from "node:fs"
 import { open, stat } from "node:fs/promises"
 import { join } from "node:path"
@@ -11,11 +12,13 @@ export interface ChangeRequest {
 	text: string
 	// Set when the request came from a saved file, not from a person typing it.
 	source?: FileSource
+	// From a system of boards (docs/system.md): the integrator's value for this board's links, written as it is.
+	links?: BoardLink[]
 }
 
 // Appends one engineer request for a running design to pick up (CLI and MCP request_change).
-export function appendRequest(outDir: string, text: string, source?: FileSource): ChangeRequest {
-	const request = { at: new Date().toISOString(), text, ...(source ? { source } : {}) }
+export function appendRequest(outDir: string, text: string, source?: FileSource, links?: BoardLink[]): ChangeRequest {
+	const request = { at: new Date().toISOString(), text, ...(source ? { source } : {}), ...(links ? { links } : {}) }
 	appendFileSync(join(outDir, REQUESTS_FILE), JSON.stringify(request) + "\n")
 	return request
 }
@@ -27,7 +30,8 @@ export function watchRequests(outDir: string, onRequest: (r: ChangeRequest) => v
 		const r = raw as Partial<ChangeRequest>
 		if (typeof r.text !== "string" || r.text.trim() === "") return null
 		const source = r.source && typeof r.source === "object" && r.source.kind === "file" ? { source: r.source } : {}
-		return { at: typeof r.at === "string" ? r.at : new Date().toISOString(), text: r.text, ...source }
+		const links = Array.isArray(r.links) ? { links: r.links } : {}
+		return { at: typeof r.at === "string" ? r.at : new Date().toISOString(), text: r.text, ...source, ...links }
 	}, onRequest)
 }
 

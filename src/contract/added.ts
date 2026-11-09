@@ -28,7 +28,7 @@ export function addedForYou(s: ContractSnapshot): AddedItem[] {
 			id: "case",
 			what: `A printed case, designed around the board`,
 			shows: `case.stl and lid.stl, built for every revision, with an opening for each connector and button, a vent over a sensor, standoffs for the mounting holes and the module's antenna inside its own wall.`,
-			why: `The brief didn't say how the board is housed, so Bringup assumed a finished device.`,
+			why: `requirements.enclosure isn't set: the brief didn't say how the board is housed, or the architect didn't record it. A case is the default.`,
 			cost: `The print files and a print; every button must have an opening (checked).`,
 			change: `Set ${toChangeCase} (a change request: "no case, bare board" or "it goes into our own housing").`,
 		})

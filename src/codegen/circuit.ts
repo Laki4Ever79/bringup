@@ -41,16 +41,28 @@ function pinLabels(pins: string[]): string {
 
 // offsetMm runs from the bottom-left corner: along x for top/bottom edges, along y for left/right.
 // The board is centred on the origin, as tscircuit places it.
-function connectorPosition(c: Connector, w: number, h: number): { x: number; y: number } {
+// Footprints that sit differently at an edge: the JST SH link connector's mouth faces its mounting tabs (+y), the
+// opposite of the USB-C footprint's, so it turns a half turn more; and its centre is 2.5 mm in, so the mouth meets the
+// edge (pads to 2.1 mm from centre, the housing's front a little past them). Seen on the 9 Nov render of the logger
+// with a UART link: at the USB-C's 6 mm and rotation, its mouth faced into the board.
+const EDGE_FIT: Record<string, { insetMm: number; turnDeg: number }> = { jst4_sh: { insetMm: 2.5, turnDeg: 180 } }
+const fitOf = (footprint: string) => EDGE_FIT[footprint] ?? { insetMm: CONNECTOR_INSET_MM, turnDeg: 0 }
+const edgeRotation = (c: Connector, footprint: string) => {
+	const turn = fitOf(footprint).turnDeg
+	return turn === 0 ? EDGE_ROTATION[c.edge] : ((EDGE_ROTATION[c.edge] + turn + 540) % 360) - 180
+}
+
+function connectorPosition(c: Connector, w: number, h: number, footprint = ""): { x: number; y: number } {
+	const inset = fitOf(footprint).insetMm
 	switch (c.edge) {
 		case "left":
-			return { x: -w / 2 + CONNECTOR_INSET_MM, y: -h / 2 + c.offsetMm }
+			return { x: -w / 2 + inset, y: -h / 2 + c.offsetMm }
 		case "right":
-			return { x: w / 2 - CONNECTOR_INSET_MM, y: -h / 2 + c.offsetMm }
+			return { x: w / 2 - inset, y: -h / 2 + c.offsetMm }
 		case "bottom":
-			return { x: -w / 2 + c.offsetMm, y: -h / 2 + CONNECTOR_INSET_MM }
+			return { x: -w / 2 + c.offsetMm, y: -h / 2 + inset }
 		case "top":
-			return { x: -w / 2 + c.offsetMm, y: h / 2 - CONNECTOR_INSET_MM }
+			return { x: -w / 2 + c.offsetMm, y: h / 2 - inset }
 	}
 }
 
@@ -200,7 +212,9 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	// A USB-C sink needs 5.1k pull-downs on CC1 and CC2, or a C-to-C charger supplies no VBUS.
 	if (usb) for (const cc of ["CC1", "CC2"] as const) jobs.push({ job: `USB-C ${cc} (${usb}.${USBC_PADS[cc][0]})`, spec: SUPPORT.cc, a: { ref: usb, pin: USBC_PADS[cc][0] }, b: GND, near: usb })
 	if (charger?.pins.includes("PROG")) jobs.push({ job: `charger PROG (${charger.ref}.PROG), sets the charge current`, spec: SUPPORT.prog, a: { ref: charger.ref, pin: "PROG" }, b: GND, near: charger.ref })
-	if (supply) for (const p of pins) if (/^I2C_(SDA|SCL)$/.test(p.signal)) jobs.push({ job: `${p.signal} pull-up`, spec: SUPPORT.pullup, a: { net: p.signal }, b: { net: supply }, near: p.partRef })
+	// One set of pull-ups per bus: on a bus shared with another board, only the board its link names fits them.
+	const pullups = !(s.values.links ?? []).some((l) => l.kind === "i2c" && l.i2c && !l.i2c.pullups)
+	if (supply && pullups) for (const p of pins) if (/^I2C_(SDA|SCL)$/.test(p.signal)) jobs.push({ job: `${p.signal} pull-up`, spec: SUPPORT.pullup, a: { net: p.signal }, b: { net: supply }, near: p.partRef })
 	// An I2S microphone: its SD line pulled down (it tristates between frames) and VDD decoupled right at the part.
 	for (const mic of parts.filter((p) => p.role === "microphone")) {
 		const sd = pins.find((p) => p.partRef === mic.ref && p.partPin === "SD")
@@ -348,6 +362,8 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	pinrow4: [9.12, 1.5], pushbutton: [7, 9], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
+	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
+	jst4_sh: [7, 5.5],
 	// The USB-C courtyard, not its pads: 9.84 mm along the edge (the shell's plated tabs) and 10.35 mm into the board,
 	// measured at rotation 270 on a left edge and turned back to rotation 0 here.
 	usbcmidmount: [9.84, 10.35],
@@ -420,10 +436,10 @@ function connectorBoxes(s: ContractSnapshot, W: number, H: number): Placed[] {
 	const { parts = [], connectors = [] } = s.values
 	return connectors.map((c) => {
 		const part = parts.find((p) => p.ref === c.ref)
-		const rotation = EDGE_ROTATION[c.edge]
 		const footprint = part ? footprintFor(part) : CONNECTOR_FOOTPRINT[c.kind]
+		const rotation = edgeRotation(c, footprint)
 		const [w, h] = sizeAt(footprint, rotation)
-		const { x, y } = connectorPosition(c, W, H)
+		const { x, y } = connectorPosition(c, W, H, footprint)
 		const { dx, dy } = offsetAt(footprint, rotation)
 		return { ref: c.ref, x: x + dx, y: y + dy, w, h, rotation }
 	})
@@ -721,7 +737,8 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		if (footprintFor(p) === USBC_FOOTPRINT || p.role === "button") continue
 		for (const pin of p.pins) {
 			if (GROUND_PINS.has(pin)) join("GND", p.ref, pin)
-			if (hasSupply && p.role !== "ldo" && p.role !== "charger" && SUPPLY_PINS.has(pin)) join(supply, p.ref, pin)
+			// A link connector's VCC carries power only when its link says so (below): two boards' regulators never meet.
+			if (hasSupply && p.role !== "ldo" && p.role !== "charger" && p.role !== "connector" && SUPPLY_PINS.has(pin)) join(supply, p.ref, pin)
 		}
 	}
 	// The ESP32-C3 must not have EN floating; tied straight to 3V3 (the datasheet suggests an RC delay, see catalog/README.md).
@@ -756,6 +773,11 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 
 	const wake = usbWake(s)
 	if (wake?.gpio != null) join(USB_SENSE_NET, wake.mcu.ref, `GPIO${wake.gpio}`)
+	// A link that carries power: this board's 3V3 out to the peer, or in from it (docs/system.md).
+	for (const l of s.values.links ?? []) {
+		const k = parts.find((p) => p.ref === l.connector && p.role === "connector")
+		if (hasSupply && k?.pins.includes("VCC") && l.supply !== "none") join(supply, k.ref, "VCC")
+	}
 
 	// A microphone's LR select tied low puts its data in the I2S frame's left channel (DS-000069 Table 8).
 	for (const m of parts.filter((p) => p.role === "microphone" && p.pins.includes("LR")))
@@ -772,6 +794,18 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) if (!("ref" in end) && nets.has(end.net)) join(end.net, sp.ref, pin)
 	}
 	return new Map([...nets].filter(([, ends]) => new Set(ends.map((e) => e.split(".")[0])).size >= 2))
+}
+
+// The connector pins an I2C link puts on the board's bus, unless a contract pin already wires them there.
+export function linkBusTraces(s: ContractSnapshot): { ref: string; pin: string; net: string }[] {
+	const { parts = [], pins = [] } = s.values
+	return (s.values.links ?? []).flatMap((l) => {
+		const k = parts.find((p) => p.ref === l.connector && p.role === "connector")
+		if (l.kind !== "i2c" || !k) return []
+		return ([["IO1", "I2C_SDA"], ["IO2", "I2C_SCL"]] as const)
+			.filter(([pin, net]) => k.pins.includes(pin) && pins.some((p) => p.signal === net) && !pins.some((p) => p.signal === net && p.partRef === k.ref && p.partPin === pin))
+			.map(([pin, net]) => ({ ref: k.ref, pin, net }))
+	})
 }
 
 // The board ports a contract pin lands on: each pad carrying the signal on the USB-C footprint (which has numbered
@@ -839,8 +873,8 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		const part = parts.find((p) => p.ref === c.ref)
 		const footprint = part ? footprintFor(part) : CONNECTOR_FOOTPRINT[c.kind]
 		const labels = part ? labelsFor(part, footprint) : ""
-		const { x, y } = connectorPosition(c, outline.widthMm, outline.heightMm)
-		lines.push(`<connector name=${q(c.ref)}${labels}${part ? mpnOf(part) : ""} footprint=${q(footprint)} pcbX={${x}} pcbY={${y}} pcbRotation={${EDGE_ROTATION[c.edge]}} />`)
+		const { x, y } = connectorPosition(c, outline.widthMm, outline.heightMm, footprint)
+		lines.push(`<connector name=${q(c.ref)}${labels}${part ? mpnOf(part) : ""} footprint=${q(footprint)} pcbX={${x}} pcbY={${y}} pcbRotation={${edgeRotation(c, footprint)}} />`)
 		if (footprint === USBC_FOOTPRINT && opts.usbKeepouts) lines.push(...usbKeepouts(x, y, EDGE_ROTATION[c.edge]))
 	}
 
@@ -854,6 +888,8 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 			lines.push(`<trace name=${q(`${pin.signal}_part${pads.length > 1 ? `_${pad}` : ""}`)} from=${q(`.${pin.partRef} > .${pad}`)} to=${q(`net.${pin.signal}`)} />`)
 	}
 
+	// An I2C link joins the board's own bus: the connector's IO1 and IO2 to I2C_SDA and I2C_SCL (docs/system.md).
+	for (const t of linkBusTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
 	lines.push(...powerLines(s, placement))
 	// Test pads join their net by name: a contract signal's net, or a generated power net (one that reaches two parts).
 	const nets = new Set([...pins.map((p) => p.signal), ...generatedNets(s).keys()])

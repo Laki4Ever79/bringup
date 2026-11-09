@@ -1,11 +1,11 @@
 // "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field. "ml" owns
 // the on-device model, "test" the production test (test pads, pass limits), "enclosure" the case designer's field (case:
 // walls, height, added features); the enclosure builder makes the case from it.
-export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml" | "test" | "connectivity"
+export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml" | "test" | "connectivity" | "integrator"
 
-export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test" | "case" | "connectivity"
+export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test" | "case" | "connectivity" | "links"
 
-export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case", "connectivity"]
+export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case", "connectivity", "links"]
 
 // The fields every design writes; behavior is optional (the firmware has defaults).
 export const CORE_FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
@@ -22,6 +22,8 @@ export const OWNERS: Record<FieldName, AgentRole> = {
 	test: "test",
 	case: "enclosure",
 	connectivity: "connectivity",
+	// A board in a system of boards (docs/system.md): the system layer writes what this board must expose.
+	links: "integrator",
 }
 
 // How the device spends its time: awake for activeMs every periodS seconds, drawing sleepUa in between.
@@ -194,6 +196,33 @@ export interface Connectivity {
 	updates: "none" | "ota"
 }
 
+// One end of a link between two boards in a system (docs/system.md), written by the system's integrator. The
+// connector is a 4-pin JST SH: 1 GND, 2 VCC, 3 IO1, 4 IO2.
+export type LinkPin = "IO1" | "IO2"
+export interface BoardLink {
+	id: string // the system's link id, e.g. "L1"; a UART link's signals are <id>_TX and <id>_RX
+	kind: "uart" | "i2c"
+	peer: string // the board at the other end
+	connector: string // this board's ref for the link connector, e.g. "J3"
+	edge?: Connector["edge"] // where the cable should leave, if the system cares
+	// uart: the speed, and which IO pin carries this board's TX (the other carries RX)
+	baud?: number
+	txOn?: LinkPin
+	// i2c (IO1 SDA, IO2 SCL): this board's role on the bus, its address as a target, whether it fits the bus pull-ups
+	// peerAddress: the controller sends to it (the target's own address).
+	i2c?: { role: "controller" | "target"; address?: number; peerAddress?: number; pullups: boolean; khz: number }
+	// VCC (pin 2): "none" unconnected; "out" this board's 3V3 powers the peer; "in" this board runs from the peer's 3V3
+	supply: "none" | "out" | "in"
+	// What crosses the link, the same definition on both boards (the system checks the hash)
+	messages?: LinkMessage[]
+}
+export interface LinkMessage {
+	name: string
+	dir: "send" | "receive"
+	fields: { name: string; type: "u8" | "u16" | "i16" | "u32" | "f32" }[]
+	hash: string
+}
+
 export interface Behavior {
 	blinkMs: number
 	tiltBlinkMs: number
@@ -212,6 +241,7 @@ export type ContractValues = {
 	test: TestSpec
 	case: CaseSpec
 	connectivity: Connectivity
+	links: BoardLink[]
 }
 
 export interface ContractSnapshot {

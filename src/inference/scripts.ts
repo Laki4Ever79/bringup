@@ -1,4 +1,5 @@
 import { pathHash, sensorPath } from "../contract/sensor-path.ts"
+import { LINK_CONNECTOR } from "../contract/links.ts"
 import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { testPoints } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
@@ -10,7 +11,7 @@ import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
-export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case" | "connectivity"> & { parts: ContractValues["parts"] } = {
+export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case" | "connectivity" | "links"> & { parts: ContractValues["parts"] } = {
 	// ESP32-C3 deep sleep about 10 µA; every 5 min it wakes for a 30 ms reading and a 300 ms BLE advertising burst at
 	// about 25 mA. Average: 25 mA × 330 ms / 300 s + 10 µA = 37.5 µA, before the LDO's own quiescent current.
 	requirements: {
@@ -133,6 +134,42 @@ export function enclosureFromText(t: string): EnclosureMode | null {
 }
 // A request that changes whether there is a case at all: the architect's requirements.enclosure, not the case field.
 export const ENCLOSURE_MODE_REQUEST = /bare board|no (case|enclosure)\b|without (a |any )?(case|enclosure)|drop the case|remove the case|own (housing|enclosure)|existing (housing|enclosure|product)|(add|bring back|we want) (a|the) case/i
+// The scripted architect's answer to a board's links (docs/system.md): the link connector on an edge (the link's own, or
+// the first with no connector, top first), then a UART link's TX and RX on free GPIOs. One field per turn.
+const FREE_GPIOS = [4, 5, 6, 7, 3, 1, 0] // not the strapping pins (2, 8, 9) nor USB (18, 19)
+export function linkProposal(s: ContractSnapshot): { field: "connectors" | "pins"; value: unknown; reason: string } | null {
+	const { connectors = [], pins = [], parts = [] } = s.values
+	for (const l of s.values.links ?? []) {
+		if (!parts.some((p) => p.ref === l.connector)) continue // the part selector adds it first
+		if (!connectors.some((k) => k.ref === l.connector)) {
+			const o = s.values.outline
+			const edge = l.edge ?? (["top", "bottom", "right", "left"] as const).find((e) => !connectors.some((k) => k.edge === e)) ?? "top"
+			const along = o ? (edge === "left" || edge === "right" ? o.heightMm : o.widthMm) / 2 : 10
+			return { field: "connectors", value: [...connectors, { ref: l.connector, kind: "header", edge, offsetMm: along, widthMm: 5.8, heightMm: 3 }], reason: `${l.id}'s connector on the ${edge} edge, so the cable leaves there` }
+		}
+		// An I2C link on a board with no bus yet: I2C_SDA and I2C_SCL straight to the connector.
+		if (l.kind === "i2c" && !pins.some((p) => p.signal === "I2C_SDA")) {
+			const used = new Set(pins.map((p) => p.gpio))
+			const free = FREE_GPIOS.filter((g) => !used.has(g))
+			if (free.length < 2) return null
+			return { field: "pins", value: [...pins, { signal: "I2C_SDA", gpio: free[0], partRef: l.connector, partPin: "IO1" }, { signal: "I2C_SCL", gpio: free[1], partRef: l.connector, partPin: "IO2" }], reason: `${l.id}'s I2C bus: SDA and SCL to the connector` }
+		}
+		if (l.kind === "uart" && l.txOn) {
+			const want = [
+				{ signal: `${l.id}_TX`, partPin: l.txOn },
+				{ signal: `${l.id}_RX`, partPin: l.txOn === "IO1" ? "IO2" : "IO1" },
+			]
+			if (want.every((w) => pins.some((p) => p.signal === w.signal && p.partRef === l.connector && p.partPin === w.partPin))) continue
+			const kept = pins.filter((p) => !want.some((w) => w.signal === p.signal))
+			const used = new Set(kept.map((p) => p.gpio))
+			const free = FREE_GPIOS.filter((g) => !used.has(g))
+			if (free.length < 2) return null
+			return { field: "pins", value: [...kept, ...want.map((w, i) => ({ signal: w.signal, gpio: free[i], partRef: l.connector, partPin: w.partPin }))], reason: `${l.id}'s UART: TX and RX on the connector pins the system gives` }
+		}
+	}
+	return null
+}
+
 export const CASE_REQUEST = /\b(case|enclosure|housing|lid)\b|wall.?mount|lanyard|key ?ring|cable gland/i
 const EDGE_ORDER = ["right", "top", "bottom", "left"] as const
 
@@ -271,6 +308,10 @@ export function mockScripts(): Record<string, Script> {
 				const pins = state().contract.get("pins") ?? []
 				const requirements = state().contract.get("requirements")
 				const model = state().contract.get("model")
+				if (step === 0 && (kinds.has("link-connector-missing") || kinds.has("link-unwired"))) {
+					const next = linkProposal(state().contract.snapshot())
+					if (next) return propose(next.field, next.value as never, next.reason)
+				}
 				if (step === 0 && kinds.has("model-sensor-unwired") && !pins.some((p) => p.signal === "MIC_SD")) return propose("pins", [...pins, ...MIC_PINS], "the microphone's I2S SCK, WS and SD on GPIO4-6, free of the I2C bus and the LED")
 				// Always-on listening keeps the MCU awake: no cell this size meets the target, so the design runs from USB.
 				if (step === 0 && kinds.has("battery-short") && model?.listening === "always" && requirements && requirements.batteryLifeDays !== null)
@@ -405,6 +446,9 @@ export function mockScripts(): Record<string, Script> {
 			if (instruction.startsWith("Build failed:")) return say("noted")
 			if (instruction.startsWith("Consistency violations for you")) {
 				const parts = state().contract.get("parts") ?? []
+				const linkRef = /needs its connector: a part (\w+), role connector/.exec(instruction)?.[1]
+				if (stepsTaken(items) === 0 && linkRef && !parts.some((p) => p.ref === linkRef))
+					return propose("parts", [...parts, { ref: linkRef, role: "connector", ...LINK_CONNECTOR }], `${linkRef}: the link's JST SH 4-pin connector (catalog)`)
 				if (stepsTaken(items) === 0 && violationKinds(instruction).has("model-sensor-missing") && !parts.some((p) => p.role === "microphone"))
 					return propose("parts", [...parts, MIC_PART], "the model listens: the ICS-43434 I2S microphone (catalog)")
 				return say("noted")

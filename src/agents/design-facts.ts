@@ -2,6 +2,7 @@ import { resolve } from "node:path"
 import { readFileSync } from "node:fs"
 import { generatedNets, supportParts } from "../codegen/circuit.ts"
 import { addedForYouFactLines } from "../contract/added.ts"
+import { linkFactLines } from "../contract/links.ts"
 import { bleAdvertiseMs } from "../codegen/firmware.ts"
 import { dutyCycleCheckLines, estimatePower, powerBudgetLines } from "../contract/power.ts"
 import { enclosureMode, type ContractSnapshot } from "../contract/types.ts"
@@ -25,6 +26,7 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 		...fieldMeaningLines(s),
 		...testFactLines(s),
 		...addedForYouFactLines(s),
+		...linkFactLines(s),
 		...(s.values.outline ? ["", "## Space (computed in code: the smallest board the parts place on, the case's contents)", ...spaceFactLines(s).map((l) => `- ${l}`)] : []),
 		...(s.values.outline && enclosureMode(s.values) === "case" ? ["", "## The case (computed in code from the outline, the connectors and the case field)", ...caseFactLines(s).map((l) => `- ${l}`)] : []),
 		...(enclosureMode(s.values) !== "case" ? ["", "## The case", enclosureMode(s.values) === "none" ? '- None: a bare board (requirements.enclosure "none"). No case is built or checked; the case field, if any, is ignored.' : '- None of ours: the board goes into the engineer\'s own housing (requirements.enclosure "own"). No case is built or checked; Bringup writes interface.md (outline, mounting holes, openings, buttons, lights, vents, antenna keep-out, underside pads, label) for whoever designs the housing.'] : []),
