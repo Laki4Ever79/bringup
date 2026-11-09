@@ -190,6 +190,8 @@ npm ci              # about 12 s
 npm run setup       # the full toolchain, repo-local; installs only what's missing (about 14 min the first time)
 npm run doctor      # what each tool will use, and which optional settings are set (never their values)
 npm run demo        # the dashboard opens, a design settles, a change ripples; type your own change after it
+npm run dashboard   # the start screen: describe a device, see the split into boards, build it, explore it in 3D
+npm run perf        # the dashboard's speed budget, measured in a visible Chromium (no model calls)
 
 npm run bringup -- briefs/beacon.md --mock                                    # scripted models, real tools
 npm run bringup -- briefs/logger.md --mock --change "make the board 40 mm wide"   # a change from the CLI
