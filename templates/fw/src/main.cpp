@@ -14,6 +14,15 @@
 #if __has_include("model.h")
 #include "model.h"
 #endif
+// Links to other boards in a system (docs/system.md, codegen/firmware.ts linkHeader): linkBegin, linkSendReading and
+// linkPoll. Without it, or with no links, they do nothing.
+#if __has_include("link.h")
+#include "link.h"
+#else
+static void linkBegin() {}
+static void linkSendReading(bool, float, float) {}
+static void linkPoll(uint32_t ms) { delay(ms); }
+#endif
 
 #if defined(MODEL_PRESENT) && MODEL_PRESENT
 // The on-device model's memory, sized from the contract (model.h): the tensor arena in RAM and the weights in flash, so
@@ -686,6 +695,7 @@ static void takeReading() {
 	if (ok) Serial.printf("SENSOR OK %.2f C %.1f %%RH\n", t, rh);
 	else Serial.println("SENSOR FAIL");
 	if (ok) Serial.printf("HISTORY slot %ld\n", (long)storeReading(t, rh));
+	linkSendReading(ok, t, rh);
 	readingBlink(ok);
 #ifdef RADIO_BLE
 	serveBle(ok ? packReading(t, rh) : LATEST_SENSOR_FAILED, ok, t, rh);
@@ -724,7 +734,7 @@ static void stayAwakeOnUsb() {
 			last = millis();
 			takeReading();
 		}
-		delay(100);
+		linkPoll(100);  // a board that receives over a link hears it while awake
 	}
 	Serial.println("USB unplugged");
 }
@@ -737,8 +747,19 @@ void setup() {
 	// Taking the addresses keeps both arrays in the image (the linker drops unreferenced sections).
 	Serial.printf("MODEL arena %u B at %p, weights %u B at %p, %d Hz x %d ms\n", (unsigned)sizeof modelArena, (void *)modelArena, (unsigned)MODEL_WEIGHTS_LINKED_BYTES, (const void *)modelWeights, MODEL_SAMPLE_RATE_HZ, MODEL_WINDOW_MS);
 #endif
-#ifdef HAS_I2C
+#if defined(HAS_I2C) && !defined(LINK_I2C_TARGET)
 	Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+#endif
+	linkBegin();  // after Wire: an I2C target joins the bus at its own address
+#ifdef LINK_TEST
+	// The system's link test: a known reading (21.50 C, 40.25 %RH) over each link every half second, and whatever
+	// arrives printed, for 10 s; then it stops, awake. Both ends run it at once (two boards, or two QEMUs).
+	for (int i = 0; i < 20; i++) {
+		linkSendReading(true, 21.5f, 40.25f);
+		linkPoll(500);
+	}
+	Serial.println("LINK TEST DONE");
+	for (;;) delay(1000);
 #endif
 #ifdef HAS_LED
 	pinMode(PIN_STATUS_LED, OUTPUT);

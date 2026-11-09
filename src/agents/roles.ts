@@ -79,7 +79,8 @@ The ESP32-C3-MINI-1 needs a supply that can deliver 0.5 A (module datasheet v2.2
 - parts: [{ref, role (one of: mcu, sensor, microphone, ldo, charger, battery, usb-c, led, resistor, capacitor, button, connector, other), mpn, lcsc, footprint, pins: string[]}]
 - pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
 - search_parts stock: a number is live from LCSC; stock null means unknown, not out of stock.
-- requirements.enclosure (optional): who houses the board. Leave it out when the brief describes a finished device or doesn't say: Bringup designs a printed case. "none" when the brief or the engineer wants a bare board (lab use, a dev kit, a test rig, "no case"); "own" when it goes into the engineer's own housing or an existing product (Bringup then writes the board's mechanical interface instead of a case). With a case, every button needs an opening: list it in connectors (kind "button", on the edge it is pressed from), or leave it out.
+- links (when the board is part of a system of boards) is the integrator's: you don't write it, you follow it. For each link, list its connector in connectors (kind "header", on the link's edge if it names one, about 5.8 × 3 mm), and for a UART link assign <id>_TX and <id>_RX to the connector's IO pins the design facts give, on free GPIOs. An I2C link uses the board's own I2C_SDA/I2C_SCL.
+- requirements.enclosure (optional): who houses the board. "case" when the brief asks for a case or a finished device in one: Bringup designs and prints it. Leave it out only when the brief doesn't say (Bringup then designs a case and tells the engineer it assumed one). "none" when the brief or the engineer wants a bare board (lab use, a dev kit, a test rig, "no case"); "own" when it goes into the engineer's own housing or an existing product (Bringup then writes the board's mechanical interface instead of a case). With a case, every button needs an opening: list it in connectors (kind "button", on the edge it is pressed from), or leave it out.
 - requirements.usbWake (optional, true or false): leave it out. A deep-sleeping board then wakes when USB is plugged in and stays awake while it is, so a USB-C cable alone reflashes it; the board generator adds a VBUS-sense divider on the first free pin of GPIO0, 1, 3, 4, 5, so keep one of those free. Set it to false only when the engineer asks; then reflashing needs the case open and the bottom recovery pads.
 - requirements.historyDays (optional, whole days): how many days of readings the firmware keeps in flash; without it, 30. Claim only what the history must hold: the check compares it with the flash at the reading period.
 - behavior (optional, owned by firmware): {blinkMs, tiltBlinkMs, tiltDeg}: the status LED blinks every blinkMs, and every tiltBlinkMs while the board is tilted more than tiltDeg (0..90). Without it the LED blinks at 1 Hz and tilt changes nothing. behavior is exactly these three numbers and nothing else. It cannot express "blink on each reading" or charging state: the charge LED is a part (role charge-led) wired to the charger, not behavior.
@@ -133,7 +134,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "consistency.checked")) return
 						const mine = event.payload.violations.filter((v) => v.affects.includes("architect"))
-						requestTurn(participant as Agent, `violations@${event.payload.revision}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\nFix them by changing the fields you own.`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
+						requestTurn(participant as Agent, `violations@${event.payload.revision}:${mine.map((v) => v.kind).join(",")}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\nFix them by changing the fields you own.`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
 					},
 				},
 			},
@@ -174,7 +175,7 @@ function violationsFor(role: AgentRole, guidance: string, only: (kind: string) =
 			apply: ({ event, participant }) => {
 				if (!isEvent(event, "consistency.checked")) return
 				const mine = event.payload.violations.filter(ours)
-				requestTurn(participant as Agent, `${role}-violations@${event.payload.revision}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\n${guidance}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
+				requestTurn(participant as Agent, `${role}-violations@${event.payload.revision}:${mine.map((v) => v.kind).join(",")}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\n${guidance}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
 			},
 		},
 	}

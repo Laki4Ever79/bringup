@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { OWNERS, type FieldName } from "../contract/types.ts"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import { checkConsistency, type Violation } from "../contract/consistency.ts"
@@ -97,6 +98,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		opts.onSettled({ settled, revision })
 	}
 
+	const nudged = new Set<FieldName>()
 	const evaluate = () => {
 		timer = null
 		if (done) return
@@ -111,6 +113,16 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		// End it unsettled, naming the missing fields in place of a build failure.
 		const missing = (k: ArtifactKind) => BUILD_REQUIRES[k].filter((f) => s.contract.version(f) === 0)
 		if (!agentsBusy && stale.length > 0 && stale.every((k) => missing(k).length > 0 && s.artifactInputs[k] === undefined)) {
+			// First, once per field, ask its owner: an agent may stop with a field unwritten (real run 7, 9 Nov: the
+			// architect's pins were refused once, it moved on, and nothing asked again). Only then end it unsettled.
+			const fields = [...new Set(stale.flatMap(missing))].filter((f) => !nudged.has(f))
+			if (fields.length > 0) {
+				for (const f of fields) nudged.add(f)
+				const asks = fields.map((f) => ({ kind: "field-missing" as const, message: `the contract has no ${f} yet, so ${stale.filter((k) => missing(k).includes(f)).join(" and ")} can't be built: write it with propose_contract_change (base version 0)`, fields: [f], affects: [OWNERS[f]] }))
+				violations = [...violations, ...asks]
+				emit(makeEvent("consistency.checked", self.id, { revision: s.contract.revision, violations }), self.id)
+				return
+			}
 			for (const k of stale) s.artifactFailures[k] = `not built: the contract has no ${missing(k).join(", ")}`
 			return settle(false)
 		}

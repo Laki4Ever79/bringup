@@ -42,13 +42,15 @@ export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "tes
 // Every field that shapes each artifact; a change to one rebuilds it. behavior and model are optional (behavior.h has defaults; model.h says MODEL_PRESENT 0).
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	// test: the board carries a bottom-side test pad for each net the test field names.
-	board: ["parts", "pins", "outline", "connectors", "test"],
+	// links: a link's VCC and an I2C link's bus traces (docs/system.md).
+	board: ["parts", "pins", "outline", "connectors", "test", "links"],
 	// parts: the lid's vent sits over the sensor, wherever the board generator places it. case: walls, height, features.
 	enclosure: ["outline", "connectors", "parts", "case"],
 	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
 	// model: model.h sizes the tensor arena and the weights the firmware reserves.
 	// connectivity: the radio code, the reports and the partition table (connectivity.h, platformio.ini).
-	firmware: ["parts", "pins", "behavior", "requirements", "model", "connectivity"],
+	// links: link.h, the links' protocols and the messages that cross them.
+	firmware: ["parts", "pins", "behavior", "requirements", "model", "connectivity", "links"],
 	// The test pads follow the board's placement (outline, connectors, parts); the limits follow the power budget (rails,
 	// requirements); the self-tests follow the pins and parts.
 	testkit: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"],

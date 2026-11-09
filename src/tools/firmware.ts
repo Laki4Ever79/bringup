@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { join, resolve as resolvePath } from "node:path"
-import { behaviorHeader, connectivityHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
+import { behaviorHeader, connectivityHeader, linkHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { partitionTable } from "../contract/connectivity.ts"
 import { dataFormatHeader, readerPython } from "../codegen/data-format.ts"
 import { complianceMarkdown } from "../contract/compliance.ts"
@@ -83,6 +83,7 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 	await writeFile(join(dir, "include/behavior.h"), behaviorHeader(s))
 	await writeFile(join(dir, "include/model.h"), modelHeader(s))
 	await writeFile(join(dir, "include/connectivity.h"), connectivityHeader(s))
+	await writeFile(join(dir, "include/link.h"), linkHeader(s))
 	// The data format, and the reader made from the same source: whoever reads the device decodes what it writes.
 	await writeFile(join(dir, "include/dataformat.h"), dataFormatHeader())
 	await mkdir(join(dir, "reader"), { recursive: true })
@@ -104,6 +105,13 @@ export async function buildTestFirmware(pio: string, root: string, dir: string, 
 	await writeFile(join(dir, "include/testkit.h"), testkitHeader(s))
 	const { code, output } = await run(pio, ["run", "-d", dir, "-e", "esp32c3_test"])
 	return { ok: code === 0, log: buildLog(output), pins: parsePinsHeader(header) }
+}
+
+// The link-test firmware (env esp32c3_linktest: the product firmware with -DLINK_TEST) in a firmware dir buildFirmware
+// already wrote, so it runs the board's own link.h (docs/system.md).
+export async function buildLinkTestFirmware(pio: string, dir: string): Promise<{ ok: boolean; log: string }> {
+	const { code, output } = await run(pio, ["run", "-d", dir, "-e", "esp32c3_linktest"])
+	return { ok: code === 0, log: buildLog(output) }
 }
 
 export interface CollectFirmware {

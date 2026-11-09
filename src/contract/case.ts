@@ -284,7 +284,7 @@ export function builtFeatureChecks(s: ContractSnapshot, enclosure: { features?: 
 // ---- the case changing the board ----------------------------------------------------------------------------------
 
 // The fields the board is built from (agents/builders.ts BUILD_INPUTS.board; test/case.test.ts holds them equal).
-export const BOARD_FIELDS: readonly FieldName[] = ["parts", "pins", "outline", "connectors", "test"]
+export const BOARD_FIELDS: readonly FieldName[] = ["parts", "pins", "outline", "connectors", "test", "links"]
 
 // A change the case designer asks for that would change the PCB: the engineer is warned and must confirm it, on top
 // of the field owner's approval (change-control.ts). null when the change leaves the board alone.
