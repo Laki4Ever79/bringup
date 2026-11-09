@@ -1,6 +1,7 @@
 import { resolve } from "node:path"
 import { readFileSync } from "node:fs"
-import { generatedNets, recoveryBootPin, recoveryPads, supportParts } from "../codegen/circuit.ts"
+import { generatedNets, supportParts } from "../codegen/circuit.ts"
+import { addedForYouFactLines } from "../contract/added.ts"
 import { bleAdvertiseMs } from "../codegen/firmware.ts"
 import { dutyCycleCheckLines, estimatePower, powerBudgetLines } from "../contract/power.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
@@ -23,7 +24,7 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 		...partFactsSection(s),
 		...fieldMeaningLines(s),
 		...testFactLines(s),
-		...recoveryFactLines(s),
+		...addedForYouFactLines(s),
 		...(s.values.outline ? ["", "## Space (computed in code: the smallest board the parts place on, the case's contents)", ...spaceFactLines(s).map((l) => `- ${l}`)] : []),
 		...(s.values.outline ? ["", "## The case (computed in code from the outline, the connectors and the case field)", ...caseFactLines(s).map((l) => `- ${l}`)] : []),
 		...(s.values.model ? ["", "## The on-device model (checked in code against the flash and RAM the firmware leaves, the sensor and its pins, and the battery)", ...modelFactLines(s)] : []),
@@ -34,15 +35,10 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 	]
 }
 
-// How a deep-sleeping board is reflashed, from the generated pads, so it is only said when they are on the board.
+// How a deep-sleeping board is reflashed when its firmware doesn't boot, from the generated pads (the "Added by
+// Bringup" list in the design facts carries it, with USB wake).
 export function recoveryFactLines(s: ContractSnapshot): string[] {
-	const boot = recoveryBootPin(s)
-	const { placed } = s.values.outline ? recoveryPads(s) : { placed: [] }
-	if (!boot || placed.length < 2) return []
-	const [b, g] = placed
-	return [
-		`- Reflashing: the product firmware deep-sleeps, and ${boot.mcu.ref}'s USB is off then. The board generator adds two bare pads on the bottom: ${b.ref} on ${boot.mcu.ref}.${boot.pin} (the boot strapping pin, net ${b.net}) and ${g.ref} on GND, side by side. To reflash: open the case, unplug USB and the battery, short ${b.ref} to ${g.ref} (tweezers) while reconnecting the battery, then plug in USB. The chip waits in its ROM downloader on USB, which works even when the firmware does not boot. (USB alone also powers it through the charger, so the power-up must start with both unplugged.) No part, and no board area beyond two 1.5 mm pads.`,
-	]
+	return addedForYouFactLines(s).filter((l) => l.startsWith("- Recovery pads"))
 }
 
 // What contract fields mean where they are easy to misread (real run 20: behavior read as the product LED).

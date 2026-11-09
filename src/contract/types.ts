@@ -40,6 +40,9 @@ export interface Requirements {
 	dutyCycle?: DutyCycle
 	// Days of readings the logger keeps in its flash history; the firmware stores this many (template default 30).
 	historyDays?: number
+	// A deep-sleeping board wakes when USB is plugged in and stays awake while it is, so a cable alone reflashes it (the
+	// board generator adds a VBUS-sense divider). On unless false; off, reflashing needs the recovery pads.
+	usbWake?: boolean
 }
 
 export interface Outline {

@@ -90,6 +90,9 @@ BENCH_RESERVED = {
     48: "the onboard RGB LED (the bench's status light)",
 }
 S3_GPIOS = set(range(0, 22)) | set(range(26, 49))
+# Pins only the product board wires, which the bench build never reads (main.cpp uses them outside #ifdef BENCH): the
+# USB-sense divider (codegen/circuit.ts usbWake) is on the product board, not on the bench's S3.
+PRODUCT_ONLY = {"USB_SENSE"}
 
 
 def bench_pin_conflicts(fw_dir: str) -> list[str]:
@@ -98,6 +101,8 @@ def bench_pin_conflicts(fw_dir: str) -> list[str]:
         pins = re.findall(r"^#define PIN_(\w+) (-?\d+)", f.read(), re.M)
     out = []
     for name, gpio in pins:
+        if name in PRODUCT_ONLY:
+            continue
         g = int(gpio)
         if g in BENCH_RESERVED:
             out.append(f"{name} uses GPIO{g}, which is {BENCH_RESERVED[g]} on the bench")

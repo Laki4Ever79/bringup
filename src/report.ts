@@ -1,4 +1,5 @@
 import { caseOuter } from "./contract/case.ts"
+import { addedForYouSection } from "./contract/added.ts"
 import { minimumBoard } from "./contract/space.ts"
 import { complianceItems } from "./contract/compliance.ts"
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
@@ -216,6 +217,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Rails (peak/rated): ${(v.rails ?? []).map((r) => `${r.name} ${r.loadMa}/${r.regulatorMaxMa} mA${r.averageMa !== undefined ? `, average ${r.averageMa} mA` : ""}`).join("; ")}`,
 		`- Estimated battery life: ${batteryLifeSummary(estimatePower(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""))}`,
 		``,
+		...addedForYouSection(snapshot),
 		...changeRequestsSection(outDir),
 		...reviewSection(s, Boolean(opts.mock)),
 		`## Artifacts`,

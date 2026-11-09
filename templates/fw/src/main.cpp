@@ -678,19 +678,8 @@ void loop() {
 	delay(1);
 }
 #else
-void setup() {
-	Serial.begin(115200);
-	Serial.printf("bringup rev %d\n", BRINGUP_REVISION);
-#if defined(MODEL_PRESENT) && MODEL_PRESENT
-	// Taking the addresses keeps both arrays in the image (the linker drops unreferenced sections).
-	Serial.printf("MODEL arena %u B at %p, weights %u B at %p, %d Hz x %d ms\n", (unsigned)sizeof modelArena, (void *)modelArena, (unsigned)MODEL_WEIGHTS_LINKED_BYTES, (const void *)modelWeights, MODEL_SAMPLE_RATE_HZ, MODEL_WINDOW_MS);
-#endif
-#ifdef HAS_I2C
-	Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-#endif
-#ifdef HAS_LED
-	pinMode(PIN_STATUS_LED, OUTPUT);
-#endif
+// One reading: read, store, blink, then advertise or upload.
+static void takeReading() {
 #ifdef HAS_SENSOR
 	float t, rh;
 	bool ok = readClimate(&t, &rh);
@@ -713,6 +702,51 @@ void setup() {
 	serveWifi(false, 0, 0);
 #endif
 #endif
+}
+
+#ifdef PIN_USB_SENSE
+// USB wake (codegen/circuit.ts usbWake): a 68k/100k divider puts VBUS on PIN_USB_SENSE. While USB is plugged in the
+// board stays awake, so its USB Serial/JTAG stays up and `pio run -t upload` reflashes it with the cable alone; it keeps
+// taking a reading every period meanwhile (USB powers it, the battery charges). Unplugged, it goes back to deep sleep
+// within 100 ms, and plugging in wakes it (only GPIO0..5 can wake the ESP32-C3 from deep sleep).
+static_assert(PIN_USB_SENSE >= 0 && PIN_USB_SENSE <= 5, "PIN_USB_SENSE cannot wake the ESP32-C3 from deep sleep (GPIO0..5 only)");
+static bool usbPowered() {
+	return digitalRead(PIN_USB_SENSE) == HIGH;
+}
+
+static void stayAwakeOnUsb() {
+	pinMode(PIN_USB_SENSE, INPUT);  // the divider's 100k holds it low unplugged: no internal pull
+	if (!usbPowered()) return;
+	Serial.println("USB powered: staying awake");
+	uint32_t last = millis();
+	while (usbPowered()) {
+		if (millis() - last >= (uint32_t)DUTY_PERIOD_S * 1000UL) {
+			last = millis();
+			takeReading();
+		}
+		delay(100);
+	}
+	Serial.println("USB unplugged");
+}
+#endif
+
+void setup() {
+	Serial.begin(115200);
+	Serial.printf("bringup rev %d\n", BRINGUP_REVISION);
+#if defined(MODEL_PRESENT) && MODEL_PRESENT
+	// Taking the addresses keeps both arrays in the image (the linker drops unreferenced sections).
+	Serial.printf("MODEL arena %u B at %p, weights %u B at %p, %d Hz x %d ms\n", (unsigned)sizeof modelArena, (void *)modelArena, (unsigned)MODEL_WEIGHTS_LINKED_BYTES, (const void *)modelWeights, MODEL_SAMPLE_RATE_HZ, MODEL_WINDOW_MS);
+#endif
+#ifdef HAS_I2C
+	Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+#endif
+#ifdef HAS_LED
+	pinMode(PIN_STATUS_LED, OUTPUT);
+#endif
+	takeReading();
+#ifdef PIN_USB_SENSE
+	stayAwakeOnUsb();
+#endif
 	Serial.printf("SLEEP %d s\n", DUTY_PERIOD_S);
 	Serial.flush();
 	esp_sleep_enable_timer_wakeup((uint64_t)DUTY_PERIOD_S * 1000000ULL);
@@ -724,9 +758,15 @@ void setup() {
 	gpio_pulldown_dis((gpio_num_t)PIN_BUTTON);
 	esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_BUTTON, ESP_GPIO_WAKEUP_GPIO_LOW);
 #endif
+#ifdef PIN_USB_SENSE
+	// Plugging in USB wakes it (high on the sense pin); the wake pins accumulate, so a button's low wake still works.
+	gpio_pullup_dis((gpio_num_t)PIN_USB_SENSE);
+	gpio_pulldown_dis((gpio_num_t)PIN_USB_SENSE);
+	esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_USB_SENSE, ESP_GPIO_WAKEUP_GPIO_HIGH);
+#endif
 	esp_deep_sleep_start();
 }
 
-// Never reached: setup() ends in deep sleep, and the timer wake starts at setup() again.
+// Never reached: setup() ends in deep sleep, and a timer, button or USB wake starts at setup() again.
 void loop() {}
 #endif
