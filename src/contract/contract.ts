@@ -1,3 +1,4 @@
+import { mechanicsShapeError, motionShapeError } from "../mechanics/shape.ts"
 import { isDeepStrictEqual } from "node:util"
 import { linksShapeError } from "./links.ts"
 import { caseShapeError } from "./case.ts"
@@ -215,6 +216,10 @@ function shapeError(field: FieldName, value: unknown): string | null {
 			return connectivityShapeError(value)
 		case "links":
 			return linksShapeError(value)
+		case "motion":
+			return motionShapeError(value)
+		case "mechanics":
+			return mechanicsShapeError(value)
 		case "behavior": {
 			const shape = 'behavior must be exactly {blinkMs, tiltBlinkMs, tiltDeg}: numbers, blinkMs > 0, tiltBlinkMs > 0, tiltDeg from 0 to 90, e.g. {"blinkMs":1000,"tiltBlinkMs":200,"tiltDeg":20}. It sets only the status LED blink period and the tilt threshold'
 			if (!obj(value)) return shape

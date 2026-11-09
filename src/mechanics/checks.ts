@@ -1,0 +1,207 @@
+import { existsSync } from "node:fs"
+import { resolve } from "node:path"
+import type { AgentRole, ContractSnapshot, FieldName, Part, PinAssignment as Pin } from "../contract/types.ts"
+import { loadCatalog } from "../tools/parts-search.ts"
+import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
+import { est, estNote } from "./estimates.ts"
+import { edgeForceN, G, massAndCom, motorAt, mounts, supportPolygon } from "./model.ts"
+import type { Mechanics, Mount, MotionTargets } from "./types.ts"
+
+// The plain-code mechanics checks: free, instant, run on every contract change. Each states its numbers, the limit,
+// the margin and what to change; any estimate it leans on is named "(estimate: <name> <value>)". They never assume
+// which board carries the motor driver: mechanicsCheckOver takes every board of the robot (option B, a driver board,
+// runs the same checks).
+
+export type MechViolation = {
+	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive"
+	message: string
+	fields: FieldName[]
+	affects: AgentRole[]
+}
+
+// Board parts with the numbers the checks read (catalog/parts.json entries carry extra keys).
+export type BoardPartData = { mpn: string; role?: string; [k: string]: unknown }
+export interface CheckCatalog {
+	mech: MechCatalog
+	boardParts: BoardPartData[]
+}
+
+export const TORQUE_MARGIN = 1.5
+export const SPEED_LOAD_DERATE = 0.8 // speed under load vs no-load at the cell's nominal voltage
+export const USABLE_ENERGY = 0.85 // of the pack's rated Wh, before the cut-off
+export const TIP_MARGIN_MM = 10
+export const LEVEL_TOLERANCE_MM = 3 // caster and wheels must hold the plate level within this
+
+const ROOT = resolve(import.meta.dirname, "../..")
+let cached: CheckCatalog | null = null
+export function defaultCheckCatalog(): CheckCatalog | null {
+	if (cached) return cached
+	if (!existsSync(resolve(ROOT, "catalog/mechanics.json"))) return null
+	cached = { mech: loadMechCatalog(ROOT), boardParts: loadCatalog(ROOT) as unknown as BoardPartData[] }
+	return cached
+}
+
+const r1 = (n: number) => Math.round(n * 10) / 10
+const r2 = (n: number) => Math.round(n * 100) / 100
+const ALL: FieldName[] = ["mechanics"]
+
+export function mechanicsChecks(c: ContractSnapshot): MechViolation[] {
+	const cat = defaultCheckCatalog()
+	return cat ? mechanicsChecksWith(c, cat) : []
+}
+
+export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): MechViolation[] {
+	const v = c.values as { motion?: MotionTargets; mechanics?: Mechanics }
+	return mechanicsCheckOver(v.motion, v.mechanics, [{ name: "main", snapshot: c }], cat)
+}
+
+// Distance from a point to each edge of a convex polygon (inside: all positive); the smallest.
+function insideMargin(p: [number, number], poly: [number, number][]): number {
+	let min = Infinity
+	// Orientation-independent: signed distances with the polygon's centroid on the positive side.
+	const cx = poly.reduce((t, q) => t + q[0], 0) / poly.length, cy = poly.reduce((t, q) => t + q[1], 0) / poly.length
+	for (let i = 0; i < poly.length; i++) {
+		const [ax, ay] = poly[i], [bx, by] = poly[(i + 1) % poly.length]
+		const len = Math.hypot(bx - ax, by - ay) || 1
+		const side = (x: number, y: number) => ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / len
+		const sign = Math.sign(side(cx, cy)) || 1
+		min = Math.min(min, side(p[0], p[1]) * sign)
+	}
+	return min
+}
+
+export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mechanics | undefined, boards: { name: string; snapshot: ContractSnapshot }[], cat: CheckCatalog): MechViolation[] {
+	if (!motion) return []
+	const out: MechViolation[] = []
+	const push = (kind: MechViolation["kind"], message: string, affects: AgentRole[] = ["mechanics"], fields: FieldName[] = ALL) => out.push({ kind, message, fields, affects })
+	if (!mech) return [{ kind: "mech-fit", message: "the brief asks for a robot (motion targets are set) but there is no mechanics design yet: choose motors, wheels, caster, battery and lay out the chassis", fields: ALL, affects: ["mechanics"] }]
+
+	const d = mech.drive
+	const motor = byMpn(cat.mech.motors, d.motor), wheel = byMpn(cat.mech.wheels, d.wheel), caster = byMpn(cat.mech.casters, d.caster), pack = byMpn(cat.mech.batteries, mech.battery.pack)
+	for (const [what, mpn, found] of [["motor", d.motor, motor], ["wheel", d.wheel, wheel], ["caster", d.caster, caster], ["battery", mech.battery.pack, pack]] as const)
+		if (!found) push("mech-fit", `${what} ${mpn} is not in catalog/mechanics.json: pick one listed there, so its numbers have a datasheet behind them`)
+	if (!motor || !wheel || !caster || !pack) return out
+
+	// Parts and pins over every board of the robot.
+	const parts: Part[] = boards.flatMap((b) => b.snapshot.values.parts ?? [])
+	const pins: Pin[] = boards.flatMap((b) => b.snapshot.values.pins ?? [])
+	const data = (role: string) => {
+		const p = parts.find((x) => x.role === role)
+		return p ? { part: p, data: cat.boardParts.find((x) => x.mpn === p.mpn) } : null
+	}
+	const driver = data("motor-driver"), tof = data("tof-sensor")
+
+	const boardInfo = boards.map((b) => ({ name: b.name, outline: { widthMm: b.snapshot.values.outline?.widthMm ?? 0, heightMm: b.snapshot.values.outline?.heightMm ?? 0 } }))
+	const ms: Mount[] = mounts(mech, boardInfo, cat.mech)
+	const plateTop = mech.chassis.clearanceMm + mech.chassis.thicknessMm
+	ms.push({ what: "payload", xMm: 0, yMm: 0, zMm: plateTop + 10, sizeMm: [20, 20, 20], massG: motion.payloadG })
+	const { massG, com } = massAndCom(ms)
+	const massKg = massG / 1000
+	const r = wheel.diameterMm / 2 / 1000
+	const casterX = d.axleXMm - d.wheelbaseMm
+	// Share of the weight on the drive wheels (moments about the caster).
+	const onWheels = Math.min(1, Math.max(0, (com[0] - casterX) / (d.axleXMm - casterX)))
+	const nominal = motorAt(motor, pack.nominalV)
+	const full = motorAt(motor, pack.fullV)
+
+	// Torque: each wheel lifts its share over the edge and overcomes rolling resistance, with margin.
+	const perWheelKg = (massKg * onWheels) / 2
+	const needN = edgeForceN(perWheelKg, r, motion.edgeMm / 1000) + (est("rollingCrr") * massKg * G) / 2
+	const needNm = needN * r
+	if (!(nominal.stallNm >= TORQUE_MARGIN * needNm))
+		push("mech-torque", `to climb the ${motion.edgeMm} mm edge each wheel needs ${needNm === Infinity ? "more than any motor gives (the edge is at or above the axle)" : `${r2(needNm * 1000)} mN·m`}; ${d.motor} stalls at ${r2(nominal.stallNm * 1000)} mN·m at the cell's ${pack.nominalV} V, under the ${TORQUE_MARGIN}× margin (${massG.toFixed(0)} g, ${Math.round(onWheels * 100)} % on the wheels, ${estNote("rollingCrr")}): pick a higher gear ratio or bigger wheels, or lighten it`)
+
+	// Top speed under load at the nominal voltage.
+	const topMps = (nominal.noLoadRadS * SPEED_LOAD_DERATE) * r
+	if (topMps < motion.speedMps)
+		push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels reaches about ${r2(topMps)} m/s at ${pack.nominalV} V under load (${SPEED_LOAD_DERATE} of no-load), short of the ${motion.speedMps} m/s target: pick a lower gear ratio or bigger wheels`)
+
+	// Stopping: braking distance plus one sensor period of travel must fit between the sensor's range and the wall
+	// distance the brief allows.
+	const rangeMm = Number(tof?.data?.rangeMm ?? 0), updateMs = Number(tof?.data?.updateMs ?? 0)
+	if (tof?.data && rangeMm > 0) {
+		const decel = est("floorMu") * G * onWheels
+		const brakeMm = ((motion.speedMps ** 2) / (2 * decel)) * 1000 + motion.speedMps * updateMs
+		const roomMm = rangeMm - motion.stopBeforeWallMm
+		if (brakeMm > roomMm)
+			push("mech-stopping", `from ${motion.speedMps} m/s the rover needs ${r1(brakeMm)} mm to stop (braking plus one ${updateMs} ms sensor period, ${estNote("floorMu")}), but the ${tof.part.mpn} sees ${rangeMm} mm and must stop ${motion.stopBeforeWallMm} mm from the wall, leaving ${r1(roomMm)} mm: slow down, or use a longer-range sensor`, ["mechanics", "architect"])
+	}
+
+	// Current: a motor at stall on a full cell, per driver channel and for the pack.
+	if (driver?.data) {
+		const peakA = Number(driver.data.peakA ?? 0)
+		if (full.stallA > peakA)
+			push("mech-current", `${d.motor} draws ${r2(full.stallA)} A at stall on a full ${pack.fullV} V cell, over the ${driver.part.mpn}'s ${peakA} A peak per channel: pick a motor with a lower stall current or a stronger driver`, ["mechanics", "board"])
+		const supplyMin = Number(driver.data.supplyMinV ?? 0), supplyMax = Number(driver.data.supplyMaxV ?? Infinity)
+		if (pack.cutoffV < supplyMin || pack.fullV > supplyMax)
+			push("mech-voltage", `the ${driver.part.mpn} runs from ${supplyMin}–${supplyMax} V but the cell spans ${pack.cutoffV}–${pack.fullV} V: pick a driver that covers it`, ["mechanics", "board"])
+	}
+	const boardMa = boards.reduce((t, b) => t + (b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0)
+	const packNeedA = 2 * full.stallA + boardMa / 1000
+	if (packNeedA > pack.peakA)
+		push("mech-current", `both motors at stall plus the electronics draw ${r2(packNeedA)} A from a full cell, over the ${mech.battery.pack}'s ${pack.peakA} A peak: pick a pack rated higher or a gentler motor`)
+
+	// Runtime at cruise: rolling resistance only (flat floors), plus the electronics.
+	const rollNmPerWheel = (est("rollingCrr") * massKg * G * r) / 2
+	const cruiseA = 2 * (motor.noLoadA + (nominal.kt > 0 ? rollNmPerWheel / nominal.kt : 0)) + boardMa / 1000
+	const runtimeMin = ((pack.mAh / 1000) * USABLE_ENERGY) / cruiseA * 60
+	if (runtimeMin < motion.runtimeMin)
+		push("mech-runtime", `${mech.battery.pack} (${pack.mAh} mAh, ${USABLE_ENERGY * 100} % usable) lasts about ${Math.round(runtimeMin)} min at cruise (${r2(cruiseA)} A: motors ${r2(cruiseA - boardMa / 1000)} A, electronics ${r2(boardMa / 1000)} A, ${estNote("rollingCrr")}), short of the ${motion.runtimeMin} min target: pick a bigger pack`)
+
+	// Voltage: a full cell on the motor.
+	const over = pack.fullV / motor.ratedV
+	if (over > est("motorOvervoltMax"))
+		push("mech-voltage", `a full cell puts ${pack.fullV} V on the ${motor.ratedV} V-rated ${d.motor}: ${r2(over)}× its rating, over ${est("motorOvervoltMax")}× ${estNote("motorOvervoltMax")}: pick a motor rated closer to the cell`)
+
+	// Tipping: the centre of mass inside the support triangle with margin, still or braking (the braking decel moves it
+	// forward by h·a/g).
+	const poly = supportPolygon(mech, cat.mech)
+	const decel = est("floorMu") * G * onWheels
+	const still = insideMargin([com[0], com[1]], poly)
+	const braking = insideMargin([com[0] + (com[2] * decel) / G, com[1]], poly)
+	if (Math.min(still, braking) < TIP_MARGIN_MM)
+		push("mech-tipping", `the centre of mass (${r1(com[0])}, ${r1(com[1])}, ${r1(com[2])} mm) is ${r1(Math.min(still, braking))} mm from the edge of the wheels-and-caster triangle ${braking < still ? "when braking hard " : ""}(at least ${TIP_MARGIN_MM} mm needed, ${estNote("floorMu")}): lengthen the wheelbase, or move weight (the battery) back and down`)
+
+	// Fit: everything on the plate, nothing colliding, the plate level and above the edge, within the size and mass.
+	const [L, Wd] = mech.chassis.plateMm
+	const onPlate = (m: Mount) => Math.abs(m.xMm) + m.sizeMm[0] / 2 <= L / 2 + 1e-9 && Math.abs(m.yMm) + m.sizeMm[1] / 2 <= Wd / 2 + 1e-9
+	for (const m of ms) if (m.what.startsWith("board:") || m.what === "battery" || m.what === "caster")
+		if (!onPlate(m)) push("mech-fit", `${m.what.replace(/^board:/, "board ")} (${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm at ${r1(m.xMm)}, ${r1(m.yMm)}) doesn't fit on the ${L} × ${Wd} mm plate: enlarge the plate or move it`)
+	// A motor hangs under the plate's edge out to its wheel: at least half its body must be under the plate to bolt on.
+	for (const m of ms.filter((x) => x.what.startsWith("motor:"))) {
+		const under = Wd / 2 - (Math.abs(m.yMm) - m.sizeMm[1] / 2)
+		if (under < m.sizeMm[1] / 2) push("mech-fit", `${m.what.replace(":", " ")} reaches only ${r1(Math.max(0, under))} mm under the plate (half its ${m.sizeMm[1]} mm body needed for the bracket): widen the plate or narrow the track`)
+	}
+	const boardsM = ms.filter((m) => m.what.startsWith("board:"))
+	for (let i = 0; i < boardsM.length; i++)
+		for (let j = i + 1; j < boardsM.length; j++) {
+			const a = boardsM[i], b = boardsM[j]
+			if (Math.abs(a.xMm - b.xMm) < (a.sizeMm[0] + b.sizeMm[0]) / 2 && Math.abs(a.yMm - b.yMm) < (a.sizeMm[1] + b.sizeMm[1]) / 2)
+				push("mech-fit", `${a.what.slice(6)} and ${b.what.slice(6)} overlap on the chassis: move one`)
+		}
+	if (pack.sizeMm[2] > est("standoffMm") - 1 && boardsM.length)
+		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")}: pick a thinner pack or put it beside the boards`)
+	const wheelInner = d.trackMm / 2 - wheel.widthMm / 2
+	if (wheelInner < Wd / 2 + 2) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): widen the track or narrow the plate`)
+	const axleLevel = wheel.diameterMm / 2 + motor.bodyMm[2] / 2
+	if (Math.abs(mech.chassis.clearanceMm - axleLevel) > LEVEL_TOLERANCE_MM || Math.abs(caster.heightMm - mech.chassis.clearanceMm) > LEVEL_TOLERANCE_MM)
+		push("mech-fit", `the plate isn't level: its underside is ${mech.chassis.clearanceMm} mm up, the motors hold it at ${r1(axleLevel)} mm and the ${d.caster} at ${caster.heightMm} mm (within ${LEVEL_TOLERANCE_MM} mm): set the clearance to match, or pick a caster of matching height`)
+	if (mech.chassis.clearanceMm < motion.edgeMm)
+		push("mech-fit", `the plate is ${mech.chassis.clearanceMm} mm off the floor, under the ${motion.edgeMm} mm edge the rover must cross: raise it (bigger wheels)`)
+	const outerW = Math.max(Wd, d.trackMm + wheel.widthMm)
+	if (L > motion.maxSizeMm[0] || outerW > motion.maxSizeMm[1])
+		push("mech-fit", `the rover is ${L} × ${outerW} mm with its wheels, over the ${motion.maxSizeMm[0]} × ${motion.maxSizeMm[1]} mm the brief allows: shrink the plate or the track`)
+	if (massG > motion.maxMassG) push("mech-fit", `the rover weighs about ${Math.round(massG)} g, over the ${motion.maxMassG} g the brief allows`)
+
+	// Wiring: a driver with its inputs on GPIOs, the sensor on the I2C bus, a battery connector.
+	if (!driver) push("mech-wiring", "no board carries a motor driver (role motor-driver): add one with its four inputs on GPIOs", ["board"], ["parts"])
+	else {
+		const missing = ["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2"].filter((s) => !pins.some((p) => p.signal === s && p.partRef === driver.part.ref))
+		if (missing.length) push("mech-wiring", `the motor driver ${driver.part.ref}'s inputs ${missing.join(", ")} have no GPIO: assign them`, ["board"], ["pins"])
+	}
+	if (!tof) push("mech-wiring", "no board carries the distance sensor (role tof-sensor) the rover avoids walls with: add one on the I2C bus at the front", ["board"], ["parts"])
+	else if (!["I2C_SDA", "I2C_SCL"].every((s) => pins.some((p) => p.signal === s && p.partRef === tof.part.ref)))
+		push("mech-wiring", `the distance sensor ${tof.part.ref} isn't on the I2C bus: connect its SDA and SCL to I2C_SDA and I2C_SCL`, ["board"], ["pins"])
+	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", "no battery connector on any board: the cell needs one", ["board"], ["parts"])
+	return out
+}

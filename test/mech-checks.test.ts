@@ -1,0 +1,98 @@
+// The plain-code mechanics checks (src/mechanics/checks.ts): free and instant, run on every contract change.
+import { test } from "node:test"
+import assert from "node:assert/strict"
+import { mechanicsCheckOver, mechanicsChecksWith } from "../src/mechanics/checks.ts"
+import type { ContractSnapshot } from "../src/contract/types.ts"
+import { fixtureContract, roverFixture } from "./fixture.ts"
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any
+const kinds = (c: ContractSnapshot, cat: Any) => mechanicsChecksWith(c, cat).map((v) => v.kind)
+function variant(edit: (v: Any, cat: Any) => void) {
+	const { c, cat } = roverFixture()
+	const copy = JSON.parse(JSON.stringify({ c, cat }))
+	edit(copy.c.values, copy.cat)
+	return copy as { c: ContractSnapshot; cat: Any }
+}
+const msg = (c: ContractSnapshot, cat: Any, kind: string) => mechanicsChecksWith(c, cat).find((v) => v.kind === kind)?.message ?? ""
+
+test("the reference rover passes every mechanics check", () => {
+	const { c, cat } = roverFixture()
+	assert.deepEqual(mechanicsChecksWith(c, cat), [])
+})
+
+test("a board with no motion targets gets no mechanics checks at all", () => {
+	assert.deepEqual(mechanicsChecksWith(fixtureContract(), roverFixture().cat), [])
+})
+
+test("a weak motor can't climb the edge", () => {
+	const { c, cat } = variant((_v, k) => (k.mech.motors[0].stallTorqueNm = 0.02))
+	assert.ok(kinds(c, cat).includes("mech-torque"))
+	assert.match(msg(c, cat, "mech-torque"), /10 mm/)
+})
+
+test("too slow a motor misses the target speed", () => {
+	const { c, cat } = variant((_v, k) => (k.mech.motors[0].noLoadRpm = 60))
+	assert.match(msg(c, cat, "mech-speed"), /0\.3 m\/s/)
+})
+
+test("a short-range sensor can't stop the rover in time", () => {
+	const { c, cat } = variant((_v, k) => (k.boardParts[1].rangeMm = 160))
+	assert.ok(kinds(c, cat).includes("mech-stopping"))
+	assert.match(msg(c, cat, "mech-stopping"), /estimate: floorMu 0\.6/)
+})
+
+test("a motor that stalls above the driver's peak is flagged, and the board is woken", () => {
+	const { c, cat } = variant((_v, k) => (k.mech.motors[0].stallA = 3.2))
+	const v = mechanicsChecksWith(c, cat).find((x) => x.kind === "mech-current")!
+	assert.ok(v.affects.includes("board"))
+})
+
+test("a small pack can't last the runtime", () => {
+	const { c, cat } = variant((_v, k) => (k.mech.batteries[0].mAh = 100))
+	assert.match(msg(c, cat, "mech-runtime"), /30 min/)
+})
+
+test("a full cell over-volts a 3 V motor beyond 1.5×", () => {
+	const { c, cat } = variant((_v, k) => (k.mech.motors[0].ratedV = 2.5))
+	assert.match(msg(c, cat, "mech-voltage"), /1\.68×/)
+})
+
+test("a high, front-heavy build tips over when braking", () => {
+	const { c, cat } = variant((v) => {
+		v.mechanics.drive.wheelbaseMm = 15
+		v.mechanics.battery.at.xMm = 60
+	})
+	assert.ok(kinds(c, cat).includes("mech-tipping"))
+})
+
+test("a plate smaller than the board doesn't fit", () => {
+	const { c, cat } = variant((v) => (v.mechanics.chassis.plateMm = [50, 30]))
+	assert.ok(mechanicsChecksWith(c, cat).some((v) => v.kind === "mech-fit" && /board main .* doesn't fit/.test(v.message)))
+})
+
+test("ground clearance below the edge height is a fit problem", () => {
+	const { c, cat } = variant((v) => (v.motion.edgeMm = 40))
+	assert.ok(kinds(c, cat).includes("mech-fit"))
+})
+
+test("no motor driver on any board is a wiring problem for the board agent", () => {
+	const { c, cat } = variant((v) => (v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver")))
+	const w = mechanicsChecksWith(c, cat).find((x) => x.kind === "mech-wiring")!
+	assert.deepEqual(w.affects, ["board"])
+})
+
+test("the driver on its own board gives the same verdicts (option B)", () => {
+	const { c, cat } = roverFixture()
+	const v = c.values as Any
+	const drv = JSON.parse(JSON.stringify(c)) as Any
+	drv.values.parts = v.parts.filter((p: Any) => p.role === "motor-driver")
+	drv.values.pins = v.pins.filter((p: Any) => p.signal.startsWith("MOT_"))
+	drv.values.outline = { widthMm: 30, heightMm: 20, thicknessMm: 1.6 }
+	const main = JSON.parse(JSON.stringify(c)) as Any
+	main.values.parts = v.parts.filter((p: Any) => p.role !== "motor-driver")
+	main.values.pins = v.pins.filter((p: Any) => !p.signal.startsWith("MOT_"))
+	const mech = JSON.parse(JSON.stringify(v.mechanics))
+	mech.chassis.boards.push({ name: "drive", at: { xMm: -45, yMm: 0 }, rotDeg: 0 })
+	assert.deepEqual(mechanicsCheckOver(v.motion, mech, [{ name: "main", snapshot: main }, { name: "drive", snapshot: drv }], cat), [])
+})
