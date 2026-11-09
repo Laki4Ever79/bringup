@@ -2,6 +2,7 @@ import { DefaultInferenceRunner, supportedModels, type InferenceRunnerConfig } f
 import { SafeRunner } from "./safe-runner.ts"
 import type { AgentRole } from "../contract/types.ts"
 import { ScriptedRunner, type Script } from "./scripted-runner.ts"
+import { UsageRunner, type UsageRecord } from "./usage.ts"
 
 const MODELS = {
 	// The event's Claude credit (build.jigjoy.ai/credits) serves Sonnet 4.6 and Haiku 4.5 through
@@ -24,10 +25,13 @@ export function inferenceConfig(
 	mock: boolean,
 	scripts: Record<string, Script> = {},
 	onFailure: (model: string, error: string) => void = (model, error) => console.error(`[bringup] ${model} inference failed: ${error}`),
+	onUsage?: (r: UsageRecord) => void,
 ): InferenceRunnerConfig {
 	if (mock) return { runner: new ScriptedRunner(scripts) }
 	// Mozaik does not export its input validator; the provider rejects invalid requests anyway,
 	// and SafeRunner turns that rejection into a message instead of a dead loop.
 	const noValidation = { validate: () => {} } as unknown as ConstructorParameters<typeof DefaultInferenceRunner>[1]
-	return { runner: new SafeRunner(new DefaultInferenceRunner(supportedModels, noValidation), onFailure) }
+	const provider = new DefaultInferenceRunner(supportedModels, noValidation)
+	// Every call's tokens and price go to onUsage (usage.jsonl); inside SafeRunner, so a failed call records nothing.
+	return { runner: new SafeRunner(onUsage ? new UsageRunner(provider, onUsage, "agents") : provider, onFailure) }
 }
