@@ -275,7 +275,7 @@ async function startStage(d) {
 	try { ({ mountWorld } = await import("/world3d.js")) } catch { return }
 	document.getElementById("stage-wrap").classList.remove("hidden")
 	try {
-		stage.world = mountWorld(document.getElementById("stage"), { onPick: (name) => window.openBoard?.(name), onHover: (name) => name && frameFor(name) })
+		stage.world = mountWorld(document.getElementById("stage"), { onPick: (name) => window.openBoard?.(name) })
 	} catch {
 		document.getElementById("stage-wrap").classList.add("hidden")
 		return
@@ -342,8 +342,10 @@ async function redraw() {
 }
 document.getElementById("scrub").addEventListener("input", schedule)
 
-// ── Board ↔ system: the camera flies to the board while its run page loads (preloaded on hover), then the page fades
-// in over the stage; Esc, ← System or Back fly out again. The URL follows (?board=), so Back and a shared link work.
+// ── Board ↔ system: the camera flies to the board first, then a plain "Opening…" panel covers the stage while the
+// board's run page loads behind it, and the page fades in. The run page is same-origin, so it loads on this page's
+// thread: loading it during the fly froze the fly for ~1 s (npm run perf), and preloading on hover froze orbits. Esc,
+// ← System or Back fly out again. The URL follows (?board=), so Back and a shared link work.
 const frames = new Map()
 function frameFor(name) {
 	const runId = stage.runs[name]
@@ -352,6 +354,8 @@ function frameFor(name) {
 		const f = document.createElement("iframe")
 		f.title = `${name} board`
 		f.style.display = "none"
+		f.style.opacity = "0"
+		f.style.transition = "opacity .25s"
 		const loaded = new Promise((r) => f.addEventListener("load", r, { once: true }))
 		f.src = `/?run=${encodeURIComponent(runId)}&embed=1`
 		document.getElementById("board-view").append(f)
@@ -361,18 +365,24 @@ function frameFor(name) {
 }
 let openName = null
 window.openBoard = async (name, { push = true } = {}) => {
-	const fr = frameFor(name)
-	if (!fr || !stage.world) return
+	if (!stage.runs[name] || !stage.world) return
 	openName = name
 	if (push) history.pushState({ board: name }, "", `?id=${encodeURIComponent(id)}&board=${encodeURIComponent(name)}`)
-	await Promise.all([stage.world.focus(name, { ms: 500 }), Promise.race([fr.loaded, new Promise((r) => setTimeout(r, 1500))])])
+	await stage.world.focus(name, { ms: 500 })
 	if (openName !== name) return
-	for (const [n, x] of frames) x.f.style.display = n === name ? "block" : "none"
 	const view = document.getElementById("board-view")
 	view.style.top = `${document.querySelector("header").offsetHeight}px`
-	document.getElementById("board-crumb").innerHTML = `${esc(stage.meta?.spec?.name ?? id)} › <b>${esc(name)}</b>`
+	document.getElementById("board-crumb").innerHTML = `${esc(stage.meta?.spec?.name ?? id)} › <b>${esc(name)}</b> <span class="muted" id="board-loading">opening…</span>`
 	view.classList.add("on")
 	view.setAttribute("aria-hidden", "false")
+	// One frame so the panel is on screen before the page's load takes the thread.
+	await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)))
+	const fr = frameFor(name)
+	for (const [n, x] of frames) x.f.style.display = n === name ? "block" : "none"
+	await fr.loaded
+	if (openName !== name) return
+	fr.f.style.opacity = "1"
+	document.getElementById("board-loading")?.remove()
 }
 async function closeBoard({ push = true } = {}) {
 	if (!openName) return
@@ -381,7 +391,11 @@ async function closeBoard({ push = true } = {}) {
 	const view = document.getElementById("board-view")
 	view.classList.remove("on")
 	view.setAttribute("aria-hidden", "true")
+	// Once faded, the board page is closed outright: hidden, it kept its timers and event stream running on this
+	// thread and caused 33–50 ms hitches in later flies (npm run perf). Opening it again reloads it behind the panel.
 	await stage.world?.focus(null, { ms: 500 })
+	// After the fly: tearing a page down takes the thread for a moment.
+	if (!openName) { for (const x of frames.values()) x.f.remove(); frames.clear() }
 }
 document.getElementById("board-back").addEventListener("click", () => closeBoard())
 // A board card's "Open board →" flies in too, when the 3D stage is up (a new tab or a middle click still opens the page).

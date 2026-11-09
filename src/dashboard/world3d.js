@@ -326,6 +326,7 @@ export function mountWorld(host, opts = {}) {
 
 	function draw(now) {
 		S.dirty = false
+		S.draws = (S.draws ?? 0) + 1
 		const { vp, eye, w, h } = viewProj()
 		gl.viewport(0, 0, canvas.width, canvas.height)
 		gl.clearColor(1, 1, 1, 1)
@@ -484,7 +485,7 @@ export function mountWorld(host, opts = {}) {
 		pulse,
 		setTurntable(on) { S.turntable = Boolean(on); S.lastTurn = performance.now(); request() },
 		get focused() { return S.focused },
-		stats() { return { boards: S.boards.size, triangles: [...S.boards.values()].reduce((n, b) => n + (b.solid?.count ?? 0) / 3 + (b.shell?.count ?? 0) / 3, 0) } },
+		stats() { return { draws: S.draws ?? 0, boards: S.boards.size, triangles: [...S.boards.values()].reduce((n, b) => n + (b.solid?.count ?? 0) / 3 + (b.shell?.count ?? 0) / 3, 0) } },
 		dispose() {
 			cancelAnimationFrame(S.raf)
 			document.removeEventListener("visibilitychange", onVisibility)

@@ -9,6 +9,7 @@
 		"test": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= tsx --test test/*.test.ts",
 		"bringup": "tsx src/main.ts",
 		"dashboard": "tsx src/dashboard/cli.ts",
+		"perf": "tsx perf/perf.ts",
 		"tournament": "tsx src/tournament/cli.ts",
 		"demo": "tsx src/demo.ts",
 		"setup": "tsx src/setup/cli.ts setup",
@@ -16,14 +17,15 @@
 		"experiment": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= tsx src/experiment/cli.ts"
 	},
 	"dependencies": {
-		"@mozaik-ai/core": "4.1.0",
 		"@modelcontextprotocol/sdk": "1.32.2",
+		"@mozaik-ai/cloud-sdk": "0.1.3",
+		"@mozaik-ai/core": "4.1.0",
 		"dotenv": "^17.4.2",
-		"zod": "4.6.7",
-		"@mozaik-ai/cloud-sdk": "0.1.3"
+		"zod": "4.6.7"
 	},
 	"devDependencies": {
 		"@types/node": "^24.0.0",
+		"playwright": "1.65.0",
 		"tsx": "^4.23.13",
 		"typescript": "^7.0.2"
 	},
