@@ -1,0 +1,447 @@
+{
+	"_about": "Bought drive parts for robots. Every number has its source (datasheet or seller's spec table, and where on it); derived values say how. Board parts (the motor driver, the distance sensor) are in parts.json.",
+	"motors": [
+		{
+			"mpn": "POLOLU-2365 50:1 MP 6V",
+			"ratedV": 6,
+			"noLoadRpm": 420,
+			"stallTorqueNm": 0.053,
+			"stallA": 0.67,
+			"noLoadA": 0.07,
+			"gearRatio": 51.45,
+			"bodyMm": [
+				26,
+				12,
+				10
+			],
+			"shaftMm": 3,
+			"massG": 9.5,
+			"source": {
+				"ratedV": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"noLoadRpm": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"stallTorqueNm": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "derived: 0.54 kg\u00b7cm \u00d7 0.0980665 N\u00b7m per kg\u00b7cm"
+				},
+				"stallA": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"noLoadA": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"gearRatio": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"bodyMm": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Size 10 \u00d7 12 \u00d7 25 mm; length 26 mm per the size footnote (gearbox and motor); the 9\u201310 mm shaft extra"
+				},
+				"shaftMm": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"massG": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				}
+			}
+		},
+		{
+			"mpn": "POLOLU-2366 75:1 MP 6V",
+			"ratedV": 6,
+			"noLoadRpm": 290,
+			"stallTorqueNm": 0.0765,
+			"stallA": 0.67,
+			"noLoadA": 0.07,
+			"gearRatio": 75.81,
+			"bodyMm": [
+				26,
+				12,
+				10
+			],
+			"shaftMm": 3,
+			"massG": 9.5,
+			"source": {
+				"ratedV": {
+					"url": "https://www.pololu.com/product/2366/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"noLoadRpm": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, MP 6V block (100:1 row); size and weight from the family specs table"
+				},
+				"stallTorqueNm": {
+					"url": "https://www.pololu.com/product/2366/specs",
+					"where": "derived: 0.78 kg\u00b7cm \u00d7 0.0980665 N\u00b7m per kg\u00b7cm"
+				},
+				"stallA": {
+					"url": "https://www.pololu.com/product/2366/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"noLoadA": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, MP 6V block (100:1 row); size and weight from the family specs table"
+				},
+				"gearRatio": {
+					"url": "https://www.pololu.com/product/2366/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"bodyMm": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Size 10 \u00d7 12 \u00d7 25 mm; length 26 mm per the size footnote (gearbox and motor); the 9\u201310 mm shaft extra"
+				},
+				"shaftMm": {
+					"url": "https://www.pololu.com/product/2366/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"massG": {
+					"url": "https://www.pololu.com/product/2366/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				}
+			}
+		},
+		{
+			"mpn": "POLOLU-2367 100:1 MP 6V",
+			"ratedV": 6,
+			"noLoadRpm": 220,
+			"stallTorqueNm": 0.0922,
+			"stallA": 0.67,
+			"noLoadA": 0.07,
+			"gearRatio": 100,
+			"bodyMm": [
+				26,
+				12,
+				10
+			],
+			"shaftMm": 3,
+			"massG": 9.5,
+			"source": {
+				"ratedV": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, MP 6V block (100:1 row); size and weight from the family specs table"
+				},
+				"noLoadRpm": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, MP 6V block (100:1 row); size and weight from the family specs table"
+				},
+				"stallTorqueNm": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "derived: 0.94 kg\u00b7cm \u00d7 0.0980665 N\u00b7m per kg\u00b7cm"
+				},
+				"stallA": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, MP 6V block (100:1 row); size and weight from the family specs table"
+				},
+				"noLoadA": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, MP 6V block (100:1 row); size and weight from the family specs table"
+				},
+				"gearRatio": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table: nominal 100:1 (the exact ratio is on the product page, not fetched)"
+				},
+				"bodyMm": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Size 10 \u00d7 12 \u00d7 25 mm; length 26 mm per the size footnote (gearbox and motor); the 9\u201310 mm shaft extra"
+				},
+				"shaftMm": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, MP 6V block (100:1 row); size and weight from the family specs table"
+				},
+				"massG": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, MP 6V block (100:1 row); size and weight from the family specs table"
+				}
+			}
+		},
+		{
+			"mpn": "POLOLU-998 50:1 HP 6V",
+			"ratedV": 6,
+			"noLoadRpm": 590,
+			"stallTorqueNm": 0.0843,
+			"stallA": 1.6,
+			"noLoadA": 0.1,
+			"gearRatio": 51.45,
+			"bodyMm": [
+				26,
+				12,
+				10
+			],
+			"shaftMm": 3,
+			"massG": 9.5,
+			"source": {
+				"ratedV": {
+					"url": "https://www.pololu.com/product/998/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"noLoadRpm": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, HP 6V block"
+				},
+				"stallTorqueNm": {
+					"url": "https://www.pololu.com/product/998/specs",
+					"where": "derived: 0.86 kg\u00b7cm \u00d7 0.0980665 N\u00b7m per kg\u00b7cm"
+				},
+				"stallA": {
+					"url": "https://www.pololu.com/product/998/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"noLoadA": {
+					"url": "https://www.pololu.com/product/2365",
+					"where": "comparison table, HP 6V block"
+				},
+				"gearRatio": {
+					"url": "https://www.pololu.com/product/998/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"bodyMm": {
+					"url": "https://www.pololu.com/product/2365/specs",
+					"where": "Size 10 \u00d7 12 \u00d7 25 mm; length 26 mm per the size footnote (gearbox and motor); the 9\u201310 mm shaft extra"
+				},
+				"shaftMm": {
+					"url": "https://www.pololu.com/product/998/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				},
+				"massG": {
+					"url": "https://www.pololu.com/product/998/specs",
+					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
+				}
+			}
+		}
+	],
+	"wheels": [
+		{
+			"mpn": "POLOLU-1420 wheel 60x8 mm",
+			"diameterMm": 60,
+			"widthMm": 8,
+			"shaftMm": 3,
+			"massG": 11.3,
+			"tread": "rubber",
+			"source": {
+				"diameterMm": {
+					"url": "https://www.pololu.com/product/1420/specs",
+					"where": "Specs table: size 60 \u00d7 8 mm, 3 mm D shaft; weight 0.4 oz per wheel incl. tire (derived: \u00d7 28.35 g/oz)"
+				},
+				"widthMm": {
+					"url": "https://www.pololu.com/product/1420/specs",
+					"where": "Specs table: size 60 \u00d7 8 mm, 3 mm D shaft; weight 0.4 oz per wheel incl. tire (derived: \u00d7 28.35 g/oz)"
+				},
+				"shaftMm": {
+					"url": "https://www.pololu.com/product/1420/specs",
+					"where": "Specs table: size 60 \u00d7 8 mm, 3 mm D shaft; weight 0.4 oz per wheel incl. tire (derived: \u00d7 28.35 g/oz)"
+				},
+				"massG": {
+					"url": "https://www.pololu.com/product/1420/specs",
+					"where": "Specs table: size 60 \u00d7 8 mm, 3 mm D shaft; weight 0.4 oz per wheel incl. tire (derived: \u00d7 28.35 g/oz)"
+				}
+			}
+		}
+	],
+	"casters": [
+		{
+			"mpn": "BOTLAND-7292 swivel caster 25 mm",
+			"wheelMm": 25,
+			"heightMm": 35,
+			"swivel": true,
+			"holesMm": [
+				[
+					-14.0,
+					-11.5
+				],
+				[
+					14.0,
+					-11.5
+				],
+				[
+					-14.0,
+					11.5
+				],
+				[
+					14.0,
+					11.5
+				]
+			],
+			"massG": 33,
+			"source": {
+				"wheelMm": {
+					"url": "https://botland.store/chassis-for-robots/7292-universal-swivel-casters-wheel-for-chassis.html",
+					"where": "description: wheel \u00f825 mm, height 35 mm, 4 \u00d7 \u00f85 mm holes at 28 \u00d7 23 mm; weight 0.033 kg from the details table (may be shipping weight: the heavier reading is kept, so the mass is not understated)"
+				},
+				"heightMm": {
+					"url": "https://botland.store/chassis-for-robots/7292-universal-swivel-casters-wheel-for-chassis.html",
+					"where": "description: wheel \u00f825 mm, height 35 mm, 4 \u00d7 \u00f85 mm holes at 28 \u00d7 23 mm; weight 0.033 kg from the details table (may be shipping weight: the heavier reading is kept, so the mass is not understated)"
+				},
+				"holesMm": {
+					"url": "https://botland.store/chassis-for-robots/7292-universal-swivel-casters-wheel-for-chassis.html",
+					"where": "description: wheel \u00f825 mm, height 35 mm, 4 \u00d7 \u00f85 mm holes at 28 \u00d7 23 mm; weight 0.033 kg from the details table (may be shipping weight: the heavier reading is kept, so the mass is not understated)"
+				},
+				"massG": {
+					"url": "https://botland.store/chassis-for-robots/7292-universal-swivel-casters-wheel-for-chassis.html",
+					"where": "description: wheel \u00f825 mm, height 35 mm, 4 \u00d7 \u00f85 mm holes at 28 \u00d7 23 mm; weight 0.033 kg from the details table (may be shipping weight: the heavier reading is kept, so the mass is not understated)"
+				}
+			}
+		},
+		{
+			"mpn": "IFUTURETECH 1in castor wheel",
+			"wheelMm": 25.4,
+			"heightMm": 35,
+			"swivel": true,
+			"holesMm": [
+				[
+					-14.5,
+					-11.5
+				],
+				[
+					14.5,
+					-11.5
+				],
+				[
+					-14.5,
+					11.5
+				],
+				[
+					14.5,
+					11.5
+				]
+			],
+			"massG": 35,
+			"source": {
+				"wheelMm": {
+					"url": "https://ifuturetech.org/product/1-inch-castor-wheel-for-omnidirectional-robots",
+					"where": "specification: wheel 25.4 mm, total height 35 mm, holes \u00f84.2 mm at 29 \u00d7 23 mm centres, weight 35 g"
+				},
+				"heightMm": {
+					"url": "https://ifuturetech.org/product/1-inch-castor-wheel-for-omnidirectional-robots",
+					"where": "specification: wheel 25.4 mm, total height 35 mm, holes \u00f84.2 mm at 29 \u00d7 23 mm centres, weight 35 g"
+				},
+				"holesMm": {
+					"url": "https://ifuturetech.org/product/1-inch-castor-wheel-for-omnidirectional-robots",
+					"where": "specification: wheel 25.4 mm, total height 35 mm, holes \u00f84.2 mm at 29 \u00d7 23 mm centres, weight 35 g"
+				},
+				"massG": {
+					"url": "https://ifuturetech.org/product/1-inch-castor-wheel-for-omnidirectional-robots",
+					"where": "specification: wheel 25.4 mm, total height 35 mm, holes \u00f84.2 mm at 29 \u00d7 23 mm centres, weight 35 g"
+				}
+			}
+		}
+	],
+	"batteries": [
+		{
+			"mpn": "ADAFRUIT-258 LP-503562 1200 mAh",
+			"cells": 1,
+			"nominalV": 3.7,
+			"fullV": 4.2,
+			"cutoffV": 3.0,
+			"mAh": 1200,
+			"maxContA": 1.2,
+			"peakA": 1.2,
+			"sizeMm": [
+				62,
+				34,
+				5
+			],
+			"massG": 23,
+			"source": {
+				"nominalV": {
+					"url": "https://cdn-shop.adafruit.com/product-files/258/C101-_Li-Polymer_503562_1200mAh_3.7V_with_PCM_APPROVED_8.18.pdf",
+					"where": "\u00a73 Form 1 'Battery rated performance': nominal, charge and cut-off voltage, capacity, max continuous discharge 1 C5A"
+				},
+				"fullV": {
+					"url": "https://cdn-shop.adafruit.com/product-files/258/C101-_Li-Polymer_503562_1200mAh_3.7V_with_PCM_APPROVED_8.18.pdf",
+					"where": "\u00a73 Form 1 'Battery rated performance': nominal, charge and cut-off voltage, capacity, max continuous discharge 1 C5A"
+				},
+				"cutoffV": {
+					"url": "https://cdn-shop.adafruit.com/product-files/258/C101-_Li-Polymer_503562_1200mAh_3.7V_with_PCM_APPROVED_8.18.pdf",
+					"where": "\u00a73 Form 1 'Battery rated performance': nominal, charge and cut-off voltage, capacity, max continuous discharge 1 C5A"
+				},
+				"mAh": {
+					"url": "https://cdn-shop.adafruit.com/product-files/258/C101-_Li-Polymer_503562_1200mAh_3.7V_with_PCM_APPROVED_8.18.pdf",
+					"where": "\u00a73 Form 1 'Battery rated performance': nominal, charge and cut-off voltage, capacity, max continuous discharge 1 C5A"
+				},
+				"maxContA": {
+					"url": "https://cdn-shop.adafruit.com/product-files/258/C101-_Li-Polymer_503562_1200mAh_3.7V_with_PCM_APPROVED_8.18.pdf",
+					"where": "derived: 1 C \u00d7 capacity (Form 1, max continuous discharge)"
+				},
+				"peakA": {
+					"url": "https://cdn-shop.adafruit.com/product-files/258/C101-_Li-Polymer_503562_1200mAh_3.7V_with_PCM_APPROVED_8.18.pdf",
+					"where": "not stated by the datasheet: the 1 C continuous rating is used as the limit (conservative)"
+				},
+				"sizeMm": {
+					"url": "https://www.adafruit.com/product/258",
+					"where": "technical details: dimensions"
+				},
+				"massG": {
+					"url": "https://www.adafruit.com/product/258",
+					"where": "technical details: weight"
+				},
+				"cells": {
+					"url": "https://cdn-shop.adafruit.com/product-files/258/C101-_Li-Polymer_503562_1200mAh_3.7V_with_PCM_APPROVED_8.18.pdf",
+					"where": "single 3.7 V Li-polymer cell (Form 1 nominal voltage)"
+				}
+			}
+		},
+		{
+			"mpn": "ADAFRUIT-2011 LP-803860 2000 mAh",
+			"cells": 1,
+			"nominalV": 3.7,
+			"fullV": 4.2,
+			"cutoffV": 3.0,
+			"mAh": 2000,
+			"maxContA": 2.0,
+			"peakA": 2.0,
+			"sizeMm": [
+				60,
+				36,
+				7
+			],
+			"massG": 34,
+			"source": {
+				"nominalV": {
+					"url": "https://cdn-shop.adafruit.com/datasheets/LiIon2000mAh37V.pdf",
+					"where": "\u00a73 Form 1 'Battery rated performance': nominal, charge and cut-off voltage, capacity, max continuous discharge 1 C5A"
+				},
+				"fullV": {
+					"url": "https://cdn-shop.adafruit.com/datasheets/LiIon2000mAh37V.pdf",
+					"where": "\u00a73 Form 1 'Battery rated performance': nominal, charge and cut-off voltage, capacity, max continuous discharge 1 C5A"
+				},
+				"cutoffV": {
+					"url": "https://cdn-shop.adafruit.com/datasheets/LiIon2000mAh37V.pdf",
+					"where": "\u00a73 Form 1 'Battery rated performance': nominal, charge and cut-off voltage, capacity, max continuous discharge 1 C5A"
+				},
+				"mAh": {
+					"url": "https://cdn-shop.adafruit.com/datasheets/LiIon2000mAh37V.pdf",
+					"where": "\u00a73 Form 1 'Battery rated performance': nominal, charge and cut-off voltage, capacity, max continuous discharge 1 C5A"
+				},
+				"maxContA": {
+					"url": "https://cdn-shop.adafruit.com/datasheets/LiIon2000mAh37V.pdf",
+					"where": "derived: 1 C \u00d7 capacity (Form 1, max continuous discharge)"
+				},
+				"peakA": {
+					"url": "https://cdn-shop.adafruit.com/datasheets/LiIon2000mAh37V.pdf",
+					"where": "not stated by the datasheet: the 1 C continuous rating is used as the limit (conservative)"
+				},
+				"sizeMm": {
+					"url": "https://www.adafruit.com/product/2011",
+					"where": "technical details: dimensions"
+				},
+				"massG": {
+					"url": "https://www.adafruit.com/product/2011",
+					"where": "technical details: weight"
+				},
+				"cells": {
+					"url": "https://cdn-shop.adafruit.com/datasheets/LiIon2000mAh37V.pdf",
+					"where": "single 3.7 V Li-polymer cell (Form 1 nominal voltage)"
+				}
+			}
+		}
+	]
+}
