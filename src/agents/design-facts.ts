@@ -4,7 +4,7 @@ import { generatedNets, supportParts } from "../codegen/circuit.ts"
 import { addedForYouFactLines } from "../contract/added.ts"
 import { bleAdvertiseMs } from "../codegen/firmware.ts"
 import { dutyCycleCheckLines, estimatePower, powerBudgetLines } from "../contract/power.ts"
-import type { ContractSnapshot } from "../contract/types.ts"
+import { enclosureMode, type ContractSnapshot } from "../contract/types.ts"
 import { modelFactLines } from "../contract/model.ts"
 import { expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { testPoints } from "../codegen/circuit.ts"
@@ -26,7 +26,8 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 		...testFactLines(s),
 		...addedForYouFactLines(s),
 		...(s.values.outline ? ["", "## Space (computed in code: the smallest board the parts place on, the case's contents)", ...spaceFactLines(s).map((l) => `- ${l}`)] : []),
-		...(s.values.outline ? ["", "## The case (computed in code from the outline, the connectors and the case field)", ...caseFactLines(s).map((l) => `- ${l}`)] : []),
+		...(s.values.outline && enclosureMode(s.values) === "case" ? ["", "## The case (computed in code from the outline, the connectors and the case field)", ...caseFactLines(s).map((l) => `- ${l}`)] : []),
+		...(enclosureMode(s.values) !== "case" ? ["", "## The case", enclosureMode(s.values) === "none" ? '- None: a bare board (requirements.enclosure "none"). No case is built or checked; the case field, if any, is ignored.' : '- None of ours: the board goes into the engineer\'s own housing (requirements.enclosure "own"). No case is built or checked; Bringup writes interface.md (outline, mounting holes, openings, buttons, lights, vents, antenna keep-out, underside pads, label) for whoever designs the housing.'] : []),
 		...(s.values.model ? ["", "## The on-device model (checked in code against the flash and RAM the firmware leaves, the sensor and its pins, and the battery)", ...modelFactLines(s)] : []),
 		"",
 		"## Power budget (computed in code from the contract and the brief, not by a model)",

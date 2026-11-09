@@ -48,6 +48,14 @@ Decision from run 4, agreed with the engineer on 9 Nov and built:
 - [x] **Added for you:** the engineer asked to be told what Bringup adds unasked and how it shows. The report has an
       "Added for you" table (what, how you'll notice it, why, cost, how to change it), the run prints the list at the
       end, and the agents and the reviewer get the same lines in their design facts (`src/contract/added.ts`).
+- [x] **Who houses the board** (9 Nov): `requirements.enclosure` is "case" (default: Bringup designs and prints one),
+      "none" (a bare board: no case built or checked; the report warns of a loose battery, exposed parts and static, and
+      the FCC label moves to the silkscreen) or "own" (the engineer's own housing: `interface.md`/`.json` with the
+      outline, mounting holes, openings, buttons, lights, vents, antenna keep-out, underside pads and label, plus
+      board.step). A case nobody asked for is listed in "Added for you". `briefs/logger-bare.md` exercises "none".
+- [x] **Run 5 fixes:** a button inside our case with no opening is a `button-unreachable` violation (run 5 passed review
+      with one sealed in); the test kit's awake limit comes from the board's own rails, not a battery rail's rating
+      (run 5 said "500 mA awake" against 170 mA on 3V3).
 - [ ] **Phone use as a contract value:** the one-connection-a-day assumption is a constant; the "Added for you" table
       says so. Making it `requirements` data would let the brief set it.
 

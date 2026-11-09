@@ -2,7 +2,7 @@ import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { testPoints } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
-import type { CaseSpec, ContractSnapshot, ContractValues, FieldName } from "../contract/types.ts"
+import type { CaseSpec, ContractSnapshot, ContractValues, EnclosureMode, FieldName } from "../contract/types.ts"
 import { boardWidthFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
 import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT } from "../contract/space.ts"
 import { state } from "../runtime.ts"
@@ -123,6 +123,16 @@ function dataOn(status: "recorded" | "needed") {
 	return path ? { status, revision: s.revision, pathHash: pathHash(path), path } : null
 }
 // A request about the case: the case designer's. Its size, walls, height, lid, lettering, tabs, loops and holes.
+// Who houses the board, from a brief or a request: "none" for a bare board, "own" for the engineer's own housing,
+// "case" when it asks for ours; null when it doesn't say.
+export function enclosureFromText(t: string): EnclosureMode | null {
+	if (/bare board|no (case|enclosure|housing)\b|without (a |any )?(case|enclosure)|drop the case|remove the case/i.test(t)) return "none"
+	if (/\b(our|my|their) own (housing|enclosure|case)\b|existing (housing|enclosure|product)/i.test(t)) return "own"
+	if (/\bcase\b/i.test(t)) return "case"
+	return null
+}
+// A request that changes whether there is a case at all: the architect's requirements.enclosure, not the case field.
+export const ENCLOSURE_MODE_REQUEST = /bare board|no (case|enclosure)\b|without (a |any )?(case|enclosure)|drop the case|remove the case|own (housing|enclosure)|existing (housing|enclosure|product)|(add|bring back|we want) (a|the) case/i
 export const CASE_REQUEST = /\b(case|enclosure|housing|lid)\b|wall.?mount|lanyard|key ?ring|cable gland/i
 const EDGE_ORDER = ["right", "top", "bottom", "left"] as const
 
@@ -345,8 +355,16 @@ export function mockScripts(): Record<string, Script> {
 					if (step < 2 && !pins.some((p) => p.signal === "I2C_SDA")) return propose("pins", [...pins, ...SENSOR_PINS], "the sensor's I2C bus on GPIO8/GPIO9")
 					return say("sensor and pins set")
 				}
+				// Whether there is a case at all is the architect's (requirements.enclosure); the case's shape is the case designer's.
+				const line = instruction.split("\n")[1] ?? ""
+				if (ENCLOSURE_MODE_REQUEST.test(line)) {
+					const requirements = state().contract.get("requirements")
+					const mode = /(add|bring back|we want) (a|the) case/i.test(line) ? "case" : enclosureFromText(line)
+					if (step > 0 || !requirements || !mode || requirements.enclosure === mode) return say("housing set")
+					return propose("requirements", { ...requirements, enclosure: mode }, `the engineer asked: ${line}`)
+				}
 				// The case designer's request; a board it needs comes back as its proposal.
-				if (CASE_REQUEST.test(instruction.split("\n")[1] ?? "")) return say("left to the case")
+				if (CASE_REQUEST.test(line)) return say("left to the case")
 				const width = /(\d+(?:\.\d+)?)\s*mm wide/.exec(instruction)?.[1]
 				const outline = state().contract.get("outline")
 				if (step > 0 || !width || !outline) return say(width ? "outline updated" : "no outline change")
@@ -376,7 +394,8 @@ export function mockScripts(): Record<string, Script> {
 				const stated = /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/.exec(instruction)
 				const { sizeReason: _reason, ...plain } = design.outline
 				const sized = stated ? { sizeReason: { kind: "engineer-size" as const, detail: `the brief asks for about ${stated[1]} × ${stated[2]} mm` } } : {}
-				const value = field === "outline" ? { ...plain, widthMm: Math.min(design.outline.widthMm, maxWidth), ...sized } : design[field]
+				const housing = enclosureFromText(instruction)
+				const value = field === "outline" ? { ...plain, widthMm: Math.min(design.outline.widthMm, maxWidth), ...sized } : field === "requirements" && housing ? { ...design.requirements, enclosure: housing } : design[field]
 				return field ? propose(field, value, `initial ${field} from the brief`) : say("contract drafted")
 			}
 			return say("noted")
@@ -476,6 +495,8 @@ export function mockScripts(): Record<string, Script> {
 			if (instruction.startsWith("Change request from the engineer:")) {
 				const request = instruction.split("\n")[1] ?? ""
 				if (!CASE_REQUEST.test(request) || !s.values.outline) return say("no case change")
+				// Whether there is a case at all is the architect's; with none of ours, there is no case to change.
+				if (ENCLOSURE_MODE_REQUEST.test(request) || (s.values.requirements?.enclosure ?? "case") !== "case") return say("no case of ours")
 				const last = text(items.findLast((i) => i instanceof FunctionCallOutputItem))
 				if (last.startsWith("rejected")) return say("board kept as is")
 				if (step === 0) {

@@ -2,7 +2,7 @@ import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { generatedNets, MIC_PORT, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
-import type { AgentRole, Connector, ContractSnapshot, FieldName } from "./types.ts"
+import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type FieldName } from "./types.ts"
 import { modelChecks, type ModelViolation } from "./model.ts"
 import { fixtureChecks, testChecks, type TestViolation } from "./testkit.ts"
 import { builtFeatureChecks, caseChecks, type BuiltFeature, type CaseViolation } from "./case.ts"
@@ -115,6 +115,7 @@ export type ViolationKind =
 	| "connector-without-part"
 	| "boot-pin-taken"
 	| "usb-wake-pin-taken"
+	| "button-unreachable"
 	| "rail-underrated"
 	| ModelViolation["kind"]
 	| TestViolation["kind"]
@@ -145,7 +146,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...usbWakePinTaken(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -430,6 +431,22 @@ export function usbWakePinTaken(c: ContractSnapshot): Violation[] {
 			affects: ["architect"],
 		},
 	]
+}
+
+// A button someone has to press needs a way to reach it. In our case, that is an opening: the button listed in connectors
+// on the edge it is pressed from, so the case cuts one (real run 5, 9 Nov: a wake button sealed inside a closed case,
+// and the review passed it). A bare board needs nothing; in the engineer's own housing it is on the interface drawing.
+export function unreachableButtons(c: ContractSnapshot): Violation[] {
+	if (enclosureMode(c.values) !== "case") return []
+	const listed = new Set((c.values.connectors ?? []).map((k) => k.ref))
+	return (c.values.parts ?? [])
+		.filter((p) => p.role === "button" && !listed.has(p.ref))
+		.map((p) => ({
+			kind: "button-unreachable" as const,
+			message: `${p.ref} (${p.mpn}) is a button inside a closed case, with no opening to press it through: list it in connectors (kind "button", on the edge it is pressed from) so the case cuts one, or remove it if the brief doesn't need it`,
+			fields: ["connectors", "parts"] as FieldName[],
+			affects: ["architect"] as AgentRole[],
+		}))
 }
 
 // Every ref something connects: a contract pin, a net the board generator wires, or a support part's end.

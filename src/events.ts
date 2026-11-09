@@ -85,7 +85,8 @@ export interface Payloads {
 	"change.resolved": { proposalId: string; approved: boolean; reason: string; decidedBy: string[] }
 	"change.decided": { proposalId: string; approved: boolean; by: AgentRole; reason: string }
 	// drc: the board build's KiCad DRC against the fab's rules, when it ran.
-	"artifact.ready": { kind: ArtifactKind; revision: number; drc?: DrcSummary }
+	// skipped: the design has no such artifact (no case: requirements.enclosure "none" or "own"); nothing was built.
+	"artifact.ready": { kind: ArtifactKind; revision: number; drc?: DrcSummary; skipped?: string }
 	"artifact.failed": { kind: ArtifactKind; revision: number; error: string }
 	// The newest compiled firmware booted in Espressif's QEMU (agents/emulator.ts). bootRevision is the contract
 	// revision the firmware printed on serial, null if it never got that far. Not an artifact: it never blocks settling.

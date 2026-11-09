@@ -43,7 +43,15 @@ export interface Requirements {
 	// A deep-sleeping board wakes when USB is plugged in and stays awake while it is, so a cable alone reflashes it (the
 	// board generator adds a VBUS-sense divider). On unless false; off, reflashing needs the recovery pads.
 	usbWake?: boolean
+	// Who houses the board (engineer, 9 Nov 2026): "case" (the default) Bringup designs and prints one; "none" a bare
+	// board (lab use, a dev kit, a test rig); "own" it goes into the engineer's own housing, so Bringup writes the
+	// board's mechanical interface (interface.md) for whoever designs it instead of a case.
+	enclosure?: EnclosureMode
 }
+
+export type EnclosureMode = "case" | "none" | "own"
+export const ENCLOSURE_MODES: readonly EnclosureMode[] = ["case", "none", "own"]
+export const enclosureMode = (values: { requirements?: Requirements }): EnclosureMode => values.requirements?.enclosure ?? "case"
 
 export interface Outline {
 	widthMm: number

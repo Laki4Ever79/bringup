@@ -1,4 +1,6 @@
 import { caseOuter } from "./contract/case.ts"
+import { enclosureMode, type ContractSnapshot } from "./contract/types.ts"
+import { interfaceMarkdown, mechanicalInterface } from "./contract/interface.ts"
 import { addedForYouSection } from "./contract/added.ts"
 import { minimumBoard } from "./contract/space.ts"
 import { complianceItems } from "./contract/compliance.ts"
@@ -166,6 +168,16 @@ export function changeRequestsSection(outDir: string): string[] {
 	]
 }
 
+// The mechanical interface for the engineer's own housing (requirements.enclosure "own"): interface.md and
+// interface.json beside the report. Returns the .md path, or null without an outline.
+export function writeInterface(outDir: string, s: ContractSnapshot, boardStep: string | null): string | null {
+	const m = mechanicalInterface(s)
+	if (!m) return null
+	writeFileSync(join(outDir, "interface.json"), JSON.stringify({ ...m, boardStep }, null, 2))
+	writeFileSync(join(outDir, "interface.md"), interfaceMarkdown(m, boardStep))
+	return join(outDir, "interface.md")
+}
+
 export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean; bench?: boolean; mock?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
 	const violations = checkConsistency(snapshot, s.artifacts)
@@ -210,7 +222,8 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 			const open = items.filter((i) => i.status === "open")
 			return [`- Compliance (not legal advice): ${items.filter((i) => i.status === "met").length} met, ${open.length} open (${open.map((i) => i.item).join("; ")}), ${items.filter((i) => i.status === "check").length} to check; compliance.md and sbom.cdx.json beside the firmware`]
 		})(),
-		...(v.case && v.outline ? [`- Case: outer ${caseOuter(snapshot).widthMm}×${caseOuter(snapshot).heightMm}×${v.case.heightMm} mm, ${v.case.wallMm} mm walls; features: ${v.case.features.map((f) => `${f.id} (${f.kind}${f.kind === "text" ? ` "${f.text}"` : f.kind === "hole" ? ` ${f.diameterMm} mm on the ${f.edge}` : ""})`).join(", ") || "none"}`] : []),
+		...(enclosureMode(v) === "none" ? [`- Case: none, a bare board (requirements.enclosure "none")`] : enclosureMode(v) === "own" ? [`- Case: none of ours; it goes into the engineer's own housing (requirements.enclosure "own"): the mechanical interface is in interface.md`] : []),
+		...(v.case && v.outline && enclosureMode(v) === "case" ? [`- Case: outer ${caseOuter(snapshot).widthMm}×${caseOuter(snapshot).heightMm}×${v.case.heightMm} mm, ${v.case.wallMm} mm walls; features: ${v.case.features.map((f) => `${f.id} (${f.kind}${f.kind === "text" ? ` "${f.text}"` : f.kind === "hole" ? ` ${f.diameterMm} mm on the ${f.edge}` : ""})`).join(", ") || "none"}`] : []),
 		...(v.test ? [`- Production test: ${v.test.points.length} test pads (${v.test.points.join(", ")}); limits awake ≤ ${v.test.awakeMaxMa} mA, asleep ≤ ${v.test.sleepMaxUa} µA${s.artifacts.testkit ? `; kit in ${s.artifacts.testkit.dir} (test-plan.md, fixture.stl, factory-test firmware ${s.artifacts.testkit.firmware.ok ? "compiles" : "FAILS"})` : ""}`] : []),
 		...(v.model ? [`- Model: ${v.model.task} (${v.model.sensor} at ${v.model.sampleRateHz} Hz, ${v.model.windowMs} ms window), weights ${v.model.weightsKb} KB, arena ${v.model.arenaKb} KB, ${v.model.quantization} ${v.model.runtime}, listening ${v.model.listening}`] : []),
 		...(v.model?.data ? [`- Model data: ${v.model.data.status === "recorded" ? "recorded" : "NEEDED"} on sensor path ${v.model.data.pathHash} (rev ${v.model.data.revision})${v.model.data.status === "needed" ? ": the hardware moved under the model's training data; record it again with the data-collection firmware" : ""}`] : []),
@@ -223,7 +236,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`## Artifacts`,
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
 		...drcLines(s.artifacts.board?.drc),
-		`- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}`,
+		enclosureMode(v) === "case" ? `- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}` : `- Enclosure: none (requirements.enclosure "${enclosureMode(v)}")${enclosureMode(v) === "own" ? `; mechanical interface: ${writeInterface(outDir, snapshot, s.artifacts.board?.stepPath ?? null) ?? "not written (no outline yet)"}` : ""}`,
 		...printLines(s.artifacts.enclosure, stubbed),
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		...(v.model?.sensor === "microphone" && s.artifacts.firmware && !isStub(s.artifacts.firmware) ? [`- Data-collection firmware: \`npm run bringup -- collect-firmware ${outDir}\` builds it for this design's sensor path (docs/edge-ai.md)`] : []),

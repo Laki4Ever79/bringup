@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util"
 import { antennaOverhang } from "../codegen/circuit.ts"
 import { sizeReasonError } from "./space.ts"
-import type { AgentRole, CaseFeature, CaseSpec, ContractSnapshot, ContractValues, FieldName } from "./types.ts"
+import { enclosureMode, type AgentRole, type CaseFeature, type CaseSpec, type ContractSnapshot, type ContractValues, type FieldName } from "./types.ts"
 
 // The case's fixed geometry, shared by the checks, the stub and py/enclosure.py (which gets a copy in its spec).
 // Frozen: a test that edited a spec's lid once changed LID itself for every later build in the process.
@@ -207,7 +207,7 @@ export interface CaseViolation {
 // connectors' cutouts and the other features. Every one wakes the case designer, who owns the field; a fix that would
 // need the board to change goes through change control and the engineer's confirmation (boardChangeWarning).
 export function caseChecks(real: ContractSnapshot): CaseViolation[] {
-	if (!real.values.case || !real.values.outline) return []
+	if (!real.values.case || !real.values.outline || enclosureMode(real.values) !== "case") return []
 	// On the case view (the antenna's reach included); a hole's numbers are reported in the contract's frame.
 	const { view: s, dx, dy } = caseView(real)
 	const c = s.values.case!
