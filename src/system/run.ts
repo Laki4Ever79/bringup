@@ -74,7 +74,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 		// The links go in before the run starts, so the board's agents design them in from the first draft.
 		const links = boardLinks(spec, b.name)
 		if (links.length) {
-			const text = `System ${spec.name}: this board's links (${links.map((l) => `${l.id} ${l.kind.toUpperCase()} to ${l.peer}`).join(", ")})`
+			const text = `The engineer's system spec (${spec.name}) amends this board's brief: it must expose ${links.map((l) => `link ${l.id}, ${l.kind.toUpperCase()} to ${l.peer} on its own connector`).join("; ")}. The connector and its opening in the case are required.`
 			appendRequest(dir, text, undefined, links)
 			sent.push({ board: b.name, text })
 		}

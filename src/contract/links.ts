@@ -77,6 +77,7 @@ export function linkFactLines(s: ContractSnapshot): string[] {
 	return [
 		"",
 		"## Links to other boards (from the system of boards; the integrator owns this field, you follow it)",
+		"- These are the engineer's requirements, from the system spec: they amend this board's brief. The link connector, its place on the edge and its opening in the case are wanted, not extras to justify against the brief (real system run 3: a reviewer blocked them as unjustified).",
 		...links.map((l) => {
 			const power = l.supply === "out" ? `this board's 3V3 powers ${l.peer} through VCC` : l.supply === "in" ? `this board runs from ${l.peer}'s 3V3 through VCC (no regulator of its own)` : "VCC unconnected: each board has its own supply"
 			const proto =
