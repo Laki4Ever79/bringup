@@ -4,7 +4,7 @@ import { callModel, NoModelKey } from "../dashboard/ask.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { UsageRecord } from "../inference/usage.ts"
 import { specErrors, type SystemSpec } from "./spec.ts"
-import type { Plan } from "./plan.ts"
+import { boardNameIssue, type Plan } from "./plan.ts"
 
 // The system architect: a sentence (or a plan plus a change in words) becomes a plan of boards, cables and briefs. One
 // model call on the fast model; scripted mode answers from fixed plans so the whole flow is free to try and test.
@@ -114,6 +114,10 @@ function validate(raw: unknown): { plan: Omit<ProposedPlan, "sentence" | "layout
 	const spec = withPlanBriefs(o.spec)
 	const briefs = (o.briefs ?? {}) as Record<string, string>
 	const errors = specErrors(spec)
+	for (const b of spec.boards) {
+		const bad = boardNameIssue(b.name)
+		if (bad) errors.push(bad)
+	}
 	for (const b of spec.boards) if (typeof briefs[b.name] !== "string" || !briefs[b.name].trim()) errors.push(`board ${b.name}: write its brief`)
 	if (!spec.boards.length) errors.push("the plan needs at least one board")
 	if (errors.length) return { plan: null, errors }
@@ -146,7 +150,10 @@ export async function proposePlan(
 		const v = validate(raw)
 		if (v.plan) {
 			const keep = "plan" in input ? input.plan.layout : {}
-			return { ...v.plan, sentence, layout: layoutFor(v.plan.spec.boards.map((b) => b.name), keep) }
+			// What the sentence asks for that no board can have stays listed even when the model leaves it out.
+			const named = new Set(v.plan.cantBuild.map((c) => String(c.what).toLowerCase()))
+			const cantBuild = [...v.plan.cantBuild, ...cantBuildFrom(sentence).filter((c) => ![...named].some((n) => n.includes(c.what.replace(/s$/, ""))))]
+			return { ...v.plan, cantBuild, sentence, layout: layoutFor(v.plan.spec.boards.map((b) => b.name), keep) }
 		}
 		errors = v.errors
 	}

@@ -23,6 +23,10 @@ export interface PlanIssue {
 	message: string
 }
 
+// A board name becomes a folder, a brief file and part of a run id (<system>.<board>): plain lower-case ids only.
+export const BOARD_NAME = /^[a-z][a-z0-9-]{0,39}$/
+export const boardNameIssue = (name: string) => (BOARD_NAME.test(name) ? null : `board "${name}": a name is lower-case letters, digits and -, starting with a letter (e.g. front-sensor)`)
+
 const hex = (a: number) => `0x${a.toString(16).padStart(2, "0")}`
 
 // The checks that need no build: plain code, no model call, fast enough to run on every drag (spec §2).
@@ -33,6 +37,10 @@ export function planChecks(p: Plan): PlanIssue[] {
 		const board = /^board ([\w-]+):/.exec(message)?.[1]
 		return { target: link ? { link } : board ? { board } : {}, message }
 	})
+	for (const b of s.boards) {
+		const bad = boardNameIssue(b.name)
+		if (bad) out.push({ target: { board: b.name }, message: bad })
+	}
 	for (const b of s.boards) if (b.brief && !p.briefs[b.name]?.trim()) out.push({ target: { board: b.name }, message: `${b.name} has no brief yet: write what it should do` })
 	if (s.boards.length > 1)
 		for (const b of s.boards)

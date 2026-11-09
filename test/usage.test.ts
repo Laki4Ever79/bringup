@@ -64,3 +64,17 @@ test("the Ask box's direct call reports the provider's token usage", async () =>
 	assert.equal(answer, "answer")
 	assert.deepEqual([seen[0].inputTokens, seen[0].outputTokens, seen[0].source], [10, 5, "ask"])
 })
+
+test("a Claude call is priced from Anthropic's own usage: uncached input, cache writes and cache reads apart", async () => {
+	const seen: UsageRecord[] = []
+	const inner = {
+		async run(): Promise<InferenceOutput> {
+			return { items: [ModelMessageItem.rehydrate({ text: "ok" })], tokenUsage: new TokenUsage(100, 50, 150, new InputTokenDetails(1200), new OutputTokenDetails(0)), rowResponse: { usage: { input_tokens: 100, cache_creation_input_tokens: 200, cache_read_input_tokens: 1000, output_tokens: 50 } } }
+		},
+	} as unknown as InferenceRunner
+	await new UsageRunner(inner, (r) => seen.push(r), "agents").run({ model: "claude-haiku-4-5" } as unknown as InferenceInput)
+	const p = PRICES["claude-haiku-4-5"]
+	const expected = (100 * p.inputPerM + 200 * (p.cacheWritePerM ?? p.inputPerM) + 1000 * p.cachedInputPerM + 50 * p.outputPerM) / 1_000_000
+	assert.ok(Math.abs((seen[0].usd ?? -1) - expected) < 1e-12, `${seen[0].usd} vs ${expected}`)
+	assert.deepEqual([seen[0].inputTokens, seen[0].cachedTokens, seen[0].cacheWriteTokens], [1300, 1000, 200])
+})
