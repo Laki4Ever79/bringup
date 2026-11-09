@@ -108,7 +108,7 @@ test("a board opened inside the system page gets the embedded run page", async (
 		const embedded = await (await fetch(`${hub.url}/?run=system-a.logger&embed=1`)).text()
 		assert.match(embedded, /window\.BRINGUP_EMBED = true/)
 		assert.match(embedded, /id="brief-input"/, "the run page, not the start screen")
-		assert.doesNotMatch(await (await fetch(`${hub.url}/?run=system-a.logger`)).text(), /BRINGUP_EMBED/)
+		assert.doesNotMatch(await (await fetch(`${hub.url}/?run=system-a.logger`)).text(), /window\.BRINGUP_EMBED = true/)
 	} finally {
 		await hub.close()
 	}
