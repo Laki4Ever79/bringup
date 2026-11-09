@@ -29,6 +29,8 @@ export const BUILDS = {
 	firmware: { inputs: ["parts", "pins", "behavior", "requirements", "model", "connectivity", "links"], requires: ["parts", "pins"] },
 	// Only when the contract has a test field (OPTIONAL_KINDS in builders.ts).
 	testkit: { inputs: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"], requires: ["test", "outline", "pins"], optional: "test" },
+	// A robot's chassis, only with a mechanics field (OPTIONAL_KINDS in builders.ts).
+	chassis: { inputs: ["mechanics", "motion", "outline"], requires: ["mechanics", "motion", "outline"], optional: "mechanics" },
 }
 
 // agent.activity phase → lane status
@@ -77,6 +79,8 @@ export function applyLaneEvent(lanes, e) {
 			lanes.versions[p.field] = p.version
 			const changed = []
 			for (const [kind, b] of Object.entries(BUILDS)) {
+				// A build without a lane on this page (the chassis: robots only) is left to its own panel.
+				if (!lanes[`build:${kind}`]) continue
 				if (!b.inputs.includes(p.field)) {
 					// Not its input: a finished build is still the current one (the design moved on without it).
 					const lane = lanes[`build:${kind}`]
@@ -94,6 +98,7 @@ export function applyLaneEvent(lanes, e) {
 			return changed
 		}
 		case "artifact.ready": {
+			if (!lanes[`build:${p.kind}`]) return []
 			// The Rebuilder queues one rebuild for the newest revision; an older build finishing isn't the end.
 			const next = lanes.pending[p.kind]
 			if (next !== undefined && next > p.revision) return set(lanes, `build:${p.kind}`, "building", `building rev ${next}…`, e.at, false, `rev ${p.revision} built`)
@@ -107,6 +112,7 @@ export function applyLaneEvent(lanes, e) {
 			return set(lanes, `build:${p.kind}`, "done", text, e.at, true, detail)
 		}
 		case "artifact.failed":
+			if (!lanes[`build:${p.kind}`]) return []
 			return set(lanes, `build:${p.kind}`, "failed", `rev ${p.revision} failed`, e.at, true, firstLine(p.error))
 		case "firmware.booted": {
 			// The QEMU boot goes on the build tile's line (what 04 used to show); the build's status stays as it is.

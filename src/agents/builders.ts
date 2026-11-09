@@ -1,3 +1,4 @@
+import { buildChassis, type ChassisArtifact } from "../tools/chassis.ts"
 import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
@@ -16,7 +17,7 @@ import { buildTestkit } from "../tools/testkit.ts"
 import type { Env } from "../tools/env.ts"
 import type { DrcSummary } from "../tools/drc.ts"
 
-type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact }
+type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact }
 
 export interface BuildContext {
 	revision: number
@@ -32,12 +33,13 @@ export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
 	enclosure: ["outline", "connectors"],
 	firmware: ["parts", "pins"],
 	testkit: ["test", "outline", "pins"],
+	chassis: ["mechanics", "motion", "outline"],
 }
 
 // Artifacts a design has only when it asks for them: the test kit exists once the contract has a test field. Without
 // that field the kind counts as current (nothing to build), so it never holds a design from settling.
-export const OPTIONAL_KINDS: Partial<Record<ArtifactKind, FieldName>> = { testkit: "test" }
-export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit"]
+export const OPTIONAL_KINDS: Partial<Record<ArtifactKind, FieldName>> = { testkit: "test", chassis: "mechanics" }
+export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis"]
 
 // Every field that shapes each artifact; a change to one rebuilds it. behavior and model are optional (behavior.h has defaults; model.h says MODEL_PRESENT 0).
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
@@ -54,6 +56,8 @@ export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	// The test pads follow the board's placement (outline, connectors, parts); the limits follow the power budget (rails,
 	// requirements); the self-tests follow the pins and parts.
 	testkit: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"],
+	// The chassis follows the mechanics layout, the targets (the payload's mass) and the board's size (its standoffs).
+	chassis: ["mechanics", "motion", "outline"],
 }
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
@@ -181,6 +185,24 @@ export function createBoardBuilder(env: Env, lock?: BuildLock): Human {
 export function caseNotNeeded(s: ContractSnapshot): string | null {
 	const mode = enclosureMode(s.values)
 	return mode === "none" ? "no case: a bare board (requirements.enclosure none)" : mode === "own" ? "no case: it goes into the engineer's own housing (requirements.enclosure own); see interface.md" : null
+}
+
+// A robot's chassis (docs/mechanics.md): py/chassis.py from the mechanics field; a design without one has none.
+export const chassisNotNeeded = (s: ContractSnapshot) => (s.values.mechanics ? null : "no mechanics design: not a robot")
+export function createChassisBuilder(env: Env, lock?: BuildLock): Human {
+	return createBuilder({
+		kind: "chassis",
+		lock,
+		inputs: BUILD_INPUTS.chassis,
+		requires: BUILD_REQUIRES.chassis,
+		notNeeded: chassisNotNeeded,
+		build: async ({ dir, snapshot, revision }) => {
+			if (!env.python) throw new Error("chassis build failed: .venv python with build123d is not installed")
+			const r = await buildChassis(env.python, env.root, dir, snapshot, revision)
+			if (!r.ok) throw new Error(`chassis build failed: ${r.reason}`)
+			return r
+		},
+	})
 }
 
 export function createEnclosureBuilder(env: Env, lock?: BuildLock): Human {

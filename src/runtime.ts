@@ -1,3 +1,4 @@
+import type { ArtifactKind } from "./events.ts"
 import {
 	defineRuntime,
 	RuntimeState,
@@ -21,7 +22,7 @@ export class BringupState extends RuntimeState {
 	readonly contract = new DesignContract()
 	readonly artifacts: Artifacts = {}
 	// Per artifact: the versions of its input fields it was last built from.
-	readonly artifactInputs: Partial<Record<"board" | "enclosure" | "firmware" | "testkit", Partial<Record<FieldName, number>>>> = {}
+	readonly artifactInputs: Partial<Record<ArtifactKind, Partial<Record<FieldName, number>>>> = {}
 	readonly roles = new Map<string, AgentRole>()
 	readonly approvals = new ApprovalRegistry()
 	// The engineer request being forwarded right now (run.ts), so the turn it starts can name it as its cause.
@@ -33,7 +34,7 @@ export class BringupState extends RuntimeState {
 	groundingEnabled = false
 	groundedVersions: { parts: number; pins: number } | null = null
 	// Per artifact: the error of its last build, if that build failed.
-	readonly artifactFailures: Partial<Record<"board" | "enclosure" | "firmware" | "testkit", string>> = {}
+	readonly artifactFailures: Partial<Record<ArtifactKind, string>> = {}
 	// The grounding check's latest findings: part pins and pin assignments that no datasheet source backs.
 	groundingFindings: GroundingFinding[] = []
 	// The brief review gate (set up by runDesign). round counts reviews started; results holds each verdict.

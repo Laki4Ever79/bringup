@@ -1,3 +1,4 @@
+import type { ChassisArtifact } from "../tools/chassis.ts"
 import { mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
@@ -93,6 +94,7 @@ export interface Artifacts {
 	enclosure?: EnclosureArtifact
 	firmware?: FirmwareArtifact
 	testkit?: TestkitArtifact
+	chassis?: ChassisArtifact
 }
 
 export type ViolationKind =
