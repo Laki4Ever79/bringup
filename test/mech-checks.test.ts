@@ -109,3 +109,15 @@ test("the firmware's hardware layer must use the contract's pins (the pin-mismat
 	assert.equal(bad.length, 1)
 	assert.match(bad[0].message, /MOT_AIN1 on GPIO3, contract says GPIO4/)
 })
+
+test("a failed simulated drive wakes mechanics and firmware; one that couldn't run wakes nobody", async () => {
+	const { checkConsistency } = await import("../src/contract/consistency.ts")
+	const { c } = roverFixture()
+	const drive = (result: "pass" | "fail" | "not run") => ({ revision: 1, dir: "", result, reason: result === "fail" ? "hit the wall (wall_front) at 4.20 s" : "QEMU is not installed", segments: [] })
+	const failed = checkConsistency(c, { drive: drive("fail") }).filter((v) => v.kind === "mech-drive")
+	assert.equal(failed.length, 1)
+	assert.match(failed[0].message, /hit the wall/)
+	assert.deepEqual(failed[0].affects, ["mechanics", "firmware"])
+	assert.deepEqual(checkConsistency(c, { drive: drive("not run") }).filter((v) => v.kind === "mech-drive"), [])
+	assert.deepEqual(checkConsistency(c, { drive: drive("pass") }).filter((v) => v.kind === "mech-drive"), [])
+})

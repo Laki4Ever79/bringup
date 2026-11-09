@@ -244,6 +244,32 @@
 					"where": "Specs table: size 60 \u00d7 8 mm, 3 mm D shaft; weight 0.4 oz per wheel incl. tire (derived: \u00d7 28.35 g/oz)"
 				}
 			}
+		},
+		{
+			"mpn": "POLOLU-1430 wheel 80x10 mm",
+			"diameterMm": 80,
+			"widthMm": 10,
+			"shaftMm": 3,
+			"massG": 20,
+			"tread": "rubber",
+			"source": {
+				"diameterMm": {
+					"url": "https://thepihut.com/products/pololu-wheel-80x10mm-pair-black",
+					"where": "Specifications: Size 80x10 mm (Pololu #1430; pololu.com refused the fetch, the reseller quotes Pololu's spec)"
+				},
+				"widthMm": {
+					"url": "https://thepihut.com/products/pololu-wheel-80x10mm-pair-black",
+					"where": "Specifications: Size 80x10 mm"
+				},
+				"shaftMm": {
+					"url": "https://thepihut.com/products/pololu-wheel-80x10mm-pair-black",
+					"where": "Specifications: Shaft diameter 3 mm (D shaft)"
+				},
+				"massG": {
+					"url": "https://thepihut.com/products/pololu-wheel-80x10mm-pair-black",
+					"where": "Specifications: Weight 0.7 oz per wheel incl. tyre; derived 0.7 \u00d7 28.35 = 19.8 g, rounded"
+				}
+			}
 		}
 	],
 	"casters": [
@@ -330,6 +356,49 @@
 				"massG": {
 					"url": "https://ifuturetech.org/product/1-inch-castor-wheel-for-omnidirectional-robots",
 					"where": "specification: wheel 25.4 mm, total height 35 mm, holes \u00f84.2 mm at 29 \u00d7 23 mm centres, weight 35 g"
+				}
+			}
+		},
+		{
+			"mpn": "TENTE 1430POI038P60-46x38 swivel caster 38 mm",
+			"wheelMm": 38,
+			"heightMm": 50.5,
+			"swivel": true,
+			"holesMm": [
+				[
+					18,
+					14
+				],
+				[
+					-18,
+					14
+				],
+				[
+					-18,
+					-14
+				],
+				[
+					18,
+					-14
+				]
+			],
+			"massG": 71,
+			"source": {
+				"wheelMm": {
+					"url": "https://cdn.tente.com/datasheets/1430POI038P60_46x38_en.pdf",
+					"where": "p1 Technical Data: wheel diameter 38 mm"
+				},
+				"heightMm": {
+					"url": "https://cdn.tente.com/datasheets/1430POI038P60_46x38_en.pdf",
+					"where": "p1: overall height 50.5 mm"
+				},
+				"holesMm": {
+					"url": "https://cdn.tente.com/datasheets/1430POI038P60_46x38_en.pdf",
+					"where": "p1: plate hole centres 36 \u00d7 28 mm (derived \u00b118, \u00b114 about the plate centre); holes 5.3 mm"
+				},
+				"massG": {
+					"url": "https://cdn.tente.com/datasheets/1430POI038P60_46x38_en.pdf",
+					"where": "p1: weight 0.071 kg"
 				}
 			}
 		}

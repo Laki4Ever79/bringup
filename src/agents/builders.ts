@@ -1,4 +1,6 @@
-import { buildChassis, type ChassisArtifact } from "../tools/chassis.ts"
+import { prepareFirmware } from "../tools/firmware.ts"
+import { runDrive, type DriveArtifact } from "../tools/drive.ts"
+import { buildChassis, chassisSpec, type ChassisArtifact } from "../tools/chassis.ts"
 import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
@@ -17,7 +19,7 @@ import { buildTestkit } from "../tools/testkit.ts"
 import type { Env } from "../tools/env.ts"
 import type { DrcSummary } from "../tools/drc.ts"
 
-type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact }
+type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact; drive: DriveArtifact }
 
 export interface BuildContext {
 	revision: number
@@ -34,12 +36,13 @@ export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
 	firmware: ["parts", "pins"],
 	testkit: ["test", "outline", "pins"],
 	chassis: ["mechanics", "motion", "outline"],
+	drive: ["mechanics", "motion", "pins"],
 }
 
 // Artifacts a design has only when it asks for them: the test kit exists once the contract has a test field. Without
 // that field the kind counts as current (nothing to build), so it never holds a design from settling.
-export const OPTIONAL_KINDS: Partial<Record<ArtifactKind, FieldName>> = { testkit: "test", chassis: "mechanics" }
-export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis"]
+export const OPTIONAL_KINDS: Partial<Record<ArtifactKind, FieldName>> = { testkit: "test", chassis: "mechanics", drive: "mechanics" }
+export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive"]
 
 // Every field that shapes each artifact; a change to one rebuilds it. behavior and model are optional (behavior.h has defaults; model.h says MODEL_PRESENT 0).
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
@@ -58,6 +61,8 @@ export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	testkit: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"],
 	// The chassis follows the mechanics layout, the targets (the payload's mass) and the board's size (its standoffs).
 	chassis: ["mechanics", "motion", "outline"],
+	// The simulated drive runs the firmware (pins, parts) on the mechanics (mechanics, motion, the board's size).
+	drive: ["mechanics", "motion", "pins", "parts", "outline"],
 }
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
@@ -201,6 +206,27 @@ export function createChassisBuilder(env: Env, lock?: BuildLock): Human {
 			const r = await buildChassis(env.python, env.root, dir, snapshot, revision)
 			if (!r.ok) throw new Error(`chassis build failed: ${r.reason}`)
 			return r
+		},
+	})
+}
+
+// The firmware-in-the-loop drive (docs/mechanics.md): the rover's simulation build in QEMU drives MuJoCo over the
+// course. Without QEMU or PlatformIO the design can still settle on the plain checks: the artifact says "not run".
+export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
+	return createBuilder({
+		kind: "drive",
+		lock,
+		inputs: BUILD_INPUTS.drive,
+		requires: BUILD_REQUIRES.drive,
+		notNeeded: chassisNotNeeded,
+		build: async ({ dir, snapshot, revision }) => {
+			const notRun = (reason: string): DriveArtifact => ({ revision, dir, result: "not run", reason, segments: [] })
+			if (!env.pio || !env.qemu || !env.python) return notRun("PlatformIO, QEMU or the .venv simulation tools are missing: not proven in simulation")
+			const spec = chassisSpec(snapshot)
+			if (!spec) return notRun("no complete mechanics design to simulate")
+			const fw = join(dir, "fw")
+			await prepareFirmware(env.root, fw, snapshot)
+			return runDrive({ root: env.root, python: env.python, pio: env.pio, fwDir: fw, spec, outDir: dir }, revision)
 		},
 	})
 }

@@ -99,6 +99,7 @@ export function createStubBuilders(lock?: BuildLock): Human[] {
 		createBuilder({ kind: "enclosure", inputs: BUILD_INPUTS.enclosure, requires: BUILD_REQUIRES.enclosure, notNeeded: caseNotNeeded, lock, build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
 		createBuilder({ kind: "firmware", inputs: BUILD_INPUTS.firmware, requires: BUILD_REQUIRES.firmware, lock, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
 		createBuilder({ kind: "chassis", inputs: BUILD_INPUTS.chassis, requires: BUILD_REQUIRES.chassis, notNeeded: chassisNotNeeded, lock, build: async ({ revision, dir }) => ({ ok: true as const, revision, dir: note(dir, "chassis"), files: [], mounts: null, stub: true }) }),
+		createBuilder({ kind: "drive", inputs: BUILD_INPUTS.drive, requires: BUILD_REQUIRES.drive, notNeeded: chassisNotNeeded, lock, build: async ({ revision, dir }) => ({ revision, dir: note(dir, "drive"), result: "not run" as const, reason: "hardware tools off (--no-hardware): not proven in simulation", segments: [], stub: true }) }),
 		createBuilder({ kind: "testkit", inputs: BUILD_INPUTS.testkit, requires: BUILD_REQUIRES.testkit, lock, build: async ({ snapshot, revision, dir }) => stubTestkit(snapshot, revision, dir) }),
 	]
 }
