@@ -1,6 +1,6 @@
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
-import { connectorBoxes, generatedNets, MIC_PORT, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
+import { connectorBoxes, generatedNets, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type FieldName } from "./types.ts"
@@ -119,6 +119,7 @@ export type ViolationKind =
 	| "button-unreachable"
 	| "field-missing"
 	| "connector-clash"
+	| "module-blocked"
 	| "led-pin"
 	| "rail-underrated"
 	| ModelViolation["kind"]
@@ -151,7 +152,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -465,6 +466,22 @@ export function connectorClashes(c: ContractSnapshot): Violation[] {
 			})
 		}
 	return out
+}
+
+// The module has no spot at its edge (moduleBlocked): told before any build, with what is in the way, so the architect
+// moves a connector instead of growing the board.
+export function moduleEdgeBlocked(c: ContractSnapshot): Violation[] {
+	const m = moduleBlocked(c)
+	if (!m) return []
+	const conns = c.values.connectors ?? []
+	const where = m.blockers.map((r) => { const k = conns.find((x) => x.ref === r)!; return `${r} (${k.edge}@${k.offsetMm} mm)` })
+	const inWay = where.length > 0 ? `${where.join(", ")} ${where.length > 1 ? "are" : "is"} in the way` : "the mounting holes at its corners leave no room"
+	return [{
+		kind: "module-blocked",
+		message: `${m.ref} (the radio module) only goes at the ${m.edge} edge, opposite ${m.usbRef ? `USB-C ${m.usbRef}` : "the USB-C edge"}, its antenna past the edge: it needs ${m.needMm} mm of that ${m.edgeMm} mm edge clear, ${m.depthMm} mm deep, and ${inWay}. Move ${where.length > 0 ? "that connector to another edge (or along this one)" : "nothing: lengthen that edge"} before making the board bigger`,
+		fields: ["connectors", "outline"],
+		affects: ["architect"],
+	}]
 }
 
 // A status LED's GPIO goes on its anode: the generator puts its resistor from the cathode to GND, so a GPIO on the

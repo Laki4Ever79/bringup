@@ -222,11 +222,18 @@ test("a --mock --no-hardware run makes no network requests", { timeout: 60_000 }
 		urls.push(String(input))
 		throw new TypeError("no network in a mock run")
 	}) as typeof fetch
+	// A machine paired with Mozaik Cloud (~/.mozaik/credentials.json) streams the run's events there: that is the
+	// owner's opt-in, not the judge path, which has no key. Off here, so the test means the same on every machine
+	// (on 9 Nov it failed on this paired laptop with 9 posts to /v1/events, with or without that day's changes).
+	const cloud = process.env.BRINGUP_CLOUD
+	process.env.BRINGUP_CLOUD = "off"
 	try {
 		const r = await runDesign({ brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"), mock: true, noHardware: true, outDir: out, env })
 		assert.ok(r.settled)
 	} finally {
 		globalThis.fetch = real
+		if (cloud === undefined) delete process.env.BRINGUP_CLOUD
+		else process.env.BRINGUP_CLOUD = cloud
 	}
 	assert.deepEqual(urls, [])
 	assert.match(readFileSync(join(out, "report.md"), "utf8"), /^- Sourcing: \d+\/\d+ at LCSC\/JLCPCB · stock not checked \(mock run\)$/m)

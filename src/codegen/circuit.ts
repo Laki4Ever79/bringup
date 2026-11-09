@@ -409,6 +409,33 @@ export function antennaOverhang(s: ContractSnapshot): { edge: Connector["edge"];
 	return { edge, alongMm: +along.toFixed(3), widthMm: MODULE_BODY.w, overhangMm: +(ANTENNA_MM - MODULE_EDGE_MM).toFixed(3) }
 }
 
+// Where the module must go, and what keeps it out: it only ever sits at the edge opposite USB-C (placeModule), so a
+// connector there, or a mounting hole at that edge's corners, can leave it no spot whatever the board's size. The build
+// said only "no room for U1", and the architect grew the beacon from 50×30 to 64×40 mm when moving SW1 off that edge
+// would have done (real system run 4, 9 Nov). null when there's no module or it is placed.
+export function moduleBlocked(s: ContractSnapshot): { ref: string; edge: Connector["edge"]; usbRef?: string; needMm: number; depthMm: number; edgeMm: number; blockers: string[] } | null {
+	const { outline, parts = [], connectors = [] } = s.values
+	const mcu = parts.find((p) => p.role === "mcu")
+	if (!outline || !mcu || footprintFor(mcu) !== MODULE_FOOTPRINT) return null
+	if (placeParts(s).some((b) => b.ref === mcu.ref)) return null
+	const usb = connectors.find((c) => c.kind === "usb-c")
+	const edge = OPPOSITE[usb?.edge ?? "left"]
+	const [W, H] = [outline.widthMm, outline.heightMm]
+	const depthMm = +(MODULE_BODY.h / 2 + MODULE_PAD_AREA_TOP + MODULE_EDGE_MM).toFixed(1)
+	// Connectors whose box reaches into the strip along that edge the module's on-board part needs, gap included.
+	const reach = depthMm + GAP_MM
+	const into = (b: Placed) => {
+		switch (edge) {
+			case "left": return b.x - b.w / 2 < -W / 2 + reach
+			case "right": return b.x + b.w / 2 > W / 2 - reach
+			case "bottom": return b.y - b.h / 2 < -H / 2 + reach
+			case "top": return b.y + b.h / 2 > H / 2 - reach
+		}
+	}
+	const blockers = connectorBoxes(s, W, H).filter(into).map((b) => b.ref)
+	return { ref: mcu.ref, edge, usbRef: usb?.ref, needMm: +(MODULE_BODY.w + 2 * EDGE_MARGIN_MM).toFixed(1), depthMm, edgeMm: edge === "left" || edge === "right" ? H : W, blockers }
+}
+
 function sizeAt(footprint: string, rotation: number): [number, number] {
 	const [w, h] = FOOTPRINT_SIZE[footprint] ?? DEFAULT_SIZE
 	return Math.abs(rotation) % 180 === 90 ? [h, w] : [w, h]

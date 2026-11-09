@@ -5,7 +5,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { ModelMessageItem, UserMessageItem, FunctionCallOutputItem, type ContextItem } from "@mozaik-ai/core"
-import { connectorClashes, ledOnCathode } from "../src/contract/consistency.ts"
+import { connectorClashes, ledOnCathode, moduleEdgeBlocked } from "../src/contract/consistency.ts"
 import { usbWake } from "../src/codegen/circuit.ts"
 import { parseArgs } from "../src/main.ts"
 import { linkChecks } from "../src/contract/links.ts"
@@ -128,4 +128,20 @@ test("--max-revisions sets the run's revision budget; a system gives its boards 
 	assert.match(String((parseArgs(["briefs/logger.md", "--max-revisions", "x"]) as { error: string }).error), /--max-revisions/)
 	const { SYSTEM_BOARD_MAX_REVISIONS } = await import("../src/system/run.ts")
 	assert.equal(SYSTEM_BOARD_MAX_REVISIONS, 40)
+})
+
+test("a connector on the module's edge is named before any build, so the board isn't grown instead (real system run 4)", () => {
+	// The beacon at revision 17: USB-C on the left puts the module on the right, where SW1 sat; the build said only
+	// "no room for U1", and the board grew to 64×40 mm.
+	const s = logger()
+	s.values.connectors = [{ ...s.values.connectors![0], edge: "left", offsetMm: 8 }, { ref: "SW1", kind: "button", edge: "right", offsetMm: 15, widthMm: 5.8, heightMm: 3 }]
+	const v = moduleEdgeBlocked(s)
+	assert.equal(v.length, 1)
+	assert.match(v[0].message, /U1 \(the radio module\) only goes at the right edge, opposite USB-C J1/)
+	assert.match(v[0].message, /SW1 \(right@15 mm\) is in the way/)
+	assert.deepEqual(v[0].affects, ["architect"])
+	// The fix the architect should make: SW1 to another edge, same 50×30 mm board.
+	s.values.connectors = s.values.connectors.map((k) => (k.ref === "SW1" ? { ...k, edge: "top", offsetMm: 25 } : k))
+	assert.deepEqual(moduleEdgeBlocked(s), [])
+	assert.deepEqual(moduleEdgeBlocked(logger()), [])
 })
