@@ -3,7 +3,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { assemblyAt, timeSpan } from "../src/dashboard/assembly.js"
 
-const ev = (at: string, type: string, payload: object) => ({ at: `2026-11-09T10:${at}Z`, type, payload })
+const ev = (at: string, type: string, payload: Record<string, unknown>) => ({ at: `2026-11-09T10:${at}Z`, type, payload })
 const trace = [
 	ev("00:00", "run.started", {}),
 	ev("01:00", "contract.changed", { field: "outline", revision: 3, after: { widthMm: 50, heightMm: 30 } }),
