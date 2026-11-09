@@ -166,6 +166,13 @@ class BenchPins(unittest.TestCase):
         self.assertIn("PSRAM", conflicts[2])
         self.assertIn("onboard RGB LED", conflicts[3])
 
+    def test_a_product_only_pin_is_not_the_benchs_business(self):
+        # The USB-sense divider is on the product board only; the bench build never reads PIN_USB_SENSE.
+        d = fw_dir(7)
+        with open(os.path.join(d, "include/pins.h"), "a") as f:
+            f.write("#define PIN_USB_SENSE 0\n")
+        self.assertEqual(bench_pin_conflicts(d), [])
+
 
 class StageBuildDir(unittest.TestCase):
     def test_copies_the_sources_into_one_work_dir_and_keeps_its_build_cache(self):

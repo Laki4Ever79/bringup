@@ -21,6 +21,7 @@ The checks and agents are tested piece by piece with scripted agents. What hasn'
 | 1 | stopped at the 25-revision cap, never consistent | agents typed catalog pin names by hand; each fix rewrote the whole parts list and dropped the sensor, button or battery connector | the contract takes a catalog part's pins from the catalog (6c62f9e) |
 | 2 | consistent, every output built, the change rippled in 70 s; failed review 7 times | the case facts said "features: none", hiding the automatic USB-C opening; a true size reason still raised as major | 004a25f |
 | 3 | consistent through review; failed review on real design questions | a button connector left with no part, no pin and no wiring; the reviewer guessed the charger's current (no catalog facts) | connector check, TP4054 facts |
+| 4 | consistent, 0 DRC errors, 270 of 180 days; the Home Assistant change rippled in 75 s; failed review on one blocker, repeated all 10 rounds | reflashing a sleeping, assembled unit needed the case open, against the brief's "USB-C for flashing, no special cable" | USB wake (below) |
 
 Decisions from run 3, agreed with the engineer on 8 Nov and built:
 
@@ -36,6 +37,19 @@ Decisions from run 3, agreed with the engineer on 8 Nov and built:
       regulator's quiescent current (catalog `batteryDrainUa`).
 - [x] **Review convergence:** the reviewer now sees its own earlier verdicts and findings, re-checks those first, and
       treats anything unchanged it didn't raise before as minor unless a must-have can't be met.
+
+Decision from run 4, agreed with the engineer on 9 Nov and built:
+
+- [x] **USB wake:** a 68k/100k divider from VBUS to the first free deep-sleep wake pin (GPIO0, 1, 3, 4, 5; GPIO2 is a
+      strapping pin) wakes a sleeping board when USB is plugged in, and the firmware stays awake while it is, so the
+      cable alone reflashes it. Nothing from the battery (the divider hangs off VBUS). `requirements.usbWake: false`
+      turns it off; no free wake pin is a `usb-wake-pin-taken` violation. The recovery pads stay for a firmware that
+      doesn't boot. Still to prove on the first board: esptool's switch into download mode over the running chip's USB.
+- [x] **Added for you:** the engineer asked to be told what Bringup adds unasked and how it shows. The report has an
+      "Added for you" table (what, how you'll notice it, why, cost, how to change it), the run prints the list at the
+      end, and the agents and the reviewer get the same lines in their design facts (`src/contract/added.ts`).
+- [ ] **Phone use as a contract value:** the one-connection-a-day assumption is a constant; the "Added for you" table
+      says so. Making it `requirements` data would let the brief set it.
 
 ## 2. Security (needed before selling under the EU Cyber Resilience Act; vulnerability reporting from 11 Sep 2026, everything else from 11 Dec 2027)
 

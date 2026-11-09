@@ -1,0 +1,95 @@
+// What Bringup decided for the engineer without being asked (engineer, 9 Nov 2026: "users should know what we
+// implemented and how it would manifest", and be given an option where there is one). Each entry says what was added,
+// how the engineer will notice it on the device, why, what it costs and how to change it. The report lists them
+// ("Added for you"), and the agents and the reviewer get the same lines in their design facts.
+import type { ContractSnapshot } from "./types.ts"
+import { recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
+import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
+import { PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
+
+export interface AddedItem {
+	id: "usb-wake" | "usb-wake-off" | "recovery-pads" | "phone-use"
+	what: string
+	shows: string // how the engineer will notice it on the device
+	why: string
+	cost: string
+	change: string // how to turn it off or change it; "" when there is nothing to change
+}
+
+export function addedForYou(s: ContractSnapshot): AddedItem[] {
+	const items: AddedItem[] = []
+	const boot = recoveryBootPin(s)
+	const wake = usbWake(s)
+	const periodS = Math.round(s.values.requirements?.dutyCycle?.periodS ?? DEFAULT_PERIOD_S)
+	if (wake?.gpio != null) {
+		const divider = supportParts(s).filter((sp) => (("net" in sp.a && sp.a.net === USB_SENSE_NET) || ("net" in sp.b && sp.b.net === USB_SENSE_NET)))
+		items.push({
+			id: "usb-wake",
+			what: `USB wake: plugging in USB wakes the board, and it stays awake while USB is powered`,
+			shows: `With the cable in, the computer sees a USB serial device ("USB JTAG/serial debug unit") and \`pio run -t upload\` flashes it with the cable alone, case closed. Meanwhile it keeps taking a reading every ${periodS} s, USB powers it and the battery charges. Unplugged, it is back in deep sleep within 0.1 s (or once a reading in progress ends).`,
+			why: `The firmware deep-sleeps between readings, and the ESP32-C3's USB is off in deep sleep: without this, nothing answers on USB.`,
+			cost: `${divider.map((sp) => `${sp.ref} ${sp.spec.value}`).join(" and ")} from VBUS to ${wake.mcu.ref}.GPIO${wake.gpio}: about 30 µA from USB while plugged in, nothing from the battery. The 68k (${divider.find((sp) => sp.spec.value === "68k")?.spec.lcsc ?? "C36871"}) is a JLCPCB Extended part, which adds an assembly fee. The firmware's switch into download mode over its own USB is Espressif's documented path, not yet tried on a Bringup board.`,
+			change: `Set requirements.usbWake to false (a change request: "turn off USB wake"). Reflashing then needs the case open and the recovery pads.`,
+		})
+	} else if (boot && s.values.requirements?.usbWake === false) {
+		items.push({
+			id: "usb-wake-off",
+			what: `USB wake is off (requirements.usbWake false)`,
+			shows: `Plugging in USB charges the battery but doesn't wake the board, so the computer sees no device until its next reading, and only for that moment. Reflashing needs the case open and the recovery pads.`,
+			why: `Turned off in the contract.`,
+			cost: `None on the board.`,
+			change: `Remove requirements.usbWake, or set it to true, for USB wake.`,
+		})
+	}
+	const pads = boot && s.values.outline ? recoveryPads(s).placed : []
+	if (boot && pads.length >= 2) {
+		const [b, g] = pads
+		items.push({
+			id: "recovery-pads",
+			what: `Recovery pads: ${b.ref} (BOOT, on ${boot.mcu.ref}.${boot.pin}, net ${b.net}) and ${g.ref} (GND), bare copper side by side on the bottom`,
+			shows: `Only needed when a firmware doesn't boot, so USB never comes up${wake?.gpio != null ? " (USB wake covers every other reflash)" : ""}. To use them: open the case, unplug USB and the battery, short ${b.ref} to ${g.ref} with tweezers while reconnecting the battery, then plug in USB. The chip waits in its ROM downloader, and \`pio run -t upload\` flashes it. (USB alone also powers it through the charger, so start with both unplugged.)`,
+			why: `${boot.mcu.ref}'s ${boot.pin} held low at power-up starts the ROM downloader, which works whatever the firmware does.`,
+			cost: `Two 1.5 mm pads; no part, no extra board area.`,
+			change: ``,
+		})
+	}
+	const phone = phoneUseMa(s)
+	if (phone)
+		items.push({
+			id: "phone-use",
+			what: `Battery estimate assumes ${PHONE_CONNECTIONS_PER_DAY} phone connection${PHONE_CONNECTIONS_PER_DAY === 1 ? "" : "s"} a day`,
+			shows: `The battery-life figure includes it. A phone that stays connected keeps the board awake up to ${templateConstant("BLE_CONNECTED_MAX_MS") / 1000} s each time, so connecting more often shortens battery life; the power budget says how many more connections a day the target leaves room for.`,
+			why: `The brief doesn't say how often a phone reads the device.`,
+			cost: `${Number((phone.averageMa * 1000).toPrecision(3))} µA on average.`,
+			change: `Not adjustable from the brief or the contract yet: it is the constant PHONE_CONNECTIONS_PER_DAY in src/contract/power.ts.`,
+		})
+	return items
+}
+
+// The report's table: what, how it shows, why, cost, and how to change it.
+export function addedForYouSection(s: ContractSnapshot): string[] {
+	const items = addedForYou(s)
+	if (items.length === 0) return []
+	const cell = (t: string) => t.replace(/\|/g, "\\|").replace(/\s+/g, " ")
+	return [
+		`## Added for you`,
+		``,
+		`Bringup added these without being asked. Each says how you'll notice it, and how to turn it off where you can.`,
+		``,
+		`| What | How you'll notice it | Why | Cost | To change it |`,
+		`|---|---|---|---|---|`,
+		...items.map((i) => `| ${cell(i.what)} | ${cell(i.shows)} | ${cell(i.why)} | ${cell(i.cost)} | ${cell(i.change || "nothing to change")} |`),
+		``,
+	]
+}
+
+// The same list for the agents and the reviewer: what the design does that the contract doesn't spell out.
+export function addedForYouFactLines(s: ContractSnapshot): string[] {
+	const items = addedForYou(s)
+	if (items.length === 0) return []
+	return [
+		"",
+		"## Added by Bringup (computed in code; the engineer sees this list in the report)",
+		...items.map((i) => `- ${i.what}. ${i.shows} Why: ${i.why} Cost: ${i.cost}${i.change ? ` To change: ${i.change}` : ""}`),
+	]
+}

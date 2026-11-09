@@ -3,6 +3,7 @@ import { resolve } from "node:path"
 import type { ContractSnapshot, DutyCycle } from "../contract/types.ts"
 import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 import { connectivityOf } from "../contract/connectivity.ts"
+import { usbWake } from "./circuit.ts"
 
 // A `static const uint32_t NAME = N;` of the firmware template (templates/fw/src/main.cpp), so what the reviewer and the
 // battery check are told about the firmware is read from the firmware itself. NaN if it is not there.
@@ -54,6 +55,9 @@ export function pinsHeader(s: ContractSnapshot): string {
 	if (days !== undefined) lines.push(`#define HISTORY_DAYS ${days}`)
 	const duty = s.values.requirements?.dutyCycle
 	if (duty) lines.push(`#define BLE_ADVERTISE_MS ${bleAdvertiseMs(duty)}`)
+	// The VBUS-sense pin the board generator wired (codegen/circuit.ts usbWake): the firmware stays awake while it is high.
+	const wake = usbWake(s)
+	if (wake?.gpio != null) lines.push(`#define PIN_USB_SENSE ${wake.gpio}`)
 	lines.push(`#define BRINGUP_REVISION ${s.revision}`, "")
 	return lines.join("\n")
 }

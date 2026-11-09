@@ -9,6 +9,9 @@ interface CatalogEntry {
 	footprint: string
 	pins: string[]
 	bootPin?: string
+	// The GPIOs that can wake the chip from deep sleep, and its strapping pins (read at reset).
+	wakeGpios?: number[]
+	strapGpios?: number[]
 }
 
 const CATALOG: CatalogEntry[] = JSON.parse(readFileSync(new URL("../../catalog/parts.json", import.meta.url), "utf8"))
@@ -113,6 +116,9 @@ const SUPPORT = {
 	// The ICS-43434's SD pull-down and VDD decoupling (DS-000069 Table 8).
 	pulldown: { kind: "resistor", value: "100k", lcsc: "C25741", mpn: "0402WGF1003TCE", footprint: "0402" },
 	decouple: { kind: "capacitor", value: "100nF", lcsc: "C1525", mpn: "CL05B104KO5NNNC", footprint: "0402" },
+	// The USB-sense divider's top: 68k over the 100k pull-down puts VBUS 4.75–5.25 V at 2.83–3.13 V on the pin, above
+	// the ESP32-C3's 2.475 V high threshold (0.75 × VDD) and under its 3.3 V supply. A JLCPCB Extended part.
+	senseTop: { kind: "resistor", value: "68k", lcsc: "C36871", mpn: "0402WGF6802TCE", footprint: "0402" },
 } satisfies Record<string, SupportSpec>
 
 type End = { net: string } | { ref: string; pin: string }
@@ -154,6 +160,27 @@ export function recoveryBootPin(s: ContractSnapshot): { mcu: Part; pin: string; 
 // high at reset and the chip boots normally; shorting the pads only holds the open-drain bus low meanwhile.
 export const sharesBootPin = (signal: string) => /^I2C_(SDA|SCL)$/.test(signal)
 
+// USB wake (engineer, 9 Nov 2026, after real run 4's reviewer held the brief's "USB-C for flashing, no special cable"):
+// a deep-sleeping board has its USB off, so a divider from VBUS to a deep-sleep wake pin wakes it when a cable is
+// plugged in, and the firmware stays awake while VBUS is there; the cable alone then flashes it. The pin is the first
+// free wake GPIO that is not a strapping pin (GPIO2 would read low at reset with USB unplugged). requirements.usbWake
+// false turns it off. gpio is null when every wake pin is taken (a violation for the architect).
+export const USB_SENSE_NET = "USB_SENSE"
+export function usbWake(s: ContractSnapshot): { mcu: Part; gpio: number | null; free: number[] } | null {
+	const boot = recoveryBootPin(s)
+	if (!boot || s.values.requirements?.usbWake === false || !usbRef(s) || !nativeUsbWired(s)) return null
+	const entry = CATALOG.find((c) => c.mpn.toUpperCase() === boot.mcu.mpn.toUpperCase())
+	const used = new Set((s.values.pins ?? []).map((p) => p.gpio))
+	const free = (entry?.wakeGpios ?? []).filter((g) => !(entry?.strapGpios ?? []).includes(g) && boot.mcu.pins.includes(`GPIO${g}`))
+	return { mcu: boot.mcu, gpio: free.find((g) => !used.has(g)) ?? null, free }
+}
+
+// The ESP32-C3's native USB reaches the connector: GPIO18/19 on the module and not used for anything else.
+function nativeUsbWired(s: ContractSnapshot): boolean {
+	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
+	return Boolean(mcu?.pins.includes("GPIO18") && mcu.pins.includes("GPIO19") && !(s.values.pins ?? []).some((p) => p.gpio === 18 || p.gpio === 19))
+}
+
 export function supportParts(s: ContractSnapshot): Support[] {
 	const { parts = [], connectors = [], pins = [], rails = [] } = s.values
 	const supply = rails.some((r) => r.name === SUPPLY_RAIL) ? netName(SUPPLY_RAIL) : null
@@ -183,6 +210,11 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
 	if (ldo) jobs.push({ job: `decoupling on ${charger ? "VBAT" : "VBUS"} (LDO input)`, spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
 	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
+	const wake = usbWake(s)
+	if (wake?.gpio != null) {
+		jobs.push({ job: `USB-sense divider top, VBUS to ${wake.mcu.ref}.GPIO${wake.gpio} (wakes it when USB is plugged in)`, spec: SUPPORT.senseTop, a: { net: "VBUS" }, b: { net: USB_SENSE_NET }, near: wake.mcu.ref })
+		jobs.push({ job: `USB-sense divider bottom (${USB_SENSE_NET} low with USB unplugged)`, spec: SUPPORT.pulldown, a: { net: USB_SENSE_NET }, b: GND, near: wake.mcu.ref })
+	}
 
 	const claimed = new Set<string>()
 	const taken = new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])
@@ -671,7 +703,7 @@ function at(placement: Map<string, Placed>, ref: string): string {
 // The power and USB nets the generator wires on top of the contract's own signals: GND, the 3V3 rail, VBUS, VBAT (when
 // there is a charger) and USB D±, with the support passives' ends. Ends are "REF.pin". Only nets that reach at least
 // two components are kept; a one-component net can't be routed.
-const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN"]
+const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET]
 
 export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const { parts = [], rails = [], pins = [] } = s.values
@@ -721,6 +753,9 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 			join("USB_DN", mcu.ref, "GPIO18")
 		}
 	}
+
+	const wake = usbWake(s)
+	if (wake?.gpio != null) join(USB_SENSE_NET, wake.mcu.ref, `GPIO${wake.gpio}`)
 
 	// A microphone's LR select tied low puts its data in the I2S frame's left channel (DS-000069 Table 8).
 	for (const m of parts.filter((p) => p.role === "microphone" && p.pins.includes("LR")))
