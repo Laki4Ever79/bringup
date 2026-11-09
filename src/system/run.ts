@@ -103,6 +103,8 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 		writeFileSync(join(outDir, "cable.yml"), wirevizYaml(spec, contracts))
 		writeFileSync(join(outDir, "system-findings.json"), JSON.stringify(findings, null, 2))
 		writeFileSync(join(outDir, "system-report.md"), systemReport(spec, contracts, findings, status, sent, tests))
+		// The same, for the dashboard's system page.
+		writeFileSync(join(outDir, "system-state.json"), JSON.stringify({ at: new Date().toISOString(), status, settled: status.startsWith("settled"), findings, linkTests: tests, asked: sent }, null, 2))
 	}
 
 	const deadline = Date.now() + (o.timeoutMs ?? 30 * 60_000)
