@@ -5,7 +5,7 @@ import type { ContractSnapshot } from "../src/contract/types.ts"
 export function fixtureContract(): ContractSnapshot {
 	return {
 		revision: 6,
-		versions: { requirements: 1, outline: 1, connectors: 1, rails: 1, parts: 1, pins: 1, behavior: 0, model: 0, test: 0, case: 0, connectivity: 0, links: 0 },
+		versions: { requirements: 1, outline: 1, connectors: 1, rails: 1, parts: 1, pins: 1, behavior: 0, model: 0, test: 0, case: 0, connectivity: 0, links: 0, motion: 0, mechanics: 0 },
 		values: {
 			requirements: { summary: "BLE temperature logger", peripherals: ["i2c-sensor", "usb-c"], batteryLifeDays: 180 },
 			outline: { widthMm: 50, heightMm: 30, thicknessMm: 1.6, sizeReason: { kind: "engineer-size", detail: "the brief asks for about 50 × 30 mm" } },
@@ -38,4 +38,48 @@ export function fixtureArtifacts(): Artifacts {
 		},
 		firmware: { revision: 6, ok: true, pins: { I2C_SDA: 8, I2C_SCL: 9 }, log: "" },
 	}
+}
+
+// A small indoor rover for the mechanics checks: one board with a DRV8833-class driver and a VL53L0X-class sensor, two
+// N20-class motors, 60 mm wheels, a 25 mm swivel caster, one 1S cell. Its catalog numbers are test values, not a real
+// datasheet's (the real ones are in catalog/mechanics.json).
+export function roverFixture() {
+	const cite = { url: "https://example.com/ds", where: "test value" }
+	const cat = {
+		mech: {
+			motors: [{ mpn: "M-TEST", ratedV: 6, noLoadRpm: 320, stallTorqueNm: 0.17, stallA: 1.6, noLoadA: 0.07, gearRatio: 100, bodyMm: [34, 12, 10] as [number, number, number], shaftMm: 3, massG: 10, source: { ratedV: cite } }],
+			wheels: [{ mpn: "W-TEST", diameterMm: 60, widthMm: 8, shaftMm: 3, massG: 12, tread: "rubber" as const, source: {} }],
+			casters: [{ mpn: "C-TEST", wheelMm: 25, heightMm: 36, swivel: true as const, holesMm: [[-10, 0], [10, 0]] as [number, number][], massG: 15, source: {} }],
+			batteries: [{ mpn: "B-TEST", cells: 1 as const, nominalV: 3.7, fullV: 4.2, cutoffV: 3.0, mAh: 1200, maxContA: 3, peakA: 6, sizeMm: [50, 34, 7] as [number, number, number], massG: 25, source: {} }],
+		},
+		boardParts: [
+			{ mpn: "DRV-TEST", role: "motor-driver", supplyMinV: 2.7, supplyMaxV: 10.8, channels: 2, contA: 1.5, peakA: 2, rdsOnOhm: 0.36 },
+			{ mpn: "TOF-TEST", role: "tof-sensor", rangeMm: 1200, fovDeg: 25, i2cAddress: 0x29, updateMs: 33 },
+		],
+	}
+	const c = fixtureContract()
+	const values = c.values as Record<string, unknown> & typeof c.values
+	values.outline = { widthMm: 60, heightMm: 40, thicknessMm: 1.6 }
+	values.parts = [
+		...c.values.parts!,
+		{ ref: "U3", role: "motor-driver", mpn: "DRV-TEST", lcsc: null, footprint: "htssop16", pins: ["AIN1", "AIN2", "BIN1", "BIN2", "AOUT1", "AOUT2", "BOUT1", "BOUT2", "VM", "GND"] },
+		{ ref: "U4", role: "tof-sensor", mpn: "TOF-TEST", lcsc: null, footprint: "lga12", pins: ["SDA", "SCL", "XSHUT", "AVDD", "GND"] },
+		{ ref: "J2", role: "battery", mpn: "S2B-PH", lcsc: null, footprint: "jst-ph-2", pins: ["+", "-"] },
+	]
+	values.pins = [
+		...c.values.pins!,
+		{ signal: "I2C_SDA", gpio: 8, partRef: "U4", partPin: "SDA" },
+		{ signal: "I2C_SCL", gpio: 9, partRef: "U4", partPin: "SCL" },
+		{ signal: "MOT_AIN1", gpio: 4, partRef: "U3", partPin: "AIN1" },
+		{ signal: "MOT_AIN2", gpio: 5, partRef: "U3", partPin: "AIN2" },
+		{ signal: "MOT_BIN1", gpio: 6, partRef: "U3", partPin: "BIN1" },
+		{ signal: "MOT_BIN2", gpio: 7, partRef: "U3", partPin: "BIN2" },
+	]
+	values.motion = { speedMps: 0.3, runtimeMin: 30, edgeMm: 10, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [170, 150], maxMassG: 500 }
+	values.mechanics = {
+		drive: { kind: "differential", motor: "M-TEST", wheel: "W-TEST", caster: "C-TEST", trackMm: 130, wheelbaseMm: 90, axleXMm: 30 },
+		battery: { pack: "B-TEST", at: { xMm: -10, yMm: 0 } },
+		chassis: { plateMm: [150, 110], thicknessMm: 3, material: "PLA", clearanceMm: 36, boards: [{ name: "main", at: { xMm: 10, yMm: 0 }, rotDeg: 0 }] },
+	}
+	return { c, cat }
 }
