@@ -472,13 +472,27 @@ export function connectorClashes(c: ContractSnapshot): Violation[] {
 // moves a connector instead of growing the board.
 export function moduleEdgeBlocked(c: ContractSnapshot): Violation[] {
 	const m = moduleBlocked(c)
-	if (!m) return []
+	if (!m || !c.values.outline) return []
 	const conns = c.values.connectors ?? []
-	const where = m.blockers.map((r) => { const k = conns.find((x) => x.ref === r)!; return `${r} (${k.edge}@${k.offsetMm} mm)` })
-	const inWay = where.length > 0 ? `${where.join(", ")} ${where.length > 1 ? "are" : "is"} in the way` : "the mounting holes at its corners leave no room"
+	const { widthMm: W, heightMm: H } = c.values.outline
+	// For each connector in the way, the nearest offset on its edge that leaves the module a spot, found by trying them:
+	// "move it along" alone left the beacon's SW1 at top@35–40 mm, still in the way, until the board grew (system run 5).
+	const fix = (k: Connector): string => {
+		const len = k.edge === "left" || k.edge === "right" ? H : W
+		const fits: number[] = []
+		for (let off = k.widthMm / 2 + 1; off <= len - k.widthMm / 2 - 1; off += 0.5) {
+			const moved = conns.map((x) => (x.ref === k.ref ? { ...x, offsetMm: off } : x))
+			if (!moduleBlocked({ ...c, values: { ...c.values, connectors: moved } })) fits.push(off)
+		}
+		if (fits.length === 0) return `${k.ref} (${k.edge}@${k.offsetMm} mm): no spot on the ${k.edge} edge clears it, so move it to another edge`
+		const best = fits.reduce((a, b) => (Math.abs(b - k.offsetMm) < Math.abs(a - k.offsetMm) ? b : a))
+		return `${k.ref} (${k.edge}@${k.offsetMm} mm): ${k.edge}@${best} mm is the nearest spot that clears it`
+	}
+	const inWay = m.blockers.map((r) => conns.find((x) => x.ref === r)!).filter(Boolean)
+	const what = inWay.length > 0 ? `in the way: ${inWay.map(fix).join("; ")}. Move ${inWay.length > 1 ? "them" : "it"}` : "the mounting holes at its corners leave no room. Lengthen that edge"
 	return [{
 		kind: "module-blocked",
-		message: `${m.ref} (the radio module) only goes at the ${m.edge} edge, opposite ${m.usbRef ? `USB-C ${m.usbRef}` : "the USB-C edge"}, its antenna past the edge: it needs ${m.needMm} mm of that ${m.edgeMm} mm edge clear, ${m.depthMm} mm deep, and ${inWay}. Move ${where.length > 0 ? "that connector to another edge (or along this one)" : "nothing: lengthen that edge"} before making the board bigger`,
+		message: `${m.ref} (the radio module) only goes at the ${m.edge} edge, opposite ${m.usbRef ? `USB-C ${m.usbRef}` : "the USB-C edge"}, its antenna past the edge: it needs ${m.needMm} mm of that ${m.edgeMm} mm edge clear, ${m.depthMm} mm deep; ${what} before making the board bigger`,
 		fields: ["connectors", "outline"],
 		affects: ["architect"],
 	}]

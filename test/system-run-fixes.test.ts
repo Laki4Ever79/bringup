@@ -138,7 +138,15 @@ test("a connector on the module's edge is named before any build, so the board i
 	const v = moduleEdgeBlocked(s)
 	assert.equal(v.length, 1)
 	assert.match(v[0].message, /U1 \(the radio module\) only goes at the right edge, opposite USB-C J1/)
-	assert.match(v[0].message, /SW1 \(right@15 mm\) is in the way/)
+	assert.match(v[0].message, /in the way: SW1 \(right@15 mm\): right@[\d.]+ mm is the nearest spot that clears it/)
+	// Moved to the top but kept by the corner (the beacon in system run 5): the message names the offset that clears it.
+	s.values.connectors = s.values.connectors.map((k) => (k.ref === "SW1" ? { ...k, edge: "top", offsetMm: 40 } : k))
+	const near = moduleEdgeBlocked(s)
+	assert.equal(near.length, 1)
+	const at = Number(near[0].message.match(/top@([\d.]+) mm is the nearest spot that clears it/)?.[1])
+	assert.ok(at < 40, near[0].message)
+	s.values.connectors = s.values.connectors.map((k) => (k.ref === "SW1" ? { ...k, offsetMm: at } : k))
+	assert.deepEqual(moduleEdgeBlocked(s), [], "the named offset does clear it")
 	assert.deepEqual(v[0].affects, ["architect"])
 	// The fix the architect should make: SW1 to another edge, same 50×30 mm board.
 	s.values.connectors = s.values.connectors.map((k) => (k.ref === "SW1" ? { ...k, edge: "top", offsetMm: 25 } : k))
