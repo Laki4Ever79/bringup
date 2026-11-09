@@ -12,6 +12,7 @@ import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
 import { addSpend, appendUsage, readSpend } from "../inference/usage.ts"
 import { PlanConflict, PlanStore } from "./plans.ts"
+import { exampleFile, listExamples } from "./examples.ts"
 import { PlanInvalid } from "../system/architect.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
@@ -24,6 +25,7 @@ const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
 const SYSTEM_PAGE = new URL("./system.html", import.meta.url)
 const PLAN_PAGE = new URL("./plan.html", import.meta.url)
+const EXAMPLES = fileURLToPath(new URL("../../examples/", import.meta.url))
 const STAGE_PAGE = new URL("./stage.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
@@ -197,6 +199,8 @@ export interface HubOptions {
 	// The plan architect's environment and fetch (tests inject them; default: this process's env and fetch).
 	planEnv?: Record<string, string | undefined>
 	planFetch?: typeof fetch
+	// The shipped examples for the start screen (default: the repo's examples/).
+	examplesRoot?: string
 	// --lan: listen on the network (bind, default every interface) so a phone can send decisions. Only the decision
 	// route answers another host, and only with the hub's random token; everything else stays loopback-only.
 	lan?: { bind?: string; token?: string }
@@ -710,6 +714,14 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			if (driftOf) {
 				const dir = await runDir(driftOf[1])
 				return dir ? json(res, 200, readDrift(dir)) : json(res, 404, { error: "unknown run" })
+			}
+			if (path === "/api/examples") return json(res, 200, listExamples(opts.examplesRoot ?? EXAMPLES))
+			if (path.startsWith("/examples/")) {
+				const file = exampleFile(opts.examplesRoot ?? EXAMPLES, decodeURIComponent(path.slice("/examples/".length)))
+				if (!file) return send(res, 404, "not found")
+				// Shipped files change only with a commit: cache them for a day.
+				res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "cache-control": "public, max-age=86400" })
+				return createReadStream(file).pipe(res)
 			}
 			if (path === "/api/briefs") return json(res, 200, await listBriefs())
 			if (path === "/system") {
