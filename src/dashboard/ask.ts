@@ -1,5 +1,6 @@
 import "dotenv/config"
 import { modelFor } from "../inference/models.ts"
+import type { AgentRole } from "../contract/types.ts"
 import { changeLog } from "./changelog.js"
 import { usageRecord, type UsageRecord } from "../inference/usage.ts"
 
@@ -61,8 +62,17 @@ export class NoModelKey extends Error {
 }
 
 // One call to the provider the runs use (src/inference/models.ts), with the reviewer's (strong) model.
-export async function callModel(p: AskPrompt, env: Record<string, string | undefined> = process.env, fetchImpl: typeof fetch = fetch, onUsage?: (r: UsageRecord) => void): Promise<string> {
-	const model = modelFor("reviewer", false, env)
+// `opts`: the role picks the model (the Ask box: the reviewer's strong one); `json` asks OpenAI for a JSON object;
+// `source` labels the usage record.
+export async function callModel(
+	p: AskPrompt,
+	env: Record<string, string | undefined> = process.env,
+	fetchImpl: typeof fetch = fetch,
+	onUsage?: (r: UsageRecord) => void,
+	opts: { role?: AgentRole; maxTokens?: number; json?: boolean; source?: string } = {},
+): Promise<string> {
+	const model = modelFor(opts.role ?? "reviewer", false, env)
+	const source = opts.source ?? "ask"
 	const anthropic = model.startsWith("claude")
 	if (anthropic ? !env.ANTHROPIC_API_KEY : !env.OPENAI_API_KEY) throw new NoModelKey()
 	const signal = AbortSignal.timeout(90_000)
@@ -72,23 +82,23 @@ export async function callModel(p: AskPrompt, env: Record<string, string | undef
 			method: "POST",
 			signal,
 			headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
-			body: JSON.stringify({ model, max_tokens: 800, system: p.system, messages: [{ role: "user", content: p.user }] }),
+			body: JSON.stringify({ model, max_tokens: opts.maxTokens ?? 800, system: p.system, messages: [{ role: "user", content: p.user }] }),
 		})
 		const body = (await res.json()) as { content?: { text?: string }[]; error?: { message?: string }; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } }
 		if (!res.ok) throw new Error(`${model}: ${body.error?.message ?? res.statusText}`)
 		// Anthropic's input_tokens excludes cache reads; usageRecord wants the total input.
 		const u = body.usage
-		onUsage?.(usageRecord(model, "ask", u?.input_tokens === undefined ? null : u.input_tokens + (u.cache_read_input_tokens ?? 0), u?.cache_read_input_tokens, u?.output_tokens))
+		onUsage?.(usageRecord(model, source, u?.input_tokens === undefined ? null : u.input_tokens + (u.cache_read_input_tokens ?? 0), u?.cache_read_input_tokens, u?.output_tokens))
 		return (body.content ?? []).map((c) => c.text ?? "").join("").trim()
 	}
 	const res = await fetchImpl("https://api.openai.com/v1/chat/completions", {
 		method: "POST",
 		signal,
 		headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY}` },
-		body: JSON.stringify({ model, messages: [{ role: "system", content: p.system }, { role: "user", content: p.user }] }),
+		body: JSON.stringify({ model, messages: [{ role: "system", content: p.system }, { role: "user", content: p.user }], ...(opts.json ? { response_format: { type: "json_object" } } : {}) }),
 	})
 	const body = (await res.json()) as { choices?: { message?: { content?: string } }[]; error?: { message?: string }; usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } }
 	if (!res.ok) throw new Error(`${model}: ${body.error?.message ?? res.statusText}`)
-	onUsage?.(usageRecord(model, "ask", body.usage?.prompt_tokens, body.usage?.prompt_tokens_details?.cached_tokens, body.usage?.completion_tokens))
+	onUsage?.(usageRecord(model, source, body.usage?.prompt_tokens, body.usage?.prompt_tokens_details?.cached_tokens, body.usage?.completion_tokens))
 	return (body.choices?.[0]?.message?.content ?? "").trim()
 }
