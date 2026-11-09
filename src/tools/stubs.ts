@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
-import { BUILD_INPUTS, BUILD_REQUIRES, caseNotNeeded, createBuilder, type BuildLock } from "../agents/builders.ts"
+import { BUILD_INPUTS, BUILD_REQUIRES, caseNotNeeded, chassisNotNeeded, createBuilder, type BuildLock } from "../agents/builders.ts"
 import { micPorts, mountingHoles, placedByRole, testPoints } from "../codegen/circuit.ts"
 import { testPlan, testPlanMarkdown } from "../contract/testkit.ts"
 import { behaviorHeader, modelHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
@@ -98,6 +98,7 @@ export function createStubBuilders(lock?: BuildLock): Human[] {
 		createBuilder({ kind: "board", inputs: BUILD_INPUTS.board, requires: BUILD_REQUIRES.board, lock, build: async ({ snapshot, revision, dir }) => stubBoard(snapshot, revision, dir) }),
 		createBuilder({ kind: "enclosure", inputs: BUILD_INPUTS.enclosure, requires: BUILD_REQUIRES.enclosure, notNeeded: caseNotNeeded, lock, build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
 		createBuilder({ kind: "firmware", inputs: BUILD_INPUTS.firmware, requires: BUILD_REQUIRES.firmware, lock, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
+		createBuilder({ kind: "chassis", inputs: BUILD_INPUTS.chassis, requires: BUILD_REQUIRES.chassis, notNeeded: chassisNotNeeded, lock, build: async ({ revision, dir }) => ({ ok: true as const, revision, dir: note(dir, "chassis"), files: [], mounts: null, stub: true }) }),
 		createBuilder({ kind: "testkit", inputs: BUILD_INPUTS.testkit, requires: BUILD_REQUIRES.testkit, lock, build: async ({ snapshot, revision, dir }) => stubTestkit(snapshot, revision, dir) }),
 	]
 }

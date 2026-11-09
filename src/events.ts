@@ -4,7 +4,7 @@ import type { GroundingFinding } from "./contract/grounding.ts"
 import type { DrcSummary } from "./tools/drc.ts"
 import type { AgentRole, FieldName } from "./contract/types.ts"
 
-export type ArtifactKind = "board" | "enclosure" | "firmware" | "testkit"
+export type ArtifactKind = "board" | "enclosure" | "firmware" | "testkit" | "chassis"
 
 export interface ReviewFinding {
 	severity: "blocker" | "major" | "minor"
