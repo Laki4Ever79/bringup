@@ -99,3 +99,17 @@ test("the system and each board report what their model calls spent", async () =
 		await hub.close()
 	}
 })
+
+test("a board opened inside the system page gets the embedded run page", async () => {
+	const root = tempDir()
+	fakeSystem(root, "system-a")
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const embedded = await (await fetch(`${hub.url}/?run=system-a.logger&embed=1`)).text()
+		assert.match(embedded, /window\.BRINGUP_EMBED = true/)
+		assert.match(embedded, /id="brief-input"/, "the run page, not the start screen")
+		assert.doesNotMatch(await (await fetch(`${hub.url}/?run=system-a.logger`)).text(), /BRINGUP_EMBED/)
+	} finally {
+		await hub.close()
+	}
+})

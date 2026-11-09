@@ -79,6 +79,11 @@
 	#crumb button { font: inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 2px 9px; cursor: pointer; }
 	#timeline { display: flex; align-items: center; gap: 10px; padding: 8px 2px 0; font: 12px var(--mono); color: var(--ink-3); }
 	#timeline input { flex: 1; accent-color: var(--signal); }
+	#board-view { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: #fff; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .25s; }
+	#board-view.on { opacity: 1; pointer-events: auto; }
+	#board-bar { display: flex; align-items: center; gap: 10px; padding: 6px var(--gap); border-bottom: 1px solid var(--rule); font-size: 14px; }
+	#board-bar button { font: inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+	#board-view iframe { flex: 1; border: 0; width: 100%; }
 </style>
 </head>
 <body>
@@ -97,6 +102,7 @@
 	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
 </div>
 <main id="main"></main>
+<div id="board-view" aria-hidden="true"><div id="board-bar"><button id="board-back" title="Back to the whole system (Esc)">← System</button><span id="board-crumb"></span></div></div>
 <script>
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
 const id = new URLSearchParams(location.search).get("id")
@@ -219,7 +225,7 @@ function boardCard(b) {
 			<dt>Connectors</dt><dd class="mono" style="font-size:12px">${esc(conns || "—")}</dd>
 			<dt>Link pins</dt><dd class="mono" style="font-size:12px">${esc(linkPins || "—")}</dd>
 		</dl>
-		<div class="links-row"><a class="pill primary" href="/?run=${encodeURIComponent(b.runId)}">Open board →</a>${b.report ? `<a class="pill" href="${esc(b.report)}" target="_blank">Report</a>` : ""}</div>
+		<div class="links-row"><a class="pill primary" data-open="${esc(b.name)}" href="/?run=${encodeURIComponent(b.runId)}">Open board →</a>${b.report ? `<a class="pill" href="${esc(b.report)}" target="_blank">Report</a>` : ""}</div>
 	</div>`
 }
 
@@ -269,7 +275,7 @@ async function startStage(d) {
 	try { ({ mountWorld } = await import("/world3d.js")) } catch { return }
 	document.getElementById("stage-wrap").classList.remove("hidden")
 	try {
-		stage.world = mountWorld(document.getElementById("stage"), { onPick: (name) => window.openBoard?.(name) })
+		stage.world = mountWorld(document.getElementById("stage"), { onPick: (name) => window.openBoard?.(name), onHover: (name) => name && frameFor(name) })
 	} catch {
 		document.getElementById("stage-wrap").classList.add("hidden")
 		return
@@ -282,6 +288,8 @@ async function startStage(d) {
 		src.onmessage = (m) => { try { stage.traces[b.name].push(JSON.parse(m.data)); schedule() } catch {} }
 	}
 	schedule()
+	const b = new URLSearchParams(location.search).get("board")
+	if (b) stage.world.ready.then(() => window.openBoard(b, { push: false }))
 }
 function schedule() {
 	if (stage.pending) return
@@ -333,6 +341,64 @@ async function redraw() {
 	document.getElementById("live").textContent = `${states.filter((s) => s === "cased" || s === "routed").length} of ${states.length} boards built`
 }
 document.getElementById("scrub").addEventListener("input", schedule)
+
+// ── Board ↔ system: the camera flies to the board while its run page loads (preloaded on hover), then the page fades
+// in over the stage; Esc, ← System or Back fly out again. The URL follows (?board=), so Back and a shared link work.
+const frames = new Map()
+function frameFor(name) {
+	const runId = stage.runs[name]
+	if (!runId) return null
+	if (!frames.has(name)) {
+		const f = document.createElement("iframe")
+		f.title = `${name} board`
+		f.style.display = "none"
+		const loaded = new Promise((r) => f.addEventListener("load", r, { once: true }))
+		f.src = `/?run=${encodeURIComponent(runId)}&embed=1`
+		document.getElementById("board-view").append(f)
+		frames.set(name, { f, loaded })
+	}
+	return frames.get(name)
+}
+let openName = null
+window.openBoard = async (name, { push = true } = {}) => {
+	const fr = frameFor(name)
+	if (!fr || !stage.world) return
+	openName = name
+	if (push) history.pushState({ board: name }, "", `?id=${encodeURIComponent(id)}&board=${encodeURIComponent(name)}`)
+	await Promise.all([stage.world.focus(name, { ms: 500 }), Promise.race([fr.loaded, new Promise((r) => setTimeout(r, 1500))])])
+	if (openName !== name) return
+	for (const [n, x] of frames) x.f.style.display = n === name ? "block" : "none"
+	const view = document.getElementById("board-view")
+	view.style.top = `${document.querySelector("header").offsetHeight}px`
+	document.getElementById("board-crumb").innerHTML = `${esc(stage.meta?.spec?.name ?? id)} › <b>${esc(name)}</b>`
+	view.classList.add("on")
+	view.setAttribute("aria-hidden", "false")
+}
+async function closeBoard({ push = true } = {}) {
+	if (!openName) return
+	openName = null
+	if (push) history.pushState({}, "", `?id=${encodeURIComponent(id)}`)
+	const view = document.getElementById("board-view")
+	view.classList.remove("on")
+	view.setAttribute("aria-hidden", "true")
+	await stage.world?.focus(null, { ms: 500 })
+}
+document.getElementById("board-back").addEventListener("click", () => closeBoard())
+// A board card's "Open board →" flies in too, when the 3D stage is up (a new tab or a middle click still opens the page).
+main.addEventListener("click", (e) => {
+	const a = e.target.closest?.("[data-open]")
+	if (!a || !stage.world || e.button !== 0 || e.metaKey || e.ctrlKey) return
+	e.preventDefault()
+	scrollTo({ top: 0, behavior: "smooth" })
+	window.openBoard(a.dataset.open)
+})
+addEventListener("keydown", (e) => { if (e.key === "Escape") closeBoard() })
+addEventListener("message", (e) => { if (e.origin === location.origin && e.data?.type === "bringup-close") closeBoard() })
+addEventListener("popstate", () => {
+	const b = new URLSearchParams(location.search).get("board")
+	if (b) window.openBoard(b, { push: false })
+	else closeBoard({ push: false })
+})
 
 document.getElementById("stop").onclick = async () => {
 	await fetch(`/api/systems/${encodeURIComponent(id)}/stop`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })

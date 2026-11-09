@@ -676,9 +676,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			// The landing page is the start screen; a run (?run=, or the hub opened on one) and My builds (/builds) keep
 			// the run page.
 			if (path === "/" || path === "/builds") {
-				const run = new URLSearchParams((req.url ?? "").split("?")[1] ?? "").has("run")
+				const q = new URLSearchParams((req.url ?? "").split("?")[1] ?? "")
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
-				return res.end(await readFile(path === "/" && !run && !opts.defaultRun ? START_PAGE : PAGE))
+				if (path === "/" && !q.has("run") && !opts.defaultRun) return res.end(await readFile(START_PAGE))
+				// Inside the system page (embed=1): the run page without its own way out; the system page owns that.
+				if (q.get("embed") === "1") return res.end((await readFile(PAGE, "utf8")).replace(/<body[^>]*>/, (tag) => `${tag}<script>window.BRINGUP_EMBED = true</script>`))
+				return res.end(await readFile(PAGE))
 			}
 			if (path === "/preview") {
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })

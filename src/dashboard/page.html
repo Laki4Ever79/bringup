@@ -785,6 +785,12 @@
 <div id="overlay"><img alt=""></div>
 
 <script type="module">
+	// Inside the system page (embed=1): no logo, Systems or New (the system page's breadcrumb leads out), and Esc goes
+	// back to the whole system.
+	if (window.BRINGUP_EMBED) {
+		document.head.insertAdjacentHTML("beforeend", "<style>header .logo, #system-link, #new-btn, #stage-btn { display: none !important }</style>")
+		addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.target.closest?.("input, textarea")) parent.postMessage({ type: "bringup-close" }, location.origin) })
+	}
 	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
 	import { liveRipples, mergeRipples, runStart, statusLine } from "/ripple.js"
