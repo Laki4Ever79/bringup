@@ -15,11 +15,12 @@ const rover = (): ContractSnapshot => ({ revision: 3, versions: {} as never, val
 
 test("the chassis spec carries the plate, both motors, the caster's holes, the battery, the board and the sensor", () => {
 	const spec = chassisSpec(rover())!
-	assert.deepEqual([spec.plate.lengthMm, spec.plate.widthMm, spec.plate.clearanceMm], [150, 110, 35])
+	assert.deepEqual([spec.plate.lengthMm, spec.plate.widthMm, spec.plate.clearanceMm], [150, 110, 50.5])
 	assert.deepEqual(spec.motors.map((m) => m.side), ["left", "right"])
 	assert.equal(spec.caster.holesMm.length, 4)
 	assert.deepEqual(spec.boards.map((b) => [b.name, b.widthMm, b.heightMm]), [["main", 60, 40]])
 	assert.equal(spec.sensor.xMm, 72)
+	assert.ok(spec.motors.every((m) => m.axleDropMm === 10.5), "the brackets drop to the 40 mm axle")
 	assert.ok(spec.massG > 100 && spec.com.length === 3, "mass and centre of mass for the simulation")
 })
 

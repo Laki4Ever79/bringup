@@ -31,6 +31,7 @@ export const BUILDS = {
 	testkit: { inputs: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"], requires: ["test", "outline", "pins"], optional: "test" },
 	// A robot's chassis, only with a mechanics field (OPTIONAL_KINDS in builders.ts).
 	chassis: { inputs: ["mechanics", "motion", "outline"], requires: ["mechanics", "motion", "outline"], optional: "mechanics" },
+	drive: { inputs: ["mechanics", "motion", "pins", "parts", "outline"], requires: ["mechanics", "motion", "pins"], optional: "mechanics" },
 }
 
 // agent.activity phase → lane status

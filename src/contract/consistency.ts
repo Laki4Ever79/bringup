@@ -1,3 +1,4 @@
+import type { DriveArtifact } from "../tools/drive.ts"
 import type { ChassisArtifact } from "../tools/chassis.ts"
 import { mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
@@ -95,6 +96,7 @@ export interface Artifacts {
 	firmware?: FirmwareArtifact
 	testkit?: TestkitArtifact
 	chassis?: ChassisArtifact
+	drive?: DriveArtifact
 }
 
 export type ViolationKind =
@@ -157,6 +159,10 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
+	// A failed firmware-in-the-loop drive (docs/mechanics.md): the mechanics or the firmware must change. "not run"
+	// (no QEMU, a stubbed run) wakes nobody: the report says "not proven in simulation".
+	if (a.drive?.result === "fail")
+		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics", "firmware"] })
 	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.

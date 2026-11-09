@@ -185,9 +185,11 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")}: pick a thinner pack or put it beside the boards`)
 	const wheelInner = d.trackMm / 2 - wheel.widthMm / 2
 	if (wheelInner < Wd / 2 + 2) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): widen the track or narrow the plate`)
+	// Level: the caster sets the plate's height; the motors hang from it on brackets, at least half their body below
+	// it (they can drop lower on a spacer, not rise into the plate).
 	const axleLevel = wheel.diameterMm / 2 + motor.bodyMm[2] / 2
-	if (Math.abs(mech.chassis.clearanceMm - axleLevel) > LEVEL_TOLERANCE_MM || Math.abs(caster.heightMm - mech.chassis.clearanceMm) > LEVEL_TOLERANCE_MM)
-		push("mech-fit", `the plate isn't level: its underside is ${mech.chassis.clearanceMm} mm up, the motors hold it at ${r1(axleLevel)} mm and the ${d.caster} at ${caster.heightMm} mm (within ${LEVEL_TOLERANCE_MM} mm): set the clearance to match, or pick a caster of matching height`)
+	if (mech.chassis.clearanceMm < axleLevel - LEVEL_TOLERANCE_MM || Math.abs(caster.heightMm - mech.chassis.clearanceMm) > LEVEL_TOLERANCE_MM)
+		push("mech-fit", `the plate isn't level: its underside is ${mech.chassis.clearanceMm} mm up, the motors need at least ${r1(axleLevel)} mm and the ${d.caster} holds it at ${caster.heightMm} mm (within ${LEVEL_TOLERANCE_MM} mm): set the clearance to the caster's height, or pick a caster that matches`)
 	// The sensor looks forward: nothing may stand in front of it across its width.
 	const sm = ms.find((m) => m.what === "sensor")
 	if (sm) for (const m of ms) if (m !== sm && !m.what.startsWith("wheel:") && m.xMm - m.sizeMm[0] / 2 > sm.xMm && Math.abs(m.yMm - sm.yMm) < (m.sizeMm[1] + sm.sizeMm[1]) / 2 && m.zMm + m.sizeMm[2] / 2 > sm.zMm - sm.sizeMm[2] / 2)

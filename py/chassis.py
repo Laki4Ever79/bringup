@@ -63,11 +63,14 @@ def build(spec):
     for dx, dy in c["holesMm"]:
         part -= Pos(c["xMm"] + dx, dy, t / 2) * Cylinder(c["holeDiaMm"] / 2, t + 2)
 
-    # A cradle under the plate per motor: a block around the body with the body cut out (axis along y).
+    # A cradle under the plate per motor, down to the axle (axleDropMm under the plate): a block around the body with
+    # the body cut out, axis along y.
     for m in spec["motors"]:
         L, W, H = m["bodyMm"]
-        block = Pos(m["xMm"], m["yMm"], -(H + WALL) / 2) * Box(W + 2 * WALL, L, H + WALL)
-        body = Pos(m["xMm"], m["yMm"], -H / 2 - WALL) * Box(W, L + 2, H)
+        drop = max(m.get("axleDropMm", H / 2 + WALL), H / 2 + WALL)
+        depth = drop + H / 2 + WALL
+        block = Pos(m["xMm"], m["yMm"], -depth / 2) * Box(W + 2 * WALL, L, depth)
+        body = Pos(m["xMm"], m["yMm"], -drop) * Box(W, L + 2, H)
         part += block - body
 
     # Battery rails along its long sides.

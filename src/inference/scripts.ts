@@ -92,11 +92,14 @@ const ROVER_PINS = [
 ]
 export const ROVER_MOTION: ContractValues["motion"] = { speedMps: 0.3, runtimeMin: 30, edgeMm: 10, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [160, 150], maxMassG: 500 }
 export const ROVER_MECHANICS: ContractValues["mechanics"] = {
-	drive: { kind: "differential", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1420 wheel 60x8 mm", caster: "BOTLAND-7292 swivel caster 25 mm", trackMm: 130, wheelbaseMm: 90, axleXMm: 30 },
-	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: -25, yMm: 0 } },
-	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 72, yMm: 0, zMm: 50 }, connector: "JT1" },
-	// The plate's underside at the axle plus half a motor (30 + 5 mm), level with the 35 mm caster.
-	chassis: { plateMm: [150, 110], thicknessMm: 3, material: "PLA", clearanceMm: 35, boards: [{ name: "main", at: { xMm: 10, yMm: 0 }, rotDeg: 0 }] },
+	// 80 mm wheels and a 38 mm caster: the simulated drive showed 60 mm wheels and a 25 mm caster can't climb the 1 cm
+	// step (a rigid driven wheel with floor friction 0.6 climbs about 0.14 of its radius). The battery sits over the
+	// axle, so most of the weight is on the driven wheels.
+	drive: { kind: "differential", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "TENTE 1430POI038P60-46x38 swivel caster 38 mm", trackMm: 130, wheelbaseMm: 80, axleXMm: 30 },
+	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: 25, yMm: 0 } },
+	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 72, yMm: 0, zMm: 65 }, connector: "JT1" },
+	// The plate's underside at the caster's 50.5 mm (the motors' brackets drop 10.5 mm to the 40 mm axle).
+	chassis: { plateMm: [150, 110], thicknessMm: 3, material: "PLA", clearanceMm: 50.5, boards: [{ name: "main", at: { xMm: 10, yMm: 0 }, rotDeg: 0 }] },
 }
 export const ROVER_BOARD = {
 	requirements: { summary: "indoor rover that avoids walls and carries a temperature and humidity sensor", peripherals: ["i2c-sensor", "usb-c", "status-led", "motors", "distance-sensor"], batteryLifeDays: null, enclosure: "none" as const },

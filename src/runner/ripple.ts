@@ -40,7 +40,7 @@ export interface Ripple {
 }
 
 // The run page's builds: a robot's chassis has its own panel (docs/mechanics.md), not a ripple lane.
-const KINDS: ArtifactKind[] = ALL_KINDS.filter((k) => k !== "chassis")
+const KINDS: ArtifactKind[] = ALL_KINDS.filter((k) => k !== "chassis" && k !== "drive")
 const builderName = (kind: string) => `build:${kind}`
 
 // Everyone a request could wake, keyed like the dashboard's lanes (src/dashboard/lanes.js): the four LLM agents by
