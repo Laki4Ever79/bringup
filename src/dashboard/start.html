@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bringup · describe a device</title>
+<style>
+	@font-face { font-family: "Shoulders"; src: url("/fonts/BigShouldersDisplay.woff") format("woff"); font-weight: 100 900; font-display: swap; }
+	@font-face { font-family: "Instrument"; src: url("/fonts/InstrumentSans.woff") format("woff"); font-weight: 400 700; font-display: swap; }
+	@font-face { font-family: "JBMono"; src: url("/fonts/JetBrainsMono.woff") format("woff"); font-weight: 100 800; font-display: swap; }
+	:root { --ink: #16140f; --ink-2: #4b463c; --ink-3: #8a8478; --line: #e6e3dc; --signal: #ff4a17; --wash: rgba(255, 74, 23, .1); }
+	* { box-sizing: border-box; }
+	html, body { margin: 0; background: #fff; color: var(--ink); font: 15px/1.45 "Instrument", system-ui, sans-serif; }
+	a { color: inherit; }
+	header { display: flex; align-items: center; gap: 22px; padding: 14px 28px; border-bottom: 1px solid var(--line); }
+	.logo { font: 700 22px/1 "Shoulders", system-ui, sans-serif; letter-spacing: .02em; text-decoration: none; }
+	.logo b { color: var(--signal); font-weight: 700; }
+	header nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
+	header nav a { color: var(--ink-2); text-decoration: none; }
+	header nav a:hover { color: var(--ink); }
+	main { max-width: 1240px; margin: 0 auto; padding: 18px 28px 40px; }
+	.hero { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 22px; }
+	#stage { position: relative; height: min(52vh, 460px); min-height: 300px; border-radius: 14px; overflow: hidden; }
+	#stage .hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--ink-3); pointer-events: none; }
+	#crumb { position: absolute; left: 12px; top: 10px; font-size: 13px; display: none; z-index: 2; }
+	#crumb button { font: inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 2px 9px; cursor: pointer; }
+	#side h4 { margin: 14px 0 6px; font: 600 11px/1 "Instrument", sans-serif; letter-spacing: .09em; color: var(--ink-3); text-transform: uppercase; }
+	#side h4:first-child { margin-top: 4px; }
+	#side .title { font: 700 20px/1.15 "Shoulders", sans-serif; margin: 0 0 4px; }
+	.row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+	.row.board { cursor: pointer; }
+	.row.board:hover .open { text-decoration: underline; }
+	.row .open { color: var(--signal); white-space: nowrap; }
+	.row .muted, .muted { color: var(--ink-3); }
+	.sw { display: inline-block; width: 9px; height: 9px; background: var(--signal); border-radius: 2px; margin-right: 7px; }
+	.prompt { margin: 22px auto 0; max-width: 760px; border: 1.5px solid var(--ink); border-radius: 14px; padding: 12px 14px 10px; box-shadow: 0 8px 30px rgba(0, 0, 0, .06); }
+	.prompt textarea { width: 100%; border: 0; resize: none; font: 17px/1.4 "Instrument", sans-serif; color: var(--ink); outline: none; min-height: 2.8em; }
+	.prompt .bar { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
+	.prompt .note { font-size: 12.5px; color: var(--ink-3); flex: 1; }
+	.prompt label { font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+	#build { background: var(--signal); color: #fff; border: 0; border-radius: 9px; padding: 8px 20px; font: 600 15px "Instrument", sans-serif; cursor: pointer; }
+	#build:disabled { opacity: .55; cursor: progress; }
+	#msg { max-width: 760px; margin: 8px auto 0; font-size: 13.5px; min-height: 1.2em; }
+	#msg.err { color: #b42318; }
+	.gallery { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+	.thumb { width: 190px; border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 10px 9px; background: #fff; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+	.thumb:hover { border-color: #bbb; }
+	.thumb.on { border-color: var(--signal); }
+	.thumb .pic { height: 92px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+	.thumb img { max-width: 100%; max-height: 100%; }
+	.thumb b { display: block; font-size: 14px; }
+	.thumb span { font-size: 12px; color: var(--ink-3); }
+	.public-only { display: none; }
+	body.public .public-only { display: block; }
+	body.public .local-only { display: none !important; }
+	@media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div id="start-screen">
+<header>
+	<a class="logo" href="/">bring<b>up</b></a>
+	<nav>
+		<a href="/builds">My builds</a>
+		<a href="/system">Systems</a>
+		<a href="https://github.com/Laki4Ever79/bringup#readme" target="_blank" rel="noopener">Docs</a>
+	</nav>
+</header>
+<main>
+	<section class="hero">
+		<div id="stage">
+			<div id="crumb"><button id="back" title="Back to the whole device (Esc)">←</button> <span id="crumb-text"></span></div>
+			<div class="hint" id="hint">Drag to turn · click an orange board to look inside</div>
+		</div>
+		<aside id="side"></aside>
+	</section>
+
+	<div class="prompt">
+		<textarea id="sentence" rows="2" aria-label="Describe the device you want" placeholder="Describe the device you want…"></textarea>
+		<div class="bar">
+			<span class="note" id="note">This is the sentence that made the device above. Change it, or write your own.</span>
+			<label class="local-only" title="Scripted agents: free and fast, they always propose the logger and the beacon. Untick for real models."><input type="checkbox" id="free" checked> Try for free</label>
+			<button id="build" class="local-only">Build</button>
+		</div>
+	</div>
+	<p id="msg"></p>
+	<p class="public-only muted" style="text-align:center;font-size:13.5px">This is a read-only demo: building runs on your own machine. <a href="/builds">Try a scripted build →</a></p>
+
+	<div class="gallery" id="gallery"></div>
+</main>
+</div>
+<script type="module">
+	const $ = (id) => document.getElementById(id)
+	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
+	if (window.BRINGUP_PUBLIC) document.body.classList.add("public")
+	$("sentence").readOnly = Boolean(window.BRINGUP_PUBLIC)
+
+	const examples = await fetch("/api/examples").then((r) => r.json()).catch(() => [])
+	// The richest example first; the single board last, named for what it is.
+	examples.sort((a, b) => b.boards.length - a.boards.length)
+	const label = (ex) => (ex.boards.length === 1 ? "Single board" : ex.title)
+	const cache = new Map()
+	let world = null, current = null, typed = false
+
+	const fileOf = (ex, board, f) => `/examples/${encodeURIComponent(ex.name)}/boards/${encodeURIComponent(board)}/${f}`
+	async function boardsOf(ex) {
+		if (cache.has(ex.name)) return cache.get(ex.name)
+		const opt = async (url, as) => { try { const r = await fetch(url); return r.ok ? await r[as]() : null } catch { return null } }
+		const boards = await Promise.all(ex.boards.map(async (b) => {
+			const [circuit, contract, caseStl, caseSpec] = await Promise.all([opt(fileOf(ex, b.name, "circuit.json"), "json"), opt(fileOf(ex, b.name, "contract.json"), "json"), opt(fileOf(ex, b.name, "case.stl"), "arrayBuffer"), opt(fileOf(ex, b.name, "spec.json"), "json")])
+			return { name: b.name, outline: b.outline, circuit, caseStl, caseSpec, parts: contract?.values?.parts ?? [], key: `${ex.name}/${b.name}` }
+		}))
+		cache.set(ex.name, boards)
+		return boards
+	}
+	const linkLabel = (l) => `${l.id} · ${l.kind.toUpperCase()}${l.kind === "uart" ? ` · ${(l.baud ?? 115200) / 1000}k` : ""} · ${l.cable.lengthMm} mm`
+	const size = (o) => (o ? `${o.widthMm} × ${o.heightMm} mm` : "")
+
+	function sideFor(ex) {
+		$("side").innerHTML = `
+			<h4>Example</h4><p class="title">${esc(label(ex) === "Single board" ? ex.title : ex.title)}</p>
+			<h4>Boards</h4>
+			${ex.boards.map((b) => `<div class="row board" data-board="${esc(b.name)}"><span><i class="sw"></i>${esc(b.name)} <span class="muted">${esc(size(b.outline))}</span></span><span class="open">look inside →</span></div>`).join("")}
+			${ex.links.length ? `<h4>Cables</h4>${ex.links.map((l) => `<div class="row"><span>${esc(l.a.board)} ↔ ${esc(l.b.board)}</span><span class="muted">${esc(linkLabel(l))}</span></div>`).join("")}` : ""}`
+		for (const r of $("side").querySelectorAll(".row.board")) r.addEventListener("click", () => open(r.dataset.board))
+	}
+
+	function sideForBoard(ex, name) {
+		const b = (cache.get(ex.name) ?? []).find((x) => x.name === name)
+		const meta = ex.boards.find((x) => x.name === name)
+		const parts = (b?.parts ?? []).filter((p) => !["resistor", "capacitor"].includes(p.role))
+		const passives = (b?.parts ?? []).length - parts.length
+		$("side").innerHTML = `
+			<h4>Board</h4><p class="title">${esc(name)}</p>
+			<div class="row"><span>Size</span><span class="muted">${esc(size(meta?.outline))}</span></div>
+			<h4>Parts</h4>
+			${parts.map((p) => `<div class="row"><span>${esc(p.ref)} <span class="muted">${esc(p.role)}</span></span><span class="muted">${esc(p.mpn)}</span></div>`).join("")}
+			${passives ? `<div class="row"><span class="muted">+ ${passives} ${passives === 1 ? "resistor or capacitor" : "resistors and capacitors"}</span></div>` : ""}
+			<p class="muted" style="font-size:12.5px;margin-top:12px">An example, finished and saved. Build your own to get its schematic, PCB, case and firmware.</p>`
+	}
+
+	async function show(ex) {
+		current = ex
+		for (const t of $("gallery").children) t.classList.toggle("on", t.dataset.name === ex.name)
+		if (!typed) $("sentence").value = ex.sentence
+		$("note").textContent = typed ? "Your sentence. Build proposes a split into boards first; nothing is built until you say so." : "This is the sentence that made the device above. Change it, or write your own."
+		sideFor(ex)
+		$("crumb").style.display = "none"
+		const boards = await boardsOf(ex)
+		if (current !== ex) return
+		if (world) {
+			world.setWorld({ boards, cables: ex.links.map((l) => ({ id: l.id, a: l.a, b: l.b, label: linkLabel(l) })) })
+			world.setTurntable(true)
+		}
+	}
+
+	async function open(name) {
+		if (!current) return
+		$("crumb").style.display = "block"
+		$("crumb-text").innerHTML = `${esc(current.title)} › <b>${esc(name)}</b>`
+		$("hint").textContent = "Esc or ← for the whole device"
+		sideForBoard(current, name)
+		await world?.focus(name)
+	}
+	async function close() {
+		if (!world?.focused) return
+		$("crumb").style.display = "none"
+		$("hint").textContent = "Drag to turn · click an orange board to look inside"
+		sideFor(current)
+		await world.focus(null)
+	}
+	$("back").addEventListener("click", close)
+	addEventListener("keydown", (e) => { if (e.key === "Escape") close() })
+
+	try {
+		const { mountWorld } = await import("/world3d.js")
+		world = mountWorld($("stage"), { onPick: open, onHover: (n) => ($("stage").title = n ? `${n}: click to look inside` : "") })
+	} catch {
+		$("hint").textContent = "3D needs WebGL2; showing the saved picture"
+	}
+
+	$("gallery").innerHTML = examples.map((ex) => `
+		<button class="thumb" data-name="${esc(ex.name)}">
+			<div class="pic"><img src="/examples/${encodeURIComponent(ex.name)}/still.png" alt="" onerror="this.remove()"></div>
+			<b>${esc(label(ex))}</b><span>${ex.boards.length} board${ex.boards.length === 1 ? "" : "s"}${ex.links.length ? ` · ${ex.links.map((l) => l.kind.toUpperCase()).join(", ")} cable` : ""}</span>
+		</button>`).join("")
+	for (const t of $("gallery").children) t.addEventListener("click", () => show(examples.find((e) => e.name === t.dataset.name)))
+	if (examples.length) show(examples[0])
+
+	$("sentence").addEventListener("input", () => { typed = $("sentence").value.trim() !== current?.sentence })
+	$("build").addEventListener("click", async () => {
+		const sentence = $("sentence").value.trim()
+		if (!sentence) return void ($("msg").textContent = "Describe the device first.")
+		$("build").disabled = true
+		$("msg").className = ""
+		$("msg").textContent = $("free").checked ? "Planning (scripted, free)…" : "Planning with a real model: one call, a few cents…"
+		try {
+			const r = await fetch("/api/plans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sentence, mock: $("free").checked }) })
+			const body = await r.json()
+			if (r.ok) return void (location.href = `/plan/${encodeURIComponent(body.id)}`)
+			$("msg").className = "err"
+			$("msg").textContent = body.code === "NO_KEY" ? "No model key on this machine. Tick “Try for free” to plan with the scripted agents, or add a key to .env." : body.error ?? "Planning failed."
+		} catch (e) {
+			$("msg").className = "err"
+			$("msg").textContent = `Planning failed: ${e}`
+		} finally {
+			$("build").disabled = false
+		}
+	})
+	window.__start = { get world() { return world } }
+</script>
+</body>
+</html>

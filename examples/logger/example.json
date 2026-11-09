@@ -1,7 +1,7 @@
 {
 	"name": "logger",
 	"sentence": "A pocket climate logger a phone can read over Bluetooth",
-	"title": "pocket climate logger",
+	"title": "Pocket climate logger",
 	"boards": [
 		{
 			"name": "main",

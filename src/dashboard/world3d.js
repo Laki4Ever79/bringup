@@ -98,7 +98,7 @@ export function pickBoard(origin, dir, boxes) {
 
 // ── Geometry ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-const ORANGE = [242, 106, 27]
+const ORANGE = [255, 74, 23] // the dashboard's --signal
 const PART = [40, 40, 44]
 const PAD = [214, 214, 214]
 const CASE = [200, 200, 206]
@@ -286,7 +286,7 @@ export function mountWorld(host, opts = {}) {
 		if (!ext.length) return { ...S.cam }
 		const min = [0, 1, 2].map((k) => Math.min(...ext.map((e) => e.min[k]))), max = [0, 1, 2].map((k) => Math.max(...ext.map((e) => e.max[k])))
 		const size = Math.max(max[0] - min[0], max[1] - min[1], 20)
-		return { yaw: S.cam.yaw, pitch: names.length === 1 ? 0.75 : 0.55, distance: size * (names.length === 1 ? 2.1 : 1.55), target: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2] }
+		return { yaw: S.cam.yaw, pitch: names.length === 1 ? 0.75 : 0.55, distance: size * (names.length === 1 ? 2.1 : 1.25), target: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2] }
 	}
 
 	const request = () => {

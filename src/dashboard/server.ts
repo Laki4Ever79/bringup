@@ -25,6 +25,7 @@ const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
 const SYSTEM_PAGE = new URL("./system.html", import.meta.url)
 const PLAN_PAGE = new URL("./plan.html", import.meta.url)
+const START_PAGE = new URL("./start.html", import.meta.url)
 const EXAMPLES = fileURLToPath(new URL("../../examples/", import.meta.url))
 const STAGE_PAGE = new URL("./stage.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
@@ -533,7 +534,13 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			const dir = await runDir(probe[1])
 			if (dir && !existsSync(join(dir, probe[2]))) return send(res, 204, "")
 		}
-		if (path === "/") {
+		// The start screen, read-only: the examples stay, building is for one's own machine.
+		if (path === "/" && !new URLSearchParams((req.url ?? "").split("?")[1] ?? "").has("run")) {
+			const page = (await readFile(START_PAGE, "utf8")).replace(/<body[^>]*>/, (tag) => `${tag}<script>window.BRINGUP_PUBLIC = true</script><div id="public-banner" style="position:fixed;left:12px;bottom:12px;z-index:9999;max-width:560px;padding:6px 12px;font:13px/1.4 system-ui,sans-serif;background:#fff4d6;color:#4a3800;border:1px solid #e6cf8a;border-radius:4px">${PUBLIC_BANNER}</div>`)
+			res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
+			return res.end(page)
+		}
+		if (path === "/" || path === "/builds") {
 			const page = (await readFile(PAGE, "utf8")).replace(/<body[^>]*>/, (tag) => `${tag}<script>window.BRINGUP_PUBLIC = true; addEventListener("DOMContentLoaded", () => { const n = document.getElementById("scripted-note"); if (n) n.textContent = "${PUBLIC_TRY_IT}"; const b = document.getElementById("brief-input"); if (b) b.readOnly = true })</script><style>#fab, #order-btn { display: none !important } #models, .switch[data-k], #scripted-pick, #examples, #stop-btn, #ask { display: none !important }</style><div id="public-banner" style="position:fixed;left:12px;bottom:12px;z-index:9999;max-width:560px;padding:6px 12px;font:13px/1.4 system-ui,sans-serif;background:#fff4d6;color:#4a3800;border:1px solid #e6cf8a;border-radius:4px">${PUBLIC_BANNER}</div>`)
 			res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 			return res.end(page)
@@ -666,9 +673,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 				return res.end(await readFile(PLAN_PAGE))
 			}
-			if (path === "/") {
+			// The landing page is the start screen; a run (?run=, or the hub opened on one) and My builds (/builds) keep
+			// the run page.
+			if (path === "/" || path === "/builds") {
+				const run = new URLSearchParams((req.url ?? "").split("?")[1] ?? "").has("run")
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
-				return res.end(await readFile(PAGE))
+				return res.end(await readFile(path === "/" && !run && !opts.defaultRun ? START_PAGE : PAGE))
 			}
 			if (path === "/preview") {
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })

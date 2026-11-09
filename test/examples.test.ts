@@ -71,3 +71,22 @@ test("the hub lists the examples and serves their files, also in the public demo
 	}
 	assert.ok(existsSync(dest))
 })
+
+test("the landing page is the start screen; a run, a default run and My builds keep the run page", async () => {
+	const hub = await serveHub({ outRoot: tempDir(), port: 0 })
+	const pub = await serveHub({ outRoot: tempDir(), port: 0, public: { gate: new (await import("../src/dashboard/public.ts")).PublicGate(), briefPath: "briefs/logger.md" } })
+	try {
+		const page = async (url: string) => (await fetch(url)).text()
+		assert.match(await page(`${hub.url}/`), /id="start-screen"/)
+		assert.doesNotMatch(await page(`${hub.url}/?run=x`), /id="start-screen"/)
+		assert.match(await page(`${hub.url}/builds`), /id="brief-input"/)
+		const p = await page(`${pub.url}/`)
+		assert.match(p, /id="start-screen"/)
+		assert.match(p, /BRINGUP_PUBLIC = true/)
+		assert.match(await page(`${pub.url}/builds`), /BRINGUP_PUBLIC = true/)
+		assert.match(await page(`${pub.url}/?run=x`), /id="brief-input"/)
+	} finally {
+		await hub.close()
+		await pub.close()
+	}
+})

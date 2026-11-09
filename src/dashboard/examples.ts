@@ -44,16 +44,20 @@ function saveBoard(from: string, to: string): ExampleMeta["boards"][number]["out
 	return o ? { widthMm: o.widthMm, heightMm: o.heightMm } : null
 }
 
-export function saveExample(sourceDir: string, name: string, sentence: string, destRoot = "examples"): ExampleMeta {
+export function saveExample(sourceDir: string, name: string, sentence: string, destRoot = "examples", titleOverride?: string): ExampleMeta {
 	if (!/^[\w-]+$/.test(name)) throw new Error("an example name is letters, digits, - and _")
 	const dest = join(destRoot, name)
+	// The still (the start screen's first frame, saved by hand from the browser) survives a re-save.
+	const still = existsSync(join(dest, "still.png")) ? readFileSync(join(dest, "still.png")) : null
 	rmSync(dest, { recursive: true, force: true })
+	mkdirSync(dest, { recursive: true })
+	if (still) writeFileSync(join(dest, "still.png"), still)
 	const spec = readJson(join(sourceDir, "system.json"))
 	const boards: ExampleMeta["boards"] = []
 	if (spec) for (const b of spec.boards as { name: string }[]) boards.push({ name: b.name, outline: saveBoard(join(sourceDir, "boards", b.name), join(dest, "boards", b.name)) })
 	else boards.push({ name: "main", outline: saveBoard(sourceDir, join(dest, "boards", "main")) })
 	const brief = existsSync(join(sourceDir, "brief.md")) ? readFileSync(join(sourceDir, "brief.md"), "utf8") : ""
-	const title = spec?.name ?? (brief.split("\n").find((l) => l.trim()) ?? name).replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "").trim()
+	const title = titleOverride ?? spec?.name ?? (brief.split("\n").find((l) => l.trim()) ?? name).replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "").trim()
 	const meta: ExampleMeta = { name, sentence, title, boards, links: spec?.links ?? [] }
 	writeFileSync(join(dest, "example.json"), JSON.stringify(meta, null, "\t"))
 	return meta
