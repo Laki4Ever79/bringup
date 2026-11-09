@@ -8,6 +8,7 @@
 		"typecheck": "tsc --noEmit",
 		"test": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= tsx --test test/*.test.ts",
 		"bringup": "tsx src/main.ts",
+		"dashboard": "tsx src/dashboard/cli.ts",
 		"tournament": "tsx src/tournament/cli.ts",
 		"demo": "tsx src/demo.ts",
 		"setup": "tsx src/setup/cli.ts setup",
