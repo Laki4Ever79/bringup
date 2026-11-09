@@ -10,7 +10,7 @@ const ROOT = resolve(import.meta.dirname, "..")
 
 test("every number of every drive part has a source: a URL and where on it", () => {
 	const cat = loadMechCatalog(ROOT)
-	for (const list of [cat.motors, cat.wheels, cat.casters, cat.batteries]) {
+	for (const list of [cat.sensors, cat.motors, cat.wheels, cat.casters, cat.batteries]) {
 		assert.ok(list.length > 0)
 		for (const part of list as unknown as Record<string, unknown>[]) {
 			const source = part.source as Record<string, { url?: string; where?: string }>
@@ -22,10 +22,10 @@ test("every number of every drive part has a source: a URL and where on it", () 
 	}
 })
 
-test("the rover's board parts ground: a motor driver and a distance sensor with pins, LCSC numbers and sources", () => {
-	assert.ok(PART_ROLES.includes("motor-driver" as never) && PART_ROLES.includes("tof-sensor" as never))
+test("the rover's motor driver grounds: pins, an LCSC number, and a source for each number", () => {
+	assert.ok(PART_ROLES.includes("motor-driver" as never))
 	const parts = loadCatalog(ROOT) as unknown as Record<string, unknown>[]
-	for (const role of ["motor-driver", "tof-sensor"]) {
+	for (const role of ["motor-driver"]) {
 		const p = parts.find((x) => x.role === role)!
 		assert.ok(p, role)
 		assert.ok((p.pins as string[]).length > 0 && p.lcsc && p.footprint)

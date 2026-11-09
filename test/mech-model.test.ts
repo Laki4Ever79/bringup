@@ -8,6 +8,7 @@ import type { Mechanics } from "../src/mechanics/types.ts"
 const cite = { url: "https://example.com/ds", where: "table 1" }
 const motor: MotorPart = { mpn: "M1", ratedV: 6, noLoadRpm: 300, stallTorqueNm: 0.12, stallA: 1.6, noLoadA: 0.07, gearRatio: 100, bodyMm: [34, 12, 10], shaftMm: 3, massG: 10, source: { ratedV: cite } }
 const cat: MechCatalog = {
+	sensors: [],
 	motors: [motor],
 	wheels: [{ mpn: "W1", diameterMm: 60, widthMm: 8, shaftMm: 3, massG: 10, tread: "rubber", source: {} }],
 	casters: [{ mpn: "C1", wheelMm: 25, heightMm: 32, swivel: true, holesMm: [[-10, 0], [10, 0]], massG: 15, source: {} }],
@@ -16,6 +17,7 @@ const cat: MechCatalog = {
 const mech: Mechanics = {
 	drive: { kind: "differential", motor: "M1", wheel: "W1", caster: "C1", trackMm: 110, wheelbaseMm: 90, axleXMm: 30 },
 	battery: { pack: "B1", at: { xMm: 0, yMm: 0 } },
+	sensor: { module: "none", at: { xMm: 70, yMm: 0, zMm: 50 }, connector: "JT1" },
 	chassis: { plateMm: [150, 120], thicknessMm: 3, material: "PLA", clearanceMm: 12, boards: [{ name: "main", at: { xMm: 0, yMm: 0 }, rotDeg: 0 }] },
 }
 

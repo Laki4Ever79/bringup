@@ -89,7 +89,9 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		const p = parts.find((x) => x.role === role)
 		return p ? { part: p, data: cat.boardParts.find((x) => x.mpn === p.mpn) } : null
 	}
-	const driver = data("motor-driver"), tof = data("tof-sensor")
+	const driver = data("motor-driver")
+	const sensor = mech.sensor ? byMpn(cat.mech.sensors ?? [], mech.sensor.module) : undefined
+	if (mech.sensor && !sensor) push("mech-fit", `sensor ${mech.sensor.module} is not in catalog/mechanics.json: pick one listed there`)
 
 	const boardInfo = boards.map((b) => ({ name: b.name, outline: { widthMm: b.snapshot.values.outline?.widthMm ?? 0, heightMm: b.snapshot.values.outline?.heightMm ?? 0 } }))
 	const ms: Mount[] = mounts(mech, boardInfo, cat.mech)
@@ -118,13 +120,13 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 
 	// Stopping: braking distance plus one sensor period of travel must fit between the sensor's range and the wall
 	// distance the brief allows.
-	const rangeMm = Number(tof?.data?.rangeMm ?? 0), updateMs = Number(tof?.data?.updateMs ?? 0)
-	if (tof?.data && rangeMm > 0) {
+	const rangeMm = sensor?.rangeMm ?? 0, updateMs = sensor?.updateMs ?? 0
+	if (sensor && rangeMm > 0) {
 		const decel = est("floorMu") * G * onWheels
 		const brakeMm = ((motion.speedMps ** 2) / (2 * decel)) * 1000 + motion.speedMps * updateMs
 		const roomMm = rangeMm - motion.stopBeforeWallMm
 		if (brakeMm > roomMm)
-			push("mech-stopping", `from ${motion.speedMps} m/s the rover needs ${r1(brakeMm)} mm to stop (braking plus one ${updateMs} ms sensor period, ${estNote("floorMu")}), but the ${tof.part.mpn} sees ${rangeMm} mm and must stop ${motion.stopBeforeWallMm} mm from the wall, leaving ${r1(roomMm)} mm: slow down, or use a longer-range sensor`, ["mechanics", "architect"])
+			push("mech-stopping", `from ${motion.speedMps} m/s the rover needs ${r1(brakeMm)} mm to stop (braking plus one ${updateMs} ms sensor period, ${estNote("floorMu")}), but the ${sensor.chip} sees ${rangeMm} mm and must stop ${motion.stopBeforeWallMm} mm from the wall, leaving ${r1(roomMm)} mm: slow down, or use a longer-range sensor`, ["mechanics", "architect"])
 	}
 
 	// Current: a motor at stall on a full cell, per driver channel and for the pack.
@@ -165,7 +167,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	// Fit: everything on the plate, nothing colliding, the plate level and above the edge, within the size and mass.
 	const [L, Wd] = mech.chassis.plateMm
 	const onPlate = (m: Mount) => Math.abs(m.xMm) + m.sizeMm[0] / 2 <= L / 2 + 1e-9 && Math.abs(m.yMm) + m.sizeMm[1] / 2 <= Wd / 2 + 1e-9
-	for (const m of ms) if (m.what.startsWith("board:") || m.what === "battery" || m.what === "caster")
+	for (const m of ms) if (m.what.startsWith("board:") || m.what === "battery" || m.what === "caster" || m.what === "sensor")
 		if (!onPlate(m)) push("mech-fit", `${m.what.replace(/^board:/, "board ")} (${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm at ${r1(m.xMm)}, ${r1(m.yMm)}) doesn't fit on the ${L} × ${Wd} mm plate: enlarge the plate or move it`)
 	// A motor hangs under the plate's edge out to its wheel: at least half its body must be under the plate to bolt on.
 	for (const m of ms.filter((x) => x.what.startsWith("motor:"))) {
@@ -186,6 +188,10 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const axleLevel = wheel.diameterMm / 2 + motor.bodyMm[2] / 2
 	if (Math.abs(mech.chassis.clearanceMm - axleLevel) > LEVEL_TOLERANCE_MM || Math.abs(caster.heightMm - mech.chassis.clearanceMm) > LEVEL_TOLERANCE_MM)
 		push("mech-fit", `the plate isn't level: its underside is ${mech.chassis.clearanceMm} mm up, the motors hold it at ${r1(axleLevel)} mm and the ${d.caster} at ${caster.heightMm} mm (within ${LEVEL_TOLERANCE_MM} mm): set the clearance to match, or pick a caster of matching height`)
+	// The sensor looks forward: nothing may stand in front of it across its width.
+	const sm = ms.find((m) => m.what === "sensor")
+	if (sm) for (const m of ms) if (m !== sm && !m.what.startsWith("wheel:") && m.xMm - m.sizeMm[0] / 2 > sm.xMm && Math.abs(m.yMm - sm.yMm) < (m.sizeMm[1] + sm.sizeMm[1]) / 2 && m.zMm + m.sizeMm[2] / 2 > sm.zMm - sm.sizeMm[2] / 2)
+		push("mech-fit", `${m.what.replace(":", " ")} stands in front of the distance sensor: move the sensor to the front edge`)
 	if (mech.chassis.clearanceMm < motion.edgeMm)
 		push("mech-fit", `the plate is ${mech.chassis.clearanceMm} mm off the floor, under the ${motion.edgeMm} mm edge the rover must cross: raise it (bigger wheels)`)
 	const outerW = Math.max(Wd, d.trackMm + wheel.widthMm)
@@ -199,9 +205,11 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		const missing = ["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2"].filter((s) => !pins.some((p) => p.signal === s && p.partRef === driver.part.ref))
 		if (missing.length) push("mech-wiring", `the motor driver ${driver.part.ref}'s inputs ${missing.join(", ")} have no GPIO: assign them`, ["board"], ["pins"])
 	}
-	if (!tof) push("mech-wiring", "no board carries the distance sensor (role tof-sensor) the rover avoids walls with: add one on the I2C bus at the front", ["board"], ["parts"])
-	else if (!["I2C_SDA", "I2C_SCL"].every((s) => pins.some((p) => p.signal === s && p.partRef === tof.part.ref)))
-		push("mech-wiring", `the distance sensor ${tof.part.ref} isn't on the I2C bus: connect its SDA and SCL to I2C_SDA and I2C_SCL`, ["board"], ["pins"])
+	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector") : undefined
+	if (!mech.sensor) push("mech-wiring", "no distance sensor in the mechanics design: the rover avoids walls with one at the front", ["mechanics"])
+	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["board"], ["parts"])
+	else if (!(pins.some((p) => p.signal === "I2C_SDA" && p.partRef === plug.ref && p.partPin === "IO1") && pins.some((p) => p.signal === "I2C_SCL" && p.partRef === plug.ref && p.partPin === "IO2")))
+		push("mech-wiring", `the sensor connector ${plug.ref} isn't on the I2C bus: IO1 to I2C_SDA and IO2 to I2C_SCL (the STEMMA QT order)`, ["board"], ["pins"])
 	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", "no battery connector on any board: the cell needs one", ["board"], ["parts"])
 	return out
 }
