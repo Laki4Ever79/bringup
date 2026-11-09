@@ -10,6 +10,7 @@ import { appendRequest } from "../runner/requests.ts"
 import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "../runner/drift.ts"
 import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
+import { appendUsage } from "../inference/usage.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 import type { TraceNotifier } from "./notify.ts"
@@ -554,7 +555,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					try {
 						// An older trace has no values in its writes: the revision snapshots give each one its change.
 						const snapshots = new Map((await Promise.all(revisionsToLoad(events).map(async (rev) => [rev, await snap(rev)] as const))).filter(([, v]) => v))
-						const answer = await (opts.ask ?? ((p: AskPrompt) => callModel(p)))(askPrompt({ question, events, from: await snap(from), to: await snap(to), brief, snapshots }))
+						const answer = await (opts.ask ?? ((p: AskPrompt) => callModel(p, process.env, fetch, (r) => appendUsage(dir, r))))(askPrompt({ question, events, from: await snap(from), to: await snap(to), brief, snapshots }))
 						return json(res, 200, { scripted: false, answer, from, to })
 					} catch (error) {
 						const e = error as Error & { code?: string }

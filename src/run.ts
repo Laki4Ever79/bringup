@@ -29,6 +29,7 @@ import { detectEnvironment, type Env } from "./tools/env.ts"
 import { createStubBuilders } from "./tools/stubs.ts"
 import { createBench, type Bench, type BenchOptions } from "./agents/bench.ts"
 import type { Bridge, BridgeHello } from "./tools/bench-bridge.ts"
+import { appendUsage } from "./inference/usage.ts"
 
 export interface RunOptions {
 	brief: string
@@ -109,7 +110,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	state.contract.setCatalog(loadCatalog(ROOT))
 	state.review.enabled = opts.review ?? true
 	state.review.maxRounds = opts.maxReviewRounds ?? MAX_REVIEW_ROUNDS
-	startRuntime(state, inferenceConfig(opts.mock, opts.scripts ?? mockScripts()), join(opts.outDir, "trace.jsonl"))
+	startRuntime(state, inferenceConfig(opts.mock, opts.scripts ?? mockScripts(), undefined, (r) => appendUsage(opts.outDir, r)), join(opts.outDir, "trace.jsonl"))
 
 	// First, so the one Cloud session sees every participant join and every event (null without a key).
 	const cloud = startCloudSession(() => state.getParticipants())
