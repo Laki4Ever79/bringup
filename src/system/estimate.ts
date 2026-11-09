@@ -6,7 +6,8 @@ import type { Plan } from "./plan.ts"
 // The plan screen's estimates, from real (non-scripted) board runs recorded under outRoot: a single run's folder, or a
 // system's boards/<name>. Time: boards build in parallel, so a plan takes as long as one board (the range seen so far);
 // the QEMU link test after is not counted. Cost: per board, times the plan's boards, once MIN_COST_RUNS real runs have
-// usage.jsonl (cost tracking started 9 Nov 2026; older runs have none).
+// usage.jsonl (cost tracking started 9 Nov 2026; older runs have none). Runs that never settled give no time; the basis
+// line counts them so the range doesn't read better than it is.
 export const MIN_COST_RUNS = 3
 
 interface BoardRun {
@@ -64,11 +65,12 @@ export function estimate(plan: Plan, outRoot: string): { minutes: [number, numbe
 	const runs = recordedBoardRuns(outRoot)
 	const times = runs.map((r) => r.minutes).filter((m): m is number => m !== null)
 	const costs = runs.map((r) => r.usd).filter((u): u is number => u !== null)
+	const unsettled = runs.length - times.length
 	const n = Math.max(1, plan.spec.boards.length)
 	const minutes: [number, number] | null = times.length ? [Math.min(...times), Math.max(...times)] : null
 	const usd: [number, number] | null = costs.length >= MIN_COST_RUNS ? [Math.min(...costs) * n, Math.max(...costs) * n] : null
 	const basis = !times.length
 		? "No real runs recorded yet, so no estimate."
-		: `From ${times.length} recorded runs; boards build in parallel. ${usd ? `Cost from ${costs.length} runs with cost data, per board × ${n}.` : `Cost: not enough runs with cost data yet (${costs.length} of ${MIN_COST_RUNS}).`}`
+		: `From ${times.length} recorded runs that settled${unsettled ? ` (${unsettled} more never settled)` : ""}; boards build in parallel. ${usd ? `Cost from ${costs.length} runs with cost data, per board × ${n}.` : `Cost: not enough runs with cost data yet (${costs.length} of ${MIN_COST_RUNS}).`}`
 	return { minutes, usd, basis }
 }
