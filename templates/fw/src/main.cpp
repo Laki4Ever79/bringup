@@ -191,6 +191,10 @@ RTC_DATA_ATTR static uint8_t bthomePacketId = 0;
 #define BLE_ADVERTISE_MS 300  // the logger brief's 300 ms advertising burst, without a contract duty cycle
 #endif
 static const uint32_t BLE_CONNECTED_MAX_MS = 30000;
+// A button press wakes it so a phone can connect at once: it stays visible this long, not just the reading's burst
+// (engineer, 9 Nov 2026). A phone that connects in time keeps it awake as above; codegen lists it under "Added for you".
+static const uint32_t BUTTON_ADVERTISE_MS = 30000;
+static uint32_t advertiseMs = BLE_ADVERTISE_MS;
 // UUIDs and limits from the generated data format (include/dataformat.h), the source the reader is made from too.
 #include "dataformat.h"
 static const uint32_t HISTORY_CHUNK = DF_HISTORY_CHUNK;
@@ -294,16 +298,17 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 	(void)latest;
 #endif
 	adv->start();
-	Serial.printf("BLE %s advertising %d ms\n", name, BLE_ADVERTISE_MS);
+	Serial.printf("BLE %s advertising %lu ms\n", name, (unsigned long)advertiseMs);
 	const uint32_t start = millis();
 	bool everConnected = false;
 	for (;;) {
 		const uint32_t awake = millis() - start;
 		everConnected |= bleConnected;
-		if (bleConnected ? awake >= BLE_CONNECTED_MAX_MS : awake >= BLE_ADVERTISE_MS) break;
+		if (bleConnected ? awake >= BLE_CONNECTED_MAX_MS : awake >= advertiseMs) break;
 		delay(5);
 	}
 	if (everConnected) Serial.println("BLE a phone connected");
+	advertiseMs = BLE_ADVERTISE_MS;  // a button's long window is for its own wake only
 	NimBLEDevice::deinit(true);
 	LittleFS.end();
 }
@@ -763,6 +768,13 @@ void setup() {
 #endif
 #ifdef HAS_LED
 	pinMode(PIN_STATUS_LED, OUTPUT);
+#endif
+#if defined(PIN_BUTTON) && defined(RADIO_BLE)
+	// Woken by the button (not the timer, nor USB on the sense pin): stay visible long enough for a phone to connect.
+	if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO && (esp_sleep_get_gpio_wakeup_status() & (1ULL << PIN_BUTTON))) {
+		advertiseMs = BUTTON_ADVERTISE_MS;
+		Serial.println("BUTTON wake: visible for a phone");
+	}
 #endif
 	takeReading();
 #ifdef PIN_USB_SENSE

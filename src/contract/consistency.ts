@@ -1,12 +1,12 @@
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
-import { generatedNets, MIC_PORT, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
+import { connectorBoxes, generatedNets, MIC_PORT, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type FieldName } from "./types.ts"
 import { modelChecks, type ModelViolation } from "./model.ts"
 import { fixtureChecks, testChecks, type TestViolation } from "./testkit.ts"
-import { builtFeatureChecks, caseChecks, type BuiltFeature, type CaseViolation } from "./case.ts"
+import { builtFeatureChecks, caseChecks, MIN_WALL_MM, SLOT_MARGIN_MM, type BuiltFeature, type CaseViolation } from "./case.ts"
 import type { CaseFeature } from "./types.ts"
 import { spaceChecks, type SpaceViolation } from "./space.ts"
 import { connectivityChecks, radioPeakMa, type ConnectivityViolation } from "./connectivity.ts"
@@ -118,6 +118,7 @@ export type ViolationKind =
 	| "usb-wake-pin-taken"
 	| "button-unreachable"
 	| "field-missing"
+	| "connector-clash"
 	| "rail-underrated"
 	| ModelViolation["kind"]
 	| TestViolation["kind"]
@@ -149,7 +150,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -434,6 +435,35 @@ export function usbWakePinTaken(c: ContractSnapshot): Violation[] {
 			affects: ["architect"],
 		},
 	]
+}
+
+// Connectors that crowd each other at the board's edge: their footprints overlap, or (with our case) their openings leave
+// less than the case's minimum wall between them. Before, only the builds found it ("overlapping slots", "courtyard of
+// SW1 overlaps"), and the architect read a build failure instead of the two refs (real system run, 9 Nov).
+export function connectorClashes(c: ContractSnapshot): Violation[] {
+	const o = c.values.outline
+	const connectors = c.values.connectors ?? []
+	if (!o || connectors.length < 2) return []
+	const boxes = connectorBoxes(c, o.widthMm, o.heightMm)
+	const out: Violation[] = []
+	for (let i = 0; i < connectors.length; i++)
+		for (let j = i + 1; j < connectors.length; j++) {
+			const [a, b] = [connectors[i], connectors[j]]
+			const [ba, bb] = [boxes.find((x) => x.ref === a.ref), boxes.find((x) => x.ref === b.ref)]
+			const footprints = ba && bb && Math.abs(ba.x - bb.x) < (ba.w + bb.w) / 2 && Math.abs(ba.y - bb.y) < (ba.h + bb.h) / 2
+			const span = (k: Connector) => [k.offsetMm - k.widthMm / 2 - SLOT_MARGIN_MM, k.offsetMm + k.widthMm / 2 + SLOT_MARGIN_MM]
+			const [sa, sb] = [span(a), span(b)]
+			const gap = Math.max(sb[0] - sa[1], sa[0] - sb[1])
+			const openings = enclosureMode(c.values) === "case" && a.edge === b.edge && gap < MIN_WALL_MM
+			if (!footprints && !openings) continue
+			out.push({
+				kind: "connector-clash",
+				message: `${a.ref} (${a.edge}@${a.offsetMm} mm) and ${b.ref} (${b.edge}@${b.offsetMm} mm) ${footprints ? "overlap on the board" : `leave ${Math.max(0, gap).toFixed(1)} mm of case wall between their openings, under the ${MIN_WALL_MM} mm minimum`}: move one along its edge or to another edge`,
+				fields: ["connectors"],
+				affects: ["architect"],
+			})
+		}
+	return out
 }
 
 // A button someone has to press needs a way to reach it. In our case, that is an opening: the button listed in connectors

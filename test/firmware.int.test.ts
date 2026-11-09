@@ -139,6 +139,7 @@ test("a design with no sensor compiles the no-sensor product path: no reading, n
 		assert.ok(!bin.includes("HISTORY slot"), "no history writes")
 		assert.ok(!bin.includes("SENSOR FAIL"), "no sensor reading")
 		assert.equal(firmware.pins.BUTTON, 3)
+		assert.ok(bin.includes("BUTTON wake: visible for a phone"), "a button wake keeps it visible for a phone")
 	} finally {
 		await rm(dir, { recursive: true, force: true })
 	}

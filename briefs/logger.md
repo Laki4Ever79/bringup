@@ -12,6 +12,7 @@ every few days.
   around 500 mAh.
 - **USB-C** for charging and for flashing firmware. Nobody should need a special cable.
 - **A status LED** that blinks briefly on each reading and shows charging state.
+- **One button**, reachable through the case, that wakes it so a phone can connect at once.
 - **Small.** The board should be about 50 × 30 mm, so the whole thing fits in a pocket-sized case.
 
 ## Nice to have
@@ -19,7 +20,7 @@ every few days.
 - Parts that JLCPCB can assemble from stock, so a first batch of 10 is cheap.
 
 ## Out of scope
-- A display, buttons beyond what's needed to flash it, Wi-Fi, or a cloud backend.
+- A display, any other button, Wi-Fi, or a cloud backend.
 - Waterproofing. It lives indoors or in a box.
 
 ## How we'll judge the first prototype
