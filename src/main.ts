@@ -16,7 +16,7 @@ import { verifyConverted, type ConvertedModel } from "./contract/verify-model.ts
 import { buildCollectFirmware, buildFirmware, checkModelOnDevice, type DeviceModelCheck } from "./tools/firmware.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 
-const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>]"
+const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -28,6 +28,8 @@ export interface CliArgs {
 	engineerApproval: boolean
 	outDir?: string
 	reviewRounds?: number
+	// The revision budget before a run gives up (agents/consistency.ts MAX_REVISIONS by default).
+	maxRevisions?: number
 	// --bench: bring-up on the desk after settling, until Ctrl-C. real falls back to a replay, then the fake bench.
 	bench?: BenchSource
 	benchReplay?: string
@@ -66,11 +68,14 @@ export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	const delayIndex = argv.indexOf("--change-delay")
 	const delayS = delayIndex >= 0 ? Number(argv[delayIndex + 1]) : undefined
 	if (delayIndex >= 0 && !(Number.isFinite(delayS) && delayS! >= 0)) return { error: "--change-delay needs a number of seconds" }
-	const valueAt = new Set([outIndex, linkIndex, roundsIndex, replayIndex, delayIndex, ...changeIndexes, ...(benchSource ? [benchIndex] : [])].filter((i) => i >= 0).map((i) => i + 1))
+	const capIndex = argv.indexOf("--max-revisions")
+	const maxRevisions = capIndex >= 0 ? Number(argv[capIndex + 1]) : undefined
+	if (capIndex >= 0 && !(Number.isInteger(maxRevisions) && maxRevisions! >= 1)) return { error: "--max-revisions needs a whole number of at least 1" }
+	const valueAt = new Set([outIndex, linkIndex, roundsIndex, replayIndex, delayIndex, capIndex, ...changeIndexes, ...(benchSource ? [benchIndex] : [])].filter((i) => i >= 0).map((i) => i + 1))
 	const briefPath = argv.find((a, i) => !a.startsWith("--") && !valueAt.has(i))
 	if (!briefPath) return { error: "no brief given" }
 	if (!existsSync(briefPath)) return { error: `brief not found: ${briefPath}` }
-	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}), ...(delayS !== undefined ? { changeDelayMs: delayS * 1000 } : {}), ...(argv.includes("--stay") ? { stay: true } : {}), ...(link ? { link } : {}) }
+	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(maxRevisions ? { maxRevisions } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}), ...(delayS !== undefined ? { changeDelayMs: delayS * 1000 } : {}), ...(argv.includes("--stay") ? { stay: true } : {}), ...(link ? { link } : {}) }
 }
 
 // A run started by the hub or the demo (spawn-run.ts) has a stdin pipe from it: when that closes, its parent is
@@ -269,7 +274,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			open: () => openBench({ root: ROOT, source, outDir, replay: args.benchReplay, extraArgs: [...(args.benchNoMeter ? ["--no-meter"] : []), ...(args.benchNoImu ? ["--no-imu"] : [])], start: (a) => startBridge(python, a, { cwd: ROOT, onStderr: (t) => process.stderr.write(`[bench.py] ${t}`) }) }),
 		}
 	}
-	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}), ...(args.link ? { link: resolve(args.link) } : {}) })
+	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, ...(args.maxRevisions ? { maxRevisions: args.maxRevisions } : {}), bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}), ...(args.link ? { link: resolve(args.link) } : {}) })
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)\nreport: ${result.reportPath}`)
 	// What Bringup added without being asked, in one line each; the report's "Added for you" says how each shows and
 	// how to turn it off.

@@ -119,6 +119,7 @@ export type ViolationKind =
 	| "button-unreachable"
 	| "field-missing"
 	| "connector-clash"
+	| "led-pin"
 	| "rail-underrated"
 	| ModelViolation["kind"]
 	| TestViolation["kind"]
@@ -150,7 +151,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -464,6 +465,15 @@ export function connectorClashes(c: ContractSnapshot): Violation[] {
 			})
 		}
 	return out
+}
+
+// A status LED's GPIO goes on its anode: the generator puts its resistor from the cathode to GND, so a GPIO on the
+// cathode leaves the anode unconnected and the LED never lights (real system run 1, 9 Nov: STATUS_LED on D1.K).
+export function ledOnCathode(c: ContractSnapshot): Violation[] {
+	const parts = c.values.parts ?? []
+	return (c.values.pins ?? [])
+		.filter((p) => p.partPin === "K" && parts.some((x) => x.ref === p.partRef && x.role === "led"))
+		.map((p) => ({ kind: "led-pin" as const, message: `${p.signal} drives ${p.partRef}'s cathode (K), but the board generator puts the LED's resistor from K to GND, so its anode is unconnected and it never lights: assign ${p.signal} to ${p.partRef}.A`, fields: ["pins"] as FieldName[], affects: ["architect"] as AgentRole[] }))
 }
 
 // A button someone has to press needs a way to reach it. In our case, that is an opening: the button listed in connectors

@@ -36,6 +36,10 @@ export interface SystemResult {
 	reportPath: string
 }
 
+// Real system run 2 (9 Nov 2026): the beacon was consistent, built and booted, and ran out of revisions at 25 before its
+// review; drafting a link took the rest.
+export const SYSTEM_BOARD_MAX_REVISIONS = 40
+
 export const boardDir = (outDir: string, board: string) => join(outDir, "boards", board)
 
 // The board's newest settle, when it ended unsettled since `after`: the system stops rather than wait on it.
@@ -75,7 +79,8 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			sent.push({ board: b.name, text })
 		}
 		asked.set(b.name, 0)
-		procs.push(start({ briefPath: b.brief!, mock: o.mock, outDir: dir, extraArgs: [...(o.boardArgs ?? []), "--stay"] }))
+		// A board in a system drafts its links too (the connector, its edge, its pins): more revisions than a board alone.
+		procs.push(start({ briefPath: b.brief!, mock: o.mock, outDir: dir, extraArgs: [...(o.boardArgs ?? []), "--stay", "--max-revisions", String(SYSTEM_BOARD_MAX_REVISIONS)] }))
 	}
 	const contractsNow = (): Record<string, ContractSnapshot | undefined> =>
 		Object.fromEntries(
@@ -85,6 +90,14 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			}),
 		)
 	let tests: LinkTest[] = []
+	// Each board's newest contract, settled or not: what the report shows when the system stops early.
+	const lastContracts = (): Record<string, ContractSnapshot | undefined> =>
+		Object.fromEntries(
+			spec.boards.map((b) => {
+				const path = join(b.run ?? boardDir(outDir, b.name), "contract.json")
+				return [b.name, existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as ContractSnapshot) : undefined]
+			}),
+		)
 	const write = (contracts: Record<string, ContractSnapshot | undefined>, findings: SystemFinding[], status: string) => {
 		writeFileSync(join(outDir, "cable.md"), cableMarkdown(spec, contracts))
 		writeFileSync(join(outDir, "cable.yml"), wirevizYaml(spec, contracts))
@@ -105,7 +118,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			// A board that ended unsettled (stuck, or at its revision cap) won't fix itself: stop and say which.
 			const stuck = designed.filter((b) => unsettledSince(boardDir(outDir, b.name), asked.get(b.name) ?? 0)).map((b) => b.name)
 			if (stuck.length) {
-				write(contracts, findings, `UNSETTLED: ${stuck.join(" and ")} ended unsettled (see boards/<name>/report.md)`)
+				write(lastContracts(), findings, `UNSETTLED: ${stuck.join(" and ")} ended unsettled (see boards/<name>/report.md)`)
 				break
 			}
 			// Wait until every board has settled since it was last asked for something.
@@ -137,7 +150,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			}
 			write(contracts, findings, `round ${rounds}: findings sent to the boards`)
 		}
-		if (!ok && Date.now() >= deadline) write(contractsNow(), findings, "UNSETTLED: timed out")
+		if (!ok && Date.now() >= deadline) write(lastContracts(), findings, "UNSETTLED: timed out")
 	} finally {
 		for (const p of procs) p.kill()
 		await Promise.all(procs.map((p) => p.done))

@@ -5,7 +5,9 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { ModelMessageItem, UserMessageItem, FunctionCallOutputItem, type ContextItem } from "@mozaik-ai/core"
-import { connectorClashes } from "../src/contract/consistency.ts"
+import { connectorClashes, ledOnCathode } from "../src/contract/consistency.ts"
+import { usbWake } from "../src/codegen/circuit.ts"
+import { parseArgs } from "../src/main.ts"
 import { linkChecks } from "../src/contract/links.ts"
 import { addedForYou } from "../src/contract/added.ts"
 import { boardLinks } from "../src/system/derive.ts"
@@ -98,4 +100,32 @@ test("past the revision cap, the agents' own changes don't re-arm a run that sta
 	const settles = trace.filter((e) => e.type === "design.settled")
 	assert.equal(settles.length, 1, `settled ${settles.length} times: ${JSON.stringify(settles.map((e) => e.payload))}`)
 	assert.equal(settles[0].payload.settled, false)
+})
+
+test("a status LED driven on its cathode is a violation: its anode would be unconnected (real system run 1)", () => {
+	const s = logger()
+	s.values.pins = [...s.values.pins!, { signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" }]
+	assert.deepEqual(ledOnCathode(s), [])
+	s.values.pins = s.values.pins.map((p) => (p.signal === "STATUS_LED" ? { ...p, partPin: "K" } : p))
+	const v = ledOnCathode(s)
+	assert.equal(v.length, 1)
+	assert.match(v[0].message, /assign STATUS_LED to D1\.A/)
+})
+
+test("USB pins the architect assigns itself still count as native USB, so USB wake stays (real system run 2)", () => {
+	const s = logger()
+	assert.notEqual(usbWake(s), null)
+	s.values.pins = [...s.values.pins!, { signal: "USB_DN", gpio: 18, partRef: "J1", partPin: "DN" }, { signal: "USB_DP", gpio: 19, partRef: "J1", partPin: "DP" }]
+	assert.notEqual(usbWake(s), null)
+	// GPIO18 used for something else: no native USB, no USB wake.
+	s.values.pins = s.values.pins.map((p) => (p.gpio === 18 ? { ...p, signal: "OTHER", partRef: "D1", partPin: "A" } : p))
+	assert.equal(usbWake(s), null)
+})
+
+test("--max-revisions sets the run's revision budget; a system gives its boards 40", async () => {
+	const args = parseArgs(["briefs/logger.md", "--max-revisions", "40"])
+	assert.ok(!("error" in args) && args.maxRevisions === 40 && args.briefPath === "briefs/logger.md")
+	assert.match(String((parseArgs(["briefs/logger.md", "--max-revisions", "x"]) as { error: string }).error), /--max-revisions/)
+	const { SYSTEM_BOARD_MAX_REVISIONS } = await import("../src/system/run.ts")
+	assert.equal(SYSTEM_BOARD_MAX_REVISIONS, 40)
 })
