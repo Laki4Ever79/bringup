@@ -26,6 +26,14 @@ export const MCU_MIN_V = 3.0
 // I2C rise-time limits (I2C specification, standard and fast mode); rise time ≈ 0.8473 × R × C.
 const RISE_NS = (khz: number) => (khz > 100 ? 300 : 1000)
 
+// The longest cable an I2C bus allows at this speed with the generator's pull-ups (estimate: the cable's pF/m), and the
+// capacitance budget it comes from. `devices` counts the I2C devices on the bus besides the two boards' own pins.
+export function i2cCableLimit(khz: number, devices: number): { maxPf: number; maxMm: number } {
+	const fixedPf = 2 * BOARD_PF + devices * DEVICE_PF
+	const maxPf = (RISE_NS(khz) * 1e-9) / (0.8473 * PULLUP_OHM) / 1e-12
+	return { maxPf, maxMm: Math.max(0, ((maxPf - fixedPf) / CABLE_PF_PER_M) * 1000) }
+}
+
 const catalog = loadCatalog(resolve(import.meta.dirname, "../.."))
 const i2cDevices = (s: ContractSnapshot) =>
 	(s.values.parts ?? []).flatMap((p) => {
@@ -98,9 +106,7 @@ function i2cChecks(l: SystemLink, contracts: Record<string, ContractSnapshot | u
 	// Rise time ≈ 0.8473 × R × C must stay under the limit: the cable's capacitance is an estimate.
 	const khz = links[0].i2c?.khz ?? DEFAULT_I2C_KHZ
 	const devices = ends.reduce((n, b) => n + i2cDevices(contracts[b]!).length, 0)
-	const fixedPf = 2 * BOARD_PF + devices * DEVICE_PF
-	const maxPf = (RISE_NS(khz) * 1e-9) / (0.8473 * PULLUP_OHM) / 1e-12
-	const maxMm = Math.max(0, ((maxPf - fixedPf) / CABLE_PF_PER_M) * 1000)
+	const { maxPf, maxMm } = i2cCableLimit(khz, devices)
 	if (l.cable.lengthMm > maxMm)
 		out.push({ kind: "i2c-cable-too-long", link: l.id, message: `${l.id}: at ${khz} kHz with ${PULLUP_OHM / 1000}k pull-ups the bus allows about ${Math.round(maxPf)} pF, so about ${Math.round(maxMm)} mm of cable (estimate: ${CABLE_PF_PER_M} pF/m); this cable is ${l.cable.lengthMm} mm. Shorten it, slow the bus, or use UART`, boards: ends, estimate: true })
 	return out
