@@ -127,7 +127,10 @@ const SENSOR_PARTS = LOGGER_DESIGN.parts.filter((p) => ["U2", "R5", "R6"].includ
 const SENSOR_PINS = LOGGER_DESIGN.pins.filter((p) => p.partRef === "U2")
 
 // Which scripted design a brief gets: the beacon for a brief that says so, the logger for anything else.
-export const scriptedDesignFor = (brief: string) => (/\bbeacon\b/i.test(brief) ? BEACON_DESIGN : LOGGER_DESIGN)
+export const scriptedDesignFor = (brief: string): typeof LOGGER_DESIGN & Partial<Pick<ContractValues, "motion">> =>
+	/\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : LOGGER_DESIGN
+// A robot's requirements ask for motors (briefs/rover.md).
+const isRover = () => (state().contract.get("requirements")?.peripherals ?? []).includes("motors")
 
 // The beacon's parts for its current requirements: with a sensor once the requirements ask for one.
 function beaconParts(): ContractValues["parts"] {
@@ -471,7 +474,8 @@ export function mockScripts(): Record<string, Script> {
 				return propose("outline", { ...grown, widthMm: grown.widthMm + 2, sizeReason: { kind: "routing", detail: `the ${grown.widthMm}×${grown.heightMm} mm board (rev ${rev}) didn't route: tscircuit left pins without a trace` } }, `2 mm wider so the router has room: the rev ${rev} board didn't route`)
 			}
 			if (instruction.startsWith("Brief")) {
-				const field = ARCHITECT_FIELDS[step]
+				const fields: FieldName[] = /\brover\b/i.test(instruction) ? [...ARCHITECT_FIELDS, "motion"] : [...ARCHITECT_FIELDS]
+				const field = fields[step] as (typeof ARCHITECT_FIELDS)[number] | "motion" | undefined
 				// Tournament variants may cap the width: "Board must be at most <N> mm wide".
 				const maxWidth = Number(/Board must be at most (\d+(?:\.\d+)?) mm wide/i.exec(instruction)?.[1] ?? Infinity)
 				const design = scriptedDesignFor(instruction)
@@ -480,7 +484,7 @@ export function mockScripts(): Record<string, Script> {
 				const { sizeReason: _reason, ...plain } = design.outline
 				const sized = stated ? { sizeReason: { kind: "engineer-size" as const, detail: `the brief asks for about ${stated[1]} × ${stated[2]} mm` } } : {}
 				const housing = enclosureFromText(instruction)
-				const value = field === "outline" ? { ...plain, widthMm: Math.min(design.outline.widthMm, maxWidth), ...sized } : field === "requirements" && housing ? { ...design.requirements, enclosure: housing } : design[field]
+				const value = field === "outline" ? { ...plain, widthMm: Math.min(design.outline.widthMm, maxWidth), ...sized } : field === "requirements" && housing ? { ...design.requirements, enclosure: housing } : field === "motion" ? design.motion : field ? design[field] : undefined
 				return field ? propose(field, value, `initial ${field} from the brief`) : say("contract drafted")
 			}
 			return say("noted")
@@ -508,7 +512,8 @@ export function mockScripts(): Record<string, Script> {
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
 			}
 			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
-			const wanted = state().contract.get("model")?.sensor === "microphone" ? [...LOGGER_DESIGN.parts, MIC_PART] : LOGGER_DESIGN.parts
+			const base = isRover() ? ROVER_BOARD.parts : LOGGER_DESIGN.parts
+			const wanted = state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base
 			if (stepsTaken(items) > 0) return say("parts chosen")
 			return JSON.stringify(state().contract.get("parts")) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")
 		},
@@ -574,6 +579,29 @@ export function mockScripts(): Record<string, Script> {
 				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "the radio still fits" })] : say("decided")
 			}
 			return say("radio unchanged")
+		},
+		// The scripted mechanics engineer: the reference rover once motion targets exist; "N cm/mm narrower" (or wider)
+		// moves the plate's width and the track together, so the wheels keep their clearance.
+		"mock-mechanics": (items) => {
+			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
+			const step = stepsTaken(items)
+			const current = state().contract.get("mechanics")
+			if (instruction.startsWith("Change request from the engineer:")) {
+				const request = instruction.split("\n")[1] ?? ""
+				const m = /(\d+(?:\.\d+)?)\s*(cm|mm)\s+(narrower|wider)/i.exec(request)
+				if (step === 0 && m && current) {
+					const d = Number(m[1]) * (m[2].toLowerCase() === "cm" ? 10 : 1) * (m[3].toLowerCase() === "narrower" ? -1 : 1)
+					return propose("mechanics", { ...current, drive: { ...current.drive, trackMm: current.drive.trackMm + d }, chassis: { ...current.chassis, plateMm: [current.chassis.plateMm[0], current.chassis.plateMm[1] + d] } }, `engineer asked: ${request} (plate and track together, so the wheels keep clear)`)
+				}
+				return say(m ? "chassis updated" : "no mechanics change")
+			}
+			if (instruction.startsWith("Change request")) {
+				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
+				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "the chassis still fits" })] : say("decided")
+			}
+			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion"))
+				return propose("mechanics", ROVER_MECHANICS, "the reference rover: Pololu 100:1 micro gearmotors on 60 mm wheels, a 25 mm swivel caster, the 2000 mAh cell, the VL53L0X breakout at the front (catalog/mechanics.json)")
+			return say("mechanics unchanged")
 		},
 		"mock-enclosure": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))

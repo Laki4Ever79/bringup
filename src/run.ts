@@ -7,7 +7,7 @@ import { createBoardBuilder, createEnclosureBuilder, createFirmwareBuilder, crea
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
 import { createGroundingCheck } from "./agents/grounding-check.ts"
 import { createBomWriter } from "./agents/bom.ts"
-import { createArchitectAgent, createCaseAgent, createConnectivityAgent, createFirmwareReviewer, createMlAgent, createPartsAgent, createTestAgent } from "./agents/roles.ts"
+import { createArchitectAgent, createCaseAgent, createMechanicsAgent, createConnectivityAgent, createFirmwareReviewer, createMlAgent, createPartsAgent, createTestAgent } from "./agents/roles.ts"
 import { createBriefReviewer, MAX_REVIEW_ROUNDS } from "./agents/reviewer.ts"
 import type { Script } from "./inference/scripted-runner.ts"
 import { inferenceConfig } from "./inference/models.ts"
@@ -185,6 +185,8 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	createMlAgent({ mock: opts.mock })
 	createTestAgent({ mock: opts.mock })
 	createCaseAgent({ mock: opts.mock })
+	// Joins every run; it wakes only when motion targets make the design a robot.
+	createMechanicsAgent({ mock: opts.mock })
 	createConnectivityAgent({ mock: opts.mock })
 	createFirmwareReviewer({ mock: opts.mock })
 	if (state.review.enabled) createBriefReviewer({ mock: opts.mock, env })
