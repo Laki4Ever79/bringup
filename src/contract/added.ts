@@ -3,7 +3,7 @@
 // how the engineer will notice it on the device, why, what it costs and how to change it. The report lists them
 // ("Added for you"), and the agents and the reviewer get the same lines in their design facts.
 import { enclosureMode, type ContractSnapshot } from "./types.ts"
-import { recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
+import { downloadStrap, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
 import { PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
 
@@ -76,12 +76,14 @@ export function addedForYou(s: ContractSnapshot): AddedItem[] {
 	const pads = boot && s.values.outline ? recoveryPads(s).placed : []
 	if (boot && pads.length >= 2) {
 		const [b, g] = pads
+		const strap = downloadStrap(s)
+		const strapPulled = !!strap && supportParts(s).some((sp) => sp.job.startsWith(`${strap.mcu.ref}.${strap.pin} pull-up`))
 		items.push({
 			id: "recovery-pads",
 			what: `Recovery pads: ${b.ref} (BOOT, on ${boot.mcu.ref}.${boot.pin}, net ${b.net}) and ${g.ref} (GND), bare copper side by side on the bottom`,
 			shows: `Only needed when a firmware doesn't boot, so USB never comes up${wake?.gpio != null ? " (USB wake covers every other reflash)" : ""}. To use them: ${openUp}unplug USB and the battery, short ${b.ref} to ${g.ref} with tweezers while reconnecting the battery, then plug in USB. The chip waits in its ROM downloader, and \`pio run -t upload\` flashes it. (USB alone also powers it through the charger, so start with both unplugged.)`,
 			why: `${boot.mcu.ref}'s ${boot.pin} held low at power-up starts the ROM downloader, which works whatever the firmware does.`,
-			cost: `Two 1.5 mm pads; no part, no extra board area.`,
+			cost: strapPulled ? `Two 1.5 mm pads, and a 10k pull-up on ${strap!.mcu.ref}.${strap!.pin}: download boot also needs that pin high at reset, and it floats without one. It draws nothing while the pin is high.` : `Two 1.5 mm pads; no part, no extra board area${strap ? ` (${strap.mcu.ref}.${strap.pin}, which download boot also needs high, is already pulled up by the I2C bus)` : ""}.`,
 			change: ``,
 		})
 	}
