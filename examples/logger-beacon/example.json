@@ -1,0 +1,53 @@
+{
+	"name": "logger-beacon",
+	"sentence": "A climate logger and a pocket beacon that share readings over a cable",
+	"title": "logger and beacon over UART",
+	"boards": [
+		{
+			"name": "logger",
+			"outline": {
+				"widthMm": 50,
+				"heightMm": 30
+			}
+		},
+		{
+			"name": "beacon",
+			"outline": {
+				"widthMm": 58,
+				"heightMm": 36
+			}
+		}
+	],
+	"links": [
+		{
+			"id": "L1",
+			"kind": "uart",
+			"a": {
+				"board": "logger"
+			},
+			"b": {
+				"board": "beacon"
+			},
+			"baud": 115200,
+			"cable": {
+				"lengthMm": 300
+			},
+			"messages": [
+				{
+					"name": "reading",
+					"from": "logger",
+					"fields": [
+						{
+							"name": "tempCx100",
+							"type": "i16"
+						},
+						{
+							"name": "rhx100",
+							"type": "u16"
+						}
+					]
+				}
+			]
+		}
+	]
+}

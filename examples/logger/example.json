@@ -1,0 +1,15 @@
+{
+	"name": "logger",
+	"sentence": "A pocket climate logger a phone can read over Bluetooth",
+	"title": "pocket climate logger",
+	"boards": [
+		{
+			"name": "main",
+			"outline": {
+				"widthMm": 50,
+				"heightMm": 30
+			}
+		}
+	],
+	"links": []
+}
