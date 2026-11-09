@@ -68,8 +68,6 @@ export function roverFixture() {
 	]
 	values.pins = [
 		...c.values.pins!,
-		{ signal: "I2C_SDA", gpio: 8, partRef: "JT1", partPin: "IO1" },
-		{ signal: "I2C_SCL", gpio: 9, partRef: "JT1", partPin: "IO2" },
 		{ signal: "MOT_AIN1", gpio: 4, partRef: "U3", partPin: "AIN1" },
 		{ signal: "MOT_AIN2", gpio: 5, partRef: "U3", partPin: "AIN2" },
 		{ signal: "MOT_BIN1", gpio: 6, partRef: "U3", partPin: "BIN1" },

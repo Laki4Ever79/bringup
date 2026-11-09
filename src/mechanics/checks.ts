@@ -208,8 +208,9 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector") : undefined
 	if (!mech.sensor) push("mech-wiring", "no distance sensor in the mechanics design: the rover avoids walls with one at the front", ["mechanics"])
 	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["board"], ["parts"])
-	else if (!(pins.some((p) => p.signal === "I2C_SDA" && p.partRef === plug.ref && p.partPin === "IO1") && pins.some((p) => p.signal === "I2C_SCL" && p.partRef === plug.ref && p.partPin === "IO2")))
-		push("mech-wiring", `the sensor connector ${plug.ref} isn't on the I2C bus: IO1 to I2C_SDA and IO2 to I2C_SCL (the STEMMA QT order)`, ["board"], ["pins"])
+	// The board generator joins the plug's IO1/IO2 to the bus (linkBusTraces): the bus must exist on its board.
+	else if (!["I2C_SDA", "I2C_SCL"].every((sig) => boards.some((b) => (b.snapshot.values.parts ?? []).some((p) => p.ref === plug.ref) && (b.snapshot.values.pins ?? []).some((p) => p.signal === sig))))
+		push("mech-wiring", `the sensor connector ${plug.ref} needs an I2C bus on its board: assign I2C_SDA and I2C_SCL`, ["board"], ["pins"])
 	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", "no battery connector on any board: the cell needs one", ["board"], ["parts"])
 	return out
 }

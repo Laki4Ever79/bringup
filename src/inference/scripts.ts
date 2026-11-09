@@ -77,6 +77,50 @@ export const BEACON_DESIGN: typeof LOGGER_DESIGN = {
 	],
 }
 
+// The scripted rover (briefs/rover.md, docs/mechanics.md): the logger's board without its case, plus a DRV8833 driving
+// two Pololu 100:1 micro gearmotors from the cell (JM1 left, JM2 right), and a JST SH plug (JT1) for the VL53L0X
+// breakout standing at the chassis front, on the I2C bus with the SHT40 payload sensor. Always awake while driving:
+// about 25 mA for the MCU with BLE advertising plus 19 mA for the VL53L0X ranging (ST datasheet Table 8) ≈ 45 mA
+// average; the cell's runtime is the mechanics check's, not a battery-life target.
+const ROVER_PINS = [
+	{ signal: "I2C_SDA", gpio: 8, partRef: "U2", partPin: "SDA" },
+	{ signal: "I2C_SCL", gpio: 9, partRef: "U2", partPin: "SCL" },
+	{ signal: "MOT_AIN1", gpio: 4, partRef: "U5", partPin: "AIN1" },
+	{ signal: "MOT_AIN2", gpio: 5, partRef: "U5", partPin: "AIN2" },
+	{ signal: "MOT_BIN1", gpio: 6, partRef: "U5", partPin: "BIN1" },
+	{ signal: "MOT_BIN2", gpio: 7, partRef: "U5", partPin: "BIN2" },
+]
+export const ROVER_MOTION: ContractValues["motion"] = { speedMps: 0.3, runtimeMin: 30, edgeMm: 10, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [160, 150], maxMassG: 500 }
+export const ROVER_MECHANICS: ContractValues["mechanics"] = {
+	drive: { kind: "differential", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1420 wheel 60x8 mm", caster: "BOTLAND-7292 swivel caster 25 mm", trackMm: 130, wheelbaseMm: 90, axleXMm: 30 },
+	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: -25, yMm: 0 } },
+	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 72, yMm: 0, zMm: 50 }, connector: "JT1" },
+	// The plate's underside at the axle plus half a motor (30 + 5 mm), level with the 35 mm caster.
+	chassis: { plateMm: [150, 110], thicknessMm: 3, material: "PLA", clearanceMm: 35, boards: [{ name: "main", at: { xMm: 10, yMm: 0 }, rotDeg: 0 }] },
+}
+export const ROVER_BOARD = {
+	requirements: { summary: "indoor rover that avoids walls and carries a temperature and humidity sensor", peripherals: ["i2c-sensor", "usb-c", "status-led", "motors", "distance-sensor"], batteryLifeDays: null, enclosure: "none" as const },
+	outline: { widthMm: 60, heightMm: 40, thicknessMm: 1.6, sizeReason: { kind: "engineer-size" as const, detail: "the rover's chassis takes a 60 × 40 mm board" } },
+	connectors: [
+		LOGGER_DESIGN.connectors[0],
+		{ ref: "JM1", kind: "header" as const, edge: "top" as const, offsetMm: 15, widthMm: 6, heightMm: 6 },
+		{ ref: "JM2", kind: "header" as const, edge: "bottom" as const, offsetMm: 20, widthMm: 6, heightMm: 6 },
+		{ ref: "JT1", kind: "header" as const, edge: "top" as const, offsetMm: 42, widthMm: 6, heightMm: 4.3 },
+	],
+	rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 250, averageMa: 45 }],
+	pins: ROVER_PINS,
+	// The logger's parts without the USB-wake divider (R8, R9): the rover never deep-sleeps, so USB needs no wake line.
+	parts: [
+		...LOGGER_DESIGN.parts.filter((p) => !["R8", "R9"].includes(p.ref)),
+		{ ref: "U5", role: "motor-driver", mpn: "DRV8833PWPR", lcsc: "C50506", footprint: "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm", pins: ["nSLEEP", "AOUT1", "AISEN", "AOUT2", "BOUT2", "BISEN", "BOUT1", "nFAULT", "BIN1", "BIN2", "VCP", "VM", "GND", "VINT", "AIN2", "AIN1"] },
+		{ ref: "JM1", role: "connector", mpn: "B2B-PH-K-S(LF)(SN)", lcsc: "C131337", footprint: "jst2_ph", pins: ["1", "2"] },
+		{ ref: "JM2", role: "connector", mpn: "B2B-PH-K-S(LF)(SN)", lcsc: "C131337", footprint: "jst2_ph", pins: ["1", "2"] },
+		{ ref: "JT1", role: "connector", mpn: "SM04B-SRSS-TB(LF)(SN)", lcsc: "C160404", footprint: "jst4_sh", pins: ["GND", "VCC", "IO1", "IO2"] },
+	],
+	motion: ROVER_MOTION,
+	mechanics: ROVER_MECHANICS,
+}
+
 // "add a temperature/humidity sensor": the logger's SHT40 with its two I2C pull-ups, on the logger's I2C pins.
 export const ADD_SENSOR_REQUEST = /add .*(temp|humid|sensor)/i
 const SENSOR_PARTS = LOGGER_DESIGN.parts.filter((p) => ["U2", "R5", "R6"].includes(p.ref))

@@ -133,6 +133,10 @@ const SUPPORT = {
 	// The USB-sense divider's top: 68k over the 100k pull-down puts VBUS 4.75–5.25 V at 2.83–3.13 V on the pin, above
 	// the ESP32-C3's 2.475 V high threshold (0.75 × VDD) and under its 3.3 V supply. A JLCPCB Extended part.
 	senseTop: { kind: "resistor", value: "68k", lcsc: "C36871", mpn: "0402WGF6802TCE", footprint: "0402" },
+	// The DRV8833's internal regulator (VINT, 2.2 µF to GND) and charge pump (VCP, 10 nF to VM): TI DRV8833 §7.3
+	// "External components" table.
+	vint: { kind: "capacitor", value: "2.2uF", lcsc: "C12530", mpn: "CL05A225MQ5NSNC", footprint: "0402" },
+	vcp: { kind: "capacitor", value: "10nF", lcsc: "C15195", mpn: "CL05B103KB5NNNC", footprint: "0402" },
 } satisfies Record<string, SupportSpec>
 
 type End = { net: string } | { ref: string; pin: string }
@@ -233,12 +237,23 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	if (charger?.pins.includes("PROG")) jobs.push({ job: `charger PROG (${charger.ref}.PROG), sets the charge current`, spec: SUPPORT.prog, a: { ref: charger.ref, pin: "PROG" }, b: GND, near: charger.ref })
 	// One set of pull-ups per bus: on a bus shared with another board, only the board its link names fits them.
 	const pullups = !(s.values.links ?? []).some((l) => l.kind === "i2c" && l.i2c && !l.i2c.pullups)
-	if (supply && pullups) for (const p of pins) if (/^I2C_(SDA|SCL)$/.test(p.signal)) jobs.push({ job: `${p.signal} pull-up`, spec: SUPPORT.pullup, a: { net: p.signal }, b: { net: supply }, near: p.partRef })
+	if (supply && pullups) for (const p of pins.filter((x, i) => pins.findIndex((y) => y.signal === x.signal) === i)) if (/^I2C_(SDA|SCL)$/.test(p.signal)) jobs.push({ job: `${p.signal} pull-up`, spec: SUPPORT.pullup, a: { net: p.signal }, b: { net: supply }, near: p.partRef })
 	// An I2S microphone: its SD line pulled down (it tristates between frames) and VDD decoupled right at the part.
 	for (const mic of parts.filter((p) => p.role === "microphone")) {
 		const sd = pins.find((p) => p.partRef === mic.ref && p.partPin === "SD")
 		if (sd) jobs.push({ job: `${sd.signal} pull-down (${mic.ref}.SD tristates between frames)`, spec: SUPPORT.pulldown, a: { net: sd.signal }, b: GND, near: mic.ref })
 		if (supply && mic.pins.includes("VDD")) jobs.push({ job: `decoupling on ${mic.ref}.VDD`, spec: SUPPORT.decouple, a: { net: supply }, b: GND, near: mic.ref })
+	}
+	const driver = parts.find((p) => p.role === "motor-driver")
+	if (driver) {
+		const vm = charger || parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS"
+		if (driver.pins.includes("VM")) {
+			jobs.push({ job: `${driver.ref}.VM bulk (the motors' supply)`, spec: SUPPORT.bulk, a: { net: vm }, b: GND, near: driver.ref })
+			jobs.push({ job: `${driver.ref}.VM decoupling`, spec: SUPPORT.decouple, a: { net: vm }, b: GND, near: driver.ref })
+		}
+		if (driver.pins.includes("VINT")) jobs.push({ job: `${driver.ref}.VINT (internal regulator) to GND`, spec: SUPPORT.vint, a: { ref: driver.ref, pin: "VINT" }, b: GND, near: driver.ref })
+		if (driver.pins.includes("VCP")) jobs.push({ job: `${driver.ref}.VCP (charge pump) to VM`, spec: SUPPORT.vcp, a: { ref: driver.ref, pin: "VCP" }, b: { net: vm }, near: driver.ref })
+		if (supply && driver.pins.includes("nSLEEP")) jobs.push({ job: `${driver.ref}.nSLEEP pull-up (the driver awake)`, spec: SUPPORT.pullup, a: { ref: driver.ref, pin: "nSLEEP" }, b: { net: supply }, near: driver.ref })
 	}
 	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
 	if (ldo) jobs.push({ job: `decoupling on ${charger ? "VBAT" : "VBUS"} (LDO input)`, spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
@@ -396,8 +411,21 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// measured at rotation 270 on a left edge and turned back to rotation 0 here.
 	usbcmidmount: [9.84, 10.35],
 	[MIC_FOOTPRINT]: [MIC_BODY.w, MIC_BODY.h],
+	// The DRV8833's TSSOP-16 (6.4 mm lead span, 0.65 mm pitch): pads across x, 8 rows along y.
+	"tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm": [7.9, 5.6],
 }
 const DEFAULT_SIZE: [number, number] = [3, 3]
+
+// A dual-row IC's pin position at rotation 0 (tscircuit's soic/tssop: pin 1 top-left, down the left side, then up
+// the right), from the footprint's pin count, lead span (w) and pitch (p). Null for other footprints.
+export function icPinOffset(footprint: string, pin: number): { x: number; y: number } | null {
+	const m = /^(?:tssop|soic)(\d+)(?:_w([\d.]+)mm)?(?:_p([\d.]+)mm)?/.exec(footprint)
+	if (!m || pin < 1) return null
+	const n = Number(m[1]), w = Number(m[2] ?? 6.4), p = Number(m[3] ?? 0.65), half = n / 2
+	if (pin > n) return null
+	const row = pin <= half ? pin - 1 : n - pin
+	return { x: pin <= half ? -w / 2 : w / 2, y: ((half - 1) / 2 - row) * p }
+}
 
 // Centre of the reserved box relative to the part's origin, at rotation 0.
 const FOOTPRINT_OFFSET: Record<string, [number, number]> = { usbcmidmount: [0, -0.855], jst2_ph: [0, -0.55] }
@@ -637,10 +665,20 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 	put(byRole("button"), frame(depth - 4, mcuV < span / 2 ? 4 : span - 4))
 	// The microphone goes halfway along, against the other side edge from the sensor, away from the module's noise.
 	put(byRole("microphone"), frame(depth / 2, 4))
-	// Each support passive sits next to the part it serves.
+	// The motor driver mid-board, between the module and the USB-C side, before its capacitors (they sit beside it).
+	put(byRole("motor-driver"), frame(depth / 2, span / 2))
+	// Each support passive sits next to the part it serves; one that ends on a pin of a TSSOP/SOIC part sits just past
+	// that pin (a 7.9 mm TSSOP's far side is too far: tscircuit caps a decoupling trace at 1 mm).
 	const boxOf = (ref: string) => placed.find((b) => b.ref === ref)
+	const besidePin = (end: End) => {
+		if (!("ref" in end)) return null
+		const part = parts.find((p) => p.ref === end.ref)
+		const box = boxOf(end.ref)
+		const at = part && box && box.rotation === 0 ? icPinOffset(footprintFor(part), part.pins.indexOf(end.pin) + 1) : null
+		return at && box ? { x: box.x + at.x + Math.sign(at.x) * 1.5, y: box.y + at.y } : null
+	}
 	for (const sp of supportParts(s)) {
-		const want = boxOf(sp.near) ?? centre
+		const want = besidePin(sp.a) ?? boxOf(sp.near) ?? centre
 		if (sp.added) {
 			if (!done.has(sp.ref)) {
 				done.add(sp.ref)
@@ -774,7 +812,10 @@ function at(placement: Map<string, Placed>, ref: string): string {
 // The power and USB nets the generator wires on top of the contract's own signals: GND, the 3V3 rail, VBUS, VBAT (when
 // there is a charger) and USB D±, with the support passives' ends. Ends are "REF.pin". Only nets that reach at least
 // two components are kept; a one-component net can't be routed.
-const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET]
+const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET, "MOTOR_A1", "MOTOR_A2", "MOTOR_B1", "MOTOR_B2"]
+
+// A rover's motor connectors: two-pin connectors, in ref order (JM1 motor A, JM2 motor B).
+export const motorConnectors = (parts: Part[]) => parts.filter((p) => p.role === "connector" && p.pins.length === 2 && p.pins[0] === "1" && p.pins[1] === "2").sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
 
 export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const { parts = [], rails = [], pins = [] } = s.values
@@ -834,6 +875,20 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		if (hasSupply && k?.pins.includes("VCC") && l.supply !== "none") join(supply, k.ref, "VCC")
 	}
 
+	// A motor driver (DRV8833, docs/mechanics.md): motor supply VM from the cell, no current sensing (xISEN to GND),
+	// each output pair to its motor's connector.
+	const driver = parts.find((p) => p.role === "motor-driver")
+	if (driver) {
+		if (driver.pins.includes("VM")) join(charger || battery ? "VBAT" : "VBUS", driver.ref, "VM")
+		for (const pin of ["AISEN", "BISEN"]) if (driver.pins.includes(pin)) join("GND", driver.ref, pin)
+		const [ma, mb] = motorConnectors(parts)
+		for (const [k, side] of [[ma, "A"], [mb, "B"]] as const)
+			if (k) for (const n of ["1", "2"] as const) if (driver.pins.includes(`${side}OUT${n}`)) { join(`MOTOR_${side}${n}`, driver.ref, `${side}OUT${n}`); join(`MOTOR_${side}${n}`, k.ref, n) }
+	}
+	// A robot's distance-sensor plug (mechanics.sensor.connector) powers the breakout from the 3V3 rail.
+	const plug = parts.find((p) => p.ref === s.values.mechanics?.sensor?.connector && p.role === "connector")
+	if (hasSupply && plug?.pins.includes("VCC")) join(supply, plug.ref, "VCC")
+
 	// A microphone's LR select tied low puts its data in the I2S frame's left channel (DS-000069 Table 8).
 	for (const m of parts.filter((p) => p.role === "microphone" && p.pins.includes("LR")))
 		if (!pins.some((p) => p.partRef === m.ref && p.partPin === "LR")) join("GND", m.ref, "LR")
@@ -852,11 +907,15 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 }
 
 // The connector pins an I2C link puts on the board's bus, unless a contract pin already wires them there.
+// Also a robot's distance-sensor plug (mechanics.sensor.connector): its IO1/IO2 join the bus the same way, in the
+// STEMMA QT order. A signal has one contract pin; other parts reach its net through these traces.
 export function linkBusTraces(s: ContractSnapshot): { ref: string; pin: string; net: string }[] {
 	const { parts = [], pins = [] } = s.values
-	return (s.values.links ?? []).flatMap((l) => {
-		const k = parts.find((p) => p.ref === l.connector && p.role === "connector")
-		if (l.kind !== "i2c" || !k) return []
+	const plug = s.values.mechanics?.sensor?.connector
+	const buses = [...(s.values.links ?? []).filter((l) => l.kind === "i2c").map((l) => l.connector), ...(plug ? [plug] : [])]
+	return buses.flatMap((ref) => {
+		const k = parts.find((p) => p.ref === ref && p.role === "connector")
+		if (!k) return []
 		return ([["IO1", "I2C_SDA"], ["IO2", "I2C_SCL"]] as const)
 			.filter(([pin, net]) => k.pins.includes(pin) && pins.some((p) => p.signal === net) && !pins.some((p) => p.signal === net && p.partRef === k.ref && p.partPin === pin))
 			.map(([pin, net]) => ({ ref: k.ref, pin, net }))
@@ -881,7 +940,10 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string
 	for (const sp of supportParts(s)) {
 		if (sp.added) {
 			const attr = sp.spec.kind === "resistor" ? "resistance" : "capacitance"
-			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${q(sp.spec.footprint)} />`)
+			// A capacitor wired straight to a chip pin (the DRV8833's VINT and VCP): tscircuit would cap the trace at 1 mm,
+			// which the placer's 1.5 mm part gap can never meet; 5 mm keeps it at the pin and reaches a ground.
+			const pinBound = sp.spec.kind === "capacitor" && ("ref" in sp.a || "ref" in sp.b) ? " maxDecouplingTraceLength={5}" : ""
+			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${q(sp.spec.footprint)}${pinBound} />`)
 		}
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) {
 			if ("ref" in end) lines.push(`<trace name=${q(`${end.ref}_${end.pin}_${sp.ref}`)} from=${q(port(end.ref, end.pin))} to=${q(port(sp.ref, pin))} />`)
