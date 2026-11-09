@@ -11,7 +11,7 @@
 	@font-face { font-family: "Instrument"; src: url("/fonts/InstrumentSans.woff") format("woff"); font-weight: 400 700; font-display: swap; }
 	@font-face { font-family: "JBMono"; src: url("/fonts/JetBrainsMono.woff") format("woff"); font-weight: 100 800; font-display: swap; }
 	:root {
-		--paper: #efe9dc; --paper-2: #e6dfcf; --paper-3: #dcd3c0; --rule: #c9bea7;
+		--paper: #fff; --paper-2: #faf9f6; --paper-3: #f1efe9; --rule: #e2ded5;
 		--ink: #16140f; --ink-2: #4b463c; --ink-3: #807865;
 		--signal: #ff4a17; --signal-wash: rgba(255, 74, 23, .12);
 		--ok: #11804a; --ok-wash: rgba(17, 128, 74, .13); --warn: #b86e00; --warn-wash: rgba(184, 110, 0, .14); --error: #c8231a; --error-wash: rgba(200, 35, 26, .12); --info: #1f5fbf;
@@ -71,6 +71,14 @@
 	#error { color: var(--error); font-weight: 600; }
 	.links-row { display: flex; gap: 8px; flex-wrap: wrap; }
 	.hidden { display: none !important; }
+	#stage-wrap { padding: 14px var(--gap) 0; max-width: 1400px; margin: 0 auto; }
+	#stage { position: relative; height: min(56vh, 520px); min-height: 320px; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: #fff; }
+	#stage .hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--ink-3); pointer-events: none; z-index: 2; }
+	#stage .live { position: absolute; right: 12px; top: 10px; font: 12px var(--mono); color: var(--ink-3); z-index: 2; }
+	#crumb { position: absolute; left: 12px; top: 10px; z-index: 4; font-size: 13px; display: none; }
+	#crumb button { font: inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 2px 9px; cursor: pointer; }
+	#timeline { display: flex; align-items: center; gap: 10px; padding: 8px 2px 0; font: 12px var(--mono); color: var(--ink-3); }
+	#timeline input { flex: 1; accent-color: var(--signal); }
 </style>
 </head>
 <body>
@@ -84,6 +92,10 @@
 	<button id="stop" class="pill hidden" title="Stop this system and its board runs">■ Stop</button>
 	<a class="pill" href="/system">All systems</a>
 </header>
+<div id="stage-wrap" class="hidden">
+	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
+	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
+</div>
 <main id="main"></main>
 <script>
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -219,6 +231,7 @@ async function showSystem() {
 		return
 	}
 	const d = await r.json()
+	startStage(d)
 	document.getElementById("title").textContent = d.spec?.name ?? id
 	document.title = `Bringup · ${d.spec?.name ?? id}`
 	statusEl.className = `status ${statusClass(d.status, d.settled)}`
@@ -245,6 +258,81 @@ async function showSystem() {
 	clearTimeout(timer)
 	if (d.status === "running") timer = setTimeout(showSystem, 2000)
 }
+
+// ── The live 3D stage: each board's run streams its events; the assembly redraws at most once a frame ──
+const stage = { world: null, traces: {}, runs: {}, meta: null, files: new Map(), pending: false, shownPulse: {}, upTo: null, started: false }
+async function startStage(d) {
+	if (stage.started) { stage.meta = d; return }
+	stage.started = true
+	stage.meta = d
+	let mountWorld
+	try { ({ mountWorld } = await import("/world3d.js")) } catch { return }
+	document.getElementById("stage-wrap").classList.remove("hidden")
+	try {
+		stage.world = mountWorld(document.getElementById("stage"), { onPick: (name) => window.openBoard?.(name) })
+	} catch {
+		document.getElementById("stage-wrap").classList.add("hidden")
+		return
+	}
+	for (const b of d.boards) {
+		stage.traces[b.name] = []
+		if (!b.runId) continue
+		stage.runs[b.name] = b.runId
+		const src = new EventSource(`/runs/${encodeURIComponent(b.runId)}/events`)
+		src.onmessage = (m) => { try { stage.traces[b.name].push(JSON.parse(m.data)); schedule() } catch {} }
+	}
+	schedule()
+}
+function schedule() {
+	if (stage.pending) return
+	stage.pending = true
+	requestAnimationFrame(() => { stage.pending = false; redraw() })
+}
+// A run file once (the first of `paths` that exists: a board revision's circuit lives in dist/ on newer runs, as the
+// board page's circuitFor knows), then a redraw.
+function fileOnce(runId, paths, as) {
+	paths = [paths].flat()
+	const key = `${runId}/${paths[0]}`
+	if (!stage.files.has(key)) {
+		stage.files.set(key, null)
+		;(async () => {
+			for (const p of paths) {
+				const r = await fetch(`/runs/${encodeURIComponent(runId)}/files/${p}`).catch(() => null)
+				if (r?.ok) { stage.files.set(key, await r[as]()); return schedule() }
+			}
+		})()
+	}
+	return stage.files.get(key)
+}
+async function redraw() {
+	if (!stage.world || !stage.meta) return
+	const { assemblyAt, timeSpan } = await import("/assembly.js")
+	const span = timeSpan(stage.traces)
+	const v = Number(document.getElementById("scrub").value)
+	stage.upTo = span && v < 1000 ? new Date(Date.parse(span[0]) + ((Date.parse(span[1]) - Date.parse(span[0])) * v) / 1000).toISOString() : null
+	document.getElementById("scrub-at").textContent = stage.upTo ? `+${Math.round((Date.parse(stage.upTo) - Date.parse(span[0])) / 1000)} s` : "live"
+	const asm = assemblyAt(stage.traces, stage.upTo ?? undefined)
+	const boards = stage.meta.boards.map((b) => {
+		const a = asm[b.name] ?? { state: "empty", outline: null, boardRevision: null, enclosureRevision: null, pulses: [] }
+		const runId = stage.runs[b.name]
+		const circuit = runId && a.boardRevision !== null ? fileOnce(runId, [`board/rev-${a.boardRevision}/dist/board/circuit.json`, `board/rev-${a.boardRevision}/circuit.json`], "json") : null
+		const encDir = a.enclosureRevision !== null ? `enclosure/rev-${a.enclosureRevision}` : null
+		const caseStl = runId && encDir && circuit ? fileOnce(runId, `${encDir}/case.stl`, "arrayBuffer") : null
+		const caseSpec = runId && encDir && circuit ? fileOnce(runId, `${encDir}/spec.json`, "json") : null
+		const outline = a.outline ?? b.outline ?? null
+		return { name: b.name, outline, circuit, caseStl, caseSpec, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}` }
+	})
+	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
+	stage.world.setWorld({ boards, cables })
+	for (const [name, a] of Object.entries(asm)) {
+		const caption = a.pulses[0]?.caption ?? null
+		if (caption && stage.shownPulse[name] !== caption) stage.world.pulse({ board: name }, caption)
+		stage.shownPulse[name] = caption
+	}
+	const states = Object.values(asm).map((a) => a.state)
+	document.getElementById("live").textContent = `${states.filter((s) => s === "cased" || s === "routed").length} of ${states.length} boards built`
+}
+document.getElementById("scrub").addEventListener("input", schedule)
 
 document.getElementById("stop").onclick = async () => {
 	await fetch(`/api/systems/${encodeURIComponent(id)}/stop`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })

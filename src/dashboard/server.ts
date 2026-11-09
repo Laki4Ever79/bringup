@@ -35,7 +35,7 @@ const SYSTEM_SPECS = new URL("../../briefs/systems/", import.meta.url)
 const EXPERIMENT = new URL("../../docs/experiment-results.json", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js", "spend.js", "world3d.js", "plan-edit.js"])
+const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js", "spend.js", "world3d.js", "plan-edit.js", "assembly.js"])
 // Vendored OFL fonts (fonts/README.md), by exact name.
 const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/

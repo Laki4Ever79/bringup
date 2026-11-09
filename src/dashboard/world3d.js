@@ -401,7 +401,9 @@ export function mountWorld(host, opts = {}) {
 			overlay.append(el)
 			return { mesh: upload(r.mesh), mid: r.mid, el }
 		})
-		if (!S.fly && !S.focused) S.cam = fitView([...S.boards.keys()])
+		// Keep fitting as boards grow, until the user turns or zooms; then only when boards come or go.
+		const names = [...S.boards.keys()].sort().join(",")
+		if ((names !== S.fitted || !S.userMoved) && !S.fly && !S.focused) { S.cam = fitView([...S.boards.keys()]); S.fitted = names }
 		request()
 	}
 
@@ -448,6 +450,7 @@ export function mountWorld(host, opts = {}) {
 			const dx = e.clientX - S.dragging.x, dy = e.clientY - S.dragging.y
 			S.dragging.moved += Math.abs(dx) + Math.abs(dy)
 			S.dragging.x = e.clientX; S.dragging.y = e.clientY
+			S.userMoved = true
 			S.cam = { ...S.cam, yaw: S.cam.yaw - dx * 0.008, pitch: Math.min(1.45, Math.max(0.05, S.cam.pitch + dy * 0.006)) }
 			request()
 			return
@@ -464,7 +467,7 @@ export function mountWorld(host, opts = {}) {
 		const name = pickBoard(origin, dir, boxes())
 		if (name) opts.onPick?.(name)
 	})
-	canvas.addEventListener("wheel", (e) => { e.preventDefault(); S.cam = { ...S.cam, distance: Math.min(3000, Math.max(15, S.cam.distance * Math.exp(e.deltaY * 0.001))) }; request() }, { passive: false })
+	canvas.addEventListener("wheel", (e) => { e.preventDefault(); S.userMoved = true; S.cam = { ...S.cam, distance: Math.min(3000, Math.max(15, S.cam.distance * Math.exp(e.deltaY * 0.001))) }; request() }, { passive: false })
 
 	// Nothing drawn while hidden or scrolled away.
 	const onVisibility = () => { S.visible = !document.hidden; if (S.visible) request() }
