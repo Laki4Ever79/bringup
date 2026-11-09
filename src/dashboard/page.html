@@ -633,6 +633,7 @@
 <div id="app">
 	<header>
 		<a class="logo" href="/"><i></i>Bringup</a>
+		<a id="system-link" class="pill" href="/system" title="Systems of boards: several boards and the cables between them">Systems</a>
 		<span id="brief-title"></span>
 		<span id="state-pill" class="pill hidden"><span class="dot"></span><span id="state-text">LIVE</span> · REV <span id="rev-num" class="num">0</span></span>
 		<span id="elapsed" class="num hidden"></span>
@@ -808,6 +809,12 @@
 
 	const hubInfo = await fetch("/api/hub").then((r) => r.json()).catch(() => ({ defaultRun: null, canStart: false }))
 	const runId = new URLSearchParams(location.search).get("run") ?? hubInfo.defaultRun
+	// A board of a system (<system>.<board>): the Systems pill goes back to that system.
+	if (runId && /^[\w-]+\.[\w-]+$/.test(runId)) {
+		const sysLink = document.getElementById("system-link")
+		sysLink.href = `/system?id=${encodeURIComponent(runId.split(".")[0])}`
+		sysLink.textContent = `← System · ${runId.split(".")[1]}`
+	}
 	if (runId) startRunView(runId)
 	else startScreen()
 

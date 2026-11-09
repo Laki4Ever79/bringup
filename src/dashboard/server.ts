@@ -3,6 +3,7 @@ import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, 
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
+import { fileURLToPath } from "node:url"
 import { basename, dirname, extname, join, resolve, sep } from "node:path"
 import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
@@ -18,9 +19,11 @@ const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
 const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
+const SYSTEM_PAGE = new URL("./system.html", import.meta.url)
 const STAGE_PAGE = new URL("./stage.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
+const SYSTEM_SPECS = new URL("../../briefs/systems/", import.meta.url)
 // af's A/B experiment (docs/experiment.md), committed so the hub can show the evidence without a run.
 const EXPERIMENT = new URL("../../docs/experiment-results.json", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
@@ -29,6 +32,8 @@ const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.
 // Vendored OFL fonts (fonts/README.md), by exact name.
 const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
+// A board of a system: <system id>.<board name>, the run in <out>/<system>/boards/<name> (src/system/run.ts).
+const BOARD_RUN_ID = /^([\w-]+)\.([\w-]+)$/
 const PROPOSAL_ID = /^[\w-]{1,100}$/
 const MAX_BODY = 64 * 1024
 const MAX_TEXT = 2000
@@ -269,6 +274,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 
 	// A run folder under outRoot, by id: the id is never decoded and must match RUN_ID; the real path must stay inside.
 	const runDir = async (id: string): Promise<string | null> => {
+		const board = BOARD_RUN_ID.exec(id)
+		if (board) {
+			const real = await realpath(join(outRoot, board[1], "boards", board[2])).catch(() => null)
+			if (!real || dirname(dirname(dirname(real))) !== rootReal) return null
+			return (await stat(real)).isDirectory() ? real : null
+		}
 		if (!RUN_ID.test(id)) return null
 		const real = await realpath(join(outRoot, id)).catch(() => null)
 		if (!real || dirname(real) !== rootReal) return null
@@ -312,7 +323,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		const out: RunSummary[] = []
 		for (const name of await readdir(outRoot)) {
 			const dir = await runDir(name)
-			if (dir) out.push(await summarize(name, dir))
+			if (dir && !existsSync(join(dir, "system.json"))) out.push(await summarize(name, dir))
 		}
 		return out.sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, MAX_RUNS_LISTED)
 	}
@@ -339,6 +350,96 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		if (opts.notify) void streamFor(outDir)
 		void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
 		return runId
+	}
+
+	// Systems of boards (src/system): a folder under outRoot with system.json, its boards in boards/<name>, each an
+	// ordinary run the run page opens as <system id>.<board name>.
+	const systemDir = async (id: string): Promise<string | null> => {
+		const dir = await runDir(id)
+		return dir && !BOARD_RUN_ID.test(id) && existsSync(join(dir, "system.json")) ? dir : null
+	}
+	const readJsonFile = (path: string) => readFile(path, "utf8").then((t) => JSON.parse(t), () => null)
+	const systemStatus = async (id: string, dir: string, state: { status?: string; settled?: boolean } | null) => {
+		const run = live.get(id)
+		if (run && run.exit === null) return { status: "running", settled: null }
+		if (state?.status) return { status: state.status, settled: state.settled === true }
+		// A system from before system-state.json: its report's status line.
+		const line = (await readFile(join(dir, "system-report.md"), "utf8").catch(() => "")).split("\n").find((l) => l.startsWith("Status: "))
+		if (line) return { status: line.slice("Status: ".length), settled: line.startsWith("Status: settled") }
+		return { status: run ? "failed" : "stopped", settled: null }
+	}
+	const listSystems = async () => {
+		const out: { id: string; name: string; boards: number; links: number; status: string; settled: boolean | null; startedAt: string }[] = []
+		for (const name of await readdir(outRoot)) {
+			const dir = await systemDir(name)
+			if (!dir) continue
+			const spec = await readJsonFile(join(dir, "system.json"))
+			const st = await systemStatus(name, dir, await readJsonFile(join(dir, "system-state.json")))
+			out.push({ id: name, name: spec?.name ?? name, boards: spec?.boards?.length ?? 0, links: spec?.links?.length ?? 0, ...st, startedAt: (await stat(join(dir, "system.json"))).mtime.toISOString() })
+		}
+		return out.sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, MAX_RUNS_LISTED)
+	}
+	const systemDetail = async (id: string, dir: string) => {
+		const spec = await readJsonFile(join(dir, "system.json"))
+		const state = await readJsonFile(join(dir, "system-state.json"))
+		const boards = await Promise.all(
+			(spec?.boards ?? []).map(async (b: { name: string; run?: string }) => {
+				const runId = `${id}.${b.name}`
+				const bdir = await runDir(runId)
+				if (!bdir) return { name: b.name, runId: null, imported: Boolean(b.run), status: b.run ? "imported" : "not started" }
+				const summary = await summarize(runId, bdir)
+				const contract = await readJsonFile(join(bdir, "contract.json"))
+				const v = contract?.values ?? {}
+				return {
+					name: b.name,
+					runId,
+					imported: false,
+					status: summary.status,
+					revision: summary.revision,
+					title: summary.title,
+					outline: v.outline ? { widthMm: v.outline.widthMm, heightMm: v.outline.heightMm } : null,
+					connectors: (v.connectors ?? []).map((c: { ref: string; kind: string; edge: string; offsetMm: number }) => ({ ref: c.ref, kind: c.kind, edge: c.edge, offsetMm: c.offsetMm })),
+					pins: (v.pins ?? []).filter((p: { partRef: string }) => /^JL/.test(p.partRef)).map((p: { signal: string; gpio: number; partRef: string; partPin: string }) => ({ signal: p.signal, gpio: p.gpio, partRef: p.partRef, partPin: p.partPin })),
+					render: existsSync(join(bdir, "board", "board.png")) ? `/runs/${runId}/files/board/board.png` : null,
+					report: existsSync(join(bdir, "report.md")) ? `/runs/${runId}/files/report.md` : null,
+				}
+			}),
+		)
+		const file = (name: string) => (existsSync(join(dir, name)) ? `/systems/${id}/files/${name}` : null)
+		return {
+			id,
+			spec,
+			...(await systemStatus(id, dir, state)),
+			findings: state?.findings ?? (await readJsonFile(join(dir, "system-findings.json"))) ?? [],
+			linkTests: state?.linkTests ?? [],
+			asked: state?.asked ?? [],
+			boards,
+			cable: await readFile(join(dir, "cable.md"), "utf8").catch(() => null),
+			files: { report: file("system-report.md"), cable: file("cable.md"), wireviz: file("cable.yml") },
+		}
+	}
+	const listSystemSpecs = async () => {
+		const names = (await readdir(SYSTEM_SPECS).catch(() => [] as string[])).filter((n) => n.endsWith(".json")).sort()
+		return Promise.all(names.map(async (name) => ({ name, spec: JSON.parse(await readFile(new URL(name, SYSTEM_SPECS), "utf8")) })))
+	}
+	const startSystem = (body: Record<string, unknown>): string => {
+		if (!opts.launch) throw new HttpError(404, "this dashboard can't start runs")
+		const name = text(body.spec, "spec", 200)
+		if (!/^[\w-]+\.json$/.test(name)) throw new HttpError(400, "spec must be a file name in briefs/systems")
+		const specPath = resolve(fileURLToPath(SYSTEM_SPECS), name)
+		if (!existsSync(specPath)) throw new HttpError(404, "no such system spec")
+		const mock = bool(body.mock, "mock")
+		const hardware = bool(body.hardware, "hardware")
+		const review = bool(body.review, "review")
+		const id = `system-${newRunId()}`
+		const outDir = join(outRoot, id)
+		mkdirSync(outDir, { recursive: true })
+		// `main.ts system <spec> …`: the launcher puts its first argument after main.ts.
+		const run = opts.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, ...(mock ? ["--mock"] : []), ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"])] })
+		const entry = { exit: null as number | null, kill: run.kill }
+		live.set(id, entry)
+		void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
+		return id
 	}
 
 	const allowedHost = (host: string | undefined) => ["127.0.0.1", "localhost", "[::1]"].some((h) => host === `${h}:${port}`)
@@ -420,6 +521,15 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				const origin = req.headers.origin
 				if (!fromLan && origin !== undefined && !allowedHost(origin.replace(/^http:\/\//, ""))) return json(res, 403, { error: "cross-site request" })
 				if (path === "/api/runs") return json(res, 201, { runId: startRun(await readJson(req)) })
+				if (path === "/api/systems") return json(res, 201, { systemId: startSystem(await readJson(req)) })
+				const stopSystem = /^\/api\/systems\/([^/]+)\/stop$/.exec(path)
+				if (stopSystem) {
+					if (!(await systemDir(stopSystem[1]))) return json(res, 404, { error: "unknown system" })
+					const run = live.get(stopSystem[1])
+					if (!run || run.exit !== null) return json(res, 409, { error: "that system is not running from this dashboard" })
+					run.kill?.()
+					return json(res, 200, { stopped: true })
+				}
 				const stop = /^\/api\/runs\/([^/]+)\/stop$/.exec(path)
 				if (stop) {
 					if (!(await runDir(stop[1]))) return json(res, 404, { error: "unknown run" })
@@ -526,6 +636,24 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				return dir ? json(res, 200, readDrift(dir)) : json(res, 404, { error: "unknown run" })
 			}
 			if (path === "/api/briefs") return json(res, 200, await listBriefs())
+			if (path === "/system") {
+				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
+				return res.end(await readFile(SYSTEM_PAGE))
+			}
+			if (path === "/api/systems") return json(res, 200, await listSystems())
+			if (path === "/api/system-specs") return json(res, 200, await listSystemSpecs())
+			const sys = /^\/api\/systems\/([^/]+)$/.exec(path)
+			if (sys) {
+				const dir = await systemDir(sys[1])
+				return dir ? json(res, 200, await systemDetail(sys[1], dir)) : json(res, 404, { error: "unknown system" })
+			}
+			const sysFile = /^\/systems\/([^/]+)\/files\/(system-report\.md|cable\.md|cable\.yml)$/.exec(path)
+			if (sysFile) {
+				const dir = await systemDir(sysFile[1])
+				if (!dir || !existsSync(join(dir, sysFile[2]))) return send(res, 404, "not found")
+				res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" })
+				return res.end(await readFile(join(dir, sysFile[2])))
+			}
 			if (path === "/api/experiment") {
 				const text = await readFile(EXPERIMENT, "utf8").catch(() => null)
 				return text ? json(res, 200, JSON.parse(text)) : json(res, 404, { error: "no experiment results" })

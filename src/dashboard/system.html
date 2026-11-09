@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bringup · systems of boards</title>
+<!-- A system of boards (src/system): its boards side by side, the links and cables between them, the system checks and
+     the two-chip link tests. Each board is an ordinary run; "Open board" shows it on the run page. -->
+<style>
+	@font-face { font-family: "Shoulders"; src: url("/fonts/BigShouldersDisplay.woff") format("woff"); font-weight: 100 900; font-display: swap; }
+	@font-face { font-family: "Instrument"; src: url("/fonts/InstrumentSans.woff") format("woff"); font-weight: 400 700; font-display: swap; }
+	@font-face { font-family: "JBMono"; src: url("/fonts/JetBrainsMono.woff") format("woff"); font-weight: 100 800; font-display: swap; }
+	:root {
+		--paper: #efe9dc; --paper-2: #e6dfcf; --paper-3: #dcd3c0; --rule: #c9bea7;
+		--ink: #16140f; --ink-2: #4b463c; --ink-3: #807865;
+		--signal: #ff4a17; --signal-wash: rgba(255, 74, 23, .12);
+		--ok: #11804a; --ok-wash: rgba(17, 128, 74, .13); --warn: #b86e00; --warn-wash: rgba(184, 110, 0, .14); --error: #c8231a; --error-wash: rgba(200, 35, 26, .12); --info: #1f5fbf;
+		--display: "Shoulders", "Arial Narrow", sans-serif; --sans: "Instrument", "Helvetica Neue", sans-serif; --mono: "JBMono", ui-monospace, monospace;
+		--gap: clamp(8px, .7vw, 14px);
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0; color: var(--ink); font: 15px/1.4 var(--sans); background-color: var(--paper);
+		background-image: linear-gradient(rgba(120, 104, 70, .09) 1px, transparent 1px), linear-gradient(90deg, rgba(120, 104, 70, .09) 1px, transparent 1px),
+			linear-gradient(rgba(120, 104, 70, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(120, 104, 70, .05) 1px, transparent 1px);
+		background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+	}
+	a { color: inherit; }
+	button, select { font: inherit; color: inherit; }
+	.mono { font-family: var(--mono); }
+	header { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 var(--gap); border-bottom: 1.5px solid var(--ink); background: var(--paper); flex-wrap: wrap; }
+	.logo { display: flex; align-items: center; gap: 10px; font: 800 28px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; text-decoration: none; }
+	.logo i { width: 16px; height: 16px; background: var(--signal); box-shadow: 3px 3px 0 var(--ink); }
+	h1 { font: 700 22px/1 var(--display); text-transform: uppercase; letter-spacing: .03em; margin: 0; }
+	h2 { font: 700 18px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 10px; }
+	.pill { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1.5px solid var(--ink); background: var(--paper); font: 600 13px/1 var(--sans); white-space: nowrap; text-decoration: none; cursor: pointer; }
+	.pill.primary { background: var(--ink); color: var(--paper); }
+	.pill:disabled { opacity: .5; cursor: default; }
+	.status { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1.5px solid currentColor; font: 700 12px/1 var(--mono); text-transform: uppercase; }
+	.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+	.s-ok { color: var(--ok); background: var(--ok-wash); }
+	.s-bad { color: var(--error); background: var(--error-wash); }
+	.s-run { color: var(--info); }
+	.s-run::before { animation: blink 1s infinite; }
+	.s-idle { color: var(--ink-3); }
+	@keyframes blink { 50% { opacity: .2; } }
+	main { padding: 18px var(--gap) 40px; max-width: 1280px; margin: 0 auto; display: grid; gap: 18px; }
+	section { border: 1.5px solid var(--ink); background: var(--paper); padding: 14px; }
+	.muted { color: var(--ink-3); }
+	table { border-collapse: collapse; width: 100%; font-size: 14px; }
+	th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+	th { font: 700 12px/1.2 var(--mono); text-transform: uppercase; color: var(--ink-2); }
+	tr.clickable { cursor: pointer; }
+	tr.clickable:hover { background: var(--paper-2); }
+	.boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+	.board { border: 1.5px solid var(--ink); background: var(--paper-2); padding: 12px; display: grid; gap: 8px; align-content: start; }
+	.board .top { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+	.board .name { font: 800 22px/1 var(--display); text-transform: uppercase; }
+	.board img { width: 100%; max-height: 220px; object-fit: contain; background: var(--paper-3); border: 1px solid var(--rule); }
+	.board dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 13px; }
+	.board dt { color: var(--ink-3); }
+	.board dd { margin: 0; }
+	.finding { border-left: 4px solid var(--error); background: var(--error-wash); padding: 8px 10px; margin-bottom: 8px; }
+	.finding.est { border-color: var(--warn); background: var(--warn-wash); }
+	.finding.pending { border-color: var(--ink-3); background: var(--paper-2); }
+	#topology svg { width: 100%; height: auto; display: block; }
+	form.start { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+	form.start label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+	select { height: 30px; border: 1.5px solid var(--ink); background: var(--paper); padding: 0 8px; }
+	#spec-preview { font-size: 13px; color: var(--ink-2); margin-top: 8px; }
+	#error { color: var(--error); font-weight: 600; }
+	.links-row { display: flex; gap: 8px; flex-wrap: wrap; }
+	.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+	<a class="logo" href="/"><i></i>Bringup</a>
+	<h1 id="title">Systems of boards</h1>
+	<span id="status" class="status s-idle hidden"></span>
+	<span style="flex:1"></span>
+	<span class="links-row" id="file-links"></span>
+	<button id="stop" class="pill hidden" title="Stop this system and its board runs">■ Stop</button>
+	<a class="pill" href="/system">All systems</a>
+</header>
+<main id="main"></main>
+<script>
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
+const id = new URLSearchParams(location.search).get("id")
+const main = document.getElementById("main")
+const statusEl = document.getElementById("status")
+
+const statusClass = (s, settled) => (s === "running" || s === "waiting for a change" ? "s-run" : settled === true || s === "settled" ? "s-ok" : s === "unsettled" || s === "failed" || settled === false ? "s-bad" : "s-idle")
+const statusLabel = (s) => (s.length > 40 ? s.split(":")[0] : s)
+const chip = (s, settled) => `<span class="status ${statusClass(s, settled)}" title="${esc(s)}">${esc(statusLabel(s))}</span>`
+
+// ---- The list of systems, and starting one --------------------------------------------------------------------------
+async function showList() {
+	const [systems, specs, hub] = await Promise.all([fetch("/api/systems").then((r) => r.json()), fetch("/api/system-specs").then((r) => r.json()), fetch("/api/hub").then((r) => r.json())])
+	main.innerHTML = `
+		<section>
+			<h2>Start a system</h2>
+			${hub.canStart && !hub.public ? `
+			<form class="start" id="start">
+				<select id="spec">${specs.map((s) => `<option value="${esc(s.name)}">${esc(s.spec.name ?? s.name)}</option>`).join("")}</select>
+				<label title="Scripted agents and stub tools: free, about a minute"><input type="checkbox" id="mock" checked> Scripted (free)</label>
+				<label title="Real board, case and firmware builds, and the QEMU link test"><input type="checkbox" id="hardware"> Hardware tools</label>
+				<label title="Each board's brief review by a reviewer agent"><input type="checkbox" id="review"> Review</label>
+				<button class="pill primary" type="submit">Start</button>
+				<span id="error"></span>
+			</form>
+			<div id="spec-preview"></div>
+			<p class="muted" style="font-size:13px;margin:8px 0 0">A system is a JSON file in briefs/systems: its boards, each from its own brief, and the links between them. Unchecking Scripted uses real models, which costs money and takes about an hour.</p>` : `<p class="muted">This dashboard can't start runs. From a terminal: <span class="mono">npm start -- system briefs/systems/&lt;name&gt;.json --mock --no-hardware</span></p>`}
+		</section>
+		<section>
+			<h2>Systems</h2>
+			${systems.length ? `<table><thead><tr><th>System</th><th>Boards</th><th>Links</th><th>Status</th><th>Started</th></tr></thead><tbody>
+				${systems.map((s) => `<tr class="clickable" data-id="${esc(s.id)}"><td>${esc(s.name)}<div class="muted mono" style="font-size:12px">${esc(s.id)}</div></td><td>${s.boards}</td><td>${s.links}</td><td>${chip(s.status, s.settled)}</td><td class="mono" style="font-size:12px">${esc(new Date(s.startedAt).toLocaleString())}</td></tr>`).join("")}
+			</tbody></table>` : `<p class="muted">No systems yet.</p>`}
+		</section>`
+	for (const tr of main.querySelectorAll("tr[data-id]")) tr.onclick = () => (location.href = `/system?id=${encodeURIComponent(tr.dataset.id)}`)
+	const form = document.getElementById("start")
+	if (!form) return
+	const preview = () => {
+		const s = specs.find((x) => x.name === document.getElementById("spec").value)?.spec
+		document.getElementById("spec-preview").innerHTML = s ? `<b>Boards:</b> ${s.boards.map((b) => esc(b.name)).join(", ")} · <b>Links:</b> ${s.links.map((l) => `${esc(l.id)} ${esc(l.kind.toUpperCase())} ${esc(l.a.board)} ↔ ${esc(l.b.board)}`).join("; ")}` : ""
+	}
+	document.getElementById("spec").onchange = preview
+	preview()
+	form.onsubmit = async (e) => {
+		e.preventDefault()
+		const mock = document.getElementById("mock").checked
+		if (!mock && !confirm("Real models: this costs money and takes about an hour. Start?")) return
+		const r = await fetch("/api/systems", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ spec: document.getElementById("spec").value, mock, hardware: document.getElementById("hardware").checked, review: document.getElementById("review").checked }) })
+		const body = await r.json()
+		if (!r.ok) return (document.getElementById("error").textContent = body.error ?? "could not start")
+		location.href = `/system?id=${encodeURIComponent(body.systemId)}`
+	}
+}
+
+// ---- One system ----------------------------------------------------------------------------------------------------
+// The boards in a row, each link a cable between their connectors, labelled with what it carries.
+function topology(d) {
+	const boards = d.spec.boards
+	const W = 300, H = 120, GAPX = 220, PAD = 30
+	const total = boards.length * W + (boards.length - 1) * GAPX + PAD * 2
+	const x = (i) => PAD + i * (W + GAPX)
+	const idx = Object.fromEntries(boards.map((b, i) => [b.name, i]))
+	const byName = Object.fromEntries(d.boards.map((b) => [b.name, b]))
+	const links = d.spec.links.map((l, k) => {
+		const [ia, ib] = [idx[l.a.board], idx[l.b.board]]
+		const [left, right] = ia < ib ? [ia, ib] : [ib, ia]
+		const y = 30 + H / 2 + (k - (d.spec.links.length - 1) / 2) * 26
+		const x1 = x(left) + W, x2 = x(right)
+		const power = l.power ? `VCC from ${l.power.from}` : "no power"
+		const what = l.kind === "uart" ? `UART ${l.baud ?? 115200} baud` : `I2C ${l.i2c?.khz ?? 100} kHz`
+		const mid = (x1 + x2) / 2
+		const arc = right - left > 1 ? `M${x1},${y} C${x1 + 60},${y + 90} ${x2 - 60},${y + 90} ${x2},${y}` : `M${x1},${y} L${x2},${y}`
+		return `<path d="${arc}" fill="none" stroke="var(--ink)" stroke-width="3"/><circle cx="${x1}" cy="${y}" r="5" fill="var(--signal)"/><circle cx="${x2}" cy="${y}" r="5" fill="var(--signal)"/>
+			<text x="${mid}" y="${y - 10}" text-anchor="middle" font-family="JBMono, monospace" font-size="13" font-weight="700">${esc(l.id)} · ${esc(what)}</text>
+			<text x="${mid}" y="${y + 18}" text-anchor="middle" font-family="Instrument, sans-serif" font-size="12" fill="var(--ink-2)">${esc(l.cable?.lengthMm ?? "?")} mm · ${esc(power)}</text>`
+	})
+	const boxes = boards.map((b, i) => {
+		const info = byName[b.name] ?? {}
+		const color = { "s-ok": "var(--ok)", "s-bad": "var(--error)", "s-run": "var(--info)", "s-idle": "var(--ink-3)" }[statusClass(info.status ?? "", null)]
+		const size = info.outline ? `${info.outline.widthMm}×${info.outline.heightMm} mm` : "not drafted yet"
+		return `<g><rect x="${x(i)}" y="30" width="${W}" height="${H}" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="2"/>
+			<rect x="${x(i)}" y="30" width="8" height="${H}" fill="${color}"/>
+			<text x="${x(i) + 22}" y="68" font-family="Shoulders, sans-serif" font-size="30" font-weight="800">${esc(b.name.toUpperCase())}</text>
+			<text x="${x(i) + 22}" y="94" font-family="JBMono, monospace" font-size="13" fill="var(--ink-2)">${esc(info.status ?? "")}${info.revision ? ` · rev ${info.revision}` : ""}</text>
+			<text x="${x(i) + 22}" y="116" font-family="Instrument, sans-serif" font-size="13" fill="var(--ink-2)">${esc(b.run ? "imported board" : size)}</text></g>`
+	})
+	return `<svg viewBox="0 0 ${total} ${d.spec.links.some((l) => Math.abs(idx[l.a.board] - idx[l.b.board]) > 1) ? 260 : 180}" role="img" aria-label="Boards and the cables between them">${boxes.join("")}${links.join("")}</svg>`
+}
+
+// cable.md's tables, as HTML tables (only its headings, paragraphs and pipe tables).
+function cableHtml(md) {
+	const out = []
+	let table = null
+	for (const line of md.split("\n")) {
+		if (/^\|/.test(line)) {
+			const cells = line.split("|").slice(1, -1).map((c) => c.trim())
+			if (cells.every((c) => /^-+$/.test(c))) continue
+			if (!table) { table = []; out.push(table) }
+			table.push(cells)
+			continue
+		}
+		table = null
+		if (/^## /.test(line)) out.push(`<h3 style="font:700 15px/1.2 var(--sans);margin:14px 0 6px">${esc(line.slice(3))}</h3>`)
+		else if (line.trim() && !/^# /.test(line)) out.push(`<p style="margin:6px 0;font-size:14px">${esc(line)}</p>`)
+	}
+	return out.map((x) => (Array.isArray(x) ? `<table><thead><tr>${x[0].map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${x.slice(1).map((r) => `<tr>${r.map((c) => `<td class="mono">${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>` : x)).join("")
+}
+
+function boardCard(b) {
+	if (!b.runId) return `<div class="board"><div class="top"><span class="name">${esc(b.name)}</span>${chip(b.status)}</div><p class="muted">${b.imported ? "An imported board: its contract is fixed, not designed here." : "Not started yet."}</p></div>`
+	const conns = (b.connectors ?? []).map((c) => `${c.ref} ${c.kind} ${c.edge}@${c.offsetMm}`).join(", ")
+	const linkPins = (b.pins ?? []).map((p) => `${p.signal}=GPIO${p.gpio}→${p.partRef}.${p.partPin}`).join(", ")
+	return `<div class="board">
+		<div class="top"><span class="name">${esc(b.name)}</span>${chip(b.status)}</div>
+		${b.render ? `<img src="${esc(b.render)}?t=${b.revision}" alt="${esc(b.name)} board render">` : ""}
+		<dl>
+			<dt>Brief</dt><dd>${esc(b.title ?? "")}</dd>
+			<dt>Contract</dt><dd class="mono">rev ${esc(b.revision ?? 0)}</dd>
+			<dt>Board</dt><dd class="mono">${b.outline ? `${b.outline.widthMm}×${b.outline.heightMm} mm` : "—"}</dd>
+			<dt>Connectors</dt><dd class="mono" style="font-size:12px">${esc(conns || "—")}</dd>
+			<dt>Link pins</dt><dd class="mono" style="font-size:12px">${esc(linkPins || "—")}</dd>
+		</dl>
+		<div class="links-row"><a class="pill primary" href="/?run=${encodeURIComponent(b.runId)}">Open board →</a>${b.report ? `<a class="pill" href="${esc(b.report)}" target="_blank">Report</a>` : ""}</div>
+	</div>`
+}
+
+let timer = null
+async function showSystem() {
+	const r = await fetch(`/api/systems/${encodeURIComponent(id)}`)
+	if (!r.ok) {
+		main.innerHTML = `<section><p>Unknown system <span class="mono">${esc(id)}</span>. <a href="/system">All systems</a></p></section>`
+		return
+	}
+	const d = await r.json()
+	document.getElementById("title").textContent = d.spec?.name ?? id
+	document.title = `Bringup · ${d.spec?.name ?? id}`
+	statusEl.className = `status ${statusClass(d.status, d.settled)}`
+	statusEl.textContent = statusLabel(d.status)
+	statusEl.title = d.status
+	document.getElementById("stop").classList.toggle("hidden", d.status !== "running")
+	document.getElementById("file-links").innerHTML = [["Report", d.files.report], ["Cable", d.files.cable], ["WireViz", d.files.wireviz]].filter(([, u]) => u).map(([n, u]) => `<a class="pill" href="${esc(u)}" target="_blank">${n}</a>`).join("")
+	const real = d.findings.filter((f) => f.kind !== "link-pending")
+	const pending = d.findings.filter((f) => f.kind === "link-pending")
+	main.innerHTML = `
+		<section id="topology"><h2>Boards and cables</h2>${topology(d)}</section>
+		<section><h2>Boards</h2><div class="boards">${d.boards.map(boardCard).join("")}</div></section>
+		<section><h2>System checks</h2>
+			${real.length ? real.map((f) => `<div class="finding${f.estimate ? " est" : ""}"><b class="mono">${esc(f.link)} · ${esc(f.kind)}</b>${f.estimate ? ' <span class="muted">(estimate)</span>' : ""}<div>${esc(f.message)}</div><div class="muted" style="font-size:12px">for ${esc(f.boards.join(", "))}</div></div>`).join("") : d.status === "running" && !d.findings.length ? `<p class="muted">Checked once the boards settle.</p>` : `<p>No findings: the links agree across the boards (crossover, baud, controllers, addresses, pull-ups, power, messages).</p>`}
+			${pending.map((f) => `<div class="finding pending">${esc(f.message)}</div>`).join("")}
+		</section>
+		<section><h2>Link tests</h2>
+			${d.linkTests.length ? `<table><thead><tr><th>Link</th><th>Result</th><th>What happened</th></tr></thead><tbody>${d.linkTests.map((t) => `<tr><td class="mono">${esc(t.link)}</td><td>${!t.ran ? chip("not run") : t.passed ? chip("pass", true) : chip("fail", false)}</td><td>${esc(t.detail)}</td></tr>`).join("")}</tbody></table>
+			<p class="muted" style="font-size:13px">Both boards' link-test firmware, built from their own contracts, run in QEMU joined by a virtual cable.</p>` : `<p class="muted">${d.status === "running" ? "Run after the boards settle." : "Not run (scripted run, or no hardware tools)."}</p>`}
+		</section>
+		<section><h2>Cables</h2>${d.cable ? cableHtml(d.cable) : `<p class="muted">Written once the boards have their connectors.</p>`}</section>
+		${d.asked.length ? `<section><h2>Asked of the boards</h2>${d.asked.map((a) => `<p style="font-size:14px"><b>${esc(a.board)}:</b> ${esc(a.text)}</p>`).join("")}</section>` : ""}`
+	clearTimeout(timer)
+	if (d.status === "running") timer = setTimeout(showSystem, 2000)
+}
+
+document.getElementById("stop").onclick = async () => {
+	await fetch(`/api/systems/${encodeURIComponent(id)}/stop`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+	showSystem()
+}
+;(id ? showSystem : showList)().catch((e) => (main.innerHTML = `<section><p id="error">${esc(e.message)}</p></section>`))
+</script>
+</body>
+</html>

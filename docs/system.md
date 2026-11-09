@@ -58,6 +58,17 @@ re-checks the system whenever a board settles. A system violation goes to the bo
 change request. Board runs stay separate processes: Mozaik allows one runtime per process, and it keeps each board
 exactly as it runs alone.
 
+## On the dashboard
+
+`npm run dashboard`, then **Systems** in the header (or `/system`):
+- **Start a system:** choose a spec from `briefs/systems`. Scripted (free) is on by default; unticking it uses real models.
+- **The system's page:**
+  - its boards and the cables between them, as a diagram;
+  - a card for each board, with its render, contract revision, size, connectors and link pins;
+  - the system checks, the QEMU link tests and the cable tables;
+  - while it runs, a Stop button.
+- **Open board:** shows that board on the normal run page (run id `<system>.<board>`), with a link back to its system.
+
 ## Firmware
 
 Everything link-specific is generated into `include/link.h`, so `main.cpp` only calls three functions: `linkBegin()`
