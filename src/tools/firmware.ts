@@ -1,3 +1,4 @@
+import { roverHeader } from "../mechanics/firmware.ts"
 import { spawn } from "node:child_process"
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
@@ -67,6 +68,14 @@ export async function buildFirmware(pio: string, root: string, dir: string, s: C
 // The template copied into dir with the design's headers (pins.h, behavior.h, model.h); returns pins.h. Every env
 // in the template builds from these, so the product, data-collection and factory-test firmware agree on the pins.
 export async function prepareFirmware(root: string, dir: string, s: ContractSnapshot, opts: { modelData?: string } = {}): Promise<string> {
+	// A robot (docs/mechanics.md) gets the rover firmware: the control logic behind the four-function hardware layer.
+	if (s.values.mechanics && s.values.motion) {
+		const rover = roverHeader(s)
+		await cp(join(root, "templates/fw-rover"), dir, { recursive: true })
+		await mkdir(join(dir, "include"), { recursive: true })
+		await writeFile(join(dir, "include/hw_pins.h"), rover)
+		return rover
+	}
 	const header = pinsHeader(s)
 	await cp(join(root, "templates/fw"), dir, { recursive: true })
 	await mkdir(join(dir, "include"), { recursive: true })
