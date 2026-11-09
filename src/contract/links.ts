@@ -79,7 +79,7 @@ export function linkFactLines(s: ContractSnapshot): string[] {
 		"## Links to other boards (from the system of boards; the integrator owns this field, you follow it)",
 		"- These are the engineer's requirements, from the system spec: they amend this board's brief. The link connector, its place on the edge and its opening in the case are wanted, not extras to justify against the brief (real system run 3: a reviewer blocked them as unjustified).",
 		...links.map((l) => {
-			const power = l.supply === "out" ? `this board's 3V3 powers ${l.peer} through VCC` : l.supply === "in" ? `this board runs from ${l.peer}'s 3V3 through VCC (no regulator of its own)` : "VCC unconnected: each board has its own supply"
+			const power = l.supply === "out" ? `this board's 3V3 powers ${l.peer} through VCC` : l.supply === "in" ? `this board runs from ${l.peer}'s 3V3 through VCC (no regulator of its own)` : "VCC unconnected: each board has its own supply. The board generator connects pin 2 to nothing on either board (its pad has no trace) and the cable leaves that wire out (cable.md), so power on it, from a mis-plugged cable or a Qwiic/STEMMA QT device, reaches nothing: no cross-powering. The connector is the JST SH family Qwiic uses, but this is not a Qwiic port (cable.md says so)"
 			const proto =
 				l.kind === "uart"
 					? `UART at ${l.baud} baud: ${uartSignals(l).tx} on ${l.connector}.${l.txOn}, ${uartSignals(l).rx} on ${l.connector}.${other(l.txOn!)} (assign both to free GPIOs)`
