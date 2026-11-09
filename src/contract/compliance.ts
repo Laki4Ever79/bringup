@@ -25,7 +25,10 @@ export function complianceItems(s: ContractSnapshot): ComplianceItem[] {
 	const items: ComplianceItem[] = []
 	const fcc = "US FCC (module grant)"
 	if (mcu?.mpn === "ESP32-C3-MINI-1") {
-		items.push({ rule: fcc, item: `the product's label says "Contains FCC ID: ${MODULE_FCC_ID}"`, status: "open", why: "the label isn't designed yet (the case lettering takes 24 characters)" })
+		// Where the label goes follows who houses the board (requirements.enclosure).
+		const mode = s.values.requirements?.enclosure ?? "case"
+		const where = mode === "own" ? "it goes on your own housing (interface.md lists it)" : mode === "none" ? "a bare board has no case to carry it: print it on the board's silkscreen, or on a sticker on the board" : "the label isn't designed yet (the case lettering takes 24 characters)"
+		items.push({ rule: fcc, item: `the product's label says "Contains FCC ID: ${MODULE_FCC_ID}"`, status: "open", why: where })
 		items.push({ rule: fcc, item: "used 20 cm or more from people, not body-worn", status: "check", why: "the module's grant covers mobile or fixed use; a wearable or handheld product needs its own approval" })
 		items.push({ rule: fcc, item: "the module's own PCB antenna, unmodified", status: "met", why: "the board keeps the module's antenna, at the board edge as Espressif recommends" })
 	}

@@ -2,13 +2,13 @@
 // implemented and how it would manifest", and be given an option where there is one). Each entry says what was added,
 // how the engineer will notice it on the device, why, what it costs and how to change it. The report lists them
 // ("Added for you"), and the agents and the reviewer get the same lines in their design facts.
-import type { ContractSnapshot } from "./types.ts"
+import { enclosureMode, type ContractSnapshot } from "./types.ts"
 import { recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
 import { PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
 
 export interface AddedItem {
-	id: "usb-wake" | "usb-wake-off" | "recovery-pads" | "phone-use"
+	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "phone-use"
 	what: string
 	shows: string // how the engineer will notice it on the device
 	why: string
@@ -18,6 +18,38 @@ export interface AddedItem {
 
 export function addedForYou(s: ContractSnapshot): AddedItem[] {
 	const items: AddedItem[] = []
+	const mode = enclosureMode(s.values)
+	// How the board is reached for reflashing, by who houses it.
+	const closed = mode === "case" ? ", case closed" : mode === "own" ? ", in your housing" : ""
+	const openUp = mode === "case" ? "open the case, " : mode === "own" ? "take the board out of your housing (or leave the pads reachable), " : ""
+	const toChangeCase = `requirements.enclosure: "case" (Bringup designs and prints one), "none" (a bare board) or "own" (your housing: Bringup writes the board's mechanical interface instead)`
+	if (s.values.requirements?.enclosure === undefined && s.values.outline)
+		items.push({
+			id: "case",
+			what: `A printed case, designed around the board`,
+			shows: `case.stl and lid.stl, built for every revision, with an opening for each connector and button, a vent over a sensor, standoffs for the mounting holes and the module's antenna inside its own wall.`,
+			why: `The brief didn't say how the board is housed, so Bringup assumed a finished device.`,
+			cost: `The print files and a print; every button must have an opening (checked).`,
+			change: `Set ${toChangeCase} (a change request: "no case, bare board" or "it goes into our own housing").`,
+		})
+	if (mode === "none")
+		items.push({
+			id: "no-case",
+			what: `No case: a bare board`,
+			shows: `Only the board is built. The battery hangs on its wires, nothing covers the parts, and static from fingers can reach the USB pins and the module: handle it on a bench, not in a pocket. The radio module's FCC label goes on the board's silkscreen or a sticker.`,
+			why: `requirements.enclosure is "none".`,
+			cost: `None.`,
+			change: `Set ${toChangeCase}.`,
+		})
+	if (mode === "own")
+		items.push({
+			id: "own-housing",
+			what: `Your own housing: a mechanical interface instead of a case`,
+			shows: `interface.md and interface.json beside the report: board size, mounting holes, the openings for connectors and buttons, lights, vents, the antenna's keep-out, the pads underneath and the label your housing must carry; board.step has every part's height. Regenerated on every change.`,
+			why: `requirements.enclosure is "own".`,
+			cost: `None from Bringup; your housing must match it.`,
+			change: `Set ${toChangeCase}.`,
+		})
 	const boot = recoveryBootPin(s)
 	const wake = usbWake(s)
 	const periodS = Math.round(s.values.requirements?.dutyCycle?.periodS ?? DEFAULT_PERIOD_S)
@@ -26,16 +58,16 @@ export function addedForYou(s: ContractSnapshot): AddedItem[] {
 		items.push({
 			id: "usb-wake",
 			what: `USB wake: plugging in USB wakes the board, and it stays awake while USB is powered`,
-			shows: `With the cable in, the computer sees a USB serial device ("USB JTAG/serial debug unit") and \`pio run -t upload\` flashes it with the cable alone, case closed. Meanwhile it keeps taking a reading every ${periodS} s, USB powers it and the battery charges. Unplugged, it is back in deep sleep within 0.1 s (or once a reading in progress ends).`,
+			shows: `With the cable in, the computer sees a USB serial device ("USB JTAG/serial debug unit") and \`pio run -t upload\` flashes it with the cable alone${closed}. Meanwhile it keeps taking a reading every ${periodS} s, USB powers it and the battery charges. Unplugged, it is back in deep sleep within 0.1 s (or once a reading in progress ends).`,
 			why: `The firmware deep-sleeps between readings, and the ESP32-C3's USB is off in deep sleep: without this, nothing answers on USB.`,
 			cost: `${divider.map((sp) => `${sp.ref} ${sp.spec.value}`).join(" and ")} from VBUS to ${wake.mcu.ref}.GPIO${wake.gpio}: about 30 µA from USB while plugged in, nothing from the battery. The 68k (${divider.find((sp) => sp.spec.value === "68k")?.spec.lcsc ?? "C36871"}) is a JLCPCB Extended part, which adds an assembly fee. The firmware's switch into download mode over its own USB is Espressif's documented path, not yet tried on a Bringup board.`,
-			change: `Set requirements.usbWake to false (a change request: "turn off USB wake"). Reflashing then needs the case open and the recovery pads.`,
+			change: `Set requirements.usbWake to false (a change request: "turn off USB wake"). Reflashing then needs ${mode === "case" ? "the case open and " : ""}the recovery pads.`,
 		})
 	} else if (boot && s.values.requirements?.usbWake === false) {
 		items.push({
 			id: "usb-wake-off",
 			what: `USB wake is off (requirements.usbWake false)`,
-			shows: `Plugging in USB charges the battery but doesn't wake the board, so the computer sees no device until its next reading, and only for that moment. Reflashing needs the case open and the recovery pads.`,
+			shows: `Plugging in USB charges the battery but doesn't wake the board, so the computer sees no device until its next reading, and only for that moment. Reflashing needs ${mode === "case" ? "the case open and " : ""}the recovery pads.`,
 			why: `Turned off in the contract.`,
 			cost: `None on the board.`,
 			change: `Remove requirements.usbWake, or set it to true, for USB wake.`,
@@ -47,7 +79,7 @@ export function addedForYou(s: ContractSnapshot): AddedItem[] {
 		items.push({
 			id: "recovery-pads",
 			what: `Recovery pads: ${b.ref} (BOOT, on ${boot.mcu.ref}.${boot.pin}, net ${b.net}) and ${g.ref} (GND), bare copper side by side on the bottom`,
-			shows: `Only needed when a firmware doesn't boot, so USB never comes up${wake?.gpio != null ? " (USB wake covers every other reflash)" : ""}. To use them: open the case, unplug USB and the battery, short ${b.ref} to ${g.ref} with tweezers while reconnecting the battery, then plug in USB. The chip waits in its ROM downloader, and \`pio run -t upload\` flashes it. (USB alone also powers it through the charger, so start with both unplugged.)`,
+			shows: `Only needed when a firmware doesn't boot, so USB never comes up${wake?.gpio != null ? " (USB wake covers every other reflash)" : ""}. To use them: ${openUp}unplug USB and the battery, short ${b.ref} to ${g.ref} with tweezers while reconnecting the battery, then plug in USB. The chip waits in its ROM downloader, and \`pio run -t upload\` flashes it. (USB alone also powers it through the charger, so start with both unplugged.)`,
 			why: `${boot.mcu.ref}'s ${boot.pin} held low at power-up starts the ROM downloader, which works whatever the firmware does.`,
 			cost: `Two 1.5 mm pads; no part, no extra board area.`,
 			change: ``,

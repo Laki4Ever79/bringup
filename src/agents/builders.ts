@@ -2,7 +2,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact, TestkitArtifact } from "../contract/consistency.ts"
-import type { ContractSnapshot, FieldName } from "../contract/types.ts"
+import { enclosureMode, type ContractSnapshot, type FieldName } from "../contract/types.ts"
 import { isEvent, makeEvent, type ArtifactKind } from "../events.ts"
 import { emit, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
@@ -81,13 +81,29 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	// For tools that report failure in their result instead of throwing.
 	failure?: (artifact: ArtifactOf[K]) => string | null
 	lock?: BuildLock
+	// Why this design has no such artifact, when it has none (no case wanted): the build completes with nothing built.
+	notNeeded?: (snapshot: ContractSnapshot) => string | null
 }): Human {
+	// The notNeeded answer the last build saw: a change to it (case wanted again, or not) rebuilds even though it lives
+	// in a field outside the inputs (requirements.enclosure), and only then.
+	let lastNeed: string | null | undefined
+	const needChanged = () => opts.notNeeded !== undefined && opts.notNeeded(state().contract.snapshot()) !== lastNeed
 	const self: { id: string } = { id: "" }
 	const rebuilder = new Rebuilder(async (revision) => {
 		const s = state()
 		const snapshot = s.contract.snapshot()
 		if ((opts.requires ?? []).some((f) => snapshot.versions[f] === 0)) return
 		const inputs = Object.fromEntries(opts.inputs.map((f) => [f, snapshot.versions[f]]))
+		const skipped = opts.notNeeded?.(snapshot) ?? null
+		lastNeed = skipped
+		if (skipped !== null) {
+			// Nothing to build: drop an earlier build (a case made before "no case"), and count it as current.
+			delete (s.artifacts as Record<string, unknown>)[opts.kind]
+			delete s.artifactFailures[opts.kind]
+			s.artifactInputs[opts.kind] = inputs
+			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, skipped }), self.id)
+			return
+		}
 		try {
 			const dir = join(s.outDir, opts.kind, `rev-${snapshot.revision}`)
 			mkdirSync(dir, { recursive: true })
@@ -117,7 +133,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 		capabilities: [],
 		handlers: [
 			{
-				specification: when(({ event }) => isEvent(event, "contract.changed") && opts.inputs.includes(event.payload.field)),
+				specification: when(({ event }) => isEvent(event, "contract.changed") && (opts.inputs.includes(event.payload.field) || (lastNeed !== undefined && needChanged()))),
 				processor: {
 					apply: ({ event }) => {
 						if (isEvent(event, "contract.changed")) rebuilder.request(event.payload.revision)
@@ -159,12 +175,19 @@ export function createBoardBuilder(env: Env, lock?: BuildLock): Human {
 	})
 }
 
+// The case is built only when the design wants one of ours (requirements.enclosure "case", the default).
+export function caseNotNeeded(s: ContractSnapshot): string | null {
+	const mode = enclosureMode(s.values)
+	return mode === "none" ? "no case: a bare board (requirements.enclosure none)" : mode === "own" ? "no case: it goes into the engineer's own housing (requirements.enclosure own); see interface.md" : null
+}
+
 export function createEnclosureBuilder(env: Env, lock?: BuildLock): Human {
 	return createBuilder({
 		kind: "enclosure",
 		lock,
 		inputs: BUILD_INPUTS.enclosure,
 		requires: BUILD_REQUIRES.enclosure,
+		notNeeded: caseNotNeeded,
 		build: ({ dir, snapshot, revision }) => {
 			if (!env.python) throw new Error("enclosure build failed: .venv python with build123d is not installed")
 			return buildEnclosure(env.python, env.root, dir, snapshot, revision)

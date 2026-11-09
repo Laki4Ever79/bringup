@@ -34,7 +34,11 @@ export function probeableNets(s: ContractSnapshot): { signals: string[]; power: 
 // every regulator's quiescent current while asleep. A limit below these fails every good board.
 export function expectedCurrents(s: ContractSnapshot): { awakeMa: number | null; sleepUa: number | null } {
 	const e = estimatePower(s, "")
-	const peak = e.rails.length ? Math.max(...e.rails.map((r) => r.peakMa)) : null
+	// The board's own peak is on the rails its parts run from, not the battery or USB input, whose loadMa an architect
+	// may set to the charger's or the cell's rating (real run 5: "500 mA awake" from VBAT's 500 mA, against 170 mA on 3V3).
+	const loads = e.rails.filter((r) => !/^(VBAT|VBUS|VIN|USB)/i.test(r.name))
+	const rails = loads.length ? loads : e.rails
+	const peak = rails.length ? Math.max(...rails.map((r) => r.peakMa)) : null
 	const sleepUa = e.sleep ? e.sleep.sleepUa + e.regulatorIqUa : null
 	return { awakeMa: peak, sleepUa }
 }

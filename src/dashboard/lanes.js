@@ -100,6 +100,8 @@ export function applyLaneEvent(lanes, e) {
 			// The board's DRC rides on its tile (what 04 used to show): clean = no errors; warnings go in the history.
 			const drc = p.kind === "board" ? p.drc : null
 			lanes[`build:${p.kind}`].builtRev = p.revision
+			// A design with no such artifact (no case of ours): nothing was built, and the tile says why.
+			if (p.skipped) return set(lanes, `build:${p.kind}`, "done", "not needed", e.at, true, p.skipped)
 			const text = !drc ? `rev ${p.revision} built` : drc.errors ? `DRC: ${plural(drc.errors, "error")}` : `rev ${p.revision} · DRC clean`
 			const detail = drc ? `rev ${p.revision}: ${plural(drc.errors, "error")}, ${plural(drc.warnings ?? 0, "warning")}, ${drc.unconnected ?? 0} unconnected (${drc.rules ?? "default"} rules)` : undefined
 			return set(lanes, `build:${p.kind}`, "done", text, e.at, true, detail)

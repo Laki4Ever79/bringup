@@ -92,7 +92,7 @@ function step(e) {
 			const diff = "after" in p ? readableDiff(p.field, p.before, p.after)[0]?.replace(/^[~+−-] /, "") : null
 			return diff ? `${who}: ${diff}` : `${who} ${p.version === 1 ? "set" : "changed"} ${p.field}`
 		}
-		case "artifact.ready": return `${BUILT[p.kind] ?? p.kind} rebuilt · rev ${p.revision}`
+		case "artifact.ready": return p.skipped ? `${BUILT[p.kind] ?? p.kind}: ${p.skipped}` : `${BUILT[p.kind] ?? p.kind} rebuilt · rev ${p.revision}`
 		case "artifact.failed": return `${BUILT[p.kind] ?? p.kind} build failed · rev ${p.revision}`
 		case "firmware.booted": return p.booted ? `firmware boots in QEMU · rev ${p.revision}` : `firmware did not boot · rev ${p.revision}`
 		case "bench.flashed": return p.ok ? `flashed the real board · rev ${p.revision}` : `flashing the board failed · rev ${p.revision}`

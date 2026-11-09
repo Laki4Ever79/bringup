@@ -153,7 +153,8 @@ export function spaceChecks(s: ContractSnapshot): SpaceViolation[] {
 			})
 	}
 	const c = s.values.case
-	if (c && o) {
+	// No case of ours (requirements.enclosure "none" or "own"): only the board's space counts.
+	if (c && o && (s.values.requirements?.enclosure ?? "case") === "case") {
 		const need = minCaseHeight(s, c)
 		const slack = c.heightMm / need - 1
 		if (need > 0 && slack > SLACK_LIMIT && !c.sizeReason)

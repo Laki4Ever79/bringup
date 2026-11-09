@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util"
 import { caseShapeError } from "./case.ts"
 import { connectivityShapeError } from "./connectivity.ts"
 import { sizeReasonError } from "./space.ts"
-import { FIELDS, OWNERS, PART_ROLES, SIGNAL_PATTERN, type ContractSnapshot, type ContractValues, type FieldName, type Proposal, type ProposalResult } from "./types.ts"
+import { ENCLOSURE_MODES, FIELDS, OWNERS, PART_ROLES, SIGNAL_PATTERN, type ContractSnapshot, type ContractValues, type FieldName, type Proposal, type ProposalResult } from "./types.ts"
 
 // A vetted part as the catalog lists it; footprint and pins are optional so a test can give just the MPN.
 export interface CatalogEntry {
@@ -154,6 +154,7 @@ function shapeError(field: FieldName, value: unknown): string | null {
 			if (value.batteryMah !== undefined && !(isNum(value.batteryMah) && (value.batteryMah as number) > 0)) return "requirements.batteryMah must be a positive number of mAh"
 			if (value.historyDays !== undefined && !(Number.isInteger(value.historyDays) && (value.historyDays as number) >= 1)) return "requirements.historyDays must be a whole number of days, at least 1"
 			if (value.usbWake !== undefined && typeof value.usbWake !== "boolean") return "requirements.usbWake must be true or false"
+			if (value.enclosure !== undefined && !(ENCLOSURE_MODES as readonly unknown[]).includes(value.enclosure)) return `requirements.enclosure must be one of ${ENCLOSURE_MODES.map((m) => `"${m}"`).join(", ")}`
 			const d = value.dutyCycle
 			if (d === undefined) return null
 			const ok = obj(d) && isNum(d.activeMs) && isNum(d.periodS) && isNum(d.sleepUa) && (d.activeMs as number) > 0 && (d.periodS as number) > 0 && (d.sleepUa as number) >= 0

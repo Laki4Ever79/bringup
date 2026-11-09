@@ -127,6 +127,8 @@ test("a design with no sensor compiles the no-sensor product path: no reading, n
 		c.values.parts = c.values.parts!.filter((p) => p.role !== "sensor")
 		c.values.parts.push({ ref: "SW1", role: "button", mpn: "TS-1187A-B-A-B", lcsc: "C318884", footprint: "pushbutton", pins: ["A", "B"] })
 		c.values.pins = [{ signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" }, { signal: "BUTTON", gpio: 3, partRef: "SW1", partPin: "A" }]
+		// The button reachable through the case, like the beacon's (button-unreachable otherwise).
+		c.values.connectors = [...(c.values.connectors ?? []), { ref: "SW1", kind: "button", edge: "top", offsetMm: 25, widthMm: 4, heightMm: 3 }]
 		c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 330, periodS: 60, sleepUa: 10 } }
 		const firmware = await buildFirmware(pio!, root, dir, c, 4)
 		assert.equal(firmware.ok, true, firmware.log)
