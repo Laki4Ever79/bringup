@@ -84,3 +84,18 @@ test("the page starts a system with `main.ts system <spec>`, refuses a spec outs
 		await hub.close()
 	}
 })
+
+test("the system and each board report what their model calls spent", async () => {
+	const root = tempDir()
+	const dir = fakeSystem(root, "system-a")
+	writeFileSync(join(dir, "boards", "logger", "usage.jsonl"), JSON.stringify({ at: "2026-11-09T10:00:00Z", model: "gpt-5.4-mini", source: "agents", inputTokens: 1, cachedTokens: 0, outputTokens: 1, usd: 0.25 }) + "\n")
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const getJson = async (p: string): Promise<any> => (await fetch(`${hub.url}${p}`)).json()
+		assert.deepEqual((await getJson("/api/systems/system-a")).spend, { usd: 0.25, calls: 1, unknownCalls: 0 })
+		assert.deepEqual(await getJson("/api/runs/system-a.logger/spend"), { usd: 0.25, calls: 1, unknownCalls: 0 })
+	} finally {
+		await hub.close()
+	}
+})

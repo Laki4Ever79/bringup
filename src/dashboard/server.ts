@@ -10,7 +10,7 @@ import { appendRequest } from "../runner/requests.ts"
 import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "../runner/drift.ts"
 import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
-import { appendUsage } from "../inference/usage.ts"
+import { addSpend, appendUsage, readSpend } from "../inference/usage.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 import type { TraceNotifier } from "./notify.ts"
@@ -29,7 +29,7 @@ const SYSTEM_SPECS = new URL("../../briefs/systems/", import.meta.url)
 const EXPERIMENT = new URL("../../docs/experiment-results.json", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js"])
+const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js", "spend.js"])
 // Vendored OFL fonts (fonts/README.md), by exact name.
 const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
@@ -211,6 +211,8 @@ interface RunSummary {
 	// "waiting for a change": settled, and the run stays up (--stay) for the next change request until Stop.
 	status: "running" | "bench live" | "waiting for a change" | "settled" | "unsettled" | "failed" | "stopped"
 	bench: boolean
+	// A scripted (--mock) run: no model calls, so nothing spent.
+	scripted: boolean
 	// Engineer change requests asked during the run, and the newest one's "consistent again in" time (ripples.json).
 	changes: { count: number; lastDurationMs: number | null }
 	revision: number
@@ -295,6 +297,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		let bench = false
 		let stay = false
 		let changeCount = 0
+		let scripted = false
 		for (const l of traceText.split("\n")) {
 			if (!l.trim()) continue
 			try {
@@ -304,7 +307,10 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (typeof e.payload?.revision === "number" && !e.type.startsWith("bench.")) revision = Math.max(revision, e.payload.revision)
 				if (e.type === "design.settled") settled = e.payload.settled === true
 				if (e.type === "bench.connected") bench = true
-				if (e.type === "run.started") stay = e.payload?.stay === true
+				if (e.type === "run.started") {
+					stay = e.payload?.stay === true
+					scripted = e.payload?.mock === true
+				}
 				if (e.type === "change.requested") changeCount++
 				// A change landed after settling: running again until it re-settles.
 				if (e.type === "contract.changed" && stay) settled = null
@@ -317,7 +323,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		const run = live.get(id)
 		const status: RunSummary["status"] =
 			run && run.exit === null ? (bench && settled !== null ? "bench live" : stay && settled !== null ? "waiting for a change" : "running") : settled !== null ? (settled ? "settled" : "unsettled") : run ? (run.exit === 0 ? "settled" : run.exit === 2 ? "unsettled" : "failed") : "stopped"
-		return { runId: id, status, revision, startedAt: startedAt ?? (await stat(dir)).mtime.toISOString(), title, bench, changes: { count: changeCount, lastDurationMs: durations.at(-1) ?? null } }
+		return { runId: id, status, revision, startedAt: startedAt ?? (await stat(dir)).mtime.toISOString(), title, bench, scripted, changes: { count: changeCount, lastDurationMs: durations.at(-1) ?? null } }
 	}
 
 	const listRuns = async (): Promise<RunSummary[]> => {
@@ -403,6 +409,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					pins: (v.pins ?? []).filter((p: { partRef: string }) => /^JL/.test(p.partRef)).map((p: { signal: string; gpio: number; partRef: string; partPin: string }) => ({ signal: p.signal, gpio: p.gpio, partRef: p.partRef, partPin: p.partPin })),
 					render: existsSync(join(bdir, "board", "board.png")) ? `/runs/${runId}/files/board/board.png` : null,
 					report: existsSync(join(bdir, "report.md")) ? `/runs/${runId}/files/report.md` : null,
+					spend: readSpend(bdir),
+					scripted: summary.scripted,
 				}
 			}),
 		)
@@ -415,6 +423,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			linkTests: state?.linkTests ?? [],
 			asked: state?.asked ?? [],
 			boards,
+			scripted: boards.some((b) => "scripted" in b && b.scripted),
+			spend: addSpend(readSpend(dir), ...boards.flatMap((b) => ("spend" in b && b.spend ? [b.spend] : []))),
 			cable: await readFile(join(dir, "cable.md"), "utf8").catch(() => null),
 			files: { report: file("system-report.md"), cable: file("cable.md"), wireviz: file("cable.yml") },
 		}
@@ -630,6 +640,11 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			if (filesOf) {
 				const dir = await runDir(filesOf[1])
 				return dir ? json(res, 200, { linked: linkedInfo(dir), entries: readDrift(dir).entries }) : json(res, 404, { error: "unknown run" })
+			}
+			const spendOf = /^\/api\/runs\/([^/]+)\/spend$/.exec(path)
+			if (spendOf) {
+				const dir = await runDir(spendOf[1])
+				return dir ? json(res, 200, readSpend(dir)) : json(res, 404, { error: "unknown run" })
 			}
 			const driftOf = /^\/api\/runs\/([^/]+)\/drift$/.exec(path)
 			if (driftOf) {

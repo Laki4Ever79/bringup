@@ -78,6 +78,7 @@
 	<a class="logo" href="/"><i></i>Bringup</a>
 	<h1 id="title">Systems of boards</h1>
 	<span id="status" class="status s-idle hidden"></span>
+	<span id="spend" class="muted mono" style="font-size:12px" title="What this system's model calls have cost so far (the architect plus every board)"></span>
 	<span style="flex:1"></span>
 	<span class="links-row" id="file-links"></span>
 	<button id="stop" class="pill hidden" title="Stop this system and its board runs">■ Stop</button>
@@ -224,6 +225,7 @@ async function showSystem() {
 	statusEl.textContent = statusLabel(d.status)
 	statusEl.title = d.status
 	document.getElementById("stop").classList.toggle("hidden", d.status !== "running")
+	import("/spend.js").then((m) => (document.getElementById("spend").textContent = m.spendLabel(d.spend, d.scripted)), () => {})
 	document.getElementById("file-links").innerHTML = [["Report", d.files.report], ["Cable", d.files.cable], ["WireViz", d.files.wireviz]].filter(([, u]) => u).map(([n, u]) => `<a class="pill" href="${esc(u)}" target="_blank">${n}</a>`).join("")
 	const real = d.findings.filter((f) => f.kind !== "link-pending")
 	const pending = d.findings.filter((f) => f.kind === "link-pending")

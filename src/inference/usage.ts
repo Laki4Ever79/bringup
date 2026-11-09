@@ -81,3 +81,15 @@ export function readSpend(dir: string): { usd: number | null; calls: number; unk
 	}
 	return { usd, calls, unknownCalls }
 }
+
+export type Spend = ReturnType<typeof readSpend>
+
+// A system's spend: its boards' plus its own (the architect's plan call).
+export function addSpend(...all: Spend[]): Spend {
+	const priced = all.filter((s) => s.usd !== null)
+	return {
+		usd: priced.length ? priced.reduce((t, s) => t + (s.usd ?? 0), 0) : null,
+		calls: all.reduce((t, s) => t + s.calls, 0),
+		unknownCalls: all.reduce((t, s) => t + s.unknownCalls, 0),
+	}
+}

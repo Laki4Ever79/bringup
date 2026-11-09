@@ -637,6 +637,7 @@
 		<span id="brief-title"></span>
 		<span id="state-pill" class="pill hidden"><span class="dot"></span><span id="state-text">LIVE</span> · REV <span id="rev-num" class="num">0</span></span>
 		<span id="elapsed" class="num hidden"></span>
+		<span id="spend" class="num hidden" title="What this run's model calls have cost so far"></span>
 		<div id="checks" class="hidden"></div>
 		<button id="brief-btn" class="pill hidden" title="The brief this run started from">Brief</button>
 		<button id="why-btn" class="pill hidden" title="What changed between revisions, who changed it, their reason and what caused it">What changed &amp; why</button>
@@ -1682,6 +1683,18 @@
 			if (!wasOpen) pill.insertAdjacentHTML("beforeend", popover(checkPills(S.events).find((x) => x.key === pill.dataset.key)))
 		})
 		document.addEventListener("click", (e) => { if (!e.target.closest(".check")) for (const p of $("checks").querySelectorAll(".popover")) p.remove() })
+		// The spend line: fetched now and every 5 s while the tab is visible (usage.jsonl grows with each model call).
+		const showSpend = async () => {
+			if (document.hidden) return
+			try {
+				const [r, m] = await Promise.all([fetch(`/api/runs/${encodeURIComponent(id)}/spend`), import("/spend.js")])
+				if (!r.ok) return
+				$("spend").textContent = m.spendLabel(await r.json(), S.events.find((e) => e.type === "run.started")?.payload?.mock === true)
+				$("spend").classList.remove("hidden")
+			} catch {}
+		}
+		setTimeout(showSpend, 1000)
+		setInterval(showSpend, 5000)
 		setInterval(() => {
 			if (!S.firstAt) return
 			const s = Math.max(0, Math.round(((S.endAt ?? Date.now()) - S.firstAt) / 1000))
