@@ -11,6 +11,8 @@ import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "
 import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
 import { addSpend, appendUsage, readSpend } from "../inference/usage.ts"
+import { PlanConflict, PlanStore } from "./plans.ts"
+import { PlanInvalid } from "../system/architect.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 import type { TraceNotifier } from "./notify.ts"
@@ -21,6 +23,7 @@ const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling ba
 const HEARTBEAT_MS = 15_000
 const PAGE = new URL("./page.html", import.meta.url)
 const SYSTEM_PAGE = new URL("./system.html", import.meta.url)
+const PLAN_PAGE = new URL("./plan.html", import.meta.url)
 const STAGE_PAGE = new URL("./stage.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
@@ -191,6 +194,9 @@ export interface HubOptions {
 	defaultRun?: { id: string; dir: string }
 	// The model behind POST /api/runs/<id>/ask (tests inject one); by default the runs' own provider (ask.ts).
 	ask?: (prompt: AskPrompt) => Promise<string>
+	// The plan architect's environment and fetch (tests inject them; default: this process's env and fetch).
+	planEnv?: Record<string, string | undefined>
+	planFetch?: typeof fetch
 	// --lan: listen on the network (bind, default every interface) so a phone can send decisions. Only the decision
 	// route answers another host, and only with the hub's random token; everything else stays loopback-only.
 	lan?: { bind?: string; token?: string }
@@ -330,11 +336,19 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		const out: RunSummary[] = []
 		for (const name of await readdir(outRoot)) {
 			const dir = await runDir(name)
-			if (dir && !existsSync(join(dir, "system.json"))) out.push(await summarize(name, dir))
+			if (dir && name !== "plans" && !existsSync(join(dir, "system.json"))) out.push(await summarize(name, dir))
 		}
 		return out.sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, MAX_RUNS_LISTED)
 	}
 
+	const plans = new PlanStore(outRoot, { env: opts.planEnv ?? process.env, fetchImpl: opts.planFetch })
+	const planError = (res: ServerResponse, error: unknown) => {
+		const e = error as Error & { status?: number; code?: string }
+		if (e.code === "NO_KEY") return json(res, 400, { error: e.message, code: "NO_KEY" })
+		if (error instanceof PlanInvalid) return json(res, 502, { error: e.message, code: e.code })
+		if (error instanceof PlanConflict || typeof e.status === "number") return json(res, e.status ?? 500, { error: e.message })
+		throw error
+	}
 	const startRun = (body: Record<string, unknown>): string => {
 		if (!opts.launch) throw new HttpError(404, "this dashboard can't start runs")
 		const brief = text(body.brief, "brief", 20_000)
@@ -439,12 +453,16 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		if (!/^[\w-]+\.json$/.test(name)) throw new HttpError(400, "spec must be a file name in briefs/systems")
 		const specPath = resolve(fileURLToPath(SYSTEM_SPECS), name)
 		if (!existsSync(specPath)) throw new HttpError(404, "no such system spec")
-		const mock = bool(body.mock, "mock")
-		const hardware = bool(body.hardware, "hardware")
-		const review = bool(body.review, "review")
+		return startSystemAt(specPath, { mock: bool(body.mock, "mock"), hardware: bool(body.hardware, "hardware"), review: bool(body.review, "review") })
+	}
+	// A system from a spec file: one in briefs/systems, or a plan's own system.json (plans.ts). `usagePath`: the plan's
+	// architect calls, copied in so the system's spend includes them.
+	const startSystemAt = (specPath: string, { mock, hardware, review }: { mock: boolean; hardware: boolean; review: boolean }, usagePath?: string): string => {
+		if (!opts.launch) throw new HttpError(404, "this dashboard can't start runs")
 		const id = `system-${newRunId()}`
 		const outDir = join(outRoot, id)
 		mkdirSync(outDir, { recursive: true })
+		if (usagePath && existsSync(usagePath)) copyFileSync(usagePath, join(outDir, "usage.jsonl"))
 		// `main.ts system <spec> …`: the launcher puts its first argument after main.ts.
 		const run = opts.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, ...(mock ? ["--mock"] : []), ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"])] })
 		const entry = { exit: null as number | null, kill: run.kill }
@@ -533,6 +551,28 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (!fromLan && origin !== undefined && !allowedHost(origin.replace(/^http:\/\//, ""))) return json(res, 403, { error: "cross-site request" })
 				if (path === "/api/runs") return json(res, 201, { runId: startRun(await readJson(req)) })
 				if (path === "/api/systems") return json(res, 201, { systemId: startSystem(await readJson(req)) })
+				if (path === "/api/plans") {
+					const body = await readJson(req)
+					const sentence = text(body.sentence, "sentence", MAX_TEXT).trim()
+					try {
+						return json(res, 201, { id: (await plans.create(sentence, bool(body.mock, "mock"))).id })
+					} catch (error) {
+						return planError(res, error)
+					}
+				}
+				const planPost = /^\/api\/plans\/(plan-[\w-]+)\/(change|build)$/.exec(path)
+				if (planPost) {
+					const body = await readJson(req)
+					try {
+						if (planPost[2] === "change") return json(res, 200, await plans.change(planPost[1], text(body.instruction, "instruction", MAX_TEXT).trim(), bool(body.mock, "mock")))
+						const flags = { mock: bool(body.mock, "mock"), hardware: bool(body.hardware, "hardware"), review: bool(body.review, "review") }
+						const t = plans.buildTarget(planPost[1])
+						if (t.kind === "system") return json(res, 201, { systemId: startSystemAt(t.specPath, flags, t.usagePath) })
+						return json(res, 201, { runId: startRun({ brief: t.brief, ...flags, engineerApproval: false }) })
+					} catch (error) {
+						return planError(res, error)
+					}
+				}
 				const stopSystem = /^\/api\/systems\/([^/]+)\/stop$/.exec(path)
 				if (stopSystem) {
 					if (!(await systemDir(stopSystem[1]))) return json(res, 404, { error: "unknown system" })
@@ -601,7 +641,27 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				}
 				return json(res, 404, { error: "not found" })
 			}
+			const planPut = /^\/api\/plans\/(plan-[\w-]+)$/.exec(path)
+			if (req.method === "PUT" && planPut) {
+				const origin = req.headers.origin
+				if (origin !== undefined && !allowedHost(origin.replace(/^http:\/\//, ""))) return json(res, 403, { error: "cross-site request" })
+				const body = await readJson(req)
+				if (!body.plan || typeof body.plan !== "object") throw new HttpError(400, "plan must be an object")
+				try {
+					return json(res, 200, plans.put(planPut[1], body.plan as never))
+				} catch (error) {
+					return planError(res, error)
+				}
+			}
 			if (req.method !== "GET") return send(res, 405, "method not allowed")
+			if (planPut) {
+				const v = plans.view(planPut[1])
+				return v ? json(res, 200, v) : json(res, 404, { error: "unknown plan" })
+			}
+			if (/^\/plan\/plan-[\w-]+$/.test(path)) {
+				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
+				return res.end(await readFile(PLAN_PAGE))
+			}
 			if (path === "/") {
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 				return res.end(await readFile(PAGE))
