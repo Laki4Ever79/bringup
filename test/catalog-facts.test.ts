@@ -99,7 +99,7 @@ test("the firmware fact names the wake button: a BUTTON pin on GPIO0..5 wakes it
 	const { firmwareFacts } = await import("../src/agents/reviewer.ts")
 	const s = fixtureContract()
 	s.values = { ...s.values, ...structuredClone(BEACON_DESIGN) }
-	assert.match(firmwareFacts(s).join("\n"), /^- Firmware button: BUTTON on GPIO3 wakes it from deep sleep early \(pressed = low, to GND\)\. A button wake runs the same wake as the timer: it blinks and starts BLE advertising at once, not at the next period\.$/m)
+	assert.match(firmwareFacts(s).join("\n"), /^- Firmware button: BUTTON on GPIO3 wakes it from deep sleep early \(pressed = low, to GND\), so a phone can connect at once: it takes a reading, blinks, and stays visible over BLE for 30 s \(not just the reading's burst\), or until a phone that connects disconnects\.$/m)
 	s.values.pins = [{ signal: "BUTTON_WAKE", gpio: 9, partRef: "SW1", partPin: "A" }]
 	assert.match(firmwareFacts(s).join("\n"), /^- Firmware button: the firmware wakes on a pin named exactly BUTTON on GPIO0\.\.5 \(the ESP32-C3's deep-sleep wake pins\); this design has none, so no button wakes it\.$/m)
 })

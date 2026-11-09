@@ -12,13 +12,14 @@ handle the boards ourselves, and a case would only trap heat around the sensor.
   around 500 mAh.
 - **USB-C** for charging and for flashing firmware. Nobody should need a special cable.
 - **A status LED** that blinks briefly on each reading and shows charging state.
+- **One button** on the board that wakes it so a phone can connect at once.
 - **Small.** The board should be about 50 × 30 mm.
 
 ## Nice to have
 - Parts that JLCPCB can assemble from stock, so a first batch of 10 is cheap.
 
 ## Out of scope
-- A display, buttons beyond what's needed to flash it, Wi-Fi, or a cloud backend.
+- A display, any other button, Wi-Fi, or a cloud backend.
 - Waterproofing. It lives indoors.
 - Any case or enclosure.
 

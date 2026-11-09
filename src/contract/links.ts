@@ -38,6 +38,9 @@ export interface LinkViolation {
 export function linkChecks(s: ContractSnapshot): LinkViolation[] {
 	const { parts = [], connectors = [], pins = [], rails = [] } = s.values
 	const out: LinkViolation[] = []
+	// Only once the board is drafted (an MCU and its pins): links handed to an empty contract woke the part selector and
+	// the architect before they had read the brief, and they started from the connector alone (real system run, 9 Nov).
+	if (!parts.some((p) => p.role === "mcu") || s.values.pins === undefined) return out
 	// The ESP32-C3 has two UARTs and the console has UART0: one UART link per board.
 	const uarts = linksOf(s).filter((l) => l.kind === "uart")
 	if (uarts.length > 1) out.push({ kind: "link-unwired", message: `${uarts.map((l) => l.id).join(", ")} are all UART links, but the ESP32-C3 has one UART free (UART0 is the console): the system must move all but one to I2C`, fields: ["links"], affects: ["integrator"] })

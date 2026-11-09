@@ -50,7 +50,9 @@ export function startRunProcess(args: RunProcessArgs, opts: RunProcessOptions = 
 	const argv = [...prefix, args.briefPath, ...(args.mock ? ["--mock"] : []), ...(args.extraArgs ?? []), "--out", args.outDir]
 	// stdin is a pipe this process never writes to: when it goes away, however it goes (Ctrl-C, SIGTERM, SIGKILL, a
 	// closed terminal), the OS closes the pipe and a run that stays up (--stay, --bench) ends instead of lingering.
-	const child = spawn(bin, argv, { cwd: opts.cwd ?? REPO_ROOT, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, BRINGUP_PARENT_PIPE: "1" } })
+	// Its own process group, so kill() reaches the builds it started too (tsci, pio, QEMU): stopping a run used to leave a
+	// board build running on its own (9 Nov 2026).
+	const child = spawn(bin, argv, { cwd: opts.cwd ?? REPO_ROOT, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, BRINGUP_PARENT_PIPE: "1" }, detached: true })
 	child.stdin.on("error", () => {}) // the run may exit first; nothing is ever written anyway
 	let stdout = ""
 	let stderr = ""
@@ -75,7 +77,12 @@ export function startRunProcess(args: RunProcessArgs, opts: RunProcessOptions = 
 	return {
 		done,
 		kill: () => {
-			if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM")
+			if (child.exitCode !== null || child.signalCode !== null) return
+			try {
+				process.kill(-child.pid!, "SIGTERM") // the whole group: the run and the tools it started
+			} catch {
+				child.kill("SIGTERM")
+			}
 		},
 	}
 }

@@ -1,6 +1,6 @@
 import type { Agent, SituationHandler, Tool } from "@mozaik-ai/core"
 import { isEvent, type ArtifactKind, type Cause, type ReviewFinding } from "../events.ts"
-import { OWNERS, type AgentRole } from "../contract/types.ts"
+import { OWNERS, type AgentRole, type FieldName } from "../contract/types.ts"
 import { ownerReviewsChanges, when } from "../change-control.ts"
 import { state } from "../runtime.ts"
 import { searchParts } from "../tools/parts-search.ts"
@@ -45,8 +45,13 @@ const listFindings = (findings: GroundingFinding[]) => findings.map((f) => `- ${
 
 // Brief review findings for the fields this role owns (a finding naming no field goes to the architect), while a
 // fix round is left. Each review wakes an owner once.
+// Fields whose absence means the design doesn't have that feature: only the brief or the engineer adds one, never a
+// review finding that names it in passing (real system run, 9 Nov: a battery finding tagged "model" sent the ML
+// engineer to write an always-listening wake word nobody asked for).
+const FEATURE_FIELDS: readonly FieldName[] = ["model", "test"]
 function reviewFindingsFor(role: AgentRole, findings: ReviewFinding[]): ReviewFinding[] {
-	return findings.filter((f) => (f.fields.length === 0 ? role === "architect" : f.fields.some((field) => OWNERS[field] === role)))
+	const exists = (field: FieldName) => !FEATURE_FIELDS.includes(field) || state().contract.version(field) > 0
+	return findings.filter((f) => (f.fields.length === 0 ? role === "architect" : f.fields.some((field) => OWNERS[field] === role && exists(field))))
 }
 
 function ownerFixesReview(role: AgentRole): SituationHandler {

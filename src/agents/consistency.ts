@@ -42,6 +42,8 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 	// MAX_REVISIONS counts from the start or from the last design.ready: a fix round after a review
 	// legitimately needs its own budget.
 	let budgetBase = 0
+	// Settled false at the revision cap: agents' changes no longer re-arm it, only an engineer's request does.
+	let capped = false
 	let awaitingReview = false
 	let reviewerStarted = false
 
@@ -195,6 +197,10 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 							// An engineer's change request re-arms too: one the agents meet without changing anything
 							// must still settle again, or the run waits out the change timeout (real run 16).
 							if (!(isEvent(event, "contract.changed") || isEvent(event, "change.proposed") || isEvent(event, "change.requested"))) return
+							// After the revision cap, only the engineer re-arms it: the agents' own changes, still landing,
+							// re-armed it with a fresh budget again and again (real system run, 9 Nov: 293 revisions).
+							if (capped && !isEvent(event, "change.requested")) return
+							capped = false
 							rearm()
 						}
 						if (isEvent(event, "contract.changed") || isEvent(event, "artifact.ready") || isEvent(event, "artifact.failed")) check()
@@ -204,6 +210,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 							if (done) return
 						}
 						if (isEvent(event, "contract.changed") && event.payload.revision - budgetBase > maxRevisions) {
+							capped = true
 							settle(false)
 							return
 						}

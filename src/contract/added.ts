@@ -8,7 +8,7 @@ import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
 import { PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
 
 export interface AddedItem {
-	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "phone-use"
+	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "phone-use" | "button-window"
 	what: string
 	shows: string // how the engineer will notice it on the device
 	why: string
@@ -85,6 +85,18 @@ export function addedForYou(s: ContractSnapshot): AddedItem[] {
 			change: ``,
 		})
 	}
+	// A wake button keeps the board visible long enough for a phone to find it (main.cpp BUTTON_ADVERTISE_MS).
+	const button = (s.values.pins ?? []).find((p) => p.signal === "BUTTON" && p.gpio >= 0 && p.gpio <= 5)
+	const windowS = templateConstant("BUTTON_ADVERTISE_MS") / 1000
+	if (button && (s.values.connectivity?.radio ?? "ble") === "ble" && Number.isFinite(windowS))
+		items.push({
+			id: "button-window",
+			what: `A button press keeps it visible for a phone for ${windowS} s`,
+			shows: `Press the button, then open the app: the device shows up within the ${windowS} s and a phone can connect. A timer wake stays visible only for the reading's short burst.`,
+			why: `Between readings it is visible for a fraction of a second every ${Math.round(s.values.requirements?.dutyCycle?.periodS ?? DEFAULT_PERIOD_S)} s, so a phone could scan that long before finding it.`,
+			cost: `Up to ${windowS} s awake per press: an estimate of ${Math.round(28 * windowS / 100) / 10}–${Math.round(86 * windowS / 100) / 10} C (the CPU at 28 mA, up to the radio's 86 mA), about what a phone connection costs. The battery estimate counts the phone connections, not the presses.`,
+			change: `BUTTON_ADVERTISE_MS in templates/fw/src/main.cpp (a constant today).`,
+		})
 	const phone = phoneUseMa(s)
 	if (phone)
 		items.push({

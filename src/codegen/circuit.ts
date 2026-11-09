@@ -432,7 +432,7 @@ export interface MountingHole {
 	diameterMm: number
 }
 
-function connectorBoxes(s: ContractSnapshot, W: number, H: number): Placed[] {
+export function connectorBoxes(s: ContractSnapshot, W: number, H: number): Placed[] {
 	const { parts = [], connectors = [] } = s.values
 	return connectors.map((c) => {
 		const part = parts.find((p) => p.ref === c.ref)

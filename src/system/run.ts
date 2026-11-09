@@ -38,6 +38,13 @@ export interface SystemResult {
 
 export const boardDir = (outDir: string, board: string) => join(outDir, "boards", board)
 
+// The board's newest settle, when it ended unsettled since `after`: the system stops rather than wait on it.
+function unsettledSince(dir: string, after: number): boolean {
+	const trace = readTrace(dir)
+	const last = trace.map((e, i) => ({ e, i })).filter(({ e }) => e.type === "design.settled").at(-1)
+	return Boolean(last && last.i >= after && !(last.e.payload as { settled?: boolean }).settled)
+}
+
 // A board's newest settled contract: the contract.json its run wrote at its last settle, once that settle is newer than
 // `after` (the trace length when the system last asked it for something).
 function settledContract(dir: string, after: number): ContractSnapshot | null {
@@ -95,6 +102,12 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 		while (Date.now() < deadline) {
 			await new Promise((r) => setTimeout(r, o.pollMs ?? 2000))
 			const contracts = contractsNow()
+			// A board that ended unsettled (stuck, or at its revision cap) won't fix itself: stop and say which.
+			const stuck = designed.filter((b) => unsettledSince(boardDir(outDir, b.name), asked.get(b.name) ?? 0)).map((b) => b.name)
+			if (stuck.length) {
+				write(contracts, findings, `UNSETTLED: ${stuck.join(" and ")} ended unsettled (see boards/<name>/report.md)`)
+				break
+			}
 			// Wait until every board has settled since it was last asked for something.
 			if (spec.boards.some((b) => !contracts[b.name])) continue
 			findings = systemChecks(spec, contracts)
