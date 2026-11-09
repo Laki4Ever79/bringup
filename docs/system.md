@@ -60,14 +60,31 @@ exactly as it runs alone.
 
 ## On the dashboard
 
-`npm run dashboard`, then **Systems** in the header (or `/system`):
-- **Start a system:** choose a spec from `briefs/systems`. Scripted (free) is on by default; unticking it uses real models.
-- **The system's page:**
-  - its boards and the cables between them, as a diagram;
-  - a card for each board, with its render, contract revision, size, connectors and link pins;
-  - the system checks, the QEMU link tests and the cable tables;
-  - while it runs, a Stop button.
-- **Open board:** shows that board on the normal run page (run id `<system>.<board>`), with a link back to its system.
+`npm run dashboard` opens the start screen:
+- **Start screen (`/`):** a finished example, cut open in 3D and turning slowly; its boards are orange. Click a board,
+  or "look inside" in the list, to zoom in and see its parts; Esc zooms out. The prompt holds the sentence that made the
+  example. Change it, or write your own, and press **Build**. Thumbnails below switch examples; "Single board" is the
+  one-board flow. The examples are finished runs shipped in `examples/` (`scripts/save-example.ts`), so showing them
+  costs nothing.
+- **Plan screen (`/plan/<id>`):** Build first proposes a split into boards and cables. "Try for free" uses the scripted
+  architect; real models make one call to the fast model. Nothing is built yet.
+  - **Edit by dragging:** move a board, drag its orange dot onto another board for a cable (UART or I²C), Delete a
+    selected board or cable, "+ board". Click a board to edit its brief.
+  - **Edit in words:** "Change the plan in words" asks the architect again; what moved flashes.
+  - **Free checks:** plain code, on every edit; problems show on the board or cable concerned.
+  - **Estimates:** time from recorded real runs (and how many never settled), cost once three runs carry cost data.
+  - **Build N boards** (real models, confirmed once) or **Try for free with scripted agents**. A one-board plan starts
+    an ordinary board run.
+- **System page (`/system?id=<id>`):** the boards assemble in 3D as their runs report them: a slab at the outline,
+  parts and traces when a board revision is built, the case when an enclosure is. A failed check pulses on its board
+  with its message. The timeline under the stage scrubs back through the build. Click a board: the camera flies to it
+  and its run page opens over the stage; Esc, "← System" or Back flies out. The checks, link tests and cable tables are
+  below, as before. **Systems** in the header lists all systems and starts one from a spec in `briefs/systems`.
+- **Spend:** every model call's tokens and cost go to `usage.jsonl` in its run folder (prices in
+  `src/inference/prices.ts`, with the date they were checked). Each page header shows what was spent. "Unknown" means
+  the provider didn't report tokens, never $0. Runs from before 9 Nov 2026 say "not recorded".
+- **Speed:** `npm run perf` loads these pages in a visible Chromium on this machine's GPU and fails if the start screen
+  takes over 1 s, a frame of an orbit or a zoom takes over 33 ms, or an idle scene draws at all.
 
 ## Firmware
 
