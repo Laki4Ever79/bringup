@@ -50,11 +50,11 @@ export function roverFixture() {
 			motors: [{ mpn: "M-TEST", ratedV: 6, noLoadRpm: 320, stallTorqueNm: 0.17, stallA: 1.6, noLoadA: 0.07, gearRatio: 100, bodyMm: [34, 12, 10] as [number, number, number], shaftMm: 3, massG: 10, source: { ratedV: cite } }],
 			wheels: [{ mpn: "W-TEST", diameterMm: 60, widthMm: 8, shaftMm: 3, massG: 12, tread: "rubber" as const, source: {} }],
 			casters: [{ mpn: "C-TEST", wheelMm: 25, heightMm: 36, swivel: true as const, holesMm: [[-10, 0], [10, 0]] as [number, number][], massG: 15, source: {} }],
+			sensors: [{ mpn: "S-TEST", chip: "VL53L0X", rangeMm: 1200, fovDeg: 25, updateMs: 33, i2cAddress: 41, sizeMm: [21, 18, 2.8] as [number, number, number], massG: 1.3, connector: "JST SH 4", source: {} }],
 			batteries: [{ mpn: "B-TEST", cells: 1 as const, nominalV: 3.7, fullV: 4.2, cutoffV: 3.0, mAh: 1200, maxContA: 3, peakA: 6, sizeMm: [50, 34, 7] as [number, number, number], massG: 25, source: {} }],
 		},
 		boardParts: [
 			{ mpn: "DRV-TEST", role: "motor-driver", supplyMinV: 2.7, supplyMaxV: 10.8, channels: 2, contA: 1.5, peakA: 2, rdsOnOhm: 0.36 },
-			{ mpn: "TOF-TEST", role: "tof-sensor", rangeMm: 1200, fovDeg: 25, i2cAddress: 0x29, updateMs: 33 },
 		],
 	}
 	const c = fixtureContract()
@@ -63,13 +63,13 @@ export function roverFixture() {
 	values.parts = [
 		...c.values.parts!,
 		{ ref: "U3", role: "motor-driver", mpn: "DRV-TEST", lcsc: null, footprint: "htssop16", pins: ["AIN1", "AIN2", "BIN1", "BIN2", "AOUT1", "AOUT2", "BOUT1", "BOUT2", "VM", "GND"] },
-		{ ref: "U4", role: "tof-sensor", mpn: "TOF-TEST", lcsc: null, footprint: "lga12", pins: ["SDA", "SCL", "XSHUT", "AVDD", "GND"] },
+		{ ref: "JT1", role: "connector", mpn: "SM04B-SRSS-TB(LF)(SN)", lcsc: "C160404", footprint: "jst4_sh", pins: ["GND", "VCC", "IO1", "IO2"] },
 		{ ref: "J2", role: "battery", mpn: "S2B-PH", lcsc: null, footprint: "jst-ph-2", pins: ["+", "-"] },
 	]
 	values.pins = [
 		...c.values.pins!,
-		{ signal: "I2C_SDA", gpio: 8, partRef: "U4", partPin: "SDA" },
-		{ signal: "I2C_SCL", gpio: 9, partRef: "U4", partPin: "SCL" },
+		{ signal: "I2C_SDA", gpio: 8, partRef: "JT1", partPin: "IO1" },
+		{ signal: "I2C_SCL", gpio: 9, partRef: "JT1", partPin: "IO2" },
 		{ signal: "MOT_AIN1", gpio: 4, partRef: "U3", partPin: "AIN1" },
 		{ signal: "MOT_AIN2", gpio: 5, partRef: "U3", partPin: "AIN2" },
 		{ signal: "MOT_BIN1", gpio: 6, partRef: "U3", partPin: "BIN1" },
@@ -79,6 +79,7 @@ export function roverFixture() {
 	values.mechanics = {
 		drive: { kind: "differential", motor: "M-TEST", wheel: "W-TEST", caster: "C-TEST", trackMm: 130, wheelbaseMm: 90, axleXMm: 30 },
 		battery: { pack: "B-TEST", at: { xMm: -10, yMm: 0 } },
+		sensor: { module: "S-TEST", at: { xMm: 72, yMm: 0, zMm: 50 }, connector: "JT1" },
 		chassis: { plateMm: [150, 110], thicknessMm: 3, material: "PLA", clearanceMm: 36, boards: [{ name: "main", at: { xMm: 10, yMm: 0 }, rotDeg: 0 }] },
 	}
 	return { c, cat }

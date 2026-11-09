@@ -26,6 +26,9 @@ export interface Mechanics {
 	// axleXMm: where the wheel axle crosses the plate's long axis; the caster sits wheelbaseMm behind it.
 	drive: { kind: "differential"; motor: string; wheel: string; caster: string; trackMm: number; wheelbaseMm: number; axleXMm: number }
 	battery: { pack: string; at: { xMm: number; yMm: number } }
+	// The front distance sensor's breakout (catalog sensors), standing at `at` facing +x, cabled to the board connector
+	// `connector` (role connector, its IO1/IO2 on I2C_SDA/I2C_SCL and VCC on 3V3).
+	sensor: { module: string; at: { xMm: number; yMm: number; zMm: number }; connector: string }
 	chassis: {
 		plateMm: [number, number]
 		thicknessMm: number

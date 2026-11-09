@@ -44,7 +44,20 @@ export interface BatteryPack extends Sourced {
 	sizeMm: [number, number, number]
 	massG: number
 }
+// A distance sensor on a small breakout, mounted upright at the chassis front and cabled to the board: the VL53L0X
+// looks out of the top of its package, so on a flat board it would see the ceiling.
+export interface SensorModule extends Sourced {
+	chip: string
+	rangeMm: number
+	fovDeg: number
+	updateMs: number
+	i2cAddress: number
+	sizeMm: [number, number, number]
+	massG: number
+	connector: string
+}
 export interface MechCatalog {
+	sensors: SensorModule[]
 	motors: MotorPart[]
 	wheels: WheelPart[]
 	casters: CasterPart[]

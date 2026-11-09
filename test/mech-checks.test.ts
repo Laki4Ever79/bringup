@@ -37,7 +37,7 @@ test("too slow a motor misses the target speed", () => {
 })
 
 test("a short-range sensor can't stop the rover in time", () => {
-	const { c, cat } = variant((_v, k) => (k.boardParts[1].rangeMm = 160))
+	const { c, cat } = variant((_v, k) => (k.mech.sensors[0].rangeMm = 160))
 	assert.ok(kinds(c, cat).includes("mech-stopping"))
 	assert.match(msg(c, cat, "mech-stopping"), /estimate: floorMu 0\.6/)
 })

@@ -443,5 +443,48 @@
 				}
 			}
 		}
+	],
+	"sensors": [
+		{
+			"mpn": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+			"chip": "VL53L0X",
+			"rangeMm": 1200,
+			"fovDeg": 25,
+			"updateMs": 33,
+			"i2cAddress": 41,
+			"sizeMm": [
+				21,
+				18,
+				2.8
+			],
+			"massG": 1.3,
+			"connector": "STEMMA QT: JST SH 4-pin (GND, V+, SDA, SCL)",
+			"source": {
+				"rangeMm": {
+					"url": "https://www.st.com/resource/en/datasheet/vl53l0x.pdf",
+					"where": "Table 14: default mode 1.2 m (Adafruit: 'approximately 30mm to 1.2 meter in default mode')"
+				},
+				"fovDeg": {
+					"url": "https://www.st.com/resource/en/datasheet/vl53l0x.pdf",
+					"where": "\u00a76.1: system FoV 25\u00b0"
+				},
+				"updateMs": {
+					"url": "https://www.st.com/resource/en/datasheet/vl53l0x.pdf",
+					"where": "\u00a73.10 note: default timing budget 33 ms"
+				},
+				"i2cAddress": {
+					"url": "https://www.st.com/resource/en/datasheet/vl53l0x.pdf",
+					"where": "Table 2: 0x52 8-bit; derived 0x29 7-bit"
+				},
+				"sizeMm": {
+					"url": "https://www.adafruit.com/product/3317",
+					"where": "Product Dimensions: 21.0mm x 18.0mm x 2.8mm"
+				},
+				"massG": {
+					"url": "https://www.adafruit.com/product/3317",
+					"where": "Product Weight: 1.3g"
+				}
+			}
+		}
 	]
 }

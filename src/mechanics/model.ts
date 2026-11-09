@@ -43,6 +43,8 @@ export function mounts(mech: Mechanics, boards: { name: string; outline: { width
 	}
 	if (caster) out.push({ what: "caster", xMm: d.axleXMm - d.wheelbaseMm, yMm: 0, zMm: caster.heightMm / 2, sizeMm: [caster.wheelMm, caster.wheelMm, caster.heightMm], massG: caster.massG })
 	if (pack) out.push({ what: "battery", xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, zMm: plateTop + pack.sizeMm[2] / 2, sizeMm: pack.sizeMm, massG: pack.massG })
+	const sensor = byMpn(cat.sensors ?? [], mech.sensor?.module ?? "")
+	if (sensor && mech.sensor) out.push({ what: "sensor", xMm: mech.sensor.at.xMm, yMm: mech.sensor.at.yMm, zMm: mech.sensor.at.zMm, sizeMm: [sensor.sizeMm[2], sensor.sizeMm[0], sensor.sizeMm[1]], massG: sensor.massG })
 	for (const b of c.boards) {
 		const info = boards.find((x) => x.name === b.name)
 		if (!info) continue
