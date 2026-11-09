@@ -1,7 +1,7 @@
 {
 	"name": "logger-beacon",
 	"sentence": "A climate logger and a pocket beacon that share readings over a cable",
-	"title": "logger and beacon over UART",
+	"title": "Climate logger + pocket beacon",
 	"boards": [
 		{
 			"name": "logger",
