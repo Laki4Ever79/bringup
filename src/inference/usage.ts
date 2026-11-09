@@ -10,30 +10,41 @@ export interface UsageRecord {
 	model: string
 	source: string
 	inputTokens: number | null
+	// Of inputTokens: read from the cache, and (Claude) written to it.
 	cachedTokens: number | null
+	cacheWriteTokens?: number | null
 	outputTokens: number | null
 	usd: number | null
 }
 
-// `input` includes the cached tokens, as both providers' usage reports do.
-export function costUsd(model: string, input: number, cached: number, output: number): number | null {
+// `input` is all input tokens: uncached, plus `cached` read from the cache, plus `cacheWrite` written to it.
+export function costUsd(model: string, input: number, cached: number, output: number, cacheWrite = 0): number | null {
 	const p = PRICES[model]
 	if (!p) return null
-	return ((input - cached) * p.inputPerM + cached * p.cachedInputPerM + output * p.outputPerM) / 1_000_000
+	return (Math.max(0, input - cached - cacheWrite) * p.inputPerM + cached * p.cachedInputPerM + cacheWrite * (p.cacheWritePerM ?? p.inputPerM) + output * p.outputPerM) / 1_000_000
 }
 
-export function usageRecord(model: string, source: string, input: number | null | undefined, cached: number | null | undefined, output: number | null | undefined): UsageRecord {
+export function usageRecord(model: string, source: string, input: number | null | undefined, cached: number | null | undefined, output: number | null | undefined, cacheWrite?: number | null): UsageRecord {
 	const known = typeof input === "number" && typeof output === "number"
 	const c = known ? (cached ?? 0) : null
+	const w = known ? (cacheWrite ?? 0) : null
 	return {
 		at: new Date().toISOString(),
 		model,
 		source,
 		inputTokens: known ? input : null,
 		cachedTokens: c,
+		cacheWriteTokens: w,
 		outputTokens: known ? output : null,
-		usd: known ? costUsd(model, input, c ?? 0, output) : null,
+		usd: known ? costUsd(model, input, c ?? 0, output, w ?? 0) : null,
 	}
+}
+
+// Anthropic's usage block (input_tokens excludes both cache counts) as total input, cache reads and cache writes.
+export function anthropicUsage(u: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined) {
+	if (typeof u?.input_tokens !== "number") return null
+	const read = u.cache_read_input_tokens ?? 0, write = u.cache_creation_input_tokens ?? 0
+	return { input: u.input_tokens + read + write, cached: read, cacheWrite: write, output: u.output_tokens }
 }
 
 export class UsageRunner implements InferenceRunner {
@@ -45,8 +56,11 @@ export class UsageRunner implements InferenceRunner {
 
 	async run(input: InferenceInput): Promise<InferenceOutput> {
 		const output = await this.inner.run(input)
+		// Claude: Mozaik's TokenUsage merges cache writes and reads, so price from the provider's own usage block.
+		const a = anthropicUsage((output.rowResponse as { usage?: Parameters<typeof anthropicUsage>[0] } | undefined)?.usage)
 		const u = output.tokenUsage
-		this.record(usageRecord(input.model, this.source, u?.inputTokens, u?.inputTokenDetails?.cached_tokens, u?.outputTokens))
+		if (a) this.record(usageRecord(input.model, this.source, a.input, a.cached, a.output, a.cacheWrite))
+		else this.record(usageRecord(input.model, this.source, u?.inputTokens, u?.inputTokenDetails?.cached_tokens, u?.outputTokens))
 		return output
 	}
 

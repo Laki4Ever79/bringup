@@ -575,8 +575,9 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (planPost) {
 					const body = await readJson(req)
 					try {
-						if (planPost[2] === "change") return json(res, 200, await plans.change(planPost[1], text(body.instruction, "instruction", MAX_TEXT).trim(), bool(body.mock, "mock")))
+						if (planPost[2] === "change") return json(res, 200, await plans.change(planPost[1], text(body.instruction, "instruction", MAX_TEXT).trim(), bool(body.mock, "mock"), typeof body.version === "number" ? body.version : undefined))
 						const flags = { mock: bool(body.mock, "mock"), hardware: bool(body.hardware, "hardware"), review: bool(body.review, "review") }
+						if (!flags.mock && !plans.hasModelKey()) return json(res, 400, { error: new NoModelKey().message, code: "NO_KEY" })
 						const t = plans.buildTarget(planPost[1])
 						if (t.kind === "system") return json(res, 201, { systemId: startSystemAt(t.specPath, flags, t.usagePath) })
 						return json(res, 201, { runId: startRun({ brief: t.brief, ...flags, engineerApproval: false }) })

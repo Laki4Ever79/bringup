@@ -2,7 +2,7 @@ import "dotenv/config"
 import { modelFor } from "../inference/models.ts"
 import type { AgentRole } from "../contract/types.ts"
 import { changeLog } from "./changelog.js"
-import { usageRecord, type UsageRecord } from "../inference/usage.ts"
+import { anthropicUsage, usageRecord, type UsageRecord } from "../inference/usage.ts"
 
 // "Ask about the changes": one model call that answers from the run's own record (contract.changed with its
 // reason, before/after and cause, the engineer's requests, and the contract at the two revisions asked about),
@@ -84,11 +84,10 @@ export async function callModel(
 			headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
 			body: JSON.stringify({ model, max_tokens: opts.maxTokens ?? 800, system: p.system, messages: [{ role: "user", content: p.user }] }),
 		})
-		const body = (await res.json()) as { content?: { text?: string }[]; error?: { message?: string }; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } }
+		const body = (await res.json()) as { content?: { text?: string }[]; error?: { message?: string }; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
 		if (!res.ok) throw new Error(`${model}: ${body.error?.message ?? res.statusText}`)
-		// Anthropic's input_tokens excludes cache reads; usageRecord wants the total input.
-		const u = body.usage
-		onUsage?.(usageRecord(model, source, u?.input_tokens === undefined ? null : u.input_tokens + (u.cache_read_input_tokens ?? 0), u?.cache_read_input_tokens, u?.output_tokens))
+		const a = anthropicUsage(body.usage)
+		onUsage?.(a ? usageRecord(model, source, a.input, a.cached, a.output, a.cacheWrite) : usageRecord(model, source, null, null, null))
 		return (body.content ?? []).map((c) => c.text ?? "").join("").trim()
 	}
 	const res = await fetchImpl("https://api.openai.com/v1/chat/completions", {

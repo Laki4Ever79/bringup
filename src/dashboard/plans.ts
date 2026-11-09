@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto"
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { appendUsage, readSpend } from "../inference/usage.ts"
+import { appendUsage, readSpend, type Spend } from "../inference/usage.ts"
 import { proposePlan } from "../system/architect.ts"
 import { estimate } from "../system/estimate.ts"
 import { planChecks, type Plan, type PlanIssue } from "../system/plan.ts"
@@ -22,7 +22,10 @@ export class PlanConflict extends Error {
 export interface PlanView {
 	plan: Plan
 	issues: PlanIssue[]
-	estimate: ReturnType<typeof estimate>
+	// GET only: it reads every recorded run, too slow for each drag save.
+	estimate?: ReturnType<typeof estimate>
+	// What planning has spent (the architect's calls): calls 0 means scripted, usd null with calls means unknown.
+	spend?: Spend
 }
 
 export class PlanStore {
@@ -55,7 +58,7 @@ export class PlanStore {
 
 	view(id: string): PlanView | null {
 		const plan = this.get(id)
-		return plan ? { plan, issues: planChecks(plan), estimate: estimate(plan, this.outRoot) } : null
+		return plan ? { plan, issues: planChecks(plan), estimate: estimate(plan, this.outRoot), spend: readSpend(this.dir(id)) } : null
 	}
 
 	async create(sentence: string, mock: boolean): Promise<Plan> {
@@ -78,15 +81,25 @@ export class PlanStore {
 		if (!current) throw Object.assign(new Error("unknown plan"), { status: 404 })
 		if (plan.version !== current.version) throw new PlanConflict()
 		const saved = this.write({ ...plan, id, sentence: current.sentence, version: current.version + 1 })
-		return { plan: saved, issues: planChecks(saved), estimate: estimate(saved, this.outRoot) }
+		return { plan: saved, issues: planChecks(saved) }
 	}
 
-	async change(id: string, instruction: string, mock: boolean): Promise<PlanView & { diff: PlanDiff }> {
+	// A change in words against `version` (the page's): refused if the plan moved on, before or during the model call,
+	// so it can't undo a drag saved meanwhile.
+	async change(id: string, instruction: string, mock: boolean, version?: number): Promise<PlanView & { diff: PlanDiff }> {
 		const current = this.get(id)
 		if (!current) throw Object.assign(new Error("unknown plan"), { status: 404 })
+		if (version !== undefined && version !== current.version) throw new PlanConflict()
 		const proposed = await proposePlan({ plan: current, instruction }, { mock, env: this.deps.env, fetchImpl: this.deps.fetchImpl, onUsage: (r) => appendUsage(this.dir(id), r) })
+		if (this.get(id)?.version !== current.version) throw new PlanConflict()
 		const saved = this.write({ ...proposed, id, version: current.version + 1, spendUsd: null })
-		return { plan: saved, issues: planChecks(saved), estimate: estimate(saved, this.outRoot), diff: planDiff(current, saved) }
+		return { plan: saved, issues: planChecks(saved), estimate: estimate(saved, this.outRoot), spend: readSpend(this.dir(id)), diff: planDiff(current, saved) }
+	}
+
+	// Real models need a key on this machine (the same rule proposePlan applies).
+	hasModelKey(): boolean {
+		const env = this.deps.env ?? process.env
+		return Boolean(env.OPENAI_API_KEY || env.ANTHROPIC_API_KEY)
 	}
 
 	// What Build starts: a system run on the plan's own system.json, or for one board an ordinary run on its brief.

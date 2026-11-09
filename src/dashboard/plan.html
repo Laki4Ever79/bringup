@@ -105,6 +105,7 @@
 <div id="brief"><b id="brief-title"></b><textarea id="brief-text" spellcheck="false"></textarea><div class="row"><button class="btn" id="brief-cancel">Cancel</button><button class="btn primary" id="brief-save">Save brief</button></div></div>
 <script type="module">
 	import { addBoard, connect, moveBoard, removeBoard, removeLink, setBrief } from "/plan-edit.js"
+	import { spendLabel } from "/spend.js"
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
 	const id = decodeURIComponent(location.pathname.split("/").pop())
@@ -136,7 +137,8 @@
 		$("go").textContent = `Build ${n} board${n === 1 ? "" : "s"}`
 		$("go").disabled = $("free").disabled = issues.length > 0
 		$("go").title = issues.length ? "Fix the problems marked on the drawing first" : ""
-		$("status").textContent = `Plan · nothing built yet · ${plan.spendUsd === null || plan.spendUsd === undefined ? "scripted: free" : `$${plan.spendUsd.toFixed(3)} spent planning`}`
+		// Planning's own spend: no calls means scripted; a real call without token counts reads "unknown", never free.
+		if (v.spend) $("status").textContent = `Plan · nothing built yet · ${v.spend.calls === 0 ? "scripted: free" : `planning ${spendLabel(v.spend, false).toLowerCase()}`}`
 		draw()
 	}
 
@@ -302,8 +304,9 @@
 		if (!instruction) return
 		clearTimeout(saveTimer); save(); await saving
 		msg($("change-free").checked ? "Changing (scripted)…" : "Changing with a real model: one call…")
-		const r = await fetch(`/api/plans/${encodeURIComponent(id)}/change`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ instruction, mock: $("change-free").checked }) })
+		const r = await fetch(`/api/plans/${encodeURIComponent(id)}/change`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ instruction, mock: $("change-free").checked, version: plan.version }) })
 		const v = await r.json()
+		if (r.status === 409) { msg("The plan changed meanwhile; reloaded. Ask again if it still applies."); return load() }
 		if (!r.ok) return msg(v.code === "NO_KEY" ? "No model key on this machine: keep “scripted (free)” ticked, or add a key to .env." : v.error ?? "The change failed.", true)
 		$("instruction").value = ""
 		apply(v)
@@ -320,7 +323,7 @@
 		msg(mock ? "Starting the scripted build…" : "Starting the build…")
 		const r = await fetch(`/api/plans/${encodeURIComponent(id)}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mock, hardware: $("hw").checked, review: $("review").checked }) })
 		const v = await r.json()
-		if (!r.ok) { $("go").disabled = $("free").disabled = false; return msg(v.error ?? "Build failed to start.", true) }
+		if (!r.ok) { $("go").disabled = $("free").disabled = false; return msg(v.code === "NO_KEY" ? "No model key on this machine: use “Try for free with scripted agents”, or add a key to .env." : v.error ?? "Build failed to start.", true) }
 		location.href = v.systemId ? `/system?id=${encodeURIComponent(v.systemId)}` : `/?run=${encodeURIComponent(v.runId)}`
 	}
 	$("go").addEventListener("click", () => $("confirm").classList.add("on"))

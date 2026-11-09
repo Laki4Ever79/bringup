@@ -233,6 +233,13 @@ let timer = null
 async function showSystem() {
 	const r = await fetch(`/api/systems/${encodeURIComponent(id)}`)
 	if (!r.ok) {
+		// Just after Build the system process hasn't written system.json yet: wait for it (20 s) before giving up.
+		if ((showSystem.waited = (showSystem.waited ?? 0) + 1) <= 20) {
+			main.innerHTML = `<section><p class="muted">Starting the system…</p></section>`
+			clearTimeout(timer)
+			timer = setTimeout(showSystem, 1000)
+			return
+		}
 		main.innerHTML = `<section><p>Unknown system <span class="mono">${esc(id)}</span>. <a href="/system">All systems</a></p></section>`
 		return
 	}
@@ -267,8 +274,23 @@ async function showSystem() {
 
 // ── The live 3D stage: each board's run streams its events; the assembly redraws at most once a frame ──
 const stage = { world: null, traces: {}, runs: {}, meta: null, files: new Map(), pending: false, shownPulse: {}, upTo: null, started: false }
+// Each board's event stream, opened once its run folder exists: right after Build none do yet, and they appear over
+// the next polls.
+function subscribe(d) {
+	for (const b of d.boards) {
+		stage.traces[b.name] ??= []
+		if (!b.runId || stage.runs[b.name]) continue
+		stage.runs[b.name] = b.runId
+		const src = new EventSource(`/runs/${encodeURIComponent(b.runId)}/events`)
+		src.onmessage = (m) => { try { stage.traces[b.name].push(JSON.parse(m.data)); schedule() } catch {} }
+	}
+}
 async function startStage(d) {
-	if (stage.started) { stage.meta = d; return }
+	if (stage.started) {
+		stage.meta = d
+		if (stage.world) { subscribe(d); schedule() }
+		return
+	}
 	stage.started = true
 	stage.meta = d
 	let mountWorld
@@ -280,13 +302,7 @@ async function startStage(d) {
 		document.getElementById("stage-wrap").classList.add("hidden")
 		return
 	}
-	for (const b of d.boards) {
-		stage.traces[b.name] = []
-		if (!b.runId) continue
-		stage.runs[b.name] = b.runId
-		const src = new EventSource(`/runs/${encodeURIComponent(b.runId)}/events`)
-		src.onmessage = (m) => { try { stage.traces[b.name].push(JSON.parse(m.data)); schedule() } catch {} }
-	}
+	subscribe(stage.meta)
 	schedule()
 	const b = new URLSearchParams(location.search).get("board")
 	if (b) stage.world.ready.then(() => window.openBoard(b, { push: false }))
@@ -322,7 +338,9 @@ async function redraw() {
 	const asm = assemblyAt(stage.traces, stage.upTo ?? undefined)
 	const boards = stage.meta.boards.map((b) => {
 		const a = asm[b.name] ?? { state: "empty", outline: null, boardRevision: null, enclosureRevision: null, pulses: [] }
-		const runId = stage.runs[b.name]
+		// A stubbed run (--no-hardware) builds no files: don't ask for them (the board page does the same).
+		const stubbed = stage.traces[b.name]?.find((e) => e.type === "run.started")?.payload?.noHardware === true
+		const runId = stubbed ? undefined : stage.runs[b.name]
 		const circuit = runId && a.boardRevision !== null ? fileOnce(runId, [`board/rev-${a.boardRevision}/dist/board/circuit.json`, `board/rev-${a.boardRevision}/circuit.json`], "json") : null
 		const encDir = a.enclosureRevision !== null ? `enclosure/rev-${a.enclosureRevision}` : null
 		const caseStl = runId && encDir && circuit ? fileOnce(runId, `${encDir}/case.stl`, "arrayBuffer") : null

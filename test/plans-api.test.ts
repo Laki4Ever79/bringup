@@ -7,6 +7,7 @@ import { join } from "node:path"
 import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
 import { PublicGate } from "../src/dashboard/public.ts"
 import { tempDir } from "./helpers.ts"
+import { scriptedPlan } from "../src/system/architect.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -116,4 +117,48 @@ test("the public demo refuses to make plans", async () => {
 	} finally {
 		await hub.close()
 	}
+})
+
+test("a typed change made against an older version is refused, so it can't undo a drag saved meanwhile", async () => {
+	await withHub(async ({ url }) => {
+		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a logger and a beacon over a cable", mock: true })).json()) as Any
+		const { plan } = (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any
+		assert.equal((await send(`${url}/api/plans/${id}`, "PUT", { plan: { ...plan, layout: { ...plan.layout, logger: { x: 5, y: 5 } } } })).status, 200)
+		assert.equal((await send(`${url}/api/plans/${id}/change`, "POST", { instruction: "remove beacon", mock: true, version: plan.version })).status, 409)
+	})
+})
+
+test("a drag save doesn't recompute the estimate (it reads every recorded run)", async () => {
+	await withHub(async ({ url }) => {
+		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a logger and a beacon over a cable", mock: true })).json()) as Any
+		const { plan } = (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any
+		const r = (await (await send(`${url}/api/plans/${id}`, "PUT", { plan })).json()) as Any
+		assert.equal(r.estimate, undefined)
+	})
+})
+
+test("the plan view says what planning spent: nothing for scripted, unknown (not free) for a real call without usage", async () => {
+	await withHub(async ({ url }) => {
+		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a logger and a beacon over a cable", mock: true })).json()) as Any
+		assert.deepEqual(((await (await fetch(`${url}/api/plans/${id}`)).json()) as Any).spend, { usd: null, calls: 0, unknownCalls: 0 })
+	})
+	const valid = { ...scriptedPlan("a logger and a beacon"), sentence: undefined, layout: undefined }
+	const planFetch = (async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(valid) } }] }), { status: 200 })) as unknown as typeof fetch
+	const hub = await serveHub({ outRoot: tempDir(), port: 0, planEnv: { OPENAI_API_KEY: "k" }, planFetch })
+	try {
+		const { id } = (await (await send(`${hub.url}/api/plans`, "POST", { sentence: "a logger and a beacon", mock: false })).json()) as Any
+		assert.deepEqual(((await (await fetch(`${hub.url}/api/plans/${id}`)).json()) as Any).spend, { usd: null, calls: 1, unknownCalls: 1 })
+	} finally {
+		await hub.close()
+	}
+})
+
+test("Build with real models and no key says NO_KEY instead of starting a run", async () => {
+	await withHub(async ({ url, calls }) => {
+		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a logger and a beacon over a cable", mock: true })).json()) as Any
+		const r = await send(`${url}/api/plans/${id}/build`, "POST", { mock: false, hardware: false, review: false })
+		assert.equal(r.status, 400)
+		assert.equal(((await r.json()) as Any).code, "NO_KEY")
+		assert.equal(calls.length, 0)
+	})
 })

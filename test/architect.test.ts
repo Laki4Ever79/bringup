@@ -95,3 +95,24 @@ test("an answer still invalid after the retry is reported, not built", async () 
 test("without a model key the real architect says so", async () => {
 	await assert.rejects(proposePlan({ sentence: "x" }, { mock: false, env: {}, fetchImpl: fakeFetch([valid]).f }), NoModelKey)
 })
+
+test("board names must be plain lower-case ids, so a name can't reach outside the plan folder or break a run id", () => {
+	const p = asPlan(scriptedPlan("a logger and a beacon that share readings over a cable"))
+	for (const bad of ["../../tmp/x", "Sensor Hub", "sensor/hub"]) {
+		const q: Plan = { ...p, spec: { ...p.spec, boards: [...p.spec.boards, { name: bad, brief: `briefs/${bad}.md` }] }, briefs: { ...p.briefs, [bad]: "# Brief: x\n" } }
+		assert.ok(planChecks(q).some((i) => i.target.board === bad && /lower-case/.test(i.message)), bad)
+	}
+})
+
+test("the real architect keeps what can't be built even when the model leaves it out", async () => {
+	const { f } = fakeFetch([valid])
+	const p = await proposePlan({ sentence: "a rover with two motors" }, { mock: false, env: { OPENAI_API_KEY: "k" }, fetchImpl: f })
+	assert.ok(p.cantBuild.some((c) => /motor/.test(c.what)))
+})
+
+test("a real architect answer with a bad board name is retried", async () => {
+	const bad = { ...valid, spec: { ...valid.spec, boards: [{ name: "Sensor Hub" }, ...valid.spec.boards] }, briefs: { ...valid.briefs, "Sensor Hub": "# x\n" } }
+	const { f, calls } = fakeFetch([bad, valid])
+	await proposePlan({ sentence: "x" }, { mock: false, env: { OPENAI_API_KEY: "k" }, fetchImpl: f })
+	assert.equal(calls(), 2)
+})
