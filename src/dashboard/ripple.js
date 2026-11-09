@@ -273,7 +273,7 @@ export const PROBLEM = {
 	"rail-underrated": "a rail is sized below the chip's current",
 	"battery-short": "the battery won't last the target",
 }
-const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", "build:testkit": "test kit", test: "test engineer", enclosure: "case designer", connectivity: "connectivity engineer", ml: "ML engineer", grounding: "datasheet check", consistency: "consistency check" }
+const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", "build:testkit": "test kit", test: "test engineer", enclosure: "case designer", connectivity: "connectivity engineer", mechanics: "mechanics engineer", ml: "ML engineer", grounding: "datasheet check", consistency: "consistency check" }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 const and = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`)
 const mismatches = (n) => `${n} mismatch${n === 1 ? "" : "es"}`

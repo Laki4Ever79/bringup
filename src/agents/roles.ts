@@ -338,6 +338,34 @@ export const CASE_DESIGN = `${CASE_SHAPE}.
 // The case designer: it owns the case field (walls, height, added features). The enclosure builder makes the case from
 // the board and this field; a case request that needs a different board goes to the architect through change control,
 // and since it changes the PCB, it also waits for the engineer's confirmation (contract/case.ts boardChangeWarning).
+// The mechanics engineer of a robot (docs/mechanics.md): owns the mechanics field — drive, battery, sensor mount and
+// chassis layout — and designs to the plain-code checks in src/mechanics/checks.ts. Wakes only for a design with
+// motion targets: a board without them never sees a mech-* violation.
+export const MECHANICS_RULES = `The checks your design must pass (src/mechanics/checks.ts):
+- torque: each motor's stall torque at the cell's nominal voltage ≥ ${1.5}× what lifting its wheel over the motion.edgeMm step and rolling need;
+- speed: no-load speed at nominal voltage × 0.8 under load × wheel circumference ≥ motion.speedMps;
+- stopping: braking distance on the floor plus one sensor period of travel ≤ the sensor's range − motion.stopBeforeWallMm;
+- current: a motor's stall current on a full cell ≤ the driver's peak per channel; both motors at stall plus the electronics ≤ the pack's peak;
+- runtime: the pack's usable energy at cruise ≥ motion.runtimeMin; voltage: a full cell ≤ 1.5× the motor's rating, within the driver's range;
+- tipping: the centre of mass stays 10 mm inside the wheels-and-caster triangle, also when braking hard;
+- fit: boards, battery, caster and sensor on the plate; motors half under it; wheels clear it by 2 mm; the plate level (clearanceMm = wheel radius + half the motor height = the caster's height, within 3 mm); clearance ≥ the edge; within motion.maxSizeMm and maxMassG; nothing in front of the sensor.
+Pick motors, wheels, casters, packs and sensor modules only from catalog/mechanics.json (every number there has a datasheet behind it).`
+
+export function createMechanicsAgent(opts: { mock: boolean }): Agent {
+	return createRoleAgent({
+		role: "mechanics",
+		name: "mechanics",
+		mock: opts.mock,
+		instruction: `You are the mechanics engineer of a small robot: you own the mechanics field (drive, battery, sensor mount and chassis layout). The architect owns motion (the brief's targets) and the boards. Lay out the chassis in millimetres with the origin at the plate's centre and +x forward, and propose it with propose_contract_change. When another discipline proposes a change to mechanics, decide with decide_change.\n${MECHANICS_RULES}\n${CONTRACT_SHAPES}`,
+		handlers: [
+			ownerReviewsChanges("mechanics"),
+			ownerFixesReview("mechanics"),
+			engineerRequests("If it is about the robot's body (its size, wheels, motors, battery, where things sit, how fast it drives), meet it: call read_contract, then propose_contract_change on the mechanics field with its current baseVersion, keeping everything the request does not mention, so every check above still passes. Otherwise change nothing."),
+			violationsFor("mechanics", "Fix them by changing the mechanics field you own (other parts, a longer wheelbase, the battery moved back, a wider plate), with propose_contract_change and its current baseVersion.", (kind) => kind.startsWith("mech-")),
+		],
+	})
+}
+
 export function createCaseAgent(opts: { mock: boolean }): Agent {
 	return createRoleAgent({
 		role: "enclosure",

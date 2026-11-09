@@ -14,6 +14,7 @@ import { connectivityOf } from "../contract/connectivity.ts"
 import { DATA_FORMAT } from "../codegen/data-format.ts"
 import { spaceFactLines } from "../contract/space.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
+import { mechanicsFactLines } from "../mechanics/facts.ts"
 
 // The facts and computed checks about the current contract, one source for everyone who judges or changes it: the
 // reviewer reads them at the final review, and every designer turn gets them recomputed from the contract as it is
@@ -27,6 +28,7 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 		...testFactLines(s),
 		...addedForYouFactLines(s),
 		...linkFactLines(s),
+		...mechanicsFactLines(s),
 		...(s.values.outline ? ["", "## Space (computed in code: the smallest board the parts place on, the case's contents)", ...spaceFactLines(s).map((l) => `- ${l}`)] : []),
 		...(s.values.outline && enclosureMode(s.values) === "case" ? ["", "## The case (computed in code from the outline, the connectors and the case field)", ...caseFactLines(s).map((l) => `- ${l}`)] : []),
 		...(enclosureMode(s.values) !== "case" ? ["", "## The case", enclosureMode(s.values) === "none" ? '- None: a bare board (requirements.enclosure "none"). No case is built or checked; the case field, if any, is ignored.' : '- None of ours: the board goes into the engineer\'s own housing (requirements.enclosure "own"). No case is built or checked; Bringup writes interface.md (outline, mounting holes, openings, buttons, lights, vents, antenna keep-out, underside pads, label) for whoever designs the housing.'] : []),
