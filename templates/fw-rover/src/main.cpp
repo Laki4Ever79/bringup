@@ -1,0 +1,30 @@
+// The rover's firmware: each control tick reads the front distance (which paces the loop: the sensor's update period),
+// steps the wall-avoidance logic and sets both motors; every 5 s it reads the payload sensor and prints it.
+// Bluetooth reporting of the payload is not in this firmware yet (docs/mechanics.md, "Not done").
+#include <Arduino.h>
+#include "hw.h"
+#include "hw_pins.h"
+#include "rover.h"
+
+static const RoverConfig CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS};
+static RoverState state;
+static uint32_t nextPayload = 0;
+
+void setup() {
+	Serial.begin(115200);
+	hw_begin();
+	Serial.println("ROVER ready");
+}
+
+void loop() {
+	int d = hw_distance_mm();
+	uint32_t now = hw_now_ms();
+	RoverOut out = rover_step(CFG, state, d, now);
+	hw_motor(0, out.left);
+	hw_motor(1, out.right);
+	if ((int32_t)(now - nextPayload) >= 0) {
+		nextPayload = now + 5000;
+		float t, rh;
+		if (hw_payload(&t, &rh)) Serial.printf("PAYLOAD t=%.2f rh=%.1f\n", t, rh);
+	}
+}

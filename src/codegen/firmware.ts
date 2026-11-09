@@ -71,6 +71,8 @@ export function parseSensorHeader(text: string): string | null {
 export function parsePinsHeader(text: string): Record<string, number> {
 	const pins: Record<string, number> = {}
 	for (const m of text.matchAll(/^#define PIN_(\w+) (-?\d+)\s*$/gm)) pins[m[1]] = Number(m[2])
+	// The rover's hw_pins.h (src/mechanics/firmware.ts) names its pins after the contract's signals directly.
+	for (const m of text.matchAll(/^#define (MOT_[AB]IN[12]|I2C_SDA|I2C_SCL) (-?\d+)\s*$/gm)) pins[m[1]] = Number(m[2])
 	return pins
 }
 

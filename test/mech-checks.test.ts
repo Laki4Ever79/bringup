@@ -96,3 +96,16 @@ test("the driver on its own board gives the same verdicts (option B)", () => {
 	mech.chassis.boards.push({ name: "drive", at: { xMm: -45, yMm: 0 }, rotDeg: 0 })
 	assert.deepEqual(mechanicsCheckOver(v.motion, mech, [{ name: "main", snapshot: main }, { name: "drive", snapshot: drv }], cat), [])
 })
+
+test("the firmware's hardware layer must use the contract's pins (the pin-mismatch check reads hw_pins.h)", async () => {
+	const { parsePinsHeader } = await import("../src/codegen/firmware.ts")
+	const { checkConsistency } = await import("../src/contract/consistency.ts")
+	const { c } = roverFixture()
+	const good = "#define MOT_AIN1 4\n#define MOT_AIN2 5\n#define MOT_BIN1 6\n#define MOT_BIN2 7\n#define I2C_SDA 8\n#define I2C_SCL 9\n#define ROVER_STOP_MM 200\n"
+	assert.deepEqual(parsePinsHeader(good), { MOT_AIN1: 4, MOT_AIN2: 5, MOT_BIN1: 6, MOT_BIN2: 7, I2C_SDA: 8, I2C_SCL: 9 })
+	const firmware = (h: string) => ({ revision: 1, ok: true, pins: parsePinsHeader(h), log: "" })
+	assert.deepEqual(checkConsistency(c, { firmware: firmware(good) }).filter((v) => v.kind === "pin-mismatch"), [])
+	const bad = checkConsistency(c, { firmware: firmware(good.replace("MOT_AIN1 4", "MOT_AIN1 3")) }).filter((v) => v.kind === "pin-mismatch")
+	assert.equal(bad.length, 1)
+	assert.match(bad[0].message, /MOT_AIN1 on GPIO3, contract says GPIO4/)
+})
