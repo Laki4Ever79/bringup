@@ -188,9 +188,14 @@ export function usbWake(s: ContractSnapshot): { mcu: Part; gpio: number | null; 
 }
 
 // The ESP32-C3's native USB reaches the connector: GPIO18/19 on the module and not used for anything else.
+// Either the generator wires them, or the contract does, D- on GPIO18 and D+ on GPIO19 to the USB-C connector (real
+// system run 2: an architect assigned USB_DN/USB_DP itself, and USB wake was dropped as if the pins were taken).
 function nativeUsbWired(s: ContractSnapshot): boolean {
 	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
-	return Boolean(mcu?.pins.includes("GPIO18") && mcu.pins.includes("GPIO19") && !(s.values.pins ?? []).some((p) => p.gpio === 18 || p.gpio === 19))
+	if (!mcu?.pins.includes("GPIO18") || !mcu.pins.includes("GPIO19")) return false
+	const usb = usbRef(s)
+	const on = (s.values.pins ?? []).filter((p) => p.gpio === 18 || p.gpio === 19)
+	return on.every((p) => p.partRef === usb && ((p.gpio === 18 && p.partPin === "DN") || (p.gpio === 19 && p.partPin === "DP")))
 }
 
 export function supportParts(s: ContractSnapshot): Support[] {
