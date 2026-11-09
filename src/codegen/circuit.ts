@@ -9,6 +9,8 @@ interface CatalogEntry {
 	footprint: string
 	pins: string[]
 	bootPin?: string
+	// The strapping pin that must read high at reset for download boot (the ESP32-C3's GPIO8).
+	downloadPin?: string
 	// The GPIOs that can wake the chip from deep sleep, and its strapping pins (read at reset).
 	wakeGpios?: number[]
 	strapGpios?: number[]
@@ -168,6 +170,18 @@ export function recoveryBootPin(s: ContractSnapshot): { mcu: Part; pin: string; 
 	return { mcu, pin, gpio: Number(pin.replace(/\D/g, "")) }
 }
 
+// The other pin download boot needs: on the ESP32-C3, GPIO9 low enters the ROM downloader only with GPIO8 high (TRM
+// v1.4, Table 7.2-1), and GPIO8 floats at reset with no pull-up on the module (catalog notes). Without one, the recovery
+// pads could land the chip in SPI download boot or the invalid combination (found researching GPIO2, 9 Nov; datasheet
+// reading, not yet tried on a board). The board generator pulls it up (supportParts), so it may carry a signal that
+// leaves it high at reset (a button to GND, a UART line), but not one held low: an LED, a pulled-down line.
+export function downloadStrap(s: ContractSnapshot): { mcu: Part; pin: string; gpio: number } | null {
+	const boot = recoveryBootPin(s)
+	const pin = boot ? CATALOG.find((c) => c.mpn.toUpperCase() === boot.mcu.mpn.toUpperCase())?.downloadPin : undefined
+	if (!boot || !pin || !boot.mcu.pins.includes(pin)) return null
+	return { mcu: boot.mcu, pin, gpio: Number(pin.replace(/\D/g, "")) }
+}
+
 // A signal the boot pin can share with the BOOT pad: an I2C line, which the board generator pulls up, so the pin reads
 // high at reset and the chip boots normally; shorting the pads only holds the open-drain bus low meanwhile.
 export const sharesBootPin = (signal: string) => /^I2C_(SDA|SCL)$/.test(signal)
@@ -229,6 +243,15 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
 	if (ldo) jobs.push({ job: `decoupling on ${charger ? "VBAT" : "VBUS"} (LDO input)`, spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
 	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
+	// The download-boot strap pulled high (downloadStrap), unless the I2C pull-up above already does it; not on a pin that
+	// drives an LED (a violation for the architect: the pull-up would light it in deep sleep).
+	const strap = downloadStrap(s)
+	if (strap && supply) {
+		const on = pins.find((p) => p.gpio === strap.gpio)
+		const pulled = on && /^I2C_(SDA|SCL)$/.test(on.signal) && pullups
+		const led = on && parts.some((p) => p.ref === on.partRef && (p.role === "led" || p.role === "charge-led"))
+		if (!pulled && !led) jobs.push({ job: `${strap.mcu.ref}.${strap.pin} pull-up (download boot needs it high at reset)`, spec: SUPPORT.pullup, a: on ? { net: on.signal } : { ref: strap.mcu.ref, pin: strap.pin }, b: { net: supply }, near: strap.mcu.ref })
+	}
 	const wake = usbWake(s)
 	if (wake?.gpio != null) {
 		jobs.push({ job: `USB-sense divider top, VBUS to ${wake.mcu.ref}.GPIO${wake.gpio} (wakes it when USB is plugged in)`, spec: SUPPORT.senseTop, a: { net: "VBUS" }, b: { net: USB_SENSE_NET }, near: wake.mcu.ref })

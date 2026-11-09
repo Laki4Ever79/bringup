@@ -1,6 +1,6 @@
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
-import { connectorBoxes, generatedNets, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
+import { connectorBoxes, downloadStrap, generatedNets, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type FieldName } from "./types.ts"
@@ -120,6 +120,7 @@ export type ViolationKind =
 	| "field-missing"
 	| "connector-clash"
 	| "module-blocked"
+	| "download-pin-low"
 	| "led-pin"
 	| "rail-underrated"
 	| ModelViolation["kind"]
@@ -152,7 +153,7 @@ const MOUNTING_PAIR_MM = 5
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
 	const v: Violation[] = []
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -422,6 +423,25 @@ export function bootPinTaken(c: ContractSnapshot): Violation[] {
 			affects: ["architect"],
 		},
 	]
+}
+
+// Download boot needs the MCU's download strap (the ESP32-C3's GPIO8) high at reset; the generator pulls it up
+// (circuit.ts downloadStrap). A signal that holds it low defeats the recovery pads: an LED (and the pull-up would light it
+// through the LED all the time), or a line the generator pulls down.
+export function downloadPinLow(c: ContractSnapshot): Violation[] {
+	const strap = downloadStrap(c)
+	const on = strap && (c.values.pins ?? []).find((p) => p.gpio === strap.gpio)
+	if (!strap || !on) return []
+	const part = (c.values.parts ?? []).find((p) => p.ref === on.partRef)
+	const led = part && (part.role === "led" || part.role === "charge-led")
+	const pulledDown = supportParts(c).some((sp) => sp.b && "net" in sp.b && sp.b.net === "GND" && "net" in sp.a && sp.a.net === on.signal)
+	if (!led && !pulledDown) return []
+	return [{
+		kind: "download-pin-low",
+		message: `${strap.mcu.ref} ${strap.pin} must read high at reset for the recovery pads to start the ROM downloader (ESP32-C3 TRM v1.4, Table 7.2-1), so the board generator pulls it up; it is assigned to ${on.signal} (${on.partRef}.${on.partPin}), ${led ? "an LED, which holds it low at reset (and the pull-up would light the LED through deep sleep)" : "a line the generator pulls down"}: move ${on.signal} to another GPIO. A button to GND, a UART line or an I2C line may stay`,
+		fields: ["pins"],
+		affects: ["architect"],
+	}]
 }
 
 // USB wake needs a free deep-sleep wake pin for the VBUS sense (codegen/circuit.ts usbWake); without one, a sleeping

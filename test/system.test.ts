@@ -94,14 +94,18 @@ test("the generator wires a link connector: GND always, VCC only when the link c
 	assert.match(circuitFromContract(controller), /from="\.JL1 > \.IO1" to="net\.I2C_SDA"/)
 	assert.match(circuitFromContract(controller), /from="\.JL1 > \.IO2" to="net\.I2C_SCL"/)
 	assert.equal(supportParts(controller).filter((sp) => /pull-up/.test(sp.job)).length, 2)
-	// The target with its own bus (I2C pins for the connector) fits no pull-ups: the controller's serve the bus.
+	// The target with its own bus (I2C pins for the connector) fits no bus pull-ups: the controller's serve the bus. Its
+	// I2C_SDA is on GPIO8, the download strap, which floats with the cable unplugged (as when its recovery pads are used),
+	// so that one line keeps its own 10k (5k with the controller's in parallel, fine for I2C).
 	const target = board(i2cSpec(), "b")
-	assert.equal(supportParts(target).filter((sp) => /pull-up/.test(sp.job)).length, 0)
-	// A target with no bus of its own gets I2C_SDA/I2C_SCL straight on the connector, and no pull-ups.
+	const targetPullups = supportParts(target).filter((sp) => /pull-up/.test(sp.job))
+	assert.deepEqual(targetPullups.map((sp) => [sp.job.replace(/ \(.*/, ""), sp.a]), target.values.pins!.some((p) => p.gpio === 8 && p.signal === "I2C_SDA") ? [["U1.GPIO8 pull-up", { net: "I2C_SDA" }]] : [])
+	// A target with no bus of its own gets I2C_SDA/I2C_SCL straight on the connector, and no bus pull-ups (only the
+	// download strap's, on GPIO8 when it is free).
 	const bare = board(i2cSpec(), "b", false)
 	assert.deepEqual(bare.values.pins!.filter((p) => p.partRef === "JL1").map((p) => [p.signal, p.partPin]), [["I2C_SDA", "IO1"], ["I2C_SCL", "IO2"]])
 	assert.deepEqual(linkChecks(bare), [])
-	assert.equal(supportParts(bare).filter((sp) => /pull-up/.test(sp.job)).length, 0)
+	assert.deepEqual(supportParts(bare).filter((sp) => /pull-up/.test(sp.job) && !sp.job.startsWith("U1.GPIO8 pull-up")), [])
 	const h = linkHeader(plain)
 	assert.match(h, /#define LINK_L1_UART 1/)
 	assert.match(h, /#define LINK_L1_BAUD 115200/)
