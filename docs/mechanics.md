@@ -25,7 +25,7 @@ fields involved. The report's **Mechanics** section prints every computed value 
 | `mech-stopping` | braking plus one sensor period fits inside the sensor's range, minus the wall distance |
 | `mech-current` | stall current within the driver's peak per channel, and both motors plus the electronics within the pack's peak |
 | `mech-runtime` | the pack lasts the brief's runtime at cruise |
-| `mech-voltage` | a full cell is at most 1.5× the motor's rating; the driver covers the cell's range |
+| `mech-voltage` | a full cell is at most 1.3× the motor's rating; the driver covers the cell's range |
 | `mech-tipping` | the centre of mass stays 10 mm inside the wheels-and-caster triangle, still and braking |
 | `mech-fit` | parts on the plate, the plate level, the sensor's view clear, within the brief's size and mass |
 | `mech-wiring` | a motor driver with its four inputs on GPIOs, the sensor's plug on an I2C bus, a battery connector |
@@ -40,7 +40,7 @@ estimates. Every report line that uses one says `(estimate: <name> <value>)`.
 | floorMu | 0.6 | rubber on wood, laminate or tile: published tables give 0.5–0.8 |
 | rollingCrr | 0.02 | small rubber wheels on hard floors: 0.01–0.03 |
 | plaDensityGcm3 | 1.24 | solid PLA; infill makes the real plate lighter |
-| motorOvervoltMax | 1.5 | small brushed gearmotors are commonly run to about 1.5× rated |
+| motorOvervoltMax | 1.3 | small brushed gearmotors take some overvoltage at a cost in life; 1.3× keeps a 3 V motor off a full 4.2 V cell |
 | boardMassGPerCm2 | 0.35 | 1.6 mm FR-4 with small parts |
 | packInternalOhm | 0.15 | small 1S LiPo cells with protection: 0.1–0.2 Ω |
 | standoffMm | 10 | board standoffs, to clear the battery |

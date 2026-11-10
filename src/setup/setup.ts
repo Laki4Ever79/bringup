@@ -40,7 +40,7 @@ export const INSTALL: Step[] = [
 		name: "python tools (.venv)",
 		commands: [
 			["uv", ["venv", "--allow-existing", "--python", "3.12", ".venv"]],
-			["uv", ["pip", "install", "--python", ".venv/bin/python", "platformio==6.2.0", "build123d==0.13.0"]],
+			["uv", ["pip", "install", "--python", ".venv/bin/python", "platformio==6.2.0", "build123d==0.13.0", "mujoco==3.17.0"]],
 		],
 	},
 	{ id: "tscircuit", name: "tscircuit + bun (tools/node)", commands: [["npm", ["i", "--prefix", "tools/node", "tscircuit@0.0.3042", "bun@1.4.4"]]] },
@@ -160,8 +160,8 @@ export function presentOn(root: string, check: Probe["check"]): Probe["present"]
 	}
 	return async (step) => {
 		if (step === "python") {
-			const r = await check(join(root, ".venv/bin/python"), ["-c", "import importlib.metadata as m; print(m.version('platformio'), m.version('build123d'))"])
-			return r.code === 0 && r.out.trim() === "6.2.0 0.13.0"
+			const r = await check(join(root, ".venv/bin/python"), ["-c", "import importlib.metadata as m; print(m.version('platformio'), m.version('build123d'), m.version('mujoco'))"])
+			return r.code === 0 && r.out.trim() === "6.2.0 0.13.0 3.17.0"
 		}
 		if (step === "tscircuit") return version(join(root, "tools/node/node_modules/tscircuit/package.json")) === "0.0.3042" && version(join(root, "tools/node/node_modules/bun/package.json")) === "1.4.4"
 		if (step === "kicad") return (await check("docker", ["image", "inspect", "kicad/kicad:10.0"])).code === 0
