@@ -3,10 +3,10 @@
 // when the design was consistent again. The runner writes the same thing to ripples.json (src/runner/ripple.ts);
 // that file wins where it has an answer, and this live view from the trace fills in while a ripple is in flight.
 // Plain ES module with no dependencies but lanes.js: the page imports it from /ripple.js, the tests in Node.
-import { BUILDS, LANES, applyLaneEvent, createLanes } from "./lanes.js"
+import { BUILDS, LANES, agreeLine, applyLaneEvent, createLanes, shownLanes } from "./lanes.js"
 
 const KEYS = LANES.map((l) => l.key)
-const AGENTS = new Set(["architect", "parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer"])
+const AGENTS = new Set(["architect", "parts", "ml", "test", "enclosure", "mechanics", "connectivity", "firmware", "reviewer"])
 // Same as BUILD_INPUTS in src/agents/builders.ts.
 // The builders' inputs, from lanes.js (held equal to src/agents/builders.ts by a test).
 const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b]) => [`build:${k}`, b.inputs]))
@@ -39,10 +39,15 @@ export function liveRipples(events, requests, now = Date.now()) {
 		const w = windows.find((x) => t >= x.from && t < x.to)
 		if (w) w.events.push(e)
 	}
-	return windows.map((w) => ripple(w, lanes, now))
+	// What "consistent" names (board, case or chassis, firmware), from what the design has by the window's end.
+	// Only the tiles this design has (a robot's, the case's), and what "consistent" names, as of the window's end.
+	return windows.map((w) => {
+		const upTo = events.filter((e) => Date.parse(e.at) < w.to)
+		return ripple(w, lanes, now, shownLanes(upTo), agreeLine(upTo))
+	})
 }
 
-function ripple({ r, i, from, to, events: all, cleanIn, benchSource, writtenIn = new Set() }, lanes, now) {
+function ripple({ r, i, from, to, events: all, cleanIn, benchSource, writtenIn = new Set() }, lanes, now, KEYS, agree) {
 	// The request's ripple ends at the first design.ready after it, inclusive (src/runner/ripple.ts): what the brief
 	// review changes after that is a follow-up, not the request. No design.ready yet: up to the next request.
 	const readyAt = all.findIndex((e) => e.type === "design.ready")
@@ -127,6 +132,7 @@ function ripple({ r, i, from, to, events: all, cleanIn, benchSource, writtenIn =
 		checks,
 		state,
 		reviewFollowUps,
+		agree,
 	}
 }
 
@@ -309,10 +315,12 @@ export function statusLine({ ripple: r, now = Date.now(), stubbed = false, viola
 			: `Measuring the blink on ${board}`
 		return { state: "rippling", headline, detail: `${done} · now on ${board}` }
 	}
-	const acted = `${r.woke.length} of ${KEYS.length} agents had to act`
+	// Out of the tiles this design has: everyone the ripple sorted into woke, checked, reading or idle.
+	const lanes = r.woke.length + (r.checked?.length ?? 0) + (r.reading?.length ?? 0) + (r.stayedIdle?.length ?? 0)
+	const acted = `${r.woke.length} of ${lanes || KEYS.length} agents had to act`
 	switch (r.state) {
 		case "sent": return { state: "sent", headline: `Agents reading ${label}`, detail: "deciding which fields it touches" }
-		case "consistent": return { state: "consistent", headline: `${label}: board, case and firmware agree`, detail: `in ${secs(r.durationMs)}${stubbed ? " · hardware stubbed" : ""} · ${acted}` }
+		case "consistent": return { state: "consistent", headline: `${label}: ${r.agree ?? "board, case and firmware agree"}`, detail: `in ${secs(r.durationMs)}${stubbed ? " · hardware stubbed" : ""} · ${acted}` }
 		case "no-change": return { state: "no-change", headline: `Nothing to change for ${label}`, detail: `${r.checked?.length ?? 0} agent${r.checked?.length === 1 ? "" : "s"} checked it · no field moved` }
 		case "unsettled": {
 			const n = r.violations.at(-1) ?? r.violationsPeak

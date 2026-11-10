@@ -799,7 +799,7 @@
 		document.head.insertAdjacentHTML("beforeend", "<style>header .logo, #system-link, #new-btn, #stage-btn { display: none !important }</style>")
 		addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.target.closest?.("input, textarea")) parent.postMessage({ type: "bringup-close" }, location.origin) })
 	}
-	import { LANES, applyLaneEvent, createLanes } from "/lanes.js"
+	import { LANES, applyLaneEvent, createLanes, shownLanes } from "/lanes.js"
 	import { featureEdges, parseStl } from "/stl.js"
 	import { liveRipples, mergeRipples, runStart, statusLine } from "/ripple.js"
 	import { axisMap, rulerTicks, tickStep } from "/rulers.js"
@@ -819,6 +819,7 @@
 		architect: ["Architect", "A"], parts: ["Parts", "P"], ml: ["ML engineer", "M"], test: ["Test engineer", "T"], firmware: ["Firmware", "F"], reviewer: ["Reviewer", "R"],
 		"build:board": ["Board", "B"], "build:enclosure": ["Case", "C"], "build:firmware": ["FW build", "⚙"], "build:testkit": ["Test kit", "K"], grounding: ["Grounding", "G"],
 		consistency: ["Consistency", "✓"], engineer: ["You", "you"], enclosure: ["Case designer", "C"], connectivity: ["Connectivity", "W"],
+		mechanics: ["Mechanics", "⚖"], "build:chassis": ["Chassis", "H"], "build:drive": ["Drive", "D"],
 	}
 	const color = (k) => AGENT_COLORS[k] ?? AGENT_COLORS[`build:${k}`] ?? AGENT_COLORS.engineer
 	const avatar = (k) => `<span class="avatar" style="background:${color(k)}" title="${esc(WHO[k]?.[0] ?? k)}">${esc(WHO[k]?.[1] ?? String(k)[0]?.toUpperCase())}</span>`
@@ -1729,7 +1730,7 @@
 			$("elapsed").textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
 		}, 500)
 
-		// ── Agents: nine tiles in the ripple, lit when they woke, dimmed when they stayed idle ──
+		// ── Agents: a tile per participant this design has (shownLanes: a robot's, the case's), lit when they woke ──
 		const CARD_KEYS = LANES.map((l) => l.key)
 		const ACTIVE = new Set(["thinking", "tool", "building", "checking"])
 		const STATUS = { idle: "idle", thinking: "thinking", tool: "tool call", held: "held", building: "building", checking: "checking", done: "done", failed: "failed" }
@@ -1793,6 +1794,7 @@
 		// Ripple mode: woke vs stayed idle; before any request: who is working on the first design.
 		function paintTiles(r) {
 			const woke = new Set(r?.woke ?? []), working = new Set(r?.working ?? []), checked = new Set(r?.checked ?? []), reading = new Set(r?.reading ?? [])
+			const shown = new Set(shownLanes(S.events))
 			for (const k of CARD_KEYS) {
 				const lane = S.lanes[k], el = cards[k]
 				const failed = lane.status === "failed" ? " failed" : lane.status === "held" ? " held" : ""
@@ -1807,7 +1809,7 @@
 					cls = ACTIVE.has(lane.status) ? "woke working" : lane.status === "done" ? "woke done" : lane.history.length ? "" : "asleep"
 					status = STATUS[lane.status] ?? lane.status
 				}
-				const next = `tile ${cls}${failed}`
+				const next = `tile ${cls}${failed}${shown.has(k) ? "" : " hidden"}`
 				if (el.className !== next) el.className = next
 				el.querySelector(".status").textContent = status
 			}

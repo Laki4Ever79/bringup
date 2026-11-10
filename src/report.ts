@@ -16,7 +16,7 @@ import { isStub } from "./tools/stubs.ts"
 import type { Payloads } from "./events.ts"
 import { bringupSection } from "./bench/report.ts"
 import { mechanicsSection } from "./mechanics/report.ts"
-import { changeRipples, readTrace, RIPPLE_PARTICIPANTS } from "./runner/ripple.ts"
+import { changeRipples, readTrace } from "./runner/ripple.ts"
 
 function counts(tracePath: string): Record<string, number> {
 	const c: Record<string, number> = {}
@@ -164,7 +164,7 @@ export function changeRequestsSection(outDir: string): string[] {
 		`|---|---|---|---|---|`,
 		...ripples.map((r) => {
 			const again = r.durationMs !== null ? `${(r.durationMs / 1000).toFixed(1)} s` : r.fieldsChanged.length === 0 ? "nothing changed" : "not reached"
-			return `| ${cell(r.text)} | ${r.fieldsChanged.join(", ") || "none"} | ${r.woke.join(", ") || "none"} (${r.woke.length} of ${RIPPLE_PARTICIPANTS.length}${r.checked.length > 0 ? `; ${r.checked.length} more checked, no change: ${r.checked.join(", ")}` : ""}) | ${again} | ${followUps(r.reviewFollowUps)} |`
+			return `| ${cell(r.text)} | ${r.fieldsChanged.join(", ") || "none"} | ${r.woke.join(", ") || "none"} (${r.woke.length} of ${r.woke.length + r.checked.length + r.stayedIdle.length}${r.checked.length > 0 ? `; ${r.checked.length} more checked, no change: ${r.checked.join(", ")}` : ""}) | ${again} | ${followUps(r.reviewFollowUps)} |`
 		}),
 		``,
 	]

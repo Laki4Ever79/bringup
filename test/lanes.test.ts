@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
-import { applyLaneEvent, createLanes, LANES } from "../src/dashboard/lanes.js"
+import { agreeLine, applyLaneEvent, createLanes, LANES, shownLanes } from "../src/dashboard/lanes.js"
 import { featureEdges, parseStl } from "../src/dashboard/stl.js"
 import { serveDashboard } from "../src/dashboard/server.ts"
 
@@ -13,7 +13,7 @@ const activity = (role: string, phase: string, text: string) => ev("agent.activi
 const changed = (field: string, version: number, revision: number) => ev("contract.changed", { field, version, revision, by: "architect" })
 
 test("lanes: one row per participant, agents first", () => {
-	assert.deepEqual(LANES.map((l: { label: string }) => l.label), ["Architect", "Part selector", "ML engineer", "Test engineer", "Case designer", "Connectivity", "Firmware reviewer", "Brief reviewer", "Board", "Enclosure", "Firmware build", "Test kit", "Grounding check", "Consistency"])
+	assert.deepEqual(LANES.map((l: { label: string }) => l.label), ["Architect", "Part selector", "ML engineer", "Test engineer", "Case designer", "Mechanics engineer", "Connectivity", "Firmware reviewer", "Brief reviewer", "Board", "Enclosure", "Chassis", "Firmware build", "Simulated drive", "Test kit", "Grounding check", "Consistency"])
 })
 
 test("an agent.activity line updates that agent's lane: status, text, history", () => {
@@ -299,4 +299,24 @@ test("the dashboard's builder inputs are exactly the builders' (lanes.js and rip
 	const e = (s: number, type: string, payload: object) => ({ seq: s, at: at(s), type, producerId: "x", payload })
 	const r = liveRipples([e(0, "run.started", {}), e(11, "contract.changed", { field: "parts", version: 2, revision: 9, by: "parts" })] as any, [{ at: at(10), text: "add a temperature/humidity sensor" }], Date.parse(at(20)))[0]
 	assert.ok(r.woke.includes("build:enclosure"), `woke: ${r.woke}`)
+})
+
+// A robot (docs/mechanics.md): the mechanics engineer, its chassis and its simulated drive get tiles; a design with no
+// case of ours drops the case tiles. The headline names what this design has.
+test("lanes: a robot's tiles, and only the tiles this design has", () => {
+	const at = new Date().toISOString()
+	const e = (type: string, payload: object) => ({ seq: 0, at, type, producerId: "p", payload })
+	const plain = [e("contract.changed", { field: "outline", version: 1, revision: 1, by: "architect" }), e("artifact.ready", { kind: "enclosure", revision: 1 })]
+	const rover = [
+		e("contract.changed", { field: "mechanics", version: 1, revision: 2, by: "mechanics" }),
+		e("artifact.ready", { kind: "enclosure", revision: 2, skipped: "no case: a bare board (requirements.enclosure none)" }),
+		e("artifact.ready", { kind: "chassis", revision: 2 }),
+	]
+	assert.deepEqual(LANES.map((l: { label: string }) => l.label), ["Architect", "Part selector", "ML engineer", "Test engineer", "Case designer", "Mechanics engineer", "Connectivity", "Firmware reviewer", "Brief reviewer", "Board", "Enclosure", "Chassis", "Firmware build", "Simulated drive", "Test kit", "Grounding check", "Consistency"])
+	assert.deepEqual(shownLanes(plain), ["architect", "parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer", "build:board", "build:enclosure", "build:firmware", "build:testkit", "grounding", "consistency"])
+	assert.deepEqual(shownLanes(rover), ["architect", "parts", "ml", "test", "mechanics", "connectivity", "firmware", "reviewer", "build:board", "build:chassis", "build:firmware", "build:drive", "build:testkit", "grounding", "consistency"])
+	assert.equal(agreeLine(plain), "board, case and firmware agree")
+	assert.equal(agreeLine(rover), "board, chassis and firmware agree")
+	assert.equal(agreeLine(rover.slice(0, 2)), "board and firmware agree")
+	assert.equal(agreeLine([]), "board, case and firmware agree")
 })

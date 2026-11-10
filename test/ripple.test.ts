@@ -270,3 +270,25 @@ test("the live ripples.json picks up an agent's turn on a request that changes n
 	const [row] = JSON.parse(readFileSync(join(out, "ripples.json"), "utf8")).requests
 	assert.deepEqual(row.checked, ["architect"])
 })
+
+// A robot (docs/mechanics.md): a mechanics change wakes the mechanics engineer, the chassis and the simulated drive, and
+// the design is consistent again only once the drive has run on the new revision.
+test("a robot's mechanics change wakes the mechanics engineer, the chassis and the drive, and waits for the drive", () => {
+	const trace: TraceEvent[] = [
+		ev(0, "run.started", {}),
+		ev(10, "contract.changed", { field: "mechanics", version: 1, revision: 5, by: "mechanics" }),
+		ev(500, "artifact.ready", { kind: "chassis", revision: 5 }),
+		ev(900, "artifact.ready", { kind: "drive", revision: 5 }),
+		checked(900, 5, 0),
+		ev(10_000, "change.requested", { id: "req-1", text: "make it 2 cm narrower" }),
+		turn(10_001, "mechanics"),
+		ev(10_005, "contract.changed", { field: "mechanics", version: 2, revision: 6, by: "mechanics" }),
+		checked(10_006, 6, 0),
+		ev(12_000, "artifact.ready", { kind: "chassis", revision: 6 }),
+		ev(90_000, "artifact.ready", { kind: "drive", revision: 6 }),
+	]
+	const [r] = changeRipples(trace)
+	assert.deepEqual(r.woke, ["mechanics", "build:chassis", "build:drive", "consistency"])
+	assert.equal(r.consistentAtMs, 90_000)
+	assert.ok(!r.stayedIdle.includes("mechanics"))
+})
