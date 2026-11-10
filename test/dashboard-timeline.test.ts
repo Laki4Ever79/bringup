@@ -64,3 +64,14 @@ test("steps are in time order (the consistent step lands where it happened), and
 	assert.deepEqual(steps.map((s) => s.t), ["+0.0 s", "+3.0 s", "+18 s", "+28 s"])
 	assert.equal(steps[1].text, "firmware agent: tiltBlinkMs 1000 → 250")
 })
+
+test("a robot's timeline ends with what it has: board, chassis and firmware", () => {
+	const rover = [
+		ev(0, "change.requested", { id: "req-1", text: "make it 2 cm narrower" }),
+		ev(1, "contract.changed", { field: "mechanics", version: 2, revision: 9, by: "mechanics" }),
+		ev(2, "artifact.ready", { kind: "enclosure", revision: 9, skipped: "no case: a bare board (requirements.enclosure none)" }),
+		ev(30, "artifact.ready", { kind: "chassis", revision: 9 }),
+		ev(90, "artifact.ready", { kind: "drive", revision: 9 }),
+	]
+	assert.equal(rippleTimeline(rover, { fromMs: T0, consistentAtMs: T0 + 90_000 }).at(-1)?.text, "consistent: board, chassis and firmware agree")
+})

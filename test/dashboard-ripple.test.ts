@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { liveRipples, mergeRipples, runStart, whatMoved } from "../src/dashboard/ripple.js"
+import { liveRipples, mergeRipples, runStart, statusLine, whatMoved } from "../src/dashboard/ripple.js"
 
 const T0 = Date.parse("2026-10-31T12:00:00.000Z")
 let seq = 0
@@ -305,4 +305,21 @@ test("the bench check has a short one-line form for the BENCH tile at every stag
 		assert.equal(short(events), want)
 		assert.ok(want.length <= 20)
 	}
+})
+
+test("ripple: a robot's change wakes the mechanics tiles, and its headline names board, chassis and firmware", () => {
+	const rover = [
+		ev(0, "run.started", {}),
+		changed(1, "mechanics", 1, 1, "mechanics"),
+		ev(2, "artifact.ready", { kind: "enclosure", revision: 1, skipped: "no case: a bare board (requirements.enclosure none)" }),
+		checked(3, 1, 0),
+		changed(101, "mechanics", 2, 2, "mechanics"),
+		checked(102, 2, 0),
+		ev(130, "artifact.ready", { kind: "chassis", revision: 2 }),
+		ev(190, "artifact.ready", { kind: "drive", revision: 2 }),
+	]
+	const [r] = liveRipples(rover, [{ at: at(100), text: "make it 2 cm narrower" }], T0 + 300_000)
+	assert.deepEqual(r.woke, ["mechanics", "build:chassis", "build:drive", "consistency"])
+	assert.equal(r.consistentAtMs, T0 + 190_000)
+	assert.equal(statusLine({ ripple: r }).headline, "“make it 2 cm narrower”: board, chassis and firmware agree")
 })

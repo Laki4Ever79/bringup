@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import { ALL_KINDS, BUILD_INPUTS, OPTIONAL_KINDS } from "../agents/builders.ts"
 import type { ArtifactKind } from "../events.ts"
+import { shownLanes } from "../dashboard/lanes.js"
 
 export const RIPPLES_FILE = "ripples.json"
 
@@ -39,17 +40,17 @@ export interface Ripple {
 	reviewFollowUps: { fieldsChanged: string[]; rounds: number }
 }
 
-// The run page's builds: a robot's chassis has its own panel (docs/mechanics.md), not a ripple lane.
-const KINDS: ArtifactKind[] = ALL_KINDS.filter((k) => k !== "chassis" && k !== "drive")
+// Every build, a robot's chassis and simulated drive included (docs/mechanics.md).
+const KINDS: ArtifactKind[] = ALL_KINDS
 const builderName = (kind: string) => `build:${kind}`
 
 // Everyone a request could wake, keyed like the dashboard's lanes (src/dashboard/lanes.js): the four LLM agents by
 // role, the three builders (the QEMU boot rides on build:firmware), the grounding check and the consistency check.
-export const RIPPLE_PARTICIPANTS = ["architect", "parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
+export const RIPPLE_PARTICIPANTS = ["architect", "parts", "ml", "test", "enclosure", "mechanics", "connectivity", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
 
 // written: the fields some agent had written before the request; an optional builder (the test kit) wakes only once its
 // field exists, as the builder itself does.
-function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, lastCheckClean: boolean, written = new Set<string>()): Omit<Ripple, "reviewFollowUps"> {
+function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, lastCheckClean: boolean, written = new Set<string>(), participants = RIPPLE_PARTICIPANTS): Omit<Ripple, "reviewFollowUps"> {
 	const atMs = Date.parse(request.at) - startMs
 	const fields: string[] = []
 	const woke = new Set<string>()
@@ -111,9 +112,9 @@ function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, last
 		atMs,
 		fieldsChanged: fields,
 		// Only the lanes: a change by anyone else (the bench) still wakes the builders, but is not a lane of its own.
-		woke: RIPPLE_PARTICIPANTS.filter((p) => woke.has(p)),
-		checked: RIPPLE_PARTICIPANTS.filter((p) => !woke.has(p) && turned.has(p)),
-		stayedIdle: RIPPLE_PARTICIPANTS.filter((p) => !woke.has(p) && !turned.has(p)),
+		woke: participants.filter((p) => woke.has(p)),
+		checked: participants.filter((p) => !woke.has(p) && turned.has(p)),
+		stayedIdle: participants.filter((p) => !woke.has(p) && !turned.has(p)),
 		violationsPeak,
 		consistentAtMs: consistentAt,
 		durationMs: consistentAt === null ? null : consistentAt - atMs,
@@ -138,7 +139,10 @@ export function changeRipples(trace: TraceEvent[]): Ripple[] {
 		// Every review round of the re-armed review; the first one starts right at the window's design.ready.
 		const rounds = (ready < 0 ? [] : window.slice(ready)).filter((e) => e.type === "review.completed").length
 		const written = new Set(trace.slice(0, start).filter((e) => e.type === "contract.changed").map((e) => e.payload.field as string))
-		return { ...ripple(own, trace[start], startMs, (lastCheck?.payload.violations.length ?? 1) === 0, written), reviewFollowUps: { fieldsChanged: followFields, rounds } }
+		// Only the lanes this design has (a robot's, the case's), as the page shows them (shownLanes in lanes.js).
+		const shown = new Set(shownLanes(trace.slice(0, starts[k + 1] ?? trace.length)))
+		const participants = RIPPLE_PARTICIPANTS.filter((p) => shown.has(p))
+		return { ...ripple(own, trace[start], startMs, (lastCheck?.payload.violations.length ?? 1) === 0, written, participants), reviewFollowUps: { fieldsChanged: followFields, rounds } }
 	})
 }
 

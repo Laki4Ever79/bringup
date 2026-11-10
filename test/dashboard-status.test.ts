@@ -4,7 +4,7 @@ import { statusLine } from "../src/dashboard/ripple.js"
 
 // The 04 Result banner as a live status line: what is happening now, in plain words, then how the change ended.
 const T0 = Date.parse("2026-10-31T12:00:00.000Z")
-const ripple = (o: object): any => ({ id: "req-1", text: "make it 40 mm wide", file: null, atMs: T0, fieldsChanged: ["outline"], woke: ["architect", "build:board", "build:enclosure", "consistency"], checked: [], reading: [], stayedIdle: ["parts", "ml", "firmware", "reviewer", "build:firmware", "grounding"], working: [], violations: [], violationsPeak: 0, consistentAtMs: null, durationMs: null, checks: [], state: "rippling", ...o })
+const ripple = (o: object): any => ({ id: "req-1", text: "make it 40 mm wide", file: null, atMs: T0, fieldsChanged: ["outline"], woke: ["architect", "build:board", "build:enclosure", "consistency"], checked: [], reading: [], stayedIdle: ["parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer", "build:firmware", "build:testkit", "grounding"], working: [], violations: [], violationsPeak: 0, consistentAtMs: null, durationMs: null, checks: [], state: "rippling", ...o })
 const at = (s: number) => T0 + s * 1000
 
 test("before any change: designing from the brief, then the first design, and what to do next", () => {
@@ -17,7 +17,7 @@ test("before any change: designing from the brief, then the first design, and wh
 
 test("a change in flight says who is rebuilding for what, and what isn't affected", () => {
 	const s = statusLine({ ripple: ripple({ working: ["build:board", "build:enclosure"] }), now: at(12) })
-	assert.deepEqual(s, { state: "rippling", headline: "Board and case rebuilding for 40 mm wide", detail: "outline changed · 6 agents not affected · 12 s" })
+	assert.deepEqual(s, { state: "rippling", headline: "Board and case rebuilding for 40 mm wide", detail: "outline changed · 10 agents not affected · 12 s" })
 	assert.equal(statusLine({ ripple: ripple({ working: ["architect"] }), now: at(3) }).headline, "Architect working on 40 mm wide")
 	assert.equal(statusLine({ ripple: ripple({ working: ["build:firmware"], text: "blink faster when tilted", fieldsChanged: ["behavior"] }), now: at(3) }).headline, "Firmware rebuilding for “blink faster when tilted”")
 	assert.deepEqual(statusLine({ ripple: ripple({ state: "sent", woke: [], fieldsChanged: [] }), now: at(1) }), { state: "sent", headline: "Agents reading 40 mm wide", detail: "deciding which fields it touches" })

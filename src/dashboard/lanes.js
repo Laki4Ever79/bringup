@@ -7,18 +7,43 @@ export const LANES = [
 	{ key: "ml", label: "ML engineer" },
 	{ key: "test", label: "Test engineer" },
 	{ key: "enclosure", label: "Case designer" },
+	{ key: "mechanics", label: "Mechanics engineer" },
 	{ key: "connectivity", label: "Connectivity" },
 	{ key: "firmware", label: "Firmware reviewer" },
 	{ key: "reviewer", label: "Brief reviewer" },
 	{ key: "build:board", label: "Board" },
 	{ key: "build:enclosure", label: "Enclosure" },
+	{ key: "build:chassis", label: "Chassis" },
 	{ key: "build:firmware", label: "Firmware build" },
+	{ key: "build:drive", label: "Simulated drive" },
 	{ key: "build:testkit", label: "Test kit" },
 	{ key: "grounding", label: "Grounding check" },
 	{ key: "consistency", label: "Consistency" },
 ]
 
 const HISTORY = 40
+
+// A robot's tiles (docs/mechanics.md), shown once the design has a mechanics field; the case's tiles, hidden while the
+// design has no case of ours (the enclosure build said "not needed").
+const ROBOT_LANES = new Set(["mechanics", "build:chassis", "build:drive"])
+const CASE_LANES = new Set(["enclosure", "build:enclosure"])
+const isRobot = (events) => events.some((e) => e.type === "contract.changed" && e.payload?.field === "mechanics")
+// The newest enclosure build said "not needed" (a bare board, or the engineer's own housing).
+const caseSkipped = (events) => Boolean(events.findLast((e) => e.type === "artifact.ready" && e.payload?.kind === "enclosure")?.payload?.skipped)
+const chassisBuilt = (events) => events.some((e) => e.type === "artifact.ready" && e.payload?.kind === "chassis" && !e.payload.skipped)
+
+// The lane keys this design has a tile for, from the trace so far.
+export function shownLanes(events) {
+	const robot = isRobot(events), noCase = caseSkipped(events)
+	return LANES.map((l) => l.key).filter((k) => (ROBOT_LANES.has(k) ? robot : CASE_LANES.has(k) ? !(robot && noCase) : true))
+}
+
+// What "consistent" means for this design, in words: the board and firmware always, the case unless it has none,
+// a robot's chassis once it has one.
+export function agreeLine(events) {
+	const parts = ["board", ...(caseSkipped(events) ? [] : ["case"]), ...(chassisBuilt(events) ? ["chassis"] : []), "firmware"]
+	return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)} agree`
+}
 
 // Same as BUILD_INPUTS and BUILD_REQUIRES in src/agents/builders.ts.
 // A test holds these equal to the builders' (test/lanes.test.ts).
@@ -80,8 +105,9 @@ export function applyLaneEvent(lanes, e) {
 			lanes.versions[p.field] = p.version
 			const changed = []
 			for (const [kind, b] of Object.entries(BUILDS)) {
-				// A build without a lane on this page (the chassis: robots only) is left to its own panel.
 				if (!lanes[`build:${kind}`]) continue
+				// An optional build (the test kit, a robot's chassis and drive) waits quietly until its field exists, as the builder does.
+				if (b.optional && !lanes.versions[b.optional]) continue
 				if (!b.inputs.includes(p.field)) {
 					// Not its input: a finished build is still the current one (the design moved on without it).
 					const lane = lanes[`build:${kind}`]

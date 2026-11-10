@@ -2,6 +2,7 @@
 // and the cause (what woke it), from contract.changed's reason / before / after / cause. Older traces have none of
 // those: the diff then comes from the per-revision snapshots, and the reason says it was not recorded.
 // Plain ES module: the page imports it from /changelog.js, the tests in Node.
+import { agreeLine } from "./lanes.js"
 import { contractDiff } from "./model.js"
 import { PROBLEM } from "./ripple.js"
 
@@ -80,7 +81,7 @@ export function fileDrift(events) {
 
 // ── The timeline beside 03 Agents: how a change travelled, step by step, with times from the request ──────────────
 const ACTOR = { architect: "architect", parts: "parts", ml: "ML engineer", test: "test engineer", enclosure: "case designer", connectivity: "connectivity engineer", firmware: "firmware agent", reviewer: "reviewer", engineer: "you", bench: "bench" }
-const BUILT = { board: "board", enclosure: "case", firmware: "firmware", testkit: "test kit" }
+const BUILT = { board: "board", enclosure: "case", firmware: "firmware", testkit: "test kit", chassis: "chassis", drive: "simulated drive" }
 const since = (ms) => (ms < 10_000 ? `+${(Math.max(0, ms) / 1000).toFixed(1)} s` : ms < 60_000 ? `+${Math.round(ms / 1000)} s` : `+${Math.floor(ms / 60_000)}:${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}`)
 
 function step(e) {
@@ -119,7 +120,7 @@ export function rippleTimeline(events, { fromMs, toMs = Infinity, consistentAtMs
 		const text = step(e)
 		if (text) steps.push({ key: `e${e.seq}`, at, text })
 	}
-	if (consistentAtMs !== null && consistentAtMs < toMs) steps.push({ key: "done", at: consistentAtMs, text: "consistent: board, case and firmware agree" })
+	if (consistentAtMs !== null && consistentAtMs < toMs) steps.push({ key: "done", at: consistentAtMs, text: `consistent: ${agreeLine(events.filter((e) => Date.parse(e.at) <= consistentAtMs))}` })
 	steps.sort((a, b) => a.at - b.at)
 	const shown = steps.length > max ? [{ key: "earlier", at: fromMs, text: `… ${steps.length - (max - 1)} earlier steps` }, ...steps.slice(-(max - 1))] : steps
 	return shown.map((s) => ({ key: s.key, t: s.key === "earlier" ? "" : since(s.at - fromMs), text: s.text }))
