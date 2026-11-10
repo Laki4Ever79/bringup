@@ -1879,7 +1879,7 @@
 		setInterval(() => { if (S.requests.length || !S.settled) schedule() }, 1000)
 
 		// The contract's fields, in its order (src/contract/types.ts FIELDS; test/case.test.ts keeps them equal).
-		const FIELDS = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case", "connectivity", "links"]
+		const FIELDS = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case", "connectivity", "links", "motion", "mechanics"]
 		const secs = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s` }
 		const STAMP = { consistent: "✓", rippling: "↯", sent: "→", unsettled: "✗", "no-change": "=", initial: "·" }
 
