@@ -13,6 +13,9 @@ static uint32_t nextPayload = 0;
 void setup() {
 	Serial.begin(115200);
 	hw_begin();
+#ifdef PIN_STATUS_LED
+	pinMode(PIN_STATUS_LED, OUTPUT);
+#endif
 	Serial.println("ROVER ready");
 }
 
@@ -22,6 +25,9 @@ void loop() {
 	RoverOut out = rover_step(CFG, state, d, now);
 	hw_motor(0, out.left);
 	hw_motor(1, out.right);
+#ifdef PIN_STATUS_LED
+	digitalWrite(PIN_STATUS_LED, (now / 500) % 2);  // a 1 Hz heartbeat: the control loop is running
+#endif
 	if ((int32_t)(now - nextPayload) >= 0) {
 		nextPayload = now + 5000;
 		float t, rh;

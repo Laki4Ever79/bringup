@@ -3,6 +3,7 @@ import { byMpn } from "./catalog.ts"
 import { defaultCheckCatalog } from "./checks.ts"
 import { est } from "./estimates.ts"
 import { G, motorAt } from "./model.ts"
+import { sensorDriver } from "../codegen/firmware.ts"
 
 // The rover firmware's header (templates/fw-rover/include/hw_pins.h), from the contract: the driver's and the bus's
 // pins, and the control numbers the mechanics fix. Stop distance: the brief's distance from the wall plus 1.5× (the
@@ -35,6 +36,10 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_SLOW_MM ${stop + SLOW_ZONE_MM}`,
 		`#define ROVER_CRUISE_DUTY ${cruise.toFixed(3)}f`,
 		`#define ROVER_TURN_MS ${turnMs}`,
+		// What else the rover firmware drives and reads, named as the product firmware names them so the same checks
+		// apply: the status LED (a 1 Hz heartbeat) and the payload sensor, only the one hw_board.cpp can read (SHT40).
+		...(v.pins ?? []).filter((p) => p.signal === "STATUS_LED").map((p) => `#define PIN_STATUS_LED ${p.gpio}`),
+		...(sensorDriver((v.parts ?? []).find((p) => p.role === "sensor")?.mpn ?? "") === "SHT40" ? ["#define SENSOR_SHT40 1"] : []),
 		"",
 	]
 	return lines.join("\n")

@@ -99,6 +99,7 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     max_x, caster_x = 0.0, -math.inf
     wall_contact = None
     closest = math.inf
+    nearest_ahead = math.inf  # the front reading while driving forward: the brief's "stops short of the wall"
     yaw0 = None
     turned_at = None
     moved_after_turn = 0.0
@@ -170,6 +171,8 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
             geomid = np.array([-1], dtype=np.int32)
             dist = mujoco.mj_ray(model, data, origin, direction, None, 1, chassis, geomid)
             reading = int(round(dist * 1000)) if 0 <= dist <= rng else -1
+            if reading >= 0 and duty[0] > 0 and duty[1] > 0:
+                nearest_ahead = min(nearest_ahead, reading)
             f.write(f"S {int(round(data.time * 1000))} {reading} {PAYLOAD[0]} {PAYLOAD[1]}\n")
             f.flush()
             if wall_contact:
@@ -184,7 +187,8 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     segments = [
         # The caster is the last wheel to meet the step: past it means the whole rover climbed (nothing passes through).
         {"name": "edge crossed", "pass": bool(caster_x > STEP_X + caster_r), "detail": f"the caster reached x = {caster_x:.2f} m (the step is {step_h * 1000:g} mm at {STEP_X} m)"},
-        {"name": "no wall contact", "pass": wall_contact is None, "detail": f"touched {wall_contact[1]} at {wall_contact[0]:.2f} s" if wall_contact else f"closest {closest * 1000:.0f} mm"},
+        {"name": "no wall contact", "pass": wall_contact is None, "detail": f"touched {wall_contact[1]} at {wall_contact[0]:.2f} s" if wall_contact else f"the plate's corners came within {closest * 1000:.0f} mm of a wall (any side: the sensor looks ahead only)"},
+        {"name": "kept its distance", "pass": bool(nearest_ahead >= spec["stopBeforeWallMm"]), "detail": (f"driving forward, it came {nearest_ahead:.0f} mm from what was ahead (the brief: at least {spec['stopBeforeWallMm']} mm)" if nearest_ahead < math.inf else f"never drove toward anything in range (the brief: at least {spec['stopBeforeWallMm']} mm)")},
         {"name": "turned away", "pass": turned_at is not None, "detail": "turned more than 45° from its start" if turned_at else "never turned away"},
         {"name": "kept driving", "pass": bool(moved_after_turn >= 0.3), "detail": f"{moved_after_turn:.2f} m after turning (nothing ahead in range: the reading is -1, not 0 mm)"},
         {"name": "top speed", "pass": bool(top_speed >= 0.9 * target), "detail": f"{top_speed:.2f} m/s (target {target} m/s, 90 % needed)"},

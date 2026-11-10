@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { mergeFlash } from "./emulator.ts"
 import { qemuEnv } from "./env.ts"
 import { run } from "./exec.ts"
@@ -47,7 +47,9 @@ export interface DriveOptions {
 	timeoutMs?: number
 }
 
-export async function runDrive(o: DriveOptions, revision = 0): Promise<DriveArtifact> {
+export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveArtifact> {
+	// Absolute paths: the bridge runs from py/, so a relative --out dir would point elsewhere there.
+	const o = { ...opts, root: resolve(opts.root), fwDir: resolve(opts.fwDir), outDir: resolve(opts.outDir) }
 	mkdirSync(o.outDir, { recursive: true })
 	const notRun = (reason: string): DriveArtifact => ({ revision, dir: o.outDir, result: "not run", reason, segments: [] })
 	const qemu = join(o.root, "tools/qemu/bin/qemu-system-riscv32")

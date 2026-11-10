@@ -3,7 +3,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { existsSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { join, relative, resolve } from "node:path"
 import { prepareFirmware } from "../src/tools/firmware.ts"
 import { chassisSpec } from "../src/tools/chassis.ts"
 import { runDrive } from "../src/tools/drive.ts"
@@ -20,7 +20,8 @@ test("the scripted rover's firmware drives the course: climbs the step, turns aw
 	const s = rover()
 	const fw = tempDir()
 	await prepareFirmware(ROOT, fw, s)
-	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec: chassisSpec(s)!, outDir: tempDir(), courseS: 20 }, 5)
+	// A relative output dir, as `--out out/x` gives: the bridge runs from py/ (the e2e run of 11 Nov lost its spec.json).
+	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec: chassisSpec(s)!, outDir: relative(process.cwd(), tempDir()), courseS: 20 }, 5)
 	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
 	assert.ok((r.topSpeedMps ?? 0) >= 0.27)
 })

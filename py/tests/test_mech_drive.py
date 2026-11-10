@@ -68,6 +68,16 @@ def careful(distance, state):
     return 0.9, 0.9
 
 
+def late(distance, state):
+    """Turns away, but only 60 mm from the wall: no contact, yet closer than the brief's 150 mm."""
+    if state["now"] < state["turn_until"]:
+        return 0.9, -0.9
+    if 0 <= distance < 60:
+        state["turn_until"] = state["now"] + 700
+        return 0.9, -0.9
+    return 0.4, 0.4
+
+
 class DriveTest(unittest.TestCase):
     def test_a_firmware_that_ignores_walls_fails_the_course(self):
         out = tempfile.mkdtemp()
@@ -89,6 +99,13 @@ class DriveTest(unittest.TestCase):
         edge = next(s for s in r["segments"] if s["name"] == "edge crossed")
         self.assertIn("the step is 3 mm", edge["detail"])
         self.assertTrue(edge["pass"], edge["detail"])
+
+    def test_turning_away_closer_than_the_briefs_wall_distance_fails(self):
+        with tempfile.TemporaryDirectory() as out:
+            r = run(dict(SPEC_DRIVE, edgeMm=3), fake_firmware(late), out, course_s=12)
+        seg = next(s for s in r["segments"] if s["name"] == "kept its distance")
+        self.assertFalse(seg["pass"], seg["detail"])
+        self.assertIn("150 mm", seg["detail"])
 
     def test_a_firmware_that_never_answers_is_not_run_and_the_bridge_stops(self):
         out = tempfile.mkdtemp()
