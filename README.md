@@ -195,6 +195,7 @@ npm run perf        # the dashboard's speed budget, measured in a visible Chromi
 
 npm run bringup -- briefs/beacon.md --mock                                    # scripted models, real tools
 npm run bringup -- briefs/logger.md --mock --change "make the board 40 mm wide"   # a change from the CLI
+npm run bringup -- briefs/rover.md --mock                                     # a robot: mechanics, chassis, simulated drive (docs/mechanics.md)
 npm run bringup -- briefs/logger.md                                           # real models: a key in .env
 ```
 

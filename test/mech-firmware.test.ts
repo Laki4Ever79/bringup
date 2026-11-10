@@ -28,6 +28,29 @@ test("the rover header puts the contract's motor and I2C pins and the stopping n
 	assert.ok(cruise > 0.5 && cruise <= 1, `cruise duty ${cruise}`)
 })
 
+// The scripted rover's end-to-end run (11 Nov) stayed unsettled: the firmware checks saw no STATUS_LED and no sensor
+// driver in hw_pins.h, though the rover firmware reads the SHT40.
+test("the rover header declares what the rover firmware drives and reads, so the firmware checks pass", async () => {
+	const { checkConsistency } = await import("../src/contract/consistency.ts")
+	const { parsePinsHeader, parseSensorHeader } = await import("../src/codegen/firmware.ts")
+	// As in the run: the firmware agent adds the status LED's pin.
+	const s = rover()
+	s.values.pins = [...(s.values.pins ?? []), { signal: "STATUS_LED", gpio: 10, partRef: "D1", partPin: "A" }]
+	const h = roverHeader(s)
+	assert.match(h, /#define PIN_STATUS_LED 10\n/)
+	assert.match(h, /#define SENSOR_SHT40 1\n/)
+	const firmware = { revision: 3, ok: true, pins: parsePinsHeader(h), sensor: parseSensorHeader(h), log: "" }
+	const kinds = checkConsistency(s, { firmware } as never).map((v) => v.kind)
+	assert.ok(!kinds.includes("pin-mismatch") && !kinds.includes("sensor-mismatch"), kinds.join(", "))
+})
+
+test("a payload sensor the rover firmware can't read stays a sensor mismatch", () => {
+	const s = rover()
+	const u2 = (s.values.parts ?? []).find((p) => p.role === "sensor")!
+	u2.mpn = "SHTC3"
+	assert.doesNotMatch(roverHeader(s), /SENSOR_/)
+})
+
 test("a robot's firmware comes from the rover template with its header", async () => {
 	const dir = tempDir()
 	await prepareFirmware(ROOT, dir, rover())

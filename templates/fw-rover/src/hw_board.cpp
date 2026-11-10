@@ -36,6 +36,9 @@ int hw_distance_mm(void) {
 
 // SHT40: measure at high precision (0xFD), 6 bytes back (Sensirion SHT4x datasheet §4.5).
 bool hw_payload(float *temp_c, float *rh) {
+#ifndef SENSOR_SHT40
+	return false;  // only the SHT40 is read here; the header defines SENSOR_SHT40 when the contract's sensor is one
+#endif
 	Wire.beginTransmission(0x44);
 	Wire.write(0xFD);
 	if (Wire.endTransmission() != 0) return false;
