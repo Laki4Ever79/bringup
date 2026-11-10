@@ -73,7 +73,7 @@ export function roverFixture() {
 		{ signal: "MOT_BIN1", gpio: 6, partRef: "U3", partPin: "BIN1" },
 		{ signal: "MOT_BIN2", gpio: 7, partRef: "U3", partPin: "BIN2" },
 	]
-	values.motion = { speedMps: 0.3, runtimeMin: 30, edgeMm: 10, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [170, 150], maxMassG: 500 }
+	values.motion = { speedMps: 0.3, runtimeMin: 30, edgeMm: 3, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [170, 150], maxMassG: 500 }
 	values.mechanics = {
 		drive: { kind: "differential", motor: "M-TEST", wheel: "W-TEST", caster: "C-TEST", trackMm: 130, wheelbaseMm: 90, axleXMm: 30 },
 		battery: { pack: "B-TEST", at: { xMm: -10, yMm: 0 } },

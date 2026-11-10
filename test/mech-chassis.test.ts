@@ -20,6 +20,7 @@ test("the chassis spec carries the plate, both motors, the caster's holes, the b
 	assert.equal(spec.caster.holesMm.length, 4)
 	assert.deepEqual(spec.boards.map((b) => [b.name, b.widthMm, b.heightMm]), [["main", 60, 40]])
 	assert.equal(spec.sensor.xMm, 72)
+	assert.equal(spec.edgeMm, 3, "the simulated course's step is the brief's edge")
 	assert.ok(spec.motors.every((m) => m.axleDropMm === 10.5), "the brackets drop to the 40 mm axle")
 	assert.ok(spec.massG > 100 && spec.com.length === 3, "mass and centre of mass for the simulation")
 })

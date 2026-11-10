@@ -15,7 +15,7 @@ from test_mech_model import SPEC  # noqa: E402
 
 # A rover that can climb the 1 cm step: 80 mm wheels, a 40 mm caster and its weight over the axle (60 mm wheels can't:
 # a rigid driven wheel with floor friction 0.6 climbs about 0.14 of its radius).
-SPEC_DRIVE = dict(SPEC, driverPeakA=2.0, payloadG=20, speedMps=0.3, stopBeforeWallMm=150, com=[20.0, 0.0, 45.0])
+SPEC_DRIVE = dict(SPEC, edgeMm=10, driverPeakA=2.0, payloadG=20, speedMps=0.3, stopBeforeWallMm=150, com=[20.0, 0.0, 45.0])
 SPEC_DRIVE["drive"] = dict(SPEC["drive"], wheelDiameterMm=80)
 SPEC_DRIVE["caster"] = dict(SPEC["caster"], wheelMm=40)
 
@@ -82,6 +82,13 @@ class DriveTest(unittest.TestCase):
         names = {s["name"]: s["pass"] for s in r["segments"]}
         self.assertTrue(names["edge crossed"] and names["no wall contact"] and names["turned away"] and names["kept driving"])
         self.assertTrue(os.path.exists(os.path.join(out, "trajectory.json")))
+
+    def test_the_step_is_the_specs_edge_and_crossing_it_means_the_caster_got_over(self):
+        with tempfile.TemporaryDirectory() as out:
+            r = run(dict(SPEC_DRIVE, edgeMm=3), fake_firmware(blind), out, course_s=4)
+        edge = next(s for s in r["segments"] if s["name"] == "edge crossed")
+        self.assertIn("the step is 3 mm", edge["detail"])
+        self.assertTrue(edge["pass"], edge["detail"])
 
     def test_a_firmware_that_never_answers_is_not_run_and_the_bridge_stops(self):
         out = tempfile.mkdtemp()

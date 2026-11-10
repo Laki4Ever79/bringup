@@ -13,7 +13,7 @@ import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 // runs the same checks).
 
 export type MechViolation = {
-	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive"
+	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive"
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]
@@ -30,6 +30,7 @@ export const TORQUE_MARGIN = 1.5
 export const SPEED_LOAD_DERATE = 0.8 // speed under load vs no-load at the cell's nominal voltage
 export const USABLE_ENERGY = 0.85 // of the pack's rated Wh, before the cut-off
 export const TIP_MARGIN_MM = 10
+export const CLIMB_MARGIN = 1.2 // the drive wheels' grip must push the caster up the edge with this margin
 export const LEVEL_TOLERANCE_MM = 3 // caster and wheels must hold the plate level within this
 
 const ROOT = resolve(import.meta.dirname, "../..")
@@ -112,6 +113,20 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const needNm = needN * r
 	if (!(nominal.stallNm >= TORQUE_MARGIN * needNm))
 		push("mech-torque", `to climb the ${motion.edgeMm} mm edge each wheel needs ${needNm === Infinity ? "more than any motor gives (the edge is at or above the axle)" : `${r2(needNm * 1000)} mN·m`}; ${d.motor} stalls at ${r2(nominal.stallNm * 1000)} mN·m at the cell's ${pack.nominalV} V, under the ${TORQUE_MARGIN}× margin (${massG.toFixed(0)} g, ${Math.round(onWheels * 100)} % on the wheels, ${estNote("rollingCrr")}): pick a higher gear ratio or bigger wheels, or lighten it`)
+
+	// Climb, the caster: the drive wheels push it into the edge, which meets its wheel at height h. Lifting its load W
+	// takes a push of W·√(r² − (r − h)²)/(r − h) (the edge's reaction along the line to the axle); the wheels push with at
+	// most μ times their own load. The simulation found this one: a 38 mm caster under 41 % of a 255 g rover stalls at
+	// a 10 mm step whatever the motors give.
+	const cr = caster.wheelMm / 2, h = motion.edgeMm
+	const casterShare = 1 - onWheels
+	if (h >= cr) push("mech-climb", `the ${h} mm edge is at or above the caster's axle (${caster.wheelMm} mm wheel): no push lifts it over; pick a caster with a wheel over ${2 * h} mm`)
+	else {
+		const pushPerLoad = Math.sqrt(cr * cr - (cr - h) ** 2) / (cr - h)
+		const maxShare = est("floorMu") / (est("floorMu") + CLIMB_MARGIN * pushPerLoad)
+		if (casterShare > maxShare)
+			push("mech-climb", `the caster carries ${Math.round(casterShare * 100)} % of the weight; for the drive wheels to push its ${caster.wheelMm} mm wheel up the ${h} mm edge it may carry at most ${Math.round(maxShare * 100)} % (${CLIMB_MARGIN}× margin, ${estNote("floorMu")}): move weight (the battery) toward the axle, lengthen the wheelbase, or pick a bigger caster`)
+	}
 
 	// Top speed under load at the nominal voltage.
 	const topMps = (nominal.noLoadRadS * SPEED_LOAD_DERATE) * r
