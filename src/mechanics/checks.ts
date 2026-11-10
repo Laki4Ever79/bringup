@@ -46,6 +46,24 @@ const r1 = (n: number) => Math.round(n * 10) / 10
 const r2 = (n: number) => Math.round(n * 100) / 100
 const ALL: FieldName[] = ["mechanics"]
 
+// A computed value against the brief's limit, for the report (filled by the same code as the checks).
+export interface MechFigure {
+	check: string
+	value: string
+	limit: string
+	ok: boolean
+	note?: string
+}
+
+// The figures behind the checks for one board's contract (empty without motion targets or a complete mechanics design).
+export function mechanicsFigures(c: ContractSnapshot): MechFigure[] {
+	const cat = defaultCheckCatalog()
+	const v = c.values as { motion?: MotionTargets; mechanics?: Mechanics }
+	const figures: MechFigure[] = []
+	if (cat) mechanicsCheckOver(v.motion, v.mechanics, [{ name: "main", snapshot: c }], cat, figures)
+	return figures
+}
+
 export function mechanicsChecks(c: ContractSnapshot): MechViolation[] {
 	const cat = defaultCheckCatalog()
 	return cat ? mechanicsChecksWith(c, cat) : []
@@ -71,7 +89,7 @@ function insideMargin(p: [number, number], poly: [number, number][]): number {
 	return min
 }
 
-export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mechanics | undefined, boards: { name: string; snapshot: ContractSnapshot }[], cat: CheckCatalog): MechViolation[] {
+export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mechanics | undefined, boards: { name: string; snapshot: ContractSnapshot }[], cat: CheckCatalog, figures: MechFigure[] = []): MechViolation[] {
 	if (!motion) return []
 	const out: MechViolation[] = []
 	const push = (kind: MechViolation["kind"], message: string, affects: AgentRole[] = ["mechanics"], fields: FieldName[] = ALL) => out.push({ kind, message, fields, affects })
@@ -99,6 +117,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const plateTop = mech.chassis.clearanceMm + mech.chassis.thicknessMm
 	ms.push({ what: "payload", xMm: 0, yMm: 0, zMm: plateTop + 10, sizeMm: [20, 20, 20], massG: motion.payloadG })
 	const { massG, com } = massAndCom(ms)
+	const fig = (check: string, value: string, limit: string, ok: boolean, note?: string) => figures.push({ check, value, limit, ok, ...(note ? { note } : {}) })
 	const massKg = massG / 1000
 	const r = wheel.diameterMm / 2 / 1000
 	const casterX = d.axleXMm - d.wheelbaseMm
@@ -111,6 +130,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const perWheelKg = (massKg * onWheels) / 2
 	const needN = edgeForceN(perWheelKg, r, motion.edgeMm / 1000) + (est("rollingCrr") * massKg * G) / 2
 	const needNm = needN * r
+	fig("Edge torque per wheel", `${r2(needNm * 1000)} mN·m`, `stall ${r2(nominal.stallNm * 1000)} mN·m ÷ ${TORQUE_MARGIN}`, nominal.stallNm >= TORQUE_MARGIN * needNm, `${motion.edgeMm} mm edge, ${Math.round(onWheels * 100)} % of ${Math.round(massG)} g on the wheels ${estNote("rollingCrr")}`)
 	if (!(nominal.stallNm >= TORQUE_MARGIN * needNm))
 		push("mech-torque", `to climb the ${motion.edgeMm} mm edge each wheel needs ${needNm === Infinity ? "more than any motor gives (the edge is at or above the axle)" : `${r2(needNm * 1000)} mN·m`}; ${d.motor} stalls at ${r2(nominal.stallNm * 1000)} mN·m at the cell's ${pack.nominalV} V, under the ${TORQUE_MARGIN}× margin (${massG.toFixed(0)} g, ${Math.round(onWheels * 100)} % on the wheels, ${estNote("rollingCrr")}): pick a higher gear ratio or bigger wheels, or lighten it`)
 
@@ -120,16 +140,19 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	// a 10 mm step whatever the motors give.
 	const cr = caster.wheelMm / 2, h = motion.edgeMm
 	const casterShare = 1 - onWheels
+	if (h >= cr) fig("Caster climb", `${Math.round(casterShare * 100)} % of the weight`, `edge under the caster's axle`, false)
 	if (h >= cr) push("mech-climb", `the ${h} mm edge is at or above the caster's axle (${caster.wheelMm} mm wheel): no push lifts it over; pick a caster with a wheel over ${2 * h} mm`)
 	else {
 		const pushPerLoad = Math.sqrt(cr * cr - (cr - h) ** 2) / (cr - h)
 		const maxShare = est("floorMu") / (est("floorMu") + CLIMB_MARGIN * pushPerLoad)
+		fig("Caster climb", `${Math.round(casterShare * 100)} % of the weight`, `at most ${Math.round(maxShare * 100)} %`, casterShare <= maxShare, `${caster.wheelMm} mm caster, ${h} mm edge, ${CLIMB_MARGIN}× margin ${estNote("floorMu")}`)
 		if (casterShare > maxShare)
 			push("mech-climb", `the caster carries ${Math.round(casterShare * 100)} % of the weight; for the drive wheels to push its ${caster.wheelMm} mm wheel up the ${h} mm edge it may carry at most ${Math.round(maxShare * 100)} % (${CLIMB_MARGIN}× margin, ${estNote("floorMu")}): move weight (the battery) toward the axle, lengthen the wheelbase, or pick a bigger caster`)
 	}
 
 	// Top speed under load at the nominal voltage.
 	const topMps = (nominal.noLoadRadS * SPEED_LOAD_DERATE) * r
+	fig("Top speed", `${r2(topMps)} m/s`, `at least ${motion.speedMps} m/s`, topMps >= motion.speedMps, `loaded, ${SPEED_LOAD_DERATE} of no-load at ${pack.nominalV} V`)
 	if (topMps < motion.speedMps)
 		push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels reaches about ${r2(topMps)} m/s at ${pack.nominalV} V under load (${SPEED_LOAD_DERATE} of no-load), short of the ${motion.speedMps} m/s target: pick a lower gear ratio or bigger wheels`)
 
@@ -140,6 +163,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		const decel = est("floorMu") * G * onWheels
 		const brakeMm = ((motion.speedMps ** 2) / (2 * decel)) * 1000 + motion.speedMps * updateMs
 		const roomMm = rangeMm - motion.stopBeforeWallMm
+		fig("Stopping distance", `${r1(brakeMm)} mm`, `at most ${r1(roomMm)} mm`, brakeMm <= roomMm, `braking plus one ${updateMs} ms sensor period ${estNote("floorMu")}`)
 		if (brakeMm > roomMm)
 			push("mech-stopping", `from ${motion.speedMps} m/s the rover needs ${r1(brakeMm)} mm to stop (braking plus one ${updateMs} ms sensor period, ${estNote("floorMu")}), but the ${sensor.chip} sees ${rangeMm} mm and must stop ${motion.stopBeforeWallMm} mm from the wall, leaving ${r1(roomMm)} mm: slow down, or use a longer-range sensor`, ["mechanics", "architect"])
 	}
@@ -147,6 +171,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	// Current: a motor at stall on a full cell, per driver channel and for the pack.
 	if (driver?.data) {
 		const peakA = Number(driver.data.peakA ?? 0)
+		fig("Motor stall current", `${r2(full.stallA)} A`, `at most ${peakA} A per channel`, full.stallA <= peakA, `full ${pack.fullV} V cell, ${driver.part.mpn}`)
 		if (full.stallA > peakA)
 			push("mech-current", `${d.motor} draws ${r2(full.stallA)} A at stall on a full ${pack.fullV} V cell, over the ${driver.part.mpn}'s ${peakA} A peak per channel: pick a motor with a lower stall current or a stronger driver`, ["mechanics", "board"])
 		const supplyMin = Number(driver.data.supplyMinV ?? 0), supplyMax = Number(driver.data.supplyMaxV ?? Infinity)
@@ -155,6 +180,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	}
 	const boardMa = boards.reduce((t, b) => t + (b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0)
 	const packNeedA = 2 * full.stallA + boardMa / 1000
+	fig("Pack peak current", `${r2(packNeedA)} A`, `at most ${pack.peakA} A`, packNeedA <= pack.peakA, "both motors at stall plus the electronics")
 	if (packNeedA > pack.peakA)
 		push("mech-current", `both motors at stall plus the electronics draw ${r2(packNeedA)} A from a full cell, over the ${mech.battery.pack}'s ${pack.peakA} A peak: pick a pack rated higher or a gentler motor`)
 
@@ -162,11 +188,13 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const rollNmPerWheel = (est("rollingCrr") * massKg * G * r) / 2
 	const cruiseA = 2 * (motor.noLoadA + (nominal.kt > 0 ? rollNmPerWheel / nominal.kt : 0)) + boardMa / 1000
 	const runtimeMin = ((pack.mAh / 1000) * USABLE_ENERGY) / cruiseA * 60
+	fig("Runtime", `${Math.round(runtimeMin)} min`, `at least ${motion.runtimeMin} min`, runtimeMin >= motion.runtimeMin, `${r2(cruiseA)} A at cruise ${estNote("rollingCrr")}`)
 	if (runtimeMin < motion.runtimeMin)
 		push("mech-runtime", `${mech.battery.pack} (${pack.mAh} mAh, ${USABLE_ENERGY * 100} % usable) lasts about ${Math.round(runtimeMin)} min at cruise (${r2(cruiseA)} A: motors ${r2(cruiseA - boardMa / 1000)} A, electronics ${r2(boardMa / 1000)} A, ${estNote("rollingCrr")}), short of the ${motion.runtimeMin} min target: pick a bigger pack`)
 
 	// Voltage: a full cell on the motor.
 	const over = pack.fullV / motor.ratedV
+	fig("Motor voltage", `${r2(over)}× rated`, `at most ${est("motorOvervoltMax")}×`, over <= est("motorOvervoltMax"), `full cell ${pack.fullV} V on a ${motor.ratedV} V motor ${estNote("motorOvervoltMax")}`)
 	if (over > est("motorOvervoltMax"))
 		push("mech-voltage", `a full cell puts ${pack.fullV} V on the ${motor.ratedV} V-rated ${d.motor}: ${r2(over)}× its rating, over ${est("motorOvervoltMax")}× ${estNote("motorOvervoltMax")}: pick a motor rated closer to the cell`)
 
@@ -176,6 +204,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const decel = est("floorMu") * G * onWheels
 	const still = insideMargin([com[0], com[1]], poly)
 	const braking = insideMargin([com[0] + (com[2] * decel) / G, com[1]], poly)
+	fig("Tipping margin", `${r1(Math.min(still, braking))} mm`, `at least ${TIP_MARGIN_MM} mm`, Math.min(still, braking) >= TIP_MARGIN_MM, `centre of mass to the support triangle's edge, still and braking ${estNote("floorMu")}`)
 	if (Math.min(still, braking) < TIP_MARGIN_MM)
 		push("mech-tipping", `the centre of mass (${r1(com[0])}, ${r1(com[1])}, ${r1(com[2])} mm) is ${r1(Math.min(still, braking))} mm from the edge of the wheels-and-caster triangle ${braking < still ? "when braking hard " : ""}(at least ${TIP_MARGIN_MM} mm needed, ${estNote("floorMu")}): lengthen the wheelbase, or move weight (the battery) back and down`)
 
@@ -214,6 +243,8 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const outerW = Math.max(Wd, d.trackMm + wheel.widthMm)
 	if (L > motion.maxSizeMm[0] || outerW > motion.maxSizeMm[1])
 		push("mech-fit", `the rover is ${L} × ${outerW} mm with its wheels, over the ${motion.maxSizeMm[0]} × ${motion.maxSizeMm[1]} mm the brief allows: shrink the plate or the track`)
+	fig("Mass", `${Math.round(massG)} g`, `at most ${motion.maxMassG} g`, massG <= motion.maxMassG, `plate PLA ${estNote("plaDensityGcm3")}, boards ${estNote("boardMassGPerCm2")}`)
+	fig("Size with wheels", `${L} × ${outerW} mm`, `at most ${motion.maxSizeMm[0]} × ${motion.maxSizeMm[1]} mm`, L <= motion.maxSizeMm[0] && outerW <= motion.maxSizeMm[1])
 	if (massG > motion.maxMassG) push("mech-fit", `the rover weighs about ${Math.round(massG)} g, over the ${motion.maxMassG} g the brief allows`)
 
 	// Wiring: a driver with its inputs on GPIOs, the sensor on the I2C bus, a battery connector.

@@ -35,7 +35,7 @@ const SYSTEM_SPECS = new URL("../../briefs/systems/", import.meta.url)
 const EXPERIMENT = new URL("../../docs/experiment-results.json", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js", "spend.js", "world3d.js", "plan-edit.js", "assembly.js"])
+const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js", "spend.js", "world3d.js", "plan-edit.js", "assembly.js", "drive.js"])
 // Vendored OFL fonts (fonts/README.md), by exact name.
 const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
@@ -529,7 +529,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		// The page probes optional files (the report and the contract before a live run writes them, Cloud links, fab files, the BOM, change requests, lid vents, revision snapshots) that recorded runs
 		// may not carry: an empty 204 instead of a 404, so a visitor's console stays clean. Anything else missing is a 404.
 		if (path === "/favicon.ico") return send(res, 204, "")
-		const probe = /^\/runs\/([^/]+)\/files\/(brief\.md|report\.md|contract\.json|cloud\.jsonl|fab\/README\.txt|bom\.json|requests\.jsonl|enclosure\/rev-\d+\/vents\.json|contracts\/rev-\d+\.json)$/.exec(path)
+		const probe = /^\/runs\/([^/]+)\/files\/(brief\.md|report\.md|contract\.json|cloud\.jsonl|fab\/README\.txt|bom\.json|requests\.jsonl|enclosure\/rev-\d+\/vents\.json|contracts\/rev-\d+\.json|drive\/rev-\d+\/(?:drive|trajectory)\.json)$/.exec(path)
 		if (probe) {
 			const dir = await runDir(probe[1])
 			if (dir && !existsSync(join(dir, probe[2]))) return send(res, 204, "")

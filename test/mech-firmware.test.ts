@@ -35,10 +35,10 @@ test("a robot's firmware comes from the rover template with its header", async (
 	assert.match(readFileSync(join(dir, "include/hw_pins.h"), "utf8"), /#define MOT_AIN1 4/)
 })
 
-test("the board and the simulation builds both compile", { skip: existsSync(pio) ? false : "needs PlatformIO", timeout: 900_000 }, async () => {
+test("the board, the simulation and the bench-motor builds compile", { skip: existsSync(pio) ? false : "needs PlatformIO", timeout: 900_000 }, async () => {
 	const dir = tempDir()
 	await prepareFirmware(ROOT, dir, rover())
-	const r = spawnSync(pio, ["run", "-d", dir, "-e", "esp32c3", "-e", "esp32c3_sim"], { encoding: "utf8" })
+	const r = spawnSync(pio, ["run", "-d", dir, "-e", "esp32c3", "-e", "esp32c3_sim", "-e", "bench_motor"], { encoding: "utf8" })
 	assert.equal(r.status, 0, (r.stdout + r.stderr).slice(-2000))
 })
 

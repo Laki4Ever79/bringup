@@ -15,6 +15,7 @@ import { EXPECTED_LINE } from "./tools/wokwi.ts"
 import { isStub } from "./tools/stubs.ts"
 import type { Payloads } from "./events.ts"
 import { bringupSection } from "./bench/report.ts"
+import { mechanicsSection } from "./mechanics/report.ts"
 import { changeRipples, readTrace, RIPPLE_PARTICIPANTS } from "./runner/ripple.ts"
 
 function counts(tracePath: string): Record<string, number> {
@@ -230,6 +231,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Rails (peak/rated): ${(v.rails ?? []).map((r) => `${r.name} ${r.loadMa}/${r.regulatorMaxMa} mA${r.averageMa !== undefined ? `, average ${r.averageMa} mA` : ""}`).join("; ")}`,
 		`- Estimated battery life: ${batteryLifeSummary(estimatePower(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""))}`,
 		``,
+		...mechanicsSection(snapshot, s.artifacts.drive),
 		...addedForYouSection(snapshot),
 		...changeRequestsSection(outDir),
 		...reviewSection(s, Boolean(opts.mock)),
