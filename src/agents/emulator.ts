@@ -32,6 +32,10 @@ export function createEmulatorCheck(env: Env, opts: { boot?: typeof bootFirmware
 		const firmware = s.artifacts.firmware
 		// Skip a firmware that didn't compile, and one a newer build has already replaced.
 		if (!firmware?.ok || firmware.revision !== revision) return
+		// A robot's board build talks over USB, which QEMU doesn't show: the simulated drive boots its simulation build
+		// in QEMU and runs the control loop, which proves more (docs/mechanics.md).
+		const v = s.contract.snapshot().values
+		if (v.mechanics && v.motion) return
 		// The firmware builder builds revision N in <out>/firmware/rev-N.
 		const r = await boot(env.root, join(s.outDir, "firmware", `rev-${revision}`))
 		const payload = { revision, booted: r.booted, bootRevision: r.revision, serialTail: tail(r.serial, SERIAL_TAIL_LINES), backend: "qemu" as const }

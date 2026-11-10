@@ -24,6 +24,7 @@ export interface DriveArtifact {
 	peakA?: number
 	topSpeedMps?: number
 	closestWallMm?: number
+	edgeMm?: number // the course's step height
 	stub?: boolean
 }
 

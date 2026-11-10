@@ -86,3 +86,17 @@ test("enabled only with a working QEMU and real hardware", () => {
 	assert.equal(emulatorEnabled({ ...env, qemu: null }, false), false, "QEMU missing or cannot start")
 	assert.equal(emulatorEnabled({ ...env, pio: null }, false), false, "no firmware is built without PlatformIO")
 })
+
+// The rover's board build talks over USB CDC, so QEMU's UART shows nothing and the boot check reported "QEMU ✗"
+// (rover-change run, 10 Nov). A robot's boot is proven by the simulated drive (its simulation build in QEMU) instead.
+test("a robot's firmware is not boot-checked here: the simulated drive boots it", async () => {
+	const { ROVER_BOARD } = await import("../src/inference/scripts.ts")
+	let calls = 0
+	const t = setup(async () => (calls++, ok(6)))
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	for (const [k, v] of Object.entries(structuredClone(ROVER_BOARD))) (t.state.contract as any).values[k] = v
+	t.built(6)
+	await new Promise((r) => setTimeout(r, 300))
+	assert.equal(calls, 0)
+	assert.equal(t.booted().length, 0)
+})

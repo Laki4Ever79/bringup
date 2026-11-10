@@ -44,3 +44,9 @@ test("a board with no motion targets has no Mechanics section", () => {
 	for (const [k, v] of Object.entries(fixtureContract().values)) (s.contract as any).values[k] = v
 	assert.doesNotMatch(report(s), /## Mechanics/)
 })
+
+test("a robot's boot line points at the simulated drive, not the product firmware's QEMU boot", () => {
+	const s = state(ROVER_BOARD)
+	const r = readFileSync(writeReport(s.outDir, s, env, true), "utf8")
+	assert.match(r, /Firmware boot \(QEMU\): proven by the simulated drive/)
+})

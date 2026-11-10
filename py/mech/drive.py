@@ -198,7 +198,7 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     reason = "; ".join(f"{s['name']}: {s['detail']}" for s in failed) if failed else "every segment passed"
     if wall_contact:
         reason = f"hit the wall ({wall_contact[1]}) at {wall_contact[0]:.2f} s; " + reason
-    stats = {"peakA": round(peak_a, 3), "topSpeedMps": round(top_speed, 3), "closestWallMm": round(closest * 1000), "simSeconds": round(data.time, 2), "ticks": ticks, "payload": {"tempC": PAYLOAD[0], "rh": PAYLOAD[1]}}
+    stats = {"peakA": round(peak_a, 3), "topSpeedMps": round(top_speed, 3), "closestWallMm": round(closest * 1000), "simSeconds": round(data.time, 2), "edgeMm": spec["edgeMm"], "ticks": ticks, "payload": {"tempC": PAYLOAD[0], "rh": PAYLOAD[1]}}
     return _result(out_dir, "fail" if failed else "pass", reason, segments, stats, trajectory)
 
 

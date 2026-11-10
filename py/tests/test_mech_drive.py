@@ -98,6 +98,7 @@ class DriveTest(unittest.TestCase):
             r = run(dict(SPEC_DRIVE, edgeMm=3), fake_firmware(blind), out, course_s=4)
         edge = next(s for s in r["segments"] if s["name"] == "edge crossed")
         self.assertIn("the step is 3 mm", edge["detail"])
+        self.assertEqual(r["edgeMm"], 3)  # the run page labels its plot from drive.json alone
         self.assertTrue(edge["pass"], edge["detail"])
 
     def test_turning_away_closer_than_the_briefs_wall_distance_fails(self):
