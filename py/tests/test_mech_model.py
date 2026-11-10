@@ -50,6 +50,21 @@ class ModelTest(unittest.TestCase):
         m = build_model(SPEC)
         self.assertAlmostEqual(sum(m.body_mass), 0.230, delta=0.001)
 
+    def test_the_wheels_and_caster_weigh_what_the_spec_says(self):
+        # Final review: the model hardcoded the old 60 mm wheel and 25 mm caster; the spec carries the real masses.
+        m = build_model({**SPEC, "wheelMassG": 20.0, "casterMassG": 71.0})
+        self.assertAlmostEqual(m.body("wheel_left").mass[0], 0.020, places=6)
+        self.assertAlmostEqual(m.body("caster").mass[0], 0.071, places=6)
+        self.assertAlmostEqual(sum(m.body_mass), 0.230, delta=0.001)
+
+    def test_the_whole_rover_balances_at_the_spec_centre_of_mass(self):
+        m = build_model({**SPEC, "wheelMassG": 20.0, "casterMassG": 71.0})
+        d = mujoco.MjData(m)
+        mujoco.mj_forward(m, d)
+        root = m.body("chassis").id
+        x = sum(m.body_mass[i] * d.xipos[i][0] for i in range(m.nbody) if i == root or m.body_rootid[i] == root) / sum(m.body_mass[i] for i in range(m.nbody) if i == root or m.body_rootid[i] == root)
+        self.assertAlmostEqual(x, SPEC["com"][0] / 1000, delta=0.0005)
+
     def test_dropped_on_the_floor_it_settles_upright_and_still(self):
         m = build_model(SPEC)
         d = mujoco.MjData(m)

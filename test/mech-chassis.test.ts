@@ -2,7 +2,7 @@
 // that can't be built failing with the generator's reason.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { buildChassis, chassisSpec } from "../src/tools/chassis.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
@@ -37,4 +37,14 @@ test("a chassis that can't be built fails with the generator's reason", { skip: 
 	const r = await buildChassis(python, ROOT, tempDir(), s, 3)
 	assert.equal(r.ok, false)
 	assert.match(r.ok ? "" : r.reason, /board main .* doesn't fit/)
+})
+
+// Final review: py/mech/model.py hardcoded the old 60 mm wheel and 25 mm caster masses, so the simulated weight split
+// differed from the checks'. The spec carries the real ones.
+test("the chassis spec carries the wheel and caster masses the simulation splits the weight with", () => {
+	const spec = chassisSpec(rover())!
+	const cat = JSON.parse(readFileSync("catalog/mechanics.json", "utf8"))
+	const mech = rover().values.mechanics!
+	assert.equal(spec.wheelMassG, cat.wheels.find((w: { mpn: string }) => w.mpn === mech.drive.wheel).massG)
+	assert.equal(spec.casterMassG, cat.casters.find((c: { mpn: string }) => c.mpn === mech.drive.caster).massG)
 })

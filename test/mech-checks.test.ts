@@ -53,9 +53,9 @@ test("a small pack can't last the runtime", () => {
 	assert.match(msg(c, cat, "mech-runtime"), /30 min/)
 })
 
-test("a full cell over-volts a 3 V motor beyond 1.5×", () => {
-	const { c, cat } = variant((_v, k) => (k.mech.motors[0].ratedV = 2.5))
-	assert.match(msg(c, cat, "mech-voltage"), /1\.68×/)
+test("a full cell over-volts a 3 V motor (4.2 V on 3 V, 1.4×: over the 1.3× limit; Review Focus 2)", () => {
+	const { c, cat } = variant((_v, k) => (k.mech.motors[0].ratedV = 3))
+	assert.match(msg(c, cat, "mech-voltage"), /1\.4×/)
 })
 
 test("a caster carrying too much of the weight can't be pushed up the edge (the drive wheels' grip pushes it)", () => {

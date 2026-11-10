@@ -11,8 +11,9 @@ import math
 
 import mujoco
 
-WHEEL_MASS_KG = 0.0113  # Pololu 60 × 8 mm wheel (catalog/mechanics.json)
-CASTER_MASS_KG = 0.033  # the 25 mm swivel caster (catalog/mechanics.json)
+# Older specs without wheelMassG / casterMassG: the Pololu 60 × 8 mm wheel and the 25 mm caster (catalog/mechanics.json).
+WHEEL_MASS_G = 11.3
+CASTER_MASS_G = 33.0
 
 
 def motor_torque(motor, volts, duty, omega):
@@ -42,8 +43,14 @@ def build_model(spec, course_xml=""):
     caster_x = (d["axleXMm"] - d["wheelbaseMm"]) * mm
     caster_r = spec["caster"]["wheelMm"] / 2 * mm
     total = spec["massG"] / 1000
-    body_mass = max(0.01, total - 2 * WHEEL_MASS_KG - CASTER_MASS_KG)
-    com = [c * mm for c in spec["com"]]
+    wheel_kg = spec.get("wheelMassG", WHEEL_MASS_G) / 1000
+    caster_kg = spec.get("casterMassG", CASTER_MASS_G) / 1000
+    body_mass = max(0.01, total - 2 * wheel_kg - caster_kg)
+    # The spec's centre of mass is the whole rover's: the body's own is what is left once the wheels and caster
+    # (at their axles, in the spec's frame with z from the floor) are taken out, so the whole balances where the checks say.
+    whole = [c * mm for c in spec["com"]]
+    parts = [(2 * wheel_kg, [axle_x, 0.0, r]), (caster_kg, [caster_x, 0.0, caster_r])]
+    com = [(whole[i] * total - sum(m * at[i] for m, at in parts)) / body_mass for i in range(3)]
     mu = spec["estimates"]["floorMu"]
     L, W, t = p["lengthMm"] * mm, p["widthMm"] * mm, p["thicknessMm"] * mm
     plate_z = p["clearanceMm"] * mm + t / 2 - r  # relative to the axle line
@@ -68,14 +75,14 @@ def build_model(spec, course_xml=""):
       <site name="tof" pos="{tof[0]} {tof[1]} {tof[2]}" size="0.003"/>
       <body name="wheel_left" pos="{axle_x} {track / 2} 0">
         <joint name="left" type="hinge" axis="0 1 0" damping="0.0001"/>
-        <geom type="cylinder" size="{r} {ww / 2}" euler="90 0 0" mass="{WHEEL_MASS_KG}"/>
+        <geom type="cylinder" size="{r} {ww / 2}" euler="90 0 0" mass="{wheel_kg}"/>
       </body>
       <body name="wheel_right" pos="{axle_x} {-track / 2} 0">
         <joint name="right" type="hinge" axis="0 1 0" damping="0.0001"/>
-        <geom type="cylinder" size="{r} {ww / 2}" euler="90 0 0" mass="{WHEEL_MASS_KG}"/>
+        <geom type="cylinder" size="{r} {ww / 2}" euler="90 0 0" mass="{wheel_kg}"/>
       </body>
       <body name="caster" pos="{caster_x} 0 {caster_r - r}">
-        <geom type="sphere" size="{caster_r}" mass="{CASTER_MASS_KG}" friction="0.02 0.001 0.0001"/>
+        <geom type="sphere" size="{caster_r}" mass="{caster_kg}" friction="0.02 0.001 0.0001"/>
       </body>
     </body>
   </worldbody>

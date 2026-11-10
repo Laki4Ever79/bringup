@@ -1,3 +1,4 @@
+import type { DriveArtifact } from "./tools/drive.ts"
 import { caseOuter } from "./contract/case.ts"
 import { enclosureMode, type ContractSnapshot } from "./contract/types.ts"
 import { interfaceMarkdown, mechanicalInterface } from "./contract/interface.ts"
@@ -75,10 +76,15 @@ export function simulationLine(outDir: string, env: Env): string {
 	return `${label} not run yet (npm run bringup -- simulate <run>)`
 }
 
-function bootLine(tracePath: string, env: Env, noHardware: boolean, robot = false): string {
+function bootLine(tracePath: string, env: Env, noHardware: boolean, robot = false, drive?: DriveArtifact): string {
 	const label = "- Firmware boot (QEMU):"
 	if (noHardware) return `${label} not run (--no-hardware)`
-	if (robot) return `${label} proven by the simulated drive (the simulation build boots in QEMU and runs the control loop; see Mechanics)`
+	// A robot's boot proof is its simulated drive: the simulation build booted in QEMU and answered the control loop.
+	if (robot) {
+		if (!drive) return `${label} not proven: no simulated drive yet`
+		if (drive.result === "not run") return `${label} not proven: the simulated drive didn't run (${drive.reason})`
+		return `${label} proven by the simulated drive (the simulation build boots in QEMU and runs the control loop; see Mechanics)`
+	}
 	if (!env.qemu) return `${label} not run (QEMU not installed; see NOTES.md)`
 	const boots = existsSync(tracePath)
 		? readFileSync(tracePath, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { type: string; payload: Payloads["firmware.booted"] }).filter((e) => e.type === "firmware.booted")
@@ -243,7 +249,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...printLines(s.artifacts.enclosure, stubbed),
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		...(v.model?.sensor === "microphone" && s.artifacts.firmware && !isStub(s.artifacts.firmware) ? [`- Data-collection firmware: \`npm run bringup -- collect-firmware ${outDir}\` builds it for this design's sensor path (docs/edge-ai.md)`] : []),
-		bootLine(join(outDir, "trace.jsonl"), env, stubbed, Boolean(v.mechanics && v.motion)),
+		bootLine(join(outDir, "trace.jsonl"), env, stubbed, Boolean(v.mechanics && v.motion), s.artifacts.drive),
 		simulationLine(outDir, env),
 		sourcingLine(join(outDir, "bom.json")),
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),

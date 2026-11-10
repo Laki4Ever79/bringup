@@ -22,7 +22,9 @@ export interface ChassisSpec {
 	boards: { name: string; xMm: number; yMm: number; widthMm: number; heightMm: number; rotDeg: number; holeInsetMm: number }[]
 	sensor: { xMm: number; yMm: number; zMm: number; sizeMm: [number, number, number]; rangeMm: number; updateMs: number }
 	massG: number
-	com: [number, number, number]
+	com: [number, number, number] // the whole rover's, wheels and caster included
+	wheelMassG: number // each; the simulation hangs these on the wheels and the rest on the chassis body
+	casterMassG: number
 	drive: { trackMm: number; axleXMm: number; wheelbaseMm: number; wheelDiameterMm: number; wheelWidthMm: number }
 	motor: { ratedV: number; noLoadRpm: number; stallTorqueNm: number; stallA: number; noLoadA: number }
 	pack: { nominalV: number; fullV: number; cutoffV: number; mAh: number; internalOhm: number | null }
@@ -61,6 +63,8 @@ export function chassisSpec(s: ContractSnapshot): ChassisSpec | null {
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs },
 		massG,
 		com,
+		wheelMassG: wheel.massG,
+		casterMassG: caster.massG,
 		drive: { trackMm: mech.drive.trackMm, axleXMm: mech.drive.axleXMm, wheelbaseMm: mech.drive.wheelbaseMm, wheelDiameterMm: wheel.diameterMm, wheelWidthMm: wheel.widthMm },
 		motor: { ratedV: motor.ratedV, noLoadRpm: motor.noLoadRpm, stallTorqueNm: motor.stallTorqueNm, stallA: motor.stallA, noLoadA: motor.noLoadA },
 		pack: { nominalV: pack.nominalV, fullV: pack.fullV, cutoffV: pack.cutoffV, mAh: pack.mAh, internalOhm: pack.internalOhm ?? null },

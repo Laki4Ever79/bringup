@@ -15,7 +15,9 @@ from test_mech_model import SPEC  # noqa: E402
 
 # A rover that can climb the 1 cm step: 80 mm wheels, a 40 mm caster and its weight over the axle (60 mm wheels can't:
 # a rigid driven wheel with floor friction 0.6 climbs about 0.14 of its radius).
-SPEC_DRIVE = dict(SPEC, edgeMm=10, driverPeakA=2.0, payloadG=20, speedMps=0.3, stopBeforeWallMm=150, com=[20.0, 0.0, 45.0])
+# com is the whole rover's (wheels and caster included): with the default 11.3 g wheels and 33 g caster it leaves the
+# chassis body at x = 20 mm, z = 45 mm.
+SPEC_DRIVE = dict(SPEC, edgeMm=10, driverPeakA=2.0, payloadG=20, speedMps=0.3, stopBeforeWallMm=150, com=[9.5, 0.0, 40.92])
 SPEC_DRIVE["drive"] = dict(SPEC["drive"], wheelDiameterMm=80)
 SPEC_DRIVE["caster"] = dict(SPEC["caster"], wheelMm=40)
 

@@ -287,7 +287,7 @@ simulation, `BRINGUP_NTFY_TOPIC` (unguessable) / `BRINGUP_NTFY_SERVER` for phone
 
 ```bash
 npm ci
-uv venv --python 3.12 .venv && uv pip install platformio==6.2.0 build123d==0.13.0
+uv venv --python 3.12 .venv && uv pip install platformio==6.2.0 build123d==0.13.0 mujoco==3.17.0
 npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4    # pinned: tscircuit releases daily; ERESOLVE peer warnings are expected
 docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngspice; 0.8 GB download, a few minutes
 .venv/bin/pio pkg install -d templates/fw -e esp32c3      # ESP32-C3 toolchain + libraries into ~/.platformio, about 4 min

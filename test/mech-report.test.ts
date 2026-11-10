@@ -47,6 +47,17 @@ test("a board with no motion targets has no Mechanics section", () => {
 
 test("a robot's boot line points at the simulated drive, not the product firmware's QEMU boot", () => {
 	const s = state(ROVER_BOARD)
+	s.artifacts.drive = { revision: 5, dir: "/d", result: "fail", reason: "edge crossed failed", segments: [] }
 	const r = readFileSync(writeReport(s.outDir, s, env, true), "utf8")
 	assert.match(r, /Firmware boot \(QEMU\): proven by the simulated drive/)
+})
+
+// Final review: the boot was called proven even when the drive never ran (QEMU missing, the firmware silent).
+test("a robot whose simulated drive didn't run has no boot proof, and the line says why", () => {
+	const s = state(ROVER_BOARD)
+	s.artifacts.drive = { revision: 5, dir: "/d", result: "not run", reason: "the firmware didn't answer within 10 s", segments: [] }
+	const r = readFileSync(writeReport(s.outDir, s, env, true), "utf8")
+	assert.match(r, /Firmware boot \(QEMU\): not proven: the simulated drive didn't run \(the firmware didn't answer within 10 s\)/)
+	const none = state(ROVER_BOARD)
+	assert.match(readFileSync(writeReport(none.outDir, none, env, true), "utf8"), /Firmware boot \(QEMU\): not proven: no simulated drive yet/)
 })

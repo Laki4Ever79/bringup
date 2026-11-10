@@ -58,13 +58,13 @@ test("on a bare machine it runs the README's install steps, in order, with the R
 	assert.equal(summary.ok, true)
 	assert.deepEqual(m.ran, [
 		"uv venv --allow-existing --python 3.12 .venv",
-		"uv pip install --python .venv/bin/python platformio==6.2.0 build123d==0.13.0",
+		"uv pip install --python .venv/bin/python platformio==6.2.0 build123d==0.13.0 mujoco==3.17.0",
 		"npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4",
 		"docker pull kicad/kicad:10.0",
 		".venv/bin/pio pkg install -d templates/fw -e esp32c3",
 	])
 	// The same pins as the README's Install block.
-	for (const pin of ["platformio==6.2.0", "build123d==0.13.0", "tscircuit@0.0.3042", "bun@1.4.4", "kicad/kicad:10.0", "-e esp32c3"]) assert.ok(README.includes(pin), pin)
+	for (const pin of ["platformio==6.2.0", "build123d==0.13.0", "mujoco==3.17.0", "tscircuit@0.0.3042", "bun@1.4.4", "kicad/kicad:10.0", "-e esp32c3"]) assert.ok(README.includes(pin), pin)
 	assert.equal(INSTALL.length, 4)
 })
 
