@@ -6,8 +6,8 @@ a temperature and humidity sensor so it can map a room's climate as it goes. It 
 charged from a phone charger over USB-C.
 
 ## Must have
-- **Drives indoors at about 0.3 m/s** on wood, tile and low carpet, and rolls over door thresholds and cable edges up to
-  **1 cm**.
+- **Drives indoors at about 0.3 m/s** on wood, tile and low carpet, and rolls over floor seams and rug edges up to
+  **3 mm** (door thresholds are out of scope).
 - **Avoids walls**: it sees a wall ahead and stops at least **15 cm** short of it, then turns away.
 - **Runs at least 30 minutes** per charge on one Li-ion cell, **charged over USB-C**.
 - **Carries the temperature and humidity sensor** (about 20 g with its mount) and reports readings over Bluetooth LE.

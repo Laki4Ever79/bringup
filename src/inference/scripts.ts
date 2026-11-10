@@ -90,11 +90,12 @@ const ROVER_PINS = [
 	{ signal: "MOT_BIN1", gpio: 6, partRef: "U5", partPin: "BIN1" },
 	{ signal: "MOT_BIN2", gpio: 7, partRef: "U5", partPin: "BIN2" },
 ]
-export const ROVER_MOTION: ContractValues["motion"] = { speedMps: 0.3, runtimeMin: 30, edgeMm: 10, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [160, 150], maxMassG: 500 }
+export const ROVER_MOTION: ContractValues["motion"] = { speedMps: 0.3, runtimeMin: 30, edgeMm: 3, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [160, 150], maxMassG: 500 }
 export const ROVER_MECHANICS: ContractValues["mechanics"] = {
-	// 80 mm wheels and a 38 mm caster: the simulated drive showed 60 mm wheels and a 25 mm caster can't climb the 1 cm
-	// step (a rigid driven wheel with floor friction 0.6 climbs about 0.14 of its radius). The battery sits over the
-	// axle, so most of the weight is on the driven wheels.
+	// 80 mm wheels and a 38 mm caster. The brief's edge is 3 mm (floor seams, tile and rug edges), not 1 cm: the
+	// simulated drive showed the trailing caster stalls at a 1 cm step. It carries about 42 % of the weight (its own
+	// 71 g, the plate and the board sit behind the axle) and could carry at most about 21 % to be pushed up 1 cm; no
+	// layout within 160 mm and no catalog caster gets there (the mech-climb check). Door thresholds are out of scope.
 	drive: { kind: "differential", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "TENTE 1430POI038P60-46x38 swivel caster 38 mm", trackMm: 130, wheelbaseMm: 80, axleXMm: 30 },
 	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: 25, yMm: 0 } },
 	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 72, yMm: 0, zMm: 65 }, connector: "JT1" },

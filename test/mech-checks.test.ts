@@ -28,7 +28,7 @@ test("a board with no motion targets gets no mechanics checks at all", () => {
 test("a weak motor can't climb the edge", () => {
 	const { c, cat } = variant((_v, k) => (k.mech.motors[0].stallTorqueNm = 0.02))
 	assert.ok(kinds(c, cat).includes("mech-torque"))
-	assert.match(msg(c, cat, "mech-torque"), /10 mm/)
+	assert.match(msg(c, cat, "mech-torque"), /3 mm/)
 })
 
 test("too slow a motor misses the target speed", () => {
@@ -56,6 +56,24 @@ test("a small pack can't last the runtime", () => {
 test("a full cell over-volts a 3 V motor beyond 1.5×", () => {
 	const { c, cat } = variant((_v, k) => (k.mech.motors[0].ratedV = 2.5))
 	assert.match(msg(c, cat, "mech-voltage"), /1\.68×/)
+})
+
+test("a caster carrying too much of the weight can't be pushed up the edge (the drive wheels' grip pushes it)", () => {
+	// Battery far back: most of the weight on the small caster, which meets the edge high on its wheel.
+	const { c, cat } = variant((v) => {
+		v.motion.edgeMm = 10
+		v.mechanics.battery.at.xMm = -45
+	})
+	assert.ok(kinds(c, cat).includes("mech-climb"), JSON.stringify(kinds(c, cat)))
+	assert.match(msg(c, cat, "mech-climb"), /caster carries \d+ %.*at most \d+ %/)
+})
+
+test("a caster no bigger than twice the edge can't climb it at all", () => {
+	const { c, cat } = variant((v, k) => {
+		v.motion.edgeMm = 10
+		k.mech.casters[0].wheelMm = 20
+	})
+	assert.match(msg(c, cat, "mech-climb"), /at or above the caster's axle/)
 })
 
 test("a high, front-heavy build tips over when braking", () => {

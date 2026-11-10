@@ -6,10 +6,10 @@ The firmware's simulation build talks over UART1 (a TCP socket QEMU serves) in l
 control tick (templates/fw-rover/SIM.md): "M <tick> <left> <right>" from the firmware; this bridge steps the physics
 by one control period with those duties and answers "S <now_ms> <distance_mm|-1> <temp_c> <rh>".
 
-The course: a 2.5 × 2 m room; the rover starts at the origin facing a wall 1.5 m ahead, with a 1 cm step across the
-floor from 0.6 m on. It passes when it climbs the step, never touches a wall, turns away from the wall, keeps driving
+The course: a 2.5 × 2 m room; the rover starts at the origin facing a wall 1.5 m ahead, with a step across the floor
+from 0.6 m on, as high as the brief's edge (spec edgeMm). It passes when its caster (the last wheel) gets over the step, never touches a wall, turns away from the wall, keeps driving
 afterwards, reaches 90 % of its target speed, and no motor draws more than the driver's peak. Results: drive.json and
-trajectory.json (10 Hz) in out-dir.
+trajectory.json (10 Hz rows: time s, x m, y m, yaw rad, left duty, right duty, height change mm) in out-dir.
 """
 
 import json
@@ -28,11 +28,10 @@ FRONT_WALL_X = 1.5
 BACK_WALL_X = -1.0
 SIDE_WALL_Y = 1.0
 STEP_X = 0.6
-STEP_H = 0.01
 PAYLOAD = (22.5, 45.0)  # what the simulated payload sensor reads (fixed, stated in the report)
 
 
-def course_xml():
+def course_xml(step_h):
     walls = [
         ("wall_front", FRONT_WALL_X + 0.01, 0, 0.01, SIDE_WALL_Y),
         ("wall_back", BACK_WALL_X - 0.01, 0, 0.01, SIDE_WALL_Y),
@@ -41,7 +40,7 @@ def course_xml():
     ]
     xml = "".join(f'<geom name="{n}" type="box" pos="{x} {y} 0.15" size="{sx} {sy} 0.15" rgba=".7 .7 .7 1"/>' for n, x, y, sx, sy in walls)
     step_len = (FRONT_WALL_X - STEP_X) / 2
-    xml += f'<geom name="step" type="box" pos="{STEP_X + step_len} 0 {STEP_H / 2}" size="{step_len} {SIDE_WALL_Y} {STEP_H / 2}" rgba=".5 .5 .6 1"/>'
+    xml += f'<geom name="step" type="box" pos="{STEP_X + step_len} 0 {step_h / 2}" size="{step_len} {SIDE_WALL_Y} {step_h / 2}" rgba=".5 .5 .6 1"/>'
     return xml
 
 
@@ -67,10 +66,13 @@ def _connect(port, wait_s):
 
 
 def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10.0):
-    model = build_model(spec, course_xml())
+    step_h = spec["edgeMm"] / 1000
+    model = build_model(spec, course_xml(step_h))
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     chassis = model.body("chassis").id
+    caster = model.body("caster").id
+    caster_r = spec["caster"]["wheelMm"] / 2000
     tof = model.site("tof").id
     jl, jr = model.joint("left"), model.joint("right")
     walls = {model.geom(n).id for n in ("wall_front", "wall_back", "wall_left", "wall_right")}
@@ -94,7 +96,7 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     peak_a = 0.0
     top_speed = 0.0
     start_z = data.xpos[chassis][2]
-    max_x, max_dz = 0.0, 0.0
+    max_x, caster_x = 0.0, -math.inf
     wall_contact = None
     closest = math.inf
     yaw0 = None
@@ -146,7 +148,7 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
             speed = float(np.dot(vel[:2], heading[:2]))
             top_speed = max(top_speed, speed)
             max_x = max(max_x, float(pos[0]))
-            max_dz = max(max_dz, float(pos[2] - start_z))
+            caster_x = max(caster_x, float(data.xpos[caster][0]))
             # The plate's corners against the room's walls: how close the rover came.
             for sx in (-1, 1):
                 for sy in (-1, 1):
@@ -160,7 +162,7 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
                 moved_after_turn = max(moved_after_turn, math.hypot(pos[0] - turned_at[0], pos[1] - turned_at[1]))
             if data.time - last_sample >= 0.1:
                 last_sample = data.time
-                trajectory.append([round(data.time, 3), round(float(pos[0]), 4), round(float(pos[1]), 4), round(yaw, 4)])
+                trajectory.append([round(data.time, 3), round(float(pos[0]), 4), round(float(pos[1]), 4), round(yaw, 4), duty[0], duty[1], round(float(pos[2] - start_z) * 1000, 1)])
             # The distance sensor: a ray along the rover's heading from its mount, up to its range.
             origin = data.site_xpos[tof].copy()
             direction = np.array([heading[0], heading[1], 0.0])
@@ -180,7 +182,8 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
 
     target = spec.get("speedMps", 0.3)
     segments = [
-        {"name": "edge crossed", "pass": bool(max_x > STEP_X + 0.1 and max_dz > STEP_H * 0.7), "detail": f"reached x = {max_x:.2f} m, {max_dz * 1000:.1f} mm up (the step is {STEP_H * 1000:.0f} mm at {STEP_X} m)"},
+        # The caster is the last wheel to meet the step: past it means the whole rover climbed (nothing passes through).
+        {"name": "edge crossed", "pass": bool(caster_x > STEP_X + caster_r), "detail": f"the caster reached x = {caster_x:.2f} m (the step is {step_h * 1000:g} mm at {STEP_X} m)"},
         {"name": "no wall contact", "pass": wall_contact is None, "detail": f"touched {wall_contact[1]} at {wall_contact[0]:.2f} s" if wall_contact else f"closest {closest * 1000:.0f} mm"},
         {"name": "turned away", "pass": turned_at is not None, "detail": "turned more than 45° from its start" if turned_at else "never turned away"},
         {"name": "kept driving", "pass": bool(moved_after_turn >= 0.3), "detail": f"{moved_after_turn:.2f} m after turning (nothing ahead in range: the reading is -1, not 0 mm)"},
