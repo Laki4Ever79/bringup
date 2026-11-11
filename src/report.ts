@@ -78,7 +78,13 @@ export function simulationLine(outDir: string, env: Env): string {
 }
 
 function bootLine(tracePath: string, env: Env, noHardware: boolean, robot = false, drive?: DriveArtifact): string {
-	const label = "- Firmware boot (QEMU):"
+	// The simulator that boots this chip (its profile): QEMU for the ESP32-C3, Renode for STM32 and nRF52.
+	const boots = existsSync(tracePath)
+		? readFileSync(tracePath, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { type: string; payload: Payloads["firmware.booted"] }).filter((e) => e.type === "firmware.booted")
+		: []
+	const last = boots.at(-1)?.payload
+	const sim = last?.backend === "renode" ? "Renode" : "QEMU"
+	const label = `- Firmware boot (${sim}):`
 	if (noHardware) return `${label} not run (--no-hardware)`
 	// A robot's boot proof is its simulated drive: the simulation build booted in QEMU and answered the control loop.
 	if (robot) {
@@ -86,14 +92,10 @@ function bootLine(tracePath: string, env: Env, noHardware: boolean, robot = fals
 		if (drive.result === "not run") return `${label} not proven: the simulated drive didn't run (${drive.reason})`
 		return `${label} proven by the simulated drive (the simulation build boots in QEMU and runs the control loop; see Mechanics)`
 	}
-	if (!env.qemu) return `${label} not run (QEMU not installed; see NOTES.md)`
-	const boots = existsSync(tracePath)
-		? readFileSync(tracePath, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { type: string; payload: Payloads["firmware.booted"] }).filter((e) => e.type === "firmware.booted")
-		: []
-	const last = boots.at(-1)?.payload
-	if (!last) return `${label} not run (no firmware compiled)`
+	if (!last && !env.qemu && !env.renode) return `${label} not run (QEMU not installed; see NOTES.md)`
+	if (!last) return `${label} not run (no firmware compiled, or no simulator models this chip: docs/mcu.md)`
 	// QEMU emulates no I2C device, so the firmware's sensor read always fails there; say so, so it isn't read as a bug.
-	const sensorNote = /SENSOR FAIL/.test(last.serialTail) ? "; SENSOR FAIL is expected: QEMU emulates no I2C sensor" : ""
+	const sensorNote = /SENSOR FAIL/.test(last.serialTail) ? `; SENSOR FAIL is expected: ${sim} emulates no I2C sensor` : ""
 	if (last.booted) return `${label} booted, printed revision ${last.bootRevision}${sensorNote}`
 	return `${label} did NOT boot (firmware rev ${last.revision}): ${last.serialTail.trim().split("\n").at(-1) ?? ""}`
 }

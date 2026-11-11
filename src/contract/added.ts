@@ -6,6 +6,7 @@ import { enclosureMode, type ContractSnapshot } from "./types.ts"
 import { downloadStrap, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
 import { estimatePower, PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
+import { profileForPart } from "../mcu/profile.ts"
 
 export interface AddedItem {
 	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "phone-use" | "button-window"
@@ -28,7 +29,7 @@ export function addedForYou(s: ContractSnapshot, brief = ""): AddedItem[] {
 		items.push({
 			id: "case",
 			what: `A printed case, designed around the board`,
-			shows: `case.stl and lid.stl, built for every revision, with an opening for each connector and button, a vent over a sensor, standoffs for the mounting holes and the module's antenna inside its own wall.`,
+			shows: `case.stl and lid.stl, built for every revision, with an opening for each connector and button, a vent over a sensor, standoffs for the mounting holes${antennaModule(s) ? " and the module's antenna inside its own wall" : ""}.`,
 			why: `requirements.enclosure isn't set: the brief didn't say how the board is housed, or the architect didn't record it. A case is the default.`,
 			cost: `The print files and a print; every button must have an opening (checked).`,
 			change: `Set ${toChangeCase} (a change request: "no case, bare board" or "it goes into our own housing").`,
@@ -140,4 +141,13 @@ export function addedForYouFactLines(s: ContractSnapshot, brief = ""): string[] 
 		"## Added by Bringup (computed in code; the engineer sees this list in the report)",
 		...items.map((i) => `- ${i.what}. ${i.shows} Why: ${i.why} Cost: ${i.cost}${i.change ? ` To change: ${i.change}` : ""}`),
 	]
+}
+
+// A design whose MCU is a module with an antenna (the ESP32-C3-MINI-1; any profile with a radio and kind "module"); a
+// part with no profile is the ESP32-C3.
+function antennaModule(s: ContractSnapshot): boolean {
+	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
+	if (!mcu) return false
+	const prof = profileForPart(mcu)
+	return prof ? prof.kind === "module" && prof.radio.length > 0 : true
 }
