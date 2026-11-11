@@ -1,0 +1,128 @@
+{
+ "plate": {
+  "lengthMm": 150,
+  "widthMm": 90,
+  "thicknessMm": 3,
+  "clearanceMm": 50.5
+ },
+ "standoffMm": 10,
+ "motors": [
+  {
+   "side": "left",
+   "xMm": 30,
+   "yMm": 37,
+   "bodyMm": [
+    26,
+    12,
+    10
+   ],
+   "axleDropMm": 10.5
+  },
+  {
+   "side": "right",
+   "xMm": 30,
+   "yMm": -37,
+   "bodyMm": [
+    26,
+    12,
+    10
+   ],
+   "axleDropMm": 10.5
+  }
+ ],
+ "caster": {
+  "xMm": -50,
+  "holesMm": [
+   [
+    18,
+    14
+   ],
+   [
+    -18,
+    14
+   ],
+   [
+    -18,
+    -14
+   ],
+   [
+    18,
+    -14
+   ]
+  ],
+  "holeDiaMm": 4.2,
+  "wheelMm": 38,
+  "heightMm": 50.5
+ },
+ "battery": {
+  "xMm": 25,
+  "yMm": 0,
+  "sizeMm": [
+   60,
+   36,
+   7
+  ]
+ },
+ "boards": [
+  {
+   "name": "main",
+   "xMm": 10,
+   "yMm": 0,
+   "widthMm": 42,
+   "heightMm": 29,
+   "rotDeg": 0,
+   "holeInsetMm": 3.5
+  }
+ ],
+ "sensor": {
+  "xMm": 72,
+  "yMm": 0,
+  "zMm": 65,
+  "sizeMm": [
+   21,
+   18,
+   2.8
+  ],
+  "rangeMm": 1200,
+  "updateMs": 33
+ },
+ "massG": 239.78300000000002,
+ "com": [
+  -3.31036812451258,
+  0,
+  43.08395882944162
+ ],
+ "wheelMassG": 20,
+ "casterMassG": 71,
+ "drive": {
+  "trackMm": 110,
+  "axleXMm": 30,
+  "wheelbaseMm": 80,
+  "wheelDiameterMm": 80,
+  "wheelWidthMm": 10
+ },
+ "motor": {
+  "ratedV": 6,
+  "noLoadRpm": 220,
+  "stallTorqueNm": 0.0922,
+  "stallA": 0.67,
+  "noLoadA": 0.07
+ },
+ "pack": {
+  "nominalV": 3.7,
+  "fullV": 4.2,
+  "cutoffV": 3,
+  "mAh": 2000,
+  "internalOhm": null
+ },
+ "payloadG": 20,
+ "driverPeakA": 2,
+ "speedMps": 0.3,
+ "stopBeforeWallMm": 150,
+ "edgeMm": 3,
+ "estimates": {
+  "floorMu": 0.6,
+  "rollingCrr": 0.02,
+  "packOhm": 0.15
+ }
+}

@@ -1,0 +1,16 @@
+{
+	"name": "rover",
+	"sentence": "A small wheeled rover that drives around a home on its own, turns away before it touches a wall, and maps a room's temperature and humidity",
+	"title": "Indoor rover",
+	"boards": [
+		{
+			"name": "main",
+			"outline": {
+				"widthMm": 42,
+				"heightMm": 29
+			},
+			"chassis": true
+		}
+	],
+	"links": []
+}
