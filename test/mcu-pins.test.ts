@@ -33,3 +33,10 @@ test("a pin the chip doesn't have is a named error", () => {
 	assert.match(mcuPinError(stm, 13) ?? "", /PA13 is reserved \(swd\)/)
 	assert.equal(mcuPinError(null, 4), null)
 })
+
+test("a design's pin is named by its MCU part's profile (what the dashboard shows)", async () => {
+	const { mcuPinName } = await import("../src/mcu/pins.ts")
+	assert.equal(mcuPinName([{ role: "mcu", mpn: "STM32G031K8T6" }], 9), "PA9")
+	assert.equal(mcuPinName([{ role: "mcu", mpn: "ESP32-C3-MINI-1" }], 9), "GPIO9")
+	assert.equal(mcuPinName(undefined, 6), "GPIO6")
+})
