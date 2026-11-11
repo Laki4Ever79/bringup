@@ -1,6 +1,6 @@
 // The rover's firmware: each control tick reads the front distance (which paces the loop: the sensor's update period),
 // steps the wall-avoidance logic and sets both motors; every 5 s it reads the payload sensor and prints it.
-// Bluetooth reporting of the payload is not in this firmware yet (docs/mechanics.md, "Not done").
+// Each payload reading also goes out over the radio (hw_report: on the board, a BTHome v2 broadcast over BLE).
 #include <Arduino.h>
 #include "hw.h"
 #include "hw_pins.h"
@@ -30,7 +30,9 @@ void loop() {
 #endif
 	if ((int32_t)(now - nextPayload) >= 0) {
 		nextPayload = now + 5000;
-		float t, rh;
-		if (hw_payload(&t, &rh)) Serial.printf("PAYLOAD t=%.2f rh=%.1f\n", t, rh);
+		float t = 0, rh = 0;
+		const bool ok = hw_payload(&t, &rh);
+		if (ok) Serial.printf("PAYLOAD t=%.2f rh=%.1f\n", t, rh);
+		hw_report(ok, t, rh);
 	}
 }

@@ -5,7 +5,7 @@ import assert from "node:assert/strict"
 import { existsSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { spawnSync } from "node:child_process"
-import { roverHeader } from "../src/mechanics/firmware.ts"
+import { roverHeader, unassignedRoverPins } from "../src/mechanics/firmware.ts"
 import { prepareFirmware } from "../src/tools/firmware.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
@@ -58,6 +58,20 @@ test("a robot's firmware comes from the rover template with its header", async (
 	assert.match(readFileSync(join(dir, "include/hw_pins.h"), "utf8"), /#define MOT_AIN1 4/)
 })
 
+// The brief's must-have: the payload readings over Bluetooth LE. The rover broadcasts them as BTHome v2 with the
+// logger's encoder (include/bthome.h, checked against the spec by test/bthome.test.ts); the board build advertises.
+test("a robot's firmware reports each payload reading over Bluetooth LE (BTHome), with the logger's encoder", async () => {
+	const dir = tempDir()
+	await prepareFirmware(ROOT, dir, rover())
+	assert.equal(readFileSync(join(dir, "include/bthome.h"), "utf8"), readFileSync(join(ROOT, "templates/fw/include/bthome.h"), "utf8"))
+	assert.match(readFileSync(join(dir, "src/hw.h"), "utf8"), /void hw_report\(bool ok, float temp_c, float rh\)/)
+	assert.match(readFileSync(join(dir, "src/main.cpp"), "utf8"), /hw_report\(ok, t, rh\)/)
+	const board = readFileSync(join(dir, "src/hw_board.cpp"), "utf8")
+	assert.match(board, /bthomeServiceData\(/)
+	assert.match(board, /NimBLEDevice::init/)
+	assert.match(readFileSync(join(dir, "platformio.ini"), "utf8"), /\[env:esp32c3\][^[]*h2zero\/NimBLE-Arduino@2\.5\.2/)
+})
+
 test("the board, the simulation and the bench-motor builds compile", { skip: existsSync(pio) ? false : "needs PlatformIO", timeout: 900_000 }, async () => {
 	const dir = tempDir()
 	await prepareFirmware(ROOT, dir, rover())
@@ -70,4 +84,12 @@ test("the control logic's unit test passes on the host", { skip: existsSync(pio)
 	await prepareFirmware(ROOT, dir, rover())
 	const r = spawnSync(pio, ["test", "-d", dir, "-e", "native"], { encoding: "utf8" })
 	assert.equal(r.status, 0, (r.stdout + r.stderr).slice(-2000))
+})
+
+// Final review: a pin left unassigned (-1) still had the drive build and boot a firmware that drives nothing.
+test("the rover pins the contract hasn't assigned yet are named, so the drive waits instead of building", () => {
+	assert.deepEqual(unassignedRoverPins(rover()), [])
+	const s = rover()
+	s.values.pins = (s.values.pins ?? []).filter((p) => p.signal !== "MOT_BIN2")
+	assert.deepEqual(unassignedRoverPins(s), ["MOT_BIN2"])
 })

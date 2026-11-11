@@ -40,4 +40,7 @@ bool hw_payload(float *temp_c, float *rh) {
 }
 
 uint32_t hw_now_ms(void) { return now; }
+
+// QEMU has no radio: the reading is printed (main.cpp) and the BTHome bytes are the logger's, checked on the host.
+void hw_report(bool, float, float) {}
 #endif

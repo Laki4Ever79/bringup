@@ -74,6 +74,8 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 		await cp(join(root, "templates/fw-rover"), dir, { recursive: true })
 		await mkdir(join(dir, "include"), { recursive: true })
 		await writeFile(join(dir, "include/hw_pins.h"), rover)
+		// The payload goes out as BTHome with the logger's encoder: one file, checked once (test/bthome.test.ts).
+		await cp(join(root, "templates/fw/include/bthome.h"), join(dir, "include/bthome.h"))
 		return rover
 	}
 	const header = pinsHeader(s)
