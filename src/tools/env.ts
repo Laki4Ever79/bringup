@@ -2,6 +2,7 @@ import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { getuid, getgid } from "node:process"
 import { run, type RunResult } from "./exec.ts"
+import { renodePath } from "./renode.ts"
 
 export const KICAD_IMAGE = "kicad/kicad:10.0"
 
@@ -17,6 +18,8 @@ export interface Env {
 	// here or printed). Optional: with both, firmware can be simulated with the sensor answering.
 	wokwi?: string | null
 	wokwiToken?: boolean
+	// Renode in tools/renode (docs/mcu.md, Simulation): boots STM32 and nRF52 firmware. Optional.
+	renode?: string | null
 }
 
 const local = (root: string, rel: string) => (existsSync(join(root, rel)) ? join(root, rel) : null)
@@ -39,6 +42,7 @@ export async function detectEnvironment(root: string): Promise<Env> {
 		qemu: qemu?.code === 0 ? qemuPath : null,
 		wokwi: local(root, "tools/wokwi-cli/wokwi-cli"),
 		wokwiToken: Boolean(process.env.WOKWI_CLI_TOKEN),
+		renode: renodePath(root),
 	}
 }
 
@@ -68,6 +72,7 @@ export function describeEnv(env: Env): string {
 		`python:    ${env.python ?? "missing"}`,
 		`pio:       ${env.pio ?? "missing"}`,
 		`QEMU:      ${env.qemu ?? "missing (optional)"}`,
+		`Renode:    ${env.renode ?? "missing (optional: STM32/nRF52 simulation, npm run setup)"}`,
 		`Wokwi:     ${env.wokwi && env.wokwiToken ? `${env.wokwi} (token set)` : "not set up (optional: WOKWI_CLI_TOKEN in .env and tools/wokwi-cli, see NOTES.md)"}`,
 	].join("\n")
 }
