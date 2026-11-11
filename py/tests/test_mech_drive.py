@@ -22,12 +22,18 @@ SPEC_DRIVE["drive"] = dict(SPEC["drive"], wheelDiameterMm=80)
 SPEC_DRIVE["caster"] = dict(SPEC["caster"], wheelMm=40)
 
 
-def fake_firmware(policy):
+def fake_firmware(policy, unix_path=None):
     """A TCP server standing in for QEMU's UART1: it speaks the firmware's side of SIM.md with `policy(distance)`."""
-    srv = socket.socket()
-    srv.bind(("127.0.0.1", 0))
+    # A Unix socket path, as QEMU serves it for the bridge (src/tools/drive.ts), or a TCP port.
+    if unix_path:
+        srv = socket.socket(socket.AF_UNIX)
+        srv.bind(unix_path)
+        port = unix_path
+    else:
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        port = srv.getsockname()[1]
     srv.listen(1)
-    port = srv.getsockname()[1]
 
     def serve():
         conn, _ = srv.accept()
@@ -86,6 +92,12 @@ class DriveTest(unittest.TestCase):
         r = run(SPEC_DRIVE, fake_firmware(blind), out, course_s=12, firmware_wait_s=5)
         self.assertEqual(r["result"], "fail")
         self.assertIn("wall", r["reason"])
+
+    def test_the_bridge_reaches_the_firmware_over_a_unix_socket_path(self):
+        # QEMU serves the firmware's UART on a socket file in the run folder: no free-port race (pending-fixes, 11 Nov).
+        out = tempfile.mkdtemp()
+        r = run(SPEC_DRIVE, fake_firmware(careful, os.path.join(out, "uart1.sock")), out, course_s=12, firmware_wait_s=5)
+        self.assertEqual(r["result"], "pass", r["reason"])
 
     def test_a_firmware_that_turns_at_walls_passes_crosses_the_edge_and_keeps_driving(self):
         out = tempfile.mkdtemp()
