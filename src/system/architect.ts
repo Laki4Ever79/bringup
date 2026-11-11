@@ -27,7 +27,7 @@ export const BUILDABLE: string = (() => {
 	const byRole = new Map<string, string[]>()
 	for (const p of loadCatalog(ROOT)) byRole.set(p.role, [...(byRole.get(p.role) ?? []), p.mpn])
 	const parts = [...byRole].map(([role, mpns]) => `- ${role}: ${mpns.join(", ")}`).join("\n")
-	return `Every board is a small ESP32-C3 board (BLE, one free UART, one I2C bus), powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). Nothing else can be built yet: no motors, motor drivers, servos, wheels, cameras, screens, speakers or relays.`
+	return `Every board is a small board on one MCU, by default an ESP32-C3 (BLE, one free UART, one I2C bus); a board's brief may name another catalog MCU (an STM32 has no radio, and its own UART and I2C counts). Boards are powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). Nothing else can be built yet: no motors, motor drivers, servos, wheels, cameras, screens, speakers or relays.`
 })()
 
 // Things people ask for that no board can have yet, and why.

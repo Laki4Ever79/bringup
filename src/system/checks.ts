@@ -6,6 +6,8 @@ import { uartSignals } from "../contract/links.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { boardLinks } from "./derive.ts"
 import { DEFAULT_I2C_KHZ, type SystemLink, type SystemSpec } from "./spec.ts"
+import { mcuProfileOf } from "../mcu/profile.ts"
+import { peripheralsFree } from "../mcu/solver.ts"
 
 export interface SystemFinding {
 	kind: "link-pending" | "uart-crossover" | "uart-baud" | "i2c-controllers" | "i2c-address" | "i2c-target-has-bus" | "i2c-pullups" | "i2c-cable-too-long" | "link-power" | "link-voltage" | "message-mismatch" | "logic-level"
@@ -98,8 +100,11 @@ function i2cChecks(l: SystemLink, contracts: Record<string, ContractSnapshot | u
 			if (was) out.push({ kind: "i2c-address", link: l.id, message: `${l.id}: ${who} and ${was} both answer at ${hex(address)} on the shared bus: give the target another address in the system spec`, boards: [board] })
 			else seen.set(address, who)
 		}
-		// The ESP32-C3 has one I2C controller: a board that is the link's target can't also drive its own sensor.
-		if (links[i].i2c?.role === "target" && i2cDevices(s).length) out.push({ kind: "i2c-target-has-bus", link: l.id, message: `${l.id}: ${board} is the link's target but also drives ${i2cDevices(s).map((d) => d.ref).join(", ")} on its own bus; its ESP32-C3 has one I2C controller. Make ${board} the controller, or move the link to UART`, boards: [board] })
+		// A chip with one I2C controller (the ESP32-C3) can't be the link's target and also drive its own sensor; one with
+		// two (an STM32G031) can, on its second controller. The count is the board's chip profile's.
+		const chip = mcuProfileOf(s.values.parts)
+		const controllers = chip ? peripheralsFree(chip).i2c : 1
+		if (links[i].i2c?.role === "target" && i2cDevices(s).length && controllers < 2) out.push({ kind: "i2c-target-has-bus", link: l.id, message: `${l.id}: ${board} is the link's target but also drives ${i2cDevices(s).map((d) => d.ref).join(", ")} on its own bus; its ${chip?.mpn ?? "ESP32-C3"} has one I2C controller. Make ${board} the controller, or move the link to UART`, boards: [board] })
 	}
 	const pullups = ends.filter((_, i) => links[i].i2c?.pullups)
 	if (pullups.length !== 1) out.push({ kind: "i2c-pullups", link: l.id, message: `${l.id}: the bus needs exactly one set of pull-ups; ${pullups.length ? `${pullups.join(" and ")} both fit them` : "no board fits them"}`, boards: ends })
