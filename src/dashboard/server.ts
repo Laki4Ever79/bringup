@@ -128,13 +128,19 @@ class TraceTail {
 
 // Resolves /files/<rel> to a real path inside runDir, or null. Rejects `..` segments outright and also
 // checks the resolved real path, so a symlink can't point out of the run directory.
-async function fileInRun(runDir: string, rel: string): Promise<string | null> {
-	let decoded: string
+// A path segment from a URL, decoded; null for a malformed escape (decodeURIComponent throws on one), which every caller
+// treats as a path that doesn't exist, never as a server error.
+function safeDecode(s: string): string | null {
 	try {
-		decoded = decodeURIComponent(rel)
+		return decodeURIComponent(s)
 	} catch {
 		return null
 	}
+}
+
+async function fileInRun(runDir: string, rel: string): Promise<string | null> {
+	const decoded = safeDecode(rel)
+	if (decoded === null) return null
 	if (decoded.includes("\0") || decoded.split(/[\\/]/).includes("..")) return null
 	const root = await realpath(runDir)
 	const target = await realpath(resolve(root, "." + sep + decoded)).catch(() => null)
@@ -731,10 +737,18 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			}
 			if (path === "/api/examples") return json(res, 200, listExamples(opts.examplesRoot ?? EXAMPLES))
 			if (path.startsWith("/examples/")) {
-				const file = exampleFile(opts.examplesRoot ?? EXAMPLES, decodeURIComponent(path.slice("/examples/".length)))
+				const rel = safeDecode(path.slice("/examples/".length))
+				const file = rel === null ? null : exampleFile(opts.examplesRoot ?? EXAMPLES, rel)
 				if (!file) return send(res, 404, "not found")
-				// Shipped files change only with a commit: cache them for a day.
-				res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "cache-control": "public, max-age=86400" })
+				// Revalidated by size and time, not cached blind by path: a re-saved example shows at once, and an unchanged
+				// one costs a 304.
+				const st = await stat(file)
+				const etag = `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`
+				if (req.headers["if-none-match"] === etag) {
+					res.writeHead(304, { etag, "cache-control": "no-cache" })
+					return res.end()
+				}
+				res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "cache-control": "no-cache", etag })
 				return createReadStream(file).pipe(res)
 			}
 			if (path === "/api/briefs") return json(res, 200, await listBriefs())

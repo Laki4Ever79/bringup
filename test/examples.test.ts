@@ -63,7 +63,13 @@ test("the hub lists the examples and serves their files, also in the public demo
 		assert.deepEqual(list.map((e) => e.name), ["two-boards"])
 		const f = await fetch(`${hub.url}/examples/two-boards/boards/logger/case.stl`)
 		assert.equal(f.status, 200)
-		assert.match(f.headers.get("cache-control") ?? "", /max-age/)
+		// Revalidated by content, not cached blind by path: a re-saved example shows at once (pending-fixes, 11 Nov).
+		assert.match(f.headers.get("cache-control") ?? "", /no-cache/)
+		const etag = f.headers.get("etag")
+		assert.ok(etag, "an ETag to revalidate by")
+		assert.equal((await fetch(`${hub.url}/examples/two-boards/boards/logger/case.stl`, { headers: { "if-none-match": etag! } })).status, 304)
+		// A malformed escape is a bad path (404), never a server error (500).
+		assert.equal((await fetch(`${hub.url}/examples/two-boards/%E0%A4%A`)).status, 404)
 		assert.equal((await fetch(`${hub.url}/examples/two-boards/../../etc/passwd`)).status, 404)
 		assert.equal((await fetch(`${hub.url}/examples/nope/example.json`)).status, 404)
 	} finally {
