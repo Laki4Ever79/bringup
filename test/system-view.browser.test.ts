@@ -196,3 +196,20 @@ test("the board page's Firmware tab lists the newest revision's files, marks the
 		await hub.close()
 	}
 })
+
+// At phone width the boards-and-cables drawing shrank to unreadable text (an 880-wide drawing at 38 %): it keeps a
+// readable size and scrolls sideways in its own box, never the page.
+test("at phone width the boards-and-cables drawing stays readable and scrolls inside its box", { skip, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await page.setViewportSize({ width: 390, height: 844 })
+		await page.waitForSelector("#topology svg", { timeout: 30_000 })
+		const r = await page.evaluate(() => {
+			const svg = document.querySelector("#topology svg")!.getBoundingClientRect()
+			const box = document.querySelector("#topology .topo-scroll") as HTMLElement | null
+			return { svgW: svg.width, scrolls: box ? box.scrollWidth > box.clientWidth : false, pageOver: document.documentElement.scrollWidth - innerWidth }
+		})
+		assert.ok(r.svgW >= 600, `the drawing is ${Math.round(r.svgW)} px wide`)
+		assert.equal(r.scrolls, true, "it scrolls inside its own box")
+		assert.ok(r.pageOver <= 0, `the page itself scrolls sideways by ${r.pageOver} px`)
+	})
+})

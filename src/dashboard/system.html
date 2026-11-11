@@ -64,6 +64,8 @@
 	.finding.est { border-color: var(--warn); background: var(--warn-wash); }
 	.finding.pending { border-color: var(--ink-3); background: var(--paper-2); }
 	#topology svg { width: 100%; height: auto; display: block; }
+	#topology { min-width: 0; }
+	#topology .topo-scroll { overflow-x: auto; width: 100%; max-width: calc(100vw - 2 * var(--gap) - 4px); }
 	form.start { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 	form.start label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
 	select { height: 30px; border: 1.5px solid var(--ink); background: var(--paper); padding: 0 8px; }
@@ -207,7 +209,8 @@ function topology(d) {
 			<text x="${x(i) + 22}" y="94" font-family="JBMono, monospace" font-size="13" fill="var(--ink-2)">${esc(info.status ?? "")}${info.revision ? ` · rev ${info.revision}` : ""}</text>
 			<text x="${x(i) + 22}" y="116" font-family="Instrument, sans-serif" font-size="13" fill="var(--ink-2)">${esc(b.run ? "imported board" : size)}</text></g>`
 	})
-	return `<svg viewBox="0 0 ${total} ${d.spec.links.some((l) => Math.abs(idx[l.a.board] - idx[l.b.board]) > 1) ? 260 : 180}" role="img" aria-label="Boards and the cables between them">${boxes.join("")}${links.join("")}</svg>`
+	// Never narrower than about 70 % of its drawn size (readable text); on a narrow screen it scrolls in its own box.
+	return `<div class="topo-scroll"><svg style="min-width:${Math.round(total * 0.7)}px" viewBox="0 0 ${total} ${d.spec.links.some((l) => Math.abs(idx[l.a.board] - idx[l.b.board]) > 1) ? 260 : 180}" role="img" aria-label="Boards and the cables between them">${boxes.join("")}${links.join("")}</svg></div>`
 }
 
 // cable.md's tables, as HTML tables (only its headings, paragraphs and pipe tables).
