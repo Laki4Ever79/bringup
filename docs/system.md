@@ -118,8 +118,10 @@ frame whose hash it doesn't know, so two boards built against different definiti
 - A message named `reading` is filled from the board's reading by field name (`tempCx100`, `rhx100`, `tempC`, `rh`,
   `ok`); any other field is sent as 0. A failed reading is sent only in a message with an `ok` field.
 - I2C messages go both ways. A target can't start a transfer, so what it sends waits as one frame; the controller
-  reads it (`Wire.requestFrom`) at most every 200 ms while awake, and the target hands each frame over once. So a
-  target sends one message per link (the spec check says so).
+  reads it (`Wire.requestFrom`) from each sending target at most every 200 ms, and the target hands each frame over
+  once. So a target sends one message per link (the spec check says so). It works only while both boards are awake:
+  in the product firmware that means both on USB, since a target deep-sleeps right after its reading (the bench plan
+  says so). A board on I2C links is the controller on all of them, or the target on exactly one.
 - The product firmware deep-sleeps, so a receiving board hears a link only while it is awake: on USB power (USB wake
   keeps it awake) or during its own wake. A receiver that must always listen needs a design without a duty cycle.
 

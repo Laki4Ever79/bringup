@@ -82,8 +82,16 @@ export function specErrors(s: SystemSpec): string[] {
 			if (bytes > 48) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a frame carries 48 at most`)
 		}
 	}
+	// One I2C controller per chip: in target mode the board can't also drive a bus. So a board on I2C links is the
+	// controller on all of them, or the target on exactly one and on no other I2C link.
+	for (const b of s.boards) {
+		const mine = s.links.filter((l) => l.kind === "i2c" && l.i2c && (l.a.board === b.name || l.b.board === b.name))
+		const asTarget = mine.filter((l) => l.i2c!.controller !== b.name)
+		if (asTarget.length && mine.length > 1)
+			out.push(`board ${b.name}: it is the I2C target on ${asTarget[0].id} and on other I2C links (${mine.filter((l) => l !== asTarget[0]).map((l) => l.id).join(", ")}); its ESP32-C3 has one I2C controller, which can't be a target and drive a bus. Make ${b.name} the controller on all its I2C links, or move the others to UART`)
+	}
 	// The chip's peripherals (src/contract/link-kinds.ts): links on one board that need the same one. I2C links share the
-	// board's one bus, so they never run out here (the I2C bus checks between boards cover them).
+	// board's one bus as its controller, so they aren't counted here; the role rule above covers a board as target.
 	for (const b of s.boards) {
 		const by = new Map<Peripheral, string[]>()
 		for (const l of s.links) if ((l.a.board === b.name || l.b.board === b.name) && Object.hasOwn(LINK_KINDS, l.kind)) {
