@@ -69,12 +69,15 @@ export function specErrors(s: SystemSpec): string[] {
 				}
 			}
 		}
+		// A target can't start a transfer: it keeps its latest frame, and the controller reads it. One frame, one message.
+		if (l.kind === "i2c" && l.i2c) {
+			const fromTarget = (l.messages ?? []).filter((m) => m.from !== l.i2c!.controller)
+			if (fromTarget.length > 1) out.push(`link ${l.id}: ${fromTarget[0].from} sends ${fromTarget.map((m) => m.name).join(", ")}; an I2C target holds one frame for the controller to read, so it sends one message`)
+		}
 		if (l.power && ![l.a.board, l.b.board].includes(l.power.from)) out.push(`link ${l.id}: power comes from ${l.power.from}, which is not on the link`)
 		if (!(l.cable?.lengthMm > 0)) out.push(`link ${l.id}: cable.lengthMm must be a positive length`)
 		for (const m of l.messages ?? []) {
 			if (![l.a.board, l.b.board].includes(m.from)) out.push(`link ${l.id}: message ${m.name} comes from ${m.from}, which is not on the link`)
-			// A target can't start a transfer; the controller reading from it is a later phase (docs/system.md).
-			if (l.kind === "i2c" && l.i2c && m.from !== l.i2c.controller) out.push(`link ${l.id}: message ${m.name} comes from the I2C target ${m.from}; for now messages go from the controller (${l.i2c.controller}) to the target`)
 			const bytes = m.fields.reduce((n, f) => n + ({ u8: 1, u16: 2, i16: 2, u32: 4, f32: 4 } as const)[f.type], 0)
 			if (bytes > 48) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a frame carries 48 at most`)
 		}

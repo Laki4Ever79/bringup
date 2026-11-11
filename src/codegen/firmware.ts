@@ -189,15 +189,39 @@ export function linkHeader(s: ContractSnapshot): string {
 		body.push(`\tSerial.printf("LINK %s: a frame with an unknown definition (hash %08lx), dropped\\n", link, (unsigned long)hash);`, "}")
 	}
 	if (target) body.push(`static LinkFrameReader linkTargetReader;`, `static volatile bool linkTargetGot = false;`, `static uint8_t linkTargetFrame[LINK_MAX_PAYLOAD];`, `static uint8_t linkTargetLen = 0;`, `static uint32_t linkTargetHash = 0;`, `// Runs in the I2C driver's context: keep the frame for linkPoll().`, `static void linkOnReceive(int) {`, `\tconst uint8_t *p;`, `\tuint8_t len;`, `\tuint32_t hash;`, `\twhile (Wire.available()) if (linkTargetReader.feed((uint8_t)Wire.read(), hash, p, len) && !linkTargetGot) {`, `\t\tmemcpy(linkTargetFrame, p, len);`, `\t\tlinkTargetLen = len;`, `\t\tlinkTargetHash = hash;`, `\t\tlinkTargetGot = true;`, `\t}`, `}`)
+	// An I2C target can't start a transfer: what it sends waits in one frame, which the controller reads (onRequest).
+	// It is handed over once and then cleared, so the controller never hears the same reading twice; an empty answer is
+	// one 0x00 byte, which the controller's reader skips.
+	const targetSends = target && sends.some((x) => x.l.id === target.id)
+	if (targetSends)
+		body.push(
+			`static uint8_t linkReplyFrame[8 + LINK_MAX_PAYLOAD];`,
+			`static volatile uint8_t linkReplyLen = 0;`,
+			`struct LinkBufferOut : public Print {`,
+			`	uint8_t buf[8 + LINK_MAX_PAYLOAD];`,
+			`	uint8_t n = 0;`,
+			`	size_t write(uint8_t c) override { if (n < sizeof buf) buf[n++] = c; return 1; }`,
+			`};`,
+			`static void linkOnRequest() {`,
+			`	if (linkReplyLen) {`,
+			`		Wire.write(linkReplyFrame, linkReplyLen);`,
+			`		linkReplyLen = 0;`,
+			`	} else Wire.write((uint8_t)0);`,
+			`}`,
+		)
+	const i2cIn = receives.find((r) => r.l.kind === "i2c" && r.l.i2c?.role === "controller" && r.m.dir === "receive")
+	if (i2cIn) body.push(`static LinkFrameReader linkI2cReader;`, `static uint32_t linkI2cLastRead = 0;`)
 	if (uart) body.push(`static LinkFrameReader linkUartReader;`)
 	body.push("static void linkBegin() {")
 	if (uart) body.push(`\tSerial1.begin(${L(uart.id)}_BAUD, SERIAL_8N1, PIN_${uart.id}_RX, PIN_${uart.id}_TX);`)
+	if (targetSends) body.push(`\tWire.onRequest(linkOnRequest);`)
 	if (target) body.push(`\tWire.onReceive(linkOnReceive);`, `\tWire.begin((uint8_t)${L(target.id)}_I2C_ADDRESS, PIN_I2C_SDA, PIN_I2C_SCL, ${L(target.id)}_I2C_KHZ * 1000UL);`)
 	body.push("}", "static void linkSendReading(bool ok, float t, float rh) {", "\t(void)ok;", "\t(void)t;", "\t(void)rh;")
 	for (const { l, m } of sends) {
 		// A failed reading goes out only in a message that can say so (an ok field); otherwise it isn't sent.
 		body.push(m.fields.some((f) => f.name === "ok") ? `\t{` : `\tif (ok) {`, `\t\t${m.name}_msg m = {};`, ...m.fields.map((f) => `\t\tm.${f.name} = ${READING_FILL[f.name] ?? "0"};${READING_FILL[f.name] ? "" : " // not a reading field: sent as 0"}`))
 		if (l.kind === "uart") body.push(`\t\tlinkFrameWrite(Serial1, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tSerial1.flush();`)
+		else if (l.i2c?.role === "target") body.push(`\t\tLinkBufferOut out;`, `\t\tlinkFrameWrite(out, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tlinkReplyLen = 0;`, `\t\tmemcpy(linkReplyFrame, out.buf, out.n);`, `\t\tlinkReplyLen = out.n; // last: the request handler sees a whole frame or none`)
 		else body.push(`\t\tWire.beginTransmission((uint8_t)${L(l.id)}_I2C_PEER_ADDRESS);`, `\t\tlinkFrameWrite(Wire, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tconst uint8_t err = Wire.endTransmission();`, `\t\tif (err) Serial.printf("LINK ${l.id}: ${l.peer} didn't answer at 0x%02x (%u)\\n", ${L(l.id)}_I2C_PEER_ADDRESS, err);`)
 		body.push(`\t\tSerial.println("LINK ${l.id} sent ${m.name}");`, `\t}`)
 	}
@@ -207,6 +231,18 @@ export function linkHeader(s: ContractSnapshot): string {
 		body.push("\tconst uint32_t start = millis();", "\tdo {")
 		const uartIn = receives.find((r) => r.l.kind === "uart")
 		if (uartIn) body.push(`\t\tconst uint8_t *p;`, `\t\tuint8_t len;`, `\t\tuint32_t hash;`, `\t\twhile (Serial1.available()) if (linkUartReader.feed((uint8_t)Serial1.read(), hash, p, len)) linkReceived("${uartIn.l.id}", hash, p, len);`)
+		// The controller reads the target's frame, at most every 200 ms: the target answers once per frame.
+		if (i2cIn)
+			body.push(
+				`\t\tif (millis() - linkI2cLastRead >= 200) {`,
+				`\t\t\tlinkI2cLastRead = millis();`,
+				`\t\t\tconst uint8_t *ip;`,
+				`\t\t\tuint8_t ilen;`,
+				`\t\t\tuint32_t ihash;`,
+				`\t\t\tWire.requestFrom((uint8_t)${L(i2cIn.l.id)}_I2C_PEER_ADDRESS, (uint8_t)(8 + sizeof(${i2cIn.m.name}_msg)));`,
+				`\t\t\twhile (Wire.available()) if (linkI2cReader.feed((uint8_t)Wire.read(), ihash, ip, ilen)) linkReceived("${i2cIn.l.id}", ihash, ip, ilen);`,
+				`\t\t}`,
+			)
 		if (target) body.push(`\t\tif (linkTargetGot) {`, `\t\t\tlinkReceived("${target.id}", linkTargetHash, linkTargetFrame, linkTargetLen);`, `\t\t\tlinkTargetGot = false;`, `\t\t}`)
 		body.push("\t\tdelay(5);", "\t} while (millis() - start < ms);")
 	}
