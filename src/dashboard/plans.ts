@@ -42,8 +42,13 @@ export class PlanStore {
 		const dir = this.dir(plan.id)
 		mkdirSync(join(dir, "briefs"), { recursive: true })
 		const saved = { ...plan, spendUsd: readSpend(dir).usd }
+		// A drag moves only the drawing positions: record just those, not the whole plan on every move. Any other change
+		// records the whole plan, so every version can still be rebuilt from the history.
+		const before = this.get(plan.id)
+		const onlyMoved = before !== null && JSON.stringify({ ...before, layout: null, version: null }) === JSON.stringify({ ...saved, layout: null, version: null })
 		writeFileSync(join(dir, "plan.json"), JSON.stringify(saved, null, "\t"))
-		appendFileSync(join(dir, "history.jsonl"), JSON.stringify({ at: new Date().toISOString(), version: saved.version, plan: saved }) + "\n")
+		const at = new Date().toISOString()
+		appendFileSync(join(dir, "history.jsonl"), JSON.stringify(onlyMoved ? { at, version: saved.version, layout: saved.layout } : { at, version: saved.version, plan: saved }) + "\n")
 		return saved
 	}
 

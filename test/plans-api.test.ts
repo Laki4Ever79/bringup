@@ -98,15 +98,16 @@ test("plan checks answer fast enough to run on every drag", async () => {
 		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a logger and a beacon over a cable", mock: true })).json()) as Any
 		let { plan } = (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any
 		plan = { ...plan, spec: { ...plan.spec, boards: [...plan.spec.boards, { name: "extra", brief: "briefs/extra.md" }] }, briefs: { ...plan.briefs, extra: "# Brief: extra\n" } }
-		const times: number[] = []
+		// CPU time, not wall-clock: the hub runs in this process, and other processes (the rest of the suite: builds, QEMU,
+		// MuJoCo) stretch wall-clock time but not the work a save costs (pending-fixes, 11 Nov: p95 62.9 ms under load).
+		const cpu = process.cpuUsage()
 		for (let i = 0; i < 20; i++) {
-			const t = performance.now()
 			const r = (await (await send(`${url}/api/plans/${id}`, "PUT", { plan: { ...plan, layout: { ...plan.layout, extra: { x: i, y: i } } } })).json()) as Any
-			times.push(performance.now() - t)
 			plan = r.plan
 		}
-		times.sort((a, b) => a - b)
-		assert.ok(times[18] < 50, `p95 ${times[18].toFixed(1)} ms`)
+		const used = process.cpuUsage(cpu)
+		const perSaveMs = (used.user + used.system) / 1000 / 20
+		assert.ok(perSaveMs < 25, `${perSaveMs.toFixed(1)} ms of CPU per save (client and hub together)`)
 	})
 })
 
@@ -161,4 +162,25 @@ test("Build with real models and no key says NO_KEY instead of starting a run", 
 		assert.equal(((await r.json()) as Any).code, "NO_KEY")
 		assert.equal(calls.length, 0)
 	})
+})
+
+// pending-fixes, 11 Nov: every drag appended the whole plan to history.jsonl. A move records only the positions; a change
+// to the plan itself still records the whole plan, so the history can rebuild every version.
+test("a drag records only the new positions in the plan's history; a real change records the whole plan", async () => {
+	const root = tempDir()
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const url = hub.url
+		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a logger and a beacon over a cable", mock: true })).json()) as Any
+		let { plan } = (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any
+		plan = ((await (await send(`${url}/api/plans/${id}`, "PUT", { plan: { ...plan, layout: { ...plan.layout, logger: { x: 5, y: 6 } } } })).json()) as Any).plan
+		await send(`${url}/api/plans/${id}`, "PUT", { plan: { ...plan, why: "changed by hand" } })
+		const lines = readFileSync(join(root, "plans", id, "history.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+		const [move, change] = lines.slice(-2)
+		assert.deepEqual(Object.keys(move).sort(), ["at", "layout", "version"])
+		assert.deepEqual(move.layout.logger, { x: 5, y: 6 })
+		assert.equal(change.plan.why, "changed by hand")
+	} finally {
+		await hub.close()
+	}
 })
