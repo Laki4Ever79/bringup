@@ -40,7 +40,8 @@ test("the board/case row never crushes: it has a floor, and the page scrolls bel
 	// #app fills the window (dynamic viewport, for browser chrome and fractional scaling) but may grow past it.
 	assert.match(rule("#app"), /min-height:\s*100dvh/)
 	assert.doesNotMatch(rule("#app"), /(^|;|\s)height:\s*100vh/)
-	// The deck's row: a floor tall enough to read the board, then whatever height is left.
-	const deck = /minmax\(clamp\([^)]*\), auto\) minmax\((\d+)px, 1fr\)/.exec(prop("#run", "grid-template-rows") ?? "")
-	assert.ok(deck && Number(deck[1]) >= 300, `the deck row's floor: ${prop("#run", "grid-template-rows")}`)
+	// The deck's row: a floor tall enough to read the board (since 11 Nov nearly a whole window: max(px, vh)), growing
+	// with its content; the page scrolls below it.
+	const deck = /minmax\(clamp\([^)]*\), auto\) minmax\(max\((\d+)px, (\d+)vh\), auto\)/.exec(prop("#run", "grid-template-rows") ?? "")
+	assert.ok(deck && Number(deck[1]) >= 300 && Number(deck[2]) >= 75, `the deck row's floor: ${prop("#run", "grid-template-rows")}`)
 })
