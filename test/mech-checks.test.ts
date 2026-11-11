@@ -145,3 +145,15 @@ test("a chassis board this design doesn't have is flagged, not silently left off
 	const { c, cat } = variant((v) => v.mechanics.chassis.boards.push({ name: "sensor-board", at: { xMm: -40, yMm: 0 }, rotDeg: 0 }))
 	assert.match(msg(c, cat, "mech-fit"), /sensor-board/)
 })
+
+// pending-fixes, 11 Nov: tipping was checked still and braking, not when accelerating, which moves the centre of mass
+// back by h·a/g, toward the caster, where the support triangle is narrowest.
+test("a short wheelbase tips back when accelerating hard: the margin is checked that way too, with the right advice", () => {
+	const { c, cat } = variant((v) => {
+		v.mechanics.drive.wheelbaseMm = 30
+		v.mechanics.battery.at.xMm = 30
+	})
+	const m = msg(c, cat, "mech-tipping")
+	assert.match(m, /when accelerating hard/)
+	assert.match(m, /move weight \(the battery\) forward/)
+})

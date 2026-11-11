@@ -199,15 +199,21 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	if (over > est("motorOvervoltMax"))
 		push("mech-voltage", `a full cell puts ${pack.fullV} V on the ${motor.ratedV} V-rated ${d.motor}: ${r2(over)}× its rating, over ${est("motorOvervoltMax")}× ${estNote("motorOvervoltMax")}: pick a motor rated closer to the cell`)
 
-	// Tipping: the centre of mass inside the support triangle with margin, still or braking (the braking decel moves it
-	// forward by h·a/g).
+	// Tipping: the centre of mass inside the support triangle with margin, still, braking and accelerating. The floor's
+	// grip caps both: braking moves it forward by h·a/g, accelerating (or braking in reverse) back by as much, toward the
+	// caster, where the triangle is narrowest.
 	const poly = supportPolygon(mech, cat.mech)
 	const decel = est("floorMu") * G * onWheels
 	const still = insideMargin([com[0], com[1]], poly)
 	const braking = insideMargin([com[0] + (com[2] * decel) / G, com[1]], poly)
-	fig("Tipping margin", `${r1(Math.min(still, braking))} mm`, `at least ${TIP_MARGIN_MM} mm`, Math.min(still, braking) >= TIP_MARGIN_MM, `centre of mass to the support triangle's edge, still and braking ${estNote("floorMu")}`)
-	if (Math.min(still, braking) < TIP_MARGIN_MM)
-		push("mech-tipping", `the centre of mass (${r1(com[0])}, ${r1(com[1])}, ${r1(com[2])} mm) is ${r1(Math.min(still, braking))} mm from the edge of the wheels-and-caster triangle ${braking < still ? "when braking hard " : ""}(at least ${TIP_MARGIN_MM} mm needed, ${estNote("floorMu")}): lengthen the wheelbase, or move weight (the battery) back and down`)
+	const accelerating = insideMargin([com[0] - (com[2] * decel) / G, com[1]], poly)
+	const worst = Math.min(still, braking, accelerating)
+	fig("Tipping margin", `${r1(worst)} mm`, `at least ${TIP_MARGIN_MM} mm`, worst >= TIP_MARGIN_MM, `centre of mass to the support triangle's edge, still, braking and accelerating ${estNote("floorMu")}`)
+	if (worst < TIP_MARGIN_MM) {
+		const when = worst === still ? "" : worst === braking ? "when braking hard " : "when accelerating hard (or braking in reverse) "
+		const fix = worst === accelerating && worst < still ? "lengthen the wheelbase, or move weight (the battery) forward and down" : "lengthen the wheelbase, or move weight (the battery) back and down"
+		push("mech-tipping", `the centre of mass (${r1(com[0])}, ${r1(com[1])}, ${r1(com[2])} mm) is ${r1(worst)} mm from the edge of the wheels-and-caster triangle ${when}(at least ${TIP_MARGIN_MM} mm needed, ${estNote("floorMu")}): ${fix}`)
+	}
 
 	// Fit: everything on the plate, nothing colliding, the plate level and above the edge, within the size and mass.
 	const [L, Wd] = mech.chassis.plateMm
