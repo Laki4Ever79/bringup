@@ -672,7 +672,7 @@
 		"source": "RP2040 datasheet (build 2025-02-20) Table 637: DORMANT 0.18 mA typ on DVDD, the floor the firmware can reach (no deep sleep with RAM off); run current at 133 MHz only as a graph (Fig. 172), 25 mA is read from it, an estimate. No minimum supply current stated; 100 mA is Bringup's margin"
 	},
 	"firmware": {
-		"platform": "raspberrypi@1.17.0",
+		"platform": "raspberrypi@1.20.0",
 		"board": "pico",
 		"framework": "arduino",
 		"arch": "rp2040",
