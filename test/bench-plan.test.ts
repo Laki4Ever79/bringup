@@ -75,16 +75,17 @@ test("a received line is judged by value: 21.5 and 21.50 are the same, a wrong o
 	assert.deepEqual(wrongFields("LINK L1 reading from logger: t=0.00", { t: 0 }), [])
 })
 
-// The product firmware prints on UART0 (GPIO20/21), which a Bringup board doesn't wire out: the plan must not ask a
-// person to read its USB output, and must say why its last step can't pass yet.
-test("product-firmware steps ask only for what a real board shows: its USB port, its LED; the last step says why it can't pass yet", () => {
+// The product firmware prints on UART0 (for QEMU) and on the C3's own USB: a board alone is judged by its USB output and
+// its LED, and the last step reads real LINK lines there (test/console.test.ts checks the console itself).
+test("product-firmware steps read what a real board shows: its USB output, its LED; the last step expects real readings", () => {
 	const s = spec([uart()])
 	const p = benchPlan(s, contracts(s), dirs)
 	const alone = p.steps[0]
 	assert.ok(alone.do.some((l) => l.includes("pio run -d out/sys/boards/logger/firmware/rev-7 -t upload")), alone.do.join("\n"))
-	assert.ok(!alone.pass.some((l) => /SENSOR OK/.test(l)), "the product firmware's output isn't on USB")
 	assert.ok(alone.pass.some((l) => /logger: its USB port appears on the computer/.test(l)), alone.pass.join("\n"))
+	assert.ok(alone.pass.some((l) => /logger: its USB port prints `SENSOR OK/.test(l)), alone.pass.join("\n"))
 	assert.ok(alone.pass.some((l) => /logger: its LED blinks at each reading/.test(l)), "the logger has an LED")
 	const product = p.steps.at(-1)!
-	assert.ok(product.pass.some((l) => /can't pass on a real board yet.*UART0 \(GPIO20\/21\)/.test(l)), product.pass.join("\n"))
+	assert.ok(product.pass.some((l) => /beacon prints `LINK L1 reading from logger: …` with real values/.test(l)), product.pass.join("\n"))
+	assert.ok(!product.pass.some((l) => /can't pass/.test(l)))
 })
