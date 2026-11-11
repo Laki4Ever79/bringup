@@ -872,6 +872,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			}
 			if (dir && rest.startsWith("/files/")) {
 				const file = await fileInRun(dir, rest.slice("/files/".length))
+				// ?optional=1: a file the page polls before it exists (requests.jsonl, ripples.json, report.md…) is "no
+				// content" when missing, not an error that fills the console. Same path rules either way.
+				if (!file && new URLSearchParams((req.url ?? "").split("?")[1] ?? "").get("optional") === "1") {
+					res.writeHead(204, { "cache-control": "no-store" })
+					return res.end()
+				}
 				if (!file) return send(res, 404, "not found")
 				res.writeHead(200, { "content-type": TYPES[extname(file).toLowerCase()] ?? "application/octet-stream", "cache-control": "no-store" })
 				createReadStream(file).pipe(res)

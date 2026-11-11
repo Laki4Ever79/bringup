@@ -969,6 +969,9 @@
 	async function startRunView(id) {
 		const base = `/runs/${encodeURIComponent(id)}`
 		const file = (p) => `${base}/files/${p}`
+		// A file the page polls before it exists: the hub answers 204 (no content) instead of a 404 in the console.
+		const optional = (p) => `${file(p)}?optional=1`
+		const there = (r) => r.ok && r.status !== 204
 		for (const el of ["run", "changebar", "state-pill", "elapsed", "checks", "brief-btn", "why-btn", "changes-btn", "feed-btn", "new-btn"]) $(el).classList.remove("hidden")
 		// "← stage" only where a talk's stage is prepared (out/stage.json).
 		fetch("/api/stage").then((r) => (r.ok ? r.json() : null)).then((st) => { if (st && (st.sensor || st.board)) $("stage-btn").classList.remove("hidden") }).catch(() => {})
@@ -1264,8 +1267,8 @@
 			clearTimeout(bomTimer)
 			bomTimer = setTimeout(async () => {
 				try {
-					const r = await fetch(file("bom.json"), { cache: "no-store" })
-					if (r.ok) { S.bom = await r.json(); renderParts() }
+					const r = await fetch(optional("bom.json"), { cache: "no-store" })
+					if (there(r)) { S.bom = await r.json(); renderParts() }
 					// The writer looks up live stock per role, so bom.json can trail the contract by seconds: poll until it catches up.
 					// Bounded: bom.json only follows parts and grounding changes, so it may stay behind for good.
 					if (bomRetries > 0 && (!r.ok || (typeof S.bom?.revision === "number" && S.bom.revision < S.revision))) { bomRetries--; bomTimer = setTimeout(() => fetchBom(true), 3000) }
@@ -1365,8 +1368,8 @@
 		}
 		async function fetchReport() {
 			try {
-				const r = await fetch(file("report.md"), { cache: "no-store" })
-				if (!r.ok) return
+				const r = await fetch(optional("report.md"), { cache: "no-store" })
+				if (!there(r)) return
 				const b = parseBattery(await r.text())
 				if (!b) return
 				S.batteryEst = b
@@ -1424,7 +1427,7 @@
 			window.open(JLCPCB_QUOTE, "_blank", "noopener")
 		})
 		async function probeFab() {
-			try { const r = await fetch(file("fab/README.txt"), { cache: "no-store" }); if (r.ok) { S.fab = true; $("fab").classList.remove("hidden") } } catch {}
+			try { const r = await fetch(optional("fab/README.txt"), { cache: "no-store" }); if (there(r)) { S.fab = true; $("fab").classList.remove("hidden") } } catch {}
 		}
 		// The 3D-printed enclosure next to the board's fab files: case and lid STLs (print-ready poses) and the print check.
 		function printRows() {
@@ -1907,19 +1910,23 @@
 		// ── The ripple: the change → contract fields → agents → checks → "consistent again in N s" ──
 		async function fetchRequests() {
 			try {
-				const r = await fetch(file("requests.jsonl"), { cache: "no-store" })
-				if (!r.ok) return
+				// A run whose process has ended (run.ended, not just settled: a --stay run waits for changes) takes no more
+				// change requests: stop asking.
+				if (S.ended && S.requestsSeen) return clearInterval(requestsTimer)
+				const r = await fetch(optional("requests.jsonl"), { cache: "no-store" })
+				S.requestsSeen = true
+				if (!there(r)) return
 				const reqs = (await r.text()).split("\n").flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : [] } catch { return [] } })
 				if (reqs.length !== S.requests.length) { S.requests = reqs; schedule() }
 			} catch {}
 		}
-		setInterval(fetchRequests, 2000)
+		const requestsTimer = setInterval(fetchRequests, 2000)
 		// The runner's own account of each ripple (src/runner/ripple.ts); the live trace stands in until it has one.
 		async function fetchRipples() {
 			if (!S.requests.length) return
 			try {
-				const r = await fetch(file("ripples.json"), { cache: "no-store" })
-				if (!r.ok) return
+				const r = await fetch(optional("ripples.json"), { cache: "no-store" })
+				if (!there(r)) return
 				const text = await r.text()
 				if (text === S.ripplesText) return
 				S.ripplesText = text

@@ -195,3 +195,23 @@ test("a run's Mozaik Cloud link is asked of the hub: null without one, never a 4
 		await hub.close()
 	}
 })
+
+// A live run's page polls files that may not exist yet (requests.jsonl, ripples.json, report.md…): 95 404s in the
+// console for one scripted rover run. Asked as optional, a missing file is "no content", not an error.
+test("a run file asked as optional answers 204 when it isn't there yet, and the file when it is", async () => {
+	const root = tempDir()
+	const dir = fakeRun(root, "plain-1")
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		assert.equal((await fetch(`${hub.url}/runs/plain-1/files/requests.jsonl?optional=1`)).status, 204)
+		assert.equal((await fetch(`${hub.url}/runs/plain-1/files/requests.jsonl`)).status, 404, "a plain request still says not found")
+		writeFileSync(join(dir, "requests.jsonl"), '{"text":"x"}\n')
+		const r = await fetch(`${hub.url}/runs/plain-1/files/requests.jsonl?optional=1`)
+		assert.equal(r.status, 200)
+		assert.match(await r.text(), /"x"/)
+		// optional never opens a way out of the run's folder.
+		assert.equal((await fetch(`${hub.url}/runs/plain-1/files/..%2F..%2Fetc%2Fpasswd?optional=1`)).status, 204)
+	} finally {
+		await hub.close()
+	}
+})
