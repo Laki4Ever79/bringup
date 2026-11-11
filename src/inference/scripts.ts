@@ -1,5 +1,6 @@
 import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 import { LINK_CONNECTOR } from "../contract/links.ts"
+import { FREE_GPIOS } from "../contract/link-kinds.ts"
 import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { testPoints } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
@@ -187,7 +188,6 @@ export function enclosureFromText(t: string): EnclosureMode | null {
 export const ENCLOSURE_MODE_REQUEST = /bare board|no (case|enclosure)\b|without (a |any )?(case|enclosure)|drop the case|remove the case|own (housing|enclosure)|existing (housing|enclosure|product)|(add|bring back|we want) (a|the) case/i
 // The scripted architect's answer to a board's links (docs/system.md): the link connector on an edge (the link's own, or
 // the first with no connector, top first), then a UART link's TX and RX on free GPIOs. One field per turn.
-const FREE_GPIOS = [4, 5, 6, 7, 3, 1, 0] // not the strapping pins (2, 8, 9) nor USB (18, 19)
 export function linkProposal(s: ContractSnapshot): { field: "connectors" | "pins"; value: unknown; reason: string } | null {
 	const { connectors = [], pins = [], parts = [] } = s.values
 	for (const l of s.values.links ?? []) {

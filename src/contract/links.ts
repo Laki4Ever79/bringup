@@ -1,6 +1,7 @@
 // A board's side of its links to other boards (docs/system.md): the shape the integrator writes, and the board-level
 // checks that wake this board's own agents. The checks between boards live in src/system/checks.ts.
 import type { AgentRole, BoardLink, ContractSnapshot, FieldName, LinkPin } from "./types.ts"
+import { isLinkKind } from "./link-kinds.ts"
 
 export const LINK_CONNECTOR = { mpn: "SM04B-SRSS-TB(LF)(SN)", lcsc: "C160404", footprint: "jst4_sh", pins: ["GND", "VCC", "IO1", "IO2"] }
 export const I2C_ON = { SDA: "IO1", SCL: "IO2" } as const
@@ -14,7 +15,7 @@ export function linksShapeError(value: unknown): string | null {
 	const shape = "links must be an array of {id, kind: \"uart\"|\"i2c\", peer, connector, supply: \"none\"|\"out\"|\"in\", baud and txOn (uart), i2c {role, address?, pullups, khz} (i2c), messages?}"
 	if (!Array.isArray(value)) return shape
 	for (const l of value) {
-		if (!isObj(l) || typeof l.id !== "string" || typeof l.peer !== "string" || typeof l.connector !== "string" || !["uart", "i2c"].includes(l.kind as string) || !["none", "out", "in"].includes(l.supply as string)) return shape
+		if (!isObj(l) || typeof l.id !== "string" || typeof l.peer !== "string" || typeof l.connector !== "string" || !isLinkKind(l.kind) || !["none", "out", "in"].includes(l.supply as string)) return shape
 		if (l.kind === "uart" && !(typeof l.baud === "number" && l.baud > 0 && (l.txOn === "IO1" || l.txOn === "IO2"))) return `links: ${l.id} is a UART link: it needs baud and txOn ("IO1" or "IO2")`
 		if (l.kind === "i2c") {
 			const b = l.i2c

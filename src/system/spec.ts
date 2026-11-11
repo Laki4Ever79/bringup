@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import type { Connector, LinkMessage } from "../contract/types.ts"
+import { LINK_KINDS, type LinkKind } from "../contract/link-kinds.ts"
 
 export interface SystemBoard {
 	name: string
@@ -13,7 +14,7 @@ export interface SystemBoard {
 
 export interface SystemLink {
 	id: string
-	kind: "uart" | "i2c"
+	kind: LinkKind
 	// For UART, a's TX goes out on IO1 and b's on IO2, so a straight cable crosses them.
 	a: { board: string; edge?: Connector["edge"] }
 	b: { board: string; edge?: Connector["edge"] }
@@ -48,6 +49,14 @@ export function specErrors(s: SystemSpec): string[] {
 		ids.add(l.id)
 		for (const end of [l.a, l.b]) if (!names.has(end.board)) out.push(`link ${l.id}: no board named ${end.board}`)
 		if (l.a.board === l.b.board) out.push(`link ${l.id}: joins ${l.a.board} to itself`)
+		if (!Object.hasOwn(LINK_KINDS, l.kind)) {
+			out.push(`link ${l.id}: kind ${l.kind} is not a link kind (${Object.keys(LINK_KINDS).join(", ")})`)
+			continue
+		}
+		if (!LINK_KINDS[l.kind].built) {
+			out.push(`link ${l.id}: kind ${l.kind} is planned (docs/system.md), not built yet`)
+			continue
+		}
 		if (l.kind === "i2c") {
 			if (!l.i2c) out.push(`link ${l.id}: an I2C link needs i2c {controller, targets, pullupsOn}`)
 			else {

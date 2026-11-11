@@ -1,3 +1,4 @@
+import type { LinkKind } from "./link-kinds.ts"
 import type { Mechanics, MotionTargets } from "../mechanics/types.ts"
 // "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field. "ml" owns
 // the on-device model, "test" the production test (test pads, pass limits), "enclosure" the case designer's field (case:
@@ -205,7 +206,7 @@ export interface Connectivity {
 export type LinkPin = "IO1" | "IO2"
 export interface BoardLink {
 	id: string // the system's link id, e.g. "L1"; a UART link's signals are <id>_TX and <id>_RX
-	kind: "uart" | "i2c"
+	kind: LinkKind
 	peer: string // the board at the other end
 	connector: string // this board's ref for the link connector, e.g. "J3"
 	edge?: Connector["edge"] // where the cable should leave, if the system cares
