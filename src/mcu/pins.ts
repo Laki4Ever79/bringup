@@ -52,3 +52,18 @@ export function mcuPinError(profile: McuProfile | null | undefined, index: numbe
 	if (pin.reserved && HARD_RESERVED.has(pin.reserved)) return `${pin.name} is reserved (${pin.reserved}) on the ${profile.mpn}`
 	return null
 }
+
+// The adopt reader's global pin numbers (src/adopt/pins.ts) name a pin without knowing the chip: STM32 port pins are
+// 1000 + index, nRF port pins 4000 + index, GPIOs their own number. With a profile the contract's index is enough;
+// these convert at the boundary, so an imported project's pins land on the same indexes a designed one uses.
+export function toAdoptPin(profile: McuProfile | null | undefined, index: number): number {
+	if (profile?.vendor === "st") return 1000 + index
+	if (profile?.vendor === "nordic") return 4000 + index
+	return index
+}
+export function fromAdoptPin(profile: McuProfile | null | undefined, global: number): number | null {
+	const base = profile?.vendor === "st" ? 1000 : profile?.vendor === "nordic" ? 4000 : 0
+	const index = global - base
+	if (index < 0 || (base && global >= base + 1000)) return null
+	return profile && !profile.pins.some((p) => p.index === index) ? null : index
+}
