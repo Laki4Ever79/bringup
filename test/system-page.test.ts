@@ -41,6 +41,8 @@ test("the hub lists a system apart from runs, details its boards and serves each
 		assert.equal(logger.revision, 25)
 		assert.deepEqual(logger.outline, { widthMm: 50, heightMm: 30 })
 		assert.deepEqual(logger.pins.map((p: { signal: string }) => p.signal), ["L1_TX"], "only the link connector's pins")
+		// Each pin also by the chip's own name: a board with no MCU part in its contract is the ESP32-C3 (GPIO<n>).
+		assert.equal(logger.pins[0].pin, "GPIO6")
 		assert.equal(d.boards.find((b: { name: string }) => b.name === "beacon").status, "not started")
 		assert.equal(d.linkTests[0].passed, true)
 		assert.match(d.cable, /\| 1 \| black \|/)

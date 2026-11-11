@@ -235,7 +235,7 @@ function cableHtml(md) {
 function boardCard(b) {
 	if (!b.runId) return `<div class="board"><div class="top"><span class="name">${esc(b.name)}</span>${chip(b.status)}</div><p class="muted">${b.imported ? "An imported board: its contract is fixed, not designed here." : "Not started yet."}</p></div>`
 	const conns = (b.connectors ?? []).map((c) => `${c.ref} ${c.kind} ${c.edge}@${c.offsetMm}`).join(", ")
-	const linkPins = (b.pins ?? []).map((p) => `${p.signal}=GPIO${p.gpio}→${p.partRef}.${p.partPin}`).join(", ")
+	const linkPins = (b.pins ?? []).map((p) => `${p.signal}=${p.pin ?? `GPIO${p.gpio}`}→${p.partRef}.${p.partPin}`).join(", ")
 	return `<div class="board">
 		<div class="top"><span class="name">${esc(b.name)}</span>${chip(b.status)}</div>
 		${b.render ? `<img src="${esc(b.render)}?t=${b.revision}" alt="${esc(b.name)} board render">` : ""}

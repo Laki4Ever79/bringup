@@ -18,6 +18,8 @@ import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } fro
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 import type { TraceNotifier } from "./notify.ts"
 import { clientIp, PUBLIC_BANNER, PUBLIC_TRY_IT, type PublicGate } from "./public.ts"
+import { mcuPinName } from "../mcu/pins.ts"
+import { mcuProfileOf } from "../mcu/profile.ts"
 
 const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
@@ -458,7 +460,9 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					title: summary.title,
 					outline: v.outline ? { widthMm: v.outline.widthMm, heightMm: v.outline.heightMm } : null,
 					connectors: (v.connectors ?? []).map((c: { ref: string; kind: string; edge: string; offsetMm: number }) => ({ ref: c.ref, kind: c.kind, edge: c.edge, offsetMm: c.offsetMm })),
-					pins: (v.pins ?? []).filter((p: { partRef: string }) => /^JL/.test(p.partRef)).map((p: { signal: string; gpio: number; partRef: string; partPin: string }) => ({ signal: p.signal, gpio: p.gpio, partRef: p.partRef, partPin: p.partPin })),
+					// pin: the chip's own name for the index (GPIO6, PA9, P0.13), from its MCU profile (docs/mcu.md).
+					pins: (v.pins ?? []).filter((p: { partRef: string }) => /^JL/.test(p.partRef)).map((p: { signal: string; gpio: number; partRef: string; partPin: string }) => ({ signal: p.signal, gpio: p.gpio, pin: mcuPinName(v.parts, p.gpio), partRef: p.partRef, partPin: p.partPin })),
+					mcu: mcuProfileOf(v.parts)?.mpn ?? null,
 					render: existsSync(join(bdir, "board", "board.png")) ? `/runs/${runId}/files/board/board.png` : null,
 					report: existsSync(join(bdir, "report.md")) ? `/runs/${runId}/files/report.md` : null,
 					spend: readSpend(bdir),
