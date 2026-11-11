@@ -657,7 +657,12 @@
 		"framework": "arduino",
 		"arch": "stm32",
 		"pinStyle": "name",
-		"zephyrBoard": "stm32_min_dev"
+		"zephyrBoard": "stm32_min_dev",
+		"history": {
+			"store": "eeprom",
+			"bytes": 1024,
+			"source": "STM32duino EEPROM emulation: one 1 KB flash page (F103 medium density, RM0008 §3.3.3)"
+		}
 	},
 	"sim": {
 		"backend": "renode",

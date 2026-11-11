@@ -54,7 +54,12 @@
 		"framework": "arduino",
 		"arch": "stm32",
 		"pinStyle": "name",
-		"zephyrBoard": "nucleo_g031k8"
+		"zephyrBoard": "nucleo_g031k8",
+		"history": {
+			"store": "eeprom",
+			"bytes": 2048,
+			"source": "STM32duino EEPROM emulation: one 2 KB flash page at the end of flash (FLASH_PAGE_SIZE on the G0, RM0444 \u00a73.3)"
+		}
 	},
 	"sim": {
 		"backend": "renode",

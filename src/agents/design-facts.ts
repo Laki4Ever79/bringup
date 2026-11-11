@@ -15,6 +15,8 @@ import { DATA_FORMAT } from "../codegen/data-format.ts"
 import { spaceFactLines } from "../contract/space.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { mechanicsFactLines } from "../mechanics/facts.ts"
+import { mcuFacts } from "../mcu/facts.ts"
+import { mcuProfileOf } from "../mcu/profile.ts"
 
 // The facts and computed checks about the current contract, one source for everyone who judges or changes it: the
 // reviewer reads them at the final review, and every designer turn gets them recomputed from the contract as it is
@@ -23,6 +25,7 @@ import { mechanicsFactLines } from "../mechanics/facts.ts"
 export function designFacts(s: ContractSnapshot, brief: string): string[] {
 	const power = estimatePower(s, brief)
 	return [
+		...mcuFactsSection(s),
 		...partFactsSection(s),
 		...fieldMeaningLines(s),
 		...testFactLines(s),
@@ -38,6 +41,13 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 		...powerBudgetLines(power),
 		...dutyCycleCheckLines(power, s),
 	]
+}
+
+// The chosen MCU, from its profile (src/mcu/facts.ts): pins by name and index, what is reserved, peripherals free,
+// programming, sleep floor. Nothing when there is no MCU yet or its part has no profile.
+export function mcuFactsSection(s: ContractSnapshot): string[] {
+	const p = mcuProfileOf(s.values.parts)
+	return p ? ["## The MCU (from its profile, catalog/mcu)", ...mcuFacts(p), ""] : []
 }
 
 // How a deep-sleeping board is reflashed when its firmware doesn't boot, from the generated pads (the "Added by

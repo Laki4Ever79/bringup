@@ -73,7 +73,12 @@
 		"framework": "arduino",
 		"arch": "stm32",
 		"pinStyle": "name",
-		"zephyrBoard": "nucleo_l031k6"
+		"zephyrBoard": "nucleo_l031k6",
+		"history": {
+			"store": "eeprom",
+			"bytes": 1024,
+			"source": "STM32L031x6 1 KB data EEPROM (DS10668 \u00a73.3.2), which the core's EEPROM library uses directly"
+		}
 	},
 	"sim": {
 		"backend": null,
