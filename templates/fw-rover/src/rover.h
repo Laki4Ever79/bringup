@@ -13,6 +13,7 @@ struct RoverConfig {
 struct RoverState {
 	bool turning = false;
 	uint32_t turnUntil = 0;
+	int lastMm = -1; // the last reading since the last turn; -1 = none
 };
 
 struct RoverOut {
@@ -20,5 +21,7 @@ struct RoverOut {
 	float right;
 };
 
-// distanceMm: the front sensor's reading; -1 = nothing in range ahead (never "0 mm").
+// distanceMm: the front sensor's reading; -1 = no reading. No reading is "nothing ahead", except right after a reading
+// inside the slow-down distance: the VL53L0X can't measure under about 30 mm, so an obstacle that close may read as
+// nothing. Then it turns away (fail-safe); after a turn the view has changed, and no reading means nothing ahead again.
 RoverOut rover_step(const RoverConfig &cfg, RoverState &st, int distanceMm, uint32_t nowMs);
