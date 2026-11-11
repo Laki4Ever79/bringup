@@ -120,8 +120,9 @@ export async function buildTestFirmware(pio: string, root: string, dir: string, 
 
 // The link-test firmware (env esp32c3_linktest: the product firmware with -DLINK_TEST) in a firmware dir buildFirmware
 // already wrote, so it runs the board's own link.h (docs/system.md).
-export async function buildLinkTestFirmware(pio: string, dir: string): Promise<{ ok: boolean; log: string }> {
-	const { code, output } = await run(pio, ["run", "-d", dir, "-e", "esp32c3_linktest"])
+// The link-test build: esp32c3_linktest for QEMU (UART0 output, 10 s), or esp32c3_linktest_usb for the bench.
+export async function buildLinkTestFirmware(pio: string, dir: string, env: "esp32c3_linktest" | "esp32c3_linktest_usb" = "esp32c3_linktest"): Promise<{ ok: boolean; log: string }> {
+	const { code, output } = await run(pio, ["run", "-d", dir, "-e", env])
 	return { ok: code === 0, log: buildLog(output) }
 }
 

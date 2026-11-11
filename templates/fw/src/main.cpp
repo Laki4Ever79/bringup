@@ -758,8 +758,13 @@ void setup() {
 	linkBegin();  // after Wire: an I2C target joins the bus at its own address
 #ifdef LINK_TEST
 	// The system's link test: a known reading (21.50 C, 40.25 %RH) over each link every half second, and whatever
-	// arrives printed, for 10 s; then it stops, awake. Both ends run it at once (two boards, or two QEMUs).
+	// arrives printed, for 10 s; then it stops, awake. Both ends run it at once (two boards, or two QEMUs). The bench
+	// build (LINK_TEST_FOREVER) keeps going until reset, so boards started at different moments still meet.
+#ifdef LINK_TEST_FOREVER
+	for (;;) {
+#else
 	for (int i = 0; i < 20; i++) {
+#endif
 		linkSendReading(true, 21.5f, 40.25f);
 		linkPoll(500);
 	}

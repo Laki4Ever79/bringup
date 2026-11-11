@@ -106,11 +106,41 @@ frame whose hash it doesn't know, so two boards built against different definiti
 | Each board | its own checks, builds, QEMU boot and test kit, as for any design |
 | Between boards, static | the system checks above, in code, on every settle |
 | Between boards, running | the link-test build (`pio run -e esp32c3_linktest`: a known reading every half second, whatever arrives printed) of both boards, in two QEMUs joined by a virtual cable (UART links). Verified 9 Nov: the reading arrives intact; with a different definition on one side, its frames are dropped and the test fails |
-| On the bench | the same link-test build flashed on both boards, with the real cable. I2C links can only be tested here: QEMU can't join two buses |
+| On the bench | `bench-plan.md`, generated with the cable on every check (below). I2C links can only be tested here: QEMU can't join two buses |
+
+### The bench test plan
+
+Every system run writes `bench-plan.md` (steps for a person) and `bench-plan.json` (what the checker expects) next to
+`cable.md`, from the same contracts. The system page links it as **Bench test**. The steps, in order:
+
+| Step | Passes when |
+|---|---|
+| 1. Each board alone | its own production test passes (with a test kit); otherwise its USB port appears and its LED blinks at each reading |
+| 2. The cable | each wire beeps through end to end; no two pins short; VCC absent on a link that carries no power |
+| 3. Power over the cable (links that carry it) | 3.2 to 3.4 V at the other board's pin 2 (an estimate: the catalog has no regulator accuracy), and it boots |
+| 4. The link | each message arrives at least 3 times in 15 s with the link test's known values; no frame from another definition |
+| 5. Pull the cable | the received lines stop while it is out and come back after |
+| 6. The product firmware | real readings arrive. **Can't pass on a real board yet** (below) |
+
+Step 4 uses the bench build of the link test, `pio run -e esp32c3_linktest_usb -t upload`. It prints on the USB port
+(the QEMU build prints on UART0) and keeps sending until reset, so the boards don't have to start together. The checker
+reads every board's USB port at once and judges the lines as the QEMU link test does:
+
+```bash
+.venv/bin/python py/bench_system.py out/<system>/bench-plan.json --port logger=/dev/ttyACM0 --port beacon=/dev/ttyACM1
+.venv/bin/python py/bench_system.py out/<system>/bench-plan.json --log beacon=beacon.txt   # saved output
+```
+
+**Not done:**
+- **No boards yet:** nothing in the plan has run on real boards; none have been built.
+- **The product firmware's output:** it prints on UART0 (GPIO20/21), which a Bringup board doesn't wire out. So step 6,
+  and any reading of the product firmware's output, needs the console moved to (or mirrored on) the USB port first.
+- **Manual checks:** the meter steps (2 and 3) are done by hand.
+
 
 ## Phases
 
 1. Links on each board, the system checks, the cable and the shared header, `bringup system` over two boards. (done)
-2. Two-chip UART tests in QEMU. (done) A generated system test plan for the bench. (next)
+2. Two-chip UART tests in QEMU. (done) A generated system test plan for the bench. (done, not run on hardware)
 3. Imported boards as fixed members; board revisions pinned per system.
 4. An integrator agent that proposes links from a system brief.

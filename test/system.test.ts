@@ -154,6 +154,10 @@ test("a scripted two-board UART system settles: each board takes its link, and t
 	const report = readFileSync(join(out, "system-report.md"), "utf8")
 	assert.match(report, /^Status: settled/m)
 	assert.match(readFileSync(join(out, "cable.md"), "utf8"), /\| 3 \| blue \| L1_TX \| L1_RX \|/)
+	// The bench test plan comes with the cable, from the same contracts.
+	assert.match(readFileSync(join(out, "bench-plan.md"), "utf8"), /^## 3\. The link$/m)
+	assert.deepEqual(JSON.parse(readFileSync(join(out, "bench-plan.json"), "utf8")).expect.map((e: { board: string; prefix: string }) => `${e.board} ${e.prefix}`), ["beacon LINK L1 reading from logger:"])
+	assert.match(report, /bench-plan\.md/)
 	for (const b of ["logger", "beacon"]) {
 		const c = JSON.parse(readFileSync(join(out, "boards", b, "contract.json"), "utf8"))
 		assert.deepEqual(c.values.links.map((l: { id: string }) => l.id), ["L1"])
