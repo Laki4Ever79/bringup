@@ -1,19 +1,27 @@
 import { radioFigures, regulatorRating } from "./power.ts"
 import type { AgentRole, Connectivity, ContractSnapshot, FieldName } from "./types.ts"
+import { mcuProfileOf } from "../mcu/profile.ts"
 
 // Without a connectivity field the device is what it always was: Bluetooth LE, its GATT service, no field updates.
 export const DEFAULT_CONNECTIVITY: Readonly<Connectivity> = Object.freeze({ radio: "ble", report: Object.freeze(["gatt"]) as unknown as Connectivity["report"], updates: "none" })
-export const connectivityOf = (s: ContractSnapshot): Connectivity => s.values.connectivity ?? structuredClone(DEFAULT_CONNECTIVITY as Connectivity)
+// A chip without a radio (its MCU profile lists none) has no Bluetooth to fall back on: no radio, nothing reported.
+export const NO_RADIO: Readonly<Connectivity> = Object.freeze({ radio: "none", report: Object.freeze([]) as unknown as Connectivity["report"], updates: "none" })
+export const connectivityOf = (s: ContractSnapshot): Connectivity => {
+	if (s.values.connectivity) return s.values.connectivity
+	const chip = mcuProfileOf(s.values.parts)
+	return structuredClone((chip && chip.radio.length === 0 ? NO_RADIO : DEFAULT_CONNECTIVITY) as Connectivity)
+}
 
 const REPORTS = { gatt: "ble", bthome: "ble", mqtt: "wifi" } as const
 // Connecting to Wi-Fi often costs more than the reading itself, so uploads are batched; once a minute at most.
 export const MIN_UPLOAD_PERIOD_S = 60
 
-export const CONNECTIVITY_SHAPE = `connectivity must be {radio: "ble"|"wifi", report: one or more of "gatt" (a phone reads the history; BLE), "bthome" (BTHome v2 broadcast Home Assistant reads; BLE), "mqtt" (MQTT with Home Assistant discovery; Wi-Fi), uploadPeriodS (Wi-Fi only, required: seconds between uploads, at least ${MIN_UPLOAD_PERIOD_S}), updates: "none"|"ota" ("ota" needs Wi-Fi)}`
+export const CONNECTIVITY_SHAPE = `connectivity must be {radio: "ble"|"wifi"|"none" ("none" for a chip without a radio: report [], updates "none"), report: one or more of "gatt" (a phone reads the history; BLE), "bthome" (BTHome v2 broadcast Home Assistant reads; BLE), "mqtt" (MQTT with Home Assistant discovery; Wi-Fi), uploadPeriodS (Wi-Fi only, required: seconds between uploads, at least ${MIN_UPLOAD_PERIOD_S}), updates: "none"|"ota" ("ota" needs Wi-Fi)}`
 
 export function connectivityShapeError(value: unknown): string | null {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return CONNECTIVITY_SHAPE
 	const v = value as Record<string, unknown>
+	if (v.radio === "none") return Array.isArray(v.report) && v.report.length === 0 && v.updates === "none" && v.uploadPeriodS === undefined ? null : `${CONNECTIVITY_SHAPE}; radio "none" reports nothing and takes no updates`
 	if (v.radio !== "ble" && v.radio !== "wifi") return CONNECTIVITY_SHAPE
 	if (!Array.isArray(v.report) || v.report.length === 0 || !v.report.every((r) => typeof r === "string" && r in REPORTS) || new Set(v.report).size !== v.report.length) return CONNECTIVITY_SHAPE
 	const wrong = (v.report as (keyof typeof REPORTS)[]).filter((r) => REPORTS[r] !== v.radio)
@@ -45,7 +53,7 @@ export const partitionLayout = (s: ContractSnapshot) => ({ table: partitionTable
 
 // ---- power: the radio's peak, and the supply it needs ----------------------------------------------------------
 
-export type ConnectivityViolationKind = "supply-underrated"
+export type ConnectivityViolationKind = "supply-underrated" | "radio-missing"
 
 export interface ConnectivityViolation {
 	kind: ConnectivityViolationKind
@@ -66,6 +74,11 @@ export function radioPeakMa(s: ContractSnapshot): { ma: number; what: string; so
 // The module's datasheet asks for a supply that can deliver supplyMinMa (ESP32-C3-MINI-1: 0.5 A), whatever the
 // radio: its transmit bursts are short and high. A regulator rated below it browns the module out on a burst.
 export function connectivityChecks(s: ContractSnapshot): ConnectivityViolation[] {
+	// The radio the connectivity field asks for must be one the chip has (its profile): BLE on an STM32G031 can't work.
+	const chip = mcuProfileOf(s.values.parts)
+	const c = connectivityOf(s)
+	if (chip && c.radio !== "none" && !chip.radio.includes(c.radio))
+		return [{ kind: "radio-missing", message: `connectivity asks for ${c.radio === "ble" ? "Bluetooth LE" : "Wi-Fi"}, but the ${chip.mpn} has ${chip.radio.length ? `only ${chip.radio.join(", ")}` : "no radio"}: pick an MCU with it (compare_mcus) or set connectivity.radio "none"`, fields: ["connectivity", "parts"], affects: ["parts", "firmware"] }]
 	const r = radioFigures(s)
 	const ldo = (s.values.parts ?? []).find((p) => p.role === "ldo")
 	const rating = ldo ? regulatorRating(ldo) : null

@@ -189,7 +189,8 @@ export type CaseFeature =
 // transmit peak and, for Wi-Fi, each connection's energy) and the flash (an update needs a second firmware slot).
 // Optional: without it the device is what it always was, Bluetooth LE with its GATT service, no updates.
 export interface Connectivity {
-	radio: "ble" | "wifi"
+	// "none": a chip without a radio (most STM32s): readings stay in the history, read out over its console or SWD.
+	radio: "ble" | "wifi" | "none"
 	// "gatt": a phone connects and reads the history (BLE). "bthome": each reading is broadcast in BTHome v2 advertising,
 	// which Home Assistant picks up with no app (BLE). "mqtt": readings are published to an MQTT broker with Home
 	// Assistant discovery (Wi-Fi).
