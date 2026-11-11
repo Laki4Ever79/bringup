@@ -229,6 +229,8 @@ export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
 			if (!env.pio || !env.qemu || !env.python) return notRun("PlatformIO, QEMU or the .venv simulation tools are missing: not proven in simulation")
 			const spec = chassisSpec(snapshot)
 			if (!spec) return notRun("no complete mechanics design to simulate")
+			// Driving without a board's weight would prove a lighter robot than the real one.
+			if (spec.unplaced.length) return notRun(`board${spec.unplaced.length > 1 ? "s" : ""} ${spec.unplaced.join(", ")} on the chassis ${spec.unplaced.length > 1 ? "have" : "has"} no outline in this run, so the drive would leave out ${spec.unplaced.length > 1 ? "their" : "its"} weight`)
 			// A firmware with a -1 pin drives nothing: the wiring check flags it; no build until the pins are there.
 			const unassigned = unassignedRoverPins(snapshot)
 			if (unassigned.length) return notRun(`pins not assigned yet: ${unassigned.join(", ")}`)

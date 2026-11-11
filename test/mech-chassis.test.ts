@@ -57,3 +57,16 @@ test("mechanics without motion targets: no chassis or drive is needed (the run i
 	delete (s.values as Record<string, unknown>).motion
 	assert.match(chassisNotNeeded(s) ?? "", /no motion targets/)
 })
+
+// pending-fixes, 11 Nov: every board on the chassis got the main board's outline (and its holes), whatever its size.
+test("each board on the chassis gets its own outline; one whose outline isn't known is left off, and named", () => {
+	const s = rover()
+	const main = { w: s.values.outline!.widthMm, h: s.values.outline!.heightMm }
+	s.values.mechanics!.chassis.boards = [...s.values.mechanics!.chassis.boards, { name: "lamp", at: { xMm: -30, yMm: 0 }, rotDeg: 0 }]
+	const known = chassisSpec(s, [{ name: "lamp", outline: { widthMm: 20, heightMm: 15 } }])!
+	assert.deepEqual(known.boards.map((b) => [b.name, b.widthMm, b.heightMm]), [["main", main.w, main.h], ["lamp", 20, 15]])
+	assert.deepEqual(known.unplaced, [])
+	const unknown = chassisSpec(s)!
+	assert.deepEqual(unknown.boards.map((b) => b.name), ["main"])
+	assert.deepEqual(unknown.unplaced, ["lamp"])
+})

@@ -13,6 +13,9 @@ const exec = promisify(execFile)
 // What py/chassis.py builds from (chassis frame: origin at the plate centre, +x forward, mm), plus the mass, centre of
 // mass and drive numbers the simulation (py/mech/model.py) reads from the same file.
 export interface ChassisSpec {
+	// Boards the chassis places whose outline this run doesn't know (another board of a multi-board robot): left off the
+	// plate and out of the mass, and named, never drawn at the main board's size.
+	unplaced: string[]
 	plate: { lengthMm: number; widthMm: number; thicknessMm: number; clearanceMm: number }
 	standoffMm: number
 	// axleDropMm: the axle's depth under the plate's underside (the caster sets the plate's height; the motor's bracket drops to the axle).
@@ -41,7 +44,8 @@ export interface ChassisSpec {
 const CASTER_HOLE_MM = 4.2
 const BOARD_HOLE_INSET_MM = 3.5
 
-export function chassisSpec(s: ContractSnapshot): ChassisSpec | null {
+// others: the outlines of the robot's other boards, by name; this board is "main".
+export function chassisSpec(s: ContractSnapshot, others: { name: string; outline: { widthMm: number; heightMm: number } }[] = []): ChassisSpec | null {
 	const v = s.values
 	const mech = v.mechanics, motion = v.motion
 	const cat = defaultCheckCatalog()
@@ -50,7 +54,10 @@ export function chassisSpec(s: ContractSnapshot): ChassisSpec | null {
 	const pack = byMpn(cat.mech.batteries, mech.battery.pack), sensor = byMpn(cat.mech.sensors ?? [], mech.sensor.module)
 	if (!motor || !wheel || !caster || !pack || !sensor) return null
 	const outline = { widthMm: v.outline?.widthMm ?? 0, heightMm: v.outline?.heightMm ?? 0 }
-	const ms = mounts(mech, [{ name: "main", outline }], cat.mech)
+	const known = [{ name: "main", outline }, ...others.filter((o) => o.name !== "main")]
+	const placed = mech.chassis.boards.filter((b) => known.some((k) => k.name === b.name))
+	const unplaced = mech.chassis.boards.filter((b) => !known.some((k) => k.name === b.name)).map((b) => b.name)
+	const ms = mounts(mech, known, cat.mech)
 	ms.push({ what: "payload", xMm: 0, yMm: 0, zMm: mech.chassis.clearanceMm + mech.chassis.thicknessMm + 10, sizeMm: [20, 20, 20], massG: motion.payloadG })
 	const { massG, com } = massAndCom(ms)
 	return {
@@ -59,7 +66,11 @@ export function chassisSpec(s: ContractSnapshot): ChassisSpec | null {
 		motors: ms.filter((m) => m.what.startsWith("motor:")).map((m) => ({ side: m.what.endsWith("left") ? ("left" as const) : ("right" as const), xMm: m.xMm, yMm: m.yMm, bodyMm: motor.bodyMm, axleDropMm: mech.chassis.clearanceMm - wheel.diameterMm / 2 })),
 		caster: { xMm: mech.drive.axleXMm - mech.drive.wheelbaseMm, holesMm: caster.holesMm, holeDiaMm: CASTER_HOLE_MM, wheelMm: caster.wheelMm, heightMm: caster.heightMm },
 		battery: { xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, sizeMm: pack.sizeMm },
-		boards: mech.chassis.boards.map((b) => ({ name: b.name, xMm: b.at.xMm, yMm: b.at.yMm, widthMm: outline.widthMm, heightMm: outline.heightMm, rotDeg: b.rotDeg, holeInsetMm: BOARD_HOLE_INSET_MM })),
+		boards: placed.map((b) => {
+			const o = known.find((k) => k.name === b.name)!.outline
+			return { name: b.name, xMm: b.at.xMm, yMm: b.at.yMm, widthMm: o.widthMm, heightMm: o.heightMm, rotDeg: b.rotDeg, holeInsetMm: BOARD_HOLE_INSET_MM }
+		}),
+		unplaced,
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs },
 		massG,
 		com,
