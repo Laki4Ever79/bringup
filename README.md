@@ -150,6 +150,16 @@ cable, matching speeds, one I2C controller, unique addresses, one set of pull-up
 and one message definition on both sides. Out come the cable drawing, a WireViz file and a shared message header, and
 each UART link's two firmwares are run together in QEMU over a virtual cable. Details: [docs/system.md](docs/system.md).
 
+### 10. Any vendor's MCU, chosen on equal terms
+
+Chip facts are data, not code: each MCU has a profile (`catalog/mcu/`) with its pins, the signals each pin can carry,
+peripherals, reserved pins, support parts, currents, firmware target and simulator. STM32 profiles are generated from
+ST's open pin data. The parts agent ranks every chip on the same terms (`compare_mcus`), a pin solver assigns pins and
+peripheral instances the way CubeMX would, and the board, firmware, simulation and checks follow the chosen chip.
+`npm run bringup -- briefs/logger-stm32.md --mock` runs the whole pipeline on an STM32G031: an LQFP board with its
+decoupling, firmware from the same template, booted in Renode. ESP32-C3, STM32 (G0, L0, F1 with its crystal, WB55),
+RP2040 and nRF52840 are profiled; what each can do today is in [docs/mcu.md](docs/mcu.md).
+
 ## Architecture
 
 ```mermaid
