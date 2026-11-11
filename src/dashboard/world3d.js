@@ -413,6 +413,14 @@ export function mountWorld(host, opts = {}) {
 		for (const [n, b] of S.boards) b.alphaTo = S.focused && n !== S.focused ? 0.15 : 1
 		const to = fitView(S.focused ? [S.focused] : [...S.boards.keys()])
 		if (S.fly) S.fly.resolve()
+		// The fly runs on drawn frames, and nothing is drawn off screen: there, the camera is put at the end at once, or a
+		// caller waiting for the fly (opening a board from a scrolled-down page) would wait forever.
+		if (!S.visible) {
+			S.fly = null
+			S.cam = to
+			S.dirty = true
+			return Promise.resolve()
+		}
 		return new Promise((resolve) => {
 			S.fly = { from: S.cam, to, start: performance.now(), ms: Math.max(1, ms), resolve }
 			request()
@@ -471,9 +479,21 @@ export function mountWorld(host, opts = {}) {
 	canvas.addEventListener("wheel", (e) => { e.preventDefault(); S.userMoved = true; S.cam = { ...S.cam, distance: Math.min(3000, Math.max(15, S.cam.distance * Math.exp(e.deltaY * 0.001))) }; request() }, { passive: false })
 
 	// Nothing drawn while hidden or scrolled away.
-	const onVisibility = () => { S.visible = !document.hidden; if (S.visible) request() }
+	// A fly cut off by going out of view ends where it was going, so whoever waits for it goes on.
+	const setVisible = (v) => {
+		S.visible = v
+		if (v) return request()
+		if (S.fly) {
+			const { to, resolve } = S.fly
+			S.fly = null
+			S.cam = to
+			S.dirty = true
+			resolve()
+		}
+	}
+	const onVisibility = () => setVisible(!document.hidden)
 	document.addEventListener("visibilitychange", onVisibility)
-	const io = typeof IntersectionObserver === "function" ? new IntersectionObserver(([en]) => { S.visible = en.isIntersecting && !document.hidden; if (S.visible) request() }) : null
+	const io = typeof IntersectionObserver === "function" ? new IntersectionObserver(([en]) => setVisible(en.isIntersecting && !document.hidden)) : null
 	io?.observe(canvas)
 	const ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => request()) : null
 	ro?.observe(host)

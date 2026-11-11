@@ -79,7 +79,7 @@
 	#crumb button { font: inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 2px 9px; cursor: pointer; }
 	#timeline { display: flex; align-items: center; gap: 10px; padding: 8px 2px 0; font: 12px var(--mono); color: var(--ink-3); }
 	#timeline input { flex: 1; accent-color: var(--signal); }
-	#board-view { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: #fff; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .25s; }
+	#board-view { position: fixed; inset: 0; z-index: 40; background: #fff; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .25s; }
 	#board-view.on { opacity: 1; pointer-events: auto; }
 	#board-bar { display: flex; align-items: center; gap: 10px; padding: 6px var(--gap); border-bottom: 1px solid var(--rule); font-size: 14px; }
 	#board-bar button { font: inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 2px 10px; cursor: pointer; }
@@ -389,7 +389,9 @@ window.openBoard = async (name, { push = true } = {}) => {
 	await stage.world.focus(name, { ms: 500 })
 	if (openName !== name) return
 	const view = document.getElementById("board-view")
-	view.style.top = `${document.querySelector("header").offsetHeight}px`
+	// The board page takes the whole window, its own bar (← System, where it sits) on top. Below the system header, a
+	// strip of the system page stayed in view, and its scrollbar beside the board page's; the page behind is locked.
+	document.documentElement.style.overflow = "hidden"
 	document.getElementById("board-crumb").innerHTML = `${esc(stage.meta?.spec?.name ?? id)} › <b>${esc(name)}</b> <span class="muted" id="board-loading">opening…</span>`
 	view.classList.add("on")
 	view.setAttribute("aria-hidden", "false")
@@ -409,6 +411,7 @@ async function closeBoard({ push = true } = {}) {
 	const view = document.getElementById("board-view")
 	view.classList.remove("on")
 	view.setAttribute("aria-hidden", "true")
+	document.documentElement.style.overflow = ""
 	// Once faded, the board page is closed outright: hidden, it kept its timers and event stream running on this
 	// thread and caused 33–50 ms hitches in later flies (npm run perf). Opening it again reloads it behind the panel.
 	await stage.world?.focus(null, { ms: 500 })
