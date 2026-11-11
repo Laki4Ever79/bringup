@@ -14,6 +14,40 @@
 #if __has_include("model.h")
 #include "model.h"
 #endif
+// The console (docs/system.md, Firmware): every line goes to UART0, which QEMU reads, and to the C3's own USB
+// (Serial/JTAG, GPIO18/19), the only port a Bringup board wires out. A USB write never waits for a host (timeout 0):
+// with no host, or one that isn't reading, the line is dropped there, so a board on battery never stalls on its log
+// (arduino-esp32 HWCDC::write drops when unplugged; checked 11 Nov in the pinned core, framework 4.30312).
+// The core declares HWCDCSerial only when USB is the boot console (ARDUINO_USB_CDC_ON_BOOT); the HWCDC class itself is
+// always there on the C3, so the console uses the core's instance when there is one (the bench link-test build) and
+// its own otherwise; the build flags stay as they are. HWCDC's state is shared and begin() is idempotent either way.
+#if defined(HWCDC_SERIAL_IS_DEFINED)
+static HWCDC &UsbLog = HWCDCSerial;
+#else
+static HWCDC UsbLog;
+#endif
+struct Console : public Print {
+	size_t write(uint8_t c) override {
+		Serial0.write(c);
+		UsbLog.write(c);
+		return 1;
+	}
+	size_t write(const uint8_t *b, size_t n) override {
+		Serial0.write(b, n);
+		UsbLog.write(b, n);
+		return n;
+	}
+	void flush() {
+		Serial0.flush();
+		UsbLog.flush();
+	}
+};
+static Console Log;
+static void logBegin() {
+	Serial0.begin(115200);
+	UsbLog.setTxTimeoutMs(0);
+	UsbLog.begin();
+}
 // Links to other boards in a system (docs/system.md, codegen/firmware.ts linkHeader): linkBegin, linkSendReading and
 // linkPoll. Without it, or with no links, they do nothing.
 #if __has_include("link.h")
@@ -274,7 +308,7 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 	// passkey (identity.h), which the phone's owner types in once; the bond is kept.
 	bool madePasskey = false;
 	const uint32_t passkey = devicePasskey(&madePasskey);
-	if (madePasskey) Serial.printf("BLE passkey %06lu (new: label the device with it)\n", (unsigned long)passkey);
+	if (madePasskey) Log.printf("BLE passkey %06lu (new: label the device with it)\n", (unsigned long)passkey);
 	NimBLEDevice::setSecurityAuth(true, true, true);
 	NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
 	NimBLEDevice::setSecurityPasskey(passkey);
@@ -298,7 +332,7 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 	(void)latest;
 #endif
 	adv->start();
-	Serial.printf("BLE %s advertising %lu ms\n", name, (unsigned long)advertiseMs);
+	Log.printf("BLE %s advertising %lu ms\n", name, (unsigned long)advertiseMs);
 	const uint32_t start = millis();
 	bool everConnected = false;
 	for (;;) {
@@ -307,7 +341,7 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 		if (bleConnected ? awake >= BLE_CONNECTED_MAX_MS : awake >= advertiseMs) break;
 		delay(5);
 	}
-	if (everConnected) Serial.println("BLE a phone connected");
+	if (everConnected) Log.println("BLE a phone connected");
 	advertiseMs = BLE_ADVERTISE_MS;  // a button's long window is for its own wake only
 	NimBLEDevice::deinit(true);
 	LittleFS.end();
@@ -387,7 +421,7 @@ static void publishMqtt(PubSubClient &mqtt, const char *id, bool ok, float tempC
 
 static void serveWifi(bool ok, float tempC, float rh) {
 	if (++wakesSinceUpload < UPLOAD_EVERY) {
-		Serial.printf("WIFI upload in %lu wakes\n", (unsigned long)(UPLOAD_EVERY - wakesSinceUpload));
+		Log.printf("WIFI upload in %lu wakes\n", (unsigned long)(UPLOAD_EVERY - wakesSinceUpload));
 		return;
 	}
 	wakesSinceUpload = 0;
@@ -395,18 +429,18 @@ static void serveWifi(bool ok, float tempC, float rh) {
 	(void)ok;
 	(void)tempC;
 	(void)rh;
-	Serial.println("WIFI not provisioned: include/secrets.h has no WIFI_SSID/WIFI_PASS");
+	Log.println("WIFI not provisioned: include/secrets.h has no WIFI_SSID/WIFI_PASS");
 #else
 	WiFi.mode(WIFI_STA);
 	WiFi.begin(WIFI_SSID, WIFI_PASS);
 	const uint32_t start = millis();
 	while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) delay(20);
 	if (WiFi.status() != WL_CONNECTED) {
-		Serial.printf("WIFI no connection after %lu ms\n", (unsigned long)(millis() - start));
+		Log.printf("WIFI no connection after %lu ms\n", (unsigned long)(millis() - start));
 		WiFi.mode(WIFI_OFF);
 		return;
 	}
-	Serial.printf("WIFI connected in %lu ms\n", (unsigned long)(millis() - start));
+	Log.printf("WIFI connected in %lu ms\n", (unsigned long)(millis() - start));
 	char id[20];
 	snprintf(id, sizeof id, "bringup_%06llx", (unsigned long long)(ESP.getEfuseMac() & 0xFFFFFF));
 #if defined(REPORT_MQTT) && defined(MQTT_HOST)
@@ -431,13 +465,13 @@ static void serveWifi(bool ok, float tempC, float rh) {
 		publishMqtt(mqtt, id, ok, tempC, rh);
 		mqtt.loop();
 		mqtt.disconnect();
-		Serial.println("MQTT published");
-	} else Serial.printf("MQTT connect failed (%d)\n", mqtt.state());
+		Log.println("MQTT published");
+	} else Log.printf("MQTT connect failed (%d)\n", mqtt.state());
 #else
 	(void)ok;
 	(void)tempC;
 	(void)rh;
-	Serial.println("MQTT refused: no MQTT_CA for TLS, and MQTT_ALLOW_PLAINTEXT not set");
+	Log.println("MQTT refused: no MQTT_CA for TLS, and MQTT_ALLOW_PLAINTEXT not set");
 #endif
 #else
 	(void)ok;
@@ -456,9 +490,9 @@ static void serveWifi(bool ok, float tempC, float rh) {
 #if defined(OTA_CA) || defined(OTA_ALLOW_PLAINTEXT)
 	httpUpdate.rebootOnUpdate(true);
 	const t_httpUpdate_return r = httpUpdate.update(ota, OTA_URL, String(BRINGUP_REVISION));
-	Serial.printf("OTA %s\n", r == HTTP_UPDATE_NO_UPDATES ? "up to date" : r == HTTP_UPDATE_OK ? "updated" : httpUpdate.getLastErrorString().c_str());
+	Log.printf("OTA %s\n", r == HTTP_UPDATE_NO_UPDATES ? "up to date" : r == HTTP_UPDATE_OK ? "updated" : httpUpdate.getLastErrorString().c_str());
 #else
-	Serial.println("OTA refused: no OTA_CA for HTTPS, and OTA_ALLOW_PLAINTEXT not set");
+	Log.println("OTA refused: no OTA_CA for HTTPS, and OTA_ALLOW_PLAINTEXT not set");
 #endif
 #endif
 	WiFi.disconnect(true);
@@ -697,9 +731,9 @@ static void takeReading() {
 #ifdef HAS_SENSOR
 	float t, rh;
 	bool ok = readClimate(&t, &rh);
-	if (ok) Serial.printf("SENSOR OK %.2f C %.1f %%RH\n", t, rh);
-	else Serial.println("SENSOR FAIL");
-	if (ok) Serial.printf("HISTORY slot %ld\n", (long)storeReading(t, rh));
+	if (ok) Log.printf("SENSOR OK %.2f C %.1f %%RH\n", t, rh);
+	else Log.println("SENSOR FAIL");
+	if (ok) Log.printf("HISTORY slot %ld\n", (long)storeReading(t, rh));
 	linkSendReading(ok, t, rh);
 	readingBlink(ok);
 #ifdef RADIO_BLE
@@ -709,7 +743,7 @@ static void takeReading() {
 #endif
 #else
 	// No sensor: nothing to read or store. Blink once and advertise (or upload).
-	Serial.println("SENSOR NONE");
+	Log.println("SENSOR NONE");
 	readingBlink(true);
 #ifdef RADIO_BLE
 	serveBle(LATEST_NO_SENSOR, false, 0, 0);
@@ -732,7 +766,7 @@ static bool usbPowered() {
 static void stayAwakeOnUsb() {
 	pinMode(PIN_USB_SENSE, INPUT);  // the divider's 100k holds it low unplugged: no internal pull
 	if (!usbPowered()) return;
-	Serial.println("USB powered: staying awake");
+	Log.println("USB powered: staying awake");
 	uint32_t last = millis();
 	while (usbPowered()) {
 		if (millis() - last >= (uint32_t)DUTY_PERIOD_S * 1000UL) {
@@ -741,16 +775,16 @@ static void stayAwakeOnUsb() {
 		}
 		linkPoll(100);  // a board that receives over a link hears it while awake
 	}
-	Serial.println("USB unplugged");
+	Log.println("USB unplugged");
 }
 #endif
 
 void setup() {
-	Serial.begin(115200);
-	Serial.printf("bringup rev %d\n", BRINGUP_REVISION);
+	logBegin();
+	Log.printf("bringup rev %d\n", BRINGUP_REVISION);
 #if defined(MODEL_PRESENT) && MODEL_PRESENT
 	// Taking the addresses keeps both arrays in the image (the linker drops unreferenced sections).
-	Serial.printf("MODEL arena %u B at %p, weights %u B at %p, %d Hz x %d ms\n", (unsigned)sizeof modelArena, (void *)modelArena, (unsigned)MODEL_WEIGHTS_LINKED_BYTES, (const void *)modelWeights, MODEL_SAMPLE_RATE_HZ, MODEL_WINDOW_MS);
+	Log.printf("MODEL arena %u B at %p, weights %u B at %p, %d Hz x %d ms\n", (unsigned)sizeof modelArena, (void *)modelArena, (unsigned)MODEL_WEIGHTS_LINKED_BYTES, (const void *)modelWeights, MODEL_SAMPLE_RATE_HZ, MODEL_WINDOW_MS);
 #endif
 #if defined(HAS_I2C) && !defined(LINK_I2C_TARGET)
 	Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
@@ -768,7 +802,7 @@ void setup() {
 		linkSendReading(true, 21.5f, 40.25f);
 		linkPoll(500);
 	}
-	Serial.println("LINK TEST DONE");
+	Log.println("LINK TEST DONE");
 	for (;;) delay(1000);
 #endif
 #ifdef HAS_LED
@@ -778,15 +812,15 @@ void setup() {
 	// Woken by the button (not the timer, nor USB on the sense pin): stay visible long enough for a phone to connect.
 	if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO && (esp_sleep_get_gpio_wakeup_status() & (1ULL << PIN_BUTTON))) {
 		advertiseMs = BUTTON_ADVERTISE_MS;
-		Serial.println("BUTTON wake: visible for a phone");
+		Log.println("BUTTON wake: visible for a phone");
 	}
 #endif
 	takeReading();
 #ifdef PIN_USB_SENSE
 	stayAwakeOnUsb();
 #endif
-	Serial.printf("SLEEP %d s\n", DUTY_PERIOD_S);
-	Serial.flush();
+	Log.printf("SLEEP %d s\n", DUTY_PERIOD_S);
+	Log.flush();
 	esp_sleep_enable_timer_wakeup((uint64_t)DUTY_PERIOD_S * 1000000ULL);
 #ifdef PIN_BUTTON
 	// The button closes to GND (codegen wires its other side there): a press wakes the board early. Only GPIO0..5 can

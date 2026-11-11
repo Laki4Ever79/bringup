@@ -143,12 +143,12 @@ Every system run writes `bench-plan.md` (steps for a person) and `bench-plan.jso
 
 | Step | Passes when |
 |---|---|
-| 1. Each board alone | its own production test passes (with a test kit); otherwise its USB port appears and its LED blinks at each reading |
+| 1. Each board alone | its own production test passes (with a test kit); otherwise its USB port prints `SENSOR OK …` at each reading and its LED blinks |
 | 2. The cable | each wire beeps through end to end; no two pins short; VCC absent on a link that carries no power |
 | 3. Power over the cable (links that carry it) | 3.2 to 3.4 V at the other board's pin 2 (an estimate: the catalog has no regulator accuracy), and it boots |
 | 4. The link | each message arrives at least 3 times in 15 s with the link test's known values; no frame from another definition |
 | 5. Pull the cable | the received lines stop while it is out and come back after |
-| 6. The product firmware | real readings arrive. **Can't pass on a real board yet** (below) |
+| 6. The product firmware | real readings arrive, on the receiving board's USB port |
 
 Step 4 uses the bench build of the link test, `pio run -e esp32c3_linktest_usb -t upload`. It prints on the USB port
 (the QEMU build prints on UART0) and keeps sending until reset, so the boards don't have to start together. The checker
@@ -161,8 +161,8 @@ reads every board's USB port at once and judges the lines as the QEMU link test 
 
 **Not done:**
 - **No boards yet:** nothing in the plan has run on real boards; none have been built.
-- **The product firmware's output:** it prints on UART0 (GPIO20/21), which a Bringup board doesn't wire out. So step 6,
-  and any reading of the product firmware's output, needs the console moved to (or mirrored on) the USB port first.
+- **The product firmware's USB output is compiled and checked in QEMU, not yet seen on a real board.** It prints on
+  UART0 (QEMU) and on the C3's own USB at once (main.cpp, `Console`); a USB write never waits for a host.
 - **Manual checks:** the meter steps (2 and 3) are done by hand.
 
 

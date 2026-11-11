@@ -184,9 +184,9 @@ export function linkHeader(s: ContractSnapshot): string {
 		for (const { l, m } of receives) {
 			const fmt = m.fields.map((f) => `${f.name}=${PRINTF[f.type][0]}`).join(" ")
 			const args = m.fields.map((f) => `, ${PRINTF[f.type][1]}x.${f.name}`).join("")
-			body.push(`\tif (hash == ${M(m.name)}_HASH && len == sizeof(${m.name}_msg)) {`, `\t\t${m.name}_msg x;`, `\t\tmemcpy(&x, p, sizeof x);`, `\t\tSerial.printf("LINK %s ${m.name} from ${l.peer}: ${fmt}\\n", link${args});`, `\t\treturn;`, "\t}")
+			body.push(`\tif (hash == ${M(m.name)}_HASH && len == sizeof(${m.name}_msg)) {`, `\t\t${m.name}_msg x;`, `\t\tmemcpy(&x, p, sizeof x);`, `\t\tLog.printf("LINK %s ${m.name} from ${l.peer}: ${fmt}\\n", link${args});`, `\t\treturn;`, "\t}")
 		}
-		body.push(`\tSerial.printf("LINK %s: a frame with an unknown definition (hash %08lx), dropped\\n", link, (unsigned long)hash);`, "}")
+		body.push(`\tLog.printf("LINK %s: a frame with an unknown definition (hash %08lx), dropped\\n", link, (unsigned long)hash);`, "}")
 	}
 	if (target) body.push(`static LinkFrameReader linkTargetReader;`, `static volatile bool linkTargetGot = false;`, `static uint8_t linkTargetFrame[LINK_MAX_PAYLOAD];`, `static uint8_t linkTargetLen = 0;`, `static uint32_t linkTargetHash = 0;`, `// Runs in the I2C driver's context: keep the frame for linkPoll().`, `static void linkOnReceive(int) {`, `\tconst uint8_t *p;`, `\tuint8_t len;`, `\tuint32_t hash;`, `\twhile (Wire.available()) if (linkTargetReader.feed((uint8_t)Wire.read(), hash, p, len) && !linkTargetGot) {`, `\t\tmemcpy(linkTargetFrame, p, len);`, `\t\tlinkTargetLen = len;`, `\t\tlinkTargetHash = hash;`, `\t\tlinkTargetGot = true;`, `\t}`, `}`)
 	// An I2C target can't start a transfer: what it sends waits in one frame, which the controller reads (onRequest).
@@ -223,8 +223,8 @@ export function linkHeader(s: ContractSnapshot): string {
 		body.push(m.fields.some((f) => f.name === "ok") ? `\t{` : `\tif (ok) {`, `\t\t${m.name}_msg m = {};`, ...m.fields.map((f) => `\t\tm.${f.name} = ${READING_FILL[f.name] ?? "0"};${READING_FILL[f.name] ? "" : " // not a reading field: sent as 0"}`))
 		if (l.kind === "uart") body.push(`\t\tlinkFrameWrite(Serial1, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tSerial1.flush();`)
 		else if (l.i2c?.role === "target") body.push(`\t\tLinkBufferOut out;`, `\t\tlinkFrameWrite(out, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tlinkReplyLen = 0;`, `\t\tmemcpy(linkReplyFrame, out.buf, out.n);`, `\t\t__atomic_store_n(&linkReplyLen, out.n, __ATOMIC_RELEASE); // last, and after the copy: the request handler sees a whole frame or none`)
-		else body.push(`\t\tWire.beginTransmission((uint8_t)${L(l.id)}_I2C_PEER_ADDRESS);`, `\t\tlinkFrameWrite(Wire, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tconst uint8_t err = Wire.endTransmission();`, `\t\tif (err) Serial.printf("LINK ${l.id}: ${l.peer} didn't answer at 0x%02x (%u)\\n", ${L(l.id)}_I2C_PEER_ADDRESS, err);`)
-		body.push(`\t\tSerial.println("LINK ${l.id} sent ${m.name}");`, `\t}`)
+		else body.push(`\t\tWire.beginTransmission((uint8_t)${L(l.id)}_I2C_PEER_ADDRESS);`, `\t\tlinkFrameWrite(Wire, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tconst uint8_t err = Wire.endTransmission();`, `\t\tif (err) Log.printf("LINK ${l.id}: ${l.peer} didn't answer at 0x%02x (%u)\\n", ${L(l.id)}_I2C_PEER_ADDRESS, err);`)
+		body.push(`\t\tLog.println("LINK ${l.id} sent ${m.name}");`, `\t}`)
 	}
 	body.push("}", "// Listens for ms milliseconds (a board that receives nothing just waits).", "static void linkPoll(uint32_t ms) {")
 	if (!receives.length) body.push("\tdelay(ms);")

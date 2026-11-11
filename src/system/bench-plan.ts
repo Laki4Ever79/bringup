@@ -56,8 +56,9 @@ export function benchPlan(spec: SystemSpec, contracts: Record<string, ContractSn
 	const receivers = [...new Set(expect.map((e) => e.board))]
 	const steps: BenchStep[] = []
 
-	// The product firmware prints on UART0 (GPIO20/21), which a Bringup board doesn't wire out; only the test kit's and the
-	// link test's builds print on the USB port. So a board alone is judged by what it shows: its USB port, its LED.
+	// The product firmware prints on UART0 (for QEMU) and on the C3's own USB (templates/fw main.cpp, Console), so a board
+	// alone is judged by its USB output, and by its LED.
+	const hasSensor = (name: string) => Boolean(contracts[name]?.values.parts?.some((p) => p.role === "sensor"))
 	const hasLed = (name: string) => Boolean(contracts[name]?.values.parts?.some((p) => p.role === "led"))
 	steps.push({
 		title: "Each board alone",
@@ -65,7 +66,11 @@ export function benchPlan(spec: SystemSpec, contracts: Record<string, ContractSn
 		pass: boards.flatMap((b) =>
 			b.testKit
 				? [`${b.name}: every step of its test plan passes`]
-				: [`${b.name}: its USB port appears on the computer after the flash and a reset`, ...(hasLed(b.name) ? [`${b.name}: its LED blinks at each reading`] : [])],
+				: [
+						`${b.name}: its USB port appears on the computer after the flash and a reset, and prints \`bringup rev …\` at boot (115200 baud)`,
+						...(hasSensor(b.name) ? [`${b.name}: its USB port prints \`SENSOR OK <°C> C <%RH> %RH\` at each reading, with plausible room values`] : []),
+						...(hasLed(b.name) ? [`${b.name}: its LED blinks at each reading`] : []),
+					],
 		),
 	})
 
@@ -116,7 +121,6 @@ export function benchPlan(spec: SystemSpec, contracts: Record<string, ContractSn
 		do: [...boards.map((b) => `${b.name}: flash the product firmware (\`pio run -d ${b.firmwareDir ?? "<firmware>"} -t upload\`)`), "Keep every receiving board on USB: the product firmware deep-sleeps, and a receiver hears a link only while it is awake (USB keeps it awake)", ...spec.links.filter((l) => l.kind === "i2c" && l.i2c).flatMap((l) => [...new Set((l.messages ?? []).map((m) => m.from).filter((f) => f !== l.i2c!.controller))].map((f) => `${f}: keep it on USB too: an I2C target answers the controller only while it is awake, and the product firmware deep-sleeps right after its reading`))],
 		pass: [
 			...expect.map((e) => `${e.board} prints \`${e.prefix} …\` with real values (not the link test's), each time ${e.from} takes a reading`),
-			"This step can't pass on a real board yet: the product firmware prints on UART0 (GPIO20/21), which a Bringup board doesn't wire out, so its LINK lines aren't on the USB port. Steps 3 and 4 prove the link with the same link code",
 		],
 	})
 
