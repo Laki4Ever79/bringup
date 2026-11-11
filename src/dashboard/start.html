@@ -107,8 +107,9 @@
 		if (cache.has(ex.name)) return cache.get(ex.name)
 		const opt = async (url, as) => { try { const r = await fetch(url); return r.ok ? await r[as]() : null } catch { return null } }
 		const boards = await Promise.all(ex.boards.map(async (b) => {
-			const [circuit, contract, caseStl, caseSpec] = await Promise.all([opt(fileOf(ex, b.name, "circuit.json"), "json"), opt(fileOf(ex, b.name, "contract.json"), "json"), opt(fileOf(ex, b.name, "case.stl"), "arrayBuffer"), opt(fileOf(ex, b.name, "spec.json"), "json")])
-			return { name: b.name, outline: b.outline, circuit, caseStl, caseSpec, parts: contract?.values?.parts ?? [], key: `${ex.name}/${b.name}` }
+			// A robot's board stands on its chassis (example.json says so): the robot is drawn, not a case.
+			const [circuit, contract, caseStl, caseSpec, chassisStl, chassisSpec] = await Promise.all([opt(fileOf(ex, b.name, "circuit.json"), "json"), opt(fileOf(ex, b.name, "contract.json"), "json"), b.chassis ? null : opt(fileOf(ex, b.name, "case.stl"), "arrayBuffer"), b.chassis ? null : opt(fileOf(ex, b.name, "spec.json"), "json"), b.chassis ? opt(fileOf(ex, b.name, "chassis.stl"), "arrayBuffer") : null, b.chassis ? opt(fileOf(ex, b.name, "chassis.json"), "json") : null])
+			return { name: b.name, outline: b.outline, circuit, caseStl, caseSpec, chassisStl, chassisSpec, parts: contract?.values?.parts ?? [], key: `${ex.name}/${b.name}` }
 		}))
 		cache.set(ex.name, boards)
 		return boards

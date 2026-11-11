@@ -9,7 +9,7 @@ const cut = (s) => (s.length > CAPTION ? `${s.slice(0, CAPTION - 1)}…` : s)
 export function assemblyAt(traces, upTo) {
 	const out = {}
 	for (const [name, events] of Object.entries(traces)) {
-		const b = { outline: null, state: "empty", revision: 0, boardRevision: null, enclosureRevision: null, pulses: [] }
+		const b = { outline: null, state: "empty", revision: 0, boardRevision: null, enclosureRevision: null, chassisRevision: null, pulses: [] }
 		let checked = null
 		for (const e of events) {
 			if (upTo && e.at > upTo) break
@@ -17,7 +17,9 @@ export function assemblyAt(traces, upTo) {
 			if (typeof p.revision === "number" && e.type === "contract.changed") b.revision = Math.max(b.revision, p.revision)
 			if (e.type === "contract.changed" && p.field === "outline" && p.after?.widthMm) b.outline = { widthMm: p.after.widthMm, heightMm: p.after.heightMm }
 			if (e.type === "artifact.ready" && p.kind === "board") b.boardRevision = p.revision
-			if (e.type === "artifact.ready" && p.kind === "enclosure") b.enclosureRevision = p.revision
+			// A skipped build (a design with no case) built nothing to draw.
+			if (e.type === "artifact.ready" && p.kind === "enclosure" && !p.skipped) b.enclosureRevision = p.revision
+			if (e.type === "artifact.ready" && p.kind === "chassis") b.chassisRevision = p.revision
 			if (e.type === "consistency.checked") checked = p.violations ?? []
 		}
 		b.state = b.enclosureRevision !== null ? "cased" : b.boardRevision !== null ? "routed" : b.outline ? "placed" : "empty"

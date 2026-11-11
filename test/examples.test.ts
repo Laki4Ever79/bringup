@@ -96,3 +96,25 @@ test("the landing page is the start screen; a run, a default run and My builds k
 		await pub.close()
 	}
 })
+
+// The rover as an example (user, 11 Nov): a robot's newest chassis (the printed plate and its spec) is kept, and the
+// example says the board stands on one, so the start screen draws the robot, not a bare board.
+test("a robot's example keeps its newest chassis and says so", () => {
+	const run = tempDir()
+	writeFileSync(join(run, "contract.json"), JSON.stringify({ revision: 12, values: { outline: { widthMm: 42, heightMm: 29 } } }))
+	writeFileSync(join(run, "brief.md"), "# Brief: rover\n")
+	for (const rev of [11, 12]) {
+		mkdirSync(join(run, "chassis", `rev-${rev}`), { recursive: true })
+		writeFileSync(join(run, "chassis", `rev-${rev}`, "chassis.stl"), `stl ${rev}`)
+		writeFileSync(join(run, "chassis", `rev-${rev}`, "spec.json"), JSON.stringify({ rev }))
+	}
+	const dest = tempDir()
+	const meta = saveExample(run, "rover", "A small indoor rover", dest)
+	assert.equal(meta.boards[0].chassis, true)
+	assert.equal(readFileSync(join(dest, "rover", "boards", "main", "chassis.stl"), "utf8"), "stl 12")
+	assert.deepEqual(JSON.parse(readFileSync(join(dest, "rover", "boards", "main", "chassis.json"), "utf8")), { rev: 12 })
+	// A board with no chassis doesn't say it has one.
+	const plain = tempDir()
+	writeFileSync(join(plain, "contract.json"), JSON.stringify({ revision: 1, values: {} }))
+	assert.equal(saveExample(plain, "plain", "x", tempDir()).boards[0].chassis, undefined)
+})

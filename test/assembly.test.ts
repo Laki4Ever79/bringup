@@ -36,3 +36,16 @@ test("without a moment the whole trace counts; the time span covers every board"
 	assert.equal(assemblyAt({ logger: trace }).logger.state, "cased")
 	assert.deepEqual(timeSpan({ logger: trace, beacon: [ev("00:30", "run.started", {}), ev("09:00", "design.settled", {})] }), ["2026-11-09T10:00:00Z", "2026-11-09T10:09:00Z"])
 })
+
+// A robot's board stands on its chassis (the rover): the overview draws the robot once a chassis is built.
+test("a robot's chassis build is part of its assembly", () => {
+	const trace = [ev("00:00", "artifact.ready", { kind: "board", revision: 6 }), ev("01:00", "artifact.ready", { kind: "chassis", revision: 11 }), ev("02:00", "artifact.ready", { kind: "chassis", revision: 12 })]
+	assert.equal(assemblyAt({ main: trace }, "2026-11-09T10:01:30Z").main.chassisRevision, 11)
+	assert.equal(assemblyAt({ main: trace }).main.chassisRevision, 12)
+	assert.equal(assemblyAt({ main: [ev("00:00", "artifact.ready", { kind: "board", revision: 6 })] }).main.chassisRevision, null)
+})
+
+test("a skipped build (the rover has no case) doesn't count as built", () => {
+	const trace = [ev("00:00", "artifact.ready", { kind: "board", revision: 6 }), ev("01:00", "artifact.ready", { kind: "enclosure", revision: 10, skipped: "no case: requirements.enclosure is none" })]
+	assert.equal(assemblyAt({ main: trace }).main.enclosureRevision, null)
+})

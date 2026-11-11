@@ -136,6 +136,47 @@ function bounds(tris) {
 	return { min, max }
 }
 
+const CHASSIS = [222, 222, 226]
+const TYRE = [28, 28, 30]
+const METAL = [150, 150, 158]
+
+// A cylinder whose axis runs along y (a wheel), as triangles.
+function cylinderY(cx, cy, cz, r, w, n = 24) {
+	const out = []
+	const y0 = cy - w / 2, y1 = cy + w / 2
+	for (let i = 0; i < n; i++) {
+		const a = (i / n) * 2 * Math.PI, b = ((i + 1) / n) * 2 * Math.PI
+		const [xa, za, xb, zb] = [cx + r * Math.cos(a), cz + r * Math.sin(a), cx + r * Math.cos(b), cz + r * Math.sin(b)]
+		out.push(xa, y0, za, xb, y0, zb, xb, y1, zb, xa, y0, za, xb, y1, zb, xa, y1, za)
+		out.push(cx, y0, cz, xb, y0, zb, xa, y0, za, cx, y1, cz, xa, y1, za, xb, y1, zb)
+	}
+	return out
+}
+
+// A rover (the chassis builder's spec.json and chassis.stl): the printed plate, the drive wheels on their axle, the
+// motors, the caster, the battery under the boards, the distance sensor at the front, and the board on its standoffs.
+// The chassis frame has the plate's underside at z 0; here the floor is z 0, so everything rises by the clearance.
+function roverParts(spec, chassisTris) {
+	const lift = spec.plate.clearanceMm
+	const d = spec.drive
+	const parts = []
+	const add = (tris, color) => parts.push({ tris: tris instanceof Float32Array ? tris : new Float32Array(tris), color })
+	if (chassisTris?.length) add(shift(chassisTris, [0, 0, lift]), CHASSIS)
+	else add(boxTris([-spec.plate.lengthMm / 2, -spec.plate.widthMm / 2, lift], [spec.plate.lengthMm / 2, spec.plate.widthMm / 2, lift + spec.plate.thicknessMm]), CHASSIS)
+	const r = d.wheelDiameterMm / 2
+	for (const s of [1, -1]) add(cylinderY(d.axleXMm, (s * d.trackMm) / 2, r, r, d.wheelWidthMm), TYRE)
+	for (const m of spec.motors ?? []) add(boxTris([m.xMm - m.bodyMm[0] / 2, m.yMm - m.bodyMm[1] / 2, r - m.bodyMm[2] / 2], [m.xMm + m.bodyMm[0] / 2, m.yMm + m.bodyMm[1] / 2, r + m.bodyMm[2] / 2]), METAL)
+	if (spec.caster) {
+		const cr = spec.caster.wheelMm / 2
+		add(cylinderY(spec.caster.xMm, 0, cr, cr, 12), TYRE)
+		add(boxTris([spec.caster.xMm - 6, -6, 2 * cr], [spec.caster.xMm + 6, 6, lift]), METAL)
+	}
+	const top = lift + spec.plate.thicknessMm
+	if (spec.battery) { const [l, w, h] = spec.battery.sizeMm; add(boxTris([spec.battery.xMm - l / 2, spec.battery.yMm - w / 2, top], [spec.battery.xMm + l / 2, spec.battery.yMm + w / 2, top + h]), PART) }
+	if (spec.sensor) { const [w, h, t] = spec.sensor.sizeMm; add(boxTris([spec.sensor.xMm - t / 2, spec.sensor.yMm - w / 2, spec.sensor.zMm - h / 2], [spec.sensor.xMm + t / 2, spec.sensor.yMm + w / 2, spec.sensor.zMm + h / 2]), PART) }
+	return { parts, boardAt: spec.boards?.[0] ?? { xMm: 0, yMm: 0 }, boardZ: top + (spec.standoffMm ?? 10) }
+}
+
 // One board's meshes centred on its own origin (xy centre 0, bottom at z 0): the solid board with its parts, the
 // translucent case (no lid: cut open), and the one-box stand-in.
 export function boardGeometry(b) {
@@ -158,6 +199,22 @@ export function boardGeometry(b) {
 			off = [off[0] + centre[0], off[1] + centre[1], off[2] + centre[2]]
 			shell = interleave(caseTris, () => CASE)
 			extent = bounds(caseTris)
+		}
+		if (b.chassisSpec) {
+			// A rover: the board on its standoffs over the chassis, the whole robot standing on the floor at z 0.
+			const rover = roverParts(b.chassisSpec, b.chassisStl ? parseStl(b.chassisStl) : null)
+			off = [-(bb.min[0] + bb.max[0]) / 2 + rover.boardAt.xMm, -(bb.min[1] + bb.max[1]) / 2 + rover.boardAt.yMm, -bb.min[2] + rover.boardZ]
+			boardTris = shift(boardTris, off)
+			const colours = [...Array(boardTris.length / 9).keys()].map((i) => (m.kinds[i] === "slab" ? ORANGE : m.kinds[i] === "pad" ? PAD : PART))
+			for (const p of rover.parts) for (let i = 0; i < p.tris.length / 9; i++) colours.push(p.color)
+			const all = new Float32Array(boardTris.length + rover.parts.reduce((n, p) => n + p.tris.length, 0))
+			all.set(boardTris)
+			let at = boardTris.length
+			for (const p of rover.parts) { all.set(p.tris, at); at += p.tris.length }
+			// Centred on its own xy origin like every board here, its wheels on the floor.
+			const rb = bounds(all)
+			const centred = shift(all, [-(rb.min[0] + rb.max[0]) / 2, -(rb.min[1] + rb.max[1]) / 2, 0])
+			return { solid: interleave(centred, (i) => colours[i]), shell: null, box: interleave(box, () => ORANGE), extent: bounds(centred) }
 		}
 		boardTris = shift(boardTris, off)
 		solid = interleave(boardTris, (i) => (m.kinds[i] === "slab" ? ORANGE : m.kinds[i] === "pad" ? PAD : PART))

@@ -372,8 +372,12 @@ async function redraw() {
 		const encDir = a.enclosureRevision !== null ? `enclosure/rev-${a.enclosureRevision}` : null
 		const caseStl = runId && encDir && circuit ? fileOnce(runId, `${encDir}/case.stl`, "arrayBuffer") : null
 		const caseSpec = runId && encDir && circuit ? fileOnce(runId, `${encDir}/spec.json`, "json") : null
+		// A robot's board stands on its chassis: the overview draws the robot (world3d boardGeometry).
+		const chDir = a.chassisRevision != null ? `chassis/rev-${a.chassisRevision}` : null
+		const chassisStl = runId && chDir && circuit ? fileOnce(runId, `${chDir}/chassis.stl`, "arrayBuffer") : null
+		const chassisSpec = runId && chDir && circuit ? fileOnce(runId, `${chDir}/spec.json`, "json") : null
 		const outline = a.outline ?? b.outline ?? null
-		return { name: b.name, outline, circuit, caseStl, caseSpec, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}` }
+		return { name: b.name, outline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
 	})
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
 	stage.world.setWorld({ boards, cables })
