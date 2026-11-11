@@ -5,6 +5,7 @@ import assert from "node:assert/strict"
 import { existsSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { buildChassis, chassisSpec } from "../src/tools/chassis.ts"
+import { chassisNotNeeded } from "../src/agents/builders.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 import { tempDir } from "./helpers.ts"
@@ -47,4 +48,12 @@ test("the chassis spec carries the wheel and caster masses the simulation splits
 	const mech = rover().values.mechanics!
 	assert.equal(spec.wheelMassG, cat.wheels.find((w: { mpn: string }) => w.mpn === mech.drive.wheel).massG)
 	assert.equal(spec.casterMassG, cat.casters.find((c: { mpn: string }) => c.mpn === mech.drive.caster).massG)
+})
+
+// Final review: mechanics without motion targets would have the chassis and drive wait for motion forever.
+test("mechanics without motion targets: no chassis or drive is needed (the run isn't held)", () => {
+	const s = rover()
+	assert.equal(chassisNotNeeded(s), null)
+	delete (s.values as Record<string, unknown>).motion
+	assert.match(chassisNotNeeded(s) ?? "", /no motion targets/)
 })

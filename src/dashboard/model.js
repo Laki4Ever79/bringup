@@ -87,11 +87,19 @@ export function contractDiff(field, before, after) {
 		for (const [k, x] of a) if (!b.has(k)) out.push(`+ ${LABEL[field](x)}`)
 		return out
 	}
-	const b = before ?? {}
-	const a = after ?? {}
 	const out = []
-	for (const k of new Set([...Object.keys(b), ...Object.keys(a)])) if (!same(b[k], a[k])) out.push(`~ ${k} ${show(b[k] ?? "—")} → ${show(a[k] ?? "—")}`)
+	leafDiff(before ?? {}, after ?? {}, "", out)
 	return out
+}
+const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
+// Nested objects (a robot's mechanics) per leaf, as dotted keys; a list of numbers as 150×120.
+const leaf = (v) => (Array.isArray(v) && v.length > 1 && v.every((x) => typeof x === "number") ? v.join("×") : show(v ?? "—"))
+function leafDiff(b, a, at, out) {
+	for (const k of new Set([...Object.keys(b), ...Object.keys(a)])) {
+		if (same(b[k], a[k])) continue
+		if (isObj(b[k]) && isObj(a[k])) leafDiff(b[k], a[k], `${at}${k}.`, out)
+		else out.push(`~ ${at}${k} ${leaf(b[k])} → ${leaf(a[k])}`)
+	}
 }
 
 // Refs to glow on the PCB after a revision: parts whose entry changed, plus both ends of changed pins.

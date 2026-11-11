@@ -1,3 +1,4 @@
+import { unassignedRoverPins } from "../mechanics/firmware.ts"
 import { prepareFirmware } from "../tools/firmware.ts"
 import { runDrive, type DriveArtifact } from "../tools/drive.ts"
 import { buildChassis, chassisSpec, type ChassisArtifact } from "../tools/chassis.ts"
@@ -94,6 +95,8 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	lock?: BuildLock
 	// Why this design has no such artifact, when it has none (no case wanted): the build completes with nothing built.
 	notNeeded?: (snapshot: ContractSnapshot) => string | null
+	// A short summary of the built artifact, carried on artifact.ready under the kind's name (the Drive tile's result).
+	summary?: (artifact: ArtifactOf[K]) => Record<string, unknown>
 }): Human {
 	// The notNeeded answer the last build saw: a change to it (case wanted again, or not) rebuilds even though it lives
 	// in a field outside the inputs (requirements.enclosure), and only then.
@@ -131,7 +134,8 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			delete s.artifactFailures[opts.kind]
 			// A board's KiCad DRC summary rides along, so the dashboard can show it live (not only in report.md).
 			const drc = (artifact as { drc?: DrcSummary | null }).drc
-			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}) }), self.id)
+			const summary = opts.summary?.(artifact as ArtifactOf[K])
+			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}), ...(summary ? { [opts.kind]: summary } : {}) }), self.id)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
 			s.artifactInputs[opts.kind] = inputs
@@ -193,7 +197,7 @@ export function caseNotNeeded(s: ContractSnapshot): string | null {
 }
 
 // A robot's chassis (docs/mechanics.md): py/chassis.py from the mechanics field; a design without one has none.
-export const chassisNotNeeded = (s: ContractSnapshot) => (s.values.mechanics ? null : "no mechanics design: not a robot")
+export const chassisNotNeeded = (s: ContractSnapshot) => (!s.values.mechanics ? "no mechanics design: not a robot" : !s.values.motion ? "no motion targets: nothing to build the robot against" : null)
 export function createChassisBuilder(env: Env, lock?: BuildLock): Human {
 	return createBuilder({
 		kind: "chassis",
@@ -219,16 +223,26 @@ export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
 		inputs: BUILD_INPUTS.drive,
 		requires: BUILD_REQUIRES.drive,
 		notNeeded: chassisNotNeeded,
+		summary: driveSummary,
 		build: async ({ dir, snapshot, revision }) => {
 			const notRun = (reason: string): DriveArtifact => ({ revision, dir, result: "not run", reason, segments: [] })
 			if (!env.pio || !env.qemu || !env.python) return notRun("PlatformIO, QEMU or the .venv simulation tools are missing: not proven in simulation")
 			const spec = chassisSpec(snapshot)
 			if (!spec) return notRun("no complete mechanics design to simulate")
+			// A firmware with a -1 pin drives nothing: the wiring check flags it; no build until the pins are there.
+			const unassigned = unassignedRoverPins(snapshot)
+			if (unassigned.length) return notRun(`pins not assigned yet: ${unassigned.join(", ")}`)
 			const fw = join(dir, "fw")
 			await prepareFirmware(env.root, fw, snapshot)
 			return runDrive({ root: env.root, python: env.python, pio: env.pio, fwDir: fw, spec, outDir: dir }, revision)
 		},
 	})
+}
+
+// How the simulated drive went, for the Drive tile: its result and the first segment that failed.
+export function driveSummary(d: DriveArtifact): { result: DriveArtifact["result"]; failed?: string } {
+	const failed = d.segments.find((x) => !x.pass)?.name
+	return d.result === "fail" && failed ? { result: d.result, failed } : { result: d.result }
 }
 
 export function createEnclosureBuilder(env: Env, lock?: BuildLock): Human {

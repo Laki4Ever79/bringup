@@ -113,6 +113,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	if (mech.sensor && !sensor) push("mech-fit", `sensor ${mech.sensor.module} is not in catalog/mechanics.json: pick one listed there`)
 
 	const boardInfo = boards.map((b) => ({ name: b.name, outline: { widthMm: b.snapshot.values.outline?.widthMm ?? 0, heightMm: b.snapshot.values.outline?.heightMm ?? 0 } }))
+	for (const b of mech.chassis.boards) if (!boards.some((x) => x.name === b.name)) push("mech-fit", `the chassis places board "${b.name}", which this design doesn't have (its boards: ${boards.map((x) => x.name).join(", ")}): place only the design's boards`)
 	const ms: Mount[] = mounts(mech, boardInfo, cat.mech)
 	const plateTop = mech.chassis.clearanceMm + mech.chassis.thicknessMm
 	ms.push({ what: "payload", xMm: 0, yMm: 0, zMm: plateTop + 10, sizeMm: [20, 20, 20], massG: motion.payloadG })

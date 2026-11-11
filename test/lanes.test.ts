@@ -320,3 +320,15 @@ test("lanes: a robot's tiles, and only the tiles this design has", () => {
 	assert.equal(agreeLine(rover.slice(0, 2)), "board and firmware agree")
 	assert.equal(agreeLine([]), "board, case and firmware agree")
 })
+
+test("the Drive tile says how the simulated drive went, not just that it was built", () => {
+	const lanes = createLanes()
+	applyLaneEvent(lanes, changed("mechanics", 1, 3) as any)
+	applyLaneEvent(lanes, ev("artifact.ready", { kind: "drive", revision: 3, drive: { result: "pass" } }) as any)
+	assert.equal(lanes["build:drive"].text, "rev 3 · drive passed")
+	applyLaneEvent(lanes, ev("artifact.ready", { kind: "drive", revision: 4, drive: { result: "fail", failed: "edge crossed" } }) as any)
+	assert.equal(lanes["build:drive"].text, "rev 4 · failed: edge crossed")
+	assert.equal(lanes["build:drive"].status, "failed")
+	applyLaneEvent(lanes, ev("artifact.ready", { kind: "drive", revision: 5, drive: { result: "not run" } }) as any)
+	assert.equal(lanes["build:drive"].text, "rev 5 · not run")
+})

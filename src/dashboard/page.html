@@ -773,7 +773,7 @@
 			</section>
 			<aside id="side">
 				<section id="scene-panel">
-					<div class="label"><b>07</b> Case + board<span class="right"><label>explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label><button id="max-case" class="max-btn" title="Maximise the case (Esc returns)">⤢</button></span></div>
+					<div class="label"><b>07</b> <span id="scene-title">Case + board</span><span class="right"><label>explode <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label><button id="max-case" class="max-btn" title="Maximise the case (Esc returns)">⤢</button></span></div>
 					<div id="scene-body"><div id="scene-host"></div><div id="scene-empty" class="empty-state">waiting for the first enclosure build</div></div>
 				</section>
 				<section id="parts-panel" class="sheet">
@@ -961,7 +961,7 @@
 		fetch("/api/stage").then((r) => (r.ok ? r.json() : null)).then((st) => { if (st && (st.sensor || st.board)) $("stage-btn").classList.remove("hidden") }).catch(() => {})
 
 		const S = {
-			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], selected: null, model: { dots: [], boards: [] },
+			events: [], lanes: createLanes(), snapshots: new Map(), boards: new Map(), enclosures: [], chassis: [], shownChassis: null, selected: null, model: { dots: [], boards: [] },
 			shownBoard: null, shownEnclosure: null, firstAt: null, endAt: null, settled: null, revision: 0, requests: [], myVotes: new Map(),
 			hover: null, bom: null, contract: null,
 			fab: false, print: null, openPart: null, ripplesFile: null, ripplesText: "", pinned: null, experiment: null, why: null, triedRevs: new Set(), stay: false, ended: false,
@@ -1028,7 +1028,7 @@
 			else if (host.parentElement !== $("scene-body")) $("scene-body").prepend(host)
 			const note = $("scene-empty")
 			if (tab === "3d") { note.textContent = "shown on the stage"; note.classList.remove("hidden") }
-			else if (S.shownEnclosure !== null) note.classList.add("hidden")
+			else if (S.shownEnclosure !== null || S.shownChassis !== null) note.classList.add("hidden")
 			else note.textContent = missingNote("enclosure")
 		}
 
@@ -1037,6 +1037,7 @@
 		function missingNote(kind) {
 			if (stubbedRun()) return `stubbed run: no ${kind === "board" ? "PCB" : "3D case"} (hardware tools off)`
 			if (window.BRINGUP_PUBLIC) return `recorded run: ${kind} files not in the public demo`
+			if (kind === "enclosure" && S.contract?.values?.mechanics) return "a robot: its chassis shows here once built"
 			return `waiting for the first ${kind} build`
 		}
 
@@ -1225,6 +1226,21 @@
 			const live = S.selected === null
 			showBoard(live ? (S.model.boards.at(-1) ?? null) : boardFor(S.model, S.selected), live ? prevBoard : undefined)
 			showEnclosure(live ? (S.enclosures.at(-1) ?? null) : enclosureFor(S.selected))
+			// A robot without a case: its generated chassis takes the case's place in 07.
+			if (!S.enclosures.length && S.chassis.length) showChassis(live ? S.chassis.at(-1) : (S.chassis.filter((c) => c <= S.selected).at(-1) ?? null))
+		}
+		async function showChassis(rev) {
+			if (rev === null || rev === S.shownChassis || stubbedRun()) return
+			S.shownChassis = rev
+			$("scene-title").textContent = "Chassis"
+			try {
+				const r = await fetch(file(`chassis/rev-${rev}/chassis.stl`))
+				if (!r.ok) return
+				const buf = await r.arrayBuffer()
+				$("scene-empty").classList.add("hidden")
+				if (scene) scene.update({ caseStl: buf, lidStl: null, enclosure: { spec: null, standoffs: null } })
+				else wire.load(buf)
+			} catch {}
 		}
 
 		// ── Parts: bom.json, else the contract's parts ──
@@ -2271,7 +2287,8 @@
 		const fetchCloud = async () => {
 			try {
 				const r = await fetch(file("cloud.jsonl"), { cache: "no-store" })
-				if (!r.ok) return
+				// A finished run with no cloud log (run straight from the CLI) won't get one: stop asking.
+				if (!r.ok) { if (S.endAt) clearInterval(cloudTimer); return }
 				const urls = (await r.text()).split("\n").flatMap((l) => { try { return [JSON.parse(l).url] } catch { return [] } }).filter((u) => typeof u === "string" && /^https?:\/\//.test(u))
 				if (!urls.length) return
 				$("cloud-link").href = urls.at(-1)
@@ -2279,7 +2296,7 @@
 			} catch {}
 		}
 		fetchCloud()
-		setInterval(fetchCloud, 3000)
+		const cloudTimer = setInterval(fetchCloud, 3000)
 
 		// ── Event stream ──
 		const dirty = new Set()
@@ -2326,7 +2343,9 @@
 				case "artifact.ready": {
 					const prevBoard = S.model.boards.at(-1) ?? null
 					S.model = scrubberModel(S.events)
-					if (p.kind === "enclosure" && !S.enclosures.includes(p.revision)) S.enclosures.push(p.revision)
+					// A design with no case of ours reports the enclosure as skipped: nothing to fetch.
+					if (p.kind === "enclosure" && !p.skipped && !S.enclosures.includes(p.revision)) S.enclosures.push(p.revision)
+					if (p.kind === "chassis" && !p.skipped && !S.chassis.includes(p.revision)) S.chassis.push(p.revision)
 					syncArtifacts(prevBoard)
 					fetchBom()
 					if (p.kind === "board") probeFab()

@@ -116,6 +116,28 @@ class DriveTest(unittest.TestCase):
         self.assertEqual(r["result"], "not run")
         self.assertIn("didn't answer within 2 s", r["reason"])
 
+    # Final review: an unknown driver peak (null in the spec) crashed the bridge after the whole course.
+    def test_an_unknown_driver_peak_doesnt_crash_the_drive(self):
+        out = tempfile.mkdtemp()
+        r = run(dict(SPEC_DRIVE, driverPeakA=None), fake_firmware(careful), out, course_s=6, firmware_wait_s=5)
+        self.assertIn(r["result"], ("pass", "fail"))
+        peak = next(x for x in r["segments"] if x["name"] == "peak current")
+        self.assertIn("unknown", peak["detail"])
+
+    # Final review: "kept its distance" passed when the rover never drove toward anything it could see.
+    def test_kept_its_distance_is_not_a_pass_when_it_never_drove_toward_anything(self):
+        out = tempfile.mkdtemp()
+        r = run(SPEC_DRIVE, fake_firmware(lambda d, s: (0.5, -0.5)), out, course_s=4, firmware_wait_s=5)
+        seg = next(x for x in r["segments"] if x["name"] == "kept its distance")
+        self.assertFalse(seg["pass"])
+        self.assertIn("not tested", seg["detail"])
+
+    # Final review: a brief with no edge gave MuJoCo a zero-height step.
+    def test_a_brief_with_no_edge_has_no_step(self):
+        from mech.drive import course_xml
+        self.assertNotIn('name="step"', course_xml(0))
+        self.assertIn('name="step"', course_xml(0.003))
+
 
 if __name__ == "__main__":
     unittest.main()
