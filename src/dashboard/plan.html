@@ -71,7 +71,6 @@
 </head>
 <body>
 <header>
-	<a class="logo" href="/">bring<b>up</b></a>
 	<span id="status">Plan · nothing built yet</span>
 </header>
 <div class="said">You said: <b id="sentence"></b></div>
@@ -104,6 +103,8 @@
 </main>
 <div id="brief"><b id="brief-title"></b><textarea id="brief-text" spellcheck="false"></textarea><div class="row"><button class="btn" id="brief-cancel">Cancel</button><button class="btn primary" id="brief-save">Save brief</button></div></div>
 <script type="module">
+	import { mountNav } from "/nav.js"
+	mountNav({ section: "home", trail: [{ label: "Home", href: "/" }, { label: "Plan: nothing built yet" }] })
 	import { addBoard, afterSave, connect, moveBoard, removeBoard, removeLink, setBrief } from "/plan-edit.js"
 	import { spendLabel } from "/spend.js"
 	const $ = (id) => document.getElementById(id)

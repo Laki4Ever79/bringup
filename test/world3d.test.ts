@@ -66,3 +66,33 @@ test("a ray picks the nearest board it passes through", () => {
 	assert.equal(pickBoard([0, 0, 100], [0, 0, -1], boxes), "near")
 	assert.equal(pickBoard([50, 50, 100], [0, 0, -1], boxes), null)
 })
+
+// The rover on the start screen and in its run (user, 11 Nov: "why don't we show the rover as a sample"): its board on
+// standoffs over the chassis plate, the drive wheels, motors, caster, battery and distance sensor, from the chassis
+// spec, standing on the floor (z 0).
+import { readFileSync } from "node:fs"
+import { boardGeometry } from "../src/dashboard/world3d.js"
+function boxStl(min: number[], max: number[]): ArrayBuffer {
+	const v = (x: number, y: number, z: number) => [x ? max[0] : min[0], y ? max[1] : min[1], z ? max[2] : min[2]]
+	const faces = [[[0,0,0],[1,0,0],[1,1,0]],[[0,0,0],[1,1,0],[0,1,0]],[[0,0,1],[1,1,1],[1,0,1]],[[0,0,1],[0,1,1],[1,1,1]]]
+	const buf = Buffer.alloc(84 + faces.length * 50)
+	buf.write("binary box", 0)
+	buf.writeUInt32LE(faces.length, 80)
+	faces.forEach((f, i) => f.forEach((p, k) => v(p[0], p[1], p[2]).forEach((c, j) => buf.writeFloatLE(c, 84 + i * 50 + 12 + k * 12 + j * 4))))
+	return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length)
+}
+const CHASSIS = { plate: { lengthMm: 150, widthMm: 90, thicknessMm: 3, clearanceMm: 50.5 }, standoffMm: 10, motors: [{ side: "left", xMm: 30, yMm: 37, bodyMm: [26, 12, 10], axleDropMm: 10.5 }, { side: "right", xMm: 30, yMm: -37, bodyMm: [26, 12, 10], axleDropMm: 10.5 }], caster: { xMm: -50, wheelMm: 38, heightMm: 50.5 }, battery: { xMm: 25, yMm: 0, sizeMm: [60, 36, 7] }, boards: [{ name: "main", xMm: 10, yMm: 0, widthMm: 50, heightMm: 30, rotDeg: 0 }], sensor: { xMm: 72, yMm: 0, zMm: 65, sizeMm: [21, 18, 2.8] }, drive: { trackMm: 110, axleXMm: 30, wheelbaseMm: 80, wheelDiameterMm: 80, wheelWidthMm: 10 } }
+
+test("a rover stands on the floor with its wheels, caster, chassis and board where the chassis spec puts them", () => {
+	const circuit = JSON.parse(readFileSync("examples/logger/boards/main/circuit.json", "utf8"))
+	const g = boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, circuit, chassisStl: boxStl([-75, -45, 0], [75, 45, 3]), chassisSpec: CHASSIS })
+	assert.ok(Math.abs(g.extent.min[2]) < 0.5, `stands on the floor: lowest point at ${g.extent.min[2]} mm`)
+	assert.ok(g.extent.max[2] >= 65 + 9 - 0.5, `the sensor's top (65 + 9 mm) is in: highest point ${g.extent.max[2]} mm`)
+	// Centred on its own origin, like every board in the world. Across: the wheels outside the plate at the track,
+	// 110 + 10 = 120 mm. Front to back: the 150 mm plate (the wheels, -10..70, and the sensor, to 73.4, sit within it).
+	const [w, l] = [g.extent.max[1] - g.extent.min[1], g.extent.max[0] - g.extent.min[0]]
+	assert.ok(Math.abs(w - 120) < 0.5, `${w} mm across`)
+	assert.ok(Math.abs(l - 150) < 0.5, `${l} mm long`)
+	assert.ok(Math.abs(g.extent.max[1] + g.extent.min[1]) < 0.5, "centred across")
+	assert.ok(g.solid && g.solid.length > 0)
+})

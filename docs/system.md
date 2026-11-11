@@ -82,31 +82,39 @@ exactly as it runs alone.
 
 ## On the dashboard
 
-`npm run dashboard` opens the start screen:
-- **Start screen (`/`):** a finished example, cut open in 3D and turning slowly; its boards are orange. Click a board,
-  or "look inside" in the list, to zoom in and see its parts; Esc zooms out. The prompt holds the sentence that made the
-  example. Change it, or write your own, and press **Build**. Thumbnails below switch examples; "Single board" is the
-  one-board flow. The examples are finished runs shipped in `examples/` (`scripts/save-example.ts`), so showing them
-  costs nothing.
-- **Plan screen (`/plan/<id>`):** Build first proposes a split into boards and cables. "Try for free" uses the scripted
-  architect; real models make one call to the fast model. Nothing is built yet.
-  - **Edit by dragging:** move a board, drag its orange dot onto another board for a cable (UART or I²C), Delete a
-    selected board or cable, "+ board". Click a board to edit its brief.
-  - **Edit in words:** "Change the plan in words" asks the architect again; what moved flashes.
-  - **Free checks:** plain code, on every edit; problems show on the board or cable concerned.
-  - **Estimates:** time from recorded real runs (and how many never settled), cost once three runs carry cost data.
-  - **Build N boards** (real models, confirmed once) or **Try for free with scripted agents**. A one-board plan starts
-    an ordinary board run.
-- **System page (`/system?id=<id>`):** the boards assemble in 3D as their runs report them: a slab at the outline,
-  parts and traces when a board revision is built, the case when an enclosure is. A failed check pulses on its board
-  with its message. The timeline under the stage scrubs back through the build. Click a board: the camera flies to it
-  and its run page opens over the stage; Esc, "← System" or Back flies out. The checks, link tests and cable tables are
-  below, as before. **Systems** in the header lists all systems and starts one from a spec in `briefs/systems`.
+`npm run dashboard` opens **Home**. Every page has the same bar: **Bringup · Home · Designs · Docs**, the section
+you're in underlined, and on the right a trail of where you are (*Designs › logger and beacon over UART › logger*), each
+step a link back up. The pages follow the levels of what is designed: a **design** (the device) has one board or
+several, and each **board** has its layers (PCB, case, firmware).
+
+| Page | Address | What it is for | How you get there |
+|---|---|---|---|
+| **Home** | `/` | An example turning in 3D (the logger and beacon, the pocket logger, the indoor rover) and the sentence that made it. Change it or write your own, then **Build**. | The bar; the logo |
+| **Plan** | `/plan/<id>` | After Build: the proposed boards and cables, nothing built yet. Drag to edit, change in words, see the checks and estimates, then build. | Build on Home |
+| **Designs** | `/designs` | Every design, one board or several, with its board count and state. "Start from a file": a written brief (`/builds`) or a system file (`/system`). | The bar |
+| **A design** | `/system?id=<id>` | Its **Overview**: the boards assembling in 3D (a robot as the robot: chassis, wheels, sensor), cables, timeline, checks, cable and bench test. Under the bar, **Overview · Boards: logger · beacon**. | Designs; the end of a plan |
+| **A board** | `/system?id=<id>&board=<name>` | That board's own page, filling the window under the bar: the status band, agents, contract fields, timeline, then the PCB (most of the window), case, parts, and the **Firmware** tab. | Its tab, or clicking it in 3D |
+
+- **Home's examples** are finished runs shipped in `examples/` (`scripts/save-example.ts`), so showing them costs
+  nothing. "Try for free" builds with the scripted architect and agents, which know the logger, the beacon and the
+  rover: it picks the one your sentence describes, and two boards only when two boards or a cable are asked for.
+- **The plan:** drag a board, drag its orange dot onto another board for a cable (UART or I²C), Delete, "+ board",
+  click a board for its brief; "Change the plan in words" asks the architect again. The checks run in plain code on
+  every edit. Time estimates come from recorded real runs; cost once three runs carry cost data.
+- **A one-board design** opens on its Overview too, with its board one level down (a design with one board, not a
+  different kind of thing). A board's address from before (`/?run=<id>`) leads to its design with that board open;
+  `&standalone=1` shows the board page on its own.
+- **The Firmware tab** (on every board): each firmware revision's source files, the ones generated from the design
+  marked "gen", compared with the revision before (or any other) file by file and line by line, changes only or the
+  whole file. Read-only.
 - **Spend:** every model call's tokens and cost go to `usage.jsonl` in its run folder (prices in
-  `src/inference/prices.ts`, with the date they were checked). Each page header shows what was spent. "Unknown" means
-  the provider didn't report tokens, never $0. Runs from before 9 Nov 2026 say "not recorded".
+  `src/inference/prices.ts`, with the date they were checked). Each page shows what was spent. "Unknown" means the
+  provider didn't report tokens, never $0. Runs from before 9 Nov 2026 say "not recorded".
 - **Speed:** `npm run perf` loads these pages in a visible Chromium on this machine's GPU and fails if the start screen
   takes over 1 s, a frame of an orbit or a zoom takes over 33 ms, or an idle scene draws at all.
+- **Browser tests:** `test/system-view.browser.test.ts` (headless Chromium, over a recorded system in `out/`) checks
+  that a board fills the window under the bar, the tabs switch in place, the PCB gets most of the window, the
+  Firmware tab and the phone-width headers.
 
 ## Firmware
 

@@ -35,8 +35,9 @@ async function withPage(fn: (page: Page) => Promise<void>) {
 }
 
 // The user saw a strip of the system page while a board was open: its header (with Report, Cable…) stayed above the
-// board page, and its own scrollbar beside the board page's.
-test("an open board covers the whole window: no system header above it, no second scrollbar, and the page behind can't scroll", { skip, timeout: 120_000 }, async () => {
+// board page, and its own scrollbar beside the board page's. Now (the page map, 11 Nov) the shared bar stays on top,
+// with the design's levels marking the open board, and the board page fills everything under it.
+test("an open board fills the window under the shared bar: no strip of the overview, no second scrollbar, the page behind locked", { skip, timeout: 120_000 }, async () => {
 	await withPage(async (page) => {
 		await page.waitForSelector("[data-open]", { timeout: 30_000 })
 		const board = await page.evaluate(() => (document.querySelector("[data-open]") as HTMLElement).dataset.open!)
@@ -44,16 +45,36 @@ test("an open board covers the whole window: no system header above it, no secon
 		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 30_000 })
 		const g = await page.evaluate(() => {
 			const r = document.getElementById("board-view")!.getBoundingClientRect()
-			return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, w: innerWidth, h: innerHeight, scrolls: document.documentElement.scrollHeight > innerHeight && getComputedStyle(document.documentElement).overflowY !== "hidden" }
+			const nav = document.getElementById("site-nav")!.getBoundingClientRect()
+			const on = document.querySelector("#site-nav .nv-levels [aria-current]")?.textContent
+			return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, navBottom: nav.bottom, on, w: innerWidth, h: innerHeight, scrolls: document.documentElement.scrollHeight > innerHeight && getComputedStyle(document.documentElement).overflowY !== "hidden" }
 		})
-		assert.deepEqual([g.top, g.left], [0, 0], `the board view starts at ${g.top}, ${g.left}`)
+		assert.equal(g.top, g.navBottom, `the board view starts at ${g.top}, the bar ends at ${g.navBottom}`)
+		assert.equal(g.left, 0)
 		assert.equal(g.bottom, g.h)
 		assert.equal(g.right, g.w, "full width: no system scrollbar beside it")
 		assert.equal(g.scrolls, false, "the system page behind can't scroll while a board is open")
-		// Closing gives the page its scrolling back.
+		assert.equal(g.on, board, "the bar's levels mark the open board")
+		// Closing gives the page its scrolling back, and the bar marks the Overview again.
 		await page.keyboard.press("Escape")
 		await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"))
 		assert.notEqual(await page.evaluate(() => getComputedStyle(document.documentElement).overflowY), "hidden")
+		await page.waitForFunction(() => document.querySelector("#site-nav .nv-levels [aria-current]")?.textContent === "Overview")
+	})
+})
+
+test("the bar's board tabs switch boards in place, and Overview goes back to the 3D view", { skip, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await page.waitForSelector("#site-nav .nv-levels [data-board]:not([data-board=''])", { timeout: 30_000 })
+		const tabs = await page.$$eval("#site-nav .nv-levels [data-board]:not([data-board=''])", (els) => els.map((e) => e.textContent))
+		const start = new URL(page.url()).pathname
+		for (const name of tabs) {
+			await page.click(`#site-nav .nv-levels [data-board="${name}"]`)
+			await page.waitForFunction((n) => document.getElementById("board-view")?.classList.contains("on") && document.querySelector("#site-nav .nv-levels [aria-current]")?.textContent === n, name, { timeout: 15_000 })
+			assert.equal(new URL(page.url()).pathname, start, "stays on the design's page")
+		}
+		await page.click('#site-nav .nv-levels [data-board=""]')
+		await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"))
 	})
 })
 
@@ -85,14 +106,110 @@ test("at phone width the header grows to fit: nothing crosses its rule or leaves
 	await withPage(async (page) => {
 		await page.setViewportSize({ width: 390, height: 844 })
 		await page.waitForTimeout(300)
+		// Every header on the page (the shared bar and the design's own row), each against its own rule.
+		const headers = await page.evaluate(() =>
+			[...document.querySelectorAll("header, #site-nav")].map((h) => ({
+				id: h.id,
+				bottom: h.getBoundingClientRect().bottom,
+				w: innerWidth,
+				kids: [...h.children].filter((e) => getComputedStyle(e).display !== "none" && (e as HTMLElement).offsetWidth > 0).map((e) => ({ id: e.id || e.className || e.tagName, ...e.getBoundingClientRect().toJSON() })),
+			})),
+		)
+		assert.ok(headers.length >= 2, "the shared bar and the design's own row")
+		for (const r of headers)
+			for (const k of r.kids) {
+				assert.ok(k.bottom <= r.bottom + 0.5, `${r.id}: ${k.id} reaches ${k.bottom}, below the header's rule at ${r.bottom}`)
+				assert.ok(k.right <= r.w + 0.5 && k.left >= -0.5, `${r.id}: ${k.id} spans ${k.left}–${k.right}, off a ${r.w} px screen`)
+			}
+	})
+})
+
+// The user, 11 Nov: the PCB view "is a bit on the smaller side, and it is the one that is perhaps the most interesting".
+// The board page keeps everything (the status band, agents, timeline, case), and the PCB gets most of the window.
+test("the board page gives the PCB most of the window: at least 3/4 of its height and 3/5 of its width", { skip, timeout: 120_000 }, async () => {
+	const hub = await serveHub({ outRoot: join(ROOT, "out"), port: 0 })
+	const browser = await chromium.launch({ executablePath: exe!, headless: true })
+	try {
+		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+		await page.goto(`${hub.url}/?run=${SYSTEM}.logger&standalone=1`)
+		await page.waitForSelector("#pcb-host", { timeout: 30_000 })
+		await page.waitForTimeout(1500)
 		const r = await page.evaluate(() => {
-			const h = document.querySelector("header")!.getBoundingClientRect()
-			const kids = [...document.querySelectorAll("header > *")].filter((e) => getComputedStyle(e).display !== "none" && (e as HTMLElement).offsetWidth > 0).map((e) => ({ id: e.id || e.className || e.tagName, ...e.getBoundingClientRect().toJSON() }))
-			return { bottom: h.bottom, w: innerWidth, kids }
+			const b = document.getElementById("stage-body")!.getBoundingClientRect()
+			return { w: b.width, h: b.height, vw: innerWidth, vh: innerHeight, ripple: Boolean(document.getElementById("ripple")?.offsetHeight), agents: Boolean(document.getElementById("agents")?.offsetHeight), scene: Boolean(document.getElementById("scene-panel")?.offsetHeight) }
 		})
-		for (const k of r.kids) {
-			assert.ok(k.bottom <= r.bottom + 0.5, `${k.id} reaches ${k.bottom}, below the header's rule at ${r.bottom}`)
-			assert.ok(k.right <= r.w + 0.5 && k.left >= -0.5, `${k.id} spans ${k.left}–${k.right}, off a ${r.w} px screen`)
-		}
+		assert.ok(r.h >= 0.75 * r.vh, `the PCB view is ${Math.round(r.h)} px high in a ${r.vh} px window`)
+		assert.ok(r.w >= 0.6 * r.vw, `the PCB view is ${Math.round(r.w)} px wide in a ${r.vw} px window`)
+		assert.ok(r.ripple && r.agents && r.scene, "the status band, the agents and the case view are all still there")
+	} finally {
+		await browser.close()
+		await hub.close()
+	}
+})
+
+// pending-fixes: world3d's dispose() left its GL program and context behind; browsers cap live contexts (~16).
+test("disposing a 3D world releases its GL context", { skip, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		const lost = await page.evaluate(async () => {
+			// The page's own module (served by the hub), not a file TypeScript can resolve.
+			const { mountWorld } = await import(String("/world3d.js"))
+			const host = document.createElement("div")
+			host.style.cssText = "width:300px;height:200px"
+			document.body.append(host)
+			const w = mountWorld(host, {})
+			const gl = host.querySelector("canvas")!.getContext("webgl2")!
+			w.dispose()
+			return { lost: gl.isContextLost(), canvasGone: !host.querySelector("canvas") }
+		})
+		assert.deepEqual(lost, { lost: true, canvasGone: true })
+	})
+})
+
+// The firmware viewer (user, 11 Nov): the board's firmware source, revision by revision, what changed since the one
+// before; generated files marked.
+test("the board page's Firmware tab lists the newest revision's files, marks the generated ones and shows what changed", { skip, timeout: 120_000 }, async () => {
+	const hub = await serveHub({ outRoot: join(ROOT, "out"), port: 0 })
+	const browser = await chromium.launch({ executablePath: exe!, headless: true })
+	try {
+		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+		await page.goto(`${hub.url}/?run=${SYSTEM}.logger&standalone=1`)
+		await page.click('#tabs [data-tab="firmware"]')
+		await page.waitForSelector("#fw-files li", { timeout: 15_000 })
+		const v = await page.evaluate(() => ({
+			revs: [...document.querySelectorAll("#fw-rev option")].map((o) => (o as HTMLOptionElement).value),
+			rev: (document.getElementById("fw-rev") as HTMLSelectElement).value,
+			base: (document.getElementById("fw-base") as HTMLSelectElement).value,
+			files: [...document.querySelectorAll("#fw-files li")].map((li) => ({ path: (li as HTMLElement).dataset.path, gen: Boolean(li.querySelector(".gen")), status: li.className.split(" ")[0] })),
+			sum: document.getElementById("fw-sum")!.textContent,
+		}))
+		assert.ok(v.revs.length >= 2, `revisions: ${v.revs}`)
+		assert.equal(v.rev, v.revs.at(-1), "opens on the newest revision")
+		assert.equal(v.base, v.revs.at(-2), "compared with the one before")
+		assert.ok(v.files.some((f) => f.path === "src/main.cpp" && !f.gen), "the template's main.cpp, not marked generated")
+		assert.ok(v.files.some((f) => f.path === "include/pins.h" && f.gen), "pins.h, marked generated")
+		assert.match(v.sum!, /since rev \d+/)
+		// Whole file shows every line of the open file.
+		await page.click('#fw-view .fw-mode [data-mode="whole"]')
+		await page.waitForFunction(() => document.querySelectorAll("#fw-code tr").length > 5)
+	} finally {
+		await browser.close()
+		await hub.close()
+	}
+})
+
+// At phone width the boards-and-cables drawing shrank to unreadable text (an 880-wide drawing at 38 %): it keeps a
+// readable size and scrolls sideways in its own box, never the page.
+test("at phone width the boards-and-cables drawing stays readable and scrolls inside its box", { skip, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await page.setViewportSize({ width: 390, height: 844 })
+		await page.waitForSelector("#topology svg", { timeout: 30_000 })
+		const r = await page.evaluate(() => {
+			const svg = document.querySelector("#topology svg")!.getBoundingClientRect()
+			const box = document.querySelector("#topology .topo-scroll") as HTMLElement | null
+			return { svgW: svg.width, scrolls: box ? box.scrollWidth > box.clientWidth : false, pageOver: document.documentElement.scrollWidth - innerWidth }
+		})
+		assert.ok(r.svgW >= 600, `the drawing is ${Math.round(r.svgW)} px wide`)
+		assert.equal(r.scrolls, true, "it scrolls inside its own box")
+		assert.ok(r.pageOver <= 0, `the page itself scrolls sideways by ${r.pageOver} px`)
 	})
 })

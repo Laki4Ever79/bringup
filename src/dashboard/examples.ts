@@ -12,7 +12,8 @@ export interface ExampleMeta {
 	name: string
 	sentence: string
 	title: string
-	boards: { name: string; outline: { widthMm: number; heightMm: number } | null }[]
+	// chassis: the board stands on a robot's chassis (chassis.stl and chassis.json beside it), drawn as the robot.
+	boards: { name: string; outline: { widthMm: number; heightMm: number } | null; chassis?: true }[]
 	links: unknown[]
 }
 
@@ -24,14 +25,14 @@ const readJson = (path: string) => {
 	}
 }
 
-function lastEnclosure(boardDir: string): string | null {
-	const root = join(boardDir, "enclosure")
+function lastEnclosure(boardDir: string, kind = "enclosure"): string | null {
+	const root = join(boardDir, kind)
 	if (!existsSync(root)) return null
 	const revs = readdirSync(root).map((n) => /^rev-(\d+)$/.exec(n)?.[1]).filter((n): n is string => n !== undefined).map(Number).sort((a, b) => a - b)
 	return revs.length ? join(root, `rev-${revs.at(-1)}`) : null
 }
 
-function saveBoard(from: string, to: string): ExampleMeta["boards"][number]["outline"] {
+function saveBoard(from: string, to: string): Omit<ExampleMeta["boards"][number], "name"> {
 	mkdirSync(to, { recursive: true })
 	const contract = readJson(join(from, "contract.json"))
 	if (contract) writeFileSync(join(to, "contract.json"), JSON.stringify(contract))
@@ -40,8 +41,15 @@ function saveBoard(from: string, to: string): ExampleMeta["boards"][number]["out
 	if (existsSync(join(from, "board", "board.png"))) copyFileSync(join(from, "board", "board.png"), join(to, "board.png"))
 	const enc = lastEnclosure(from)
 	for (const f of CASE_FILES) if (enc && existsSync(join(enc, f))) copyFileSync(join(enc, f), join(to, f))
+	// A robot: its newest chassis, the printed plate and the spec that places the wheels, motors and boards.
+	const ch = lastEnclosure(from, "chassis")
+	const chassis = ch !== null && existsSync(join(ch, "chassis.stl")) && existsSync(join(ch, "spec.json"))
+	if (chassis) {
+		copyFileSync(join(ch, "chassis.stl"), join(to, "chassis.stl"))
+		copyFileSync(join(ch, "spec.json"), join(to, "chassis.json"))
+	}
 	const o = contract?.values?.outline
-	return o ? { widthMm: o.widthMm, heightMm: o.heightMm } : null
+	return { outline: o ? { widthMm: o.widthMm, heightMm: o.heightMm } : null, ...(chassis ? { chassis: true as const } : {}) }
 }
 
 export function saveExample(sourceDir: string, name: string, sentence: string, destRoot = "examples", titleOverride?: string): ExampleMeta {
@@ -54,8 +62,8 @@ export function saveExample(sourceDir: string, name: string, sentence: string, d
 	if (still) writeFileSync(join(dest, "still.png"), still)
 	const spec = readJson(join(sourceDir, "system.json"))
 	const boards: ExampleMeta["boards"] = []
-	if (spec) for (const b of spec.boards as { name: string }[]) boards.push({ name: b.name, outline: saveBoard(join(sourceDir, "boards", b.name), join(dest, "boards", b.name)) })
-	else boards.push({ name: "main", outline: saveBoard(sourceDir, join(dest, "boards", "main")) })
+	if (spec) for (const b of spec.boards as { name: string }[]) boards.push({ name: b.name, ...saveBoard(join(sourceDir, "boards", b.name), join(dest, "boards", b.name)) })
+	else boards.push({ name: "main", ...saveBoard(sourceDir, join(dest, "boards", "main")) })
 	const brief = existsSync(join(sourceDir, "brief.md")) ? readFileSync(join(sourceDir, "brief.md"), "utf8") : ""
 	const title = titleOverride ?? spec?.name ?? (brief.split("\n").find((l) => l.trim()) ?? name).replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "").trim()
 	const meta: ExampleMeta = { name, sentence, title, boards, links: spec?.links ?? [] }

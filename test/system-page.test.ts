@@ -115,3 +115,132 @@ test("a board opened inside the system page gets the embedded run page", async (
 		await hub.close()
 	}
 })
+
+// The page map (user, 11 Nov): one Designs list for every design, one board or several, and every design opens on an
+// Overview, a one-board design too (a design with one board, not a different kind of thing).
+function fakeRun(root: string, id: string, chassis = false) {
+	const dir = join(root, id)
+	mkdirSync(dir, { recursive: true })
+	writeFileSync(join(dir, "brief.md"), "# Brief: indoor rover\n")
+	writeFileSync(join(dir, "trace.jsonl"), [{ at: "2026-11-10T10:00:00Z", type: "run.started", payload: {} }, { at: "2026-11-10T10:02:00Z", type: "design.settled", payload: { settled: true } }].map((e) => JSON.stringify(e)).join("\n") + "\n")
+	writeFileSync(join(dir, "contract.json"), JSON.stringify({ values: { outline: { widthMm: 42, heightMm: 29 } } }))
+	if (chassis) {
+		mkdirSync(join(dir, "chassis", "rev-12"), { recursive: true })
+		writeFileSync(join(dir, "chassis", "rev-12", "chassis.stl"), "stl")
+		writeFileSync(join(dir, "chassis", "rev-12", "spec.json"), "{}")
+	}
+	return dir
+}
+
+test("one Designs list holds systems and one-board designs, each with its board count", async () => {
+	const root = tempDir()
+	fakeSystem(root, "system-a")
+	fakeRun(root, "rover-1")
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const list = (await (await fetch(`${hub.url}/api/designs`)).json()) as { id: string; name: string; boards: number; kind: string }[]
+		assert.deepEqual(list.map((d) => [d.id, d.kind, d.boards]).sort(), [["rover-1", "single", 1], ["system-a", "system", 2]])
+		assert.equal(list.find((d) => d.id === "rover-1")!.name, "indoor rover")
+		// A system's boards are inside their system, never listed as designs of their own.
+		assert.ok(!list.some((d) => d.id.includes(".")))
+	} finally {
+		await hub.close()
+	}
+})
+
+test("a one-board design opens like a system of one board, its chassis included when it has one", async () => {
+	const root = tempDir()
+	fakeRun(root, "rover-1", true)
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const d = (await (await fetch(`${hub.url}/api/systems/rover-1`)).json()) as { single: boolean; spec: { name: string; boards: { name: string }[]; links: unknown[] }; boards: { name: string; runId: string; outline: unknown }[] }
+		assert.equal(d.single, true)
+		assert.equal(d.spec.name, "indoor rover")
+		assert.deepEqual(d.spec.links, [])
+		assert.deepEqual(d.boards.map((b) => [b.name, b.runId]), [["main", "rover-1"]])
+		assert.deepEqual(d.boards[0].outline, { widthMm: 42, heightMm: 29 })
+		// The system page itself serves it.
+		assert.equal((await fetch(`${hub.url}/system?id=rover-1`)).status, 200)
+	} finally {
+		await hub.close()
+	}
+})
+
+test("the Designs page is served, with the shared bar", async () => {
+	const hub = await serveHub({ outRoot: tempDir(), port: 0 })
+	try {
+		const page = await (await fetch(`${hub.url}/designs`)).text()
+		assert.match(page, /<h1>Designs<\/h1>/)
+		assert.match(page, /mountNav\(\{ section: "designs" \}\)/)
+		assert.match(await (await fetch(`${hub.url}/nav.js`)).text(), /export function navHtml/)
+	} finally {
+		await hub.close()
+	}
+})
+
+// pending-fixes: a run without the Cloud polled cloud.jsonl and filled the console with 404s. The link is asked of the
+// hub, which answers null when there is none.
+test("a run's Mozaik Cloud link is asked of the hub: null without one, never a 404", async () => {
+	const root = tempDir()
+	fakeRun(root, "plain-1")
+	const withCloud = fakeRun(root, "cloud-1")
+	writeFileSync(join(withCloud, "cloud.jsonl"), JSON.stringify({ url: "https://app.jigjoy.ai/run/1" }) + "\n" + JSON.stringify({ url: "https://app.jigjoy.ai/run/2" }) + "\n")
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const none = await fetch(`${hub.url}/api/runs/plain-1/cloud`)
+		assert.equal(none.status, 200)
+		assert.deepEqual(await none.json(), { url: null })
+		assert.deepEqual(await (await fetch(`${hub.url}/api/runs/cloud-1/cloud`)).json(), { url: "https://app.jigjoy.ai/run/2" })
+	} finally {
+		await hub.close()
+	}
+})
+
+// A live run's page polls files that may not exist yet (requests.jsonl, ripples.json, report.md…): 95 404s in the
+// console for one scripted rover run. Asked as optional, a missing file is "no content", not an error.
+test("a run file asked as optional answers 204 when it isn't there yet, and the file when it is", async () => {
+	const root = tempDir()
+	const dir = fakeRun(root, "plain-1")
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		assert.equal((await fetch(`${hub.url}/runs/plain-1/files/requests.jsonl?optional=1`)).status, 204)
+		assert.equal((await fetch(`${hub.url}/runs/plain-1/files/requests.jsonl`)).status, 404, "a plain request still says not found")
+		writeFileSync(join(dir, "requests.jsonl"), '{"text":"x"}\n')
+		const r = await fetch(`${hub.url}/runs/plain-1/files/requests.jsonl?optional=1`)
+		assert.equal(r.status, 200)
+		assert.match(await r.text(), /"x"/)
+		// optional never opens a way out of the run's folder.
+		assert.equal((await fetch(`${hub.url}/runs/plain-1/files/..%2F..%2Fetc%2Fpasswd?optional=1`)).status, 204)
+	} finally {
+		await hub.close()
+	}
+})
+
+// The firmware viewer (user, 11 Nov: "something that makes it easier to track code changes and revisions"): each
+// firmware revision's source files, generated ones marked, the build folder left out.
+test("a run's firmware revisions list their source files, generated ones marked, .pio left out", async () => {
+	const root = tempDir()
+	const dir = fakeRun(root, "fw-1")
+	for (const [rev, pins] of [[3, "GPIO4"], [5, "GPIO5"]] as const) {
+		const r = join(dir, "firmware", `rev-${rev}`)
+		mkdirSync(join(r, "include"), { recursive: true })
+		mkdirSync(join(r, "src"), { recursive: true })
+		mkdirSync(join(r, ".pio", "build"), { recursive: true })
+		writeFileSync(join(r, "include", "pins.h"), `// Generated by Bringup from the design contract. Do not edit.\n#define PIN_LED ${pins}\n`)
+		writeFileSync(join(r, "src", "main.cpp"), "// Bringup firmware template.\nvoid setup() {}\n")
+		writeFileSync(join(r, ".pio", "build", "firmware.bin"), "bin")
+	}
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const fw = (await (await fetch(`${hub.url}/api/runs/fw-1/firmware`)).json()) as { revisions: { revision: number; files: { path: string; generated: boolean; hash: string; bytes: number }[] }[] }
+		assert.deepEqual(fw.revisions.map((r) => r.revision), [3, 5])
+		const [a, b] = fw.revisions
+		assert.deepEqual(a.files.map((f) => [f.path, f.generated]), [["include/pins.h", true], ["src/main.cpp", false]])
+		assert.notEqual(a.files[0].hash, b.files[0].hash, "pins.h changed between the revisions")
+		assert.equal(a.files[1].hash, b.files[1].hash, "main.cpp didn't")
+		assert.deepEqual(await (await fetch(`${hub.url}/api/runs/nope/firmware`)).json(), { error: "unknown run" })
+		assert.deepEqual((await (await fetch(`${hub.url}/api/runs/plain-x/firmware`)).json()).revisions ?? [], [])
+	} finally {
+		await hub.close()
+	}
+})

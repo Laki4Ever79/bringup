@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bringup · designs</title>
+<style>
+	@font-face { font-family: "Shoulders"; src: url("/fonts/BigShouldersDisplay.woff") format("woff"); font-weight: 100 900; font-display: swap; }
+	@font-face { font-family: "Instrument"; src: url("/fonts/InstrumentSans.woff") format("woff"); font-weight: 400 700; font-display: swap; }
+	@font-face { font-family: "JBMono"; src: url("/fonts/JetBrainsMono.woff") format("woff"); font-weight: 100 800; font-display: swap; }
+	:root {
+		--paper: #fff; --paper-2: #faf9f6; --rule: #e2ded5; --ink: #16140f; --ink-2: #4b463c; --ink-3: #807865; --signal: #ff4a17; --ok: #1d7a3e; --bad: #b3261e;
+		--display: "Shoulders", "Arial Narrow", sans-serif; --sans: "Instrument", "Helvetica Neue", sans-serif; --mono: "JBMono", ui-monospace, monospace;
+	}
+	body { margin: 0; color: var(--ink); font: 15px/1.45 var(--sans); background: var(--paper-2); }
+	main { max-width: 1100px; margin: 0 auto; padding: 22px max(16px, env(safe-area-inset-left, 0px)) 48px; display: grid; gap: 18px; }
+	h1 { font: 700 34px/1 var(--display); text-transform: uppercase; margin: 0; }
+	.purpose { color: var(--ink-2); margin: 0; }
+	.head { display: flex; align-items: end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+	.start { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--ink-3); }
+	.btn { display: inline-block; border: 1.5px solid var(--ink); background: var(--paper); color: var(--ink); border-radius: 6px; padding: 5px 12px; font: 600 14px var(--sans); text-decoration: none; }
+	.btn.primary { background: var(--ink); color: var(--paper); }
+	.list { background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+	.row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(90px, 1fr) minmax(120px, 1.2fr) minmax(150px, 1.2fr); gap: 12px; padding: 12px 16px; border-top: 1px solid var(--rule); align-items: center; text-decoration: none; color: inherit; }
+	.row:first-child { border-top: 0; }
+	a.row:hover { background: #fff7f3; }
+	.row.headrow { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); background: var(--paper-2); }
+	.name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+	.id { display: block; font: 12px var(--mono); color: var(--ink-3); font-weight: 400; }
+	.boards { font: 13px var(--mono); }
+	.state { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border: 1px solid currentColor; border-radius: 4px; justify-self: start; }
+	.state.ok { color: var(--ok); } .state.bad { color: var(--bad); } .state.other { color: var(--ink-3); }
+	.when { font: 12px var(--mono); color: var(--ink-3); }
+	.empty { padding: 24px 16px; color: var(--ink-3); }
+	@media (max-width: 640px) { .row { grid-template-columns: minmax(0, 1fr) auto; } .row .when, .row.headrow { display: none; } }
+</style>
+</head>
+<body>
+<main>
+	<div class="head">
+		<div style="display:grid;gap:6px">
+			<h1>Designs</h1>
+			<p class="purpose">Every device you've designed, one board or several. Open one for its overview; its boards are one level down.</p>
+		</div>
+		<div class="start"><a class="btn primary" href="/">＋ New design</a><span>or start from a file:</span><a class="btn" href="/builds">a written brief</a><a class="btn" href="/system">a system file</a></div>
+	</div>
+	<div class="list" id="list"><div class="empty">Loading…</div></div>
+</main>
+<script type="module">
+	import { mountNav } from "/nav.js"
+	mountNav({ section: "designs" })
+	const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c])
+	const cls = (d) => (d.settled ? "ok" : /unsettled|failed/.test(d.status) ? "bad" : "other")
+	const list = document.getElementById("list")
+	try {
+		const designs = await (await fetch("/api/designs", { cache: "no-store" })).json()
+		list.innerHTML = designs.length
+			? `<div class="row headrow"><span>Design</span><span>Boards</span><span>State</span><span>Started</span></div>` +
+				designs.map((d) => `<a class="row" href="/system?id=${encodeURIComponent(d.id)}"><span class="name">${esc(d.name)}<span class="id">${esc(d.id)}</span></span><span class="boards">${d.boards} board${d.boards === 1 ? "" : "s"}</span><span class="state ${cls(d)}">${esc(d.status)}</span><span class="when">${esc(new Date(d.startedAt).toLocaleString())}</span></a>`).join("")
+			: `<div class="empty">No designs yet. Describe one on <a href="/">Home</a>.</div>`
+	} catch {
+		list.innerHTML = `<div class="empty">Couldn't load the designs: is the dashboard still running?</div>`
+	}
+</script>
+</body>
+</html>

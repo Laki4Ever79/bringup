@@ -58,14 +58,7 @@
 </head>
 <body>
 <div id="start-screen">
-<header>
-	<a class="logo" href="/">bring<b>up</b></a>
-	<nav>
-		<a href="/builds">My builds</a>
-		<a href="/system">Systems</a>
-		<a href="https://github.com/Laki4Ever79/bringup#readme" target="_blank" rel="noopener">Docs</a>
-	</nav>
-</header>
+
 <main>
 	<section class="hero">
 		<div id="stage">
@@ -90,6 +83,8 @@
 </main>
 </div>
 <script type="module">
+	import { mountNav } from "/nav.js"
+	mountNav({ section: "home" })
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
 	if (window.BRINGUP_PUBLIC) document.body.classList.add("public")
@@ -98,7 +93,8 @@
 	const examples = await fetch("/api/examples").then((r) => r.json()).catch(() => [])
 	// The richest example first; the single board last, named for what it is.
 	examples.sort((a, b) => b.boards.length - a.boards.length)
-	const label = (ex) => (ex.boards.length === 1 ? "Single board" : ex.title)
+	// Each example by its own name; the count of boards is the card's second line.
+	const label = (ex) => ex.title
 	const cache = new Map()
 	let world = null, current = null, typed = false
 
@@ -107,8 +103,9 @@
 		if (cache.has(ex.name)) return cache.get(ex.name)
 		const opt = async (url, as) => { try { const r = await fetch(url); return r.ok ? await r[as]() : null } catch { return null } }
 		const boards = await Promise.all(ex.boards.map(async (b) => {
-			const [circuit, contract, caseStl, caseSpec] = await Promise.all([opt(fileOf(ex, b.name, "circuit.json"), "json"), opt(fileOf(ex, b.name, "contract.json"), "json"), opt(fileOf(ex, b.name, "case.stl"), "arrayBuffer"), opt(fileOf(ex, b.name, "spec.json"), "json")])
-			return { name: b.name, outline: b.outline, circuit, caseStl, caseSpec, parts: contract?.values?.parts ?? [], key: `${ex.name}/${b.name}` }
+			// A robot's board stands on its chassis (example.json says so): the robot is drawn, not a case.
+			const [circuit, contract, caseStl, caseSpec, chassisStl, chassisSpec] = await Promise.all([opt(fileOf(ex, b.name, "circuit.json"), "json"), opt(fileOf(ex, b.name, "contract.json"), "json"), b.chassis ? null : opt(fileOf(ex, b.name, "case.stl"), "arrayBuffer"), b.chassis ? null : opt(fileOf(ex, b.name, "spec.json"), "json"), b.chassis ? opt(fileOf(ex, b.name, "chassis.stl"), "arrayBuffer") : null, b.chassis ? opt(fileOf(ex, b.name, "chassis.json"), "json") : null])
+			return { name: b.name, outline: b.outline, circuit, caseStl, caseSpec, chassisStl, chassisSpec, parts: contract?.values?.parts ?? [], key: `${ex.name}/${b.name}` }
 		}))
 		cache.set(ex.name, boards)
 		return boards
