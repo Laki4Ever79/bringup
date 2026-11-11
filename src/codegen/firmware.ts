@@ -209,8 +209,9 @@ export function linkHeader(s: ContractSnapshot): string {
 			`	} else Wire.write((uint8_t)0);`,
 			`}`,
 		)
-	const i2cIn = receives.find((r) => r.l.kind === "i2c" && r.l.i2c?.role === "controller" && r.m.dir === "receive")
-	if (i2cIn) body.push(`static LinkFrameReader linkI2cReader;`, `static uint32_t linkI2cLastRead = 0;`)
+	// One read per target that sends (a target sends one message per link; the spec check says so).
+	const i2cIns = receives.filter((r, i) => r.l.kind === "i2c" && r.l.i2c?.role === "controller" && receives.findIndex((x) => x.l.id === r.l.id) === i)
+	for (const { l } of i2cIns) body.push(`static LinkFrameReader linkI2cReader_${l.id};`, `static uint32_t linkI2cLastRead_${l.id} = 0;`)
 	if (uart) body.push(`static LinkFrameReader linkUartReader;`)
 	body.push("static void linkBegin() {")
 	if (uart) body.push(`\tSerial1.begin(${L(uart.id)}_BAUD, SERIAL_8N1, PIN_${uart.id}_RX, PIN_${uart.id}_TX);`)
@@ -232,15 +233,15 @@ export function linkHeader(s: ContractSnapshot): string {
 		const uartIn = receives.find((r) => r.l.kind === "uart")
 		if (uartIn) body.push(`\t\tconst uint8_t *p;`, `\t\tuint8_t len;`, `\t\tuint32_t hash;`, `\t\twhile (Serial1.available()) if (linkUartReader.feed((uint8_t)Serial1.read(), hash, p, len)) linkReceived("${uartIn.l.id}", hash, p, len);`)
 		// The controller reads the target's frame, at most every 200 ms: the target answers once per frame.
-		if (i2cIn)
+		for (const i2cIn of i2cIns)
 			body.push(
-				`\t\tif (millis() - linkI2cLastRead >= 200) {`,
-				`\t\t\tlinkI2cLastRead = millis();`,
+				`\t\tif (millis() - linkI2cLastRead_${i2cIn.l.id} >= 200) {`,
+				`\t\t\tlinkI2cLastRead_${i2cIn.l.id} = millis();`,
 				`\t\t\tconst uint8_t *ip;`,
 				`\t\t\tuint8_t ilen;`,
 				`\t\t\tuint32_t ihash;`,
 				`\t\t\tWire.requestFrom((uint8_t)${L(i2cIn.l.id)}_I2C_PEER_ADDRESS, (uint8_t)(8 + sizeof(${i2cIn.m.name}_msg)));`,
-				`\t\t\twhile (Wire.available()) if (linkI2cReader.feed((uint8_t)Wire.read(), ihash, ip, ilen)) linkReceived("${i2cIn.l.id}", ihash, ip, ilen);`,
+				`\t\t\twhile (Wire.available()) if (linkI2cReader_${i2cIn.l.id}.feed((uint8_t)Wire.read(), ihash, ip, ilen)) linkReceived("${i2cIn.l.id}", ihash, ip, ilen);`,
 				`\t\t}`,
 			)
 		if (target) body.push(`\t\tif (linkTargetGot) {`, `\t\t\tlinkReceived("${target.id}", linkTargetHash, linkTargetFrame, linkTargetLen);`, `\t\t\tlinkTargetGot = false;`, `\t\t}`)

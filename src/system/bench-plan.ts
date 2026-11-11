@@ -113,7 +113,7 @@ export function benchPlan(spec: SystemSpec, contracts: Record<string, ContractSn
 
 	steps.push({
 		title: "The product firmware",
-		do: [...boards.map((b) => `${b.name}: flash the product firmware (\`pio run -d ${b.firmwareDir ?? "<firmware>"} -t upload\`)`), "Keep every receiving board on USB: the product firmware deep-sleeps, and a receiver hears a link only while it is awake (USB keeps it awake)"],
+		do: [...boards.map((b) => `${b.name}: flash the product firmware (\`pio run -d ${b.firmwareDir ?? "<firmware>"} -t upload\`)`), "Keep every receiving board on USB: the product firmware deep-sleeps, and a receiver hears a link only while it is awake (USB keeps it awake)", ...spec.links.filter((l) => l.kind === "i2c" && l.i2c).flatMap((l) => [...new Set((l.messages ?? []).map((m) => m.from).filter((f) => f !== l.i2c!.controller))].map((f) => `${f}: keep it on USB too: an I2C target answers the controller only while it is awake, and the product firmware deep-sleeps right after its reading`))],
 		pass: [
 			...expect.map((e) => `${e.board} prints \`${e.prefix} …\` with real values (not the link test's), each time ${e.from} takes a reading`),
 			"This step can't pass on a real board yet: the product firmware prints on UART0 (GPIO20/21), which a Bringup board doesn't wire out, so its LINK lines aren't on the USB port. Steps 3 and 4 prove the link with the same link code",

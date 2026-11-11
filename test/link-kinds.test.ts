@@ -127,3 +127,37 @@ test("the bench plan expects a target's message at the controller", () => {
 	const p = benchPlan(s, { a: wired(s, "a"), b: wired(s, "b") }, { a: "fw/a", b: "fw/b" })
 	assert.deepEqual(p.expect.map((e) => [e.board, e.prefix]), [["a", "LINK L1 reading from b:"]])
 })
+
+// ---- review fixes (phase 1 final review) --------------------------------------------------------------------------
+const hub = (): SystemSpec => ({
+	name: "hub and two sensors",
+	boards: [{ name: "a", brief: "x.md" }, { name: "b", brief: "y.md" }, { name: "c", brief: "z.md" }],
+	links: [
+		{ id: "L1", kind: "i2c", a: { board: "a" }, b: { board: "b" }, i2c: { controller: "a", targets: { b: 0x42 }, pullupsOn: "a" }, cable: { lengthMm: 200 }, messages: [{ ...reading, from: "b" }] },
+		{ id: "L2", kind: "i2c", a: { board: "a" }, b: { board: "c" }, i2c: { controller: "a", targets: { c: 0x43 }, pullupsOn: "a" }, cable: { lengthMm: 200 }, messages: [{ ...reading, from: "c" }] },
+	],
+})
+
+test("a controller with two I2C links reads each target", () => {
+	assert.deepEqual(specErrors(hub()), [])
+	const h = linkHeader(wired(hub(), "a"))
+	assert.match(h, /Wire\.requestFrom\(\(uint8_t\)LINK_L1_I2C_PEER_ADDRESS/)
+	assert.match(h, /Wire\.requestFrom\(\(uint8_t\)LINK_L2_I2C_PEER_ADDRESS/)
+	assert.match(h, /linkReceived\("L2"/)
+})
+
+test("a board on I2C links is the controller on all of them, or the target on exactly one", () => {
+	const mixed = hub()
+	mixed.links[1] = { ...mixed.links[1], a: { board: "b" }, i2c: { controller: "b", targets: { c: 0x43 }, pullupsOn: "b" }, messages: [] }
+	assert.ok(specErrors(mixed).some((e) => /^board b: it is the I2C target on L1 and on other I2C links \(L2\)/.test(e)), specErrors(mixed).join("\n"))
+	const twoTargets = hub()
+	twoTargets.links[1] = { ...twoTargets.links[1], a: { board: "c" }, b: { board: "b" }, i2c: { controller: "c", targets: { b: 0x44 }, pullupsOn: "c" }, messages: [] }
+	assert.ok(specErrors(twoTargets).some((e) => /^board b: it is the I2C target on L1 and on other I2C links/.test(e)), specErrors(twoTargets).join("\n"))
+})
+
+test("the bench plan keeps a sending I2C target on USB too: it answers only while awake", () => {
+	const s = targetSends()
+	const p = benchPlan(s, { a: wired(s, "a"), b: wired(s, "b") }, { a: "fw/a", b: "fw/b" })
+	const product = p.steps.at(-1)!
+	assert.ok(product.do.some((l) => /b: keep it on USB too: an I2C target answers the controller only while it is awake/.test(l)), product.do.join("\n"))
+})
