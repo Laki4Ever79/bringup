@@ -11,3 +11,4 @@ export function removeBoard(plan: Plan, name: string): Plan
 export function removeLink(plan: Plan, id: string): Plan
 export function connect(plan: Plan, a: string, b: string, kind: "uart" | "i2c"): Plan
 export function setBrief(plan: Plan, name: string, brief: string): Plan
+export function afterSave(local: Plan, saved: Plan, editedSince: boolean): Plan

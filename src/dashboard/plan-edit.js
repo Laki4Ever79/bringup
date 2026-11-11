@@ -78,3 +78,9 @@ export function setBrief(plan, name, brief) {
 	p.briefs[name] = brief
 	return p
 }
+// What the plan screen keeps when a save answers. An edit made while the save was in flight stays (it has its own save
+// queued), taking only the hub's new version so that save isn't refused as stale; otherwise the hub's plan is taken,
+// with the screen's own drawing positions.
+export function afterSave(local, saved, editedSince) {
+	return editedSince ? { ...local, version: saved.version } : { ...saved, layout: local.layout }
+}

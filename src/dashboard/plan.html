@@ -104,7 +104,7 @@
 </main>
 <div id="brief"><b id="brief-title"></b><textarea id="brief-text" spellcheck="false"></textarea><div class="row"><button class="btn" id="brief-cancel">Cancel</button><button class="btn primary" id="brief-save">Save brief</button></div></div>
 <script type="module">
-	import { addBoard, connect, moveBoard, removeBoard, removeLink, setBrief } from "/plan-edit.js"
+	import { addBoard, afterSave, connect, moveBoard, removeBoard, removeLink, setBrief } from "/plan-edit.js"
 	import { spendLabel } from "/spend.js"
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
@@ -282,7 +282,9 @@
 	$("brief-save").addEventListener("click", () => { if (briefFor) edit(setBrief(plan, briefFor, $("brief-text").value)); closeBrief() })
 
 	// ── Saving: every edit shows at once, saved 150 ms later in order; a stale save reloads ──
+	let edits = 0 // counts edits, so a save's answer can tell whether the screen changed while it was in flight
 	function edit(next) {
+		edits++
 		plan = next
 		draw()
 		clearTimeout(saveTimer)
@@ -290,11 +292,12 @@
 	}
 	function save() {
 		saving = saving.then(async () => {
+			const sentAt = edits
 			const r = await fetch(`/api/plans/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan }) })
 			if (r.status === 409) { msg("Updated elsewhere; reloaded."); return load() }
 			if (!r.ok) return msg((await r.json().catch(() => ({}))).error ?? "Saving failed.", true)
 			const v = await r.json()
-			apply({ ...v, plan: { ...v.plan, layout: plan.layout } })
+			apply({ ...v, plan: afterSave(plan, v.plan, edits !== sentAt) })
 		})
 	}
 
