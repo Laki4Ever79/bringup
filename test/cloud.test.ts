@@ -1,7 +1,7 @@
 import { afterEach, test } from "node:test"
 import assert from "node:assert/strict"
 import { createHuman } from "@mozaik-ai/core"
-import { onceNoKeyWarning, startCloudSession } from "../src/runner/cloud.ts"
+import { onceNoKeyWarning, startCloudSession, takeNoCloudFlag } from "../src/runner/cloud.ts"
 import { makeEvent } from "../src/events.ts"
 import { BringupState, emit, join, startRuntime, state } from "../src/runtime.ts"
 import { tempDir, waitFor } from "./helpers.ts"
@@ -63,6 +63,24 @@ test("the paired machine's cached key is used, and BRINGUP_CLOUD=off wins over a
 	startCloudSession(() => [], { env: {}, readCached: () => ({ projectKey: "mk_cached" }), create: (c) => (keys.push(c.projectKey), fake()), log: () => {} })
 	assert.deepEqual(keys, ["mk_cached"])
 	assert.equal(startCloudSession(() => [], { env: { BRINGUP_CLOUD: "off", MOZAIK_API_KEY: "k" }, readCached: none, create: fake, log: () => {} }), null)
+})
+
+// BRINGUP_CLOUD=off skipped our session but left the keys, so core's per-loop clients (one per agent loop) still
+// read the key, or the paired machine's cached one, and sent every loop to Mozaik Cloud.
+test("BRINGUP_CLOUD=off also turns off core's per-loop clients: both keys are blanked", () => {
+	const env: NodeJS.ProcessEnv = { BRINGUP_CLOUD: "off", MOZAIK_API_KEY: "k", MOZAIK_PROJECT_KEY: "p" }
+	assert.equal(startCloudSession(() => [], { env, readCached: () => ({ projectKey: "mk_cached" }), create: () => null as never, log: () => {} }), null)
+	assert.equal(env.MOZAIK_API_KEY, "")
+	assert.equal(env.MOZAIK_PROJECT_KEY, "")
+})
+
+test("--no-cloud is taken out of the arguments and sets BRINGUP_CLOUD=off for this process and its children", () => {
+	const env: NodeJS.ProcessEnv = {}
+	assert.deepEqual(takeNoCloudFlag(["briefs/rover.md", "--no-cloud", "--mock"], env), ["briefs/rover.md", "--mock"])
+	assert.equal(env.BRINGUP_CLOUD, "off")
+	const untouched: NodeJS.ProcessEnv = {}
+	assert.deepEqual(takeNoCloudFlag(["briefs/rover.md", "--mock"], untouched), ["briefs/rover.md", "--mock"])
+	assert.deepEqual(untouched, {})
 })
 
 test("the real exporter sends our events in one session (fake fetch, no network)", async () => {
