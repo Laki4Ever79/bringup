@@ -88,7 +88,13 @@ export function pinsHeader(s: ContractSnapshot): string {
 	if (wake?.gpio != null) lines.push(`#define PIN_USB_SENSE ${pinSpelling(profile, wake.gpio)}`)
 	// The console the firmware logs on and the simulator reads (hal.h): the profile's UART on its fixed pins. The ESP32
 	// keeps its UART0 + USB console in hal.h.
-	if (other?.console) lines.push(`#define BRINGUP_CONSOLE_INSTANCE ${other.console.instance}`, `#define BRINGUP_CONSOLE_TX ${other.console.tx}`, `#define BRINGUP_CONSOLE_RX ${other.console.rx}`)
+	// The console pins spelled as the core wants them, like every other pin (PA2 on STM32duino, 0 on the RP2040 and nRF52
+	// cores, which number pins by the same index the profile uses).
+	const consolePin = (name: string) => {
+		const index = other ? pinIndex(other, name) : null
+		return index === null ? name : pinSpelling(other, index)
+	}
+	if (other?.console) lines.push(`#define BRINGUP_CONSOLE_INSTANCE ${other.console.instance}`, `#define BRINGUP_CONSOLE_TX ${consolePin(other.console.tx)}`, `#define BRINGUP_CONSOLE_RX ${consolePin(other.console.rx)}`)
 	lines.push(`#define BRINGUP_REVISION ${s.revision}`, "")
 	return lines.join("\n")
 }

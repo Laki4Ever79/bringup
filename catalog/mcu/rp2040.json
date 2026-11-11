@@ -677,10 +677,10 @@
 	},
 	"support": [],
 	"currents": {
-		"sleepUa": 180,
+		"sleepUa": 1300,
 		"cpuMa": 25,
 		"supplyMinMa": 100,
-		"source": "RP2040 datasheet (build 2025-02-20) Table 637: DORMANT 0.18 mA typ on DVDD, the floor the firmware can reach (no deep sleep with RAM off); run current at 133 MHz only as a graph (Fig. 172), 25 mA is read from it, an estimate. No minimum supply current stated; 100 mA is Bringup's margin"
+		"source": "RP2040 datasheet (build 2025-02-20): the firmware sleeps in SLEEP (clocks on the crystal, PLLs off, RTC alarm wake), for which the datasheet gives no single figure; 1.3 mA is an upper estimate from the Pico datasheet's board-level sleep figures (0.8\u20131.3 mA, unverified), chosen high so battery estimates err short. DORMANT is 0.18 mA (Table 637) but stops the RTC. Run current at 133 MHz only as a graph (Fig. 172): 25 mA read from it, an estimate. No minimum supply current stated; 100 mA is Bringup's margin"
 	},
 	"firmware": {
 		"platform": "raspberrypi@1.20.0",

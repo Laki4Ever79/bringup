@@ -13,8 +13,8 @@ and adding a vendor means adding profiles, not editing agents.
 | STM32L031K6T6 | ST | yes (LQFP32) | ststm32 Arduino | none (Renode has L071/L072 only) | lowest sleep current (0.6 µA) |
 | STM32F103C8T6 | ST | yes (LQFP48, 8 MHz crystal) | ststm32 Arduino | Renode `stm32f103` | native USB (1.5k D+ pull-up placed) |
 | STM32WB55CGU6 | ST | not yet: RF design, SMPS, 32 MHz crystal | ststm32 Arduino (+ STM32duinoBLE) | none | BLE, no modular grant |
-| RP2040 | Raspberry Pi | not yet: QSPI flash | raspberrypi Arduino | none | |
-| nRF52840 (MDBT50Q-1MV2) | Nordic | not yet: module land pattern | nordicnrf52 Arduino (Adafruit) | Renode `nrf52840` | BLE, FCC modular grant |
+| RP2040 | Raspberry Pi | not yet: QSPI flash | raspberrypi (Arduino mbed core): builds | none | sleeps in SLEEP (RTC alarm) |
+| nRF52840 (MDBT50Q-1MV2) | Nordic | not yet: module land pattern | nordicnrf52 (Adafruit core): builds, BLE via Bluefruit | Renode `nrf52840`: boots to the banner | BLE, FCC modular grant |
 
 ## Profiles
 
@@ -100,7 +100,7 @@ What each backend models, so nobody reads more into a pass than is there:
 | Espressif QEMU (esp32c3) | CPU, GPIO, UART, timers, TWAI | radio, I2C, I2S |
 | Renode stm32g0 | CPU, GPIO, USART, I2C, SPI, timers, EXTI, DMA | LPUART (the console is a USART for that reason) |
 | Renode stm32f103 | CPU, GPIO, USART, I2C, timers, EXTI, DMA | SPI, ADC |
-| Renode nrf52840 | CPU, GPIO, UART, I2C, SPI, timers, radio medium | SoftDevice behaviour untested |
+| Renode nrf52840 | CPU, GPIO, UARTE, timers, radio medium | TWIM (EasyDMA I2C: the core's Wire hangs), FICR (device id reads 0), the SoftDevice |
 
 ## Setup
 
@@ -127,7 +127,10 @@ npm run setup -- --vendors    # PlatformIO ststm32 19.6.0 (its STM32duino 2.12 f
   5 min on a 10k-cycle page); a power loss drops the readings since the last erase.
 - STM32 factory-test, data-collection and model-check firmware: their drivers are ESP32-only, so only the product and
   link-test envs are generated for STM32.
-- RP2040 and nRF52 HAL branches are stubs (#error): their toolchains are installed, the firmware port is not done.
+- RP2040 and nRF52840 firmware build; neither is tried on hardware. The nRF52840 boots in Renode to its banner, then
+  waits forever at the first I2C transfer: Renode's twi0 doesn't model TWIM (EasyDMA). Its BLE (Bluefruit: the same
+  GATT service and BTHome as the ESP32) is untested in simulation (the S140 SoftDevice isn't loaded). RP2040 sleep
+  current is an estimate. Their link-test envs are generated but not built.
 - The nRF52840 module's land pattern isn't entered.
 - RF design for bare radio chips (matching, antenna) is out of scope: use certified modules.
 - Firmware flash/RAM budgets (model-fit checks) are measured for the ESP32-C3 only.

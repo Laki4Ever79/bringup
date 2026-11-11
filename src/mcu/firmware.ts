@@ -1,5 +1,5 @@
 import type { McuProfile } from "./profile.ts"
-import { pinName } from "./pins.ts"
+import { pinIndex, pinName } from "./pins.ts"
 
 // The firmware side of a profile (docs/mcu.md, Firmware): the PlatformIO env each build runs under, the env's text,
 // and how pins.h spells a pin. One template (templates/fw) builds for every profile; its HAL (include/hal.h) picks the
@@ -25,6 +25,16 @@ export function pinSpelling(p: McuProfile | null | undefined, index: number): st
 // STM32duino Low Power with the RTC it sleeps on (July 2025 releases, built against core 2.12 / framework 4.21200).
 const HAL_LIBS: Partial<Record<McuProfile["firmware"]["arch"], string[]>> = {
 	stm32: ["EEPROM", "stm32duino/STM32duino Low Power@1.5.0", "stm32duino/STM32duino RTC@1.8.0"],
+}
+// RP2040 (Arduino's mbed core, framework-arduino-mbed 4.6.0) and nRF52 (Adafruit nRF52 core 1.7.0): everything hal.h
+// uses ships with the core (Wire, mbed's LittleFileSystem and FlashIAPBlockDevice; Adafruit's InternalFileSystem and
+// Bluefruit52Lib), so nothing is added.
+
+// Core libraries the env must not build. PlatformIO's library finder (chain mode) follows every literal #include, also
+// in code an #if leaves out: main.cpp's Wi-Fi path (#include <WiFi.h>) would pull in the mbed core's WiFi library,
+// which only builds for boards with a WHD radio (Portenta) and fails on the RP2040.
+const HAL_LIB_IGNORE: Partial<Record<McuProfile["firmware"]["arch"], string[]>> = {
+	rp2040: ["WiFi"],
 }
 // Compiler flags hal.h needs on each core. None so far: newlib-nano's float printf (PIO_FRAMEWORK_ARDUINO_NANOLIB_FLOAT_PRINTF)
 // would cost about 19 KB of the STM32G031's 64 KB, so hal.h prints readings with halFixed() instead.
@@ -52,6 +62,7 @@ export function platformioEnvs(p: McuProfile): string {
 			`framework = ${f.framework}`,
 			...iniLines,
 			...(libs.length ? ["lib_deps =", ...libs.map((l) => `    ${l}`)] : []),
+			...(HAL_LIB_IGNORE[f.arch]?.length ? [`lib_ignore = ${HAL_LIB_IGNORE[f.arch]!.join(", ")}`] : []),
 			...(flags.length ? ["build_flags =", ...flags.map((x) => `    ${x}`)] : []),
 		].join("\n")
 	}
