@@ -20,6 +20,8 @@ export interface RenodeMachine {
 	name: string
 	profile: McuProfile
 	elf: string
+	// This machine's UART on the link hub, when it differs from opts.link.uart (two chips, two instances).
+	linkUart?: string
 }
 
 // The .resc script for one or more machines; with link set, each machine's link UART joins one hub (a cable).
@@ -34,7 +36,7 @@ export function renodeScript(machines: RenodeMachine[], opts: { runForS: number;
 			`sysbus LoadELF @${m.elf}`,
 			`showAnalyzer sysbus.${m.profile.sim.consoleUart} Antmicro.Renode.Analyzers.LoggingUartAnalyzer`,
 		)
-		if (opts.link) lines.push(`connector Connect sysbus.${opts.link.uart} link`)
+		if (opts.link) lines.push(`connector Connect sysbus.${m.linkUart ?? opts.link.uart} link`)
 	}
 	lines.push(`emulation RunFor "${opts.runForS}"`, "quit")
 	return lines.join("\n") + "\n"

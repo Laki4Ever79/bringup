@@ -1,0 +1,18 @@
+{
+	"name": "two STM32 loggers over UART",
+	"boards": [
+		{ "name": "logger", "brief": "../logger-stm32.md" },
+		{ "name": "hub", "brief": "../logger-stm32.md" }
+	],
+	"links": [
+		{
+			"id": "L1",
+			"kind": "uart",
+			"a": { "board": "logger" },
+			"b": { "board": "hub" },
+			"baud": 115200,
+			"cable": { "lengthMm": 300 },
+			"messages": [{ "name": "reading", "from": "logger", "fields": [{ "name": "tempCx100", "type": "i16" }, { "name": "rhx100", "type": "u16" }] }]
+		}
+	]
+}

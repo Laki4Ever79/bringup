@@ -27,7 +27,7 @@ export interface SystemRunOptions {
 	pollMs?: number
 	start?: typeof startRunProcess
 	// Run each UART link's two firmwares in QEMU, joined by a virtual cable, once the checks pass (linktest.ts).
-	linkTest?: { root: string; pio: string | null; qemu: boolean }
+	linkTest?: { root: string; pio: string | null; qemu: boolean; renode?: boolean }
 }
 
 export interface SystemResult {

@@ -11,7 +11,7 @@ import { state } from "../runtime.ts"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 import { LEGACY_MCU_ID, mcuProfileOf } from "../mcu/profile.ts"
-import { solvePins } from "../mcu/solver.ts"
+import { solvePins, type Need } from "../mcu/solver.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
 export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics"> & { parts: ContractValues["parts"] } = {
@@ -216,6 +216,15 @@ export function enclosureFromText(t: string): EnclosureMode | null {
 export const ENCLOSURE_MODE_REQUEST = /bare board|no (case|enclosure)\b|without (a |any )?(case|enclosure)|drop the case|remove the case|own (housing|enclosure)|existing (housing|enclosure|product)|(add|bring back|we want) (a|the) case/i
 // The scripted architect's answer to a board's links (docs/system.md): the link connector on an edge (the link's own, or
 // the first with no connector, top first), then a UART link's TX and RX on free GPIOs. One field per turn.
+// Free pins for a link's signals, in the order asked: the ESP32-C3's link GPIOs as always (its matrix routes any
+// peripheral anywhere); on another chip its profile's solver, so a UART's TX and RX land on one instance's pins.
+function linkPins(s: ContractSnapshot, needs: Need[], taken: number[]): number[] | null {
+	const chip = mcuProfileOf(s.values.parts)
+	if (!chip || chip.id === LEGACY_MCU_ID) return FREE_GPIOS.filter((g) => !taken.includes(g))
+	const r = solvePins(chip, needs, taken)
+	return r.ok ? r.pins.map((p) => p.index) : null
+}
+
 export function linkProposal(s: ContractSnapshot): { field: "connectors" | "pins"; value: unknown; reason: string } | null {
 	const { connectors = [], pins = [], parts = [] } = s.values
 	for (const l of s.values.links ?? []) {
@@ -229,8 +238,8 @@ export function linkProposal(s: ContractSnapshot): { field: "connectors" | "pins
 		// An I2C link on a board with no bus yet: I2C_SDA and I2C_SCL straight to the connector.
 		if (l.kind === "i2c" && !pins.some((p) => p.signal === "I2C_SDA")) {
 			const used = new Set(pins.map((p) => p.gpio))
-			const free = FREE_GPIOS.filter((g) => !used.has(g))
-			if (free.length < 2) return null
+			const free = linkPins(s, [{ signal: "I2C_SDA", kind: "i2c", role: "SDA", group: "I2C" }, { signal: "I2C_SCL", kind: "i2c", role: "SCL", group: "I2C" }], [...used])
+			if (!free || free.length < 2) return null
 			return { field: "pins", value: [...pins, { signal: "I2C_SDA", gpio: free[0], partRef: l.connector, partPin: "IO1" }, { signal: "I2C_SCL", gpio: free[1], partRef: l.connector, partPin: "IO2" }], reason: `${l.id}'s I2C bus: SDA and SCL to the connector` }
 		}
 		if (l.kind === "uart" && l.txOn) {
@@ -241,8 +250,8 @@ export function linkProposal(s: ContractSnapshot): { field: "connectors" | "pins
 			if (want.every((w) => pins.some((p) => p.signal === w.signal && p.partRef === l.connector && p.partPin === w.partPin))) continue
 			const kept = pins.filter((p) => !want.some((w) => w.signal === p.signal))
 			const used = new Set(kept.map((p) => p.gpio))
-			const free = FREE_GPIOS.filter((g) => !used.has(g))
-			if (free.length < 2) return null
+			const free = linkPins(s, want.map((w) => ({ signal: w.signal, kind: "uart" as const, role: w.signal.endsWith("_TX") ? "TX" : "RX", group: l.id })), [...used])
+			if (!free || free.length < 2) return null
 			return { field: "pins", value: [...kept, ...want.map((w, i) => ({ signal: w.signal, gpio: free[i], partRef: l.connector, partPin: w.partPin }))], reason: `${l.id}'s UART: TX and RX on the connector pins the system gives` }
 		}
 	}
