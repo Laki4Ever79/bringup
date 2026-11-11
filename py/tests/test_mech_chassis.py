@@ -45,6 +45,17 @@ class ChassisTest(unittest.TestCase):
             build(small)
         self.assertIn("main", str(e.exception))
 
+    # Final review: only boards were checked; a battery, caster or sensor off the plate still built.
+    def test_a_battery_off_the_plate_is_refused_with_a_reason(self):
+        spec = dict(SPEC, battery=dict(SPEC["battery"], xMm=-70))
+        with self.assertRaisesRegex(ChassisError, "battery"):
+            build(spec)
+
+    def test_a_caster_off_the_plate_is_refused_with_a_reason(self):
+        spec = dict(SPEC, caster=dict(SPEC["caster"], xMm=-80))
+        with self.assertRaisesRegex(ChassisError, "caster"):
+            build(spec)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -263,3 +263,10 @@ test("the battery label has a short form for narrow stages", async () => {
 	assert.equal(batteryLabel({ days: 64.4, targetDays: null, measured: true, source: "fake" }), "64 days measured (fake)")
 	assert.equal(batteryLabel({ days: 64.4, targetDays: null, measured: false, short: true }), "64 d est.")
 })
+
+// A nested field (a robot's mechanics) reads per leaf, not as two JSON blobs.
+test("a nested field's change reads leaf by leaf: chassis.plateMm 150×140 → 150×120", () => {
+	const before = { drive: { kind: "differential", trackMm: 160, motor: "POLOLU-2367" }, chassis: { plateMm: [150, 140], thicknessMm: 3 } }
+	const after = { drive: { kind: "differential", trackMm: 140, motor: "POLOLU-2367" }, chassis: { plateMm: [150, 120], thicknessMm: 3 } }
+	assert.deepEqual(contractDiff("mechanics", before, after), ["~ drive.trackMm 160 → 140", "~ chassis.plateMm 150×140 → 150×120"])
+})

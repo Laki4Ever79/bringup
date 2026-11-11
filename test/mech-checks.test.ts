@@ -139,3 +139,9 @@ test("a failed simulated drive wakes mechanics and firmware; one that couldn't r
 	assert.deepEqual(checkConsistency(c, { drive: drive("not run") }).filter((v) => v.kind === "mech-drive"), [])
 	assert.deepEqual(checkConsistency(c, { drive: drive("pass") }).filter((v) => v.kind === "mech-drive"), [])
 })
+
+// Final review: a chassis board that matches no board was silently left out of the mass and fit.
+test("a chassis board this design doesn't have is flagged, not silently left off the plate", () => {
+	const { c, cat } = variant((v) => v.mechanics.chassis.boards.push({ name: "sensor-board", at: { xMm: -40, yMm: 0 }, rotDeg: 0 }))
+	assert.match(msg(c, cat, "mech-fit"), /sensor-board/)
+})

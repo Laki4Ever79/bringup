@@ -29,10 +29,24 @@ class ChassisError(Exception):
 def _check(spec):
     p = spec["plate"]
     hl, hw = p["lengthMm"] / 2, p["widthMm"] / 2
+
     for b in spec["boards"]:
         w, h = (b["heightMm"], b["widthMm"]) if b["rotDeg"] in (90, 270) else (b["widthMm"], b["heightMm"])
         if abs(b["xMm"]) + w / 2 > hl + 1e-6 or abs(b["yMm"]) + h / 2 > hw + 1e-6:
             raise ChassisError(f"board {b['name']} ({w} x {h} mm at {b['xMm']}, {b['yMm']}) doesn't fit on the {p['lengthMm']} x {p['widthMm']} mm plate")
+
+    def on_plate(what, x, y, w, h):
+        if abs(x) + w / 2 > hl + 1e-6 or abs(y) + h / 2 > hw + 1e-6:
+            raise ChassisError(f"the {what} ({w:g} x {h:g} mm at {x:g}, {y:g}) doesn't fit on the {p['lengthMm']} x {p['widthMm']} mm plate")
+
+    bat = spec["battery"]
+    on_plate("battery", bat["xMm"], bat["yMm"], bat["sizeMm"][0], bat["sizeMm"][1])
+    c = spec["caster"]
+    xs = [c["xMm"] + dx for dx, _ in c["holesMm"]]
+    ys = [dy for _, dy in c["holesMm"]]
+    on_plate("caster's bolt holes", (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs), max(ys) - min(ys))
+    sen = spec["sensor"]
+    on_plate("sensor bracket", sen["xMm"] - sen["sizeMm"][2] / 2 - WALL / 2, sen["yMm"], WALL, sen["sizeMm"][0] + 2 * WALL)
 
 
 def _board_holes(b):

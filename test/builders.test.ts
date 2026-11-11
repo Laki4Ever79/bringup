@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { BringupState, emit, join, startRuntime } from "../src/runtime.ts"
-import { createBuilder } from "../src/agents/builders.ts"
+import { createBuilder, driveSummary } from "../src/agents/builders.ts"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { stubBoard, stubEnclosure } from "../src/tools/stubs.ts"
 import { createChangeDesk } from "../src/change-control.ts"
@@ -199,4 +199,20 @@ test("stubs open the floor under each microphone where the board places it, and 
 	assert.deepEqual(checkConsistency(s, { board, enclosure }).filter((v) => v.kind === "port-missing"), [])
 	const v = checkConsistency(s, { board, enclosure: stale }).filter((x) => x.kind === "port-missing")
 	assert.deepEqual(v.map((x) => x.affects), [["enclosure"]])
+})
+
+// The Drive tile reads how the simulated drive went from artifact.ready (src/dashboard/lanes.js).
+test("a builder's summary rides on artifact.ready; the drive's says its result and the first failed segment", async () => {
+	assert.deepEqual(driveSummary({ revision: 3, dir: "/d", result: "fail", reason: "x", segments: [{ name: "edge crossed", pass: false, detail: "" }, { name: "top speed", pass: false, detail: "" }] }), { result: "fail", failed: "edge crossed" })
+	assert.deepEqual(driveSummary({ revision: 3, dir: "/d", result: "pass", reason: "", segments: [] }), { result: "pass" })
+	const state = new BringupState(tempDir())
+	startRuntime(state, undefined, null)
+	const events = recorder()
+	const desk = createChangeDesk()
+	join(desk)
+	join(createBuilder({ kind: "enclosure", inputs: ["outline"], summary: () => ({ note: "hi" }), build: async ({ revision }) => ({ ...fixtureArtifacts().enclosure!, revision }) as never }))
+	const r = state.contract.propose({ field: "outline", value: { widthMm: 50, heightMm: 30, thicknessMm: 1.6 }, by: "architect", baseVersion: 0 } as never)
+	emit(makeEvent("contract.changed", desk.getId(), { field: "outline", version: (r as { version: number }).version, revision: (r as { revision: number }).revision, by: "architect" }), desk.getId())
+	await waitFor(() => events.some((e) => e.type === "artifact.ready"))
+	assert.deepEqual(events.find((e) => e.type === "artifact.ready")!.payload, { kind: "enclosure", revision: 1, enclosure: { note: "hi" } })
 })

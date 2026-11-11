@@ -39,6 +39,8 @@ def course_xml(step_h):
         ("wall_right", (FRONT_WALL_X + BACK_WALL_X) / 2, -SIDE_WALL_Y - 0.01, (FRONT_WALL_X - BACK_WALL_X) / 2, 0.01),
     ]
     xml = "".join(f'<geom name="{n}" type="box" pos="{x} {y} 0.15" size="{sx} {sy} 0.15" rgba=".7 .7 .7 1"/>' for n, x, y, sx, sy in walls)
+    if step_h <= 0:
+        return xml  # a brief with no edge: a flat room
     step_len = (FRONT_WALL_X - STEP_X) / 2
     xml += f'<geom name="step" type="box" pos="{STEP_X + step_len} 0 {step_h / 2}" size="{step_len} {SIDE_WALL_Y} {step_h / 2}" rgba=".5 .5 .6 1"/>'
     return xml
@@ -188,11 +190,12 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
         # The caster is the last wheel to meet the step: past it means the whole rover climbed (nothing passes through).
         {"name": "edge crossed", "pass": bool(caster_x > STEP_X + caster_r), "detail": f"the caster reached x = {caster_x:.2f} m (the step is {step_h * 1000:g} mm at {STEP_X} m)"},
         {"name": "no wall contact", "pass": wall_contact is None, "detail": f"touched {wall_contact[1]} at {wall_contact[0]:.2f} s" if wall_contact else f"the plate's corners came within {closest * 1000:.0f} mm of a wall (any side: the sensor looks ahead only)"},
-        {"name": "kept its distance", "pass": bool(nearest_ahead >= spec["stopBeforeWallMm"]), "detail": (f"driving forward, it came {nearest_ahead:.0f} mm from what was ahead (the brief: at least {spec['stopBeforeWallMm']} mm)" if nearest_ahead < math.inf else f"never drove toward anything in range (the brief: at least {spec['stopBeforeWallMm']} mm)")},
+        # Never driving toward anything it could see is not tested, so not a pass.
+        {"name": "kept its distance", "pass": bool(nearest_ahead < math.inf and nearest_ahead >= spec["stopBeforeWallMm"]), "detail": (f"driving forward, it came {nearest_ahead:.0f} mm from what was ahead (the brief: at least {spec['stopBeforeWallMm']} mm)" if nearest_ahead < math.inf else f"not tested: it never drove toward anything in range (the brief: at least {spec['stopBeforeWallMm']} mm)")},
         {"name": "turned away", "pass": turned_at is not None, "detail": "turned more than 45° from its start" if turned_at else "never turned away"},
         {"name": "kept driving", "pass": bool(moved_after_turn >= 0.3), "detail": f"{moved_after_turn:.2f} m after turning (nothing ahead in range: the reading is -1, not 0 mm)"},
         {"name": "top speed", "pass": bool(top_speed >= 0.9 * target), "detail": f"{top_speed:.2f} m/s (target {target} m/s, 90 % needed)"},
-        {"name": "peak current", "pass": bool(peak_a <= spec.get("driverPeakA", math.inf)), "detail": f"{peak_a:.2f} A per motor (driver peak {spec.get('driverPeakA', '?')} A)"},
+        {"name": "peak current", "pass": bool(peak_a <= (spec.get("driverPeakA") or math.inf)), "detail": f"{peak_a:.2f} A per motor (driver peak {spec['driverPeakA']} A)" if spec.get("driverPeakA") else f"{peak_a:.2f} A per motor (driver peak unknown: not checked)"},
     ]
     failed = [s for s in segments if not s["pass"]]
     reason = "; ".join(f"{s['name']}: {s['detail']}" for s in failed) if failed else "every segment passed"

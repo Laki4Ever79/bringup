@@ -12,6 +12,12 @@ import { sensorDriver } from "../codegen/firmware.ts"
 export const STOP_MARGIN = 1.5
 export const SLOW_ZONE_MM = 300
 
+// The signals the rover firmware drives that the contract hasn't put on a GPIO yet (roverHeader would write -1).
+export const ROVER_SIGNALS = ["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2", "I2C_SDA", "I2C_SCL"]
+export function unassignedRoverPins(s: ContractSnapshot): string[] {
+	return ROVER_SIGNALS.filter((sig) => !(s.values.pins ?? []).some((p) => p.signal === sig && typeof p.gpio === "number" && p.gpio >= 0))
+}
+
 export function roverHeader(s: ContractSnapshot): string {
 	const v = s.values
 	const mech = v.mechanics!, motion = v.motion!
