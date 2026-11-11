@@ -2,7 +2,7 @@
 // Mozaik runtime per process, so each board works exactly as it does alone), in parallel. The system hands each board
 // its links, waits for the boards to settle, checks the links between them, and sends each finding to the board that
 // can fix it, as a change request. It ends when every board has settled with its links and the checks are clean.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { appendRequest } from "../runner/requests.ts"
@@ -12,6 +12,7 @@ import { systemChecks, type SystemFinding } from "./checks.ts"
 import { boardLinks } from "./derive.ts"
 import { linkTests as runLinkTests, type LinkTest } from "./linktest.ts"
 import { cableMarkdown, systemReport, wirevizYaml } from "./outputs.ts"
+import { benchPlan, benchPlanMarkdown } from "./bench-plan.ts"
 import type { SystemSpec } from "./spec.ts"
 
 export interface SystemRunOptions {
@@ -98,9 +99,21 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 				return [b.name, existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as ContractSnapshot) : undefined]
 			}),
 		)
+	// Each board's newest firmware folder (firmware/rev-N), for the bench plan's flash commands; null before its first build.
+	const firmwareDirs = (): Record<string, string | null> =>
+		Object.fromEntries(
+			spec.boards.map((b) => {
+				const root = join(b.run ?? boardDir(outDir, b.name), "firmware")
+				const revs = existsSync(root) ? readdirSync(root).map((n) => /^rev-(\d+)$/.exec(n)?.[1]).filter((n): n is string => n !== undefined).map(Number) : []
+				return [b.name, revs.length ? join(root, `rev-${Math.max(...revs)}`) : null]
+			}),
+		)
 	const write = (contracts: Record<string, ContractSnapshot | undefined>, findings: SystemFinding[], status: string) => {
 		writeFileSync(join(outDir, "cable.md"), cableMarkdown(spec, contracts))
 		writeFileSync(join(outDir, "cable.yml"), wirevizYaml(spec, contracts))
+		const plan = benchPlan(spec, contracts, firmwareDirs())
+		writeFileSync(join(outDir, "bench-plan.md"), benchPlanMarkdown(plan))
+		writeFileSync(join(outDir, "bench-plan.json"), JSON.stringify(plan, null, 2))
 		writeFileSync(join(outDir, "system-findings.json"), JSON.stringify(findings, null, 2))
 		writeFileSync(join(outDir, "system-report.md"), systemReport(spec, contracts, findings, status, sent, tests))
 		// The same, for the dashboard's system page.

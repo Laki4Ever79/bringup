@@ -7,6 +7,7 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { buildLinkTestFirmware, prepareFirmware } from "../tools/firmware.ts"
 import { mergeFlash, runLinkedPair } from "../tools/emulator.ts"
 import type { SystemSpec } from "./spec.ts"
+import { expectedValues } from "./bench-plan.ts"
 
 export interface LinkTest {
 	link: string
@@ -15,8 +16,17 @@ export interface LinkTest {
 	detail: string
 }
 
-// What the link-test firmware sends (main.cpp LINK_TEST: 21.50 °C, 40.25 %RH), as each known field carries it.
-const EXPECTED: Record<string, string> = { tempCx100: "2150", rhx100: "4025", tempC: "21.50", rh: "40.25", ok: "1" }
+// The fields a received line carries (`name=value`), as numbers.
+export function lineValues(line: string): Record<string, number> {
+	return Object.fromEntries([...line.matchAll(/\b(\w+)=(-?\d+(?:\.\d+)?)\b/g)].map((m) => [m[1], Number(m[2])]))
+}
+
+// The fields whose value isn't the link test's known one (bench-plan.ts expectedValues): printed with two decimals, so
+// equal within 0.005.
+export function wrongFields(line: string, expected: Record<string, number>): string[] {
+	const got = lineValues(line)
+	return Object.entries(expected).filter(([k, v]) => got[k] === undefined || Math.abs(got[k] - v) > 0.005).map(([k]) => k)
+}
 
 export async function linkTests(spec: SystemSpec, contracts: Record<string, ContractSnapshot | undefined>, env: { root: string; pio: string | null; qemu: boolean }, outDir: string): Promise<LinkTest[]> {
 	const out: LinkTest[] = []
@@ -58,8 +68,8 @@ export async function linkTests(spec: SystemSpec, contracts: Record<string, Cont
 				problems.push(`${to} never received ${m.name} from ${m.from}`)
 				continue
 			}
-			const wrong = m.fields.filter((f) => !new RegExp(`\\b${f.name}=${EXPECTED[f.name] ?? "0(\\.00)?"}\\b`).test(line))
-			if (wrong.length) problems.push(`${to} received ${m.name} with ${wrong.map((f) => f.name).join(", ")} wrong: ${line.trim()}`)
+			const wrong = wrongFields(line, expectedValues(m.fields))
+			if (wrong.length) problems.push(`${to} received ${m.name} with ${wrong.join(", ")} wrong: ${line.trim()}`)
 		}
 		for (const [board, text] of Object.entries(heard)) if (/unknown definition/.test(text)) problems.push(`${board} dropped a frame built against another definition`)
 		out.push({ link: l.id, ran: true, passed: problems.length === 0, detail: problems.length ? problems.join("; ") : `both boards booted in QEMU, joined by a virtual cable; ${(l.messages ?? []).map((m) => `${m.name} arrived from ${m.from} with the known values`).join("; ") || "no messages defined"}` })

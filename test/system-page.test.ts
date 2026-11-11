@@ -14,6 +14,7 @@ function fakeSystem(root: string, id: string) {
 	writeFileSync(join(dir, "system.json"), JSON.stringify(spec))
 	writeFileSync(join(dir, "system-state.json"), JSON.stringify({ status: "settled: every board settled with its links", settled: true, findings: [], linkTests: [{ link: "L1", ran: true, passed: true, detail: "reading arrived" }], asked: [{ board: "logger", text: "expose L1" }] }))
 	writeFileSync(join(dir, "cable.md"), "# Cables\n\n## L1\n\n| Pin | Wire |\n|---|---|\n| 1 | black |\n")
+	writeFileSync(join(dir, "bench-plan.md"), "# Bench test: logger and beacon over UART\n")
 	const b = join(dir, "boards", "logger")
 	writeFileSync(join(b, "brief.md"), "# Climate logger\n")
 	writeFileSync(join(b, "trace.jsonl"), [{ at: "2026-11-09T10:00:00Z", type: "run.started", payload: {} }, { at: "2026-11-09T10:01:00Z", type: "contract.changed", payload: { revision: 25 } }, { at: "2026-11-09T10:02:00Z", type: "design.settled", payload: { settled: true } }].map((e) => JSON.stringify(e)).join("\n") + "\n")
@@ -46,6 +47,7 @@ test("the hub lists a system apart from runs, details its boards and serves each
 		// The board opens on the run page: its events and files by the <system>.<board> id.
 		assert.equal((await get("/runs/system-a.logger/files/brief.md")).status, 200)
 		assert.equal((await get("/systems/system-a/files/cable.md")).status, 200)
+		assert.equal((await get("/systems/system-a/files/bench-plan.md")).status, 200, "the bench plan is served")
 		assert.equal((await get("/systems/system-a/files/brief.md")).status, 404, "only the system's own outputs")
 		assert.equal((await get("/api/systems/system-a.logger")).status, 404)
 		assert.equal((await get("/runs/system-a.nope/files/brief.md")).status, 404)

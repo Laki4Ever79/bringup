@@ -445,7 +445,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			scripted: boards.some((b) => "scripted" in b && b.scripted),
 			spend: addSpend(readSpend(dir), ...boards.flatMap((b) => ("spend" in b && b.spend ? [b.spend] : []))),
 			cable: await readFile(join(dir, "cable.md"), "utf8").catch(() => null),
-			files: { report: file("system-report.md"), cable: file("cable.md"), wireviz: file("cable.yml") },
+			files: { report: file("system-report.md"), cable: file("cable.md"), wireviz: file("cable.yml"), bench: file("bench-plan.md") },
 		}
 	}
 	const listSystemSpecs = async () => {
@@ -749,7 +749,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				const dir = await systemDir(sys[1])
 				return dir ? json(res, 200, await systemDetail(sys[1], dir)) : json(res, 404, { error: "unknown system" })
 			}
-			const sysFile = /^\/systems\/([^/]+)\/files\/(system-report\.md|cable\.md|cable\.yml)$/.exec(path)
+			const sysFile = /^\/systems\/([^/]+)\/files\/(system-report\.md|cable\.md|cable\.yml|bench-plan\.md|bench-plan\.json)$/.exec(path)
 			if (sysFile) {
 				const dir = await systemDir(sysFile[1])
 				if (!dir || !existsSync(join(dir, sysFile[2]))) return send(res, 404, "not found")

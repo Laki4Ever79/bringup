@@ -252,7 +252,7 @@ async function showSystem() {
 	statusEl.title = d.status
 	document.getElementById("stop").classList.toggle("hidden", d.status !== "running")
 	import("/spend.js").then((m) => (document.getElementById("spend").textContent = m.spendLabel(d.spend, d.scripted)), () => {})
-	document.getElementById("file-links").innerHTML = [["Report", d.files.report], ["Cable", d.files.cable], ["WireViz", d.files.wireviz]].filter(([, u]) => u).map(([n, u]) => `<a class="pill" href="${esc(u)}" target="_blank">${n}</a>`).join("")
+	document.getElementById("file-links").innerHTML = [["Report", d.files.report], ["Cable", d.files.cable], ["WireViz", d.files.wireviz], ["Bench test", d.files.bench]].filter(([, u]) => u).map(([n, u]) => `<a class="pill" href="${esc(u)}" target="_blank">${n}</a>`).join("")
 	const real = d.findings.filter((f) => f.kind !== "link-pending")
 	const pending = d.findings.filter((f) => f.kind === "link-pending")
 	main.innerHTML = `
