@@ -62,7 +62,7 @@ test("steps are in time order (the consistent step lands where it happened), and
 	]
 	const steps = rippleTimeline(evs, { fromMs: T0, consistentAtMs: T0 + 18_000 })
 	assert.deepEqual(steps.map((s) => s.t), ["+0.0 s", "+3.0 s", "+18 s", "+28 s"])
-	assert.equal(steps[1].text, "firmware agent: tiltBlinkMs 1000 → 250")
+	assert.equal(steps[1].text, "firmware agent: tiltBlinkMs 1000 → 250 (+1 more)") // tiltDeg 90 → 20 changed too
 })
 
 test("a robot's timeline ends with what it has: board, chassis and firmware", () => {
