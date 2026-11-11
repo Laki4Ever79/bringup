@@ -151,7 +151,8 @@ test("the board page gives the PCB most of the window: at least 3/4 of its heigh
 test("disposing a 3D world releases its GL context", { skip, timeout: 120_000 }, async () => {
 	await withPage(async (page) => {
 		const lost = await page.evaluate(async () => {
-			const { mountWorld } = await import("/world3d.js")
+			// The page's own module (served by the hub), not a file TypeScript can resolve.
+			const { mountWorld } = await import(String("/world3d.js"))
 			const host = document.createElement("div")
 			host.style.cssText = "width:300px;height:200px"
 			document.body.append(host)
