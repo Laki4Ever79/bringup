@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { createServer } from "node:net"
-import { join, resolve } from "node:path"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { dirname, join, resolve } from "node:path"
 import { mergeFlash } from "./emulator.ts"
 import { qemuEnv } from "./env.ts"
 import { run } from "./exec.ts"
@@ -27,14 +27,6 @@ export interface DriveArtifact {
 	edgeMm?: number // the course's step height
 	stub?: boolean
 }
-
-const freePort = () =>
-	new Promise<number>((resolve) => {
-		const s = createServer().listen(0, "127.0.0.1", () => {
-			const p = (s.address() as { port: number }).port
-			s.close(() => resolve(p))
-		})
-	})
 
 export interface DriveOptions {
 	root: string
@@ -62,10 +54,15 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 	if (!image) return notRun(`no flash image: ${log.trim().split("\n").at(-1)}`)
 	const specPath = join(o.outDir, "spec.json")
 	writeFileSync(specPath, JSON.stringify(o.spec, null, 1))
-	const port = await freePort()
-	const q = spawn(qemu, ["-display", "none", "-machine", "esp32c3", "-icount", "3", "-drive", `file=${image},if=mtd,format=raw`, "-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true", "-serial", `file:${join(o.outDir, "uart0.txt")}`, "-serial", `tcp:127.0.0.1:${port},server=on,wait=on`], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
+	// The firmware's UART1 on a Unix socket in the run folder: a free TCP port, closed and then served by QEMU, could be
+	// taken by another process in between (pending-fixes, 11 Nov); a path in our own folder can't. A socket path must
+	// fit 108 bytes, so a deep run folder uses a fresh private temp folder instead (mkdtemp: unique, also race-free).
+	const local = join(o.outDir, "uart1.sock")
+	const sock = Buffer.byteLength(local) <= 100 ? local : join(mkdtempSync(join(tmpdir(), "bringup-drive-")), "uart1.sock")
+	rmSync(sock, { force: true })
+	const q = spawn(qemu, ["-display", "none", "-machine", "esp32c3", "-icount", "3", "-drive", `file=${image},if=mtd,format=raw`, "-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true", "-serial", `file:${join(o.outDir, "uart0.txt")}`, "-serial", `unix:${sock},server=on,wait=on`], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
 	try {
-		const bridge = spawn(o.python, ["-B", join(o.root, "py/mech/drive.py"), specPath, String(port), o.outDir, String(o.courseS ?? 25)], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
+		const bridge = spawn(o.python, ["-B", join(o.root, "py/mech/drive.py"), specPath, sock, o.outDir, String(o.courseS ?? 25)], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
 		let stderr = ""
 		bridge.stderr.on("data", (d) => (stderr += d))
 		const code = await new Promise<number | null>((resolve) => {
@@ -79,5 +76,7 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 		return { ...r, revision, dir: o.outDir }
 	} finally {
 		q.kill("SIGKILL")
+		rmSync(sock, { force: true })
+		if (sock !== local) rmSync(dirname(sock), { recursive: true, force: true })
 	}
 }

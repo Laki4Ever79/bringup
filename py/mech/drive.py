@@ -56,10 +56,17 @@ def _result(out_dir, result, reason, segments=(), stats=None, trajectory=()):
 
 
 def _connect(port, wait_s):
+    """port: a TCP port on 127.0.0.1, or the path of the Unix socket QEMU serves (src/tools/drive.ts: a file in the run
+    folder, so no other process can take it between choosing and serving, as a free TCP port could be)."""
     deadline = time.monotonic() + wait_s
     while True:
         try:
-            s = socket.create_connection(("127.0.0.1", port), timeout=wait_s)
+            if isinstance(port, str):
+                s = socket.socket(socket.AF_UNIX)
+                s.settimeout(wait_s)
+                s.connect(port)
+            else:
+                s = socket.create_connection(("127.0.0.1", port), timeout=wait_s)
             return s
         except OSError:
             if time.monotonic() > deadline:
@@ -207,10 +214,10 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
 
 def main():
     if len(sys.argv) < 4:
-        print("usage: drive.py <chassis-spec.json> <port> <out-dir> [course_s]", file=sys.stderr)
+        print("usage: drive.py <chassis-spec.json> <port or unix socket path> <out-dir> [course_s]", file=sys.stderr)
         sys.exit(2)
     spec = json.loads(Path(sys.argv[1]).read_text())
-    r = run(spec, int(sys.argv[2]), sys.argv[3], float(sys.argv[4]) if len(sys.argv) > 4 else 25.0)
+    r = run(spec, int(sys.argv[2]) if sys.argv[2].isdigit() else sys.argv[2], sys.argv[3], float(sys.argv[4]) if len(sys.argv) > 4 else 25.0)
     print(json.dumps({"result": r["result"], "reason": r["reason"]}))
 
 
