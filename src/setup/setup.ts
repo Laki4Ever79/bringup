@@ -25,7 +25,7 @@ export interface Probe {
 	remove?(path: string): Promise<void>
 }
 
-export type StepId = "python" | "tscircuit" | "kicad" | "toolchain" | "qemu"
+export type StepId = "python" | "tscircuit" | "kicad" | "toolchain" | "qemu" | "renode" | "vendors"
 
 interface Step {
 	id: StepId
@@ -60,6 +60,27 @@ export const QEMU: Step = {
 	],
 }
 
+// Renode (docs/mcu.md, Simulation): the portable Linux build into tools/renode; it boots STM32 and nRF52 firmware.
+export const RENODE_VERSION = "1.17.0"
+const RENODE_URL = `https://github.com/renode/renode/releases/download/v${RENODE_VERSION}/renode-${RENODE_VERSION}.linux-portable.tar.gz`
+export const RENODE: Step = {
+	id: "renode",
+	name: `Renode ${RENODE_VERSION} (tools/renode)`,
+	commands: [["bash", ["-c", `set -e; mkdir -p tools/renode && cd tools/renode && curl -fL -o r.tar.gz ${RENODE_URL} && tar xzf r.tar.gz && rm r.tar.gz`]]],
+}
+
+// The other vendors' firmware toolchains and chip data (docs/mcu.md): PlatformIO's STM32, RP2040 and nRF52 platforms
+// (into ~/.platformio, as the ESP32 one), and ST's open pin data (BSD-3-Clause) the STM32 profiles are generated from.
+export const VENDOR_PLATFORMS = ["platformio/ststm32@20.0.0", "platformio/raspberrypi@1.20.0", "platformio/nordicnrf52@11.0.0"]
+export const VENDORS: Step = {
+	id: "vendors",
+	name: "STM32, RP2040 and nRF52 toolchains + ST pin data",
+	commands: [
+		...VENDOR_PLATFORMS.map((p): [string, string[]] => [".venv/bin/pio", ["pkg", "install", "-g", "-p", p]]),
+		["bash", ["-c", "set -e; mkdir -p tools/vendor && cd tools/vendor && [ -d STM32_open_pin_data ] || (git clone --depth 1 --filter=blob:none --sparse https://github.com/STMicroelectronics/STM32_open_pin_data.git && cd STM32_open_pin_data && git sparse-checkout set mcu)"]],
+	],
+}
+
 export async function checkPrerequisites(probe: Probe): Promise<string[]> {
 	const problems: string[] = []
 	const major = Number(probe.nodeVersion.split(".")[0])
@@ -79,7 +100,7 @@ export interface SetupSummary {
 	lines: string[]
 }
 
-export async function runSetup(probe: Probe, flags: { qemu?: boolean; wokwi?: boolean }): Promise<SetupSummary> {
+export async function runSetup(probe: Probe, flags: { qemu?: boolean; wokwi?: boolean; renode?: boolean; vendors?: boolean }): Promise<SetupSummary> {
 	const problems = await checkPrerequisites(probe)
 	if (problems.length > 0) {
 		for (const p of problems) probe.log(p)
@@ -102,6 +123,10 @@ export async function runSetup(probe: Probe, flags: { qemu?: boolean; wokwi?: bo
 	for (const step of INSTALL) await doStep(step)
 	if (flags.qemu) await doStep(QEMU)
 	else lines.push(`${QEMU.name}: ${(await probe.present("qemu")) ? "already there" : "not installed (optional: npm run setup -- --qemu)"}`)
+	for (const [step, flag, hint] of [[RENODE, flags.renode, "--renode"], [VENDORS, flags.vendors, "--vendors"]] as const) {
+		if (flag) await doStep(step)
+		else lines.push(`${step.name}: ${(await probe.present(step.id)) ? "already there" : `not installed (optional: npm run setup -- ${hint})`}`)
+	}
 	const wokwi = await wokwiStep(probe, Boolean(flags.wokwi))
 	ok &&= wokwi.ok
 	lines.push(wokwi.line)
@@ -172,6 +197,9 @@ export function presentOn(root: string, check: Probe["check"]): Probe["present"]
 				existsSync(join(pioHome, "packages/framework-arduinoespressif32")) &&
 				existsSync(join(root, "templates/fw/.pio/libdeps/esp32c3/NimBLE-Arduino"))
 			)
+		if (step === "renode") return existsSync(join(root, "tools/renode", `renode_${RENODE_VERSION}-portable`, "renode"))
+		if (step === "vendors")
+			return ["ststm32", "raspberrypi", "nordicnrf52"].every((p) => existsSync(join(pioHome, "platforms", p))) && existsSync(join(root, "tools/vendor/STM32_open_pin_data/mcu"))
 		return existsSync(join(root, "tools/qemu/bin/qemu-system-riscv32")) && existsSync(join(root, "tools/qemu/lib"))
 	}
 }

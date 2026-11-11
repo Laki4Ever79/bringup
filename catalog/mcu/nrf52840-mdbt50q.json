@@ -482,7 +482,7 @@
 		"source": "nRF52840 Product Specification (online, latest; version unverified): CPU running CoreMark 64 MHz from flash with DC/DC 3.3 mA; radio 1 Mbps BLE 0 dBm TX 6.40 mA, RX 6.26 mA with DC/DC; System ON with RTC wake 1.5 \u00b5A (System OFF 0.4 \u00b5A). No minimum supply current stated; 30 mA is Bringup's margin"
 	},
 	"firmware": {
-		"platform": "nordicnrf52@10.7.0",
+		"platform": "nordicnrf52@11.0.0",
 		"board": "nrf52840_dk_adafruit",
 		"framework": "arduino",
 		"arch": "nrf52",
