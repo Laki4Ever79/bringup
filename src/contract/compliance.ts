@@ -1,5 +1,6 @@
 import { connectivityOf } from "./connectivity.ts"
 import type { ContractSnapshot } from "./types.ts"
+import { mcuProfileOf } from "../mcu/profile.ts"
 
 // A compliance checklist for the design, from what the design and its firmware do: where it stands against the US FCC
 // module grant and the EU rules for radio products. Each item says met, open (work left) or check (it depends on how
@@ -24,13 +25,19 @@ export function complianceItems(s: ContractSnapshot): ComplianceItem[] {
 	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
 	const items: ComplianceItem[] = []
 	const fcc = "US FCC (module grant)"
-	if (mcu?.mpn === "ESP32-C3-MINI-1") {
+	// A certified radio module carries its grant (its profile's fccId); a bare radio chip has none, so the product needs
+	// its own intentional-radiator testing.
+	const prof = mcuProfileOf(s.values.parts)
+	const fccId = prof ? prof.fccId : mcu ? MODULE_FCC_ID : undefined
+	if (prof && prof.radio.length && !prof.fccId)
+		items.push({ rule: "US FCC Part 15 / EU RED radio", item: `the ${prof.mpn}'s radio has no modular grant`, status: "check", why: "a bare radio chip needs the product's own radio testing and grant (or use a certified module)" })
+	if (mcu && fccId) {
 		// Where the label goes follows who houses the board (requirements.enclosure).
 		const mode = s.values.requirements?.enclosure ?? "case"
 		const where = mode === "own" ? "it goes on your own housing (interface.md lists it)" : mode === "none" ? "a bare board has no case to carry it: print it on the board's silkscreen, or on a sticker on the board" : "the label isn't designed yet (the case lettering takes 24 characters)"
-		items.push({ rule: fcc, item: `the product's label says "Contains FCC ID: ${MODULE_FCC_ID}"`, status: "open", why: where })
+		items.push({ rule: fcc, item: `the product's label says "Contains FCC ID: ${fccId}"`, status: "open", why: where })
 		items.push({ rule: fcc, item: "used 20 cm or more from people, not body-worn", status: "check", why: "the module's grant covers mobile or fixed use; a wearable or handheld product needs its own approval" })
-		items.push({ rule: fcc, item: "the module's own PCB antenna, unmodified", status: "met", why: "the board keeps the module's antenna, at the board edge as Espressif recommends" })
+		items.push({ rule: fcc, item: "the module's own PCB antenna, unmodified", status: "met", why: `the board keeps the module's antenna${prof?.vendor === "espressif" || !prof ? ", at the board edge as Espressif recommends" : ""}` })
 	}
 	const red = "EU RED cybersecurity, Delegated Regulation (EU) 2022/30 (applies since 1 Aug 2025), EN 18031"
 	items.push({
