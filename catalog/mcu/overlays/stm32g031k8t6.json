@@ -1,0 +1,83 @@
+{
+	"id": "stm32g031k8t6",
+	"mpn": "STM32G031K8T6",
+	"lcsc": "C432203",
+	"st": {
+		"xml": "STM32G031K(4-6-8)Tx.xml",
+		"flashKb": 64
+	},
+	"console": {
+		"instance": "USART2",
+		"tx": "PA2",
+		"rx": "PA3"
+	},
+	"programming": {
+		"method": "swd",
+		"pins": [
+			"PA13",
+			"PA14"
+		]
+	},
+	"boot": {
+		"pin": null,
+		"level": null
+	},
+	"support": [
+		{
+			"job": "VDD/VDDA decoupling (pad 4, 100 nF at the pin)",
+			"spec": "decouple",
+			"a": "pin:VDD",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD bulk (4.7 \u00b5F or more on the supply)",
+			"spec": "bulk",
+			"a": "net:supply",
+			"b": "net:GND"
+		},
+		{
+			"job": "NRST (PF2) to GND, 100 nF against reset glitches",
+			"spec": "decouple",
+			"a": "pin:PF2",
+			"b": "net:GND"
+		}
+	],
+	"currents": {
+		"sleepUa": 3.7,
+		"cpuMa": 5.2,
+		"supplyMinMa": 10,
+		"source": "DS12992 Rev 4: run 64 MHz from flash, peripherals off 5.2 mA typ at 3.0 V (Table 25); Stop 1 with RTC 3.7 \u00b5A (Table 29), the mode the firmware sleeps in (Standby 0.6 \u00b5A, Table 30, loses RAM). No minimum supply current stated; 10 mA is Bringup's margin over the run current"
+	},
+	"firmware": {
+		"platform": "ststm32@20.0.0",
+		"board": "nucleo_g031k8",
+		"framework": "arduino",
+		"arch": "stm32",
+		"pinStyle": "name",
+		"zephyrBoard": "nucleo_g031k8"
+	},
+	"sim": {
+		"backend": "renode",
+		"machine": "platforms/cpus/stm32g0.repl",
+		"consoleUart": "usart2",
+		"models": [
+			"gpio",
+			"uart",
+			"i2c",
+			"spi",
+			"timers",
+			"exti",
+			"dma"
+		],
+		"note": "Renode stm32g0.repl: no LPUART model"
+	},
+	"sources": [
+		"DS12992 Rev 4 (STM32G031x4/x6/x8 datasheet): Fig. 13 power supply scheme (VDD/VDDA 100 nF + 4.7 \u00b5F), Fig. 24 NRST 0.1 \u00b5F, \u00a73.5 boot (BOOT0 on PA14 with the nBOOT_SEL option bit)"
+	],
+	"wakeAny": true,
+	"priceUsd": {
+		"qty": 100,
+		"usd": 2.73,
+		"source": "LCSC C432203 $3.57 @1, $2.73 @100, 1,499 in stock, JLCPCB Extended (jlcsearch.tscircuit.com and jlcpcb.com part page, 11 Nov 2026)"
+	}
+}

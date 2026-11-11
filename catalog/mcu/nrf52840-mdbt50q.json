@@ -1,0 +1,526 @@
+{
+	"id": "nrf52840-mdbt50q",
+	"vendor": "nordic",
+	"family": "nRF52840",
+	"mpn": "MDBT50Q-1MV2",
+	"lcsc": "C5118826",
+	"kind": "module",
+	"package": {
+		"name": "MDBT50Q-1MV2 module",
+		"footprint": "mdbt50q",
+		"bodyMm": {
+			"w": 10.5,
+			"h": 15.5
+		},
+		"extentMm": {
+			"w": 10.5,
+			"h": 15.5
+		}
+	},
+	"board": {
+		"supported": false,
+		"reason": "the module's 73-pad land pattern isn't entered yet (Raytac spec Ver. K \u00a75); firmware, pins, simulation and chip choice work"
+	},
+	"core": "ARM Cortex-M4F",
+	"mhz": 64,
+	"flashKb": 1024,
+	"ramKb": 256,
+	"voltage": {
+		"min": 1.7,
+		"max": 3.6
+	},
+	"pins": [
+		{
+			"name": "P0.00",
+			"index": 0,
+			"pads": [],
+			"signals": [
+				"*"
+			],
+			"reserved": "osc"
+		},
+		{
+			"name": "P0.01",
+			"index": 1,
+			"pads": [],
+			"signals": [
+				"*"
+			],
+			"reserved": "osc"
+		},
+		{
+			"name": "P0.02",
+			"index": 2,
+			"pads": [],
+			"signals": [
+				"*",
+				"AIN0"
+			]
+		},
+		{
+			"name": "P0.03",
+			"index": 3,
+			"pads": [],
+			"signals": [
+				"*",
+				"AIN1"
+			]
+		},
+		{
+			"name": "P0.04",
+			"index": 4,
+			"pads": [],
+			"signals": [
+				"*",
+				"AIN2"
+			]
+		},
+		{
+			"name": "P0.05",
+			"index": 5,
+			"pads": [],
+			"signals": [
+				"*",
+				"AIN3"
+			]
+		},
+		{
+			"name": "P0.06",
+			"index": 6,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.07",
+			"index": 7,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.08",
+			"index": 8,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.09",
+			"index": 9,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.10",
+			"index": 10,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.11",
+			"index": 11,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.12",
+			"index": 12,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.13",
+			"index": 13,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.14",
+			"index": 14,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.15",
+			"index": 15,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.16",
+			"index": 16,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.17",
+			"index": 17,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.18",
+			"index": 18,
+			"pads": [],
+			"signals": [
+				"*"
+			],
+			"reserved": "reset"
+		},
+		{
+			"name": "P0.19",
+			"index": 19,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.20",
+			"index": 20,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.21",
+			"index": 21,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.22",
+			"index": 22,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.23",
+			"index": 23,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.24",
+			"index": 24,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.25",
+			"index": 25,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.26",
+			"index": 26,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.27",
+			"index": 27,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P0.28",
+			"index": 28,
+			"pads": [],
+			"signals": [
+				"*",
+				"AIN4"
+			]
+		},
+		{
+			"name": "P0.29",
+			"index": 29,
+			"pads": [],
+			"signals": [
+				"*",
+				"AIN5"
+			]
+		},
+		{
+			"name": "P0.30",
+			"index": 30,
+			"pads": [],
+			"signals": [
+				"*",
+				"AIN6"
+			]
+		},
+		{
+			"name": "P0.31",
+			"index": 31,
+			"pads": [],
+			"signals": [
+				"*",
+				"AIN7"
+			]
+		},
+		{
+			"name": "P1.00",
+			"index": 32,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.01",
+			"index": 33,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.02",
+			"index": 34,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.03",
+			"index": 35,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.04",
+			"index": 36,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.05",
+			"index": 37,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.06",
+			"index": 38,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.07",
+			"index": 39,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.08",
+			"index": 40,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.09",
+			"index": 41,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.10",
+			"index": 42,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.11",
+			"index": 43,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.12",
+			"index": 44,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.13",
+			"index": 45,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.14",
+			"index": 46,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "P1.15",
+			"index": 47,
+			"pads": [],
+			"signals": [
+				"*"
+			]
+		}
+	],
+	"power": [],
+	"peripherals": {
+		"uart": [
+			"UARTE0",
+			"UARTE1"
+		],
+		"i2c": [
+			"TWIM0",
+			"TWIM1"
+		],
+		"spi": [
+			"SPIM2",
+			"SPIM3"
+		],
+		"i2s": [
+			"I2S0"
+		],
+		"adc": [
+			"SAADC"
+		],
+		"usb": [
+			"USBD"
+		],
+		"can": [],
+		"radio": [
+			"RADIO"
+		]
+	},
+	"console": {
+		"instance": "UARTE0",
+		"tx": "P0.06",
+		"rx": "P0.08"
+	},
+	"programming": {
+		"method": "swd",
+		"pins": [
+			"SWDIO",
+			"SWDCLK"
+		]
+	},
+	"boot": {
+		"pin": null,
+		"level": null
+	},
+	"usb": null,
+	"support": [],
+	"currents": {
+		"sleepUa": 1.5,
+		"cpuMa": 3.3,
+		"bleTxMa": 6.4,
+		"bleRxMa": 6.26,
+		"radioMa": 6.26,
+		"supplyMinMa": 30,
+		"source": "nRF52840 Product Specification (online, latest; version unverified): CPU running CoreMark 64 MHz from flash with DC/DC 3.3 mA; radio 1 Mbps BLE 0 dBm TX 6.40 mA, RX 6.26 mA with DC/DC; System ON with RTC wake 1.5 \u00b5A (System OFF 0.4 \u00b5A). No minimum supply current stated; 30 mA is Bringup's margin"
+	},
+	"firmware": {
+		"platform": "nordicnrf52@10.7.0",
+		"board": "nrf52840_dk_adafruit",
+		"framework": "arduino",
+		"arch": "nrf52",
+		"pinStyle": "number",
+		"zephyrBoard": "nrf52840dk/nrf52840",
+		"history": {
+			"store": "littlefs",
+			"bytes": 32768,
+			"source": "Bringup default: 32 KB of InternalFS"
+		}
+	},
+	"sim": {
+		"backend": "renode",
+		"machine": "platforms/cpus/nrf52840.repl",
+		"consoleUart": "uart0",
+		"models": [
+			"gpio",
+			"uart",
+			"i2c",
+			"spi",
+			"timers",
+			"radio"
+		],
+		"note": "Renode nrf52840: BLE medium between machines; Adafruit core's SoftDevice untested in Renode"
+	},
+	"radio": [
+		"ble",
+		"802.15.4"
+	],
+	"wakeAny": true,
+	"priceUsd": {
+		"qty": 1,
+		"usd": 19.12,
+		"source": "LCSC C5118826 flat $19.12, no stock shown (jlcsearch.tscircuit.com and jlcpcb.com part page, 11 Nov 2026); the E73-2G4M08S1C (C356849) is $5.95 @100 but its certification is unverified"
+	},
+	"fccId": "SH6MDBT50Q",
+	"sources": [
+		"Raytac MDBT50Q-1MV2 spec Ver. K: \u00a72 outline 15.5 \u00d7 10.5 \u00d7 2.05 mm, module carries the 32 MHz crystal and DC/DC inductor, \u00a79.2 FCC certificate",
+		"nRF52840 PS: GPIO PSEL routes any peripheral to any pin; AIN0\u20137 on P0.02\u2013P0.05, P0.28\u2013P0.31; P0.18 nRESET, P0.00/P0.01 32 kHz crystal, P0.09/P0.10 NFC"
+	]
+}

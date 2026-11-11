@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs"
 import type { Connector, ContractSnapshot, Part } from "../contract/types.ts"
+import { chipPinLabels, chipPowerPins, chipSupport } from "../mcu/board.ts"
+import { mcuPinName } from "../mcu/pins.ts"
+import { loadProfiles, profileForPart, type McuProfile } from "../mcu/profile.ts"
 
 interface CatalogEntry {
 	ref?: string
@@ -33,8 +36,16 @@ const EDGE_ROTATION: Record<Connector["edge"], number> = { left: -90, right: 90,
 const q = (s: string) => JSON.stringify(s)
 
 // A vetted catalog footprint wins over whatever the contract says, so placeholders like "module" still build.
+// An MCU with a profile and no catalog entry takes its package's footprint from the profile.
 function footprintFor(p: Part): string {
-	return CATALOG.find((c) => c.mpn === p.mpn)?.footprint ?? p.footprint
+	return CATALOG.find((c) => c.mpn === p.mpn)?.footprint ?? (p.role === "mcu" ? chipProfile(p)?.package.footprint : undefined) ?? p.footprint
+}
+
+// The profile of a part that is a bare chip (not a module): its pads are labelled and powered from the profile.
+function chipProfile(p: Part | undefined): McuProfile | null {
+	if (!p || p.role !== "mcu") return null
+	const prof = profileForPart(p)
+	return prof?.kind === "chip" && prof.board.supported ? prof : null
 }
 
 function pinLabels(pins: string[]): string {
@@ -129,6 +140,10 @@ const SUPPORT = {
 	bulk: { kind: "capacitor", value: "10uF", lcsc: "C19702", mpn: "CL10A106KP8NNNC", footprint: "0603" },
 	// The ICS-43434's SD pull-down and VDD decoupling (DS-000069 Table 8).
 	pulldown: { kind: "resistor", value: "100k", lcsc: "C25741", mpn: "0402WGF1003TCE", footprint: "0402" },
+	// An STM32's BOOT0 held low (boot from flash): 10k to GND, ST AN2586 §2.4 / AN4325 §3.
+	bootPulldown: { kind: "resistor", value: "10k", lcsc: "C25744", mpn: "0402WGF1002TCE", footprint: "0402" },
+	// USB full-speed device D+ pull-up where the chip has none inside (STM32F103: 1.5k to 3V3, RM0008 §23.4).
+	usbPullup: { kind: "resistor", value: "1.5k", lcsc: "C25867", mpn: "0402WGF1501TCE", footprint: "0402" },
 	decouple: { kind: "capacitor", value: "100nF", lcsc: "C1525", mpn: "CL05B104KO5NNNC", footprint: "0402" },
 	// The USB-sense divider's top: 68k over the 100k pull-down puts VBUS 4.75–5.25 V at 2.83–3.13 V on the pin, above
 	// the ESP32-C3's 2.475 V high threshold (0.75 × VDD) and under its 3.3 V supply. A JLCPCB Extended part.
@@ -205,15 +220,26 @@ export function usbWake(s: ContractSnapshot): { mcu: Part; gpio: number | null; 
 	return { mcu: boot.mcu, gpio: free.find((g) => !used.has(g)) ?? null, free }
 }
 
+// The MCU's native USB pins, from its profile (an MCU part without one is the ESP32-C3: GPIO19 D+, GPIO18 D-), when the
+// part lists both; null for a chip with no USB device.
+export function mcuUsbPins(mcu: Part | undefined): { dp: string; dm: string; dpIndex: number; dmIndex: number; pullupOnDp: boolean } | null {
+	if (!mcu) return null
+	const prof = profileForPart(mcu)
+	const usb = prof ? prof.usb : { dp: "GPIO19", dm: "GPIO18" }
+	if (!usb || !mcu.pins.includes(usb.dp) || !mcu.pins.includes(usb.dm)) return null
+	const idx = (n: string) => prof?.pins.find((x) => x.name === n)?.index ?? Number(n.replace(/\D/g, ""))
+	return { dp: usb.dp, dm: usb.dm, dpIndex: idx(usb.dp), dmIndex: idx(usb.dm), pullupOnDp: prof?.usb?.pullupOnDp ?? false }
+}
+
 // The ESP32-C3's native USB reaches the connector: GPIO18/19 on the module and not used for anything else.
 // Either the generator wires them, or the contract does, D- on GPIO18 and D+ on GPIO19 to the USB-C connector (real
 // system run 2: an architect assigned USB_DN/USB_DP itself, and USB wake was dropped as if the pins were taken).
 function nativeUsbWired(s: ContractSnapshot): boolean {
-	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
-	if (!mcu?.pins.includes("GPIO18") || !mcu.pins.includes("GPIO19")) return false
+	const native = mcuUsbPins((s.values.parts ?? []).find((p) => p.role === "mcu"))
+	if (!native) return false
 	const usb = usbRef(s)
-	const on = (s.values.pins ?? []).filter((p) => p.gpio === 18 || p.gpio === 19)
-	return on.every((p) => p.partRef === usb && ((p.gpio === 18 && p.partPin === "DN") || (p.gpio === 19 && p.partPin === "DP")))
+	const on = (s.values.pins ?? []).filter((p) => p.gpio === native.dmIndex || p.gpio === native.dpIndex)
+	return on.every((p) => p.partRef === usb && ((p.gpio === native.dmIndex && p.partPin === "DN") || (p.gpio === native.dpIndex && p.partPin === "DP")))
 }
 
 export function supportParts(s: ContractSnapshot): Support[] {
@@ -273,6 +299,13 @@ export function supportParts(s: ContractSnapshot): Support[] {
 		jobs.push({ job: `USB-sense divider bottom (${USB_SENSE_NET} low with USB unplugged)`, spec: SUPPORT.pulldown, a: { net: USB_SENSE_NET }, b: GND, near: wake.mcu.ref })
 	}
 
+	// What the chip itself needs (its profile's support list): decoupling per supply pad, the reset pin's capacitor, a
+	// boot pin pull-down. Modules bring their own.
+	const mcuPart = parts.find((p) => p.role === "mcu")
+	const chip = chipProfile(mcuPart)
+	if (chip && mcuPart && supply)
+		for (const j of chipSupport(chip, mcuPart.ref, supply)) jobs.push({ job: `${mcuPart.ref} ${j.job}`, spec: SUPPORT[j.spec], a: j.a, b: j.b, near: mcuPart.ref })
+
 	const claimed = new Set<string>()
 	const taken = new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])
 	return jobs.map((j) => {
@@ -315,6 +348,8 @@ export function boardParts(s: ContractSnapshot): BoardPart[] {
 function labelsFor(p: Part, footprint: string): string {
 	if (p.pins.length === 0 || footprint === USBC_FOOTPRINT) return ""
 	if (footprint === MODULE_FOOTPRINT) return ` pinLabels=${modulePinLabels(p.pins)}`
+	const chip = chipProfile(p)
+	if (chip && footprint === chip.package.footprint) return ` pinLabels={${JSON.stringify(chipPinLabels(chip))}}`
 	if (footprint === BUTTON_FOOTPRINT && p.pins.includes("A") && p.pins.includes("B")) return ` pinLabels={{ pin1: "A", pin3: "B" }}`
 	return ` pinLabels=${pinLabels(p.pins)}`
 }
@@ -427,6 +462,19 @@ export function icPinOffset(footprint: string, pin: number): { x: number; y: num
 	return { x: pin <= half ? -w / 2 : w / 2, y: ((half - 1) / 2 - row) * p }
 }
 
+// A quad package's pad centre at rotation 0 (tscircuit's lqfp/qfn: pin 1 at the top of the left side, counter-clockwise:
+// down the left, along the bottom, up the right, back along the top), from the pin count, the pitch and the distance of
+// the pad centres from the middle (ringMm: the profile's package.ringMm, measured from footprinter's output).
+export function quadPinOffset(footprint: string, pin: number, ringMm: number | undefined): { x: number; y: number } | null {
+	const m = /^(?:lqfp|qfn)(\d+)(?:_w[\d.]+mm)?(?:_h[\d.]+mm)?(?:_p([\d.]+)mm)?/.exec(footprint)
+	if (!m || pin < 1 || ringMm === undefined) return null
+	const n = Number(m[1]), p = Number(m[2] ?? 0.5), side = n / 4
+	if (pin > n || !Number.isInteger(side)) return null
+	const c = ringMm
+	const k = (pin - 1) % side, at = Math.floor((pin - 1) / side), along = (k - (side - 1) / 2) * p
+	return [{ x: -c, y: -along }, { x: along, y: -c }, { x: c, y: along }, { x: -along, y: c }][at]
+}
+
 // Centre of the reserved box relative to the part's origin, at rotation 0.
 const FOOTPRINT_OFFSET: Record<string, [number, number]> = { usbcmidmount: [0, -0.855], jst2_ph: [0, -0.55] }
 
@@ -487,8 +535,14 @@ export function moduleBlocked(s: ContractSnapshot): { ref: string; edge: Connect
 	return { ref: mcu.ref, edge, usbRef: usb?.ref, needMm: +(MODULE_BODY.w + 2 * EDGE_MARGIN_MM).toFixed(1), depthMm, edgeMm: edge === "left" || edge === "right" ? H : W, blockers }
 }
 
+// A chip package's land pattern from its profile, plus 0.5 mm of courtyard around the pads.
+function packageSize(footprint: string): [number, number] | null {
+	const e = loadProfiles().find((p) => p.package.footprint === footprint)?.package.extentMm
+	return e ? [e.w + 0.5, e.h + 0.5] : null
+}
+
 function sizeAt(footprint: string, rotation: number): [number, number] {
-	const [w, h] = FOOTPRINT_SIZE[footprint] ?? DEFAULT_SIZE
+	const [w, h] = FOOTPRINT_SIZE[footprint] ?? packageSize(footprint) ?? DEFAULT_SIZE
 	return Math.abs(rotation) % 180 === 90 ? [h, w] : [w, h]
 }
 
@@ -645,7 +699,8 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 		return undefined
 	}
 	const mcuPart = byRole("mcu")
-	const mcu = mcuPart && footprintFor(mcuPart) === MODULE_FOOTPRINT ? placeModule(mcuPart) : put(mcuPart, { x: 0, y: 0 }, MODULE_ROTATION[edge])
+	// A bare chip stays at rotation 0, so its decoupling lands beside the right pads (besidePin).
+	const mcu = mcuPart && footprintFor(mcuPart) === MODULE_FOOTPRINT ? placeModule(mcuPart) : put(mcuPart, { x: 0, y: 0 }, chipProfile(mcuPart) ? 0 : MODULE_ROTATION[edge])
 	const centre = mcu ?? { x: 0, y: 0 }
 	// The LDO sits a fixed distance in from the USB-C connector, not halfway to the MCU: on wider boards the
 	// halfway point left a gap where tscircuit's router dropped a via onto the VBUS pad (55–60 mm boards).
@@ -674,8 +729,14 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 		if (!("ref" in end)) return null
 		const part = parts.find((p) => p.ref === end.ref)
 		const box = boxOf(end.ref)
-		const at = part && box && box.rotation === 0 ? icPinOffset(footprintFor(part), part.pins.indexOf(end.pin) + 1) : null
-		return at && box ? { x: box.x + at.x + Math.sign(at.x) * 1.5, y: box.y + at.y } : null
+		const fp = part ? footprintFor(part) : ""
+		const pad = part ? part.pins.indexOf(end.pin) + 1 : 0
+		const at = part && box && box.rotation === 0 ? (icPinOffset(fp, pad) ?? quadPinOffset(fp, pad, loadProfiles().find((x) => x.package.footprint === fp)?.package.ringMm)) : null
+		if (!at || !box) return null
+		// Out past the pad, away from the body: along x for a side pad, along y for a top or bottom one.
+		// A quad package's pads end 0.7 mm past their centre; 1.2 mm out leaves the 0402 clear and its trace short.
+		const out = icPinOffset(fp, pad) ? 1.5 : 1.2
+		return Math.abs(at.x) >= Math.abs(at.y) ? { x: box.x + at.x + Math.sign(at.x) * out, y: box.y + at.y } : { x: box.x + at.x, y: box.y + at.y + Math.sign(at.y) * out }
 	}
 	for (const sp of supportParts(s)) {
 		const want = besidePin(sp.a) ?? boxOf(sp.near) ?? centre
@@ -837,6 +898,13 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 			if (hasSupply && p.role !== "ldo" && p.role !== "charger" && p.role !== "connector" && SUPPLY_PINS.has(pin)) join(supply, p.ref, pin)
 		}
 	}
+	// A bare chip's supply and ground pads (its profile), joined to the rails by label.
+	const chip = chipProfile(mcu)
+	if (chip && mcu) {
+		const power = chipPowerPins(chip)
+		for (const pin of power.ground) if (!GROUND_PINS.has(pin)) join("GND", mcu.ref, pin)
+		if (hasSupply) for (const pin of power.supply) if (!GROUND_PINS.has(pin) && !SUPPLY_PINS.has(pin)) join(supply, mcu.ref, pin)
+	}
 	// The ESP32-C3 must not have EN floating; tied straight to 3V3 (the datasheet suggests an RC delay, see catalog/README.md).
 	if (hasSupply && mcu?.pins.includes("EN")) join(supply, mcu.ref, "EN")
 
@@ -857,13 +925,15 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	if (usb) {
 		for (const pad of USBC_PADS.GND) join("GND", usb, pad)
 		for (const pad of USBC_PADS.VBUS) join("VBUS", usb, pad)
-		// D+/D- to the ESP32-C3's native USB (GPIO19/GPIO18), unless the contract uses those GPIOs for something else.
-		const usbGpiosFree = !pins.some((p) => p.gpio === 18 || p.gpio === 19)
-		if (mcu?.pins.includes("GPIO18") && mcu.pins.includes("GPIO19") && usbGpiosFree) {
+		// D+/D- to the MCU's native USB (its profile's pins: the ESP32-C3's GPIO19/GPIO18, an STM32F103's PA12/PA11),
+		// unless the contract uses those pins for something else. A chip without USB gets power only from the port.
+		const native = mcuUsbPins(mcu)
+		const usbGpiosFree = native && !pins.some((p) => p.gpio === native.dpIndex || p.gpio === native.dmIndex)
+		if (mcu && native && usbGpiosFree) {
 			for (const pad of USBC_PADS.DP) join("USB_DP", usb, pad)
 			for (const pad of USBC_PADS.DN) join("USB_DN", usb, pad)
-			join("USB_DP", mcu.ref, "GPIO19")
-			join("USB_DN", mcu.ref, "GPIO18")
+			join("USB_DP", mcu.ref, native.dp)
+			join("USB_DN", mcu.ref, native.dm)
 		}
 	}
 
@@ -942,7 +1012,10 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string
 			const attr = sp.spec.kind === "resistor" ? "resistance" : "capacitance"
 			// A capacitor wired straight to a chip pin (the DRV8833's VINT and VCP): tscircuit would cap the trace at 1 mm,
 			// which the placer's 1.5 mm part gap can never meet; 5 mm keeps it at the pin and reaches a ground.
-			const pinBound = sp.spec.kind === "capacitor" && ("ref" in sp.a || "ref" in sp.b) ? " maxDecouplingTraceLength={5}" : ""
+			// A bare MCU's decoupling sits outside its 1.5 mm placement gap from a ~10 mm land pattern, so its trace runs a
+			// little longer: 7 mm (measured 5.45 mm on the STM32G031K8's VDD, 11 Nov 2026).
+			const bound = chipProfile((s.values.parts ?? []).find((p) => p.ref === sp.near)) ? 7 : 5
+			const pinBound = sp.spec.kind === "capacitor" && ("ref" in sp.a || "ref" in sp.b) ? ` maxDecouplingTraceLength={${bound}}` : ""
 			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${q(sp.spec.footprint)}${pinBound} />`)
 		}
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) {
@@ -998,7 +1071,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	for (const pin of pins) {
 		if (!mcuRef) throw new Error("circuitFromContract: pin assignments need a part with role mcu")
 		lines.push(`<net name=${q(pin.signal)} />`)
-		lines.push(`<trace name=${q(`${pin.signal}_mcu`)} from=${q(`.${mcuRef} > .GPIO${pin.gpio}`)} to=${q(`net.${pin.signal}`)} />`)
+		lines.push(`<trace name=${q(`${pin.signal}_mcu`)} from=${q(`.${mcuRef} > .${mcuPinName(parts, pin.gpio)}`)} to=${q(`net.${pin.signal}`)} />`)
 		// The USB-C footprint has numbered pads only: a contract pin on it (J1.DP) goes to each pad carrying that signal.
 		const pads = partPads(parts.find((p) => p.ref === pin.partRef), pin.partPin)
 		for (const pad of pads)

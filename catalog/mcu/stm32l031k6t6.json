@@ -1,0 +1,536 @@
+{
+	"vendor": "st",
+	"family": "STM32L0",
+	"kind": "chip",
+	"package": {
+		"name": "LQFP32",
+		"footprint": "lqfp32_w7.05mm_h7.05mm_p0.8mm_pl1.475mm_pw0.55mm",
+		"bodyMm": {
+			"w": 7,
+			"h": 7
+		},
+		"extentMm": {
+			"w": 9.8,
+			"h": 9.8
+		},
+		"ringMm": 4.1625
+	},
+	"board": {
+		"supported": true
+	},
+	"core": "Arm Cortex-M0+",
+	"mhz": 32,
+	"flashKb": 32,
+	"ramKb": 8,
+	"voltage": {
+		"min": 1.65,
+		"max": 3.6
+	},
+	"pins": [
+		{
+			"name": "PA0",
+			"index": 0,
+			"pads": [
+				"6"
+			],
+			"signals": [
+				"ADC_IN0",
+				"COMP1_INM",
+				"COMP1_OUT",
+				"LPTIM1_IN1",
+				"RCC_CK_IN",
+				"RTC_TAMP2",
+				"SYS_WKUP1",
+				"TIM2_CH1",
+				"TIM2_ETR",
+				"USART2_CTS"
+			],
+			"wake": true
+		},
+		{
+			"name": "PA1",
+			"index": 1,
+			"pads": [
+				"7"
+			],
+			"signals": [
+				"ADC_IN1",
+				"COMP1_INP",
+				"I2C1_SMBA",
+				"LPTIM1_IN2",
+				"TIM21_ETR",
+				"TIM2_CH2",
+				"USART2_DE",
+				"USART2_RTS"
+			]
+		},
+		{
+			"name": "PA2",
+			"index": 2,
+			"pads": [
+				"8"
+			],
+			"signals": [
+				"ADC_IN2",
+				"COMP2_INM",
+				"COMP2_OUT",
+				"LPUART1_TX",
+				"RTC_OUT_ALARM",
+				"RTC_OUT_CALIB",
+				"RTC_TAMP3",
+				"RTC_TS",
+				"SYS_WKUP3",
+				"TIM21_CH1",
+				"TIM2_CH3",
+				"USART2_TX"
+			],
+			"wake": true
+		},
+		{
+			"name": "PA3",
+			"index": 3,
+			"pads": [
+				"9"
+			],
+			"signals": [
+				"ADC_IN3",
+				"COMP2_INP",
+				"LPUART1_RX",
+				"TIM21_CH2",
+				"TIM2_CH4",
+				"USART2_RX"
+			]
+		},
+		{
+			"name": "PA4",
+			"index": 4,
+			"pads": [
+				"10"
+			],
+			"signals": [
+				"ADC_IN4",
+				"COMP1_INM",
+				"COMP2_INM",
+				"LPTIM1_IN1",
+				"SPI1_NSS",
+				"TIM22_ETR",
+				"USART2_CK"
+			]
+		},
+		{
+			"name": "PA5",
+			"index": 5,
+			"pads": [
+				"11"
+			],
+			"signals": [
+				"ADC_IN5",
+				"COMP1_INM",
+				"COMP2_INM",
+				"LPTIM1_IN2",
+				"SPI1_SCK",
+				"TIM2_CH1",
+				"TIM2_ETR"
+			]
+		},
+		{
+			"name": "PA6",
+			"index": 6,
+			"pads": [
+				"12"
+			],
+			"signals": [
+				"ADC_IN6",
+				"COMP1_OUT",
+				"LPTIM1_ETR",
+				"LPUART1_CTS",
+				"SPI1_MISO",
+				"TIM22_CH1"
+			]
+		},
+		{
+			"name": "PA7",
+			"index": 7,
+			"pads": [
+				"13"
+			],
+			"signals": [
+				"ADC_IN7",
+				"COMP2_OUT",
+				"LPTIM1_OUT",
+				"SPI1_MOSI",
+				"TIM22_CH2",
+				"USART2_CTS"
+			]
+		},
+		{
+			"name": "PA8",
+			"index": 8,
+			"pads": [
+				"18"
+			],
+			"signals": [
+				"LPTIM1_IN1",
+				"RCC_MCO",
+				"TIM2_CH1",
+				"USART2_CK"
+			]
+		},
+		{
+			"name": "PA9",
+			"index": 9,
+			"pads": [
+				"19"
+			],
+			"signals": [
+				"I2C1_SCL",
+				"RCC_MCO",
+				"TIM22_CH1",
+				"USART2_TX"
+			]
+		},
+		{
+			"name": "PA10",
+			"index": 10,
+			"pads": [
+				"20"
+			],
+			"signals": [
+				"I2C1_SDA",
+				"TIM22_CH2",
+				"USART2_RX"
+			]
+		},
+		{
+			"name": "PA11",
+			"index": 11,
+			"pads": [
+				"21"
+			],
+			"signals": [
+				"ADC_EXTI11",
+				"COMP1_OUT",
+				"SPI1_MISO",
+				"TIM21_CH2",
+				"USART2_CTS"
+			]
+		},
+		{
+			"name": "PA12",
+			"index": 12,
+			"pads": [
+				"22"
+			],
+			"signals": [
+				"COMP2_OUT",
+				"SPI1_MOSI",
+				"USART2_DE",
+				"USART2_RTS"
+			]
+		},
+		{
+			"name": "PA13",
+			"index": 13,
+			"pads": [
+				"23"
+			],
+			"signals": [
+				"LPTIM1_ETR",
+				"LPUART1_RX",
+				"SYS_SWDIO"
+			],
+			"reserved": "swd"
+		},
+		{
+			"name": "PA14",
+			"index": 14,
+			"pads": [
+				"24"
+			],
+			"signals": [
+				"I2C1_SMBA",
+				"LPTIM1_OUT",
+				"LPUART1_TX",
+				"SYS_SWCLK",
+				"USART2_TX"
+			],
+			"reserved": "swd"
+		},
+		{
+			"name": "PA15",
+			"index": 15,
+			"pads": [
+				"25"
+			],
+			"signals": [
+				"SPI1_NSS",
+				"TIM2_CH1",
+				"TIM2_ETR",
+				"USART2_RX"
+			]
+		},
+		{
+			"name": "PB0",
+			"index": 16,
+			"pads": [
+				"14"
+			],
+			"signals": [
+				"ADC_IN8",
+				"SPI1_MISO",
+				"SYS_VREF_OUT_PB0",
+				"TIM2_CH3",
+				"USART2_DE",
+				"USART2_RTS"
+			]
+		},
+		{
+			"name": "PB1",
+			"index": 17,
+			"pads": [
+				"15"
+			],
+			"signals": [
+				"ADC_IN9",
+				"LPUART1_DE",
+				"LPUART1_RTS",
+				"SPI1_MOSI",
+				"SYS_VREF_OUT_PB1",
+				"TIM2_CH4",
+				"USART2_CK"
+			]
+		},
+		{
+			"name": "PB3",
+			"index": 19,
+			"pads": [
+				"26"
+			],
+			"signals": [
+				"COMP2_INM",
+				"SPI1_SCK",
+				"TIM2_CH2"
+			]
+		},
+		{
+			"name": "PB4",
+			"index": 20,
+			"pads": [
+				"27"
+			],
+			"signals": [
+				"COMP2_INP",
+				"SPI1_MISO",
+				"TIM22_CH1"
+			]
+		},
+		{
+			"name": "PB5",
+			"index": 21,
+			"pads": [
+				"28"
+			],
+			"signals": [
+				"COMP2_INP",
+				"I2C1_SMBA",
+				"LPTIM1_IN1",
+				"SPI1_MOSI",
+				"TIM22_CH2"
+			]
+		},
+		{
+			"name": "PB6",
+			"index": 22,
+			"pads": [
+				"29"
+			],
+			"signals": [
+				"COMP2_INP",
+				"I2C1_SCL",
+				"LPTIM1_ETR",
+				"TIM21_CH1",
+				"USART2_TX"
+			]
+		},
+		{
+			"name": "PB7",
+			"index": 23,
+			"pads": [
+				"30"
+			],
+			"signals": [
+				"COMP2_INP",
+				"I2C1_SDA",
+				"LPTIM1_IN2",
+				"SYS_PVD_IN",
+				"USART2_RX"
+			]
+		},
+		{
+			"name": "PC14",
+			"index": 46,
+			"pads": [
+				"2"
+			],
+			"signals": [
+				"RCC_OSC32_IN"
+			]
+		},
+		{
+			"name": "PC15",
+			"index": 47,
+			"pads": [
+				"3"
+			],
+			"signals": [
+				"RCC_OSC32_OUT"
+			]
+		}
+	],
+	"power": [
+		{
+			"name": "VDD",
+			"net": "supply",
+			"pads": [
+				"1",
+				"17"
+			]
+		},
+		{
+			"name": "NRST",
+			"net": "reset",
+			"pads": [
+				"4"
+			]
+		},
+		{
+			"name": "VDDA",
+			"net": "analog",
+			"pads": [
+				"5"
+			]
+		},
+		{
+			"name": "VSS",
+			"net": "ground",
+			"pads": [
+				"16",
+				"32"
+			]
+		},
+		{
+			"name": "BOOT0",
+			"net": "boot",
+			"pads": [
+				"31"
+			]
+		}
+	],
+	"peripherals": {
+		"uart": [
+			"LPUART1",
+			"USART2"
+		],
+		"i2c": [
+			"I2C1"
+		],
+		"spi": [
+			"SPI1"
+		],
+		"i2s": [],
+		"adc": [
+			"ADC"
+		],
+		"usb": [],
+		"can": [],
+		"radio": []
+	},
+	"usb": null,
+	"radio": [],
+	"id": "stm32l031k6t6",
+	"mpn": "STM32L031K6T6",
+	"lcsc": "C94085",
+	"wakeAny": true,
+	"console": {
+		"instance": "USART2",
+		"tx": "PA2",
+		"rx": "PA3"
+	},
+	"programming": {
+		"method": "swd",
+		"pins": [
+			"PA13",
+			"PA14"
+		]
+	},
+	"boot": {
+		"pin": "BOOT0",
+		"level": "high"
+	},
+	"support": [
+		{
+			"job": "VDD decoupling (pad 1)",
+			"spec": "decouple",
+			"a": "pin:VDD",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD decoupling (pad 17)",
+			"spec": "decouple",
+			"a": "pin:VDD2",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDDA decoupling (pad 5)",
+			"spec": "decouple",
+			"a": "pin:VDDA",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD bulk",
+			"spec": "bulk",
+			"a": "net:supply",
+			"b": "net:GND"
+		},
+		{
+			"job": "NRST to GND, 100 nF",
+			"spec": "decouple",
+			"a": "pin:NRST",
+			"b": "net:GND"
+		},
+		{
+			"job": "BOOT0 pulled low (boot from flash)",
+			"spec": "bootPulldown",
+			"a": "pin:BOOT0",
+			"b": "net:GND"
+		}
+	],
+	"currents": {
+		"sleepUa": 0.6,
+		"cpuMa": 5.1,
+		"supplyMinMa": 10,
+		"source": "DS10668 Rev 6 (STM32L031x4/x6): run 32 MHz Range 1 on HSI 5.1 mA typ (Table 24); Stop with RTC and 8 KB RAM kept 0.6 µA (features list; Stop without RTC 0.38 µA, Table 31). No minimum supply current stated; 10 mA is Bringup's margin"
+	},
+	"firmware": {
+		"platform": "ststm32@20.0.0",
+		"board": "nucleo_l031k6",
+		"framework": "arduino",
+		"arch": "stm32",
+		"pinStyle": "name",
+		"zephyrBoard": "nucleo_l031k6"
+	},
+	"sim": {
+		"backend": null,
+		"models": [],
+		"note": "Renode has no STM32L031 platform (its L0 models are L071/L072); none chosen rather than a near miss"
+	},
+	"sources": [
+		"ST STM32_open_pin_data mcu/STM32L031K(4-6)Tx.xml (BSD-3-Clause)",
+		"DS10668 Rev 6: Fig. 13 power supply scheme (VDD N × 100 nF + 10 µF; VDDA 100 nF + 1 µF), Fig. 28 NRST 0.1 µF, §3.4.4 boot (BOOT0 pin 31 + nBOOT1)"
+	],
+	"priceUsd": {
+		"qty": 100,
+		"usd": 1.48,
+		"source": "LCSC C94085 $1.91 @1, $1.48 @100, 383 in stock, JLCPCB Extended (jlcsearch.tscircuit.com and jlcpcb.com part page, 11 Nov 2026)"
+	}
+}

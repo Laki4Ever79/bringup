@@ -1,5 +1,6 @@
 import type { CatalogPart } from "../tools/parts-search.ts"
 import type { ContractSnapshot, Part } from "./types.ts"
+import { mcuPinName } from "../mcu/pins.ts"
 
 export interface KicadSymbol {
 	pins: { name: string; number: string }[]
@@ -165,8 +166,8 @@ export function groundParts(s: ContractSnapshot, sources: { catalog: CatalogPart
 		const truth = truths.get(part.ref)
 		if (truth) checkPin(part, truth, a.partPin, `${a.signal} uses ${a.partRef} pin`)
 		const mcuTruth = mcu && truths.get(mcu.ref)
-		if (mcu && mcuTruth && mcuTruth.pins.size > 0 && !mcuTruth.pins.has(`GPIO${a.gpio}`) && !mcuTruth.pins.has(`IO${a.gpio}`)) {
-			findings.push({ partRef: mcu.ref, kind: "pin-not-on-part", detail: `${a.signal} is on GPIO${a.gpio}, which ${mcuTruth.label} (${mcu.mpn}) does not have`, source: mcuTruth.source })
+		if (mcu && mcuTruth && mcuTruth.pins.size > 0 && ![`GPIO${a.gpio}`, `IO${a.gpio}`, mcuPinName(parts, a.gpio)].some((n) => mcuTruth.pins.has(n))) {
+			findings.push({ partRef: mcu.ref, kind: "pin-not-on-part", detail: `${a.signal} is on ${mcuPinName(parts, a.gpio)}, which ${mcuTruth.label} (${mcu.mpn}) does not have`, source: mcuTruth.source })
 		}
 	}
 	return findings

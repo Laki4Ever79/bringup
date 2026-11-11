@@ -1,0 +1,341 @@
+{
+	"id": "esp32-c3-mini-1",
+	"vendor": "espressif",
+	"family": "ESP32-C3",
+	"mpn": "ESP32-C3-MINI-1",
+	"lcsc": "C2838502",
+	"kind": "module",
+	"package": {
+		"name": "ESP32-C3-MINI-1 (53-pad LGA module)",
+		"footprint": "esp32_c3_mini_1",
+		"bodyMm": {
+			"w": 13.2,
+			"h": 16.6
+		},
+		"extentMm": {
+			"w": 13.2,
+			"h": 16.6
+		}
+	},
+	"board": {
+		"supported": true
+	},
+	"core": "RISC-V (RV32IMC)",
+	"mhz": 160,
+	"flashKb": 4096,
+	"ramKb": 400,
+	"voltage": {
+		"min": 3.0,
+		"max": 3.6
+	},
+	"pins": [
+		{
+			"name": "GPIO0",
+			"index": 0,
+			"pads": [
+				"12"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH0"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO1",
+			"index": 1,
+			"pads": [
+				"13"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH1"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO2",
+			"index": 2,
+			"pads": [
+				"5"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH2"
+			],
+			"wake": true,
+			"reserved": "strap"
+		},
+		{
+			"name": "GPIO3",
+			"index": 3,
+			"pads": [
+				"6"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH3"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO4",
+			"index": 4,
+			"pads": [
+				"18"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH4"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO5",
+			"index": 5,
+			"pads": [
+				"19"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO6",
+			"index": 6,
+			"pads": [
+				"20"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO7",
+			"index": 7,
+			"pads": [
+				"21"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO8",
+			"index": 8,
+			"pads": [
+				"22"
+			],
+			"signals": [
+				"*"
+			],
+			"reserved": "strap"
+		},
+		{
+			"name": "GPIO9",
+			"index": 9,
+			"pads": [
+				"23"
+			],
+			"signals": [
+				"*"
+			],
+			"reserved": "strap"
+		},
+		{
+			"name": "GPIO10",
+			"index": 10,
+			"pads": [
+				"16"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO18",
+			"index": 18,
+			"pads": [
+				"26"
+			],
+			"signals": [
+				"*",
+				"USB_DM"
+			],
+			"reserved": "usb"
+		},
+		{
+			"name": "GPIO19",
+			"index": 19,
+			"pads": [
+				"27"
+			],
+			"signals": [
+				"*",
+				"USB_DP"
+			],
+			"reserved": "usb"
+		},
+		{
+			"name": "GPIO20",
+			"index": 20,
+			"pads": [
+				"30"
+			],
+			"signals": [
+				"*"
+			],
+			"reserved": "console"
+		},
+		{
+			"name": "GPIO21",
+			"index": 21,
+			"pads": [
+				"31"
+			],
+			"signals": [
+				"*"
+			],
+			"reserved": "console"
+		}
+	],
+	"power": [
+		{
+			"name": "GND",
+			"net": "ground",
+			"pads": [
+				"1"
+			]
+		},
+		{
+			"name": "3V3",
+			"net": "supply",
+			"pads": [
+				"3"
+			]
+		},
+		{
+			"name": "EN",
+			"net": "reset",
+			"pads": [
+				"8"
+			]
+		}
+	],
+	"peripherals": {
+		"uart": [
+			"UART0",
+			"UART1"
+		],
+		"i2c": [
+			"I2C0"
+		],
+		"spi": [
+			"SPI2"
+		],
+		"i2s": [
+			"I2S0"
+		],
+		"adc": [
+			"ADC1"
+		],
+		"usb": [
+			"USB_SERIAL_JTAG"
+		],
+		"can": [
+			"TWAI0"
+		],
+		"radio": [
+			"WIFI_BLE"
+		]
+	},
+	"console": {
+		"instance": "UART0",
+		"tx": "GPIO21",
+		"rx": "GPIO20"
+	},
+	"programming": {
+		"method": "usb-serial-jtag",
+		"pins": [
+			"GPIO18",
+			"GPIO19"
+		]
+	},
+	"boot": {
+		"pin": "GPIO9",
+		"level": "low",
+		"download": {
+			"pin": "GPIO8",
+			"level": "high"
+		}
+	},
+	"usb": {
+		"dp": "GPIO19",
+		"dm": "GPIO18"
+	},
+	"support": [],
+	"currents": {
+		"sleepUa": 5,
+		"cpuMa": 28,
+		"radioMa": 84,
+		"bleTxMa": 170,
+		"bleRxMa": 86,
+		"wifiTxMa": 350,
+		"supplyMinMa": 500,
+		"source": "ESP32-C3-MINI-1 & MINI-1U datasheet v2.2 (2026-05-06): Bluetooth LE transmit 170 mA peak at 0 dBm and receive 86 mA (Table 6-5); Wi-Fi transmit up to 350 mA (802.11b at 20.5 dBm, Table 6-4); external supply at least 0.5 A (Table 6-2), 3.3 V, 25 \u00b0C; chip: ESP32-C3 Series Datasheet v2.4 Tables 5-7, 5-8, 5-9"
+	},
+	"firmware": {
+		"platform": "espressif32@8.0.0",
+		"board": "esp32-c3-devkitm-1",
+		"framework": "arduino",
+		"arch": "esp32",
+		"pinStyle": "number",
+		"flags": [
+			"board_build.flash_mode = dio"
+		],
+		"libs": [
+			"h2zero/NimBLE-Arduino@2.5.2",
+			"knolleary/PubSubClient@2.8"
+		],
+		"zephyrBoard": "esp32c3_devkitm",
+		"env": "esp32c3",
+		"history": {
+			"store": "littlefs",
+			"bytes": 1441792,
+			"source": "Arduino-ESP32 default.csv spiffs partition 0x160000 (codegen/firmware.ts HISTORY_PARTITION_BYTES)"
+		}
+	},
+	"sim": {
+		"backend": "qemu",
+		"machine": "esp32c3",
+		"consoleUart": "UART0",
+		"models": [
+			"gpio",
+			"uart",
+			"timers",
+			"twai"
+		],
+		"note": "Espressif QEMU: no radio, I2C or I2S model"
+	},
+	"radio": [
+		"ble",
+		"wifi"
+	],
+	"preferred": [
+		4,
+		5,
+		6,
+		7,
+		3,
+		1,
+		0
+	],
+	"fccId": "2AC7Z-ESPC3MINI1",
+	"sources": [
+		"ESP32-C3-MINI-1 & MINI-1U datasheet v2.2 (Table 3-1 pins, Figure 11-1 pads)",
+		"ESP32-C3 Series Datasheet v2.4 (section 3.1 strapping pins)",
+		"ESP32-C3 TRM v1.4 Table 7.2-1",
+		"catalog/parts.json ESP32-C3-MINI-1 notes"
+	]
+}

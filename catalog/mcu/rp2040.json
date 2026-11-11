@@ -1,0 +1,728 @@
+{
+	"id": "rp2040",
+	"vendor": "raspberrypi",
+	"family": "RP2040",
+	"mpn": "RP2040",
+	"lcsc": "C2040",
+	"kind": "chip",
+	"package": {
+		"name": "QFN-56 7\u00d77",
+		"footprint": "qfn56_p0.4mm",
+		"bodyMm": {
+			"w": 7,
+			"h": 7
+		},
+		"extentMm": {
+			"w": 7,
+			"h": 7
+		},
+		"ringMm": 3.0625
+	},
+	"board": {
+		"supported": false,
+		"reason": "needs an external QSPI flash (W25Q16JV, C131025), a 12 MHz crystal and the core regulator's capacitors; the board generator places neither crystals nor the flash yet (docs/mcu.md, Not done)"
+	},
+	"core": "2\u00d7 ARM Cortex-M0+",
+	"mhz": 133,
+	"flashKb": 2048,
+	"ramKb": 264,
+	"voltage": {
+		"min": 1.8,
+		"max": 3.3
+	},
+	"pins": [
+		{
+			"name": "GPIO0",
+			"index": 0,
+			"pads": [
+				"2"
+			],
+			"signals": [
+				"SPI0_MISO",
+				"UART0_TX",
+				"I2C0_SDA",
+				"PWM0_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO1",
+			"index": 1,
+			"pads": [
+				"3"
+			],
+			"signals": [
+				"SPI0_CS",
+				"UART0_RX",
+				"I2C0_SCL",
+				"PWM0_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO2",
+			"index": 2,
+			"pads": [
+				"4"
+			],
+			"signals": [
+				"SPI0_SCK",
+				"UART0_CTS",
+				"I2C1_SDA",
+				"PWM1_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO3",
+			"index": 3,
+			"pads": [
+				"5"
+			],
+			"signals": [
+				"SPI0_MOSI",
+				"UART0_RTS",
+				"I2C1_SCL",
+				"PWM1_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO4",
+			"index": 4,
+			"pads": [
+				"6"
+			],
+			"signals": [
+				"SPI0_MISO",
+				"UART1_TX",
+				"I2C0_SDA",
+				"PWM2_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO5",
+			"index": 5,
+			"pads": [
+				"7"
+			],
+			"signals": [
+				"SPI0_CS",
+				"UART1_RX",
+				"I2C0_SCL",
+				"PWM2_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO6",
+			"index": 6,
+			"pads": [
+				"8"
+			],
+			"signals": [
+				"SPI0_SCK",
+				"UART1_CTS",
+				"I2C1_SDA",
+				"PWM3_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO7",
+			"index": 7,
+			"pads": [
+				"9"
+			],
+			"signals": [
+				"SPI0_MOSI",
+				"UART1_RTS",
+				"I2C1_SCL",
+				"PWM3_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO8",
+			"index": 8,
+			"pads": [
+				"11"
+			],
+			"signals": [
+				"SPI1_MISO",
+				"UART1_TX",
+				"I2C0_SDA",
+				"PWM4_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO9",
+			"index": 9,
+			"pads": [
+				"12"
+			],
+			"signals": [
+				"SPI1_CS",
+				"UART1_RX",
+				"I2C0_SCL",
+				"PWM4_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO10",
+			"index": 10,
+			"pads": [
+				"13"
+			],
+			"signals": [
+				"SPI1_SCK",
+				"UART1_CTS",
+				"I2C1_SDA",
+				"PWM5_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO11",
+			"index": 11,
+			"pads": [
+				"14"
+			],
+			"signals": [
+				"SPI1_MOSI",
+				"UART1_RTS",
+				"I2C1_SCL",
+				"PWM5_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO12",
+			"index": 12,
+			"pads": [
+				"15"
+			],
+			"signals": [
+				"SPI1_MISO",
+				"UART0_TX",
+				"I2C0_SDA",
+				"PWM6_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO13",
+			"index": 13,
+			"pads": [
+				"16"
+			],
+			"signals": [
+				"SPI1_CS",
+				"UART0_RX",
+				"I2C0_SCL",
+				"PWM6_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO14",
+			"index": 14,
+			"pads": [
+				"17"
+			],
+			"signals": [
+				"SPI1_SCK",
+				"UART0_CTS",
+				"I2C1_SDA",
+				"PWM7_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO15",
+			"index": 15,
+			"pads": [
+				"18"
+			],
+			"signals": [
+				"SPI1_MOSI",
+				"UART0_RTS",
+				"I2C1_SCL",
+				"PWM7_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO16",
+			"index": 16,
+			"pads": [
+				"27"
+			],
+			"signals": [
+				"SPI0_MISO",
+				"UART0_TX",
+				"I2C0_SDA",
+				"PWM0_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO17",
+			"index": 17,
+			"pads": [
+				"28"
+			],
+			"signals": [
+				"SPI0_CS",
+				"UART0_RX",
+				"I2C0_SCL",
+				"PWM0_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO18",
+			"index": 18,
+			"pads": [
+				"29"
+			],
+			"signals": [
+				"SPI0_SCK",
+				"UART0_CTS",
+				"I2C1_SDA",
+				"PWM1_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO19",
+			"index": 19,
+			"pads": [
+				"30"
+			],
+			"signals": [
+				"SPI0_MOSI",
+				"UART0_RTS",
+				"I2C1_SCL",
+				"PWM1_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO20",
+			"index": 20,
+			"pads": [
+				"31"
+			],
+			"signals": [
+				"SPI0_MISO",
+				"UART1_TX",
+				"I2C0_SDA",
+				"PWM2_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO21",
+			"index": 21,
+			"pads": [
+				"32"
+			],
+			"signals": [
+				"SPI0_CS",
+				"UART1_RX",
+				"I2C0_SCL",
+				"PWM2_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO22",
+			"index": 22,
+			"pads": [
+				"34"
+			],
+			"signals": [
+				"SPI0_SCK",
+				"UART1_CTS",
+				"I2C1_SDA",
+				"PWM3_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO23",
+			"index": 23,
+			"pads": [
+				"35"
+			],
+			"signals": [
+				"SPI0_MOSI",
+				"UART1_RTS",
+				"I2C1_SCL",
+				"PWM3_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO24",
+			"index": 24,
+			"pads": [
+				"36"
+			],
+			"signals": [
+				"SPI1_MISO",
+				"UART1_TX",
+				"I2C0_SDA",
+				"PWM4_A"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO25",
+			"index": 25,
+			"pads": [
+				"37"
+			],
+			"signals": [
+				"SPI1_CS",
+				"UART1_RX",
+				"I2C0_SCL",
+				"PWM4_B"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO26",
+			"index": 26,
+			"pads": [
+				"38"
+			],
+			"signals": [
+				"SPI1_SCK",
+				"UART1_CTS",
+				"I2C1_SDA",
+				"PWM5_A",
+				"ADC_IN0"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO27",
+			"index": 27,
+			"pads": [
+				"39"
+			],
+			"signals": [
+				"SPI1_MOSI",
+				"UART1_RTS",
+				"I2C1_SCL",
+				"PWM5_B",
+				"ADC_IN1"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO28",
+			"index": 28,
+			"pads": [
+				"40"
+			],
+			"signals": [
+				"SPI1_MISO",
+				"UART0_TX",
+				"I2C0_SDA",
+				"PWM6_A",
+				"ADC_IN2"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO29",
+			"index": 29,
+			"pads": [
+				"41"
+			],
+			"signals": [
+				"SPI1_CS",
+				"UART0_RX",
+				"I2C0_SCL",
+				"PWM6_B",
+				"ADC_IN3"
+			],
+			"wake": true
+		}
+	],
+	"power": [
+		{
+			"name": "IOVDD",
+			"net": "supply",
+			"pads": [
+				"1",
+				"10",
+				"22",
+				"33",
+				"42",
+				"49"
+			]
+		},
+		{
+			"name": "DVDD",
+			"net": "other",
+			"pads": [
+				"23",
+				"50"
+			]
+		},
+		{
+			"name": "TESTEN",
+			"net": "ground",
+			"pads": [
+				"19"
+			]
+		},
+		{
+			"name": "XIN",
+			"net": "other",
+			"pads": [
+				"20"
+			]
+		},
+		{
+			"name": "XOUT",
+			"net": "other",
+			"pads": [
+				"21"
+			]
+		},
+		{
+			"name": "SWCLK",
+			"net": "other",
+			"pads": [
+				"24"
+			]
+		},
+		{
+			"name": "SWDIO",
+			"net": "other",
+			"pads": [
+				"25"
+			]
+		},
+		{
+			"name": "RUN",
+			"net": "reset",
+			"pads": [
+				"26"
+			]
+		},
+		{
+			"name": "ADC_AVDD",
+			"net": "analog",
+			"pads": [
+				"43"
+			]
+		},
+		{
+			"name": "VREG_IN",
+			"net": "supply",
+			"pads": [
+				"44"
+			]
+		},
+		{
+			"name": "VREG_VOUT",
+			"net": "other",
+			"pads": [
+				"45"
+			]
+		},
+		{
+			"name": "USB_DM",
+			"net": "usb",
+			"pads": [
+				"46"
+			]
+		},
+		{
+			"name": "USB_DP",
+			"net": "usb",
+			"pads": [
+				"47"
+			]
+		},
+		{
+			"name": "USB_VDD",
+			"net": "usb",
+			"pads": [
+				"48"
+			]
+		},
+		{
+			"name": "QSPI_SD3",
+			"net": "other",
+			"pads": [
+				"51"
+			]
+		},
+		{
+			"name": "QSPI_SCLK",
+			"net": "other",
+			"pads": [
+				"52"
+			]
+		},
+		{
+			"name": "QSPI_SD0",
+			"net": "other",
+			"pads": [
+				"53"
+			]
+		},
+		{
+			"name": "QSPI_SD2",
+			"net": "other",
+			"pads": [
+				"54"
+			]
+		},
+		{
+			"name": "QSPI_SD1",
+			"net": "other",
+			"pads": [
+				"55"
+			]
+		},
+		{
+			"name": "QSPI_SS",
+			"net": "boot",
+			"pads": [
+				"56"
+			]
+		},
+		{
+			"name": "GND",
+			"net": "ground",
+			"pads": [
+				"57"
+			]
+		}
+	],
+	"peripherals": {
+		"uart": [
+			"UART0",
+			"UART1"
+		],
+		"i2c": [
+			"I2C0",
+			"I2C1"
+		],
+		"spi": [
+			"SPI0",
+			"SPI1"
+		],
+		"i2s": [],
+		"adc": [
+			"ADC"
+		],
+		"usb": [
+			"USB"
+		],
+		"can": [],
+		"radio": []
+	},
+	"console": {
+		"instance": "UART0",
+		"tx": "GPIO0",
+		"rx": "GPIO1"
+	},
+	"programming": {
+		"method": "uf2",
+		"pins": [
+			"USB_DP",
+			"USB_DM",
+			"SWCLK",
+			"SWDIO"
+		]
+	},
+	"boot": {
+		"pin": "QSPI_SS",
+		"level": "low"
+	},
+	"usb": {
+		"dp": "USB_DP",
+		"dm": "USB_DM"
+	},
+	"clock": {
+		"hseMhz": 12,
+		"why": "the USB bootloader needs a 12 MHz crystal or clock (RP2040 datasheet \u00a71.4.2)",
+		"pads": [
+			"20",
+			"21"
+		]
+	},
+	"support": [],
+	"currents": {
+		"sleepUa": 180,
+		"cpuMa": 25,
+		"supplyMinMa": 100,
+		"source": "RP2040 datasheet (build 2025-02-20) Table 637: DORMANT 0.18 mA typ on DVDD, the floor the firmware can reach (no deep sleep with RAM off); run current at 133 MHz only as a graph (Fig. 172), 25 mA is read from it, an estimate. No minimum supply current stated; 100 mA is Bringup's margin"
+	},
+	"firmware": {
+		"platform": "raspberrypi@1.17.0",
+		"board": "pico",
+		"framework": "arduino",
+		"arch": "rp2040",
+		"pinStyle": "number",
+		"history": {
+			"store": "littlefs",
+			"bytes": 65536,
+			"source": "Bringup default: 64 KB of the 2 MB flash for readings"
+		}
+	},
+	"sim": {
+		"backend": null,
+		"models": [],
+		"note": "Renode 1.17 has no RP2040 platform; Wokwi has one but its CLI needs a token"
+	},
+	"radio": [],
+	"wakeAny": true,
+	"preferred": [
+		2,
+		3,
+		4,
+		5,
+		6,
+		7,
+		8,
+		9,
+		10,
+		11,
+		12,
+		13,
+		14,
+		15,
+		16,
+		17,
+		18,
+		19,
+		20,
+		21,
+		22,
+		26,
+		27,
+		28
+	],
+	"priceUsd": {
+		"qty": 100,
+		"usd": 0.76,
+		"source": "LCSC C2040 $0.99 @1, $0.76 @100, 86,210 in stock, Extended; plus W25Q16JVSSIQ C131025 $1.16 (jlcsearch.tscircuit.com and jlcpcb.com part page, 11 Nov 2026)"
+	},
+	"sources": [
+		"RP2040 datasheet build 2025-02-20 \u00a71.4.3 pinout, \u00a72.19.2 GPIO function table (F2 SPI/UART, F3 I2C, F4 PWM), Table 618 SWD pins",
+		"Hardware design with RP2040 (build 20/08/2026) \u00a72.1\u20132.2: 100 nF per power pin, 1 \u00b5F on VREG_IN/VOUT, BOOTSEL via QSPI_SS"
+	]
+}
