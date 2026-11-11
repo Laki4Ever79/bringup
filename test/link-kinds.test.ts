@@ -87,3 +87,43 @@ test("an I2C link on a board that already has its bus needs no new pins", () => 
 test("a single board without links gets no budget finding", () => {
 	assert.deepEqual(linkBudget(fixtureContract()), [])
 })
+
+// ---- I2C: the target sends, the controller reads ----------------------------------------------------------------
+import { linkHeader } from "../src/codegen/firmware.ts"
+import { benchPlan } from "../src/system/bench-plan.ts"
+import { linkProposal } from "../src/inference/scripts.ts"
+
+const reading = { name: "reading", fields: [{ name: "tempCx100", type: "i16" as const }, { name: "rhx100", type: "u16" as const }] }
+const targetSends = (messages: NonNullable<SystemSpec["links"][0]["messages"]> = [{ ...reading, from: "b" }]): SystemSpec => ({
+	...spec("i2c"),
+	links: [{ id: "L1", kind: "i2c", a: { board: "a" }, b: { board: "b" }, i2c: { controller: "a", targets: { b: 0x42 }, pullupsOn: "a" }, cable: { lengthMm: 200 }, messages }],
+})
+function wired(s: SystemSpec, name: string): ContractSnapshot {
+	const c = logger(boardLinks(s, name))
+	for (let next = linkProposal(c); next; next = linkProposal(c)) (c.values as Record<string, unknown>)[next.field] = next.value
+	return c
+}
+
+test("an I2C target may send one message; two are an error", () => {
+	assert.deepEqual(specErrors(targetSends()), [])
+	const two = targetSends([{ ...reading, from: "b" }, { name: "status", from: "b", fields: [{ name: "ok", type: "u8" }] }])
+	assert.ok(specErrors(two).some((e) => /^link L1: b sends reading, status; an I2C target holds one frame for the controller to read, so it sends one message/.test(e)), specErrors(two).join("\n"))
+})
+
+test("link.h for an I2C target that sends keeps one reply frame and clears it after the read", () => {
+	const s = targetSends()
+	const target = linkHeader(wired(s, "b"))
+	assert.match(target, /Wire\.onRequest\(/)
+	const handler = target.slice(target.indexOf("static void linkOnRequest"), target.indexOf("}\n", target.indexOf("static void linkOnRequest")))
+	assert.match(handler, /linkReplyLen = 0/)
+	assert.doesNotMatch(target, /Wire\.beginTransmission/)
+	const controller = linkHeader(wired(s, "a"))
+	assert.match(controller, /Wire\.requestFrom\(\(uint8_t\)LINK_L1_I2C_PEER_ADDRESS/)
+	assert.match(controller, /linkReceived\("L1"/)
+})
+
+test("the bench plan expects a target's message at the controller", () => {
+	const s = targetSends()
+	const p = benchPlan(s, { a: wired(s, "a"), b: wired(s, "b") }, { a: "fw/a", b: "fw/b" })
+	assert.deepEqual(p.expect.map((e) => [e.board, e.prefix]), [["a", "LINK L1 reading from b:"]])
+})
