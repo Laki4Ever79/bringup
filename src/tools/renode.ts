@@ -63,13 +63,26 @@ export function runRenode(root: string, script: string, workDir: string, timeout
 	const resc = join(workDir, "bringup.resc")
 	writeFileSync(resc, script)
 	return new Promise((resolve) => {
-		let out = ""
+		// The console lines (the UART analyzers' [INFO] lines) are kept whole; the rest only as a 200 KB tail, so a model's
+		// warning flood (the nRF52840's twi0 on every unmodelled register access) can't push the boot banner out.
+		let tail = ""
+		let partial = ""
+		const consoleLog: string[] = []
 		const child = spawn(bin, ["--disable-gui", "--console", "--plain", "-e", `include @${resc}`], { stdio: ["ignore", "pipe", "pipe"] })
 		const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs)
-		const add = (d: Buffer) => { out = (out + d).slice(-200_000) }
+		const add = (d: Buffer) => {
+			const text = partial + d
+			const lines = text.split("\n")
+			partial = lines.pop() ?? ""
+			for (const l of lines) {
+				if (/\[INFO\] [\w/-]+: \[host:/.test(l.replace(/\x1b\[[0-9;]*m/g, ""))) consoleLog.push(l)
+				else tail = (tail + l + "\n").slice(-200_000)
+			}
+		}
+		const result = () => `${consoleLog.join("\n")}\n${tail}${partial ? `\n${partial}` : ""}`
 		child.stdout.on("data", add)
 		child.stderr.on("data", add)
-		child.on("error", (e) => { clearTimeout(timer); resolve(`${out}\n${e.message}`) })
-		child.on("close", () => { clearTimeout(timer); resolve(out) })
+		child.on("error", (e) => { clearTimeout(timer); resolve(`${result()}\n${e.message}`) })
+		child.on("close", () => { clearTimeout(timer); resolve(result()) })
 	})
 }

@@ -490,8 +490,8 @@
 		"zephyrBoard": "nrf52840dk/nrf52840",
 		"history": {
 			"store": "littlefs",
-			"bytes": 32768,
-			"source": "Bringup default: 32 KB of InternalFS"
+			"bytes": 12288,
+			"source": "Adafruit nRF52 core 1.7.0 InternalFS: 28 KB (7 pages at 0xED000, 128-byte LittleFS blocks), shared with the key-value file and Bluefruit's bonds; 12 KB of readings in 512-byte files leaves room for LittleFS's copy-on-write and metadata"
 		}
 	},
 	"sim": {
@@ -506,7 +506,7 @@
 			"timers",
 			"radio"
 		],
-		"note": "Renode nrf52840: BLE medium between machines; Adafruit core's SoftDevice untested in Renode"
+		"note": "Renode 1.17 nrf52840.repl boots the Adafruit-core firmware without the S140 SoftDevice (vector table guessed at 0x26000) and prints the banner on UARTE0; the first I2C transfer then hangs, since its twi0 model lacks TWIM (EasyDMA), which the core uses. Bluefruit.begin (SoftDevice calls) is never reached there"
 	},
 	"radio": [
 		"ble",

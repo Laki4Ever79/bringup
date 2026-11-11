@@ -17,9 +17,12 @@
 #define RADIO_NONE 1
 #endif
 #endif
-// The radio code (NimBLE, Wi-Fi, MQTT, OTA) is Arduino-ESP32's.
-#if (defined(RADIO_BLE) || defined(RADIO_WIFI)) && !defined(ARDUINO_ARCH_ESP32)
-#error "this firmware drives Bluetooth LE and Wi-Fi on the ESP32 only so far: give the design RADIO_NONE or an ESP32"
+// The radio code: Bluetooth LE on the ESP32 (NimBLE) and the nRF52 (Bluefruit); Wi-Fi, MQTT and OTA on the ESP32 only.
+#if defined(RADIO_BLE) && !defined(ARDUINO_ARCH_ESP32) && !defined(ARDUINO_ARCH_NRF52)
+#error "this firmware drives Bluetooth LE on the ESP32 and the nRF52 only so far: give the design RADIO_NONE or one of those"
+#endif
+#if defined(RADIO_WIFI) && !defined(ARDUINO_ARCH_ESP32)
+#error "this firmware drives Wi-Fi on the ESP32 only so far: give the design RADIO_NONE or an ESP32"
 #endif
 #if __has_include("model.h")
 #include "model.h"
@@ -195,8 +198,27 @@ static int32_t storeReading(float tempC, float rh) {
 // - offset (read/write): how many of the newest records the next history read skips;
 // - history (read): up to HISTORY_CHUNK records, newest first, from offset on. Records are packReading()'s, little-endian.
 #ifdef RADIO_BLE
+#if defined(ARDUINO_ARCH_ESP32)
 #include <NimBLEDevice.h>
 #include "identity.h"
+#else
+// The nRF52: Adafruit's Bluefruit over Nordic's S140 SoftDevice (the core's Bluefruit52Lib).
+#include <bluefruit.h>
+// identity.h's passkey, kept in the HAL's key-value store and made by the chip's RNG (hal.h halRandom32).
+static uint32_t devicePasskey(bool *made = nullptr) {
+	HalKv p;
+	p.begin("identity", false);
+	uint32_t pk = p.get("passkey", 0);
+	const bool fresh = pk < 100000 || pk > 999999;
+	if (fresh) {
+		pk = 100000 + halRandom32() % 900000;
+		p.put("passkey", pk);
+	}
+	p.end();
+	if (made) *made = fresh;
+	return pk;
+}
+#endif
 #ifdef REPORT_BTHOME
 #include "bthome.h"
 // The packet id Home Assistant uses to drop repeats: one per reading, kept across deep sleep.
@@ -224,6 +246,7 @@ static const char *BLE_HISTORY_UUID = DF_GATT_HISTORY;
 static volatile bool bleConnected = false;
 static uint32_t historyNext = 0, historyCount = 0, historyOffset = 0;
 
+#if defined(ARDUINO_ARCH_ESP32)
 class ServerCallbacks : public NimBLEServerCallbacks {
 	void onConnect(NimBLEServer *, NimBLEConnInfo &) override { bleConnected = true; }
 	void onDisconnect(NimBLEServer *, NimBLEConnInfo &, int) override { bleConnected = false; }
@@ -329,6 +352,165 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 	NimBLEDevice::deinit(true);
 	halHistoryUnmount();
 }
+
+#else  // Bluefruit (nRF52)
+// The same service, UUIDs, security and advertising as the NimBLE code above, on Adafruit's Bluefruit. The SoftDevice is
+// enabled once per boot (Bluefruit.begin); a later call (USB powered, a reading every period) only updates the values
+// and advertises again.
+#ifdef REPORT_GATT
+// "xxxxxxxx-xxxx-…" (big-endian text) as the 16 bytes the SoftDevice takes (little-endian).
+static void bleUuid128(const char *text, uint8_t out[16]) {
+	int n = 0;
+	for (const char *p = text; *p && n < 32; p++) {
+		if (*p == '-') continue;
+		const uint8_t v = *p <= '9' ? *p - '0' : (*p | 0x20) - 'a' + 10;
+		uint8_t &b = out[15 - n / 2];
+		b = n % 2 ? (uint8_t)(b | v) : (uint8_t)(v << 4);
+		n++;
+	}
+}
+// BLEUuid keeps a pointer to its bytes: they live here.
+static uint8_t bleUuids[5][16];
+static BLEService bleService;
+static BLECharacteristic bleLatest, bleCount, bleOffset, bleHistory;
+
+static void bleOffsetWritten(uint16_t, BLECharacteristic *, uint8_t *data, uint16_t len) {
+	if (len >= sizeof historyOffset) memcpy(&historyOffset, data, sizeof historyOffset);
+}
+
+// Reads the newest records first, as the NimBLE code does: the value is filled when a read starts (offset 0) and the
+// SoftDevice serves it, including the long reads a phone makes for the rest.
+static void bleHistoryRead(uint16_t conn, BLECharacteristic *c, ble_gatts_evt_read_t *request) {
+	if (request->offset == 0) {
+		static uint32_t records[HISTORY_CHUNK];
+		uint32_t n = 0;
+		HalHistory f;
+		const bool open = f.open(false);
+		for (uint32_t i = historyOffset; open && i < historyCount && n < HISTORY_CHUNK; i++) {
+			uint32_t slot = (historyNext + HISTORY_SLOTS - 1 - i) % HISTORY_SLOTS;
+			if (!f.read(slot, records[n])) break;
+			n++;
+		}
+		f.close();
+		c->write(records, (uint16_t)(n * sizeof(uint32_t)));
+	}
+	ble_gatts_rw_authorize_reply_params_t reply;
+	memset(&reply, 0, sizeof reply);
+	reply.type = BLE_GATTS_AUTHORIZE_TYPE_READ;
+	reply.params.read.gatt_status = BLE_GATT_STATUS_SUCCESS;
+	sd_ble_gatts_rw_authorize_reply(conn, &reply);
+}
+
+static void bleCharacteristic(BLECharacteristic &c, uint8_t *uuid, const char *text, bool writable, uint16_t maxLen) {
+	bleUuid128(text, uuid);
+	c.setUuid(BLEUuid(uuid));
+	c.setProperties(writable ? (CHR_PROPS_READ | CHR_PROPS_WRITE) : CHR_PROPS_READ);
+	// Read (and write) only over an encrypted link with MITM protection: the passkey, as NimBLE's READ_AUTHEN.
+	c.setPermission(SECMODE_ENC_WITH_MITM, writable ? SECMODE_ENC_WITH_MITM : SECMODE_NO_ACCESS);
+	if (maxLen == sizeof(uint32_t)) c.setFixedLen(maxLen);
+	else c.setMaxLen(maxLen);
+}
+#endif
+
+static void bleOnConnect(uint16_t) { bleConnected = true; }
+static void bleOnDisconnect(uint16_t, uint8_t) { bleConnected = false; }
+
+static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
+	static bool started = false;
+	HalKv prefs;
+	prefs.begin("history", true);
+	historyNext = prefs.get("next", 0);
+	historyCount = prefs.get("count", 0);
+	prefs.end();
+	halHistoryMount(false);
+	char name[16];
+	snprintf(name, sizeof name, "Bringup-%04X", (unsigned)(halUniqueId() >> 32) & 0xFFFF);
+	if (!started) {
+		started = true;
+		Bluefruit.autoConnLed(false);  // its LED would be LED_BUILTIN, which a design may wire to anything
+		Bluefruit.begin();
+		Bluefruit.setTxPower(0);
+		Bluefruit.setName(name);
+		Bluefruit.Periph.setConnectCallback(bleOnConnect);
+		Bluefruit.Periph.setDisconnectCallback(bleOnDisconnect);
+#ifdef REPORT_GATT
+		// The history is readable only over an authenticated, encrypted link with this device's own passkey (as above).
+		bool madePasskey = false;
+		const uint32_t passkey = devicePasskey(&madePasskey);
+		if (madePasskey) Log.printf("BLE passkey %06lu (new: label the device with it)\n", (unsigned long)passkey);
+		char pin[8];
+		snprintf(pin, sizeof pin, "%06lu", (unsigned long)passkey);
+		Bluefruit.Security.setIOCaps(true, false, false);  // display only
+		Bluefruit.Security.setMITM(true);
+		Bluefruit.Security.setPIN(pin);
+		bleUuid128(BLE_SERVICE_UUID, bleUuids[0]);
+		bleService.setUuid(BLEUuid(bleUuids[0]));
+		bleService.begin();
+		bleCharacteristic(bleLatest, bleUuids[1], BLE_LATEST_UUID, false, sizeof(uint32_t));
+		bleLatest.begin();
+		bleCharacteristic(bleCount, bleUuids[2], BLE_COUNT_UUID, false, sizeof(uint32_t));
+		bleCount.begin();
+		bleCharacteristic(bleOffset, bleUuids[3], BLE_OFFSET_UUID, true, sizeof(uint32_t));
+		bleOffset.setWriteCallback(bleOffsetWritten);
+		bleOffset.begin();
+		bleCharacteristic(bleHistory, bleUuids[4], BLE_HISTORY_UUID, false, HISTORY_CHUNK * sizeof(uint32_t));
+		bleHistory.setReadAuthorizeCallback(bleHistoryRead);
+		bleHistory.begin();
+#endif
+	}
+#ifdef REPORT_GATT
+	bleLatest.write32(latest);
+	bleCount.write32(historyCount);
+	bleOffset.write32(historyOffset = 0);
+#else
+	(void)latest;
+#endif
+	BLEAdvertising &adv = Bluefruit.Advertising;
+	adv.stop();
+	adv.clearData();
+	Bluefruit.ScanResponse.clearData();
+	adv.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
+#ifdef REPORT_BTHOME
+	// BTHome v2 service data (the 16-bit UUID, little-endian, then the payload), the flags and the name; the GATT
+	// service's 128-bit UUID goes to the scan response.
+	uint8_t bthome[2 + 12] = {(uint8_t)(BTHOME_UUID & 0xFF), (uint8_t)(BTHOME_UUID >> 8)};
+	const size_t bthomeLen = bthomeServiceData(bthome + 2, bthomePacketId++, ok, tempC, rh);
+	adv.addData(BLE_GAP_AD_TYPE_SERVICE_DATA, bthome, (uint8_t)(2 + bthomeLen));
+	adv.addName();
+#ifdef REPORT_GATT
+	Bluefruit.ScanResponse.addService(bleService);
+#else
+	// BTHome only: a broadcast nobody connects to.
+	adv.setType(BLE_GAP_ADV_TYPE_NONCONNECTABLE_NONSCANNABLE_UNDIRECTED);
+#endif
+#else
+	(void)ok;
+	(void)tempC;
+	(void)rh;
+#ifdef REPORT_GATT
+	adv.addService(bleService);
+#endif
+	adv.addName();
+#endif
+	adv.restartOnDisconnect(false);
+	adv.start(0);
+	Log.printf("BLE %s advertising %lu ms\n", name, (unsigned long)advertiseMs);
+	const uint32_t start = millis();
+	bool everConnected = false;
+	for (;;) {
+		const uint32_t awake = millis() - start;
+		everConnected |= bleConnected;
+		if (bleConnected ? awake >= BLE_CONNECTED_MAX_MS : awake >= advertiseMs) break;
+		delay(5);
+	}
+	if (everConnected) Log.println("BLE a phone connected");
+	advertiseMs = BLE_ADVERTISE_MS;  // a button's long window is for its own wake only
+	adv.stop();
+	for (uint16_t h = 0; h < BLE_MAX_CONNECTION; h++)
+		if (Bluefruit.connected(h)) Bluefruit.disconnect(h);
+	halHistoryUnmount();
+}
+#endif
 
 #endif  // RADIO_BLE
 
@@ -801,7 +983,7 @@ void setup() {
 #endif
 #if defined(PIN_BUTTON) && defined(RADIO_BLE)
 	// Woken by the button (not the timer, nor USB on the sense pin): stay visible long enough for a phone to connect.
-	if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO && (esp_sleep_get_gpio_wakeup_status() & (1ULL << PIN_BUTTON))) {
+	if (halWokeByPin(PIN_BUTTON)) {
 		advertiseMs = BUTTON_ADVERTISE_MS;
 		Log.println("BUTTON wake: visible for a phone");
 	}
