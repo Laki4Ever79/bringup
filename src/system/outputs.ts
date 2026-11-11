@@ -1,5 +1,6 @@
 // What a system of boards leaves on disk: the cable drawing (cable.md, and cable.yml for WireViz), and the system
 // report. Both are regenerated from the boards' contracts and the spec on every check.
+import { LINK_KINDS } from "../contract/link-kinds.ts"
 import type { BoardLink, ContractSnapshot } from "../contract/types.ts"
 import { LINK_CONNECTOR, uartSignals } from "../contract/links.ts"
 import { connectorRef } from "./derive.ts"
@@ -14,6 +15,7 @@ function pinSignals(l: SystemLink, link: BoardLink | undefined): Record<(typeof 
 	const io = (pin: "IO1" | "IO2") => {
 		if (!link) return "?"
 		if (link.kind === "i2c") return pin === "IO1" ? "SDA" : "SCL"
+		if (link.kind !== "uart") return "?"
 		const { tx, rx } = uartSignals(link)
 		return link.txOn === pin ? tx : rx
 	}
@@ -75,7 +77,7 @@ export function systemReport(spec: SystemSpec, contracts: Record<string, Contrac
 		"",
 		"| Link | Between | Kind | Power | Cable | Messages |",
 		"|---|---|---|---|---|---|",
-		...spec.links.map((l) => `| ${l.id} | ${l.a.board} ↔ ${l.b.board} | ${l.kind === "uart" ? `UART ${l.baud ?? 115200} baud` : `I2C ${l.i2c?.khz ?? 100} kHz, controller ${l.i2c?.controller}`} | ${l.power ? `from ${l.power.from}` : "each its own"} | ${l.cable.lengthMm} mm (cable.md) | ${(l.messages ?? []).map((m) => `${m.name} from ${m.from}`).join(", ") || "none"} |`),
+		...spec.links.map((l) => `| ${l.id} | ${l.a.board} ↔ ${l.b.board} | ${l.kind === "uart" ? `UART ${l.baud ?? 115200} baud` : l.kind === "i2c" ? `I2C ${l.i2c?.khz ?? 100} kHz, controller ${l.i2c?.controller}` : `${LINK_KINDS[l.kind]?.label ?? l.kind} (not built yet)`} | ${l.power ? `from ${l.power.from}` : "each its own"} | ${l.cable ? `${l.cable.lengthMm} mm (cable.md)` : "no cable"} | ${(l.messages ?? []).map((m) => `${m.name} from ${m.from}`).join(", ") || "none"} |`),
 		"",
 		"## On the bench",
 		"",

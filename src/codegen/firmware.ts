@@ -222,7 +222,7 @@ export function linkHeader(s: ContractSnapshot): string {
 		// A failed reading goes out only in a message that can say so (an ok field); otherwise it isn't sent.
 		body.push(m.fields.some((f) => f.name === "ok") ? `\t{` : `\tif (ok) {`, `\t\t${m.name}_msg m = {};`, ...m.fields.map((f) => `\t\tm.${f.name} = ${READING_FILL[f.name] ?? "0"};${READING_FILL[f.name] ? "" : " // not a reading field: sent as 0"}`))
 		if (l.kind === "uart") body.push(`\t\tlinkFrameWrite(Serial1, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tSerial1.flush();`)
-		else if (l.i2c?.role === "target") body.push(`\t\tLinkBufferOut out;`, `\t\tlinkFrameWrite(out, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tlinkReplyLen = 0;`, `\t\tmemcpy(linkReplyFrame, out.buf, out.n);`, `\t\tlinkReplyLen = out.n; // last: the request handler sees a whole frame or none`)
+		else if (l.i2c?.role === "target") body.push(`\t\tLinkBufferOut out;`, `\t\tlinkFrameWrite(out, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tlinkReplyLen = 0;`, `\t\tmemcpy(linkReplyFrame, out.buf, out.n);`, `\t\t__atomic_store_n(&linkReplyLen, out.n, __ATOMIC_RELEASE); // last, and after the copy: the request handler sees a whole frame or none`)
 		else body.push(`\t\tWire.beginTransmission((uint8_t)${L(l.id)}_I2C_PEER_ADDRESS);`, `\t\tlinkFrameWrite(Wire, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tconst uint8_t err = Wire.endTransmission();`, `\t\tif (err) Serial.printf("LINK ${l.id}: ${l.peer} didn't answer at 0x%02x (%u)\\n", ${L(l.id)}_I2C_PEER_ADDRESS, err);`)
 		body.push(`\t\tSerial.println("LINK ${l.id} sent ${m.name}");`, `\t}`)
 	}
@@ -240,7 +240,10 @@ export function linkHeader(s: ContractSnapshot): string {
 				`\t\t\tconst uint8_t *ip;`,
 				`\t\t\tuint8_t ilen;`,
 				`\t\t\tuint32_t ihash;`,
-				`\t\t\tWire.requestFrom((uint8_t)${L(i2cIn.l.id)}_I2C_PEER_ADDRESS, (uint8_t)(8 + sizeof(${i2cIn.m.name}_msg)));`,
+				// Each reply stands alone: start the reader fresh, and ask for the largest frame, so a target built against a
+				// longer definition is still read whole and reported as unknown, never cut short and lost.
+				`\t\t\tlinkI2cReader_${i2cIn.l.id}.n = 0;`,
+				`\t\t\tWire.requestFrom((uint8_t)${L(i2cIn.l.id)}_I2C_PEER_ADDRESS, (uint8_t)(8 + LINK_MAX_PAYLOAD));`,
 				`\t\t\twhile (Wire.available()) if (linkI2cReader_${i2cIn.l.id}.feed((uint8_t)Wire.read(), ihash, ip, ilen)) linkReceived("${i2cIn.l.id}", ihash, ip, ilen);`,
 				`\t\t}`,
 			)

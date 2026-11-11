@@ -161,3 +161,35 @@ test("the bench plan keeps a sending I2C target on USB too: it answers only whil
 	const product = p.steps.at(-1)!
 	assert.ok(product.do.some((l) => /b: keep it on USB too: an I2C target answers the controller only while it is awake/.test(l)), product.do.join("\n"))
 })
+
+test("I2C handover: the reply length is published after the frame (release store), and each read is a fresh, full-size frame", () => {
+	const s = targetSends()
+	const target = linkHeader(wired(s, "b"))
+	assert.match(target, /__atomic_store_n\(&linkReplyLen, out\.n, __ATOMIC_RELEASE\)/)
+	const controller = linkHeader(wired(s, "a"))
+	assert.match(controller, /linkI2cReader_L1\.n = 0;\s*\n\s*Wire\.requestFrom\(\(uint8_t\)LINK_L1_I2C_PEER_ADDRESS, \(uint8_t\)\(8 \+ LINK_MAX_PAYLOAD\)\)/)
+})
+
+test("a kind not built yet is never shown or checked as UART or I2C", async () => {
+	const { systemReport } = await import("../src/system/outputs.ts")
+	const { systemChecks } = await import("../src/system/checks.ts")
+	const s = spec("spi")
+	const c = { a: logger(boardLinks(s, "a")), b: logger(boardLinks(s, "b")) }
+	const report = systemReport(s, c, [], "planned", [])
+	const row = report.split("\n").find((l) => l.startsWith("| L1 "))!
+	assert.match(row, /\| SPI \(not built yet\) \|/)
+	assert.doesNotMatch(row, /UART|I2C/)
+	assert.doesNotThrow(() => systemChecks(s, c))
+	assert.ok(!systemChecks(s, c).some((f) => /uart|i2c/.test(f.kind)))
+})
+
+test("the budget charges only the signals still missing: a half-wired UART needs one more pin", () => {
+	const s = logger(boardLinks(spec("uart"), "a"))
+	const used = new Set(s.values.pins!.map((p) => p.gpio))
+	const [g] = FREE_GPIOS.filter((x) => !used.has(x))
+	s.values.pins = [...s.values.pins!, { signal: "L1_TX", gpio: g, partRef: "JL1", partPin: "IO1" }]
+	fill(s, 1)
+	assert.deepEqual(linkBudget(s), [])
+	fill(s, 0)
+	assert.match(linkBudget(s)[0]?.message ?? "", /L1 need 1 more GPIOs/)
+})
