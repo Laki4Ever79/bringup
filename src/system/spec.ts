@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import type { Connector, LinkMessage } from "../contract/types.ts"
-import { LINK_KINDS, type LinkKind } from "../contract/link-kinds.ts"
+import { LINK_KINDS, PERIPHERALS_FREE, type LinkKind, type Peripheral } from "../contract/link-kinds.ts"
 
 export interface SystemBoard {
 	name: string
@@ -79,10 +79,15 @@ export function specErrors(s: SystemSpec): string[] {
 			if (bytes > 48) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a frame carries 48 at most`)
 		}
 	}
-	// The ESP32-C3 has one UART free (UART0 is the console): one UART link per board.
+	// The chip's peripherals (src/contract/link-kinds.ts): links on one board that need the same one. I2C links share the
+	// board's one bus, so they never run out here (the I2C bus checks between boards cover them).
 	for (const b of s.boards) {
-		const uarts = s.links.filter((l) => l.kind === "uart" && (l.a.board === b.name || l.b.board === b.name))
-		if (uarts.length > 1) out.push(`board ${b.name}: ${uarts.map((l) => l.id).join(", ")} are all UART links, but its ESP32-C3 has one UART free; make the others I2C`)
+		const by = new Map<Peripheral, string[]>()
+		for (const l of s.links) if ((l.a.board === b.name || l.b.board === b.name) && Object.hasOwn(LINK_KINDS, l.kind)) {
+			const p = LINK_KINDS[l.kind].peripheral
+			if (p !== "i2c") by.set(p, [...(by.get(p) ?? []), l.id])
+		}
+		for (const [p, ids] of by) if (ids.length > PERIPHERALS_FREE[p]) out.push(`board ${b.name}: ${ids.join(", ")} all need its ${p} (the ESP32-C3 has ${PERIPHERALS_FREE[p]} free); make the others I2C`)
 	}
 	return out
 }

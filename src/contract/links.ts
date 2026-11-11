@@ -1,7 +1,7 @@
 // A board's side of its links to other boards (docs/system.md): the shape the integrator writes, and the board-level
 // checks that wake this board's own agents. The checks between boards live in src/system/checks.ts.
 import type { AgentRole, BoardLink, ContractSnapshot, FieldName, LinkPin } from "./types.ts"
-import { isLinkKind } from "./link-kinds.ts"
+import { FREE_GPIOS, isLinkKind, LINK_KINDS, PERIPHERALS_FREE, type Peripheral } from "./link-kinds.ts"
 
 export const LINK_CONNECTOR = { mpn: "SM04B-SRSS-TB(LF)(SN)", lcsc: "C160404", footprint: "jst4_sh", pins: ["GND", "VCC", "IO1", "IO2"] }
 export const I2C_ON = { SDA: "IO1", SCL: "IO2" } as const
@@ -26,7 +26,7 @@ export function linksShapeError(value: unknown): string | null {
 	return null
 }
 
-export type LinkViolationKind = "link-connector-missing" | "link-unwired" | "link-supply-conflict"
+export type LinkViolationKind = "link-connector-missing" | "link-unwired" | "link-supply-conflict" | "link-budget"
 export interface LinkViolation {
 	kind: LinkViolationKind
 	message: string
@@ -42,9 +42,7 @@ export function linkChecks(s: ContractSnapshot): LinkViolation[] {
 	// Only once the board is drafted (an MCU and its pins): links handed to an empty contract woke the part selector and
 	// the architect before they had read the brief, and they started from the connector alone (real system run, 9 Nov).
 	if (!parts.some((p) => p.role === "mcu") || s.values.pins === undefined) return out
-	// The ESP32-C3 has two UARTs and the console has UART0: one UART link per board.
-	const uarts = linksOf(s).filter((l) => l.kind === "uart")
-	if (uarts.length > 1) out.push({ kind: "link-unwired", message: `${uarts.map((l) => l.id).join(", ")} are all UART links, but the ESP32-C3 has one UART free (UART0 is the console): the system must move all but one to I2C`, fields: ["links"], affects: ["integrator"] })
+	out.push(...linkBudget(s))
 	for (const l of linksOf(s)) {
 		const part = parts.find((p) => p.ref === l.connector)
 		const what = `link ${l.id} to ${l.peer} (${l.kind.toUpperCase()})`
@@ -89,4 +87,38 @@ export function linkFactLines(s: ContractSnapshot): string[] {
 			return `- ${l.id} to ${l.peer} on ${l.connector} (${LINK_CONNECTOR.mpn}, JST SH 4-pin: 1 GND, 2 VCC, 3 IO1, 4 IO2${l.edge ? `, on the ${l.edge} edge` : ""}): ${proto}; ${power}${msgs ? `; ${msgs}` : ""}.`
 		}),
 	]
+}
+
+// The chip's budget (docs/system.md): each link takes a peripheral and GPIOs on this board, from the kind table. A link
+// that is already wired needs no more pins; an I2C link shares the board's own bus, so it needs pins only while the
+// board has no bus. Over budget names the links and what would fit.
+export function linkBudget(s: ContractSnapshot): LinkViolation[] {
+	const { parts = [], pins = [] } = s.values
+	const links = linksOf(s).filter((l) => isLinkKind(l.kind))
+	if (!links.length || !parts.some((p) => p.role === "mcu") || s.values.pins === undefined) return []
+	const out: LinkViolation[] = []
+	const byPeripheral = new Map<Peripheral, string[]>()
+	for (const l of links) {
+		const p = LINK_KINDS[l.kind].peripheral
+		if (p !== "i2c") byPeripheral.set(p, [...(byPeripheral.get(p) ?? []), l.id])
+	}
+	for (const [p, ids] of byPeripheral)
+		if (ids.length > PERIPHERALS_FREE[p]) out.push({ kind: "link-budget", message: `${ids.join(", ")} all need this board's ${p}, but its ESP32-C3 has ${PERIPHERALS_FREE[p]} free: the system must move all but ${PERIPHERALS_FREE[p]} to I2C (links share the board's one I2C bus)`, fields: ["links"], affects: ["integrator"] })
+	const has = (signal: string) => pins.some((x) => x.signal === signal)
+	const needs = links.flatMap((l) => {
+		if (l.kind === "i2c") return has("I2C_SDA") && has("I2C_SCL") ? [] : [{ l, n: LINK_KINDS.i2c.gpios }]
+		if (l.kind === "uart" && has(uartSignals(l).tx) && has(uartSignals(l).rx)) return []
+		return LINK_KINDS[l.kind].gpios ? [{ l, n: LINK_KINDS[l.kind].gpios }] : []
+	})
+	// Several I2C links on a board without a bus need one bus: count its pins once.
+	const counted = needs.filter((x, i) => x.l.kind !== "i2c" || needs.findIndex((y) => y.l.kind === "i2c") === i)
+	const need = counted.reduce((n, x) => n + x.n, 0)
+	const used = new Set(pins.map((p) => p.gpio))
+	const free = FREE_GPIOS.filter((g) => !used.has(g)).length
+	if (need > free) {
+		const each = [...new Set(counted.map((x) => `${LINK_KINDS[x.l.kind].label} ${x.n} each`))].join(", ")
+		const movable = counted.filter((x) => x.l.kind !== "i2c").map((x) => x.l.id)
+		out.push({ kind: "link-budget", message: `${counted.map((x) => x.l.id).join(", ")} need ${need} more GPIOs (${each}); ${free} are free on this board: ${movable.length ? `make ${movable.join(", ")} I2C (it shares the board's bus), or free pins` : "free pins"}`, fields: ["pins"], affects: ["architect"] })
+	}
+	return out
 }
