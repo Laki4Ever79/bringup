@@ -26,7 +26,7 @@ export function designFacts(s: ContractSnapshot, brief: string): string[] {
 		...partFactsSection(s),
 		...fieldMeaningLines(s),
 		...testFactLines(s),
-		...addedForYouFactLines(s),
+		...addedForYouFactLines(s, brief),
 		...linkFactLines(s),
 		...mechanicsFactLines(s),
 		...(s.values.outline ? ["", "## Space (computed in code: the smallest board the parts place on, the case's contents)", ...spaceFactLines(s).map((l) => `- ${l}`)] : []),

@@ -239,7 +239,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Estimated battery life: ${batteryLifeSummary(estimatePower(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""))}`,
 		``,
 		...mechanicsSection(snapshot, s.artifacts.drive),
-		...addedForYouSection(snapshot),
+		...addedForYouSection(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""),
 		...changeRequestsSection(outDir),
 		...reviewSection(s, Boolean(opts.mock)),
 		`## Artifacts`,

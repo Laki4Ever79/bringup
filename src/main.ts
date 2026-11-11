@@ -282,7 +282,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)\nreport: ${result.reportPath}`)
 	// What Bringup added without being asked, in one line each; the report's "Added for you" says how each shows and
 	// how to turn it off.
-	const added = existsSync(join(outDir, "contract.json")) ? addedForYou(JSON.parse(readFileSync(join(outDir, "contract.json"), "utf8"))) : []
+	const added = existsSync(join(outDir, "contract.json")) ? addedForYou(JSON.parse(readFileSync(join(outDir, "contract.json"), "utf8")), existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : "") : []
 	if (added.length) console.log(`added for you (report: "Added for you" says how each shows and how to change it):\n${added.map((a) => `- ${a.what}`).join("\n")}`)
 	return result.settled ? 0 : 2
 }
