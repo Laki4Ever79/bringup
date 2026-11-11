@@ -27,14 +27,13 @@ export const BUILDABLE: string = (() => {
 	const byRole = new Map<string, string[]>()
 	for (const p of loadCatalog(ROOT)) byRole.set(p.role, [...(byRole.get(p.role) ?? []), p.mpn])
 	const parts = [...byRole].map(([role, mpns]) => `- ${role}: ${mpns.join(", ")}`).join("\n")
-	return `Every board is a small ESP32-C3 board (BLE, one free UART, one I2C bus), powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). Nothing else can be built yet: no motors, motor drivers, servos, wheels, cameras, screens, speakers or relays.`
+	return `Every board is a small ESP32-C3 board (BLE, one free UART, one I2C bus), powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). A board can also drive a small wheeled robot (one board on a printed chassis): differential drive with two DC gearmotors, a caster, a DRV8833 motor driver and a VL53L0X distance sensor, from catalog/mechanics.json (the mechanics checks and a simulated drive prove it). Nothing else can be built yet: no servos, cameras, screens, speakers or relays.`
 })()
 
 // Things people ask for that no board can have yet, and why.
 const CANT: [RegExp, string, string][] = [
-	[/\bmotors?\b|\bmotor driver\b/i, "motors", "needs project 2 (mechanics): motor data, drivers and drive checks"],
-	[/\bservos?\b/i, "servos", "needs project 2 (mechanics)"],
-	[/\bwheels?\b|\brover\b|\brobot\b/i, "wheels and chassis", "needs project 2 (mechanics)"],
+	// Motors, wheels and a chassis are buildable since the mechanics backend (a wheeled robot); servos are not.
+	[/\bservos?\b/i, "servos", "no servo in the mechanics catalog yet (a wheeled robot's DC gearmotors are)"],
 	[/\bcamera\b/i, "a camera", "no such part in the catalog yet"],
 	[/\bscreen\b|\bdisplay\b/i, "a screen", "no such part in the catalog yet"],
 	[/\bspeaker\b|\bbuzzer\b/i, "a speaker", "no such part in the catalog yet"],
@@ -51,14 +50,19 @@ const withPlanBriefs = (spec: SystemSpec): SystemSpec => ({ ...spec, boards: spe
 
 export function scriptedPlan(sentence: string): ProposedPlan {
 	const cantBuild = cantBuildFrom(sentence)
-	const several = /\band\b|\btwo\b|\bboth\b|\bplus\b|\bseveral\b|\bboards\b/i.test(sentence)
+	// The scripted architect knows the designs the scripted agents can build: the logger, the beacon and the rover. It
+	// splits into two boards only when the sentence names both known boards, or asks for boards joined by a cable: "and"
+	// alone is not two boards (the rover example's sentence got a logger and a beacon, 11 Nov).
+	const robot = /\b(rover|robot|wheels?|wheeled|drives?)\b/i.test(sentence)
+	const both = /logger|climate|temperature/i.test(sentence) && /beacon|tag/i.test(sentence)
+	const several = !robot && (both || /\btwo\b.*\bboards?\b|\bboards\b|\bcable\b|\bseveral\b/i.test(sentence))
 	if (!several) {
-		const name = /beacon/i.test(sentence) ? "beacon" : "logger"
+		const name = robot ? "rover" : /beacon/i.test(sentence) ? "beacon" : "logger"
 		return {
 			sentence,
 			spec: { name: sentence.slice(0, 60), boards: [{ name, brief: `briefs/${name}.md` }], links: [] },
 			briefs: { [name]: read(`briefs/${name}.md`) },
-			why: "One device, so one board. (Scripted architect: it knows the logger and the beacon only.)",
+			why: `One device, so one board: the ${name}. (Scripted architect: it picks one of the designs the free agents can build, the logger, the beacon or the rover; for your own design, untick "Try for free".)`,
 			offBoard: [],
 			cantBuild,
 			layout: layoutFor([name]),

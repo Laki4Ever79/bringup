@@ -25,10 +25,11 @@ test("a one-device sentence gets one board and no cables", () => {
 })
 
 test("what the pipeline can't build is listed with a reason, not dropped", () => {
-	const p = scriptedPlan("a rover with two motors that avoids walls")
-	const motor = p.cantBuild.find((c) => /motor/i.test(c.what))
-	assert.ok(motor, "motors are named")
-	assert.match(motor.reason, /mechanics/)
+	// Motors and wheels are buildable since the mechanics backend; a servo still isn't.
+	const p = scriptedPlan("a rover with a servo arm that avoids walls")
+	const servo = p.cantBuild.find((c) => /servo/i.test(c.what))
+	assert.ok(servo, "servos are named")
+	assert.match(servo.reason, /catalog/)
 })
 
 test("the plan checks flag an I2C cable too long for its bus and a board connected to nothing", () => {
@@ -106,8 +107,8 @@ test("board names must be plain lower-case ids, so a name can't reach outside th
 
 test("the real architect keeps what can't be built even when the model leaves it out", async () => {
 	const { f } = fakeFetch([valid])
-	const p = await proposePlan({ sentence: "a rover with two motors" }, { mock: false, env: { OPENAI_API_KEY: "k" }, fetchImpl: f })
-	assert.ok(p.cantBuild.some((c) => /motor/.test(c.what)))
+	const p = await proposePlan({ sentence: "a logger with a camera" }, { mock: false, env: { OPENAI_API_KEY: "k" }, fetchImpl: f })
+	assert.ok(p.cantBuild.some((c) => /camera/.test(c.what)))
 })
 
 test("a real architect answer with a bad board name is retried", async () => {
@@ -115,4 +116,28 @@ test("a real architect answer with a bad board name is retried", async () => {
 	const { f, calls } = fakeFetch([bad, valid])
 	await proposePlan({ sentence: "x" }, { mock: false, env: { OPENAI_API_KEY: "k" }, fetchImpl: f })
 	assert.equal(calls(), 2)
+})
+
+// The user started "Try for free" with the rover example's sentence and got a logger and a beacon: the scripted
+// architect read "and" as "several boards", and didn't know the rover the scripted agents can build.
+test("the scripted architect picks the rover for a rover sentence, and splits only when asked for two boards", () => {
+	const rover = scriptedPlan("A small wheeled rover that drives around a home on its own, turns away before it touches a wall, and maps a room's temperature and humidity")
+	assert.deepEqual(rover.spec.boards.map((b) => b.name), ["rover"])
+	assert.match(rover.briefs.rover, /^# Brief: indoor rover/m)
+	assert.match(rover.why, /Scripted architect/)
+	// "and" alone is not two boards.
+	assert.deepEqual(scriptedPlan("A climate logger that measures temperature and humidity").spec.boards.map((b) => b.name), ["logger"])
+	// Two named boards, or a cable between boards, is.
+	assert.deepEqual(scriptedPlan("A climate logger and a pocket beacon that share readings over a cable").spec.boards.map((b) => b.name), ["logger", "beacon"])
+	assert.deepEqual(scriptedPlan("two boards joined by a cable").spec.boards.map((b) => b.name), ["logger", "beacon"])
+})
+
+// The mechanics backend (11 Nov) builds a wheeled robot: the architect must not still say it can't.
+test("a wheeled robot is buildable now: not listed as can't-build, and the architect's prompt offers it", async () => {
+	const { cantBuildFrom, BUILDABLE } = await import("../src/system/architect.ts")
+	assert.deepEqual(cantBuildFrom("a rover robot on wheels with two motors and a motor driver"), [])
+	assert.match(BUILDABLE, /wheeled robot/)
+	assert.doesNotMatch(BUILDABLE, /no motors|motor drivers|wheels,/)
+	// What still can't be built is still said.
+	assert.deepEqual(cantBuildFrom("a servo arm with a camera").map((c) => c.what), ["servos", "a camera"])
 })
