@@ -29,13 +29,35 @@ VCC is wired only when the link carries power: `supply: "out"` on the board that
 it powers (which then has no regulator of its own on 3V3). Otherwise pin 2 stays unconnected on both boards, and two
 regulators never meet.
 
+### Kinds
+
+Every kind is one entry in `src/contract/link-kinds.ts`, which the spec check, the board's `links` field, the budget
+and these docs read. Kinds not built yet are named, and a spec that uses one gets "kind spi is planned
+(docs/system.md), not built yet" instead of a half-made link.
+
+| Kind | Medium | Peripheral | GPIOs per side | Carries | Built | Tested by |
+|---|---|---|---|---|---|---|
+| `uart` | 4-pin cable | UART1 | 2 | messages | yes | checks, compile, host codec, QEMU, bench |
+| `i2c` | 4-pin cable | the board's I2C bus | 2 (0 if the bus exists) | messages, both ways | yes | checks, compile, host codec, bench |
+| `spi` | 6-pin cable | SPI2 | 4 | messages | planned | |
+| `i2s` | 6-pin cable | I2S | 3 | an audio stream | planned | |
+| `espnow` | radio | the radio | 0 | messages | planned | |
+| `ble` | radio | the radio | 0 | messages | planned | |
+
+The design for the planned kinds, and the order they come in, is in
+`docs/superpowers/specs/2026-11-11-board-links-design.md` (local).
+
 ## Checks
 
 Board level (each board's own consistency check, so its own agents are woken):
 - the link's connector is a part, placed on an edge (the case cuts its opening);
 - UART: `<link>_TX` and `<link>_RX` are assigned, on the connector's IO pins the link names;
 - I2C: the board has I2C_SDA and I2C_SCL; the generator wires the connector to them;
-- `supply: "in"` and a regulator on 3V3 at the same time.
+- `supply: "in"` and a regulator on 3V3 at the same time;
+- **the budget:** each link takes a peripheral and GPIOs from the kind table. The ESP32-C3 has one free UART (UART0 is
+  the console), one I2C bus (I2C links share it), one SPI, one I2S and one radio, and seven GPIOs a design may use
+  (4, 5, 6, 7, 3, 1, 0: not the strapping pins 2, 8, 9 nor USB 18, 19). Over budget names the links and what would fit
+  ("make L2 I2C (it shares the board's bus), or free pins"). The spec check counts the peripherals before anything runs.
 
 System level (computed in code from both boards' contracts and the spec):
 - UART: one side's TX meets the other's RX through the cable; both sides run the same baud rate;
@@ -107,7 +129,9 @@ frame whose hash it doesn't know, so two boards built against different definiti
 |---|---|
 | Each board | its own checks, builds, QEMU boot and test kit, as for any design |
 | Between boards, static | the system checks above, in code, on every settle |
+| The frame codec | `test/linkframe-host.test.ts`: `linkframe.h`, the one frame every message kind uses, compiled with this computer's g++ and run: round trip, resync after garbage, split reads, a bad checksum, an over-long frame, the largest payload, two frames back to back |
 | Between boards, running | the link-test build (`pio run -e esp32c3_linktest`: a known reading every half second, whatever arrives printed) of both boards, in two QEMUs joined by a virtual cable (UART links). Verified 9 Nov: the reading arrives intact; with a different definition on one side, its frames are dropped and the test fails |
+| What QEMU can't do | Espressif's QEMU here models no radio, I2C or I2S for the C3 (checked 11 Nov in its device list). It does model the TWAI (CAN) controller. So only UART links run between two QEMUs; I2C, and the radio kinds once built, are tested on the bench |
 | On the bench | `bench-plan.md`, generated with the cable on every check (below). I2C links can only be tested here: QEMU can't join two buses |
 
 ### The bench test plan
@@ -146,3 +170,10 @@ reads every board's USB port at once and judges the lines as the QEMU link test 
 2. Two-chip UART tests in QEMU. (done) A generated system test plan for the bench. (done, not run on hardware)
 3. Imported boards as fixed members; board revisions pinned per system.
 4. An integrator agent that proposes links from a system brief.
+
+Links of every kind, a separate track (the design in `docs/superpowers/specs/2026-11-11-board-links-design.md`):
+1. The kind table, the budget, I2C messages both ways, the host codec test. (done)
+2. SPI and I2S on a 6-pin cable.
+3. ESP-NOW and Bluetooth LE between boards.
+4. On the dashboard: choosing the kind, radio links drawn as arcs, an example system using three kinds.
+5. Later: CAN for long cables, buses of more than two boards, Wi-Fi between boards.
