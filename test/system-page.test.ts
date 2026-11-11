@@ -115,3 +115,53 @@ test("a board opened inside the system page gets the embedded run page", async (
 		await hub.close()
 	}
 })
+
+// The page map (user, 11 Nov): one Designs list for every design, one board or several, and every design opens on an
+// Overview, a one-board design too (a design with one board, not a different kind of thing).
+function fakeRun(root: string, id: string, chassis = false) {
+	const dir = join(root, id)
+	mkdirSync(dir, { recursive: true })
+	writeFileSync(join(dir, "brief.md"), "# Brief: indoor rover\n")
+	writeFileSync(join(dir, "trace.jsonl"), [{ at: "2026-11-10T10:00:00Z", type: "run.started", payload: {} }, { at: "2026-11-10T10:02:00Z", type: "design.settled", payload: { settled: true } }].map((e) => JSON.stringify(e)).join("\n") + "\n")
+	writeFileSync(join(dir, "contract.json"), JSON.stringify({ values: { outline: { widthMm: 42, heightMm: 29 } } }))
+	if (chassis) {
+		mkdirSync(join(dir, "chassis", "rev-12"), { recursive: true })
+		writeFileSync(join(dir, "chassis", "rev-12", "chassis.stl"), "stl")
+		writeFileSync(join(dir, "chassis", "rev-12", "spec.json"), "{}")
+	}
+	return dir
+}
+
+test("one Designs list holds systems and one-board designs, each with its board count", async () => {
+	const root = tempDir()
+	fakeSystem(root, "system-a")
+	fakeRun(root, "rover-1")
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const list = (await (await fetch(`${hub.url}/api/designs`)).json()) as { id: string; name: string; boards: number; kind: string }[]
+		assert.deepEqual(list.map((d) => [d.id, d.kind, d.boards]).sort(), [["rover-1", "single", 1], ["system-a", "system", 2]])
+		assert.equal(list.find((d) => d.id === "rover-1")!.name, "indoor rover")
+		// A system's boards are inside their system, never listed as designs of their own.
+		assert.ok(!list.some((d) => d.id.includes(".")))
+	} finally {
+		await hub.close()
+	}
+})
+
+test("a one-board design opens like a system of one board, its chassis included when it has one", async () => {
+	const root = tempDir()
+	fakeRun(root, "rover-1", true)
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const d = (await (await fetch(`${hub.url}/api/systems/rover-1`)).json()) as { single: boolean; spec: { name: string; boards: { name: string }[]; links: unknown[] }; boards: { name: string; runId: string; outline: unknown }[] }
+		assert.equal(d.single, true)
+		assert.equal(d.spec.name, "indoor rover")
+		assert.deepEqual(d.spec.links, [])
+		assert.deepEqual(d.boards.map((b) => [b.name, b.runId]), [["main", "rover-1"]])
+		assert.deepEqual(d.boards[0].outline, { widthMm: 42, heightMm: 29 })
+		// The system page itself serves it.
+		assert.equal((await fetch(`${hub.url}/system?id=rover-1`)).status, 200)
+	} finally {
+		await hub.close()
+	}
+})

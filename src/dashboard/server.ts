@@ -454,6 +454,53 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			files: { report: file("system-report.md"), cable: file("cable.md"), wireviz: file("cable.yml"), bench: file("bench-plan.md") },
 		}
 	}
+	// A one-board design, read as a design with one board (the page map, 11 Nov): the system page opens it on the same
+	// Overview, with its board one level down. Its board is the run itself.
+	const singleDir = async (id: string): Promise<string | null> => {
+		const dir = await runDir(id)
+		return dir && id !== "plans" && !BOARD_RUN_ID.test(id) && !existsSync(join(dir, "system.json")) ? dir : null
+	}
+	const singleDetail = async (id: string, dir: string) => {
+		const summary = await summarize(id, dir)
+		const v = (await readJsonFile(join(dir, "contract.json")))?.values ?? {}
+		const report = existsSync(join(dir, "report.md")) ? `/runs/${id}/files/report.md` : null
+		const board = {
+			name: "main",
+			runId: id,
+			imported: false,
+			status: summary.status,
+			revision: summary.revision,
+			title: summary.title,
+			outline: v.outline ? { widthMm: v.outline.widthMm, heightMm: v.outline.heightMm } : null,
+			connectors: (v.connectors ?? []).map((c: { ref: string; kind: string; edge: string; offsetMm: number }) => ({ ref: c.ref, kind: c.kind, edge: c.edge, offsetMm: c.offsetMm })),
+			pins: [],
+			render: existsSync(join(dir, "board", "board.png")) ? `/runs/${id}/files/board/board.png` : null,
+			report,
+			spend: readSpend(dir),
+			scripted: summary.scripted,
+		}
+		return {
+			id,
+			single: true,
+			spec: { name: summary.title, boards: [{ name: "main" }], links: [] },
+			status: summary.status,
+			settled: summary.status === "settled" || summary.status === "waiting for a change" || summary.status === "bench live",
+			findings: [],
+			linkTests: [],
+			asked: [],
+			boards: [board],
+			scripted: summary.scripted,
+			spend: readSpend(dir),
+			cable: null,
+			files: { report, cable: null, wireviz: null, bench: null },
+		}
+	}
+	// Every design, newest first: systems and one-board designs in one list, each with its board count.
+	const listDesigns = async () => {
+		const systems = (await listSystems()).map((s) => ({ id: s.id, name: s.name, kind: "system" as const, boards: s.boards, status: s.status, settled: s.settled, startedAt: s.startedAt }))
+		const singles = (await listRuns()).filter((r) => !BOARD_RUN_ID.test(r.runId)).map((r) => ({ id: r.runId, name: r.title, kind: "single" as const, boards: 1, status: r.status, settled: r.status === "settled", startedAt: r.startedAt }))
+		return [...systems, ...singles].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, MAX_RUNS_LISTED)
+	}
 	const listSystemSpecs = async () => {
 		const names = (await readdir(SYSTEM_SPECS).catch(() => [] as string[])).filter((n) => n.endsWith(".json")).sort()
 		return Promise.all(names.map(async (name) => ({ name, spec: JSON.parse(await readFile(new URL(name, SYSTEM_SPECS), "utf8")) })))
@@ -757,11 +804,14 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				return res.end(await readFile(SYSTEM_PAGE))
 			}
 			if (path === "/api/systems") return json(res, 200, await listSystems())
+			if (path === "/api/designs") return json(res, 200, await listDesigns())
 			if (path === "/api/system-specs") return json(res, 200, await listSystemSpecs())
 			const sys = /^\/api\/systems\/([^/]+)$/.exec(path)
 			if (sys) {
 				const dir = await systemDir(sys[1])
-				return dir ? json(res, 200, await systemDetail(sys[1], dir)) : json(res, 404, { error: "unknown system" })
+				if (dir) return json(res, 200, await systemDetail(sys[1], dir))
+				const one = await singleDir(sys[1])
+				return one ? json(res, 200, await singleDetail(sys[1], one)) : json(res, 404, { error: "unknown design" })
 			}
 			const sysFile = /^\/systems\/([^/]+)\/files\/(system-report\.md|cable\.md|cable\.yml|bench-plan\.md|bench-plan\.json)$/.exec(path)
 			if (sysFile) {
