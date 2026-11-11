@@ -14,6 +14,7 @@ import type { CaseFeature } from "./types.ts"
 import { spaceChecks, type SpaceViolation } from "./space.ts"
 import { connectivityChecks, radioPeakMa, type ConnectivityViolation } from "./connectivity.ts"
 import type { TestPoint } from "../codegen/circuit.ts"
+import { mcuPinName } from "../mcu/pins.ts"
 
 export interface BoardArtifact {
 	revision: number
@@ -205,7 +206,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""):
 	if (a.board && pins && mcuRef) {
 		for (const pin of pins) {
 			const net = a.board.nets[pin.signal] ?? []
-			const mcuEnd = `${mcuRef}.GPIO${pin.gpio}`
+			const mcuEnd = `${mcuRef}.${mcuPinName(parts, pin.gpio)}`
 			// On a USB-C connector the pin lands on numbered pads (J1.DN on pin9 and pin11): any of them counts.
 			const pads = partPads(parts?.find((p) => p.ref === pin.partRef), pin.partPin).map((pad) => `${pin.partRef}.${pad}`)
 			const missing = [...(net.includes(mcuEnd) ? [] : [mcuEnd]), ...(pads.some((end) => net.includes(end)) ? [] : [`${pin.partRef}.${pin.partPin}`])]
@@ -228,7 +229,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""):
 			if (built !== pin.gpio) {
 				v.push({
 					kind: "pin-mismatch",
-					message: `firmware drives ${pin.signal} on GPIO${built ?? "?"}, contract says GPIO${pin.gpio}`,
+					message: `firmware drives ${pin.signal} on ${built == null ? "?" : mcuPinName(parts, built)}, contract says ${mcuPinName(parts, pin.gpio)}`,
 					fields: ["pins"],
 					affects: [],
 				})

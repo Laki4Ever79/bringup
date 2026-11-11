@@ -1,0 +1,86 @@
+{
+	"id": "stm32wb55cgu6",
+	"mpn": "STM32WB55CGU6",
+	"lcsc": "C404023",
+	"st": {
+		"xml": "STM32WB55CGUx.xml",
+		"flashKb": 1024
+	},
+	"reserve": {
+		"PC14": "osc",
+		"PC15": "osc",
+		"PH3": "boot"
+	},
+	"wakeAny": true,
+	"console": {
+		"instance": "USART1",
+		"tx": "PB6",
+		"rx": "PB7"
+	},
+	"programming": {
+		"method": "swd",
+		"pins": [
+			"PA13",
+			"PA14"
+		]
+	},
+	"boot": {
+		"pin": "PH3",
+		"level": "high"
+	},
+	"usb": {
+		"dp": "PA12",
+		"dm": "PA11"
+	},
+	"radio": [
+		"ble",
+		"802.15.4"
+	],
+	"clock": {
+		"hseMhz": 32,
+		"why": "the 2.4 GHz radio runs from a 32 MHz HSE crystal (AN5165)",
+		"pads": [
+			"25",
+			"24"
+		]
+	},
+	"board": {
+		"supported": false,
+		"reason": "a bare WB55 needs RF design (matching network, antenna) and its SMPS inductor and 32 MHz crystal; use a module (STM32WB5MMG) for a board. Firmware, pins and chip choice work."
+	},
+	"support": [],
+	"currents": {
+		"sleepUa": 2.45,
+		"cpuMa": 5.0,
+		"bleTxMa": 5.2,
+		"bleRxMa": 4.5,
+		"radioMa": 4.5,
+		"supplyMinMa": 30,
+		"source": "DS11929 Rev 14 (STM32WB55xx): run 64 MHz with SMPS 5.00 mA (8.15 mA on LDO) at 3.3 V (Table 37); Stop 2 with RTC on LSE 2.45 \u00b5A (Table 43); BLE 0 dBm with SMPS TX 5.2 mA, RX 4.5 mA (Table 30). No minimum supply current stated; 30 mA is Bringup's margin"
+	},
+	"firmware": {
+		"platform": "ststm32@20.0.0",
+		"board": "nucleo_wb55rg_p",
+		"framework": "arduino",
+		"arch": "stm32",
+		"pinStyle": "name",
+		"libs": [
+			"stm32duino/STM32duinoBLE@1.4.0"
+		],
+		"zephyrBoard": "nucleo_wb55rg"
+	},
+	"sim": {
+		"backend": null,
+		"models": [],
+		"note": "Renode 1.17 models the STM32WBA52, not the WB55"
+	},
+	"sources": [
+		"DS11929 Rev 14: Fig. 16 power supply (VDD n \u00d7 100 nF + 4.7 \u00b5F; VDDA 10 nF + 1 \u00b5F; VDDRF 100 nF + 100 pF; VDDSMPS/VFBSMPS 4.7 \u00b5F), Table 6 SMPS inductor 2.2 \u00b5H or 10 \u00b5H + 10 nH, \u00a73.6 32 MHz HSE mandatory for RF",
+		"STM32duino nucleo_wb55rg_p is the 68-pin package: a 48-pin board needs its own variant"
+	],
+	"priceUsd": {
+		"qty": 100,
+		"usd": 10.26,
+		"source": "LCSC C404023 $13.55 @1, $10.26 @100, only 7 in stock, JLCPCB Extended (jlcsearch.tscircuit.com and jlcpcb.com part page, 11 Nov 2026)"
+	}
+}

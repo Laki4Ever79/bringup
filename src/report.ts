@@ -18,6 +18,7 @@ import type { Payloads } from "./events.ts"
 import { bringupSection } from "./bench/report.ts"
 import { mechanicsSection } from "./mechanics/report.ts"
 import { changeRipples, readTrace } from "./runner/ripple.ts"
+import { mcuPinName } from "./mcu/pins.ts"
 
 function counts(tracePath: string): Record<string, number> {
 	const c: Record<string, number> = {}
@@ -218,7 +219,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- ${v.requirements?.summary ?? "?"}`,
 		`- Board ${v.outline?.widthMm}×${v.outline?.heightMm} mm; connectors: ${(v.connectors ?? []).map((x) => `${x.ref} ${x.kind} on ${x.edge}`).join(", ") || "none"}`,
 		`- Parts: ${(v.parts ?? []).map((p) => `${p.ref} ${p.mpn}${p.lcsc ? ` (${p.lcsc})` : ""}`).join(", ")}`,
-		`- Pins: ${(v.pins ?? []).map((p) => `${p.signal}=GPIO${p.gpio}→${p.partRef}.${p.partPin}`).join(", ")}`,
+		`- Pins: ${(v.pins ?? []).map((p) => `${p.signal}=${mcuPinName(v.parts, p.gpio)}→${p.partRef}.${p.partPin}`).join(", ")}`,
 		...(() => {
 			const min = v.outline ? minimumBoard(s.contract.snapshot()) : null
 			if (!v.outline || !min) return []

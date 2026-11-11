@@ -1,0 +1,597 @@
+{
+	"vendor": "st",
+	"family": "STM32G0",
+	"kind": "chip",
+	"package": {
+		"name": "LQFP32",
+		"footprint": "lqfp32_w7.05mm_h7.05mm_p0.8mm_pl1.475mm_pw0.55mm",
+		"bodyMm": {
+			"w": 7,
+			"h": 7
+		},
+		"extentMm": {
+			"w": 9.8,
+			"h": 9.8
+		},
+		"ringMm": 4.1625
+	},
+	"board": {
+		"supported": true
+	},
+	"core": "ARM Cortex-M0+",
+	"mhz": 64,
+	"flashKb": 64,
+	"ramKb": 8,
+	"voltage": {
+		"min": 1.7,
+		"max": 3.6
+	},
+	"pins": [
+		{
+			"name": "PA0",
+			"index": 0,
+			"pads": [
+				"7"
+			],
+			"signals": [
+				"ADC1_IN0",
+				"LPTIM1_OUT",
+				"RTC_TAMP_IN2",
+				"SPI2_SCK",
+				"SYS_WKUP1",
+				"TIM2_CH1",
+				"TIM2_ETR",
+				"USART2_CTS",
+				"USART2_NSS"
+			],
+			"wake": true
+		},
+		{
+			"name": "PA1",
+			"index": 1,
+			"pads": [
+				"8"
+			],
+			"signals": [
+				"ADC1_IN1",
+				"I2C1_SMBA",
+				"I2S1_CK",
+				"SPI1_SCK",
+				"TIM2_CH2",
+				"USART2_CK",
+				"USART2_DE",
+				"USART2_RTS"
+			]
+		},
+		{
+			"name": "PA2",
+			"index": 2,
+			"pads": [
+				"9"
+			],
+			"signals": [
+				"ADC1_IN2",
+				"I2S1_SD",
+				"LPUART1_TX",
+				"RCC_LSCO",
+				"SPI1_MOSI",
+				"SYS_WKUP4",
+				"TIM2_CH3",
+				"USART2_TX"
+			],
+			"wake": true
+		},
+		{
+			"name": "PA3",
+			"index": 3,
+			"pads": [
+				"10"
+			],
+			"signals": [
+				"ADC1_IN3",
+				"LPUART1_RX",
+				"SPI2_MISO",
+				"TIM2_CH4",
+				"USART2_RX"
+			]
+		},
+		{
+			"name": "PA4",
+			"index": 4,
+			"pads": [
+				"11"
+			],
+			"signals": [
+				"ADC1_IN4",
+				"I2S1_WS",
+				"LPTIM2_OUT",
+				"RTC_OUT_ALARM",
+				"RTC_OUT_CALIB",
+				"RTC_TAMP_IN1",
+				"RTC_TS",
+				"SPI1_NSS",
+				"SPI2_MOSI",
+				"SYS_WKUP2",
+				"TIM14_CH1"
+			],
+			"wake": true
+		},
+		{
+			"name": "PA5",
+			"index": 5,
+			"pads": [
+				"12"
+			],
+			"signals": [
+				"ADC1_IN5",
+				"I2S1_CK",
+				"LPTIM2_ETR",
+				"SPI1_SCK",
+				"TIM2_CH1",
+				"TIM2_ETR"
+			]
+		},
+		{
+			"name": "PA6",
+			"index": 6,
+			"pads": [
+				"13"
+			],
+			"signals": [
+				"ADC1_IN6",
+				"I2S1_MCK",
+				"LPUART1_CTS",
+				"SPI1_MISO",
+				"TIM16_CH1",
+				"TIM1_BK",
+				"TIM3_CH1"
+			]
+		},
+		{
+			"name": "PA7",
+			"index": 7,
+			"pads": [
+				"14"
+			],
+			"signals": [
+				"ADC1_IN7",
+				"I2S1_SD",
+				"SPI1_MOSI",
+				"TIM14_CH1",
+				"TIM17_CH1",
+				"TIM1_CH1N",
+				"TIM3_CH2"
+			]
+		},
+		{
+			"name": "PA8",
+			"index": 8,
+			"pads": [
+				"18"
+			],
+			"signals": [
+				"LPTIM2_OUT",
+				"RCC_MCO",
+				"SPI2_NSS",
+				"TIM1_CH1"
+			]
+		},
+		{
+			"name": "PA9",
+			"index": 9,
+			"pads": [
+				"19"
+			],
+			"signals": [
+				"I2C1_SCL",
+				"RCC_MCO",
+				"SPI2_MISO",
+				"TIM1_CH2",
+				"USART1_TX"
+			]
+		},
+		{
+			"name": "PA10",
+			"index": 10,
+			"pads": [
+				"21"
+			],
+			"signals": [
+				"I2C1_SDA",
+				"SPI2_MOSI",
+				"TIM17_BK",
+				"TIM1_CH3",
+				"USART1_RX"
+			]
+		},
+		{
+			"name": "PA11",
+			"index": 11,
+			"pads": [
+				"22"
+			],
+			"signals": [
+				"ADC1_EXTI11",
+				"ADC1_IN15",
+				"I2C2_SCL",
+				"I2S1_MCK",
+				"SPI1_MISO",
+				"TIM1_BK2",
+				"TIM1_CH4",
+				"USART1_CTS",
+				"USART1_NSS"
+			]
+		},
+		{
+			"name": "PA12",
+			"index": 12,
+			"pads": [
+				"23"
+			],
+			"signals": [
+				"ADC1_IN16",
+				"I2C2_SDA",
+				"I2S1_SD",
+				"I2S_CKIN",
+				"SPI1_MOSI",
+				"TIM1_ETR",
+				"USART1_CK",
+				"USART1_DE",
+				"USART1_RTS"
+			]
+		},
+		{
+			"name": "PA13",
+			"index": 13,
+			"pads": [
+				"24"
+			],
+			"signals": [
+				"ADC1_IN17",
+				"IR_OUT",
+				"SYS_SWDIO"
+			],
+			"reserved": "swd"
+		},
+		{
+			"name": "PA14",
+			"index": 14,
+			"pads": [
+				"25"
+			],
+			"signals": [
+				"ADC1_IN18",
+				"SYS_SWCLK",
+				"USART2_TX"
+			],
+			"reserved": "swd"
+		},
+		{
+			"name": "PA15",
+			"index": 15,
+			"pads": [
+				"26"
+			],
+			"signals": [
+				"I2S1_WS",
+				"SPI1_NSS",
+				"TIM2_CH1",
+				"TIM2_ETR",
+				"USART2_RX"
+			]
+		},
+		{
+			"name": "PB0",
+			"index": 16,
+			"pads": [
+				"15"
+			],
+			"signals": [
+				"ADC1_IN8",
+				"I2S1_WS",
+				"LPTIM1_OUT",
+				"SPI1_NSS",
+				"TIM1_CH2N",
+				"TIM3_CH3"
+			]
+		},
+		{
+			"name": "PB1",
+			"index": 17,
+			"pads": [
+				"16"
+			],
+			"signals": [
+				"ADC1_IN9",
+				"LPTIM2_IN1",
+				"LPUART1_DE",
+				"LPUART1_RTS",
+				"TIM14_CH1",
+				"TIM1_CH3N",
+				"TIM3_CH4"
+			]
+		},
+		{
+			"name": "PB2",
+			"index": 18,
+			"pads": [
+				"17"
+			],
+			"signals": [
+				"ADC1_IN10",
+				"LPTIM1_OUT",
+				"SPI2_MISO"
+			]
+		},
+		{
+			"name": "PB3",
+			"index": 19,
+			"pads": [
+				"27"
+			],
+			"signals": [
+				"I2S1_CK",
+				"SPI1_SCK",
+				"TIM1_CH2",
+				"TIM2_CH2",
+				"USART1_CK",
+				"USART1_DE",
+				"USART1_RTS"
+			]
+		},
+		{
+			"name": "PB4",
+			"index": 20,
+			"pads": [
+				"28"
+			],
+			"signals": [
+				"I2S1_MCK",
+				"SPI1_MISO",
+				"TIM17_BK",
+				"TIM3_CH1",
+				"USART1_CTS",
+				"USART1_NSS"
+			]
+		},
+		{
+			"name": "PB5",
+			"index": 21,
+			"pads": [
+				"29"
+			],
+			"signals": [
+				"I2C1_SMBA",
+				"I2S1_SD",
+				"LPTIM1_IN1",
+				"SPI1_MOSI",
+				"SYS_WKUP6",
+				"TIM16_BK",
+				"TIM3_CH2"
+			],
+			"wake": true
+		},
+		{
+			"name": "PB6",
+			"index": 22,
+			"pads": [
+				"30"
+			],
+			"signals": [
+				"I2C1_SCL",
+				"LPTIM1_ETR",
+				"SPI2_MISO",
+				"TIM16_CH1N",
+				"TIM1_CH3",
+				"USART1_TX"
+			]
+		},
+		{
+			"name": "PB7",
+			"index": 23,
+			"pads": [
+				"31"
+			],
+			"signals": [
+				"ADC1_IN11",
+				"I2C1_SDA",
+				"LPTIM1_IN2",
+				"SPI2_MOSI",
+				"SYS_PVD_IN",
+				"TIM17_CH1N",
+				"USART1_RX"
+			]
+		},
+		{
+			"name": "PB8",
+			"index": 24,
+			"pads": [
+				"32"
+			],
+			"signals": [
+				"I2C1_SCL",
+				"SPI2_SCK",
+				"TIM16_CH1"
+			]
+		},
+		{
+			"name": "PB9",
+			"index": 25,
+			"pads": [
+				"1"
+			],
+			"signals": [
+				"I2C1_SDA",
+				"IR_OUT",
+				"SPI2_NSS",
+				"TIM17_CH1"
+			]
+		},
+		{
+			"name": "PC6",
+			"index": 38,
+			"pads": [
+				"20"
+			],
+			"signals": [
+				"TIM2_CH3",
+				"TIM3_CH1"
+			]
+		},
+		{
+			"name": "PC14",
+			"index": 46,
+			"pads": [
+				"2"
+			],
+			"signals": [
+				"RCC_OSC32_IN",
+				"RCC_OSC_IN",
+				"TIM1_BK2"
+			]
+		},
+		{
+			"name": "PC15",
+			"index": 47,
+			"pads": [
+				"3"
+			],
+			"signals": [
+				"RCC_OSC32_EN",
+				"RCC_OSC32_OUT",
+				"RCC_OSC_EN"
+			]
+		},
+		{
+			"name": "PF2",
+			"index": 82,
+			"pads": [
+				"6"
+			],
+			"signals": [
+				"RCC_MCO"
+			],
+			"reserved": "reset"
+		}
+	],
+	"power": [
+		{
+			"name": "VDD/VDDA",
+			"net": "supply",
+			"pads": [
+				"4"
+			]
+		},
+		{
+			"name": "VSS/VSSA",
+			"net": "ground",
+			"pads": [
+				"5"
+			]
+		}
+	],
+	"peripherals": {
+		"uart": [
+			"LPUART1",
+			"USART1",
+			"USART2"
+		],
+		"i2c": [
+			"I2C1",
+			"I2C2"
+		],
+		"spi": [
+			"SPI1",
+			"SPI2"
+		],
+		"i2s": [
+			"I2S1"
+		],
+		"adc": [
+			"ADC1"
+		],
+		"usb": [],
+		"can": [],
+		"radio": []
+	},
+	"usb": null,
+	"radio": [],
+	"id": "stm32g031k8t6",
+	"mpn": "STM32G031K8T6",
+	"lcsc": "C432203",
+	"console": {
+		"instance": "USART2",
+		"tx": "PA2",
+		"rx": "PA3"
+	},
+	"programming": {
+		"method": "swd",
+		"pins": [
+			"PA13",
+			"PA14"
+		]
+	},
+	"boot": {
+		"pin": null,
+		"level": null
+	},
+	"support": [
+		{
+			"job": "VDD/VDDA decoupling (pad 4, 100 nF at the pin)",
+			"spec": "decouple",
+			"a": "pin:VDD",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD bulk (4.7 µF or more on the supply)",
+			"spec": "bulk",
+			"a": "net:supply",
+			"b": "net:GND"
+		},
+		{
+			"job": "NRST (PF2) to GND, 100 nF against reset glitches",
+			"spec": "decouple",
+			"a": "pin:PF2",
+			"b": "net:GND"
+		}
+	],
+	"currents": {
+		"sleepUa": 3.7,
+		"cpuMa": 5.2,
+		"supplyMinMa": 10,
+		"source": "DS12992 Rev 4: run 64 MHz from flash, peripherals off 5.2 mA typ at 3.0 V (Table 25); Stop 1 with RTC 3.7 µA (Table 29), the mode the firmware sleeps in (Standby 0.6 µA, Table 30, loses RAM). No minimum supply current stated; 10 mA is Bringup's margin over the run current"
+	},
+	"firmware": {
+		"platform": "ststm32@20.0.0",
+		"board": "nucleo_g031k8",
+		"framework": "arduino",
+		"arch": "stm32",
+		"pinStyle": "name",
+		"zephyrBoard": "nucleo_g031k8"
+	},
+	"sim": {
+		"backend": "renode",
+		"machine": "platforms/cpus/stm32g0.repl",
+		"consoleUart": "usart2",
+		"models": [
+			"gpio",
+			"uart",
+			"i2c",
+			"spi",
+			"timers",
+			"exti",
+			"dma"
+		],
+		"note": "Renode stm32g0.repl: no LPUART model"
+	},
+	"sources": [
+		"ST STM32_open_pin_data mcu/STM32G031K(4-6-8)Tx.xml (BSD-3-Clause)",
+		"DS12992 Rev 4 (STM32G031x4/x6/x8 datasheet): Fig. 13 power supply scheme (VDD/VDDA 100 nF + 4.7 µF), Fig. 24 NRST 0.1 µF, §3.5 boot (BOOT0 on PA14 with the nBOOT_SEL option bit)"
+	],
+	"wakeAny": true,
+	"priceUsd": {
+		"qty": 100,
+		"usd": 2.73,
+		"source": "LCSC C432203 $3.57 @1, $2.73 @100, 1,499 in stock, JLCPCB Extended (jlcsearch.tscircuit.com and jlcpcb.com part page, 11 Nov 2026)"
+	}
+}

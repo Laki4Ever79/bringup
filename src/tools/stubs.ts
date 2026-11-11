@@ -9,6 +9,7 @@ import { PORT_MM, STANDOFF } from "./enclosure.ts"
 import { caseOf, holeCentreZ, tabHoles, TEXT, type BuiltFeature } from "../contract/case.ts"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact, TestkitArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
+import { mcuPinName } from "../mcu/pins.ts"
 
 // --no-hardware: each builder derives its artifact straight from the contract instead of running tscircuit,
 // build123d or PlatformIO. The agents, change control, the grounding check and the consistency checks all run as
@@ -40,7 +41,7 @@ export function stubBoard(s: ContractSnapshot, revision: number, dir: string): S
 	const { outline, parts, pins } = s.values
 	const mcu = parts?.find((p) => p.role === "mcu")?.ref ?? "U1"
 	const nets: Record<string, string[]> = {}
-	for (const p of pins ?? []) nets[p.signal] = [`${mcu}.GPIO${p.gpio}`, `${p.partRef}.${p.partPin}`]
+	for (const p of pins ?? []) nets[p.signal] = [`${mcu}.${mcuPinName(parts, p.gpio)}`, `${p.partRef}.${p.partPin}`]
 	// The test pads the board generator would place, on their nets (rails by the generator's names: 3V3 is V3V3).
 	const pads = testPoints(s).placed
 	for (const t of pads) (nets[/^\d/.test(t.net) ? `V${t.net}` : t.net] ??= []).push(`${t.ref}.pin1`)

@@ -6,6 +6,7 @@ import { MODULE_FCC_ID } from "./compliance.ts"
 import { generatedNets, testPoints, type TestPoint } from "../codegen/circuit.ts"
 import { estimatePower } from "./power.ts"
 import type { AgentRole, ContractSnapshot, FieldName, TestSpec } from "./types.ts"
+import { mcuPinName } from "../mcu/pins.ts"
 
 export interface TestViolation {
 	kind: "test-uncovered" | "test-orphan" | "test-limit" | "test-unplaced" | "fixture-mismatch"
@@ -133,13 +134,13 @@ export function testPlan(s: ContractSnapshot): TestPlan {
 	for (const p of s.values.pins ?? []) {
 		const role = parts.find((x) => x.ref === p.partRef)?.role
 		const probe = tp(p.signal)
-		if (role === "led") steps.push({ id: `out-${p.signal}`, by: "firmware", what: `${p.signal} (GPIO${p.gpio}) drives ${p.partRef}: the firmware drives it high and low and reads the pin back (a pin shorted to a rail fails)`, pass: "reads back what it drove; the fixture sees 0 V then 3.3 V on the pad, which proves the trace", probe })
-		else if (role === "button") steps.push({ id: `in-${p.signal}`, by: "firmware", what: `${p.signal} (GPIO${p.gpio}) from ${p.partRef}: idle level with the pull-up`, pass: "reads high (not shorted to GND)", probe })
+		if (role === "led") steps.push({ id: `out-${p.signal}`, by: "firmware", what: `${p.signal} (${mcuPinName(parts, p.gpio)}) drives ${p.partRef}: the firmware drives it high and low and reads the pin back (a pin shorted to a rail fails)`, pass: "reads back what it drove; the fixture sees 0 V then 3.3 V on the pad, which proves the trace", probe })
+		else if (role === "button") steps.push({ id: `in-${p.signal}`, by: "firmware", what: `${p.signal} (${mcuPinName(parts, p.gpio)}) from ${p.partRef}: idle level with the pull-up`, pass: "reads high (not shorted to GND)", probe })
 		// One firmware step proves a bus: the sensor's ACK needs both I2C lines, the mic's samples need its clock and data.
 		else if (role === "sensor" && p.partPin === "SDA") steps.push({ id: "i2c-sensor", by: "firmware", what: `the ${parts.find((x) => x.ref === p.partRef)?.mpn} answers at its I2C address (proves SDA, SCL, their pull-ups and its supply)`, pass: "ACK", probe })
 		else if (role === "microphone" && p.partPin === "SD") steps.push({ id: "mic", by: "firmware", what: `the microphone's data line (${p.signal}) carries samples while clocked (proves SCK, WS and SD)`, pass: "not stuck: samples vary", probe })
 		else if (role === "sensor" || role === "microphone") continue
-		else if (probe) steps.push({ id: `net-${p.signal}`, by: "fixture", what: `${p.signal} (GPIO${p.gpio} → ${p.partRef}.${p.partPin}) reaches its test pad`, pass: "the fixture sees the pad follow the line (no self-test for this part yet)", probe })
+		else if (probe) steps.push({ id: `net-${p.signal}`, by: "fixture", what: `${p.signal} (${mcuPinName(parts, p.gpio)} → ${p.partRef}.${p.partPin}) reaches its test pad`, pass: "the fixture sees the pad follow the line (no self-test for this part yet)", probe })
 	}
 	return { revision: s.revision, probes: placed, steps }
 }
