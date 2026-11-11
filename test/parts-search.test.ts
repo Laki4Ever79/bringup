@@ -26,10 +26,10 @@ test("catalog loads every vetted part with no live data yet", () => {
 test("search enriches the role's parts with live stock and price", async () => {
 	const calls: string[] = []
 	const parts = await searchParts("mcu", { root, fetch: fakeFetch({ C2838502: { stock: 22598, price: 3.05 } }, calls) })
-	assert.equal(parts.length, 1)
-	assert.equal(parts[0].mpn, "ESP32-C3-MINI-1")
-	assert.deepEqual([parts[0].stock, parts[0].priceUsd, parts[0].inStock], [22598, 3.05, true])
-	assert.match(calls[0], /\/api\/search\?q=C2838502/)
+	// Every MCU Bringup can build (docs/mcu.md); the ESP32-C3 is the one this fake knows.
+	const esp = parts.find((p) => p.mpn === "ESP32-C3-MINI-1")!
+	assert.deepEqual([esp.stock, esp.priceUsd, esp.inStock], [22598, 3.05, true])
+	assert.ok(calls.some((c) => /\/api\/search\?q=C2838502/.test(c)))
 })
 
 test("zero stock is reported as out of stock", async () => {

@@ -67,7 +67,12 @@
 		"libs": [
 			"stm32duino/STM32duinoBLE@1.4.0"
 		],
-		"zephyrBoard": "nucleo_wb55rg"
+		"zephyrBoard": "nucleo_wb55rg",
+		"history": {
+			"store": "eeprom",
+			"bytes": 4096,
+			"source": "STM32duino EEPROM emulation: one 4 KB flash page (RM0434 \u00a73.3)"
+		}
 	},
 	"sim": {
 		"backend": null,

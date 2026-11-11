@@ -10,6 +10,7 @@ import { CONNECTIVITY_SHAPE } from "../contract/connectivity.ts"
 import { createRoleAgent, requestTurn, startTurn } from "./common.ts"
 import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
+import { rankMcus, type McuRequest } from "../mcu/select.ts"
 
 // Splits the grounding check's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
 function groundingFor(findings: GroundingFinding[], pinAssignments: boolean): GroundingFinding[] {
@@ -84,14 +85,14 @@ On a deep-sleeping ESP32-C3 design, GPIO9 is the recovery BOOT pad and GPIO8 mus
 The ESP32-C3-MINI-1 has 4 MB on-module flash: if the design keeps a reading history, it goes there (NVS or LittleFS); no external memory part is needed.
 The ESP32-C3-MINI-1 needs a supply that can deliver 0.5 A (module datasheet v2.2): its radio bursts are short and high. So its regulator must be rated 500 mA or more: in the catalog RT9080-33GJ5 (600 mA, 2 µA quiescent; same pins as the AP2112K: VIN, GND, EN, NC, VOUT, EN tied to VIN) and AP2112K-3.3TRG1 (600 mA, 55 µA) are; XC6206P332MR-G (200 mA) browns it out, low quiescent current or not. For a battery target prefer the RT9080-33GJ5: the AP2112K's 55 µA alone is half the ~116 µA a 180-day target on 500 mAh allows. Catalog LDOs list their quiescent current as iqUa. A rail's regulatorMaxMa is its regulator's own rating (catalog maxMa); a higher claim is a violation. The 3V3 rail's loadMa must cover the radio's transmit peak: 170 mA for Bluetooth LE at 0 dBm, 350 mA for Wi-Fi (the design facts give it).
 - parts: [{ref, role (one of: mcu, sensor, microphone, ldo, charger, battery, usb-c, led, resistor, capacitor, button, connector, motor-driver (a robot's motor driver), other), mpn, lcsc, footprint, pins: string[]}]
-- pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]
+- pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]. gpio is the MCU's pin index as its profile defines it (the design facts' MCU section lists every usable pin as NAME=index: GPIO4=4 on an ESP32, PB7=23 on an STM32).
 - search_parts stock: a number is live from LCSC; stock null means unknown, not out of stock.
 - links (when the board is part of a system of boards) is the integrator's: you don't write it, you follow it. For each link, list its connector in connectors (kind "header", on the link's edge if it names one, about 5.8 × 3 mm), and for a UART link assign <id>_TX and <id>_RX to the connector's IO pins the design facts give, on free GPIOs. An I2C link uses the board's own I2C_SDA/I2C_SCL.
 - requirements.enclosure (optional): who houses the board. "case" when the brief asks for a case or a finished device in one: Bringup designs and prints it. Leave it out only when the brief doesn't say (Bringup then designs a case and tells the engineer it assumed one). "none" when the brief or the engineer wants a bare board (lab use, a dev kit, a test rig, "no case"); "own" when it goes into the engineer's own housing or an existing product (Bringup then writes the board's mechanical interface instead of a case). With a case, every button needs an opening: list it in connectors (kind "button", on the edge it is pressed from), or leave it out.
 - requirements.usbWake (optional, true or false): leave it out. A deep-sleeping board then wakes when USB is plugged in and stays awake while it is, so a USB-C cable alone reflashes it; the board generator adds a VBUS-sense divider on the first free pin of GPIO0, 1, 3, 4, 5, so keep one of those free. Set it to false only when the engineer asks; then reflashing needs the case open and the bottom recovery pads.
 - requirements.historyDays (optional, whole days): how many days of readings the firmware keeps in flash; without it, 30. Claim only what the history must hold: the check compares it with the flash at the reading period.
 - behavior (optional, owned by firmware): {blinkMs, tiltBlinkMs, tiltDeg}: the status LED blinks every blinkMs, and every tiltBlinkMs while the board is tilted more than tiltDeg (0..90). Without it the LED blinks at 1 Hz and tilt changes nothing. behavior is exactly these three numbers and nothing else. It cannot express "blink on each reading" or charging state: the charge LED is a part (role charge-led) wired to the charger, not behavior.
-Reference designators (a naming convention, not a parts list: use the one for each part the design has; none of these parts is required): U1 = MCU (ESP32-C3-MINI-1, pins GPIO0..GPIO10, GPIO18/GPIO19 for USB), U2 = sensor (only when the requirements call for one), U3 = LDO, U4 = Li-ion charger, J1 = USB-C, J2 = battery connector, D1 = LED, D2 = charge LED, SW1 = button.
+Reference designators (a naming convention, not a parts list: use the one for each part the design has; none of these parts is required): U1 = MCU (any catalog MCU: compare them with compare_mcus; the ESP32-C3-MINI-1 uses GPIO0..GPIO10, GPIO18/GPIO19 for USB; others as their design facts list), U2 = sensor (only when the requirements call for one), U3 = LDO, U4 = Li-ion charger, J1 = USB-C, J2 = battery connector, D1 = LED, D2 = charge LED, SW1 = button.
 A wake button: the firmware wakes from deep sleep when it is pressed only if its pin is signal BUTTON on one of GPIO0..5 (the ESP32-C3's deep-sleep wake pins), wired to the button's A pin; the board generator ties B to GND.
 For a catalog part the contract fills in its pins, footprint and LCSC number from the catalog, whatever you write; you choose ref, role and mpn. Pin names come from the catalog (use search_parts): the USB-C pins are VBUS, GND, CC1, CC2, DP, DN; the button pins are A and B; the battery connector pins are VBAT and GND. The board generator adds the support passives (CC resistors, pull-ups, decoupling) itself.
 To show charging state in hardware (lit while charging, even with the MCU asleep), add a second LED with role charge-led (catalog KT-0603R) next to the charger. The board generator wires its anode to VBUS and its cathode through a 1k resistor to the charger's CHRG pin. Put a 1k resistor (0402WGF1001TCE) in the parts for it, and do not assign the charge LED or CHRG in pins.
@@ -112,7 +113,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 	const agent = createRoleAgent({
 		role: "architect",
 		mock: opts.mock,
-		instruction: `You are the system architect of a small hardware product. From the brief you write the requirements, outline, connectors, rails and pins of the design contract, one propose_contract_change call per field. Only use MCU pins GPIO0..GPIO10 and parts that exist in the catalog. You own those fields: when another discipline asks to change one, decide with decide_change, approving it if it fits the design.\n${CONTRACT_SHAPES}`,
+		instruction: `You are the system architect of a small hardware product. From the brief you write the requirements, outline, connectors, rails and pins of the design contract, one propose_contract_change call per field. Only use MCU pins the design facts list as usable for the chosen MCU (GPIO0..GPIO10 on the ESP32-C3-MINI-1) and parts that exist in the catalog. You own those fields: when another discipline asks to change one, decide with decide_change, approving it if it fits the design.\n${CONTRACT_SHAPES}`,
 		handlers: [
 			{
 				specification: when(({ event }) => isEvent(event, "message.sent" as never) && state().getParticipant(event.producerId)?.getManifest().name === "engineer"),
@@ -171,6 +172,27 @@ function searchPartsTool(): Tool {
 	}
 }
 
+// Every catalog MCU through the same tests and score (src/mcu/select.ts): which fit the design's pins, peripherals and
+// radio, which Bringup can build a board for, and why each ranks where it does.
+function compareMcusTool(): Tool {
+	return {
+		type: "function",
+		name: "compare_mcus",
+		description: "Rank every MCU Bringup knows (any vendor) for this design on the same terms: whether its pins and peripherals fit the needs (pin solver), whether it has the radio, whether Bringup can build its board, then sleep current (battery), price, stock and simulator. Each result lists why, with numbers.",
+		parameters: {
+			type: "object",
+			properties: {
+				needs: { type: "array", items: { type: "object", properties: { signal: { type: "string" }, kind: { type: "string", enum: ["gpio", "adc", "wake", "uart", "i2c", "spi", "i2s", "usb", "can"] }, role: { type: "string" }, group: { type: "string" } }, required: ["signal", "kind"] } },
+				radio: { type: "array", items: { type: "string", enum: ["ble", "wifi"] } },
+				battery: { type: "boolean" },
+			},
+			required: ["needs"],
+		},
+		strict: false,
+		invoke: async (req: McuRequest) => rankMcus(req),
+	}
+}
+
 // Consistency violations addressed to a role wake it once per revision, with what to do about them.
 // only: which of the role's violations it can act on (the case designer shares the "enclosure" role with the case
 // builder, whose cutout and vent violations a rebuild fixes).
@@ -212,7 +234,7 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 		role: "parts",
 		mock: opts.mock,
 		instruction: `You select the parts for a hardware design. Use search_parts for every role the requirements and rails need, and choose only those: no part for something the brief puts out of scope (no sensor when the brief rules sensors out). Prefer in-stock parts, and write the complete parts list with one propose_contract_change. Keep the reference designators below. You own the parts list: when another discipline asks to change it, decide with decide_change.\n${CONTRACT_SHAPES}`,
-		tools: [searchPartsTool()],
+		tools: [searchPartsTool(), compareMcusTool()],
 		handlers: [
 			ownerFixesReview("parts"),
 			ownerReviewsChanges("parts"),
