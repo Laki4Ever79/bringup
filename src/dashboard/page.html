@@ -538,6 +538,29 @@
 	/* The plot beside the segments: the stage is short, and stacked the rows left the plot no height. */
 	#drive-view { display: grid; grid-template-columns: minmax(200px, 38%) 1fr; grid-template-rows: auto minmax(0, 1fr); gap: 8px 16px; padding: 10px 12px; overflow: auto; }
 	#drive-view .drive-top { grid-column: 1 / -1; }
+	/* The firmware viewer: each revision's source, what changed since another revision. Read-only. */
+	#fw-view { display: grid; grid-template-rows: auto minmax(0, 1fr); font: 12px/1.5 var(--mono); color-scheme: dark; }
+	#fw-view .fw-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; border-bottom: 1px solid rgba(255, 255, 255, .12); }
+	#fw-view select, #fw-view .fw-mode button { font: inherit; background: transparent; color: inherit; border: 1px solid rgba(255, 255, 255, .3); border-radius: 4px; padding: 2px 6px; }
+	#fw-view select option { color: #111; }
+	#fw-view .fw-mode button.on { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .6); }
+	#fw-view .fw-sum { opacity: .7; }
+	#fw-view .fw-main { display: grid; grid-template-columns: minmax(170px, 24%) minmax(0, 1fr); min-height: 0; }
+	#fw-view .fw-files { list-style: none; margin: 0; padding: 6px 0; overflow: auto; border-right: 1px solid rgba(255, 255, 255, .12); }
+	#fw-view .fw-files li { display: flex; gap: 6px; align-items: baseline; padding: 3px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	#fw-view .fw-files li:hover { background: rgba(255, 255, 255, .06); }
+	#fw-view .fw-files li.on { background: rgba(255, 74, 23, .22); }
+	#fw-view .fw-files .st { width: 1.2em; text-align: center; flex: none; }
+	#fw-view .fw-files .changed .st { color: #ffb020; } #fw-view .fw-files .added .st { color: #4cd07d; } #fw-view .fw-files .removed .st { color: #ff6b6b; } #fw-view .fw-files .removed .p { text-decoration: line-through; opacity: .7; }
+	#fw-view .fw-files .gen { font-size: 10px; opacity: .55; border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; }
+	#fw-view .fw-code { overflow: auto; padding: 6px 0; }
+	#fw-view .fw-code table { border-collapse: collapse; width: 100%; }
+	#fw-view .fw-code td { padding: 0 8px; vertical-align: top; white-space: pre; }
+	#fw-view .fw-code td.n { text-align: right; opacity: .4; user-select: none; width: 1%; }
+	#fw-view .fw-code tr.add td { background: rgba(76, 208, 125, .14); } #fw-view .fw-code tr.del td { background: rgba(255, 107, 107, .14); }
+	#fw-view .fw-code tr.add td.m::before { content: "+"; color: #4cd07d; } #fw-view .fw-code tr.del td.m::before { content: "−"; color: #ff6b6b; }
+	#fw-view .fw-code tr.skip td { opacity: .5; font-style: italic; padding: 4px 8px; }
+	#fw-view .fw-empty { padding: 16px; opacity: .7; }
 	#drive-plot { min-height: 160px; }
 	#drive-plot svg { width: 100%; height: 100%; }
 	.drive-rows { align-self: start; }
@@ -742,7 +765,7 @@
 			<section id="stage">
 				<div class="stage-bar">
 					<span class="label sec-num"><b>06</b> Board</span>
-					<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="bench" class="hidden">Bench</button><button data-tab="drive" class="hidden">Drive</button></div>
+					<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="firmware" title="The firmware's source files, revision by revision, and what changed">Firmware</button><button data-tab="bench" class="hidden">Bench</button><button data-tab="drive" class="hidden">Drive</button></div>
 					<span id="dims" class="num"></span>
 					<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
 					<button id="order-btn" class="pill hidden" disabled title="">Ready to order ↗</button>
@@ -763,6 +786,7 @@
 						<div id="bench-chart-box"><canvas id="bench-chart"></canvas></div>
 						<div id="bench-blink" class="hidden"></div><div class="bench-bottom"><div id="bench-gauge"><div class="t3">measured vs estimated battery life: waiting for a duty-cycle measurement</div></div><ul class="bench-checks" id="bench-checks"><li class="t3">checks: waiting for the first flash (after the design settles)</li></ul></div>
 					</div>
+					<div id="fw-view" class="view hidden"><div class="fw-bar"><label>revision <select id="fw-rev" aria-label="Firmware revision"></select></label><label>compared with <select id="fw-base" aria-label="Compare with revision"></select></label><span class="fw-mode"><button data-mode="changes" class="on">Changes only</button> <button data-mode="whole">Whole file</button></span><span class="fw-sum" id="fw-sum"></span></div><div class="fw-main"><ul class="fw-files" id="fw-files"></ul><div class="fw-code" id="fw-code"><div class="fw-empty">waiting for the first firmware build</div></div></div></div>
 					<div id="drive-view" class="view hidden"><div class="drive-top"><b id="drive-result"></b> <span id="drive-reason" class="t3"></span></div><div id="drive-plot"></div><table id="drive-rows" class="drive-rows"></table></div>
 					<span id="changed-pill" class="pill"></span>
 					<div id="file-notice" class="hidden" role="status"><span class="k" id="file-notice-k"></span><b id="file-notice-text"></b><button id="file-notice-open" title="Revert or adopt it">Review in Drift</button><button id="file-notice-close" title="Hide (the Feed keeps it)">✕</button><ul id="file-notice-items"></ul></div>
@@ -1034,6 +1058,8 @@
 			$("stage-3d").classList.toggle("hidden", tab !== "3d")
 			$("bench-view").classList.toggle("hidden", tab !== "bench")
 			$("drive-view").classList.toggle("hidden", tab !== "drive")
+			$("fw-view").classList.toggle("hidden", tab !== "firmware")
+			if (tab === "firmware") loadFirmware()
 			$("stage-body").classList.toggle("on-bench", tab === "bench")
 			$("stage-body").classList.toggle("rulers", tab === "pcb" && Boolean(pcb))
 			if (tab === "pcb") requestAnimationFrame(() => pcb?.fit?.())
@@ -1047,6 +1073,64 @@
 			else if (S.shownEnclosure !== null || S.shownChassis !== null) note.classList.add("hidden")
 			else note.textContent = missingNote("enclosure")
 		}
+
+		// ── The firmware viewer: each firmware revision's source files (/api/runs/<id>/firmware), and what changed since
+		// another revision (the one before, by default), file by file and line by line (fwdiff.js). Read-only. ──
+		const FW = { revisions: [], rev: null, base: null, path: null, mode: "changes", text: new Map() }
+		async function loadFirmware() {
+			try {
+				const r = await fetch(`/api/runs/${encodeURIComponent(id)}/firmware`, { cache: "no-store" })
+				if (!r.ok) return
+				const { revisions } = await r.json()
+				const newest = revisions.at(-1)?.revision ?? null
+				// Follow the newest revision unless the engineer picked an older one.
+				const following = FW.rev === null || FW.rev === FW.revisions.at(-1)?.revision
+				FW.revisions = revisions
+				if (following) { FW.rev = newest; FW.base = revisions.at(-2)?.revision ?? null }
+				renderFirmware()
+			} catch {}
+		}
+		const fwText = async (rev, path) => {
+			const key = `${rev}/${path}`
+			if (!FW.text.has(key)) FW.text.set(key, fetch(optional(`firmware/rev-${rev}/${path}`)).then((r) => (r.ok && r.status !== 204 ? r.text() : "")))
+			return FW.text.get(key)
+		}
+		async function renderFirmware() {
+			const revOpt = (r, on) => `<option value="${r.revision}"${r.revision === on ? " selected" : ""}>rev ${r.revision}</option>`
+			$("fw-rev").innerHTML = FW.revisions.map((r) => revOpt(r, FW.rev)).join("")
+			$("fw-base").innerHTML = `<option value=""${FW.base === null ? " selected" : ""}>nothing (just show it)</option>` + FW.revisions.filter((r) => r.revision !== FW.rev).map((r) => revOpt(r, FW.base)).join("")
+			for (const b of document.querySelectorAll("#fw-view .fw-mode button")) b.classList.toggle("on", b.dataset.mode === FW.mode)
+			const cur = FW.revisions.find((r) => r.revision === FW.rev)
+			if (!cur) { $("fw-files").innerHTML = ""; $("fw-sum").textContent = ""; return }
+			const { compareFiles, lineDiff, hunks } = await import("/fwdiff.js")
+			const base = FW.revisions.find((r) => r.revision === FW.base) ?? null
+			const files = compareFiles(base?.files ?? null, cur.files)
+			const changed = files.filter((f) => f.status !== "same")
+			$("fw-sum").textContent = base ? (changed.length ? `${changed.length} file${changed.length === 1 ? "" : "s"} changed since rev ${base.revision}` : `no change since rev ${base.revision}`) : `${cur.files.length} files`
+			if (!FW.path || !files.some((f) => f.path === FW.path)) FW.path = (changed[0] ?? files.find((f) => f.path.endsWith("main.cpp")) ?? files[0])?.path ?? null
+			const mark = { added: "+", removed: "−", changed: "●", same: "" }
+			$("fw-files").innerHTML = files.map((f) => `<li class="${f.status}${f.path === FW.path ? " on" : ""}" data-path="${esc(f.path)}" title="${esc(f.path)}${f.generated ? " · generated from the design" : " · the firmware template"}"><span class="st">${mark[f.status]}</span><span class="p">${esc(f.path)}</span>${f.generated ? '<span class="gen">gen</span>' : ""}</li>`).join("")
+			const f = files.find((x) => x.path === FW.path)
+			if (!f) { $("fw-code").innerHTML = `<div class="fw-empty">no files in this revision</div>`; return }
+			const [now, before] = await Promise.all([f.status === "removed" ? "" : fwText(FW.rev, f.path), base && f.status !== "added" ? fwText(base.revision, f.path) : null])
+			const row = (l) => `<tr class="${l.op}"><td class="n">${l.a ?? ""}</td><td class="n">${l.b ?? ""}</td><td class="m"></td><td>${esc(l.text)}</td></tr>`
+			const skip = (n) => (n > 0 ? `<tr class="skip"><td colspan="4">… ${n} unchanged line${n === 1 ? "" : "s"}</td></tr>` : "")
+			let body
+			if (before === null) body = lineDiff(now, now).map(row).join("")
+			else {
+				const d = lineDiff(before, now)
+				if (FW.mode === "whole") body = d.map(row).join("")
+				else {
+					const h = hunks(d, 3)
+					body = h.length ? h.map((x) => skip(x.skippedBefore) + x.lines.map(row).join("") + skip(x.skippedAfter)).join("") : `<tr class="skip"><td colspan="4">no change in this file since rev ${base.revision}</td></tr>`
+				}
+			}
+			$("fw-code").innerHTML = `<table>${body}</table>`
+		}
+		$("fw-rev").addEventListener("change", (e) => { FW.rev = Number(e.target.value); if (FW.base === FW.rev) FW.base = null; renderFirmware() })
+		$("fw-base").addEventListener("change", (e) => { FW.base = e.target.value === "" ? null : Number(e.target.value); renderFirmware() })
+		$("fw-files").addEventListener("click", (e) => { const li = e.target.closest("li"); if (li) { FW.path = li.dataset.path; renderFirmware() } })
+		document.querySelector("#fw-view .fw-mode").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { FW.mode = b.dataset.mode; renderFirmware() } })
 
 		// Why a board or case view is empty: a stubbed run (--no-hardware) has no files to show; a recorded run in the
 		// public demo ships its trace and change log, not its build files; otherwise the build hasn't landed yet.
@@ -2363,6 +2447,8 @@
 					if (p.field === "parts") fetchBom()
 					break
 				case "artifact.ready": {
+					// A new firmware revision while the Firmware tab is open: show it (and what changed).
+					if (p.kind === "firmware" && !$("fw-view").classList.contains("hidden")) loadFirmware()
 					const prevBoard = S.model.boards.at(-1) ?? null
 					S.model = scrubberModel(S.events)
 					// A design with no case of ours reports the enclosure as skipped: nothing to fetch.

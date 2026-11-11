@@ -164,3 +164,35 @@ test("disposing a 3D world releases its GL context", { skip, timeout: 120_000 },
 		assert.deepEqual(lost, { lost: true, canvasGone: true })
 	})
 })
+
+// The firmware viewer (user, 11 Nov): the board's firmware source, revision by revision, what changed since the one
+// before; generated files marked.
+test("the board page's Firmware tab lists the newest revision's files, marks the generated ones and shows what changed", { skip, timeout: 120_000 }, async () => {
+	const hub = await serveHub({ outRoot: join(ROOT, "out"), port: 0 })
+	const browser = await chromium.launch({ executablePath: exe!, headless: true })
+	try {
+		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+		await page.goto(`${hub.url}/?run=${SYSTEM}.logger&standalone=1`)
+		await page.click('#tabs [data-tab="firmware"]')
+		await page.waitForSelector("#fw-files li", { timeout: 15_000 })
+		const v = await page.evaluate(() => ({
+			revs: [...document.querySelectorAll("#fw-rev option")].map((o) => (o as HTMLOptionElement).value),
+			rev: (document.getElementById("fw-rev") as HTMLSelectElement).value,
+			base: (document.getElementById("fw-base") as HTMLSelectElement).value,
+			files: [...document.querySelectorAll("#fw-files li")].map((li) => ({ path: (li as HTMLElement).dataset.path, gen: Boolean(li.querySelector(".gen")), status: li.className.split(" ")[0] })),
+			sum: document.getElementById("fw-sum")!.textContent,
+		}))
+		assert.ok(v.revs.length >= 2, `revisions: ${v.revs}`)
+		assert.equal(v.rev, v.revs.at(-1), "opens on the newest revision")
+		assert.equal(v.base, v.revs.at(-2), "compared with the one before")
+		assert.ok(v.files.some((f) => f.path === "src/main.cpp" && !f.gen), "the template's main.cpp, not marked generated")
+		assert.ok(v.files.some((f) => f.path === "include/pins.h" && f.gen), "pins.h, marked generated")
+		assert.match(v.sum!, /since rev \d+/)
+		// Whole file shows every line of the open file.
+		await page.click('#fw-view .fw-mode [data-mode="whole"]')
+		await page.waitForFunction(() => document.querySelectorAll("#fw-code tr").length > 5)
+	} finally {
+		await browser.close()
+		await hub.close()
+	}
+})
