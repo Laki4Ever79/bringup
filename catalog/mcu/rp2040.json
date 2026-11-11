@@ -20,7 +20,7 @@
 	},
 	"board": {
 		"supported": false,
-		"reason": "needs an external QSPI flash (W25Q16JV, C131025), a 12 MHz crystal and the core regulator's capacitors; the board generator places neither crystals nor the flash yet (docs/mcu.md, Not done)"
+		"reason": "needs an external QSPI flash (W25Q16JV, C131025) and the core regulator's capacitors; the board generator places the 12 MHz crystal but not the flash yet (docs/mcu.md, Not done)"
 	},
 	"core": "2\u00d7 ARM Cortex-M0+",
 	"mhz": 133,
@@ -662,7 +662,18 @@
 		"pads": [
 			"20",
 			"21"
-		]
+		],
+		"crystal": {
+			"mpn": "TAXM12M4RFBCCT2T",
+			"lcsc": "C133337",
+			"loadPf": 12,
+			"footprint": "smd3225_4p"
+		},
+		"loadCap": {
+			"value": "15pF",
+			"mpn": "0402CG150J500NT",
+			"lcsc": "C1548"
+		}
 	},
 	"support": [],
 	"currents": {

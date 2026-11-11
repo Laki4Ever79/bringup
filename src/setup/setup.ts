@@ -71,7 +71,7 @@ export const RENODE: Step = {
 
 // The other vendors' firmware toolchains and chip data (docs/mcu.md): PlatformIO's STM32, RP2040 and nRF52 platforms
 // (into ~/.platformio, as the ESP32 one), and ST's open pin data (BSD-3-Clause) the STM32 profiles are generated from.
-export const VENDOR_PLATFORMS = ["platformio/ststm32@20.0.0", "platformio/raspberrypi@1.20.0", "platformio/nordicnrf52@11.0.0"]
+export const VENDOR_PLATFORMS = ["platformio/ststm32@19.6.0", "platformio/raspberrypi@1.20.0", "platformio/nordicnrf52@11.0.0"]
 export const VENDORS: Step = {
 	id: "vendors",
 	name: "STM32, RP2040 and nRF52 toolchains + ST pin data",

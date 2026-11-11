@@ -62,3 +62,28 @@ export function chipSupport(p: McuProfile, mcuRef: string, supplyNet: string): C
 		return a && b ? [{ job: j.job, spec: j.spec, a, b }] : []
 	})
 }
+
+// The crystal a chip's clock needs (profile clock.crystal) and the pad labels it joins: pin 1 to OSC_IN (clock.pads[0])
+// and pin 3 to OSC_OUT (clock.pads[1]). null for a chip on its internal oscillator, a module, or a profile whose
+// crystal pads carry no label.
+//
+// Load capacitors: C = 2 × (CL − Cstray), with Cstray ≈ 3 pF (the pins and traces). The F103's 8 MHz crystal (CL 10 pF)
+// asks for 2 × (10 − 3) = 14 pF; 15 pF C0G (C1548, a JLCPCB Basic part) is the nearest value stocked, pulling the
+// frequency by a few ppm. The RP2040's 12 MHz crystal (CL 12 pF) asks for 2 × (12 − 3) = 18 pF; 15 pF loads it ~1.5 pF
+// light, a small upward pull (tens of ppm at most), well inside what USB full speed tolerates (±2500 ppm).
+export interface ChipCrystal {
+	mhz: number
+	inPin: string
+	outPin: string
+	inPad: string
+	crystal: { mpn: string; lcsc: string; loadPf: number; footprint: "smd3225_4p" }
+	loadCap: { value: string; mpn: string; lcsc: string }
+}
+export function chipCrystal(p: McuProfile): ChipCrystal | null {
+	const c = p.clock
+	if (p.kind !== "chip" || !c?.crystal || !c.loadCap) return null
+	const labels = chipPadLabels(p)
+	const inPin = labels.get(c.pads[0]), outPin = labels.get(c.pads[1])
+	if (!inPin || !outPin) return null
+	return { mhz: c.hseMhz, inPin, outPin, inPad: c.pads[0], crystal: c.crystal, loadCap: c.loadCap }
+}

@@ -77,7 +77,15 @@ export interface McuProfile {
 	sim: { backend: "qemu" | "renode" | null; machine?: string; consoleUart?: string; models: string[]; note?: string }
 	radio: ("ble" | "wifi" | "802.15.4")[]
 	// A crystal the board must carry (USB on the F103, the WB55's radio, the RP2040), or null to run on the internal oscillator.
-	clock?: { hseMhz: number; why: string; pads: [string, string] } | null
+	// crystal: the part the board carries, on pads[0] (OSC_IN) and pads[1] (OSC_OUT); loadPf its load capacitance.
+	// loadCap: the two load capacitors, one from each crystal pin to GND. No crystal: the board places none.
+	clock?: {
+		hseMhz: number
+		why: string
+		pads: [string, string]
+		crystal?: { mpn: string; lcsc: string; loadPf: number; footprint: "smd3225_4p" }
+		loadCap?: { value: string; mpn: string; lcsc: string }
+	} | null
 	// Every GPIO wakes the chip from the sleep the firmware uses (STM32 Stop mode: any EXTI line), not only pins marked wake.
 	wakeAny?: boolean
 	// Pins tried first, in order (the ESP32-C3's link pins, docs/system.md); the rest follow by index.

@@ -59,7 +59,7 @@
 		"source": "DS11929 Rev 14 (STM32WB55xx): run 64 MHz with SMPS 5.00 mA (8.15 mA on LDO) at 3.3 V (Table 37); Stop 2 with RTC on LSE 2.45 \u00b5A (Table 43); BLE 0 dBm with SMPS TX 5.2 mA, RX 4.5 mA (Table 30). No minimum supply current stated; 30 mA is Bringup's margin"
 	},
 	"firmware": {
-		"platform": "ststm32@20.0.0",
+		"platform": "ststm32@19.6.0",
 		"board": "nucleo_wb55rg_p",
 		"framework": "arduino",
 		"arch": "stm32",

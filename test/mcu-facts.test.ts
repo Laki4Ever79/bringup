@@ -25,5 +25,5 @@ test("STM32G031 facts: names with their index, SWD reserved, no radio, flashed o
 
 test("the catalog offers every MCU Bringup can build, ESP32 and STM32 alike", async () => {
 	const mcus = await searchParts("mcu", { fetch: (async () => { throw new Error("offline") }) as unknown as typeof fetch })
-	assert.deepEqual(mcus.map((p) => p.mpn), ["ESP32-C3-MINI-1", "STM32G031K8T6", "STM32L031K6T6"])
+	assert.deepEqual(mcus.map((p) => p.mpn), ["ESP32-C3-MINI-1", "STM32F103C8T6", "STM32G031K8T6", "STM32L031K6T6"])
 })
