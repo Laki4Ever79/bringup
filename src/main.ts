@@ -15,8 +15,9 @@ import { openBench } from "./bench/open.ts"
 import { verifyConverted, type ConvertedModel } from "./contract/verify-model.ts"
 import { buildCollectFirmware, buildFirmware, checkModelOnDevice, type DeviceModelCheck } from "./tools/firmware.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
+import { takeNoCloudFlag } from "./runner/cloud.ts"
 
-const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>]"
+const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -92,6 +93,7 @@ export function parentGone(stdin: NodeJS.ReadableStream, env: Record<string, str
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
 // its builder reports artifact.failed and the run ends unsettled with a report naming what to install.
 export async function main(argv: string[], deps: { detect?: (root: string) => Promise<Env> } = {}): Promise<number> {
+	argv = takeNoCloudFlag(argv)
 	// `bringup status <runDir>`: the run's drifted files, like git status (runner/drift.ts).
 	if (argv[0] === "status") {
 		const dir = argv[1]

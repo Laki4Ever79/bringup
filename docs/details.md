@@ -321,6 +321,9 @@ npm run bringup -- briefs/logger.md --mock --no-hardware
 # Skip the brief reviewer gate (the consistency and grounding checks still run)
 npm run bringup -- briefs/logger.md --mock --no-review
 
+# Send nothing to Mozaik Cloud, even on a paired machine (works on every command; same as BRINGUP_CLOUD=off)
+npm run bringup -- briefs/logger.md --mock --no-cloud
+
 # No API key needed: scripted models, real tools. About 1–3 min once the tools are installed.
 npm run bringup -- briefs/logger.md --mock
 
