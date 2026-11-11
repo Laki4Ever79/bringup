@@ -5,7 +5,7 @@
 import { enclosureMode, type ContractSnapshot } from "./types.ts"
 import { downloadStrap, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
-import { PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
+import { estimatePower, PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
 
 export interface AddedItem {
 	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "phone-use" | "button-window"
@@ -16,7 +16,8 @@ export interface AddedItem {
 	change: string // how to turn it off or change it; "" when there is nothing to change
 }
 
-export function addedForYou(s: ContractSnapshot): AddedItem[] {
+// brief: the run's brief, where the battery capacity may be stated; without it, only the requirements' capacity counts.
+export function addedForYou(s: ContractSnapshot, brief = ""): AddedItem[] {
 	const items: AddedItem[] = []
 	const mode = enclosureMode(s.values)
 	// How the board is reached for reflashing, by who houses it.
@@ -99,8 +100,9 @@ export function addedForYou(s: ContractSnapshot): AddedItem[] {
 			cost: `Up to ${windowS} s awake per press: an estimate of ${Math.round(28 * windowS / 100) / 10}–${Math.round(86 * windowS / 100) / 10} C (the CPU at 28 mA, up to the radio's 86 mA), about what a phone connection costs. The battery estimate counts the phone connections, not the presses.`,
 			change: `BUTTON_ADVERTISE_MS in templates/fw/src/main.cpp (a constant today).`,
 		})
+	// It qualifies the battery-life figure, so it is listed only when there is one.
 	const phone = phoneUseMa(s)
-	if (phone)
+	if (phone && estimatePower(s, brief).days !== null)
 		items.push({
 			id: "phone-use",
 			what: `Battery estimate assumes ${PHONE_CONNECTIONS_PER_DAY} phone connection${PHONE_CONNECTIONS_PER_DAY === 1 ? "" : "s"} a day`,
@@ -113,8 +115,8 @@ export function addedForYou(s: ContractSnapshot): AddedItem[] {
 }
 
 // The report's table: what, how it shows, why, cost, and how to change it.
-export function addedForYouSection(s: ContractSnapshot): string[] {
-	const items = addedForYou(s)
+export function addedForYouSection(s: ContractSnapshot, brief = ""): string[] {
+	const items = addedForYou(s, brief)
 	if (items.length === 0) return []
 	const cell = (t: string) => t.replace(/\|/g, "\\|").replace(/\s+/g, " ")
 	return [
@@ -130,8 +132,8 @@ export function addedForYouSection(s: ContractSnapshot): string[] {
 }
 
 // The same list for the agents and the reviewer: what the design does that the contract doesn't spell out.
-export function addedForYouFactLines(s: ContractSnapshot): string[] {
-	const items = addedForYou(s)
+export function addedForYouFactLines(s: ContractSnapshot, brief = ""): string[] {
+	const items = addedForYou(s, brief)
 	if (items.length === 0) return []
 	return [
 		"",
