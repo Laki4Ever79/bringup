@@ -12,23 +12,29 @@ const skip = env.tsci && env.kicad && env.python && env.pio ? false : "a hardwar
 
 const trace = (out: string) => readFileSync(join(out, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
 
-test("editing the board outline in a --stay run's board.kicad_pcb becomes an engineer change, and the board and case follow", { skip, timeout: 1_200_000 }, async () => {
+// The time budget, not the behaviour, failed under the full suite's load (11 Nov): a scripted design built twice (board,
+// case, firmware) took 1031 s next to the suite's builds, QEMU and MuJoCo, against the old 1200 s limit, and 207 s
+// beside a lighter load. Diagnostics showed the edit itself was handled every time. So the limits are sized for a busy
+// machine; what the test proves is that the edit becomes a change and the board and case follow.
+const SETTLE_MS = 1_500_000
+test("editing the board outline in a --stay run's board.kicad_pcb becomes an engineer change, and the board and case follow", { skip, timeout: 2 * SETTLE_MS + 300_000 }, async () => {
 	const out = tempDir()
 	let end: () => void = () => {}
 	const until = new Promise<void>((r) => (end = r))
 	const run = runDesign({ brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"), mock: true, outDir: out, env, stay: { until } })
 	try {
-		await waitFor(() => existsSync(join(out, "trace.jsonl")) && trace(out).some((e) => e.type === "design.settled"), 900_000)
+		await waitFor(() => existsSync(join(out, "trace.jsonl")) && trace(out).some((e) => e.type === "design.settled"), SETTLE_MS)
 		const revs = readdirSync(join(out, "board")).filter((d) => existsSync(join(out, "board", d, "dist/board/kicad/board.kicad_pcb"))).map((d) => Number(d.slice(4)))
 		const rev = Math.max(...revs)
 		const pcb = join(out, "board", `rev-${rev}`, "dist/board/kicad/board.kicad_pcb")
 		writeFileSync(pcb, widenBoard(readFileSync(pcb, "utf8"), 5))
-		await waitFor(() => trace(out).some((e) => e.type === "change.requested"), 20_000)
+		// The watcher debounces 300 ms, then reads the board: seconds when idle, longer on a loaded machine.
+		await waitFor(() => trace(out).some((e) => e.type === "change.requested"), 120_000)
 		const req = trace(out).find((e) => e.type === "change.requested")!
 		assert.equal(req.payload.text, "edited board.kicad_pcb: outline 50×30 → 55×30 mm")
 		assert.equal(req.payload.source.path, `board/rev-${rev}/dist/board/kicad/board.kicad_pcb`)
 		const n = trace(out).findIndex((e) => e.type === "change.requested")
-		await waitFor(() => trace(out).slice(n).some((e) => e.type === "design.settled"), 900_000)
+		await waitFor(() => trace(out).slice(n).some((e) => e.type === "design.settled"), SETTLE_MS)
 		const contract = JSON.parse(readFileSync(join(out, "contract.json"), "utf8"))
 		assert.equal(contract.values.outline.widthMm, 55)
 		const [row] = JSON.parse(readFileSync(join(out, "ripples.json"), "utf8")).requests
