@@ -58,14 +58,7 @@
 </head>
 <body>
 <div id="start-screen">
-<header>
-	<a class="logo" href="/">bring<b>up</b></a>
-	<nav>
-		<a href="/builds">My builds</a>
-		<a href="/system">Systems</a>
-		<a href="https://github.com/Laki4Ever79/bringup#readme" target="_blank" rel="noopener">Docs</a>
-	</nav>
-</header>
+
 <main>
 	<section class="hero">
 		<div id="stage">
@@ -90,6 +83,8 @@
 </main>
 </div>
 <script type="module">
+	import { mountNav } from "/nav.js"
+	mountNav({ section: "home" })
 	const $ = (id) => document.getElementById(id)
 	const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
 	if (window.BRINGUP_PUBLIC) document.body.classList.add("public")
@@ -98,7 +93,8 @@
 	const examples = await fetch("/api/examples").then((r) => r.json()).catch(() => [])
 	// The richest example first; the single board last, named for what it is.
 	examples.sort((a, b) => b.boards.length - a.boards.length)
-	const label = (ex) => (ex.boards.length === 1 ? "Single board" : ex.title)
+	// Each example by its own name; the count of boards is the card's second line.
+	const label = (ex) => ex.title
 	const cache = new Map()
 	let world = null, current = null, typed = false
 

@@ -55,7 +55,9 @@ export function mountNav(opts) {
 	}
 	let el = document.getElementById("site-nav")
 	if (!el) {
-		el = document.createElement("header")
+		// A div, not a header: the pages style their own <header> rows, which would restyle the bar.
+		el = document.createElement("div")
+		el.setAttribute("role", "navigation")
 		el.id = "site-nav"
 		el.className = "nv"
 		document.body.prepend(el)

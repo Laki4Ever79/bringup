@@ -795,6 +795,17 @@
 <script type="module">
 	// Inside the system page (embed=1): no logo, Systems or New (the system page's breadcrumb leads out), and Esc goes
 	// back to the whole system.
+	// Outside it, the shared bar (nav.js) replaces the logo, Systems and New. A board opened by its address goes to its
+	// design, that board's tab open (the page map, 11 Nov): every board is seen the same way, under its design.
+	if (!window.BRINGUP_EMBED) {
+		const run = new URLSearchParams(location.search).get("run")
+		const sys = run && /^([\w-]+)\.([\w-]+)$/.exec(run)
+		if (run && !new URLSearchParams(location.search).has("standalone")) location.replace(sys ? `/system?id=${encodeURIComponent(sys[1])}&board=${encodeURIComponent(sys[2])}` : `/system?id=${encodeURIComponent(run)}&board=main`)
+		document.head.insertAdjacentHTML("beforeend", "<style>header .logo, #system-link, #new-btn, #stage-btn { display: none !important }</style>")
+		import("/nav.js").then(({ mountNav }) => mountNav({ section: "designs", trail: [{ label: "Designs", href: "/designs" }, { label: run ? run : "Start from a written brief" }] }))
+		// With no run open, the run's own row (state, checks, Brief, Feed…) has nothing to show: no empty band under the bar.
+		if (!run) addEventListener("DOMContentLoaded", () => { const h = document.querySelector("header"); if (h) h.style.display = "none" })
+	}
 	if (window.BRINGUP_EMBED) {
 		document.head.insertAdjacentHTML("beforeend", "<style>header .logo, #system-link, #new-btn, #stage-btn { display: none !important }</style>")
 		addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.target.closest?.("input, textarea")) parent.postMessage({ type: "bringup-close" }, location.origin) })

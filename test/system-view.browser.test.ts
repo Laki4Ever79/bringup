@@ -108,7 +108,7 @@ test("at phone width the header grows to fit: nothing crosses its rule or leaves
 		await page.waitForTimeout(300)
 		// Every header on the page (the shared bar and the design's own row), each against its own rule.
 		const headers = await page.evaluate(() =>
-			[...document.querySelectorAll("header")].map((h) => ({
+			[...document.querySelectorAll("header, #site-nav")].map((h) => ({
 				id: h.id,
 				bottom: h.getBoundingClientRect().bottom,
 				w: innerWidth,
