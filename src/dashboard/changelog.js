@@ -90,8 +90,10 @@ function step(e) {
 		case "change.requested": return p.source?.kind === "file" ? `you edited ${basename(p.source.path)}: ${(p.source.items ?? []).join("; ")}` : `you asked “${p.text}”`
 		case "contract.changed": {
 			const who = ACTOR[p.by] ?? p.by
-			const diff = "after" in p ? readableDiff(p.field, p.before, p.after)[0]?.replace(/^[~+−-] /, "") : null
-			return diff ? `${who}: ${diff}` : `${who} ${p.version === 1 ? "set" : "changed"} ${p.field}`
+			// The first line of the change, and how many more: a step must not read as one change when it was several.
+			const lines = "after" in p ? readableDiff(p.field, p.before, p.after) : []
+			const diff = lines[0]?.replace(/^[~+−-] /, "")
+			return diff ? `${who}: ${diff}${lines.length > 1 ? ` (+${lines.length - 1} more)` : ""}` : `${who} ${p.version === 1 ? "set" : "changed"} ${p.field}`
 		}
 		case "artifact.ready": return p.skipped ? `${BUILT[p.kind] ?? p.kind}: ${p.skipped}` : `${BUILT[p.kind] ?? p.kind} rebuilt · rev ${p.revision}`
 		case "artifact.failed": return `${BUILT[p.kind] ?? p.kind} build failed · rev ${p.revision}`
