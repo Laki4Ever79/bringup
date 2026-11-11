@@ -5,6 +5,7 @@ export interface BoardAssembly {
 	revision: number
 	boardRevision: number | null
 	enclosureRevision: number | null
+	chassisRevision: number | null
 	pulses: { target: { board: string }; caption: string }[]
 }
 export function assemblyAt(traces: Record<string, Ev[]>, upTo?: string): Record<string, BoardAssembly>
