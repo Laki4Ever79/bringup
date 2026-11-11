@@ -337,5 +337,10 @@
 		"ESP32-C3 Series Datasheet v2.4 (section 3.1 strapping pins)",
 		"ESP32-C3 TRM v1.4 Table 7.2-1",
 		"catalog/parts.json ESP32-C3-MINI-1 notes"
-	]
+	],
+	"priceUsd": {
+		"qty": 100,
+		"usd": 2.93,
+		"source": "LCSC C2838502 ESP32-C3-MINI-1-N4 $3.84 @1, $2.93 @100, stock not shown, JLCPCB Extended (jlcsearch.tscircuit.com, 11 Nov 2026)"
+	}
 }
