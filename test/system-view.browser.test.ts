@@ -123,3 +123,26 @@ test("at phone width the header grows to fit: nothing crosses its rule or leaves
 			}
 	})
 })
+
+// The user, 11 Nov: the PCB view "is a bit on the smaller side, and it is the one that is perhaps the most interesting".
+// The board page keeps everything (the status band, agents, timeline, case), and the PCB gets most of the window.
+test("the board page gives the PCB most of the window: at least 3/4 of its height and 3/5 of its width", { skip, timeout: 120_000 }, async () => {
+	const hub = await serveHub({ outRoot: join(ROOT, "out"), port: 0 })
+	const browser = await chromium.launch({ executablePath: exe!, headless: true })
+	try {
+		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+		await page.goto(`${hub.url}/?run=${SYSTEM}.logger&standalone=1`)
+		await page.waitForSelector("#pcb-host", { timeout: 30_000 })
+		await page.waitForTimeout(1500)
+		const r = await page.evaluate(() => {
+			const b = document.getElementById("stage-body")!.getBoundingClientRect()
+			return { w: b.width, h: b.height, vw: innerWidth, vh: innerHeight, ripple: Boolean(document.getElementById("ripple")?.offsetHeight), agents: Boolean(document.getElementById("agents")?.offsetHeight), scene: Boolean(document.getElementById("scene-panel")?.offsetHeight) }
+		})
+		assert.ok(r.h >= 0.75 * r.vh, `the PCB view is ${Math.round(r.h)} px high in a ${r.vh} px window`)
+		assert.ok(r.w >= 0.6 * r.vw, `the PCB view is ${Math.round(r.w)} px wide in a ${r.vw} px window`)
+		assert.ok(r.ripple && r.agents && r.scene, "the status band, the agents and the case view are all still there")
+	} finally {
+		await browser.close()
+		await hub.close()
+	}
+})

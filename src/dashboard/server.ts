@@ -778,6 +778,14 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				const dir = await runDir(spendOf[1])
 				return dir ? json(res, 200, readSpend(dir)) : json(res, 404, { error: "unknown run" })
 			}
+			// The run's Mozaik Cloud link (cloud.jsonl's last url), or null: a run without the Cloud is normal, not a 404.
+			const cloudOf = /^\/api\/runs\/([^/]+)\/cloud$/.exec(path)
+			if (cloudOf) {
+				const dir = await runDir(cloudOf[1])
+				if (!dir) return json(res, 404, { error: "unknown run" })
+				const urls = (await readFile(join(dir, "cloud.jsonl"), "utf8").catch(() => "")).split("\n").flatMap((l) => { try { const u = JSON.parse(l).url; return typeof u === "string" && /^https?:\/\//.test(u) ? [u] : [] } catch { return [] } })
+				return json(res, 200, { url: urls.at(-1) ?? null })
+			}
 			const driftOf = /^\/api\/runs\/([^/]+)\/drift$/.exec(path)
 			if (driftOf) {
 				const dir = await runDir(driftOf[1])

@@ -150,7 +150,9 @@
 
 	/* ── Run view ─────────────────────────────────────────── */
 	/* The board and case get what is left, but never less than 340px: below that the page scrolls. */
-	#run { display: grid; grid-template-rows: minmax(clamp(250px, 33vh, 352px), auto) minmax(340px, 1fr); gap: var(--gap); padding: var(--gap); min-height: 0; }
+	/* The board deck gets nearly a whole window's height (the page scrolls under the status band and agents above
+	   it): the PCB is the view people look at most (user, 11 Nov). */
+	#run { display: grid; grid-template-rows: minmax(clamp(250px, 33vh, 352px), auto) minmax(max(560px, 92vh), auto); gap: var(--gap); padding: var(--gap); min-height: 0; }
 
 	/* The ripple: change → fields → agents → checks, then the result line. */
 	#ripple { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr) minmax(0, 1.6fr) minmax(0, 1.1fr); grid-template-rows: minmax(0, 1fr) auto; }
@@ -253,7 +255,7 @@
 	#held .pill { background: var(--warn); border-color: var(--warn); color: #fff; height: 38px; font-size: 15px; }
 
 	/* Lower deck: the stage screen, then the case and the parts. */
-	#deck { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--gap); min-height: 0; }
+	#deck { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr); gap: var(--gap); min-height: 0; }
 	#stage { display: grid; grid-template-rows: auto minmax(0, 1fr) 40px; min-height: 0; background: var(--screen); color: var(--screen-text); border: 1.5px solid var(--ink); }
 	.stage-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-width: 0; overflow: hidden; border-bottom: 1px solid var(--screen-rule); }
 	.tabs { display: inline-flex; border: 1px solid var(--screen-rule); }
@@ -614,13 +616,13 @@
 	/* Short windows (a laptop browser with its tabs and bar): a tighter change band, so the board keeps its room. */
 	/* 720p (a projector, a scaled laptop): the agents band gives up its spare height so the board gets it. */
 	@media (max-height: 760px) {
-		#run { grid-template-rows: minmax(200px, auto) minmax(300px, 1fr) !important; }
+		#run { grid-template-rows: minmax(200px, auto) minmax(max(480px, 92vh), auto) !important; }
 		#agents { grid-auto-rows: minmax(50px, auto) !important; }
 		.tile { padding: 4px 8px 3px 12px; }
 		#rip-result { padding: 4px 14px; }
 	}
 	@media (max-height: 880px) {
-		#run { gap: 8px; padding: 8px; grid-template-rows: minmax(220px, auto) minmax(340px, 1fr); }
+		#run { gap: 8px; padding: 8px; grid-template-rows: minmax(220px, auto) minmax(max(520px, 92vh), auto); }
 		#ripple > .col { padding: 8px 12px 6px; gap: 6px; }
 		#agents { grid-auto-rows: minmax(54px, 1fr); gap: 5px; }
 		.tile .name { font-size: 16px; }
@@ -2297,12 +2299,11 @@
 		// ── Mozaik Cloud ──
 		const fetchCloud = async () => {
 			try {
-				const r = await fetch(file("cloud.jsonl"), { cache: "no-store" })
-				// A finished run with no cloud log (run straight from the CLI) won't get one: stop asking.
-				if (!r.ok) { if (S.endAt) clearInterval(cloudTimer); return }
-				const urls = (await r.text()).split("\n").flatMap((l) => { try { return [JSON.parse(l).url] } catch { return [] } }).filter((u) => typeof u === "string" && /^https?:\/\//.test(u))
-				if (!urls.length) return
-				$("cloud-link").href = urls.at(-1)
+				// The hub answers null for a run without the Cloud (no 404s); a finished run won't get one, so stop asking.
+				const r = await fetch(`/api/runs/${encodeURIComponent(id)}/cloud`, { cache: "no-store" })
+				const url = r.ok ? (await r.json()).url : null
+				if (!url) { if (S.endAt) clearInterval(cloudTimer); return }
+				$("cloud-link").href = url
 				$("cloud-link").classList.remove("hidden")
 			} catch {}
 		}

@@ -177,3 +177,21 @@ test("the Designs page is served, with the shared bar", async () => {
 		await hub.close()
 	}
 })
+
+// pending-fixes: a run without the Cloud polled cloud.jsonl and filled the console with 404s. The link is asked of the
+// hub, which answers null when there is none.
+test("a run's Mozaik Cloud link is asked of the hub: null without one, never a 404", async () => {
+	const root = tempDir()
+	fakeRun(root, "plain-1")
+	const withCloud = fakeRun(root, "cloud-1")
+	writeFileSync(join(withCloud, "cloud.jsonl"), JSON.stringify({ url: "https://app.jigjoy.ai/run/1" }) + "\n" + JSON.stringify({ url: "https://app.jigjoy.ai/run/2" }) + "\n")
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const none = await fetch(`${hub.url}/api/runs/plain-1/cloud`)
+		assert.equal(none.status, 200)
+		assert.deepEqual(await none.json(), { url: null })
+		assert.deepEqual(await (await fetch(`${hub.url}/api/runs/cloud-1/cloud`)).json(), { url: "https://app.jigjoy.ai/run/2" })
+	} finally {
+		await hub.close()
+	}
+})
