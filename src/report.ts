@@ -1,6 +1,7 @@
 import type { DriveArtifact } from "./tools/drive.ts"
 import { caseOuter } from "./contract/case.ts"
-import { enclosureMode, type ContractSnapshot } from "./contract/types.ts"
+import { enclosureMode, type ContractSnapshot, type Part } from "./contract/types.ts"
+import { mcuProfileOf } from "./mcu/profile.ts"
 import { interfaceMarkdown, mechanicalInterface } from "./contract/interface.ts"
 import { addedForYouSection } from "./contract/added.ts"
 import { minimumBoard } from "./contract/space.ts"
@@ -19,6 +20,7 @@ import { bringupSection } from "./bench/report.ts"
 import { mechanicsSection } from "./mechanics/report.ts"
 import { changeRipples, readTrace } from "./runner/ripple.ts"
 import { mcuPinName } from "./mcu/pins.ts"
+import { simBackendFor } from "./mcu/sim.ts"
 
 function counts(tracePath: string): Record<string, number> {
 	const c: Record<string, number> = {}
@@ -77,13 +79,15 @@ export function simulationLine(outDir: string, env: Env): string {
 	return `${label} not run yet (npm run bringup -- simulate <run>)`
 }
 
-function bootLine(tracePath: string, env: Env, noHardware: boolean, robot = false, drive?: DriveArtifact): string {
+function bootLine(tracePath: string, env: Env, noHardware: boolean, robot = false, drive?: DriveArtifact, parts?: Part[]): string {
 	// The simulator that boots this chip (its profile): QEMU for the ESP32-C3, Renode for STM32 and nRF52.
 	const boots = existsSync(tracePath)
 		? readFileSync(tracePath, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as { type: string; payload: Payloads["firmware.booted"] }).filter((e) => e.type === "firmware.booted")
 		: []
 	const last = boots.at(-1)?.payload
-	const sim = last?.backend === "renode" ? "Renode" : "QEMU"
+	const chip = mcuProfileOf(parts)
+	const want = chip ? simBackendFor(chip, { ...env, wokwi: null }) : null
+	const sim = last?.backend === "renode" || chip?.sim.backend === "renode" ? "Renode" : chip && chip.sim.backend === null ? "none" : "QEMU"
 	const label = `- Firmware boot (${sim}):`
 	if (noHardware) return `${label} not run (--no-hardware)`
 	// A robot's boot proof is its simulated drive: the simulation build booted in QEMU and answered the control loop.
@@ -93,7 +97,9 @@ function bootLine(tracePath: string, env: Env, noHardware: boolean, robot = fals
 		return `${label} proven by the simulated drive (the simulation build boots in QEMU and runs the control loop; see Mechanics)`
 	}
 	if (!last && !env.qemu && !env.renode) return `${label} not run (QEMU not installed; see NOTES.md)`
-	if (!last) return `${label} not run (no firmware compiled, or no simulator models this chip: docs/mcu.md)`
+	// A chip no simulator models, or whose simulator isn't installed here: the emulator check skips it and says why.
+	if (!last && want && !want.backend) return `${label} not run (${want.reason})`
+	if (!last) return `${label} not run (no firmware compiled)`
 	// QEMU emulates no I2C device, so the firmware's sensor read always fails there; say so, so it isn't read as a bug.
 	const sensorNote = /SENSOR FAIL/.test(last.serialTail) ? `; SENSOR FAIL is expected: ${sim} emulates no I2C sensor` : ""
 	if (last.booted) return `${label} booted, printed revision ${last.bootRevision}${sensorNote}`
@@ -252,7 +258,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...printLines(s.artifacts.enclosure, stubbed),
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		...(v.model?.sensor === "microphone" && s.artifacts.firmware && !isStub(s.artifacts.firmware) ? [`- Data-collection firmware: \`npm run bringup -- collect-firmware ${outDir}\` builds it for this design's sensor path (docs/edge-ai.md)`] : []),
-		bootLine(join(outDir, "trace.jsonl"), env, stubbed, Boolean(v.mechanics && v.motion), s.artifacts.drive),
+		bootLine(join(outDir, "trace.jsonl"), env, stubbed, Boolean(v.mechanics && v.motion), s.artifacts.drive, v.parts),
 		simulationLine(outDir, env),
 		sourcingLine(join(outDir, "bom.json")),
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
