@@ -22,7 +22,9 @@ export function boardLinks(spec: SystemSpec, board: string): BoardLink[] {
 			const messages = (l.messages ?? []).map((m) => ({ name: m.name, dir: m.from === board ? ("send" as const) : ("receive" as const), fields: m.fields, hash: messageHash(m) }))
 			const base = { id: l.id, kind: l.kind, peer, connector: connectorRef(l), ...(end.edge ? { edge: end.edge } : {}), supply, ...(messages.length ? { messages } : {}) }
 			if (l.kind === "uart") return { ...base, baud: l.baud ?? DEFAULT_BAUD, txOn: isA ? ("IO1" as const) : ("IO2" as const) }
-			const i2c = l.i2c!
+			// A kind not built yet (the spec check says so) carries only what every link has.
+			if (l.kind !== "i2c" || !l.i2c) return base
+			const i2c = l.i2c
 			const target = i2c.targets[board]
 			const peerAddress = i2c.controller === board ? i2c.targets[peer] : undefined
 			return { ...base, i2c: { role: i2c.controller === board ? ("controller" as const) : ("target" as const), ...(target !== undefined ? { address: target } : {}), ...(peerAddress !== undefined ? { peerAddress } : {}), pullups: i2c.pullupsOn === board, khz: i2c.khz ?? DEFAULT_I2C_KHZ } }

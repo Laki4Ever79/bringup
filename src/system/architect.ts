@@ -4,6 +4,7 @@ import { callModel, NoModelKey } from "../dashboard/ask.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { UsageRecord } from "../inference/usage.ts"
 import { specErrors, type SystemSpec } from "./spec.ts"
+import { BUILT_KINDS } from "../contract/link-kinds.ts"
 import { boardNameIssue, type Plan } from "./plan.ts"
 
 // The system architect: a sentence (or a plan plus a change in words) becomes a plan of boards, cables and briefs. One
@@ -99,7 +100,7 @@ const SYSTEM = `You are the system architect of Bringup, which designs small ele
 ${BUILDABLE}
 
 Answer with one JSON object, no prose around it:
-{"spec": {"name": string, "boards": [{"name": lowercase-id}], "links": [{"id": "L1", "kind": "uart"|"i2c", "a": {"board": name}, "b": {"board": name}, "baud"?: 115200, "i2c"?: {"controller": name, "targets": {name: address}, "pullupsOn": name, "khz"?: 100}, "power"?: {"from": name}, "cable": {"lengthMm": number}, "messages"?: [{"name": string, "from": name, "fields": [{"name": string, "type": "u8"|"u16"|"i16"|"u32"|"f32"}]}]}]},
+{"spec": {"name": string, "boards": [{"name": lowercase-id}], "links": [{"id": "L1", "kind": ${BUILT_KINDS.map((k) => `"${k}"`).join("|")}, "a": {"board": name}, "b": {"board": name}, "baud"?: 115200, "i2c"?: {"controller": name, "targets": {name: address}, "pullupsOn": name, "khz"?: 100}, "power"?: {"from": name}, "cable": {"lengthMm": number}, "messages"?: [{"name": string, "from": name, "fields": [{"name": string, "type": "u8"|"u16"|"i16"|"u32"|"f32"}]}]}]},
  "briefs": {name: markdown brief: "# Brief: <title>", "## What we want" (2-3 sentences), "## Must have" (bullets with numbers: battery life, size in mm, sensing accuracy)},
  "why": one or two plain sentences on why this split,
  "offBoard": [{"name": a bought part like a battery, "attachesTo": board name}],
