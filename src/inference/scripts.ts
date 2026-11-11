@@ -10,6 +10,8 @@ import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT } from "../contract/space.
 import { state } from "../runtime.ts"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
+import { LEGACY_MCU_ID, mcuProfileOf } from "../mcu/profile.ts"
+import { solvePins } from "../mcu/solver.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
 export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics"> & { parts: ContractValues["parts"] } = {
@@ -78,6 +80,32 @@ export const BEACON_DESIGN: typeof LOGGER_DESIGN = {
 	],
 }
 
+// The third scripted design, for a brief that names an STM32 (briefs/logger-stm32.md): the logger on an STM32G031K8, a
+// chip without a radio, so the readings stay in its history (read out over its console or SWD). Its pins come from the
+// chip's profile: the SHT40 on I2C1 (PB7 = 23, PB6 = 22). Sleep in Stop 1 about 3.7 µA (DS12992 Table 29) plus the
+// sensor's idle; every 5 min an 80 ms wake at about 15 mA (5.2 mA core, the SHT40 measuring, the LED blink):
+// 15 mA × 80 ms / 300 s + 5 µA ≈ 9 µA average, before the LDO's own quiescent current.
+export const STM32_LOGGER_DESIGN: typeof LOGGER_DESIGN = {
+	requirements: {
+		summary: "Wired temperature and humidity logger on an STM32 (no radio)",
+		peripherals: ["i2c-sensor", "usb-c", "status-led"],
+		batteryLifeDays: 365,
+		dutyCycle: { activeMs: 80, periodS: 300, sleepUa: 5 },
+	},
+	outline: LOGGER_DESIGN.outline,
+	connectors: LOGGER_DESIGN.connectors,
+	rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 15, averageMa: 0.009 }],
+	pins: [
+		{ signal: "I2C_SDA", gpio: 23, partRef: "U2", partPin: "SDA" },
+		{ signal: "I2C_SCL", gpio: 22, partRef: "U2", partPin: "SCL" },
+	],
+	parts: [
+		{ ref: "U1", role: "mcu", mpn: "STM32G031K8T6", lcsc: "C432203", footprint: "", pins: [] },
+		...LOGGER_DESIGN.parts.filter((p) => p.role !== "mcu" && !["R8", "R9"].includes(p.ref)),
+	],
+}
+const isStm32 = () => /\bSTM32\b/.test(state().contract.get("requirements")?.summary ?? "")
+
 // The scripted rover (briefs/rover.md, docs/mechanics.md): the logger's board without its case, plus a DRV8833 driving
 // two Pololu 100:1 micro gearmotors from the cell (JM1 left, JM2 right), and a JST SH plug (JT1) for the VL53L0X
 // breakout standing at the chassis front, on the I2C bus with the SHT40 payload sensor. Always awake while driving:
@@ -133,7 +161,7 @@ const SENSOR_PINS = LOGGER_DESIGN.pins.filter((p) => p.partRef === "U2")
 
 // Which scripted design a brief gets: the beacon for a brief that says so, the logger for anything else.
 export const scriptedDesignFor = (brief: string): typeof LOGGER_DESIGN & Partial<Pick<ContractValues, "motion">> =>
-	/\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : LOGGER_DESIGN
+	/\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
 // A robot's requirements ask for motors (briefs/rover.md).
 const isRover = () => (state().contract.get("requirements")?.peripherals ?? []).includes("motors")
 
@@ -516,7 +544,7 @@ export function mockScripts(): Record<string, Script> {
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
 			}
 			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
-			const base = isRover() ? ROVER_BOARD.parts : LOGGER_DESIGN.parts
+			const base = isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
 			const wanted = state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base
 			if (stepsTaken(items) > 0) return say("parts chosen")
 			return JSON.stringify(state().contract.get("parts")) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")
@@ -670,7 +698,12 @@ export function mockScripts(): Record<string, Script> {
 			}
 			if (stepsTaken(items) > 0) return say("requested")
 			const pins = state().contract.get("pins") ?? []
-			return pins.some((p) => p.signal === "STATUS_LED") ? say("pins are sufficient") : propose("pins", [...pins, STATUS_LED], "firmware drives a status LED")
+			if (pins.some((p) => p.signal === "STATUS_LED")) return say("pins are sufficient")
+			// On the ESP32-C3 the LED keeps GPIO10, as it always had; on another chip its profile's solver picks a free pin.
+			const chip = mcuProfileOf(state().contract.get("parts"))
+			if (!chip || chip.id === LEGACY_MCU_ID) return propose("pins", [...pins, STATUS_LED], "firmware drives a status LED")
+			const r = solvePins(chip, [{ signal: "STATUS_LED", kind: "gpio" }], pins.map((p) => p.gpio))
+			return r.ok ? propose("pins", [...pins, { ...STATUS_LED, gpio: r.pins[0].index }], `firmware drives a status LED (${r.pins[0].pin}, a free pin on the ${chip.mpn})`) : say(r.reason)
 		},
 	}
 }
