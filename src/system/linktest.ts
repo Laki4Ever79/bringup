@@ -32,7 +32,7 @@ export async function linkTests(spec: SystemSpec, contracts: Record<string, Cont
 	const out: LinkTest[] = []
 	for (const l of spec.links) {
 		if (l.kind !== "uart") {
-			out.push({ link: l.id, ran: false, passed: false, detail: "I2C: QEMU can't join two buses; test it on the bench" })
+			out.push({ link: l.id, ran: false, passed: false, detail: l.kind === "i2c" ? "I2C: QEMU can't join two buses; test it on the bench" : `${l.kind}: no QEMU test for this kind; test it on the bench` })
 			continue
 		}
 		if (!env.pio || !env.qemu) {

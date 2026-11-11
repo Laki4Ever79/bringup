@@ -112,7 +112,8 @@
 	let plan = null, issues = [], selected = null, saveTimer = 0, saving = Promise.resolve()
 
 	const msg = (text, err = false) => { $("msg").textContent = text; $("msg").className = err ? "err" : "" }
-	const linkLabel = (l) => `${l.id} · ${l.kind === "i2c" ? "I²C" : "UART"}${l.kind === "uart" ? ` · ${(l.baud ?? 115200) / 1000}k` : ""} · ${l.cable.lengthMm / 10} cm`
+	const KIND_LABEL = { uart: "UART", i2c: "I²C", spi: "SPI", i2s: "I²S", espnow: "ESP-NOW", ble: "Bluetooth LE" }
+	const linkLabel = (l) => `${l.id} · ${KIND_LABEL[l.kind] ?? l.kind}${l.kind === "uart" ? ` · ${(l.baud ?? 115200) / 1000}k` : ""}${l.cable ? ` · ${l.cable.lengthMm / 10} cm` : ""}`
 
 	async function load() {
 		const r = await fetch(`/api/plans/${encodeURIComponent(id)}`)

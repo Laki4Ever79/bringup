@@ -14,7 +14,7 @@ test("the link frame round-trips and drops what is bad, compiled on this compute
 	const bin = join(tempDir(), "linkframe_test")
 	execFileSync("g++", ["-std=c++17", "-Wall", "-Werror", "-I", join(ROOT, "test/fw-host"), "-I", join(ROOT, "templates/fw/include"), join(ROOT, "test/fw-host/linkframe_test.cpp"), "-o", bin])
 	const r = spawnSync(bin, { encoding: "utf8" })
-	const cases = ["roundtrip", "garbage-before", "split", "bad-checksum", "too-long", "max-payload", "back-to-back"]
+	const cases = ["roundtrip", "garbage-before", "split", "bad-checksum", "too-long", "max-payload", "back-to-back", "false-sync"]
 	for (const c of cases) assert.match(r.stdout, new RegExp(`^PASS ${c}$`, "m"), r.stdout)
 	assert.equal(r.status, 0, r.stdout)
 })

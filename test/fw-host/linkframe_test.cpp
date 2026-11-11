@@ -75,11 +75,29 @@ int main() {
 	}
 	{
 		LinkFrameReader r;
+		// A whole over-long frame with a valid checksum: only the length rule can drop it.
 		std::vector<uint8_t> in = {0xA5, 0x5A, 1, 2, 3, 4, 49};
-		in.resize(in.size() + 50, 0x11);
+		in.resize(in.size() + 49, 0x11);
+		uint8_t sum = 0;
+		for (size_t i = 2; i < in.size(); i++) sum ^= in[i];
+		in.push_back(sum);
 		auto good = frame(H, four);
 		in.insert(in.end(), good.begin(), good.end());
 		check("too-long", one(feedAll(r, in), H, four), "an over-long frame was read, or the next good one wasn't");
+	}
+	{
+		// A false sync (A5 5A) in garbage can swallow the frame right after it (known, documented); the reader must
+		// recover by the frame after that.
+		LinkFrameReader r;
+		std::vector<uint8_t> in = {0x00, 0xA5, 0x5A, 0x01};
+		for (int k = 0; k < 2; k++) {
+			auto f = frame(H + k, four);
+			in.insert(in.end(), f.begin(), f.end());
+		}
+		auto f = frame(H + 7, four);
+		in.insert(in.end(), f.begin(), f.end());
+		auto g = feedAll(r, in);
+		check("false-sync", !g.empty() && g.back().hash == H + 7, "the reader didn't recover after a false sync");
 	}
 	{
 		LinkFrameReader r;

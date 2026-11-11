@@ -55,7 +55,7 @@ export function systemChecks(spec: SystemSpec, contracts: Record<string, Contrac
 			out.push({ kind: "link-pending", link: l.id, message: `${l.id}: ${!A || !B ? "a board has no contract yet" : `${pending.join(" and ")} ${pending.length > 1 ? "haven't" : "hasn't"} taken the link yet`}`, boards: pending })
 			continue
 		}
-		out.push(...(l.kind === "uart" ? uartChecks(l, A, B, la!, lb!) : i2cChecks(l, contracts)))
+		out.push(...(l.kind === "uart" ? uartChecks(l, A, B, la!, lb!) : l.kind === "i2c" ? i2cChecks(l, contracts) : []))
 		out.push(...powerChecks(l, A, B))
 		for (const [board, s] of [[l.a.board, A], [l.b.board, B]] as const)
 			if (!rail(s, "3V3")) out.push({ kind: "logic-level", link: l.id, message: `${l.id}: ${board} has no 3V3 rail; both ends of a link run 3.3 V logic`, boards: [board] })

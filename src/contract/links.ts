@@ -106,9 +106,10 @@ export function linkBudget(s: ContractSnapshot): LinkViolation[] {
 		if (ids.length > PERIPHERALS_FREE[p]) out.push({ kind: "link-budget", message: `${ids.join(", ")} all need this board's ${p}, but its ESP32-C3 has ${PERIPHERALS_FREE[p]} free: the system must move all but ${PERIPHERALS_FREE[p]} to I2C (links share the board's one I2C bus)`, fields: ["links"], affects: ["integrator"] })
 	const has = (signal: string) => pins.some((x) => x.signal === signal)
 	const needs = links.flatMap((l) => {
-		if (l.kind === "i2c") return has("I2C_SDA") && has("I2C_SCL") ? [] : [{ l, n: LINK_KINDS.i2c.gpios }]
-		if (l.kind === "uart" && has(uartSignals(l).tx) && has(uartSignals(l).rx)) return []
-		return LINK_KINDS[l.kind].gpios ? [{ l, n: LINK_KINDS[l.kind].gpios }] : []
+		// Only the signals still missing cost a pin; an assigned one already sits on a used GPIO.
+		const missing = (signals: string[]) => signals.filter((x) => !has(x)).length
+		const n = l.kind === "i2c" ? missing(["I2C_SDA", "I2C_SCL"]) : l.kind === "uart" ? missing([uartSignals(l).tx, uartSignals(l).rx]) : LINK_KINDS[l.kind].gpios
+		return n ? [{ l, n }] : []
 	})
 	// Several I2C links on a board without a bus need one bus: count its pins once.
 	const counted = needs.filter((x, i) => x.l.kind !== "i2c" || needs.findIndex((y) => y.l.kind === "i2c") === i)
@@ -116,7 +117,7 @@ export function linkBudget(s: ContractSnapshot): LinkViolation[] {
 	const used = new Set(pins.map((p) => p.gpio))
 	const free = FREE_GPIOS.filter((g) => !used.has(g)).length
 	if (need > free) {
-		const each = [...new Set(counted.map((x) => `${LINK_KINDS[x.l.kind].label} ${x.n} each`))].join(", ")
+		const each = counted.map((x) => `${x.l.id} ${LINK_KINDS[x.l.kind].label} ${x.n}`).join(", ")
 		const movable = counted.filter((x) => x.l.kind !== "i2c").map((x) => x.l.id)
 		out.push({ kind: "link-budget", message: `${counted.map((x) => x.l.id).join(", ")} need ${need} more GPIOs (${each}); ${free} are free on this board: ${movable.length ? `make ${movable.join(", ")} I2C (it shares the board's bus), or free pins` : "free pins"}`, fields: ["pins"], affects: ["architect"] })
 	}
