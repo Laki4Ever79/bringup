@@ -302,7 +302,9 @@ export function mountWorld(host, opts = {}) {
 
 	const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s }
 	const prog = gl.createProgram()
-	gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog)
+	const shaders = [sh(gl.VERTEX_SHADER, VS), sh(gl.FRAGMENT_SHADER, FS)]
+	for (const x of shaders) gl.attachShader(prog, x)
+	gl.linkProgram(prog)
 	const loc = { pos: gl.getAttribLocation(prog, "aPos"), nor: gl.getAttribLocation(prog, "aNor"), col: gl.getAttribLocation(prog, "aCol") }
 	const u = Object.fromEntries(["uVP", "uOff", "uAlpha", "uGlow", "uLight"].map((n) => [n, gl.getUniformLocation(prog, n)]))
 	gl.enable(gl.DEPTH_TEST)
@@ -569,6 +571,12 @@ export function mountWorld(host, opts = {}) {
 			io?.disconnect(); ro?.disconnect()
 			for (const b of S.boards.values()) { free(b.solid); free(b.shell); free(b.boxMesh) }
 			for (const c of S.cables) free(c.mesh)
+			// A fly still waited on ends where it was going; then the GL objects and the context itself go, so a page that
+			// mounts the world again doesn't pile up contexts (browsers cap them at about 16).
+			if (S.fly) { const r = S.fly.resolve; S.fly = null; r() }
+			for (const x of shaders) { gl.detachShader(prog, x); gl.deleteShader(x) }
+			gl.deleteProgram(prog)
+			gl.getExtension("WEBGL_lose_context")?.loseContext()
 			canvas.remove(); overlay.remove(); still?.remove()
 		},
 	}

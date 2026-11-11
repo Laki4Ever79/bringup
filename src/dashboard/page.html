@@ -1744,9 +1744,12 @@
 			if (!wasOpen) pill.insertAdjacentHTML("beforeend", popover(checkPills(S.events).find((x) => x.key === pill.dataset.key)))
 		})
 		document.addEventListener("click", (e) => { if (!e.target.closest(".check")) for (const p of $("checks").querySelectorAll(".popover")) p.remove() })
-		// The spend line: fetched now and every 5 s while the tab is visible (usage.jsonl grows with each model call).
+		// The spend line: fetched now and every 5 s while the tab is visible (usage.jsonl grows with each model call). Once the
+		// run's process has ended nothing more is spent: one last fetch, then it stops.
+		let spendTimer = null
 		const showSpend = async () => {
 			if (document.hidden) return
+			if (S.ended) clearInterval(spendTimer)
 			try {
 				const [r, m] = await Promise.all([fetch(`/api/runs/${encodeURIComponent(id)}/spend`), import("/spend.js")])
 				if (!r.ok) return
@@ -1755,7 +1758,7 @@
 			} catch {}
 		}
 		setTimeout(showSpend, 1000)
-		setInterval(showSpend, 5000)
+		spendTimer = setInterval(showSpend, 5000)
 		setInterval(() => {
 			if (!S.firstAt) return
 			const s = Math.max(0, Math.round(((S.endAt ?? Date.now()) - S.firstAt) / 1000))

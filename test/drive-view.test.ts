@@ -25,3 +25,13 @@ test("each segment is a row with its verdict", () => {
 	assert.deepEqual(rows, [{ name: "edge crossed", verdict: "FAIL", detail: "the caster reached x = 0.58 m" }, { name: "turned away", verdict: "pass", detail: "turned" }])
 	assert.deepEqual(driveRows(null), [])
 })
+
+// A brief with no edge drives a flat room (py/mech/drive.py course_xml): the chart drew "0 mm step" over a band that
+// isn't there.
+test("a flat course is drawn as a flat floor, with no step band", () => {
+	const flat = driveSvg([[0, 0, 0], [1, 0.5, 0]], { edgeMm: 0 })
+	assert.doesNotMatch(flat, /0 mm step/)
+	assert.doesNotMatch(flat, /class="step"/)
+	assert.match(flat, /flat floor/)
+	assert.match(driveSvg([[0, 0, 0], [1, 0.5, 0]], { edgeMm: 3 }), /3 mm step/)
+})

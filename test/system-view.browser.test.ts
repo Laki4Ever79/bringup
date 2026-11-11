@@ -146,3 +146,20 @@ test("the board page gives the PCB most of the window: at least 3/4 of its heigh
 		await hub.close()
 	}
 })
+
+// pending-fixes: world3d's dispose() left its GL program and context behind; browsers cap live contexts (~16).
+test("disposing a 3D world releases its GL context", { skip, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		const lost = await page.evaluate(async () => {
+			const { mountWorld } = await import("/world3d.js")
+			const host = document.createElement("div")
+			host.style.cssText = "width:300px;height:200px"
+			document.body.append(host)
+			const w = mountWorld(host, {})
+			const gl = host.querySelector("canvas")!.getContext("webgl2")!
+			w.dispose()
+			return { lost: gl.isContextLost(), canvasGone: !host.querySelector("canvas") }
+		})
+		assert.deepEqual(lost, { lost: true, canvasGone: true })
+	})
+})
