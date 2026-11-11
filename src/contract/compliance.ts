@@ -24,6 +24,8 @@ export function complianceItems(s: ContractSnapshot): ComplianceItem[] {
 	const bthome = c.report.includes("bthome")
 	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
 	const items: ComplianceItem[] = []
+	// No radio: the radio rules (FCC intentional radiator, EU RED) don't apply; EMC for a digital device still does.
+	if (c.radio === "none") return [{ rule: "US FCC Part 15 Subpart B / EU EMC Directive", item: "unintentional radiator (a digital device with no radio)", status: "check", why: "no radio on this board, so no radio grant or RED; a sold product still needs its EMC test or declaration" }]
 	const fcc = "US FCC (module grant)"
 	// A certified radio module carries its grant (its profile's fccId); a bare radio chip has none, so the product needs
 	// its own intentional-radiator testing.
