@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // The system page in a real browser (headless Chromium, as npm run perf finds it): what a person sees when a board
 // opens over the 3D stage and closes again. Needs a recorded system run in out/ and Playwright's Chromium; skipped
 // otherwise, with the reason.
