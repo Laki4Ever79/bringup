@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <VL53L0X.h>
+#include <NimBLEDevice.h>
+#include "bthome.h"
 #include "hw.h"
 #include "hw_pins.h"
 
@@ -52,4 +54,30 @@ bool hw_payload(float *temp_c, float *rh) {
 }
 
 uint32_t hw_now_ms(void) { return millis(); }
+
+// The payload over BLE: a non-connectable BTHome v2 broadcast (bthome.io; Home Assistant decodes it with no app), the
+// latest reading in the advertisement, refreshed on each reading. Advertising runs on the radio's own schedule, so the
+// control loop isn't held. A failed reading broadcasts the packet id alone.
+static bool bleUp = false;
+static uint8_t packetId = 0;
+static char bleName[16];
+
+void hw_report(bool ok, float temp_c, float rh) {
+	if (!bleUp) {
+		snprintf(bleName, sizeof bleName, "Rover-%04X", (unsigned)(ESP.getEfuseMac() >> 32) & 0xFFFF);
+		NimBLEDevice::init(bleName);
+		NimBLEDevice::getAdvertising()->setConnectableMode(BLE_GAP_CONN_MODE_NON);
+		bleUp = true;
+	}
+	NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
+	uint8_t data[12];
+	const size_t n = bthomeServiceData(data, packetId++, ok, temp_c, rh);
+	NimBLEAdvertisementData ad;
+	ad.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+	ad.setServiceData(NimBLEUUID(BTHOME_UUID), data, n);
+	ad.setName(bleName);
+	adv->stop();
+	adv->setAdvertisementData(ad);
+	adv->start();
+}
 #endif

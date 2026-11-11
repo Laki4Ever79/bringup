@@ -47,8 +47,8 @@ estimates. Every report line that uses one says `(estimate: <name> <value>)`.
 
 ## The simulated drive (firmware in the loop)
 
-The firmware has a thin hardware layer: five functions (`hw_begin`, `hw_motor`, `hw_distance_mm`, `hw_payload`,
-`hw_now_ms` in `templates/fw-rover/src/hw.h`). The board build implements them with the DRV8833 and the I2C sensors.
+The firmware has a thin hardware layer: six functions (`hw_begin`, `hw_motor`, `hw_distance_mm`, `hw_payload`,
+`hw_now_ms`, `hw_report` in `templates/fw-rover/src/hw.h`). The board build implements them with the DRV8833 and the I2C sensors.
 The simulation build (`esp32c3_sim`) implements them over UART1. Everything else (`rover.cpp`, `main.cpp`) is the same
 program in both builds.
 
@@ -95,7 +95,9 @@ The first simulated drives showed two things the plain checks had missed:
 - **Floor grip and rolling resistance** are estimates. The bench test measures the motor, not the floor.
 - **The sensor model is ideal:** a ray with no noise and no cone. The real VL53L0X reads a 25° cone with a few
   percent noise.
-- **Bluetooth reporting** of the payload readings is not in the rover firmware yet; it prints them over USB.
+- **Bluetooth reporting is compiled, not received.** The board build broadcasts each payload reading as BTHome v2
+  (`hw_report` in `hw_board.cpp`, the logger's encoder), but QEMU has no radio, so the simulated drive can't show it
+  arriving, and no phone or Home Assistant has received it from a real rover yet.
 - **No rover has been built.** The board passes DRC and the chassis is generated, but nothing has been printed,
   assembled or driven.
 - **The DRV8833's thermal pad isn't connected** on the board. At these currents (under 0.5 A per motor) it isn't
