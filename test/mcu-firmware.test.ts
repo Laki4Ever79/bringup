@@ -106,3 +106,12 @@ test("link.h on an STM32 opens its UART on the link's pins and sets the I2C pins
 	// The ESP32 keeps its four-argument begin.
 	assert.match(linkHeader({ ...t, values: { ...t.values, parts: fixtureContract().values.parts } }), /Wire\.begin\(\(uint8_t\)LINK_L2_I2C_ADDRESS, PIN_I2C_SDA, PIN_I2C_SCL,/)
 })
+
+test("the STM32 link test prints floats (link.h's %.2f); the product doesn't pay for it", async () => {
+	const { platformioEnvs } = await import("../src/mcu/firmware.ts")
+	const { profileById } = await import("../src/mcu/profile.ts")
+	const ini = platformioEnvs(profileById("stm32g031k8t6")!)
+	const [app, link] = ini.split("[env:stm32g031k8t6_linktest]")
+	assert.doesNotMatch(app, /NANOLIB_FLOAT_PRINTF/)
+	assert.match(link, /-DPIO_FRAMEWORK_ARDUINO_NANOLIB_FLOAT_PRINTF/)
+})

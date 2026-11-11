@@ -71,7 +71,9 @@ export function platformioEnvs(p: McuProfile): string {
 		section("app", []),
 		"",
 		`; The link test (docs/system.md): the product firmware with -DLINK_TEST.`,
-		section("linktest", ["-DLINK_TEST=1"]),
+		// link.h prints f32 message fields with %.2f: the link test (29 KB on the STM32G031) can afford newlib-nano's float
+		// printf (about 19 KB), which the product (45 KB) leaves out.
+		section("linktest", ["-DLINK_TEST=1", ...(f.arch === "stm32" ? ["-DPIO_FRAMEWORK_ARDUINO_NANOLIB_FLOAT_PRINTF"] : [])]),
 		"",
 	].join("\n")
 }
