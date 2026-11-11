@@ -2,7 +2,10 @@ import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { envFor } from "../mcu/firmware.ts"
+import type { McuProfile } from "../mcu/profile.ts"
 import { qemuEnv } from "./env.ts"
+import { consoleLines, renodeScript, runRenode } from "./renode.ts"
 
 // Boots a buildFirmware output in Espressif's QEMU fork (machine esp32c3) and captures its serial port.
 // Wokwi CLI is the other backend (it can also fake the SHT40), but it needs a WOKWI_CLI_TOKEN we don't have.
@@ -11,7 +14,7 @@ export interface BootResult {
 	booted: boolean
 	serial: string
 	revision: number | null
-	backend: "qemu"
+	backend: "qemu" | "renode"
 }
 
 // Arduino-ESP32 flash layout for the ESP32-C3: offsets match what `pio run -t upload` writes.
@@ -83,7 +86,10 @@ export async function runImage(root: string, image: string, until: RegExp, timeo
 	return (await run(qemu, args, timeoutMs, until, { ...process.env, ...qemuEnv(root) })).output
 }
 
-export async function bootFirmware(root: string, fwDir: string, timeoutMs = 15000): Promise<BootResult> {
+// Boots a build in the simulator its chip's profile names: Renode for STM32 and nRF52 (the ELF of the profile's env),
+// Espressif QEMU for the ESP32-C3 (no profile: a design from before profiles).
+export async function bootFirmware(root: string, fwDir: string, timeoutMs = 15000, profile?: McuProfile | null): Promise<BootResult> {
+	if (profile && profile.sim.backend === "renode") return bootRenode(root, fwDir, profile, timeoutMs)
 	const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
 	if (!existsSync(qemu)) return { booted: false, serial: `qemu not found at ${qemu}`, revision: null, backend: "qemu" }
 	const { image, log } = await mergeFlash(fwDir)
@@ -127,4 +133,16 @@ export async function runLinkedPair(root: string, imageA: string, imageB: string
 		b.kill("SIGKILL")
 	}
 	return { a: read(outA), b: read(outB) }
+}
+
+// The STM32/nRF52 boot: the app env's firmware.elf on the profile's Renode platform, two virtual seconds (setup() and
+// the first reading), the console UART read back. Same success test as QEMU: the boot banner's revision.
+export async function bootRenode(root: string, fwDir: string, profile: McuProfile, timeoutMs: number): Promise<BootResult> {
+	const elf = join(fwDir, ".pio/build", envFor(profile, "app"), "firmware.elf")
+	if (!existsSync(elf)) return { booted: false, serial: `missing build output: ${elf}`, revision: null, backend: "renode" }
+	const log = await runRenode(root, renodeScript([{ name: "board", profile, elf }], { runForS: 2 }), fwDir, timeoutMs)
+	if (log === null) return { booted: false, serial: "renode not found in tools/renode (npm run setup)", revision: null, backend: "renode" }
+	const serial = consoleLines(log, profile.sim.consoleUart!).join("\n")
+	const m = serial.match(/bringup rev (\d+)/)
+	return { booted: m !== null, serial: serial || log.slice(-4000), revision: m ? Number(m[1]) : null, backend: "renode" }
 }

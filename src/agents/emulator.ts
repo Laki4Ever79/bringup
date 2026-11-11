@@ -3,6 +3,8 @@ import { createHuman, type Human } from "@mozaik-ai/core"
 import { when } from "../change-control.ts"
 import { isEvent, makeEvent } from "../events.ts"
 import { emit, state } from "../runtime.ts"
+import { mcuProfileOf } from "../mcu/profile.ts"
+import { simBackendFor } from "../mcu/sim.ts"
 import { bootFirmware } from "../tools/emulator.ts"
 import type { Env } from "../tools/env.ts"
 import { tail } from "../tools/exec.ts"
@@ -10,9 +12,10 @@ import { Rebuilder } from "../tools/rebuilder.ts"
 
 const SERIAL_TAIL_LINES = 12
 
-// Booting needs a firmware build (PlatformIO) and a QEMU that starts; --no-hardware has neither.
+// Booting needs a firmware build (PlatformIO) and a simulator that starts (QEMU for the ESP32-C3, Renode for STM32 and
+// nRF52); --no-hardware has neither. Which one a design needs is decided per boot, from its chip (simBackendFor).
 export function emulatorEnabled(env: Env, noHardware: boolean): boolean {
-	return !noHardware && Boolean(env.pio) && Boolean(env.qemu)
+	return !noHardware && Boolean(env.pio) && Boolean(env.qemu || env.renode)
 }
 
 export interface EmulatorCheck extends Human {
@@ -37,8 +40,13 @@ export function createEmulatorCheck(env: Env, opts: { boot?: typeof bootFirmware
 		const v = s.contract.snapshot().values
 		if (v.mechanics && v.motion) return
 		// The firmware builder builds revision N in <out>/firmware/rev-N.
-		const r = await boot(env.root, join(s.outDir, "firmware", `rev-${revision}`))
-		const payload = { revision, booted: r.booted, bootRevision: r.revision, serialTail: tail(r.serial, SERIAL_TAIL_LINES), backend: "qemu" as const }
+		// The chip's simulator; a chip none models (or one not installed here) is skipped, not reported as a failed boot.
+		const profile = mcuProfileOf(v.parts)
+		// (Wokwi runs on demand elsewhere; this check boots the ESP32-C3 in QEMU as it always did.)
+		const sim = simBackendFor(profile, { ...env, wokwi: null })
+		if (!sim.backend) return
+		const r = await boot(env.root, join(s.outDir, "firmware", `rev-${revision}`), undefined, profile)
+		const payload = { revision, booted: r.booted, bootRevision: r.revision, serialTail: tail(r.serial, SERIAL_TAIL_LINES), backend: r.backend }
 		emit(makeEvent("firmware.booted", self.id, payload), self.id)
 	})
 	const participant = createHuman({
