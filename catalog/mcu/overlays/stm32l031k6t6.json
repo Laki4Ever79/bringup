@@ -68,7 +68,7 @@
 		"source": "DS10668 Rev 6 (STM32L031x4/x6): run 32 MHz Range 1 on HSI 5.1 mA typ (Table 24); Stop with RTC and 8 KB RAM kept 0.6 \u00b5A (features list; Stop without RTC 0.38 \u00b5A, Table 31). No minimum supply current stated; 10 mA is Bringup's margin"
 	},
 	"firmware": {
-		"platform": "ststm32@20.0.0",
+		"platform": "ststm32@19.6.0",
 		"board": "nucleo_l031k6",
 		"framework": "arduino",
 		"arch": "stm32",

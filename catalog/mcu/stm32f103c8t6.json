@@ -16,8 +16,7 @@
 		"ringMm": 4.1625
 	},
 	"board": {
-		"supported": false,
-		"reason": "needs an 8 MHz HSE crystal and its load capacitors; the board generator does not place crystals yet (docs/mcu.md, Not done)"
+		"supported": true
 	},
 	"core": "Arm Cortex-M3",
 	"mhz": 72,
@@ -599,7 +598,18 @@
 		"pads": [
 			"5",
 			"6"
-		]
+		],
+		"crystal": {
+			"mpn": "TAXM8M4RDBCCT2T",
+			"lcsc": "C400090",
+			"loadPf": 10,
+			"footprint": "smd3225_4p"
+		},
+		"loadCap": {
+			"value": "15pF",
+			"mpn": "0402CG150J500NT",
+			"lcsc": "C1548"
+		}
 	},
 	"support": [
 		{
@@ -652,7 +662,7 @@
 		"source": "DocID13587 Rev 16 (STM32F103x8/xB): run 72 MHz, external clock, peripherals off 27 mA typ (Table 17); Stop with the regulator in low-power mode 14 µA, the mode the firmware sleeps in (Standby 3.2 µA loses RAM, Table 16). No minimum supply current stated; 50 mA is Bringup's margin"
 	},
 	"firmware": {
-		"platform": "ststm32@20.0.0",
+		"platform": "ststm32@19.6.0",
 		"board": "genericSTM32F103C8",
 		"framework": "arduino",
 		"arch": "stm32",

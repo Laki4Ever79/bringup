@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import type { Connector, ContractSnapshot, Part } from "../contract/types.ts"
-import { chipPinLabels, chipPowerPins, chipSupport } from "../mcu/board.ts"
+import { chipCrystal, chipPinLabels, chipPowerPins, chipSupport, type ChipCrystal } from "../mcu/board.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { loadProfiles, profileForPart, type McuProfile } from "../mcu/profile.ts"
 
@@ -242,6 +242,42 @@ function nativeUsbWired(s: ContractSnapshot): boolean {
 	return on.every((p) => p.partRef === usb && ((p.gpio === native.dmIndex && p.partPin === "DN") || (p.gpio === native.dpIndex && p.partPin === "DP")))
 }
 
+// The MCU's native USB as the generator wires it to the USB-C port: D+/D- to the connector, when the contract uses
+// neither pin for anything else (generatedNets). null when there is no port, no MCU USB, or the pins are taken.
+function generatedUsb(s: ContractSnapshot): (NonNullable<ReturnType<typeof mcuUsbPins>> & { mcu: Part }) | null {
+	const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
+	const native = mcuUsbPins(mcu)
+	if (!mcu || !native || !usbRef(s)) return null
+	if ((s.values.pins ?? []).some((p) => p.gpio === native.dpIndex || p.gpio === native.dmIndex)) return null
+	return { ...native, mcu }
+}
+
+// A bare chip's crystal (its profile's clock.crystal, chipCrystal) on the board: Y1 beside the OSC_IN pad, pin 1 to
+// OSC_IN, pin 3 to OSC_OUT, pins 2 and 4 to GND, a load capacitor from each crystal pin to GND (supportParts).
+export interface BoardCrystal extends ChipCrystal {
+	ref: string
+	mcuRef: string
+}
+export function boardCrystal(s: ContractSnapshot): BoardCrystal | null {
+	const { parts = [], connectors = [] } = s.values
+	const mcu = parts.find((p) => p.role === "mcu")
+	const chip = chipProfile(mcu)
+	const x = chip ? chipCrystal(chip) : null
+	if (!mcu || !x || !mcu.pins.includes(x.inPin) || !mcu.pins.includes(x.outPin)) return null
+	return { ...x, ref: freeRef("Y", new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])), mcuRef: mcu.ref }
+}
+
+// SMD3225-4P crystal land pattern: KiCad Crystal_SMD_3225-4Pin_3.2x2.5mm (Crystal.pretty, kicad/kicad:10.0 image,
+// checked 11 Nov 2026), y flipped to tscircuit's y-up: 1.4 × 1.2 mm pads, pin 1 bottom-left, counter-clockwise. Pins 1
+// and 3 (diagonal) are the crystal, 2 and 4 its lid, to GND.
+export const CRYSTAL_FOOTPRINT = "smd3225_4p"
+const CRYSTAL_PADS: Record<string, [number, number]> = { pin1: [-1.1, -0.85], pin2: [1.1, -0.85], pin3: [1.1, 0.85], pin4: [-1.1, 0.85] }
+function crystalFootprint(): string {
+	const pads = Object.entries(CRYSTAL_PADS).map(([pin, [x, y]]) => `<smtpad portHints={["${pin}"]} pcbX="${x}mm" pcbY="${y}mm" width="1.4mm" height="1.2mm" shape="rect" />`)
+	const outline = [[-1.6, -1.25], [1.6, -1.25], [1.6, 1.25], [-1.6, 1.25], [-1.6, -1.25]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
+}
+
 export function supportParts(s: ContractSnapshot): Support[] {
 	const { parts = [], connectors = [], pins = [], rails = [] } = s.values
 	const supply = rails.some((r) => r.name === SUPPLY_RAIL) ? netName(SUPPLY_RAIL) : null
@@ -305,6 +341,17 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const chip = chipProfile(mcuPart)
 	if (chip && mcuPart && supply)
 		for (const j of chipSupport(chip, mcuPart.ref, supply)) jobs.push({ job: `${mcuPart.ref} ${j.job}`, spec: SUPPORT[j.spec], a: j.a, b: j.b, near: mcuPart.ref })
+	// A chip without its own D+ pull-up (the STM32F103) gets 1.5k from D+ to the rail when its USB reaches the port.
+	const usbData = generatedUsb(s)
+	if (chip && usbData?.pullupOnDp && supply)
+		jobs.push({ job: `${usbData.mcu.ref}.${usbData.dp} USB D+ pull-up (full-speed device attach)`, spec: SUPPORT.usbPullup, a: { ref: usbData.mcu.ref, pin: usbData.dp }, b: { net: supply }, near: usbData.mcu.ref })
+	// The crystal's load capacitors, one per crystal pin (chipCrystal has the values).
+	const xtal = boardCrystal(s)
+	if (xtal) {
+		const spec: SupportSpec = { kind: "capacitor", value: xtal.loadCap.value, lcsc: xtal.loadCap.lcsc, mpn: xtal.loadCap.mpn, footprint: "0402" }
+		for (const [pin, side] of [["pin1", xtal.inPin], ["pin3", xtal.outPin]] as const)
+			jobs.push({ job: `${xtal.ref} load capacitor (${xtal.ref}.${pin}, ${side})`, spec, a: { ref: xtal.ref, pin }, b: GND, near: xtal.ref })
+	}
 
 	const claimed = new Set<string>()
 	const taken = new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])
@@ -340,7 +387,9 @@ export function boardParts(s: ContractSnapshot): BoardPart[] {
 	const added = supportParts(s)
 		.filter((x) => x.added)
 		.map((x) => ({ ref: x.ref, mpn: x.spec.mpn, lcsc: x.spec.lcsc, footprint: x.spec.footprint, value: x.spec.value, added: true }))
-	return [...own, ...bare, ...added]
+	const xtal = boardCrystal(s)
+	const crystal = xtal ? [{ ref: xtal.ref, mpn: xtal.crystal.mpn, lcsc: xtal.crystal.lcsc, footprint: CRYSTAL_FOOTPRINT, value: `${xtal.mhz}MHz`, added: true }] : []
+	return [...own, ...bare, ...crystal, ...added]
 }
 
 // pinLabels for a part: the module's datasheet numbering, the button's two sides, or pins in order. USB-C pins are
@@ -429,6 +478,10 @@ export interface Placed {
 }
 
 const GAP_MM = 1.5
+// A bare chip's decoupling, its crystal and the crystal's capacitors may sit this close to the chip's box (its pads plus
+// 0.25 mm): with the full gap, the F103's crowded left side (OSC_IN, OSC_OUT, NRST, VDDA on pads 5–9) pushed NRST's and
+// VDDA's capacitors past 7 mm of trace (11 Nov 2026).
+const CHIP_GAP_MM = 0.5
 const EDGE_MARGIN_MM = 0.5
 const GRID_MM = 0.5
 
@@ -446,6 +499,8 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// measured at rotation 270 on a left edge and turned back to rotation 0 here.
 	usbcmidmount: [9.84, 10.35],
 	[MIC_FOOTPRINT]: [MIC_BODY.w, MIC_BODY.h],
+	// The crystal's pads (CRYSTAL_PADS): 3.6 × 2.9 mm, no courtyard in the inline footprint.
+	smd3225_4p: [3.6, 2.9],
 	// The DRV8833's TSSOP-16 (6.4 mm lead span, 0.65 mm pitch): pads across x, 8 rows along y.
 	"tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm": [7.9, 5.6],
 }
@@ -641,13 +696,14 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 		}
 	}
 
-	const fits = (b: Placed) =>
+	// hug: a part allowed CHIP_GAP_MM from that part's box instead of GAP_MM (a bare chip's own pin parts, below).
+	const fits = (b: Placed, hug?: string) =>
 		Math.abs(b.x) + b.w / 2 <= W / 2 - EDGE_MARGIN_MM &&
 		Math.abs(b.y) + b.h / 2 <= H / 2 - EDGE_MARGIN_MM &&
-		placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= GAP_MM) &&
+		placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= (o.ref === hug ? CHIP_GAP_MM : GAP_MM)) &&
 		keepouts.every((o) => !overlaps(b, o))
 
-	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }): Placed | undefined => {
+	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }, hug?: string): Placed | undefined => {
 		const [w, h] = sizeAt(footprint, rotation)
 		// A footprint whose extent isn't centred on its origin (FOOTPRINT_OFFSET): the box is placed, the part sits off it.
 		const { dx, dy } = offsetAt(footprint, rotation)
@@ -657,7 +713,7 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 			for (let j = 0; j <= H / GRID_MM; j++) {
 				const b = { ref, x: -W / 2 + i * GRID_MM, y: -H / 2 + j * GRID_MM, w, h, rotation }
 				const d = Math.hypot(b.x - want.x, b.y - want.y)
-				if (d < bestD - 1e-9 && fits(b)) [best, bestD] = [b, d]
+				if (d < bestD - 1e-9 && fits(b, hug)) [best, bestD] = [b, d]
 			}
 		}
 		if (best && (dx !== 0 || dy !== 0)) best = { ...best, ox: +(best.x - dx).toFixed(3), oy: +(best.y - dy).toFixed(3) }
@@ -738,12 +794,32 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 		const out = icPinOffset(fp, pad) ? 1.5 : 1.2
 		return Math.abs(at.x) >= Math.abs(at.y) ? { x: box.x + at.x + Math.sign(at.x) * out, y: box.y + at.y } : { x: box.x + at.x, y: box.y + at.y + Math.sign(at.y) * out }
 	}
-	for (const sp of supportParts(s)) {
-		const want = besidePin(sp.a) ?? boxOf(sp.near) ?? centre
+	// The crystal beside the chip's OSC_IN pad, a little further out than a decoupling capacitor (it is bigger); its load
+	// capacitors then sit beside the crystal pin each one serves.
+	const xtal = boardCrystal(s)
+	if (xtal) {
+		const pad = besidePin({ ref: xtal.mcuRef, pin: xtal.inPin })
+		const mcuBox = boxOf(xtal.mcuRef)
+		const [dx, dy] = pad && mcuBox ? [pad.x - mcuBox.x, pad.y - mcuBox.y] : [0, 0]
+		const want = !pad ? centre : Math.abs(dx) >= Math.abs(dy) ? { x: pad.x + Math.sign(dx) * 1.5, y: pad.y } : { x: pad.x, y: pad.y + Math.sign(dy) * 1.5 }
+		place(xtal.ref, CRYSTAL_FOOTPRINT, 0, want, xtal.mcuRef)
+	}
+	const besideCrystal = (end: End) => {
+		const box = xtal && "ref" in end && end.ref === xtal.ref ? boxOf(xtal.ref) : undefined
+		const off = box && "ref" in end ? CRYSTAL_PADS[end.pin] : undefined
+		// Above or below the pin it serves (pin 1 below, pin 3 above at rotation 0), clear of the crystal's own pads.
+		return box && off ? { x: box.x + off[0], y: box.y + Math.sign(off[1]) * 3.5 } : null
+	}
+	// A bare chip's own pin parts (its decoupling, held to 7 mm of trace) and its crystal's load capacitors go first, so
+	// the bus pull-ups and the like don't take the spots beside its pads (the STM32F103's VDD3 capacitor pushed past the
+	// I2C pull-ups routed 24.5 mm, 11 Nov 2026).
+	const first = (sp: Support) => (chipProfile(mcuPart) && "ref" in sp.a && (sp.a.ref === mcuPart?.ref || sp.a.ref === xtal?.ref) ? 0 : 1)
+	for (const sp of [...supportParts(s)].sort((a, b) => first(a) - first(b))) {
+		const want = besidePin(sp.a) ?? besideCrystal(sp.a) ?? boxOf(sp.near) ?? centre
 		if (sp.added) {
 			if (!done.has(sp.ref)) {
 				done.add(sp.ref)
-				place(sp.ref, sp.spec.footprint, 0, want)
+				place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined)
 			}
 		} else put(free.find((p) => p.ref === sp.ref), want)
 	}
@@ -927,9 +1003,8 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		for (const pad of USBC_PADS.VBUS) join("VBUS", usb, pad)
 		// D+/D- to the MCU's native USB (its profile's pins: the ESP32-C3's GPIO19/GPIO18, an STM32F103's PA12/PA11),
 		// unless the contract uses those pins for something else. A chip without USB gets power only from the port.
-		const native = mcuUsbPins(mcu)
-		const usbGpiosFree = native && !pins.some((p) => p.gpio === native.dpIndex || p.gpio === native.dmIndex)
-		if (mcu && native && usbGpiosFree) {
+		const native = generatedUsb(s)
+		if (mcu && native) {
 			for (const pad of USBC_PADS.DP) join("USB_DP", usb, pad)
 			for (const pad of USBC_PADS.DN) join("USB_DN", usb, pad)
 			join("USB_DP", mcu.ref, native.dp)
@@ -939,6 +1014,9 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 
 	const wake = usbWake(s)
 	if (wake?.gpio != null) join(USB_SENSE_NET, wake.mcu.ref, `GPIO${wake.gpio}`)
+	// The crystal's lid pads.
+	const xtal = boardCrystal(s)
+	if (xtal) for (const pin of ["pin2", "pin4"]) join("GND", xtal.ref, pin)
 	// A link that carries power: this board's 3V3 out to the peer, or in from it (docs/system.md).
 	for (const l of s.values.links ?? []) {
 		const k = parts.find((p) => p.ref === l.connector && p.role === "connector")
@@ -1012,10 +1090,14 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string
 			const attr = sp.spec.kind === "resistor" ? "resistance" : "capacitance"
 			// A capacitor wired straight to a chip pin (the DRV8833's VINT and VCP): tscircuit would cap the trace at 1 mm,
 			// which the placer's 1.5 mm part gap can never meet; 5 mm keeps it at the pin and reaches a ground.
-			// A bare MCU's decoupling sits outside its 1.5 mm placement gap from a ~10 mm land pattern, so its trace runs a
-			// little longer: 7 mm (measured 5.45 mm on the STM32G031K8's VDD, 11 Nov 2026).
-			const bound = chipProfile((s.values.parts ?? []).find((p) => p.ref === sp.near)) ? 7 : 5
-			const pinBound = sp.spec.kind === "capacitor" && ("ref" in sp.a || "ref" in sp.b) ? ` maxDecouplingTraceLength={${bound}}` : ""
+			// A bare MCU's decoupling gets 20 mm: the placer puts each cap beside its own pad (besidePin), but tscircuit's
+			// bound also counts the cap's ground return, which on a board without a ground pour routes the long way round
+			// (STM32F103: 16.4 mm from the pad-48 cap's GND end, 11 Nov 2026). Without a bound tscircuit applies 1 mm, which
+			// no placement meets. The DRV8833's caps keep 5 mm.
+			const chipCap = chipProfile((s.values.parts ?? []).find((p) => p.ref === sp.near)) !== null
+			// A crystal's load capacitors are not decoupling: no bound (their crystal pin is no supply pin).
+			const load = sp.near === boardCrystal(s)?.ref
+			const pinBound = sp.spec.kind === "capacitor" && !load && ("ref" in sp.a || "ref" in sp.b) ? ` maxDecouplingTraceLength={${chipCap ? 20 : 5}}` : ""
 			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${q(sp.spec.footprint)}${pinBound} />`)
 		}
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) {
@@ -1057,6 +1139,14 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		}
 		const fp = footprint === MODULE_FOOTPRINT ? moduleFootprint() : footprint === MIC_FOOTPRINT ? micFootprint() : q(footprint)
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
+	}
+
+	// The chip's crystal: pin 1 to OSC_IN, pin 3 to OSC_OUT, straight traces (short, no net of their own).
+	const xtal = boardCrystal(s)
+	if (xtal) {
+		lines.push(`<chip name=${q(xtal.ref)} manufacturerPartNumber=${q(xtal.crystal.mpn)}${at(placement, xtal.ref)} footprint=${crystalFootprint()} />`)
+		lines.push(`<trace name=${q(`${xtal.ref}_osc_in`)} from=${q(`.${xtal.ref} > .pin1`)} to=${q(`.${xtal.mcuRef} > .${xtal.inPin}`)} />`)
+		lines.push(`<trace name=${q(`${xtal.ref}_osc_out`)} from=${q(`.${xtal.ref} > .pin3`)} to=${q(`.${xtal.mcuRef} > .${xtal.outPin}`)} />`)
 	}
 
 	for (const c of connectors) {

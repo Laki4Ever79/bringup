@@ -562,7 +562,7 @@
 		"source": "DS12992 Rev 4: run 64 MHz from flash, peripherals off 5.2 mA typ at 3.0 V (Table 25); Stop 1 with RTC 3.7 µA (Table 29), the mode the firmware sleeps in (Standby 0.6 µA, Table 30, loses RAM). No minimum supply current stated; 10 mA is Bringup's margin over the run current"
 	},
 	"firmware": {
-		"platform": "ststm32@20.0.0",
+		"platform": "ststm32@19.6.0",
 		"board": "nucleo_g031k8",
 		"framework": "arduino",
 		"arch": "stm32",
