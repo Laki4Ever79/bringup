@@ -28,7 +28,7 @@
 	a { color: inherit; }
 	button, select { font: inherit; color: inherit; }
 	.mono { font-family: var(--mono); }
-	header { display: flex; align-items: center; gap: 8px 12px; min-height: 56px; padding: 8px var(--gap); box-sizing: border-box; border-bottom: 1.5px solid var(--ink); background: var(--paper); flex-wrap: wrap; }
+	#own { display: flex; align-items: center; gap: 8px 12px; min-height: 56px; padding: 8px var(--gap); box-sizing: border-box; border-bottom: 1.5px solid var(--ink); background: var(--paper); flex-wrap: wrap; }
 	.logo { display: flex; align-items: center; gap: 10px; font: 800 28px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; text-decoration: none; }
 	.logo i { width: 16px; height: 16px; background: var(--signal); box-shadow: 3px 3px 0 var(--ink); }
 	h1 { font: 700 22px/1 var(--display); text-transform: uppercase; letter-spacing: .03em; margin: 0; }
@@ -81,28 +81,25 @@
 	#timeline input { flex: 1; accent-color: var(--signal); }
 	#board-view { position: fixed; inset: 0; z-index: 40; background: #fff; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .25s; }
 	#board-view.on { opacity: 1; pointer-events: auto; }
-	#board-bar { display: flex; align-items: center; gap: 10px; padding: 6px var(--gap); border-bottom: 1px solid var(--rule); font-size: 14px; }
-	#board-bar button { font: inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+	#board-loading { position: absolute; left: var(--gap); top: 12px; font-size: 13px; }
 	#board-view iframe { flex: 1; border: 0; width: 100%; }
 </style>
 </head>
 <body>
-<header>
-	<a class="logo" href="/"><i></i>Bringup</a>
-	<h1 id="title">Systems of boards</h1>
+<header id="own">
+	<h1 id="title">Start from a system file</h1>
 	<span id="status" class="status s-idle hidden"></span>
 	<span id="spend" class="muted mono" style="font-size:12px" title="What this system's model calls have cost so far (the architect plus every board)"></span>
 	<span style="flex:1"></span>
 	<span class="links-row" id="file-links"></span>
 	<button id="stop" class="pill hidden" title="Stop this system and its board runs">■ Stop</button>
-	<a class="pill" href="/system">All systems</a>
 </header>
 <div id="stage-wrap" class="hidden">
 	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
 	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
 </div>
 <main id="main"></main>
-<div id="board-view" aria-hidden="true"><div id="board-bar"><button id="board-back" title="Back to the whole system (Esc)">← System</button><span id="board-crumb"></span></div></div>
+<div id="board-view" aria-hidden="true"><div id="board-loading" class="muted">opening…</div></div>
 <script>
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
 const id = new URLSearchParams(location.search).get("id")
@@ -112,6 +109,27 @@ const statusEl = document.getElementById("status")
 const statusClass = (s, settled) => (s === "running" || s === "waiting for a change" ? "s-run" : settled === true || s === "settled" ? "s-ok" : s === "unsettled" || s === "failed" || settled === false ? "s-bad" : "s-idle")
 const statusLabel = (s) => (s.length > 40 ? s.split(":")[0] : s)
 const chip = (s, settled) => `<span class="status ${statusClass(s, settled)}" title="${esc(s)}">${esc(statusLabel(s))}</span>`
+
+// ---- The shared bar (nav.js): Home · Designs · Docs, the trail, and a design's levels (Overview, then its boards) ----
+let navMeta = null
+function renderNav() {
+	import("/nav.js").then(({ mountNav }) => {
+		if (!id) return mountNav({ section: "designs", trail: [{ label: "Designs", href: "/designs" }, { label: "Start from a system file" }] })
+		const name = navMeta?.spec?.name ?? id
+		const at = `/system?id=${encodeURIComponent(id)}`
+		const trail = [{ label: "Designs", href: "/designs" }, { label: name, href: at }, ...(openName ? [{ label: openName }] : [])]
+		const boards = (navMeta?.boards ?? []).map((b) => ({ name: b.name, href: `${at}&board=${encodeURIComponent(b.name)}` }))
+		mountNav({ section: "designs", trail, levels: navMeta ? { overview: at, boards, on: openName } : null })
+	})
+}
+// A level in the bar opens in place (a new tab or a middle click still follows the link).
+document.addEventListener("click", (e) => {
+	const a = e.target.closest?.("#site-nav [data-board]")
+	if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return
+	e.preventDefault()
+	if (a.dataset.board) window.openBoard(a.dataset.board)
+	else closeBoard()
+})
 
 // ---- The list of systems, and starting one --------------------------------------------------------------------------
 async function showList() {
@@ -244,6 +262,8 @@ async function showSystem() {
 		return
 	}
 	const d = await r.json()
+	navMeta = d
+	renderNav()
 	startStage(d)
 	document.getElementById("title").textContent = d.spec?.name ?? id
 	document.title = `Bringup · ${d.spec?.name ?? id}`
@@ -255,6 +275,13 @@ async function showSystem() {
 	document.getElementById("file-links").innerHTML = [["Report", d.files.report], ["Cable", d.files.cable], ["WireViz", d.files.wireviz], ["Bench test", d.files.bench]].filter(([, u]) => u).map(([n, u]) => `<a class="pill" href="${esc(u)}" target="_blank">${n}</a>`).join("")
 	const real = d.findings.filter((f) => f.kind !== "link-pending")
 	const pending = d.findings.filter((f) => f.kind === "link-pending")
+	// A one-board design has no cables between boards: only its board.
+	if (d.single) {
+		main.innerHTML = `<section><h2>Board</h2><div class="boards">${d.boards.map(boardCard).join("")}</div></section>`
+		clearTimeout(timer)
+		if (d.status === "running") timer = setTimeout(showSystem, 2000)
+		return
+	}
 	main.innerHTML = `
 		<section id="topology"><h2>Boards and cables</h2>${topology(d)}</section>
 		<section><h2>Boards</h2><div class="boards">${d.boards.map(boardCard).join("")}</div></section>
@@ -383,16 +410,21 @@ function frameFor(name) {
 }
 let openName = null
 window.openBoard = async (name, { push = true } = {}) => {
-	if (!stage.runs[name] || !stage.world) return
+	if (!stage.runs[name]) return
+	// No 3D stage (no WebGL): the board's own page.
+	if (!stage.world) return void (location.href = `/?run=${encodeURIComponent(stage.runs[name])}`)
 	openName = name
+	renderNav()
 	if (push) history.pushState({ board: name }, "", `?id=${encodeURIComponent(id)}&board=${encodeURIComponent(name)}`)
 	await stage.world.focus(name, { ms: 500 })
 	if (openName !== name) return
 	const view = document.getElementById("board-view")
-	// The board page takes the whole window, its own bar (← System, where it sits) on top. Below the system header, a
-	// strip of the system page stayed in view, and its scrollbar beside the board page's; the page behind is locked.
+	// The board page fills the window under the shared bar, whose levels say which board this is (and switch to the
+	// others). The design's own row and the page behind are covered and locked: no strip of the overview shows.
 	document.documentElement.style.overflow = "hidden"
-	document.getElementById("board-crumb").innerHTML = `${esc(stage.meta?.spec?.name ?? id)} › <b>${esc(name)}</b> <span class="muted" id="board-loading">opening…</span>`
+	scrollTo(0, 0)
+	view.style.top = `${document.getElementById("site-nav")?.getBoundingClientRect().bottom ?? 0}px`
+	document.getElementById("board-loading").hidden = false
 	view.classList.add("on")
 	view.setAttribute("aria-hidden", "false")
 	// One frame so the panel is on screen before the page's load takes the thread.
@@ -402,11 +434,12 @@ window.openBoard = async (name, { push = true } = {}) => {
 	await fr.loaded
 	if (openName !== name) return
 	fr.f.style.opacity = "1"
-	document.getElementById("board-loading")?.remove()
+	document.getElementById("board-loading").hidden = true
 }
 async function closeBoard({ push = true } = {}) {
 	if (!openName) return
 	openName = null
+	renderNav()
 	if (push) history.pushState({}, "", `?id=${encodeURIComponent(id)}`)
 	const view = document.getElementById("board-view")
 	view.classList.remove("on")
@@ -418,7 +451,6 @@ async function closeBoard({ push = true } = {}) {
 	// After the fly: tearing a page down takes the thread for a moment.
 	if (!openName) { for (const x of frames.values()) x.f.remove(); frames.clear() }
 }
-document.getElementById("board-back").addEventListener("click", () => closeBoard())
 // A board card's "Open board →" flies in too, when the 3D stage is up (a new tab or a middle click still opens the page).
 main.addEventListener("click", (e) => {
 	const a = e.target.closest?.("[data-open]")
@@ -439,6 +471,7 @@ document.getElementById("stop").onclick = async () => {
 	await fetch(`/api/systems/${encodeURIComponent(id)}/stop`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
 	showSystem()
 }
+renderNav()
 ;(id ? showSystem : showList)().catch((e) => (main.innerHTML = `<section><p id="error">${esc(e.message)}</p></section>`))
 </script>
 </body>
