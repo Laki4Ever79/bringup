@@ -75,3 +75,12 @@ test("a robot's timeline ends with what it has: board, chassis and firmware", ()
 	]
 	assert.equal(rippleTimeline(rover, { fromMs: T0, consistentAtMs: T0 + 90_000 }).at(-1)?.text, "consistent: board, chassis and firmware agree")
 })
+
+// pending-fixes, 11 Nov: a change with several diff lines (a mechanics design: motor, wheel, battery…) showed only the
+// first, so the step read as if one thing had changed.
+test("a step whose change has several lines says how many more there are", () => {
+	const before = { drive: { motor: "M-A", wheel: "W-A" }, battery: { pack: "B-A" } }
+	const after = { drive: { motor: "M-B", wheel: "W-B" }, battery: { pack: "B-B" } }
+	const steps = rippleTimeline([ev(1, "contract.changed", { field: "mechanics", version: 2, revision: 3, by: "architect", before, after })], { fromMs: T0 })
+	assert.match(steps.at(-1)!.text, /^architect: .+ \(\+\d+ more\)$/, steps.at(-1)!.text)
+})
