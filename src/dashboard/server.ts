@@ -28,6 +28,7 @@ const PLAN_PAGE = new URL("./plan.html", import.meta.url)
 const START_PAGE = new URL("./start.html", import.meta.url)
 const EXAMPLES = fileURLToPath(new URL("../../examples/", import.meta.url))
 const STAGE_PAGE = new URL("./stage.html", import.meta.url)
+const DESIGNS_PAGE = new URL("./designs.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
 const SYSTEM_SPECS = new URL("../../briefs/systems/", import.meta.url)
@@ -35,7 +36,7 @@ const SYSTEM_SPECS = new URL("../../briefs/systems/", import.meta.url)
 const EXPERIMENT = new URL("../../docs/experiment-results.json", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js", "spend.js", "world3d.js", "plan-edit.js", "assembly.js", "drive.js"])
+const MODULES = new Set(["nav.js", "lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js", "spend.js", "world3d.js", "plan-edit.js", "assembly.js", "drive.js"])
 // Vendored OFL fonts (fonts/README.md), by exact name.
 const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
@@ -802,6 +803,11 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			if (path === "/system") {
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 				return res.end(await readFile(SYSTEM_PAGE))
+			}
+			// Every design, one board or several (the page map, 11 Nov).
+			if (path === "/designs") {
+				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
+				return res.end(await readFile(DESIGNS_PAGE))
 			}
 			if (path === "/api/systems") return json(res, 200, await listSystems())
 			if (path === "/api/designs") return json(res, 200, await listDesigns())

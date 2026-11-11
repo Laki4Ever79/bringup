@@ -165,3 +165,15 @@ test("a one-board design opens like a system of one board, its chassis included 
 		await hub.close()
 	}
 })
+
+test("the Designs page is served, with the shared bar", async () => {
+	const hub = await serveHub({ outRoot: tempDir(), port: 0 })
+	try {
+		const page = await (await fetch(`${hub.url}/designs`)).text()
+		assert.match(page, /<h1>Designs<\/h1>/)
+		assert.match(page, /mountNav\(\{ section: "designs" \}\)/)
+		assert.match(await (await fetch(`${hub.url}/nav.js`)).text(), /export function navHtml/)
+	} finally {
+		await hub.close()
+	}
+})
