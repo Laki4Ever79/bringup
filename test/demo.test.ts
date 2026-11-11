@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import { test } from "node:test"
 import { createCloudRelay, parseDemoArgs, runDemo, summarize, type DemoDeps } from "../src/demo.ts"
 
@@ -133,7 +133,9 @@ test("the dashboard serves the run", { timeout: 10_000 }, async () => {
 		assert.match(r.outDir, /demo-[\w-]+$/)
 		assert.equal(readFileSync(join(r.outDir, "brief.md"), "utf8"), readFileSync("briefs/logger.md", "utf8"))
 		const page = await (await fetch(r.dashboard.url)).text()
-		assert.match(page, /file\("requests\.jsonl"\)/)
+		// The page polls the change requests as an optional file (11 Nov: a missing one is 204, not a 404 in the console).
+		assert.match(page, /optional\("requests\.jsonl"\)/)
+		assert.equal((await fetch(`${r.dashboard.url}/runs/${basename(r.outDir)}/files/requests.jsonl?optional=1`)).status, 204)
 		assert.equal((await fetch(`${r.dashboard.url}/files/brief.md`)).status, 200)
 	} finally {
 		await r.dashboard.close()
@@ -185,9 +187,12 @@ test("runDemo relays the run's Cloud links and the dashboard can read them", { t
 	try {
 		assert.ok(log.includes("Mozaik Cloud: https://app.jigjoy.ai/?s=loop_x1"), log.join(" | "))
 		assert.ok(log.includes("+1 agent loops live in Mozaik Cloud"), log.join(" | "))
+		// The page asks the hub for the run's Cloud link (11 Nov: no 404s for a run without one); the hub reads it from
+		// the cloud.jsonl the relay wrote.
 		const page = await (await fetch(r.dashboard.url)).text()
-		assert.match(page, /file\("cloud\.jsonl"\)/)
+		assert.match(page, /\/api\/runs\/\$\{encodeURIComponent\(id\)\}\/cloud/)
 		assert.equal((await fetch(`${r.dashboard.url}/files/cloud.jsonl`)).status, 200)
+		assert.deepEqual(await (await fetch(`${r.dashboard.url}/api/runs/${basename(r.outDir)}/cloud`)).json(), { url: "https://app.jigjoy.ai/?s=loop_x2" })
 	} finally {
 		await r.dashboard.close()
 	}
