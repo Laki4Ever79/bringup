@@ -78,3 +78,20 @@ test("a board card's Open board opens the board over the system page, not as a n
 		assert.ok(new URL(page.url()).pathname === new URL(start).pathname, `navigated to ${page.url()}`)
 	})
 })
+
+// At phone width the header wrapped inside a fixed 56 px: its rule ran through the title, its buttons were cut off.
+test("at phone width the header grows to fit: nothing crosses its rule or leaves the screen", { skip, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await page.setViewportSize({ width: 390, height: 844 })
+		await page.waitForTimeout(300)
+		const r = await page.evaluate(() => {
+			const h = document.querySelector("header")!.getBoundingClientRect()
+			const kids = [...document.querySelectorAll("header > *")].filter((e) => getComputedStyle(e).display !== "none" && (e as HTMLElement).offsetWidth > 0).map((e) => ({ id: e.id || e.className || e.tagName, ...e.getBoundingClientRect().toJSON() }))
+			return { bottom: h.bottom, w: innerWidth, kids }
+		})
+		for (const k of r.kids) {
+			assert.ok(k.bottom <= r.bottom + 0.5, `${k.id} reaches ${k.bottom}, below the header's rule at ${r.bottom}`)
+			assert.ok(k.right <= r.w + 0.5 && k.left >= -0.5, `${k.id} spans ${k.left}–${k.right}, off a ${r.w} px screen`)
+		}
+	})
+})
