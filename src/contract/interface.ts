@@ -4,6 +4,7 @@
 import { antennaOverhang, micPorts, mountingHoles, placedByRole, recoveryPads, testPoints } from "../codegen/circuit.ts"
 import { MODULE_FCC_ID } from "./compliance.ts"
 import type { ContractSnapshot } from "./types.ts"
+import { profileForPart } from "../mcu/profile.ts"
 
 export interface MechanicalInterface {
 	board: { widthMm: number; heightMm: number; thicknessMm: number }
@@ -39,7 +40,11 @@ export function mechanicalInterface(s: ContractSnapshot): MechanicalInterface | 
 		soundPorts: micPorts(s).map((m) => ({ ref: m.ref, ...at(m) })),
 		antenna: antenna ? { ...antenna, clearanceMm: ANTENNA_CLEARANCE_MM } : null,
 		bottomPads: [...testPoints(s).placed, ...recoveryPads(s).placed].map((p) => ({ ref: p.ref, net: p.net, xMm: p.xMm, yMm: p.yMm })),
-		label: mcu?.mpn.toUpperCase().startsWith("ESP32-C3-MINI-1") ? `Contains FCC ID: ${MODULE_FCC_ID}` : null,
+		label: (() => {
+			const prof = mcu ? profileForPart(mcu) : null
+			const id = prof ? prof.fccId : mcu?.mpn.toUpperCase().startsWith("ESP32-C3-MINI-1") ? MODULE_FCC_ID : undefined
+			return id ? `Contains FCC ID: ${id}` : null
+		})(),
 	}
 }
 
