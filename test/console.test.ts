@@ -15,6 +15,9 @@ import type { ContractSnapshot } from "../src/contract/types.ts"
 import { fixtureContract } from "./fixture.ts"
 
 const main = readFileSync(join(ROOT, "templates/fw/src/main.cpp"), "utf8")
+// The console itself lives in the per-chip layer (include/hal.h); this is its ESP32 code.
+const hal = readFileSync(join(ROOT, "templates/fw/include/hal.h"), "utf8")
+const halEsp32 = hal.slice(hal.indexOf("#if defined(ARDUINO_ARCH_ESP32)"), hal.indexOf("#elif defined(ARDUINO_ARCH_STM32)"))
 // The product path: main.cpp without the bench build's own section (#ifdef BENCH up to its matching #else).
 function withoutBench(src: string): string {
 	const lines = src.split("\n")
@@ -30,12 +33,13 @@ function withoutBench(src: string): string {
 const product = withoutBench(main)
 
 test("the console writes every line to UART0 and to the USB port, and never waits for a USB host", () => {
-	const console = main.slice(main.indexOf("struct Console"), main.indexOf("};", main.indexOf("struct Console")))
+	const console = halEsp32.slice(halEsp32.indexOf("struct Console"), halEsp32.indexOf("};", halEsp32.indexOf("struct Console")))
 	assert.match(console, /Serial0\.write/)
 	assert.match(console, /UsbLog\.write/)
-	assert.match(main, /static HWCDC UsbLog;/)
-	assert.match(main, /static HWCDC &UsbLog = HWCDCSerial;/)
-	assert.match(main, /UsbLog\.setTxTimeoutMs\(0\)/)
+	assert.match(halEsp32, /static HWCDC UsbLog;/)
+	assert.match(halEsp32, /static HWCDC &UsbLog = HWCDCSerial;/)
+	assert.match(halEsp32, /UsbLog\.setTxTimeoutMs\(0\)/)
+	assert.match(main, /#include "hal\.h"/)
 	assert.match(product, /logBegin\(\)/)
 	assert.doesNotMatch(product, /\bSerial\.(print|printf|println|write|flush|begin)\(/, "the product path prints through Log, not Serial (UART0 only)")
 })

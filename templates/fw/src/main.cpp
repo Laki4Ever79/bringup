@@ -7,47 +7,25 @@
 #if __has_include("connectivity.h")
 #include "connectivity.h"
 #endif
-#if !defined(RADIO_BLE) && !defined(RADIO_WIFI)
+// A chip with no radio gets RADIO_NONE from the generator; without connectivity.h at all, an ESP32 is BLE as always
+// and any other chip has no radio.
+#if !defined(RADIO_BLE) && !defined(RADIO_WIFI) && !defined(RADIO_NONE)
+#if defined(ARDUINO_ARCH_ESP32)
 #define RADIO_BLE 1
 #define REPORT_GATT 1
+#else
+#define RADIO_NONE 1
+#endif
+#endif
+// The radio code (NimBLE, Wi-Fi, MQTT, OTA) is Arduino-ESP32's.
+#if (defined(RADIO_BLE) || defined(RADIO_WIFI)) && !defined(ARDUINO_ARCH_ESP32)
+#error "this firmware drives Bluetooth LE and Wi-Fi on the ESP32 only so far: give the design RADIO_NONE or an ESP32"
 #endif
 #if __has_include("model.h")
 #include "model.h"
 #endif
-// The console (docs/system.md, Firmware): every line goes to UART0, which QEMU reads, and to the C3's own USB
-// (Serial/JTAG, GPIO18/19), the only port a Bringup board wires out. A USB write never waits for a host (timeout 0):
-// with no host, or one that isn't reading, the line is dropped there, so a board on battery never stalls on its log
-// (arduino-esp32 HWCDC::write drops when unplugged; checked 11 Nov in the pinned core, framework 4.30312).
-// The core declares HWCDCSerial only when USB is the boot console (ARDUINO_USB_CDC_ON_BOOT); the HWCDC class itself is
-// always there on the C3, so the console uses the core's instance when there is one (the bench link-test build) and
-// its own otherwise; the build flags stay as they are. HWCDC's state is shared and begin() is idempotent either way.
-#if defined(HWCDC_SERIAL_IS_DEFINED)
-static HWCDC &UsbLog = HWCDCSerial;
-#else
-static HWCDC UsbLog;
-#endif
-struct Console : public Print {
-	size_t write(uint8_t c) override {
-		Serial0.write(c);
-		UsbLog.write(c);
-		return 1;
-	}
-	size_t write(const uint8_t *b, size_t n) override {
-		Serial0.write(b, n);
-		UsbLog.write(b, n);
-		return n;
-	}
-	void flush() {
-		Serial0.flush();
-		UsbLog.flush();
-	}
-};
-static Console Log;
-static void logBegin() {
-	Serial0.begin(115200);
-	UsbLog.setTxTimeoutMs(0);
-	UsbLog.begin();
-}
+// The per-chip layer: the console (Log), storage, sleep, ids (include/hal.h).
+#include "hal.h"
 // Links to other boards in a system (docs/system.md, codegen/firmware.ts linkHeader): linkBegin, linkSendReading and
 // linkPoll. Without it, or with no links, they do nothing.
 #if __has_include("link.h")
@@ -76,15 +54,15 @@ static const uint8_t modelWeights[MODEL_WEIGHTS_BYTES] = {1};
 #endif
 
 #if defined(PIN_I2C_SDA) && defined(PIN_I2C_SCL)
-static_assert(PIN_I2C_SDA >= 0 && PIN_I2C_SDA < SOC_GPIO_PIN_COUNT, "PIN_I2C_SDA is not a GPIO on this chip");
-static_assert(PIN_I2C_SCL >= 0 && PIN_I2C_SCL < SOC_GPIO_PIN_COUNT, "PIN_I2C_SCL is not a GPIO on this chip");
+static_assert(HAL_PIN_VALID(PIN_I2C_SDA), "PIN_I2C_SDA is not a GPIO on this chip");
+static_assert(HAL_PIN_VALID(PIN_I2C_SCL), "PIN_I2C_SCL is not a GPIO on this chip");
 #define HAS_I2C 1
 // The sensor is the only I2C part the product firmware drives: a design with no I2C pins has no sensor (briefs/beacon.md).
 #define HAS_SENSOR 1
 #endif
 
 #ifdef PIN_STATUS_LED
-static_assert(PIN_STATUS_LED >= 0 && PIN_STATUS_LED < SOC_GPIO_PIN_COUNT, "PIN_STATUS_LED is not a GPIO on this chip");
+static_assert(HAL_PIN_VALID(PIN_STATUS_LED), "PIN_STATUS_LED is not a GPIO on this chip");
 #define HAS_LED 1
 #endif
 
@@ -163,21 +141,25 @@ static void led(bool on) {
 // The product: one reading per wake. Read the sensor, store the reading, blink briefly, advertise, deep-sleep for the
 // contract's period (pins.h DUTY_PERIOD_S, from requirements.dutyCycle.periodS); a board with no sensor only blinks and
 // advertises. Each wake starts again at setup().
-#include <esp_sleep.h>
-#include <LittleFS.h>
-#include <Preferences.h>
 
 #ifndef DUTY_PERIOD_S
 #define DUTY_PERIOD_S 300  // the brief's "a reading every few minutes"
 #endif
 static const uint32_t READING_BLINK_MS = 20;
-// The history: a ring buffer of HISTORY_DAYS of readings in /history.bin on the flash's LittleFS partition, one
-// 4-byte record per reading; the next slot to write is kept in NVS, so it survives deep sleep and power loss.
+// The history: a ring buffer of HISTORY_DAYS of readings, one 4-byte record per reading, on the chip's history store
+// (hal.h: /history.bin on the ESP32's LittleFS partition, the EEPROM emulation on an STM32); the next slot to write is
+// kept in the key-value store (NVS on the ESP32), so it survives deep sleep and power loss.
 #ifndef HISTORY_DAYS
 #define HISTORY_DAYS 30  // pins.h sets it from requirements.historyDays
 #endif
+#ifdef HISTORY_BYTES
+// A chip with a small store (pins.h HISTORY_BYTES) keeps what fits, at least one reading.
+static const uint32_t HISTORY_SLOTS_WANTED = HISTORY_DAYS * 86400UL / DUTY_PERIOD_S;
+static const uint32_t HISTORY_SLOTS_FIT = HISTORY_BYTES / sizeof(uint32_t);
+static const uint32_t HISTORY_SLOTS = HISTORY_SLOTS_WANTED < 1 ? 1 : HISTORY_SLOTS_WANTED > HISTORY_SLOTS_FIT ? HISTORY_SLOTS_FIT : HISTORY_SLOTS_WANTED;
+#else
 static const uint32_t HISTORY_SLOTS = HISTORY_DAYS * 86400UL / DUTY_PERIOD_S;
-static const char *HISTORY_FILE = "/history.bin";
+#endif
 
 #ifdef HAS_SENSOR
 // The record layout is the generated data format's (include/dataformat.h, record.h): the reader decodes the same.
@@ -185,21 +167,21 @@ static const char *HISTORY_FILE = "/history.bin";
 
 // Returns the slot written, or -1 if the flash couldn't take it. NVS also keeps how many slots hold a reading, for BLE.
 static int32_t storeReading(float tempC, float rh) {
-	if (!LittleFS.begin(true)) return -1;  // formats the partition on the very first boot
-	Preferences prefs;
+	if (!halHistoryMount(true)) return -1;  // formats the partition on the very first boot
+	HalKv prefs;
 	prefs.begin("history", false);
-	uint32_t slot = prefs.getUInt("next", 0) % HISTORY_SLOTS;
-	File f = LittleFS.open(HISTORY_FILE, LittleFS.exists(HISTORY_FILE) ? "r+" : "w+");
-	bool ok = f && f.seek(slot * sizeof(uint32_t));
+	uint32_t slot = prefs.get("next", 0) % HISTORY_SLOTS;
+	HalHistory f;
+	bool ok = f.open(true);
 	uint32_t record = packReading(tempC, rh);
-	ok = ok && f.write((const uint8_t *)&record, sizeof record) == sizeof record;
-	if (f) f.close();
+	ok = ok && f.write(slot, record);
+	f.close();
 	if (ok) {
-		prefs.putUInt("next", (slot + 1) % HISTORY_SLOTS);
-		prefs.putUInt("count", min(prefs.getUInt("count", 0) + 1, HISTORY_SLOTS));
+		prefs.put("next", (slot + 1) % HISTORY_SLOTS);
+		prefs.put("count", min(prefs.get("count", 0) + 1, HISTORY_SLOTS));
 	}
 	prefs.end();
-	LittleFS.end();
+	halHistoryUnmount();
 	return ok ? (int32_t)slot : -1;
 }
 #endif
@@ -218,7 +200,7 @@ static int32_t storeReading(float tempC, float rh) {
 #ifdef REPORT_BTHOME
 #include "bthome.h"
 // The packet id Home Assistant uses to drop repeats: one per reading, kept across deep sleep.
-RTC_DATA_ATTR static uint8_t bthomePacketId = 0;
+HAL_RETAINED static uint8_t bthomePacketId = 0;
 #endif
 
 #ifndef BLE_ADVERTISE_MS
@@ -256,27 +238,28 @@ class HistoryCallbacks : public NimBLECharacteristicCallbacks {
 	void onRead(NimBLECharacteristic *c, NimBLEConnInfo &) override {
 		static uint32_t records[HISTORY_CHUNK];
 		uint32_t n = 0;
-		File f = LittleFS.open(HISTORY_FILE, "r");
-		for (uint32_t i = historyOffset; f && i < historyCount && n < HISTORY_CHUNK; i++) {
+		HalHistory f;
+		const bool open = f.open(false);
+		for (uint32_t i = historyOffset; open && i < historyCount && n < HISTORY_CHUNK; i++) {
 			uint32_t slot = (historyNext + HISTORY_SLOTS - 1 - i) % HISTORY_SLOTS;
-			if (!f.seek(slot * sizeof(uint32_t)) || f.read((uint8_t *)&records[n], sizeof(uint32_t)) != sizeof(uint32_t)) break;
+			if (!f.read(slot, records[n])) break;
 			n++;
 		}
-		if (f) f.close();
+		f.close();
 		c->setValue((const uint8_t *)records, n * sizeof(uint32_t));
 	}
 };
 
 // latest: the packed reading for the GATT service; ok, tempC and rh: the same reading for BTHome.
 static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
-	Preferences prefs;
+	HalKv prefs;
 	prefs.begin("history", true);
-	historyNext = prefs.getUInt("next", 0);
-	historyCount = prefs.getUInt("count", 0);
+	historyNext = prefs.get("next", 0);
+	historyCount = prefs.get("count", 0);
 	prefs.end();
-	LittleFS.begin(false);
+	halHistoryMount(false);
 	char name[16];
-	snprintf(name, sizeof name, "Bringup-%04X", (unsigned)(ESP.getEfuseMac() >> 32) & 0xFFFF);
+	snprintf(name, sizeof name, "Bringup-%04X", (unsigned)(halUniqueId() >> 32) & 0xFFFF);
 	NimBLEDevice::init(name);
 	NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
 #ifdef REPORT_BTHOME
@@ -344,7 +327,7 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 	if (everConnected) Log.println("BLE a phone connected");
 	advertiseMs = BLE_ADVERTISE_MS;  // a button's long window is for its own wake only
 	NimBLEDevice::deinit(true);
-	LittleFS.end();
+	halHistoryUnmount();
 }
 
 #endif  // RADIO_BLE
@@ -364,7 +347,7 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 #endif
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 10000;
 // Wakes since the last upload, kept across deep sleep; the first wake after power-up uploads straight away.
-RTC_DATA_ATTR static uint32_t wakesSinceUpload = UPLOAD_EVERY;
+HAL_RETAINED static uint32_t wakesSinceUpload = UPLOAD_EVERY;
 
 #ifdef REPORT_MQTT
 #include <PubSubClient.h>
@@ -392,21 +375,22 @@ static void publishMqtt(PubSubClient &mqtt, const char *id, bool ok, float tempC
 	}
 #ifdef HAS_SENSOR
 	// The batch: the newest UPLOAD_EVERY records, oldest first, straight from /history.bin.
-	Preferences prefs;
+	HalKv prefs;
 	prefs.begin("history", true);
-	const uint32_t next = prefs.getUInt("next", 0), count = prefs.getUInt("count", 0);
+	const uint32_t next = prefs.get("next", 0), count = prefs.get("count", 0);
 	prefs.end();
 	const uint32_t n = min((uint32_t)UPLOAD_EVERY, count);
 	int len = snprintf(body, sizeof body, "{\"periodS\":%d,\"records\":[", DUTY_PERIOD_S);
-	if (LittleFS.begin(false)) {
-		File f = LittleFS.open(HISTORY_FILE, "r");
-		for (uint32_t i = 0; f && i < n && len < (int)sizeof body - 16; i++) {
+	if (halHistoryMount(false)) {
+		HalHistory f;
+		const bool open = f.open(false);
+		for (uint32_t i = 0; open && i < n && len < (int)sizeof body - 16; i++) {
 			uint32_t slot = (next + HISTORY_SLOTS - n + i) % HISTORY_SLOTS, record = 0;
-			if (!f.seek(slot * sizeof record) || f.read((uint8_t *)&record, sizeof record) != sizeof record) break;
+			if (!f.read(slot, record)) break;
 			len += snprintf(body + len, sizeof body - len, "%s%lu", i ? "," : "", (unsigned long)record);
 		}
-		if (f) f.close();
-		LittleFS.end();
+		f.close();
+		halHistoryUnmount();
 	}
 	snprintf(body + len, sizeof body - len, "]}");
 	snprintf(topic, sizeof topic, DF_MQTT_PREFIX "/%s/history", id);
@@ -442,7 +426,7 @@ static void serveWifi(bool ok, float tempC, float rh) {
 	}
 	Log.printf("WIFI connected in %lu ms\n", (unsigned long)(millis() - start));
 	char id[20];
-	snprintf(id, sizeof id, "bringup_%06llx", (unsigned long long)(ESP.getEfuseMac() & 0xFFFFFF));
+	snprintf(id, sizeof id, "bringup_%06llx", (unsigned long long)(halUniqueId() & 0xFFFFFF));
 #if defined(REPORT_MQTT) && defined(MQTT_HOST)
 	// Secure by default: TLS against the broker's CA (MQTT_CA); plain MQTT only when the engineer sets
 	// MQTT_ALLOW_PLAINTEXT (a broker on a closed home network), and never by accident.
@@ -731,23 +715,28 @@ static void takeReading() {
 #ifdef HAS_SENSOR
 	float t, rh;
 	bool ok = readClimate(&t, &rh);
+#if defined(HAL_PRINTF_FLOAT)
 	if (ok) Log.printf("SENSOR OK %.2f C %.1f %%RH\n", t, rh);
+#else
+	char tText[16], rhText[16];
+	if (ok) Log.printf("SENSOR OK %s C %s %%RH\n", halFixed(tText, sizeof tText, t, 2), halFixed(rhText, sizeof rhText, rh, 1));
+#endif
 	else Log.println("SENSOR FAIL");
 	if (ok) Log.printf("HISTORY slot %ld\n", (long)storeReading(t, rh));
 	linkSendReading(ok, t, rh);
 	readingBlink(ok);
-#ifdef RADIO_BLE
+#if defined(RADIO_BLE)
 	serveBle(ok ? packReading(t, rh) : LATEST_SENSOR_FAILED, ok, t, rh);
-#else
+#elif defined(RADIO_WIFI)
 	serveWifi(ok, t, rh);
 #endif
 #else
 	// No sensor: nothing to read or store. Blink once and advertise (or upload).
 	Log.println("SENSOR NONE");
 	readingBlink(true);
-#ifdef RADIO_BLE
+#if defined(RADIO_BLE)
 	serveBle(LATEST_NO_SENSOR, false, 0, 0);
-#else
+#elif defined(RADIO_WIFI)
 	serveWifi(false, 0, 0);
 #endif
 #endif
@@ -758,7 +747,9 @@ static void takeReading() {
 // board stays awake, so its USB Serial/JTAG stays up and `pio run -t upload` reflashes it with the cable alone; it keeps
 // taking a reading every period meanwhile (USB powers it, the battery charges). Unplugged, it goes back to deep sleep
 // within 100 ms, and plugging in wakes it (only GPIO0..5 can wake the ESP32-C3 from deep sleep).
+#if defined(ARDUINO_ARCH_ESP32)
 static_assert(PIN_USB_SENSE >= 0 && PIN_USB_SENSE <= 5, "PIN_USB_SENSE cannot wake the ESP32-C3 from deep sleep (GPIO0..5 only)");
+#endif
 static bool usbPowered() {
 	return digitalRead(PIN_USB_SENSE) == HIGH;
 }
@@ -787,7 +778,7 @@ void setup() {
 	Log.printf("MODEL arena %u B at %p, weights %u B at %p, %d Hz x %d ms\n", (unsigned)sizeof modelArena, (void *)modelArena, (unsigned)MODEL_WEIGHTS_LINKED_BYTES, (const void *)modelWeights, MODEL_SAMPLE_RATE_HZ, MODEL_WINDOW_MS);
 #endif
 #if defined(HAS_I2C) && !defined(LINK_I2C_TARGET)
-	Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+	halWireBegin();
 #endif
 	linkBegin();  // after Wire: an I2C target joins the bus at its own address
 #ifdef LINK_TEST
@@ -821,22 +812,21 @@ void setup() {
 #endif
 	Log.printf("SLEEP %d s\n", DUTY_PERIOD_S);
 	Log.flush();
-	esp_sleep_enable_timer_wakeup((uint64_t)DUTY_PERIOD_S * 1000000ULL);
+	int wakeLow = -1, wakeHigh = -1;
 #ifdef PIN_BUTTON
-	// The button closes to GND (codegen wires its other side there): a press wakes the board early. Only GPIO0..5 can
-	// wake the ESP32-C3 from deep sleep (TRM, "Deep-sleep wakeup"); the internal pull-up holds the pin high meanwhile.
+	// The button closes to GND (codegen wires its other side there): a press wakes the board early, the internal pull-up
+	// holding the pin high meanwhile. Only GPIO0..5 can wake the ESP32-C3 from deep sleep (TRM, "Deep-sleep wakeup");
+	// any pin wakes an STM32 (EXTI).
+#if defined(ARDUINO_ARCH_ESP32)
 	static_assert(PIN_BUTTON >= 0 && PIN_BUTTON <= 5, "PIN_BUTTON cannot wake the ESP32-C3 from deep sleep (GPIO0..5 only)");
-	gpio_pullup_en((gpio_num_t)PIN_BUTTON);
-	gpio_pulldown_dis((gpio_num_t)PIN_BUTTON);
-	esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_BUTTON, ESP_GPIO_WAKEUP_GPIO_LOW);
+#endif
+	wakeLow = PIN_BUTTON;
 #endif
 #ifdef PIN_USB_SENSE
 	// Plugging in USB wakes it (high on the sense pin); the wake pins accumulate, so a button's low wake still works.
-	gpio_pullup_dis((gpio_num_t)PIN_USB_SENSE);
-	gpio_pulldown_dis((gpio_num_t)PIN_USB_SENSE);
-	esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_USB_SENSE, ESP_GPIO_WAKEUP_GPIO_HIGH);
+	wakeHigh = PIN_USB_SENSE;
 #endif
-	esp_deep_sleep_start();
+	halSleep(DUTY_PERIOD_S, wakeLow, wakeHigh);
 }
 
 // Never reached: setup() ends in deep sleep, and a timer, button or USB wake starts at setup() again.

@@ -12,6 +12,8 @@ import type { FirmwareArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { mergeFlash, runImage } from "./emulator.ts"
 import { testkitHeader } from "../contract/testkit.ts"
+import { mcuProfileOf } from "../mcu/profile.ts"
+import { envFor, platformioEnvs, type FirmwarePurpose } from "../mcu/firmware.ts"
 
 const TIMEOUT_MS = 600_000
 
@@ -101,28 +103,45 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 	await writeFile(join(dir, "reader/bringup_reader.py"), readerPython(s))
 	// What the firmware is built from (CycloneDX), and where the design stands against the radio-product rules.
 	await writeFile(join(dir, "compliance.md"), complianceMarkdown(s))
-	// The product firmware's partition table follows connectivity.updates: two firmware slots for updates, else one.
 	const ini = join(dir, "platformio.ini")
-	const table = partitionTable(s)
 	const text = await readFile(ini, "utf8")
 	await writeFile(join(dir, "sbom.cdx.json"), sbomJson(s, text, s.revision))
+	const profile = mcuProfileOf(s.values.parts)
+	if (profile && profile.firmware.arch !== "esp32") {
+		// Another chip: its envs, generated from its profile, appended; `pio run` with no -e builds its product env. The
+		// template's ESP32 envs stay in the file, unbuilt.
+		const own = text.replace(/^default_envs = .*$/m, `default_envs = ${envFor(profile, "app")}`)
+		await writeFile(ini, `${own.trimEnd()}\n\n${platformioEnvs(profile)}`)
+		return header
+	}
+	// The product firmware's partition table follows connectivity.updates: two firmware slots for updates, else one.
+	const table = partitionTable(s)
 	await writeFile(ini, text.replace(/(\[env:esp32c3\]\n(?:[^\[]*?\n)?board = esp32-c3-devkitm-1\n)(board_build\.partitions = .*\n)?/, `$1board_build.partitions = ${table}\n`))
 	return header
+}
+
+// The env a firmware dir prepareFirmware wrote builds for this purpose: its product env (default_envs, which
+// prepareFirmware set from envFor(mcuProfileOf(parts))) with the purpose's suffix, as envFor names it.
+export async function firmwareEnv(dir: string, purpose: FirmwarePurpose): Promise<string> {
+	const text = await readFile(join(dir, "platformio.ini"), "utf8").catch(() => "")
+	const app = /^default_envs = (\S+)\s*$/m.exec(text)?.[1] ?? envFor(null, "app")
+	return purpose === "app" ? app : `${app}_${purpose}`
 }
 
 // The factory-test firmware (env esp32c3_test, src/factory_test.cpp) for this revision, in its own dir.
 export async function buildTestFirmware(pio: string, root: string, dir: string, s: ContractSnapshot): Promise<{ ok: boolean; log: string; pins: Record<string, number> }> {
 	const header = await prepareFirmware(root, dir, s)
 	await writeFile(join(dir, "include/testkit.h"), testkitHeader(s))
-	const { code, output } = await run(pio, ["run", "-d", dir, "-e", "esp32c3_test"])
+	const { code, output } = await run(pio, ["run", "-d", dir, "-e", envFor(mcuProfileOf(s.values.parts), "test")])
 	return { ok: code === 0, log: buildLog(output), pins: parsePinsHeader(header) }
 }
 
 // The link-test firmware (env esp32c3_linktest: the product firmware with -DLINK_TEST) in a firmware dir buildFirmware
 // already wrote, so it runs the board's own link.h (docs/system.md).
-// The link-test build: esp32c3_linktest for QEMU (UART0 output, 10 s), or esp32c3_linktest_usb for the bench.
-export async function buildLinkTestFirmware(pio: string, dir: string, env: "esp32c3_linktest" | "esp32c3_linktest_usb" = "esp32c3_linktest"): Promise<{ ok: boolean; log: string }> {
-	const { code, output } = await run(pio, ["run", "-d", dir, "-e", env])
+// The link-test build: esp32c3_linktest for QEMU (UART0 output, 10 s), or esp32c3_linktest_usb for the bench; by
+// default the dir's own chip's link test (firmwareEnv).
+export async function buildLinkTestFirmware(pio: string, dir: string, env?: string): Promise<{ ok: boolean; log: string }> {
+	const { code, output } = await run(pio, ["run", "-d", dir, "-e", env ?? (await firmwareEnv(dir, "linktest"))])
 	return { ok: code === 0, log: buildLog(output) }
 }
 
@@ -141,7 +160,7 @@ export async function buildCollectFirmware(pio: string, dir: string, revision: n
 	const header = await readFile(join(dir, "include/model.h"), "utf8").catch(() => "")
 	const pathHash = /#define MODEL_PATH_HASH "([0-9a-f]{12})"/.exec(header)?.[1] ?? null
 	if (!pathHash) return { ok: false, revision, pathHash, log: "model.h has no sensor path: the design has no model with a microphone" }
-	const { code, output } = await run(pio, ["run", "-d", dir, "-e", "esp32c3_collect"])
+	const { code, output } = await run(pio, ["run", "-d", dir, "-e", await firmwareEnv(dir, "collect")])
 	return { ok: code === 0, revision, pathHash, log: buildLog(output) }
 }
 
@@ -156,9 +175,10 @@ export interface DeviceModelCheck {
 // The converted model run once on the design's MCU (env esp32c3_infer, src/infer.cpp, in QEMU) in a firmware dir that
 // buildFirmware wrote with the model linked (opts.modelData). Not run when QEMU isn't installed.
 export async function checkModelOnDevice(pio: string, root: string, dir: string): Promise<DeviceModelCheck> {
-	const build = await run(pio, ["run", "-d", dir, "-e", "esp32c3_infer"])
+	const env = await firmwareEnv(dir, "infer")
+	const build = await run(pio, ["run", "-d", dir, "-e", env])
 	if (build.code !== 0) return { ran: false, ok: false, log: buildLog(build.output) }
-	const { image, log } = await mergeFlash(dir, "esp32c3_infer")
+	const { image, log } = await mergeFlash(dir, env)
 	if (!image) return { ran: false, ok: false, log }
 	const serial = await runImage(root, image, /BRINGUP-INFER (ok|FAIL)[^\n]*\n/, 180_000)
 	if (serial === null) return { ran: false, ok: false, log: "QEMU is not installed (tools/qemu)" }
