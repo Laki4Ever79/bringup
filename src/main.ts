@@ -16,6 +16,15 @@ import { verifyConverted, type ConvertedModel } from "./contract/verify-model.ts
 import { buildCollectFirmware, buildFirmware, checkModelOnDevice, type DeviceModelCheck } from "./tools/firmware.ts"
 import { startBridge, type BenchSource } from "./tools/bench-bridge.ts"
 import { takeNoCloudFlag } from "./runner/cloud.ts"
+import { mcuProfileOf } from "./mcu/profile.ts"
+import { envFor, type FirmwarePurpose } from "./mcu/firmware.ts"
+
+// The PlatformIO env a run's revision built under for this purpose: its contract's chip (envFor), esp32c3 without one.
+function revisionEnv(runDir: string, revDir: string, purpose: FirmwarePurpose = "app"): string {
+	const path = join(runDir, "contracts", `${revDir}.json`)
+	const c = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null
+	return envFor(mcuProfileOf(c?.values?.parts), purpose)
+}
 
 const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud]"
 
@@ -111,7 +120,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			console.error("bringup: usage: bringup simulate <runDir> (a run with a built firmware)")
 			return 1
 		}
-		const revs = readdirSync(join(dir, "firmware")).filter((d) => /^rev-\d+$/.test(d) && existsSync(join(dir, "firmware", d, ".pio/build/esp32c3/firmware.bin"))).map((d) => Number(d.slice(4)))
+		const revs = readdirSync(join(dir, "firmware")).filter((d) => /^rev-\d+$/.test(d) && existsSync(join(dir, "firmware", d, `.pio/build/${revisionEnv(dir, d)}/firmware.bin`))).map((d) => Number(d.slice(4)))
 		const revision = revs.length ? Math.max(...revs) : null
 		const contract = revision === null ? null : JSON.parse(readFileSync(join(dir, "contracts", `rev-${revision}.json`), "utf8"))
 		const env = await (deps.detect ?? detectEnvironment)(ROOT)
@@ -199,7 +208,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			console.error(`bringup: the data-collection firmware for rev ${revision} does NOT compile:\n${r.log}`)
 			return 2
 		}
-		console.log(`data-collection firmware for rev ${revision}, sensor path ${r.pathHash}: flash it with\n  .venv/bin/pio run -d ${fwDir} -e esp32c3_collect -t upload\nthen record with\n  .venv/bin/python py/collect.py --port /dev/ttyACM0 --label <word> --out <dataset> --contract ${join(dir, "contract.json")}`)
+		console.log(`data-collection firmware for rev ${revision}, sensor path ${r.pathHash}: flash it with\n  .venv/bin/pio run -d ${fwDir} -e ${revisionEnv(dir, `rev-${revision}`, "collect")} -t upload\nthen record with\n  .venv/bin/python py/collect.py --port /dev/ttyACM0 --label <word> --out <dataset> --contract ${join(dir, "contract.json")}`)
 		return 0
 	}
 	// `bringup system <system.json>`: a system of boards, each designed by its own run, and the links between them
