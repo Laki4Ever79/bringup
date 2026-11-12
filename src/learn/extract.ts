@@ -1,5 +1,5 @@
 import type { DocStore } from "./docs.ts"
-import type { KindFile } from "./kinds.ts"
+import { fieldsToRead, type KindFile } from "./kinds.ts"
 import { toCanonical, valueMatches, valuesAgree } from "./match.ts"
 import { MODELS_LEARN, type PageReader, type ReadRequest } from "./reader.ts"
 import type { Fact, LearnedDoc, SourceRef } from "./types.ts"
@@ -35,7 +35,7 @@ export async function pagesToRead(doc: LearnedDoc, store: DocStore): Promise<num
 
 // The prompt: values printed on this page only, each with where it is (fractions of the image) and its exact text.
 function prompt(kind: KindFile, fields: string[]): string {
-	const wanted = kind.fields.filter((f) => fields.includes(f.field)).map((f) => `- ${f.field}${f.unit ? ` (${f.unit})` : ""}: ${f.what}`)
+	const wanted = fieldsToRead(kind).filter((f) => fields.includes(f.field)).map((f) => `- ${f.field}${f.unit ? ` (${f.unit})` : ""}: ${f.what}`)
 	return [
 		`This is one page of a datasheet for a part of kind "${kind.kind}". Report only values printed on this page.`,
 		"Fields:",
@@ -47,6 +47,12 @@ function prompt(kind: KindFile, fields: string[]): string {
 		"quote: the value exactly as printed. Leave a field out if this page doesn't give it; never estimate.",
 	].join("\n")
 }
+
+// The text check needs a region that points at one value: a few lines of one column, not a whole table, where any
+// number that happens to be there would "match".
+const MAX_TEXT_REGION_AREA = 0.15
+const MAX_TEXT_REGION_HEIGHT = 0.1
+const pointsAtOneValue = ([, , w, h]: SourceRef["region"]) => w * h <= MAX_TEXT_REGION_AREA && h <= MAX_TEXT_REGION_HEIGHT
 
 const isRegion = (r: unknown): r is SourceRef["region"] => Array.isArray(r) && r.length === 4 && r.every((x) => typeof x === "number" && x >= 0 && x <= 1)
 const isValue = (v: unknown): v is Claim["value"] => typeof v === "number" || (typeof v === "string" && v.trim() !== "") || (Array.isArray(v) && v.length === 2 && v.every((x) => typeof x === "number"))
@@ -71,7 +77,7 @@ const pad = ([x, y, w, h]: SourceRef["region"], m = 0.01): SourceRef["region"] =
 
 // In the kind's unit when it's the same quantity ("0.087 in" for a field in mm becomes 2.2098 mm).
 function inKindUnit(c: Claim, kind: KindFile): { value: Claim["value"]; unit?: string } {
-	const unit = kind.fields.find((f) => f.field === c.field)?.unit
+	const unit = fieldsToRead(kind).find((f) => f.field === c.field)?.unit
 	if (!unit || !c.unit || c.unit === unit) return { value: c.value, unit: c.unit ?? unit }
 	const one = toCanonical(1, unit)
 	const conv = (v: number) => {
@@ -94,7 +100,10 @@ function inKindUnit(c: Claim, kind: KindFile): { value: Claim["value"]; unit?: s
 // once. A field nothing confirms is left out: the missing-value rule (rule.ts) decides what happens to it.
 export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { store: DocStore; reader: PageReader }): Promise<Fact[]> {
 	const { store, reader } = deps
-	const fields = kind.fields.map((f) => f.field)
+	// The footprint is never taken from a datasheet's words: it comes from a land-pattern library and is checked against
+	// the pins (footprint.ts). The package name read here is only a hint for that search.
+	const toRead = fieldsToRead(kind)
+	const fields = toRead.map((f) => f.field)
 	const images = new Map<number, Buffer>()
 	const image = async (p: number) => images.get(p) ?? images.set(p, await store.renderPage(doc, p)).get(p)!
 	const pageText = new Map<number, string>()
@@ -111,27 +120,34 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 		for (const c of await read(page, fields, "first")) candidates.set(c.field, [...(candidates.get(c.field) ?? []), c])
 	}
 
-	const fact = (c: Claim, check: Fact["check"]): Fact => ({
+	// The quote kept is the page's own text in the region when there is some, never the model's wording of it.
+	const fact = (c: Claim, check: Fact["check"], regionText?: string): Fact => ({
 		field: c.field,
 		...inKindUnit(c, kind),
 		status: "datasheet",
 		critical: false,
-		source: { doc: doc.id, page: c.page, region: c.region, quote: c.quote },
+		source: { doc: doc.id, page: c.page, region: c.region, quote: regionText ? regionText.replace(/\s+/g, " ").trim().slice(0, 160) : c.quote },
 		check,
 	})
 
+	// The text in a claimed region, or null when the region is too big for the text check to mean anything.
+	const regionText = async (c: Claim) => (pointsAtOneValue(c.region) ? store.textIn(doc, c.page, pad(c.region)) : null)
+
 	async function confirm(c: Claim): Promise<Fact | null> {
-		const imageOnly = (await textOf(c.page)) === ""
-		if (imageOnly) {
+		// No text where the value is claimed (an image-only page, or a raster drawing on a page with a text title): only
+		// independent reads can confirm it.
+		const own = (await textOf(c.page)) === "" ? "" : await regionText(c)
+		if (own === "") {
 			const second = (await read(c.page, [c.field], "second")).find((x) => x.field === c.field)
 			if (second && valuesAgree(c, second)) return fact(c, "two-reads")
 			const strong = (await read(c.page, [c.field], "strong")).find((x) => x.field === c.field)
 			if (strong && (valuesAgree(strong, c) || (second && valuesAgree(strong, second)))) return fact(strong, "two-reads")
 			return null
 		}
-		if (valueMatches(c, await store.textIn(doc, c.page, pad(c.region)))) return fact(c, "text")
+		if (own !== null && valueMatches(c, own)) return fact(c, "text", own)
 		const strong = (await read(c.page, [c.field], "strong")).find((x) => x.field === c.field)
-		if (strong && valueMatches(strong, await store.textIn(doc, strong.page, pad(strong.region)))) return fact(strong, "text")
+		const strongText = strong ? await regionText(strong) : null
+		if (strong && strongText && valueMatches(strong, strongText)) return fact(strong, "text", strongText)
 		return null
 	}
 

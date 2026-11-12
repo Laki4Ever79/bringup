@@ -143,3 +143,19 @@ test("one log line per candidate tried", async () => {
 	assert.deepEqual(l.models, ["gpt-5.4-mini"])
 	assert.ok(l.facts >= 8)
 })
+
+test("the datasheet's package name feeds the footprint search when no listing names one", async () => {
+	const s = setup()
+	const seen: (string | undefined)[] = []
+	s.deps.distributors = [{ name: "x", lookup: async (mpn) => ({ distributor: "x", mpn, stock: 5, priceUsd: 1, assemblerStocked: true, datasheetUrl: "https://example.com/brg-amp1.pdf" }) }]
+	s.deps.footprint = async (p) => {
+		seen.push(p.packageName)
+		return FOOTPRINT
+	}
+	const { fakeReader } = await import("./fixtures/learn/reader.ts")
+	const { BudgetedReader } = await import("../src/learn/budget.ts")
+	const withPackage = { first: { ...AMP_SCRIPT.first, 2: { ...AMP_SCRIPT.first[2], package: { value: "QFN-10", region: line(130) } } } }
+	s.deps.reader = new BudgetedReader(fakeReader(withPackage).reader, s.budget)
+	await learnPart(NEED, s.deps)
+	assert.deepEqual(seen, ["QFN-10"])
+})

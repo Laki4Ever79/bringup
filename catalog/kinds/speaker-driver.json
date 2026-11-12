@@ -1,8 +1,6 @@
 {
 	"kind": "speaker-driver",
 	"placement": "case",
-	"mountHoles": true,
-	"powered": false,
 	"fields": [
 		{
 			"field": "outline",

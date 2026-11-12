@@ -1,8 +1,6 @@
 {
 	"kind": "ldo",
 	"placement": "board",
-	"mountHoles": false,
-	"powered": true,
 	"fields": [
 		{
 			"field": "outline",
@@ -29,10 +27,6 @@
 			"what": "recommended operating supply range [min, max]"
 		},
 		{
-			"field": "footprint",
-			"what": "the package / land pattern name"
-		},
-		{
 			"field": "outputV",
 			"unit": "V",
 			"what": "output voltage"
@@ -51,6 +45,10 @@
 			"field": "dropoutMv",
 			"unit": "mV",
 			"what": "dropout at full load"
+		},
+		{
+			"field": "package",
+			"what": "the package name as printed (e.g. QFN-16, SOT-23-5): a hint for the footprint search, never the footprint itself"
 		}
 	],
 	"critical": [

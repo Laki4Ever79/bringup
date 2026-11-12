@@ -1,8 +1,6 @@
 {
 	"kind": "sensor",
 	"placement": "board",
-	"mountHoles": false,
-	"powered": true,
 	"fields": [
 		{
 			"field": "outline",
@@ -29,10 +27,6 @@
 			"what": "recommended operating supply range [min, max]"
 		},
 		{
-			"field": "footprint",
-			"what": "the package / land pattern name"
-		},
-		{
 			"field": "i2cAddress",
 			"what": "I2C address"
 		},
@@ -40,6 +34,10 @@
 			"field": "activeUa",
 			"unit": "µA",
 			"what": "current while measuring"
+		},
+		{
+			"field": "package",
+			"what": "the package name as printed (e.g. QFN-16, SOT-23-5): a hint for the footprint search, never the footprint itself"
 		}
 	],
 	"critical": [],

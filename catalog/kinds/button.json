@@ -1,8 +1,6 @@
 {
 	"kind": "button",
 	"placement": "board",
-	"mountHoles": false,
-	"powered": false,
 	"fields": [
 		{
 			"field": "outline",
@@ -19,13 +17,13 @@
 			"what": "pin names in pin-number order"
 		},
 		{
-			"field": "footprint",
-			"what": "the package / land pattern name"
-		},
-		{
 			"field": "travelMm",
 			"unit": "mm",
 			"what": "key travel"
+		},
+		{
+			"field": "package",
+			"what": "the package name as printed (e.g. QFN-16, SOT-23-5): a hint for the footprint search, never the footprint itself"
 		}
 	],
 	"critical": [],

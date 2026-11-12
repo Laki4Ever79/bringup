@@ -130,8 +130,9 @@ async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: L
 	const addFootprint = async () => {
 		if (kind.placement !== "board" || found.some((f) => f.field === "footprint")) return
 		const pins = found.find((f) => f.field === "pins")?.value
+		const pkg = found.find((f) => f.field === "package")?.value
 		const lcscListing = listings.find((l) => l.distributor === "lcsc")
-		const fp = await deps.footprint({ mpn, lcsc: lcscListing?.sku, packageName: listings.find((l) => l.package)?.package, pins: typeof pins === "string" ? pins.split(",").map((p) => p.trim()).filter(Boolean) : [] })
+		const fp = await deps.footprint({ mpn, lcsc: lcscListing?.sku, packageName: listings.find((l) => l.package)?.package ?? (typeof pkg === "string" ? pkg : undefined), pins: typeof pins === "string" ? pins.split(",").map((p) => p.trim()).filter(Boolean) : [] })
 		if (fp) found.push(fp)
 	}
 	await addFootprint()

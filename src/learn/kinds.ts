@@ -10,10 +10,6 @@ export const GENERIC_CRITICAL: readonly string[] = ["outline", "height", "mountH
 const Kind = z.object({
 	kind: z.string().min(1),
 	placement: z.enum(["board", "case"]),
-	// Whether parts of this kind are held by mount holes (a speaker driver) rather than by their solder joints.
-	mountHoles: z.boolean(),
-	// Whether parts of this kind take a supply voltage (an IC) rather than none (a resistor, a connector).
-	powered: z.boolean(),
 	fields: z.array(z.object({ field: z.string(), unit: z.string().optional(), what: z.string() })),
 	// Added to the generic list; a kind can never remove a generic critical field.
 	critical: z.array(z.string()),
@@ -24,11 +20,36 @@ const Kind = z.object({
 })
 export type KindFile = z.infer<typeof Kind>
 
+// The only exemptions from the generic list, kept here in code rather than in kind files: a kind file (which the
+// learner may draft for a new kind) can make learning stricter, never looser. Kinds soldered by their pins have no
+// mount holes; passive parts and connectors take no supply. Any kind not named here needs every generic fact.
+const NO_MOUNT_HOLES = new Set(["amplifier", "battery", "button", "capacitor", "charge-led", "charger", "connector", "ldo", "led", "mcu", "microphone", "motor-driver", "resistor", "sensor", "usb-c"])
+const UNPOWERED = new Set(["battery", "button", "capacitor", "charge-led", "connector", "led", "resistor", "speaker-driver", "usb-c"])
+
 export function criticalFields(kind: KindFile): string[] {
 	const generic = GENERIC_CRITICAL.filter(
-		(f) => !(f === "footprint" && kind.placement === "case") && !(f === "mountHoles" && !kind.mountHoles) && !((f === "supplyMaxV" || f === "supplyRange") && !kind.powered),
+		(f) => !(f === "footprint" && kind.placement === "case") && !(f === "mountHoles" && NO_MOUNT_HOLES.has(kind.kind)) && !((f === "supplyMaxV" || f === "supplyRange") && UNPOWERED.has(kind.kind)),
 	)
 	return [...new Set([...generic, ...kind.critical])]
+}
+
+const GENERIC_WHAT: Record<string, { unit?: string; what: string }> = {
+	outline: { unit: "mm", what: "body width × length (or diameter × depth for round parts)" },
+	height: { unit: "mm", what: "body height above the board or mounting face" },
+	mountHoles: { unit: "mm", what: "mount holes: count, diameter and their positions or pitch" },
+	pins: { what: "pin names in pin-number order" },
+	supplyMaxV: { unit: "V", what: "absolute maximum supply voltage" },
+	supplyRange: { unit: "V", what: "recommended operating supply range [min, max]" },
+}
+
+// What the reader is asked for: the kind's own fields plus every critical one it doesn't list, never the footprint
+// (that comes from a land-pattern library, footprint.ts).
+export function fieldsToRead(kind: KindFile): KindFile["fields"] {
+	const listed = kind.fields.filter((f) => f.field !== "footprint")
+	const missing = criticalFields(kind)
+		.filter((f) => f !== "footprint" && !listed.some((x) => x.field === f))
+		.map((f) => ({ field: f, ...(GENERIC_WHAT[f] ?? { what: f }) }))
+	return [...listed, ...missing]
 }
 
 // Every catalog/kinds/*.json, checked. A bad file throws, naming it: a kind file that quietly failed to load would

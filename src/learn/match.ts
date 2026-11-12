@@ -45,6 +45,8 @@ export interface ParsedNumber {
 	raw: string
 	// Joined to the number before it by a range separator ("2.5–5.5", "3.0 ~ 3.6", "-0.3 to 6.0").
 	rangeEnd?: boolean
+	// Joined to the number before it by "x" or "×" (dimensions).
+	chained?: boolean
 }
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -61,8 +63,10 @@ export function parseNumbers(text: string): ParsedNumber[] {
 	for (const m of text.matchAll(NUM_RE)) {
 		const start = m.index!
 		const prev = text[start - 1]
+		// "5.0x3.0mm": an x (or ×) between two numbers joins dimensions; the second number is a reading too.
+		const dimension = /[xX×]/.test(prev ?? "") && /\d/.test(text[start - 2] ?? "")
 		// Part of a longer token (a letter or digit run like "QFN10", "GPIO8") is no reading.
-		if (prev && /[A-Za-z_]/.test(prev) && !/[ØΦ⌀]/.test(prev)) continue
+		if (prev && /[A-Za-z_]/.test(prev) && !/[ØΦ⌀]/.test(prev) && !dimension) continue
 		let raw = m[1]
 		// "1,000" (comma then exactly three digits, no more) is a thousands separator; "2,2" is a decimal comma.
 		const thousands = /^\d{1,3},\d{3}$/.test(raw) && !/[\d]/.test(text[start + raw.length] ?? "")
@@ -78,8 +82,13 @@ export function parseNumbers(text: string): ParsedNumber[] {
 		const after = text.slice(start + m[1].length)
 		const u = UNIT_RE.exec(after)
 		const n: ParsedNumber = { value, raw, ...(u ? { unit: u[1] } : {}), ...(rangeEnd ? { rangeEnd: true } : {}) }
-		// "2.5–5.5 V": the range's start takes its end's unit.
-		if (rangeEnd && n.unit && out.at(-1) && !out.at(-1)!.unit) out.at(-1)!.unit = n.unit
+		// "2.5–5.5 V": the range's start takes its end's unit; "4.0x4.0x0.75mm": every dimension in the chain does.
+		const chained = dimension || /^\s*[xX×]\s*$/.test(between)
+		if ((rangeEnd || chained) && n.unit) for (let k = out.length - 1; k >= 0 && !out[k].unit; k--) {
+			out[k].unit = n.unit
+			if (!out[k].chained && !out[k].rangeEnd) break
+		}
+		if (chained) n.chained = true
 		out.push(n)
 		last = start + m[1].length + (u ? u[0].length : 0)
 	}
@@ -103,8 +112,17 @@ export function valueMatches(fact: { value: number | string | number[]; unit?: s
 		const [a, b] = fact.value
 		return nums.some((n, i) => i + 1 < nums.length && sameNumber(n, a, fact.unit, relTol) && sameNumber(nums[i + 1], b, fact.unit, relTol))
 	}
-	// A text value ("I2S", or pin names "SD,GAIN,DIN"): every comma-separated name appears as a whole word.
-	if (typeof fact.value === "string") return tokens(fact.value).every((t) => new RegExp(`(^|[^A-Za-z0-9_])${esc(t)}($|[^A-Za-z0-9_])`, "i").test(text))
+	// A text value ("I2S", or pin names "SD,GAIN,DIN"): every comma-separated name appears as a whole word, in the
+	// given order, each occurrence its own (a pin-out's order is part of the fact; GND twice must be written twice).
+	if (typeof fact.value === "string") {
+		let from = 0
+		for (const t of tokens(fact.value)) {
+			const m = new RegExp(`(^|[^A-Za-z0-9_])(${esc(t)})(?=$|[^A-Za-z0-9_])`, "i").exec(text.slice(from))
+			if (!m) return false
+			from += m.index + m[0].length
+		}
+		return true
+	}
 	return nums.some((n) => sameNumber(n, fact.value as number, fact.unit, relTol))
 }
 
