@@ -25,9 +25,11 @@ export interface Fact {
 	inputs?: string[]
 	// Why a default was used.
 	reason?: string
-	// How a "datasheet" fact was confirmed: its text in the region, two agreeing model reads (image-only page), or the
-	// drawing overlay (plan 3).
-	check?: "text" | "two-reads" | "overlay"
+	// How a "datasheet" fact was confirmed: its text in the region, two agreeing model reads (image-only page), the
+	// drawing overlay (plan 3), or (a footprint) a library land pattern whose pad count matches the pins.
+	check?: "text" | "two-reads" | "overlay" | "pad-count"
+	// Where a fact came from when it isn't a page of a document: the library footprint's URL or name.
+	origin?: string
 }
 
 export interface LearnedDoc {
