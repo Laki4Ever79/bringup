@@ -72,3 +72,18 @@ test("web find keeps a datasheet only if it names the mpn", async () => {
 	assert.equal(hit?.distributor, "manufacturer")
 	assert.equal(await webFind("BRG-OTHER9", deps), null)
 })
+
+test("a datasheet names a part by its base number, without the ordering suffix", async () => {
+	const { namesPart } = await import("../src/learn/distributors.ts")
+	assert.ok(namesPart("TPA2005D1DGN", "The TPA2005D1 is a 1.4-W high-efficiency filter-free class-D audio amplifier"))
+	assert.ok(namesPart("PAM8302AASCR", "PAM8302A 2.5W MONO CLASS-D AUDIO AMPLIFIER"))
+	assert.ok(!namesPart("TPA2005D1DGN", "The TPA2012D2 is a stereo amplifier"))
+	assert.ok(!namesPart("TPA2005D1DGN", "TPA is a family"), "a short prefix isn't a name")
+})
+
+test("candidate part numbers lose a maker's name written in front", async () => {
+	const { parseCandidates } = await import("../src/learn/runtime.ts")
+	assert.deepEqual(parseCandidates('{"parts":[{"manufacturer":"Texas Instruments","mpn":"Texas Instruments TPA2005D1DGN"},{"manufacturer":"Diodes Incorporated","mpn":"PAM8302AASCR"}]}'), ["TPA2005D1DGN", "PAM8302AASCR"])
+	assert.deepEqual(parseCandidates('```json\n{"mpns":["MAX98357AETE+T"]}\n```'), ["MAX98357AETE+T"])
+	assert.deepEqual(parseCandidates("not json"), [])
+})

@@ -141,6 +141,19 @@ export async function findListings(mpn: string, ds: Distributor[]): Promise<List
 	return all.filter((l): l is Listing => l !== null)
 }
 
+// Does a document name this part? Datasheets name the base part ("TPA2005D1") and list the orderable numbers
+// ("TPA2005D1DGN") only in an ordering table, if at all: a word that is the MPN, or a long enough start of it (at
+// least 6 characters and 60% of it), counts.
+export function namesPart(mpn: string, text: string): boolean {
+	const want = mpnKey(mpn)
+	const min = Math.max(6, Math.ceil(want.length * 0.6))
+	for (const m of text.matchAll(/[A-Za-z0-9][A-Za-z0-9+._/-]*[A-Za-z0-9+]/g)) {
+		const t = mpnKey(m[0])
+		if (t === want || (t.length >= min && want.startsWith(t))) return true
+	}
+	return false
+}
+
 // OpenAI's web search tool is billed per search on top of tokens: an estimate, charged to the budget with every call.
 const SEARCH_FEE_USD = 0.01
 
@@ -183,13 +196,13 @@ export async function webFind(mpn: string, deps: WebFindDeps): Promise<Listing |
 		deps.budget.settle(est, usd)
 	}
 	const urls = [...new Set(text.match(/https?:\/\/[^\s<>()"']+?\.pdf\b[^\s<>()"']*/gi) ?? [])].slice(0, 3)
-	const named = new RegExp(`(^|[^A-Za-z0-9])${mpn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i")
 	for (const url of urls) {
 		const doc = await deps.store.fetch(url, "datasheet")
 		if ("error" in doc) continue
-		let firstPages = ""
-		for (let p = 1; p <= Math.min(3, doc.pages); p++) firstPages += `${await deps.store.textIn(doc, p)}\n`
-		if (named.test(firstPages)) return { distributor: "manufacturer", mpn, stock: null, priceUsd: null, assemblerStocked: false, datasheetUrl: url }
+		// The whole text (the ordering table is usually near the end); local, so free.
+		let text = ""
+		for (let p = 1; p <= Math.min(60, doc.pages); p++) text += `${await deps.store.textIn(doc, p)}\n`
+		if (namesPart(mpn, text)) return { distributor: "manufacturer", mpn, stock: null, priceUsd: null, assemblerStocked: false, datasheetUrl: url }
 	}
 	return null
 }
