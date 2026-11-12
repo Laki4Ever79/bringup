@@ -1,4 +1,5 @@
 import { SemanticEvent } from "@mozaik-ai/core"
+import type { PartNeed } from "./learn/types.ts"
 import type { Violation } from "./contract/consistency.ts"
 import type { GroundingFinding } from "./contract/grounding.ts"
 import type { DrcSummary } from "./tools/drc.ts"
@@ -130,6 +131,10 @@ export interface Payloads {
 	// clean toggles (tiltBlinkMs: the board was never tilted past expected.tiltDeg).
 	"bench.blink": { revision: number; source: BenchSourceName; blinkMs: number | null; tiltBlinkMs: number | null; expected: { blinkMs: number; tiltBlinkMs: number; tiltDeg: number }; pass: boolean; detail: string }
 	"bench.verdict": { revision: number; pass: boolean; source: BenchSourceName; checks: BenchCheck[] }
+	// The part learner at plan time (src/learn/runtime.ts): a part the plan needs, and what came of learning it.
+	"part.needed": { need: PartNeed }
+	"part.learned": { need: string; mpn: string; reused: boolean }
+	"part.unavailable": { need: string; reasons: { mpn: string; reason: string }[] }
 	// What an agent is doing right now, from Mozaik's loop events (agents/activity.ts). For the dashboard lanes.
 	"agent.activity": {
 		agentId: string

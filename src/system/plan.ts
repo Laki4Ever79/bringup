@@ -1,9 +1,11 @@
+import type { PartNeed } from "../learn/types.ts"
 import { DEFAULT_I2C_KHZ, specErrors, type SystemSpec } from "./spec.ts"
 import { CABLE_PF_PER_M, i2cCableLimit, PULLUP_OHM } from "./checks.ts"
 
 // A system plan: what the architect proposes from a sentence and the user edits before Build. `spec` is the system spec
 // the existing system run builds; its boards' briefs are "briefs/<name>.md" relative to the plan folder, with the text
 // in `briefs`. `layout` is the plan drawing's card positions (px), not where boards sit physically.
+
 export interface Plan {
 	id: string
 	version: number
@@ -16,6 +18,9 @@ export interface Plan {
 	layout: Record<string, { x: number; y: number }>
 	optional: string[]
 	spendUsd: number | null
+	// Parts the plan needs that the catalog doesn't have, of a kind Bringup can learn (catalog/kinds/): the part
+	// learner learns them at plan time (src/learn/runtime.ts); their progress is in the plan folder's learning.json.
+	needs?: PartNeed[]
 }
 
 export interface PlanIssue {

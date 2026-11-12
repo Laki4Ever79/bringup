@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { findFootprint, kicadPadCount } from "../src/learn/footprint.ts"
 
-const FIX = resolve(import.meta.dirname, "fixtures/learn")
+const FIX = resolve(import.meta.dirname, "../examples/learn")
 const easyeda = (file: string | null) =>
 	(async (u: string | URL | Request) => (file && String(u).includes("easyeda.com/api/products/") ? new Response(readFileSync(join(FIX, file))) : new Response("{}", { status: 404 }))) as unknown as typeof fetch
 const PINS = "SD,GAIN,DIN,BCLK,LRCLK,GND,VDD,OUTP,OUTN,GND".split(",")

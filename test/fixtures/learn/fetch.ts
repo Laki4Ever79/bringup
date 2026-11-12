@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-const FIX = import.meta.dirname
+const FIX = join(import.meta.dirname, "../../../examples/learn")
 
 // A fetch that serves fixture files by their name at any host, and counts requests.
 export function fixtureFetch(files: Record<string, string> = { "brg-amp1.pdf": "brg-amp1.pdf", "brg-spk40.pdf": "brg-spk40.pdf", "landing.html": "landing.html" }) {

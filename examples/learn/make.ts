@@ -1,5 +1,5 @@
 // Builds the part learner's synthetic fixtures: datasheets of fictional parts (BRG-AMP1, BRG-SPK40), written by us,
-// so no manufacturer's document is in the repo. Run: npx tsx test/fixtures/learn/make.ts
+// so no manufacturer's document is in the repo. Run: npx tsx examples/learn/make.ts
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { miniPdf } from "./minipdf.ts"

@@ -6,6 +6,8 @@ import type { UsageRecord } from "../inference/usage.ts"
 import { specErrors, type SystemSpec } from "./spec.ts"
 import { BUILT_KINDS } from "../contract/link-kinds.ts"
 import { boardNameIssue, type Plan } from "./plan.ts"
+import { loadKinds } from "../learn/kinds.ts"
+import type { PartNeed } from "../learn/types.ts"
 
 // The system architect: a sentence (or a plan plus a change in words) becomes a plan of boards, cables and briefs. One
 // model call on the fast model; scripted mode answers from fixed plans so the whole flow is free to try and test.
@@ -27,19 +29,32 @@ export const BUILDABLE: string = (() => {
 	const byRole = new Map<string, string[]>()
 	for (const p of loadCatalog(ROOT)) byRole.set(p.role, [...(byRole.get(p.role) ?? []), p.mpn])
 	const parts = [...byRole].map(([role, mpns]) => `- ${role}: ${mpns.join(", ")}`).join("\n")
-	return `Every board is a small board on one MCU, by default an ESP32-C3 (BLE, one free UART, one I2C bus); a board's brief may name another catalog MCU (an STM32 has no radio, and its own UART and I2C counts). Boards are powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). A board can also drive a small wheeled robot (one board on a printed chassis): differential drive with two DC gearmotors, a caster, a DRV8833 motor driver and a VL53L0X distance sensor, from catalog/mechanics.json (the mechanics checks and a simulated drive prove it). Nothing else can be built yet: no servos, cameras, screens, speakers or relays.`
+	return `Every board is a small board on one MCU, by default an ESP32-C3 (BLE, one free UART, one I2C bus); a board's brief may name another catalog MCU (an STM32 has no radio, and its own UART and I2C counts). Boards are powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). A board can also drive a small wheeled robot (one board on a printed chassis): differential drive with two DC gearmotors, a caster, a DRV8833 motor driver and a VL53L0X distance sensor, from catalog/mechanics.json (the mechanics checks and a simulated drive prove it). A part the catalog lacks can still be used when it is of a kind Bringup learns by itself from its datasheet (list it under "needs"): ${[...loadKinds(ROOT).keys()].filter((k) => !byRole.has(k)).join(", ")}. Nothing else can be built yet: no servos, cameras, screens or relays.`
 })()
 
 // Things people ask for that no board can have yet, and why.
-const CANT: [RegExp, string, string][] = [
+// The fourth entry, when there is one, is the part kind that would make it buildable: once catalog/kinds/ has that kind,
+// the part learner learns such a part at plan time and it is no longer can't-build.
+const CANT: [RegExp, string, string, string?][] = [
 	// Motors, wheels and a chassis are buildable since the mechanics backend (a wheeled robot); servos are not.
 	[/\bservos?\b/i, "servos", "no servo in the mechanics catalog yet (a wheeled robot's DC gearmotors are)"],
 	[/\bcamera\b/i, "a camera", "no such part in the catalog yet"],
 	[/\bscreen\b|\bdisplay\b/i, "a screen", "no such part in the catalog yet"],
-	[/\bspeaker\b|\bbuzzer\b/i, "a speaker", "no such part in the catalog yet"],
+	[/\bspeaker\b|\bbuzzer\b/i, "a speaker", "no such part in the catalog yet", "speaker-driver"],
 	[/\brelay\b/i, "a relay", "no such part in the catalog yet"],
 ]
-export const cantBuildFrom = (sentence: string) => CANT.filter(([re]) => re.test(sentence)).map(([, what, reason]) => ({ what, reason }))
+const LEARNABLE = new Set(loadKinds(ROOT).keys())
+export const cantBuildFrom = (sentence: string) => CANT.filter(([re, , , kind]) => re.test(sentence) && !(kind && LEARNABLE.has(kind))).map(([, what, reason]) => ({ what, reason }))
+
+// The parts a sentence asks for that the part learner can learn (the scripted architect's needs): a speaker and the
+// amplifier that drives it.
+export function scriptedNeeds(sentence: string, board: string): PartNeed[] {
+	if (!/\bspeaker\b|\bchime\b|\btalking\b/i.test(sentence) || !LEARNABLE.has("speaker-driver") || !LEARNABLE.has("amplifier")) return []
+	return [
+		{ id: "speaker", role: "speaker", kind: "speaker-driver", requirements: "a small speaker, about 40 mm, 8 ohm, 2-3 W, for spoken prompts and chimes", board },
+		{ id: "amplifier", role: "amplifier", kind: "amplifier", requirements: "an I2S class-D amplifier that drives the speaker from the board's supply", board },
+	]
+}
 
 // Card positions for the plan drawing: a row, keeping positions the user already dragged.
 export function layoutFor(names: string[], keep: Record<string, { x: number; y: number }> = {}): Record<string, { x: number; y: number }> {
@@ -58,7 +73,9 @@ export function scriptedPlan(sentence: string): ProposedPlan {
 	const several = !robot && (both || /\btwo\b.*\bboards?\b|\bboards\b|\bcable\b|\bseveral\b/i.test(sentence))
 	if (!several) {
 		const name = robot ? "rover" : /beacon/i.test(sentence) ? "beacon" : "logger"
+		const needs = scriptedNeeds(sentence, name)
 		return {
+			...(needs.length ? { needs } : {}),
 			sentence,
 			spec: { name: sentence.slice(0, 60), boards: [{ name, brief: `briefs/${name}.md` }], links: [] },
 			briefs: { [name]: read(`briefs/${name}.md`) },
@@ -109,9 +126,25 @@ Answer with one JSON object, no prose around it:
  "why": one or two plain sentences on why this split,
  "offBoard": [{"name": a bought part like a battery, "attachesTo": board name}],
  "cantBuild": [{"what": string, "reason": string}],
+ "needs": [{"id": short-id, "role": string, "kind": one of the learnable kinds, "requirements": what it must do, with numbers, "board": board name}],
  "optional": [board names that are nice to have]}`
 
 const stripFence = (t: string) => t.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "")
+
+// The architect's needs, kept only when their kind can be learned; ids made unique and safe.
+function validNeeds(raw: unknown, spec: SystemSpec): PartNeed[] {
+	if (!Array.isArray(raw)) return []
+	const out: PartNeed[] = []
+	for (const n of raw as Record<string, unknown>[]) {
+		if (typeof n?.kind !== "string" || !LEARNABLE.has(n.kind) || typeof n.requirements !== "string") continue
+		const base = String(n.id ?? n.kind).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 30) || n.kind
+		let id = base
+		for (let i = 2; out.some((x) => x.id === id); i++) id = `${base}-${i}`
+		const board = typeof n.board === "string" && spec.boards.some((b) => b.name === n.board) ? n.board : spec.boards[0]?.name
+		out.push({ id, role: typeof n.role === "string" && n.role ? n.role : n.kind, kind: n.kind, requirements: n.requirements, ...(board ? { board } : {}) })
+	}
+	return out
+}
 
 function validate(raw: unknown): { plan: Omit<ProposedPlan, "sentence" | "layout"> | null; errors: string[] } {
 	const o = raw as Partial<ProposedPlan> | null
@@ -126,7 +159,8 @@ function validate(raw: unknown): { plan: Omit<ProposedPlan, "sentence" | "layout
 	for (const b of spec.boards) if (typeof briefs[b.name] !== "string" || !briefs[b.name].trim()) errors.push(`board ${b.name}: write its brief`)
 	if (!spec.boards.length) errors.push("the plan needs at least one board")
 	if (errors.length) return { plan: null, errors }
-	return { plan: { spec, briefs, why: String(o.why ?? ""), offBoard: Array.isArray(o.offBoard) ? o.offBoard : [], cantBuild: Array.isArray(o.cantBuild) ? o.cantBuild : [], optional: Array.isArray(o.optional) ? o.optional : [] }, errors: [] }
+	const needs = validNeeds((o as { needs?: unknown }).needs, spec)
+	return { plan: { spec, briefs, why: String(o.why ?? ""), offBoard: Array.isArray(o.offBoard) ? o.offBoard : [], cantBuild: Array.isArray(o.cantBuild) ? o.cantBuild : [], optional: Array.isArray(o.optional) ? o.optional : [], ...(needs.length ? { needs } : {}) }, errors: [] }
 }
 
 export async function proposePlan(
