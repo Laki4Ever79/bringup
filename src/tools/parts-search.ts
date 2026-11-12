@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import type { Part } from "../contract/types.ts"
+import { readLearned, toCatalogPart } from "../learn/catalog.ts"
 
 // Exact LCSC lookup: /api/search?q=C<number> returns that one part, including zero and unknown stock.
 // Free-text search there ranks loosely, so the agents only ever look up parts that are already in the catalog.
@@ -27,7 +28,10 @@ const cache = new WeakMap<typeof fetch, Map<string, Live>>()
 
 export function loadCatalog(root: string): CatalogPart[] {
 	const entries = JSON.parse(readFileSync(join(root, "catalog/parts.json"), "utf8")) as CatalogPart[]
-	return entries.map((e) => ({ ...e, ...UNKNOWN }))
+	// Then the parts Bringup learned by itself (catalog/learned/); a hand entry wins on the same MPN.
+	const hand = new Set(entries.map((e) => e.mpn))
+	const learned = readLearned(root).filter((p) => !hand.has(p.mpn)).map(toCatalogPart)
+	return [...entries, ...learned].map((e) => ({ ...e, ...UNKNOWN }))
 }
 
 async function lookup(lcsc: string, f: typeof fetch, timeoutMs: number): Promise<Live> {
