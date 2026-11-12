@@ -17,6 +17,7 @@ export function doctorReport(env: Env, vars: Record<string, string | undefined>)
 		row("PlatformIO", tool(env.pio)),
 		row("QEMU", env.qemu ? "local" : "missing (optional: npm run setup -- --qemu)"),
 		row("Wokwi (sim)", !env.wokwi ? "CLI missing: npm run setup -- --wokwi" : env.wokwiToken ? "local (token set)" : "not set up (WOKWI_CLI_TOKEN not set)"),
+		row("poppler (PDF)", env.poppler ? "local" : "missing (optional: part learning needs pdfinfo, pdftotext, pdftoppm)"),
 		row("firmware sim", `→ ${{ wokwi: "Wokwi", qemu: "QEMU", none: "none" }[firmwareSimBackend(env) ?? "none"]}`),
 		"",
 		"Settings (from the environment or .env; values are never shown)",
