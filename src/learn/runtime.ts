@@ -28,6 +28,14 @@ export async function learnNeeds(
 	const learn = opts.learn ?? learnPart
 	const results = new Map<string, LearnResult>()
 	if (!needs.length) return results
+	// A failing progress callback (a full disk, a deleted plan folder) must not stop learning or leave it unresolved.
+	const update = (u: { need: string; result?: LearnResult }) => {
+		try {
+			opts.onUpdate(u)
+		} catch (e) {
+			console.error(`[learn] progress update for ${u.need} failed:`, e instanceof Error ? e.message : e)
+		}
+	}
 	const rt = defineRuntime<LearnState>()
 	rt.initializeRuntime({ state: new LearnState() })
 	const outbox = new Outbox((event, senderId) => rt.sendEvent(event, senderId), opts.tracePath ?? null)
@@ -44,12 +52,12 @@ export async function learnNeeds(
 					specification: when(({ event }) => isEvent(event, "part.needed") && event.payload.need.id === need.id),
 					processor: {
 						apply: () => {
-							opts.onUpdate({ need: need.id })
+							update({ need: need.id })
 							learn(need, opts.deps)
 								.catch((e): LearnResult => ({ status: "unavailable", reasons: [{ mpn: "", reason: e instanceof BudgetExhausted ? "spending cap reached" : `learning failed: ${e instanceof Error ? e.message : e}` }] }))
 								.then((r) => {
 									results.set(need.id, r)
-									opts.onUpdate({ need: need.id, result: r })
+									update({ need: need.id, result: r })
 									outbox.emit(r.status === "learned" ? makeEvent("part.learned", self.id, { need: need.id, mpn: r.part.mpn, reused: r.reused }) : makeEvent("part.unavailable", self.id, { need: need.id, reasons: r.reasons }), self.id)
 								})
 						},
@@ -80,10 +88,9 @@ export async function learnNeeds(
 // The part learner's dependencies for a plan: real (the user's OpenAI key, distributors, the repo's catalog) or mock
 // (the fictional parts in examples/learn/, written under the plan's folder so the real catalog never sees them). Every
 // model call is logged in the plan's usage.jsonl; every candidate tried in its learn.jsonl.
-export function learnDepsFor(env: Record<string, string | undefined>, repoRoot: string, planDir: string, mock: boolean, fetchImpl: typeof fetch = fetch): LearnDeps {
+export function learnDepsFor(env: Record<string, string | undefined>, repoRoot: string, planDir: string, mock: boolean, fetchImpl: typeof fetch = fetch, budget: Budget = new Budget(learnCap(env))): LearnDeps {
 	mkdirSync(planDir, { recursive: true })
 	const log = (l: LearnLog) => appendFileSync(join(planDir, "learn.jsonl"), JSON.stringify({ at: new Date().toISOString(), ...l }) + "\n")
-	const budget = new Budget(learnCap(env))
 	if (mock) {
 		const root = join(planDir, "mock-catalog")
 		return {
