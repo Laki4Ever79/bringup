@@ -131,7 +131,7 @@ async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env:
 		const text = await callModel(
 			{
 				system: "You pick electronic parts. Answer with JSON only.",
-				user: `Propose up to 3 real, currently produced parts (exact manufacturer part numbers) for this need, best first. Prefer parts in stock at LCSC/JLCPCB for parts soldered on the board, and parts with a public datasheet that gives dimensions, mount holes, pin-out and supply limits.\nKind: ${need.kind}\nRole: ${need.role}\nRequirements: ${need.requirements}${exclude.length ? `\nNot these: ${exclude.join(", ")}` : ""}\nAnswer: {"mpns": [string]}`,
+				user: `Propose up to 3 real, currently produced parts (exact manufacturer part numbers) for this need, best first. Prefer parts in stock at LCSC/JLCPCB for parts soldered on the board, and parts with a public datasheet that gives dimensions, mount holes, pin-out and supply limits.\nKind: ${need.kind}\nRole: ${need.role}\nRequirements: ${need.requirements}${exclude.length ? `\nNot these: ${exclude.join(", ")}` : ""}\nAnswer: {"parts": [{"manufacturer": string, "mpn": the manufacturer part number only, without the maker's name}]}`,
 			},
 			deps.env,
 			deps.fetchImpl,
@@ -141,12 +141,31 @@ async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env:
 			},
 			{ role: "integrator", maxTokens: 600, json: true, source: "part-learner" },
 		)
-		const mpns = (JSON.parse(text) as { mpns?: unknown }).mpns
-		return Array.isArray(mpns) ? mpns.filter((m): m is string => typeof m === "string" && m.trim() !== "").map((m) => m.trim()).slice(0, 3) : []
-	} catch (e) {
-		if (e instanceof SyntaxError) return []
-		throw e
+		return parseCandidates(text)
 	} finally {
 		deps.budget.settle(est, usd)
 	}
+}
+
+// The model's candidates as bare part numbers: {"parts": [{manufacturer, mpn}]} (or {"mpns": [...]}), a code fence
+// allowed, a maker's name written in front of the number removed ("Texas Instruments TPA2005D1DGN" → "TPA2005D1DGN").
+export function parseCandidates(text: string): string[] {
+	let raw: unknown
+	try {
+		raw = JSON.parse(text.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, ""))
+	} catch {
+		return []
+	}
+	const o = raw as { parts?: { manufacturer?: unknown; mpn?: unknown }[]; mpns?: unknown[] }
+	const items = Array.isArray(o?.parts) ? o.parts.map((p) => ({ maker: typeof p?.manufacturer === "string" ? p.manufacturer : "", mpn: p?.mpn })) : Array.isArray(o?.mpns) ? o.mpns.map((m) => ({ maker: "", mpn: m })) : []
+	const out: string[] = []
+	for (const { maker, mpn } of items) {
+		if (typeof mpn !== "string" || !mpn.trim()) continue
+		let m = mpn.trim()
+		if (maker && m.toLowerCase().startsWith(maker.toLowerCase())) m = m.slice(maker.length).trim()
+		// Still words before the number: keep the last word that has a digit in it.
+		if (/\s/.test(m)) m = m.split(/\s+/).filter((w) => /\d/.test(w)).at(-1) ?? m
+		if (m && !out.includes(m)) out.push(m)
+	}
+	return out.slice(0, 3)
 }

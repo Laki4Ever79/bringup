@@ -29,7 +29,7 @@ export const BUILDABLE: string = (() => {
 	const byRole = new Map<string, string[]>()
 	for (const p of loadCatalog(ROOT)) byRole.set(p.role, [...(byRole.get(p.role) ?? []), p.mpn])
 	const parts = [...byRole].map(([role, mpns]) => `- ${role}: ${mpns.join(", ")}`).join("\n")
-	return `Every board is a small board on one MCU, by default an ESP32-C3 (BLE, one free UART, one I2C bus); a board's brief may name another catalog MCU (an STM32 has no radio, and its own UART and I2C counts). Boards are powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). A board can also drive a small wheeled robot (one board on a printed chassis): differential drive with two DC gearmotors, a caster, a DRV8833 motor driver and a VL53L0X distance sensor, from catalog/mechanics.json (the mechanics checks and a simulated drive prove it). A part the catalog lacks can still be used when it is of a kind Bringup learns by itself from its datasheet (list it under "needs"): ${[...learnableKinds()].join(", ")}. Nothing else can be built yet: no servos, cameras, screens or relays.`
+	return `Every board is a small board on one MCU, by default an ESP32-C3 (BLE, one free UART, one I2C bus); a board's brief may name another catalog MCU (an STM32 has no radio, and its own UART and I2C counts). Boards are powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). A board can also drive a small wheeled robot (one board on a printed chassis): differential drive with two DC gearmotors, a caster, a DRV8833 motor driver and a VL53L0X distance sensor, from catalog/mechanics.json (the mechanics checks and a simulated drive prove it). A part the catalog lacks can still be used when it is of a kind Bringup learns by itself from its datasheet (list it under "needs"; it is then not can't-build): ${[...learnableKinds()].join(", ")}. A speaker is kind "speaker-driver" and always comes with an "amplifier" need that drives it. Nothing else can be built yet: no servos, cameras, screens or relays.`
 })()
 
 // Things people ask for that no board can have yet, and why.
@@ -55,6 +55,20 @@ export const cantBuildFrom = (sentence: string) => CANT.filter(([re, , , kind]) 
 
 // The parts a sentence asks for that the part learner can learn (the scripted architect's needs): a speaker and the
 // amplifier that drives it.
+// Words that mean a learnable kind in a can't-build line.
+const KIND_WORDS: Record<string, RegExp> = { "speaker-driver": /\bspeakers?\b|\bloudspeakers?\b/i, amplifier: /\bamplifiers?\b|\bamp\b/i }
+
+// A can't-build line the plan's needs cover is dropped: the part learner is learning that part. A line is covered only
+// when every learnable kind it names is among the needs (a speaker with only an amplifier listed stays can't-build).
+export function dropCovered<T extends { what: string; reason: string }>(cant: T[], needs: PartNeed[]): T[] {
+	const have = new Set(needs.map((n) => n.kind))
+	return cant.filter((c) => {
+		const named = Object.entries(KIND_WORDS).filter(([, re]) => re.test(`${c.what} ${c.reason}`)).map(([k]) => k)
+		const mainly = Object.entries(KIND_WORDS).filter(([, re]) => re.test(c.what)).map(([k]) => k)
+		return !(mainly.length && mainly.every((k) => have.has(k)) && named.every((k) => have.has(k)))
+	})
+}
+
 export function scriptedNeeds(sentence: string, board: string): PartNeed[] {
 	if (!/\bspeaker\b|\bchime\b|\btalking\b/i.test(sentence) || !LEARNABLE.has("speaker-driver") || !LEARNABLE.has("amplifier")) return []
 	return [
@@ -199,7 +213,7 @@ export async function proposePlan(
 			const keep = "plan" in input ? input.plan.layout : {}
 			// What the sentence asks for that no board can have stays listed even when the model leaves it out.
 			const named = new Set(v.plan.cantBuild.map((c) => String(c.what).toLowerCase()))
-			const cantBuild = [...v.plan.cantBuild, ...cantBuildFrom(sentence).filter((c) => ![...named].some((n) => n.includes(c.what.replace(/s$/, ""))))]
+			const cantBuild = dropCovered([...v.plan.cantBuild, ...cantBuildFrom(sentence).filter((c) => ![...named].some((n) => n.includes(c.what.replace(/s$/, ""))))], v.plan.needs ?? [])
 			return { ...v.plan, cantBuild, sentence, layout: layoutFor(v.plan.spec.boards.map((b) => b.name), keep) }
 		}
 		errors = v.errors

@@ -87,3 +87,14 @@ test("needs are only for kinds the hand catalog has no role for, never a chip", 
 	const needs = validNeeds([{ kind: "sensor", requirements: "CO2" }, { kind: "mcu", requirements: "bigger" }, { kind: "amplifier", requirements: "3 W" }], spec)
 	assert.deepEqual(needs.map((n) => n.kind), ["amplifier"])
 })
+
+test("a can't-build line a need covers is dropped; others stay", async () => {
+	const { dropCovered } = await import("../src/system/architect.ts")
+	const needs = [{ id: "s", role: "speaker", kind: "speaker-driver", requirements: "x" }, { id: "a", role: "amp", kind: "amplifier", requirements: "y" }]
+	const cant = [
+		{ what: "A complete desk speaker that actually makes sound", reason: "The catalog has no speaker or audio amplifier" },
+		{ what: "a screen", reason: "no such part" },
+	]
+	assert.deepEqual(dropCovered(cant, needs).map((c) => c.what), ["a screen"])
+	assert.equal(dropCovered(cant, [needs[1]]).length, 2, "an amplifier alone doesn't cover the speaker")
+})
