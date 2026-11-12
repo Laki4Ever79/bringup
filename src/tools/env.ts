@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { getuid, getgid } from "node:process"
 import { run, type RunResult } from "./exec.ts"
 import { renodePath } from "./renode.ts"
+import { popplerAvailable } from "../learn/docs.ts"
 
 export const KICAD_IMAGE = "kicad/kicad:10.0"
 
@@ -20,6 +21,8 @@ export interface Env {
 	wokwiToken?: boolean
 	// Renode in tools/renode (docs/mcu.md, Simulation): boots STM32 and nRF52 firmware. Optional.
 	renode?: string | null
+	// poppler's pdfinfo, pdftotext and pdftoppm on PATH: the part learner reads datasheets with them. Optional.
+	poppler?: boolean
 }
 
 const local = (root: string, rel: string) => (existsSync(join(root, rel)) ? join(root, rel) : null)
@@ -43,6 +46,7 @@ export async function detectEnvironment(root: string): Promise<Env> {
 		wokwi: local(root, "tools/wokwi-cli/wokwi-cli"),
 		wokwiToken: Boolean(process.env.WOKWI_CLI_TOKEN),
 		renode: renodePath(root),
+		poppler: Object.values(await popplerAvailable()).every(Boolean),
 	}
 }
 

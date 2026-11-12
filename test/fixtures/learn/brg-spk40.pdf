@@ -1,0 +1,58 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 485 >>
+stream
+BT /F1 16 Tf 50 732 Td (BRG-SPK40 40 mm Speaker) Tj ET
+BT /F1 10 Tf 50 672 Td (Nominal impedance) Tj ET
+BT /F1 10 Tf 300 672 Td (8 ohm) Tj ET
+BT /F1 10 Tf 50 652 Td (Rated power) Tj ET
+BT /F1 10 Tf 300 652 Td (3 W) Tj ET
+BT /F1 10 Tf 50 632 Td (Vas) Tj ET
+BT /F1 10 Tf 300 632 Td (0.12 L) Tj ET
+BT /F1 10 Tf 50 612 Td (Qts) Tj ET
+BT /F1 10 Tf 300 612 Td (0.85) Tj ET
+BT /F1 10 Tf 50 592 Td (Fs) Tj ET
+BT /F1 10 Tf 300 592 Td (650 Hz) Tj ET
+BT /F1 10 Tf 50 572 Td (Terminals: + -) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 519 >>
+stream
+150 292 m 350 292 l S
+420 492 m 420 402 l S
+350 442 m 350 497.23 305.23 542 250 542 c 194.76999999999998 542 150 497.23 150 442 c 150 386.77 194.76999999999998 342 250 342 c 305.23 342 350 386.77 350 442 c S
+136 442 m 136 445.3138 133.3138 448 130 448 c 126.6862 448 124 445.3138 124 442 c 124 438.6862 126.6862 436 130 436 c 133.3138 436 136 438.6862 136 442 c S
+376 442 m 376 445.3138 373.3138 448 370 448 c 366.6862 448 364 445.3138 364 442 c 364 438.6862 366.6862 436 370 436 c 373.3138 436 376 438.6862 376 442 c S
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000218 00000 n 
+0000000344 00000 n 
+0000000880 00000 n 
+0000001006 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1576
+%%EOF
