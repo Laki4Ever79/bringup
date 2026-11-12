@@ -1,0 +1,49 @@
+{
+	"kind": "mcu",
+	"placement": "board",
+	"mountHoles": false,
+	"powered": true,
+	"fields": [
+		{
+			"field": "outline",
+			"unit": "mm",
+			"what": "body width × length (or diameter × depth for round parts)"
+		},
+		{
+			"field": "height",
+			"unit": "mm",
+			"what": "body height above the board or mounting face"
+		},
+		{
+			"field": "pins",
+			"what": "pin names in pin-number order"
+		},
+		{
+			"field": "supplyMaxV",
+			"unit": "V",
+			"what": "absolute maximum supply voltage"
+		},
+		{
+			"field": "supplyRange",
+			"unit": "V",
+			"what": "recommended operating supply range [min, max]"
+		},
+		{
+			"field": "footprint",
+			"what": "the package / land pattern name"
+		},
+		{
+			"field": "sleepUa",
+			"unit": "µA",
+			"what": "deep-sleep current"
+		},
+		{
+			"field": "flashMb",
+			"unit": "MB",
+			"what": "on-chip or on-module flash"
+		}
+	],
+	"critical": [],
+	"defaults": {},
+	"calculated": {}
+}
