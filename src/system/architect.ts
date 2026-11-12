@@ -108,7 +108,7 @@ export function scriptedPlan(sentence: string): ProposedPlan {
 
 // The scripted architect understands one change in words: "remove <board>".
 function scriptedChange(plan: Plan, instruction: string): ProposedPlan {
-	const base: ProposedPlan = { sentence: plan.sentence, spec: plan.spec, briefs: plan.briefs, why: plan.why, offBoard: plan.offBoard, cantBuild: plan.cantBuild, layout: plan.layout, optional: plan.optional }
+	const base: ProposedPlan = { sentence: plan.sentence, spec: plan.spec, briefs: plan.briefs, why: plan.why, offBoard: plan.offBoard, cantBuild: plan.cantBuild, layout: plan.layout, optional: plan.optional, ...(plan.needs?.length ? { needs: plan.needs } : {}) }
 	const gone = /\b(?:remove|drop|delete)\s+(?:the\s+)?([\w-]+)/i.exec(instruction)?.[1]
 	if (!gone || !plan.spec.boards.some((b) => b.name === gone)) return { ...base, why: `${plan.why}\n\n(The scripted architect can only "remove <board>"; "${instruction}" needs real models.)` }
 	const { [gone]: _b, ...briefs } = plan.briefs
@@ -119,6 +119,7 @@ function scriptedChange(plan: Plan, instruction: string): ProposedPlan {
 		briefs,
 		layout,
 		optional: plan.optional.filter((n) => n !== gone),
+		...(plan.needs?.some((n) => n.board !== gone) ? { needs: plan.needs.filter((n) => n.board !== gone) } : { needs: undefined }),
 		why: `${plan.why}\n\nRemoved ${gone} as asked.`,
 	}
 }

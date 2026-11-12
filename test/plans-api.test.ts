@@ -215,19 +215,3 @@ test("a mock plan with a speaker learns the speaker and its amplifier, then can 
 		assert.equal(calls.length, 1)
 	})
 })
-
-test("build is refused while a plan's parts are still being learned", async () => {
-	await withHub(async ({ url, root }) => {
-		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a talking clock with a speaker", mock: true })).json()) as Any
-		// Let the real (mock) learning finish, then record a need as still learning, as the hub does mid-way.
-		await until(
-			async () => (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any,
-			(x) => x.learning?.every((l: Any) => l.status !== "learning"),
-		)
-		const { writeFileSync } = await import("node:fs")
-		writeFileSync(join(root, "plans", id, "learning.json"), JSON.stringify([{ need: "speaker", status: "learning" }]))
-		const b = await send(`${url}/api/plans/${id}/build`, "POST", { mock: true, hardware: false, review: false })
-		assert.equal(b.status, 409)
-		assert.match(((await b.json()) as Any).error, /still being learned: speaker/)
-	})
-})

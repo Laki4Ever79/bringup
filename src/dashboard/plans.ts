@@ -7,7 +7,9 @@ import { estimate } from "../system/estimate.ts"
 import { planChecks, type Plan, type PlanIssue } from "../system/plan.ts"
 import { planDiff, type PlanDiff } from "./plan-edit.js"
 import { learnDepsFor, learnNeeds } from "../learn/runtime.ts"
-import type { LearnResult } from "../learn/learner.ts"
+import type { LearnDeps, LearnResult } from "../learn/learner.ts"
+import { Budget, learnCap } from "../learn/budget.ts"
+import type { PartNeed } from "../learn/types.ts"
 
 // Plans live in <outRoot>/plans/<id>/: plan.json, briefs/<board>.md (what the system run reads), history.jsonl (every
 // saved version) and usage.jsonl (the architect's calls). Nothing here is a run until Build.
@@ -44,19 +46,28 @@ export interface LearningStatus {
 }
 
 const REPO_ROOT = join(import.meta.dirname, "../..")
+const INTERRUPTED = "interrupted: the dashboard stopped while learning; change the plan to try again"
 
 export class PlanStore {
 	constructor(
 		private readonly outRoot: string,
-		private readonly deps: { env?: Record<string, string | undefined>; fetchImpl?: typeof fetch; repoRoot?: string } = {},
+		private readonly deps: { env?: Record<string, string | undefined>; fetchImpl?: typeof fetch; repoRoot?: string; learn?: (need: PartNeed, deps: LearnDeps) => Promise<LearnResult> } = {},
 	) {}
 
+	// Needs being learned in this process, and each plan's one budget (so edits never start a fresh cap).
+	private readonly active = new Map<string, { budget: Budget; running: Set<string> }>()
+
+	// The plan's learning status. A need still marked "learning" that no learner in this process is working on was
+	// interrupted (the dashboard stopped): it is shown unavailable, so Build isn't refused forever; a change relearns it.
 	learning(id: string): LearningStatus[] {
+		let saved: LearningStatus[]
 		try {
-			return JSON.parse(readFileSync(join(this.dir(id), "learning.json"), "utf8")) as LearningStatus[]
+			saved = JSON.parse(readFileSync(join(this.dir(id), "learning.json"), "utf8")) as LearningStatus[]
 		} catch {
 			return []
 		}
+		const running = this.active.get(id)?.running
+		return saved.map((l) => (l.status === "learning" && !running?.has(l.need) ? { need: l.need, status: "unavailable", reasons: [{ mpn: "", reason: INTERRUPTED }] } : l))
 	}
 
 	private writeLearning(id: string, all: LearningStatus[]) {
@@ -65,27 +76,55 @@ export class PlanStore {
 		renameSync(`${file}.tmp`, file)
 	}
 
-	// Learns the plan's needs in the background (src/learn/runtime.ts); learning.json follows each one. Needs already
-	// learned or found unavailable for this plan aren't learned again.
+	// What this plan's part learning has spent so far (usage.jsonl, source part-learner), across restarts.
+	private learnSpent(id: string): number {
+		try {
+			return readFileSync(join(this.dir(id), "usage.jsonl"), "utf8")
+				.split("\n")
+				.filter(Boolean)
+				.map((l) => {
+					try {
+						return JSON.parse(l) as { source?: string; usd?: number | null }
+					} catch {
+						return {}
+					}
+				})
+				.filter((r) => r.source === "part-learner" && typeof r.usd === "number")
+				.reduce((t, r) => t + (r.usd as number), 0)
+		} catch {
+			return 0
+		}
+	}
+
+	// Learns the plan's needs in the background (src/learn/runtime.ts); learning.json follows each one. A need already
+	// learned, found unavailable, or still being learned here is not started again; an interrupted one is.
 	private startLearning(plan: Plan, mock: boolean) {
-		const known = new Map(this.learning(plan.id).filter((l) => l.status !== "learning").map((l) => [l.need, l]))
-		const needs = (plan.needs ?? []).filter((n) => !known.has(n.id))
-		const status: LearningStatus[] = [...(plan.needs ?? []).filter((n) => known.has(n.id)).map((n) => known.get(n.id)!), ...needs.map((n) => ({ need: n.id, status: "learning" as const }))]
+		const env = this.deps.env ?? process.env
+		const session = this.active.get(plan.id) ?? { budget: Object.assign(new Budget(learnCap(env)), { spent: this.learnSpent(plan.id) }), running: new Set<string>() }
+		this.active.set(plan.id, session)
+		const done = new Map(this.learning(plan.id).filter((l) => l.status !== "learning" && !l.reasons?.some((r) => r.reason === INTERRUPTED)).map((l) => [l.need, l]))
+		const needs = (plan.needs ?? []).filter((n) => !done.has(n.id) && !session.running.has(n.id))
+		const status: LearningStatus[] = (plan.needs ?? []).map((n) => done.get(n.id) ?? { need: n.id, status: "learning" as const })
+		for (const n of needs) session.running.add(n.id)
 		this.writeLearning(plan.id, status)
 		if (!needs.length) return
 		const asStatus = (need: string, r: LearnResult): LearningStatus =>
 			r.status === "learned" ? { need, status: "learned", mpn: r.part.mpn, reds: r.part.facts.filter((f) => f.status === "default").length, reused: r.reused } : { need, status: "unavailable", reasons: r.reasons }
-		const deps = learnDepsFor(this.deps.env ?? process.env, this.deps.repoRoot ?? REPO_ROOT, this.dir(plan.id), mock, this.deps.fetchImpl)
+		const deps = learnDepsFor(env, this.deps.repoRoot ?? REPO_ROOT, this.dir(plan.id), mock, this.deps.fetchImpl, session.budget)
+		const finish = (need: string, l: LearningStatus) => {
+			session.running.delete(need)
+			const rows = this.learning(plan.id)
+			this.writeLearning(plan.id, rows.some((x) => x.need === need) ? rows.map((x) => (x.need === need ? l : x)) : [...rows, l])
+		}
 		learnNeeds(needs, {
 			deps,
+			learn: this.deps.learn,
 			tracePath: join(this.dir(plan.id), "learn-trace.jsonl"),
 			onUpdate: (u) => {
-				if (!u.result) return
-				this.writeLearning(plan.id, this.learning(plan.id).map((l) => (l.need === u.need ? asStatus(u.need, u.result!) : l)))
+				if (u.result) finish(u.need, asStatus(u.need, u.result))
 			},
 		}).catch((e) => {
-			const reason = `learning failed: ${e instanceof Error ? e.message : e}`
-			this.writeLearning(plan.id, this.learning(plan.id).map((l) => (l.status === "learning" ? { need: l.need, status: "unavailable", reasons: [{ mpn: "", reason }] } : l)))
+			for (const n of needs) if (session.running.has(n.id)) finish(n.id, { need: n.id, status: "unavailable", reasons: [{ mpn: "", reason: `learning failed: ${e instanceof Error ? e.message : e}` }] })
 		})
 	}
 
