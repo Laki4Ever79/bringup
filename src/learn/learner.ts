@@ -28,7 +28,10 @@ export interface LearnLog {
 }
 
 export interface LearnDeps {
+	// Where learned parts are written (catalog/learned/ under it), and where the kind files are read (kindsRoot, by
+	// default the same). Mock runs write under the plan's folder, never into the real catalog.
 	root: string
+	kindsRoot?: string
 	store: DocStore
 	reader: PageReader
 	budget: Budget
@@ -183,7 +186,7 @@ const better = (a: LearnedPart, b: LearnedPart) => {
 // and (on the board) assembler-stocked wins at once, otherwise the best complete one. Only the winner is written to
 // catalog/learned/. The spending cap reached anywhere ends it with nothing written.
 export async function learnPart(need: PartNeed, deps: LearnDeps): Promise<LearnResult> {
-	const kind = loadKinds(deps.root).get(need.kind)
+	const kind = loadKinds(deps.kindsRoot ?? deps.root).get(need.kind)
 	if (!kind) return { status: "unavailable", reasons: [{ mpn: "", reason: `no kind file for "${need.kind}"` }] }
 	const reasons: { mpn: string; reason: string }[] = []
 	let best: LearnedPart | null = null

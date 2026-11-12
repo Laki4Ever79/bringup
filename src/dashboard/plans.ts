@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto"
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { appendUsage, readSpend, type Spend } from "../inference/usage.ts"
 import { proposePlan } from "../system/architect.ts"
 import { estimate } from "../system/estimate.ts"
 import { planChecks, type Plan, type PlanIssue } from "../system/plan.ts"
 import { planDiff, type PlanDiff } from "./plan-edit.js"
+import { learnDepsFor, learnNeeds } from "../learn/runtime.ts"
+import type { LearnResult } from "../learn/learner.ts"
 
 // Plans live in <outRoot>/plans/<id>/: plan.json, briefs/<board>.md (what the system run reads), history.jsonl (every
 // saved version) and usage.jsonl (the architect's calls). Nothing here is a run until Build.
@@ -26,13 +28,66 @@ export interface PlanView {
 	estimate?: ReturnType<typeof estimate>
 	// What planning has spent (the architect's calls): calls 0 means scripted, usd null with calls means unknown.
 	spend?: Spend
+	// The part learner's progress on the plan's needs (learning.json).
+	learning?: LearningStatus[]
 }
+
+// One need's state: being learned, learned (which part, how many red defaults, reused from the catalog or not), or
+// unavailable (each candidate's reason).
+export interface LearningStatus {
+	need: string
+	status: "learning" | "learned" | "unavailable"
+	mpn?: string
+	reds?: number
+	reused?: boolean
+	reasons?: { mpn: string; reason: string }[]
+}
+
+const REPO_ROOT = join(import.meta.dirname, "../..")
 
 export class PlanStore {
 	constructor(
 		private readonly outRoot: string,
-		private readonly deps: { env?: Record<string, string | undefined>; fetchImpl?: typeof fetch } = {},
+		private readonly deps: { env?: Record<string, string | undefined>; fetchImpl?: typeof fetch; repoRoot?: string } = {},
 	) {}
+
+	learning(id: string): LearningStatus[] {
+		try {
+			return JSON.parse(readFileSync(join(this.dir(id), "learning.json"), "utf8")) as LearningStatus[]
+		} catch {
+			return []
+		}
+	}
+
+	private writeLearning(id: string, all: LearningStatus[]) {
+		const file = join(this.dir(id), "learning.json")
+		writeFileSync(`${file}.tmp`, JSON.stringify(all, null, "\t"))
+		renameSync(`${file}.tmp`, file)
+	}
+
+	// Learns the plan's needs in the background (src/learn/runtime.ts); learning.json follows each one. Needs already
+	// learned or found unavailable for this plan aren't learned again.
+	private startLearning(plan: Plan, mock: boolean) {
+		const known = new Map(this.learning(plan.id).filter((l) => l.status !== "learning").map((l) => [l.need, l]))
+		const needs = (plan.needs ?? []).filter((n) => !known.has(n.id))
+		const status: LearningStatus[] = [...(plan.needs ?? []).filter((n) => known.has(n.id)).map((n) => known.get(n.id)!), ...needs.map((n) => ({ need: n.id, status: "learning" as const }))]
+		this.writeLearning(plan.id, status)
+		if (!needs.length) return
+		const asStatus = (need: string, r: LearnResult): LearningStatus =>
+			r.status === "learned" ? { need, status: "learned", mpn: r.part.mpn, reds: r.part.facts.filter((f) => f.status === "default").length, reused: r.reused } : { need, status: "unavailable", reasons: r.reasons }
+		const deps = learnDepsFor(this.deps.env ?? process.env, this.deps.repoRoot ?? REPO_ROOT, this.dir(plan.id), mock, this.deps.fetchImpl)
+		learnNeeds(needs, {
+			deps,
+			tracePath: join(this.dir(plan.id), "learn-trace.jsonl"),
+			onUpdate: (u) => {
+				if (!u.result) return
+				this.writeLearning(plan.id, this.learning(plan.id).map((l) => (l.need === u.need ? asStatus(u.need, u.result!) : l)))
+			},
+		}).catch((e) => {
+			const reason = `learning failed: ${e instanceof Error ? e.message : e}`
+			this.writeLearning(plan.id, this.learning(plan.id).map((l) => (l.status === "learning" ? { need: l.need, status: "unavailable", reasons: [{ mpn: "", reason }] } : l)))
+		})
+	}
 
 	private dir(id: string) {
 		return join(this.outRoot, "plans", id)
@@ -63,7 +118,7 @@ export class PlanStore {
 
 	view(id: string): PlanView | null {
 		const plan = this.get(id)
-		return plan ? { plan, issues: planChecks(plan), estimate: estimate(plan, this.outRoot), spend: readSpend(this.dir(id)) } : null
+		return plan ? { plan, issues: planChecks(plan), estimate: estimate(plan, this.outRoot), spend: readSpend(this.dir(id)), learning: this.learning(id) } : null
 	}
 
 	async create(sentence: string, mock: boolean): Promise<Plan> {
@@ -72,7 +127,9 @@ export class PlanStore {
 		mkdirSync(dir, { recursive: true })
 		try {
 			const proposed = await proposePlan({ sentence }, { mock, env: this.deps.env, fetchImpl: this.deps.fetchImpl, onUsage: (r) => appendUsage(dir, r) })
-			return this.write({ ...proposed, id, version: 1, spendUsd: null })
+			const saved = this.write({ ...proposed, id, version: 1, spendUsd: null })
+			this.startLearning(saved, mock)
+			return saved
 		} catch (e) {
 			// A failed first call leaves no half plan behind (its usage, if any, is lost with it: there is no plan to show).
 			if (!existsSync(join(dir, "plan.json"))) rmSync(dir, { recursive: true, force: true })
@@ -98,6 +155,7 @@ export class PlanStore {
 		const proposed = await proposePlan({ plan: current, instruction }, { mock, env: this.deps.env, fetchImpl: this.deps.fetchImpl, onUsage: (r) => appendUsage(this.dir(id), r) })
 		if (this.get(id)?.version !== current.version) throw new PlanConflict()
 		const saved = this.write({ ...proposed, id, version: current.version + 1, spendUsd: null })
+		this.startLearning(saved, mock)
 		return { plan: saved, issues: planChecks(saved), estimate: estimate(saved, this.outRoot), spend: readSpend(this.dir(id)), diff: planDiff(current, saved) }
 	}
 
@@ -113,6 +171,8 @@ export class PlanStore {
 		if (!plan) throw Object.assign(new Error("unknown plan"), { status: 404 })
 		const issues = planChecks(plan)
 		if (issues.length) throw Object.assign(new Error(`fix the plan first: ${issues.map((i) => i.message).join("; ")}`), { status: 409 })
+		const learning = this.learning(id).filter((l) => l.status === "learning")
+		if (learning.length) throw Object.assign(new Error(`parts are still being learned: ${learning.map((l) => l.need).join(", ")}`), { status: 409 })
 		if (plan.spec.boards.length === 1) return { kind: "board", brief: plan.briefs[plan.spec.boards[0].name] }
 		const dir = this.dir(id)
 		for (const b of plan.spec.boards) writeFileSync(join(dir, "briefs", `${b.name}.md`), plan.briefs[b.name])

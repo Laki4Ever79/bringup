@@ -51,6 +51,11 @@
 	.est span, .basis { font-size: 12px; color: var(--ink-3); }
 	.cant { font-size: 13px; padding: 5px 0; border-bottom: 1px solid var(--line); }
 	.cant span { color: var(--ink-3); }
+	.learn { font-size: 13px; padding: 5px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+	.learn b { font-weight: 600; }
+	.learn .st { font: 600 11px var(--mono, ui-monospace, monospace); text-transform: uppercase; letter-spacing: .04em; }
+	.learn .st.learning { color: var(--ink-3); } .learn .st.learned { color: #1d7a3e; } .learn .st.unavailable { color: #b3261e; }
+	.learn .red { color: #b3261e; } .learn span.why { color: var(--ink-3); }
 	.change { display: flex; gap: 6px; }
 	.change input { flex: 1; border: 1.5px solid var(--ink); border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 14px; }
 	#go { display: block; width: 100%; background: var(--signal); color: #fff; border: 0; border-radius: 10px; padding: 11px; font-weight: 600; font-size: 16px; cursor: pointer; }
@@ -84,6 +89,7 @@
 	<aside>
 		<section><h4>Why split it this way</h4><div class="why" id="why"></div></section>
 		<section id="cant-sec" hidden><h4>Can't build yet</h4><div id="cant"></div></section>
+		<section id="learn-sec" hidden><h4>Parts Bringup is learning</h4><div id="learn"></div></section>
 		<section><h4>Before you build</h4>
 			<div class="est"><div><b id="usd">–</b><span>model cost (estimate)</span></div><div><b id="min">–</b><span>build time (estimate)</span></div></div>
 			<p class="basis" id="basis"></p>
@@ -116,6 +122,35 @@
 	const KIND_LABEL = { uart: "UART", i2c: "I²C", spi: "SPI", i2s: "I²S", espnow: "ESP-NOW", ble: "Bluetooth LE" }
 	const linkLabel = (l) => `${l.id} · ${KIND_LABEL[l.kind] ?? l.kind}${l.kind === "uart" ? ` · ${(l.baud ?? 115200) / 1000}k` : ""}${l.cable ? ` · ${l.cable.lengthMm / 10} cm` : ""}`
 
+	// The part learner's progress (learning.json): one line per need; polled while any part is still being learned.
+	let learnPoll = null
+	function renderLearning(learning) {
+		const needs = plan.needs ?? []
+		$("learn-sec").hidden = !needs.length
+		$("learn").innerHTML = needs
+			.map((n) => {
+				const l = learning.find((x) => x.need === n.id) ?? { status: "learning" }
+				const detail =
+					l.status === "learned"
+						? `<b>${esc(l.mpn)}</b>${l.reused ? " <span class=\"why\">(already in the catalog)</span>" : ""}${l.reds ? ` <span class="red">· ${l.reds} default value${l.reds === 1 ? "" : "s"}, not from a datasheet</span>` : ""}`
+						: l.status === "unavailable"
+							? `<span class="why">${esc((l.reasons ?? []).map((r) => (r.mpn ? `${r.mpn}: ${r.reason}` : r.reason)).join("; "))}</span>`
+							: `<span class="why">${esc(n.requirements)}</span>`
+				return `<div class="learn"><span class="st ${l.status}">${l.status === "learning" ? "learning…" : l.status}</span> ${esc(n.role)} ${detail}</div>`
+			})
+			.join("")
+		const busy = needs.some((n) => (learning.find((x) => x.need === n.id)?.status ?? "learning") === "learning")
+		if (busy && !learnPoll)
+			learnPoll = setInterval(async () => {
+				const r = await fetch(`/api/plans/${encodeURIComponent(id)}`, { cache: "no-store" }).catch(() => null)
+				if (r?.ok) renderLearning((await r.json()).learning ?? [])
+			}, 1500)
+		if (!busy && learnPoll) {
+			clearInterval(learnPoll)
+			learnPoll = null
+		}
+	}
+
 	async function load() {
 		const r = await fetch(`/api/plans/${encodeURIComponent(id)}`)
 		if (!r.ok) { document.querySelector("main").innerHTML = `<p style="padding:20px">No such plan. <a href="/">Start again</a></p>`; return }
@@ -129,6 +164,7 @@
 		$("why").textContent = plan.why || "–"
 		$("cant-sec").hidden = !plan.cantBuild?.length
 		$("cant").innerHTML = (plan.cantBuild ?? []).map((c) => `<div class="cant">${esc(c.what)} <span>· ${esc(c.reason)}</span></div>`).join("")
+		renderLearning(v.learning ?? [])
 		if (v.estimate) {
 			const e = v.estimate
 			$("min").textContent = e.minutes ? (e.minutes[0] === e.minutes[1] ? `~${e.minutes[0]} min` : `${e.minutes[0]}–${e.minutes[1]} min`) : "unknown"

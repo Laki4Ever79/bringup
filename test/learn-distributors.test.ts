@@ -7,7 +7,7 @@ import { Budget } from "../src/learn/budget.ts"
 import { createDocStore } from "../src/learn/docs.ts"
 import { digikey, distributorsFrom, findListings, lcsc, mouser, sameMpn, webFind, type Distributor } from "../src/learn/distributors.ts"
 
-const FIX = resolve(import.meta.dirname, "fixtures/learn")
+const FIX = resolve(import.meta.dirname, "../examples/learn")
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } })
 
 test("lcsc counts only a result with the exact mpn", async () => {

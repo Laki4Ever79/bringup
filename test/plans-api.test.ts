@@ -184,3 +184,50 @@ test("a drag records only the new positions in the plan's history; a real change
 		await hub.close()
 	}
 })
+
+const until = async <T>(get: () => Promise<T>, ok: (v: T) => boolean, ms = 20_000): Promise<T> => {
+	const end = Date.now() + ms
+	for (;;) {
+		const v = await get()
+		if (ok(v) || Date.now() > end) return v
+		await new Promise((r) => setTimeout(r, 100))
+	}
+}
+
+test("a mock plan with a speaker learns the speaker and its amplifier, then can be built", async () => {
+	await withHub(async ({ url, root, calls }) => {
+		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a talking clock with a speaker", mock: true })).json()) as Any
+		const first = (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any
+		assert.deepEqual(first.plan.cantBuild, [], "a speaker is learnable, so not can't-build")
+		assert.deepEqual(first.plan.needs.map((n: Any) => n.kind).sort(), ["amplifier", "speaker-driver"])
+		const v = await until(
+			async () => (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any,
+			(x) => x.learning?.every((l: Any) => l.status !== "learning"),
+		)
+		assert.deepEqual(v.learning.map((l: Any) => [l.need, l.status, l.mpn]).sort(), [
+			["amplifier", "learned", "BRG-AMP1"],
+			["speaker", "learned", "BRG-SPK40"],
+		])
+		assert.equal(v.learning.find((l: Any) => l.need === "speaker").reds, 1)
+		assert.ok(existsSync(join(root, "plans", id, "learn.jsonl")))
+		const b = await send(`${url}/api/plans/${id}/build`, "POST", { mock: true, hardware: false, review: false })
+		assert.equal(b.status, 201)
+		assert.equal(calls.length, 1)
+	})
+})
+
+test("build is refused while a plan's parts are still being learned", async () => {
+	await withHub(async ({ url, root }) => {
+		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a talking clock with a speaker", mock: true })).json()) as Any
+		// Let the real (mock) learning finish, then record a need as still learning, as the hub does mid-way.
+		await until(
+			async () => (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any,
+			(x) => x.learning?.every((l: Any) => l.status !== "learning"),
+		)
+		const { writeFileSync } = await import("node:fs")
+		writeFileSync(join(root, "plans", id, "learning.json"), JSON.stringify([{ need: "speaker", status: "learning" }]))
+		const b = await send(`${url}/api/plans/${id}/build`, "POST", { mock: true, hardware: false, review: false })
+		assert.equal(b.status, 409)
+		assert.match(((await b.json()) as Any).error, /still being learned: speaker/)
+	})
+})
