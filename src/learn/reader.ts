@@ -5,6 +5,8 @@ import { usageRecord, type UsageRecord } from "../inference/usage.ts"
 // The learn.jsonl log (cost and first-read match rate per model) is what tunes this choice.
 export const MODELS_LEARN = { cheap: "gpt-5.4-mini", strong: "gpt-5.4" } as const
 
+export const RETRY_MS = 3000
+
 export interface ReadRequest {
 	model: string
 	prompt: string
@@ -24,7 +26,8 @@ export function openAiReader(env: Record<string, string | undefined>, fetchImpl:
 	return {
 		async read(req) {
 			if (!env.OPENAI_API_KEY) throw new NoModelKey()
-			const res = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+			// One retry after a rate limit or a server error, then the error stands.
+			const post = () => fetchImpl("https://api.openai.com/v1/chat/completions", {
 				method: "POST",
 				signal: AbortSignal.timeout(120_000),
 				headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY}` },
@@ -40,6 +43,11 @@ export function openAiReader(env: Record<string, string | undefined>, fetchImpl:
 					],
 				}),
 			})
+			let res = await post()
+			if (res.status === 429 || res.status >= 500) {
+				await new Promise((r) => setTimeout(r, RETRY_MS))
+				res = await post()
+			}
 			const body = (await res.json()) as { choices?: { message?: { content?: string } }[]; error?: { message?: string }; usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } }
 			const record = usageRecord(req.model, "part-learner", body.usage?.prompt_tokens, body.usage?.prompt_tokens_details?.cached_tokens, body.usage?.completion_tokens)
 			onUsage(record)

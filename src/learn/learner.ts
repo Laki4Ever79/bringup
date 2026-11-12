@@ -204,7 +204,11 @@ export async function learnPart(need: PartNeed, deps: LearnDeps): Promise<LearnR
 				// Another learner may have finished between the check and the lock.
 				const now = learnedMpn(deps.root, mpn)
 				if (now) return { status: "learned", part: now, reused: true }
-				const t = await tryCandidate(mpn, need, kind, deps)
+				const t = await tryCandidate(mpn, need, kind, deps).catch((e) => {
+					// The cap ends the whole need; any other error (a provider outage, a broken PDF) ends only this candidate.
+					if (e instanceof BudgetExhausted) throw e
+					return { ok: false as const, reason: `failed: ${e instanceof Error ? e.message : e}`, stats: { calls: 0, strong: 0, models: new Set<string>() }, pages: 0, facts: 0, usd: 0 }
+				})
 				deps.log({ need: need.id, mpn, pages: t.pages, calls: t.stats.calls, models: [...t.stats.models], usd: Number(t.usd.toFixed(4)), firstReadMatched: t.ok ? Math.max(0, t.part.facts.filter((f) => f.status === "datasheet").length - t.stats.strong) : 0, facts: t.facts, outcome: t.ok ? "learned" : t.reason })
 				if (!t.ok) {
 					reasons.push({ mpn, reason: t.reason })

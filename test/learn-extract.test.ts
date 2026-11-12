@@ -142,3 +142,18 @@ test("a drawing region with no text on a page that has text takes the two-read p
 	const f = (await extractFacts(amp1, amp, { store, reader })).find((x) => x.field === "outline")!
 	assert.equal(f?.check, "two-reads")
 })
+
+test("concurrent calls can't together cross the cap: each reserves its worst case first", async () => {
+	// One worst-case page read is about $0.0086 on gpt-5.4-mini: one fits under $0.012, two don't.
+	const budget = new Budget(0.012)
+	let release!: () => void
+	const gate = new Promise<void>((r) => (release = r))
+	const slow = { read: async () => (await gate, { json: {}, usd: 0.001 }) }
+	const r = new BudgetedReader(slow, budget)
+	const req = { model: "gpt-5.4-mini", prompt: "x", images: [Buffer.alloc(1)], maxTokens: 1500, meta: { page: 1, fields: [], pass: "first" as const } }
+	const first = r.read(req)
+	await assert.rejects(r.read(req), BudgetExhausted, "the second call doesn't fit next to the first one's reservation")
+	release()
+	await first
+	assert.ok(Math.abs(budget.spent - 0.001) < 1e-9, "the reservation is replaced by the real cost")
+})

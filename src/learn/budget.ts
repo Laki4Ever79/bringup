@@ -15,13 +15,25 @@ export class BudgetExhausted extends Error {
 	}
 }
 
-// A call is allowed only if its worst-case estimate still fits, so the cap is never crossed by a call already in
-// flight. A call whose real price is unknown is charged its estimate, never counted as free.
+// A call is allowed only if its worst-case estimate still fits, and that estimate is reserved before the call, so
+// calls running at the same time (several needs learn at once) can't together cross the cap. When the call ends the
+// reservation is replaced by its real cost; a call whose real price is unknown keeps its estimate, never counted as
+// free.
 export class Budget {
 	spent = 0
 	constructor(readonly cap: number) {}
 	canSpend(estimateUsd: number): boolean {
-		return this.spent + estimateUsd <= this.cap
+		return this.spent + estimateUsd <= this.cap + 1e-12
+	}
+	// Reserves the estimate if it fits; false (nothing reserved) if not.
+	reserve(estimateUsd: number): boolean {
+		if (!this.canSpend(estimateUsd)) return false
+		this.spent += estimateUsd
+		return true
+	}
+	// Ends a reservation: the real cost replaces the estimate (or the estimate stays, when the cost is unknown).
+	settle(estimateUsd: number, usd: number | null): void {
+		this.spent += (usd ?? estimateUsd) - estimateUsd
 	}
 	charge(usd: number | null, estimateUsd: number): void {
 		this.spent += usd ?? estimateUsd
@@ -45,15 +57,15 @@ export class BudgetedReader implements PageReader {
 	) {}
 	async read(req: ReadRequest) {
 		const est = estimateUsd(req.model, req.images.length, req.maxTokens)
-		if (!this.budget.canSpend(est)) throw new BudgetExhausted(this.budget.spent, this.budget.cap)
-		// Charged even when the call fails: a failed call may still have been billed.
+		if (!this.budget.reserve(est)) throw new BudgetExhausted(this.budget.spent, this.budget.cap)
+		// Settled even when the call fails: a failed call may still have been billed, so it keeps its estimate.
 		let usd: number | null = null
 		try {
 			const r = await this.inner.read(req)
 			usd = r.usd
 			return r
 		} finally {
-			this.budget.charge(usd, est)
+			this.budget.settle(est, usd)
 		}
 	}
 }

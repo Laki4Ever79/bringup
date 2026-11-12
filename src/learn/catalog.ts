@@ -8,11 +8,18 @@ import type { LearnedPart } from "./types.ts"
 // themselves), merged into the catalog by loadCatalog.
 export const learnedDir = (root: string) => join(root, "catalog/learned")
 
-// A safe file name for any MPN: lower case, anything outside [a-z0-9._-] made "_", plus a short hash of the MPN
-// itself so names that sanitize alike ("A/B", "A_B") stay apart.
+// One key per part number however it's spelled: case, spaces, an ordering suffix after "#" ("#PBF") or a trailing "-TR".
+// File names, locks and comparisons all use it, so two spellings are never learned twice.
+export function mpnKey(mpn: string): string {
+	return mpn.trim().toUpperCase().split("#")[0].trim().replace(/-TR$/, "")
+}
+
+// A safe file name for any MPN: its key in lower case, anything outside [a-z0-9._-] made "_", plus a short hash of the
+// key itself so names that sanitize alike ("A/B", "A_B") stay apart.
 export function learnedFileName(mpn: string): string {
-	const safe = mpn.toLowerCase().replace(/[^a-z0-9._-]/g, "_").replace(/^\.+/, "_")
-	return `${safe}-${createHash("sha256").update(mpn).digest("hex").slice(0, 8)}.json`
+	const key = mpnKey(mpn)
+	const safe = key.toLowerCase().replace(/[^a-z0-9._-]/g, "_").replace(/^\.+/, "_")
+	return `${safe}-${createHash("sha256").update(key).digest("hex").slice(0, 8)}.json`
 }
 
 export function readLearned(root: string): LearnedPart[] {

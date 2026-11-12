@@ -1,5 +1,6 @@
 import { usageRecord, type UsageRecord } from "../inference/usage.ts"
 import { JLCSEARCH } from "../tools/parts-search.ts"
+import { mpnKey } from "./catalog.ts"
 import { BudgetExhausted, estimateUsd, type Budget } from "./budget.ts"
 import type { DocStore } from "./docs.ts"
 import { MODELS_LEARN } from "./reader.ts"
@@ -18,8 +19,7 @@ const TIMEOUT_MS = 10_000
 
 // Same part number: case-insensitive, ignoring an ordering suffix after "#" ("#PBF") or a trailing "-TR".
 export function sameMpn(a: string, b: string): boolean {
-	const norm = (s: string) => s.trim().toUpperCase().split("#")[0].replace(/-TR$/, "")
-	return norm(a) === norm(b)
+	return mpnKey(a) === mpnKey(b)
 }
 
 // jlcsearch (the same index parts-search.ts uses): an MPN query; only an exact MPN counts, because its free-text
@@ -157,8 +157,8 @@ export interface WebFindDeps {
 export async function webFind(mpn: string, deps: WebFindDeps): Promise<Listing | null> {
 	const model = MODELS_LEARN.cheap
 	const est = estimateUsd(model, 0, 800) + SEARCH_FEE_USD
-	if (!deps.budget.canSpend(est)) throw new BudgetExhausted(deps.budget.spent, deps.budget.cap)
 	if (!deps.env.OPENAI_API_KEY) return null
+	if (!deps.budget.reserve(est)) throw new BudgetExhausted(deps.budget.spent, deps.budget.cap)
 	let text = ""
 	let usd: number | null = null
 	try {
@@ -180,7 +180,7 @@ export async function webFind(mpn: string, deps: WebFindDeps): Promise<Listing |
 		if (!res.ok) return null
 		text = body.output_text ?? (body.output ?? []).flatMap((o) => o.content ?? []).map((c) => c.text ?? "").join("\n")
 	} finally {
-		deps.budget.charge(usd, est)
+		deps.budget.settle(est, usd)
 	}
 	const urls = [...new Set(text.match(/https?:\/\/[^\s<>()"']+?\.pdf\b[^\s<>()"']*/gi) ?? [])].slice(0, 3)
 	const named = new RegExp(`(^|[^A-Za-z0-9])${mpn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i")

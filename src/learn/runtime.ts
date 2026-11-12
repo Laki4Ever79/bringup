@@ -118,7 +118,7 @@ export function learnDepsFor(env: Record<string, string | undefined>, repoRoot: 
 // Candidate parts for a need: up to three MPNs from the cheap model, charged to the same budget.
 async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env: Record<string, string | undefined>; fetchImpl: typeof fetch; budget: Budget; onUsage: (r: UsageRecord) => void }): Promise<string[]> {
 	const est = estimateUsd(MODELS_LEARN.cheap, 0, 600)
-	if (!deps.budget.canSpend(est)) throw new BudgetExhausted(deps.budget.spent, deps.budget.cap)
+	if (!deps.budget.reserve(est)) throw new BudgetExhausted(deps.budget.spent, deps.budget.cap)
 	let usd: number | null = null
 	try {
 		const text = await callModel(
@@ -140,6 +140,6 @@ async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env:
 		if (e instanceof SyntaxError) return []
 		throw e
 	} finally {
-		deps.budget.charge(usd, est)
+		deps.budget.settle(est, usd)
 	}
 }
