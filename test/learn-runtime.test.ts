@@ -77,3 +77,13 @@ test("the scripted architect lists a speaker and its amplifier as needs", () => 
 	assert.ok(p.needs?.every((n) => n.board === p.spec.boards[0].name))
 	assert.deepEqual(scriptedPlan("a temperature logger").needs ?? [], [])
 })
+
+test("needs are only for kinds the hand catalog has no role for, never a chip", async () => {
+	const { learnableKinds, validNeeds } = await import("../src/system/architect.ts")
+	const k = learnableKinds()
+	assert.ok(k.has("speaker-driver") && k.has("amplifier"))
+	assert.ok(!k.has("sensor") && !k.has("mcu") && !k.has("ldo"))
+	const spec = { name: "x", boards: [{ name: "clock", brief: "briefs/clock.md" }], links: [] }
+	const needs = validNeeds([{ kind: "sensor", requirements: "CO2" }, { kind: "mcu", requirements: "bigger" }, { kind: "amplifier", requirements: "3 W" }], spec)
+	assert.deepEqual(needs.map((n) => n.kind), ["amplifier"])
+})
