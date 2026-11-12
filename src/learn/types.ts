@@ -52,6 +52,9 @@ export interface Listing {
 	datasheetUrl?: string
 	photoUrl?: string
 	productUrl?: string
+	// The package as the distributor names it ("SOT-25"), and its one-line description: hints for the footprint search.
+	package?: string
+	description?: string
 }
 
 export interface LearnedPart {
