@@ -68,9 +68,10 @@ test("web find keeps a datasheet only if it names the mpn", async () => {
 	const store = createDocStore(mkdtempSync(join(tmpdir(), "web-")), f)
 	const deps = { env: { OPENAI_API_KEY: "k" }, fetchImpl: f, budget: new Budget(1), store, onUsage: () => {} }
 	const hit = await webFind("BRG-AMP1", deps)
-	assert.equal(hit?.datasheetUrl, "https://example.com/brg-amp1.pdf")
-	assert.equal(hit?.distributor, "manufacturer")
-	assert.equal(await webFind("BRG-OTHER9", deps), null)
+	assert.ok(hit && !("missed" in hit))
+	assert.equal(hit.datasheetUrl, "https://example.com/brg-amp1.pdf")
+	assert.equal(hit.distributor, "manufacturer")
+	assert.deepEqual(await webFind("BRG-OTHER9", deps), { missed: "1 link, 1 not naming the part" })
 })
 
 test("a datasheet names a part by its base number, without the ordering suffix", async () => {

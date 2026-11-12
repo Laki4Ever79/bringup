@@ -115,14 +115,20 @@ async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: L
 		return null
 	}
 	let doc = await fetchFirst(urls)
+	let searched = "not tried"
 	if (!doc) {
 		const found = await deps.webFind(mpn)
-		if (found?.datasheetUrl) {
+		if (found && "missed" in found) searched = found.missed
+		else if (found?.datasheetUrl) {
 			listings.push(found)
 			doc = await fetchFirst([found.datasheetUrl])
-		}
+			if (!doc) searched = "its link didn't open"
+		} else searched = "nothing"
 	}
-	if (!doc) return end({ ok: false, reason: "no datasheet found" })
+	if (!doc) {
+		const listed = urls.length ? `${urls.length} distributor link${urls.length === 1 ? "" : "s"} didn't open` : listings.length ? "distributor listings without a datasheet link" : "no distributor listing"
+		return end({ ok: false, reason: `no datasheet found (${listed}; web search: ${searched})` })
+	}
 	docs.push(doc)
 	pages += Math.min(doc.pages, 12)
 	let found = await extractFacts(doc, kind, { store: deps.store, reader })
