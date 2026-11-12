@@ -1,5 +1,10 @@
 # Parts catalog
 
+Two kinds of entries: the hand-written ones in `parts.json` (below), and parts Bringup learned by itself from their
+datasheets in `learned/` (one JSON file per part: every number with its source page and region, or its formula, or its
+stated default). `kinds/` holds one file per part kind: the fields to learn, which are critical, defaults and formulas.
+See docs/system.md, "Part learner". A hand entry wins over a learned one with the same MPN.
+
 `parts.json` lists the parts the agents may pick. Each entry is `{ref?, role, mpn, lcsc, footprint, pins[]}`.
 `footprint` is a tscircuit footprinter string, and `pins` are the labels given to `pinLabels` in order
 (`pins[0]` → `pin1`). Every footprint here was built and autorouted with tscircuit 0.0.3042 on a 50×30 mm board
