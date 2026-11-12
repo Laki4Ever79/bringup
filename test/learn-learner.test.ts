@@ -1,0 +1,145 @@
+import { test } from "node:test"
+import assert from "node:assert/strict"
+import { cpSync, existsSync, mkdirSync, mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+
+import { join, resolve } from "node:path"
+import { Budget, BudgetedReader } from "../src/learn/budget.ts"
+import { learnedDir, readLearned } from "../src/learn/catalog.ts"
+import { createDocStore } from "../src/learn/docs.ts"
+import type { Distributor } from "../src/learn/distributors.ts"
+import { learnPart, type LearnDeps, type LearnLog } from "../src/learn/learner.ts"
+import type { Fact, PartNeed } from "../src/learn/types.ts"
+import { fixtureFetch } from "./fixtures/learn/fetch.ts"
+import { fakeReader } from "./fixtures/learn/reader.ts"
+
+const ROOT = resolve(import.meta.dirname, "..")
+const row = (y: number): [number, number, number, number] => [0.4, (y - 12) / 792, 0.4, 20 / 792]
+const line = (y: number): [number, number, number, number] => [0.05, (y - 14) / 792, 0.9, 24 / 792]
+// The cheap model reads BRG-AMP1's datasheet correctly: every critical fact but the footprint (which comes from the
+// footprint search) is on its pages.
+const AMP_SCRIPT = {
+	first: {
+		1: {
+			supplyRange: { value: [2.5, 5.5], unit: "V", region: row(140) },
+			supplyMaxV: { value: 6, unit: "V", region: row(160) },
+			minLoadOhm: { value: 4, unit: "Ω", region: row(180) },
+			outputPowerW: { value: 3.2, unit: "W", region: row(200) },
+			interface: { value: "I2S", region: row(240) },
+		},
+		2: {
+			pins: { value: "SD,GAIN,DIN,BCLK,LRCLK,GND,VDD,OUTP,OUTN,GND", region: line(90) },
+			outline: { value: [3, 3], unit: "mm", region: line(130) },
+			height: { value: 0.75, unit: "mm", region: line(130) },
+		},
+	},
+}
+const NEED: PartNeed = { id: "n1", role: "amplifier", kind: "amplifier", requirements: "I2S class-D, 3 W into 4 ohm" }
+const FOOTPRINT: Fact = { field: "footprint", value: "easyeda:C999001", status: "datasheet", critical: true, check: "pad-count" }
+
+function setup(opts: { cap?: number; footprintFor?: (mpn: string) => Fact | null; candidates?: string[] } = {}) {
+	const root = mkdtempSync(join(tmpdir(), "learner-"))
+	mkdirSync(join(root, "catalog"), { recursive: true })
+	cpSync(join(ROOT, "catalog/kinds"), join(root, "catalog/kinds"), { recursive: true })
+	const ff = fixtureFetch()
+	const store = createDocStore(root, ff.fetch)
+	const fake = fakeReader(AMP_SCRIPT, 0.002)
+	const budget = new Budget(opts.cap ?? 2)
+	const listing = (mpn: string) => ({ distributor: "lcsc", mpn, sku: "C999001", stock: 500, priceUsd: 0.4, assemblerStocked: true, datasheetUrl: "https://example.com/brg-amp1.pdf", package: "QFN-10" })
+	const dist: Distributor = { name: "lcsc", lookup: async (mpn) => listing(mpn) }
+	const logs: LearnLog[] = []
+	const proposed: string[][] = []
+	const deps: LearnDeps = {
+		root,
+		store,
+		reader: new BudgetedReader(fake.reader, budget),
+		budget,
+		distributors: [dist],
+		webFind: async () => null,
+		footprint: async (p) => (opts.footprintFor ? opts.footprintFor(p.mpn) : FOOTPRINT),
+		propose: async (_need, exclude) => {
+			proposed.push(exclude)
+			return opts.candidates ?? ["BRG-AMP1", "BRG-AMP2", "BRG-AMP3"]
+		},
+		log: (l) => logs.push(l),
+	}
+	return { root, deps, calls: fake.calls, logs, budget, proposed }
+}
+
+test("the first good candidate is learned and written", async () => {
+	const s = setup()
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "learned")
+	if (r.status !== "learned") return
+	assert.equal(r.part.mpn, "BRG-AMP1")
+	assert.equal(r.reused, false)
+	assert.equal(r.part.placement, "board")
+	assert.ok(r.part.facts.some((f) => f.field === "footprint"))
+	assert.ok(r.part.costUsd > 0)
+	assert.deepEqual(readLearned(s.root).map((p) => p.mpn), ["BRG-AMP1"])
+})
+
+test("a missing critical fact switches to the next candidate, with the reason kept", async () => {
+	const s = setup({ footprintFor: (mpn) => (mpn === "BRG-AMP1" ? null : FOOTPRINT) })
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "learned")
+	if (r.status !== "learned") return
+	assert.equal(r.part.mpn, "BRG-AMP2")
+	assert.deepEqual(readLearned(s.root).map((p) => p.mpn), ["BRG-AMP2"])
+	assert.match(s.logs.find((l) => l.mpn === "BRG-AMP1")!.outcome, /missing critical: footprint/)
+})
+
+test("three failures make the part unavailable, each with its reason", async () => {
+	const s = setup({ footprintFor: () => null })
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "unavailable")
+	if (r.status !== "unavailable") return
+	assert.deepEqual(r.reasons.map((x) => x.mpn), ["BRG-AMP1", "BRG-AMP2", "BRG-AMP3"])
+	assert.ok(r.reasons.every((x) => /footprint/.test(x.reason)))
+	assert.deepEqual(readLearned(s.root), [])
+})
+
+test("the cap reached mid-part writes nothing", async () => {
+	const s = setup({ cap: 0.01 })
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "unavailable")
+	if (r.status !== "unavailable") return
+	assert.equal(r.reasons.at(-1)!.reason, "spending cap reached")
+	assert.ok(!existsSync(learnedDir(s.root)) || readLearned(s.root).length === 0)
+})
+
+test("an already learned part is reused without reading anything", async () => {
+	const s = setup()
+	await learnPart(NEED, s.deps)
+	const before = s.calls.length
+	const again = await learnPart(NEED, s.deps)
+	assert.equal(again.status, "learned")
+	if (again.status === "learned") assert.equal(again.reused, true)
+	assert.equal(s.calls.length, before)
+})
+
+test("the same mpn is learned once by two concurrent learners", async () => {
+	const s = setup()
+	const [a, b] = await Promise.all([learnPart(NEED, s.deps), learnPart({ ...NEED, id: "n2" }, s.deps)])
+	assert.equal(a.status, "learned")
+	assert.equal(b.status, "learned")
+	const firstReads = s.calls.filter((c) => c.meta.pass === "first").length
+	assert.equal(firstReads, 2, "one learner read the two pages; the other waited and reused")
+	assert.equal([a, b].filter((r) => r.status === "learned" && r.reused).length, 1)
+})
+
+test("one log line per candidate tried", async () => {
+	const s = setup({ footprintFor: (mpn) => (mpn === "BRG-AMP3" ? FOOTPRINT : null) })
+	await learnPart(NEED, s.deps)
+	assert.deepEqual(s.logs.map((l) => [l.mpn, l.outcome === "learned"]), [
+		["BRG-AMP1", false],
+		["BRG-AMP2", false],
+		["BRG-AMP3", true],
+	])
+	const l = s.logs[2]
+	assert.equal(l.need, "n1")
+	assert.equal(l.pages, 2)
+	assert.ok(l.calls >= 2)
+	assert.deepEqual(l.models, ["gpt-5.4-mini"])
+	assert.ok(l.facts >= 8)
+})
