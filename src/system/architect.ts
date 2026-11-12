@@ -29,7 +29,7 @@ export const BUILDABLE: string = (() => {
 	const byRole = new Map<string, string[]>()
 	for (const p of loadCatalog(ROOT)) byRole.set(p.role, [...(byRole.get(p.role) ?? []), p.mpn])
 	const parts = [...byRole].map(([role, mpns]) => `- ${role}: ${mpns.join(", ")}`).join("\n")
-	return `Every board is a small board on one MCU, by default an ESP32-C3 (BLE, one free UART, one I2C bus); a board's brief may name another catalog MCU (an STM32 has no radio, and its own UART and I2C counts). Boards are powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). A board can also drive a small wheeled robot (one board on a printed chassis): differential drive with two DC gearmotors, a caster, a DRV8833 motor driver and a VL53L0X distance sensor, from catalog/mechanics.json (the mechanics checks and a simulated drive prove it). A part the catalog lacks can still be used when it is of a kind Bringup learns by itself from its datasheet (list it under "needs"): ${[...loadKinds(ROOT).keys()].filter((k) => !byRole.has(k)).join(", ")}. Nothing else can be built yet: no servos, cameras, screens or relays.`
+	return `Every board is a small board on one MCU, by default an ESP32-C3 (BLE, one free UART, one I2C bus); a board's brief may name another catalog MCU (an STM32 has no radio, and its own UART and I2C counts). Boards are powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). A board can also drive a small wheeled robot (one board on a printed chassis): differential drive with two DC gearmotors, a caster, a DRV8833 motor driver and a VL53L0X distance sensor, from catalog/mechanics.json (the mechanics checks and a simulated drive prove it). A part the catalog lacks can still be used when it is of a kind Bringup learns by itself from its datasheet (list it under "needs"): ${[...learnableKinds()].join(", ")}. Nothing else can be built yet: no servos, cameras, screens or relays.`
 })()
 
 // Things people ask for that no board can have yet, and why.
@@ -43,7 +43,14 @@ const CANT: [RegExp, string, string, string?][] = [
 	[/\bspeaker\b|\bbuzzer\b/i, "a speaker", "no such part in the catalog yet", "speaker-driver"],
 	[/\brelay\b/i, "a relay", "no such part in the catalog yet"],
 ]
-const LEARNABLE = new Set(loadKinds(ROOT).keys())
+// Kinds the part learner may learn for a plan: those with a kind file but no role in the hand catalog (a learned part
+// must not become an alternative for a role the board code already wires, until plan 2 wires learned parts), and never
+// a chip (the chip learner is a separate tool).
+export function learnableKinds(): Set<string> {
+	const roles = new Set((JSON.parse(read("catalog/parts.json")) as { role: string }[]).map((p) => p.role))
+	return new Set([...loadKinds(ROOT).keys()].filter((k) => k !== "mcu" && !roles.has(k)))
+}
+const LEARNABLE = learnableKinds()
 export const cantBuildFrom = (sentence: string) => CANT.filter(([re, , , kind]) => re.test(sentence) && !(kind && LEARNABLE.has(kind))).map(([, what, reason]) => ({ what, reason }))
 
 // The parts a sentence asks for that the part learner can learn (the scripted architect's needs): a speaker and the
@@ -132,7 +139,7 @@ Answer with one JSON object, no prose around it:
 const stripFence = (t: string) => t.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "")
 
 // The architect's needs, kept only when their kind can be learned; ids made unique and safe.
-function validNeeds(raw: unknown, spec: SystemSpec): PartNeed[] {
+export function validNeeds(raw: unknown, spec: SystemSpec): PartNeed[] {
 	if (!Array.isArray(raw)) return []
 	const out: PartNeed[] = []
 	for (const n of raw as Record<string, unknown>[]) {
