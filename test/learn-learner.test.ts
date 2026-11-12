@@ -159,3 +159,22 @@ test("the datasheet's package name feeds the footprint search when no listing na
 	await learnPart(NEED, s.deps)
 	assert.deepEqual(seen, ["QFN-10"])
 })
+
+test("a model error on one candidate moves on to the next", async () => {
+	const s = setup()
+	const inner = s.deps.reader
+	let failed = false
+	s.deps.reader = {
+		async read(req) {
+			if (!failed) {
+				failed = true
+				throw new Error("gpt-5.4-mini: HTTP 500")
+			}
+			return inner.read(req)
+		},
+	}
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "learned")
+	if (r.status === "learned") assert.equal(r.part.mpn, "BRG-AMP2")
+	assert.match(s.logs[0].outcome, /HTTP 500/)
+})

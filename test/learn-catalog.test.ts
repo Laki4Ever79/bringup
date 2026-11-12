@@ -71,3 +71,9 @@ test("a bad learned file is skipped", () => {
 	writeFileSync(join(root, "catalog/learned/broken.json"), "{not json")
 	assert.deepEqual(readLearned(root).map((p) => p.mpn), ["BRG-AMP1"])
 })
+
+test("spellings of one part number share one file", () => {
+	const a = learnedFileName("MAX98357AETE+T")
+	assert.equal(learnedFileName("max98357aete+t"), a)
+	assert.equal(learnedFileName(" MAX98357AETE+T#PBF "), a)
+})
