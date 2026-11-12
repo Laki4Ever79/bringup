@@ -178,3 +178,12 @@ test("a model error on one candidate moves on to the next", async () => {
 	if (r.status === "learned") assert.equal(r.part.mpn, "BRG-AMP2")
 	assert.match(s.logs[0].outcome, /HTTP 500/)
 })
+
+test("'no datasheet found' says what the web search came back with", async () => {
+	const s = setup({ candidates: ["BRG-NONE"] })
+	s.deps.distributors = []
+	s.deps.webFind = async () => ({ missed: "2 links, none named the part" })
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "unavailable")
+	if (r.status === "unavailable") assert.equal(r.reasons[0].reason, "no datasheet found (no distributor listing; web search: 2 links, none named the part)")
+})

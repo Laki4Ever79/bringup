@@ -98,3 +98,12 @@ test("a can't-build line a need covers is dropped; others stay", async () => {
 	assert.deepEqual(dropCovered(cant, needs).map((c) => c.what), ["a screen"])
 	assert.equal(dropCovered(cant, [needs[1]]).length, 2, "an amplifier alone doesn't cover the speaker")
 })
+
+test("a speaker need always comes with an amplifier need", async () => {
+	const { validNeeds } = await import("../src/system/architect.ts")
+	const spec = { name: "x", boards: [{ name: "main", brief: "briefs/main.md" }], links: [] }
+	const needs = validNeeds([{ id: "audio1", kind: "speaker-driver", requirements: "40 mm, 8 ohm" }], spec)
+	assert.deepEqual(needs.map((n) => n.kind), ["speaker-driver", "amplifier"])
+	assert.equal(needs[1].board, "main")
+	assert.deepEqual(validNeeds([{ kind: "speaker-driver", requirements: "a" }, { kind: "amplifier", requirements: "b" }], spec).map((n) => n.kind), ["speaker-driver", "amplifier"])
+})

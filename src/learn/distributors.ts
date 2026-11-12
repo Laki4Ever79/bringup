@@ -167,7 +167,8 @@ export interface WebFindDeps {
 
 // The manufacturer's datasheet for exactly this MPN, found by a model with web search. A link counts only when the
 // PDF behind it names the MPN in its first pages' text: the model's say-so is not enough.
-export async function webFind(mpn: string, deps: WebFindDeps): Promise<Listing | null> {
+// null: no key, nothing found; { missed }: what the search came back with when no link worked, for the reason shown.
+export async function webFind(mpn: string, deps: WebFindDeps): Promise<Listing | { missed: string } | null> {
 	const model = MODELS_LEARN.cheap
 	const est = estimateUsd(model, 0, 800) + SEARCH_FEE_USD
 	if (!deps.env.OPENAI_API_KEY) return null
@@ -196,13 +197,18 @@ export async function webFind(mpn: string, deps: WebFindDeps): Promise<Listing |
 		deps.budget.settle(est, usd)
 	}
 	const urls = [...new Set(text.match(/https?:\/\/[^\s<>()"']+?\.pdf\b[^\s<>()"']*/gi) ?? [])].slice(0, 3)
+	if (!urls.length) return { missed: "no PDF links" }
+	let notPdf = 0
 	for (const url of urls) {
 		const doc = await deps.store.fetch(url, "datasheet")
-		if ("error" in doc) continue
+		if ("error" in doc) {
+			notPdf++
+			continue
+		}
 		// The whole text (the ordering table is usually near the end); local, so free.
 		let text = ""
 		for (let p = 1; p <= Math.min(60, doc.pages); p++) text += `${await deps.store.textIn(doc, p)}\n`
 		if (namesPart(mpn, text)) return { distributor: "manufacturer", mpn, stock: null, priceUsd: null, assemblerStocked: false, datasheetUrl: url }
 	}
-	return null
+	return { missed: `${urls.length} link${urls.length === 1 ? "" : "s"}${notPdf ? `, ${notPdf} not a readable PDF` : ""}${urls.length - notPdf ? `, ${urls.length - notPdf} not naming the part` : ""}` }
 }

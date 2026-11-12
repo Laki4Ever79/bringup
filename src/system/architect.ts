@@ -165,6 +165,12 @@ export function validNeeds(raw: unknown, spec: SystemSpec): PartNeed[] {
 		const board = typeof n.board === "string" && spec.boards.some((b) => b.name === n.board) ? n.board : spec.boards[0]?.name
 		out.push({ id, role: typeof n.role === "string" && n.role ? n.role : n.kind, kind: n.kind, requirements: n.requirements, ...(board ? { board } : {}) })
 	}
+	// A speaker can't make sound without an amplifier to drive it: one is added for each board with a speaker and none.
+	for (const spk of out.filter((n) => n.kind === "speaker-driver")) {
+		if (out.some((n) => n.kind === "amplifier" && n.board === spk.board)) continue
+		if (!LEARNABLE.has("amplifier")) continue
+		out.push({ id: `${spk.id}-amp`, role: "amplifier", kind: "amplifier", requirements: `an amplifier that drives this speaker (${spk.requirements}) from the board's supply, with a digital (I2S) input if the board's chip has one`, ...(spk.board ? { board: spk.board } : {}) })
+	}
 	return out
 }
 
