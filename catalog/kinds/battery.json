@@ -1,0 +1,39 @@
+{
+	"kind": "battery",
+	"placement": "board",
+	"mountHoles": false,
+	"powered": false,
+	"fields": [
+		{
+			"field": "outline",
+			"unit": "mm",
+			"what": "body width × length (or diameter × depth for round parts)"
+		},
+		{
+			"field": "height",
+			"unit": "mm",
+			"what": "body height above the board or mounting face"
+		},
+		{
+			"field": "pins",
+			"what": "pin names in pin-number order"
+		},
+		{
+			"field": "footprint",
+			"what": "the package / land pattern name"
+		},
+		{
+			"field": "pitchMm",
+			"unit": "mm",
+			"what": "contact pitch of the battery connector"
+		},
+		{
+			"field": "currentA",
+			"unit": "A",
+			"what": "rated current per contact"
+		}
+	],
+	"critical": [],
+	"defaults": {},
+	"calculated": {}
+}

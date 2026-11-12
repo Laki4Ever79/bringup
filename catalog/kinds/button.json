@@ -1,0 +1,34 @@
+{
+	"kind": "button",
+	"placement": "board",
+	"mountHoles": false,
+	"powered": false,
+	"fields": [
+		{
+			"field": "outline",
+			"unit": "mm",
+			"what": "body width × length (or diameter × depth for round parts)"
+		},
+		{
+			"field": "height",
+			"unit": "mm",
+			"what": "body height above the board or mounting face"
+		},
+		{
+			"field": "pins",
+			"what": "pin names in pin-number order"
+		},
+		{
+			"field": "footprint",
+			"what": "the package / land pattern name"
+		},
+		{
+			"field": "travelMm",
+			"unit": "mm",
+			"what": "key travel"
+		}
+	],
+	"critical": [],
+	"defaults": {},
+	"calculated": {}
+}

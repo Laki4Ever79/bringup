@@ -1,0 +1,62 @@
+{
+	"kind": "ldo",
+	"placement": "board",
+	"mountHoles": false,
+	"powered": true,
+	"fields": [
+		{
+			"field": "outline",
+			"unit": "mm",
+			"what": "body width × length (or diameter × depth for round parts)"
+		},
+		{
+			"field": "height",
+			"unit": "mm",
+			"what": "body height above the board or mounting face"
+		},
+		{
+			"field": "pins",
+			"what": "pin names in pin-number order"
+		},
+		{
+			"field": "supplyMaxV",
+			"unit": "V",
+			"what": "absolute maximum supply voltage"
+		},
+		{
+			"field": "supplyRange",
+			"unit": "V",
+			"what": "recommended operating supply range [min, max]"
+		},
+		{
+			"field": "footprint",
+			"what": "the package / land pattern name"
+		},
+		{
+			"field": "outputV",
+			"unit": "V",
+			"what": "output voltage"
+		},
+		{
+			"field": "maxOutputMa",
+			"unit": "mA",
+			"what": "output current limit"
+		},
+		{
+			"field": "iqUa",
+			"unit": "µA",
+			"what": "quiescent current"
+		},
+		{
+			"field": "dropoutMv",
+			"unit": "mV",
+			"what": "dropout at full load"
+		}
+	],
+	"critical": [
+		"outputV",
+		"maxOutputMa"
+	],
+	"defaults": {},
+	"calculated": {}
+}

@@ -1,0 +1,80 @@
+{
+	"kind": "speaker-driver",
+	"placement": "case",
+	"mountHoles": true,
+	"powered": false,
+	"fields": [
+		{
+			"field": "outline",
+			"unit": "mm",
+			"what": "body width × length (or diameter × depth for round parts)"
+		},
+		{
+			"field": "height",
+			"unit": "mm",
+			"what": "body height above the board or mounting face"
+		},
+		{
+			"field": "pins",
+			"what": "pin names in pin-number order"
+		},
+		{
+			"field": "mountHoles",
+			"unit": "mm",
+			"what": "mount holes: count, diameter and their positions or pitch"
+		},
+		{
+			"field": "impedanceOhm",
+			"unit": "Ω",
+			"what": "nominal impedance"
+		},
+		{
+			"field": "ratedPowerW",
+			"unit": "W",
+			"what": "rated (nominal) power"
+		},
+		{
+			"field": "vasL",
+			"unit": "L",
+			"what": "Thiele-Small Vas"
+		},
+		{
+			"field": "qts",
+			"what": "Thiele-Small Qts"
+		},
+		{
+			"field": "fsHz",
+			"unit": "Hz",
+			"what": "resonance frequency Fs"
+		},
+		{
+			"field": "micKeepOutMm",
+			"unit": "mm",
+			"what": "least distance from a microphone"
+		}
+	],
+	"critical": [
+		"impedanceOhm",
+		"ratedPowerW"
+	],
+	"defaults": {
+		"micKeepOutMm": {
+			"value": 30,
+			"reason": "no datasheet gives it; a rule-of-thumb distance to limit echo into the microphone, flagged"
+		}
+	},
+	"calculated": {
+		"backVolumeMinCm3": {
+			"formula": "sealed-box-min-volume",
+			"inputs": [
+				"vasL",
+				"qts"
+			]
+		}
+	},
+	"needs": [
+		"grille",
+		"back-volume",
+		"keep-out:microphone"
+	]
+}
