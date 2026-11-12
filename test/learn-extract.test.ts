@@ -109,3 +109,36 @@ test("the cap comes from the environment, $2 by default", () => {
 	assert.equal(learnCap({ BRINGUP_LEARN_CAP_USD: "nope" }), 2)
 	assert.equal(learnCap({ BRINGUP_LEARN_CAP_USD: "-1" }), 2)
 })
+
+test("the footprint is never read from the datasheet; the package name is only a hint", async () => {
+	const { store, amp1 } = await docs()
+	const { reader, calls } = fakeReader({ first: { 2: { footprint: { value: "QFN-10", region: [0.05, 115 / 792, 0.9, 24 / 792] }, package: { value: "QFN-10", region: [0.05, 115 / 792, 0.9, 24 / 792] } } } })
+	const facts = await extractFacts(amp1, amp, { store, reader })
+	assert.ok(calls.every((c) => !c.meta.fields.includes("footprint")))
+	assert.equal(facts.find((f) => f.field === "footprint"), undefined)
+	assert.equal(facts.find((f) => f.field === "package")?.value, "QFN-10")
+})
+
+test("a region too big to point at one value doesn't pass the text check", async () => {
+	const { store, amp1 } = await docs()
+	// supplyMaxV claimed as 5.5 V (the recommended maximum, not the absolute one) with the whole table as its region.
+	const loose = { value: 5.5, unit: "V", region: [0, 0, 1, 0.5] as [number, number, number, number] }
+	const { reader } = fakeReader({ first: { 1: { supplyMaxV: loose } }, strong: { 1: { supplyMaxV: loose } } })
+	assert.equal((await extractFacts(amp1, amp, { store, reader })).find((f) => f.field === "supplyMaxV"), undefined)
+})
+
+test("the quote shown is the page's own text, not the model's", async () => {
+	const { store, amp1 } = await docs()
+	const { reader } = fakeReader({ first: { 1: { supplyRange: { value: [2.5, 5.5], unit: "V", region: row(140), quote: "invented" } } } })
+	const f = (await extractFacts(amp1, amp, { store, reader })).find((x) => x.field === "supplyRange")!
+	assert.match(f.source!.quote, /2\.5 ~ 5\.5 V/)
+})
+
+test("a drawing region with no text on a page that has text takes the two-read path", async () => {
+	const { store, amp1 } = await docs()
+	// Page 2 has text, but the line at y = 200 pt has none around it: a drawing.
+	const drawn = { value: [3, 3], unit: "mm", region: [0.3, 190 / 792, 0.2, 20 / 792] as [number, number, number, number] }
+	const { reader } = fakeReader({ first: { 2: { outline: drawn } }, second: { 2: { outline: drawn } } })
+	const f = (await extractFacts(amp1, amp, { store, reader })).find((x) => x.field === "outline")!
+	assert.equal(f?.check, "two-reads")
+})

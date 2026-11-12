@@ -18,6 +18,11 @@ const cases: [string, { value: number | string | number[]; unit?: string }, stri
 	["wrong unit family", { value: 8, unit: "V" }, "8 Ω", false],
 	["pin names, each as a word", { value: "SD,GAIN,DIN" }, "1 SD  2 GAIN  3 DIN  4 BCLK", true],
 	["a pin name inside another word doesn't count", { value: "SD,IN" }, "1 SD  3 DIN", false],
+	["pin names out of order don't match", { value: "GND,VDD,SD" }, "1 VDD  2 GND  3 SD", false],
+	["pin names in order, a name repeated", { value: "SD,GND,VDD,GND" }, "1 SD 2 GND 3 VDD 4 GND", true],
+	["a repeated pin name must appear twice", { value: "SD,GND,VDD,GND" }, "1 SD 2 GND 3 VDD", false],
+	["NxM dimensions: the second number", { value: [5, 3], unit: "mm" }, "Package 5.0x3.0mm", true],
+	["NxMxH dimensions with ×", { value: 0.75, unit: "mm" }, "4.0×4.0×0.75 mm", true],
 	["negative sign isn't a range", { value: [-0.3, 6.0], unit: "V" }, "-0.3 to 6.0 V", true],
 ]
 
