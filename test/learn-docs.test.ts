@@ -1,26 +1,11 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdtempSync, readFileSync } from "node:fs"
+import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
 import { createDocStore } from "../src/learn/docs.ts"
 import type { LearnedDoc } from "../src/learn/types.ts"
-
-const FIX = resolve(import.meta.dirname, "fixtures/learn")
-
-// A fetch that serves fixture files by their name at any host, and counts requests.
-export function fixtureFetch(files: Record<string, string> = { "brg-amp1.pdf": "brg-amp1.pdf", "brg-spk40.pdf": "brg-spk40.pdf", "landing.html": "landing.html" }) {
-	const calls: string[] = []
-	const f = (async (input: string | URL | Request) => {
-		const url = String(input instanceof Request ? input.url : input)
-		calls.push(url)
-		const name = Object.keys(files).find((k) => url.endsWith(`/${k}`))
-		if (!name) return new Response("not found", { status: 404 })
-		const body = readFileSync(join(FIX, files[name]))
-		return new Response(body, { status: 200, headers: { "content-type": name.endsWith(".pdf") ? "application/pdf" : "text/html" } })
-	}) as typeof fetch
-	return { fetch: f, calls }
-}
+import { fixtureFetch } from "./fixtures/learn/fetch.ts"
 
 const asDoc = (d: LearnedDoc | { error: string }): LearnedDoc => {
 	if ("error" in d) throw new Error(d.error)

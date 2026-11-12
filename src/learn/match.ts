@@ -103,6 +103,21 @@ export function valueMatches(fact: { value: number | string | number[]; unit?: s
 		const [a, b] = fact.value
 		return nums.some((n, i) => i + 1 < nums.length && sameNumber(n, a, fact.unit, relTol) && sameNumber(nums[i + 1], b, fact.unit, relTol))
 	}
-	if (typeof fact.value === "string") return text.toLowerCase().includes(fact.value.toLowerCase())
+	// A text value ("I2S", or pin names "SD,GAIN,DIN"): every comma-separated name appears as a whole word.
+	if (typeof fact.value === "string") return tokens(fact.value).every((t) => new RegExp(`(^|[^A-Za-z0-9_])${esc(t)}($|[^A-Za-z0-9_])`, "i").test(text))
 	return nums.some((n) => sameNumber(n, fact.value as number, fact.unit, relTol))
+}
+
+const tokens = (v: string) => v.split(/\s*[,;]\s*/).map((t) => t.trim()).filter(Boolean)
+
+// Do two reads of one field agree? Numbers (and [min, max] pairs) within relTol in canonical units; text the same
+// names in the same order, ignoring case and spacing.
+export function valuesAgree(a: { value: unknown; unit?: string }, b: { value: unknown; unit?: string }, relTol = 0.005): boolean {
+	const num = (v: unknown, unit?: string) => (typeof v === "number" ? toCanonical(v, unit) : null)
+	if (Array.isArray(a.value) && Array.isArray(b.value)) return a.value.length === b.value.length && a.value.every((x, i) => valuesAgree({ value: x, unit: a.unit }, { value: (b.value as unknown[])[i], unit: b.unit }, relTol))
+	const x = num(a.value, a.unit)
+	const y = num(b.value, b.unit)
+	if (x && y) return (!x.unit || !y.unit || x.unit === y.unit) && close(x.value, y.value, relTol)
+	if (typeof a.value === "string" && typeof b.value === "string") return tokens(a.value).join(",").toLowerCase() === tokens(b.value).join(",").toLowerCase()
+	return false
 }

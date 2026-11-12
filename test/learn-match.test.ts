@@ -2,7 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { parseNumbers, toCanonical, valueMatches } from "../src/learn/match.ts"
 
-const cases: [string, { value: number | number[]; unit?: string }, string, boolean, number?][] = [
+const cases: [string, { value: number | string | number[]; unit?: string }, string, boolean, number?][] = [
 	["comma decimal and diameter sign", { value: 2.2, unit: "mm" }, "Ø2,2 mm", true],
 	["22 is not 2.2", { value: 2.2, unit: "mm" }, "22 mm", false],
 	["12.2 is not 2.2", { value: 2.2, unit: "mm" }, "12.2", false],
@@ -16,6 +16,8 @@ const cases: [string, { value: number | number[]; unit?: string }, string, boole
 	["amps to mA", { value: 1500, unit: "mA" }, "1.5 A", true],
 	["unitless number on a unit-carrying page", { value: 0.85 }, "Qts 0.85", true],
 	["wrong unit family", { value: 8, unit: "V" }, "8 Ω", false],
+	["pin names, each as a word", { value: "SD,GAIN,DIN" }, "1 SD  2 GAIN  3 DIN  4 BCLK", true],
+	["a pin name inside another word doesn't count", { value: "SD,IN" }, "1 SD  3 DIN", false],
 	["negative sign isn't a range", { value: [-0.3, 6.0], unit: "V" }, "-0.3 to 6.0 V", true],
 ]
 
