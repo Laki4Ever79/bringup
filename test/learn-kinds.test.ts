@@ -20,12 +20,13 @@ test("a kind can only add critical fields", () => {
 	assert.ok(amp.includes("minLoadOhm"))
 })
 
-test("case parts need no footprint, and a speaker driver's impedance and power are critical", () => {
+test("case parts need no footprint, and a speaker driver's impedance and power are critical, its outline (what the case clamps) but not mount holes", () => {
 	const spk = criticalFields(kinds.get("speaker-driver")!)
 	assert.ok(!spk.includes("footprint"))
 	assert.ok(spk.includes("impedanceOhm"))
 	assert.ok(spk.includes("ratedPowerW"))
-	assert.ok(spk.includes("mountHoles"))
+	assert.ok(!spk.includes("mountHoles"), "the case clamps a speaker by its rim")
+	assert.ok(spk.includes("outline"))
 })
 
 test("parts without mount holes or a supply don't need those facts", () => {

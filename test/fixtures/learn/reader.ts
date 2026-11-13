@@ -7,7 +7,7 @@ export function fakeReader(script: Partial<Record<"first" | "second" | "strong",
 	const reader: PageReader = {
 		async read(req) {
 			calls.push(req)
-			const page = script[req.meta.pass]?.[req.meta.page] ?? {}
+			const page = script[req.meta.pass as keyof typeof script]?.[req.meta.page] ?? {}
 			const facts = req.meta.fields.filter((f) => page[f]).map((f) => ({ field: f, ...page[f], quote: page[f].quote ?? String(page[f].value) }))
 			return { json: { facts }, usd }
 		},

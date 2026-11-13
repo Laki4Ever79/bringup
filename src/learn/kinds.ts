@@ -9,6 +9,9 @@ export const GENERIC_CRITICAL: readonly string[] = ["outline", "height", "mountH
 
 const Kind = z.object({
 	kind: z.string().min(1),
+	// What the part is, in plain words, for the models that propose and identify parts: a kind's name alone misleads
+	// ("speaker-driver" reads as a driver IC).
+	description: z.string().min(1).optional(),
 	placement: z.enum(["board", "case"]),
 	fields: z.array(z.object({ field: z.string(), unit: z.string().optional(), what: z.string() })),
 	// Added to the generic list; a kind can never remove a generic critical field.
@@ -22,8 +25,10 @@ export type KindFile = z.infer<typeof Kind>
 
 // The only exemptions from the generic list, kept here in code rather than in kind files: a kind file (which the
 // learner may draft for a new kind) can make learning stricter, never looser. Kinds soldered by their pins have no
-// mount holes; passive parts and connectors take no supply. Any kind not named here needs every generic fact.
-const NO_MOUNT_HOLES = new Set(["amplifier", "battery", "button", "capacitor", "charge-led", "charger", "connector", "ldo", "led", "mcu", "microphone", "motor-driver", "resistor", "sensor", "usb-c"])
+// mount holes, nor do speakers: small ones have none (adhesive, a flange), so the case clamps them by the rim their
+// outline gives (the kind's "clamp-rim" need). Passive parts and connectors take no supply. Any kind not named here
+// needs every generic fact.
+const NO_MOUNT_HOLES = new Set(["amplifier", "battery", "button", "capacitor", "charge-led", "charger", "connector", "ldo", "led", "mcu", "microphone", "motor-driver", "resistor", "sensor", "speaker-driver", "usb-c"])
 const UNPOWERED = new Set(["battery", "button", "capacitor", "charge-led", "connector", "led", "resistor", "speaker-driver", "usb-c"])
 
 export function criticalFields(kind: KindFile): string[] {

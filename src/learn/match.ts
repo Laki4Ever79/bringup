@@ -43,6 +43,8 @@ export interface ParsedNumber {
 	value: number
 	unit?: string
 	raw: string
+	// Where the number starts in the text.
+	index: number
 	// Joined to the number before it by a range separator ("2.5–5.5", "3.0 ~ 3.6", "-0.3 to 6.0").
 	rangeEnd?: boolean
 	// Joined to the number before it by "x" or "×" (dimensions).
@@ -81,7 +83,7 @@ export function parseNumbers(text: string): ParsedNumber[] {
 		}
 		const after = text.slice(start + m[1].length)
 		const u = UNIT_RE.exec(after)
-		const n: ParsedNumber = { value, raw, ...(u ? { unit: u[1] } : {}), ...(rangeEnd ? { rangeEnd: true } : {}) }
+		const n: ParsedNumber = { value, raw, index: start, ...(u ? { unit: u[1] } : {}), ...(rangeEnd ? { rangeEnd: true } : {}) }
 		// "2.5–5.5 V": the range's start takes its end's unit; "4.0x4.0x0.75mm": every dimension in the chain does.
 		const chained = dimension || /^\s*[xX×]\s*$/.test(between)
 		if ((rangeEnd || chained) && n.unit) for (let k = out.length - 1; k >= 0 && !out[k].unit; k--) {
@@ -97,7 +99,7 @@ export function parseNumbers(text: string): ParsedNumber[] {
 
 const close = (a: number, b: number, relTol: number) => Math.abs(a - b) <= relTol * Math.max(Math.abs(b), 1e-9)
 
-function sameNumber(n: ParsedNumber, value: number, unit: string | undefined, relTol: number): boolean {
+export function sameNumber(n: ParsedNumber, value: number, unit: string | undefined, relTol: number): boolean {
 	const want = toCanonical(value, unit)
 	const got = toCanonical(n.value, n.unit)
 	// Both carry units: they must be the same quantity. A bare number (a drawing's dimension) compares by value.

@@ -107,3 +107,17 @@ test("a speaker need always comes with an amplifier need", async () => {
 	assert.equal(needs[1].board, "main")
 	assert.deepEqual(validNeeds([{ kind: "speaker-driver", requirements: "a" }, { kind: "amplifier", requirements: "b" }], spec).map((n) => n.kind), ["speaker-driver", "amplifier"])
 })
+
+test("candidates are asked for by what the part is, not only its kind's name", async () => {
+	const { candidatePrompt } = await import("../src/learn/runtime.ts")
+	const p = candidatePrompt({ id: "s", role: "audio output", kind: "speaker-driver", requirements: "a small speaker" }, ROOT, ["X1"])
+	assert.match(p, /loudspeaker: the cone-and-magnet transducer/)
+	assert.match(p, /not an amplifier or driver IC/)
+	assert.match(p, /Not these: X1/)
+})
+
+test("the architect is told what each learnable kind is", async () => {
+	const { BUILDABLE } = await import("../src/system/architect.ts")
+	assert.match(BUILDABLE, /speaker-driver \(a loudspeaker: the cone-and-magnet transducer/)
+	assert.match(BUILDABLE, /amplifier \(an audio power amplifier IC/)
+})

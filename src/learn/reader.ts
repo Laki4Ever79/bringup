@@ -13,7 +13,7 @@ export interface ReadRequest {
 	images: Buffer[]
 	maxTokens: number
 	// What the read is for: which page, which fields, which pass. Logged, and lets test fakes answer by page.
-	meta: { page: number; fields: string[]; pass: "first" | "second" | "strong" }
+	meta: { page: number; fields: string[]; pass: "first" | "second" | "strong" | "identify" }
 }
 
 export interface PageReader {

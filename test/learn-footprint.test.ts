@@ -34,3 +34,36 @@ test("KiCad names give their pad count, exposed pad included", () => {
 	assert.equal(kicadPadCount("SOIC-8_3.9x4.9mm_P1.27mm"), 8)
 	assert.equal(kicadPadCount("R_0402_1005Metric"), null)
 })
+
+// Real KiCad names (Package_SO, Package_SON, Package_TO_SOT_SMD) around the families datasheets print.
+const INDEX = [
+	"Package_SO:MSOP-8-1EP_3x3mm_P0.65mm_EP1.68x1.88mm_ThermalVias",
+	"Package_SO:HVSSOP-8-1EP_3x3mm_P0.65mm_EP1.57x1.89mm_ThermalVias",
+	"Package_SO:VSSOP-8_2.3x2mm_P0.5mm",
+	"Package_SO:VSSOP-8_3x3mm_P0.65mm",
+	"Package_SO:HVSSOP-8-1EP_3x3mm_P0.65mm_EP1.57x1.89mm",
+	"Package_SO:MSOP-8_3x3mm_P0.65mm",
+	"Package_SON:VSON-8-1EP_3x3mm_P0.65mm_EP1.65x2.4mm",
+	"Package_TO_SOT_SMD:SOT-23-5",
+	"Package_TO_SOT_SMD:SOT-23",
+	"Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+]
+const pins = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`)
+
+test("the package's family is found inside how a datasheet prints it, and the plain variant is preferred", async () => {
+	const f = await findFootprint({ packageName: "8-Pin HVSSOP", pins: pins(8), bodyMm: [3, 3] }, { fetchImpl: easyeda(null), kicadIndex: INDEX })
+	assert.equal(f?.value, "kicad:Package_SO:HVSSOP-8-1EP_3x3mm_P0.65mm_EP1.57x1.89mm")
+	assert.equal((await findFootprint({ packageName: "MSOP-8 PowerPAD (DGN)", pins: pins(8) }, { fetchImpl: easyeda(null), kicadIndex: INDEX }))?.value, "kicad:Package_SO:MSOP-8-1EP_3x3mm_P0.65mm_EP1.68x1.88mm_ThermalVias")
+	assert.equal((await findFootprint({ packageName: "MSOP-8", pins: pins(8) }, { fetchImpl: easyeda(null), kicadIndex: INDEX }))?.value, "kicad:Package_SO:MSOP-8_3x3mm_P0.65mm", "no exposed pad named: the plain one")
+})
+
+test("the body size picks among same-family footprints, and rules out a wrong one", async () => {
+	assert.equal((await findFootprint({ packageName: "VSSOP-8", pins: pins(8), bodyMm: [2.3, 2] }, { fetchImpl: easyeda(null), kicadIndex: INDEX }))?.value, "kicad:Package_SO:VSSOP-8_2.3x2mm_P0.5mm")
+	assert.equal((await findFootprint({ packageName: "VSSOP-8", pins: pins(8), bodyMm: [3.0, 3.0] }, { fetchImpl: easyeda(null), kicadIndex: INDEX }))?.value, "kicad:Package_SO:VSSOP-8_3x3mm_P0.65mm")
+	assert.equal(await findFootprint({ packageName: "VSSOP-8", pins: pins(8), bodyMm: [5, 6] }, { fetchImpl: easyeda(null), kicadIndex: INDEX }), null)
+})
+
+test("a family with a number in its name (SOT-23-5) keeps it", async () => {
+	assert.equal((await findFootprint({ packageName: "SOT-23-5", pins: pins(5) }, { fetchImpl: easyeda(null), kicadIndex: INDEX }))?.value, "kicad:Package_TO_SOT_SMD:SOT-23-5")
+	assert.equal(kicadPadCount("SOT-23-5"), 5)
+})

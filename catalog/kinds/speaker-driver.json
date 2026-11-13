@@ -1,5 +1,6 @@
 {
 	"kind": "speaker-driver",
+	"description": "a loudspeaker: the cone-and-magnet transducer that makes the sound, a passive part with two terminals, mounted in the case (not an amplifier or driver IC)",
 	"placement": "case",
 	"fields": [
 		{
@@ -19,7 +20,7 @@
 		{
 			"field": "mountHoles",
 			"unit": "mm",
-			"what": "mount holes: count, diameter and their positions or pitch"
+			"what": "mount holes, if it has any: count, diameter and their positions or pitch"
 		},
 		{
 			"field": "impedanceOhm",
@@ -73,6 +74,7 @@
 	"needs": [
 		"grille",
 		"back-volume",
-		"keep-out:microphone"
+		"keep-out:microphone",
+		"clamp-rim"
 	]
 }

@@ -1,5 +1,6 @@
 {
 	"kind": "amplifier",
+	"description": "an audio power amplifier IC soldered on the board, driving a loudspeaker from an I2S or analog audio signal",
 	"placement": "board",
 	"fields": [
 		{

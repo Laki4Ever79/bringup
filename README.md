@@ -164,8 +164,8 @@ RP2040 and nRF52840 are profiled; what each can do today is in [docs/mcu.md](doc
 
 When a plan needs a part the catalog lacks (a speaker, an amplifier), Bringup finds candidates at LCSC, DigiKey, Mouser
 or the manufacturer, reads each datasheet with a model, and keeps a number only if it checks out: its value is in the
-page's text where the model said, or two reads of an image-only drawing agree. Every number keeps its page and region;
-a missing critical one (size, mount holes, pin-out, supply limits, footprint) is never guessed, so the next candidate
+page's own words near where the model said, or two reads of an image-only drawing agree. Every number keeps its page and region;
+a missing critical one (size, pin-out, supply limits, footprint, mount holes where the part has them) is never guessed, so the next candidate
 is tried instead. Spending is capped per design run ($2 by default). The wiring of learned parts into the board and
 firmware is the next step and is not built yet; see [docs/system.md](docs/system.md#part-learner).
 

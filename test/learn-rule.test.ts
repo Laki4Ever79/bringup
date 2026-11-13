@@ -52,9 +52,16 @@ test("critical fields are marked critical", () => {
 })
 
 test("a missing critical field is never defaulted", () => {
+	const facts = completeFacts(speakerFacts(0.5).filter((f) => f.field !== "impedanceOhm"), spk)
+	assert.equal(facts.find((f) => f.field === "impedanceOhm"), undefined)
+	assert.deepEqual(judge(facts, spk), { ok: false, missingCritical: ["impedanceOhm"] })
+})
+
+test("a speaker without mount holes can be learned: the case clamps it by its rim, so its outline is what counts", () => {
 	const facts = completeFacts(speakerFacts(0.5).filter((f) => f.field !== "mountHoles"), spk)
-	assert.equal(facts.find((f) => f.field === "mountHoles"), undefined)
-	assert.deepEqual(judge(facts, spk), { ok: false, missingCritical: ["mountHoles"] })
+	assert.ok(judge(facts, spk).ok)
+	assert.ok(spk.needs?.includes("clamp-rim"))
+	assert.ok(judge(completeFacts(speakerFacts(0.5).filter((f) => f.field !== "outline"), spk), spk).ok === false)
 })
 
 test("a case part needs no footprint; a board part does", () => {

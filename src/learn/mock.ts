@@ -30,7 +30,7 @@ export const MOCK_SCRIPTS: Record<string, Script> = {
 				interface: { value: "I2S", region: row(240) },
 			},
 			2: {
-				pins: { value: "SD,GAIN,DIN,BCLK,LRCLK,GND,VDD,OUTP,OUTN,GND", region: line(90) },
+				pins: { value: "1 SD, 2 GAIN, 3 DIN, 4 BCLK, 5 LRCLK, 6 GND, 7 VDD, 8 OUTP, 9 OUTN, 10 GND", region: line(90) },
 				outline: { value: [3, 3], unit: "mm", region: line(130) },
 				height: { value: 0.75, unit: "mm", region: line(130) },
 			},
@@ -70,7 +70,7 @@ const FILE_BY_MPN: Record<string, string> = { "BRG-AMP1": "brg-amp1.pdf", "BRG-S
 export const mockReader: PageReader = {
 	async read(req) {
 		const kind = /kind "([^"]+)"/.exec(req.prompt)?.[1] ?? ""
-		const page = MOCK_SCRIPTS[kind]?.[req.meta.pass]?.[req.meta.page] ?? {}
+		const page = MOCK_SCRIPTS[kind]?.[req.meta.pass as keyof Script]?.[req.meta.page] ?? {}
 		return { json: { facts: req.meta.fields.filter((f) => page[f]).map((f) => ({ field: f, ...page[f], quote: String(page[f].value) })) }, usd: 0 }
 	},
 }

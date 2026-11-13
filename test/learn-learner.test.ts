@@ -28,7 +28,7 @@ const AMP_SCRIPT = {
 			interface: { value: "I2S", region: row(240) },
 		},
 		2: {
-			pins: { value: "SD,GAIN,DIN,BCLK,LRCLK,GND,VDD,OUTP,OUTN,GND", region: line(90) },
+			pins: { value: "1 SD, 2 GAIN, 3 DIN, 4 BCLK, 5 LRCLK, 6 GND, 7 VDD, 8 OUTP, 9 OUTN, 10 GND", region: line(90) },
 			outline: { value: [3, 3], unit: "mm", region: line(130) },
 			height: { value: 0.75, unit: "mm", region: line(130) },
 		},
@@ -186,4 +186,32 @@ test("'no datasheet found' says what the web search came back with", async () =>
 	const r = await learnPart(NEED, s.deps)
 	assert.equal(r.status, "unavailable")
 	if (r.status === "unavailable") assert.equal(r.reasons[0].reason, "no datasheet found (no distributor listing; web search: 2 links, none named the part)")
+})
+
+test("a candidate whose datasheet is for another kind of part ends after one read of page 1", async () => {
+	const s = setup({ candidates: ["BRG-AMP1"] })
+	const inner = s.deps.reader
+	const passes: string[] = []
+	s.deps.reader = { read: async (req) => (passes.push(req.meta.pass), req.meta.pass === "identify" ? { json: { matches: false, part: "a piezo buzzer" }, usd: 0.0005 } : inner.read(req)) }
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "unavailable")
+	if (r.status === "unavailable") assert.match(r.reasons[0].reason, /datasheet is for a piezo buzzer, not/)
+	assert.deepEqual(passes, ["identify"])
+	assert.equal(s.logs[0].calls, 1)
+})
+
+test("every candidate's log line says how many facts the cheap model's first read gave, learned or not", async () => {
+	const s = setup({ candidates: ["BRG-AMP1"], footprintFor: () => null })
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "unavailable", "no footprint, so not learned")
+	assert.ok(s.logs[0].firstReadMatched >= 8, JSON.stringify(s.logs[0]))
+	assert.equal(s.logs[0].pages, 2)
+})
+
+test("the footprint search gets the body size the datasheet gave", async () => {
+	const s = setup({ candidates: ["BRG-AMP1"] })
+	const asked: { bodyMm?: number[] }[] = []
+	s.deps.footprint = async (p) => (asked.push(p), FOOTPRINT)
+	await learnPart(NEED, s.deps)
+	assert.deepEqual(asked[0].bodyMm, [3, 3])
 })
