@@ -55,6 +55,8 @@ function kicadFor(packageName: string, pinCount: number, bodyMm: number[] | unde
 	}
 	// No pad underneath (a heat pad facing up): an H-family's pad-less land pattern is the plain family's (HTSSOP → TSSOP).
 	if (exposedPad === false) for (const [f, n] of [...named]) if (f.startsWith("H") && families.includes(f.slice(1))) named.set(f.slice(1), n)
+	// And a pad underneath on a family KiCad has only pad-less: its H-family (VSSOP with PowerPAD → HVSSOP).
+	if (exposedPad === true) for (const [f, n] of [...named]) if (!f.startsWith("H") && families.includes(`H${f}`)) named.set(`H${f}`, n)
 	const wantsEp = exposedPad ?? (NAMES_EP.test(text) || [...named.keys()].some((f) => f.startsWith("H")))
 	const body = bodyMm && bodyMm.length >= 2 ? [bodyMm[0], bodyMm[1]] : null
 	const sizeOk = (s: [number, number]) => body !== null && ((Math.abs(s[0] - body[0]) <= SIZE_TOL_MM && Math.abs(s[1] - body[1]) <= SIZE_TOL_MM) || (Math.abs(s[0] - body[1]) <= SIZE_TOL_MM && Math.abs(s[1] - body[0]) <= SIZE_TOL_MM))

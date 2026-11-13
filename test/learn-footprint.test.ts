@@ -77,3 +77,8 @@ test("the exposed-pad fact decides: no pad underneath takes the pad-less land pa
 	assert.equal(pad?.value, "kicad:Package_SO:HTSSOP-32-1EP_6.1x11mm_P0.65mm_EP5.2x11mm_Mask4.11x4.36mm")
 	assert.equal(await findFootprint({ packageName: "MSOP-8", pins: pins(8), exposedPad: true }, { fetchImpl: easyeda(null), kicadIndex: ["Package_SO:MSOP-8_3x3mm_P0.65mm"] }), null, "a pad the land pattern lacks")
 })
+
+test("a pad underneath on a family KiCad only has pad-less: its H-family land pattern (VSSOP with PowerPAD → HVSSOP)", async () => {
+	const f = await findFootprint({ packageName: "PowerPAD VSSOP", pins: pins(8), bodyMm: [3, 3], exposedPad: true }, { fetchImpl: easyeda(null), kicadIndex: INDEX })
+	assert.equal(f?.value, "kicad:Package_SO:HVSSOP-8-1EP_3x3mm_P0.65mm_EP1.57x1.89mm")
+})

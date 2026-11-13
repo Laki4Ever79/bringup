@@ -357,3 +357,10 @@ test("a min and max from a dimension table's row are not a width × length", asy
 test("outline is asked as the body's nominal size, never a min/max range", () => {
 	assert.match(fieldsToRead(amp).find((f) => f.field === "outline")!.what, /never a min\/max range/)
 })
+
+test("the reader is told to leave out pins the datasheet doesn't name", async () => {
+	const { store, amp1 } = await docs()
+	const { reader, calls } = fakeReader({})
+	await extractFacts(amp1, amp, { store, reader })
+	assert.match(calls[0].prompt, /a pin the datasheet doesn't name: leave it out/)
+})
