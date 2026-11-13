@@ -10,6 +10,7 @@ import { appendRequest } from "../runner/requests.ts"
 import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "../runner/drift.ts"
 import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
+import { boardView } from "./board-view.ts"
 import { addSpend, appendUsage, readSpend } from "../inference/usage.ts"
 import { PlanConflict, PlanStore } from "./plans.ts"
 import { exampleFile, listExamples } from "./examples.ts"
@@ -32,6 +33,8 @@ const EXAMPLES = fileURLToPath(new URL("../../examples/", import.meta.url))
 const STAGE_PAGE = new URL("./stage.html", import.meta.url)
 const DESIGNS_PAGE = new URL("./designs.html", import.meta.url)
 const PREVIEW = new URL("./preview.html", import.meta.url)
+// The board page (board-view.ts): one run's board, full window, a part card per part, live while the run runs.
+const BOARD_PAGE = new URL("./board.html", import.meta.url)
 const BRIEFS = new URL("../../briefs/", import.meta.url)
 const SYSTEM_SPECS = new URL("../../briefs/systems/", import.meta.url)
 // af's A/B experiment (docs/experiment.md), committed so the hub can show the evidence without a run.
@@ -771,6 +774,18 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			if (path === "/preview") {
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 				return res.end(await readFile(PREVIEW))
+			}
+			if (path === "/board") {
+				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
+				return res.end(await readFile(BOARD_PAGE))
+			}
+			const bv = /^\/api\/runs\/([^/]+)\/board$/.exec(path)
+			if (bv) {
+				const dir = await runDir(bv[1])
+				if (!dir) return json(res, 404, { error: "unknown run" })
+				const rev = Number(new URLSearchParams((req.url ?? "").split("?")[1] ?? "").get("rev"))
+				const view = await boardView(dir, Number.isInteger(rev) && rev > 0 ? rev : null)
+				return view ? json(res, 200, view) : json(res, 404, { error: "no contract yet" })
 			}
 			if (MODULES.has(path.slice(1))) {
 				const source = await readFile(new URL(`.${path}`, import.meta.url)).catch(() => null)

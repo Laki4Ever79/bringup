@@ -769,6 +769,7 @@
 					<span id="dims" class="num"></span>
 					<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
 					<button id="order-btn" class="pill hidden" disabled title="">Ready to order ↗</button>
+					<a id="board-link" class="pill hidden" target="_blank" rel="noopener" title="The board on a page of its own: every part with why it's there, live while the run runs">Board &amp; parts ↗</a>
 					<button id="max-board" class="max-btn" title="Maximise the board (double-click the board too; Esc returns)">⤢</button>
 					<div id="battery" class="hidden"><span id="battery-text" class="num"></span><span class="bar"><span class="fill"></span><span class="target"></span></span></div>
 				</div>
@@ -863,6 +864,11 @@
 
 	const hubInfo = await fetch("/api/hub").then((r) => r.json()).catch(() => ({ defaultRun: null, canStart: false }))
 	const runId = new URLSearchParams(location.search).get("run") ?? hubInfo.defaultRun
+	if (runId) {
+		const link = document.getElementById("board-link")
+		link.href = `/board?run=${encodeURIComponent(runId)}`
+		link.classList.remove("hidden")
+	}
 	// A board of a system (<system>.<board>): the Systems pill goes back to that system.
 	if (runId && /^[\w-]+\.[\w-]+$/.test(runId)) {
 		const sysLink = document.getElementById("system-link")

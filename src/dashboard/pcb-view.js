@@ -484,6 +484,12 @@ export function mountPcb(host, opts = {}) {
 		drag = null
 		svg.classList.remove("pcb-panning")
 	}
+	// A click that didn't pan selects the part under the pointer (opts.onSelect), or nothing on bare board.
+	svg.addEventListener("pointerup", (e) => {
+		if (!opts.onSelect || !drag || Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) return
+		const hit = document.elementsFromPoint(e.clientX, e.clientY).map((n) => n.closest?.(".pcb-part")).find((g) => g && getComputedStyle(g).display !== "none" && g.getAttribute("visibility") !== "hidden")
+		opts.onSelect(hit?.getAttribute("data-ref") ?? null)
+	})
 	svg.addEventListener("pointerup", endDrag)
 	svg.addEventListener("pointercancel", endDrag)
 	svg.addEventListener("dblclick", () => fit())
@@ -534,6 +540,18 @@ export function mountPcb(host, opts = {}) {
 		// Extension: refit the board to the view (as a double-click does).
 		fit() {
 			fit()
+		},
+		// Extension: zoom to a part (its extent with a margin), for a part picked from a list.
+		zoomTo(ref, marginMm = 6) {
+			const c = ix?.components.find((x) => x.ref === ref)
+			if (!c || !view) return
+			const w = Math.max(c.x1 - c.x0 + 2 * marginMm, 12), h = Math.max(c.y1 - c.y0 + 2 * marginMm, 12)
+			const r = svg.getBoundingClientRect()
+			const k = Math.max(w / (r.width || 1), h / (r.height || 1))
+			const [vw, vh] = [(r.width || 1) * k, (r.height || 1) * k]
+			view = [c.cx - vw / 2, -c.cy - vh / 2, vw, vh]
+			userMoved = true
+			setViewBox()
 		},
 		// Extension: a part's footprint extent in board mm ({x0, y0, x1, y1}), or null.
 		extentOf(ref) {
