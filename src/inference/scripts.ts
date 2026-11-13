@@ -10,7 +10,8 @@ import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT, sizeReasonHolds } from ".
 import { state } from "../runtime.ts"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
-import { LEGACY_MCU_ID, mcuProfileOf } from "../mcu/profile.ts"
+import { LEGACY_MCU_ID, mcuProfileOf, profileById } from "../mcu/profile.ts"
+import { chipPartPins } from "../mcu/board.ts"
 import { solvePins, type Need } from "../mcu/solver.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
@@ -83,6 +84,19 @@ export const BEACON_DESIGN: typeof LOGGER_DESIGN = {
 	],
 }
 
+// The logger's parts that serve only its ESP32-C3 module: the USB-sense divider (R8, R9) and the module's EN reset RC
+// (R10, C4). A design on another chip takes the logger's parts without these (a bare chip's reset capacitor and
+// decoupling come from its profile, src/mcu/board.ts); an ESP32-only part added to the logger belongs here too.
+export const ESP32_MODULE_PARTS = ["R8", "R9", "R10", "C4"]
+
+// A bare MCU as the parts list carries it: footprint and pin labels from its profile, as catalog/parts.json has it
+// (scripts/mcu/catalog.ts), so a scripted contract builds on its own (npm run board) without a run filling them in.
+function chipPart(id: string, ref = "U1") {
+	const p = profileById(id)
+	if (!p) throw new Error(`no MCU profile ${id}`)
+	return { ref, role: "mcu", mpn: p.mpn, lcsc: p.lcsc ?? "", footprint: p.package.footprint, pins: chipPartPins(p) }
+}
+
 // The third scripted design, for a brief that names an STM32 (briefs/logger-stm32.md): the logger on an STM32G031K8, a
 // chip without a radio, so the readings stay in its history (read out over its console or SWD). Its pins come from the
 // chip's profile: the SHT40 on I2C1 (PB7 = 23, PB6 = 22). Sleep in Stop 1 about 3.7 µA (DS12992 Table 29) plus the
@@ -103,8 +117,8 @@ export const STM32_LOGGER_DESIGN: typeof LOGGER_DESIGN = {
 		{ signal: "I2C_SCL", gpio: 22, partRef: "U2", partPin: "SCL" },
 	],
 	parts: [
-		{ ref: "U1", role: "mcu", mpn: "STM32G031K8T6", lcsc: "C432203", footprint: "", pins: [] },
-		...LOGGER_DESIGN.parts.filter((p) => p.role !== "mcu" && !["R8", "R9"].includes(p.ref)),
+		chipPart("stm32g031k8t6"),
+		...LOGGER_DESIGN.parts.filter((p) => p.role !== "mcu" && !ESP32_MODULE_PARTS.includes(p.ref)),
 	],
 }
 const isStm32 = () => /\bSTM32\b/.test(state().contract.get("requirements")?.summary ?? "")

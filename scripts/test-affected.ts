@@ -3,7 +3,8 @@
 // (integration tests that build boards or firmware from files read at run time, data and templates). --wide also takes
 // tests one module further away, --deep every chain (shared modules reach most of the suite that way). Type-only
 // imports don't count: `npm run typecheck` covers those. With no files it takes the change against the base branch
-// (default adopt) plus uncommitted and untracked work. --run runs the list.
+// (default adopt) plus uncommitted and untracked work. --run runs the list, 3 files at a time as the full suite does
+// (agent tests time out under more contention).
 import { execFileSync, spawnSync } from "node:child_process"
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
@@ -110,7 +111,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	console.error(`${changed.length} changed file(s) → ${unit.length} unit + ${slow.length} integration/browser test file(s)`)
 	for (const t of tests) console.log(t)
 	if (run && tests.length) {
-		const r = spawnSync("npx", ["tsx", "--test", ...tests], { cwd: root, stdio: "inherit", env: { ...process.env, MOZAIK_CREDENTIALS_FILE: "/dev/null", MOZAIK_API_KEY: "" } })
+		const r = spawnSync("npx", ["tsx", "--test", "--test-concurrency=3", ...tests], { cwd: root, stdio: "inherit", env: { ...process.env, MOZAIK_CREDENTIALS_FILE: "/dev/null", MOZAIK_API_KEY: "" } })
 		process.exit(r.status ?? 1)
 	}
 }
