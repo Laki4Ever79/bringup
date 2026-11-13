@@ -11,7 +11,7 @@ import { distributorsFrom, SEARCH_FEE_USD, webFind } from "./distributors.ts"
 import { createDocStore } from "./docs.ts"
 import { findFootprint, kicadFootprintIndex } from "./footprint.ts"
 import { loadKinds } from "./kinds.ts"
-import { learnPart, type LearnDeps, type LearnLog, type LearnResult } from "./learner.ts"
+import { learnPart, type KnownPart, type LearnDeps, type LearnLog, type LearnResult } from "./learner.ts"
 import { mockDistributor, mockFetch, mockFootprint, mockPropose, mockReader } from "./mock.ts"
 import { MODELS_LEARN, openAiReader } from "./reader.ts"
 import type { Candidate, PartNeed } from "./types.ts"
@@ -118,7 +118,7 @@ export function learnDepsFor(env: Record<string, string | undefined>, repoRoot: 
 		distributors: distributorsFrom(env, fetchImpl),
 		webFind: (mpn) => webFind(mpn, { env, fetchImpl, budget, store, onUsage }),
 		footprint: async (p) => findFootprint(p, { fetchImpl, kicadIndex: await (kicadIndex ??= kicadFootprintIndex(repoRoot)) }),
-		propose: (need, exclude) => proposeCandidates(need, exclude, { env, fetchImpl, budget, onUsage, repoRoot }),
+		propose: (need, exclude, known) => proposeCandidates(need, exclude, known ?? [], { env, fetchImpl, budget, onUsage, repoRoot }),
 		log,
 		onClaim: (t) => appendFileSync(join(planDir, "claims.jsonl"), JSON.stringify({ at: new Date().toISOString(), ...t }) + "\n"),
 	}
@@ -126,15 +126,15 @@ export function learnDepsFor(env: Record<string, string | undefined>, repoRoot: 
 
 // What the proposer is asked: the kind's plain description first (a kind's name alone misleads: "speaker-driver" read
 // as a driver IC gave amplifier chips for a loudspeaker), then the need.
-export function candidatePrompt(need: PartNeed, repoRoot: string, exclude: string[]): string {
+export function candidatePrompt(need: PartNeed, repoRoot: string, exclude: string[], known: KnownPart[] = []): string {
 	const description = loadKinds(repoRoot).get(need.kind)?.description
-	return `Propose up to 3 real, currently produced parts (exact manufacturer part numbers) for this need, best first. Prefer parts listed at LCSC (the distributor Bringup can look up without keys; JLCPCB assembles from its stock), with a public datasheet that gives dimensions, pin-out and supply limits. For parts soldered on the board: leaded or QFN/SON packages, no BGA or WLCSP. The board is small, powered by USB 5 V and/or one Li-ion cell, 3.3 V logic: choose parts that run from those and are sized for the need, not far beyond it.\nThe part: ${description ?? `a part of kind "${need.kind}"`}\nKind: ${need.kind}\nRole: ${need.role}\nRequirements: ${need.requirements}${exclude.length ? `\nNot these: ${exclude.join(", ")}` : ""}\nAnswer: {"parts": [{"manufacturer": string, "mpn": the manufacturer part number only, without the maker's name, "datasheet": the datasheet PDF's URL}]}`
+	return `Propose up to 3 real, currently produced parts (exact manufacturer part numbers) for this need, best first. Prefer parts listed at LCSC (the distributor Bringup can look up without keys; JLCPCB assembles from its stock), with a public datasheet that gives dimensions, pin-out and supply limits. For parts soldered on the board: leaded or QFN/SON packages, no BGA or WLCSP. The board is small, powered by USB 5 V and/or one Li-ion cell, 3.3 V logic: choose parts that run from those and are sized for the need, not far beyond it.\nThe part: ${description ?? `a part of kind "${need.kind}"`}\nKind: ${need.kind}\nRole: ${need.role}\nRequirements: ${need.requirements}${exclude.length ? `\nNot these: ${exclude.join(", ")}` : ""}${known.length ? `\nAlready learned (free to reuse: propose one first if it fits the need, with no datasheet link): ${known.map((k) => `${k.mpn} (${k.summary})`).join("; ")}` : ""}\nAnswer: {"parts": [{"manufacturer": string, "mpn": the manufacturer part number only, without the maker's name, "datasheet": the datasheet PDF's URL}]}`
 }
 
 // Candidate parts for a need, found by a web search (OpenAI Responses with web_search), each with the datasheet PDF the
 // search found: part numbers recalled from memory were often variants that don't exist (run 5, 6: three speakers with
 // no datasheet anywhere). Charged to the same budget, search fee included.
-async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env: Record<string, string | undefined>; fetchImpl: typeof fetch; budget: Budget; onUsage: (r: UsageRecord) => void; repoRoot: string }): Promise<Candidate[]> {
+async function proposeCandidates(need: PartNeed, exclude: string[], known: KnownPart[], deps: { env: Record<string, string | undefined>; fetchImpl: typeof fetch; budget: Budget; onUsage: (r: UsageRecord) => void; repoRoot: string }): Promise<Candidate[]> {
 	const model = MODELS_LEARN.cheap
 	const est = estimateUsd(model, 0, PROPOSE_TOKENS) + SEARCH_FEE_USD
 	if (!deps.env.OPENAI_API_KEY) throw new NoModelKey()
@@ -149,7 +149,7 @@ async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env:
 				model,
 				tools: [{ type: "web_search" }],
 				max_output_tokens: PROPOSE_TOKENS,
-				input: `${candidatePrompt(need, deps.repoRoot, exclude)}\nSearch the web. Give only parts whose datasheet PDF you found, with its direct URL in "datasheet"; copy each part number exactly as that datasheet prints it. Answer with the JSON only.`,
+				input: `${candidatePrompt(need, deps.repoRoot, exclude, known)}\nSearch the web. Give only parts whose datasheet PDF you found, with its direct URL in "datasheet"; copy each part number exactly as that datasheet prints it. Answer with the JSON only.`,
 			}),
 		})
 		const body = (await res.json()) as { output_text?: string; output?: { content?: { text?: string }[] }[]; usage?: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } }; error?: { message?: string } }

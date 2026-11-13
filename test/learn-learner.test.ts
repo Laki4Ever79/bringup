@@ -277,3 +277,15 @@ test("a board part that can't run from the board's 3.3 V or 5 V is not learned, 
 	assert.equal(fitsBoardSupply([{ field: "supplyRange", value: [4.5, 26], status: "datasheet", critical: true }]), null)
 	assert.equal(fitsBoardSupply([]), null, "an unpowered part")
 })
+
+test("parts already learned of the need's kind are offered to the proposer, to reuse for free", async () => {
+	const s = setup()
+	const first = await learnPart(NEED, s.deps)
+	assert.equal(first.status, "learned")
+	const offered: { mpn: string; summary: string }[][] = []
+	s.deps.propose = async (_n, _e, known) => (offered.push(known ?? []), [known?.[0]?.mpn ?? "X"])
+	const again = await learnPart({ ...NEED, id: "n2" }, s.deps)
+	assert.equal(offered[0][0].mpn, "BRG-AMP1")
+	assert.match(offered[0][0].summary, /minLoadOhm 4 Ω/)
+	assert.ok(again.status === "learned" && again.reused)
+})
