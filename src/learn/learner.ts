@@ -37,7 +37,7 @@ export interface LearnDeps {
 	budget: Budget
 	distributors: Distributor[]
 	webFind: (mpn: string) => ReturnType<typeof webFind>
-	footprint: (part: { mpn: string; lcsc?: string; packageName?: string; pins: string[]; bodyMm?: number[] }) => Promise<Fact | null>
+	footprint: (part: { mpn: string; lcsc?: string; packageName?: string; pins: string[]; bodyMm?: number[]; exposedPad?: boolean }) => Promise<Fact | null>
 	// Candidates for a need, each with the datasheet link the proposer found, if any (a bare part number works too).
 	propose: (need: PartNeed, exclude: string[]) => Promise<(string | Candidate)[]>
 	log: (line: LearnLog) => void
@@ -92,6 +92,17 @@ function counting(inner: PageReader) {
 		},
 	}
 	return { reader, stats }
+}
+
+// The rails every Bringup board can offer a part: 3.3 V logic, and 5 V from USB.
+const BOARD_RAILS_V = [3.3, 5]
+
+// Can a powered part run from one of the board's rails? A reason when it can't, null when it can (or takes no supply).
+export function fitsBoardSupply(facts: Fact[]): string | null {
+	const r = facts.find((f) => f.field === "supplyRange")?.value
+	if (!Array.isArray(r) || r.length !== 2) return null
+	const [lo, hi] = r
+	return BOARD_RAILS_V.some((v) => v >= lo && v <= hi) ? null : `runs from ${lo}–${hi} V, not from the board's 3.3 V or 5 V`
 }
 
 // Facts from a second document fill only fields the first didn't give.
@@ -153,7 +164,8 @@ async function tryCandidate({ mpn, datasheetUrl }: Candidate, need: PartNeed, ki
 		const lcscListing = listings.find((l) => l.distributor === "lcsc")
 		const outline = found.find((f) => f.field === "outline")?.value
 		const bodyMm = Array.isArray(outline) ? outline : typeof outline === "number" ? [outline] : undefined
-		const fp = await deps.footprint({ mpn, lcsc: lcscListing?.sku, packageName: listings.find((l) => l.package)?.package ?? (typeof pkg === "string" ? pkg : undefined), pins: typeof pins === "string" ? pins.split(",").map((p) => p.trim()).filter(Boolean) : [], ...(bodyMm ? { bodyMm } : {}) })
+		const ep = found.find((f) => f.field === "exposedPad")?.value
+		const fp = await deps.footprint({ mpn, ...(ep === "yes" || ep === "no" ? { exposedPad: ep === "yes" } : {}), lcsc: lcscListing?.sku, packageName: listings.find((l) => l.package)?.package ?? (typeof pkg === "string" ? pkg : undefined), pins: typeof pins === "string" ? pins.split(",").map((p) => p.trim()).filter(Boolean) : [], ...(bodyMm ? { bodyMm } : {}) })
 		if (fp) found.push(fp)
 	}
 	await addFootprint()
@@ -171,6 +183,8 @@ async function tryCandidate({ mpn, datasheetUrl }: Candidate, need: PartNeed, ki
 		}
 	}
 	if (!verdict.ok) return end({ ok: false, reason: `missing critical: ${verdict.missingCritical.join(", ")}` })
+	const unfit = fitsBoardSupply(facts)
+	if (unfit) return end({ ok: false, reason: unfit })
 
 	const part: LearnedPart = {
 		mpn: listings.find((l) => sameMpn(l.mpn, mpn))?.mpn ?? mpn,
