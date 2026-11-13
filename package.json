@@ -14,6 +14,7 @@
 		"demo": "tsx src/demo.ts",
 		"setup": "tsx src/setup/cli.ts setup",
 		"doctor": "tsx src/setup/cli.ts doctor",
+		"board": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= PATH=$PWD/tools/node/node_modules/.bin:$PATH tsx scripts/board.ts",
 		"experiment": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= tsx src/experiment/cli.ts"
 	},
 	"dependencies": {
