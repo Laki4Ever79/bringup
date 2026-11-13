@@ -40,7 +40,7 @@ export function criticalFields(kind: KindFile): string[] {
 
 const GENERIC_WHAT: Record<string, { unit?: string; what: string }> = {
 	outline: { unit: "mm", what: "body width × length (or diameter × depth for round parts)" },
-	height: { unit: "mm", what: "body height above the board or mounting face" },
+	height: { unit: "mm", what: "body height above the board or mounting face (the maximum where a range is given)" },
 	mountHoles: { unit: "mm", what: "mount holes: count, diameter and their positions or pitch" },
 	pins: { what: "pin names in pin-number order" },
 	supplyMaxV: { unit: "V", what: "absolute maximum supply voltage" },
