@@ -120,6 +120,7 @@ export function learnDepsFor(env: Record<string, string | undefined>, repoRoot: 
 		footprint: async (p) => findFootprint(p, { fetchImpl, kicadIndex: await (kicadIndex ??= kicadFootprintIndex(repoRoot)) }),
 		propose: (need, exclude) => proposeCandidates(need, exclude, { env, fetchImpl, budget, onUsage, repoRoot }),
 		log,
+		onClaim: (t) => appendFileSync(join(planDir, "claims.jsonl"), JSON.stringify({ at: new Date().toISOString(), ...t }) + "\n"),
 	}
 }
 

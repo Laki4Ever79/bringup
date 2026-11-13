@@ -215,3 +215,11 @@ test("the footprint search gets the body size the datasheet gave", async () => {
 	await learnPart(NEED, s.deps)
 	assert.deepEqual(asked[0].bodyMm, [3, 3])
 })
+
+test("every claim read is traced with its need and part number", async () => {
+	const s = setup({ candidates: ["BRG-AMP1"] })
+	const traced: { need: string; mpn: string; field: string }[] = []
+	s.deps.onClaim = (t) => traced.push(t)
+	await learnPart(NEED, s.deps)
+	assert.ok(traced.some((t) => t.need === "n1" && t.mpn === "BRG-AMP1" && t.field === "supplyRange"))
+})

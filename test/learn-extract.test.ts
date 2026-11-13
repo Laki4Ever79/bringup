@@ -214,3 +214,30 @@ test("a datasheet for a different kind of part is caught from its first page", a
 	// No answer (a reader that doesn't know the question) is never a rejection.
 	assert.equal((await identifyPart(amp1, spk, "X", { store, reader: fakeReader({}).reader })).matches, true)
 })
+
+test("the package drawing read is the one for this part's package, and pages that only mention sections aren't read", async () => {
+	const texts: Record<number, string> = { 1: "TPA9 amplifier", 2: "", 3: "6 Pin Configuration and Functions", 4: "7.1 Absolute Maximum Ratings\n7.3 Recommended Operating Conditions", 5: "7.5 Electrical Characteristics" }
+	for (let p = 6; p <= 40; p++) texts[p] = "see the Specifications and the Mechanical, Packaging and Orderable Information"
+	texts[36] = "PACKAGE OUTLINE DRB0008A VSON - 1 mm max height"
+	texts[40] = "PACKAGE OUTLINE DGN0008G PowerPAD VSSOP - 1.1 mm max height"
+	const store = { textIn: async (_d: unknown, p: number) => texts[p] ?? "" } as unknown as DocStore
+	const doc = { id: "d", url: "", sha256: "", pages: 40, fetchedAt: "", kind: "datasheet" as const }
+	assert.deepEqual(await pagesToRead(doc, store, "TPA9D1DGN"), [1, 2, 3, 4, 5, 40])
+	assert.deepEqual(await pagesToRead(doc, store, "TPA9D1DRBR"), [1, 2, 3, 4, 5, 36])
+	assert.deepEqual(await pagesToRead(doc, store), [1, 2, 3, 4, 5, 36], "no part number: the first drawing")
+})
+
+test("every claim the model makes is traced with how it was checked", async () => {
+	const { store, amp1 } = await docs()
+	const traced: { field: string; pass: string; outcome: string }[] = []
+	const { reader } = fakeReader({ first: { 1: { supplyMaxV: { value: 6, unit: "V", region: row(160) }, minLoadOhm: { value: 8, unit: "Ω", region: row(180) } } } })
+	await extractFacts(amp1, amp, { store, reader, onClaim: (c) => traced.push(c) })
+	assert.ok(traced.some((t) => t.field === "supplyMaxV" && t.pass === "first" && t.outcome === "text"))
+	assert.ok(traced.some((t) => t.field === "minLoadOhm" && t.pass === "first" && t.outcome === "not found near its region"))
+})
+
+test("a specifications heading doesn't stand in for the electrical characteristics on the next page", async () => {
+	const texts: Record<number, string> = { 1: "x", 3: "Pin Configuration", 4: "7 Specifications\n7.1 Absolute Maximum Ratings", 5: "7.5 Electrical Characteristics" }
+	const store = { textIn: async (_d: unknown, p: number) => texts[p] ?? "filler" } as unknown as DocStore
+	assert.deepEqual(await pagesToRead({ id: "d", url: "", sha256: "", pages: 20, fetchedAt: "", kind: "datasheet" }, store), [1, 3, 4, 5])
+})

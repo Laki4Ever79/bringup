@@ -4,7 +4,7 @@ import { Budget, BudgetExhausted } from "./budget.ts"
 import { learnedDir, learnedFileName, readLearned, writeLearned } from "./catalog.ts"
 import { findListings, sameMpn, type Distributor, type webFind } from "./distributors.ts"
 import type { DocStore } from "./docs.ts"
-import { extractFacts, identifyPart } from "./extract.ts"
+import { extractFacts, identifyPart, type ClaimTrace } from "./extract.ts"
 import { loadKinds, type KindFile } from "./kinds.ts"
 import type { PageReader, ReadRequest } from "./reader.ts"
 import { completeFacts, judge } from "./rule.ts"
@@ -40,6 +40,8 @@ export interface LearnDeps {
 	footprint: (part: { mpn: string; lcsc?: string; packageName?: string; pins: string[]; bodyMm?: number[] }) => Promise<Fact | null>
 	propose: (need: PartNeed, exclude: string[]) => Promise<string[]>
 	log: (line: LearnLog) => void
+	// Every claim a model makes and how it was checked (the plan's claims.jsonl).
+	onClaim?: (t: ClaimTrace & { need: string; mpn: string }) => void
 }
 
 const MAX_CANDIDATES = 3
@@ -132,7 +134,7 @@ async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: L
 	docs.push(doc)
 	const id = await identifyPart(doc, kind, mpn, { store: deps.store, reader })
 	if (!id.matches) return end({ ok: false, reason: `the datasheet is for ${id.part ?? "another kind of part"}, not ${kind.description ?? `a ${kind.kind}`}` })
-	let found = await extractFacts(doc, kind, { store: deps.store, reader, mpn, stats: read })
+	let found = await extractFacts(doc, kind, { store: deps.store, reader, mpn, stats: read, onClaim: (t) => deps.onClaim?.({ need: need.id, mpn, ...t }) })
 
 	const addFootprint = async () => {
 		if (kind.placement !== "board" || found.some((f) => f.field === "footprint")) return
@@ -152,7 +154,7 @@ async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: L
 		const other = await fetchFirst(urls.filter((u) => u !== doc.url))
 		if (other) {
 			docs.push(other)
-			found = merge(found, await extractFacts(other, kind, { store: deps.store, reader, mpn, stats: read }))
+			found = merge(found, await extractFacts(other, kind, { store: deps.store, reader, mpn, stats: read, onClaim: (t) => deps.onClaim?.({ need: need.id, mpn, ...t }) }))
 			await addFootprint()
 			facts = completeFacts(found, kind)
 			verdict = judge(facts, kind)
