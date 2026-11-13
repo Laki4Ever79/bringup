@@ -73,7 +73,10 @@ test("the board source gets one bottom-side pad per probed net, wired by name (3
 	const pads = [...src.matchAll(/<testpoint name="(TP\d+)"[^>]*layer="bottom"/g)].map((m) => m[1])
 	assert.equal(pads.length, withTest().values.test!.points.length)
 	assert.match(src, /from="\.TP\d+ > \.pin1" to="net\.V3V3"/)
-	assert.doesNotMatch(circuitFromContract(fixtureContract()), /<testpoint/, "no test field, no pads: existing boards are unchanged")
+	// Without a test field the board still gets its bring-up pads (on by default since 13 Nov), but not one per probed net.
+	const plain = fixtureContract()
+	plain.values.requirements = { ...plain.values.requirements!, testPads: false }
+	assert.doesNotMatch(circuitFromContract(plain), /<testpoint/, "no test field and testPads false: no pads")
 })
 
 test("the contract validates the test field", () => {

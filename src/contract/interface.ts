@@ -1,7 +1,7 @@
 // The board's mechanical interface, for a design that goes into the engineer's own housing (requirements.enclosure
 // "own"): everything whoever designs that housing must match, in one frame. Written as interface.md (and .json)
 // beside the report, from the same placement the board generator uses, so it follows every board change.
-import { antennaOverhang, micPorts, mountingHoles, placedByRole, recoveryPads, testPoints } from "../codegen/circuit.ts"
+import { antennaOverhang, bringupPads, micPorts, mountingHoles, placedByRole, recoveryPads, testPoints } from "../codegen/circuit.ts"
 import { MODULE_FCC_ID } from "./compliance.ts"
 import type { ContractSnapshot } from "./types.ts"
 import { profileForPart } from "../mcu/profile.ts"
@@ -39,7 +39,7 @@ export function mechanicalInterface(s: ContractSnapshot): MechanicalInterface | 
 		airflow: placedByRole(s, "sensor").map((p) => ({ ref: p.ref, ...at(p) })),
 		soundPorts: micPorts(s).map((m) => ({ ref: m.ref, ...at(m) })),
 		antenna: antenna ? { ...antenna, clearanceMm: ANTENNA_CLEARANCE_MM } : null,
-		bottomPads: [...testPoints(s).placed, ...recoveryPads(s).placed].map((p) => ({ ref: p.ref, net: p.net, xMm: p.xMm, yMm: p.yMm })),
+		bottomPads: [...testPoints(s).placed, ...recoveryPads(s).placed, ...bringupPads(s).placed].map((p) => ({ ref: p.ref, net: p.net, xMm: p.xMm, yMm: p.yMm })),
 		label: (() => {
 			const prof = mcu ? profileForPart(mcu) : null
 			const id = prof ? prof.fccId : mcu?.mpn.toUpperCase().startsWith("ESP32-C3-MINI-1") ? MODULE_FCC_ID : undefined

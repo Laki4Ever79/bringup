@@ -50,6 +50,10 @@ export interface Requirements {
 	// A deep-sleeping board wakes when USB is plugged in and stays awake while it is, so a cable alone reflashes it (the
 	// board generator adds a VBUS-sense divider). On unless false; off, reflashing needs the recovery pads.
 	usbWake?: boolean
+	// Bring-up test pads (engineer, 13 Nov 2026): a few bare pads on the underside, on ground, the rails, a debug UART and
+	// a cable link's signals, for the first bench session. On unless false ("no test pads"); a production test (field
+	// test) replaces them with a pad on every net it probes.
+	testPads?: boolean
 	// Who houses the board (engineer, 9 Nov 2026): "case" (the default) Bringup designs and prints one; "none" a bare
 	// board (lab use, a dev kit, a test rig); "own" it goes into the engineer's own housing, so Bringup writes the
 	// board's mechanical interface (interface.md) for whoever designs it instead of a case.

@@ -3,13 +3,13 @@
 // how the engineer will notice it on the device, why, what it costs and how to change it. The report lists them
 // ("Added for you"), and the agents and the reviewer get the same lines in their design facts.
 import { enclosureMode, type ContractSnapshot } from "./types.ts"
-import { downloadStrap, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
+import { bringupPads, downloadStrap, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
 import { estimatePower, PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
 import { profileForPart } from "../mcu/profile.ts"
 
 export interface AddedItem {
-	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "phone-use" | "button-window"
+	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "bringup-pads" | "phone-use" | "button-window"
 	what: string
 	shows: string // how the engineer will notice it on the device
 	why: string
@@ -89,6 +89,16 @@ export function addedForYou(s: ContractSnapshot, brief = ""): AddedItem[] {
 			change: ``,
 		})
 	}
+	const bring = bringupPads(s)
+	if (bring.placed.length || bring.unplaced.length)
+		items.push({
+			id: "bringup-pads",
+			what: `Bring-up test pads on the bottom: ${bring.placed.map((p) => `${p.ref} (${p.net})`).join(", ") || "none placed"}${bring.unplaced.length ? `; left off for lack of room: ${bring.unplaced.join(", ")}` : ""}`,
+			shows: `Bare 1.5 mm copper dots on the underside, labelled with their refs. Clip a ground lead to ${bring.placed.find((p) => p.net === "GND")?.ref ?? "the GND pad"} and probe a rail or a signal on its pad instead of a chip's pin.`,
+			why: `The first bench session is where a board first fails; a rail or a bus with no pad means probing a 0.4 mm pin. On every design by default (engineer, 13 Nov 2026).`,
+			cost: `A trace and a via per pad. They take only the room left on the underside: a pad that doesn't fit is left off, and the board never grows for one.`,
+			change: `Set requirements.testPads to false (a change request: "no test pads"). Asking for a production test replaces them with a pad on every net it probes, and a fixture.`,
+		})
 	// A wake button keeps the board visible long enough for a phone to find it (main.cpp BUTTON_ADVERTISE_MS).
 	const button = (s.values.pins ?? []).find((p) => p.signal === "BUTTON" && p.gpio >= 0 && p.gpio <= 5)
 	const windowS = templateConstant("BUTTON_ADVERTISE_MS") / 1000
