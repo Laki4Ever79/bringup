@@ -80,7 +80,8 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
-- [ ] **Bring-up test pads on every design, on by default** (the user, 13 Nov: "we should be adding test points as well
+- [x] **Bring-up test pads on every design, on by default** (built 13 Nov, 54e83ec; the nets a learned part adds come
+      with learned-part wiring) (the user, 13 Nov: "we should be adding test points as well
       to our designs"). Today pads come only with a production test ("add a production test fixture"), which probes
       every net and builds a fixture. The default would be a small set on the underside, using the same placement
       (`testPoints`): GND, every power rail (3V3, VBAT; VBUS stays optional), the debug UART's TX and RX, each signal
@@ -89,6 +90,21 @@ is a change to the firmware toolchain, not just the code.
       them off ("no test pads"); asking for a production test still widens them to every net and adds the fixture.
       Recommended on by default because the bench is where a board first fails, and a rail or a bus with no pad
       means probing a 0.4 mm pin.
+
+- [ ] **Tighter part spacing, proven by the router** (engineer, 13 Nov: "each component in optimal space and yet keeping
+      proper distance"). The placer keeps 1.5 mm between every two parts, so even a compact board is only about half
+      covered. Real builds at each design's compact size, 13 Nov (0 DRC errors = routed):
+
+      | Board | 1.5 mm everywhere (today) | 1.0 mm everywhere | 1.0 mm between small parts only |
+      | --- | --- | --- | --- |
+      | Logger | 33×25 routes | 31×25 routes | 33×25 routes |
+      | Beacon | 37×25 routes | 33×25 routes | 37×25 routes |
+      | STM32 logger | 37×21 fails, 39×21 routes | 33×19 routes | 32×20 fails |
+      | Rover | 42×29 routes | 37×26, 39×26, 39×28 fail (USB-C pins unrouted) | 41×27 fails (USB-C) |
+
+      No one gap wins: the autorouter's outcome swings with small layout changes. Kept at 1.5 mm. Next: place tight
+      first and, when the build doesn't route, retry the same size with the wider gap before the board grows, so a
+      board only gets the room its routing needed (one more build per failure, about 50 s).
 
 - [ ] **Antenna keep-out:** Espressif recommends 15 mm clear around the module's antenna; the case leaves 2 mm. No
       ground copper is kept away from it yet either.
