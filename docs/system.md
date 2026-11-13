@@ -125,20 +125,31 @@ all at once. The plan page shows each need as learning, learned (with how many v
 (with each candidate's reason). Build waits until no need is still learning.
 
 How a part is learned:
-1. Up to three candidate part numbers from the cheap model.
+1. Up to three candidate part numbers from the cheap model, asked by what the part is (each kind file has a plain
+   description: "a loudspeaker … not an amplifier or driver IC").
 2. Listings from LCSC/JLCPCB (no key), DigiKey (`DIGIKEY_CLIENT_ID`, `DIGIKEY_CLIENT_SECRET`) and Mouser
    (`MOUSER_API_KEY`), whichever are set; the manufacturer's datasheet by web search when no listing links one.
    The DigiKey and Mouser lookups follow their documented APIs but have not yet been run against them.
-3. The datasheet's pages (up to 12, by section titles for long ones) are read by the cheap model (`gpt-5.4-mini`).
-4. Each number is checked: **datasheet** when its value is in the PDF's text at the region the model gave, or, on an
-   image-only page, when a second read agrees. A disagreement goes once to the strong model (`gpt-5.4`). Anything
-   else is dropped.
+3. One cheap read of page 1 checks the datasheet is for that kind of part at all; if not, the candidate ends there.
+   Then up to 8 pages are read by the cheap model (`gpt-5.4-mini`): page 1, the first page of each section facts live
+   in (pin table, absolute maximums, recommended conditions, characteristics, package drawing), then more of them;
+   contents and revision-history pages are skipped.
+4. Each number is checked: **datasheet** when its value is among the PDF's own words near where the model said
+   (within about two table rows; the stored region is then those words' own box, not the model's), or, where nothing
+   is printed there (an image-only page, a raster drawing), when a second read agrees. Pins are read as number-name
+   pairs and checked pair by pair, each name on a row that has its number, since pin tables list pins in any order;
+   terminals with names only (a speaker's + and -) must be printed in that order. Anything not confirmed goes once to
+   the strong model (`gpt-5.4`), then is dropped.
 5. **Calculated** values come from named formulas (`src/learn/formulas.ts`, e.g. a speaker's sealed back volume from
    Vas and Qts). A missing non-critical value gets the kind's stated **default**, shown red. A missing critical value
    (outline, height, mount holes where the part has them, pins, supply limits for powered parts, footprint for board
    parts) is never filled in: another datasheet is tried, then the next candidate.
-6. A board part's footprint is the part's EasyEDA land pattern (by LCSC id) or a KiCad library footprint named for its
-   package, accepted only when its pad count matches the pins.
+6. A board part's footprint is the part's EasyEDA land pattern (by LCSC id) or a KiCad library footprint: the
+   library's package family found in how the datasheet prints the package ("8-Pin HVSSOP", "MSOP-8 PowerPAD"), the
+   body size from the datasheet's outline, an exposed pad when the text names one. Either is accepted only when its pad
+   count matches the pins.
+
+A speaker needs no mount holes: small ones have none, so the case clamps it by the rim its outline gives.
 
 The first candidate that is complete, in stock and (on the board) stocked by the assembler wins; otherwise the best
 complete one. It is written to `catalog/learned/<mpn>-<hash>.json` (facts with page and region, documents by URL and

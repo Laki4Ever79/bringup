@@ -10,6 +10,7 @@ import { Budget, BudgetedReader, BudgetExhausted, estimateUsd, learnCap } from "
 import { distributorsFrom, webFind } from "./distributors.ts"
 import { createDocStore } from "./docs.ts"
 import { findFootprint, kicadFootprintIndex } from "./footprint.ts"
+import { loadKinds } from "./kinds.ts"
 import { learnPart, type LearnDeps, type LearnLog, type LearnResult } from "./learner.ts"
 import { mockDistributor, mockFetch, mockFootprint, mockPropose, mockReader } from "./mock.ts"
 import { MODELS_LEARN, openAiReader } from "./reader.ts"
@@ -117,13 +118,20 @@ export function learnDepsFor(env: Record<string, string | undefined>, repoRoot: 
 		distributors: distributorsFrom(env, fetchImpl),
 		webFind: (mpn) => webFind(mpn, { env, fetchImpl, budget, store, onUsage }),
 		footprint: async (p) => findFootprint(p, { fetchImpl, kicadIndex: await (kicadIndex ??= kicadFootprintIndex(repoRoot)) }),
-		propose: (need, exclude) => proposeCandidates(need, exclude, { env, fetchImpl, budget, onUsage }),
+		propose: (need, exclude) => proposeCandidates(need, exclude, { env, fetchImpl, budget, onUsage, repoRoot }),
 		log,
 	}
 }
 
+// What the proposer is asked: the kind's plain description first (a kind's name alone misleads: "speaker-driver" read
+// as a driver IC gave amplifier chips for a loudspeaker), then the need.
+export function candidatePrompt(need: PartNeed, repoRoot: string, exclude: string[]): string {
+	const description = loadKinds(repoRoot).get(need.kind)?.description
+	return `Propose up to 3 real, currently produced parts (exact manufacturer part numbers) for this need, best first. Prefer parts in stock at LCSC/JLCPCB for parts soldered on the board, and parts with a public datasheet that gives dimensions, pin-out and supply limits.\nThe part: ${description ?? `a part of kind "${need.kind}"`}\nKind: ${need.kind}\nRole: ${need.role}\nRequirements: ${need.requirements}${exclude.length ? `\nNot these: ${exclude.join(", ")}` : ""}\nAnswer: {"parts": [{"manufacturer": string, "mpn": the manufacturer part number only, without the maker's name}]}`
+}
+
 // Candidate parts for a need: up to three MPNs from the cheap model, charged to the same budget.
-async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env: Record<string, string | undefined>; fetchImpl: typeof fetch; budget: Budget; onUsage: (r: UsageRecord) => void }): Promise<string[]> {
+async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env: Record<string, string | undefined>; fetchImpl: typeof fetch; budget: Budget; onUsage: (r: UsageRecord) => void; repoRoot: string }): Promise<string[]> {
 	const est = estimateUsd(MODELS_LEARN.cheap, 0, 600)
 	if (!deps.budget.reserve(est)) throw new BudgetExhausted(deps.budget.spent, deps.budget.cap)
 	let usd: number | null = null
@@ -131,7 +139,7 @@ async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env:
 		const text = await callModel(
 			{
 				system: "You pick electronic parts. Answer with JSON only.",
-				user: `Propose up to 3 real, currently produced parts (exact manufacturer part numbers) for this need, best first. Prefer parts in stock at LCSC/JLCPCB for parts soldered on the board, and parts with a public datasheet that gives dimensions, mount holes, pin-out and supply limits.\nKind: ${need.kind}\nRole: ${need.role}\nRequirements: ${need.requirements}${exclude.length ? `\nNot these: ${exclude.join(", ")}` : ""}\nAnswer: {"parts": [{"manufacturer": string, "mpn": the manufacturer part number only, without the maker's name}]}`,
+				user: candidatePrompt(need, deps.repoRoot, exclude),
 			},
 			deps.env,
 			deps.fetchImpl,

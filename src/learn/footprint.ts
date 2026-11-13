@@ -15,15 +15,57 @@ const EASYEDA = (lcsc: string) => `https://easyeda.com/api/products/${encodeURIC
 
 const padsFit = (pads: number, pins: number) => pads === pins || pads === pins + 1
 
-// "QFN-10-1EP_3x3mm" → 11, "SOIC-8_3.9x4.9mm" → 8; names without a pin count (R_0402) → null.
-export function kicadPadCount(name: string): number | null {
-	const m = /^[A-Za-z]+[A-Za-z0-9]*?-(\d+)(-1EP)?(?:[_-]|$)/.exec(name)
-	return m ? Number(m[1]) + (m[2] ? 1 : 0) : null
+// A KiCad footprint name read as a package: "QFN-10-1EP_3x3mm_P0.5mm" → QFN, 10 pins, an exposed pad, a 3 × 3 mm body.
+// A family with a number of its own keeps it ("SOT-23-5" → SOT-23, 5 pins). Names without a pin count (R_0402) → null.
+export function kicadPackage(name: string): { family: string; count: number; ep: boolean; size?: [number, number] } | null {
+	const base = name.split("_")[0]
+	const ep = /-1EP$/.test(base)
+	const m = /^([A-Za-z][A-Za-z0-9]*(?:-\d+(?=-\d))?)-(\d+)$/.exec(base.replace(/-1EP$/, ""))
+	if (!m) return null
+	const size = /_(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)mm/.exec(name)
+	return { family: m[1].toUpperCase(), count: Number(m[2]), ep, ...(size ? { size: [Number(size[1]), Number(size[2])] as [number, number] } : {}) }
 }
 
-const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "")
+// "QFN-10-1EP_3x3mm_P0.5mm" → 11, "SOIC-8_3.9x4.9mm" → 8; names without a pin count (R_0402) → null.
+export function kicadPadCount(name: string): number | null {
+	const p = kicadPackage(name)
+	return p ? p.count + (p.ep ? 1 : 0) : null
+}
 
-export async function findFootprint(part: { lcsc?: string; packageName?: string; pins: string[] }, deps: { fetchImpl: typeof fetch; kicadIndex?: string[] }): Promise<Fact | null> {
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+// An exposed pad named in how the datasheet prints the package (TI's PowerPAD, a thermal pad), or an H-family (HVSSOP).
+const NAMES_EP = /POWER\s*PAD|THERMAL|EXPOSED|(^|[^A-Z])EP([^A-Z]|$)/
+const SIZE_TOL_MM = 0.25
+
+// A KiCad standard-library footprint for a package as a datasheet or a listing prints it ("8-Pin HVSSOP", "MSOP-8
+// PowerPAD (DGN)"): the library's own family names found in that text, the pin count from the pin-out (and the text's
+// own count when it gives one), the body size from the datasheet's outline when known. Among several, the one whose
+// size is known to match, then the one with or without an exposed pad as the text says, then the plainest name (no
+// thermal-via or mask variant).
+function kicadFor(packageName: string, pinCount: number, bodyMm: number[] | undefined, index: string[]): string | null {
+	const text = packageName.toUpperCase()
+	const entries = index.map((e) => ({ e, p: kicadPackage(e.split(":")[1] ?? e) })).filter((x): x is { e: string; p: NonNullable<ReturnType<typeof kicadPackage>> } => x.p !== null)
+	const families = [...new Set(entries.map((x) => x.p.family))].sort((a, b) => b.length - a.length)
+	const named = new Map<string, number | null>()
+	for (const f of families) {
+		const m = new RegExp(`(?<![A-Z0-9])${esc(f)}(?![A-Z])(?:-(\\d+))?`).exec(text)
+		if (!m || [...named.keys()].some((k) => k.includes(f))) continue
+		const pinsWord = /(\d+)\s*-?\s*PIN/.exec(text)
+		named.set(f, m[1] ? Number(m[1]) : pinsWord ? Number(pinsWord[1]) : null)
+	}
+	const wantsEp = NAMES_EP.test(text) || [...named.keys()].some((f) => f.startsWith("H"))
+	const body = bodyMm && bodyMm.length >= 2 ? [bodyMm[0], bodyMm[1]] : null
+	const sizeOk = (s: [number, number]) => body !== null && ((Math.abs(s[0] - body[0]) <= SIZE_TOL_MM && Math.abs(s[1] - body[1]) <= SIZE_TOL_MM) || (Math.abs(s[0] - body[1]) <= SIZE_TOL_MM && Math.abs(s[1] - body[0]) <= SIZE_TOL_MM))
+	const fits = entries.filter(({ p }) => named.has(p.family) && (named.get(p.family) ?? p.count) === p.count && padsFit(p.count + (p.ep ? 1 : 0), pinCount) && !(body && p.size && !sizeOk(p.size)))
+	const score = ({ e, p }: (typeof fits)[number]) => [p.size && sizeOk(p.size) ? 0 : 1, p.ep === wantsEp ? 0 : 1, e.length] as const
+	fits.sort((a, b) => {
+		const [x, y] = [score(a), score(b)]
+		return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]
+	})
+	return fits[0]?.e ?? null
+}
+
+export async function findFootprint(part: { lcsc?: string; packageName?: string; pins: string[]; bodyMm?: number[] }, deps: { fetchImpl: typeof fetch; kicadIndex?: string[] }): Promise<Fact | null> {
 	if (!part.pins.length) return null
 	if (part.lcsc) {
 		try {
@@ -42,12 +84,7 @@ export async function findFootprint(part: { lcsc?: string; packageName?: string;
 		}
 	}
 	if (part.packageName && deps.kicadIndex?.length) {
-		const want = norm(part.packageName)
-		const hit = deps.kicadIndex.find((entry) => {
-			const name = entry.split(":")[1] ?? entry
-			const count = kicadPadCount(name)
-			return norm(name).startsWith(want) && count !== null && padsFit(count, part.pins.length)
-		})
+		const hit = kicadFor(part.packageName, part.pins.length, part.bodyMm, deps.kicadIndex)
 		if (hit) return { field: "footprint", value: `kicad:${hit}`, status: "datasheet", critical: true, check: "pad-count", origin: `KiCad standard library ${hit}` }
 	}
 	return null

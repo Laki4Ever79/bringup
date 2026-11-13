@@ -4,7 +4,7 @@ import { Budget, BudgetExhausted } from "./budget.ts"
 import { learnedDir, learnedFileName, readLearned, writeLearned } from "./catalog.ts"
 import { findListings, sameMpn, type Distributor, type webFind } from "./distributors.ts"
 import type { DocStore } from "./docs.ts"
-import { extractFacts } from "./extract.ts"
+import { extractFacts, identifyPart } from "./extract.ts"
 import { loadKinds, type KindFile } from "./kinds.ts"
 import type { PageReader, ReadRequest } from "./reader.ts"
 import { completeFacts, judge } from "./rule.ts"
@@ -13,8 +13,8 @@ import type { Fact, LearnedDoc, LearnedPart, Listing, PartNeed } from "./types.t
 export type LearnResult = { status: "learned"; part: LearnedPart; reused: boolean } | { status: "unavailable"; reasons: { mpn: string; reason: string }[] }
 
 // One line per candidate tried, in the plan's learn.jsonl: what it cost and how well the cheap model read it, which is
-// what tunes the model choice. firstReadMatched: facts confirmed without the strong model (datasheet facts minus
-// strong reads made, a lower bound).
+// what tunes the model choice. firstReadMatched: facts the cheap model's first read gave that were confirmed without the
+// strong model, counted for every candidate, learned or not.
 export interface LearnLog {
 	need: string
 	mpn: string
@@ -37,7 +37,7 @@ export interface LearnDeps {
 	budget: Budget
 	distributors: Distributor[]
 	webFind: (mpn: string) => ReturnType<typeof webFind>
-	footprint: (part: { mpn: string; lcsc?: string; packageName?: string; pins: string[] }) => Promise<Fact | null>
+	footprint: (part: { mpn: string; lcsc?: string; packageName?: string; pins: string[]; bodyMm?: number[] }) => Promise<Fact | null>
 	propose: (need: PartNeed, exclude: string[]) => Promise<string[]>
 	log: (line: LearnLog) => void
 }
@@ -96,12 +96,12 @@ const merge = (a: Fact[], b: Fact[]) => [...a, ...b.filter((f) => !a.some((x) =>
 
 type Tried = { ok: true; part: LearnedPart; good: boolean } | { ok: false; reason: string }
 
-async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: LearnDeps): Promise<Tried & { stats: ReturnType<typeof counting>["stats"]; pages: number; facts: number; usd: number }> {
+async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: LearnDeps): Promise<Tried & { stats: ReturnType<typeof counting>["stats"]; pages: number; facts: number; usd: number; firstRead: number }> {
 	const { reader, stats } = counting(deps.reader)
 	const spentBefore = deps.budget.spent
-	let pages = 0
+	const read = { firstRead: 0, pages: 0 }
 	let facts: Fact[] = []
-	const end = (t: Tried) => ({ ...t, stats, pages, facts: facts.length, usd: deps.budget.spent - spentBefore })
+	const end = (t: Tried) => ({ ...t, stats, pages: read.pages, facts: facts.length, usd: deps.budget.spent - spentBefore, firstRead: read.firstRead })
 
 	const listings: Listing[] = await findListings(mpn, deps.distributors)
 	// Datasheet links: the distributors' first, then the manufacturer's (found by web search) if none of them works.
@@ -130,15 +130,18 @@ async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: L
 		return end({ ok: false, reason: `no datasheet found (${listed}; web search: ${searched})` })
 	}
 	docs.push(doc)
-	pages += Math.min(doc.pages, 12)
-	let found = await extractFacts(doc, kind, { store: deps.store, reader })
+	const id = await identifyPart(doc, kind, mpn, { store: deps.store, reader })
+	if (!id.matches) return end({ ok: false, reason: `the datasheet is for ${id.part ?? "another kind of part"}, not ${kind.description ?? `a ${kind.kind}`}` })
+	let found = await extractFacts(doc, kind, { store: deps.store, reader, mpn, stats: read })
 
 	const addFootprint = async () => {
 		if (kind.placement !== "board" || found.some((f) => f.field === "footprint")) return
 		const pins = found.find((f) => f.field === "pins")?.value
 		const pkg = found.find((f) => f.field === "package")?.value
 		const lcscListing = listings.find((l) => l.distributor === "lcsc")
-		const fp = await deps.footprint({ mpn, lcsc: lcscListing?.sku, packageName: listings.find((l) => l.package)?.package ?? (typeof pkg === "string" ? pkg : undefined), pins: typeof pins === "string" ? pins.split(",").map((p) => p.trim()).filter(Boolean) : [] })
+		const outline = found.find((f) => f.field === "outline")?.value
+		const bodyMm = Array.isArray(outline) ? outline : typeof outline === "number" ? [outline] : undefined
+		const fp = await deps.footprint({ mpn, lcsc: lcscListing?.sku, packageName: listings.find((l) => l.package)?.package ?? (typeof pkg === "string" ? pkg : undefined), pins: typeof pins === "string" ? pins.split(",").map((p) => p.trim()).filter(Boolean) : [], ...(bodyMm ? { bodyMm } : {}) })
 		if (fp) found.push(fp)
 	}
 	await addFootprint()
@@ -149,8 +152,7 @@ async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: L
 		const other = await fetchFirst(urls.filter((u) => u !== doc.url))
 		if (other) {
 			docs.push(other)
-			pages += Math.min(other.pages, 12)
-			found = merge(found, await extractFacts(other, kind, { store: deps.store, reader }))
+			found = merge(found, await extractFacts(other, kind, { store: deps.store, reader, mpn, stats: read }))
 			await addFootprint()
 			facts = completeFacts(found, kind)
 			verdict = judge(facts, kind)
@@ -213,9 +215,9 @@ export async function learnPart(need: PartNeed, deps: LearnDeps): Promise<LearnR
 				const t = await tryCandidate(mpn, need, kind, deps).catch((e) => {
 					// The cap ends the whole need; any other error (a provider outage, a broken PDF) ends only this candidate.
 					if (e instanceof BudgetExhausted) throw e
-					return { ok: false as const, reason: `failed: ${e instanceof Error ? e.message : e}`, stats: { calls: 0, strong: 0, models: new Set<string>() }, pages: 0, facts: 0, usd: 0 }
+					return { ok: false as const, reason: `failed: ${e instanceof Error ? e.message : e}`, stats: { calls: 0, strong: 0, models: new Set<string>() }, pages: 0, facts: 0, usd: 0, firstRead: 0 }
 				})
-				deps.log({ need: need.id, mpn, pages: t.pages, calls: t.stats.calls, models: [...t.stats.models], usd: Number(t.usd.toFixed(4)), firstReadMatched: t.ok ? Math.max(0, t.part.facts.filter((f) => f.status === "datasheet").length - t.stats.strong) : 0, facts: t.facts, outcome: t.ok ? "learned" : t.reason })
+				deps.log({ need: need.id, mpn, pages: t.pages, calls: t.stats.calls, models: [...t.stats.models], usd: Number(t.usd.toFixed(4)), firstReadMatched: t.firstRead, facts: t.facts, outcome: t.ok ? "learned" : t.reason })
 				if (!t.ok) {
 					reasons.push({ mpn, reason: t.reason })
 					continue

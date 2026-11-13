@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { promisify } from "node:util"
+import type { Word } from "./locate.ts"
 import type { LearnedDoc, SourceRef } from "./types.ts"
 
 const run = promisify(execFile)
@@ -16,7 +17,11 @@ export interface DocStore {
 	// The page's text, or only the text inside a region (page fractions [x, y, w, h] from the top left). "" when the
 	// page (or region) has no text layer: an image-only page.
 	textIn(doc: LearnedDoc, page: number, region?: SourceRef["region"]): Promise<string>
+	// The page's words with their boxes (page fractions from the top left), [] for an image-only page.
+	words(doc: LearnedDoc, page: number): Promise<Word[]>
 }
+
+const unescape = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&")
 
 const MAX_BYTES = 30 * 1024 * 1024
 const TIMEOUT_MS = 30_000
@@ -94,6 +99,16 @@ export function createDocStore(root: string, fetchImpl: typeof fetch = fetch): D
 			}
 			const { stdout } = await run("pdftotext", [...args, path(doc), "-"])
 			return stdout.replace(/\f/g, "").trim()
+		},
+		async words(doc, page) {
+			const { stdout } = await run("pdftotext", ["-bbox", "-f", String(page), "-l", String(page), path(doc), "-"], { maxBuffer: 64 * 1024 * 1024 })
+			const size = /<page width="([\d.]+)" height="([\d.]+)"/.exec(stdout)
+			if (!size) return []
+			const [w, h] = [Number(size[1]), Number(size[2])]
+			return [...stdout.matchAll(/<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]*)<\/word>/g)].map((m) => {
+				const [x0, y0, x1, y1] = [1, 2, 3, 4].map((i) => Number(m[i]))
+				return { text: unescape(m[5]), region: [x0 / w, y0 / h, (x1 - x0) / w, (y1 - y0) / h] as SourceRef["region"] }
+			})
 		},
 	}
 }

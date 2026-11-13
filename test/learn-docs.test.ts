@@ -68,3 +68,15 @@ test("doctor says whether part learning can read PDFs", async () => {
 	assert.match(doctorReport({ ...base, poppler: true }, {}), /poppler \(PDF\)\s+local/)
 	assert.match(doctorReport({ ...base, poppler: false }, {}), /part learning needs pdfinfo/)
 })
+
+test("a page's words come with their boxes as page fractions; an image-only page has none", async () => {
+	const store = createDocStore(mkdtempSync(join(tmpdir(), "docs-")), fixtureFetch().fetch)
+	const amp = asDoc(await store.fetch("https://example.com/brg-amp1.pdf", "datasheet"))
+	const words = await store.words(amp, 2)
+	const gain = words.find((w) => w.text === "GAIN")!
+	assert.ok(Math.abs(gain.region[0] - 82.517 / 612) < 1e-6)
+	assert.ok(Math.abs(gain.region[1] - 83.538 / 792) < 1e-6)
+	assert.ok(Math.abs(gain.region[3] - (91.863 - 83.538) / 792) < 1e-6)
+	const spk = asDoc(await store.fetch("https://example.com/brg-spk40.pdf", "datasheet"))
+	assert.deepEqual(await store.words(spk, 2), [])
+})

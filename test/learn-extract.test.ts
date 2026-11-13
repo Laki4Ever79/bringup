@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { Budget, BudgetedReader, BudgetExhausted, learnCap } from "../src/learn/budget.ts"
 import { createDocStore, type DocStore } from "../src/learn/docs.ts"
-import { extractFacts } from "../src/learn/extract.ts"
+import { extractFacts, identifyPart, pagesToRead } from "../src/learn/extract.ts"
 import { loadKinds } from "../src/learn/kinds.ts"
 import type { LearnedDoc } from "../src/learn/types.ts"
 import { fixtureFetch } from "./fixtures/learn/fetch.ts"
@@ -53,12 +53,47 @@ test("a strong read rescues a wrong cheap read", async () => {
 	assert.ok(calls.some((c) => c.meta.pass === "strong" && c.model === "gpt-5.4"))
 })
 
-test("pins are confirmed name by name", async () => {
+const PAIRS = "1 SD, 2 GAIN, 3 DIN, 4 BCLK, 5 LRCLK, 6 GND, 7 VDD, 8 OUTP, 9 OUTN, 10 GND"
+
+test("pins are read as number-name pairs, confirmed pair by pair, and kept as names in pin-number order", async () => {
 	const { store, amp1 } = await docs()
-	const pins = { value: "SD,GAIN,DIN,BCLK,LRCLK,GND,VDD,OUTP,OUTN,GND", region: [0.05, 75 / 792, 0.9, 25 / 792] as [number, number, number, number] }
-	const { reader } = fakeReader({ first: { 2: { pins } } })
+	const pins = { value: PAIRS, region: [0.05, 75 / 792, 0.9, 25 / 792] as [number, number, number, number] }
+	const { reader, calls } = fakeReader({ first: { 2: { pins } } })
 	const f = (await extractFacts(amp1, amp, { store, reader })).find((x) => x.field === "pins")!
 	assert.equal(f.check, "text")
+	assert.equal(f.value, "SD,GAIN,DIN,BCLK,LRCLK,GND,VDD,OUTP,OUTN,GND")
+	assert.ok(calls.every((c) => c.meta.pass === "first"))
+	assert.match(calls[0].prompt, /pins: .*number/i)
+})
+
+test("terminals with names but no numbers (a speaker's + and -) are checked as one printed sequence", async () => {
+	const { store, spk40 } = await docs()
+	const terminals = { value: "+,-", region: [0.05, 206 / 792, 0.9, 24 / 792] as [number, number, number, number] }
+	const { reader } = fakeReader({ first: { 1: { pins: terminals } } })
+	const f = (await extractFacts(spk40, spk, { store, reader })).find((x) => x.field === "pins")!
+	assert.equal(f.check, "text")
+	assert.equal(f.value, "+,-")
+	const swapped = fakeReader({ first: { 1: { pins: { ...terminals, value: "-,+" } } }, strong: { 1: { pins: { ...terminals, value: "-,+" } } } })
+	assert.equal((await extractFacts(spk40, spk, { store, reader: swapped.reader })).find((x) => x.field === "pins"), undefined)
+})
+
+test("a value claimed a line away from where it's printed is confirmed by its own words, without the strong model", async () => {
+	const { store, amp1 } = await docs()
+	const { reader, calls } = fakeReader({ first: { 1: { supplyMaxV: { value: 6, unit: "V", region: row(178) } } } })
+	const stats = { firstRead: 0 }
+	const f = (await extractFacts(amp1, amp, { store, reader, stats })).find((x) => x.field === "supplyMaxV")!
+	assert.equal(f.check, "text")
+	assert.ok(calls.every((c) => c.meta.pass === "first"), "no strong read")
+	assert.ok(f.source!.region[1] < 160 / 792 && f.source!.region[1] + f.source!.region[3] > 150 / 792, "the region is the printed value's own box")
+	assert.match(f.source!.quote, /Absolute maximum VDD 6\.0 V/)
+	assert.equal(stats.firstRead, 1)
+})
+
+test("the prompt names the part, so a datasheet covering several packages is read for this one", async () => {
+	const { store, amp1 } = await docs()
+	const { reader, calls } = fakeReader({})
+	await extractFacts(amp1, amp, { store, reader, mpn: "BRG-AMP1QFN" })
+	assert.match(calls[0].prompt, /BRG-AMP1QFN/)
 })
 
 const outline = (d: number) => ({ value: [d, 18.5], unit: "mm", region: [0.2, 0.3, 0.5, 0.4] as [number, number, number, number] })
@@ -156,4 +191,26 @@ test("concurrent calls can't together cross the cap: each reserves its worst cas
 	release()
 	await first
 	assert.ok(Math.abs(budget.spent - 0.001) < 1e-9, "the reservation is replaced by the real cost")
+})
+
+test("long datasheets: contents and revision pages are skipped, at most 8 pages read", async () => {
+	const texts: Record<number, string> = { 1: "TPA1 amplifier features", 2: "Table of Contents\n1 Features ........ 1\n2 Pin Configuration ........ 3\n3 Absolute Maximum Ratings ........ 4\n4 Electrical Characteristics ........ 5\n5 Layout ........ 9", 3: "Pin Configuration and Functions", 4: "Absolute Maximum Ratings", 5: "Electrical Characteristics", 6: "Typical Characteristics graphs" }
+	for (let p = 7; p <= 30; p++) texts[p] = p % 3 === 0 ? "Recommended Operating Conditions" : p === 28 ? "Mechanical data, package outline" : "application notes"
+	const store = { textIn: async (_d: unknown, p: number) => texts[p] ?? "" } as unknown as DocStore
+	const pages = await pagesToRead({ id: "d", url: "", sha256: "", pages: 30, fetchedAt: "", kind: "datasheet" }, store)
+	assert.ok(!pages.includes(2), "the contents page")
+	assert.ok(pages.includes(1) && pages.includes(3) && pages.includes(4) && pages.includes(5))
+	assert.ok(pages.includes(28), "the package drawing near the end")
+	assert.ok(pages.length <= 8, String(pages))
+})
+
+test("a datasheet for a different kind of part is caught from its first page", async () => {
+	const { store, amp1 } = await docs()
+	const asked: string[] = []
+	const reader = { read: async (req: { prompt: string; meta: { pass: string } }) => (asked.push(req.prompt), { json: { matches: false, part: "a class-D audio amplifier IC" }, usd: 0.0005 }) }
+	const r = await identifyPart(amp1, spk, "TPA2005D1", { store, reader })
+	assert.deepEqual(r, { matches: false, part: "a class-D audio amplifier IC" })
+	assert.match(asked[0], /loudspeaker/)
+	// No answer (a reader that doesn't know the question) is never a rejection.
+	assert.equal((await identifyPart(amp1, spk, "X", { store, reader: fakeReader({}).reader })).matches, true)
 })
