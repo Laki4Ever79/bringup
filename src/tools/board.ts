@@ -12,6 +12,8 @@ import { run, tail } from "./exec.ts"
 
 // Contract -> tscircuit source -> placed and autorouted board -> KiCad project, STEP and render.
 // tscircuit's own result is the source of truth for nets and size; KiCad exports are best-effort.
+const FAILED_PER_STAGE = 2
+
 export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
 	if (!env.tsci) throw new Error("tscircuit build failed: tsci is not installed (tools/node)")
 	// tscircuit treats the nearest package.json as its project: inside this repo it would look for
@@ -41,11 +43,20 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	const withPort = debugPort(s).placed !== null
 	let dropped = false
 	let skipToNoPort = false
+	// Layouts that fail outright tell us about this size, not this layout, after a couple: at most FAILED_PER_STAGE
+	// failed builds with the port and as many without, then the error goes to the architect, who gives the board room.
+	// (Walking all 16 layouts at ~50 s each took one STM32 board 10 minutes, 13 Nov.)
+	let failedWith = 0
+	let failedWithout = 0
 	for (const placement of withPort ? [...fitting, ...fitting.map((p) => ({ ...p, debugPort: false as const }))] : fitting) {
 		// Without the port only when no layout with it built clean (a board with DRC errors is worse than one without it).
 		if (placement.debugPort === false && best && best.errors === 0) break
 		// A failure that no other layout fixes (a trace the router couldn't place) goes straight to the boards without it.
 		if (skipToNoPort && placement.debugPort !== false) continue
+		if (!best && (placement.debugPort === false ? failedWithout : failedWith) >= FAILED_PER_STAGE) {
+			if (placement.debugPort === false || !withPort) break
+			continue
+		}
 		dropped = placement.debugPort === false
 		const work = mkdtempSync(join(tmpdir(), "bringup-board-"))
 		const out = mkdtempSync(join(tmpdir(), "bringup-board-out-"))
@@ -69,6 +80,8 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 			lastError = error instanceof Error ? new Error(error.message.replaceAll(out, dir)) : error
 			// Once an earlier layout has built, a later one failing only means it isn't better: keep the board we have
 			// (before, a keepout attempt that failed threw, and the built board with a few DRC errors was lost).
+			if (placement.debugPort === false) failedWithout++
+			else failedWith++
 			if (best) continue
 			// Layout-sensitive failures try the next layout; the router's junction tangle too (the STM32 logger: 38×22
 			// fails, 38×21 routes, so a nudged LDO may clear it at the same size).
