@@ -173,3 +173,10 @@ test("the proposer's prompt lists the learned parts it may reuse", async () => {
 	const p = candidatePrompt({ id: "s", role: "speaker", kind: "speaker-driver", requirements: "small" }, ROOT, [], [{ mpn: "AS02808MR-R", summary: "outline 28 mm, impedanceOhm 8 Ω" }])
 	assert.match(p, /Already learned.*AS02808MR-R \(outline 28 mm, impedanceOhm 8 Ω\)/s)
 })
+
+test("the proposer asks for full orderable part numbers, and puts a learned part that fits first", async () => {
+	const { candidatePrompt } = await import("../src/learn/runtime.ts")
+	const p = candidatePrompt({ id: "a", role: "amp", kind: "amplifier", requirements: "3 W" }, ROOT, [], [{ mpn: "PAM8302AASCR", summary: "x" }])
+	assert.match(p, /full orderable part number, with its package suffix/)
+	assert.match(p, /must be your first part/)
+})
