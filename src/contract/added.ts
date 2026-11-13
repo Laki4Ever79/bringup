@@ -3,13 +3,13 @@
 // how the engineer will notice it on the device, why, what it costs and how to change it. The report lists them
 // ("Added for you"), and the agents and the reviewer get the same lines in their design facts.
 import { enclosureMode, type ContractSnapshot } from "./types.ts"
-import { bringupPads, downloadStrap, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
+import { bringupPads, downloadStrap, MCU_EN_NET, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
 import { estimatePower, PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
 import { profileForPart } from "../mcu/profile.ts"
 
 export interface AddedItem {
-	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "bringup-pads" | "phone-use" | "button-window"
+	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "bringup-pads" | "en-reset" | "phone-use" | "button-window"
 	what: string
 	shows: string // how the engineer will notice it on the device
 	why: string
@@ -99,6 +99,19 @@ export function addedForYou(s: ContractSnapshot, brief = ""): AddedItem[] {
 			cost: `A trace and a via per pad. They take only the room left on the underside: a pad that doesn't fit is left off, and the board never grows for one.`,
 			change: `Set requirements.testPads to false (a change request: "no test pads"). Asking for a production test replaces them with a pad on every net it probes, and a fixture.`,
 		})
+	const rc = supportParts(s).filter((x) => [x.a, x.b].some((e) => "net" in e && e.net === MCU_EN_NET))
+	if (rc.length) {
+		const [r, c] = [rc.find((x) => x.spec.kind === "resistor"), rc.find((x) => x.spec.kind === "capacitor")]
+		const mcu = (s.values.parts ?? []).find((p) => p.role === "mcu")
+		items.push({
+			id: "en-reset",
+			what: `A reset delay on ${mcu?.ref ?? "the module"}.EN: ${r?.ref ?? "a resistor"} (${r?.spec.value ?? "10k"}) to 3V3 and ${c?.ref ?? "a capacitor"} (${c?.spec.value ?? "1uF"}) to GND`,
+			shows: `Two small parts beside the module (10 k and 1 µF). The chip starts once the supply is up (the RC's time constant is 10 ms), and a debug cable or a probe can pull EN low to reset it.`,
+			why: `Espressif's module datasheet (ESP32-C3-MINI-1, "Peripheral Schematics") recommends an RC delay on EN, usually 10 kΩ and 1 µF, so the chip doesn't start on a supply that is still rising. Without it, a debug cable can't reset the chip.`,
+			cost: `Two 0402 parts. 3.3 V across 10 kΩ only while EN is held low: nothing in normal use.`,
+			change: ``,
+		})
+	}
 	// A wake button keeps the board visible long enough for a phone to find it (main.cpp BUTTON_ADVERTISE_MS).
 	const button = (s.values.pins ?? []).find((p) => p.signal === "BUTTON" && p.gpio >= 0 && p.gpio <= 5)
 	const windowS = templateConstant("BUTTON_ADVERTISE_MS") / 1000

@@ -46,7 +46,7 @@ test("no deep sleep, or usbWake false: no divider, no PIN_USB_SENSE", () => {
 	assert.ok(!supportParts(off).some((sp) => /USB-sense/.test(sp.job)))
 	assert.doesNotMatch(pinsHeader(off), /PIN_USB_SENSE/)
 	// No battery capacity in this fixture, so no battery-life figure for the phone-use assumption to qualify.
-	assert.deepEqual(addedForYou(off).map((i) => i.id), ["case", "usb-wake-off", "recovery-pads", "bringup-pads"])
+	assert.deepEqual(addedForYou(off).map((i) => i.id), ["case", "usb-wake-off", "recovery-pads", "bringup-pads", "en-reset"])
 })
 
 test("every wake pin taken is a violation for the architect", () => {
@@ -64,7 +64,7 @@ test("the engineer is told what was added, how it shows, what it costs and how t
 	const s = logger()
 	const items = addedForYou(s)
 	// "case" first: the fixture doesn't say how the board is housed, so our case is an assumption too.
-	assert.deepEqual(items.map((i) => i.id), ["case", "usb-wake", "recovery-pads", "bringup-pads"])
+	assert.deepEqual(items.map((i) => i.id), ["case", "usb-wake", "recovery-pads", "bringup-pads", "en-reset"])
 	const usb = items[1]
 	assert.match(usb.shows, /pio run -t upload/)
 	assert.match(usb.cost, /nothing from the battery/)
@@ -72,7 +72,7 @@ test("the engineer is told what was added, how it shows, what it costs and how t
 	assert.match(usb.change, /requirements\.usbWake to false/)
 	const section = addedForYouSection(s)
 	assert.equal(section[0], "## Added for you")
-	assert.equal(section.filter((l) => l.startsWith("| ") && !l.startsWith("| What")).length, 4)
+	assert.equal(section.filter((l) => l.startsWith("| ") && !l.startsWith("| What")).length, 5)
 	// The agents and the reviewer get the same list.
 	assert.ok(designFacts(s, "").some((l) => l.startsWith("- USB wake:")))
 	assert.ok(addedForYouFactLines(s).some((l) => /ROM downloader/.test(l)))

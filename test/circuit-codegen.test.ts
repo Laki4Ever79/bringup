@@ -264,8 +264,10 @@ test("charger: VBUS in, VBAT out to the battery and the LDO, PROG to GND through
 	assert.doesNotMatch(src, /from="\.U3 > \.VIN" to="net\.VBUS"/, "LDO must run from the battery, not VBUS")
 })
 
-test("module EN is tied to 3V3", () => {
-	onNet(circuitFromContract(loggerContract()), ".U1 > .EN", "V3V3")
+test("module EN goes through the reset RC: on its own net with the contract's 10k to 3V3 and 1uF to GND", () => {
+	const src = circuitFromContract(loggerContract())
+	onNet(src, ".U1 > .EN", "MCU_EN")
+	assert.doesNotMatch(src, /from="\.U1 > \.EN" to="net\.V3V3"/)
 })
 
 test("I2C lines get 10k pull-ups to 3V3", () => {
