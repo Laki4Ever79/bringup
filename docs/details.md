@@ -430,7 +430,9 @@ claude mcp add bringup -- "$PWD/node_modules/.bin/tsx" "$PWD/src/mcp/cli.ts"
 
 Tools: `start_design {brief, mock?}` starts a run in the background and returns its `runId` at once (`mock` defaults to
 true: scripted models, no API key). `design_status`, `read_contract`, `get_report` and `list_events {sinceSeq?}` read
-`out/<runId>/`. Cursor and other MCP clients take the same command. Set `BRINGUP_OUT` to keep runs somewhere other than
+`out/<runId>/`. `request_change {runId, text}` sends a change request to a running design, as the engineer would
+("make it 60 mm wide"). Cursor and other MCP clients take the same command. In Claude Code, the `bringup` skill
+(`.claude/skills/bringup/`) tells the agent how to drive all of this. Set `BRINGUP_OUT` to keep runs somewhere other than
 `out/`.
 
 ## Tests
