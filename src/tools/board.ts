@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { boardParts, circuitFromContract, LDO_FROM_USB_MM, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
+import { boardParts, circuitFromContract, debugPort, LDO_FROM_USB_MM, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
 import type { BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
@@ -36,7 +36,17 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 		const left = boardParts(s).map((p) => p.ref).filter((ref) => !placed.has(ref))
 		throw new Error(`tscircuit build failed: no room on the board for ${left.join(", ")} at ${s.values.outline?.widthMm}×${s.values.outline?.heightMm} mm (the placer found no free spot)`)
 	}
-	for (const placement of fitting) {
+	// Last: the same layouts without the debug footprint, when none built with it (the rover at 42×29 mm: its five
+	// lines left USB-C pins unrouted). A board never fails for want of a debug port; the report says it was left off.
+	const withPort = debugPort(s).placed !== null
+	let dropped = false
+	let skipToNoPort = false
+	for (const placement of withPort ? [...fitting, ...fitting.map((p) => ({ ...p, debugPort: false as const }))] : fitting) {
+		// Without the port only when no layout with it built clean (a board with DRC errors is worse than one without it).
+		if (placement.debugPort === false && best && best.errors === 0) break
+		// A failure that no other layout fixes (a trace the router couldn't place) goes straight to the boards without it.
+		if (skipToNoPort && placement.debugPort !== false) continue
+		dropped = placement.debugPort === false
 		const work = mkdtempSync(join(tmpdir(), "bringup-board-"))
 		const out = mkdtempSync(join(tmpdir(), "bringup-board-out-"))
 		try {
@@ -44,7 +54,8 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 			const errors = board.drc?.errors ?? 0
 			if (!best || errors < best.errors) {
 				if (best) rmSync(best.board.dir, { recursive: true, force: true })
-				best = { board, errors }
+				const why: string = best ? `the board had ${best.errors} DRC error${best.errors === 1 ? "" : "s"} with it${best.board.drc?.firstError ? ` (${best.board.drc.firstError})` : ""}` : droppedWhy(lastError)
+				best = { board: dropped ? { ...board, debugPortDropped: why } : board, errors }
 			} else rmSync(out, { recursive: true, force: true })
 			if (errors === 0) break
 		} catch (error) {
@@ -59,7 +70,10 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 			// Once an earlier layout has built, a later one failing only means it isn't better: keep the board we have
 			// (before, a keepout attempt that failed threw, and the built board with a few DRC errors was lost).
 			if (best) continue
-			if (!/overlap|clearance|keepout|too close/i.test(String(error))) throw error
+			if (!/overlap|clearance|keepout|too close/i.test(String(error))) {
+				if (withPort && placement.debugPort !== false) { skipToNoPort = true; continue }
+				throw error
+			}
 		} finally {
 			rmSync(work, { recursive: true, force: true })
 		}
@@ -140,6 +154,15 @@ const SUMMARY = /^Circuits\s+\d+ passed \d+ failed/
 // The lines that explain a failed build. The router's "missing a trace" lines also follow other errors (a via on a
 // pad), so they count only when nothing more specific explains it: then the router ran out of room, and without them
 // the architect saw only "0 passed 1 failed".
+// Why the debug footprint was left off: the pins the router left without a trace, or its first real error.
+function droppedWhy(error: unknown): string {
+	const lines = String(error).split("\n").map((l) => l.trim())
+	const unrouted = lines.filter((l) => ROUTING_FAILURE.test(l)).map((l) => l.replace(/^Port (\S+) on (\S+) is missing a trace$/, "$2.$1"))
+	if (unrouted.length) return `the board didn't route with it (no trace to ${unrouted.slice(0, 4).join(", ")}${unrouted.length > 4 ? ` and ${unrouted.length - 4} more` : ""})`
+	const other = lines.find((l) => /unique PCB port|overlap|clearance/i.test(l))
+	return `the board didn't route with it${other ? ` (${other})` : ""}`
+}
+
 export function buildErrors(output: string): string {
 	const lines = output.split("\n").map((l) => l.trim()).filter(Boolean)
 	const relevant = lines.filter((l) => SIGNAL.test(l) && !NOISE.test(l))

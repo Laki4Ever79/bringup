@@ -3,13 +3,13 @@
 // how the engineer will notice it on the device, why, what it costs and how to change it. The report lists them
 // ("Added for you"), and the agents and the reviewer get the same lines in their design facts.
 import { enclosureMode, type ContractSnapshot } from "./types.ts"
-import { bringupPads, downloadStrap, MCU_EN_NET, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
+import { bringupPads, debugPort, downloadStrap, MCU_EN_NET, TC2030, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
 import { estimatePower, PHONE_CONNECTIONS_PER_DAY, phoneUseMa } from "./power.ts"
 import { profileForPart } from "../mcu/profile.ts"
 
 export interface AddedItem {
-	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "bringup-pads" | "en-reset" | "phone-use" | "button-window"
+	id: "case" | "no-case" | "own-housing" | "usb-wake" | "usb-wake-off" | "recovery-pads" | "bringup-pads" | "en-reset" | "debug-port" | "phone-use" | "button-window"
 	what: string
 	shows: string // how the engineer will notice it on the device
 	why: string
@@ -99,6 +99,18 @@ export function addedForYou(s: ContractSnapshot, brief = ""): AddedItem[] {
 			cost: `A trace and a via per pad. They take only the room left on the underside: a pad that doesn't fit is left off, and the board never grows for one.`,
 			change: `Set requirements.testPads to false (a change request: "no test pads"). Asking for a production test replaces them with a pad on every net it probes, and a fixture.`,
 		})
+	const dbg = debugPort(s)
+	if (dbg.placed || dbg.unplaced) {
+		const swd = dbg.placed?.pinout.standard === "tc2030-swd"
+		items.push({
+			id: "debug-port",
+			what: dbg.placed ? `A debug footprint on the bottom: ${TC2030.footprint} (JD1), ${dbg.placed.pads.map((p) => `${p.pin} ${p.name}`).join(", ")}` : `A ${TC2030.footprint} debug footprint: left off, no room on the underside`,
+			shows: dbg.placed ? `Six small gold dots and three small holes on the underside. A stock TC2030 cable presses on them: ${swd ? "SWD from any CMSIS-DAP or ST-LINK probe" : "flash, reset and the UART console, even when USB doesn't answer"}. Nothing to solder or buy for the board.` : `Nothing: the board has no room for it, and it never grows for one.`,
+			why: `A standard debug port lets any cable, or a bench tool, reach the chip without a connector on the board (engineer, 13 Nov 2026). Tag-Connect's footprint is the common one; its drawing (TC2030-IDC-NL-FP rev A) is followed exactly.`,
+			cost: `Three 1 mm holes through the board (top parts keep clear of them) and six traces. It takes only room left on the underside. No part in the BOM (the drawing asks for "DNL").`,
+			change: `Set requirements.debugPort to false (a change request: "no debug port").`,
+		})
+	}
 	const rc = supportParts(s).filter((x) => [x.a, x.b].some((e) => "net" in e && e.net === MCU_EN_NET))
 	if (rc.length) {
 		const [r, c] = [rc.find((x) => x.spec.kind === "resistor"), rc.find((x) => x.spec.kind === "capacitor")]

@@ -58,6 +58,8 @@ export interface Requirements {
 	// a cable link's signals, for the first bench session. On unless false ("no test pads"); a production test (field
 	// test) replaces them with a pad on every net it probes.
 	testPads?: boolean
+	// The Tag-Connect TC2030 debug footprint on the underside (codegen/circuit.ts debugPort); on unless false.
+	debugPort?: boolean
 	// Who houses the board (engineer, 9 Nov 2026): "case" (the default) Bringup designs and prints one; "none" a bare
 	// board (lab use, a dev kit, a test rig); "own" it goes into the engineer's own housing, so Bringup writes the
 	// board's mechanical interface (interface.md) for whoever designs it instead of a case.

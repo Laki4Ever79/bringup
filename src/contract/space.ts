@@ -1,4 +1,4 @@
-import { antennaOverhang, boardParts, placeParts, recoveryPads, testPoints } from "../codegen/circuit.ts"
+import { antennaOverhang, boardParts, debugPort, layoutBoard, placeParts, recoveryPads, testPoints } from "../codegen/circuit.ts"
 import { caseOf, minCaseHeight } from "./case.ts"
 import type { AgentRole, ContractSnapshot, FieldName, SizeReason } from "./types.ts"
 
@@ -61,7 +61,9 @@ const cache = new Map<string, MinimumBoard | null>()
 export function placesAll(s: ContractSnapshot, w: number, h: number): boolean {
 	try {
 		const r = resized(s, w, h)
-		return placeParts(r).length >= boardParts(s).length && recoveryPads(r).unplaced.length === 0 && testPoints(r).unplaced.length === 0
+		const layout = layoutBoard(r)
+		const placed = new Set(layout.parts.map((p) => p.ref))
+		return boardParts(s).every((p) => placed.has(p.ref)) && (layout.debug !== null || !debugPort(r).unplaced) && recoveryPads(r).unplaced.length === 0 && testPoints(r).unplaced.length === 0
 	} catch {
 		return false
 	}
@@ -72,7 +74,8 @@ export function unplacedParts(s: ContractSnapshot): string[] {
 	if (!s.values.outline) return []
 	try {
 		const placed = new Set(placeParts(s).map((p) => p.ref))
-		return boardParts(s).map((p) => p.ref).filter((r) => !placed.has(r))
+		// The debug footprint, reserved like a part (layoutBoard): no room for it is no room.
+		return [...boardParts(s).map((p) => p.ref).filter((r) => !placed.has(r)), ...(debugPort(s).unplaced ? ["JD1"] : [])]
 	} catch {
 		return []
 	}

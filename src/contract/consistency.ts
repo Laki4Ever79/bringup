@@ -38,6 +38,8 @@ export interface BoardArtifact {
 	parts?: Record<string, { mpn: string | null; pins: string[] }>
 	// Where each part's centre was placed, from the board's bottom-left corner (circuit.json).
 	placements?: Record<string, { xMm: number; yMm: number }>
+	// The debug footprint (codegen/circuit.ts debugPort) was in the contract but the board only built without it.
+	debugPortDropped?: string
 }
 
 export interface PrintCheck {
