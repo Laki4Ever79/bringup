@@ -1,4 +1,4 @@
-import { antennaOverhang, boardParts, placeParts } from "../codegen/circuit.ts"
+import { antennaOverhang, boardParts, placeParts, recoveryPads, testPoints } from "../codegen/circuit.ts"
 import { caseOf, minCaseHeight } from "./case.ts"
 import type { AgentRole, ContractSnapshot, FieldName, SizeReason } from "./types.ts"
 
@@ -54,12 +54,27 @@ function resized(s: ContractSnapshot, w: number, h: number): ContractSnapshot {
 
 const cache = new Map<string, MinimumBoard | null>()
 
-// Every part placed at w x h (connectors kept at the same relative place along their edges).
+// Every part placed at w x h (connectors kept at the same relative place along their edges), and the bottom pads the
+// board must have: the recovery pads of a deep-sleeping board and a production test's pads (space rule 1: hard needs are
+// part of the minimum; the compacted beacon left its recovery pads no spot, 13 Nov 2026). Bring-up pads are not: they
+// take only the room left.
 export function placesAll(s: ContractSnapshot, w: number, h: number): boolean {
 	try {
-		return placeParts(resized(s, w, h)).length >= boardParts(s).length
+		const r = resized(s, w, h)
+		return placeParts(r).length >= boardParts(s).length && recoveryPads(r).unplaced.length === 0 && testPoints(r).unplaced.length === 0
 	} catch {
 		return false
+	}
+}
+
+// The parts that find no spot on the board as it is now.
+export function unplacedParts(s: ContractSnapshot): string[] {
+	if (!s.values.outline) return []
+	try {
+		const placed = new Set(placeParts(s).map((p) => p.ref))
+		return boardParts(s).map((p) => p.ref).filter((r) => !placed.has(r))
+	} catch {
+		return []
 	}
 }
 
@@ -83,10 +98,14 @@ export function minimumBoard(s: ContractSnapshot): MinimumBoard | null {
 	const floorArea = courtyardMm2 / MAX_DENSITY
 	let best: { w: number; h: number } | null = null
 	const shapes: { widthMm: number; heightMm: number }[] = []
+	// The search runs below the board's own size; when that size itself doesn't hold everything (a part added after the
+	// board was compacted), it first grows 2 mm a side at a time, up to 40 mm, so the answer says how big it must be.
+	let [W0, H0] = [Math.ceil(o.widthMm), Math.ceil(o.heightMm)]
+	for (let k = 0; k < 20 && !fits(W0, H0); k++) [W0, H0] = [W0 + 2, H0 + 2]
 	// For each height, the narrowest width that places everything (binary search: a wider board never places fewer).
-	for (let h = Math.ceil(o.heightMm); h >= 10; h--) {
+	for (let h = H0; h >= 10; h--) {
 		let lo = 10
-		let hi = Math.ceil(o.widthMm)
+		let hi = W0
 		if (!fits(hi, h)) continue
 		while (lo < hi) {
 			const mid = Math.floor((lo + hi) / 2)
@@ -122,7 +141,7 @@ export function compactOutline(s: ContractSnapshot): { widthMm: number; heightMm
 }
 
 export interface SpaceViolation {
-	kind: "space-slack"
+	kind: "space-slack" | "space-room"
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]
@@ -137,17 +156,54 @@ const pct = (x: number) => `${Math.round(x * 100)}%`
 export const SPACE_INPUTS = ["outline", "parts", "connectors", "rails", "pins"] as const
 const complete = (s: ContractSnapshot) => SPACE_INPUTS.every((f) => s.values[f] !== undefined)
 
+// A size given as "about", "at most", "fits in" is a limit, not a reason for extra room (engineer, 13 Nov 2026: the
+// demo logger's "about 50 × 30 mm" kept a board 74-82% bigger than its parts need). Without requirements.size, an
+// "engineer-size" reason whose own words say so is read the same way.
+const LIMIT_WORDS = /\b(about|around|roughly|approx(imately)?|circa|up to|at most|no (bigger|larger|more) than|within|under|max(imum)?|fits? (in|into))\b|~/i
+export function sizeReasonHolds(s: ContractSnapshot, r: SizeReason | undefined): boolean {
+	if (!r) return false
+	if (r.kind !== "engineer-size") return true
+	const size = s.values.requirements?.size
+	return size ? size.exact : !LIMIT_WORDS.test(r.detail)
+}
+
 export function spaceChecks(s: ContractSnapshot): SpaceViolation[] {
 	const v: SpaceViolation[] = []
 	if (!complete(s)) return v
 	const o = s.values.outline
 	const min = o ? minimumBoard(s) : null
+	// Too small for what it carries: a part with no spot, or a pad the board must have. Caught here, in plain code, not
+	// only when a board build fails (a --no-hardware run never builds one).
+	if (o && !placesAll(s, o.widthMm, o.heightMm)) {
+		const parts = unplacedParts(s)
+		const pads = [...recoveryPads(s).unplaced.map((n) => `recovery pad ${n}`), ...testPoints(s).unplaced.map((n) => `test pad ${n}`)]
+		v.push({
+			kind: "space-room",
+			message: `the ${o.widthMm}×${o.heightMm} mm board has no spot for ${[...parts, ...pads].join(", ") || "everything it carries"}${min ? `: the smallest board that holds everything is ${min.areaMm2} mm², e.g. ${min.widthMm}×${min.heightMm} mm` : ""}; make it that size, or move what crowds it`,
+			fields: ["outline"],
+			affects: ["architect"],
+		})
+		return v
+	}
 	if (o && min) {
 		const slack = (o.widthMm * o.heightMm) / min.areaMm2 - 1
-		if (slack > SLACK_LIMIT && !o.sizeReason)
+		const limit = !sizeReasonHolds(s, o.sizeReason) && o.sizeReason?.kind === "engineer-size"
+		if (slack > SLACK_LIMIT && !sizeReasonHolds(s, o.sizeReason))
 			v.push({
 				kind: "space-slack",
-				message: `the board is ${o.widthMm}×${o.heightMm} mm (${o.widthMm * o.heightMm} mm²), ${pct(slack)} over the smallest it can be (${min.areaMm2} mm², e.g. ${min.widthMm}×${min.heightMm} mm by placement): shrink it to within ${pct(SLACK_LIMIT)}, or record why in outline.sizeReason`,
+				message: `the board is ${o.widthMm}×${o.heightMm} mm (${o.widthMm * o.heightMm} mm²), ${pct(slack)} over the smallest it can be (${min.areaMm2} mm², e.g. ${min.widthMm}×${min.heightMm} mm by placement): shrink it to within ${pct(SLACK_LIMIT)}, or record why in outline.sizeReason${limit ? `. The engineer's size (${o.sizeReason!.detail}) is a limit, not a reason for extra room: a board within it and compact meets it. Only an exact size (an existing housing, a chassis: requirements.size exact true) keeps it` : ""}`,
+				fields: ["outline"],
+				affects: ["architect"],
+			})
+	}
+	// Bigger than the engineer's limit, in either orientation, unless a failed build needs the room.
+	const size = s.values.requirements?.size
+	if (o && size && !size.exact && o.sizeReason?.kind !== "routing") {
+		const fits = (w: number, h: number) => o.widthMm <= w + 1e-9 && o.heightMm <= h + 1e-9
+		if (!fits(size.widthMm, size.heightMm) && !fits(size.heightMm, size.widthMm))
+			v.push({
+				kind: "space-slack",
+				message: `the board is ${o.widthMm}×${o.heightMm} mm, over the engineer's limit of ${size.widthMm}×${size.heightMm} mm (requirements.size): make it fit within it`,
 				fields: ["outline"],
 				affects: ["architect"],
 			})
@@ -157,7 +213,7 @@ export function spaceChecks(s: ContractSnapshot): SpaceViolation[] {
 	if (c && o && (s.values.requirements?.enclosure ?? "case") === "case") {
 		const need = minCaseHeight(s, c)
 		const slack = c.heightMm / need - 1
-		if (need > 0 && slack > SLACK_LIMIT && !c.sizeReason)
+		if (need > 0 && slack > SLACK_LIMIT && !sizeReasonHolds(s, c.sizeReason))
 			v.push({
 				kind: "space-slack",
 				message: `the case body is ${c.heightMm} mm tall, ${pct(slack)} over the ${need} mm its contents need: lower it to within ${pct(SLACK_LIMIT)}, or record why in case.sizeReason`,

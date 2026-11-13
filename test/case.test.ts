@@ -15,7 +15,7 @@ import { caseFromRequest, requestedCaseWidth } from "../src/inference/scripts.ts
 import { appendDecision } from "../src/runner/decisions.ts"
 import { prCards } from "../src/dashboard/model.js"
 import { fixtureContract } from "./fixture.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, exactSize } from "./helpers.ts"
 
 function withCase(c: CaseSpec) {
 	const s = fixtureContract()
@@ -155,7 +155,7 @@ const trace = (out: string) => readFileSync(join(out, "trace.jsonl"), "utf8").tr
 test("case features, then a case size the board must follow: the engineer is warned, confirms, and the board shrinks", { timeout: 240_000 }, async () => {
 	const out = tempDir()
 	const you = engineer(out, true)
-	const r = await runDesign({ brief: readFileSync("briefs/logger.md", "utf8"), mock: true, noHardware: true, review: false, outDir: out, changes: ['add wall-mount tabs and engrave "BRINGUP" on the lid', "make the case 50 mm wide"], changeTimeoutMs: 30_000 })
+	const r = await runDesign({ brief: exactSize(readFileSync("briefs/logger.md", "utf8")), mock: true, noHardware: true, review: false, outDir: out, changes: ['add wall-mount tabs and engrave "BRINGUP" on the lid', "make the case 50 mm wide"], changeTimeoutMs: 30_000 })
 	you.stop()
 	assert.equal(r.settled, true)
 	assert.deepEqual(r.violations, [])
@@ -178,7 +178,7 @@ test("case features, then a case size the board must follow: the engineer is war
 test("rejected: the board stays, the case keeps its size, and the design settles", { timeout: 240_000 }, async () => {
 	const out = tempDir()
 	const you = engineer(out, false)
-	const r = await runDesign({ brief: readFileSync("briefs/logger.md", "utf8"), mock: true, noHardware: true, review: false, outDir: out, changes: ["make the case 50 mm wide"], changeTimeoutMs: 30_000 })
+	const r = await runDesign({ brief: exactSize(readFileSync("briefs/logger.md", "utf8")), mock: true, noHardware: true, review: false, outDir: out, changes: ["make the case 50 mm wide"], changeTimeoutMs: 30_000 })
 	you.stop()
 	assert.equal(r.settled, true)
 	assert.deepEqual(r.violations, [])

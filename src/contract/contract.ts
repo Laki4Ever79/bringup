@@ -156,6 +156,10 @@ function shapeError(field: FieldName, value: unknown): string | null {
 			if (value.batteryMah !== undefined && !(isNum(value.batteryMah) && (value.batteryMah as number) > 0)) return "requirements.batteryMah must be a positive number of mAh"
 			if (value.historyDays !== undefined && !(Number.isInteger(value.historyDays) && (value.historyDays as number) >= 1)) return "requirements.historyDays must be a whole number of days, at least 1"
 			if (value.usbWake !== undefined && typeof value.usbWake !== "boolean") return "requirements.usbWake must be true or false"
+			if (value.testPads !== undefined && typeof value.testPads !== "boolean") return "requirements.testPads must be true or false"
+			const z = value.size as Record<string, unknown> | undefined
+			if (z !== undefined && !(obj(z) && isNum(z.widthMm) && isNum(z.heightMm) && (z.widthMm as number) > 0 && (z.heightMm as number) > 0 && typeof z.exact === "boolean"))
+				return "requirements.size must be {widthMm, heightMm, exact: true|false}: exact only when the engineer needs that very size (an existing housing, a chassis); \"about\" or \"at most\" is a limit (exact false)"
 			if (value.enclosure !== undefined && !(ENCLOSURE_MODES as readonly unknown[]).includes(value.enclosure)) return `requirements.enclosure must be one of ${ENCLOSURE_MODES.map((m) => `"${m}"`).join(", ")}`
 			const d = value.dutyCycle
 			if (d === undefined) return null

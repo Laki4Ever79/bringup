@@ -6,7 +6,7 @@ import { testPoints } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
 import type { CaseSpec, ContractSnapshot, ContractValues, EnclosureMode, FieldName } from "../contract/types.ts"
 import { boardWidthFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
-import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT } from "../contract/space.ts"
+import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT, sizeReasonHolds } from "../contract/space.ts"
 import { state } from "../runtime.ts"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
@@ -23,8 +23,9 @@ export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" 
 		batteryLifeDays: 180,
 		dutyCycle: { activeMs: 330, periodS: 300, sleepUa: 10 },
 	},
-	// The brief asks for this size (space rules: the engineer's size is the reason the board is over the minimum).
-	outline: { widthMm: 50, heightMm: 30, thicknessMm: 1.6, sizeReason: { kind: "engineer-size", detail: "the brief asks for about 50 × 30 mm" } },
+	// Unit tests use this design as one fixed 50 × 30 mm board. A scripted run takes the size and its reason from the
+	// brief instead: the logger brief's "about 50 × 30 mm" is a limit, so that run ends compact (space rules, 13 Nov 2026).
+	outline: { widthMm: 50, heightMm: 30, thicknessMm: 1.6, sizeReason: { kind: "engineer-size", detail: "the test design is held at exactly 50 × 30 mm" } },
 	connectors: [{ ref: "J1", kind: "usb-c", edge: "left", offsetMm: 15, widthMm: 9, heightMm: 3.5 }],
 	// loadMa: the module transmitting Bluetooth LE at 0 dBm peaks at 170 mA (ESP32-C3-MINI-1 datasheet v2.2), plus the rest.
 	rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 200, averageMa: 0.0375 }],
@@ -441,10 +442,11 @@ export function mockScripts(): Record<string, Script> {
 					})
 					if (JSON.stringify(scaled) !== JSON.stringify(connectors)) return propose("connectors", scaled, `the connectors keep their place along the edges of the ${o.widthMm}×${o.heightMm} mm board`)
 				}
-				const target = step === 0 && kinds.has("space-slack") && o && !o.sizeReason ? compactOutline(state().contract.snapshot()) : null
-				if (target && o && (o.widthMm * o.heightMm) / (target.widthMm * target.heightMm) - 1 > SLACK_LIMIT) {
+				const target = step === 0 && ((kinds.has("space-slack") && o && !sizeReasonHolds(state().contract.snapshot(), o.sizeReason)) || (kinds.has("space-room") && o)) ? compactOutline(state().contract.snapshot()) : null
+				if (target && o && ((o.widthMm * o.heightMm) / (target.widthMm * target.heightMm) - 1 > SLACK_LIMIT || kinds.has("space-room"))) {
 					shrinkFrom = { widthMm: o.widthMm, heightMm: o.heightMm }
-					return propose("outline", { ...o, widthMm: target.widthMm, heightMm: target.heightMm }, `compact by default: the parts place on ${target.widthMm}×${target.heightMm} mm, and nothing asks for more`)
+					const { sizeReason: _limit, ...rest } = o
+					return propose("outline", { ...rest, widthMm: target.widthMm, heightMm: target.heightMm }, `compact by default: the parts place on ${target.widthMm}×${target.heightMm} mm, and nothing asks for more${o.sizeReason ? ` (the brief's size is a limit the board now fits within)` : ""}`)
 				}
 				return say("violations handled")
 			}
@@ -520,12 +522,19 @@ export function mockScripts(): Record<string, Script> {
 				// Tournament variants may cap the width: "Board must be at most <N> mm wide".
 				const maxWidth = Number(/Board must be at most (\d+(?:\.\d+)?) mm wide/i.exec(instruction)?.[1] ?? Infinity)
 				const design = scriptedDesignFor(instruction)
-				// The brief's own size ("about 50 × 30 mm") is the engineer's: recorded as the reason the board is that big.
+				// The brief's own size is the engineer's: "exactly 50 × 30 mm" (or a housing, a chassis) is that very size, recorded
+				// as the reason the board is that big; "about 50 × 30 mm" is a limit (requirements.size exact false), and the
+				// space check then compacts the board within it.
 				const stated = /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/.exec(instruction)
+				const line = stated ? (instruction.split("\n").find((l) => l.includes(stated[0])) ?? "") : ""
+				const exact = /\bexact(ly)?\b|\bmust be\b|\bfixed\b|\bchassis\b|\b(existing|our own) (housing|enclosure|case)\b|\btakes a\b/i.test(line)
+				const size = stated ? { widthMm: Number(stated[1]), heightMm: Number(stated[2]), exact } : undefined
 				const { sizeReason: _reason, ...plain } = design.outline
-				const sized = stated ? { sizeReason: { kind: "engineer-size" as const, detail: `the brief asks for about ${stated[1]} × ${stated[2]} mm` } } : {}
+				const sized = stated ? { widthMm: size!.widthMm, heightMm: size!.heightMm, sizeReason: { kind: "engineer-size" as const, detail: `the brief asks for ${exact ? "exactly" : "about"} ${stated[1]} × ${stated[2]} mm` } } : {}
 				const housing = enclosureFromText(instruction)
-				const value = field === "outline" ? { ...plain, widthMm: Math.min(design.outline.widthMm, maxWidth), ...sized } : field === "requirements" && housing ? { ...design.requirements, enclosure: housing } : field === "motion" ? design.motion : field ? design[field] : undefined
+				const { size: _s, ...req } = design.requirements as typeof design.requirements & { size?: unknown }
+				const requirements = { ...req, ...(size ? { size } : {}), ...(housing ? { enclosure: housing } : {}) }
+				const value = field === "outline" ? { ...plain, ...sized, widthMm: Math.min(stated ? size!.widthMm : design.outline.widthMm, maxWidth) } : field === "requirements" ? requirements : field === "motion" ? design.motion : field ? design[field] : undefined
 				return field ? propose(field, value, `initial ${field} from the brief`) : say("contract drafted")
 			}
 			return say("noted")

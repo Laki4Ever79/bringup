@@ -8,7 +8,7 @@ import { pathDiff, pathHash, sensorPath } from "../src/contract/sensor-path.ts"
 import { modelHeader } from "../src/codegen/firmware.ts"
 import { MIC_PART, MIC_PINS, WAKE_WORD_MODEL } from "../src/inference/scripts.ts"
 import { fixtureArtifacts, fixtureContract } from "./fixture.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, exactSize } from "./helpers.ts"
 
 // The fixture logger with the wake-word model, its microphone and the mic's I2S pins.
 function wakeWord() {
@@ -83,7 +83,7 @@ test("model.h stamps the sensor path's hash and the microphone capture settings"
 // and the ml agent marks the data needed on the new path instead of keeping a model trained for the old board.
 test("'make it 40 mm wide' after the data is recorded leaves the model's data marked needed on the new path", { timeout: 180_000 }, async () => {
 	const out = tempDir()
-	const brief = readFileSync("briefs/logger.md", "utf8")
+	const brief = exactSize(readFileSync("briefs/logger.md", "utf8"))
 	const r = await runDesign({ brief, mock: true, noHardware: true, review: false, outDir: out, changes: ["add a wake word", "the wake-word data is recorded", "make it 40 mm wide"], changeTimeoutMs: 20_000 })
 	assert.equal(r.settled, true)
 	assert.deepEqual(r.violations, [])

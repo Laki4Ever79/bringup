@@ -9,12 +9,12 @@ import { LOGGER_DESIGN, mockScripts } from "../src/inference/scripts.ts"
 import { toolCall, type Script } from "../src/inference/scripted-runner.ts"
 import { state } from "../src/runtime.ts"
 import type { Env } from "../src/tools/env.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, exactSize } from "./helpers.ts"
 
 // One runtime per process: let the previous run's loops wind down first.
 afterEach(() => new Promise((r) => setTimeout(r, 300)))
 
-const brief = readFileSync(join(ROOT, "briefs/logger.md"), "utf8")
+const brief = exactSize(readFileSync(join(ROOT, "briefs/logger.md"), "utf8"))
 // No tools at all: stubbed hardware, catalog-only grounding, no power simulation.
 const bare: Env = { root: ROOT, tsci: null, kicad: null, python: null, pio: null }
 

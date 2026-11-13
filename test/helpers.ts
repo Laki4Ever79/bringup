@@ -4,6 +4,12 @@ import { join as joinPath } from "node:path"
 import { createHuman, type SemanticEvent } from "@mozaik-ai/core"
 import { join } from "../src/runtime.ts"
 
+// A brief whose "about W × H mm" becomes "exactly W × H mm": the scripted architect then keeps that very size (space
+// rules: "about" is a limit, and a run on it ends compact). For tests whose subject is a change on the 50 × 30 mm board.
+export function exactSize(brief: string): string {
+	return brief.replace(/\babout (\d+(?:\.\d+)? × \d+(?:\.\d+)? mm)/, "exactly $1")
+}
+
 export function tempDir(): string {
 	return mkdtempSync(joinPath(tmpdir(), "bringup-"))
 }

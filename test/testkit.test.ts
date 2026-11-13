@@ -13,7 +13,7 @@ import { changeRipples } from "../src/runner/ripple.ts"
 import { MIC_PART, MIC_PINS } from "../src/inference/scripts.ts"
 import { stubBoard } from "../src/tools/stubs.ts"
 import { fixtureArtifacts, fixtureContract } from "./fixture.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, exactSize } from "./helpers.ts"
 
 function withTest() {
 	const c = fixtureContract()
@@ -122,7 +122,7 @@ test("the dashboard's builds match the builders, test kit included", () => {
 
 test("add a production test, then a wake word, then 40 mm: the test follows each change and the design settles", { timeout: 240_000 }, async () => {
 	const out = tempDir()
-	const brief = readFileSync("briefs/logger.md", "utf8")
+	const brief = exactSize(readFileSync("briefs/logger.md", "utf8"))
 	const r = await runDesign({ brief, mock: true, noHardware: true, review: false, outDir: out, changes: ["add a production test fixture", "add a wake word", "make it 40 mm wide"], changeTimeoutMs: 20_000 })
 	assert.equal(r.settled, true)
 	assert.deepEqual(r.violations, [])
