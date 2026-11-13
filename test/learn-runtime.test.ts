@@ -136,3 +136,10 @@ test("real learning traces every claim to the plan's claims.jsonl", async () => 
 	assert.ok(existsSync(join(planDir, "claims.jsonl")))
 	assert.match(readFileSync(join(planDir, "claims.jsonl"), "utf8"), /"mpn":"X"/)
 })
+
+test("candidates are asked for at LCSC, the distributor that works without keys, and not in ball-grid packages", async () => {
+	const { candidatePrompt } = await import("../src/learn/runtime.ts")
+	const p = candidatePrompt({ id: "a", role: "amp", kind: "amplifier", requirements: "3 W" }, ROOT, [])
+	assert.match(p, /listed at LCSC/)
+	assert.match(p, /no BGA or WLCSP/)
+})

@@ -1,6 +1,6 @@
 import type { DocStore } from "./docs.ts"
 import { fieldsToRead, type KindFile } from "./kinds.ts"
-import { gap, locatePins, locateValue, parsePinPairs, type Word } from "./locate.ts"
+import { gap, locatePins, locateValue, parsePinPairs, printedOnPage, type Word } from "./locate.ts"
 import { toCanonical, valuesAgree } from "./match.ts"
 import { MODELS_LEARN, type PageReader, type ReadRequest } from "./reader.ts"
 import type { Fact, LearnedDoc, SourceRef } from "./types.ts"
@@ -13,6 +13,8 @@ interface Claim {
 	page: number
 	region: SourceRef["region"]
 	quote: string
+	// The parameter's name as printed on the value's row ("Supply voltage"): what confirms the value's place.
+	label?: string
 }
 
 const FIRST_TOKENS = 1500
@@ -75,7 +77,8 @@ function prompt(kind: KindFile, fields: string[], mpn?: string): string {
 		"Fields:",
 		...wanted,
 		"",
-		'Answer with JSON only: {"facts": [{"field", "value", "unit", "region": [x, y, w, h], "quote"}]}.',
+		'Answer with JSON only: {"facts": [{"field", "value", "unit", "label", "region": [x, y, w, h], "quote"}]}.',
+		'label: the parameter\'s name exactly as printed on the value\'s row or line (e.g. "Supply voltage", "Load impedance"); for a drawing\'s dimension, leave it out.',
 		"value: a number, [min, max] for a range, or text.",
 		"region: where the value is printed, as fractions (0 to 1) of this image's width and height from its top left.",
 		"quote: the value exactly as printed. Leave a field out if this page doesn't give it; never estimate.",
@@ -98,7 +101,7 @@ function claims(json: unknown, page: number, fields: string[]): Claim[] {
 	for (const f of facts as Record<string, unknown>[]) {
 		if (typeof f?.field !== "string" || !fields.includes(f.field) || !isValue(f.value) || !isRegion(f.region)) continue
 		if (f.field === "pins" && typeof f.value !== "string") continue
-		out.push({ field: f.field, value: f.value, unit: typeof f.unit === "string" && f.unit ? f.unit : undefined, page, region: f.region, quote: typeof f.quote === "string" ? f.quote : String(f.value) })
+		out.push({ field: f.field, value: f.value, unit: typeof f.unit === "string" && f.unit ? f.unit : undefined, page, region: f.region, quote: typeof f.quote === "string" ? f.quote : String(f.value), ...(typeof f.label === "string" && f.label.trim() ? { label: f.label.trim() } : {}) })
 	}
 	return out
 }
@@ -192,7 +195,8 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 			const hit = locatePins(String(c.value), words)
 			return hit && { region: hit.region, text: hit.text }
 		}
-		return pointsAtOneValue(c.region) ? locateValue(c, words) : null
+		// A label finds the value however loose the box; without one the box must point at one value.
+		return c.label || pointsAtOneValue(c.region) ? locateValue(c, words) : null
 	}
 
 	// Every claim and how it was checked, for the plan's claims.jsonl: what tunes the reader and the checks.
@@ -212,9 +216,10 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 			trace(c, "first", "text", c.field, c.page)
 			return { fact: fact(c, "text", hit), strong: false }
 		}
-		// Nothing printed where the value is claimed (an image-only page, or a raster drawing on a page with text): only
-		// independent reads can confirm it.
-		const drawn = !words.length || (!pairsOf(c) && pointsAtOneValue(c.region) && !words.some((w) => gap(w.region, pad(c.region)) === 0))
+		// The value printed nowhere in the page's text and claimed where there is no text (an image-only page, or a
+		// drawing): only independent reads can confirm it. A value printed somewhere on the page, or claimed on text that
+		// doesn't hold it (a misreading), is never left to two reads that may share the mistake.
+		const drawn = !words.length || (!pairsOf(c) && !printedOnPage(c, words) && !words.some((w) => gap(w.region, pad(c.region)) === 0))
 		if (drawn) {
 			trace(c, "first", "nothing printed there", c.field, c.page)
 			const second = (await read(c.page, [c.field], "second")).find((x) => x.field === c.field)

@@ -171,8 +171,8 @@ test("the quote shown is the page's own text, not the model's", async () => {
 
 test("a drawing region with no text on a page that has text takes the two-read path", async () => {
 	const { store, amp1 } = await docs()
-	// Page 2 has text, but the line at y = 200 pt has none around it: a drawing.
-	const drawn = { value: [3, 3], unit: "mm", region: [0.3, 190 / 792, 0.2, 20 / 792] as [number, number, number, number] }
+	// Page 2 has text, but the line at y = 200 pt has none around it, and 4 x 4 mm is printed nowhere: a drawing.
+	const drawn = { value: [4, 4], unit: "mm", region: [0.3, 190 / 792, 0.2, 20 / 792] as [number, number, number, number] }
 	const { reader } = fakeReader({ first: { 2: { outline: drawn } }, second: { 2: { outline: drawn } } })
 	const f = (await extractFacts(amp1, amp, { store, reader })).find((x) => x.field === "outline")!
 	assert.equal(f?.check, "two-reads")
@@ -240,4 +240,21 @@ test("a specifications heading doesn't stand in for the electrical characteristi
 	const texts: Record<number, string> = { 1: "x", 3: "Pin Configuration", 4: "7 Specifications\n7.1 Absolute Maximum Ratings", 5: "7.5 Electrical Characteristics" }
 	const store = { textIn: async (_d: unknown, p: number) => texts[p] ?? "filler" } as unknown as DocStore
 	assert.deepEqual(await pagesToRead({ id: "d", url: "", sha256: "", pages: 20, fetchedAt: "", kind: "datasheet" }, store), [1, 3, 4, 5])
+})
+
+test("a value printed elsewhere on a text page goes to the strong model, never to two agreeing reads", async () => {
+	const { store, amp1 } = await docs()
+	// 6.0 V is printed on page 1, but the model's box is in empty space at the bottom of the page.
+	const off = { value: 6, unit: "V", region: [0.4, 0.9, 0.1, 0.02] as [number, number, number, number] }
+	const { reader, calls } = fakeReader({ first: { 1: { supplyMaxV: off } }, second: { 1: { supplyMaxV: off } }, strong: { 1: { supplyMaxV: off } } })
+	assert.equal((await extractFacts(amp1, amp, { store, reader })).find((f) => f.field === "supplyMaxV"), undefined)
+	assert.ok(!calls.some((c) => c.meta.pass === "second"))
+})
+
+test("the model's printed label confirms a value its box misplaced", async () => {
+	const { store, amp1 } = await docs()
+	const { reader } = fakeReader({ first: { 1: { supplyMaxV: { value: 6, unit: "V", label: "Absolute maximum VDD", region: [0.4, 0.9, 0.1, 0.02] } } } })
+	const f = (await extractFacts(amp1, amp, { store, reader })).find((x) => x.field === "supplyMaxV")
+	assert.equal(f?.check, "text")
+	assert.match(f!.source!.quote, /Absolute maximum VDD 6\.0 V/)
 })
