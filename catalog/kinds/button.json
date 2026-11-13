@@ -10,7 +10,7 @@
 		{
 			"field": "height",
 			"unit": "mm",
-			"what": "body height above the board or mounting face"
+			"what": "body height above the board or mounting face (the maximum where a range is given)"
 		},
 		{
 			"field": "pins",

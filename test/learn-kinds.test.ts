@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { criticalFields, GENERIC_CRITICAL, loadKinds } from "../src/learn/kinds.ts"
+import { criticalFields, fieldsToRead, GENERIC_CRITICAL, loadKinds } from "../src/learn/kinds.ts"
 
 const ROOT = resolve(import.meta.dirname, "..")
 const kinds = loadKinds(ROOT)
@@ -61,4 +61,11 @@ test("every critical field is asked for, even one the kind file doesn't list", a
 	for (const f of ["outline", "height", "mountHoles", "pins", "supplyMaxV", "supplyRange"]) assert.ok(asked.includes(f), `${f} is not asked for`)
 	assert.ok(!asked.includes("footprint"))
 	assert.ok(fieldsToRead(display).every((f) => f.what.length > 0))
+})
+
+test("height is asked as the maximum, what a case's clearance needs", () => {
+	for (const k of kinds.values()) {
+		const h = fieldsToRead(k).find((f) => f.field === "height")
+		if (h) assert.match(h.what, /maximum/, k.kind)
+	}
 })

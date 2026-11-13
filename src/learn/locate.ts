@@ -128,16 +128,19 @@ export function locateValue(claim: { value: number | string | number[]; unit?: s
 	const rows = toRows(words)
 	const found = occurrences(claim, rows)
 	if (!found.length) return null
-	const tokens = claim.label ? labelTokens(claim.label) : []
+	// A drawing's dimension symbol ("A", "D", "E") is a one-letter label: it must start its row, and the value must be on
+	// that very row (the next row is another dimension's).
+	const symbol = claim.label && /^[A-Za-z]$/.test(claim.label.trim()) ? claim.label.trim().toLowerCase() : null
+	const tokens = symbol ? [symbol] : claim.label ? labelTokens(claim.label) : []
 	if (tokens.length) {
 		let best: { region: Region; text: string; d: number; g: number } | null = null
 		for (const lr of rows) {
 			const words = lr.text.toLowerCase().split(/[^a-z0-9+-]+/)
-			if (!tokens.every((t) => words.includes(t))) continue
+			if (symbol ? words.find(Boolean) !== symbol : !tokens.every((t) => words.includes(t))) continue
 			const labelWords = lr.spans.filter((s) => tokens.includes(s.word.text.toLowerCase().replace(/[^a-z0-9+-]/g, ""))).map((s) => s.word.region)
 			for (const o of found) {
 				const d = Math.abs(rowMid(o.row) - rowMid(lr)) / rowHeight(lr)
-				if (d > LABEL_ROWS) continue
+				if (d > (symbol ? 0.5 : LABEL_ROWS)) continue
 				const g = gap(o.region, claim.region)
 				if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) < 1e-9 && g < best.g)) best = { region: union([...labelWords, o.region]), text: o.row === lr ? lr.text : `${lr.text} | ${o.row.text}`, d, g }
 			}
@@ -160,7 +163,7 @@ function pinPairs(value: string): { pairs: { number: number; name: string }[]; g
 	let ep = false
 	for (const item of items) {
 		// A pad underneath (exposed, thermal, PowerPAD) is named without a number: it is no pin.
-		if (/^(EP|exposed pad|thermal pad|PowerPAD)\b/i.test(item.trim())) {
+		if (/^(EP|PAD|exposed pad|thermal pad|PowerPAD)\b/i.test(item.trim())) {
 			ep = true
 			continue
 		}
@@ -197,7 +200,7 @@ export function locatePins(value: string, words: Word[]): { names: string[]; reg
 	const texts: string[] = []
 	for (const { number, name } of parsed.pairs) {
 		// Filled in, or called unconnected by the model itself: tables leave such pins out.
-		if (!parsed.given.has(number) || /^(NC|N\/C|DNC)$/i.test(name)) continue
+		if (!parsed.given.has(number) || /^(N\.?C\.?|N\/C|DNC|no connect(ion)?)$/i.test(name)) continue
 		const re = new RegExp(`(^|[^A-Za-z0-9_])(${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=$|[^A-Za-z0-9_+\\-])`, "i")
 		const row = rows.find((r) => {
 			const m = re.exec(r.text)

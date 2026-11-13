@@ -2,7 +2,7 @@
 // where to look; the fact's region is the words' own box.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { locatePins, locateValue, parsePinPairs, type Word } from "../src/learn/locate.ts"
+import { claimsExposedPad, locatePins, locateValue, parsePinPairs, type Word } from "../src/learn/locate.ts"
 
 // Words laid out like pdftotext -bbox gives them, on a 612 × 792 pt page: one row per entry, each word at its x (pt).
 const W = 612
@@ -107,4 +107,16 @@ test("pins the table lists are confirmed while the ones it doesn't list stay NC"
 
 test("a pin the model itself calls NC needn't be printed: tables leave unconnected pins out", () => {
 	assert.deepEqual(locatePins("1 SHUTDOWN, 2 NC, 3 IN+, 4 IN-, 5 VO+, 6 VDD, 7 GND, 8 VO-, 9 NC", PIN_TABLE)?.names.at(-1), "NC")
+})
+
+test("a drawing's dimension table: a one-letter symbol is a label, and the value is on its row", () => {
+	const DIMS = rows([[300, [[400, "Dim"], [430, "Min"], [460, "Max"], [490, "Typ"]]], [315, [[400, "A"], [430, "0.55"], [460, "0.65"], [490, "0.60"]]], [330, [[400, "A1"], [430, "0"], [460, "0.05"], [490, "0.02"]]]])
+	const hit = locateValue({ value: 0.65, unit: "mm", label: "A", region: [0.1, 0.1, 0.05, 0.02] }, DIMS)
+	assert.match(hit?.text ?? "", /^A 0\.55 0\.65/)
+	assert.equal(locateValue({ value: 0.05, unit: "mm", label: "A", region: [0.1, 0.1, 0.05, 0.02] }, DIMS), null, "A1's value is not A's")
+})
+
+test("unconnected pins written N.C. and a pad written PAD are understood", () => {
+	assert.deepEqual(locatePins("1 SHUTDOWN, 2 N.C., 3 IN+, 4 IN-, 5 VO+, 6 VDD, 7 GND, 8 VO-, PAD GND", PIN_TABLE)?.names[1], "N.C.")
+	assert.ok(claimsExposedPad("1 A, 2 B, PAD GND"))
 })
