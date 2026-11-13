@@ -158,6 +158,31 @@ const SUPPORT = {
 	vcp: { kind: "capacitor", value: "10nF", lcsc: "C15195", mpn: "CL05B103KB5NNNC", footprint: "0402" },
 } satisfies Record<string, SupportSpec>
 
+// Where each support passive's value comes from, for the part card (engineer, 13 Nov 2026: "explanation for each
+// individual component as to why it was used"). The same sources as the comments above, as data.
+const SUPPORT_SOURCES: Record<keyof typeof SUPPORT, string> = {
+	led: "a current-limiting resistor in series with the LED (any LED driven from a GPIO needs one)",
+	cc: "USB Type-C: a sink presents 5.1 kΩ (Rd) on CC1 and CC2, or a C-to-C charger supplies no VBUS",
+	prog: "the charger's PROG resistor sets its charge current (TP4054 datasheet, PROG table)",
+	pullup: "a 10 kΩ pull-up: I2C is open-drain and needs one per line; a pin held high at reset or a driver's enable uses the same",
+	bypass: "input decoupling: the regulator's and charger's datasheets ask for at least 1 µF ceramic at the input (RT9080 DS9080-09)",
+	bulk: "output and bulk decoupling, 10 µF (RT9080 DS9080-09: at least 1 µF on VOUT; more for the radio's current peaks)",
+	pulldown: "the ICS-43434's SD line pulled down, it tristates between frames (DS-000069 Table 8); also the USB-sense divider's bottom",
+	bootPulldown: "an STM32's BOOT0 held low, so it boots from flash (ST AN2586 §2.4, AN4325 §3)",
+	usbPullup: "USB full-speed device attach: 1.5 kΩ from D+ to 3V3 where the chip has none inside (STM32F103 RM0008 §23.4)",
+	enPullup: "Espressif's reset RC on EN: 10 kΩ to 3V3 (ESP32-C3-MINI-1 datasheet, Peripheral Schematics)",
+	enCap: "Espressif's reset RC on EN: 1 µF to GND (ESP32-C3-MINI-1 datasheet, Peripheral Schematics)",
+	decouple: "100 nF decoupling right at a part's supply pin (its datasheet's recommended circuit)",
+	senseTop: "the USB-sense divider's top: 68k over 100k puts VBUS at 2.83–3.13 V on the pin, above the ESP32-C3's high threshold and under its supply",
+	vint: "the DRV8833's internal regulator capacitor, 2.2 µF (TI DRV8833 §7.3, external components)",
+	vcp: "the DRV8833's charge-pump capacitor, 10 nF to VM (TI DRV8833 §7.3, external components)",
+}
+// The source for a support passive's value, or null for one built on the fly (a crystal's load capacitors).
+export function supportSource(spec: SupportSpec): string | null {
+	const key = (Object.keys(SUPPORT) as (keyof typeof SUPPORT)[]).find((k) => SUPPORT[k] === spec)
+	return key ? SUPPORT_SOURCES[key] : null
+}
+
 type End = { net: string } | { ref: string; pin: string }
 
 export interface Support {

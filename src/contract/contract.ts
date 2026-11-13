@@ -187,6 +187,8 @@ function shapeError(field: FieldName, value: unknown): string | null {
 		case "parts": {
 			const shape = list((x) => isStr(x.ref) && isStr(x.role) && isStr(x.mpn) && Array.isArray(x.pins), "{ref, role, mpn, lcsc, footprint, pins[]}")
 			if (shape) return shape
+			const noReason = (value as { ref: string; reason?: unknown }[]).filter((p) => p.reason !== undefined && typeof p.reason !== "string")
+			if (noReason.length) return `part reason must be a string: ${noReason.map((p) => p.ref).join(", ")}`
 			const bad = (value as { ref: string; role: string }[]).filter((p) => !(PART_ROLES as readonly string[]).includes(p.role))
 			return bad.length ? `part role must be one of ${PART_ROLES.join(", ")}; got ${bad.map((p) => `${p.ref}: "${p.role}"`).join(", ")}` : null
 		}

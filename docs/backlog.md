@@ -110,8 +110,16 @@ is a change to the firmware toolchain, not just the code.
       ground copper is kept away from it yet either.
 - [ ] **RT9080 lifecycle:** one LCSC page flagged it "not recommended for new designs". Confirm with Richtek or a
       distributor, and name a second source.
-- [ ] **EN reset delay:** the generator ties the ESP32-C3's EN straight to 3V3; Espressif's reference design puts an
-      RC delay there (10 kΩ, 1 µF). A reset button on EN would also make recovery possible without unplugging the
-      battery.
+- [x] **EN reset delay:** done 13 Nov (049027a): 10 kΩ to 3V3 and 1 µF to GND on MCU_EN, under "Added for you". A
+      reset button on EN is still open.
+- [x] **Standard debug footprint:** done 13 Nov (e541ae2): Tag-Connect TC2030-NL on the underside, SWD pinout or
+      ESP32 UART download, its spot reserved in placement (the logger's smallest board 850 → 858 mm²), left off (and
+      said so) when a board won't route or check clean with it. Not enforced: the drawing's 0.020" track clearance
+      around each pad (tscircuit has no per-pad rule).
+- [x] **Board page, step 1 (why every part is there):** done 13 Nov. /board?run=<id>: the board full window, a list of
+      every part, a card per part with why it is there and where that comes from (recorded when chosen, Added for
+      you, datasheet or standard, generator rule, or "no reason recorded"), its nets and its catalog facts; live during
+      a run (placement at once, the routed board when built). Steps 2 (swap a part from the card) and 3 (move a part,
+      code checks per move, AI only at the end of editing) are next.
 - [ ] **Bulk capacitance for Wi-Fi bursts:** the board has 10 µF on the 3V3 rail. Check against the rail droop measured
       above before adding more.
