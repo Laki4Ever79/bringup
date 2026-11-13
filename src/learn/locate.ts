@@ -154,10 +154,16 @@ export function locateValue(claim: { value: number | string | number[]; unit?: s
 
 // A pin-out as pairs: the numbers given, and the ones a pin table leaves out (unconnected pins it doesn't list) as NC,
 // at most a few of them; null when it isn't number-name pairs.
-function pinPairs(value: string): { pairs: { number: number; name: string }[]; given: Set<number> } | null {
+function pinPairs(value: string): { pairs: { number: number; name: string }[]; given: Set<number>; ep: boolean } | null {
 	const items = value.split(/\s*,\s*/).filter(Boolean)
 	const given = new Map<number, string>()
+	let ep = false
 	for (const item of items) {
+		// A pad underneath (exposed, thermal, PowerPAD) is named without a number: it is no pin.
+		if (/^(EP|exposed pad|thermal pad|PowerPAD)\b/i.test(item.trim())) {
+			ep = true
+			continue
+		}
 		const m = /^(\d+)\s*[:=.]?\s+(.+)$|^(\d+)\s*[:=]\s*(.+)$/.exec(item.trim())
 		if (!m) return null
 		const n = Number(m[1] ?? m[3])
@@ -167,7 +173,7 @@ function pinPairs(value: string): { pairs: { number: number; name: string }[]; g
 	if (!given.size) return null
 	const max = Math.max(...given.keys())
 	if (max - given.size > Math.max(2, Math.floor(max / 4))) return null
-	return { pairs: Array.from({ length: max }, (_, i) => ({ number: i + 1, name: given.get(i + 1) ?? "NC" })), given: new Set(given.keys()) }
+	return { pairs: Array.from({ length: max }, (_, i) => ({ number: i + 1, name: given.get(i + 1) ?? "NC" })), given: new Set(given.keys()), ep }
 }
 
 // "1 SD, 2 GAIN" (or "1: SD") as pairs in pin-number order, numbers a pin table doesn't list filled in as NC. Names
@@ -175,6 +181,9 @@ function pinPairs(value: string): { pairs: { number: number; name: string }[]; g
 export function parsePinPairs(value: string): { number: number; name: string }[] | null {
 	return pinPairs(value)?.pairs ?? null
 }
+
+// Does a pin-out claim a pad underneath ("…, EP")?
+export const claimsExposedPad = (value: string) => pinPairs(value)?.ep ?? false
 
 // A pin-out claimed as number-name pairs, confirmed row by row: each name on a row that also has its number as a number
 // of its own (a grid name like "A1" is not pin 1). Tables list pins in any order (by name, by function), with one column

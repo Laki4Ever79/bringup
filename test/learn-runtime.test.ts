@@ -162,3 +162,8 @@ test("candidates are found by a web search, each with the datasheet link it foun
 	assert.ok(bodies[0].body.tools?.some((t) => t.type === "web_search"))
 	assert.ok(deps.budget.spent > 0)
 })
+
+test("the proposer is told what a Bringup board runs on", async () => {
+	const { candidatePrompt } = await import("../src/learn/runtime.ts")
+	assert.match(candidatePrompt({ id: "a", role: "amp", kind: "amplifier", requirements: "3 W" }, ROOT, []), /USB 5 V and\/or one Li-ion cell, 3\.3 V logic/)
+})

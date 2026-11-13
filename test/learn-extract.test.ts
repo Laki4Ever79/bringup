@@ -319,3 +319,24 @@ test("the prompt asks for the words printed next to a drawing's dimension as its
 	await extractFacts(amp1, amp, { store, reader })
 	assert.match(calls[0].prompt, /dimension.*"MAX"|"MAX".*dimension/)
 })
+
+test("a package whose heat pad faces up has no pad to solder: the exposed-pad fact says no, with its caption as the source", async () => {
+	const { store, doc } = fakeDoc({ 3: ["Pin Configuration and Functions", "DAP Package", "32-Pin HTSSOP With PowerPAD Down", "DAD Package", "32-Pin HTSSOP With PowerPAD Up", "MODSEL 1 32 PVCC", "SDZ 2 31 PVCC"] })
+	const { reader } = fakeReader({ first: { 3: { pins: { value: "1 MODSEL, 2 SDZ", region: at(5) } } } })
+	const facts = await extractFacts(doc, amp, { store, reader, mpn: "TPA3126D2DADR" })
+	const ep = facts.find((f) => f.field === "exposedPad")
+	assert.equal(ep?.value, "no")
+	assert.match(ep!.source!.quote, /PowerPAD Up/)
+	assert.equal(facts.find((f) => f.field === "pins")?.value, "MODSEL,SDZ")
+})
+
+test("a pin-out ending in EP says the part has a pad underneath, once the page names one; EP is not a pin", async () => {
+	const { store, doc } = fakeDoc({ 3: ["Pin Functions", "SD 1 I Shutdown", "GAIN 2 I Gain", "Thermal Pad Must be soldered to a grounded pad"] })
+	const { reader } = fakeReader({ first: { 3: { pins: { value: "1 SD, 2 GAIN, EP", region: at(0) } } } })
+	const facts = await extractFacts(doc, amp, { store, reader })
+	assert.equal(facts.find((f) => f.field === "pins")?.value, "SD,GAIN")
+	assert.equal(facts.find((f) => f.field === "exposedPad")?.value, "yes")
+	const bare = fakeDoc({ 3: ["Pin Functions", "SD 1 I Shutdown", "GAIN 2 I Gain"] })
+	const r2 = fakeReader({ first: { 3: { pins: { value: "1 SD, 2 GAIN, EP", region: at(0) } } } })
+	assert.equal((await extractFacts(bare.doc, amp, { store: bare.store, reader: r2.reader })).find((f) => f.field === "exposedPad"), undefined, "no pad named on the page")
+})

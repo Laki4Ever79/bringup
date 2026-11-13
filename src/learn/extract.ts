@@ -1,6 +1,6 @@
 import type { DocStore } from "./docs.ts"
 import { fieldsToRead, type KindFile } from "./kinds.ts"
-import { gap, locatePins, locateValue, parsePinPairs, printedOnPage, type Word } from "./locate.ts"
+import { claimsExposedPad, gap, locatePins, locateValue, parsePinPairs, printedOnPage, type Word } from "./locate.ts"
 import { toCanonical, valuesAgree } from "./match.ts"
 import { MODELS_LEARN, type PageReader, type ReadRequest } from "./reader.ts"
 import type { Fact, LearnedDoc, SourceRef } from "./types.ts"
@@ -73,7 +73,7 @@ async function choosePages(doc: LearnedDoc, store: DocStore, mpn?: string): Prom
 
 // How pins are asked for: number-name pairs, so each can be checked on its own row of a pin table (tables list pins in
 // any order).
-const PINS_WHAT = 'every numbered pin as "number name", comma-separated, in pin-number order (e.g. "1 SD, 2 GAIN, 3 DIN"); not an exposed or thermal pad. Terminals with names but no numbers (a speaker\'s + and -): the names only, comma-separated, as printed'
+const PINS_WHAT = 'every numbered pin as "number name", comma-separated, in pin-number order (e.g. "1 SD, 2 GAIN, 3 DIN"); then "EP" if the package has an exposed or thermal pad on its underside to solder to the board (not one facing up). Terminals with names but no numbers (a speaker\'s + and -): the names only, comma-separated, as printed'
 
 // The prompt: values printed on this page only, each with where it is (fractions of the image) and its exact text.
 function prompt(kind: KindFile, fields: string[], mpn?: string): string {
@@ -221,6 +221,27 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 	}
 	const missed = (c: Claim) => (pairsOf(c) ? "a pin pair not found on any row" : pointsAtOneValue(c.region) ? "not found near its region" : "region too big to point at one value")
 
+	// Whether the part has a pad underneath to solder, from the page its pins were confirmed on: "no" when this part's
+	// package caption says its pad faces up (TI's "PowerPAD Up"), "yes" when the pin-out ends in EP and the page names
+	// such a pad. Nothing when the page doesn't say: the footprint search then decides by the package name.
+	async function exposedPad(c: Claim, pins: Fact): Promise<Fact | null> {
+		const page = pins.source?.page ?? c.page
+		const lines = (await store.textIn(doc, page)).split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
+		const ordering = deps.mpn ? deps.mpn.toUpperCase().slice(3) : ""
+		const epFact = (value: "yes" | "no", quote: string): Fact => ({ field: "exposedPad", value, status: "datasheet", critical: false, source: { doc: doc.id, page, region: pins.source?.region ?? c.region, quote: quote.slice(0, 160) }, check: "text" })
+		for (let i = 0; i < lines.length; i++) {
+			const code = /\b([A-Z]{2,4}) Package\b/.exec(lines[i])?.[1]
+			if (!code || !ordering.includes(code)) continue
+			const caption = lines.slice(i, i + 3).find((l) => /PowerPAD\S*\s+Up\b|\bpad\s+up\b/i.test(l))
+			if (caption) return epFact("no", `${lines[i]} ${caption}`)
+		}
+		if (typeof c.value === "string" && claimsExposedPad(c.value)) {
+			const named = lines.find((l) => /exposed pad|thermal pad|PowerPAD|\bEP\b/i.test(l))
+			if (named) return epFact("yes", named)
+		}
+		return null
+	}
+
 	async function confirm(c: Claim): Promise<{ fact: Fact; strong: boolean } | null> {
 		const words = await wordsOf(c.page)
 		const hit = locate(c, words)
@@ -263,6 +284,10 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 			const r = await confirm(c)
 			if (r) {
 				out.push(r.fact)
+				if (field === "pins") {
+					const ep = await exposedPad(c, r.fact)
+					if (ep) out.push(ep)
+				}
 				if (!r.strong && deps.stats) deps.stats.firstRead++
 				break
 			}

@@ -42,7 +42,7 @@ const SIZE_TOL_MM = 0.25
 // own count when it gives one), the body size from the datasheet's outline when known. Among several, the one whose
 // size is known to match, then the one with or without an exposed pad as the text says, then the plainest name (no
 // thermal-via or mask variant).
-function kicadFor(packageName: string, pinCount: number, bodyMm: number[] | undefined, index: string[]): string | null {
+function kicadFor(packageName: string, pinCount: number, bodyMm: number[] | undefined, index: string[], exposedPad?: boolean): string | null {
 	const text = packageName.toUpperCase()
 	const entries = index.map((e) => ({ e, p: kicadPackage(e.split(":")[1] ?? e) })).filter((x): x is { e: string; p: NonNullable<ReturnType<typeof kicadPackage>> } => x.p !== null)
 	const families = [...new Set(entries.map((x) => x.p.family))].sort((a, b) => b.length - a.length)
@@ -53,10 +53,12 @@ function kicadFor(packageName: string, pinCount: number, bodyMm: number[] | unde
 		const pinsWord = /(\d+)\s*-?\s*PIN/.exec(text)
 		named.set(f, m[1] ? Number(m[1]) : pinsWord ? Number(pinsWord[1]) : null)
 	}
-	const wantsEp = NAMES_EP.test(text) || [...named.keys()].some((f) => f.startsWith("H"))
+	// No pad underneath (a heat pad facing up): an H-family's pad-less land pattern is the plain family's (HTSSOP → TSSOP).
+	if (exposedPad === false) for (const [f, n] of [...named]) if (f.startsWith("H") && families.includes(f.slice(1))) named.set(f.slice(1), n)
+	const wantsEp = exposedPad ?? (NAMES_EP.test(text) || [...named.keys()].some((f) => f.startsWith("H")))
 	const body = bodyMm && bodyMm.length >= 2 ? [bodyMm[0], bodyMm[1]] : null
 	const sizeOk = (s: [number, number]) => body !== null && ((Math.abs(s[0] - body[0]) <= SIZE_TOL_MM && Math.abs(s[1] - body[1]) <= SIZE_TOL_MM) || (Math.abs(s[0] - body[1]) <= SIZE_TOL_MM && Math.abs(s[1] - body[0]) <= SIZE_TOL_MM))
-	const fits = entries.filter(({ p }) => named.has(p.family) && (named.get(p.family) ?? p.count) === p.count && padsFit(p.count + (p.ep ? 1 : 0), pinCount) && !(body && p.size && !sizeOk(p.size)))
+	const fits = entries.filter(({ p }) => named.has(p.family) && (named.get(p.family) ?? p.count) === p.count && padsFit(p.count + (p.ep ? 1 : 0), pinCount) && !(body && p.size && !sizeOk(p.size)) && (exposedPad === undefined || p.ep === exposedPad))
 	const score = ({ e, p }: (typeof fits)[number]) => [p.size && sizeOk(p.size) ? 0 : 1, p.ep === wantsEp ? 0 : 1, e.length] as const
 	fits.sort((a, b) => {
 		const [x, y] = [score(a), score(b)]
@@ -65,7 +67,7 @@ function kicadFor(packageName: string, pinCount: number, bodyMm: number[] | unde
 	return fits[0]?.e ?? null
 }
 
-export async function findFootprint(part: { lcsc?: string; packageName?: string; pins: string[]; bodyMm?: number[] }, deps: { fetchImpl: typeof fetch; kicadIndex?: string[] }): Promise<Fact | null> {
+export async function findFootprint(part: { lcsc?: string; packageName?: string; pins: string[]; bodyMm?: number[]; exposedPad?: boolean }, deps: { fetchImpl: typeof fetch; kicadIndex?: string[] }): Promise<Fact | null> {
 	if (!part.pins.length) return null
 	if (part.lcsc) {
 		try {
@@ -84,7 +86,7 @@ export async function findFootprint(part: { lcsc?: string; packageName?: string;
 		}
 	}
 	if (part.packageName && deps.kicadIndex?.length) {
-		const hit = kicadFor(part.packageName, part.pins.length, part.bodyMm, deps.kicadIndex)
+		const hit = kicadFor(part.packageName, part.pins.length, part.bodyMm, deps.kicadIndex, part.exposedPad)
 		if (hit) return { field: "footprint", value: `kicad:${hit}`, status: "datasheet", critical: true, check: "pad-count", origin: `KiCad standard library ${hit}` }
 	}
 	return null

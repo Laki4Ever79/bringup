@@ -67,3 +67,13 @@ test("a family with a number in its name (SOT-23-5) keeps it", async () => {
 	assert.equal((await findFootprint({ packageName: "SOT-23-5", pins: pins(5) }, { fetchImpl: easyeda(null), kicadIndex: INDEX }))?.value, "kicad:Package_TO_SOT_SMD:SOT-23-5")
 	assert.equal(kicadPadCount("SOT-23-5"), 5)
 })
+
+const SO32 = ["Package_SO:HTSSOP-32-1EP_6.1x11mm_P0.65mm_EP5.2x11mm_Mask4.11x4.36mm", "Package_SO:HTSSOP-32-1EP_6.1x11mm_P0.65mm_EP5.2x11mm_Mask4.11x4.36mm_ThermalVias", "Package_SO:TSSOP-32_6.1x11mm_P0.65mm", "Package_SO:TSSOP-32_8x11mm_P0.65mm"]
+
+test("the exposed-pad fact decides: no pad underneath takes the pad-less land pattern of the same body", async () => {
+	const none = await findFootprint({ packageName: "HTSSOP (32)", pins: pins(32), bodyMm: [11, 6.2], exposedPad: false }, { fetchImpl: easyeda(null), kicadIndex: SO32 })
+	assert.equal(none?.value, "kicad:Package_SO:TSSOP-32_6.1x11mm_P0.65mm")
+	const pad = await findFootprint({ packageName: "HTSSOP (32)", pins: pins(32), bodyMm: [11, 6.2], exposedPad: true }, { fetchImpl: easyeda(null), kicadIndex: SO32 })
+	assert.equal(pad?.value, "kicad:Package_SO:HTSSOP-32-1EP_6.1x11mm_P0.65mm_EP5.2x11mm_Mask4.11x4.36mm")
+	assert.equal(await findFootprint({ packageName: "MSOP-8", pins: pins(8), exposedPad: true }, { fetchImpl: easyeda(null), kicadIndex: ["Package_SO:MSOP-8_3x3mm_P0.65mm"] }), null, "a pad the land pattern lacks")
+})

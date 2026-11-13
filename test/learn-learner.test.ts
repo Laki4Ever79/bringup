@@ -246,3 +246,34 @@ test("a proposed datasheet that doesn't name the part is not used", async () => 
 	assert.equal(r.status, "unavailable")
 	assert.equal(searched, 1, "fell back to the web search")
 })
+
+test("the footprint search is told whether the part has a pad underneath", async () => {
+	const s = setup({ candidates: ["BRG-AMP1"] })
+	const asked: { exposedPad?: boolean }[] = []
+	s.deps.footprint = async (p) => (asked.push(p), FOOTPRINT)
+	const inner = s.deps.reader
+	s.deps.reader = { read: async (req) => {
+		const r = await inner.read(req)
+		const facts = (r.json as { facts?: { field: string; value: unknown }[] })?.facts
+		facts?.forEach((f) => { if (f.field === "pins") f.value = `${f.value}, EP` })
+		return r
+	} }
+	await learnPart(NEED, s.deps)
+	// BRG-AMP1's page 2 names no pad, so its EP is not taken.
+	assert.equal(asked[0].exposedPad, undefined)
+})
+
+test("a board part that can't run from the board's 3.3 V or 5 V is not learned, whatever else checks out", async () => {
+	const s = setup({ candidates: ["BRG-AMP1"] })
+	const inner = s.deps.reader
+	s.deps.reader = { read: async (req) => {
+		const r = await inner.read(req)
+		;(r.json as { facts?: { field: string; value: unknown }[] })?.facts?.forEach((f) => { if (f.field === "supplyRange") f.value = [2.5, 5.5] })
+		return r
+	} }
+	assert.equal((await learnPart(NEED, s.deps)).status, "learned", "2.5-5.5 V runs from either rail")
+	const { fitsBoardSupply } = await import("../src/learn/learner.ts")
+	assert.equal(fitsBoardSupply([{ field: "supplyRange", value: [8, 26], status: "datasheet", critical: true }]), "runs from 8–26 V, not from the board's 3.3 V or 5 V")
+	assert.equal(fitsBoardSupply([{ field: "supplyRange", value: [4.5, 26], status: "datasheet", critical: true }]), null)
+	assert.equal(fitsBoardSupply([]), null, "an unpowered part")
+})
