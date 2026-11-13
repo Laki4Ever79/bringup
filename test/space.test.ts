@@ -220,7 +220,9 @@ test("the scripted architect answers a failed DRC by widening the board 2 mm, wi
 
 test("what counts as the board running out of room: unrouted pins, a via dropped on a pad, no spot for a part", async () => {
 	const { ROUTING_FAILURE } = await import("../src/contract/space.ts")
-	for (const line of ["Port pin1 on J1 is missing a trace", "Via hole at (5.91mm, -3.87mm) overlaps SMD pad U1.GPIO9 at (6.20mm, -4.00mm)", "tscircuit build failed: no room on the board for C3 at 35×25 mm"])
+	for (const line of ["Port pin1 on J1 is missing a trace", "Via hole at (5.91mm, -3.87mm) overlaps SMD pad U1.GPIO9 at (6.20mm, -4.00mm)", "tscircuit build failed: no room on the board for C3 at 35×25 mm",
+		// The STM32 logger at 38×22 and 50×30 (13 Nov): 38×21 routes, so it is the layout, not the parts.
+		"Could not save autorouting paths for subcircuit_source_group_0: Routes contain a junction or endpoint that cannot select a unique PCB port"])
 		assert.match(line, ROUTING_FAILURE)
 	assert.doesNotMatch("Unknown footprint 'sot99' for U3", ROUTING_FAILURE)
 })
