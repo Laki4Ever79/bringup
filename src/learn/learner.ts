@@ -27,6 +27,19 @@ export interface LearnLog {
 	outcome: "learned" | string
 }
 
+// A learned part as the proposer sees it: its part number and its facts in a line.
+export interface KnownPart {
+	mpn: string
+	summary: string
+}
+
+const fmt = (v: unknown) => (Array.isArray(v) ? v.join(" × ") : String(v))
+export const summarize = (p: LearnedPart): string =>
+	p.facts
+		.filter((f) => f.status === "datasheet" && !["pins", "footprint", "exposedPad"].includes(f.field))
+		.map((f) => `${f.field} ${fmt(f.value)}${f.unit ? ` ${f.unit}` : ""}`)
+		.join(", ")
+
 export interface LearnDeps {
 	// Where learned parts are written (catalog/learned/ under it), and where the kind files are read (kindsRoot, by
 	// default the same). Mock runs write under the plan's folder, never into the real catalog.
@@ -39,7 +52,8 @@ export interface LearnDeps {
 	webFind: (mpn: string) => ReturnType<typeof webFind>
 	footprint: (part: { mpn: string; lcsc?: string; packageName?: string; pins: string[]; bodyMm?: number[]; exposedPad?: boolean }) => Promise<Fact | null>
 	// Candidates for a need, each with the datasheet link the proposer found, if any (a bare part number works too).
-	propose: (need: PartNeed, exclude: string[]) => Promise<(string | Candidate)[]>
+	// `known`: parts of the need's kind already learned, which cost nothing to reuse.
+	propose: (need: PartNeed, exclude: string[], known?: KnownPart[]) => Promise<(string | Candidate)[]>
 	log: (line: LearnLog) => void
 	// Every claim a model makes and how it was checked (the plan's claims.jsonl).
 	onClaim?: (t: ClaimTrace & { need: string; mpn: string }) => void
@@ -227,7 +241,8 @@ export async function learnPart(need: PartNeed, deps: LearnDeps): Promise<LearnR
 	let best: LearnedPart | null = null
 	let current = ""
 	try {
-		const candidates = (await deps.propose(need, [])).slice(0, MAX_CANDIDATES).map((c): Candidate => (typeof c === "string" ? { mpn: c } : c))
+		const known = readLearned(deps.root).filter((p) => p.kind === kind.kind).map((p) => ({ mpn: p.mpn, summary: summarize(p) }))
+		const candidates = (await deps.propose(need, [], known)).slice(0, MAX_CANDIDATES).map((c): Candidate => (typeof c === "string" ? { mpn: c } : c))
 		for (const candidate of candidates) {
 			const mpn = candidate.mpn
 			current = mpn

@@ -340,3 +340,9 @@ test("a pin-out ending in EP says the part has a pad underneath, once the page n
 	const r2 = fakeReader({ first: { 3: { pins: { value: "1 SD, 2 GAIN, EP", region: at(0) } } } })
 	assert.equal((await extractFacts(bare.doc, amp, { store: bare.store, reader: r2.reader })).find((f) => f.field === "exposedPad"), undefined, "no pad named on the page")
 })
+
+test("a pin diagram page and a pin table page are both read", async () => {
+	const texts: Record<number, string> = { 1: "Pin Assignments", 3: "Pin Descriptions", 4: "Absolute Maximum Ratings", 5: "Electrical Characteristics" }
+	const store = { textIn: async (_d: unknown, p: number) => texts[p] ?? "filler" } as unknown as DocStore
+	assert.deepEqual(await pagesToRead({ id: "d", url: "", sha256: "", pages: 12, fetchedAt: "", kind: "datasheet" }, store), [1, 3, 4, 5])
+})

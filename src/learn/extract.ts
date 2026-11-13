@@ -24,7 +24,9 @@ const IDENTIFY_TOKENS = 150
 export const MAX_PAGES = 8
 // The sections facts live in, each read once, wherever it is: a long datasheet's pin table, limits and characteristics.
 const SECTIONS: RegExp[] = [
-	/pin config|pin description|pin assignment|pin functions|terminal functions|pin-?out/i,
+	// The pin diagram and the pin table: often separate pages, and only a table's rows confirm pins reliably.
+	/pin config|pin assignment|pin-?out/i,
+	/pin description|pin functions|terminal functions/i,
 	/absolute maximum/i,
 	/recommended operating/i,
 	/electrical characteristics/i,

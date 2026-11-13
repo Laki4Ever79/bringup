@@ -167,3 +167,9 @@ test("the proposer is told what a Bringup board runs on", async () => {
 	const { candidatePrompt } = await import("../src/learn/runtime.ts")
 	assert.match(candidatePrompt({ id: "a", role: "amp", kind: "amplifier", requirements: "3 W" }, ROOT, []), /USB 5 V and\/or one Li-ion cell, 3\.3 V logic/)
 })
+
+test("the proposer's prompt lists the learned parts it may reuse", async () => {
+	const { candidatePrompt } = await import("../src/learn/runtime.ts")
+	const p = candidatePrompt({ id: "s", role: "speaker", kind: "speaker-driver", requirements: "small" }, ROOT, [], [{ mpn: "AS02808MR-R", summary: "outline 28 mm, impedanceOhm 8 Ω" }])
+	assert.match(p, /Already learned.*AS02808MR-R \(outline 28 mm, impedanceOhm 8 Ω\)/s)
+})
