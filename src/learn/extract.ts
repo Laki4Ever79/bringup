@@ -77,7 +77,7 @@ async function choosePages(doc: LearnedDoc, store: DocStore, mpn?: string): Prom
 
 // How pins are asked for: number-name pairs, so each can be checked on its own row of a pin table (tables list pins in
 // any order).
-const PINS_WHAT = 'every numbered pin as "number name", comma-separated, in pin-number order (e.g. "1 SD, 2 GAIN, 3 DIN"); then "EP" if the package has an exposed or thermal pad on its underside to solder to the board (not one facing up). Terminals with names but no numbers (a speaker\'s + and -): the names only, comma-separated, as printed'
+const PINS_WHAT = 'every numbered pin as "number name", comma-separated, in pin-number order (e.g. "1 SD, 2 GAIN, 3 DIN"); then "EP" if the package has an exposed or thermal pad on its underside to solder to the board (not one facing up); a pin the datasheet doesn\'t name: leave it out. Terminals with names but no numbers (a speaker\'s + and -): the names only, comma-separated, as printed'
 
 // The prompt: values printed on this page only, each with where it is (fractions of the image) and its exact text.
 function prompt(kind: KindFile, fields: string[], mpn?: string): string {
