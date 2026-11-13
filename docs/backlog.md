@@ -80,6 +80,16 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
+- [ ] **Bring-up test pads on every design, on by default** (the user, 13 Nov: "we should be adding test points as well
+      to our designs"). Today pads come only with a production test ("add a production test fixture"), which probes
+      every net and builds a fixture. The default would be a small set on the underside, using the same placement
+      (`testPoints`): GND, every power rail (3V3, VBAT; VBUS stays optional), the debug UART's TX and RX, each signal
+      of a cable link between boards, and the nets a learned part adds (an amplifier's input and outputs). A pad that
+      has no room is dropped (`test-unplaced`), never grows the board, so compact-by-default holds. A brief can turn
+      them off ("no test pads"); asking for a production test still widens them to every net and adds the fixture.
+      Recommended on by default because the bench is where a board first fails, and a rail or a bus with no pad
+      means probing a 0.4 mm pin.
+
 - [ ] **Antenna keep-out:** Espressif recommends 15 mm clear around the module's antenna; the case leaves 2 mm. No
       ground copper is kept away from it yet either.
 - [ ] **RT9080 lifecycle:** one LCSC page flagged it "not recommended for new designs". Confirm with Richtek or a
