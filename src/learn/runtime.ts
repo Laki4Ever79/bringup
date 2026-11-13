@@ -2,19 +2,19 @@ import { appendFileSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, defineRuntime, RuntimeState } from "@mozaik-ai/core"
 import { when } from "../change-control.ts"
-import { callModel } from "../dashboard/ask.ts"
+import { NoModelKey } from "../dashboard/ask.ts"
 import { isEvent, makeEvent } from "../events.ts"
-import { appendUsage, type UsageRecord } from "../inference/usage.ts"
+import { appendUsage, usageRecord, type UsageRecord } from "../inference/usage.ts"
 import { Outbox } from "../outbox.ts"
 import { Budget, BudgetedReader, BudgetExhausted, estimateUsd, learnCap } from "./budget.ts"
-import { distributorsFrom, webFind } from "./distributors.ts"
+import { distributorsFrom, SEARCH_FEE_USD, webFind } from "./distributors.ts"
 import { createDocStore } from "./docs.ts"
 import { findFootprint, kicadFootprintIndex } from "./footprint.ts"
 import { loadKinds } from "./kinds.ts"
 import { learnPart, type LearnDeps, type LearnLog, type LearnResult } from "./learner.ts"
 import { mockDistributor, mockFetch, mockFootprint, mockPropose, mockReader } from "./mock.ts"
 import { MODELS_LEARN, openAiReader } from "./reader.ts"
-import type { PartNeed } from "./types.ts"
+import type { Candidate, PartNeed } from "./types.ts"
 
 class LearnState extends RuntimeState {}
 
@@ -128,32 +128,59 @@ export function learnDepsFor(env: Record<string, string | undefined>, repoRoot: 
 // as a driver IC gave amplifier chips for a loudspeaker), then the need.
 export function candidatePrompt(need: PartNeed, repoRoot: string, exclude: string[]): string {
 	const description = loadKinds(repoRoot).get(need.kind)?.description
-	return `Propose up to 3 real, currently produced parts (exact manufacturer part numbers) for this need, best first. Prefer parts listed at LCSC (the distributor Bringup can look up without keys; JLCPCB assembles from its stock), with a public datasheet that gives dimensions, pin-out and supply limits. For parts soldered on the board: leaded or QFN/SON packages, no BGA or WLCSP.\nThe part: ${description ?? `a part of kind "${need.kind}"`}\nKind: ${need.kind}\nRole: ${need.role}\nRequirements: ${need.requirements}${exclude.length ? `\nNot these: ${exclude.join(", ")}` : ""}\nAnswer: {"parts": [{"manufacturer": string, "mpn": the manufacturer part number only, without the maker's name}]}`
+	return `Propose up to 3 real, currently produced parts (exact manufacturer part numbers) for this need, best first. Prefer parts listed at LCSC (the distributor Bringup can look up without keys; JLCPCB assembles from its stock), with a public datasheet that gives dimensions, pin-out and supply limits. For parts soldered on the board: leaded or QFN/SON packages, no BGA or WLCSP.\nThe part: ${description ?? `a part of kind "${need.kind}"`}\nKind: ${need.kind}\nRole: ${need.role}\nRequirements: ${need.requirements}${exclude.length ? `\nNot these: ${exclude.join(", ")}` : ""}\nAnswer: {"parts": [{"manufacturer": string, "mpn": the manufacturer part number only, without the maker's name, "datasheet": the datasheet PDF's URL}]}`
 }
 
-// Candidate parts for a need: up to three MPNs from the cheap model, charged to the same budget.
-async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env: Record<string, string | undefined>; fetchImpl: typeof fetch; budget: Budget; onUsage: (r: UsageRecord) => void; repoRoot: string }): Promise<string[]> {
-	const est = estimateUsd(MODELS_LEARN.cheap, 0, 600)
+// Candidate parts for a need, found by a web search (OpenAI Responses with web_search), each with the datasheet PDF the
+// search found: part numbers recalled from memory were often variants that don't exist (run 5, 6: three speakers with
+// no datasheet anywhere). Charged to the same budget, search fee included.
+async function proposeCandidates(need: PartNeed, exclude: string[], deps: { env: Record<string, string | undefined>; fetchImpl: typeof fetch; budget: Budget; onUsage: (r: UsageRecord) => void; repoRoot: string }): Promise<Candidate[]> {
+	const model = MODELS_LEARN.cheap
+	const est = estimateUsd(model, 0, PROPOSE_TOKENS) + SEARCH_FEE_USD
+	if (!deps.env.OPENAI_API_KEY) throw new NoModelKey()
 	if (!deps.budget.reserve(est)) throw new BudgetExhausted(deps.budget.spent, deps.budget.cap)
 	let usd: number | null = null
 	try {
-		const text = await callModel(
-			{
-				system: "You pick electronic parts. Answer with JSON only.",
-				user: candidatePrompt(need, deps.repoRoot, exclude),
-			},
-			deps.env,
-			deps.fetchImpl,
-			(r) => {
-				usd = r.usd
-				deps.onUsage({ ...r, source: "part-learner" })
-			},
-			{ role: "integrator", maxTokens: 600, json: true, source: "part-learner" },
-		)
-		return parseCandidates(text)
+		const res = await deps.fetchImpl("https://api.openai.com/v1/responses", {
+			method: "POST",
+			signal: AbortSignal.timeout(180_000),
+			headers: { "content-type": "application/json", authorization: `Bearer ${deps.env.OPENAI_API_KEY}` },
+			body: JSON.stringify({
+				model,
+				tools: [{ type: "web_search" }],
+				max_output_tokens: PROPOSE_TOKENS,
+				input: `${candidatePrompt(need, deps.repoRoot, exclude)}\nSearch the web. Give only parts whose datasheet PDF you found, with its direct URL in "datasheet"; copy each part number exactly as that datasheet prints it. Answer with the JSON only.`,
+			}),
+		})
+		const body = (await res.json()) as { output_text?: string; output?: { content?: { text?: string }[] }[]; usage?: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } }; error?: { message?: string } }
+		const record = usageRecord(model, "part-learner", body.usage?.input_tokens, body.usage?.input_tokens_details?.cached_tokens, body.usage?.output_tokens)
+		deps.onUsage(record)
+		usd = record.usd === null ? null : record.usd + SEARCH_FEE_USD
+		if (!res.ok) throw new Error(`proposing parts: ${body.error?.message ?? res.statusText}`)
+		return parseCandidateList(body.output_text ?? (body.output ?? []).flatMap((o) => o.content ?? []).map((c) => c.text ?? "").join("\n"))
 	} finally {
 		deps.budget.settle(est, usd)
 	}
+}
+const PROPOSE_TOKENS = 1500
+
+// The model's candidates with their datasheet links: {"parts": [{manufacturer, mpn, datasheet}]}, a code fence or text
+// around the JSON allowed, the maker's name in front of the number removed. Up to three.
+export function parseCandidateList(text: string): Candidate[] {
+	const json = /\{[\s\S]*\}/.exec(text.replace(/```(?:json)?/gi, ""))?.[0] ?? ""
+	const mpns = parseCandidates(json)
+	let parts: { mpn?: unknown; datasheet?: unknown }[] = []
+	try {
+		const o = JSON.parse(json) as { parts?: { mpn?: unknown; datasheet?: unknown }[] }
+		parts = Array.isArray(o?.parts) ? o.parts : []
+	} catch {
+		// parseCandidates already gave nothing.
+	}
+	return mpns.map((mpn) => {
+		const p = parts.find((x) => typeof x?.mpn === "string" && x.mpn.trim().endsWith(mpn))
+		const url = typeof p?.datasheet === "string" && /^https?:\/\//.test(p.datasheet) ? p.datasheet : undefined
+		return url ? { mpn, datasheetUrl: url } : { mpn }
+	})
 }
 
 // The model's candidates as bare part numbers: {"parts": [{manufacturer, mpn}]} (or {"mpns": [...]}), a code fence

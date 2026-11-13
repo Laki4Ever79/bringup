@@ -223,3 +223,26 @@ test("every claim read is traced with its need and part number", async () => {
 	await learnPart(NEED, s.deps)
 	assert.ok(traced.some((t) => t.need === "n1" && t.mpn === "BRG-AMP1" && t.field === "supplyRange"))
 })
+
+test("a proposed datasheet link is used when the PDF names the part, without a web search", async () => {
+	const s = setup()
+	s.deps.distributors = [{ name: "lcsc", lookup: async () => null }]
+	let searched = 0
+	s.deps.webFind = async () => (searched++, null)
+	s.deps.propose = async () => [{ mpn: "BRG-AMP1", datasheetUrl: "https://maker.example/brg-amp1.pdf" }]
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "learned", JSON.stringify(r))
+	assert.equal(searched, 0)
+	if (r.status === "learned") assert.equal(r.part.documents[0].url, "https://maker.example/brg-amp1.pdf")
+})
+
+test("a proposed datasheet that doesn't name the part is not used", async () => {
+	const s = setup()
+	s.deps.distributors = [{ name: "lcsc", lookup: async () => null }]
+	let searched = 0
+	s.deps.webFind = async () => (searched++, null)
+	s.deps.propose = async () => [{ mpn: "BRG-AMP9", datasheetUrl: "https://maker.example/brg-amp1.pdf" }]
+	const r = await learnPart(NEED, s.deps)
+	assert.equal(r.status, "unavailable")
+	assert.equal(searched, 1, "fell back to the web search")
+})

@@ -4,7 +4,7 @@ import { mpnKey } from "./catalog.ts"
 import { BudgetExhausted, estimateUsd, type Budget } from "./budget.ts"
 import type { DocStore } from "./docs.ts"
 import { MODELS_LEARN } from "./reader.ts"
-import type { Listing } from "./types.ts"
+import type { LearnedDoc, Listing } from "./types.ts"
 
 // Where a part can be bought, behind one interface: LCSC/JLCPCB (no key; what the board assembler stocks), DigiKey and
 // Mouser (official APIs, with keys the user registers), and the manufacturer's own datasheet found by web search for
@@ -144,6 +144,13 @@ export async function findListings(mpn: string, ds: Distributor[]): Promise<List
 // Does a document name this part? Datasheets name the base part ("TPA2005D1") and list the orderable numbers
 // ("TPA2005D1DGN") only in an ordering table, if at all: a word that is the MPN, or a long enough start of it (at
 // least 6 characters and 60% of it), counts.
+// Does a document name the part? Its whole text (the ordering table is usually near the end); local, so free.
+export async function docNamesPart(mpn: string, doc: LearnedDoc, store: DocStore): Promise<boolean> {
+	let text = ""
+	for (let p = 1; p <= Math.min(60, doc.pages); p++) text += `${await store.textIn(doc, p)}\n`
+	return namesPart(mpn, text)
+}
+
 export function namesPart(mpn: string, text: string): boolean {
 	const want = mpnKey(mpn)
 	const min = Math.max(6, Math.ceil(want.length * 0.6))
@@ -155,7 +162,7 @@ export function namesPart(mpn: string, text: string): boolean {
 }
 
 // OpenAI's web search tool is billed per search on top of tokens: an estimate, charged to the budget with every call.
-const SEARCH_FEE_USD = 0.01
+export const SEARCH_FEE_USD = 0.01
 
 export interface WebFindDeps {
 	env: Record<string, string | undefined>
@@ -205,10 +212,7 @@ export async function webFind(mpn: string, deps: WebFindDeps): Promise<Listing |
 			notPdf++
 			continue
 		}
-		// The whole text (the ordering table is usually near the end); local, so free.
-		let text = ""
-		for (let p = 1; p <= Math.min(60, doc.pages); p++) text += `${await deps.store.textIn(doc, p)}\n`
-		if (namesPart(mpn, text)) return { distributor: "manufacturer", mpn, stock: null, priceUsd: null, assemblerStocked: false, datasheetUrl: url }
+		if (await docNamesPart(mpn, doc, deps.store)) return { distributor: "manufacturer", mpn, stock: null, priceUsd: null, assemblerStocked: false, datasheetUrl: url }
 	}
 	return { missed: `${urls.length} link${urls.length === 1 ? "" : "s"}${notPdf ? `, ${notPdf} not a readable PDF` : ""}${urls.length - notPdf ? `, ${urls.length - notPdf} not naming the part` : ""}` }
 }

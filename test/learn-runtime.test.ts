@@ -143,3 +143,22 @@ test("candidates are asked for at LCSC, the distributor that works without keys,
 	assert.match(p, /listed at LCSC/)
 	assert.match(p, /no BGA or WLCSP/)
 })
+
+test("candidates are found by a web search, each with the datasheet link it found", async () => {
+	const { parseCandidateList } = await import("../src/learn/runtime.ts")
+	assert.deepEqual(parseCandidateList('{"parts": [{"manufacturer": "PUI Audio", "mpn": "PUI Audio AS04008CO-R", "datasheet": "https://puiaudio.com/x.pdf"}, {"mpn": "SP-2004Y"}]}'), [
+		{ mpn: "AS04008CO-R", datasheetUrl: "https://puiaudio.com/x.pdf" },
+		{ mpn: "SP-2004Y" },
+	])
+	const bodies: { url: string; body: { tools?: { type: string }[] } }[] = []
+	const fake = (async (u: string | URL | Request, init?: RequestInit) => {
+		bodies.push({ url: String(u), body: JSON.parse(String(init?.body ?? "{}")) })
+		return new Response(JSON.stringify({ output_text: '{"parts": [{"manufacturer": "X", "mpn": "AB-12", "datasheet": "https://x.example/ab-12.pdf"}]}', usage: { input_tokens: 100, output_tokens: 50 } }))
+	}) as typeof fetch
+	const deps = learnDepsFor({ OPENAI_API_KEY: "k" }, ROOT, mkdtempSync(join(tmpdir(), "plan-")), false, fake)
+	const got = await deps.propose(need("s", "speaker-driver"), [])
+	assert.deepEqual(got, [{ mpn: "AB-12", datasheetUrl: "https://x.example/ab-12.pdf" }])
+	assert.match(bodies[0].url, /\/v1\/responses$/)
+	assert.ok(bodies[0].body.tools?.some((t) => t.type === "web_search"))
+	assert.ok(deps.budget.spent > 0)
+})

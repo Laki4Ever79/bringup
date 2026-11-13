@@ -75,6 +75,12 @@ export interface LearnedPart {
 }
 
 // A part a plan needs and the catalog lacks: a role on a board, the kind of part, and what it must do in words.
+// A part proposed for a need, with the datasheet link the proposer's web search found, if any.
+export interface Candidate {
+	mpn: string
+	datasheetUrl?: string
+}
+
 export interface PartNeed {
 	id: string
 	role: string

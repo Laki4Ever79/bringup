@@ -125,8 +125,9 @@ all at once. The plan page shows each need as learning, learned (with how many v
 (with each candidate's reason). Build waits until no need is still learning.
 
 How a part is learned:
-1. Up to three candidate part numbers from the cheap model, asked by what the part is (each kind file has a plain
-   description: "a loudspeaker … not an amplifier or driver IC").
+1. Up to three candidates from a web search by the cheap model (OpenAI Responses with `web_search`), asked by what
+   the part is (each kind file has a plain description: "a loudspeaker … not an amplifier or driver IC"), each with
+   the datasheet PDF the search found. That PDF is used only if its text names the part.
 2. Listings from LCSC/JLCPCB (no key), DigiKey (`DIGIKEY_CLIENT_ID`, `DIGIKEY_CLIENT_SECRET`) and Mouser
    (`MOUSER_API_KEY`), whichever are set; the manufacturer's datasheet by web search when no listing links one.
    The DigiKey and Mouser lookups follow their documented APIs but have not yet been run against them.
@@ -138,7 +139,9 @@ How a part is learned:
    ("Supply voltage") or the next row, or, with no label, within about two table rows of where the model pointed (the
    models' own boxes are often a column or more off, so the stored region is the printed words' box, never the
    model's). A value printed nowhere in the page's text and claimed where there is no text (an image-only page, a
-   drawing) needs a second read that agrees. Pins are read as number-name
+   drawing) needs a second read that agrees; so does a dimension (outline, height, mount holes) printed nowhere in the
+   page's text, since drawings' text is often unreadable. Outline, height and package come first from the drawing for
+   this part's package (its package code, e.g. DGN0008G, matches the part number's ordering code). Pins are read as number-name
    pairs and checked pair by pair, each name on a row that has its number, since pin tables list pins in any order;
    terminals with names only (a speaker's + and -) must be printed in that order. Pins a table leaves out (unconnected)
    are NC, a few at most. Anything not confirmed goes once to

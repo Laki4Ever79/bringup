@@ -37,6 +37,9 @@ const OUTLINE = /package outline|package drawing|outline dimensions|mechanical d
 // A drawing page's package code ("DGN0008G", "RTJ0020D"): its letters are part of the part number's ordering code
 // (TPA2005D1DGN, TPA2012D2RTJR), which is how the drawing for this part's package is told from the others.
 const PACKAGE_CODE = /\b([A-Z]{2,4})\d{4}[A-Z]?\b/g
+// Fields a package drawing gives (read from it first), and the dimensions among them.
+const DRAWN_FIELDS = ["outline", "height", "mountHoles", "package"]
+const DIMENSIONS = new Set(["outline", "height", "mountHoles"])
 // A contents or revision-history page names every section without giving any fact.
 const isContents = (t: string) => /table of contents|revision history/i.test(t) || (t.match(/\.{5,}/g) ?? []).length >= 4
 
@@ -44,8 +47,13 @@ const isContents = (t: string) => /table of contents|revision history/i.test(t) 
 // drawing for this part's package (the first one when no part number says which). Pages with no text (a scan) among the
 // first MAX_PAGES are read too.
 export async function pagesToRead(doc: LearnedDoc, store: DocStore, mpn?: string): Promise<number[]> {
+	return (await choosePages(doc, store, mpn)).pages
+}
+
+// The pages to read and, in a long datasheet, the package drawing among them.
+async function choosePages(doc: LearnedDoc, store: DocStore, mpn?: string): Promise<{ pages: number[]; drawing?: number }> {
 	const all = Array.from({ length: doc.pages }, (_, i) => i + 1)
-	if (doc.pages <= MAX_PAGES) return all
+	if (doc.pages <= MAX_PAGES) return { pages: all }
 	const texts = new Map<number, string>()
 	for (const p of all) texts.set(p, await store.textIn(doc, p))
 	const useful = (p: number) => !isContents(texts.get(p)!)
@@ -60,7 +68,7 @@ export async function pagesToRead(doc: LearnedDoc, store: DocStore, mpn?: string
 	const drawing = ours ?? drawings[0]
 	if (drawing) picked.add(drawing)
 	for (const p of all) if (picked.size < MAX_PAGES && p <= MAX_PAGES && texts.get(p) === "") picked.add(p)
-	return [...picked].sort((a, b) => a - b).slice(0, MAX_PAGES)
+	return { pages: [...picked].sort((a, b) => a - b).slice(0, MAX_PAGES), ...(drawing ? { drawing } : {}) }
 }
 
 // How pins are asked for: number-name pairs, so each can be checked on its own row of a pin table (tables list pins in
@@ -78,7 +86,7 @@ function prompt(kind: KindFile, fields: string[], mpn?: string): string {
 		...wanted,
 		"",
 		'Answer with JSON only: {"facts": [{"field", "value", "unit", "label", "region": [x, y, w, h], "quote"}]}.',
-		'label: the parameter\'s name exactly as printed on the value\'s row or line (e.g. "Supply voltage", "Load impedance"); for a drawing\'s dimension, leave it out.',
+		'label: the words printed with the value: the parameter\'s name on its row or line (e.g. "Supply voltage", "Load impedance"), or for a drawing\'s dimension the words beside it (e.g. "MAX", "max height"); leave it out only when nothing is printed with it.',
 		"value: a number, [min, max] for a range, or text.",
 		"region: where the value is printed, as fractions (0 to 1) of this image's width and height from its top left.",
 		"quote: the value exactly as printed. Leave a field out if this page doesn't give it; never estimate.",
@@ -161,16 +169,20 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 
 	const read = async (page: number, fs: string[], pass: ReadRequest["meta"]["pass"]): Promise<Claim[]> => {
 		const model = pass === "strong" ? MODELS_LEARN.strong : MODELS_LEARN.cheap
-		const r = await reader.read({ model, prompt: prompt(kind, fs, deps.mpn), images: [await image(page)], maxTokens: pass === "first" ? FIRST_TOKENS : FOCUSED_TOKENS, meta: { page, fields: fs, pass } })
+		// A pin-out is long (a 32-pin part is ~200 tokens), and a reasoning model's reasoning counts against the limit.
+		const maxTokens = pass === "first" || fs.includes("pins") ? FIRST_TOKENS : FOCUSED_TOKENS
+		const r = await reader.read({ model, prompt: prompt(kind, fs, deps.mpn), images: [await image(page)], maxTokens, meta: { page, fields: fs, pass } })
 		return claims(r.json, page, fs)
 	}
 
 	const candidates = new Map<string, Claim[]>()
-	const pages = await pagesToRead(doc, store, deps.mpn)
+	const { pages, drawing } = await choosePages(doc, store, deps.mpn)
 	if (deps.stats) deps.stats.pages = (deps.stats.pages ?? 0) + pages.length
 	for (const page of pages) {
 		for (const c of await read(page, fields, "first")) candidates.set(c.field, [...(candidates.get(c.field) ?? []), c])
 	}
+	// A body's size and package come first from the drawing for this part's package: page 1 often lists every version.
+	if (drawing) for (const f of DRAWN_FIELDS) candidates.get(f)?.sort((a, b) => Number(b.page === drawing) - Number(a.page === drawing))
 
 	// Pins are stored as names in pin-number order; the quote and region are the page's own, never the model's.
 	const fact = (c: Claim, check: Fact["check"], found?: { region: SourceRef["region"]; text: string }): Fact => {
@@ -219,7 +231,9 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 		// The value printed nowhere in the page's text and claimed where there is no text (an image-only page, or a
 		// drawing): only independent reads can confirm it. A value printed somewhere on the page, or claimed on text that
 		// doesn't hold it (a misreading), is never left to two reads that may share the mistake.
-		const drawn = !words.length || (!pairsOf(c) && !printedOnPage(c, words) && !words.some((w) => gap(w.region, pad(c.region)) === 0))
+		// A dimension is the exception: drawings' text is often unreadable (an AutoCAD font), so a dimension printed nowhere
+		// in the text is a drawing's, wherever the box lands.
+		const drawn = !words.length || (!pairsOf(c) && !printedOnPage(c, words) && (DIMENSIONS.has(c.field) || !words.some((w) => gap(w.region, pad(c.region)) === 0)))
 		if (drawn) {
 			trace(c, "first", "nothing printed there", c.field, c.page)
 			const second = (await read(c.page, [c.field], "second")).find((x) => x.field === c.field)
