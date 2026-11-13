@@ -70,7 +70,9 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 			// Once an earlier layout has built, a later one failing only means it isn't better: keep the board we have
 			// (before, a keepout attempt that failed threw, and the built board with a few DRC errors was lost).
 			if (best) continue
-			if (!/overlap|clearance|keepout|too close/i.test(String(error))) {
+			// Layout-sensitive failures try the next layout; the router's junction tangle too (the STM32 logger: 38×22
+			// fails, 38×21 routes, so a nudged LDO may clear it at the same size).
+			if (!/overlap|clearance|keepout|too close|unique PCB port/i.test(String(error))) {
 				if (withPort && placement.debugPort !== false) { skipToNoPort = true; continue }
 				throw error
 			}
