@@ -3,6 +3,7 @@ import { caseOuter } from "./contract/case.ts"
 import { enclosureMode, type ContractSnapshot, type Part } from "./contract/types.ts"
 import { mcuProfileOf } from "./mcu/profile.ts"
 import { interfaceMarkdown, mechanicalInterface } from "./contract/interface.ts"
+import { benchManifest, bringupMarkdown } from "./contract/manifest.ts"
 import { addedForYouSection } from "./contract/added.ts"
 import { minimumBoard } from "./contract/space.ts"
 import { complianceItems } from "./contract/compliance.ts"
@@ -195,6 +196,15 @@ export function writeInterface(outDir: string, s: ContractSnapshot, boardStep: s
 	return join(outDir, "interface.md")
 }
 
+// The board manifest (bench.json) and its human version (bringup.md) beside the report. Returns the .md path.
+export function writeBench(outDir: string, s: ContractSnapshot): string | null {
+	const m = benchManifest(s)
+	if (!m) return null
+	writeFileSync(join(outDir, "bench.json"), JSON.stringify(m, null, 2))
+	writeFileSync(join(outDir, "bringup.md"), bringupMarkdown(m))
+	return join(outDir, "bringup.md")
+}
+
 export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean; bench?: boolean; mock?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
 	const violations = checkConsistency(snapshot, s.artifacts)
@@ -254,6 +264,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`## Artifacts`,
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
 		...drcLines(s.artifacts.board?.drc),
+		`- Bring-up: ${writeBench(outDir, snapshot) ?? "not written (no outline yet)"} (bench.json beside it: pads, rails, flashing, expected I2C devices)`,
 		enclosureMode(v) === "case" ? `- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}` : `- Enclosure: none (requirements.enclosure "${enclosureMode(v)}")${enclosureMode(v) === "own" ? `; mechanical interface: ${writeInterface(outDir, snapshot, s.artifacts.board?.stepPath ?? null) ?? "not written (no outline yet)"}` : ""}`,
 		...printLines(s.artifacts.enclosure, stubbed),
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,

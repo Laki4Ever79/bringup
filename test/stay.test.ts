@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { ROOT, runDesign } from "../src/run.ts"
 import { appendRequest } from "../src/runner/requests.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, exactSize } from "./helpers.ts"
 
 // One runtime per process: let the previous run's loops wind down first.
 afterEach(() => new Promise((r) => setTimeout(r, 300)))
@@ -25,7 +25,7 @@ test("--stay: the run settles, takes a change request, re-settles, and only ends
 	let stop: () => void = () => {}
 	const stopped = new Promise<void>((r) => (stop = r))
 	let done = false
-	const run = runDesign({ brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"), mock: true, noHardware: true, outDir: out, env, timeoutMs: 80_000, stay: { until: stopped } }).then((r) => ((done = true), r))
+	const run = runDesign({ brief: exactSize(readFileSync(join(ROOT, "briefs/logger.md"), "utf8")), mock: true, noHardware: true, outDir: out, env, timeoutMs: 80_000, stay: { until: stopped } }).then((r) => ((done = true), r))
 	await until(() => settles(out) >= 1, 40_000)
 	const started = readFileSync(join(out, "trace.jsonl"), "utf8").split("\n").find((l) => l.includes('"run.started"'))!
 	assert.equal(JSON.parse(started).payload.stay, true)

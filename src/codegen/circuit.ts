@@ -112,7 +112,7 @@ const BUTTON_FOOTPRINT = "pushbutton"
 const BUTTON_PADS = { A: "pin1", B: "pin3" }
 
 // tscircuit rejects net names that start with a digit, so the 3V3 rail is net V3V3.
-function netName(rail: string): string {
+export function netName(rail: string): string {
 	return /^\d/.test(rail) ? `V${rail}` : rail
 }
 

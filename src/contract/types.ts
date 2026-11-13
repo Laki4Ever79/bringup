@@ -44,6 +44,10 @@ export interface Requirements {
 	batteryLifeDays: number | null
 	// Battery capacity, when the brief does not state it in mAh.
 	batteryMah?: number
+	// The board size the brief or the engineer gives (engineer, 13 Nov 2026): a limit ("about 50 × 30 mm", "fits in a
+	// pocket", "at most") unless it is exact ("exactly", an existing housing, a chassis, a mounting pattern). Only an exact
+	// size keeps a board bigger than it needs to be; under a limit the board is still compact by default.
+	size?: { widthMm: number; heightMm: number; exact: boolean }
 	dutyCycle?: DutyCycle
 	// Days of readings the logger keeps in its flash history; the firmware stores this many (template default 30).
 	historyDays?: number

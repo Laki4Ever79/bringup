@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { ROOT, runDesign } from "../src/run.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, exactSize } from "./helpers.ts"
 
 // One runtime per process: let the previous run's loops wind down first.
 afterEach(() => new Promise((r) => setTimeout(r, 300)))
@@ -13,7 +13,7 @@ afterEach(() => new Promise((r) => setTimeout(r, 300)))
 test("contract.changed carries the reason, the value before and after, and the cause (brief, request, approval)", { timeout: 90_000 }, async () => {
 	const out = tempDir()
 	const env = await detectEnvironment(ROOT)
-	const r = await runDesign({ brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"), mock: true, noHardware: true, outDir: out, env, timeoutMs: 80_000, changes: ["make the board 60 mm wide"] })
+	const r = await runDesign({ brief: exactSize(readFileSync(join(ROOT, "briefs/logger.md"), "utf8")), mock: true, noHardware: true, outDir: out, env, timeoutMs: 80_000, changes: ["make the board 60 mm wide"] })
 	assert.ok(r.settled)
 	const trace = readFileSync(join(out, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
 	const changes = trace.filter((e) => e.type === "contract.changed").map((e) => e.payload)

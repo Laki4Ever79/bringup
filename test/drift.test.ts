@@ -7,7 +7,7 @@ import { driftStatusLines, type DriftFile } from "../src/runner/drift.ts"
 import { main } from "../src/main.ts"
 import { ROOT, runDesign } from "../src/run.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
-import { tempDir, waitFor } from "./helpers.ts"
+import { tempDir, waitFor, exactSize } from "./helpers.ts"
 
 const trace = (out: string) => readFileSync(join(out, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
 const drift = (out: string): DriftFile => JSON.parse(readFileSync(join(out, "drift.json"), "utf8"))
@@ -24,7 +24,7 @@ async function stayRun() {
 	const env = await detectEnvironment(ROOT)
 	let end: () => void = () => {}
 	const until = new Promise<void>((r) => (end = r))
-	const run = runDesign({ brief: readFileSync(join(ROOT, "briefs/logger.md"), "utf8"), mock: true, noHardware: true, outDir: out, env, stay: { until } })
+	const run = runDesign({ brief: exactSize(readFileSync(join(ROOT, "briefs/logger.md"), "utf8")), mock: true, noHardware: true, outDir: out, env, stay: { until } })
 	await waitFor(() => existsSync(join(out, "trace.jsonl")) && trace(out).some((e) => e.type === "design.settled"), 30_000)
 	return { out, run, end }
 }

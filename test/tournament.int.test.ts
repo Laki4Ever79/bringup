@@ -1,11 +1,11 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { detectEnvironment } from "../src/tools/env.ts"
 import { runTournament } from "../src/tournament/run.ts"
 import { rankRows, type ScoreRow } from "../src/tournament/score.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, exactSize } from "./helpers.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const env = await detectEnvironment(root)
@@ -15,7 +15,12 @@ test("two mock variants run concurrently and are ranked", { skip, timeout: 600_0
 	const outRoot = tempDir()
 	const finished: string[] = []
 	const board = await runTournament({
-		briefPath: join(root, "briefs/logger.md"),
+		// Held at exactly 50 × 30 mm, so the narrow variant's cap is what changes the area (an "about" size would compact both).
+		briefPath: (() => {
+			const p = join(tempDir(), "logger.md")
+			writeFileSync(p, exactSize(readFileSync(join(root, "briefs/logger.md"), "utf8")))
+			return p
+		})(),
 		variants: [
 			{ name: "baseline", constraint: "" },
 			{ name: "narrow-40mm", constraint: "Board must be at most 40 mm wide." },

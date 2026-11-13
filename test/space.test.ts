@@ -7,7 +7,9 @@ import { checkConsistency } from "../src/contract/consistency.ts"
 import { DesignContract } from "../src/contract/contract.ts"
 import { minimumBoard, placesAll, SIZE_REASONS, SLACK_LIMIT, spaceChecks, spaceFactLines } from "../src/contract/space.ts"
 import { minCaseHeight } from "../src/contract/case.ts"
-import { LOGGER_DESIGN } from "../src/inference/scripts.ts"
+import { BEACON_DESIGN, LOGGER_DESIGN } from "../src/inference/scripts.ts"
+import { recoveryPads } from "../src/codegen/circuit.ts"
+import { connectorsAt } from "../src/contract/space.ts"
 import { fixtureContract } from "./fixture.ts"
 import { tempDir } from "./helpers.ts"
 
@@ -36,13 +38,61 @@ test("a board over the limit with no reason wakes the architect; a recorded reas
 	const v = spaceChecks(s)
 	assert.deepEqual(v.map((x) => [x.kind, x.affects[0]]), [["space-slack", "architect"]])
 	assert.match(v[0].message, /50×30 mm \(1500 mm²\), 82% over the smallest it can be \(825 mm²/)
-	s.values.outline = { ...s.values.outline!, sizeReason: { kind: "engineer-size", detail: "the brief asks for about 50 × 30 mm" } }
+	s.values.outline = { ...s.values.outline!, sizeReason: { kind: "engineer-size", detail: "the housing takes exactly 50 × 30 mm" } }
+	s.values.requirements = { ...s.values.requirements!, size: { widthMm: 50, heightMm: 30, exact: true } }
 	assert.deepEqual(spaceChecks(s), [])
 	const compact = logger()
 	compact.values.outline = { ...compact.values.outline!, widthMm: 33, heightMm: 28 }
 	// 924 mm² is 12% over 825: within the limit.
 	assert.ok(924 / 825 - 1 <= SLACK_LIMIT)
 	assert.deepEqual(spaceChecks(compact), [])
+})
+
+test("a size the brief gives as \"about\" is a limit: it keeps no extra room, and the board must fit within it", () => {
+	const s = logger()
+	s.values.outline = { ...s.values.outline!, sizeReason: { kind: "engineer-size", detail: "the brief asks for about 50 × 30 mm" } }
+	// No requirements.size: the reason's own words say it's a limit.
+	const { size: _z, ...req } = s.values.requirements!
+	s.values.requirements = req
+	assert.match(spaceChecks(s)[0]?.message ?? "", /82% over .* is a limit, not a reason for extra room/)
+	// With requirements.size exact false, the same.
+	s.values.requirements = { ...req, size: { widthMm: 50, heightMm: 30, exact: false } }
+	assert.equal(spaceChecks(s).length, 1)
+	// Compact and within the limit: nothing to fix.
+	s.values.outline = { ...s.values.outline!, widthMm: 33, heightMm: 28 }
+	assert.deepEqual(spaceChecks(s), [])
+	// Over the limit, turned either way: a violation even when compact.
+	s.values.requirements = { ...req, size: { widthMm: 30, heightMm: 25, exact: false } }
+	assert.match(spaceChecks(s)[0]?.message ?? "", /over the engineer's limit of 30×25 mm/)
+	s.values.requirements = { ...req, size: { widthMm: 28, heightMm: 33, exact: false } }
+	assert.deepEqual(spaceChecks(s), [])
+})
+
+test("the smallest board leaves room for the pads it must have: the recovery pads of a deep-sleeping board", () => {
+	// The beacon compacted to 37×25 mm left its BOOT and GND pads no spot (scripted system run, 13 Nov 2026).
+	const s = fixtureContract()
+	const { sizeReason: _r, ...outline } = structuredClone(BEACON_DESIGN.outline)
+	s.values = { ...s.values, ...structuredClone(BEACON_DESIGN), outline }
+	const min = minimumBoard(s)!
+	const at = { ...s, values: { ...s.values, outline: { ...outline, widthMm: min.widthMm, heightMm: min.heightMm }, connectors: connectorsAt(s, min.widthMm, min.heightMm) } }
+	assert.ok(recoveryPads(at).placed.length === 2, `${min.widthMm}×${min.heightMm}: ${recoveryPads(at).unplaced.join(", ")}`)
+	for (const shape of min.shapes) {
+		const t = { ...s, values: { ...s.values, outline: { ...outline, widthMm: shape.widthMm, heightMm: shape.heightMm }, connectors: connectorsAt(s, shape.widthMm, shape.heightMm) } }
+		assert.deepEqual(recoveryPads(t).unplaced, [], `${shape.widthMm}×${shape.heightMm}`)
+	}
+})
+
+test("a board too small for what it carries is a violation for the architect, with the size that holds everything", () => {
+	const s = logger()
+	s.values.outline = { ...s.values.outline!, widthMm: 30, heightMm: 22 }
+	s.values.connectors = connectorsAt(s, 30, 22)
+	const v = spaceChecks(s)
+	assert.deepEqual(v.map((x) => [x.kind, x.affects[0]]), [["space-room", "architect"]])
+	assert.match(v[0].message, /30×22 mm board has no spot for .*the smallest board that holds everything is \d+ mm²/)
+	// The minimum is found above the board's own size when that size holds too little.
+	const min = minimumBoard(s)!
+	assert.ok(min.widthMm * min.heightMm > 30 * 22)
+	assert.ok(placesAll(s, min.widthMm, min.heightMm))
 })
 
 test("the case body follows the same rule: its contents' height plus 15%, or a reason", () => {
@@ -69,7 +119,7 @@ test("the contract takes only a listed reason, with what it is in this design", 
 
 test("the design facts give every designer the minimum, the slack, the limit, the reasons and the priority order", () => {
 	const s = logger()
-	s.values.outline = { ...s.values.outline!, sizeReason: { kind: "engineer-size", detail: "the brief asks for about 50 × 30 mm" } }
+	s.values.outline = { ...s.values.outline!, sizeReason: { kind: "engineer-size", detail: "the housing takes exactly 50 × 30 mm" } }
 	const lines = spaceFactLines(s).join("\n")
 	assert.match(lines, /the smallest it can be is 825 mm²/)
 	assert.match(lines, /slack 82%, limit 15%, over it for a recorded reason: engineer-size/)
@@ -77,14 +127,20 @@ test("the design facts give every designer the minimum, the slack, the limit, th
 	for (const k of Object.keys(SIZE_REASONS)) assert.ok(lines.includes(k), k)
 })
 
-test("the scripted architect records the brief's size as the reason; the run settles with no space violation", { timeout: 120_000 }, async () => {
+test("the logger brief's \"about 50 × 30 mm\" is a limit: the scripted run ends compact, within it", { timeout: 120_000 }, async () => {
 	const out = tempDir()
 	const r = await runDesign({ brief: readFileSync("briefs/logger.md", "utf8"), mock: true, noHardware: true, review: false, outDir: out })
 	assert.equal(r.settled, true)
 	assert.deepEqual(r.violations, [])
 	const contract = JSON.parse(readFileSync(join(out, "contract.json"), "utf8"))
-	assert.deepEqual(contract.values.outline.sizeReason, { kind: "engineer-size", detail: "the brief asks for about 50 × 30 mm" })
-	assert.match(readFileSync(join(out, "report.md"), "utf8"), /Space: board 50×30 mm is 82% over the smallest it can be .*kept for a reason: engineer-size/)
+	const { widthMm: w, heightMm: h, sizeReason } = contract.values.outline
+	assert.equal(sizeReason, undefined)
+	assert.ok(w <= 50 && h <= 30, `${w}×${h}`)
+	assert.ok(w * h <= minimumBoard(contract)!.areaMm2 * (1 + SLACK_LIMIT), `${w}×${h}`)	// Every run writes the board manifest beside the report, for the bench.
+	const bench = JSON.parse(readFileSync(join(out, "bench.json"), "utf8"))
+	assert.equal(bench.schema, "bringup-bench/1")
+	assert.deepEqual([bench.board.widthMm, bench.board.heightMm], [w, h])
+	assert.match(readFileSync(join(out, "bringup.md"), "utf8"), /# Bring-up/)
 })
 
 test("a brief that sets no size gets a compact board: the architect shrinks it to the minimum", { timeout: 120_000 }, async () => {

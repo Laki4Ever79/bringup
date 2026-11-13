@@ -7,7 +7,7 @@ import { pinsEdits } from "../src/runner/file-sync.ts"
 import { ROOT, runDesign } from "../src/run.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
 import { fixtureContract } from "./fixture.ts"
-import { tempDir, waitFor } from "./helpers.ts"
+import { tempDir, waitFor, exactSize } from "./helpers.ts"
 
 test("pinsEdits maps a changed GPIO to the contract's pin, and anything else to drift", () => {
 	const c = fixtureContract()
@@ -27,7 +27,7 @@ test("pinsEdits maps a changed GPIO to the contract's pin, and anything else to 
 	assert.deepEqual(d.drift, ["+ #define PIN_EXTRA 7 (no part for it)", "+ #define DEBUG_LOG 1"])
 })
 
-const brief = () => readFileSync(join(ROOT, "briefs/logger.md"), "utf8")
+const brief = () => exactSize(readFileSync(join(ROOT, "briefs/logger.md"), "utf8"))
 const trace = (out: string) => readFileSync(join(out, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
 const latestPins = (out: string) => {
 	const revs = readdirSync(join(out, "firmware")).filter((d) => existsSync(join(out, "firmware", d, "include/pins.h")))
