@@ -144,6 +144,10 @@ const SUPPORT = {
 	bootPulldown: { kind: "resistor", value: "10k", lcsc: "C25744", mpn: "0402WGF1002TCE", footprint: "0402" },
 	// USB full-speed device D+ pull-up where the chip has none inside (STM32F103: 1.5k to 3V3, RM0008 §23.4).
 	usbPullup: { kind: "resistor", value: "1.5k", lcsc: "C25867", mpn: "0402WGF1501TCE", footprint: "0402" },
+	// An ESP32 module's EN RC delay: 10 kΩ to 3V3 and 1 µF to GND (ESP32-C3-MINI-1 datasheet, "Peripheral Schematics":
+	// "the recommended setting for the RC delay circuit is usually R = 10 kΩ and C = 1 µF").
+	enPullup: { kind: "resistor", value: "10k", lcsc: "C25744", mpn: "0402WGF1002TCE", footprint: "0402" },
+	enCap: { kind: "capacitor", value: "1uF", lcsc: "C52923", mpn: "CL05A105KA5NQNC", footprint: "0402" },
 	decouple: { kind: "capacitor", value: "100nF", lcsc: "C1525", mpn: "CL05B104KO5NNNC", footprint: "0402" },
 	// The USB-sense divider's top: 68k over the 100k pull-down puts VBUS 4.75–5.25 V at 2.83–3.13 V on the pin, above
 	// the ESP32-C3's 2.475 V high threshold (0.75 × VDD) and under its 3.3 V supply. A JLCPCB Extended part.
@@ -328,6 +332,11 @@ export function supportParts(s: ContractSnapshot): Support[] {
 		const pulled = on && /^I2C_(SDA|SCL)$/.test(on.signal) && pullups
 		const led = on && parts.some((p) => p.ref === on.partRef && (p.role === "led" || p.role === "charge-led"))
 		if (!pulled && !led) jobs.push({ job: `${strap.mcu.ref}.${strap.pin} pull-up (download boot needs it high at reset)`, spec: SUPPORT.pullup, a: on ? { net: on.signal } : { ref: strap.mcu.ref, pin: strap.pin }, b: { net: supply }, near: strap.mcu.ref })
+	}
+	const enMcu = parts.find((p) => p.role === "mcu" && p.pins.includes("EN"))
+	if (enMcu && supply) {
+		jobs.push({ job: `${enMcu.ref}.EN reset RC, 10k to 3V3 (the chip starts once 3V3 is up)`, spec: SUPPORT.enPullup, a: { net: MCU_EN_NET }, b: { net: supply }, near: enMcu.ref })
+		jobs.push({ job: `${enMcu.ref}.EN reset RC, 1uF to GND (a debug cable pulls EN low to reset)`, spec: SUPPORT.enCap, a: { net: MCU_EN_NET }, b: GND, near: enMcu.ref })
 	}
 	const wake = usbWake(s)
 	if (wake?.gpio != null) {
@@ -982,7 +991,9 @@ function at(placement: Map<string, Placed>, ref: string): string {
 // The power and USB nets the generator wires on top of the contract's own signals: GND, the 3V3 rail, VBUS, VBAT (when
 // there is a charger) and USB D±, with the support passives' ends. Ends are "REF.pin". Only nets that reach at least
 // two components are kept; a one-component net can't be routed.
-const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET, "MOTOR_A1", "MOTOR_A2", "MOTOR_B1", "MOTOR_B2"]
+// An ESP32 module's EN, between its RC delay (supportParts) and the chip.
+export const MCU_EN_NET = "MCU_EN"
+const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET, MCU_EN_NET, "MOTOR_A1", "MOTOR_A2", "MOTOR_B1", "MOTOR_B2"]
 
 // A rover's motor connectors: two-pin connectors, in ref order (JM1 motor A, JM2 motor B).
 export const motorConnectors = (parts: Part[]) => parts.filter((p) => p.role === "connector" && p.pins.length === 2 && p.pins[0] === "1" && p.pins[1] === "2").sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
@@ -1014,8 +1025,9 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		for (const pin of power.ground) if (!GROUND_PINS.has(pin)) join("GND", mcu.ref, pin)
 		if (hasSupply) for (const pin of power.supply) if (!GROUND_PINS.has(pin) && !SUPPLY_PINS.has(pin)) join(supply, mcu.ref, pin)
 	}
-	// The ESP32-C3 must not have EN floating; tied straight to 3V3 (the datasheet suggests an RC delay, see catalog/README.md).
-	if (hasSupply && mcu?.pins.includes("EN")) join(supply, mcu.ref, "EN")
+	// The ESP32 module's EN must not float: its own net, pulled up through Espressif's RC delay (supportParts), so the chip
+	// starts after its supply is up and a debug cable can pull EN low to reset it.
+	if (hasSupply && mcu?.pins.includes("EN")) join(MCU_EN_NET, mcu.ref, "EN")
 
 	// USB-C VBUS feeds the charger when there is one, else the LDO directly. The charger's BAT output, the battery
 	// and the LDO input share VBAT.

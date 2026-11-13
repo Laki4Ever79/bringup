@@ -115,8 +115,8 @@ HT7333-A isn't in the catalog.
 ## Power path
 
 USB-C VBUS → charger (TP4054, C32574) VCC; charger BAT → VBAT → battery connector (JST S2B-PH-K, C173752) and the
-LDO's VIN and EN; LDO VOUT → 3V3. Without a charger, VBUS feeds the LDO directly, as before. The ESP32-C3's EN is tied
-straight to 3V3. Espressif recommends a 10 kΩ / 1 µF RC delay there; it's not fitted yet.
+LDO's VIN and EN; LDO VOUT → 3V3. Without a charger, VBUS feeds the LDO directly, as before. The ESP32-C3's EN has
+Espressif's RC delay (module datasheet, peripheral schematics): 10 kΩ to 3V3 and 1 µF to GND, on its own net MCU_EN.
 
 - **TP4054-42-SOT25R** (C32574, JLC preferred part, 44,864 in stock): pins in the order `CHRG, GND, BAT, VCC,
   PROG`, as in KiCad's symbol for the pin-compatible LTC4054ES5-4.2. Not checked against TP4054's own datasheet (the
