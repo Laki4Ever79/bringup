@@ -289,3 +289,26 @@ test("parts already learned of the need's kind are offered to the proposer, to r
 	assert.match(offered[0][0].summary, /minLoadOhm 4 Ω/)
 	assert.ok(again.status === "learned" && again.reused)
 })
+
+test("a learned part of the need's kind that a quick check says fits is reused before anything is proposed", async () => {
+	const s = setup()
+	assert.equal((await learnPart(NEED, s.deps)).status, "learned")
+	let proposed = 0
+	const asked: string[] = []
+	s.deps.propose = async () => (proposed++, ["X"])
+	s.deps.fits = async (_need, part) => (asked.push(part.mpn), { fits: true })
+	const again = await learnPart({ ...NEED, id: "n2" }, s.deps)
+	assert.ok(again.status === "learned" && again.reused && again.part.mpn === "BRG-AMP1")
+	assert.deepEqual(asked, ["BRG-AMP1"])
+	assert.equal(proposed, 0)
+})
+
+test("a learned part the check says doesn't fit is passed over, and new candidates are proposed", async () => {
+	const s = setup()
+	await learnPart(NEED, s.deps)
+	let proposed = 0
+	s.deps.propose = async () => (proposed++, [])
+	s.deps.fits = async () => ({ fits: false, why: "too weak" })
+	assert.equal((await learnPart({ ...NEED, id: "n2" }, s.deps)).status, "unavailable")
+	assert.equal(proposed, 1)
+})

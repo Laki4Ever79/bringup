@@ -54,6 +54,8 @@ export interface LearnDeps {
 	// Candidates for a need, each with the datasheet link the proposer found, if any (a bare part number works too).
 	// `known`: parts of the need's kind already learned, which cost nothing to reuse.
 	propose: (need: PartNeed, exclude: string[], known?: KnownPart[]) => Promise<(string | Candidate)[]>
+	// Does a part already learned fit this need? One cheap call; without it, learned parts are only offered to propose.
+	fits?: (need: PartNeed, part: KnownPart) => Promise<{ fits: boolean; why?: string }>
 	log: (line: LearnLog) => void
 	// Every claim a model makes and how it was checked (the plan's claims.jsonl).
 	onClaim?: (t: ClaimTrace & { need: string; mpn: string }) => void
@@ -241,8 +243,22 @@ export async function learnPart(need: PartNeed, deps: LearnDeps): Promise<LearnR
 	let best: LearnedPart | null = null
 	let current = ""
 	try {
-		const known = readLearned(deps.root).filter((p) => p.kind === kind.kind).map((p) => ({ mpn: p.mpn, summary: summarize(p) }))
-		const candidates = (await deps.propose(need, [], known)).slice(0, MAX_CANDIDATES).map((c): Candidate => (typeof c === "string" ? { mpn: c } : c))
+		// Parts already learned of this kind first: one that fits (its supply on the board's rails, and the fit check's yes)
+		// is reused at once, with nothing proposed or read. Ones that don't fit are kept out of the proposal.
+		const learned = readLearned(deps.root).filter((p) => p.kind === kind.kind)
+		const known: KnownPart[] = []
+		const passedOver: string[] = []
+		for (const p of learned.slice(0, MAX_CANDIDATES)) {
+			const k = { mpn: p.mpn, summary: summarize(p) }
+			const unfit = fitsBoardSupply(p.facts)
+			const verdict = unfit ? { fits: false, why: unfit } : deps.fits ? await deps.fits(need, k) : null
+			if (verdict?.fits) return { status: "learned", part: p, reused: true }
+			if (verdict) {
+				passedOver.push(p.mpn)
+				reasons.push({ mpn: p.mpn, reason: `learned before, but doesn't fit this need${verdict.why ? `: ${verdict.why}` : ""}` })
+			} else known.push(k)
+		}
+		const candidates = (await deps.propose(need, passedOver, known)).slice(0, MAX_CANDIDATES).map((c): Candidate => (typeof c === "string" ? { mpn: c } : c))
 		for (const candidate of candidates) {
 			const mpn = candidate.mpn
 			current = mpn

@@ -60,6 +60,10 @@
 		"micKeepOutMm": {
 			"value": 30,
 			"reason": "no datasheet gives it; a rule-of-thumb distance to limit echo into the microphone, flagged"
+		},
+		"pins": {
+			"value": "+,-",
+			"reason": "a two-terminal speaker on leads; its datasheet prints no terminal names, so + and - are assumed, flagged"
 		}
 	},
 	"calculated": {

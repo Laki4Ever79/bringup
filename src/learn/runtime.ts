@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, defineRuntime, RuntimeState } from "@mozaik-ai/core"
 import { when } from "../change-control.ts"
-import { NoModelKey } from "../dashboard/ask.ts"
+import { callModel, NoModelKey } from "../dashboard/ask.ts"
 import { isEvent, makeEvent } from "../events.ts"
 import { appendUsage, usageRecord, type UsageRecord } from "../inference/usage.ts"
 import { Outbox } from "../outbox.ts"
@@ -119,6 +119,7 @@ export function learnDepsFor(env: Record<string, string | undefined>, repoRoot: 
 		webFind: (mpn) => webFind(mpn, { env, fetchImpl, budget, store, onUsage }),
 		footprint: async (p) => findFootprint(p, { fetchImpl, kicadIndex: await (kicadIndex ??= kicadFootprintIndex(repoRoot)) }),
 		propose: (need, exclude, known) => proposeCandidates(need, exclude, known ?? [], { env, fetchImpl, budget, onUsage, repoRoot }),
+		fits: (need, part) => fitsNeed(need, part, { env, fetchImpl, budget, onUsage }),
 		log,
 		onClaim: (t) => appendFileSync(join(planDir, "claims.jsonl"), JSON.stringify({ at: new Date().toISOString(), ...t }) + "\n"),
 	}
@@ -183,6 +184,37 @@ export function parseCandidateList(text: string): Candidate[] {
 	})
 }
 
+// Does a learned part fit a new need? One cheap call on the part's learned facts and the need; charged to the budget.
+async function fitsNeed(need: PartNeed, part: KnownPart, deps: { env: Record<string, string | undefined>; fetchImpl: typeof fetch; budget: Budget; onUsage: (r: UsageRecord) => void }): Promise<{ fits: boolean; why?: string }> {
+	const est = estimateUsd(MODELS_LEARN.cheap, 0, FIT_TOKENS)
+	if (!deps.budget.reserve(est)) throw new BudgetExhausted(deps.budget.spent, deps.budget.cap)
+	let usd: number | null = null
+	try {
+		const text = await callModel(
+			{
+				system: "You check whether an electronic part fits a need. Answer with JSON only.",
+				user: `Need: ${need.role} (${need.kind}): ${need.requirements}\nThe board is small, powered by USB 5 V and/or one Li-ion cell, 3.3 V logic.\nPart: ${part.mpn}: ${part.summary}\nDoes this part fit the need, neither too weak nor far beyond it? Answer: {"fits": true or false, "why": a short reason}`,
+			},
+			deps.env,
+			deps.fetchImpl,
+			(r) => {
+				usd = r.usd
+				deps.onUsage({ ...r, source: "part-learner" })
+			},
+			{ role: "integrator", maxTokens: FIT_TOKENS, json: true, source: "part-learner" },
+		)
+		const j = JSON.parse(text.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "")) as { fits?: unknown; why?: unknown }
+		return { fits: j.fits === true, ...(typeof j.why === "string" ? { why: j.why } : {}) }
+	} catch (e) {
+		if (e instanceof BudgetExhausted) throw e
+		// No clear answer: not reused, so the need is learned fresh.
+		return { fits: false, why: "the fit check gave no answer" }
+	} finally {
+		deps.budget.settle(est, usd)
+	}
+}
+const FIT_TOKENS = 300
+
 // The model's candidates as bare part numbers: {"parts": [{manufacturer, mpn}]} (or {"mpns": [...]}), a code fence
 // allowed, a maker's name written in front of the number removed ("Texas Instruments TPA2005D1DGN" → "TPA2005D1DGN").
 export function parseCandidates(text: string): string[] {
@@ -201,6 +233,8 @@ export function parseCandidates(text: string): string[] {
 		if (maker && m.toLowerCase().startsWith(maker.toLowerCase())) m = m.slice(maker.length).trim()
 		// Still words before the number: keep the last word that has a digit in it.
 		if (/\s/.test(m)) m = m.split(/\s+/).filter((w) => /\d/.test(w)).at(-1) ?? m
+		// A part number has letters and digits and a few characters at least: "8" or "speaker" is no part number.
+		if (!/[A-Za-z]/.test(m) || !/\d/.test(m) || m.length < 4) continue
 		if (m && !out.includes(m)) out.push(m)
 	}
 	return out.slice(0, 3)
