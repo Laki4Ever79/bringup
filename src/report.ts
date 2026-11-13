@@ -197,8 +197,8 @@ export function writeInterface(outDir: string, s: ContractSnapshot, boardStep: s
 }
 
 // The board manifest (bench.json) and its human version (bringup.md) beside the report. Returns the .md path.
-export function writeBench(outDir: string, s: ContractSnapshot): string | null {
-	const m = benchManifest(s)
+export function writeBench(outDir: string, s: ContractSnapshot, board?: { debugPortDropped?: string } | null): string | null {
+	const m = benchManifest(s, board)
 	if (!m) return null
 	writeFileSync(join(outDir, "bench.json"), JSON.stringify(m, null, 2))
 	writeFileSync(join(outDir, "bringup.md"), bringupMarkdown(m))
@@ -264,7 +264,8 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`## Artifacts`,
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
 		...drcLines(s.artifacts.board?.drc),
-		`- Bring-up: ${writeBench(outDir, snapshot) ?? "not written (no outline yet)"} (bench.json beside it: pads, rails, flashing, expected I2C devices)`,
+		`- Bring-up: ${writeBench(outDir, snapshot, s.artifacts.board) ?? "not written (no outline yet)"} (bench.json beside it: pads, rails, flashing, expected I2C devices)`,
+		...(s.artifacts.board?.debugPortDropped ? [`- Debug footprint: left off this board, ${s.artifacts.board.debugPortDropped}. A bigger board or fewer parts brings it back; requirements.debugPort false makes it explicit`] : []),
 		enclosureMode(v) === "case" ? `- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}` : `- Enclosure: none (requirements.enclosure "${enclosureMode(v)}")${enclosureMode(v) === "own" ? `; mechanical interface: ${writeInterface(outDir, snapshot, s.artifacts.board?.stepPath ?? null) ?? "not written (no outline yet)"}` : ""}`,
 		...printLines(s.artifacts.enclosure, stubbed),
 		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import type { Connector, ContractSnapshot, Part } from "../contract/types.ts"
-import { chipCrystal, chipPinLabels, chipPowerPins, chipSupport, type ChipCrystal } from "../mcu/board.ts"
+import { chipCrystal, chipPadLabels, chipPinLabels, chipPowerPins, chipSupport, type ChipCrystal } from "../mcu/board.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { loadProfiles, profileForPart, type McuProfile } from "../mcu/profile.ts"
 
@@ -620,6 +620,9 @@ export interface PlacementOptions {
 	// to them and tscircuit refuses the build (the 45 mm logger), so the board build tries them only after a layout
 	// routes with DRC errors.
 	usbKeepouts?: boolean
+	// false: the board without the debug footprint (its spot stays reserved). The board build's last attempt, when the
+	// board doesn't route with it.
+	debugPort?: false
 }
 
 // Board mounting holes for M2 screws: 2.2 mm clearance holes, centred 3 mm in from each corner. Nothing is placed
@@ -685,6 +688,14 @@ export function micPorts(s: ContractSnapshot): { ref: string; xMm: number; yMm: 
 }
 
 export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Placed[] {
+	return layoutBoard(s, opts).parts
+}
+
+// The parts' placement and, after them, the debug footprint's spot (debugPort): it is reserved like a part, so no top
+// part sits over its holes (they go through the board) and the smallest board has room for it. It is not a part and is
+// not in parts. On the underside it must also stay clear of the USB-C connector (its routing, TEST_PAD.usbClearMm)
+// and, on a board without mounting holes, of the fixture's corner supports.
+export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): { parts: Placed[]; debug: Placed | null } {
 	const { outline, parts = [], connectors = [] } = s.values
 	if (!outline) throw new Error("placeParts: contract has no outline")
 	const [W, H] = [outline.widthMm, outline.heightMm]
@@ -833,7 +844,32 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 		} else put(free.find((p) => p.ref === sp.ref), want)
 	}
 	for (const p of free) put(p, centre)
-	return placed
+	let debug: Placed | null = null
+	if (debugEnabled(s) && debugPinout(s)) {
+		const underside = (ref: string) => connectorRefs.has(ref) || ["mcu", "usb-c", "connector", "button", "battery"].includes(parts.find((p) => p.ref === ref)?.role ?? "")
+		const usbBoxes = placed.filter((b) => connectorRefs.has(b.ref) || parts.find((p) => p.ref === b.ref)?.role === "usb-c")
+		const supports = mountingHoles(s).length ? [] : [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => ({ x: sx * (W / 2 - 3), y: sy * (H / 2 - 3), w: 5, h: 5 }))
+		const gap = (a: { x: number; y: number; w: number; h: number }, o: { x: number; y: number; w: number; h: number }) => Math.max(Math.abs(a.x - o.x) - (a.w + o.w) / 2, Math.abs(a.y - o.y) - (a.h + o.h) / 2)
+		let bestD = Infinity
+		for (const rotation of [0, 90] as const) {
+			const [w, h] = rotation === 0 ? [TC2030_ENVELOPE.w, TC2030_ENVELOPE.h] : [TC2030_ENVELOPE.h, TC2030_ENVELOPE.w]
+			for (let i = 0; i <= W / GRID_MM; i++)
+				for (let j = 0; j <= H / GRID_MM; j++) {
+					const b: Placed = { ref: "JD1", x: -W / 2 + i * GRID_MM, y: -H / 2 + j * GRID_MM, w, h, rotation }
+					const d = Math.hypot(b.x - centre.x, b.y - centre.y)
+					if (d >= bestD - 1e-9) continue
+					if (Math.abs(b.x) + w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + h / 2 > H / 2 - EDGE_MARGIN_MM) continue
+					// The pads are on the underside: only a part that reaches it (a connector, the module, a battery, a
+					// button) keeps clear of the whole footprint. Every top part keeps clear of the three holes.
+					if (placed.some((o) => underside(o.ref) && gap(b, o) < TC2030.clearMm)) continue
+					const holes = TC2030.holes.map(([hx, hy]) => ({ ...debugAt(hx, hy, b.x, b.y, rotation), w: TC2030.holeDiameterMm, h: TC2030.holeDiameterMm }))
+					if (holes.some((hb) => placed.some((o) => gap(hb, o) < DEBUG_HOLE_CLEAR_MM) || keepouts.some((o) => overlaps(hb, o)))) continue
+					if (keepouts.some((o) => overlaps(b, o)) || usbBoxes.some((o) => gap(b, o) < TEST_PAD.usbClearMm) || supports.some((o) => overlaps(b, o))) continue
+					;[debug, bestD] = [b, d]
+				}
+		}
+	}
+	return { parts: placed, debug }
 }
 
 // Production-test pads (contract field test): one round copper pad per probed net on the bottom layer, where a
@@ -908,7 +944,7 @@ export function recoveryBootNet(s: ContractSnapshot): string | null {
 // Placing the parts is the slow step, and every consistency check and designer turn asks for the pads: the last few
 // results are kept, keyed on the whole contract (placement reads most of it).
 type PadKind = "test" | "recovery" | "bringup"
-type BottomPads = { placed: (TestPoint & { kind: PadKind })[]; unplaced: { net: string; kind: PadKind }[] }
+type BottomPads = { placed: (TestPoint & { kind: PadKind })[]; unplaced: { net: string; kind: PadKind }[]; debug: DebugPlacement | null; debugUnplaced: boolean }
 const bottomPadsCache = new Map<string, BottomPads>()
 function bottomPads(s: ContractSnapshot): BottomPads {
 	const key = JSON.stringify(s.values)
@@ -924,9 +960,11 @@ function bottomPadsUncached(s: ContractSnapshot): BottomPads {
 	const { outline, test, parts = [], pins = [] } = s.values
 	const bootNet = recoveryBootNet(s)
 	const bringup = bringupNets(s)
-	if (!outline || (!test && !bootNet && !bringup.length)) return { placed: [], unplaced: [] }
+	const pinout = debugEnabled(s) ? debugPinout(s) : null
+	if (!outline || (!test && !bootNet && !bringup.length && !pinout)) return { placed: [], unplaced: [], debug: null, debugUnplaced: false }
 	const [W, H] = [outline.widthMm, outline.heightMm]
-	const boxes = placeParts(s)
+	const layout = layoutBoard(s)
+	const boxes = layout.parts
 	const byRef = new Map(boxes.map((b) => [b.ref, b]))
 	const connectorRefs = new Set((s.values.connectors ?? []).map((c) => c.ref))
 	const roleBox = (...roles: string[]) => roles.map((r) => parts.find((p) => p.role === r)).map((p) => p && byRef.get(p.ref)).find(Boolean)
@@ -969,18 +1007,156 @@ function bottomPadsUncached(s: ContractSnapshot): BottomPads {
 		// Last: bring-up pads take what room is left, none on a net that already has a pad.
 		...bringup.filter((net) => !(bootNet && (net === bootNet || net === "GND"))).map((net, i) => ({ net, ref: `TP${i + 1}`, kind: "bringup" as const, want: anchor(net) })),
 	]
-	wanted.forEach(({ net, ref, kind, want: wanted }) => {
+	let debug: DebugPlacement | null = null
+	const placeOne = ({ net, ref, kind, want: wantedAt }: { net: string; ref: string; kind: PadKind; want: { x: number; y: number } }) => {
 		const recovery = kind === "recovery"
 		const prior = placed.find((p) => p.kind === "recovery")
-		const want = recovery && prior ? prior : wanted
+		const want = recovery && prior ? prior : wantedAt
 		let best = -1
 		for (let k = 0; k < cells.length; k++) if (!used.has(k) && (best < 0 || Math.hypot(cells[k].x - want.x, cells[k].y - want.y) < Math.hypot(cells[best].x - want.x, cells[best].y - want.y) - 1e-9)) best = k
 		if (best < 0) return void unplaced.push({ net, kind })
 		used.add(best)
 		const c = cells[best]
 		placed.push({ ref, net, kind, x: c.x, y: c.y, xMm: +(c.x + W / 2).toFixed(3), yMm: +(c.y + H / 2).toFixed(3) })
-	})
-	return { placed, unplaced }
+	}
+	// The debug footprint first, on the spot placement reserved for it; the pads' cells over it are taken.
+	if (pinout && layout.debug) {
+		debug = debugFrom(layout.debug, pinout, W, H)
+		const e = debugEnvelope(debug.rotation)
+		cells.forEach((c, k) => { if (Math.abs(c.x - debug!.x) < e.w / 2 + half && Math.abs(c.y - debug!.y) < e.h / 2 + half) used.add(k) })
+	}
+	wanted.forEach(placeOne)
+	return { placed, unplaced, debug, debugUnplaced: !!pinout && !debug }
+}
+
+// The debug footprint (engineer, 13 Nov 2026, "A"): Tag-Connect TC2030-IDC-NL, the no-legs plug-of-nails cable, so any
+// stock TC2030 cable, or a pogo head of our own, reaches the chip with nothing fitted. Drawing TC2030-IDC-NL-FP rev A
+// (2011), top view: six contact pads ø0.787 mm in two rows at ±0.635 mm, columns 1.27 mm apart, pin 1 beside the single
+// alignment hole; three non-plated holes ø0.991 mm at (-2.54, 0) and (+2.54, ±1.016); no solder paste on the pads; no
+// tracks or vias between the pads; no other track within 0.020" of a pad (not enforced: tscircuit has no per-pad
+// clearance rule); "DNL" in the BOM, so nothing is listed. The coordinates are the drawing's: tscircuit mirrors a
+// bottom-side footprint itself (checked on a build, 13 Nov 2026), and this file mirrors them the same way.
+export const TC2030 = {
+	footprint: "Tag-Connect TC2030-IDC-NL",
+	padDiameterMm: 0.787,
+	holeDiameterMm: 0.991,
+	clearMm: 0.508,
+	pads: [[1, -1.27, -0.635], [2, -1.27, 0.635], [3, 0, -0.635], [4, 0, 0.635], [5, 1.27, -0.635], [6, 1.27, 0.635]] as const,
+	holes: [[-2.54, 0], [2.54, 1.016], [2.54, -1.016]] as const,
+}
+// Pads and holes, unrotated: x ±(2.54 + 0.4955), y ±(1.016 + 0.4955).
+// A hole's edge from a top part's body (an assumption: clear of its pads and courtyard, as a via would be).
+const DEBUG_HOLE_CLEAR_MM = 0.3
+const TC2030_ENVELOPE = { w: 2 * (2.54 + 0.991 / 2), h: 2 * (1.016 + 0.991 / 2) }
+const debugEnvelope = (rotation: 0 | 90) => {
+	const w = TC2030_ENVELOPE.w + 2 * TC2030.clearMm, h = TC2030_ENVELOPE.h + 2 * TC2030.clearMm
+	return rotation === 0 ? { w, h } : { w: h, h: w }
+}
+// The drawing's (x, y) on the underside at (cx, cy), rotated counter-clockwise: mirrored in x first, as tscircuit does.
+function debugAt(x: number, y: number, cx: number, cy: number, rotation: 0 | 90): { x: number; y: number } {
+	const [mx, my] = [-x, y]
+	const [rx, ry] = rotation === 0 ? [mx, my] : [-my, mx]
+	return { x: +(cx + rx).toFixed(3), y: +(cy + ry).toFixed(3) }
+}
+
+export type DebugEnd = { net: string } | { ref: string; pin: string } | null
+export interface DebugPinout {
+	standard: "tc2030-swd" | "tc2030-esp-uart"
+	pins: { pin: number; name: string; end: DebugEnd }[]
+}
+export interface DebugPlacement {
+	ref: "JD1"
+	// Board-centred, and in the contract frame (origin bottom-left), top view.
+	x: number
+	y: number
+	xMm: number
+	yMm: number
+	rotation: 0 | 90
+	pinout: DebugPinout
+	pads: { pin: number; name: string; end: DebugEnd; x: number; y: number }[]
+	holes: { x: number; y: number }[]
+}
+
+function debugEnabled(s: ContractSnapshot): boolean {
+	return !!s.values.outline && s.values.requirements?.debugPort !== false
+}
+
+// What each of the six pins carries, from the MCU's profile. An STM32 (any SWD chip) gets ARM's standard TC2030 pinout:
+// 1 VCC, 2 SWDIO, 3 NRST, 4 SWCLK, 5 GND, 6 SWO (only on a Cortex-M3/M4/M7: a Cortex-M0+ has no SWO). An ESP32 gets the
+// UART-download one Espressif's programmers use: 1 3V3, 2 TXD0, 3 EN, 4 RXD0, 5 GND, 6 the boot pin. A pin the contract
+// gives to another job is left unconnected (null): the cable never shares a line with something else. None when the
+// chip has no profile, the board no 3V3 rail, or neither data line is free.
+export function debugPinout(s: ContractSnapshot): DebugPinout | null {
+	const { parts = [], pins = [], rails = [] } = s.values
+	const mcu = parts.find((p) => p.role === "mcu")
+	const prof = mcu ? profileForPart(mcu) : null
+	if (!mcu || !prof || !rails.some((r) => r.name === SUPPLY_RAIL)) return null
+	const supply = { net: netName(SUPPLY_RAIL) }
+	const GND = { net: "GND" }
+	const chip = chipProfile(mcu)
+	const labels = chip ? new Set(chipPadLabels(chip).values()) : null
+	// The pad's name in traces: a chip's label, a module pin the contract lists, else the module's pad number.
+	const pad = (name: string): DebugEnd => {
+		if (labels) return labels.has(name) ? { ref: mcu.ref, pin: name } : null
+		if (mcu.pins.includes(name)) return { ref: mcu.ref, pin: name }
+		const n = prof.pins.find((p) => p.name === name)?.pads[0]
+		return n ? { ref: mcu.ref, pin: `pin${n}` } : null
+	}
+	// A design pin: its contract net when the contract uses it for the same job (fits), the bare pad when it is free.
+	const designPin = (name: string | undefined, fits: (signal: string) => boolean): DebugEnd => {
+		if (!name) return null
+		const pin = prof.pins.find((p) => p.name === name)
+		const used = pin ? pins.filter((p) => p.gpio === pin.index) : []
+		if (used.length) return used.every((u) => fits(u.signal)) ? { net: used[0].signal } : null
+		return pad(name)
+	}
+	const never = () => false
+	let out: DebugPinout
+	if (prof.programming.method === "swd") {
+		const [dio, clk] = prof.programming.pins
+		const resetJob = prof.support.find((j) => /NRST|reset/i.test(j.job) && j.a.startsWith("pin:"))
+		const resetName = resetJob?.a.slice(4) ?? prof.power.find((x) => x.net === "reset")?.name
+		const swo = /Cortex-M(3|4|7)/i.test(prof.core) && prof.pins.some((p) => p.name === "PB3" && p.signals.some((x) => /SWO/.test(x))) ? "PB3" : undefined
+		out = { standard: "tc2030-swd", pins: [
+			{ pin: 1, name: "VCC", end: supply },
+			{ pin: 2, name: "SWDIO", end: designPin(dio, never) },
+			{ pin: 3, name: "NRST", end: resetName ? pad(resetName) : null },
+			{ pin: 4, name: "SWCLK", end: designPin(clk, never) },
+			{ pin: 5, name: "GND", end: GND },
+			{ pin: 6, name: "SWO", end: designPin(swo, never) },
+		] }
+	} else if (prof.console && mcu.pins.includes("EN")) {
+		const boot = recoveryBootPin(s)
+		const bootNet = recoveryBootNet(s)
+		const uart = (dir: "TX" | "RX") => (signal: string) => UART_SIGNAL.test(signal) && signal.toUpperCase().endsWith(dir)
+		out = { standard: "tc2030-esp-uart", pins: [
+			{ pin: 1, name: "3V3", end: supply },
+			{ pin: 2, name: "TXD0", end: designPin(prof.console.tx, uart("TX")) },
+			{ pin: 3, name: "EN", end: { net: MCU_EN_NET } },
+			{ pin: 4, name: "RXD0", end: designPin(prof.console.rx, uart("RX")) },
+			{ pin: 5, name: "GND", end: GND },
+			{ pin: 6, name: "BOOT", end: !boot || !bootNet ? null : bootNet === RECOVERY_BOOT_NET ? { ref: boot.mcu.ref, pin: boot.pin } : { net: bootNet } },
+		] }
+	} else return null
+	return out.pins[1].end || out.pins[3].end ? out : null
+}
+
+// The footprint on the spot placement reserved for it (layoutBoard), its pads and holes in board coordinates.
+function debugFrom(box: Placed, pinout: DebugPinout, W: number, H: number): DebugPlacement {
+	const { x, y } = box
+	const rotation = box.rotation === 90 ? 90 : 0
+	return {
+		ref: "JD1", x, y, rotation, xMm: +(x + W / 2).toFixed(3), yMm: +(y + H / 2).toFixed(3), pinout,
+		pads: TC2030.pads.map(([pin, px, py]) => ({ pin, name: pinout.pins[pin - 1].name, end: pinout.pins[pin - 1].end, ...debugAt(px, py, x, y, rotation) })),
+		holes: TC2030.holes.map(([hx, hy]) => debugAt(hx, hy, x, y, rotation)),
+	}
+}
+
+// The debug footprint as placed on this board, or why not: off (requirements.debugPort false, no pinout) or no room.
+export function debugPort(s: ContractSnapshot): { placed: DebugPlacement | null; unplaced: boolean } {
+	if (!debugEnabled(s) || !debugPinout(s)) return { placed: null, unplaced: false }
+	const b = bottomPads(s)
+	return { placed: b.debug, unplaced: b.debugUnplaced }
 }
 
 function at(placement: Map<string, Placed>, ref: string): string {
@@ -1230,6 +1406,21 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		lines.push(`<trace name=${q(`${tp.net}_${tp.ref}`)} from=${q(`.${tp.ref} > .pin1`)} to=${q(`net.${tp.net}`)} />`)
 	}
 	for (const h of mountingHoles(s)) lines.push(`<hole pcbX={${h.x}} pcbY={${h.y}} diameter="${h.diameterMm}mm" />`)
+	const dp = opts.debugPort === false ? null : debugPort(s).placed
+	if (dp) {
+		const padTags = TC2030.pads.map(([n, x, y]) => `<smtpad portHints={["pin${n}"]} shape="circle" radius="${TC2030.padDiameterMm / 2}mm" pcbX="${x}mm" pcbY="${y}mm" noSolderPaste />`).join("")
+		const holeTags = TC2030.holes.map(([x, y]) => `<hole pcbX="${x}mm" pcbY="${y}mm" diameter="${TC2030.holeDiameterMm}mm" />`).join("")
+		lines.push(`<chip name="JD1" layer="bottom" pcbX={${dp.x}} pcbY={${dp.y}} pcbRotation={${dp.rotation}} footprint={<footprint>${padTags}${holeTags}</footprint>} />`)
+		// No tracks or vias between the pads (the drawing's keep-out): the inner gap, short of the pads' own copper.
+		// 0.1 mm short of the copper: tscircuit rejects a keep-out that touches a pad.
+		const [kw, kh] = [2 * 1.27 - TC2030.padDiameterMm - 0.2, 2 * 0.635 - TC2030.padDiameterMm - 0.2]
+		lines.push(`<keepout shape="rect" pcbX={${dp.x}} pcbY={${dp.y}} width="${+(dp.rotation === 0 ? kw : kh).toFixed(3)}mm" height="${+(dp.rotation === 0 ? kh : kw).toFixed(3)}mm" layers={["bottom"]} />`)
+		for (const p of dp.pads) {
+			if (!p.end) continue
+			if ("net" in p.end) { if (nets.has(p.end.net)) lines.push(`<trace name=${q(`${p.end.net}_JD1_${p.pin}`)} from=${q(`.JD1 > .pin${p.pin}`)} to=${q(`net.${p.end.net}`)} />`) }
+			else lines.push(`<trace name=${q(`JD1_${p.pin}_${p.end.ref}`)} from=${q(`.JD1 > .pin${p.pin}`)} to=${q(`.${p.end.ref} > .${p.end.pin}`)} />`)
+		}
+	}
 
 	return [
 		"export default () => (",

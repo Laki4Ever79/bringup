@@ -157,6 +157,7 @@ function shapeError(field: FieldName, value: unknown): string | null {
 			if (value.historyDays !== undefined && !(Number.isInteger(value.historyDays) && (value.historyDays as number) >= 1)) return "requirements.historyDays must be a whole number of days, at least 1"
 			if (value.usbWake !== undefined && typeof value.usbWake !== "boolean") return "requirements.usbWake must be true or false"
 			if (value.testPads !== undefined && typeof value.testPads !== "boolean") return "requirements.testPads must be true or false"
+			if (value.debugPort !== undefined && typeof value.debugPort !== "boolean") return "requirements.debugPort must be true or false"
 			const z = value.size as Record<string, unknown> | undefined
 			if (z !== undefined && !(obj(z) && isNum(z.widthMm) && isNum(z.heightMm) && (z.widthMm as number) > 0 && (z.heightMm as number) > 0 && typeof z.exact === "boolean"))
 				return "requirements.size must be {widthMm, heightMm, exact: true|false}: exact only when the engineer needs that very size (an existing housing, a chassis); \"about\" or \"at most\" is a limit (exact false)"

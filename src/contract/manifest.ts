@@ -4,7 +4,7 @@
 // steps in a safe order. Plain JSON in an open schema ("bringup-bench/1"): any tool may read it, ours included
 // (/home/aleksa/Documents/hw_agent's board manifest has the same parts). bringup.md is the same, for a person.
 import { resolve } from "node:path"
-import { bringupPads, netName, recoveryPads, testPoints, type TestPoint } from "../codegen/circuit.ts"
+import { bringupPads, debugPort, netName, recoveryPads, TC2030, testPoints, type TestPoint } from "../codegen/circuit.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { ContractSnapshot } from "./types.ts"
@@ -34,6 +34,9 @@ export interface BenchManifest {
 	pads: BenchPad[]
 	signals: { net: string; gpio: number; part: string; role: string | null; pad: string | null }[]
 	expect: { i2c: { ref: string; mpn: string; address: string }[] }
+	// The debug footprint on the underside (codegen/circuit.ts debugPort): its centre, and what each pin carries
+	// (net null: unconnected, or straight to an MCU pad that has no net, named in pad).
+	debug: { footprint: string; standard: string; side: "bottom"; xMm: number; yMm: number; rotation: number; pins: { pin: number; name: string; net: string | null; pad: string | null }[] } | null
 	bringup: BenchStep[]
 }
 
@@ -48,7 +51,8 @@ export function benchPads(s: ContractSnapshot): BenchPad[] {
 	return [...testPoints(s).placed.map(tag("test")), ...recoveryPads(s).placed.map(tag("recovery")), ...bringupPads(s).placed.map(tag("bringup"))]
 }
 
-export function benchManifest(s: ContractSnapshot): BenchManifest | null {
+// board: the built board, when there is one: a debug footprint it was built without (debugPortDropped) isn't listed.
+export function benchManifest(s: ContractSnapshot, board?: { debugPortDropped?: string } | null): BenchManifest | null {
 	const { outline, parts = [], pins = [], rails = [], requirements } = s.values
 	if (!outline) return null
 	const prof = mcuProfileOf(parts)
@@ -91,6 +95,17 @@ export function benchManifest(s: ContractSnapshot): BenchManifest | null {
 	steps.push({ id: "power", what: `power from USB through a current-limited supply or a USB meter${battery ? ", battery unplugged" : ""}`, pass: `under ${Math.max(50, Math.round(railRows.reduce((a, r) => a + r.maxMa, 0) / 4))} mA before any firmware runs; nothing warm` })
 	for (const r of railRows) steps.push({ id: `rail-${r.name}`, what: `${r.name} rail${gnd ? ` (ground on ${gnd})` : ""}`, pass: `${(r.expectV - r.tolV).toFixed(2)}–${(r.expectV + r.tolV).toFixed(2)} V`, pad: r.pad ?? undefined })
 	steps.push({ id: "flash", what: `flash the product firmware: ${target.flash}`, pass: `the upload verifies${target.boot ? `; if the chip doesn't answer, hold ${target.boot.pin} ${target.boot.level} at reset${padOn(target.boot.pin, "BOOT") ? "" : pads.some((p) => p.kind === "recovery") ? " (short the recovery pads)" : ""}` : ""}` })
+	const dp = board?.debugPortDropped ? null : debugPort(s).placed
+	const debug: BenchManifest["debug"] = dp && {
+		footprint: TC2030.footprint,
+		standard: dp.pinout.standard,
+		side: "bottom",
+		xMm: dp.xMm,
+		yMm: dp.yMm,
+		rotation: dp.rotation,
+		pins: dp.pads.map((p) => ({ pin: p.pin, name: p.name, net: p.end && "net" in p.end ? p.end.net : null, pad: p.end && "pin" in p.end ? `${p.end.ref}.${p.end.pin}` : null })),
+	}
+	if (debug) steps.push({ id: "debug-cable", what: `optional: a ${TC2030.footprint} cable on JD1 (underside${debug.standard === "tc2030-swd" ? ", SWD: any CMSIS-DAP or ST-LINK probe" : ", UART download: 3V3, TXD0, EN, RXD0, GND, BOOT; esptool resets and enters the downloader on its own"})`, pass: debug.standard === "tc2030-swd" ? "the probe reads the chip's ID" : "esptool reads the chip's MAC" })
 	steps.push({ id: "console", what: `open the console: ${target.console}`, pass: "the firmware prints its start-up lines" })
 	if (i2c.length) steps.push({ id: "i2c-scan", what: "scan the I2C bus", pass: `answers at ${i2c.map((d) => `${d.address} (${d.ref} ${d.mpn})`).join(", ")} and nowhere else` })
 	for (const sg of signals.filter((x) => x.role === "led")) steps.push({ id: `led-${sg.net}`, what: `${sg.net} lights ${sg.part.split(".")[0]}`, pass: "it blinks as the firmware says", pad: sg.pad ?? undefined })
@@ -103,6 +118,7 @@ export function benchManifest(s: ContractSnapshot): BenchManifest | null {
 		pads,
 		signals,
 		expect: { i2c },
+		debug,
 		bringup: steps,
 	}
 }
@@ -119,6 +135,7 @@ export function bringupMarkdown(m: BenchManifest): string {
 		"| --- | --- | --- | --- | --- |",
 		...m.pads.map((p) => `| ${p.ref} | ${p.net} | ${p.kind} | ${p.xMm} | ${p.yMm} |`),
 		"",
+		...(m.debug ? [`## Debug footprint: ${m.debug.footprint}, ${m.debug.standard}`, "", `Underside, centred at x ${m.debug.xMm} mm, y ${m.debug.yMm} mm${m.debug.rotation ? `, turned ${m.debug.rotation}°` : ""}. Nothing is fitted: the cable's pins press on bare pads.`, "", "| Pin | Name | Net | Pad |", "| --- | --- | --- | --- |", ...m.debug.pins.map((p) => `| ${p.pin} | ${p.name} | ${p.net ?? ""} | ${p.pad ?? (p.net ? "" : "not connected")} |`), ""] : []),
 		"## Steps",
 		"",
 		"| # | What | Pass | Pad |",
