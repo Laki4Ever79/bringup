@@ -134,11 +134,14 @@ How a part is learned:
    Then up to 8 pages are read by the cheap model (`gpt-5.4-mini`): page 1, the first page of each section facts live
    in (pin table, absolute maximums, recommended conditions, characteristics, package drawing), then more of them;
    contents and revision-history pages are skipped.
-4. Each number is checked: **datasheet** when its value is among the PDF's own words near where the model said
-   (within about two table rows; the stored region is then those words' own box, not the model's), or, where nothing
-   is printed there (an image-only page, a raster drawing), when a second read agrees. Pins are read as number-name
+4. Each number is checked: **datasheet** when its value is among the PDF's own words on the row of its printed label
+   ("Supply voltage") or the next row, or, with no label, within about two table rows of where the model pointed (the
+   models' own boxes are often a column or more off, so the stored region is the printed words' box, never the
+   model's). A value printed nowhere in the page's text and claimed where there is no text (an image-only page, a
+   drawing) needs a second read that agrees. Pins are read as number-name
    pairs and checked pair by pair, each name on a row that has its number, since pin tables list pins in any order;
-   terminals with names only (a speaker's + and -) must be printed in that order. Anything not confirmed goes once to
+   terminals with names only (a speaker's + and -) must be printed in that order. Pins a table leaves out (unconnected)
+   are NC, a few at most. Anything not confirmed goes once to
    the strong model (`gpt-5.4`), then is dropped.
 5. **Calculated** values come from named formulas (`src/learn/formulas.ts`, e.g. a speaker's sealed back volume from
    Vas and Qts). A missing non-critical value gets the kind's stated **default**, shown red. A missing critical value

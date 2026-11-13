@@ -65,17 +65,18 @@ function toRows(words: Word[]): Row[] {
 
 const wordsIn = (row: Row, start: number, end: number) => row.spans.filter((s) => s.end > start && s.start < end).map((s) => s.word.region)
 
-// The claimed value (a number, a [min, max] pair, or text) on a row near the claimed box; the nearest one wins.
-export function locateValue(claim: { value: number | string | number[]; unit?: string; region: Region }, words: Word[], near = NEAR): { region: Region; text: string } | null {
-	let best: { region: Region; text: string; d: number } | null = null
-	const consider = (row: Row, start: number, end: number) => {
-		const region = union(wordsIn(row, start, end))
-		const d = gap(region, claim.region)
-		if (d <= near && (!best || d < best.d)) best = { region, text: row.text, d }
-	}
-	for (const row of toRows(words)) {
+interface Occurrence {
+	row: Row
+	region: Region
+}
+
+// Every place the claimed value is printed: a number (in its unit), a [min, max] pair as two numbers in a row, or text
+// ("I2S", "QFN-10") as its words in order on one row.
+function occurrences(claim: { value: number | string | number[]; unit?: string }, rows: Row[]): Occurrence[] {
+	const out: Occurrence[] = []
+	const add = (row: Row, start: number, end: number) => out.push({ row, region: union(wordsIn(row, start, end)) })
+	for (const row of rows) {
 		if (typeof claim.value === "string") {
-			// Text ("I2S", "QFN-10"): its words in order on one row.
 			const parts = plain(claim.value).split(/\s*[,;]\s*|\s+/).filter(Boolean)
 			let from = 0
 			let first = -1
@@ -89,7 +90,7 @@ export function locateValue(claim: { value: number | string | number[]; unit?: s
 				if (first === -1) first = at
 				from = at + m[2].length
 			}
-			if (first >= 0) consider(row, first, from)
+			if (first >= 0) add(row, first, from)
 			continue
 		}
 		const nums = parseNumbers(row.text)
@@ -102,38 +103,92 @@ export function locateValue(claim: { value: number | string | number[]; unit?: s
 		}
 		if (Array.isArray(claim.value)) {
 			const [a, b] = claim.value
-			for (let i = 0; i + 1 < nums.length; i++) if (sameNumber(nums[i], a, claim.unit, 0.005) && sameNumber(nums[i + 1], b, claim.unit, 0.005)) consider(row, nums[i].index, end(i + 1))
-		} else for (let i = 0; i < nums.length; i++) if (sameNumber(nums[i], claim.value, claim.unit, 0.005)) consider(row, nums[i].index, end(i))
+			for (let i = 0; i + 1 < nums.length; i++) if (sameNumber(nums[i], a, claim.unit, 0.005) && sameNumber(nums[i + 1], b, claim.unit, 0.005)) add(row, nums[i].index, end(i + 1))
+		} else for (let i = 0; i < nums.length; i++) if (sameNumber(nums[i], claim.value, claim.unit, 0.005)) add(row, nums[i].index, end(i))
 	}
-	if (!best) return null
-	const { region, text } = best
-	return { region, text }
+	return out
 }
 
-// "1 SD, 2 GAIN" (or "1: SD") as pairs in pin-number order: numbers 1..n, each once. Names alone are no pin-out.
-export function parsePinPairs(value: string): { number: number; name: string }[] | null {
+// Is the value printed anywhere on the page? If not, it can only be in a drawing or an image.
+export function printedOnPage(claim: { value: number | string | number[]; unit?: string }, words: Word[]): boolean {
+	return occurrences(claim, toRows(words)).length > 0
+}
+
+const rowMid = (r: Row) => r.spans[0].word.region[1] + r.spans[0].word.region[3] / 2
+const rowHeight = (r: Row) => Math.max(...r.spans.map((s) => s.word.region[3]))
+const labelTokens = (label: string) => plain(label).toLowerCase().split(/[^a-z0-9+-]+/).filter((t) => t.length >= 2 && !/^\d+$/.test(t))
+// A label's row or the next one: a table's label cell often sits between the rows of its conditions.
+const LABEL_ROWS = 1.8
+
+// Where the claimed value is printed. By its label first: the parameter's name as printed ("Supply voltage"), with the
+// value on that row or the next (in label-row heights), the nearest one winning; the region then runs from the label to
+// the value. Vision models place boxes loosely (off by a column or more in run 5), so the model's box only breaks ties.
+// Without a label found, the value must be within `near` of the model's box.
+export function locateValue(claim: { value: number | string | number[]; unit?: string; label?: string; region: Region }, words: Word[], near = NEAR): { region: Region; text: string } | null {
+	const rows = toRows(words)
+	const found = occurrences(claim, rows)
+	if (!found.length) return null
+	const tokens = claim.label ? labelTokens(claim.label) : []
+	if (tokens.length) {
+		let best: { region: Region; text: string; d: number; g: number } | null = null
+		for (const lr of rows) {
+			const words = lr.text.toLowerCase().split(/[^a-z0-9+-]+/)
+			if (!tokens.every((t) => words.includes(t))) continue
+			const labelWords = lr.spans.filter((s) => tokens.includes(s.word.text.toLowerCase().replace(/[^a-z0-9+-]/g, ""))).map((s) => s.word.region)
+			for (const o of found) {
+				const d = Math.abs(rowMid(o.row) - rowMid(lr)) / rowHeight(lr)
+				if (d > LABEL_ROWS) continue
+				const g = gap(o.region, claim.region)
+				if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) < 1e-9 && g < best.g)) best = { region: union([...labelWords, o.region]), text: o.row === lr ? lr.text : `${lr.text} | ${o.row.text}`, d, g }
+			}
+		}
+		if (best) return { region: best.region, text: best.text }
+	}
+	let best: { o: Occurrence; d: number } | null = null
+	for (const o of found) {
+		const d = gap(o.region, claim.region)
+		if (d <= near && (!best || d < best.d)) best = { o, d }
+	}
+	return best ? { region: best.o.region, text: best.o.row.text } : null
+}
+
+// A pin-out as pairs: the numbers given, and the ones a pin table leaves out (unconnected pins it doesn't list) as NC,
+// at most a few of them; null when it isn't number-name pairs.
+function pinPairs(value: string): { pairs: { number: number; name: string }[]; given: Set<number> } | null {
 	const items = value.split(/\s*,\s*/).filter(Boolean)
-	const pairs: { number: number; name: string }[] = []
+	const given = new Map<number, string>()
 	for (const item of items) {
 		const m = /^(\d+)\s*[:=.]?\s+(.+)$|^(\d+)\s*[:=]\s*(.+)$/.exec(item.trim())
 		if (!m) return null
-		pairs.push({ number: Number(m[1] ?? m[3]), name: plain((m[2] ?? m[4]).trim()) })
+		const n = Number(m[1] ?? m[3])
+		if (n < 1 || given.has(n)) return null
+		given.set(n, plain((m[2] ?? m[4]).trim()))
 	}
-	pairs.sort((a, b) => a.number - b.number)
-	if (!pairs.length || pairs.some((p, i) => p.number !== i + 1)) return null
-	return pairs
+	if (!given.size) return null
+	const max = Math.max(...given.keys())
+	if (max - given.size > Math.max(2, Math.floor(max / 4))) return null
+	return { pairs: Array.from({ length: max }, (_, i) => ({ number: i + 1, name: given.get(i + 1) ?? "NC" })), given: new Set(given.keys()) }
+}
+
+// "1 SD, 2 GAIN" (or "1: SD") as pairs in pin-number order, numbers a pin table doesn't list filled in as NC. Names
+// alone are no pin-out.
+export function parsePinPairs(value: string): { number: number; name: string }[] | null {
+	return pinPairs(value)?.pairs ?? null
 }
 
 // A pin-out claimed as number-name pairs, confirmed row by row: each name on a row that also has its number as a number
 // of its own (a grid name like "A1" is not pin 1). Tables list pins in any order (by name, by function), with one column
-// per package, so the pairs are checked one by one, not as a sequence. Returns the names in pin-number order.
+// per package, so the pairs are checked one by one, not as a sequence. Pins filled in as NC are not checked. Returns the
+// names in pin-number order.
 export function locatePins(value: string, words: Word[]): { names: string[]; region: Region; text: string } | null {
-	const pairs = parsePinPairs(value)
-	if (!pairs) return null
+	const parsed = pinPairs(value)
+	if (!parsed) return null
 	const rows = toRows(words)
 	const regions: Region[] = []
 	const texts: string[] = []
-	for (const { number, name } of pairs) {
+	for (const { number, name } of parsed.pairs) {
+		// Filled in, or called unconnected by the model itself: tables leave such pins out.
+		if (!parsed.given.has(number) || /^(NC|N\/C|DNC)$/i.test(name)) continue
 		const re = new RegExp(`(^|[^A-Za-z0-9_])(${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=$|[^A-Za-z0-9_+\\-])`, "i")
 		const row = rows.find((r) => {
 			const m = re.exec(r.text)
@@ -146,5 +201,7 @@ export function locatePins(value: string, words: Word[]): { names: string[]; reg
 		regions.push(union([...wordsIn(row, at, at + m[2].length), ...wordsIn(row, n.index, n.index + n.raw.length)]))
 		if (!texts.includes(row.text)) texts.push(row.text)
 	}
-	return { names: pairs.map((p) => p.name), region: union(regions), text: texts.join(" | ") }
+	// Nothing checked (every pin NC) proves nothing.
+	if (!regions.length) return null
+	return { names: parsed.pairs.map((p) => p.name), region: union(regions), text: texts.join(" | ") }
 }

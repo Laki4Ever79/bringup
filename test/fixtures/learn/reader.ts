@@ -1,6 +1,6 @@
 import type { PageReader, ReadRequest } from "../../../src/learn/reader.ts"
 
-type Answer = { value: unknown; unit?: string; region: [number, number, number, number]; quote?: string }
+type Answer = { value: unknown; unit?: string; region: [number, number, number, number]; quote?: string; label?: string }
 // Scripted answers by pass, page and field. Returns every scripted field the request asks for.
 export function fakeReader(script: Partial<Record<"first" | "second" | "strong", Record<number, Record<string, Answer>>>>, usd: number | null = 0.001) {
 	const calls: ReadRequest[] = []

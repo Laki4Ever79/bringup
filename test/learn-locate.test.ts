@@ -8,7 +8,7 @@ import { locatePins, locateValue, parsePinPairs, type Word } from "../src/learn/
 const W = 612
 const H = 792
 function rows(lines: [number, [number, string][]][]): Word[] {
-	return lines.flatMap(([y, words]) => words.map(([x, text]) => ({ text, region: [x / W, (y - 8) / H, (text.length * 5) / W, 9 / H] as [number, number, number, number] })))
+	return lines.flatMap(([y, words]) => words.map(([x, text]) => ({ text, region: [x / W, (y - 8) / H, (text.length * 4) / W, 9 / H] as [number, number, number, number] })))
 }
 
 // A TI-style pin table: names in alphabetical order, pin numbers in a column, a second package's grid names (A1) beside.
@@ -42,7 +42,7 @@ test("pin pairs: numbers 1..n each once, names kept as written; names alone are 
 	assert.deepEqual(parsePinPairs("2 GAIN, 1 SD"), [{ number: 1, name: "SD" }, { number: 2, name: "GAIN" }])
 	assert.deepEqual(parsePinPairs("1: +, 2: -"), [{ number: 1, name: "+" }, { number: 2, name: "-" }])
 	assert.equal(parsePinPairs("SD, GAIN"), null)
-	assert.equal(parsePinPairs("1 SD, 3 GAIN"), null, "pin 2 missing")
+	assert.equal(parsePinPairs("1 SD, 5 GAIN"), null, "pins 2-4 missing")
 	assert.equal(parsePinPairs("1 SD, 1 GAIN"), null)
 })
 
@@ -64,10 +64,47 @@ test("a value whose claimed box is a line off is found at its own words, and the
 test("a range is found as its two ends in one row", () => {
 	const hit = locateValue({ value: [2.5, 5.5], unit: "V", region: box(140) }, TABLE)
 	assert.ok(hit)
-	assert.ok(Math.abs(hit.region[0] - 250 / W) < 1e-9 && hit.region[0] + hit.region[2] >= 305 / W)
+	assert.ok(Math.abs(hit.region[0] - 250 / W) < 1e-9 && hit.region[0] + hit.region[2] >= 303 / W)
 })
 
 test("the nearest occurrence wins; one far from the claimed box doesn't count", () => {
 	assert.equal(locateValue({ value: 4, unit: "Ω", region: box(500) }, TABLE), null)
 	assert.equal(locateValue({ value: 7, unit: "V", region: box(160) }, TABLE), null)
+})
+
+// TI's absolute-maximum table: the label sits between its two condition rows, the value in the MAX column.
+const ABS_MAX = rows([
+	[150, [[300, "MIN"], [420, "MAX"], [500, "UNIT"]]],
+	[165, [[170, "In"], [180, "active"], [210, "mode"], [300, "–0.3"], [420, "6"], [500, "V"]]],
+	[172, [[30, "VDD"], [60, "Supply"], [90, "voltage"]]],
+	[180, [[170, "In"], [180, "SHUTDOWN"], [230, "mode"], [300, "–0.3"], [420, "7"], [500, "V"]]],
+	[200, [[30, "TA"], [60, "Operating"], [100, "temperature"], [300, "–40"], [420, "85"], [500, "°C"]]],
+])
+
+test("a value is found by its printed label, on the label's row or the next one, however far off the model's box is", () => {
+	// The model's box sits in the MIN column and too low: 0.17 of the page away from the 6.
+	const hit = locateValue({ value: 6, unit: "V", label: "Supply voltage", region: [0.3, 0.3, 0.05, 0.02] }, ABS_MAX)
+	assert.ok(hit)
+	assert.ok(Math.abs(hit.region[0] - 60 / W) < 1e-9, "the region runs from the label to the value")
+	assert.match(hit.text, /Supply voltage/)
+	assert.match(hit.text, /6/)
+})
+
+test("a value not on or next to its label's row isn't found by the label", () => {
+	assert.equal(locateValue({ value: 85, unit: "V", label: "Supply voltage", region: [0.3, 0.3, 0.05, 0.02] }, ABS_MAX), null)
+	assert.equal(locateValue({ value: 6, unit: "V", label: "Output current", region: [0.3, 0.3, 0.05, 0.02] }, ABS_MAX), null)
+})
+
+test("pins a pin table doesn't list are NC, a few at most", () => {
+	assert.deepEqual(parsePinPairs("1 A, 2 B, 4 D"), [{ number: 1, name: "A" }, { number: 2, name: "B" }, { number: 3, name: "NC" }, { number: 4, name: "D" }])
+	assert.equal(parsePinPairs("1 A, 9 D"), null, "most pins missing is no pin-out")
+})
+
+test("pins the table lists are confirmed while the ones it doesn't list stay NC", () => {
+	const hit = locatePins("1 SHUTDOWN, 3 IN+, 4 IN-, 5 VO+, 6 VDD, 7 GND, 8 VO-", PIN_TABLE)
+	assert.deepEqual(hit?.names, ["SHUTDOWN", "NC", "IN+", "IN-", "VO+", "VDD", "GND", "VO-"])
+})
+
+test("a pin the model itself calls NC needn't be printed: tables leave unconnected pins out", () => {
+	assert.deepEqual(locatePins("1 SHUTDOWN, 2 NC, 3 IN+, 4 IN-, 5 VO+, 6 VDD, 7 GND, 8 VO-, 9 NC", PIN_TABLE)?.names.at(-1), "NC")
 })
