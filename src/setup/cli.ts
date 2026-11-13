@@ -9,14 +9,14 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { detectEnvironment } from "../tools/env.ts"
 import { run } from "../tools/exec.ts"
-import { doctorReport } from "./doctor.ts"
+import { doctorReport, vendorStatus } from "./doctor.ts"
 import { presentOn, runSetup, type Probe } from "./setup.ts"
 
 const root = fileURLToPath(new URL("../..", import.meta.url))
 const [command, ...flags] = process.argv.slice(2)
 
 if (command === "doctor") {
-	console.log(doctorReport(await detectEnvironment(root), process.env))
+	console.log(doctorReport(await detectEnvironment(root), process.env, vendorStatus(root)))
 } else if (command === "setup") {
 	const check: Probe["check"] = async (cmd, args) => {
 		const r = await run(cmd, args, { cwd: root, timeoutMs: 30_000 })
