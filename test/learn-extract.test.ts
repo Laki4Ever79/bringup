@@ -6,7 +6,7 @@ import { join, resolve } from "node:path"
 import { Budget, BudgetedReader, BudgetExhausted, learnCap } from "../src/learn/budget.ts"
 import { createDocStore, type DocStore } from "../src/learn/docs.ts"
 import { extractFacts, identifyPart, pagesToRead } from "../src/learn/extract.ts"
-import { loadKinds } from "../src/learn/kinds.ts"
+import { fieldsToRead, loadKinds } from "../src/learn/kinds.ts"
 import type { LearnedDoc } from "../src/learn/types.ts"
 import { fixtureFetch } from "./fixtures/learn/fetch.ts"
 import { fakeReader } from "./fixtures/learn/reader.ts"
@@ -345,4 +345,15 @@ test("a pin diagram page and a pin table page are both read", async () => {
 	const texts: Record<number, string> = { 1: "Pin Assignments", 3: "Pin Descriptions", 4: "Absolute Maximum Ratings", 5: "Electrical Characteristics" }
 	const store = { textIn: async (_d: unknown, p: number) => texts[p] ?? "filler" } as unknown as DocStore
 	assert.deepEqual(await pagesToRead({ id: "d", url: "", sha256: "", pages: 12, fetchedAt: "", kind: "datasheet" }, store), [1, 3, 4, 5])
+})
+
+test("a min and max from a dimension table's row are not a width × length", async () => {
+	const { store, doc } = fakeDoc({ 10: ["PACKAGE OUTLINE MSOP-8 Dimensions", "Dim Min Max Typ", "1 E3 2.85 3.05 2.95", "D 2.90 3.10 3.00"] })
+	const range = { value: [2.85, 3.05], unit: "mm", label: "E3", region: at(2) }
+	const { reader } = fakeReader({ first: { 10: { outline: range } }, strong: { 10: { outline: range } } })
+	assert.equal((await extractFacts(doc, amp, { store, reader })).find((f) => f.field === "outline"), undefined)
+})
+
+test("outline is asked as the body's nominal size, never a min/max range", () => {
+	assert.match(fieldsToRead(amp).find((f) => f.field === "outline")!.what, /never a min\/max range/)
 })

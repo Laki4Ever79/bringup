@@ -42,6 +42,8 @@ const PACKAGE_CODE = /\b([A-Z]{2,4})\d{4}[A-Z]?\b/g
 // Fields a package drawing gives (read from it first), and the dimensions among them.
 const DRAWN_FIELDS = ["outline", "height", "mountHoles", "package"]
 const DIMENSIONS = new Set(["outline", "height", "mountHoles"])
+// A dimension table's row: a symbol, then min, max and typical (a dash where one is missing).
+const DIMENSION_ROW = /\b[A-Z]{1,2}\d?\s+(?:-|—|[\d.]+)\s+(?:-|—|[\d.]+)\s+(?:-|—|[\d.]+)$/
 // A contents or revision-history page names every section without giving any fact.
 const isContents = (t: string) => /table of contents|revision history/i.test(t) || (t.match(/\.{5,}/g) ?? []).length >= 4
 
@@ -205,6 +207,12 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 	// without numbers included, as one sequence) near its claimed region. A region too big to point at one value finds
 	// nothing: any number in a whole table would "match".
 	const locate = (c: Claim, words: Word[]) => {
+		const hit = locateRaw(c, words)
+		// A body's width × length is never a dimension table's min and max: "E3 2.85 3.05 2.95" is one dimension's range.
+		if (hit && c.field === "outline" && Array.isArray(c.value) && DIMENSION_ROW.test(hit.text.replace(/\s+/g, " ").trim())) return null
+		return hit
+	}
+	const locateRaw = (c: Claim, words: Word[]) => {
 		if (pairsOf(c)) {
 			const hit = locatePins(String(c.value), words)
 			return hit && { region: hit.region, text: hit.text }
