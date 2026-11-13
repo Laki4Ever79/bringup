@@ -106,6 +106,9 @@ is a change to the firmware toolchain, not just the code.
       first and, when the build doesn't route, retry the same size with the wider gap before the board grows, so a
       board only gets the room its routing needed (one more build per failure, about 50 s).
 
+- [ ] **STM32 logger "unique PCB port" routing failure:** the scripted STM32 logger fails at 50×30 and 37×20 with
+      tscircuit's "Routes contain a junction or endpoint that cannot select a unique PCB port", with or without the
+      debug footprint; 39×21 routes (`npm run board`, 13 Nov). Belongs with the routing-aware retry above.
 - [ ] **Antenna keep-out:** Espressif recommends 15 mm clear around the module's antenna; the case leaves 2 mm. No
       ground copper is kept away from it yet either.
 - [ ] **RT9080 lifecycle:** one LCSC page flagged it "not recommended for new designs". Confirm with Richtek or a
