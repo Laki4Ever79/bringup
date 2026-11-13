@@ -2,13 +2,13 @@ import { closeSync, mkdirSync, openSync, rmSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { Budget, BudgetExhausted } from "./budget.ts"
 import { learnedDir, learnedFileName, readLearned, writeLearned } from "./catalog.ts"
-import { findListings, sameMpn, type Distributor, type webFind } from "./distributors.ts"
+import { docNamesPart, findListings, sameMpn, type Distributor, type webFind } from "./distributors.ts"
 import type { DocStore } from "./docs.ts"
 import { extractFacts, identifyPart, type ClaimTrace } from "./extract.ts"
 import { loadKinds, type KindFile } from "./kinds.ts"
 import type { PageReader, ReadRequest } from "./reader.ts"
 import { completeFacts, judge } from "./rule.ts"
-import type { Fact, LearnedDoc, LearnedPart, Listing, PartNeed } from "./types.ts"
+import type { Candidate, Fact, LearnedDoc, LearnedPart, Listing, PartNeed } from "./types.ts"
 
 export type LearnResult = { status: "learned"; part: LearnedPart; reused: boolean } | { status: "unavailable"; reasons: { mpn: string; reason: string }[] }
 
@@ -38,7 +38,8 @@ export interface LearnDeps {
 	distributors: Distributor[]
 	webFind: (mpn: string) => ReturnType<typeof webFind>
 	footprint: (part: { mpn: string; lcsc?: string; packageName?: string; pins: string[]; bodyMm?: number[] }) => Promise<Fact | null>
-	propose: (need: PartNeed, exclude: string[]) => Promise<string[]>
+	// Candidates for a need, each with the datasheet link the proposer found, if any (a bare part number works too).
+	propose: (need: PartNeed, exclude: string[]) => Promise<(string | Candidate)[]>
 	log: (line: LearnLog) => void
 	// Every claim a model makes and how it was checked (the plan's claims.jsonl).
 	onClaim?: (t: ClaimTrace & { need: string; mpn: string }) => void
@@ -98,7 +99,7 @@ const merge = (a: Fact[], b: Fact[]) => [...a, ...b.filter((f) => !a.some((x) =>
 
 type Tried = { ok: true; part: LearnedPart; good: boolean } | { ok: false; reason: string }
 
-async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: LearnDeps): Promise<Tried & { stats: ReturnType<typeof counting>["stats"]; pages: number; facts: number; usd: number; firstRead: number }> {
+async function tryCandidate({ mpn, datasheetUrl }: Candidate, need: PartNeed, kind: KindFile, deps: LearnDeps): Promise<Tried & { stats: ReturnType<typeof counting>["stats"]; pages: number; facts: number; usd: number; firstRead: number }> {
 	const { reader, stats } = counting(deps.reader)
 	const spentBefore = deps.budget.spent
 	const read = { firstRead: 0, pages: 0 }
@@ -116,7 +117,16 @@ async function tryCandidate(mpn: string, need: PartNeed, kind: KindFile, deps: L
 		}
 		return null
 	}
-	let doc = await fetchFirst(urls)
+	// The proposer's own link first, but only if the PDF names this part: a series sheet for another variant is not it.
+	let doc: LearnedDoc | null = null
+	if (datasheetUrl && !urls.includes(datasheetUrl)) {
+		const d = await deps.store.fetch(datasheetUrl, "datasheet")
+		if (!("error" in d) && (await docNamesPart(mpn, d, deps.store))) {
+			doc = d
+			listings.push({ distributor: "manufacturer", mpn, stock: null, priceUsd: null, assemblerStocked: false, datasheetUrl })
+		}
+	}
+	doc ??= await fetchFirst(urls)
 	let searched = "not tried"
 	if (!doc) {
 		const found = await deps.webFind(mpn)
@@ -203,8 +213,9 @@ export async function learnPart(need: PartNeed, deps: LearnDeps): Promise<LearnR
 	let best: LearnedPart | null = null
 	let current = ""
 	try {
-		const candidates = (await deps.propose(need, [])).slice(0, MAX_CANDIDATES)
-		for (const mpn of candidates) {
+		const candidates = (await deps.propose(need, [])).slice(0, MAX_CANDIDATES).map((c): Candidate => (typeof c === "string" ? { mpn: c } : c))
+		for (const candidate of candidates) {
+			const mpn = candidate.mpn
 			current = mpn
 			const existing = learnedMpn(deps.root, mpn)
 			if (existing) return { status: "learned", part: existing, reused: true }
@@ -214,7 +225,7 @@ export async function learnPart(need: PartNeed, deps: LearnDeps): Promise<LearnR
 				// Another learner may have finished between the check and the lock.
 				const now = learnedMpn(deps.root, mpn)
 				if (now) return { status: "learned", part: now, reused: true }
-				const t = await tryCandidate(mpn, need, kind, deps).catch((e) => {
+				const t = await tryCandidate(candidate, need, kind, deps).catch((e) => {
 					// The cap ends the whole need; any other error (a provider outage, a broken PDF) ends only this candidate.
 					if (e instanceof BudgetExhausted) throw e
 					return { ok: false as const, reason: `failed: ${e instanceof Error ? e.message : e}`, stats: { calls: 0, strong: 0, models: new Set<string>() }, pages: 0, facts: 0, usd: 0, firstRead: 0 }

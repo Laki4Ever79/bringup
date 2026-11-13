@@ -258,3 +258,64 @@ test("the model's printed label confirms a value its box misplaced", async () =>
 	assert.equal(f?.check, "text")
 	assert.match(f!.source!.quote, /Absolute maximum VDD 6\.0 V/)
 })
+
+// A fake datasheet: page texts and words (one row per line, words 4 pt per character apart), 10 pages so the page
+// choice applies.
+function fakeDoc(pages: Record<number, string[]>) {
+	const wordsOf = (p: number) =>
+		(pages[p] ?? []).flatMap((line, i) => {
+			let x = 50
+			return line.split(" ").map((text) => {
+				const w = { text, region: [x / 612, (100 + i * 20) / 792, (text.length * 4) / 612, 9 / 792] as [number, number, number, number] }
+				x += text.length * 4 + 4
+				return w
+			})
+		})
+	const store = {
+		textIn: async (_d: unknown, p: number) => (pages[p] ?? []).join("\n"),
+		words: async (_d: unknown, p: number) => wordsOf(p),
+		renderPage: async () => Buffer.alloc(1),
+	} as unknown as DocStore
+	return { store, doc: { id: "d", url: "", sha256: "", pages: 10, fetchedAt: "", kind: "datasheet" as const } }
+}
+const at = (line: number): [number, number, number, number] => [0.05, (95 + line * 20) / 792, 0.5, 20 / 792]
+
+test("outline and package come first from the drawing for this part's package, not page 1's list of versions", async () => {
+	const { store, doc } = fakeDoc({ 1: ["Device Information", "DSBGA (16) 2.01 mm x 2.01 mm", "WQFN (20) 4.00 mm x 4.00 mm"], 10: ["PACKAGE OUTLINE RTJ0020D WQFN", "4.00 x 4.00 body"] })
+	const { reader } = fakeReader({
+		first: {
+			1: { outline: { value: [2.01, 2.01], unit: "mm", label: "DSBGA (16)", region: at(1) }, package: { value: "DSBGA (16)", region: at(1) } },
+			10: { outline: { value: [4, 4], unit: "mm", label: "body", region: at(1) }, package: { value: "WQFN", region: at(0) } },
+		},
+	})
+	const facts = await extractFacts(doc, amp, { store, reader, mpn: "TPA2012D2RTJT" })
+	assert.deepEqual(facts.find((f) => f.field === "outline")?.value, [4, 4])
+	assert.equal(facts.find((f) => f.field === "package")?.value, "WQFN")
+})
+
+test("a dimension a drawing's text layer doesn't hold is confirmed by two reads; a table value isn't", async () => {
+	// The drawing page's text is garbled (an unreadable drawing font): 0.8 is printed nowhere in it.
+	const { store, doc } = fakeDoc({ 1: ["Supply voltage 2.5 5.5 V"], 10: ["PACKAGE OUTLINE RTJ0020D", "#$% &*( )@!"] })
+	const h = { value: 0.8, unit: "mm", region: at(1) }
+	const vmax = { value: 6, unit: "V", region: at(0) }
+	const { reader } = fakeReader({ first: { 10: { height: h }, 1: { supplyMaxV: vmax } }, second: { 10: { height: h }, 1: { supplyMaxV: vmax } }, strong: { 1: { supplyMaxV: vmax } } })
+	const facts = await extractFacts(doc, amp, { store, reader, mpn: "TPA2012D2RTJT" })
+	assert.equal(facts.find((f) => f.field === "height")?.check, "two-reads")
+	assert.equal(facts.find((f) => f.field === "supplyMaxV"), undefined)
+})
+
+test("a pin-out read again gets the tokens a long pin list needs", async () => {
+	const { store, amp1 } = await docs()
+	const wrong = { value: "1 SD, 2 MUTE", region: [0.05, 75 / 792, 0.9, 25 / 792] as [number, number, number, number] }
+	const { reader, calls } = fakeReader({ first: { 2: { pins: wrong } } })
+	await extractFacts(amp1, amp, { store, reader })
+	const again = calls.find((c) => c.meta.pass === "strong" && c.meta.fields.includes("pins"))!
+	assert.ok(again.maxTokens >= 1500)
+})
+
+test("the prompt asks for the words printed next to a drawing's dimension as its label", async () => {
+	const { store, amp1 } = await docs()
+	const { reader, calls } = fakeReader({})
+	await extractFacts(amp1, amp, { store, reader })
+	assert.match(calls[0].prompt, /dimension.*"MAX"|"MAX".*dimension/)
+})
