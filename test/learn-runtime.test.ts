@@ -180,3 +180,21 @@ test("the proposer asks for full orderable part numbers, and puts a learned part
 	assert.match(p, /full orderable part number, with its package suffix/)
 	assert.match(p, /must be your first part/)
 })
+
+test("a candidate that is no part number (a bare number, a word) is dropped", async () => {
+	const { parseCandidates } = await import("../src/learn/runtime.ts")
+	assert.deepEqual(parseCandidates('{"parts": [{"mpn": "8"}, {"mpn": "speaker"}, {"mpn": "SPKM.28.8.A"}]}'), ["SPKM.28.8.A"])
+})
+
+test("the fit check asks the cheap model about one learned part against the need, charged to the budget", async () => {
+	const bodies: string[] = []
+	const fake = (async (_u: string | URL | Request, init?: RequestInit) => {
+		bodies.push(String(init?.body))
+		return new Response(JSON.stringify({ choices: [{ message: { content: '{"fits": false, "why": "50 W is far beyond a chime"}' } }], usage: { prompt_tokens: 100, completion_tokens: 20 } }))
+	}) as typeof fetch
+	const deps = learnDepsFor({ OPENAI_API_KEY: "k" }, ROOT, mkdtempSync(join(tmpdir(), "plan-")), false, fake)
+	const r = await deps.fits!(need("a"), { mpn: "TPA3126D2DADR", summary: "outputPowerW 50 W" } as never)
+	assert.deepEqual(r, { fits: false, why: "50 W is far beyond a chime" })
+	assert.match(bodies[0], /TPA3126D2DADR/)
+	assert.ok(deps.budget.spent > 0)
+})

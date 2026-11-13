@@ -30,7 +30,7 @@
 		{
 			"field": "minLoadOhm",
 			"unit": "Ω",
-			"what": "lowest speaker impedance it drives"
+			"what": "lowest speaker impedance it drives: the smallest load in its specifications or test conditions (e.g. \"RL = 4 Ω\")"
 		},
 		{
 			"field": "outputPowerW",

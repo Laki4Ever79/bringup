@@ -69,3 +69,9 @@ test("height is asked as the maximum, what a case's clearance needs", () => {
 		if (h) assert.match(h.what, /maximum/, k.kind)
 	}
 })
+
+test("an amplifier's minimum load is read from test conditions too (RL = 4 Ω)", () => {
+	assert.match(fieldsToRead(kinds.get("amplifier")!).find((f) => f.field === "minLoadOhm")!.what, /RL = 4 Ω/)
+	assert.ok(criticalFields(kinds.get("amplifier")!).includes("minLoadOhm"), "still required: a too-low speaker impedance damages the amplifier")
+	assert.ok(!criticalFields(kinds.get("speaker-driver")!).includes("pins"))
+})

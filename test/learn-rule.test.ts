@@ -75,3 +75,11 @@ test("non-critical fields with no default and no value are listed as unknown", (
 	assert.ok(j.ok)
 	assert.ok(j.unknown.includes("fsHz"))
 })
+
+test("a speaker whose datasheet prints no terminal names gets + and - as a flagged default; it is still learned", () => {
+	const facts = completeFacts(speakerFacts(0.5).filter((f) => f.field !== "pins"), spk)
+	const pins = facts.find((f) => f.field === "pins")!
+	assert.equal(pins.value, "+,-")
+	assert.equal(pins.status, "default")
+	assert.ok(judge(facts, spk).ok)
+})

@@ -125,7 +125,9 @@ all at once. The plan page shows each need as learning, learned (with how many v
 (with each candidate's reason). Build waits until no need is still learning.
 
 How a part is learned:
-1. Up to three candidates from a web search by the cheap model (OpenAI Responses with `web_search`), asked by what
+0. Parts already learned of the need's kind come first: one whose supply fits the board and that a cheap check says
+   fits the need is reused at once, with nothing proposed or read.
+1. Otherwise up to three candidates from a web search by the cheap model (OpenAI Responses with `web_search`), asked by what
    the part is (each kind file has a plain description: "a loudspeaker … not an amplifier or driver IC"), each with
    the datasheet PDF the search found. That PDF is used only if its text names the part.
 2. Listings from LCSC/JLCPCB (no key), DigiKey (`DIGIKEY_CLIENT_ID`, `DIGIKEY_CLIENT_SECRET`) and Mouser
@@ -155,7 +157,8 @@ How a part is learned:
    body size from the datasheet's outline, an exposed pad when the text names one. Either is accepted only when its pad
    count matches the pins.
 
-A speaker needs no mount holes: small ones have none, so the case clamps it by the rim its outline gives.
+A speaker needs no mount holes: small ones have none, so the case clamps it by the rim its outline gives. Nor printed terminal names: a two-terminal speaker on leads gets "+, -" as a flagged default. An amplifier's minimum
+load stays required (a speaker below it can damage the amplifier) and is read from test conditions too ("RL = 4 Ω").
 
 The first candidate that is complete, in stock and (on the board) stocked by the assembler wins; otherwise the best
 complete one. It is written to `catalog/learned/<mpn>-<hash>.json` (facts with page and region, documents by URL and

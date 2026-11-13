@@ -29,11 +29,13 @@ export type KindFile = z.infer<typeof Kind>
 // outline gives (the kind's "clamp-rim" need). Passive parts and connectors take no supply. Any kind not named here
 // needs every generic fact.
 const NO_MOUNT_HOLES = new Set(["amplifier", "battery", "button", "capacitor", "charge-led", "charger", "connector", "ldo", "led", "mcu", "microphone", "motor-driver", "resistor", "sensor", "speaker-driver", "usb-c"])
+// Two-terminal parts on leads, whose datasheets often print no terminal names: "+" and "-" is then a flagged default.
+const NO_PINOUT = new Set(["speaker-driver"])
 const UNPOWERED = new Set(["battery", "button", "capacitor", "charge-led", "connector", "led", "resistor", "speaker-driver", "usb-c"])
 
 export function criticalFields(kind: KindFile): string[] {
 	const generic = GENERIC_CRITICAL.filter(
-		(f) => !(f === "footprint" && kind.placement === "case") && !(f === "mountHoles" && NO_MOUNT_HOLES.has(kind.kind)) && !((f === "supplyMaxV" || f === "supplyRange") && UNPOWERED.has(kind.kind)),
+		(f) => !(f === "footprint" && kind.placement === "case") && !(f === "mountHoles" && NO_MOUNT_HOLES.has(kind.kind)) && !((f === "supplyMaxV" || f === "supplyRange") && UNPOWERED.has(kind.kind)) && !(f === "pins" && NO_PINOUT.has(kind.kind)),
 	)
 	return [...new Set([...generic, ...kind.critical])]
 }
@@ -69,7 +71,7 @@ export function loadKinds(root: string): Map<string, KindFile> {
 		} catch (e) {
 			throw new Error(`catalog/kinds/${name}: ${e instanceof Error ? e.message : e}`)
 		}
-		const critical = new Set([...GENERIC_CRITICAL, ...kind.critical])
+		const critical = new Set(criticalFields(kind))
 		const bad = Object.keys(kind.defaults).filter((f) => critical.has(f))
 		if (bad.length) throw new Error(`catalog/kinds/${name}: a default on a critical field (${bad.join(", ")}) is not allowed`)
 		out.set(kind.kind, kind)
