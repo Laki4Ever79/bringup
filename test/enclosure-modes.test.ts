@@ -101,7 +101,8 @@ test("the mechanical interface gives the housing designer every place it must ma
 	assert.deepEqual(m.airflow.map((a) => a.ref), ["U2"])
 	assert.deepEqual(m.lights.map((l) => l.ref).sort(), ["D1", "D2"])
 	assert.equal(m.antenna?.clearanceMm, 15)
-	assert.deepEqual(m.bottomPads.map((p) => p.ref), ["TPR1", "TPR2"])
+	// The recovery pads, then the bring-up pads (3.3 V, battery): every pad under the board, for the housing to leave clear.
+	assert.deepEqual(m.bottomPads.map((p) => [p.ref, p.net]), [["TPR1", "I2C_SCL"], ["TPR2", "GND"], ["TP1", "V3V3"], ["TP2", "VBAT"]])
 	assert.match(m.label!, /2AC7Z-ESPC3MINI1/)
 	const md = interfaceMarkdown(m, "board.step")
 	assert.match(md, /^# Mechanical interface/)

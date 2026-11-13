@@ -845,8 +845,37 @@ export interface TestPoint {
 
 export function testPoints(s: ContractSnapshot): { placed: TestPoint[]; unplaced: string[] } {
 	if (!s.values.outline || !s.values.test) return { placed: [], unplaced: [] }
+	return padsOf(s, "test")
+}
+
+// Bring-up pads (engineer, 13 Nov 2026: test points on every design, on by default): bare pads on the underside for
+// the first bench session, on ground, the board's rails, a debug UART and each signal of a cable link to another board.
+// Only without a production test (which probes every net it lists) and unless requirements.testPads is false. They come
+// after every other pad and take only the room left: a pad with no room is dropped, never a reason to grow the board
+// (the smallest board is found from the parts' placement alone). A net another bottom pad already carries (the recovery
+// pads' GND) gets no second pad. VBUS has none: it is probed at the USB-C connector.
+// TODO(learned parts): the nets a learned part adds (an amplifier's input and outputs) join this set once learned parts
+// are wired into the board.
+const UART_SIGNAL = /(^|_)(UART\d*|DEBUG|DBG|CONSOLE)_?(TX|RX)$|^U\d_(TX|RX)$|^L\d+_(TX|RX)$/i
+export function bringupNets(s: ContractSnapshot): string[] {
+	const { outline, test, requirements, pins = [], parts = [] } = s.values
+	if (!outline || test || requirements?.testPads === false) return []
+	const gen = generatedNets(s)
+	const has = (net: string) => (gen.get(net)?.length ?? 0) >= 2
+	const rails = [netName(SUPPLY_RAIL), ...(s.values.rails ?? []).map((r) => netName(r.name)), ...(parts.some((p) => p.role === "battery") ? ["VBAT"] : [])]
+	const signals = pins.map((p) => p.signal)
+	const links = linkBusTraces(s).map((t) => t.net)
+	const nets = ["GND", ...rails.filter(has), ...signals.filter((n) => UART_SIGNAL.test(n)), ...links]
+	return [...new Set(nets)]
+}
+export function bringupPads(s: ContractSnapshot): { placed: TestPoint[]; unplaced: string[] } {
+	return padsOf(s, "bringup")
+}
+
+function padsOf(s: ContractSnapshot, kind: PadKind): { placed: TestPoint[]; unplaced: string[] } {
+	if (!s.values.outline) return { placed: [], unplaced: [] }
 	const { placed, unplaced } = bottomPads(s)
-	return { placed: placed.filter((p) => !p.recovery).map(({ recovery: _r, ...p }) => p), unplaced: unplaced.filter((n) => !n.startsWith("recovery ")) }
+	return { placed: placed.filter((p) => p.kind === kind).map(({ kind: _k, ...p }) => p), unplaced: unplaced.filter((u) => u.kind === kind).map((u) => u.net) }
 }
 
 // The recovery pads (engineer, 8 Nov 2026, over a 7×9 mm button that made the logger's smallest board 27% bigger): BOOT
@@ -855,9 +884,8 @@ export function testPoints(s: ContractSnapshot): { placed: TestPoint[]; unplaced
 // logger), else its own net, BOOT.
 export const RECOVERY_BOOT_NET = "BOOT"
 export function recoveryPads(s: ContractSnapshot): { placed: TestPoint[]; unplaced: string[] } {
-	if (!s.values.outline || !recoveryBootNet(s)) return { placed: [], unplaced: [] }
-	const { placed, unplaced } = bottomPads(s)
-	return { placed: placed.filter((p) => p.recovery).map(({ recovery: _r, ...p }) => p), unplaced: unplaced.filter((n) => n.startsWith("recovery ")).map((n) => n.slice("recovery ".length)) }
+	if (!recoveryBootNet(s)) return { placed: [], unplaced: [] }
+	return padsOf(s, "recovery")
 }
 
 export function recoveryBootNet(s: ContractSnapshot): string | null {
@@ -870,7 +898,8 @@ export function recoveryBootNet(s: ContractSnapshot): string | null {
 
 // Placing the parts is the slow step, and every consistency check and designer turn asks for the pads: the last few
 // results are kept, keyed on the whole contract (placement reads most of it).
-type BottomPads = { placed: (TestPoint & { recovery: boolean })[]; unplaced: string[] }
+type PadKind = "test" | "recovery" | "bringup"
+type BottomPads = { placed: (TestPoint & { kind: PadKind })[]; unplaced: { net: string; kind: PadKind }[] }
 const bottomPadsCache = new Map<string, BottomPads>()
 function bottomPads(s: ContractSnapshot): BottomPads {
 	const key = JSON.stringify(s.values)
@@ -885,7 +914,8 @@ function bottomPads(s: ContractSnapshot): BottomPads {
 function bottomPadsUncached(s: ContractSnapshot): BottomPads {
 	const { outline, test, parts = [], pins = [] } = s.values
 	const bootNet = recoveryBootNet(s)
-	if (!outline || (!test && !bootNet)) return { placed: [], unplaced: [] }
+	const bringup = bringupNets(s)
+	if (!outline || (!test && !bootNet && !bringup.length)) return { placed: [], unplaced: [] }
 	const [W, H] = [outline.widthMm, outline.heightMm]
 	const boxes = placeParts(s)
 	const byRef = new Map(boxes.map((b) => [b.ref, b]))
@@ -919,24 +949,27 @@ function bottomPadsUncached(s: ContractSnapshot): BottomPads {
 			if (blocked.some((b) => Math.abs(c.x - b.x) < b.w / 2 + half && Math.abs(c.y - b.y) < b.h / 2 + half)) continue
 			cells.push(c)
 		}
-	const placed: (TestPoint & { recovery: boolean })[] = []
-	const unplaced: string[] = []
+	const placed: BottomPads["placed"] = []
+	const unplaced: BottomPads["unplaced"] = []
 	const used = new Set<number>()
 	const mcuBox = roleBox("mcu")
 	const wanted = [
-		...(test?.points ?? []).map((net, i) => ({ net, ref: `TP${i + 1}`, recovery: false, want: anchor(net) })),
+		...(test?.points ?? []).map((net, i) => ({ net, ref: `TP${i + 1}`, kind: "test" as const, want: anchor(net) })),
 		// BOOT beside the part whose signal shares the pin (its trace stays short), else beside the module; GND next to it.
-		...(bootNet ? [bootNet, "GND"].map((net, i) => ({ net, ref: `TPR${i + 1}`, recovery: true, want: (i === 0 && bootNet !== RECOVERY_BOOT_NET ? anchor(net) : mcuBox) ?? { x: 0, y: 0 } })) : []),
+		...(bootNet ? [bootNet, "GND"].map((net, i) => ({ net, ref: `TPR${i + 1}`, kind: "recovery" as const, want: (i === 0 && bootNet !== RECOVERY_BOOT_NET ? anchor(net) : mcuBox) ?? { x: 0, y: 0 } })) : []),
+		// Last: bring-up pads take what room is left, none on a net that already has a pad.
+		...bringup.filter((net) => !(bootNet && (net === bootNet || net === "GND"))).map((net, i) => ({ net, ref: `TP${i + 1}`, kind: "bringup" as const, want: anchor(net) })),
 	]
-	wanted.forEach(({ net, ref, recovery, want: wanted }) => {
-		const prior = placed.find((p) => p.recovery)
+	wanted.forEach(({ net, ref, kind, want: wanted }) => {
+		const recovery = kind === "recovery"
+		const prior = placed.find((p) => p.kind === "recovery")
 		const want = recovery && prior ? prior : wanted
 		let best = -1
 		for (let k = 0; k < cells.length; k++) if (!used.has(k) && (best < 0 || Math.hypot(cells[k].x - want.x, cells[k].y - want.y) < Math.hypot(cells[best].x - want.x, cells[best].y - want.y) - 1e-9)) best = k
-		if (best < 0) return void unplaced.push(recovery ? `recovery ${net}` : net)
+		if (best < 0) return void unplaced.push({ net, kind })
 		used.add(best)
 		const c = cells[best]
-		placed.push({ ref, net, recovery, x: c.x, y: c.y, xMm: +(c.x + W / 2).toFixed(3), yMm: +(c.y + H / 2).toFixed(3) })
+		placed.push({ ref, net, kind, x: c.x, y: c.y, xMm: +(c.x + W / 2).toFixed(3), yMm: +(c.y + H / 2).toFixed(3) })
 	})
 	return { placed, unplaced }
 }
@@ -1180,7 +1213,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		lines.push(`<trace name=${q(`${bootNet}_mcu`)} from=${q(`.${boot.mcu.ref} > .${boot.pin}`)} to=${q(`net.${bootNet}`)} />`)
 		nets.add(bootNet)
 	}
-	for (const tp of [...testPoints(s).placed, ...recoveryPads(s).placed].map((t) => ({ ...t, net: nets.has(t.net) ? t.net : netName(t.net) })).filter((t) => nets.has(t.net))) {
+	for (const tp of [...testPoints(s).placed, ...recoveryPads(s).placed, ...bringupPads(s).placed].map((t) => ({ ...t, net: nets.has(t.net) ? t.net : netName(t.net) })).filter((t) => nets.has(t.net))) {
 		lines.push(`<testpoint name=${q(tp.ref)} footprintVariant="pad" padShape="circle" padDiameter="${TEST_PAD.diameterMm}mm" layer="bottom" pcbX={${tp.x}} pcbY={${tp.y}} />`)
 		lines.push(`<trace name=${q(`${tp.net}_${tp.ref}`)} from=${q(`.${tp.ref} > .pin1`)} to=${q(`net.${tp.net}`)} />`)
 	}
