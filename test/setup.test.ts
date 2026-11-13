@@ -110,6 +110,16 @@ test("doctor names each tool's backend and which optional settings are set, neve
 	assert.ok(!text.includes("sk-very-secret-value") && !text.includes("bringup-secret-topic"))
 })
 
+test("doctor lists Renode, each vendor platform and ST's pin data (docs/mcu.md)", () => {
+	const env = { root: "/r", tsci: null, kicad: null, python: null, pio: null, qemu: null, renode: "/r/tools/renode/renode_1.17.0-portable/renode" }
+	const text = doctorReport(env, {}, { platforms: { "platformio/ststm32@19.6.0": true, "platformio/nordicnrf52@11.0.0": false }, stPinData: false })
+	assert.match(text, /Renode \(STM32\/nRF\)\s+local/)
+	assert.match(text, /pio ststm32\s+installed/)
+	assert.match(text, /pio nordicnrf52\s+missing \(optional: npm run setup -- --vendors, platformio\/nordicnrf52@11\.0\.0\)/)
+	assert.match(text, /ST pin data\s+missing/)
+	assert.match(doctorReport({ ...env, renode: null }, {}), /Renode \(STM32\/nRF\)\s+missing \(optional: npm run setup -- --renode\)/)
+})
+
 // --wokwi: 5b's pinned release (src/tools/wokwi.ts), the one source of truth.
 function wokwiMachine(opts: { platform?: string; files?: Record<string, string>; download?: string } = {}) {
 	const m = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
