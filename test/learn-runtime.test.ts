@@ -85,7 +85,7 @@ test("needs are only for kinds the hand catalog has no role for, never a chip", 
 	assert.ok(!k.has("sensor") && !k.has("mcu") && !k.has("ldo"))
 	const spec = { name: "x", boards: [{ name: "clock", brief: "briefs/clock.md" }], links: [] }
 	const needs = validNeeds([{ kind: "sensor", requirements: "CO2" }, { kind: "mcu", requirements: "bigger" }, { kind: "amplifier", requirements: "3 W" }], spec)
-	assert.deepEqual(needs.map((n) => n.kind), ["amplifier"])
+	assert.deepEqual(needs.map((n) => n.kind), ["amplifier", "speaker-driver"], "sensor and mcu dropped; the amplifier brings its speaker")
 })
 
 test("a can't-build line a need covers is dropped; others stay", async () => {
@@ -120,4 +120,19 @@ test("the architect is told what each learnable kind is", async () => {
 	const { BUILDABLE } = await import("../src/system/architect.ts")
 	assert.match(BUILDABLE, /speaker-driver \(a loudspeaker: the cone-and-magnet transducer/)
 	assert.match(BUILDABLE, /amplifier \(an audio power amplifier IC/)
+})
+
+test("an amplifier need always comes with the speaker it drives", async () => {
+	const { validNeeds } = await import("../src/system/architect.ts")
+	const spec = { name: "x", boards: [{ name: "main", brief: "briefs/main.md" }], links: [] }
+	assert.deepEqual(validNeeds([{ id: "amp1", kind: "amplifier", requirements: "drive a small passive loudspeaker" }], spec).map((n) => n.kind), ["amplifier", "speaker-driver"])
+})
+
+test("real learning traces every claim to the plan's claims.jsonl", async () => {
+	const { readFileSync, existsSync } = await import("node:fs")
+	const planDir = mkdtempSync(join(tmpdir(), "plan-"))
+	const deps = learnDepsFor({}, ROOT, planDir, false)
+	deps.onClaim?.({ need: "a", mpn: "X", page: 1, field: "f", value: 1, region: [0, 0, 0, 0], pass: "first", outcome: "text" })
+	assert.ok(existsSync(join(planDir, "claims.jsonl")))
+	assert.match(readFileSync(join(planDir, "claims.jsonl"), "utf8"), /"mpn":"X"/)
 })

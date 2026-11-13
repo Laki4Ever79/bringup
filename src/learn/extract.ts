@@ -20,21 +20,28 @@ const FOCUSED_TOKENS = 400
 const IDENTIFY_TOKENS = 150
 // At most this many pages per datasheet: every read costs, and the facts live in a few sections.
 export const MAX_PAGES = 8
-// The sections facts live in, each wanted once before any is read twice: a long datasheet's pin table, limits,
-// characteristics and package drawing, wherever they are.
+// The sections facts live in, each read once, wherever it is: a long datasheet's pin table, limits and characteristics.
 const SECTIONS: RegExp[] = [
 	/pin config|pin description|pin assignment|pin functions|terminal functions|pin-?out/i,
 	/absolute maximum/i,
 	/recommended operating/i,
-	/electrical characteristics|specifications?\b/i,
-	/dimension|mechanical|package outline|outline drawing|package drawing|package information/i,
+	/electrical characteristics/i,
+	// A heading on its own line ("7 Specifications", "Speaker Specification"), not a mention in running text.
+	/^\s*[\d.]*\s*(?:\w+ )?specifications?\s*$/im,
 ]
+// The package drawing (outline and height): its own pages, usually at the end, one per package. "Mechanical,
+// Packaging and Orderable Information" is only a section title.
+const OUTLINE = /package outline|package drawing|outline dimensions|mechanical drawing|\bdimensions\b/i
+// A drawing page's package code ("DGN0008G", "RTJ0020D"): its letters are part of the part number's ordering code
+// (TPA2005D1DGN, TPA2012D2RTJR), which is how the drawing for this part's package is told from the others.
+const PACKAGE_CODE = /\b([A-Z]{2,4})\d{4}[A-Z]?\b/g
 // A contents or revision-history page names every section without giving any fact.
 const isContents = (t: string) => /table of contents|revision history/i.test(t) || (t.match(/\.{5,}/g) ?? []).length >= 4
 
-// Which pages to read: short documents whole; long ones page 1, then the first page of each section, then more pages of
-// those sections, up to MAX_PAGES. Pages with no text (a scan) count as worth reading among the first few.
-export async function pagesToRead(doc: LearnedDoc, store: DocStore): Promise<number[]> {
+// Which pages to read: short documents whole; long ones page 1, the first page of each section, and the package
+// drawing for this part's package (the first one when no part number says which). Pages with no text (a scan) among the
+// first MAX_PAGES are read too.
+export async function pagesToRead(doc: LearnedDoc, store: DocStore, mpn?: string): Promise<number[]> {
 	const all = Array.from({ length: doc.pages }, (_, i) => i + 1)
 	if (doc.pages <= MAX_PAGES) return all
 	const texts = new Map<number, string>()
@@ -43,14 +50,15 @@ export async function pagesToRead(doc: LearnedDoc, store: DocStore): Promise<num
 	const picked = new Set([1])
 	for (const re of SECTIONS) {
 		const p = all.find((x) => useful(x) && re.test(texts.get(x)!))
-		if (p && picked.size < MAX_PAGES) picked.add(p)
+		if (p) picked.add(p)
 	}
-	for (const p of all) {
-		if (picked.size >= MAX_PAGES) break
-		const t = texts.get(p)!
-		if (useful(p) && (SECTIONS.some((re) => re.test(t)) || (t === "" && p <= MAX_PAGES))) picked.add(p)
-	}
-	return [...picked].sort((a, b) => a - b)
+	const drawings = all.filter((p) => useful(p) && OUTLINE.test(texts.get(p)!))
+	const ordering = mpn ? mpn.toUpperCase().slice(3) : ""
+	const ours = drawings.find((p) => [...texts.get(p)!.matchAll(PACKAGE_CODE)].some((m) => ordering.includes(m[1])))
+	const drawing = ours ?? drawings[0]
+	if (drawing) picked.add(drawing)
+	for (const p of all) if (picked.size < MAX_PAGES && p <= MAX_PAGES && texts.get(p) === "") picked.add(p)
+	return [...picked].sort((a, b) => a - b).slice(0, MAX_PAGES)
 }
 
 // How pins are asked for: number-name pairs, so each can be checked on its own row of a pin table (tables list pins in
@@ -128,7 +136,16 @@ function inKindUnit(c: Claim, kind: KindFile): { value: Claim["value"]; unit?: s
 // nothing confirms is left out: the missing-value rule (rule.ts) decides what happens to it. stats.firstRead counts the
 // facts the cheap model's first read gave without the strong model (what tunes the model choice); stats.pages the pages
 // read.
-export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { store: DocStore; reader: PageReader; mpn?: string; stats?: { firstRead: number; pages?: number } }): Promise<Fact[]> {
+export interface ClaimTrace {
+	page: number
+	field: string
+	value: unknown
+	region: SourceRef["region"]
+	pass: ReadRequest["meta"]["pass"]
+	outcome: string
+}
+
+export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { store: DocStore; reader: PageReader; mpn?: string; stats?: { firstRead: number; pages?: number }; onClaim?: (t: ClaimTrace) => void }): Promise<Fact[]> {
 	const { store, reader } = deps
 	// The footprint is never taken from a datasheet's words: it comes from a land-pattern library and is checked against
 	// the pins (footprint.ts). The package name read here is only a hint for that search.
@@ -146,7 +163,7 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 	}
 
 	const candidates = new Map<string, Claim[]>()
-	const pages = await pagesToRead(doc, store)
+	const pages = await pagesToRead(doc, store, deps.mpn)
 	if (deps.stats) deps.stats.pages = (deps.stats.pages ?? 0) + pages.length
 	for (const page of pages) {
 		for (const c of await read(page, fields, "first")) candidates.set(c.field, [...(candidates.get(c.field) ?? []), c])
@@ -178,22 +195,46 @@ export async function extractFacts(doc: LearnedDoc, kind: KindFile, deps: { stor
 		return pointsAtOneValue(c.region) ? locateValue(c, words) : null
 	}
 
+	// Every claim and how it was checked, for the plan's claims.jsonl: what tunes the reader and the checks.
+	const trace = (c: Claim | undefined, pass: ReadRequest["meta"]["pass"], outcome: string, field: string, page: number) => {
+		try {
+			deps.onClaim?.({ page, field, value: c?.value, region: c?.region ?? [0, 0, 0, 0], pass, outcome: c ? outcome : "not given" })
+		} catch {
+			// A trace that fails to write never stops learning.
+		}
+	}
+	const missed = (c: Claim) => (pairsOf(c) ? "a pin pair not found on any row" : pointsAtOneValue(c.region) ? "not found near its region" : "region too big to point at one value")
+
 	async function confirm(c: Claim): Promise<{ fact: Fact; strong: boolean } | null> {
 		const words = await wordsOf(c.page)
 		const hit = locate(c, words)
-		if (hit) return { fact: fact(c, "text", hit), strong: false }
+		if (hit) {
+			trace(c, "first", "text", c.field, c.page)
+			return { fact: fact(c, "text", hit), strong: false }
+		}
 		// Nothing printed where the value is claimed (an image-only page, or a raster drawing on a page with text): only
 		// independent reads can confirm it.
 		const drawn = !words.length || (!pairsOf(c) && pointsAtOneValue(c.region) && !words.some((w) => gap(w.region, pad(c.region)) === 0))
 		if (drawn) {
+			trace(c, "first", "nothing printed there", c.field, c.page)
 			const second = (await read(c.page, [c.field], "second")).find((x) => x.field === c.field)
-			if (second && valuesAgree(c, second)) return { fact: fact(c, "two-reads"), strong: false }
+			if (second && valuesAgree(c, second)) {
+				trace(second, "second", "agrees", c.field, c.page)
+				return { fact: fact(c, "two-reads"), strong: false }
+			}
+			trace(second, "second", "disagrees", c.field, c.page)
 			const strong = (await read(c.page, [c.field], "strong")).find((x) => x.field === c.field)
-			if (strong && (valuesAgree(strong, c) || (second && valuesAgree(strong, second)))) return { fact: fact(strong, "two-reads"), strong: true }
+			if (strong && (valuesAgree(strong, c) || (second && valuesAgree(strong, second)))) {
+				trace(strong, "strong", "agrees", c.field, c.page)
+				return { fact: fact(strong, "two-reads"), strong: true }
+			}
+			trace(strong, "strong", "disagrees", c.field, c.page)
 			return null
 		}
+		trace(c, "first", missed(c), c.field, c.page)
 		const strong = (await read(c.page, [c.field], "strong")).find((x) => x.field === c.field)
 		const strongHit = strong ? locate(strong, words) : null
+		trace(strong, "strong", strongHit ? "text" : strong ? missed(strong) : "not given", c.field, c.page)
 		return strong && strongHit ? { fact: fact(strong, "text", strongHit), strong: true } : null
 	}
 

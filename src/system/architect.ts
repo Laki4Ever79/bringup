@@ -171,6 +171,12 @@ export function validNeeds(raw: unknown, spec: SystemSpec): PartNeed[] {
 		if (!LEARNABLE.has("amplifier")) continue
 		out.push({ id: `${spk.id}-amp`, role: "amplifier", kind: "amplifier", requirements: `an amplifier that drives this speaker (${spk.requirements}) from the board's supply, with a digital (I2S) input if the board's chip has one`, ...(spk.board ? { board: spk.board } : {}) })
 	}
+	// And an amplifier drives a speaker: one is added for each board with an amplifier and no speaker.
+	for (const amp of out.filter((n) => n.kind === "amplifier")) {
+		if (out.some((n) => n.kind === "speaker-driver" && n.board === amp.board)) continue
+		if (!LEARNABLE.has("speaker-driver")) continue
+		out.push({ id: `${amp.id}-speaker`, role: "speaker", kind: "speaker-driver", requirements: `the loudspeaker this amplifier drives (${amp.requirements})`, ...(amp.board ? { board: amp.board } : {}) })
+	}
 	return out
 }
 
