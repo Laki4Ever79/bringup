@@ -1,7 +1,8 @@
 // The assembly (src/system/assembly.ts): which boards it places, the plate, the footprint, off-plate and overlap checks.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { assemblyErrors, BOARD_GAP_MM, defaultAssembly, DEFAULT_PLATE_MM, ESTIMATED_OUTLINE_MM, footprint, PLATE_MARGIN_MM, withOutlines, type AssemblyBoard, type SystemAssembly } from "../src/system/assembly.ts"
+import { ROVER_BOARD } from "../src/inference/scripts.ts"
+import { assemblyErrors, derivedAssembly, BOARD_GAP_MM, defaultAssembly, DEFAULT_PLATE_MM, ESTIMATED_OUTLINE_MM, footprint, PLATE_MARGIN_MM, withOutlines, type AssemblyBoard, type SystemAssembly } from "../src/system/assembly.ts"
 import { specErrors, type SystemSpec } from "../src/system/spec.ts"
 
 const placed = (name: string, xMm = 0, yMm = 0, rotDeg: AssemblyBoard["rotDeg"] = 0): AssemblyBoard =>
@@ -123,4 +124,19 @@ test("withOutlines replaces estimates and re-spaces boards that now overlap", ()
 	assert.equal(at(same, "b").xMm, at(a, "b").xMm)
 	const wide = withOutlines(defaultAssembly(sys(["main", "b"]), "chassis"), { main: { widthMm: 100, heightMm: 40 }, b: { widthMm: 100, heightMm: 40 } })
 	assert.ok(wide.plate!.lengthMm > DEFAULT_PLATE_MM.lengthMm)
+})
+
+test("an old robot derives its assembly from its mechanics", () => {
+	const sys: SystemSpec = { name: "rover", boards: [{ name: "main", brief: "b.md" }], links: [] } as unknown as SystemSpec
+	const d = derivedAssembly(sys, ROVER_BOARD.mechanics, { main: { widthMm: 60, heightMm: 40 } })
+	assert.equal(d.derived, true)
+	assert.equal(d.body, "chassis")
+	assert.deepEqual(d.plate, { lengthMm: 150, widthMm: 110 })
+	assert.deepEqual(d.boards.map((b) => [b.name, b.xMm, b.yMm, b.rotDeg, b.outlineSource]), [["main", 10, 0, 0, "built"]])
+	assert.deepEqual(d.boards[0].outline, { widthMm: 60, heightMm: 40 })
+})
+
+test("an old two-board design without a chassis derives separate devices with no positions", () => {
+	const sys = { name: "pair", boards: [{ name: "logger", brief: "a.md" }, { name: "beacon", brief: "b.md" }], links: [] } as unknown as SystemSpec
+	assert.deepEqual(derivedAssembly(sys), { body: "separate", boards: [], derived: true })
 })

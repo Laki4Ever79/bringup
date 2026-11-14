@@ -1,6 +1,7 @@
 // The physical body of a system of boards: where each board sits and how big it is, in one description that the boards,
 // the chassis builder and the 3D view all read. Optional on a SystemSpec; a spec without one behaves as before.
 import type { SystemSpec } from "./spec.ts"
+import type { Mechanics } from "../mechanics/types.ts"
 
 export type BodyKind = "chassis" | "enclosure" | "separate"
 export type Rot = 0 | 90 | 180 | 270
@@ -149,4 +150,20 @@ export function withOutlines(a: SystemAssembly, outlines: Record<string, Outline
 	}
 	const grown = plateFor(updated)
 	return { ...a, plate: { lengthMm: Math.max(plate.lengthMm, grown.lengthMm), widthMm: Math.max(plate.widthMm, grown.widthMm) }, boards: updated }
+}
+
+// The assembly of a run that predates assemblies, read from what it has (never stored, so an old run stays as it was):
+// a robot's mechanics give a chassis body with its plate and its places; anything else is separate devices with no
+// positions, so the 3D view keeps its automatic layout. `mainName` is the system board that owns `mainMechanics`
+// (inside its contract it is "main"); by default the board called "main", else the first.
+export function derivedAssembly(spec: SystemSpec, mainMechanics?: Mechanics, outlines: Record<string, Outline> = {}, mainName?: string): SystemAssembly & { derived: true } {
+	const chassis = mainMechanics?.chassis
+	if (!chassis) return { body: "separate", boards: [], derived: true }
+	const own = mainName ?? (spec.boards.some((b) => b.name === "main") ? "main" : spec.boards[0]?.name ?? "main")
+	const boards: AssemblyBoard[] = chassis.boards.map((p) => {
+		const name = p.name === "main" ? own : p.name
+		const built = outlines[name]
+		return { name, xMm: p.at.xMm, yMm: p.at.yMm, rotDeg: p.rotDeg, outline: built ? { ...built } : { ...ESTIMATED_OUTLINE_MM }, outlineSource: built ? "built" : "estimate" }
+	})
+	return { body: "chassis", plate: { lengthMm: chassis.plateMm[0], widthMm: chassis.plateMm[1] }, boards, derived: true }
 }
