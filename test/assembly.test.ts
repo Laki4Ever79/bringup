@@ -1,51 +1,62 @@
-// The system page's live assembly (src/dashboard/assembly.js): each board's state at a moment, from its run's events.
+// The assembly (src/system/assembly.ts): which boards it places, the plate, the footprint, off-plate and overlap checks.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { assemblyAt, timeSpan } from "../src/dashboard/assembly.js"
+import { assemblyErrors, footprint, type AssemblyBoard, type SystemAssembly } from "../src/system/assembly.ts"
+import { specErrors, type SystemSpec } from "../src/system/spec.ts"
 
-const ev = (at: string, type: string, payload: Record<string, unknown>) => ({ at: `2026-11-09T10:${at}Z`, type, payload })
-const trace = [
-	ev("00:00", "run.started", {}),
-	ev("01:00", "contract.changed", { field: "outline", revision: 3, after: { widthMm: 50, heightMm: 30 } }),
-	ev("02:00", "consistency.checked", { revision: 4, violations: [{ kind: "connector-clash", message: "J1 (left@8 mm) and JL1 (bottom@12 mm) overlap on the board: move one along its edge or to another edge, and keep going until it clears" }] }),
-	ev("03:00", "artifact.ready", { kind: "board", revision: 5 }),
-	ev("03:30", "consistency.checked", { revision: 5, violations: [] }),
-	ev("04:00", "artifact.ready", { kind: "enclosure", revision: 6 }),
-	ev("05:00", "contract.changed", { field: "outline", revision: 7, after: { widthMm: 52, heightMm: 30 } }),
-]
-
-test("a board goes empty → placed → routed → cased as its events arrive", () => {
-	const at = (t: string) => assemblyAt({ logger: trace }, `2026-11-09T10:${t}Z`).logger
-	assert.equal(at("00:30").state, "empty")
-	assert.deepEqual([at("01:30").state, at("01:30").outline], ["placed", { widthMm: 50, heightMm: 30 }])
-	assert.deepEqual([at("03:10").state, at("03:10").boardRevision], ["routed", 5])
-	assert.deepEqual([at("04:10").state, at("04:10").enclosureRevision], ["cased", 6])
-	assert.deepEqual(at("06:00").outline, { widthMm: 52, heightMm: 30 })
-	assert.equal(at("06:00").revision, 7)
+const placed = (name: string, xMm = 0, yMm = 0, rotDeg: AssemblyBoard["rotDeg"] = 0): AssemblyBoard =>
+	({ name, xMm, yMm, rotDeg, outline: { widthMm: 40, heightMm: 30 }, outlineSource: "estimate" })
+const spec = (assembly?: SystemAssembly, names = ["main", "front"]): SystemSpec => ({
+	name: "two",
+	boards: names.map((n) => ({ name: n, brief: `${n}.md` })),
+	links: [],
+	...(assembly ? { assembly } : {}),
 })
 
-test("the latest check's first problem pulses, cut short; a clean check after it stops the pulse", () => {
-	const mid = assemblyAt({ logger: trace }, "2026-11-09T10:02:30Z").logger
-	assert.equal(mid.pulses.length, 1)
-	assert.ok(mid.pulses[0].caption.length <= 90)
-	assert.match(mid.pulses[0].caption, /^J1 \(left@8 mm\) and JL1/)
-	assert.equal(assemblyAt({ logger: trace }, "2026-11-09T10:03:40Z").logger.pulses.length, 0)
+test("a board the spec doesn't have is named", () => {
+	const s = spec({ body: "separate", boards: [placed("ghost")] }, ["main"])
+	assert.deepEqual(assemblyErrors(s), ["assembly: board ghost is not in the system"])
 })
 
-test("without a moment the whole trace counts; the time span covers every board", () => {
-	assert.equal(assemblyAt({ logger: trace }).logger.state, "cased")
-	assert.deepEqual(timeSpan({ logger: trace, beacon: [ev("00:30", "run.started", {}), ev("09:00", "design.settled", {})] }), ["2026-11-09T10:00:00Z", "2026-11-09T10:09:00Z"])
+test("a spec board missing from a chassis assembly is named", () => {
+	const s = spec({ body: "chassis", plate: { lengthMm: 150, widthMm: 110 }, boards: [placed("main")] })
+	assert.ok(assemblyErrors(s).includes("assembly: board front has no place on the chassis"))
 })
 
-// A robot's board stands on its chassis (the rover): the overview draws the robot once a chassis is built.
-test("a robot's chassis build is part of its assembly", () => {
-	const trace = [ev("00:00", "artifact.ready", { kind: "board", revision: 6 }), ev("01:00", "artifact.ready", { kind: "chassis", revision: 11 }), ev("02:00", "artifact.ready", { kind: "chassis", revision: 12 })]
-	assert.equal(assemblyAt({ main: trace }, "2026-11-09T10:01:30Z").main.chassisRevision, 11)
-	assert.equal(assemblyAt({ main: trace }).main.chassisRevision, 12)
-	assert.equal(assemblyAt({ main: [ev("00:00", "artifact.ready", { kind: "board", revision: 6 })] }).main.chassisRevision, null)
+test("a chassis needs a plate; separate devices don't", () => {
+	assert.ok(assemblyErrors(spec({ body: "chassis", boards: [placed("main"), placed("front", 50)] })).includes("assembly: a chassis body needs a plate size"))
+	assert.deepEqual(assemblyErrors(spec({ body: "separate", boards: [placed("main"), placed("front")] })), [])
 })
 
-test("a skipped build (the rover has no case) doesn't count as built", () => {
-	const trace = [ev("00:00", "artifact.ready", { kind: "board", revision: 6 }), ev("01:00", "artifact.ready", { kind: "enclosure", revision: 10, skipped: "no case: requirements.enclosure is none" })]
-	assert.equal(assemblyAt({ main: trace }).main.enclosureRevision, null)
+test("a rotated board's footprint swaps", () => {
+	assert.deepEqual(footprint(placed("main", 0, 0, 90)), { xMm: 30, yMm: 40 })
+	assert.deepEqual(footprint(placed("main", 0, 0, 180)), { xMm: 40, yMm: 30 })
+})
+
+test("a board off the plate is named", () => {
+	const plate = { lengthMm: 150, widthMm: 110 }
+	// A 90 mm wide board starting at x 70 ends at 160, past the 150 mm plate.
+	const wide = { ...placed("main", 70), outline: { widthMm: 90, heightMm: 30 } }
+	const off = spec({ body: "chassis", plate, boards: [wide, placed("front", 0, 50)] })
+	assert.ok(assemblyErrors(off).includes("assembly: board main sticks out of the 150 × 110 mm plate"))
+	// Exactly flush with the plate edge fits.
+	const flat = spec({ body: "chassis", plate, boards: [placed("main", 110), placed("front", 0, 50)] })
+	assert.deepEqual(assemblyErrors(flat), [])
+	// Turned, the 40 x 30 board is 30 wide and 40 tall, which no longer fits a 30 mm deep plate.
+	const turned = spec({ body: "chassis", plate: { lengthMm: 150, widthMm: 30 }, boards: [placed("main", 0, 0, 90), placed("front", 40, 0)] })
+	assert.ok(assemblyErrors(turned).includes("assembly: board main sticks out of the 150 × 30 mm plate"))
+})
+
+test("two boards overlapping are named", () => {
+	const plate = { lengthMm: 150, widthMm: 110 }
+	const s = spec({ body: "chassis", plate, boards: [placed("main", 0, 0), placed("front", 10, 0)] })
+	assert.ok(assemblyErrors(s).includes("assembly: boards main and front overlap"))
+	const touching = spec({ body: "chassis", plate, boards: [placed("main", 0, 0), placed("front", 40, 0)] })
+	assert.deepEqual(assemblyErrors(touching), [])
+})
+
+test("no assembly, no errors", () => {
+	assert.deepEqual(assemblyErrors(spec()), [])
+	assert.deepEqual(specErrors(spec()), [])
+	assert.deepEqual(specErrors(spec({ body: "separate", boards: [placed("ghost")] })), ["assembly: board ghost is not in the system"])
 })
