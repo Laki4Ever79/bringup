@@ -22,7 +22,20 @@ import { mcuProfileOf } from "../mcu/profile.ts"
 // reviewer reads them at the final review, and every designer turn gets them recomputed from the contract as it is
 // then. Before, only the reviewer saw them, and the designers kept missing what it blocked on (charge LED, flash
 // storage, battery life, supply range, the behavior field).
+// Every agent turn asks again, mostly on a design it has already seen (33 architect turns per logger run): kept for the
+// last few designs, keyed on the design and the brief.
+const factsCache = new Map<string, string[]>()
 export function designFacts(s: ContractSnapshot, brief: string): string[] {
+	const key = JSON.stringify(s.values) + "\u0000" + brief
+	const hit = factsCache.get(key)
+	if (hit) return [...hit]
+	const facts = designFactsUncached(s, brief)
+	if (factsCache.size >= 32) factsCache.delete(factsCache.keys().next().value!)
+	factsCache.set(key, facts)
+	return [...facts]
+}
+
+function designFactsUncached(s: ContractSnapshot, brief: string): string[] {
 	const power = estimatePower(s, brief)
 	return [
 		...mcuFactsSection(s),
