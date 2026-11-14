@@ -73,7 +73,13 @@
 	#error { color: var(--error); font-weight: 600; }
 	.links-row { display: flex; gap: 8px; flex-wrap: wrap; }
 	.hidden { display: none !important; }
-	#stage-wrap { padding: 14px var(--gap) 0; max-width: 1400px; margin: 0 auto; }
+	#stage-wrap { padding: 14px var(--gap) 0; max-width: 1400px; margin: 0 auto; position: relative; }
+	#stage-top { position: relative; height: min(56vh, 520px); min-height: 320px; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: #fff; }
+	#view-switch { position: absolute; left: 50%; top: 24px; transform: translateX(-50%); z-index: 5; display: flex; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; background: #fff; }
+	#view-switch button { font: 12px var(--mono); border: 0; background: #fff; padding: 3px 12px; cursor: pointer; color: var(--ink); }
+	#view-switch button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+	#back-system { position: absolute; left: 12px; top: 10px; z-index: 3; font: 13px inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 3px 10px; cursor: pointer; display: none; }
+	#board-view.on #back-system { display: block; }
 	#stage { position: relative; height: min(56vh, 520px); min-height: 320px; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: #fff; }
 	#stage .hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--ink-3); pointer-events: none; z-index: 2; }
 	#stage .live { position: absolute; right: 12px; top: 10px; font: 12px var(--mono); color: var(--ink-3); z-index: 2; }
@@ -97,11 +103,13 @@
 	<button id="stop" class="pill hidden" title="Stop this system and its board runs">■ Stop</button>
 </header>
 <div id="stage-wrap" class="hidden">
+	<div id="view-switch" role="group" aria-label="View"><button type="button" data-view="3d" aria-pressed="true">3D</button><button type="button" data-view="top" aria-pressed="false">Top</button></div>
 	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
+	<div id="stage-top" class="hidden"></div>
 	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
 </div>
 <main id="main"></main>
-<div id="board-view" aria-hidden="true"><div id="board-loading" class="muted">opening…</div></div>
+<div id="board-view" aria-hidden="true"><button id="back-system" type="button" title="Back to the whole system (Esc)">← system</button><div id="board-loading" class="muted">opening…</div></div>
 <script>
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
 const id = new URLSearchParams(location.search).get("id")
@@ -303,7 +311,7 @@ async function showSystem() {
 }
 
 // ── The live 3D stage: each board's run streams its events; the assembly redraws at most once a frame ──
-const stage = { world: null, traces: {}, runs: {}, meta: null, files: new Map(), pending: false, shownPulse: {}, upTo: null, started: false }
+const stage = { world: null, top: null, view: new URLSearchParams(location.search).get("view") === "top" ? "top" : "3d", topFailed: false, traces: {}, runs: {}, meta: null, files: new Map(), pending: false, shownPulse: {}, upTo: null, started: false }
 // Each board's event stream, opened once its run folder exists: right after Build none do yet, and they appear over
 // the next polls.
 function subscribe(d) {
@@ -334,9 +342,44 @@ async function startStage(d) {
 	}
 	subscribe(stage.meta)
 	schedule()
+	if (stage.view === "top") await window.setView("top", { push: false })
 	const b = new URLSearchParams(location.search).get("board")
-	if (b) stage.world.ready.then(() => window.openBoard(b, { push: false }))
+	if (b) (stage.view === "top" && stage.top ? stage.top.ready : stage.world.ready).then(() => window.openBoard(b, { push: false }))
 }
+// ── 3D · Top: one switch over the same data. Only the visible view draws; Top is made on its first switch and kept.
+const activeView = () => (stage.view === "top" && stage.top ? stage.top : stage.world)
+const designUrl = (board) => {
+	const q = new URLSearchParams({ id })
+	if (board) q.set("board", board)
+	if (stage.view === "top") q.set("view", "top")
+	return `?${q}`
+}
+window.setView = async (view, { push = false } = {}) => {
+	view = view === "top" ? "top" : "3d"
+	// Show its box first: a view mounted in a hidden box would measure zero.
+	document.getElementById("stage-top").classList.toggle("hidden", view !== "top")
+	if (view === "top" && !stage.top && !stage.topFailed) {
+		try {
+			const { mountTop } = await import("/top2d.js")
+			stage.top = mountTop(document.getElementById("stage-top"), { onPick: (name, kind) => { if (kind === "board") window.openBoard?.(name) } })
+		} catch { stage.topFailed = true }
+	}
+	if (view === "top" && !stage.top) view = "3d"
+	stage.view = view
+	document.getElementById("stage").classList.toggle("hidden", view === "top")
+	document.getElementById("stage-top").classList.toggle("hidden", view !== "top")
+	for (const b of document.querySelectorAll("#view-switch [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === view))
+	const u = new URL(location.href)
+	if (view === "top") u.searchParams.set("view", "top")
+	else u.searchParams.delete("view")
+	history.replaceState(history.state, "", u)
+	schedule()
+	if (stage.top && view === "top") await stage.top.ready
+}
+document.getElementById("view-switch").addEventListener("click", (e) => {
+	const b = e.target.closest?.("[data-view]")
+	if (b) window.setView(b.dataset.view)
+})
 function schedule() {
 	if (stage.pending) return
 	stage.pending = true
@@ -385,6 +428,16 @@ async function redraw() {
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
 	// The world places a robot's other boards from the assembly (world3d setWorld); no assembly positions, no change.
 	stage.world.setWorld({ boards, cables, assembly: stage.meta.assembly })
+	// The same data feeds the Top view once it exists: circuits and the chassis spec come from the files fetched above.
+	if (stage.top) {
+		const chassis = boards.find((b) => b.chassisSpec)?.chassisSpec ?? null
+		stage.top.setWorld({
+			boards: boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, outline: b.outline, circuit: b.circuit ?? null, connectors: m?.connectors, status: m?.status } }),
+			cables: stage.meta.spec?.links ?? [],
+			assembly: stage.meta.assembly,
+			chassis,
+		})
+	}
 	for (const [name, a] of Object.entries(asm)) {
 		const caption = a.pulses[0]?.caption ?? null
 		if (caption && stage.shownPulse[name] !== caption) stage.world.pulse({ board: name }, caption)
@@ -420,11 +473,12 @@ let openName = null
 window.openBoard = async (name, { push = true } = {}) => {
 	if (!stage.runs[name]) return
 	// No 3D stage (no WebGL): the board's own page.
-	if (!stage.world) return void (location.href = `/?run=${encodeURIComponent(stage.runs[name])}`)
+	if (!activeView()) return void (location.href = `/?run=${encodeURIComponent(stage.runs[name])}`)
 	openName = name
 	renderNav()
-	if (push) history.pushState({ board: name }, "", `?id=${encodeURIComponent(id)}&board=${encodeURIComponent(name)}`)
-	await stage.world.focus(name, { ms: 500 })
+	if (push) history.pushState({ board: name }, "", designUrl(name))
+	await stage.top?.ready
+	await activeView().focus(name, { ms: 500 })
 	if (openName !== name) return
 	const view = document.getElementById("board-view")
 	// The board page fills the window under the shared bar, whose levels say which board this is (and switch to the
@@ -448,14 +502,14 @@ async function closeBoard({ push = true } = {}) {
 	if (!openName) return
 	openName = null
 	renderNav()
-	if (push) history.pushState({}, "", `?id=${encodeURIComponent(id)}`)
+	if (push) history.pushState({}, "", designUrl(null))
 	const view = document.getElementById("board-view")
 	view.classList.remove("on")
 	view.setAttribute("aria-hidden", "true")
 	document.documentElement.style.overflow = ""
 	// Once faded, the board page is closed outright: hidden, it kept its timers and event stream running on this
 	// thread and caused 33–50 ms hitches in later flies (npm run perf). Opening it again reloads it behind the panel.
-	await stage.world?.focus(null, { ms: 500 })
+	await activeView()?.focus(null, { ms: 500 })
 	// After the fly: tearing a page down takes the thread for a moment.
 	if (!openName) { for (const x of frames.values()) x.f.remove(); frames.clear() }
 }
@@ -467,6 +521,7 @@ main.addEventListener("click", (e) => {
 	scrollTo({ top: 0, behavior: "smooth" })
 	window.openBoard(a.dataset.open)
 })
+document.getElementById("back-system").addEventListener("click", () => closeBoard())
 addEventListener("keydown", (e) => { if (e.key === "Escape") closeBoard() })
 addEventListener("message", (e) => { if (e.origin === location.origin && e.data?.type === "bringup-close") closeBoard() })
 addEventListener("popstate", () => {
