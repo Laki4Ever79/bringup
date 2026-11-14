@@ -142,3 +142,36 @@ test("boardShapes: a hand-made circuit gives one part and two pads", () => {
 	assert.deepEqual(s.pads[0], { x: 8.5, y: 4.5, w: 1, h: 1 })
 	assert.deepEqual(s.holes, [{ x: 1, y: 1, r: 1 }])
 })
+
+// A 20x10 board centred at (5, -3): its top-left corner is (-5, 2) in circuit.json's y-up frame.
+const offCentre = (extra: unknown[]) => [{ type: "pcb_board", center: { x: 5, y: -3 }, width: 20, height: 10 }, ...extra]
+
+test("boardShapes: a non-zero board centre and an asymmetric pad give exact values", () => {
+	const s = boardShapes(offCentre([
+		{ type: "pcb_smtpad", pcb_component_id: "c0", shape: "rect", x: 11, y: -1, width: 1, height: 1 }, // +6 right, +2 up of the centre
+		{ type: "pcb_hole", x: -4, y: 1, hole_diameter: 2 }, // 1 mm in from the left, 1 mm down from the top
+	]))
+	assert.deepEqual(s.pads, [{ x: 15.5, y: 2.5, w: 1, h: 1 }])
+	assert.deepEqual(s.holes, [{ x: 1, y: 1, r: 1 }])
+})
+
+test("boardShapes: a pad-less part at 90° takes the fallback with its size swapped", () => {
+	const s = boardShapes(offCentre([
+		{ type: "source_component", source_component_id: "s0", name: "U1" },
+		{ type: "pcb_component", pcb_component_id: "c0", source_component_id: "s0", center: { x: 1, y: -2 }, width: 6, height: 2, rotation: 90 },
+	]))
+	assert.deepEqual(s.parts, [{ x: 5, y: 1, w: 2, h: 6, ref: "U1" }])
+})
+
+test("boardShapes: plated holes of each shape take their pad size", () => {
+	const s = boardShapes(offCentre([
+		{ type: "pcb_plated_hole", shape: "pill", x: 5, y: -3, outer_width: 2, outer_height: 1 },
+		{ type: "pcb_plated_hole", shape: "circle", x: 5, y: -3, outer_diameter: 1.5 },
+		{ type: "pcb_plated_hole", shape: "circular_hole_with_rect_pad", x: 5, y: -3, hole_diameter: 0.75, rect_pad_width: 1.2, rect_pad_height: 1.75 },
+	]))
+	assert.deepEqual(s.pads, [
+		{ x: 9, y: 4.5, w: 2, h: 1 },
+		{ x: 9.25, y: 4.25, w: 1.5, h: 1.5 },
+		{ x: 9.4, y: 4.125, w: 1.2, h: 1.75 },
+	])
+})
