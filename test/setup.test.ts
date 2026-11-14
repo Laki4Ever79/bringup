@@ -58,7 +58,7 @@ test("on a bare machine it runs the README's install steps, in order, with the R
 	assert.equal(summary.ok, true)
 	assert.deepEqual(m.ran, [
 		"uv venv --allow-existing --python 3.12 .venv",
-		"uv pip install --python .venv/bin/python platformio==6.2.0 build123d==0.13.0 mujoco==3.17.0",
+		"uv pip install --python .venv/bin/python platformio==6.2.0 build123d==0.13.0",
 		"npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4",
 		"docker pull kicad/kicad:10.0",
 		".venv/bin/pio pkg install -d templates/fw -e esp32c3",
@@ -117,6 +117,8 @@ test("doctor lists Renode, each vendor platform and ST's pin data (docs/mcu.md)"
 	assert.match(text, /pio ststm32\s+installed/)
 	assert.match(text, /pio nordicnrf52\s+missing \(optional: npm run setup -- --vendors, platformio\/nordicnrf52@11\.0\.0\)/)
 	assert.match(text, /ST pin data\s+missing/)
+	assert.match(text, /MuJoCo \(robots\)\s+missing \(optional: npm run setup -- --robotics/)
+	assert.match(doctorReport(env, {}, { platforms: {}, stPinData: false, mujoco: true }), /MuJoCo \(robots\)\s+local/)
 	assert.match(doctorReport({ ...env, renode: null }, {}), /Renode \(STM32\/nRF\)\s+missing \(optional: npm run setup -- --renode\)/)
 })
 
@@ -195,4 +197,17 @@ test("doctor names the firmware simulator: Wokwi when its CLI and token are ther
 	assert.match(sim({ wokwi: "/r/tools/wokwi-cli/wokwi-cli", wokwiToken: true, qemu: "/q" }), /Wokwi \(sim\)\s+local \(token set\)\n[\s\S]*firmware sim\s+→ Wokwi/)
 	assert.match(sim({ wokwi: null, wokwiToken: true, qemu: "/q" }), /Wokwi \(sim\)\s+CLI missing: npm run setup -- --wokwi[\s\S]*firmware sim\s+→ QEMU/)
 	assert.match(sim({ wokwi: "/w", wokwiToken: false, qemu: null }), /Wokwi \(sim\)\s+not set up \(WOKWI_CLI_TOKEN not set\)[\s\S]*firmware sim\s+→ none/)
+})
+
+// Domain isolation (14 Nov 2026): MuJoCo is the robots' alone; a PCB-only setup never installs it, and a failed robotics
+// install leaves the PCB tools installed.
+test("the robot simulator is installed only with --robotics, as its own step", async () => {
+	const plain = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
+	await runSetup(plain.probe, {})
+	assert.ok(!plain.ran.some((c) => c.includes("mujoco")), plain.ran.join("\n"))
+	const robots = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
+	const summary = await runSetup(robots.probe, { robotics: true })
+	assert.deepEqual(robots.ran.filter((c) => c.includes("mujoco")), ["uv pip install --python .venv/bin/python mujoco==3.17.0"])
+	assert.match(summary.lines.join("\n"), /robot simulation \(MuJoCo in \.venv\): installed/)
+	assert.ok(!INSTALL.some((s) => s.commands.some(([, args]) => args.some((a) => a.includes("mujoco")))), "MuJoCo is out of the default install")
 })

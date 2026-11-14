@@ -1,6 +1,7 @@
 // `npm run setup`: the README's Install steps, in order, skipping what is already there. Repo-local only (.venv,
 // tools/node, tools/qemu); the exceptions are the ones the README names: PlatformIO's ~/.platformio and Docker's image
-// store. Never sudo, never system-wide. Optional parts only behind their flags (--qemu, --wokwi).
+// store. Never sudo, never system-wide. Optional parts only behind their flags (--qemu, --wokwi, --robotics, --renode,
+// --vendors).
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
@@ -25,7 +26,7 @@ export interface Probe {
 	remove?(path: string): Promise<void>
 }
 
-export type StepId = "python" | "tscircuit" | "kicad" | "toolchain" | "qemu" | "renode" | "vendors"
+export type StepId = "python" | "tscircuit" | "kicad" | "toolchain" | "qemu" | "renode" | "vendors" | "robotics"
 
 interface Step {
 	id: StepId
@@ -40,13 +41,21 @@ export const INSTALL: Step[] = [
 		name: "python tools (.venv)",
 		commands: [
 			["uv", ["venv", "--allow-existing", "--python", "3.12", ".venv"]],
-			["uv", ["pip", "install", "--python", ".venv/bin/python", "platformio==6.2.0", "build123d==0.13.0", "mujoco==3.17.0"]],
+			["uv", ["pip", "install", "--python", ".venv/bin/python", "platformio==6.2.0", "build123d==0.13.0"]],
 		],
 	},
 	{ id: "tscircuit", name: "tscircuit + bun (tools/node)", commands: [["npm", ["i", "--prefix", "tools/node", "tscircuit@0.0.3042", "bun@1.4.4"]]] },
 	{ id: "kicad", name: "KiCad 10 (Docker image)", commands: [["docker", ["pull", "kicad/kicad:10.0"]]] },
 	{ id: "toolchain", name: "ESP32-C3 toolchain (PlatformIO)", commands: [[".venv/bin/pio", ["pkg", "install", "-d", "templates/fw", "-e", "esp32c3"]]] },
 ]
+
+// Robots only (docs/mechanics.md): MuJoCo for the simulated drive. Its own step behind --robotics (domain isolation,
+// 14 Nov 2026), so a PCB-only machine never installs it and a failed install can't cost the case and firmware tools.
+export const ROBOTICS: Step = {
+	id: "robotics",
+	name: "robot simulation (MuJoCo in .venv)",
+	commands: [["uv", ["pip", "install", "--python", ".venv/bin/python", "mujoco==3.17.0"]]],
+}
 
 // NOTES.md "Firmware emulation": Espressif's prebuilt QEMU into tools/qemu, and libslirp fetched user-level with
 // `apt download` (no install, no sudo).
@@ -100,7 +109,7 @@ export interface SetupSummary {
 	lines: string[]
 }
 
-export async function runSetup(probe: Probe, flags: { qemu?: boolean; wokwi?: boolean; renode?: boolean; vendors?: boolean }): Promise<SetupSummary> {
+export async function runSetup(probe: Probe, flags: { qemu?: boolean; wokwi?: boolean; renode?: boolean; vendors?: boolean; robotics?: boolean }): Promise<SetupSummary> {
 	const problems = await checkPrerequisites(probe)
 	if (problems.length > 0) {
 		for (const p of problems) probe.log(p)
@@ -123,7 +132,7 @@ export async function runSetup(probe: Probe, flags: { qemu?: boolean; wokwi?: bo
 	for (const step of INSTALL) await doStep(step)
 	if (flags.qemu) await doStep(QEMU)
 	else lines.push(`${QEMU.name}: ${(await probe.present("qemu")) ? "already there" : "not installed (optional: npm run setup -- --qemu)"}`)
-	for (const [step, flag, hint] of [[RENODE, flags.renode, "--renode"], [VENDORS, flags.vendors, "--vendors"]] as const) {
+	for (const [step, flag, hint] of [[ROBOTICS, flags.robotics, "--robotics"], [RENODE, flags.renode, "--renode"], [VENDORS, flags.vendors, "--vendors"]] as const) {
 		if (flag) await doStep(step)
 		else lines.push(`${step.name}: ${(await probe.present(step.id)) ? "already there" : `not installed (optional: npm run setup -- ${hint})`}`)
 	}
@@ -185,9 +194,10 @@ export function presentOn(root: string, check: Probe["check"]): Probe["present"]
 	}
 	return async (step) => {
 		if (step === "python") {
-			const r = await check(join(root, ".venv/bin/python"), ["-c", "import importlib.metadata as m; print(m.version('platformio'), m.version('build123d'), m.version('mujoco'))"])
-			return r.code === 0 && r.out.trim() === "6.2.0 0.13.0 3.17.0"
+			const r = await check(join(root, ".venv/bin/python"), ["-c", "import importlib.metadata as m; print(m.version('platformio'), m.version('build123d'))"])
+			return r.code === 0 && r.out.trim() === "6.2.0 0.13.0"
 		}
+		if (step === "robotics") return (await check(join(root, ".venv/bin/python"), ["-c", "import importlib.metadata as m; print(m.version('mujoco'))"])).out.trim() === "3.17.0"
 		if (step === "tscircuit") return version(join(root, "tools/node/node_modules/tscircuit/package.json")) === "0.0.3042" && version(join(root, "tools/node/node_modules/bun/package.json")) === "1.4.4"
 		if (step === "kicad") return (await check("docker", ["image", "inspect", "kicad/kicad:10.0"])).code === 0
 		if (step === "toolchain")
