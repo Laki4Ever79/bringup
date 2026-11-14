@@ -4,8 +4,8 @@
 // otherwise, with the reason.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync, readdirSync, readFileSync } from "node:fs"
-import { homedir } from "node:os"
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
+import { homedir, tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { chromium, type Page } from "playwright"
 import { serveHub } from "../src/dashboard/server.ts"
@@ -470,4 +470,98 @@ test("hovering a board in either view shows its facts card; clicking a cable in 
 		await label.click({ force: true })
 		await page.waitForFunction(() => /Kind/.test(document.getElementById("facts")!.textContent ?? ""))
 	}, ROBOT)
+})
+
+// ── Plan and design are one page (Task 7): before a build the design page has the plan's boxes, editing and side panel;
+// Build turns it into the built design in place. Needs only Chromium: the plan is made in a fresh out/ by the scripted
+// architect, and the build's launch is a stub that writes the plan's system.json.
+const ROVER_SENTENCE = "a rover with a climate sensor on a separate board joined by a cable"
+async function withPlanHub(fn: (h: { url: string; root: string; page: Page; id: string }) => Promise<void>, launch?: Parameters<typeof serveHub>[0]["launch"]) {
+	const root = mkdtempSync(join(tmpdir(), "bringup-plan-page-"))
+	const hub = await serveHub({ outRoot: root, port: 0, launch })
+	const browser = await chromium.launch({ executablePath: exe!, headless: true })
+	try {
+		const r = await fetch(`${hub.url}/api/plans`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sentence: ROVER_SENTENCE, mock: true }) })
+		assert.equal(r.status, 201)
+		const { id } = (await r.json()) as { id: string }
+		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+		await fn({ url: hub.url, root, page, id })
+	} finally {
+		await browser.close()
+		await hub.close()
+		rmSync(root, { recursive: true, force: true })
+	}
+}
+const skipChromium = !exe ? "no Playwright Chromium" : false
+
+test("every section of today's plan page is on the design page before a build", { skip: skipChromium, timeout: 120_000 }, async () => {
+	await withPlanHub(async ({ url, page, id }) => {
+		await page.goto(`${url}/system?id=${id}`)
+		await page.waitForSelector('#stage-top .card[data-name="main"]', { timeout: 30_000 })
+		const seen = await page.evaluate(() => ({
+			boards: [...document.querySelectorAll("#stage-top .card")].map((c) => (c as HTMLElement).dataset.name),
+			add: document.querySelector("#stage-top #add")?.textContent,
+			handles: document.querySelectorAll("#stage-top .card .handle").length,
+			side: document.getElementById("plan-side")?.textContent ?? "",
+			go: document.querySelector("#plan-side #go")?.textContent,
+			goShown: (document.querySelector("#plan-side #go") as HTMLElement | null)?.offsetWidth ?? 0,
+			three: (document.querySelector('#view-switch [data-view="3d"]') as HTMLElement).offsetWidth,
+			top: document.querySelector('#view-switch [data-view="top"]')?.getAttribute("aria-pressed"),
+			canvas: document.querySelector("#stage canvas") !== null,
+		}))
+		assert.deepEqual(seen.boards.sort(), ["climate", "main"], "each board box")
+		assert.equal(seen.add, "+ board")
+		assert.ok(seen.handles >= 2, "a dot to drag a cable from")
+		for (const h of ["Why split it this way", "Can't build yet", "Parts Bringup is learning", "Before you build", "Change the plan in words"]) assert.ok(seen.side.includes(h), `the side panel has "${h}"`)
+		assert.equal(seen.go, "Build 2 boards")
+		assert.ok(seen.goShown > 0, "the Build button shows")
+		assert.equal(seen.three, 0, "no 3D before a build")
+		assert.equal(seen.top, "true", "Top is the shown view")
+		assert.equal(seen.canvas, false, "no 3D canvas is made before a build")
+		// Its editing works here: + board opens the brief editor, and saving it saves the plan.
+		await page.click("#stage-top #add")
+		await page.waitForSelector("#brief.on")
+		await page.click("#brief-save")
+		await page.waitForFunction(async (pid) => ((await (await fetch(`/api/plans/${pid}`)).json()).plan.spec.boards.length === 3), id, { timeout: 10_000, polling: 300 })
+		await page.waitForFunction(() => document.querySelector("#plan-side #go")?.textContent === "Build 3 boards")
+		// The old address lands on the same page.
+		await page.goto(`${url}/plan/${id}`)
+		assert.equal(new URL(page.url()).pathname, "/system")
+		assert.equal(new URL(page.url()).searchParams.get("id"), id)
+		await page.waitForSelector('#stage-top .card[data-name="main"]', { timeout: 30_000 })
+	})
+})
+
+test("building from the design page turns it into the built design in place", { skip: skipChromium, timeout: 120_000 }, async () => {
+	// A stub launch: the "system process" writes system.json a moment later and keeps running.
+	const launch = (args: { outDir: string; extraArgs?: string[] }) => {
+		setTimeout(() => copyFileSync(args.extraArgs![0], join(args.outDir, "system.json")), 1200)
+		return { done: new Promise<{ code: number; stderr: string }>(() => {}), kill: () => {} }
+	}
+	await withPlanHub(async ({ url, page, id }) => {
+		await page.goto(`${url}/system?id=${id}`)
+		await page.waitForSelector("#plan-side #free", { timeout: 30_000 })
+		await page.evaluate(() => ((window as unknown as { samePage: number }).samePage = 1))
+		await page.click("#plan-side #free")
+		await page.waitForFunction(() => {
+			const three = document.querySelector('#view-switch [data-view="3d"]') as HTMLElement
+			return three.offsetWidth > 0 && (document.getElementById("live")?.textContent ?? "") !== "" && document.querySelector("#stage canvas")
+		}, null, { timeout: 30_000 })
+		const after = await page.evaluate(() => ({
+			same: (window as unknown as { samePage?: number }).samePage,
+			cards: document.querySelectorAll("#stage-top .card").length,
+			side: document.getElementById("plan-side")?.offsetWidth ?? 0,
+			pressed: document.querySelector('#view-switch [data-view="3d"]')?.getAttribute("aria-pressed"),
+			status: document.getElementById("status")?.textContent,
+		}))
+		assert.equal(after.same, 1, "no reload")
+		assert.equal(new URL(page.url()).searchParams.get("id"), id, "the same address")
+		assert.equal(after.cards, 0, "the plan's boxes leave")
+		assert.equal(after.side, 0, "the plan's side panel leaves")
+		assert.equal(after.pressed, "true", "3D is the default view once built")
+		assert.notEqual(after.status, "plan")
+		// Top is now the millimetre view.
+		await page.click('#view-switch [data-view="top"]')
+		await page.waitForSelector("#stage-top svg", { state: "visible" })
+	}, launch)
 })

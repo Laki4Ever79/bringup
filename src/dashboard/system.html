@@ -98,6 +98,21 @@
 	#board-view.on { opacity: 1; pointer-events: auto; }
 	#board-loading { position: absolute; left: var(--gap); top: 12px; font-size: 13px; }
 	#board-view iframe { flex: 1; border: 0; width: 100%; }
+	/* Before a build (status plan or starting) the design page is the plan: Top holds the plan's drawing (plan-canvas.js)
+	   and the side panel beside the stage holds plan-panel.js. 3D and the timeline come with the build. */
+	#plan-side { display: none; }
+	#stage-wrap.planning { padding-right: calc(var(--gap) + 360px); }
+	#stage-wrap.planning #plan-side { display: block; position: absolute; right: var(--gap); top: 14px; width: 340px; }
+	#stage-wrap.planning #timeline, #stage-wrap.planning #view-switch [data-view="3d"] { display: none; }
+	#stage-wrap.building .plan-canvas { pointer-events: none; opacity: .6; }
+	#plan-side section { border: 0; background: none; padding: 0; }
+	#stage-top .plan-canvas, #stage-top .plan-canvas #draw { height: 100%; }
+	#stage-top .plan-canvas #draw { border: 0; border-radius: 0; }
+	#plan-said { margin: 0; font-size: 14px; }
+	@media (max-width: 960px) {
+		#stage-wrap.planning { padding-right: var(--gap); }
+		#stage-wrap.planning #plan-side { position: static; width: auto; margin-top: 14px; }
+	}
 </style>
 </head>
 <body>
@@ -114,6 +129,7 @@
 	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
 	<div id="stage-top" class="hidden"></div>
 	<div id="facts" class="hidden" role="tooltip"></div>
+	<div id="plan-side"></div>
 	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
 </div>
 <main id="main"></main>
@@ -281,6 +297,9 @@ async function showSystem() {
 		return
 	}
 	const d = await r.json()
+	// Before a build the design is its plan; once the build has written the design, the page turns into it in place.
+	if (d.status === "plan" || d.status === "starting") return showPlan(d)
+	if (planning.canvas) leavePlan()
 	navMeta = d
 	renderNav()
 	startStage(d)
@@ -316,6 +335,67 @@ async function showSystem() {
 		${d.asked.length ? `<section><h2>Asked of the boards</h2>${d.asked.map((a) => `<p style="font-size:14px"><b>${esc(a.board)}:</b> ${esc(a.text)}</p>`).join("")}</section>` : ""}`
 	clearTimeout(timer)
 	if (d.status === "running") timer = setTimeout(showSystem, 2000)
+}
+
+// ── Before a build: the plan on the design page (plan-canvas.js in the Top slot, plan-panel.js beside the stage) ──
+// 3D comes with the build: the switch offers Top only until then. Build keeps the id, so the page polls until the
+// design is written and then becomes the built design in place (same URL, no reload).
+const planning = { canvas: null, panel: null }
+async function showPlan(d) {
+	navMeta = d
+	renderNav()
+	document.getElementById("title").textContent = d.spec?.name ?? id
+	document.title = `Bringup · ${d.spec?.name ?? id}`
+	statusEl.className = `status ${d.status === "starting" ? "s-run" : "s-idle"}`
+	statusEl.textContent = statusEl.title = d.status
+	document.getElementById("stop").classList.add("hidden")
+	document.getElementById("file-links").innerHTML = ""
+	const wrap = document.getElementById("stage-wrap")
+	if (!planning.canvas) {
+		const [{ mountPlanCanvas }, { mountPlanPanel }, { spendLabel }] = await Promise.all([import("/plan-canvas.js"), import("/plan-panel.js"), import("/spend.js")])
+		if (planning.canvas) return showPlan(d)
+		wrap.classList.remove("hidden")
+		wrap.classList.add("planning")
+		document.getElementById("stage").classList.add("hidden")
+		const top = document.getElementById("stage-top")
+		top.classList.remove("hidden")
+		for (const b of document.querySelectorAll("#view-switch [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === "top"))
+		main.innerHTML = `<p id="plan-said" class="muted">You said: <b></b></p>`
+		// The page's own lines: what was said, and what planning spent (no calls: scripted; a real call without token counts: unknown, never free).
+		const lines = (v) => {
+			main.querySelector("#plan-said b").textContent = `“${v.plan.sentence}”`
+			if (v.spend) document.getElementById("spend").textContent = v.spend.calls === 0 ? "scripted: free" : `planning ${spendLabel(v.spend, false).toLowerCase()}`
+		}
+		planning.canvas = mountPlanCanvas(top, {
+			id,
+			view: d.plan,
+			// The bar's levels follow the boards on the drawing.
+			onChange: (p) => { navMeta = { ...navMeta, spec: p.spec, boards: p.spec.boards.map((b) => ({ name: b.name, runId: null, status: "plan" })) }; renderNav() },
+			onView: (v) => planning.panel?.apply(v),
+			onMsg: (t, err) => planning.panel?.msg(t, err),
+		})
+		planning.panel = mountPlanPanel(document.getElementById("plan-side"), {
+			id,
+			view: d.plan,
+			canvas: planning.canvas,
+			onView: lines,
+			onBuild: () => { wrap.classList.add("building"); clearTimeout(timer); timer = setTimeout(showSystem, 1000) },
+		})
+	}
+	if (d.status === "starting") {
+		wrap.classList.add("building")
+		planning.panel.building("Building: the design shows here as soon as it is written…")
+		clearTimeout(timer)
+		timer = setTimeout(showSystem, 1000)
+	}
+}
+// The build wrote the design: the plan's drawing and panel go, and the stage starts as for any design.
+function leavePlan() {
+	planning.canvas.dispose()
+	planning.panel.dispose()
+	planning.canvas = planning.panel = null
+	document.getElementById("stage-wrap").classList.remove("planning", "building")
+	document.getElementById("stage-top").classList.add("hidden")
 }
 
 // ── The live 3D stage: each board's run streams its events; the assembly redraws at most once a frame ──
@@ -454,7 +534,7 @@ function showView(view) {
 // Ignored while a board is opening, open or closing: the flight belongs to the view that began it.
 window.setView = async (view) => {
 	view = view === "top" ? "top" : "3d"
-	if (openName || stage.busy || view === stage.view) return
+	if (planning.canvas || openName || stage.busy || view === stage.view) return
 	let done
 	stage.busy = new Promise((r) => (done = r))
 	try {
