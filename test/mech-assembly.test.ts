@@ -4,6 +4,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { mechanicsFactLines } from "../src/mechanics/facts.ts"
 import { chassisSpec } from "../src/tools/chassis.ts"
+import { estimatedOutlineReason } from "../src/agents/builders.ts"
 import { mechanicsChecks, mechanicsFigures } from "../src/mechanics/checks.ts"
 import { boardAssemblyShapeError, type BoardAssembly } from "../src/mechanics/assembly.ts"
 import { DesignContract } from "../src/contract/contract.ts"
@@ -89,4 +90,15 @@ test("main's own outline is the truth, even when the assembly's copy of self lag
 	s.values.assembly!.boards[0] = { ...s.values.assembly!.boards[0], outline: { widthMm: 40, heightMm: 30 }, outlineSource: "estimate" }
 	const spec = chassisSpec(s)!
 	assert.deepEqual(spec.boards.map((b) => [b.name, b.widthMm, b.heightMm]), [["main", 60, 40], ["front", 50, 30]])
+})
+
+test("the drive isn't run while a sibling board's outline is only an estimate", () => {
+	const s = withAsm()
+	assert.equal(estimatedOutlineReason(s, chassisSpec(s)!), null)
+	s.values.assembly!.boards[1].outlineSource = "estimate"
+	assert.equal(estimatedOutlineReason(s, chassisSpec(s)!), "board front's outline is an estimate until it is built, so the drive would guess its weight")
+	// The board's own entry is its own truth: an estimate there is no reason.
+	s.values.assembly!.boards[1].outlineSource = "built"
+	s.values.assembly!.boards[0].outlineSource = "estimate"
+	assert.equal(estimatedOutlineReason(s, chassisSpec(s)!), null)
 })

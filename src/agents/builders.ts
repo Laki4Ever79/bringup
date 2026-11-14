@@ -214,6 +214,13 @@ export function createChassisBuilder(env: Env, lock?: BuildLock): Human {
 	})
 }
 
+// Why the drive can't run yet: another board on the chassis has only an estimated outline, and the drive's mass follows it.
+export function estimatedOutlineReason(snapshot: ContractSnapshot, spec: { boards: { name: string }[] }): string | null {
+	const a = snapshot.values.assembly
+	const guessed = (a?.boards ?? []).find((b) => b.name !== a?.self && b.outlineSource === "estimate" && spec.boards.some((p) => p.name === b.name))
+	return guessed ? `board ${guessed.name}'s outline is an estimate until it is built, so the drive would guess its weight` : null
+}
+
 // The firmware-in-the-loop drive (docs/mechanics.md): the rover's simulation build in QEMU drives MuJoCo over the
 // course. Without QEMU or PlatformIO the design can still settle on the plain checks: the artifact says "not run".
 export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
@@ -231,9 +238,8 @@ export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
 			if (!spec) return notRun("no complete mechanics design to simulate")
 			// Driving without a board's weight would prove a lighter robot than the real one.
 			if (spec.unplaced.length) return notRun(`board${spec.unplaced.length > 1 ? "s" : ""} ${spec.unplaced.join(", ")} on the chassis ${spec.unplaced.length > 1 ? "have" : "has"} no outline in this run, so the drive would leave out ${spec.unplaced.length > 1 ? "their" : "its"} weight`)
-			// An estimated outline is a guess at the board's size, and the drive's mass follows it.
-			const guessed = (snapshot.values.assembly?.boards ?? []).find((b) => b.name !== snapshot.values.assembly?.self && b.outlineSource === "estimate" && spec.boards.some((p) => p.name === b.name))
-			if (guessed) return notRun(`board ${guessed.name}'s outline is an estimate until it is built, so the drive would guess its weight`)
+			const guessed = estimatedOutlineReason(snapshot, spec)
+			if (guessed) return notRun(guessed)
 			// A firmware with a -1 pin drives nothing: the wiring check flags it; no build until the pins are there.
 			const unassigned = unassignedRoverPins(snapshot)
 			if (unassigned.length) return notRun(`pins not assigned yet: ${unassigned.join(", ")}`)

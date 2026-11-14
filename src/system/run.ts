@@ -73,12 +73,14 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	const designed = spec.boards.filter((b) => b.brief)
 	// A robot's boards each get the whole body (its plate, every board's place and outline) and which board they are.
 	let assembly: SystemAssembly | undefined = spec.assembly?.body === "chassis" ? spec.assembly : undefined
-	const assemblySent = new Map<string, string>() // board → the assembly (as JSON) it was last handed
+	// board → what it was last handed about its siblings (as JSON). A board's own entry is left out: its own contract's
+	// outline is the truth for itself, so a change there is nothing to tell it.
+	const assemblySent = new Map<string, string>()
+	const siblingsOf = (a: SystemAssembly, name: string) => JSON.stringify({ ...a, boards: a.boards.filter((x) => x.name !== name) })
 	const handAssembly = (name: string): BoardAssembly | undefined => {
 		if (!assembly) return undefined
-		const a = { ...assembly, self: name }
-		assemblySent.set(name, JSON.stringify(a))
-		return a
+		assemblySent.set(name, siblingsOf(assembly, name))
+		return { ...assembly, self: name }
 	}
 	for (const b of designed) {
 		const dir = boardDir(outDir, b.name)
@@ -136,23 +138,25 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 
 	// A settled board's outline replaces the estimate; the new assembly goes to system.json and to every robot board that
 	// holds an older one (each board needs its siblings' real outlines for its chassis and mass).
-	const syncAssembly = (contracts: Record<string, ContractSnapshot | undefined>) => {
-		if (!assembly) return
+	const syncAssembly = (contracts: Record<string, ContractSnapshot | undefined>): string[] => {
+		const resent: string[] = []
+		if (!assembly) return resent
 		const built: Record<string, { widthMm: number; heightMm: number }> = {}
 		for (const ab of assembly.boards) {
 			const o = contracts[ab.name]?.values.outline
 			if (o && (ab.outlineSource !== "built" || o.widthMm !== ab.outline.widthMm || o.heightMm !== ab.outline.heightMm)) built[ab.name] = { widthMm: o.widthMm, heightMm: o.heightMm }
 		}
-		if (Object.keys(built).length === 0) return
+		if (Object.keys(built).length === 0) return resent
 		assembly = withOutlines(assembly, built)
 		writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
 		for (const b of designed) {
 			if (!assembly.boards.some((ab) => ab.name === b.name)) continue
-			const next = { ...assembly, self: b.name }
-			if (assemblySent.get(b.name) === JSON.stringify(next)) continue
-			assemblySent.set(b.name, JSON.stringify(next))
-			appendRequest(boardDir(outDir, b.name), `The robot's body (${spec.name}) changed: a board's built outline replaced its estimate.`, undefined, undefined, next)
+			if (assemblySent.get(b.name) === siblingsOf(assembly, b.name)) continue
+			assemblySent.set(b.name, siblingsOf(assembly, b.name))
+			appendRequest(boardDir(outDir, b.name), `The robot's body (${spec.name}) changed: a board's built outline replaced its estimate.`, undefined, undefined, { ...assembly, self: b.name })
+			resent.push(b.name)
 		}
+		return resent
 	}
 
 	const deadline = Date.now() + (o.timeoutMs ?? 30 * 60_000)
@@ -173,7 +177,14 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			}
 			// Wait until every board has settled since it was last asked for something.
 			if (spec.boards.some((b) => !contracts[b.name])) continue
-			syncAssembly(contracts)
+			// A re-sent board must settle again before the run can end: its chassis and mass follow the new outlines.
+			const resent = rounds < maxRounds ? syncAssembly(contracts) : []
+			if (resent.length) {
+				rounds++
+				for (const name of resent) asked.set(name, readTrace(boardDir(outDir, name)).length)
+				write(contracts, findings, `round ${rounds}: the robot's body sent again to ${resent.join(", ")}`)
+				continue
+			}
 			findings = systemChecks(spec, contracts)
 			const real = findings.filter((f) => f.kind !== "link-pending")
 			if (findings.length === 0) {
