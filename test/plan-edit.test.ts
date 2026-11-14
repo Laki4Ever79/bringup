@@ -63,3 +63,9 @@ test("a save's answer keeps an edit made meanwhile, taking only the new version 
 	assert.equal(taken.why, "from the hub")
 	assert.deepEqual(taken.layout, sent.layout)
 })
+
+test("a plan keeps its robot flag through editing", async () => {
+	const p = { ...(await import("../src/system/architect.ts")).scriptedPlan("a rover with a separate climate sensor board on a cable"), id: "r", version: 1, spendUsd: null } as Plan
+	assert.equal(moveBoard(p, "main", 10, 10).robot, true)
+	assert.equal(removeBoard(p, "climate").robot, true)
+})

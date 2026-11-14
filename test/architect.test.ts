@@ -141,3 +141,39 @@ test("a wheeled robot is buildable now: not listed as can't-build, and the archi
 	// What still can't be built is still said.
 	assert.deepEqual(cantBuildFrom("a servo arm with a camera").map((c) => c.what), ["servos", "a camera"])
 })
+
+test("a robot with a separate climate board is two boards on one chassis (scripted)", () => {
+	const p = scriptedPlan("a rover with a separate climate sensor board on a cable")
+	assert.deepEqual(p.spec.boards.map((b) => b.name), ["main", "climate"])
+	assert.equal(p.spec.links.length, 1)
+	assert.equal(p.spec.links[0].kind, "uart")
+	assert.equal(p.spec.links[0].cable.lengthMm, 300)
+	assert.equal(p.robot, true)
+	assert.match(p.why, /climate sensor sits away from the motors' heat and noise/)
+	// The briefs pick the scripted designs: the rover for main, the logger for climate.
+	assert.match(p.briefs.main, /\brover\b/i)
+	assert.doesNotMatch(p.briefs.climate, /\brover\b|\bbeacon\b|\bSTM32\b/i)
+	assert.deepEqual(planChecks(asPlan(p)), [])
+})
+
+test("a robot alone stays one board (scripted)", () => {
+	const p = scriptedPlan("an indoor rover")
+	assert.deepEqual(p.spec.boards.map((b) => b.name), ["rover"])
+	assert.equal(p.robot, true)
+})
+
+test("the spec a robot plan builds carries a chassis assembly", async () => {
+	const { buildSpec } = await import("../src/system/plan.ts")
+	const { assemblyErrors } = await import("../src/system/assembly.ts")
+	const built = buildSpec(asPlan(scriptedPlan("a rover with a separate climate sensor board on a cable")))
+	assert.equal(built.assembly?.body, "chassis")
+	assert.deepEqual(built.assembly?.boards.map((b) => b.name).sort(), ["climate", "main"])
+	assert.deepEqual(assemblyErrors(built), [])
+	// Several boards that are not a robot stay separate.
+	assert.equal(buildSpec(asPlan(scriptedPlan("a logger and a beacon over a cable"))).assembly?.body, "separate")
+})
+
+test("the prompt allows a robot of several boards", async () => {
+	const { BUILDABLE } = await import("../src/system/architect.ts")
+	assert.match(BUILDABLE, /one board or several on one printed chassis/)
+})

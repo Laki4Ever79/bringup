@@ -1,5 +1,6 @@
 import type { PartNeed } from "../learn/types.ts"
 import { DEFAULT_I2C_KHZ, specErrors, type SystemSpec } from "./spec.ts"
+import { defaultAssembly } from "./assembly.ts"
 import { CABLE_PF_PER_M, i2cCableLimit, PULLUP_OHM } from "./checks.ts"
 
 // A system plan: what the architect proposes from a sentence and the user edits before Build. `spec` is the system spec
@@ -21,6 +22,15 @@ export interface Plan {
 	// Parts the plan needs that the catalog doesn't have, of a kind Bringup can learn (catalog/kinds/): the part
 	// learner learns them at plan time (src/learn/runtime.ts); their progress is in the plan folder's learning.json.
 	needs?: PartNeed[]
+	// A small wheeled robot: its boards sit on one printed chassis (the built spec gets a chassis assembly).
+	robot?: boolean
+}
+
+// The spec Build runs: the plan's spec with the boards' placement. A robot's boards share a chassis; boards of any
+// other plan with several boards stay separate.
+export function buildSpec(p: Plan): SystemSpec {
+	if (p.spec.boards.length < 2 || p.spec.assembly) return p.spec
+	return { ...p.spec, assembly: defaultAssembly(p.spec, p.robot ? "chassis" : "separate") }
 }
 
 export interface PlanIssue {

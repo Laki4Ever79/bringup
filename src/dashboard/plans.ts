@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { appendUsage, readSpend, type Spend } from "../inference/usage.ts"
 import { proposePlan } from "../system/architect.ts"
 import { estimate } from "../system/estimate.ts"
-import { planChecks, type Plan, type PlanIssue } from "../system/plan.ts"
+import { buildSpec, planChecks, type Plan, type PlanIssue } from "../system/plan.ts"
 import { planDiff, type PlanDiff } from "./plan-edit.js"
 import { learnDepsFor, learnNeeds } from "../learn/runtime.ts"
 import type { LearnDeps, LearnResult } from "../learn/learner.ts"
@@ -216,7 +216,7 @@ export class PlanStore {
 		const dir = this.dir(id)
 		for (const b of plan.spec.boards) writeFileSync(join(dir, "briefs", `${b.name}.md`), plan.briefs[b.name])
 		const specPath = join(dir, "system.json")
-		writeFileSync(specPath, JSON.stringify(plan.spec, null, "\t"))
+		writeFileSync(specPath, JSON.stringify(buildSpec(plan), null, "\t"))
 		return { kind: "system", specPath, usagePath: join(dir, "usage.jsonl") }
 	}
 }
