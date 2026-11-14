@@ -393,6 +393,16 @@ export function supportParts(s: ContractSnapshot): Support[] {
 			jobs.push({ job: `${xtal.ref} load capacitor (${xtal.ref}.${pin}, ${side})`, spec, a: { ref: xtal.ref, pin }, b: GND, near: xtal.ref })
 	}
 
+	// A capacitor on a part's pin ends its ground side on that part's own GND pin when it has one, as the datasheets draw
+	// it (TI DRV8833 §9.2: VINT's 2.2 µF to its GND): to the GND net, tscircuit reached ground wherever it chose, 25 mm
+	// away on the 50×29 mm rover (no ground pour), past the 5 mm bound that counts the ground return too (15 Nov 2026).
+	// Capacitors only: the USB-C connector's CC resistors end on GND too, and tscircuit's connector has no GND port.
+	for (const j of jobs) {
+		if (j.spec.kind !== "capacitor" || !("ref" in j.a) || !("net" in j.b) || j.b.net !== "GND") continue
+		const owner = parts.find((p) => p.ref === (j.a as { ref: string }).ref)
+		if (owner?.pins.includes("GND")) j.b = { ref: owner.ref, pin: "GND" }
+	}
+
 	const claimed = new Set<string>()
 	const taken = new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])
 	return jobs.map((j) => {

@@ -85,7 +85,7 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 			if (best) continue
 			// Layout-sensitive failures try the next layout; the router's junction tangle too (the STM32 logger: 38×22
 			// fails, 38×21 routes, so a nudged LDO may clear it at the same size).
-			if (!/overlap|clearance|keepout|too close|unique PCB port/i.test(String(error))) {
+			if (!layoutSensitive(String(error))) {
 				if (withPort && placement.debugPort !== false) { skipToNoPort = true; continue }
 				throw error
 			}
@@ -108,7 +108,9 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	const circuitPath = join(work, "dist/board/circuit.json")
 	if (build.code !== 0 || !existsSync(circuitPath)) {
 		writeFileSync(join(dir, "build.log"), build.stdout + "\n" + build.stderr)
-		throw new Error(`tscircuit build failed (exit ${build.code}):\n${buildErrors(build.stdout + "\n" + build.stderr)}\nfull log: ${join(dir, "build.log")}`)
+		const named = circuitErrors(circuitPath)
+		const logged = buildErrors(build.stdout + "\n" + build.stderr).split("\n").filter((l) => !named.some((n) => n.startsWith(l)))
+		throw new Error(`tscircuit build failed (exit ${build.code}):\n${[...named, ...logged].join("\n")}\nfull log: ${join(dir, "build.log")}`)
 	}
 	const elements = JSON.parse(readFileSync(circuitPath, "utf8")) as { type: string; width?: number; height?: number }[]
 	const pcb = elements.find((e) => e.type === "pcb_board")
@@ -162,19 +164,43 @@ export function stripKeepouts(pcb: string): string {
 }
 
 // tscircuit prints many advisory warnings before the real error; keep the lines that explain the failure.
-const NOISE = /underspecified|requires_power|missing a trace|missing a manufacturer part|does not match supplier footprint|schematicsheet|is missing a name|Failed to load 3D model/i
+// "cannot select a unique PCB port" is tscircuit failing to save its autorouter's paths for a junction: it shows on
+// boards that build and route clean too (the rover at 42×29 and 50×29 mm, 15 Nov 2026), so it is never the cause.
+const NOISE = /underspecified|requires_power|missing a trace|missing a manufacturer part|does not match supplier footprint|schematicsheet|is missing a name|Failed to load 3D model|unique PCB port/i
 const SIGNAL = /error|overlap|clearance|too close|outside|fail|fatal|cannot|skipped|exceed/i
 const SUMMARY = /^Circuits\s+\d+ passed \d+ failed/
 
 // The lines that explain a failed build. The router's "missing a trace" lines also follow other errors (a via on a
 // pad), so they count only when nothing more specific explains it: then the router ran out of room, and without them
 // the architect saw only "0 passed 1 failed".
+// A failure another layout of the same board may not have: parts or traces too close or overlapping, and a trace past
+// its length bound (a pin's capacitor placed where its trace runs long). Not the router's port warning, which shows on
+// clean builds too: it was the only reason a too-long trace got another layout before.
+export function layoutSensitive(error: string): boolean {
+	return /overlap|clearance|keepout|too close|exceeding the [\d.]+mm maximum/i.test(error)
+}
+
+// The errors tscircuit wrote into circuit.json, each once, a too-long trace with its name: a build can fail on one of
+// these alone, with nothing in its log the filters above take for an error (a connector with no GND port: "exit 1 and no
+// named error", 15 Nov 2026).
+export function circuitErrors(file: string): string[] {
+	if (!existsSync(file)) return []
+	try {
+		const elements = JSON.parse(readFileSync(file, "utf8")) as { type: string; message?: string; source_trace_id?: string; display_name?: string }[]
+		const names = new Map(elements.filter((e) => e.type === "source_trace").map((e) => [e.source_trace_id, e.display_name]))
+		const lines = elements.filter((e) => e.type.endsWith("_error") && e.message).map((e) => (e.source_trace_id && names.get(e.source_trace_id) ? `${e.message} (${names.get(e.source_trace_id)})` : e.message!))
+		return [...new Set(lines)]
+	} catch {
+		return []
+	}
+}
+
 // Why the debug footprint was left off: the pins the router left without a trace, or its first real error.
 function droppedWhy(error: unknown): string {
 	const lines = String(error).split("\n").map((l) => l.trim())
 	const unrouted = lines.filter((l) => ROUTING_FAILURE.test(l)).map((l) => l.replace(/^Port (\S+) on (\S+) is missing a trace$/, "$2.$1"))
 	if (unrouted.length) return `the board didn't route with it (no trace to ${unrouted.slice(0, 4).join(", ")}${unrouted.length > 4 ? ` and ${unrouted.length - 4} more` : ""})`
-	const other = lines.find((l) => /unique PCB port|overlap|clearance/i.test(l))
+	const other = lines.find((l) => /exceeding the [\d.]+mm maximum|overlap|clearance/i.test(l))
 	return `the board didn't route with it${other ? ` (${other})` : ""}`
 }
 
