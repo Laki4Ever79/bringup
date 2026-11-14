@@ -252,9 +252,11 @@ export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
 }
 
 // How the simulated drive went, for the Drive tile: its result and the first segment that failed.
-export function driveSummary(d: DriveArtifact): { result: DriveArtifact["result"]; failed?: string } {
+// A drive that wasn't run says why (QEMU or MuJoCo missing, pins not assigned yet), for the system trace and the tile.
+export function driveSummary(d: DriveArtifact): { result: DriveArtifact["result"]; failed?: string; reason?: string } {
 	const failed = d.segments.find((x) => !x.pass)?.name
-	return d.result === "fail" && failed ? { result: d.result, failed } : { result: d.result }
+	if (d.result === "fail" && failed) return { result: d.result, failed }
+	return d.result === "not run" && d.reason ? { result: d.result, reason: d.reason } : { result: d.result }
 }
 
 export function createEnclosureBuilder(env: Env, lock?: BuildLock): Human {

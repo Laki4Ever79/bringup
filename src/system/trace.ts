@@ -38,7 +38,7 @@ export function stepOf(event: { type: string; payload: unknown }): Omit<SystemTr
 		const drc = p.drc as { errors?: number; firstError?: string | null } | undefined
 		const drcErrors = step === "board" && (drc?.errors ?? 0) > 0
 		const failed = summary?.result === "fail" || drcErrors
-		const detail = skipped ?? (drcErrors ? `DRC: ${drc!.errors} error(s)${drc!.firstError ? `, first: ${drc!.firstError}` : ""}` : failed && summary?.failed ? `failed at ${summary.failed}` : undefined)
+		const detail = skipped ?? (summary?.result === "not run" && summary.reason ? summary.reason : undefined) ?? (drcErrors ? `DRC: ${drc!.errors} error(s)${drc!.firstError ? `, first: ${drc!.firstError}` : ""}` : failed && summary?.failed ? `failed at ${summary.failed}` : undefined)
 		return { step, status: notRun ? "not run" : failed ? "failed" : "ok", revision: Number(p.revision), ...(detail ? { detail } : {}) }
 	}
 	if (event.type === "artifact.failed") {
