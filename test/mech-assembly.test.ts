@@ -2,8 +2,9 @@
 // chassis, its spec and its checks read them from there.
 import { test } from "node:test"
 import assert from "node:assert/strict"
+import { mechanicsFactLines } from "../src/mechanics/facts.ts"
 import { chassisSpec } from "../src/tools/chassis.ts"
-import { mechanicsChecks } from "../src/mechanics/checks.ts"
+import { mechanicsChecks, mechanicsFigures } from "../src/mechanics/checks.ts"
 import { boardAssemblyShapeError, type BoardAssembly } from "../src/mechanics/assembly.ts"
 import { DesignContract } from "../src/contract/contract.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
@@ -46,7 +47,7 @@ test("the mechanics agent's own plate is ignored while an assembly is set", () =
 	s.values.mechanics!.chassis.plateMm = [90, 60]
 	const spec = chassisSpec(s)!
 	assert.deepEqual([spec.plate.lengthMm, spec.plate.widthMm], [180, 120])
-	assert.ok(!mechanicsChecks(s).some((v) => /90 × 60/.test(v.message)), "no finding is about the agent's 90 × 60 plate")
+	assert.ok(!mechanicsChecks(s).some((v) => v.kind === "mech-fit" && /plate/.test(v.message) && /90 × 60/.test(v.message)), "no mech-fit finding is about the agent's 90 × 60 plate")
 	// Without the assembly the same small plate is the agent's, and the board doesn't fit it.
 	const bare = rover()
 	bare.values.mechanics!.chassis.plateMm = [50, 30]
@@ -66,4 +67,19 @@ test("the field's shape is checked", () => {
 test("only the integrator owns the assembly", () => {
 	const c = new DesignContract()
 	assert.deepEqual(c.propose({ field: "assembly", value: assembly(), by: "mechanics", baseVersion: 0 }), { status: "not-owner", owner: "integrator" })
+})
+
+test("the assembly's other boards are known to the checks, and their mass counts", () => {
+	// Front clear of the main board (which ends at x 40) and inside the plate.
+	const s = withAsm()
+	Object.assign(s.values.assembly!.boards[1], { xMm: 65, outline: { widthMm: 40, heightMm: 30 } })
+	assert.ok(!mechanicsChecks(s).some((v) => /front/.test(v.message)), "no finding names the assembly's other board")
+	const mass = (c: ContractSnapshot) => Number(/(\d+) g/.exec(mechanicsFigures(c).find((f) => f.check === "Mass")!.value)![1])
+	assert.ok(mass(s) > mass(rover()), "front's board is in the mass")
+	const grams = (c: ContractSnapshot) => Number(/about (\d+) g/.exec(mechanicsFactLines(c).join("\n"))![1])
+	assert.ok(grams(s) > grams(rover()), "and in the facts")
+	// The assembly replaces the agent's own board list, so a stray name in it is not read.
+	const lost = withAsm()
+	lost.values.mechanics!.chassis.boards.push({ name: "ghost", at: { xMm: 0, yMm: 0 }, rotDeg: 0 })
+	assert.ok(!mechanicsChecks(lost).some((v) => /ghost/.test(v.message)), "the agent's own list is not read")
 })
