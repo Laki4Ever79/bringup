@@ -78,6 +78,10 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 		await writeFile(join(dir, "include/hw_pins.h"), rover)
 		// The payload goes out as BTHome with the logger's encoder: one file, checked once (test/bthome.test.ts).
 		await cp(join(root, "templates/fw/include/bthome.h"), join(dir, "include/bthome.h"))
+		// Its links to the system's other boards: the same link.h and frame code as the product firmware (a board with no
+		// links gets stubs).
+		await writeFile(join(dir, "include/link.h"), linkHeader(s))
+		await cp(join(root, "templates/fw/include/linkframe.h"), join(dir, "include/linkframe.h"))
 		return rover
 	}
 	const header = pinsHeader(s)

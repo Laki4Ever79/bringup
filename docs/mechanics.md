@@ -52,6 +52,10 @@ The firmware has a thin hardware layer: six functions (`hw_begin`, `hw_motor`, `
 The simulation build (`esp32c3_sim`) implements them over UART1. Everything else (`rover.cpp`, `main.cpp`) is the same
 program in both builds.
 
+A rover that is one board of a system (docs/system.md) gets the product firmware's `include/link.h` and
+`linkframe.h`, and its link pins in `hw_pins.h`: `main.cpp` starts the links at boot, polls them every control tick and
+sends each payload reading on. The simulation build leaves the links out, because its bridge uses UART1.
+
 1. PlatformIO builds the simulation firmware and QEMU boots it, with UART1 on a local TCP port.
 2. `py/mech/drive.py` builds the MuJoCo model from the chassis spec: mass, centre of mass, wheels, caster, the motor's
    linear model and the cell's voltage sag.

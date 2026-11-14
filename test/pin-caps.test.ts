@@ -36,7 +36,10 @@ for (const [w, h, edge] of [[60, 40, "top"], [33, 40, "top"], [33, 42, "top"], [
 			const off = icPinOffset(footprintFor(driver), driver.pins.indexOf(end.pin) + 1)!
 			const cap = parts.find((p) => p.ref === sp.ref)!
 			const d = Math.hypot(cap.x - (u5.x + off.x), cap.y - (u5.y + off.y))
-			assert.ok(d <= 2.5, `${sp.ref} on U5.${end.pin}: ${d.toFixed(1)} mm from the pad`)
+			assert.ok(d <= 3.5, `${sp.ref} on U5.${end.pin}: ${d.toFixed(1)} mm from the pad`)
+			// And clear of the driver: 0.5 mm overlapped its courtyard, and tscircuit refused the board (14 Nov 2026).
+			const gap = Math.max(Math.abs(cap.x - u5.x) - (cap.w + u5.w) / 2, Math.abs(cap.y - u5.y) - (cap.h + u5.h) / 2)
+			assert.ok(gap >= 1.5 - 1e-9, `${sp.ref} is ${gap.toFixed(2)} mm from U5's box`)
 		}
 	})
 }
@@ -48,4 +51,13 @@ test("a trace past its length bound is kept in the build error the agents read",
 	const out = ["Warning: C6 is underspecified", "PCB trace is 7.98 mm long, exceeding the 5mm maximum for U5.VINT to C6.pin1", "Circuits 0 passed 1 failed"].join("\n")
 	assert.match(buildErrors(out), /7\.98 mm long, exceeding the 5mm maximum/)
 	assert.doesNotMatch(buildErrors(out), /underspecified/)
+})
+
+// The charge pump's capacitor goes from VCP to the driver's own VM pin, as TI's schematic draws it (DRV8833 §7.3), not
+// to the VM net: tscircuit joined its far end to the net 9.8 mm away, past the 5 mm bound (the rover at 33×42 mm,
+// 14 Nov 2026).
+test("the DRV8833's VCP capacitor ends on the driver's VM pin, not on the VM net", () => {
+	const s = rover(33, 42, "top")
+	const vcp = supportParts(s).find((sp) => "ref" in sp.a && sp.a.pin === "VCP")!
+	assert.deepEqual(vcp.b, { ref: "U5", pin: "VM" })
 })

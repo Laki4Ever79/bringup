@@ -343,7 +343,9 @@ export function supportParts(s: ContractSnapshot): Support[] {
 			jobs.push({ job: `${driver.ref}.VM decoupling`, spec: SUPPORT.decouple, a: { net: vm }, b: GND, near: driver.ref })
 		}
 		if (driver.pins.includes("VINT")) jobs.push({ job: `${driver.ref}.VINT (internal regulator) to GND`, spec: SUPPORT.vint, a: { ref: driver.ref, pin: "VINT" }, b: GND, near: driver.ref })
-		if (driver.pins.includes("VCP")) jobs.push({ job: `${driver.ref}.VCP (charge pump) to VM`, spec: SUPPORT.vcp, a: { ref: driver.ref, pin: "VCP" }, b: { net: vm }, near: driver.ref })
+		// VCP to the driver's own VM pin, as TI draws it: to the VM net, tscircuit joined the far end 9.8 mm away, past
+		// the 5 mm bound (the rover at 33×42 mm, 14 Nov 2026).
+		if (driver.pins.includes("VCP")) jobs.push({ job: `${driver.ref}.VCP (charge pump) to VM`, spec: SUPPORT.vcp, a: { ref: driver.ref, pin: "VCP" }, b: driver.pins.includes("VM") ? { ref: driver.ref, pin: "VM" } : { net: vm }, near: driver.ref })
 		if (supply && driver.pins.includes("nSLEEP")) jobs.push({ job: `${driver.ref}.nSLEEP pull-up (the driver awake)`, spec: SUPPORT.pullup, a: { ref: driver.ref, pin: "nSLEEP" }, b: { net: supply }, near: driver.ref })
 	}
 	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
@@ -741,8 +743,7 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 		}
 	}
 
-	// hug: a part allowed CHIP_GAP_MM from that part's box instead of GAP_MM (a bare chip's own pin parts, and any
-	// capacitor wired to a chip's pin, below).
+	// hug: a part allowed CHIP_GAP_MM from that part's box instead of GAP_MM (a bare chip's own pin parts, below).
 	const fits = (b: Placed, hug?: string) =>
 		Math.abs(b.x) + b.w / 2 <= W / 2 - EDGE_MARGIN_MM &&
 		Math.abs(b.y) + b.h / 2 <= H / 2 - EDGE_MARGIN_MM &&
@@ -750,7 +751,9 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 		keepouts.every((o) => !overlaps(b, o))
 
 	// The capacitors wired straight to a part's pins (the DRV8833's VINT and VCP, a bare chip's decoupling), each in the
-	// box it takes just past its pad, CHIP_GAP_MM off the part's box: a part goes only where these fit too. On a 33 mm
+	// box it takes just past its pad, as far off the part's box as it will be placed (CHIP_GAP_MM for a bare chip's own,
+	// GAP_MM otherwise: 0.5 mm from the DRV8833 overlapped its courtyard, 14 Nov 2026): a part goes only where these fit
+	// too. On a 33 mm
 	// wide rover the driver went hard against the module and VINT's capacitor landed across it, 7.98 mm of trace against
 	// tscircuit's 5 mm, and every build failed (14 Nov 2026).
 	const pinCaps = supportParts(s).filter((sp) => sp.added && sp.spec.kind === "capacitor" && "ref" in sp.a && sp.near !== boardCrystal(s)?.ref)
@@ -765,9 +768,10 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 			const at = icPinOffset(footprint, pad) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm)
 			if (!at) return []
 			const [cw, ch] = sizeAt(sp.spec.footprint, 0)
+			const gap = chipProfile(part) ? CHIP_GAP_MM : GAP_MM
 			return [Math.abs(at.x) >= Math.abs(at.y)
-				? { ref: sp.ref, x: b.x + Math.sign(at.x) * (b.w / 2 + CHIP_GAP_MM + cw / 2), y: b.y + at.y, w: cw, h: ch, rotation: 0 }
-				: { ref: sp.ref, x: b.x + at.x, y: b.y + Math.sign(at.y) * (b.h / 2 + CHIP_GAP_MM + ch / 2), w: cw, h: ch, rotation: 0 }]
+				? { ref: sp.ref, x: b.x + Math.sign(at.x) * (b.w / 2 + gap + cw / 2), y: b.y + at.y, w: cw, h: ch, rotation: 0 }
+				: { ref: sp.ref, x: b.x + at.x, y: b.y + Math.sign(at.y) * (b.h / 2 + gap + ch / 2), w: cw, h: ch, rotation: 0 }]
 		})
 	}
 
@@ -915,7 +919,7 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 		if (sp.added) {
 			if (!done.has(sp.ref)) {
 				done.add(sp.ref)
-				place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : first(sp) === 1 && "ref" in sp.a ? sp.a.ref : undefined)
+				place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined)
 			}
 		} else put(free.find((p) => p.ref === sp.ref), want)
 	}
