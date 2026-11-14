@@ -69,7 +69,7 @@ test("each board's steps reach the system trace, with the system's own settle", 
 test("a board step's status: DRC errors and a failed or skipped drive are not ok", () => {
 	assert.equal(stepOf({ type: "artifact.ready", payload: { kind: "board", revision: 3, drc: { errors: 2, firstError: "clearance" } } })?.status, "failed")
 	assert.equal(stepOf({ type: "artifact.ready", payload: { kind: "drive", revision: 3, drive: { result: "fail", failed: "edge crossed" } } })?.detail, "failed at edge crossed")
-	assert.equal(stepOf({ type: "artifact.ready", payload: { kind: "drive", revision: 3, drive: { result: "not run" } } })?.status, "not run")
+	assert.deepEqual(stepOf({ type: "artifact.ready", payload: { kind: "drive", revision: 3, drive: { result: "not run", reason: "pins not assigned yet" } } }), { step: "drive", status: "not run", revision: 3, detail: "pins not assigned yet" })
 	assert.equal(stepOf({ type: "artifact.ready", payload: { kind: "enclosure", revision: 3, skipped: "no case" } })?.status, "not run")
 	assert.equal(stepOf({ type: "artifact.failed", payload: { kind: "chassis", revision: 3, error: "boom\nmore" } })?.detail, "boom")
 	assert.equal(stepOf({ type: "agent.activity", payload: {} }), null)
