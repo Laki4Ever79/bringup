@@ -86,6 +86,12 @@
 	#stage .live { position: absolute; right: 12px; top: 10px; font: 12px var(--mono); color: var(--ink-3); z-index: 2; }
 	#crumb { position: absolute; left: 12px; top: 10px; z-index: 4; font-size: 13px; display: none; }
 	#crumb button { font: inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 2px 9px; cursor: pointer; }
+	#facts { position: absolute; z-index: 6; width: 250px; pointer-events: none; background: #fff; border: 1px solid var(--ink); border-radius: 10px; padding: 10px 12px; box-shadow: 0 6px 20px rgba(0,0,0,.14); font-size: 12.5px; }
+	#facts img { display: block; width: 100%; max-height: 110px; object-fit: contain; background: var(--paper-2); border-radius: 6px; margin-bottom: 8px; }
+	#facts h4 { margin: 0 0 6px; font: 600 13px var(--mono); }
+	#facts dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+	#facts dt { color: var(--ink-3); }
+	#facts dd { margin: 0; overflow-wrap: anywhere; }
 	#timeline { display: flex; align-items: center; gap: 10px; padding: 8px 2px 0; font: 12px var(--mono); color: var(--ink-3); }
 	#timeline input { flex: 1; accent-color: var(--signal); }
 	#board-view { position: fixed; inset: 0; z-index: 40; background: #fff; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .25s; }
@@ -107,6 +113,7 @@
 	<div id="view-switch" role="group" aria-label="View"><button type="button" data-view="3d" aria-pressed="true">3D</button><button type="button" data-view="top" aria-pressed="false">Top</button></div>
 	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
 	<div id="stage-top" class="hidden"></div>
+	<div id="facts" class="hidden" role="tooltip"></div>
 	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
 </div>
 <main id="main"></main>
@@ -345,6 +352,49 @@ async function startStage(d) {
 }
 // ── 3D · Top: one switch over the same data. Only the visible view is made, fed and drawn; the other is made on its
 // first switch and kept, hidden, and fed again from the latest data when it is shown.
+// ── The facts card (hover a board or a cable, click a cable): one floating card near the pointer, the same facts in
+// both views (src/system/facts.ts, from the design's payload). Esc or a click on empty space closes it.
+const card = { hover: null, pinned: null, x: 0, y: 0, pickedAt: -1e9 }
+const factsEl = document.getElementById("facts")
+function renderCard() {
+	const t = openName ? null : (card.pinned ?? card.hover)
+	if (!t || !stage.meta?.facts) { factsEl.classList.add("hidden"); return }
+	const row = (k, v) => `<dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd>`
+	if (t.kind === "cable") {
+		const f = stage.meta.facts.cables?.[t.name]
+		const l = (stage.meta.spec?.links ?? []).find((x) => x.id === t.name)
+		if (!f) { factsEl.classList.add("hidden"); return }
+		factsEl.innerHTML = `<h4>${esc(t.name)}${l ? ` · ${esc(l.a.board)} ↔ ${esc(l.b.board)}` : ""}</h4><dl>${row("Kind", f.kind)}${row("Length", f.length)}${row("Messages", f.messages.length ? f.messages.join(", ") : "—")}${row("Power", f.power)}</dl>`
+	} else {
+		const f = stage.meta.facts.boards?.[t.name]
+		if (!f) { factsEl.classList.add("hidden"); return }
+		const img = stage.meta.boards.find((b) => b.name === t.name)?.render
+		factsEl.innerHTML = `${img ? `<img src="${esc(img)}" alt="">` : ""}<h4>${esc(t.name)}</h4><dl>${row("Size", f.size)}${row("Chip", f.chip)}${row("Power", f.power)}${row("Links", f.links.length ? f.links.join("; ") : "—")}${row("Mount", f.mount)}${row("Debug", f.debug)}</dl>`
+	}
+	factsEl.classList.remove("hidden")
+	const wrap = document.getElementById("stage-wrap").getBoundingClientRect()
+	const w = factsEl.offsetWidth, h = factsEl.offsetHeight
+	let x = card.x - wrap.left + 16, y = card.y - wrap.top + 16
+	if (x + w > wrap.width - 4) x = card.x - wrap.left - w - 16
+	if (y + h > wrap.height - 4) y = card.y - wrap.top - h - 16
+	factsEl.style.left = `${Math.max(4, x)}px`
+	factsEl.style.top = `${Math.max(4, y)}px`
+}
+const cardHover = (name, kind = "board") => { card.hover = name ? { name, kind } : null; renderCard() }
+// A pick is followed by a click event on the same spot: that click must not count as one on empty space.
+const cardPick = (name, kind) => { card.pickedAt = performance.now(); card.pinned = { name, kind }; card.hover = null; renderCard(); stage.top?.select(name, kind) }
+function cardClose() {
+	const was = !factsEl.classList.contains("hidden") || card.pinned
+	card.hover = card.pinned = null
+	stage.top?.select(null)
+	renderCard()
+	return Boolean(was)
+}
+document.getElementById("stage-wrap").addEventListener("pointermove", (e) => { card.x = e.clientX; card.y = e.clientY; if (card.hover && !card.pinned) renderCard() })
+document.getElementById("stage-wrap").addEventListener("click", (e) => {
+	if (performance.now() - card.pickedAt < 300 || e.target.closest?.("#view-switch, #timeline, #crumb")) return
+	if (card.pinned) cardClose()
+})
 const activeView = () => (stage.view === "top" ? stage.top : stage.world)
 const designUrl = (board) => {
 	const q = new URLSearchParams({ id })
@@ -363,12 +413,20 @@ async function ensureView(view) {
 	try {
 		if (view === "top") {
 			const { mountTop } = await import("/top2d.js")
-			stage.top = mountTop(box, { onPick: (name, kind) => { if (kind === "board") window.openBoard?.(name) } })
+			stage.top = mountTop(box, {
+				onHover: (name, kind) => cardHover(name, kind),
+				onPick: (name, kind) => { if (kind === "board") { card.pickedAt = performance.now(); card.pinned = null; card.hover = null; renderCard(); window.openBoard?.(name) } else cardPick(name, "cable") },
+			})
 			await stage.top.ready
 		} else {
 			// (the 3D world is ready only after its first frame, which needs data: not awaited)
 			const { mountWorld } = await import("/world3d.js")
-			stage.world = mountWorld(box, { onPick: (name) => window.openBoard?.(name) })
+			stage.world = mountWorld(box, {
+				onHover: (name) => cardHover(name, "board"),
+				onPick: (name) => { card.hover = card.pinned = null; renderCard(); window.openBoard?.(name) },
+				onHoverCable: (cid) => cardHover(cid, "cable"),
+				onPickCable: (cid) => cardPick(cid, "cable"),
+			})
 		}
 		return true
 	} catch {
@@ -380,6 +438,7 @@ async function ensureView(view) {
 	}
 }
 function showView(view) {
+	cardClose()
 	stage.view = view
 	document.getElementById("stage").classList.toggle("hidden", view === "top")
 	document.getElementById("stage-top").classList.toggle("hidden", view !== "top")
@@ -557,7 +616,8 @@ main.addEventListener("click", (e) => {
 	window.openBoard(a.dataset.open)
 })
 document.getElementById("back-system").addEventListener("click", () => closeBoard())
-addEventListener("keydown", (e) => { if (e.key === "Escape") closeBoard() })
+// Esc closes an open board first; with none open, an open facts card.
+addEventListener("keydown", (e) => { if (e.key === "Escape") { if (!openName && cardClose()) return; closeBoard() } })
 addEventListener("message", (e) => { if (e.origin === location.origin && e.data?.type === "bringup-close") closeBoard() })
 addEventListener("popstate", async () => {
 	const q = new URLSearchParams(location.search)

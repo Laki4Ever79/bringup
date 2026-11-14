@@ -394,3 +394,63 @@ test("a board reopened during the close flight keeps its view zoomed, and Esc th
 		await page.waitForFunction((h) => !document.getElementById("board-view")?.classList.contains("on") && document.querySelector("#stage-top svg")!.getAttribute("viewBox") === h, home, { timeout: 10_000 })
 	}, ROBOT)
 })
+
+test("hovering a board in either view shows its facts card; clicking a cable in Top shows the cable card; Esc and empty space close it", { skip: skipRobot, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		const card = () => page.evaluate(() => { const e = document.getElementById("facts")!; return { shown: e.offsetWidth > 0 && getComputedStyle(e).display !== "none", text: e.textContent ?? "" } })
+		await page.click('#view-switch [data-view="top"]')
+		await topUp(page)
+		await page.waitForSelector("#stage-top [data-board] [data-outline]", { state: "visible", timeout: 15_000 })
+		const name = await page.evaluate(() => (document.querySelector("#stage-top [data-board]") as HTMLElement).dataset.board!)
+		const box = await boardBox(page, name)
+		await page.mouse.move(box.x + 3, box.y + 3)
+		await page.waitForFunction(() => document.getElementById("facts")!.offsetWidth > 0, null, { timeout: 5000 })
+		let c = await card()
+		assert.ok(c.text.includes(name), "the board's name")
+		assert.match(c.text, /Size\d+(\.\d)? × \d+(\.\d)? mm|Size≈/, "its size")
+		assert.match(c.text, /Chip/, "its chip row")
+		assert.doesNotMatch(c.text, /undefined/)
+		await page.mouse.move(2, 2)
+		await page.waitForFunction(() => document.getElementById("facts")!.offsetWidth === 0)
+		// A cable: click it, the card stays; Esc closes it and the board page stays shut.
+		const cable = page.locator("#stage-top [data-cable]").first()
+		await cable.waitFor({ state: "attached" })
+		const cb = (await cable.boundingBox())!
+		await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2)
+		await page.mouse.down()
+		await page.mouse.up()
+		await page.waitForFunction(() => document.getElementById("facts")!.offsetWidth > 0)
+		c = await card()
+		assert.match(c.text, /Kind/)
+		assert.match(c.text, /Length/)
+		assert.equal(await page.evaluate(() => document.getElementById("board-view")!.classList.contains("on")), false)
+		await page.keyboard.press("Escape")
+		assert.equal((await card()).shown, false, "Esc closes the card")
+		// Empty space closes a pinned card too.
+		await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2)
+		await page.mouse.down()
+		await page.mouse.up()
+		await page.waitForFunction(() => document.getElementById("facts")!.offsetWidth > 0)
+		await page.waitForTimeout(400) // past the click that follows the pick
+		const stageBox = (await page.locator("#stage-top").boundingBox())!
+		await page.mouse.click(stageBox.x + stageBox.width - 6, stageBox.y + stageBox.height - 6)
+		assert.equal((await card()).shown, false, "a click on empty space closes it")
+		// 3D: sweep the canvas until a board's card shows.
+		await page.click('#view-switch [data-view="3d"]')
+		await page.waitForSelector("#stage canvas", { state: "visible" })
+		const sb = (await page.locator("#stage canvas").boundingBox())!
+		let found = false
+		for (let gy = 0.2; gy < 0.85 && !found; gy += 0.05) for (let gx = 0.15; gx < 0.9 && !found; gx += 0.05) {
+			await page.mouse.move(sb.x + sb.width * gx, sb.y + sb.height * gy)
+			found = (await card()).shown
+		}
+		assert.ok(found, "hovering a board in 3D shows the card")
+		assert.match((await card()).text, /Size/)
+		// 3D: a cable label opens the cable card.
+		await page.mouse.move(2, 2)
+		const label = page.locator("#stage [data-cable]").first()
+		await label.waitFor({ state: "attached" })
+		await label.click({ force: true })
+		await page.waitForFunction(() => /Kind/.test(document.getElementById("facts")!.textContent ?? ""))
+	}, ROBOT)
+})

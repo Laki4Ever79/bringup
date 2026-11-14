@@ -22,6 +22,8 @@ import type { TraceNotifier } from "./notify.ts"
 import { clientIp, PUBLIC_BANNER, PUBLIC_TRY_IT, type PublicGate } from "./public.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
+import type { ContractSnapshot } from "../contract/types.ts"
+import { boardFacts, systemFacts } from "../system/facts.ts"
 import { derivedAssembly } from "../system/assembly.ts"
 import type { SystemSpec } from "../system/spec.ts"
 import type { Mechanics } from "../mechanics/types.ts"
@@ -451,6 +453,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		const spec = await readJsonFile(join(dir, "system.json"))
 		const state = await readJsonFile(join(dir, "system-state.json"))
 		const mechanicsOf = new Map<string, Mechanics>()
+		const contractOf: Record<string, ContractSnapshot | null> = {}
 		const boards = await Promise.all(
 			(spec?.boards ?? []).map(async (b: { name: string; run?: string }) => {
 				const runId = `${id}.${b.name}`
@@ -459,6 +462,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				const summary = await summarize(runId, bdir)
 				const contract = await readJsonFile(join(bdir, "contract.json"))
 				const v = contract?.values ?? {}
+				contractOf[b.name] = contract
 				if (v.mechanics?.chassis) mechanicsOf.set(b.name, v.mechanics)
 				return {
 					name: b.name,
@@ -489,10 +493,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			for (const b of boards) if ("outline" in b && b.outline) outlines[b.name] = b.outline
 			assembly = derivedAssembly(spec, mech, outlines, owner)
 		}
+		for (const b of spec?.boards ?? []) contractOf[b.name] ??= null
 		return {
 			id,
 			spec,
 			assembly,
+			facts: systemFacts(contractOf, assembly, spec?.links ?? []),
 			...(await systemStatus(id, dir, state)),
 			findings: state?.findings ?? (await readJsonFile(join(dir, "system-findings.json"))) ?? [],
 			linkTests: state?.linkTests ?? [],
@@ -512,7 +518,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	}
 	const singleDetail = async (id: string, dir: string) => {
 		const summary = await summarize(id, dir)
-		const v = (await readJsonFile(join(dir, "contract.json")))?.values ?? {}
+		const contract = (await readJsonFile(join(dir, "contract.json"))) ?? null
+		const v = contract?.values ?? {}
 		const report = existsSync(join(dir, "report.md")) ? `/runs/${id}/files/report.md` : null
 		const board = {
 			name: "main",
@@ -529,11 +536,13 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			spend: readSpend(dir),
 			scripted: summary.scripted,
 		}
+		const assembly = derivedAssembly({ name: summary.title, boards: [{ name: "main" }], links: [] } as unknown as SystemSpec, v.mechanics, v.outline ? { main: { widthMm: v.outline.widthMm, heightMm: v.outline.heightMm } } : {})
 		return {
 			id,
 			single: true,
+			facts: { boards: { main: boardFacts(contract, "main", assembly, []) }, cables: {} },
 			spec: { name: summary.title, boards: [{ name: "main" }], links: [] },
-			assembly: derivedAssembly({ name: summary.title, boards: [{ name: "main" }], links: [] } as unknown as SystemSpec, v.mechanics, v.outline ? { main: { widthMm: v.outline.widthMm, heightMm: v.outline.heightMm } } : {}),
+			assembly,
 			status: summary.status,
 			settled: summary.status === "settled" || summary.status === "waiting for a change" || summary.status === "bench live",
 			findings: [],

@@ -492,7 +492,12 @@ export function mountWorld(host, opts = {}) {
 			const r = cableRibbon([A.at[0] + (c.a.xMm ?? 0), A.at[1] + (c.a.yMm ?? 0), A.atZ + A.extent.max[2] * 0.4], [B.at[0] + (c.b.xMm ?? 0), B.at[1] + (c.b.yMm ?? 0), B.atZ + B.extent.max[2] * 0.4], Math.max(8, Math.hypot(A.at[0] - B.at[0], A.at[1] - B.at[1]) * 0.25))
 			const el = document.createElement("span")
 			el.textContent = c.label ?? c.id
-			el.style.cssText = "position:absolute;left:0;top:0;background:#fff;border:1px solid #111;border-radius:4px;padding:1px 6px;white-space:nowrap;transition:opacity .3s"
+			el.style.cssText = "position:absolute;left:0;top:0;background:#fff;border:1px solid #111;border-radius:4px;padding:1px 6px;white-space:nowrap;transition:opacity .3s;pointer-events:auto;cursor:pointer"
+			// A label opens its cable's facts card (the board hover and click stay on the canvas).
+			el.dataset.cable = c.id
+			el.addEventListener("pointerenter", () => opts.onHoverCable?.(c.id))
+			el.addEventListener("pointerleave", () => opts.onHoverCable?.(null))
+			el.addEventListener("click", () => opts.onPickCable?.(c.id))
 			overlay.append(el)
 			return { mesh: upload(r.mesh), mid: r.mid, el }
 		})
