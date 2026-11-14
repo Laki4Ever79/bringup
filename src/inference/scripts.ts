@@ -478,7 +478,9 @@ export function mockScripts(): Record<string, Script> {
 				}
 				const target = step === 0 && ((kinds.has("space-slack") && o && !sizeReasonHolds(state().contract.snapshot(), o.sizeReason)) || (kinds.has("space-room") && o)) ? compactOutline(state().contract.snapshot()) : null
 				if (target && o && ((o.widthMm * o.heightMm) / (target.widthMm * target.heightMm) - 1 > SLACK_LIMIT || kinds.has("space-room"))) {
-					shrinkFrom = { widthMm: o.widthMm, heightMm: o.heightMm }
+					// The outline the connectors were placed on: a second shrink before they moved (43×28, then 44×28 on the
+					// rover) keeps the first, or they scale from the wrong size (JT1 at top@43 of a 44 mm edge, 14 Nov 2026).
+					shrinkFrom ??= { widthMm: o.widthMm, heightMm: o.heightMm }
 					const { sizeReason: _limit, ...rest } = o
 					return propose("outline", { ...rest, widthMm: target.widthMm, heightMm: target.heightMm }, `compact by default: the parts place on ${target.widthMm}×${target.heightMm} mm, and nothing asks for more${o.sizeReason ? ` (the brief's size is a limit the board now fits within)` : ""}`)
 				}
