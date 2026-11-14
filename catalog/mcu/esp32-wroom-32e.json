@@ -1,0 +1,534 @@
+{
+	"id": "esp32-wroom-32e",
+	"vendor": "espressif",
+	"family": "ESP32",
+	"mpn": "ESP32-WROOM-32E",
+	"lcsc": "C701341",
+	"kind": "module",
+	"package": {
+		"name": "ESP32-WROOM-32E (38 castellated pads + ground pad)",
+		"footprint": "esp32_wroom_32e",
+		"bodyMm": {
+			"w": 18,
+			"h": 25.5
+		},
+		"extentMm": {
+			"w": 18,
+			"h": 25.5
+		}
+	},
+	"board": {
+		"supported": false,
+		"reason": "the module's land pattern isn't entered (only the ESP32-C3-MINI-1's is), and with no native USB it needs a USB-UART bridge (CP2102N/CH340) with the EN/GPIO0 auto-reset transistors to flash over USB-C; Bringup's ESP32 firmware template is the C3's (USB Serial/JTAG console, hand-written esp32c3 envs). Pins, chip choice and motion firmware work"
+	},
+	"core": "2× Xtensa LX6 (ESP32-D0WD-V3)",
+	"mhz": 240,
+	"flashKb": 4096,
+	"ramKb": 520,
+	"voltage": {
+		"min": 3.0,
+		"max": 3.6
+	},
+	"pins": [
+		{
+			"name": "GPIO0",
+			"index": 0,
+			"pads": [
+				"25"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true,
+			"reserved": "strap"
+		},
+		{
+			"name": "GPIO1",
+			"index": 1,
+			"pads": [
+				"35"
+			],
+			"signals": [
+				"*"
+			],
+			"reserved": "console"
+		},
+		{
+			"name": "GPIO2",
+			"index": 2,
+			"pads": [
+				"24"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true,
+			"reserved": "strap"
+		},
+		{
+			"name": "GPIO3",
+			"index": 3,
+			"pads": [
+				"34"
+			],
+			"signals": [
+				"*"
+			],
+			"reserved": "console"
+		},
+		{
+			"name": "GPIO4",
+			"index": 4,
+			"pads": [
+				"26"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO5",
+			"index": 5,
+			"pads": [
+				"29"
+			],
+			"signals": [
+				"*"
+			],
+			"reserved": "strap"
+		},
+		{
+			"name": "GPIO6",
+			"index": 6,
+			"pads": [],
+			"signals": [
+				"*"
+			],
+			"reserved": "flash"
+		},
+		{
+			"name": "GPIO7",
+			"index": 7,
+			"pads": [],
+			"signals": [
+				"*"
+			],
+			"reserved": "flash"
+		},
+		{
+			"name": "GPIO8",
+			"index": 8,
+			"pads": [],
+			"signals": [
+				"*"
+			],
+			"reserved": "flash"
+		},
+		{
+			"name": "GPIO9",
+			"index": 9,
+			"pads": [],
+			"signals": [
+				"*"
+			],
+			"reserved": "flash"
+		},
+		{
+			"name": "GPIO10",
+			"index": 10,
+			"pads": [],
+			"signals": [
+				"*"
+			],
+			"reserved": "flash"
+		},
+		{
+			"name": "GPIO11",
+			"index": 11,
+			"pads": [],
+			"signals": [
+				"*"
+			],
+			"reserved": "flash"
+		},
+		{
+			"name": "GPIO12",
+			"index": 12,
+			"pads": [
+				"14"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true,
+			"reserved": "strap"
+		},
+		{
+			"name": "GPIO13",
+			"index": 13,
+			"pads": [
+				"16"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO14",
+			"index": 14,
+			"pads": [
+				"13"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO15",
+			"index": 15,
+			"pads": [
+				"23"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true,
+			"reserved": "strap"
+		},
+		{
+			"name": "GPIO16",
+			"index": 16,
+			"pads": [
+				"27"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO17",
+			"index": 17,
+			"pads": [
+				"28"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO18",
+			"index": 18,
+			"pads": [
+				"30"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO19",
+			"index": 19,
+			"pads": [
+				"31"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO21",
+			"index": 21,
+			"pads": [
+				"33"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO22",
+			"index": 22,
+			"pads": [
+				"36"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO23",
+			"index": 23,
+			"pads": [
+				"37"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO25",
+			"index": 25,
+			"pads": [
+				"10"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO26",
+			"index": 26,
+			"pads": [
+				"11"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO27",
+			"index": 27,
+			"pads": [
+				"12"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO32",
+			"index": 32,
+			"pads": [
+				"8"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH4"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO33",
+			"index": 33,
+			"pads": [
+				"9"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH5"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO34",
+			"index": 34,
+			"pads": [
+				"6"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH6"
+			],
+			"wake": true,
+			"inputOnly": true
+		},
+		{
+			"name": "GPIO35",
+			"index": 35,
+			"pads": [
+				"7"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH7"
+			],
+			"wake": true,
+			"inputOnly": true
+		},
+		{
+			"name": "GPIO36",
+			"index": 36,
+			"pads": [
+				"4"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH0"
+			],
+			"wake": true,
+			"inputOnly": true
+		},
+		{
+			"name": "GPIO39",
+			"index": 39,
+			"pads": [
+				"5"
+			],
+			"signals": [
+				"*",
+				"ADC1_CH3"
+			],
+			"wake": true,
+			"inputOnly": true
+		}
+	],
+	"power": [
+		{
+			"name": "GND",
+			"net": "ground",
+			"pads": [
+				"1",
+				"15",
+				"38",
+				"39"
+			]
+		},
+		{
+			"name": "3V3",
+			"net": "supply",
+			"pads": [
+				"2"
+			]
+		},
+		{
+			"name": "EN",
+			"net": "reset",
+			"pads": [
+				"3"
+			]
+		},
+		{
+			"name": "NC",
+			"net": "nc",
+			"pads": [
+				"17",
+				"18",
+				"19",
+				"20",
+				"21",
+				"22",
+				"32"
+			]
+		}
+	],
+	"peripherals": {
+		"uart": [
+			"UART0",
+			"UART1",
+			"UART2"
+		],
+		"i2c": [
+			"I2C0",
+			"I2C1"
+		],
+		"spi": [
+			"SPI2",
+			"SPI3"
+		],
+		"i2s": [
+			"I2S0",
+			"I2S1"
+		],
+		"adc": [
+			"ADC1"
+		],
+		"usb": [],
+		"can": [
+			"TWAI0"
+		],
+		"radio": [
+			"WIFI_BLE"
+		]
+	},
+	"console": {
+		"instance": "UART0",
+		"tx": "GPIO1",
+		"rx": "GPIO3"
+	},
+	"programming": {
+		"method": "uart",
+		"pins": [
+			"GPIO1",
+			"GPIO3"
+		]
+	},
+	"boot": {
+		"pin": "GPIO0",
+		"level": "low"
+	},
+	"usb": null,
+	"support": [],
+	"currents": {
+		"sleepUa": 10,
+		"cpuMa": 68,
+		"radioMa": 100,
+		"bleTxMa": 130,
+		"bleRxMa": 100,
+		"wifiTxMa": 379,
+		"supplyMinMa": 500,
+		"source": "ESP32-WROOM-32E & WROOM-32UE datasheet v2.1: external supply at least 0.5 A (Table 14), Wi-Fi 802.11b TX at 19.5 dBm 379 mA peak (Table 16); ESP32 Series datasheet v5.3: Deep-sleep with RTC timer and RTC memory 10 µA, CPU at 240 MHz dual-core 30–68 mA (upper bound taken) (Table 4-2), BT/BLE TX at 0 dBm 130 mA, RX 95–100 mA (Table 5-4), 3.3 V, 25 °C"
+	},
+	"firmware": {
+		"platform": "espressif32@8.0.0",
+		"board": "esp32dev",
+		"framework": "arduino",
+		"arch": "esp32",
+		"pinStyle": "number",
+		"libs": [
+			"h2zero/NimBLE-Arduino@2.5.2"
+		],
+		"zephyrBoard": "esp32_devkitc/esp32/procpu",
+		"env": "esp32_wroom_32e"
+	},
+	"sim": {
+		"backend": null,
+		"models": [],
+		"note": "Espressif's QEMU has an esp32 machine, but Bringup's QEMU path boots the esp32c3 only and no classic-ESP32 firmware has been booted"
+	},
+	"radio": [
+		"ble",
+		"wifi"
+	],
+	"preferred": [
+		4,
+		13,
+		14,
+		16,
+		17,
+		18,
+		19,
+		21,
+		22,
+		23,
+		25,
+		26,
+		27,
+		32,
+		33
+	],
+	"motion": {
+		"firmware": [
+			"fluidnc",
+			"grblhal"
+		],
+		"fpu": true,
+		"source": "FluidNC (github.com/bdring/FluidNC, read 14 Nov 2026): 'a CNC firmware optimized for the ESP32', its platformio.ini builds board esp32dev (the classic ESP32); grblHAL Drivers README lists ESP32 (its page calls the port 'a bit unstable'); the LX6 has a single-precision FPU (ESP32 TRM)"
+	},
+	"fccId": "2AC7Z-ESP32WROOM32E",
+	"priceUsd": {
+		"qty": 100,
+		"usd": 2.71,
+		"source": "LCSC C701341 ESP32-WROOM-32E-N4 $3.76 @1, $2.71 @100, 52,600 in stock, JLCPCB Extended (jlcpcb.com parts API, 14 Nov 2026)"
+	},
+	"sources": [
+		"ESP32-WROOM-32E & WROOM-32UE datasheet v2.1, Table 3 pin definitions (38 pads; GPIO6–11 go to the module's SPI flash and are not led out, pads 17–22 NC; GPIO34–39 input only; IO16 taken by PSRAM on the -N4R2/-N8R2 variants, free on -N4), pad 39 the ground pad (§11.1, soldering it optional)",
+		"ESP32 Series datasheet v5.3: strapping pins GPIO0, GPIO2, MTDI (GPIO12: sets the flash voltage, must be low at reset on a 3.3 V-flash module), MTDO (GPIO15), GPIO5; RTC GPIOs (deep-sleep wake) 0, 2, 4, 12–15, 25–27, 32–39; ADC2 is unusable while Wi-Fi runs, so only ADC1 channels are listed",
+		"Espressif's own ESP32 boards flash over UART0 (GPIO1/GPIO3) through a USB-UART bridge, GPIO0 low at reset selects download boot"
+	]
+}
