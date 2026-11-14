@@ -74,6 +74,7 @@
 	.links-row { display: flex; gap: 8px; flex-wrap: wrap; }
 	.hidden { display: none !important; }
 	#stage-wrap { padding: 14px var(--gap) 0; max-width: 1400px; margin: 0 auto; position: relative; }
+	.mounting { position: absolute !important; visibility: hidden; left: var(--gap); right: var(--gap); top: 14px; }
 	#stage-top { position: relative; height: min(56vh, 520px); min-height: 320px; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: #fff; }
 	#view-switch { position: absolute; left: 50%; top: 24px; transform: translateX(-50%); z-index: 5; display: flex; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; background: #fff; }
 	#view-switch button { font: 12px var(--mono); border: 0; background: #fff; padding: 3px 12px; cursor: pointer; color: var(--ink); }
@@ -326,45 +327,59 @@ function subscribe(d) {
 async function startStage(d) {
 	if (stage.started) {
 		stage.meta = d
-		if (stage.world) { subscribe(d); schedule() }
+		if (activeView()) { subscribe(d); schedule() }
 		return
 	}
 	stage.started = true
 	stage.meta = d
-	let mountWorld
-	try { ({ mountWorld } = await import("/world3d.js")) } catch { return }
 	document.getElementById("stage-wrap").classList.remove("hidden")
-	try {
-		stage.world = mountWorld(document.getElementById("stage"), { onPick: (name) => window.openBoard?.(name) })
-	} catch {
-		document.getElementById("stage-wrap").classList.add("hidden")
-		return
-	}
+	// Only the view asked for is made now; the other on its first switch.
+	let ok = await ensureView(stage.view)
+	if (!ok && stage.view === "top") { stage.view = "3d"; ok = await ensureView("3d") }
+	if (!ok) { document.getElementById("stage-wrap").classList.add("hidden"); return }
+	showView(stage.view)
 	subscribe(stage.meta)
 	schedule()
-	if (stage.view === "top") await window.setView("top", { push: false })
 	const b = new URLSearchParams(location.search).get("board")
-	if (b) (stage.view === "top" && stage.top ? stage.top.ready : stage.world.ready).then(() => window.openBoard(b, { push: false }))
+	if (b) activeView().ready.then(() => window.openBoard(b, { push: false }))
 }
-// ── 3D · Top: one switch over the same data. Only the visible view draws; Top is made on its first switch and kept.
-const activeView = () => (stage.view === "top" && stage.top ? stage.top : stage.world)
+// ── 3D · Top: one switch over the same data. Only the visible view is made, fed and drawn; the other is made on its
+// first switch and kept, hidden, and fed again from the latest data when it is shown.
+const activeView = () => (stage.view === "top" ? stage.top : stage.world)
 const designUrl = (board) => {
 	const q = new URLSearchParams({ id })
 	if (board) q.set("board", board)
 	if (stage.view === "top") q.set("view", "top")
 	return `?${q}`
 }
-window.setView = async (view, { push = false } = {}) => {
-	view = view === "top" ? "top" : "3d"
-	// Show its box first: a view mounted in a hidden box would measure zero.
-	document.getElementById("stage-top").classList.toggle("hidden", view !== "top")
-	if (view === "top" && !stage.top && !stage.topFailed) {
-		try {
+// Make a view in its own box, measured but not seen (.mounting), so the box on screen stays until the new one is ready.
+async function ensureView(view) {
+	const box = document.getElementById(view === "top" ? "stage-top" : "stage")
+	if (view === "top" ? stage.top : stage.world) return true
+	if (view === "top" && stage.topFailed) return false
+	const onScreen = !box.classList.contains("hidden")
+	if (!onScreen) box.classList.add("mounting")
+	box.classList.remove("hidden")
+	try {
+		if (view === "top") {
 			const { mountTop } = await import("/top2d.js")
-			stage.top = mountTop(document.getElementById("stage-top"), { onPick: (name, kind) => { if (kind === "board") window.openBoard?.(name) } })
-		} catch { stage.topFailed = true }
+			stage.top = mountTop(box, { onPick: (name, kind) => { if (kind === "board") window.openBoard?.(name) } })
+			await stage.top.ready
+		} else {
+			// (the 3D world is ready only after its first frame, which needs data: not awaited)
+			const { mountWorld } = await import("/world3d.js")
+			stage.world = mountWorld(box, { onPick: (name) => window.openBoard?.(name) })
+		}
+		return true
+	} catch {
+		if (view === "top") stage.topFailed = true
+		return false
+	} finally {
+		box.classList.remove("mounting")
+		if (!onScreen) box.classList.add("hidden")
 	}
-	if (view === "top" && !stage.top) view = "3d"
+}
+function showView(view) {
 	stage.view = view
 	document.getElementById("stage").classList.toggle("hidden", view === "top")
 	document.getElementById("stage-top").classList.toggle("hidden", view !== "top")
@@ -373,8 +388,17 @@ window.setView = async (view, { push = false } = {}) => {
 	if (view === "top") u.searchParams.set("view", "top")
 	else u.searchParams.delete("view")
 	history.replaceState(history.state, "", u)
-	schedule()
-	if (stage.top && view === "top") await stage.top.ready
+}
+// Ignored while a board is opening, open or closing: the flight belongs to the view that began it.
+window.setView = async (view) => {
+	view = view === "top" ? "top" : "3d"
+	if (openName || stage.busy || view === stage.view) return
+	stage.busy = true
+	try {
+		if (!(await ensureView(view))) return
+		showView(view)
+		schedule()
+	} finally { stage.busy = false }
 }
 document.getElementById("view-switch").addEventListener("click", (e) => {
 	const b = e.target.closest?.("[data-view]")
@@ -402,7 +426,7 @@ function fileOnce(runId, paths, as) {
 	return stage.files.get(key)
 }
 async function redraw() {
-	if (!stage.world || !stage.meta) return
+	if (!activeView() || !stage.meta) return
 	const { assemblyAt, timeSpan } = await import("/assembly.js")
 	const span = timeSpan(stage.traces)
 	const v = Number(document.getElementById("scrub").value)
@@ -427,9 +451,9 @@ async function redraw() {
 	})
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
 	// The world places a robot's other boards from the assembly (world3d setWorld); no assembly positions, no change.
-	stage.world.setWorld({ boards, cables, assembly: stage.meta.assembly })
+	if (stage.view === "3d") stage.world.setWorld({ boards, cables, assembly: stage.meta.assembly })
 	// The same data feeds the Top view once it exists: circuits and the chassis spec come from the files fetched above.
-	if (stage.top) {
+	if (stage.view === "top") {
 		const chassis = boards.find((b) => b.chassisSpec)?.chassisSpec ?? null
 		stage.top.setWorld({
 			boards: boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, outline: b.outline, circuit: b.circuit ?? null, connectors: m?.connectors, status: m?.status } }),
@@ -438,7 +462,7 @@ async function redraw() {
 			chassis,
 		})
 	}
-	for (const [name, a] of Object.entries(asm)) {
+	for (const [name, a] of stage.view === "3d" ? Object.entries(asm) : []) {
 		const caption = a.pulses[0]?.caption ?? null
 		if (caption && stage.shownPulse[name] !== caption) stage.world.pulse({ board: name }, caption)
 		stage.shownPulse[name] = caption
@@ -470,6 +494,7 @@ function frameFor(name) {
 	return frames.get(name)
 }
 let openName = null
+let openView = null
 window.openBoard = async (name, { push = true } = {}) => {
 	if (!stage.runs[name]) return
 	// No 3D stage (no WebGL): the board's own page.
@@ -477,8 +502,8 @@ window.openBoard = async (name, { push = true } = {}) => {
 	openName = name
 	renderNav()
 	if (push) history.pushState({ board: name }, "", designUrl(name))
-	await stage.top?.ready
-	await activeView().focus(name, { ms: 500 })
+	openView = activeView()
+	await openView.focus(name, { ms: 500 })
 	if (openName !== name) return
 	const view = document.getElementById("board-view")
 	// The board page fills the window under the shared bar, whose levels say which board this is (and switch to the
@@ -509,14 +534,16 @@ async function closeBoard({ push = true } = {}) {
 	document.documentElement.style.overflow = ""
 	// Once faded, the board page is closed outright: hidden, it kept its timers and event stream running on this
 	// thread and caused 33–50 ms hitches in later flies (npm run perf). Opening it again reloads it behind the panel.
-	await activeView()?.focus(null, { ms: 500 })
+	stage.busy = true
+	try { await openView?.focus(null, { ms: 500 }) } finally { stage.busy = false }
+	openView = null
 	// After the fly: tearing a page down takes the thread for a moment.
 	if (!openName) { for (const x of frames.values()) x.f.remove(); frames.clear() }
 }
 // A board card's "Open board →" flies in too, when the 3D stage is up (a new tab or a middle click still opens the page).
 main.addEventListener("click", (e) => {
 	const a = e.target.closest?.("[data-open]")
-	if (!a || !stage.world || e.button !== 0 || e.metaKey || e.ctrlKey) return
+	if (!a || !activeView() || e.button !== 0 || e.metaKey || e.ctrlKey) return
 	e.preventDefault()
 	scrollTo({ top: 0, behavior: "smooth" })
 	window.openBoard(a.dataset.open)
@@ -524,8 +551,10 @@ main.addEventListener("click", (e) => {
 document.getElementById("back-system").addEventListener("click", () => closeBoard())
 addEventListener("keydown", (e) => { if (e.key === "Escape") closeBoard() })
 addEventListener("message", (e) => { if (e.origin === location.origin && e.data?.type === "bringup-close") closeBoard() })
-addEventListener("popstate", () => {
-	const b = new URLSearchParams(location.search).get("board")
+addEventListener("popstate", async () => {
+	const q = new URLSearchParams(location.search)
+	const b = q.get("board")
+	await window.setView(q.get("view") === "top" ? "top" : "3d")
 	if (b) window.openBoard(b, { push: false })
 	else closeBoard({ push: false })
 })

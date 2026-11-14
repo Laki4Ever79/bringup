@@ -4,7 +4,7 @@
 // otherwise, with the reason.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync, readdirSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { chromium, type Page } from "playwright"
@@ -28,7 +28,7 @@ async function withPage(fn: (page: Page) => Promise<void>, system = SYSTEM, quer
 	try {
 		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 		await page.goto(`${hub.url}/system?id=${system}${query}`)
-		await page.waitForFunction(() => Boolean((window as unknown as { openBoard?: unknown }).openBoard) && document.querySelector("#stage canvas"), null, { timeout: 30_000 })
+		await page.waitForFunction(() => Boolean((window as unknown as { openBoard?: unknown }).openBoard) && document.querySelector("#stage canvas, #stage-top svg"), null, { timeout: 30_000 })
 		await fn(page)
 	} finally {
 		await browser.close()
@@ -217,11 +217,14 @@ test("at phone width the boards-and-cables drawing stays readable and scrolls in
 })
 
 // ── 3D · Top: the same design page with a switch; the Top view zooms onto a board and opens its page in place ──
+const SECOND: string = ROBOT ? JSON.parse(readFileSync(join(ROOT, "out", "robot-2", "system.json"), "utf8")).boards[1].name : ""
 const skipRobot = !ROBOT ? "no recorded out/robot-2" : !exe ? "no Playwright Chromium" : false
 const skipSingle = !SINGLE ? "no recorded out/rover-fresh" : !exe ? "no Playwright Chromium" : false
 const topUp = (page: Page) => page.waitForFunction(() => document.querySelector("#stage-top svg [data-board]"), null, { timeout: 30_000 })
 const boardBox = async (page: Page, name: string) => {
-	const box = await page.locator(`#stage-top [data-board="${name}"] [data-outline]`).boundingBox()
+	const loc = page.locator(`#stage-top [data-board="${name}"] [data-outline]`)
+	await loc.waitFor({ state: "visible", timeout: 10_000 })
+	const box = await loc.boundingBox()
 	assert.ok(box, `board ${name} drawn in Top`)
 	return box
 }
@@ -290,11 +293,11 @@ test("a board deep link opens in Top view too", { skip: skipRobot, timeout: 120_
 	await withPage(async (page) => {
 		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 30_000 })
 		assert.equal(await visible(page, "#stage-top"), true)
-		assert.equal(await page.evaluate(() => document.querySelector("#site-nav .nv-levels [aria-current]")?.textContent), "climate")
+		assert.equal(await page.evaluate(() => document.querySelector("#site-nav .nv-levels [aria-current]")?.textContent), SECOND)
 		await page.keyboard.press("Escape")
 		await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"))
 		assert.equal(new URL(page.url()).searchParams.get("view"), "top")
-	}, ROBOT, "&view=top&board=climate")
+	}, ROBOT, `&view=top&board=${SECOND}`)
 })
 
 test("a single-board design has the switch and opens its board from Top", { skip: skipSingle, timeout: 120_000 }, async () => {
@@ -316,4 +319,58 @@ test("the timeline drives the Top view: scrubbing to the start shows boards as u
 		await page.evaluate(() => { const r = document.getElementById("scrub") as HTMLInputElement; r.value = "0"; r.dispatchEvent(new Event("input")) })
 		await page.waitForFunction(() => !document.querySelector("#stage-top [data-part]") && document.querySelector("#stage-top [data-board]"), null, { timeout: 15_000 })
 	}, ROBOT)
+})
+
+test("under view=top there is no 3D canvas until 3D is chosen, and a board opens with only Top", { skip: skipRobot, timeout: 120_000 }, async () => {
+	const hub = await serveHub({ outRoot: join(ROOT, "out"), port: 0 })
+	const browser = await chromium.launch({ executablePath: exe!, headless: true })
+	try {
+		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+		await page.goto(`${hub.url}/system?id=${ROBOT}&view=top`)
+		await topUp(page)
+		assert.equal(await page.evaluate(() => document.querySelectorAll("#stage canvas").length), 0, "no WebGL canvas yet")
+		const name = await page.evaluate(() => (document.querySelector("#stage-top [data-board]") as HTMLElement).dataset.board!)
+		await clickBoard(page, name)
+		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 15_000 })
+		await page.keyboard.press("Escape")
+		await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"))
+		assert.equal(await page.evaluate(() => document.querySelectorAll("#stage canvas").length), 0)
+		await page.waitForTimeout(800) // the zoom out finishes; the switch is ignored until then
+		await page.click('#view-switch [data-view="3d"]')
+		await page.waitForSelector("#stage canvas", { state: "attached", timeout: 30_000 })
+		assert.equal(await visible(page, "#stage-top"), false)
+		assert.equal(await visible(page, "#stage"), true)
+	} finally {
+		await browser.close()
+		await hub.close()
+	}
+})
+
+test("the switch is ignored while a board opens, and open then close stay consistent; no file is fetched twice", { skip: skipRobot, timeout: 120_000 }, async () => {
+	const hub = await serveHub({ outRoot: join(ROOT, "out"), port: 0 })
+	const browser = await chromium.launch({ executablePath: exe!, headless: true })
+	try {
+		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+		const seen: string[] = []
+		page.on("request", (r) => { if (r.frame() === page.mainFrame() && r.url().includes("circuit.json")) seen.push(r.url()) })
+		await page.goto(`${hub.url}/system?id=${ROBOT}`)
+		await page.waitForSelector("#stage canvas", { timeout: 30_000 })
+		await page.click('#view-switch [data-view="top"]')
+		await topUp(page)
+		const name = await page.evaluate(() => (document.querySelector("#stage-top [data-board]") as HTMLElement).dataset.board!)
+		const vb = () => page.evaluate(() => document.querySelector("#stage-top svg")!.getAttribute("viewBox"))
+		const home = await vb()
+		await clickBoard(page, name)
+		await page.click('#view-switch [data-view="3d"]', { force: true }).catch(() => {})
+		await page.evaluate(() => (window as any).setView("3d"))
+		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 15_000 })
+		assert.equal(await visible(page, "#stage-top"), true, "still in Top")
+		await page.keyboard.press("Escape")
+		await page.waitForFunction((h) => document.querySelector("#stage-top svg")!.getAttribute("viewBox") === h, home, { timeout: 10_000 })
+		assert.equal(new URL(page.url()).searchParams.get("view"), "top")
+		assert.equal(new Set(seen).size, seen.length, `circuit.json fetched twice: ${seen.join(" ")}`)
+	} finally {
+		await browser.close()
+		await hub.close()
+	}
 })
