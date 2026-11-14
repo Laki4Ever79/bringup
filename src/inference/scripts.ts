@@ -10,6 +10,7 @@ import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT, sizeReasonHolds } from ".
 import { state } from "../runtime.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { parseSwap } from "../tools/sourcing.ts"
+import { parseMoves } from "../dashboard/board-move.ts"
 import { resolve } from "node:path"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
@@ -413,7 +414,14 @@ export function mockScripts(): Record<string, Script> {
 	// The engineer's swaps in this run (ref → the catalog part that took its place), kept so a later wake-up of the
 	// scripted parts agent doesn't put the old part back.
 	const swapped = new Map<string, NonNullable<ContractValues["parts"]>[number]>()
-	const withSwaps = <T extends { ref: string }>(list: T[]): T[] => list.map((p) => (swapped.get(p.ref) as T | undefined) ?? p)
+	// Parts the engineer placed on the board page (parts[].at): kept on every later wake, like a swap.
+	const pinned = new Map<string, { xMm: number; yMm: number }>()
+	const withSwaps = <T extends { ref: string }>(list: T[]): T[] =>
+		list.map((p) => {
+			const q = (swapped.get(p.ref) as T | undefined) ?? p
+			const at = pinned.get(p.ref)
+			return at ? { ...q, at } : q
+		})
 	return {
 		"mock-architect": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
@@ -491,7 +499,8 @@ export function mockScripts(): Record<string, Script> {
 				// A saved board.kicad_pcb: "edited board.kicad_pcb: outline 50×30 → 45×30 mm; J1 left@15 → left@12 mm".
 				const resized = /outline [\d.]+×[\d.]+ → ([\d.]+)×([\d.]+) mm/.exec(instruction)
 				const shifts = [...instruction.matchAll(/(\w+) (left|right|top|bottom)@[\d.]+ → (left|right|top|bottom)@([\d.]+) mm/g)]
-				if (instruction.includes("edited board.kicad_pcb:") && (resized || shifts.length > 0)) {
+				// The board page's moves (dashboard/board-move.ts) name connectors the same way: "J1 left@15 → left@10 mm".
+				if ((instruction.includes("edited board.kicad_pcb:") || instruction.includes("placed on the board page")) && (resized || shifts.length > 0)) {
 					const outlineNow = state().contract.get("outline")
 					const connectorsNow = state().contract.get("connectors") ?? []
 					if (resized && outlineNow && (outlineNow.widthMm !== Number(resized[1]) || outlineNow.heightMm !== Number(resized[2])))
@@ -583,6 +592,16 @@ export function mockScripts(): Record<string, Script> {
 				const same = JSON.stringify(state().contract.get("parts")) === JSON.stringify(value)
 				return stepsTaken(items) === 0 && !same ? propose("parts", value, value.some((p) => p.role === "sensor") ? "the SHT40 temperature/humidity sensor and its I2C pull-ups" : "parts from the catalog") : say("parts chosen")
 			}
+			// "placed on the board page (…): U2 (25, 27) → (30, 6) mm; J1 left@15 → left@10 mm": the parts take their spots
+			// (parts[].at); the connectors are the architect's.
+			const placed = instruction.startsWith("Change request from the engineer:") ? parseMoves(instruction.split("\n")[1] ?? "").filter((m): m is { ref: string; xMm: number; yMm: number } => "xMm" in m) : []
+			if (placed.length > 0) {
+				if (stepsTaken(items) > 0) return say("parts placed")
+				const parts = state().contract.get("parts") ?? []
+				for (const m of placed) if (parts.some((p) => p.ref === m.ref)) pinned.set(m.ref, { xMm: m.xMm, yMm: m.yMm })
+				const value = withSwaps(parts)
+				return JSON.stringify(value) === JSON.stringify(parts) ? say("already there") : propose("parts", value, `engineer placed ${placed.map((m) => m.ref).join(", ")} on the board page`)
+			}
 			// "swap U2 SHT40-AD1B-R2 for the SHTC3-TR-2.5KS (C194656) from the catalog" (the board page's part card, a
 			// stock-out suggestion): the catalog part takes the ref's place, same role only, with who asked as its reason.
 			const swap = instruction.startsWith("Change request from the engineer:") ? parseSwap(instruction.split("\n")[1] ?? "") : null
@@ -590,7 +609,7 @@ export function mockScripts(): Record<string, Script> {
 				const parts = state().contract.get("parts") ?? []
 				const old = parts.find((p) => p.ref === swap.ref)
 				const to = old && CATALOG.find((c) => c.role === old.role && c.mpn.toUpperCase() === swap.mpn.toUpperCase())
-				if (stepsTaken(items) > 0 || !old || !to) return say(to ? "part swapped" : "no such swap in the catalog")
+				if (stepsTaken(items) > 0 || !old || !to) return say(to ? "part swapped" : "not in the catalog")
 				if (old.mpn === to.mpn) return say("already that part")
 				const part = { ref: old.ref, role: old.role, mpn: to.mpn, lcsc: to.lcsc, footprint: to.footprint, pins: [...to.pins], reason: `The engineer swapped it in for the ${old.mpn}, from the catalog, in a change request.` }
 				swapped.set(old.ref, part)

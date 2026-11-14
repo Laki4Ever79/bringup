@@ -12,6 +12,7 @@ import { swapEffects, swapRequest } from "../tools/sourcing.ts"
 import { bringupPads, debugPort, layoutBoard, recoveryPads, TC2030, TEST_PAD, testPoints } from "../codegen/circuit.ts"
 import { partReasons, type PartReason } from "../contract/reasons.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
+import { movables, type Movable } from "./board-move.ts"
 
 export interface BoardView {
 	revision: number
@@ -30,6 +31,9 @@ export interface BoardView {
 	changed: { added: string[]; removed: string[]; changed: string[]; swapped: string[] }
 	// What each chosen part could be swapped for (swapOptions); a part with no option isn't listed.
 	swaps: Record<string, SwapOption[]>
+	// What the engineer can move on the page and where it is now (board-move.ts), and for the rest, why not.
+	movable: Record<string, Movable>
+	fixed: Record<string, string>
 	summary: string
 }
 
@@ -151,10 +155,15 @@ function routedOf(dir: string, rev: number, latest: boolean): string | null {
 	return tries.find((t) => existsSync(join(dir, t))) ?? null
 }
 
-export async function boardView(dir: string, wanted: number | null): Promise<BoardView | null> {
+// The contract of a revision (the newest when not given or not there), else the run's contract.json.
+export async function revisionSnapshot(dir: string, wanted: number | null): Promise<{ s: ContractSnapshot | null; revision: number | null; revisions: number[] }> {
 	const revisions = await revisionsOf(dir)
 	const revision = wanted !== null && revisions.includes(wanted) ? wanted : (revisions.at(-1) ?? null)
-	const s = await snapshot(dir, revision) ?? (await snapshot(dir, null))
+	return { s: (await snapshot(dir, revision)) ?? (await snapshot(dir, null)), revision, revisions }
+}
+
+export async function boardView(dir: string, wanted: number | null): Promise<BoardView | null> {
+	const { s, revision, revisions } = await revisionSnapshot(dir, wanted)
 	if (!s) return null
 	const prevRev = revision === null ? null : [...revisions].reverse().find((r) => r < revision) ?? null
 	const prev = prevRev === null ? null : await snapshot(dir, prevRev)
@@ -167,8 +176,10 @@ export async function boardView(dir: string, wanted: number | null): Promise<Boa
 	let preview: unknown[] = []
 	let reasons: PartReason[] = []
 	let swaps: Record<string, SwapOption[]> = {}
+	let moves: ReturnType<typeof movables> = { movable: {}, fixed: {} }
 	try {
 		swaps = swapOptions(s, bom)
+		moves = movables(s)
 		preview = previewCircuit(s)
 		reasons = partReasons(s, brief)
 	} catch {
@@ -185,6 +196,7 @@ export async function boardView(dir: string, wanted: number | null): Promise<Boa
 		reasons,
 		changed: changedRefs(prev, s),
 		swaps,
+		...moves,
 		summary: s.values.requirements?.summary ?? (brief.split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "").replace(/^Brief:\s*/i, ""),
 	}
 }

@@ -69,6 +69,16 @@ export function placesAll(s: ContractSnapshot, w: number, h: number): boolean {
 	}
 }
 
+// The parts the engineer placed (Part.at) that don't fit where they were put, with what is in the way.
+export function blockedPins(s: ContractSnapshot): { ref: string; why: string }[] {
+	if (!s.values.outline || !s.values.parts?.some((p) => p.at)) return []
+	try {
+		return layoutBoard(s).blocked
+	} catch {
+		return []
+	}
+}
+
 // The parts that find no spot on the board as it is now.
 export function unplacedParts(s: ContractSnapshot): string[] {
 	if (!s.values.outline) return []
@@ -170,16 +180,23 @@ export function sizeReasonHolds(s: ContractSnapshot, r: SizeReason | undefined):
 	return size ? size.exact : !LIMIT_WORDS.test(r.detail)
 }
 
-export function spaceChecks(s: ContractSnapshot): SpaceViolation[] {
+// quick (the board page, a check per move): only whether everything still has a spot. The smallest-board search, a
+// hundred layouts, is skipped: a move doesn't change what the board carries, and a part placed by hand only raises
+// the smallest board, which never makes it too big.
+export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {}): SpaceViolation[] {
 	const v: SpaceViolation[] = []
 	if (!complete(s)) return v
 	const o = s.values.outline
-	const min = o ? minimumBoard(s) : null
+	const min = o && !opts.quick ? minimumBoard(s) : null
 	// Too small for what it carries: a part with no spot, or a pad the board must have. Caught here, in plain code, not
 	// only when a board build fails (a --no-hardware run never builds one).
 	if (o && !placesAll(s, o.widthMm, o.heightMm)) {
-		const parts = unplacedParts(s)
+		// A part the engineer placed where it doesn't fit is part-pinned-blocked's, for the parts owner: a bigger board
+		// is not the answer to a part placed on top of another.
+		const blocked = new Set(blockedPins(s).map((b) => b.ref))
+		const parts = unplacedParts(s).filter((r) => !blocked.has(r))
 		const pads = [...recoveryPads(s).unplaced.map((n) => `recovery pad ${n}`), ...testPoints(s).unplaced.map((n) => `test pad ${n}`)]
+		if (blocked.size > 0 && parts.length === 0 && pads.length === 0) return v
 		v.push({
 			kind: "space-room",
 			message: `the ${o.widthMm}×${o.heightMm} mm board has no spot for ${[...parts, ...pads].join(", ") || "everything it carries"}${min ? `: the smallest board that holds everything is ${min.areaMm2} mm², e.g. ${min.widthMm}×${min.heightMm} mm` : ""}; make it that size, or move what crowds it`,
@@ -188,6 +205,7 @@ export function spaceChecks(s: ContractSnapshot): SpaceViolation[] {
 		})
 		return v
 	}
+	if (opts.quick) return v
 	if (o && min) {
 		const slack = (o.widthMm * o.heightMm) / min.areaMm2 - 1
 		const limit = !sizeReasonHolds(s, o.sizeReason) && o.sizeReason?.kind === "engineer-size"

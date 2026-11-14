@@ -118,6 +118,11 @@ export interface Part {
 	// Why this part is in the design, one line, recorded by whoever chose it when it was chosen (the architect or the
 	// parts agent), citing the brief or the need it serves. The part card shows it (src/contract/reasons.ts).
 	reason?: string
+	// Where the engineer put it on the board page (engineer, 13-14 Nov 2026: "move a part", code checks per move): its
+	// centre, in mm from the board's bottom-left corner, top view. The layout places it exactly there before anything
+	// else and never moves it; one that doesn't fit there is a violation (part-pinned-blocked), not a quiet re-place.
+	// Absent: the layout chooses (the default).
+	at?: { xMm: number; yMm: number }
 }
 
 export interface PinAssignment {

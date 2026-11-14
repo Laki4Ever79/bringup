@@ -278,6 +278,8 @@ export const PROBLEM = {
 	"part-unconnected": "a part is connected to nothing",
 	"rail-underrated": "a rail is sized below the chip's current",
 	"battery-short": "the battery won't last the target",
+	"part-pinned-blocked": "a part placed on the board page doesn't fit there",
+	"link-edge": "a cable connector is off the edge the system runs its cable from",
 }
 const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", "build:testkit": "test kit", test: "test engineer", enclosure: "case designer", connectivity: "connectivity engineer", mechanics: "mechanics engineer", ml: "ML engineer", grounding: "datasheet check", consistency: "consistency check" }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)

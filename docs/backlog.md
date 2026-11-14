@@ -129,6 +129,17 @@ is a change to the firmware toolchain, not just the code.
       same path as a typed request (the owners decide, the checks run), and the board follows live. Only for a run
       that is up; a stopped run shows the request to send. Not offered for the MCU (a change in words) or resistors and
       capacitors (their value comes from a datasheet or rule). The list tags a new part number "swapped", not "moved".
-- [ ] **Board page, step 3 (move a part):** code checks per move, AI only at the end of editing.
+- [x] **Board page, step 3 (move a part):** done 14 Nov. Drag the chosen part on the board, type its centre, nudge
+      it, or put a connector on any edge with a slider. Each move is checked in plain code on the server (the run's own
+      consistency checks in a quick mode without the smallest-board search, about 0.1 s): a move that doesn't fit is
+      refused with what is in the way and never joins the draft. The draft lists each move with how far it reaches
+      (board / case / system) and what follows it (case opening, vent, a support part's longer trace, the parts the
+      layout moves around it), and is sent as one change request; the agents write it and the run's checks and review
+      see it once. A placed part is Part.at (its centre, mm from the bottom-left corner): the layout puts it exactly
+      there first and never moves it; one that no longer fits is part-pinned-blocked (to parts), not a bigger board,
+      and the board can't be compacted past it. Robot direction: a cable connector off the edge the system runs its
+      cable from is link-edge (a system change, refused on the page). Not done: rotating a part; moving the radio
+      module (it follows the USB-C edge) or the generated passives and underside pads (they follow their parts);
+      undo of a sent batch (send the opposite moves); a routed tscircuit build with placed parts not yet run.
 - [ ] **Bulk capacitance for Wi-Fi bursts:** the board has 10 µF on the 3V3 rail. Check against the rail droop measured
       above before adding more.

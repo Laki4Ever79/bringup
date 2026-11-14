@@ -11,7 +11,7 @@ import { modelChecks, type ModelViolation } from "./model.ts"
 import { fixtureChecks, testChecks, type TestViolation } from "./testkit.ts"
 import { builtFeatureChecks, caseChecks, MIN_WALL_MM, SLOT_MARGIN_MM, type BuiltFeature, type CaseViolation } from "./case.ts"
 import type { CaseFeature } from "./types.ts"
-import { spaceChecks, type SpaceViolation } from "./space.ts"
+import { blockedPins, spaceChecks, type SpaceViolation } from "./space.ts"
 import { connectivityChecks, radioPeakMa, type ConnectivityViolation } from "./connectivity.ts"
 import type { TestPoint } from "../codegen/circuit.ts"
 import { mcuPinName } from "../mcu/pins.ts"
@@ -131,6 +131,7 @@ export type ViolationKind =
 	| "download-pin-low"
 	| "led-pin"
 	| "rail-underrated"
+	| "part-pinned-blocked"
 	| ModelViolation["kind"]
 	| TestViolation["kind"]
 	| CaseViolation["kind"]
@@ -160,13 +161,14 @@ const MOUNTING_PAIR_MM = 5
 // Plain-code check of every artifact against the contract. Each rule runs only when its inputs exist,
 // so a half-built design reports what is wrong so far rather than what is missing.
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
-export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = ""): Violation[] {
+// quick: the board page's per-move check, which leaves out the smallest-board search (spaceChecks).
+export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean } = {}): Violation[] {
 	const v: Violation[] = []
 	// A failed firmware-in-the-loop drive (docs/mechanics.md): the mechanics or the firmware must change. "not run"
 	// (no QEMU, a stubbed run) wakes nobody: the report says "not proven in simulation".
 	if (a.drive?.result === "fail")
 		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics", "firmware"] })
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -499,6 +501,21 @@ export function connectorClashes(c: ContractSnapshot): Violation[] {
 			})
 		}
 	return out
+}
+
+// A part the engineer placed on the board page (Part.at) that doesn't fit there: the layout leaves it off rather than
+// move it, so this tells the parts owner what is in the way. Placed by the engineer, so the fix is theirs to confirm:
+// another spot, or the part in the way moved.
+export function pinnedBlocked(c: ContractSnapshot): Violation[] {
+	return blockedPins(c).map((b) => {
+		const at = c.values.parts?.find((p) => p.ref === b.ref)?.at
+		return {
+			kind: "part-pinned-blocked" as const,
+			message: `${b.ref} was placed at (${at?.xMm}, ${at?.yMm}) mm on the board page, but it doesn't fit there: ${b.why}. The layout leaves it off rather than move it: give it another spot (parts[].at) or drop the spot to let the layout choose`,
+			fields: ["parts"] as FieldName[],
+			affects: ["parts"] as AgentRole[],
+		}
+	})
 }
 
 // The module has no spot at its edge (moduleBlocked): told before any build, with what is in the way, so the architect
