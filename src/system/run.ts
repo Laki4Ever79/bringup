@@ -307,14 +307,25 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			const queue: SystemRequest[] = []
 			const watcher = watchJsonl<SystemRequest>(outDir, SYSTEM_REQUESTS, (raw) => (raw && typeof raw === "object" && ("assembly" in raw || "links" in raw) ? (raw as SystemRequest) : null), (r) => queue.push(r))
 			trace.emit({ board: "system", step: "request", status: "ok", detail: "staying up for system-level changes" })
+			// A board edited on its own (a change request on its page) settles again by itself: the system re-checks then, so
+			// the cable, the chassis placement and the link tests follow the edit, and a new outline goes to the others.
+			const settles = (name: string) => readTrace(boardDir(outDir, name)).filter((e) => e.type === "design.settled").length
+			let seen = new Map(designed.map((b) => [b.name, settles(b.name)]))
 			try {
 				while (!stopped) {
 					await new Promise((r) => setTimeout(r, o.pollMs ?? 2000))
 					followBoards()
 					const r = queue.shift()
-					if (!r) continue
-					const touched = applyRequest(r)
-					if (touched.length) await settle()
+					const resettled = designed.filter((b) => settles(b.name) > (seen.get(b.name) ?? 0)).map((b) => b.name)
+					if (r) {
+						const touched = applyRequest(r)
+						if (touched.length) await settle()
+					} else if (resettled.length) {
+						trace.round++
+						trace.emit({ board: "system", step: "request", status: "started", detail: `${resettled.join(", ")} changed on ${resettled.length > 1 ? "their" : "its"} own page: checking the system again` })
+						await settle()
+					} else continue
+					seen = new Map(designed.map((b) => [b.name, settles(b.name)]))
 				}
 			} finally {
 				watcher.close()

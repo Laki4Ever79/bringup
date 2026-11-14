@@ -104,3 +104,23 @@ test("--stay: a system-level request moves a board; every board gets the new bod
 		timers.forEach(clearInterval)
 	}
 })
+
+// A board edited on its own page settles again by itself: the system checks again (cable, chassis, links).
+test("--stay: a board that settles again after its own edit makes the system check again", async () => {
+	const out = tempDir(), timers: NodeJS.Timeout[] = []
+	let stop!: () => void
+	const until = new Promise<void>((r) => (stop = r))
+	const run = runSystem({ spec: robot(), outDir: out, mock: true, pollMs: 10, timeoutMs: 3000, start: settlingBoards(timers), stay: { until } })
+	try {
+		const sysSettles = () => readSystemTrace(out).filter((l) => l.board === "system" && l.step === "settled").length
+		await waitFor(() => sysSettles() >= 1, 3000)
+		// The board page's change request goes to the board alone (as POST /api/runs/<board>/requests does).
+		appendFileSync(join(out, "boards", "front", "requests.jsonl"), JSON.stringify({ at: new Date().toISOString(), text: "turn U5 90°" }) + "\n")
+		await waitFor(() => sysSettles() >= 2, 3000)
+		assert.ok(readSystemTrace(out).some((l) => l.board === "system" && l.step === "request" && /front changed on its own page/.test(l.detail ?? "")))
+	} finally {
+		stop()
+		await run
+		timers.forEach(clearInterval)
+	}
+})
