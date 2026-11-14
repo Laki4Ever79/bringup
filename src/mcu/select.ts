@@ -1,4 +1,4 @@
-import { loadProfiles, type McuProfile } from "./profile.ts"
+import { loadProfiles, type McuProfile, type MotionFirmware } from "./profile.ts"
 import { solvePins, type Need } from "./solver.ts"
 
 // Choosing the MCU on equal terms (docs/mcu.md, Choosing a chip): every profile is put through the same tests: can it
@@ -10,11 +10,14 @@ export interface McuRequest {
 	needs: Need[]
 	radio?: ("ble" | "wifi")[]
 	battery?: boolean
+	// The design is a CNC motion controller: the chip must run grblHAL or FluidNC upstream (profile.motion); a firmware
+	// name requires that one.
+	motion?: boolean | MotionFirmware
 }
 export interface Ranked {
 	id: string
 	mpn: string
-	fits: boolean // pins, peripherals and radio
+	fits: boolean // pins, peripherals, radio and (when asked) motion firmware
 	buildable: boolean // Bringup can generate its board today
 	score: number
 	why: string[]
@@ -40,6 +43,9 @@ export function rankMcus(req: McuRequest, profiles: McuProfile[] = loadProfiles(
 		if (!solved.ok) why.push(`pins: ${solved.reason}`)
 		else why.push(`pins: all ${req.needs.length} needs fit`)
 		if (missingRadio.length) why.push(`radio: no ${missingRadio.join("/")}`)
+		const noMotion = motionShortfall(p, req.motion)
+		if (noMotion) why.push(`motion: ${noMotion}`)
+		else if (req.motion) why.push(`motion: runs ${p.motion!.firmware.join(", ")}${p.motion!.fpu ? " (FPU)" : ""}`)
 		if (!p.board.supported) why.push(`board: ${p.board.reason ?? "not generated yet"}`)
 		let score = 100
 		if (req.battery) {
@@ -68,8 +74,16 @@ export function rankMcus(req: McuRequest, profiles: McuProfile[] = loadProfiles(
 			score -= WEIGHTS.unusedRadio
 			why.push(`radio unused: -${WEIGHTS.unusedRadio}`)
 		}
-		return { id: p.id, mpn: p.mpn, fits: solved.ok && missingRadio.length === 0, buildable: p.board.supported, score: +score.toFixed(1), why }
+		return { id: p.id, mpn: p.mpn, fits: solved.ok && missingRadio.length === 0 && !noMotion, buildable: p.board.supported, score: +score.toFixed(1), why }
 	})
 	const tier = (r: Ranked) => (r.fits && r.buildable ? 0 : r.fits ? 1 : 2)
 	return out.sort((a, b) => tier(a) - tier(b) || b.score - a.score || a.id.localeCompare(b.id))
+}
+
+// Why a chip can't be the design's motion controller, or null when it can (or none is asked for).
+function motionShortfall(p: McuProfile, want: McuRequest["motion"]): string | null {
+	if (!want) return null
+	if (!p.motion) return "no CNC motion firmware (grblHAL, FluidNC) runs on it: a helper board at most"
+	if (want !== true && !p.motion.firmware.includes(want)) return `no ${want} (runs ${p.motion.firmware.join(", ")})`
+	return null
 }
