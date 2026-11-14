@@ -211,7 +211,7 @@ function validate(raw: unknown): { plan: Omit<ProposedPlan, "sentence" | "layout
 	if (!spec.boards.length) errors.push("the plan needs at least one board")
 	if (errors.length) return { plan: null, errors }
 	const needs = validNeeds((o as { needs?: unknown }).needs, spec)
-	return { plan: { spec, briefs, why: String(o.why ?? ""), offBoard: Array.isArray(o.offBoard) ? o.offBoard : [], cantBuild: Array.isArray(o.cantBuild) ? o.cantBuild : [], optional: Array.isArray(o.optional) ? o.optional : [], ...((o as { robot?: unknown }).robot === true ? { robot: true } : {}), ...(needs.length ? { needs } : {}) }, errors: [] }
+	return { plan: { spec, briefs, why: String(o.why ?? ""), offBoard: Array.isArray(o.offBoard) ? o.offBoard : [], cantBuild: Array.isArray(o.cantBuild) ? o.cantBuild : [], optional: Array.isArray(o.optional) ? o.optional : [], ...(typeof (o as { robot?: unknown }).robot === "boolean" ? { robot: (o as { robot: boolean }).robot } : {}), ...(needs.length ? { needs } : {}) }, errors: [] }
 }
 
 export async function proposePlan(
