@@ -138,25 +138,30 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 
 	// A settled board's outline replaces the estimate; the new assembly goes to system.json and to every robot board that
 	// holds an older one (each board needs its siblings' real outlines for its chassis and mass).
-	const syncAssembly = (contracts: Record<string, ContractSnapshot | undefined>): string[] => {
-		const resent: string[] = []
-		if (!assembly) return resent
+	// With `send` false (the rounds are used up) it only merges and writes system.json, and names the boards left stale.
+	const syncAssembly = (contracts: Record<string, ContractSnapshot | undefined>, send: boolean): string[] => {
+		const stale: string[] = []
+		if (!assembly) return stale
 		const built: Record<string, { widthMm: number; heightMm: number }> = {}
 		for (const ab of assembly.boards) {
 			const o = contracts[ab.name]?.values.outline
 			if (o && (ab.outlineSource !== "built" || o.widthMm !== ab.outline.widthMm || o.heightMm !== ab.outline.heightMm)) built[ab.name] = { widthMm: o.widthMm, heightMm: o.heightMm }
 		}
-		if (Object.keys(built).length === 0) return resent
-		assembly = withOutlines(assembly, built)
-		writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
+		if (Object.keys(built).length > 0) {
+			assembly = withOutlines(assembly, built)
+			writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
+		}
 		for (const b of designed) {
 			if (!assembly.boards.some((ab) => ab.name === b.name)) continue
 			if (assemblySent.get(b.name) === siblingsOf(assembly, b.name)) continue
+			stale.push(b.name)
+			if (!send) continue
 			assemblySent.set(b.name, siblingsOf(assembly, b.name))
-			appendRequest(boardDir(outDir, b.name), `The robot's body (${spec.name}) changed: a board's built outline replaced its estimate.`, undefined, undefined, { ...assembly, self: b.name })
-			resent.push(b.name)
+			const text = `The robot's body (${spec.name}) changed: a board's built outline replaced its estimate.`
+			appendRequest(boardDir(outDir, b.name), text, undefined, undefined, { ...assembly, self: b.name })
+			sent.push({ board: b.name, text })
 		}
-		return resent
+		return stale
 	}
 
 	const deadline = Date.now() + (o.timeoutMs ?? 30 * 60_000)
@@ -178,7 +183,11 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			// Wait until every board has settled since it was last asked for something.
 			if (spec.boards.some((b) => !contracts[b.name])) continue
 			// A re-sent board must settle again before the run can end: its chassis and mass follow the new outlines.
-			const resent = rounds < maxRounds ? syncAssembly(contracts) : []
+			const resent = syncAssembly(contracts, rounds < maxRounds)
+			if (resent.length && rounds >= maxRounds) {
+				write(contracts, findings, `UNSETTLED: the robot's body changed after ${maxRounds} rounds and was not sent to ${resent.join(", ")}`)
+				break
+			}
 			if (resent.length) {
 				rounds++
 				for (const name of resent) asked.set(name, readTrace(boardDir(outDir, name)).length)

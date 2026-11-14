@@ -199,6 +199,17 @@ test("a built outline replaces the estimate and goes back to the robot boards", 
 	assert.equal(main[1].assembly.self, "main")
 })
 
+test("with the rounds used up, a changed body isn't called settled: it is written, and the stale boards are named", async () => {
+	const spec = robot("chassis", { main: { ...fixtureContract().values.outline! } }), out = tempDir()
+	const r = await runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 3000, maxRounds: 0, start: fakeStart({ front: { widthMm: 52, heightMm: 31 } }) })
+	assert.equal(r.ok, false)
+	const status: string = JSON.parse(readFileSync(join(out, "system-state.json"), "utf8")).status
+	assert.match(status, /^UNSETTLED: the robot's body changed after 0 rounds and was not sent to .*main/)
+	assert.equal(requestsOf(join(out, "boards", "main")).length, 1, "nothing was sent")
+	const front = JSON.parse(readFileSync(join(out, "system.json"), "utf8")).assembly.boards.find((b: { name: string }) => b.name === "front")
+	assert.deepEqual(front.outline, { widthMm: 52, heightMm: 31 })
+})
+
 test("a board is not sent the assembly again when only its own outline changed", async () => {
 	// front's own outline (same width, so the plate stays) is its own truth; main has nothing new either.
 	const spec = robot("chassis", { main: { ...fixtureContract().values.outline! } }), out = tempDir()
