@@ -181,3 +181,50 @@ test("after dispose nothing runs: no frames, no clicks", { skip, timeout: 60_000
 		assert.equal((await page.evaluate(() => (window as any).events)).filter((e: any) => e[0] === "pick").length, 0)
 	})
 })
+
+test("focus on an unknown board changes nothing, and a vanished focused board sends the view home once", { skip, timeout: 60_000 }, async () => {
+	await withTop(async (page) => {
+		const home = await vb(page)
+		await page.evaluate(() => (window as any).tv.focus("nope", { ms: 50 }))
+		assert.ok(near(await vb(page), home, 0.001))
+		await page.evaluate(() => (window as any).tv.setWorld((window as any).world))
+		assert.ok(near(await vb(page), home, 0.001), "an unknown focus name did not pin the view")
+		await page.evaluate(() => (window as any).tv.focus("climate", { ms: 50 }))
+		await page.evaluate(() => { const w = (window as any).world; (window as any).tv.setWorld({ ...w, boards: w.boards.filter((b: any) => b.name !== "climate"), cables: [], assembly: { ...w.assembly, boards: w.assembly.boards.filter((b: any) => b.name !== "climate") } }) })
+		const after = await vb(page)
+		assert.ok(after[2] > 100, "home again")
+		await page.mouse.move(500, 350)
+		await page.mouse.wheel(0, 300)
+		await page.waitForTimeout(50)
+		const z = await vb(page)
+		await page.evaluate(() => (window as any).tv.setWorld((window as any).world))
+		assert.ok(near(await vb(page), z, 0.001), "no second snap")
+	})
+})
+
+test("a press during a flight takes over: the next setWorld does not jump to the unreached target", { skip, timeout: 60_000 }, async () => {
+	await withTop(async (page) => {
+		await page.evaluate(() => { (window as any).tv.focus("climate", { ms: 1000 }) })
+		await page.waitForTimeout(250)
+		await page.mouse.move(5, 5)
+		await page.mouse.down()
+		await page.mouse.up()
+		const held = await vb(page)
+		await page.evaluate(() => (window as any).tv.setWorld((window as any).world))
+		assert.ok(near(await vb(page), held, 0.001))
+	})
+})
+
+test("a live update retargets a flight and keeps its time; the promise resolves on arrival", { skip, timeout: 60_000 }, async () => {
+	await withTop(async (page) => {
+		const r = await page.evaluate(async () => {
+			const tv = (window as any).tv, w = (window as any).world
+			const t0 = performance.now()
+			const p = tv.focus("climate", { ms: 600 }).then(() => performance.now() - t0)
+			await new Promise((res) => setTimeout(res, 300))
+			tv.setWorld(w)
+			return p
+		})
+		assert.ok(r >= 550 && r < 900, `arrived after ${r} ms, not restarted`)
+	})
+})

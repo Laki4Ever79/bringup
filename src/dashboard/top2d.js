@@ -28,28 +28,32 @@ export function mountTop(host, opts = {}) {
 	setView(view)
 
 	const live = () => !disposed
-	const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; if (finish) { const f = finish; finish = null; f() } }
+	const stop = () => { flight = null; if (raf) cancelAnimationFrame(raf); raf = 0; if (finish) { const f = finish; finish = null; f() } }
 	const targetOf = (name) => {
 		const b = name == null ? null : scene?.boards.find((x) => x.name === name)
 		return b ? grow({ x: b.x, y: b.y, w: b.w, h: b.h }, 1.25) : home
 	}
+	// The flight in progress: its end rect can be retargeted (a live update moved the board) without restarting.
+	let flight = null
 	function focus(name, { ms = 600 } = {}) {
 		if (!live()) return Promise.resolve()
 		stop()
 		const to = targetOf(name)
 		if (!to) return Promise.resolve()
+		// A name that is not a board of the scene leaves the focus alone (targetOf fell back to home).
+		const known = name == null || scene.boards.some((x) => x.name === name)
+		if (!known) return Promise.resolve()
 		focusName = name
 		touched = false
-		const from = view
 		return new Promise((resolve) => {
 			finish = resolve
-			const t0 = performance.now()
+			flight = { from: view, to, t0: performance.now(), ms }
 			const step = (now) => {
-				const t = ms > 0 ? Math.min(1, (now - t0) / ms) : 1, k = ease(t)
-				const next = t === 1 ? to : { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, w: from.w + (to.w - from.w) * k, h: from.h + (to.h - from.h) * k }
+				const f = flight, t = f.ms > 0 ? Math.min(1, (now - f.t0) / f.ms) : 1, k = ease(t)
+				const next = t === 1 ? f.to : { x: f.from.x + (f.to.x - f.from.x) * k, y: f.from.y + (f.to.y - f.from.y) * k, w: f.from.w + (f.to.w - f.from.w) * k, h: f.from.h + (f.to.h - f.from.h) * k }
 				if (fmt(next) !== fmt(view)) { setView(next); draws++ }
 				if (t < 1) raf = requestAnimationFrame(step)
-				else { raf = 0; const f = finish; finish = null; f?.() }
+				else { raf = 0; flight = null; const r = finish; finish = null; r?.() }
 			}
 			raf = requestAnimationFrame(step)
 		})
@@ -65,7 +69,7 @@ export function mountTop(host, opts = {}) {
 	}
 	const select = (name, kind = "board") => {
 		if (!live()) return
-		 selected = name == null ? null : { name, kind }; applySelection() }
+		selected = name == null ? null : { name, kind }; applySelection() }
 
 	function setWorld(w) {
 		if (!live()) return
@@ -125,7 +129,10 @@ export function mountTop(host, opts = {}) {
 		home = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 		// A live update must not undo the user's view: keep a focused board framed (retargeting a flight in progress),
 		// leave a panned or zoomed view alone, and fit only while nothing was chosen.
-		if (raf) focus(focusName, { ms: 200 })
+		if (focusName != null && !scene.boards.some((x) => x.name === focusName)) {
+			// The focused board is gone: go home once and leave the view alone from then on.
+			stop(); focusName = null; touched = true; setView(home)
+		} else if (flight) flight.to = targetOf(focusName)
 		else if (focusName != null) { const t = targetOf(focusName); if (t) setView(t) }
 		else if (!touched) setView(home)
 	}
@@ -162,7 +169,7 @@ export function mountTop(host, opts = {}) {
 		const h = hit(e), key = h ? `${h.kind}:${h.name}` : null
 		if (key !== hovered) { hovered = key; opts.onHover?.(h ? h.name : null, h ? h.kind : "board") }
 	}
-	const onDown = (e) => { if (!live()) return; stop(); press = { x: e.clientX, y: e.clientY, view, moved: false, hit: hit(e) } }
+	const onDown = (e) => { if (!live()) return; if (raf) { touched = true; focusName = null } stop(); press = { x: e.clientX, y: e.clientY, view, moved: false, hit: hit(e) } }
 	const onUp = () => { const p = press; press = null; if (p && !p.moved && p.hit) opts.onPick?.(p.hit.name, p.hit.kind) }
 	const onLeave = () => { if (hovered) { hovered = null; opts.onHover?.(null, "board") } }
 	const onWheel = (e) => {
