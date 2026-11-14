@@ -74,8 +74,21 @@ export function stockSuggestion(part: { ref: string; mpn: string }, sources: Sou
 	return {
 		elsewhere: sources.filter((x) => x.supplier !== ORDER_SUPPLIER),
 		alternative,
-		request: alternative ? `${part.ref} ${part.mpn} is out of stock at ${ORDER_SUPPLIER}: swap it for the ${alternative.mpn}${alternative.lcsc ? ` (${alternative.lcsc})` : ""} from the catalog` : null,
+		request: alternative ? `${part.ref} ${part.mpn} is out of stock at ${ORDER_SUPPLIER}: swap ${part.ref} for the ${alternative.mpn}${alternative.lcsc ? ` (${alternative.lcsc})` : ""} from the catalog` : null,
 	}
+}
+
+// A swap a person asks for (the board page's part card, a stock-out suggestion) as one fixed sentence: a model reads it
+// as plain words, and the scripted parts agent reads it back with parseSwap. MPNs may hold brackets and dots.
+export function swapRequest(part: { ref: string; mpn: string }, to: { mpn: string; lcsc: string | null }): string {
+	return `swap ${part.ref} ${part.mpn} for the ${to.mpn}${to.lcsc ? ` (${to.lcsc})` : ""} from the catalog`
+}
+
+const SWAP = /\bswap ([A-Z]+\d+)(?: \S+)? for the (\S+?)(?: \(C\d+\))? from the catalog/
+
+export function parseSwap(text: string): { ref: string; mpn: string } | null {
+	const m = SWAP.exec(text)
+	return m ? { ref: m[1], mpn: m[2] } : null
 }
 
 export type LineStatus = "stock confirmed" | "stock unknown" | "out of stock" | "not listed" | "not checked"
