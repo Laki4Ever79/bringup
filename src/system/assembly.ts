@@ -7,7 +7,8 @@ export type Rot = 0 | 90 | 180 | 270
 
 export interface AssemblyBoard {
 	name: string
-	// Position of the board's corner on the plate, and its rotation in the plane.
+	// The board's CENTRE in the chassis frame (src/mechanics/types.ts): origin at the plate centre, +x forward, +y left,
+	// mm. The rotation is in the plane.
 	xMm: number
 	yMm: number
 	rotDeg: Rot
@@ -50,13 +51,13 @@ export function assemblyErrors(spec: SystemSpec): string[] {
 			const { lengthMm, widthMm } = a.plate
 			for (const b of a.boards) {
 				const f = footprint(b)
-				if (b.xMm < 0 || b.yMm < 0 || b.xMm + f.xMm > lengthMm || b.yMm + f.yMm > widthMm) out.push(`assembly: board ${b.name} sticks out of the ${lengthMm} × ${widthMm} mm plate`)
+				if (Math.abs(b.xMm) + f.xMm / 2 > lengthMm / 2 || Math.abs(b.yMm) + f.yMm / 2 > widthMm / 2) out.push(`assembly: board ${b.name} sticks out of the ${lengthMm} × ${widthMm} mm plate`)
 			}
 		}
 		// Boards that only touch edge to edge don't overlap.
 		for (let i = 0; i < a.boards.length; i++) for (let j = i + 1; j < a.boards.length; j++) {
 			const p = a.boards[i], q = a.boards[j], fp = footprint(p), fq = footprint(q)
-			if (p.xMm < q.xMm + fq.xMm && q.xMm < p.xMm + fp.xMm && p.yMm < q.yMm + fq.yMm && q.yMm < p.yMm + fp.yMm) out.push(`assembly: boards ${p.name} and ${q.name} overlap`)
+			if (Math.abs(p.xMm - q.xMm) < (fp.xMm + fq.xMm) / 2 && Math.abs(p.yMm - q.yMm) < (fp.yMm + fq.yMm) / 2) out.push(`assembly: boards ${p.name} and ${q.name} overlap`)
 		}
 	}
 	return out
