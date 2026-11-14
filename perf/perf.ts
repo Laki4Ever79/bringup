@@ -14,7 +14,9 @@ const BUDGET = { startDomMs: 1000, start3dMs: 2000, maxFrameMs: 33, p50FrameMs: 
 
 // The hub reads out/ (it resolves run folders inside its root, so a symlinked copy would be refused); it starts nothing.
 const recorded = join(ROOT, "out", SYSTEM)
-const hub = await serveHub({ outRoot: existsSync(recorded) ? join(ROOT, "out") : mkdtempSync(join(tmpdir(), "bringup-perf-")), port: 0 })
+const TOP_RUN = "robot-2" // a recorded system run on a chassis, for the Top view rows
+const topRecorded = existsSync(join(ROOT, "out", TOP_RUN, "system.json"))
+const hub = await serveHub({ outRoot: existsSync(recorded) || topRecorded ? join(ROOT, "out") : mkdtempSync(join(tmpdir(), "bringup-perf-")), port: 0 })
 // Playwright's defaults let Chromium fall back to SwiftShader (software WebGL), which mis-measures by 10–20×; this
 // laptop's AMD GPU is on Chromium's blocklist, so the list is ignored here and a software renderer stops the test.
 function chromiumPath(): string | undefined {
@@ -129,6 +131,32 @@ try {
 		check("system page: board page shown after click, slowest of 3 (ms)", Math.max(...loads), BUDGET.boardPageMs)
 		check("system page: fly back out, slowest frame (ms)", Math.max(...flyOut), BUDGET.maxFrameMs)
 	} else console.log(`(no out/${SYSTEM} on this machine: the system page case is skipped)`)
+	if (topRecorded) {
+		await page.goto(`${hub.url}/system?id=${TOP_RUN}&view=top`)
+		await page.waitForSelector("#stage-top svg [data-board]", { timeout: 30_000 })
+		await page.waitForTimeout(1500)
+		const name = (await page.evaluate(`document.querySelector("#stage-top [data-board]").dataset.board`)) as string
+		const flyIn = await frames(page, async () => {
+			await page.evaluate(`window.openBoard(${JSON.stringify(name)})`)
+			await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 10_000 })
+		})
+		check("system page Top: zoom into a board, slowest frame (ms)", Math.max(...flyIn), BUDGET.maxFrameMs)
+		await page.waitForTimeout(2500)
+		const flyOut = await frames(page, async () => {
+			await page.keyboard.press("Escape")
+			await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 10_000 })
+			await page.waitForTimeout(600)
+		})
+		check("system page Top: zoom out, slowest frame (ms)", Math.max(...flyOut), BUDGET.maxFrameMs)
+		const idleTop: number = await page.evaluate(`(async () => {
+			const t = window.__stage.top
+			await new Promise((r) => setTimeout(r, 500))
+			const before = t.stats().draws
+			await new Promise((r) => setTimeout(r, 3000))
+			return t.stats().draws - before
+		})()`)
+		check("system page Top: draws while idle", idleTop, BUDGET.idleDraws)
+	} else console.log(`(no out/${TOP_RUN} on this machine: the Top view rows are skipped)`)
 } finally {
 	await browser.close()
 	await hub.close()

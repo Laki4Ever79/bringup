@@ -652,3 +652,37 @@ test("a stale save whose reload fails says so and stops saving", { skip: skipChr
 		assert.equal(puts, before, "no save after the failed reload")
 	})
 })
+
+// Today's design overview must survive the Top view: every section is there in both views, and the run links still work.
+test("every section of today's design overview is still there in both views", { skip: skipRobot, timeout: 120_000 }, async () => {
+	const boards: string[] = JSON.parse(readFileSync(join(ROOT, "out", "robot-2", "system.json"), "utf8")).boards.map((b: { name: string }) => b.name)
+	await withPage(async (page) => {
+		const sections = async (view: string) => {
+			for (const sel of ["#timeline", "#topology", "[data-open]"]) assert.equal(await visible(page, sel), true, `${sel} in ${view}`)
+			const pills = await page.$$eval("#file-links a.pill", (els) => els.map((e) => e.textContent))
+			for (const n of ["Report", "Cable", "WireViz"]) assert.ok(pills.includes(n), `${n} pill in ${view}: ${pills.join(",")}`)
+			const cards = await page.$$eval(".board .name", (els) => els.map((e) => e.textContent))
+			for (const b of boards) assert.ok(cards.includes(b), `board card ${b} in ${view}`)
+			const opens = await page.$$eval("[data-open]", (els) => els.map((e) => (e as HTMLElement).dataset.open))
+			for (const b of boards) assert.ok(opens.includes(b), `[data-open=${b}] in ${view}`)
+		}
+		await sections("3D")
+		await page.click('#view-switch [data-view="top"]')
+		await topUp(page)
+		await sections("Top")
+	}, ROBOT)
+	const hub = await serveHub({ outRoot: join(ROOT, "out"), port: 0 })
+	const browser = await chromium.launch({ executablePath: exe!, headless: true })
+	try {
+		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+		await page.goto(`${hub.url}/?run=robot-2.${SECOND}`)
+		await page.waitForURL(new RegExp(`/system\\?id=robot-2&board=${SECOND}`), { timeout: 30_000 })
+		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 30_000 })
+		await page.goto(`${hub.url}/?run=robot-2.${SECOND}&standalone=1`)
+		await page.waitForSelector("#pcb-host", { timeout: 30_000 })
+		assert.equal(new URL(page.url()).pathname, "/", "the plain board page, not redirected")
+	} finally {
+		await browser.close()
+		await hub.close()
+	}
+})
