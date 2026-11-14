@@ -67,6 +67,7 @@
 	#banner { position: absolute; left: 12px; top: 12px; right: 45%; display: flex; gap: 8px; flex-wrap: wrap; pointer-events: none; }
 	#banner span { font: 600 12px/1 var(--mono); color: var(--screen-text); background: var(--screen-2); border: 1px solid var(--screen-rule); padding: 6px 8px; }
 	#banner .chg { color: #ffb59c; border-color: #5a2a1a; }
+	#empty[hidden] { display: none; }
 	#empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--screen-text-2); font: 500 15px var(--mono); text-align: center; padding: 20px; }
 
 	/* The part card: what it is, why it's there and where that comes from. */
@@ -101,12 +102,46 @@
 	.swapnote code { display: block; margin-top: 6px; padding: 6px 8px; font: 500 12px/1.4 var(--mono); background: var(--paper-2); border: 1px solid var(--rule-2); word-break: break-word; user-select: all; }
 	.pending { border: 1.5px solid var(--info); color: var(--info); padding: 8px 10px; font-size: 13px; margin-bottom: 8px; }
 
-	@media (max-width: 1100px) { main { grid-template-columns: 220px minmax(0, 1fr) 320px; } }
+	/* Moves: a draft of moves, each checked in code as it is made, sent to the run as one change request. */
+	#side { border-left: 2px solid var(--ink); display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; background: var(--paper); }
+	#side #card { border-left: 0; }
+	#draft { border-bottom: 2px solid var(--ink); background: var(--paper-2); padding: 12px 16px; max-height: 45vh; overflow: auto; }
+	#draft[hidden] { display: none; }
+	#draft .h { display: flex; align-items: baseline; gap: 8px; }
+	#draft .h b { font: 800 22px/1 var(--display); text-transform: uppercase; letter-spacing: .03em; }
+	#draft .h span { font: 500 12px var(--mono); color: var(--ink-3); }
+	#draft ol { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+	#draft ol > li { border: 1.5px solid var(--rule-2); background: var(--paper); padding: 7px 9px; font-size: 13px; }
+	#draft li .mv { font: 700 12px var(--mono); }
+	#draft ol > li ul { margin: 4px 0 0; padding-left: 16px; color: var(--ink-2); }
+	.scope { font: 700 10px/1 var(--mono); padding: 3px 5px; border: 1px solid currentColor; text-transform: uppercase; margin-left: 6px; vertical-align: 1px; }
+	.scope.board { color: var(--ink-2); } .scope.case { color: var(--info); } .scope.system { color: var(--signal-ink); }
+	#draft .also { font-size: 12px; color: var(--ink-2); margin-top: 8px; }
+	#draft .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+	.btn { border: 1.5px solid var(--ink); background: var(--paper); padding: 6px 10px; cursor: pointer; font: 600 12px/1 var(--mono); }
+	.btn:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+	.btn.primary { background: var(--ink); color: var(--paper); }
+	.btn.primary:hover:not(:disabled) { background: var(--signal); border-color: var(--signal); }
+	.btn:disabled { color: var(--ink-3); border-color: var(--rule-2); background: none; cursor: default; }
+	.refused { border: 1.5px solid var(--signal-ink); background: var(--signal-wash); color: var(--ink); padding: 8px 10px; font-size: 13px; margin-top: 8px; }
+	.refused b { font: 700 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--signal-ink); display: block; margin-bottom: 3px; }
+	.mover { display: grid; gap: 8px; }
+	.mover .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font: 500 13px var(--mono); }
+	.mover input[type=number] { width: 9ch; padding: 4px 6px; border: 1.5px solid var(--ink); background: var(--paper); font: 500 13px var(--mono); }
+	.mover input[type=range] { flex: 1 1 140px; accent-color: var(--signal); }
+	.mover .nudge { display: inline-grid; grid-template-columns: repeat(3, 26px); gap: 2px; }
+	.mover .nudge button { height: 24px; border: 1.5px solid var(--ink); background: var(--paper); cursor: pointer; font: 600 12px/1 var(--mono); padding: 0; }
+	.mover .nudge button:hover { background: var(--ink); color: var(--paper); }
+	.mover .edges button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+	.checking { font: 500 12px var(--mono); color: var(--ink-3); }
+	#banner .draft { color: #ffd88a; border-color: #5a4a1a; }
+
+	@media (max-width: 1100px) { main { grid-template-columns: 220px minmax(0, 1fr) 340px; } }
 	@media (max-width: 820px) {
 		body { overflow: auto; }
 		main { grid-template-columns: 1fr; grid-template-rows: 62vh auto auto; }
 		#stage { order: 1; min-height: 62vh; }
-		#card { order: 2; border-left: 0; border-top: 2px solid var(--ink); }
+		#side { order: 2; border-left: 0; border-top: 2px solid var(--ink); }
 		#list { order: 3; border-right: 0; border-top: 2px solid var(--ink); max-height: 60vh; }
 		header .what { flex-basis: 100%; order: 9; }
 		body { overflow-x: hidden; }
@@ -139,10 +174,13 @@
 	<section id="stage" aria-label="Board">
 		<div id="pcb"></div>
 		<div id="banner"></div>
-		<div id="hint">click a part · scroll to zoom · drag to pan · double-click to fit</div>
+		<div id="hint">click a part · drag the chosen part to move it · scroll to zoom · drag to pan · double-click to fit</div>
 		<div id="empty" hidden></div>
 	</section>
-	<aside id="card" aria-live="polite"><p class="none">Click a part on the board, or pick one from the list, to see what it is and why it's there.</p></aside>
+	<div id="side">
+		<section id="draft" hidden aria-live="polite" aria-label="Your moves"></section>
+		<aside id="card" aria-live="polite"><p class="none">Click a part on the board, or pick one from the list, to see what it is and why it's there.</p></aside>
+	</div>
 </main>
 <script type="module">
 	import { mountPcb } from "/pcb-view.js"
@@ -154,7 +192,7 @@
 	const S = { view: null, revision: q.has("rev") ? Number(q.get("rev")) : null, live: !q.has("rev"), selected: q.get("part"), filter: "" }
 	if (run) $("back").href = `/?run=${encodeURIComponent(run)}`
 
-	const pcb = mountPcb($("pcb"), { onSelect: (ref) => select(ref, false) })
+	const pcb = mountPcb($("pcb"), { onSelect: (ref) => select(ref, false), draggable: (ref) => ref === S.selected && editable() && !!S.view?.movable?.[ref], onDrop: (ref, dx, dy) => dropped(ref, dx, dy) })
 
 	const SOURCE = { recorded: "recorded when chosen", added: "added for you", datasheet: "datasheet / standard", rule: "generator rule", none: "no reason recorded" }
 
@@ -182,12 +220,19 @@
 		$("empty").hidden = circuit.length > 0
 		if (!circuit.length) $("empty").textContent = "No placement yet: the contract has no outline or parts."
 		pcb.setParts(v.reasons.map((r) => ({ ref: r.ref, mpn: r.mpn ?? r.value ?? "", role: r.what })))
-		pcb.update(circuit, [...v.changed.added, ...v.changed.changed])
+		// Moves are drawn on the revision they were made on: a new revision (the run moved on, or the moves landed) ends
+		// the draft, and the card says so.
+		if (S.draft.base !== null && S.draft.base !== v.revision) endDraft(S.draft.sent ? `Your moves were sent; the run answered from revision ${v.revision} on (the board shows the newest).` : `The run moved on to revision ${v.revision}, so your unsent moves were dropped: make them again on this revision.`)
+		S.circuit = circuit
+		S.routed = routed
+		if (S.draft.moves.length && S.draft.check) pcb.update(S.draft.check.preview, [])
+		else pcb.update(circuit, [...v.changed.added, ...v.changed.changed])
 		pcb.setMarks?.({ added: v.changed.added, changed: v.changed.changed })
 		paintHeader(routed)
 		paintList()
 		if (S.selected && !v.reasons.some((r) => r.ref === S.selected)) S.selected = null
 		paintCard()
+		paintDraft()
 		if (S.selected) pcb.highlight(S.selected)
 	}
 
@@ -211,7 +256,7 @@
 		st.title = routed ? "The board as built: tscircuit's routed board for this revision." : "Placement straight from the contract, without traces. Routing takes about 50 s after a change."
 		const c = v.changed
 		const parts = [...c.added.map((r) => `+${r}`), ...c.removed.map((r) => `−${r}`), ...c.changed.map((r) => (c.swapped?.includes(r) ? `⇄${r} swapped` : `~${r}`))]
-		$("banner").innerHTML = (routed ? "" : `<span>placement preview: no traces yet</span>`) + (S.missing?.length ? `<span title="${esc(S.missing.join(", "))}">built before ${S.missing.length} newer item${S.missing.length === 1 ? "" : "s"} existed</span>` : "") + (parts.length ? `<span class="chg">since the revision before: ${esc(parts.slice(0, 14).join(" "))}${parts.length > 14 ? ` and ${parts.length - 14} more` : ""}</span>` : "")
+		$("banner").innerHTML = (S.draft.moves.length ? `<span class="draft">your moves, not sent: placement only</span>` : "") + (routed || S.draft.moves.length ? "" : `<span>placement preview: no traces yet</span>`) + (S.missing?.length ? `<span title="${esc(S.missing.join(", "))}">built before ${S.missing.length} newer item${S.missing.length === 1 ? "" : "s"} existed</span>` : "") + (parts.length && !S.draft.moves.length ? `<span class="chg">since the revision before: ${esc(parts.slice(0, 14).join(" "))}${parts.length > 14 ? ` and ${parts.length - 14} more` : ""}</span>` : "")
 		history.replaceState(null, "", `/board?run=${encodeURIComponent(run)}${S.live ? "" : `&rev=${v.revision}`}${S.selected ? `&part=${encodeURIComponent(S.selected)}` : ""}`)
 	}
 
@@ -251,6 +296,7 @@
 			<span class="src ${r.source.kind}">${esc(SOURCE[r.source.kind])}</span>
 			<div class="srcd">${esc(r.source.detail)}</div>
 			${a ? `<h4>Added for you</h4><div class="added"><p>${esc(a.what)}</p><p><b>Cost</b>${esc(a.cost)}</p>${a.change ? `<p><b>Change</b>${esc(a.change)}</p>` : ""}</div>` : ""}
+			${moveSection(r)}
 			${swapSection(r)}
 			${r.nets.length ? `<h4>Connects to</h4><div class="nets">${r.nets.map((n) => `<span>${esc(n)}</span>`).join("")}</div>` : ""}
 			${r.facts ? `<h4>From the catalog</h4><div class="facts">${esc(r.facts)}</div>` : ""}
@@ -305,6 +351,179 @@
 			return
 		}
 		paintCard()
+	})
+
+	// Moves (step 3): each move is checked in code on the server (POST /board/check, ~0.1 s) as it is made. One the
+	// design can't take is refused at once, with the reason, and never joins the draft; the draft is sent as one change
+	// request, so the owners write it and the run's checks and review see the whole batch once.
+	S.draft = { base: null, moves: [], check: null, refused: null, busy: false, sent: false, note: null }
+	const editable = () => !!S.view && S.view.revision === S.view.revisions.at(-1)
+	const r1 = (n) => Math.round(n * 10) / 10
+	// Where an item is now: as the draft moved it, else where the revision has it.
+	function where(ref) {
+		const m = S.draft.moves.find((x) => x.ref === ref)
+		const was = S.view?.movable?.[ref]
+		if (!was) return null
+		if (!m) return was
+		return was.kind === "part" ? { ...was, xMm: m.xMm, yMm: m.yMm } : { ...was, edge: m.edge, offsetMm: m.offsetMm }
+	}
+	async function propose(move) {
+		if (!editable()) return
+		// One check at a time; a move made meanwhile (typing x, then y) waits, and only the latest is checked.
+		if (S.draft.busy) {
+			S.draft.queued = move
+			return
+		}
+		const moves = [...S.draft.moves.filter((m) => m.ref !== move.ref), move]
+		S.draft.busy = true
+		S.draft.refused = null
+		paintDraft()
+		let res = null
+		try {
+			const r = await fetch(`/api/runs/${encodeURIComponent(run)}/board/check`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rev: S.view.revision, moves }) })
+			res = await r.json()
+			if (!r.ok) throw new Error(res.error ?? r.status)
+		} catch (err) {
+			S.draft.busy = false
+			S.draft.queued = null
+			S.draft.refused = { ref: move.ref, problems: [{ message: `Couldn't check the move (${err.message ?? err}).` }] }
+			redraw()
+			return
+		}
+		S.draft.busy = false
+		const queued = S.draft.queued
+		S.draft.queued = null
+		if (res.ok) {
+			S.draft = { ...S.draft, base: S.view.revision, moves, check: res, refused: null, note: null, sent: false }
+			if (S.live) setLive(false) // the page stays on this revision while you edit; Send turns Live back on
+		} else S.draft.refused = { ref: move.ref, problems: res.problems }
+		redraw([move.ref])
+		if (queued) propose(queued)
+	}
+	function redraw(changed = []) {
+		if (S.draft.moves.length && S.draft.check) pcb.update(S.draft.check.preview, changed)
+		else if (S.circuit) pcb.update(S.circuit, [])
+		if (S.selected) pcb.highlight(S.selected)
+		paintHeader(S.routed)
+		paintCard()
+		paintDraft()
+	}
+	function endDraft(note) {
+		S.draft = { base: null, moves: [], check: null, refused: null, busy: false, sent: false, note }
+	}
+	function dropped(ref, dx, dy) {
+		const now = where(ref)
+		if (!now) return redraw()
+		if (now.kind === "part") return propose({ ref, xMm: r1(now.xMm + dx), yMm: r1(now.yMm + dy) })
+		// A connector goes to the edge nearest where it was dropped, at the spot along it.
+		const W = S.view.widthMm, H = S.view.heightMm
+		const e = pcb.extentOf(ref)
+		const cx = (e ? (e.x0 + e.x1) / 2 : 0) + dx, cy = (e ? (e.y0 + e.y1) / 2 : 0) + dy
+		const d = { left: cx + W / 2, right: W / 2 - cx, bottom: cy + H / 2, top: H / 2 - cy }
+		const edge = Object.entries(d).sort((a, b) => a[1] - b[1])[0][0]
+		propose({ ref, edge, offsetMm: r1(edge === "left" || edge === "right" ? cy + H / 2 : cx + W / 2) })
+	}
+
+	function moveSection(r) {
+		const m = where(r.ref)
+		const fixed = S.view.fixed?.[r.ref]
+		if (!m) return r.side === "bottom" || r.generated ? `<h4>Move</h4><div class="swapnote">${r.side === "bottom" ? "Underside pads are placed after every part, in the room left: they follow the parts." : "Bringup places it beside the part it serves, by its rule above: it follows that part."}</div>` : fixed ? `<h4>Move</h4><div class="swapnote">${esc(fixed)}</div>` : ""
+		if (!editable()) return `<h4>Move</h4><div class="swapnote">This is an older revision: go to the newest one to move parts.</div>`
+		const refused = S.draft.refused?.ref === r.ref ? `<div class="refused"><b>Refused: not added to your moves</b>${S.draft.refused.problems.map((p) => esc(p.message)).join("<br>")}</div>` : ""
+		if (m.kind === "part")
+			return `<h4>Move</h4><div class="mover">
+				<div class="row">centre at x <input type="number" step="0.5" data-mx value="${m.xMm}"> y <input type="number" step="0.5" data-my value="${m.yMm}"> mm</div>
+				<div class="row"><span class="nudge"><span></span><button data-n="0,1" title="up 0.5 mm (shift: 2.5)">↑</button><span></span><button data-n="-1,0" title="left">←</button><button data-n="0,-1" title="down">↓</button><button data-n="1,0" title="right">→</button></span><span class="checking">${S.draft.busy ? "checking…" : "or drag it on the board"}</span></div>
+				<div class="swapnote">From the board's bottom-left corner, top view. Each move is checked at once; nothing goes to the run until you send your moves.</div>
+				${refused}</div>`
+		const len = m.edges[m.edge]
+		return `<h4>Move</h4><div class="mover">
+			<div class="row edges">${["left", "top", "right", "bottom"].map((e) => `<button class="btn" data-edge="${e}" aria-pressed="${e === m.edge}">${e}</button>`).join("")}</div>
+			<div class="row"><input type="range" data-off min="0" max="${len}" step="0.5" value="${m.offsetMm}"><input type="number" step="0.5" data-offn value="${m.offsetMm}"> mm</div>
+			<div class="swapnote">Along the ${esc(m.edge)} edge (${len} mm), from its ${m.edge === "left" || m.edge === "right" ? "bottom" : "left"} end. ${S.draft.busy ? "checking…" : "Or drag it to any edge on the board."}</div>
+			${refused}</div>`
+	}
+	$("card").addEventListener("change", (e) => {
+		const ref = S.selected
+		const m = ref && where(ref)
+		if (!m) return
+		if (e.target.matches("[data-mx],[data-my]")) {
+			const x = Number($("card").querySelector("[data-mx]").value), y = Number($("card").querySelector("[data-my]").value)
+			if (Number.isFinite(x) && Number.isFinite(y)) propose({ ref, xMm: r1(x), yMm: r1(y) })
+		}
+		if (e.target.matches("[data-off],[data-offn]")) {
+			const v = Number(e.target.value)
+			if (Number.isFinite(v)) propose({ ref, edge: m.edge, offsetMm: r1(v) })
+		}
+	})
+	$("card").addEventListener("click", (e) => {
+		const ref = S.selected
+		const m = ref && where(ref)
+		if (!m) return
+		const n = e.target.closest("button[data-n]")
+		if (n && m.kind === "part") {
+			const [dx, dy] = n.dataset.n.split(",").map(Number)
+			const k = e.shiftKey ? 2.5 : 0.5
+			propose({ ref, xMm: r1(m.xMm + dx * k), yMm: r1(m.yMm + dy * k) })
+		}
+		const ed = e.target.closest("button[data-edge]")
+		if (ed && m.kind === "connector" && ed.dataset.edge !== m.edge) {
+			const len = m.edges[ed.dataset.edge]
+			propose({ ref, edge: ed.dataset.edge, offsetMm: r1(Math.min(m.offsetMm, len / 2) || len / 2) })
+		}
+	})
+
+	function paintDraft() {
+		const d = S.draft
+		const box = $("draft")
+		if (!d.moves.length && !d.note) {
+			box.hidden = true
+			return
+		}
+		box.hidden = false
+		if (!d.moves.length) {
+			box.innerHTML = `<div class="swapnote">${esc(d.note)}</div><div class="acts"><button class="btn" data-dismiss>OK</button></div>`
+			return
+		}
+		const c = d.check
+		if (d.sent) {
+			box.innerHTML = `<div class="h"><b>Sent</b><span>${d.moves.length} move${d.moves.length === 1 ? "" : "s"}</span></div><div class="pending" style="margin-top:8px">${esc(d.note)}</div><div class="swapnote"><code>${esc(c.request)}</code></div>`
+			return
+		}
+		const live = LIVE.has(S.view?.status)
+		box.innerHTML = `<div class="h"><b>Your moves</b><span>${d.moves.length} · checked in code · not sent</span></div>
+			<ol>${c.moves.map((m) => `<li><span class="mv">${esc(m.ref)} ${esc(m.from)} → ${esc(m.to)}</span><span class="scope ${m.scope}" title="${m.scope === "system" ? "another board's cable plugs in here" : m.scope === "case" ? "the case follows it" : "only this board is re-routed"}">${m.scope}</span><ul>${m.effects.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></li>`).join("")}</ol>
+			${c.alsoMoved.length ? `<div class="also">The layout also moves ${esc(c.alsoMoved.join(", "))} around them.</div>` : ""}
+			<div class="also">Sent as one change request: the owners write it, and the run's checks and its review see the whole batch once. The routed board follows about 50 s after.</div>
+			${live ? "" : `<div class="swapnote">This run has stopped, so it can't take the moves. Start a run and send this request:<code>${esc(c.request)}</code></div>`}
+			<div class="acts"><button class="btn primary" data-send ${live && !d.busy ? "" : "disabled"}>Send ${d.moves.length} move${d.moves.length === 1 ? "" : "s"}</button><button class="btn" data-undo ${d.busy ? "disabled" : ""} title="Take back the last move in the list">Take back last</button><button class="btn" data-discard ${d.busy ? "disabled" : ""}>Discard</button></div>`
+	}
+	$("draft").addEventListener("click", async (e) => {
+		const d = S.draft
+		if (e.target.closest("[data-dismiss]")) { endDraft(null); return redraw() }
+		if (e.target.closest("[data-discard]")) { endDraft(null); return redraw() }
+		if (e.target.closest("[data-undo]")) {
+			const rest = d.moves.slice(0, -1)
+			if (!rest.length) { endDraft(null); return redraw() }
+			S.draft.moves = rest.slice(0, -1)
+			return propose(rest.at(-1))
+		}
+		const b = e.target.closest("[data-send]")
+		if (!b || b.disabled) return
+		b.disabled = true
+		try {
+			const res = await fetch(`/api/runs/${encodeURIComponent(run)}/requests`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: d.check.request }) })
+			if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.status)
+		} catch (err) {
+			b.disabled = false
+			b.textContent = `Couldn't send (${err.message ?? err}): try again`
+			return
+		}
+		S.draft.sent = true
+		S.draft.note = `The owners write them and the run's checks run; the board updates here when the new revision lands.`
+		// Follow the run again, so the answer shows as soon as it lands (load ends the draft on the new revision).
+		setLive(true)
+		paintDraft()
 	})
 
 	function select(ref, zoom) {

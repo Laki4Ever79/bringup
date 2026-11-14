@@ -10,7 +10,8 @@ import { appendRequest } from "../runner/requests.ts"
 import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "../runner/drift.ts"
 import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
-import { boardView } from "./board-view.ts"
+import { boardView, revisionSnapshot } from "./board-view.ts"
+import { checkMoves, type Move } from "./board-move.ts"
 import { addSpend, appendUsage, readSpend } from "../inference/usage.ts"
 import { PlanConflict, PlanStore } from "./plans.ts"
 import { exampleFile, listExamples } from "./examples.ts"
@@ -687,6 +688,20 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					if (!run || run.exit !== null) return json(res, 409, { error: "that run is not running from this dashboard" })
 					run.kill?.()
 					return json(res, 200, { stopped: true })
+				}
+				// The board page's per-move check (board-move.ts): plain code on the revision shown, nothing sent to the run.
+				const moveCheck = /^\/api\/runs\/([^/]+)\/board\/check$/.exec(path)
+				if (moveCheck) {
+					const dir = await runDir(moveCheck[1])
+					if (!dir) return json(res, 404, { error: "unknown run" })
+					const body = await readJson(req)
+					const rev = typeof body.rev === "number" && Number.isInteger(body.rev) && body.rev > 0 ? body.rev : null
+					const { s: snap } = await revisionSnapshot(dir, rev)
+					if (!snap) return json(res, 404, { error: "no contract yet" })
+					const moves = Array.isArray(body.moves) ? (body.moves as Move[]).filter((m) => m && typeof m.ref === "string" && (("edge" in m && ["left", "right", "top", "bottom"].includes(m.edge) && Number.isFinite(m.offsetMm)) || (Number.isFinite((m as { xMm: number }).xMm) && Number.isFinite((m as { yMm: number }).yMm)))) : []
+					if (moves.length === 0) return json(res, 400, { error: "send moves: [{ref, xMm, yMm} or {ref, edge, offsetMm}]" })
+					const brief = await readFile(join(dir, "brief.md"), "utf8").catch(() => "")
+					return json(res, 200, checkMoves(snap, moves.slice(0, 50), brief))
 				}
 				const ask = /^\/api\/runs\/([^/]+)\/ask$/.exec(path)
 				if (ask) {

@@ -466,13 +466,34 @@ export function mountPcb(host, opts = {}) {
 		setViewBox()
 	}, { passive: false })
 	let drag = null
+	// Extension: dragging a part (the board page's moves). opts.draggable(ref) says whether the part under the pointer may
+	// be dragged; the drawing follows the pointer and opts.onDrop(ref, dxMm, dyMm) gets the move in board mm (y up). The
+	// page decides where it lands: this only draws.
+	let partDrag = null
 	svg.addEventListener("pointerdown", (e) => {
 		if (!view || e.button !== 0) return
+		// The draggable part among everything under the pointer: an underside pad drawn over it doesn't get in the way.
+		const g = opts.draggable && document.elementsFromPoint(e.clientX, e.clientY).map((n) => n.closest?.(".pcb-part")).find((x) => x && getComputedStyle(x).display !== "none" && opts.draggable(x.getAttribute("data-ref")))
+		const ref = g?.getAttribute("data-ref")
+		if (ref) {
+			partDrag = { ref, x: e.clientX, y: e.clientY, groups: [...svg.querySelectorAll(`.pcb-part[data-ref="${CSS.escape(ref)}"]`)], dx: 0, dy: 0 }
+			svg.classList.add("pcb-panning")
+			svg.setPointerCapture?.(e.pointerId)
+			return
+		}
 		drag = { x: e.clientX, y: e.clientY, view: [...view] }
 		svg.classList.add("pcb-panning")
 		svg.setPointerCapture?.(e.pointerId)
 	})
 	svg.addEventListener("pointermove", (e) => {
+		if (partDrag) {
+			const r = svg.getBoundingClientRect()
+			const k = view[2] / r.width
+			partDrag.dx = (e.clientX - partDrag.x) * k
+			partDrag.dy = (e.clientY - partDrag.y) * k
+			for (const g of partDrag.groups) g.setAttribute("transform", `translate(${partDrag.dx.toFixed(3)} ${partDrag.dy.toFixed(3)})`)
+			return
+		}
 		if (!drag) return
 		const r = svg.getBoundingClientRect()
 		const k = drag.view[2] / r.width
@@ -484,6 +505,17 @@ export function mountPcb(host, opts = {}) {
 		drag = null
 		svg.classList.remove("pcb-panning")
 	}
+	svg.addEventListener("pointerup", () => {
+		if (!partDrag) return
+		const d = partDrag
+		partDrag = null
+		svg.classList.remove("pcb-panning")
+		// The drawing goes back: the page redraws the part where the move lands, or leaves it where it was if refused.
+		for (const g of d.groups) g.removeAttribute("transform")
+		// A click without a drag: the part stays put (and stays selected).
+		if (Math.hypot(d.dx, d.dy) < 0.2) return
+		opts.onDrop?.(d.ref, d.dx, -d.dy)
+	})
 	// A click that didn't pan selects the part under the pointer (opts.onSelect), or nothing on bare board.
 	svg.addEventListener("pointerup", (e) => {
 		if (!opts.onSelect || !drag || Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) return

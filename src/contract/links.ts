@@ -28,7 +28,7 @@ export function linksShapeError(value: unknown): string | null {
 	return null
 }
 
-export type LinkViolationKind = "link-connector-missing" | "link-unwired" | "link-supply-conflict" | "link-budget"
+export type LinkViolationKind = "link-connector-missing" | "link-unwired" | "link-supply-conflict" | "link-budget" | "link-edge"
 export interface LinkViolation {
 	kind: LinkViolationKind
 	message: string
@@ -52,6 +52,11 @@ export function linkChecks(s: ContractSnapshot): LinkViolation[] {
 			out.push({ kind: "link-connector-missing", message: `${what} needs its connector: a part ${l.connector}, role connector, ${LINK_CONNECTOR.mpn} (catalog, JST SH 4-pin)${part ? `; ${l.connector} is ${part.mpn}` : ""}`, fields: ["parts"], affects: ["parts"] })
 		else if (!connectors.some((k) => k.ref === l.connector))
 			out.push({ kind: "link-connector-missing", message: `${what}: ${l.connector} is not on an edge: list it in connectors (kind "header", ${l.edge ? `on the ${l.edge} edge, ` : ""}about 5.8 × 3 mm), so the cable can leave the board and the case`, fields: ["connectors"], affects: ["architect"] })
+		// The system runs the cable out of one edge (robot direction, 14 Nov 2026: a board edited on its own stays plug and
+		// play with the rest): the connector on another edge means another cable route to the peer, a system change.
+		const on = connectors.find((k) => k.ref === l.connector)
+		if (on && l.edge && on.edge !== l.edge)
+			out.push({ kind: "link-edge", message: `${what}: ${l.connector} is on the ${on.edge} edge, but the system runs ${l.id}'s cable to ${l.peer} out of the ${l.edge} edge: put ${l.connector} back on the ${l.edge} edge (anywhere along it), or change the link's edge in the system, which reroutes the cable to ${l.peer}`, fields: ["connectors"], affects: ["architect"] })
 		if (l.kind === "uart" && l.txOn) {
 			const { tx, rx } = uartSignals(l)
 			const want = [

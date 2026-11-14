@@ -37,7 +37,7 @@ const q = (s: string) => JSON.stringify(s)
 
 // A vetted catalog footprint wins over whatever the contract says, so placeholders like "module" still build.
 // An MCU with a profile and no catalog entry takes its package's footprint from the profile.
-function footprintFor(p: Part): string {
+export function footprintFor(p: Part): string {
 	return CATALOG.find((c) => c.mpn === p.mpn)?.footprint ?? (p.role === "mcu" ? chipProfile(p)?.package.footprint : undefined) ?? p.footprint
 }
 
@@ -439,7 +439,7 @@ function labelsFor(p: Part, footprint: string): string {
 
 // ESP32-C3-MINI-1 (datasheet v2.2, Table 3-1 and Figure 11-1). Origin at the module centre, antenna toward +y.
 // The 53 pads keep the datasheet's numbering and sides; their offsets are approximate (see catalog/README.md).
-const MODULE_FOOTPRINT = "esp32_c3_mini_1"
+export const MODULE_FOOTPRINT = "esp32_c3_mini_1"
 const MODULE_BODY = { w: 13.2, h: 16.6 }
 const MODULE_PAD_AREA_TOP = 2.9 // the top 5.4 mm is the antenna
 const MODULE_PINS: Record<string, number> = {
@@ -720,7 +720,7 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 // part sits over its holes (they go through the board) and the smallest board has room for it. It is not a part and is
 // not in parts. On the underside it must also stay clear of the USB-C connector (its routing, TEST_PAD.usbClearMm)
 // and, on a board without mounting holes, of the fixture's corner supports.
-export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): { parts: Placed[]; debug: Placed | null } {
+export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): { parts: Placed[]; debug: Placed | null; blocked: { ref: string; why: string }[] } {
 	const { outline, parts = [], connectors = [] } = s.values
 	if (!outline) throw new Error("placeParts: contract has no outline")
 	const [W, H] = [outline.widthMm, outline.heightMm]
@@ -798,6 +798,30 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 			return b
 		}
 		return undefined
+	}
+	// Parts the engineer placed (Part.at, the board page): exactly there, before anything the layout chooses, so the rest
+	// places around them. One that doesn't fit there stays unplaced with the reason (blocked), never moved elsewhere: the
+	// engineer chose that spot. The radio module isn't placeable this way (its antenna goes past the far edge).
+	const blocked: { ref: string; why: string }[] = []
+	for (const p of free) {
+		if (!p.at || footprintFor(p) === MODULE_FOOTPRINT) continue
+		done.add(p.ref)
+		const rotation = p.role === "mcu" && !chipProfile(p) ? MODULE_ROTATION[edge] : 0
+		const [w, h] = sizeAt(footprintFor(p), rotation)
+		const { dx, dy } = offsetAt(footprintFor(p), rotation)
+		let b: Placed = { ref: p.ref, x: +(p.at.xMm - W / 2).toFixed(3), y: +(p.at.yMm - H / 2).toFixed(3), w, h, rotation }
+		if (dx !== 0 || dy !== 0) b = { ...b, ox: +(b.x - dx).toFixed(3), oy: +(b.y - dy).toFixed(3) }
+		if (fits(b)) {
+			placed.push(b)
+			continue
+		}
+		const gap = (o: { x: number; y: number; w: number; h: number }) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2)
+		const why = [
+			...(Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM ? [`closer than ${EDGE_MARGIN_MM} mm to the board's edge, or off it`] : []),
+			...placed.filter((o) => gap(o) < GAP_MM).map((o) => `${gap(o) < 0 ? "on top of" : `${Math.max(0, gap(o)).toFixed(1)} mm from`} ${o.ref} (parts keep ${GAP_MM} mm apart)`),
+			...(keepouts.some((o) => overlaps(b, o)) ? ["over a mounting hole's keep-out"] : []),
+		]
+		blocked.push({ ref: p.ref, why: why.join("; ") || "no room there" })
 	}
 	const mcuPart = byRole("mcu")
 	// A bare chip stays at rotation 0, so its decoupling lands beside the right pads (besidePin).
@@ -894,7 +918,7 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 				}
 		}
 	}
-	return { parts: placed, debug }
+	return { parts: placed, debug, blocked }
 }
 
 // Production-test pads (contract field test): one round copper pad per probed net on the bottom layer, where a
