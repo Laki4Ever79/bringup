@@ -3,12 +3,14 @@ import type { PlanView } from "./plans.ts"
 export interface PlanCanvas {
 	// A plan view from the hub (a save's answer, a change in words, a reload): the drawing follows it.
 	apply(v: PlanView): void
-	// Fetches the plan again, applies it and reports it through onView.
+	// Fetches the plan again, applies it and reports it through onView. If that fails, it says so and saving stops.
 	reload(): Promise<void>
 	// Saves the pending edit now (before a change in words or a build) and resolves once every save has answered.
 	flush(): Promise<void>
 	// The boards and cables a change added or changed blink twice.
 	flash(names: Set<string>): void
+	// A build is starting: the brief editor closes, the selection clears, and keys don't edit; lock(false) undoes it.
+	lock(on: boolean): void
 	dispose(): void
 	readonly plan: Plan
 }

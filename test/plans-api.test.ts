@@ -350,3 +350,27 @@ test("an old single-board plan leads to the run made from its brief, the newest 
 		assert.equal(r.headers.get("location"), "/system?id=20260102-bbb")
 	})
 })
+
+// Review, Task 7: a build whose process died before writing the design is a plan again (not "starting" forever), and
+// can be built again.
+test("a build that exits without writing the design leaves the plan buildable, not starting", async () => {
+	const root = tempDir()
+	let launches = 0
+	const launch: HubLaunch = () => {
+		launches++
+		return { done: Promise.resolve({ code: 1, stderr: "boom" }) }
+	}
+	const hub = await serveHub({ outRoot: root, port: 0, launch })
+	try {
+		const id = ((await (await send(`${hub.url}/api/plans`, "POST", { sentence: "a logger and a beacon over a cable", mock: true })).json()) as Any).id
+		const flags = { mock: true, hardware: false, review: false }
+		assert.equal((await send(`${hub.url}/api/plans/${id}/build`, "POST", flags)).status, 201)
+		await new Promise((r) => setTimeout(r, 20))
+		assert.equal(((await (await fetch(`${hub.url}/api/systems/${id}`)).json()) as Any).status, "plan")
+		assert.equal(((await (await fetch(`${hub.url}/api/designs`)).json()) as Any[]).find((x) => x.id === id).status, "plan, not built")
+		assert.equal((await send(`${hub.url}/api/plans/${id}/build`, "POST", flags)).status, 201, "it can be built again")
+		assert.equal(launches, 2)
+	} finally {
+		await hub.close()
+	}
+})

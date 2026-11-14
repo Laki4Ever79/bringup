@@ -476,12 +476,12 @@ test("hovering a board in either view shows its facts card; clicking a cable in 
 // Build turns it into the built design in place. Needs only Chromium: the plan is made in a fresh out/ by the scripted
 // architect, and the build's launch is a stub that writes the plan's system.json.
 const ROVER_SENTENCE = "a rover with a climate sensor on a separate board joined by a cable"
-async function withPlanHub(fn: (h: { url: string; root: string; page: Page; id: string }) => Promise<void>, launch?: Parameters<typeof serveHub>[0]["launch"]) {
+async function withPlanHub(fn: (h: { url: string; root: string; page: Page; id: string }) => Promise<void>, launch?: Parameters<typeof serveHub>[0]["launch"], sentence = ROVER_SENTENCE) {
 	const root = mkdtempSync(join(tmpdir(), "bringup-plan-page-"))
 	const hub = await serveHub({ outRoot: root, port: 0, launch })
 	const browser = await chromium.launch({ executablePath: exe!, headless: true })
 	try {
-		const r = await fetch(`${hub.url}/api/plans`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sentence: ROVER_SENTENCE, mock: true }) })
+		const r = await fetch(`${hub.url}/api/plans`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sentence, mock: true }) })
 		assert.equal(r.status, 201)
 		const { id } = (await r.json()) as { id: string }
 		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
@@ -513,6 +513,13 @@ test("every section of today's plan page is on the design page before a build", 
 		assert.equal(seen.add, "+ board")
 		assert.ok(seen.handles >= 2, "a dot to drag a cable from")
 		for (const h of ["Why split it this way", "Can't build yet", "Parts Bringup is learning", "Before you build", "Change the plan in words"]) assert.ok(seen.side.includes(h), `the side panel has "${h}"`)
+		// The sections this plan has are on screen (this plan has no can't-build lines and no parts to learn: those two
+		// stay hidden here, and show in the next test).
+		const shown = await page.evaluate(() => [...document.querySelectorAll("#plan-side h4")].filter((h) => (h as HTMLElement).offsetHeight > 0).map((h) => h.textContent))
+		assert.deepEqual(shown, ["Why split it this way", "Before you build", "Change the plan in words"])
+		// The panel stays beside the stage: it scrolls inside the stage's height, nothing hangs below it.
+		const fit = await page.evaluate(() => ({ side: document.getElementById("plan-side")!.getBoundingClientRect().bottom, stage: document.getElementById("stage-top")!.getBoundingClientRect().bottom }))
+		assert.ok(fit.side <= fit.stage + 1, `the side panel ends at ${fit.side}, the stage at ${fit.stage}`)
 		assert.equal(seen.go, "Build 2 boards")
 		assert.ok(seen.goShown > 0, "the Build button shows")
 		assert.equal(seen.three, 0, "no 3D before a build")
@@ -564,4 +571,84 @@ test("building from the design page turns it into the built design in place", { 
 		await page.click('#view-switch [data-view="top"]')
 		await page.waitForSelector("#stage-top svg", { state: "visible" })
 	}, launch)
+})
+
+test("a plan's can't-build lines and the parts being learned show on the design page", { skip: skipChromium, timeout: 120_000 }, async () => {
+	await withPlanHub(async ({ url, page, id }) => {
+		await page.goto(`${url}/system?id=${id}`)
+		await page.waitForSelector("#plan-side #cant-sec:not([hidden])", { timeout: 30_000 })
+		assert.match((await page.textContent("#plan-side #cant")) ?? "", /a camera/)
+		await page.waitForSelector("#plan-side #learn-sec:not([hidden])")
+		// The scripted learner finishes: each need ends learned (the moved poll ran on this page).
+		await page.waitForFunction(() => document.querySelectorAll("#plan-side .learn .st.learned").length === 2, null, { timeout: 30_000 })
+		assert.match((await page.textContent("#plan-side #learn")) ?? "", /speaker[\s\S]*amplifier/)
+	}, undefined, "a talking clock with a speaker and a camera")
+})
+
+test("a build that dies before writing the design gives the plan back: editable, buildable, no more polling", { skip: skipChromium, timeout: 120_000 }, async () => {
+	let launches = 0
+	const launch = () => { launches++; return { done: new Promise<{ code: number; stderr: string }>((r) => setTimeout(() => r({ code: 1, stderr: "boom" }), 300)), kill: () => {} } }
+	await withPlanHub(async ({ url, page, id }) => {
+		await page.goto(`${url}/system?id=${id}`)
+		await page.waitForSelector("#plan-side #free", { timeout: 30_000 })
+		await page.click("#plan-side #free")
+		await page.waitForFunction(() => /did not start/.test(document.querySelector("#plan-side #msg")?.textContent ?? ""), null, { timeout: 15_000 })
+		const st = await page.evaluate(() => ({ free: (document.querySelector("#plan-side #free") as HTMLButtonElement).disabled, building: document.getElementById("stage-wrap")!.classList.contains("building"), status: document.getElementById("status")!.textContent }))
+		assert.deepEqual(st, { free: false, building: false, status: "plan" })
+		// Polling stopped.
+		let polls = 0
+		page.on("request", (r) => { if (r.url().includes(`/api/systems/${id}`)) polls++ })
+		await page.waitForTimeout(2500)
+		assert.equal(polls, 0, "no more polling")
+		// Editable again (a drag moves a board and is saved), and Build starts again.
+		const box = (await page.locator('#stage-top .card[data-name="main"]').boundingBox())!
+		await page.mouse.move(box.x + 30, box.y + 20)
+		await page.mouse.down()
+		await page.mouse.move(box.x + 30, box.y + 120, { steps: 5 })
+		await page.mouse.up()
+		await page.waitForFunction(async ([pid, y]) => ((await (await fetch(`/api/plans/${pid}`)).json()).plan.layout.main.y > y), [id, 150] as const, { timeout: 10_000, polling: 300 })
+		await page.click("#plan-side #free")
+		for (let i = 0; i < 50 && launches < 2; i++) await page.waitForTimeout(100)
+		assert.equal(launches, 2, "Build started again")
+		await page.waitForFunction(() => /did not start/.test(document.querySelector("#plan-side #msg")?.textContent ?? "") && !document.getElementById("stage-wrap")!.classList.contains("building"), null, { timeout: 15_000 })
+		assert.equal(launches, 2)
+	}, launch)
+})
+
+test("while a build starts the drawing takes no edits: the brief editor closes and Delete does nothing", { skip: skipChromium, timeout: 120_000 }, async () => {
+	const launch = () => ({ done: new Promise<{ code: number; stderr: string }>(() => {}), kill: () => {} })
+	await withPlanHub(async ({ url, page, id }) => {
+		await page.goto(`${url}/system?id=${id}`)
+		await page.waitForSelector('#stage-top .card[data-name="main"]', { timeout: 30_000 })
+		await page.click('#stage-top .card[data-name="main"]')
+		await page.waitForSelector("#brief.on")
+		await page.evaluate(() => (document.querySelector("#plan-side #free") as HTMLElement).click())
+		await page.waitForFunction(() => document.getElementById("stage-wrap")!.classList.contains("building"))
+		await page.waitForFunction(() => !document.querySelector("#brief")!.classList.contains("on"))
+		await page.keyboard.press("Delete")
+		await page.waitForTimeout(500)
+		assert.equal(await page.locator("#stage-top .card").count(), 2)
+		assert.equal((await (await fetch(`${url}/api/plans/${id}`)).json() as { plan: { spec: { boards: unknown[] } } }).plan.spec.boards.length, 2)
+	}, launch)
+})
+
+test("a stale save whose reload fails says so and stops saving", { skip: skipChromium, timeout: 120_000 }, async () => {
+	await withPlanHub(async ({ url, page, id }) => {
+		await page.goto(`${url}/system?id=${id}`)
+		await page.waitForSelector('#stage-top .card[data-name="main"]', { timeout: 30_000 })
+		// The plan moves on elsewhere, and the plan can't be read again.
+		const { plan } = (await (await fetch(`${url}/api/plans/${id}`)).json()) as { plan: { layout: Record<string, unknown> } }
+		assert.equal((await fetch(`${url}/api/plans/${id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan: { ...plan, layout: { ...plan.layout, main: { x: 5, y: 5 } } } }) })).status, 200)
+		await page.route(`**/api/plans/${id}`, (r) => (r.request().method() === "GET" ? r.fulfill({ status: 500, body: "{}" }) : r.continue()))
+		let puts = 0
+		page.on("request", (r) => { if (r.method() === "PUT") puts++ })
+		await page.click("#stage-top #add")
+		await page.click("#brief-save")
+		await page.waitForFunction(() => /Couldn't reload the plan; refresh the page/.test(document.querySelector("#plan-side #msg")?.textContent ?? ""), null, { timeout: 10_000 })
+		const before = puts
+		await page.click("#stage-top #add")
+		await page.click("#brief-save")
+		await page.waitForTimeout(800)
+		assert.equal(puts, before, "no save after the failed reload")
+	})
 })

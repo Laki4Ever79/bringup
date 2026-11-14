@@ -570,13 +570,15 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	// Does a design (system.json, or a run's trace or contract) really exist at out/<id>? An empty or partial folder
 	// (a launch that threw) is not one.
 	const designExists = (id: string) => ["system.json", TRACE, "contract.json"].some((f) => existsSync(join(outRoot, id, f)))
-	// What a plan is as a design: "plan" (not built), "starting" (Build ran, the design isn't written yet), "earlier"
+	// What a plan is as a design: "plan" (not built), "starting" (Build ran, its process lives, the design isn't written yet), "earlier"
 	// (built before ids were kept: its system is already listed), or null (a design exists under the id).
 	const planState = (id: string): "plan" | "starting" | "earlier" | null => {
 		const p = plans.get(id)
 		if (!p || designExists(id)) return null
 		if (p.builtAs && p.builtAs !== id) return "earlier"
-		if (p.builtAs) return "starting"
+		// "starting" only while this dashboard's build process lives: one that died (or a dashboard restart) leaves a plan
+		// that can be built again.
+		if (p.builtAs) return live.get(id)?.exit === null ? "starting" : "plan"
 		return plans.builtBefore(id) && !existsSync(join(outRoot, id)) ? "earlier" : "plan"
 	}
 	// An old single-board plan: the newest top-level run whose brief is the plan's board brief (Build wrote it verbatim).

@@ -64,7 +64,9 @@ export function mountPlanCanvas(host, { id, view, onChange, onView, onMsg } = {}
 	host.append(root)
 	const $ = (x) => root.querySelector(`#${x}`)
 	const msg = (text, err = false) => onMsg?.(text, err)
-	let plan = null, issues = [], selected = null, saveTimer = 0, saving = Promise.resolve(), disposed = false
+	// locked: a build is starting (no edits from the keyboard either); broken: a stale save's reload failed, so saving
+	// stops rather than overwrite a plan this page can no longer see.
+	let plan = null, issues = [], selected = null, saveTimer = 0, saving = Promise.resolve(), disposed = false, locked = false, broken = false
 
 	// A plan view from the hub (GET, a save's answer, a change): the drawing follows it.
 	function apply(v) {
@@ -73,8 +75,14 @@ export function mountPlanCanvas(host, { id, view, onChange, onView, onMsg } = {}
 		draw()
 	}
 	async function reload() {
-		const r = await fetch(`/api/plans/${encodeURIComponent(id)}`)
-		if (!r.ok || disposed) return
+		const r = await fetch(`/api/plans/${encodeURIComponent(id)}`).catch(() => null)
+		if (disposed) return
+		if (!r?.ok) {
+			broken = true
+			clearTimeout(saveTimer)
+			return msg("Couldn't reload the plan; refresh the page.", true)
+		}
+		broken = false
 		const v = await r.json()
 		apply(v)
 		onView?.(v)
@@ -194,7 +202,7 @@ export function mountPlanCanvas(host, { id, view, onChange, onView, onMsg } = {}
 	$("draw").addEventListener("pointerdown", (e) => { if (e.target === $("draw") || e.target.id === "wires") { select(null); $("picker").classList.remove("on") } })
 	$("del").addEventListener("click", () => deleteSelected())
 	const onKey = (e) => {
-		if (e.target.closest?.("input, textarea")) return
+		if (locked || e.target.closest?.("input, textarea")) return
 		if (e.key === "Delete" || e.key === "Backspace") deleteSelected()
 		if (e.key === "Escape") { select(null); closeBrief() }
 	}
@@ -231,6 +239,7 @@ export function mountPlanCanvas(host, { id, view, onChange, onView, onMsg } = {}
 	}
 	function save() {
 		saving = saving.then(async () => {
+			if (broken) return
 			const sentAt = edits
 			const r = await fetch(`/api/plans/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan }) })
 			if (r.status === 409) { msg("Updated elsewhere; reloaded."); return reload() }
@@ -253,6 +262,13 @@ export function mountPlanCanvas(host, { id, view, onChange, onView, onMsg } = {}
 		for (const el of root.querySelectorAll(".card, .lbl")) if (names.has(el.dataset.name ?? el.dataset.link)) el.classList.add("flash")
 	}
 
+	// While a build starts: the brief editor closes, nothing is selected, and keys don't edit (the page dims the drawing
+	// and blocks the pointer). lock(false) gives the drawing back.
+	function lock(on) {
+		locked = on
+		if (on) { closeBrief(); select(null); $("picker").classList.remove("on") }
+	}
+
 	function dispose() {
 		disposed = true
 		clearTimeout(saveTimer)
@@ -266,6 +282,7 @@ export function mountPlanCanvas(host, { id, view, onChange, onView, onMsg } = {}
 		reload,
 		flush,
 		flash,
+		lock,
 		dispose,
 		get plan() { return plan },
 	}

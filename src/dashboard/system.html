@@ -102,7 +102,7 @@
 	   and the side panel beside the stage holds plan-panel.js. 3D and the timeline come with the build. */
 	#plan-side { display: none; }
 	#stage-wrap.planning { padding-right: calc(var(--gap) + 360px); }
-	#stage-wrap.planning #plan-side { display: block; position: absolute; right: var(--gap); top: 14px; width: 340px; }
+	#stage-wrap.planning #plan-side { display: block; position: absolute; right: var(--gap); top: 14px; width: 340px; max-height: max(320px, min(56vh, 520px)); overflow-y: auto; padding-right: 4px; }
 	#stage-wrap.planning #timeline, #stage-wrap.planning #view-switch [data-view="3d"] { display: none; }
 	#stage-wrap.building .plan-canvas { pointer-events: none; opacity: .6; }
 	#plan-side section { border: 0; background: none; padding: 0; }
@@ -111,7 +111,7 @@
 	#plan-said { margin: 0; font-size: 14px; }
 	@media (max-width: 960px) {
 		#stage-wrap.planning { padding-right: var(--gap); }
-		#stage-wrap.planning #plan-side { position: static; width: auto; margin-top: 14px; }
+		#stage-wrap.planning #plan-side { position: static; width: auto; max-height: none; overflow: visible; margin-top: 14px; }
 	}
 </style>
 </head>
@@ -175,8 +175,8 @@ async function showList() {
 			<form class="start" id="start">
 				<select id="spec">${specs.map((s) => `<option value="${esc(s.name)}">${esc(s.spec.name ?? s.name)}</option>`).join("")}</select>
 				<label title="Scripted agents and stub tools: free, about a minute"><input type="checkbox" id="mock" checked> Scripted (free)</label>
-				<label title="Real board, case and firmware builds, and the QEMU link test"><input type="checkbox" id="hardware"> Hardware tools</label>
-				<label title="Each board's brief review by a reviewer agent"><input type="checkbox" id="review"> Review</label>
+				<label title="Real board, case and firmware builds, and the QEMU link test"><input type="checkbox" id="start-hardware"> Hardware tools</label>
+				<label title="Each board's brief review by a reviewer agent"><input type="checkbox" id="start-review"> Review</label>
 				<button class="pill primary" type="submit">Start</button>
 				<span id="error"></span>
 			</form>
@@ -202,7 +202,7 @@ async function showList() {
 		e.preventDefault()
 		const mock = document.getElementById("mock").checked
 		if (!mock && !confirm("Real models: this costs money and takes about an hour. Start?")) return
-		const r = await fetch("/api/systems", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ spec: document.getElementById("spec").value, mock, hardware: document.getElementById("hardware").checked, review: document.getElementById("review").checked }) })
+		const r = await fetch("/api/systems", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ spec: document.getElementById("spec").value, mock, hardware: document.getElementById("start-hardware").checked, review: document.getElementById("start-review").checked }) })
 		const body = await r.json()
 		if (!r.ok) return (document.getElementById("error").textContent = body.error ?? "could not start")
 		location.href = `/system?id=${encodeURIComponent(body.systemId)}`
@@ -379,14 +379,24 @@ async function showPlan(d) {
 			view: d.plan,
 			canvas: planning.canvas,
 			onView: lines,
-			onBuild: () => { wrap.classList.add("building"); clearTimeout(timer); timer = setTimeout(showSystem, 1000) },
+			onBuild: () => { wrap.classList.add("building"); planning.canvas.lock(true); clearTimeout(timer); timer = setTimeout(showSystem, 1000) },
 		})
 	}
 	if (d.status === "starting") {
 		wrap.classList.add("building")
+		planning.canvas.lock(true)
 		planning.panel.building("Building: the design shows here as soon as it is written…")
 		clearTimeout(timer)
 		timer = setTimeout(showSystem, 1000)
+	} else if (wrap.classList.contains("building")) {
+		// The build process ended without writing the design (the hub says "plan" again): the plan is back, editable and
+		// buildable, and the polling stops.
+		clearTimeout(timer)
+		wrap.classList.remove("building")
+		planning.canvas.lock(false)
+		planning.canvas.apply(d.plan)
+		planning.panel.apply(d.plan)
+		planning.panel.msg("The build did not start; you can build again.", true)
 	}
 }
 // The build wrote the design: the plan's drawing and panel go, and the stage starts as for any design.
