@@ -1,0 +1,1047 @@
+{
+	"vendor": "st",
+	"family": "STM32F4",
+	"kind": "chip",
+	"package": {
+		"name": "LQFP64",
+		"footprint": "lqfp64_w10.05mm_h10.05mm_p0.5mm_pl1.475mm_pw0.3mm",
+		"bodyMm": {
+			"w": 10,
+			"h": 10
+		},
+		"extentMm": {
+			"w": 12.8,
+			"h": 12.8
+		},
+		"ringMm": 5.6625
+	},
+	"board": {
+		"supported": true
+	},
+	"core": "Arm Cortex-M4",
+	"mhz": 180,
+	"flashKb": 512,
+	"ramKb": 128,
+	"voltage": {
+		"min": 1.8,
+		"max": 3.6
+	},
+	"pins": [
+		{
+			"name": "PA0",
+			"index": 0,
+			"pads": [
+				"14"
+			],
+			"signals": [
+				"ADC1_IN0",
+				"ADC2_IN0",
+				"ADC3_IN0",
+				"RTC_AF2",
+				"SYS_WKUP0",
+				"TIM2_CH1",
+				"TIM2_ETR",
+				"TIM5_CH1",
+				"TIM8_ETR",
+				"UART4_TX",
+				"USART2_CTS"
+			],
+			"wake": true
+		},
+		{
+			"name": "PA1",
+			"index": 1,
+			"pads": [
+				"15"
+			],
+			"signals": [
+				"ADC1_IN1",
+				"ADC2_IN1",
+				"ADC3_IN1",
+				"QUADSPI_BK1_IO3",
+				"TIM2_CH2",
+				"TIM5_CH2",
+				"UART4_RX",
+				"USART2_RTS"
+			]
+		},
+		{
+			"name": "PA2",
+			"index": 2,
+			"pads": [
+				"16"
+			],
+			"signals": [
+				"ADC1_IN2",
+				"ADC2_IN2",
+				"ADC3_IN2",
+				"TIM2_CH3",
+				"TIM5_CH3",
+				"TIM9_CH1",
+				"USART2_TX"
+			]
+		},
+		{
+			"name": "PA3",
+			"index": 3,
+			"pads": [
+				"17"
+			],
+			"signals": [
+				"ADC1_IN3",
+				"ADC2_IN3",
+				"ADC3_IN3",
+				"SAI1_FS_A",
+				"TIM2_CH4",
+				"TIM5_CH4",
+				"TIM9_CH2",
+				"USART2_RX",
+				"USB_OTG_HS_ULPI_D0"
+			]
+		},
+		{
+			"name": "PA4",
+			"index": 4,
+			"pads": [
+				"20"
+			],
+			"signals": [
+				"ADC1_IN4",
+				"ADC2_IN4",
+				"DAC_OUT1",
+				"DCMI_HSYNC",
+				"I2S1_WS",
+				"I2S3_WS",
+				"SPI1_NSS",
+				"SPI3_NSS",
+				"USART2_CK",
+				"USB_OTG_HS_SOF"
+			]
+		},
+		{
+			"name": "PA5",
+			"index": 5,
+			"pads": [
+				"21"
+			],
+			"signals": [
+				"ADC1_IN5",
+				"ADC2_IN5",
+				"DAC_OUT2",
+				"I2S1_CK",
+				"SPI1_SCK",
+				"TIM2_CH1",
+				"TIM2_ETR",
+				"TIM8_CH1N",
+				"USB_OTG_HS_ULPI_CK"
+			]
+		},
+		{
+			"name": "PA6",
+			"index": 6,
+			"pads": [
+				"22"
+			],
+			"signals": [
+				"ADC1_IN6",
+				"ADC2_IN6",
+				"DCMI_PIXCLK",
+				"I2S2_MCK",
+				"SPI1_MISO",
+				"TIM13_CH1",
+				"TIM1_BKIN",
+				"TIM3_CH1",
+				"TIM8_BKIN"
+			]
+		},
+		{
+			"name": "PA7",
+			"index": 7,
+			"pads": [
+				"23"
+			],
+			"signals": [
+				"ADC1_IN7",
+				"ADC2_IN7",
+				"I2S1_SD",
+				"SPI1_MOSI",
+				"TIM14_CH1",
+				"TIM1_CH1N",
+				"TIM3_CH2",
+				"TIM8_CH1N"
+			]
+		},
+		{
+			"name": "PA8",
+			"index": 8,
+			"pads": [
+				"41"
+			],
+			"signals": [
+				"I2C3_SCL",
+				"RCC_MCO_1",
+				"TIM1_CH1",
+				"USART1_CK",
+				"USB_OTG_FS_SOF"
+			]
+		},
+		{
+			"name": "PA9",
+			"index": 9,
+			"pads": [
+				"42"
+			],
+			"signals": [
+				"DAC_EXTI9",
+				"DCMI_D0",
+				"I2C3_SMBA",
+				"I2S2_CK",
+				"SAI1_SD_B",
+				"SPI2_SCK",
+				"TIM1_CH2",
+				"USART1_TX",
+				"USB_OTG_FS_VBUS"
+			]
+		},
+		{
+			"name": "PA10",
+			"index": 10,
+			"pads": [
+				"43"
+			],
+			"signals": [
+				"DCMI_D1",
+				"TIM1_CH3",
+				"USART1_RX",
+				"USB_OTG_FS_ID"
+			]
+		},
+		{
+			"name": "PA11",
+			"index": 11,
+			"pads": [
+				"44"
+			],
+			"signals": [
+				"ADC1_EXTI11",
+				"ADC2_EXTI11",
+				"ADC3_EXTI11",
+				"CAN1_RX",
+				"TIM1_CH4",
+				"USART1_CTS",
+				"USB_OTG_FS_DM"
+			]
+		},
+		{
+			"name": "PA12",
+			"index": 12,
+			"pads": [
+				"45"
+			],
+			"signals": [
+				"CAN1_TX",
+				"TIM1_ETR",
+				"USART1_RTS",
+				"USB_OTG_FS_DP"
+			]
+		},
+		{
+			"name": "PA13",
+			"index": 13,
+			"pads": [
+				"46"
+			],
+			"signals": [
+				"SYS_JTMS-SWDIO"
+			],
+			"reserved": "swd"
+		},
+		{
+			"name": "PA14",
+			"index": 14,
+			"pads": [
+				"49"
+			],
+			"signals": [
+				"SYS_JTCK-SWCLK"
+			],
+			"reserved": "swd"
+		},
+		{
+			"name": "PA15",
+			"index": 15,
+			"pads": [
+				"50"
+			],
+			"signals": [
+				"ADC1_EXTI15",
+				"ADC2_EXTI15",
+				"ADC3_EXTI15",
+				"CEC",
+				"I2S1_WS",
+				"I2S3_WS",
+				"SPI1_NSS",
+				"SPI3_NSS",
+				"SYS_JTDI",
+				"TIM2_CH1",
+				"TIM2_ETR",
+				"UART4_RTS"
+			]
+		},
+		{
+			"name": "PB0",
+			"index": 16,
+			"pads": [
+				"26"
+			],
+			"signals": [
+				"ADC1_IN8",
+				"ADC2_IN8",
+				"I2S3_SD",
+				"SDIO_D1",
+				"SPI3_MOSI",
+				"TIM1_CH2N",
+				"TIM3_CH3",
+				"TIM8_CH2N",
+				"UART4_CTS",
+				"USB_OTG_HS_ULPI_D1"
+			]
+		},
+		{
+			"name": "PB1",
+			"index": 17,
+			"pads": [
+				"27"
+			],
+			"signals": [
+				"ADC1_IN9",
+				"ADC2_IN9",
+				"SDIO_D2",
+				"TIM1_CH3N",
+				"TIM3_CH4",
+				"TIM8_CH3N",
+				"USB_OTG_HS_ULPI_D2"
+			]
+		},
+		{
+			"name": "PB2",
+			"index": 18,
+			"pads": [
+				"28"
+			],
+			"signals": [
+				"I2S3_SD",
+				"QUADSPI_CLK",
+				"SAI1_SD_A",
+				"SDIO_CK",
+				"SPI3_MOSI",
+				"TIM2_CH4",
+				"USB_OTG_HS_ULPI_D4"
+			]
+		},
+		{
+			"name": "PB3",
+			"index": 19,
+			"pads": [
+				"55"
+			],
+			"signals": [
+				"I2C2_SDA",
+				"I2S1_CK",
+				"I2S3_CK",
+				"SPI1_SCK",
+				"SPI3_SCK",
+				"SYS_JTDO-SWO",
+				"TIM2_CH2"
+			]
+		},
+		{
+			"name": "PB4",
+			"index": 20,
+			"pads": [
+				"56"
+			],
+			"signals": [
+				"I2C3_SDA",
+				"I2S2_WS",
+				"SPI1_MISO",
+				"SPI2_NSS",
+				"SPI3_MISO",
+				"SYS_JTRST",
+				"TIM3_CH1"
+			]
+		},
+		{
+			"name": "PB5",
+			"index": 21,
+			"pads": [
+				"57"
+			],
+			"signals": [
+				"CAN2_RX",
+				"DCMI_D10",
+				"I2C1_SMBA",
+				"I2S1_SD",
+				"I2S3_SD",
+				"SPI1_MOSI",
+				"SPI3_MOSI",
+				"TIM3_CH2",
+				"USB_OTG_HS_ULPI_D7"
+			]
+		},
+		{
+			"name": "PB6",
+			"index": 22,
+			"pads": [
+				"58"
+			],
+			"signals": [
+				"CAN2_TX",
+				"CEC",
+				"DCMI_D5",
+				"I2C1_SCL",
+				"QUADSPI_BK1_NCS",
+				"TIM4_CH1",
+				"USART1_TX"
+			]
+		},
+		{
+			"name": "PB7",
+			"index": 23,
+			"pads": [
+				"59"
+			],
+			"signals": [
+				"DCMI_VSYNC",
+				"I2C1_SDA",
+				"SPDIFRX_IN0",
+				"TIM4_CH2",
+				"USART1_RX"
+			]
+		},
+		{
+			"name": "PB8",
+			"index": 24,
+			"pads": [
+				"61"
+			],
+			"signals": [
+				"CAN1_RX",
+				"DCMI_D6",
+				"I2C1_SCL",
+				"SDIO_D4",
+				"TIM10_CH1",
+				"TIM2_CH1",
+				"TIM2_ETR",
+				"TIM4_CH3"
+			]
+		},
+		{
+			"name": "PB9",
+			"index": 25,
+			"pads": [
+				"62"
+			],
+			"signals": [
+				"CAN1_TX",
+				"DAC_EXTI9",
+				"DCMI_D7",
+				"I2C1_SDA",
+				"I2S2_WS",
+				"SAI1_FS_B",
+				"SDIO_D5",
+				"SPI2_NSS",
+				"TIM11_CH1",
+				"TIM2_CH2",
+				"TIM4_CH4"
+			]
+		},
+		{
+			"name": "PB10",
+			"index": 26,
+			"pads": [
+				"29"
+			],
+			"signals": [
+				"I2C2_SCL",
+				"I2S2_CK",
+				"SAI1_SCK_A",
+				"SPI2_SCK",
+				"TIM2_CH3",
+				"USART3_TX",
+				"USB_OTG_HS_ULPI_D3"
+			]
+		},
+		{
+			"name": "PB12",
+			"index": 28,
+			"pads": [
+				"33"
+			],
+			"signals": [
+				"CAN2_RX",
+				"I2C2_SMBA",
+				"I2S2_WS",
+				"SAI1_SCK_B",
+				"SPI2_NSS",
+				"TIM1_BKIN",
+				"USART3_CK",
+				"USB_OTG_HS_ID",
+				"USB_OTG_HS_ULPI_D5"
+			]
+		},
+		{
+			"name": "PB13",
+			"index": 29,
+			"pads": [
+				"34"
+			],
+			"signals": [
+				"CAN2_TX",
+				"I2S2_CK",
+				"SPI2_SCK",
+				"TIM1_CH1N",
+				"USART3_CTS",
+				"USB_OTG_HS_ULPI_D6",
+				"USB_OTG_HS_VBUS"
+			]
+		},
+		{
+			"name": "PB14",
+			"index": 30,
+			"pads": [
+				"35"
+			],
+			"signals": [
+				"SPI2_MISO",
+				"TIM12_CH1",
+				"TIM1_CH2N",
+				"TIM8_CH2N",
+				"USART3_RTS",
+				"USB_OTG_HS_DM"
+			]
+		},
+		{
+			"name": "PB15",
+			"index": 31,
+			"pads": [
+				"36"
+			],
+			"signals": [
+				"ADC1_EXTI15",
+				"ADC2_EXTI15",
+				"ADC3_EXTI15",
+				"I2S2_SD",
+				"RTC_REFIN",
+				"SPI2_MOSI",
+				"TIM12_CH2",
+				"TIM1_CH3N",
+				"TIM8_CH3N",
+				"USB_OTG_HS_DP"
+			]
+		},
+		{
+			"name": "PC0",
+			"index": 32,
+			"pads": [
+				"8"
+			],
+			"signals": [
+				"ADC1_IN10",
+				"ADC2_IN10",
+				"ADC3_IN10",
+				"SAI1_MCLK_B",
+				"USB_OTG_HS_ULPI_STP"
+			]
+		},
+		{
+			"name": "PC1",
+			"index": 33,
+			"pads": [
+				"9"
+			],
+			"signals": [
+				"ADC1_IN11",
+				"ADC2_IN11",
+				"ADC3_IN11",
+				"I2S2_SD",
+				"I2S3_SD",
+				"SAI1_SD_A",
+				"SPI2_MOSI",
+				"SPI3_MOSI"
+			]
+		},
+		{
+			"name": "PC2",
+			"index": 34,
+			"pads": [
+				"10"
+			],
+			"signals": [
+				"ADC1_IN12",
+				"ADC2_IN12",
+				"ADC3_IN12",
+				"SPI2_MISO",
+				"USB_OTG_HS_ULPI_DIR"
+			]
+		},
+		{
+			"name": "PC3",
+			"index": 35,
+			"pads": [
+				"11"
+			],
+			"signals": [
+				"ADC1_IN13",
+				"ADC2_IN13",
+				"ADC3_IN13",
+				"I2S2_SD",
+				"SPI2_MOSI",
+				"USB_OTG_HS_ULPI_NXT"
+			]
+		},
+		{
+			"name": "PC4",
+			"index": 36,
+			"pads": [
+				"24"
+			],
+			"signals": [
+				"ADC1_IN14",
+				"ADC2_IN14",
+				"I2S1_MCK",
+				"SPDIFRX_IN2"
+			]
+		},
+		{
+			"name": "PC5",
+			"index": 37,
+			"pads": [
+				"25"
+			],
+			"signals": [
+				"ADC1_IN15",
+				"ADC2_IN15",
+				"SPDIFRX_IN3",
+				"USART3_RX"
+			]
+		},
+		{
+			"name": "PC6",
+			"index": 38,
+			"pads": [
+				"37"
+			],
+			"signals": [
+				"DCMI_D0",
+				"FMPI2C1_SCL",
+				"I2S2_MCK",
+				"SDIO_D6",
+				"TIM3_CH1",
+				"TIM8_CH1",
+				"USART6_TX"
+			]
+		},
+		{
+			"name": "PC7",
+			"index": 39,
+			"pads": [
+				"38"
+			],
+			"signals": [
+				"DCMI_D1",
+				"FMPI2C1_SDA",
+				"I2S2_CK",
+				"I2S3_MCK",
+				"SDIO_D7",
+				"SPDIFRX_IN1",
+				"SPI2_SCK",
+				"TIM3_CH2",
+				"TIM8_CH2",
+				"USART6_RX"
+			]
+		},
+		{
+			"name": "PC8",
+			"index": 40,
+			"pads": [
+				"39"
+			],
+			"signals": [
+				"DCMI_D2",
+				"SDIO_D0",
+				"SYS_TRACED0",
+				"TIM3_CH3",
+				"TIM8_CH3",
+				"UART5_RTS",
+				"USART6_CK"
+			]
+		},
+		{
+			"name": "PC9",
+			"index": 41,
+			"pads": [
+				"40"
+			],
+			"signals": [
+				"DAC_EXTI9",
+				"DCMI_D3",
+				"I2C3_SDA",
+				"I2S_CKIN",
+				"QUADSPI_BK1_IO0",
+				"RCC_MCO_2",
+				"SDIO_D1",
+				"TIM3_CH4",
+				"TIM8_CH4",
+				"UART5_CTS"
+			]
+		},
+		{
+			"name": "PC10",
+			"index": 42,
+			"pads": [
+				"51"
+			],
+			"signals": [
+				"DCMI_D8",
+				"I2S3_CK",
+				"QUADSPI_BK1_IO1",
+				"SDIO_D2",
+				"SPI3_SCK",
+				"UART4_TX",
+				"USART3_TX"
+			]
+		},
+		{
+			"name": "PC11",
+			"index": 43,
+			"pads": [
+				"52"
+			],
+			"signals": [
+				"ADC1_EXTI11",
+				"ADC2_EXTI11",
+				"ADC3_EXTI11",
+				"DCMI_D4",
+				"QUADSPI_BK2_NCS",
+				"SDIO_D3",
+				"SPI3_MISO",
+				"UART4_RX",
+				"USART3_RX"
+			]
+		},
+		{
+			"name": "PC12",
+			"index": 44,
+			"pads": [
+				"53"
+			],
+			"signals": [
+				"DCMI_D9",
+				"I2C2_SDA",
+				"I2S3_SD",
+				"SDIO_CK",
+				"SPI3_MOSI",
+				"UART5_TX",
+				"USART3_CK"
+			]
+		},
+		{
+			"name": "PC13",
+			"index": 45,
+			"pads": [
+				"2"
+			],
+			"signals": [
+				"RTC_AF1",
+				"SYS_WKUP1"
+			],
+			"wake": true
+		},
+		{
+			"name": "PC14",
+			"index": 46,
+			"pads": [
+				"3"
+			],
+			"signals": [
+				"RCC_OSC32_IN"
+			]
+		},
+		{
+			"name": "PC15",
+			"index": 47,
+			"pads": [
+				"4"
+			],
+			"signals": [
+				"ADC1_EXTI15",
+				"ADC2_EXTI15",
+				"ADC3_EXTI15",
+				"RCC_OSC32_OUT"
+			]
+		},
+		{
+			"name": "PD2",
+			"index": 50,
+			"pads": [
+				"54"
+			],
+			"signals": [
+				"DCMI_D11",
+				"SDIO_CMD",
+				"TIM3_ETR",
+				"UART5_RX"
+			]
+		},
+		{
+			"name": "PH0",
+			"index": 112,
+			"pads": [
+				"5"
+			],
+			"signals": [
+				"RCC_OSC_IN"
+			]
+		},
+		{
+			"name": "PH1",
+			"index": 113,
+			"pads": [
+				"6"
+			],
+			"signals": [
+				"RCC_OSC_OUT"
+			]
+		}
+	],
+	"power": [
+		{
+			"name": "VBAT",
+			"net": "vbat",
+			"pads": [
+				"1"
+			]
+		},
+		{
+			"name": "NRST",
+			"net": "reset",
+			"pads": [
+				"7"
+			]
+		},
+		{
+			"name": "VSSA",
+			"net": "ground",
+			"pads": [
+				"12"
+			]
+		},
+		{
+			"name": "VDDA",
+			"net": "analog",
+			"pads": [
+				"13"
+			]
+		},
+		{
+			"name": "VSS",
+			"net": "ground",
+			"pads": [
+				"18",
+				"31",
+				"47",
+				"63"
+			]
+		},
+		{
+			"name": "VDD",
+			"net": "supply",
+			"pads": [
+				"19",
+				"32",
+				"48",
+				"64"
+			]
+		},
+		{
+			"name": "VCAP_1",
+			"net": "other",
+			"pads": [
+				"30"
+			]
+		},
+		{
+			"name": "BOOT0",
+			"net": "boot",
+			"pads": [
+				"60"
+			]
+		}
+	],
+	"peripherals": {
+		"uart": [
+			"UART4",
+			"UART5",
+			"USART1",
+			"USART2",
+			"USART3",
+			"USART6"
+		],
+		"i2c": [
+			"I2C1",
+			"I2C2",
+			"I2C3"
+		],
+		"spi": [
+			"SPI1",
+			"SPI2",
+			"SPI3"
+		],
+		"i2s": [
+			"I2S1",
+			"I2S2",
+			"I2S3",
+			"SAI1"
+		],
+		"adc": [
+			"ADC1",
+			"ADC2",
+			"ADC3"
+		],
+		"usb": [
+			"USB_OTG_FS"
+		],
+		"can": [
+			"CAN1",
+			"CAN2"
+		],
+		"radio": []
+	},
+	"usb": null,
+	"radio": [],
+	"id": "stm32f446ret6",
+	"mpn": "STM32F446RET6",
+	"lcsc": "C69336",
+	"wakeAny": true,
+	"console": {
+		"instance": "USART1",
+		"tx": "PA9",
+		"rx": "PA10"
+	},
+	"programming": {
+		"method": "swd",
+		"pins": [
+			"PA13",
+			"PA14"
+		]
+	},
+	"boot": {
+		"pin": "BOOT0",
+		"level": "high"
+	},
+	"support": [
+		{
+			"job": "VDD decoupling (pad 19)",
+			"spec": "decouple",
+			"a": "pin:VDD",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD decoupling (pad 32)",
+			"spec": "decouple",
+			"a": "pin:VDD2",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD decoupling (pad 48)",
+			"spec": "decouple",
+			"a": "pin:VDD3",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD decoupling (pad 64)",
+			"spec": "decouple",
+			"a": "pin:VDD4",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDDA decoupling (pad 13)",
+			"spec": "decouple",
+			"a": "pin:VDDA",
+			"b": "net:GND"
+		},
+		{
+			"job": "VBAT decoupling (pad 1)",
+			"spec": "decouple",
+			"a": "pin:VBAT",
+			"b": "net:GND"
+		},
+		{
+			"job": "VCAP_1 core regulator capacitor, 4.7 µF (pad 30)",
+			"spec": "vcap",
+			"a": "pin:VCAP_1",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD bulk",
+			"spec": "bulk",
+			"a": "net:supply",
+			"b": "net:GND"
+		},
+		{
+			"job": "NRST to GND, 100 nF",
+			"spec": "decouple",
+			"a": "pin:NRST",
+			"b": "net:GND"
+		},
+		{
+			"job": "BOOT0 pulled low (boot from flash)",
+			"spec": "bootPulldown",
+			"a": "pin:BOOT0",
+			"b": "net:GND"
+		}
+	],
+	"currents": {
+		"sleepUa": 150,
+		"cpuMa": 32,
+		"supplyMinMa": 150,
+		"source": "DocID027107 Rev 6 (STM32F446xC/E, Sep 2016; a mirror copy, ST's current DS10693 not read): run 180 MHz from flash, external clock, PLL on, all peripherals disabled 32 mA typ (72 mA all enabled), 25 °C (Table 23); Stop with the low-power regulator, flash in Stop mode 0.15 mA typ (0.121 mA flash in deep power-down; under-drive lower) (Table 27). No minimum supply current stated; 150 mA is Bringup's margin"
+	},
+	"firmware": {
+		"platform": "ststm32@19.6.0",
+		"board": "genericSTM32F446RE",
+		"framework": "arduino",
+		"arch": "stm32",
+		"pinStyle": "name",
+		"zephyrBoard": "nucleo_f446re",
+		"history": {
+			"store": "eeprom",
+			"bytes": 8192,
+			"source": "STM32duino EEPROM emulation on F4: FLASH_PAGE_SIZE 8 KB in the last flash sector, and the whole sector (128 KB on these parts) is erased on each write-back (framework-arduinoststm32 4.21200 libraries/EEPROM/src/utility/stm32_eeprom.h)"
+		}
+	},
+	"sim": {
+		"backend": null,
+		"models": [],
+		"note": "Renode 1.17 has stm32f4 (an F407) and stm32f412 platforms, not the F446"
+	},
+	"motion": {
+		"firmware": [
+			"grblhal"
+		],
+		"fpu": true,
+		"source": "grblHAL Drivers README (github.com/grblHAL/Drivers, read 14 Nov 2026): STM32F4xx in the 'With floating point unit (FPU)' table, boards 'Blackpill / Nucleo-F411RE / Nucleo-F446RE'; Cortex-M4F single-precision FPU (DocID027107 §1: Arm Cortex-M4 with FPU)"
+	},
+	"sources": [
+		"ST STM32_open_pin_data mcu/STM32F446R(C-E)Tx.xml (BSD-3-Clause)",
+		"DocID027107 Rev 6 (Sep 2016): Table 18 VCAP_1 4.7 µF ESR < 1 Ω with a single VCAP pin (LQFP64 has only VCAP_1), power supply scheme (VDD n × 100 nF + 4.7 µF), boot modes (BOOT0 low: flash)",
+		"No crystal: STM32duino's generic F446RE clock (variants/STM32F4xx/F446R(C-E)T/generic_clock.c) runs from the HSI. nucleo_f446re isn't used: a Nucleo takes its clock from the ST-LINK, which a Bringup board doesn't have. USB OTG FS needs an HSE, so the profile has no usb and the board doesn't wire it",
+		"Console USART1 on PA9/PA10: the pins ST's ROM bootloader also listens on (AN2606)"
+	],
+	"priceUsd": {
+		"qty": 100,
+		"usd": 8.43,
+		"source": "LCSC C69336 $11.46 @1, $8.43 @100, 288 in stock, JLCPCB Extended (jlcpcb.com parts API, 14 Nov 2026)"
+	}
+}

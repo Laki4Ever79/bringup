@@ -15,6 +15,10 @@ and adding a vendor means adding profiles, not editing agents.
 | STM32WB55CGU6 | ST | not yet: RF design, SMPS, 32 MHz crystal | ststm32 Arduino (+ STM32duinoBLE) | none | BLE, no modular grant |
 | RP2040 | Raspberry Pi | not yet: QSPI flash | raspberrypi (Arduino mbed core): builds | none | sleeps in SLEEP (RTC alarm) |
 | nRF52840 (MDBT50Q-1MV2) | Nordic | not yet: module land pattern | nordicnrf52 (Adafruit core): builds, BLE via Bluefruit | Renode `nrf52840`: boots to the banner | BLE, FCC modular grant |
+| STM32F411CEU6 | ST | yes (UFQFPN48, 4.7 µF VCAP) | ststm32 Arduino (genericSTM32F411CE): builds (product, 34 KB) | none (Renode has F407/F412) | motion: grblHAL; the Black Pill's chip |
+| STM32F446RET6 | ST | yes (LQFP64, 4.7 µF VCAP) | ststm32 Arduino (genericSTM32F446RE): builds (product, 37 KB) | none | motion: grblHAL; 180 MHz, 2 CAN |
+| ESP32-WROOM-32E | Espressif | not yet: module land pattern, USB-UART bridge | not yet: the template's ESP32 path is the C3's | none | motion: FluidNC, grblHAL; BLE + Wi-Fi, FCC modular grant; GPIO34–39 input only |
+| RP2350A | Raspberry Pi | not yet: QSPI flash, core regulator | not yet: needs the arduino-pico core | none | motion: grblHAL, FluidNC |
 
 ## Profiles
 
@@ -29,6 +33,14 @@ datasheets. Every profile carries its `sources`.
 npx tsx scripts/mcu/import-stm32.ts      # regenerate STM32 profiles (needs tools/vendor/STM32_open_pin_data)
 npx tsx scripts/mcu/catalog.ts           # refresh catalog/parts.json's MCU lines from the buildable profiles
 ```
+
+## Motion controllers
+
+A CNC or plotter controller needs a chip that runs motion firmware: grblHAL (configured at compile time, STM32F4,
+RP2350, ESP32 and more) or FluidNC (runtime YAML, made for the classic ESP32). `profile.motion` says which runs on the
+chip upstream, whether it has a hardware FPU, and the source. `compare_mcus` with `motion` (any, grblhal, fluidnc)
+fits only those chips; the others (ESP32-C3, STM32G031, L031, F103, RP2040, nRF52840, WB55) can be helper boards
+(pendant, I/O expander) beside the controller. Bringup doesn't build motion firmware itself.
 
 ## Pin index
 
@@ -51,7 +63,8 @@ ESP32-C3. The adopt reader (`src/adopt/`) numbers pins globally (STM32 1000 + in
 `src/mcu/solver.ts` `solvePins(profile, needs)` assigns pins and peripheral instances the way CubeMX does for ST,
 from the profile alone: an I2C bus's SDA and SCL land on one instance's pins; a UART's TX and RX likewise; ADC needs get
 an analog pin; wake needs a wake-capable pin. Reserved pins (SWD, reset, oscillator, console) are never handed out;
-soft ones (ESP32 strapping pins, USB) only last. A failure names the shortfall: "needs 2 UART, the STM32G031K8T6 has 1
+soft ones (ESP32 strapping pins, USB) only last. An input-only pin (`inputOnly`, the classic ESP32's GPIO34–39) takes
+only inputs (ADC, wake, UART RX, SPI MISO), never a plain GPIO. A failure names the shortfall: "needs 2 UART, the STM32G031K8T6 has 1
 (USART1); LPUART1 has no free pins, USART2 is the console". A pin matrix (ESP32, nRF) is `"*"` in a pin's signals.
 
 The link budget (`src/contract/links.ts`) counts free peripherals and GPIOs from the design's own chip.
@@ -68,7 +81,7 @@ battery, price at 100, stock, a simulator); every term is listed with its number
 For a bare chip (`kind: "chip"`), `src/mcu/board.ts` labels the package's pads from the profile, joins its supply and
 ground pads to the rails and adds the profile's `support` list (decoupling per supply pad, bulk, the reset pin's
 capacitor, a BOOT0 pull-down), each placed beside its pad. The package footprint is the profile's (LQFP dimensions
-match KiCad's LQFP-32/48 7×7 land patterns). A chip whose profile names a crystal (`clock.crystal`) gets it placed
+match KiCad's LQFP-32/48 7×7 and LQFP-64 10×10 land patterns). An STM32F4's core regulator gets its 4.7 µF on VCAP_1. A chip whose profile names a crystal (`clock.crystal`) gets it placed
 beside its oscillator pads (SMD3225-4P, KiCad's land pattern) with two load capacitors sized C = 2 × (CL − 3 pF).
 Native USB is wired from the profile's `usb` pins. An STM32 board is
 flashed over SWD (PA13/PA14); the ESP32 recovery pads, download strap and USB wake apply only where the profile has
@@ -135,5 +148,16 @@ npm run setup -- --vendors    # PlatformIO ststm32 19.6.0 (its STM32duino 2.12 f
 - RF design for bare radio chips (matching, antenna) is out of scope: use certified modules.
 - Firmware flash/RAM budgets (model-fit checks) are measured for the ESP32-C3 only.
 - Zephyr builds need the Zephyr SDK (several GB), not installed; the overlay is generated and checked by reading back.
-- No Renode model for STM32L031, STM32WB55 or RP2040.
+- No Renode model for STM32L031, STM32WB55, RP2040, RP2350, STM32F411 or STM32F446 (Renode's stm32f412 platform is
+  close to the F411 but untried).
+- STM32F411 and F446 run on the HSI (STM32duino's generic clock), so their USB isn't wired: USB needs a crystal-based
+  clock (25 MHz on the Black Pill). Their product firmware builds (not tried on hardware). On F4 the EEPROM emulation erases a whole 128 KB
+  sector per write-back, so its wear is worse than on the G0/F1.
+- The ESP32-WROOM-32E needs its land pattern, a USB-UART bridge with auto-reset for flashing, and a firmware path for
+  the classic ESP32 (hal.h's ESP32 console is the C3's USB Serial/JTAG; the C3's envs are hand-written).
+- The RP2350A needs its QSPI flash, its switching core regulator and the exposed ground pad on the board, and hal.h
+  support for the arduino-pico core (PlatformIO's raspberrypi platform has no RP2350).
+- Motion firmware (grblHAL, FluidNC) isn't generated or built; profiles only say which chips run it.
+- A pin's direction isn't in the contract, so the consistency check can't refuse an output on an input-only pin; only
+  the solver avoids it.
 - The dashboard still writes pins as GPIO numbers (it doesn't load profiles).
