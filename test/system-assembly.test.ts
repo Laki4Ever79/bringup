@@ -2,7 +2,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
-import { assemblyErrors, derivedAssembly, BOARD_GAP_MM, defaultAssembly, DEFAULT_PLATE_MM, ESTIMATED_OUTLINE_MM, footprint, PLATE_MARGIN_MM, withOutlines, type AssemblyBoard, type SystemAssembly } from "../src/system/assembly.ts"
+import { assemblyErrors, assemblyFitError, derivedAssembly, BOARD_GAP_MM, defaultAssembly, DEFAULT_PLATE_MM, ESTIMATED_OUTLINE_MM, footprint, PLATE_MARGIN_MM, withOutlines, type AssemblyBoard, type SystemAssembly } from "../src/system/assembly.ts"
 import { specErrors, type SystemSpec } from "../src/system/spec.ts"
 
 const placed = (name: string, xMm = 0, yMm = 0, rotDeg: AssemblyBoard["rotDeg"] = 0): AssemblyBoard =>
@@ -139,4 +139,41 @@ test("an old robot derives its assembly from its mechanics", () => {
 test("an old two-board design without a chassis derives separate devices with no positions", () => {
 	const sys = { name: "pair", boards: [{ name: "logger", brief: "a.md" }, { name: "beacon", brief: "b.md" }], links: [] } as unknown as SystemSpec
 	assert.deepEqual(derivedAssembly(sys), { body: "separate", boards: [], derived: true })
+})
+
+// The brief's size limit (motion.maxSizeMm): boards wrap into rows along y before the plate passes it.
+const three = (): SystemSpec => spec(undefined, ["main", "climate", "extra"])
+const inside = (a: SystemAssembly) => a.boards.every((b) => { const f = footprint(b); return Math.abs(b.xMm) + f.xMm / 2 + PLATE_MARGIN_MM <= a.plate!.lengthMm / 2 && Math.abs(b.yMm) + f.yMm / 2 + PLATE_MARGIN_MM <= a.plate!.widthMm / 2 })
+
+test("the default plate wraps boards into a second row before passing the brief's size limit", () => {
+	const wide = { widthMm: 60, heightMm: 30 }
+	const limit: [number, number] = [160, 150]
+	const free = defaultAssembly(three(), "chassis", { main: wide, climate: wide, extra: wide })
+	assert.ok(free.plate!.lengthMm > 160, "without a limit the row grows past it")
+	const a = defaultAssembly(three(), "chassis", { main: wide, climate: wide, extra: wide }, limit)
+	assert.ok(a.plate!.lengthMm <= 160 && a.plate!.widthMm <= 150, JSON.stringify(a.plate))
+	assert.ok(a.boards.some((b) => b.yMm !== 0), "one board is in a second row")
+	assert.ok(inside(a))
+	assert.deepEqual(assemblyErrors({ ...three(), assembly: a }), [])
+	assert.equal(assemblyFitError(a, limit), null)
+})
+
+test("grown outlines wrap into a second row instead of passing the limit", () => {
+	const limit: [number, number] = [160, 150]
+	const start = defaultAssembly(spec(undefined, ["main", "climate"]), "chassis", {}, limit)
+	const a = withOutlines(start, { main: { widthMm: 43, heightMm: 30 }, climate: { widthMm: 90, heightMm: 30 } }, limit)
+	assert.ok(a.plate!.lengthMm <= 160 && a.plate!.widthMm <= 150, JSON.stringify(a.plate))
+	assert.ok(inside(a))
+	assert.deepEqual(assemblyErrors({ ...spec(undefined, ["main", "climate"]), assembly: a }), [])
+	// Without the limit it is lengthened, as before.
+	assert.ok(withOutlines(start, { main: { widthMm: 43, heightMm: 30 }, climate: { widthMm: 90, heightMm: 30 } }).plate!.lengthMm > 160)
+})
+
+test("boards that can't fit within the limit at all are named, not silently exceeded", () => {
+	const limit: [number, number] = [160, 150]
+	const huge = { widthMm: 200, heightMm: 30 }
+	const a = defaultAssembly(spec(undefined, ["main", "climate"]), "chassis", { main: { widthMm: 43, heightMm: 30 }, climate: huge }, limit)
+	const err = assemblyFitError(a, limit)
+	assert.match(err ?? "", /need a \d+ × \d+ mm plate, over the 160 × 150 mm the brief allows/)
+	assert.equal(assemblyFitError(a), null, "no limit, no finding")
 })

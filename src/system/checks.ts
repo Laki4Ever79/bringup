@@ -11,7 +11,7 @@ import { peripheralsFree } from "../mcu/solver.ts"
 import { byMpn, loadMechCatalog } from "../mechanics/catalog.ts"
 
 export interface SystemFinding {
-	kind: "link-pending" | "uart-crossover" | "uart-baud" | "i2c-controllers" | "i2c-address" | "i2c-target-has-bus" | "i2c-pullups" | "i2c-cable-too-long" | "link-power" | "link-voltage" | "message-mismatch" | "logic-level"
+	kind: "link-pending" | "uart-crossover" | "uart-baud" | "i2c-controllers" | "i2c-address" | "i2c-target-has-bus" | "i2c-pullups" | "i2c-cable-too-long" | "link-power" | "link-voltage" | "message-mismatch" | "logic-level" | "assembly-fit"
 	link: string
 	message: string
 	boards: string[] // who can fix it

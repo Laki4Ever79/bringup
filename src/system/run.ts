@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { withOutlines, type SystemAssembly } from "./assembly.ts"
+import { assemblyFitError, withOutlines, type SystemAssembly } from "./assembly.ts"
 import type { BoardAssembly } from "../mechanics/assembly.ts"
 import { appendRequest } from "../runner/requests.ts"
 import { readTrace } from "../runner/ripple.ts"
@@ -139,6 +139,8 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	// A settled board's outline replaces the estimate; the new assembly goes to system.json and to every robot board that
 	// holds an older one (each board needs its siblings' real outlines for its chassis and mass).
 	// With `send` false (the rounds are used up) it only merges and writes system.json, and names the boards left stale.
+	// The brief's size limit, from the first board that has a motion field (the robot's main board).
+	const limitOf = (contracts: Record<string, ContractSnapshot | undefined>): [number, number] | undefined => Object.values(contracts).find((c) => c?.values.motion?.maxSizeMm)?.values.motion?.maxSizeMm
 	const syncAssembly = (contracts: Record<string, ContractSnapshot | undefined>, send: boolean): string[] => {
 		const stale: string[] = []
 		if (!assembly) return stale
@@ -148,7 +150,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			if (o && (ab.outlineSource !== "built" || o.widthMm !== ab.outline.widthMm || o.heightMm !== ab.outline.heightMm)) built[ab.name] = { widthMm: o.widthMm, heightMm: o.heightMm }
 		}
 		if (Object.keys(built).length > 0) {
-			assembly = withOutlines(assembly, built)
+			assembly = withOutlines(assembly, built, limitOf(contracts))
 			writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
 		}
 		for (const b of designed) {
@@ -188,6 +190,13 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			if (spec.boards.some((b) => !contracts[b.name])) continue
 			// A re-sent board must settle again before the run can end: its chassis and mass follow the new outlines.
 			const resent = syncAssembly(contracts, rounds < maxRounds)
+			// Boards that can't sit within the brief's size limit: no board can fix that, so it is named, not retried.
+			const fit = assembly ? assemblyFitError(assembly, limitOf(contracts)) : null
+			if (fit) {
+				findings = [{ kind: "assembly-fit", link: "", message: fit, boards: [] }]
+				write(contracts, findings, `UNSETTLED: ${fit}`)
+				break
+			}
 			if (resent.length && rounds >= maxRounds) {
 				write(contracts, findings, `UNSETTLED: the robot's body changed after ${maxRounds} rounds and was not sent to ${resent.join(", ")}`)
 				break
