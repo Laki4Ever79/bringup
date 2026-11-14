@@ -8,6 +8,9 @@ import type { CaseSpec, ContractSnapshot, ContractValues, EnclosureMode, FieldNa
 import { boardWidthFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
 import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT, sizeReasonHolds } from "../contract/space.ts"
 import { state } from "../runtime.ts"
+import { loadCatalog } from "../tools/parts-search.ts"
+import { parseSwap } from "../tools/sourcing.ts"
+import { resolve } from "node:path"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 import { LEGACY_MCU_ID, mcuProfileOf, profileById } from "../mcu/profile.ts"
@@ -396,6 +399,9 @@ function propose(field: FieldName, value: unknown, reason: string) {
 	return [toolCall("propose_contract_change", { field, value, baseVersion: state().contract.version(field), reason })]
 }
 
+// The catalog the scripted parts agent swaps from (hand entries, then learned parts).
+const CATALOG = loadCatalog(resolve(import.meta.dirname, "../.."))
+
 const ARCHITECT_FIELDS = ["requirements", "outline", "connectors", "rails", "pins"] as const satisfies FieldName[]
 
 // Deterministic stand-ins for each role's model, so a full run needs no API key.
@@ -404,6 +410,10 @@ export function mockScripts(): Record<string, Script> {
 	let shrinkFrom: { widthMm: number; heightMm: number } | null = null
 	// How many times the scripted architect has widened the board after a failed DRC in this run.
 	let drcGrows = 0
+	// The engineer's swaps in this run (ref → the catalog part that took its place), kept so a later wake-up of the
+	// scripted parts agent doesn't put the old part back.
+	const swapped = new Map<string, NonNullable<ContractValues["parts"]>[number]>()
+	const withSwaps = <T extends { ref: string }>(list: T[]): T[] => list.map((p) => (swapped.get(p.ref) as T | undefined) ?? p)
 	return {
 		"mock-architect": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
@@ -569,9 +579,22 @@ export function mockScripts(): Record<string, Script> {
 			}
 			// The beacon's parts follow its requirements: the sensor joins when they ask for one (or the engineer does).
 			if (isBeacon() && (instruction.startsWith("The requirements or rails changed") || (instruction.startsWith("Change request from the engineer:") && ADD_SENSOR_REQUEST.test(instruction.split("\n")[1] ?? "")))) {
-				const value = ADD_SENSOR_REQUEST.test(instruction.split("\n")[1] ?? "") ? [...BEACON_DESIGN.parts, ...SENSOR_PARTS] : beaconParts()
+				const value = withSwaps(ADD_SENSOR_REQUEST.test(instruction.split("\n")[1] ?? "") ? [...BEACON_DESIGN.parts, ...SENSOR_PARTS] : beaconParts())
 				const same = JSON.stringify(state().contract.get("parts")) === JSON.stringify(value)
 				return stepsTaken(items) === 0 && !same ? propose("parts", value, value.some((p) => p.role === "sensor") ? "the SHT40 temperature/humidity sensor and its I2C pull-ups" : "parts from the catalog") : say("parts chosen")
+			}
+			// "swap U2 SHT40-AD1B-R2 for the SHTC3-TR-2.5KS (C194656) from the catalog" (the board page's part card, a
+			// stock-out suggestion): the catalog part takes the ref's place, same role only, with who asked as its reason.
+			const swap = instruction.startsWith("Change request from the engineer:") ? parseSwap(instruction.split("\n")[1] ?? "") : null
+			if (swap) {
+				const parts = state().contract.get("parts") ?? []
+				const old = parts.find((p) => p.ref === swap.ref)
+				const to = old && CATALOG.find((c) => c.role === old.role && c.mpn.toUpperCase() === swap.mpn.toUpperCase())
+				if (stepsTaken(items) > 0 || !old || !to) return say(to ? "part swapped" : "no such swap in the catalog")
+				if (old.mpn === to.mpn) return say("already that part")
+				const part = { ref: old.ref, role: old.role, mpn: to.mpn, lcsc: to.lcsc, footprint: to.footprint, pins: [...to.pins], reason: `The engineer swapped it in for the ${old.mpn}, from the catalog, in a change request.` }
+				swapped.set(old.ref, part)
+				return propose("parts", parts.map((p) => (p.ref === old.ref ? part : p)), `engineer swapped ${old.ref} ${old.mpn} for the ${to.mpn} from the catalog`)
 			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
@@ -579,7 +602,7 @@ export function mockScripts(): Record<string, Script> {
 			}
 			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
 			const base = isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
-			const wanted = state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base
+			const wanted = withSwaps(state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base)
 			if (stepsTaken(items) > 0) return say("parts chosen")
 			return JSON.stringify(state().contract.get("parts")) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")
 		},

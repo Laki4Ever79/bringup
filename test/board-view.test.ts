@@ -39,7 +39,13 @@ test("what changed between two revisions: a part added, one moved by a narrower 
 	const c = changedRefs(a, b)
 	assert.deepEqual(c.added, ["SW1"])
 	assert.ok(c.changed.length > 0, "a narrower board moves parts")
-	assert.deepEqual(changedRefs(null, b), { added: [], removed: [], changed: [] })
+	assert.deepEqual(c.swapped, [], "nothing swapped: only moved")
+	assert.deepEqual(changedRefs(null, b), { added: [], removed: [], changed: [], swapped: [] })
+	const d = logger()
+	d.values.parts = d.values.parts!.map((p) => (p.ref === "U2" ? { ...p, mpn: "SHTC3-TR-2.5KS", lcsc: "C194656", pins: ["VDD", "SCL", "SDA", "VSS"] } : p))
+	const e = changedRefs(a, d)
+	assert.deepEqual(e.swapped, ["U2"], "a new part number in the same place is a swap, not a move")
+	assert.ok(e.changed.includes("U2"))
 })
 
 test("a run folder: the newest revision by default, any revision by number, the routed board when that revision was built", async () => {

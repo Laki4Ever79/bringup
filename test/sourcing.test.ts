@@ -7,7 +7,7 @@ import { createChangeDesk } from "../src/change-control.ts"
 import { makeEvent } from "../src/events.ts"
 import { LOGGER_DESIGN } from "../src/inference/scripts.ts"
 import { BringupState, emit, join as joinRuntime, startRuntime } from "../src/runtime.ts"
-import { alternativesFor, orderReadiness, sourcesFor, stockSuggestion, swapEffects } from "../src/tools/sourcing.ts"
+import { alternativesFor, orderReadiness, parseSwap, sourcesFor, stockSuggestion, swapEffects, swapRequest } from "../src/tools/sourcing.ts"
 import { sensorDriver } from "../src/codegen/firmware.ts"
 import { sourcingLine } from "../src/report.ts"
 import { loadCatalog } from "../src/tools/parts-search.ts"
@@ -160,7 +160,8 @@ test("out of stock: other suppliers first, then an in-stock drop-in and a reques
 	const g = stockSuggestion({ ref: "U2", mpn: "SHT40-AD1B-R2" }, sources, alts)
 	assert.deepEqual(g.elsewhere.map((x) => x.supplier), ["Digi-Key", "Mouser"])
 	assert.equal(g.alternative?.mpn, "SHTC3-TR-2.5KS")
-	assert.equal(g.request, "U2 SHT40-AD1B-R2 is out of stock at LCSC/JLCPCB: swap it for the SHTC3-TR-2.5KS (C194656) from the catalog")
+	assert.equal(g.request, "U2 SHT40-AD1B-R2 is out of stock at LCSC/JLCPCB: swap U2 for the SHTC3-TR-2.5KS (C194656) from the catalog")
+	assert.deepEqual(parseSwap(g.request!), { ref: "U2", mpn: "SHTC3-TR-2.5KS" }, "the scripted parts agent reads the same words")
 	assert.equal(stockSuggestion({ ref: "U2", mpn: "SHT40-AD1B-R2" }, sources, [{ ...alts[0], stock: 0, inStock: false }]).request, null, "no drop-in that is itself out of stock")
 })
 
@@ -199,4 +200,13 @@ test("the suggested drop-in is one the firmware can drive, when there is one", (
 	const driven = { mpn: "SHTC3-TR-2.5KS", lcsc: "C194656", stock: 50, priceUsd: 0.4, inStock: true, changes: ["firmware driver SHT40 → SHTC3: pins.h selects it and the firmware rebuilds"] }
 	assert.equal(stockSuggestion({ ref: "U2", mpn: "SHT40-AD1B-R2" }, sources, [noDriver, driven]).alternative?.mpn, "SHTC3-TR-2.5KS")
 	assert.equal(stockSuggestion({ ref: "U2", mpn: "SHT40-AD1B-R2" }, sources, [noDriver]).alternative?.mpn, "BME280", "still offered when it is the only one")
+})
+
+test("a swap from the board page is one fixed sentence the parts agent can read back: the part, its number and the catalog part", () => {
+	const text = swapRequest({ ref: "U2", mpn: "SHT40-AD1B-R2" }, { mpn: "SHTC3-TR-2.5KS", lcsc: "C194656" })
+	assert.equal(text, "swap U2 SHT40-AD1B-R2 for the SHTC3-TR-2.5KS (C194656) from the catalog")
+	assert.deepEqual(parseSwap(text), { ref: "U2", mpn: "SHTC3-TR-2.5KS" })
+	assert.equal(swapRequest({ ref: "J3", mpn: "B2B-PH-K-S(LF)(SN)" }, { mpn: "SM04B-SRSS-TB(LF)(SN)", lcsc: null }), "swap J3 B2B-PH-K-S(LF)(SN) for the SM04B-SRSS-TB(LF)(SN) from the catalog")
+	assert.deepEqual(parseSwap("swap J3 B2B-PH-K-S(LF)(SN) for the SM04B-SRSS-TB(LF)(SN) from the catalog"), { ref: "J3", mpn: "SM04B-SRSS-TB(LF)(SN)" })
+	assert.equal(parseSwap("make it 40 mm wide"), null)
 })

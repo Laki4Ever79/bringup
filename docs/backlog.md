@@ -122,7 +122,13 @@ is a change to the firmware toolchain, not just the code.
 - [x] **Board page, step 1 (why every part is there):** done 13 Nov. /board?run=<id>: the board full window, a list of
       every part, a card per part with why it is there and where that comes from (recorded when chosen, Added for
       you, datasheet or standard, generator rule, or "no reason recorded"), its nets and its catalog facts; live during
-      a run (placement at once, the routed board when built). Steps 2 (swap a part from the card) and 3 (move a part,
-      code checks per move, AI only at the end of editing) are next.
+      a run (placement at once, the routed board when built).
+- [x] **Board page, step 2 (swap a part from its card):** done 14 Nov. A chosen part's card lists the catalog's other
+      parts for its role, with what each swap changes (footprint, pins, firmware driver, I2C address, quiescent current),
+      stock and price when bom.json has them; "Request this swap" sends one fixed sentence through requests.jsonl, the
+      same path as a typed request (the owners decide, the checks run), and the board follows live. Only for a run
+      that is up; a stopped run shows the request to send. Not offered for the MCU (a change in words) or resistors and
+      capacitors (their value comes from a datasheet or rule). The list tags a new part number "swapped", not "moved".
+- [ ] **Board page, step 3 (move a part):** code checks per move, AI only at the end of editing.
 - [ ] **Bulk capacitance for Wi-Fi bursts:** the board has 10 µF on the 3V3 rail. Check against the rail droop measured
       above before adding more.

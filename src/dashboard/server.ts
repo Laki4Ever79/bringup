@@ -785,7 +785,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (!dir) return json(res, 404, { error: "unknown run" })
 				const rev = Number(new URLSearchParams((req.url ?? "").split("?")[1] ?? "").get("rev"))
 				const view = await boardView(dir, Number.isInteger(rev) && rev > 0 ? rev : null)
-				return view ? json(res, 200, view) : json(res, 404, { error: "no contract yet" })
+				// The run's status, as the run list shows it: the card's swap is sent only to a run that is up to take it.
+				return view ? json(res, 200, { ...view, status: (await summarize(bv[1], dir)).status }) : json(res, 404, { error: "no contract yet" })
 			}
 			if (MODULES.has(path.slice(1))) {
 				const source = await readFile(new URL(`.${path}`, import.meta.url)).catch(() => null)
