@@ -18,10 +18,12 @@ const ST_DIR = process.env.ST_PIN_DATA ?? join(ROOT, "tools/vendor/STM32_open_pi
 // The tscircuit footprint for each ST package, with the land pattern's extent (pads, at rotation 0) for placement.
 // LQFP: footprinter's defaults put the pads past the leads (lqfp32 pad centres at ±5.45 mm, lead tips at 4.5 mm), so
 // the dimensions are given to match KiCad's LQFP-32_7x7mm_P0.8mm and LQFP-48_7x7mm_P0.5mm (pads at ±4.1625 mm,
-// 1.475 mm long), measured from footprinter's output on 11 Nov 2026.
+// 1.475 mm long), measured from footprinter's output on 11 Nov 2026. LQFP-64_10x10mm_P0.5mm the same way, 1.5 mm
+// further out (pads at ±5.6625 mm, 1.475 × 0.3 mm; footprinter gives 64 pads, 12.8 mm across, 14 Nov 2026).
 export const PACKAGE_FOOTPRINT: Record<string, { footprint: string; bodyMm: { w: number; h: number }; extentMm: { w: number; h: number }; ringMm: number }> = {
 	LQFP32: { footprint: "lqfp32_w7.05mm_h7.05mm_p0.8mm_pl1.475mm_pw0.55mm", bodyMm: { w: 7, h: 7 }, extentMm: { w: 9.8, h: 9.8 }, ringMm: 4.1625 },
 	LQFP48: { footprint: "lqfp48_w7.05mm_h7.05mm_p0.5mm_pl1.475mm_pw0.3mm", bodyMm: { w: 7, h: 7 }, extentMm: { w: 9.8, h: 9.8 }, ringMm: 4.1625 },
+	LQFP64: { footprint: "lqfp64_w10.05mm_h10.05mm_p0.5mm_pl1.475mm_pw0.3mm", bodyMm: { w: 10, h: 10 }, extentMm: { w: 12.8, h: 12.8 }, ringMm: 5.6625 },
 	UFQFPN48: { footprint: "qfn48_p0.5mm", bodyMm: { w: 7, h: 7 }, extentMm: { w: 7.8, h: 7.8 }, ringMm: 3.4625 },
 	VFQFPN48: { footprint: "qfn48_p0.5mm", bodyMm: { w: 7, h: 7 }, extentMm: { w: 7.8, h: 7.8 }, ringMm: 3.4625 },
 }

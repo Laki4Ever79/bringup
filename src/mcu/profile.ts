@@ -23,11 +23,19 @@ export interface McuPin {
 	signals: string[]
 	wake?: boolean
 	reserved?: string
+	// The pin can only read (the classic ESP32's GPIO34–39 have no output driver): the solver gives it only inputs (an
+	// ADC, a wake line, a UART RX or SPI MISO), never a plain GPIO or a line it would drive.
+	inputOnly?: true
 }
 
+// CNC motion-controller firmware a chip runs upstream (docs/mcu.md, Motion): grblHAL (configured at compile time) and
+// FluidNC (runtime YAML, ESP32 first). A chip without profile.motion runs neither; it can still be a helper board
+// (pendant, I/O expander) beside one that does.
+export type MotionFirmware = "grblhal" | "fluidnc"
+
 // The support part kinds (codegen/circuit.ts SUPPORT): decouple 100 nF, bypass 1 µF, bulk 10 µF, pulldown 100k, pullup
-// 10k, bootPulldown 10k to GND.
-export type SupportSpec = "decouple" | "bypass" | "bulk" | "pulldown" | "pullup" | "bootPulldown" | "usbPullup"
+// 10k, bootPulldown 10k to GND, vcap 4.7 µF (an STM32F4's core regulator output, VCAP_1).
+export type SupportSpec = "decouple" | "bypass" | "bulk" | "pulldown" | "pullup" | "bootPulldown" | "usbPullup" | "vcap"
 
 export interface McuProfile {
 	id: string
@@ -49,7 +57,8 @@ export interface McuProfile {
 	peripherals: Record<PeriphKind, string[]>
 	// The console the firmware logs on (and the simulator reads), on fixed pins.
 	console: { instance: string; tx: string; rx: string } | null
-	programming: { method: "swd" | "usb-serial-jtag" | "usb-dfu" | "uf2"; pins: string[] }
+	// uart: the ROM bootloader over a UART (the classic ESP32 has no native USB: a USB-UART bridge or pads flash it).
+	programming: { method: "swd" | "usb-serial-jtag" | "usb-dfu" | "uf2" | "uart"; pins: string[] }
 	// The pin that selects the ROM bootloader at reset, the level that selects it, and (ESP32-C3) the second strap
 	// download boot needs. null on chips that boot from flash by an option bit (STM32G0 nBOOT0).
 	boot: { pin: string | null; level: "low" | "high" | null; download?: { pin: string; level: "high" | "low" } }
@@ -91,6 +100,9 @@ export interface McuProfile {
 	// Pins tried first, in order (the ESP32-C3's link pins, docs/system.md); the rest follow by index.
 	preferred?: number[]
 	priceUsd?: { qty: number; usd: number; source: string }
+	// The CNC motion-controller firmware that runs on this chip upstream, whether the core has a hardware FPU (grblHAL's
+	// driver list splits on it), and where both are stated. Absent: no motion controller on this chip.
+	motion?: { firmware: MotionFirmware[]; fpu: boolean; source: string }
 	fccId?: string
 	sources: string[]
 }

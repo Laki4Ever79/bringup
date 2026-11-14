@@ -39,6 +39,9 @@ function usable(p: McuProfile, taken: Set<number>): McuPin[] {
 }
 
 const carries = (pin: McuPin, sig: string) => pin.signals.includes("*") || pin.signals.includes(sig)
+// The functions a pin with no output driver (McuPin.inputOnly) may take: lines the chip only reads.
+const INPUT_FNS = new Set(["RX", "MISO"])
+const takes = (pin: McuPin, fn: string) => !pin.inputOnly || INPUT_FNS.has(fn)
 const isAdc = (pin: McuPin) => pin.signals.some((s) => /^ADC\d*_(IN|CH)\d+$/.test(s))
 const canWake = (p: McuProfile, pin: McuPin) => pin.wake === true || p.wakeAny === true
 
@@ -55,7 +58,7 @@ function instancesFor(p: McuProfile, kind: PeriphKind, taken: Set<number> = new 
 	return all.filter((i) => {
 		const picked = new Set<McuPin>()
 		return fns.every((fn) => {
-			const pin = free.find((x) => !picked.has(x) && carries(x, signalFor(i, fn)))
+			const pin = free.find((x) => !picked.has(x) && takes(x, fn) && carries(x, signalFor(i, fn)))
 			if (pin) picked.add(pin)
 			return !!pin
 		})
@@ -92,8 +95,8 @@ export function solvePins(p: McuProfile, needs: Need[], takenIn: number[] = []):
 			.map((instance) => {
 				const picks: McuPin[] = []
 				for (const n of g) {
-					const sig = signalFor(instance, n.role ?? n.signal)
-					const pin = free.find((x) => !picks.includes(x) && carries(x, sig))
+					const fn = n.role ?? n.signal
+					const pin = free.find((x) => !picks.includes(x) && takes(x, fn) && carries(x, signalFor(instance, fn)))
 					if (!pin) return null
 					picks.push(pin)
 				}
@@ -122,16 +125,21 @@ export function solvePins(p: McuProfile, needs: Need[], takenIn: number[] = []):
 	out.push(...grouped)
 	for (const a of grouped) taken.add(a.index)
 
-	// Single pins: ADC and wake first (constrained), plain GPIO last; a plain GPIO avoids pins that carry ADC.
+	// Single pins: ADC and wake first (constrained), plain GPIO last; a plain GPIO avoids pins that carry ADC and never
+	// takes an input-only pin (it may drive an LED or an enable).
 	const singles = needs.filter((n) => n.kind === "gpio" || n.kind === "adc" || n.kind === "wake")
 	const order = { adc: 0, wake: 1, gpio: 2 } as const
-	const totalFree = usable(p, taken).length
+	// Input-only pins count only as far as there are inputs (ADC, wake) to put on them.
+	const free0 = usable(p, taken)
+	const inOnly = free0.filter((x) => x.inputOnly).length
+	const totalFree = free0.length - inOnly + Math.min(inOnly, singles.filter((n) => n.kind !== "gpio").length)
 	if (singles.length > totalFree) return { ok: false, reason: `needs ${singles.length} GPIOs, the ${name} has ${totalFree} free` }
 	for (const n of [...singles].sort((a, b) => order[a.kind as keyof typeof order] - order[b.kind as keyof typeof order])) {
 		const free = usable(p, taken)
 		const pin =
-			n.kind === "adc" ? free.find(isAdc) : n.kind === "wake" ? free.find((x) => canWake(p, x)) : (free.find((x) => !isAdc(x)) ?? free[0])
-		if (!pin) return { ok: false, reason: `${n.signal} needs ${n.kind === "adc" ? "an analog input" : "a pin that wakes the chip"}, and the ${name} has none free` }
+			// Inputs go to input-only pins first, leaving the pins that can drive for what must.
+			n.kind === "adc" ? (free.find((x) => isAdc(x) && x.inputOnly) ?? free.find(isAdc)) : n.kind === "wake" ? (free.find((x) => canWake(p, x) && x.inputOnly) ?? free.find((x) => canWake(p, x))) : (free.find((x) => !isAdc(x) && !x.inputOnly) ?? free.find((x) => !x.inputOnly))
+		if (!pin) return { ok: false, reason: `${n.signal} needs ${n.kind === "adc" ? "an analog input" : n.kind === "wake" ? "a pin that wakes the chip" : "a pin that can drive (the free ones are input-only)"}, and the ${name} has none free` }
 		taken.add(pin.index)
 		out.push({ signal: n.signal, index: pin.index, pin: pin.name })
 	}
@@ -140,11 +148,12 @@ export function solvePins(p: McuProfile, needs: Need[], takenIn: number[] = []):
 	return { ok: true, pins: out.sort((a, b) => at(a.signal) - at(b.signal)) }
 }
 
-// GPIOs a link or a design may take freely: the preferred list where the profile has one, else every unreserved pin.
+// GPIOs a link or a design may take freely: the preferred list where the profile has one, else every unreserved pin
+// that can drive.
 export function freeGpios(p: McuProfile): number[] {
 	if (p.preferred) return [...p.preferred]
 	const con = consolePins(p)
-	return p.pins.filter((x) => !x.reserved && !con.has(x.name)).map((x) => x.index)
+	return p.pins.filter((x) => !x.reserved && !x.inputOnly && !con.has(x.name)).map((x) => x.index)
 }
 
 export type LinkPeripheral = "uart" | "i2c" | "spi" | "i2s" | "radio"

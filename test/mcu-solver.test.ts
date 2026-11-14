@@ -71,3 +71,25 @@ test("the ESP32-C3's GPIO matrix: any free pin carries any peripheral; its budge
 	assert.equal(peripheralsFree(stm).i2c, 2)
 	assert.equal(peripheralsFree(stm).uart, 1)
 })
+
+test("input-only pins (the classic ESP32's GPIO34-39) take only inputs: ADC, wake, UART RX, never a plain GPIO or a TX", () => {
+	const wroom = profileById("esp32-wroom-32e")!
+	const inOnly = new Set(wroom.pins.filter((x) => x.inputOnly).map((x) => x.index))
+	assert.deepEqual([...inOnly].sort((a, b) => a - b), [34, 35, 36, 39])
+	// Inputs go to the input-only pins first.
+	const r = solvePins(wroom, [{ signal: "VSENSE", kind: "adc" }, { signal: "LED", kind: "gpio" }, ...uart("U")])
+	assert.ok(r.ok, r.ok ? "" : r.reason)
+	const at = (s: string) => r.pins.find((p) => p.signal === s)!.index
+	assert.ok(inOnly.has(at("VSENSE")), `VSENSE on ${at("VSENSE")}`)
+	assert.ok(!inOnly.has(at("LED")) && !inOnly.has(at("U_TX")))
+	// Every GPIO the module has, as outputs (straps last): the input-only pins don't count toward them.
+	const drivable = wroom.pins.filter((x) => !x.inputOnly && x.reserved !== "flash" && x.reserved !== "console").length
+	const many: Need[] = Array.from({ length: drivable + 1 }, (_, i) => ({ signal: `G${i}`, kind: "gpio" }))
+	const over = solvePins(wroom, many)
+	assert.equal(over.ok, false)
+	for (const g of freeGpios(wroom)) assert.ok(!inOnly.has(g), `link pin ${g} is input-only`)
+	// The flash pins are never handed out.
+	const ok = solvePins(wroom, many.slice(0, drivable))
+	assert.ok(ok.ok, ok.ok ? "" : ok.reason)
+	for (const p of ok.pins) assert.ok(p.index < 6 || p.index > 11, `${p.pin} is a flash pin`)
+})

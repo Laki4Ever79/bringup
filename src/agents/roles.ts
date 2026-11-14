@@ -180,18 +180,19 @@ function compareMcusTool(): Tool {
 	return {
 		type: "function",
 		name: "compare_mcus",
-		description: "Rank every MCU Bringup knows (any vendor) for this design on the same terms: whether its pins and peripherals fit the needs (pin solver), whether it has the radio, whether Bringup can build its board, then sleep current (battery), price, stock and simulator. Each result lists why, with numbers.",
+		description: "Rank every MCU Bringup knows (any vendor) for this design on the same terms: whether its pins and peripherals fit the needs (pin solver), whether it has the radio, whether Bringup can build its board, then sleep current (battery), price, stock and simulator; motion requires a chip that runs CNC motion firmware. Each result lists why, with numbers.",
 		parameters: {
 			type: "object",
 			properties: {
 				needs: { type: "array", items: { type: "object", properties: { signal: { type: "string" }, kind: { type: "string", enum: ["gpio", "adc", "wake", "uart", "i2c", "spi", "i2s", "usb", "can"] }, role: { type: "string" }, group: { type: "string" } }, required: ["signal", "kind"] } },
 				radio: { type: "array", items: { type: "string", enum: ["ble", "wifi"] } },
 				battery: { type: "boolean" },
+				motion: { type: "string", enum: ["any", "grblhal", "fluidnc"], description: "only for a CNC/motion controller: the chip must run grblHAL or FluidNC (any), or that one" },
 			},
 			required: ["needs"],
 		},
 		strict: false,
-		invoke: async (req: McuRequest) => rankMcus(req),
+		invoke: async ({ motion, ...req }: Omit<McuRequest, "motion"> & { motion?: "any" | "grblhal" | "fluidnc" }) => rankMcus({ ...req, ...(motion ? { motion: motion === "any" ? true : motion } : {}) }),
 	}
 }
 

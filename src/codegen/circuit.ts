@@ -156,6 +156,9 @@ const SUPPORT = {
 	// "External components" table.
 	vint: { kind: "capacitor", value: "2.2uF", lcsc: "C12530", mpn: "CL05A225MQ5NSNC", footprint: "0402" },
 	vcp: { kind: "capacitor", value: "10nF", lcsc: "C15195", mpn: "CL05B103KB5NNNC", footprint: "0402" },
+	// An STM32F4's core regulator output with one VCAP pin: 4.7 µF ceramic, ESR < 1 Ω (DS10314 Table 16, DS10693
+	// Table 18). A JLCPCB Basic part.
+	vcap: { kind: "capacitor", value: "4.7uF", lcsc: "C23733", mpn: "CL05A475MP5NRNC", footprint: "0402" },
 } satisfies Record<string, SupportSpec>
 
 // Where each support passive's value comes from, for the part card (engineer, 13 Nov 2026: "explanation for each
@@ -176,6 +179,7 @@ const SUPPORT_SOURCES: Record<keyof typeof SUPPORT, string> = {
 	senseTop: "the USB-sense divider's top: 68k over 100k puts VBUS at 2.83–3.13 V on the pin, above the ESP32-C3's high threshold and under its supply",
 	vint: "the DRV8833's internal regulator capacitor, 2.2 µF (TI DRV8833 §7.3, external components)",
 	vcp: "the DRV8833's charge-pump capacitor, 10 nF to VM (TI DRV8833 §7.3, external components)",
+	vcap: "the STM32F4's internal core regulator needs 4.7 µF ceramic (ESR < 1 Ω) on its single VCAP_1 pin (DS10314 Table 16, DS10693 Table 18)",
 }
 // The source for a support passive's value, or null for one built on the fly (a crystal's load capacitors).
 export function supportSource(spec: SupportSpec): string | null {
