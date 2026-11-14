@@ -148,5 +148,11 @@ is a change to the firmware toolchain, not just the code.
       choice. Routed builds prove it: the rover with its motor driver turned 90°, 180° and 270° routes with VINT and VCP
       within 5 mm, after two layout fixes the builds found (a capacitor between two pads of one part faces them in
       order; one pointing away from its pad is turned toward it). The undo of the last batch sent stays on offer.
+- [ ] **Router vias too near the board edge:** tscircuit's autorouter can drop a via 0.287 mm from the edge against the
+      fab's 0.3 mm (KiCad DRC copper_edge_clearance), and the board then leaves its debug footprint off (the rover at
+      42×29 mm with U5 turned, 15 Nov). `<board minBoardEdgeClearance>` reaches the router (pcb_board shows 0.35) but
+      the stage that placed that via ignores it, so it was not kept. Options: router-only keepout strips along the
+      edges (edge connectors' traces must still cross them: needs routed tests on every scripted board), or nudging
+      such a via inward after routing with its trace ends.
 - [ ] **Bulk capacitance for Wi-Fi bursts:** the board has 10 µF on the 3V3 rail. Check against the rail droop measured
       above before adding more.
