@@ -27,12 +27,14 @@ async function withTop(fn: (page: Page) => Promise<void>) {
 		await page.addInitScript("window.__name = (f) => f")
 		// A same-origin document (the JSON itself) to import the module from.
 		await page.goto(`${hub.url}/api/systems/robot-2`)
-		await page.evaluate(async () => {
+		const chDir = join(ROOT, "out", "robot-2", "boards", "main", "chassis")
+		const rev = readdirSync(chDir).map((d) => /^rev-(\d+)$/.exec(d)?.[1]).filter(Boolean).map(Number).sort((a, b) => b - a)[0]
+		await page.evaluate(async (rev) => {
 			const sys = await (await fetch("/api/systems/robot-2")).json()
 			const get = async (p: string) => { const r = await fetch(p); return r.ok ? r.json() : null }
 			const boards = await Promise.all(sys.boards.map(async (b: any) => ({ name: b.name, outline: b.outline, connectors: b.connectors, status: b.status, circuit: await get(`/runs/${b.runId}/files/board/circuit.json`) })))
 			const main = sys.boards.find((b: any) => b.name === "main")
-			const chassis = await get(`/runs/${main.runId}/files/chassis/rev-25/spec.json`)
+			const chassis = await get(`/runs/${main.runId}/files/chassis/rev-${rev}/spec.json`)
 			document.body.innerHTML = '<div id="host" style="width:1000px;height:700px"></div>'
 			const { mountTop } = await import(String("/top2d.js"))
 			const { topLayout } = await import(String("/top-layout.js"))
@@ -43,13 +45,15 @@ async function withTop(fn: (page: Page) => Promise<void>) {
 			w.tv.setWorld({ boards, cables: sys.spec.links, assembly: sys.assembly, chassis })
 			w.bounds = topLayout(sys.assembly, boards, sys.spec.links).bounds
 			w.layout = topLayout(sys.assembly, boards, sys.spec.links)
-		})
+			w.world = { boards, cables: sys.spec.links, assembly: sys.assembly, chassis }
+		}, rev)
 		await fn(page)
 	} finally {
 		await browser.close()
 		await hub.close()
 	}
 }
+const homeStart = async (page: Page) => { await page.evaluate(() => { (window as any).homeAtStart = document.querySelector("svg")!.getAttribute("viewBox")!.split(" ").map(Number) }) }
 const vb = (page: Page) => page.evaluate(() => document.querySelector("svg")!.getAttribute("viewBox")!.split(" ").map(Number))
 const near = (a: number[], b: number[], tol = 1) => a.every((v, i) => Math.abs(v - b[i]) <= tol)
 
@@ -74,13 +78,16 @@ test("robot-2's wheels and battery show as outlines", { skip, timeout: 60_000 },
 
 test("focus zooms the viewBox onto the board and back", { skip, timeout: 60_000 }, async () => {
 	await withTop(async (page) => {
+		await homeStart(page)
 		await page.evaluate(() => (window as any).tv.focus("climate", { ms: 200 }))
 		const c = await page.evaluate(() => (window as any).layout.boards.find((b: any) => b.name === "climate"))
 		const k = 1.25
 		assert.ok(near(await vb(page), [c.x - (c.w * (k - 1)) / 2, c.y - (c.h * (k - 1)) / 2, c.w * k, c.h * k]), "on climate, grown by 25%")
 		await page.evaluate(() => (window as any).tv.focus(null, { ms: 200 }))
-		const b = await page.evaluate(() => (window as any).bounds)
-		assert.ok(near(await vb(page), [b.x, b.y, b.w, b.h], 0.001), "back on bounds")
+		const v = await vb(page), b = await page.evaluate(() => (window as any).bounds)
+		// Home covers the layout's bounds (plus the wheels, which stand outside the plate).
+		assert.ok(v[0] <= b.x + 0.001 && v[1] <= b.y + 0.001 && v[0] + v[2] >= b.x + b.w - 0.001 && v[1] + v[3] >= b.y + b.h - 0.001, "back on home, covering bounds")
+		assert.ok(near(v, await page.evaluate(() => { const r = document.querySelector("svg")!; void r; return (window as any).homeAtStart }), 0.001), "home is where it started")
 	})
 })
 
@@ -119,5 +126,58 @@ test("hover and click report the board, and select outlines it in the signal col
 		assert.deepEqual(ev.at(-1), ["hover", null, "board"])
 		await page.evaluate(() => (window as any).tv.select("climate", "board"))
 		assert.match((await page.locator('[data-board="climate"] [data-outline]').getAttribute("stroke"))!, /signal/)
+	})
+})
+
+test("every mechanical outline lies inside the default view", { skip, timeout: 60_000 }, async () => {
+	await withTop(async (page) => {
+		const v = await vb(page)
+		const rects = await page.evaluate(() => [...document.querySelectorAll("[data-mech]")].map((e) => { const b = (e as SVGGraphicsElement).getBBox(); return [b.x, b.y, b.width, b.height] }))
+		assert.ok(rects.length >= 6)
+		for (const r of rects) assert.ok(r[0] >= v[0] && r[1] >= v[1] && r[0] + r[2] <= v[0] + v[2] && r[1] + r[3] <= v[1] + v[3], `mech ${r} inside ${v}`)
+	})
+})
+
+test("setWorld again keeps a focused board and a panned view", { skip, timeout: 60_000 }, async () => {
+	await withTop(async (page) => {
+		await page.evaluate(() => (window as any).tv.focus("climate", { ms: 100 }))
+		const before = await vb(page)
+		await page.evaluate(() => (window as any).tv.setWorld((window as any).world))
+		assert.ok(near(await vb(page), before, 0.001), "still on climate")
+		await page.mouse.move(500, 350)
+		await page.mouse.wheel(0, 300)
+		await page.waitForTimeout(100)
+		const zoomed = await vb(page)
+		assert.ok(zoomed[2] > before[2])
+		await page.evaluate(() => (window as any).tv.setWorld((window as any).world))
+		assert.ok(near(await vb(page), zoomed, 0.001), "a zoomed view stays")
+		assert.equal(await page.evaluate(() => (window as any).tv.stats().draws) > 0, true)
+	})
+})
+
+test("a cable reports kind cable on hover and click", { skip, timeout: 60_000 }, async () => {
+	await withTop(async (page) => {
+		const p = await page.evaluate(() => { const r = document.querySelector("[data-cable] [data-line]")!.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2] })
+		await page.mouse.move(p[0], p[1] + 1)
+		await page.mouse.down()
+		await page.mouse.up()
+		const ev = await page.evaluate(() => (window as any).events)
+		assert.deepEqual(ev.find((e: any) => e[0] === "hover"), ["hover", "L1", "cable"])
+		assert.deepEqual(ev.find((e: any) => e[0] === "pick"), ["pick", "L1", "cable"])
+	})
+})
+
+test("after dispose nothing runs: no frames, no clicks", { skip, timeout: 60_000 }, async () => {
+	await withTop(async (page) => {
+		await page.evaluate(() => { (window as any).tv.focus("main", { ms: 800 }) })
+		await page.waitForTimeout(100)
+		const box = await page.locator('[data-board="main"] [data-outline]').boundingBox()
+		const d = await page.evaluate(() => { const t = (window as any).tv; t.dispose(); t.focus("climate"); t.setWorld((window as any).world); return t.stats().draws })
+		await page.waitForTimeout(300)
+		assert.equal(await page.evaluate(() => (window as any).tv.stats().draws), d)
+		assert.equal(await page.locator("svg").count(), 0)
+		assert.ok(box)
+		await page.mouse.click(box.x + 2, box.y + 2)
+		assert.equal((await page.evaluate(() => (window as any).events)).filter((e: any) => e[0] === "pick").length, 0)
 	})
 })

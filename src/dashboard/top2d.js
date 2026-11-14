@@ -3,6 +3,7 @@
 // the view is the SVG viewBox, so pan and zoom change one attribute and nothing runs between gestures.
 import { topLayout, boardShapes } from "./top-layout.js"
 
+const MARGIN = 10 // the same margin as top-layout.js's bounds
 const NS = "http://www.w3.org/2000/svg"
 const el = (tag, attrs = {}, text) => {
 	const e = document.createElementNS(NS, tag)
@@ -22,16 +23,23 @@ export function mountTop(host, opts = {}) {
 	svg.append(gPlate, gMech, gBoards, gCables, gLabels)
 	host.append(svg)
 
-	let scene = null, view = { x: 0, y: 0, w: 100, h: 60 }, draws = 0, raf = 0, selected = null, disposed = false, finish = null
+	let scene = null, home = null, focusName = null, touched = false, view = { x: 0, y: 0, w: 100, h: 60 }, draws = 0, raf = 0, selected = null, disposed = false, finish = null
 	const setView = (v) => { view = v; svg.setAttribute("viewBox", fmt(v)) }
 	setView(view)
 
+	const live = () => !disposed
 	const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; if (finish) { const f = finish; finish = null; f() } }
-	function focus(name, { ms = 600 } = {}) {
-		stop()
+	const targetOf = (name) => {
 		const b = name == null ? null : scene?.boards.find((x) => x.name === name)
-		const to = b ? grow({ x: b.x, y: b.y, w: b.w, h: b.h }, 1.25) : scene?.bounds
+		return b ? grow({ x: b.x, y: b.y, w: b.w, h: b.h }, 1.25) : home
+	}
+	function focus(name, { ms = 600 } = {}) {
+		if (!live()) return Promise.resolve()
+		stop()
+		const to = targetOf(name)
 		if (!to) return Promise.resolve()
+		focusName = name
+		touched = false
 		const from = view
 		return new Promise((resolve) => {
 			finish = resolve
@@ -50,14 +58,17 @@ export function mountTop(host, opts = {}) {
 	function applySelection() {
 		for (const e of svg.querySelectorAll("[data-board],[data-cable]")) {
 			const on = selected && (e.dataset.board ?? e.dataset.cable) === selected.name && (e.dataset.board != null) === (selected.kind === "board")
-			const shape = e.dataset.board != null ? e.querySelector("[data-outline]") : e
+			const shape = e.querySelector(e.dataset.board != null ? "[data-outline]" : "[data-line]")
 			if (shape) shape.setAttribute("stroke", on ? SIGNAL : e.dataset.board != null ? INK : OK)
 			if (shape) shape.setAttribute("stroke-width", on ? 1.2 : e.dataset.board != null ? 0.6 : 0.8)
 		}
 	}
-	const select = (name, kind = "board") => { selected = name == null ? null : { name, kind }; applySelection() }
+	const select = (name, kind = "board") => {
+		if (!live()) return
+		 selected = name == null ? null : { name, kind }; applySelection() }
 
 	function setWorld(w) {
+		if (!live()) return
 		const boards = w.boards ?? []
 		const links = w.cables ?? []
 		scene = topLayout(w.assembly ?? null, boards, links)
@@ -66,14 +77,15 @@ export function mountTop(host, opts = {}) {
 			const p = scene.plate
 			gPlate.append(el("rect", { x: p.x, y: p.y, width: p.w, height: p.h, rx: 2, fill: PAPER2, stroke: INK, "stroke-width": 0.4, "stroke-opacity": 0.5 }))
 			if (w.assembly?.body === "chassis") {
-				// Standoff holes at each board's four corners, inset as the chassis spec puts them.
+				// Standoff holes at each board's four corners. 3.5 mm is BOARD_HOLE_INSET_MM in src/tools/chassis.ts (the spec's
+				// boards[].holeInsetMm); browser JS can't import it.
 				for (const b of scene.boards) for (const [hx, hy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
 					const inset = 3.5
 					gPlate.append(el("circle", { cx: b.x + inset + hx * (b.w - 2 * inset), cy: b.y + inset + hy * (b.h - 2 * inset), r: 1.1, fill: "none", stroke: INK, "stroke-width": 0.3, "stroke-opacity": 0.6, "data-hole": "" }))
 				}
 			}
 		}
-		drawChassis(w.chassis)
+		const mech = drawChassis(w.chassis)
 		for (const b of scene.boards) {
 			const info = boards.find((x) => x.name === b.name) ?? {}
 			const turned = b.rotDeg === 90 || b.rotDeg === 270
@@ -97,26 +109,39 @@ export function mountTop(host, opts = {}) {
 			gBoards.append(g)
 		}
 		for (const c of scene.cables) {
-			const path = el("path", { "data-cable": c.id, d: c.path, fill: "none", stroke: OK, "stroke-width": 0.8, "stroke-linecap": "round" })
-			path.style.cursor = "pointer"
+			const g = el("g", { "data-cable": c.id })
+			g.style.cursor = "pointer"
+			g.append(el("path", { "data-line": "", d: c.path, fill: "none", stroke: OK, "stroke-width": 0.8, "stroke-linecap": "round" }))
 			// A wider invisible stroke so a cable is easy to hit.
-			gCables.append(path)
+			g.append(el("path", { d: c.path, fill: "none", stroke: "transparent", "stroke-width": 4, "pointer-events": "stroke" }))
+			gCables.append(g)
 			gLabels.append(el("text", { x: c.mid.x, y: c.mid.y - 1.5, "text-anchor": "middle", fill: INK, "font-size": 2.6, "pointer-events": "none" }, c.label))
 		}
 		applySelection()
-		if (!raf) setView(scene.bounds)
+		// Home: the layout's bounds plus the mechanical parts, with the same margin (wheels stand outside the plate).
+		const b = scene.bounds
+		let x0 = b.x, y0 = b.y, x1 = b.x + b.w, y1 = b.y + b.h
+		for (const r of mech) { x0 = Math.min(x0, r.x - MARGIN); y0 = Math.min(y0, r.y - MARGIN); x1 = Math.max(x1, r.x + r.w + MARGIN); y1 = Math.max(y1, r.y + r.h + MARGIN) }
+		home = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+		// A live update must not undo the user's view: keep a focused board framed (retargeting a flight in progress),
+		// leave a panned or zoomed view alone, and fit only while nothing was chosen.
+		if (raf) focus(focusName, { ms: 200 })
+		else if (focusName != null) { const t = targetOf(focusName); if (t) setView(t) }
+		else if (!touched) setView(home)
 	}
 
 	// Mechanical outlines from the chassis spec.json (x forward = SVG x, y left = SVG -y).
 	function drawChassis(ch) {
-		if (!ch) return
+		const rects = []
+		if (!ch) return rects
 		const line = { fill: "none", stroke: INK, "stroke-width": 0.35, "stroke-dasharray": "1.5 1", "stroke-opacity": 0.7, "pointer-events": "none" }
-		const box = (kind, cx, cy, w, h) => gMech.append(el("rect", { ...line, "data-mech": kind, x: cx - w / 2, y: -cy - h / 2, width: w, height: h, rx: 0.8 }))
+		const box = (kind, cx, cy, w, h) => { rects.push({ x: cx - w / 2, y: -cy - h / 2, w, h }); gMech.append(el("rect", { ...line, "data-mech": kind, x: cx - w / 2, y: -cy - h / 2, width: w, height: h, rx: 0.8 })) }
 		const d = ch.drive
 		if (d) for (const s of [1, -1]) box("wheel", d.axleXMm, s * (d.trackMm / 2), d.wheelDiameterMm, d.wheelWidthMm)
 		for (const m of ch.motors ?? []) box("motor", m.xMm, m.yMm, m.bodyMm[0], m.bodyMm[1])
-		if (ch.caster) gMech.append(el("circle", { ...line, "data-mech": "caster", cx: ch.caster.xMm, cy: 0, r: ch.caster.wheelMm / 2 }))
+		if (ch.caster) { const r = ch.caster.wheelMm / 2; rects.push({ x: ch.caster.xMm - r, y: -r, w: 2 * r, h: 2 * r }); gMech.append(el("circle", { ...line, "data-mech": "caster", cx: ch.caster.xMm, cy: 0, r })) }
 		if (ch.battery) box("battery", ch.battery.xMm, ch.battery.yMm, ch.battery.sizeMm[0], ch.battery.sizeMm[1])
+		return rects
 	}
 
 	// Pointer: hover by delegation; a click is a press that did not move; a drag pans by changing the viewBox.
@@ -130,18 +155,21 @@ export function mountTop(host, opts = {}) {
 			const r = svg.getBoundingClientRect(), k = Math.max(view.w / r.width, view.h / r.height)
 			const dx = e.clientX - press.x, dy = e.clientY - press.y
 			if (Math.hypot(dx, dy) > 3) press.moved = true
+			if (press.moved) touched = true, focusName = null
 			if (press.moved) setView({ ...view, x: press.view.x - dx * k, y: press.view.y - dy * k })
 			return
 		}
 		const h = hit(e), key = h ? `${h.kind}:${h.name}` : null
 		if (key !== hovered) { hovered = key; opts.onHover?.(h ? h.name : null, h ? h.kind : "board") }
 	}
-	const onDown = (e) => { stop(); press = { x: e.clientX, y: e.clientY, view, moved: false, hit: hit(e) } }
+	const onDown = (e) => { if (!live()) return; stop(); press = { x: e.clientX, y: e.clientY, view, moved: false, hit: hit(e) } }
 	const onUp = () => { const p = press; press = null; if (p && !p.moved && p.hit) opts.onPick?.(p.hit.name, p.hit.kind) }
 	const onLeave = () => { if (hovered) { hovered = null; opts.onHover?.(null, "board") } }
 	const onWheel = (e) => {
 		e.preventDefault()
 		stop()
+		touched = true
+		focusName = null
 		const r = svg.getBoundingClientRect(), k = Math.max(view.w / r.width, view.h / r.height)
 		const f = Math.exp(e.deltaY * 0.0015)
 		// Zoom about the cursor: the point under it stays put.
@@ -152,6 +180,7 @@ export function mountTop(host, opts = {}) {
 	svg.addEventListener("pointerdown", onDown)
 	window.addEventListener("pointerup", onUp)
 	svg.addEventListener("pointerleave", onLeave)
+	svg.addEventListener("pointercancel", () => { press = null })
 	svg.addEventListener("wheel", onWheel, { passive: false })
 
 	return {
@@ -163,6 +192,7 @@ export function mountTop(host, opts = {}) {
 			disposed = true
 			stop()
 			window.removeEventListener("pointerup", onUp)
+			press = null
 			svg.remove()
 		},
 	}
