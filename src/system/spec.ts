@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import type { Connector, LinkMessage } from "../contract/types.ts"
+import { assemblyErrors, type SystemAssembly } from "./assembly.ts"
 import { LINK_KINDS, PERIPHERALS_FREE, type LinkKind, type Peripheral } from "../contract/link-kinds.ts"
 
 export interface SystemBoard {
@@ -31,6 +32,8 @@ export interface SystemSpec {
 	name: string
 	boards: SystemBoard[]
 	links: SystemLink[]
+	// The physical body: where the boards sit (src/system/assembly.ts). Optional.
+	assembly?: SystemAssembly
 }
 
 export const DEFAULT_BAUD = 115200
@@ -100,6 +103,7 @@ export function specErrors(s: SystemSpec): string[] {
 		}
 		for (const [p, ids] of by) if (ids.length > PERIPHERALS_FREE[p]) out.push(`board ${b.name}: ${ids.join(", ")} all need its ${p} (the ESP32-C3 has ${PERIPHERALS_FREE[p]} free); make the others I2C`)
 	}
+	out.push(...assemblyErrors(s))
 	return out
 }
 
