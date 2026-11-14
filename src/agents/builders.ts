@@ -61,9 +61,10 @@ export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	// requirements); the self-tests follow the pins and parts.
 	testkit: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"],
 	// The chassis follows the mechanics layout, the targets (the payload's mass) and the board's size (its standoffs).
-	chassis: ["mechanics", "motion", "outline"],
+	// assembly: the other boards' places and built sizes (a re-sent assembly rebuilds it).
+	chassis: ["mechanics", "motion", "outline", "assembly"],
 	// The simulated drive runs the firmware (pins, parts) on the mechanics (mechanics, motion, the board's size).
-	drive: ["mechanics", "motion", "pins", "parts", "outline"],
+	drive: ["mechanics", "motion", "pins", "parts", "outline", "assembly"],
 }
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with

@@ -55,8 +55,8 @@ export const BUILDS = {
 	// Only when the contract has a test field (OPTIONAL_KINDS in builders.ts).
 	testkit: { inputs: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"], requires: ["test", "outline", "pins"], optional: "test" },
 	// A robot's chassis, only with a mechanics field (OPTIONAL_KINDS in builders.ts).
-	chassis: { inputs: ["mechanics", "motion", "outline"], requires: ["mechanics", "motion", "outline"], optional: "mechanics" },
-	drive: { inputs: ["mechanics", "motion", "pins", "parts", "outline"], requires: ["mechanics", "motion", "pins"], optional: "mechanics" },
+	chassis: { inputs: ["mechanics", "motion", "outline", "assembly"], requires: ["mechanics", "motion", "outline"], optional: "mechanics" },
+	drive: { inputs: ["mechanics", "motion", "pins", "parts", "outline", "assembly"], requires: ["mechanics", "motion", "pins"], optional: "mechanics" },
 }
 
 // agent.activity phase → lane status

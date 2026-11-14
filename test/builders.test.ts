@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { BringupState, emit, join, startRuntime } from "../src/runtime.ts"
-import { createBuilder, driveSummary } from "../src/agents/builders.ts"
+import { BUILD_INPUTS, createBuilder, driveSummary } from "../src/agents/builders.ts"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { stubBoard, stubEnclosure } from "../src/tools/stubs.ts"
 import { createChangeDesk } from "../src/change-control.ts"
@@ -215,4 +215,17 @@ test("a builder's summary rides on artifact.ready; the drive's says its result a
 	emit(makeEvent("contract.changed", desk.getId(), { field: "outline", version: (r as { version: number }).version, revision: (r as { revision: number }).revision, by: "architect" }), desk.getId())
 	await waitFor(() => events.some((e) => e.type === "artifact.ready"))
 	assert.deepEqual(events.find((e) => e.type === "artifact.ready")!.payload, { kind: "enclosure", revision: 1, enclosure: { note: "hi" } })
+})
+
+test("a re-sent assembly wakes the chassis and drive builders (a robot's body follows its siblings' built sizes)", async () => {
+	const state = new BringupState(tempDir())
+	startRuntime(state, undefined, null)
+	const desk = createChangeDesk()
+	join(desk)
+	const built: string[] = []
+	for (const kind of ["chassis", "drive"] as const)
+		join(createBuilder({ kind, inputs: BUILD_INPUTS[kind], build: async () => { built.push(kind); return {} as never } }))
+	emit(makeEvent("contract.changed", desk.getId(), { field: "assembly", version: 2, revision: 7, by: "integrator" }), desk.getId())
+	await waitFor(() => built.includes("chassis") && built.includes("drive"))
+	assert.deepEqual([...built].sort(), ["chassis", "drive"])
 })
