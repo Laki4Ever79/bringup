@@ -11,6 +11,10 @@ import { ALL_KINDS, BUILD_REQUIRES, OPTIONAL_KINDS } from "./builders.ts"
 const readBrief = (outDir: string) => (existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : "")
 
 export const MAX_REVISIONS = 25
+// A robot (a motion field) carries more fields than a board alone: the drive, the chassis, the driver and its
+// connectors are drafted after the board (real rover run 2, 15 Nov: the cap ended it mid-design). A system's boards
+// get the same 40 (system/run.ts SYSTEM_BOARD_MAX_REVISIONS).
+export const ROBOT_MAX_REVISIONS = 40
 const KINDS: ArtifactKind[] = ALL_KINDS
 
 export interface Settlement {
@@ -223,7 +227,8 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 							onReview(event.payload)
 							if (done) return
 						}
-						if (isEvent(event, "contract.changed") && event.payload.revision - budgetBase > maxRevisions) {
+						const cap = state().contract.get("motion") ? Math.max(maxRevisions, ROBOT_MAX_REVISIONS) : maxRevisions
+						if (isEvent(event, "contract.changed") && event.payload.revision - budgetBase > cap) {
 							capped = true
 							settle(false)
 							return
