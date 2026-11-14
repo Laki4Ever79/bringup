@@ -10,9 +10,12 @@ export function motionShapeError(v: unknown): string | null {
 	return ok ? null : shape
 }
 
+// The shape, for the mechanics engineer's instruction (agents/roles.ts) as well as the error.
+
+export const MECHANICS_SHAPE =
+	'mechanics must be {drive: {kind: "differential", motor, wheel, caster (catalog/mechanics.json mpns), trackMm, wheelbaseMm, axleXMm}, battery: {pack (mpn), at: {xMm, yMm}}, sensor: {module (catalog sensors mpn), at: {xMm, yMm, zMm}, connector (board connector ref)}, chassis: {plateMm: [length, width], thicknessMm, material: "PLA", clearanceMm, boards: [{name, at: {xMm, yMm}, rotDeg: 0|90|180|270}]}} (mm; origin at the plate centre, +x forward)'
 export function mechanicsShapeError(v: unknown): string | null {
-	const shape =
-		'mechanics must be {drive: {kind: "differential", motor, wheel, caster (catalog/mechanics.json mpns), trackMm, wheelbaseMm, axleXMm}, battery: {pack (mpn), at: {xMm, yMm}}, sensor: {module (catalog sensors mpn), at: {xMm, yMm, zMm}, connector (board connector ref)}, chassis: {plateMm: [length, width], thicknessMm, material: "PLA", clearanceMm, boards: [{name, at: {xMm, yMm}, rotDeg: 0|90|180|270}]}} (mm; origin at the plate centre, +x forward)'
+	const shape = MECHANICS_SHAPE
 	if (!obj(v) || !obj(v.drive) || !obj(v.battery) || !obj(v.chassis) || !obj(v.sensor)) return shape
 	const d = v.drive, b = v.battery, c = v.chassis, s = v.sensor
 	const at = (p: unknown) => obj(p) && typeof p.xMm === "number" && typeof p.yMm === "number"
