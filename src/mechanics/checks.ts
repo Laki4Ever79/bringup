@@ -90,6 +90,23 @@ function insideMargin(p: [number, number], poly: [number, number][]): number {
 	return min
 }
 
+// Where a part fits on the plate (origin at the centre): the x and y its centre may take, or the plate it needs. The
+// numbers an agent can act on (real rover run 3, 15 Nov: "enlarge the plate or move it" had the battery and caster
+// moved a few mm at a time, revision after revision, without ever landing on the plate).
+export function fitWindow(m: { sizeMm: number[]; xMm: number; yMm: number }, L: number, W: number): string {
+	const hx = L / 2 - m.sizeMm[0] / 2, hy = W / 2 - m.sizeMm[1] / 2
+	if (hx < 0 || hy < 0) return `it needs a plate at least ${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm`
+	const parts = [Math.abs(m.xMm) > hx + 1e-9 && `xMm between ${r1(-hx)} and ${r1(hx)}`, Math.abs(m.yMm) > hy + 1e-9 && `yMm between ${r1(-hy)} and ${r1(hy)}`].filter(Boolean)
+	return `on this plate its centre must have ${parts.join(" and ")} (now ${r1(m.xMm)}, ${r1(m.yMm)}), or make the plate longer or wider`
+}
+
+// The caster sits wheelbaseMm behind the axle (x = axleXMm − wheelbaseMm): its window is a wheelbase range.
+export function casterWindow(m: { sizeMm: number[]; xMm: number; yMm: number }, L: number, W: number, d: { axleXMm: number; wheelbaseMm: number }): string {
+	const hx = L / 2 - m.sizeMm[0] / 2
+	if (hx < 0 || W / 2 - m.sizeMm[1] / 2 < 0) return `it needs a plate at least ${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm`
+	return `the caster sits at axleXMm − wheelbaseMm (${r1(d.axleXMm)} − ${r1(d.wheelbaseMm)}); on this plate wheelbaseMm must be between ${r1(Math.max(1, d.axleXMm - hx))} and ${r1(d.axleXMm + hx)} with axleXMm ${r1(d.axleXMm)}, or move the axle, or make the plate longer`
+}
+
 export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mechanics | undefined, boards: { name: string; snapshot: ContractSnapshot }[], cat: CheckCatalog, figures: MechFigure[] = []): MechViolation[] {
 	if (!motion) return []
 	const out: MechViolation[] = []
@@ -220,7 +237,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const [L, Wd] = mech.chassis.plateMm
 	const onPlate = (m: Mount) => Math.abs(m.xMm) + m.sizeMm[0] / 2 <= L / 2 + 1e-9 && Math.abs(m.yMm) + m.sizeMm[1] / 2 <= Wd / 2 + 1e-9
 	for (const m of ms) if (m.what.startsWith("board:") || m.what === "battery" || m.what === "caster" || m.what === "sensor")
-		if (!onPlate(m)) push("mech-fit", `${m.what.replace(/^board:/, "board ")} (${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm at ${r1(m.xMm)}, ${r1(m.yMm)}) doesn't fit on the ${L} × ${Wd} mm plate: enlarge the plate or move it`)
+		if (!onPlate(m)) push("mech-fit", `${m.what.replace(/^board:/, "board ")} (${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm at ${r1(m.xMm)}, ${r1(m.yMm)}) doesn't fit on the ${L} × ${Wd} mm plate: ${m.what === "caster" ? casterWindow(m, L, Wd, d) : fitWindow(m, L, Wd)}`)
 	// A motor hangs under the plate's edge out to its wheel: at least half its body must be under the plate to bolt on.
 	for (const m of ms.filter((x) => x.what.startsWith("motor:"))) {
 		const under = Wd / 2 - (Math.abs(m.yMm) - m.sizeMm[1] / 2)
@@ -236,7 +253,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	if (pack.sizeMm[2] > est("standoffMm") - 1 && boardsM.length)
 		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")}: pick a thinner pack or put it beside the boards`)
 	const wheelInner = d.trackMm / 2 - wheel.widthMm / 2
-	if (wheelInner < Wd / 2 + 2) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): widen the track or narrow the plate`)
+	if (wheelInner < Wd / 2 + 2) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): make trackMm at least ${r1(Wd + 4 + wheel.widthMm)} (the plate's width + 4 + the ${wheel.widthMm} mm wheel), or the plate at most ${r1(d.trackMm - wheel.widthMm - 4)} mm wide`)
 	// Level: the caster sets the plate's height; the motors hang from it on brackets, at least half their body below
 	// it (they can drop lower on a spacer, not rise into the plate).
 	const axleLevel = wheel.diameterMm / 2 + motor.bodyMm[2] / 2
@@ -250,7 +267,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		push("mech-fit", `the plate is ${mech.chassis.clearanceMm} mm off the floor, under the ${motion.edgeMm} mm edge the rover must cross: raise it (bigger wheels)`)
 	const outerW = Math.max(Wd, d.trackMm + wheel.widthMm)
 	if (L > motion.maxSizeMm[0] || outerW > motion.maxSizeMm[1])
-		push("mech-fit", `the rover is ${L} × ${outerW} mm with its wheels, over the ${motion.maxSizeMm[0]} × ${motion.maxSizeMm[1]} mm the brief allows: shrink the plate or the track`)
+		push("mech-fit", `the rover is ${L} × ${outerW} mm with its wheels, over the ${motion.maxSizeMm[0]} × ${motion.maxSizeMm[1]} mm the brief allows: the plate at most ${motion.maxSizeMm[0]} mm long, trackMm at most ${r1(motion.maxSizeMm[1] - wheel.widthMm)} (the width less one ${wheel.widthMm} mm wheel), so the plate at most ${r1(motion.maxSizeMm[1] - 2 * wheel.widthMm - 4)} mm wide`)
 	fig("Mass", `${Math.round(massG)} g`, `at most ${motion.maxMassG} g`, massG <= motion.maxMassG, `plate PLA ${estNote("plaDensityGcm3")}, boards ${estNote("boardMassGPerCm2")}`)
 	fig("Size with wheels", `${L} × ${outerW} mm`, `at most ${motion.maxSizeMm[0]} × ${motion.maxSizeMm[1]} mm`, L <= motion.maxSizeMm[0] && outerW <= motion.maxSizeMm[1])
 	if (massG > motion.maxMassG) push("mech-fit", `the rover weighs about ${Math.round(massG)} g, over the ${motion.maxMassG} g the brief allows`)

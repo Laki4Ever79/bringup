@@ -13,6 +13,8 @@ import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
 import { rankMcus, type McuRequest } from "../mcu/select.ts"
 import { MECHANICS_SHAPE } from "../mechanics/shape.ts"
+import { solveChassis, type ChassisChoice } from "../mechanics/solve.ts"
+import { defaultCheckCatalog } from "../mechanics/checks.ts"
 
 // Splits the grounding check's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
 function groundingFor(findings: GroundingFinding[], pinAssignments: boolean): GroundingFinding[] {
@@ -201,6 +203,36 @@ function compareMcusTool(): Tool {
 		},
 		strict: false,
 		invoke: async ({ motion, ...req }: Omit<McuRequest, "motion"> & { motion?: "any" | "grblhal" | "fluidnc" }) => rankMcus({ ...req, ...(motion ? { motion: motion === "any" ? true : motion } : {}) }),
+	}
+}
+
+// The chassis layout solver (src/mechanics/solve.ts): the mechanics engineer picks the parts, code finds the plate,
+// track, axle, wheelbase and battery spot that pass the robot's checks (real rover run 3, 15 Nov: packing by hand
+// never converged).
+function layoutChassisTool(): Tool {
+	return {
+		type: "function",
+		name: "layout_chassis",
+		description: "Lay out the robot's chassis for the parts you pick: searches the plate size (within the brief's maxSizeMm, or the system's plate), the track, the axle and caster position, the battery's spot and the sensor's, and returns a complete mechanics field that passes every chassis check (fit, level, tipping, climb, torque, speed, stopping, current, runtime). Propose the returned mechanics as it is. If no layout passes, it says which checks fail with these parts: pick others and call it again.",
+		parameters: {
+			type: "object",
+			properties: {
+				motor: { type: "string", description: "a motor from the design facts' Motors list (its part number is enough)" },
+				wheel: { type: "string" },
+				caster: { type: "string" },
+				pack: { type: "string", description: "the battery pack" },
+				sensor: { type: "string", description: "the distance sensor module" },
+				connector: { type: "string", description: "the board connector (role connector, JST SH 4-pin) the sensor's cable plugs into, e.g. JT1" },
+			},
+			required: ["motor", "wheel", "caster", "pack", "sensor", "connector"],
+		},
+		strict: false,
+		invoke: async (choice: ChassisChoice) => {
+			const cat = defaultCheckCatalog()
+			if (!cat) return { error: "no mechanics catalog on this machine" }
+			const r = solveChassis(state().contract.snapshot(), choice, cat)
+			return { passes: r.mechanics !== null && r.remaining.length === 0, mechanics: r.mechanics, why: r.why }
+		},
 	}
 }
 
@@ -403,7 +435,8 @@ export function createMechanicsAgent(opts: { mock: boolean }): Agent {
 		role: "mechanics",
 		name: "mechanics",
 		mock: opts.mock,
-		instruction: `You are the mechanics engineer of a small robot: you own the mechanics field (drive, battery, sensor mount and chassis layout). The architect owns motion (the brief's targets) and the boards. Lay out the chassis in millimetres with the origin at the plate's centre and +x forward, and propose it with propose_contract_change. When another discipline proposes a change to mechanics, decide with decide_change. When the contract has an assembly field, the plate size and where each board sits come from the system's assembly; keep chassis.plateMm and chassis.boards as they are and design the drive, battery, sensor, clearance and thickness. The design facts list the catalog's motors, wheels, casters, packs and sensor modules with their numbers.\n${MECHANICS_SHAPE}\n${MECHANICS_RULES}\n${CONTRACT_SHAPES}`,
+		instruction: `You are the mechanics engineer of a small robot: you own the mechanics field (drive, battery, sensor mount and chassis layout). Pick the parts (motor, wheels, caster, battery pack, distance sensor and the board connector its cable plugs into), call layout_chassis with them, and propose the mechanics it returns as it is: the layout is a search the code does, so don't place parts by hand. If no layout passes, it says which checks fail: pick other parts and call it again. The architect owns motion (the brief's targets) and the boards. Lay out the chassis in millimetres with the origin at the plate's centre and +x forward, and propose it with propose_contract_change. When another discipline proposes a change to mechanics, decide with decide_change. When the contract has an assembly field, the plate size and where each board sits come from the system's assembly; keep chassis.plateMm and chassis.boards as they are and design the drive, battery, sensor, clearance and thickness. The design facts list the catalog's motors, wheels, casters, packs and sensor modules with their numbers.\n${MECHANICS_SHAPE}\n${MECHANICS_RULES}\n${CONTRACT_SHAPES}`,
+		tools: [layoutChassisTool()],
 		handlers: [
 			ownerReviewsChanges("mechanics"),
 			ownerFixesReview("mechanics"),
