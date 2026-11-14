@@ -210,6 +210,22 @@ test("with the rounds used up, a changed body isn't called settled: it is writte
 	assert.deepEqual(front.outline, { widthMm: 52, heightMm: 31 })
 })
 
+test("a board that ended unsettled doesn't keep a settled sibling's outline an estimate in the written assembly", async () => {
+	const spec = robot("chassis", { main: { ...fixtureContract().values.outline! } }), out = tempDir()
+	const start: typeof startRunProcess = (a) => {
+		const r = fakeStart({ front: { widthMm: 52, heightMm: 31 } })(a)
+		if (a.outDir.endsWith("/main")) writeFileSync(join(a.outDir, "trace.jsonl"), JSON.stringify({ at: "2026-11-14T10:00:00Z", type: "design.settled", payload: { settled: false } }) + "\n")
+		// front settles a little after main ended unsettled: the run waits for it.
+		if (a.outDir.endsWith("/front")) { const t = readFileSync(join(a.outDir, "trace.jsonl")); writeFileSync(join(a.outDir, "trace.jsonl"), ""); setTimeout(() => writeFileSync(join(a.outDir, "trace.jsonl"), t), 80) }
+		return r
+	}
+	const r = await runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 3000, start })
+	assert.equal(r.ok, false)
+	assert.match(JSON.parse(readFileSync(join(out, "system-state.json"), "utf8")).status, /^UNSETTLED: main ended unsettled/)
+	const front = JSON.parse(readFileSync(join(out, "system.json"), "utf8")).assembly.boards.find((b: { name: string }) => b.name === "front")
+	assert.deepEqual([front.outline, front.outlineSource], [{ widthMm: 52, heightMm: 31 }, "built"])
+})
+
 test("a board is not sent the assembly again when only its own outline changed", async () => {
 	// front's own outline (same width, so the plate stays) is its own truth; main has nothing new either.
 	const spec = robot("chassis", { main: { ...fixtureContract().values.outline! } }), out = tempDir()

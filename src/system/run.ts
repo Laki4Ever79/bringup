@@ -177,6 +177,10 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			// A board that ended unsettled (stuck, or at its revision cap) won't fix itself: stop and say which.
 			const stuck = designed.filter((b) => unsettledSince(boardDir(outDir, b.name), asked.get(b.name) ?? 0)).map((b) => b.name)
 			if (stuck.length) {
+				// The other boards are given the time to settle (or end unsettled) first, so the written assembly has their real outlines.
+				if (designed.some((b) => !stuck.includes(b.name) && !contracts[b.name] && !unsettledSince(boardDir(outDir, b.name), asked.get(b.name) ?? 0))) continue
+				// A sibling that did settle still shows its built outline in the written assembly (nothing is sent: the stuck board won't settle on it).
+				syncAssembly(contracts, false)
 				write(lastContracts(), findings, `UNSETTLED: ${stuck.join(" and ")} ended unsettled (see boards/<name>/report.md)`)
 				break
 			}
