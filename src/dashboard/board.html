@@ -494,14 +494,15 @@
 	function paintDraft() {
 		const d = S.draft
 		const box = $("draft")
-		if (!d.moves.length && !d.note) {
+		const undoBtn = S.lastSent && editable() && LIVE.has(S.view?.status) ? `<button class="btn" data-undo-sent title="Puts the opposite moves in a new draft, checked like any move; a part the layout had placed goes back to the layout's choice">Undo the moves you sent</button>` : ""
+		// With no draft and no note, the undo of the last batch sent stays on offer (it went with the dismissed note before).
+		if (!d.moves.length && !d.note && !undoBtn) {
 			box.hidden = true
 			return
 		}
 		box.hidden = false
-		const undoBtn = S.lastSent && editable() && LIVE.has(S.view?.status) ? `<button class="btn" data-undo-sent title="Puts the opposite moves in a new draft, checked like any move; a part the layout had placed goes back to the layout's choice">Undo the moves you sent</button>` : ""
 		if (!d.moves.length) {
-			box.innerHTML = `<div class="swapnote">${esc(d.note)}</div><div class="acts"><button class="btn" data-dismiss>OK</button>${undoBtn}</div>`
+			box.innerHTML = d.note ? `<div class="swapnote">${esc(d.note)}</div><div class="acts"><button class="btn" data-dismiss>OK</button>${undoBtn}</div>` : `<div class="acts">${undoBtn}</div>`
 			return
 		}
 		const c = d.check
