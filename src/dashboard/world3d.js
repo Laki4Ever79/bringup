@@ -18,9 +18,11 @@ import { parseStl } from "./stl.js"
 export function autoLayout(boards, links, gap = 20) {
 	const names = boards.map((b) => b.name)
 	const next = new Map(names.map((n) => [n, []]))
+	// A link whose end isn't among `boards` (a board placed some other way) is left out.
 	for (const l of links ?? []) {
-		next.get(l.a.board)?.push(l.b.board)
-		next.get(l.b.board)?.push(l.a.board)
+		if (!next.has(l.a.board) || !next.has(l.b.board)) continue
+		next.get(l.a.board).push(l.b.board)
+		next.get(l.b.board).push(l.a.board)
 	}
 	const order = []
 	for (const start of names) {

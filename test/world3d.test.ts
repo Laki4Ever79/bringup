@@ -35,6 +35,13 @@ test("linked boards sit closer than unlinked ones", () => {
 	assert.ok(dist("a", "b") < dist("a", "d"))
 })
 
+test("a link to a board that was not passed in is ignored, not a crash (a placed sibling of a robot)", () => {
+	const pos = autoLayout([board("main")], [link("main", "climate")], 20)
+	assert.deepEqual(Object.keys(pos), ["main"])
+	const two = autoLayout([board("main"), board("x")], [link("main", "climate"), link("climate", "x")], 20)
+	assert.deepEqual(Object.keys(two).sort(), ["main", "x"])
+})
+
 test("the camera fly starts at the first view, ends at the second and passes between, easing in and out", () => {
 	const a = { yaw: 0, pitch: 0.5, distance: 200, target: [0, 0, 0] }
 	const b = { yaw: 1, pitch: 0.9, distance: 80, target: [40, 10, 0] }
