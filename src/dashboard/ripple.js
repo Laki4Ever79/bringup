@@ -278,6 +278,7 @@ export const PROBLEM = {
 	"part-unconnected": "a part is connected to nothing",
 	"rail-underrated": "a rail is sized below the chip's current",
 	"battery-short": "the battery won't last the target",
+	"connector-off-edge": "a connector runs past the end of its edge",
 	"part-pinned-blocked": "a part placed on the board page doesn't fit there",
 	"link-edge": "a cable connector is off the edge the system runs its cable from",
 }

@@ -132,6 +132,7 @@ export type ViolationKind =
 	| "led-pin"
 	| "rail-underrated"
 	| "part-pinned-blocked"
+	| "connector-off-edge"
 	| ModelViolation["kind"]
 	| TestViolation["kind"]
 	| CaseViolation["kind"]
@@ -168,7 +169,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	// (no QEMU, a stubbed run) wakes nobody: the report says "not proven in simulation".
 	if (a.drive?.result === "fail")
 		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics", "firmware"] })
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)
@@ -501,6 +502,31 @@ export function connectorClashes(c: ContractSnapshot): Violation[] {
 			})
 		}
 	return out
+}
+
+// A connector past the end of its edge (bringup-lead, 14 Nov 2026: the scripted rover compacted to 44×28 mm with JT1 at
+// top@43 mm, and tscircuit refused the board minutes into its build). Along the edge, by the footprint's real extent
+// (connectorBoxes), so a turned JST counts its 7 mm, not the 6 mm the contract lists.
+export function connectorsOffEdge(c: ContractSnapshot): Violation[] {
+	const o = c.values.outline
+	if (!o || !c.values.connectors?.length) return []
+	const [W, H] = [o.widthMm, o.heightMm]
+	const boxes = connectorBoxes(c, W, H)
+	return c.values.connectors.flatMap((k) => {
+		const b = boxes.find((x) => x.ref === k.ref)
+		if (!b) return []
+		const alongX = k.edge === "top" || k.edge === "bottom"
+		const [centre, size, len] = alongX ? [b.x, b.w, W] : [b.y, b.h, H]
+		const over = Math.abs(centre) + size / 2 - len / 2
+		if (over <= 0.05) return []
+		const half = Math.round((size / 2) * 10) / 10
+		return [{
+			kind: "connector-off-edge" as const,
+			message: `${k.ref} (${k.edge}@${k.offsetMm} mm) runs ${over.toFixed(1)} mm past the end of the ${len} mm ${k.edge} edge: its footprint is ${size} mm along it, so its offset goes from ${half} to ${Math.round((len - half) * 10) / 10} mm; move it along the edge (a shrunk board keeps each connector's place in proportion)`,
+			fields: ["connectors"] as FieldName[],
+			affects: ["architect"] as AgentRole[],
+		}]
+	})
 }
 
 // A part the engineer placed on the board page (Part.at) that doesn't fit there: the layout leaves it off rather than
