@@ -247,9 +247,10 @@ export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {})
 
 // tscircuit's autorouter gives up with these: the board needs room (or less in it), the same as a DRC failure.
 // Also the router dropping a via onto a pad (the wake-word board at 35×25 mm: "Via hole at … overlaps SMD pad
-// U1.GPIO9"), the placer finding no free spot for a part (tools/board.ts), and the router tangling a junction (the
-// STM32 logger at 38×22 mm, 13 Nov: "cannot select a unique PCB port"; 38×21 routes): the same answer, more room.
-export const ROUTING_FAILURE = /missing a trace|could not (?:be )?route|failed to route|no route|no room on the board|via hole at .* overlaps|cannot select a unique PCB port/i
+// U1.GPIO9") and the placer finding no free spot for a part (tools/board.ts): the same answer, more room. Not the
+// router's "cannot select a unique PCB port": it shows on boards that build clean too, so the cause was always another
+// error, and "more room" for it widened the rover five times over for a trace past its length bound (15 Nov 2026).
+export const ROUTING_FAILURE = /missing a trace|could not (?:be )?route|failed to route|no route|no room on the board|via hole at .* overlaps/i
 
 export const SIZE_REASON_SHAPE = `sizeReason (optional): {kind: ${Object.keys(SIZE_REASONS).map((k) => `"${k}"`).join("|")}, detail: string}`
 
