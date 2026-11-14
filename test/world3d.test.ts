@@ -2,7 +2,7 @@
 // detail each board gets.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { assemblyPlacement, autoLayout, detailFor, flyCamera, pickBoard } from "../src/dashboard/world3d.js"
+import { assemblyPlacement, autoLayout, resolvePlaces, detailFor, flyCamera, pickBoard } from "../src/dashboard/world3d.js"
 
 const board = (name: string, w = 50, h = 30) => ({ name, outline: { widthMm: w, heightMm: h } })
 const link = (a: string, b: string) => ({ id: `${a}${b}`, a: { board: a }, b: { board: b } })
@@ -97,19 +97,32 @@ test("a rover stands on the floor with its wheels, caster, chassis and board whe
 	assert.ok(g.solid && g.solid.length > 0)
 })
 
-test("assemblyPlacement puts a second board beside the main one on the standoffs", () => {
-	const chassisSpec = {
-		plate: { lengthMm: 150, widthMm: 110, thicknessMm: 3, clearanceMm: 50.5 },
-		standoffMm: 10,
-		drive: { trackMm: 100, axleXMm: 0, wheelbaseMm: 70, wheelDiameterMm: 65, wheelWidthMm: 26 },
-		motors: [], caster: null, battery: null, sensor: null,
-		boards: [{ name: "main", xMm: 10, yMm: 0, widthMm: 60, heightMm: 40, rotDeg: 0 }],
-	}
-	const assembly = { body: "chassis", plate: { lengthMm: 150, widthMm: 110 }, boards: [{ name: "drive", xMm: 10, yMm: 0 }, { name: "front", xMm: 55, yMm: 0 }] }
-	const p = assemblyPlacement(assembly, chassisSpec, "drive")
+test("assemblyPlacement puts a second board beside the main one on the standoffs, in the frame boardGeometry applied", () => {
+	const circuit = JSON.parse(readFileSync("examples/logger/boards/main/circuit.json", "utf8"))
+	const g = boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, circuit, chassisStl: boxStl([-75, -45, 0], [75, 45, 3]), chassisSpec: CHASSIS })
+	assert.ok(g.robotFrame, "a robot board reports the frame it applied")
+	assert.equal(boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, circuit }).robotFrame, undefined, "a plain board has none")
+	const assembly = { boards: [{ name: "drive", xMm: 10, yMm: 0 }, { name: "front", xMm: 55, yMm: 0 }] }
+	const p = assemblyPlacement(assembly, g.robotFrame!)
 	assert.deepEqual(Object.keys(p).sort(), ["drive", "front"], "keyed by system names")
 	assert.ok(Math.abs(p.front.x - p.drive.x - 45) < 1e-9)
 	assert.equal(p.front.z, p.drive.z)
 	assert.ok(p.front.z > 50.5 + 3, "above the plate's top")
-	assert.ok(Math.abs(p.front.y) < 1e-9 && Math.abs(p.drive.y) < 1e-9)
+	// The robot is drawn recentred by the frame's shift; a point at the chassis centre lands at that shift. The plate
+	// (-75..75) is the widest thing along x, so the shift there is 0 and a board at x 10 is 10 from the drawn centre.
+	assert.ok(Math.abs(p.drive.x - (10 + g.robotFrame!.shift[0])) < 1e-9)
+	assert.ok(Math.abs(g.robotFrame!.shift[0]) < 0.5 && Math.abs(p.drive.x - 10) < 0.5)
+})
+
+test("resolvePlaces: placed boards stand on the robot's place with their z; the rest keep the automatic layout", () => {
+	const boards = [{ name: "robot" }, { name: "front" }, { name: "other" }]
+	const auto = { robot: { x: 7, y: -3 }, front: { x: 99, y: 99 }, other: { x: -40, y: 12 } }
+	const on = { robot: "robot", places: { robot: { x: 10, y: 0, z: 63.5 }, front: { x: 55, y: 4, z: 63.5 } } }
+	const r = resolvePlaces(boards, auto, on)
+	assert.deepEqual(r.front, { x: 62, y: 1, z: 63.5 })
+	assert.deepEqual(r.robot, { x: 7, y: -3, z: 0 }, "the robot stays where the layout put it")
+	assert.deepEqual(r.other, { x: -40, y: 12, z: 0 }, "an unplaced board keeps its automatic place exactly")
+	// No assembly: identical to the automatic layout, and an explicit `at` still wins.
+	const plain = resolvePlaces([...boards.slice(0, 2), { name: "other", at: { x: 1, y: 2 } }], auto)
+	assert.deepEqual(plain, { robot: { x: 7, y: -3, z: 0 }, front: { x: 99, y: 99, z: 0 }, other: { x: 1, y: 2, z: 0 } })
 })

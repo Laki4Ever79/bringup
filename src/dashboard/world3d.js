@@ -177,28 +177,29 @@ function roverParts(spec, chassisTris) {
 	return { parts, boardAt: spec.boards?.[0] ?? { xMm: 0, yMm: 0 }, boardZ: top + (spec.standoffMm ?? 10) }
 }
 
-// Where the other boards of a robot stand, in the frame boardGeometry gives the robot board: the same xy shift that
-// recentres the whole rover there (the parts' bounds with the board's own box in), and z on top of the standoffs.
-// The result is keyed by system board name and measured from the robot board's own `at`; chassisBoard is its system
-// name (inside its chassisSpec it is "main"; the assembly's own names are system names). Boards the assembly doesn't place are left out.
-export function assemblyPlacement(assembly, chassisSpec, chassisBoard) {
-	const rover = roverParts(chassisSpec, null)
-	const all = rover.parts.map((p) => p.tris)
-	const own = chassisSpec.boards?.find((b) => b.name === "main")
-	if (own) {
-		const turned = own.rotDeg === 90 || own.rotDeg === 270
-		const w = turned ? own.heightMm : own.widthMm, h = turned ? own.widthMm : own.heightMm
-		all.push(boxTris([own.xMm - w / 2, own.yMm - h / 2, rover.boardZ], [own.xMm + w / 2, own.yMm + h / 2, rover.boardZ + 1.6]))
-	}
-	const flat = new Float32Array(all.reduce((n, t) => n + t.length, 0))
-	let fill = 0
-	for (const t of all) { flat.set(t, fill); fill += t.length }
-	const rb = bounds(flat)
-	const cx = (rb.min[0] + rb.max[0]) / 2, cy = (rb.min[1] + rb.max[1]) / 2
+// Where a robot's boards stand, from the frame boardGeometry applied to the robot (`robotFrame`: the xy shift that
+// recentred the whole rover, and the z of a board's underside on the standoffs). One source: nothing here re-derives the
+// shift. Keyed by system board name, measured from the robot board's own `at`; boards without a finite place are left out.
+export function assemblyPlacement(assembly, frame) {
 	const out = {}
 	for (const b of assembly?.boards ?? []) {
 		if (!Number.isFinite(b.xMm) || !Number.isFinite(b.yMm)) continue
-		out[b.name] = { x: b.xMm - cx, y: b.yMm - cy, z: rover.boardZ }
+		out[b.name] = { x: b.xMm + frame.shift[0], y: b.yMm + frame.shift[1], z: frame.boardZ }
+	}
+	return out
+}
+
+// Every board's final place in the world (mm). `auto` is the automatic layout; `on` is { robot: name, places } (places
+// from assemblyPlacement): those boards stand on the robot's place plus their offset, at the standoff height. A board
+// with its own `at` keeps it; the rest keep their automatic place exactly. Without `on` this is today's behaviour.
+export function resolvePlaces(boards, auto, on = null) {
+	const out = {}
+	const base = on ? auto[on.robot] : null
+	for (const wb of boards) {
+		const p = on && base && wb.name !== on.robot ? on.places[wb.name] : null
+		if (p) out[wb.name] = { x: base.x + p.x, y: base.y + p.y, z: p.z }
+		else if (wb.at) out[wb.name] = { x: wb.at.x, y: wb.at.y, z: wb.at.z ?? 0 }
+		else out[wb.name] = { x: auto[wb.name].x, y: auto[wb.name].y, z: 0 }
 	}
 	return out
 }
@@ -239,8 +240,9 @@ export function boardGeometry(b) {
 			for (const p of rover.parts) { all.set(p.tris, at); at += p.tris.length }
 			// Centred on its own xy origin like every board here, its wheels on the floor.
 			const rb = bounds(all)
-			const centred = shift(all, [-(rb.min[0] + rb.max[0]) / 2, -(rb.min[1] + rb.max[1]) / 2, 0])
-			return { solid: interleave(centred, (i) => colours[i]), shell: null, box: interleave(box, () => ORANGE), extent: bounds(centred) }
+			const frame = [-(rb.min[0] + rb.max[0]) / 2, -(rb.min[1] + rb.max[1]) / 2]
+			const centred = shift(all, [frame[0], frame[1], 0])
+			return { solid: interleave(centred, (i) => colours[i]), shell: null, box: interleave(box, () => ORANGE), extent: bounds(centred), robotFrame: { shift: frame, boardZ: rover.boardZ } }
 		}
 		boardTris = shift(boardTris, off)
 		solid = interleave(boardTris, (i) => (m.kinds[i] === "slab" ? ORANGE : m.kinds[i] === "pad" ? PAD : PART))
@@ -461,10 +463,7 @@ export function mountWorld(host, opts = {}) {
 		el.style.opacity = String(alpha)
 	}
 
-	function setWorld({ boards, cables = [] }) {
-		// `at` is absolute (mm), or measured from another board's laid-out place when it names one in `from` (a robot's
-		// other boards, placed from the assembly); those take no room in the automatic layout.
-		const pos = autoLayout(boards.filter((wb) => !wb.at?.from), cables)
+	function setWorld({ boards, cables = [], assembly = null }) {
 		const keep = new Set()
 		for (const wb of boards) {
 			keep.add(wb.name)
@@ -473,13 +472,17 @@ export function mountWorld(host, opts = {}) {
 			if (!b || b.key !== key) {
 				if (b) { free(b.solid); free(b.shell); free(b.boxMesh) }
 				const g = boardGeometry(wb)
-				b = { key, solid: upload(g.solid), shell: upload(g.shell), boxMesh: upload(g.box), extent: g.extent, alpha: b?.alpha ?? 1, alphaTo: b?.alphaTo ?? 1, glowUntil: 0, caption: b?.caption ?? null }
+				b = { key, solid: upload(g.solid), shell: upload(g.shell), boxMesh: upload(g.box), extent: g.extent, frame: g.robotFrame ?? null, alpha: b?.alpha ?? 1, alphaTo: b?.alphaTo ?? 1, glowUntil: 0, caption: b?.caption ?? null }
 				S.boards.set(wb.name, b)
 			}
-			const base = wb.at?.from ? pos[wb.at.from] ?? { x: 0, y: 0 } : { x: 0, y: 0 }
-			b.at = wb.at ? [base.x + wb.at.x, base.y + wb.at.y] : [pos[wb.name].x, pos[wb.name].y]
-			b.atZ = wb.at?.z ?? 0
 		}
+		// A robot's other boards stand where the assembly puts them; they take no room in the automatic layout.
+		const robot = assembly?.boards?.length ? boards.find((wb) => S.boards.get(wb.name).frame && assembly.boards.some((p) => p.name === wb.name)) : null
+		const places = robot ? assemblyPlacement(assembly, S.boards.get(robot.name).frame) : null
+		const placed = (wb) => robot && wb.name !== robot.name && places[wb.name]
+		const auto = autoLayout(boards.filter((wb) => !placed(wb)), cables)
+		const at = resolvePlaces(boards, auto, robot ? { robot: robot.name, places } : null)
+		for (const wb of boards) { const b = S.boards.get(wb.name); b.at = [at[wb.name].x, at[wb.name].y]; b.atZ = at[wb.name].z }
 		for (const [name, b] of S.boards) if (!keep.has(name)) { free(b.solid); free(b.shell); free(b.boxMesh); b.caption?.remove(); S.boards.delete(name) }
 		for (const c of S.cables) { free(c.mesh); c.el.remove() }
 		S.cables = cables.filter((c) => S.boards.has(c.a.board) && S.boards.has(c.b.board)).map((c) => {

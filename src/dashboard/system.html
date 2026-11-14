@@ -324,7 +324,7 @@ async function startStage(d) {
 	stage.started = true
 	stage.meta = d
 	let mountWorld
-	try { ({ mountWorld, assemblyPlacement: stage.assemblyPlacement } = await import("/world3d.js")) } catch { return }
+	try { ({ mountWorld } = await import("/world3d.js")) } catch { return }
 	document.getElementById("stage-wrap").classList.remove("hidden")
 	try {
 		stage.world = mountWorld(document.getElementById("stage"), { onPick: (name) => window.openBoard?.(name) })
@@ -382,16 +382,9 @@ async function redraw() {
 		const outline = a.outline ?? b.outline ?? null
 		return { name: b.name, outline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
 	})
-	// A robot's other boards stand on its chassis where the assembly puts them (measured from the robot board); without a
-	// placed assembly or a robot board everything stays on the automatic layout.
-	const asmDoc = stage.meta.assembly
-	const robot = asmDoc?.boards?.length ? boards.find((b) => b.chassisSpec) : null
-	if (robot) {
-		const place = stage.assemblyPlacement(asmDoc, robot.chassisSpec, robot.name)
-		for (const b of boards) if (b !== robot && place[b.name]) b.at = { ...place[b.name], from: robot.name }
-	}
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
-	stage.world.setWorld({ boards, cables })
+	// The world places a robot's other boards from the assembly (world3d setWorld); no assembly positions, no change.
+	stage.world.setWorld({ boards, cables, assembly: stage.meta.assembly })
 	for (const [name, a] of Object.entries(asm)) {
 		const caption = a.pulses[0]?.caption ?? null
 		if (caption && stage.shownPulse[name] !== caption) stage.world.pulse({ board: name }, caption)
