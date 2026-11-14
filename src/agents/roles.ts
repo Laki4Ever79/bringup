@@ -380,7 +380,7 @@ export function createMechanicsAgent(opts: { mock: boolean }): Agent {
 		role: "mechanics",
 		name: "mechanics",
 		mock: opts.mock,
-		instruction: `You are the mechanics engineer of a small robot: you own the mechanics field (drive, battery, sensor mount and chassis layout). The architect owns motion (the brief's targets) and the boards. Lay out the chassis in millimetres with the origin at the plate's centre and +x forward, and propose it with propose_contract_change. When another discipline proposes a change to mechanics, decide with decide_change.\n${MECHANICS_RULES}\n${CONTRACT_SHAPES}`,
+		instruction: `You are the mechanics engineer of a small robot: you own the mechanics field (drive, battery, sensor mount and chassis layout). The architect owns motion (the brief's targets) and the boards. Lay out the chassis in millimetres with the origin at the plate's centre and +x forward, and propose it with propose_contract_change. When another discipline proposes a change to mechanics, decide with decide_change. When the contract has an assembly field, the plate size and where each board sits come from the system's assembly; keep chassis.plateMm and chassis.boards as they are and design the drive, battery, sensor, clearance and thickness.\n${MECHANICS_RULES}\n${CONTRACT_SHAPES}`,
 		handlers: [
 			ownerReviewsChanges("mechanics"),
 			ownerFixesReview("mechanics"),

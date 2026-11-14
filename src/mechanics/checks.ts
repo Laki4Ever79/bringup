@@ -2,6 +2,7 @@ import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 import type { AgentRole, ContractSnapshot, FieldName, Part, PinAssignment as Pin } from "../contract/types.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
+import { withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
 import { edgeForceN, G, massAndCom, motorAt, mounts, supportPolygon } from "./model.ts"
@@ -58,9 +59,9 @@ export interface MechFigure {
 // The figures behind the checks for one board's contract (empty without motion targets or a complete mechanics design).
 export function mechanicsFigures(c: ContractSnapshot): MechFigure[] {
 	const cat = defaultCheckCatalog()
-	const v = c.values as { motion?: MotionTargets; mechanics?: Mechanics }
+	const v = c.values as { motion?: MotionTargets }
 	const figures: MechFigure[] = []
-	if (cat) mechanicsCheckOver(v.motion, v.mechanics, [{ name: "main", snapshot: c }], cat, figures)
+	if (cat) mechanicsCheckOver(v.motion, withAssembly(c.values), [{ name: "main", snapshot: c }], cat, figures)
 	return figures
 }
 
@@ -70,8 +71,8 @@ export function mechanicsChecks(c: ContractSnapshot): MechViolation[] {
 }
 
 export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): MechViolation[] {
-	const v = c.values as { motion?: MotionTargets; mechanics?: Mechanics }
-	return mechanicsCheckOver(v.motion, v.mechanics, [{ name: "main", snapshot: c }], cat)
+	const v = c.values as { motion?: MotionTargets }
+	return mechanicsCheckOver(v.motion, withAssembly(c.values), [{ name: "main", snapshot: c }], cat)
 }
 
 // Distance from a point to each edge of a convex polygon (inside: all positive); the smallest.
