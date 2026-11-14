@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 import { test } from "node:test"
 import { fileURLToPath } from "node:url"
-import { boardParts, circuitFromContract } from "../src/codegen/circuit.ts"
+import { boardParts, bringupPads, circuitFromContract, debugPort, recoveryPads, testPoints } from "../src/codegen/circuit.ts"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { netsFromCircuitJson, partsFromCircuitJson } from "../src/tools/board-nets.ts"
 import { readBoardEdits } from "../src/tools/kicad-read.ts"
@@ -89,13 +89,17 @@ for (const [name, contract] of [["fixture", fixtureContract], ["busy mock-run co
 		execFileSync("tsci", ["build", "board.circuit.tsx"], { cwd: dir, env: { ...process.env, PATH }, stdio: "pipe" })
 		const elements = JSON.parse(readFileSync(join(dir, "dist/board/circuit.json"), "utf8"))
 		const names = new Map(elements.filter((e: any) => e.type === "source_component").map((e: any) => [e.source_component_id, e.name]))
-		const boxes = elements.filter((e: any) => e.type === "pcb_component").map((c: any) => ({ ref: names.get(c.source_component_id), x: c.center.x, y: c.center.y, w: c.width, h: c.height }))
+		const boxes = elements.filter((e: any) => e.type === "pcb_component").map((c: any) => ({ ref: names.get(c.source_component_id), layer: c.layer ?? "top", x: c.center.x, y: c.center.y, w: c.width, h: c.height }))
 		const { widthMm: w, heightMm: h } = s.values.outline!
-		assert.equal(boxes.length, boardParts(s).length, "component count")
+		// The parts on top, and underneath the pads and the debug footprint (they share x/y with top parts by design).
+		const underside = [...testPoints(s).placed, ...recoveryPads(s).placed, ...bringupPads(s).placed, ...(debugPort(s).placed ? [debugPort(s).placed!] : [])].map((p) => p.ref)
+		assert.equal(boxes.length, boardParts(s).length + underside.length, "component count")
+		assert.deepEqual(boxes.filter((b: any) => b.layer === "bottom").map((b: any) => b.ref).sort(), [...underside].sort(), "the underside items are on the bottom")
 		for (const b of boxes) assert.ok(Math.abs(b.x) + b.w / 2 <= w / 2 && Math.abs(b.y) + b.h / 2 <= h / 2, `${b.ref} is outside the ${w}×${h} board`)
 		for (let i = 0; i < boxes.length; i++) {
 			for (let j = i + 1; j < boxes.length; j++) {
 				const [a, b] = [boxes[i], boxes[j]]
+				if (a.layer !== b.layer) continue
 				const gap = Math.max(Math.abs(a.x - b.x) - (a.w + b.w) / 2, Math.abs(a.y - b.y) - (a.h + b.h) / 2)
 				assert.ok(gap > 0, `${a.ref} overlaps ${b.ref}`)
 			}
