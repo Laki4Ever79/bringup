@@ -115,3 +115,37 @@ export function topLayout(assembly, boards, links) {
 	}
 	return { plate, boards: out, cables, bounds }
 }
+
+// A board's top-down shapes from its circuit.json, in mm from the board's top-left with y down. circuit.json is
+// centre-origin and y-up (pcb_board.center is the middle), the same reading as world3d.js / pcb-view.js, so the 2D
+// and 3D views agree. A part's box is the copper of its pads (its width and height are given before rotation); a
+// part with no pads falls back to its own centre and size, swapped on a quarter turn.
+export function boardShapes(circuit) {
+	const els = Array.isArray(circuit) ? circuit : []
+	const of = (type) => els.filter((e) => e.type === type)
+	const b = of("pcb_board")[0]
+	const w = b?.width ?? 0, h = b?.height ?? 0
+	const ox = w / 2 - (b?.center?.x ?? 0), oy = h / 2 + (b?.center?.y ?? 0)
+	const X = (x) => r6(x + ox), Y = (y) => r6(oy - y)
+	const names = new Map(of("source_component").map((e) => [e.source_component_id, e.name]))
+	const pads = [
+		...of("pcb_smtpad").map((p) => ({ c: p.pcb_component_id, x: p.x, y: p.y, w: p.width ?? (p.radius ?? 0) * 2, h: p.height ?? (p.radius ?? 0) * 2 })),
+		...of("pcb_plated_hole").map((p) => ({ c: p.pcb_component_id, x: p.x, y: p.y, w: p.outer_width ?? p.rect_pad_width ?? p.outer_diameter ?? 1, h: p.outer_height ?? p.rect_pad_height ?? p.outer_diameter ?? 1 })),
+	]
+	const parts = of("pcb_component").map((c) => {
+		const mine = pads.filter((p) => p.c === c.pcb_component_id)
+		let x0, x1, y0, y1
+		if (mine.length) {
+			x0 = Math.min(...mine.map((p) => p.x - p.w / 2)); x1 = Math.max(...mine.map((p) => p.x + p.w / 2))
+			y0 = Math.min(...mine.map((p) => p.y - p.h / 2)); y1 = Math.max(...mine.map((p) => p.y + p.h / 2))
+		} else {
+			const quarter = Math.round((c.rotation ?? 0) / 90) % 2 !== 0
+			const cw = quarter ? c.height : c.width, ch = quarter ? c.width : c.height
+			x0 = c.center.x - cw / 2; x1 = c.center.x + cw / 2; y0 = c.center.y - ch / 2; y1 = c.center.y + ch / 2
+		}
+		return { x: X(x0), y: Y(y1), w: r6(x1 - x0), h: r6(y1 - y0), ref: names.get(c.source_component_id) ?? c.pcb_component_id }
+	})
+	const padOut = pads.map((p) => ({ x: X(p.x - p.w / 2), y: Y(p.y + p.h / 2), w: r6(p.w), h: r6(p.h) }))
+	const holes = of("pcb_hole").map((p) => ({ x: X(p.x), y: Y(p.y), r: r6((p.hole_diameter ?? p.hole_width ?? 0) / 2) }))
+	return { outline: { w, h }, parts, pads: padOut, holes }
+}

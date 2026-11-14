@@ -1,7 +1,8 @@
 // The top view's pure geometry (src/dashboard/top-layout.js): plate, boards and cables in SVG millimetres.
 import { test } from "node:test"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import assert from "node:assert/strict"
-import { topLayout } from "../src/dashboard/top-layout.js"
+import { topLayout, boardShapes } from "../src/dashboard/top-layout.js"
 import { autoLayout } from "../src/dashboard/world3d.js"
 
 const ab = (name: string, xMm: number, yMm: number, w: number, h: number, rotDeg = 0, outlineSource = "built") => ({ name, xMm, yMm, rotDeg, outline: { widthMm: w, heightMm: h }, outlineSource })
@@ -101,4 +102,43 @@ test("a cable end on a 90° board lies on the turned board's edge", () => {
 	near(f.y, a.y + a.h) // the bottom edge of the turned footprint
 	assert.ok(f.x >= a.x && f.x <= a.x + a.w)
 	near(f.x, 5) // local (-20,-5) turned 90 CCW is (5,-20); svg x = 5
+})
+
+const fixtureCircuit = (() => {
+	const base = "out/system-real-5/boards/logger/board"
+	if (!existsSync(base)) return null
+	const revs = readdirSync(base).filter((d) => /^rev-\d+$/.test(d)).sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)))
+	for (const p of [...revs.reverse().map((r) => `${base}/${r}/dist/board/circuit.json`), `${base}/circuit.json`]) if (existsSync(p)) return JSON.parse(readFileSync(p, "utf8"))
+	return null
+})()
+
+test("boardShapes: outline matches pcb_board", { skip: !fixtureCircuit }, () => {
+	const b = (fixtureCircuit as any[]).find((e) => e.type === "pcb_board")
+	const s = boardShapes(fixtureCircuit)
+	assert.equal(s.outline.w, b.width)
+	assert.equal(s.outline.h, b.height)
+	assert.ok(s.parts.length > 0 && s.pads.length > 0)
+})
+
+test("boardShapes: parts sit inside the outline", { skip: !fixtureCircuit }, () => {
+	const s = boardShapes(fixtureCircuit)
+	for (const p of s.parts) {
+		assert.ok(p.x >= -0.5 && p.y >= -0.5 && p.x + p.w <= s.outline.w + 0.5 && p.y + p.h <= s.outline.h + 0.5, `${p.ref} ${JSON.stringify(p)}`)
+	}
+})
+
+test("boardShapes: a hand-made circuit gives one part and two pads", () => {
+	const s = boardShapes([
+		{ type: "pcb_board", center: { x: 0, y: 0 }, width: 20, height: 10 },
+		{ type: "source_component", source_component_id: "s0", name: "R1" },
+		{ type: "pcb_component", pcb_component_id: "c0", source_component_id: "s0", center: { x: 0, y: 0 }, width: 3, height: 1, rotation: 0 },
+		{ type: "pcb_smtpad", pcb_component_id: "c0", shape: "rect", x: -1, y: 0, width: 1, height: 1 },
+		{ type: "pcb_smtpad", pcb_component_id: "c0", shape: "rect", x: 1, y: 0, width: 1, height: 1 },
+		{ type: "pcb_hole", x: -9, y: 4, hole_diameter: 2 },
+	])
+	assert.deepEqual(s.outline, { w: 20, h: 10 })
+	assert.deepEqual(s.parts, [{ x: 8.5, y: 4.5, w: 3, h: 1, ref: "R1" }])
+	assert.equal(s.pads.length, 2)
+	assert.deepEqual(s.pads[0], { x: 9.5, y: 4.5, w: 1, h: 1 })
+	assert.deepEqual(s.holes, [{ x: 1, y: 1, r: 1 }])
 })
