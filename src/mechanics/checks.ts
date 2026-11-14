@@ -175,10 +175,10 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		const peakA = Number(driver.data.peakA ?? 0)
 		fig("Motor stall current", `${r2(full.stallA)} A`, `at most ${peakA} A per channel`, full.stallA <= peakA, `full ${pack.fullV} V cell, ${driver.part.mpn}`)
 		if (full.stallA > peakA)
-			push("mech-current", `${d.motor} draws ${r2(full.stallA)} A at stall on a full ${pack.fullV} V cell, over the ${driver.part.mpn}'s ${peakA} A peak per channel: pick a motor with a lower stall current or a stronger driver`, ["mechanics", "board"])
+			push("mech-current", `${d.motor} draws ${r2(full.stallA)} A at stall on a full ${pack.fullV} V cell, over the ${driver.part.mpn}'s ${peakA} A peak per channel: pick a motor with a lower stall current or a stronger driver`, ["mechanics", "parts"])
 		const supplyMin = Number(driver.data.supplyMinV ?? 0), supplyMax = Number(driver.data.supplyMaxV ?? Infinity)
 		if (pack.cutoffV < supplyMin || pack.fullV > supplyMax)
-			push("mech-voltage", `the ${driver.part.mpn} runs from ${supplyMin}–${supplyMax} V but the cell spans ${pack.cutoffV}–${pack.fullV} V: pick a driver that covers it`, ["mechanics", "board"])
+			push("mech-voltage", `the ${driver.part.mpn} runs from ${supplyMin}–${supplyMax} V but the cell spans ${pack.cutoffV}–${pack.fullV} V: pick a driver that covers it`, ["mechanics", "parts"])
 	}
 	const boardMa = boards.reduce((t, b) => t + (b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0)
 	const packNeedA = 2 * full.stallA + boardMa / 1000
@@ -256,17 +256,24 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	if (massG > motion.maxMassG) push("mech-fit", `the rover weighs about ${Math.round(massG)} g, over the ${motion.maxMassG} g the brief allows`)
 
 	// Wiring: a driver with its inputs on GPIOs, the sensor on the I2C bus, a battery connector.
-	if (!driver) push("mech-wiring", "no board carries a motor driver (role motor-driver): add one with its four inputs on GPIOs", ["board"], ["parts"])
+	if (!driver) push("mech-wiring", "no board carries a motor driver (role motor-driver): add one with its four inputs on GPIOs", ["parts"], ["parts"])
 	else {
 		const missing = ["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2"].filter((s) => !pins.some((p) => p.signal === s && p.partRef === driver.part.ref))
-		if (missing.length) push("mech-wiring", `the motor driver ${driver.part.ref}'s inputs ${missing.join(", ")} have no GPIO: assign them`, ["board"], ["pins"])
+		if (missing.length) push("mech-wiring", `the motor driver ${driver.part.ref}'s inputs ${missing.join(", ")} have no GPIO: assign them`, ["architect"], ["pins"])
 	}
+	// A motor on a GPIO: the pin can't source a motor's current and the motor's back-EMF reaches the MCU (real rover run
+	// 2, 15 Nov: the architect put MOTOR_A_P on GPIO0 through a 2-pin connector, with no driver). The board generator
+	// wires the driver's outputs to the 2-pin motor connectors; the pins field never touches them.
+	const motorPlugs = new Set(parts.filter((p) => p.role === "connector" && p.pins.length === 2 && p.pins[0] === "1" && p.pins[1] === "2").map((p) => p.ref))
+	const onMotor = pins.filter((p) => motorPlugs.has(p.partRef) && typeof p.gpio === "number" && p.gpio >= 0)
+	if (onMotor.length)
+		push("mech-wiring", `${onMotor.map((p) => `${p.signal} (GPIO${p.gpio}) goes to motor connector ${p.partRef}`).join("; ")}: a motor never connects to a GPIO. Remove these pins: the board generator wires the motor driver's outputs to the 2-pin motor connectors, and the GPIOs drive the driver's inputs MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2`, ["architect"], ["pins"])
 	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector") : undefined
 	if (!mech.sensor) push("mech-wiring", "no distance sensor in the mechanics design: the rover avoids walls with one at the front", ["mechanics"])
-	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["board"], ["parts"])
+	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["parts"], ["parts"])
 	// The board generator joins the plug's IO1/IO2 to the bus (linkBusTraces): the bus must exist on its board.
 	else if (!["I2C_SDA", "I2C_SCL"].every((sig) => boards.some((b) => (b.snapshot.values.parts ?? []).some((p) => p.ref === plug.ref) && (b.snapshot.values.pins ?? []).some((p) => p.signal === sig))))
-		push("mech-wiring", `the sensor connector ${plug.ref} needs an I2C bus on its board: assign I2C_SDA and I2C_SCL`, ["board"], ["pins"])
-	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", "no battery connector on any board: the cell needs one", ["board"], ["parts"])
+		push("mech-wiring", `the sensor connector ${plug.ref} needs an I2C bus on its board: assign I2C_SDA and I2C_SCL`, ["architect"], ["pins"])
+	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", "no battery connector on any board: the cell needs one", ["parts"], ["parts"])
 	return out
 }
