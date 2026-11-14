@@ -289,7 +289,7 @@ test("a builder whose inputs didn't change says its build is current, not just o
 test("the dashboard's builder inputs are exactly the builders' (lanes.js and ripple.js), so woke/idle can't drift", async () => {
 	const { BUILD_INPUTS, BUILD_REQUIRES } = await import("../src/agents/builders.ts")
 	const { BUILDS } = await import("../src/dashboard/lanes.js")
-	for (const kind of ["board", "enclosure", "firmware"] as const) {
+	for (const kind of ["board", "enclosure", "firmware", "chassis", "drive"] as const) {
 		assert.deepEqual([...BUILDS[kind].inputs].sort(), [...BUILD_INPUTS[kind]].sort(), `lanes ${kind} inputs`)
 		assert.deepEqual([...BUILDS[kind].requires].sort(), [...BUILD_REQUIRES[kind]].sort(), `lanes ${kind} requires`)
 	}
