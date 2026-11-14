@@ -438,9 +438,14 @@ true: scripted models, no API key). `design_status`, `read_contract`, `get_repor
 ## Tests
 
 ```bash
-npm test             # node:test via tsx; unit and integration tests
+npm test             # node:test via tsx; unit and integration tests, without the slow ones
+npm run test:slow    # only the slow tests: whole runs, emulators, link tests, width sweeps (minutes each)
+npm run test:affected # the tests your change touches, slow ones included
 npm run typecheck
 ```
+
+A test that takes minutes is marked `skip: slow` (from `test/helpers.ts`): `npm test` skips it, `npm run test:slow` and
+`npm run test:affected` run it (they set `BRINGUP_SLOW=1`).
 
 Integration tests (`*.int.test.ts`) run the real tools (tscircuit + KiCad, build123d, PlatformIO, ngspice, QEMU)
 against a reference ESP32-C3 + SHT40 logger (`test/fixture.ts`). Each one **skips** when its tool is missing, so

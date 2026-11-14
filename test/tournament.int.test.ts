@@ -5,13 +5,13 @@ import { join, resolve } from "node:path"
 import { detectEnvironment } from "../src/tools/env.ts"
 import { runTournament } from "../src/tournament/run.ts"
 import { rankRows, type ScoreRow } from "../src/tournament/score.ts"
-import { tempDir, exactSize } from "./helpers.ts"
+import { tempDir, exactSize, slow } from "./helpers.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const env = await detectEnvironment(root)
 const skip = env.tsci && env.kicad && env.python && env.pio ? false : "a full run needs tsci, KiCad, python and pio"
 
-test("two mock variants run concurrently and are ranked", { skip, timeout: 600_000 }, async () => {
+test("two mock variants run concurrently and are ranked", { skip: slow || skip, timeout: 600_000 }, async () => {
 	const outRoot = tempDir()
 	const finished: string[] = []
 	const board = await runTournament({

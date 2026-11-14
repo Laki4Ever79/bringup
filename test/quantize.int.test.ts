@@ -7,6 +7,7 @@ import { join, resolve } from "node:path"
 import { main } from "../src/main.ts"
 import { MIC_PART, MIC_PINS, WAKE_WORD_MODEL } from "../src/inference/scripts.ts"
 import { fixtureContract } from "./fixture.ts"
+import { slow } from "./helpers.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const mlPython = join(root, "tools/mlvenv/bin/python")
@@ -16,7 +17,7 @@ const noQemu = !existsSync(join(root, "tools/qemu/bin/qemu-system-riscv32"))
 
 // The real chain: TensorFlow's int8 converter on the MLPerf Tiny DS-CNN, TFLite Micro's own arena figure, then the
 // converted model compiled into the firmware in place of the placeholder, measured by pio.
-test("quantize → verify-model → firmware with the real model: the sizes reconcile", { skip, timeout: 900_000 }, async () => {
+test("quantize → verify-model → firmware with the real model: the sizes reconcile", { skip: slow || skip, timeout: 900_000 }, async () => {
 	const dir = mkdtempSync(join(tmpdir(), "bringup-q-"))
 	const q = spawnSync(mlPython, ["py/quantize.py", "--out", join(dir, "model")], { cwd: root, encoding: "utf8", env: { ...process.env, TF_CPP_MIN_LOG_LEVEL: "3" }, timeout: 600_000 })
 	assert.equal(q.status, 0, q.stderr)

@@ -14,7 +14,7 @@ import { ROVER_BOARD } from "../src/inference/scripts.ts"
 import { boardLinks } from "../src/system/derive.ts"
 import type { SystemSpec } from "../src/system/spec.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, slow } from "./helpers.ts"
 
 const ROOT = resolve(import.meta.dirname, "..")
 const pio = join(ROOT, ".venv/bin/pio")
@@ -70,7 +70,7 @@ test("a rover with no links still gets a link.h, with stubs", async () => {
 	assert.match(readFileSync(join(dir, "include/link.h"), "utf8"), /#define LINK_COUNT 0/)
 })
 
-test("a rover with a UART link compiles: the board, the simulation and the link-test builds", { skip: existsSync(pio) ? false : "needs PlatformIO", timeout: 900_000 }, async () => {
+test("a rover with a UART link compiles: the board, the simulation and the link-test builds", { skip: slow || (existsSync(pio) ? false : "needs PlatformIO"), timeout: 900_000 }, async () => {
 	const dir = tempDir()
 	await prepareFirmware(ROOT, dir, rover())
 	const r = spawnSync(pio, ["run", "-d", dir, "-e", "esp32c3", "-e", "esp32c3_sim", "-e", "esp32c3_linktest"], { encoding: "utf8" })

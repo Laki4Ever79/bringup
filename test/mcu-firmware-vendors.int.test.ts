@@ -13,6 +13,7 @@ import { renodePath } from "../src/tools/renode.ts"
 import { bootFirmware } from "../src/tools/emulator.ts"
 import { profileById } from "../src/mcu/profile.ts"
 import { fixtureContract } from "./fixture.ts"
+import { slow } from "./helpers.ts"
 
 function contractFor(mpn: string, pins: { sda: number; scl: number; led: number }) {
 	const s = fixtureContract()
@@ -48,7 +49,7 @@ test("the RP2040 logger (SHT40 on I2C0 GPIO4/GPIO5, LED on GPIO25) builds with n
 	}
 })
 
-test("the nRF52840 logger (SHT40 on P0.26/P0.27, LED on P0.13) builds with Bluetooth LE on Bluefruit, its pins read back, and it boots in Renode as far as the first I2C transfer", { skip, timeout: 900_000 }, async () => {
+test("the nRF52840 logger (SHT40 on P0.26/P0.27, LED on P0.13) builds with Bluetooth LE on Bluefruit, its pins read back, and it boots in Renode as far as the first I2C transfer", { skip: slow || skip, timeout: 900_000 }, async () => {
 	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-nrf-"))
 	try {
 		const profile = profileById("nrf52840-mdbt50q")!

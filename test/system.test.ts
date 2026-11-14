@@ -15,7 +15,7 @@ import { loadSpec, specErrors, type SystemSpec } from "../src/system/spec.ts"
 import { linkProposal, LOGGER_DESIGN } from "../src/inference/scripts.ts"
 import { runSystem } from "../src/system/run.ts"
 import { fixtureContract } from "./fixture.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, slow } from "./helpers.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 
 const uartSpec = (): SystemSpec => ({
@@ -147,7 +147,7 @@ test("between boards: UART crossover and speed, the I2C bus's controller, addres
 	assert.match(wirevizYaml(spec, ok), /a\.JL1:\n    type: JST SH/)
 })
 
-test("a scripted two-board UART system settles: each board takes its link, and the checks between them pass", { timeout: 300_000 }, async () => {
+test("a scripted two-board UART system settles: each board takes its link, and the checks between them pass", { skip: slow, timeout: 300_000 }, async () => {
 	const out = tempDir()
 	const r = await runSystem({ spec: loadSpec("briefs/systems/logger-beacon-uart.json"), outDir: out, mock: true, boardArgs: ["--no-hardware", "--no-review"], pollMs: 500, timeoutMs: 240_000 })
 	assert.equal(r.ok, true, readFileSync(r.reportPath, "utf8"))

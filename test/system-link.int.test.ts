@@ -7,13 +7,13 @@ import { join } from "node:path"
 import { ROOT } from "../src/run.ts"
 import { runSystem } from "../src/system/run.ts"
 import { loadSpec } from "../src/system/spec.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, slow } from "./helpers.ts"
 
 const pio = [join(ROOT, ".venv/bin/pio")].find(existsSync) ?? null
 const qemu = existsSync(join(ROOT, "tools/qemu/bin/qemu-system-riscv32"))
 const skip = pio && qemu ? false : "needs PlatformIO and QEMU"
 
-test("two boards' firmwares talk over their UART link in QEMU, with the reading intact", { skip, timeout: 1_200_000 }, async () => {
+test("two boards' firmwares talk over their UART link in QEMU, with the reading intact", { skip: slow || skip, timeout: 1_200_000 }, async () => {
 	const out = tempDir()
 	const r = await runSystem({ spec: loadSpec("briefs/systems/logger-beacon-uart.json"), outDir: out, mock: true, boardArgs: ["--no-hardware", "--no-review"], pollMs: 500, timeoutMs: 240_000, linkTest: { root: ROOT, pio, qemu } })
 	assert.deepEqual(r.linkTests.map((t) => [t.link, t.ran, t.passed]), [["L1", true, true]], JSON.stringify(r.linkTests))

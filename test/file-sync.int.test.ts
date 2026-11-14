@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { ROOT, runDesign } from "../src/run.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
-import { tempDir, waitFor, exactSize } from "./helpers.ts"
+import { tempDir, waitFor, exactSize, slow } from "./helpers.ts"
 import { widenBoard } from "./kicad-edit.ts"
 
 const env = await detectEnvironment(ROOT)
@@ -17,7 +17,7 @@ const trace = (out: string) => readFileSync(join(out, "trace.jsonl"), "utf8").tr
 // beside a lighter load. Diagnostics showed the edit itself was handled every time. So the limits are sized for a busy
 // machine; what the test proves is that the edit becomes a change and the board and case follow.
 const SETTLE_MS = 1_500_000
-test("editing the board outline in a --stay run's board.kicad_pcb becomes an engineer change, and the board and case follow", { skip, timeout: 2 * SETTLE_MS + 300_000 }, async () => {
+test("editing the board outline in a --stay run's board.kicad_pcb becomes an engineer change, and the board and case follow", { skip: slow || skip, timeout: 2 * SETTLE_MS + 300_000 }, async () => {
 	const out = tempDir()
 	let end: () => void = () => {}
 	const until = new Promise<void>((r) => (end = r))

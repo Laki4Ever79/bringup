@@ -9,7 +9,7 @@ import { roverHeader, unassignedRoverPins } from "../src/mechanics/firmware.ts"
 import { prepareFirmware } from "../src/tools/firmware.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, slow } from "./helpers.ts"
 
 const ROOT = resolve(import.meta.dirname, "..")
 const pio = join(ROOT, ".venv/bin/pio")
@@ -72,7 +72,7 @@ test("a robot's firmware reports each payload reading over Bluetooth LE (BTHome)
 	assert.match(readFileSync(join(dir, "platformio.ini"), "utf8"), /\[env:esp32c3\][^[]*h2zero\/NimBLE-Arduino@2\.5\.2/)
 })
 
-test("the board, the simulation and the bench-motor builds compile", { skip: existsSync(pio) ? false : "needs PlatformIO", timeout: 900_000 }, async () => {
+test("the board, the simulation and the bench-motor builds compile", { skip: slow || (existsSync(pio) ? false : "needs PlatformIO"), timeout: 900_000 }, async () => {
 	const dir = tempDir()
 	await prepareFirmware(ROOT, dir, rover())
 	const r = spawnSync(pio, ["run", "-d", dir, "-e", "esp32c3", "-e", "esp32c3_sim", "-e", "bench_motor"], { encoding: "utf8" })
