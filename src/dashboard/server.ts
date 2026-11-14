@@ -560,30 +560,50 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	// Every design, newest first: systems and one-board designs in one list, each with its board count.
 	const listDesigns = async () => {
 		const systems = (await listSystems()).map((s) => ({ id: s.id, name: s.name, kind: "system" as const, boards: s.boards, status: s.status, settled: s.settled, startedAt: s.startedAt }))
-		const singles = (await listRuns()).filter((r) => !BOARD_RUN_ID.test(r.runId) && !planDesign(r.runId)).map((r) => ({ id: r.runId, name: r.title, kind: "single" as const, boards: 1, status: r.status, settled: r.status === "settled", startedAt: r.startedAt }))
-		const unbuilt = plans.ids().filter((id) => planDesign(id)).map((id) => {
+		const singles = (await listRuns()).filter((r) => !BOARD_RUN_ID.test(r.runId) && planState(r.runId) === null).map((r) => ({ id: r.runId, name: r.title, kind: "single" as const, boards: 1, status: r.status, settled: r.status === "settled", startedAt: r.startedAt }))
+		const unbuilt = plans.ids().filter((id) => ["plan", "starting"].includes(planState(id) ?? "")).map((id) => {
 			const p = plans.get(id)!
-			return { id, title: p.sentence, name: p.sentence, kind: "plan" as const, boards: p.spec.boards.length, status: "plan, not built", settled: false, startedAt: statSync(join(outRoot, "plans", id, "plan.json")).mtime.toISOString() }
+			return { id, title: p.sentence, name: p.sentence, kind: (planState(id) === "starting" ? "system" : "plan") as "system" | "plan", boards: p.spec.boards.length, status: planState(id) === "starting" ? "starting" : "plan, not built", settled: false, startedAt: statSync(join(outRoot, "plans", id, "plan.json")).mtime.toISOString() }
 		})
 		return [...systems, ...singles, ...unbuilt].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, MAX_RUNS_LISTED)
 	}
-	// A plan with no design under its id yet is a design too: the plan itself, read as a system of unbuilt boards.
-	const planDesign = (id: string) => {
+	// Does a design (system.json, or a run's trace or contract) really exist at out/<id>? An empty or partial folder
+	// (a launch that threw) is not one.
+	const designExists = (id: string) => ["system.json", TRACE, "contract.json"].some((f) => existsSync(join(outRoot, id, f)))
+	// What a plan is as a design: "plan" (not built), "starting" (Build ran, the design isn't written yet), "earlier"
+	// (built before ids were kept: its system is already listed), or null (a design exists under the id).
+	const planState = (id: string): "plan" | "starting" | "earlier" | null => {
 		const p = plans.get(id)
-		if (!p) return null
-		const built = existsSync(join(outRoot, id, "system.json")) || (p.spec.boards.length === 1 && existsSync(join(outRoot, id)))
-		return built ? null : p
+		if (!p || designExists(id)) return null
+		if (p.builtAs && p.builtAs !== id) return "earlier"
+		if (p.builtAs) return "starting"
+		return plans.builtBefore(id) && !existsSync(join(outRoot, id)) ? "earlier" : "plan"
+	}
+	// An old single-board plan: the newest top-level run whose brief is the plan's board brief (Build wrote it verbatim).
+	const oldRunOf = async (id: string): Promise<string | null> => {
+		const p = plans.get(id)
+		if (!p || p.spec.boards.length !== 1) return null
+		const want = p.briefs[p.spec.boards[0].name]?.trim()
+		if (!want) return null
+		let best: { name: string; at: number } | null = null
+		for (const name of await readdir(outRoot)) {
+			if (name === "plans" || !RUN_ID.test(name) || existsSync(join(outRoot, name, "system.json"))) continue
+			const [brief, st] = await Promise.all([readFile(join(outRoot, name, "brief.md"), "utf8").catch(() => null), stat(join(outRoot, name)).catch(() => null)])
+			if (brief !== null && st && brief.trim() === want && (!best || st.mtimeMs > best.at)) best = { name, at: st.mtimeMs }
+		}
+		return best?.name ?? null
 	}
 	const planDetail = (id: string) => {
 		const p = plans.get(id)!
+		const status = planState(id) === "starting" ? "starting" : "plan"
 		const assembly = p.spec.boards.length > 1 ? buildSpec(p).assembly ?? defaultAssembly(p.spec, "separate") : defaultAssembly(p.spec, "separate")
 		return {
 			id,
 			plan: plans.view(id),
 			spec: p.spec,
 			assembly,
-			status: "plan",
-			boards: p.spec.boards.map((b) => ({ name: b.name, runId: null, status: "plan" })),
+			status,
+			boards: p.spec.boards.map((b) => ({ name: b.name, runId: null, status })),
 			facts: systemFacts(Object.fromEntries(p.spec.boards.map((b) => [b.name, null])), assembly, p.spec.links ?? []),
 		}
 	}
@@ -717,10 +737,11 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 						if (planPost[2] === "change") return json(res, 200, await plans.change(planPost[1], text(body.instruction, "instruction", MAX_TEXT).trim(), bool(body.mock, "mock"), typeof body.version === "number" ? body.version : undefined))
 						const flags = { mock: bool(body.mock, "mock"), hardware: bool(body.hardware, "hardware"), review: bool(body.review, "review") }
 						if (!flags.mock && !plans.hasModelKey()) return json(res, 400, { error: new NoModelKey().message, code: "NO_KEY" })
-						const t = plans.buildTarget(planPost[1])
-						// Build keeps the plan's id: the design lives in out/<planId>/, the plan files stay in out/plans/<planId>/.
 						const id = planPost[1]
-						if (existsSync(join(outRoot, id))) return json(res, 409, { error: "this plan was already built" })
+						// Refused before anything is written: a design under the id, or a build still running.
+						if (plans.get(id) && (designExists(id) || live.get(id)?.exit === null)) return json(res, 409, { error: `this plan is already built: /system?id=${id}` })
+						const t = plans.buildTarget(id)
+						// Build keeps the plan's id: the design lives in out/<planId>/, the plan files stay in out/plans/<planId>/.
 						if (t.kind === "system") {
 							const systemId = startSystemAt(t.specPath, flags, t.usagePath, id)
 							plans.markBuilt(id, systemId)
@@ -857,7 +878,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				// The plan is a design under its own id; a plan built before ids were kept leads to the system it names, or
 				// (nothing recorded) keeps its own page.
 				const p = plans.get(planPage[1])
-				const target = p?.builtAs ?? (p && !(plans.builtBefore(p.id) && !existsSync(join(outRoot, p.id))) ? p.id : null)
+				const state = p ? planState(p.id) : null
+				const target = !p ? null : p.builtAs ?? (state === "earlier" ? null : state === "plan" ? ((await oldRunOf(p.id)) ?? p.id) : p.id)
 				if (target) {
 					res.writeHead(302, { location: `/system?id=${encodeURIComponent(target)}`, "cache-control": "no-store" })
 					return res.end()
@@ -984,7 +1006,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				if (dir) return json(res, 200, await systemDetail(sys[1], dir))
 				// Before a plan's build has written system.json it is still the plan, not a one-board run.
 				const pl = plans.get(sys[1])
-				if (pl && (planDesign(sys[1]) || (pl.spec.boards.length > 1 && !(await systemDir(sys[1]))))) return json(res, 200, planDetail(sys[1]))
+				if (pl && planState(sys[1]) !== null) return json(res, 200, planDetail(sys[1]))
 				const one = await singleDir(sys[1])
 				return one ? json(res, 200, await singleDetail(sys[1], one)) : json(res, 404, { error: "unknown design" })
 			}

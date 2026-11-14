@@ -2,7 +2,7 @@
 // what moved, and Build starts the existing system run (or a single board run for a one-board plan).
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
 import { PublicGate } from "../src/dashboard/public.ts"
@@ -276,11 +276,14 @@ test("building a plan keeps its id", async () => {
 		assert.ok(existsSync(join(root, "plans", id, "plan.json")), "the plan files stay put")
 		assert.ok(existsSync(join(root, id)))
 		assert.equal(((await (await fetch(`${url}/api/plans/${id}`)).json()) as Any).plan.id, id)
-		// not yet started writing system.json: still the plan state, not a one-board run
-		assert.equal(((await (await fetch(`${url}/api/systems/${id}`)).json()) as Any).status, "plan")
+		// not yet writing system.json: starting, in the list and on the page
+		assert.equal(((await (await fetch(`${url}/api/systems/${id}`)).json()) as Any).status, "starting")
+		assert.equal(((await (await fetch(`${url}/api/designs`)).json()) as Any[]).find((x) => x.id === id).status, "starting")
 		const one = await mkPlan(url, "a temperature logger")
 		const { runId } = (await (await send(`${url}/api/plans/${one}/build`, "POST", { mock: true, hardware: false, review: false })).json()) as Any
 		assert.equal(runId, one)
+		assert.equal(((await (await fetch(`${url}/api/systems/${one}`)).json()) as Any).status, "starting")
+		writeFileSync(join(root, one, "trace.jsonl"), "") // the run's first file
 		assert.equal(((await (await fetch(`${url}/api/systems/${one}`)).json()) as Any).single, true)
 		const body = await fetch(`${url}/api/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brief: "x", mock: true, id: "plan-hijack" }) })
 		assert.notEqual(((await body.json()) as Any).runId, "plan-hijack", "the public route never takes an id")
@@ -301,5 +304,49 @@ test("an old plan address still opens the plan", async () => {
 		const r2 = await fetch(`${url}/plan/${id}`, { redirect: "manual" })
 		assert.equal(r2.status, 302)
 		assert.equal(r2.headers.get("location"), "/system?id=system-20250101-abc")
+	})
+})
+
+test("a second Build of a built or building plan is refused with the link; a failed launch can be retried", async () => {
+	await withHub(async ({ url, root }) => {
+		const id = await mkPlan(url, "a logger and a beacon over a cable")
+		const flags = { mock: true, hardware: false, review: false }
+		assert.equal((await send(`${url}/api/plans/${id}/build`, "POST", flags)).status, 201)
+		const again = await send(`${url}/api/plans/${id}/build`, "POST", flags)
+		assert.equal(again.status, 409)
+		assert.equal(((await again.json()) as Any).error, `this plan is already built: /system?id=${id}`)
+		// A folder left empty by a launch that threw does not block Build, and the guard runs before anything is rewritten.
+		const left = await mkPlan(url, "a logger and a beacon over a cable")
+		mkdirSync(join(root, left), { recursive: true })
+		assert.equal((await send(`${url}/api/plans/${left}/build`, "POST", flags)).status, 201)
+		const built = await mkPlan(url, "a logger and a beacon over a cable")
+		mkdirSync(join(root, built))
+		writeFileSync(join(root, built, "system.json"), "{}")
+		rmSync(join(root, "plans", built, "system.json"), { force: true })
+		assert.equal((await send(`${url}/api/plans/${built}/build`, "POST", flags)).status, 409)
+		assert.ok(!existsSync(join(root, "plans", built, "system.json")), "a refused Build writes nothing")
+	})
+})
+
+test("a multi-board plan built before ids were kept is not listed as a design of its own", async () => {
+	await withHub(async ({ url, root }) => {
+		const id = await mkPlan(url, "a logger and a beacon over a cable")
+		writeFileSync(join(root, "plans", id, "system.json"), "{}")
+		assert.ok(!((await (await fetch(`${url}/api/designs`)).json()) as Any[]).some((x) => x.id === id))
+	})
+})
+
+test("an old single-board plan leads to the run made from its brief, the newest if several", async () => {
+	await withHub(async ({ url, root }) => {
+		const id = await mkPlan(url, "a temperature logger")
+		const brief = ((await (await fetch(`${url}/api/plans/${id}`)).json()) as Any).plan.briefs.main ?? Object.values(((await (await fetch(`${url}/api/plans/${id}`)).json()) as Any).plan.briefs)[0]
+		for (const [name, age] of [["20260101-aaa", 100], ["20260102-bbb", 10], ["other", 1]] as const) {
+			mkdirSync(join(root, name), { recursive: true })
+			writeFileSync(join(root, name, "brief.md"), name === "other" ? "something else\n" : brief + "\n")
+			utimesSync(join(root, name), new Date(Date.now() - age * 1000), new Date(Date.now() - age * 1000))
+		}
+		const r = await fetch(`${url}/plan/${id}`, { redirect: "manual" })
+		assert.equal(r.status, 302)
+		assert.equal(r.headers.get("location"), "/system?id=20260102-bbb")
 	})
 })
