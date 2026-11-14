@@ -193,7 +193,8 @@ export class PlanStore {
 		if (version !== undefined && version !== current.version) throw new PlanConflict()
 		const proposed = await proposePlan({ plan: current, instruction }, { mock, env: this.deps.env, fetchImpl: this.deps.fetchImpl, onUsage: (r) => appendUsage(this.dir(id), r) })
 		if (this.get(id)?.version !== current.version) throw new PlanConflict()
-		const saved = this.write({ ...proposed, id, version: current.version + 1, spendUsd: null })
+		// The robot flag stays unless the answer says robot explicitly (a model that omits it must not turn a robot into separate devices).
+		const saved = this.write({ ...proposed, id, version: current.version + 1, spendUsd: null, ...(proposed.robot === undefined && current.robot !== undefined ? { robot: current.robot } : {}) })
 		this.startLearning(saved, mock)
 		return { plan: saved, issues: planChecks(saved), estimate: estimate(saved, this.outRoot), spend: readSpend(this.dir(id)), diff: planDiff(current, saved) }
 	}

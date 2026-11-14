@@ -177,3 +177,17 @@ test("the prompt allows a robot of several boards", async () => {
 	const { BUILDABLE } = await import("../src/system/architect.ts")
 	assert.match(BUILDABLE, /one board or several on one printed chassis/)
 })
+
+test("a plan change keeps the robot flag when the model's answer leaves it out, and drops it only on an explicit false", async () => {
+	const { PlanStore } = await import("../src/dashboard/plans.ts")
+	const { tempDir } = await import("./helpers.ts")
+	const store = new PlanStore(tempDir(), { env: { OPENAI_API_KEY: "k" }, fetchImpl: fakeFetch([valid]).f })
+	const plan = await store.create("a rover robot with a separate climate board over a cable", true)
+	assert.equal(plan.robot, true)
+	const silent = await store.change(plan.id, "make the climate cable shorter", false)
+	assert.equal(silent.plan.robot, true, "an answer without robot keeps the plan a robot")
+	const store2 = new PlanStore(tempDir(), { env: { OPENAI_API_KEY: "k" }, fetchImpl: fakeFetch([{ ...valid, robot: false }]).f })
+	const p2 = await store2.create("a rover robot with a separate climate board over a cable", true)
+	const off = await store2.change(p2.id, "this is not a robot", false)
+	assert.notEqual(off.plan.robot, true)
+})
