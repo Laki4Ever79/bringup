@@ -570,6 +570,15 @@ export function quadPinOffset(footprint: string, pin: number, ringMm: number | u
 	return [{ x: -c, y: -along }, { x: along, y: -c }, { x: c, y: along }, { x: -along, y: c }][at]
 }
 
+// A pad's centre from the part's origin at the part's rotation (counter-clockwise, as tscircuit's pcbRotation and
+// offsetAt turn), for a dual-row or quad package; null for other footprints.
+function padOffset(footprint: string, pad: number, rotation: number): { x: number; y: number } | null {
+	const at = icPinOffset(footprint, pad) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm)
+	if (!at) return null
+	const t = (rotation * Math.PI) / 180
+	return { x: +(at.x * Math.cos(t) - at.y * Math.sin(t)).toFixed(3), y: +(at.x * Math.sin(t) + at.y * Math.cos(t)).toFixed(3) }
+}
+
 // Centre of the reserved box relative to the part's origin, at rotation 0.
 const FOOTPRINT_OFFSET: Record<string, [number, number]> = { usbcmidmount: [0, -0.855], jst2_ph: [0, -0.55] }
 
@@ -761,15 +770,15 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 	// wide rover the driver went hard against the module and VINT's capacitor landed across it, 7.98 mm of trace against
 	// tscircuit's 5 mm, and every build failed (14 Nov 2026).
 	const pinCaps = supportParts(s).filter((sp) => sp.added && sp.spec.kind === "capacitor" && "ref" in sp.a && sp.near !== boardCrystal(s)?.ref)
+	// A turned part (the board page) turns its pads, and these boxes with them.
 	const capBoxes = (b: Placed, footprint: string): Placed[] => {
-		if (b.rotation !== 0) return []
+		if (b.rotation % 90 !== 0) return []
 		const part = parts.find((p) => p.ref === b.ref)
 		if (!part) return []
 		return pinCaps.flatMap((sp) => {
 			const end = sp.a as { ref: string; pin: string }
 			if (end.ref !== b.ref) return []
-			const pad = part.pins.indexOf(end.pin) + 1
-			const at = icPinOffset(footprint, pad) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm)
+			const at = padOffset(footprint, part.pins.indexOf(end.pin) + 1, b.rotation)
 			if (!at) return []
 			const [cw, ch] = sizeAt(sp.spec.footprint, 0)
 			const gap = chipProfile(part) ? CHIP_GAP_MM : GAP_MM
@@ -837,12 +846,15 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 	for (const p of free) {
 		if (!p.at || footprintFor(p) === MODULE_FOOTPRINT) continue
 		done.add(p.ref)
-		const rotation = p.role === "mcu" && !chipProfile(p) ? MODULE_ROTATION[edge] : 0
+		const rotation = p.at.rotationDeg ?? (p.role === "mcu" && !chipProfile(p) ? MODULE_ROTATION[edge] : 0)
 		const [w, h] = sizeAt(footprintFor(p), rotation)
 		const { dx, dy } = offsetAt(footprintFor(p), rotation)
 		let b: Placed = { ref: p.ref, x: +(p.at.xMm - W / 2).toFixed(3), y: +(p.at.yMm - H / 2).toFixed(3), w, h, rotation }
 		if (dx !== 0 || dy !== 0) b = { ...b, ox: +(b.x - dx).toFixed(3), oy: +(b.y - dy).toFixed(3) }
-		if (fits(b)) {
+		// Its pin capacitors must fit beside their pads too, as for a part the layout places.
+		const caps = capBoxes(b, footprintFor(p))
+		const capsBlocked = caps.filter((c) => !fits(c, p.ref))
+		if (fits(b) && !capsBlocked.length) {
 			placed.push(b)
 			continue
 		}
@@ -851,6 +863,7 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 			...(Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM ? [`closer than ${EDGE_MARGIN_MM} mm to the board's edge, or off it`] : []),
 			...placed.filter((o) => gap(o) < GAP_MM).map((o) => `${gap(o) < 0 ? "on top of" : `${Math.max(0, gap(o)).toFixed(1)} mm from`} ${o.ref} (parts keep ${GAP_MM} mm apart)`),
 			...(keepouts.some((o) => overlaps(b, o)) ? ["over a mounting hole's keep-out"] : []),
+			...(fits(b) ? capsBlocked.map((c) => `no room for ${c.ref} beside the pin it serves (its trace is held short)`) : []),
 		]
 		blocked.push({ ref: p.ref, why: why.join("; ") || "no room there" })
 	}
@@ -887,7 +900,7 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 		const box = boxOf(end.ref)
 		const fp = part ? footprintFor(part) : ""
 		const pad = part ? part.pins.indexOf(end.pin) + 1 : 0
-		const at = part && box && box.rotation === 0 ? (icPinOffset(fp, pad) ?? quadPinOffset(fp, pad, loadProfiles().find((x) => x.package.footprint === fp)?.package.ringMm)) : null
+		const at = part && box && box.rotation % 90 === 0 ? padOffset(fp, pad, box.rotation) : null
 		if (!at || !box) return null
 		// Out past the pad, away from the body: along x for a side pad, along y for a top or bottom one.
 		// A quad package's pads end 0.7 mm past their centre; 1.2 mm out leaves the 0402 clear and its trace short.
@@ -918,12 +931,39 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 	// capacitor 7.98 mm from the pad, tscircuit refused every build, 14 Nov 2026).
 	const first = (sp: Support) =>
 		chipProfile(mcuPart) && "ref" in sp.a && (sp.a.ref === mcuPart?.ref || sp.a.ref === xtal?.ref) ? 0 : sp.spec.kind === "capacitor" && besidePin(sp.a) ? 1 : 2
+	// A capacitor on a part's pad faces it the right way round. One between two pads of the same part (the DRV8833's VCP to
+	// VM) faces its pins in the pads' order: else its two
+	// traces cross and tscircuit routes one the long way round, past its 5 mm bound (U5 turned 90° on the board page:
+	// VCP's trace 10 mm, 14 Nov 2026). Turned 180°, its box stays where it is. Pin 1 is the a end (the trace code below).
+	const padAt = (end: End): { x: number; y: number } | null => {
+		if (!("ref" in end)) return null
+		const part = parts.find((p) => p.ref === end.ref)
+		const box = boxOf(end.ref)
+		const at = part && box && box.rotation % 90 === 0 ? padOffset(footprintFor(part), part.pins.indexOf(end.pin) + 1, box.rotation) : null
+		return at && box ? { x: (box.ox ?? box.x) + at.x, y: (box.oy ?? box.y) + at.y } : null
+	}
+	const crosses = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }, d: { x: number; y: number }) => {
+		const o = (p: typeof a, q: typeof a, r: typeof a) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x))
+		return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0
+	}
+	// One on a single pad has that end toward it: with the driver turned 180°, VINT's capacitor sat left of it with the
+	// VINT end outside, and VINT's trace went round the capacitor's own GND pin (10.2 mm, a real build, 14 Nov 2026).
+	const facesAway = (b: Placed, sp: Support): boolean => {
+		const [pa, pb] = [padAt(sp.a), padAt(sp.b)]
+		const half = b.w / 4
+		const [p1, p2] = [{ x: b.x - half, y: b.y }, { x: b.x + half, y: b.y }]
+		if (pa && pb && "ref" in sp.a && "ref" in sp.b && sp.a.ref === sp.b.ref) return crosses(p1, pa, p2, pb)
+		// Only one that points away (its far end is the pad's end by about its pin spacing); one lying alongside the pad row
+		// is a near tie either way, and turning it only moved the router's trouble (U5 turned 90°, 14 Nov 2026).
+		return !!pa && Math.hypot(p2.x - pa.x, p2.y - pa.y) < Math.hypot(p1.x - pa.x, p1.y - pa.y) - half
+	}
 	for (const sp of [...supportParts(s)].sort((a, b) => first(a) - first(b))) {
 		const want = besidePin(sp.a) ?? besideCrystal(sp.a) ?? boxOf(sp.near) ?? centre
 		if (sp.added) {
 			if (!done.has(sp.ref)) {
 				done.add(sp.ref)
-				place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined)
+				const b = place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined)
+				if (b && facesAway(b, sp)) b.rotation = 180
 			}
 		} else put(free.find((p) => p.ref === sp.ref), want)
 	}

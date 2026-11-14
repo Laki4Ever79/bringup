@@ -10,12 +10,24 @@ import { enclosureMode, type Connector, type ContractSnapshot } from "../contrac
 import { changedRefs, previewCircuit } from "./board-view.ts"
 
 type Edge = Connector["edge"]
-export type Move = { ref: string; xMm: number; yMm: number } | { ref: string; edge: Edge; offsetMm: number }
-const isConnectorMove = (m: Move): m is { ref: string; edge: Edge; offsetMm: number } => "edge" in m
+export type Rotation = 0 | 90 | 180 | 270
+// A part to a spot (and a turn), a connector along an edge, or a part handed back to the layout (undo of a part the
+// layout had placed: it returns to the layout's choice, not pinned where it happened to be).
+export type PartMove = { ref: string; xMm: number; yMm: number; rotationDeg?: Rotation }
+export type ConnectorMove = { ref: string; edge: Edge; offsetMm: number }
+export type Release = { ref: string; release: true }
+export type Move = PartMove | ConnectorMove | Release
+const isConnectorMove = (m: Move): m is ConnectorMove => "edge" in m
+const isRelease = (m: Move): m is Release => "release" in m
+const ROTATIONS: readonly Rotation[] = [0, 90, 180, 270]
+const asRotation = (deg: number): Rotation => {
+	const d = ((Math.round(deg) % 360) + 360) % 360
+	return ROTATIONS.includes(d as Rotation) ? (d as Rotation) : 0
+}
 
 // What can move and where it is now: a part by its centre (mm from the board's bottom-left corner, top view), a connector
 // by its edge and its offset along it (and each edge's length, for the page's slider).
-export type Movable = { ref: string; kind: "part"; xMm: number; yMm: number } | { ref: string; kind: "connector"; edge: Edge; offsetMm: number; edges: Record<Edge, number> }
+export type Movable = { ref: string; kind: "part"; xMm: number; yMm: number; rotationDeg: Rotation } | { ref: string; kind: "connector"; edge: Edge; offsetMm: number; edges: Record<Edge, number> }
 
 export interface MoveCheck {
 	// No problem the moves would add: the batch can be sent.
@@ -32,6 +44,8 @@ export interface MoveCheck {
 	preview: unknown[]
 	// The change request that sends the batch.
 	request: string
+	// The moves checked and sent (an undo's opposite moves, worked out on the server, become the page's draft).
+	applied: Move[]
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10
@@ -45,7 +59,7 @@ export function movables(s: ContractSnapshot): { movable: Record<string, Movable
 	const [W, H] = [o.widthMm, o.heightMm]
 	const connectors = s.values.connectors ?? []
 	for (const c of connectors) movable[c.ref] = { ref: c.ref, kind: "connector", edge: c.edge, offsetMm: c.offsetMm, edges: { left: H, right: H, top: W, bottom: W } }
-	let boxes = new Map<string, { x: number; y: number }>()
+	let boxes = new Map<string, { x: number; y: number; rotation: number }>()
 	try {
 		boxes = new Map(layoutBoard(s).parts.map((b) => [b.ref, b]))
 	} catch {
@@ -58,8 +72,8 @@ export function movables(s: ContractSnapshot): { movable: Record<string, Movable
 			continue
 		}
 		const b = boxes.get(p.ref)
-		if (p.at) movable[p.ref] = { ref: p.ref, kind: "part", xMm: p.at.xMm, yMm: p.at.yMm }
-		else if (b) movable[p.ref] = { ref: p.ref, kind: "part", xMm: r1(b.x + W / 2), yMm: r1(b.y + H / 2) }
+		if (p.at) movable[p.ref] = { ref: p.ref, kind: "part", xMm: p.at.xMm, yMm: p.at.yMm, rotationDeg: p.at.rotationDeg ?? 0 }
+		else if (b) movable[p.ref] = { ref: p.ref, kind: "part", xMm: r1(b.x + W / 2), yMm: r1(b.y + H / 2), rotationDeg: asRotation(b.rotation) }
 		else fixed[p.ref] = "It has no spot on the board yet: the board is too small for everything it carries."
 	}
 	return { movable, fixed }
@@ -70,7 +84,13 @@ export function applyMoves(s: ContractSnapshot, moves: Move[]): ContractSnapshot
 	const next = structuredClone(s)
 	for (const m of moves) {
 		if (isConnectorMove(m)) next.values.connectors = (next.values.connectors ?? []).map((c) => (c.ref === m.ref ? { ...c, edge: m.edge, offsetMm: r1(m.offsetMm) } : c))
-		else next.values.parts = (next.values.parts ?? []).map((p) => (p.ref === m.ref ? { ...p, at: { xMm: r1(m.xMm), yMm: r1(m.yMm) } } : p))
+		else if (isRelease(m))
+			next.values.parts = (next.values.parts ?? []).map((p) => {
+				if (p.ref !== m.ref) return p
+				const { at: _, ...rest } = p
+				return rest
+			})
+		else next.values.parts = (next.values.parts ?? []).map((p) => (p.ref === m.ref ? { ...p, at: { xMm: r1(m.xMm), yMm: r1(m.yMm), ...(m.rotationDeg ? { rotationDeg: m.rotationDeg } : {}) } } : p))
 	}
 	return next
 }
@@ -81,9 +101,11 @@ export function moveRequest(s: ContractSnapshot, moves: Move[]): string {
 	const items = moves.map((m) => {
 		const was = movable[m.ref]
 		if (isConnectorMove(m)) return `${m.ref} ${was && was.kind === "connector" ? `${was.edge}@${was.offsetMm}` : "?"} → ${m.edge}@${r1(m.offsetMm)} mm`
-		return `${m.ref} ${was && was.kind === "part" ? `(${was.xMm}, ${was.yMm})` : "(?)"} → (${r1(m.xMm)}, ${r1(m.yMm)}) mm`
+		const from = was && was.kind === "part" ? `(${was.xMm}, ${was.yMm})` : "(?)"
+		if (isRelease(m)) return `${m.ref} ${from} → the layout's choice`
+		return `${m.ref} ${from} → (${r1(m.xMm)}, ${r1(m.yMm)}) mm${m.rotationDeg ? ` turned ${m.rotationDeg}°` : ""}`
 	})
-	return `placed on the board page (a part's centre in mm from the board's bottom-left corner, top view, kept as its parts[].at; a connector as edge@offset): ${items.join("; ")}`
+	return `placed on the board page (a part's centre in mm from the board's bottom-left corner, top view, kept as its parts[].at, a turn counter-clockwise as at.rotationDeg; "the layout's choice" drops its at; a connector as edge@offset): ${items.join("; ")}`
 }
 
 export function parseMoves(text: string): Move[] {
@@ -95,8 +117,30 @@ export function parseMoves(text: string): Move[] {
 			out.push({ ref: c[1], edge: c[2] as Edge, offsetMm: Number(c[3]) })
 			continue
 		}
-		const p = /(\w+) \([^)]*\) → \((-?[\d.]+), (-?[\d.]+)\) mm/.exec(item)
-		if (p) out.push({ ref: p[1], xMm: Number(p[2]), yMm: Number(p[3]) })
+		const r = /(\w+) \([^)]*\) → the layout's choice/.exec(item)
+		if (r) {
+			out.push({ ref: r[1], release: true })
+			continue
+		}
+		const p = /(\w+) \([^)]*\) → \((-?[\d.]+), (-?[\d.]+)\) mm(?: turned (\d+)°)?/.exec(item)
+		if (p) out.push({ ref: p[1], xMm: Number(p[2]), yMm: Number(p[3]), ...(p[4] && asRotation(Number(p[4])) ? { rotationDeg: asRotation(Number(p[4])) } : {}) })
+	}
+	return out
+}
+
+// The moves that take a sent batch back, from the design as it was before it: a connector to its edge and offset, a
+// part the engineer had placed to its spot and turn, a part the layout had placed back to the layout's choice.
+export function undoMoves(before: ContractSnapshot, sent: Move[]): Move[] {
+	const out: Move[] = []
+	for (const m of sent) {
+		if (isConnectorMove(m)) {
+			const c = (before.values.connectors ?? []).find((x) => x.ref === m.ref)
+			if (c) out.push({ ref: m.ref, edge: c.edge, offsetMm: c.offsetMm })
+			continue
+		}
+		const p = (before.values.parts ?? []).find((x) => x.ref === m.ref)
+		if (!p) continue
+		out.push(p.at ? { ref: m.ref, xMm: p.at.xMm, yMm: p.at.yMm, ...(p.at.rotationDeg ? { rotationDeg: p.at.rotationDeg } : {}) } : { ref: m.ref, release: true })
 	}
 	return out
 }
@@ -122,6 +166,15 @@ export function checkMoves(s: ContractSnapshot, moves: Move[], brief = ""): Move
 		const was = movable[m.ref]
 		if (!was) {
 			problems.push({ kind: "not-movable", message: `${m.ref} can't be moved here. ${fixed[m.ref] ?? "It is placed by Bringup beside the part it serves, and moves with it."}`, system: false })
+			continue
+		}
+		if (isRelease(m)) {
+			if (was.kind !== "part") problems.push({ kind: "not-movable", message: `${m.ref} is a connector: it always has an edge`, system: false })
+			else valid.push(m)
+			continue
+		}
+		if (!isConnectorMove(m) && m.rotationDeg !== undefined && !ROTATIONS.includes(m.rotationDeg)) {
+			problems.push({ kind: "not-movable", message: `${m.ref} turns in 90° steps (0, 90, 180 or 270), not ${m.rotationDeg}°`, system: false })
 			continue
 		}
 		if (isConnectorMove(m) !== (was.kind === "connector")) {
@@ -160,7 +213,7 @@ export function checkMoves(s: ContractSnapshot, moves: Move[], brief = ""): Move
 		if (before.has(key(v))) continue
 		if (v.kind === "part-pinned-blocked") {
 			for (const [ref, why] of blockedWhy) {
-				const m = valid.find((x) => x.ref === ref) as { xMm: number; yMm: number } | undefined
+				const m = valid.find((x): x is PartMove => x.ref === ref && "xMm" in x)
 				if (m) problems.push({ kind: v.kind, message: `${ref} doesn't fit at ${fmtXY(m.xMm, m.yMm)}: ${why}.`, system: false })
 			}
 			continue
@@ -203,8 +256,14 @@ export function checkMoves(s: ContractSnapshot, moves: Move[], brief = ""): Move
 			return { ref: m.ref, from: `${was.edge}@${was.offsetMm} mm`, to: `${m.edge}@${r1(m.offsetMm)} mm`, scope, effects }
 		}
 		const part = s.values.parts!.find((p) => p.ref === m.ref)!
-		const p = m as { xMm: number; yMm: number }
+		if (isRelease(m)) {
+			const b = boxesAfter.get(m.ref)
+			const to = b && o ? `${fmtXY(b.x + o.widthMm / 2, b.y + o.heightMm / 2)}, the layout's choice` : "the layout's choice"
+			return { ref: m.ref, from: was.kind === "part" ? fmtXY(was.xMm, was.yMm) : "?", to, scope: "board", effects: ["no longer held: the layout places it, like any part nobody placed"] }
+		}
+		const p = m as PartMove
 		effects.push("kept at this spot: the layout places everything else around it")
+		if (p.rotationDeg !== undefined && was.kind === "part" && p.rotationDeg !== was.rotationDeg) effects.push(`turned ${p.rotationDeg}° (from ${was.rotationDeg}°): the capacitors on its pins turn with it`)
 		if (caseCut && part.role === "sensor") {
 			effects.push("the case's vent moves over it (the case is rebuilt)")
 			scope = "case"
@@ -219,7 +278,7 @@ export function checkMoves(s: ContractSnapshot, moves: Move[], brief = ""): Move
 			const d = Math.hypot(p.xMm - (near.x + o.widthMm / 2), p.yMm - (near.y + o.heightMm / 2))
 			effects.push(`it serves ${sp.job}: the layout puts it beside ${sp.near}; here it is ${r1(d)} mm from ${sp.near}'s centre, so its trace is longer`)
 		}
-		return { ref: m.ref, from: was.kind === "part" ? fmtXY(was.xMm, was.yMm) : "?", to: fmtXY(p.xMm, p.yMm), scope, effects }
+		return { ref: m.ref, from: was.kind === "part" ? fmtXY(was.xMm, was.yMm) + (was.rotationDeg ? ` ${was.rotationDeg}°` : "") : "?", to: fmtXY(p.xMm, p.yMm) + (p.rotationDeg ? ` ${p.rotationDeg}°` : ""), scope, effects }
 	})
 	const moved = new Set(valid.map((m) => m.ref))
 	let alsoMoved: string[] = []
@@ -230,5 +289,5 @@ export function checkMoves(s: ContractSnapshot, moves: Move[], brief = ""): Move
 	} catch {
 		// A layout that fails outright: the problems above say why.
 	}
-	return { ok: problems.length === 0 && valid.length > 0, problems, moves: report, alsoMoved, preview, request: moveRequest(s, valid) }
+	return { ok: problems.length === 0 && valid.length > 0, problems, moves: report, alsoMoved, preview, request: moveRequest(s, valid), applied: valid }
 }

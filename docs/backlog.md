@@ -138,8 +138,16 @@ is a change to the firmware toolchain, not just the code.
       see it once. A placed part is Part.at (its centre, mm from the bottom-left corner): the layout puts it exactly
       there first and never moves it; one that no longer fits is part-pinned-blocked (to parts), not a bigger board,
       and the board can't be compacted past it. Robot direction: a cable connector off the edge the system runs its
-      cable from is link-edge (a system change, refused on the page). Not done: rotating a part; moving the radio
-      module (it follows the USB-C edge) or the generated passives and underside pads (they follow their parts);
-      undo of a sent batch (send the opposite moves); a routed tscircuit build with placed parts not yet run.
+      cable from is link-edge (a system change, refused on the page). Not done: moving the radio module (it follows
+      the USB-C edge) or the generated passives and underside pads (they follow their parts).
+- [x] **Board page: turn a part, undo a sent batch:** done 14 Nov. A part turns in 90° steps (Part.at.rotationDeg,
+      "turned 90°" in the request); the capacitors on its pins turn with it, and a part goes only where they fit
+      beside their pads. A refused move's values stay on the card, so a spot that only works turned is reached in two
+      checked steps (Esc drops them). "Undo the moves you sent" puts the opposite moves in a new draft, worked out on the
+      server from the revision the batch was sent against: a part the layout had placed goes back to the layout's
+      choice. Routed builds prove it: the rover with its motor driver turned 90°, 180° and 270° routes with VINT and VCP
+      within 5 mm, after two layout fixes the builds found (a capacitor between two pads of one part faces them in
+      order; one pointing away from its pad is turned toward it). Not done: the undo button is offered only until the
+      note is dismissed.
 - [ ] **Bulk capacitance for Wi-Fi bursts:** the board has 10 µF on the 3V3 rail. Check against the rail droop measured
       above before adding more.
