@@ -1,0 +1,132 @@
+{
+	"id": "stm32f446ret6",
+	"mpn": "STM32F446RET6",
+	"lcsc": "C69336",
+	"st": {
+		"xml": "STM32F446R(C-E)Tx.xml",
+		"flashKb": 512
+	},
+	"wakeAny": true,
+	"console": {
+		"instance": "USART1",
+		"tx": "PA9",
+		"rx": "PA10"
+	},
+	"programming": {
+		"method": "swd",
+		"pins": [
+			"PA13",
+			"PA14"
+		]
+	},
+	"boot": {
+		"pin": "BOOT0",
+		"level": "high"
+	},
+	"board": {
+		"supported": true
+	},
+	"support": [
+		{
+			"job": "VDD decoupling (pad 19)",
+			"spec": "decouple",
+			"a": "pin:VDD",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD decoupling (pad 32)",
+			"spec": "decouple",
+			"a": "pin:VDD2",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD decoupling (pad 48)",
+			"spec": "decouple",
+			"a": "pin:VDD3",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD decoupling (pad 64)",
+			"spec": "decouple",
+			"a": "pin:VDD4",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDDA decoupling (pad 13)",
+			"spec": "decouple",
+			"a": "pin:VDDA",
+			"b": "net:GND"
+		},
+		{
+			"job": "VBAT decoupling (pad 1)",
+			"spec": "decouple",
+			"a": "pin:VBAT",
+			"b": "net:GND"
+		},
+		{
+			"job": "VCAP_1 core regulator capacitor, 4.7 \u00b5F (pad 30)",
+			"spec": "vcap",
+			"a": "pin:VCAP_1",
+			"b": "net:GND"
+		},
+		{
+			"job": "VDD bulk",
+			"spec": "bulk",
+			"a": "net:supply",
+			"b": "net:GND"
+		},
+		{
+			"job": "NRST to GND, 100 nF",
+			"spec": "decouple",
+			"a": "pin:NRST",
+			"b": "net:GND"
+		},
+		{
+			"job": "BOOT0 pulled low (boot from flash)",
+			"spec": "bootPulldown",
+			"a": "pin:BOOT0",
+			"b": "net:GND"
+		}
+	],
+	"currents": {
+		"sleepUa": 150,
+		"cpuMa": 32,
+		"supplyMinMa": 150,
+		"source": "DocID027107 Rev 6 (STM32F446xC/E, Sep 2016; a mirror copy, ST's current DS10693 not read): run 180 MHz from flash, external clock, PLL on, all peripherals disabled 32 mA typ (72 mA all enabled), 25 \u00b0C (Table 23); Stop with the low-power regulator, flash in Stop mode 0.15 mA typ (0.121 mA flash in deep power-down; under-drive lower) (Table 27). No minimum supply current stated; 150 mA is Bringup's margin"
+	},
+	"firmware": {
+		"platform": "ststm32@19.6.0",
+		"board": "genericSTM32F446RE",
+		"framework": "arduino",
+		"arch": "stm32",
+		"pinStyle": "name",
+		"zephyrBoard": "nucleo_f446re",
+		"history": {
+			"store": "eeprom",
+			"bytes": 8192,
+			"source": "STM32duino EEPROM emulation on F4: FLASH_PAGE_SIZE 8 KB in the last flash sector, and the whole sector (128 KB on these parts) is erased on each write-back (framework-arduinoststm32 4.21200 libraries/EEPROM/src/utility/stm32_eeprom.h)"
+		}
+	},
+	"sim": {
+		"backend": null,
+		"models": [],
+		"note": "Renode 1.17 has stm32f4 (an F407) and stm32f412 platforms, not the F446"
+	},
+	"motion": {
+		"firmware": [
+			"grblhal"
+		],
+		"fpu": true,
+		"source": "grblHAL Drivers README (github.com/grblHAL/Drivers, read 14 Nov 2026): STM32F4xx in the 'With floating point unit (FPU)' table, boards 'Blackpill / Nucleo-F411RE / Nucleo-F446RE'; Cortex-M4F single-precision FPU (DocID027107 \u00a71: Arm Cortex-M4 with FPU)"
+	},
+	"sources": [
+		"DocID027107 Rev 6 (Sep 2016): Table 18 VCAP_1 4.7 \u00b5F ESR < 1 \u03a9 with a single VCAP pin (LQFP64 has only VCAP_1), power supply scheme (VDD n \u00d7 100 nF + 4.7 \u00b5F), boot modes (BOOT0 low: flash)",
+		"No crystal: STM32duino's generic F446RE clock (variants/STM32F4xx/F446R(C-E)T/generic_clock.c) runs from the HSI. nucleo_f446re isn't used: a Nucleo takes its clock from the ST-LINK, which a Bringup board doesn't have. USB OTG FS needs an HSE, so the profile has no usb and the board doesn't wire it",
+		"Console USART1 on PA9/PA10: the pins ST's ROM bootloader also listens on (AN2606)"
+	],
+	"priceUsd": {
+		"qty": 100,
+		"usd": 8.43,
+		"source": "LCSC C69336 $11.46 @1, $8.43 @100, 288 in stock, JLCPCB Extended (jlcpcb.com parts API, 14 Nov 2026)"
+	}
+}
