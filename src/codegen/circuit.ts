@@ -741,12 +741,35 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 		}
 	}
 
-	// hug: a part allowed CHIP_GAP_MM from that part's box instead of GAP_MM (a bare chip's own pin parts, below).
+	// hug: a part allowed CHIP_GAP_MM from that part's box instead of GAP_MM (a bare chip's own pin parts, and any
+	// capacitor wired to a chip's pin, below).
 	const fits = (b: Placed, hug?: string) =>
 		Math.abs(b.x) + b.w / 2 <= W / 2 - EDGE_MARGIN_MM &&
 		Math.abs(b.y) + b.h / 2 <= H / 2 - EDGE_MARGIN_MM &&
 		placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= (o.ref === hug ? CHIP_GAP_MM : GAP_MM)) &&
 		keepouts.every((o) => !overlaps(b, o))
+
+	// The capacitors wired straight to a part's pins (the DRV8833's VINT and VCP, a bare chip's decoupling), each in the
+	// box it takes just past its pad, CHIP_GAP_MM off the part's box: a part goes only where these fit too. On a 33 mm
+	// wide rover the driver went hard against the module and VINT's capacitor landed across it, 7.98 mm of trace against
+	// tscircuit's 5 mm, and every build failed (14 Nov 2026).
+	const pinCaps = supportParts(s).filter((sp) => sp.added && sp.spec.kind === "capacitor" && "ref" in sp.a && sp.near !== boardCrystal(s)?.ref)
+	const capBoxes = (b: Placed, footprint: string): Placed[] => {
+		if (b.rotation !== 0) return []
+		const part = parts.find((p) => p.ref === b.ref)
+		if (!part) return []
+		return pinCaps.flatMap((sp) => {
+			const end = sp.a as { ref: string; pin: string }
+			if (end.ref !== b.ref) return []
+			const pad = part.pins.indexOf(end.pin) + 1
+			const at = icPinOffset(footprint, pad) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm)
+			if (!at) return []
+			const [cw, ch] = sizeAt(sp.spec.footprint, 0)
+			return [Math.abs(at.x) >= Math.abs(at.y)
+				? { ref: sp.ref, x: b.x + Math.sign(at.x) * (b.w / 2 + CHIP_GAP_MM + cw / 2), y: b.y + at.y, w: cw, h: ch, rotation: 0 }
+				: { ref: sp.ref, x: b.x + at.x, y: b.y + Math.sign(at.y) * (b.h / 2 + CHIP_GAP_MM + ch / 2), w: cw, h: ch, rotation: 0 }]
+		})
+	}
 
 	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }, hug?: string): Placed | undefined => {
 		const [w, h] = sizeAt(footprint, rotation)
@@ -758,7 +781,7 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 			for (let j = 0; j <= H / GRID_MM; j++) {
 				const b = { ref, x: -W / 2 + i * GRID_MM, y: -H / 2 + j * GRID_MM, w, h, rotation }
 				const d = Math.hypot(b.x - want.x, b.y - want.y)
-				if (d < bestD - 1e-9 && fits(b, hug)) [best, bestD] = [b, d]
+				if (d < bestD - 1e-9 && fits(b, hug) && capBoxes(b, footprint).every((c) => fits(c, ref))) [best, bestD] = [b, d]
 			}
 		}
 		if (best && (dx !== 0 || dy !== 0)) best = { ...best, ox: +(best.x - dx).toFixed(3), oy: +(best.y - dy).toFixed(3) }
@@ -882,13 +905,17 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 	// A bare chip's own pin parts (its decoupling, held to 7 mm of trace) and its crystal's load capacitors go first, so
 	// the bus pull-ups and the like don't take the spots beside its pads (the STM32F103's VDD3 capacitor pushed past the
 	// I2C pull-ups routed 24.5 mm, 11 Nov 2026).
-	const first = (sp: Support) => (chipProfile(mcuPart) && "ref" in sp.a && (sp.a.ref === mcuPart?.ref || sp.a.ref === xtal?.ref) ? 0 : 1)
+	// Then every other capacitor wired to a pin (the DRV8833's VINT and VCP, held to 5 mm of trace): one that ends on a
+	// net aims at its part's centre and, placed first, took the spots beside those pins (the rover at 33×42 mm: VINT's
+	// capacitor 7.98 mm from the pad, tscircuit refused every build, 14 Nov 2026).
+	const first = (sp: Support) =>
+		chipProfile(mcuPart) && "ref" in sp.a && (sp.a.ref === mcuPart?.ref || sp.a.ref === xtal?.ref) ? 0 : sp.spec.kind === "capacitor" && besidePin(sp.a) ? 1 : 2
 	for (const sp of [...supportParts(s)].sort((a, b) => first(a) - first(b))) {
 		const want = besidePin(sp.a) ?? besideCrystal(sp.a) ?? boxOf(sp.near) ?? centre
 		if (sp.added) {
 			if (!done.has(sp.ref)) {
 				done.add(sp.ref)
-				place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined)
+				place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : first(sp) === 1 && "ref" in sp.a ? sp.a.ref : undefined)
 			}
 		} else put(free.find((p) => p.ref === sp.ref), want)
 	}
