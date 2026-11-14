@@ -446,8 +446,12 @@ test("hovering a board in either view shows its facts card; clicking a cable in 
 		assert.equal((await card()).shown, false, "a board click clears the cable card")
 		await page.keyboard.press("Escape")
 		await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"))
-		// (the switch is ignored until the close flight ends)
-		await page.waitForFunction(() => { if (document.getElementById("stage")!.offsetWidth > 0) return true; (window as any).setView("3d"); return false }, null, { timeout: 15_000 })
+		assert.equal((await card()).shown, false, "the cable card stays closed after the board closes")
+		// The switch is ignored until the close flight ends: ask for 3D until it takes (side effects stay out of waitForFunction).
+		for (let i = 0; i < 75 && !(await page.evaluate(() => document.getElementById("stage")!.offsetWidth > 0)); i++) {
+			await page.evaluate(() => (window as any).setView("3d"))
+			await page.waitForTimeout(200)
+		}
 		// 3D: sweep the canvas until a board's card shows.
 		await page.click('#view-switch [data-view="3d"]')
 		await page.waitForSelector("#stage canvas", { state: "visible" })
