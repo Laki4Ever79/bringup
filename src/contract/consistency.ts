@@ -106,6 +106,7 @@ export type ViolationKind =
 	| "drc-errors"
 	| "outline-mismatch"
 	| "net-missing"
+	| "pin-unwired"
 	| "pin-mismatch"
 	| "cutout-missing"
 	| "cutout-misaligned"
@@ -208,6 +209,16 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	}
 
 	const mcuRef = parts?.find((p) => p.role === "mcu")?.ref
+	// A pin assignment joins an MCU pin to the part pin it drives; one on the MCU's own pin goes nowhere, and its net,
+	// with one end, fails every board build (the real architect's rover, run 1, 15 Nov 2026: DIST_TRIG on U1.GPIO2).
+	if (pins && mcuRef)
+		for (const pin of pins.filter((p) => p.partRef === mcuRef))
+			v.push({
+				kind: "pin-unwired",
+				message: `${pin.signal} is on ${mcuRef}.${pin.partPin} and goes nowhere: a pin assignment joins the MCU pin to the part pin it drives (partRef that part, partPin its pin). Add the part or a connector for it, or drop ${pin.signal}`,
+				fields: ["pins"],
+				affects: ["architect"],
+			})
 	if (a.board && pins && mcuRef) {
 		for (const pin of pins) {
 			const net = a.board.nets[pin.signal] ?? []
