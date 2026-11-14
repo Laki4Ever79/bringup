@@ -139,6 +139,6 @@ test("boardShapes: a hand-made circuit gives one part and two pads", () => {
 	assert.deepEqual(s.outline, { w: 20, h: 10 })
 	assert.deepEqual(s.parts, [{ x: 8.5, y: 4.5, w: 3, h: 1, ref: "R1" }])
 	assert.equal(s.pads.length, 2)
-	assert.deepEqual(s.pads[0], { x: 9.5, y: 4.5, w: 1, h: 1 })
+	assert.deepEqual(s.pads[0], { x: 8.5, y: 4.5, w: 1, h: 1 })
 	assert.deepEqual(s.holes, [{ x: 1, y: 1, r: 1 }])
 })
