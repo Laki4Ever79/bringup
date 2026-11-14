@@ -393,12 +393,13 @@ function showView(view) {
 window.setView = async (view) => {
 	view = view === "top" ? "top" : "3d"
 	if (openName || stage.busy || view === stage.view) return
-	stage.busy = true
+	let done
+	stage.busy = new Promise((r) => (done = r))
 	try {
 		if (!(await ensureView(view))) return
 		showView(view)
 		schedule()
-	} finally { stage.busy = false }
+	} finally { stage.busy = null; done() }
 }
 document.getElementById("view-switch").addEventListener("click", (e) => {
 	const b = e.target.closest?.("[data-view]")
@@ -495,6 +496,7 @@ function frameFor(name) {
 }
 let openName = null
 let openView = null
+let openGen = 0
 window.openBoard = async (name, { push = true } = {}) => {
 	if (!stage.runs[name]) return
 	// No 3D stage (no WebGL): the board's own page.
@@ -502,7 +504,11 @@ window.openBoard = async (name, { push = true } = {}) => {
 	openName = name
 	renderNav()
 	if (push) history.pushState({ board: name }, "", designUrl(name))
+	// A view switch still mounting, or a close flight, ends first: the flight belongs to the view shown after it.
+	while (stage.busy) await stage.busy
+	if (openName !== name) return
 	openView = activeView()
+	openGen++
 	await openView.focus(name, { ms: 500 })
 	if (openName !== name) return
 	const view = document.getElementById("board-view")
@@ -534,9 +540,11 @@ async function closeBoard({ push = true } = {}) {
 	document.documentElement.style.overflow = ""
 	// Once faded, the board page is closed outright: hidden, it kept its timers and event stream running on this
 	// thread and caused 33–50 ms hitches in later flies (npm run perf). Opening it again reloads it behind the panel.
-	stage.busy = true
-	try { await openView?.focus(null, { ms: 500 }) } finally { stage.busy = false }
-	openView = null
+	const v = openView, gen = openGen
+	let done
+	stage.busy = new Promise((r) => (done = r))
+	try { await v?.focus(null, { ms: 500 }) } finally { stage.busy = null; done() }
+	if (openGen === gen) openView = null
 	// After the fly: tearing a page down takes the thread for a moment.
 	if (!openName) { for (const x of frames.values()) x.f.remove(); frames.clear() }
 }
@@ -554,7 +562,9 @@ addEventListener("message", (e) => { if (e.origin === location.origin && e.data?
 addEventListener("popstate", async () => {
 	const q = new URLSearchParams(location.search)
 	const b = q.get("board")
-	await window.setView(q.get("view") === "top" ? "top" : "3d")
+	const v = q.get("view") === "top" ? "top" : "3d"
+	// A different view: close the open board first, then switch, so the view and the URL never disagree.
+	if (v !== stage.view) { await closeBoard({ push: false }); await window.setView(v) }
 	if (b) window.openBoard(b, { push: false })
 	else closeBoard({ push: false })
 })

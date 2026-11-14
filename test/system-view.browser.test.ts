@@ -328,6 +328,7 @@ test("under view=top there is no 3D canvas until 3D is chosen, and a board opens
 		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 		await page.goto(`${hub.url}/system?id=${ROBOT}&view=top`)
 		await topUp(page)
+		await page.waitForSelector("#stage-top [data-board] [data-outline]", { state: "visible", timeout: 15_000 })
 		assert.equal(await page.evaluate(() => document.querySelectorAll("#stage canvas").length), 0, "no WebGL canvas yet")
 		const name = await page.evaluate(() => (document.querySelector("#stage-top [data-board]") as HTMLElement).dataset.board!)
 		await clickBoard(page, name)
@@ -373,4 +374,23 @@ test("the switch is ignored while a board opens, and open then close stay consis
 		await browser.close()
 		await hub.close()
 	}
+})
+
+test("a board reopened during the close flight keeps its view zoomed, and Esc then zooms it out", { skip: skipRobot, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await page.click('#view-switch [data-view="top"]')
+		await topUp(page)
+		await page.waitForSelector("#stage-top [data-board] [data-outline]", { state: "visible", timeout: 15_000 })
+		const name = await page.evaluate(() => (document.querySelector("#stage-top [data-board]") as HTMLElement).dataset.board!)
+		const vb = () => page.evaluate(() => document.querySelector("#stage-top svg")!.getAttribute("viewBox"))
+		const home = await vb()
+		await clickBoard(page, name)
+		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 15_000 })
+		await page.keyboard.press("Escape")
+		await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"))
+		await page.evaluate((n) => void (window as any).openBoard(n), name) // inside the close flight
+		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 15_000 })
+		await page.keyboard.press("Escape")
+		await page.waitForFunction((h) => !document.getElementById("board-view")?.classList.contains("on") && document.querySelector("#stage-top svg")!.getAttribute("viewBox") === h, home, { timeout: 10_000 })
+	}, ROBOT)
 })
