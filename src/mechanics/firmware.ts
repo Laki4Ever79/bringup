@@ -22,8 +22,13 @@ export function roverHeader(s: ContractSnapshot): string {
 	const v = s.values
 	const mech = v.mechanics!, motion = v.motion!
 	const cat = defaultCheckCatalog()!
-	const motor = byMpn(cat.mech.motors, mech.drive.motor)!, wheel = byMpn(cat.mech.wheels, mech.drive.wheel)!, pack = byMpn(cat.mech.batteries, mech.battery.pack)!
-	const sensor = byMpn(cat.mech.sensors, mech.sensor.module)!
+	const motor = byMpn(cat.mech.motors, mech.drive.motor), wheel = byMpn(cat.mech.wheels, mech.drive.wheel), pack = byMpn(cat.mech.batteries, mech.battery.pack)
+	const sensor = byMpn(cat.mech.sensors, mech.sensor.module)
+	// A part the catalog doesn't have: the mech-fit check names it to the mechanics engineer; the firmware says so too.
+	if (!motor || !wheel || !pack || !sensor) {
+		const missing = [!motor && `motor ${mech.drive.motor}`, !wheel && `wheel ${mech.drive.wheel}`, !pack && `battery ${mech.battery.pack}`, !sensor && `sensor ${mech.sensor.module}`].filter(Boolean)
+		throw new Error(`rover firmware not built: ${missing.join(", ")} not in catalog/mechanics.json (the mechanics design must name catalog parts)`)
+	}
 	const pin = (sig: string) => (v.pins ?? []).find((p) => p.signal === sig)?.gpio ?? -1
 	const r = wheel.diameterMm / 2000
 	const topMps = motorAt(motor, pack.nominalV).noLoadRadS * 0.8 * r
