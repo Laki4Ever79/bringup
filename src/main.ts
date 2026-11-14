@@ -6,6 +6,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { missingTools, simulationLine } from "./report.ts"
+import { ledgerPath, spendCap, spentUsd } from "./inference/spend.ts"
 import { simulateFirmware } from "./tools/wokwi.ts"
 import { ROOT, runDesign } from "./run.ts"
 import { driftStatusLines, readDrift } from "./runner/drift.ts"
@@ -266,6 +267,18 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	const runId = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)
 	const outDir = args.outDir ?? join(ROOT, "out", runId)
 	const env = await (deps.detect ?? detectEnvironment)(ROOT)
+	// The machine-wide spend cap (inference/spend.ts): a real-model run doesn't start past it, and says where it stands.
+	if (!args.mock) {
+		const cap = spendCap()
+		if (cap !== null) {
+			const { usd } = spentUsd()
+			if (usd >= cap) {
+				console.error(`bringup: spend cap reached: $${usd.toFixed(2)} of $${cap.toFixed(2)} (BRINGUP_SPEND_CAP_USD); not starting a real-model run`)
+				return 2
+			}
+			console.log(`bringup: spend so far $${usd.toFixed(2)} of the $${cap.toFixed(2)} cap (ledger ${ledgerPath()})`)
+		}
+	}
 	const mode = `${args.mock ? "mock models (no API key)" : "real models"}${args.noHardware ? ", hardware stubbed" : ""}${args.review ? "" : ", no brief review"}`
 	console.log(`bringup: ${mode}\n${describeEnv(env)}\noutput: ${outDir}`)
 	const missing = missingTools(env)
