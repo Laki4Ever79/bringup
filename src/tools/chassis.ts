@@ -55,8 +55,9 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 	const pack = byMpn(cat.mech.batteries, mech.battery.pack), sensor = byMpn(cat.mech.sensors ?? [], mech.sensor.module)
 	if (!motor || !wheel || !caster || !pack || !sensor) return null
 	const outline = { widthMm: v.outline?.widthMm ?? 0, heightMm: v.outline?.heightMm ?? 0 }
-	// The assembly's outlines win over the caller's (and over this board's own, for "main"): one description of the body.
-	const fromAssembly = assemblyOutlines(v)
+	// The assembly's outlines win over the caller's for the other boards; this board's own outline is the truth for "main"
+	// (the assembly's copy of it can lag until the system sends it again).
+	const fromAssembly = assemblyOutlines(v).filter((a) => a.name !== "main")
 	const own = [{ name: "main", outline }, ...others.filter((o) => o.name !== "main")]
 	const known = [...own.filter((k) => !fromAssembly.some((a) => a.name === k.name)), ...fromAssembly]
 	const placed = mech.chassis.boards.filter((b) => known.some((k) => k.name === b.name))
