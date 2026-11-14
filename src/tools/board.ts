@@ -163,7 +163,7 @@ export function stripKeepouts(pcb: string): string {
 
 // tscircuit prints many advisory warnings before the real error; keep the lines that explain the failure.
 const NOISE = /underspecified|requires_power|missing a trace|missing a manufacturer part|does not match supplier footprint|schematicsheet|is missing a name|Failed to load 3D model/i
-const SIGNAL = /error|overlap|clearance|too close|outside|fail|fatal|cannot|skipped/i
+const SIGNAL = /error|overlap|clearance|too close|outside|fail|fatal|cannot|skipped|exceed/i
 const SUMMARY = /^Circuits\s+\d+ passed \d+ failed/
 
 // The lines that explain a failed build. The router's "missing a trace" lines also follow other errors (a via on a

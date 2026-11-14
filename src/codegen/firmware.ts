@@ -220,11 +220,18 @@ export function linkHeader(s: ContractSnapshot): string {
 	// takes its pins by setSDA/setSCL before begin(). The ESP32 code is as it always was.
 	const stm = mcuProfileOf(s.values.parts)?.firmware.arch === "stm32"
 	const ser = stm ? "LinkSerial" : "Serial1"
-	const target = links.find((l) => l.kind === "i2c" && l.i2c?.role === "target")
+	// Only a link with its pins assigned gets code: the architect gives a UART its TX and RX (or an I2C link its bus) a
+	// turn after its connector, and a firmware built in between failed on PIN_L1_TX (the rover, 14 Nov 2026). Until then
+	// link-unwired tells the architect, and the link here is defines and a note.
+	const signals = new Set((s.values.pins ?? []).map((p) => p.signal))
+	const wired = (l: (typeof links)[number]) => (l.kind === "uart" ? signals.has(`${l.id}_TX`) && signals.has(`${l.id}_RX`) : signals.has("I2C_SDA") && signals.has("I2C_SCL"))
+	const live = links.filter(wired)
+	const target = live.find((l) => l.kind === "i2c" && l.i2c?.role === "target")
 	if (target) lines.push(`// This board is an I2C target: it joins the bus at its address instead of driving it.`, `#define LINK_I2C_TARGET 1`)
 	const structs = new Map<string, NonNullable<(typeof links)[number]["messages"]>[number]>()
 	for (const l of links) {
 		lines.push("", `// ${l.id}: ${l.kind.toUpperCase()} to ${l.peer} on ${l.connector}${l.supply === "out" ? ", powering it" : l.supply === "in" ? ", powered by it" : ""}`, `#define ${L(l.id)}_PEER "${l.peer}"`)
+		if (!wired(l)) lines.push(`// ${l.id} has no ${l.kind === "uart" ? "TX and RX" : "SDA and SCL"} pins yet: its code is left out until the contract assigns them.`)
 		if (l.kind === "uart") lines.push(`#define ${L(l.id)}_UART 1`, `#define ${L(l.id)}_BAUD ${l.baud}`)
 		if (l.kind === "i2c" && l.i2c) {
 			lines.push(`#define ${L(l.id)}_I2C 1`, `#define ${L(l.id)}_I2C_KHZ ${l.i2c.khz}`, `#define ${L(l.id)}_I2C_${l.i2c.role === "controller" ? "CONTROLLER" : "TARGET"} 1`)
@@ -238,9 +245,9 @@ export function linkHeader(s: ContractSnapshot): string {
 	}
 	for (const m of structs.values()) lines.push("", `struct __attribute__((packed)) ${m.name}_msg {`, ...m.fields.map((f) => `\t${C_TYPE[f.type]} ${f.name};`), "};")
 	// The code main.cpp calls, compiled only into the firmware.
-	const uart = links.find((l) => l.kind === "uart")
-	const sends = links.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "send" && m.name === "reading").map((m) => ({ l, m })))
-	const receives = links.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "receive").map((m) => ({ l, m })))
+	const uart = live.find((l) => l.kind === "uart")
+	const sends = live.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "send" && m.name === "reading").map((m) => ({ l, m })))
+	const receives = live.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "receive").map((m) => ({ l, m })))
 	const body: string[] = ["", "#ifdef ARDUINO", "#include <Wire.h>", "#include \"linkframe.h\""]
 	if (receives.length) {
 		body.push("static void linkReceived(const char *link, uint32_t hash, const uint8_t *p, uint8_t len) {")
