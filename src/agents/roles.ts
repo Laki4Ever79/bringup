@@ -22,6 +22,10 @@ export const BUILD_FAILED_PREFIX = "Build failed:"
 
 // Wakes an agent when an artifact it can fix fails to build. The error is already cut down to the real cause
 // (tools/board.ts buildErrors). Each failure (kind and revision) wakes the agent once.
+// A build that failed because a tool isn't installed on this machine (src/agents/builders.ts, src/tools/*: "... is not
+// installed") is no design problem: no contract change fixes it, so it wakes no owner. The run still reports it under
+// "Missing tools" (src/report.ts). One domain's missing tool (build123d for the case) then costs the others no turns.
+export const TOOL_MISSING = /\bis not installed\b/
 function onBuildFailed(kinds: ArtifactKind[], owns: string): SituationHandler {
 	return {
 		specification: when(({ event }) => isEvent(event, "artifact.failed") && kinds.includes(event.payload.kind)),
@@ -29,6 +33,7 @@ function onBuildFailed(kinds: ArtifactKind[], owns: string): SituationHandler {
 			apply: ({ event, participant }) => {
 				if (!isEvent(event, "artifact.failed")) return
 				const { kind, revision, error } = event.payload
+				if (TOOL_MISSING.test(String(error))) return
 				requestTurn(
 					participant as Agent,
 					`build-failed@${kind}@${revision}`,
