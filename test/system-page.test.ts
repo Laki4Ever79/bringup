@@ -2,9 +2,10 @@
 // and starting a system from the page.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
+import { ROVER_BOARD } from "../src/inference/scripts.ts"
 import { tempDir } from "./helpers.ts"
 
 function fakeSystem(root: string, id: string) {
@@ -120,12 +121,12 @@ test("a board opened inside the system page gets the embedded run page", async (
 
 // The page map (user, 11 Nov): one Designs list for every design, one board or several, and every design opens on an
 // Overview, a one-board design too (a design with one board, not a different kind of thing).
-function fakeRun(root: string, id: string, chassis = false) {
+function fakeRun(root: string, id: string, chassis = false, mechanics = false) {
 	const dir = join(root, id)
 	mkdirSync(dir, { recursive: true })
 	writeFileSync(join(dir, "brief.md"), "# Brief: indoor rover\n")
 	writeFileSync(join(dir, "trace.jsonl"), [{ at: "2026-11-10T10:00:00Z", type: "run.started", payload: {} }, { at: "2026-11-10T10:02:00Z", type: "design.settled", payload: { settled: true } }].map((e) => JSON.stringify(e)).join("\n") + "\n")
-	writeFileSync(join(dir, "contract.json"), JSON.stringify({ values: { outline: { widthMm: 42, heightMm: 29 } } }))
+	writeFileSync(join(dir, "contract.json"), JSON.stringify({ values: { outline: { widthMm: 42, heightMm: 29 }, ...(mechanics ? { mechanics: ROVER_BOARD.mechanics } : {}) } }))
 	if (chassis) {
 		mkdirSync(join(dir, "chassis", "rev-12"), { recursive: true })
 		writeFileSync(join(dir, "chassis", "rev-12", "chassis.stl"), "stl")
@@ -242,6 +243,32 @@ test("a run's firmware revisions list their source files, generated ones marked,
 		assert.equal(a.files[1].hash, b.files[1].hash, "main.cpp didn't")
 		assert.deepEqual(await (await fetch(`${hub.url}/api/runs/nope/firmware`)).json(), { error: "unknown run" })
 		assert.deepEqual((await (await fetch(`${hub.url}/api/runs/plain-x/firmware`)).json()).revisions ?? [], [])
+	} finally {
+		await hub.close()
+	}
+})
+
+test("the system detail carries the assembly: derived for old runs, the spec's own when it has one", async () => {
+	const root = tempDir()
+	fakeSystem(root, "system-a")
+	fakeRun(root, "rover-1", true, true)
+	const withOwn = fakeSystem(root, "system-b")
+	const own = { body: "separate", boards: [] }
+	const specB = JSON.parse(readFileSync(join(withOwn, "system.json"), "utf8"))
+	writeFileSync(join(withOwn, "system.json"), JSON.stringify({ ...specB, assembly: own }))
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const get = async (id: string): Promise<any> => (await fetch(`${hub.url}/api/systems/${id}`)).json()
+		const a = await get("system-a")
+		assert.equal(a.assembly.derived, true)
+		assert.equal(a.assembly.body, "separate", "boards with no chassis keep the automatic layout")
+		assert.deepEqual(a.assembly.boards, [])
+		assert.deepEqual((await get("system-b")).assembly, own, "the spec's own assembly is passed through untouched")
+		const rover = await get("rover-1")
+		assert.equal(rover.assembly.body, "chassis")
+		assert.deepEqual(rover.assembly.plate, { lengthMm: 150, widthMm: 110 })
+		assert.deepEqual(rover.assembly.boards.map((b: { name: string; xMm: number }) => [b.name, b.xMm]), [["main", 10]])
 	} finally {
 		await hub.close()
 	}

@@ -177,6 +177,32 @@ function roverParts(spec, chassisTris) {
 	return { parts, boardAt: spec.boards?.[0] ?? { xMm: 0, yMm: 0 }, boardZ: top + (spec.standoffMm ?? 10) }
 }
 
+// Where the other boards of a robot stand, in the frame boardGeometry gives the robot board: the same xy shift that
+// recentres the whole rover there (the parts' bounds with the board's own box in), and z on top of the standoffs.
+// The result is keyed by system board name and measured from the robot board's own `at`; chassisBoard is its system
+// name (inside its chassisSpec it is "main"; the assembly's own names are system names). Boards the assembly doesn't place are left out.
+export function assemblyPlacement(assembly, chassisSpec, chassisBoard) {
+	const rover = roverParts(chassisSpec, null)
+	const all = rover.parts.map((p) => p.tris)
+	const own = chassisSpec.boards?.find((b) => b.name === "main")
+	if (own) {
+		const turned = own.rotDeg === 90 || own.rotDeg === 270
+		const w = turned ? own.heightMm : own.widthMm, h = turned ? own.widthMm : own.heightMm
+		all.push(boxTris([own.xMm - w / 2, own.yMm - h / 2, rover.boardZ], [own.xMm + w / 2, own.yMm + h / 2, rover.boardZ + 1.6]))
+	}
+	const flat = new Float32Array(all.reduce((n, t) => n + t.length, 0))
+	let fill = 0
+	for (const t of all) { flat.set(t, fill); fill += t.length }
+	const rb = bounds(flat)
+	const cx = (rb.min[0] + rb.max[0]) / 2, cy = (rb.min[1] + rb.max[1]) / 2
+	const out = {}
+	for (const b of assembly?.boards ?? []) {
+		if (!Number.isFinite(b.xMm) || !Number.isFinite(b.yMm)) continue
+		out[b.name] = { x: b.xMm - cx, y: b.yMm - cy, z: rover.boardZ }
+	}
+	return out
+}
+
 // One board's meshes centred on its own origin (xy centre 0, bottom at z 0): the solid board with its parts, the
 // translucent case (no lid: cut open), and the one-box stand-in.
 export function boardGeometry(b) {
@@ -398,8 +424,8 @@ export function mountWorld(host, opts = {}) {
 		for (const [name, b] of S.boards) {
 			const full = detailFor(name, S.focused, count) === "full" && b.solid
 			const glow = b.glowUntil > now ? 0.45 * (0.5 + 0.5 * Math.sin((b.glowUntil - now) / 90)) : 0
-			draws.push({ mesh: full ? b.solid : b.boxMesh, off: [b.at[0], b.at[1], 0], alpha: b.alpha, glow, opaque: b.alpha > 0.99 })
-			if (full && b.shell) draws.push({ mesh: b.shell, off: [b.at[0], b.at[1], 0], alpha: 0.22 * b.alpha, glow: 0, opaque: false, shell: true })
+			draws.push({ mesh: full ? b.solid : b.boxMesh, off: [b.at[0], b.at[1], b.atZ], alpha: b.alpha, glow, opaque: b.alpha > 0.99 })
+			if (full && b.shell) draws.push({ mesh: b.shell, off: [b.at[0], b.at[1], b.atZ], alpha: 0.22 * b.alpha, glow: 0, opaque: false, shell: true })
 		}
 		const cableAlpha = S.focused ? 0.15 : 1
 		for (const c of S.cables) draws.push({ mesh: c.mesh, off: [0, 0, 0], alpha: cableAlpha, glow: 0, opaque: cableAlpha > 0.99, cable: true })
@@ -417,7 +443,7 @@ export function mountWorld(host, opts = {}) {
 		gl.bindVertexArray(null)
 		// Labels: cable labels at their arch tops, captions over pulsing boards.
 		for (const c of S.cables) place(c.el, c.mid, vp, w, h, S.focused ? 0 : 1)
-		for (const b of S.boards.values()) if (b.caption) place(b.caption, [b.at[0], b.at[1], b.extent.max[2] + 4], vp, w, h, b.glowUntil > now ? 1 : 0)
+		for (const b of S.boards.values()) if (b.caption) place(b.caption, [b.at[0], b.at[1], b.extent.max[2] + b.atZ + 4], vp, w, h, b.glowUntil > now ? 1 : 0)
 		if (!S.firstFrame) {
 			S.firstFrame = now
 			canvas.style.opacity = "1"
@@ -436,7 +462,9 @@ export function mountWorld(host, opts = {}) {
 	}
 
 	function setWorld({ boards, cables = [] }) {
-		const pos = autoLayout(boards, cables)
+		// `at` is absolute (mm), or measured from another board's laid-out place when it names one in `from` (a robot's
+		// other boards, placed from the assembly); those take no room in the automatic layout.
+		const pos = autoLayout(boards.filter((wb) => !wb.at?.from), cables)
 		const keep = new Set()
 		for (const wb of boards) {
 			keep.add(wb.name)
@@ -448,13 +476,15 @@ export function mountWorld(host, opts = {}) {
 				b = { key, solid: upload(g.solid), shell: upload(g.shell), boxMesh: upload(g.box), extent: g.extent, alpha: b?.alpha ?? 1, alphaTo: b?.alphaTo ?? 1, glowUntil: 0, caption: b?.caption ?? null }
 				S.boards.set(wb.name, b)
 			}
-			b.at = wb.at ? [wb.at.x, wb.at.y] : [pos[wb.name].x, pos[wb.name].y]
+			const base = wb.at?.from ? pos[wb.at.from] ?? { x: 0, y: 0 } : { x: 0, y: 0 }
+			b.at = wb.at ? [base.x + wb.at.x, base.y + wb.at.y] : [pos[wb.name].x, pos[wb.name].y]
+			b.atZ = wb.at?.z ?? 0
 		}
 		for (const [name, b] of S.boards) if (!keep.has(name)) { free(b.solid); free(b.shell); free(b.boxMesh); b.caption?.remove(); S.boards.delete(name) }
 		for (const c of S.cables) { free(c.mesh); c.el.remove() }
 		S.cables = cables.filter((c) => S.boards.has(c.a.board) && S.boards.has(c.b.board)).map((c) => {
 			const A = S.boards.get(c.a.board), B = S.boards.get(c.b.board)
-			const r = cableRibbon([A.at[0] + (c.a.xMm ?? 0), A.at[1] + (c.a.yMm ?? 0), A.extent.max[2] * 0.4], [B.at[0] + (c.b.xMm ?? 0), B.at[1] + (c.b.yMm ?? 0), B.extent.max[2] * 0.4], Math.max(8, Math.hypot(A.at[0] - B.at[0], A.at[1] - B.at[1]) * 0.25))
+			const r = cableRibbon([A.at[0] + (c.a.xMm ?? 0), A.at[1] + (c.a.yMm ?? 0), A.atZ + A.extent.max[2] * 0.4], [B.at[0] + (c.b.xMm ?? 0), B.at[1] + (c.b.yMm ?? 0), B.atZ + B.extent.max[2] * 0.4], Math.max(8, Math.hypot(A.at[0] - B.at[0], A.at[1] - B.at[1]) * 0.25))
 			const el = document.createElement("span")
 			el.textContent = c.label ?? c.id
 			el.style.cssText = "position:absolute;left:0;top:0;background:#fff;border:1px solid #111;border-radius:4px;padding:1px 6px;white-space:nowrap;transition:opacity .3s"
@@ -510,7 +540,7 @@ export function mountWorld(host, opts = {}) {
 		const far = unproject(inv, nx, ny, 1)
 		return { origin: eye, dir: norm3([far[0] - eye[0], far[1] - eye[1], far[2] - eye[2]]) }
 	}
-	const boxes = () => [...S.boards].map(([name, b]) => ({ name, min: [b.extent.min[0] + b.at[0], b.extent.min[1] + b.at[1], b.extent.min[2]], max: [b.extent.max[0] + b.at[0], b.extent.max[1] + b.at[1], b.extent.max[2]] }))
+	const boxes = () => [...S.boards].map(([name, b]) => ({ name, min: [b.extent.min[0] + b.at[0], b.extent.min[1] + b.at[1], b.extent.min[2] + b.atZ], max: [b.extent.max[0] + b.at[0], b.extent.max[1] + b.at[1], b.extent.max[2] + b.atZ] }))
 	let hovered = null
 	canvas.addEventListener("pointerdown", (e) => { S.dragging = { x: e.clientX, y: e.clientY, moved: 0 }; canvas.setPointerCapture(e.pointerId) })
 	canvas.addEventListener("pointermove", (e) => {

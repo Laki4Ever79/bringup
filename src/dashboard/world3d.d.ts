@@ -8,3 +8,4 @@ export function pickBoard(origin: number[], dir: number[], boxes: { name: string
 export function boardGeometry(b: unknown): { solid: Float32Array | null; shell: Float32Array | null; box: Float32Array; extent: { min: number[]; max: number[] } }
 export function cableRibbon(a: number[], b: number[], lift?: number, segments?: number, width?: number): { mesh: Float32Array; mid: number[] }
 export function mountWorld(host: HTMLElement, opts?: { onHover?: (name: string | null) => void; onPick?: (name: string) => void; still?: string }): unknown
+export function assemblyPlacement(assembly: { boards: { name: string; xMm: number; yMm: number }[] } | null | undefined, chassisSpec: unknown, chassisBoard: string): Record<string, { x: number; y: number; z: number }>

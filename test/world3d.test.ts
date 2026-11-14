@@ -2,7 +2,7 @@
 // detail each board gets.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { autoLayout, detailFor, flyCamera, pickBoard } from "../src/dashboard/world3d.js"
+import { assemblyPlacement, autoLayout, detailFor, flyCamera, pickBoard } from "../src/dashboard/world3d.js"
 
 const board = (name: string, w = 50, h = 30) => ({ name, outline: { widthMm: w, heightMm: h } })
 const link = (a: string, b: string) => ({ id: `${a}${b}`, a: { board: a }, b: { board: b } })
@@ -95,4 +95,21 @@ test("a rover stands on the floor with its wheels, caster, chassis and board whe
 	assert.ok(Math.abs(l - 150) < 0.5, `${l} mm long`)
 	assert.ok(Math.abs(g.extent.max[1] + g.extent.min[1]) < 0.5, "centred across")
 	assert.ok(g.solid && g.solid.length > 0)
+})
+
+test("assemblyPlacement puts a second board beside the main one on the standoffs", () => {
+	const chassisSpec = {
+		plate: { lengthMm: 150, widthMm: 110, thicknessMm: 3, clearanceMm: 50.5 },
+		standoffMm: 10,
+		drive: { trackMm: 100, axleXMm: 0, wheelbaseMm: 70, wheelDiameterMm: 65, wheelWidthMm: 26 },
+		motors: [], caster: null, battery: null, sensor: null,
+		boards: [{ name: "main", xMm: 10, yMm: 0, widthMm: 60, heightMm: 40, rotDeg: 0 }],
+	}
+	const assembly = { body: "chassis", plate: { lengthMm: 150, widthMm: 110 }, boards: [{ name: "drive", xMm: 10, yMm: 0 }, { name: "front", xMm: 55, yMm: 0 }] }
+	const p = assemblyPlacement(assembly, chassisSpec, "drive")
+	assert.deepEqual(Object.keys(p).sort(), ["drive", "front"], "keyed by system names")
+	assert.ok(Math.abs(p.front.x - p.drive.x - 45) < 1e-9)
+	assert.equal(p.front.z, p.drive.z)
+	assert.ok(p.front.z > 50.5 + 3, "above the plate's top")
+	assert.ok(Math.abs(p.front.y) < 1e-9 && Math.abs(p.drive.y) < 1e-9)
 })

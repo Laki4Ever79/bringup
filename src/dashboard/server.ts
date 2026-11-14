@@ -22,6 +22,9 @@ import type { TraceNotifier } from "./notify.ts"
 import { clientIp, PUBLIC_BANNER, PUBLIC_TRY_IT, type PublicGate } from "./public.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
+import { derivedAssembly } from "../system/assembly.ts"
+import type { SystemSpec } from "../system/spec.ts"
+import type { Mechanics } from "../mechanics/types.ts"
 
 const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
@@ -447,6 +450,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	const systemDetail = async (id: string, dir: string) => {
 		const spec = await readJsonFile(join(dir, "system.json"))
 		const state = await readJsonFile(join(dir, "system-state.json"))
+		const mechanicsOf = new Map<string, Mechanics>()
 		const boards = await Promise.all(
 			(spec?.boards ?? []).map(async (b: { name: string; run?: string }) => {
 				const runId = `${id}.${b.name}`
@@ -455,6 +459,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				const summary = await summarize(runId, bdir)
 				const contract = await readJsonFile(join(bdir, "contract.json"))
 				const v = contract?.values ?? {}
+				if (v.mechanics?.chassis) mechanicsOf.set(b.name, v.mechanics)
 				return {
 					name: b.name,
 					runId,
@@ -475,9 +480,19 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			}),
 		)
 		const file = (name: string) => (existsSync(join(dir, name)) ? `/systems/${id}/files/${name}` : null)
+		// The spec's own assembly, else the one an old run's mechanics imply (derived, never stored).
+		let assembly = spec?.assembly
+		if (!assembly && spec) {
+			const owner = (spec.boards as { name: string }[]).map((b) => b.name).find((n) => mechanicsOf.has(n))
+			const mech = owner ? mechanicsOf.get(owner) : undefined
+			const outlines: Record<string, { widthMm: number; heightMm: number }> = {}
+			for (const b of boards) if ("outline" in b && b.outline) outlines[b.name] = b.outline
+			assembly = derivedAssembly(spec, mech, outlines, owner)
+		}
 		return {
 			id,
 			spec,
+			assembly,
 			...(await systemStatus(id, dir, state)),
 			findings: state?.findings ?? (await readJsonFile(join(dir, "system-findings.json"))) ?? [],
 			linkTests: state?.linkTests ?? [],
@@ -518,6 +533,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			id,
 			single: true,
 			spec: { name: summary.title, boards: [{ name: "main" }], links: [] },
+			assembly: derivedAssembly({ name: summary.title, boards: [{ name: "main" }], links: [] } as unknown as SystemSpec, v.mechanics, v.outline ? { main: { widthMm: v.outline.widthMm, heightMm: v.outline.heightMm } } : {}),
 			status: summary.status,
 			settled: summary.status === "settled" || summary.status === "waiting for a change" || summary.status === "bench live",
 			findings: [],
