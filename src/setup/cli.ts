@@ -1,4 +1,4 @@
-// npm run setup [-- --qemu] [-- --wokwi] [-- --renode] [-- --vendors]   install the toolchain (idempotent)
+// npm run setup [-- --qemu] [-- --wokwi] [-- --robotics] [-- --renode] [-- --vendors]   install the toolchain (idempotent)
 // npm run doctor                           show what this machine has
 import "dotenv/config"
 import { spawn } from "node:child_process"
@@ -49,11 +49,11 @@ if (command === "doctor") {
 		},
 		remove: (p) => rm(join(root, p), { force: true }),
 	}
-	const summary = await runSetup(probe, { qemu: flags.includes("--qemu"), wokwi: flags.includes("--wokwi"), renode: flags.includes("--renode"), vendors: flags.includes("--vendors") })
+	const summary = await runSetup(probe, { qemu: flags.includes("--qemu"), wokwi: flags.includes("--wokwi"), renode: flags.includes("--renode"), vendors: flags.includes("--vendors"), robotics: flags.includes("--robotics") })
 	console.log(`\nsetup summary:\n${summary.lines.map((l) => `  ${l}`).join("\n")}`)
 	if (summary.ok) console.log("\nnext: npm run doctor, then npm run bringup -- briefs/beacon.md --mock")
 	process.exit(summary.ok ? 0 : 1)
 } else {
-	console.error("usage: tsx src/setup/cli.ts setup [--qemu] [--wokwi] [--renode] [--vendors] | doctor")
+	console.error("usage: tsx src/setup/cli.ts setup [--qemu] [--wokwi] [--robotics] [--renode] [--vendors] | doctor")
 	process.exit(2)
 }

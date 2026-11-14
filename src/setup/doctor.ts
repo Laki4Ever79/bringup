@@ -1,6 +1,6 @@
 // `npm run doctor`: which backend each tool will use on this machine (src/tools/env.ts, the same detection a run
 // uses) and which optional settings are present. It names settings, never prints their values.
-import { existsSync } from "node:fs"
+import { existsSync, readdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { firmwareSimBackend, KICAD_IMAGE, type Env } from "../tools/env.ts"
@@ -12,12 +12,25 @@ const MODEL_KEYS = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
 export interface VendorStatus {
 	platforms: Record<string, boolean>
 	stPinData: boolean
+	// MuJoCo in .venv (npm run setup -- --robotics): robots' simulated drive only.
+	mujoco?: boolean
+}
+
+// A package in .venv, found on disk (no Python start): .venv/lib/python3.x/site-packages/<name>.
+function venvHas(root: string, pkg: string): boolean {
+	const lib = join(root, ".venv/lib")
+	try {
+		return readdirSync(lib).some((d) => existsSync(join(lib, d, "site-packages", pkg)))
+	} catch {
+		return false
+	}
 }
 
 export function vendorStatus(root: string, pioHome = process.env.PLATFORMIO_CORE_DIR ?? join(homedir(), ".platformio")): VendorStatus {
 	return {
 		platforms: Object.fromEntries(VENDOR_PLATFORMS.map((spec) => [spec, existsSync(join(pioHome, "platforms", spec.replace(/^platformio\//, "").replace(/@.*/, "")))])),
 		stPinData: existsSync(join(root, "tools/vendor/STM32_open_pin_data/mcu")),
+		mujoco: venvHas(root, "mujoco"),
 	}
 }
 
@@ -39,6 +52,7 @@ export function doctorReport(env: Env, vars: Record<string, string | undefined>,
 		...(vendors
 			? [
 					...Object.entries(vendors.platforms).map(([spec, ok]) => row(`pio ${spec.replace(/^platformio\//, "").replace(/@.*/, "")}`, ok ? "installed" : `missing (optional: npm run setup -- --vendors, ${spec})`)),
+					row("MuJoCo (robots)", vendors.mujoco ? "local (.venv)" : "missing (optional: npm run setup -- --robotics; only robots' simulated drive)"),
 					row("ST pin data", vendors.stPinData ? "local (tools/vendor)" : "missing (optional: npm run setup -- --vendors; only to regenerate STM32 profiles)"),
 				]
 			: []),
