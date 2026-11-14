@@ -273,3 +273,31 @@ test("the system detail carries the assembly: derived for old runs, the spec's o
 		await hub.close()
 	}
 })
+
+// The robot's progress board by board (system-trace.jsonl, src/system/trace.ts): replayed from the start, then live.
+test("GET /api/systems/:id/stream replays the system trace and streams new lines", async () => {
+	const root = tempDir()
+	const dir = fakeSystem(root, "system-s")
+	const line = (board: string, step: string) => JSON.stringify({ at: new Date().toISOString(), round: 0, board, step, status: "ok" }) + "\n"
+	writeFileSync(join(dir, "system-trace.jsonl"), line("logger", "board"))
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	const ctl = new AbortController()
+	try {
+		assert.equal((await fetch(`${hub.url}/api/systems/nope/stream`)).status, 404)
+		const res = await fetch(`${hub.url}/api/systems/system-s/stream`, { signal: ctl.signal })
+		assert.equal(res.headers.get("content-type"), "text/event-stream")
+		const reader = res.body!.getReader()
+		let text = ""
+		const until = async (re: RegExp) => {
+			while (!re.test(text)) text += new TextDecoder().decode((await reader.read()).value)
+		}
+		await until(/"step":"board"/)
+		const { appendFileSync } = await import("node:fs")
+		appendFileSync(join(dir, "system-trace.jsonl"), line("beacon", "settled"))
+		await until(/"board":"beacon","step":"settled"/)
+		assert.match(text, /^: replay/)
+	} finally {
+		ctl.abort()
+		await hub.close()
+	}
+})

@@ -1,3 +1,4 @@
+import { SYSTEM_TRACE } from "../system/trace.ts"
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, rmSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
@@ -304,25 +305,27 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	const frame = (line: string) => `data: ${line}\n\n`
 	let port = opts.port ?? 4317
 
-	const streamFor = async (dir: string) => {
-		let s = streams.get(dir)
+	// A run's trace (TRACE), or a system's own (SYSTEM_TRACE: each board's steps, src/system/trace.ts).
+	const streamFor = async (dir: string, file = TRACE) => {
+		const key = file === TRACE ? dir : `${dir}\0${file}`
+		let s = streams.get(key)
 		if (!s) {
 			const clients = new Set<ServerResponse>()
-			const tail = new TraceTail(join(dir, TRACE), (line) => {
+			const tail = new TraceTail(join(dir, file), (line) => {
 				for (const c of clients) c.write(frame(line))
-				void opts.notify?.(basename(dir), line)
+				if (file === TRACE) void opts.notify?.(basename(dir), line)
 			})
 			let watcher: FSWatcher | null = null
 			try {
 				// The directory, not the file, so a trace created after startup is still picked up.
 				watcher = watch(dir, (_, name) => {
-					if (name === TRACE) void tail.poll()
+					if (name === file) void tail.poll()
 				})
 			} catch {
 				// The poll timer alone is enough.
 			}
 			s = { tail, clients, watcher }
-			streams.set(dir, s)
+			streams.set(key, s)
 		}
 		await s.tail.poll()
 		return s
@@ -925,6 +928,19 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			if (path === "/api/systems") return json(res, 200, await listSystems())
 			if (path === "/api/designs") return json(res, 200, await listDesigns())
 			if (path === "/api/system-specs") return json(res, 200, await listSystemSpecs())
+			// A robot's progress, board by board (system-trace.jsonl), from the start and then live.
+			const sysStream = /^\/api\/systems\/([^/]+)\/stream$/.exec(path)
+			if (sysStream) {
+				const dir = await systemDir(sysStream[1])
+				if (!dir) return json(res, 404, { error: "unknown system" })
+				const s = await streamFor(dir, SYSTEM_TRACE)
+				res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" })
+				res.write(": replay\n\n")
+				for (const line of s.tail.lines) res.write(frame(line))
+				s.clients.add(res)
+				req.on("close", () => s.clients.delete(res))
+				return
+			}
 			const sys = /^\/api\/systems\/([^/]+)$/.exec(path)
 			if (sys) {
 				const dir = await systemDir(sys[1])
