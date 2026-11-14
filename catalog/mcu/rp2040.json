@@ -542,14 +542,14 @@
 		},
 		{
 			"name": "USB_DM",
-			"net": "usb",
+			"net": "other",
 			"pads": [
 				"46"
 			]
 		},
 		{
 			"name": "USB_DP",
-			"net": "usb",
+			"net": "other",
 			"pads": [
 				"47"
 			]
