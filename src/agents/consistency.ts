@@ -56,13 +56,26 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		return inputs !== undefined && Object.entries(inputs).every(([field, version]) => s.contract.version(field as never) === version)
 	}
 
-	const check = () => {
+	// One check per burst of events, after the burst: it ran in the middle of event delivery for every contract.changed,
+	// artifact.ready and artifact.failed (18 times per logger run, 41 per rover run, ~3 s of CPU during which no agent
+	// heard anything; the isolation audit, 14 Nov 2026). The quiet-period evaluation runs a pending one first.
+	let pending: NodeJS.Immediate | null = null
+	const runCheck = () => {
+		pending = null
 		try {
 			checkNow()
 		} catch (error) {
 			// A checker bug must never stop event delivery to the other participants.
 			console.error("[consistency] check failed:", error)
 		}
+	}
+	const check = () => {
+		if (!pending) pending = setImmediate(runCheck)
+	}
+	const flushCheck = () => {
+		if (!pending) return
+		clearImmediate(pending)
+		runCheck()
 	}
 
 	// <out>/contracts/rev-N.json for every revision so far, from the contract's own history (events can arrive
@@ -104,6 +117,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 	const evaluate = () => {
 		timer = null
 		if (done) return
+		flushCheck()
 		const s = state()
 		const grounding =
 			!s.groundingEnabled ||

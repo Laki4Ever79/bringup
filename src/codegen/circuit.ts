@@ -735,7 +735,29 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 // part sits over its holes (they go through the board) and the smallest board has room for it. It is not a part and is
 // not in parts. On the underside it must also stay clear of the USB-C connector (its routing, TEST_PAD.usbClearMm)
 // and, on a board without mounting holes, of the fixture's corner supports.
-export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): { parts: Placed[]; debug: Placed | null; blocked: { ref: string; why: string }[] } {
+export type Layout = { parts: Placed[]; debug: Placed | null; blocked: { ref: string; why: string }[] }
+
+// The same design is laid out again and again: by every check of each event, every agent turn's facts, the case, the
+// pads and each probe of the smallest-board search (about 5 s per logger run, the isolation audit, 14 Nov 2026). The
+// layout depends only on the design and the options, so it is kept for the last few, keyed on both. Callers get a
+// copy: some adjust what they get back.
+const LAYOUT_CACHE_SIZE = 256
+const layoutCache = new Map<string, Layout>()
+export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): Layout {
+	const key = JSON.stringify(s.values) + "\u0000" + JSON.stringify(opts)
+	const hit = layoutCache.get(key)
+	if (hit) {
+		layoutCache.delete(key)
+		layoutCache.set(key, hit)
+		return structuredClone(hit)
+	}
+	const fresh = layoutUncached(s, opts)
+	if (layoutCache.size >= LAYOUT_CACHE_SIZE) layoutCache.delete(layoutCache.keys().next().value!)
+	layoutCache.set(key, structuredClone(fresh))
+	return fresh
+}
+
+function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	const { outline, parts = [], connectors = [] } = s.values
 	if (!outline) throw new Error("placeParts: contract has no outline")
 	const [W, H] = [outline.widthMm, outline.heightMm]
@@ -757,11 +779,20 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 	}
 
 	// hug: a part allowed CHIP_GAP_MM from that part's box instead of GAP_MM (a bare chip's own pin parts, below).
-	const fits = (b: Placed, hug?: string) =>
-		Math.abs(b.x) + b.w / 2 <= W / 2 - EDGE_MARGIN_MM &&
-		Math.abs(b.y) + b.h / 2 <= H / 2 - EDGE_MARGIN_MM &&
-		placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= (o.ref === hug ? CHIP_GAP_MM : GAP_MM)) &&
-		keepouts.every((o) => !overlaps(b, o))
+	// The part that blocked the last spot is tried first: the next spot is usually blocked by it too (the same answer as
+	// trying them in order; a crowded board's search spent most of its time on the parts that weren't in the way).
+	let lastBlock = 0
+	const blocks = (b: Placed, o: Placed, hug?: string) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) < (o.ref === hug ? CHIP_GAP_MM : GAP_MM)
+	const fits = (b: Placed, hug?: string) => {
+		if (Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM) return false
+		if (lastBlock < placed.length && blocks(b, placed[lastBlock], hug)) return false
+		for (let k = 0; k < placed.length; k++)
+			if (blocks(b, placed[k], hug)) {
+				lastBlock = k
+				return false
+			}
+		return keepouts.every((o) => !overlaps(b, o))
+	}
 
 	// The capacitors wired straight to a part's pins (the DRV8833's VINT and VCP, a bare chip's decoupling), each in the
 	// box it takes just past its pad, as far off the part's box as it will be placed (CHIP_GAP_MM for a bare chip's own,
@@ -792,13 +823,32 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): {
 		const [w, h] = sizeAt(footprint, rotation)
 		// A footprint whose extent isn't centred on its origin (FOOTPRINT_OFFSET): the box is placed, the part sits off it.
 		const { dx, dy } = offsetAt(footprint, rotation)
+		// The nearest grid spot to want where it fits (ties: the first by x, then y). Searched in rings outward from the spot
+		// nearest want, stopping once no ring can hold a nearer one: the full grid, scanned row by row, ran the fit check
+		// on nearly every spot of a crowded board (9 million checks for one logger run's revisions, 14 Nov 2026).
 		let best: Placed | undefined
 		let bestD = Infinity
-		for (let i = 0; i <= W / GRID_MM; i++) {
-			for (let j = 0; j <= H / GRID_MM; j++) {
-				const b = { ref, x: -W / 2 + i * GRID_MM, y: -H / 2 + j * GRID_MM, w, h, rotation }
-				const d = Math.hypot(b.x - want.x, b.y - want.y)
-				if (d < bestD - 1e-9 && fits(b, hug) && capBoxes(b, footprint).every((c) => fits(c, ref))) [best, bestD] = [b, d]
+		let bestIJ = [0, 0]
+		const [ni, nj] = [Math.floor(W / GRID_MM + 1e-9), Math.floor(H / GRID_MM + 1e-9)]
+		const ci = Math.min(ni, Math.max(0, Math.round((want.x + W / 2) / GRID_MM)))
+		const cj = Math.min(nj, Math.max(0, Math.round((want.y + H / 2) / GRID_MM)))
+		const off = Math.max(Math.abs(-W / 2 + ci * GRID_MM - want.x), Math.abs(-H / 2 + cj * GRID_MM - want.y))
+		const tryAt = (i: number, j: number) => {
+			const b = { ref, x: -W / 2 + i * GRID_MM, y: -H / 2 + j * GRID_MM, w, h, rotation }
+			const d = Math.hypot(b.x - want.x, b.y - want.y)
+			const better = d < bestD - 1e-9 || (d <= bestD + 1e-9 && (i < bestIJ[0] || (i === bestIJ[0] && j < bestIJ[1])))
+			if (better && fits(b, hug) && capBoxes(b, footprint).every((c) => fits(c, ref))) [best, bestD, bestIJ] = [b, d, [i, j]]
+		}
+		const rMax = Math.max(ci, ni - ci, cj, nj - cj)
+		for (let r = 0; r <= rMax && r * GRID_MM - off <= bestD + 1e-9; r++) {
+			for (let i = ci - r; i <= ci + r; i++) {
+				if (i < 0 || i > ni) continue
+				if (r === 0) tryAt(i, cj)
+				else if (i === ci - r || i === ci + r) for (let j = Math.max(0, cj - r); j <= Math.min(nj, cj + r); j++) tryAt(i, j)
+				else {
+					if (cj - r >= 0) tryAt(i, cj - r)
+					if (cj + r <= nj) tryAt(i, cj + r)
+				}
 			}
 		}
 		if (best && (dx !== 0 || dy !== 0)) best = { ...best, ox: +(best.x - dx).toFixed(3), oy: +(best.y - dy).toFixed(3) }
