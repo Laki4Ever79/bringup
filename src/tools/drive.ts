@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
@@ -40,6 +40,11 @@ export interface DriveOptions {
 	timeoutMs?: number
 }
 
+// MuJoCo, from npm run setup -- --robotics: a .venv without it gets "not run", like a machine without QEMU.
+function hasMujoco(python: string): boolean {
+	return spawnSync(python, ["-c", "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('mujoco') else 1)"], { stdio: "ignore" }).status === 0
+}
+
 export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveArtifact> {
 	// Absolute paths: the bridge runs from py/, so a relative --out dir would point elsewhere there.
 	const o = { ...opts, root: resolve(opts.root), fwDir: resolve(opts.fwDir), outDir: resolve(opts.outDir) }
@@ -47,6 +52,7 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 	const notRun = (reason: string): DriveArtifact => ({ revision, dir: o.outDir, result: "not run", reason, segments: [] })
 	const qemu = join(o.root, "tools/qemu/bin/qemu-system-riscv32")
 	if (!existsSync(qemu)) return notRun("QEMU is not installed (npm run setup): not proven in simulation")
+	if (!hasMujoco(o.python)) return notRun("MuJoCo is not installed (npm run setup -- --robotics): not proven in simulation")
 	const env = o.env ?? "esp32c3_sim"
 	const build = await run(o.pio, ["run", "-d", o.fwDir, "-e", env], { timeoutMs: 900_000 })
 	if (build.code !== 0) return notRun(`the simulation firmware didn't build: ${(build.stdout + build.stderr).trim().split("\n").slice(-3).join(" ")}`)
