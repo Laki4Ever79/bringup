@@ -1,6 +1,6 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import { defaultCheckCatalog } from "./checks.ts"
-import { withAssembly } from "./assembly.ts"
+import { outlinesWithAssembly, withAssembly } from "./assembly.ts"
 import { massAndCom, mounts } from "./model.ts"
 
 // What a robot's designers see each turn (design-facts.ts): the drive catalog with its cited numbers, and the mass and
@@ -18,7 +18,7 @@ export function mechanicsFactLines(s: ContractSnapshot): string[] {
 	lines.push("- Packs:", ...m.batteries.map((x) => `  - ${x.mpn}: ${x.cells} cell ${x.nominalV} V (${x.cutoffV}–${x.fullV} V), ${x.mAh} mAh, ${x.maxContA} A continuous, ${x.peakA} A peak, ${x.sizeMm.join(" × ")} mm, ${x.massG} g`))
 	lines.push("- Distance sensors:", ...(m.sensors ?? []).map((x) => `  - ${x.mpn}: ${x.chip}, ${x.rangeMm} mm range, ${x.updateMs} ms per reading, ${x.sizeMm.join(" × ")} mm, ${x.massG} g, ${x.connector}`))
 	if (v.mechanics) {
-		const { massG, com } = massAndCom(mounts(withAssembly(v)!, [{ name: "main", outline: { widthMm: v.outline?.widthMm ?? 0, heightMm: v.outline?.heightMm ?? 0 } }], m))
+		const { massG, com } = massAndCom(mounts(withAssembly(v)!, outlinesWithAssembly(v), m))
 		lines.push(`- Computed: mass about ${Math.round(massG + v.motion.payloadG)} g with the ${v.motion.payloadG} g payload; centre of mass (${com.map((c) => c.toFixed(1)).join(", ")}) mm without it`)
 	}
 	return lines

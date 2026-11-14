@@ -1,7 +1,7 @@
 // A board's view of its system's assembly (src/system/assembly.ts): the plate and where every board sits, owned by the
 // system's integrator. A robot board's mechanics, chassis builder and checks read the layout through here, so the
 // mechanics agent no longer invents it (it keeps the drive, battery, sensor, clearance and thickness).
-import type { ContractValues } from "../contract/types.ts"
+import type { ContractSnapshot, ContractValues } from "../contract/types.ts"
 import type { SystemAssembly } from "../system/assembly.ts"
 import type { Mechanics } from "./types.ts"
 
@@ -45,4 +45,18 @@ export function assemblyOutlines(values: ContractValues | Partial<ContractValues
 	const a = values.assembly
 	if (!a) return []
 	return a.boards.map((b) => ({ name: asMain(a, b.name), outline: { ...b.outline } }))
+}
+
+// This board's outline ("main") and the other boards' from the assembly, as the checks and the mass need them; the
+// assembly wins on a name clash, as in chassisSpec.
+export function outlinesWithAssembly(values: Partial<ContractValues>): { name: string; outline: { widthMm: number; heightMm: number } }[] {
+	const own = { name: "main", outline: { widthMm: values.outline?.widthMm ?? 0, heightMm: values.outline?.heightMm ?? 0 } }
+	const fromAssembly = assemblyOutlines(values)
+	return [own, ...fromAssembly.filter((a) => a.name !== "main")].map((o) => fromAssembly.find((a) => a.name === o.name) ?? o)
+}
+
+// The boards the mechanics checks run over for one board's snapshot: itself, and the assembly's other boards as stubs
+// that carry only an outline (their parts and pins belong to their own contracts).
+export function checkBoards(c: ContractSnapshot): { name: string; snapshot: ContractSnapshot }[] {
+	return outlinesWithAssembly(c.values).map((o) => o.name === "main" ? { name: "main", snapshot: c } : { name: o.name, snapshot: { ...c, values: { outline: { ...o.outline, thicknessMm: 1.6, sizeReason: c.values.outline?.sizeReason as never } } } })
 }
