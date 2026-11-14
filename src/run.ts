@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
+import type { FieldName } from "./contract/types.ts"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
 import { createBoardBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
@@ -202,11 +203,16 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		emit(makeEvent("change.requested", engineer.getId(), request), engineer.getId())
 		// A system of boards hands this board its links (docs/system.md): the integrator owns the field, so it is written
 		// as it is, and this board's own agents follow it through the checks it wakes, like any other change.
-		if (r.links) {
-			const before = state.contract.get("links") ?? null
-			const result = state.contract.propose({ field: "links", value: r.links, by: "integrator", baseVersion: state.contract.version("links") })
-			if (result.status === "applied") emit(makeEvent("contract.changed", engineer.getId(), { field: "links", version: result.version, revision: result.revision, by: "integrator", reason: r.text, before, after: r.links, cause: { kind: "request", id: request.id, text: r.text } }), engineer.getId())
-			else if (result.status !== "unchanged") console.error(`[system] links not applied: ${JSON.stringify(result)}`)
+		if (r.links || r.assembly) {
+			const handed: [FieldName, unknown][] = []
+			if (r.links) handed.push(["links", r.links])
+			if (r.assembly) handed.push(["assembly", r.assembly])
+			for (const [field, value] of handed) {
+				const before = state.contract.get(field) ?? null
+				const result = state.contract.propose({ field, value, by: "integrator", baseVersion: state.contract.version(field) } as never)
+				if (result.status === "applied") emit(makeEvent("contract.changed", engineer.getId(), { field, version: result.version, revision: result.revision, by: "integrator", reason: r.text, before, after: value, cause: { kind: "request", id: request.id, text: r.text } }), engineer.getId())
+				else if (result.status !== "unchanged") console.error(`[system] ${field} not applied: ${JSON.stringify(result)}`)
+			}
 			return
 		}
 		state.currentRequest = request

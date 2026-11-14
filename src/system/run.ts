@@ -5,6 +5,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
+import { withOutlines, type SystemAssembly } from "./assembly.ts"
+import type { BoardAssembly } from "../mechanics/assembly.ts"
 import { appendRequest } from "../runner/requests.ts"
 import { readTrace } from "../runner/ripple.ts"
 import { startRunProcess, type RunProcess } from "../runner/spawn-run.ts"
@@ -69,15 +71,27 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	const asked = new Map<string, number>() // board → trace length when last asked; its next settle must come after
 	const sent: { board: string; text: string }[] = []
 	const designed = spec.boards.filter((b) => b.brief)
+	// A robot's boards each get the whole body (its plate, every board's place and outline) and which board they are.
+	let assembly: SystemAssembly | undefined = spec.assembly?.body === "chassis" ? spec.assembly : undefined
+	const assemblySent = new Map<string, string>() // board → the assembly (as JSON) it was last handed
+	const handAssembly = (name: string): BoardAssembly | undefined => {
+		if (!assembly) return undefined
+		const a = { ...assembly, self: name }
+		assemblySent.set(name, JSON.stringify(a))
+		return a
+	}
 	for (const b of designed) {
 		const dir = boardDir(outDir, b.name)
 		mkdirSync(dir, { recursive: true })
 		// The links go in before the run starts, so the board's agents design them in from the first draft.
 		const links = boardLinks(spec, b.name)
+		const own = handAssembly(b.name)
 		if (links.length) {
 			const text = `The engineer's system spec (${spec.name}) amends this board's brief: it must expose ${links.map((l) => `link ${l.id}, ${l.kind.toUpperCase()} to ${l.peer} on its own connector`).join("; ")}. The connector and its opening in the case are required.`
-			appendRequest(dir, text, undefined, links)
+			appendRequest(dir, text, undefined, links, own)
 			sent.push({ board: b.name, text })
+		} else if (own) {
+			appendRequest(dir, `The engineer's system spec (${spec.name}) places this board on the robot's chassis.`, undefined, undefined, own)
 		}
 		asked.set(b.name, 0)
 		// A board in a system drafts its links too (the connector, its edge, its pins): more revisions than a board alone.
@@ -120,6 +134,27 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 		writeFileSync(join(outDir, "system-state.json"), JSON.stringify({ at: new Date().toISOString(), status, settled: status.startsWith("settled"), findings, linkTests: tests, asked: sent }, null, 2))
 	}
 
+	// A settled board's outline replaces the estimate; the new assembly goes to system.json and to every robot board that
+	// holds an older one (each board needs its siblings' real outlines for its chassis and mass).
+	const syncAssembly = (contracts: Record<string, ContractSnapshot | undefined>) => {
+		if (!assembly) return
+		const built: Record<string, { widthMm: number; heightMm: number }> = {}
+		for (const ab of assembly.boards) {
+			const o = contracts[ab.name]?.values.outline
+			if (o && (ab.outlineSource !== "built" || o.widthMm !== ab.outline.widthMm || o.heightMm !== ab.outline.heightMm)) built[ab.name] = { widthMm: o.widthMm, heightMm: o.heightMm }
+		}
+		if (Object.keys(built).length === 0) return
+		assembly = withOutlines(assembly, built)
+		writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
+		for (const b of designed) {
+			if (!assembly.boards.some((ab) => ab.name === b.name)) continue
+			const next = { ...assembly, self: b.name }
+			if (assemblySent.get(b.name) === JSON.stringify(next)) continue
+			assemblySent.set(b.name, JSON.stringify(next))
+			appendRequest(boardDir(outDir, b.name), `The robot's body (${spec.name}) changed: a board's built outline replaced its estimate.`, undefined, undefined, next)
+		}
+	}
+
 	const deadline = Date.now() + (o.timeoutMs ?? 30 * 60_000)
 	const maxRounds = o.maxRounds ?? 3
 	const handed = new Set<string>()
@@ -138,6 +173,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			}
 			// Wait until every board has settled since it was last asked for something.
 			if (spec.boards.some((b) => !contracts[b.name])) continue
+			syncAssembly(contracts)
 			findings = systemChecks(spec, contracts)
 			const real = findings.filter((f) => f.kind !== "link-pending")
 			if (findings.length === 0) {
