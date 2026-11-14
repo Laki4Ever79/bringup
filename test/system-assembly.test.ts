@@ -158,6 +158,13 @@ test("the default plate wraps boards into a second row before passing the brief'
 	assert.equal(assemblyFitError(a, limit), null)
 })
 
+test("a new row clears a centre-row board taller than main", () => {
+	const limit: [number, number] = [160, 150]
+	const s = spec(undefined, ["main", "a", "b", "c"])
+	const a = defaultAssembly(s, "chassis", { main: { widthMm: 40, heightMm: 30 }, a: { widthMm: 40, heightMm: 70 }, b: { widthMm: 60, heightMm: 30 }, c: { widthMm: 60, heightMm: 30 } }, limit)
+	assert.deepEqual(assemblyErrors({ ...s, assembly: a }), [])
+})
+
 test("grown outlines wrap into a second row instead of passing the limit", () => {
 	const limit: [number, number] = [160, 150]
 	const start = defaultAssembly(spec(undefined, ["main", "climate"]), "chassis", {}, limit)

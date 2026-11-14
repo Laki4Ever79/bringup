@@ -144,7 +144,12 @@ export function defaultAssembly(spec: SystemSpec, body: BodyKind, outlines: Reco
 			b.xMm = (side === "plus" ? 1 : -1) * (row.edge[side] + BOARD_GAP_MM + w / 2)
 			row.edge[side] += BOARD_GAP_MM + w
 			if (row.sign !== 0) { b.yMm = row.sign * (row.inner + f.yMm / 2); row.outer = Math.max(row.outer, row.inner + f.yMm); yEdge[row.sign === 1 ? "plus" : "minus"] = Math.max(yEdge[row.sign === 1 ? "plus" : "minus"], row.outer) }
-			else row.outer = Math.max(row.outer, f.yMm / 2)
+			else {
+				// A centre-row board reaches half its height both ways; new rows start past it, not only past main.
+				row.outer = Math.max(row.outer, f.yMm / 2)
+				yEdge.plus = Math.max(yEdge.plus, f.yMm / 2)
+				yEdge.minus = Math.max(yEdge.minus, f.yMm / 2)
+			}
 			plus = side === "plus" ? false : true
 		} else {
 			// A new row on the side with the less reach so far; its boards start at the centre again.
