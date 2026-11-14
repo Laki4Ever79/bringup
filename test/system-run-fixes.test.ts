@@ -12,7 +12,7 @@ import { linkChecks } from "../src/contract/links.ts"
 import { addedForYou } from "../src/contract/added.ts"
 import { boardLinks } from "../src/system/derive.ts"
 import { ROOT, runDesign } from "../src/run.ts"
-import { LOGGER_DESIGN, mockScripts } from "../src/inference/scripts.ts"
+import { LOGGER_DESIGN, mockScripts, ROVER_MOTION } from "../src/inference/scripts.ts"
 import { toolCall, type Script } from "../src/inference/scripted-runner.ts"
 import { state } from "../src/runtime.ts"
 import type { Env } from "../src/tools/env.ts"
@@ -269,4 +269,21 @@ test("a design that isn't a robot gets no assembly request", async () => {
 			assert.ok(reqs.every((r) => !("assembly" in r)))
 		}
 	}
+})
+
+test("boards that can't fit the brief's size limit end the run with a finding that names it", async () => {
+	const out = tempDir()
+	const limited: typeof startRunProcess = (a) => {
+		const r = fakeStart({ main: { widthMm: 43, heightMm: 30 }, front: { widthMm: 200, heightMm: 30 } })(a)
+		const path = join(a.outDir, "contract.json")
+		const c = JSON.parse(readFileSync(path, "utf8"))
+		c.values.motion = { ...ROVER_MOTION, maxSizeMm: [160, 150] }
+		writeFileSync(path, JSON.stringify(c))
+		return r
+	}
+	const res = await runSystem({ spec: robot("chassis"), outDir: out, mock: true, pollMs: 10, timeoutMs: 2000, start: limited })
+	assert.equal(res.ok, false)
+	const state = JSON.parse(readFileSync(join(out, "system-state.json"), "utf8"))
+	assert.match(state.status, /^UNSETTLED: assembly: the boards need a \d+ × \d+ mm plate, over the 160 × 150 mm the brief allows/)
+	assert.equal(state.findings[0].kind, "assembly-fit")
 })
