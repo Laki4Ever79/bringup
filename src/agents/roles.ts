@@ -212,9 +212,24 @@ function violationsFor(role: AgentRole, guidance: string, only: (kind: string) =
 	}
 }
 
+// Which change requests a feature role hears (domain isolation, 14 Nov 2026): a role whose field the design doesn't
+// have yet hears only requests in its own words, so "make it 40 mm wide" on a plain board costs the ML, test and
+// mechanics agents no model turn. The mechanics agent hears requests only on a robot (motion or mechanics set): the
+// architect writes motion when the engineer asks for one, and the missing mechanics design then wakes it.
+export const REQUEST_WORDS: Partial<Record<AgentRole, RegExp>> = {
+	ml: /wake[- ]?word|keyword|voice|speech|spoken|gesture|sound|audio|noise|bark|image|camera|vision|classif|recogni|detect|machine learning|\bml\b|\bai\b|model|neural|tinyml|on-device|intelligen|train|recorded/i,
+	test: /test|fixture|bed of nails|pogo|probe|factory|production|end[- ]of[- ]line|\bpads?\b|\beol\b/i,
+}
+export function hearsRequest(role: AgentRole, has: (field: FieldName) => boolean, message: string): boolean {
+	if (role === "mechanics") return has("motion") || has("mechanics")
+	const field = role === "ml" ? "model" : role === "test" ? "test" : null
+	if (!field) return true
+	return has(field) || (REQUEST_WORDS[role]?.test(message) ?? true)
+}
+
 // The engineer's messages after the brief are change requests: each one starts a turn with the role's guidance. The
 // first message is the brief, which reaches the agents another way.
-function engineerRequests(guidance: string): SituationHandler {
+function engineerRequests(guidance: string, role?: AgentRole): SituationHandler {
 	let briefSeen = false
 	return {
 		specification: when(({ event }) => isEvent(event, "message.sent" as never) && state().getParticipant(event.producerId)?.getManifest().name === "engineer"),
@@ -225,6 +240,7 @@ function engineerRequests(guidance: string): SituationHandler {
 					return
 				}
 				const message = (event.payload as { message: string }).message
+				if (role && !hearsRequest(role, (f) => state().contract.version(f) > 0, message)) return
 				startTurn(participant as Agent, `${ENGINEER_REQUEST_PREFIX}\n${message}\n${guidance}`, requestCause(message))
 			},
 		},
@@ -323,8 +339,7 @@ export function createMlAgent(opts: { mock: boolean }): Agent {
 			ownerReviewsChanges("ml"),
 			ownerFixesReview("ml"),
 			engineerRequests(
-				"If it asks for on-device intelligence (a wake word, voice commands, a gesture, sound or image recognition), meet it by writing the model field you own: call read_contract, then propose_contract_change with its current baseVersion. If it says the training data has been recorded, set the model's data to status \"recorded\" on the sensor path in the design facts. Otherwise change nothing.",
-			),
+				"If it asks for on-device intelligence (a wake word, voice commands, a gesture, sound or image recognition), meet it by writing the model field you own: call read_contract, then propose_contract_change with its current baseVersion. If it says the training data has been recorded, set the model's data to status \"recorded\" on the sensor path in the design facts. Otherwise change nothing.", "ml"),
 			violationsFor("ml", "Fix them by changing the model you own (quantize, prune, shorten the window, pick a rate the sensor supports, or mark its data needed on the new sensor path), with propose_contract_change and its current baseVersion."),
 		],
 	})
@@ -346,8 +361,7 @@ export function createTestAgent(opts: { mock: boolean }): Agent {
 			ownerReviewsChanges("test"),
 			ownerFixesReview("test"),
 			engineerRequests(
-				"If it asks for a production or factory test, a test fixture, a bed of nails or test pads, meet it by writing the test field you own: call read_contract, then propose_contract_change with its current baseVersion, probing every signal and power net, with limits from the design facts plus margin. Otherwise change nothing.",
-			),
+				"If it asks for a production or factory test, a test fixture, a bed of nails or test pads, meet it by writing the test field you own: call read_contract, then propose_contract_change with its current baseVersion, probing every signal and power net, with limits from the design facts plus margin. Otherwise change nothing.", "test"),
 			violationsFor("test", "Fix them by changing the test field you own (add or drop points, raise a limit to the design's own current plus margin), with propose_contract_change and its current baseVersion."),
 		],
 	})
@@ -384,7 +398,7 @@ export function createMechanicsAgent(opts: { mock: boolean }): Agent {
 		handlers: [
 			ownerReviewsChanges("mechanics"),
 			ownerFixesReview("mechanics"),
-			engineerRequests("If it is about the robot's body (its size, wheels, motors, battery, where things sit, how fast it drives), meet it: call read_contract, then propose_contract_change on the mechanics field with its current baseVersion, keeping everything the request does not mention, so every check above still passes. Otherwise change nothing."),
+			engineerRequests("If it is about the robot's body (its size, wheels, motors, battery, where things sit, how fast it drives), meet it: call read_contract, then propose_contract_change on the mechanics field with its current baseVersion, keeping everything the request does not mention, so every check above still passes. Otherwise change nothing.", "mechanics"),
 			violationsFor("mechanics", "Fix them by changing the mechanics field you own (other parts, a longer wheelbase, the battery moved back, a wider plate), with propose_contract_change and its current baseVersion.", (kind) => kind.startsWith("mech-")),
 		],
 	})
