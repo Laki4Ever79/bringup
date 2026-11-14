@@ -216,7 +216,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	if (argv[0] === "system") {
 		const path = argv[1]
 		if (!path || !existsSync(path)) {
-			console.error("bringup: usage: bringup system <system.json> [--mock] [--no-hardware] [--no-review] [--review-rounds N] [--out <dir>] [--timeout-min <n>]")
+			console.error("bringup: usage: bringup system <system.json> [--mock] [--no-hardware] [--no-review] [--review-rounds N] [--out <dir>] [--timeout-min <n>] [--stay]")
 			return 1
 		}
 		const spec = loadSpec(path)
@@ -233,7 +233,18 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		const minutes = Number(argv[argv.indexOf("--timeout-min") + 1])
 		// Each board's review rounds, as for a single design (real system run 3: boards got 1 fix round, not the 4 asked).
 		const rounds = argv.includes("--review-rounds") ? ["--review-rounds", argv[argv.indexOf("--review-rounds") + 1]] : []
-		const r = await runSystem({ spec, outDir: out, mock: flag("--mock"), ...(argv.includes("--timeout-min") && minutes > 0 ? { timeoutMs: minutes * 60_000 } : {}), boardArgs: [...(flag("--no-hardware") ? ["--no-hardware"] : []), ...(flag("--no-review") ? ["--no-review"] : []), ...rounds], ...(env ? { linkTest: { root: ROOT, pio: env.pio, qemu: Boolean(env.qemu), renode: Boolean(env.renode) } } : {}) })
+		// --stay: the system and its boards stay up after settling, taking system-level requests (system-requests.jsonl).
+		const stay = flag("--stay")
+			? {
+					until: new Promise<void>((resolve) => {
+						process.once("SIGINT", () => resolve())
+						process.once("SIGTERM", () => resolve())
+						void parentGone(process.stdin, process.env)?.then(resolve)
+					}),
+				}
+			: undefined
+		if (stay) console.log("bringup system: --stay; after the system settles it keeps taking system-level change requests. Ctrl-C ends it.")
+		const r = await runSystem({ spec, outDir: out, mock: flag("--mock"), ...(stay ? { stay } : {}), ...(argv.includes("--timeout-min") && minutes > 0 ? { timeoutMs: minutes * 60_000 } : {}), boardArgs: [...(flag("--no-hardware") ? ["--no-hardware"] : []), ...(flag("--no-review") ? ["--no-review"] : []), ...rounds], ...(env ? { linkTest: { root: ROOT, pio: env.pio, qemu: Boolean(env.qemu), renode: Boolean(env.renode) } } : {}) })
 		console.log(`\n${r.ok ? "settled" : "UNSETTLED"}: ${r.findings.filter((f) => f.kind !== "link-pending").length} system finding(s)${r.linkTests.length ? `; link tests: ${r.linkTests.map((t) => `${t.link} ${!t.ran ? "not run" : t.passed ? "pass" : "FAIL"}`).join(", ")}` : ""}\nreport: ${r.reportPath}`)
 		return r.ok ? 0 : 2
 	}

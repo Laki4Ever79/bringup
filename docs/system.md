@@ -80,6 +80,15 @@ re-checks the system whenever a board settles. A system violation goes to the bo
 change request. Board runs stay separate processes: Mozaik allows one runtime per process, and it keeps each board
 exactly as it runs alone.
 
+Each board's steps (contract revisions, board, case, chassis, firmware, boot, drive, settle) and the system's own (the
+body re-sent, link tests, the system settling) go to `<out>/system-trace.jsonl`, one line each:
+`{at, round, board, step, status, revision?, detail?}`, with `board: "system"` for the system's own steps. The
+dashboard streams it at `GET /api/systems/<id>/stream` (server-sent events, replayed from the start).
+
+`--stay` keeps the system and every board's run up after it settles. A line appended to `<out>/system-requests.jsonl`,
+`{at, text?, assembly?, links?}`, changes the robot's body (the plate, where each board sits) or its links: the system
+writes `system.json`, sends the change to every board it concerns, and settles again. Ctrl-C ends it.
+
 ## On the dashboard
 
 `npm run dashboard` opens **Home**. Every page has the same bar: **Bringup · Home · Designs · Docs**, the section
