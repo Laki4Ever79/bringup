@@ -2,7 +2,7 @@
 // re-arming, a review finding that created a model, connectors crowding one edge; and the wake button's window.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { readFileSync, writeFileSync } from "node:fs"
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { ModelMessageItem, UserMessageItem, FunctionCallOutputItem, type ContextItem } from "@mozaik-ai/core"
 import { connectorClashes, ledOnCathode, moduleEdgeBlocked } from "../src/contract/consistency.ts"
@@ -168,9 +168,9 @@ const fakeStart = (outlines: Record<string, { widthMm: number; heightMm: number 
 	writeFileSync(join(a.outDir, "trace.jsonl"), [{ at: "2026-11-14T10:00:00Z", type: "design.settled", payload: { settled: true } }].map((e) => JSON.stringify(e)).join("\n") + "\n")
 	return { done: Promise.resolve({ code: 0, stderr: "", stdout: "" }), kill() {} }
 }
-const robot = (body: "chassis" | "separate" | null): SystemSpec => {
+const robot = (body: "chassis" | "separate" | null, built: Record<string, { widthMm: number; heightMm: number }> = {}): SystemSpec => {
 	const spec: SystemSpec = { name: "bot", boards: [{ name: "main", brief: "m.md" }, { name: "front", brief: "f.md" }], links: [{ id: "L1", kind: "uart", a: { board: "main" }, b: { board: "front" }, cable: { lengthMm: 100 } }] }
-	return body ? { ...spec, assembly: defaultAssembly(spec, body) } : spec
+	return body ? { ...spec, assembly: defaultAssembly(spec, body, built) } : spec
 }
 
 test("a robot's boards get the assembly with their links", async () => {
@@ -186,7 +186,8 @@ test("a robot's boards get the assembly with their links", async () => {
 })
 
 test("a built outline replaces the estimate and goes back to the robot boards", async () => {
-	const spec = robot("chassis"), out = tempDir()
+	// main is already built at the size its contract has, so only front's outline is news.
+	const spec = robot("chassis", { main: { ...fixtureContract().values.outline! } }), out = tempDir()
 	await runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 300, start: fakeStart({ front: { widthMm: 52, heightMm: 31 } }) })
 	const written = JSON.parse(readFileSync(join(out, "system.json"), "utf8")).assembly
 	const front = written.boards.find((b: { name: string }) => b.name === "front")
@@ -196,6 +197,39 @@ test("a built outline replaces the estimate and goes back to the robot boards", 
 	assert.equal(main.length, 2)
 	assert.deepEqual(main[1].assembly.boards.find((b: { name: string }) => b.name === "front").outline, { widthMm: 52, heightMm: 31 })
 	assert.equal(main[1].assembly.self, "main")
+})
+
+test("a board is not sent the assembly again when only its own outline changed", async () => {
+	// front's own outline (same width, so the plate stays) is its own truth; main has nothing new either.
+	const spec = robot("chassis", { main: { ...fixtureContract().values.outline! } }), out = tempDir()
+	await runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 300, start: fakeStart({ front: { widthMm: 40, heightMm: 31 } }) })
+	assert.equal(requestsOf(join(out, "boards", "front")).length, 1)
+	assert.equal(requestsOf(join(out, "boards", "main")).length, 2, "main's sibling front changed")
+})
+
+test("the run waits for a board that was sent the assembly again to settle before it ends", async () => {
+	const spec = robot("chassis", { main: { ...fixtureContract().values.outline! } }), out = tempDir()
+	const timers: NodeJS.Timeout[] = []
+	// The fake settles once at start; `main` settles a second time only after its second (assembly) request arrived.
+	const start: typeof startRunProcess = (a) => {
+		const name = a.outDir.split("/").at(-1)!
+		const base = fakeStart(name === "front" ? { front: { widthMm: 40, heightMm: 31 } } : {})(a)
+		if (name === "main") {
+			const t = setInterval(() => {
+				if (requestsOf(a.outDir).length >= 2) {
+					appendFileSync(join(a.outDir, "trace.jsonl"), JSON.stringify({ at: "2026-11-14T10:01:00Z", type: "design.settled", payload: { settled: true } }) + "\n")
+					clearInterval(t)
+				}
+			}, 20)
+			timers.push(t)
+		}
+		return base
+	}
+	const r = await runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 3000, start })
+	timers.forEach(clearInterval)
+	const settles = readFileSync(join(out, "boards", "main", "trace.jsonl"), "utf8").trim().split("\n").filter((l) => JSON.parse(l).type === "design.settled").length
+	assert.equal(settles, 2, "the run ended before main settled on the new assembly")
+	assert.ok(!/timed out/.test(JSON.parse(readFileSync(join(out, "system-state.json"), "utf8")).status), "it ended on its checks, not on the clock")
 })
 
 test("a design that isn't a robot gets no assembly request", async () => {
