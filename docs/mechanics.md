@@ -55,6 +55,9 @@ program in both builds.
 A rover that is one board of a system (docs/system.md) gets the product firmware's `include/link.h` and
 `linkframe.h`, and its link pins in `hw_pins.h`: `main.cpp` starts the links at boot, polls them every control tick and
 sends each payload reading on. The simulation build leaves the links out, because its bridge uses UART1.
+On an I2C link the rover is the controller: its distance sensor (0x29) and payload sensor already use its one I2C
+controller, so the system checks flag a rover as target (`i2c-target-has-bus`) and a target at the sensor's address
+(`i2c-address`).
 
 1. PlatformIO builds the simulation firmware and QEMU boots it, with UART1 on a local TCP port.
 2. `py/mech/drive.py` builds the MuJoCo model from the chassis spec: mass, centre of mass, wheels, caster, the motor's

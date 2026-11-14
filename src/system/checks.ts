@@ -8,6 +8,7 @@ import { boardLinks } from "./derive.ts"
 import { DEFAULT_I2C_KHZ, type SystemLink, type SystemSpec } from "./spec.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { peripheralsFree } from "../mcu/solver.ts"
+import { byMpn, loadMechCatalog } from "../mechanics/catalog.ts"
 
 export interface SystemFinding {
 	kind: "link-pending" | "uart-crossover" | "uart-baud" | "i2c-controllers" | "i2c-address" | "i2c-target-has-bus" | "i2c-pullups" | "i2c-cable-too-long" | "link-power" | "link-voltage" | "message-mismatch" | "logic-level"
@@ -37,11 +38,18 @@ export function i2cCableLimit(khz: number, devices: number): { maxPf: number; ma
 }
 
 const catalog = loadCatalog(resolve(import.meta.dirname, "../.."))
-const i2cDevices = (s: ContractSnapshot) =>
-	(s.values.parts ?? []).flatMap((p) => {
+const mechCatalog = loadMechCatalog(resolve(import.meta.dirname, "../.."))
+// Every device on the board's one I2C bus: the parts soldered on it, and a rover's distance sensor, a breakout on a
+// cable from the mechanics catalog that shares the same bus.
+const i2cDevices = (s: ContractSnapshot) => {
+	const onBoard = (s.values.parts ?? []).flatMap((p) => {
 		const a = (catalog.find((c) => c.mpn.toUpperCase() === p.mpn.toUpperCase()) as { i2cAddress?: number } | undefined)?.i2cAddress
 		return a === undefined ? [] : [{ ref: p.ref, mpn: p.mpn, address: a }]
 	})
+	const sensor = s.values.mechanics?.sensor
+	const module = sensor && byMpn(mechCatalog.sensors, sensor.module)
+	return module?.i2cAddress === undefined ? onBoard : [...onBoard, { ref: `${sensor!.connector} (${module.chip})`, mpn: module.mpn, address: module.i2cAddress }]
+}
 const hex = (a: number) => `0x${a.toString(16).padStart(2, "0")}`
 const rail = (s: ContractSnapshot, name: string) => (s.values.rails ?? []).find((r) => r.name === name)
 

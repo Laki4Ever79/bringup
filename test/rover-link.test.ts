@@ -76,3 +76,29 @@ test("a rover with a UART link compiles: the board, the simulation and the link-
 	const r = spawnSync(pio, ["run", "-d", dir, "-e", "esp32c3", "-e", "esp32c3_sim", "-e", "esp32c3_linktest"], { encoding: "utf8" })
 	assert.equal(r.status, 0, (r.stdout + r.stderr).slice(-2000))
 })
+
+// The rover as the controller of an I2C link: the link shares the bus its sensors are on (one Wire, begun by
+// hw_begin before linkBegin), and reads the target's frame on that bus.
+const i2cSpec: SystemSpec = {
+	name: "rover and a beacon",
+	boards: [{ name: "main", brief: "rover.md" }, { name: "beacon", brief: "beacon.md" }],
+	links: [{ id: "L1", kind: "i2c", a: { board: "beacon" }, b: { board: "main" }, i2c: { controller: "main", targets: { beacon: 0x42 }, pullupsOn: "main" }, cable: { lengthMm: 150 }, messages: [{ name: "reading", from: "beacon", fields: [{ name: "tempCx100", type: "i16" }] }] }],
+} as SystemSpec
+const i2cRover = (): ContractSnapshot => {
+	const s: ContractSnapshot = { revision: 20, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) }
+	s.values.links = boardLinks(i2cSpec, "main")
+	const bus = s.values.pins!.filter((p) => p.signal === "I2C_SDA" || p.signal === "I2C_SCL")
+	s.values.pins = [...s.values.pins!, ...bus.map((p) => ({ signal: p.signal, gpio: p.gpio, partRef: "JL1", partPin: p.signal === "I2C_SDA" ? "IO1" : "IO2" }))]
+	return s
+}
+
+test("a rover as an I2C controller reads its target on the sensors' bus, and compiles", { skip: existsSync(pio) ? false : "needs PlatformIO", timeout: 900_000 }, async () => {
+	const dir = tempDir()
+	await prepareFirmware(ROOT, dir, i2cRover())
+	const link = readFileSync(join(dir, "include/link.h"), "utf8")
+	assert.match(link, /#define LINK_L1_I2C_CONTROLLER 1/)
+	assert.match(link, /Wire\.requestFrom\(\(uint8_t\)LINK_L1_I2C_PEER_ADDRESS/)
+	assert.doesNotMatch(link, /Wire\.begin\(/) // the rover's hw_begin owns the bus
+	const r = spawnSync(pio, ["run", "-d", dir, "-e", "esp32c3", "-e", "esp32c3_linktest"], { encoding: "utf8" })
+	assert.equal(r.status, 0, (r.stdout + r.stderr).slice(-2000))
+})
