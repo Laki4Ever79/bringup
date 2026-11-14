@@ -11,7 +11,7 @@ import { loadSpec } from "../src/system/spec.ts"
 import type { ChassisSpec } from "../src/tools/chassis.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 import type { SystemSpec } from "../src/system/spec.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, slow } from "./helpers.ts"
 
 const env = await detectEnvironment(ROOT)
 const skip = env.tsci && env.kicad && env.python ? false : "needs tscircuit, KiCad and the .venv with build123d (npm run doctor)"
@@ -27,7 +27,7 @@ function chassisSpecs(dir: string): string[] {
 	return out
 }
 
-test("a scripted two-board robot builds with every board on the chassis", { skip, timeout: 2_400_000 }, async () => {
+test("a scripted two-board robot builds with every board on the chassis", { skip: slow || skip, timeout: 2_400_000 }, async () => {
 	const out = tempDir()
 	const r = await runSystem({ spec: loadSpec("briefs/systems/rover-climate.json"), outDir: out, mock: true, boardArgs: ["--no-review"], pollMs: 500, timeoutMs: 1_800_000 })
 	const specs = chassisSpecs(boardDir(out, "main"))

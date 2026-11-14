@@ -6,7 +6,7 @@ import { buildBoard } from "../src/tools/board.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
 import { checkConsistency } from "../src/contract/consistency.ts"
 import { fixtureContract } from "./fixture.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, slow } from "./helpers.ts"
 
 const env = await detectEnvironment(fileURLToPath(new URL("..", import.meta.url)))
 
@@ -47,7 +47,7 @@ test("buildBoard works when the output folder is inside the repo", { skip: !(env
 	}
 })
 
-test("the logger board routes at every width from 45 to 70 mm", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 900_000 }, async () => {
+test("the logger board routes at every width from 45 to 70 mm", { skip: slow || (!(env.tsci && env.kicad) && "tsci or KiCad missing"), timeout: 900_000 }, async () => {
 	const { LOGGER_DESIGN } = await import("../src/inference/scripts.ts")
 	const failures: string[] = []
 	await Promise.all(

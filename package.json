@@ -15,6 +15,7 @@
 		"setup": "tsx src/setup/cli.ts setup",
 		"doctor": "tsx src/setup/cli.ts doctor",
 		"test:affected": "tsx scripts/test-affected.ts",
+		"test:slow": "tsx scripts/test-slow.ts",
 		"board": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= PATH=$PWD/tools/node/node_modules/.bin:$PATH tsx scripts/board.ts",
 		"experiment": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= tsx src/experiment/cli.ts"
 	},

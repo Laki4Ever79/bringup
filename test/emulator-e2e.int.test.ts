@@ -5,13 +5,13 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { detectEnvironment } from "../src/tools/env.ts"
 import { run } from "../src/tools/exec.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, slow } from "./helpers.ts"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const env = await detectEnvironment(root)
 const ready = env.tsci && env.kicad && env.python && env.pio && env.qemu
 
-test("a mock run boots its firmware in QEMU and the report says which revision printed", { skip: !ready && "a hardware tool or QEMU is missing", timeout: 900_000 }, async () => {
+test("a mock run boots its firmware in QEMU and the report says which revision printed", { skip: slow || (!ready && "a hardware tool or QEMU is missing"), timeout: 900_000 }, async () => {
 	const out = tempDir()
 	const r = await run(join(root, "node_modules/.bin/tsx"), ["src/main.ts", "briefs/logger.md", "--mock", "--out", out], { cwd: root, timeoutMs: 880_000 })
 	assert.equal(r.code, 0, `exit ${r.code}\n${r.stdout.slice(-3000)}\n${r.stderr.slice(-3000)}`)

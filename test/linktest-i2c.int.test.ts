@@ -14,7 +14,7 @@ import { linkProposal, LOGGER_DESIGN } from "../src/inference/scripts.ts"
 import type { SystemSpec } from "../src/system/spec.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 import { fixtureContract } from "./fixture.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, slow } from "./helpers.ts"
 
 const pio = [join(ROOT, ".venv/bin/pio")].find(existsSync) ?? null
 
@@ -39,7 +39,7 @@ function board(name: string, sensor: boolean): ContractSnapshot {
 	return c
 }
 
-test("both sides of an I2C link whose target sends compile as link tests", { skip: pio ? false : "needs PlatformIO", timeout: 900_000 }, async () => {
+test("both sides of an I2C link whose target sends compile as link tests", { skip: slow || (pio ? false : "needs PlatformIO"), timeout: 900_000 }, async () => {
 	for (const [name, sensor] of [["hub", true], ["sensor", false]] as const) {
 		const dir = tempDir()
 		await prepareFirmware(ROOT, dir, board(name, sensor))

@@ -34,3 +34,7 @@ export async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<v
 		await new Promise((r) => setTimeout(r, 10))
 	}
 }
+
+// Tests that take minutes (whole runs, firmware builds, emulators, sweeps) skip in `npm test`. They run in
+// `npm run test:slow`, and in `npm run test:affected` when their code changed (both set BRINGUP_SLOW=1).
+export const slow: string | false = process.env.BRINGUP_SLOW === "1" ? false : "slow: runs in npm run test:slow, or test:affected when its code changes"

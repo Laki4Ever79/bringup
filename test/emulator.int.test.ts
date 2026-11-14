@@ -8,6 +8,7 @@ import { join, resolve } from "node:path"
 import { bootFirmware } from "../src/tools/emulator.ts"
 import { buildFirmware } from "../src/tools/firmware.ts"
 import { fixtureContract } from "./fixture.ts"
+import { slow } from "./helpers.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
@@ -32,7 +33,7 @@ test("fixture firmware boots in QEMU and reports the contract revision", { skip,
 	}
 })
 
-test("a no-sensor build (briefs/beacon.md) boots in QEMU, reports its revision and says it has no sensor", { skip, timeout: 600_000 }, async () => {
+test("a no-sensor build (briefs/beacon.md) boots in QEMU, reports its revision and says it has no sensor", { skip: slow || skip, timeout: 600_000 }, async () => {
 	const dir = await mkdtemp(join(tmpdir(), "bringup-emu-"))
 	try {
 		const c = fixtureContract()
