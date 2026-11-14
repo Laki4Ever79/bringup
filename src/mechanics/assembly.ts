@@ -47,12 +47,12 @@ export function assemblyOutlines(values: ContractValues | Partial<ContractValues
 	return a.boards.map((b) => ({ name: asMain(a, b.name), outline: { ...b.outline } }))
 }
 
-// This board's outline ("main") and the other boards' from the assembly, as the checks and the mass need them; the
-// assembly wins on a name clash, as in chassisSpec.
+// This board's own outline ("main", the truth even when the assembly's copy lags) and the other boards' from the assembly,
+// as the checks and the mass need them.
 export function outlinesWithAssembly(values: Partial<ContractValues>): { name: string; outline: { widthMm: number; heightMm: number } }[] {
 	const own = { name: "main", outline: { widthMm: values.outline?.widthMm ?? 0, heightMm: values.outline?.heightMm ?? 0 } }
 	const fromAssembly = assemblyOutlines(values)
-	return [own, ...fromAssembly.filter((a) => a.name !== "main")].map((o) => fromAssembly.find((a) => a.name === o.name) ?? o)
+	return [own, ...fromAssembly.filter((a) => a.name !== "main")]
 }
 
 // The boards the mechanics checks run over for one board's snapshot: itself, and the assembly's other boards as stubs

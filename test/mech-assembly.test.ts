@@ -83,3 +83,10 @@ test("the assembly's other boards are known to the checks, and their mass counts
 	lost.values.mechanics!.chassis.boards.push({ name: "ghost", at: { xMm: 0, yMm: 0 }, rotDeg: 0 })
 	assert.ok(!mechanicsChecks(lost).some((v) => /ghost/.test(v.message)), "the agent's own list is not read")
 })
+
+test("main's own outline is the truth, even when the assembly's copy of self lags", () => {
+	const s = withAsm()
+	s.values.assembly!.boards[0] = { ...s.values.assembly!.boards[0], outline: { widthMm: 40, heightMm: 30 }, outlineSource: "estimate" }
+	const spec = chassisSpec(s)!
+	assert.deepEqual(spec.boards.map((b) => [b.name, b.widthMm, b.heightMm]), [["main", 60, 40], ["front", 50, 30]])
+})
