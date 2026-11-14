@@ -2,7 +2,7 @@
 // re-arming, a review finding that created a model, connectors crowding one edge; and the wake button's window.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { ModelMessageItem, UserMessageItem, FunctionCallOutputItem, type ContextItem } from "@mozaik-ai/core"
 import { connectorClashes, ledOnCathode, moduleEdgeBlocked } from "../src/contract/consistency.ts"
@@ -17,6 +17,9 @@ import { toolCall, type Script } from "../src/inference/scripted-runner.ts"
 import { state } from "../src/runtime.ts"
 import type { Env } from "../src/tools/env.ts"
 import type { SystemSpec } from "../src/system/spec.ts"
+import { runSystem } from "../src/system/run.ts"
+import { defaultAssembly } from "../src/system/assembly.ts"
+import type { startRunProcess } from "../src/runner/spawn-run.ts"
 import { fixtureContract } from "./fixture.ts"
 import { tempDir } from "./helpers.ts"
 
@@ -152,4 +155,57 @@ test("a connector on the module's edge is named before any build, so the board i
 	s.values.connectors = s.values.connectors.map((k) => (k.ref === "SW1" ? { ...k, edge: "top", offsetMm: 25 } : k))
 	assert.deepEqual(moduleEdgeBlocked(s), [])
 	assert.deepEqual(moduleEdgeBlocked(logger()), [])
+})
+
+// The robot's body goes to each board with its links, and again as built outlines replace the estimates.
+const requestsOf = (dir: string) => readFileSync(join(dir, "requests.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+// A board process that settles at once with the given outline (the system reads trace.jsonl and contract.json).
+const fakeStart = (outlines: Record<string, { widthMm: number; heightMm: number }>): typeof startRunProcess => (a) => {
+	const name = a.outDir.split("/").at(-1)!
+	const c = fixtureContract()
+	c.values = { ...c.values, outline: { ...c.values.outline!, ...outlines[name] } }
+	writeFileSync(join(a.outDir, "contract.json"), JSON.stringify(c))
+	writeFileSync(join(a.outDir, "trace.jsonl"), [{ at: "2026-11-14T10:00:00Z", type: "design.settled", payload: { settled: true } }].map((e) => JSON.stringify(e)).join("\n") + "\n")
+	return { done: Promise.resolve({ code: 0, stderr: "", stdout: "" }), kill() {} }
+}
+const robot = (body: "chassis" | "separate" | null): SystemSpec => {
+	const spec: SystemSpec = { name: "bot", boards: [{ name: "main", brief: "m.md" }, { name: "front", brief: "f.md" }], links: [{ id: "L1", kind: "uart", a: { board: "main" }, b: { board: "front" }, cable: { lengthMm: 100 } }] }
+	return body ? { ...spec, assembly: defaultAssembly(spec, body) } : spec
+}
+
+test("a robot's boards get the assembly with their links", async () => {
+	const spec = robot("chassis"), out = tempDir()
+	await runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 300, start: fakeStart({}) })
+	for (const name of ["main", "front"]) {
+		const first = requestsOf(join(out, "boards", name))[0]
+		assert.equal(first.assembly.self, name)
+		assert.ok(first.links.length > 0, "the links are in the same request")
+		assert.deepEqual(first.assembly.boards, spec.assembly!.boards)
+		assert.deepEqual(first.assembly.plate, spec.assembly!.plate)
+	}
+})
+
+test("a built outline replaces the estimate and goes back to the robot boards", async () => {
+	const spec = robot("chassis"), out = tempDir()
+	await runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 300, start: fakeStart({ front: { widthMm: 52, heightMm: 31 } }) })
+	const written = JSON.parse(readFileSync(join(out, "system.json"), "utf8")).assembly
+	const front = written.boards.find((b: { name: string }) => b.name === "front")
+	assert.deepEqual(front.outline, { widthMm: 52, heightMm: 31 })
+	assert.equal(front.outlineSource, "built")
+	const main = requestsOf(join(out, "boards", "main"))
+	assert.equal(main.length, 2)
+	assert.deepEqual(main[1].assembly.boards.find((b: { name: string }) => b.name === "front").outline, { widthMm: 52, heightMm: 31 })
+	assert.equal(main[1].assembly.self, "main")
+})
+
+test("a design that isn't a robot gets no assembly request", async () => {
+	for (const body of ["separate", null] as const) {
+		const out = tempDir()
+		await runSystem({ spec: robot(body), outDir: out, mock: true, pollMs: 10, timeoutMs: 300, start: fakeStart({ front: { widthMm: 52, heightMm: 31 } }) })
+		for (const name of ["main", "front"]) {
+			const reqs = requestsOf(join(out, "boards", name))
+			assert.equal(reqs.length, 1, "only the links request, as today")
+			assert.ok(reqs.every((r) => !("assembly" in r)))
+		}
+	}
 })
