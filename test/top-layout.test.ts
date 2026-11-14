@@ -68,3 +68,37 @@ test("label carries id, kind and length", () => {
 	assert.equal(s.cables[0].label, "L1 · UART · 300 mm")
 	assert.deepEqual(s.cables[0].mid, { x: 0, y: 0 })
 })
+
+test("a board the assembly does not place is still drawn, beside the plate, with its cable", () => {
+	const s = topLayout({ body: "chassis", plate: { lengthMm: 100, widthMm: 80 }, boards: [ab("a", 0, 0, 20, 20)] }, [{ name: "a" }, { name: "b", outline: { widthMm: 20, heightMm: 10 } }, { name: "c" }], [link("L1", "a", "b")])
+	assert.equal(s.boards.length, 3)
+	const b = s.boards.find((x) => x.name === "b")!
+	assert.ok(b.x >= 50, "right of the plate")
+	assert.equal(b.built, true)
+	assert.equal(s.boards.find((x) => x.name === "c")!.built, false)
+	assert.equal(s.cables.length, 1)
+	assert.ok(s.bounds.x + s.bounds.w >= b.x + b.w, "bounds cover it")
+})
+
+test("a separate board with no outline is the 40 x 30 planned box, unbuilt", () => {
+	const s = topLayout({ body: "separate", boards: [] }, [{ name: "a" }], [])
+	assert.deepEqual([s.boards[0].w, s.boards[0].h, s.boards[0].built], [40, 30, false])
+})
+
+test("a link with no cable length has no length in its label", () => {
+	const s = topLayout({ body: "chassis", plate: { lengthMm: 200, widthMm: 100 }, boards: [ab("a", -40, 0, 20, 20), ab("b", 40, 0, 20, 20)] }, [{ name: "a" }, { name: "b" }], [link("L1", "a", "b", { cable: undefined })])
+	assert.equal(s.cables[0].label, "L1 · UART")
+})
+
+test("a cable end on a 90° board lies on the turned board's edge", () => {
+	// 40 x 20 board turned a quarter (counter-clockwise from above, as in src/mechanics): its unturned left edge
+	// (x=-20) now faces down the svg page's bottom (assembly -y); offset 5 from the bottom of that edge.
+	const boards = [{ name: "a", connectors: [{ ref: "J1", kind: "header", edge: "left", offsetMm: 5 }] }, { name: "b" }]
+	const s = topLayout({ body: "chassis", plate: { lengthMm: 200, widthMm: 100 }, boards: [ab("a", 0, 0, 40, 20, 90), ab("b", 0, -60, 20, 20)] }, boards, [link("L1", "a", "b", { a: { board: "a", edge: "left" } })])
+	const a = s.boards.find((x) => x.name === "a")!
+	assert.deepEqual([a.w, a.h], [20, 40])
+	const f = s.cables[0].from
+	near(f.y, a.y + a.h) // the bottom edge of the turned footprint
+	assert.ok(f.x >= a.x && f.x <= a.x + a.w)
+	near(f.x, 5) // local (-20,-5) turned 90 CCW is (5,-20); svg x = 5
+})

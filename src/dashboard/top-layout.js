@@ -5,7 +5,9 @@
 import { autoLayout } from "./world3d.js"
 
 const MARGIN = 10
-const FALLBACK = { widthMm: 30, heightMm: 30 }
+// The planned size of a board with no outline yet; the same as ESTIMATED_OUTLINE_MM in src/system/assembly.ts (this
+// module is browser JS and cannot import it).
+const FALLBACK = { widthMm: 40, heightMm: 30 }
 const r6 = (n) => Math.round(n * 1e6) / 1e6 + 0 // also turns -0 into 0
 // Outward normals in the board's own frame (y up).
 const NORMAL = { left: [-1, 0], right: [1, 0], top: [0, 1], bottom: [0, -1] }
@@ -69,20 +71,25 @@ function cablePath(from, to) {
 export function topLayout(assembly, boards, links) {
 	const placed = new Map()
 	const given = assembly?.boards ?? []
-	if (given.length) {
-		for (const a of given) placed.set(a.name, place(a.name, a.xMm, a.yMm, a.outline, a.rotDeg ?? 0, a.outlineSource === "built"))
-	} else {
-		const withOutline = (boards ?? []).map((b) => ({ name: b.name, outline: b.outline ?? FALLBACK }))
-		const auto = autoLayout(withOutline, links ?? [])
-		for (const b of withOutline) placed.set(b.name, place(b.name, auto[b.name].x, auto[b.name].y, b.outline, 0, (boards ?? []).find((x) => x.name === b.name)?.outline != null))
+	for (const a of given) placed.set(a.name, place(a.name, a.xMm, a.yMm, a.outline, a.rotDeg ?? 0, a.outlineSource === "built"))
+	// Boards the assembly doesn't place (all of them for a separate body) go through autoLayout; when some are already
+	// placed, the group stands to the right of the plate or of the placed boards.
+	const missing = (boards ?? []).filter((b) => !placed.has(b.name)).map((b) => ({ name: b.name, outline: b.outline ?? FALLBACK, built: b.outline != null }))
+	if (missing.length) {
+		const auto = autoLayout(missing, links ?? [])
+		let dx = 0
+		if (placed.size) {
+			const right = assembly?.plate ? assembly.plate.lengthMm / 2 : Math.max(...[...placed.values()].map((b) => b.cx + b.w / 2))
+			dx = right + 20 - Math.min(...missing.map((b) => auto[b.name].x - b.outline.widthMm / 2))
+		}
+		for (const b of missing) placed.set(b.name, place(b.name, auto[b.name].x + dx, auto[b.name].y, b.outline, 0, b.built))
 	}
 	const plate = assembly?.plate ? { x: -assembly.plate.lengthMm / 2, y: -assembly.plate.widthMm / 2, w: assembly.plate.lengthMm, h: assembly.plate.widthMm } : null
 	const out = [...placed.values()].map(({ name, x, y, w, h, rotDeg, built }) => ({ name, x, y, w, h, rotDeg, built }))
-	const box = plate ?? (() => {
-		if (!out.length) return { x: 0, y: 0, w: 0, h: 0 }
-		const x0 = Math.min(...out.map((b) => b.x)), y0 = Math.min(...out.map((b) => b.y))
-		return { x: x0, y: y0, w: Math.max(...out.map((b) => b.x + b.w)) - x0, h: Math.max(...out.map((b) => b.y + b.h)) - y0 }
-	})()
+	// The plate (when there is one) and every board, so a board beside the plate is inside the picture too.
+	const rects = [...(plate ? [plate] : []), ...out]
+	const x0 = rects.length ? Math.min(...rects.map((b) => b.x)) : 0, y0 = rects.length ? Math.min(...rects.map((b) => b.y)) : 0
+	const box = rects.length ? { x: x0, y: y0, w: Math.max(...rects.map((b) => b.x + b.w)) - x0, h: Math.max(...rects.map((b) => b.y + b.h)) - y0 } : { x: 0, y: 0, w: 0, h: 0 }
 	const bounds = { x: box.x - MARGIN, y: box.y - MARGIN, w: box.w + 2 * MARGIN, h: box.h + 2 * MARGIN }
 
 	const cables = []
@@ -102,7 +109,7 @@ export function topLayout(assembly, boards, links) {
 			id: l.id, kind: l.kind,
 			from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y },
 			path: cablePath(from, to),
-			label: `${l.id} · ${String(l.kind).toUpperCase()} · ${l.cable?.lengthMm} mm`,
+			label: [l.id, String(l.kind).toUpperCase(), ...(l.cable?.lengthMm > 0 ? [`${l.cable.lengthMm} mm`] : [])].join(" · "),
 			mid,
 		})
 	}
