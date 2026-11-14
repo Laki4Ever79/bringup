@@ -29,7 +29,7 @@ export const BUILDABLE: string = (() => {
 	const byRole = new Map<string, string[]>()
 	for (const p of loadCatalog(ROOT)) byRole.set(p.role, [...(byRole.get(p.role) ?? []), p.mpn])
 	const parts = [...byRole].map(([role, mpns]) => `- ${role}: ${mpns.join(", ")}`).join("\n")
-	return `Every board is a small board on one MCU, by default an ESP32-C3 (BLE, one free UART, one I2C bus); a board's brief may name another catalog MCU (an STM32 has no radio, and its own UART and I2C counts). Boards are powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). A board can also drive a small wheeled robot (one board on a printed chassis): differential drive with two DC gearmotors, a caster, a DRV8833 motor driver and a VL53L0X distance sensor, from catalog/mechanics.json (the mechanics checks and a simulated drive prove it). A part the catalog lacks can still be used when it is of a kind Bringup learns by itself from its datasheet (list it under "needs"; it is then not can't-build): ${[...learnableKinds()].map((k) => { const d = loadKinds(ROOT).get(k)?.description; return d ? `${k} (${d})` : k }).join("; ")}. A speaker is kind "speaker-driver", the loudspeaker itself, and always comes with an "amplifier" need that drives it. Nothing else can be built yet: no servos, cameras, screens or relays.`
+	return `Every board is a small board on one MCU, by default an ESP32-C3 (BLE, one free UART, one I2C bus); a board's brief may name another catalog MCU (an STM32 has no radio, and its own UART and I2C counts). Boards are powered from USB-C and/or one Li-ion cell, built only from these catalog parts:\n${parts}\nBoards connect by cable links of kind "uart" (at most one per board) or "i2c" (one board is the controller, the others targets with 7-bit addresses 0x08-0x77; exactly one board fits the pull-ups). A small wheeled robot is one board or several on one printed chassis: the board that drives the motors is the main board; split off another board only for a reason you name in why (a part that must sit far away, high current or noise next to sensitive parts, a board reused on its own): differential drive with two DC gearmotors, a caster, a DRV8833 motor driver and a VL53L0X distance sensor, from catalog/mechanics.json (the mechanics checks and a simulated drive prove it). A part the catalog lacks can still be used when it is of a kind Bringup learns by itself from its datasheet (list it under "needs"; it is then not can't-build): ${[...learnableKinds()].map((k) => { const d = loadKinds(ROOT).get(k)?.description; return d ? `${k} (${d})` : k }).join("; ")}. A speaker is kind "speaker-driver", the loudspeaker itself, and always comes with an "amplifier" need that drives it. Nothing else can be built yet: no servos, cameras, screens or relays.`
 })()
 
 // Things people ask for that no board can have yet, and why.
@@ -91,7 +91,22 @@ export function scriptedPlan(sentence: string): ProposedPlan {
 	// alone is not two boards (the rover example's sentence got a logger and a beacon, 11 Nov).
 	const robot = /\b(rover|robot|wheels?|wheeled|drives?)\b/i.test(sentence)
 	const both = /logger|climate|temperature/i.test(sentence) && /beacon|tag/i.test(sentence)
-	const several = !robot && (both || /\btwo\b.*\bboards?\b|\bboards\b|\bcable\b|\bseveral\b/i.test(sentence))
+	const names2 = /\btwo\b.*\bboards?\b|\bboards?\b.*\bcable\b|\bboards\b|\bcable\b|\bseveral\b|\bseparate\b.*\bboard\b/i.test(sentence)
+	const several = !robot && (both || names2)
+	// A robot that names a second board or a cable is the rover plus the logger on one chassis.
+	if (robot && names2) {
+		return {
+			sentence,
+			spec: { name: sentence.slice(0, 60), boards: [{ name: "main", brief: "briefs/main.md" }, { name: "climate", brief: "briefs/climate.md" }], links: [{ id: "L1", kind: "uart", a: { board: "main" }, b: { board: "climate" }, baud: 115200, cable: { lengthMm: 300 } }] },
+			briefs: { main: read("briefs/rover.md"), climate: read("briefs/logger.md") },
+			why: "Two boards on one chassis: the main board drives the motors, and the climate sensor sits away from the motors' heat and noise, on its own board joined by a UART cable. (Scripted architect: it picks the rover and the logger, the designs the free agents can build.)",
+			offBoard: [],
+			cantBuild,
+			layout: layoutFor(["main", "climate"]),
+			optional: [],
+			robot: true,
+		}
+	}
 	if (!several) {
 		const name = robot ? "rover" : /beacon/i.test(sentence) ? "beacon" : "logger"
 		const needs = scriptedNeeds(sentence, name)
@@ -105,6 +120,7 @@ export function scriptedPlan(sentence: string): ProposedPlan {
 			cantBuild,
 			layout: layoutFor([name]),
 			optional: [],
+			...(robot ? { robot: true } : {}),
 		}
 	}
 	const spec = withPlanBriefs(JSON.parse(read("briefs/systems/logger-beacon-uart.json")) as SystemSpec)
@@ -122,7 +138,7 @@ export function scriptedPlan(sentence: string): ProposedPlan {
 
 // The scripted architect understands one change in words: "remove <board>".
 function scriptedChange(plan: Plan, instruction: string): ProposedPlan {
-	const base: ProposedPlan = { sentence: plan.sentence, spec: plan.spec, briefs: plan.briefs, why: plan.why, offBoard: plan.offBoard, cantBuild: plan.cantBuild, layout: plan.layout, optional: plan.optional, ...(plan.needs?.length ? { needs: plan.needs } : {}) }
+	const base: ProposedPlan = { sentence: plan.sentence, spec: plan.spec, briefs: plan.briefs, why: plan.why, offBoard: plan.offBoard, cantBuild: plan.cantBuild, layout: plan.layout, optional: plan.optional, ...(plan.robot ? { robot: true } : {}), ...(plan.needs?.length ? { needs: plan.needs } : {}) }
 	const gone = /\b(?:remove|drop|delete)\s+(?:the\s+)?([\w-]+)/i.exec(instruction)?.[1]
 	if (!gone || !plan.spec.boards.some((b) => b.name === gone)) return { ...base, why: `${plan.why}\n\n(The scripted architect can only "remove <board>"; "${instruction}" needs real models.)` }
 	const { [gone]: _b, ...briefs } = plan.briefs
@@ -146,6 +162,7 @@ Answer with one JSON object, no prose around it:
 {"spec": {"name": string, "boards": [{"name": lowercase-id}], "links": [{"id": "L1", "kind": ${BUILT_KINDS.map((k) => `"${k}"`).join("|")}, "a": {"board": name}, "b": {"board": name}, "baud"?: 115200, "i2c"?: {"controller": name, "targets": {name: address}, "pullupsOn": name, "khz"?: 100}, "power"?: {"from": name}, "cable": {"lengthMm": number}, "messages"?: [{"name": string, "from": name, "fields": [{"name": string, "type": "u8"|"u16"|"i16"|"u32"|"f32"}]}]}]},
  "briefs": {name: markdown brief: "# Brief: <title>", "## What we want" (2-3 sentences), "## Must have" (bullets with numbers: battery life, size in mm, sensing accuracy)},
  "why": one or two plain sentences on why this split,
+ "robot": true when the device is a small wheeled robot (its boards then sit on one printed chassis), else false,
  "offBoard": [{"name": a bought part like a battery, "attachesTo": board name}],
  "cantBuild": [{"what": string, "reason": string}],
  "needs": [{"id": short-id, "role": string, "kind": one of the learnable kinds, "requirements": what it must do, with numbers, "board": board name}],
@@ -194,7 +211,7 @@ function validate(raw: unknown): { plan: Omit<ProposedPlan, "sentence" | "layout
 	if (!spec.boards.length) errors.push("the plan needs at least one board")
 	if (errors.length) return { plan: null, errors }
 	const needs = validNeeds((o as { needs?: unknown }).needs, spec)
-	return { plan: { spec, briefs, why: String(o.why ?? ""), offBoard: Array.isArray(o.offBoard) ? o.offBoard : [], cantBuild: Array.isArray(o.cantBuild) ? o.cantBuild : [], optional: Array.isArray(o.optional) ? o.optional : [], ...(needs.length ? { needs } : {}) }, errors: [] }
+	return { plan: { spec, briefs, why: String(o.why ?? ""), offBoard: Array.isArray(o.offBoard) ? o.offBoard : [], cantBuild: Array.isArray(o.cantBuild) ? o.cantBuild : [], optional: Array.isArray(o.optional) ? o.optional : [], ...((o as { robot?: unknown }).robot === true ? { robot: true } : {}), ...(needs.length ? { needs } : {}) }, errors: [] }
 }
 
 export async function proposePlan(
