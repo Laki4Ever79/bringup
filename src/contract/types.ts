@@ -1,13 +1,14 @@
 import type { LinkKind } from "./link-kinds.ts"
+import type { BoardAssembly } from "../mechanics/assembly.ts"
 import type { Mechanics, MotionTargets } from "../mechanics/types.ts"
 // "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field. "ml" owns
 // the on-device model, "test" the production test (test pads, pass limits), "enclosure" the case designer's field (case:
 // walls, height, added features); the enclosure builder makes the case from it.
 export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml" | "test" | "connectivity" | "integrator" | "mechanics"
 
-export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics"
+export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics" | "assembly"
 
-export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case", "connectivity", "links", "motion", "mechanics"]
+export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case", "connectivity", "links", "motion", "mechanics", "assembly"]
 
 // The fields every design writes; behavior is optional (the firmware has defaults).
 export const CORE_FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
@@ -29,6 +30,8 @@ export const OWNERS: Record<FieldName, AgentRole> = {
 	// A robot (docs/mechanics.md): the brief's motion targets, and the drive, battery and chassis that meet them.
 	motion: "architect",
 	mechanics: "mechanics",
+	// Where the system's boards sit and the plate they sit on: one description for all of them, so the integrator owns it.
+	assembly: "integrator",
 }
 
 // How the device spends its time: awake for activeMs every periodS seconds, drawing sleepUa in between.
@@ -268,6 +271,7 @@ export type ContractValues = {
 	links: BoardLink[]
 	motion: MotionTargets
 	mechanics: Mechanics
+	assembly?: BoardAssembly
 }
 
 export interface ContractSnapshot {

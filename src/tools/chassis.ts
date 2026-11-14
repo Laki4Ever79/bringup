@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { promisify } from "node:util"
 import type { ContractSnapshot } from "../contract/types.ts"
+import { assemblyOutlines, withAssembly } from "../mechanics/assembly.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
 import { est } from "../mechanics/estimates.ts"
@@ -47,14 +48,17 @@ const BOARD_HOLE_INSET_MM = 3.5
 // others: the outlines of the robot's other boards, by name; this board is "main".
 export function chassisSpec(s: ContractSnapshot, others: { name: string; outline: { widthMm: number; heightMm: number } }[] = []): ChassisSpec | null {
 	const v = s.values
-	const mech = v.mechanics, motion = v.motion
+	const mech = withAssembly(v), motion = v.motion
 	const cat = defaultCheckCatalog()
 	if (!mech || !motion || !cat) return null
 	const motor = byMpn(cat.mech.motors, mech.drive.motor), wheel = byMpn(cat.mech.wheels, mech.drive.wheel), caster = byMpn(cat.mech.casters, mech.drive.caster)
 	const pack = byMpn(cat.mech.batteries, mech.battery.pack), sensor = byMpn(cat.mech.sensors ?? [], mech.sensor.module)
 	if (!motor || !wheel || !caster || !pack || !sensor) return null
 	const outline = { widthMm: v.outline?.widthMm ?? 0, heightMm: v.outline?.heightMm ?? 0 }
-	const known = [{ name: "main", outline }, ...others.filter((o) => o.name !== "main")]
+	// The assembly's outlines win over the caller's (and over this board's own, for "main"): one description of the body.
+	const fromAssembly = assemblyOutlines(v)
+	const own = [{ name: "main", outline }, ...others.filter((o) => o.name !== "main")]
+	const known = [...own.filter((k) => !fromAssembly.some((a) => a.name === k.name)), ...fromAssembly]
 	const placed = mech.chassis.boards.filter((b) => known.some((k) => k.name === b.name))
 	const unplaced = mech.chassis.boards.filter((b) => !known.some((k) => k.name === b.name)).map((b) => b.name)
 	const ms = mounts(mech, known, cat.mech)
