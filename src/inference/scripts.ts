@@ -10,7 +10,7 @@ import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT, sizeReasonHolds } from ".
 import { state } from "../runtime.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { parseSwap } from "../tools/sourcing.ts"
-import { parseMoves } from "../dashboard/board-move.ts"
+import { parseMoves, type PartMove, type Release } from "../dashboard/board-move.ts"
 import { resolve } from "node:path"
 import { toolCall, type Script } from "./scripted-runner.ts"
 import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
@@ -415,7 +415,7 @@ export function mockScripts(): Record<string, Script> {
 	// scripted parts agent doesn't put the old part back.
 	const swapped = new Map<string, NonNullable<ContractValues["parts"]>[number]>()
 	// Parts the engineer placed on the board page (parts[].at): kept on every later wake, like a swap.
-	const pinned = new Map<string, { xMm: number; yMm: number }>()
+	const pinned = new Map<string, NonNullable<NonNullable<ContractValues["parts"]>[number]["at"]>>()
 	const withSwaps = <T extends { ref: string }>(list: T[]): T[] =>
 		list.map((p) => {
 			const q = (swapped.get(p.ref) as T | undefined) ?? p
@@ -594,14 +594,26 @@ export function mockScripts(): Record<string, Script> {
 				const same = JSON.stringify(state().contract.get("parts")) === JSON.stringify(value)
 				return stepsTaken(items) === 0 && !same ? propose("parts", value, value.some((p) => p.role === "sensor") ? "the SHT40 temperature/humidity sensor and its I2C pull-ups" : "parts from the catalog") : say("parts chosen")
 			}
-			// "placed on the board page (…): U2 (25, 27) → (30, 6) mm; J1 left@15 → left@10 mm": the parts take their spots
-			// (parts[].at); the connectors are the architect's.
-			const placed = instruction.startsWith("Change request from the engineer:") ? parseMoves(instruction.split("\n")[1] ?? "").filter((m): m is { ref: string; xMm: number; yMm: number } => "xMm" in m) : []
+			// "placed on the board page (…): U2 (25, 27) → (30, 6) mm turned 90°; R5 (40, 20) → the layout's choice; J1
+			// left@15 → left@10 mm": the parts take their spots and turns (parts[].at) or go back to the layout's choice; the
+			// connectors are the architect's.
+			const placed = instruction.startsWith("Change request from the engineer:") ? parseMoves(instruction.split("\n")[1] ?? "").filter((m): m is PartMove | Release => !("edge" in m)) : []
 			if (placed.length > 0) {
 				if (stepsTaken(items) > 0) return say("parts placed")
 				const parts = state().contract.get("parts") ?? []
-				for (const m of placed) if (parts.some((p) => p.ref === m.ref)) pinned.set(m.ref, { xMm: m.xMm, yMm: m.yMm })
-				const value = withSwaps(parts)
+				const released = new Set<string>()
+				for (const m of placed) {
+					if (!parts.some((p) => p.ref === m.ref)) continue
+					if ("release" in m) {
+						pinned.delete(m.ref)
+						released.add(m.ref)
+					} else pinned.set(m.ref, { xMm: m.xMm, yMm: m.yMm, ...(m.rotationDeg ? { rotationDeg: m.rotationDeg } : {}) })
+				}
+				const value = withSwaps(parts).map((p) => {
+					if (!released.has(p.ref)) return p
+					const { at: _, ...rest } = p
+					return rest as typeof p
+				})
 				return JSON.stringify(value) === JSON.stringify(parts) ? say("already there") : propose("parts", value, `engineer placed ${placed.map((m) => m.ref).join(", ")} on the board page`)
 			}
 			// "swap U2 SHT40-AD1B-R2 for the SHTC3-TR-2.5KS (C194656) from the catalog" (the board page's part card, a

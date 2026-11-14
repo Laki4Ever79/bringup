@@ -11,7 +11,7 @@ import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "
 import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
 import { boardView, revisionSnapshot } from "./board-view.ts"
-import { checkMoves, type Move } from "./board-move.ts"
+import { checkMoves, undoMoves, type Move } from "./board-move.ts"
 import { addSpend, appendUsage, readSpend } from "../inference/usage.ts"
 import { PlanConflict, PlanStore } from "./plans.ts"
 import { exampleFile, listExamples } from "./examples.ts"
@@ -698,8 +698,28 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					const rev = typeof body.rev === "number" && Number.isInteger(body.rev) && body.rev > 0 ? body.rev : null
 					const { s: snap } = await revisionSnapshot(dir, rev)
 					if (!snap) return json(res, 404, { error: "no contract yet" })
-					const moves = Array.isArray(body.moves) ? (body.moves as Move[]).filter((m) => m && typeof m.ref === "string" && (("edge" in m && ["left", "right", "top", "bottom"].includes(m.edge) && Number.isFinite(m.offsetMm)) || (Number.isFinite((m as { xMm: number }).xMm) && Number.isFinite((m as { yMm: number }).yMm)))) : []
-					if (moves.length === 0) return json(res, 400, { error: "send moves: [{ref, xMm, yMm} or {ref, edge, offsetMm}]" })
+					// A move: {ref, xMm, yMm, rotationDeg?}, {ref, edge, offsetMm} or {ref, release: true}. A turn that isn't a
+					// 90° step reaches checkMoves, which refuses it with the reason.
+					const wellFormed = (list: unknown): Move[] =>
+						Array.isArray(list)
+							? (list as Move[]).filter(
+									(m) =>
+										m &&
+										typeof m.ref === "string" &&
+										(("edge" in m && ["left", "right", "top", "bottom"].includes(m.edge) && Number.isFinite(m.offsetMm)) ||
+											("release" in m && m.release === true) ||
+											(Number.isFinite((m as { xMm: number }).xMm) && Number.isFinite((m as { yMm: number }).yMm) && ((m as { rotationDeg?: unknown }).rotationDeg === undefined || Number.isFinite((m as { rotationDeg?: unknown }).rotationDeg)))),
+								)
+							: []
+					// Undo of a sent batch: its opposite moves, from the revision it was sent against, checked on this one.
+					const undo = body.undo as { rev?: unknown; moves?: unknown } | undefined
+					let moves = wellFormed(body.moves)
+					if (undo && typeof undo === "object") {
+						const was = typeof undo.rev === "number" && Number.isInteger(undo.rev) && undo.rev > 0 ? (await revisionSnapshot(dir, undo.rev)).s : null
+						if (!was) return json(res, 404, { error: "no contract at the revision the batch was sent against" })
+						moves = undoMoves(was, wellFormed(undo.moves))
+					}
+					if (moves.length === 0) return json(res, 400, { error: "send moves: [{ref, xMm, yMm, rotationDeg?}, {ref, edge, offsetMm} or {ref, release: true}], or undo: {rev, moves}" })
 					const brief = await readFile(join(dir, "brief.md"), "utf8").catch(() => "")
 					return json(res, 200, checkMoves(snap, moves.slice(0, 50), brief))
 				}
