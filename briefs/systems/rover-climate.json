@@ -1,0 +1,60 @@
+{
+	"name": "a rover with a separate climate sensor board on a cable",
+	"boards": [
+		{
+			"name": "main",
+			"brief": "../rover.md"
+		},
+		{
+			"name": "climate",
+			"brief": "../logger.md"
+		}
+	],
+	"links": [
+		{
+			"id": "L1",
+			"kind": "uart",
+			"a": {
+				"board": "main"
+			},
+			"b": {
+				"board": "climate"
+			},
+			"baud": 115200,
+			"cable": {
+				"lengthMm": 300
+			}
+		}
+	],
+	"assembly": {
+		"body": "chassis",
+		"plate": {
+			"lengthMm": 156,
+			"widthMm": 110
+		},
+		"boards": [
+			{
+				"name": "main",
+				"xMm": 0,
+				"yMm": 0,
+				"rotDeg": 0,
+				"outline": {
+					"widthMm": 40,
+					"heightMm": 30
+				},
+				"outlineSource": "estimate"
+			},
+			{
+				"name": "climate",
+				"xMm": 48,
+				"yMm": 0,
+				"rotDeg": 0,
+				"outline": {
+					"widthMm": 40,
+					"heightMm": 30
+				},
+				"outlineSource": "estimate"
+			}
+		]
+	}
+}
