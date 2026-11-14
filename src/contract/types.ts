@@ -124,8 +124,9 @@ export interface Part {
 	// Where the engineer put it on the board page (engineer, 13-14 Nov 2026: "move a part", code checks per move): its
 	// centre, in mm from the board's bottom-left corner, top view. The layout places it exactly there before anything
 	// else and never moves it; one that doesn't fit there is a violation (part-pinned-blocked), not a quiet re-place.
-	// Absent: the layout chooses (the default).
-	at?: { xMm: number; yMm: number }
+	// Absent: the layout chooses (the default). rotationDeg: turned counter-clockwise, top view, in 90° steps (absent: 0);
+	// its pin capacitors turn with it.
+	at?: { xMm: number; yMm: number; rotationDeg?: 0 | 90 | 180 | 270 }
 }
 
 export interface PinAssignment {

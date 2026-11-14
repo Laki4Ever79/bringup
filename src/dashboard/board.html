@@ -365,7 +365,12 @@
 		const was = S.view?.movable?.[ref]
 		if (!was) return null
 		if (!m) return was
-		return was.kind === "part" ? { ...was, xMm: m.xMm, yMm: m.yMm } : { ...was, edge: m.edge, offsetMm: m.offsetMm }
+		// Handed back to the layout: where the checked draft has the layout put it, at no turn.
+		if (m.release) {
+			const to = /\((-?[\d.]+), (-?[\d.]+)\) mm/.exec(S.draft.check?.moves.find((x) => x.ref === ref)?.to ?? "")
+			return to ? { ...was, xMm: Number(to[1]), yMm: Number(to[2]), rotationDeg: 0 } : was
+		}
+		return was.kind === "part" ? { ...was, xMm: m.xMm, yMm: m.yMm, rotationDeg: m.rotationDeg ?? 0 } : { ...was, edge: m.edge, offsetMm: m.offsetMm }
 	}
 	async function propose(move) {
 		if (!editable()) return
@@ -396,7 +401,7 @@
 		if (res.ok) {
 			S.draft = { ...S.draft, base: S.view.revision, moves, check: res, refused: null, note: null, sent: false }
 			if (S.live) setLive(false) // the page stays on this revision while you edit; Send turns Live back on
-		} else S.draft.refused = { ref: move.ref, problems: res.problems }
+		} else S.draft.refused = { ref: move.ref, problems: res.problems, move }
 		redraw([move.ref])
 		if (queued) propose(queued)
 	}
@@ -414,7 +419,7 @@
 	function dropped(ref, dx, dy) {
 		const now = where(ref)
 		if (!now) return redraw()
-		if (now.kind === "part") return propose({ ref, xMm: r1(now.xMm + dx), yMm: r1(now.yMm + dy) })
+		if (now.kind === "part") return propose(partMove(ref, now.xMm + dx, now.yMm + dy, now.rotationDeg))
 		// A connector goes to the edge nearest where it was dropped, at the spot along it.
 		const W = S.view.widthMm, H = S.view.heightMm
 		const e = pcb.extentOf(ref)
@@ -424,16 +429,27 @@
 		propose({ ref, edge, offsetMm: r1(edge === "left" || edge === "right" ? cy + H / 2 : cx + W / 2) })
 	}
 
+	// What the card shows and the next nudge or turn starts from: a refused move's values stay there, so a spot that only
+	// works turned (or a turn that only fits elsewhere) is reached in two steps, each checked.
+	function shownAt(ref) {
+		const m = where(ref)
+		const f = S.draft.refused
+		if (!m || m.kind !== "part" || f?.ref !== ref || !f.move || !("xMm" in f.move)) return m
+		return { ...m, xMm: f.move.xMm, yMm: f.move.yMm, rotationDeg: f.move.rotationDeg ?? 0 }
+	}
+	// A part's move keeps its turn; a turn of 0 isn't written (the request's old form).
+	const partMove = (ref, x, y, rot) => ({ ref, xMm: r1(x), yMm: r1(y), ...(rot ? { rotationDeg: rot } : {}) })
 	function moveSection(r) {
-		const m = where(r.ref)
+		const m = shownAt(r.ref)
 		const fixed = S.view.fixed?.[r.ref]
 		if (!m) return r.side === "bottom" || r.generated ? `<h4>Move</h4><div class="swapnote">${r.side === "bottom" ? "Underside pads are placed after every part, in the room left: they follow the parts." : "Bringup places it beside the part it serves, by its rule above: it follows that part."}</div>` : fixed ? `<h4>Move</h4><div class="swapnote">${esc(fixed)}</div>` : ""
 		if (!editable()) return `<h4>Move</h4><div class="swapnote">This is an older revision: go to the newest one to move parts.</div>`
-		const refused = S.draft.refused?.ref === r.ref ? `<div class="refused"><b>Refused: not added to your moves</b>${S.draft.refused.problems.map((p) => esc(p.message)).join("<br>")}</div>` : ""
+		const refused = S.draft.refused?.ref === r.ref ? `<div class="refused"><b>Refused: not added to your moves</b>${S.draft.refused.problems.map((p) => esc(p.message)).join("<br>")}${S.draft.refused.move && "xMm" in S.draft.refused.move ? `<br><i>The values above are the refused ones: nudge or turn from there, or press Esc to go back.</i>` : ""}</div>` : ""
 		if (m.kind === "part")
 			return `<h4>Move</h4><div class="mover">
 				<div class="row">centre at x <input type="number" step="0.5" data-mx value="${m.xMm}"> y <input type="number" step="0.5" data-my value="${m.yMm}"> mm</div>
 				<div class="row"><span class="nudge"><span></span><button data-n="0,1" title="up 0.5 mm (shift: 2.5)">↑</button><span></span><button data-n="-1,0" title="left">←</button><button data-n="0,-1" title="down">↓</button><button data-n="1,0" title="right">→</button></span><span class="checking">${S.draft.busy ? "checking…" : "or drag it on the board"}</span></div>
+				<div class="row">turned ${m.rotationDeg}° <button class="btn" data-turn="90" title="Turn 90° counter-clockwise: the capacitors on its pins turn with it">⟲ 90°</button><button class="btn" data-turn="270" title="Turn 90° clockwise">⟳ 90°</button></div>
 				<div class="swapnote">From the board's bottom-left corner, top view. Each move is checked at once; nothing goes to the run until you send your moves.</div>
 				${refused}</div>`
 		const len = m.edges[m.edge]
@@ -445,11 +461,11 @@
 	}
 	$("card").addEventListener("change", (e) => {
 		const ref = S.selected
-		const m = ref && where(ref)
+		const m = ref && shownAt(ref)
 		if (!m) return
 		if (e.target.matches("[data-mx],[data-my]")) {
 			const x = Number($("card").querySelector("[data-mx]").value), y = Number($("card").querySelector("[data-my]").value)
-			if (Number.isFinite(x) && Number.isFinite(y)) propose({ ref, xMm: r1(x), yMm: r1(y) })
+			if (Number.isFinite(x) && Number.isFinite(y)) propose(partMove(ref, x, y, m.rotationDeg))
 		}
 		if (e.target.matches("[data-off],[data-offn]")) {
 			const v = Number(e.target.value)
@@ -458,14 +474,16 @@
 	})
 	$("card").addEventListener("click", (e) => {
 		const ref = S.selected
-		const m = ref && where(ref)
+		const m = ref && shownAt(ref)
 		if (!m) return
 		const n = e.target.closest("button[data-n]")
 		if (n && m.kind === "part") {
 			const [dx, dy] = n.dataset.n.split(",").map(Number)
 			const k = e.shiftKey ? 2.5 : 0.5
-			propose({ ref, xMm: r1(m.xMm + dx * k), yMm: r1(m.yMm + dy * k) })
+			propose(partMove(ref, m.xMm + dx * k, m.yMm + dy * k, m.rotationDeg))
 		}
+		const t = e.target.closest("button[data-turn]")
+		if (t && m.kind === "part") propose(partMove(ref, m.xMm, m.yMm, (m.rotationDeg + Number(t.dataset.turn)) % 360))
 		const ed = e.target.closest("button[data-edge]")
 		if (ed && m.kind === "connector" && ed.dataset.edge !== m.edge) {
 			const len = m.edges[ed.dataset.edge]
@@ -481,8 +499,9 @@
 			return
 		}
 		box.hidden = false
+		const undoBtn = S.lastSent && editable() && LIVE.has(S.view?.status) ? `<button class="btn" data-undo-sent title="Puts the opposite moves in a new draft, checked like any move; a part the layout had placed goes back to the layout's choice">Undo the moves you sent</button>` : ""
 		if (!d.moves.length) {
-			box.innerHTML = `<div class="swapnote">${esc(d.note)}</div><div class="acts"><button class="btn" data-dismiss>OK</button></div>`
+			box.innerHTML = `<div class="swapnote">${esc(d.note)}</div><div class="acts"><button class="btn" data-dismiss>OK</button>${undoBtn}</div>`
 			return
 		}
 		const c = d.check
@@ -498,8 +517,31 @@
 			${live ? "" : `<div class="swapnote">This run has stopped, so it can't take the moves. Start a run and send this request:<code>${esc(c.request)}</code></div>`}
 			<div class="acts"><button class="btn primary" data-send ${live && !d.busy ? "" : "disabled"}>Send ${d.moves.length} move${d.moves.length === 1 ? "" : "s"}</button><button class="btn" data-undo ${d.busy ? "disabled" : ""} title="Take back the last move in the list">Take back last</button><button class="btn" data-discard ${d.busy ? "disabled" : ""}>Discard</button></div>`
 	}
+	// Undo of the last batch sent: the server works out the opposite moves from the revision it was sent against, and
+	// checks them on this one; they become a draft like any other, sent the same way.
+	async function undoSent() {
+		const last = S.lastSent
+		if (!last || !editable()) return
+		let res = null
+		try {
+			const r = await fetch(`/api/runs/${encodeURIComponent(run)}/board/check`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rev: S.view.revision, undo: { rev: last.base, moves: last.moves } }) })
+			res = await r.json()
+			if (!r.ok) throw new Error(res.error ?? r.status)
+		} catch (err) {
+			endDraft(`Couldn't work out the undo (${err.message ?? err}).`)
+			return redraw()
+		}
+		if (!res.ok) {
+			endDraft(`The undo can't go in as it is: ${res.problems.map((p) => p.message).join(" ")}`)
+			return redraw()
+		}
+		S.draft = { base: S.view.revision, moves: res.applied, check: res, refused: null, busy: false, sent: false, note: null }
+		if (S.live) setLive(false)
+		redraw(res.applied.map((m) => m.ref))
+	}
 	$("draft").addEventListener("click", async (e) => {
 		const d = S.draft
+		if (e.target.closest("[data-undo-sent]")) return undoSent()
 		if (e.target.closest("[data-dismiss]")) { endDraft(null); return redraw() }
 		if (e.target.closest("[data-discard]")) { endDraft(null); return redraw() }
 		if (e.target.closest("[data-undo]")) {
@@ -520,6 +562,7 @@
 			return
 		}
 		S.draft.sent = true
+		S.lastSent = { base: d.base, moves: d.moves }
 		S.draft.note = `The owners write them and the run's checks run; the board updates here when the new revision lands.`
 		// Follow the run again, so the answer shows as soon as it lands (load ends the draft on the new revision).
 		setLive(true)
@@ -573,7 +616,11 @@
 		})
 	document.addEventListener("keydown", (e) => {
 		if (e.target.closest("input")) return
-		if (e.key === "Escape") select(null, false)
+		// Esc first drops a refused move (the card goes back to where the part is), then the selection.
+		if (e.key === "Escape" && S.draft.refused) {
+			S.draft.refused = null
+			paintCard()
+		} else if (e.key === "Escape") select(null, false)
 		if (e.key === "/") { e.preventDefault(); $("q").focus() }
 		if (e.key === "ArrowLeft") step(-1)
 		if (e.key === "ArrowRight") step(1)

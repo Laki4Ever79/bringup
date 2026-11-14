@@ -72,7 +72,7 @@ test("a link connector off the edge the system runs its cable from is a violatio
 
 test("what can be moved: chosen parts and connectors, each with where it is; the module and generated parts say why not", () => {
 	const m = movables(logger())
-	assert.deepEqual(m.movable.U2, { ref: "U2", kind: "part", xMm: 25, yMm: 27 })
+	assert.deepEqual(m.movable.U2, { ref: "U2", kind: "part", xMm: 25, yMm: 27, rotationDeg: 0 })
 	assert.deepEqual(m.movable.J1, { ref: "J1", kind: "connector", edge: "left", offsetMm: 15, edges: { left: 30, right: 30, top: 50, bottom: 50 } })
 	assert.match(m.fixed.U1, /antenna/)
 	assert.equal(m.movable.U1, undefined)
