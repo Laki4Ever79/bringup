@@ -46,3 +46,22 @@ test("cable facts for a UART link of 300 mm with two messages", () => {
 	assert.deepEqual(Object.keys(s.cables), ["L1"])
 	assert.deepEqual(Object.keys(s.boards), ["main"])
 })
+
+test("debug line: dash before anything is built, the placed pads on a built board, no test pads when off", () => {
+	const c = fixtureContract()
+	delete (c.values as { outline?: unknown }).outline
+	c.values.requirements = { ...c.values.requirements!, testPads: true }
+	assert.equal(boardFacts(c, "main", undefined, []).debug, "—")
+	const built = fixtureContract()
+	built.values.requirements = { ...built.values.requirements!, testPads: true }
+	assert.match(boardFacts(built, "main", undefined, [], "k").debug, /^test pads: (GND|none placed)/)
+	assert.match(boardFacts(built, "main", undefined, [], "k").debug, /USB-C/)
+	built.values.requirements = { ...built.values.requirements!, testPads: false }
+	assert.match(boardFacts(built, "main", undefined, []).debug, /^no test pads/)
+})
+
+test("power is never a dash beside a feed; an unbuilt board fed by a link says powered by L1", () => {
+	assert.equal(boardFacts(null, "climate", undefined, [link({ power: { from: "main" } })]).power, "powered by L1")
+	assert.equal(boardFacts(null, "climate", undefined, []).power, "—")
+	assert.equal(cableFacts(link({ cable: undefined as never })).length, "—")
+})

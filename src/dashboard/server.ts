@@ -498,7 +498,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			id,
 			spec,
 			assembly,
-			facts: systemFacts(contractOf, assembly, spec?.links ?? []),
+			facts: systemFacts(contractOf, assembly, spec?.links ?? [], Object.fromEntries(boards.flatMap((b) => (b.runId ? [[b.name, b.runId]] : [])))),
 			...(await systemStatus(id, dir, state)),
 			findings: state?.findings ?? (await readJsonFile(join(dir, "system-findings.json"))) ?? [],
 			linkTests: state?.linkTests ?? [],
@@ -540,7 +540,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		return {
 			id,
 			single: true,
-			facts: { boards: { main: boardFacts(contract, "main", assembly, []) }, cables: {} },
+			facts: { boards: { main: boardFacts(contract, "main", assembly, [], id) }, cables: {} },
 			spec: { name: summary.title, boards: [{ name: "main" }], links: [] },
 			assembly,
 			status: summary.status,

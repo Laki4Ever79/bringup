@@ -354,7 +354,7 @@ async function startStage(d) {
 // first switch and kept, hidden, and fed again from the latest data when it is shown.
 // ── The facts card (hover a board or a cable, click a cable): one floating card near the pointer, the same facts in
 // both views (src/system/facts.ts, from the design's payload). Esc or a click on empty space closes it.
-const card = { hover: null, pinned: null, x: 0, y: 0, pickedAt: -1e9 }
+const card = { hover: null, pinned: null, x: 0, y: 0, swallow: false }
 const factsEl = document.getElementById("facts")
 function renderCard() {
 	const t = openName ? null : (card.pinned ?? card.hover)
@@ -381,8 +381,9 @@ function renderCard() {
 	factsEl.style.top = `${Math.max(4, y)}px`
 }
 const cardHover = (name, kind = "board") => { card.hover = name ? { name, kind } : null; renderCard() }
-// A pick is followed by a click event on the same spot: that click must not count as one on empty space.
-const cardPick = (name, kind) => { card.pickedAt = performance.now(); card.pinned = { name, kind }; card.hover = null; renderCard(); stage.top?.select(name, kind) }
+// A pick is followed by a click event on the same spot: that click must not count as one on empty space. The flag is
+// consumed by that click, or reset by the next pointerdown (a pick that got no click leaves nothing stale).
+const cardPick = (name, kind) => { card.swallow = true; card.pinned = { name, kind }; card.hover = null; renderCard(); stage.top?.select(name, kind) }
 function cardClose() {
 	const was = !factsEl.classList.contains("hidden") || card.pinned
 	card.hover = card.pinned = null
@@ -391,8 +392,10 @@ function cardClose() {
 	return Boolean(was)
 }
 document.getElementById("stage-wrap").addEventListener("pointermove", (e) => { card.x = e.clientX; card.y = e.clientY; if (card.hover && !card.pinned) renderCard() })
+document.getElementById("stage-wrap").addEventListener("pointerdown", () => { card.swallow = false }, true)
 document.getElementById("stage-wrap").addEventListener("click", (e) => {
-	if (performance.now() - card.pickedAt < 300 || e.target.closest?.("#view-switch, #timeline, #crumb")) return
+	if (card.swallow) { card.swallow = false; return }
+	if (e.target.closest?.("#view-switch, #timeline, #crumb")) return
 	if (card.pinned) cardClose()
 })
 const activeView = () => (stage.view === "top" ? stage.top : stage.world)
@@ -415,7 +418,7 @@ async function ensureView(view) {
 			const { mountTop } = await import("/top2d.js")
 			stage.top = mountTop(box, {
 				onHover: (name, kind) => cardHover(name, kind),
-				onPick: (name, kind) => { if (kind === "board") { card.pickedAt = performance.now(); card.pinned = null; card.hover = null; renderCard(); window.openBoard?.(name) } else cardPick(name, "cable") },
+				onPick: (name, kind) => { if (kind === "board") { card.swallow = true; card.pinned = null; card.hover = null; renderCard(); window.openBoard?.(name) } else cardPick(name, "cable") },
 			})
 			await stage.top.ready
 		} else {

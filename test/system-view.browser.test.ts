@@ -431,10 +431,23 @@ test("hovering a board in either view shows its facts card; clicking a cable in 
 		await page.mouse.down()
 		await page.mouse.up()
 		await page.waitForFunction(() => document.getElementById("facts")!.offsetWidth > 0)
-		await page.waitForTimeout(400) // past the click that follows the pick
 		const stageBox = (await page.locator("#stage-top").boundingBox())!
 		await page.mouse.click(stageBox.x + stageBox.width - 6, stageBox.y + stageBox.height - 6)
 		assert.equal((await card()).shown, false, "a click on empty space closes it")
+		// A board click in Top clears an open cable card.
+		await page.click('#view-switch [data-view="3d"]')
+		await page.click('#view-switch [data-view="top"]')
+		await page.waitForSelector("#stage-top [data-cable]", { state: "attached" })
+		const cb2 = (await page.locator("#stage-top [data-cable]").first().boundingBox())!
+		await page.mouse.click(cb2.x + cb2.width / 2, cb2.y + cb2.height / 2)
+		await page.waitForFunction(() => /Kind/.test(document.getElementById("facts")!.textContent ?? "") && document.getElementById("facts")!.offsetWidth > 0)
+		await clickBoard(page, name)
+		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 15_000 })
+		assert.equal((await card()).shown, false, "a board click clears the cable card")
+		await page.keyboard.press("Escape")
+		await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"))
+		// (the switch is ignored until the close flight ends)
+		await page.waitForFunction(() => { if (document.getElementById("stage")!.offsetWidth > 0) return true; (window as any).setView("3d"); return false }, null, { timeout: 15_000 })
 		// 3D: sweep the canvas until a board's card shows.
 		await page.click('#view-switch [data-view="3d"]')
 		await page.waitForSelector("#stage canvas", { state: "visible" })
