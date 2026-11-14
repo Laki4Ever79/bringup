@@ -61,3 +61,12 @@ test("the DRV8833's VCP capacitor ends on the driver's VM pin, not on the VM net
 	const vcp = supportParts(s).find((sp) => "ref" in sp.a && sp.a.pin === "VCP")!
 	assert.deepEqual(vcp.b, { ref: "U5", pin: "VM" })
 })
+
+// A capacitor on a part's pin ends its ground side on that part's own GND pin, as TI draws the DRV8833's VINT capacitor:
+// to the GND net, tscircuit reached ground 25 mm away on the 50×29 mm rover (no ground pour), past the 5 mm bound that
+// counts the ground return too, and every wider board failed the same way (bringup-lead's edit test, 15 Nov 2026).
+test("the driver's VINT capacitor ends on the driver's own GND pin", () => {
+	const s: ContractSnapshot = { revision: 1, versions: {} as never, values: structuredClone(ROVER_BOARD) as ContractSnapshot["values"] }
+	const vint = supportParts(s).find((sp) => /VINT/.test(sp.job))!
+	assert.deepEqual([vint.a, vint.b], [{ ref: "U5", pin: "VINT" }, { ref: "U5", pin: "GND" }])
+})
