@@ -2,7 +2,7 @@
 // what moved, and Build starts the existing system run (or a single board run for a one-board plan).
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
 import { PublicGate } from "../src/dashboard/public.ts"
@@ -71,15 +71,19 @@ test("Build starts the system run on the plan's own spec, or a board run for a o
 		const b = await send(`${url}/api/plans/${two.id}/build`, "POST", { mock: true, hardware: false, review: false })
 		assert.equal(b.status, 201)
 		const { systemId } = (await b.json()) as Any
-		assert.match(systemId, /^system-/)
+		assert.equal(systemId, two.id, "Build keeps the plan id")
 		assert.equal(calls[0].briefPath, "system")
 		const specPath = calls[0].extraArgs![0]
 		assert.equal(specPath, join(root, "plans", two.id, "system.json"))
+		assert.equal(calls[0].outDir, join(root, two.id))
+		assert.equal(JSON.parse(readFileSync(join(root, "plans", two.id, "plan.json"), "utf8")).builtAs, two.id)
 		assert.ok(existsSync(join(root, "plans", two.id, "briefs", "beacon.md")))
 		assert.deepEqual(JSON.parse(readFileSync(specPath, "utf8")).boards.map((x: Any) => x.brief), ["briefs/logger.md", "briefs/beacon.md"])
 		const one = (await (await send(`${url}/api/plans`, "POST", { sentence: "a temperature logger", mock: true })).json()) as Any
 		const r1 = (await (await send(`${url}/api/plans/${one.id}/build`, "POST", { mock: true, hardware: false, review: false })).json()) as Any
-		assert.ok(r1.runId && !r1.systemId)
+		assert.equal(r1.runId, one.id, "a one-board plan builds as a run with the plan id")
+		assert.ok(!r1.systemId)
+		assert.equal(calls[1].outDir, join(root, one.id))
 		assert.notEqual(calls[1].briefPath, "system")
 		assert.match(readFileSync(calls[1].briefPath, "utf8"), /climate logger/i)
 	})
@@ -213,5 +217,89 @@ test("a mock plan with a speaker learns the speaker and its amplifier, then can 
 		const b = await send(`${url}/api/plans/${id}/build`, "POST", { mock: true, hardware: false, review: false })
 		assert.equal(b.status, 201)
 		assert.equal(calls.length, 1)
+	})
+})
+
+const mkPlan = async (url: string, sentence: string) => ((await (await send(`${url}/api/plans`, "POST", { sentence, mock: true })).json()) as Any).id as string
+
+test("an unbuilt plan is listed under designs as \"plan, not built\"", async () => {
+	await withHub(async ({ url, root }) => {
+		const id = await mkPlan(url, "a logger and a beacon over a cable")
+		const list = (await (await fetch(`${url}/api/designs`)).json()) as Any[]
+		const d = list.find((x) => x.id === id)
+		assert.ok(d)
+		assert.equal(d.kind, "plan")
+		assert.equal(d.status, "plan, not built")
+		assert.equal(d.title, "a logger and a beacon over a cable")
+		assert.deepEqual(await (await fetch(`${url}/api/runs`)).json(), [], "still not a run")
+		await send(`${url}/api/plans/${id}/build`, "POST", { mock: true, hardware: false, review: false })
+		writeFileSync(join(root, id, "system.json"), JSON.stringify({ name: "x", boards: [], links: [] })) // what the system run writes first
+		const after = (await (await fetch(`${url}/api/designs`)).json()) as Any[]
+		assert.equal(after.filter((x) => x.id === id).length, 1, "once built it is listed once")
+		assert.notEqual(after.find((x) => x.id === id).kind, "plan")
+	})
+})
+
+test("GET /api/systems/<plan> returns the plan state with an assembly", async () => {
+	await withHub(async ({ url }) => {
+		const two = await mkPlan(url, "a logger and a beacon over a cable")
+		const v = (await (await fetch(`${url}/api/systems/${two}`)).json()) as Any
+		assert.equal(v.id, two)
+		assert.equal(v.status, "plan")
+		assert.equal(v.plan.plan.id, two)
+		assert.deepEqual(v.spec.boards.map((b: Any) => b.name).sort(), ["beacon", "logger"])
+		assert.deepEqual(v.assembly.boards.map((b: Any) => b.name).sort(), ["beacon", "logger"])
+		assert.deepEqual(v.boards.map((b: Any) => [b.name, b.runId, b.status]).sort(), [["beacon", null, "plan"], ["logger", null, "plan"]])
+		assert.deepEqual(Object.keys(v.facts.boards).sort(), ["beacon", "logger"])
+		const one = await mkPlan(url, "a temperature logger")
+		const o = (await (await fetch(`${url}/api/systems/${one}`)).json()) as Any
+		assert.equal(o.status, "plan")
+		assert.equal(o.assembly.boards.length, 1)
+		assert.equal((await fetch(`${url}/api/systems/plan-nope`)).status, 404)
+	})
+})
+
+test("/plan/<id> redirects to the design page", async () => {
+	await withHub(async ({ url }) => {
+		const id = await mkPlan(url, "a logger and a beacon over a cable")
+		const r = await fetch(`${url}/plan/${id}`, { redirect: "manual" })
+		assert.equal(r.status, 302)
+		assert.equal(r.headers.get("location"), `/system?id=${id}`)
+	})
+})
+
+test("building a plan keeps its id", async () => {
+	await withHub(async ({ url, root }) => {
+		const id = await mkPlan(url, "a logger and a beacon over a cable")
+		const { systemId } = (await (await send(`${url}/api/plans/${id}/build`, "POST", { mock: true, hardware: false, review: false })).json()) as Any
+		assert.equal(systemId, id)
+		assert.ok(existsSync(join(root, "plans", id, "plan.json")), "the plan files stay put")
+		assert.ok(existsSync(join(root, id)))
+		assert.equal(((await (await fetch(`${url}/api/plans/${id}`)).json()) as Any).plan.id, id)
+		// not yet started writing system.json: still the plan state, not a one-board run
+		assert.equal(((await (await fetch(`${url}/api/systems/${id}`)).json()) as Any).status, "plan")
+		const one = await mkPlan(url, "a temperature logger")
+		const { runId } = (await (await send(`${url}/api/plans/${one}/build`, "POST", { mock: true, hardware: false, review: false })).json()) as Any
+		assert.equal(runId, one)
+		assert.equal(((await (await fetch(`${url}/api/systems/${one}`)).json()) as Any).single, true)
+		const body = await fetch(`${url}/api/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ brief: "x", mock: true, id: "plan-hijack" }) })
+		assert.notEqual(((await body.json()) as Any).runId, "plan-hijack", "the public route never takes an id")
+	})
+})
+
+test("an old plan address still opens the plan", async () => {
+	await withHub(async ({ url, root }) => {
+		const id = await mkPlan(url, "a logger and a beacon over a cable")
+		// Built before ids were kept: its system.json exists in the plan folder, nothing names the system it became.
+		writeFileSync(join(root, "plans", id, "system.json"), "{}")
+		const r = await fetch(`${url}/plan/${id}`, { redirect: "manual" })
+		assert.equal(r.status, 200)
+		assert.match(await r.text(), /<html/i)
+		// A plan that records where it was built leads there.
+		const p = JSON.parse(readFileSync(join(root, "plans", id, "plan.json"), "utf8"))
+		writeFileSync(join(root, "plans", id, "plan.json"), JSON.stringify({ ...p, builtAs: "system-20250101-abc" }))
+		const r2 = await fetch(`${url}/plan/${id}`, { redirect: "manual" })
+		assert.equal(r2.status, 302)
+		assert.equal(r2.headers.get("location"), "/system?id=system-20250101-abc")
 	})
 })

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto"
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { appendUsage, readSpend, type Spend } from "../inference/usage.ts"
 import { proposePlan } from "../system/architect.ts"
@@ -136,6 +136,9 @@ export class PlanStore {
 		const dir = this.dir(plan.id)
 		mkdirSync(join(dir, "briefs"), { recursive: true })
 		const saved = { ...plan, spendUsd: readSpend(dir).usd }
+		// builtAs is the build's record, not part of an edit: a save from an older copy never drops it.
+		const kept = this.get(plan.id)?.builtAs
+		if (kept && !saved.builtAs) saved.builtAs = kept
 		// A drag moves only the drawing positions: record just those, not the whole plan on every move. Any other change
 		// records the whole plan, so every version can still be rebuilt from the history.
 		const before = this.get(plan.id)
@@ -203,6 +206,26 @@ export class PlanStore {
 	hasModelKey(): boolean {
 		const env = this.deps.env ?? process.env
 		return Boolean(env.OPENAI_API_KEY || env.ANTHROPIC_API_KEY)
+	}
+
+	// Every plan id in the store.
+	ids(): string[] {
+		try {
+			return readdirSync(join(this.outRoot, "plans")).filter((n) => PLAN_ID.test(n) && existsSync(join(this.outRoot, "plans", n, "plan.json")))
+		} catch {
+			return []
+		}
+	}
+
+	// Build records the design it made, in plan.json (no new version: the plan itself is unchanged).
+	markBuilt(id: string, builtAs: string): void {
+		const plan = this.get(id)
+		if (plan) writeFileSync(join(this.dir(id), "plan.json"), JSON.stringify({ ...plan, builtAs }, null, "\t"))
+	}
+
+	// A plan folder with a system.json was built under an older, separate system id that nothing recorded.
+	builtBefore(id: string): boolean {
+		return existsSync(join(this.dir(id), "system.json"))
 	}
 
 	// What Build starts: a system run on the plan's own system.json, or for one board an ordinary run on its brief.

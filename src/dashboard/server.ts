@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
-import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, rmSync, watch, writeFileSync, type FSWatcher } from "node:fs"
+import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, rmSync, statSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
@@ -24,7 +24,8 @@ import { mcuPinName } from "../mcu/pins.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { boardFacts, systemFacts } from "../system/facts.ts"
-import { derivedAssembly } from "../system/assembly.ts"
+import { defaultAssembly, derivedAssembly } from "../system/assembly.ts"
+import { buildSpec } from "../system/plan.ts"
 import type { SystemSpec } from "../system/spec.ts"
 import type { Mechanics } from "../mechanics/types.ts"
 
@@ -398,7 +399,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		if (error instanceof PlanConflict || typeof e.status === "number") return json(res, e.status ?? 500, { error: e.message })
 		throw error
 	}
-	const startRun = (body: Record<string, unknown>): string => {
+	// `id`: only the plan build path passes one (the plan's id); the public POST /api/runs never takes an id from the body.
+	const startRun = (body: Record<string, unknown>, id?: string): string => {
 		if (!opts.launch) throw new HttpError(404, "this dashboard can't start runs")
 		const brief = text(body.brief, "brief", 20_000)
 		const mock = bool(body.mock, "mock")
@@ -407,7 +409,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		const engineerApproval = bool(body.engineerApproval, "engineerApproval")
 		const bench = body.bench ?? false
 		if (bench !== false && !BENCH_SOURCES.includes(bench as never)) throw new HttpError(400, `bench must be false or one of ${BENCH_SOURCES.join(", ")}`)
-		const runId = newRunId()
+		const runId = id ?? newRunId()
 		const outDir = join(outRoot, runId)
 		mkdirSync(outDir, { recursive: true })
 		const briefPath = join(outDir, "brief.md")
@@ -558,8 +560,32 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	// Every design, newest first: systems and one-board designs in one list, each with its board count.
 	const listDesigns = async () => {
 		const systems = (await listSystems()).map((s) => ({ id: s.id, name: s.name, kind: "system" as const, boards: s.boards, status: s.status, settled: s.settled, startedAt: s.startedAt }))
-		const singles = (await listRuns()).filter((r) => !BOARD_RUN_ID.test(r.runId)).map((r) => ({ id: r.runId, name: r.title, kind: "single" as const, boards: 1, status: r.status, settled: r.status === "settled", startedAt: r.startedAt }))
-		return [...systems, ...singles].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, MAX_RUNS_LISTED)
+		const singles = (await listRuns()).filter((r) => !BOARD_RUN_ID.test(r.runId) && !planDesign(r.runId)).map((r) => ({ id: r.runId, name: r.title, kind: "single" as const, boards: 1, status: r.status, settled: r.status === "settled", startedAt: r.startedAt }))
+		const unbuilt = plans.ids().filter((id) => planDesign(id)).map((id) => {
+			const p = plans.get(id)!
+			return { id, title: p.sentence, name: p.sentence, kind: "plan" as const, boards: p.spec.boards.length, status: "plan, not built", settled: false, startedAt: statSync(join(outRoot, "plans", id, "plan.json")).mtime.toISOString() }
+		})
+		return [...systems, ...singles, ...unbuilt].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, MAX_RUNS_LISTED)
+	}
+	// A plan with no design under its id yet is a design too: the plan itself, read as a system of unbuilt boards.
+	const planDesign = (id: string) => {
+		const p = plans.get(id)
+		if (!p) return null
+		const built = existsSync(join(outRoot, id, "system.json")) || (p.spec.boards.length === 1 && existsSync(join(outRoot, id)))
+		return built ? null : p
+	}
+	const planDetail = (id: string) => {
+		const p = plans.get(id)!
+		const assembly = p.spec.boards.length > 1 ? buildSpec(p).assembly ?? defaultAssembly(p.spec, "separate") : defaultAssembly(p.spec, "separate")
+		return {
+			id,
+			plan: plans.view(id),
+			spec: p.spec,
+			assembly,
+			status: "plan",
+			boards: p.spec.boards.map((b) => ({ name: b.name, runId: null, status: "plan" })),
+			facts: systemFacts(Object.fromEntries(p.spec.boards.map((b) => [b.name, null])), assembly, p.spec.links ?? []),
+		}
 	}
 	const listSystemSpecs = async () => {
 		const names = (await readdir(SYSTEM_SPECS).catch(() => [] as string[])).filter((n) => n.endsWith(".json")).sort()
@@ -575,9 +601,9 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	}
 	// A system from a spec file: one in briefs/systems, or a plan's own system.json (plans.ts). `usagePath`: the plan's
 	// architect calls, copied in so the system's spend includes them.
-	const startSystemAt = (specPath: string, { mock, hardware, review }: { mock: boolean; hardware: boolean; review: boolean }, usagePath?: string): string => {
+	const startSystemAt = (specPath: string, { mock, hardware, review }: { mock: boolean; hardware: boolean; review: boolean }, usagePath?: string, keepId?: string): string => {
 		if (!opts.launch) throw new HttpError(404, "this dashboard can't start runs")
-		const id = `system-${newRunId()}`
+		const id = keepId ?? `system-${newRunId()}`
 		const outDir = join(outRoot, id)
 		mkdirSync(outDir, { recursive: true })
 		if (usagePath && existsSync(usagePath)) copyFileSync(usagePath, join(outDir, "usage.jsonl"))
@@ -692,8 +718,17 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 						const flags = { mock: bool(body.mock, "mock"), hardware: bool(body.hardware, "hardware"), review: bool(body.review, "review") }
 						if (!flags.mock && !plans.hasModelKey()) return json(res, 400, { error: new NoModelKey().message, code: "NO_KEY" })
 						const t = plans.buildTarget(planPost[1])
-						if (t.kind === "system") return json(res, 201, { systemId: startSystemAt(t.specPath, flags, t.usagePath) })
-						return json(res, 201, { runId: startRun({ brief: t.brief, ...flags, engineerApproval: false }) })
+						// Build keeps the plan's id: the design lives in out/<planId>/, the plan files stay in out/plans/<planId>/.
+						const id = planPost[1]
+						if (existsSync(join(outRoot, id))) return json(res, 409, { error: "this plan was already built" })
+						if (t.kind === "system") {
+							const systemId = startSystemAt(t.specPath, flags, t.usagePath, id)
+							plans.markBuilt(id, systemId)
+							return json(res, 201, { systemId })
+						}
+						const runId = startRun({ brief: t.brief, ...flags, engineerApproval: false }, id)
+						plans.markBuilt(id, runId)
+						return json(res, 201, { runId })
 					} catch (error) {
 						return planError(res, error)
 					}
@@ -817,7 +852,16 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				const v = plans.view(planPut[1])
 				return v ? json(res, 200, v) : json(res, 404, { error: "unknown plan" })
 			}
-			if (/^\/plan\/plan-[\w-]+$/.test(path)) {
+			const planPage = /^\/plan\/(plan-[\w-]+)$/.exec(path)
+			if (planPage) {
+				// The plan is a design under its own id; a plan built before ids were kept leads to the system it names, or
+				// (nothing recorded) keeps its own page.
+				const p = plans.get(planPage[1])
+				const target = p?.builtAs ?? (p && !(plans.builtBefore(p.id) && !existsSync(join(outRoot, p.id))) ? p.id : null)
+				if (target) {
+					res.writeHead(302, { location: `/system?id=${encodeURIComponent(target)}`, "cache-control": "no-store" })
+					return res.end()
+				}
 				res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" })
 				return res.end(await readFile(PLAN_PAGE))
 			}
@@ -938,6 +982,9 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			if (sys) {
 				const dir = await systemDir(sys[1])
 				if (dir) return json(res, 200, await systemDetail(sys[1], dir))
+				// Before a plan's build has written system.json it is still the plan, not a one-board run.
+				const pl = plans.get(sys[1])
+				if (pl && (planDesign(sys[1]) || (pl.spec.boards.length > 1 && !(await systemDir(sys[1]))))) return json(res, 200, planDetail(sys[1]))
 				const one = await singleDir(sys[1])
 				return one ? json(res, 200, await singleDetail(sys[1], one)) : json(res, 404, { error: "unknown design" })
 			}
