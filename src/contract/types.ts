@@ -79,6 +79,9 @@ export interface Outline {
 	thicknessMm: number
 	// Why the board is more than 15% over the smallest it can be (contract/space.ts); absent when it isn't.
 	sizeReason?: SizeReason
+	// Mounting holes another board fixes (a HAT on a bought module's pattern): mm from the lower-left corner, top view.
+	// Absent: the generic M2 holes in the corners (codegen/circuit.ts mountingHoles).
+	holes?: { x: number; y: number; dia: number | null }[]
 }
 
 // A recorded reason for space over the minimum (docs/space-rules.md): one of the listed kinds, and what it is here.
