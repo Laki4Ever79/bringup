@@ -81,6 +81,7 @@
 	#view-switch button[aria-pressed="true"] { background: var(--ink); color: #fff; }
 	#view-switch #edit-btn { border-left: 1px solid var(--ink); }
 	#view-switch #edit-btn[aria-pressed="true"] { background: var(--signal); }
+	#view-switch #edit-btn:disabled { opacity: .45; cursor: not-allowed; }
 	/* Edit mode (Top only): the bar under the stage (N changes · Apply · Undo · Redo, why Apply is off, the findings), the
 	   cable picker (plan-canvas.js's look) and the facts card turned into the selected item's editor. */
 	#edit-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 2px 0; font-size: 13px; }
@@ -336,8 +337,14 @@ async function showSystem() {
 	renderNav()
 	startStage(d)
 	pollQueue(d, fetchedAt)
-	// Edit (the Top view's editor) is for a built robot: its boards on one shared plate.
-	document.getElementById("edit-btn").classList.toggle("hidden", !(d.assembly?.body === "chassis" && !d.single))
+	// Edit (the Top view's editor) is for a robot built as a system: its boards on one shared plate. Elsewhere the button
+	// stays, disabled, and says why.
+	editing.offReason = d.single ? "Top editing is for robots built as a system; edit this board on its page"
+		: d.assembly?.body === "chassis" ? ""
+		: d.assembly?.body === "enclosure" ? "Top editing is for boards on a shared chassis; this design's boards share a case, edit each on its page"
+		: "this design has no shared body to edit"
+	document.getElementById("edit-btn").classList.remove("hidden")
+	editLabel()
 	document.getElementById("title").textContent = d.spec?.name ?? id
 	document.title = `Bringup · ${d.spec?.name ?? id}`
 	statusEl.className = `status ${statusClass(d.status, d.settled)}`
@@ -790,7 +797,7 @@ function drawTop() {
 // ── Edit mode (Top only): system-edit.js holds the edits, their checks on every move, undo and redo; top2d.js the
 // gestures. Nothing calls a model here: Apply sends the diff, and the run's agents act on it.
 // key: the design (assembly and links) the editor was built from; stale: it changed while edits were unsent.
-const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, queuedRound: 0, queuedAt: 0, sending: false }
+const editing = { offReason: "", on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, queuedRound: 0, queuedAt: 0, sending: false }
 const designKey = (m) => JSON.stringify({ a: m?.assembly ?? null, l: m?.spec?.links ?? [] })
 const editBtn = document.getElementById("edit-btn"), editBar = document.getElementById("edit-bar"), picker = document.getElementById("edit-picker")
 function makeEditor() {
@@ -830,6 +837,8 @@ function rebase() {
 const changeCount = () => (editing.ed?.diff() ? Math.max(1, describeEdits(editing.base, editing.ed.state()).length) : 0)
 // Outside edit mode, unsent edits are kept and the button says so.
 function editLabel() {
+	editBtn.disabled = Boolean(editing.offReason)
+	if (editing.offReason) { editBtn.textContent = "Edit"; editBtn.title = editing.offReason; return }
 	const n = editing.on ? 0 : changeCount()
 	editBtn.textContent = n ? `Edit (${n} unsent)` : "Edit"
 	editBtn.title = n ? "Your edits are kept, not sent: Edit to see them, then Apply or Undo" : "Edit the robot in the Top view: move, turn, the plate, cables"
@@ -847,7 +856,7 @@ async function loadEditDeps() {
 	}
 }
 async function enterEdit() {
-	if (editing.on || openName || !stage.meta?.assembly || stage.meta.single) return
+	if (editing.on || openName || !stage.meta?.assembly || stage.meta.single || editing.offReason) return
 	if (stage.view !== "top") await window.setView("top")
 	if (stage.view !== "top" || !stage.top) return
 	await loadEditDeps()
