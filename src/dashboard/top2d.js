@@ -96,8 +96,17 @@ export function mountTop(host, opts = {}) {
 			const info = boards.find((x) => x.name === b.name) ?? {}
 			const turned = b.rotDeg === 90 || b.rotDeg === 270
 			const W = turned ? b.h : b.w, H = turned ? b.w : b.h
+			const kase = caseOuter(info.caseSpec)
+			if (kase) {
+				// Home takes the case in too: its footprint in SVG, turned with the board.
+				const cw = turned ? kase.h : kase.w, chh = turned ? kase.w : kase.h
+				mech.push({ x: b.x + b.w / 2 - cw / 2, y: b.y + b.h / 2 - chh / 2, w: cw, h: chh })
+			}
 			const g = el("g", { "data-board": b.name, "data-built": String(b.built), transform: `translate(${b.x + b.w / 2} ${b.y + b.h / 2}) rotate(${-b.rotDeg}) translate(${-W / 2} ${-H / 2})` })
 			g.style.cursor = "pointer"
+			// The board's own case: its outer footprint, dashed like the other mechanical outlines, centred on the board
+			// and inside the board's group so it turns with it. It takes no clicks: the board under it does.
+			if (kase) g.append(el("rect", { "data-case": "", "data-mech": "case", x: (W - kase.w) / 2, y: (H - kase.h) / 2, width: kase.w, height: kase.h, rx: 1.5, fill: "none", stroke: INK, "stroke-width": 0.35, "stroke-dasharray": "1.5 1", "stroke-opacity": 0.7, "pointer-events": "none" }))
 			if (!b.built) {
 				g.append(el("rect", { "data-outline": "", width: W, height: H, fill: "none", stroke: INK, "stroke-width": 0.6, "stroke-dasharray": "2 1.5", "pointer-events": "all" }))
 				// Upright text inside the (possibly turned) group.
@@ -137,6 +146,14 @@ export function mountTop(host, opts = {}) {
 		} else if (flight) flight.to = targetOf(focusName)
 		else if (focusName != null) { const t = targetOf(focusName); if (t) setView(t) }
 		else if (!touched) setView(home)
+	}
+
+	// A case's outer footprint from its enclosure spec.json (py/enclosure.py): the case board's outline plus clearance and
+	// a wall on each side, as src/contract/case.ts caseOuter. null when the spec doesn't give them.
+	function caseOuter(spec) {
+		const o = spec?.outline, wall = Number(spec?.wallMm), clear = Number(spec?.clearanceMm)
+		if (!(o?.widthMm > 0 && o?.heightMm > 0 && wall > 0 && clear >= 0)) return null
+		return { w: o.widthMm + 2 * (clear + wall), h: o.heightMm + 2 * (clear + wall) }
 	}
 
 	// Mechanical outlines from the chassis spec.json (x forward = SVG x, y left = SVG -y).

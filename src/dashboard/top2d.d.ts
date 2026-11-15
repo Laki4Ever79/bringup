@@ -1,5 +1,6 @@
 import type { TopAssembly, TopLinkIn } from "./top-layout.js"
-export interface TopWorldBoard { name: string; built?: boolean; outline: { widthMm: number; heightMm: number } | null; circuit?: unknown | null; connectors?: { ref: string; kind: string; edge: string; offsetMm: number }[]; status?: string }
+// caseSpec: the board's enclosure spec.json (outline, wallMm, clearanceMm); its outer footprint is drawn around the board.
+export interface TopWorldBoard { name: string; built?: boolean; caseSpec?: { outline?: { widthMm: number; heightMm: number }; wallMm?: number; clearanceMm?: number } | null; outline: { widthMm: number; heightMm: number } | null; circuit?: unknown | null; connectors?: { ref: string; kind: string; edge: string; offsetMm: number }[]; status?: string }
 export interface TopChassisSpec {
 	motors?: { xMm: number; yMm: number; bodyMm: number[] }[]
 	caster?: { xMm: number; wheelMm: number }

@@ -311,6 +311,26 @@ test("a single-board design has the switch and opens its board from Top", { skip
 	}, SINGLE)
 })
 
+// Final review, Important 5: a one-board design in its own case (the logger) shows the case's outer footprint around
+// the board in Top, from the run's enclosure spec (the board's outline plus clearance and walls on each side).
+const LOGGER = existsSync(join(ROOT, "out", "logger-single", "trace.jsonl")) ? "logger-single" : undefined
+test("a one-board logger's Top view draws its case outline around the board, and the board still opens", { skip: !LOGGER ? "no recorded out/logger-single" : !exe ? "no Playwright Chromium" : false, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await topUp(page)
+		await page.waitForSelector("#stage-top [data-case]", { state: "attached", timeout: 30_000 })
+		const name = await page.evaluate(() => (document.querySelector("#stage-top [data-board]") as HTMLElement).dataset.board!)
+		const board = await boardBox(page, name)
+		const kase = (await page.locator("#stage-top [data-case]").boundingBox())!
+		assert.ok(kase.width > board.width && kase.height > board.height, `case ${kase.width}×${kase.height} px around board ${board.width}×${board.height} px`)
+		assert.ok(kase.x < board.x && kase.y < board.y && kase.x + kase.width > board.x + board.width && kase.y + kase.height > board.y + board.height, "the case surrounds the board")
+		// 50 × 30 mm board, 2 mm clearance and 2 mm walls: a 58 × 38 mm case.
+		assert.ok(Math.abs(kase.width / board.width - 58 / 50) < 0.02, `width ratio ${kase.width / board.width}`)
+		assert.ok(Math.abs(kase.height / board.height - 38 / 30) < 0.02, `height ratio ${kase.height / board.height}`)
+		await clickBoard(page, name)
+		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 15_000 })
+	}, LOGGER, "&view=top")
+})
+
 test("the timeline drives the Top view: scrubbing to the start shows boards as unbuilt boxes", { skip: skipRobot, timeout: 120_000 }, async () => {
 	await withPage(async (page) => {
 		await page.click('#view-switch [data-view="top"]')

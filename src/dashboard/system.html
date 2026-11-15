@@ -628,8 +628,10 @@ async function redraw() {
 	// The same data feeds the Top view once it exists: circuits and the chassis spec come from the files fetched above.
 	if (stage.view === "top") {
 		const chassis = boards.find((b) => b.chassisSpec)?.chassisSpec ?? null
+		// A board in its own case shows the case's outline; a robot's boards stand on the chassis instead.
+		const robot = stage.meta.assembly?.body === "chassis"
 		stage.top.setWorld({
-			boards: boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, connectors: m?.connectors, status: m?.status } }),
+			boards: boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, caseSpec: robot ? null : b.caseSpec ?? null, connectors: m?.connectors, status: m?.status } }),
 			cables: stage.meta.spec?.links ?? [],
 			assembly: stage.meta.assembly,
 			chassis,
