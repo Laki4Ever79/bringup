@@ -1,0 +1,337 @@
+{
+	"id": "rock-5b",
+	"kind": "compute",
+	"title": "Radxa ROCK 5B (bought), on a generated carrier",
+	"parts": [
+		{
+			"mpn": "ROCK-5B-8GB",
+			"role": "compute",
+			"qty": 1,
+			"alternatives": [
+				"ROCK-5B-4GB",
+				"ROCK-5B-16GB"
+			]
+		}
+	],
+	"circuit": "bought; carrier per src/system",
+	"interfaces": [
+		{
+			"kind": "uart",
+			"signals": [
+				"UART4_TX_M2 (pin 23)",
+				"UART4_RX_M2 (pin 19)"
+			]
+		},
+		{
+			"kind": "i2c",
+			"signals": [
+				"I2C7_SDA_M3 (pin 3)",
+				"I2C7_SCL_M3 (pin 5)"
+			]
+		},
+		{
+			"kind": "pwm",
+			"signals": [
+				"PWM14_M0 (pin 32)",
+				"PWM8_M0 (pin 33)"
+			]
+		},
+		{
+			"kind": "usb",
+			"signals": [
+				"2 × USB 3 (host/OTG)",
+				"2 × USB 2"
+			]
+		},
+		{
+			"kind": "power",
+			"signals": [
+				"USB-C PD 5-20 V",
+				"5V (pins 2, 4)"
+			]
+		}
+	],
+	"compute": {
+		"frame": "millimetres, origin at the board's lower-left corner seen from the top, 40-pin header along the top edge, x right, y up (as the V1.41 dimension drawing)",
+		"outline": {
+			"value": {
+				"widthMm": 100.2,
+				"heightMm": 74.25
+			},
+			"source": {
+				"url": "https://dl.radxa.com/rock5/5b/docs/hw/radxa_rock5b_v141_dimension_20220728_pdf.zip",
+				"where": "radxa_rock5b_v141_dimension_top_20220728.pdf: 100.20mm overall width, 74.25mm overall height"
+			},
+			"note": "the introduction rounds it to 100 x 75 mm; the drawing is V1.41 (pre-production), the latest Radxa publishes as a dimension drawing"
+		},
+		"holes": {
+			"value": null,
+			"source": null,
+			"note": "the edge offsets aren't readable: on the published PDF the dimension labels sit apart from their arrows (8.95, 5.08, 2.60 and 8.68 don't match the geometry they're next to), and no hole diameter is given. Take positions from Radxa's v1.42 STEP model (download page) before drilling",
+			"spacing": {
+				"value": {
+					"xMm": [
+						58.05,
+						35.1
+					],
+					"yMm": 49.05,
+					"bottomRowYMm": 21.85
+				},
+				"source": {
+					"url": "https://dl.radxa.com/rock5/5b/docs/hw/radxa_rock5b_v141_dimension_20220728_pdf.zip",
+					"where": "top drawing: 58.05mm and 35.10mm between the top-row holes, 49.05mm between the rows, 21.85mm from the bottom edge to the lower row"
+				},
+				"note": "these four agree with the drawn geometry; the left and right edge offsets together are 100.20 - 58.05 - 35.10 = 7.05"
+			}
+		},
+		"tallestMm": {
+			"value": null,
+			"unit": "mm",
+			"source": null,
+			"note": "not on the dimension drawing (top and bottom views only): measure a board or take the v1.42 STEP model"
+		},
+		"header": {
+			"at": {
+				"value": {
+					"x": null,
+					"y": null,
+					"pitchMm": 2.54,
+					"rows": 2,
+					"cols": 20,
+					"along": "top edge",
+					"pin1": "lower-left of the header"
+				},
+				"source": {
+					"url": "https://dl.radxa.com/rock5/5b/docs/hw/radxa_rock5b_v141_dimension_20220728_pdf.zip",
+					"where": "top drawing: 40-pin block along the top edge, pins numbered 1 (lower left) and 2 (upper left)"
+				},
+				"note": "the header's position isn't reliably dimensioned (see holes)"
+			},
+			"pins": {
+				"value": {
+					"1": "3V3",
+					"2": "5V",
+					"3": "GPIO4_B3 (I2C7_SDA_M3, PWM15_IR_M1)",
+					"4": "5V",
+					"5": "GPIO4_B2 (I2C7_SCL_M3, PWM14_M1)",
+					"6": "GND",
+					"7": "GPIO3_C3",
+					"8": "GPIO0_B5 UART2_TX_M0 (debug console)",
+					"9": "GND",
+					"10": "GPIO0_B6 UART2_RX_M0 (debug console)",
+					"11": "GPIO3_C1 (UART7_RX_M1)",
+					"12": "GPIO3_B5 (PWM12_M0, UART3_TX_M1)",
+					"13": "GPIO3_B7 (I2C3_SCL_M1)",
+					"14": "GND",
+					"15": "GPIO3_C0 (UART7_TX_M1, I2C3_SDA_M1)",
+					"16": "GPIO3_A4",
+					"17": "3V3",
+					"18": "GPIO4_C4 (PWM5_M2)",
+					"19": "GPIO1_B2 (UART4_RX_M2)",
+					"20": "GND",
+					"21": "GPIO1_B1",
+					"22": "SARADC_IN4 (1.8 V max)",
+					"23": "GPIO1_B3 (UART4_TX_M2)",
+					"24": "GPIO1_B4 (UART7_RX_M2)",
+					"25": "GND",
+					"26": "GPIO1_B5 (UART7_TX_M2)",
+					"27": "GPIO4_C6 (I2C0_SDA_M1, PWM7_IR_M3)",
+					"28": "GPIO4_C5 (I2C0_SCL_M1, PWM6_M2)",
+					"29": "GPIO1_D7",
+					"30": "GND",
+					"31": "GPIO1_B7 (UART1_RX_M1, PWM13_M2)",
+					"32": "GPIO3_C2 (PWM14_M0)",
+					"33": "GPIO3_A7 (PWM8_M0)",
+					"34": "GND",
+					"35": "GPIO3_B6 (UART3_RX_M1, PWM13_M0)",
+					"36": "GPIO3_B1 (PWM2_M1, UART2_TX_M2)",
+					"37": "GPIO0_A0",
+					"38": "GPIO3_B2 (PWM3_IR_M1, UART2_RX_M2)",
+					"39": "GND",
+					"40": "GPIO3_B3"
+				},
+				"source": {
+					"url": "https://docs.radxa.com/en/rock5/rock5b/hardware-design/hardware-interface",
+					"where": "GPIO, GPIO Pinout, tab ROCK 5B"
+				}
+			}
+		},
+		"ports": {
+			"value": [
+				{
+					"kind": "3.5 mm headphone jack",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "usb-c PD power (also DP alt mode, USB 3.0 OTG)",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "hdmi out 1",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "hdmi out 2",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "usb-a ×2 (USB 2.0)",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "usb-a ×2 (USB 3.0)",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "2.5GbE (PoE via HAT)",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "micro-hdmi input",
+					"side": "top",
+					"atMm": null
+				},
+				{
+					"kind": "microsd",
+					"side": "underside, left",
+					"atMm": null
+				},
+				{
+					"kind": "m.2 m-key (NVMe)",
+					"side": "underside",
+					"atMm": null
+				},
+				{
+					"kind": "m.2 e-key",
+					"side": "top face",
+					"atMm": null
+				}
+			],
+			"source": {
+				"url": "https://docs.radxa.com/en/rock5/rock5b/hardware-design/hardware-interface",
+				"where": "Physical photographs, tab ROCK 5B (rock-5b-overview-v1-45): labelled top and bottom views"
+			},
+			"also": {
+				"url": "https://docs.radxa.com/en/rock5/rock5b/getting-started/introduction",
+				"where": "specification table: two HDMI out, micro HDMI input, 2x USB 2, 2x USB 3, 2.5G Ethernet, M.2 E and M keys"
+			},
+			"note": "positions along the edge are left unset: the drawing's labels are unreliable (see holes)"
+		},
+		"inputV": {
+			"value": {
+				"nom": null,
+				"min": 5.0,
+				"max": 20.0
+			},
+			"unit": "V",
+			"source": {
+				"url": "https://docs.radxa.com/en/rock5/rock5b/getting-started/power-supply",
+				"where": "'The USB-C power connector should output a fixed voltage between 5V and 20V'; 'USB Type-C PD Version 2.0 with 9V/2A, 12V/2A, 15V/2A and 20V/2A'"
+			},
+			"note": "no single nominal: a PD adapter negotiates 9-20 V, or a fixed 5-20 V adapter is used (the page's example is 12V/4A)"
+		},
+		"currentA": {
+			"typical": {
+				"value": null,
+				"unit": "A",
+				"source": null,
+				"note": "no typical current is published"
+			},
+			"peak": {
+				"value": null,
+				"unit": "A",
+				"source": null,
+				"note": "the vendor gives power, not current: an adapter of more than 30 W for the ROCK 5B (about 2.5 A at 12 V, 1.5 A at 20 V)"
+			},
+			"supplyW": {
+				"value": 30,
+				"unit": "W",
+				"source": {
+					"url": "https://docs.radxa.com/en/rock5/rock5b/getting-started/power-supply",
+					"where": "'a power rating greater than 30W for the ROCK 5B or 40W for the ROCK 5B+'; recommended: the official Radxa PD30W adapter"
+				},
+				"note": "more than this with two SSDs or a 4G module (same page, caution)"
+			}
+		},
+		"feeds": {
+			"value": [
+				{
+					"via": "usb-c",
+					"what": "PD 2.0 9/12/15/20 V at 2 A, or a fixed 5-20 V",
+					"source": {
+						"url": "https://docs.radxa.com/en/rock5/rock5b/getting-started/power-supply",
+						"where": "Power supply options"
+					}
+				},
+				{
+					"via": "header 5V pins (2, 4)",
+					"what": "5 V input",
+					"source": {
+						"url": "https://docs.radxa.com/en/rock5/rock5b/getting-started/power-supply",
+						"where": "'5V power supply for GPIO PINs 2 and 4'"
+					}
+				}
+			]
+		},
+		"gpioLevel": {
+			"value": 3.3,
+			"unit": "V",
+			"source": {
+				"url": "https://docs.radxa.com/en/rock5/rock5b/hardware-design/hardware-interface",
+				"where": "GPIO Voltage table: All GPIO 3.3V, MAX 3.63V; SARADC_IN4 1.8V, MAX 1.98V"
+			},
+			"note": "pin 22 (SARADC_IN4) is a 1.8 V input: never wire a 3.3 V signal to it"
+		},
+		"os": {
+			"value": "Radxa OS (Debian 12 Bookworm, kernel 6.1)",
+			"source": {
+				"url": "https://docs.radxa.com/en/rock5/rock5b/download",
+				"where": "Summary of resource downloads, Official Image: 'ROCK 5B Debian (kernel 6.1): rock-5b_bookworm_kde_b5'"
+			},
+			"note": "Radxa's official images are Debian, not Ubuntu; Ubuntu builds for this board come from third parties (Armbian, listed under Third-party Image)"
+		},
+		"ros2": {
+			"value": {
+				"distro": "jazzy",
+				"tier": 3,
+				"platform": "Debian Bookworm arm64"
+			},
+			"source": {
+				"url": "https://github.com/ros-infrastructure/rep/blob/master/rep-2000.rst",
+				"where": "Jazzy Jalisco: arm64 / Debian Bookworm (12): Tier 3"
+			},
+			"note": "Tier 3: community-reported, not tested by the ROS team; build from source"
+		},
+		"bridgeDevice": {
+			"value": "/dev/ttyACM0",
+			"via": "the MCU board's native USB (CDC-ACM), one cable per board through the robot's USB-C hub",
+			"source": {
+				"url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/usb-serial-jtag-console.html",
+				"where": "Uploading the Application, note: the USB Serial/JTAG Controller's serial port appears 'as /dev/ttyACM* on Linux'"
+			},
+			"note": "the first board to enumerate gets ttyACM0; with several MCU boards, pin each by its USB serial number (a udev rule or /dev/serial/by-id) rather than by order",
+			"alternatives": [
+				{
+					"value": "/dev/ttyS4",
+					"source": {
+						"url": "https://docs.radxa.com/en/rock5/rock5b/getting-started/interface-usage/pin-40-test",
+						"where": "UART section: overlay 'UART4-M2', device ttyS4, TX pin 23, RX pin 19"
+					},
+					"note": "enable the UART4-M2 overlay first. The test page is written for the ROCK 5B+; the ROCK 5B pinout table puts UART4_TX_M2 and UART4_RX_M2 on the same pins 23 and 19. Don't use pins 8 and 10: they're UART2, the system debug console at 1500000n8 (radxa-os/serial: 'pins 8 (TX) and 10 (RX) ... to troubleshoot problems in the early startup phase')",
+					"via": "UART4_M2 on header pins 23 (TX) and 19 (RX)",
+					"also": {
+						"url": "https://docs.radxa.com/en/rock5/rock5b/radxa-os/serial",
+						"where": "UART Serial Console: pins 8 (TX) and 10 (RX) are the system console; 'the default UART configuration is 1500000n8 without flow control'"
+					}
+				}
+			]
+		}
+	}
+}
