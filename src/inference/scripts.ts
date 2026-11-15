@@ -140,17 +140,19 @@ const ROVER_PINS = [
 	{ signal: "MOT_BIN1", gpio: 6, partRef: "U5", partPin: "BIN1" },
 	{ signal: "MOT_BIN2", gpio: 7, partRef: "U5", partPin: "BIN2" },
 ]
-export const ROVER_MOTION: ContractValues["motion"] = { speedMps: 0.3, runtimeMin: 30, edgeMm: 3, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [160, 150], maxMassG: 500 }
+export const ROVER_MOTION: ContractValues["motion"] = { speedMps: 0.3, runtimeMin: 30, edgeMm: 3, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [150, 120], maxMassG: 500 }
 export const ROVER_MECHANICS: ContractValues["mechanics"] = {
 	// 80 mm wheels and a 38 mm caster. The brief's edge is 3 mm (floor seams, tile and rug edges), not 1 cm: the
 	// simulated drive showed the trailing caster stalls at a 1 cm step. It carries about 42 % of the weight (its own
 	// 71 g, the plate and the board sit behind the axle) and could carry at most about 21 % to be pushed up 1 cm; no
 	// layout within 160 mm and no catalog caster gets there (the mech-climb check). Door thresholds are out of scope.
-	drive: { kind: "differential", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "TENTE 1430POI038P60-46x38 swivel caster 38 mm", trackMm: 130, wheelbaseMm: 80, axleXMm: 30 },
-	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: 25, yMm: 0 } },
-	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 72, yMm: 0, zMm: 65 }, connector: "JT1" },
-	// The plate's underside at the caster's 50.5 mm (the motors' brackets drop 10.5 mm to the 40 mm axle).
-	chassis: { plateMm: [150, 110], thicknessMm: 3, material: "PLA", clearanceMm: 50.5, boards: [{ name: "main", at: { xMm: 10, yMm: 0 }, rotDeg: 0 }] },
+	drive: { kind: "differential", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "TENTE 1430POI038P60-46x38 swivel caster 38 mm", trackMm: 110, wheelbaseMm: 100, axleXMm: 45 },
+	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: 45, yMm: 0 } },
+	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 73.6, yMm: 0, zMm: 66 }, connector: "JT1" },
+	// The plate's underside at the caster's 50.5 mm (the motors' brackets drop 10.5 mm to the 40 mm axle). Within the
+	// brief's 150 × 120 mm with the wheels: a 110 mm track and 10 mm wheels leave a 96 mm plate (the layout solver's
+	// answer for these parts; the old 150 × 110 plate on a 130 mm track was 140 mm wide and was laid out again each run).
+	chassis: { plateMm: [150, 96], thicknessMm: 3, material: "PLA", clearanceMm: 50.5, boards: [{ name: "main", at: { xMm: 0, yMm: 0 }, rotDeg: 0 }] },
 }
 export const ROVER_BOARD = {
 	requirements: { summary: "indoor rover that avoids walls and carries a temperature and humidity sensor", peripherals: ["i2c-sensor", "usb-c", "status-led", "motors", "distance-sensor"], batteryLifeDays: null, enclosure: "none" as const },

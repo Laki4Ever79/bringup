@@ -149,7 +149,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 			onBuildFailed(["board", "enclosure"], "outline, connectors, rails, pins"),
 			ownerFixesReview("architect"),
 			{
-				specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some((v) => v.affects.includes("architect"))),
+				specification: when(({ event }) => isEvent(event, "consistency.checked") && !event.payload.draining && event.payload.violations.some((v) => v.affects.includes("architect"))),
 				processor: {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "consistency.checked")) return
@@ -242,7 +242,7 @@ function layoutChassisTool(): Tool {
 function violationsFor(role: AgentRole, guidance: string, only: (kind: string) => boolean = () => true): SituationHandler {
 	const ours = (v: { kind: string; affects: AgentRole[] }) => v.affects.includes(role) && only(v.kind)
 	return {
-		specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some(ours)),
+		specification: when(({ event }) => isEvent(event, "consistency.checked") && !event.payload.draining && event.payload.violations.some(ours)),
 		processor: {
 			apply: ({ event, participant }) => {
 				if (!isEvent(event, "consistency.checked")) return
@@ -348,7 +348,7 @@ export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
 				processor: { apply: ({ participant }) => requestTurn(participant as Agent, `pins@${state().contract.version("pins")}`, "The pin map changed. Review it against the requirements.", { kind: "field-changed", fields: ["pins"] }) },
 			},
 			{
-				specification: when(({ event }) => isEvent(event, "consistency.checked") && event.payload.violations.some((v) => v.affects.includes("firmware"))),
+				specification: when(({ event }) => isEvent(event, "consistency.checked") && !event.payload.draining && event.payload.violations.some((v) => v.affects.includes("firmware"))),
 				processor: {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "consistency.checked")) return
