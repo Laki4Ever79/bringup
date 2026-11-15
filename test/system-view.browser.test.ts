@@ -330,6 +330,27 @@ test("a single-board design has the switch and opens its board from Top", { skip
 	}, SINGLE)
 })
 
+// Where Edit isn't offered it still shows, disabled, with the reason (final review M2).
+const SEPARATE = existsSync(join(ROOT, "out", "system-real-5", "system.json")) ? "system-real-5" : undefined
+const editBtn = (page: Page) => page.evaluate(() => { const b = document.getElementById("edit-btn") as HTMLButtonElement; return { shown: !b.classList.contains("hidden"), disabled: b.disabled, title: b.title } })
+test("Edit shows disabled with its reason on a single board and on a separate-body system", { skip: !SINGLE || !SEPARATE ? "no recorded out/rover-fresh or out/system-real-5" : !exe ? "no Playwright Chromium" : false, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await page.waitForFunction(() => document.getElementById("edit-btn")?.title.startsWith("Top editing"), null, { timeout: 15_000 })
+		assert.deepEqual(await editBtn(page), { shown: true, disabled: true, title: "Top editing is for robots built as a system; edit this board on its page" })
+	}, SINGLE)
+	await withPage(async (page) => {
+		await page.waitForFunction(() => document.getElementById("edit-btn")?.title.startsWith("this design"), null, { timeout: 15_000 })
+		assert.deepEqual(await editBtn(page), { shown: true, disabled: true, title: "this design has no shared body to edit" })
+		await page.click('#view-switch [data-view="top"]')
+		await page.locator("#edit-btn").click({ force: true })
+		assert.equal(await page.locator("#edit-bar").isVisible(), false, "a disabled Edit does nothing")
+	}, SEPARATE)
+	if (ROBOT) await withPage(async (page) => {
+		await page.waitForFunction(() => !document.getElementById("edit-btn")?.classList.contains("hidden"), null, { timeout: 15_000 })
+		assert.equal((await editBtn(page)).disabled, false, "a robot on a shared chassis edits")
+	}, ROBOT)
+})
+
 // Final review, Important 5: a one-board design in its own case (the logger) shows the case's outer footprint around
 // the board in Top, from the run's enclosure spec (the board's outline plus clearance and walls on each side).
 test("a one-board logger's Top view draws its case outline around the board, and the board still opens", { skip: !LOGGER ? "no recorded out/logger-single" : !exe ? "no Playwright Chromium" : false, timeout: 120_000 }, async () => {

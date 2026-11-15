@@ -32,6 +32,7 @@ import { SYSTEM_REQUESTS } from "../system/run.ts"
 import { buildSpec } from "../system/plan.ts"
 import { specErrors, type SystemSpec } from "../system/spec.ts"
 import type { Mechanics } from "../mechanics/types.ts"
+import { chassisSpec } from "../tools/chassis.ts"
 
 const TRACE = "trace.jsonl"
 const POLL_MS = 250 // fs.watch can miss appends on some filesystems; polling backs it up
@@ -517,11 +518,20 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			assembly = derivedAssembly(spec, mech, outlines, owner)
 		}
 		for (const b of spec?.boards ?? []) contractOf[b.name] ??= null
+		// A robot's chassis spec and the brief's motion targets, from the board that carries the mechanics: the page's editor
+		// runs the mechanics' plate and placement rules (assembly-geom.js) on every move with them.
+		const mechOwner = [...mechanicsOf.keys()][0]
+		const ownerContract = mechOwner ? contractOf[mechOwner] : null
+		let chassis = null
+		try { chassis = ownerContract ? chassisSpec(ownerContract) : null } catch { chassis = null }
+		const motion = ownerContract?.values?.motion ?? Object.values(contractOf).map((c) => c?.values?.motion).find(Boolean) ?? null
 		return {
 			id,
 			spec,
 			assembly,
 			// The I2C devices each board carries, counted by the same function the checks use (the page's cable limit needs them).
+			chassis,
+			motion,
 			i2cDevices: Object.fromEntries(Object.entries(contractOf).flatMap(([n, c]) => (c ? [[n, boardI2cDevices(c).length]] : []))),
 			facts: systemFacts(contractOf, assembly, spec?.links ?? [], Object.fromEntries(boards.flatMap((b) => (b.runId ? [[b.name, b.runId]] : [])))),
 			...(await systemStatus(id, dir, state)),

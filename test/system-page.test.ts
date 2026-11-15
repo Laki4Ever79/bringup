@@ -274,6 +274,29 @@ test("the system detail carries the assembly: derived for old runs, the spec's o
 	}
 })
 
+test("a robot's system detail carries its chassis spec and the brief's motion, computed on the server (the editor's mech-fit rules)", async () => {
+	const root = tempDir()
+	const dir = fakeSystem(root, "robot-a")
+	const b = join(dir, "boards", "logger")
+	writeFileSync(join(b, "contract.json"), JSON.stringify({ values: { outline: { widthMm: 60, heightMm: 40 }, mechanics: ROVER_BOARD.mechanics, motion: ROVER_BOARD.motion } }))
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const d: any = await (await fetch(`${hub.url}/api/systems/robot-a`)).json()
+		assert.deepEqual(d.motion.maxSizeMm, ROVER_BOARD.motion.maxSizeMm)
+		assert.equal(d.chassis.drive.trackMm, ROVER_BOARD.mechanics.drive.trackMm)
+		assert.equal(d.chassis.motors.length, 2)
+		assert.ok(d.chassis.sensor.zMm > 0 && d.chassis.plate.clearanceMm > 0, "the sensor and the plate's height, for the field-of-view rule")
+		// A system with no robot board has neither.
+		fakeSystem(root, "plain")
+		const p = await (await fetch(`${hub.url}/api/systems/plain`)).json()
+		assert.equal(p.chassis, null)
+		assert.equal(p.motion, null)
+	} finally {
+		await hub.close()
+	}
+})
+
 // The robot's progress board by board (system-trace.jsonl, src/system/trace.ts): replayed from the start, then live.
 test("GET /api/systems/:id/stream replays the system trace and streams new lines", async () => {
 	const root = tempDir()

@@ -3,7 +3,7 @@
 // limit come from assembly-geom.js, the same module the server's checks import, so the page and the run agree.
 // Frame: +x forward, +y left, origin at the plate centre; rotDeg is counter-clockwise from above; edges are the
 // board's own (left/right/top/bottom, before it is turned), as in top-layout.js.
-import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, offPlate, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM } from "./assembly-geom.js"
+import { blocksSensor, boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, motorHalfUnder, motorUnderPlateMm, mountOnPlate, offPlate, plateMaxWidthMm, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM, wheelsRubPlate } from "./assembly-geom.js"
 
 export const SNAP_MM = 0.5
 export { STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM }
@@ -36,6 +36,18 @@ function edgePoint(b, edge) {
 	return { xMm: r1(b.xMm + px), yMm: r1(b.yMm + py) }
 }
 
+// True when a cable can leave the board's edge toward p: p is not behind that edge.
+function reaches(b, edge, p) {
+	const [nx, ny] = turn(NORMAL[edge], b.rotDeg)
+	const q = edgePoint(b, edge)
+	return nx * (p.xMm - q.xMm) + ny * (p.yMm - q.yMm) >= -1e-9
+}
+// The edge a cable leaves from toward p: its own (the board's real connector) while it can still reach p, else the edge
+// facing p. Moving a connector to another edge is a board change, so the real edge is kept whenever it works.
+function edgeFor(b, edge, p) {
+	return edge && NORMAL[edge] && reaches(b, edge, p) ? edge : edgeToward(b, p.xMm - b.xMm, p.yMm - b.yMm)
+}
+
 const rectsOverlap = (b, r) => {
 	const f = footprint(b)
 	return Math.abs(b.xMm - r.xMm) < (f.xMm + r.wMm) / 2 && Math.abs(b.yMm - r.yMm) < (f.yMm + r.hMm) / 2
@@ -54,14 +66,37 @@ export function keepOuts(chassis) {
 	return out
 }
 
+// The chassis parts the plate carries, as mounts (src/mechanics/model.ts mounts, from the chassis spec's numbers): the
+// motors (across the plate their body's long side), the battery, the caster and the forward-looking sensor.
+export function chassisMounts(chassis) {
+	if (!chassis) return []
+	const out = []
+	for (const m of chassis.motors ?? []) out.push({ what: `motor ${m.side}`, xMm: m.xMm, yMm: m.yMm, sizeMm: [m.bodyMm[1], m.bodyMm[0], m.bodyMm[2]] })
+	if (chassis.battery) out.push({ what: "battery", xMm: chassis.battery.xMm, yMm: chassis.battery.yMm, sizeMm: chassis.battery.sizeMm })
+	if (chassis.caster?.wheelMm) out.push({ what: "caster", xMm: chassis.caster.xMm, yMm: 0, sizeMm: [chassis.caster.wheelMm, chassis.caster.wheelMm, chassis.caster.heightMm ?? 0] })
+	const s = chassis.sensor
+	if (s?.sizeMm) out.push({ what: "sensor", xMm: s.xMm, yMm: s.yMm, zMm: s.zMm, sizeMm: [s.sizeMm[2], s.sizeMm[0], s.sizeMm[1]] })
+	return out
+}
+
 // start: {assembly, links, chassis?: ChassisSpec, maxSizeMm?: [length, width], i2cDevicesByBoard?: {[board]: n} (the server's i2cDevices; the link's limit sums its two ends, as checks.ts does)}
 export function editor(start) {
 	const chassis = start.chassis ?? null
 	const maxSizeMm = start.maxSizeMm ?? null
 	const devices = start.i2cDevicesByBoard ?? {}
+	// Each link end starts from its board's real connector edge (the link's connector is J + its id, src/system/derive.ts)
+	// when the system leaves the edge unset: the editor never makes up an edge the board doesn't have.
+	const connectors = start.connectors ?? {}
+	const startLinks = clone(start.links).map((l) => {
+		for (const end of ["a", "b"]) {
+			const real = l[end].edge ? null : (connectors[l[end].board] ?? []).find((k) => k.ref === `J${l.id}`)?.edge
+			if (real && NORMAL[real]) l[end] = { ...l[end], edge: real }
+		}
+		return l
+	})
 	// A snapshot is the editable part: the assembly, the links, and which cables the user routed by hand.
 	const snapshot = (assembly, links, custom = [], pinned = []) => ({ assembly: clone(assembly), links: clone(links), custom: [...custom], pinned: [...pinned] })
-	const applied0 = snapshot(start.assembly, start.links)
+	const applied0 = snapshot(start.assembly, startLinks)
 	// ops[i] is the edit that made history[i] (pending() replays them on a newer design).
 	let history = [applied0], ops = [null], at = 0, floor = 0
 	let applied = applied0
@@ -91,14 +126,29 @@ export function editor(start) {
 		const a = board(s, l.a.board), b = board(s, l.b.board)
 		setRoute(s, l, [edgePoint(a, l.a.edge ?? edgeToward(a, b.xMm - a.xMm, b.yMm - a.yMm)), edgePoint(b, l.b.edge ?? edgeToward(b, a.xMm - b.xMm, a.yMm - b.yMm))], false)
 	}
-	// After a board moves or turns, a cable that is not hand-routed leaves from the edges now facing each other, except an
-	// end the user pinned with cable-edge.
-	const reroute = (s, name) => {
+	// After a board moves or turns, each cable on it keeps its edge while it can still reach the cable's next point (a
+	// hand-routed cable's next bend, else the peer board), and otherwise leaves from the edge facing it; an end the user
+	// pinned with cable-edge stays. A hand-routed cable's end on the board moves onto the edge when it changed or turned.
+	const reroute = (s, name, turned = false) => {
 		for (const l of s.links) {
-			if ((l.a.board !== name && l.b.board !== name) || !cables(s).some((c) => c.link === l.id) || s.custom.includes(l.id)) continue
+			const c = cables(s).find((x) => x.link === l.id)
+			if ((l.a.board !== name && l.b.board !== name) || !c) continue
 			const a = board(s, l.a.board), b = board(s, l.b.board)
-			if (!s.pinned.includes(`${l.id}.a`)) l.a = { ...l.a, edge: edgeToward(a, b.xMm - a.xMm, b.yMm - a.yMm) }
-			if (!s.pinned.includes(`${l.id}.b`)) l.b = { ...l.b, edge: edgeToward(b, a.xMm - b.xMm, a.yMm - b.yMm) }
+			if (s.custom.includes(l.id)) {
+				const pts = c.points
+				if (pts.length < 2) continue
+				for (const [end, bd, i, j] of [["a", a, 0, 1], ["b", b, pts.length - 1, pts.length - 2]]) {
+					if (bd.name !== name) continue
+					const was = l[end].edge
+					const e = s.pinned.includes(`${l.id}.${end}`) ? was : edgeFor(bd, was, pts[j])
+					if (!e) continue
+					if (e !== was || turned) { l[end] = { ...l[end], edge: e }; pts[i] = edgePoint(bd, e) }
+				}
+				l.cable = { ...l.cable, lengthMm: Math.round(cableLength(pts) + CABLE_SLACK_MM) }
+				continue
+			}
+			if (!s.pinned.includes(`${l.id}.a`)) l.a = { ...l.a, edge: edgeFor(a, l.a.edge, b) }
+			if (!s.pinned.includes(`${l.id}.b`)) l.b = { ...l.b, edge: edgeFor(b, l.b.edge, a) }
 			autoRoute(s, l)
 		}
 	}
@@ -126,7 +176,7 @@ export function editor(start) {
 			case "rotate": {
 				const b = board(s, op.board)
 				b.rotDeg = (b.rotDeg + 90) % 360
-				reroute(s, b.name)
+				reroute(s, b.name, true)
 				break
 			}
 			case "plate":
@@ -173,11 +223,17 @@ export function editor(start) {
 				if (!Array.isArray(op.points) || op.points.length < 2) throw new Error("a route needs at least two points")
 				const pts = op.points.map((p) => ({ xMm: snap(p.xMm), yMm: snap(p.yMm) }))
 				const a = board(s, l.a.board), b = board(s, l.b.board)
-				// The edge each end leaves from is the one the first (last) leg points toward, taken from the board's centre.
+				// Each end keeps its edge (the board's real connector) while the first (last) leg can leave from it; otherwise it
+				// leaves from the edge the leg points toward, and the route's end moves onto that edge.
 				const first = pts[1], last = pts[pts.length - 2]
-				l.a = { ...l.a, edge: edgeToward(a, first.xMm - a.xMm, first.yMm - a.yMm) }
-				l.b = { ...l.b, edge: edgeToward(b, last.xMm - b.xMm, last.yMm - b.yMm) }
-				setRoute(s, l, pts, true)
+				const ea = edgeFor(a, l.a.edge, first), eb = edgeFor(b, l.b.edge, last)
+				if (ea !== l.a.edge) pts[0] = edgePoint(a, ea)
+				if (eb !== l.b.edge) pts[pts.length - 1] = edgePoint(b, eb)
+				l.a = { ...l.a, edge: ea }
+				l.b = { ...l.b, edge: eb }
+				// An end moved onto its edge can land on its neighbouring bend: one point, not two.
+				const route = pts.filter((p, i) => i === 0 || p.xMm !== pts[i - 1].xMm || p.yMm !== pts[i - 1].yMm)
+				setRoute(s, l, route.length >= 2 ? route : pts, true)
 				break
 			}
 			case "cable-edge": {
@@ -192,6 +248,20 @@ export function editor(start) {
 			default: throw new Error(`unknown edit ${op.kind}`)
 		}
 		return s
+	}
+
+	// The link ends whose edge differs from the applied design's: the board's connector moves, so the board is laid out again.
+	function edgeChanges(s) {
+		const out = []
+		for (const l of s.links) {
+			const o = applied.links.find((x) => x.id === l.id)
+			if (!o) continue
+			for (const end of ["a", "b"]) {
+				const from = o[end].edge, to = l[end].edge
+				if (from && to && from !== to && o[end].board === l[end].board) out.push({ link: l.id, board: l[end].board, ref: `J${l.id}`, from, to })
+			}
+		}
+		return out
 	}
 
 	function checks(s) {
@@ -214,6 +284,25 @@ export function editor(start) {
 				if (k.thickMm === undefined) bad({ board: b.name }, `${b.name} is over ${k.what}`)
 				else if (k.thickMm > standoff - 1) bad({ board: b.name }, `${b.name} is over ${k.what}: the ${k.thickMm} mm pack needs standoffs of at least ${k.thickMm + 1} mm (now ${standoff} mm)`)
 			}
+			// The mechanics' fit rules (assembly-geom.js, the same functions mech-fit calls), so a move main's run would
+			// refuse after a round is refused here at once.
+			if (a.plate && chassis) {
+				const L = a.plate.lengthMm, W = a.plate.widthMm
+				const d = chassis.drive
+				if (d && wheelsRubPlate(W, d.trackMm, d.wheelWidthMm)) bad({ plate: true }, `the wheels rub the ${W} mm-wide plate (${d.trackMm} mm track, ${d.wheelWidthMm} mm wheels, 2 mm clearance): make it at most ${r1(plateMaxWidthMm(d.trackMm, d.wheelWidthMm))} mm wide`)
+				const parts = chassisMounts(chassis)
+				for (const m of parts.filter((x) => x.what.startsWith("motor ")))
+					if (!motorHalfUnder(W, m)) bad({ plate: true }, `${m.what} reaches only ${r1(Math.max(0, motorUnderPlateMm(W, m)))} mm under the plate (half its ${m.sizeMm[1]} mm body needed for the bracket): widen the plate`)
+				for (const m of parts.filter((x) => !x.what.startsWith("motor ")))
+					if (!mountOnPlate(m, L, W)) bad({ plate: true }, `${m.what} (${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm at ${r1(m.xMm)}, ${r1(m.yMm)}) doesn't fit on the ${L} × ${W} mm plate`)
+				const sensor = parts.find((x) => x.what === "sensor")
+				if (sensor && chassis.plate) for (const b of bs) {
+					const f = footprint(b)
+					const standoff = b.standoffMm ?? chassis.standoffMm ?? STANDOFF_DEFAULT_MM
+					const m = { xMm: b.xMm, yMm: b.yMm, zMm: chassis.plate.clearanceMm + chassis.plate.thicknessMm + standoff + 0.8, sizeMm: [f.xMm, f.yMm, 1.6] }
+					if (blocksSensor(m, sensor)) bad({ board: b.name }, `${b.name} stands in front of the distance sensor (at x ${r1(sensor.xMm)} mm): move it back or aside`)
+				}
+			}
 			if (maxSizeMm && a.plate) {
 				const outerW = Math.max(a.plate.widthMm, chassis?.drive ? chassis.drive.trackMm + chassis.drive.wheelWidthMm : 0)
 				if (a.plate.lengthMm > maxSizeMm[0] || outerW > maxSizeMm[1]) bad({ plate: true }, `the robot is ${a.plate.lengthMm} × ${r1(outerW)} mm, over the ${maxSizeMm[0]} × ${maxSizeMm[1]} mm the brief allows`)
@@ -225,6 +314,7 @@ export function editor(start) {
 			if (!(h >= STANDOFF_RANGE_MM[0] && h <= STANDOFF_RANGE_MM[1])) bad({ board: b.name }, `${b.name}'s standoffs are ${h} mm; use ${STANDOFF_RANGE_MM[0]} to ${STANDOFF_RANGE_MM[1]} mm`)
 			else if (h < STANDOFF_USUAL_MM[0] || h > STANDOFF_USUAL_MM[1]) bad({ board: b.name }, `${b.name}'s standoffs are ${h} mm; ${STANDOFF_USUAL_MM[0]} to ${STANDOFF_USUAL_MM[1]} mm is the usual range`, "warn")
 		}
+		for (const x of edgeChanges(s)) bad({ link: x.link }, `moves ${x.ref} on ${x.board} from ${x.from} to ${x.to} edge: a board change`, "warn")
 		for (const l of s.links) {
 			const c = cables(s).find((x) => x.link === l.id)
 			const routed = c && c.points.length >= 2
@@ -271,6 +361,8 @@ export function editor(start) {
 		diff: () => patch(applied, cur()),
 		markApplied() { applied = cur(); floor = at },
 		findings: () => checks(cur()),
+		// The connectors the edits move to another edge (a board change), against the last applied state.
+		edgeChanges: () => edgeChanges(cur()),
 		// The findings an edit would give, without making it (a drag in progress): the history, redo included, is untouched.
 		check(op) { try { return checks(next(op)) } catch { return checks(cur()) } },
 		// The edits since the last Apply, in order (undone ones left out).

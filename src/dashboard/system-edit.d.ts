@@ -12,7 +12,7 @@ export type EditOp =
 	| { kind: "cable-kind"; link: string; cableKind: string }
 	| { kind: "cable-route"; link: string; points: { xMm: number; yMm: number }[] }
 	| { kind: "cable-edge"; link: string; end: "a" | "b"; edge: "left" | "right" | "top" | "bottom" }
-export interface EditStart { assembly: SystemAssembly; links: SystemLink[]; chassis?: (ChassisSpec & { standoffMm?: number }) | null; maxSizeMm?: [number, number] | null; i2cDevicesByBoard?: Record<string, number> }
+export interface EditStart { assembly: SystemAssembly; links: SystemLink[]; chassis?: (ChassisSpec & { standoffMm?: number }) | null; maxSizeMm?: [number, number] | null; i2cDevicesByBoard?: Record<string, number>; connectors?: Record<string, { ref: string; edge: string }[]> }
 export interface EditFinding { target: { board?: string; link?: string; plate?: true }; level: "error" | "warn"; message: string }
 export interface Editor {
 	apply(op: EditOp): boolean
@@ -24,6 +24,7 @@ export interface Editor {
 	diff(): { assembly?: Partial<SystemAssembly>; links?: SystemLink[] } | null
 	markApplied(): void
 	findings(): EditFinding[]
+	edgeChanges(): { link: string; board: string; ref: string; from: string; to: string }[]
 	check(op: EditOp): EditFinding[]
 	pending(): EditOp[]
 }
@@ -33,3 +34,4 @@ export const STANDOFF_RANGE_MM: [number, number]
 export const STANDOFF_USUAL_MM: [number, number]
 export function keepOuts(chassis: ChassisSpec | null | undefined): { what: string; xMm: number; yMm: number; wMm: number; hMm: number; thickMm?: number }[]
 export function editor(start: EditStart): Editor
+export function chassisMounts(chassis: ChassisSpec | null | undefined): { what: string; xMm: number; yMm: number; zMm?: number; sizeMm: number[] }[]

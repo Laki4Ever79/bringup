@@ -78,7 +78,7 @@ test("an I2C route over the limit is an error; UART is not limited", () => {
 	e.apply({ kind: "cable-add", a: "main", b: "front", cableKind: "i2c" })
 	const { maxMm } = i2cCableLimit(100, 0)
 	assert.deepEqual(e.findings(), [], "a short bus cable is fine")
-	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: -20, yMm: 0 }, { xMm: -20, yMm: 50 }, { xMm: 20, yMm: 50 }, { xMm: 20, yMm: 0 }, { xMm: 60, yMm: 0 }, { xMm: 60, yMm: -40 }, { xMm: 2200, yMm: -40 }] })
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: -20, yMm: 0 }, { xMm: -20, yMm: 50 }, { xMm: 2200, yMm: 50 }, { xMm: 2200, yMm: -40 }, { xMm: 0, yMm: -40 }, { xMm: 0, yMm: 0 }, { xMm: 20, yMm: 0 }] })
 	const route = e.state().assembly.cables![0].points
 	assert.ok(e.state().links[0].cable.lengthMm > maxMm)
 	assert.equal(route.length, 7)
@@ -232,4 +232,111 @@ test("pending() lists the edits since the last Apply, to replay on a newer desig
 	const r = editor({ assembly: newer, links: [] })
 	for (const op of e.pending()) r.apply(op)
 	assert.deepEqual(r.state().assembly.boards.map((b) => [b.name, b.xMm, b.rotDeg]), [["main", -40, 90], ["front", 50, 0]])
+})
+
+// robot-2's own numbers (out/robot-2: main's chassis spec rev-25, the system's assembly, each board's link connector).
+const r2Chassis = {
+	plate: { lengthMm: 156, widthMm: 110, thicknessMm: 3, clearanceMm: 50.5 },
+	standoffMm: 10,
+	motors: [{ side: "left", xMm: 30, yMm: 47, bodyMm: [26, 12, 10], axleDropMm: 10.5 }, { side: "right", xMm: 30, yMm: -47, bodyMm: [26, 12, 10], axleDropMm: 10.5 }],
+	caster: { xMm: -50, holesMm: [], holeDiaMm: 4.2, wheelMm: 38, heightMm: 50.5 },
+	battery: { xMm: 25, yMm: 0, sizeMm: [60, 36, 7] },
+	sensor: { xMm: 72, yMm: 0, zMm: 65, sizeMm: [21, 18, 2.8], rangeMm: 1200, updateMs: 33 },
+	drive: { trackMm: 130, axleXMm: 30, wheelbaseMm: 80, wheelDiameterMm: 80, wheelWidthMm: 10 },
+} as unknown as ChassisSpec
+const r2 = (extra = {}) => ({
+	assembly: {
+		body: "chassis", plate: { lengthMm: 156, widthMm: 110 },
+		boards: [
+			{ name: "main", xMm: 0, yMm: 0, rotDeg: 0, outline: { widthMm: 33, heightMm: 42 }, outlineSource: "built" },
+			{ name: "climate", xMm: 48, yMm: 0, rotDeg: 0, outline: { widthMm: 36, heightMm: 26 }, outlineSource: "built" },
+		],
+	} as SystemAssembly,
+	links: [{ id: "L1", kind: "uart", a: { board: "main" }, b: { board: "climate" }, baud: 115200, cable: { lengthMm: 300 } }] as SystemLink[],
+	chassis: r2Chassis,
+	maxSizeMm: [160, 150] as [number, number],
+	...extra,
+})
+
+test("robot-2 as built has no findings", () => {
+	assert.deepEqual(editor(r2()).findings(), [])
+})
+
+test("mech-fit on the move: a plate wider than track − wheel − 4 rubs the wheels (robot-2: 130 mm is an error, 116 is not)", () => {
+	const e = editor(r2())
+	assert.ok(e.check({ kind: "plate", lengthMm: 156, widthMm: 130 }).some((x) => x.level === "error" && x.target.plate && /rub/.test(x.message) && /116 mm/.test(x.message)), "130 mm rubs")
+	assert.deepEqual(e.check({ kind: "plate", lengthMm: 156, widthMm: 116 }).filter((x) => /rub/.test(x.message)), [])
+	assert.ok(e.check({ kind: "plate", lengthMm: 156, widthMm: 116.5 }).some((x) => x.target.plate && /rub/.test(x.message)), "one step past")
+})
+
+test("mech-fit on the move: a narrow plate leaves the motors less than half under it", () => {
+	const f = editor(r2()).check({ kind: "plate", lengthMm: 156, widthMm: 90 })
+	assert.ok(f.some((x) => x.level === "error" && x.target.plate && /motor left/.test(x.message) && /half/.test(x.message)), "the motors need half under the plate")
+})
+
+test("mech-fit on the move: a short plate drops the sensor, the caster and the battery", () => {
+	const e = editor(r2())
+	assert.ok(e.check({ kind: "plate", lengthMm: 140, widthMm: 110 }).some((x) => x.level === "error" && x.target.plate && /^sensor/.test(x.message)), "the sensor is off a 140 mm plate")
+	assert.ok(e.check({ kind: "plate", lengthMm: 120, widthMm: 110 }).some((x) => x.target.plate && /^caster/.test(x.message)), "the caster is off a 120 mm plate")
+	assert.ok(e.check({ kind: "plate", lengthMm: 100, widthMm: 110 }).some((x) => x.target.plate && /^battery/.test(x.message)), "the battery is off a 100 mm plate")
+})
+
+test("mech-fit on the move: a board in front of the distance sensor is an error on that board", () => {
+	const e = editor(r2())
+	e.apply({ kind: "move", board: "climate", xMm: 92, yMm: 0 })
+	assert.ok(e.findings().some((x) => x.level === "error" && x.target.board === "climate" && /in front of the distance sensor/.test(x.message)), "climate blocks the sensor")
+	e.undo()
+	e.apply({ kind: "move", board: "climate", xMm: 92, yMm: 40 })
+	assert.ok(!e.findings().some((x) => /distance sensor/.test(x.message)), "beside it, not in front")
+})
+
+// Each board's link connector, as the payload carries it (robot-2: main's JL1 on its right edge, climate's on its top).
+const r2Connectors = { main: [{ ref: "JL1", kind: "header", edge: "right", offsetMm: 15.5 }], climate: [{ ref: "JL1", kind: "header", edge: "top", offsetMm: 13 }] }
+
+test("a cable starts from the boards' real connector edges", () => {
+	const l = editor(r2({ connectors: r2Connectors })).state().links[0]
+	assert.deepEqual([l.a.edge, l.b.edge], ["right", "top"])
+})
+
+test("one bend in L1 on robot-2 keeps both real edges, with no warning", () => {
+	const e = editor(r2({ connectors: r2Connectors }))
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: 16.5, yMm: 0 }, { xMm: 32, yMm: 40 }, { xMm: 48, yMm: 13 }] })
+	const l = e.state().links[0]
+	assert.deepEqual([l.a.edge, l.b.edge], ["right", "top"])
+	assert.deepEqual(e.findings(), [])
+})
+
+test("a route that can't leave from the real edge moves the connector: a warning on the link, and the end on the new edge", () => {
+	const e = editor(r2({ connectors: r2Connectors }))
+	// Out of main's back, around, into climate's top.
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: 16.5, yMm: 0 }, { xMm: -40, yMm: 0 }, { xMm: -40, yMm: 40 }, { xMm: 48, yMm: 40 }, { xMm: 48, yMm: 13 }] })
+	const l = e.state().links[0]
+	assert.deepEqual([l.a.edge, l.b.edge], ["left", "top"])
+	const pts = e.state().assembly.cables![0].points
+	assert.deepEqual(pts[0], { xMm: -16.5, yMm: 0 }, "the route starts on main's left edge")
+	assert.deepEqual(pts.at(-1), { xMm: 48, yMm: 13 })
+	const warn = e.findings().filter((x) => x.level === "warn")
+	assert.deepEqual(warn, [{ target: { link: "L1" }, level: "warn", message: "moves JL1 on main from right to left edge: a board change" }])
+	assert.deepEqual(e.edgeChanges(), [{ link: "L1", board: "main", ref: "JL1", from: "right", to: "left" }])
+})
+
+test("a hand-routed cable keeps its edge on a move while it can reach it; a turn re-faces its end on the board", () => {
+	const e = editor(r2({ connectors: r2Connectors }))
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: 16.5, yMm: 0 }, { xMm: 32, yMm: 40 }, { xMm: 48, yMm: 13 }] })
+	e.apply({ kind: "move", board: "climate", xMm: 48, yMm: -10 })
+	assert.deepEqual(e.findings(), [], "climate's top still faces the bend")
+	e.apply({ kind: "rotate", board: "main" })
+	const l = e.state().links[0]
+	// Turned 90°, main's right edge faces +y, toward the bend at (32, 40): kept, and the route's end is on it.
+	assert.equal(l.a.edge, "right")
+	assert.deepEqual(e.state().assembly.cables![0].points[0], { xMm: 0, yMm: 16.5 })
+})
+
+test("a move that leaves a cable's edge facing away from its peer re-faces it, moves its end and warns", () => {
+	const e = editor(r2({ connectors: r2Connectors }))
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: 16.5, yMm: 0 }, { xMm: 48, yMm: 30 }, { xMm: 48, yMm: 13 }] })
+	assert.deepEqual(e.findings(), [])
+	e.apply({ kind: "move", board: "climate", xMm: 48, yMm: 40 })
+	assert.ok(e.findings().some((x) => x.level === "warn" && x.message === "moves JL1 on climate from top to bottom edge: a board change"), "climate's top now faces away from main")
+	assert.deepEqual(e.state().assembly.cables![0].points.at(-1), { xMm: 48, yMm: 27 }, "the end is on climate's bottom edge")
 })

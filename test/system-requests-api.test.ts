@@ -107,6 +107,21 @@ test("malformed shapes and a plate on a body with no plate are 400, never 500", 
 			{ assembly: { boards: [{ name: "main", rotDeg: 0, outline: { widthMm: 40, heightMm: 30 }, outlineSource: "estimate" }, boards[1]] } },
 			{ assembly: { cables: [{ link: "L1", points: [{ xMm: "a", yMm: 0 }] }] } },
 			{ assembly: { plate: { lengthMm: "wide", widthMm: 10 } } },
+			// A link's own parts (final review M4): the I2C block, the messages, the edge and kind names.
+			...[
+				{ kind: "i2c", i2c: {} },
+				{ kind: "i2c", i2c: { controller: "main", pullupsOn: "main", targets: "x" } },
+				{ kind: "i2c", i2c: { controller: 1, pullupsOn: "main", targets: { front: 0x30 } } },
+				{ kind: "i2c", i2c: { controller: "main", pullupsOn: "main", targets: { front: 0x30 }, khz: "fast" } },
+				{ messages: "x" },
+				{ messages: [{ name: "m", from: "main", fields: "x" }] },
+				{ messages: [{ name: "m", from: "main", fields: [{ name: "t", type: "u64" }] }] },
+				{ a: { board: "main", edge: "diagonal" } },
+				{ b: { board: "front", edge: 3 } },
+				{ kind: 7 },
+				{ power: "x" },
+				{ baud: "fast" },
+			].map((patch) => ({ links: [{ ...spec().links[0], ...patch }] })),
 		]
 		for (const b of bad) assert.equal((await post(`/api/systems/${id}/requests`, b)).status, 400, JSON.stringify(b))
 		assert.equal(existsSync(join(dir, SYSTEM_REQUESTS)), false)

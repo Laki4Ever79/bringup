@@ -265,6 +265,24 @@ test("add a cable from a board's dot, pick I2C, then bend its route; the card de
 	})
 })
 
+test("a cable bent round behind main moves its connector: a warning on L1, and Apply's text says so", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts }) => {
+		await enter(page)
+		const before = await page.evaluate(() => (window as unknown as { __edit: { state: () => { links: { a: { edge?: string }; b: { edge?: string } }[] } } }).__edit.state().links[0])
+		assert.deepEqual([before.a.edge, before.b.edge], ["right", "top"], "L1 starts from the boards' real JL1 edges")
+		const m = await geom(page, "main")
+		const h = await page.locator('#stage-top [data-route-handle="L1:0"]').boundingBox()
+		const from = { x: h!.x + h!.width / 2, y: h!.y + h!.height / 2 }
+		await drag(page, from, { x: m.x - 40 * m.k, y: from.y })
+		const findings = await page.evaluate(() => (window as unknown as { __edit: { findings: () => { level: string; message: string; target: { link?: string } }[] } }).__edit.findings())
+		assert.ok(findings.some((f) => f.level === "warn" && f.target.link === "L1" && f.message === "moves JL1 on main from right to left edge: a board change"), JSON.stringify(findings))
+		assert.match(await page.locator("#edit-findings").textContent() ?? "", /moves JL1 on main from right to left edge: a board change/)
+		await page.click("#edit-apply")
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes")
+		assert.match(String(posts[0].body.text), /moves JL1 on main from right to left edge: a board change/)
+	})
+})
+
 const at = (x: number) => (d: Design) => { d.assembly.boards.find((b) => b.name === "main")!.xMm = x }
 const stateX = (page: Page, board: string) => page.evaluate((b) => (window as unknown as { __edit: { state: () => { assembly: { boards: { name: string; xMm: number }[] } } } }).__edit.state().assembly.boards.find((x) => x.name === b)!.xMm, board)
 
@@ -475,6 +493,25 @@ test("a reload keeps the queued edits and posts them after the round", { skip, t
 	})
 })
 
+test("unsent edits that were never queued survive a reload, with a note", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts }) => {
+		await enter(page)
+		await dragClimate(page)
+		await page.reload()
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "1 change", null, { timeout: 30_000 })
+		assert.match(await page.locator("#edit-why").textContent() ?? "", /^Restored 1 unsent edit\./)
+		const d = await diff(page)
+		assert.ok(Math.abs(d!.assembly!.boards!.find((b) => b.name === "climate")!.xMm - 38) <= 0.5, "the same edit")
+		await sleep(1200)
+		assert.equal(posts.length, 0, "a reload never sends what wasn't queued")
+		await page.click("#edit-drop")
+		await page.reload()
+		await page.waitForSelector("#stage-top svg [data-board=climate]", { timeout: 30_000 })
+		await sleep(800)
+		assert.equal(await diff(page), null, "discarded edits stay gone")
+	})
+})
+
 test("the round changed the design under a queued edit: the banner, not a post", { skip, timeout: 120_000 }, async () => {
 	await withEdit(async ({ page, posts, trace, setDesign }) => {
 		trace(line(1, "system", "request", "started", "make it wider"))
@@ -495,7 +532,7 @@ test("the round changed the design under a queued edit: the banner, not a post",
 })
 
 test("the system change list shows each request's text, newest first, with links to its boards", { skip, timeout: 120_000 }, async () => {
-	await withEdit(async ({ page, trace }) => {
+	await withEdit(async ({ page, trace, name }) => {
 		trace(
 			line(1, "system", "request", "ok", "staying up for system-level changes"),
 			line(2, "system", "request", "started", "moved climate 10 mm back"),
@@ -507,6 +544,7 @@ test("the system change list shows each request's text, newest first, with links
 		const texts = await page.locator("#sys-changes li .text").allTextContents()
 		assert.deepEqual(texts, ["made the plate 120 × 80 mm", "moved climate 10 mm back"])
 		assert.equal(await page.locator("#sys-changes li").first().locator("a").textContent(), "main")
+		assert.equal(await page.locator("#sys-changes li").first().locator("a").getAttribute("href"), `/system?id=${name}&board=main`, "the board's real address, for a new tab or a copied link")
 		assert.match(await page.locator("#sys-changes li").first().textContent() ?? "", /round 3/)
 	})
 })

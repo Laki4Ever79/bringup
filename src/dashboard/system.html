@@ -81,6 +81,7 @@
 	#view-switch button[aria-pressed="true"] { background: var(--ink); color: #fff; }
 	#view-switch #edit-btn { border-left: 1px solid var(--ink); }
 	#view-switch #edit-btn[aria-pressed="true"] { background: var(--signal); }
+	#view-switch #edit-btn:disabled { opacity: .45; cursor: not-allowed; }
 	/* Edit mode (Top only): the bar under the stage (N changes · Apply · Undo · Redo, why Apply is off, the findings), the
 	   cable picker (plan-canvas.js's look) and the facts card turned into the selected item's editor. */
 	#edit-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 2px 0; font-size: 13px; }
@@ -336,8 +337,14 @@ async function showSystem() {
 	renderNav()
 	startStage(d)
 	pollQueue(d, fetchedAt)
-	// Edit (the Top view's editor) is for a built robot: its boards on one shared plate.
-	document.getElementById("edit-btn").classList.toggle("hidden", !(d.assembly?.body === "chassis" && !d.single))
+	// Edit (the Top view's editor) is for a robot built as a system: its boards on one shared plate. Elsewhere the button
+	// stays, disabled, and says why.
+	editing.offReason = d.single ? "Top editing is for robots built as a system; edit this board on its page"
+		: d.assembly?.body === "chassis" ? ""
+		: d.assembly?.body === "enclosure" ? "Top editing is for boards on a shared chassis; this design's boards share a case, edit each on its page"
+		: "this design has no shared body to edit"
+	document.getElementById("edit-btn").classList.remove("hidden")
+	editLabel()
 	document.getElementById("title").textContent = d.spec?.name ?? id
 	document.title = `Bringup · ${d.spec?.name ?? id}`
 	statusEl.className = `status ${statusClass(d.status, d.settled)}`
@@ -486,13 +493,15 @@ function track(l) {
 	if (l.board !== "system" && !e.boards.includes(l.board)) e.boards.push(l.board)
 	renderChanges()
 }
+// A board's own address on this page (a new tab or a copied link opens it there).
+const boardAddress = (board) => `/system?${new URLSearchParams({ id, board })}`
 function renderChanges() {
 	const host = document.getElementById("sys-changes")
 	const list = [...stage.requests].sort((a, b) => b.round - a.round || String(b.at).localeCompare(String(a.at)))
 	host.classList.toggle("hidden", !list.length)
 	if (!list.length) return
 	const time = (at) => { const t = new Date(at); return Number.isNaN(t.getTime()) ? "" : t.toLocaleTimeString() }
-	host.innerHTML = `<h2>System changes</h2><ol>${list.map((e) => `<li data-round="${e.round}"><span class="mono">round ${e.round}</span><span class="when">${esc(time(e.at))}</span><span class="text">${esc(e.text)}</span>${e.boards.map((b) => `<a href="/?board=${encodeURIComponent(b)}" data-board-link="${esc(b)}">${esc(b)}</a>`).join("")}</li>`).join("")}</ol>`
+	host.innerHTML = `<h2>System changes</h2><ol>${list.map((e) => `<li data-round="${e.round}"><span class="mono">round ${e.round}</span><span class="when">${esc(time(e.at))}</span><span class="text">${esc(e.text)}</span>${e.boards.map((b) => `<a href="${esc(boardAddress(b))}" data-board-link="${esc(b)}">${esc(b)}</a>`).join("")}</li>`).join("")}</ol>`
 }
 document.getElementById("sys-changes").addEventListener("click", (e) => {
 	const a = e.target.closest?.("[data-board-link]")
@@ -790,13 +799,14 @@ function drawTop() {
 // ── Edit mode (Top only): system-edit.js holds the edits, their checks on every move, undo and redo; top2d.js the
 // gestures. Nothing calls a model here: Apply sends the diff, and the run's agents act on it.
 // key: the design (assembly and links) the editor was built from; stale: it changed while edits were unsent.
-const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, queuedRound: 0, queuedAt: 0, sending: false, stored: false }
+const editing = { offReason: "", on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, queuedRound: 0, queuedAt: 0, sending: false }
 const designKey = (m) => JSON.stringify({ a: m?.assembly ?? null, l: m?.spec?.links ?? [] })
 const editBtn = document.getElementById("edit-btn"), editBar = document.getElementById("edit-bar"), picker = document.getElementById("edit-picker")
 function makeEditor() {
 	const m = stage.meta
-	editing.chassis = stage.chassis ?? null
-	editing.ed = editing.mod.editor({ assembly: m.assembly, links: m.spec?.links ?? [], chassis: editing.chassis, maxSizeMm: editing.maxSizeMm, i2cDevicesByBoard: m.i2cDevices ?? {} })
+	// The server's chassis spec and the brief's motion (the payload's), else the files the views fetched.
+	editing.chassis = m.chassis ?? stage.chassis ?? null
+	editing.ed = editing.mod.editor({ assembly: m.assembly, links: m.spec?.links ?? [], chassis: editing.chassis, maxSizeMm: m.motion?.maxSizeMm ?? editing.maxSizeMm, i2cDevicesByBoard: m.i2cDevices ?? {}, connectors: Object.fromEntries((m.boards ?? []).map((b) => [b.name, b.connectors ?? []])) })
 	editing.base = editing.ed.state()
 	editing.server = []
 	editing.msg = ""
@@ -829,6 +839,8 @@ function rebase() {
 const changeCount = () => (editing.ed?.diff() ? Math.max(1, describeEdits(editing.base, editing.ed.state()).length) : 0)
 // Outside edit mode, unsent edits are kept and the button says so.
 function editLabel() {
+	editBtn.disabled = Boolean(editing.offReason)
+	if (editing.offReason) { editBtn.textContent = "Edit"; editBtn.title = editing.offReason; return }
 	const n = editing.on ? 0 : changeCount()
 	editBtn.textContent = n ? `Edit (${n} unsent)` : "Edit"
 	editBtn.title = n ? "Your edits are kept, not sent: Edit to see them, then Apply or Undo" : "Edit the robot in the Top view: move, turn, the plate, cables"
@@ -839,14 +851,14 @@ async function loadEditDeps() {
 		editing.mod = { ...m, designHash }
 	}
 	// The brief's size limit (motion.maxSizeMm), from the robot's own contract.
-	if (!editing.maxSizeMm) {
+	if (!editing.maxSizeMm && !stage.meta.motion) {
 		const runs = stage.meta.boards.filter((b) => b.runId)
 		const found = await Promise.all(runs.map((b) => fetch(`/runs/${encodeURIComponent(b.runId)}/files/contract.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
 		editing.maxSizeMm = found.map((c) => c?.values?.motion?.maxSizeMm).find((x) => Array.isArray(x)) ?? null
 	}
 }
 async function enterEdit() {
-	if (editing.on || openName || !stage.meta?.assembly || stage.meta.single) return
+	if (editing.on || openName || !stage.meta?.assembly || stage.meta.single || editing.offReason) return
 	if (stage.view !== "top") await window.setView("top")
 	if (stage.view !== "top" || !stage.top) return
 	await loadEditDeps()
@@ -893,7 +905,8 @@ function act(op) {
 }
 function editRefresh() {
 	if (editing.queued && !editing.ed?.diff()) editing.queued = false
-	if (editing.queued || editing.stored) savePending() // the queue mirrors the editor: more edits change what is sent
+	// Every edit is kept in sessionStorage, queued or not, so a reload or a closed tab never loses unsent edits.
+	if (editing.ed) savePending()
 	editLabel()
 	if (!editing.on) return
 	syncEditor()
@@ -920,8 +933,9 @@ function editRefresh() {
 	document.getElementById("edit-findings").innerHTML = findings.map((f) => `<li data-level="${esc(f.level)}"><b class="mono">${esc(label(f.target))}</b> ${esc(f.message)}</li>`).join("")
 	renderCard()
 }
-// What changed since the last Apply, in words: "moved climate 10 mm back", "rotated climate to 90°"… A cable's edge or
-// route that changed only because its board moved or turned is part of that move.
+// What changed since the last Apply, in words: "moved climate 10 mm back", "rotated climate to 90°"… A cable's route
+// that changed only because its board moved or turned is part of that move; a link connector moved to another edge is
+// always named (the board is laid out again), whatever caused it.
 function describeEdits(from, to) {
 	const out = [], moved = new Set()
 	const mm = (v) => `${Math.round(Math.abs(v) * 10) / 10} mm`
@@ -941,8 +955,10 @@ function describeEdits(from, to) {
 		if (!o) { out.push(`added ${l.id} (${l.kind.toUpperCase()} ${l.a.board} ↔ ${l.b.board})`); continue }
 		if (l.kind !== o.kind) out.push(`made ${l.id} ${l.kind.toUpperCase()}`)
 		const follows = moved.has(l.a.board) || moved.has(l.b.board)
+		const boardChanges = ["a", "b"].filter((e) => o[e].edge && l[e].edge && o[e].edge !== l[e].edge && o[e].board === l[e].board)
 		if (route(from, l.id) !== route(to, l.id) && !follows) out.push(`routed ${l.id}`)
-		else if ((l.a.edge !== o.a.edge || l.b.edge !== o.b.edge) && !follows) out.push(`moved ${l.id}'s ends to ${l.a.board} ${l.a.edge ?? "auto"}, ${l.b.board} ${l.b.edge ?? "auto"}`)
+		else if ((l.a.edge !== o.a.edge || l.b.edge !== o.b.edge) && !follows && !boardChanges.length) out.push(`moved ${l.id}'s ends to ${l.a.board} ${l.a.edge ?? "auto"}, ${l.b.board} ${l.b.edge ?? "auto"}`)
+		for (const e of boardChanges) out.push(`moves J${l.id} on ${l[e].board} from ${o[e].edge} to ${l[e].edge} edge: a board change`)
 	}
 	for (const o of from.links) if (!to.links.some((l) => l.id === o.id)) out.push(`removed ${o.id}`)
 	return out
@@ -957,7 +973,8 @@ function serverFindings(errors) {
 		return { target: board ? { board } : link ? { link } : { plate: true }, level: "error", message: m, server: true }
 	})
 }
-// ── Apply during a round: queued, kept across a reload (sessionStorage, never required), posted once the round settles ──
+// ── Unsent edits are kept across a reload (sessionStorage, never required); Apply during a round is queued and posted
+// once the round settles ──
 const pendKey = `bringup-pending-${id}`
 const roundBusy = () => stage.meta?.status === "running" || Boolean(stage.roundOpen)
 const editText = () => describeEdits(editing.base, editing.ed.state()).join("; ") || "changed the layout"
@@ -965,11 +982,9 @@ function savePending() {
 	try {
 		if (!editing.ed?.diff()) return clearPending()
 		sessionStorage.setItem(pendKey, JSON.stringify({ ops: editing.ed.pending(), base: editing.baseHash, text: editText(), queued: editing.queued, round: editing.queuedRound }))
-		editing.stored = true
 	} catch {}
 }
 function clearPending() {
-	editing.stored = false
 	try { sessionStorage.removeItem(pendKey) } catch {}
 }
 function readPending() {
@@ -1021,7 +1036,11 @@ async function restorePending() {
 	for (const op of p.ops) { try { editing.ed.apply(op) } catch { lost++ } }
 	if (!editing.ed.diff()) return clearPending()
 	if (p.queued && p.base === editing.baseHash && !lost) { editing.queued = true; editing.queuedRound = Number(p.round) || 0; editing.queuedAt = 0 }
-	else editing.msg = "The design changed while the page was closed: your edits were made again on it. Apply to send them."
+	else {
+		const n = changeCount(), what = `Restored ${n} unsent edit${n === 1 ? "" : "s"}`
+		const dropped = lost ? ` ${lost} no longer applied and ${lost === 1 ? "was" : "were"} dropped.` : ""
+		editing.msg = p.base === editing.baseHash ? `${what}. Apply to send, or Discard.${dropped}` : `${what}: the design changed while the page was closed, so they were made again on it. Apply to send them.${dropped}`
+	}
 	savePending()
 	await enterEdit()
 	if (editing.queued) trySend()
