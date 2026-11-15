@@ -220,6 +220,61 @@
 					"where": "Specs table @ 6 V: no-load speed and current, stall current and torque, gear ratio, size, weight, shaft diameter"
 				}
 			}
+		},
+		{
+			"mpn": "POLOLU-3041 100:1 HPCB 12V",
+			"buy": [{ "supplier": "Pololu", "url": "https://www.pololu.com/product/3041" }],
+			"ratedV": 12,
+			"noLoadRpm": 330,
+			"stallTorqueNm": 0.1275,
+			"stallA": 0.75,
+			"noLoadA": 0.08,
+			"gearRatio": 100.37,
+			"bodyMm": [
+				26,
+				12,
+				10
+			],
+			"shaftMm": 3,
+			"massG": 9.5,
+			"source": {
+				"ratedV": {
+					"url": "https://cdn.robotshop.com/media/P/Pol/RB-Pol-1605/pdf/pololu_250_1_micro_metal_gearmotor_hpcb_12v_w_12_c_datasheet.pdf",
+					"where": "Pololu Micro Metal Gearmotors datasheet (April 2024, Rev 6.1, hosted by RobotShop; pololu.com refused the fetch), page 4 performance summary, HPCB 12V block, row #3041/#3052/#5216/#5217: rated voltage 12 V"
+				},
+				"noLoadRpm": {
+					"url": "https://cdn.robotshop.com/media/P/Pol/RB-Pol-1605/pdf/pololu_250_1_micro_metal_gearmotor_hpcb_12v_w_12_c_datasheet.pdf",
+					"where": "Pololu Micro Metal Gearmotors datasheet (April 2024, Rev 6.1, hosted by RobotShop; pololu.com refused the fetch), page 4 performance summary, HPCB 12V block, row #3041/#3052/#5216/#5217: no-load speed 330 rpm (±20 %)"
+				},
+				"stallTorqueNm": {
+					"url": "https://cdn.robotshop.com/media/P/Pol/RB-Pol-1605/pdf/pololu_250_1_micro_metal_gearmotor_hpcb_12v_w_12_c_datasheet.pdf",
+					"where": "derived: Pololu Micro Metal Gearmotors datasheet (April 2024, Rev 6.1, hosted by RobotShop; pololu.com refused the fetch), page 4 performance summary, HPCB 12V block, stall extrapolation 13 kg·mm × 0.00980665 N·m per kg·mm = 0.1275"
+				},
+				"stallA": {
+					"url": "https://cdn.robotshop.com/media/P/Pol/RB-Pol-1605/pdf/pololu_250_1_micro_metal_gearmotor_hpcb_12v_w_12_c_datasheet.pdf",
+					"where": "Pololu Micro Metal Gearmotors datasheet (April 2024, Rev 6.1, hosted by RobotShop; pololu.com refused the fetch), page 4 performance summary, HPCB 12V block, row #3041/#3052/#5216/#5217: stall extrapolation 0.75 A (shared by the HPCB 12V block)"
+				},
+				"noLoadA": {
+					"url": "https://cdn.robotshop.com/media/P/Pol/RB-Pol-1605/pdf/pololu_250_1_micro_metal_gearmotor_hpcb_12v_w_12_c_datasheet.pdf",
+					"where": "Pololu Micro Metal Gearmotors datasheet (April 2024, Rev 6.1, hosted by RobotShop; pololu.com refused the fetch), page 4 performance summary, HPCB 12V block, row #3041/#3052/#5216/#5217: no-load current 80 mA (±50 %, shared by the HPCB 12V block; the page-60 graph shows 0.065 A, resellers quote Pololu's 0.06 A)"
+				},
+				"gearRatio": {
+					"url": "https://cdn.robotshop.com/media/P/Pol/RB-Pol-1605/pdf/pololu_250_1_micro_metal_gearmotor_hpcb_12v_w_12_c_datasheet.pdf",
+					"where": "Pololu Micro Metal Gearmotors datasheet (April 2024, Rev 6.1, hosted by RobotShop; pololu.com refused the fetch), page 4 performance summary, HPCB 12V block, row #3041/#3052/#5216/#5217: gear ratio 100.37:1"
+				},
+				"bodyMm": {
+					"url": "https://cdn.robotshop.com/media/P/Pol/RB-Pol-1605/pdf/pololu_250_1_micro_metal_gearmotor_hpcb_12v_w_12_c_datasheet.pdf",
+					"where": "HPCB no-encoder dimension drawing: 10 × 12 mm cross-section, overall length 25.6 mm max (rounded to 26) for all ratios but 1000:1; the 9 mm output shaft extra"
+				},
+				"shaftMm": {
+					"url": "https://cdn.robotshop.com/media/P/Pol/RB-Pol-1605/pdf/pololu_250_1_micro_metal_gearmotor_hpcb_12v_w_12_c_datasheet.pdf",
+					"where": "HPCB no-encoder dimension drawing: 3.0 mm D-shaft, 9 mm long"
+				},
+				"massG": {
+					"url": "https://www.pololu.com/product/3041/specs",
+					"where": "Specs table: weight 9.5 g (pololu.com refused the fetch; the figure is Pololu's as quoted in search results for this page, and matches resellers' listings)"
+				}
+			}
 		}
 	],
 	"wheels": [
