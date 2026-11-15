@@ -254,6 +254,8 @@ export function derivedAssembly(spec: SystemSpec, mainMechanics?: Mechanics, out
 }
 
 // In words why a request body is not the shape it must be (types and finiteness only; the rules are assemblyErrors'). [] when it is.
+const EDGES = ["left", "right", "top", "bottom"]
+const FIELD_TYPES = ["u8", "u16", "i16", "u32", "f32"]
 export function requestShapeErrors(b: { assembly?: unknown; links?: unknown }): string[] {
 	const obj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
 	const num = (v: unknown) => typeof v === "number" && Number.isFinite(v)
@@ -261,7 +263,26 @@ export function requestShapeErrors(b: { assembly?: unknown; links?: unknown }): 
 	if (b.links !== undefined) {
 		if (!Array.isArray(b.links)) out.push("links must be a list")
 		else b.links.forEach((l, i) => {
-			if (!obj(l) || typeof l.id !== "string" || typeof l.kind !== "string" || !obj(l.a) || typeof l.a.board !== "string" || !obj(l.b) || typeof l.b.board !== "string" || !obj(l.cable) || !num(l.cable.lengthMm)) out.push(`links[${i}] needs id, kind, a.board, b.board and cable.lengthMm`)
+			if (!obj(l) || typeof l.id !== "string" || typeof l.kind !== "string" || !obj(l.a) || typeof l.a.board !== "string" || !obj(l.b) || typeof l.b.board !== "string" || !obj(l.cable) || !num(l.cable.lengthMm)) return out.push(`links[${i}] needs id, kind, a.board, b.board and cable.lengthMm`)
+			// The rest of a link, so the spec checks never meet a value of the wrong shape (a 400, never a 500).
+			for (const end of ["a", "b"] as const) {
+				const e = (l[end] as Record<string, unknown>).edge
+				if (e !== undefined && !EDGES.includes(e as string)) out.push(`links[${i}].${end}.edge must be ${EDGES.join(", ")}`)
+			}
+			if (l.baud !== undefined && !num(l.baud)) out.push(`links[${i}].baud must be a number`)
+			if (l.power !== undefined && !(obj(l.power) && typeof l.power.from === "string")) out.push(`links[${i}].power needs from (a board)`)
+			if (l.i2c !== undefined) {
+				const c = l.i2c
+				if (!obj(c) || typeof c.controller !== "string" || typeof c.pullupsOn !== "string" || !obj(c.targets) || !Object.values(c.targets).every(num) || (c.khz !== undefined && !num(c.khz)))
+					out.push(`links[${i}].i2c needs controller, pullupsOn, targets {board: address} and an optional khz`)
+			}
+			if (l.messages !== undefined) {
+				if (!Array.isArray(l.messages)) out.push(`links[${i}].messages must be a list`)
+				else l.messages.forEach((m, j) => {
+					if (!obj(m) || typeof m.name !== "string" || typeof m.from !== "string" || !Array.isArray(m.fields) || !m.fields.every((f) => obj(f) && typeof f.name === "string" && FIELD_TYPES.includes(f.type as string)))
+						out.push(`links[${i}].messages[${j}] needs name, from and fields [{name, type: ${FIELD_TYPES.join("|")}}]`)
+				})
+			}
 		})
 	}
 	if (b.assembly !== undefined) {
