@@ -44,10 +44,12 @@ test("the rover header declares what the rover firmware drives and reads, so the
 	assert.ok(!kinds.includes("pin-mismatch") && !kinds.includes("sensor-mismatch"), kinds.join(", "))
 })
 
-test("a payload sensor the rover firmware can't read stays a sensor mismatch", () => {
+test("the rover firmware reads the SHTC3 too (real rover run 10 picked it); a sensor it has no driver for stays a mismatch", () => {
 	const s = rover()
 	const u2 = (s.values.parts ?? []).find((p) => p.role === "sensor")!
-	u2.mpn = "SHTC3"
+	u2.mpn = "SHTC3-TR-2.5KS"
+	assert.match(roverHeader(s), /#define SENSOR_SHTC3 1/)
+	u2.mpn = "BME280"
 	assert.doesNotMatch(roverHeader(s), /SENSOR_/)
 })
 
