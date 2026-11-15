@@ -149,6 +149,7 @@ const SUPPORT = {
 	enPullup: { kind: "resistor", value: "10k", lcsc: "C25744", mpn: "0402WGF1002TCE", footprint: "0402" },
 	enCap: { kind: "capacitor", value: "1uF", lcsc: "C52923", mpn: "CL05A105KA5NQNC", footprint: "0402" },
 	decouple: { kind: "capacitor", value: "100nF", lcsc: "C1525", mpn: "CL05B104KO5NNNC", footprint: "0402" },
+	canTerm: { kind: "resistor", value: "120", lcsc: "C25079", mpn: "0402WGF1200TCE", footprint: "0402" },
 	// The USB-sense divider's top: 68k over the 100k pull-down puts VBUS 4.75–5.25 V at 2.83–3.13 V on the pin, above
 	// the ESP32-C3's 2.475 V high threshold (0.75 × VDD) and under its 3.3 V supply. A JLCPCB Extended part.
 	senseTop: { kind: "resistor", value: "68k", lcsc: "C36871", mpn: "0402WGF6802TCE", footprint: "0402" },
@@ -176,6 +177,7 @@ const SUPPORT_SOURCES: Record<keyof typeof SUPPORT, string> = {
 	enPullup: "Espressif's reset RC on EN: 10 kΩ to 3V3 (ESP32-C3-MINI-1 datasheet, Peripheral Schematics)",
 	enCap: "Espressif's reset RC on EN: 1 µF to GND (ESP32-C3-MINI-1 datasheet, Peripheral Schematics)",
 	decouple: "100 nF decoupling right at a part's supply pin (its datasheet's recommended circuit)",
+	canTerm: "120 Ω across CANH and CANL at each end of a CAN bus, the cable's characteristic impedance (TI SN65HVD230 datasheet SLOS346O, Figure 37 and §11.2.1)",
 	senseTop: "the USB-sense divider's top: 68k over 100k puts VBUS at 2.83–3.13 V on the pin, above the ESP32-C3's high threshold and under its supply",
 	vint: "the DRV8833's internal regulator capacitor, 2.2 µF (TI DRV8833 §7.3, external components)",
 	vcp: "the DRV8833's charge-pump capacitor, 10 nF to VM (TI DRV8833 §7.3, external components)",
@@ -356,6 +358,11 @@ export function supportParts(s: ContractSnapshot): Support[] {
 		if (driver.pins.includes("VCP")) jobs.push({ job: `${driver.ref}.VCP (charge pump) to VM`, spec: SUPPORT.vcp, a: { ref: driver.ref, pin: "VCP" }, b: driver.pins.includes("VM") ? { ref: driver.ref, pin: "VM" } : { net: vm }, near: driver.ref })
 		if (supply && driver.pins.includes("nSLEEP")) jobs.push({ job: `${driver.ref}.nSLEEP pull-up (the driver awake)`, spec: SUPPORT.pullup, a: { ref: driver.ref, pin: "nSLEEP" }, b: { net: supply }, near: driver.ref })
 	}
+	// A CAN transceiver: 100 nF at its VCC, and 120 Ω across the bus at a bus end (links' can.terminate).
+	const can = parts.find((p) => p.role === "can-transceiver")
+	if (can && supply) jobs.push({ job: `decoupling on ${can.ref}.VCC`, spec: SUPPORT.decouple, a: { net: supply }, b: GND, near: can.ref })
+	for (const l of (s.values.links ?? []).filter((x) => x.kind === "can" && x.can?.terminate))
+		if (can) jobs.push({ job: `${l.id} CAN termination, 120 Ω across CANH and CANL (this board is a bus end)`, spec: SUPPORT.canTerm, a: { net: `${l.id}_CANH` }, b: { net: `${l.id}_CANL` }, near: can.ref })
 	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
 	if (ldo) jobs.push({ job: `decoupling on ${charger ? "VBAT" : "VBUS"} (LDO input)`, spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
 	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
@@ -559,6 +566,9 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	smd3225_4p: [3.6, 2.9],
 	// The DRV8833's TSSOP-16 (6.4 mm lead span, 0.65 mm pitch): pads across x, 8 rows along y.
 	"tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm": [7.9, 5.6],
+	// A SOIC-8 CAN transceiver (SN65HVD230, TI's D package): pad centres 2.7 mm either side (TI's land pattern), 1.27 mm
+	// pitch; the box takes the pads and the 4.9 mm body.
+	"soic8_w4.4mm_p1.27mm": [7, 5.4],
 	// A HAT's 2 × 20 female header (ADAFRUIT-2223): 20 columns and 2 rows at 2.54 mm, the housing's 50.8 × 5.08 mm.
 	"pinrow40_rows2_female_pinnumbering(columnmajor)": [50.8, 5.08],
 	// A 2-pin 5.0 mm screw terminal (KF301-5.0-2P, a 5 A power input): two Ø2.6 mm pads 5 mm apart; the housing is
@@ -1652,6 +1662,22 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	for (const l of s.values.links ?? []) {
 		const k = parts.find((p) => p.ref === l.connector && p.role === "connector")
 		if (hasSupply && k?.pins.includes("VCC") && l.supply !== "none") join(supply, k.ref, "VCC")
+	}
+
+	// A CAN link's transceiver (links.ts CAN_TRANSCEIVER): RS to GND for high-speed mode, CANH and CANL to the link
+	// connector's IO1 and IO2 (its VCC and GND join the rails by label, above).
+	const can = parts.find((p) => p.role === "can-transceiver")
+	if (can) {
+		if (can.pins.includes("RS")) join("GND", can.ref, "RS")
+		for (const l of (s.values.links ?? []).filter((x) => x.kind === "can")) {
+			const k = parts.find((p) => p.ref === l.connector && p.role === "connector")
+			for (const [side, io] of [["CANH", "IO1"], ["CANL", "IO2"]] as const) {
+				const net = `${l.id}_${side}`
+				if (!nets.has(net)) nets.set(net, [])
+				if (can.pins.includes(side)) join(net, can.ref, side)
+				if (k?.pins.includes(io)) join(net, k.ref, io)
+			}
+		}
 	}
 
 	// A motor driver (DRV8833, docs/mechanics.md): motor supply VM from the cell, no current sensing (xISEN to GND),

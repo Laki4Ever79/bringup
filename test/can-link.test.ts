@@ -65,3 +65,55 @@ test("a chip without a CAN controller is told so", () => {
 	const f = systemChecks(spec, { a, b: board(spec, "b") }).find((x) => x.kind === "can-controller")
 	assert.ok(f && /a's RP2040 has no CAN controller/.test(f.message), JSON.stringify(systemChecks(spec, { a, b: board(spec, "b") })))
 })
+
+// ---- the board's side: the transceiver, its wiring, the termination ----------------------------------------------
+import { CAN_TRANSCEIVER, canSignals, linkBudget, linkChecks, linkFactLines, LINK_CONNECTOR } from "../src/contract/links.ts"
+import { circuitFromContract, generatedNets, supportParts } from "../src/codegen/circuit.ts"
+
+// A board that took its CAN link: the connector and the transceiver in its parts, TX to D and RX to R on free GPIOs.
+const wired = (spec: SystemSpec, name: string): ContractSnapshot => {
+	const s = board(spec, name)
+	const [l] = s.values.links!
+	s.values.parts = [...s.values.parts!, { ref: l.connector, role: "connector", ...LINK_CONNECTOR }, { ref: "U9", role: "can-transceiver", ...CAN_TRANSCEIVER }]
+	const used = new Set(s.values.pins!.map((p) => p.gpio))
+	const [g1, g2] = [4, 5, 6, 7, 3, 1, 0].filter((g) => !used.has(g))
+	s.values.pins = [...s.values.pins!, { signal: canSignals(l).tx, gpio: g1, partRef: "U9", partPin: "D" }, { signal: canSignals(l).rx, gpio: g2, partRef: "U9", partPin: "R" }]
+	return s
+}
+
+test("a board on a CAN link needs the transceiver and its TX/RX; the facts say how it is wired", () => {
+	const spec = canSpec()
+	const bare = board(spec, "a")
+	bare.values.parts = [...bare.values.parts!, { ref: bare.values.links![0].connector, role: "connector", ...LINK_CONNECTOR }]
+	assert.ok(linkChecks(bare).some((v) => v.kind === "link-connector-missing" && /needs its transceiver: a part role can-transceiver, SN65HVD230DR/.test(v.message)))
+	const s = wired(spec, "a")
+	assert.deepEqual(linkChecks(s).filter((v) => v.kind !== "link-connector-missing" || !/not on an edge/.test(v.message)), [])
+	const half = structuredClone(s)
+	half.values.pins = half.values.pins!.filter((p) => p.signal !== "L1_CAN_RX")
+	assert.ok(linkChecks(half).some((v) => v.kind === "link-unwired" && /assign L1_CAN_RX to U9.R/.test(v.message)))
+	assert.match(linkFactLines(s).join("\n"), /CAN at 500 kbit\/s through a SN65HVD230DR transceiver .* 120 Ω across them on this board/)
+	// The budget charges the two signals until they are wired.
+	assert.deepEqual(linkBudget(s), [])
+})
+
+test("the generator wires the bus side: CANH/CANL to the connector, RS to GND, 100 nF and 120 Ω", () => {
+	const s = wired(canSpec(), "a")
+	const nets = generatedNets(s)
+	const k = s.values.links![0].connector
+	// The transceiver, the connector, and the terminating resistor's end.
+	const term0 = supportParts(s).find((sp) => sp.spec.value === "120")!
+	assert.deepEqual(nets.get("L1_CANH"), ["U9.CANH", `${k}.IO1`, `${term0.ref}.pin1`])
+	assert.deepEqual(nets.get("L1_CANL"), ["U9.CANL", `${k}.IO2`, `${term0.ref}.pin2`])
+	assert.ok(nets.get("GND")!.includes("U9.RS") && nets.get("GND")!.includes("U9.GND"))
+	const jobs = supportParts(s).filter((sp) => sp.near === "U9")
+	assert.deepEqual(jobs.map((sp) => sp.spec.value).sort(), ["100nF", "120"])
+	const term = jobs.find((sp) => sp.spec.value === "120")!
+	assert.deepEqual([term.a, term.b], [{ net: "L1_CANH" }, { net: "L1_CANL" }])
+	const src = circuitFromContract(s)
+	assert.match(src, /<chip name="U9"[^\n]*footprint="soic8_w4.4mm_p1.27mm"/)
+	assert.match(src, /<net name="L1_CANH" \/>/)
+	// Not terminated: no 120 Ω.
+	const mid = structuredClone(s)
+	mid.values.links![0].can!.terminate = false
+	assert.ok(!supportParts(mid).some((sp) => sp.spec.value === "120"))
+})
