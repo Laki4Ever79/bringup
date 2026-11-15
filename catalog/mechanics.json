@@ -522,6 +522,124 @@
 					"where": "single 3.7 V Li-polymer cell (Form 1 nominal voltage)"
 				}
 			}
+		},
+		{
+			"mpn": "GENSACE-GEA22002S20X6 2S 2200 mAh 20C LiPo XT60",
+			"buy": [
+				{
+					"supplier": "Gens ace (EU store)",
+					"url": "https://gensace.de/products/gea22002s20x6"
+				}
+			],
+			"cells": 2,
+			"nominalV": 7.4,
+			"fullV": 8.4,
+			"cutoffV": 6.0,
+			"mAh": 2200,
+			"maxContA": 44,
+			"peakA": 44,
+			"sizeMm": [
+				76,
+				34,
+				18
+			],
+			"massG": 106,
+			"notes": "2S for a Raspberry Pi 5 robot: feeds the bought 5 V regulator (regulators list). The catalog's 6 V Pololu micro-metal gearmotors would see 8.4 V on a full pack, 1.4x rated, over the mech-voltage check's 1.3x limit (7.8 V): a 2S robot needs a motor duty limit (PWM cap near 6/8.4 = 71 %) or 12 V motors.",
+			"source": {
+				"nominalV": {
+					"url": "https://gensace.de/products/gea22002s20x6",
+					"where": "product page spec list (SKU GEA22002S20X6): 'Capacity: 2200mAh', 'Voltage: 7.4V / 2S'"
+				},
+				"fullV": {
+					"url": "https://gensace.de/pages/lipo-battery-guide",
+					"where": "derived: 2 cells x 4.2 V; guide 'How to maintain the Lipo battery? > Charging': 'Never overcharge batteries over their rated maximal voltage (4.2V/cell for LiPo)'"
+				},
+				"cutoffV": {
+					"url": "https://gensace.de/pages/lipo-battery-guide",
+					"where": "derived: 2 cells x 3.0 V; guide 'How to maintain the Lipo battery? > Discharging': 'Never discharge battery to a level below 3V per cell under load'"
+				},
+				"mAh": {
+					"url": "https://gensace.de/products/gea22002s20x6",
+					"where": "product page spec list (SKU GEA22002S20X6): 'Capacity: 2200mAh', 'Voltage: 7.4V / 2S'"
+				},
+				"maxContA": {
+					"url": "https://gensace.de/products/gea22002s20x6",
+					"where": "derived: 20 C x 2.2 Ah (spec list 'C-rate: 20C'; the page's usage text says 30C, the lower figure is used), by the guide's formula 'Max continous Amp draw (A)= Battery capacity (Ah) x Discharge rate (C)' (https://gensace.de/pages/lipo-battery-guide)"
+				},
+				"peakA": {
+					"url": "https://gensace.de/products/gea22002s20x6",
+					"where": "no burst rating on the page: the 20 C continuous rating is used as the limit (conservative)"
+				},
+				"sizeMm": {
+					"url": "https://gensace.de/products/gea22002s20x6",
+					"where": "product page spec list: 'Dimension: approx. LxWxH 76x34x18mm'"
+				},
+				"massG": {
+					"url": "https://gensace.de/products/gea22002s20x6",
+					"where": "product page spec list: 'Weight: approx. 106g'"
+				},
+				"cells": {
+					"url": "https://gensace.de/products/gea22002s20x6",
+					"where": "product page spec list: 'Voltage: 7.4V / 2S'"
+				}
+			}
+		}
+	],
+	"regulators": [
+		{
+			"mpn": "POLOLU-4091 D36V50F5 5 V 5.5 A step-down",
+			"buy": [
+				{
+					"supplier": "Pololu",
+					"url": "https://www.pololu.com/product/4091"
+				},
+				{
+					"supplier": "The Pi Hut",
+					"url": "https://thepihut.com/products/pololu-5v-5-5a-step-down-voltage-regulator-d36v50f5"
+				}
+			],
+			"outV": 5,
+			"maxA": 5.5,
+			"inMinV": 5.5,
+			"inMaxV": 50,
+			"efficiency": 0.8,
+			"sizeMm": [
+				25.4,
+				25.4,
+				9.5
+			],
+			"massG": 7.0,
+			"notes": "Bought module: powers a Raspberry Pi 5 from a 2S pack with no board circuit. Output is 5 V +/-4 % (the Pi 5's own supply is 5.1 V); the minimum input rises above 5.5 V with load (dropout), so near a 2S pack's 6.0 V cutoff the 5 V rail may sag at full current.",
+			"source": {
+				"outV": {
+					"url": "https://thepihut.com/products/pololu-5v-5-5a-step-down-voltage-regulator-d36v50f5",
+					"where": "specifications: 'Output voltage: 5V with 4% accuracy' (pololu.com refused the fetch, the reseller quotes Pololu's spec)"
+				},
+				"maxA": {
+					"url": "https://thepihut.com/products/pololu-5v-5-5a-step-down-voltage-regulator-d36v50f5",
+					"where": "specifications table: continuous output current 5.5A; the output current falls as input voltage rises (pololu.com refused the fetch, the reseller quotes Pololu's spec)"
+				},
+				"inMinV": {
+					"url": "https://thepihut.com/products/pololu-5v-5-5a-step-down-voltage-regulator-d36v50f5",
+					"where": "specifications: 'Input voltage: 5.5V to 50V'; the minimum is subject to dropout, which rises with output current (pololu.com refused the fetch, the reseller quotes Pololu's spec)"
+				},
+				"inMaxV": {
+					"url": "https://thepihut.com/products/pololu-5v-5-5a-step-down-voltage-regulator-d36v50f5",
+					"where": "specifications: 'Input voltage: 5.5V to 50V' (pololu.com refused the fetch, the reseller quotes Pololu's spec)"
+				},
+				"efficiency": {
+					"url": "https://thepihut.com/products/pololu-5v-5-5a-step-down-voltage-regulator-d36v50f5",
+					"where": "features: 'Typical efficiency of 80% to 95%, depending on input voltage, output voltage, and load'; the 80 % lower bound is used as the worst case at any load up to the 5.5 A rating (pololu.com refused the fetch, the reseller quotes Pololu's spec)"
+				},
+				"sizeMm": {
+					"url": "https://thepihut.com/products/pololu-5v-5-5a-step-down-voltage-regulator-d36v50f5",
+					"where": "features: '25.4 mm x 25.4 mm x 9.5 mm' (spec table: 1 x 1 x 0.375 in) (pololu.com refused the fetch, the reseller quotes Pololu's spec)"
+				},
+				"massG": {
+					"url": "https://thepihut.com/products/pololu-5v-5-5a-step-down-voltage-regulator-d36v50f5",
+					"where": "specifications: 'Weight: 7.0g' (pololu.com refused the fetch, the reseller quotes Pololu's spec)"
+				}
+			}
 		}
 	],
 	"sensors": [
