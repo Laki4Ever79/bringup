@@ -1,0 +1,364 @@
+{
+	"id": "rpi-4b",
+	"kind": "compute",
+	"title": "Raspberry Pi 4 Model B (bought), on a generated carrier",
+	"parts": [
+		{
+			"mpn": "RPI4B-8GB",
+			"role": "compute",
+			"qty": 1,
+			"alternatives": [
+				"RPI4B-4GB",
+				"RPI4B-2GB",
+				"RPI4B-1GB",
+				"RPI4B-3GB"
+			]
+		}
+	],
+	"circuit": "bought; carrier per src/system",
+	"interfaces": [
+		{
+			"kind": "uart",
+			"signals": [
+				"GPIO14 TX (pin 8)",
+				"GPIO15 RX (pin 10)"
+			]
+		},
+		{
+			"kind": "i2c",
+			"signals": [
+				"GPIO2 SDA (pin 3)",
+				"GPIO3 SCL (pin 5)"
+			]
+		},
+		{
+			"kind": "pwm",
+			"signals": [
+				"GPIO12 PWM0 (pin 32)",
+				"GPIO13 PWM1 (pin 33)"
+			]
+		},
+		{
+			"kind": "usb",
+			"signals": [
+				"2 × USB 3.0",
+				"2 × USB 2.0"
+			]
+		},
+		{
+			"kind": "power",
+			"signals": [
+				"5V (pins 2, 4)",
+				"USB-C 5V"
+			]
+		}
+	],
+	"compute": {
+		"frame": "millimetres, origin at the board's lower-left corner seen from the top, GPIO header along the top edge, x right, y up (as the mechanical drawing)",
+		"outline": {
+			"value": {
+				"widthMm": 85,
+				"heightMm": 56
+			},
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf",
+				"where": "top view: overall 85 and 56; corner radius 3.0"
+			}
+		},
+		"holes": {
+			"value": [
+				{
+					"x": 3.5,
+					"y": 3.5,
+					"dia": 2.7
+				},
+				{
+					"x": 61.5,
+					"y": 3.5,
+					"dia": 2.7
+				},
+				{
+					"x": 3.5,
+					"y": 52.5,
+					"dia": 2.7
+				},
+				{
+					"x": 61.5,
+					"y": 52.5,
+					"dia": 2.7
+				}
+			],
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf",
+				"where": "top view: holes 3.5 from the left and bottom edges, 58 and 49 between centres, Ø2.7 (bottom-right hole, the 6 is the pad)"
+			}
+		},
+		"tallestMm": {
+			"value": 16.0,
+			"unit": "mm",
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf",
+				"where": "top view: Z=16.0 on both USB-A stacks (Ethernet Z=13.5, header Z=8.5)"
+			},
+			"note": "the drawing's Z labels, read as height above the board's top face; PCB thickness and underside parts aren't included"
+		},
+		"header": {
+			"at": {
+				"value": {
+					"x": 32.5,
+					"y": 52.5,
+					"pitchMm": 2.54,
+					"rows": 2,
+					"cols": 20,
+					"pin1": "lower-left of the header"
+				},
+				"source": {
+					"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf",
+					"where": "top view: header centre 29 right of the left holes (3.5 + 29), on the holes' row"
+				},
+				"pin1Source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+					"where": "'On classic SBCs and Zero models, Pin 1 is located in the lower-left corner of the header' (Pin layout section)"
+				}
+			},
+			"pins": {
+				"value": {
+					"1": "3V3",
+					"2": "5V",
+					"3": "GPIO2 I2C SDA",
+					"4": "5V",
+					"5": "GPIO3 I2C SCL",
+					"6": "GND",
+					"7": "GPIO4",
+					"8": "GPIO14 UART TX",
+					"9": "GND",
+					"10": "GPIO15 UART RX",
+					"11": "GPIO17",
+					"12": "GPIO18",
+					"13": "GPIO27",
+					"14": "GND",
+					"15": "GPIO22",
+					"16": "GPIO23",
+					"17": "3V3",
+					"18": "GPIO24",
+					"19": "GPIO10",
+					"20": "GND",
+					"21": "GPIO9",
+					"22": "GPIO25",
+					"23": "GPIO11",
+					"24": "GPIO8",
+					"25": "GND",
+					"26": "GPIO7",
+					"27": "GPIO0 HAT ID_SD (reserved)",
+					"28": "GPIO1 HAT ID_SC (reserved)",
+					"29": "GPIO5",
+					"30": "GND",
+					"31": "GPIO6",
+					"32": "GPIO12 PWM0",
+					"33": "GPIO13 PWM1",
+					"34": "GND",
+					"35": "GPIO19",
+					"36": "GPIO16",
+					"37": "GPIO26",
+					"38": "GPIO20",
+					"39": "GND",
+					"40": "GPIO21"
+				},
+				"source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+					"where": "table 'Pin names, types, and typical functions' (the standard layout for B+ and later and all Zero models)"
+				}
+			}
+		},
+		"ports": {
+			"value": [
+				{
+					"kind": "usb-c power",
+					"side": "bottom",
+					"atMm": 11.2
+				},
+				{
+					"kind": "micro-hdmi",
+					"side": "bottom",
+					"atMm": 26.0
+				},
+				{
+					"kind": "micro-hdmi",
+					"side": "bottom",
+					"atMm": 39.5
+				},
+				{
+					"kind": "audio/composite 3.5 mm",
+					"side": "bottom",
+					"atMm": 54.0
+				},
+				{
+					"kind": "ethernet",
+					"side": "right",
+					"atMm": 45.75
+				},
+				{
+					"kind": "usb-a ×2",
+					"side": "right",
+					"atMm": 27
+				},
+				{
+					"kind": "usb-a ×2",
+					"side": "right",
+					"atMm": 9
+				},
+				{
+					"kind": "mipi dsi",
+					"side": "top face",
+					"atMm": null
+				},
+				{
+					"kind": "mipi csi",
+					"side": "top face",
+					"atMm": null
+				},
+				{
+					"kind": "microsd",
+					"side": "left (underside)",
+					"atMm": null
+				}
+			],
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf",
+				"where": "top view: bottom-edge centres 3.5 + 7.7, + 14.8, + 13.5, then + 7 + 7.5 (audio); right-edge centres 45.75, 27, 9 from the bottom edge; unmarked ones aren't dimensioned"
+			},
+			"also": {
+				"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-product-brief.pdf",
+				"where": "Specification: 2 × USB 3.0, 2 × USB 2.0, Gigabit Ethernet, 2 × micro HDMI, 2-lane MIPI DSI, 2-lane MIPI CSI, 4-pole stereo audio and composite video"
+			},
+			"note": "which USB-A stack is USB 3.0 isn't on the drawing"
+		},
+		"inputV": {
+			"value": {
+				"nom": 5.1,
+				"min": null,
+				"max": null
+			},
+			"unit": "V",
+			"source": {
+				"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+				"where": "'All models require a 5.1V supply'"
+			},
+			"note": "no tolerance published; min and max unknown. The firmware logs a low-voltage warning below 4.63 V (±5%)",
+			"also": {
+				"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+				"where": "Power supply warnings: low-voltage detection 'if the supply voltage drops below 4.63 V (±5%)' on all models since B+ 'except the Zero range'"
+			}
+		},
+		"currentA": {
+			"typical": {
+				"value": 0.6,
+				"unit": "A",
+				"source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+					"where": "table 'Typical power requirements', row Raspberry Pi 4 Model B: typical bare-board active current consumption 600mA"
+				}
+			},
+			"peak": {
+				"value": 3.0,
+				"unit": "A",
+				"source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+					"where": "same table: recommended PSU current capacity 3.0A"
+				},
+				"note": "the supply the vendor asks for, including up to 1.2 A for USB peripherals; the product brief allows a good 2.5 A supply if USB loads stay under 500 mA"
+			},
+			"stressMax": {
+				"value": 1.25,
+				"unit": "A",
+				"source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+					"where": "table of currents by workload, Raspberry Pi 4B: Stress Max 1.25 (A), measured with HDMI monitor, keyboard, mouse and Ethernet, no other USB devices"
+				}
+			},
+			"usbPeripherals": {
+				"value": 1.2,
+				"unit": "A",
+				"source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+					"where": "row Raspberry Pi 4 Model B: maximum total USB peripheral current draw 1.2A"
+				}
+			}
+		},
+		"feeds": {
+			"value": [
+				{
+					"via": "usb-c",
+					"what": "5V DC (minimum 3A)",
+					"source": {
+						"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-product-brief.pdf",
+						"where": "Specification, Input power: '5V DC via USB-C connector (minimum 3A)'"
+					}
+				},
+				{
+					"via": "header 5V pins (2, 4)",
+					"what": "5V DC (minimum 3A)",
+					"source": {
+						"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-product-brief.pdf",
+						"where": "Specification, Input power: '5V DC via GPIO header (minimum 3A)'"
+					}
+				},
+				{
+					"via": "PoE",
+					"what": "802.3af through a separate PoE HAT",
+					"source": {
+						"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+						"where": "'The Ethernet jack on Raspberry Pi 4B and 3B+ is PoE capable, supporting the IEEE 802.3af-2003 PoE standard' (needs a HAT)"
+					}
+				}
+			]
+		},
+		"gpioLevel": {
+			"value": 3.3,
+			"unit": "V",
+			"source": {
+				"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+				"where": "'Raspberry Pi GPIO pins operate at 3.3 V and aren't 5 V tolerant'"
+			}
+		},
+		"os": {
+			"value": "Raspberry Pi OS; Ubuntu (certified on Raspberry Pi 4B) for ROS 2",
+			"source": {
+				"url": "https://ubuntu.com/download/raspberry-pi",
+				"where": "table 'All certified Raspberry Pi hardware': Raspberry Pi 4B, Ubuntu 26.04 LTS: Yes, certified"
+			},
+			"note": "ubuntu.com now lists 26.04 LTS; ROS 2 Jazzy targets 24.04 (Noble), and REP 2000 lists no distro for 26.04 yet: use a Noble image for Jazzy"
+		},
+		"ros2": {
+			"value": {
+				"distro": "jazzy",
+				"tier": 1,
+				"platform": "Ubuntu Noble arm64"
+			},
+			"source": {
+				"url": "https://github.com/ros-infrastructure/rep/blob/master/rep-2000.rst",
+				"where": "Jazzy Jalisco: arm64 / Ubuntu Noble (24.04): Tier 1"
+			}
+		},
+		"bridgeDevice": {
+			"value": "/dev/ttyACM0",
+			"via": "the MCU board's native USB (CDC-ACM), one cable per board through the robot's USB-C hub",
+			"source": {
+				"url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/usb-serial-jtag-console.html",
+				"where": "Uploading the Application, note: the USB Serial/JTAG Controller's serial port appears 'as /dev/ttyACM* on Linux'"
+			},
+			"note": "the first board to enumerate gets ttyACM0; with several MCU boards, pin each by its USB serial number (a udev rule or /dev/serial/by-id) rather than by order",
+			"alternatives": [
+				{
+					"value": "/dev/ttyAMA0",
+					"source": {
+						"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/configuration/interfaces.adoc",
+						"where": "Change the primary UART: on 'Raspberry Pi Zero W, Zero 2 W, 3, and 4' the PL011 UART0 'is connected to the Bluetooth controller by default, so the mini UART is the primary UART on GPIO 14 and 15'; table 'Linux device nodes for UARTs': /dev/ttyAMA0 = first PL011 (UART0), /dev/ttyS0 = mini UART"
+					},
+					"note": "on Raspberry Pi 4 GPIO14/15 default to the mini UART (/dev/ttyS0), whose baud rate follows the VPU core clock ('Mini UART and core frequency'), and the primary UART carries the Linux serial console by default. For a reliable link to the MCU board, give UART0 to GPIO14/15 (disable Bluetooth with the disable-bt overlay, or move it with miniuart-bt) and turn the serial console off",
+					"via": "UART0 on header pins 8 (GPIO14 TX) and 10 (GPIO15 RX)"
+				}
+			]
+		}
+	}
+}

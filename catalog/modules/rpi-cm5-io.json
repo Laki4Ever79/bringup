@@ -1,0 +1,375 @@
+{
+	"id": "rpi-cm5-io",
+	"kind": "compute",
+	"title": "Raspberry Pi Compute Module 5 on the CM5 IO Board (bought), on a generated carrier",
+	"parts": [
+		{
+			"mpn": "CM5104032",
+			"role": "compute",
+			"qty": 1,
+			"alternatives": [
+				"CM5108032",
+				"CM5116032",
+				"CM5004032",
+				"CM5104016",
+				"CM5104064",
+				"CM5108064",
+				"CM5104000"
+			]
+		}
+	],
+	"circuit": "bought; carrier per src/system",
+	"interfaces": [
+		{
+			"kind": "uart",
+			"signals": [
+				"GPIO14 TX (pin 8)",
+				"GPIO15 RX (pin 10)"
+			]
+		},
+		{
+			"kind": "i2c",
+			"signals": [
+				"GPIO2 SDA (pin 3)",
+				"GPIO3 SCL (pin 5)"
+			]
+		},
+		{
+			"kind": "pwm",
+			"signals": [
+				"GPIO12 PWM0 (pin 32)",
+				"GPIO13 PWM1 (pin 33)"
+			]
+		},
+		{
+			"kind": "usb",
+			"signals": [
+				"2 × USB 3.0 Type-A",
+				"1 × USB 2.0 Type-C (power in, flashing)"
+			]
+		},
+		{
+			"kind": "power",
+			"signals": [
+				"5V (HAT header J8 pins 2, 4)",
+				"USB-C PD 5V/5A (J11)"
+			]
+		}
+	],
+	"compute": {
+		"frame": "millimetres, origin at the IO board's lower-left corner seen from the top, HDMI/Ethernet/USB along the bottom edge, x right, y up (as Figure 2 of the CM5IO datasheet)",
+		"outline": {
+			"value": {
+				"widthMm": 160,
+				"heightMm": 90
+			},
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+				"where": "section 6.1 Mechanical layout, Figure 2: outline 160 mm × 90 mm"
+			}
+		},
+		"holes": {
+			"value": [
+				{
+					"x": 3.5,
+					"y": 3.5,
+					"dia": null
+				},
+				{
+					"x": 61.5,
+					"y": 3.5,
+					"dia": null
+				},
+				{
+					"x": 11.0,
+					"y": 8.0,
+					"dia": null
+				},
+				{
+					"x": 11.0,
+					"y": 77.0,
+					"dia": null
+				},
+				{
+					"x": 3.5,
+					"y": 52.5,
+					"dia": null
+				},
+				{
+					"x": 61.5,
+					"y": 52.5,
+					"dia": null
+				}
+			],
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+				"where": "Figure 2 (page 10): 3.50/3.50 to the lower-left hole, 61.50 to the hole by J9, 11.00/8.00 and 11.00/77.00 to the holes left of HDMI0 and below CAM/DISP 0, 52.50 to the HAT holes' row"
+			},
+			"note": "the hole diameters aren't on Figure 2. The upper HAT pair's x is read off the drawing's scale (the same 58 mm column as the dimensioned lower pair), not dimensioned. The holes on the right half (by the fan connector and the M.2 slot) aren't dimensioned: take them from the CM5 design files"
+		},
+		"tallestMm": {
+			"value": null,
+			"unit": "mm",
+			"source": null,
+			"note": "not in the CM5IO datasheet (Figure 2 is a top view): measure a board or take the CM5 design files' model before relying on it",
+			"also": {
+				"url": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+				"where": "section 4.1.1 PCB dimensions: the module alone is 4.6 mm deep; mounted, 4.94 mm or 7.44 mm depending on the stacking connector"
+			}
+		},
+		"header": {
+			"at": {
+				"value": {
+					"x": null,
+					"y": 52.5,
+					"pitchMm": 2.54,
+					"rows": 2,
+					"cols": 20,
+					"pin1": "lower-left of the header"
+				},
+				"source": {
+					"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+					"where": "Figure 2: J8 'Raspberry Pi HAT' on the 52.50 row, square pin-1 pad at its lower left"
+				},
+				"note": "the header's x isn't dimensioned; it sits between the 58 mm-spaced HAT holes, in the HAT position"
+			},
+			"pins": {
+				"value": {
+					"1": "3V3",
+					"2": "5V",
+					"3": "GPIO2 I2C SDA",
+					"4": "5V",
+					"5": "GPIO3 I2C SCL",
+					"6": "GND",
+					"7": "GPIO4",
+					"8": "GPIO14 UART TX",
+					"9": "GND",
+					"10": "GPIO15 UART RX",
+					"11": "GPIO17",
+					"12": "GPIO18",
+					"13": "GPIO27",
+					"14": "GND",
+					"15": "GPIO22",
+					"16": "GPIO23",
+					"17": "3V3",
+					"18": "GPIO24",
+					"19": "GPIO10",
+					"20": "GND",
+					"21": "GPIO9",
+					"22": "GPIO25",
+					"23": "GPIO11",
+					"24": "GPIO8",
+					"25": "GND",
+					"26": "GPIO7",
+					"27": "GPIO0 HAT ID_SD (reserved)",
+					"28": "GPIO1 HAT ID_SC (reserved)",
+					"29": "GPIO5",
+					"30": "GND",
+					"31": "GPIO6",
+					"32": "GPIO12 PWM0",
+					"33": "GPIO13 PWM1",
+					"34": "GND",
+					"35": "GPIO19",
+					"36": "GPIO16",
+					"37": "GPIO26",
+					"38": "GPIO20",
+					"39": "GND",
+					"40": "GPIO21"
+				},
+				"source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+					"where": "table 'Pin names, types, and typical functions' (the standard layout for B+ and later and all Zero models)"
+				},
+				"also": {
+					"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+					"where": "section 4.2 Raspberry Pi HAT connector: 'a standard 40-pin Raspberry Pi HAT connector' exposing 'GPIO, I2C, SPI, UART, PWM, and power rails as defined in the Raspberry Pi HAT specification'"
+				}
+			}
+		},
+		"ports": {
+			"value": [
+				{
+					"kind": "hdmi (HDMI0)",
+					"side": "bottom",
+					"atMm": 23.0
+				},
+				{
+					"kind": "hdmi (HDMI1)",
+					"side": "bottom",
+					"atMm": 48.0
+				},
+				{
+					"kind": "ethernet (PoE+ via HAT)",
+					"side": "bottom",
+					"atMm": 74.0
+				},
+				{
+					"kind": "usb-a ×2 (USB 3.0)",
+					"side": "bottom",
+					"atMm": 93.0
+				},
+				{
+					"kind": "usb-c power in / USB device (J11)",
+					"side": "bottom",
+					"atMm": 108.0
+				},
+				{
+					"kind": "microsd (CM5Lite only)",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "cam/disp 0 fpc",
+					"side": "top face, top edge",
+					"atMm": 11.5
+				},
+				{
+					"kind": "cam/disp 1 fpc",
+					"side": "top face, top edge",
+					"atMm": 47.5
+				},
+				{
+					"kind": "m.2 m-key",
+					"side": "top face, right",
+					"atMm": null
+				},
+				{
+					"kind": "fan (4-pin JST-SH)",
+					"side": "top face",
+					"atMm": null
+				}
+			],
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+				"where": "Figure 2: bottom chain 3.50 + 19.50 + 25.00 + 26.00 + 19.00 + 15.00 to the connector centres; top: 11.50 to CAM/DISP 0, + 36.0 to CAM/DISP 1"
+			},
+			"also": {
+				"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+				"where": "section 1.3 Features: two HDMI 2.0, two MIPI DSI/CSI-2 FPC, Gigabit Ethernet, two USB 3.0 Type-A, one USB 2.0 Type-C, M.2 M key, microSD (CM5Lite), 40-pin HAT"
+			},
+			"note": "the microSD's chain ends at 121.25 but that line doesn't reach the slot's centre clearly, so it's left unset"
+		},
+		"inputV": {
+			"value": {
+				"nom": 5.0,
+				"min": 4.75,
+				"max": null
+			},
+			"unit": "V",
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+				"where": "section 2.1 PSU input: J11 'negotiates 5 V at 5 A using USB Power Delivery'"
+			},
+			"note": "min is the CM5 module's: 'The 5 V rail should rise monotonically to at least 4.75 V and remain above this level during operation' (CM5 datasheet 3.1). No operating maximum is published; 6.0 V is the absolute maximum (CM5 datasheet Table 7), a damage limit",
+			"also": {
+				"url": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+				"where": "section 3.1 Power-up sequencing"
+			}
+		},
+		"currentA": {
+			"typical": {
+				"value": 0.9,
+				"unit": "A",
+				"source": {
+					"url": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+					"where": "section 3.3 Power consumption: 'Operating power consumption is typically around 900 mA'"
+				},
+				"note": "the CM5 module alone at 5 V; the IO board's peripherals (USB, HDMI, fan, NVMe) come on top. Idle is typically 400 mA"
+			},
+			"peak": {
+				"value": 5.0,
+				"unit": "A",
+				"source": {
+					"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+					"where": "section 2.1: negotiates 5 V at 5 A; 'If the connected PSU for CM5IO doesn't provide 5 A, CM5 displays a warning'"
+				},
+				"note": "the supply the IO board asks for, not a measured peak"
+			},
+			"usbPeripherals": {
+				"value": 1.2,
+				"unit": "A",
+				"source": {
+					"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+					"where": "section 2.3: 'The two USB 3.0 ports are limited to approximately 1.2 A combined'"
+				}
+			}
+		},
+		"feeds": {
+			"value": [
+				{
+					"via": "usb-c (J11)",
+					"what": "5V/5A with Power Delivery; a Raspberry Pi 5 supply works",
+					"source": {
+						"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+						"where": "section 2.1 PSU input"
+					}
+				},
+				{
+					"via": "HAT header J8 5V pins (2, 4)",
+					"what": "external 5 V supply",
+					"source": {
+						"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+						"where": "section 2.1: 'you can supply an external 5 V supply to the board through J8'"
+					}
+				},
+				{
+					"via": "PoE",
+					"what": "5 V from a PoE HAT",
+					"source": {
+						"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+						"where": "section 2.3: 'PoE supplies 5 V to the CM5IO through the RJ45 magjack connector'"
+					}
+				}
+			]
+		},
+		"gpioLevel": {
+			"value": 3.3,
+			"unit": "V",
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+				"where": "section 5.4 R4/R5 Vref voltage selection: 'By default, the CM5IO sets the CM5 GPIO voltage to 3.3 V through the R5 surface-mount resistor'"
+			},
+			"note": "moving R5 to R4 makes the GPIO bank 1.8 V; check which is fitted before wiring a 3.3 V MCU board"
+		},
+		"os": {
+			"value": "Raspberry Pi OS; Ubuntu for ROS 2 (unverified on CM5)",
+			"source": {
+				"url": "https://ubuntu.com/download/raspberry-pi",
+				"where": "table 'All certified Raspberry Pi hardware' lists Raspberry Pi 5 and CM4, not CM5"
+			},
+			"note": "Ubuntu doesn't list CM5 as certified: check that a Noble arm64 image boots on CM5 before planning on ROS 2 Jazzy"
+		},
+		"ros2": {
+			"value": {
+				"distro": "jazzy",
+				"tier": 1,
+				"platform": "Ubuntu Noble arm64"
+			},
+			"source": {
+				"url": "https://github.com/ros-infrastructure/rep/blob/master/rep-2000.rst",
+				"where": "Jazzy Jalisco: arm64 / Ubuntu Noble (24.04): Tier 1"
+			},
+			"note": "assumes Ubuntu Noble boots on CM5, which ubuntu.com doesn't confirm"
+		},
+		"bridgeDevice": {
+			"value": "/dev/ttyACM0",
+			"via": "the MCU board's native USB (CDC-ACM), one cable per board through the robot's USB-C hub",
+			"source": {
+				"url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/usb-serial-jtag-console.html",
+				"where": "Uploading the Application, note: the USB Serial/JTAG Controller's serial port appears 'as /dev/ttyACM* on Linux'"
+			},
+			"note": "the first board to enumerate gets ttyACM0; with several MCU boards, pin each by its USB serial number (a udev rule or /dev/serial/by-id) rather than by order",
+			"alternatives": [
+				{
+					"value": "/dev/ttyAMA0",
+					"source": {
+						"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/configuration/interfaces.adoc",
+						"where": "'On Compute Modules, all UARTs are disabled by default and can be enabled through a Device Tree overlay'; Raspberry Pi 5, 500, 500+ and Compute Module 5: UART0..UART4 and UART10 'disabled by default'"
+					},
+					"note": "GPIO14/15 is UART0 and starts disabled: enable it with an overlay. Don't rely on enable_uart=1: on Pi 5 and CM5 it routes the console to GPIO 14 and 15 when nothing is on the debug header (interfaces.adoc, Change the primary UART), which would garble the link to the MCU board",
+					"via": "UART0 on HAT header pins 8 (GPIO14 TX) and 10 (GPIO15 RX)"
+				}
+			]
+		}
+	}
+}
