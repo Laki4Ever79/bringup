@@ -5,7 +5,7 @@ import assert from "node:assert/strict"
 import { resolve } from "node:path"
 import { loadMechCatalog } from "../src/mechanics/catalog.ts"
 import { moduleById } from "../src/system/bought.ts"
-import { headerCheck, headerSignals, mechanicsCheck, powerBudget, railCheck, railNeed, type CarrierRegulator } from "../src/system/compute.ts"
+import { headerCheck, headerSignals, mechanicsCheck, powerBudget, railCheck, railNeed, regulatorFromCatalog, type CarrierRegulator } from "../src/system/compute.ts"
 import type { AssemblyBoard } from "../src/system/assembly.ts"
 import type { Module } from "../src/modules/library.ts"
 
@@ -69,18 +69,18 @@ test("power budget: the Pi's peak plus two motors at stall against the 1S pack's
 	const big = { ...pack, mpn: "BIG-2S", cutoffV: 6, fullV: 8.4, peakA: 15 }
 	assert.deepEqual(powerBudget(pi, { battery: big, motors: { part: motor, count: 2 }, regulator: good }).filter((x) => x.level === "error"), [])
 	// The regulator's input limit is the other bound.
-	assert.match(powerBudget(pi, { battery: big, motors: null, regulator: { ...good, maxInA: 2 } })[0].message, /over the carrier regulator's 2 A input limit/)
+	assert.match(powerBudget(pi, { battery: big, motors: "none", regulator: { ...good, maxInA: 2 } })[0].message, /over the carrier regulator's 2 A input limit/)
 })
 
 test("power budget says what it can't check: no battery, unknown peak, no regulator", () => {
-	assert.match(powerBudget(pi, { battery: null, motors: null, regulator: good })[0].message, /no battery chosen yet/)
+	assert.match(powerBudget(pi, { battery: null, motors: "none", regulator: good })[0].message, /mechanics\.battery\.pack is not chosen yet/)
 	const noPeak = edited("currentA.peak", null)
-	const f = powerBudget(noPeak, { battery: mech.batteries[0], motors: null, regulator: good })
+	const f = powerBudget(noPeak, { battery: mech.batteries[0], motors: "none", regulator: good })
 	assert.equal(f[0].level, "warning")
-	assert.match(f[0].message, /peak current is unknown/)
+	assert.match(f[0].message, /compute\.currentA\.peak is null/)
 	const big = { ...mech.batteries[0], cutoffV: 6, fullV: 8.4, peakA: 15 }
-	assert.match(powerBudget(pi, { battery: big, motors: null, regulator: null }).map((x) => x.message).join("\n"), /regulator isn't chosen yet/)
-	assert.match(powerBudget(pi, { battery: big, motors: null, regulator: { ...good, maxInA: null } }).map((x) => x.message).join("\n"), /input current limit is unknown/)
+	assert.match(powerBudget(pi, { battery: big, motors: "none", regulator: null }).map((x) => x.message).join("\n"), /regulator isn't chosen yet/)
+	assert.match(powerBudget(pi, { battery: big, motors: "none", regulator: { ...good, maxInA: null } }).map((x) => x.message).join("\n"), /input current limit is unknown/)
 })
 
 test("header: the carrier's 5 V on pins 2 and 4, ground, and UART0 on 8/10 all land right; a pin mismatch is named", () => {
@@ -91,16 +91,16 @@ test("header: the carrier's 5 V on pins 2 and 4, ground, and UART0 on 8/10 all l
 	const uart = headerSignals(pi, "uart")
 	assert.deepEqual(uart.filter((s) => s.fn.startsWith("UART")).map((s) => [s.fn, s.pin]), [["UART TX", 8], ["UART RX", 10]])
 	assert.deepEqual(headerCheck(pi, uart), [])
-	assert.deepEqual(headerCheck(pi, [{ fn: "I2C SDA", pin: 3 }, { fn: "I2C SCL", pin: 5 }, { fn: "PWM", pin: 32 }]), [])
+	assert.deepEqual(headerCheck(pi, [...usb, { fn: "I2C SDA", pin: 3 }, { fn: "I2C SCL", pin: 5 }, { fn: "PWM", pin: 32 }]), [])
 	// TX and RX swapped.
-	const swapped = headerCheck(pi, [{ fn: "UART TX", pin: 10, net: "PI_TX" }])
+	const swapped = headerCheck(pi, [...usb, { fn: "UART TX", pin: 10, net: "PI_TX" }])
 	assert.equal(swapped.length, 1)
 	assert.match(swapped[0].message, /UART TX \(PI_TX\) lands on the wrong pin .*pin 10 is GPIO15 UART RX; UART TX is on pin 8/)
 	assert.match(swapped[0].message, /gpio-on-raspberry-pi\.adoc/)
 	// 5 V onto a GPIO, and onto 3V3.
-	assert.match(headerCheck(pi, [{ fn: "5V", pin: 1 }])[0].message, /5 V goes only onto the 5 V pins \(2, 4\): pin 1 is 3V3/)
-	assert.match(headerCheck(pi, [{ fn: "5V", pin: 8 }])[0].message, /3\.3 V GPIO that isn't 5 V tolerant/)
-	assert.match(headerCheck(pi, [{ fn: "GND", pin: 41 }])[0].message, /pin 41, which rpi-5's header doesn't have/)
+	assert.match(headerCheck(pi, [...usb, { fn: "5V", pin: 1 }])[0].message, /5 V goes only onto the 5 V pins \(2, 4\): pin 1 is 3V3/)
+	assert.match(headerCheck(pi, [...usb, { fn: "5V", pin: 8 }])[0].message, /3\.3 V GPIO that isn't 5 V tolerant/)
+	assert.match(headerCheck(pi, [...usb, { fn: "GND", pin: 41 }])[0].message, /pin 41, which rpi-5's header doesn't have/)
 })
 
 test("mechanics: the Pi fits the plate or is named; it mustn't stand in front of the sensor; its unknown height is a warning", () => {
@@ -123,4 +123,44 @@ test("mechanics: the Pi fits the plate or is named; it mustn't stand in front of
 	const tall = edited("tallestMm", 20)
 	;(tall.compute as { tallestMm: { source: unknown } }).tallestMm.source = { url: "https://example.com/step", where: "measured" }
 	assert.match(mechanicsCheck(tall, { placed: at(20), plate, others: [], baseZMm: 19, maxHeightMm: 35 })[0].message, /reaches 39 mm .* over the brief's 35 mm/)
+})
+
+test("an unknown input voltage is a warning naming the field, never a silent pass (review C1)", () => {
+	const m = structuredClone(pi)
+	delete (m.compute as Record<string, unknown>).inputV
+	const f = railCheck(m, { outV: 12, maxOutA: 5 })
+	assert.equal(f.length, 1)
+	assert.equal(f[0].level, "warning")
+	assert.match(f[0].message, /compute\.inputV is missing/)
+	assert.match(railCheck(edited("inputV", null), { outV: 12, maxOutA: 5 })[0].message, /compute\.inputV is null/)
+})
+
+test("a carrier that feeds no 5 V or ground onto the header doesn't pass (review M3)", () => {
+	const f = headerCheck(pi, [])
+	assert.deepEqual(f.map((x) => x.level), ["error", "error"])
+	assert.match(f[0].message, /no 5 V on rpi-5's header, which the module is fed through \(pins 2, 4/)
+})
+
+test("motors not chosen yet are a warning, not 0 A; other boards' draw is added or said to be left out (review M4, M5)", () => {
+	const big = { ...mech.batteries[0], cutoffV: 6, fullV: 8.4, peakA: 15 }
+	const f = powerBudget(pi, { battery: big, motors: null, regulator: good })
+	assert.match(f.map((x) => x.message).join("\n"), /mechanics\.drive\.motor is not chosen yet/)
+	assert.deepEqual(powerBudget(pi, { battery: big, motors: "none", regulator: good }), [])
+	const small = { ...big, peakA: 4 }
+	assert.match(powerBudget(pi, { battery: small, motors: "none", regulator: good })[0].message, /with no motors, the other boards' draw left out/)
+	assert.match(powerBudget(pi, { battery: { ...big, peakA: 6 }, motors: "none", regulator: good, otherBoardsA: 1.5 })[0].message, /plus 1\.5 A for the other boards: 6\.12 A in all/)
+})
+
+test("a regulator from the catalog's regulators list: its figures, its input range against the pack (ruling R5)", () => {
+	const src = { url: "https://www.pololu.com/product/0000/specs", where: "specs table" }
+	const reg = regulatorFromCatalog({ mpn: "POLOLU-D36V50F5", outV: 5, maxOutA: 5.5, minInV: 5.2, maxInV: 36, source: { maxOutA: src } })
+	assert.deepEqual([reg.outV, reg.maxOutA, reg.inV, reg.source], [5, 5.5, { min: 5.2, max: 36 }, src])
+	// A 5 V rail where the Pi asks 5.1 V: said, as a warning (no tolerance published).
+	assert.deepEqual(railCheck(pi, reg).map((f) => f.level), ["warning"])
+	const oneCell = mech.batteries[0]
+	const f = powerBudget(pi, { battery: oneCell, motors: "none", regulator: reg })
+	assert.match(f.map((x) => x.message).join("\n"), /POLOLU-D36V50F5 takes 5\.2–36 V in .*pololu.*, but the ADAFRUIT-258 .* spans 3–4\.2 V/)
+	// Unknown figures stay null and the checks say so.
+	assert.equal(regulatorFromCatalog({ mpn: "X" }).maxOutA, null)
+	assert.match(railCheck(pi, regulatorFromCatalog({ mpn: "X", outV: 5.1 }))[0].message, /output current is unknown/)
 })
