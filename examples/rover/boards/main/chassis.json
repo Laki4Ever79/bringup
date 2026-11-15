@@ -1,7 +1,7 @@
 {
  "plate": {
   "lengthMm": 150,
-  "widthMm": 90,
+  "widthMm": 96,
   "thicknessMm": 3,
   "clearanceMm": 50.5
  },
@@ -9,7 +9,7 @@
  "motors": [
   {
    "side": "left",
-   "xMm": 30,
+   "xMm": 45,
    "yMm": 37,
    "bodyMm": [
     26,
@@ -20,7 +20,7 @@
   },
   {
    "side": "right",
-   "xMm": 30,
+   "xMm": 45,
    "yMm": -37,
    "bodyMm": [
     26,
@@ -31,7 +31,7 @@
   }
  ],
  "caster": {
-  "xMm": -50,
+  "xMm": -55,
   "holesMm": [
    [
     18,
@@ -55,7 +55,7 @@
   "heightMm": 50.5
  },
  "battery": {
-  "xMm": 25,
+  "xMm": 45,
   "yMm": 0,
   "sizeMm": [
    60,
@@ -66,18 +66,39 @@
  "boards": [
   {
    "name": "main",
-   "xMm": 10,
+   "xMm": 0,
    "yMm": 0,
    "widthMm": 42,
-   "heightMm": 29,
+   "heightMm": 28,
    "rotDeg": 0,
-   "holeInsetMm": 3.5
+   "holeInsetMm": 3,
+   "holes": [
+    {
+     "xMm": 18,
+     "yMm": -11
+    },
+    {
+     "xMm": -18,
+     "yMm": 11
+    },
+    {
+     "xMm": 18,
+     "yMm": 11
+    }
+   ],
+   "screwHoleMm": 2.2,
+   "pilotMm": 1.6
   }
  ],
+ "boardScrew": {
+  "boardHoleMm": 2.2,
+  "pilotMm": 1.6
+ },
+ "unplaced": [],
  "sensor": {
-  "xMm": 72,
+  "xMm": 73.6,
   "yMm": 0,
-  "zMm": 65,
+  "zMm": 66,
   "sizeMm": [
    21,
    18,
@@ -86,18 +107,18 @@
   "rangeMm": 1200,
   "updateMs": 33
  },
- "massG": 239.78300000000002,
+ "massG": 242.98399999999998,
  "com": [
-  -3.31036812451258,
+  1.5461100319362593,
   0,
-  43.08395882944162
+  43.19932505844006
  ],
  "wheelMassG": 20,
  "casterMassG": 71,
  "drive": {
   "trackMm": 110,
-  "axleXMm": 30,
-  "wheelbaseMm": 80,
+  "axleXMm": 45,
+  "wheelbaseMm": 100,
   "wheelDiameterMm": 80,
   "wheelWidthMm": 10
  },
@@ -122,6 +143,7 @@
  "edgeMm": 3,
  "estimates": {
   "floorMu": 0.6,
+  "casterMu": 0.02,
   "rollingCrr": 0.02,
   "packOhm": 0.15
  }
