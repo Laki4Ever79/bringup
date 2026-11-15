@@ -48,7 +48,7 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_CRUISE_DUTY ${cruise.toFixed(3)}f`,
 		`#define ROVER_TURN_MS ${turnMs}`,
 		// What else the rover firmware drives and reads, named as the product firmware names them so the same checks
-		// apply: the status LED (a 1 Hz heartbeat) and the payload sensor, only the one hw_board.cpp can read (SHT40).
+		// apply: the status LED (a 1 Hz heartbeat) and the payload sensor hw_board.cpp reads (SHT40 or SHTC3).
 		...(v.pins ?? []).filter((p) => p.signal === "STATUS_LED").map((p) => `#define PIN_STATUS_LED ${p.gpio}`),
 		// A link's pins (a UART's TX and RX), as the product firmware's pins.h names them: link.h opens the UART on them.
 		...(v.pins ?? []).filter((p) => (v.links ?? []).some((l) => p.signal === `${l.id}_TX` || p.signal === `${l.id}_RX`)).map((p) => `#define ${macroName(p.signal)} ${p.gpio}`),
@@ -60,7 +60,9 @@ export function roverHeader(s: ContractSnapshot): string {
 			.filter((p) => !["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2", "I2C_SDA", "I2C_SCL", "STATUS_LED"].includes(p.signal) && !(v.links ?? []).some((l) => p.signal === `${l.id}_TX` || p.signal === `${l.id}_RX`))
 			.filter((p, i, all) => all.findIndex((q) => q.signal === p.signal) === i)
 			.map((p) => `#define ${macroName(p.signal)} ${p.gpio}`),
-		...(sensorDriver((v.parts ?? []).find((p) => p.role === "sensor")?.mpn ?? "") === "SHT40" ? ["#define SENSOR_SHT40 1"] : []),
+		// The payload sensor hw_board.cpp reads, as the product firmware's pins.h names it (SHT40 or SHTC3; real rover run
+		// 10, 15 Nov: the architect picked the SHTC3, which the rover firmware couldn't read).
+		...((d) => (d ? [`#define SENSOR_${d} 1`] : []))(sensorDriver((v.parts ?? []).find((p) => p.role === "sensor")?.mpn ?? "")),
 		"",
 	]
 	return lines.join("\n")

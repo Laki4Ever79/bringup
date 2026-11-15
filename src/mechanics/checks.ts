@@ -97,6 +97,17 @@ export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): Mec
 	return mechanicsCheckOver(v.motion, withAssembly(c.values), checkBoards(c), cat)
 }
 
+// A board's 4-pin connector that no link uses and that isn't the sensor's named one: the sensor's plug under another ref.
+function spare4Pin(boards: { snapshot: ContractSnapshot }[], named: string): string | undefined {
+	for (const b of boards) {
+		const v = b.snapshot.values
+		const links = new Set((v.links ?? []).map((l) => l.connector))
+		const p = (v.parts ?? []).find((x) => x.role === "connector" && x.pins.length === 4 && x.ref !== named && !links.has(x.ref))
+		if (p) return p.ref
+	}
+	return undefined
+}
+
 // Distance from a point to each edge of a convex polygon (inside: all positive); the smallest.
 function insideMargin(p: [number, number], poly: [number, number][]): number {
 	let min = Infinity
@@ -322,6 +333,10 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const taken = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && !(p.role === "connector" && p.pins.length === 4)) : undefined
 	if (!mech.sensor) push("mech-wiring", "no distance sensor in the mechanics design: the rover avoids walls with one at the front", ["mechanics"])
 	else if (taken) push("mech-wiring", `mechanics.sensor.connector is ${taken.ref}, but ${taken.ref} is already the ${taken.role} ${taken.mpn}: name a free ref for the sensor's 4-pin connector (JT1)`, ["mechanics"], ["mechanics"])
+	// A 4-pin connector the boards already have under another ref, serving no link: the mechanics points at it (one field)
+	// instead of the parts agent adding a second one (real rover run 10, 15 Nov: J5 and JT1 were added and removed in
+	// turn for 20 revisions, each a "duplicate" of the other).
+	else if (!plug && spare4Pin(boards, mech.sensor.connector)) push("mech-wiring", `the board already has a 4-pin connector ${spare4Pin(boards, mech.sensor.connector)} and no ${mech.sensor.connector}: set mechanics.sensor.connector to ${spare4Pin(boards, mech.sensor.connector)} (don't add a second one)`, ["mechanics"], ["mechanics"])
 	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["parts"], ["parts"])
 	// The board generator joins the plug's IO1/IO2 to the bus (linkBusTraces): the bus must exist on its board.
 	else if (!["I2C_SDA", "I2C_SCL"].every((sig) => boards.some((b) => (b.snapshot.values.parts ?? []).some((p) => p.ref === plug.ref) && (b.snapshot.values.pins ?? []).some((p) => p.signal === sig))))
