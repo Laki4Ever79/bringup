@@ -49,3 +49,24 @@ test("a board with no Edge.Cuts outline is returned unchanged", () => {
 	const text = `(kicad_pcb\n${via(79.512, 100, 7)})\n`
 	assert.deepEqual(nudgeEdgeVias(text, 0.3), { pcb: text, moved: [] })
 })
+
+// The scripted rover at 43×28 mm (15 Nov 2026) left its debug footprint off: a GND via 0.1734 mm from one of the
+// TC2030's unplated holes against the fab's 0.2 mm. The footprint is turned 90° on the bottom; its hole's place comes
+// from the footprint's own position and turn.
+const npth = (fx: number, fy: number, rot: number, lx: number, ly: number, d: number) =>
+	`  (footprint\n    "tscircuit:chip"\n    (layer B.Cu)\n    (at ${fx} ${fy} ${rot})\n    (pad "" np_thru_hole circle\n      (at ${lx} ${ly} 0)\n      (size ${d} ${d})\n      (drill ${d})\n      (layers *.Cu *.Mask)\n    )\n  )\n`
+
+test("a via too near an unplated hole moves straight away from it to the fab's hole clearance, its traces with it", async () => {
+	const { nudgeVias } = await import("../src/tools/via-edge.ts")
+	// The real case: JD1 at (107.5, 108) turned 90°, its hole at local (-2.54, 1.016), so at (108.516, 110.54).
+	const before = pcb(npth(107.5, 108, 90, -2.54, 1.016, 0.991), via(107.892, 109.9, 4), seg(104, 109.9, 107.892, 109.9, 4))
+	const r = nudgeVias(before, { edgeMm: 0.3, holeMm: 0.2 })
+	assert.equal(r.moved.length, 1)
+	const [[x, y]] = vias(r.pcb)
+	const gap = Math.hypot(x - 108.516, y - 110.54) - 0.991 / 2 - 0.225
+	assert.ok(gap >= 0.2 && gap < 0.25, `copper ${gap.toFixed(3)} mm from the hole`)
+	assert.deepEqual(segs(r.pcb)[0].slice(2), [x, y], "the trace's end is on the via")
+	// A via already clear of the hole stays.
+	const clear = pcb(npth(107.5, 108, 90, -2.54, 1.016, 0.991), via(100, 100, 4))
+	assert.equal(nudgeVias(clear, { edgeMm: 0.3, holeMm: 0.2 }).moved.length, 0)
+})

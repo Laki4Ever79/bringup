@@ -60,19 +60,47 @@ function outlineBox(pcb: string): { minX: number; minY: number; maxX: number; ma
 
 const fmt = (n: number) => String(Math.round(n * 1e6) / 1e6)
 
-// Moves every via whose copper is nearer the outline than clearanceMm inward, with its net's trace ends on it.
-export function nudgeEdgeVias(pcb: string, clearanceMm: number): { pcb: string; moved: ViaMove[] } {
+// The unplated holes (np_thru_hole pads: a debug plug's alignment holes, mounting holes) in board coordinates: the
+// footprint's place plus the pad's, turned by the footprint's angle (KiCad: y down, angles counter-clockwise).
+function unplatedHoles(pcb: string): { x: number; y: number; r: number }[] {
+	const out: { x: number; y: number; r: number }[] = []
+	for (const fp of blocks(pcb, "footprint")) {
+		const at = new RegExp(String.raw`\(at ${NUM} ${NUM}(?: ${NUM})?\)`).exec(fp.text)
+		if (!at) continue
+		const [fx, fy, deg] = [Number(at[1]), Number(at[2]), Number(at[3] ?? 0)]
+		const th = (deg * Math.PI) / 180
+		for (const pad of blocks(fp.text, "pad")) {
+			if (!/np_thru_hole/.test(pad.text)) continue
+			const p = point(pad.text, "at"), drill = value(pad.text, "drill")
+			if (!p || drill === null) continue
+			out.push({ x: fx + p[0] * Math.cos(th) + p[1] * Math.sin(th), y: fy - p[0] * Math.sin(th) + p[1] * Math.cos(th), r: drill / 2 })
+		}
+	}
+	return out
+}
+
+// Moves every via whose copper is nearer an unplated hole than holeMm straight away from it, and then every via nearer
+// the outline than edgeMm inward, with its own net's trace ends on it.
+export function nudgeVias(pcb: string, rules: { edgeMm: number; holeMm: number }): { pcb: string; moved: ViaMove[] } {
 	const box = outlineBox(pcb)
 	if (!box) return { pcb, moved: [] }
+	const holes = unplatedHoles(pcb)
 	const moved: ViaMove[] = []
 	const edits: { start: number; end: number; text: string }[] = []
 	const vias = blocks(pcb, "via")
 	for (const v of vias) {
 		const at = point(v.text, "at"), size = value(v.text, "size"), net = value(v.text, "net")
 		if (!at || size === null || net === null) continue
-		const need = clearanceMm + size / 2 + MARGIN
-		const x = Math.min(Math.max(at[0], box.minX + need), box.maxX - need)
-		const y = Math.min(Math.max(at[1], box.minY + need), box.maxY - need)
+		let [hx, hy] = at
+		for (const h of holes) {
+			const away = h.r + size / 2 + rules.holeMm + MARGIN
+			const d = Math.hypot(hx - h.x, hy - h.y)
+			if (d >= away || d < 1e-6) continue
+			;[hx, hy] = [h.x + ((hx - h.x) / d) * away, h.y + ((hy - h.y) / d) * away]
+		}
+		const need = rules.edgeMm + size / 2 + MARGIN
+		const x = Math.min(Math.max(hx, box.minX + need), box.maxX - need)
+		const y = Math.min(Math.max(hy, box.minY + need), box.maxY - need)
 		const keep = (a: number, b: number) => Math.abs(a - b) < 1e-9
 		if (keep(x, at[0]) && keep(y, at[1])) continue
 		moved.push({ net, from: at, to: [x, y] })
@@ -96,4 +124,9 @@ export function nudgeEdgeVias(pcb: string, clearanceMm: number): { pcb: string; 
 		i = e.end
 	}
 	return { pcb: out + pcb.slice(i), moved }
+}
+
+// The edge rule alone (the board build applies both through nudgeVias).
+export function nudgeEdgeVias(pcb: string, clearanceMm: number): { pcb: string; moved: ViaMove[] } {
+	return nudgeVias(pcb, { edgeMm: clearanceMm, holeMm: 0 })
 }
