@@ -26,6 +26,9 @@ export interface Plan {
 	robot?: boolean
 	// The id of the design Build made from this plan (Build keeps the plan's id; older plans may name a system-<id>).
 	builtAs?: string
+	// The starter this plan was forked from (examples/<starter>/starter.json): its name, the short hash of the file at
+	// fork time, and its example's title for the page.
+	forkedFrom?: { starter: string; hash: string; title?: string }
 }
 
 // The spec Build runs: the plan's spec with the boards' placement. A robot's boards share a chassis; boards of any

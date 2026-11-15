@@ -15,6 +15,8 @@ export interface ExampleMeta {
 	// chassis: the board stands on a robot's chassis (chassis.stl and chassis.json beside it), drawn as the robot.
 	boards: { name: string; outline: { widthMm: number; heightMm: number } | null; chassis?: true }[]
 	links: unknown[]
+	// The example has a seed plan people can fork (starter.json, src/dashboard/starters.ts); set by listExamples.
+	starter?: true
 }
 
 const readJson = (path: string) => {
@@ -55,11 +57,12 @@ function saveBoard(from: string, to: string): Omit<ExampleMeta["boards"][number]
 export function saveExample(sourceDir: string, name: string, sentence: string, destRoot = "examples", titleOverride?: string): ExampleMeta {
 	if (!/^[\w-]+$/.test(name)) throw new Error("an example name is letters, digits, - and _")
 	const dest = join(destRoot, name)
-	// The still (the start screen's first frame, saved by hand from the browser) survives a re-save.
-	const still = existsSync(join(dest, "still.png")) ? readFileSync(join(dest, "still.png")) : null
+	// The still (the start screen's first frame, saved by hand from the browser) and the starter's seed plan (written
+	// apart from the run) survive a re-save.
+	const kept = ["still.png", "starter.json"].map((f) => [f, existsSync(join(dest, f)) ? readFileSync(join(dest, f)) : null] as const)
 	rmSync(dest, { recursive: true, force: true })
 	mkdirSync(dest, { recursive: true })
-	if (still) writeFileSync(join(dest, "still.png"), still)
+	for (const [f, bytes] of kept) if (bytes) writeFileSync(join(dest, f), bytes)
 	const spec = readJson(join(sourceDir, "system.json"))
 	const boards: ExampleMeta["boards"] = []
 	if (spec) for (const b of spec.boards as { name: string }[]) boards.push({ name: b.name, ...saveBoard(join(sourceDir, "boards", b.name), join(dest, "boards", b.name)) })
@@ -75,7 +78,10 @@ export function listExamples(root: string): ExampleMeta[] {
 	if (!existsSync(root)) return []
 	return readdirSync(root)
 		.sort()
-		.map((n) => readJson(join(root, n, "example.json")) as ExampleMeta | null)
+		.map((n) => {
+			const meta = readJson(join(root, n, "example.json")) as ExampleMeta | null
+			return meta && existsSync(join(root, n, "starter.json")) ? { ...meta, starter: true as const } : meta
+		})
 		.filter((m): m is ExampleMeta => m !== null)
 }
 

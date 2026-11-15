@@ -770,6 +770,16 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 						return planError(res, error)
 					}
 				}
+				// Fork a starter (examples/<name>/starter.json) into a new plan; its page is where it gets changed and built.
+				const fork = /^\/api\/starters\/([^/]+)\/fork$/.exec(path)
+				if (fork) {
+					try {
+						const plan = plans.fork(fork[1], opts.examplesRoot ?? EXAMPLES)
+						return json(res, 201, { id: plan.id, url: `/plan/${plan.id}` })
+					} catch (error) {
+						return planError(res, error)
+					}
+				}
 				const planPost = /^\/api\/plans\/(plan-[\w-]+)\/(change|build)$/.exec(path)
 				if (planPost) {
 					const body = await readJson(req)

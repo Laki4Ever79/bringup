@@ -6,6 +6,7 @@ import { proposePlan } from "../system/architect.ts"
 import { estimate } from "../system/estimate.ts"
 import { buildSpec, planChecks, type Plan, type PlanIssue } from "../system/plan.ts"
 import { planDiff, type PlanDiff } from "./plan-edit.js"
+import { readStarter } from "./starters.ts"
 import { learnDepsFor, learnNeeds } from "../learn/runtime.ts"
 import type { LearnDeps, LearnResult } from "../learn/learner.ts"
 import { Budget, learnCap } from "../learn/budget.ts"
@@ -132,20 +133,22 @@ export class PlanStore {
 		return join(this.outRoot, "plans", id)
 	}
 
-	private write(plan: Plan): Plan {
+	private write(plan: Plan, note?: string): Plan {
 		const dir = this.dir(plan.id)
 		mkdirSync(join(dir, "briefs"), { recursive: true })
 		const saved = { ...plan, spendUsd: readSpend(dir).usd }
 		// builtAs is the build's record, not part of an edit: a save from an older copy never drops it.
-		const kept = this.get(plan.id)?.builtAs
-		if (kept && !saved.builtAs) saved.builtAs = kept
+		// Nor where it was forked from (a change in words answers a plan without it).
+		const kept = this.get(plan.id)
+		if (kept?.builtAs && !saved.builtAs) saved.builtAs = kept.builtAs
+		if (kept?.forkedFrom && !saved.forkedFrom) saved.forkedFrom = kept.forkedFrom
 		// A drag moves only the drawing positions: record just those, not the whole plan on every move. Any other change
 		// records the whole plan, so every version can still be rebuilt from the history.
 		const before = this.get(plan.id)
 		const onlyMoved = before !== null && JSON.stringify({ ...before, layout: null, version: null }) === JSON.stringify({ ...saved, layout: null, version: null })
 		writeFileSync(join(dir, "plan.json"), JSON.stringify(saved, null, "\t"))
 		const at = new Date().toISOString()
-		appendFileSync(join(dir, "history.jsonl"), JSON.stringify(onlyMoved ? { at, version: saved.version, layout: saved.layout } : { at, version: saved.version, plan: saved }) + "\n")
+		appendFileSync(join(dir, "history.jsonl"), JSON.stringify(onlyMoved ? { at, version: saved.version, layout: saved.layout } : { at, version: saved.version, ...(note ? { note } : {}), plan: saved }) + "\n")
 		return saved
 	}
 
@@ -163,8 +166,33 @@ export class PlanStore {
 		return plan ? { plan, issues: planChecks(plan), estimate: estimate(plan, this.outRoot), spend: readSpend(this.dir(id)), learning: this.learning(id) } : null
 	}
 
+	private newId(): string {
+		return `plan-${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}-${randomBytes(3).toString("hex")}`
+	}
+
+	// A new plan from a starter's seed (examples/<name>/starter.json, src/dashboard/starters.ts): no model call, and the
+	// starter file is only read. 400 for a malformed name, 404 for no such starter.
+	fork(starter: string, examplesRoot: string): Plan {
+		const { seed, hash, title } = readStarter(examplesRoot, starter)
+		const plan: Plan = { ...seed, id: this.newId(), version: 1, spendUsd: null, forkedFrom: { starter, hash, title } }
+		const issues = planChecks(plan)
+		if (issues.length) throw Object.assign(new Error(`starter ${starter} is not a valid plan: ${issues.map((i) => i.message).join("; ")}`), { status: 500 })
+		return this.write(plan, `forked from ${starter} (${hash})`)
+	}
+
+	// The plan as it was first saved (history.jsonl's first line): for a fork, the starter's seed it was copied from.
+	forkSeed(id: string): Plan | null {
+		if (!PLAN_ID.test(id)) return null
+		try {
+			const first = JSON.parse(readFileSync(join(this.dir(id), "history.jsonl"), "utf8").split("\n", 1)[0]) as { plan?: Plan }
+			return first.plan ?? null
+		} catch {
+			return null
+		}
+	}
+
 	async create(sentence: string, mock: boolean): Promise<Plan> {
-		const id = `plan-${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}-${randomBytes(3).toString("hex")}`
+		const id = this.newId()
 		const dir = this.dir(id)
 		mkdirSync(dir, { recursive: true })
 		try {
