@@ -7,9 +7,9 @@ import { loadModules, type Module } from "../modules/library.ts"
 
 const ROOT = resolve(import.meta.dirname, "../..")
 
-// How far a bought board stands above its carrier: the board-to-board gap of a stacking 2×20 header (ESTIMATE: a
-// common 11 mm stacking header; the record gives no figure). The 3D view and the mechanics check use it.
-export const CARRIER_STACK_MM = 11
+// The carrier is a HAT on top of the module: the gap between them, with its source (assembly-geom.js).
+import { HAT_STACK_MM, HAT_STACK_SOURCE } from "../dashboard/assembly-geom.js"
+export const HAT_STACK = { mm: HAT_STACK_MM, source: HAT_STACK_SOURCE }
 
 // The library is read once per root: specErrors runs on every drag of a plan.
 const cache = new Map<string, Module[]>()

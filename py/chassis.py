@@ -50,6 +50,12 @@ def _check(spec):
 
 
 def _board_holes(b):
+    # A HAT stands on its board's spacers: no standoffs of its own. A board whose holes aren't at its corners (a bought
+    # compute module) gives them in the chassis frame.
+    if b.get("standoffs") is False:
+        return []
+    if b.get("holesMm"):
+        return [(x, y) for x, y in b["holesMm"]]
     w, h = (b["heightMm"], b["widthMm"]) if b["rotDeg"] in (90, 270) else (b["widthMm"], b["heightMm"])
     i = b.get("holeInsetMm", 3.5)
     return [(b["xMm"] + sx * (w / 2 - i), b["yMm"] + sy * (h / 2 - i)) for sx in (-1, 1) for sy in (-1, 1)]

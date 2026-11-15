@@ -1,5 +1,5 @@
 {
-  "name": "a rover with a Raspberry Pi 5 on a carrier (view fixture)",
+  "name": "a rover with a Raspberry Pi 5 and its HAT carrier (view fixture)",
   "boards": [
     {
       "name": "main",
@@ -37,18 +37,40 @@
       },
       {
         "name": "brain",
-        "xMm": 70.5,
+        "xMm": -70.5,
         "yMm": 0,
         "rotDeg": 0,
         "outline": {
           "widthMm": 85,
           "heightMm": 56
         },
-        "outlineSource": "built"
+        "outlineSource": "built",
+        "holes": [
+          {
+            "x": 3.5,
+            "y": 3.5,
+            "dia": 2.7
+          },
+          {
+            "x": 61.5,
+            "y": 3.5,
+            "dia": 2.7
+          },
+          {
+            "x": 3.5,
+            "y": 52.5,
+            "dia": 2.7
+          },
+          {
+            "x": 61.5,
+            "y": 52.5,
+            "dia": 2.7
+          }
+        ]
       },
       {
         "name": "rpi-5-carrier",
-        "xMm": 70.5,
+        "xMm": -70.5,
         "yMm": 0,
         "rotDeg": 0,
         "outline": {
@@ -56,7 +78,29 @@
           "heightMm": 56
         },
         "outlineSource": "estimate",
-        "carries": "brain"
+        "carries": "brain",
+        "holes": [
+          {
+            "x": 3.5,
+            "y": 3.5,
+            "dia": 2.7
+          },
+          {
+            "x": 61.5,
+            "y": 3.5,
+            "dia": 2.7
+          },
+          {
+            "x": 3.5,
+            "y": 52.5,
+            "dia": 2.7
+          },
+          {
+            "x": 61.5,
+            "y": 52.5,
+            "dia": 2.7
+          }
+        ]
       }
     ]
   }

@@ -100,11 +100,12 @@ test("a bought board's facts: where it comes from, its peak with the source, its
 	const asm: SystemAssembly = { body: "chassis", plate: { lengthMm: 200, widthMm: 110 }, boards: [] }
 	const f = systemFacts({ main: fixtureContract(), brain: null, "rpi-5-carrier": null }, asm, [], {}, boards).boards.brain
 	assert.equal(f.bought!.from, "Raspberry Pi 5 (bought), on a generated carrier")
-	assert.match(f.bought!.peak, /^5 A at 5\.1 V: https:\/\/github\.com\/raspberrypi\/documentation\/.*power-supplies\.adoc \(table row Raspberry Pi 5: recommended PSU current capacity 5\.0A\)$/)
+	assert.match(f.bought!.supply, /^5 A at 5\.1 V \(the supply the vendor asks for.*\): https:\/\/github\.com\/raspberrypi\/documentation\/.*power-supplies\.adoc \(table row Raspberry Pi 5: recommended PSU current capacity 5\.0A\)$/)
 	assert.match(f.bought!.bridge, /^\/dev\/ttyACM0 \(the MCU board's native USB/)
-	assert.equal(f.bought!.carrier, "rpi-5-carrier")
+	assert.match(f.bought!.carrier, /^rpi-5-carrier, a HAT on its header, 16 mm spacers: https:\/\/www\.raspberrypi\.com\/products\/m2-hat-plus/)
 	assert.equal(f.size, "85 × 56 mm")
-	assert.equal(f.mount, "on the chassis, on rpi-5-carrier")
+	assert.equal(f.mount, "on the chassis, rpi-5-carrier on top")
+	assert.equal(systemFacts({ main: fixtureContract(), brain: null, "rpi-5-carrier": null }, asm, [], {}, boards).boards["rpi-5-carrier"].mount, "a HAT on brain's header, 16 mm spacers")
 	assert.equal(f.chip, null)
 	// Without the spec's boards it is just a board with no contract, as before.
 	assert.equal(systemFacts({ brain: null }, asm, []).boards.brain.bought, undefined)

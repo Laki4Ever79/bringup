@@ -4,7 +4,7 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { bringupPads, debugPort } from "../codegen/circuit.ts"
 import type { SystemBoard, SystemLink } from "./spec.ts"
-import { field, moduleById, moduleOutline, type Cite } from "./bought.ts"
+import { field, HAT_STACK, moduleById, moduleOutline, type Cite } from "./bought.ts"
 import type { Module } from "../modules/library.ts"
 import type { SystemAssembly } from "./assembly.ts"
 
@@ -17,7 +17,7 @@ export interface BoardFacts {
 	debug: string
 	// A bought board (a compute module): where it comes from, its peak draw with the source, the board it sits on, and
 	// the device its ROS bridge opens.
-	bought?: { from: string; peak: string; bridge: string; carrier: string }
+	bought?: { from: string; supply: string; bridge: string; carrier: string }
 }
 export interface CableFacts {
 	kind: string
@@ -93,13 +93,14 @@ export function boughtFacts(m: Module, name: string, assembly: SystemAssembly | 
 		chip: null,
 		power: inV?.value?.nom != null ? `${mm(inV.value.nom)} V in${carrier ? ` from ${carrier}` : ""}` : DASH,
 		links: [],
-		mount: assembly ? `${MOUNT[assembly.body] ?? DASH}${carrier ? `, on ${carrier}` : ""}` : DASH,
+		mount: assembly ? `${MOUNT[assembly.body] ?? DASH}${carrier ? `, ${carrier} on top` : ""}` : DASH,
 		debug: DASH,
 		bought: {
 			from: m.title,
-			peak: peak?.value != null ? `${mm(peak.value)} A${inV?.value?.nom != null ? ` at ${mm(inV.value.nom)} V` : ""}: ${cited(peak.source)}` : `unknown${peak?.note ? ` (${peak.note})` : ""}`,
+			// The record's "peak" for the Pi is the supply the vendor asks for, not a measured draw: its note says so.
+			supply: peak?.value != null ? `${mm(peak.value)} A${inV?.value?.nom != null ? ` at ${mm(inV.value.nom)} V` : ""}${peak.note ? ` (${peak.note})` : ""}: ${cited(peak.source)}` : `unknown${peak?.note ? ` (${peak.note})` : ""}`,
 			bridge: bridge ? `${bridge.value}${bridge.via ? ` (${bridge.via})` : ""}` : DASH,
-			carrier: carrier ?? "none yet",
+			carrier: carrier ? `${carrier}, a HAT on its header, ${HAT_STACK.mm} mm spacers: ${cited(HAT_STACK.source)}` : "none yet",
 		},
 	}
 }
@@ -121,8 +122,13 @@ export function systemFacts(contracts: Record<string, ContractSnapshot | null>, 
 		const m = b?.kind === "bought" && b.module ? moduleById(b.module) : undefined
 		return m ? boughtFacts(m, n, assembly, boards.find((x) => x.carries === n)?.name ?? null) : null
 	}
+	// A carrier's mount: a HAT on its bought board.
+	const hatOf = (n: string, f: BoardFacts): BoardFacts => {
+		const on = boards.find((x) => x.name === n)?.carries
+		return on && boards.some((x) => x.name === on && x.kind === "bought") ? { ...f, mount: `a HAT on ${on}'s header, ${HAT_STACK.mm} mm spacers` } : f
+	}
 	return {
-		boards: Object.fromEntries(Object.entries(contracts).map(([n, c]) => [n, boughtOf(n) ?? boardFacts(c, n, assembly, links, keys[n])])),
+		boards: Object.fromEntries(Object.entries(contracts).map(([n, c]) => [n, boughtOf(n) ?? hatOf(n, boardFacts(c, n, assembly, links, keys[n]))])),
 		cables: Object.fromEntries(links.map((l) => [l.id, cableFacts(l)])),
 	}
 }

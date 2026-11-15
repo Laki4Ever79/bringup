@@ -17,8 +17,31 @@ export function footprint(b) {
 	return turned ? { xMm: b.outline.heightMm, yMm: b.outline.widthMm } : { xMm: b.outline.widthMm, yMm: b.outline.heightMm }
 }
 
-// Boards that only touch edge to edge don't overlap. A carrier and the bought board it carries stack (one over the
-// other on the same holes): they don't overlap either.
+// A carrier is a HAT: it sits on top of the bought board it carries, on the board's 40-pin header, held by spacers on
+// the same holes. The gap between the two boards is the spacers' height: the Raspberry Pi M.2 HAT+ "is supplied with a
+// 16mm stacking header and threaded spacers, so it can be fitted to a Raspberry Pi 5 with the Raspberry Pi Active
+// Cooler in place" (https://www.raspberrypi.com/products/m2-hat-plus/). That gap clears the cooler, so it is used here.
+export const HAT_STACK_MM = 16
+export const HAT_STACK_SOURCE = { url: "https://www.raspberrypi.com/products/m2-hat-plus/", where: "'supplied with a 16mm stacking header and threaded spacers, so it can be fitted to a Raspberry Pi 5 with the Raspberry Pi Active Cooler in place'" }
+const PCB_MM = 1.6
+// The underside of a HAT over a board whose underside is at `baseZ`: the board, then the spacers.
+export const hatBaseZ = (baseZ) => baseZ + PCB_MM + HAT_STACK_MM
+
+// The boards the editor and the run move as one: a carrier and the board it carries take the same place and turn.
+// `moved` names the board that moved (either of the pair); without it, each carrier follows its board.
+export function snapCarriers(boards, moved) {
+	const out = boards.map((b) => ({ ...b }))
+	for (const c of out) {
+		const base = c.carries ? out.find((x) => x.name === c.carries) : undefined
+		if (!base) continue
+		const [from, to] = moved === c.name ? [c, base] : [base, c]
+		to.xMm = from.xMm; to.yMm = from.yMm; to.rotDeg = from.rotDeg
+	}
+	return out
+}
+
+// Boards that only touch edge to edge don't overlap. A carrier (a HAT) and the bought board it carries stack, one over
+// the other on the same holes: they don't overlap either.
 export function boardsOverlap(p, q) {
 	if ((p.carries && p.carries === q.name) || (q.carries && q.carries === p.name)) return false
 	const fp = footprint(p), fq = footprint(q)

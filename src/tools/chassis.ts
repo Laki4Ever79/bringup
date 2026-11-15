@@ -24,7 +24,9 @@ export interface ChassisSpec {
 	motors: { side: "left" | "right"; xMm: number; yMm: number; bodyMm: [number, number, number]; axleDropMm: number }[]
 	caster: { xMm: number; holesMm: [number, number][]; holeDiaMm: number; wheelMm: number; heightMm: number }
 	battery: { xMm: number; yMm: number; sizeMm: [number, number, number] }
-	boards: { name: string; xMm: number; yMm: number; widthMm: number; heightMm: number; rotDeg: number; holeInsetMm: number }[]
+	// holesMm: the standoffs' places in the chassis frame when the board's holes aren't at its corners (a bought board's
+	// record); standoffs false: a HAT on another board's spacers, with none of its own on the plate.
+	boards: { name: string; xMm: number; yMm: number; widthMm: number; heightMm: number; rotDeg: number; holeInsetMm: number; holesMm?: [number, number][]; standoffs?: false }[]
 	sensor: { xMm: number; yMm: number; zMm: number; sizeMm: [number, number, number]; rangeMm: number; updateMs: number }
 	massG: number
 	com: [number, number, number] // the whole rover's, wheels and caster included
@@ -45,6 +47,16 @@ export interface ChassisSpec {
 // The caster's M4 screws (the catalog's casters have 4.2–5 mm holes).
 const CASTER_HOLE_MM = 4.2
 const BOARD_HOLE_INSET_MM = 3.5
+
+// A board's own holes (mm from its lower-left corner, before the turn) in the chassis frame: centred, turned
+// counter-clockwise by rotDeg (+x forward, +y left), moved to the board's place.
+export function holesInChassis(b: { at: { xMm: number; yMm: number }; rotDeg: number; holes?: { x: number; y: number }[] }, o: { widthMm: number; heightMm: number }): [number, number][] {
+	const t = (b.rotDeg * Math.PI) / 180, c = Math.round(Math.cos(t)), s = Math.round(Math.sin(t))
+	return (b.holes ?? []).map((h) => {
+		const x = h.x - o.widthMm / 2, y = h.y - o.heightMm / 2
+		return [Math.round((b.at.xMm + x * c - y * s) * 1000) / 1000, Math.round((b.at.yMm + x * s + y * c) * 1000) / 1000] as [number, number]
+	})
+}
 
 // others: the outlines of the robot's other boards, by name; this board is "main".
 export function chassisSpec(s: ContractSnapshot, others: { name: string; outline: { widthMm: number; heightMm: number } }[] = []): ChassisSpec | null {
@@ -74,7 +86,8 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		battery: { xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, sizeMm: pack.sizeMm },
 		boards: placed.map((b) => {
 			const o = known.find((k) => k.name === b.name)!.outline
-			return { name: b.name, xMm: b.at.xMm, yMm: b.at.yMm, widthMm: o.widthMm, heightMm: o.heightMm, rotDeg: b.rotDeg, holeInsetMm: BOARD_HOLE_INSET_MM }
+			const hat = Boolean(b.on && placed.some((x) => x.name === b.on))
+			return { name: b.name, xMm: b.at.xMm, yMm: b.at.yMm, widthMm: o.widthMm, heightMm: o.heightMm, rotDeg: b.rotDeg, holeInsetMm: BOARD_HOLE_INSET_MM, ...(b.holes?.length && !hat ? { holesMm: holesInChassis(b, o) } : {}), ...(hat ? { standoffs: false as const } : {}) }
 		}),
 		unplaced,
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs },

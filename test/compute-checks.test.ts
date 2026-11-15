@@ -164,3 +164,15 @@ test("a regulator from the catalog's regulators list: its figures, its input ran
 	assert.equal(regulatorFromCatalog({ mpn: "X" }).maxOutA, null)
 	assert.match(railCheck(pi, regulatorFromCatalog({ mpn: "X", outV: 5.1 }))[0].message, /output current is unknown/)
 })
+
+test("mechanics with a HAT carrier on top: the pair isn't an overlap; the stack's height counts for the sensor (ruling R1)", () => {
+	const brain: AssemblyBoard = { name: "brain", xMm: 50, yMm: 0, rotDeg: 0, outline: { widthMm: 85, heightMm: 56 }, outlineSource: "built" }
+	const hat: AssemblyBoard = { ...brain, name: "rpi-5-carrier", carries: "brain" }
+	const plate = { lengthMm: 200, widthMm: 110 }
+	assert.deepEqual(mechanicsCheck(pi, { placed: { ...brain, xMm: -50 }, plate, others: [{ ...hat, xMm: -50 }], hat: "rpi-5-carrier" }).map((f) => f.level), ["warning"])
+	// A sensor high above the bare board (base 8 mm + 1.6) but under the HAT (8 + 1.6 + 16 + 1.6): only the stack blocks it.
+	const sensor = { xMm: 0, yMm: 0, zMm: 22, sizeMm: [3, 21, 4] as [number, number, number] }
+	assert.equal(mechanicsCheck(pi, { placed: brain, plate, others: [], sensor, baseZMm: 8 }).some((f) => /distance sensor/.test(f.message)), false)
+	assert.match(mechanicsCheck(pi, { placed: brain, plate, others: [hat], sensor, baseZMm: 8, hat: "rpi-5-carrier" }).map((f) => f.message).join("\n"), /stands in front of the distance sensor .*the stack with rpi-5-carrier on top/)
+	assert.match(mechanicsCheck(pi, { placed: brain, plate, others: [], hat: "rpi-5-carrier" }).at(-1)!.message, /compute\.tallestMm is null .*clear the 16 mm spacers under rpi-5-carrier/)
+})

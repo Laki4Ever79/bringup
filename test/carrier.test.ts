@@ -19,7 +19,9 @@ test("the carrier brief: 5 A at 5.1 V into pins 2 and 4, the Pi's outline and it
 	assert.match(b, /ground on pins 6, 9, 14, 20, 25, 30, 34 and 39/)
 	assert.match(b, /recommended supply and already includes its headroom, so no margin on top/)
 	assert.match(b, /85 × 56 mm, with 4 Ø2\.7 mm mounting holes at \(3\.5, 3\.5\), \(61\.5, 3\.5\), \(3\.5, 52\.5\), \(61\.5, 52\.5\) mm from the lower-left corner, 58 × 49 mm between centres/)
-	assert.match(b, /2 × 20 female header, 2\.54 mm pitch,\*\* centred at \(32\.5, 52\.5\) mm/)
+	assert.match(b, /2 × 20 female stacking header on the underside, 2\.54 mm pitch,\*\* centred at \(32\.5, 52\.5\) mm in the same frame, so it mates with the Raspberry Pi 5's header pins, which point up from its top face/)
+	assert.match(b, /A HAT for the Raspberry Pi 5, for a robot: it sits on top of the Raspberry Pi 5/)
+	assert.match(b, /stands on 16 mm spacers on those holes \(https:\/\/www\.raspberrypi\.com\/products\/m2-hat-plus\//)
 	assert.match(b, /raspberry-pi-5-mechanical-drawing\.pdf/)
 	assert.match(b, /power-supplies\.adoc/)
 	// The default link is the MCU board's own USB: no link pins on the carrier.
@@ -34,7 +36,7 @@ test("the UART0 alternative puts TX and RX on pins 8 and 10, with the Pi 5 debug
 	assert.match(b, /link to the base board is UART0 on the header\*\*: pin 8 \(the Raspberry Pi 5's TX\) and pin 10 \(its RX\)/)
 	assert.match(b, /\/dev\/ttyAMA0/)
 	assert.match(b, /kernel debug output to GPIO 14 and 15/)
-	assert.match(b, /from the robot's battery into|from the robot's battery, into/)
+	assert.match(b, /\*\*5 V supply: 5 A at 5\.1 V\*\* from the robot's battery, into header pins 2 and 4 \(5V\)/)
 })
 
 test("addCarrier inserts { name: rpi-5-carrier, brief, carries } after the Pi, stacked under it in the assembly", () => {
@@ -52,4 +54,18 @@ test("addCarrier inserts { name: rpi-5-carrier, brief, carries } after the Pi, s
 	assert.deepEqual(assemblyErrors(r.spec), [])
 	assert.throws(() => addCarrier(r.spec, "brain", pi), /already has a carrier/)
 	assert.throws(() => addCarrier(r.spec, "main", pi), /not a bought board/)
+})
+
+test("with an unknown input voltage the brief doesn't guess a converter; with no UART pins it doesn't print pin undefined (review M1, M2)", () => {
+	const m = structuredClone(pi)
+	delete (m.compute as Record<string, unknown>).inputV
+	const b = carrierBrief(m, { board: "brain", battery: pack })
+	assert.match(b, /through a converter to the module's input voltage \(unknown: compute\.inputV is missing\)/)
+	assert.doesNotMatch(b, /buck|boost/)
+	const noUart = structuredClone(pi)
+	const pins = (noUart.compute as { header: { pins: { value: Record<string, string> } } }).header.pins.value
+	pins["8"] = "GPIO14"; pins["10"] = "GPIO15"
+	const u = carrierBrief(noUart, { board: "brain", bridge: "uart" })
+	assert.match(u, /can't be a UART on the header/)
+	assert.doesNotMatch(u, /undefined/)
 })
