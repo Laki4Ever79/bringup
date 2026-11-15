@@ -74,9 +74,10 @@ export function turnSweepMm(mech: Mechanics, wheel: { diameterMm: number; widthM
 	return Math.max(...plate, wheels)
 }
 // After an open-loop quarter turn the rover drives on beside the wall it turned from, a few degrees off parallel; the
-// next turn in place must not sweep into it. This much beyond the sweep (a design margin: about 5° of heading error over
-// 0.6 m, the drift the rover-pi showed, 15 Nov).
-export const TURN_CLEARANCE_MM = 50
+// next turn in place must not sweep into it. This much beyond the sweep (a design margin, measured on the rover-pi's
+// simulated drive, 15 Nov: its pivot moved 35 mm toward the wall while turning from forward motion, and drifted 30 mm
+// more over 0.7 m at 2° off parallel; 50 mm still hit, 100 mm cleared by 33 mm).
+export const TURN_CLEARANCE_MM = 100
 // The sensor reading at which the rover must start a turn in place so its sweep clears the wall ahead and the one it
 // will drive beside: the pivot stands sweep + clearance from the wall, the sensor is sensorAheadMm in front of the pivot.
 export function turnStopMm(mech: Mechanics, wheel: { diameterMm: number; widthMm: number }): number {
