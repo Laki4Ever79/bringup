@@ -153,6 +153,13 @@ is a change to the firmware toolchain, not just the code.
       bores against the motor shaft and the driven shaft; a lead screw's pitch against its nut; load and speed against
       the part's rating. Today's rover has none beyond fasteners and the caster, so: the data model (a `mechanical`
       design field or the mechanics' drive train) and the checks first, catalog entries as designs need them.
+      Step 1 done 15 Nov (bringup-board, branch drivetrain): `mechanics.driveTrain` (src/mechanics/drivetrain.ts):
+      shafts, gears and their meshes, pulleys and belts, sprockets and chains, bearings, couplers, lead screws and nuts,
+      each naming its mate; the contract checks its shape; `mech-mate` checks every bore against its shaft, a mesh's
+      module and centre distance, a belt's or chain's pitch and the centre its length sits at against the tension
+      travel, an even chain link count, a bearing's printed seat (0–0.2 mm over, estimate), rpm and load against a
+      bearing's rating, a coupler's two bores, a lead screw against its nut. Left: catalog entries with a source per
+      number (as a design needs them), the parts-list quantities, and the mechanics agent choosing them.
 - [ ] **Every bought mechanical part in the parts list** (started 15 Nov: catalog/mechanics.json `hardware` with a source
       per number; the rover's board screws (M2x8 self-tapping, one per board hole) and caster screws and nuts (M4x10,
       M4, one per caster hole) counted from chassisSpec; hardware-misfit checks each fits its hole; the parts list and

@@ -1,6 +1,7 @@
 // The two mechanics fields of the design contract. `motion` holds the brief's targets (owned by the architect);
 // `mechanics` the drive, battery and chassis layout (owned by the mechanics agent). Chassis frame: origin at the plate
 // centre, +x forward, +y left, z up from the floor; millimetres throughout.
+import type { DriveTrainPart } from "./drivetrain.ts"
 
 export interface MotionTargets {
 	speedMps: number
@@ -38,4 +39,7 @@ export interface Mechanics {
 		// at the corners (a bought board's record: mm from its lower-left corner, before the turn).
 		boards: { name: string; at: { xMm: number; yMm: number }; rotDeg: 0 | 90 | 180 | 270; on?: string; holes?: { x: number; y: number; dia: number | null }[] }[]
 	}
+	// Bought gears, belts, chains, bearings, shafts, couplers and lead screws, each naming what it mates with
+	// (drivetrain.ts); none on today's direct-drive rover.
+	driveTrain?: DriveTrainPart[]
 }

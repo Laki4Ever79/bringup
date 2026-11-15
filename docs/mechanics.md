@@ -46,6 +46,17 @@ estimates. Every report line that uses one says `(estimate: <name> <value>)`.
 | packInternalOhm | 0.15 | small 1S LiPo cells with protection: 0.1–0.2 Ω |
 | standoffMm | 10 | board standoffs, to clear the battery |
 
+### Drive-train parts (mech-mate)
+
+`mechanics.driveTrain` lists the bought gears, pulleys and belts, sprockets and chains, bearings, shafts, couplers and
+lead screws, each naming what it mates with (src/mechanics/drivetrain.ts). The checks: every hub's and bearing's bore
+against its shaft (±0.05 mm, estimate); a gear mesh at one module and centre distance m(z1 + z2)/2 (±0.05 mm, estimate);
+a belt's or chain's pitch against its pulleys or sprockets, and the centre distance its length sits at (open belt
+L = 2C + π(D1 + D2)/2 + (D2 − D1)²/4C; chain Lp = 2C/p + (z1 + z2)/2 + p((z2 − z1)/2π)²/C) between the design's centre
+and that plus the tension travel; an even chain link count; a bearing's printed seat 0–0.2 mm over its outer ring
+(estimate: FDM holes print undersize); a shaft's rpm and radial load against the bearing's rating; a coupler's two bores;
+a lead screw's diameter and lead against its nut. Today's direct-drive rover has none.
+
 ## The chassis layout solver
 
 The mechanics engineer picks the parts (motor, wheels, caster, battery, distance sensor, the board connector its cable

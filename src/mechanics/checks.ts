@@ -8,6 +8,7 @@ import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
 import { brakeDecel, brakeMm, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon, TURN_CLEARANCE_MM, turnStopMm, turnSweepMm } from "./model.ts"
 import type { Mechanics, Mount, MotionTargets } from "./types.ts"
+import { driveTrainChecks } from "./drivetrain.ts"
 
 // The plain-code mechanics checks: free, instant, run on every contract change. Each states its numbers, the limit,
 // the margin and what to change; any estimate it leans on is named "(estimate: <name> <value>)". They never assume
@@ -15,7 +16,7 @@ import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 // runs the same checks).
 
 export type MechViolation = {
-	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive"
+	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive" | "mech-mate"
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]
@@ -211,6 +212,9 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const out: MechViolation[] = []
 	const push = (kind: MechViolation["kind"], message: string, affects: AgentRole[] = ["mechanics"], fields: FieldName[] = ALL) => out.push({ kind, message, fields, affects })
 	if (!mech) return [{ kind: "mech-fit", message: "the brief asks for a robot (motion targets are set) but there is no mechanics design yet: choose motors, wheels, caster, battery and lay out the chassis", fields: ALL, affects: ["mechanics"] }]
+
+	// Every bought drive-train part fits what it mates with (drivetrain.ts), whatever else the design lacks.
+	for (const v of driveTrainChecks(mech.driveTrain ?? [])) push("mech-mate", v.message)
 
 	const d = mech.drive
 	const motor = byMpn(cat.mech.motors, d.motor), wheel = byMpn(cat.mech.wheels, d.wheel), caster = byMpn(cat.mech.casters, d.caster), pack = byMpn(cat.mech.batteries, mech.battery.pack)
