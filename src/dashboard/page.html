@@ -789,7 +789,7 @@
 					</div>
 					<div id="fw-view" class="view hidden"><div class="fw-bar"><label>revision <select id="fw-rev" aria-label="Firmware revision"></select></label><label>compared with <select id="fw-base" aria-label="Compare with revision"></select></label><span class="fw-mode"><button data-mode="changes" class="on">Changes only</button> <button data-mode="whole">Whole file</button></span><span class="fw-sum" id="fw-sum"></span></div><div class="fw-main"><ul class="fw-files" id="fw-files"></ul><div class="fw-code" id="fw-code"><div class="fw-empty">waiting for the first firmware build</div></div></div></div>
 					<div id="drive-view" class="view hidden"><div class="drive-top"><b id="drive-result"></b> <span id="drive-reason" class="t3"></span></div><div id="drive-plot"></div><table id="drive-rows" class="drive-rows"></table></div>
-					<div id="ros-view" class="view hidden"><div class="drive-top"><b id="ros-title"></b> <span id="ros-note" class="t3"></span></div><div id="ros-files" class="t3"></div><div id="ros-results"></div></div>
+					<div id="ros-view" class="view hidden"><div class="drive-top"><b id="ros-title"></b> <span id="ros-note" class="t3"></span></div><div id="ros-files" class="t3"></div><div id="ros-live"><button id="ros-live-btn" title="The robot's topics live, from \`ros2 launch rover_bringup bringup.launch.py stream:=true\` (rosbridge on ws://127.0.0.1:9090)">Connect live</button> <span id="ros-live-state" class="t3">launch the robot with stream:=true, then connect</span><svg id="ros-live-plot" viewBox="-1 -1 2 2" style="width:100%;height:220px;display:none"></svg></div><div id="ros-results"></div></div>
 					<span id="changed-pill" class="pill"></span>
 					<div id="file-notice" class="hidden" role="status"><span class="k" id="file-notice-k"></span><b id="file-notice-text"></b><button id="file-notice-open" title="Revert or adopt it">Review in Drift</button><button id="file-notice-close" title="Hide (the Feed keeps it)">✕</button><ul id="file-notice-items"></ul></div>
 					<span id="viewing-pill" class="pill hidden" title="Back to live"></span>
@@ -1300,6 +1300,43 @@
 			const fmt = (v) => (v === null ? "nothing in range" : typeof v === "number" ? String(Math.round(v * 1000) / 1000) : v === true ? "yes" : v === false ? "no" : String(v))
 			$("ros-results").innerHTML = r.results.map((x) => `<h4>${esc(name[x.backend] ?? x.backend)}: ${x.pass ? "pass" : "FAIL"}${x.bag ? ' <span class="t3">· recorded as MCAP</span>' : ""}</h4><table class="drive-rows">${x.checks.map((c) => `<tr><td>${esc(c.name)}</td><td><b>${c.pass ? "pass" : "FAIL"}</b></td><td class="t3">${esc(fmt(c.measured))} (expected ${esc(fmt(c.expected))})</td></tr>`).join("")}</table>${(x.diagnoses ?? []).map((d) => `<p><b>Symptom:</b> ${esc(d.symptom)}<br><b>Cause (${esc(d.confidence)}):</b> ${esc(d.cause)}<br><b>Fix:</b> ${esc(d.fix)} <span class="t3">(${esc(d.affects.join(", "))})</span></p>`).join("")}`).join("")
 		}
+		// Live: the robot's odometry and range over rosbridge's JSON WebSocket (the generated launch file, stream:=true),
+		// drawn as its path from above with the range ahead. Works the same for the simulated firmware and the real robot.
+		let rosWs = null
+		function rosLive() {
+			if (rosWs) { rosWs.close(); rosWs = null; $("ros-live-btn").textContent = "Connect live"; return }
+			const path = [], st = $("ros-live-state"), svg = $("ros-live-plot")
+			let range = null, pose = null
+			rosWs = new WebSocket("ws://127.0.0.1:9090")
+			rosWs.onopen = () => {
+				st.textContent = "live"
+				$("ros-live-btn").textContent = "Disconnect"
+				svg.style.display = ""
+				rosWs.send(JSON.stringify({ op: "subscribe", topic: "/diff_drive_controller/odom", type: "nav_msgs/msg/Odometry", throttle_rate: 100 }))
+				rosWs.send(JSON.stringify({ op: "subscribe", topic: "/range_sensor_broadcaster/range", type: "sensor_msgs/msg/Range", throttle_rate: 100 }))
+			}
+			rosWs.onerror = () => { st.textContent = "no robot on ws://127.0.0.1:9090 (launch it with stream:=true)" }
+			rosWs.onclose = () => { if (st.textContent === "live") st.textContent = "disconnected" }
+			rosWs.onmessage = (ev) => {
+				const m = JSON.parse(ev.data)
+				if (m.topic === "/range_sensor_broadcaster/range") range = m.msg.range
+				if (m.topic === "/diff_drive_controller/odom") {
+					const p = m.msg.pose.pose, q = p.orientation
+					pose = { x: p.position.x, y: p.position.y, yaw: Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)), v: m.msg.twist.twist.linear.x }
+					path.push([pose.x, pose.y])
+					if (path.length > 2000) path.shift()
+				}
+				if (!pose) return
+				const xs = path.map((p) => p[0]), ys = path.map((p) => p[1])
+				const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2
+				const span = Math.max(0.5, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 0.6
+				svg.setAttribute("viewBox", `${cx - span} ${-cy - span} ${2 * span} ${2 * span}`)
+				const ahead = range !== null && isFinite(range) ? `<line x1="${pose.x}" y1="${-pose.y}" x2="${pose.x + Math.cos(pose.yaw) * range}" y2="${-(pose.y + Math.sin(pose.yaw) * range)}" stroke="#e85d2a" stroke-width="${span / 150}" stroke-dasharray="${span / 50}"/>` : ""
+				svg.innerHTML = `<polyline points="${path.map((p) => `${p[0]},${-p[1]}`).join(" ")}" fill="none" stroke="#9ad" stroke-width="${span / 100}"/>${ahead}<circle cx="${pose.x}" cy="${-pose.y}" r="${span / 40}" fill="#fff"/>`
+				st.textContent = `live · ${pose.v.toFixed(2)} m/s · range ${range === null ? "–" : isFinite(range) ? range.toFixed(3) + " m" : "nothing in range"}`
+			}
+		}
+		$("ros-live-btn").addEventListener("click", rosLive)
 		function stubbedRun() { return S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true }
 		async function circuitFor(rev) {
 			if (S.boards.has(rev)) return S.boards.get(rev)

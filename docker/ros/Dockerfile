@@ -4,5 +4,5 @@ FROM ros:jazzy-ros-base
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-jazzy-ros2-control ros-jazzy-ros2-controllers ros-jazzy-controller-manager \
       ros-jazzy-robot-state-publisher ros-jazzy-xacro ros-jazzy-foxglove-bridge \
-      ros-jazzy-teleop-twist-keyboard ros-jazzy-rosbag2-storage-mcap \
+      ros-jazzy-teleop-twist-keyboard ros-jazzy-rosbag2-storage-mcap ros-jazzy-rosbridge-server \
     && rm -rf /var/lib/apt/lists/*
