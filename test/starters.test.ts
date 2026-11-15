@@ -183,6 +183,30 @@ test("the shipped Rover + climate starter is the two-board robot of briefs/syste
 	})
 })
 
+test("the shipped Rover with a Pi starter is briefs/systems/rover-pi.json: the bought Pi 5 stays bought, its HAT carries it, and it forks over the API", async () => {
+	const seed = JSON.parse(readFileSync(join(EXAMPLES, "rover-pi", "starter.json"), "utf8"))
+	const spec = JSON.parse(readFileSync(resolve(import.meta.dirname, "..", "briefs", "systems", "rover-pi.json"), "utf8"))
+	assert.equal(seed.robot, true)
+	assert.deepEqual(seed.spec.boards, [{ name: "main", brief: "briefs/main.md" }, { name: "brain", kind: "bought", module: "rpi-5" }, { name: "rpi-5-carrier", brief: "briefs/rpi-5-carrier.md", carries: "brain" }])
+	assert.deepEqual(seed.spec.links, spec.links)
+	assert.equal(seed.briefs.main, readFileSync(resolve(import.meta.dirname, "..", "briefs", "rover-pi.md"), "utf8"))
+	assert.equal(seed.briefs["rpi-5-carrier"], readFileSync(resolve(import.meta.dirname, "..", "briefs", "rpi-5-carrier.md"), "utf8"))
+	assert.deepEqual(planChecks({ ...seed, id: "plan-x", version: 1, spendUsd: null }), [])
+	const meta = JSON.parse(readFileSync(join(EXAMPLES, "rover-pi", "example.json"), "utf8"))
+	assert.equal(meta.title, "Rover with a Pi")
+	assert.deepEqual(meta.assembly.boards.map((b: Any) => b.name).sort(), ["brain", "main", "rpi-5-carrier"])
+	const examples = examplesCopy()
+	cpSync(join(EXAMPLES, "rover-pi"), join(examples, "rover-pi"), { recursive: true })
+	await withHub(examples, async ({ url }) => {
+		const r = await post(`${url}/api/starters/rover-pi/fork`)
+		assert.equal(r.status, 201)
+		const { id } = (await r.json()) as Any
+		const v = (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any
+		assert.deepEqual(v.plan.forkedFrom.title, "Rover with a Pi")
+		assert.deepEqual(v.issues, [])
+	})
+})
+
 test("a starter seeded from a spec with a bought board keeps it bought and its HAT a carrier; only designed boards bring briefs", () => {
 	const spec = JSON.parse(readFileSync(resolve(import.meta.dirname, "..", "briefs", "systems", "rover-pi.json"), "utf8"))
 	const seed = starterSeed({ sentence: "a rover with a Pi", why: "w", robot: true, spec, briefs: { main: "# main", "rpi-5-carrier": "# hat" } })

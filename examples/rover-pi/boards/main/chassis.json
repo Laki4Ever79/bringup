@@ -1,0 +1,166 @@
+{
+ "plate": {
+  "lengthMm": 246,
+  "widthMm": 110,
+  "thicknessMm": 3,
+  "clearanceMm": 50.5
+ },
+ "standoffMm": 10,
+ "motors": [
+  {
+   "side": "left",
+   "xMm": 73.8,
+   "yMm": 44,
+   "bodyMm": [
+    26,
+    12,
+    10
+   ],
+   "axleDropMm": 10.5
+  },
+  {
+   "side": "right",
+   "xMm": 73.8,
+   "yMm": -44,
+   "bodyMm": [
+    26,
+    12,
+    10
+   ],
+   "axleDropMm": 10.5
+  }
+ ],
+ "caster": {
+  "xMm": -51.2,
+  "holesMm": [
+   [
+    18,
+    14
+   ],
+   [
+    -18,
+    14
+   ],
+   [
+    -18,
+    -14
+   ],
+   [
+    18,
+    -14
+   ]
+  ],
+  "holeDiaMm": 4.2,
+  "wheelMm": 38,
+  "heightMm": 50.5
+ },
+ "battery": {
+  "xMm": 85,
+  "yMm": 0,
+  "sizeMm": [
+   76,
+   34,
+   18
+  ]
+ },
+ "boards": [
+  {
+   "name": "main",
+   "xMm": 0,
+   "yMm": 0,
+   "widthMm": 43,
+   "heightMm": 28,
+   "rotDeg": 0,
+   "holeInsetMm": 3.5
+  },
+  {
+   "name": "brain",
+   "xMm": -70.5,
+   "yMm": 0,
+   "widthMm": 85,
+   "heightMm": 56,
+   "rotDeg": 0,
+   "holeInsetMm": 3.5,
+   "holesMm": [
+    [
+     -109.5,
+     -24.5
+    ],
+    [
+     -51.5,
+     -24.5
+    ],
+    [
+     -109.5,
+     24.5
+    ],
+    [
+     -51.5,
+     24.5
+    ]
+   ]
+  },
+  {
+   "name": "rpi-5-carrier",
+   "xMm": -70.5,
+   "yMm": 0,
+   "widthMm": 85,
+   "heightMm": 56,
+   "rotDeg": 0,
+   "holeInsetMm": 3.5,
+   "standoffs": false
+  }
+ ],
+ "unplaced": [],
+ "sensor": {
+  "xMm": 121.6,
+  "yMm": 0,
+  "zMm": 66,
+  "sizeMm": [
+   21,
+   18,
+   2.8
+  ],
+  "rangeMm": 1200,
+  "updateMs": 33
+ },
+ "massG": 395.4972000000001,
+ "com": [
+  19.059603961797954,
+  0,
+  50.75810549354078
+ ],
+ "wheelMassG": 20,
+ "casterMassG": 71,
+ "drive": {
+  "trackMm": 124,
+  "axleXMm": 73.8,
+  "wheelbaseMm": 125,
+  "wheelDiameterMm": 80,
+  "wheelWidthMm": 10
+ },
+ "motor": {
+  "ratedV": 12,
+  "noLoadRpm": 330,
+  "stallTorqueNm": 0.1275,
+  "stallA": 0.75,
+  "noLoadA": 0.08
+ },
+ "pack": {
+  "nominalV": 7.4,
+  "fullV": 8.4,
+  "cutoffV": 6,
+  "mAh": 2200,
+  "internalOhm": null
+ },
+ "payloadG": 20,
+ "driverPeakA": 2,
+ "speedMps": 0.3,
+ "stopBeforeWallMm": 150,
+ "edgeMm": 3,
+ "estimates": {
+  "floorMu": 0.6,
+  "rollingCrr": 0.02,
+  "packOhm": 0.15
+ }
+}
