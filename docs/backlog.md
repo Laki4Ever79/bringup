@@ -142,6 +142,12 @@ is a change to the firmware toolchain, not just the code.
       (industry, not open). Do: a rule that each interface uses an open standard where one fits; a report section that
       lists every vendor-locked or home-made interface with its open alternative; first move, the link messages onto an
       open protocol (Cyphal or CANopen once CAN exists; COBS-framed CBOR or similar on UART).
+      Step 1 done 15 Nov (bringup-board, branch open-standards): src/contract/standards.ts lists every interface a
+      design has with its standard and whether it is open, one vendor's or ours; the report's "Interfaces and
+      standards" section shows the table and each non-open one's open alternative (the link frame → COBS + CBOR or
+      MAVLink v2; the TC2030 → ARM's 10-pin Cortex Debug; our GATT layout → ESS). Left: the rule for the agents (pick
+      the open one where it fits), CAN's rows once the can branch is in, and moving the link messages onto an open
+      protocol.
 
 - [ ] **Power transmission and motion parts in the parts list, each checked against its mate** (the user, 15 Nov, via
       d9610c: "yeah along with fasteners we should add gears, belts, chains and all other mechanical pieces to the list
