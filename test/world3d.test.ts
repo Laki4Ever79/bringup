@@ -133,3 +133,37 @@ test("resolvePlaces: placed boards stand on the robot's place with their z; the 
 	const plain = resolvePlaces([...boards.slice(0, 2), { name: "other", at: { x: 1, y: 2 } }], auto)
 	assert.deepEqual(plain, { robot: { x: 7, y: -3, z: 0 }, front: { x: 99, y: 99, z: 0 }, other: { x: 1, y: 2, z: 0 } })
 })
+
+// Task 6 (system view phase 3): the 3D view honours a board's rotDeg, counter-clockwise from above like Top.
+test("a board turned 90 degrees swaps its extent in 3D, and 0 leaves it alone", () => {
+	const circuit = JSON.parse(readFileSync("examples/logger/boards/main/circuit.json", "utf8"))
+	const w = (g: ReturnType<typeof boardGeometry>, k: number) => g.extent.max[k] - g.extent.min[k]
+	const flat = boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, circuit })
+	const turned = boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, circuit, rotDeg: 90 })
+	assert.ok(Math.abs(w(turned, 0) - w(flat, 1)) < 1e-3 && Math.abs(w(turned, 1) - w(flat, 0)) < 1e-3, "x and y extents swap")
+	assert.ok(w(flat, 0) > w(flat, 1))
+	assert.deepEqual(boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, circuit, rotDeg: 0 }).extent, flat.extent)
+	// The picking box stand-in turns with it: 30 wide in x, 50 in y.
+	const box = boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, rotDeg: 90 })
+	assert.ok(Math.abs(box.extent.max[0] - box.extent.min[0] - 30) < 1e-3 && Math.abs(box.extent.max[1] - box.extent.min[1] - 50) < 1e-3)
+})
+
+test("direction: 90 degrees is counter-clockwise from above, so a board's +x end points to +y", () => {
+	const g = boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, rotDeg: 90 })
+	// box tris are interleaved: find nothing here but the extent; the +x end of a flat board maps to +y when turned.
+	assert.ok(g.extent.max[1] > 24.9 && g.extent.min[1] < -24.9)
+	const assembly = { boards: [{ name: "front", xMm: 55, yMm: 0, rotDeg: 90 }] }
+	const p = assemblyPlacement(assembly, { shift: [0, 0], boardZ: 60 })
+	assert.equal(p.front.rotDeg, 90)
+	assert.ok(p.front.x === 55 && Math.abs(g.extent.max[1] - 25) < 1e-3, "a board at +x turned 90 has its long side along y")
+})
+
+test("a board on a chassis draws no case shell; in its own body the case still draws", () => {
+	const circuit = JSON.parse(readFileSync("examples/logger/boards/main/circuit.json", "utf8"))
+	const caseStl = boxStl([-30, -20, 0], [30, 20, 20])
+	const own = boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, circuit, caseStl })
+	assert.ok(own.shell && own.shell.length > 0, "own case drawn")
+	const onChassis = boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, circuit, caseStl, onChassis: true })
+	assert.equal(onChassis.shell, null)
+	assert.ok(onChassis.solid && onChassis.solid.length > 0)
+})

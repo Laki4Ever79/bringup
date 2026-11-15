@@ -675,6 +675,7 @@ function showView(view) {
 	else u.searchParams.delete("view")
 	history.replaceState(history.state, "", u)
 }
+window.__worldStats = () => stage.world?.stats() // the 3D view's boards and which of them draw a case shell (tests)
 window.__topStats = () => stage.top?.stats() // read by npm run perf (the Top view's draws while idle)
 // Ignored while a board is opening or open: the flight belongs to the view that began it. Pressed while a board closes
 // (or another view mounts), it is queued: the latest one asked for is applied when that flight ends.
@@ -750,7 +751,11 @@ async function redraw() {
 		// exists a board is its estimate box. A stubbed run builds nothing: its outline counts as built, as before.
 		const built = a.boardRevision !== null || (stubbed && a.outline != null)
 		const topOutline = a.outline ?? (stage.upTo ? null : b.outline ?? null)
-		return { name: b.name, outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
+		// A board the assembly places is turned by its rotDeg; on a chassis body it sits on the chassis, with no case of its own.
+		const placed = stage.meta.assembly?.boards?.find((p) => p.name === b.name)
+		const rotDeg = placed?.rotDeg ?? 0
+		const onChassis = stage.meta.assembly?.body === "chassis"
+		return { name: b.name, outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, rotDeg, onChassis, key: `${b.name}:${rotDeg}:${onChassis}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
 	})
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
 	// The world places a robot's other boards from the assembly (world3d setWorld); no assembly positions, no change.

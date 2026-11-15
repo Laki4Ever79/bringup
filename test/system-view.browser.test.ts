@@ -18,6 +18,7 @@ function chromiumPath(): string | null {
 	return (existsSync(cache) ? readdirSync(cache) : []).filter((d) => /^chromium-\d+$/.test(d)).map((d) => join(cache, d, "chrome-linux64", "chrome")).find((p) => existsSync(p)) ?? null
 }
 const ROBOT = existsSync(join(ROOT, "out", "robot-2", "system.json")) ? "robot-2" : undefined
+const LOGGER = existsSync(join(ROOT, "out", "logger-single", "trace.jsonl")) ? "logger-single" : undefined
 const SINGLE = existsSync(join(ROOT, "out", "rover-fresh", "trace.jsonl")) ? "rover-fresh" : undefined
 const exe = chromiumPath()
 const skip = !SYSTEM ? "no recorded system run in out/" : !exe ? "no Playwright Chromium" : false
@@ -256,6 +257,21 @@ test("the switch shows 3D by default and Top on click, and the URL keeps it", { 
 	}, ROBOT)
 })
 
+test("on a chassis the 3D view draws no case shell for the boards standing on it", { skip: skipRobot, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await page.waitForFunction(() => (window as any).__worldStats?.().boards >= 2, null, { timeout: 30_000 })
+		// Give the case files time to arrive: a shell would have been drawn by now if the robot's boards kept theirs.
+		await page.waitForTimeout(2000)
+		assert.deepEqual(await page.evaluate(() => (window as any).__worldStats().shells), [], "no board on the chassis draws its case")
+	}, ROBOT)
+})
+
+test("a single logger keeps its case shell in 3D", { skip: !LOGGER ? "no recorded out/logger-single" : !exe ? "no Playwright Chromium" : false, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await page.waitForFunction(() => ((window as any).__worldStats?.().shells ?? []).length >= 1, null, { timeout: 30_000 })
+	}, LOGGER)
+})
+
 test("clicking a board in Top zooms onto it and opens its page in place", { skip: skipRobot, timeout: 120_000 }, async () => {
 	await withPage(async (page) => {
 		await page.click('#view-switch [data-view="top"]')
@@ -317,7 +333,6 @@ test("a single-board design has the switch and opens its board from Top", { skip
 
 // Final review, Important 5: a one-board design in its own case (the logger) shows the case's outer footprint around
 // the board in Top, from the run's enclosure spec (the board's outline plus clearance and walls on each side).
-const LOGGER = existsSync(join(ROOT, "out", "logger-single", "trace.jsonl")) ? "logger-single" : undefined
 test("a one-board logger's Top view draws its case outline around the board, and the board still opens", { skip: !LOGGER ? "no recorded out/logger-single" : !exe ? "no Playwright Chromium" : false, timeout: 120_000 }, async () => {
 	await withPage(async (page) => {
 		await topUp(page)

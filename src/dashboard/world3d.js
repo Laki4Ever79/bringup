@@ -186,7 +186,7 @@ export function assemblyPlacement(assembly, frame) {
 	const out = {}
 	for (const b of assembly?.boards ?? []) {
 		if (!Number.isFinite(b.xMm) || !Number.isFinite(b.yMm)) continue
-		out[b.name] = { x: b.xMm + frame.shift[0], y: b.yMm + frame.shift[1], z: frame.boardZ }
+		out[b.name] = { x: b.xMm + frame.shift[0], y: b.yMm + frame.shift[1], z: frame.boardZ, rotDeg: b.rotDeg ?? 0 }
 	}
 	return out
 }
@@ -206,17 +206,32 @@ export function resolvePlaces(boards, auto, on = null) {
 	return out
 }
 
+// Turn a triangle list about the vertical axis through the origin: rotDeg counter-clockwise seen from above (+x forward,
+// +y left, z up), the way the Top view draws it (SVG rotate(-rotDeg) with y down).
+function rotateZ(tris, rotDeg) {
+	const a = ((rotDeg ?? 0) * Math.PI) / 180
+	if (!a || !(tris instanceof Float32Array || Array.isArray(tris))) return tris
+	const c = Math.cos(a), s = Math.sin(a)
+	const out = new Float32Array(tris.length)
+	for (let i = 0; i < tris.length; i += 3) { out[i] = tris[i] * c - tris[i + 1] * s; out[i + 1] = tris[i] * s + tris[i + 1] * c; out[i + 2] = tris[i + 2] }
+	return out
+}
+
 // One board's meshes centred on its own origin (xy centre 0, bottom at z 0): the solid board with its parts, the
 // translucent case (no lid: cut open), and the one-box stand-in.
+// `b.rotDeg` turns the board (solid, case, box and extent together) about its own centre; `b.onChassis` means it stands on
+// a chassis, which is its body: no case of its own is drawn.
 export function boardGeometry(b) {
 	const o = b.outline ?? { widthMm: 30, heightMm: 30 }
-	const box = boxTris([-o.widthMm / 2, -o.heightMm / 2, 0], [o.widthMm / 2, o.heightMm / 2, 1.6])
+	const rot = b.chassisSpec ? 0 : b.rotDeg ?? 0
+	const flat = boxTris([-o.widthMm / 2, -o.heightMm / 2, 0], [o.widthMm / 2, o.heightMm / 2, 1.6])
+	const box = rotateZ(flat, rot)
 	let solid = null, shell = null
-	let extent = { min: [-o.widthMm / 2, -o.heightMm / 2, 0], max: [o.widthMm / 2, o.heightMm / 2, 1.6] }
+	let extent = bounds(box)
 	if (b.circuit) {
 		const m = boardMesh(b.circuit, b.parts ?? [])
 		let boardTris = m.positions
-		let caseTris = b.caseStl ? parseStl(b.caseStl) : null
+		let caseTris = b.caseStl && !b.onChassis ? parseStl(b.caseStl) : null
 		const bb = m.bounds
 		let off = [-(bb.min[0] + bb.max[0]) / 2, -(bb.min[1] + bb.max[1]) / 2, -bb.min[2]]
 		if (caseTris && caseTris.length) {
@@ -226,6 +241,7 @@ export function boardGeometry(b) {
 			const centre = [-(cb.min[0] + cb.max[0]) / 2, -(cb.min[1] + cb.max[1]) / 2, -cb.min[2]]
 			caseTris = shift(caseTris, centre)
 			off = [off[0] + centre[0], off[1] + centre[1], off[2] + centre[2]]
+			caseTris = rotateZ(caseTris, rot)
 			shell = interleave(caseTris, () => CASE)
 			extent = bounds(caseTris)
 		}
@@ -246,7 +262,7 @@ export function boardGeometry(b) {
 			const centred = shift(all, [frame[0], frame[1], 0])
 			return { solid: interleave(centred, (i) => colours[i]), shell: null, box: interleave(box, () => ORANGE), extent: bounds(centred), robotFrame: { shift: frame, boardZ: rover.boardZ } }
 		}
-		boardTris = shift(boardTris, off)
+		boardTris = rotateZ(shift(boardTris, off), rot)
 		solid = interleave(boardTris, (i) => (m.kinds[i] === "slab" ? ORANGE : m.kinds[i] === "pad" ? PAD : PART))
 		if (!shell) extent = bounds(boardTris)
 	}
@@ -628,7 +644,7 @@ export function mountWorld(host, opts = {}) {
 		pulse,
 		setTurntable(on) { S.turntable = Boolean(on); S.lastTurn = performance.now(); request() },
 		get focused() { return S.focused },
-		stats() { return { draws: S.draws ?? 0, boards: S.boards.size, triangles: [...S.boards.values()].reduce((n, b) => n + (b.solid?.count ?? 0) / 3 + (b.shell?.count ?? 0) / 3, 0) } },
+		stats() { return { draws: S.draws ?? 0, boards: S.boards.size, shells: [...S.boards].filter(([, b]) => b.shell).map(([n]) => n), triangles: [...S.boards.values()].reduce((n, b) => n + (b.solid?.count ?? 0) / 3 + (b.shell?.count ?? 0) / 3, 0) } },
 		dispose() {
 			cancelAnimationFrame(S.raf)
 			document.removeEventListener("visibilitychange", onVisibility)
