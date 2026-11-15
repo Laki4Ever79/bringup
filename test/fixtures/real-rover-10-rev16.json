@@ -1,0 +1,284 @@
+{
+  "revision": 16,
+  "values": {
+    "requirements": {
+      "summary": "Indoor autonomous wheeled rover with BLE temperature/humidity sensing, USB-C charging from a single Li-ion cell, and wall avoidance.",
+      "peripherals": [
+        "Bluetooth LE",
+        "temperature/humidity sensor",
+        "USB-C charging",
+        "status LED",
+        "wall-distance sensor",
+        "dual-motor drive"
+      ],
+      "batteryLifeDays": 0.021,
+      "batteryMah": 500,
+      "size": {
+        "widthMm": 150,
+        "heightMm": 120,
+        "exact": false
+      },
+      "enclosure": "none"
+    },
+    "outline": {
+      "widthMm": 60,
+      "heightMm": 45,
+      "thicknessMm": 1.6,
+      "sizeReason": {
+        "kind": "function",
+        "detail": "Board needs room for USB-C charging, motor driver, battery, climate sensor, and distance-sensor connectors while remaining well within the rover size limit."
+      }
+    },
+    "motion": {
+      "speedMps": 0.3,
+      "runtimeMin": 30,
+      "edgeMm": 3,
+      "maxSlopeDeg": 10,
+      "stopBeforeWallMm": 150,
+      "payloadG": 20,
+      "maxSizeMm": [
+        150,
+        120
+      ],
+      "maxMassG": 500
+    },
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 12,
+        "widthMm": 9,
+        "heightMm": 3.2
+      },
+      {
+        "ref": "J2",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 36,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "J3",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 12,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "J4",
+        "kind": "header",
+        "edge": "top",
+        "offsetMm": 16,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "J5",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 30,
+        "widthMm": 5.8,
+        "heightMm": 3
+      }
+    ],
+    "rails": [
+      {
+        "name": "VBAT",
+        "voltageV": 3.7,
+        "regulatorMaxMa": 1000,
+        "loadMa": 800,
+        "averageMa": 350
+      },
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 220,
+        "averageMa": 80
+      }
+    ],
+    "mechanics": {
+      "drive": {
+        "kind": "differential",
+        "motor": "POLOLU-2365 50:1 MP 6V",
+        "wheel": "POLOLU-1430 wheel 80x10 mm",
+        "caster": "TENTE 1430POI038P60-46x38 swivel caster 38 mm",
+        "trackMm": 110,
+        "wheelbaseMm": 100,
+        "axleXMm": 45
+      },
+      "battery": {
+        "pack": "ADAFRUIT-2011 LP-803860 2000 mAh",
+        "at": {
+          "xMm": 45,
+          "yMm": 0
+        }
+      },
+      "sensor": {
+        "module": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+        "at": {
+          "xMm": 73.6,
+          "yMm": 0,
+          "zMm": 66
+        },
+        "connector": "JT1"
+      },
+      "chassis": {
+        "plateMm": [
+          150,
+          96
+        ],
+        "thicknessMm": 3,
+        "material": "PLA",
+        "clearanceMm": 50.5,
+        "boards": [
+          {
+            "name": "main",
+            "at": {
+              "xMm": 0,
+              "yMm": 0
+            },
+            "rotDeg": 0
+          }
+        ]
+      }
+    },
+    "parts": [
+      {
+        "ref": "U5",
+        "role": "motor-driver",
+        "mpn": "DRV8833PWPR",
+        "lcsc": "C50506",
+        "footprint": "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm",
+        "pins": [
+          "nSLEEP",
+          "AOUT1",
+          "AISEN",
+          "AOUT2",
+          "BOUT2",
+          "BISEN",
+          "BOUT1",
+          "nFAULT",
+          "BIN1",
+          "BIN2",
+          "VCP",
+          "VM",
+          "GND",
+          "VINT",
+          "AIN2",
+          "AIN1"
+        ],
+        "reason": "Dual H-bridge motor driver for the rover's dual-motor drive: the brief requires a motor driver with four GPIO inputs.",
+        "at": {
+          "xMm": 30,
+          "yMm": 22
+        }
+      },
+      {
+        "ref": "JT1",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "reason": "4-pin JST SH connector for the wall-distance sensor cable: the mechanics check requires JT1 for the distance sensor.",
+        "at": {
+          "xMm": 30,
+          "yMm": 36
+        }
+      },
+      {
+        "ref": "J2",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "2-pin battery connector for the single Li-ion cell: the mechanics check requires a battery connector.",
+        "at": {
+          "xMm": 30,
+          "yMm": 8
+        }
+      },
+      {
+        "ref": "J3",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "One of the required 2-pin motor connectors: the rover has one per motor and the board generator wires the driver's outputs to them.",
+        "at": {
+          "xMm": 48,
+          "yMm": 18
+        }
+      },
+      {
+        "ref": "J4",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "Second required 2-pin motor connector: one per motor for the dual-motor drive.",
+        "at": {
+          "xMm": 48,
+          "yMm": 30
+        }
+      },
+      {
+        "ref": "J5",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "reason": "4-pin JST SH connector for the wall-distance sensor cable: the mechanics check requires J5 for the distance sensor.",
+        "at": {
+          "xMm": 12,
+          "yMm": 36
+        }
+      }
+    ],
+    "pins": []
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 1,
+    "connectors": 3,
+    "rails": 1,
+    "parts": 2,
+    "pins": 2,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 2,
+    "mechanics": 4,
+    "assembly": 0
+  }
+}

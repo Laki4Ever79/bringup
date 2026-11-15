@@ -40,3 +40,26 @@ test("a trace past its length bound tries the next layout; a missing part's foot
 	assert.equal(layoutSensitive(PORT), false)
 	assert.equal(layoutSensitive("Unknown footprint 'sot99' for U3"), false)
 })
+
+// Real rover run 10 (15 Nov 2026), revision 16: J2 and J5 on the left edge overlapped (connector-clash said so), the
+// board was built anyway, tscircuit skipped autorouting for the placement error, and the error the agents read led with
+// dozens of "Ports … are not connected" lines; the real cause came last, past the 40 lines they are shown.
+test("connectors that overlap on the board stop the build at once, with the check's words", async () => {
+	const { buildBoard, WAITING_ON_CONTRACT } = await import("../src/tools/board.ts")
+	const { readFileSync } = await import("node:fs")
+	const s = JSON.parse(readFileSync(new URL("fixtures/real-rover-10-rev16.json", import.meta.url), "utf8"))
+	const env = { root: "/nonexistent", tsci: "/nonexistent/tsci", kicad: null } as never
+	await assert.rejects(buildBoard(env, tempDir(), s, 16), (e: Error) => WAITING_ON_CONTRACT.test(e.message) && /J2 \(left@36 mm\) and J5 \(left@30 mm\) overlap on the board/.test(e.message))
+})
+
+test("when tscircuit skipped autorouting, the error leads with the placement error, not the nets it left unrouted", async () => {
+	const { failureLines } = await import("../src/tools/board.ts")
+	const named = ["Ports [U5.nSLEEP, R3.pin1] are not connected together through the same net.", "Port [U5.GND] is not connected to net [GND] by a PCB trace."]
+	const log = "Building board.circuit.tsx...\nCourtyard of J2 overlaps with courtyard of J5\nAutorouting was skipped because 1 PCB placement error was found. Fix the placement errors or set placementDrcChecksDisabled to true to route anyway.\nCircuits  0 passed 1 failed"
+	const lines = failureLines(named, log)
+	assert.equal(lines[0], "Courtyard of J2 overlaps with courtyard of J5")
+	assert.match(lines[1], /Autorouting was skipped/)
+	assert.ok(!lines.some((l) => /not connected/.test(l)), lines.join("\n"))
+	// A routed build keeps the router's own errors first, as before.
+	assert.deepEqual(failureLines(named, "Circuits  0 passed 1 failed").slice(0, 2), named)
+})

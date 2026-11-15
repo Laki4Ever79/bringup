@@ -112,6 +112,10 @@ export function pinPartsMissing(s: ContractSnapshot): { signal: string; ref: str
 	const refs = new Set((s.values.parts ?? []).map((p) => p.ref))
 	return (s.values.pins ?? []).filter((p) => !refs.has(p.partRef)).map((p) => ({ signal: p.signal, ref: p.partRef, pin: p.partPin }))
 }
+// Pins written before the parts list has an MCU to put them on.
+export function pinsWithoutMcu(s: ContractSnapshot): boolean {
+	return (s.values.pins ?? []).length > 0 && !(s.values.parts ?? []).some((p) => p.role === "mcu")
+}
 // A build that stopped because the contract isn't complete yet: no design problem beyond the violation that names it,
 // so it wakes no owner (src/agents/roles.ts); the build runs again when the contract changes.
 export const WAITING_ON_CONTRACT = /^waiting on the contract:/
@@ -228,6 +232,10 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 		}
 	}
 
+	// Pins join MCU pins to parts: with no MCU in the parts yet (real rover run 10, revisions 14-15: the architect wrote
+	// the pins, the parts agent hadn't added the MCU), the board can't be drawn. The parts owner adds it.
+	if (pinsWithoutMcu(c))
+		v.push({ kind: "pin-part-missing", message: `the pins (${(pins ?? []).length}) join MCU pins to parts, but the parts list has no MCU (role mcu): add it to the parts`, fields: ["parts", "pins"], affects: ["parts"] })
 	for (const m of pinPartsMissing(c))
 		v.push({ kind: "pin-part-missing", message: `${m.signal} goes to ${m.ref}.${m.pin}, but there is no part ${m.ref}: add it to the parts (or point the pin at the part that is there)`, fields: ["parts", "pins"], affects: ["parts"] })
 	const mcuRef = parts?.find((p) => p.role === "mcu")?.ref

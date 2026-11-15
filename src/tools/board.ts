@@ -3,7 +3,7 @@ import { ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { boardParts, circuitFromContract, debugPort, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
-import { pinPartsMissing, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
+import { connectorClashes, pinPartsMissing, pinsWithoutMcu, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
 import { kicadCli, toolPath, type Env } from "./env.ts"
@@ -20,6 +20,11 @@ export { WAITING_ON_CONTRACT }
 export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
 	// A pin on a part that isn't there yet would only fail in tscircuit ("Could not find port for selector"), slowly and
 	// in its words: stop with the reason instead (the pin-part-missing check wakes the parts owner).
+	// Connectors whose footprints overlap: tscircuit skips autorouting for the placement error, minutes in, and no layout
+	// moves a connector (the architect places them). connector-clash names them; the build waits (real rover run 10).
+	const clash = connectorClashes(s).filter((v) => / overlap on the board/.test(v.message))
+	if (clash.length) throw new Error(`waiting on the contract: ${clash.map((v) => v.message).join("; ")}`)
+	if (pinsWithoutMcu(s)) throw new Error("waiting on the contract: the pins are assigned but the parts list has no MCU yet; the board is built once it is there")
 	const missing = pinPartsMissing(s)
 	if (missing.length > 0) throw new Error(`waiting on the contract: ${missing.map((m) => `${m.signal} goes to ${m.ref}.${m.pin}`).join(", ")}, but there is no part ${[...new Set(missing.map((m) => m.ref))].join(", ")} yet; the board is built once it is there`)
 	if (!env.tsci) throw new Error("tscircuit build failed: tsci is not installed (tools/node)")
@@ -120,9 +125,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	const circuitPath = join(work, "dist/board/circuit.json")
 	if (build.code !== 0 || !existsSync(circuitPath)) {
 		writeFileSync(join(dir, "build.log"), build.stdout + "\n" + build.stderr)
-		const named = circuitErrors(circuitPath)
-		const logged = buildErrors(build.stdout + "\n" + build.stderr).split("\n").filter((l) => !named.some((n) => n.startsWith(l)))
-		throw new Error(`tscircuit build failed (exit ${build.code}):\n${[...named, ...logged].join("\n")}\nfull log: ${join(dir, "build.log")}`)
+		throw new Error(`tscircuit build failed (exit ${build.code}):\n${failureLines(circuitErrors(circuitPath), build.stdout + "\n" + build.stderr).join("\n")}\nfull log: ${join(dir, "build.log")}`)
 	}
 	const elements = JSON.parse(readFileSync(circuitPath, "utf8")) as { type: string; width?: number; height?: number }[]
 	const pcb = elements.find((e) => e.type === "pcb_board")
@@ -192,6 +195,19 @@ const SUMMARY = /^Circuits\s+\d+ passed \d+ failed/
 // clean builds too: it was the only reason a too-long trace got another layout before.
 export function layoutSensitive(error: string): boolean {
 	return /overlap|clearance|keepout|too close|exceeding the [\d.]+mm maximum/i.test(error)
+}
+
+// What a failed build says, cause first. tscircuit's own errors (circuit.json) lead, then the log's. But when it skipped
+// autorouting for a placement error, every net it left unrouted is an error too, dozens of them, and they buried the
+// cause past what the agents are shown (real rover run 10: "Courtyard of J2 overlaps with courtyard of J5", last):
+// then the placement error and the skip lead, and the unrouted nets are left out.
+export function failureLines(named: string[], log: string): string[] {
+	const logged = buildErrors(log).split("\n").filter((l) => l && !named.some((n) => n.startsWith(l)))
+	if (!/Autorouting was skipped/i.test(log)) return [...named, ...logged]
+	const lines = log.split("\n").map((l) => l.trim())
+	const placement = lines.filter((l) => /overlaps? with|outside the board|Autorouting was skipped/i.test(l))
+	const consequence = (l: string) => /not connected|missing a trace/i.test(l)
+	return [...new Set([...placement, ...named.filter((l) => !consequence(l)), ...logged.filter((l) => !consequence(l))])]
 }
 
 // The errors tscircuit wrote into circuit.json, each once, a too-long trace with its name: a build can fail on one of
