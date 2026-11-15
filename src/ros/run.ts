@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import type { ChassisSpec } from "../tools/chassis.ts"
 import { runDrive, type DriveArtifact } from "../tools/drive.ts"
+import type { ContractSnapshot } from "../contract/types.ts"
+import { bagStats, diagnose, type Diagnosis } from "./diagnose.ts"
 
 // Runs a robot's generated acceptance test (src/ros/acceptance.ts) in the Bringup ROS image (docker/ros), against one
 // back end, and records the run as an MCAP bag beside the result:
@@ -18,6 +20,8 @@ export interface RosAcceptance {
 	checks: { name: string; pass: boolean; measured: unknown; expected: unknown }[]
 	bag?: string
 	drive?: Pick<DriveArtifact, "result" | "reason">
+	// The run's symptoms traced to the design (src/ros/diagnose.ts), from the bag's topic rates and the speed reached.
+	diagnoses?: Diagnosis[]
 	log: string
 }
 
@@ -54,7 +58,7 @@ export function rosImageReady(): boolean {
 	return spawnSync("docker", ["image", "inspect", ROS_IMAGE], { stdio: "ignore" }).status === 0
 }
 
-export async function runRosAcceptance(o: { root: string; wsDir: string; outDir: string; backend: "mock" | "qemu"; robot?: string; spec?: ChassisSpec; fwDir?: string; python?: string; pio?: string }): Promise<RosAcceptance> {
+export async function runRosAcceptance(o: { root: string; wsDir: string; outDir: string; backend: "mock" | "qemu"; robot?: string; spec?: ChassisSpec; contract?: ContractSnapshot; fwDir?: string; python?: string; pio?: string }): Promise<RosAcceptance> {
 	const robot = o.robot ?? "rover"
 	const ws = resolve(o.wsDir), out = resolve(o.outDir)
 	mkdirSync(out, { recursive: true })
@@ -77,5 +81,13 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 	const file = join(out, `acceptance-${o.backend}.json`)
 	if (!existsSync(file)) return { ...fail(r.out.split("\n").slice(-15).join("\n")), ...(d ? { drive: { result: d.result, reason: d.reason } } : {}) }
 	const res = JSON.parse(readFileSync(file, "utf8")) as { pass: boolean; checks: RosAcceptance["checks"] }
-	return { backend: o.backend, pass: res.pass, checks: res.checks, bag: join(out, `bag-${o.backend}`), ...(d ? { drive: { result: d.result, reason: d.reason } } : {}), log: r.out.split("\n").slice(-5).join("\n") }
+	// The bag's rates and the speed reached, against what the design promises.
+	let diagnoses: Diagnosis[] | undefined
+	if (o.spec && o.contract) {
+		const info = await docker(["run", "--rm", "-v", `${out}:/out`, ROS_IMAGE, "bash", "-c", `source /opt/ros/jazzy/setup.bash && ros2 bag info /out/bag-${o.backend}`], 60_000)
+		const achieved = d && d.result !== "not run" ? d.topSpeedMps : undefined
+		diagnoses = diagnose(o.spec, o.contract, { topics: bagStats(info.out), ...(achieved !== undefined ? { achievedSpeedMps: achieved, commandedSpeedMps: o.spec.speedMps } : {}) })
+		writeFileSync(join(out, `diagnoses-${o.backend}.json`), JSON.stringify(diagnoses, null, 1))
+	}
+	return { backend: o.backend, pass: res.pass, checks: res.checks, bag: join(out, `bag-${o.backend}`), ...(d ? { drive: { result: d.result, reason: d.reason } } : {}), ...(diagnoses ? { diagnoses } : {}), log: r.out.split("\n").slice(-5).join("\n") }
 }

@@ -52,3 +52,46 @@ test("the package is written with both hardware variants and passes its own chec
 	writeFileSync(u, readFileSync(u, "utf8").replace(/<mass value="([\d.]+)"\/>/, (_m, v) => `<mass value="${Number(v) * 2}"/>`))
 	assert.deepEqual(rosPackageChecks(s, pkg).map((x) => x.kind), ["ros-inertials"])
 })
+
+import { bagStats, diagnose, i2cRise } from "../src/ros/diagnose.ts"
+
+const rover = () => ({ revision: 9, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) }) as ContractSnapshot
+const healthy = { "/range_sensor_broadcaster/range": { count: 568, durationS: 18.9 }, "/joint_states": { count: 569, durationS: 18.9 } }
+
+test("a healthy run (the QEMU acceptance bag: 568 range readings in 18.9 s) has nothing to diagnose", () => {
+	assert.deepEqual(diagnose(spec(), rover(), { topics: healthy, achievedSpeedMps: 0.293, commandedSpeedMps: 0.3 }), [])
+})
+
+test("slow range readings on a long sensor cable trace to the board's I2C pull-ups, with the value to fit", () => {
+	const s = spec()
+	s.sensor.xMm += 2300 // the sensor 2.3 m from the board (a mast or a trailer): about 120 pF of cable
+	const bus = i2cRise(s, rover())
+	assert.ok(bus.riseNs > 1000, `rise ${bus.riseNs}`)
+	const d = diagnose(s, rover(), { topics: { ...healthy, "/range_sensor_broadcaster/range": { count: 150, durationS: 18.9 } } })
+	assert.equal(d.length, 1)
+	assert.match(d[0].cause, /10 kΩ pull-ups .* over the 1000 ns standard mode allows/)
+	assert.match(d[0].fix, /stronger I2C pull-ups on the board: \d+ Ω or less/)
+	assert.deepEqual(d[0].affects, ["parts", "mechanics"])
+	assert.equal(d[0].confidence, "measured")
+})
+
+test("slow range readings on a short cable are not blamed on the bus", () => {
+	const d = diagnose(spec(), rover(), { topics: { ...healthy, "/range_sensor_broadcaster/range": { count: 150, durationS: 18.9 } } })
+	assert.match(d[0].cause, /not the bus's rise time/)
+	assert.equal(d[0].confidence, "suspect")
+})
+
+test("slow wheel states at a low console baud trace to the link; a speed shortfall to the motors' margin", () => {
+	const d = diagnose(spec(), rover(), { topics: { ...healthy, "/joint_states": { count: 200, durationS: 18.9 } }, consoleBaud: 9600 })
+	assert.match(d[0].cause, /9600 baud carries about \d+ command-and-report pairs/)
+	const s = diagnose(spec(), rover(), { topics: healthy, achievedSpeedMps: 0.2, commandedSpeedMps: 0.3 })
+	assert.equal(s[0].affects[0], "mechanics")
+	assert.match(s[0].symptom, /reached 0\.20 m\/s of the 0\.30 m\/s commanded/)
+})
+
+test("ros2 bag info is read into per-topic rates", () => {
+	const info = "Duration:          18.937040311s\nMessages: 2923\nTopic information: Topic: /joint_states | Type: sensor_msgs/msg/JointState | Count: 569 | Serialization Format: cdr\n                   Topic: /range_sensor_broadcaster/range | Type: sensor_msgs/msg/Range | Count: 568 | Serialization Format: cdr"
+	const s = bagStats(info)
+	assert.deepEqual(s["/joint_states"], { count: 569, durationS: 18.937040311 })
+	assert.equal(Object.keys(s).length, 2)
+})
