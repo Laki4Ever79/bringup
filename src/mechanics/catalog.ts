@@ -33,7 +33,7 @@ export interface CasterPart extends Sourced {
 	massG: number
 }
 export interface BatteryPack extends Sourced {
-	cells: 1
+	cells: 1 | 2
 	nominalV: number
 	fullV: number
 	cutoffV: number
@@ -43,6 +43,20 @@ export interface BatteryPack extends Sourced {
 	internalOhm?: number
 	sizeMm: [number, number, number]
 	massG: number
+	notes?: string
+}
+// A bought step-down module (no board circuit): it feeds a computer such as a Raspberry Pi 5 from a 2S pack.
+// The catalog's 6 V motors on a 2S pack (8.4 V full) exceed the mech-voltage check's 1.3x limit (7.8 V): a 2S robot
+// needs a motor duty limit or 12 V motors.
+export interface RegulatorPart extends Sourced {
+	outV: number
+	maxA: number
+	inMinV: number
+	inMaxV: number
+	efficiency: number
+	sizeMm: [number, number, number]
+	massG: number
+	notes?: string
 }
 // A distance sensor on a small breakout, mounted upright at the chassis front and cabled to the board: the VL53L0X
 // looks out of the top of its package, so on a flat board it would see the ceiling.
@@ -62,6 +76,7 @@ export interface MechCatalog {
 	wheels: WheelPart[]
 	casters: CasterPart[]
 	batteries: BatteryPack[]
+	regulators?: RegulatorPart[]
 }
 
 export function loadMechCatalog(root: string): MechCatalog {
