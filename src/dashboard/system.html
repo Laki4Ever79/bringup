@@ -459,7 +459,7 @@ function followProgress(d) {
 		}
 		src.onerror = () => { if (src.readyState === 2) { stage.progressGone = true; stopProgress() } }
 		token.src = src; token.strip = strip
-	}, () => {})
+	}, () => { if (stage.progress === token) stage.progress = null }) // a later followProgress retries
 }
 // Closes the stream and takes the strip down (the page leaves the design, or the stream is gone for good).
 function stopProgress() {

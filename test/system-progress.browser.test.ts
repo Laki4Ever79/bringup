@@ -25,7 +25,6 @@ async function withCopy(fn: (page: Page, dir: string, url: string, errors: strin
 	const dir = join(ROOT, "out", name)
 	cpSync(join(ROOT, "out", source), dir, { recursive: true })
 	rmSync(join(dir, "system-trace.jsonl"), { force: true })
-	const one = source !== "robot-2"
 	if (trace !== undefined) writeFileSync(join(dir, "system-trace.jsonl"), trace)
 	const hub = await serveHub({ outRoot: join(ROOT, "out"), port: 0 })
 	const browser = await chromium.launch({ executablePath: exe!, headless: true })
@@ -36,7 +35,6 @@ async function withCopy(fn: (page: Page, dir: string, url: string, errors: strin
 		page.on("response", (r) => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`) })
 		await page.goto(`${hub.url}/system?id=${name}&view=top`)
 		await page.waitForFunction(() => Boolean((window as unknown as { openBoard?: unknown }).openBoard) && document.querySelector("#stage-top svg"), null, { timeout: 30_000 })
-		void one
 		await fn(page, dir, hub.url, errors)
 	} finally {
 		await browser.close()
