@@ -33,6 +33,7 @@ import { createBench, type Bench, type BenchOptions } from "./agents/bench.ts"
 import type { Bridge, BridgeHello } from "./tools/bench-bridge.ts"
 import { appendUsage } from "./inference/usage.ts"
 import { recordRun } from "./modules/library.ts"
+import { rosAfterRun } from "./ros/after-run.ts"
 
 export interface RunOptions {
 	brief: string
@@ -247,6 +248,8 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	await cloud?.end()
 	// The design has settled; give a boot that is still running a moment to finish, so the report can include it.
 	await Promise.all([emulator?.whenIdle(EMULATOR_GRACE_MS), bom.whenIdle(BOM_GRACE_MS)])
+	// A robot's ROS 2 package, tested on mock hardware and on its own firmware in QEMU (src/ros/after-run.ts).
+	await rosAfterRun(env, opts.outDir, state.contract.snapshot(), state.artifacts)
 	const settled = (latest as Settlement | null)?.settled ?? outcome.settled
 	const reportPath = writeOutputs(settled)
 	return {
