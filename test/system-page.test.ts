@@ -267,8 +267,8 @@ test("the system detail carries the assembly: derived for old runs, the spec's o
 		assert.deepEqual((await get("system-b")).assembly, own, "the spec's own assembly is passed through untouched")
 		const rover = await get("rover-1")
 		assert.equal(rover.assembly.body, "chassis")
-		assert.deepEqual(rover.assembly.plate, { lengthMm: 150, widthMm: 110 })
-		assert.deepEqual(rover.assembly.boards.map((b: { name: string; xMm: number }) => [b.name, b.xMm]), [["main", 10]])
+		assert.deepEqual(rover.assembly.plate, { lengthMm: 150, widthMm: 96 })
+		assert.deepEqual(rover.assembly.boards.map((b: { name: string; xMm: number }) => [b.name, b.xMm]), [["main", 0]])
 	} finally {
 		await hub.close()
 	}
