@@ -72,6 +72,11 @@ export function mechanicsChecks(c: ContractSnapshot): MechViolation[] {
 
 export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): MechViolation[] {
 	const v = c.values as { motion?: MotionTargets }
+	// A motor driver with no motion targets: a robot nobody made one (real rover run 6, 15 Nov, all fast models: the
+	// architect picked the DRV8833 and drew a 145 × 110 mm board, but never wrote motion, so no chassis, drive or
+	// simulation followed, and the run settled and passed review as a plain board).
+	if (!v.motion && (c.values.parts ?? []).some((p) => p.role === "motor-driver"))
+		return [{ kind: "mech-fit", message: "the design has a motor driver but no motion targets: a robot needs its motion field (the brief's speedMps, runtimeMin, edgeMm, maxSlopeDeg, stopBeforeWallMm, payloadG, maxSizeMm, maxMassG); write it, and the mechanics engineer designs the drive and chassis", fields: ["motion"], affects: ["architect"] }]
 	return mechanicsCheckOver(v.motion, withAssembly(c.values), checkBoards(c), cat)
 }
 
