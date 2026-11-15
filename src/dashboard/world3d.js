@@ -208,7 +208,7 @@ export function resolvePlaces(boards, auto, on = null) {
 
 // Turn a triangle list about the vertical axis through the origin: rotDeg counter-clockwise seen from above (+x forward,
 // +y left, z up), the way the Top view draws it (SVG rotate(-rotDeg) with y down).
-function rotateZ(tris, rotDeg) {
+export function rotateZ(tris, rotDeg) {
 	const a = ((rotDeg ?? 0) * Math.PI) / 180
 	if (!a || !(tris instanceof Float32Array || Array.isArray(tris))) return tris
 	const c = Math.cos(a), s = Math.sin(a)
@@ -248,8 +248,11 @@ export function boardGeometry(b) {
 		if (b.chassisSpec) {
 			// A rover: the board on its standoffs over the chassis, the whole robot standing on the floor at z 0.
 			const rover = roverParts(b.chassisSpec, b.chassisStl ? parseStl(b.chassisStl) : null)
-			off = [-(bb.min[0] + bb.max[0]) / 2 + rover.boardAt.xMm, -(bb.min[1] + bb.max[1]) / 2 + rover.boardAt.yMm, -bb.min[2] + rover.boardZ]
-			boardTris = shift(boardTris, off)
+			// The chassis builder turns the board by the spec's rotDeg (py/chassis.py), so the 3D board turns the same way.
+			const turned = rotateZ(boardTris, rover.boardAt.rotDeg ?? 0)
+			const tb = bounds(turned)
+			off = [-(tb.min[0] + tb.max[0]) / 2 + rover.boardAt.xMm, -(tb.min[1] + tb.max[1]) / 2 + rover.boardAt.yMm, -tb.min[2] + rover.boardZ]
+			boardTris = shift(turned, off)
 			const colours = [...Array(boardTris.length / 9).keys()].map((i) => (m.kinds[i] === "slab" ? ORANGE : m.kinds[i] === "pad" ? PAD : PART))
 			for (const p of rover.parts) for (let i = 0; i < p.tris.length / 9; i++) colours.push(p.color)
 			const all = new Float32Array(boardTris.length + rover.parts.reduce((n, p) => n + p.tris.length, 0))

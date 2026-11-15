@@ -259,9 +259,8 @@ test("the switch shows 3D by default and Top on click, and the URL keeps it", { 
 
 test("on a chassis the 3D view draws no case shell for the boards standing on it", { skip: skipRobot, timeout: 120_000 }, async () => {
 	await withPage(async (page) => {
-		await page.waitForFunction(() => (window as any).__worldStats?.().boards >= 2, null, { timeout: 30_000 })
-		// Give the case files time to arrive: a shell would have been drawn by now if the robot's boards kept theirs.
-		await page.waitForTimeout(2000)
+		// Positive signal first: both boards drawn, the robot with its chassis (a solid), then the negative.
+		await page.waitForFunction(() => (window as any).__worldStats?.().boards === 2 && (window as any).__worldStats().triangles > 1000, null, { timeout: 30_000 })
 		assert.deepEqual(await page.evaluate(() => (window as any).__worldStats().shells), [], "no board on the chassis draws its case")
 	}, ROBOT)
 })

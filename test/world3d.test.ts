@@ -78,7 +78,7 @@ test("a ray picks the nearest board it passes through", () => {
 // standoffs over the chassis plate, the drive wheels, motors, caster, battery and distance sensor, from the chassis
 // spec, standing on the floor (z 0).
 import { readFileSync } from "node:fs"
-import { boardGeometry } from "../src/dashboard/world3d.js"
+import { boardGeometry, rotateZ } from "../src/dashboard/world3d.js"
 function boxStl(min: number[], max: number[]): ArrayBuffer {
 	const v = (x: number, y: number, z: number) => [x ? max[0] : min[0], y ? max[1] : min[1], z ? max[2] : min[2]]
 	const faces = [[[0,0,0],[1,0,0],[1,1,0]],[[0,0,0],[1,1,0],[0,1,0]],[[0,0,1],[1,1,1],[1,0,1]],[[0,0,1],[0,1,1],[1,1,1]]]
@@ -148,14 +148,26 @@ test("a board turned 90 degrees swaps its extent in 3D, and 0 leaves it alone", 
 	assert.ok(Math.abs(box.extent.max[0] - box.extent.min[0] - 30) < 1e-3 && Math.abs(box.extent.max[1] - box.extent.min[1] - 50) < 1e-3)
 })
 
-test("direction: 90 degrees is counter-clockwise from above, so a board's +x end points to +y", () => {
+test("direction: 90 degrees is counter-clockwise from above, so local (+10, 0) lands at (0, +10)", () => {
+	const r = rotateZ(new Float32Array([10, 0, 0, 0, 10, 0, -10, 0, 0]), 90)
+	assert.ok(Math.abs(r[0]) < 1e-5 && Math.abs(r[1] - 10) < 1e-5, `(+10,0) -> (${r[0]}, ${r[1]})`)
+	assert.ok(Math.abs(r[3] + 10) < 1e-5 && Math.abs(r[4]) < 1e-5, `(0,+10) -> (${r[3]}, ${r[4]})`)
+	// And through boardGeometry: a case that sits only at +x ends up only at +y when the board is turned.
 	const g = boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, rotDeg: 90 })
-	// box tris are interleaved: find nothing here but the extent; the +x end of a flat board maps to +y when turned.
-	assert.ok(g.extent.max[1] > 24.9 && g.extent.min[1] < -24.9)
-	const assembly = { boards: [{ name: "front", xMm: 55, yMm: 0, rotDeg: 90 }] }
-	const p = assemblyPlacement(assembly, { shift: [0, 0], boardZ: 60 })
+	assert.ok(g.extent.max[0] - g.extent.min[0] < g.extent.max[1] - g.extent.min[1], "long side along y")
+	const p = assemblyPlacement({ boards: [{ name: "front", xMm: 55, yMm: 0, rotDeg: 90 }] }, { shift: [0, 0], boardZ: 60 })
 	assert.equal(p.front.rotDeg, 90)
-	assert.ok(p.front.x === 55 && Math.abs(g.extent.max[1] - 25) < 1e-3, "a board at +x turned 90 has its long side along y")
+})
+
+test("the main board on a chassis turns by the chassis spec's rotDeg, and its extent follows", () => {
+	const circuit = JSON.parse(readFileSync("examples/logger/boards/main/circuit.json", "utf8"))
+	const mk = (rotDeg: number) => boardGeometry({ outline: { widthMm: 50, heightMm: 30 }, circuit, chassisStl: boxStl([-75, -45, 0], [75, 45, 3]), chassisSpec: { ...CHASSIS, boards: [{ ...CHASSIS.boards[0], rotDeg }] } })
+	const a = mk(0), b = mk(90)
+	assert.ok(a.solid && b.solid && a.solid.length === b.solid.length)
+	let diff = 0
+	for (let i = 0; i < a.solid!.length; i++) diff = Math.max(diff, Math.abs(a.solid![i] - b.solid![i]))
+	assert.ok(diff > 5, "the board's triangles moved")
+	assert.ok(Math.abs(b.robotFrame!.boardZ - a.robotFrame!.boardZ) < 1e-9)
 })
 
 test("a board on a chassis draws no case shell; in its own body the case still draws", () => {

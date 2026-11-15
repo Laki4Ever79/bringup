@@ -12,3 +12,4 @@ export function mountWorld(host: HTMLElement, opts?: { onHover?: (name: string |
 export interface RobotFrame { shift: number[]; boardZ: number }
 export function assemblyPlacement(assembly: { boards: { name: string; xMm: number; yMm: number; rotDeg?: number }[] } | null | undefined, frame: RobotFrame): Record<string, { x: number; y: number; z: number; rotDeg: number }>
 export function resolvePlaces(boards: { name: string; at?: { x: number; y: number; z?: number } }[], auto: Record<string, { x: number; y: number }>, on?: { robot: string; places: Record<string, { x: number; y: number; z: number }> } | null): Record<string, { x: number; y: number; z: number }>
+export function rotateZ(tris: Float32Array | number[], rotDeg: number): Float32Array
