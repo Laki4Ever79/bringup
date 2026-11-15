@@ -3,7 +3,7 @@
 // limit come from assembly-geom.js, the same module the server's checks import, so the page and the run agree.
 // Frame: +x forward, +y left, origin at the plate centre; rotDeg is counter-clockwise from above; edges are the
 // board's own (left/right/top/bottom, before it is turned), as in top-layout.js.
-import { blocksSensor, boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, motorHalfUnder, motorUnderPlateMm, mountOnPlate, offPlate, plateLimitForBrief, plateMaxWidthMm, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM, wheelsRubPlate } from "./assembly-geom.js"
+import { blocksSensor, boardsOverlap, hatBaseZ, snapCarriers, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, motorHalfUnder, motorUnderPlateMm, mountOnPlate, offPlate, plateLimitForBrief, plateMaxWidthMm, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM, wheelsRubPlate } from "./assembly-geom.js"
 
 export const SNAP_MM = 0.5
 export { STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM }
@@ -153,6 +153,16 @@ export function editor(start) {
 		}
 	}
 
+	// A bought board and its HAT carrier move and turn as one: whichever of the two moved, the other follows.
+	function movePair(s, name, turned = false) {
+		const before = new Map(s.assembly.boards.map((x) => [x.name, x]))
+		s.assembly.boards = snapCarriers(s.assembly.boards, name)
+		for (const x of s.assembly.boards) {
+			const was = before.get(x.name)
+			if (x.name !== name && (was.xMm !== x.xMm || was.yMm !== x.yMm || was.rotDeg !== x.rotDeg)) reroute(s, x.name, turned)
+		}
+	}
+
 	function next(op) {
 		const s = clone(cur())
 		switch (op.kind) {
@@ -171,12 +181,14 @@ export function editor(start) {
 					}
 				}
 				reroute(s, b.name)
+				movePair(s, b.name)
 				break
 			}
 			case "rotate": {
 				const b = board(s, op.board)
 				b.rotDeg = (b.rotDeg + 90) % 360
 				reroute(s, b.name, true)
+				movePair(s, b.name, true)
 				break
 			}
 			case "plate":
@@ -299,7 +311,10 @@ export function editor(start) {
 				if (sensor && chassis.plate) for (const b of bs) {
 					const f = footprint(b)
 					const standoff = b.standoffMm ?? chassis.standoffMm ?? STANDOFF_DEFAULT_MM
-					const m = { xMm: b.xMm, yMm: b.yMm, zMm: chassis.plate.clearanceMm + chassis.plate.thicknessMm + standoff + 0.8, sizeMm: [f.xMm, f.yMm, 1.6] }
+					// A HAT stands on its board's spacers, over the board's own standoffs.
+					const under = b.carries ? bs.find((x) => x.name === b.carries) : null
+					const base = chassis.plate.clearanceMm + chassis.plate.thicknessMm + (under ? (under.standoffMm ?? chassis.standoffMm ?? STANDOFF_DEFAULT_MM) : standoff)
+					const m = { xMm: b.xMm, yMm: b.yMm, zMm: (under ? hatBaseZ(base) : base) + 0.8, sizeMm: [f.xMm, f.yMm, 1.6] }
 					if (blocksSensor(m, sensor)) bad({ board: b.name }, `${b.name} stands in front of the distance sensor (at x ${r1(sensor.xMm)} mm): move it back or aside`)
 				}
 			}

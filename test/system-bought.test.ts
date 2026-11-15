@@ -5,7 +5,8 @@ import assert from "node:assert/strict"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { specErrors, type SystemSpec } from "../src/system/spec.ts"
-import { assemblyErrors, defaultAssembly } from "../src/system/assembly.ts"
+import { assemblyErrors, defaultAssembly, mergeRequest, withOutlines } from "../src/system/assembly.ts"
+import { boardsOverlap } from "../src/dashboard/assembly-geom.js"
 import { runSystem } from "../src/system/run.ts"
 import { serveHub } from "../src/dashboard/server.ts"
 import type { startRunProcess } from "../src/runner/spawn-run.ts"
@@ -36,7 +37,7 @@ test("a carrier carries a bought board; links to the bought board itself are ref
 	assert.match(specErrors(linked).join("\n"), /link L1: brain is a bought board/)
 })
 
-test("a bought board is placed with its record's outline, built from the start; its carrier stacks under it", () => {
+test("a bought board is placed with its record's outline, built from the start; its HAT carrier on it", () => {
 	const spec: SystemSpec = { ...withPi(), boards: [...withPi().boards, { name: "brain-carrier", brief: "c.md", carries: "brain" }] }
 	const a = defaultAssembly(spec, "chassis")
 	const brain = a.boards.find((b) => b.name === "brain")!
@@ -47,6 +48,11 @@ test("a bought board is placed with its record's outline, built from the start; 
 	assert.deepEqual(a.boards.map((b) => b.name), ["main", "brain", "brain-carrier"], "the spec's order")
 	assert.deepEqual(assemblyErrors({ ...spec, assembly: a }), [], "a carrier and its board stack: no overlap, both on the plate")
 	assert.ok(a.plate!.lengthMm >= 40 + 8 + 85 + 20, "the plate grew for the Pi")
+	// Behind the MCU board (-x), clear of the distance sensor at the front (ruling R2), with the record's holes.
+	const main = a.boards.find((b) => b.name === "main")!
+	assert.equal(brain.xMm, main.xMm - 20 - 8 - 42.5)
+	assert.equal(brain.holes!.length, 4)
+	assert.deepEqual(carrier.holes, brain.holes)
 })
 
 const settling = (calls: string[]): typeof startRunProcess => (a) => {
@@ -86,10 +92,42 @@ test("the design page's payload shows a bought board as bought, with its module,
 		assert.equal(brain.carrier, "brain-carrier")
 		assert.deepEqual(brain.outline, { widthMm: 85, heightMm: 56 })
 		assert.equal(brain.holes.length, 4)
-		assert.ok(brain.stackMm > 0)
+		assert.equal(brain.stack.mm, 16)
+		assert.match(brain.stack.source.url, /raspberrypi\.com\/products\/m2-hat-plus/)
 		const carrier = d.boards.find((b: { name: string }) => b.name === "brain-carrier")
 		assert.deepEqual([carrier.carries, carrier.status], ["brain", "not started"])
 	} finally {
 		await hub.close()
 	}
+})
+
+test("bought boards stand behind every designed board, even with a third board in the row (ruling R2)", () => {
+	const spec: SystemSpec = { ...withPi(), boards: [{ name: "main", brief: "m.md" }, { name: "climate", brief: "c.md" }, { name: "brain", kind: "bought", module: "rpi-5" }, { name: "rpi-5-carrier", brief: "h.md", carries: "brain" }] }
+	const a = defaultAssembly(spec, "chassis")
+	const x = (n: string) => a.boards.find((b) => b.name === n)!.xMm
+	const rear = Math.min(...["main", "climate"].map((n) => x(n) - 20))
+	assert.equal(x("brain"), rear - 8 - 42.5)
+	assert.ok(x("brain") < 0)
+	assert.deepEqual(assemblyErrors({ ...spec, assembly: a }), [])
+})
+
+test("a carrier built bigger than the Pi moves with it as one unit, never left on another board (review I2)", () => {
+	const spec: SystemSpec = { ...withPi(), boards: [...withPi().boards, { name: "rpi-5-carrier", brief: "c.md", carries: "brain" }] }
+	const a = defaultAssembly(spec, "chassis")
+	// The HAT comes back 120 mm long: as a unit with the Pi it must clear main.
+	const grown = withOutlines(a, { "rpi-5-carrier": { widthMm: 120, heightMm: 56 } })
+	const b = (n: string) => grown.boards.find((x) => x.name === n)!
+	assert.deepEqual([b("rpi-5-carrier").xMm, b("rpi-5-carrier").yMm], [b("brain").xMm, b("brain").yMm])
+	assert.deepEqual(assemblyErrors({ ...spec, assembly: grown }), [])
+	assert.equal(boardsOverlap(b("rpi-5-carrier"), b("main")), false)
+})
+
+test("a request that moves the Pi brings its carrier along; a carrier off its board is an assembly error (review I3)", () => {
+	const spec: SystemSpec = { ...withPi(), boards: [...withPi().boards, { name: "rpi-5-carrier", brief: "c.md", carries: "brain" }] }
+	const withA = { ...spec, assembly: defaultAssembly(spec, "chassis") }
+	const moved = withA.assembly.boards.map((x) => (x.name === "brain" ? { ...x, xMm: x.xMm - 10, yMm: 5, rotDeg: 180 as const } : x))
+	const merged = mergeRequest(withA, { assembly: { boards: moved } })
+	const c = merged.assembly!.boards.find((x) => x.name === "rpi-5-carrier")!, p = merged.assembly!.boards.find((x) => x.name === "brain")!
+	assert.deepEqual([c.xMm, c.yMm, c.rotDeg], [p.xMm, p.yMm, 180])
+	assert.match(assemblyErrors({ ...withA, assembly: { ...withA.assembly, boards: moved } }).join("\n"), /board rpi-5-carrier is a HAT on brain and must have its place and turn/)
 })

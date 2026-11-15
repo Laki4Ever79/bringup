@@ -207,9 +207,8 @@ export function resolvePlaces(boards, auto, on = null) {
 	return out
 }
 
-// A bought board (a compute module) stands on its carrier: same xy, raised by the carrier's 1.6 mm board and the
-// stacking header (`stackMm`, the server's CARRIER_STACK_MM). `stackOn` names its carrier; a carrier not drawn leaves
-// the board where it was.
+// A HAT carrier stands on the bought board it carries: same xy, raised by that board's 1.6 mm and the spacers
+// (`stackMm`, the payload's stack.mm). `stackOn` names the board under it; one not drawn leaves it where it was.
 export function stackPlaces(boards, at) {
 	const out = { ...at }
 	for (const wb of boards) {
@@ -528,7 +527,7 @@ export function mountWorld(host, opts = {}) {
 		// A robot's other boards stand where the assembly puts them; they take no room in the automatic layout.
 		const robot = assembly?.boards?.length ? boards.find((wb) => S.boards.get(wb.name).frame && assembly.boards.some((p) => p.name === wb.name)) : null
 		const places = robot ? assemblyPlacement(assembly, S.boards.get(robot.name).frame) : null
-		// A bought board on its carrier stands on it: it takes no place of its own either.
+		// A HAT carrier stands on its board: it takes no place of its own either.
 		const stacked = (wb) => wb.stackOn && boards.some((x) => x.name === wb.stackOn)
 		const placed = (wb) => (robot && wb.name !== robot.name && places[wb.name]) || stacked(wb)
 		const auto = autoLayout(boards.filter((wb) => !placed(wb)), cables)

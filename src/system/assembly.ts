@@ -2,7 +2,7 @@
 // the chassis builder and the 3D view all read. Optional on a SystemSpec; a spec without one behaves as before.
 import type { SystemLink, SystemSpec } from "./spec.ts"
 import type { Mechanics } from "../mechanics/types.ts"
-import { boughtOutlines } from "./bought.ts"
+import { boughtOutlines, moduleById, moduleHoles } from "./bought.ts"
 
 export type BodyKind = "chassis" | "enclosure" | "separate"
 export type Rot = 0 | 90 | 180 | 270
@@ -19,8 +19,11 @@ export interface AssemblyBoard {
 	outlineSource: "estimate" | "built"
 	// The height of the board's standoffs; readers default it (STANDOFF_DEFAULT_MM). Allowed 3-30 mm.
 	standoffMm?: number
-	// A carrier stacks under the bought board it carries (spec boards[].carries): same place, the two never "overlap".
+	// A carrier is a HAT on the bought board it carries (spec boards[].carries): same place, the two never "overlap".
 	carries?: string
+	// Mounting holes when they aren't at the corners (a bought board's record, and its carrier's): mm from the board's
+	// lower-left corner, before the turn.
+	holes?: { x: number; y: number; dia: number }[]
 }
 
 
@@ -37,7 +40,7 @@ export interface SystemAssembly {
 }
 
 // The pure geometry lives in the dashboard module, so the design page checks with the same code.
-import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../dashboard/assembly-geom.js"
+import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, snapCarriers, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../dashboard/assembly-geom.js"
 export { cableLength, CABLE_SLACK_MM, footprint, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM }
 
 // The spec a system request makes: its assembly patch over the current one (boards and plate replaced whole, the rest
@@ -46,7 +49,8 @@ export { cableLength, CABLE_SLACK_MM, footprint, STANDOFF_DEFAULT_MM, STANDOFF_R
 export function mergeRequest(spec: SystemSpec, r: { assembly?: Partial<SystemAssembly>; links?: SystemLink[] }): SystemSpec {
 	let out = spec
 	const a = spec.assembly
-	if (r.assembly && a) out = { ...out, assembly: { ...a, ...r.assembly, boards: r.assembly.boards ?? a.boards, plate: r.assembly.plate ?? a.plate } }
+	// A carrier goes wherever the board it carries went (they move as one).
+	if (r.assembly && a) out = { ...out, assembly: { ...a, ...r.assembly, boards: snapCarriers(r.assembly.boards ?? a.boards), plate: r.assembly.plate ?? a.plate } }
 	if (r.links) out = { ...out, links: r.links }
 	const cables = r.assembly && a ? r.assembly.cables : undefined
 	if (cables?.length) {
@@ -85,6 +89,11 @@ export function assemblyErrors(spec: SystemSpec): string[] {
 		for (let i = 0; i < a.boards.length; i++) for (let j = i + 1; j < a.boards.length; j++) {
 			const p = a.boards[i], q = a.boards[j]
 			if (boardsOverlap(p, q)) out.push(`assembly: boards ${p.name} and ${q.name} overlap`)
+		}
+		// A HAT carrier sits on its board: the same place and turn.
+		for (const c of a.boards) {
+			const base = c.carries ? a.boards.find((x) => x.name === c.carries) : undefined
+			if (base && (base.xMm !== c.xMm || base.yMm !== c.yMm || base.rotDeg !== c.rotDeg)) out.push(`assembly: board ${c.name} is a HAT on ${base.name} and must have its place and turn (${base.xMm}, ${base.yMm}, ${base.rotDeg}°)`)
 		}
 	}
 	return out
@@ -139,24 +148,43 @@ function centreBoard(spec: SystemSpec): string {
 	return best
 }
 
+// A bought board and its HAT carrier take the larger of the two outlines (they share their centre).
+const unitOutline = (o: Outline, c?: Outline): Outline => (c ? { widthMm: Math.max(o.widthMm, c.widthMm), heightMm: Math.max(o.heightMm, c.heightMm) } : { ...o })
+const boughtHoles = (b: { kind?: string; module?: string }) => {
+	const m = b.kind === "bought" && b.module ? moduleById(b.module) : undefined
+	const h = m ? moduleHoles(m) : []
+	return h.length ? h.map((x) => ({ ...x })) : undefined
+}
+
 // The main board at 0,0; the others alternate +x, -x, each one BOARD_GAP_MM clear of the footprint before it on its side.
 // With the brief's size limit, a board that would reach past it starts a new row beside the first (along y, alternating
 // +y, -y) instead; if even that doesn't fit, it is placed anyway and assemblyFitError names it.
 export function defaultAssembly(spec: SystemSpec, body: BodyKind, outlines: Record<string, Outline> = {}, maxSizeMm?: [number, number]): SystemAssembly {
-	// A bought board's outline is its record's from the start; a carrier takes no place of its own (it stacks under the
-	// board it carries, below).
+	// A bought board's outline is its record's from the start. Bought boards (each with its carrier, a HAT on top: one
+	// unit) stand behind the designed boards (-x), clear of the distance sensor at the front; the designed boards are laid
+	// out as before.
 	outlines = { ...boughtOutlines(spec.boards), ...outlines }
-	const carriers = spec.boards.filter((b) => b.carries && spec.boards.some((x) => x.name === b.carries))
-	if (carriers.length) {
-		const rest = defaultAssembly({ ...spec, boards: spec.boards.filter((b) => !carriers.includes(b)) }, body, outlines, maxSizeMm)
-		const boards = spec.boards.map((sb) => {
-			const placed = rest.boards.find((x) => x.name === sb.name)
-			if (placed) return placed
-			const under = rest.boards.find((x) => x.name === sb.carries)!
-			const built = outlines[sb.name]
-			return { name: sb.name, xMm: under.xMm, yMm: under.yMm, rotDeg: under.rotDeg, outline: built ? { ...built } : { ...under.outline }, outlineSource: built ? ("built" as const) : ("estimate" as const), carries: under.name }
-		})
-		return { ...rest, boards }
+	const bought = spec.boards.filter((b) => b.kind === "bought")
+	const carriers = spec.boards.filter((b) => b.carries && bought.some((x) => x.name === b.carries))
+	if (bought.length) {
+		const designed = spec.boards.filter((b) => !bought.includes(b) && !carriers.includes(b))
+		const rest = designed.length ? defaultAssembly({ ...spec, boards: designed }, body, outlines, maxSizeMm).boards : []
+		let rear = rest.length ? Math.min(...rest.map((b) => b.xMm - footprint(b).xMm / 2)) : null
+		const placed: AssemblyBoard[] = []
+		for (const b of bought) {
+			const o = outlines[b.name] ?? { ...ESTIMATED_OUTLINE_MM }
+			const c = carriers.find((x) => x.carries === b.name)
+			const unit = unitOutline(o, c ? outlines[c.name] : undefined)
+			const xMm = rear === null ? 0 : rear - BOARD_GAP_MM - unit.widthMm / 2
+			rear = xMm - unit.widthMm / 2
+			const holes = boughtHoles(b)
+			placed.push({ name: b.name, xMm, yMm: 0, rotDeg: 0, outline: { ...o }, outlineSource: outlines[b.name] ? "built" : "estimate", ...(holes ? { holes } : {}) })
+			if (c) placed.push({ name: c.name, xMm, yMm: 0, rotDeg: 0, outline: outlines[c.name] ? { ...outlines[c.name] } : { ...o }, outlineSource: outlines[c.name] ? "built" : "estimate", carries: b.name, ...(holes ? { holes } : {}) })
+		}
+		// A carrier whose board isn't bought (a spec error) still gets a place: with the designed boards' rule.
+		const all = [...rest, ...placed]
+		const boards = spec.boards.map((sb) => all.find((x) => x.name === sb.name) ?? { name: sb.name, xMm: 0, yMm: 0, rotDeg: 0 as Rot, outline: { ...ESTIMATED_OUTLINE_MM }, outlineSource: "estimate" as const })
+		return body === "separate" ? { body, boards } : { body, plate: plateFor(boards, maxSizeMm), boards }
 	}
 	const centre = centreBoard(spec)
 	const lim = reachLimit(maxSizeMm)
@@ -224,8 +252,15 @@ export function withOutlines(a: SystemAssembly, outlines: Record<string, Outline
 		const f = footprint(b)
 		return Math.abs(b.xMm) + f.xMm / 2 > plate.lengthMm / 2 || Math.abs(b.yMm) + f.yMm / 2 > plate.widthMm / 2 || Math.abs(b.xMm) + f.xMm / 2 > lim.x + 1e-9 || Math.abs(b.yMm) + f.yMm / 2 > lim.y + 1e-9
 	}
+	// A carrier and the board it carries are one unit: judged and moved together, as the larger of their outlines. The
+	// carrier follows its board afterwards.
+	const isCarrier = (b: AssemblyBoard) => Boolean(b.carries && updated.some((x) => x.name === b.carries))
+	const units = updated.filter((b) => !isCarrier(b)).map((b) => {
+		const c = updated.find((x) => x.carries === b.name)
+		return { b, p: c ? { ...b, outline: unitOutline(b.outline, c.outline) } : b }
+	})
 	// The board nearest the centre is judged first, so the outer ones are the ones that move.
-	const byDistance = [...updated].sort((p, q) => Math.abs(p.xMm) - Math.abs(q.xMm))
+	const byDistance = units.map((u) => u.p).sort((p, q) => Math.abs(p.xMm) - Math.abs(q.xMm))
 	const kept: AssemblyBoard[] = []
 	for (const b of byDistance) {
 		if (kept.every((k) => !overlaps(b, k)) && !sticksOut(b)) { kept.push(b); continue }
@@ -244,11 +279,9 @@ export function withOutlines(a: SystemAssembly, outlines: Record<string, Outline
 		}
 		kept.push(b)
 	}
-	// A carrier stays under the board it carries, wherever that one went.
-	for (const b of updated) {
-		const under = b.carries ? updated.find((x) => x.name === b.carries) : undefined
-		if (under) { b.xMm = under.xMm; b.yMm = under.yMm; b.rotDeg = under.rotDeg }
-	}
+	for (const u of units) if (u.p !== u.b) { u.b.xMm = u.p.xMm; u.b.yMm = u.p.yMm }
+	// A carrier stays on the board it carries, wherever that one went.
+	updated.splice(0, updated.length, ...snapCarriers(updated))
 	const grown = plateFor(updated, maxSizeMm)
 	let lengthMm = Math.max(plate.lengthMm, grown.lengthMm), widthMm = Math.max(plate.widthMm, grown.widthMm)
 	// An old plate larger than the limit shrinks to it when the boards fit (else assemblyFitError names it).

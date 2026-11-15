@@ -1,6 +1,7 @@
 import { byMpn, type MechCatalog, type MotorPart } from "./catalog.ts"
 import { est } from "./estimates.ts"
 import type { Mechanics, Mount } from "./types.ts"
+import { hatBaseZ } from "../dashboard/assembly-geom.js"
 
 export const G = 9.81
 
@@ -45,12 +46,15 @@ export function mounts(mech: Mechanics, boards: { name: string; outline: { width
 	if (pack) out.push({ what: "battery", xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, zMm: plateTop + pack.sizeMm[2] / 2, sizeMm: pack.sizeMm, massG: pack.massG })
 	const sensor = byMpn(cat.sensors ?? [], mech.sensor?.module ?? "")
 	if (sensor && mech.sensor) out.push({ what: "sensor", xMm: mech.sensor.at.xMm, yMm: mech.sensor.at.yMm, zMm: mech.sensor.at.zMm, sizeMm: [sensor.sizeMm[2], sensor.sizeMm[0], sensor.sizeMm[1]], massG: sensor.massG })
+	// A HAT (`on`) stands on its board's spacers (hatBaseZ), the others on the plate's standoffs.
+	const onPlate = plateTop + est("standoffMm")
 	for (const b of c.boards) {
 		const info = boards.find((x) => x.name === b.name)
 		if (!info) continue
 		const turned = b.rotDeg === 90 || b.rotDeg === 270
 		const w = turned ? info.outline.heightMm : info.outline.widthMm, h = turned ? info.outline.widthMm : info.outline.heightMm
-		out.push({ what: `board:${b.name}`, xMm: b.at.xMm, yMm: b.at.yMm, zMm: plateTop + est("standoffMm") + 0.8, sizeMm: [w, h, 1.6], massG: info.massG ?? ((w * h) / 100) * est("boardMassGPerCm2") })
+		const base = b.on && c.boards.some((x) => x.name === b.on && !x.on) ? hatBaseZ(onPlate) : onPlate
+		out.push({ what: `board:${b.name}`, xMm: b.at.xMm, yMm: b.at.yMm, zMm: base + 0.8, sizeMm: [w, h, 1.6], massG: info.massG ?? ((w * h) / 100) * est("boardMassGPerCm2") })
 	}
 	return out
 }

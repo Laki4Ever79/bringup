@@ -342,9 +342,12 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		if (!motorHalfUnder(Wd, m)) push("mech-fit", `${m.what.replace(":", " ")} reaches only ${r1(Math.max(0, under))} mm under the plate (half its ${m.sizeMm[1]} mm body needed for the bracket): widen the plate or narrow the track`)
 	}
 	const boardsM = ms.filter((m) => m.what.startsWith("board:"))
+	// A HAT and the board it sits on stack on the same holes: not an overlap.
+	const stacked = (p: string, q: string) => mech.chassis.boards.some((x) => (x.name === p && x.on === q) || (x.name === q && x.on === p))
 	for (let i = 0; i < boardsM.length; i++)
 		for (let j = i + 1; j < boardsM.length; j++) {
 			const a = boardsM[i], b = boardsM[j]
+			if (stacked(a.what.slice(6), b.what.slice(6))) continue
 			if (Math.abs(a.xMm - b.xMm) < (a.sizeMm[0] + b.sizeMm[0]) / 2 && Math.abs(a.yMm - b.yMm) < (a.sizeMm[1] + b.sizeMm[1]) / 2)
 				push("mech-fit", `${a.what.slice(6)} and ${b.what.slice(6)} overlap on the chassis: move one`)
 		}

@@ -102,3 +102,34 @@ test("the drive isn't run while a sibling board's outline is only an estimate", 
 	s.values.assembly!.boards[0].outlineSource = "estimate"
 	assert.equal(estimatedOutlineReason(s, chassisSpec(s)!), null)
 })
+
+// A Raspberry Pi 5 behind the rover board with its HAT carrier on top (review C2, I4).
+const withPi = (): ContractSnapshot => {
+	const s = rover()
+	const holes = [{ x: 3.5, y: 3.5, dia: 2.7 }, { x: 61.5, y: 3.5, dia: 2.7 }, { x: 3.5, y: 52.5, dia: 2.7 }, { x: 61.5, y: 52.5, dia: 2.7 }]
+	const pi = { name: "brain", xMm: -48, yMm: 0, rotDeg: 0 as const, outline: { widthMm: 85, heightMm: 56 }, outlineSource: "built" as const, holes }
+	s.values.assembly = { body: "chassis", self: "rover", plate: { lengthMm: 200, widthMm: 120 }, boards: [{ name: "rover", xMm: 40, yMm: 0, rotDeg: 0, outline: { widthMm: 60, heightMm: 40 }, outlineSource: "built" }, pi, { ...pi, name: "rpi-5-carrier", outlineSource: "estimate", carries: "brain" }] }
+	return s
+}
+
+test("a bought board and its HAT carrier are not two boards overlapping in the robot board's mechanics checks; the HAT stands on the spacers", async () => {
+	const s = withPi()
+	const v = mechanicsChecks(s)
+	assert.deepEqual(v.filter((x) => /overlap/.test(x.message)).map((x) => x.message), [])
+	// Moved apart, they would overlap like any two boards: the rule is about the stacked pair only.
+	const { mounts } = await import("../src/mechanics/model.ts")
+	const { withAssembly } = await import("../src/mechanics/assembly.ts")
+	const { loadMechCatalog } = await import("../src/mechanics/catalog.ts")
+	const ms = mounts(withAssembly(s.values)!, [{ name: "brain", outline: { widthMm: 85, heightMm: 56 } }, { name: "rpi-5-carrier", outline: { widthMm: 85, heightMm: 56 } }], loadMechCatalog(process.cwd()))
+	const z = (n: string) => ms.find((m) => m.what === `board:${n}`)!.zMm
+	assert.ok(Math.abs(z("rpi-5-carrier") - z("brain") - (1.6 + 16)) < 1e-9, "the HAT's board is 16 mm of spacers above the Pi's")
+})
+
+test("the chassis puts the Pi's standoffs at its record's holes, and none for the HAT on it (review I4)", () => {
+	const spec = chassisSpec(withPi())!
+	const brain = spec.boards.find((b) => b.name === "brain")!
+	assert.deepEqual(brain.holesMm, [[-87, -24.5], [-29, -24.5], [-87, 24.5], [-29, 24.5]], "58 × 49 mm apart, from the lower-left corner at (-90.5, -28)")
+	const hat = spec.boards.find((b) => b.name === "rpi-5-carrier")!
+	assert.equal(hat.standoffs, false)
+	assert.equal(spec.boards.find((b) => b.name === "main")!.holesMm, undefined, "a designed board keeps its corner standoffs")
+})

@@ -32,7 +32,7 @@ import { assemblyErrors, defaultAssembly, derivedAssembly, mergeRequest, request
 import { SYSTEM_REQUESTS } from "../system/run.ts"
 import { buildSpec } from "../system/plan.ts"
 import { specErrors, type SystemSpec } from "../system/spec.ts"
-import { CARRIER_STACK_MM, field, moduleById, moduleHoles, moduleOutline } from "../system/bought.ts"
+import { HAT_STACK, field, moduleById, moduleHoles, moduleOutline } from "../system/bought.ts"
 import type { Mechanics } from "../mechanics/types.ts"
 import { chassisSpec } from "../tools/chassis.ts"
 
@@ -521,11 +521,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		}
 		return out.sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, MAX_RUNS_LISTED)
 	}
-	// A bought board on the design page: its record's outline, holes and header, no run; `carrier` is the board it plugs into.
+	// A bought board on the design page: its record's outline, holes and header, no run; `carrier` is the HAT on it, `stack`
+	// the gap between the two boards (with its source).
 	const boughtBoardView = (b: { name: string; module?: string }, carrier: string | null) => {
 		const m = b.module ? moduleById(b.module) : undefined
 		const header = m ? field<{ x: number; y: number; rows: number; cols: number; pitchMm: number }>(m, "header.at")?.value ?? null : null
-		return { name: b.name, runId: null, imported: false, bought: true, module: b.module ?? null, title: m?.title ?? b.module ?? b.name, status: "bought", outline: m ? moduleOutline(m) : null, holes: m ? moduleHoles(m) : [], header, carrier, stackMm: CARRIER_STACK_MM, connectors: [], pins: [], mcu: null, render: null, report: null }
+		return { name: b.name, runId: null, imported: false, bought: true, module: b.module ?? null, title: m?.title ?? b.module ?? b.name, status: "bought", outline: m ? moduleOutline(m) : null, holes: m ? moduleHoles(m) : [], header, carrier, stack: HAT_STACK, connectors: [], pins: [], mcu: null, render: null, report: null }
 	}
 	const systemDetail = async (id: string, dir: string) => {
 		const spec = await readJsonFile(join(dir, "system.json"))
@@ -700,7 +701,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			spec: p.spec,
 			assembly,
 			status,
-			boards: p.spec.boards.map((b) => ({ name: b.name, runId: null, status })),
+			// A bought board is shown as bought before the build too; a carrier says which board it sits on.
+			boards: p.spec.boards.map((b) => (b.kind === "bought" ? boughtBoardView(b, p.spec.boards.find((x) => x.carries === b.name)?.name ?? null) : { name: b.name, runId: null, status, ...(b.carries ? { carries: b.carries } : {}) })),
 			facts: systemFacts(Object.fromEntries(p.spec.boards.map((b) => [b.name, null])), assembly, p.spec.links ?? [], {}, p.spec.boards),
 		}
 	}

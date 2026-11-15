@@ -297,7 +297,7 @@ function cableHtml(md) {
 }
 
 function boardCard(b) {
-	if (!b.runId) return `<div class="board"><div class="top"><span class="name">${esc(b.name)}</span>${chip(b.status)}</div><p class="muted">${b.imported ? "An imported board: its contract is fixed, not designed here." : "Not started yet."}</p></div>`
+	if (!b.runId) return `<div class="board"><div class="top"><span class="name">${esc(b.name)}</span>${chip(b.status)}</div><p class="muted">${b.bought ? `Bought: ${esc(b.title ?? b.module)}, not designed here.` : b.imported ? "An imported board: its contract is fixed, not designed here." : "Not started yet."}</p></div>`
 	const conns = (b.connectors ?? []).map((c) => `${c.ref} ${c.kind} ${c.edge}@${c.offsetMm}`).join(", ")
 	const linkPins = (b.pins ?? []).map((p) => `${p.signal}=${p.pin ?? `GPIO${p.gpio}`}→${p.partRef}.${p.partPin}`).join(", ")
 	return `<div class="board">
@@ -612,8 +612,8 @@ function renderCard() {
 		const f = stage.meta.facts.boards?.[t.name]
 		if (!f) { factsEl.classList.add("hidden"); return }
 		const img = stage.meta.boards.find((b) => b.name === t.name)?.render
-		// A bought board: where it comes from, its peak draw with the source, its carrier and its ROS bridge device.
-		if (f.bought) factsEl.innerHTML = `<h4>${esc(t.name)} · bought</h4><dl>${row("From", f.bought.from)}${row("Size", f.size)}${row("Peak", f.bought.peak)}${row("Power", f.power)}${row("Carrier", f.bought.carrier)}${row("Bridge", f.bought.bridge)}${row("Mount", f.mount)}</dl>`
+		// A bought board: where it comes from, the supply it asks for with the source, its carrier and its ROS bridge device.
+		if (f.bought) factsEl.innerHTML = `<h4>${esc(t.name)} · bought</h4><dl>${row("From", f.bought.from)}${row("Size", f.size)}${row("Supply", f.bought.supply)}${row("Power", f.power)}${row("Carrier", f.bought.carrier)}${row("Bridge", f.bought.bridge)}${row("Mount", f.mount)}</dl>`
 		else factsEl.innerHTML = `${img ? `<img src="${esc(img)}" alt="">` : ""}<h4>${esc(t.name)}</h4><dl>${row("Size", f.size)}${row("Chip", f.chip)}${row("Power", f.power)}${row("Links", f.links.length ? f.links.join("; ") : "—")}${row("Mount", f.mount)}${row("Debug", f.debug)}</dl>`
 	}
 	factsEl.classList.remove("hidden")
@@ -777,7 +777,7 @@ async function redraw() {
 		if (b.bought) {
 			const placedB = stage.meta.assembly?.boards?.find((p) => p.name === b.name)
 			const carrier = b.carrier && stage.meta.boards.some((x) => x.name === b.carrier) ? b.carrier : null
-			return { name: b.name, bought: true, module: b.module, holes: b.holes ?? [], header: b.header ?? null, carrier, stackOn: carrier, stackMm: b.stackMm ?? 0, outline: b.outline, built: true, topOutline: b.outline, circuit: null, rotDeg: placedB?.rotDeg ?? 0, onChassis: stage.meta.assembly?.body === "chassis", key: `${b.name}:bought:${b.module}:${placedB?.rotDeg ?? 0}:${carrier}` }
+			return { name: b.name, bought: true, module: b.module, holes: b.holes ?? [], header: b.header ?? null, carrier, outline: b.outline, built: true, topOutline: b.outline, circuit: null, rotDeg: placedB?.rotDeg ?? 0, onChassis: stage.meta.assembly?.body === "chassis", key: `${b.name}:bought:${b.module}:${placedB?.rotDeg ?? 0}:${carrier}` }
 		}
 		const stacked = b.carries ? stage.meta.assembly?.boards?.find((p) => p.name === b.name)?.outline ?? null : null
 		const outline = a.outline ?? b.outline ?? stacked
@@ -789,7 +789,9 @@ async function redraw() {
 		const placed = stage.meta.assembly?.boards?.find((p) => p.name === b.name)
 		const rotDeg = placed?.rotDeg ?? 0
 		const onChassis = stage.meta.assembly?.body === "chassis"
-		return { name: b.name, ...(b.carries ? { carries: b.carries } : {}), outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, rotDeg, onChassis, key: `${b.name}:${rotDeg}:${onChassis}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
+		// A carrier is a HAT: in 3D it stands on its bought board's spacers (world3d stackPlaces).
+		const base = b.carries ? stage.meta.boards.find((x) => x.name === b.carries && x.bought) : null
+		return { name: b.name, ...(b.carries ? { carries: b.carries } : {}), ...(base ? { stackOn: base.name, stackMm: base.stack?.mm ?? 0 } : {}), outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, rotDeg, onChassis, key: `${b.name}:${rotDeg}:${onChassis}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
 	})
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
 	// The world places a robot's other boards from the assembly (world3d setWorld); no assembly positions, no change.
@@ -799,7 +801,7 @@ async function redraw() {
 		const chassis = boards.find((b) => b.chassisSpec)?.chassisSpec ?? null
 		// A board in its own case shows the case's outline; a robot's boards stand on the chassis instead.
 		const robot = stage.meta.assembly?.body === "chassis"
-		stage.topBoards = boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, caseSpec: robot ? null : b.caseSpec ?? null, connectors: m?.connectors, status: m?.status, ...(b.bought ? { bought: true, module: b.module, holes: b.holes, header: b.header, carrier: b.carrier, stackMm: b.stackMm } : {}), ...(b.carries ? { carries: b.carries } : {}) } })
+		stage.topBoards = boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, caseSpec: robot ? null : b.caseSpec ?? null, connectors: m?.connectors, status: m?.status, ...(b.bought ? { bought: true, module: b.module, holes: b.holes, header: b.header, carrier: b.carrier } : {}), ...(b.carries ? { carries: b.carries } : {}) } })
 		stage.chassis = chassis
 		// The chassis spec arrived after Edit was pressed: the editor's keep-outs need it (nothing edited yet, nothing lost).
 		if (editing.on && !editing.chassis && chassis && !editing.ed.canUndo()) makeEditor()

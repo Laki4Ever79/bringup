@@ -180,7 +180,7 @@ test("a board on a chassis draws no case shell; in its own body the case still d
 	assert.ok(onChassis.solid && onChassis.solid.length > 0)
 })
 
-test("a bought board is a dark board of its record's outline with its header; on its carrier it stands raised by the stack", () => {
+test("a bought board is a dark board of its record's outline with its header; its HAT carrier stands on it, raised by the spacers", () => {
 	const g = boardGeometry({ name: "brain", bought: true, outline: { widthMm: 85, heightMm: 56 }, header: { x: 32.5, y: 52.5, pitchMm: 2.54, rows: 2, cols: 20 } })
 	assert.equal(g.bought, true)
 	assert.deepEqual([g.extent.min[0], g.extent.max[0], g.extent.min[1], g.extent.max[1]], [-42.5, 42.5, -28, 28])
@@ -189,7 +189,8 @@ test("a bought board is a dark board of its record's outline with its header; on
 	assert.ok(g.solid![6] < 0.2 && g.solid![7] < 0.2 && g.solid![8] < 0.2)
 	const turned = boardGeometry({ name: "brain", bought: true, rotDeg: 90, outline: { widthMm: 85, heightMm: 56 } })
 	assert.ok(Math.abs(turned.extent.max[0] - 28) < 1e-4)
-	const at = stackPlaces([{ name: "brain", stackOn: "carrier", stackMm: 11 }, { name: "carrier" }], { brain: { x: 99, y: 99, z: 0 }, carrier: { x: 10, y: -5, z: 12 } })
-	assert.deepEqual(at.brain, { x: 10, y: -5, z: 12 + 1.6 + 11 })
-	assert.deepEqual(stackPlaces([{ name: "brain", stackOn: "gone", stackMm: 11 }], { brain: { x: 1, y: 2, z: 0 } }).brain, { x: 1, y: 2, z: 0 }, "no carrier drawn: it stays")
+	// The carrier is a HAT: it stands on the Pi's 16 mm spacers.
+	const at = stackPlaces([{ name: "brain" }, { name: "carrier", stackOn: "brain", stackMm: 16 }], { brain: { x: 10, y: -5, z: 12 }, carrier: { x: 99, y: 99, z: 0 } })
+	assert.deepEqual(at.carrier, { x: 10, y: -5, z: 12 + 1.6 + 16 })
+	assert.deepEqual(stackPlaces([{ name: "carrier", stackOn: "gone", stackMm: 16 }], { carrier: { x: 1, y: 2, z: 0 } }).carrier, { x: 1, y: 2, z: 0 }, "no board under it drawn: it stays")
 })

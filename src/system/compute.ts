@@ -5,7 +5,7 @@
 import type { Module } from "../modules/library.ts"
 import type { BatteryPack, MotorPart } from "../mechanics/catalog.ts"
 import type { AssemblyBoard, AssemblyPlate } from "./assembly.ts"
-import { blocksSensor, boardsOverlap, footprint, offPlate, STANDOFF_DEFAULT_MM } from "../dashboard/assembly-geom.js"
+import { blocksSensor, boardsOverlap, footprint, HAT_STACK_MM, HAT_STACK_SOURCE, hatBaseZ, offPlate, STANDOFF_DEFAULT_MM } from "../dashboard/assembly-geom.js"
 import { field, type Cite, type Sourced } from "./bought.ts"
 
 export type ComputeCheck = "compute-power" | "compute-rail" | "compute-header" | "compute-mechanics"
@@ -182,7 +182,8 @@ export interface SensorMount { xMm: number; yMm: number; zMm: number; sizeMm: [n
 // front of the distance sensor. `baseZMm` is the module's underside in the chassis frame (the standoffs, plus the
 // carrier's stack when it has one). Its height is the record's tallestMm; while that is unknown only the board itself
 // (1.6 mm) is known, and the check says so.
-export function mechanicsCheck(m: Module, o: { placed: AssemblyBoard; plate: AssemblyPlate; others: AssemblyBoard[]; sensor?: SensorMount | null; baseZMm?: number; maxHeightMm?: number | null }): ComputeFinding[] {
+// `hat`: the carrier on top (a HAT on HAT_STACK_MM spacers): the stack then reaches at least the HAT's board.
+export function mechanicsCheck(m: Module, o: { placed: AssemblyBoard; plate: AssemblyPlate; others: AssemblyBoard[]; sensor?: SensorMount | null; baseZMm?: number; maxHeightMm?: number | null; hat?: string | null }): ComputeFinding[] {
 	const out: ComputeFinding[] = []
 	const outline = field<{ widthMm: number; heightMm: number }>(m, "outline")
 	const tallest = field<number>(m, "tallestMm")
@@ -190,16 +191,18 @@ export function mechanicsCheck(m: Module, o: { placed: AssemblyBoard; plate: Ass
 	const where = cite(outline?.source)
 	const b = o.placed
 	if (offPlate(b, o.plate)) out.push({ check: "compute-mechanics", level: "error", message: `${b.name} (${m.id}, ${b.outline.widthMm} × ${b.outline.heightMm} mm: ${where}) sticks out of the ${o.plate.lengthMm} × ${o.plate.widthMm} mm plate`, sources: src })
-	for (const x of o.others) if (x.name !== b.name && boardsOverlap(b, x)) out.push({ check: "compute-mechanics", level: "error", message: `${b.name} (${m.id}, ${b.outline.widthMm} × ${b.outline.heightMm} mm: ${where}) overlaps ${x.name}`, sources: src })
+	for (const x of o.others) if (x.name !== b.name && x.name !== o.hat && boardsOverlap(b, x)) out.push({ check: "compute-mechanics", level: "error", message: `${b.name} (${m.id}, ${b.outline.widthMm} × ${b.outline.heightMm} mm: ${where}) overlaps ${x.name}`, sources: src })
 	const known = tallest?.value != null
-	const heightMm = known ? (tallest!.value as number) : 1.6
+	// With a HAT the stack reaches its board's top: the module, the spacers, the HAT (its own parts not counted).
+	const stackMm = o.hat ? hatBaseZ(0) + 1.6 : 0
+	const heightMm = Math.max(known ? (tallest!.value as number) : 1.6, stackMm)
 	const base = o.baseZMm ?? STANDOFF_DEFAULT_MM
 	if (o.sensor) {
 		const f = footprint(b)
 		const mount = { xMm: b.xMm, yMm: b.yMm, zMm: base + heightMm / 2, sizeMm: [f.xMm, f.yMm, heightMm] }
-		if (blocksSensor(mount, o.sensor)) out.push({ check: "compute-mechanics", level: "error", message: `${b.name} (${m.id}) stands in front of the distance sensor at x ${o.sensor.xMm} mm${known ? "" : " (the board alone, without its parts, already does)"}: move it behind the sensor (${where})`, sources: src })
+		if (blocksSensor(mount, o.sensor)) out.push({ check: "compute-mechanics", level: "error", message: `${b.name} (${m.id}) stands in front of the distance sensor at x ${o.sensor.xMm} mm${known ? "" : o.hat ? ` (the stack with ${o.hat} on top already does)` : " (the board alone, without its parts, already does)"}: move it behind the sensor (${where})`, sources: src })
 	}
-	if (!known) out.push({ check: "compute-mechanics", level: "warning", message: `${b.name} (${m.id}): unknown height: the record's tallest part isn't known (${tallest?.note ?? "no tallestMm"}), so its clearance${o.sensor ? ", whether it rises into the sensor's view" : ""}${o.maxHeightMm ? ` and the brief's ${o.maxHeightMm} mm height` : ""} can't be checked`, sources: [] })
+	if (!known) out.push({ check: "compute-mechanics", level: "warning", message: `${b.name} (${m.id}): unknown height: compute.tallestMm is null (${tallest?.note ?? "no note"}), so ${o.hat ? `whether its parts clear the ${HAT_STACK_MM} mm spacers under ${o.hat} (${HAT_STACK_SOURCE.url})` : `its clearance${o.sensor ? ", whether it rises into the sensor's view" : ""}`}${o.maxHeightMm ? ` and the brief's ${o.maxHeightMm} mm height` : ""} can't be checked`, sources: [] })
 	else if (o.maxHeightMm != null && base + heightMm > o.maxHeightMm)
 		out.push({ check: "compute-mechanics", level: "error", message: `${b.name} (${m.id}) reaches ${r2(base + heightMm)} mm (${heightMm} mm tall: ${cite(tallest!.source)}), over the brief's ${o.maxHeightMm} mm`, sources: srcs(tallest!.source) })
 	return out

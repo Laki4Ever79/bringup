@@ -39,7 +39,7 @@ async function withPage(fn: (page: Page) => Promise<void>, view = "top") {
 	}
 }
 
-test("Top: the Pi is a dark board labelled bought, with its record's four holes and header, raised over its carrier", { skip, timeout: 120_000 }, async () => {
+test("Top: the Pi is a dark board labelled bought, with its record's four holes and header, its HAT carrier drawn over it", { skip, timeout: 120_000 }, async () => {
 	await withPage(async (page) => {
 		await page.waitForSelector('#stage-top [data-board="brain"][data-bought="rpi-5"]', { timeout: 30_000 })
 		const g = await page.evaluate(() => {
@@ -53,7 +53,6 @@ test("Top: the Pi is a dark board labelled bought, with its record's four holes 
 				holes: [...pi.querySelectorAll('[data-hole="bought"]')].map((h) => [Number(h.getAttribute("cx")), Number(h.getAttribute("cy"))]),
 				header: Boolean(pi.querySelector("[data-header]")),
 				label: pi.querySelector("[data-bought-label]")?.textContent,
-				raised: Number(pi.querySelector("[data-raised]")?.getAttribute("data-raised") ?? 0),
 				badge: document.querySelector('#stage-top [data-badge="brain"]')?.textContent,
 				carrier: (() => { const o = document.querySelector('#stage-top [data-board="rpi-5-carrier"] [data-outline]')!; return [Number(o.getAttribute("width")), Number(o.getAttribute("height"))] })(),
 			}
@@ -63,9 +62,8 @@ test("Top: the Pi is a dark board labelled bought, with its record's four holes 
 		assert.deepEqual(g.holes, [[3.5, 52.5], [61.5, 52.5], [3.5, 3.5], [61.5, 3.5]], "the record's holes, its y up turned to SVG's y down")
 		assert.equal(g.header, true)
 		assert.equal(g.label, "bought")
-		assert.ok(g.raised > 0, "drawn raised over the carrier")
-		assert.deepEqual(g.carrier, [85, 56], "the carrier, not built yet, is the Pi's outline (it stacks under it)")
-		assert.ok(g.boards.indexOf("rpi-5-carrier") < g.boards.indexOf("brain"), "the carrier is drawn first, under the Pi")
+		assert.deepEqual(g.carrier, [85, 56], "the carrier, not built yet, is the Pi's outline (a HAT on it)")
+		assert.ok(g.boards.indexOf("brain") < g.boards.indexOf("rpi-5-carrier"), "the carrier, a HAT, is drawn after the Pi, on top")
 		assert.match(g.badge ?? "", /bought/)
 	})
 })
@@ -78,8 +76,8 @@ test("the facts card of the Pi: where it comes from, its peak with the source, i
 		const text = await page.evaluate(() => document.getElementById("facts")!.textContent ?? "")
 		assert.match(text, /brain · bought/)
 		assert.match(text, /FromRaspberry Pi 5 \(bought\), on a generated carrier/)
-		assert.match(text, /Peak5 A at 5\.1 V: https:\/\/github\.com\/raspberrypi\/documentation\/.*power-supplies\.adoc/)
-		assert.match(text, /Carrierrpi-5-carrier/)
+		assert.match(text, /Supply5 A at 5\.1 V \(the supply the vendor asks for.*power-supplies\.adoc/)
+		assert.match(text, /Carrierrpi-5-carrier, a HAT on its header, 16 mm spacers/)
 		assert.match(text, /Bridge\/dev\/ttyACM0/)
 		assert.equal(await page.evaluate(() => document.getElementById("board-view")?.classList.contains("on") ?? false), false, "a bought board has no board page")
 	})
