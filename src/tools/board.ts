@@ -89,11 +89,12 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 		if (placement.debugPort === false && best && best.errors === 0) break
 		// A failure that no other layout fixes (a trace the router couldn't place) goes straight to the boards without it.
 		if (skipToNoPort && placement.debugPort !== false) continue
-		// A capsAlong variant follows its own layout and doesn't count against the limit: it is that layout's second try
+		// A retry (capsAlong, drawCaps) follows its own layout and doesn't count against the limit: it is that layout's next try
 		// (the 42×29 rover with U5 turned 180° routes only as the keepout layout with its capacitors along their pads).
-		if (placement.capsAlong && !baseFailed) continue
+		const retry = !!(placement.capsAlong || placement.drawCaps)
+		if (retry && !baseFailed) continue
 		baseFailed = false
-		if (!best && !placement.capsAlong && (placement.debugPort === false ? failedWithout : failedWith) >= FAILED_PER_STAGE) {
+		if (!best && !retry && (placement.debugPort === false ? failedWithout : failedWith) >= FAILED_PER_STAGE) {
 			if (placement.debugPort === false || !withPort) break
 			continue
 		}
@@ -120,8 +121,9 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			lastError = error instanceof Error ? new Error(error.message.replaceAll(out, dir)) : error
 			// Once an earlier layout has built, a later one failing only means it isn't better: keep the board we have
 			// (before, a keepout attempt that failed threw, and the built board with a few DRC errors was lost).
-			if (!placement.capsAlong) baseFailed = true
-			if (placement.capsAlong) {
+			// A failed retry leaves the layout failed: the next retry gets its turn.
+			baseFailed = true
+			if (retry) {
 				// counted with its layout
 			} else if (placement.debugPort === false) failedWithout++
 			else failedWith++
@@ -145,19 +147,20 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	return { ...best.board, dir, pcbPath: at(best.board.pcbPath)!, stepPath: at(best.board.stepPath), renderPath: at(best.board.renderPath) }
 }
 
-// Each layout, then the same with its pin capacitors allowed along their pads (capsAlong), when that differs: a default
+// Each layout, then the same with its capacitor traces drawn (drawCaps), then with its pin capacitors allowed along
+// their pads (capsAlong), when that differs: a default
 // whose capacitor trace runs past its bound gets it as its next build. It builds with its own debug footprint spot and
 // bottom pads (circuitFromContract passes capsAlong on); not for a design with a production test whose pads would
 // move, since its fixture is built from the default layout's pads.
 export function layoutAttempts(s: ContractSnapshot, attempts: PlacementOptions[]): PlacementOptions[] {
 	return attempts.flatMap((p) => {
 		const alt = { ...p, capsAlong: true }
-		// The default draws a part's capacitor traces itself (capPaths): their length no longer depends on the router, so
-		// the retry for a too-long one would only cost a build (about a minute each on the rover).
-		if (capPaths(s, p).length) return [p]
+		// First retry: the same layout with its capacitor traces drawn (capPaths), when it has any to draw; the router
+		// can't run them long then (the 60×21 rover: no layout routed before, DRC 0 with them, 15 Nov 2026).
+		const drawn = capPaths(s, p).length ? [{ ...p, drawCaps: true }] : []
 		const same = JSON.stringify(layoutBoard(s, p).parts) === JSON.stringify(layoutBoard(s, alt).parts)
 		const fixtureMoves = !!s.values.test && JSON.stringify(testPoints(s).placed) !== JSON.stringify(testPoints(s, { capsAlong: true }).placed)
-		return same || fixtureMoves ? [p] : [p, alt]
+		return same || fixtureMoves ? [p, ...drawn] : [p, ...drawn, alt]
 	})
 }
 
