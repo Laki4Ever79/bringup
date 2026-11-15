@@ -249,8 +249,10 @@ export class PlanStore {
 		return existsSync(join(this.dir(id), "system.json"))
 	}
 
-	// What Build starts: a system run on the plan's own system.json, or for one board an ordinary run on its brief.
-	buildTarget(id: string): { kind: "system"; specPath: string; usagePath: string } | { kind: "board"; brief: string } {
+	// What Build starts: a system run on the plan's own system.json, or for one board an ordinary run on its brief. A
+	// free try writes its spec as free.json instead: system.json in the plan folder marks a plan built before ids were
+	// kept (builtBefore), and a try is not the plan's build.
+	buildTarget(id: string, specName: "system.json" | "free.json" = "system.json"): { kind: "system"; specPath: string; usagePath: string } | { kind: "board"; brief: string } {
 		const plan = this.get(id)
 		if (!plan) throw Object.assign(new Error("unknown plan"), { status: 404 })
 		const issues = planChecks(plan)
@@ -260,7 +262,7 @@ export class PlanStore {
 		if (plan.spec.boards.length === 1) return { kind: "board", brief: plan.briefs[plan.spec.boards[0].name] }
 		const dir = this.dir(id)
 		for (const b of plan.spec.boards) writeFileSync(join(dir, "briefs", `${b.name}.md`), plan.briefs[b.name])
-		const specPath = join(dir, "system.json")
+		const specPath = join(dir, specName)
 		writeFileSync(specPath, JSON.stringify(buildSpec(plan), null, "\t"))
 		return { kind: "system", specPath, usagePath: join(dir, "usage.jsonl") }
 	}

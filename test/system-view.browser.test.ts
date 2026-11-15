@@ -478,7 +478,8 @@ test("hovering a board in either view shows its facts card; clicking a cable in 
 const ROVER_SENTENCE = "a rover with a climate sensor on a separate board joined by a cable"
 async function withPlanHub(fn: (h: { url: string; root: string; page: Page; id: string }) => Promise<void>, launch?: Parameters<typeof serveHub>[0]["launch"], sentence = ROVER_SENTENCE) {
 	const root = mkdtempSync(join(tmpdir(), "bringup-plan-page-"))
-	const hub = await serveHub({ outRoot: root, port: 0, launch })
+	// A stub model key, so the real Build is offered (the launch is a stub: nothing calls a model).
+	const hub = await serveHub({ outRoot: root, port: 0, launch, planEnv: { OPENAI_API_KEY: "test-key" } })
 	const browser = await chromium.launch({ executablePath: exe!, headless: true })
 	try {
 		const r = await fetch(`${hub.url}/api/plans`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sentence, mock: true }) })
@@ -547,9 +548,10 @@ test("building from the design page turns it into the built design in place", { 
 	}
 	await withPlanHub(async ({ url, page, id }) => {
 		await page.goto(`${url}/system?id=${id}`)
-		await page.waitForSelector("#plan-side #free", { timeout: 30_000 })
+		await page.waitForSelector("#plan-side #go", { timeout: 30_000 })
 		await page.evaluate(() => ((window as unknown as { samePage: number }).samePage = 1))
-		await page.click("#plan-side #free")
+		await page.click("#plan-side #go")
+		await page.click("#plan-side #go-yes")
 		await page.waitForFunction(() => {
 			const three = document.querySelector('#view-switch [data-view="3d"]') as HTMLElement
 			return three.offsetWidth > 0 && (document.getElementById("live")?.textContent ?? "") !== "" && document.querySelector("#stage canvas")
@@ -573,6 +575,27 @@ test("building from the design page turns it into the built design in place", { 
 	}, launch)
 })
 
+// Final review, Important 3: a free try is its own design (<id>-free); the plan stays a plan, buildable for real.
+test("Try for free opens its own design and leaves the plan buildable", { skip: skipChromium, timeout: 120_000 }, async () => {
+	const outDirs: string[] = []
+	const launch = (args: { outDir: string; extraArgs?: string[] }) => {
+		outDirs.push(args.outDir)
+		setTimeout(() => copyFileSync(args.extraArgs![0], join(args.outDir, "system.json")), 300)
+		return { done: new Promise<{ code: number; stderr: string }>(() => {}), kill: () => {} }
+	}
+	await withPlanHub(async ({ url, root, page, id }) => {
+		await page.goto(`${url}/system?id=${id}`)
+		await page.waitForSelector("#plan-side #free", { timeout: 30_000 })
+		await page.click("#plan-side #free")
+		await page.waitForURL((u) => u.searchParams.get("id") === `${id}-free`, { timeout: 15_000 })
+		assert.deepEqual(outDirs, [join(root, `${id}-free`)])
+		await page.goto(`${url}/system?id=${id}`)
+		await page.waitForSelector('#stage-top .card[data-name="main"]', { timeout: 30_000 })
+		assert.equal(await page.isDisabled("#plan-side #go"), false, "the plan can still be built for real")
+		assert.equal(await page.textContent("#status"), "plan")
+	}, launch)
+})
+
 test("a plan's can't-build lines and the parts being learned show on the design page", { skip: skipChromium, timeout: 120_000 }, async () => {
 	await withPlanHub(async ({ url, page, id }) => {
 		await page.goto(`${url}/system?id=${id}`)
@@ -590,10 +613,11 @@ test("a build that dies before writing the design gives the plan back: editable,
 	const launch = () => { launches++; return { done: new Promise<{ code: number; stderr: string }>((r) => setTimeout(() => r({ code: 1, stderr: "boom" }), 300)), kill: () => {} } }
 	await withPlanHub(async ({ url, page, id }) => {
 		await page.goto(`${url}/system?id=${id}`)
-		await page.waitForSelector("#plan-side #free", { timeout: 30_000 })
-		await page.click("#plan-side #free")
+		await page.waitForSelector("#plan-side #go", { timeout: 30_000 })
+		await page.click("#plan-side #go")
+		await page.click("#plan-side #go-yes")
 		await page.waitForFunction(() => /did not start/.test(document.querySelector("#plan-side #msg")?.textContent ?? ""), null, { timeout: 15_000 })
-		const st = await page.evaluate(() => ({ free: (document.querySelector("#plan-side #free") as HTMLButtonElement).disabled, building: document.getElementById("stage-wrap")!.classList.contains("building"), status: document.getElementById("status")!.textContent }))
+		const st = await page.evaluate(() => ({ free: (document.querySelector("#plan-side #go") as HTMLButtonElement).disabled, building: document.getElementById("stage-wrap")!.classList.contains("building"), status: document.getElementById("status")!.textContent }))
 		assert.deepEqual(st, { free: false, building: false, status: "plan" })
 		// Polling stopped.
 		let polls = 0
@@ -607,7 +631,8 @@ test("a build that dies before writing the design gives the plan back: editable,
 		await page.mouse.move(box.x + 30, box.y + 120, { steps: 5 })
 		await page.mouse.up()
 		await page.waitForFunction(async ([pid, y]) => ((await (await fetch(`/api/plans/${pid}`)).json()).plan.layout.main.y > y), [id, 150] as const, { timeout: 10_000, polling: 300 })
-		await page.click("#plan-side #free")
+		await page.click("#plan-side #go")
+		await page.click("#plan-side #go-yes")
 		for (let i = 0; i < 50 && launches < 2; i++) await page.waitForTimeout(100)
 		assert.equal(launches, 2, "Build started again")
 		await page.waitForFunction(() => /did not start/.test(document.querySelector("#plan-side #msg")?.textContent ?? "") && !document.getElementById("stage-wrap")!.classList.contains("building"), null, { timeout: 15_000 })
@@ -622,7 +647,7 @@ test("while a build starts the drawing takes no edits: the brief editor closes a
 		await page.waitForSelector('#stage-top .card[data-name="main"]', { timeout: 30_000 })
 		await page.click('#stage-top .card[data-name="main"]')
 		await page.waitForSelector("#brief.on")
-		await page.evaluate(() => (document.querySelector("#plan-side #free") as HTMLElement).click())
+		await page.evaluate(() => { (document.querySelector("#plan-side #go") as HTMLElement).click(); (document.querySelector("#plan-side #go-yes") as HTMLElement).click() })
 		await page.waitForFunction(() => document.getElementById("stage-wrap")!.classList.contains("building"))
 		await page.waitForFunction(() => !document.querySelector("#brief")!.classList.contains("on"))
 		await page.keyboard.press("Delete")

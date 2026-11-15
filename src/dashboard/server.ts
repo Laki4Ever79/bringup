@@ -745,17 +745,23 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 						const flags = { mock: bool(body.mock, "mock"), hardware: bool(body.hardware, "hardware"), review: bool(body.review, "review") }
 						if (!flags.mock && !plans.hasModelKey()) return json(res, 400, { error: new NoModelKey().message, code: "NO_KEY" })
 						const id = planPost[1]
+						// A free try (scripted agents) is not the plan's build: it goes to <planId>-free, then -free-2, -free-3
+						// (every try is kept and listed as its own design), is not recorded as builtAs, and leaves the plan
+						// buildable with real models under its own id.
+						const free = flags.mock
 						// Refused before anything is written: a design under the id, or a build still running.
-						if (plans.get(id) && (designExists(id) || live.get(id)?.exit === null)) return json(res, 409, { error: `this plan is already built: /system?id=${id}` })
-						const t = plans.buildTarget(id)
+						if (!free && plans.get(id) && (designExists(id) || live.get(id)?.exit === null)) return json(res, 409, { error: `this plan is already built: /system?id=${id}` })
+						const t = plans.buildTarget(id, free ? "free.json" : "system.json")
+						let target = id
+						if (free) for (let n = 1; existsSync(join(outRoot, (target = n === 1 ? `${id}-free` : `${id}-free-${n}`))); n++);
 						// Build keeps the plan's id: the design lives in out/<planId>/, the plan files stay in out/plans/<planId>/.
 						if (t.kind === "system") {
-							const systemId = startSystemAt(t.specPath, flags, t.usagePath, id)
-							plans.markBuilt(id, systemId)
+							const systemId = startSystemAt(t.specPath, flags, t.usagePath, target)
+							if (!free) plans.markBuilt(id, systemId)
 							return json(res, 201, { systemId })
 						}
-						const runId = startRun({ brief: t.brief, ...flags, engineerApproval: false }, id)
-						plans.markBuilt(id, runId)
+						const runId = startRun({ brief: t.brief, ...flags, engineerApproval: false }, target)
+						if (!free) plans.markBuilt(id, runId)
 						return json(res, 201, { runId })
 					} catch (error) {
 						return planError(res, error)

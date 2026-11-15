@@ -379,7 +379,13 @@ async function showPlan(d) {
 			view: d.plan,
 			canvas: planning.canvas,
 			onView: lines,
-			onBuild: () => { wrap.classList.add("building"); planning.canvas.lock(true); clearTimeout(timer); timer = setTimeout(showSystem, 1000) },
+			// A real Build keeps this id: the page becomes the design in place. A free try is its own design
+			// (<id>-free…): open it, and this plan stays as it is.
+			onBuild: (v) => {
+				const built = v?.systemId ?? v?.runId
+				if (built && built !== id) return void (location.href = `/system?id=${encodeURIComponent(built)}`)
+				wrap.classList.add("building"); planning.canvas.lock(true); clearTimeout(timer); timer = setTimeout(showSystem, 1000)
+			},
 		})
 	}
 	if (d.status === "starting") {
