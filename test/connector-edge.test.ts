@@ -22,7 +22,10 @@ test("a connector past the end of its edge is a violation for the architect, wit
 	assert.equal(v[0].kind, "connector-off-edge")
 	assert.deepEqual(v[0].affects, ["architect"])
 	assert.match(v[0].message, /JT1 \(top@43 mm\)/)
-	assert.match(v[0].message, /from 3\.5 to 40\.5 mm/)
+	// By its 7.8 mm courtyard (COURTYARD_ALONG_MM), the 2.9 mm tscircuit itself reported for this board; the 7 mm box
+	// said 2.5 (bringup-lead, 16 Nov 2026).
+	assert.match(v[0].message, /runs 2\.9 mm past the end of the 44 mm top edge: its footprint is 7\.8 mm along it/)
+	assert.match(v[0].message, /from 3\.9 to 40\.1 mm/)
 })
 
 test("connectors on their edges pass: the rover as designed, scaled to 44 mm, and the logger", () => {
@@ -42,9 +45,10 @@ test("after an outline change, the connectors on an edge are packed back onto it
 	assert.equal(connectorsOffEdge(s).length, 1)
 	const fitted = connectorsOntoEdges(s)
 	assert.ok(fitted)
-	assert.equal(fitted.find((k) => k.ref === "J5")!.offsetMm, 12.5)
-	// J5 alone at 12.5 would overlap JM2 on the 16 mm right edge, so JM2 steps down half a millimetre too.
-	assert.equal(fitted.find((k) => k.ref === "JM2")!.offsetMm, 5.5)
+	// J5 (a JST SH plug) is judged by its 7.8 mm courtyard: at most 12.1 mm along the 16 mm edge, so 12.0.
+	assert.equal(fitted.find((k) => k.ref === "J5")!.offsetMm, 12)
+	// J5 at 12 would overlap JM2 on the 16 mm right edge, so JM2 steps down too.
+	assert.equal(fitted.find((k) => k.ref === "JM2")!.offsetMm, 4.5)
 	const others = (l: typeof fitted) => l.filter((k) => k.ref !== "J5" && k.ref !== "JM2")
 	assert.deepEqual(others(fitted), others(s.values.connectors!))
 	const after = { ...s, values: { ...s.values, connectors: fitted } }
