@@ -1,0 +1,51 @@
+{
+	"sentence": "A small wheeled rover that maps a room's temperature and humidity, with its climate sensor on a second board joined by a cable",
+	"spec": {
+		"name": "a rover with a separate climate sensor board on a cable",
+		"boards": [
+			{
+				"name": "main",
+				"brief": "briefs/main.md"
+			},
+			{
+				"name": "climate",
+				"brief": "briefs/climate.md"
+			}
+		],
+		"links": [
+			{
+				"id": "L1",
+				"kind": "uart",
+				"a": {
+					"board": "main"
+				},
+				"b": {
+					"board": "climate"
+				},
+				"baud": 115200,
+				"cable": {
+					"lengthMm": 300
+				}
+			}
+		]
+	},
+	"briefs": {
+		"main": "# Brief: indoor rover\n\n## What we want\nA small wheeled rover that drives around a home or office on its own, turns away before it touches a wall, and carries\na temperature and humidity sensor so it can map a room's climate as it goes. It runs on one rechargeable cell and is\ncharged from a phone charger over USB-C.\n\n## Must have\n- **Drives indoors at about 0.3 m/s** on wood, tile and low carpet, and rolls over floor seams and rug edges up to\n  **3 mm** (door thresholds are out of scope).\n- **Avoids walls**: it sees a wall ahead and stops at least **15 cm** short of it, then turns away.\n- **Runs at least 30 minutes** per charge on one Li-ion cell, **charged over USB-C**.\n- **Carries the temperature and humidity sensor** (about 20 g with its mount) and reports readings over Bluetooth LE.\n- **Small and light**: fits a shoebox, about **15 × 12 cm**, under 500 g with everything on it.\n\n## Nice to have\n- A status LED that shows it is driving or charging.\n",
+		"climate": "# Brief: pocket climate logger\n\n## What we want\nA small battery-powered logger that records temperature and humidity and lets a phone read the history over\nBluetooth Low Energy. People leave it in a wine cellar, a greenhouse or a shipping box and check it from their phone\nevery few days.\n\n## Must have\n- **Temperature and humidity sensing.** Room-grade accuracy is enough: about ±0.2 °C and ±2 %RH.\n- **Bluetooth Low Energy.** A phone app reads the latest value and downloads the stored history.\n- **Runs on one Li-ion cell for at least 6 months** with a reading every few minutes. Assume a small single-cell pouch,\n  around 500 mAh.\n- **USB-C** for charging and for flashing firmware. Nobody should need a special cable.\n- **A status LED** that blinks briefly on each reading and shows charging state.\n- **One button**, reachable through the case, that wakes it so a phone can connect at once.\n- **Small.** The board should be about 50 × 30 mm, so the whole thing fits in a pocket-sized case.\n\n## Nice to have\n- A case that prints on a hobby FDM printer with no supports, with an opening that lines up with the USB-C port.\n- Parts that JLCPCB can assemble from stock, so a first batch of 10 is cheap.\n\n## Out of scope\n- A display, any other button, Wi-Fi, or a cloud backend.\n- Waterproofing. It lives indoors or in a box.\n\n## How we'll judge the first prototype\nIt charges over USB-C, it shows up on a phone over BLE, the readings look sane next to a reference thermometer, and the\nboard drops into the case without filing anything.\n"
+	},
+	"why": "Two boards on one printed chassis: the main board drives the two motors and talks BLE, and the climate sensor sits on its own board away from the motors' heat and noise, joined by a 300 mm UART cable. Fork it to change either board, the cable or what the robot carries.",
+	"offBoard": [],
+	"cantBuild": [],
+	"layout": {
+		"main": {
+			"x": 40,
+			"y": 120
+		},
+		"climate": {
+			"x": 300,
+			"y": 120
+		}
+	},
+	"optional": [],
+	"robot": true
+}

@@ -1,0 +1,102 @@
+{
+  "outline": {
+    "widthMm": 40.9,
+    "heightMm": 26,
+    "thicknessMm": 1.6
+  },
+  "connectors": [
+    {
+      "ref": "J1",
+      "kind": "usb-c",
+      "edge": "left",
+      "offsetMm": 13,
+      "widthMm": 9,
+      "heightMm": 3.5
+    },
+    {
+      "ref": "JL1",
+      "kind": "header",
+      "edge": "top",
+      "offsetMm": 13,
+      "widthMm": 5.8,
+      "heightMm": 3
+    }
+  ],
+  "holes": [
+    {
+      "ref": "H1",
+      "xMm": 3,
+      "yMm": 3
+    },
+    {
+      "ref": "H2",
+      "xMm": 33,
+      "yMm": 3
+    },
+    {
+      "ref": "H3",
+      "xMm": 3,
+      "yMm": 23
+    },
+    {
+      "ref": "H4",
+      "xMm": 33,
+      "yMm": 23
+    }
+  ],
+  "sensors": [
+    {
+      "ref": "U2",
+      "xMm": 21,
+      "yMm": 23
+    }
+  ],
+  "ports": [],
+  "wallMm": 2,
+  "clearanceMm": 2,
+  "heightMm": 14,
+  "standoff": {
+    "heightMm": 3,
+    "outerMm": 5,
+    "pilotMm": 1.6
+  },
+  "lid": {
+    "plateMm": 2,
+    "lipMm": 3,
+    "lipWallMm": 1.6,
+    "clearanceMm": 0.2
+  },
+  "features": [],
+  "featureGeometry": {
+    "mountTab": {
+      "outMm": 10,
+      "alongMm": 14,
+      "thickMm": 3,
+      "holeMm": 4.5
+    },
+    "lanyardTab": {
+      "outMm": 7,
+      "alongMm": 8,
+      "thickMm": 3,
+      "holeMm": 3.5
+    },
+    "text": {
+      "depthMm": 0.6,
+      "minMm": 3,
+      "maxMm": 8
+    },
+    "holeZMm": 6.5
+  },
+  "frameShiftMm": [
+    0,
+    0
+  ],
+  "antenna": {
+    "xMin": 36,
+    "xMax": 40.9,
+    "yMin": 6.4,
+    "yMax": 19.6,
+    "zMin": 6.6,
+    "zMax": 9
+  }
+}
