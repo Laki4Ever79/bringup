@@ -45,6 +45,9 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 	const motor = byMpn(m.motors, choice.motor), wheel = byMpn(m.wheels, choice.wheel), caster = byMpn(m.casters, choice.caster), pack = byMpn(m.batteries, choice.pack), sensor = byMpn(m.sensors ?? [], choice.sensor)
 	const missing = [!motor && `motor ${choice.motor}`, !wheel && `wheel ${choice.wheel}`, !caster && `caster ${choice.caster}`, !pack && `battery ${choice.pack}`, !sensor && `sensor ${choice.sensor}`].filter(Boolean)
 	if (missing.length) return { mechanics: null, remaining: [], tried: 0, why: `${missing.join(", ")} not in catalog/mechanics.json: pick from the design facts' list` }
+	// A connector ref another part already has (real rover run 5: "J2", the battery's) can't be the sensor's plug: JT1.
+	const clash = (c.values.parts ?? []).find((p) => p.ref === choice.connector && !(p.role === "connector" && p.pins.length === 4))
+	if (clash || !choice.connector) choice = { ...choice, connector: "JT1" }
 	const [maxL, maxW] = motion.maxSizeMm
 	// A system's body fixes the plate and where its boards sit (assembly); otherwise the boards go on the centre line.
 	const assembly = c.values.assembly
