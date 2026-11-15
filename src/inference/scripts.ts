@@ -221,19 +221,28 @@ export const HAT_HEADER_MPN = "ADAFRUIT-2223"
 export interface HatBrief {
 	module: string
 	outline: { widthMm: number; heightMm: number }
-	holes: { x: number; y: number; dia: number }[]
+	holes: { x: number; y: number; dia: number | null }[]
 	header: { xMm: number; yMm: number }
 	supply: { volts: number; amps: number; pins: number[]; ground: number[] }
 }
 const numbers = (s: string) => (s.match(/\d+(?:\.\d+)?/g) ?? []).map(Number)
+// null when the brief isn't a carrier brief at all; a carrier brief missing a value the HAT needs (no holes, an unknown
+// peak current, "?" for the supply pins) throws, naming it, instead of the architect falling back to the generic logger.
 export function hatFromBrief(brief: string): HatBrief | null {
 	const title = /^# Brief: carrier for the (.+) \(.+\)$/m.exec(brief)
-	const outline = /own outline and holes, so the two stack:\*\* ([\d.]+) × ([\d.]+) mm, with \d+ Ø([\d.]+) mm mounting holes at ((?:\([\d.]+, [\d.]+\)(?:, )?)+) mm/.exec(brief)
+	if (!title) return null
+	const outline = /own outline and holes, so the two stack:\*\* ([\d.]+) × ([\d.]+) mm, with \d+ (?:Ø([\d.]+) mm mounting holes|mounting holes of unknown diameter[^)]*\)) at ((?:\([\d.]+, [\d.]+\)(?:, )?)+) mm/.exec(brief)
 	const header = /female stacking header[^\n]*?centred at \(([\d.]+), ([\d.]+)\) mm/.exec(brief)
 	const supply = /5 V supply: ([\d.]+) A at ([\d.]+) V\*\*[^\n]*?into header pins ([\d, and]+) \(5V\), ground on pins ([\d, and]+)\./.exec(brief)
-	if (!title || !outline || !header || !supply) return null
+	const missing = [
+		!outline && "the module's outline and mounting holes (\"own outline and holes, so the two stack: W × H mm, with N ØD mm mounting holes at (x, y), … mm\")",
+		!header && "the 40-pin header's place (\"female stacking header … centred at (x, y) mm\")",
+		!supply && "the 5 V supply's current and header pins (\"5 V supply: A at V … into header pins …, ground on pins ….\"; the module's peak current or its 5 V and ground pins are unknown)",
+	].filter(Boolean)
+	if (!outline || !header || !supply) throw new Error(`the carrier brief for the ${title[1]} lacks ${missing.join("; and ")}: the scripted HAT reads every number from it, so it can't design the carrier`)
 	const xy = numbers(outline[4])
-	const holes = Array.from({ length: xy.length / 2 }, (_, i) => ({ x: xy[2 * i], y: xy[2 * i + 1], dia: Number(outline[3]) }))
+	const dia = outline[3] === undefined ? null : Number(outline[3])
+	const holes = Array.from({ length: xy.length / 2 }, (_, i) => ({ x: xy[2 * i], y: xy[2 * i + 1], dia }))
 	return {
 		module: title[1],
 		outline: { widthMm: Number(outline[1]), heightMm: Number(outline[2]) },

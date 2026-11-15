@@ -23,7 +23,7 @@ export interface AssemblyBoard {
 	carries?: string
 	// Mounting holes when they aren't at the corners (a bought board's record, and its carrier's): mm from the board's
 	// lower-left corner, before the turn.
-	holes?: { x: number; y: number; dia: number }[]
+	holes?: { x: number; y: number; dia: number | null }[]
 }
 
 

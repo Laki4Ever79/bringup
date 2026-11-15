@@ -111,3 +111,37 @@ test("the HAT board drills the module's own holes (its outline's), not the gener
 	c.values.connectors = []
 	assert.deepEqual(mountingHoles(c).map((h) => [h.x, h.y, h.diameterMm]), [[-39, -24.5, 2.7], [19, -24.5, 2.7], [-39, 24.5, 2.7], [19, 24.5, 2.7]])
 })
+
+// Premerge review (15 Nov): a record without hole diameters wrote "Ø0 mm" into the carrier brief, read back as a 0 mm
+// hole that codegen drilled (h.dia ?? default lets 0 through). The brief now says the diameter is unknown and which
+// default is drilled; codegen refuses a non-positive diameter.
+test("a module record without hole diameters: the carrier brief says unknown, the HAT drills the stated default, never a 0 mm hole", async () => {
+	const { mountingHoles, MOUNTING_HOLE } = await import("../src/codegen/circuit.ts")
+	const m = structuredClone(pi)
+	for (const h of (m.compute as { holes: { value: { dia: number | null }[] } }).holes.value) h.dia = null
+	const b = carrierBrief(m, { board: "brain", battery: pack, mcuBoard: "main" })
+	assert.doesNotMatch(b, /Ø0 mm/)
+	assert.match(b, /4 mounting holes of unknown diameter \(the module record doesn't give it: the board's default Ø2\.2 mm hole is drilled until it is measured\)/)
+	const h = hatFromBrief(b)!
+	assert.deepEqual(h.holes.map((x) => x.dia), [null, null, null, null])
+	const d = hatDesign(h)
+	const s = { revision: 1, versions: {} as never, values: { outline: d.outline } } as ContractSnapshot
+	assert.deepEqual(mountingHoles(s).map((x) => x.diameterMm), [2.2, 2.2, 2.2, 2.2].map(() => MOUNTING_HOLE.diameterMm))
+	s.values.outline!.holes![1] = { ...s.values.outline!.holes![1], dia: 0 }
+	assert.throws(() => mountingHoles(s), /outline\.holes\[1\] .* has diameter 0 mm: a mounting hole needs a positive diameter/)
+})
+
+// Premerge review (15 Nov): a carrier brief missing a value (an unknown peak current, no holes, "?" pins) made
+// hatFromBrief return null, and the architect silently designed the generic ESP32 logger instead of the carrier.
+test("a carrier brief missing a value the HAT needs fails loudly, naming it, instead of becoming the generic logger", () => {
+	const noPeak = structuredClone(pi)
+	delete (noPeak.compute as { currentA: { peak?: unknown } }).currentA.peak
+	const b = carrierBrief(noPeak, { board: "brain", battery: pack, mcuBoard: "main" })
+	assert.throws(() => hatFromBrief(b), /the carrier brief for the Raspberry Pi 5 lacks the 5 V supply's current and header pins/)
+	const noHoles = structuredClone(pi)
+	;(noHoles.compute as { holes: { value: unknown[] } }).holes.value = []
+	assert.throws(() => hatFromBrief(carrierBrief(noHoles, { board: "brain", battery: pack })), /lacks the module's outline and mounting holes/)
+	const ok = carrierBrief(pi, { board: "brain", battery: pack })
+	assert.throws(() => hatFromBrief(ok.replace(/into header pins 2 and 4/, "into header pins ?")), /lacks the 5 V supply's current and header pins/)
+	assert.equal(hatFromBrief(read("briefs/rover.md")), null, "not a carrier brief: no HAT, no error")
+})

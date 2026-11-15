@@ -24,7 +24,7 @@ export const moduleById = (id: string, root = ROOT): Module | undefined => libra
 export interface Cite { url: string; where: string }
 export interface Sourced<T> { value: T | null; source?: Cite | null; note?: string; unit?: string }
 type Outline = { widthMm: number; heightMm: number }
-export interface Hole { x: number; y: number; dia: number }
+export interface Hole { x: number; y: number; dia: number | null } // dia null: the record doesn't give it
 
 // One sourced value of the compute block by its path ("currentA.peak"), or undefined when the record has no such entry.
 export function field<T>(m: Module, path: string): Sourced<T> | undefined {
