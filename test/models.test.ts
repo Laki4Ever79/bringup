@@ -31,6 +31,11 @@ test("BRINGUP_PROVIDER overrides the choice", () => {
 	assert.equal(modelFor("architect", false, { ANTHROPIC_API_KEY: "x", BRINGUP_PROVIDER: "openai" }), "gpt-5.4")
 })
 
+test("BRINGUP_MODELS=fast puts every role on the fast model", () => {
+	assert.equal(modelFor("architect", false, { OPENAI_API_KEY: "y", BRINGUP_MODELS: "fast" }), "gpt-5.4-mini")
+	assert.equal(modelFor("reviewer", false, { OPENAI_API_KEY: "y", BRINGUP_MODELS: "fast" }), "gpt-5.4-mini")
+})
+
 test("the brief reviewer gets the strong model", () => {
 	assert.equal(modelFor("reviewer", false, { OPENAI_API_KEY: "y" }), "gpt-5.4")
 })

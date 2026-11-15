@@ -17,6 +17,9 @@ export function modelFor(role: AgentRole, mock: boolean, env: Record<string, str
 	if (mock) return `mock-${role}`
 	// OpenAI by default; the event credit (Claude Sonnet/Haiku only) is opt-in or the fallback when it is the only key.
 	const provider = env.BRINGUP_PROVIDER === "openai" || env.BRINGUP_PROVIDER === "anthropic" ? env.BRINGUP_PROVIDER : env.OPENAI_API_KEY ? "openai" : env.ANTHROPIC_API_KEY ? "anthropic" : "openai"
+	// BRINGUP_MODELS=fast: every role on the fast model (about a third of a run's cost; for development runs under a
+	// spend cap, 15 Nov 2026). The default keeps the strong model for the architect and the reviewer.
+	if (env.BRINGUP_MODELS === "fast") return MODELS[provider].fast
 	return role === "architect" || role === "reviewer" ? MODELS[provider].strong : MODELS[provider].fast
 }
 
