@@ -43,7 +43,8 @@ export interface SystemAssembly {
 }
 
 // The pure geometry lives in the dashboard module, so the design page checks with the same code.
-import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, snapCarriers, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../dashboard/assembly-geom.js"
+import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, plateLimitForBrief, snapCarriers, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../dashboard/assembly-geom.js"
+import { motionFromBrief } from "../mechanics/brief.ts"
 export { cableLength, CABLE_SLACK_MM, footprint, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM }
 
 // The spec a system request makes: its assembly patch over the current one (boards and plate replaced whole, the rest
@@ -119,6 +120,20 @@ export function neededPlate(boards: AssemblyBoard[]): AssemblyPlate {
 		reachY = Math.max(reachY, Math.abs(b.yMm) + f.yMm / 2)
 	}
 	return { lengthMm: 2 * reachX + 2 * PLATE_MARGIN_MM, widthMm: 2 * reachY + 2 * PLATE_MARGIN_MM }
+}
+
+// The plate's limit from the robot's brief text ("about 15 × 12 cm"), for the layouts made before any board has written
+// its motion field (a plan's Build, a starter's fork, a run's first relayout). Without the wheels chosen it can't take
+// their width off the sides yet; the contract's plateLimitMm does once the mechanics exist. The first brief that asks
+// for motion and gives a size wins (the robot's main board).
+export function briefPlateLimitMm(briefs: string[]): [number, number] | undefined {
+	for (const b of briefs) {
+		// Only a brief that asks for motion: a sensor board's brief may give its own size ("about 50 × 30 mm").
+		const m = motionFromBrief(b)
+		const moves = m.speedMps !== undefined || m.runtimeMin !== undefined || m.stopBeforeWallMm !== undefined || m.edgeMm !== undefined
+		if (m.maxSizeMm && moves) return plateLimitForBrief(m.maxSizeMm) as [number, number]
+	}
+	return undefined
 }
 
 // Never smaller than today's rover plate (unless the brief's limit is smaller still: then the limit).
@@ -199,8 +214,8 @@ export function defaultAssembly(spec: SystemSpec, body: BodyKind, outlines: Reco
 	const first = make(centre, 0)
 	boards.push(first)
 	// Each row's outer x edge on each side; row 0 is the centre row (y 0). yEdge: the outer y edge reached on each side.
-	type Row = { sign: 0 | 1 | -1; inner: number; outer: number; edge: { plus: number; minus: number } }
-	const rows: Row[] = [{ sign: 0, inner: 0, outer: footprint(first).yMm / 2, edge: { plus: footprint(first).xMm / 2, minus: footprint(first).xMm / 2 } }]
+	type Row = { sign: 0 | 1 | -1; inner: number; outer: number; edge: { plus: number; minus: number }; boards: AssemblyBoard[] }
+	const rows: Row[] = [{ sign: 0, inner: 0, outer: footprint(first).yMm / 2, edge: { plus: footprint(first).xMm / 2, minus: footprint(first).xMm / 2 }, boards: [first] }]
 	const yEdge = { plus: footprint(first).yMm / 2, minus: footprint(first).yMm / 2 }
 	let plus = true
 	for (const sb of spec.boards) {
@@ -211,8 +226,12 @@ export function defaultAssembly(spec: SystemSpec, body: BodyKind, outlines: Reco
 		// The newest row first, then the one before: the next side in turn, then the other.
 		const row = rows[rows.length - 1]
 		const sides: ("plus" | "minus")[] = plus ? ["plus", "minus"] : ["minus", "plus"]
-		const side = sides.find((sd) => row.edge[sd] + BOARD_GAP_MM + w <= lim.x + 1e-9)
+		// A row fits while its whole length does, once centred (below): the first board sitting at the centre would leave
+		// half the plate unused (the forked Rover + climate: main at 0 and the climate board beside it reached 68 mm of a
+		// 65 mm half, so it wrapped to a second row and the plate went 126 mm wide on a 120 mm brief).
+		const side = sides.find((sd) => row.edge.plus + row.edge.minus + BOARD_GAP_MM + w <= 2 * lim.x + 1e-9)
 		if (side) {
+			row.boards.push(b)
 			b.xMm = (side === "plus" ? 1 : -1) * (row.edge[side] + BOARD_GAP_MM + w / 2)
 			row.edge[side] += BOARD_GAP_MM + w
 			if (row.sign !== 0) { b.yMm = row.sign * (row.inner + f.yMm / 2); row.outer = Math.max(row.outer, row.inner + f.yMm); yEdge[row.sign === 1 ? "plus" : "minus"] = Math.max(yEdge[row.sign === 1 ? "plus" : "minus"], row.outer) }
@@ -230,11 +249,17 @@ export function defaultAssembly(spec: SystemSpec, body: BodyKind, outlines: Reco
 			const inner = yEdge[sd] + BOARD_GAP_MM
 			b.xMm = 0
 			b.yMm = sign * (inner + f.yMm / 2)
-			rows.push({ sign, inner, outer: inner + f.yMm, edge: { plus: w / 2, minus: w / 2 } })
+			rows.push({ sign, inner, outer: inner + f.yMm, edge: { plus: w / 2, minus: w / 2 }, boards: [b] })
 			yEdge[sd] = inner + f.yMm
 			plus = true
 		}
 		boards.push(b)
+	}
+	// A row reaching past the limit on one side is centred along x; one within it keeps its first board at the centre.
+	for (const r of rows) {
+		if (Math.max(r.edge.plus, r.edge.minus) <= lim.x + 1e-9) continue
+		const shift = (r.edge.minus - r.edge.plus) / 2
+		for (const b of r.boards) b.xMm += shift
 	}
 	// Keep the spec's board order in the result.
 	const order = new Map(spec.boards.map((b, i) => [b.name, i]))

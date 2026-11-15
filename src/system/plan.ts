@@ -1,6 +1,6 @@
 import type { PartNeed } from "../learn/types.ts"
 import { DEFAULT_I2C_KHZ, specErrors, type SystemSpec } from "./spec.ts"
-import { defaultAssembly } from "./assembly.ts"
+import { briefPlateLimitMm, defaultAssembly } from "./assembly.ts"
 import { CABLE_PF_PER_M, i2cCableLimit, PULLUP_OHM } from "./checks.ts"
 
 // A system plan: what the architect proposes from a sentence and the user edits before Build. `spec` is the system spec
@@ -35,7 +35,9 @@ export interface Plan {
 // other plan with several boards stay separate.
 export function buildSpec(p: Plan): SystemSpec {
 	if (p.spec.boards.length < 2 || p.spec.assembly) return p.spec
-	return { ...p.spec, assembly: defaultAssembly(p.spec, p.robot ? "chassis" : "separate") }
+	// A robot's plate keeps within its brief's size from the first layout (a starter's fork has no assembly: without the
+	// limit the plate grew past the brief's 15 cm, and the run's relayout never brought it back).
+	return { ...p.spec, assembly: defaultAssembly(p.spec, p.robot ? "chassis" : "separate", {}, p.robot ? briefPlateLimitMm(Object.values(p.briefs ?? {})) : undefined) }
 }
 
 export interface PlanIssue {
