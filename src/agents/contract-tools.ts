@@ -50,6 +50,17 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						laidOutNote = l.note
 					}
 				}
+				// Connectors: one that runs past the end of its edge or overlaps another moves along its edge to fit (rover run
+				// cc-rover-4 proposed J1 and JM2 overlapping across a corner, and left them so for revisions).
+				if (args.field === "connectors" && Array.isArray(args.value)) {
+					const snap = s.contract.snapshot()
+					const fitted = connectorsOntoEdges({ ...snap, values: { ...snap.values, connectors: args.value as ContractValues["connectors"] } })
+					if (fitted) {
+						const moved = fitted.filter((k) => !(args.value as ContractValues["connectors"]).some((b) => b.ref === k.ref && b.offsetMm === k.offsetMm)).map((k) => `${k.ref} to ${k.edge}@${k.offsetMm} mm`)
+						args = { ...args, value: fitted as ContractValues[FieldName] }
+						laidOutNote = `moved along their edges to fit the board and clear each other: ${moved.join(", ")}`
+					}
+				}
 				const result = s.contract.propose({ field: args.field, value: args.value, by: role, baseVersion: args.baseVersion, approvedBy })
 				if (result.status === "applied") {
 					// Why: the writer's own reason, the field before and after, and what woke it (or the approval it wrote under).
