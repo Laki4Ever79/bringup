@@ -3,13 +3,14 @@
 // the starter file is never written.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { saveExample } from "../src/dashboard/examples.ts"
 import { PlanStore } from "../src/dashboard/plans.ts"
 import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
 import { planChecks } from "../src/system/plan.ts"
-import { tempDir } from "./helpers.ts"
+import { tempDir, waitFor } from "./helpers.ts"
+import { designResult, recordForkBuild, setForkResult } from "../src/dashboard/starters.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -186,4 +187,72 @@ test("a system example keeps its assembly, so the start page stands a robot's bo
 	const meta = JSON.parse(readFileSync(join(EXAMPLES, "rover-climate", "example.json"), "utf8"))
 	assert.equal(meta.assembly.body, "chassis")
 	assert.deepEqual(meta.assembly.boards.map((b: Any) => b.name).sort(), ["climate", "main"])
+})
+
+// ── Lineage: what each built fork changed and how it ended (<outRoot>/starters/<starter>/forks.jsonl) ──
+
+const forks = (root: string, starter: string) => (existsSync(join(root, "starters", starter, "forks.jsonl")) ? readFileSync(join(root, "starters", starter, "forks.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [])
+
+test("a built fork gets one lineage record: its diff against the seed, then its result once the design ends", () => {
+	const out = tempDir()
+	const store = new PlanStore(out)
+	const fork = store.fork("rover", examplesCopy())
+	const edited = store.put(fork.id, { ...fork, briefs: { main: fork.briefs.main + "\n- A buzzer.\n" } }).plan
+	const rec = recordForkBuild(out, edited, store.forkSeed(fork.id)!, `${fork.id}-free`)
+	assert.ok(rec)
+	const [line] = forks(out, "rover")
+	assert.equal(line.planId, fork.id)
+	assert.equal(line.design, `${fork.id}-free`)
+	assert.equal(line.starterHash, fork.forkedFrom?.hash)
+	assert.deepEqual(line.diff, { added: [], removed: [], changed: ["main"] })
+	assert.equal(line.result, null)
+	assert.ok(setForkResult(out, "rover", `${fork.id}-free`, { settled: true, findings: 0, status: "settled" }))
+	assert.deepEqual(forks(out, "rover")[0].result, { settled: true, findings: 0, status: "settled" })
+	assert.equal(setForkResult(out, "rover", `${fork.id}-free`, { settled: false, findings: 1, status: "x" }), false, "the first result stays")
+	assert.equal(recordForkBuild(out, { ...edited, forkedFrom: undefined }, fork, "x"), null, "a plan that isn't a fork has no lineage")
+})
+
+test("a design's result: a system once its settle loop ended, a single board from its last design.settled", () => {
+	const sys = tempDir()
+	writeFileSync(join(sys, "system.json"), "{}")
+	assert.equal(designResult(sys), null, "no state yet")
+	writeFileSync(join(sys, "system-state.json"), JSON.stringify({ status: "round 1: findings sent to the boards", settled: false, findings: [{}] }))
+	assert.equal(designResult(sys), null, "still working")
+	writeFileSync(join(sys, "system-state.json"), JSON.stringify({ status: "settled: every board settled", settled: true, findings: [] }))
+	assert.deepEqual(designResult(sys), { settled: true, findings: 0, status: "settled: every board settled" })
+	const one = tempDir()
+	assert.equal(designResult(one), null)
+	writeFileSync(join(one, "trace.jsonl"), JSON.stringify({ type: "design.settled", payload: { revision: 3, settled: true } }) + "\n")
+	assert.deepEqual(designResult(one), { settled: true, findings: null, status: "settled" })
+})
+
+test("Try for free on a fork records the build in forks.jsonl, and the result when the design ends", async () => {
+	const examples = examplesCopy()
+	const root = tempDir()
+	let finish: (code: number) => void = () => {}
+	const launch: HubLaunch = (args) => {
+		mkdirSync(args.outDir, { recursive: true })
+		return { done: new Promise((r) => (finish = (code) => r({ code, stderr: "" }))) }
+	}
+	const hub = await serveHub({ outRoot: root, port: 0, launch, examplesRoot: examples, forkPollMs: 20 })
+	try {
+		const { id } = (await (await post(`${hub.url}/api/starters/rover/fork`)).json()) as Any
+		const b = await fetch(`${hub.url}/api/plans/${id}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mock: true, hardware: false, review: false }) })
+		assert.equal(b.status, 201)
+		const { runId } = (await b.json()) as Any
+		assert.equal(runId, `${id}-free`)
+		assert.equal(forks(root, "rover").length, 1)
+		assert.equal(forks(root, "rover")[0].result, null)
+		// The run settles (the trace says so) and stays up: the record gets its result without waiting for Stop.
+		writeFileSync(join(root, runId, "trace.jsonl"), JSON.stringify({ type: "design.settled", payload: { revision: 1, settled: true } }) + "\n")
+		await waitFor(() => forks(root, "rover")[0].result !== null, 3000)
+		assert.deepEqual(forks(root, "rover")[0].result, { settled: true, findings: null, status: "settled" })
+		finish(0)
+		// A plain plan's build writes no lineage.
+		const plain = (await (await fetch(`${hub.url}/api/plans`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sentence: "a logger", mock: true }) })).json()) as Any
+		await fetch(`${hub.url}/api/plans/${plain.id}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mock: true }) })
+		assert.deepEqual(readdirSync(join(root, "starters")), ["rover"])
+	} finally {
+		await hub.close()
+	}
 })

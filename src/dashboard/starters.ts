@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto"
-import { existsSync, readFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { layoutFor } from "../system/architect.ts"
 import type { Plan } from "../system/plan.ts"
 import type { SystemSpec } from "../system/spec.ts"
+import { planDiff, type PlanDiff } from "./plan-edit.js"
 
 // Starters: an example (examples/<name>/example.json) plus its seed plan (starter.json), the Plan fields without the
 // id, version and spend. Forking copies the seed into a new plan (PlanStore.fork); the starter file is only ever read.
+// When a fork is built, one line goes to <outRoot>/starters/<name>/forks.jsonl: what the fork changed and how it ended.
 
 export const STARTER_NAME = /^[a-z0-9][a-z0-9-]{0,59}$/
 
@@ -56,4 +58,88 @@ export function starterSeed(input: { sentence: string; why: string; robot: boole
 		optional: [],
 		...(input.robot ? { robot: true } : {}),
 	}
+}
+
+// ── Lineage ──
+
+export interface ForkResult {
+	settled: boolean
+	// The system's findings between boards; null for a one-board design (it has none of its own).
+	findings: number | null
+	status: string
+}
+
+export interface ForkRecord {
+	at: string
+	planId: string
+	design: string
+	starterHash: string
+	diff: PlanDiff
+	result: ForkResult | null
+}
+
+export const forksFile = (outRoot: string, starter: string) => join(outRoot, "starters", starter, "forks.jsonl")
+
+// A forked plan was built as `design`: one record, its result still unknown.
+export function recordForkBuild(outRoot: string, plan: Plan, seed: Plan, design: string): ForkRecord | null {
+	if (!plan.forkedFrom || !STARTER_NAME.test(plan.forkedFrom.starter)) return null
+	const record: ForkRecord = { at: new Date().toISOString(), planId: plan.id, design, starterHash: plan.forkedFrom.hash, diff: planDiff(seed, plan), result: null }
+	mkdirSync(join(outRoot, "starters", plan.forkedFrom.starter), { recursive: true })
+	appendFileSync(forksFile(outRoot, plan.forkedFrom.starter), JSON.stringify(record) + "\n")
+	return record
+}
+
+// The design's record gets its result (the first one only: a later change round doesn't rewrite how the build ended).
+export function setForkResult(outRoot: string, starter: string, design: string, result: ForkResult): boolean {
+	const file = forksFile(outRoot, starter)
+	if (!existsSync(file)) return false
+	let hit = false
+	const lines = readFileSync(file, "utf8")
+		.split("\n")
+		.filter(Boolean)
+		.map((l) => {
+			try {
+				const r = JSON.parse(l) as ForkRecord
+				if (!hit && r.design === design && r.result === null) {
+					hit = true
+					return JSON.stringify({ ...r, result })
+				}
+			} catch {
+				// a broken line stays as it is
+			}
+			return l
+		})
+	if (!hit) return false
+	writeFileSync(`${file}.tmp`, lines.join("\n") + "\n")
+	renameSync(`${file}.tmp`, file)
+	return true
+}
+
+// How a built design ended, from its own files: a system's system-state.json once its settle loop has finished (a
+// status that isn't "round N: …"), a single board's last design.settled event. Null while it is still working.
+export function designResult(designDir: string): ForkResult | null {
+	if (existsSync(join(designDir, "system.json"))) {
+		try {
+			const s = JSON.parse(readFileSync(join(designDir, "system-state.json"), "utf8")) as { status?: string; settled?: boolean; findings?: unknown[] }
+			if (typeof s.status !== "string" || /^round \d+:/.test(s.status)) return null
+			return { settled: s.settled === true, findings: Array.isArray(s.findings) ? s.findings.length : 0, status: s.status }
+		} catch {
+			return null
+		}
+	}
+	let settled: boolean | null = null
+	try {
+		for (const l of readFileSync(join(designDir, "trace.jsonl"), "utf8").split("\n")) {
+			if (!l.includes('"design.settled"')) continue
+			try {
+				const e = JSON.parse(l) as { type?: string; payload?: { settled?: boolean } }
+				if (e.type === "design.settled") settled = e.payload?.settled === true
+			} catch {
+				// a half-written line
+			}
+		}
+	} catch {
+		return null
+	}
+	return settled === null ? null : { settled, findings: null, status: settled ? "settled" : "unsettled" }
 }

@@ -16,6 +16,7 @@ import { boardView, revisionSnapshot } from "./board-view.ts"
 import { checkMoves, undoMoves, type Move } from "./board-move.ts"
 import { addSpend, appendUsage, readSpend } from "../inference/usage.ts"
 import { PLAN_ID, PlanConflict, PlanStore } from "./plans.ts"
+import { designResult, recordForkBuild, setForkResult } from "./starters.ts"
 import { exampleFile, listExamples } from "./examples.ts"
 import { PlanInvalid } from "../system/architect.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
@@ -252,6 +253,8 @@ export interface HubOptions {
 	planFetch?: typeof fetch
 	// The shipped examples for the start screen (default: the repo's examples/).
 	examplesRoot?: string
+	// How often a built fork's design is checked for its result (forks.jsonl); 2 s by default.
+	forkPollMs?: number
 	// --lan: listen on the network (bind, default every interface) so a phone can send decisions. Only the decision
 	// route answers another host, and only with the hub's random token; everything else stays loopback-only.
 	lan?: { bind?: string; token?: string }
@@ -405,6 +408,26 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		if (error instanceof PlanInvalid) return json(res, 502, { error: e.message, code: e.code })
 		if (error instanceof PlanConflict || typeof e.status === "number") return json(res, e.status ?? 500, { error: e.message })
 		throw error
+	}
+	// A forked plan built as `design` (a Build or a Try for free): one lineage record in forks.jsonl now, and its result
+	// once the design ends (src/dashboard/starters.ts). Builds started here stay up (--stay), so the end is the first
+	// settle the design's own files show, or the process ending first (Stop, a crash): then it is recorded as stopped.
+	const forkWatches = new Set<ReturnType<typeof setInterval>>()
+	const watchFork = (planId: string, design: string) => {
+		const plan = plans.get(planId)
+		if (!plan?.forkedFrom || !recordForkBuild(outRoot, plan, plans.forkSeed(planId) ?? plan, design)) return
+		const starter = plan.forkedFrom.starter
+		const check = () => {
+			const exit = live.get(design)?.exit ?? null
+			const result = designResult(join(outRoot, design)) ?? (exit !== null ? { settled: false, findings: null, status: `stopped before it settled (exit ${exit})` } : null)
+			if (!result) return
+			clearInterval(timer)
+			forkWatches.delete(timer)
+			setForkResult(outRoot, starter, design, result)
+		}
+		const timer = setInterval(check, opts.forkPollMs ?? 2000)
+		timer.unref()
+		forkWatches.add(timer)
 	}
 	// `id`: only the plan build path passes one (the plan's id); the public POST /api/runs never takes an id from the body.
 	const startRun = (body: Record<string, unknown>, id?: string): string => {
@@ -801,10 +824,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 						if (t.kind === "system") {
 							const systemId = startSystemAt(t.specPath, flags, t.usagePath, target)
 							if (!free) plans.markBuilt(id, systemId)
+							watchFork(id, systemId)
 							return json(res, 201, { systemId })
 						}
 						const runId = startRun({ brief: t.brief, ...flags, engineerApproval: false }, target)
 						if (!free) plans.markBuilt(id, runId)
+						watchFork(id, runId)
 						return json(res, 201, { runId })
 					} catch (error) {
 						return planError(res, error)
@@ -1200,6 +1225,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		token,
 		url: `http://127.0.0.1:${port}`,
 		close: async () => {
+			for (const w of forkWatches) clearInterval(w)
 			clearInterval(timer)
 			clearInterval(heartbeat)
 			for (const s of streams.values()) {
