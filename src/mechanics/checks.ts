@@ -351,8 +351,12 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 			if (Math.abs(a.xMm - b.xMm) < (a.sizeMm[0] + b.sizeMm[0]) / 2 && Math.abs(a.yMm - b.yMm) < (a.sizeMm[1] + b.sizeMm[1]) / 2)
 				push("mech-fit", `${a.what.slice(6)} and ${b.what.slice(6)} overlap on the chassis: move one`)
 		}
-	if (pack.sizeMm[2] > est("standoffMm") - 1 && boardsM.length)
-		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")}: pick a thinner pack or put it beside the boards`)
+	// Only the boards above the pack matter: one beside every board needs no headroom (the rover-pi run, 15 Nov: a 2S
+	// pack 18 mm thick was refused on any plate with a board, so "put it beside the boards" could never be followed).
+	const packM = ms.find((m) => m.what === "battery")
+	const packUnder = packM ? boardsM.filter((b) => Math.abs(b.xMm - packM.xMm) < (b.sizeMm[0] + packM.sizeMm[0]) / 2 && Math.abs(b.yMm - packM.yMm) < (b.sizeMm[1] + packM.sizeMm[1]) / 2) : []
+	if (pack.sizeMm[2] > est("standoffMm") - 1 && packUnder.length)
+		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")} (it lies under ${packUnder.map((b) => b.what.slice(6)).join(", ")}): pick a thinner pack or put it beside the boards`)
 	const wheelInner = d.trackMm / 2 - wheel.widthMm / 2
 	if (wheelsRubPlate(Wd, d.trackMm, wheel.widthMm)) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): make trackMm at least ${r1(Wd + 4 + wheel.widthMm)} (the plate's width + 4 + the ${wheel.widthMm} mm wheel), or the plate at most ${r1(plateMaxWidthMm(d.trackMm, wheel.widthMm))} mm wide`)
 	// Level: the caster sets the plate's height; the motors hang from it on brackets, at least half their body below

@@ -222,3 +222,16 @@ test("a board in a system that only names the robot isn't asked for motion", () 
 	const { c, cat } = variant((v) => { delete v.motion; v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver"); v.requirements = { ...v.requirements, summary: "climate sensor board on the rover" }; v.assembly = { body: "chassis", plate: { lengthMm: 150, widthMm: 110 }, boards: [], self: "climate" } })
 	assert.deepEqual(mechanicsChecksWith(c, cat), [])
 })
+
+test("a thick pack under a board is flagged; the same pack beside the boards is not (the advice can be followed)", () => {
+	// 18 mm thick: over the 10 mm standoffs. At x -10 it lies under the 60 × 40 board at x 10 (-20 to 40).
+	const under = variant((_v, k) => (k.mech.batteries[0].sizeMm = [60, 36, 18]))
+	assert.match(msg(under.c, under.cat, "mech-fit"), /18 mm-thick battery doesn't fit under boards/)
+	assert.match(msg(under.c, under.cat, "mech-fit"), /under main/)
+	// Moved back past the board's rear edge (-20 - 30 = -50): beside it, nothing above it.
+	const beside = variant((v, k) => {
+		k.mech.batteries[0].sizeMm = [60, 36, 18]
+		v.mechanics.battery.at.xMm = -51
+	})
+	assert.ok(!mechanicsChecksWith(beside.c, beside.cat).some((x) => /battery doesn't fit under boards/.test(x.message)))
+})
