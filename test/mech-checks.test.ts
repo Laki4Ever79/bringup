@@ -42,10 +42,10 @@ test("a short-range sensor can't stop the rover in time", () => {
 	assert.match(msg(c, cat, "mech-stopping"), /estimate: floorMu 0\.6/)
 })
 
-test("a motor that stalls above the driver's peak is flagged, and the board is woken", () => {
+test("a motor that stalls above the driver's peak is flagged, and the parts agent (the driver's owner) is woken", () => {
 	const { c, cat } = variant((_v, k) => (k.mech.motors[0].stallA = 3.2))
 	const v = mechanicsChecksWith(c, cat).find((x) => x.kind === "mech-current")!
-	assert.ok(v.affects.includes("board"))
+	assert.deepEqual(v.affects, ["mechanics", "parts"])
 })
 
 test("a small pack can't last the runtime", () => {
@@ -94,10 +94,33 @@ test("ground clearance below the edge height is a fit problem", () => {
 	assert.ok(kinds(c, cat).includes("mech-fit"))
 })
 
-test("no motor driver on any board is a wiring problem for the board agent", () => {
+// Real rover run 2 (15 Nov): addressed to "board", which no agent is, these woke nobody.
+test("no motor driver on any board goes to the parts agent, which owns the parts", () => {
 	const { c, cat } = variant((v) => (v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver")))
 	const w = mechanicsChecksWith(c, cat).find((x) => x.kind === "mech-wiring")!
-	assert.deepEqual(w.affects, ["board"])
+	assert.deepEqual([w.affects, w.fields], [["parts"], ["parts"]])
+})
+
+test("every robot finding goes to an agent that exists", () => {
+	// The roles the run's agents have (agents/roles.ts): "board" is a builder, not an agent.
+	const AGENT_ROLES = ["architect", "parts", "mechanics", "firmware", "enclosure", "ml", "test", "connectivity"]
+	const variants = [
+		variant((v) => (v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver"))),
+		variant((v) => (v.pins = v.pins.filter((p: Any) => !p.signal.startsWith("MOT_")))),
+		variant((_v, k) => (k.mech.motors[0].stallA = 3.2)),
+	]
+	for (const { c, cat } of variants) for (const x of mechanicsChecksWith(c, cat)) for (const r of x.affects) assert.ok(AGENT_ROLES.includes(r), `${x.kind} → ${r}`)
+})
+
+test("a motor wired to a GPIO through its connector is a wiring problem for the architect", () => {
+	const { c, cat } = variant((v) => {
+		v.parts.push({ ref: "JM1", role: "connector", mpn: "B2B-PH-K-S(LF)(SN)", lcsc: "C131337", footprint: "jst2_ph", pins: ["1", "2"] })
+		v.pins.push({ signal: "MOTOR_A_P", gpio: 0, partRef: "JM1", partPin: "1" })
+	})
+	assert.ok(!mechanicsChecksWith(variant((v) => v.parts.push({ ref: "JM1", role: "connector", mpn: "B2B-PH-K-S(LF)(SN)", lcsc: "C131337", footprint: "jst2_ph", pins: ["1", "2"] })).c, cat).some((x) => /never connects to a GPIO/.test(x.message)), "a motor connector with no GPIO is fine")
+	const w = mechanicsChecksWith(c, cat).find((x) => x.kind === "mech-wiring" && /never connects to a GPIO/.test(x.message))!
+	assert.match(w.message, /MOTOR_A_P \(GPIO0\) goes to motor connector JM1/)
+	assert.deepEqual([w.affects, w.fields], [["architect"], ["pins"]])
 })
 
 test("the driver on its own board gives the same verdicts (option B)", () => {
@@ -128,14 +151,14 @@ test("the firmware's hardware layer must use the contract's pins (the pin-mismat
 	assert.match(bad[0].message, /MOT_AIN1 on GPIO3, contract says GPIO4/)
 })
 
-test("a failed simulated drive wakes mechanics and firmware; one that couldn't run wakes nobody", async () => {
+test("a failed simulated drive wakes mechanics (not the firmware reviewer: the rover firmware is generated); one that couldn't run wakes nobody", async () => {
 	const { checkConsistency } = await import("../src/contract/consistency.ts")
 	const { c } = roverFixture()
 	const drive = (result: "pass" | "fail" | "not run") => ({ revision: 1, dir: "", result, reason: result === "fail" ? "hit the wall (wall_front) at 4.20 s" : "QEMU is not installed", segments: [] })
 	const failed = checkConsistency(c, { drive: drive("fail") }).filter((v) => v.kind === "mech-drive")
 	assert.equal(failed.length, 1)
 	assert.match(failed[0].message, /hit the wall/)
-	assert.deepEqual(failed[0].affects, ["mechanics", "firmware"])
+	assert.deepEqual(failed[0].affects, ["mechanics"])
 	assert.deepEqual(checkConsistency(c, { drive: drive("not run") }).filter((v) => v.kind === "mech-drive"), [])
 	assert.deepEqual(checkConsistency(c, { drive: drive("pass") }).filter((v) => v.kind === "mech-drive"), [])
 })
@@ -156,4 +179,46 @@ test("a short wheelbase tips back when accelerating hard: the margin is checked 
 	const m = msg(c, cat, "mech-tipping")
 	assert.match(m, /when accelerating hard/)
 	assert.match(m, /move weight \(the battery\) forward/)
+})
+
+// Real rover run 5 (15 Nov): nothing asked for the motor connectors, and the sensor's connector was named J2, the battery's ref.
+test("a robot without its two motor connectors is told to add them, to parts", () => {
+	const { c, cat } = variant((v) => (v.parts = v.parts.filter((p: Any) => !["JM1", "JM2"].includes(p.ref))))
+	const w = mechanicsChecksWith(c, cat).find((x) => /2-pin connector/.test(x.message))
+	assert.ok(w, "a driver and no motor connectors")
+	assert.deepEqual([w!.affects, w!.fields], [["parts"], ["parts"]])
+	assert.match(w!.message, /need 2 more 2-pin connectors.*as JM1 and JM2/)
+	// Connectors the architect already placed (run 5: J3, J4) are the refs to use.
+	const named = variant((v) => {
+		v.parts = v.parts.filter((p: Any) => !["JM1", "JM2"].includes(p.ref))
+		v.connectors = [...(v.connectors ?? []), { ref: "J3", kind: "header", edge: "left", offsetMm: 10 }, { ref: "J4", kind: "header", edge: "right", offsetMm: 10 }]
+	})
+	assert.match(mechanicsChecksWith(named.c, named.cat).find((x) => /2-pin connector/.test(x.message))!.message, /as J3 and J4 \(the connectors the board already places\)/)
+	const two = variant(() => {})
+	assert.ok(!mechanicsChecksWith(two.c, two.cat).some((x) => /2-pin connector/.test(x.message)), "the reference rover has both")
+})
+
+test("a sensor connector ref that another part already has goes back to mechanics", () => {
+	const { c, cat } = variant((v) => (v.mechanics.sensor.connector = "J2"))
+	const w = mechanicsChecksWith(c, cat).find((x) => /already the battery/.test(x.message))!
+	assert.match(w.message, /mechanics\.sensor\.connector is J2, but J2 is already the battery .*name a free ref/)
+	assert.deepEqual(w.affects, ["mechanics"])
+})
+
+// Real rover run 6 (15 Nov): a motor driver, no motion field; the run settled as a plain board and passed review.
+test("a motor driver without motion targets asks the architect for the motion field", () => {
+	const { c, cat } = variant((v) => delete v.motion)
+	const w = mechanicsChecksWith(c, cat)
+	assert.equal(w.length, 1)
+	assert.match(w[0].message, /moves .* but has no motion targets/)
+	const said = variant((v) => { delete v.motion; v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver"); v.requirements = { ...v.requirements, summary: "indoor rover on two DC motors" } })
+	assert.equal(mechanicsChecksWith(said.c, said.cat).length, 1, "requirements naming a rover are enough")
+	assert.deepEqual([w[0].affects, w[0].fields], [["architect"], ["motion"]])
+	const plain = variant((v) => { delete v.motion; v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver") })
+	assert.deepEqual(mechanicsChecksWith(plain.c, plain.cat), [], "a board without a driver is no robot")
+})
+
+test("a board in a system that only names the robot isn't asked for motion", () => {
+	const { c, cat } = variant((v) => { delete v.motion; v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver"); v.requirements = { ...v.requirements, summary: "climate sensor board on the rover" }; v.assembly = { body: "chassis", plate: { lengthMm: 150, widthMm: 110 }, boards: [], self: "climate" } })
+	assert.deepEqual(mechanicsChecksWith(c, cat), [])
 })

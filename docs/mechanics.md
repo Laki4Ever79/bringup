@@ -45,6 +45,26 @@ estimates. Every report line that uses one says `(estimate: <name> <value>)`.
 | packInternalOhm | 0.15 | small 1S LiPo cells with protection: 0.1–0.2 Ω |
 | standoffMm | 10 | board standoffs, to clear the battery |
 
+## The chassis layout solver
+
+The mechanics engineer picks the parts (motor, wheels, caster, battery, distance sensor, the board connector its cable
+plugs into) and calls `layout_chassis` (`src/mechanics/solve.ts`). Code searches the plate (the brief's `maxSizeMm`, or
+a system's plate), the track, the axle and caster position and the battery's spot, running the checks above on each
+candidate, and returns a mechanics field that passes them, or the checks no layout passes with those parts. It takes
+about 25 ms for the reference parts. A mechanics proposal whose layout fails the chassis checks is laid out again by the
+solver for the same parts, and the tool result says so: the parts are the engineer's choice, where they go is the
+code's. Real models moved parts by hand a few millimetres at a time for 30 revisions without landing on the plate
+(real rover run 3, 15 Nov); with the solver the drive passed in the first ten revisions.
+
+Rules the real runs taught (15 Nov), each now a check or part of the agents' instructions:
+- A design that moves (a motor driver, or requirements naming motors, wheels or a rover) needs the motion field; the
+  architect is told when it's missing.
+- Robot wiring findings go to the agent that owns the field they name: a missing part to parts, a missing pin to the
+  architect. A motor never connects to a GPIO; each motor gets a 2-pin connector on the driver's outputs; the sensor's
+  4-pin connector takes no pins (the generator joins it to the board's I2C bus).
+- A failed simulated drive goes to mechanics only: the rover firmware is generated from the contract.
+- The rover firmware's pin header names every contract pin, so the pin check covers the whole map.
+
 ## The simulated drive (firmware in the loop)
 
 The firmware has a thin hardware layer: six functions (`hw_begin`, `hw_motor`, `hw_distance_mm`, `hw_payload`,

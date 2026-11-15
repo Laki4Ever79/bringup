@@ -12,6 +12,9 @@ import { createRoleAgent, requestTurn, startTurn } from "./common.ts"
 import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
 import { rankMcus, type McuRequest } from "../mcu/select.ts"
+import { MECHANICS_SHAPE } from "../mechanics/shape.ts"
+import { solveChassis, type ChassisChoice } from "../mechanics/solve.ts"
+import { defaultCheckCatalog } from "../mechanics/checks.ts"
 
 // Splits the grounding check's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
 function groundingFor(findings: GroundingFinding[], pinAssignments: boolean): GroundingFinding[] {
@@ -92,9 +95,10 @@ On a deep-sleeping ESP32-C3 design, GPIO9 is the recovery BOOT pad and GPIO8 mus
 The ESP32-C3-MINI-1 has 4 MB on-module flash: if the design keeps a reading history, it goes there (NVS or LittleFS); no external memory part is needed.
 The ESP32-C3-MINI-1 needs a supply that can deliver 0.5 A (module datasheet v2.2): its radio bursts are short and high. So its regulator must be rated 500 mA or more: in the catalog RT9080-33GJ5 (600 mA, 2 µA quiescent; same pins as the AP2112K: VIN, GND, EN, NC, VOUT, EN tied to VIN) and AP2112K-3.3TRG1 (600 mA, 55 µA) are; XC6206P332MR-G (200 mA) browns it out, low quiescent current or not. For a battery target prefer the RT9080-33GJ5: the AP2112K's 55 µA alone is half the ~116 µA a 180-day target on 500 mAh allows. Catalog LDOs list their quiescent current as iqUa. A rail's regulatorMaxMa is its regulator's own rating (catalog maxMa); a higher claim is a violation. The 3V3 rail's loadMa must cover the radio's transmit peak: 170 mA for Bluetooth LE at 0 dBm, 350 mA for Wi-Fi (the design facts give it).
 - parts: [{ref, role (one of: mcu, sensor, microphone, ldo, charger, battery, usb-c, led, resistor, capacitor, button, connector, motor-driver (a robot's motor driver), other), mpn, lcsc, footprint, pins: string[], reason: one line on why this part, quoting the brief line or naming the need it serves (the engineer reads it when they click the part), at?: {xMm, yMm} (only where the engineer placed it on the board page: the part's centre in mm from the board's bottom-left corner; keep it exactly as it is, and set it when a change request places a part)}]
-- pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]. gpio is the MCU's pin index as its profile defines it (the design facts' MCU section lists every usable pin as NAME=index: GPIO4=4 on an ESP32, PB7=23 on an STM32).
+- pins: [{signal (UPPER_SNAKE), gpio: number, partRef, partPin}]. gpio is the MCU's pin index as its profile defines it (the design facts' MCU section lists every usable pin as NAME=index: GPIO4=4 on an ESP32, PB7=23 on an STM32). partRef and partPin are the other end: the part and pin the MCU pin drives or reads (U2 SDA, U5 AIN1, a connector's IO1), never the MCU itself, or the net has one end and the board can't be built. A signal that goes off the board (a sensor on a cable) ends on its connector's pin.
 - search_parts stock: a number is live from LCSC; stock null means unknown, not out of stock.
 - links (when the board is part of a system of boards) is the integrator's: you don't write it, you follow it. For each link, list its connector in connectors (kind "header", on the link's edge if it names one, about 5.8 × 3 mm), and for a UART link assign <id>_TX and <id>_RX to the connector's IO pins the design facts give, on free GPIOs. An I2C link uses the board's own I2C_SDA/I2C_SCL.
+- motion (the architect's, only for a robot: a device that moves on its own, on wheels): the brief's targets, {speedMps, runtimeMin, edgeMm (the highest step or edge it must roll over), maxSlopeDeg, stopBeforeWallMm (how far short of an obstacle it stops; 0 if none), payloadG (what it carries besides itself), maxSizeMm: [length, width] (with wheels), maxMassG}, from the brief's numbers. Writing it makes the design a robot: the mechanics engineer then designs the drive, battery, distance sensor and chassis (its field, mechanics), and the robot's checks ask for the motor driver (role motor-driver, its four inputs on GPIOs named MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2, with partRef the driver), a 2-pin connector per motor (no pins: the board generator wires the driver's outputs to them), the distance sensor's 4-pin connector (no pins either: the generator joins its IO1/IO2 to the board's I2C bus, so I2C_SDA/I2C_SCL stay on the board's own I2C part, e.g. U2 SDA/SCL, and never move to the connector) and the robot's firmware; the chassis is its body, so requirements.enclosure is "none" unless the brief also asks for a case. A board that doesn't move gets no motion field.
 - requirements.enclosure (optional): who houses the board. "case" when the brief asks for a case or a finished device in one: Bringup designs and prints it. Leave it out only when the brief doesn't say (Bringup then designs a case and tells the engineer it assumed one). "none" when the brief or the engineer wants a bare board (lab use, a dev kit, a test rig, "no case"); "own" when it goes into the engineer's own housing or an existing product (Bringup then writes the board's mechanical interface instead of a case). With a case, every button needs an opening: list it in connectors (kind "button", on the edge it is pressed from), or leave it out.
 - requirements.usbWake (optional, true or false): leave it out. A deep-sleeping board then wakes when USB is plugged in and stays awake while it is, so a USB-C cable alone reflashes it; the board generator adds a VBUS-sense divider on the first free pin of GPIO0, 1, 3, 4, 5, so keep one of those free. Set it to false only when the engineer asks; then reflashing needs the case open and the bottom recovery pads.
 - requirements.testPads (optional, true or false): leave it out. The board generator then puts a few bring-up test pads on the underside (ground, the rails, a debug UART, a cable link's signals) where there is room; they never grow the board. Set it to false only when the engineer asks for no test pads.
@@ -202,6 +206,36 @@ function compareMcusTool(): Tool {
 	}
 }
 
+// The chassis layout solver (src/mechanics/solve.ts): the mechanics engineer picks the parts, code finds the plate,
+// track, axle, wheelbase and battery spot that pass the robot's checks (real rover run 3, 15 Nov: packing by hand
+// never converged).
+function layoutChassisTool(): Tool {
+	return {
+		type: "function",
+		name: "layout_chassis",
+		description: "Lay out the robot's chassis for the parts you pick: searches the plate size (within the brief's maxSizeMm, or the system's plate), the track, the axle and caster position, the battery's spot and the sensor's, and returns a complete mechanics field that passes every chassis check (fit, level, tipping, climb, torque, speed, stopping, current, runtime). Propose the returned mechanics as it is. If no layout passes, it says which checks fail with these parts: pick others and call it again.",
+		parameters: {
+			type: "object",
+			properties: {
+				motor: { type: "string", description: "a motor from the design facts' Motors list (its part number is enough)" },
+				wheel: { type: "string" },
+				caster: { type: "string" },
+				pack: { type: "string", description: "the battery pack" },
+				sensor: { type: "string", description: "the distance sensor module" },
+				connector: { type: "string", description: "the board connector (role connector, JST SH 4-pin) the sensor's cable plugs into, e.g. JT1" },
+			},
+			required: ["motor", "wheel", "caster", "pack", "sensor", "connector"],
+		},
+		strict: false,
+		invoke: async (choice: ChassisChoice) => {
+			const cat = defaultCheckCatalog()
+			if (!cat) return { error: "no mechanics catalog on this machine" }
+			const r = solveChassis(state().contract.snapshot(), choice, cat)
+			return { passes: r.mechanics !== null && r.remaining.length === 0, mechanics: r.mechanics, why: r.why }
+		},
+	}
+}
+
 // Consistency violations addressed to a role wake it once per revision, with what to do about them.
 // only: which of the role's violations it can act on (the case designer shares the "enclosure" role with the case
 // builder, whose cutout and vent violations a rebuild fixes).
@@ -258,7 +292,7 @@ export function createPartsAgent(opts: { mock: boolean }): Agent {
 	return createRoleAgent({
 		role: "parts",
 		mock: opts.mock,
-		instruction: `You select the parts for a hardware design. Use search_parts for every role the requirements and rails need, and choose only those: no part for something the brief puts out of scope (no sensor when the brief rules sensors out). Prefer in-stock parts, and write the complete parts list with one propose_contract_change. Keep the reference designators below. You own the parts list: when another discipline asks to change it, decide with decide_change.\n${CONTRACT_SHAPES}`,
+		instruction: `You select the parts for a hardware design. Use search_parts for every role the requirements and rails need, and choose only those: no part for something the brief puts out of scope (no sensor when the brief rules sensors out). A robot (the contract has a motion field) also needs what its checks ask for, even when requirements.peripherals don't list them: the motor driver (role motor-driver), a 2-pin connector per motor, the battery connector, and the distance sensor's 4-pin connector under the ref mechanics.sensor.connector names. Keep them once added; a robot check that asks for one is never extraneous. Prefer in-stock parts, and write the complete parts list with one propose_contract_change. Keep the reference designators below. You own the parts list: when another discipline asks to change it, decide with decide_change.\n${CONTRACT_SHAPES}`,
 		tools: [searchPartsTool(), compareMcusTool()],
 		handlers: [
 			ownerFixesReview("parts"),
@@ -401,7 +435,8 @@ export function createMechanicsAgent(opts: { mock: boolean }): Agent {
 		role: "mechanics",
 		name: "mechanics",
 		mock: opts.mock,
-		instruction: `You are the mechanics engineer of a small robot: you own the mechanics field (drive, battery, sensor mount and chassis layout). The architect owns motion (the brief's targets) and the boards. Lay out the chassis in millimetres with the origin at the plate's centre and +x forward, and propose it with propose_contract_change. When another discipline proposes a change to mechanics, decide with decide_change. When the contract has an assembly field, the plate size and where each board sits come from the system's assembly; keep chassis.plateMm and chassis.boards as they are and design the drive, battery, sensor, clearance and thickness.\n${MECHANICS_RULES}\n${CONTRACT_SHAPES}`,
+		instruction: `You are the mechanics engineer of a small robot: you own the mechanics field (drive, battery, sensor mount and chassis layout). Pick the parts (motor, wheels, caster, battery pack, distance sensor and the board connector its cable plugs into), call layout_chassis with them, and propose the mechanics it returns as it is: the layout is a search the code does, so don't place parts by hand. If no layout passes, it says which checks fail: pick other parts and call it again. The architect owns motion (the brief's targets) and the boards. Lay out the chassis in millimetres with the origin at the plate's centre and +x forward, and propose it with propose_contract_change. When another discipline proposes a change to mechanics, decide with decide_change. When the contract has an assembly field, the plate size and where each board sits come from the system's assembly; keep chassis.plateMm and chassis.boards as they are and design the drive, battery, sensor, clearance and thickness. The design facts list the catalog's motors, wheels, casters, packs and sensor modules with their numbers.\n${MECHANICS_SHAPE}\n${MECHANICS_RULES}\n${CONTRACT_SHAPES}`,
+		tools: [layoutChassisTool()],
 		handlers: [
 			ownerReviewsChanges("mechanics"),
 			ownerFixesReview("mechanics"),

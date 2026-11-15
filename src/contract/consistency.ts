@@ -177,10 +177,12 @@ const MOUNTING_PAIR_MM = 5
 // quick: the board page's per-move check, which leaves out the smallest-board search (spaceChecks).
 export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean } = {}): Violation[] {
 	const v: Violation[] = []
-	// A failed firmware-in-the-loop drive (docs/mechanics.md): the mechanics or the firmware must change. "not run"
-	// (no QEMU, a stubbed run) wakes nobody: the report says "not proven in simulation".
+	// A failed firmware-in-the-loop drive (docs/mechanics.md): the mechanics must change. "not run" (no QEMU, a stubbed
+	// run) wakes nobody: the report says "not proven in simulation". Not the firmware reviewer: the rover's firmware is
+	// generated from the contract, so its only lever was the pin map (real rover run 8, 15 Nov: it rewired pins on a
+	// guess that the sensor was off the bus, and the next drive crawled at 0.09 m/s).
 	if (a.drive?.result === "fail")
-		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics", "firmware"] })
+		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics"] })
 	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.

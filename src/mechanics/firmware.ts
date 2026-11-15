@@ -22,8 +22,13 @@ export function roverHeader(s: ContractSnapshot): string {
 	const v = s.values
 	const mech = v.mechanics!, motion = v.motion!
 	const cat = defaultCheckCatalog()!
-	const motor = byMpn(cat.mech.motors, mech.drive.motor)!, wheel = byMpn(cat.mech.wheels, mech.drive.wheel)!, pack = byMpn(cat.mech.batteries, mech.battery.pack)!
-	const sensor = byMpn(cat.mech.sensors, mech.sensor.module)!
+	const motor = byMpn(cat.mech.motors, mech.drive.motor), wheel = byMpn(cat.mech.wheels, mech.drive.wheel), pack = byMpn(cat.mech.batteries, mech.battery.pack)
+	const sensor = byMpn(cat.mech.sensors, mech.sensor.module)
+	// A part the catalog doesn't have: the mech-fit check names it to the mechanics engineer; the firmware says so too.
+	if (!motor || !wheel || !pack || !sensor) {
+		const missing = [!motor && `motor ${mech.drive.motor}`, !wheel && `wheel ${mech.drive.wheel}`, !pack && `battery ${mech.battery.pack}`, !sensor && `sensor ${mech.sensor.module}`].filter(Boolean)
+		throw new Error(`rover firmware not built: ${missing.join(", ")} not in catalog/mechanics.json (the mechanics design must name catalog parts)`)
+	}
 	const pin = (sig: string) => (v.pins ?? []).find((p) => p.signal === sig)?.gpio ?? -1
 	const r = wheel.diameterMm / 2000
 	const topMps = motorAt(motor, pack.nominalV).noLoadRadS * 0.8 * r
@@ -47,6 +52,14 @@ export function roverHeader(s: ContractSnapshot): string {
 		...(v.pins ?? []).filter((p) => p.signal === "STATUS_LED").map((p) => `#define PIN_STATUS_LED ${p.gpio}`),
 		// A link's pins (a UART's TX and RX), as the product firmware's pins.h names them: link.h opens the UART on them.
 		...(v.pins ?? []).filter((p) => (v.links ?? []).some((l) => p.signal === `${l.id}_TX` || p.signal === `${l.id}_RX`)).map((p) => `#define ${macroName(p.signal)} ${p.gpio}`),
+		// Every other contract pin, as the product firmware's pins.h names it (PIN_<SIGNAL>), so the firmware's pin table
+		// covers the whole pin map: the rover code leaves them alone (native USB, a button), but the pin check no longer
+		// sees "firmware drives BUTTON on ?", a finding no agent can fix (real rover run 8, 15 Nov: the run ended
+		// unsettled on three of them with the drive passing and every build done).
+		...(v.pins ?? [])
+			.filter((p) => !["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2", "I2C_SDA", "I2C_SCL", "STATUS_LED"].includes(p.signal) && !(v.links ?? []).some((l) => p.signal === `${l.id}_TX` || p.signal === `${l.id}_RX`))
+			.filter((p, i, all) => all.findIndex((q) => q.signal === p.signal) === i)
+			.map((p) => `#define ${macroName(p.signal)} ${p.gpio}`),
 		...(sensorDriver((v.parts ?? []).find((p) => p.role === "sensor")?.mpn ?? "") === "SHT40" ? ["#define SENSOR_SHT40 1"] : []),
 		"",
 	]
