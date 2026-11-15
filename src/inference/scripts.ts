@@ -215,6 +215,17 @@ export function computeRoverMechanics(c: ContractSnapshot, cat: CheckCatalog | n
 	return s.mechanics ? { ...s.mechanics, regulator: reg.mpn } : null
 }
 
+// Whether the scripted mechanics engineer lays out the compute rover (the 2S pack, regulator, 12 V motors) now: once per
+// run, when there is no mechanics yet or only the reference rover it chose before the system's body arrived. Never
+// again after that: a pack a change request chose stays (premerge review, 15 Nov: every consistency wake re-proposed
+// the 2S layout, reverting the engineer's pack).
+export function picksComputeMechanics(current: ContractValues["mechanics"] | undefined, pickedBefore: boolean): boolean {
+	if (pickedBefore) return false
+	if (!current) return true
+	const ref = ROVER_MECHANICS!
+	return current.battery.pack === ref.battery.pack && current.drive.motor === ref.drive.motor
+}
+
 // The scripted HAT: a carrier brief (src/system/carrier.ts carrierBrief) read back into a design. Every number comes
 // from the brief, which is written from the module record, so any compute module's carrier gets its own.
 export const HAT_HEADER_MPN = "ADAFRUIT-2223"
@@ -517,6 +528,8 @@ export function mockScripts(): Record<string, Script> {
 	let shrinkFrom: { widthMm: number; heightMm: number } | null = null
 	// How many times the scripted architect has widened the board after a failed DRC in this run.
 	let drcGrows = 0
+	// Whether the compute rover's layout has reached the contract in this run (the scripted mechanics engineer picks it once).
+	let computePicked = false
 	// The scripted HAT this run designs, once the architect has read a carrier brief (the parts agent places its header).
 	let hat: ReturnType<typeof hatDesign> | null = null
 	// The engineer's swaps in this run (ref → the catalog part that took its place), kept so a later wake-up of the
@@ -839,8 +852,10 @@ export function mockScripts(): Record<string, Script> {
 			// With a bought compute board on the robot: the 2S pack, its 5 V regulator and 12 V motors, laid out by the solver.
 			// Also when the reference rover was chosen before the system's body arrived.
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && state().contract.get("motion") && carriesCompute(state().contract.get("assembly"))) {
-				const pack = byMpn(defaultCheckCatalog()?.mech.batteries ?? [], COMPUTE_ROVER_PACK)
-				if (!current || current.battery.pack !== pack?.mpn) {
+				// Picked once the contract holds it (a refused proposal is tried again on the next wake).
+				const compute = byMpn(defaultCheckCatalog()?.mech.batteries ?? [], COMPUTE_ROVER_PACK)
+				if (current && compute && current.battery.pack === compute.mpn) computePicked = true
+				if (picksComputeMechanics(current, computePicked)) {
 					const mech = computeRoverMechanics(state().contract.snapshot())
 					if (mech) return propose("mechanics", mech, `a rover with a bought compute board: the ${mech.battery.pack} through the ${mech.regulator}, ${mech.drive.motor} motors, laid out by the chassis solver (catalog/mechanics.json)`)
 				}

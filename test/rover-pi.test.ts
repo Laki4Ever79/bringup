@@ -145,3 +145,14 @@ test("a carrier brief missing a value the HAT needs fails loudly, naming it, ins
 	assert.throws(() => hatFromBrief(ok.replace(/into header pins 2 and 4/, "into header pins ?")), /lacks the 5 V supply's current and header pins/)
 	assert.equal(hatFromBrief(read("briefs/rover.md")), null, "not a carrier brief: no HAT, no error")
 })
+
+// Premerge review (15 Nov): on every consistency wake where the pack wasn't the 2S, the scripted mechanics engineer
+// re-proposed the 2S layout, reverting an engineer's change request for another pack.
+test("the scripted mechanics engineer picks the 2S compute layout once, and keeps a pack a change request chose", async () => {
+	const { picksComputeMechanics, ROVER_MECHANICS } = await import("../src/inference/scripts.ts")
+	assert.equal(picksComputeMechanics(undefined, false), true, "no mechanics yet: the compute rover")
+	assert.equal(picksComputeMechanics(ROVER_MECHANICS, false), true, "the reference rover chosen before the system's body arrived")
+	const other = { ...ROVER_MECHANICS!, battery: { ...ROVER_MECHANICS!.battery, pack: "ADAFRUIT-258 LP-503562 1200 mAh" } }
+	assert.equal(picksComputeMechanics(other, false), false, "a pack someone chose")
+	assert.equal(picksComputeMechanics(ROVER_MECHANICS, true), false, "after the 2S layout reached the contract, even the reference pack is a choice")
+})
