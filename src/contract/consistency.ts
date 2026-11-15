@@ -102,11 +102,22 @@ export interface Artifacts {
 	drive?: DriveArtifact
 }
 
+// The pins whose part isn't in the parts list yet: the architect writes the pins first (as told), and the parts agent
+// may not have added the part they land on (the real rover, run 4, 15 Nov 2026: I2C_SDA on JT1.IO1 before JT1 existed).
+export function pinPartsMissing(s: ContractSnapshot): { signal: string; ref: string; pin: string }[] {
+	const refs = new Set((s.values.parts ?? []).map((p) => p.ref))
+	return (s.values.pins ?? []).filter((p) => !refs.has(p.partRef)).map((p) => ({ signal: p.signal, ref: p.partRef, pin: p.partPin }))
+}
+// A build that stopped because the contract isn't complete yet: no design problem beyond the violation that names it,
+// so it wakes no owner (src/agents/roles.ts); the build runs again when the contract changes.
+export const WAITING_ON_CONTRACT = /^waiting on the contract:/
+
 export type ViolationKind =
 	| "drc-errors"
 	| "outline-mismatch"
 	| "net-missing"
 	| "pin-unwired"
+	| "pin-part-missing"
 	| "pin-mismatch"
 	| "cutout-missing"
 	| "cutout-misaligned"
@@ -208,6 +219,8 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 		}
 	}
 
+	for (const m of pinPartsMissing(c))
+		v.push({ kind: "pin-part-missing", message: `${m.signal} goes to ${m.ref}.${m.pin}, but there is no part ${m.ref}: add it to the parts (or point the pin at the part that is there)`, fields: ["parts", "pins"], affects: ["parts"] })
 	const mcuRef = parts?.find((p) => p.role === "mcu")?.ref
 	// A pin assignment joins an MCU pin to the part pin it drives; one on the MCU's own pin goes nowhere, and its net,
 	// with one end, fails every board build (the real architect's rover, run 1, 15 Nov 2026: DIST_TRIG on U1.GPIO2).

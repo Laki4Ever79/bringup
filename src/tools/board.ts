@@ -3,7 +3,7 @@ import { ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { boardParts, circuitFromContract, debugPort, LDO_FROM_USB_MM, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
-import type { BoardArtifact } from "../contract/consistency.ts"
+import { pinPartsMissing, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
 import { kicadCli, toolPath, type Env } from "./env.ts"
@@ -14,7 +14,13 @@ import { run, tail } from "./exec.ts"
 // tscircuit's own result is the source of truth for nets and size; KiCad exports are best-effort.
 const FAILED_PER_STAGE = 2
 
+export { WAITING_ON_CONTRACT }
+
 export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
+	// A pin on a part that isn't there yet would only fail in tscircuit ("Could not find port for selector"), slowly and
+	// in its words: stop with the reason instead (the pin-part-missing check wakes the parts owner).
+	const missing = pinPartsMissing(s)
+	if (missing.length > 0) throw new Error(`waiting on the contract: ${missing.map((m) => `${m.signal} goes to ${m.ref}.${m.pin}`).join(", ")}, but there is no part ${[...new Set(missing.map((m) => m.ref))].join(", ")} yet; the board is built once it is there`)
 	if (!env.tsci) throw new Error("tscircuit build failed: tsci is not installed (tools/node)")
 	// tscircuit treats the nearest package.json as its project: inside this repo it would look for
 	// react in our node_modules and write to the repo's dist/. Build outside any project, then copy.
