@@ -95,3 +95,10 @@ test("ros2 bag info is read into per-topic rates", () => {
 	assert.deepEqual(s["/joint_states"], { count: 569, durationS: 18.937040311 })
 	assert.equal(Object.keys(s).length, 2)
 })
+
+test("the hardware plugin's template installs only folders git keeps (an empty include/ broke colcon in a run's workspace)", async () => {
+	const { existsSync: exists, readdirSync } = await import("node:fs")
+	const dir = join(import.meta.dirname, "..", "templates", "ros", "bringup_hardware")
+	const cmake = readFileSync(join(dir, "CMakeLists.txt"), "utf8")
+	for (const m of cmake.matchAll(/install\(DIRECTORY (\S+?)\/? /g)) assert.ok(exists(join(dir, m[1])) && readdirSync(join(dir, m[1])).length > 0, `${m[1]} is missing or empty`)
+})

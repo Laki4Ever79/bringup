@@ -765,7 +765,7 @@
 			<section id="stage">
 				<div class="stage-bar">
 					<span class="label sec-num"><b>06</b> Board</span>
-					<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="firmware" title="The firmware's source files, revision by revision, and what changed">Firmware</button><button data-tab="bench" class="hidden">Bench</button><button data-tab="drive" class="hidden">Drive</button></div>
+					<div class="tabs" id="tabs"><button data-tab="pcb">PCB</button><button data-tab="render">Render</button><button data-tab="3d">3D</button><button data-tab="firmware" title="The firmware's source files, revision by revision, and what changed">Firmware</button><button data-tab="bench" class="hidden">Bench</button><button data-tab="drive" class="hidden">Drive</button><button data-tab="ros" class="hidden" title="The robot's ROS 2 package, generated from the design, and its acceptance test on each back end">ROS 2</button></div>
 					<span id="dims" class="num"></span>
 					<span id="fab" class="hidden"><button id="fab-btn" class="pill">Fab &amp; print files ↓</button></span>
 					<button id="order-btn" class="pill hidden" disabled title="">Ready to order ↗</button>
@@ -789,6 +789,7 @@
 					</div>
 					<div id="fw-view" class="view hidden"><div class="fw-bar"><label>revision <select id="fw-rev" aria-label="Firmware revision"></select></label><label>compared with <select id="fw-base" aria-label="Compare with revision"></select></label><span class="fw-mode"><button data-mode="changes" class="on">Changes only</button> <button data-mode="whole">Whole file</button></span><span class="fw-sum" id="fw-sum"></span></div><div class="fw-main"><ul class="fw-files" id="fw-files"></ul><div class="fw-code" id="fw-code"><div class="fw-empty">waiting for the first firmware build</div></div></div></div>
 					<div id="drive-view" class="view hidden"><div class="drive-top"><b id="drive-result"></b> <span id="drive-reason" class="t3"></span></div><div id="drive-plot"></div><table id="drive-rows" class="drive-rows"></table></div>
+					<div id="ros-view" class="view hidden"><div class="drive-top"><b id="ros-title"></b> <span id="ros-note" class="t3"></span></div><div id="ros-files" class="t3"></div><div id="ros-results"></div></div>
 					<span id="changed-pill" class="pill"></span>
 					<div id="file-notice" class="hidden" role="status"><span class="k" id="file-notice-k"></span><b id="file-notice-text"></b><button id="file-notice-open" title="Revert or adopt it">Review in Drift</button><button id="file-notice-close" title="Hide (the Feed keeps it)">✕</button><ul id="file-notice-items"></ul></div>
 					<span id="viewing-pill" class="pill hidden" title="Back to live"></span>
@@ -1064,6 +1065,7 @@
 			$("stage-3d").classList.toggle("hidden", tab !== "3d")
 			$("bench-view").classList.toggle("hidden", tab !== "bench")
 			$("drive-view").classList.toggle("hidden", tab !== "drive")
+			$("ros-view").classList.toggle("hidden", tab !== "ros")
 			$("fw-view").classList.toggle("hidden", tab !== "firmware")
 			if (tab === "firmware") loadFirmware()
 			$("stage-body").classList.toggle("on-bench", tab === "bench")
@@ -1280,6 +1282,21 @@
 			$("drive-plot").innerHTML = driveSvg(traj ?? [], { edgeMm: drive.edgeMm ?? S.contract?.values?.motion?.edgeMm ?? "?" })
 			const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])
 			$("drive-rows").innerHTML = driveRows(drive).map((r) => `<tr><td>${esc(r.name)}</td><td><b>${r.verdict}</b></td><td class="t3">${esc(r.detail)}</td></tr>`).join("")
+		}
+		// The robot's ROS 2 package and its acceptance test on each back end (ros/ros.json, src/ros/after-run.ts).
+		async function showRos() {
+			let r = null
+			try { const x = await fetch(file("ros/ros.json")); if (x.ok && x.status !== 204) r = await x.json() } catch {}
+			if (!r) return
+			S.rosShown = true
+			const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])
+			$("tabs").querySelector('[data-tab="ros"]').classList.remove("hidden")
+			$("ros-title").textContent = `ROS 2 package, design revision ${r.revision}`
+			$("ros-note").textContent = "every number in it comes from the design; the checks compare it with the hardware"
+			const pkg = "ros/ws/src/rover_bringup"
+			$("ros-files").innerHTML = [["urdf/rover.bringup.urdf", "robot model (URDF)"], ["config/controllers.yaml", "controllers"], ["launch/bringup.launch.py", "launch"], ["test/acceptance.py", "acceptance test"]].map(([p, label]) => `<a href="${file(`${pkg}/${p}`)}" target="_blank">${label}</a>`).join(" · ")
+			const name = { mock: "Mock hardware", qemu: "Robot's own firmware (QEMU + MuJoCo)" }
+			$("ros-results").innerHTML = r.results.map((x) => `<h4>${esc(name[x.backend] ?? x.backend)}: ${x.pass ? "pass" : "FAIL"}${x.bag ? ' <span class="t3">· recorded as MCAP</span>' : ""}</h4><table class="drive-rows">${x.checks.map((c) => `<tr><td>${esc(c.name)}</td><td><b>${c.pass ? "pass" : "FAIL"}</b></td><td class="t3">${esc(JSON.stringify(c.measured))} (expected ${esc(JSON.stringify(c.expected))})</td></tr>`).join("")}</table>${(x.diagnoses ?? []).map((d) => `<p><b>Symptom:</b> ${esc(d.symptom)}<br><b>Cause (${esc(d.confidence)}):</b> ${esc(d.cause)}<br><b>Fix:</b> ${esc(d.fix)} <span class="t3">(${esc(d.affects.join(", "))})</span></p>`).join("")}`).join("")
 		}
 		function stubbedRun() { return S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true }
 		async function circuitFor(rev) {
@@ -2504,6 +2521,8 @@
 					S.ended = true
 					$("stop-btn").classList.add("hidden")
 					syncChangeBar()
+					// A robot's ROS 2 acceptance runs after the run ends (a few minutes): look for its result until it's there.
+					;(async () => { for (let i = 0; i < 60 && !S.rosShown; i++) { await showRos(); if (S.rosShown) break; await new Promise((r) => setTimeout(r, 10_000)) } })()
 					break
 				case "design.settled":
 					checkOrder()
