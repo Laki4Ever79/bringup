@@ -797,7 +797,7 @@ function makeEditor() {
 	const m = stage.meta
 	// The server's chassis spec and the brief's motion (the payload's), else the files the views fetched.
 	editing.chassis = m.chassis ?? stage.chassis ?? null
-	editing.ed = editing.mod.editor({ assembly: m.assembly, links: m.spec?.links ?? [], chassis: editing.chassis, maxSizeMm: m.motion?.maxSizeMm ?? editing.maxSizeMm, i2cDevicesByBoard: m.i2cDevices ?? {} })
+	editing.ed = editing.mod.editor({ assembly: m.assembly, links: m.spec?.links ?? [], chassis: editing.chassis, maxSizeMm: m.motion?.maxSizeMm ?? editing.maxSizeMm, i2cDevicesByBoard: m.i2cDevices ?? {}, connectors: Object.fromEntries((m.boards ?? []).map((b) => [b.name, b.connectors ?? []])) })
 	editing.base = editing.ed.state()
 	editing.server = []
 	editing.msg = ""
@@ -921,8 +921,9 @@ function editRefresh() {
 	document.getElementById("edit-findings").innerHTML = findings.map((f) => `<li data-level="${esc(f.level)}"><b class="mono">${esc(label(f.target))}</b> ${esc(f.message)}</li>`).join("")
 	renderCard()
 }
-// What changed since the last Apply, in words: "moved climate 10 mm back", "rotated climate to 90°"… A cable's edge or
-// route that changed only because its board moved or turned is part of that move.
+// What changed since the last Apply, in words: "moved climate 10 mm back", "rotated climate to 90°"… A cable's route
+// that changed only because its board moved or turned is part of that move; a link connector moved to another edge is
+// always named (the board is laid out again), whatever caused it.
 function describeEdits(from, to) {
 	const out = [], moved = new Set()
 	const mm = (v) => `${Math.round(Math.abs(v) * 10) / 10} mm`
@@ -942,8 +943,10 @@ function describeEdits(from, to) {
 		if (!o) { out.push(`added ${l.id} (${l.kind.toUpperCase()} ${l.a.board} ↔ ${l.b.board})`); continue }
 		if (l.kind !== o.kind) out.push(`made ${l.id} ${l.kind.toUpperCase()}`)
 		const follows = moved.has(l.a.board) || moved.has(l.b.board)
+		const boardChanges = ["a", "b"].filter((e) => o[e].edge && l[e].edge && o[e].edge !== l[e].edge && o[e].board === l[e].board)
 		if (route(from, l.id) !== route(to, l.id) && !follows) out.push(`routed ${l.id}`)
-		else if ((l.a.edge !== o.a.edge || l.b.edge !== o.b.edge) && !follows) out.push(`moved ${l.id}'s ends to ${l.a.board} ${l.a.edge ?? "auto"}, ${l.b.board} ${l.b.edge ?? "auto"}`)
+		else if ((l.a.edge !== o.a.edge || l.b.edge !== o.b.edge) && !follows && !boardChanges.length) out.push(`moved ${l.id}'s ends to ${l.a.board} ${l.a.edge ?? "auto"}, ${l.b.board} ${l.b.edge ?? "auto"}`)
+		for (const e of boardChanges) out.push(`moves J${l.id} on ${l[e].board} from ${o[e].edge} to ${l[e].edge} edge: a board change`)
 	}
 	for (const o of from.links) if (!to.links.some((l) => l.id === o.id)) out.push(`removed ${o.id}`)
 	return out

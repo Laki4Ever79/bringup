@@ -265,6 +265,24 @@ test("add a cable from a board's dot, pick I2C, then bend its route; the card de
 	})
 })
 
+test("a cable bent round behind main moves its connector: a warning on L1, and Apply's text says so", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts }) => {
+		await enter(page)
+		const before = await page.evaluate(() => (window as unknown as { __edit: { state: () => { links: { a: { edge?: string }; b: { edge?: string } }[] } } }).__edit.state().links[0])
+		assert.deepEqual([before.a.edge, before.b.edge], ["right", "top"], "L1 starts from the boards' real JL1 edges")
+		const m = await geom(page, "main")
+		const h = await page.locator('#stage-top [data-route-handle="L1:0"]').boundingBox()
+		const from = { x: h!.x + h!.width / 2, y: h!.y + h!.height / 2 }
+		await drag(page, from, { x: m.x - 40 * m.k, y: from.y })
+		const findings = await page.evaluate(() => (window as unknown as { __edit: { findings: () => { level: string; message: string; target: { link?: string } }[] } }).__edit.findings())
+		assert.ok(findings.some((f) => f.level === "warn" && f.target.link === "L1" && f.message === "moves JL1 on main from right to left edge: a board change"), JSON.stringify(findings))
+		assert.match(await page.locator("#edit-findings").textContent() ?? "", /moves JL1 on main from right to left edge: a board change/)
+		await page.click("#edit-apply")
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes")
+		assert.match(String(posts[0].body.text), /moves JL1 on main from right to left edge: a board change/)
+	})
+})
+
 const at = (x: number) => (d: Design) => { d.assembly.boards.find((b) => b.name === "main")!.xMm = x }
 const stateX = (page: Page, board: string) => page.evaluate((b) => (window as unknown as { __edit: { state: () => { assembly: { boards: { name: string; xMm: number }[] } } } }).__edit.state().assembly.boards.find((x) => x.name === b)!.xMm, board)
 

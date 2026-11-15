@@ -78,7 +78,7 @@ test("an I2C route over the limit is an error; UART is not limited", () => {
 	e.apply({ kind: "cable-add", a: "main", b: "front", cableKind: "i2c" })
 	const { maxMm } = i2cCableLimit(100, 0)
 	assert.deepEqual(e.findings(), [], "a short bus cable is fine")
-	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: -20, yMm: 0 }, { xMm: -20, yMm: 50 }, { xMm: 20, yMm: 50 }, { xMm: 20, yMm: 0 }, { xMm: 60, yMm: 0 }, { xMm: 60, yMm: -40 }, { xMm: 2200, yMm: -40 }] })
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: -20, yMm: 0 }, { xMm: -20, yMm: 50 }, { xMm: 2200, yMm: 50 }, { xMm: 2200, yMm: -40 }, { xMm: 0, yMm: -40 }, { xMm: 0, yMm: 0 }, { xMm: 20, yMm: 0 }] })
 	const route = e.state().assembly.cables![0].points
 	assert.ok(e.state().links[0].cable.lengthMm > maxMm)
 	assert.equal(route.length, 7)
@@ -288,4 +288,55 @@ test("mech-fit on the move: a board in front of the distance sensor is an error 
 	e.undo()
 	e.apply({ kind: "move", board: "climate", xMm: 92, yMm: 40 })
 	assert.ok(!e.findings().some((x) => /distance sensor/.test(x.message)), "beside it, not in front")
+})
+
+// Each board's link connector, as the payload carries it (robot-2: main's JL1 on its right edge, climate's on its top).
+const r2Connectors = { main: [{ ref: "JL1", kind: "header", edge: "right", offsetMm: 15.5 }], climate: [{ ref: "JL1", kind: "header", edge: "top", offsetMm: 13 }] }
+
+test("a cable starts from the boards' real connector edges", () => {
+	const l = editor(r2({ connectors: r2Connectors })).state().links[0]
+	assert.deepEqual([l.a.edge, l.b.edge], ["right", "top"])
+})
+
+test("one bend in L1 on robot-2 keeps both real edges, with no warning", () => {
+	const e = editor(r2({ connectors: r2Connectors }))
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: 16.5, yMm: 0 }, { xMm: 32, yMm: 40 }, { xMm: 48, yMm: 13 }] })
+	const l = e.state().links[0]
+	assert.deepEqual([l.a.edge, l.b.edge], ["right", "top"])
+	assert.deepEqual(e.findings(), [])
+})
+
+test("a route that can't leave from the real edge moves the connector: a warning on the link, and the end on the new edge", () => {
+	const e = editor(r2({ connectors: r2Connectors }))
+	// Out of main's back, around, into climate's top.
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: 16.5, yMm: 0 }, { xMm: -40, yMm: 0 }, { xMm: -40, yMm: 40 }, { xMm: 48, yMm: 40 }, { xMm: 48, yMm: 13 }] })
+	const l = e.state().links[0]
+	assert.deepEqual([l.a.edge, l.b.edge], ["left", "top"])
+	const pts = e.state().assembly.cables![0].points
+	assert.deepEqual(pts[0], { xMm: -16.5, yMm: 0 }, "the route starts on main's left edge")
+	assert.deepEqual(pts.at(-1), { xMm: 48, yMm: 13 })
+	const warn = e.findings().filter((x) => x.level === "warn")
+	assert.deepEqual(warn, [{ target: { link: "L1" }, level: "warn", message: "moves JL1 on main from right to left edge: a board change" }])
+	assert.deepEqual(e.edgeChanges(), [{ link: "L1", board: "main", ref: "JL1", from: "right", to: "left" }])
+})
+
+test("a hand-routed cable keeps its edge on a move while it can reach it; a turn re-faces its end on the board", () => {
+	const e = editor(r2({ connectors: r2Connectors }))
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: 16.5, yMm: 0 }, { xMm: 32, yMm: 40 }, { xMm: 48, yMm: 13 }] })
+	e.apply({ kind: "move", board: "climate", xMm: 48, yMm: -10 })
+	assert.deepEqual(e.findings(), [], "climate's top still faces the bend")
+	e.apply({ kind: "rotate", board: "main" })
+	const l = e.state().links[0]
+	// Turned 90°, main's right edge faces +y, toward the bend at (32, 40): kept, and the route's end is on it.
+	assert.equal(l.a.edge, "right")
+	assert.deepEqual(e.state().assembly.cables![0].points[0], { xMm: 0, yMm: 16.5 })
+})
+
+test("a move that leaves a cable's edge facing away from its peer re-faces it, moves its end and warns", () => {
+	const e = editor(r2({ connectors: r2Connectors }))
+	e.apply({ kind: "cable-route", link: "L1", points: [{ xMm: 16.5, yMm: 0 }, { xMm: 48, yMm: 30 }, { xMm: 48, yMm: 13 }] })
+	assert.deepEqual(e.findings(), [])
+	e.apply({ kind: "move", board: "climate", xMm: 48, yMm: 40 })
+	assert.ok(e.findings().some((x) => x.level === "warn" && x.message === "moves JL1 on climate from top to bottom edge: a board change"), "climate's top now faces away from main")
+	assert.deepEqual(e.state().assembly.cables![0].points.at(-1), { xMm: 48, yMm: 27 }, "the end is on climate's bottom edge")
 })
