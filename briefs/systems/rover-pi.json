@@ -1,0 +1,107 @@
+{
+	"name": "a rover with a Raspberry Pi 5 as its brain, on a generated HAT",
+	"boards": [
+		{
+			"name": "main",
+			"brief": "../rover-pi.md"
+		},
+		{
+			"name": "brain",
+			"kind": "bought",
+			"module": "rpi-5"
+		},
+		{
+			"name": "rpi-5-carrier",
+			"brief": "../rpi-5-carrier.md",
+			"carries": "brain"
+		}
+	],
+	"links": [],
+	"assembly": {
+		"body": "chassis",
+		"plate": {
+			"lengthMm": 246,
+			"widthMm": 110
+		},
+		"boards": [
+			{
+				"name": "main",
+				"xMm": 0,
+				"yMm": 0,
+				"rotDeg": 0,
+				"outline": {
+					"widthMm": 40,
+					"heightMm": 30
+				},
+				"outlineSource": "estimate"
+			},
+			{
+				"name": "brain",
+				"xMm": -70.5,
+				"yMm": 0,
+				"rotDeg": 0,
+				"outline": {
+					"widthMm": 85,
+					"heightMm": 56
+				},
+				"outlineSource": "built",
+				"holes": [
+					{
+						"x": 3.5,
+						"y": 3.5,
+						"dia": 2.7
+					},
+					{
+						"x": 61.5,
+						"y": 3.5,
+						"dia": 2.7
+					},
+					{
+						"x": 3.5,
+						"y": 52.5,
+						"dia": 2.7
+					},
+					{
+						"x": 61.5,
+						"y": 52.5,
+						"dia": 2.7
+					}
+				]
+			},
+			{
+				"name": "rpi-5-carrier",
+				"xMm": -70.5,
+				"yMm": 0,
+				"rotDeg": 0,
+				"outline": {
+					"widthMm": 85,
+					"heightMm": 56
+				},
+				"outlineSource": "estimate",
+				"carries": "brain",
+				"holes": [
+					{
+						"x": 3.5,
+						"y": 3.5,
+						"dia": 2.7
+					},
+					{
+						"x": 61.5,
+						"y": 3.5,
+						"dia": 2.7
+					},
+					{
+						"x": 3.5,
+						"y": 52.5,
+						"dia": 2.7
+					},
+					{
+						"x": 61.5,
+						"y": 52.5,
+						"dia": 2.7
+					}
+				]
+			}
+		]
+	}
+}
