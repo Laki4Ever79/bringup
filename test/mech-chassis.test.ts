@@ -124,3 +124,23 @@ test("the consistency check reports a chassis whose standoffs miss the board, an
 	assert.ok(!checkConsistency(s, chassis({ standoffHoles: holes })).some((v) => v.kind === "board-mount-mismatch"))
 	assert.ok(!checkConsistency(s, chassis(null, true)).some((v) => v.kind === "board-mount-mismatch"))
 })
+
+// The scripted rover (d9610c's e2e-rover2 run, 15 Nov 2026): at revision 11 the architect moved every connector, so a
+// different corner of the 43×28 mm board lost its mounting hole (a connector covers it), but the chassis wasn't rebuilt
+// (its inputs were mechanics, motion and outline) and board-mount-mismatch flagged the stale one. The chassis follows
+// what the board's holes come from: the connectors, and the parts that give their footprints.
+test("the scripted rover's chassis follows its board's holes: rebuilt when the connectors move, and then it matches", async () => {
+	const { BUILD_INPUTS } = await import("../src/agents/builders.ts")
+	assert.ok(BUILD_INPUTS.chassis.includes("connectors") && BUILD_INPUTS.chassis.includes("parts"), BUILD_INPUTS.chassis.join(", "))
+	const { boardMountChecks } = await import("../src/tools/chassis.ts")
+	const fx = (f: string) => JSON.parse(readFileSync(join(ROOT, "test/fixtures", f), "utf8"))
+	const built10 = fx("e2e-rover2-chassis-rev10-mounts.json")
+	// The chassis built for revision 10 matches revision 10's board, and not revision 11's.
+	assert.deepEqual(boardMountChecks(fx("e2e-rover2-rev10.json"), built10), [])
+	assert.match(boardMountChecks(fx("e2e-rover2-rev11.json"), built10)[0]?.message ?? "", /main's hole at \(18\.5, 11\) has no standoff under it/)
+	// Its spec for revision 11 has revision 11's holes.
+	const { mountingHoles } = await import("../src/codegen/circuit.ts")
+	const s11 = fx("e2e-rover2-rev11.json")
+	const main = chassisSpec(s11)!.boards[0]
+	assert.deepEqual(main.holes.map((h) => [h.xMm, h.yMm]), mountingHoles(s11).map((h) => [main.xMm + h.x, main.yMm + h.y]))
+})
