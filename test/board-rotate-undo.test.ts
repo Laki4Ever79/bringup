@@ -236,18 +236,17 @@ test("by default the motor driver's pin capacitors point out from their pads, as
 // The real rover run on the Claude subscription (cc-rover-1, 15 Nov 2026): on the 60×21 mm board VCP's capacitor
 // pointed out from the pin row (9.25 mm of trace), and the along-the-pads retry was never built because it moved the
 // debug footprint's spot. It builds now, with its own spot and pads.
-// Since the generator draws a part's capacitor traces (capPaths, 15 Nov 2026), a layout that draws them gets no
-// along-the-pads retry: the retry was for a too-long trace, which a drawn one isn't.
-test("the along-the-pads retry is not offered when the layout draws the capacitor traces itself", async () => {
+// Retries after a layout fails: first the same layout with its capacitor traces drawn (capPaths, 15 Nov 2026), then
+// with the capacitors along their pads, even when that moves the debug footprint.
+test("a failed layout's retries: its capacitor traces drawn, then the along-the-pads layout", async () => {
 	const { layoutAttempts } = await import("../src/tools/board.ts")
 	const s = JSON.parse(readFixture(joinPath(import.meta.dirname, "fixtures/cc-rover-60x21-rev17.json"), "utf8")) as ContractSnapshot
 	const attempts = layoutAttempts(s, [{ ldoFromUsbMm: 8 }])
-	assert.deepEqual(attempts, [{ ldoFromUsbMm: 8 }])
+	assert.deepEqual(attempts, [{ ldoFromUsbMm: 8 }, { ldoFromUsbMm: 8, drawCaps: true }, { ldoFromUsbMm: 8, capsAlong: true }])
 	assert.notDeepEqual(layoutBoard(s, { ldoFromUsbMm: 8 }).debug, layoutBoard(s, { ldoFromUsbMm: 8, capsAlong: true }).debug, "the retry's debug spot is its own")
 	// Not when the design has a production test and its pads would move.
 	const withTest = { ...s, values: { ...s.values, test: { nets: ["GND"], limits: {} } } } as never as ContractSnapshot
 	const { testPoints } = await import("../src/codegen/circuit.ts")
 	const moved = JSON.stringify(testPoints(withTest).placed) !== JSON.stringify(testPoints(withTest, { capsAlong: true }).placed)
-	void moved
-	assert.deepEqual(layoutAttempts(withTest, [{ ldoFromUsbMm: 8 }]).length, 1)
+	assert.deepEqual(layoutAttempts(withTest, [{ ldoFromUsbMm: 8 }]).length, moved ? 2 : 3)
 })

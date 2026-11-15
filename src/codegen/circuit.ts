@@ -700,6 +700,10 @@ export interface PlacementOptions {
 	// 2026). The board build tries it next when the default layout's trace runs past its bound (the 42×29 rover with U5
 	// turned 180°, where pointing out GND's trace ran 14.7 mm).
 	capsAlong?: boolean
+	// true: the traces of a capacitor wired between two pins of one part are drawn by the generator (capPaths), not left
+	// to the router. A retry, not the default: drawn first, they shift every other route, and boards that routed clean
+	// lost their debug footprint to traces beside its holes (the 43×28 rover, 47 s → 201 s, 15 Nov 2026).
+	drawCaps?: boolean
 }
 
 // Board mounting holes for M2 screws: 2.2 mm clearance holes, centred 3 mm in from each corner. Nothing is placed
@@ -1745,8 +1749,8 @@ function segGap(a: { x: number; y: number }, b: { x: number; y: number }, c: { x
 	return Math.min(toSeg(a, c, d), toSeg(b, c, d), toSeg(c, a, b), toSeg(d, a, b))
 }
 
-function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string[] {
-	const drawn = drawnCapPaths(s, placement)
+function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = false): string[] {
+	const drawn = draw ? drawnCapPaths(s, placement) : []
 	const lines: string[] = []
 	const port = (ref: string, pin: string) => `.${ref} > .${pin}`
 	for (const sp of supportParts(s)) {
@@ -1835,7 +1839,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 
 	// An I2C link joins the board's own bus: the connector's IO1 and IO2 to I2C_SDA and I2C_SCL (docs/system.md).
 	for (const t of linkBusTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
-	lines.push(...powerLines(s, placement))
+	lines.push(...powerLines(s, placement, !!opts.drawCaps))
 	// Test pads join their net by name: a contract signal's net, or a generated power net (one that reaches two parts).
 	const nets = new Set([...pins.map((p) => p.signal), ...generatedNets(s).keys()])
 	const bootNet = recoveryBootNet(s)

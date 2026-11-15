@@ -27,8 +27,10 @@ test("a capacitor between two pins of one part gets both its traces drawn, each 
 	assert.ok(vm.lengthMm > of("C4").find((p) => p.pin === "VCP")!.lengthMm)
 })
 
-test("the drawn traces go into the circuit as pcbPath, relative to the part they start from", () => {
-	const src = circuitFromContract(rover(60, 21), { ldoFromUsbMm: 8 })
+test("in the drawCaps retry the drawn traces go into the circuit as pcbPath, relative to the part they start from", () => {
+	// Only in the retry that draws them: the default leaves every trace to the router.
+	assert.doesNotMatch(circuitFromContract(rover(60, 21), { ldoFromUsbMm: 8 }), /pcbPath/)
+	const src = circuitFromContract(rover(60, 21), { ldoFromUsbMm: 8, drawCaps: true })
 	assert.match(src, /<trace name="U5_VM_C4" from="\.U5 > \.VM" to="\.C4 > \.pin2" pcbPath=\{\[/)
 	assert.match(src, /<trace name="U5_VCP_C4" from="\.U5 > \.VCP" to="\.C4 > \.pin1" pcbPath=\{\[/)
 	// Measured in the real build: U5 at (7.5, 4.5), VM's pad at (11.43, 4.18), C4's pin 2 at (14.51, 3): the corner at
