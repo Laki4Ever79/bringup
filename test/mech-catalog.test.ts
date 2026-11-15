@@ -15,7 +15,8 @@ test("every number of every drive part has a source: a URL and where on it", () 
 		for (const part of list as unknown as Record<string, unknown>[]) {
 			const source = part.source as Record<string, { url?: string; where?: string }>
 			for (const [k, v] of Object.entries(part)) {
-				if (k === "source" || k === "mpn" || typeof v === "string" || typeof v === "boolean") continue
+				// Numbers only: names, flags and the shop links ("buy": where to order, with live prices, not a datasheet value).
+				if (k === "source" || k === "mpn" || k === "buy" || typeof v === "string" || typeof v === "boolean") continue
 				assert.ok(source[k]?.url && source[k]?.where, `${part.mpn}: ${k} has no source`)
 			}
 		}
