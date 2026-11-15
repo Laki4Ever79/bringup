@@ -1,3 +1,4 @@
+import { evidenceDir, LEVELS, moduleStatus } from "./modules/library.ts"
 import "dotenv/config"
 import { loadSpec, specErrors } from "./system/spec.ts"
 import { runSystem } from "./system/run.ts"
@@ -112,6 +113,15 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			return 1
 		}
 		for (const line of [...linkedStatusLines(dir), ...driftStatusLines(readDrift(dir), dir)]) console.log(line)
+		return 0
+	}
+	// `bringup modules`: the robot module library, each module's proof level and its evidence (src/modules/library.ts).
+	if (argv[0] === "modules") {
+		const root = resolve(import.meta.dirname, "..")
+		console.log("| Module | Level | Runs | Passes | Fails | Last | Problems |")
+		console.log("|---|---|---|---|---|---|---|")
+		for (const s of moduleStatus(root)) console.log(`| ${s.module.id} | ${s.level ?? "not cited"} | ${s.runs} | ${s.passes} | ${s.fails} | ${s.last ?? "-"} | ${s.problems.join("; ")} |`)
+		console.log(`\nLevels: ${LEVELS.join(" < ")}. Evidence: ${evidenceDir()}`)
 		return 0
 	}
 	// `bringup simulate <runDir>`: the run's newest firmware in Wokwi, on demand (tools/wokwi.ts); simulation.json.

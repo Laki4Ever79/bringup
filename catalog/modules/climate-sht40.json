@@ -1,0 +1,9 @@
+{
+	"id": "climate-sht40",
+	"kind": "sensor",
+	"title": "SHT40 temperature and humidity sensor on the board's I2C bus",
+	"parts": [{ "mpn": "SHT40-AD1B-R2", "role": "sensor", "qty": 1 }],
+	"circuit": "sensor on I2C with pull-ups (src/codegen/circuit.ts)",
+	"driver": "include/drivers/sensirion.h",
+	"interfaces": [{ "kind": "i2c", "signals": ["I2C_SDA", "I2C_SCL"], "address": "0x44" }]
+}
