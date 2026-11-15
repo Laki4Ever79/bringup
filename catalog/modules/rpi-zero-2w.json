@@ -1,0 +1,324 @@
+{
+	"id": "rpi-zero-2w",
+	"kind": "compute",
+	"title": "Raspberry Pi Zero 2 W (bought), on a generated carrier",
+	"parts": [
+		{
+			"mpn": "RPI-ZERO-2W",
+			"role": "compute",
+			"qty": 1,
+			"alternatives": []
+		}
+	],
+	"circuit": "bought; carrier per src/system",
+	"interfaces": [
+		{
+			"kind": "uart",
+			"signals": [
+				"GPIO14 TX (pin 8)",
+				"GPIO15 RX (pin 10)"
+			]
+		},
+		{
+			"kind": "i2c",
+			"signals": [
+				"GPIO2 SDA (pin 3)",
+				"GPIO3 SCL (pin 5)"
+			]
+		},
+		{
+			"kind": "pwm",
+			"signals": [
+				"GPIO12 PWM0 (pin 32)",
+				"GPIO13 PWM1 (pin 33)"
+			]
+		},
+		{
+			"kind": "usb",
+			"signals": [
+				"1 × USB 2.0 OTG (micro-USB)"
+			]
+		},
+		{
+			"kind": "power",
+			"signals": [
+				"5V (pins 2, 4)",
+				"micro-USB 5V"
+			]
+		}
+	],
+	"compute": {
+		"frame": "millimetres, origin at the board's lower-left corner seen from the top, GPIO header along the top edge, x right, y up (as the mechanical drawing)",
+		"outline": {
+			"value": {
+				"widthMm": 65,
+				"heightMm": 30
+			},
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf",
+				"where": "overall 65 and 30"
+			},
+			"also": {
+				"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf",
+				"where": "Specification, Form factor: 65mm × 30mm"
+			}
+		},
+		"holes": {
+			"value": [
+				{
+					"x": 3.5,
+					"y": 3.5,
+					"dia": null
+				},
+				{
+					"x": 61.5,
+					"y": 3.5,
+					"dia": null
+				},
+				{
+					"x": 3.5,
+					"y": 26.5,
+					"dia": null
+				},
+				{
+					"x": 61.5,
+					"y": 26.5,
+					"dia": null
+				}
+			],
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf",
+				"where": "holes 3.5 from the left, right and bottom edges, 23 between centres vertically"
+			},
+			"note": "the hole diameter isn't on the Zero 2 W drawing: measure a board or take the vendor's model before cutting standoffs"
+		},
+		"tallestMm": {
+			"value": null,
+			"unit": "mm",
+			"source": null,
+			"note": "not on the mechanical drawing (it has no side view or heights): measure a board before relying on it"
+		},
+		"header": {
+			"at": {
+				"value": {
+					"x": 32.5,
+					"y": 26.5,
+					"pitchMm": 2.54,
+					"rows": 2,
+					"cols": 20,
+					"pin1": "lower-left of the header"
+				},
+				"source": {
+					"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf",
+					"where": "header centre 29 right of the left holes (3.5 + 29), on the top holes' row"
+				},
+				"pin1Source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+					"where": "'On classic SBCs and Zero models, Pin 1 is located in the lower-left corner of the header' (Pin layout section)"
+				},
+				"note": "the board ships with an unpopulated footprint: solder a 2×20 header, or the generated carrier can't plug in"
+			},
+			"headerSource": {
+				"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf",
+				"where": "'an unpopulated footprint for a HAT-compatible 40-pin GPIO header'"
+			},
+			"pins": {
+				"value": {
+					"1": "3V3",
+					"2": "5V",
+					"3": "GPIO2 I2C SDA",
+					"4": "5V",
+					"5": "GPIO3 I2C SCL",
+					"6": "GND",
+					"7": "GPIO4",
+					"8": "GPIO14 UART TX",
+					"9": "GND",
+					"10": "GPIO15 UART RX",
+					"11": "GPIO17",
+					"12": "GPIO18",
+					"13": "GPIO27",
+					"14": "GND",
+					"15": "GPIO22",
+					"16": "GPIO23",
+					"17": "3V3",
+					"18": "GPIO24",
+					"19": "GPIO10",
+					"20": "GND",
+					"21": "GPIO9",
+					"22": "GPIO25",
+					"23": "GPIO11",
+					"24": "GPIO8",
+					"25": "GND",
+					"26": "GPIO7",
+					"27": "GPIO0 HAT ID_SD (reserved)",
+					"28": "GPIO1 HAT ID_SC (reserved)",
+					"29": "GPIO5",
+					"30": "GND",
+					"31": "GPIO6",
+					"32": "GPIO12 PWM0",
+					"33": "GPIO13 PWM1",
+					"34": "GND",
+					"35": "GPIO19",
+					"36": "GPIO16",
+					"37": "GPIO26",
+					"38": "GPIO20",
+					"39": "GND",
+					"40": "GPIO21"
+				},
+				"source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+					"where": "table 'Pin names, types, and typical functions' (the standard layout for B+ and later and all Zero models)"
+				}
+			}
+		},
+		"ports": {
+			"value": [
+				{
+					"kind": "mini-hdmi",
+					"side": "bottom",
+					"atMm": 12.4
+				},
+				{
+					"kind": "micro-usb",
+					"side": "bottom",
+					"atMm": 41.4
+				},
+				{
+					"kind": "micro-usb",
+					"side": "bottom",
+					"atMm": 54
+				},
+				{
+					"kind": "csi-2 camera",
+					"side": "right",
+					"atMm": null
+				},
+				{
+					"kind": "microsd",
+					"side": "underside",
+					"atMm": null
+				}
+			],
+			"source": {
+				"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf",
+				"where": "bottom-edge centres 12.4, 41.4 and 54 from the left edge; the camera connector sits on the right edge, not dimensioned"
+			},
+			"also": {
+				"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf",
+				"where": "'a microSD card slot, a CSI-2 camera connector, a USB On-The-Go (OTG) port' ... 'powered via a micro USB socket. Video output is via a mini HDMI port'"
+			},
+			"note": "the drawing doesn't say which micro-USB is power and which is OTG data"
+		},
+		"inputV": {
+			"value": {
+				"nom": 5.1,
+				"min": null,
+				"max": null
+			},
+			"unit": "V",
+			"source": {
+				"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+				"where": "'All models require a 5.1V supply'"
+			},
+			"note": "no tolerance published; min and max unknown. The Zero range has no low-voltage detection, so a sagging supply gives no warning",
+			"also": {
+				"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+				"where": "Power supply warnings: low-voltage detection 'if the supply voltage drops below 4.63 V (±5%)' on all models since B+ 'except the Zero range'"
+			}
+		},
+		"currentA": {
+			"typical": {
+				"value": 0.35,
+				"unit": "A",
+				"source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+					"where": "table 'Typical power requirements', row Zero 2 W: typical bare-board active current consumption 350mA"
+				}
+			},
+			"peak": {
+				"value": 2.0,
+				"unit": "A",
+				"source": {
+					"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+					"where": "same table: recommended PSU current capacity 2A"
+				},
+				"note": "the supply the docs recommend; the product brief's Input power says 5V DC 2.5A. The board's own peak isn't published"
+			},
+			"briefInput": {
+				"value": 2.5,
+				"unit": "A",
+				"source": {
+					"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf",
+					"where": "Specification, Input power: 5V DC 2.5A"
+				}
+			}
+		},
+		"feeds": {
+			"value": [
+				{
+					"via": "micro-usb",
+					"what": "5V",
+					"source": {
+						"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf",
+						"where": "'It is powered via a micro USB socket'"
+					}
+				},
+				{
+					"via": "header 5V pins (2, 4)",
+					"what": "accepts 5 V input, for example from a HAT",
+					"source": {
+						"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+						"where": "pins 2 and 4: 'accepts 5 V power input to power a Raspberry Pi (for example, through a PoE+ HAT or third-party HAT)'"
+					}
+				}
+			]
+		},
+		"gpioLevel": {
+			"value": 3.3,
+			"unit": "V",
+			"source": {
+				"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+				"where": "'Raspberry Pi GPIO pins operate at 3.3 V and aren't 5 V tolerant'"
+			}
+		},
+		"os": {
+			"value": "Raspberry Pi OS; Ubuntu (listed for Raspberry Pi Zero 2 W) for ROS 2",
+			"source": {
+				"url": "https://ubuntu.com/download/raspberry-pi",
+				"where": "table 'All certified Raspberry Pi hardware': Raspberry Pi Zero 2 W, Ubuntu 26.04 LTS: Yes"
+			},
+			"note": "512MB of RAM (product brief, Memory): a full ROS 2 stack is tight; ubuntu.com now lists 26.04, ROS 2 Jazzy targets 24.04 (Noble)"
+		},
+		"ros2": {
+			"value": {
+				"distro": "jazzy",
+				"tier": 1,
+				"platform": "Ubuntu Noble arm64"
+			},
+			"source": {
+				"url": "https://github.com/ros-infrastructure/rep/blob/master/rep-2000.rst",
+				"where": "Jazzy Jalisco: arm64 / Ubuntu Noble (24.04): Tier 1"
+			}
+		},
+		"bridgeDevice": {
+			"value": "/dev/ttyACM0",
+			"via": "the MCU board's native USB (CDC-ACM), one cable per board through the robot's USB-C hub",
+			"source": {
+				"url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/usb-serial-jtag-console.html",
+				"where": "Uploading the Application, note: the USB Serial/JTAG Controller's serial port appears 'as /dev/ttyACM* on Linux'"
+			},
+			"note": "the first board to enumerate gets ttyACM0; with several MCU boards, pin each by its USB serial number (a udev rule or /dev/serial/by-id) rather than by order. The Zero 2 W has one USB OTG micro-USB port (product brief): the MCU board's USB needs it in host mode (an OTG adapter or hub), so the UART alternative may be the simpler link",
+			"alternatives": [
+				{
+					"value": "/dev/ttyAMA0",
+					"source": {
+						"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/configuration/interfaces.adoc",
+						"where": "Change the primary UART: on 'Raspberry Pi Zero W, Zero 2 W, 3, and 4' the PL011 UART0 'is connected to the Bluetooth controller by default, so the mini UART is the primary UART on GPIO 14 and 15'; table 'Linux device nodes for UARTs': /dev/ttyAMA0 = first PL011 (UART0), /dev/ttyS0 = mini UART"
+					},
+					"note": "on Raspberry Pi Zero 2 W GPIO14/15 default to the mini UART (/dev/ttyS0), whose baud rate follows the VPU core clock ('Mini UART and core frequency'), and the primary UART carries the Linux serial console by default. For a reliable link to the MCU board, give UART0 to GPIO14/15 (disable Bluetooth with the disable-bt overlay, or move it with miniuart-bt) and turn the serial console off",
+					"via": "UART0 on header pins 8 (GPIO14 TX) and 10 (GPIO15 RX)"
+				}
+			]
+		}
+	}
+}
