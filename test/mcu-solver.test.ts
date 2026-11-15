@@ -66,7 +66,8 @@ test("the ESP32-C3's GPIO matrix: any free pin carries any peripheral; its budge
 	const r = solvePins(esp, i2c("I2C"))
 	assert.ok(r.ok, r.ok ? "" : r.reason)
 	assert.deepEqual(freeGpios(esp), [4, 5, 6, 7, 3, 1, 0])
-	assert.deepEqual(peripheralsFree(esp), { uart: 1, i2c: 1, spi: 1, i2s: 1, radio: 1 })
+	// TWAI is the ESP32-C3's CAN controller (a CAN link, 15 Nov 2026).
+	assert.deepEqual(peripheralsFree(esp), { uart: 1, i2c: 1, can: 1, spi: 1, i2s: 1, radio: 1 })
 	assert.equal(peripheralsFree(stm).radio, 0)
 	assert.equal(peripheralsFree(stm).i2c, 2)
 	assert.equal(peripheralsFree(stm).uart, 1)
