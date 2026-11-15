@@ -3,7 +3,7 @@ import { createHuman, SemanticEvent } from "@mozaik-ai/core"
 import assert from "node:assert/strict"
 import { BringupState, emit, join, startRuntime } from "../src/runtime.ts"
 import { BUILD_REQUIRES, createBuilder } from "../src/agents/builders.ts"
-import { createConsistencyParticipant } from "../src/agents/consistency.ts"
+import { createConsistencyParticipant, FROZEN_REASON } from "../src/agents/consistency.ts"
 import { createChangeDesk } from "../src/change-control.ts"
 import { makeEvent } from "../src/events.ts"
 import { CORE_FIELDS, type ContractValues, type FieldName } from "../src/contract/types.ts"
@@ -63,11 +63,26 @@ test("does not settle while a change request is open", async () => {
 	assert.deepEqual(t.settled, [])
 })
 
-test("stops after too many revisions", async () => {
+test("stops after too many revisions: the contract freezes, the builds of the last revision finish, then it ends", async () => {
 	const t = setup({ maxRevisions: 3 })
-	t.writeAll()
+	const v = fixtureContract().values
+	const refused: string[] = []
+	for (const f of CORE_FIELDS) {
+		try {
+			t.write(f, v[f])
+		} catch (e) {
+			refused.push(f)
+		}
+	}
+	// Revision 4 crossed the cap of 3: every later write is refused with the reason.
+	assert.ok(refused.length > 0, "writes after the cap were taken")
+	assert.equal(t.state.contract.revision, 4)
+	const r = t.state.contract.propose({ field: "outline", value: { widthMm: 70, heightMm: 30, thicknessMm: 1.6 }, by: "architect", baseVersion: t.state.contract.version("outline") })
+	assert.deepEqual(r, { status: "invalid", reason: FROZEN_REASON })
 	await waitFor(() => t.settled.length > 0)
 	assert.equal(t.settled[0].settled, false)
+	// The violations seen while draining wake no agent.
+	assert.ok(t.events.some((e) => e.type === "consistency.checked" && (e as { payload?: { draining?: boolean } }).payload?.draining === true))
 })
 
 test("does not settle until the grounding check has grounded the current parts and pins", async () => {

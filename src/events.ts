@@ -81,7 +81,10 @@ export interface Payloads {
 	"contract.changed": { field: FieldName; version: number; revision: number; by: AgentRole; reason?: string; before?: unknown; after?: unknown; cause?: Cause }
 	// warning: what the change does beyond its field, shown to the engineer who must confirm it (a case change that
 	// changes the PCB, contract/case.ts boardChangeWarning).
-	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string; needsEngineer: boolean; warning?: string }
+	"change.proposed": { proposalId: string; field: FieldName; by: AgentRole; reason: string; needsEngineer: boolean; warning?: string; predicted?: string[] }
+	// A change to another agent's field that the checks refused before its owner was asked: it would raise a violation
+	// in the owner's own care (src/contract/predict.ts).
+	"change.refused": { field: FieldName; by: AgentRole; owner: AgentRole; reason: string }
 	// The final outcome of a held change (votes are change.decided), timeouts included.
 	"change.resolved": { proposalId: string; approved: boolean; reason: string; decidedBy: string[] }
 	"change.decided": { proposalId: string; approved: boolean; by: AgentRole; reason: string }
@@ -93,7 +96,9 @@ export interface Payloads {
 	// revision the firmware printed on serial, null if it never got that far. Not an artifact: it never blocks settling.
 	// backend: which simulator ran it (Espressif's QEMU boots it; Wokwi, on demand, is reported in simulation.json).
 	"firmware.booted": { revision: number; booted: boolean; bootRevision: number | null; serialTail: string; backend?: "qemu" | "wokwi" | "renode" }
-	"consistency.checked": { revision: number; violations: Violation[] }
+	// draining: the revision budget is spent, the contract takes no more changes and the builds are finishing; the
+	// violations are recorded for the report and the dashboard, and wake no agent.
+	"consistency.checked": { revision: number; violations: Violation[]; draining?: boolean }
 	"grounding.checked": { revision: number; findings: GroundingFinding[] }
 	// The design is consistent and quiet; the brief reviewer judges it before it settles.
 	"design.ready": { revision: number; round: number }

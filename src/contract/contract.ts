@@ -25,6 +25,14 @@ export class DesignContract {
 	private catalog: CatalogEntry[] | null = null
 	// Every revision as it was applied, so diffs between revisions can be shown after the fact.
 	private history: ContractSnapshot[] = []
+	// Why no change is taken now (the run's revision budget is spent and its builds are finishing), or null.
+	private frozen: string | null = null
+	freeze(reason: string): void {
+		this.frozen = reason
+	}
+	thaw(): void {
+		this.frozen = null
+	}
 
 	// With a catalog set, every part must be a catalog part (matched by MPN, case-insensitive), so a model
 	// can't keep proposing parts nobody vetted; the refusal lists the catalog's options for that role.
@@ -110,6 +118,7 @@ export class DesignContract {
 		if (p.by !== owner && p.approvedBy !== owner) {
 			return { status: "not-owner", owner }
 		}
+		if (this.frozen) return { status: "invalid", reason: this.frozen }
 		const invalid = this.validate(p)
 		if (invalid) return { status: "invalid", reason: invalid }
 		p = { ...p, value: this.canonical(p.field, p.value) }
