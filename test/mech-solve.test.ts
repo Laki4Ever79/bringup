@@ -2,7 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 import { defaultCheckCatalog, mechanicsChecksWith } from "../src/mechanics/checks.ts"
-import { solveChassis } from "../src/mechanics/solve.ts"
+import { laidOut, solveChassis } from "../src/mechanics/solve.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
 
 // The rover's board without its mechanics: what the mechanics engineer starts from.
@@ -48,4 +48,19 @@ test("a robot in a system keeps the system's plate and board positions", () => {
 	const r = solveChassis(c, pick, cat)
 	assert.deepEqual(r.mechanics?.chassis.plateMm, [156, 110])
 	assert.deepEqual(r.mechanics?.chassis.boards.find((b) => b.name === "climate")?.at, { xMm: 48, yMm: 0 })
+})
+
+// Real rover run 5 (15 Nov): the engineer swapped the battery and kept the old layout, so the new pack didn't fit.
+test("a proposed layout that fails the chassis checks is laid out again by the solver, parts unchanged", () => {
+	const good = solveChassis(rover(), pick, cat).mechanics!
+	assert.equal(laidOut(rover(), good, cat).note, null, "a passing layout is kept as written")
+	assert.deepEqual(laidOut(rover(), good, cat).mechanics, good)
+	const swapped = { ...good, battery: { ...good.battery, at: { xMm: good.chassis.plateMm[0] / 2, yMm: 0 } } }
+	const r = laidOut(rover(), swapped, cat)
+	assert.match(r.note ?? "", /failed .* chassis check.*the chassis solver laid out the same parts/)
+	assert.equal(r.mechanics.battery.pack, good.battery.pack)
+	assert.equal(r.mechanics.drive.motor, good.drive.motor)
+	const c = rover()
+	c.values.mechanics = r.mechanics
+	assert.deepEqual(mechanicsChecksWith(c, cat).filter((v) => v.kind !== "mech-wiring"), [])
 })

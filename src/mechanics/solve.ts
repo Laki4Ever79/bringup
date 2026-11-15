@@ -100,3 +100,17 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 		return { mechanics: best.mech, remaining: best.remaining, tried, why: best.remaining.length ? `no layout passes with these parts (best of ${tried}): ${best.remaining.map((v) => v.message).join("; ")}; try other parts (a smaller battery, a caster as tall as the wheels' axle)` : `passes every chassis check (layout ${tried} tried)` }
 	}
 }
+
+// A mechanics proposal whose layout fails the chassis checks gets the solver's layout for the same parts (real rover
+// run 5, 15 Nov: the engineer called layout_chassis, then swapped the battery "keeping the layout otherwise unchanged",
+// and the new battery didn't fit). Parts are the engineer's choice; where they go is the code's. A layout that passes is
+// kept as written, and parts no layout fits are left for the checks to name.
+export function laidOut(c: ContractSnapshot, proposed: Mechanics, cat: CheckCatalog): { mechanics: Mechanics; note: string | null } {
+	if (!c.values.motion || !proposed?.drive || !proposed.battery || !proposed.sensor) return { mechanics: proposed, note: null }
+	const as = { ...c, values: { ...c.values, mechanics: proposed } }
+	const failing = mechanicsChecksWith(as, cat).filter((v) => CHASSIS_KINDS.has(v.kind))
+	if (!failing.length) return { mechanics: proposed, note: null }
+	const r = solveChassis(c, { motor: proposed.drive.motor, wheel: proposed.drive.wheel, caster: proposed.drive.caster, pack: proposed.battery.pack, sensor: proposed.sensor.module, connector: proposed.sensor.connector }, cat)
+	if (!r.mechanics || r.remaining.length) return { mechanics: proposed, note: null }
+	return { mechanics: r.mechanics, note: `the proposed layout failed ${failing.length} chassis check(s) (${failing[0].message}); the chassis solver laid out the same parts instead: plate ${r.mechanics.chassis.plateMm.join(" × ")} mm, axle at ${r.mechanics.drive.axleXMm} mm, wheelbase ${r.mechanics.drive.wheelbaseMm} mm, battery at x ${r.mechanics.battery.at.xMm} mm` }
+}
