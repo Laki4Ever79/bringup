@@ -688,18 +688,24 @@ async function closeBoard({ push = true } = {}) {
 	renderNav()
 	if (push) history.pushState({}, "", designUrl(null))
 	const view = document.getElementById("board-view")
-	view.classList.remove("on")
-	view.setAttribute("aria-hidden", "true")
-	document.documentElement.style.overflow = ""
-	// Once faded, the board page is closed outright: hidden, it kept its timers and event stream running on this
-	// thread and caused 33–50 ms hitches in later flies (npm run perf). Opening it again reloads it behind the panel.
 	const v = openView, gen = openGen
 	let done
 	stage.busy = new Promise((r) => (done = r))
-	try { await v?.focus(null, { ms: 500 }) } finally { stage.busy = null; done() }
+	try {
+		// The board page is closed outright, and before the fly out, while the panel still covers the stage: it runs on
+		// this thread (its own spinning 3D, timers, event stream), so left open through the fly, or torn down at its end,
+		// it took 100–600 ms frames from the flight (npm run perf). The teardown lands in the frame after the removal,
+		// so the fly starts once that frame is drawn. Opening it again reloads it behind the panel.
+		for (const x of frames.values()) x.f.remove()
+		frames.clear()
+		document.getElementById("board-loading").hidden = true
+		await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))))
+		view.classList.remove("on")
+		view.setAttribute("aria-hidden", "true")
+		document.documentElement.style.overflow = ""
+		await v?.focus(null, { ms: 500 })
+	} finally { stage.busy = null; done() }
 	if (openGen === gen) openView = null
-	// After the fly: tearing a page down takes the thread for a moment.
-	if (!openName) { for (const x of frames.values()) x.f.remove(); frames.clear() }
 }
 // A board card's "Open board →" flies in too, when the 3D stage is up (a new tab or a middle click still opens the page).
 main.addEventListener("click", (e) => {
