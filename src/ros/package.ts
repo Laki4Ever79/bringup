@@ -37,6 +37,7 @@ export function writeRosPackage(dir: string, spec: ChassisSpec, opts: { robot?: 
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>range_sensor_broadcaster</exec_depend>
   <exec_depend>bringup_hardware</exec_depend>
+  <exec_depend>rosbridge_server</exec_depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>
 `,
@@ -73,12 +74,16 @@ def nodes(context):
         Node(package="controller_manager", executable="spawner", arguments=["joint_state_broadcaster"]),
         Node(package="controller_manager", executable="spawner", arguments=["diff_drive_controller", "--controller-ros-args", "-r /diff_drive_controller/cmd_vel:=/cmd_vel"]),
         Node(package="controller_manager", executable="spawner", arguments=["range_sensor_broadcaster"]),
-    ]
+    ] + ([
+        # Live in Bringup's dashboard: the robot's topics as JSON over a WebSocket (rosbridge, port 9090).
+        Node(package="rosbridge_server", executable="rosbridge_websocket", parameters=[{"port": 9090, "address": "127.0.0.1"}]),
+    ] if LaunchConfiguration("stream").perform(context) == "true" else [])
 
 
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("hardware", default_value="mock", description="mock (commands mirrored back) or bringup (the robot's own firmware)"),
+        DeclareLaunchArgument("stream", default_value="false", description="true: serve the topics to Bringup's dashboard over rosbridge (ws://127.0.0.1:9090)"),
         OpaqueFunction(function=nodes),
     ])
 `,
