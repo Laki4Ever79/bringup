@@ -176,9 +176,11 @@ test("the firmware's stop distance brakes on the drive wheels' share of the weig
 	const stop = Number(/#define ROVER_STOP_MM (\d+)/.exec(h)![1])
 	const figures: MechFigure[] = []
 	mechanicsCheckOver(s.values.motion, s.values.mechanics, [{ name: "main", snapshot: s }], defaultCheckCatalog()!, figures)
-	// The check's stopping figure is braking plus one sensor period; the firmware's stop is the wall distance plus 1.5× it.
+	// The check's stopping figure is braking plus one sensor period; the firmware's stop is the wall distance plus 1.5× it,
+	// or the turn's clearance (the Turn clearance figure) when that is more.
 	const checkMm = Number(figures.find((f) => f.check === "Stopping distance")!.value.split(" ")[0])
-	assert.ok(Math.abs(stop - (s.values.motion!.stopBeforeWallMm + 1.5 * checkMm)) <= 1.5, `firmware ${stop} mm, check ${checkMm} mm`)
+	const turnMm = Number(figures.find((f) => f.check === "Turn clearance")!.value.split(" ")[0])
+	assert.ok(Math.abs(stop - Math.max(s.values.motion!.stopBeforeWallMm + 1.5 * checkMm, turnMm)) <= 1.5, `firmware ${stop} mm, check ${checkMm} mm, turn ${turnMm} mm`)
 	// And it is longer than braking on every wheel at floorMu·g (the caster barely brakes).
 	assert.ok(brakeMm(0.3, 0.5) > brakeMm(0.3, 1) * 1.5)
 })
