@@ -32,6 +32,7 @@ import { assemblyErrors, defaultAssembly, derivedAssembly, mergeRequest, request
 import { SYSTEM_REQUESTS } from "../system/run.ts"
 import { buildSpec } from "../system/plan.ts"
 import { specErrors, type SystemSpec } from "../system/spec.ts"
+import { CARRIER_STACK_MM, field, moduleById, moduleHoles, moduleOutline } from "../system/bought.ts"
 import type { Mechanics } from "../mechanics/types.ts"
 import { chassisSpec } from "../tools/chassis.ts"
 
@@ -520,16 +521,24 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		}
 		return out.sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, MAX_RUNS_LISTED)
 	}
+	// A bought board on the design page: its record's outline, holes and header, no run; `carrier` is the board it plugs into.
+	const boughtBoardView = (b: { name: string; module?: string }, carrier: string | null) => {
+		const m = b.module ? moduleById(b.module) : undefined
+		const header = m ? field<{ x: number; y: number; rows: number; cols: number; pitchMm: number }>(m, "header.at")?.value ?? null : null
+		return { name: b.name, runId: null, imported: false, bought: true, module: b.module ?? null, title: m?.title ?? b.module ?? b.name, status: "bought", outline: m ? moduleOutline(m) : null, holes: m ? moduleHoles(m) : [], header, carrier, stackMm: CARRIER_STACK_MM, connectors: [], pins: [], mcu: null, render: null, report: null }
+	}
 	const systemDetail = async (id: string, dir: string) => {
 		const spec = await readJsonFile(join(dir, "system.json"))
 		const state = await readJsonFile(join(dir, "system-state.json"))
 		const mechanicsOf = new Map<string, Mechanics>()
 		const contractOf: Record<string, ContractSnapshot | null> = {}
 		const boards = await Promise.all(
-			(spec?.boards ?? []).map(async (b: { name: string; run?: string }) => {
+			(spec?.boards ?? []).map(async (b: { name: string; run?: string; kind?: string; module?: string; carries?: string }) => {
+				// A bought board (a compute module) has no run: it is its module record (src/system/bought.ts).
+				if (b.kind === "bought") return boughtBoardView(b, (spec?.boards ?? []).find((x: { carries?: string }) => x.carries === b.name)?.name ?? null)
 				const runId = `${id}.${b.name}`
 				const bdir = await runDir(runId)
-				if (!bdir) return { name: b.name, runId: null, imported: Boolean(b.run), status: b.run ? "imported" : "not started" }
+				if (!bdir) return { name: b.name, runId: null, imported: Boolean(b.run), ...(b.carries ? { carries: b.carries } : {}), status: b.run ? "imported" : "not started" }
 				const summary = await summarize(runId, bdir)
 				const contract = await readJsonFile(join(bdir, "contract.json"))
 				const v = contract?.values ?? {}
@@ -539,6 +548,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					name: b.name,
 					runId,
 					imported: false,
+					...(b.carries ? { carries: b.carries } : {}),
 					status: summary.status,
 					revision: summary.revision,
 					title: summary.title,

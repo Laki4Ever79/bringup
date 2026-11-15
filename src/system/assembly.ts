@@ -2,6 +2,7 @@
 // the chassis builder and the 3D view all read. Optional on a SystemSpec; a spec without one behaves as before.
 import type { SystemLink, SystemSpec } from "./spec.ts"
 import type { Mechanics } from "../mechanics/types.ts"
+import { boughtOutlines } from "./bought.ts"
 
 export type BodyKind = "chassis" | "enclosure" | "separate"
 export type Rot = 0 | 90 | 180 | 270
@@ -18,6 +19,8 @@ export interface AssemblyBoard {
 	outlineSource: "estimate" | "built"
 	// The height of the board's standoffs; readers default it (STANDOFF_DEFAULT_MM). Allowed 3-30 mm.
 	standoffMm?: number
+	// A carrier stacks under the bought board it carries (spec boards[].carries): same place, the two never "overlap".
+	carries?: string
 }
 
 
@@ -140,6 +143,21 @@ function centreBoard(spec: SystemSpec): string {
 // With the brief's size limit, a board that would reach past it starts a new row beside the first (along y, alternating
 // +y, -y) instead; if even that doesn't fit, it is placed anyway and assemblyFitError names it.
 export function defaultAssembly(spec: SystemSpec, body: BodyKind, outlines: Record<string, Outline> = {}, maxSizeMm?: [number, number]): SystemAssembly {
+	// A bought board's outline is its record's from the start; a carrier takes no place of its own (it stacks under the
+	// board it carries, below).
+	outlines = { ...boughtOutlines(spec.boards), ...outlines }
+	const carriers = spec.boards.filter((b) => b.carries && spec.boards.some((x) => x.name === b.carries))
+	if (carriers.length) {
+		const rest = defaultAssembly({ ...spec, boards: spec.boards.filter((b) => !carriers.includes(b)) }, body, outlines, maxSizeMm)
+		const boards = spec.boards.map((sb) => {
+			const placed = rest.boards.find((x) => x.name === sb.name)
+			if (placed) return placed
+			const under = rest.boards.find((x) => x.name === sb.carries)!
+			const built = outlines[sb.name]
+			return { name: sb.name, xMm: under.xMm, yMm: under.yMm, rotDeg: under.rotDeg, outline: built ? { ...built } : { ...under.outline }, outlineSource: built ? ("built" as const) : ("estimate" as const), carries: under.name }
+		})
+		return { ...rest, boards }
+	}
 	const centre = centreBoard(spec)
 	const lim = reachLimit(maxSizeMm)
 	const make = (name: string, xMm: number): AssemblyBoard => {
@@ -225,6 +243,11 @@ export function withOutlines(a: SystemAssembly, outlines: Record<string, Outline
 			b.xMm = Math.max(-(lim.x - w / 2), Math.min(lim.x - w / 2, b.xMm))
 		}
 		kept.push(b)
+	}
+	// A carrier stays under the board it carries, wherever that one went.
+	for (const b of updated) {
+		const under = b.carries ? updated.find((x) => x.name === b.carries) : undefined
+		if (under) { b.xMm = under.xMm; b.yMm = under.yMm; b.rotDeg = under.rotDeg }
 	}
 	const grown = plateFor(updated, maxSizeMm)
 	let lengthMm = Math.max(plate.lengthMm, grown.lengthMm), widthMm = Math.max(plate.widthMm, grown.widthMm)

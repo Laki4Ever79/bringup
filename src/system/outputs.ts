@@ -57,7 +57,7 @@ export function systemReport(spec: SystemSpec, contracts: Record<string, Contrac
 	const boardLine = (name: string) => {
 		const s = contracts[name]
 		const spec_ = spec.boards.find((b) => b.name === name)!
-		return `| ${name} | ${spec_.run ? "existing run (fixed)" : "designed here"} | ${s ? `rev ${s.revision}` : "no contract yet"} | ${s?.values.outline ? `${s.values.outline.widthMm}×${s.values.outline.heightMm} mm` : "?"} | ${(s?.values.links ?? []).map((l) => `${l.id} ${l.kind.toUpperCase()} on ${l.connector}`).join(", ") || "none"} |`
+		return `| ${name} | ${spec_.kind === "bought" ? `bought (${spec_.module})` : spec_.run ? "existing run (fixed)" : spec_.carries ? `designed here, carries ${spec_.carries}` : "designed here"} | ${s ? `rev ${s.revision}` : "no contract yet"} | ${s?.values.outline ? `${s.values.outline.widthMm}×${s.values.outline.heightMm} mm` : "?"} | ${(s?.values.links ?? []).map((l) => `${l.id} ${l.kind.toUpperCase()} on ${l.connector}`).join(", ") || "none"} |`
 	}
 	return [
 		`# System report: ${spec.name}`,

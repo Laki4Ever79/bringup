@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import type { Connector, LinkMessage } from "../contract/types.ts"
 import { assemblyErrors, type SystemAssembly } from "./assembly.ts"
+import { boughtErrors } from "./bought.ts"
 import { LINK_KINDS, PERIPHERALS_FREE, type LinkKind, type Peripheral } from "../contract/link-kinds.ts"
 
 export interface SystemBoard {
@@ -11,6 +12,12 @@ export interface SystemBoard {
 	// A brief: the board is designed by its own Bringup run. A run: an existing run folder, read as it is (fixed).
 	brief?: string
 	run?: string
+	// A bought board (a compute module: Raspberry Pi…): no brief, no run; its outline, holes and power come from its
+	// module record in catalog/modules (src/system/bought.ts). Agents never design it.
+	kind?: "bought"
+	module?: string
+	// A carrier: the designed board a bought board plugs into (src/system/carrier.ts). It stacks under that board.
+	carries?: string
 }
 
 export interface SystemLink {
@@ -44,7 +51,22 @@ export function specErrors(s: SystemSpec): string[] {
 	const out: string[] = []
 	const names = new Set(s.boards.map((b) => b.name))
 	if (names.size !== s.boards.length) out.push("board names must be unique")
-	for (const b of s.boards) if (!b.brief === !b.run) out.push(`board ${b.name}: give a brief (designed here) or a run (an existing design), not both or neither`)
+	for (const b of s.boards) {
+		if (b.kind !== undefined && b.kind !== "bought") out.push(`board ${b.name}: kind ${b.kind} is not a board kind (only "bought", with a module)`)
+		else if (b.kind === "bought") out.push(...boughtErrors(b))
+		else if (!b.brief === !b.run) out.push(`board ${b.name}: give a brief (designed here) or a run (an existing design), not both or neither`)
+		else if (b.module) out.push(`board ${b.name}: a module is for a bought board (kind "bought")`)
+		if (b.carries !== undefined) {
+			const carried = s.boards.find((x) => x.name === b.carries)
+			if (b.kind === "bought") out.push(`board ${b.name}: a bought board can't be a carrier`)
+			else if (!carried) out.push(`board ${b.name}: it carries ${b.carries}, which is not in the system`)
+			else if (carried.kind !== "bought") out.push(`board ${b.name}: it carries ${b.carries}, which is not a bought board`)
+			else if (s.boards.filter((x) => x.carries === b.carries).length > 1 && s.boards.find((x) => x.carries === b.carries) !== b) out.push(`board ${b.name}: ${b.carries} already has a carrier`)
+		}
+	}
+	// A bought board's own link to the robot is the MCU board's USB, or its carrier's header: not a cable the system designs.
+	const bought = new Set(s.boards.filter((b) => b.kind === "bought").map((b) => b.name))
+	for (const l of s.links) for (const end of [l.a, l.b]) if (bought.has(end.board)) out.push(`link ${l.id}: ${end.board} is a bought board; links to it go through its carrier or the MCU board's USB, not a system cable`)
 	const ids = new Set<string>()
 	for (const l of s.links) {
 		if (!/^[A-Z][A-Z0-9]*$/.test(l.id)) out.push(`link ${l.id}: an id is upper case letters and digits, e.g. L1 (signals are named after it)`)
