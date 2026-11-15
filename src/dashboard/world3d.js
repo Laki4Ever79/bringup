@@ -447,6 +447,7 @@ export function mountWorld(host, opts = {}) {
 		gl.bindVertexArray(null)
 		// Labels: cable labels at their arch tops, captions over pulsing boards.
 		for (const c of S.cables) place(c.el, c.mid, vp, w, h, S.focused ? 0 : 1)
+		for (const [name, el] of Object.entries(S.badgeEls ?? {})) { const b = S.boards.get(name); if (b) place(el, [b.at[0], b.at[1], b.extent.max[2] + b.atZ + 1], vp, w, h, S.focused && S.focused !== name ? 0 : 1) }
 		for (const b of S.boards.values()) if (b.caption) place(b.caption, [b.at[0], b.at[1], b.extent.max[2] + b.atZ + 4], vp, w, h, b.glowUntil > now ? 1 : 0)
 		if (!S.firstFrame) {
 			S.firstFrame = now
@@ -504,6 +505,28 @@ export function mountWorld(host, opts = {}) {
 		// Keep fitting as boards grow, until the user turns or zooms; then only when boards come or go.
 		const names = [...S.boards.keys()].sort().join(",")
 		if ((names !== S.fitted || !S.userMoved) && !S.fly && !S.focused) { S.cam = fitView([...S.boards.keys()]); S.fitted = names }
+		request()
+	}
+
+	// A status badge over each board (progress.js badgeOf: {text, kind, title}): a DOM label in the overlay, placed with
+	// the captions. Only a change asks for a frame.
+	const BADGE = { ok: "#11804a", run: "#ff4a17", bad: "#c8231a", idle: "#16140f" }
+	function setBadges(map) {
+		S.badgeEls ??= {}
+		for (const name of Object.keys(S.badgeEls)) if (!map?.[name]) { S.badgeEls[name].remove(); delete S.badgeEls[name] }
+		for (const [name, bd] of Object.entries(map ?? {})) {
+			if (!bd) continue
+			let el = S.badgeEls[name]
+			if (!el) {
+				el = document.createElement("span")
+				el.dataset.badge = name
+				el.style.cssText = "position:absolute;left:0;top:0;background:#fff;border:1px solid;border-radius:4px;padding:0 5px;font:11px/1.4 ui-monospace,monospace;white-space:nowrap;transition:opacity .3s;pointer-events:none;opacity:0"
+				overlay.append(el)
+				S.badgeEls[name] = el
+			}
+			el.textContent = bd.text; el.title = bd.title ?? bd.text; el.dataset.kind = bd.kind
+			el.style.color = el.style.borderColor = BADGE[bd.kind] ?? "#16140f"
+		}
 		request()
 	}
 
@@ -600,6 +623,7 @@ export function mountWorld(host, opts = {}) {
 	return {
 		ready,
 		setWorld,
+		setBadges,
 		focus,
 		pulse,
 		setTurntable(on) { S.turntable = Boolean(on); S.lastTurn = performance.now(); request() },

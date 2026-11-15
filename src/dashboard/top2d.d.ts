@@ -11,6 +11,7 @@ export interface TopView {
 	ready: Promise<void>
 	setWorld(w: { boards: TopWorldBoard[]; cables?: TopLinkIn[]; assembly?: TopAssembly | null; chassis?: TopChassisSpec | null }): void
 	focus(name: string | null, o?: { ms?: number }): Promise<void>
+	setBadges(map: Record<string, { text: string; kind: "ok" | "run" | "bad" | "idle"; title?: string } | null | undefined>): void
 	select(name: string | null, kind?: "board" | "cable"): void
 	stats(): { draws: number; boards: number }
 	dispose(): void

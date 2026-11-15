@@ -19,11 +19,11 @@ const grow = (r, k) => ({ x: r.x - (r.w * (k - 1)) / 2, y: r.y - (r.h * (k - 1))
 export function mountTop(host, opts = {}) {
 	const svg = el("svg", { width: "100%", height: "100%", preserveAspectRatio: "xMidYMid meet" })
 	svg.style.cssText = "display:block;touch-action:none;user-select:none;font:3px/1 var(--mono, ui-monospace, monospace)"
-	const gPlate = el("g"), gMech = el("g"), gBoards = el("g"), gCables = el("g"), gLabels = el("g")
-	svg.append(gPlate, gMech, gBoards, gCables, gLabels)
+	const gPlate = el("g"), gMech = el("g"), gBoards = el("g"), gCables = el("g"), gLabels = el("g"), gBadges = el("g")
+	svg.append(gPlate, gMech, gBoards, gCables, gLabels, gBadges)
 	host.append(svg)
 
-	let scene = null, home = null, focusName = null, touched = false, view = { x: 0, y: 0, w: 100, h: 60 }, draws = 0, raf = 0, selected = null, disposed = false, finish = null
+	let scene = null, home = null, focusName = null, touched = false, view = { x: 0, y: 0, w: 100, h: 60 }, draws = 0, raf = 0, selected = null, disposed = false, finish = null, badges = {}
 	// draws counts every real update of the drawing: a viewBox change (flight, pan, zoom), a rebuild, a selection.
 	const setView = (v) => { const changed = fmt(v) !== fmt(view); view = v; svg.setAttribute("viewBox", fmt(v)); if (changed) draws++ }
 	setView(view)
@@ -133,6 +133,7 @@ export function mountTop(host, opts = {}) {
 			gLabels.append(el("text", { x: c.mid.x, y: c.mid.y - 1.5, "text-anchor": "middle", fill: INK, "font-size": 2.6, "pointer-events": "none" }, c.label))
 		}
 		applySelection()
+		drawBadges()
 		// Home: the layout's bounds plus the mechanical parts, with the same margin (wheels stand outside the plate).
 		const b = scene.bounds
 		let x0 = b.x, y0 = b.y, x1 = b.x + b.w, y1 = b.y + b.h
@@ -146,6 +147,29 @@ export function mountTop(host, opts = {}) {
 		} else if (flight) flight.to = targetOf(focusName)
 		else if (focusName != null) { const t = targetOf(focusName); if (t) setView(t) }
 		else if (!touched) setView(home)
+	}
+
+	// A small status badge over each board's top-left corner (progress.js badgeOf: {text, kind, title}). Drawn in the
+	// board's own place, upright; a board with no badge has none. Counts as one draw, and only when it changes.
+	const BADGE = { ok: OK, run: SIGNAL, bad: "var(--error, #c8231a)", idle: INK }
+	function drawBadges() {
+		gBadges.replaceChildren()
+		for (const b of scene?.boards ?? []) {
+			const bd = badges[b.name]
+			if (!bd) continue
+			const w = bd.text.length * 1.9 + 2.4
+			const g = el("g", { "data-badge": b.name, "data-kind": bd.kind, transform: `translate(${b.x + b.w - w} ${b.y - 4.6})`, "pointer-events": "none" })
+			g.append(el("rect", { width: w, height: 4, rx: 1, fill: "#fff", stroke: BADGE[bd.kind] ?? INK, "stroke-width": 0.35 }), el("text", { x: w / 2, y: 2.05, "text-anchor": "middle", "dominant-baseline": "middle", fill: BADGE[bd.kind] ?? INK, "font-size": 2.5 }, bd.text))
+			g.append(el("title", {}, bd.title ?? bd.text))
+			gBadges.append(g)
+		}
+	}
+	function setBadges(map) {
+		if (!live()) return
+		if (JSON.stringify(map ?? {}) === JSON.stringify(badges)) return
+		badges = map ?? {}
+		drawBadges()
+		draws++
 	}
 
 	// A case's outer footprint from its enclosure spec.json (py/enclosure.py): the case board's outline plus clearance and
@@ -211,7 +235,7 @@ export function mountTop(host, opts = {}) {
 
 	return {
 		ready: Promise.resolve(),
-		setWorld, focus, select,
+		setWorld, focus, select, setBadges,
 		stats: () => ({ draws, boards: scene?.boards.length ?? 0 }),
 		dispose() {
 			if (disposed) return

@@ -130,6 +130,7 @@
 	<div id="stage-top" class="hidden"></div>
 	<div id="facts" class="hidden" role="tooltip"></div>
 	<div id="plan-side"></div>
+	<div id="progress-host"></div>
 	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
 </div>
 <main id="main"></main>
@@ -427,7 +428,26 @@ function subscribe(d) {
 		src.onmessage = (m) => { try { stage.traces[b.name].push(JSON.parse(m.data)); schedule() } catch {} }
 	}
 }
+// The system's own trace (system-trace.jsonl) as a strip of every board's steps, plus a badge on each board in both
+// views. An old run has no trace: the stream stays quiet and the strip stays hidden. A one-board design has no stream.
+function followProgress(d) {
+	if (stage.progress || d.single) return
+	stage.badges = {}
+	import("/progress.js").then(({ mountProgress, badgeOf }) => {
+		const strip = mountProgress(document.getElementById("progress-host"), {
+			onPick: (board) => window.openBoard?.(board),
+			onChange: (st) => {
+				stage.badges = Object.fromEntries(Object.keys(st.boards).map((n) => [n, badgeOf(st.boards[n])]))
+				applyBadges()
+			},
+		})
+		stage.progress = new EventSource(`/api/systems/${encodeURIComponent(id)}/stream`)
+		stage.progress.onmessage = (m) => { try { strip.push(JSON.parse(m.data)) } catch {} }
+	}, () => {})
+}
+const applyBadges = () => { stage.top?.setBadges(stage.badges ?? {}); stage.world?.setBadges?.(stage.badges ?? {}) }
 async function startStage(d) {
+	followProgress(d)
 	if (stage.started) {
 		stage.meta = d
 		if (activeView()) { subscribe(d); schedule() }
@@ -517,6 +537,7 @@ async function ensureView(view) {
 				onPick: (name, kind) => { if (kind === "board") { card.swallow = true; card.pinned = null; card.hover = null; renderCard(); window.openBoard?.(name) } else cardPick(name, "cable") },
 			})
 			await stage.top.ready
+			applyBadges()
 		} else {
 			// (the 3D world is ready only after its first frame, which needs data: not awaited)
 			const { mountWorld } = await import("/world3d.js")
@@ -526,6 +547,7 @@ async function ensureView(view) {
 				onHoverCable: (cid) => cardHover(cid, "cable"),
 				onPickCable: (cid) => cardPick(cid, "cable"),
 			})
+			applyBadges()
 		}
 		return true
 	} catch {
