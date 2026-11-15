@@ -1,11 +1,12 @@
 import type { DriveArtifact } from "../tools/drive.ts"
 import { boardMountChecks, type ChassisArtifact } from "../tools/chassis.ts"
 import { hardwareChecks } from "../tools/robot-parts.ts"
-import { mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
+import { defaultCheckCatalog, mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
+import { byMpn } from "../mechanics/catalog.ts"
 import { motionBriefChecks } from "../mechanics/brief.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
-import { connectorBoxes, downloadStrap, generatedNets, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
+import { connectorBoxes, downloadStrap, generatedNets, MAX_TRACK_MM, netName, supplyPours, supplyWidths, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type ContractValues, type FieldName } from "./types.ts"
@@ -155,6 +156,11 @@ export type ViolationKind =
 	| "download-pin-low"
 	| "led-pin"
 	| "rail-underrated"
+	| "part-net-unknown"
+	| "rail-unwired"
+	| "rail-current-copper"
+	| "pack-voltage"
+	| "charger-pack"
 	| "part-pinned-blocked"
 	| "connector-off-edge"
 	| ModelViolation["kind"]
@@ -197,7 +203,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	// guess that the sensor was off the bus, and the next drive crawled at 0.09 m/s).
 	if (a.drive?.result === "fail")
 		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics"] })
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c), ...motionBriefChecks(c, brief))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...supplyWiring(c), ...packVoltage(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c), ...motionBriefChecks(c, brief))
 	// A built chassis (not a stub) whose standoffs miss a board's mounting holes.
 	if (a.chassis && !a.chassis.stub) v.push(...boardMountChecks(c, a.chassis.mounts as { standoffHoles?: { xMm: number; yMm: number }[] } | null))
 	// Every fastener in the robot's parts list fits the hole it goes through (tools/robot-parts.ts).
@@ -752,6 +758,57 @@ export function unconnectedParts(c: ContractSnapshot): Violation[] {
 			fields: ["parts", "pins"] as FieldName[],
 			affects: ["architect"] as AgentRole[],
 		}))
+}
+
+// The supply pins a board's generator can't wire, and rails it wires to nothing (the rpi-5 HAT, 15 Nov 2026: its 5V rail
+// was declared, but the header's pins are numbered 1-40, so no pin was joined to it and the HAT fed the Pi nothing).
+// - part-net-unknown: a Part.nets entry naming a pin the part lacks, or a rail the contract doesn't have.
+// - rail-unwired: a rail no two pads share (nothing feeds it, or nothing draws from it).
+// - rail-current-copper: a second rail too wide for a track while the one top-layer pour is taken (two layers).
+export function supplyWiring(c: ContractSnapshot): Violation[] {
+	const { parts = [], rails = [] } = c.values
+	if (!parts.length || !rails.length) return []
+	const v: Violation[] = []
+	const railNames = new Set(rails.map((r) => r.name))
+	for (const p of parts)
+		for (const [pin, rail] of Object.entries(p.nets ?? {})) {
+			const bad = !p.pins.includes(pin) ? `${p.ref} (${p.mpn}) has no pin "${pin}" (its pins: ${p.pins.join(", ")})` : rail !== "GND" && !railNames.has(rail) ? `rail "${rail}" isn't in the contract's rails (${[...railNames].join(", ")})` : null
+			if (bad) v.push({ kind: "part-net-unknown", message: `${p.ref}'s nets put pin ${pin} on ${rail}, but ${bad}: the board generator leaves that pin open`, fields: ["parts", "rails"], affects: ["architect"] })
+		}
+	const nets = generatedNets(c)
+	for (const r of rails)
+		if (!nets.has(netName(r.name)))
+			v.push({ kind: "rail-unwired", message: `rail ${r.name} (${r.voltageV} V, ${r.loadMa} mA) reaches no two pads: nothing on the board is wired to it. A part whose supply pin isn't labelled ${r.name === "3V3" ? "3V3/VDD/VCC" : "by the rail"} (a numbered header pin, a power input) names it in its nets, e.g. { "2": "${r.name}" }`, fields: ["parts", "rails"], affects: ["architect"] })
+	const poured = new Set(supplyPours(c).map((x) => x.net))
+	for (const [net, w] of supplyWidths(c))
+		if (w > MAX_TRACK_MM && !poured.has(net))
+			v.push({ kind: "rail-current-copper", message: `${net} needs ${w} mm of 1 oz copper for its peak (IPC-2221, 10 °C rise, an estimate), wider than a track reaching a 2.54 mm pin (${MAX_TRACK_MM} mm), and the board's one supply pour is taken by ${[...poured].filter((n) => n !== "GND").join(", ")}: lower its peak or put it on its own board`, fields: ["rails", "parts"], affects: ["architect"] })
+	return v
+}
+
+// A robot's pack against what its board puts on VBAT (rover-pi, 15 Nov 2026: the main board kept the logger's 1-cell
+// TP4054 and the RT9080, rated to 5.5 V, on a 2S pack's 8.4 V). Each part on VBAT whose catalog entry gives maxInV must
+// take the pack's full voltage (pack-voltage); a charger must be for the pack's cell count (charger-pack). A part with
+// no maxInV in the catalog isn't judged.
+export function packVoltage(c: ContractSnapshot): Violation[] {
+	const packMpn = c.values.mechanics?.battery?.pack
+	const cat = packMpn ? defaultCheckCatalog() : null
+	const pack = cat && packMpn ? byMpn(cat.mech.batteries, packMpn) : undefined
+	if (!cat || !pack) return []
+	const parts = c.values.parts ?? []
+	const entry = (mpn: string) => (cat.boardParts as unknown as { mpn: string; maxInV?: number; maxInVSource?: string; cells?: number; floatV?: number; cellsSource?: string }[]).find((e) => e.mpn.toUpperCase() === mpn.toUpperCase())
+	const v: Violation[] = []
+	const charger = parts.find((p) => p.role === "charger")
+	const ch = charger ? entry(charger.mpn) : undefined
+	if (charger && ch?.cells !== undefined && ch.cells !== pack.cells)
+		v.push({ kind: "charger-pack", message: `${charger.ref} ${charger.mpn} charges ${ch.cells} cell${ch.cells > 1 ? "s" : ""} to ${ch.floatV ?? "?"} V (${ch.cellsSource ?? "catalog"}), but the robot's pack ${pack.mpn} is ${pack.cells}S (${pack.cutoffV}–${pack.fullV} V): it can't charge it and its BAT pin sees ${pack.fullV} V. ${pack.cells > 1 ? "A multi-cell pack charges off the board on a balance charger: drop the charger and its LED, and take the 3.3 V from USB (VBUS), not VBAT" : "Use a charger for this cell count"}`, fields: ["parts"], affects: ["parts"] })
+	const onVbat = new Set((generatedNets(c).get("VBAT") ?? []).map((e) => e.split(".")[0]))
+	for (const p of parts.filter((x) => onVbat.has(x.ref) && x.role !== "charger")) {
+		const e = entry(p.mpn)
+		if (e?.maxInV !== undefined && e.maxInV < pack.fullV)
+			v.push({ kind: "pack-voltage", message: `${p.ref} ${p.mpn} (${p.role}) is on VBAT and takes at most ${e.maxInV} V (${e.maxInVSource ?? "catalog"}), but the robot's pack ${pack.mpn} reaches ${pack.fullV} V full${p.role === "ldo" ? ": feed it from USB (VBUS) or a 5 V rail, not the pack" : ": pick a part rated for the pack"}`, fields: ["parts"], affects: ["parts"] })
+	}
+	return v
 }
 
 // A 3.3 V rail whose peak is below what the MCU itself draws with its radio on (datasheet): the regulator would be

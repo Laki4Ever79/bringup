@@ -24,6 +24,9 @@ export interface AssemblyBoard {
 	// Mounting holes when they aren't at the corners (a bought board's record, and its carrier's): mm from the board's
 	// lower-left corner, before the turn.
 	holes?: { x: number; y: number; dia: number | null }[]
+	// A bought board's module record (catalog/modules/<id>.json), so a board's checks can read its figures: the runtime
+	// counts its typical draw from the pack.
+	module?: string
 }
 
 
@@ -178,7 +181,7 @@ export function defaultAssembly(spec: SystemSpec, body: BodyKind, outlines: Reco
 			const xMm = rear === null ? 0 : rear - BOARD_GAP_MM - unit.widthMm / 2
 			rear = xMm - unit.widthMm / 2
 			const holes = boughtHoles(b)
-			placed.push({ name: b.name, xMm, yMm: 0, rotDeg: 0, outline: { ...o }, outlineSource: outlines[b.name] ? "built" : "estimate", ...(holes ? { holes } : {}) })
+			placed.push({ name: b.name, xMm, yMm: 0, rotDeg: 0, outline: { ...o }, outlineSource: outlines[b.name] ? "built" : "estimate", ...(holes ? { holes } : {}), ...(b.module ? { module: b.module } : {}) })
 			if (c) placed.push({ name: c.name, xMm, yMm: 0, rotDeg: 0, outline: outlines[c.name] ? { ...outlines[c.name] } : { ...o }, outlineSource: outlines[c.name] ? "built" : "estimate", carries: b.name, ...(holes ? { holes } : {}) })
 		}
 		// A carrier whose board isn't bought (a spec error) still gets a place: with the designed boards' rule.

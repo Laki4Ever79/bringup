@@ -5,7 +5,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { carriesCompute, computeRoverMechanics, COMPUTE_ROVER_MOTOR, COMPUTE_ROVER_PACK, COMPUTE_ROVER_REGULATOR, hatDesign, hatFromBrief, HAT_HEADER_MPN, motionFromBrief, ROVER_MOTION } from "../src/inference/scripts.ts"
+import { carriesCompute, computeRoverMechanics, COMPUTE_ROVER_MOTOR, COMPUTE_ROVER_PACK, COMPUTE_ROVER_REGULATOR, hatDesign, hatFromBrief, HAT_HEADER_MPN, HAT_INPUT_MPN, motionFromBrief, ROVER_MOTION } from "../src/inference/scripts.ts"
 import { carrierBrief } from "../src/system/carrier.ts"
 import { field, moduleById, moduleHoles, moduleOutline } from "../src/system/bought.ts"
 import { headerSignals, railNeed } from "../src/system/compute.ts"
@@ -68,7 +68,12 @@ test("the scripted HAT honours the carrier brief: the module's outline and holes
 	const j = d.parts.find((p) => p.mpn === HAT_HEADER_MPN)!
 	assert.deepEqual(j.at, { xMm: 32.5, yMm: 52.5 })
 	assert.equal(j.pins.length, 40)
-	assert.deepEqual(d.supplyPins.pins, [2, 4])
+	// The header's 5 V pins carry the rail and its ground pins ground (Part.nets: its pins are numbered, not labelled).
+	assert.deepEqual(Object.entries(j.nets!).filter(([, n]) => n === "5V").map(([p]) => p), ["2", "4"])
+	assert.deepEqual(Object.entries(j.nets!).filter(([, n]) => n === "GND").map(([p]) => Number(p)), pins("GND"))
+	// The 5 V input: a screw terminal rated above the Pi's 5 A, VIN on the rail.
+	const input = d.parts.find((p) => p.mpn === HAT_INPUT_MPN)!
+	assert.deepEqual([input.role, input.lcsc, input.nets], ["connector", "C474881", { VIN: "5V" }])
 	assert.deepEqual(d.rails, [{ name: "5V", voltageV: 5.1, regulatorMaxMa: 5000, loadMa: 5000 }])
 	assert.ok(!d.parts.some((p) => p.role === "mcu"))
 	// Not a carrier brief: no HAT.
