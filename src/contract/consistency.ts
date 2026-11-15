@@ -8,7 +8,7 @@ import { linkChecks, type LinkViolation } from "./links.ts"
 import { connectorBoxes, downloadStrap, generatedNets, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
-import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type FieldName } from "./types.ts"
+import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type ContractValues, type FieldName } from "./types.ts"
 import { modelChecks, type ModelViolation } from "./model.ts"
 import { fixtureChecks, testChecks, type TestViolation } from "./testkit.ts"
 import { builtFeatureChecks, caseChecks, MIN_WALL_MM, SLOT_MARGIN_MM, type BuiltFeature, type CaseViolation } from "./case.ts"
@@ -579,6 +579,59 @@ export function connectorsOffEdge(c: ContractSnapshot): Violation[] {
 			affects: ["architect"] as AgentRole[],
 		}]
 	})
+}
+
+// The connectors moved along their edges so none runs past the end of its edge or overlaps another, or null when none
+// does (or no packing helps). An outline change follows with this (rover run cc-rover-3, 15 Nov 2026: the architect
+// shrank the board from 78x17 to 78x16 mm, left J5 at right@13.5 mm, 1 mm past the edge, and the run ended with it
+// open; J5 moved alone then overlapped JM2 on the same 16 mm edge). Per edge, in order along it, each footprint is pushed
+// inside the edge and clear of its neighbour (by the case's minimum wall when the openings share a case wall), moving
+// each as little as that allows, in half millimetres; the checks themselves judge the result.
+export function connectorsOntoEdges(c: ContractSnapshot): ContractValues["connectors"] | null {
+	const o = c.values.outline
+	if (!o || !c.values.connectors?.length) return null
+	const problems = (connectors: Connector[]) => {
+		const t = { ...c, values: { ...c.values, connectors } }
+		return connectorsOffEdge(t).length + connectorClashes(t).length
+	}
+	const before = problems(c.values.connectors)
+	if (before === 0) return null
+	const gap = enclosureMode(c.values) === "case" ? MIN_WALL_MM : 0
+	const boxAt = (connectors: Connector[], ref: string) => {
+		const k = connectors.find((x) => x.ref === ref)!
+		const b = connectorBoxes({ ...c, values: { ...c.values, connectors } }, o.widthMm, o.heightMm).find((x) => x.ref === ref)!
+		const alongX = k.edge === "top" || k.edge === "bottom"
+		return { centre: alongX ? b.x : b.y, size: alongX ? b.w : b.h }
+	}
+	let connectors = c.values.connectors
+	for (const edge of ["top", "bottom", "left", "right"] as const) {
+		const len = edge === "top" || edge === "bottom" ? o.widthMm : o.heightMm
+		// Each footprint as a span in the offset's own direction: p moves 1:1 with offsetMm.
+		const spans = connectors.filter((k) => k.edge === edge).map((k) => {
+			const a = boxAt(connectors, k.ref)
+			const nudged = boxAt(connectors.map((x) => (x.ref === k.ref ? { ...x, offsetMm: x.offsetMm + 1 } : x)), k.ref)
+			const dir = nudged.centre >= a.centre ? 1 : -1
+			return { ref: k.ref, offset: k.offsetMm, p: dir * a.centre, half: a.size / 2 }
+		}).sort((x, y) => x.p - y.p)
+		if (spans.length === 0) continue
+		const target = spans.map((x) => x.p)
+		const up = (v: number) => Math.ceil(v * 2 - 1e-9) / 2
+		const down = (v: number) => Math.floor(v * 2 + 1e-9) / 2
+		// Right to left: inside the far end and clear of the next one; then left to right: inside the near end and clear.
+		for (let i = spans.length - 1; i >= 0; i--) {
+			const limit = i === spans.length - 1 ? len / 2 - spans[i].half : target[i + 1] - spans[i + 1].half - gap - spans[i].half
+			if (target[i] > limit) target[i] = spans[i].p + down(limit - spans[i].p)
+		}
+		for (let i = 0; i < spans.length; i++) {
+			const limit = i === 0 ? -len / 2 + spans[i].half : target[i - 1] + spans[i - 1].half + gap + spans[i].half
+			if (target[i] < limit) target[i] = spans[i].p + up(limit - spans[i].p)
+		}
+		connectors = connectors.map((k) => {
+			const i = spans.findIndex((x) => x.ref === k.ref)
+			return i < 0 || target[i] === spans[i].p ? k : { ...k, offsetMm: spans[i].offset + (target[i] - spans[i].p) }
+		})
+	}
+	return problems(connectors) < before ? connectors : null
 }
 
 // A part the engineer placed on the board page (Part.at) that doesn't fit there: the layout leaves it off rather than

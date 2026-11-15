@@ -5,6 +5,7 @@ import { causeOf } from "./common.ts"
 import { emit, state } from "../runtime.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { laidOut } from "../mechanics/solve.ts"
+import { connectorsOntoEdges } from "../contract/consistency.ts"
 
 // Tools every agent gets for reading and changing the shared design contract.
 // `self.id` is filled in once the agent exists, so events carry the agent as producer.
@@ -55,6 +56,21 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					const decision = args.approvalId && approvedBy ? s.approvals.decisionOf(args.approvalId) : undefined
 					const cause: Cause | undefined = decision ? { kind: "approval", proposalId: args.approvalId!, approvedBy: decision.decidedBy ?? [decision.by], reason: decision.reason } : causeOf(self.id)
 					emit(makeEvent("contract.changed", self.id, { field: args.field, version: result.version, revision: result.revision, by: role, reason: args.reason, before, after: args.value, ...(cause ? { cause } : {}) }), self.id)
+					// A new outline: a connector it leaves past the end of its edge moves inward to fit, as its own change.
+					if (args.field === "outline") {
+						const fitted = connectorsOntoEdges(s.contract.snapshot())
+						if (fitted) {
+							const owner = OWNERS.connectors
+							const beforeC = s.contract.get("connectors") ?? null
+							const moved = fitted.filter((k) => !(beforeC ?? []).some((b) => b.ref === k.ref && b.offsetMm === k.offsetMm)).map((k) => `${k.ref} to ${k.edge}@${k.offsetMm} mm`)
+							const r = s.contract.propose({ field: "connectors", value: fitted, by: owner, baseVersion: s.contract.version("connectors"), approvedBy: owner })
+							if (r.status === "applied") {
+								const reason = `the new ${(args.value as ContractValues["outline"]).widthMm}x${(args.value as ContractValues["outline"]).heightMm} mm outline left them past the end of their edge: moved ${moved.join(", ")}`
+								emit(makeEvent("contract.changed", self.id, { field: "connectors", version: r.version, revision: r.revision, by: owner, reason, before: beforeC, after: fitted, cause: { kind: "field-changed", fields: ["outline"] } }), self.id)
+								laidOutNote = `connectors follow the outline: moved ${moved.join(", ")} (connectors is now version ${r.version})`
+							}
+						}
+					}
 				}
 				return laidOutNote && result.status === "applied" ? { ...result, note: laidOutNote } : result
 			},
