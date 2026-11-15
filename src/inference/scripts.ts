@@ -17,6 +17,9 @@ import { DEFAULT_BEHAVIOR } from "../codegen/firmware.ts"
 import { LEGACY_MCU_ID, mcuProfileOf, profileById } from "../mcu/profile.ts"
 import { chipPartPins } from "../mcu/board.ts"
 import { solvePins, type Need } from "../mcu/solver.ts"
+import { defaultCheckCatalog, type CheckCatalog } from "../mechanics/checks.ts"
+import { byMpn } from "../mechanics/catalog.ts"
+import { solveChassis } from "../mechanics/solve.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
 export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics"> & { parts: ContractValues["parts"] } = {
@@ -175,6 +178,98 @@ export const ROVER_BOARD = {
 	],
 	motion: ROVER_MOTION,
 	mechanics: ROVER_MECHANICS,
+}
+
+// The brief's own size and mass over the reference rover's motion (briefs/rover.md: "about 15 × 12 cm", "under 500 g";
+// briefs/rover-pi.md: a bigger rover for a Raspberry Pi). The other targets stay the reference rover's.
+export function motionFromBrief(brief: string): NonNullable<ContractValues["motion"]> {
+	const base = ROVER_MOTION!
+	const size = /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*cm\b/.exec(brief)
+	const mass = /\bunder\s+(\d+(?:\.\d+)?)\s*(kg|g)\b/i.exec(brief)
+	return {
+		...base,
+		...(size ? { maxSizeMm: [Number(size[1]) * 10, Number(size[2]) * 10] as [number, number] } : {}),
+		...(mass ? { maxMassG: Number(mass[1]) * (mass[2].toLowerCase() === "kg" ? 1000 : 1) } : {}),
+	}
+}
+
+// A robot with a bought compute board (a Raspberry Pi…, src/system/bought.ts) runs on the catalog's 2S pack through the
+// catalog's 5 V regulator, with 12 V gearmotors (the 6 V ones see 1.4× their rating on a full 2S pack). Each is read
+// from catalog/mechanics.json by its mpn; no number is copied here.
+export const COMPUTE_ROVER_MOTOR = "POLOLU-3041 100:1 HPCB 12V"
+export const COMPUTE_ROVER_PACK = "GENSACE-GEA22002S20X6"
+export const COMPUTE_ROVER_REGULATOR = "POLOLU-4091 D36V50F5"
+
+// True when the robot's body holds a bought board: a HAT carrier carries one, and a bought board brings its record's
+// mounting holes (src/system/assembly.ts defaultAssembly).
+export const carriesCompute = (a: ContractValues["assembly"] | undefined): boolean => Boolean(a?.boards.some((b) => b.carries || (b.holes && b.name !== a.self)))
+
+// The compute rover's mechanics: the reference rover's wheels, caster and sensor with the motor, pack and regulator above,
+// laid out by the chassis solver on the system's plate (the pack beside the boards: it is too thick to go under them).
+export function computeRoverMechanics(c: ContractSnapshot, cat: CheckCatalog | null = defaultCheckCatalog()): (NonNullable<ContractValues["mechanics"]> & { regulator: string }) | null {
+	if (!cat) return null
+	const motor = byMpn(cat.mech.motors, COMPUTE_ROVER_MOTOR), pack = byMpn(cat.mech.batteries, COMPUTE_ROVER_PACK), reg = byMpn(cat.mech.regulators ?? [], COMPUTE_ROVER_REGULATOR)
+	if (!motor || !pack || !reg) return null
+	const r = ROVER_MECHANICS!
+	const s = solveChassis(c, { motor: motor.mpn, wheel: r.drive.wheel, caster: r.drive.caster, pack: pack.mpn, sensor: r.sensor.module, connector: r.sensor.connector }, cat)
+	return s.mechanics ? { ...s.mechanics, regulator: reg.mpn } : null
+}
+
+// The scripted HAT: a carrier brief (src/system/carrier.ts carrierBrief) read back into a design. Every number comes
+// from the brief, which is written from the module record, so any compute module's carrier gets its own.
+export const HAT_HEADER_MPN = "ADAFRUIT-2223"
+export interface HatBrief {
+	module: string
+	outline: { widthMm: number; heightMm: number }
+	holes: { x: number; y: number; dia: number }[]
+	header: { xMm: number; yMm: number }
+	supply: { volts: number; amps: number; pins: number[]; ground: number[] }
+}
+const numbers = (s: string) => (s.match(/\d+(?:\.\d+)?/g) ?? []).map(Number)
+export function hatFromBrief(brief: string): HatBrief | null {
+	const title = /^# Brief: carrier for the (.+) \(.+\)$/m.exec(brief)
+	const outline = /own outline and holes, so the two stack:\*\* ([\d.]+) × ([\d.]+) mm, with \d+ Ø([\d.]+) mm mounting holes at ((?:\([\d.]+, [\d.]+\)(?:, )?)+) mm/.exec(brief)
+	const header = /female stacking header[^\n]*?centred at \(([\d.]+), ([\d.]+)\) mm/.exec(brief)
+	const supply = /5 V supply: ([\d.]+) A at ([\d.]+) V\*\*[^\n]*?into header pins ([\d, and]+) \(5V\), ground on pins ([\d, and]+)\./.exec(brief)
+	if (!title || !outline || !header || !supply) return null
+	const xy = numbers(outline[4])
+	const holes = Array.from({ length: xy.length / 2 }, (_, i) => ({ x: xy[2 * i], y: xy[2 * i + 1], dia: Number(outline[3]) }))
+	return {
+		module: title[1],
+		outline: { widthMm: Number(outline[1]), heightMm: Number(outline[2]) },
+		holes,
+		header: { xMm: Number(header[1]), yMm: Number(header[2]) },
+		supply: { amps: Number(supply[1]), volts: Number(supply[2]), pins: numbers(supply[3]), ground: numbers(supply[4]) },
+	}
+}
+
+// The HAT's contract: the module's outline and holes (a standard fit: the space rules keep it), the 40-pin header at the
+// record's place, and the 5 V rail sized from the module's peak. No MCU: the board only carries power.
+export function hatDesign(h: HatBrief) {
+	const header = CATALOG.find((p) => p.mpn === HAT_HEADER_MPN)
+	if (!header) throw new Error(`catalog/parts.json has no ${HAT_HEADER_MPN}`)
+	const and = (xs: number[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : String(xs[0]))
+	return {
+		requirements: { summary: `HAT for the ${h.module}: ${h.supply.volts} V from the robot's battery into its 40-pin header`, peripherals: [] as string[], batteryLifeDays: null, enclosure: "none" as const, size: { ...h.outline, exact: true } },
+		outline: { ...h.outline, thicknessMm: 1.6, holes: h.holes, sizeReason: { kind: "standard-fit" as const, detail: `the ${h.module}'s own outline and mounting holes, so the HAT stacks on it` } },
+		connectors: [] as ContractValues["connectors"],
+		rails: [{ name: "5V", voltageV: h.supply.volts, regulatorMaxMa: h.supply.amps * 1000, loadMa: h.supply.amps * 1000 }],
+		pins: [] as ContractValues["pins"],
+		parts: [
+			{
+				ref: "J1",
+				role: "connector",
+				mpn: header.mpn,
+				lcsc: header.lcsc ?? null,
+				footprint: header.footprint,
+				pins: [...header.pins],
+				at: { xMm: h.header.xMm, yMm: h.header.yMm },
+				reason: `The ${h.module}'s 40-pin header, female, on the underside where the ${h.module}'s pins meet it: ${h.supply.volts} V in on pins ${and(h.supply.pins)}, ground on pins ${and(h.supply.ground)} (the carrier brief)`,
+			},
+		] as NonNullable<ContractValues["parts"]>,
+		// Which header pins take the 5 V rail and ground (the brief's, from the module's pin map).
+		supplyPins: { rail: "5V", pins: h.supply.pins, ground: h.supply.ground },
+	}
 }
 
 // "add a temperature/humidity sensor": the logger's SHT40 with its two I2C pull-ups, on the logger's I2C pins.
@@ -413,6 +508,8 @@ export function mockScripts(): Record<string, Script> {
 	let shrinkFrom: { widthMm: number; heightMm: number } | null = null
 	// How many times the scripted architect has widened the board after a failed DRC in this run.
 	let drcGrows = 0
+	// The scripted HAT this run designs, once the architect has read a carrier brief (the parts agent places its header).
+	let hat: ReturnType<typeof hatDesign> | null = null
 	// The engineer's swaps in this run (ref → the catalog part that took its place), kept so a later wake-up of the
 	// scripted parts agent doesn't put the old part back.
 	const swapped = new Map<string, NonNullable<ContractValues["parts"]>[number]>()
@@ -556,6 +653,13 @@ export function mockScripts(): Record<string, Script> {
 				return propose("outline", { ...grown, widthMm: grown.widthMm + 2, sizeReason: { kind: "routing", detail: `the ${grown.widthMm}×${grown.heightMm} mm board (rev ${rev}) didn't route: tscircuit left pins without a trace` } }, `2 mm wider so the router has room: the rev ${rev} board didn't route`)
 			}
 			if (instruction.startsWith("Brief")) {
+				// A carrier brief: the scripted HAT, every value read from the brief (and kept for the parts agent).
+				const hb = hatFromBrief(instruction)
+				if (hb) {
+					hat = hatDesign(hb)
+					const f = ARCHITECT_FIELDS[step]
+					return f ? propose(f, hat[f], `initial ${f} from the carrier brief`) : say("contract drafted")
+				}
 				const fields: FieldName[] = /\brover\b/i.test(instruction) ? [...ARCHITECT_FIELDS, "motion"] : [...ARCHITECT_FIELDS]
 				const field = fields[step] as (typeof ARCHITECT_FIELDS)[number] | "motion" | undefined
 				// Tournament variants may cap the width: "Board must be at most <N> mm wide".
@@ -573,7 +677,7 @@ export function mockScripts(): Record<string, Script> {
 				const housing = enclosureFromText(instruction)
 				const { size: _s, ...req } = design.requirements as typeof design.requirements & { size?: unknown }
 				const requirements = { ...req, ...(size ? { size } : {}), ...(housing ? { enclosure: housing } : {}) }
-				const value = field === "outline" ? { ...plain, ...sized, widthMm: Math.min(stated ? size!.widthMm : design.outline.widthMm, maxWidth) } : field === "requirements" ? requirements : field === "motion" ? design.motion : field ? design[field] : undefined
+				const value = field === "outline" ? { ...plain, ...sized, widthMm: Math.min(stated ? size!.widthMm : design.outline.widthMm, maxWidth) } : field === "requirements" ? requirements : field === "motion" ? motionFromBrief(instruction) : field ? design[field] : undefined
 				return field ? propose(field, value, `initial ${field} from the brief`) : say("contract drafted")
 			}
 			return say("noted")
@@ -636,7 +740,7 @@ export function mockScripts(): Record<string, Script> {
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
 			}
 			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
-			const base = isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
+			const base = hat ? hat.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
 			const wanted = withSwaps(state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base)
 			if (stepsTaken(items) > 0) return say("parts chosen")
 			return JSON.stringify(state().contract.get("parts")) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")
@@ -723,6 +827,15 @@ export function mockScripts(): Record<string, Script> {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
 				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "the chassis still fits" })] : say("decided")
 			}
+			// With a bought compute board on the robot: the 2S pack, its 5 V regulator and 12 V motors, laid out by the solver.
+			// Also when the reference rover was chosen before the system's body arrived.
+			if (instruction.startsWith("Consistency violations for you") && step === 0 && state().contract.get("motion") && carriesCompute(state().contract.get("assembly"))) {
+				const pack = byMpn(defaultCheckCatalog()?.mech.batteries ?? [], COMPUTE_ROVER_PACK)
+				if (!current || current.battery.pack !== pack?.mpn) {
+					const mech = computeRoverMechanics(state().contract.snapshot())
+					if (mech) return propose("mechanics", mech, `a rover with a bought compute board: the ${mech.battery.pack} through the ${mech.regulator}, ${mech.drive.motor} motors, laid out by the chassis solver (catalog/mechanics.json)`)
+				}
+			}
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion"))
 				return propose("mechanics", ROVER_MECHANICS, "the reference rover: Pololu 100:1 micro gearmotors on 60 mm wheels, a 25 mm swivel caster, the 2000 mAh cell, the VL53L0X breakout at the front (catalog/mechanics.json)")
 			return say("mechanics unchanged")
@@ -791,6 +904,8 @@ export function mockScripts(): Record<string, Script> {
 			if (stepsTaken(items) > 0) return say("requested")
 			const pins = state().contract.get("pins") ?? []
 			if (pins.some((p) => p.signal === "STATUS_LED")) return say("pins are sufficient")
+			// A board with no MCU (a HAT that only carries power) runs no firmware of its own.
+			if (hat && !(state().contract.get("parts") ?? []).some((p) => p.role === "mcu")) return say("no MCU on this board: no firmware pins")
 			// On the ESP32-C3 the LED keeps GPIO10, as it always had; on another chip its profile's solver picks a free pin.
 			const chip = mcuProfileOf(state().contract.get("parts"))
 			if (!chip || chip.id === LEGACY_MCU_ID) return propose("pins", [...pins, STATUS_LED], "firmware drives a status LED")

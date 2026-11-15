@@ -115,5 +115,6 @@ export function laidOut(c: ContractSnapshot, proposed: Mechanics, cat: CheckCata
 	if (!failing.length) return { mechanics: proposed, note: null }
 	const r = solveChassis(c, { motor: proposed.drive.motor, wheel: proposed.drive.wheel, caster: proposed.drive.caster, pack: proposed.battery.pack, sensor: proposed.sensor.module, connector: proposed.sensor.connector }, cat)
 	if (!r.mechanics || r.remaining.length) return { mechanics: proposed, note: null }
-	return { mechanics: r.mechanics, note: `the proposed layout failed ${failing.length} chassis check(s) (${failing[0].message}); the chassis solver laid out the same parts instead: plate ${r.mechanics.chassis.plateMm.join(" × ")} mm, axle at ${r.mechanics.drive.axleXMm} mm, wheelbase ${r.mechanics.drive.wheelbaseMm} mm, battery at x ${r.mechanics.battery.at.xMm} mm` }
+	// Fields the layout doesn't touch (a compute robot's `regulator`) stay the engineer's.
+	return { mechanics: { ...proposed, ...r.mechanics }, note: `the proposed layout failed ${failing.length} chassis check(s) (${failing[0].message}); the chassis solver laid out the same parts instead: plate ${r.mechanics.chassis.plateMm.join(" × ")} mm, axle at ${r.mechanics.drive.axleXMm} mm, wheelbase ${r.mechanics.drive.wheelbaseMm} mm, battery at x ${r.mechanics.battery.at.xMm} mm` }
 }

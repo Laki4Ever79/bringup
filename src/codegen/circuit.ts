@@ -553,6 +553,8 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	smd3225_4p: [3.6, 2.9],
 	// The DRV8833's TSSOP-16 (6.4 mm lead span, 0.65 mm pitch): pads across x, 8 rows along y.
 	"tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm": [7.9, 5.6],
+	// A HAT's 2 × 20 female header (ADAFRUIT-2223): 20 columns and 2 rows at 2.54 mm, the housing's 50.8 × 5.08 mm.
+	"pinrow40_rows2_female_pinnumbering(columnmajor)": [50.8, 5.08],
 }
 const DEFAULT_SIZE: [number, number] = [3, 3]
 
