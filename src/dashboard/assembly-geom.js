@@ -29,6 +29,30 @@ export function offPlate(b, plate) {
 	return Math.abs(b.xMm) + f.xMm / 2 > plate.lengthMm / 2 || Math.abs(b.yMm) + f.yMm / 2 > plate.widthMm / 2
 }
 
+// The plate and placement rules of a robot's chassis (src/mechanics/checks.ts, mech-fit): the mechanics checks call
+// these, and the design page's editor runs them on every move. A mount is {xMm, yMm, zMm?, sizeMm: [x, y, z?]} in the
+// chassis frame, its position its centre.
+// Each wheel's inner face keeps this much from the plate's edge.
+export const WHEEL_CLEARANCE_MM = 2
+// True when the wheels' inner faces come closer than the clearance to the plate's long edges.
+export function wheelsRubPlate(plateWidthMm, trackMm, wheelWidthMm) {
+	return trackMm / 2 - wheelWidthMm / 2 < plateWidthMm / 2 + WHEEL_CLEARANCE_MM
+}
+// The widest plate the wheels allow: the track less one wheel and the clearance on both sides.
+export const plateMaxWidthMm = (trackMm, wheelWidthMm) => trackMm - wheelWidthMm - 2 * WHEEL_CLEARANCE_MM
+// How far a motor's body reaches in under the plate, across the plate (y); its bracket needs at least half its body there.
+export const motorUnderPlateMm = (plateWidthMm, m) => plateWidthMm / 2 - (Math.abs(m.yMm) - m.sizeMm[1] / 2)
+export const motorHalfUnder = (plateWidthMm, m) => !(motorUnderPlateMm(plateWidthMm, m) < m.sizeMm[1] / 2)
+// True when the mount's footprint lies on the plate (edge to edge included).
+export function mountOnPlate(m, lengthMm, widthMm) {
+	return Math.abs(m.xMm) + m.sizeMm[0] / 2 <= lengthMm / 2 + 1e-9 && Math.abs(m.yMm) + m.sizeMm[1] / 2 <= widthMm / 2 + 1e-9
+}
+// The distance sensor looks forward (+x): true when the mount stands wholly ahead of it, across its width, and reaches
+// up past its bottom.
+export function blocksSensor(m, sensor) {
+	return m.xMm - m.sizeMm[0] / 2 > sensor.xMm && Math.abs(m.yMm - sensor.yMm) < (m.sizeMm[1] + sensor.sizeMm[1]) / 2 && m.zMm + m.sizeMm[2] / 2 > sensor.zMm - sensor.sizeMm[2] / 2
+}
+
 // Figures behind the electrical checks. The wire's resistance is copper's; the capacitances are ESTIMATES for an
 // untwisted 28 AWG JST SH cable.
 export const CABLE_PF_PER_M = 50 // estimate

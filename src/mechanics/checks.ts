@@ -2,6 +2,7 @@ import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 import type { AgentRole, ContractSnapshot, FieldName, Part, PinAssignment as Pin } from "../contract/types.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
+import { blocksSensor, motorHalfUnder, motorUnderPlateMm, mountOnPlate, plateMaxWidthMm, wheelsRubPlate } from "../dashboard/assembly-geom.js"
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
@@ -244,13 +245,13 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 
 	// Fit: everything on the plate, nothing colliding, the plate level and above the edge, within the size and mass.
 	const [L, Wd] = mech.chassis.plateMm
-	const onPlate = (m: Mount) => Math.abs(m.xMm) + m.sizeMm[0] / 2 <= L / 2 + 1e-9 && Math.abs(m.yMm) + m.sizeMm[1] / 2 <= Wd / 2 + 1e-9
+	const onPlate = (m: Mount) => mountOnPlate(m, L, Wd)
 	for (const m of ms) if (m.what.startsWith("board:") || m.what === "battery" || m.what === "caster" || m.what === "sensor")
 		if (!onPlate(m)) push("mech-fit", `${m.what.replace(/^board:/, "board ")} (${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm at ${r1(m.xMm)}, ${r1(m.yMm)}) doesn't fit on the ${L} × ${Wd} mm plate: ${m.what === "caster" ? casterWindow(m, L, Wd, d) : fitWindow(m, L, Wd)}`)
 	// A motor hangs under the plate's edge out to its wheel: at least half its body must be under the plate to bolt on.
 	for (const m of ms.filter((x) => x.what.startsWith("motor:"))) {
-		const under = Wd / 2 - (Math.abs(m.yMm) - m.sizeMm[1] / 2)
-		if (under < m.sizeMm[1] / 2) push("mech-fit", `${m.what.replace(":", " ")} reaches only ${r1(Math.max(0, under))} mm under the plate (half its ${m.sizeMm[1]} mm body needed for the bracket): widen the plate or narrow the track`)
+		const under = motorUnderPlateMm(Wd, m)
+		if (!motorHalfUnder(Wd, m)) push("mech-fit", `${m.what.replace(":", " ")} reaches only ${r1(Math.max(0, under))} mm under the plate (half its ${m.sizeMm[1]} mm body needed for the bracket): widen the plate or narrow the track`)
 	}
 	const boardsM = ms.filter((m) => m.what.startsWith("board:"))
 	for (let i = 0; i < boardsM.length; i++)
@@ -262,7 +263,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	if (pack.sizeMm[2] > est("standoffMm") - 1 && boardsM.length)
 		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")}: pick a thinner pack or put it beside the boards`)
 	const wheelInner = d.trackMm / 2 - wheel.widthMm / 2
-	if (wheelInner < Wd / 2 + 2) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): make trackMm at least ${r1(Wd + 4 + wheel.widthMm)} (the plate's width + 4 + the ${wheel.widthMm} mm wheel), or the plate at most ${r1(d.trackMm - wheel.widthMm - 4)} mm wide`)
+	if (wheelsRubPlate(Wd, d.trackMm, wheel.widthMm)) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): make trackMm at least ${r1(Wd + 4 + wheel.widthMm)} (the plate's width + 4 + the ${wheel.widthMm} mm wheel), or the plate at most ${r1(plateMaxWidthMm(d.trackMm, wheel.widthMm))} mm wide`)
 	// Level: the caster sets the plate's height; the motors hang from it on brackets, at least half their body below
 	// it (they can drop lower on a spacer, not rise into the plate).
 	const axleLevel = wheel.diameterMm / 2 + motor.bodyMm[2] / 2
@@ -270,7 +271,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		push("mech-fit", `the plate isn't level: its underside is ${mech.chassis.clearanceMm} mm up, the motors need at least ${r1(axleLevel)} mm and the ${d.caster} holds it at ${caster.heightMm} mm (within ${LEVEL_TOLERANCE_MM} mm): set the clearance to the caster's height, or pick a caster that matches`)
 	// The sensor looks forward: nothing may stand in front of it across its width.
 	const sm = ms.find((m) => m.what === "sensor")
-	if (sm) for (const m of ms) if (m !== sm && !m.what.startsWith("wheel:") && m.xMm - m.sizeMm[0] / 2 > sm.xMm && Math.abs(m.yMm - sm.yMm) < (m.sizeMm[1] + sm.sizeMm[1]) / 2 && m.zMm + m.sizeMm[2] / 2 > sm.zMm - sm.sizeMm[2] / 2)
+	if (sm) for (const m of ms) if (m !== sm && !m.what.startsWith("wheel:") && blocksSensor(m, sm))
 		push("mech-fit", `${m.what.replace(":", " ")} stands in front of the distance sensor: move the sensor to the front edge`)
 	if (mech.chassis.clearanceMm < motion.edgeMm)
 		push("mech-fit", `the plate is ${mech.chassis.clearanceMm} mm off the floor, under the ${motion.edgeMm} mm edge the rover must cross: raise it (bigger wheels)`)
