@@ -7,6 +7,7 @@ import { when } from "../change-control.ts"
 import { loadCatalog, searchParts } from "../tools/parts-search.ts"
 import { alternativesFor, orderReadiness, sourcesFor, stockSuggestion, swapEffects, type Alternative, type Readiness, type Source, type StockSuggestion } from "../tools/sourcing.ts"
 import { sensorDriver } from "../codegen/firmware.ts"
+import { checkRobotParts, robotPartLines, type RobotParts } from "../tools/robot-parts.ts"
 
 export interface BomItem {
 	ref: string
@@ -36,6 +37,9 @@ export interface Bom {
 	readiness?: Readiness
 	// false in a mock run: stock and price were not looked up, so every line is "not checked".
 	liveStock?: boolean
+	// A robot's bought mechanical parts (motors, wheels, caster, battery, sensor), with each shop's own price, stock
+	// and lead time in a live run (tools/robot-parts.ts). Absent for a design with no mechanics.
+	robot?: RobotParts
 }
 
 // Plain-code participant behind the dashboard's parts panel: on a parts change or a grounding result it writes
@@ -106,6 +110,8 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 			readiness: orderReadiness(items, live ? undefined : "mock run"),
 			liveStock: live,
 		}
+		const robotLines = robotPartLines(snapshot)
+		if (robotLines.length) bom.robot = await checkRobotParts(robotLines, { live, fetch: opts.fetch })
 		// Write then rename, so the page never reads half a file.
 		const path = join(s.outDir, "bom.json")
 		writeFileSync(`${path}.tmp`, JSON.stringify(bom, null, 2))
@@ -140,7 +146,7 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 		capabilities: [],
 		handlers: [
 			{
-				specification: when(({ event }) => (isEvent(event, "contract.changed") && event.payload.field === "parts") || isEvent(event, "grounding.checked")),
+				specification: when(({ event }) => (isEvent(event, "contract.changed") && (event.payload.field === "parts" || event.payload.field === "mechanics")) || isEvent(event, "grounding.checked")),
 				processor: { apply: () => schedule() },
 			},
 		],

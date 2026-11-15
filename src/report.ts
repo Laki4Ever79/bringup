@@ -1,3 +1,4 @@
+import type { RobotParts } from "./tools/robot-parts.ts"
 import type { DriveArtifact } from "./tools/drive.ts"
 import { caseOuter } from "./contract/case.ts"
 import { enclosureMode, type ContractSnapshot, type Part } from "./contract/types.ts"
@@ -139,6 +140,13 @@ export function sourcingLine(bomPath: string): string {
 		lines.push(`  - ${i.ref} ${i.mpn} is out of stock at LCSC. Try ${g.elsewhere.map((x) => x.supplier).join(" or ") || "another supplier"} first (not checked here).`)
 		if (g.alternative) lines.push(`    Or switch to ${g.alternative.mpn}${g.alternative.lcsc ? ` (${g.alternative.lcsc}, ${g.alternative.stock ?? "?"} in stock)` : ""}${g.alternative.changes?.length ? `: ${g.alternative.changes.join("; ")}` : ""}.`, `    To switch: \`npx tsx src/request.ts ${shellQuote(dirname(bomPath))} ${shellQuote(g.request ?? "")}\``)
 		else lines.push("    No in-stock alternative in the catalog for this role.")
+	}
+	// A robot's bought mechanical parts (tools/robot-parts.ts): the summary, then each line that isn't in stock, with
+	// the shop's answer or why it wasn't checked.
+	const robot = (bom as { robot?: RobotParts }).robot
+	if (robot) {
+		lines.push(`- Robot parts: ${robot.warn ? "needs attention: " : ""}${robot.summary}`)
+		if (robot.live) for (const l of robot.lines.filter((x) => x.status !== "in stock")) lines.push(`  - ${l.item} (${l.mpn}): ${l.status === "not checked" ? l.note : `${l.status} · ${l.note}`}`)
 	}
 	return lines.join("\n")
 }

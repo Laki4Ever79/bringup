@@ -3,6 +3,7 @@
 	"motors": [
 		{
 			"mpn": "POLOLU-2365 50:1 MP 6V",
+			"buy": [{ "supplier": "Pololu", "url": "https://www.pololu.com/product/2365" }],
 			"ratedV": 6,
 			"noLoadRpm": 420,
 			"stallTorqueNm": 0.053,
@@ -57,6 +58,7 @@
 		},
 		{
 			"mpn": "POLOLU-2366 75:1 MP 6V",
+			"buy": [{ "supplier": "Pololu", "url": "https://www.pololu.com/product/2366" }],
 			"ratedV": 6,
 			"noLoadRpm": 290,
 			"stallTorqueNm": 0.0765,
@@ -111,6 +113,7 @@
 		},
 		{
 			"mpn": "POLOLU-2367 100:1 MP 6V",
+			"buy": [{ "supplier": "Pololu", "url": "https://www.pololu.com/product/2367" }],
 			"ratedV": 6,
 			"noLoadRpm": 220,
 			"stallTorqueNm": 0.0922,
@@ -165,6 +168,7 @@
 		},
 		{
 			"mpn": "POLOLU-998 50:1 HP 6V",
+			"buy": [{ "supplier": "Pololu", "url": "https://www.pololu.com/product/998" }],
 			"ratedV": 6,
 			"noLoadRpm": 590,
 			"stallTorqueNm": 0.0843,
@@ -221,6 +225,7 @@
 	"wheels": [
 		{
 			"mpn": "POLOLU-1420 wheel 60x8 mm",
+			"buy": [{ "supplier": "Pololu", "url": "https://www.pololu.com/product/1420", "packQty": 2 }],
 			"diameterMm": 60,
 			"widthMm": 8,
 			"shaftMm": 3,
@@ -247,6 +252,7 @@
 		},
 		{
 			"mpn": "POLOLU-1430 wheel 80x10 mm",
+			"buy": [{ "supplier": "Pololu", "url": "https://www.pololu.com/product/1430", "packQty": 2 }, { "supplier": "The Pi Hut", "url": "https://thepihut.com/products/pololu-wheel-80x10mm-pair-black", "packQty": 2 }],
 			"diameterMm": 80,
 			"widthMm": 10,
 			"shaftMm": 3,
@@ -275,6 +281,7 @@
 	"casters": [
 		{
 			"mpn": "BOTLAND-7292 swivel caster 25 mm",
+			"buy": [{ "supplier": "Botland", "url": "https://botland.store/chassis-for-robots/7292-universal-swivel-casters-wheel-for-chassis.html" }],
 			"wheelMm": 25,
 			"heightMm": 35,
 			"swivel": true,
@@ -318,6 +325,7 @@
 		},
 		{
 			"mpn": "IFUTURETECH 1in castor wheel",
+			"buy": [{ "supplier": "iFuture Technology", "url": "https://ifuturetech.org/product/1-inch-castor-wheel-for-omnidirectional-robots" }],
 			"wheelMm": 25.4,
 			"heightMm": 35,
 			"swivel": true,
@@ -361,6 +369,7 @@
 		},
 		{
 			"mpn": "TENTE 1430POI038P60-46x38 swivel caster 38 mm",
+			"buy": [],
 			"wheelMm": 38,
 			"heightMm": 50.5,
 			"swivel": true,
@@ -406,6 +415,7 @@
 	"batteries": [
 		{
 			"mpn": "ADAFRUIT-258 LP-503562 1200 mAh",
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/258" }],
 			"cells": 1,
 			"nominalV": 3.7,
 			"fullV": 4.2,
@@ -460,6 +470,7 @@
 		},
 		{
 			"mpn": "ADAFRUIT-2011 LP-803860 2000 mAh",
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/2011" }],
 			"cells": 1,
 			"nominalV": 3.7,
 			"fullV": 4.2,
@@ -516,6 +527,7 @@
 	"sensors": [
 		{
 			"mpn": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/3317" }],
 			"chip": "VL53L0X",
 			"rangeMm": 1200,
 			"fovDeg": 25,

@@ -1,6 +1,6 @@
 import { afterEach, test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { createBomWriter, type Bom } from "../src/agents/bom.ts"
 import { createChangeDesk } from "../src/change-control.ts"
@@ -209,4 +209,16 @@ test("a swap from the board page is one fixed sentence the parts agent can read 
 	assert.equal(swapRequest({ ref: "J3", mpn: "B2B-PH-K-S(LF)(SN)" }, { mpn: "SM04B-SRSS-TB(LF)(SN)", lcsc: null }), "swap J3 B2B-PH-K-S(LF)(SN) for the SM04B-SRSS-TB(LF)(SN) from the catalog")
 	assert.deepEqual(parseSwap("swap J3 B2B-PH-K-S(LF)(SN) for the SM04B-SRSS-TB(LF)(SN) from the catalog"), { ref: "J3", mpn: "SM04B-SRSS-TB(LF)(SN)" })
 	assert.equal(parseSwap("make it 40 mm wide"), null)
+})
+
+test("the report's sourcing lines include the robot's parts: the summary, then each line not in stock with why", () => {
+	const dir = tempDir()
+	const path = join(dir, "bom.json")
+	const line = (item: string, status: string, note: string) => ({ item, mpn: `${item} part`, qty: 1, packs: 1, buy: [], status, supplier: null, url: null, unitUsd: null, lineUsd: null, leadDays: null, checkedAt: null, note })
+	writeFileSync(path, JSON.stringify({ revision: 1, totalUsd: null, items: [], robot: { live: true, knownUsd: 14.95, warn: true, summary: "2 robot parts · out of stock: battery", lines: [line("battery", "out of stock", "adafruit.com, checked 2026-11-15 12:00 UTC"), line("motor", "not checked", "not checked: pololu.com refused the automated check (HTTP 403)"), line("distance sensor", "in stock", "adafruit.com")] } }))
+	const text = sourcingLine(path)
+	assert.match(text, /- Robot parts: needs attention: 2 robot parts · out of stock: battery/)
+	assert.match(text, /  - battery \(battery part\): out of stock · adafruit\.com/)
+	assert.match(text, /  - motor \(motor part\): not checked: pololu\.com refused the automated check \(HTTP 403\)/)
+	assert.doesNotMatch(text, /distance sensor \(/)
 })
