@@ -1,0 +1,12 @@
+{
+	"id": "distance-vl53l0x",
+	"kind": "sensor",
+	"title": "VL53L0X distance breakout on a 4-pin JST SH (STEMMA QT) cable",
+	"parts": [
+		{ "mpn": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", "role": "distance-sensor", "qty": 1 },
+		{ "mpn": "SM04B-SRSS-TB(LF)(SN)", "role": "connector", "qty": 1 }
+	],
+	"circuit": "4-pin plug joined to the board's I2C bus (linkBusTraces)",
+	"driver": "include/drivers/vl53l0x.h",
+	"interfaces": [{ "kind": "i2c", "signals": ["I2C_SDA", "I2C_SCL"], "address": "0x29" }]
+}

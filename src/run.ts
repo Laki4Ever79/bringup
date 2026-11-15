@@ -1,6 +1,6 @@
 import { readBrief } from "./brief-file.ts"
 import { mkdirSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { join, basename } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { FieldName } from "./contract/types.ts"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
@@ -32,6 +32,7 @@ import { createStubBuilders } from "./tools/stubs.ts"
 import { createBench, type Bench, type BenchOptions } from "./agents/bench.ts"
 import type { Bridge, BridgeHello } from "./tools/bench-bridge.ts"
 import { appendUsage } from "./inference/usage.ts"
+import { recordRun } from "./modules/library.ts"
 
 export interface RunOptions {
 	brief: string
@@ -127,6 +128,10 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	let latest: Settlement | null = null
 	const writeOutputs = (settled: boolean) => {
 		writeFileSync(join(opts.outDir, "contract.json"), JSON.stringify(state.contract.snapshot(), null, 2))
+		// What this run showed about the modules it used (src/modules/library.ts), for the module library. Not from the
+		// test suite (node --test sets NODE_TEST_CONTEXT), so tests never write a machine's evidence.
+		if (!process.env.NODE_TEST_CONTEXT && !process.env.BRINGUP_NO_EVIDENCE)
+			recordRun(env.root, state.contract.snapshot().values, state.artifacts, `${opts.mock ? "scripted " : ""}${basename(opts.outDir)}`, state.contract.revision)
 		return writeReport(opts.outDir, state, env, settled, { noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench), mock: opts.mock })
 	}
 	// Scripted change requests (--change): each goes out through requests.jsonl, like one from the CLI or the MCP.
