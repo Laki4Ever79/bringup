@@ -70,3 +70,28 @@ test("a via too near an unplated hole moves straight away from it to the fab's h
 	const clear = pcb(npth(107.5, 108, 90, -2.54, 1.016, 0.991), via(100, 100, 4))
 	assert.equal(nudgeVias(clear, { edgeMm: 0.3, holeMm: 0.2 }).moved.length, 0)
 })
+
+// The subscription run's 64×25 mm rover (15 Nov 2026) left its debug footprint off: the router ran JD1.pin2's trace to
+// U1 along the board's edge, its copper 0.25 mm from it against the fab's 0.3. A trace's corner too near the edge moves
+// inward by what's missing, with the same net's segment ends that meet it.
+test("a trace running too near the edge moves inward by what's missing, its joints with it", async () => {
+	const { nudgeVias } = await import("../src/tools/via-edge.ts")
+	// The top edge is y = 85.5 (KiCad y down); a 0.15 mm trace at y = 85.86 has its copper 0.285 mm from it.
+	const before = pcb(seg(90, 88, 92, 85.86, 5), seg(92, 85.86, 96, 85.86, 5), seg(96, 85.86, 98, 88, 5), seg(90, 85.86, 92, 85.86, 6))
+	const r = nudgeVias(before, { edgeMm: 0.3, holeMm: 0.2 })
+	const s = segs(r.pcb)
+	const need = 85.5 + 0.3 + 0.075
+	for (const [i, k] of [[0, 3], [1, 1], [1, 3], [2, 1]] as const) assert.ok(s[i][k] >= need, `segment ${i} end at y ${s[i][k]}`)
+	assert.equal(s[0][3], s[1][1], "the joint stays joined")
+	assert.equal(s[1][3], s[2][1], "the joint stays joined")
+	assert.deepEqual([s[0][0], s[0][1], s[2][2], s[2][3]], [90, 88, 98, 88], "ends away from the edge stay")
+	assert.ok(s[3][1] >= need && s[3][3] >= need, "another net's trace too")
+	assert.ok(s[3][1] - 85.86 < 0.05, "moved no further than needed")
+})
+
+test("a trace end on a pad at the edge stays on the pad (an edge connector's pads are there on purpose)", async () => {
+	const { nudgeVias } = await import("../src/tools/via-edge.ts")
+	const pad = `  (footprint\n    "tscircuit:usb"\n    (layer F.Cu)\n    (at 100 85.7 0)\n    (pad "1" smd rect\n      (at 0 0 0)\n      (size 0.6 1.2)\n      (layers F.Cu)\n    )\n  )\n`
+	const r = nudgeVias(pcb(pad, seg(100, 85.7, 100, 90, 5)), { edgeMm: 0.3, holeMm: 0.2 })
+	assert.deepEqual(segs(r.pcb)[0], [100, 85.7, 100, 90])
+})
