@@ -8,7 +8,7 @@ import { assemblyOutlines, withAssembly } from "../mechanics/assembly.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
 import { est } from "../mechanics/estimates.ts"
-import { massAndCom, mounts } from "../mechanics/model.ts"
+import { massAndCom, mounts, payloadMount } from "../mechanics/model.ts"
 
 const exec = promisify(execFile)
 
@@ -76,7 +76,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 	const placed = mech.chassis.boards.filter((b) => known.some((k) => k.name === b.name))
 	const unplaced = mech.chassis.boards.filter((b) => !known.some((k) => k.name === b.name)).map((b) => b.name)
 	const ms = mounts(mech, known, cat.mech)
-	ms.push({ what: "payload", xMm: 0, yMm: 0, zMm: mech.chassis.clearanceMm + mech.chassis.thicknessMm + 10, sizeMm: [20, 20, 20], massG: motion.payloadG })
+	ms.push(payloadMount(mech, motion.payloadG))
 	const { massG, com } = massAndCom(ms)
 	return {
 		plate: { lengthMm: mech.chassis.plateMm[0], widthMm: mech.chassis.plateMm[1], thicknessMm: mech.chassis.thicknessMm, clearanceMm: mech.chassis.clearanceMm },

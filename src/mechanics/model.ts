@@ -1,4 +1,4 @@
-import { byMpn, type MechCatalog, type MotorPart } from "./catalog.ts"
+import { byMpn, type BatteryPack, type MechCatalog, type MotorPart } from "./catalog.ts"
 import { est } from "./estimates.ts"
 import type { Mechanics, Mount } from "./types.ts"
 import { hatBaseZ } from "../dashboard/assembly-geom.js"
@@ -16,6 +16,48 @@ export function motorAt(m: MotorPart, volts: number): { noLoadRadS: number; stal
 	const stallA = volts / rOhm
 	const stallNm = m.stallTorqueNm * k
 	return { noLoadRadS, stallNm, stallA, kt: stallA > 0 ? stallNm / stallA : 0, ke: noLoadRadS > 0 ? volts / noLoadRadS : 0, rOhm }
+}
+
+// The drive's load line, one model for the firmware's cruise duty, the "Top speed" and "Cruise duty" checks and the
+// simulation (py/mech/model.py motor_torque, battery_volts): on a flat floor each wheel carries half the rolling load
+// T = Crr·m·g·r/2, which draws i = T/kt through the winding, so at duty d on supply V the wheel turns at
+// ω = (d·V − i·R)/ke. The pack's terminal voltage sags by both motors' current through its internal resistance.
+export function rollingLoadNmPerWheel(massKg: number, wheelRadiusM: number): number {
+	return (est("rollingCrr") * massKg * G * wheelRadiusM) / 2
+}
+export const packOhm = (pack: BatteryPack) => pack.internalOhm ?? est("packInternalOhm")
+function loadLine(motor: MotorPart, pack: BatteryPack, openV: number, massKg: number, wheelRadiusM: number) {
+	const m = motorAt(motor, openV)
+	const loadA = m.kt > 0 ? rollingLoadNmPerWheel(massKg, wheelRadiusM) / m.kt : 0
+	return { m, loadA, volts: openV - 2 * loadA * packOhm(pack) }
+}
+// The wheel's ground speed at `duty` from a pack whose open-circuit voltage is openV.
+export function loadedSpeedMps(motor: MotorPart, pack: BatteryPack, openV: number, duty: number, massKg: number, wheelRadiusM: number): number {
+	const { m, loadA, volts } = loadLine(motor, pack, openV, massKg, wheelRadiusM)
+	return m.ke > 0 ? Math.max(0, ((duty * volts - loadA * m.rOhm) / m.ke) * wheelRadiusM) : 0
+}
+// The duty that holds speedMps on the load line from a pack at openV (unclamped: above 1 the motor can't reach it).
+export function dutyFor(motor: MotorPart, pack: BatteryPack, openV: number, speedMps: number, massKg: number, wheelRadiusM: number): number {
+	const { m, loadA, volts } = loadLine(motor, pack, openV, massKg, wheelRadiusM)
+	return volts > 0 ? ((speedMps / wheelRadiusM) * m.ke + loadA * m.rOhm) / volts : Infinity
+}
+// The firmware's cruise duty. The rover has no battery sense (no divider on an ADC pin), so the duty is a fixed PWM;
+// it is set for a full pack, where the rover runs fastest and where the simulated drive starts (soc 1). The speed it
+// plans is then the most it ever goes: the stop distance and the quarter turn timed at that speed hold on a fresh pack
+// and err short, never long, as the pack drains (at the nominal plateau it runs about nominalV/fullV of it, 0.88 for a
+// LiPo). Set at the nominal voltage, a fresh pack ran 1.135× fast and the timed turn overshot.
+export function cruiseDuty(motor: MotorPart, pack: BatteryPack, speedMps: number, massKg: number, wheelRadiusM: number): number {
+	return dutyFor(motor, pack, pack.fullV, speedMps, massKg, wheelRadiusM)
+}
+// Under this cruise duty the gearmotor is geared too fast for the target: little torque in hand at that duty (stalled,
+// a wheel gives duty × its stall torque) and the speed set by a few PWM steps. It used to be a silent floor in the
+// firmware (the duty raised to 0.3), which ran a badly geared rover up to 1.4× its planned speed and timed its turns
+// wrong; the "Cruise duty" check names it to the mechanics engineer instead.
+export const MIN_CRUISE_DUTY = 0.3
+
+// The payload the brief carries, on the plate's centre 10 mm up (the checks, the firmware and the chassis spec agree).
+export function payloadMount(mech: Mechanics, payloadG: number): Mount {
+	return { what: "payload", xMm: 0, yMm: 0, zMm: mech.chassis.clearanceMm + mech.chassis.thicknessMm + 10, sizeMm: [20, 20, 20], massG: payloadG }
 }
 
 // The horizontal force at the axle that lifts a wheel of radius r over a step of height h carrying weight m·g:

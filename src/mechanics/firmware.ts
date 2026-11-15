@@ -2,14 +2,14 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { byMpn } from "./catalog.ts"
 import { defaultCheckCatalog } from "./checks.ts"
 import { est } from "./estimates.ts"
-import { G, massAndCom, motorAt, mounts } from "./model.ts"
+import { cruiseDuty, G, massAndCom, mounts, payloadMount } from "./model.ts"
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { macroName, sensorDriver } from "../codegen/firmware.ts"
 
 // The rover firmware's header (templates/fw-rover/include/hw_pins.h), from the contract: the driver's and the bus's
 // pins, and the control numbers the mechanics fix. Stop distance: the brief's distance from the wall plus 1.5× (the
-// braking distance on the floor and one sensor period of travel at cruise). Cruise duty: the target speed over the
-// loaded top speed at the cell's nominal voltage. Turn: a quarter turn in place at cruise.
+// braking distance on the floor and one sensor period of travel at cruise). Cruise duty: the target speed on the motor's
+// load line from a full pack (model.ts cruiseDuty). Turn: a quarter turn in place at cruise.
 export const STOP_MARGIN = 1.5
 export const SLOW_ZONE_MM = 300
 
@@ -35,15 +35,13 @@ export function roverHeader(s: ContractSnapshot): string {
 	const speed = motion.speedMps
 	const brakeMm = (speed ** 2 / (2 * est("floorMu") * G)) * 1000
 	const stop = Math.ceil(motion.stopBeforeWallMm + STOP_MARGIN * (brakeMm + speed * sensor.updateMs))
-	// Cruise duty on the motor's load line at the pack's nominal voltage: the wheel's speed is d·V/ke less the droop of
-	// its rolling load through the winding (T·R/(kt·ke)). A flat 0.8 "under load" guess planned 0.3 m/s and got 0.42 on
-	// the rover-pi's 12 V motors, so the quarter turn (timed at the planned speed) went 1.4× too far, into a wall.
-	const m = motorAt(motor, pack.nominalV)
+	// Cruise duty on the motor's load line (model.ts cruiseDuty, the same model as the "Top speed" and "Cruise duty"
+	// checks): set for a full pack, where the rover is fastest and the simulated drive starts. No floor: a motor geared so
+	// fast that the duty falls under MIN_CRUISE_DUTY is the "Cruise duty" check's finding, not a silent speed-up.
 	const boards = checkBoards(s).map((b) => ({ name: b.name, outline: { widthMm: b.snapshot.values.outline?.widthMm ?? 0, heightMm: b.snapshot.values.outline?.heightMm ?? 0 } }))
-	const massKg = (massAndCom(mounts(withAssembly(v) ?? mech, boards, cat.mech)).massG + motion.payloadG) / 1000
-	const loadNm = (est("rollingCrr") * massKg * G * r) / 2
-	const wheelRadS = speed / r + (m.kt > 0 && m.ke > 0 ? (loadNm * m.rOhm) / (m.kt * m.ke) : 0)
-	const cruise = Math.min(1, Math.max(0.3, (wheelRadS * m.ke) / pack.nominalV))
+	const geom = withAssembly(v) ?? mech
+	const { massG } = massAndCom([...mounts(geom, boards, cat.mech), payloadMount(geom, motion.payloadG)])
+	const cruise = Math.min(1, Math.max(0, cruiseDuty(motor, pack, speed, massG / 1000, r)))
 	const turnMs = Math.round((Math.PI / 2 / ((2 * speed) / (mech.drive.trackMm / 1000))) * 1000)
 	const lines = [
 		"// Generated from the design contract (src/mechanics/firmware.ts). Do not edit.",
