@@ -15,6 +15,8 @@ export interface ExampleMeta {
 	// chassis: the board stands on a robot's chassis (chassis.stl and chassis.json beside it), drawn as the robot.
 	boards: { name: string; outline: { widthMm: number; heightMm: number } | null; chassis?: true }[]
 	links: unknown[]
+	// A system's assembly (system.json): a robot's boards stand where it puts them on the shared chassis.
+	assembly?: unknown
 	// The example has a seed plan people can fork (starter.json, src/dashboard/starters.ts); set by listExamples.
 	starter?: true
 }
@@ -69,7 +71,7 @@ export function saveExample(sourceDir: string, name: string, sentence: string, d
 	else boards.push({ name: "main", ...saveBoard(sourceDir, join(dest, "boards", "main")) })
 	const brief = existsSync(join(sourceDir, "brief.md")) ? readFileSync(join(sourceDir, "brief.md"), "utf8") : ""
 	const title = titleOverride ?? spec?.name ?? (brief.split("\n").find((l) => l.trim()) ?? name).replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "").trim()
-	const meta: ExampleMeta = { name, sentence, title, boards, links: spec?.links ?? [] }
+	const meta: ExampleMeta = { name, sentence, title, boards, links: spec?.links ?? [], ...(spec?.assembly ? { assembly: spec.assembly } : {}) }
 	writeFileSync(join(dest, "example.json"), JSON.stringify(meta, null, "\t"))
 	return meta
 }

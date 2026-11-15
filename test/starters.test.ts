@@ -160,3 +160,30 @@ test("re-saving an example keeps its starter seed", () => {
 	saveExample(run, "rover", "a rover", examples)
 	assert.deepEqual(readFileSync(join(examples, "rover", "starter.json")), before)
 })
+
+test("the shipped Rover + climate starter is the two-board robot of briefs/systems/rover-climate.json, and forks over the API", async () => {
+	const seed = JSON.parse(readFileSync(join(EXAMPLES, "rover-climate", "starter.json"), "utf8"))
+	const spec = JSON.parse(readFileSync(resolve(import.meta.dirname, "..", "briefs", "systems", "rover-climate.json"), "utf8"))
+	assert.equal(seed.robot, true)
+	assert.deepEqual(seed.spec.boards.map((b: Any) => b.name), ["main", "climate"])
+	assert.deepEqual(seed.spec.links, spec.links)
+	assert.equal(seed.briefs.main, readFileSync(resolve(import.meta.dirname, "..", "briefs", "rover.md"), "utf8"))
+	assert.equal(seed.briefs.climate, readFileSync(resolve(import.meta.dirname, "..", "briefs", "logger.md"), "utf8"))
+	assert.deepEqual(planChecks({ ...seed, id: "plan-x", version: 1, spendUsd: null }), [])
+	const examples = examplesCopy()
+	cpSync(join(EXAMPLES, "rover-climate"), join(examples, "rover-climate"), { recursive: true })
+	await withHub(examples, async ({ url }) => {
+		const r = await post(`${url}/api/starters/rover-climate/fork`)
+		assert.equal(r.status, 201)
+		const { id } = (await r.json()) as Any
+		const v = (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any
+		assert.deepEqual(v.plan.forkedFrom.title, "Rover + climate board")
+		assert.deepEqual(v.issues, [])
+	})
+})
+
+test("a system example keeps its assembly, so the start page stands a robot's boards on its chassis", () => {
+	const meta = JSON.parse(readFileSync(join(EXAMPLES, "rover-climate", "example.json"), "utf8"))
+	assert.equal(meta.assembly.body, "chassis")
+	assert.deepEqual(meta.assembly.boards.map((b: Any) => b.name).sort(), ["climate", "main"])
+})

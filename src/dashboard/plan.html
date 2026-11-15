@@ -25,7 +25,7 @@
 <header>
 	<span id="status">Plan · nothing built yet</span>
 </header>
-<div class="said">You said: <b id="sentence"></b></div>
+<div class="said">You said: <b id="sentence"></b> <span id="forked-from"></span></div>
 <main></main>
 <script type="module">
 	// The plan's drawing and side panel are plan-canvas.js and plan-panel.js, shared with the design page before a
@@ -42,6 +42,7 @@
 	// What was said, and what planning spent: no calls means scripted; a real call without token counts reads "unknown", never free.
 	function onView(v) {
 		$("sentence").textContent = `“${v.plan.sentence}”`
+		$("forked-from").textContent = v.plan.forkedFrom ? `· forked from ${v.plan.forkedFrom.title ?? v.plan.forkedFrom.starter}` : ""
 		if (v.spend) $("status").textContent = `Plan · nothing built yet · ${v.spend.calls === 0 ? "scripted: free" : `planning ${spendLabel(v.spend, false).toLowerCase()}`}`
 	}
 
