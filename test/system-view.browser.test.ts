@@ -336,7 +336,7 @@ test("under view=top there is no 3D canvas until 3D is chosen, and a board opens
 		await page.keyboard.press("Escape")
 		await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"))
 		assert.equal(await page.evaluate(() => document.querySelectorAll("#stage canvas").length), 0)
-		await page.waitForTimeout(800) // the zoom out finishes; the switch is ignored until then
+		// Pressed inside the close flight: queued, and applied when the flight ends.
 		await page.click('#view-switch [data-view="3d"]')
 		await page.waitForSelector("#stage canvas", { state: "attached", timeout: 30_000 })
 		assert.equal(await visible(page, "#stage-top"), false)
@@ -447,12 +447,7 @@ test("hovering a board in either view shows its facts card; clicking a cable in 
 		await page.keyboard.press("Escape")
 		await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"))
 		assert.equal((await card()).shown, false, "the cable card stays closed after the board closes")
-		// The switch is ignored until the close flight ends: ask for 3D until it takes (side effects stay out of waitForFunction).
-		for (let i = 0; i < 75 && !(await page.evaluate(() => document.getElementById("stage")!.offsetWidth > 0)); i++) {
-			await page.evaluate(() => (window as any).setView("3d"))
-			await page.waitForTimeout(200)
-		}
-		// 3D: sweep the canvas until a board's card shows.
+		// 3D, pressed inside the close flight: queued, not dropped. Then sweep the canvas until a board's card shows.
 		await page.click('#view-switch [data-view="3d"]')
 		await page.waitForSelector("#stage canvas", { state: "visible" })
 		const sb = (await page.locator("#stage canvas").boundingBox())!

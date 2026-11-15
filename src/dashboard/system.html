@@ -548,10 +548,19 @@ function showView(view) {
 	history.replaceState(history.state, "", u)
 }
 window.__topStats = () => stage.top?.stats() // read by npm run perf (the Top view's draws while idle)
-// Ignored while a board is opening, open or closing: the flight belongs to the view that began it.
+// Ignored while a board is opening or open: the flight belongs to the view that began it. Pressed while a board closes
+// (or another view mounts), it is queued: the latest one asked for is applied when that flight ends.
 window.setView = async (view) => {
 	view = view === "top" ? "top" : "3d"
-	if (planning.canvas || openName || stage.busy || view === stage.view) return
+	if (planning.canvas || openName) return
+	stage.wantView = view
+	while (stage.busy) {
+		await stage.busy
+		if (openName || planning.canvas) return
+	}
+	if (stage.wantView !== view) return // a later press won
+	stage.wantView = null
+	if (view === stage.view) return
 	let done
 	stage.busy = new Promise((r) => (done = r))
 	try {
