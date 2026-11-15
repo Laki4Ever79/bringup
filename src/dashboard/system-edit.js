@@ -3,12 +3,10 @@
 // limit come from assembly-geom.js, the same module the server's checks import, so the page and the run agree.
 // Frame: +x forward, +y left, origin at the plate centre; rotDeg is counter-clockwise from above; edges are the
 // board's own (left/right/top/bottom, before it is turned), as in top-layout.js.
-import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, offPlate } from "./assembly-geom.js"
+import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, offPlate, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM } from "./assembly-geom.js"
 
 export const SNAP_MM = 0.5
-export const STANDOFF_DEFAULT_MM = 8
-export const STANDOFF_ERROR_MM = [3, 30]
-export const STANDOFF_WARN_MM = [5, 20]
+export { STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM }
 const NORMAL = { left: [-1, 0], right: [1, 0], top: [0, 1], bottom: [0, -1] }
 const snap = (v) => Math.round(v / SNAP_MM) * SNAP_MM
 const r1 = (n) => Math.round(n * 10) / 10
@@ -54,13 +52,13 @@ export function keepOuts(chassis) {
 	return out
 }
 
-// start: {assembly, links, chassis?: ChassisSpec, maxSizeMm?: [length, width], i2cDevices?: {[linkId]: n}}
+// start: {assembly, links, chassis?: ChassisSpec, maxSizeMm?: [length, width], i2cDevicesByBoard?: {[board]: n} (the server's i2cDevices; the link's limit sums its two ends, as checks.ts does)}
 export function editor(start) {
 	const chassis = start.chassis ?? null
 	const maxSizeMm = start.maxSizeMm ?? null
-	const devices = start.i2cDevices ?? {}
+	const devices = start.i2cDevicesByBoard ?? {}
 	// A snapshot is the editable part: the assembly, the links, and which cables the user routed by hand.
-	const snapshot = (assembly, links, custom = []) => ({ assembly: clone(assembly), links: clone(links), custom: [...custom] })
+	const snapshot = (assembly, links, custom = [], pinned = []) => ({ assembly: clone(assembly), links: clone(links), custom: [...custom], pinned: [...pinned] })
 	const applied0 = snapshot(start.assembly, start.links)
 	let history = [applied0], at = 0, floor = 0
 	let applied = applied0
@@ -90,8 +88,16 @@ export function editor(start) {
 		const a = board(s, l.a.board), b = board(s, l.b.board)
 		setRoute(s, l, [edgePoint(a, l.a.edge ?? edgeToward(a, b.xMm - a.xMm, b.yMm - a.yMm)), edgePoint(b, l.b.edge ?? edgeToward(b, a.xMm - b.xMm, a.yMm - b.yMm))], false)
 	}
+	// After a board moves or turns, a cable that is not hand-routed leaves from the edges now facing each other, except an
+	// end the user pinned with cable-edge.
 	const reroute = (s, name) => {
-		for (const l of s.links) if ((l.a.board === name || l.b.board === name) && cables(s).some((c) => c.link === l.id) && !s.custom.includes(l.id)) autoRoute(s, l)
+		for (const l of s.links) {
+			if ((l.a.board !== name && l.b.board !== name) || !cables(s).some((c) => c.link === l.id) || s.custom.includes(l.id)) continue
+			const a = board(s, l.a.board), b = board(s, l.b.board)
+			if (!s.pinned.includes(`${l.id}.a`)) l.a = { ...l.a, edge: edgeToward(a, b.xMm - a.xMm, b.yMm - a.yMm) }
+			if (!s.pinned.includes(`${l.id}.b`)) l.b = { ...l.b, edge: edgeToward(b, a.xMm - b.xMm, a.yMm - b.yMm) }
+			autoRoute(s, l)
+		}
 	}
 
 	function next(op) {
@@ -149,6 +155,7 @@ export function editor(start) {
 				s.links = s.links.filter((x) => x.id !== op.link)
 				s.assembly.cables = cables(s).filter((c) => c.link !== op.link)
 				s.custom = s.custom.filter((x) => x !== op.link)
+				s.pinned = s.pinned.filter((x) => !x.startsWith(`${op.link}.`))
 				break
 			}
 			case "cable-kind": {
@@ -163,6 +170,7 @@ export function editor(start) {
 				if (!Array.isArray(op.points) || op.points.length < 2) throw new Error("a route needs at least two points")
 				const pts = op.points.map((p) => ({ xMm: snap(p.xMm), yMm: snap(p.yMm) }))
 				const a = board(s, l.a.board), b = board(s, l.b.board)
+				// The edge each end leaves from is the one the first (last) leg points toward, taken from the board's centre.
 				const first = pts[1], last = pts[pts.length - 2]
 				l.a = { ...l.a, edge: edgeToward(a, first.xMm - a.xMm, first.yMm - a.yMm) }
 				l.b = { ...l.b, edge: edgeToward(b, last.xMm - b.xMm, last.yMm - b.yMm) }
@@ -172,7 +180,9 @@ export function editor(start) {
 			case "cable-edge": {
 				const l = link(s, op.link)
 				if (!NORMAL[op.edge]) throw new Error(`no edge ${op.edge}`)
-				l[op.end === "b" ? "b" : "a"] = { ...l[op.end === "b" ? "b" : "a"], edge: op.edge }
+				const end = op.end === "b" ? "b" : "a"
+				l[end] = { ...l[end], edge: op.edge }
+				if (!s.pinned.includes(`${l.id}.${end}`)) s.pinned.push(`${l.id}.${end}`)
 				if (!s.custom.includes(l.id)) autoRoute(s, l)
 				break
 			}
@@ -196,15 +206,15 @@ export function editor(start) {
 			if (a.plate) for (const b of bs) if (offPlate(b, a.plate)) bad({ board: b.name }, `${b.name} sticks out of the ${a.plate.lengthMm} × ${a.plate.widthMm} mm plate`)
 			for (const b of bs) for (const k of keepOuts(chassis)) if (rectsOverlap(b, k)) bad({ board: b.name }, `${b.name} is over ${k.what}`)
 			if (maxSizeMm && a.plate) {
-				const outerW = Math.max(a.plate.widthMm, chassis ? chassis.drive.trackMm + chassis.drive.wheelWidthMm : 0)
+				const outerW = Math.max(a.plate.widthMm, chassis?.drive ? chassis.drive.trackMm + chassis.drive.wheelWidthMm : 0)
 				if (a.plate.lengthMm > maxSizeMm[0] || outerW > maxSizeMm[1]) bad({ plate: true }, `the robot is ${a.plate.lengthMm} × ${r1(outerW)} mm, over the ${maxSizeMm[0]} × ${maxSizeMm[1]} mm the brief allows`)
 			}
 		}
 		for (const b of bs) {
 			const h = b.standoffMm
 			if (h === undefined) continue
-			if (!(h >= STANDOFF_ERROR_MM[0] && h <= STANDOFF_ERROR_MM[1])) bad({ board: b.name }, `${b.name}'s standoffs are ${h} mm; use ${STANDOFF_ERROR_MM[0]} to ${STANDOFF_ERROR_MM[1]} mm`)
-			else if (h < STANDOFF_WARN_MM[0] || h > STANDOFF_WARN_MM[1]) bad({ board: b.name }, `${b.name}'s standoffs are ${h} mm; ${STANDOFF_WARN_MM[0]} to ${STANDOFF_WARN_MM[1]} mm is the usual range`, "warn")
+			if (!(h >= STANDOFF_RANGE_MM[0] && h <= STANDOFF_RANGE_MM[1])) bad({ board: b.name }, `${b.name}'s standoffs are ${h} mm; use ${STANDOFF_RANGE_MM[0]} to ${STANDOFF_RANGE_MM[1]} mm`)
+			else if (h < STANDOFF_USUAL_MM[0] || h > STANDOFF_USUAL_MM[1]) bad({ board: b.name }, `${b.name}'s standoffs are ${h} mm; ${STANDOFF_USUAL_MM[0]} to ${STANDOFF_USUAL_MM[1]} mm is the usual range`, "warn")
 		}
 		for (const l of s.links) {
 			const c = cables(s).find((x) => x.link === l.id)
@@ -212,7 +222,7 @@ export function editor(start) {
 			const length = routed ? Math.round(cableLength(c.points) + CABLE_SLACK_MM) : l.cable.lengthMm
 			if (l.kind === "i2c") {
 				const khz = l.i2c?.khz ?? 100
-				const { maxMm } = i2cCableLimit(khz, devices[l.id] ?? 0)
+				const { maxMm } = i2cCableLimit(khz, (devices[l.a.board] ?? 0) + (devices[l.b.board] ?? 0))
 				if (length > maxMm) bad({ link: l.id }, `${l.id}: this cable is ${length} mm; at ${khz} kHz an I2C bus allows about ${Math.round(maxMm)} mm (estimate). Shorten it, or use UART`)
 			}
 		}

@@ -9,3 +9,6 @@ export const BOARD_PF: number
 export const DEVICE_PF: number
 export const PULLUP_OHM: number
 export function i2cCableLimit(khz: number, devices: number): { maxPf: number; maxMm: number }
+export const STANDOFF_DEFAULT_MM: number
+export const STANDOFF_RANGE_MM: [number, number]
+export const STANDOFF_USUAL_MM: [number, number]

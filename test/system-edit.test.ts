@@ -78,6 +78,20 @@ test("an I2C route over the limit is an error; UART is not limited", () => {
 	assert.deepEqual(e.findings(), [])
 })
 
+test("the I2C limit sums the devices on both boards, as the server's check does", () => {
+	const limit = i2cCableLimit(100, 3).maxMm
+	const route = (len: number) => ({ kind: "cable-route" as const, link: "L1", points: [{ xMm: -20, yMm: 0 }, { xMm: -20 + len, yMm: 0 }] })
+	const over = (byBoard: Record<string, number>) => {
+		const e = editor(start({ i2cDevicesByBoard: byBoard }))
+		e.apply({ kind: "cable-add", a: "main", b: "front", cableKind: "i2c" })
+		e.apply(route(limit - 40 + 10))
+		return e.findings().some((x) => x.level === "error" && x.target.link === "L1")
+	}
+	assert.equal(over({ main: 2, front: 1 }), true)
+	assert.equal(over({ main: 2, front: 0 }), false)
+	assert.equal(over({}), false)
+})
+
 test("undo and redo", () => {
 	const e = editor(start())
 	e.apply({ kind: "move", board: "main", xMm: -50, yMm: 0 })
@@ -122,15 +136,21 @@ test("cable-add sets both edges facing each other, and rotating re-faces the rou
 	e.apply({ kind: "cable-add", a: "main", b: "front", cableKind: "uart" })
 	let l = e.state().links[0]
 	assert.deepEqual([l.a.edge, l.b.edge], ["right", "left"])
-	assert.equal(l.cable.lengthMm, 40 + 40 + 20 - 20 + 0 + 0 || l.cable.lengthMm)
 	const pts = e.state().assembly.cables![0].points
 	assert.deepEqual(pts, [{ xMm: -20, yMm: 0 }, { xMm: 20, yMm: 0 }])
 	assert.equal(l.cable.lengthMm, 80)
 	e.apply({ kind: "move", board: "front", xMm: -40, yMm: 50 })
 	l = e.state().links[0]
-	assert.equal(l.b.edge, "left", "moving doesn't change the edge")
+	assert.deepEqual([l.a.edge, l.b.edge], ["top", "bottom"], "front now sits above main: the edges follow")
+	e.apply({ kind: "rotate", board: "front" })
+	l = e.state().links[0]
+	assert.equal(l.b.edge, "left", "turned 90 deg counter-clockwise, its left edge faces down")
 	e.apply({ kind: "cable-edge", link: "L1", end: "b", edge: "bottom" })
-	assert.equal(e.state().links[0].b.edge, "bottom")
+	e.apply({ kind: "rotate", board: "front" })
+	e.apply({ kind: "move", board: "main", xMm: -42, yMm: 0 })
+	l = e.state().links[0]
+	assert.equal(l.b.edge, "bottom", "a pinned edge survives moves and turns")
+	assert.equal(l.a.edge, "top", "an unpinned end still follows")
 	e.apply({ kind: "cable-remove", link: "L1" })
 	assert.deepEqual(e.state().links, [])
 	assert.deepEqual(e.state().assembly.cables, [])

@@ -25,6 +25,7 @@ import { mcuPinName } from "../mcu/pins.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { boardFacts, systemFacts } from "../system/facts.ts"
+import { boardI2cDevices } from "../system/checks.ts"
 import { assemblyErrors, defaultAssembly, derivedAssembly, mergeRequest, requestShapeErrors } from "../system/assembly.ts"
 import { SYSTEM_REQUESTS } from "../system/run.ts"
 import { buildSpec } from "../system/plan.ts"
@@ -519,6 +520,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			id,
 			spec,
 			assembly,
+			// The I2C devices each board carries, counted by the same function the checks use (the page's cable limit needs them).
+			i2cDevices: Object.fromEntries(Object.entries(contractOf).flatMap(([n, c]) => (c ? [[n, boardI2cDevices(c).length]] : []))),
 			facts: systemFacts(contractOf, assembly, spec?.links ?? [], Object.fromEntries(boards.flatMap((b) => (b.runId ? [[b.name, b.runId]] : [])))),
 			...(await systemStatus(id, dir, state)),
 			findings: state?.findings ?? (await readJsonFile(join(dir, "system-findings.json"))) ?? [],

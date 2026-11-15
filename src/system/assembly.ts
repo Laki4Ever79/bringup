@@ -20,8 +20,6 @@ export interface AssemblyBoard {
 	standoffMm?: number
 }
 
-export const STANDOFF_DEFAULT_MM = 8
-export const STANDOFF_RANGE_MM: [number, number] = [3, 30]
 
 export interface AssemblyPlate { lengthMm: number; widthMm: number }
 
@@ -36,8 +34,8 @@ export interface SystemAssembly {
 }
 
 // The pure geometry lives in the dashboard module, so the design page checks with the same code.
-import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate } from "../dashboard/assembly-geom.js"
-export { cableLength, CABLE_SLACK_MM, footprint }
+import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../dashboard/assembly-geom.js"
+export { cableLength, CABLE_SLACK_MM, footprint, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM }
 
 // The spec a system request makes: its assembly patch over the current one (boards and plate replaced whole, the rest
 // merged), its links replacing the old, and every routed link's cable length set from its route. Pure: the run applies
