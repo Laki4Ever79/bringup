@@ -174,7 +174,7 @@ QEMU boots the firmware but has no I2C sensor, so every QEMU boot prints `SENSOR
 firmware with the design's sensor answering: `npm run bringup -- simulate <runDir>` builds a Wokwi project from the
 contract (`src/codegen/wokwi.ts`: the ESP32-C3 and the sensor on the contract's I2C pins), runs one session of at most
 30 s, and passes when the firmware prints `SENSOR OK 21.50 C 48.0 %RH` and stores it (`HISTORY slot`). The result goes
-to `<runDir>/simulation.json` and the report. Without the pieces below a run skips it and says why; the test suite does not: `test/wokwi.int.test.ts` fails, naming what is missing (it reads WOKWI_CLI_TOKEN alone from `.env`, or from the main checkout's `.env` in a git worktree).
+to `<runDir>/simulation.json` and the report. Without the pieces below a run skips it and says why; the test suite excludes it for now (`BRINGUP_WOKWI=1 npx tsx --test test/wokwi.int.test.ts` runs it, and then it fails, naming what is missing, rather than skipping) (it reads WOKWI_CLI_TOKEN alone from `.env`, or from the main checkout's `.env` in a git worktree).
 
 1. A token: create one at wokwi.com (CI dashboard) and add `WOKWI_CLI_TOKEN=...` to `.env`. The free plan has 50 minutes
    per 30 days and 5 minutes per session, so Bringup only simulates on demand, never on every build.
