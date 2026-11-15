@@ -70,3 +70,17 @@ test("a board that failed at the last revision is a built fail, not a pass from 
 	const built = e.filter((x) => x.level === "built")
 	assert.ok(built.length > 0 && built.every((x) => x.result === "fail" && /board build failed/.test(x.note ?? "")))
 })
+
+test("computeProblems catches every unsourced kind of value (review I1)", () => {
+	const pi = loadModules(resolve(import.meta.dirname, "..")).find((m) => m.id === "rpi-5")!
+	assert.deepEqual(computeProblems(pi), [])
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const edit = (f: (c: Record<string, any>) => void) => { const m = structuredClone(pi); f(m.compute as Record<string, any>); return computeProblems(m).join("\n") }
+	assert.match(edit((c) => { c.tallestMm = 40 }), /compute\.tallestMm has no source \(a bare value/)
+	assert.match(edit((c) => { delete c.inputV.note }), /compute\.inputV has an unknown \(null\) part and gives no reason/)
+	assert.match(edit((c) => { delete c.bridgeDevice.alternatives[0].source }), /compute\.bridgeDevice\.alternatives\[0\] has no source/)
+	assert.match(edit((c) => { c.header.at.pin1Source = { url: "" } }), /compute\.header\.at\.pin1Source is not a source/)
+	assert.match(edit((c) => { c.outline.source.where = "" }), /compute\.outline has no source \(a source needs a url and a where\)/)
+	assert.match(edit((c) => { c.ports.also = "see the brief" }), /compute\.ports\.also is not a source/)
+	assert.match(edit((c) => { c.outline.extra = 3 }), /compute\.outline\.extra is not part of a cited value/)
+})
