@@ -616,7 +616,11 @@ async function redraw() {
 		const chassisStl = runId && chDir && circuit ? fileOnce(runId, `${chDir}/chassis.stl`, "arrayBuffer") : null
 		const chassisSpec = runId && chDir && circuit ? fileOnce(runId, `${chDir}/spec.json`, "json") : null
 		const outline = a.outline ?? b.outline ?? null
-		return { name: b.name, outline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
+		// The Top view follows the timeline: built (a routed board) and the outline at the scrub time; before its outline
+		// exists a board is its estimate box. A stubbed run builds nothing: its outline counts as built, as before.
+		const built = a.boardRevision !== null || (stubbed && a.outline != null)
+		const topOutline = a.outline ?? (stage.upTo ? null : b.outline ?? null)
+		return { name: b.name, outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
 	})
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
 	// The world places a robot's other boards from the assembly (world3d setWorld); no assembly positions, no change.
@@ -625,7 +629,7 @@ async function redraw() {
 	if (stage.view === "top") {
 		const chassis = boards.find((b) => b.chassisSpec)?.chassisSpec ?? null
 		stage.top.setWorld({
-			boards: boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, outline: b.outline, circuit: b.circuit ?? null, connectors: m?.connectors, status: m?.status } }),
+			boards: boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, connectors: m?.connectors, status: m?.status } }),
 			cables: stage.meta.spec?.links ?? [],
 			assembly: stage.meta.assembly,
 			chassis,

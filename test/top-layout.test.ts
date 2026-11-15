@@ -175,3 +175,20 @@ test("boardShapes: plated holes of each shape take their pad size", () => {
 		{ x: 9.4, y: 4.125, w: 1.2, h: 1.75 },
 	])
 })
+
+// Final review, Important 2: the timeline drives a placed board. A board's own `built` (from assemblyAt at the scrub
+// time) wins over the assembly's latest state: not built yet, it is its estimate box (its outline at that time, or the
+// 40 x 30 planned box when it has none yet) at its place on the plate; built, its outline at that time.
+test("a placed board follows the timeline: unbuilt at the scrub time, it is its estimate box", () => {
+	const assembly = { body: "chassis", plate: { lengthMm: 156, widthMm: 110 }, boards: [ab("main", 10, 0, 33, 42), ab("climate", 40, 20, 36, 26)] }
+	const s = topLayout(assembly, [{ name: "main", built: false, outline: null }, { name: "climate", built: false, outline: { widthMm: 30, heightMm: 20 } }], [])
+	const main = s.boards.find((b) => b.name === "main")!
+	assert.equal(main.built, false)
+	assert.deepEqual({ w: main.w, h: main.h }, { w: 40, h: 30 })
+	assert.deepEqual({ x: main.x, y: main.y }, { x: -10, y: -15 }, "centred where the assembly places it")
+	const cl = s.boards.find((b) => b.name === "climate")!
+	assert.equal(cl.built, false)
+	assert.deepEqual({ w: cl.w, h: cl.h }, { w: 30, h: 20 })
+	const live = topLayout(assembly, [{ name: "main", built: true, outline: { widthMm: 33, heightMm: 42 } }, { name: "climate" }], [])
+	assert.deepEqual(live.boards.map((b) => [b.name, b.built, b.w, b.h]), [["main", true, 33, 42], ["climate", true, 36, 26]])
+})

@@ -318,6 +318,15 @@ test("the timeline drives the Top view: scrubbing to the start shows boards as u
 		await page.waitForFunction(() => document.querySelector("#stage-top [data-part]"), null, { timeout: 30_000 })
 		await page.evaluate(() => { const r = document.getElementById("scrub") as HTMLInputElement; r.value = "0"; r.dispatchEvent(new Event("input")) })
 		await page.waitForFunction(() => !document.querySelector("#stage-top [data-part]") && document.querySelector("#stage-top [data-board]"), null, { timeout: 15_000 })
+		// Every board at the start is its estimate box: dashed, marked unbuilt, the planned 40 × 30 mm (no outline yet).
+		const boxes = () => page.$$eval("#stage-top [data-board]", (gs) => gs.map((g) => ({ built: (g as HTMLElement).dataset.built, dash: g.querySelector("[data-outline]")!.getAttribute("stroke-dasharray"), size: g.querySelectorAll("tspan")[1]?.textContent ?? null })))
+		const start = await boxes()
+		assert.ok(start.length >= 2)
+		for (const b of start) assert.deepEqual(b, { built: "false", dash: "2 1.5", size: "40 × 30 mm" })
+		// Live again: built, solid, the real outline.
+		await page.evaluate(() => { const r = document.getElementById("scrub") as HTMLInputElement; r.value = "1000"; r.dispatchEvent(new Event("input")) })
+		await page.waitForFunction(() => document.querySelector("#stage-top [data-part]"), null, { timeout: 15_000 })
+		for (const b of await boxes()) assert.deepEqual({ built: b.built, dash: b.dash }, { built: "true", dash: null })
 	}, ROBOT)
 })
 

@@ -1,5 +1,5 @@
 import type { TopAssembly, TopLinkIn } from "./top-layout.js"
-export interface TopWorldBoard { name: string; outline: { widthMm: number; heightMm: number } | null; circuit?: unknown | null; connectors?: { ref: string; kind: string; edge: string; offsetMm: number }[]; status?: string }
+export interface TopWorldBoard { name: string; built?: boolean; outline: { widthMm: number; heightMm: number } | null; circuit?: unknown | null; connectors?: { ref: string; kind: string; edge: string; offsetMm: number }[]; status?: string }
 export interface TopChassisSpec {
 	motors?: { xMm: number; yMm: number; bodyMm: number[] }[]
 	caster?: { xMm: number; wheelMm: number }

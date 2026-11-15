@@ -71,10 +71,17 @@ function cablePath(from, to) {
 export function topLayout(assembly, boards, links) {
 	const placed = new Map()
 	const given = assembly?.boards ?? []
-	for (const a of given) placed.set(a.name, place(a.name, a.xMm, a.yMm, a.outline, a.rotDeg ?? 0, a.outlineSource === "built"))
+	// A board's own `built` (the timeline's state at the scrub time, from system.html) wins over the assembly's latest:
+	// not built yet, it is its estimate box (its outline then, or the planned box); built, its outline then.
+	for (const a of given) {
+		const own = (boards ?? []).find((b) => b.name === a.name)
+		const built = typeof own?.built === "boolean" ? own.built : a.outlineSource === "built"
+		const outline = typeof own?.built === "boolean" ? own.outline ?? (own.built ? a.outline : FALLBACK) : a.outline
+		placed.set(a.name, place(a.name, a.xMm, a.yMm, outline, a.rotDeg ?? 0, built))
+	}
 	// Boards the assembly doesn't place (all of them for a separate body) go through autoLayout; when some are already
 	// placed, the group stands to the right of the plate or of the placed boards.
-	const missing = (boards ?? []).filter((b) => !placed.has(b.name)).map((b) => ({ name: b.name, outline: b.outline ?? FALLBACK, built: b.outline != null }))
+	const missing = (boards ?? []).filter((b) => !placed.has(b.name)).map((b) => ({ name: b.name, outline: b.outline ?? FALLBACK, built: typeof b.built === "boolean" ? b.built : b.outline != null }))
 	if (missing.length) {
 		const auto = autoLayout(missing, links ?? [])
 		let dx = 0

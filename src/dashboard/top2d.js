@@ -96,7 +96,7 @@ export function mountTop(host, opts = {}) {
 			const info = boards.find((x) => x.name === b.name) ?? {}
 			const turned = b.rotDeg === 90 || b.rotDeg === 270
 			const W = turned ? b.h : b.w, H = turned ? b.w : b.h
-			const g = el("g", { "data-board": b.name, transform: `translate(${b.x + b.w / 2} ${b.y + b.h / 2}) rotate(${-b.rotDeg}) translate(${-W / 2} ${-H / 2})` })
+			const g = el("g", { "data-board": b.name, "data-built": String(b.built), transform: `translate(${b.x + b.w / 2} ${b.y + b.h / 2}) rotate(${-b.rotDeg}) translate(${-W / 2} ${-H / 2})` })
 			g.style.cursor = "pointer"
 			if (!b.built) {
 				g.append(el("rect", { "data-outline": "", width: W, height: H, fill: "none", stroke: INK, "stroke-width": 0.6, "stroke-dasharray": "2 1.5", "pointer-events": "all" }))

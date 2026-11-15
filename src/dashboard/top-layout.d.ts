@@ -8,7 +8,8 @@ export interface TopAssembly {
 	plate?: { lengthMm: number; widthMm: number }
 	boards: { name: string; xMm: number; yMm: number; rotDeg: number; outline: { widthMm: number; heightMm: number }; outlineSource: string }[]
 }
-export interface TopBoardIn { name: string; outline?: { widthMm: number; heightMm: number } | null; connectors?: { ref: string; kind: string; edge: string; offsetMm: number }[] }
+// built: the timeline's state at the scrub time; when given it wins over the assembly's outlineSource.
+export interface TopBoardIn { name: string; built?: boolean; outline?: { widthMm: number; heightMm: number } | null; connectors?: { ref: string; kind: string; edge: string; offsetMm: number }[] }
 export interface TopLinkIn { id: string; kind: string; a: { board: string; edge?: string }; b: { board: string; edge?: string }; cable?: { lengthMm: number } }
 export function topLayout(assembly: TopAssembly | null | undefined, boards: TopBoardIn[], links: TopLinkIn[]): TopScene
 export interface TopShapes { outline: { w: number; h: number }; parts: { x: number; y: number; w: number; h: number; ref: string }[]; pads: TopRect[]; holes: { x: number; y: number; r: number }[] }
