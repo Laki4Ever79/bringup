@@ -6,7 +6,7 @@ import { byMpn } from "../mechanics/catalog.ts"
 import { motionBriefChecks } from "../mechanics/brief.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
-import { connectorBoxes, downloadStrap, generatedNets, MAX_TRACK_MM, netName, supplyPours, supplyWidths, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
+import { connectorAlongMm, connectorBoxes, downloadStrap, generatedNets, MAX_TRACK_MM, netName, supplyPours, supplyWidths, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type ContractValues, type FieldName } from "./types.ts"
@@ -574,7 +574,8 @@ export function connectorsOffEdge(c: ContractSnapshot): Violation[] {
 		const b = boxes.find((x) => x.ref === k.ref)
 		if (!b) return []
 		const alongX = k.edge === "top" || k.edge === "bottom"
-		const [centre, size, len] = alongX ? [b.x, b.w, W] : [b.y, b.h, H]
+		// Along the edge by the courtyard where it is longer than the box (connectorAlongMm): tscircuit judges that.
+		const [centre, size, len] = alongX ? [b.x, connectorAlongMm(c, k.ref, b.w), W] : [b.y, connectorAlongMm(c, k.ref, b.h), H]
 		const over = Math.abs(centre) + size / 2 - len / 2
 		if (over <= 0.05) return []
 		const half = Math.round((size / 2) * 10) / 10
@@ -607,7 +608,7 @@ export function connectorsOntoEdges(c: ContractSnapshot): ContractValues["connec
 		const k = connectors.find((x) => x.ref === ref)!
 		const b = connectorBoxes({ ...c, values: { ...c.values, connectors } }, o.widthMm, o.heightMm).find((x) => x.ref === ref)!
 		const alongX = k.edge === "top" || k.edge === "bottom"
-		return { centre: alongX ? b.x : b.y, size: alongX ? b.w : b.h }
+		return { centre: alongX ? b.x : b.y, size: connectorAlongMm(c, ref, alongX ? b.w : b.h) }
 	}
 	let connectors = c.values.connectors
 	for (const edge of ["top", "bottom", "left", "right"] as const) {

@@ -722,6 +722,19 @@ export interface MountingHole {
 	diameterMm: number
 }
 
+// A connector footprint's courtyard along its edge, where it is longer than its box (FOOTPRINT_SIZE): tscircuit refuses a
+// board whose courtyard crosses the edge. The JST SH 4-pin's box is its pads (6.8 mm, 7 with margin); its courtyard is
+// 7.8 mm (circuit.json pcb_courtyard_rect), and the real rover run 6's JT1 at right@25.5 mm on a 29 mm edge had its box at
+// the edge, its courtyard 0.4 mm past it and pad 5 0.1 mm from it: "Autorouting was skipped" (16 Nov 2026).
+export const COURTYARD_ALONG_MM: Record<string, number> = { jst4_sh: 7.8 }
+// Each connector's length along its edge as tscircuit judges it: its box's, or its courtyard's where that is longer.
+export function connectorAlongMm(s: ContractSnapshot, ref: string, boxAlong: number): number {
+	const c = (s.values.connectors ?? []).find((k) => k.ref === ref)
+	const part = (s.values.parts ?? []).find((p) => p.ref === ref)
+	const footprint = part ? footprintFor(part) : c ? CONNECTOR_FOOTPRINT[c.kind] : undefined
+	return Math.max(boxAlong, (footprint && COURTYARD_ALONG_MM[footprint]) || 0)
+}
+
 export function connectorBoxes(s: ContractSnapshot, W: number, H: number): Placed[] {
 	const { parts = [], connectors = [] } = s.values
 	return connectors.map((c) => {
@@ -874,10 +887,33 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 			return [Math.abs(at.x) >= Math.abs(at.y)
 				? { ref: sp.ref, x: b.x + Math.sign(at.x) * (b.w / 2 + gap + cw / 2), y: b.y + at.y, w: cw, h: ch, rotation: 0 }
 				: { ref: sp.ref, x: b.x + at.x, y: b.y + Math.sign(at.y) * (b.h / 2 + gap + ch / 2), w: cw, h: ch, rotation: 0 }]
-		})
+		}).reduce<Placed[]>((kept, c) => {
+			// Where the capacitor will really go: on the placement grid (out from the part, never closer), and clear of the
+			// part's other capacitors by the gap placement keeps. Reserved off the grid, or overlapping a sibling's box, the
+			// spot was one placement could never take: on the real rover run 6's 44×29 board VCP's box at x −9.12 had the
+			// grid's −9.0 too near the radio module and VINT's box 1.0 mm from it, so C4 went 4 mm from its pin (16 Nov 2026).
+			const snap = (v: number, half: number, dir: number) => {
+				const k = (v + half) / GRID_MM
+				return -half + (dir > 0 ? Math.ceil(k - 1e-9) : dir < 0 ? Math.floor(k + 1e-9) : Math.round(k)) * GRID_MM
+			}
+			const across = Math.abs(c.x - b.x) > b.w / 2
+			let box = across ? { ...c, x: snap(c.x, W / 2, Math.sign(c.x - b.x)), y: snap(c.y, H / 2, 0) } : { ...c, x: snap(c.x, W / 2, 0), y: snap(c.y, H / 2, Math.sign(c.y - b.y)) }
+			const clash = (x: Placed) => kept.find((o) => Math.max(Math.abs(x.x - o.x) - (x.w + o.w) / 2, Math.abs(x.y - o.y) - (x.h + o.h) / 2) < GAP_MM - 1e-9)
+			for (let step = 0, o = clash(box); o && step < 8; step++, o = clash(box)) {
+				const away = across ? Math.sign(box.y - o.y) || 1 : Math.sign(box.x - o.x) || 1
+				box = across ? { ...box, y: box.y + away * GRID_MM } : { ...box, x: box.x + away * GRID_MM }
+			}
+			return [...kept, box]
+		}, [])
 	}
 
-	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }, hug?: string): Placed | undefined => {
+	// The boxes a placed part reserved for its pin capacitors (capBoxes), by capacitor: their exact spots, off the grid.
+	const reservedCaps = new Map<string, Placed & { owner: string }>()
+	// exact: a spot off the grid to take instead of the grid's best when that is clearly farther from want (a pin
+	// capacitor's reserved box). The grid alone missed it: on the real rover run 6's 44×29 board U5's VCP box sat at
+	// x −9.12, and the grid's −9.0 was 0.03 mm too near the radio module and −9.5 too near U5, so C4 went 4 mm away from
+	// its pin and its traces ran 8.2 mm against 5 (16 Nov 2026).
+	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }, hug?: string, exact?: Placed & { owner: string }): Placed | undefined => {
 		const [w, h] = sizeAt(footprint, rotation)
 		// A footprint whose extent isn't centred on its origin (FOOTPRINT_OFFSET): the box is placed, the part sits off it.
 		const { dx, dy } = offsetAt(footprint, rotation)
@@ -909,8 +945,13 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 				}
 			}
 		}
+		// Judged as it was reserved: beside its owner part (capBoxes checks it with the owner as hug).
+		if (exact && fits(exact, exact.owner) && (!best || Math.hypot(exact.x - want.x, exact.y - want.y) < bestD - GRID_MM * Math.SQRT2)) best = { ref, x: exact.x, y: exact.y, w: exact.w, h: exact.h, rotation }
 		if (best && (dx !== 0 || dy !== 0)) best = { ...best, ox: +(best.x - dx).toFixed(3), oy: +(best.y - dy).toFixed(3) }
-		if (best) placed.push(best)
+		if (best) {
+			placed.push(best)
+			for (const c of capBoxes(best, footprint)) reservedCaps.set(c.ref, { ...c, owner: ref })
+		}
 		return best
 	}
 
@@ -1133,7 +1174,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 				continue
 			}
 			done.add(sp.ref)
-			const b = place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined)
+			const b = place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined, reservedCaps.get(sp.ref))
 			if (b && facesAway(b, sp)) b.rotation = 180
 		} else put(free.find((p) => p.ref === sp.ref), want)
 	}
