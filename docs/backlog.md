@@ -119,6 +119,16 @@ is a change to the firmware toolchain, not just the code.
       lists every vendor-locked or home-made interface with its open alternative; first move, the link messages onto an
       open protocol (Cyphal or CANopen once CAN exists; COBS-framed CBOR or similar on UART).
 
+- [ ] **Power transmission and motion parts in the parts list, each checked against its mate** (the user, 15 Nov, via
+      d9610c: "yeah along with fasteners we should add gears, belts, chains and all other mechanical pieces to the list
+      as well"). Gears, belts and pulleys, chains and sprockets, bearings, shafts and rods, couplers, springs, linear rails
+      and carriages, lead screws and nuts: each with a quantity from the design and a source per number. Checks that
+      each has its mating part and fits it: a belt's pitch and length against its pulleys and their centre distance
+      (and tension travel); a gear pair's module, tooth counts and centre distance; a chain's pitch against its
+      sprockets; a bearing's bore against its shaft and its outer diameter against the printed seat; a coupler's two
+      bores against the motor shaft and the driven shaft; a lead screw's pitch against its nut; load and speed against
+      the part's rating. Today's rover has none beyond fasteners and the caster, so: the data model (a `mechanical`
+      design field or the mechanics' drive train) and the checks first, catalog entries as designs need them.
 - [ ] **Every bought mechanical part in the parts list** (started 15 Nov: catalog/mechanics.json `hardware` with a source
       per number; the rover's board screws (M2x8 self-tapping, one per board hole) and caster screws and nuts (M4x10,
       M4, one per caster hole) counted from chassisSpec; hardware-misfit checks each fits its hole; the parts list and
