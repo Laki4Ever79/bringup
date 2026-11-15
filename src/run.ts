@@ -98,9 +98,12 @@ export function changesMayStart(first: Settlement, reviewRound: number): boolean
 	return first.settled || reviewRound > 0
 }
 
-// The whole run's time limit: 30 min for the design, plus one change timeout per scripted change request.
-export function runTimeoutMs(opts: Pick<RunOptions, "timeoutMs" | "changes" | "changeTimeoutMs">): number {
-	return opts.timeoutMs ?? 30 * 60_000 + (opts.changes ?? []).length * (opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
+// The whole run's time limit: 30 min for the design (60 on the Claude subscription, whose turns take about 20 s each:
+// the first rover run there, 15 Nov, hit 30 min with a board build in flight), plus one change timeout per scripted
+// change request. BRINGUP_TIMEOUT_MIN overrides it.
+export function runTimeoutMs(opts: Pick<RunOptions, "timeoutMs" | "changes" | "changeTimeoutMs">, env: Record<string, string | undefined> = process.env): number {
+	const base = Number(env.BRINGUP_TIMEOUT_MIN) > 0 ? Number(env.BRINGUP_TIMEOUT_MIN) * 60_000 : env.BRINGUP_PROVIDER === "claude-code" ? 60 * 60_000 : 30 * 60_000
+	return opts.timeoutMs ?? base + (opts.changes ?? []).length * (opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
 }
 
 // Runs one design from a brief until the consistency participant reports design.settled.
