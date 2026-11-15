@@ -12,7 +12,9 @@ test("every mechanics figure cites the datasheet numbers it used, with the page 
 	assert.ok(figs.length >= 10)
 	for (const f of figs) assert.ok(f.sources?.length, `${f.check} has no source`)
 	const top = figs.find((f) => f.check === "Top speed")!
-	assert.deepEqual(top.sources!.map((s) => s.field).sort(), ["diameterMm", "noLoadRpm", "nominalV", "ratedV"])
+	// The load line: speed constant, winding (stall torque and current), the wheel, the pack, and the masses rolling.
+	const fields = new Set(top.sources!.map((s) => s.field))
+	for (const f of ["diameterMm", "noLoadRpm", "nominalV", "ratedV", "stallTorqueNm", "stallA", "massG"]) assert.ok(fields.has(f), `Top speed cites ${f}`)
 	assert.ok(top.sources!.every((s) => /^https:\/\//.test(s.url) && s.where.length > 0))
 })
 

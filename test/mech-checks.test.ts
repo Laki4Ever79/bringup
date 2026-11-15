@@ -1,7 +1,7 @@
 // The plain-code mechanics checks (src/mechanics/checks.ts): free and instant, run on every contract change.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mechanicsCheckOver, mechanicsChecksWith } from "../src/mechanics/checks.ts"
+import { defaultCheckCatalog, mechanicsCheckOver, mechanicsChecksWith } from "../src/mechanics/checks.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 import { fixtureContract, roverFixture } from "./fixture.ts"
 
@@ -34,6 +34,22 @@ test("a weak motor can't climb the edge", () => {
 test("too slow a motor misses the target speed", () => {
 	const { c, cat } = variant((_v, k) => (k.mech.motors[0].noLoadRpm = 60))
 	assert.match(msg(c, cat, "mech-speed"), /0\.3 m\/s/)
+})
+
+// Premerge review (15 Nov): the check used a flat 0.8 of no-load while the firmware's duty followed the load line, so
+// the report's top speed and the speed the firmware planned came from two models. Now one: model.ts.
+test("the Top speed figure is the firmware's load line at full duty from the nominal voltage", async () => {
+	const { mechanicsFigures } = await import("../src/mechanics/checks.ts")
+	const { dutyFor } = await import("../src/mechanics/model.ts")
+	const { byMpn } = await import("../src/mechanics/catalog.ts")
+	const { ROVER_BOARD } = await import("../src/inference/scripts.ts")
+	const s = { revision: 1, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) }
+	const figs = mechanicsFigures(s)
+	const top = Number(figs.find((f) => f.check === "Top speed")!.value.split(" ")[0])
+	const mass = Number(figs.find((f) => f.check === "Mass")!.value.split(" ")[0]) / 1000
+	const k = defaultCheckCatalog()!.mech, m = s.values.mechanics
+	const motor = byMpn(k.motors, m.drive.motor)!, pack = byMpn(k.batteries, m.battery.pack)!, wheel = byMpn(k.wheels, m.drive.wheel)!
+	assert.ok(Math.abs(dutyFor(motor, pack, pack.nominalV, top, mass, wheel.diameterMm / 2000) - 1) < 0.02, "the top speed takes full duty on the same load line")
 })
 
 test("a short-range sensor can't stop the rover in time", () => {
