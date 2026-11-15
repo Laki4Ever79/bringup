@@ -52,6 +52,14 @@ export function roverHeader(s: ContractSnapshot): string {
 		...(v.pins ?? []).filter((p) => p.signal === "STATUS_LED").map((p) => `#define PIN_STATUS_LED ${p.gpio}`),
 		// A link's pins (a UART's TX and RX), as the product firmware's pins.h names them: link.h opens the UART on them.
 		...(v.pins ?? []).filter((p) => (v.links ?? []).some((l) => p.signal === `${l.id}_TX` || p.signal === `${l.id}_RX`)).map((p) => `#define ${macroName(p.signal)} ${p.gpio}`),
+		// Every other contract pin, as the product firmware's pins.h names it (PIN_<SIGNAL>), so the firmware's pin table
+		// covers the whole pin map: the rover code leaves them alone (native USB, a button), but the pin check no longer
+		// sees "firmware drives BUTTON on ?", a finding no agent can fix (real rover run 8, 15 Nov: the run ended
+		// unsettled on three of them with the drive passing and every build done).
+		...(v.pins ?? [])
+			.filter((p) => !["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2", "I2C_SDA", "I2C_SCL", "STATUS_LED"].includes(p.signal) && !(v.links ?? []).some((l) => p.signal === `${l.id}_TX` || p.signal === `${l.id}_RX`))
+			.filter((p, i, all) => all.findIndex((q) => q.signal === p.signal) === i)
+			.map((p) => `#define ${macroName(p.signal)} ${p.gpio}`),
 		...(sensorDriver((v.parts ?? []).find((p) => p.role === "sensor")?.mpn ?? "") === "SHT40" ? ["#define SENSOR_SHT40 1"] : []),
 		"",
 	]
