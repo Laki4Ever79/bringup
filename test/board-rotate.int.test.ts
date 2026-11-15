@@ -36,3 +36,15 @@ test("the STM32 logger routes with its decoupling faced toward the pads", { skip
 	const board = await buildBoard(env, tempDir(), s, s.revision)
 	assert.ok(board.pcbPath)
 })
+
+// The saved rover-turn run (revision 13): the architect's 42×29 mm rover with U5 turned 180° on the board page. Its board
+// left the debug footprint off for a router via 0.287 mm from the edge, and after a pin capacitor's ground moved to its
+// part's own GND pin it didn't build at all (GND to C6 14.7 mm against 5, 15 Nov 2026). Now it routes clean with the
+// footprint on: VINT's capacitor lies along VINT and GND, and a via near the edge moves inward (via-edge.ts).
+test("the 42×29 mm rover with its driver turned 180° routes clean with its debug footprint", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 900_000 }, async () => {
+	const { readFileSync } = await import("node:fs")
+	const s = JSON.parse(readFileSync(fileURLToPath(new URL("fixtures/rover-turn-42x29-rev13.json", import.meta.url)), "utf8")) as ContractSnapshot
+	const board = await buildBoard(env, tempDir(), s, s.revision)
+	assert.equal(board.drc?.errors, 0, board.drc?.firstError ?? "")
+	assert.equal(board.debugPortDropped, undefined, board.debugPortDropped)
+})

@@ -766,6 +766,11 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 // and, on a board without mounting holes, of the fixture's corner supports.
 export type Layout = { parts: Placed[]; debug: Placed | null; blocked: { ref: string; why: string }[] }
 
+function permutations<T>(xs: T[]): T[][] {
+	if (xs.length <= 1) return [xs]
+	return xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest]))
+}
+
 // The same design is laid out again and again: by every check of each event, every agent turn's facts, the case, the
 // pads and each probe of the smallest-board search (about 5 s per logger run, the isolation audit, 14 Nov 2026). The
 // layout depends only on the design and the options, so it is kept for the last few, keyed on both. Callers get a
@@ -1036,14 +1041,76 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		// is a near tie either way, and turning it only moved the router's trouble (U5 turned 90°, 14 Nov 2026).
 		return !!pa && Math.hypot(p2.x - pa.x, p2.y - pa.y) < Math.hypot(p1.x - pa.x, p1.y - pa.y) - half
 	}
-	for (const sp of [...supportParts(s)].sort((a, b) => first(a) - first(b))) {
+	// A capacitor between two pads of the same part (the DRV8833's VCP to VM, and VINT to its GND since a pin capacitor's
+	// ground goes to its part's own GND pin) lies along the line between them, pin 1 toward the a end, beside both pads.
+	// Lying out from the pin row, one end was always the far one, whichever way round: GND's trace ran 14.7 mm against
+	// its 5 mm bound on the 42×29 mm rover with U5 turned 180° and no layout built (15 Nov 2026).
+	const alongPads = (sp: Support): { rotation: number; want: { x: number; y: number } } | null => {
+		if (!("ref" in sp.a) || !("ref" in sp.b) || sp.a.ref !== sp.b.ref) return null
+		const [pa, pb] = [padAt(sp.a), padAt(sp.b)]
+		const [wa, wb] = [besidePin(sp.a), besidePin(sp.b)]
+		if (!pa || !pb || !wa || !wb) return null
+		const [dx, dy] = [pb.x - pa.x, pb.y - pa.y]
+		// Pin 1 is at -x at rotation 0, at -y at 90, at +x at 180 and at +y at 270 (counter-clockwise).
+		const rotation = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 0 : 180) : dy >= 0 ? 90 : 270
+		return { rotation, want: { x: (wa.x + wb.x) / 2, y: (wa.y + wb.y) / 2 } }
+	}
+	// How far a placed capacitor's farther end is from the pad it's wired to (0402 pads 0.5 mm either side of its centre;
+	// pin 1 at -x before the turn).
+	const reach = (b: Placed, sp: Support): number => {
+		const r = (b.rotation * Math.PI) / 180
+		const end = (k: number) => ({ x: (b.ox ?? b.x) + k * 0.5 * Math.cos(r), y: (b.oy ?? b.y) + k * 0.5 * Math.sin(r) })
+		const [pa, pb] = [padAt(sp.a), padAt(sp.b)]
+		const d = (e: { x: number; y: number }, p: { x: number; y: number } | null) => (p ? Math.hypot(e.x - p.x, e.y - p.y) : 0)
+		// An end with its own capacitor between it and its pad (the other end is nearer that pad) routes round the body:
+		// about one capacitor length more (VINT's capacitor pointing out from the 42×29 rover's turned U5: GND's trace
+		// 14.7 mm against 5, 15 Nov 2026).
+		const via = (e: number, p: { x: number; y: number } | null) => d(end(e), p) + (p && d(end(-e), p) < d(end(e), p) - 0.25 ? 1 : 0)
+		return Math.max(via(-1, pa), via(1, pb))
+	}
+	const supports = [...supportParts(s)].sort((a, b) => first(a) - first(b))
+	for (const sp of supports) {
 		const want = besidePin(sp.a) ?? besideCrystal(sp.a) ?? boxOf(sp.near) ?? centre
 		if (sp.added) {
-			if (!done.has(sp.ref)) {
-				done.add(sp.ref)
-				const b = place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined)
-				if (b && facesAway(b, sp)) b.rotation = 180
+			if (done.has(sp.ref)) continue
+			// A part's own pin capacitors, together when one of them is between two of its pads (alongPads): each can lie
+			// out from its pad or along its pads, and the next one's room depends on where the first went (the 42×29 rover
+			// with U5 turned 180°: VINT's capacitor along its pads took the column VCP's needed). Every combination is tried
+			// (at most 2^4) and the one whose farthest capacitor end is nearest its pad is kept.
+			const owner = "ref" in sp.a ? sp.a.ref : null
+			const group = owner && sp.spec.kind === "capacitor" ? supports.filter((o) => o.added && o.spec.kind === "capacitor" && "ref" in o.a && o.a.ref === owner && !done.has(o.ref)) : []
+			if (group.length && group.length <= 4 && group.some((o) => alongPads(o))) {
+				const mark = placed.length
+				const lay = (order: Support[], mask: number): number => {
+					placed.length = mark
+					let worst = 0
+					order.forEach((o, i) => {
+						const hug = first(o) === 0 ? mcuPart?.ref : undefined
+						const along = mask & (1 << i) ? alongPads(o) : null
+						const ow = besidePin(o.a) ?? boxOf(o.near) ?? centre
+						const b = along ? place(o.ref, o.spec.footprint, along.rotation, along.want, hug) : place(o.ref, o.spec.footprint, 0, ow, hug)
+						if (b && !along && facesAway(b, o)) b.rotation = 180
+						worst = Math.max(worst, b ? reach(b, o) : Infinity)
+					})
+					return worst
+				}
+				// The order matters too: the first placed takes the spot it wants. Every order for up to three capacitors.
+				const orders = group.length <= 3 ? permutations(group) : [group]
+				let best = { order: group, mask: 0 }
+				let bestWorst = Infinity
+				for (const order of orders)
+					for (let mask = 0; mask < 1 << order.length; mask++) {
+						if (order.some((o, i) => mask & (1 << i) && !alongPads(o))) continue
+						const w = lay(order, mask)
+						if (w < bestWorst - 1e-9) [best, bestWorst] = [{ order, mask }, w]
+					}
+				lay(best.order, best.mask)
+				for (const o of group) done.add(o.ref)
+				continue
 			}
+			done.add(sp.ref)
+			const b = place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined)
+			if (b && facesAway(b, sp)) b.rotation = 180
 		} else put(free.find((p) => p.ref === sp.ref), want)
 	}
 	for (const p of free) put(p, centre)
