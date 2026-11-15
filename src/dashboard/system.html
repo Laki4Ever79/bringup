@@ -795,8 +795,9 @@ const designKey = (m) => JSON.stringify({ a: m?.assembly ?? null, l: m?.spec?.li
 const editBtn = document.getElementById("edit-btn"), editBar = document.getElementById("edit-bar"), picker = document.getElementById("edit-picker")
 function makeEditor() {
 	const m = stage.meta
-	editing.chassis = stage.chassis ?? null
-	editing.ed = editing.mod.editor({ assembly: m.assembly, links: m.spec?.links ?? [], chassis: editing.chassis, maxSizeMm: editing.maxSizeMm, i2cDevicesByBoard: m.i2cDevices ?? {} })
+	// The server's chassis spec and the brief's motion (the payload's), else the files the views fetched.
+	editing.chassis = m.chassis ?? stage.chassis ?? null
+	editing.ed = editing.mod.editor({ assembly: m.assembly, links: m.spec?.links ?? [], chassis: editing.chassis, maxSizeMm: m.motion?.maxSizeMm ?? editing.maxSizeMm, i2cDevicesByBoard: m.i2cDevices ?? {} })
 	editing.base = editing.ed.state()
 	editing.server = []
 	editing.msg = ""
@@ -839,7 +840,7 @@ async function loadEditDeps() {
 		editing.mod = { ...m, designHash }
 	}
 	// The brief's size limit (motion.maxSizeMm), from the robot's own contract.
-	if (!editing.maxSizeMm) {
+	if (!editing.maxSizeMm && !stage.meta.motion) {
 		const runs = stage.meta.boards.filter((b) => b.runId)
 		const found = await Promise.all(runs.map((b) => fetch(`/runs/${encodeURIComponent(b.runId)}/files/contract.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
 		editing.maxSizeMm = found.map((c) => c?.values?.motion?.maxSizeMm).find((x) => Array.isArray(x)) ?? null

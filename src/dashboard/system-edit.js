@@ -3,7 +3,7 @@
 // limit come from assembly-geom.js, the same module the server's checks import, so the page and the run agree.
 // Frame: +x forward, +y left, origin at the plate centre; rotDeg is counter-clockwise from above; edges are the
 // board's own (left/right/top/bottom, before it is turned), as in top-layout.js.
-import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, offPlate, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM } from "./assembly-geom.js"
+import { blocksSensor, boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, motorHalfUnder, motorUnderPlateMm, mountOnPlate, offPlate, plateMaxWidthMm, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM, wheelsRubPlate } from "./assembly-geom.js"
 
 export const SNAP_MM = 0.5
 export { STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM }
@@ -51,6 +51,19 @@ export function keepOuts(chassis) {
 	// The battery lies on the plate: a board on standoffs may stand over it when they clear its thickness (thickMm), the
 	// rule src/mechanics/checks.ts applies (the pack fits when it is at most the standoff height less 1 mm).
 	if (chassis.battery) out.push({ what: "the battery", xMm: chassis.battery.xMm, yMm: chassis.battery.yMm, wMm: chassis.battery.sizeMm[0], hMm: chassis.battery.sizeMm[1], ...(chassis.battery.sizeMm[2] > 0 ? { thickMm: chassis.battery.sizeMm[2] } : {}) })
+	return out
+}
+
+// The chassis parts the plate carries, as mounts (src/mechanics/model.ts mounts, from the chassis spec's numbers): the
+// motors (across the plate their body's long side), the battery, the caster and the forward-looking sensor.
+export function chassisMounts(chassis) {
+	if (!chassis) return []
+	const out = []
+	for (const m of chassis.motors ?? []) out.push({ what: `motor ${m.side}`, xMm: m.xMm, yMm: m.yMm, sizeMm: [m.bodyMm[1], m.bodyMm[0], m.bodyMm[2]] })
+	if (chassis.battery) out.push({ what: "battery", xMm: chassis.battery.xMm, yMm: chassis.battery.yMm, sizeMm: chassis.battery.sizeMm })
+	if (chassis.caster?.wheelMm) out.push({ what: "caster", xMm: chassis.caster.xMm, yMm: 0, sizeMm: [chassis.caster.wheelMm, chassis.caster.wheelMm, chassis.caster.heightMm ?? 0] })
+	const s = chassis.sensor
+	if (s?.sizeMm) out.push({ what: "sensor", xMm: s.xMm, yMm: s.yMm, zMm: s.zMm, sizeMm: [s.sizeMm[2], s.sizeMm[0], s.sizeMm[1]] })
 	return out
 }
 
@@ -213,6 +226,25 @@ export function editor(start) {
 				const standoff = b.standoffMm ?? chassis?.standoffMm ?? STANDOFF_DEFAULT_MM
 				if (k.thickMm === undefined) bad({ board: b.name }, `${b.name} is over ${k.what}`)
 				else if (k.thickMm > standoff - 1) bad({ board: b.name }, `${b.name} is over ${k.what}: the ${k.thickMm} mm pack needs standoffs of at least ${k.thickMm + 1} mm (now ${standoff} mm)`)
+			}
+			// The mechanics' fit rules (assembly-geom.js, the same functions mech-fit calls), so a move main's run would
+			// refuse after a round is refused here at once.
+			if (a.plate && chassis) {
+				const L = a.plate.lengthMm, W = a.plate.widthMm
+				const d = chassis.drive
+				if (d && wheelsRubPlate(W, d.trackMm, d.wheelWidthMm)) bad({ plate: true }, `the wheels rub the ${W} mm-wide plate (${d.trackMm} mm track, ${d.wheelWidthMm} mm wheels, 2 mm clearance): make it at most ${r1(plateMaxWidthMm(d.trackMm, d.wheelWidthMm))} mm wide`)
+				const parts = chassisMounts(chassis)
+				for (const m of parts.filter((x) => x.what.startsWith("motor ")))
+					if (!motorHalfUnder(W, m)) bad({ plate: true }, `${m.what} reaches only ${r1(Math.max(0, motorUnderPlateMm(W, m)))} mm under the plate (half its ${m.sizeMm[1]} mm body needed for the bracket): widen the plate`)
+				for (const m of parts.filter((x) => !x.what.startsWith("motor ")))
+					if (!mountOnPlate(m, L, W)) bad({ plate: true }, `${m.what} (${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm at ${r1(m.xMm)}, ${r1(m.yMm)}) doesn't fit on the ${L} × ${W} mm plate`)
+				const sensor = parts.find((x) => x.what === "sensor")
+				if (sensor && chassis.plate) for (const b of bs) {
+					const f = footprint(b)
+					const standoff = b.standoffMm ?? chassis.standoffMm ?? STANDOFF_DEFAULT_MM
+					const m = { xMm: b.xMm, yMm: b.yMm, zMm: chassis.plate.clearanceMm + chassis.plate.thicknessMm + standoff + 0.8, sizeMm: [f.xMm, f.yMm, 1.6] }
+					if (blocksSensor(m, sensor)) bad({ board: b.name }, `${b.name} stands in front of the distance sensor (at x ${r1(sensor.xMm)} mm): move it back or aside`)
+				}
 			}
 			if (maxSizeMm && a.plate) {
 				const outerW = Math.max(a.plate.widthMm, chassis?.drive ? chassis.drive.trackMm + chassis.drive.wheelWidthMm : 0)
