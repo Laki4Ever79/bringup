@@ -1,7 +1,7 @@
 // Each board's side of the system's links: the links field the integrator hands that board.
 import { createHash } from "node:crypto"
 import type { BoardLink, LinkMessage } from "../contract/types.ts"
-import { DEFAULT_BAUD, DEFAULT_I2C_KHZ, type SystemLink, type SystemSpec } from "./spec.ts"
+import { DEFAULT_BAUD, DEFAULT_CAN_KBPS, DEFAULT_I2C_KHZ, type SystemLink, type SystemSpec } from "./spec.ts"
 
 // The link connector's ref on both boards: J + the link's id (JL1), so it can't collide with the board's own J1, J2.
 export const connectorRef = (l: Pick<SystemLink, "id">) => `J${l.id}`
@@ -22,6 +22,8 @@ export function boardLinks(spec: SystemSpec, board: string): BoardLink[] {
 			const messages = (l.messages ?? []).map((m) => ({ name: m.name, dir: m.from === board ? ("send" as const) : ("receive" as const), fields: m.fields, hash: messageHash(m) }))
 			const base = { id: l.id, kind: l.kind, peer, connector: connectorRef(l), ...(end.edge ? { edge: end.edge } : {}), supply, ...(messages.length ? { messages } : {}) }
 			if (l.kind === "uart") return { ...base, baud: l.baud ?? DEFAULT_BAUD, txOn: isA ? ("IO1" as const) : ("IO2" as const) }
+			// A point-to-point CAN link: both boards are the bus's ends, so both fit its 120 Ω.
+			if (l.kind === "can") return { ...base, can: { kbps: l.can?.kbps ?? DEFAULT_CAN_KBPS, terminate: true } }
 			// A kind not built yet (the spec check says so) carries only what every link has.
 			if (l.kind !== "i2c" || !l.i2c) return base
 			const i2c = l.i2c

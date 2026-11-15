@@ -14,11 +14,12 @@ export const linksOf = (s: ContractSnapshot): BoardLink[] => s.values.links ?? [
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x)
 
 export function linksShapeError(value: unknown): string | null {
-	const shape = "links must be an array of {id, kind: \"uart\"|\"i2c\", peer, connector, supply: \"none\"|\"out\"|\"in\", baud and txOn (uart), i2c {role, address?, pullups, khz} (i2c), messages?}"
+	const shape = "links must be an array of {id, kind: \"uart\"|\"i2c\"|\"can\", peer, connector, supply: \"none\"|\"out\"|\"in\", baud and txOn (uart), i2c {role, address?, pullups, khz} (i2c), can {kbps, terminate} (can), messages?}"
 	if (!Array.isArray(value)) return shape
 	for (const l of value) {
 		if (!isObj(l) || typeof l.id !== "string" || typeof l.peer !== "string" || typeof l.connector !== "string" || !isLinkKind(l.kind) || !["none", "out", "in"].includes(l.supply as string)) return shape
 		if (l.kind === "uart" && !(typeof l.baud === "number" && l.baud > 0 && (l.txOn === "IO1" || l.txOn === "IO2"))) return `links: ${l.id} is a UART link: it needs baud and txOn ("IO1" or "IO2")`
+		if (l.kind === "can" && !(isObj(l.can) && typeof l.can.kbps === "number" && l.can.kbps > 0 && typeof l.can.terminate === "boolean")) return `links: ${l.id} is a CAN link: it needs can {kbps, terminate}`
 		if (l.kind === "i2c") {
 			const b = l.i2c
 			if (!isObj(b) || !["controller", "target"].includes(b.role as string) || typeof b.pullups !== "boolean" || typeof b.khz !== "number") return `links: ${l.id} is an I2C link: it needs i2c {role: "controller"|"target", address (a target's 7-bit address), pullups, khz}`

@@ -33,6 +33,7 @@ export interface SystemLink {
 	baud?: number
 	// For I2C: which board drives the bus, each target's 7-bit address, which board fits the pull-ups, the speed.
 	i2c?: { controller: string; targets: Record<string, number>; pullupsOn: string; khz?: number }
+	can?: { kbps?: number }
 	// VCC carries the "from" board's 3V3 to the other one; without it, each board has its own supply.
 	power?: { from: string }
 	cable: { lengthMm: number }
@@ -49,6 +50,13 @@ export interface SystemSpec {
 
 export const DEFAULT_BAUD = 115200
 export const DEFAULT_I2C_KHZ = 100
+export const DEFAULT_CAN_KBPS = 500
+// The bit rates CAN nodes agree on (CiA 301's bit timing table), each with the longest bus it allows: 40 m at 1 Mbit/s
+// is ISO 11898's (TI SN65HVD230 datasheet SLOS346O §11.2.1.3, p28); the rest are CiA 301's recommendations, which assume
+// a 5 ns/m cable and the transceivers' loop delay: estimates for a given cable.
+export const CAN_BUS_MAX_M: Record<number, number> = { 1000: 40, 800: 50, 500: 100, 250: 250, 125: 500, 50: 1000, 20: 2500, 10: 5000 }
+// A classic CAN frame carries 8 data bytes (ISO 11898-1): one message per frame.
+export const CAN_FRAME_BYTES = 8
 
 // Every reason the spec can't be used, in words; [] when it can.
 export function specErrors(s: SystemSpec): string[] {
@@ -105,12 +113,14 @@ export function specErrors(s: SystemSpec): string[] {
 			const fromTarget = (l.messages ?? []).filter((m) => m.from !== l.i2c!.controller)
 			if (fromTarget.length > 1) out.push(`link ${l.id}: ${fromTarget[0].from} sends ${fromTarget.map((m) => m.name).join(", ")}; an I2C target holds one frame for the controller to read, so it sends one message`)
 		}
+		if (l.kind === "can" && l.can?.kbps !== undefined && !Object.hasOwn(CAN_BUS_MAX_M, l.can.kbps)) out.push(`link ${l.id}: ${l.can.kbps} kbit/s is not a CAN bit rate nodes agree on; use one of ${Object.keys(CAN_BUS_MAX_M).join(", ")}`)
 		if (l.power && ![l.a.board, l.b.board].includes(l.power.from)) out.push(`link ${l.id}: power comes from ${l.power.from}, which is not on the link`)
 		if (!(l.cable?.lengthMm > 0)) out.push(`link ${l.id}: cable.lengthMm must be a positive length`)
 		for (const m of l.messages ?? []) {
 			if (![l.a.board, l.b.board].includes(m.from)) out.push(`link ${l.id}: message ${m.name} comes from ${m.from}, which is not on the link`)
 			const bytes = m.fields.reduce((n, f) => n + ({ u8: 1, u16: 2, i16: 2, u32: 4, f32: 4 } as const)[f.type], 0)
-			if (bytes > 48) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a frame carries 48 at most`)
+			if (l.kind === "can" && bytes > CAN_FRAME_BYTES) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a CAN frame carries ${CAN_FRAME_BYTES}: split it into messages of ${CAN_FRAME_BYTES} bytes or less`)
+			else if (bytes > 48) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a frame carries 48 at most`)
 		}
 	}
 	// One I2C controller per chip: in target mode the board can't also drive a bus. So a board on I2C links is the

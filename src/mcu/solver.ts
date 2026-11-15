@@ -156,9 +156,9 @@ export function freeGpios(p: McuProfile): number[] {
 	return p.pins.filter((x) => !x.reserved && !x.inputOnly && !con.has(x.name)).map((x) => x.index)
 }
 
-export type LinkPeripheral = "uart" | "i2c" | "spi" | "i2s" | "radio"
+export type LinkPeripheral = "uart" | "i2c" | "can" | "spi" | "i2s" | "radio"
 // Peripheral instances a design may use, the console's excluded.
 export function peripheralsFree(p: McuProfile): Record<LinkPeripheral, number> {
 	const n = (k: PeriphKind) => instancesFor(p, k).length
-	return { uart: n("uart"), i2c: n("i2c"), spi: n("spi"), i2s: n("i2s"), radio: n("radio") }
+	return { uart: n("uart"), i2c: n("i2c"), can: n("can"), spi: n("spi"), i2s: n("i2s"), radio: n("radio") }
 }
