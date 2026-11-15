@@ -47,13 +47,13 @@
 		"holes": {
 			"value": null,
 			"source": null,
-			"note": "no board holes are used: the mini PC mounts by the included VESA bracket, whose hole pattern the TPS doesn't give (measure the bracket)",
-			"mounting": {
-				"value": "VESA bracket and screws, included",
-				"source": {
-					"url": "https://www.intel.com/content/dam/support/us/en/documents/intel-nuc/NUC13AN_TechProdSpec.pdf",
-					"where": "Table 2 Additional Features, VESA Mount: 'ship with a VESA mount and screws for attaching the system to compatible screens and monitors'"
-				}
+			"note": "no board holes are used: the mini PC mounts by the included VESA bracket, whose hole pattern the TPS doesn't give (measure the bracket)"
+		},
+		"mounting": {
+			"value": "VESA bracket and screws, included",
+			"source": {
+				"url": "https://www.intel.com/content/dam/support/us/en/documents/intel-nuc/NUC13AN_TechProdSpec.pdf",
+				"where": "Table 2 Additional Features, VESA Mount: 'ship with a VESA mount and screws for attaching the system to compatible screens and monitors'"
 			}
 		},
 		"tallestMm": {
