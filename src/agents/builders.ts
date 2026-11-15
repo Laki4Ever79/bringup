@@ -283,7 +283,7 @@ export function createFirmwareBuilder(env: Env, lock?: BuildLock): Human {
 			if (!env.pio) throw new Error("firmware build failed: .venv PlatformIO is not installed")
 			return buildFirmware(env.pio, env.root, dir, snapshot, revision)
 		},
-		failure: (fw) => (fw.ok ? null : `firmware does not compile:\n${fw.log}`),
+		failure: (fw) => (!fw.ok ? `firmware does not compile:\n${fw.log}` : fw.driverTests?.ok === false ? `firmware drivers fail their host tests: ${fw.driverTests.failed.map((f) => `${f.name}: ${f.message}`).join("; ")}` : null),
 	})
 }
 

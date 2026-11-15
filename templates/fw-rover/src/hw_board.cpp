@@ -8,6 +8,10 @@
 #include "bthome.h"
 #include "hw.h"
 #include "hw_pins.h"
+// The drivers, shared with the product firmware and run on the host after every build (src/tools/driver-tests.ts).
+#include "drivers/drv8833.h"
+#include "drivers/vl53l0x.h"
+#include "drivers/sensirion.h"
 
 static VL53L0X tof;
 static bool tofOk = false;
@@ -23,34 +27,24 @@ void hw_begin(void) {
 }
 
 void hw_motor(int side, float duty) {
-	if (duty > 1) duty = 1;
-	if (duty < -1) duty = -1;
-	int level = (int)(fabsf(duty) * ((1 << PWM_BITS) - 1));
-	ledcWrite(IN[side][0], duty >= 0 ? level : 0);
-	ledcWrite(IN[side][1], duty >= 0 ? 0 : level);
+	const Drv8833Levels l = drv8833Levels(duty, (1 << PWM_BITS) - 1);
+	ledcWrite(IN[side][0], l.in1);
+	ledcWrite(IN[side][1], l.in2);
 }
 
 int hw_distance_mm(void) {
 	if (!tofOk) { delay(ROVER_PERIOD_MS); return -1; }
 	int mm = tof.readRangeContinuousMillimeters();  // blocks until the next reading: the control tick
-	return (tof.timeoutOccurred() || mm >= ROVER_RANGE_MM) ? -1 : mm;
+	return tofDistanceMm(mm, tof.timeoutOccurred(), ROVER_RANGE_MM);
 }
 
-// SHT40: measure at high precision (0xFD), 6 bytes back (Sensirion SHT4x datasheet §4.5).
+// The payload: the SHT40 (include/drivers/sensirion.h: CRC-checked, humidity cropped to 0..100).
 bool hw_payload(float *temp_c, float *rh) {
 #ifndef SENSOR_SHT40
 	return false;  // only the SHT40 is read here; the header defines SENSOR_SHT40 when the contract's sensor is one
+#else
+	return sht4xRead(temp_c, rh);
 #endif
-	Wire.beginTransmission(0x44);
-	Wire.write(0xFD);
-	if (Wire.endTransmission() != 0) return false;
-	delay(10);
-	if (Wire.requestFrom(0x44, 6) != 6) return false;
-	uint8_t b[6];
-	for (auto &x : b) x = Wire.read();
-	*temp_c = -45 + 175 * ((b[0] << 8) | b[1]) / 65535.0f;
-	*rh = -6 + 125 * ((b[3] << 8) | b[4]) / 65535.0f;
-	return true;
 }
 
 uint32_t hw_now_ms(void) { return millis(); }

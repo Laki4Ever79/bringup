@@ -70,64 +70,22 @@ static_assert(HAL_PIN_VALID(PIN_STATUS_LED), "PIN_STATUS_LED is not a GPIO on th
 #endif
 
 // The temperature/humidity sensor the contract's parts call for: pins.h defines SENSOR_SHTC3 or SENSOR_SHT40.
-// Without either (pins.h from before the sensor was recorded) it is the SHT40.
+// Without either (pins.h from before the sensor was recorded) it is the SHT40. The driver is include/drivers/
+// sensirion.h, shared with the rover firmware and run on the host after every build (src/tools/driver-tests.ts).
+#include "drivers/sensirion.h"
 #if defined(SENSOR_SHTC3)
-// SHTC3 datasheet v4 (Dec 2022): I2C address 0x70 (Table 8), wakeup 0x3517 (Table 10, up to 240 us), sleep 0xB098
-// (Table 9, 0.3 uA typ.), measure T first in normal mode without clock stretching 0x7866 (up to 12.1 ms).
-static const uint8_t SENSOR_ADDR = 0x70;
 #define SENSOR_NAME "shtc3"
-
-static bool shtc3Command(uint16_t cmd) {
-	Wire.beginTransmission(SENSOR_ADDR);
-	Wire.write(cmd >> 8);
-	Wire.write(cmd & 0xFF);
-	return Wire.endTransmission() == 0;
-}
 #else
-static const uint8_t SENSOR_ADDR = 0x44;
-static const uint8_t SHT40_MEASURE_HIGH = 0xFD;
 #define SENSOR_NAME "sht40"
 #endif
-
-// Sensirion CRC-8: polynomial 0x31, init 0xFF.
-static uint8_t crc8(const uint8_t *data, int len) {
-	uint8_t crc = 0xFF;
-	for (int i = 0; i < len; i++) {
-		crc ^= data[i];
-		for (int b = 0; b < 8; b++) crc = (crc & 0x80) ? (crc << 1) ^ 0x31 : crc << 1;
-	}
-	return crc;
-}
 
 static bool readClimate(float *tempC, float *rh) {
 #ifdef HAS_I2C
 #if defined(SENSOR_SHTC3)
-	if (!shtc3Command(0x3517)) return false;
-	delayMicroseconds(240);
-	if (!shtc3Command(0x7866)) return false;
-	delay(13);
+	return shtc3Read(tempC, rh);
 #else
-	Wire.beginTransmission(SENSOR_ADDR);
-	Wire.write(SHT40_MEASURE_HIGH);
-	if (Wire.endTransmission() != 0) return false;
-	delay(10);
+	return sht4xRead(tempC, rh);
 #endif
-	uint8_t buf[6];
-	if (Wire.requestFrom(SENSOR_ADDR, (uint8_t)6) != 6) return false;
-	for (int i = 0; i < 6; i++) buf[i] = Wire.read();
-#if defined(SENSOR_SHTC3)
-	shtc3Command(0xB098);
-#endif
-	if (crc8(buf, 2) != buf[2] || crc8(buf + 3, 2) != buf[5]) return false;
-	const uint16_t rawT = buf[0] << 8 | buf[1], rawRh = buf[3] << 8 | buf[4];
-#if defined(SENSOR_SHTC3)
-	*tempC = -45 + 175 * (rawT / 65536.0f);
-	*rh = 100 * (rawRh / 65536.0f);
-#else
-	*tempC = -45 + 175 * (rawT / 65535.0f);
-	*rh = -6 + 125 * (rawRh / 65535.0f);
-#endif
-	return true;
 #else
 	return false;
 #endif

@@ -13,6 +13,7 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { mergeFlash, runImage } from "./emulator.ts"
 import { testkitHeader } from "../contract/testkit.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
+import { runDriverTests } from "./driver-tests.ts"
 import { envFor, platformioEnvs, type FirmwarePurpose } from "../mcu/firmware.ts"
 
 const TIMEOUT_MS = 600_000
@@ -64,6 +65,13 @@ export async function buildFirmware(pio: string, root: string, dir: string, s: C
 		sensor: parseSensorHeader(header),
 		log: buildLog(output),
 	}
+	// The drivers run on the host against simulated chips, with this build's headers (driver-tests.ts). Their output
+	// stays next to the firmware as evidence.
+	if (artifact.ok) {
+		const t = await runDriverTests(dir, s)
+		artifact.driverTests = { ok: t.ok, drivers: t.drivers, passed: t.passed.length, failed: t.failed, ...(t.skipped ? { skipped: t.skipped } : {}) }
+		await writeFile(join(dir, "driver-tests.txt"), t.skipped ? `skipped: ${t.skipped}\n` : `${t.log}\n`)
+	}
 	return artifact
 }
 
@@ -76,6 +84,7 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 		await cp(join(root, "templates/fw-rover"), dir, { recursive: true })
 		await mkdir(join(dir, "include"), { recursive: true })
 		await writeFile(join(dir, "include/hw_pins.h"), rover)
+		await copyDrivers(root, dir)
 		// The payload goes out as BTHome with the logger's encoder: one file, checked once (test/bthome.test.ts).
 		await cp(join(root, "templates/fw/include/bthome.h"), join(dir, "include/bthome.h"))
 		// Its links to the system's other boards: the same link.h and frame code as the product firmware (a board with no
@@ -97,6 +106,7 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 		await rm(join(dir, "include/model_data.h"), { force: true })
 	}
 	await writeFile(join(dir, "include/pins.h"), header)
+	await copyDrivers(root, dir)
 	await writeFile(join(dir, "include/behavior.h"), behaviorHeader(s))
 	await writeFile(join(dir, "include/model.h"), modelHeader(s))
 	await writeFile(join(dir, "include/connectivity.h"), connectivityHeader(s))
@@ -122,6 +132,15 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 	const table = partitionTable(s)
 	await writeFile(ini, text.replace(/(\[env:esp32c3\]\n(?:[^\[]*?\n)?board = esp32-c3-devkitm-1\n)(board_build\.partitions = .*\n)?/, `$1board_build.partitions = ${table}\n`))
 	return header
+}
+
+// The motor and sensor drivers both firmwares include (include/drivers), and their host tests with the host's stand-ins
+// for Arduino.h and Wire.h (test_host; driver-tests.ts runs them). test_host sits outside src/ and test/, so no
+// PlatformIO env builds it.
+async function copyDrivers(root: string, dir: string): Promise<void> {
+	await mkdir(join(dir, "include/drivers"), { recursive: true })
+	for (const f of ["sensirion.h", "drv8833.h", "vl53l0x.h"]) await cp(join(root, "templates/drivers", f), join(dir, "include/drivers", f))
+	await cp(join(root, "templates/drivers/host"), join(dir, "test_host"), { recursive: true })
 }
 
 // The env a firmware dir prepareFirmware wrote builds for this purpose: its product env (default_envs, which

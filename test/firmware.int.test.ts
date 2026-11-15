@@ -79,8 +79,11 @@ test("an SHTC3 in the parts compiles the SHTC3 driver, and the firmware reports 
 		assert.equal(firmware.ok, true, firmware.log)
 		assert.equal(firmware.sensor, "SHTC3")
 		assert.deepEqual(checkConsistency(c, { firmware }), [])
-		const main = readFileSync(join(dir, "src/main.cpp"), "utf8")
-		assert.match(main, /0x70/, "the SHTC3's I2C address (datasheet v4 Table 8)")
+		// The driver is shared with the rover firmware (include/drivers/sensirion.h); main.cpp selects it.
+		assert.match(readFileSync(join(dir, "src/main.cpp"), "utf8"), /return shtc3Read\(tempC, rh\)/)
+		assert.match(readFileSync(join(dir, "include/drivers/sensirion.h"), "utf8"), /SHTC3_ADDR = 0x70/, "the SHTC3's I2C address (datasheet v4 Table 8)")
+		// Its host tests ran after the build (tools/driver-tests.ts).
+		assert.equal(firmware.driverTests?.ok, true, JSON.stringify(firmware.driverTests))
 	} finally {
 		await rm(dir, { recursive: true, force: true })
 	}

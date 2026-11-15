@@ -75,6 +75,9 @@ export interface FirmwareArtifact {
 	// The sensor driver compiled in (SENSOR_* in pins.h), null for none; absent on artifacts that don't record it.
 	sensor?: string | null
 	log: string
+	// The motor and sensor drivers run on the host against simulated chips after a good build (tools/driver-tests.ts):
+	// ok null when they couldn't run (no host compiler); absent on artifacts from before they existed.
+	driverTests?: { ok: boolean | null; drivers: string[]; passed: number; failed: { name: string; message: string }[]; skipped?: string }
 }
 
 // The production-test kit (contract field test): the plan, the bed-of-nails fixture and the factory-test firmware,
@@ -126,6 +129,7 @@ export type ViolationKind =
 	| "rail-overload"
 	| "regulator-overclaimed"
 	| "firmware-build-failed"
+	| "firmware-driver-test-failed"
 	| "sensor-mismatch"
 	| "history-overflow"
 	| "vent-missing"
@@ -299,6 +303,10 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 
 	if (a.firmware && !a.firmware.ok) {
 		v.push({ kind: "firmware-build-failed", message: "firmware does not compile", fields: ["pins", "parts"], affects: ["firmware"] })
+	}
+	if (a.firmware?.ok && a.firmware.driverTests?.ok === false) {
+		const f = a.firmware.driverTests.failed
+		v.push({ kind: "firmware-driver-test-failed", message: `firmware drivers fail on the host: ${f.map((x) => (x.message ? `${x.name} (${x.message})` : x.name)).join("; ")}`, fields: ["parts", "pins"], affects: ["firmware"] })
 	}
 
 	if (a.enclosure && connectors) {
