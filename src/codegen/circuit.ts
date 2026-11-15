@@ -818,7 +818,12 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// The part that blocked the last spot is tried first: the next spot is usually blocked by it too (the same answer as
 	// trying them in order; a crowded board's search spent most of its time on the parts that weren't in the way).
 	let lastBlock = 0
-	const blocks = (b: Placed, o: Placed, hug?: string) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) < (o.ref === hug ? CHIP_GAP_MM : GAP_MM)
+	// In the capsAlong layout a part's own pin capacitors keep CHIP_GAP_MM from each other, not GAP_MM: two 0402s beside
+	// the DRV8833's four VCP-VM-GND-VINT pins (2 mm of pin row) don't both fit 1.5 mm apart, and on the 60×21 mm rover
+	// (a real run, 15 Nov 2026) VCP's capacitor went below the row, 11 mm of trace. Each still keeps GAP_MM from
+	// everything else, the part itself included.
+	const siblings = (a: string, b: string) => !!opts.capsAlong && capOwner.has(a) && capOwner.get(a) === capOwner.get(b)
+	const blocks = (b: Placed, o: Placed, hug?: string) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) < (o.ref === hug || siblings(b.ref, o.ref) ? CHIP_GAP_MM : GAP_MM)
 	const fits = (b: Placed, hug?: string) => {
 		if (Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM) return false
 		if (lastBlock < placed.length && blocks(b, placed[lastBlock], hug)) return false
@@ -837,6 +842,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// wide rover the driver went hard against the module and VINT's capacitor landed across it, 7.98 mm of trace against
 	// tscircuit's 5 mm, and every build failed (14 Nov 2026).
 	const pinCaps = supportParts(s).filter((sp) => sp.added && sp.spec.kind === "capacitor" && "ref" in sp.a && sp.near !== boardCrystal(s)?.ref)
+	const capOwner = new Map(pinCaps.map((sp) => [sp.ref, (sp.a as { ref: string }).ref]))
 	// A turned part (the board page) turns its pads, and these boxes with them.
 	const capBoxes = (b: Placed, footprint: string): Placed[] => {
 		if (b.rotation % 90 !== 0) return []
@@ -1160,9 +1166,9 @@ export interface TestPoint {
 	yMm: number
 }
 
-export function testPoints(s: ContractSnapshot): { placed: TestPoint[]; unplaced: string[] } {
+export function testPoints(s: ContractSnapshot, opts: PadOpts = {}): { placed: TestPoint[]; unplaced: string[] } {
 	if (!s.values.outline || !s.values.test) return { placed: [], unplaced: [] }
-	return padsOf(s, "test")
+	return padsOf(s, "test", opts)
 }
 
 // Bring-up pads (engineer, 13 Nov 2026: test points on every design, on by default): bare pads on the underside for
@@ -1185,13 +1191,14 @@ export function bringupNets(s: ContractSnapshot): string[] {
 	const nets = ["GND", ...rails.filter(has), ...signals.filter((n) => UART_SIGNAL.test(n)), ...links]
 	return [...new Set(nets)]
 }
-export function bringupPads(s: ContractSnapshot): { placed: TestPoint[]; unplaced: string[] } {
-	return padsOf(s, "bringup")
+export function bringupPads(s: ContractSnapshot, opts: PadOpts = {}): { placed: TestPoint[]; unplaced: string[] } {
+	return padsOf(s, "bringup", opts)
 }
 
-function padsOf(s: ContractSnapshot, kind: PadKind): { placed: TestPoint[]; unplaced: string[] } {
+type PadOpts = { capsAlong?: boolean }
+function padsOf(s: ContractSnapshot, kind: PadKind, opts: PadOpts = {}): { placed: TestPoint[]; unplaced: string[] } {
 	if (!s.values.outline) return { placed: [], unplaced: [] }
-	const { placed, unplaced } = bottomPads(s)
+	const { placed, unplaced } = bottomPads(s, !!opts.capsAlong)
 	return { placed: placed.filter((p) => p.kind === kind).map(({ kind: _k, ...p }) => p), unplaced: unplaced.filter((u) => u.kind === kind).map((u) => u.net) }
 }
 
@@ -1200,9 +1207,9 @@ function padsOf(s: ContractSnapshot, kind: PadKind): { placed: TestPoint[]; unpl
 // powers up, they start the ROM downloader. BOOT joins the net of the signal that shares the pin (I2C_SCL on the
 // logger), else its own net, BOOT.
 export const RECOVERY_BOOT_NET = "BOOT"
-export function recoveryPads(s: ContractSnapshot): { placed: TestPoint[]; unplaced: string[] } {
+export function recoveryPads(s: ContractSnapshot, opts: PadOpts = {}): { placed: TestPoint[]; unplaced: string[] } {
 	if (!recoveryBootNet(s)) return { placed: [], unplaced: [] }
-	return padsOf(s, "recovery")
+	return padsOf(s, "recovery", opts)
 }
 
 export function recoveryBootNet(s: ContractSnapshot): string | null {
@@ -1218,24 +1225,26 @@ export function recoveryBootNet(s: ContractSnapshot): string | null {
 type PadKind = "test" | "recovery" | "bringup"
 type BottomPads = { placed: (TestPoint & { kind: PadKind })[]; unplaced: { net: string; kind: PadKind }[]; debug: DebugPlacement | null; debugUnplaced: boolean }
 const bottomPadsCache = new Map<string, BottomPads>()
-function bottomPads(s: ContractSnapshot): BottomPads {
-	const key = JSON.stringify(s.values)
+// capsAlong: the pads around the layout with the pin capacitors along their pads (PlacementOptions.capsAlong), whose
+// debug footprint can sit elsewhere; the default layout's otherwise.
+function bottomPads(s: ContractSnapshot, capsAlong = false): BottomPads {
+	const key = `${capsAlong ? "A" : "D"}${JSON.stringify(s.values)}`
 	const hit = bottomPadsCache.get(key)
 	if (hit) return structuredClone(hit)
-	const result = bottomPadsUncached(s)
+	const result = bottomPadsUncached(s, capsAlong)
 	if (bottomPadsCache.size >= 16) bottomPadsCache.delete(bottomPadsCache.keys().next().value!)
 	bottomPadsCache.set(key, result)
 	return structuredClone(result)
 }
 
-function bottomPadsUncached(s: ContractSnapshot): BottomPads {
+function bottomPadsUncached(s: ContractSnapshot, capsAlong = false): BottomPads {
 	const { outline, test, parts = [], pins = [] } = s.values
 	const bootNet = recoveryBootNet(s)
 	const bringup = bringupNets(s)
 	const pinout = debugEnabled(s) ? debugPinout(s) : null
 	if (!outline || (!test && !bootNet && !bringup.length && !pinout)) return { placed: [], unplaced: [], debug: null, debugUnplaced: false }
 	const [W, H] = [outline.widthMm, outline.heightMm]
-	const layout = layoutBoard(s)
+	const layout = layoutBoard(s, capsAlong ? { capsAlong } : {})
 	const boxes = layout.parts
 	const byRef = new Map(boxes.map((b) => [b.ref, b]))
 	const connectorRefs = new Set((s.values.connectors ?? []).map((c) => c.ref))
@@ -1425,9 +1434,9 @@ function debugFrom(box: Placed, pinout: DebugPinout, W: number, H: number): Debu
 }
 
 // The debug footprint as placed on this board, or why not: off (requirements.debugPort false, no pinout) or no room.
-export function debugPort(s: ContractSnapshot): { placed: DebugPlacement | null; unplaced: boolean } {
+export function debugPort(s: ContractSnapshot, opts: PadOpts = {}): { placed: DebugPlacement | null; unplaced: boolean } {
 	if (!debugEnabled(s) || !debugPinout(s)) return { placed: null, unplaced: false }
-	const b = bottomPads(s)
+	const b = bottomPads(s, !!opts.capsAlong)
 	return { placed: b.debug, unplaced: b.debugUnplaced }
 }
 
@@ -1673,12 +1682,13 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		lines.push(`<trace name=${q(`${bootNet}_mcu`)} from=${q(`.${boot.mcu.ref} > .${boot.pin}`)} to=${q(`net.${bootNet}`)} />`)
 		nets.add(bootNet)
 	}
-	for (const tp of [...testPoints(s).placed, ...recoveryPads(s).placed, ...bringupPads(s).placed].map((t) => ({ ...t, net: nets.has(t.net) ? t.net : netName(t.net) })).filter((t) => nets.has(t.net))) {
+	const padOpts = opts.capsAlong ? { capsAlong: true } : {}
+	for (const tp of [...testPoints(s, padOpts).placed, ...recoveryPads(s, padOpts).placed, ...bringupPads(s, padOpts).placed].map((t) => ({ ...t, net: nets.has(t.net) ? t.net : netName(t.net) })).filter((t) => nets.has(t.net))) {
 		lines.push(`<testpoint name=${q(tp.ref)} footprintVariant="pad" padShape="circle" padDiameter="${TEST_PAD.diameterMm}mm" layer="bottom" pcbX={${tp.x}} pcbY={${tp.y}} />`)
 		lines.push(`<trace name=${q(`${tp.net}_${tp.ref}`)} from=${q(`.${tp.ref} > .pin1`)} to=${q(`net.${tp.net}`)} />`)
 	}
 	for (const h of mountingHoles(s)) lines.push(`<hole pcbX={${h.x}} pcbY={${h.y}} diameter="${h.diameterMm}mm" />`)
-	const dp = opts.debugPort === false ? null : debugPort(s).placed
+	const dp = opts.debugPort === false ? null : debugPort(s, padOpts).placed
 	if (dp) {
 		const padTags = TC2030.pads.map(([n, x, y]) => `<smtpad portHints={["pin${n}"]} shape="circle" radius="${TC2030.padDiameterMm / 2}mm" pcbX="${x}mm" pcbY="${y}mm" noSolderPaste />`).join("")
 		const holeTags = TC2030.holes.map(([x, y]) => `<hole pcbX="${x}mm" pcbY="${y}mm" diameter="${TC2030.holeDiameterMm}mm" />`).join("")

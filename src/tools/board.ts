@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { boardParts, circuitFromContract, debugPort, layoutBoard, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
+import { boardParts, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
 import { connectorClashes, pinPartsMissing, pinsWithoutMcu, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
@@ -44,14 +44,7 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	// A layout that leaves a part out is never built: tscircuit would drop the part at the board's centre, onto whatever
 	// is there (the wake-word board at 35×25 mm, LDO 11 mm from J1: "C3 overlaps U3", and autorouting skipped).
 	const count = boardParts(s).length
-	// Each layout, then the same with its pin capacitors allowed along their pads (capsAlong), when that differs and
-	// keeps the debug footprint's spot: a default whose capacitor trace runs past its bound gets it as its next build.
-	const withAlong = attempts.flatMap((p) => {
-		const alt = { ...p, capsAlong: true }
-		const [a, b] = [layoutBoard(s, p), layoutBoard(s, alt)]
-		const same = JSON.stringify(a.parts) === JSON.stringify(b.parts)
-		return same || JSON.stringify(a.debug) !== JSON.stringify(b.debug) ? [p] : [p, alt]
-	})
+	const withAlong = layoutAttempts(s, attempts)
 	const fitting = withAlong.filter((placement) => placeParts(s, placement).length >= count)
 	if (fitting.length === 0) {
 		const placed = new Set(placeParts(s).map((b) => b.ref))
@@ -134,6 +127,19 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	rmSync(best.board.dir, { recursive: true, force: true })
 	const at = (p: string | null) => (p ? p.replace(best!.board.dir, dir) : p)
 	return { ...best.board, dir, pcbPath: at(best.board.pcbPath)!, stepPath: at(best.board.stepPath), renderPath: at(best.board.renderPath) }
+}
+
+// Each layout, then the same with its pin capacitors allowed along their pads (capsAlong), when that differs: a default
+// whose capacitor trace runs past its bound gets it as its next build. It builds with its own debug footprint spot and
+// bottom pads (circuitFromContract passes capsAlong on); not for a design with a production test whose pads would
+// move, since its fixture is built from the default layout's pads.
+export function layoutAttempts(s: ContractSnapshot, attempts: PlacementOptions[]): PlacementOptions[] {
+	return attempts.flatMap((p) => {
+		const alt = { ...p, capsAlong: true }
+		const same = JSON.stringify(layoutBoard(s, p).parts) === JSON.stringify(layoutBoard(s, alt).parts)
+		const fixtureMoves = !!s.values.test && JSON.stringify(testPoints(s).placed) !== JSON.stringify(testPoints(s, { capsAlong: true }).placed)
+		return same || fixtureMoves ? [p] : [p, alt]
+	})
 }
 
 async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: number, dir: string, placement: PlacementOptions): Promise<BoardArtifact> {
