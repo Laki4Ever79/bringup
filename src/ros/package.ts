@@ -33,6 +33,8 @@ export function writeRosPackage(dir: string, spec: ChassisSpec, opts: { robot?: 
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>diff_drive_controller</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>range_sensor_broadcaster</exec_depend>
+  <exec_depend>bringup_hardware</exec_depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>
 `,
@@ -68,6 +70,7 @@ def nodes(context):
         Node(package="controller_manager", executable="ros2_control_node", parameters=[controllers], remappings=[("~/robot_description", "/robot_description")]),
         Node(package="controller_manager", executable="spawner", arguments=["joint_state_broadcaster"]),
         Node(package="controller_manager", executable="spawner", arguments=["diff_drive_controller", "--controller-ros-args", "-r /diff_drive_controller/cmd_vel:=/cmd_vel"]),
+        Node(package="controller_manager", executable="spawner", arguments=["range_sensor_broadcaster"]),
     ]
 
 

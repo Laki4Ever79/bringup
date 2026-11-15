@@ -49,7 +49,13 @@ export function bodyOf(spec: ChassisSpec) {
 	return { r, casterR, total, wheelKg, casterKg, bodyKg, axleX, casterX, com }
 }
 
-export function robotUrdf(spec: ChassisSpec, opts: { name?: string; hardware?: RosHardware } = {}): string {
+// The wheel's speed at duty 1: the motor's no-load speed on the cell's nominal voltage, loaded (0.8, the mechanics
+// checks' own derate), in rad/s. The bridge turns a velocity command into a duty with it.
+export function maxWheelRadS(spec: ChassisSpec): number {
+	return ((spec.motor.noLoadRpm * spec.pack.nominalV) / spec.motor.ratedV) * 0.8 * ((2 * Math.PI) / 60)
+}
+
+export function robotUrdf(spec: ChassisSpec, opts: { name?: string; hardware?: RosHardware; port?: string } = {}): string {
 	const name = opts.name ?? "bringup_robot"
 	const hw = opts.hardware ?? "mock"
 	const d = spec.drive, p = spec.plate
@@ -143,9 +149,18 @@ ${inertial(b.casterKg, [0, 0, 0], sphereInertia(b.casterKg, b.casterR))}
 ${boards}
   <ros2_control name="${name}_system" type="system">
     <hardware>
-      <plugin>${HARDWARE_PLUGIN[hw]}</plugin>
+      <plugin>${HARDWARE_PLUGIN[hw]}</plugin>${
+				hw === "bringup"
+					? `
+      <param name="port">${opts.port ?? "tcp:127.0.0.1:5555"}</param>
+      <param name="max_wheel_rad_s">${f(maxWheelRadS(spec))}</param>`
+					: ""
+			}
     </hardware>
 ${joints}
+    <sensor name="range_sensor">
+      <state_interface name="range"/>
+    </sensor>
   </ros2_control>
 </robot>
 `
@@ -168,6 +183,8 @@ controller_manager:
       type: joint_state_broadcaster/JointStateBroadcaster
     diff_drive_controller:
       type: diff_drive_controller/DiffDriveController
+    range_sensor_broadcaster:
+      type: range_sensor_broadcaster/RangeSensorBroadcaster
 
 diff_drive_controller:
   ros__parameters:
@@ -185,5 +202,14 @@ diff_drive_controller:
     linear.x.min_velocity: ${f(-vmax)}
     angular.z.max_velocity: ${f((2 * vmax) / mm(d.trackMm))}  # wheels at full speed in opposite directions
     angular.z.min_velocity: ${f((-2 * vmax) / mm(d.trackMm))}
+
+range_sensor_broadcaster:
+  ros__parameters:
+    sensor_name: range_sensor
+    frame_id: range_sensor_link
+    radiation_type: 1  # infrared (the time-of-flight sensor's laser)
+    field_of_view: ${f(((spec.sensor as { fovDeg?: number }).fovDeg ?? 25) * Math.PI / 180)}
+    min_range: 0.03
+    max_range: ${f(mm(spec.sensor.rangeMm))}  # the sensor's datasheet range
 `
 }
