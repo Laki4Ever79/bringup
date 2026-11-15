@@ -3,7 +3,9 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { bringupPads, debugPort } from "../codegen/circuit.ts"
-import type { SystemLink } from "./spec.ts"
+import type { SystemBoard, SystemLink } from "./spec.ts"
+import { field, moduleById, moduleOutline, type Cite } from "./bought.ts"
+import type { Module } from "../modules/library.ts"
 import type { SystemAssembly } from "./assembly.ts"
 
 export interface BoardFacts {
@@ -13,6 +15,9 @@ export interface BoardFacts {
 	links: string[]
 	mount: string
 	debug: string
+	// A bought board (a compute module): where it comes from, its peak draw with the source, the board it sits on, and
+	// the device its ROS bridge opens.
+	bought?: { from: string; peak: string; bridge: string; carrier: string }
 }
 export interface CableFacts {
 	kind: string
@@ -77,6 +82,28 @@ export function boardFacts(contract: ContractSnapshot | null, name: string, asse
 	}
 }
 
+const cited = (c: Cite | null | undefined) => (c ? `${c.url} (${c.where})` : "no source")
+
+export function boughtFacts(m: Module, name: string, assembly: SystemAssembly | undefined, carrier: string | null): BoardFacts {
+	const o = moduleOutline(m)
+	const peak = field<number>(m, "currentA.peak"), inV = field<{ nom: number }>(m, "inputV")
+	const bridge = (m.compute as { bridgeDevice?: { value: string; via?: string } } | undefined)?.bridgeDevice
+	return {
+		size: o ? `${mm(o.widthMm)} × ${mm(o.heightMm)} mm` : DASH,
+		chip: null,
+		power: inV?.value?.nom != null ? `${mm(inV.value.nom)} V in${carrier ? ` from ${carrier}` : ""}` : DASH,
+		links: [],
+		mount: assembly ? `${MOUNT[assembly.body] ?? DASH}${carrier ? `, on ${carrier}` : ""}` : DASH,
+		debug: DASH,
+		bought: {
+			from: m.title,
+			peak: peak?.value != null ? `${mm(peak.value)} A${inV?.value?.nom != null ? ` at ${mm(inV.value.nom)} V` : ""}: ${cited(peak.source)}` : `unknown${peak?.note ? ` (${peak.note})` : ""}`,
+			bridge: bridge ? `${bridge.value}${bridge.via ? ` (${bridge.via})` : ""}` : DASH,
+			carrier: carrier ?? "none yet",
+		},
+	}
+}
+
 export function cableFacts(link: SystemLink): CableFacts {
 	const len = link.cable?.lengthMm
 	return {
@@ -87,9 +114,15 @@ export function cableFacts(link: SystemLink): CableFacts {
 	}
 }
 
-export function systemFacts(contracts: Record<string, ContractSnapshot | null>, assembly: SystemAssembly | undefined, links: SystemLink[], keys: Record<string, string> = {}): { boards: Record<string, BoardFacts>; cables: Record<string, CableFacts> } {
+// `boards`: the spec's boards, so a bought one shows its module record's facts instead of a contract's.
+export function systemFacts(contracts: Record<string, ContractSnapshot | null>, assembly: SystemAssembly | undefined, links: SystemLink[], keys: Record<string, string> = {}, boards: SystemBoard[] = []): { boards: Record<string, BoardFacts>; cables: Record<string, CableFacts> } {
+	const boughtOf = (n: string) => {
+		const b = boards.find((x) => x.name === n)
+		const m = b?.kind === "bought" && b.module ? moduleById(b.module) : undefined
+		return m ? boughtFacts(m, n, assembly, boards.find((x) => x.carries === n)?.name ?? null) : null
+	}
 	return {
-		boards: Object.fromEntries(Object.entries(contracts).map(([n, c]) => [n, boardFacts(c, n, assembly, links, keys[n])])),
+		boards: Object.fromEntries(Object.entries(contracts).map(([n, c]) => [n, boughtOf(n) ?? boardFacts(c, n, assembly, links, keys[n])])),
 		cables: Object.fromEntries(links.map((l) => [l.id, cableFacts(l)])),
 	}
 }
