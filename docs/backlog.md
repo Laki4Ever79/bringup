@@ -80,6 +80,22 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
+- [ ] **Check: can Bringup design a 3D-printer / CNC controller board, Duet-like, from a prompt?** (the user, 15 Nov:
+      "can I simply ask bringup to create CNC board optimized for 3D printing work and get something resembling what
+      Duet 3D is/was"). A feasibility check first, then a plan. Borrow the product idea only, never Duet's design files
+      or text. What exists: MCU profiles that run motion firmware (STM32F411/F446 and RP2350 for grblHAL, ESP32-WROOM
+      for FluidNC; `compare_mcus` with `motion`, docs/mcu.md), the board pipeline (parts, layout, routing, DRC, fab
+      files), test pads, the case and the checks. Missing, to list and size: stepper drivers (e.g. TMC2209 over UART,
+      TMC5160 over SPI) with their sense resistors and heat; heater and fan MOSFETs with flyback and fuses; thermistor
+      inputs (ADC with the pull-up and filter); endstop and probe inputs; a 12/24 V input with reverse-polarity
+      protection, fusing and a buck to 5 V/3.3 V; high-current traces and copper (the router's 0.15 mm tracks won't
+      carry heater current: trace width per net current, wider than tscircuit routes today, maybe a 4-layer board);
+      thermal checks; the firmware side (generate the grblHAL/FluidNC, Klipper or RepRapFirmware configuration from the
+      contract's pin map, and build it); the checks that make it ours (driver current vs motor rating, heater power vs
+      MOSFET and trace, thermistor curve, every motor/heater/sensor wired and named in the firmware config). Output of
+      the check: what Bringup can make today, what each missing piece costs, and the smallest board worth building
+      first (e.g. 4 axes + 1 heater + bed).
+
 - [ ] **Board and chassis disagree on how a board mounts** (found 15 Nov): the board has M2 holes (2.2 mm,
       `MOUNTING_HOLE`, 3.0 mm in from each corner, `src/codegen/circuit.ts`), the printed chassis has M2.5 standoff holes
       (2.7 mm, `py/chassis.py`) at 3.5 mm in (`BOARD_HOLE_INSET_MM`, `src/tools/chassis.ts`): the standoffs are 0.5 mm
