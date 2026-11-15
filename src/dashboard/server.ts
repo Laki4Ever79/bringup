@@ -13,7 +13,7 @@ import { orderCheck, orderPackage } from "./order.ts"
 import { boardView, revisionSnapshot } from "./board-view.ts"
 import { checkMoves, undoMoves, type Move } from "./board-move.ts"
 import { addSpend, appendUsage, readSpend } from "../inference/usage.ts"
-import { PlanConflict, PlanStore } from "./plans.ts"
+import { PLAN_ID, PlanConflict, PlanStore } from "./plans.ts"
 import { exampleFile, listExamples } from "./examples.ts"
 import { PlanInvalid } from "../system/architect.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
@@ -581,17 +581,22 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		if (p.builtAs) return live.get(id)?.exit === null ? "starting" : "plan"
 		return plans.builtBefore(id) && !existsSync(join(outRoot, id)) ? "earlier" : "plan"
 	}
-	// An old single-board plan: the newest top-level run whose brief is the plan's board brief (Build wrote it verbatim).
+	// An old single-board plan: the newest top-level run started after the plan was made whose brief is the plan's board
+	// brief (an old Build wrote it verbatim under a new run id). Designs built from plans (out/plan-…) are never one, and
+	// a run older than the plan can't have come from it. A run's start is when its brief.md was written.
 	const oldRunOf = async (id: string): Promise<string | null> => {
 		const p = plans.get(id)
 		if (!p || p.spec.boards.length !== 1) return null
 		const want = p.briefs[p.spec.boards[0].name]?.trim()
-		if (!want) return null
+		const since = plans.createdAt(id)
+		if (!want || since === null) return null
 		let best: { name: string; at: number } | null = null
 		for (const name of await readdir(outRoot)) {
-			if (name === "plans" || !RUN_ID.test(name) || existsSync(join(outRoot, name, "system.json"))) continue
-			const [brief, st] = await Promise.all([readFile(join(outRoot, name, "brief.md"), "utf8").catch(() => null), stat(join(outRoot, name)).catch(() => null)])
-			if (brief !== null && st && brief.trim() === want && (!best || st.mtimeMs > best.at)) best = { name, at: st.mtimeMs }
+			if (name === "plans" || !RUN_ID.test(name) || PLAN_ID.test(name) || existsSync(join(outRoot, name, "system.json"))) continue
+			const st = await stat(join(outRoot, name, "brief.md")).catch(() => null)
+			if (!st || st.mtimeMs <= since || (best && st.mtimeMs <= best.at)) continue
+			const brief = await readFile(join(outRoot, name, "brief.md"), "utf8").catch(() => null)
+			if (brief !== null && brief.trim() === want) best = { name, at: st.mtimeMs }
 		}
 		return best?.name ?? null
 	}

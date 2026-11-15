@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto"
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { appendUsage, readSpend, type Spend } from "../inference/usage.ts"
 import { proposePlan } from "../system/architect.ts"
@@ -221,6 +221,27 @@ export class PlanStore {
 	markBuilt(id: string, builtAs: string): void {
 		const plan = this.get(id)
 		if (plan) writeFileSync(join(this.dir(id), "plan.json"), JSON.stringify({ ...plan, builtAs }, null, "\t"))
+	}
+
+	// When the plan was made (ms): the first saved version in history.jsonl, else plan.json's `created`, else the
+	// plan folder's birth (or change) time.
+	createdAt(id: string): number | null {
+		if (!PLAN_ID.test(id)) return null
+		try {
+			const first = readFileSync(join(this.dir(id), "history.jsonl"), "utf8").split("\n", 1)[0]
+			const at = Date.parse((JSON.parse(first) as { at?: string }).at ?? "")
+			if (Number.isFinite(at)) return at
+		} catch {
+			// no history: fall through
+		}
+		const created = Date.parse(String((this.get(id) as { created?: unknown } | null)?.created ?? ""))
+		if (Number.isFinite(created)) return created
+		try {
+			const st = statSync(this.dir(id))
+			return st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs
+		} catch {
+			return null
+		}
 	}
 
 	// A plan folder with a system.json was built under an older, separate system id that nothing recorded.

@@ -340,14 +340,40 @@ test("an old single-board plan leads to the run made from its brief, the newest 
 	await withHub(async ({ url, root }) => {
 		const id = await mkPlan(url, "a temperature logger")
 		const brief = ((await (await fetch(`${url}/api/plans/${id}`)).json()) as Any).plan.briefs.main ?? Object.values(((await (await fetch(`${url}/api/plans/${id}`)).json()) as Any).plan.briefs)[0]
-		for (const [name, age] of [["20260101-aaa", 100], ["20260102-bbb", 10], ["other", 1]] as const) {
+		// Runs Build started after the plan was made (an old Build gave each run a new id).
+		for (const [name, later] of [["20260101-aaa", 10], ["20260102-bbb", 100], ["other", 200]] as const) {
 			mkdirSync(join(root, name), { recursive: true })
 			writeFileSync(join(root, name, "brief.md"), name === "other" ? "something else\n" : brief + "\n")
-			utimesSync(join(root, name), new Date(Date.now() - age * 1000), new Date(Date.now() - age * 1000))
+			utimesSync(join(root, name, "brief.md"), new Date(Date.now() + later * 1000), new Date(Date.now() + later * 1000))
 		}
 		const r = await fetch(`${url}/plan/${id}`, { redirect: "manual" })
 		assert.equal(r.status, 302)
 		assert.equal(r.headers.get("location"), "/system?id=20260102-bbb")
+	})
+})
+
+// Final review, Important 1: a new plan's address never leads to another design made from the same brief: not one
+// built from another plan (out/plan-…), nor a run started before this plan existed.
+test("a second plan from the same sentence opens its own page, not the first plan's design", async () => {
+	await withHub(async ({ url, root }) => {
+		const a = await mkPlan(url, "a temperature logger")
+		const flags = { mock: true, hardware: false, review: false }
+		assert.equal((await send(`${url}/api/plans/${a}/build`, "POST", flags)).status, 201)
+		writeFileSync(join(root, a, "trace.jsonl"), "")
+		const brief = readFileSync(join(root, a, "brief.md"), "utf8")
+		// An old-style run of the same brief, made before plan B.
+		mkdirSync(join(root, "20260101-old"), { recursive: true })
+		writeFileSync(join(root, "20260101-old", "brief.md"), brief)
+		utimesSync(join(root, "20260101-old", "brief.md"), new Date(Date.now() - 60_000), new Date(Date.now() - 60_000))
+		await new Promise((r) => setTimeout(r, 5))
+		const b = await mkPlan(url, "a temperature logger")
+		assert.notEqual(a, b)
+		const r = await fetch(`${url}/plan/${b}`, { redirect: "manual" })
+		assert.equal(r.status, 302)
+		assert.equal(r.headers.get("location"), `/system?id=${b}`)
+		const view = (await (await fetch(`${url}/api/systems/${b}`)).json()) as Any
+		assert.equal(view.id, b)
+		assert.equal(view.status, "plan")
 	})
 })
 
