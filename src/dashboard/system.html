@@ -386,6 +386,13 @@ const keepPolling = (d) => d.status === "running" || editing.queued || Date.now(
 // 3D comes with the build: the switch offers Top only until then. Build keeps the id, so the page polls until the
 // design is written and then becomes the built design in place (same URL, no reload).
 const planning = { canvas: null, panel: null }
+// A plan forked from a starter says which one, under what was said.
+function forkedLine(said, plan) {
+	let el = document.getElementById("forked-from")
+	if (!plan.forkedFrom) return void el?.remove()
+	if (!el) { el = document.createElement("span"); el.id = "forked-from"; said.append(el) }
+	el.textContent = ` · forked from ${plan.forkedFrom.title ?? plan.forkedFrom.starter}`
+}
 async function showPlan(d) {
 	navMeta = d
 	renderNav()
@@ -409,6 +416,7 @@ async function showPlan(d) {
 		// The page's own lines: what was said, and what planning spent (no calls: scripted; a real call without token counts: unknown, never free).
 		const lines = (v) => {
 			main.querySelector("#plan-said b").textContent = `“${v.plan.sentence}”`
+			forkedLine(main.querySelector("#plan-said"), v.plan)
 			if (v.spend) document.getElementById("spend").textContent = v.spend.calls === 0 ? "scripted: free" : `planning ${spendLabel(v.spend, false).toLowerCase()}`
 		}
 		planning.canvas = mountPlanCanvas(top, {

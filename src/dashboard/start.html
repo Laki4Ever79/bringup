@@ -45,6 +45,10 @@
 	.gallery { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
 	.thumb { width: 190px; border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 10px 9px; background: #fff; cursor: pointer; text-align: left; font: inherit; color: inherit; }
 	.thumb:hover { border-color: #bbb; }
+	.card { display: flex; flex-direction: column; gap: 6px; }
+	.card .fork { border: 1.5px solid var(--signal); background: #fff; color: var(--signal); border-radius: 9px; padding: 5px 10px; font: 600 13.5px "Instrument", sans-serif; cursor: pointer; }
+	.card .fork:hover { background: var(--signal); color: #fff; }
+	.card .fork:disabled { opacity: .55; cursor: progress; }
 	.thumb.on { border-color: var(--signal); }
 	.thumb .pic { height: 92px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 	.thumb img { max-width: 100%; max-height: 100%; }
@@ -102,10 +106,15 @@
 	async function boardsOf(ex) {
 		if (cache.has(ex.name)) return cache.get(ex.name)
 		const opt = async (url, as) => { try { const r = await fetch(url); return r.ok ? await r[as]() : null } catch { return null } }
+		// A robot's boards all stand on its chassis: none has a case to fetch.
+		const noCase = (b) => b.chassis || ex.assembly?.body === "chassis"
 		const boards = await Promise.all(ex.boards.map(async (b) => {
 			// A robot's board stands on its chassis (example.json says so): the robot is drawn, not a case.
-			const [circuit, contract, caseStl, caseSpec, chassisStl, chassisSpec] = await Promise.all([opt(fileOf(ex, b.name, "circuit.json"), "json"), opt(fileOf(ex, b.name, "contract.json"), "json"), b.chassis ? null : opt(fileOf(ex, b.name, "case.stl"), "arrayBuffer"), b.chassis ? null : opt(fileOf(ex, b.name, "spec.json"), "json"), b.chassis ? opt(fileOf(ex, b.name, "chassis.stl"), "arrayBuffer") : null, b.chassis ? opt(fileOf(ex, b.name, "chassis.json"), "json") : null])
-			return { name: b.name, outline: b.outline, circuit, caseStl, caseSpec, chassisStl, chassisSpec, parts: contract?.values?.parts ?? [], key: `${ex.name}/${b.name}` }
+			const [circuit, contract, caseStl, caseSpec, chassisStl, chassisSpec] = await Promise.all([opt(fileOf(ex, b.name, "circuit.json"), "json"), opt(fileOf(ex, b.name, "contract.json"), "json"), noCase(b) ? null : opt(fileOf(ex, b.name, "case.stl"), "arrayBuffer"), noCase(b) ? null : opt(fileOf(ex, b.name, "spec.json"), "json"), b.chassis ? opt(fileOf(ex, b.name, "chassis.stl"), "arrayBuffer") : null, b.chassis ? opt(fileOf(ex, b.name, "chassis.json"), "json") : null])
+			// A robot of several boards: each stands on the shared chassis where the assembly puts it, with no case of its own.
+			const onChassis = ex.assembly?.body === "chassis"
+			const rotDeg = ex.assembly?.boards?.find((p) => p.name === b.name)?.rotDeg ?? 0
+			return { name: b.name, outline: b.outline, circuit, caseStl, caseSpec, chassisStl, chassisSpec, onChassis, rotDeg, parts: contract?.values?.parts ?? [], key: `${ex.name}/${b.name}` }
 		}))
 		cache.set(ex.name, boards)
 		return boards
@@ -138,7 +147,7 @@
 
 	async function show(ex) {
 		current = ex
-		for (const t of $("gallery").children) t.classList.toggle("on", t.dataset.name === ex.name)
+		for (const t of $("gallery").querySelectorAll(".thumb")) t.classList.toggle("on", t.dataset.name === ex.name)
 		if (!typed) $("sentence").value = ex.sentence
 		$("note").textContent = typed ? "Your sentence. Build proposes a split into boards first; nothing is built until you say so." : "This is the sentence that made the device above. Change it, or write your own."
 		sideFor(ex)
@@ -146,7 +155,7 @@
 		const boards = await boardsOf(ex)
 		if (current !== ex) return
 		if (world) {
-			world.setWorld({ boards, cables: ex.links.map((l) => ({ id: l.id, a: l.a, b: l.b, label: linkLabel(l) })) })
+			world.setWorld({ boards, cables: ex.links.map((l) => ({ id: l.id, a: l.a, b: l.b, label: linkLabel(l) })), assembly: ex.assembly ?? null })
 			world.setTurntable(true)
 		}
 	}
@@ -176,12 +185,34 @@
 		$("hint").textContent = "3D needs WebGL2; showing the saved picture"
 	}
 
+	// A starter (example.json + starter.json) also offers "Fork this robot": a new plan seeded from it, opened on its page.
 	$("gallery").innerHTML = examples.map((ex) => `
-		<button class="thumb" data-name="${esc(ex.name)}">
-			<div class="pic"><img src="/examples/${encodeURIComponent(ex.name)}/still.png" alt="" onerror="this.remove()"></div>
-			<b>${esc(label(ex))}</b><span>${ex.boards.length} board${ex.boards.length === 1 ? "" : "s"}${ex.links.length ? ` · ${ex.links.map((l) => l.kind.toUpperCase()).join(", ")} cable` : ""}</span>
-		</button>`).join("")
-	for (const t of $("gallery").children) t.addEventListener("click", () => show(examples.find((e) => e.name === t.dataset.name)))
+		<div class="card" data-name="${esc(ex.name)}">
+			<button class="thumb" data-name="${esc(ex.name)}">
+				<div class="pic"><img src="/examples/${encodeURIComponent(ex.name)}/still.png" alt="" onerror="this.remove()"></div>
+				<b>${esc(label(ex))}</b><span>${ex.boards.length} board${ex.boards.length === 1 ? "" : "s"}${ex.links.length ? ` · ${ex.links.map((l) => l.kind.toUpperCase()).join(", ")} cable` : ""}</span>
+			</button>
+			${ex.starter ? `<button class="fork local-only" data-name="${esc(ex.name)}" title="A new plan of your own, copied from this robot: change it in words or by dragging, then build it">Fork this robot</button>` : ""}
+		</div>`).join("")
+	const thumbs = () => $("gallery").querySelectorAll(".thumb")
+	for (const t of thumbs()) t.addEventListener("click", () => show(examples.find((e) => e.name === t.dataset.name)))
+	for (const f of $("gallery").querySelectorAll(".fork")) f.addEventListener("click", async () => {
+		f.disabled = true
+		$("msg").className = ""
+		$("msg").textContent = "Forking…"
+		try {
+			const r = await fetch(`/api/starters/${encodeURIComponent(f.dataset.name)}/fork`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+			const body = await r.json()
+			if (r.ok) return void (location.href = body.url)
+			$("msg").className = "err"
+			$("msg").textContent = body.error ?? "Fork failed."
+		} catch (e) {
+			$("msg").className = "err"
+			$("msg").textContent = `Fork failed: ${e}`
+		} finally {
+			f.disabled = false
+		}
+	})
 	if (examples.length) show(examples[0])
 
 	$("sentence").addEventListener("input", () => { typed = $("sentence").value.trim() !== current?.sentence })

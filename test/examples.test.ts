@@ -37,7 +37,7 @@ function fakeSystemRun(root: string) {
 	return dir
 }
 
-test("an example keeps only what the viewer reads: the last case, the trimmed circuit, the contract and the render", () => {
+test("an example keeps only what the viewer reads: the last case, the trimmed circuit and the contract", () => {
 	const root = tempDir()
 	const dest = tempDir()
 	saveExample(fakeSystemRun(root), "two-boards", "Two boards over a cable", dest)
@@ -46,7 +46,7 @@ test("an example keeps only what the viewer reads: the last case, the trimmed ci
 	assert.equal(meta.sentence, "Two boards over a cable")
 	assert.deepEqual(meta.boards.map((b: { name: string }) => b.name), ["logger", "beacon"])
 	assert.equal(meta.links.length, 1)
-	assert.deepEqual(readdirSync(join(ex, "boards", "logger")).sort(), ["board.png", "case.stl", "circuit.json", "contract.json", "spec.json"])
+	assert.deepEqual(readdirSync(join(ex, "boards", "logger")).sort(), ["case.stl", "circuit.json", "contract.json", "spec.json"])
 	assert.equal(readFileSync(join(ex, "boards", "logger", "case.stl"), "utf8"), "new", "the newest enclosure revision")
 	const trimmed = JSON.parse(readFileSync(join(ex, "boards", "logger", "circuit.json"), "utf8"))
 	assert.deepEqual(circuitIndex(trimmed), circuitIndex(CIRCUIT))

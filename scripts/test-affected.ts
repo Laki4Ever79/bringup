@@ -18,6 +18,7 @@ export const HAND: Record<string, string[]> = {
 	"templates/fw/": ["firmware.int", "mcu-firmware.int", "mcu-firmware-vendors.int", "firmware-codegen"],
 	"templates/wokwi/": ["wokwi", "wokwi.int"],
 	"src/dashboard/": ["dashboard", "system-page"],
+	"examples/": ["starters", "examples"],
 	"src/tools/renode.ts": ["mcu-sim", "mcu-system-link.int"],
 	"src/system/linktest.ts": ["system-link.int", "mcu-system-link.int", "linktest-i2c.int", "linktest-usb.int"],
 }

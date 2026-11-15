@@ -1,0 +1,69 @@
+{
+	"name": "rover-climate",
+	"sentence": "A small wheeled rover that maps a room's temperature and humidity, with its climate sensor on a second board joined by a cable",
+	"title": "Rover + climate board",
+	"boards": [
+		{
+			"name": "main",
+			"outline": {
+				"widthMm": 33,
+				"heightMm": 40
+			},
+			"chassis": true
+		},
+		{
+			"name": "climate",
+			"outline": {
+				"widthMm": 36,
+				"heightMm": 25
+			}
+		}
+	],
+	"links": [
+		{
+			"id": "L1",
+			"kind": "uart",
+			"a": {
+				"board": "main"
+			},
+			"b": {
+				"board": "climate"
+			},
+			"baud": 115200,
+			"cable": {
+				"lengthMm": 300
+			}
+		}
+	],
+	"assembly": {
+		"body": "chassis",
+		"plate": {
+			"lengthMm": 150,
+			"widthMm": 96
+		},
+		"boards": [
+			{
+				"name": "main",
+				"xMm": 0,
+				"yMm": 0,
+				"rotDeg": 0,
+				"outline": {
+					"widthMm": 33,
+					"heightMm": 40
+				},
+				"outlineSource": "built"
+			},
+			{
+				"name": "climate",
+				"xMm": 42.5,
+				"yMm": 0,
+				"rotDeg": 0,
+				"outline": {
+					"widthMm": 36,
+					"heightMm": 25
+				},
+				"outlineSource": "built"
+			}
+		]
+	}
+}

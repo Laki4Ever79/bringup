@@ -1,0 +1,138 @@
+{
+ "plate": {
+  "lengthMm": 150,
+  "widthMm": 96,
+  "thicknessMm": 3,
+  "clearanceMm": 50.5
+ },
+ "standoffMm": 10,
+ "motors": [
+  {
+   "side": "left",
+   "xMm": 45,
+   "yMm": 37,
+   "bodyMm": [
+    26,
+    12,
+    10
+   ],
+   "axleDropMm": 10.5
+  },
+  {
+   "side": "right",
+   "xMm": 45,
+   "yMm": -37,
+   "bodyMm": [
+    26,
+    12,
+    10
+   ],
+   "axleDropMm": 10.5
+  }
+ ],
+ "caster": {
+  "xMm": -55,
+  "holesMm": [
+   [
+    18,
+    14
+   ],
+   [
+    -18,
+    14
+   ],
+   [
+    -18,
+    -14
+   ],
+   [
+    18,
+    -14
+   ]
+  ],
+  "holeDiaMm": 4.2,
+  "wheelMm": 38,
+  "heightMm": 50.5
+ },
+ "battery": {
+  "xMm": 45,
+  "yMm": 0,
+  "sizeMm": [
+   60,
+   36,
+   7
+  ]
+ },
+ "boards": [
+  {
+   "name": "main",
+   "xMm": 0,
+   "yMm": 0,
+   "widthMm": 33,
+   "heightMm": 40,
+   "rotDeg": 0,
+   "holeInsetMm": 3.5
+  },
+  {
+   "name": "climate",
+   "xMm": 42.5,
+   "yMm": 0,
+   "widthMm": 36,
+   "heightMm": 25,
+   "rotDeg": 0,
+   "holeInsetMm": 3.5
+  }
+ ],
+ "unplaced": [],
+ "sensor": {
+  "xMm": 73.6,
+  "yMm": 0,
+  "zMm": 66,
+  "sizeMm": [
+   21,
+   18,
+   2.8
+  ],
+  "rangeMm": 1200,
+  "updateMs": 33
+ },
+ "massG": 246.638,
+ "com": [
+  2.066003616636528,
+  0,
+  43.5119365223526
+ ],
+ "wheelMassG": 20,
+ "casterMassG": 71,
+ "drive": {
+  "trackMm": 110,
+  "axleXMm": 45,
+  "wheelbaseMm": 100,
+  "wheelDiameterMm": 80,
+  "wheelWidthMm": 10
+ },
+ "motor": {
+  "ratedV": 6,
+  "noLoadRpm": 220,
+  "stallTorqueNm": 0.0922,
+  "stallA": 0.67,
+  "noLoadA": 0.07
+ },
+ "pack": {
+  "nominalV": 3.7,
+  "fullV": 4.2,
+  "cutoffV": 3,
+  "mAh": 2000,
+  "internalOhm": null
+ },
+ "payloadG": 20,
+ "driverPeakA": 2,
+ "speedMps": 0.3,
+ "stopBeforeWallMm": 150,
+ "edgeMm": 3,
+ "estimates": {
+  "floorMu": 0.6,
+  "rollingCrr": 0.02,
+  "packOhm": 0.15
+ }
+}
