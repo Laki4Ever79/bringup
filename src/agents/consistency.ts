@@ -1,3 +1,4 @@
+import { readBrief } from "../brief-file.ts"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { OWNERS, type FieldName } from "../contract/types.ts"
 import { join } from "node:path"
@@ -8,13 +9,17 @@ import { emit, roleOf, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 import { ALL_KINDS, BUILD_REQUIRES, OPTIONAL_KINDS } from "./builders.ts"
 
-const readBrief = (outDir: string) => (existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : "")
 
 export const MAX_REVISIONS = 25
 // A robot (a motion field) carries more fields than a board alone: the drive, the chassis, the driver and its
 // connectors are drafted after the board (real rover run 2, 15 Nov: the cap ended it mid-design). A system's boards
 // get the same 40 (system/run.ts SYSTEM_BOARD_MAX_REVISIONS).
 export const ROBOT_MAX_REVISIONS = 40
+// At the revision cap the contract freezes and the run waits this long at most for the builds of its last revision, so
+// the report judges built artifacts, not ones still building (real rover run 10, 15 Nov: 41 revisions in 2 minutes, the
+// run ended with no board ever built and the firmware 15 revisions old).
+export const DRAIN_MS = 15 * 60_000
+export const FROZEN_REASON = "the run's revision budget is spent: the contract takes no more changes; the builds of this revision finish, then the run ends"
 const KINDS: ArtifactKind[] = ALL_KINDS
 
 export interface Settlement {
@@ -48,6 +53,9 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 	let budgetBase = 0
 	// Settled false at the revision cap: agents' changes no longer re-arm it, only an engineer's request does.
 	let capped = false
+	// Capped and waiting for the builds of the frozen revision (until drainUntil).
+	let draining = false
+	let drainUntil = 0
 	let awaitingReview = false
 	let reviewerStarted = false
 
@@ -105,7 +113,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		const report = JSON.stringify({ revision: snapshot.revision, violations })
 		if (report !== lastReport) {
 			lastReport = report
-			emit(makeEvent("consistency.checked", self.id, { revision: snapshot.revision, violations }), self.id)
+			emit(makeEvent("consistency.checked", self.id, { revision: snapshot.revision, violations, ...(draining ? { draining } : {}) }), self.id)
 		}
 	}
 
@@ -129,6 +137,18 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 			(s.groundedVersions?.parts === s.contract.version("parts") && s.groundedVersions?.pins === s.contract.version("pins"))
 		const agentsBusy = [...turns.values()].some((n) => n > 0) || s.approvals.openCount() > 0
 		const stale = KINDS.filter((k) => !current(k))
+		if (draining) {
+			// Every build of the frozen revision done (or out of time): the run ends unsettled, judged on what was built.
+			// A build still waiting on a field nobody wrote never comes: it isn't waited for.
+			const building = stale.filter((k) => BUILD_REQUIRES[k].every((f) => s.contract.version(f) > 0))
+			if (building.length > 0 && Date.now() < drainUntil) {
+				timer = setTimeout(evaluate, Math.min(5_000, Math.max(0, drainUntil - Date.now())))
+				return
+			}
+			for (const k of building) s.artifactFailures[k] = `not built: the revision budget ran out while it was building`
+			flushCheck()
+			return settle(false)
+		}
 		// Quiet, and every artifact that isn't current is only waiting for a field nobody wrote: the run is stuck.
 		// End it unsettled, naming the missing fields in place of a build failure.
 		const missing = (k: ArtifactKind) => BUILD_REQUIRES[k].filter((f) => s.contract.version(f) === 0)
@@ -219,6 +239,8 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 							// re-armed it with a fresh budget again and again (real system run, 9 Nov: 293 revisions).
 							if (capped && !isEvent(event, "change.requested")) return
 							capped = false
+							draining = false
+							state().contract.thaw()
 							rearm()
 						}
 						if (isEvent(event, "contract.changed") || isEvent(event, "artifact.ready") || isEvent(event, "artifact.failed")) check()
@@ -228,9 +250,20 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 							if (done) return
 						}
 						const cap = state().contract.get("motion") ? Math.max(maxRevisions, ROBOT_MAX_REVISIONS) : maxRevisions
-						if (isEvent(event, "contract.changed") && event.payload.revision - budgetBase > cap) {
+						if (!draining && isEvent(event, "contract.changed") && event.payload.revision - budgetBase > cap) {
+							// Freeze, and let the builds of this revision finish before judging (evaluate ends the run).
 							capped = true
-							settle(false)
+							draining = true
+							drainUntil = Date.now() + DRAIN_MS
+							state().contract.freeze(FROZEN_REASON)
+							check()
+							if (timer) clearTimeout(timer)
+							timer = setTimeout(evaluate, opts.quietMs)
+							return
+						}
+						if (draining) {
+							if (timer) clearTimeout(timer)
+							timer = setTimeout(evaluate, opts.quietMs)
 							return
 						}
 						if (timer) clearTimeout(timer)

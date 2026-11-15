@@ -13,6 +13,8 @@ import {
 import { OWNERS, type AgentRole, type ContractValues, type FieldName, type ProposalResult } from "./contract/types.ts"
 import { isEvent, makeEvent } from "./events.ts"
 import { boardChangeWarning } from "./contract/case.ts"
+import { predictedViolations } from "./contract/predict.ts"
+import { readBrief } from "./brief-file.ts"
 import { emit, roleOf, state } from "./runtime.ts"
 import { startTurn } from "./agents/common.ts"
 import type { Agent } from "@mozaik-ai/core"
@@ -56,11 +58,22 @@ export class ChangeControl implements InterceptionHandler {
 			inferenceInput.context.addContextItems([call, FunctionCallOutputItem.create(call.callId, JSON.stringify({ status: "invalid", reason: invalid }))])
 			return { nextStateId: "inference", input: inferenceInput }
 		}
+		// What the change would raise. One the owner deciding would have to fix is refused here, by code: the owner is
+		// never asked to approve undoing its own work (real rover run 10). The rest go to the owner with the request.
+		const owner = OWNERS[args.field!]
+		const predicted = predictedViolations(s.contract.snapshot(), args.field!, args.value, readBrief(s.outDir))
+		const ownersOwn = predicted.filter((v) => v.affects.includes(owner))
+		if (ownersOwn.length) {
+			const reason = `refused by the checks: this change to ${args.field} would raise, for its owner (${owner}): ${ownersOwn.map((v) => `${v.kind}: ${v.message}`).join("; ")}. Find a change that doesn't, or ask ${owner} for what you need.`
+			emit(makeEvent("change.refused", this.agentId, { field: args.field!, by: requester, owner, reason }), this.agentId)
+			inferenceInput.context.addContextItems([call, FunctionCallOutputItem.create(call.callId, JSON.stringify({ status: "refused", reason }))])
+			return { nextStateId: "inference", input: inferenceInput }
+		}
 		// A case change that would change the PCB always waits for the engineer too, with a warning saying so.
 		const warning = boardChangeWarning(requester, args.field!, s.contract.get(args.field!), args.value)
 		const needsEngineer = s.engineerApproval || warning !== null
 		const proposalId = s.approvals.open(args.field!, requester, JSON.stringify(args.value), needsEngineer)
-		emit(makeEvent("change.proposed", this.agentId, { proposalId, field: args.field!, by: requester, reason: args.reason ?? "", needsEngineer, ...(warning ? { warning } : {}) }), this.agentId)
+		emit(makeEvent("change.proposed", this.agentId, { proposalId, field: args.field!, by: requester, reason: args.reason ?? "", needsEngineer, ...(warning ? { warning } : {}), ...(predicted.length ? { predicted: predicted.map((v) => `${v.kind}: ${v.message}`) } : {}) }), this.agentId)
 
 		const decision = await s.approvals.wait(proposalId, needsEngineer ? s.engineerTimeoutMs : s.approvalTimeoutMs)
 		emit(makeEvent("change.resolved", this.agentId, { proposalId, approved: decision.approved, reason: decision.reason, decidedBy: decision.decidedBy ?? [decision.by] }), this.agentId)
@@ -117,10 +130,11 @@ export function ownerReviewsChanges(role: AgentRole): SituationHandler {
 		processor: {
 			apply: ({ event, participant }) => {
 				if (!isEvent(event, "change.proposed")) return
-				const { proposalId, field, by, reason } = event.payload
+				const { proposalId, field, by, reason, predicted } = event.payload
 				startTurn(
 					participant as Agent,
 					`Change request proposalId=${proposalId} from ${by}: change "${field}" because: ${reason}. ` +
+						(predicted?.length ? `The checks say it would raise: ${predicted.join("; ")}. ` : "") +
 						`Read the contract, then call decide_change with this proposalId.`,
 				)
 			},

@@ -122,7 +122,7 @@ export function assemblyFitError(a: SystemAssembly, maxSizeMm?: [number, number]
 	if (!maxSizeMm || a.body !== "chassis") return null
 	const n = neededPlate(a.boards)
 	if (n.lengthMm <= maxSizeMm[0] + 1e-9 && n.widthMm <= maxSizeMm[1] + 1e-9) return null
-	return `assembly: the boards need a ${Math.ceil(n.lengthMm)} × ${Math.ceil(n.widthMm)} mm plate, over the ${maxSizeMm[0]} × ${maxSizeMm[1]} mm the brief allows (motion.maxSizeMm): use smaller boards or fewer of them`
+	return `assembly: the boards need a ${Math.ceil(n.lengthMm)} × ${Math.ceil(n.widthMm)} mm plate, over the ${maxSizeMm[0]} × ${maxSizeMm[1]} mm plate the brief's size allows (motion.maxSizeMm, less the wheels beside the plate): use smaller boards or fewer of them`
 }
 
 // The board that sits at the centre: `main`, else the one with the most links (a tie goes to the first in the spec).

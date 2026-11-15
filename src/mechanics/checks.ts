@@ -66,6 +66,18 @@ export function mechanicsFigures(c: ContractSnapshot): MechFigure[] {
 	return figures
 }
 
+// The largest plate the brief's size allows, [length, width]: the wheels stand outside the plate's width, so the width
+// is the brief's less two wheels and their clearance (the size check below says the same). The brief's own size until
+// the mechanics names a catalog wheel. A system sizes its shared plate by this, not by the brief's outer size: the
+// rover-climate plate was grown to 110 mm wide against a 120 mm brief, leaving no room for the wheels (15 Nov).
+export function plateLimitMm(c: ContractSnapshot): [number, number] | undefined {
+	const max = c.values.motion?.maxSizeMm
+	if (!max) return undefined
+	const cat = defaultCheckCatalog()
+	const wheel = cat && c.values.mechanics ? byMpn(cat.mech.wheels, c.values.mechanics.drive.wheel) : undefined
+	return wheel ? [max[0], max[1] - 2 * wheel.widthMm - 4] : max
+}
+
 export function mechanicsChecks(c: ContractSnapshot): MechViolation[] {
 	const cat = defaultCheckCatalog()
 	return cat ? mechanicsChecksWith(c, cat) : []
@@ -83,6 +95,17 @@ export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): Mec
 	if (!v.motion && ((c.values.parts ?? []).some((p) => p.role === "motor-driver") || saysRobot))
 		return [{ kind: "mech-fit", message: "the design moves (a motor driver, or requirements that name motors, wheels or a rover) but has no motion targets: a robot needs its motion field (the brief's speedMps, runtimeMin, edgeMm, maxSlopeDeg, stopBeforeWallMm, payloadG, maxSizeMm, maxMassG); write it, and the mechanics engineer designs the drive and chassis", fields: ["motion"], affects: ["architect"] }]
 	return mechanicsCheckOver(v.motion, withAssembly(c.values), checkBoards(c), cat)
+}
+
+// A board's 4-pin connector that no link uses and that isn't the sensor's named one: the sensor's plug under another ref.
+function spare4Pin(boards: { snapshot: ContractSnapshot }[], named: string): string | undefined {
+	for (const b of boards) {
+		const v = b.snapshot.values
+		const links = new Set((v.links ?? []).map((l) => l.connector))
+		const p = (v.parts ?? []).find((x) => x.role === "connector" && x.pins.length === 4 && x.ref !== named && !links.has(x.ref))
+		if (p) return p.ref
+	}
+	return undefined
 }
 
 // Distance from a point to each edge of a convex polygon (inside: all positive); the smallest.
@@ -310,6 +333,10 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const taken = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && !(p.role === "connector" && p.pins.length === 4)) : undefined
 	if (!mech.sensor) push("mech-wiring", "no distance sensor in the mechanics design: the rover avoids walls with one at the front", ["mechanics"])
 	else if (taken) push("mech-wiring", `mechanics.sensor.connector is ${taken.ref}, but ${taken.ref} is already the ${taken.role} ${taken.mpn}: name a free ref for the sensor's 4-pin connector (JT1)`, ["mechanics"], ["mechanics"])
+	// A 4-pin connector the boards already have under another ref, serving no link: the mechanics points at it (one field)
+	// instead of the parts agent adding a second one (real rover run 10, 15 Nov: J5 and JT1 were added and removed in
+	// turn for 20 revisions, each a "duplicate" of the other).
+	else if (!plug && spare4Pin(boards, mech.sensor.connector)) push("mech-wiring", `the board already has a 4-pin connector ${spare4Pin(boards, mech.sensor.connector)} and no ${mech.sensor.connector}: set mechanics.sensor.connector to ${spare4Pin(boards, mech.sensor.connector)} (don't add a second one)`, ["mechanics"], ["mechanics"])
 	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["parts"], ["parts"])
 	// The board generator joins the plug's IO1/IO2 to the bus (linkBusTraces): the bus must exist on its board.
 	else if (!["I2C_SDA", "I2C_SCL"].every((sig) => boards.some((b) => (b.snapshot.values.parts ?? []).some((p) => p.ref === plug.ref) && (b.snapshot.values.pins ?? []).some((p) => p.signal === sig))))

@@ -284,6 +284,6 @@ test("boards that can't fit the brief's size limit end the run with a finding th
 	const res = await runSystem({ spec: robot("chassis"), outDir: out, mock: true, pollMs: 10, timeoutMs: 2000, start: limited })
 	assert.equal(res.ok, false)
 	const state = JSON.parse(readFileSync(join(out, "system-state.json"), "utf8"))
-	assert.match(state.status, /^UNSETTLED: assembly: the boards need a \d+ × \d+ mm plate, over the 160 × 150 mm the brief allows/)
+	assert.match(state.status, /^UNSETTLED: assembly: the boards need a \d+ × \d+ mm plate, over the 160 × 150 mm plate the brief's size allows/)
 	assert.equal(state.findings[0].kind, "assembly-fit")
 })

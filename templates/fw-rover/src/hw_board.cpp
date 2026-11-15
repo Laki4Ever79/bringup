@@ -1,5 +1,5 @@
 // The board build: DRV8833 inputs on LEDC PWM (one channel per input, slow-decay off: the driven input PWMs, the other
-// is low), the VL53L0X breakout and the SHT40 on I2C.
+// is low), the VL53L0X breakout and the SHT40 or SHTC3 on I2C.
 #ifndef HW_SIM
 #include <Arduino.h>
 #include <Wire.h>
@@ -38,12 +38,15 @@ int hw_distance_mm(void) {
 	return tofDistanceMm(mm, tof.timeoutOccurred(), ROVER_RANGE_MM);
 }
 
-// The payload: the SHT40 (include/drivers/sensirion.h: CRC-checked, humidity cropped to 0..100).
+// The payload: the contract's temperature/humidity sensor, SHT40 or SHTC3, with the product firmware's drivers
+// (include/drivers/sensirion.h: CRC-checked, humidity cropped to 0..100). hw_pins.h defines which; none reads nothing.
 bool hw_payload(float *temp_c, float *rh) {
-#ifndef SENSOR_SHT40
-	return false;  // only the SHT40 is read here; the header defines SENSOR_SHT40 when the contract's sensor is one
-#else
+#if defined(SENSOR_SHTC3)
+	return shtc3Read(temp_c, rh);
+#elif defined(SENSOR_SHT40)
 	return sht4xRead(temp_c, rh);
+#else
+	return false;
 #endif
 }
 
