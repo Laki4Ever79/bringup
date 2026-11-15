@@ -27,18 +27,29 @@ export interface CarrierRegulator {
 	inV?: { min: number | null; max: number | null } | null
 	// The part's name, when it is a catalog part.
 	mpn?: string
+	// The output's accuracy, ± percent, when the record gives it.
+	outTolPct?: number | null
+	notes?: string
 	source?: Cite | "default"
+	// Per figure, where the record has them: outV, maxOutA, inMinV, efficiency.
+	sources?: Partial<Record<"outV" | "maxOutA" | "inMinV" | "efficiency", Cite>>
 }
 
-// A bought 5 V regulator from catalog/mechanics.json's `regulators` list (the shape d9610c's compute-power branch adds:
-// each number with its source, as the other bought parts). Field names are read leniently until that list lands; a
-// figure the record doesn't give is null, and the checks say so.
+// A bought 5 V regulator from catalog/mechanics.json's `regulators` list (RegulatorPart: outV, maxA, inMinV, inMaxV,
+// efficiency, each with its source). Other field names are read too; a figure the record doesn't give is null, and the
+// checks say so. The output's accuracy is a field (outTolPct) or, as in the D36V50F5's record, the "N% accuracy" its
+// outV source quotes.
 export function regulatorFromCatalog(rec: Record<string, unknown>): CarrierRegulator {
 	const num = (...ks: string[]) => { for (const k of ks) if (typeof rec[k] === "number") return rec[k] as number; return null }
 	const src = (rec.source ?? {}) as Record<string, Cite>
 	const first = (...ks: string[]) => ks.map((k) => src[k]).find(Boolean) ?? null
 	const range = Array.isArray(rec.inputV) ? (rec.inputV as number[]) : null
+	const tolText = /(\d+(?:\.\d+)?)\s*%\s*accuracy|±\s*(\d+(?:\.\d+)?)\s*%/i.exec(src.outV?.where ?? "")
+	const pick = (...ks: string[]) => first(...ks) ?? undefined
 	return {
+		outTolPct: num("outTolPct") ?? (tolText ? Number(tolText[1] ?? tolText[2]) : null),
+		...(typeof rec.notes === "string" ? { notes: rec.notes } : {}),
+		sources: Object.fromEntries(Object.entries({ outV: pick("outV", "outputV"), maxOutA: pick("maxOutA", "maxA", "outputA"), inMinV: pick("inMinV", "minInV"), efficiency: pick("efficiency") }).filter(([, v]) => v)),
 		mpn: String(rec.mpn ?? ""),
 		outV: num("outV", "outputV", "vOut") ?? 5,
 		maxOutA: num("maxOutA", "outputA", "maxA", "iOutA"),
@@ -52,6 +63,9 @@ export function regulatorFromCatalog(rec: Record<string, unknown>): CarrierRegul
 // A boost from one cell to 5 V converts at about this (ESTIMATE: typical synchronous boost at a few amps; the
 // regulator's own datasheet figure replaces it when given).
 export const BOOST_EFFICIENCY_ESTIMATE = 0.9
+// The input headroom a buck regulator should keep over its listed minimum at full load (ESTIMATE: the D36V50F5's record
+// says only that its dropout rises with load, without a figure at 5 A).
+export const DROPOUT_HEADROOM_V = 1
 // Headroom over the module's peak draw for the rail, when the peak is the board's own draw. A peak that is the vendor's
 // recommended supply (the Raspberry Pi 5's 5 A, which already includes 1.6 A for USB peripherals and the vendor's own
 // headroom) needs none on top.
@@ -96,6 +110,9 @@ export function powerBudget(m: Module, o: { battery: BatteryPack | null; motors:
 		const lo = reg.inV.min ?? -Infinity, hi = reg.inV.max ?? Infinity
 		if (pb.cutoffV < lo || pb.fullV > hi)
 			out.push({ check: "compute-power", level: "error", message: `the carrier's regulator${reg.mpn ? ` ${reg.mpn}` : ""} takes ${reg.inV.min ?? "?"}–${reg.inV.max ?? "?"} V in (${regCite(reg)}), but the ${pb.mpn} spans ${pb.cutoffV}–${pb.fullV} V (${cite(pb.source?.cutoffV ?? pb.source?.fullV)}): pick a regulator for the pack's range, or a pack for the regulator's`, sources: srcs(pb.source?.cutoffV) })
+		// A buck's minimum input rises with load (dropout): a pack near its cut-off leaves it little headroom.
+		else if (reg.inV.min != null && pb.cutoffV - reg.inV.min < DROPOUT_HEADROOM_V)
+			out.push({ check: "compute-power", level: "warning", message: `thin input headroom: the ${pb.mpn} ends at ${pb.cutoffV} V (${cite(pb.source?.cutoffV)}), only ${r2(pb.cutoffV - reg.inV.min)} V over the ${reg.mpn || "regulator"}'s ${reg.inV.min} V minimum input (${cite(reg.sources?.inMinV ?? null)}), and that minimum rises with load (dropout): near the end of a charge the 5 V rail may sag at full current. Keep ${DROPOUT_HEADROOM_V} V of headroom (estimate): stop at a higher cell voltage, or use a pack with more cells`, sources: srcs(pb.source?.cutoffV, reg.sources?.inMinV) })
 	}
 	const eff = o.regulator?.efficiency ?? BOOST_EFFICIENCY_ESTIMATE
 	const watts = peak.value * inputV.value.nom
@@ -105,9 +122,10 @@ export function powerBudget(m: Module, o: { battery: BatteryPack | null; motors:
 	const boardsA = o.otherBoardsA ?? 0
 	const needA = moduleA + stallA + boardsA
 	const motorWords = `${motors ? `plus ${motors.count} × ${motors.part.mpn} at stall, ${r2(stallA)} A on a full ${pb.fullV} V pack (stall ${motors.part.stallA} A at ${motors.part.ratedV} V: ${cite(motors.part.source?.stallA)})` : o.motors === "none" ? "with no motors" : "motors left out (not chosen yet)"}${o.otherBoardsA != null ? `, plus ${r2(boardsA)} A for the other boards` : ", the other boards' draw left out"}`
-	const moduleWords = `${m.id}'s ${peak.value} A peak at ${inputV.value.nom} V (${cite(peak.source)}) is ${r2(watts)} W, ${r2(moduleA)} A from the pack at its ${pb.cutoffV} V cut-off through a ${Math.round(eff * 100)} % regulator${o.regulator?.efficiency == null ? " (estimate)" : ""}`
-	if (needA > pb.peakA)
-		out.push({ check: "compute-power", level: "error", message: `brown-out risk: ${moduleWords}, ${motorWords}: ${r2(needA)} A in all, over the ${pb.mpn}'s ${pb.peakA} A discharge rating (${cite(pb.source?.peakA)}). The Pi resets when the motors start: use a pack rated for ${Math.ceil(needA)} A or more, or feed the Pi from its own supply`, sources: srcs(peak.source, pb.source?.peakA, motors?.part.source?.stallA) })
+	const moduleWords = `${m.id}'s ${peak.value} A peak at ${inputV.value.nom} V (${cite(peak.source)}) is ${r2(watts)} W, ${r2(moduleA)} A from the pack at its ${pb.cutoffV} V cut-off through a ${Math.round(eff * 100)} % regulator${o.regulator?.efficiency == null ? " (estimate)" : o.regulator.sources?.efficiency ? ` (${cite(o.regulator.sources.efficiency)})` : ""}`
+	// The pack's continuous rating: the Pi draws its supply for as long as it runs, not for a burst.
+	if (needA > pb.maxContA)
+		out.push({ check: "compute-power", level: "error", message: `brown-out risk: ${moduleWords}, ${motorWords}: ${r2(needA)} A in all, over the ${pb.mpn}'s ${pb.maxContA} A continuous discharge rating (${cite(pb.source?.maxContA)}). The Pi resets when the motors start: use a pack rated for ${Math.ceil(needA)} A or more, or feed the Pi from its own supply`, sources: srcs(peak.source, pb.source?.maxContA, motors?.part.source?.stallA) })
 	if (!o.regulator) out.push({ check: "compute-power", level: "warning", message: `${m.id}: the carrier's regulator isn't chosen yet, so its input limit is unknown; the module alone needs ${r2(moduleA)} A from the pack (${cite(peak.source)})`, sources: srcs(peak.source) })
 	else if (o.regulator.maxInA == null) out.push({ check: "compute-power", level: "warning", message: `${m.id}: the carrier regulator's input current limit is unknown (${regCite(o.regulator)}); the module needs ${r2(moduleA)} A on its input at the pack's cut-off`, sources: srcs(peak.source) })
 	else if (moduleA > o.regulator.maxInA)
@@ -131,8 +149,9 @@ export function railCheck(m: Module, reg: CarrierRegulator | null): ComputeFindi
 		out.push({ check: "compute-rail", level: "warning", message: `${m.id}: the rail voltage can't be checked: compute.inputV is ${iv ? "null" : "missing"} (${iv?.note ?? "no note"}); the rail is ${reg.outV} V`, sources: [] })
 	else if (reg.outV !== need.volts) {
 		const { min, max } = iv!.value!
+		const tol = reg.outTolPct != null ? ` ±${reg.outTolPct} % (${r2(reg.outV * (1 - reg.outTolPct / 100))} V at worst)` : ""
 		if (min == null || max == null)
-			out.push({ check: "compute-rail", level: "warning", message: `the carrier's rail is ${reg.outV} V but ${m.id} asks for ${need.volts} V and publishes no tolerance (${iv!.note ?? cite(iv!.source)}): set the rail to ${need.volts} V`, sources: srcs(iv!.source) })
+			out.push({ check: "compute-rail", level: "warning", message: `the carrier's rail is ${reg.outV} V${tol}${reg.sources?.outV ? ` (${cite(reg.sources.outV)})` : ""} but ${m.id} asks for ${need.volts} V (${cite(iv!.source)}) and publishes no tolerance (${iv!.note ?? "no note"}): it may run, or warn of under-voltage; a ${need.volts} V rail is the safe choice`, sources: srcs(iv!.source, reg.sources?.outV) })
 		else if (reg.outV < min || reg.outV > max)
 			out.push({ check: "compute-rail", level: "error", message: `the carrier's rail is ${reg.outV} V, outside ${m.id}'s ${min}–${max} V input range (${cite(iv!.source)})`, sources: srcs(iv!.source) })
 	}
