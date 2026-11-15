@@ -3,7 +3,7 @@
 // limit come from assembly-geom.js, the same module the server's checks import, so the page and the run agree.
 // Frame: +x forward, +y left, origin at the plate centre; rotDeg is counter-clockwise from above; edges are the
 // board's own (left/right/top/bottom, before it is turned), as in top-layout.js.
-import { blocksSensor, boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, motorHalfUnder, motorUnderPlateMm, mountOnPlate, offPlate, plateMaxWidthMm, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM, wheelsRubPlate } from "./assembly-geom.js"
+import { blocksSensor, boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, i2cCableLimit, motorHalfUnder, motorUnderPlateMm, mountOnPlate, offPlate, plateLimitForBrief, plateMaxWidthMm, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM, wheelsRubPlate } from "./assembly-geom.js"
 
 export const SNAP_MM = 0.5
 export { STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM, STANDOFF_USUAL_MM }
@@ -289,7 +289,7 @@ export function editor(start) {
 			if (a.plate && chassis) {
 				const L = a.plate.lengthMm, W = a.plate.widthMm
 				const d = chassis.drive
-				if (d && wheelsRubPlate(W, d.trackMm, d.wheelWidthMm)) bad({ plate: true }, `the wheels rub the ${W} mm-wide plate (${d.trackMm} mm track, ${d.wheelWidthMm} mm wheels, 2 mm clearance): make it at most ${r1(plateMaxWidthMm(d.trackMm, d.wheelWidthMm))} mm wide`)
+				if (d && wheelsRubPlate(W, d.trackMm, d.wheelWidthMm)) bad({ plate: true }, `the ${W} mm-wide plate needs a wider track than today's ${d.trackMm} mm (the wheels would rub past ${r1(plateMaxWidthMm(d.trackMm, d.wheelWidthMm))} mm): the mechanics engineer re-lays out the chassis`, "warn")
 				const parts = chassisMounts(chassis)
 				for (const m of parts.filter((x) => x.what.startsWith("motor ")))
 					if (!motorHalfUnder(W, m)) bad({ plate: true }, `${m.what} reaches only ${r1(Math.max(0, motorUnderPlateMm(W, m)))} mm under the plate (half its ${m.sizeMm[1]} mm body needed for the bracket): widen the plate`)
@@ -305,7 +305,13 @@ export function editor(start) {
 			}
 			if (maxSizeMm && a.plate) {
 				const outerW = Math.max(a.plate.widthMm, chassis?.drive ? chassis.drive.trackMm + chassis.drive.wheelWidthMm : 0)
-				if (a.plate.lengthMm > maxSizeMm[0] || outerW > maxSizeMm[1]) bad({ plate: true }, `the robot is ${a.plate.lengthMm} × ${r1(outerW)} mm, over the ${maxSizeMm[0]} × ${maxSizeMm[1]} mm the brief allows`)
+				// The plate against the brief less the wheels (the limit main's mech-fit applies), whatever track the chassis had:
+				// the track follows the plate when the robot re-settles, so the starting track can't stand in for it.
+				const wheelW = chassis?.drive?.wheelWidthMm
+				const lim = plateLimitForBrief(maxSizeMm, wheelW)
+				if (wheelW) {
+					if (a.plate.lengthMm > lim[0] || a.plate.widthMm > lim[1]) bad({ plate: true }, `the plate is ${a.plate.lengthMm} × ${a.plate.widthMm} mm, over the ${lim[0]} × ${r1(lim[1])} mm the brief allows (${maxSizeMm[0]} × ${maxSizeMm[1]} mm less the ${wheelW} mm wheels beside it and their clearance)`)
+				} else if (a.plate.lengthMm > maxSizeMm[0] || outerW > maxSizeMm[1]) bad({ plate: true }, `the robot is ${a.plate.lengthMm} × ${r1(outerW)} mm, over the ${maxSizeMm[0]} × ${maxSizeMm[1]} mm the brief allows`)
 			}
 		}
 		for (const b of bs) {

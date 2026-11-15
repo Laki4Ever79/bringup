@@ -40,6 +40,9 @@ export function wheelsRubPlate(plateWidthMm, trackMm, wheelWidthMm) {
 }
 // The widest plate the wheels allow: the track less one wheel and the clearance on both sides.
 export const plateMaxWidthMm = (trackMm, wheelWidthMm) => trackMm - wheelWidthMm - 2 * WHEEL_CLEARANCE_MM
+// The biggest plate a brief's outer size allows (motion.maxSizeMm): its width less the two wheels beside the plate and
+// their clearance, as plateLimitMm in src/mechanics/checks.ts. Without a wheel width, the brief's own size.
+export const plateLimitForBrief = (maxSizeMm, wheelWidthMm) => (wheelWidthMm ? [maxSizeMm[0], maxSizeMm[1] - 2 * wheelWidthMm - 2 * WHEEL_CLEARANCE_MM] : [maxSizeMm[0], maxSizeMm[1]])
 // How far a motor's body reaches in under the plate, across the plate (y); its bracket needs at least half its body there.
 export const motorUnderPlateMm = (plateWidthMm, m) => plateWidthMm / 2 - (Math.abs(m.yMm) - m.sizeMm[1] / 2)
 export const motorHalfUnder = (plateWidthMm, m) => !(motorUnderPlateMm(plateWidthMm, m) < m.sizeMm[1] / 2)
