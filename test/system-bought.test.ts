@@ -1,4 +1,5 @@
 // A bought board in a system (docs/superpowers/specs/2026-11-15-compute-modules-design.md): a compute module from the
+import type { ContractSnapshot } from "../src/contract/types.ts"
 // module library that no agent designs. Its spec, its place in the assembly, the system run and the design page's payload.
 import { test } from "node:test"
 import assert from "node:assert/strict"
@@ -134,4 +135,75 @@ test("a request that moves the Pi brings its carrier along; a carrier off its bo
 
 test("a system of bought boards alone is refused: nothing to design (review C3)", () => {
 	assert.match(specErrors({ name: "x", boards: [{ name: "brain", kind: "bought", module: "rpi-5" }], links: [] }).join("\n"), /at least one designed board/)
+})
+
+// The run path with a Pi (ruling R4, review I7): main (the rover), a bought rpi-5 and its HAT carrier on the catalog's
+// 2S pack and D36V50F5, through spec validation, the carrier's brief, the assembly, a system run with stub boards and
+// the robot board's own mechanics checks. No agent runs.
+test("a rover with a Pi on a HAT carrier: valid spec, brief written, placed behind main, settles with the compute warnings and no overlap anywhere", async () => {
+	const { addCarrier } = await import("../src/system/carrier.ts")
+	const { moduleById } = await import("../src/system/bought.ts")
+	const { ROVER_BOARD } = await import("../src/inference/scripts.ts")
+	const { loadMechCatalog } = await import("../src/mechanics/catalog.ts")
+	const { mechanicsChecks } = await import("../src/mechanics/checks.ts")
+	const cat = loadMechCatalog(process.cwd())
+	const pack = cat.batteries.find((b) => b.cells === 2)!, reg = cat.regulators![0]
+	const base: SystemSpec = { name: "rover with a pi", boards: [{ name: "main", brief: "briefs/rover.md" }, { name: "brain", kind: "bought", module: "rpi-5" }], links: [] }
+	const c = addCarrier(base, "brain", moduleById("rpi-5")!, { battery: pack })
+	const spec: SystemSpec = { ...c.spec, boards: c.spec.boards.map((b) => (b.name === c.name ? { ...b, regulator: reg.mpn } : b)) }
+	assert.deepEqual(specErrors(spec), [])
+	assert.match(c.brief, new RegExp(`from the robot's ${pack.mpn.split(" ")[0]}.*so a buck converter`))
+	// The boards' built outlines up front (the stubs don't settle again): main 60 × 40 mm, the HAT the Pi's 85 × 56.
+	const withA = { ...spec, assembly: defaultAssembly(spec, "chassis", { main: { widthMm: 60, heightMm: 40 }, "rpi-5-carrier": { widthMm: 85, heightMm: 56 } }) }
+	assert.deepEqual(assemblyErrors(withA), [])
+	// main: the scripted rover on the 2S pack, with a brief large enough for a Pi (the starter's job: the rover brief's
+	// 150 mm doesn't take a Pi beside the board).
+	const rover = (): ContractSnapshot => {
+		const s = fixtureContract()
+		s.values = { ...structuredClone(ROVER_BOARD) } as ContractSnapshot["values"]
+		s.values.mechanics!.battery.pack = pack.mpn
+		s.values.motion = { ...s.values.motion!, maxSizeMm: [300, 200] }
+		return s
+	}
+	const start: typeof startRunProcess = (a) => {
+		const name = a.outDir.split("/").at(-1)!
+		const hat = fixtureContract()
+		hat.values.outline = { ...hat.values.outline!, widthMm: 85, heightMm: 56 }
+		writeFileSync(join(a.outDir, "contract.json"), JSON.stringify(name === "main" ? rover() : hat))
+		writeFileSync(join(a.outDir, "trace.jsonl"), JSON.stringify({ at: "2026-11-15T10:00:00Z", type: "design.settled", payload: { settled: true } }) + "\n")
+		return { done: Promise.resolve({ code: 0, stderr: "", stdout: "" }), kill() {} }
+	}
+	const out = tempDir()
+	const r = await runSystem({ spec: withA, outDir: out, mock: true, pollMs: 10, timeoutMs: 5000, start })
+	const state = JSON.parse(readFileSync(join(out, "system-state.json"), "utf8"))
+	const msgs = state.findings.map((f: { message: string }) => f.message).join("\n")
+	assert.doesNotMatch(msgs, /overlap/)
+	assert.equal(r.ok, true, `${state.status}\n${msgs}`)
+	assert.deepEqual(state.findings.filter((f: { level?: string }) => f.level !== "warning"), [])
+	assert.match(msgs, /brain: the carrier's rail is 5 V ±4 %/)
+	assert.match(msgs, /brain: thin input headroom/)
+	assert.match(msgs, /brain .*unknown height/)
+	assert.match(readFileSync(join(out, "system-report.md"), "utf8"), /System findings: 0, and \d warning\(s\)/)
+	// The robot board's own mechanics, with the body it was handed: no overlap between the Pi and its HAT.
+	const asm = JSON.parse(readFileSync(join(out, "system.json"), "utf8")).assembly
+	const s = rover()
+	s.values.assembly = { ...asm, self: "main" }
+	assert.deepEqual(mechanicsChecks(s).filter((v) => /overlap/.test(v.message)).map((v) => v.message), [])
+	const x = (n: string) => asm.boards.find((b: { name: string }) => b.name === n).xMm
+	assert.ok(x("brain") < x("main") && x("rpi-5-carrier") === x("brain"), "behind main, the HAT on the Pi")
+})
+
+test("boughtChecks: a brown-out is an error sent to the board with the mechanics; a missing regulator is a warning naming it; nothing for a system without a bought board", async () => {
+	const { boughtChecks } = await import("../src/system/bought-checks.ts")
+	const { ROVER_BOARD } = await import("../src/inference/scripts.ts")
+	const spec: SystemSpec = { name: "s", boards: [{ name: "main", brief: "m.md" }, { name: "brain", kind: "bought", module: "rpi-5" }, { name: "hat", brief: "h.md", carries: "brain" }], links: [] }
+	const main = fixtureContract()
+	main.values = structuredClone(ROVER_BOARD) as ContractSnapshot["values"]
+	const f = boughtChecks(spec, { main, hat: fixtureContract() })
+	const err = f.filter((x) => x.level !== "warning")
+	assert.equal(err.length, 1)
+	assert.deepEqual([err[0].kind, err[0].boards], ["compute-power", ["main"]])
+	assert.match(err[0].message, /^brain: brown-out risk/)
+	assert.match(f.filter((x) => x.level === "warning").map((x) => x.message).join("\n"), /brain: rpi-5: the carrier's 5 V regulator isn't chosen yet/)
+	assert.deepEqual(boughtChecks({ ...spec, boards: [spec.boards[0]] }, { main }), [])
 })

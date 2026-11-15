@@ -18,6 +18,7 @@ import { cableMarkdown, systemReport, wirevizYaml } from "./outputs.ts"
 import { benchPlan, benchPlanMarkdown } from "./bench-plan.ts"
 import type { SystemLink, SystemSpec } from "./spec.ts"
 import { SystemTrace } from "./trace.ts"
+import { boughtChecks } from "./bought-checks.ts"
 import { boughtContract, boughtOutlines, moduleById } from "./bought.ts"
 
 export interface SystemRunOptions {
@@ -262,9 +263,11 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 				write(contracts, findings, `round ${rounds}: the robot's body sent again to ${resent.join(", ")}`)
 				continue
 			}
-			findings = systemChecks(spec, contracts)
-			const real = findings.filter((f) => f.kind !== "link-pending")
-			if (findings.length === 0) {
+			// The bought boards' compute checks join the checks between boards; their warnings are reported, not blocking.
+			findings = [...systemChecks(spec, contracts), ...boughtChecks(spec, contracts, assembly ?? spec.assembly)]
+			const blocking = findings.filter((f) => f.level !== "warning")
+			const real = blocking.filter((f) => f.kind !== "link-pending")
+			if (blocking.length === 0) {
 				if (o.linkTest) {
 					trace.emit({ board: "system", step: "link", status: "started" })
 					tests = await runLinkTests(spec, contracts, o.linkTest, outDir)

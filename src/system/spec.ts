@@ -16,8 +16,12 @@ export interface SystemBoard {
 	// module record in catalog/modules (src/system/bought.ts). Agents never design it.
 	kind?: "bought"
 	module?: string
-	// A carrier: the designed board a bought board plugs into (src/system/carrier.ts). It stacks under that board.
+	// A carrier: the designed HAT on top of a bought board (src/system/carrier.ts), on its header.
 	carries?: string
+	// A carrier's 5 V regulator, a catalog/mechanics.json regulators mpn; and how the module talks to the MCU board
+	// (its USB, the default, or UART0 on the header). The compute checks read both (src/system/bought-checks.ts).
+	regulator?: string
+	bridge?: "usb" | "uart"
 }
 
 export interface SystemLink {
