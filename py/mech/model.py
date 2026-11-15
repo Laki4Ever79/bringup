@@ -52,6 +52,7 @@ def build_model(spec, course_xml=""):
     parts = [(2 * wheel_kg, [axle_x, 0.0, r]), (caster_kg, [caster_x, 0.0, caster_r])]
     com = [(whole[i] * total - sum(m * at[i] for m, at in parts)) / body_mass for i in range(3)]
     mu = spec["estimates"]["floorMu"]
+    caster_mu = spec["estimates"].get("casterMu", 0.02)  # older specs: the value the estimate has
     L, W, t = p["lengthMm"] * mm, p["widthMm"] * mm, p["thicknessMm"] * mm
     plate_z = p["clearanceMm"] * mm + t / 2 - r  # relative to the axle line
     # Inertia: the body mass spread over the plate's box (an estimate; the solver only needs it plausible).
@@ -81,11 +82,12 @@ def build_model(spec, course_xml=""):
         <joint name="right" type="hinge" axis="0 1 0" damping="0.0001"/>
         <geom type="cylinder" size="{r} {ww / 2}" euler="90 0 0" mass="{wheel_kg}"/>
       </body>
-      <!-- The caster slides at its own 0.02 (a swivel wheel's rolling drag): priority makes its friction the contact's.
+      <!-- The caster slides at its own casterMu, 0.02 (a swivel wheel's rolling drag; src/mechanics/estimates.ts, which
+           the firmware's stop distance and the checks brake with too): priority makes its friction the contact's.
            Without it MuJoCo takes the larger of the pair, the floor's mu, and the caster dragged like a skid (rover-pi,
            15 Nov: 1 N of drag held a 395 g rover to 0.2 m/s at the duty that gives 0.3 m/s). -->
       <body name="caster" pos="{caster_x} 0 {caster_r - r}">
-        <geom type="sphere" size="{caster_r}" mass="{caster_kg}" friction="0.02 0.001 0.0001" priority="1"/>
+        <geom type="sphere" size="{caster_r}" mass="{caster_kg}" friction="{caster_mu} 0.001 0.0001" priority="1"/>
       </body>
     </body>
   </worldbody>

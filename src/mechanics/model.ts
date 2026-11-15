@@ -55,6 +55,22 @@ export function cruiseDuty(motor: MotorPart, pack: BatteryPack, speedMps: number
 // wrong; the "Cruise duty" check names it to the mechanics engineer instead.
 export const MIN_CRUISE_DUTY = 0.3
 
+// Braking: only the drive wheels grip the floor (floorMu); the caster slides at its own casterMu (the simulation's
+// caster contact), so it barely brakes. Deceleration g·(μ·onWheels + μc·(1 − onWheels)), with the weight split as
+// standing (braking moves weight forward onto the front wheels, so this errs long). The firmware's stop distance, the
+// "Stopping distance" and "Tipping margin" checks all use it.
+export function brakeDecel(onWheels: number): number {
+	return G * (est("floorMu") * onWheels + est("casterMu") * (1 - onWheels))
+}
+export function brakeMm(speedMps: number, onWheels: number): number {
+	return ((speedMps ** 2) / (2 * brakeDecel(onWheels))) * 1000
+}
+// The share of the weight on the drive wheels (moments about the caster, wheelbaseMm behind the axle).
+export function onWheelsShare(d: { axleXMm: number; wheelbaseMm: number }, comXMm: number): number {
+	const casterX = d.axleXMm - d.wheelbaseMm
+	return Math.min(1, Math.max(0, (comXMm - casterX) / (d.axleXMm - casterX)))
+}
+
 // The payload the brief carries, on the plate's centre 10 mm up (the checks, the firmware and the chassis spec agree).
 export function payloadMount(mech: Mechanics, payloadG: number): Mount {
 	return { what: "payload", xMm: 0, yMm: 0, zMm: mech.chassis.clearanceMm + mech.chassis.thicknessMm + 10, sizeMm: [20, 20, 20], massG: payloadG }

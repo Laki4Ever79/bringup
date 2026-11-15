@@ -39,6 +39,7 @@ estimates. Every report line that uses one says `(estimate: <name> <value>)`.
 |---|---|---|
 | floorMu | 0.6 | rubber on wood, laminate or tile: published tables give 0.5–0.8 |
 | rollingCrr | 0.02 | small rubber wheels on hard floors: 0.01–0.03 |
+| casterMu | 0.02 | a swivel caster rolls rather than grips, so it barely brakes; the simulation slides it at this friction |
 | plaDensityGcm3 | 1.24 | solid PLA; infill makes the real plate lighter |
 | motorOvervoltMax | 1.3 | small brushed gearmotors take some overvoltage at a cost in life; 1.3× keeps a 3 V motor off a full 4.2 V cell |
 | boardMassGPerCm2 | 0.35 | 1.6 mm FR-4 with small parts |
