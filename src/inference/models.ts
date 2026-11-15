@@ -3,6 +3,7 @@ import { SafeRunner } from "./safe-runner.ts"
 import type { AgentRole } from "../contract/types.ts"
 import { ScriptedRunner, type Script } from "./scripted-runner.ts"
 import { UsageRunner, type UsageRecord } from "./usage.ts"
+import { CC_MODELS, ClaudeCodeRunner } from "./claude-code-runner.ts"
 
 const MODELS = {
 	// The event's Claude credit (build.jigjoy.ai/credits) serves Sonnet 4.6 and Haiku 4.5 through
@@ -15,6 +16,8 @@ const MODELS = {
 // strong model; the other roles use the fast one.
 export function modelFor(role: AgentRole, mock: boolean, env: Record<string, string | undefined> = process.env): string {
 	if (mock) return `mock-${role}`
+	// The Claude subscription this machine's Claude Code uses (claude-code-runner.ts): development runs at no API cost.
+	if (env.BRINGUP_PROVIDER === "claude-code") return env.BRINGUP_MODELS === "fast" || !(role === "architect" || role === "reviewer") ? CC_MODELS.fast : CC_MODELS.strong
 	// OpenAI by default; the event credit (Claude Sonnet/Haiku only) is opt-in or the fallback when it is the only key.
 	const provider = env.BRINGUP_PROVIDER === "openai" || env.BRINGUP_PROVIDER === "anthropic" ? env.BRINGUP_PROVIDER : env.OPENAI_API_KEY ? "openai" : env.ANTHROPIC_API_KEY ? "anthropic" : "openai"
 	// BRINGUP_MODELS=fast: every role on the fast model (about a third of a run's cost; for development runs under a
@@ -34,7 +37,7 @@ export function inferenceConfig(
 	// Mozaik does not export its input validator; the provider rejects invalid requests anyway,
 	// and SafeRunner turns that rejection into a message instead of a dead loop.
 	const noValidation = { validate: () => {} } as unknown as ConstructorParameters<typeof DefaultInferenceRunner>[1]
-	const provider = new DefaultInferenceRunner(supportedModels, noValidation)
+	const provider = process.env.BRINGUP_PROVIDER === "claude-code" ? new ClaudeCodeRunner() : new DefaultInferenceRunner(supportedModels, noValidation)
 	// Every call's tokens and price go to onUsage (usage.jsonl); inside SafeRunner, so a failed call records nothing.
 	return { runner: new SafeRunner(onUsage ? new UsageRunner(provider, onUsage, "agents") : provider, onFailure) }
 }
