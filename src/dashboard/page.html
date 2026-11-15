@@ -1296,7 +1296,9 @@
 			const pkg = "ros/ws/src/rover_bringup"
 			$("ros-files").innerHTML = [["urdf/rover.bringup.urdf", "robot model (URDF)"], ["config/controllers.yaml", "controllers"], ["launch/bringup.launch.py", "launch"], ["test/acceptance.py", "acceptance test"]].map(([p, label]) => `<a href="${file(`${pkg}/${p}`)}" target="_blank">${label}</a>`).join(" · ")
 			const name = { mock: "Mock hardware", qemu: "Robot's own firmware (QEMU + MuJoCo)" }
-			$("ros-results").innerHTML = r.results.map((x) => `<h4>${esc(name[x.backend] ?? x.backend)}: ${x.pass ? "pass" : "FAIL"}${x.bag ? ' <span class="t3">· recorded as MCAP</span>' : ""}</h4><table class="drive-rows">${x.checks.map((c) => `<tr><td>${esc(c.name)}</td><td><b>${c.pass ? "pass" : "FAIL"}</b></td><td class="t3">${esc(JSON.stringify(c.measured))} (expected ${esc(JSON.stringify(c.expected))})</td></tr>`).join("")}</table>${(x.diagnoses ?? []).map((d) => `<p><b>Symptom:</b> ${esc(d.symptom)}<br><b>Cause (${esc(d.confidence)}):</b> ${esc(d.cause)}<br><b>Fix:</b> ${esc(d.fix)} <span class="t3">(${esc(d.affects.join(", "))})</span></p>`).join("")}`).join("")
+			// Measured values as people read them: nothing in range, rounded metres and m/s, yes/no.
+			const fmt = (v) => (v === null ? "nothing in range" : typeof v === "number" ? String(Math.round(v * 1000) / 1000) : v === true ? "yes" : v === false ? "no" : String(v))
+			$("ros-results").innerHTML = r.results.map((x) => `<h4>${esc(name[x.backend] ?? x.backend)}: ${x.pass ? "pass" : "FAIL"}${x.bag ? ' <span class="t3">· recorded as MCAP</span>' : ""}</h4><table class="drive-rows">${x.checks.map((c) => `<tr><td>${esc(c.name)}</td><td><b>${c.pass ? "pass" : "FAIL"}</b></td><td class="t3">${esc(fmt(c.measured))} (expected ${esc(fmt(c.expected))})</td></tr>`).join("")}</table>${(x.diagnoses ?? []).map((d) => `<p><b>Symptom:</b> ${esc(d.symptom)}<br><b>Cause (${esc(d.confidence)}):</b> ${esc(d.cause)}<br><b>Fix:</b> ${esc(d.fix)} <span class="t3">(${esc(d.affects.join(", "))})</span></p>`).join("")}`).join("")
 		}
 		function stubbedRun() { return S.events.find((e) => e.type === "run.started")?.payload?.noHardware === true }
 		async function circuitFor(rev) {
@@ -2541,6 +2543,7 @@
 		fetchBom()
 		fetchReport()
 		fetchRequests()
+		showRos()
 		probeFab()
 		checkOrder()
 
