@@ -6,6 +6,7 @@ import { emit, state } from "../runtime.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { laidOut } from "../mechanics/solve.ts"
 import { connectorsOntoEdges } from "../contract/consistency.ts"
+import { connectorsForParts, robotRefs, SENSOR_PLUG_REF } from "../mechanics/refs.ts"
 
 // Tools every agent gets for reading and changing the shared design contract.
 // `self.id` is filled in once the agent exists, so events carry the agent as producer.
@@ -49,16 +50,41 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						args = { ...args, value: l.mechanics as ContractValues[FieldName] }
 						laidOutNote = l.note
 					}
+					// The sensor's plug has a fixed name (src/mechanics/refs.ts).
+					const m = args.value as ContractValues["mechanics"]
+					if (m?.sensor && m.sensor.connector !== SENSOR_PLUG_REF) {
+						args = { ...args, value: { ...m, sensor: { ...m.sensor, connector: SENSOR_PLUG_REF } } as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, `the sensor's plug is always ${SENSOR_PLUG_REF} (fixed name), not ${m.sensor.connector}`].filter(Boolean).join("; ")
+					}
+				}
+				// A robot's plugs have fixed names: the parts list is renamed to them, and the connectors and pins follow below.
+				let renames: Record<string, string> = {}
+				if (args.field === "parts" && Array.isArray(args.value) && s.contract.get("motion")) {
+					const r = robotRefs(args.value as ContractValues["parts"])
+					if (Object.keys(r.renames).length) {
+						renames = r.renames
+						args = { ...args, value: r.parts as ContractValues[FieldName] }
+						laidOutNote = `a robot's plugs have fixed names (sensor ${SENSOR_PLUG_REF}, motors JM1 and JM2): renamed ${Object.entries(renames).map(([a, b]) => `${a} to ${b}`).join(", ")}; the connectors and pins follow`
+					}
 				}
 				// Connectors: one that runs past the end of its edge or overlaps another moves along its edge to fit (rover run
 				// cc-rover-4 proposed J1 and JM2 overlapping across a corner, and left them so for revisions).
 				if (args.field === "connectors" && Array.isArray(args.value)) {
 					const snap = s.contract.snapshot()
+					// A robot's connector naming no part goes to the plug part that has no connector yet.
+					if (snap.values.motion && snap.values.parts) {
+						const named = connectorsForParts(args.value as ContractValues["connectors"], snap.values.parts)
+						if (named) {
+							const was = (args.value as ContractValues["connectors"]).map((k) => k.ref)
+							laidOutNote = `connectors that named no part took the plug parts' names: ${named.map((k, i) => (k.ref !== was[i] ? `${was[i]} to ${k.ref}` : null)).filter(Boolean).join(", ")}`
+							args = { ...args, value: named as ContractValues[FieldName] }
+						}
+					}
 					const fitted = connectorsOntoEdges({ ...snap, values: { ...snap.values, connectors: args.value as ContractValues["connectors"] } })
 					if (fitted) {
 						const moved = fitted.filter((k) => !(args.value as ContractValues["connectors"]).some((b) => b.ref === k.ref && b.offsetMm === k.offsetMm)).map((k) => `${k.ref} to ${k.edge}@${k.offsetMm} mm`)
 						args = { ...args, value: fitted as ContractValues[FieldName] }
-						laidOutNote = `moved along their edges to fit the board and clear each other: ${moved.join(", ")}`
+						laidOutNote = [laidOutNote, `moved along their edges to fit the board and clear each other: ${moved.join(", ")}`].filter(Boolean).join("; ")
 					}
 				}
 				const result = s.contract.propose({ field: args.field, value: args.value, by: role, baseVersion: args.baseVersion, approvedBy })
@@ -67,20 +93,37 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					const decision = args.approvalId && approvedBy ? s.approvals.decisionOf(args.approvalId) : undefined
 					const cause: Cause | undefined = decision ? { kind: "approval", proposalId: args.approvalId!, approvedBy: decision.decidedBy ?? [decision.by], reason: decision.reason } : causeOf(self.id)
 					emit(makeEvent("contract.changed", self.id, { field: args.field, version: result.version, revision: result.revision, by: role, reason: args.reason, before, after: args.value, ...(cause ? { cause } : {}) }), self.id)
-					// A new outline: a connector it leaves past the end of its edge moves inward to fit, as its own change.
+					// A change another field must follow, written as its own change by that field's owner, with its reason.
+					const follow = <G extends FieldName>(field: G, value: ContractValues[G], why: string): boolean => {
+						const owner = OWNERS[field]
+						const beforeF = s.contract.get(field) ?? null
+						const r = s.contract.propose({ field, value, by: owner, baseVersion: s.contract.version(field), approvedBy: owner })
+						if (r.status !== "applied") return false
+						emit(makeEvent("contract.changed", self.id, { field, version: r.version, revision: r.revision, by: owner, reason: why, before: beforeF, after: value, cause: { kind: "field-changed", fields: [args.field] } }), self.id)
+						return true
+					}
+					// A new outline: a connector it leaves past the end of its edge (or on another) moves along its edge to fit.
 					if (args.field === "outline") {
+						const beforeC = s.contract.get("connectors") ?? []
 						const fitted = connectorsOntoEdges(s.contract.snapshot())
 						if (fitted) {
-							const owner = OWNERS.connectors
-							const beforeC = s.contract.get("connectors") ?? null
-							const moved = fitted.filter((k) => !(beforeC ?? []).some((b) => b.ref === k.ref && b.offsetMm === k.offsetMm)).map((k) => `${k.ref} to ${k.edge}@${k.offsetMm} mm`)
-							const r = s.contract.propose({ field: "connectors", value: fitted, by: owner, baseVersion: s.contract.version("connectors"), approvedBy: owner })
-							if (r.status === "applied") {
-								const reason = `the new ${(args.value as ContractValues["outline"]).widthMm}x${(args.value as ContractValues["outline"]).heightMm} mm outline left them past the end of their edge: moved ${moved.join(", ")}`
-								emit(makeEvent("contract.changed", self.id, { field: "connectors", version: r.version, revision: r.revision, by: owner, reason, before: beforeC, after: fitted, cause: { kind: "field-changed", fields: ["outline"] } }), self.id)
-								laidOutNote = `connectors follow the outline: moved ${moved.join(", ")} (connectors is now version ${r.version})`
-							}
+							const moved = fitted.filter((k) => !beforeC.some((b) => b.ref === k.ref && b.offsetMm === k.offsetMm)).map((k) => `${k.ref} to ${k.edge}@${k.offsetMm} mm`)
+							const o = args.value as ContractValues["outline"]
+							if (follow("connectors", fitted, `the new ${o.widthMm}x${o.heightMm} mm outline left them past the end of their edge: moved ${moved.join(", ")}`))
+								laidOutNote = `connectors follow the outline: moved ${moved.join(", ")}`
 						}
+					}
+					// Renamed plugs: the connectors and pins that named the old refs take the new ones.
+					if (Object.keys(renames).length) {
+						const to = (ref: string) => renames[ref] ?? ref
+						const why = `the parts' plugs took their fixed names (${Object.entries(renames).map(([a, b]) => `${a} to ${b}`).join(", ")})`
+						const conns = s.contract.get("connectors")
+						if (conns?.some((k) => renames[k.ref])) {
+							const renamed = conns.map((k) => ({ ...k, ref: to(k.ref) }))
+							follow("connectors", connectorsForParts(renamed, args.value as ContractValues["parts"]) ?? renamed, why)
+						}
+						const pins = s.contract.get("pins")
+						if (pins?.some((p) => renames[p.partRef])) follow("pins", pins.map((p) => ({ ...p, partRef: to(p.partRef) })), why)
 					}
 				}
 				return laidOutNote && result.status === "applied" ? { ...result, note: laidOutNote } : result
