@@ -104,3 +104,17 @@ test("without live lookups the BOM makes no requests and says stock was not look
 	assert.equal(bom.readiness!.warn, false)
 	assert.ok(bom.items.find((i) => i.role === "sensor")!.alternatives!.some((a) => a.mpn === "SHTC3-TR-2.5KS"), "alternatives still come from the catalog")
 })
+
+// A robot's bought mechanical parts sit in the same parts list (tools/robot-parts.ts), refreshed when the mechanics
+// change; a mock run checks no shop.
+test("a robot's mechanics put its motors, wheels, caster, battery and sensor in bom.json", async () => {
+	const { ROVER_MECHANICS } = await import("../src/inference/scripts.ts")
+	const t = setup(fakeFetch({}), false)
+	const r = t.state.contract.propose({ field: "mechanics", value: ROVER_MECHANICS, by: "mechanics", baseVersion: t.state.contract.version("mechanics") })
+	if (r.status !== "applied") throw new Error(r.status)
+	emit(makeEvent("contract.changed", t.desk.getId(), { field: "mechanics", version: r.version, revision: r.revision, by: "mechanics" }), t.desk.getId())
+	await waitFor(() => existsSync(t.path))
+	const bom = t.read()
+	assert.deepEqual(bom.robot?.lines.map((l) => `${l.qty}× ${l.item}`), ["2× motor", "2× wheel", "1× caster", "1× battery", "1× distance sensor"])
+	assert.match(bom.robot?.summary ?? "", /not checked \(mock run\)/)
+})
