@@ -80,6 +80,14 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
+- [ ] **The smallest board reserves the room a chip's pin capacitors need** (agreed with d9610c, 15 Nov, after the real
+      subscription rover run: the architect shrank the board to 60×21 mm under the space rule, and there U5's VCP and
+      VINT capacitors couldn't route within their 5 mm bound, 8-9 mm, since other parts took the room beside its pins).
+      The bound stays (the datasheet's decoupling intent). Fix: once a part is placed, the boxes its pin capacitors need
+      beside its pads (capBoxes) are kept free of every other part, so a board too small for them doesn't place all its
+      parts, the space rule's minimum grows to fit, and the architect never shrinks below a routable size. Prove with
+      routed builds of every scripted board and the run's 60×21 contract.
+
 - [ ] **Check: can Bringup design a 3D-printer / CNC controller board, Duet-like, from a prompt?** (the user, 15 Nov:
       "can I simply ask bringup to create CNC board optimized for 3D printing work and get something resembling what
       Duet 3D is/was"). A feasibility check first, then a plan. Borrow the product idea only, never Duet's design files
