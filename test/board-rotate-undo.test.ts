@@ -198,7 +198,7 @@ test("VINT's capacitor (VINT to its GND) lies along the two pads, and no pin cap
 	// The saved run's own contract: the architect's 42×29 mm rover with U5 turned 180° on the board page.
 	boards.push(["42×29 turned 180° (rover-turn rev 13)", JSON.parse(readFixture(joinPath(import.meta.dirname, "fixtures/rover-turn-42x29-rev13.json"), "utf8")) as ContractSnapshot])
 	for (const [name, t] of boards) {
-		const placed = layoutBoard(t).parts
+		const placed = layoutBoard(t, { capsAlong: true }).parts
 		const drv = placed.find((p) => p.ref === "U5")!
 		const th = (drv.rotation * Math.PI) / 180
 		const pad = (pin: string) => {
@@ -220,4 +220,15 @@ test("VINT's capacitor (VINT to its GND) lies along the two pads, and no pin cap
 			assert.ok(worst < 5, `${name}: ${ref}'s longer trace would be about ${worst.toFixed(2)} mm, past its 5 mm bound ${at}`)
 		}
 	}
+})
+
+// The default layout keeps the pin capacitors pointing out from their pads, as every scripted board has routed: with
+// both of the DRV8833's along its pads (6b70386), the scripted rover at 43×28 mm failed its last board build, VCP's
+// trace 7.21 mm and VM's 6.00 mm against 5 (d9610c's mod-rover run, 15 Nov 2026). Along the pads is the board build's
+// next try, not the default.
+test("by default the motor driver's pin capacitors point out from their pads, as before; along the pads is opt-in", () => {
+	const s = JSON.parse(readFixture(joinPath(import.meta.dirname, "fixtures/mod-rover-43x28-rev11.json"), "utf8")) as ContractSnapshot
+	const at = (opts?: { capsAlong: boolean }) => Object.fromEntries(layoutBoard(s, opts).parts.filter((p) => p.ref === "C6" || p.ref === "C7").map((p) => [p.ref, `${p.x},${p.y},r${p.rotation}`]))
+	assert.deepEqual(at(), { C6: "6.5,1,r0", C7: "6.5,-1.5,r0" })
+	assert.notDeepEqual(at({ capsAlong: true }), at())
 })

@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { boardParts, circuitFromContract, debugPort, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
+import { boardParts, circuitFromContract, debugPort, layoutBoard, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
 import { connectorClashes, pinPartsMissing, pinsWithoutMcu, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
@@ -44,7 +44,15 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	// A layout that leaves a part out is never built: tscircuit would drop the part at the board's centre, onto whatever
 	// is there (the wake-word board at 35×25 mm, LDO 11 mm from J1: "C3 overlaps U3", and autorouting skipped).
 	const count = boardParts(s).length
-	const fitting = attempts.filter((placement) => placeParts(s, placement).length >= count)
+	// Each layout, then the same with its pin capacitors allowed along their pads (capsAlong), when that differs and
+	// keeps the debug footprint's spot: a default whose capacitor trace runs past its bound gets it as its next build.
+	const withAlong = attempts.flatMap((p) => {
+		const alt = { ...p, capsAlong: true }
+		const [a, b] = [layoutBoard(s, p), layoutBoard(s, alt)]
+		const same = JSON.stringify(a.parts) === JSON.stringify(b.parts)
+		return same || JSON.stringify(a.debug) !== JSON.stringify(b.debug) ? [p] : [p, alt]
+	})
+	const fitting = withAlong.filter((placement) => placeParts(s, placement).length >= count)
 	if (fitting.length === 0) {
 		const placed = new Set(placeParts(s).map((b) => b.ref))
 		const left = boardParts(s).map((p) => p.ref).filter((ref) => !placed.has(ref))
@@ -65,12 +73,18 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	// (Walking all 16 layouts at ~50 s each took one STM32 board 10 minutes, 13 Nov.)
 	let failedWith = 0
 	let failedWithout = 0
+	// The layout just tried failed to build: its capsAlong variant, next in the list, gets its turn.
+	let baseFailed = false
 	for (const placement of withPort ? [...fitting, ...fitting.map((p) => ({ ...p, debugPort: false as const }))] : fitting) {
 		// Without the port only when no layout with it built clean (a board with DRC errors is worse than one without it).
 		if (placement.debugPort === false && best && best.errors === 0) break
 		// A failure that no other layout fixes (a trace the router couldn't place) goes straight to the boards without it.
 		if (skipToNoPort && placement.debugPort !== false) continue
-		if (!best && (placement.debugPort === false ? failedWithout : failedWith) >= FAILED_PER_STAGE) {
+		// A capsAlong variant follows its own layout and doesn't count against the limit: it is that layout's second try
+		// (the 42×29 rover with U5 turned 180° routes only as the keepout layout with its capacitors along their pads).
+		if (placement.capsAlong && !baseFailed) continue
+		baseFailed = false
+		if (!best && !placement.capsAlong && (placement.debugPort === false ? failedWithout : failedWith) >= FAILED_PER_STAGE) {
 			if (placement.debugPort === false || !withPort) break
 			continue
 		}
@@ -97,7 +111,10 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 			lastError = error instanceof Error ? new Error(error.message.replaceAll(out, dir)) : error
 			// Once an earlier layout has built, a later one failing only means it isn't better: keep the board we have
 			// (before, a keepout attempt that failed threw, and the built board with a few DRC errors was lost).
-			if (placement.debugPort === false) failedWithout++
+			if (!placement.capsAlong) baseFailed = true
+			if (placement.capsAlong) {
+				// counted with its layout
+			} else if (placement.debugPort === false) failedWithout++
 			else failedWith++
 			if (best) continue
 			// Layout-sensitive failures try the next layout; the router's junction tangle too (the STM32 logger: 38×22
