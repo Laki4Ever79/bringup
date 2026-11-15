@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { recordRoutingFailure, ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { boardParts, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
+import { boardParts, capPaths, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
 import { connectorClashes, pinPartsMissing, pinsWithoutMcu, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
@@ -152,6 +152,9 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 export function layoutAttempts(s: ContractSnapshot, attempts: PlacementOptions[]): PlacementOptions[] {
 	return attempts.flatMap((p) => {
 		const alt = { ...p, capsAlong: true }
+		// The default draws a part's capacitor traces itself (capPaths): their length no longer depends on the router, so
+		// the retry for a too-long one would only cost a build (about a minute each on the rover).
+		if (capPaths(s, p).length) return [p]
 		const same = JSON.stringify(layoutBoard(s, p).parts) === JSON.stringify(layoutBoard(s, alt).parts)
 		const fixtureMoves = !!s.values.test && JSON.stringify(testPoints(s).placed) !== JSON.stringify(testPoints(s, { capsAlong: true }).placed)
 		return same || fixtureMoves ? [p] : [p, alt]
