@@ -96,7 +96,8 @@ is a change to the firmware toolchain, not just the code.
       the check: what Bringup can make today, what each missing piece costs, and the smallest board worth building
       first (e.g. 4 axes + 1 heater + bed).
 
-- [ ] **Board and chassis disagree on how a board mounts** (found 15 Nov): the board has M2 holes (2.2 mm,
+- [x] **Board and chassis disagree on how a board mounts** (found 15 Nov; fixed 15 Nov: chassisSpec takes each board's
+      holes and the case's M2 screw, py/chassis.py cuts them, board-mount-mismatch checks the built chassis): the board has M2 holes (2.2 mm,
       `MOUNTING_HOLE`, 3.0 mm in from each corner, `src/codegen/circuit.ts`), the printed chassis has M2.5 standoff holes
       (2.7 mm, `py/chassis.py`) at 3.5 mm in (`BOARD_HOLE_INSET_MM`, `src/tools/chassis.ts`): the standoffs are 0.5 mm
       off on each axis, and an M2.5 screw doesn't pass a 2.2 mm hole. No check compares them. Fix: the chassis takes each
@@ -118,7 +119,11 @@ is a change to the firmware toolchain, not just the code.
       lists every vendor-locked or home-made interface with its open alternative; first move, the link messages onto an
       open protocol (Cyphal or CANopen once CAN exists; COBS-framed CBOR or similar on UART).
 
-- [ ] **Every bought mechanical part in the parts list** (the user, 15 Nov: "nuts, bolts, bearings, threaded inserts,
+- [ ] **Every bought mechanical part in the parts list** (started 15 Nov: catalog/mechanics.json `hardware` with a source
+      per number; the rover's board screws (M2x8 self-tapping, one per board hole) and caster screws and nuts (M4x10,
+      M4, one per caster hole) counted from chassisSpec; hardware-misfit checks each fits its hole; the parts list and
+      report name what isn't fastened yet: the sensor bracket, the motor cradles, the battery, the cables. Left: those,
+      threaded inserts, bearings and rods when a design has them, cables and crimp housings) (the user, 15 Nov: "nuts, bolts, bearings, threaded inserts,
       metal rods,... whatever can't be printed or ordered by the PCB provider"). Today the robot parts list
       (`src/tools/robot-parts.ts`, bom.json `robot`) has the motors, wheels, caster, battery and distance sensor only.
       Missing: the screws that hold each board (case.ts: M2 self-tapping into 5 mm posts) and the plate (standoffs,

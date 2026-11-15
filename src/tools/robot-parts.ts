@@ -5,6 +5,8 @@
 import { byMpn, loadMechCatalog, type MechCatalog } from "../mechanics/catalog.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { checkOffer, type OfferCheck } from "./offers.ts"
+import { chassisSpec, type ChassisSpec } from "./chassis.ts"
+import type { HardwarePart } from "../mechanics/catalog.ts"
 import { resolve } from "node:path"
 
 const ROOT = resolve(import.meta.dirname, "../..")
@@ -16,7 +18,7 @@ export interface BuyLink {
 }
 
 export interface RobotPartLine {
-	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor"
+	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut"
 	mpn: string
 	qty: number
 	packs: number // packs to buy at the first link's pack size
@@ -42,6 +44,8 @@ export interface RobotParts {
 	warn: boolean // a line is out of stock, discontinued or on backorder
 	summary: string
 	live: boolean
+	// What the design doesn't fasten yet (robotPartNotes); bom.ts adds them.
+	notes?: string[]
 }
 
 type WithBuy = { mpn: string; buy?: BuyLink[] }
@@ -59,13 +63,58 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 		return { item, mpn: part?.mpn ?? mpn, qty, packs: Math.ceil(qty / pack), buy }
 	}
 	const drive = m.drive as { motor?: string; wheel?: string; caster?: string }
+	// The fasteners, counted from the chassis the robot gets (chassis.ts): a screw per board hole, the board's own (the
+	// case's M2 self-tapping screw into the standoff's pilot), and a machine screw and a nut per caster hole.
+	const spec = chassisSpec(s)
+	const hw = (cat.hardware ?? []) as (HardwarePart & WithBuy)[]
+	const boardScrew = spec && hw.find((h) => h.kind === "screw" && h.selfTapping && h.threadMm === screwFor(spec.boardScrew.boardHoleMm))
+	const casterScrew = spec && hw.find((h) => h.kind === "screw" && !h.selfTapping && h.threadMm === screwFor(spec.caster.holeDiaMm))
+	const casterNut = casterScrew && hw.find((h) => h.kind === "nut" && h.threadMm === casterScrew.threadMm)
+	const boardHoles = spec ? spec.boards.reduce((n, b) => n + b.holes.length, 0) : 0
+	const casterHoles = spec ? spec.caster.holesMm.length : 0
 	return [
 		line("motor", cat.motors as WithBuy[], drive.motor, 2),
 		line("wheel", cat.wheels as WithBuy[], drive.wheel, 2),
 		line("caster", cat.casters as WithBuy[], drive.caster, 1),
 		line("battery", cat.batteries as WithBuy[], m.battery?.pack, 1),
 		line("distance sensor", cat.sensors as WithBuy[], m.sensor?.module, 1),
+		boardScrew && boardHoles ? line("board screw", hw, boardScrew.mpn, boardHoles) : null,
+		casterScrew && casterHoles ? line("caster screw", hw, casterScrew.mpn, casterHoles) : null,
+		casterNut && casterHoles ? line("caster nut", hw, casterNut.mpn, casterHoles) : null,
 	].filter((l): l is RobotPartLine => l !== null)
+}
+
+// The metric screw a clearance hole is for: the largest M size whose screw passes it (M2 2.2 mm, M2.5 2.7, M3 3.2,
+// M4 4.2-4.5, M5 5.3).
+const M_SIZES = [2, 2.5, 3, 4, 5, 6]
+function screwFor(holeMm: number): number {
+	return [...M_SIZES].reverse().find((d) => d < holeMm) ?? M_SIZES[0]
+}
+
+// What the design doesn't fasten yet, said in the parts list instead of left out (the printed chassis holds these by
+// shape alone today, py/chassis.py).
+export function robotPartNotes(s: ContractSnapshot): string[] {
+	if (!s.values.mechanics) return []
+	return [
+		"the sensor bracket: the printed bracket has no screw holes for the distance sensor's breakout yet (it has two mounting holes)",
+		"the motors sit in printed cradles under the plate, held by shape: no clamp or screw yet",
+		"the battery sits between two printed rails: no strap or holder yet",
+		"cables (motor leads, the sensor's STEMMA QT cable, the battery lead) and their crimp housings aren't listed yet",
+	]
+}
+
+// Each fastener fits the hole it goes in: a machine screw passes its clearance hole, the board's screw the board's hole.
+export function hardwareFit(s: ContractSnapshot, spec: ChassisSpec | null = chassisSpec(s), cat: MechCatalog = loadMechCatalog(ROOT)): string[] {
+	if (!spec) return []
+	const out: string[] = []
+	const lines = robotPartLines(s, cat)
+	const thread = (item: string) => (cat.hardware ?? []).find((h) => h.mpn === lines.find((l) => l.item === item)?.mpn)?.threadMm
+	const caster = thread("caster screw")
+	if (caster !== undefined && spec.caster.holeDiaMm <= caster) out.push(`caster hole ${spec.caster.holeDiaMm} mm is smaller than the M${caster} screw`)
+	const board = thread("board screw")
+	if (board !== undefined && spec.boardScrew.boardHoleMm <= board) out.push(`board hole ${spec.boardScrew.boardHoleMm} mm is smaller than the M${board} screw`)
+	if (board !== undefined && spec.boardScrew.pilotMm >= board) out.push(`the standoff's ${spec.boardScrew.pilotMm} mm pilot leaves the M${board} self-tapping screw nothing to cut`)
+	return out
 }
 
 function fromCheck(l: RobotPartLine, link: BuyLink, c: OfferCheck): RobotPartCheck {
@@ -132,4 +181,9 @@ export async function checkRobotParts(lines: RobotPartLine[], opts: { live: bool
 				.filter(Boolean)
 				.join(" · ")
 	return { lines: checked, knownUsd, warn: bad.length > 0, summary, live: opts.live }
+}
+
+// hardwareFit as violations: the mechanics engineer owns the parts the fasteners go through.
+export function hardwareChecks(s: ContractSnapshot, spec?: ChassisSpec | null, cat?: MechCatalog): { kind: "hardware-misfit"; message: string; fields: ["mechanics"]; affects: ["mechanics"] }[] {
+	return hardwareFit(s, spec === undefined ? chassisSpec(s) : spec, cat).map((message) => ({ kind: "hardware-misfit" as const, message: `fastener doesn't fit: ${message}`, fields: ["mechanics"] as ["mechanics"], affects: ["mechanics"] as ["mechanics"] }))
 }

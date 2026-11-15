@@ -7,7 +7,7 @@ import { when } from "../change-control.ts"
 import { loadCatalog, searchParts } from "../tools/parts-search.ts"
 import { alternativesFor, orderReadiness, sourcesFor, stockSuggestion, swapEffects, type Alternative, type Readiness, type Source, type StockSuggestion } from "../tools/sourcing.ts"
 import { sensorDriver } from "../codegen/firmware.ts"
-import { checkRobotParts, robotPartLines, type RobotParts } from "../tools/robot-parts.ts"
+import { checkRobotParts, robotPartLines, robotPartNotes, type RobotParts } from "../tools/robot-parts.ts"
 
 export interface BomItem {
 	ref: string
@@ -52,6 +52,10 @@ export type BomWriter = Human & {
 	// Resolves once idle, or after timeoutMs. A run awaits it before exiting, or bom.json may never be written.
 	whenIdle(timeoutMs: number): Promise<void>
 }
+
+// What the parts list is made from: the parts, and for a robot the mechanics and what its fasteners are counted from
+// (the board's outline and connectors give its mounting holes; the motion targets let the chassis be specified).
+const BOM_FIELDS: string[] = ["parts", "mechanics", "outline", "connectors", "motion"]
 
 // live: false (mock runs) takes the parts from the catalog without asking jlcsearch.
 export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: number; root?: string; live?: boolean } = {}): BomWriter {
@@ -111,7 +115,7 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 			liveStock: live,
 		}
 		const robotLines = robotPartLines(snapshot)
-		if (robotLines.length) bom.robot = await checkRobotParts(robotLines, { live, fetch: opts.fetch })
+		if (robotLines.length) bom.robot = { ...(await checkRobotParts(robotLines, { live, fetch: opts.fetch })), notes: robotPartNotes(snapshot) }
 		// Write then rename, so the page never reads half a file.
 		const path = join(s.outDir, "bom.json")
 		writeFileSync(`${path}.tmp`, JSON.stringify(bom, null, 2))
@@ -146,7 +150,7 @@ export function createBomWriter(opts: { fetch?: typeof fetch; debounceMs?: numbe
 		capabilities: [],
 		handlers: [
 			{
-				specification: when(({ event }) => (isEvent(event, "contract.changed") && (event.payload.field === "parts" || event.payload.field === "mechanics")) || isEvent(event, "grounding.checked")),
+				specification: when(({ event }) => (isEvent(event, "contract.changed") && BOM_FIELDS.includes(event.payload.field)) || isEvent(event, "grounding.checked")),
 				processor: { apply: () => schedule() },
 			},
 		],

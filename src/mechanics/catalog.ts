@@ -70,6 +70,19 @@ export interface SensorModule extends Sourced {
 	massG: number
 	connector: string
 }
+export interface HardwarePart {
+	mpn: string
+	kind: "screw" | "nut" | "insert" | "bearing" | "rod" | "standoff"
+	threadMm: number // the metric thread's nominal diameter (M2 → 2)
+	lengthMm?: number
+	pitchMm?: number
+	heightMm?: number
+	acrossFlatsMm?: number
+	selfTapping?: boolean // cuts its own thread in a printed pilot hole
+	buy?: { supplier: string; url: string; packQty?: number }[]
+	source: Record<string, { url: string; where: string }>
+}
+
 export interface MechCatalog {
 	sensors: SensorModule[]
 	motors: MotorPart[]
@@ -77,6 +90,8 @@ export interface MechCatalog {
 	casters: CasterPart[]
 	batteries: BatteryPack[]
 	regulators?: RegulatorPart[]
+	// Bought fasteners and the like (robot-parts.ts lists them, counted from the chassis): screws, nuts.
+	hardware?: HardwarePart[]
 }
 
 export function loadMechCatalog(root: string): MechCatalog {
