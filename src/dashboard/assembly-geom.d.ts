@@ -18,6 +18,7 @@ export interface GeomMount { xMm: number; yMm: number; zMm?: number; sizeMm: num
 export const WHEEL_CLEARANCE_MM: number
 export function wheelsRubPlate(plateWidthMm: number, trackMm: number, wheelWidthMm: number): boolean
 export function plateMaxWidthMm(trackMm: number, wheelWidthMm: number): number
+export function plateLimitForBrief(maxSizeMm: [number, number], wheelWidthMm?: number): [number, number]
 export function motorUnderPlateMm(plateWidthMm: number, m: GeomMount): number
 export function motorHalfUnder(plateWidthMm: number, m: GeomMount): boolean
 export function mountOnPlate(m: GeomMount, lengthMm: number, widthMm: number): boolean
