@@ -155,7 +155,7 @@
 	<div id="view-switch" role="group" aria-label="View"><button type="button" data-view="3d" aria-pressed="true">3D</button><button type="button" data-view="top" aria-pressed="false">Top</button><button type="button" id="edit-btn" class="hidden" aria-pressed="false" title="Edit the robot in the Top view: move, turn, the plate, cables">Edit</button></div>
 	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
 	<div id="stage-top" class="hidden"></div>
-	<div id="edit-bar" class="hidden"><span id="edit-count">0 changes</span><button type="button" class="pill primary" id="edit-apply" disabled>Apply</button><button type="button" class="pill" id="edit-undo" disabled title="Undo (Ctrl+Z)">Undo</button><button type="button" class="pill" id="edit-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button><span id="edit-why"></span><span id="edit-queued" class="hidden">applies after the current round</span><span id="edit-stale" class="hidden">The design changed since you started editing: <button type="button" class="pill" id="edit-rebase" title="Make your unsent edits again on the design as it is now">Rebase</button> <button type="button" class="pill" id="edit-discard" title="Drop your unsent edits">Discard</button></span><span class="muted" style="margin-left:auto;font-size:12px">Drag a board · R turns the selected one · drag a corner for the plate · drag a board's dot onto another for a cable · drag a cable's handles to bend it</span><ul id="edit-findings"></ul></div>
+	<div id="edit-bar" class="hidden"><span id="edit-count">0 changes</span><button type="button" class="pill primary" id="edit-apply" disabled>Apply</button><button type="button" class="pill" id="edit-undo" disabled title="Undo (Ctrl+Z)">Undo</button><button type="button" class="pill" id="edit-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button><span id="edit-why"></span><span id="edit-queued" class="hidden">applies after the current round <button type="button" class="pill" id="edit-cancel-queue" title="Keep the edits, do not send them">Cancel queued Apply</button></span><button type="button" class="pill hidden" id="edit-drop" title="Drop every unsent edit">Discard edits</button><span id="edit-stale" class="hidden">The design changed since you started editing: <button type="button" class="pill" id="edit-rebase" title="Make your unsent edits again on the design as it is now">Rebase</button> <button type="button" class="pill" id="edit-discard" title="Drop your unsent edits">Discard</button></span><span class="muted" style="margin-left:auto;font-size:12px">Drag a board · R turns the selected one · drag a corner for the plate · drag a board's dot onto another for a cable · drag a cable's handles to bend it</span><ul id="edit-findings"></ul></div>
 	<div id="edit-picker"><span style="font-size:12px;align-self:center">Cable:</span><button type="button" data-kind="uart">UART</button><button type="button" data-kind="i2c">I²C</button><button type="button" data-kind="">×</button></div>
 	<div id="facts" class="hidden" role="tooltip"></div>
 	<div id="plan-side"></div>
@@ -315,6 +315,7 @@ function boardCard(b) {
 
 let timer = null
 async function showSystem() {
+	const fetchedAt = Date.now()
 	const r = await fetch(`/api/systems/${encodeURIComponent(id)}`)
 	if (!r.ok) {
 		// Just after Build the system process hasn't written system.json yet: wait for it (20 s) before giving up.
@@ -334,6 +335,7 @@ async function showSystem() {
 	navMeta = d
 	renderNav()
 	startStage(d)
+	pollQueue(d, fetchedAt)
 	// Edit (the Top view's editor) is for a built robot: its boards on one shared plate.
 	document.getElementById("edit-btn").classList.toggle("hidden", !(d.assembly?.body === "chassis" && !d.single))
 	document.getElementById("title").textContent = d.spec?.name ?? id
@@ -371,7 +373,7 @@ async function showSystem() {
 }
 // A running design is polled; so is one for a while after Apply, until its round has started and settled again (the
 // status is "waiting for a change" both before the run picks the request up and after it settles).
-const keepPolling = (d) => d.status === "running" || Date.now() < (stage.pollUntil ?? 0)
+const keepPolling = (d) => d.status === "running" || editing.queued || Date.now() < (stage.pollUntil ?? 0)
 
 // ── Before a build: the plan on the design page (plan-canvas.js in the Top slot, plan-panel.js beside the stage) ──
 // 3D comes with the build: the switch offers Top only until then. Build keeps the id, so the page polls until the
@@ -469,7 +471,10 @@ function subscribe(d) {
 const requestSeen = new Set()
 stage.requests = []
 function track(l) {
-	if (l.board === "system" && l.step === "settled") { stage.roundOpen = false; scheduleSend() }
+	if (typeof l.round === "number" && l.round > (stage.maxRound ?? 0)) stage.maxRound = l.round
+	// The queue waits for the round that was open when Apply was clicked (or a later one): older lines, and lines
+	// replayed on a reconnect, belong to earlier rounds.
+	if (l.board === "system" && l.step === "settled") { stage.roundOpen = false; if (editing.queued && l.round >= editing.queuedRound) trySend() }
 	else if (l.step === "request" && l.status === "started") stage.roundOpen = true
 	if (l.step !== "request" || !l.detail || /^staying up for system-level/.test(l.detail) || /^no board's view/.test(l.detail)) return
 	const key = `${l.at}|${l.board}|${l.detail}`
@@ -780,7 +785,7 @@ function drawTop() {
 // ── Edit mode (Top only): system-edit.js holds the edits, their checks on every move, undo and redo; top2d.js the
 // gestures. Nothing calls a model here: Apply sends the diff, and the run's agents act on it.
 // key: the design (assembly and links) the editor was built from; stale: it changed while edits were unsent.
-const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, sending: false, stored: false }
+const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, queuedRound: 0, queuedAt: 0, sending: false, stored: false }
 const designKey = (m) => JSON.stringify({ a: m?.assembly ?? null, l: m?.spec?.links ?? [] })
 const editBtn = document.getElementById("edit-btn"), editBar = document.getElementById("edit-bar"), picker = document.getElementById("edit-picker")
 function makeEditor() {
@@ -898,6 +903,8 @@ function editRefresh() {
 	document.getElementById("edit-apply").disabled = !n || errors || !running || editing.posting || editing.stale || editing.queued
 	document.getElementById("edit-stale").classList.toggle("hidden", !editing.stale)
 	document.getElementById("edit-queued").classList.toggle("hidden", !editing.queued)
+	document.getElementById("edit-drop").classList.toggle("hidden", !n || editing.stale)
+	document.getElementById("edit-drop").disabled = editing.posting
 	// Rebase and Discard replace the editor: never while a POST is out (its answer marks this editor as applied).
 	document.getElementById("edit-rebase").disabled = editing.posting
 	document.getElementById("edit-discard").disabled = editing.posting
@@ -952,7 +959,7 @@ const editText = () => describeEdits(editing.base, editing.ed.state()).join("; "
 function savePending() {
 	try {
 		if (!editing.ed?.diff()) return clearPending()
-		sessionStorage.setItem(pendKey, JSON.stringify({ ops: editing.ed.pending(), base: editing.baseHash, text: editText() }))
+		sessionStorage.setItem(pendKey, JSON.stringify({ ops: editing.ed.pending(), base: editing.baseHash, text: editText(), queued: editing.queued, round: editing.queuedRound }))
 		editing.stored = true
 	} catch {}
 }
@@ -966,19 +973,28 @@ function readPending() {
 		return p && Array.isArray(p.ops) && p.ops.length ? p : null
 	} catch { return null }
 }
-let sendTimer = null
-// After a settled line (or a restore): once the lines have gone quiet and no round runs, post the queued diff.
-function scheduleSend() {
+const LIVE = ["running", "waiting for a change", "bench live"]
+// Each poll while queued: a dead run ends the wait (the edits stay); an idle system whose status was read after the
+// queueing is a round that has settled.
+function pollQueue(d, fetchedAt) {
+	if (!LIVE.includes(d.status)) stage.roundOpen = false
 	if (!editing.queued) return
-	clearTimeout(sendTimer)
-	sendTimer = setTimeout(trySend, 400)
+	if (!LIVE.includes(d.status)) { stopWaiting("This design isn't running; your edits are kept."); return }
+	if (d.status === "waiting for a change" && fetchedAt > editing.queuedAt) { stage.roundOpen = false; trySend() }
+}
+function stopWaiting(msg) {
+	editing.queued = false
+	editing.msg = msg
+	savePending()
+	editRefresh()
 }
 async function trySend() {
 	if (!editing.queued || editing.sending || editing.posting || roundBusy()) return
 	editing.sending = true
 	try {
 		await showSystem() // the design as the round left it; syncEditor marks the editor stale when it changed
-		if (!editing.queued || roundBusy()) return
+		if (!editing.queued || roundBusy()) return // still running: the next settled line or poll tries again
+		if (editing.ed.findings().some((f) => f.level === "error")) return stopWaiting("Not sent: fix the errors first.")
 		if (editing.stale || editing.key !== designKey(stage.meta)) {
 			// The round changed the design under the edits: ask, never post on an old base.
 			editing.queued = false
@@ -999,18 +1015,18 @@ async function restorePending() {
 	let lost = 0
 	for (const op of p.ops) { try { editing.ed.apply(op) } catch { lost++ } }
 	if (!editing.ed.diff()) return clearPending()
-	if (p.base === editing.baseHash && !lost) editing.queued = true
+	if (p.queued && p.base === editing.baseHash && !lost) { editing.queued = true; editing.queuedRound = Number(p.round) || 0; editing.queuedAt = 0 }
 	else editing.msg = "The design changed while the page was closed: your edits were made again on it. Apply to send them."
 	savePending()
 	await enterEdit()
-	if (editing.queued) scheduleSend()
+	if (editing.queued) trySend()
 }
 async function applyEdits(fromQueue = false) {
 	const d = editing.ed.diff()
 	if (!d || editing.posting || editing.stale) return
 	if (!fromQueue) {
 		if (editing.queued) return
-		if (roundBusy()) { editing.queued = true; savePending(); editing.msg = ""; editRefresh(); return }
+		if (roundBusy()) { editing.queued = true; editing.queuedRound = stage.maxRound ?? 0; editing.queuedAt = Date.now(); clearTimeout(timer); timer = setTimeout(showSystem, 1500); savePending(); editing.msg = ""; editRefresh(); return }
 	}
 	editing.queued = false
 	const text = editText()
@@ -1036,15 +1052,20 @@ async function applyEdits(fromQueue = false) {
 			const errors = Array.isArray(body.errors) && body.errors.length ? body.errors : [body.error ?? "the change was refused"]
 			editing.server = serverFindings(errors)
 			editing.msg = "Not applied: the checks refused it (shown on the items)."
+			savePending()
 		} else if (r.status === 409 && body.stale) {
 			// Made from a design that has changed since: fetch the new one, then Rebase or Discard.
 			editing.stale = true
 			editing.msg = ""
 			clearTimeout(timer)
 			showSystem()
-		} else editing.msg = body.error ?? `Apply failed (${r.status})`
+		} else {
+			editing.msg = r.status === 409 ? "This design isn't running; your edits are kept." : body.error ?? `Apply failed (${r.status})`
+			savePending()
+		}
 	} catch (e) {
-		editing.msg = `Apply failed: ${e.message}`
+		editing.msg = `Apply failed: ${e.message}. Your edits are kept.`
+		savePending()
 	} finally {
 		editing.posting = false
 		editRefresh()
@@ -1100,7 +1121,10 @@ document.getElementById("stage-top").addEventListener("pointerdown", () => picke
 editBtn.addEventListener("click", () => (editing.on ? exitEdit() : enterEdit()))
 document.getElementById("edit-apply").addEventListener("click", () => applyEdits())
 document.getElementById("edit-rebase").addEventListener("click", rebase)
-document.getElementById("edit-discard").addEventListener("click", () => { if (editing.posting) return; editing.queued = false; clearPending(); makeEditor(); editRefresh() })
+const discardEdits = () => { if (editing.posting) return; editing.queued = false; clearPending(); makeEditor(); editRefresh() }
+document.getElementById("edit-discard").addEventListener("click", discardEdits)
+document.getElementById("edit-drop").addEventListener("click", discardEdits)
+document.getElementById("edit-cancel-queue").addEventListener("click", () => { editing.queued = false; editing.msg = ""; savePending(); editRefresh() })
 document.getElementById("edit-undo").addEventListener("click", () => { if (editing.ed?.undo()) { editing.server = []; editing.msg = ""; editRefresh() } })
 document.getElementById("edit-redo").addEventListener("click", () => { if (editing.ed?.redo()) { editing.server = []; editing.msg = ""; editRefresh() } })
 addEventListener("keydown", (e) => {
@@ -1114,7 +1138,7 @@ addEventListener("keydown", (e) => {
 	else if ((e.key === "Delete" || e.key === "Backspace") && selectedOf("cable")) removeCable(selectedOf("cable"))
 })
 // For tests: what Apply would send now.
-window.__edit = { diff: () => editing.ed?.diff() ?? null, state: () => editing.ed?.state() ?? null, findings: () => (editing.ed ? [...editing.ed.findings(), ...editing.server] : []), on: () => editing.on }
+window.__edit = { status: () => stage.meta?.status, queued: () => editing.queued, diff: () => editing.ed?.diff() ?? null, state: () => editing.ed?.state() ?? null, findings: () => (editing.ed ? [...editing.ed.findings(), ...editing.server] : []), on: () => editing.on }
 
 // ── Board ↔ system: the camera flies to the board first, then a plain "Opening…" panel covers the stage while the
 // board's run page loads behind it, and the page fades in. The run page is same-origin, so it loads on this page's

@@ -294,7 +294,7 @@ test("the design changing under unsent edits asks Rebase or Discard; Apply waits
 		assert.equal(await page.locator("#edit-apply").isDisabled(), true, "never send a diff based on an old snapshot")
 		await page.click("#edit-rebase")
 		setStatus("waiting for a change") // a running round would queue the Apply
-		await sleep(2600) // the page's next poll (2 s) sees the status
+		await page.waitForFunction(() => (window as unknown as { __edit: { status: () => string } }).__edit.status() === "waiting for a change", null, { timeout: 15_000 })
 		assert.equal(await page.locator("#edit-stale").isVisible(), false)
 		assert.equal(await stateX(page, "main"), -10, "the new design")
 		assert.ok(Math.abs((await stateX(page, "climate")) - 38) <= 0.5, "with the edit replayed")
@@ -508,5 +508,87 @@ test("the system change list shows each request's text, newest first, with links
 		assert.deepEqual(texts, ["made the plate 120 × 80 mm", "moved climate 10 mm back"])
 		assert.equal(await page.locator("#sys-changes li").first().locator("a").textContent(), "main")
 		assert.match(await page.locator("#sys-changes li").first().textContent() ?? "", /round 3/)
+	})
+})
+
+const queueOne = async (page: Page, trace: Ctx["trace"], round = 2) => {
+	trace(line(round, "system", "request", "started", "make it wider"))
+	await page.waitForFunction(() => document.querySelector("#sys-changes li"))
+	await enter(page)
+	await dragClimate(page)
+	await page.click("#edit-apply")
+	await page.waitForSelector("#edit-queued:not(.hidden)")
+}
+const storedOf = (page: Page) => page.evaluate(() => sessionStorage.getItem(`bringup-pending-${new URLSearchParams(location.search).get("id")}`))
+
+test("the queue waits for its own round: an older settled line does not post, the queued round's does", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts, trace }) => {
+		await queueOne(page, trace, 2)
+		trace(line(1, "system", "settled", "ok", "settled"))
+		await sleep(1200)
+		assert.equal(posts.length, 0, "round 1's settle is not the round Apply waits for")
+		trace(line(2, "system", "settled", "ok", "settled"))
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes", null, { timeout: 15_000 })
+		assert.equal(posts.length, 1)
+	})
+})
+
+test("a poll that finds the system idle again sends the queue (no settled line seen)", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts, trace, setStatus }) => {
+		setStatus("running")
+		await queueOne(page, trace, 1)
+		setStatus("waiting for a change")
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes", null, { timeout: 15_000 })
+		assert.equal(posts.length, 1)
+	})
+})
+
+test("Cancel queued Apply and Discard edits are always there; a dead run says so and keeps the edits", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts, trace, setStatus }) => {
+		await queueOne(page, trace)
+		await page.click("#edit-cancel-queue")
+		assert.equal(await page.locator("#edit-queued").isVisible(), false)
+		assert.equal(await page.locator("#edit-count").textContent(), "1 change", "the edits stay")
+		assert.equal(JSON.parse((await storedOf(page))!).queued, false, "storage no longer auto-sends")
+		await page.click("#edit-apply")
+		await page.waitForSelector("#edit-queued:not(.hidden)")
+		setStatus("stopped")
+		await page.waitForFunction(() => document.querySelector("#edit-queued")?.classList.contains("hidden"), null, { timeout: 15_000 })
+		assert.match(await page.locator("#edit-why").textContent() ?? "", /isn't running; your edits are kept/)
+		assert.equal(await page.locator("#edit-count").textContent(), "1 change")
+		assert.equal(posts.length, 0)
+		await page.click("#edit-drop")
+		assert.equal(await diff(page), null)
+		assert.equal(await storedOf(page), null)
+	})
+})
+
+test("a queued post that is refused is not queued any more, shows the errors, and a reload does not send it", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts, trace }) => {
+		await queueOne(page, trace, 1)
+		trace(line(1, "system", "settled", "ok", "settled"))
+		await page.waitForFunction(() => document.querySelectorAll("#edit-findings li").length > 0, null, { timeout: 15_000 })
+		assert.equal(posts.length, 1)
+		assert.equal(await page.locator("#edit-queued").isVisible(), false)
+		assert.equal(JSON.parse((await storedOf(page))!).queued, false)
+		await page.reload()
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "1 change", null, { timeout: 30_000 })
+		await sleep(1500)
+		assert.equal(posts.length, 1, "a reload never auto-posts")
+		assert.equal(await page.locator("#edit-queued").isVisible(), false)
+	}, { answer: (route) => route.fulfill({ status: 400, json: { errors: ["climate overlaps main"] } }) })
+})
+
+test("after an Apply, the touched boards show request and then their steps", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, trace }) => {
+		await enter(page)
+		await dragClimate(page)
+		await page.click("#edit-apply")
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes")
+		trace(line(1, "climate", "request", "started"), line(1, "climate", "board", "started"), line(1, "climate", "board", "ok"))
+		const row = page.locator('#progress [data-board="climate"]')
+		await row.locator('[data-step="board"][data-status="ok"]').waitFor({ timeout: 15_000 })
+		assert.equal(await row.locator('[data-step="request"]').count(), 1)
+		assert.deepEqual(await row.locator("[data-step]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.step)), ["board", "request"])
 	})
 })
