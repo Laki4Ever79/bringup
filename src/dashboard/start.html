@@ -106,9 +106,11 @@
 	async function boardsOf(ex) {
 		if (cache.has(ex.name)) return cache.get(ex.name)
 		const opt = async (url, as) => { try { const r = await fetch(url); return r.ok ? await r[as]() : null } catch { return null } }
+		// A robot's boards all stand on its chassis: none has a case to fetch.
+		const noCase = (b) => b.chassis || ex.assembly?.body === "chassis"
 		const boards = await Promise.all(ex.boards.map(async (b) => {
 			// A robot's board stands on its chassis (example.json says so): the robot is drawn, not a case.
-			const [circuit, contract, caseStl, caseSpec, chassisStl, chassisSpec] = await Promise.all([opt(fileOf(ex, b.name, "circuit.json"), "json"), opt(fileOf(ex, b.name, "contract.json"), "json"), b.chassis ? null : opt(fileOf(ex, b.name, "case.stl"), "arrayBuffer"), b.chassis ? null : opt(fileOf(ex, b.name, "spec.json"), "json"), b.chassis ? opt(fileOf(ex, b.name, "chassis.stl"), "arrayBuffer") : null, b.chassis ? opt(fileOf(ex, b.name, "chassis.json"), "json") : null])
+			const [circuit, contract, caseStl, caseSpec, chassisStl, chassisSpec] = await Promise.all([opt(fileOf(ex, b.name, "circuit.json"), "json"), opt(fileOf(ex, b.name, "contract.json"), "json"), noCase(b) ? null : opt(fileOf(ex, b.name, "case.stl"), "arrayBuffer"), noCase(b) ? null : opt(fileOf(ex, b.name, "spec.json"), "json"), b.chassis ? opt(fileOf(ex, b.name, "chassis.stl"), "arrayBuffer") : null, b.chassis ? opt(fileOf(ex, b.name, "chassis.json"), "json") : null])
 			// A robot of several boards: each stands on the shared chassis where the assembly puts it, with no case of its own.
 			const onChassis = ex.assembly?.body === "chassis"
 			const rotDeg = ex.assembly?.boards?.find((p) => p.name === b.name)?.rotDeg ?? 0

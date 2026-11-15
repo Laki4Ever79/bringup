@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { hasStarter } from "./starters.ts"
 
 // Finished runs shipped in the repo for the start screen, trimmed to what the viewer reads (spec §1). A system run
 // keeps its boards and links; a single board run becomes a one-board example named "main".
@@ -36,14 +37,15 @@ function lastEnclosure(boardDir: string, kind = "enclosure"): string | null {
 	return revs.length ? join(root, `rev-${revs.at(-1)}`) : null
 }
 
-function saveBoard(from: string, to: string): Omit<ExampleMeta["boards"][number], "name"> {
+// `onChassis`: the board stands on a robot's shared chassis (the system's assembly), so it has no case of its own to ship.
+function saveBoard(from: string, to: string, onChassis = false): Omit<ExampleMeta["boards"][number], "name"> {
 	mkdirSync(to, { recursive: true })
 	const contract = readJson(join(from, "contract.json"))
 	if (contract) writeFileSync(join(to, "contract.json"), JSON.stringify(contract))
 	const circuit = readJson(join(from, "board", "circuit.json"))
 	if (Array.isArray(circuit)) writeFileSync(join(to, "circuit.json"), JSON.stringify(circuit.filter((e: { type?: string }) => VIEWER_TYPES.has(e.type ?? ""))))
-	if (existsSync(join(from, "board", "board.png"))) copyFileSync(join(from, "board", "board.png"), join(to, "board.png"))
-	const enc = lastEnclosure(from)
+	// No board.png: nothing on the start page reads it (the viewer draws the circuit).
+	const enc = onChassis ? null : lastEnclosure(from)
 	for (const f of CASE_FILES) if (enc && existsSync(join(enc, f))) copyFileSync(join(enc, f), join(to, f))
 	// A robot: its newest chassis, the printed plate and the spec that places the wheels, motors and boards.
 	const ch = lastEnclosure(from, "chassis")
@@ -67,7 +69,7 @@ export function saveExample(sourceDir: string, name: string, sentence: string, d
 	for (const [f, bytes] of kept) if (bytes) writeFileSync(join(dest, f), bytes)
 	const spec = readJson(join(sourceDir, "system.json"))
 	const boards: ExampleMeta["boards"] = []
-	if (spec) for (const b of spec.boards as { name: string }[]) boards.push({ name: b.name, ...saveBoard(join(sourceDir, "boards", b.name), join(dest, "boards", b.name)) })
+	if (spec) for (const b of spec.boards as { name: string }[]) boards.push({ name: b.name, ...saveBoard(join(sourceDir, "boards", b.name), join(dest, "boards", b.name), spec.assembly?.body === "chassis") })
 	else boards.push({ name: "main", ...saveBoard(sourceDir, join(dest, "boards", "main")) })
 	const brief = existsSync(join(sourceDir, "brief.md")) ? readFileSync(join(sourceDir, "brief.md"), "utf8") : ""
 	const title = titleOverride ?? spec?.name ?? (brief.split("\n").find((l) => l.trim()) ?? name).replace(/^#+\s*/, "").replace(/^Brief:\s*/i, "").trim()
@@ -82,7 +84,7 @@ export function listExamples(root: string): ExampleMeta[] {
 		.sort()
 		.map((n) => {
 			const meta = readJson(join(root, n, "example.json")) as ExampleMeta | null
-			return meta && existsSync(join(root, n, "starter.json")) ? { ...meta, starter: true as const } : meta
+			return meta && hasStarter(root, n) ? { ...meta, starter: true as const } : meta
 		})
 		.filter((m): m is ExampleMeta => m !== null)
 }

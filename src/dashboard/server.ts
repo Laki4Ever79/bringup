@@ -16,7 +16,7 @@ import { boardView, revisionSnapshot } from "./board-view.ts"
 import { checkMoves, undoMoves, type Move } from "./board-move.ts"
 import { addSpend, appendUsage, readSpend } from "../inference/usage.ts"
 import { PLAN_ID, PlanConflict, PlanStore } from "./plans.ts"
-import { designResult, recordForkBuild, setForkResult } from "./starters.ts"
+import { designResult, openForkRecords, recordForkBuild, setForkResult, STOPPED, type ForkResult } from "./starters.ts"
 import { exampleFile, listExamples } from "./examples.ts"
 import { PlanInvalid } from "../system/architect.ts"
 import { askPrompt, callModel, NoModelKey, revisionsToLoad, type AskPrompt } from "./ask.ts"
@@ -253,8 +253,6 @@ export interface HubOptions {
 	planFetch?: typeof fetch
 	// The shipped examples for the start screen (default: the repo's examples/).
 	examplesRoot?: string
-	// How often a built fork's design is checked for its result (forks.jsonl); 2 s by default.
-	forkPollMs?: number
 	// --lan: listen on the network (bind, default every interface) so a phone can send decisions. Only the decision
 	// route answers another host, and only with the hub's random token; everything else stays loopback-only.
 	lan?: { bind?: string; token?: string }
@@ -310,8 +308,10 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	const outRoot = resolve(opts.outRoot)
 	mkdirSync(outRoot, { recursive: true })
 	const rootReal = await realpath(outRoot)
-	const live = new Map<string, { exit: number | null; kill?: () => void; startedAt?: number }>()
-	const streams = new Map<string, { tail: TraceTail; clients: Set<ServerResponse>; watcher: FSWatcher | null }>()
+	// ended: the process's exit code once it ends (a fork build's lineage waits on it).
+	const live = new Map<string, { exit: number | null; kill?: () => void; startedAt?: number; ended?: Promise<number> }>()
+	// listeners: in-process readers of a trace's new lines (a fork build's settle, below), besides the SSE clients.
+	const streams = new Map<string, { tail: TraceTail; clients: Set<ServerResponse>; watcher: FSWatcher | null; listeners: Set<(line: string) => void> }>()
 	const frame = (line: string) => `data: ${line}\n\n`
 	let port = opts.port ?? 4317
 
@@ -321,8 +321,10 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		let s = streams.get(key)
 		if (!s) {
 			const clients = new Set<ServerResponse>()
+			const listeners = new Set<(line: string) => void>()
 			const tail = new TraceTail(join(dir, file), (line) => {
 				for (const c of clients) c.write(frame(line))
+				for (const l of listeners) l(line)
 				if (file === TRACE) void opts.notify?.(basename(dir), line)
 			})
 			let watcher: FSWatcher | null = null
@@ -334,7 +336,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			} catch {
 				// The poll timer alone is enough.
 			}
-			s = { tail, clients, watcher }
+			s = { tail, clients, watcher, listeners }
 			streams.set(key, s)
 		}
 		await s.tail.poll()
@@ -410,25 +412,47 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		throw error
 	}
 	// A forked plan built as `design` (a Build or a Try for free): one lineage record in forks.jsonl now, and its result
-	// once the design ends (src/dashboard/starters.ts). Builds started here stay up (--stay), so the end is the first
-	// settle the design's own files show, or the process ending first (Stop, a crash): then it is recorded as stopped.
-	const forkWatches = new Set<ReturnType<typeof setInterval>>()
-	const watchFork = (planId: string, design: string) => {
-		const plan = plans.get(planId)
-		if (!plan?.forkedFrom || !recordForkBuild(outRoot, plan, plans.forkSeed(planId) ?? plan, design)) return
-		const starter = plan.forkedFrom.starter
-		const check = () => {
-			const exit = live.get(design)?.exit ?? null
-			const result = designResult(join(outRoot, design)) ?? (exit !== null ? { settled: false, findings: null, status: `stopped before it settled (exit ${exit})` } : null)
-			if (!result) return
-			clearInterval(timer)
-			forkWatches.delete(timer)
-			setForkResult(outRoot, starter, design, result)
-		}
-		const timer = setInterval(check, opts.forkPollMs ?? 2000)
-		timer.unref()
-		forkWatches.add(timer)
+	// when the design ends (src/dashboard/starters.ts). Builds started here stay up (--stay), so the end is the first
+	// settle line in the design's own trace, read through the hub's trace tail: a system's {board: "system", step:
+	// "settled"} in system-trace.jsonl, a board's design.settled in trace.jsonl. A process that ends first, a dashboard
+	// that closes first, or one that restarted with records still open, records it as stopped.
+	const forkWatches = new Map<string, { starter: string; stop: () => void }>()
+	const finishFork = (design: string, result: ForkResult) => {
+		const w = forkWatches.get(design)
+		if (!w) return
+		forkWatches.delete(design)
+		w.stop()
+		setForkResult(outRoot, w.starter, design, result)
 	}
+	const watchFork = async (planId: string, design: string, kind: "system" | "board") => {
+		const plan = plans.get(planId)
+		if (!plan?.forkedFrom || !recordForkBuild(outRoot, plan, plans.forkSeed(planId), design)) return
+		const dir = join(outRoot, design)
+		const onLine = (line: string) => {
+			let e: { type?: string; board?: string; step?: string; status?: string; detail?: string; payload?: { settled?: boolean } }
+			try {
+				e = JSON.parse(line)
+			} catch {
+				return
+			}
+			if (kind === "system" && e.board === "system" && e.step === "settled") finishFork(design, designResult(dir, "system") ?? { settled: e.status === "ok", findings: null, status: e.detail ?? e.status ?? "" })
+			else if (kind === "board" && e.type === "design.settled") finishFork(design, { settled: e.payload?.settled === true, findings: null, status: e.payload?.settled === true ? "settled" : "unsettled" })
+		}
+		let stream: Awaited<ReturnType<typeof streamFor>> | null = null
+		forkWatches.set(design, { starter: plan.forkedFrom.starter, stop: () => stream?.listeners.delete(onLine) })
+		void live.get(design)?.ended?.then((code) => finishFork(design, designResult(dir) ?? STOPPED.exit(code)))
+		stream = await streamFor(dir, kind === "system" ? SYSTEM_TRACE : TRACE)
+		if (!forkWatches.has(design)) return
+		stream.listeners.add(onLine)
+		// Lines the tail read before the listener was added.
+		for (const l of stream.tail.lines) onLine(l)
+	}
+	// Lineage must never fail a build that has already started.
+	const watchForkSafely = (planId: string, design: string, kind: "system" | "board") =>
+		watchFork(planId, design, kind).catch((e) => console.error(`fork lineage for ${design}: ${e instanceof Error ? e.message : e}`))
+	// Records a previous dashboard left open: the design's own files say how it ended, else it was cut off.
+	for (const { starter, design } of openForkRecords(outRoot)) setForkResult(outRoot, starter, design, (RUN_ID.test(design) ? designResult(join(outRoot, design)) : null) ?? STOPPED.restarted)
+
 	// `id`: only the plan build path passes one (the plan's id); the public POST /api/runs never takes an id from the body.
 	const startRun = (body: Record<string, unknown>, id?: string): string => {
 		if (!opts.launch) throw new HttpError(404, "this dashboard can't start runs")
@@ -447,10 +471,10 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		// Runs started here stay up after settling: the point is to change one thing and watch it follow.
 		const extraArgs = ["--stay", ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"]), ...(engineerApproval ? ["--engineer-approval"] : []), ...(bench ? ["--bench", bench as string] : [])]
 		const run = opts.launch({ briefPath, mock, outDir, extraArgs })
-		const entry = { exit: null as number | null, kill: run.kill }
+		const entry: { exit: number | null; kill?: () => void; ended?: Promise<number> } = { exit: null, kill: run.kill }
 		live.set(runId, entry)
 		if (opts.notify) void streamFor(outDir)
-		void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
+		entry.ended = run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
 		return runId
 	}
 
@@ -692,9 +716,9 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		if (usagePath && existsSync(usagePath)) copyFileSync(usagePath, join(outDir, "usage.jsonl"))
 		// `main.ts system <spec> …`: the launcher puts its first argument after main.ts.
 		const run = opts.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, "--stay", ...(mock ? ["--mock"] : []), ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"])] })
-		const entry = { exit: null as number | null, kill: run.kill, startedAt: Date.now() }
+		const entry: { exit: number | null; kill?: () => void; startedAt: number; ended?: Promise<number> } = { exit: null, kill: run.kill, startedAt: Date.now() }
 		live.set(id, entry)
-		void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
+		entry.ended = run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
 		return id
 	}
 
@@ -796,6 +820,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				// Fork a starter (examples/<name>/starter.json) into a new plan; its page is where it gets changed and built.
 				const fork = /^\/api\/starters\/([^/]+)\/fork$/.exec(path)
 				if (fork) {
+					// Same-origin JSON like every other POST (the body itself is unused).
+					await readJson(req)
 					try {
 						const plan = plans.fork(fork[1], opts.examplesRoot ?? EXAMPLES)
 						return json(res, 201, { id: plan.id, url: `/plan/${plan.id}` })
@@ -824,12 +850,12 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 						if (t.kind === "system") {
 							const systemId = startSystemAt(t.specPath, flags, t.usagePath, target)
 							if (!free) plans.markBuilt(id, systemId)
-							watchFork(id, systemId)
+							void watchForkSafely(id, systemId, "system")
 							return json(res, 201, { systemId })
 						}
 						const runId = startRun({ brief: t.brief, ...flags, engineerApproval: false }, target)
 						if (!free) plans.markBuilt(id, runId)
-						watchFork(id, runId)
+						void watchForkSafely(id, runId, "board")
 						return json(res, 201, { runId })
 					} catch (error) {
 						return planError(res, error)
@@ -1225,7 +1251,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		token,
 		url: `http://127.0.0.1:${port}`,
 		close: async () => {
-			for (const w of forkWatches) clearInterval(w)
+			for (const design of [...forkWatches.keys()]) finishFork(design, designResult(join(outRoot, design)) ?? STOPPED.closed)
 			clearInterval(timer)
 			clearInterval(heartbeat)
 			for (const s of streams.values()) {

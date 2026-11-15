@@ -18,7 +18,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 test("fork Rover + climate → Try for free → it settles with 0 findings → forks.jsonl has one record with the result", { skip: slow || skip, timeout: 2_400_000 }, async () => {
 	const root = tempDir()
-	const hub = await serveHub({ outRoot: root, port: 0, launch: startRunProcess, examplesRoot: join(ROOT, "examples"), forkPollMs: 1000 })
+	const hub = await serveHub({ outRoot: root, port: 0, launch: startRunProcess, examplesRoot: join(ROOT, "examples") })
 	let design = ""
 	try {
 		const post = async (path: string, body: unknown) => {

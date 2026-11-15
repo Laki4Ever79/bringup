@@ -133,15 +133,17 @@ export class PlanStore {
 		return join(this.outRoot, "plans", id)
 	}
 
-	private write(plan: Plan, note?: string): Plan {
+	private write(plan: Plan, note?: string, origin?: Plan["forkedFrom"]): Plan {
 		const dir = this.dir(plan.id)
 		mkdirSync(join(dir, "briefs"), { recursive: true })
 		const saved = { ...plan, spendUsd: readSpend(dir).usd }
 		// builtAs is the build's record, not part of an edit: a save from an older copy never drops it.
-		// Nor where it was forked from (a change in words answers a plan without it).
 		const kept = this.get(plan.id)
 		if (kept?.builtAs && !saved.builtAs) saved.builtAs = kept.builtAs
-		if (kept?.forkedFrom && !saved.forkedFrom) saved.forkedFrom = kept.forkedFrom
+		// Where a plan was forked from is the server's: set once by fork() (`origin`), then kept whatever a save sends.
+		const forkedFrom = kept ? kept.forkedFrom : origin
+		if (forkedFrom) saved.forkedFrom = forkedFrom
+		else delete saved.forkedFrom
 		// A drag moves only the drawing positions: record just those, not the whole plan on every move. Any other change
 		// records the whole plan, so every version can still be rebuilt from the history.
 		const before = this.get(plan.id)
@@ -174,10 +176,11 @@ export class PlanStore {
 	// starter file is only read. 400 for a malformed name, 404 for no such starter.
 	fork(starter: string, examplesRoot: string): Plan {
 		const { seed, hash, title } = readStarter(examplesRoot, starter)
-		const plan: Plan = { ...seed, id: this.newId(), version: 1, spendUsd: null, forkedFrom: { starter, hash, title } }
+		const forkedFrom = { starter, hash, title }
+		const plan: Plan = { ...seed, id: this.newId(), version: 1, spendUsd: null, forkedFrom }
 		const issues = planChecks(plan)
-		if (issues.length) throw Object.assign(new Error(`starter ${starter} is not a valid plan: ${issues.map((i) => i.message).join("; ")}`), { status: 500 })
-		return this.write(plan, `forked from ${starter} (${hash})`)
+		if (issues.length) throw Object.assign(new Error(`examples/${starter}/starter.json is not a valid plan: ${issues.map((i) => i.message).join("; ")}`), { status: 500 })
+		return this.write(plan, `forked from ${starter} (${hash})`, forkedFrom)
 	}
 
 	// The plan as it was first saved (history.jsonl's first line): for a fork, the starter's seed it was copied from.

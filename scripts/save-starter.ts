@@ -3,7 +3,7 @@
 // example's own (example.json); a system spec's boards bring their briefs, read relative to the spec.
 import { readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
-import { starterSeed } from "../src/dashboard/starters.ts"
+import { STARTER_NAME, starterSeed } from "../src/dashboard/starters.ts"
 import type { SystemSpec } from "../src/system/spec.ts"
 
 const args = process.argv.slice(2)
@@ -11,6 +11,11 @@ const robot = args.includes("--robot")
 const [source, name, why] = args.filter((a) => a !== "--robot")
 if (!source || !name || !why) {
 	console.error('usage: npx tsx scripts/save-starter.ts <brief.md | system spec.json> <example name> "<why>" [--robot]')
+	process.exit(2)
+}
+// The same names the fork route accepts, so this never writes a starter nobody can fork.
+if (!STARTER_NAME.test(name)) {
+	console.error("a starter name is lower-case letters, digits and - (the fork route refuses anything else)")
 	process.exit(2)
 }
 const dest = join("examples", name)
