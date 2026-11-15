@@ -70,6 +70,27 @@ export interface SensorModule extends Sourced {
 	massG: number
 	connector: string
 }
+// A bought safety part (catalog safety): an emergency stop button standing through a panel, its contact rated for the
+// motors' current (DC13, an inductive load) and voltage, with the minimum load it switches reliably.
+export interface SafetyPart extends Sourced {
+	kind: "estop"
+	colour: string
+	contacts: "NC" | "NO"
+	headMm: number
+	aboveMm: number
+	belowMm: number
+	bodyMm: number
+	panelHoleMm: number
+	panelMinMm: number
+	panelMaxMm: number
+	ratedDcV: number
+	dcInductiveA: number
+	dcResistiveA: number
+	minLoadMa: number
+	minLoadV: number
+	massG: number
+	notes?: string
+}
 export interface HardwarePart {
 	mpn: string
 	kind: "screw" | "nut" | "insert" | "bearing" | "rod" | "standoff"
@@ -92,6 +113,8 @@ export interface MechCatalog {
 	regulators?: RegulatorPart[]
 	// Bought fasteners and the like (robot-parts.ts lists them, counted from the chassis): screws, nuts.
 	hardware?: HardwarePart[]
+	// Emergency stop buttons and the like (safety.ts).
+	safety?: SafetyPart[]
 }
 
 export function loadMechCatalog(root: string): MechCatalog {

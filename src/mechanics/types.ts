@@ -42,4 +42,7 @@ export interface Mechanics {
 	// Bought gears, belts, chains, bearings, shafts, couplers and lead screws, each naming what it mates with
 	// (drivetrain.ts); none on today's direct-drive rover.
 	driveTrain?: DriveTrainPart[]
+	// Safety parts (safety.ts): an emergency stop button (catalog safety, kind "estop") standing through a panel whose top
+	// is at.zMm off the floor, its NC contact wired to the board plug `connector` (role estop) in the motors' supply.
+	safety?: { estop?: { part: string; at: { xMm: number; yMm: number; zMm: number }; connector: string } }
 }

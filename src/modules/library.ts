@@ -100,7 +100,7 @@ export function computeProblems(m: Module): string[] {
 export function moduleProblems(m: Module, mech: MechCatalog, boardMpns: Set<string>): string[] {
 	if (m.kind === "compute") return computeProblems(m)
 	const problems: string[] = []
-	const mechParts = [...mech.motors, ...mech.wheels, ...mech.casters, ...mech.batteries, ...(mech.sensors ?? [])]
+	const mechParts = [...mech.motors, ...mech.wheels, ...mech.casters, ...mech.batteries, ...(mech.sensors ?? []), ...(mech.safety ?? [])]
 	for (const p of m.parts)
 		for (const mpn of [p.mpn, ...(p.alternatives ?? [])]) {
 			const bought = byMpn(mechParts, mpn)
@@ -116,7 +116,7 @@ export function moduleProblems(m: Module, mech: MechCatalog, boardMpns: Set<stri
 // The MPNs a design uses: its board parts and its bought mechanical parts.
 function designMpns(v: Partial<ContractValues>): string[] {
 	const m = v.mechanics
-	return [...(v.parts ?? []).map((p) => p.mpn), ...(m ? [m.drive.motor, m.drive.wheel, m.drive.caster, m.battery.pack, m.sensor?.module ?? ""] : [])].filter(Boolean)
+	return [...(v.parts ?? []).map((p) => p.mpn), ...(m ? [m.drive.motor, m.drive.wheel, m.drive.caster, m.battery.pack, m.sensor?.module ?? "", m.safety?.estop?.part ?? ""] : [])].filter(Boolean)
 }
 
 // The modules a design uses: every part of the module (or one of its alternatives) is in the design.

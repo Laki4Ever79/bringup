@@ -123,6 +123,12 @@ export function mounts(mech: Mechanics, boards: { name: string; outline: { width
 	if (pack) out.push({ what: "battery", xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, zMm: plateTop + pack.sizeMm[2] / 2, sizeMm: pack.sizeMm, massG: pack.massG })
 	const sensor = byMpn(cat.sensors ?? [], mech.sensor?.module ?? "")
 	if (sensor && mech.sensor) out.push({ what: "sensor", xMm: mech.sensor.at.xMm, yMm: mech.sensor.at.yMm, zMm: mech.sensor.at.zMm, sizeMm: [sensor.sizeMm[2], sensor.sizeMm[0], sensor.sizeMm[1]], massG: sensor.massG })
+	// The emergency stop, its head above the panel and its body below (safety.ts).
+	const estop = mech.safety?.estop ? byMpn(cat.safety ?? [], mech.safety.estop.part) : undefined
+	if (estop && mech.safety?.estop) {
+		const e = mech.safety.estop
+		out.push({ what: "estop", xMm: e.at.xMm, yMm: e.at.yMm, zMm: e.at.zMm + (estop.aboveMm - estop.belowMm) / 2, sizeMm: [estop.headMm, estop.headMm, estop.aboveMm + estop.belowMm], massG: estop.massG })
+	}
 	// A HAT (`on`) stands on its board's spacers (hatBaseZ), the others on the plate's standoffs.
 	const onPlate = plateTop + est("standoffMm")
 	for (const b of c.boards) {

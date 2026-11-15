@@ -1,0 +1,14 @@
+{
+	"id": "safety-estop-a22e",
+	"kind": "safety",
+	"title": "Emergency stop: a 40 mm red mushroom button (1 NC) in the motors' supply, on a JST XH plug",
+	"parts": [
+		{ "mpn": "OMRON A22E-M-01 emergency stop 40 mm red, 1 NC", "role": "estop-button", "qty": 1 },
+		{ "mpn": "B2B-XH-A(LF)(SN)", "role": "estop", "qty": 1 }
+	],
+	"circuit": "The button's NC contact between the cell and the motor driver's VM: the plug's VBAT pin on VBAT, its VM pin on net MOTOR_VM with the driver's VM and its capacitors (circuit.ts estopPlug, motorSupplyNet), as wide as VBAT. Pressing it opens the motors' supply at once; the controller stays on (Eurobot General Rules 1.2 F.4.c tolerates that). The motor current keeps the contact above its 10 mA minimum load, which a logic-level sense line would not.",
+	"interfaces": [{ "kind": "power", "signals": ["VBAT", "MOTOR_VM"] }],
+	"checks": "mechanics/safety.ts: both motors stalled at the pack's full voltage within the contact's DC13 rating (1.5 A at 24 V); the pack within its 24 V; its plug on a board; its panel high enough that the 54.7 mm body clears the plate; its head over the plate.",
+	"rules": [{ "rule": "Eurobot General Rules 1.2, F.4.c Emergency stop button", "url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf", "where": "p. 11-12: red, at least 20 mm across, on top, hit with a fist, stops the robot at once; may exceed the robot's height by 25 mm (F.3: to 375 mm)" }],
+	"open": "The printed deck the button stands through (1 to 3 mm thick at the button, Omron p. 12) is not generated yet: py/chassis.py has no deck. Until it is, mechanics.safety.estop.at.zMm is where the team's own deck must put the panel."
+}
