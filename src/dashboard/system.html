@@ -560,7 +560,14 @@ function stopProgress() {
 window.__stopProgress = stopProgress
 window.__progressOpen = () => Boolean(stage.progress?.src && stage.progress.src.readyState !== 2)
 addEventListener("pagehide", stopProgress)
-const applyBadges = () => { stage.top?.setBadges(stage.badges ?? {}); stage.world?.setBadges?.(stage.badges ?? {}) }
+// A bought board has no board page (nothing is designed): a click pins its facts card instead.
+const isBought = (name) => Boolean(stage.meta?.boards?.find((b) => b.name === name)?.bought)
+// A bought board has no run to show progress for: its badge says it is bought, in both views.
+const applyBadges = () => {
+	const bought = Object.fromEntries((stage.meta?.boards ?? []).filter((b) => b.bought).map((b) => [b.name, { text: "bought", kind: "idle", title: b.title ?? b.module }]))
+	const map = { ...(stage.badges ?? {}), ...bought }
+	stage.top?.setBadges(map); stage.world?.setBadges?.(map)
+}
 async function startStage(d) {
 	followProgress(d)
 	if (stage.started) {
@@ -605,7 +612,9 @@ function renderCard() {
 		const f = stage.meta.facts.boards?.[t.name]
 		if (!f) { factsEl.classList.add("hidden"); return }
 		const img = stage.meta.boards.find((b) => b.name === t.name)?.render
-		factsEl.innerHTML = `${img ? `<img src="${esc(img)}" alt="">` : ""}<h4>${esc(t.name)}</h4><dl>${row("Size", f.size)}${row("Chip", f.chip)}${row("Power", f.power)}${row("Links", f.links.length ? f.links.join("; ") : "—")}${row("Mount", f.mount)}${row("Debug", f.debug)}</dl>`
+		// A bought board: where it comes from, its peak draw with the source, its carrier and its ROS bridge device.
+		if (f.bought) factsEl.innerHTML = `<h4>${esc(t.name)} · bought</h4><dl>${row("From", f.bought.from)}${row("Size", f.size)}${row("Peak", f.bought.peak)}${row("Power", f.power)}${row("Carrier", f.bought.carrier)}${row("Bridge", f.bought.bridge)}${row("Mount", f.mount)}</dl>`
+		else factsEl.innerHTML = `${img ? `<img src="${esc(img)}" alt="">` : ""}<h4>${esc(t.name)}</h4><dl>${row("Size", f.size)}${row("Chip", f.chip)}${row("Power", f.power)}${row("Links", f.links.length ? f.links.join("; ") : "—")}${row("Mount", f.mount)}${row("Debug", f.debug)}</dl>`
 	}
 	factsEl.classList.remove("hidden")
 	const wrap = document.getElementById("stage-wrap").getBoundingClientRect()
@@ -657,7 +666,7 @@ async function ensureView(view) {
 			const { mountTop } = await import("/top2d.js")
 			stage.top = mountTop(box, {
 				onHover: (name, kind) => cardHover(name, kind),
-				onPick: (name, kind) => { if (kind === "board" && !editing.on) { card.swallow = true; card.pinned = null; card.hover = null; renderCard(); window.openBoard?.(name) } else cardPick(name, kind) },
+				onPick: (name, kind) => { if (kind === "board" && !editing.on && !isBought(name)) { card.swallow = true; card.pinned = null; card.hover = null; renderCard(); window.openBoard?.(name) } else cardPick(name, kind) },
 			})
 			await stage.top.ready
 			applyBadges()
@@ -666,7 +675,7 @@ async function ensureView(view) {
 			const { mountWorld } = await import("/world3d.js")
 			stage.world = mountWorld(box, {
 				onHover: (name) => cardHover(name, "board"),
-				onPick: (name) => { card.hover = card.pinned = null; renderCard(); window.openBoard?.(name) },
+				onPick: (name) => { if (isBought(name)) return cardPick(name, "board"); card.hover = card.pinned = null; renderCard(); window.openBoard?.(name) },
 				onHoverCable: (cid) => cardHover(cid, "cable"),
 				onPickCable: (cid) => cardPick(cid, "cable"),
 			})
@@ -763,16 +772,24 @@ async function redraw() {
 		const chDir = a.chassisRevision != null ? `chassis/rev-${a.chassisRevision}` : null
 		const chassisStl = runId && chDir && circuit ? fileOnce(runId, `${chDir}/chassis.stl`, "arrayBuffer") : null
 		const chassisSpec = runId && chDir && circuit ? fileOnce(runId, `${chDir}/spec.json`, "json") : null
-		const outline = a.outline ?? b.outline ?? null
+		// A bought board (a compute module) is its record: always built, its record's outline, never a run's files. A carrier
+		// not built yet takes the module's outline from the assembly (it stacks under it).
+		if (b.bought) {
+			const placedB = stage.meta.assembly?.boards?.find((p) => p.name === b.name)
+			const carrier = b.carrier && stage.meta.boards.some((x) => x.name === b.carrier) ? b.carrier : null
+			return { name: b.name, bought: true, module: b.module, holes: b.holes ?? [], header: b.header ?? null, carrier, stackOn: carrier, stackMm: b.stackMm ?? 0, outline: b.outline, built: true, topOutline: b.outline, circuit: null, rotDeg: placedB?.rotDeg ?? 0, onChassis: stage.meta.assembly?.body === "chassis", key: `${b.name}:bought:${b.module}:${placedB?.rotDeg ?? 0}:${carrier}` }
+		}
+		const stacked = b.carries ? stage.meta.assembly?.boards?.find((p) => p.name === b.name)?.outline ?? null : null
+		const outline = a.outline ?? b.outline ?? stacked
 		// The Top view follows the timeline: built (a routed board) and the outline at the scrub time; before its outline
 		// exists a board is its estimate box. A stubbed run builds nothing: its outline counts as built, as before.
 		const built = a.boardRevision !== null || (stubbed && a.outline != null)
-		const topOutline = a.outline ?? (stage.upTo ? null : b.outline ?? null)
+		const topOutline = a.outline ?? (stage.upTo ? null : b.outline ?? null) ?? stacked
 		// A board the assembly places is turned by its rotDeg; on a chassis body it sits on the chassis, with no case of its own.
 		const placed = stage.meta.assembly?.boards?.find((p) => p.name === b.name)
 		const rotDeg = placed?.rotDeg ?? 0
 		const onChassis = stage.meta.assembly?.body === "chassis"
-		return { name: b.name, outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, rotDeg, onChassis, key: `${b.name}:${rotDeg}:${onChassis}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
+		return { name: b.name, ...(b.carries ? { carries: b.carries } : {}), outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, rotDeg, onChassis, key: `${b.name}:${rotDeg}:${onChassis}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
 	})
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
 	// The world places a robot's other boards from the assembly (world3d setWorld); no assembly positions, no change.
@@ -782,7 +799,7 @@ async function redraw() {
 		const chassis = boards.find((b) => b.chassisSpec)?.chassisSpec ?? null
 		// A board in its own case shows the case's outline; a robot's boards stand on the chassis instead.
 		const robot = stage.meta.assembly?.body === "chassis"
-		stage.topBoards = boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, caseSpec: robot ? null : b.caseSpec ?? null, connectors: m?.connectors, status: m?.status } })
+		stage.topBoards = boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, caseSpec: robot ? null : b.caseSpec ?? null, connectors: m?.connectors, status: m?.status, ...(b.bought ? { bought: true, module: b.module, holes: b.holes, header: b.header, carrier: b.carrier, stackMm: b.stackMm } : {}), ...(b.carries ? { carries: b.carries } : {}) } })
 		stage.chassis = chassis
 		// The chassis spec arrived after Edit was pressed: the editor's keep-outs need it (nothing edited yet, nothing lost).
 		if (editing.on && !editing.chassis && chassis && !editing.ed.canUndo()) makeEditor()

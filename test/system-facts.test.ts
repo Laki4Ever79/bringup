@@ -94,3 +94,18 @@ test("debug line names the port by MCU family, and only when the board has it", 
 	assert.equal(debugPort(none).placed, null)
 	assert.doesNotMatch(boardFacts(none, "main", undefined, []).debug, /debug port|SWD/)
 })
+
+test("a bought board's facts: where it comes from, its peak with the source, its carrier and its bridge device", () => {
+	const boards = [{ name: "main", brief: "m.md" }, { name: "brain", kind: "bought" as const, module: "rpi-5" }, { name: "rpi-5-carrier", brief: "c.md", carries: "brain" }]
+	const asm: SystemAssembly = { body: "chassis", plate: { lengthMm: 200, widthMm: 110 }, boards: [] }
+	const f = systemFacts({ main: fixtureContract(), brain: null, "rpi-5-carrier": null }, asm, [], {}, boards).boards.brain
+	assert.equal(f.bought!.from, "Raspberry Pi 5 (bought), on a generated carrier")
+	assert.match(f.bought!.peak, /^5 A at 5\.1 V: https:\/\/github\.com\/raspberrypi\/documentation\/.*power-supplies\.adoc \(table row Raspberry Pi 5: recommended PSU current capacity 5\.0A\)$/)
+	assert.match(f.bought!.bridge, /^\/dev\/ttyACM0 \(the MCU board's native USB/)
+	assert.equal(f.bought!.carrier, "rpi-5-carrier")
+	assert.equal(f.size, "85 × 56 mm")
+	assert.equal(f.mount, "on the chassis, on rpi-5-carrier")
+	assert.equal(f.chip, null)
+	// Without the spec's boards it is just a board with no contract, as before.
+	assert.equal(systemFacts({ brain: null }, asm, []).boards.brain.bought, undefined)
+})

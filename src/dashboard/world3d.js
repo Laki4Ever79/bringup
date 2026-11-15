@@ -105,6 +105,7 @@ const PART = [40, 40, 44]
 const PAD = [214, 214, 214]
 const CASE = [200, 200, 206]
 const CABLE = [17, 17, 17]
+const BOUGHT = [34, 36, 40] // a bought board: dark, so it reads as not ours
 
 // Triangles (9 floats each) with one RGB per triangle → interleaved position, normal, colour per vertex.
 function interleave(tris, colorOf) {
@@ -206,6 +207,18 @@ export function resolvePlaces(boards, auto, on = null) {
 	return out
 }
 
+// A bought board (a compute module) stands on its carrier: same xy, raised by the carrier's 1.6 mm board and the
+// stacking header (`stackMm`, the server's CARRIER_STACK_MM). `stackOn` names its carrier; a carrier not drawn leaves
+// the board where it was.
+export function stackPlaces(boards, at) {
+	const out = { ...at }
+	for (const wb of boards) {
+		const c = wb.stackOn ? at[wb.stackOn] : null
+		if (c) out[wb.name] = { x: c.x, y: c.y, z: (c.z ?? 0) + 1.6 + (wb.stackMm ?? 0) }
+	}
+	return out
+}
+
 // Turn a triangle list about the vertical axis through the origin: rotDeg counter-clockwise seen from above (+x forward,
 // +y left, z up), the way the Top view draws it (SVG rotate(-rotDeg) with y down).
 export function rotateZ(tris, rotDeg) {
@@ -226,6 +239,20 @@ export function boardGeometry(b) {
 	const rot = b.chassisSpec ? 0 : b.rotDeg ?? 0
 	const flat = boxTris([-o.widthMm / 2, -o.heightMm / 2, 0], [o.widthMm / 2, o.heightMm / 2, 1.6])
 	const box = rotateZ(flat, rot)
+	// A bought board: its record's outline as a dark board, with its header block where the record puts it (the record's
+	// frame: origin at the lower-left corner, y up). The header's 2.5 mm plastic height is an estimate.
+	if (b.bought) {
+		const tris = [...flat]
+		const h = b.header
+		if (h && Number.isFinite(h.x) && Number.isFinite(h.y)) {
+			const hw = (h.cols ?? 20) * (h.pitchMm ?? 2.54), hh = (h.rows ?? 2) * (h.pitchMm ?? 2.54)
+			const cx = h.x - o.widthMm / 2, cy = h.y - o.heightMm / 2
+			tris.push(...boxTris([cx - hw / 2, cy - hh / 2, 1.6], [cx + hw / 2, cy + hh / 2, 4.1]))
+		}
+		const turned = rotateZ(new Float32Array(tris), rot)
+		const colours = [...Array(turned.length / 9).keys()].map((i) => (i < flat.length / 9 ? BOUGHT : PART))
+		return { solid: interleave(turned, (i) => colours[i]), shell: null, box: interleave(box, () => BOUGHT), extent: bounds(turned), bought: true }
+	}
 	let solid = null, shell = null
 	let extent = bounds(box)
 	if (b.circuit) {
@@ -501,9 +528,12 @@ export function mountWorld(host, opts = {}) {
 		// A robot's other boards stand where the assembly puts them; they take no room in the automatic layout.
 		const robot = assembly?.boards?.length ? boards.find((wb) => S.boards.get(wb.name).frame && assembly.boards.some((p) => p.name === wb.name)) : null
 		const places = robot ? assemblyPlacement(assembly, S.boards.get(robot.name).frame) : null
-		const placed = (wb) => robot && wb.name !== robot.name && places[wb.name]
+		// A bought board on its carrier stands on it: it takes no place of its own either.
+		const stacked = (wb) => wb.stackOn && boards.some((x) => x.name === wb.stackOn)
+		const placed = (wb) => (robot && wb.name !== robot.name && places[wb.name]) || stacked(wb)
 		const auto = autoLayout(boards.filter((wb) => !placed(wb)), cables)
-		const at = resolvePlaces(boards, auto, robot ? { robot: robot.name, places } : null)
+		for (const wb of boards) if (stacked(wb) && !auto[wb.name]) auto[wb.name] = { x: 0, y: 0 }
+		const at = stackPlaces(boards, resolvePlaces(boards, auto, robot ? { robot: robot.name, places } : null))
 		for (const wb of boards) { const b = S.boards.get(wb.name); b.at = [at[wb.name].x, at[wb.name].y]; b.atZ = at[wb.name].z }
 		for (const [name, b] of S.boards) if (!keep.has(name)) { free(b.solid); free(b.shell); free(b.boxMesh); b.caption?.remove(); S.boards.delete(name) }
 		for (const c of S.cables) { free(c.mesh); c.el.remove() }

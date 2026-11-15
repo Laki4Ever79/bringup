@@ -590,7 +590,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			chassis,
 			motion,
 			i2cDevices: Object.fromEntries(Object.entries(contractOf).flatMap(([n, c]) => (c ? [[n, boardI2cDevices(c).length]] : []))),
-			facts: systemFacts(contractOf, assembly, spec?.links ?? [], Object.fromEntries(boards.flatMap((b) => (b.runId ? [[b.name, b.runId]] : [])))),
+			facts: systemFacts(contractOf, assembly, spec?.links ?? [], Object.fromEntries(boards.flatMap((b) => (b.runId ? [[b.name, b.runId]] : []))), spec?.boards ?? []),
 			...(await systemStatus(id, dir, state)),
 			findings: state?.findings ?? (await readJsonFile(join(dir, "system-findings.json"))) ?? [],
 			linkTests: state?.linkTests ?? [],
@@ -701,7 +701,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			assembly,
 			status,
 			boards: p.spec.boards.map((b) => ({ name: b.name, runId: null, status })),
-			facts: systemFacts(Object.fromEntries(p.spec.boards.map((b) => [b.name, null])), assembly, p.spec.links ?? []),
+			facts: systemFacts(Object.fromEntries(p.spec.boards.map((b) => [b.name, null])), assembly, p.spec.links ?? [], {}, p.spec.boards),
 		}
 	}
 	const listSystemSpecs = async () => {

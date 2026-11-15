@@ -1,4 +1,4 @@
-export interface GeomBoard { xMm: number; yMm: number; rotDeg: number; outline: { widthMm: number; heightMm: number } }
+export interface GeomBoard { name?: string; xMm: number; yMm: number; rotDeg: number; outline: { widthMm: number; heightMm: number }; carries?: string }
 export const CABLE_SLACK_MM: number
 export function cableLength(points: { xMm: number; yMm: number }[]): number
 export function footprint(b: GeomBoard): { xMm: number; yMm: number }
