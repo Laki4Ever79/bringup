@@ -51,3 +51,11 @@ test("evidence is appended per module and read back", () => {
 	assert.equal(readEvidence("motor-stage-drv8833", d).length, 2)
 	assert.deepEqual(readEvidence("nothing", d), [])
 })
+
+test("a board that failed at the last revision is a built fail, not a pass from the board before it", () => {
+	const used = modulesUsed(loadModules(ROOT), ROVER_BOARD)
+	const a = { board: { drc: { errors: 0, unconnected: 0 } }, firmware: { ok: true } } as unknown as Artifacts
+	const e = runEvidence(used, a, "r2", 11, "t", { board: "tscircuit build failed (exit 1):\nPCB trace is 6.00mm long" })
+	const built = e.filter((x) => x.level === "built")
+	assert.ok(built.length > 0 && built.every((x) => x.result === "fail" && /board build failed/.test(x.note ?? "")))
+})

@@ -85,12 +85,18 @@ export function modulesUsed(modules: Module[], v: Partial<ContractValues>): Modu
 // What a finished run shows about each module it used. Built: the board passed DRC and the firmware compiled. Tested:
 // the generated drivers passed their host tests. Simulated: the rover's own firmware passed the simulated drive (every
 // module of the robot took part). Only what was shown is recorded: a step that didn't run records nothing.
-export function runEvidence(used: Module[], a: Artifacts, run: string, revision: number, at = new Date().toISOString()): Evidence[] {
+// failures: the builds that failed at the run's last revision (state.artifactFailures). A board that failed there is a
+// "built" fail with its error, never a pass from an older board the run still holds (a scripted rover, 15 Nov: the last
+// board build failed on trace length and the module was recorded as built from the board before it).
+export function runEvidence(used: Module[], a: Artifacts, run: string, revision: number, at = new Date().toISOString(), failures: Partial<Record<string, string>> = {}): Evidence[] {
 	const out: Evidence[] = []
 	const add = (m: Module, level: Level, by: Evidence["by"], result: "pass" | "fail", note: string) => out.push({ at, module: m.id, level, result, by, run, revision, note })
 	const drcOk = a.board?.drc ? a.board.drc.errors === 0 && a.board.drc.unconnected === 0 : undefined
+	const buildFailed = failures.board ?? failures.firmware
 	for (const m of used) {
-		if (a.board && a.firmware && drcOk !== undefined) {
+		if (buildFailed) {
+			add(m, "built", "build", "fail", `the last ${failures.board ? "board" : "firmware"} build failed: ${buildFailed.split("\n").slice(0, 3).join(" ")}`)
+		} else if (a.board && a.firmware && drcOk !== undefined) {
 			const ok = drcOk && a.firmware.ok
 			add(m, "built", "build", ok ? "pass" : "fail", ok ? "board DRC clean, firmware compiled" : `${drcOk ? "" : `board DRC: ${a.board.drc!.errors} errors, ${a.board.drc!.unconnected} unconnected`}${!drcOk && !a.firmware.ok ? "; " : ""}${a.firmware.ok ? "" : "firmware does not compile"}`)
 		}
@@ -165,9 +171,9 @@ export function moduleStatus(root: string, dir = evidenceDir()): ModuleStatus[] 
 }
 
 // After a run: record what it showed for the modules it used. Never fails a run.
-export function recordRun(root: string, v: Partial<ContractValues>, a: Artifacts, run: string, revision: number, dir = evidenceDir()): Evidence[] {
+export function recordRun(root: string, v: Partial<ContractValues>, a: Artifacts, run: string, revision: number, dir = evidenceDir(), failures: Partial<Record<string, string>> = {}): Evidence[] {
 	try {
-		const records = runEvidence(modulesUsed(loadModules(root), v), a, run, revision)
+		const records = runEvidence(modulesUsed(loadModules(root), v), a, run, revision, undefined, failures)
 		appendEvidence(records, dir)
 		return records
 	} catch (error) {

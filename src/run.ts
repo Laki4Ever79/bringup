@@ -131,7 +131,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		// What this run showed about the modules it used (src/modules/library.ts), for the module library. Not from the
 		// test suite (node --test sets NODE_TEST_CONTEXT), so tests never write a machine's evidence.
 		if (!process.env.NODE_TEST_CONTEXT && !process.env.BRINGUP_NO_EVIDENCE)
-			recordRun(env.root, state.contract.snapshot().values, state.artifacts, `${opts.mock ? "scripted " : ""}${basename(opts.outDir)}`, state.contract.revision)
+			recordRun(env.root, state.contract.snapshot().values, state.artifacts, `${opts.mock ? "scripted " : ""}${basename(opts.outDir)}`, state.contract.revision, undefined, state.artifactFailures as Partial<Record<string, string>>)
 		return writeReport(opts.outDir, state, env, settled, { noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench), mock: opts.mock })
 	}
 	// Scripted change requests (--change): each goes out through requests.jsonl, like one from the CLI or the MCP.
