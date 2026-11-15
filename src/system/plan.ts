@@ -24,6 +24,8 @@ export interface Plan {
 	needs?: PartNeed[]
 	// A small wheeled robot: its boards sit on one printed chassis (the built spec gets a chassis assembly).
 	robot?: boolean
+	// The id of the design Build made from this plan (Build keeps the plan's id; older plans may name a system-<id>).
+	builtAs?: string
 }
 
 // The spec Build runs: the plan's spec with the boards' placement. A robot's boards share a chassis; boards of any
