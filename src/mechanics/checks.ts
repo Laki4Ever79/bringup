@@ -75,8 +75,12 @@ export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): Mec
 	// A motor driver with no motion targets: a robot nobody made one (real rover run 6, 15 Nov, all fast models: the
 	// architect picked the DRV8833 and drew a 145 × 110 mm board, but never wrote motion, so no chassis, drive or
 	// simulation followed, and the run settled and passed review as a plain board).
-	if (!v.motion && (c.values.parts ?? []).some((p) => p.role === "motor-driver"))
-		return [{ kind: "mech-fit", message: "the design has a motor driver but no motion targets: a robot needs its motion field (the brief's speedMps, runtimeMin, edgeMm, maxSlopeDeg, stopBeforeWallMm, payloadG, maxSizeMm, maxMassG); write it, and the mechanics engineer designs the drive and chassis", fields: ["motion"], affects: ["architect"] }]
+	// Run 7 (fast models again): no driver either, but the design's own requirements said "drives on two DC motors".
+	const req = c.values.requirements
+	// Not for a board in a system (an assembly): the climate board on a rover names the rover but carries no motion.
+	const saysRobot = !c.values.assembly && /\b(motors?|wheels?|rover|robot|drives? (around|on|itself)|self-driving|differential drive)\b/i.test(`${req?.summary ?? ""} ${(req?.peripherals ?? []).join(" ")}`)
+	if (!v.motion && ((c.values.parts ?? []).some((p) => p.role === "motor-driver") || saysRobot))
+		return [{ kind: "mech-fit", message: "the design moves (a motor driver, or requirements that name motors, wheels or a rover) but has no motion targets: a robot needs its motion field (the brief's speedMps, runtimeMin, edgeMm, maxSlopeDeg, stopBeforeWallMm, payloadG, maxSizeMm, maxMassG); write it, and the mechanics engineer designs the drive and chassis", fields: ["motion"], affects: ["architect"] }]
 	return mechanicsCheckOver(v.motion, withAssembly(c.values), checkBoards(c), cat)
 }
 

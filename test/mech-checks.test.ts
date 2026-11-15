@@ -210,8 +210,15 @@ test("a motor driver without motion targets asks the architect for the motion fi
 	const { c, cat } = variant((v) => delete v.motion)
 	const w = mechanicsChecksWith(c, cat)
 	assert.equal(w.length, 1)
-	assert.match(w[0].message, /motor driver but no motion targets/)
+	assert.match(w[0].message, /moves .* but has no motion targets/)
+	const said = variant((v) => { delete v.motion; v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver"); v.requirements = { ...v.requirements, summary: "indoor rover on two DC motors" } })
+	assert.equal(mechanicsChecksWith(said.c, said.cat).length, 1, "requirements naming a rover are enough")
 	assert.deepEqual([w[0].affects, w[0].fields], [["architect"], ["motion"]])
 	const plain = variant((v) => { delete v.motion; v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver") })
 	assert.deepEqual(mechanicsChecksWith(plain.c, plain.cat), [], "a board without a driver is no robot")
+})
+
+test("a board in a system that only names the robot isn't asked for motion", () => {
+	const { c, cat } = variant((v) => { delete v.motion; v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver"); v.requirements = { ...v.requirements, summary: "climate sensor board on the rover" }; v.assembly = { body: "chassis", plate: { lengthMm: 150, widthMm: 110 }, boards: [], self: "climate" } })
+	assert.deepEqual(mechanicsChecksWith(c, cat), [])
 })
