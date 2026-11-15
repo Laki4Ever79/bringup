@@ -796,7 +796,12 @@ export function packVoltage(c: ContractSnapshot): Violation[] {
 	const pack = cat && packMpn ? byMpn(cat.mech.batteries, packMpn) : undefined
 	if (!cat || !pack) return []
 	const parts = c.values.parts ?? []
-	const entry = (mpn: string) => (cat.boardParts as unknown as { mpn: string; maxInV?: number; maxInVSource?: string; cells?: number; floatV?: number; cellsSource?: string }[]).find((e) => e.mpn.toUpperCase() === mpn.toUpperCase())
+	const entry = (mpn: string) => {
+		const e = (cat.boardParts as unknown as { mpn: string; maxInV?: number; maxInVSource?: string; cells?: number; floatV?: number; cellsSource?: string; source?: Record<string, { url: string; where: string }> }[]).find((x) => x.mpn.toUpperCase() === mpn.toUpperCase())
+		// A part's source is a flat "<field>Source" line or its source map's entry ({url, where}).
+		const map = e?.source?.maxInV
+		return e && !e.maxInVSource && map ? { ...e, maxInVSource: `${map.url}, ${map.where}` } : e
+	}
 	const v: Violation[] = []
 	const charger = parts.find((p) => p.role === "charger")
 	const ch = charger ? entry(charger.mpn) : undefined
