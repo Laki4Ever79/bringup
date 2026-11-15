@@ -72,6 +72,15 @@ export function mechanicsChecks(c: ContractSnapshot): MechViolation[] {
 
 export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): MechViolation[] {
 	const v = c.values as { motion?: MotionTargets }
+	// A motor driver with no motion targets: a robot nobody made one (real rover run 6, 15 Nov, all fast models: the
+	// architect picked the DRV8833 and drew a 145 × 110 mm board, but never wrote motion, so no chassis, drive or
+	// simulation followed, and the run settled and passed review as a plain board).
+	// Run 7 (fast models again): no driver either, but the design's own requirements said "drives on two DC motors".
+	const req = c.values.requirements
+	// Not for a board in a system (an assembly): the climate board on a rover names the rover but carries no motion.
+	const saysRobot = !c.values.assembly && /\b(motors?|wheels?|rover|robot|drives? (around|on|itself)|self-driving|differential drive)\b/i.test(`${req?.summary ?? ""} ${(req?.peripherals ?? []).join(" ")}`)
+	if (!v.motion && ((c.values.parts ?? []).some((p) => p.role === "motor-driver") || saysRobot))
+		return [{ kind: "mech-fit", message: "the design moves (a motor driver, or requirements that name motors, wheels or a rover) but has no motion targets: a robot needs its motion field (the brief's speedMps, runtimeMin, edgeMm, maxSlopeDeg, stopBeforeWallMm, payloadG, maxSizeMm, maxMassG); write it, and the mechanics engineer designs the drive and chassis", fields: ["motion"], affects: ["architect"] }]
 	return mechanicsCheckOver(v.motion, withAssembly(c.values), checkBoards(c), cat)
 }
 
@@ -88,6 +97,23 @@ function insideMargin(p: [number, number], poly: [number, number][]): number {
 		min = Math.min(min, side(p[0], p[1]) * sign)
 	}
 	return min
+}
+
+// Where a part fits on the plate (origin at the centre): the x and y its centre may take, or the plate it needs. The
+// numbers an agent can act on (real rover run 3, 15 Nov: "enlarge the plate or move it" had the battery and caster
+// moved a few mm at a time, revision after revision, without ever landing on the plate).
+export function fitWindow(m: { sizeMm: number[]; xMm: number; yMm: number }, L: number, W: number): string {
+	const hx = L / 2 - m.sizeMm[0] / 2, hy = W / 2 - m.sizeMm[1] / 2
+	if (hx < 0 || hy < 0) return `it needs a plate at least ${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm`
+	const parts = [Math.abs(m.xMm) > hx + 1e-9 && `xMm between ${r1(-hx)} and ${r1(hx)}`, Math.abs(m.yMm) > hy + 1e-9 && `yMm between ${r1(-hy)} and ${r1(hy)}`].filter(Boolean)
+	return `on this plate its centre must have ${parts.join(" and ")} (now ${r1(m.xMm)}, ${r1(m.yMm)}), or make the plate longer or wider`
+}
+
+// The caster sits wheelbaseMm behind the axle (x = axleXMm − wheelbaseMm): its window is a wheelbase range.
+export function casterWindow(m: { sizeMm: number[]; xMm: number; yMm: number }, L: number, W: number, d: { axleXMm: number; wheelbaseMm: number }): string {
+	const hx = L / 2 - m.sizeMm[0] / 2
+	if (hx < 0 || W / 2 - m.sizeMm[1] / 2 < 0) return `it needs a plate at least ${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm`
+	return `the caster sits at axleXMm − wheelbaseMm (${r1(d.axleXMm)} − ${r1(d.wheelbaseMm)}); on this plate wheelbaseMm must be between ${r1(Math.max(1, d.axleXMm - hx))} and ${r1(d.axleXMm + hx)} with axleXMm ${r1(d.axleXMm)}, or move the axle, or make the plate longer`
 }
 
 export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mechanics | undefined, boards: { name: string; snapshot: ContractSnapshot }[], cat: CheckCatalog, figures: MechFigure[] = []): MechViolation[] {
@@ -175,10 +201,10 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		const peakA = Number(driver.data.peakA ?? 0)
 		fig("Motor stall current", `${r2(full.stallA)} A`, `at most ${peakA} A per channel`, full.stallA <= peakA, `full ${pack.fullV} V cell, ${driver.part.mpn}`)
 		if (full.stallA > peakA)
-			push("mech-current", `${d.motor} draws ${r2(full.stallA)} A at stall on a full ${pack.fullV} V cell, over the ${driver.part.mpn}'s ${peakA} A peak per channel: pick a motor with a lower stall current or a stronger driver`, ["mechanics", "board"])
+			push("mech-current", `${d.motor} draws ${r2(full.stallA)} A at stall on a full ${pack.fullV} V cell, over the ${driver.part.mpn}'s ${peakA} A peak per channel: pick a motor with a lower stall current or a stronger driver`, ["mechanics", "parts"])
 		const supplyMin = Number(driver.data.supplyMinV ?? 0), supplyMax = Number(driver.data.supplyMaxV ?? Infinity)
 		if (pack.cutoffV < supplyMin || pack.fullV > supplyMax)
-			push("mech-voltage", `the ${driver.part.mpn} runs from ${supplyMin}–${supplyMax} V but the cell spans ${pack.cutoffV}–${pack.fullV} V: pick a driver that covers it`, ["mechanics", "board"])
+			push("mech-voltage", `the ${driver.part.mpn} runs from ${supplyMin}–${supplyMax} V but the cell spans ${pack.cutoffV}–${pack.fullV} V: pick a driver that covers it`, ["mechanics", "parts"])
 	}
 	const boardMa = boards.reduce((t, b) => t + (b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0)
 	const packNeedA = 2 * full.stallA + boardMa / 1000
@@ -220,7 +246,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const [L, Wd] = mech.chassis.plateMm
 	const onPlate = (m: Mount) => Math.abs(m.xMm) + m.sizeMm[0] / 2 <= L / 2 + 1e-9 && Math.abs(m.yMm) + m.sizeMm[1] / 2 <= Wd / 2 + 1e-9
 	for (const m of ms) if (m.what.startsWith("board:") || m.what === "battery" || m.what === "caster" || m.what === "sensor")
-		if (!onPlate(m)) push("mech-fit", `${m.what.replace(/^board:/, "board ")} (${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm at ${r1(m.xMm)}, ${r1(m.yMm)}) doesn't fit on the ${L} × ${Wd} mm plate: enlarge the plate or move it`)
+		if (!onPlate(m)) push("mech-fit", `${m.what.replace(/^board:/, "board ")} (${r1(m.sizeMm[0])} × ${r1(m.sizeMm[1])} mm at ${r1(m.xMm)}, ${r1(m.yMm)}) doesn't fit on the ${L} × ${Wd} mm plate: ${m.what === "caster" ? casterWindow(m, L, Wd, d) : fitWindow(m, L, Wd)}`)
 	// A motor hangs under the plate's edge out to its wheel: at least half its body must be under the plate to bolt on.
 	for (const m of ms.filter((x) => x.what.startsWith("motor:"))) {
 		const under = Wd / 2 - (Math.abs(m.yMm) - m.sizeMm[1] / 2)
@@ -236,7 +262,7 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	if (pack.sizeMm[2] > est("standoffMm") - 1 && boardsM.length)
 		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")}: pick a thinner pack or put it beside the boards`)
 	const wheelInner = d.trackMm / 2 - wheel.widthMm / 2
-	if (wheelInner < Wd / 2 + 2) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): widen the track or narrow the plate`)
+	if (wheelInner < Wd / 2 + 2) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): make trackMm at least ${r1(Wd + 4 + wheel.widthMm)} (the plate's width + 4 + the ${wheel.widthMm} mm wheel), or the plate at most ${r1(d.trackMm - wheel.widthMm - 4)} mm wide`)
 	// Level: the caster sets the plate's height; the motors hang from it on brackets, at least half their body below
 	// it (they can drop lower on a spacer, not rise into the plate).
 	const axleLevel = wheel.diameterMm / 2 + motor.bodyMm[2] / 2
@@ -250,23 +276,43 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		push("mech-fit", `the plate is ${mech.chassis.clearanceMm} mm off the floor, under the ${motion.edgeMm} mm edge the rover must cross: raise it (bigger wheels)`)
 	const outerW = Math.max(Wd, d.trackMm + wheel.widthMm)
 	if (L > motion.maxSizeMm[0] || outerW > motion.maxSizeMm[1])
-		push("mech-fit", `the rover is ${L} × ${outerW} mm with its wheels, over the ${motion.maxSizeMm[0]} × ${motion.maxSizeMm[1]} mm the brief allows: shrink the plate or the track`)
+		push("mech-fit", `the rover is ${L} × ${outerW} mm with its wheels, over the ${motion.maxSizeMm[0]} × ${motion.maxSizeMm[1]} mm the brief allows: the plate at most ${motion.maxSizeMm[0]} mm long, trackMm at most ${r1(motion.maxSizeMm[1] - wheel.widthMm)} (the width less one ${wheel.widthMm} mm wheel), so the plate at most ${r1(motion.maxSizeMm[1] - 2 * wheel.widthMm - 4)} mm wide`)
 	fig("Mass", `${Math.round(massG)} g`, `at most ${motion.maxMassG} g`, massG <= motion.maxMassG, `plate PLA ${estNote("plaDensityGcm3")}, boards ${estNote("boardMassGPerCm2")}`)
 	fig("Size with wheels", `${L} × ${outerW} mm`, `at most ${motion.maxSizeMm[0]} × ${motion.maxSizeMm[1]} mm`, L <= motion.maxSizeMm[0] && outerW <= motion.maxSizeMm[1])
 	if (massG > motion.maxMassG) push("mech-fit", `the rover weighs about ${Math.round(massG)} g, over the ${motion.maxMassG} g the brief allows`)
 
 	// Wiring: a driver with its inputs on GPIOs, the sensor on the I2C bus, a battery connector.
-	if (!driver) push("mech-wiring", "no board carries a motor driver (role motor-driver): add one with its four inputs on GPIOs", ["board"], ["parts"])
+	if (!driver) push("mech-wiring", "no board carries a motor driver (role motor-driver): add one with its four inputs on GPIOs", ["parts"], ["parts"])
 	else {
 		const missing = ["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2"].filter((s) => !pins.some((p) => p.signal === s && p.partRef === driver.part.ref))
-		if (missing.length) push("mech-wiring", `the motor driver ${driver.part.ref}'s inputs ${missing.join(", ")} have no GPIO: assign them`, ["board"], ["pins"])
+		if (missing.length) push("mech-wiring", `the motor driver ${driver.part.ref}'s inputs ${missing.join(", ")} have no GPIO: assign them`, ["architect"], ["pins"])
 	}
-	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector") : undefined
+	// A motor on a GPIO: the pin can't source a motor's current and the motor's back-EMF reaches the MCU (real rover run
+	// 2, 15 Nov: the architect put MOTOR_A_P on GPIO0 through a 2-pin connector, with no driver). The board generator
+	// wires the driver's outputs to the 2-pin motor connectors; the pins field never touches them.
+	const motorPlugs = new Set(parts.filter((p) => p.role === "connector" && p.pins.length === 2 && p.pins[0] === "1" && p.pins[1] === "2").map((p) => p.ref))
+	const onMotor = pins.filter((p) => motorPlugs.has(p.partRef) && typeof p.gpio === "number" && p.gpio >= 0)
+	if (onMotor.length)
+		push("mech-wiring", `${onMotor.map((p) => `${p.signal} (GPIO${p.gpio}) goes to motor connector ${p.partRef}`).join("; ")}: a motor never connects to a GPIO. Remove these pins: the board generator wires the motor driver's outputs to the 2-pin motor connectors, and the GPIOs drive the driver's inputs MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2`, ["architect"], ["pins"])
+	// Each motor's two wires need a 2-pin connector on the driver's outputs (real rover run 5, 15 Nov: nothing asked for
+	// them, so the motors were never connected). The generator wires the driver's AOUT/BOUT to them, in ref order.
+	if (driver && motorPlugs.size < 2) {
+		// The refs to use: header connectors the board already places with no part (the architect named them), then JM1, JM2.
+		const partRefs = new Set(parts.map((p) => p.ref))
+		const placed = boards.flatMap((b) => b.snapshot.values.connectors ?? []).filter((k) => k.kind === "header" && !partRefs.has(k.ref) && k.ref !== mech.sensor?.connector).map((k) => k.ref)
+		const refs = [...placed, ...["JM1", "JM2"].filter((r) => !partRefs.has(r) && !placed.includes(r))].slice(0, 2 - motorPlugs.size)
+		push("mech-wiring", `the motors need ${2 - motorPlugs.size} more 2-pin connector${motorPlugs.size === 1 ? "" : "s"} (role connector, pins ["1", "2"], the JST PH B2B-PH-K-S in the catalog), one per motor, as ${refs.join(" and ")}${placed.length ? " (the connectors the board already places)" : ""}: the board generator wires the driver's outputs to them`, ["parts"], ["parts"])
+	}
+	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector" && p.pins.length === 4) : undefined
+	// The sensor's connector ref taken by another part (real rover run 5: "J2", the battery connector): no part can be
+	// added under it, so the ref itself is what to change.
+	const taken = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && !(p.role === "connector" && p.pins.length === 4)) : undefined
 	if (!mech.sensor) push("mech-wiring", "no distance sensor in the mechanics design: the rover avoids walls with one at the front", ["mechanics"])
-	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["board"], ["parts"])
+	else if (taken) push("mech-wiring", `mechanics.sensor.connector is ${taken.ref}, but ${taken.ref} is already the ${taken.role} ${taken.mpn}: name a free ref for the sensor's 4-pin connector (JT1)`, ["mechanics"], ["mechanics"])
+	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["parts"], ["parts"])
 	// The board generator joins the plug's IO1/IO2 to the bus (linkBusTraces): the bus must exist on its board.
 	else if (!["I2C_SDA", "I2C_SCL"].every((sig) => boards.some((b) => (b.snapshot.values.parts ?? []).some((p) => p.ref === plug.ref) && (b.snapshot.values.pins ?? []).some((p) => p.signal === sig))))
-		push("mech-wiring", `the sensor connector ${plug.ref} needs an I2C bus on its board: assign I2C_SDA and I2C_SCL`, ["board"], ["pins"])
-	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", "no battery connector on any board: the cell needs one", ["board"], ["parts"])
+		push("mech-wiring", `the sensor connector ${plug.ref} needs an I2C bus on its board: assign I2C_SDA and I2C_SCL`, ["architect"], ["pins"])
+	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", "no battery connector on any board: the cell needs one", ["parts"], ["parts"])
 	return out
 }

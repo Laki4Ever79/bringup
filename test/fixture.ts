@@ -65,6 +65,9 @@ export function roverFixture() {
 		...c.values.parts!,
 		{ ref: "U3", role: "motor-driver", mpn: "DRV-TEST", lcsc: null, footprint: "htssop16", pins: ["AIN1", "AIN2", "BIN1", "BIN2", "AOUT1", "AOUT2", "BOUT1", "BOUT2", "VM", "GND"] },
 		{ ref: "JT1", role: "connector", mpn: "SM04B-SRSS-TB(LF)(SN)", lcsc: "C160404", footprint: "jst4_sh", pins: ["GND", "VCC", "IO1", "IO2"] },
+		// The motors' two 2-pin connectors on the driver's outputs (as the reference rover, ROVER_BOARD, has them).
+		{ ref: "JM1", role: "connector", mpn: "B2B-PH-K-S(LF)(SN)", lcsc: "C131337", footprint: "jst2_ph", pins: ["1", "2"] },
+		{ ref: "JM2", role: "connector", mpn: "B2B-PH-K-S(LF)(SN)", lcsc: "C131337", footprint: "jst2_ph", pins: ["1", "2"] },
 		{ ref: "J2", role: "battery", mpn: "S2B-PH", lcsc: null, footprint: "jst-ph-2", pins: ["+", "-"] },
 	]
 	values.pins = [

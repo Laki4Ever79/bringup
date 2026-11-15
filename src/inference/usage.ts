@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { InferenceInput, InferenceOutput, InferenceRunner, SemanticEvent } from "@mozaik-ai/core"
 import { PRICES } from "./prices.ts"
+import { checkSpend, recordSpend } from "./spend.ts"
 
 // One model call's tokens and price, one line each in <run>/usage.jsonl. Unknown token counts stay null (and so does
 // the price): a call the provider didn't report is "unknown", never counted as free.
@@ -55,6 +56,8 @@ export class UsageRunner implements InferenceRunner {
 	) {}
 
 	async run(input: InferenceInput): Promise<InferenceOutput> {
+		// The machine-wide cap (spend.ts): past it the call is refused, as a failed call (SafeRunner reports it).
+		checkSpend()
 		const output = await this.inner.run(input)
 		// Claude: Mozaik's TokenUsage merges cache writes and reads, so price from the provider's own usage block.
 		const a = anthropicUsage((output.rowResponse as { usage?: Parameters<typeof anthropicUsage>[0] } | undefined)?.usage)
@@ -73,6 +76,7 @@ export const usageFile = (dir: string) => join(dir, "usage.jsonl")
 
 export function appendUsage(dir: string, r: UsageRecord): void {
 	appendFileSync(usageFile(dir), JSON.stringify(r) + "\n")
+	recordSpend(r, dir)
 }
 
 export function readSpend(dir: string): { usd: number | null; calls: number; unknownCalls: number } {

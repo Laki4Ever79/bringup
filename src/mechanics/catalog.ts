@@ -68,4 +68,13 @@ export function loadMechCatalog(root: string): MechCatalog {
 	return JSON.parse(readFileSync(join(root, "catalog", "mechanics.json"), "utf8")) as MechCatalog
 }
 
-export const byMpn = <T extends { mpn: string }>(list: T[], mpn: string): T | undefined => list.find((p) => p.mpn === mpn)
+// A catalog part by its mpn. The catalog's mpns carry a description after the part number ("POLOLU-2366 75:1 MP 6V");
+// an agent naturally writes the part number alone ("POLOLU-2366"), so that names the part too when it names exactly
+// one (real rover run 2, 15 Nov: every lookup of a correct part failed, and the run spent its revisions on it).
+export const byMpn = <T extends { mpn: string }>(list: T[], mpn: string): T | undefined => {
+	const exact = list.find((p) => p.mpn === mpn)
+	if (exact || typeof mpn !== "string" || !mpn.trim()) return exact
+	const key = mpn.trim().toLowerCase()
+	const hits = list.filter((p) => p.mpn.toLowerCase().split(/\s+/)[0] === key || p.mpn.toLowerCase().startsWith(key + " "))
+	return hits.length === 1 ? hits[0] : undefined
+}

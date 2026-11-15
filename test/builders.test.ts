@@ -205,6 +205,7 @@ test("stubs open the floor under each microphone where the board places it, and 
 test("a builder's summary rides on artifact.ready; the drive's says its result and the first failed segment", async () => {
 	assert.deepEqual(driveSummary({ revision: 3, dir: "/d", result: "fail", reason: "x", segments: [{ name: "edge crossed", pass: false, detail: "" }, { name: "top speed", pass: false, detail: "" }] }), { result: "fail", failed: "edge crossed" })
 	assert.deepEqual(driveSummary({ revision: 3, dir: "/d", result: "pass", reason: "", segments: [] }), { result: "pass" })
+	assert.deepEqual(driveSummary({ revision: 3, dir: "/d", result: "not run", reason: "QEMU is not installed", segments: [] }), { result: "not run", reason: "QEMU is not installed" })
 	const state = new BringupState(tempDir())
 	startRuntime(state, undefined, null)
 	const events = recorder()

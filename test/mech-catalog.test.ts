@@ -2,7 +2,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { resolve } from "node:path"
-import { loadMechCatalog } from "../src/mechanics/catalog.ts"
+import { byMpn, loadMechCatalog } from "../src/mechanics/catalog.ts"
 import { loadCatalog } from "../src/tools/parts-search.ts"
 import { PART_ROLES } from "../src/contract/types.ts"
 
@@ -33,4 +33,15 @@ test("the rover's motor driver grounds: pins, an LCSC number, and a source for e
 		const numbers = Object.entries(p).filter(([, v]) => typeof v === "number").map(([k]) => k)
 		for (const k of numbers) assert.ok(source[k], `${p.mpn}: ${k} has no source`)
 	}
+})
+
+// Real rover run 2 (15 Nov): the mechanics engineer wrote the part number alone, and every lookup failed.
+test("a catalog part is found by its part number alone when that names exactly one part", () => {
+	const m = loadMechCatalog(resolve(import.meta.dirname, ".."))
+	assert.equal(byMpn(m.motors, "POLOLU-2366")?.mpn, "POLOLU-2366 75:1 MP 6V")
+	assert.equal(byMpn(m.wheels, "pololu-1430")?.mpn, "POLOLU-1430 wheel 80x10 mm")
+	assert.equal(byMpn(m.batteries, "ADAFRUIT-2011")?.mpn, "ADAFRUIT-2011 LP-803860 2000 mAh")
+	assert.equal(byMpn(m.motors, "POLOLU-2367 100:1 MP 6V")?.mpn, "POLOLU-2367 100:1 MP 6V", "the full mpn still works")
+	assert.equal(byMpn(m.motors, "POLOLU"), undefined, "a prefix of several parts names none")
+	assert.equal(byMpn(m.motors, "POLOLU-9999"), undefined)
 })

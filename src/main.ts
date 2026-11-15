@@ -6,6 +6,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { missingTools, simulationLine } from "./report.ts"
+import { ledgerPath, spendCap, spentUsd } from "./inference/spend.ts"
 import { simulateFirmware } from "./tools/wokwi.ts"
 import { ROOT, runDesign } from "./run.ts"
 import { driftStatusLines, readDrift } from "./runner/drift.ts"
@@ -216,7 +217,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	if (argv[0] === "system") {
 		const path = argv[1]
 		if (!path || !existsSync(path)) {
-			console.error("bringup: usage: bringup system <system.json> [--mock] [--no-hardware] [--no-review] [--review-rounds N] [--out <dir>] [--timeout-min <n>]")
+			console.error("bringup: usage: bringup system <system.json> [--mock] [--no-hardware] [--no-review] [--review-rounds N] [--out <dir>] [--timeout-min <n>] [--stay]")
 			return 1
 		}
 		const spec = loadSpec(path)
@@ -233,7 +234,18 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		const minutes = Number(argv[argv.indexOf("--timeout-min") + 1])
 		// Each board's review rounds, as for a single design (real system run 3: boards got 1 fix round, not the 4 asked).
 		const rounds = argv.includes("--review-rounds") ? ["--review-rounds", argv[argv.indexOf("--review-rounds") + 1]] : []
-		const r = await runSystem({ spec, outDir: out, mock: flag("--mock"), ...(argv.includes("--timeout-min") && minutes > 0 ? { timeoutMs: minutes * 60_000 } : {}), boardArgs: [...(flag("--no-hardware") ? ["--no-hardware"] : []), ...(flag("--no-review") ? ["--no-review"] : []), ...rounds], ...(env ? { linkTest: { root: ROOT, pio: env.pio, qemu: Boolean(env.qemu), renode: Boolean(env.renode) } } : {}) })
+		// --stay: the system and its boards stay up after settling, taking system-level requests (system-requests.jsonl).
+		const stay = flag("--stay")
+			? {
+					until: new Promise<void>((resolve) => {
+						process.once("SIGINT", () => resolve())
+						process.once("SIGTERM", () => resolve())
+						void parentGone(process.stdin, process.env)?.then(resolve)
+					}),
+				}
+			: undefined
+		if (stay) console.log("bringup system: --stay; after the system settles it keeps taking system-level change requests. Ctrl-C ends it.")
+		const r = await runSystem({ spec, outDir: out, mock: flag("--mock"), ...(stay ? { stay } : {}), ...(argv.includes("--timeout-min") && minutes > 0 ? { timeoutMs: minutes * 60_000 } : {}), boardArgs: [...(flag("--no-hardware") ? ["--no-hardware"] : []), ...(flag("--no-review") ? ["--no-review"] : []), ...rounds], ...(env ? { linkTest: { root: ROOT, pio: env.pio, qemu: Boolean(env.qemu), renode: Boolean(env.renode) } } : {}) })
 		console.log(`\n${r.ok ? "settled" : "UNSETTLED"}: ${r.findings.filter((f) => f.kind !== "link-pending").length} system finding(s)${r.linkTests.length ? `; link tests: ${r.linkTests.map((t) => `${t.link} ${!t.ran ? "not run" : t.passed ? "pass" : "FAIL"}`).join(", ")}` : ""}\nreport: ${r.reportPath}`)
 		return r.ok ? 0 : 2
 	}
@@ -255,6 +267,18 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	const runId = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)
 	const outDir = args.outDir ?? join(ROOT, "out", runId)
 	const env = await (deps.detect ?? detectEnvironment)(ROOT)
+	// The machine-wide spend cap (inference/spend.ts): a real-model run doesn't start past it, and says where it stands.
+	if (!args.mock) {
+		const cap = spendCap()
+		if (cap !== null) {
+			const { usd } = spentUsd()
+			if (usd >= cap) {
+				console.error(`bringup: spend cap reached: $${usd.toFixed(2)} of $${cap.toFixed(2)} (BRINGUP_SPEND_CAP_USD); not starting a real-model run`)
+				return 2
+			}
+			console.log(`bringup: spend so far $${usd.toFixed(2)} of the $${cap.toFixed(2)} cap (ledger ${ledgerPath()})`)
+		}
+	}
 	const mode = `${args.mock ? "mock models (no API key)" : "real models"}${args.noHardware ? ", hardware stubbed" : ""}${args.review ? "" : ", no brief review"}`
 	console.log(`bringup: ${mode}\n${describeEnv(env)}\noutput: ${outDir}`)
 	const missing = missingTools(env)

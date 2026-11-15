@@ -198,3 +198,15 @@ test("every revision's contract is kept as contracts/rev-N.json, so diffs can be
 	const rev5 = JSON.parse(readFileSync(path(t.state.outDir, "contracts", "rev-5.json"), "utf8"))
 	assert.equal(rev5.versions.pins, 0, "rev 5 is before the pins were written")
 })
+
+// A robot drafts its drive, chassis, driver and connectors after the board (real rover run 2, 15 Nov): 40 revisions.
+test("a robot (motion set) gets the robot revision budget, not the board's", async () => {
+	const { ROVER_MOTION } = await import("../src/inference/scripts.ts")
+	const t = setup({ maxRevisions: 3 })
+	t.write("motion", ROVER_MOTION)
+	t.writeAll()
+	await new Promise((r) => setTimeout(r, 300))
+	// The board's cap would stop it at revision 4; a robot runs on (it may still end unsettled for other reasons:
+	// this harness has no chassis or drive builder).
+	assert.ok(t.settled.every((x) => x.revision > 4), JSON.stringify(t.settled))
+})
