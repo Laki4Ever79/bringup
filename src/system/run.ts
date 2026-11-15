@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { assemblyFitError, withOutlines, type SystemAssembly } from "./assembly.ts"
+import { assemblyFitError, mergeRequest, withOutlines, type SystemAssembly } from "./assembly.ts"
 import type { BoardAssembly } from "../mechanics/assembly.ts"
 import { appendRequest, watchJsonl } from "../runner/requests.ts"
 import { readTrace } from "../runner/ripple.ts"
@@ -276,21 +276,28 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	// A system-level request: the new body and links go to the boards they concern; those settle again.
 	const applyRequest = (r: SystemRequest): string[] => {
 		const touched = new Set<string>()
-		if (r.assembly && assembly) {
-			assembly = { ...assembly, ...r.assembly, boards: r.assembly.boards ?? assembly.boards, plate: r.assembly.plate ?? assembly.plate }
-			for (const b of designed) if (assembly.boards.some((ab) => ab.name === b.name)) touched.add(b.name)
+		const beforeLinks = new Map(designed.map((b) => [b.name, JSON.stringify(boardLinks(spec, b.name))]))
+		const was = assembly
+		const merged = mergeRequest({ ...spec, ...(assembly ? { assembly } : {}) }, { ...r, ...(assembly ? {} : { assembly: undefined }) })
+		spec = merged
+		if (assembly) assembly = merged.assembly
+		// A board is told only when its own view changed: its siblings' places, the plate or the cables (what it was last
+		// handed), its own place, or its links.
+		if (assembly) {
+			const own = (a: SystemAssembly | undefined, n: string) => JSON.stringify(a?.boards.find((x) => x.name === n))
+			for (const b of designed) {
+				if (!assembly.boards.some((ab) => ab.name === b.name)) continue
+				if (assemblySent.get(b.name) !== siblingsOf(assembly, b.name) || own(was, b.name) !== own(assembly, b.name)) touched.add(b.name)
+			}
 		}
-		if (r.links) {
-			const before = new Map(designed.map((b) => [b.name, JSON.stringify(boardLinks(spec, b.name))]))
-			spec = { ...spec, links: r.links }
-			for (const b of designed) if (before.get(b.name) !== JSON.stringify(boardLinks(spec, b.name))) touched.add(b.name)
-		}
+		for (const b of designed) if (beforeLinks.get(b.name) !== JSON.stringify(boardLinks(spec, b.name))) touched.add(b.name)
 		writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, ...(assembly ? { assembly } : {}) }, null, 2))
 		trace.round++
+		if (touched.size === 0) trace.emit({ board: "system", step: "request", status: "ok", detail: "no board's view of the system changed" })
 		for (const name of touched) {
 			const dir = boardDir(outDir, name)
 			const text = `The engineer changed the system (${spec.name})${r.text ? `: ${r.text}` : ""}.`
-			const links = r.links ? boardLinks(spec, name) : undefined
+			const links = beforeLinks.get(name) !== JSON.stringify(boardLinks(spec, name)) ? boardLinks(spec, name) : undefined
 			asked.set(name, readTrace(dir).length)
 			appendRequest(dir, text, undefined, links, assembly ? handAssembly(name) : undefined)
 			sent.push({ board: name, text })

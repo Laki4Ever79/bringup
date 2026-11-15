@@ -1,6 +1,6 @@
 // The physical body of a system of boards: where each board sits and how big it is, in one description that the boards,
 // the chassis builder and the 3D view all read. Optional on a SystemSpec; a spec without one behaves as before.
-import type { SystemSpec } from "./spec.ts"
+import type { SystemLink, SystemSpec } from "./spec.ts"
 import type { Mechanics } from "../mechanics/types.ts"
 
 export type BodyKind = "chassis" | "enclosure" | "separate"
@@ -20,10 +20,41 @@ export interface AssemblyBoard {
 
 export interface AssemblyPlate { lengthMm: number; widthMm: number }
 
+// A cable's route in the chassis frame (same origin and axes as the boards), one point per bend, end to end.
+export interface AssemblyCable { link: string; points: { xMm: number; yMm: number }[] }
+
 export interface SystemAssembly {
 	body: BodyKind
 	plate?: AssemblyPlate
 	boards: AssemblyBoard[]
+	cables?: AssemblyCable[]
+}
+
+// A routed cable is cut this much longer than its route, for the bends at both plugs.
+export const CABLE_SLACK_MM = 40
+
+export function cableLength(points: { xMm: number; yMm: number }[]): number {
+	let sum = 0
+	for (let i = 1; i < points.length; i++) sum += Math.hypot(points[i].xMm - points[i - 1].xMm, points[i].yMm - points[i - 1].yMm)
+	return sum
+}
+
+// The spec a system request makes: its assembly patch over the current one (boards and plate replaced whole, the rest
+// merged), its links replacing the old, and every routed link's cable length set from its route. Pure: the run applies
+// it and the dashboard validates it, the same way.
+export function mergeRequest(spec: SystemSpec, r: { assembly?: Partial<SystemAssembly>; links?: SystemLink[] }): SystemSpec {
+	let out = spec
+	const a = spec.assembly
+	if (r.assembly && a) out = { ...out, assembly: { ...a, ...r.assembly, boards: r.assembly.boards ?? a.boards, plate: r.assembly.plate ?? a.plate } }
+	if (r.links) out = { ...out, links: r.links }
+	const cables = r.assembly && a ? r.assembly.cables : undefined
+	if (cables?.length) {
+		out = { ...out, links: out.links.map((l) => {
+			const c = cables.find((x) => x.link === l.id)
+			return c && c.points.length >= 2 ? { ...l, cable: { ...l.cable, lengthMm: Math.round(cableLength(c.points) + CABLE_SLACK_MM) } } : l
+		}) }
+	}
+	return out
 }
 
 // Size along x and y once the rotation is applied (a quarter turn swaps them).

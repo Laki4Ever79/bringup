@@ -6,7 +6,7 @@ import type { startRunProcess } from "../src/runner/spawn-run.ts"
 import type { SystemSpec } from "../src/system/spec.ts"
 import { runSystem, SYSTEM_REQUESTS } from "../src/system/run.ts"
 import { readSystemTrace, stepOf } from "../src/system/trace.ts"
-import { defaultAssembly } from "../src/system/assembly.ts"
+import { CABLE_SLACK_MM, cableLength, defaultAssembly } from "../src/system/assembly.ts"
 import { fixtureContract } from "./fixture.ts"
 import { tempDir, waitFor } from "./helpers.ts"
 
@@ -123,4 +123,58 @@ test("--stay: a board that settles again after its own edit makes the system che
 		await run
 		timers.forEach(clearInterval)
 	}
+})
+
+// Drives a --stay run, sends one request line, waits for the system's next settle (or, for a request touching nothing,
+// for its "no board's view changed" line), and returns how many requests each board got.
+async function stayRequest(spec: SystemSpec, request: object) {
+	const out = tempDir(), timers: NodeJS.Timeout[] = []
+	let stop!: () => void
+	const until = new Promise<void>((r) => (stop = r))
+	const run = runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 3000, start: settlingBoards(timers), stay: { until } })
+	try {
+		await waitFor(() => readSystemTrace(out).some((l) => l.board === "system" && l.step === "settled"), 3000)
+		const count = (n: string) => requestsOf(join(out, "boards", n)).length
+		const before = Object.fromEntries(spec.boards.map((b) => [b.name, count(b.name)]))
+		appendFileSync(join(out, SYSTEM_REQUESTS), JSON.stringify({ at: new Date().toISOString(), ...request }) + "\n")
+		await waitFor(() => readSystemTrace(out).some((l) => l.step === "request" && l.round >= 1 && (l.status === "started" || /no board/.test(l.detail ?? ""))), 3000)
+		await new Promise((r) => setTimeout(r, 200))
+		const gained = Object.fromEntries(spec.boards.map((b) => [b.name, count(b.name) - before[b.name]]))
+		return { out, gained, system: JSON.parse(readFileSync(join(out, "system.json"), "utf8")) as SystemSpec }
+	} finally {
+		stop()
+		await run
+		timers.forEach(clearInterval)
+	}
+}
+
+test("--stay: moving one board of two touches both (each is the other's sibling), and the chassis rewrites system.json", async () => {
+	const spec = robot()
+	const moved = spec.assembly!.boards.map((b) => (b.name === "front" ? { ...b, yMm: b.yMm + 3 } : b))
+	const { gained } = await stayRequest(spec, { assembly: { boards: moved } })
+	assert.deepEqual(gained, { main: 1, front: 1 })
+})
+
+test("--stay: only the boards whose view changed are re-sent (a request that changes nothing touches none)", async () => {
+	const spec = robot()
+	const same = await stayRequest(spec, { assembly: { boards: spec.assembly!.boards } })
+	assert.deepEqual(same.gained, { main: 0, front: 0 })
+	// A plate change on a system whose body is separate has no chassis to carry: nothing is re-sent.
+	const separate: SystemSpec = { ...spec, assembly: { ...spec.assembly!, body: "separate" } }
+	const sep = await stayRequest(separate, { assembly: { plate: { lengthMm: 200, widthMm: 150 } } })
+	assert.deepEqual(sep.gained, { main: 0, front: 0 })
+	// A link change reaches both ends of that link only through the boards whose links changed.
+	const l = spec.links[0]
+	const links = await stayRequest(spec, { links: [{ ...l, baud: 9600 }] })
+	assert.deepEqual(links.gained, { main: 1, front: 1 })
+})
+
+test("--stay: a cable route survives the merge and sets the link's cable length plus slack", async () => {
+	const spec = robot()
+	const cables = [{ link: "L1", points: [{ xMm: 0, yMm: 0 }, { xMm: 30, yMm: 0 }, { xMm: 30, yMm: 40 }] }]
+	assert.equal(cableLength(cables[0].points), 70)
+	const { system } = await stayRequest(spec, { assembly: { cables } })
+	assert.deepEqual(system.assembly!.cables, cables)
+	assert.equal(system.links[0].cable.lengthMm, 70 + CABLE_SLACK_MM)
+	assert.equal(system.assembly!.boards.length, 2, "boards and plate are kept")
 })
