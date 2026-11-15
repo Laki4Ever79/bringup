@@ -341,7 +341,7 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	}
 	const driver = parts.find((p) => p.role === "motor-driver")
 	if (driver) {
-		const vm = charger || parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS"
+		const vm = motorSupplyNet(parts)
 		if (driver.pins.includes("VM")) {
 			jobs.push({ job: `${driver.ref}.VM bulk (the motors' supply)`, spec: SUPPORT.bulk, a: { net: vm }, b: GND, near: driver.ref })
 			jobs.push({ job: `${driver.ref}.VM decoupling`, spec: SUPPORT.decouple, a: { net: vm }, b: GND, near: driver.ref })
@@ -1488,6 +1488,18 @@ export const MAX_TRACK_MM = 1
 export const POUR = { clearanceMm: 0.3, edgeMm: 0.5 }
 // The track width each supply net needs where the default is too thin: a rail by its peak load (loadMa), ground by the
 // largest rail's (the return carries it). A board whose rails all fit the default gets none, so its routing is unchanged.
+// An emergency stop button's plug (role estop, pins VBAT and VM): its NC contact opens the motors' supply
+// (catalog/mechanics.json safety; Eurobot General Rules 1.2 F.4.c). With one, the driver's VM is fed from MOTOR_VM.
+export const MOTOR_VM_NET = "MOTOR_VM"
+export function estopPlug(parts: Part[]): Part | undefined {
+	return parts.find((p) => p.role === "estop" && p.pins.includes("VBAT") && p.pins.includes("VM"))
+}
+// The net a motor driver's VM sits on: after the emergency stop when there is one, else the cell (or USB's VBUS with no
+// cell on the board).
+export function motorSupplyNet(parts: Part[]): string {
+	if (estopPlug(parts)) return MOTOR_VM_NET
+	return parts.some((p) => p.role === "charger" || p.role === "battery") ? "VBAT" : "VBUS"
+}
 export function supplyWidths(s: ContractSnapshot): Map<string, number> {
 	const out = new Map<string, number>()
 	for (const r of s.values.rails ?? []) {
@@ -1496,6 +1508,8 @@ export function supplyWidths(s: ContractSnapshot): Map<string, number> {
 		out.set(netName(r.name), w)
 		out.set("GND", Math.max(out.get("GND") ?? 0, w))
 	}
+	// The motors' supply after the emergency stop carries the cell's current, as VBAT does.
+	if (estopPlug(s.values.parts ?? []) && out.has("VBAT")) out.set(MOTOR_VM_NET, out.get("VBAT")!)
 	return out
 }
 // A net too wide for a track (MAX_TRACK_MM) becomes a copper pour: the one rail on top, ground on the bottom. A board
@@ -1599,7 +1613,12 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// each output pair to its motor's connector.
 	const driver = parts.find((p) => p.role === "motor-driver")
 	if (driver) {
-		if (driver.pins.includes("VM")) join(charger || battery ? "VBAT" : "VBUS", driver.ref, "VM")
+		const vm = motorSupplyNet(parts)
+		if (!nets.has(vm)) nets.set(vm, [])
+		if (driver.pins.includes("VM")) join(vm, driver.ref, "VM")
+		// The emergency stop's NC contact (its connector, role estop) between the cell and the motors' supply.
+		const estop = estopPlug(parts)
+		if (estop) { join("VBAT", estop.ref, "VBAT"); join(MOTOR_VM_NET, estop.ref, "VM") }
 		for (const pin of ["AISEN", "BISEN"]) if (driver.pins.includes(pin)) join("GND", driver.ref, pin)
 		const [ma, mb] = motorConnectors(parts)
 		for (const [k, side] of [[ma, "A"], [mb, "B"]] as const)

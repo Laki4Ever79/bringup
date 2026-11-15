@@ -845,5 +845,92 @@
 				}
 			}
 		}
+	],
+	"safety": [
+		{
+			"mpn": "OMRON A22E-M-01 emergency stop 40 mm red, 1 NC",
+			"kind": "estop",
+			"buy": [
+				{
+					"supplier": "LCSC",
+					"url": "https://www.lcsc.com/product-detail/C2726899.html"
+				},
+				{
+					"supplier": "Mouser",
+					"url": "https://www.mouser.com/ProductDetail/653-A22E-M-01"
+				}
+			],
+			"colour": "red",
+			"contacts": "NC",
+			"reset": "turn",
+			"headMm": 40,
+			"aboveMm": 32,
+			"belowMm": 54.7,
+			"bodyMm": 34,
+			"panelHoleMm": 22.3,
+			"panelMinMm": 1,
+			"panelMaxMm": 3,
+			"ratedDcV": 24,
+			"dcInductiveA": 1.5,
+			"dcResistiveA": 10,
+			"minLoadMa": 10,
+			"minLoadV": 5,
+			"massG": 56.32,
+			"notes": "Its NC contact sits in the motor supply (VBAT to the driver's VM, through the board's e-stop connector): pressing it opens the motors' supply at once, the controller stays on (Eurobot F.4.c tolerates that). Motor current keeps the contact above its 10 mA minimum load; a logic-level sense line (0.3 mA) would sit under it.",
+			"source": {
+				"headMm": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "Omron A22E datasheet, p. 11 Dimensions, A22E-M (40-dia. push-lock turn-reset): head 40 dia., 32 mm in front of the panel, 54.7 mm behind it, body 34 mm"
+				},
+				"aboveMm": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "Omron A22E datasheet, p. 11 Dimensions, A22E-M (40-dia. push-lock turn-reset): head 40 dia., 32 mm in front of the panel, 54.7 mm behind it, body 34 mm"
+				},
+				"belowMm": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "Omron A22E datasheet, p. 11 Dimensions, A22E-M (40-dia. push-lock turn-reset): head 40 dia., 32 mm in front of the panel, 54.7 mm behind it, body 34 mm"
+				},
+				"bodyMm": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "Omron A22E datasheet, p. 11 Dimensions, A22E-M (40-dia. push-lock turn-reset): head 40 dia., 32 mm in front of the panel, 54.7 mm behind it, body 34 mm"
+				},
+				"panelHoleMm": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "p. 12 Panel Cutout Dimensions: 22.3 +0.4/0 dia."
+				},
+				"panelMinMm": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "p. 12 Panel Cutout Dimensions: allowable panel thickness 1 to 3 mm"
+				},
+				"panelMaxMm": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "p. 12 Panel Cutout Dimensions: allowable panel thickness 1 to 3 mm"
+				},
+				"ratedDcV": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "p. 9 Ratings, Contacts (Standard Load): 24 VDC, DC13 (inductive) 1.5 A, DC12 (resistive) 10 A; note 2: minimum applicable load 10 mA at 5 VDC"
+				},
+				"dcInductiveA": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "p. 9 Ratings, Contacts (Standard Load): 24 VDC, DC13 (inductive) 1.5 A, DC12 (resistive) 10 A; note 2: minimum applicable load 10 mA at 5 VDC"
+				},
+				"dcResistiveA": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "p. 9 Ratings, Contacts (Standard Load): 24 VDC, DC13 (inductive) 1.5 A, DC12 (resistive) 10 A; note 2: minimum applicable load 10 mA at 5 VDC"
+				},
+				"minLoadMa": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "p. 9 Ratings, Contacts (Standard Load): 24 VDC, DC13 (inductive) 1.5 A, DC12 (resistive) 10 A; note 2: minimum applicable load 10 mA at 5 VDC"
+				},
+				"minLoadV": {
+					"url": "https://www.farnell.com/datasheets/202563.pdf",
+					"where": "p. 9 Ratings, Contacts (Standard Load): 24 VDC, DC13 (inductive) 1.5 A, DC12 (resistive) 10 A; note 2: minimum applicable load 10 mA at 5 VDC"
+				},
+				"massG": {
+					"url": "https://www.lcsc.com/product-detail/C2726899.html",
+					"where": "LCSC listing weight 56.32 g (may include packing: the heavier reading is kept, so the mass is not understated)"
+				}
+			}
+		}
 	]
 }

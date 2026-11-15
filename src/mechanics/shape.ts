@@ -15,7 +15,7 @@ export function motionShapeError(v: unknown): string | null {
 // The shape, for the mechanics engineer's instruction (agents/roles.ts) as well as the error.
 
 export const MECHANICS_SHAPE =
-	'mechanics must be {drive: {kind: "differential", motor, wheel, caster (catalog/mechanics.json mpns), trackMm, wheelbaseMm, axleXMm}, battery: {pack (mpn), at: {xMm, yMm}}, sensor: {module (catalog sensors mpn), at: {xMm, yMm, zMm}, connector (board connector ref)}, chassis: {plateMm: [length, width], thicknessMm, material: "PLA", clearanceMm, boards: [{name, at: {xMm, yMm}, rotDeg: 0|90|180|270}]}, driveTrain?} (mm; origin at the plate centre, +x forward). ' + DRIVE_TRAIN_SHAPE
+	'mechanics must be {drive: {kind: "differential", motor, wheel, caster (catalog/mechanics.json mpns), trackMm, wheelbaseMm, axleXMm}, battery: {pack (mpn), at: {xMm, yMm}}, sensor: {module (catalog sensors mpn), at: {xMm, yMm, zMm}, connector (board connector ref)}, chassis: {plateMm: [length, width], thicknessMm, material: "PLA", clearanceMm, boards: [{name, at: {xMm, yMm}, rotDeg: 0|90|180|270}]}, safety?: {estop?: {part (catalog safety mpn), at: {xMm, yMm, zMm (the top of the panel it stands through)}, connector (board plug ref, role estop)}}, driveTrain?} (mm; origin at the plate centre, +x forward). ' + DRIVE_TRAIN_SHAPE
 export function mechanicsShapeError(v: unknown): string | null {
 	const shape = MECHANICS_SHAPE
 	if (!obj(v) || !obj(v.drive) || !obj(v.battery) || !obj(v.chassis) || !obj(v.sensor)) return shape
@@ -27,5 +27,11 @@ export function mechanicsShapeError(v: unknown): string | null {
 		typeof s.module === "string" && at(s.at) && typeof (s.at as Record<string, unknown>).zMm === "number" && typeof s.connector === "string" &&
 		pair(c.plateMm) && num(c.thicknessMm, 0.5) && c.material === "PLA" && num(c.clearanceMm) &&
 		Array.isArray(c.boards) && c.boards.every((x) => obj(x) && typeof x.name === "string" && at(x.at) && [0, 90, 180, 270].includes(x.rotDeg as number))
-	return ok ? driveTrainShapeError(v.driveTrain) : shape
+	if (!ok) return shape
+	if (v.safety !== undefined) {
+		const e = obj(v.safety) ? v.safety.estop : null
+		const estopOk = e === undefined || (obj(e) && typeof e.part === "string" && e.part !== "" && at(e.at) && typeof (e.at as Record<string, unknown>).zMm === "number" && typeof e.connector === "string" && e.connector !== "")
+		if (!obj(v.safety) || !estopOk) return 'mechanics.safety must be {estop?: {part (catalog safety mpn), at: {xMm, yMm, zMm (the top of the panel it stands through, off the floor)}, connector (the board plug ref, role estop)}}'
+	}
+	return driveTrainShapeError(v.driveTrain)
 }

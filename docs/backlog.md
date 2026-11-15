@@ -290,3 +290,12 @@ them as well, although it might not be the focus here".
       from a mock run. examples/rover-pi has no still.png.
 - [ ] **Null values in module records:** Jetson hole positions, ROCK 5B absolute holes, heights.
 - [ ] **Eurobot starter:** waits for the e-stop, pull-cord and rule-check modules. recordRunEvidence hook into fork settles.
+  - [x] **E-stop module** (16 Nov, bringup-system): `safety-estop-a22e`. An Omron A22E-M-01 (Ø40 mm red, 1 NC), every
+        number from Omron's datasheet. Its NC contact sits in the motors' supply (board plug JE1, JST XH: VBAT → MOTOR_VM →
+        the driver's VM), not on a logic line: the contact's minimum load is 10 mA at 5 V and a 3.3 V/10 kΩ sense line
+        carries 0.3 mA. Checked in mechanics/safety.ts: breaking current (both motors stalled at full charge against the
+        contact's DC13 1.5 A rating; the reference rover's two POLOLU-2367 draw 0.94 A at 4.2 V), pack voltage within 24 V, the plug, and the
+        mount (the 54.7 mm body must clear the plate, so the button needs a deck at least 111 mm up on the reference rover).
+  - [ ] **The e-stop's printed deck:** py/chassis.py doesn't generate the panel (1 to 3 mm thick at the button) yet.
+  - [ ] **Motor output traces stay 0.15 mm** (MOTOR_A1…B2 have no width rule; only rails get IPC-2221 widths). a 6 V
+        N20 stalls at 0.67 A (more at 2S): check against IPC-2221 and widen.
