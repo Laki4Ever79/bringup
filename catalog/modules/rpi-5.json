@@ -222,7 +222,8 @@
 			"also": {
 				"url": "https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-product-brief.pdf",
 				"where": "specification: 2 × USB 3.0, 2 × USB 2.0, Gigabit Ethernet, 2 × 4-lane MIPI, PCIe 2.0 x1"
-			}
+			},
+			"note": "atMm is null for the ports the drawing doesn't dimension (the CSI/DSI and PCIe connectors on the top face, the microSD slot underneath)"
 		},
 		"inputV": {
 			"value": {
