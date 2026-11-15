@@ -4,6 +4,8 @@
 // to the layout's choice instead of being pinned where it happened to be.
 import { test } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync as readFixture } from "node:fs"
+import { join as joinPath } from "node:path"
 import { circuitFromContract, icPinOffset, layoutBoard } from "../src/codegen/circuit.ts"
 import { checkMoves, moveRequest, movables, parseMoves, undoMoves, applyMoves } from "../src/dashboard/board-move.ts"
 import { LOGGER_DESIGN, ROVER_BOARD } from "../src/inference/scripts.ts"
@@ -178,5 +180,44 @@ test("a capacitor on a pad has its pad end toward the pad, at every turn of the 
 		const t = (c6.rotation * Math.PI) / 180
 		const end = (k: number) => Math.hypot(c6.x + k * 0.5 * Math.cos(t) - pad[0], c6.y + k * 0.5 * Math.sin(t) - pad[1])
 		assert.ok(end(-1) <= end(1) + 0.25, `C6's pin 1 faces away from VINT with U5 turned ${rotationDeg}° (C6 at rotation ${c6.rotation})`)
+	}
+})
+
+// Since a pin capacitor's ground goes to its part's own GND pin (9d40e20), VINT's capacitor is a two-pad one too (VINT
+// to GND, pins 14 and 13 side by side). Lying out from the pin row, one of its ends is always the far one: on the 42×29
+// mm rover with U5 turned 180° (the saved rover-turn run, revision 13) GND's trace ran 14.7 mm against its 5 mm bound
+// and no layout built (15 Nov 2026). A two-pad capacitor lies along its pads, each end beside its own pad.
+test("VINT's capacitor (VINT to its GND) lies along the two pads, and no pin capacitor's trace runs past its bound, at every turn and on the small rover", () => {
+	const part = ROVER_BOARD.parts.find((p) => p.ref === "U5")!
+	const caps = [["C6", "VINT", "GND"], ["C7", "VCP", "VM"]] as const
+	const boards: [string, ContractSnapshot][] = []
+	const s = rover()
+	const W = s.values.outline!.widthMm, H = s.values.outline!.heightMm
+	const u5 = layoutBoard(s).parts.find((p) => p.ref === "U5")!
+	for (const rotationDeg of [0, 90, 180, 270] as const) boards.push([`${W}×${H} turned ${rotationDeg}°`, applyMoves(s, [{ ref: "U5", xMm: u5.x + W / 2, yMm: u5.y + H / 2, rotationDeg }])])
+	// The saved run's own contract: the architect's 42×29 mm rover with U5 turned 180° on the board page.
+	boards.push(["42×29 turned 180° (rover-turn rev 13)", JSON.parse(readFixture(joinPath(import.meta.dirname, "fixtures/rover-turn-42x29-rev13.json"), "utf8")) as ContractSnapshot])
+	for (const [name, t] of boards) {
+		const placed = layoutBoard(t).parts
+		const drv = placed.find((p) => p.ref === "U5")!
+		const th = (drv.rotation * Math.PI) / 180
+		const pad = (pin: string) => {
+			const at = icPinOffset(part.footprint, part.pins.indexOf(pin) + 1)!
+			return [drv.x + at.x * Math.cos(th) - at.y * Math.sin(th), drv.y + at.x * Math.sin(th) + at.y * Math.cos(th)]
+		}
+		for (const [ref, a, b] of caps) {
+			const c = placed.find((p) => p.ref === ref)
+			assert.ok(c, `${ref} placed on ${name}`)
+			const r = (c.rotation * Math.PI) / 180
+			const end = (k: number) => [c.x + k * 0.5 * Math.cos(r), c.y + k * 0.5 * Math.sin(r)] // pin 1 at -x before the turn
+			const dist = (e: number[], p: number[]) => Math.hypot(e[0] - p[0], e[1] - p[1])
+			const d1 = dist(end(-1), pad(a)), d2 = dist(end(1), pad(b))
+			// An end with its own body between it and its pad routes round it: about 1 mm more.
+			const route = (e: number, p: number[], d: number) => d + (dist(end(-e), p) < d - 0.25 ? 1 : 0)
+			const worst = Math.max(route(-1, pad(a), d1), route(1, pad(b), d2))
+			const at = `(at ${c.x}, ${c.y}, rotation ${c.rotation})`
+			if (ref === "C6") assert.ok(Math.max(d1, d2) <= 4 && Math.abs(d1 - d2) <= 0.5, `${name}: C6 pin 1 is ${d1.toFixed(2)} mm from VINT, pin 2 ${d2.toFixed(2)} mm from GND ${at}`)
+			assert.ok(worst < 5, `${name}: ${ref}'s longer trace would be about ${worst.toFixed(2)} mm, past its 5 mm bound ${at}`)
+		}
 	}
 })
