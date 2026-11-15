@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>bringup_hardware</name>
+  <version>0.1.0</version>
+  <description>ros2_control hardware for robots Bringup designs: wheel commands to the robot's own firmware over its console (USB serial, or TCP to the firmware running in QEMU), its reports back as joint and range states.</description>
+  <maintainer email="bringup@example.invalid">Bringup</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>hardware_interface</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

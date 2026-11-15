@@ -1,0 +1,5 @@
+<library path="bringup_hardware">
+  <class name="bringup_hardware/BringupSystem" type="bringup_hardware::BringupSystem" base_class_type="hardware_interface::SystemInterface">
+    <description>Wheel commands to a Bringup robot's firmware over its console; its reports back as states.</description>
+  </class>
+</library>
