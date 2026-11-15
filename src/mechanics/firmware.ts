@@ -36,7 +36,11 @@ export function roverHeader(s: ContractSnapshot): string {
 	const brakeMm = (speed ** 2 / (2 * est("floorMu") * G)) * 1000
 	const stop = Math.ceil(motion.stopBeforeWallMm + STOP_MARGIN * (brakeMm + speed * sensor.updateMs))
 	const cruise = Math.min(1, Math.max(0.3, speed / topMps))
-	const turnMs = Math.round((Math.PI / 2 / ((2 * speed) / (mech.drive.trackMm / 1000))) * 1000)
+	// Three eighths of a turn, not a quarter: an open-loop quarter turn leaves the rover running along the wall it just
+	// faced, at whatever small angle the turn missed by, which its forward-only sensor can't see (real rover run on the
+	// Claude subscription, 15 Nov: stopped 173 mm short, turned, drove 0.73 m and clipped that wall). Turning further
+	// heads it away.
+	const turnMs = Math.round(((3 * Math.PI) / 4 / ((2 * speed) / (mech.drive.trackMm / 1000))) * 1000)
 	const lines = [
 		"// Generated from the design contract (src/mechanics/firmware.ts). Do not edit.",
 		"#pragma once",

@@ -225,3 +225,14 @@ test("a robot (motion set) gets the robot revision budget, not the board's", asy
 	// this harness has no chassis or drive builder).
 	assert.ok(t.settled.every((x) => x.revision > 4), JSON.stringify(t.settled))
 })
+
+test("quiet with a violation still open: its owners are reminded twice, then the run ends unsettled", async () => {
+	const t = setup({ breakFirmware: true })
+	t.writeAll()
+	await waitFor(() => t.settled.length > 0, 10_000)
+	assert.equal(t.settled[0].settled, false)
+	const reports = t.events.filter((e) => e.type === "consistency.checked" && ((e.payload as { violations: { kind: string }[] }).violations ?? []).some((v) => v.kind === "pin-mismatch"))
+	const last = reports.at(-1)!.payload as { revision: number }
+	// The final revision's report went out three times: once, then REMIND_ROUNDS (2) reminders.
+	assert.ok(reports.filter((e) => (e.payload as { revision: number }).revision === last.revision).length >= 3)
+})
