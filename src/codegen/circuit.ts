@@ -818,12 +818,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// The part that blocked the last spot is tried first: the next spot is usually blocked by it too (the same answer as
 	// trying them in order; a crowded board's search spent most of its time on the parts that weren't in the way).
 	let lastBlock = 0
-	// In the capsAlong layout a part's own pin capacitors keep CHIP_GAP_MM from each other, not GAP_MM: two 0402s beside
-	// the DRV8833's four VCP-VM-GND-VINT pins (2 mm of pin row) don't both fit 1.5 mm apart, and on the 60×21 mm rover
-	// (a real run, 15 Nov 2026) VCP's capacitor went below the row, 11 mm of trace. Each still keeps GAP_MM from
-	// everything else, the part itself included.
-	const siblings = (a: string, b: string) => !!opts.capsAlong && capOwner.has(a) && capOwner.get(a) === capOwner.get(b)
-	const blocks = (b: Placed, o: Placed, hug?: string) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) < (o.ref === hug || siblings(b.ref, o.ref) ? CHIP_GAP_MM : GAP_MM)
+	const blocks = (b: Placed, o: Placed, hug?: string) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) < (o.ref === hug ? CHIP_GAP_MM : GAP_MM)
 	const fits = (b: Placed, hug?: string) => {
 		if (Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM) return false
 		if (lastBlock < placed.length && blocks(b, placed[lastBlock], hug)) return false
@@ -842,7 +837,6 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// wide rover the driver went hard against the module and VINT's capacitor landed across it, 7.98 mm of trace against
 	// tscircuit's 5 mm, and every build failed (14 Nov 2026).
 	const pinCaps = supportParts(s).filter((sp) => sp.added && sp.spec.kind === "capacitor" && "ref" in sp.a && sp.near !== boardCrystal(s)?.ref)
-	const capOwner = new Map(pinCaps.map((sp) => [sp.ref, (sp.a as { ref: string }).ref]))
 	// A turned part (the board page) turns its pads, and these boxes with them.
 	const capBoxes = (b: Placed, footprint: string): Placed[] => {
 		if (b.rotation % 90 !== 0) return []
