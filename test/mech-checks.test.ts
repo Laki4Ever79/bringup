@@ -180,3 +180,21 @@ test("a short wheelbase tips back when accelerating hard: the margin is checked 
 	assert.match(m, /when accelerating hard/)
 	assert.match(m, /move weight \(the battery\) forward/)
 })
+
+// Real rover run 5 (15 Nov): nothing asked for the motor connectors, and the sensor's connector was named J2, the battery's ref.
+test("a robot without its two motor connectors is told to add them, to parts", () => {
+	const { c, cat } = variant((v) => (v.parts = v.parts.filter((p: Any) => !["JM1", "JM2"].includes(p.ref))))
+	const w = mechanicsChecksWith(c, cat).find((x) => /2-pin connector/.test(x.message))
+	assert.ok(w, "a driver and no motor connectors")
+	assert.deepEqual([w!.affects, w!.fields], [["parts"], ["parts"]])
+	assert.match(w!.message, /need 2 more 2-pin connectors.*JM1 and JM2/)
+	const two = variant(() => {})
+	assert.ok(!mechanicsChecksWith(two.c, two.cat).some((x) => /2-pin connector/.test(x.message)), "the reference rover has both")
+})
+
+test("a sensor connector ref that another part already has goes back to mechanics", () => {
+	const { c, cat } = variant((v) => (v.mechanics.sensor.connector = "J2"))
+	const w = mechanicsChecksWith(c, cat).find((x) => /already the battery/.test(x.message))!
+	assert.match(w.message, /mechanics\.sensor\.connector is J2, but J2 is already the battery .*name a free ref/)
+	assert.deepEqual(w.affects, ["mechanics"])
+})

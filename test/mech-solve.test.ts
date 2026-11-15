@@ -64,3 +64,8 @@ test("a proposed layout that fails the chassis checks is laid out again by the s
 	c.values.mechanics = r.mechanics
 	assert.deepEqual(mechanicsChecksWith(c, cat).filter((v) => v.kind !== "mech-wiring"), [])
 })
+
+test("a sensor connector ref another part has becomes JT1 in the solver's layout", () => {
+	const r = solveChassis(rover(), { ...pick, connector: "J2" }, cat)
+	assert.equal(r.mechanics?.sensor.connector, "JT1")
+})

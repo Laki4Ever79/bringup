@@ -285,8 +285,16 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	const onMotor = pins.filter((p) => motorPlugs.has(p.partRef) && typeof p.gpio === "number" && p.gpio >= 0)
 	if (onMotor.length)
 		push("mech-wiring", `${onMotor.map((p) => `${p.signal} (GPIO${p.gpio}) goes to motor connector ${p.partRef}`).join("; ")}: a motor never connects to a GPIO. Remove these pins: the board generator wires the motor driver's outputs to the 2-pin motor connectors, and the GPIOs drive the driver's inputs MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2`, ["architect"], ["pins"])
-	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector") : undefined
+	// Each motor's two wires need a 2-pin connector on the driver's outputs (real rover run 5, 15 Nov: nothing asked for
+	// them, so the motors were never connected). The generator wires the driver's AOUT/BOUT to them, in ref order.
+	if (driver && motorPlugs.size < 2)
+		push("mech-wiring", `the motors need ${2 - motorPlugs.size} more 2-pin connector${motorPlugs.size === 1 ? "" : "s"} (role connector, pins ["1", "2"], the JST PH B2B-PH-K-S in the catalog; refs JM1 and JM2), one per motor: the board generator wires the driver's outputs to them`, ["parts"], ["parts"])
+	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector" && p.pins.length === 4) : undefined
+	// The sensor's connector ref taken by another part (real rover run 5: "J2", the battery connector): no part can be
+	// added under it, so the ref itself is what to change.
+	const taken = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && !(p.role === "connector" && p.pins.length === 4)) : undefined
 	if (!mech.sensor) push("mech-wiring", "no distance sensor in the mechanics design: the rover avoids walls with one at the front", ["mechanics"])
+	else if (taken) push("mech-wiring", `mechanics.sensor.connector is ${taken.ref}, but ${taken.ref} is already the ${taken.role} ${taken.mpn}: name a free ref for the sensor's 4-pin connector (JT1)`, ["mechanics"], ["mechanics"])
 	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["parts"], ["parts"])
 	// The board generator joins the plug's IO1/IO2 to the bus (linkBusTraces): the bus must exist on its board.
 	else if (!["I2C_SDA", "I2C_SCL"].every((sig) => boards.some((b) => (b.snapshot.values.parts ?? []).some((p) => p.ref === plug.ref) && (b.snapshot.values.pins ?? []).some((p) => p.signal === sig))))
