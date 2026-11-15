@@ -6,7 +6,7 @@ import { plateLimitForBrief, blocksSensor, motorHalfUnder, motorUnderPlateMm, mo
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
-import { edgeForceN, G, massAndCom, motorAt, mounts, supportPolygon } from "./model.ts"
+import { cruiseDuty, edgeForceN, G, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, payloadMount, supportPolygon } from "./model.ts"
 import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 
 // The plain-code mechanics checks: free, instant, run on every contract change. Each states its numbers, the limit,
@@ -158,6 +158,7 @@ const USES: Record<string, [PartKey, string[]][]> = {
 	"Caster climb": [["caster", ["wheelMm"]], ...MASSES],
 	"mech-speed": [["motor", ["noLoadRpm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]]],
 	"Top speed": [["motor", ["noLoadRpm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]]],
+	"Cruise duty": [["motor", ["noLoadRpm", "stallTorqueNm", "stallA", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["fullV"]], ...MASSES],
 	"mech-stopping": [["sensor", ["rangeMm", "updateMs"]]],
 	"Stopping distance": [["sensor", ["rangeMm", "updateMs"]]],
 	"mech-current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV", "peakA"]]],
@@ -231,8 +232,7 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const boardInfo = boards.map((b) => ({ name: b.name, outline: { widthMm: b.snapshot.values.outline?.widthMm ?? 0, heightMm: b.snapshot.values.outline?.heightMm ?? 0 } }))
 	for (const b of mech.chassis.boards) if (!boards.some((x) => x.name === b.name)) push("mech-fit", `the chassis places board "${b.name}", which this design doesn't have (its boards: ${boards.map((x) => x.name).join(", ")}): place only the design's boards`)
 	const ms: Mount[] = mounts(mech, boardInfo, cat.mech)
-	const plateTop = mech.chassis.clearanceMm + mech.chassis.thicknessMm
-	ms.push({ what: "payload", xMm: 0, yMm: 0, zMm: plateTop + 10, sizeMm: [20, 20, 20], massG: motion.payloadG })
+	ms.push(payloadMount(mech, motion.payloadG))
 	const { massG, com } = massAndCom(ms)
 	const fig = (check: string, value: string, limit: string, ok: boolean, note?: string) => figures.push({ check, value, limit, ok, ...(note ? { note } : {}) })
 	const massKg = massG / 1000
@@ -272,6 +272,15 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	fig("Top speed", `${r2(topMps)} m/s`, `at least ${motion.speedMps} m/s`, topMps >= motion.speedMps, `loaded, ${SPEED_LOAD_DERATE} of no-load at ${pack.nominalV} V`)
 	if (topMps < motion.speedMps)
 		push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels reaches about ${r2(topMps)} m/s at ${pack.nominalV} V under load (${SPEED_LOAD_DERATE} of no-load), short of the ${motion.speedMps} m/s target: pick a lower gear ratio or bigger wheels`)
+
+	// Cruise duty: what the firmware drives at (firmware.ts, the same cruiseDuty). A motor geared far faster than the
+	// target cruises at a sliver of its duty; the firmware used to raise it silently to the floor, overshooting the speed.
+	const duty = cruiseDuty(motor, pack, motion.speedMps, massKg, r)
+	if (duty <= 1) {
+		fig("Cruise duty", `${r2(duty)}`, `at least ${MIN_CRUISE_DUTY}`, duty >= MIN_CRUISE_DUTY, `${motion.speedMps} m/s on the load line from a full ${pack.fullV} V pack ${estNote("rollingCrr")}`)
+		if (duty < MIN_CRUISE_DUTY)
+			push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels holds ${motion.speedMps} m/s at only ${r2(duty)} duty from a full ${pack.fullV} V pack (at least ${MIN_CRUISE_DUTY} wanted): it is geared about ${r1(MIN_CRUISE_DUTY / duty)}× too fast, with little torque in hand at that duty; pick a higher gear ratio or smaller wheels`)
+	}
 
 	// Stopping: braking distance plus one sensor period of travel must fit between the sensor's range and the wall
 	// distance the brief allows.
