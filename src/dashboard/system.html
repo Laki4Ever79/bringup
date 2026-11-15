@@ -408,6 +408,7 @@ async function showPlan(d) {
 }
 // The build wrote the design: the plan's drawing and panel go, and the stage starts as for any design.
 function leavePlan() {
+	stopProgress()
 	planning.canvas.dispose()
 	planning.panel.dispose()
 	planning.canvas = planning.panel = null
@@ -431,9 +432,12 @@ function subscribe(d) {
 // The system's own trace (system-trace.jsonl) as a strip of every board's steps, plus a badge on each board in both
 // views. An old run has no trace: the stream stays quiet and the strip stays hidden. A one-board design has no stream.
 function followProgress(d) {
-	if (stage.progress || d.single) return
+	if (stage.progress || stage.progressGone) return
 	stage.badges = {}
-	import("/progress.js").then(({ mountProgress, badgeOf }) => {
+	const token = { src: null, strip: null }
+	stage.progress = token
+	import("/progress.js").then(({ mountProgress, badgeOf, stepOfEvent }) => {
+		if (stage.progress !== token) return // stopped before the module arrived
 		const strip = mountProgress(document.getElementById("progress-host"), {
 			onPick: (board) => window.openBoard?.(board),
 			onChange: (st) => {
@@ -441,10 +445,35 @@ function followProgress(d) {
 				applyBadges()
 			},
 		})
-		stage.progress = new EventSource(`/api/systems/${encodeURIComponent(id)}/stream`)
-		stage.progress.onmessage = (m) => { try { strip.push(JSON.parse(m.data)) } catch {} }
+		// A one-board design has no system trace: its own run's events, mapped to the same steps.
+		const one = d.single ? d.boards[0] : null
+		if (d.single && !one?.runId) { strip.dispose(); stage.progress = null; return }
+		const src = new EventSource(one ? `/runs/${encodeURIComponent(one.runId)}/events` : `/api/systems/${encodeURIComponent(id)}/stream`)
+		src.onmessage = (m) => {
+			try {
+				const l = JSON.parse(m.data)
+				if (!one) return strip.push(l)
+				const s = stepOfEvent(l)
+				if (s) strip.push({ at: l.at ?? new Date().toISOString(), round: 0, board: one.name, ...s })
+			} catch {}
+		}
+		src.onerror = () => { if (src.readyState === 2) { stage.progressGone = true; stopProgress() } }
+		token.src = src; token.strip = strip
 	}, () => {})
 }
+// Closes the stream and takes the strip down (the page leaves the design, or the stream is gone for good).
+function stopProgress() {
+	const p = stage.progress
+	if (!p) return
+	stage.progress = null
+	p.src?.close()
+	p.strip?.dispose()
+	stage.badges = {}
+	applyBadges()
+}
+window.__stopProgress = stopProgress
+window.__progressOpen = () => Boolean(stage.progress?.src && stage.progress.src.readyState !== 2)
+addEventListener("pagehide", stopProgress)
 const applyBadges = () => { stage.top?.setBadges(stage.badges ?? {}); stage.world?.setBadges?.(stage.badges ?? {}) }
 async function startStage(d) {
 	followProgress(d)
