@@ -740,5 +740,86 @@
 				}
 			}
 		}
+	],
+	"hardware": [
+		{
+			"mpn": "M2x8 self-tapping pan head screw (for plastic)",
+			"kind": "screw",
+			"threadMm": 2,
+			"lengthMm": 8,
+			"selfTapping": true,
+			"buy": [
+				{
+					"supplier": "Elecrow",
+					"url": "https://www.elecrow.com/m2-screw-8mm.html",
+					"packQty": 200
+				}
+			],
+			"source": {
+				"threadMm": {
+					"url": "https://www.elecrow.com/m2-screw-8mm.html",
+					"where": "Thread size: M2; 'Self-tapping (suitable for plastics and wood)', Philips pan head, 304 stainless"
+				},
+				"lengthMm": {
+					"url": "https://www.elecrow.com/m2-screw-8mm.html",
+					"where": "Length: 8mm (200 pcs per pack)"
+				}
+			}
+		},
+		{
+			"mpn": "M4x10 socket head cap screw (ISO 4762)",
+			"kind": "screw",
+			"threadMm": 4,
+			"pitchMm": 0.7,
+			"lengthMm": 10,
+			"selfTapping": false,
+			"buy": [
+				{
+					"supplier": "MW Components",
+					"url": "https://mwcomponents.com/shop/m4-0-7x10mm-sh-al-z-y"
+				}
+			],
+			"source": {
+				"threadMm": {
+					"url": "https://mwcomponents.com/shop/m4-0-7x10mm-sh-al-z-y",
+					"where": "Thread size: M4 x 0.7"
+				},
+				"pitchMm": {
+					"url": "https://mwcomponents.com/shop/m4-0-7x10mm-sh-al-z-y",
+					"where": "Dimensions: pitch 0.7 mm"
+				},
+				"lengthMm": {
+					"url": "https://mwcomponents.com/shop/m4-0-7x10mm-sh-al-z-y",
+					"where": "Length: 10 mm"
+				}
+			}
+		},
+		{
+			"mpn": "M4 hex nut (DIN 934 / ISO 4032)",
+			"kind": "nut",
+			"threadMm": 4,
+			"heightMm": 3.2,
+			"acrossFlatsMm": 7,
+			"buy": [
+				{
+					"supplier": "Frank's Fasteners",
+					"url": "https://www.franksfasteners.co.uk/products/m4-hexagon-nuts-din-934-stainless-steel-a2"
+				}
+			],
+			"source": {
+				"threadMm": {
+					"url": "https://www.franksfasteners.co.uk/products/m4-hexagon-nuts-din-934-stainless-steel-a2",
+					"where": "title: M4 Hexagon Nuts (DIN 934) - Stainless Steel (A2)"
+				},
+				"heightMm": {
+					"url": "https://www.franksfasteners.co.uk/products/m4-hexagon-nuts-din-934-stainless-steel-a2",
+					"where": "Nut Thickness (M) 3.2mm"
+				},
+				"acrossFlatsMm": {
+					"url": "https://www.franksfasteners.co.uk/products/m4-hexagon-nuts-din-934-stainless-steel-a2",
+					"where": "Nut Width A/F (S) 7mm"
+				}
+			}
+		}
 	]
 }

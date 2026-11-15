@@ -149,6 +149,7 @@ export function sourcingLine(bomPath: string): string {
 	if (robot) {
 		lines.push(`- Robot parts: ${robot.warn ? "needs attention: " : ""}${robot.summary}`)
 		if (robot.live) for (const l of robot.lines.filter((x) => x.status !== "in stock")) lines.push(`  - ${l.item} (${l.mpn}): ${l.status === "not checked" ? l.note : `${l.status} · ${l.note}`}`)
+		for (const n of robot.notes ?? []) lines.push(`  - Not fastened yet: ${n}`)
 	}
 	return lines.join("\n")
 }

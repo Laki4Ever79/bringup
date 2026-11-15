@@ -221,4 +221,12 @@ test("the report's sourcing lines include the robot's parts: the summary, then e
 	assert.match(text, /  - battery \(battery part\): out of stock · adafruit\.com/)
 	assert.match(text, /  - motor \(motor part\): not checked: pololu\.com refused the automated check \(HTTP 403\)/)
 	assert.doesNotMatch(text, /distance sensor \(/)
+	assert.doesNotMatch(text, /Not fastened yet/, "no notes, no line")
+})
+
+test("the report lists what the robot's design doesn't fasten yet", () => {
+	const dir = tempDir()
+	const path = join(dir, "bom.json")
+	writeFileSync(path, JSON.stringify({ revision: 1, totalUsd: null, items: [], robot: { live: false, knownUsd: null, warn: false, summary: "8 robot parts · not checked (mock run)", lines: [], notes: ["the sensor bracket: no screw holes yet"] } }))
+	assert.match(sourcingLine(path), /  - Not fastened yet: the sensor bracket: no screw holes yet/)
 })
