@@ -1591,7 +1591,162 @@ export function usbPadSignal(pin: string): string | undefined {
 	return (Object.entries(USBC_PADS) as [string, string[]][]).find(([, pads]) => pads.includes(pin))?.[0].replace(/^DP$/, "D+").replace(/^DN$/, "D-")
 }
 
+// The bound tscircuit holds a pin capacitor's traces to (maxDecouplingTraceLength), null for none: 5 mm for a part's
+// own capacitor (the DRV8833's VINT and VCP), 20 mm for a bare chip's decoupling, none for a crystal's load capacitors.
+function capBound(s: ContractSnapshot, sp: Support): number | null {
+	if (!sp.added || sp.spec.kind !== "capacitor" || sp.near === boardCrystal(s)?.ref || !("ref" in sp.a || "ref" in sp.b)) return null
+	return chipProfile((s.values.parts ?? []).find((p) => p.ref === sp.near)) !== null ? 20 : 5
+}
+
+// Half the distance between a chip capacitor's two pad centres (tscircuit's footprints).
+const CAP_TERMINAL_MM: Record<string, number> = { "0402": 0.5, "0603": 0.75, "0805": 0.95 }
+// tscircuit's trace width and copper clearance, and a little margin: drawn traces keep this far from other copper.
+const DRAWN_CLEAR_MM = 0.075 + 0.1 + 0.05
+
+export interface CapPath {
+	cap: string
+	part: string
+	pin: string // the part's pin the trace starts from
+	points: { x: number; y: number }[] // board frame (the placement's), pad first, the capacitor's terminal last
+	local: { x: number; y: number }[] // the corners between, from the part's origin unturned: tscircuit's pcbPath
+	lengthMm: number
+	boundMm: number
+}
+
+// The traces of a capacitor wired between two pins on one side of one part (the DRV8833's VCP-to-VM, and VINT to its
+// GND), drawn by the generator instead of left to the router. Each runs straight out along its own pad's row to the
+// terminal's column, then to the terminal, so the far end's trace never crosses the near end's. Left to the router, the
+// far end's trace took whatever room was left beside the capacitor: on the 60×21 mm rover, I2C and GND traces had taken
+// the gap between C3 and C4, and VM's trace detoured through vias, 8.4-11.6 mm against its 5 mm bound, at every layout
+// (15 Nov 2026). Drawn, they measured 2.1-4.3 mm in a real build and the router routed the rest around them.
+// A part's capacitors are drawn all or none: none when a trace would run back into the part, past its bound, or within
+// DRAWN_CLEAR_MM of other copper (another drawn trace, another pad of the part or of its capacitors).
+export function capPaths(s: ContractSnapshot, opts: PlacementOptions = {}): CapPath[] {
+	return drawnCapPaths(s, new Map(placeParts(s, opts).map((b) => [b.ref, b])))
+}
+
+function drawnCapPaths(s: ContractSnapshot, placement: Map<string, Placed>): CapPath[] {
+	const parts = s.values.parts ?? []
+	type Pt = { x: number; y: number }
+	const origin = (b: Placed): Pt => ({ x: b.ox ?? b.x, y: b.oy ?? b.y })
+	const both = supportParts(s).filter((sp) => capBound(s, sp) !== null && "ref" in sp.a && "ref" in sp.b && sp.a.ref === sp.b.ref)
+	const out: CapPath[] = []
+	for (const owner of new Set(both.map((sp) => (sp.a as { ref: string }).ref))) {
+		const part = parts.find((p) => p.ref === owner)
+		const box = placement.get(owner)
+		if (!part || !box || box.rotation % 90 !== 0) continue
+		const fp = footprintFor(part)
+		const pad = padGeometry(fp)
+		const normalOf = (pin: string): Pt | null => {
+			const at = padOffset(fp, part.pins.indexOf(pin) + 1, box.rotation)
+			return at ? (Math.abs(at.x) >= Math.abs(at.y) ? { x: Math.sign(at.x), y: 0 } : { x: 0, y: Math.sign(at.y) }) : null
+		}
+		// padOffset gives a dual-row package's lead span (where besidePin measures from); the pad's centre is half its
+		// length further out (footprinter's legsoutside): the DRV8833's at 3.93 mm from the middle, not 3.2.
+		const padOf = (pin: string): Pt | null => {
+			const at = padOffset(fp, part.pins.indexOf(pin) + 1, box.rotation)
+			const n = normalOf(pin)
+			return at && n ? { x: origin(box).x + at.x + n.x * pad.out, y: origin(box).y + at.y + n.y * pad.out } : null
+		}
+		const group = both.filter((sp) => (sp.a as { ref: string }).ref === owner)
+		const paths: CapPath[] = []
+		// Every pad nearby, with the pin or terminal it belongs to: the part's own and its capacitors'.
+		const pads: { key: string; at: Pt; hx: number; hy: number }[] = []
+		for (const pin of part.pins) {
+			const at = padOf(pin)
+			const n = normalOf(pin)
+			if (at && n) pads.push({ key: `${owner}.${pin}`, at, hx: n.x ? pad.l / 2 : pad.w / 2, hy: n.x ? pad.w / 2 : pad.l / 2 })
+		}
+		let ok = true
+		for (const sp of group) {
+			const cap = placement.get(sp.ref)
+			const half = CAP_TERMINAL_MM[sp.spec.footprint]
+			if (!cap || half === undefined || cap.rotation % 90 !== 0) { ok = false; break }
+			const r = (cap.rotation * Math.PI) / 180
+			// Pin 1 at -x at rotation 0, turning counter-clockwise with the part.
+			const term = (pin: string): Pt => {
+				const k = pin === "pin1" ? -1 : 1
+				return { x: +(origin(cap).x + k * half * Math.cos(r)).toFixed(3), y: +(origin(cap).y + k * half * Math.sin(r)).toFixed(3) }
+			}
+			for (const pin of ["pin1", "pin2"]) pads.push({ key: `${sp.ref}.${pin}`, at: term(pin), hx: 0.3, hy: 0.3 })
+			const ends = [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const
+			const n0 = normalOf((sp.a as { pin: string }).pin)
+			const n1 = normalOf((sp.b as { pin: string }).pin)
+			// One side of the part only: a capacitor across it would need a trace round the part.
+			if (!n0 || !n1 || n0.x !== n1.x || n0.y !== n1.y) { ok = false; break }
+			for (const [end, capPin] of ends) {
+				const pin = (end as { pin: string }).pin
+				const p = padOf(pin)!
+				const n = normalOf(pin)!
+				const t = term(capPin)
+				const corner = n.x ? { x: t.x, y: p.y } : { x: p.x, y: t.y }
+				// Out from the pad, never back over the part.
+				if ((corner.x - p.x) * n.x + (corner.y - p.y) * n.y < 0.3) { ok = false; break }
+				const points = Math.hypot(corner.x - t.x, corner.y - t.y) < 0.01 ? [p, t] : [p, corner, t]
+				const lengthMm = +points.slice(1).reduce((a, q, i) => a + Math.hypot(q.x - points[i].x, q.y - points[i].y), 0).toFixed(2)
+				const boundMm = capBound(s, sp)!
+				if (lengthMm > boundMm) { ok = false; break }
+				// The corner in the part's own frame (origin, unturned): tscircuit reads pcbPath points that way.
+				const c = Math.cos((-box.rotation * Math.PI) / 180)
+				const sn = Math.sin((-box.rotation * Math.PI) / 180)
+				const local = points.slice(1, -1).map((q) => {
+					const [dx, dy] = [q.x - origin(box).x, q.y - origin(box).y]
+					return { x: +(dx * c - dy * sn).toFixed(2), y: +(dx * sn + dy * c).toFixed(2) }
+				})
+				paths.push({ cap: sp.ref, part: owner, pin, points, local, lengthMm, boundMm })
+			}
+			if (!ok) break
+		}
+		if (!ok) continue
+		// Clear of other copper: each trace from every pad but its own two, and from every other drawn trace.
+		const segs = paths.flatMap((q) => q.points.slice(1).map((b, i) => ({ q, a: q.points[i], b })))
+		const own = (q: CapPath) => [`${owner}.${q.pin}`, `${q.cap}.${group.find((sp) => sp.ref === q.cap)!.pins[(group.find((sp) => sp.ref === q.cap)!.a as { pin: string }).pin === q.pin ? 0 : 1]}`]
+		const clash =
+			segs.some((sg) => pads.some((pd) => !own(sg.q).includes(pd.key) && segRectGap(sg.a, sg.b, pd) < DRAWN_CLEAR_MM)) ||
+			segs.some((s1, i) => segs.some((s2, j) => j > i && s1.q !== s2.q && s1.q.pin !== s2.q.pin && segGap(s1.a, s1.b, s2.a, s2.b) < 0.15 + DRAWN_CLEAR_MM - 0.075))
+		if (!clash) out.push(...paths)
+	}
+	return out
+}
+
+// A package's pad: its length and width, and how far its centre is out from padOffset's point (footprinter's defaults:
+// TSSOP 1.45 × 0.30 mm, SOIC 1.0 × 0.6 mm, legs outside; a quad package's padOffset is already the pad's centre).
+function padGeometry(footprint: string): { l: number; w: number; out: number } {
+	const num = (k: string) => {
+		const m = new RegExp(`_${k}([\\d.]+)mm`).exec(footprint)
+		return m ? Number(m[1]) : undefined
+	}
+	if (/^tssop/.test(footprint)) return { l: num("pl") ?? 1.45, w: num("pw") ?? 0.3, out: (num("pl") ?? 1.45) / 2 }
+	if (/^soic/.test(footprint)) return { l: num("pl") ?? 1.0, w: num("pw") ?? 0.6, out: (num("pl") ?? 1.0) / 2 }
+	return { l: 0.9, w: 0.3, out: 0 }
+}
+
+// The gap from a segment to a pad (a rectangle, half sizes hx, hy), sampled every 0.02 mm along the segment.
+function segRectGap(a: { x: number; y: number }, b: { x: number; y: number }, r: { at: { x: number; y: number }; hx: number; hy: number }): number {
+	const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 0.02))
+	let best = Infinity
+	for (let i = 0; i <= n; i++) {
+		const x = a.x + ((b.x - a.x) * i) / n
+		const y = a.y + ((b.y - a.y) * i) / n
+		best = Math.min(best, Math.hypot(Math.max(0, Math.abs(x - r.at.x) - r.hx), Math.max(0, Math.abs(y - r.at.y) - r.hy)))
+	}
+	return best
+}
+
+// The gap between two segments' centre lines.
+function segGap(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }, d: { x: number; y: number }): number {
+	const toSeg = (p: { x: number; y: number }, u: { x: number; y: number }, v: { x: number; y: number }) => {
+		const L = (v.x - u.x) ** 2 + (v.y - u.y) ** 2
+		const k = L === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - u.x) * (v.x - u.x) + (p.y - u.y) * (v.y - u.y)) / L))
+		return Math.hypot(p.x - (u.x + k * (v.x - u.x)), p.y - (u.y + k * (v.y - u.y)))
+	}
+	const o = (p: typeof a, q: typeof a, r: typeof a) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x))
+	if (o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0) return 0
+	return Math.min(toSeg(a, c, d), toSeg(b, c, d), toSeg(c, a, b), toSeg(d, a, b))
+}
+
 function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string[] {
+	const drawn = drawnCapPaths(s, placement)
 	const lines: string[] = []
 	const port = (ref: string, pin: string) => `.${ref} > .${pin}`
 	for (const sp of supportParts(s)) {
@@ -1603,14 +1758,15 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>): string
 			// bound also counts the cap's ground return, which on a board without a ground pour routes the long way round
 			// (STM32F103: 16.4 mm from the pad-48 cap's GND end, 11 Nov 2026). Without a bound tscircuit applies 1 mm, which
 			// no placement meets. The DRV8833's caps keep 5 mm.
-			const chipCap = chipProfile((s.values.parts ?? []).find((p) => p.ref === sp.near)) !== null
-			// A crystal's load capacitors are not decoupling: no bound (their crystal pin is no supply pin).
-			const load = sp.near === boardCrystal(s)?.ref
-			const pinBound = sp.spec.kind === "capacitor" && !load && ("ref" in sp.a || "ref" in sp.b) ? ` maxDecouplingTraceLength={${chipCap ? 20 : 5}}` : ""
+			// A crystal's load capacitors are not decoupling: no bound (their crystal pin is no supply pin). capBound.
+			const bound = capBound(s, sp)
+			const pinBound = bound !== null ? ` maxDecouplingTraceLength={${bound}}` : ""
 			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${q(sp.spec.footprint)}${pinBound} />`)
 		}
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) {
-			if ("ref" in end) lines.push(`<trace name=${q(`${end.ref}_${end.pin}_${sp.ref}`)} from=${q(port(end.ref, end.pin))} to=${q(port(sp.ref, pin))} />`)
+			const path = "ref" in end ? drawn.find((d) => d.cap === sp.ref && d.part === end.ref && d.pin === end.pin) : undefined
+			const pcbPath = path?.local.length ? ` pcbPath={[${path.local.map((c) => `{ x: ${c.x}, y: ${c.y} }`).join(", ")}]}` : ""
+			if ("ref" in end) lines.push(`<trace name=${q(`${end.ref}_${end.pin}_${sp.ref}`)} from=${q(port(end.ref, end.pin))} to=${q(port(sp.ref, pin))}${pcbPath} />`)
 			else if (!POWER_NETS.includes(end.net)) lines.push(`<trace name=${q(`${end.net}_${sp.ref}_${pin}`)} from=${q(port(sp.ref, pin))} to=${q(`net.${end.net}`)} />`)
 		}
 	}

@@ -1,5 +1,5 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { ROUTING_FAILURE } from "../contract/space.ts"
+import { recordRoutingFailure, ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { boardParts, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
@@ -17,7 +17,23 @@ const FAILED_PER_STAGE = 2
 
 export { WAITING_ON_CONTRACT }
 
+// A board that failed to route at its size, every layout tried, is recorded (recordRoutingFailure): the smallest board
+// never offers that size, or one inside it, again. Only failures more room can fix (the router gave up, a trace past its
+// length bound, parts or traces too close): not a design error such as a missing port, which no size changes.
 export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
+	try {
+		return await buildBoardAt(env, dir, s, revision)
+	} catch (error) {
+		const message = String(error instanceof Error ? error.message : error)
+		const o = s.values.outline
+		if (o && sizeFailure(message)) recordRoutingFailure(s, o.widthMm, o.heightMm)
+		throw error
+	}
+}
+
+export const sizeFailure = (message: string): boolean => /^tscircuit build failed \(exit/.test(message) && (ROUTING_FAILURE.test(message) || layoutSensitive(message))
+
+async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
 	// A pin on a part that isn't there yet would only fail in tscircuit ("Could not find port for selector"), slowly and
 	// in its words: stop with the reason instead (the pin-part-missing check wakes the parts owner).
 	// Connectors whose footprints overlap: tscircuit skips autorouting for the placement error, minutes in, and no layout

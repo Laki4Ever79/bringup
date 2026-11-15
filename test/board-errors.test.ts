@@ -63,3 +63,12 @@ test("when tscircuit skipped autorouting, the error leads with the placement err
 	// A routed build keeps the router's own errors first, as before.
 	assert.deepEqual(failureLines(named, "Circuits  0 passed 1 failed").slice(0, 2), named)
 })
+
+test("a build failure more room can fix is a size failure; a design error is not", async () => {
+	const { sizeFailure } = await import("../src/tools/board.ts")
+	assert.ok(sizeFailure("tscircuit build failed (exit 1):\nPCB trace is 11.12mm long, exceeding the 5mm maximum (.U5 > .VCP to .C4 > .pin1)"))
+	assert.ok(sizeFailure("tscircuit build failed (exit 1):\nPort pin3 on U2 is missing a trace"))
+	assert.ok(!sizeFailure("tscircuit build failed (exit 1):\nexit 1 and no named error"))
+	assert.ok(!sizeFailure("waiting on the contract: J5 overlap on the board"))
+	assert.ok(!sizeFailure("tscircuit build failed: tsci is not installed (tools/node)"))
+})
