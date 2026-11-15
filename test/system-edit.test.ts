@@ -73,6 +73,17 @@ test("the brief's size limit is checked, wheels included", () => {
 	assert.ok(ok.findings().some((x) => x.target.plate))
 })
 
+test("the plate is held to the brief less the wheels, whatever track the chassis started with (150 × 120 mm, 10 mm wheels: 150 × 96)", () => {
+	// The e2e robot of 15 Nov: a 154 × 102 plate passed because the outer width came from the starting track.
+	const e = editor(r2({ maxSizeMm: [150, 120], assembly: { ...r2().assembly, plate: { lengthMm: 150, widthMm: 96 } } }))
+	assert.deepEqual(e.findings().filter((x) => /brief allows/.test(x.message)), [], "150 × 96 is the limit itself")
+	const wide = e.check({ kind: "plate", lengthMm: 150, widthMm: 102 }).filter((x) => x.target.plate && /brief allows/.test(x.message))
+	assert.equal(wide.length, 1)
+	assert.equal(wide[0].level, "error")
+	assert.match(wide[0].message, /150 × 96 mm/)
+	assert.ok(e.check({ kind: "plate", lengthMm: 154, widthMm: 96 }).some((x) => x.target.plate && /brief allows/.test(x.message)), "longer than the brief")
+})
+
 test("an I2C route over the limit is an error; UART is not limited", () => {
 	const e = editor(start())
 	e.apply({ kind: "cable-add", a: "main", b: "front", cableKind: "i2c" })
@@ -262,9 +273,10 @@ test("robot-2 as built has no findings", () => {
 	assert.deepEqual(editor(r2()).findings(), [])
 })
 
-test("mech-fit on the move: a plate wider than track − wheel − 4 rubs the wheels (robot-2: 130 mm is an error, 116 is not)", () => {
+test("mech-fit on the move: a plate wider than track − wheel − 4 warns that the track must widen (robot-2: 130 mm warns, 116 does not); the mechanics engineer re-lays out, so it is no error", () => {
 	const e = editor(r2())
-	assert.ok(e.check({ kind: "plate", lengthMm: 156, widthMm: 130 }).some((x) => x.level === "error" && x.target.plate && /rub/.test(x.message) && /116 mm/.test(x.message)), "130 mm rubs")
+	assert.ok(e.check({ kind: "plate", lengthMm: 156, widthMm: 130 }).some((x) => x.level === "warn" && x.target.plate && /rub/.test(x.message) && /116 mm/.test(x.message)), "130 mm warns")
+	assert.ok(!e.check({ kind: "plate", lengthMm: 156, widthMm: 130 }).some((x) => x.level === "error" && /rub/.test(x.message)), "not an error")
 	assert.deepEqual(e.check({ kind: "plate", lengthMm: 156, widthMm: 116 }).filter((x) => /rub/.test(x.message)), [])
 	assert.ok(e.check({ kind: "plate", lengthMm: 156, widthMm: 116.5 }).some((x) => x.target.plate && /rub/.test(x.message)), "one step past")
 })
