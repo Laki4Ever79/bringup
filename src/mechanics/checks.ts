@@ -6,7 +6,7 @@ import { plateLimitForBrief, blocksSensor, motorHalfUnder, motorUnderPlateMm, mo
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
-import { brakeDecel, brakeMm, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon } from "./model.ts"
+import { brakeDecel, brakeMm, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon, TURN_CLEARANCE_MM, turnStopMm, turnSweepMm } from "./model.ts"
 import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 
 // The plain-code mechanics checks: free, instant, run on every contract change. Each states its numbers, the limit,
@@ -160,6 +160,7 @@ const USES: Record<string, [PartKey, string[]][]> = {
 	"Cruise duty": [["motor", ["noLoadRpm", "stallTorqueNm", "stallA", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["fullV"]], ...MASSES],
 	"mech-stopping": [["sensor", ["rangeMm", "updateMs"]]],
 	"Stopping distance": [["sensor", ["rangeMm", "updateMs"]]],
+	"Turn clearance": [["sensor", ["rangeMm"]], ["wheel", ["diameterMm", "widthMm"]]],
 	"mech-current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV", "peakA"]]],
 	"Motor stall current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV"]]],
 	"Pack peak current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV", "peakA"]]],
@@ -292,6 +293,15 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		fig("Stopping distance", `${r1(stopMm)} mm`, `at most ${r1(roomMm)} mm`, stopMm <= roomMm, `braking on the wheels' ${Math.round(onWheels * 100)} % of the weight plus one ${updateMs} ms sensor period ${estNote("floorMu")} ${estNote("casterMu")}`)
 		if (stopMm > roomMm)
 			push("mech-stopping", `from ${motion.speedMps} m/s the rover needs ${r1(stopMm)} mm to stop (braking on the wheels' ${Math.round(onWheels * 100)} % of the weight plus one ${updateMs} ms sensor period, ${estNote("floorMu")} ${estNote("casterMu")}), but the ${sensor.chip} sees ${rangeMm} mm and must stop ${motion.stopBeforeWallMm} mm from the wall, leaving ${r1(roomMm)} mm: slow down, or use a longer-range sensor`, ["mechanics", "architect"])
+	}
+
+	// Turning in place: the firmware turns where it stops, so it stops where its sweep clears the wall (model.ts
+	// turnStopMm, the firmware's own stop): that reading must be within the sensor's range.
+	if (sensor && rangeMm > 0 && mech.sensor) {
+		const turnMm = turnStopMm(mech, wheel)
+		fig("Turn clearance", `${r1(turnMm)} mm`, `at most ${rangeMm} mm`, turnMm <= rangeMm, `turns in place from this reading: a ${r1(turnSweepMm(mech, wheel))} mm sweep about the axle plus ${TURN_CLEARANCE_MM} mm, less the sensor's ${r1(mech.sensor.at.xMm - d.axleXMm)} mm ahead of the axle`)
+		if (turnMm > rangeMm)
+			push("mech-stopping", `turning in place, the rover sweeps ${r1(turnSweepMm(mech, wheel))} mm about its axle, so it must start turning ${r1(turnMm)} mm from the wall, beyond the ${sensor.chip}'s ${rangeMm} mm range: move the axle toward the plate's middle, shorten the plate, or use a longer-range sensor`)
 	}
 
 	// Current: a motor at stall on a full cell, per driver channel and for the pack.

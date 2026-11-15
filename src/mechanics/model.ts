@@ -65,6 +65,24 @@ export function brakeDecel(onWheels: number): number {
 export function brakeMm(speedMps: number, onWheels: number): number {
 	return ((speedMps ** 2) / (2 * brakeDecel(onWheels))) * 1000
 }
+// Turning in place: the rover pivots on its axle's midpoint, so its footprint sweeps a circle as far as its farthest
+// point from there (a plate corner, usually the rear one, or a wheel's outer edge).
+export function turnSweepMm(mech: Mechanics, wheel: { diameterMm: number; widthMm: number }): number {
+	const d = mech.drive, [L, W] = mech.chassis.plateMm
+	const plate = [L / 2 - d.axleXMm, -L / 2 - d.axleXMm].map((dx) => Math.hypot(dx, W / 2))
+	const wheels = Math.hypot(wheel.diameterMm / 2, d.trackMm / 2 + wheel.widthMm / 2)
+	return Math.max(...plate, wheels)
+}
+// After an open-loop quarter turn the rover drives on beside the wall it turned from, a few degrees off parallel; the
+// next turn in place must not sweep into it. This much beyond the sweep (a design margin: about 5° of heading error over
+// 0.6 m, the drift the rover-pi showed, 15 Nov).
+export const TURN_CLEARANCE_MM = 50
+// The sensor reading at which the rover must start a turn in place so its sweep clears the wall ahead and the one it
+// will drive beside: the pivot stands sweep + clearance from the wall, the sensor is sensorAheadMm in front of the pivot.
+export function turnStopMm(mech: Mechanics, wheel: { diameterMm: number; widthMm: number }): number {
+	return turnSweepMm(mech, wheel) + TURN_CLEARANCE_MM - (mech.sensor.at.xMm - mech.drive.axleXMm)
+}
+
 // The share of the weight on the drive wheels (moments about the caster, wheelbaseMm behind the axle).
 export function onWheelsShare(d: { axleXMm: number; wheelbaseMm: number }, comXMm: number): number {
 	const casterX = d.axleXMm - d.wheelbaseMm
