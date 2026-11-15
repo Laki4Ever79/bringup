@@ -6,7 +6,7 @@ import { plateLimitForBrief, blocksSensor, motorHalfUnder, motorUnderPlateMm, mo
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
-import { cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, payloadMount, supportPolygon } from "./model.ts"
+import { brakeDecel, brakeMm, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon } from "./model.ts"
 import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 
 // The plain-code mechanics checks: free, instant, run on every contract change. Each states its numbers, the limit,
@@ -236,9 +236,8 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const fig = (check: string, value: string, limit: string, ok: boolean, note?: string) => figures.push({ check, value, limit, ok, ...(note ? { note } : {}) })
 	const massKg = massG / 1000
 	const r = wheel.diameterMm / 2 / 1000
-	const casterX = d.axleXMm - d.wheelbaseMm
 	// Share of the weight on the drive wheels (moments about the caster).
-	const onWheels = Math.min(1, Math.max(0, (com[0] - casterX) / (d.axleXMm - casterX)))
+	const onWheels = onWheelsShare(d, com[0])
 	const nominal = motorAt(motor, pack.nominalV)
 	const full = motorAt(motor, pack.fullV)
 
@@ -286,12 +285,11 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// distance the brief allows.
 	const rangeMm = sensor?.rangeMm ?? 0, updateMs = sensor?.updateMs ?? 0
 	if (sensor && rangeMm > 0) {
-		const decel = est("floorMu") * G * onWheels
-		const brakeMm = ((motion.speedMps ** 2) / (2 * decel)) * 1000 + motion.speedMps * updateMs
+		const stopMm = brakeMm(motion.speedMps, onWheels) + motion.speedMps * updateMs
 		const roomMm = rangeMm - motion.stopBeforeWallMm
-		fig("Stopping distance", `${r1(brakeMm)} mm`, `at most ${r1(roomMm)} mm`, brakeMm <= roomMm, `braking plus one ${updateMs} ms sensor period ${estNote("floorMu")}`)
-		if (brakeMm > roomMm)
-			push("mech-stopping", `from ${motion.speedMps} m/s the rover needs ${r1(brakeMm)} mm to stop (braking plus one ${updateMs} ms sensor period, ${estNote("floorMu")}), but the ${sensor.chip} sees ${rangeMm} mm and must stop ${motion.stopBeforeWallMm} mm from the wall, leaving ${r1(roomMm)} mm: slow down, or use a longer-range sensor`, ["mechanics", "architect"])
+		fig("Stopping distance", `${r1(stopMm)} mm`, `at most ${r1(roomMm)} mm`, stopMm <= roomMm, `braking on the wheels' ${Math.round(onWheels * 100)} % of the weight plus one ${updateMs} ms sensor period ${estNote("floorMu")} ${estNote("casterMu")}`)
+		if (stopMm > roomMm)
+			push("mech-stopping", `from ${motion.speedMps} m/s the rover needs ${r1(stopMm)} mm to stop (braking on the wheels' ${Math.round(onWheels * 100)} % of the weight plus one ${updateMs} ms sensor period, ${estNote("floorMu")} ${estNote("casterMu")}), but the ${sensor.chip} sees ${rangeMm} mm and must stop ${motion.stopBeforeWallMm} mm from the wall, leaving ${r1(roomMm)} mm: slow down, or use a longer-range sensor`, ["mechanics", "architect"])
 	}
 
 	// Current: a motor at stall on a full cell, per driver channel and for the pack.
@@ -328,7 +326,7 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// grip caps both: braking moves it forward by h·a/g, accelerating (or braking in reverse) back by as much, toward the
 	// caster, where the triangle is narrowest.
 	const poly = supportPolygon(mech, cat.mech)
-	const decel = est("floorMu") * G * onWheels
+	const decel = brakeDecel(onWheels)
 	const still = insideMargin([com[0], com[1]], poly)
 	const braking = insideMargin([com[0] + (com[2] * decel) / G, com[1]], poly)
 	const accelerating = insideMargin([com[0] - (com[2] * decel) / G, com[1]], poly)

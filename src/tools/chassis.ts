@@ -41,7 +41,7 @@ export interface ChassisSpec {
 	speedMps: number
 	stopBeforeWallMm: number
 	edgeMm: number // the course's step: the edge the brief says the rover crosses
-	estimates: { floorMu: number; rollingCrr: number; packOhm: number }
+	estimates: { floorMu: number; casterMu: number; rollingCrr: number; packOhm: number }
 }
 
 // The caster's M4 screws (the catalog's casters have 4.2–5 mm holes).
@@ -103,7 +103,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		speedMps: motion.speedMps,
 		stopBeforeWallMm: motion.stopBeforeWallMm,
 		edgeMm: motion.edgeMm,
-		estimates: { floorMu: est("floorMu"), rollingCrr: est("rollingCrr"), packOhm: pack.internalOhm ?? est("packInternalOhm") },
+		estimates: { floorMu: est("floorMu"), casterMu: est("casterMu"), rollingCrr: est("rollingCrr"), packOhm: pack.internalOhm ?? est("packInternalOhm") },
 	}
 }
 

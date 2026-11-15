@@ -166,3 +166,19 @@ test("a motor geared too fast for the target isn't sped up to a duty floor; the 
 	assert.equal(fig.ok, false)
 	assert.match(v.find((x) => x.kind === "mech-speed")?.message ?? "", /geared about [\d.]+× too fast/)
 })
+
+// Premerge review (15 Nov): the firmware's stop distance braked on floorMu·g, as if every wheel gripped, while the
+// caster slides at 0.02 (the simulation) and the Stopping distance check braked on the wheels' share only. One model.
+test("the firmware's stop distance brakes on the drive wheels' share of the weight, as the Stopping distance check", async () => {
+	const { brakeMm } = await import("../src/mechanics/model.ts")
+	const s = rover()
+	const h = roverHeader(s)
+	const stop = Number(/#define ROVER_STOP_MM (\d+)/.exec(h)![1])
+	const figures: MechFigure[] = []
+	mechanicsCheckOver(s.values.motion, s.values.mechanics, [{ name: "main", snapshot: s }], defaultCheckCatalog()!, figures)
+	// The check's stopping figure is braking plus one sensor period; the firmware's stop is the wall distance plus 1.5× it.
+	const checkMm = Number(figures.find((f) => f.check === "Stopping distance")!.value.split(" ")[0])
+	assert.ok(Math.abs(stop - (s.values.motion!.stopBeforeWallMm + 1.5 * checkMm)) <= 1.5, `firmware ${stop} mm, check ${checkMm} mm`)
+	// And it is longer than braking on every wheel at floorMu·g (the caster barely brakes).
+	assert.ok(brakeMm(0.3, 0.5) > brakeMm(0.3, 1) * 1.5)
+})

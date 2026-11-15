@@ -1,8 +1,7 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import { byMpn } from "./catalog.ts"
 import { defaultCheckCatalog } from "./checks.ts"
-import { est } from "./estimates.ts"
-import { cruiseDuty, G, massAndCom, mounts, payloadMount } from "./model.ts"
+import { brakeMm, cruiseDuty, massAndCom, mounts, onWheelsShare, payloadMount } from "./model.ts"
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { macroName, sensorDriver } from "../codegen/firmware.ts"
 
@@ -33,14 +32,14 @@ export function roverHeader(s: ContractSnapshot): string {
 	const pin = (sig: string) => (v.pins ?? []).find((p) => p.signal === sig)?.gpio ?? -1
 	const r = wheel.diameterMm / 2000
 	const speed = motion.speedMps
-	const brakeMm = (speed ** 2 / (2 * est("floorMu") * G)) * 1000
-	const stop = Math.ceil(motion.stopBeforeWallMm + STOP_MARGIN * (brakeMm + speed * sensor.updateMs))
 	// Cruise duty on the motor's load line (model.ts cruiseDuty, the same model as the "Top speed" and "Cruise duty"
 	// checks): set for a full pack, where the rover is fastest and the simulated drive starts. No floor: a motor geared so
 	// fast that the duty falls under MIN_CRUISE_DUTY is the "Cruise duty" check's finding, not a silent speed-up.
 	const boards = checkBoards(s).map((b) => ({ name: b.name, outline: { widthMm: b.snapshot.values.outline?.widthMm ?? 0, heightMm: b.snapshot.values.outline?.heightMm ?? 0 } }))
 	const geom = withAssembly(v) ?? mech
-	const { massG } = massAndCom([...mounts(geom, boards, cat.mech), payloadMount(geom, motion.payloadG)])
+	const { massG, com } = massAndCom([...mounts(geom, boards, cat.mech), payloadMount(geom, motion.payloadG)])
+	// Braking on the drive wheels' share of the weight only (model.ts brakeMm, as the Stopping distance check).
+	const stop = Math.ceil(motion.stopBeforeWallMm + STOP_MARGIN * (brakeMm(speed, onWheelsShare(geom.drive, com[0])) + speed * sensor.updateMs))
 	const cruise = Math.min(1, Math.max(0, cruiseDuty(motor, pack, speed, massG / 1000, r)))
 	const turnMs = Math.round((Math.PI / 2 / ((2 * speed) / (mech.drive.trackMm / 1000))) * 1000)
 	const lines = [
