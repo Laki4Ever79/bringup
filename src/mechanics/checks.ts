@@ -66,6 +66,18 @@ export function mechanicsFigures(c: ContractSnapshot): MechFigure[] {
 	return figures
 }
 
+// The largest plate the brief's size allows, [length, width]: the wheels stand outside the plate's width, so the width
+// is the brief's less two wheels and their clearance (the size check below says the same). The brief's own size until
+// the mechanics names a catalog wheel. A system sizes its shared plate by this, not by the brief's outer size: the
+// rover-climate plate was grown to 110 mm wide against a 120 mm brief, leaving no room for the wheels (15 Nov).
+export function plateLimitMm(c: ContractSnapshot): [number, number] | undefined {
+	const max = c.values.motion?.maxSizeMm
+	if (!max) return undefined
+	const cat = defaultCheckCatalog()
+	const wheel = cat && c.values.mechanics ? byMpn(cat.mech.wheels, c.values.mechanics.drive.wheel) : undefined
+	return wheel ? [max[0], max[1] - 2 * wheel.widthMm - 4] : max
+}
+
 export function mechanicsChecks(c: ContractSnapshot): MechViolation[] {
 	const cat = defaultCheckCatalog()
 	return cat ? mechanicsChecksWith(c, cat) : []

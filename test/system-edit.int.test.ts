@@ -63,12 +63,12 @@ test("a running robot takes a moved, rotated board, a bigger plate and a re-rout
 		const first = spec()
 		assert.equal(first.assembly?.boards.find((b) => b.name === "climate")?.outlineSource, "built")
 
-		// Round 2: one Apply, built with the page's editor: climate 10 mm back, turned 90°, the plate 4 mm longer and 6 mm wider: the rover's brief and wheel track leave only that (a plate over 160 mm long or 116 mm wide is refused by main's mech-fit, as it should be).
+		// Round 2: one Apply, built with the page's editor: climate 10 mm back, turned 90°, the plate 4 mm shorter: the system's plate already uses all the rover's brief allows (150 × 96 mm: 150 × 120 mm less the 10 mm wheels and their clearance), so a bigger one is refused by main's mech-fit, as it should be.
 		const ed = editor({ assembly: first.assembly!, links: first.links })
 		const c0 = first.assembly!.boards.find((b) => b.name === "climate")!
 		assert.ok(ed.apply({ kind: "rotate", board: "climate" }))
 		assert.ok(ed.apply({ kind: "move", board: "climate", xMm: c0.xMm - 10, yMm: c0.yMm }))
-		assert.ok(ed.apply({ kind: "plate", lengthMm: first.assembly!.plate!.lengthMm + 4, widthMm: first.assembly!.plate!.widthMm + 6 }))
+		assert.ok(ed.apply({ kind: "plate", lengthMm: first.assembly!.plate!.lengthMm - 4, widthMm: first.assembly!.plate!.widthMm }))
 		assert.deepEqual(ed.findings().filter((f) => f.level === "error"), [])
 		const diff1 = ed.diff()!
 		const sentAt = trace().length
@@ -84,7 +84,7 @@ test("a running robot takes a moved, rotated board, a bigger plate and a re-rout
 		const c2 = sys2.assembly!.boards.find((b) => b.name === "climate")!
 		assert.equal(c2.rotDeg, 90)
 		assert.equal(c2.xMm, c0.xMm - 10)
-		assert.deepEqual(sys2.assembly!.plate, { lengthMm: first.assembly!.plate!.lengthMm + 4, widthMm: first.assembly!.plate!.widthMm + 6 })
+		assert.deepEqual(sys2.assembly!.plate, { lengthMm: first.assembly!.plate!.lengthMm - 4, widthMm: first.assembly!.plate!.widthMm })
 		const newest = (() => {
 			const specs = chassisSpecs(boardDir(out, "main")).sort((a, b) => rev(a) - rev(b))
 			return JSON.parse(readFileSync(specs.at(-1)!, "utf8")) as ChassisSpec

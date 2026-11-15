@@ -29,8 +29,8 @@
 	"assembly": {
 		"body": "chassis",
 		"plate": {
-			"lengthMm": 156,
-			"widthMm": 110
+			"lengthMm": 150,
+			"widthMm": 96
 		},
 		"boards": [
 			{
