@@ -237,9 +237,9 @@ export function mountTop(host, opts = {}) {
 		if (!edit || !scene) return
 		const handle = { fill: "#fff", stroke: SIGNAL, "stroke-width": 0.4 }
 		if (scene.plate && world?.assembly?.body === "chassis") {
-			const p = scene.plate
+			const p = scene.plate, cx = p.x + p.w / 2, cy = p.y + p.h / 2
 			for (const [k, [sx, sy]] of Object.entries(CORNERS)) {
-				const r = el("rect", { ...handle, "data-plate-handle": k, x: (sx * p.w) / 2 - 1.6, y: (sy * p.h) / 2 - 1.6, width: 3.2, height: 3.2 })
+				const r = el("rect", { ...handle, "data-plate-handle": k, x: cx + (sx * p.w) / 2 - 1.6, y: cy + (sy * p.h) / 2 - 1.6, width: 3.2, height: 3.2 })
 				r.style.cursor = sx === sy ? "nwse-resize" : "nesw-resize"
 				r.append(el("title", {}, "Drag to resize the plate"))
 				gEdit.append(r)
@@ -327,7 +327,8 @@ export function mountTop(host, opts = {}) {
 		const leg = t.closest?.("[data-route-handle],[data-route-vertex]")
 		const board = t.closest?.("[data-board]")
 		const base = { x: e.clientX, y: e.clientY, at: toSvg(e), moved: false }
-		if (corner) return { ...base, kind: "plate", corner: corner.dataset.plateHandle }
+		// The plate grows about its own centre (today's chassis plate is centred on the origin, but nothing here assumes it).
+		if (corner) return { ...base, kind: "plate", corner: corner.dataset.plateHandle, cx: scene.plate.x + scene.plate.w / 2, cy: scene.plate.y + scene.plate.h / 2 }
 		if (dot) return { ...base, kind: "wire", from: dot.dataset.dot, line: null }
 		if (leg) {
 			const [link, i] = (leg.dataset.routeHandle ?? leg.dataset.routeVertex).split(":")
@@ -355,14 +356,14 @@ export function mountTop(host, opts = {}) {
 			draws++
 			edit?.onDrag?.(g.name, x, y)
 		} else if (g.kind === "plate") {
-			const L = Math.max(10, snap(2 * Math.abs(p.x))), W = Math.max(10, snap(2 * Math.abs(p.y)))
+			const L = Math.max(10, snap(2 * Math.abs(p.x - g.cx))), W = Math.max(10, snap(2 * Math.abs(p.y - g.cy)))
 			if (L === g.L && W === g.W) return
 			g.L = L; g.W = W
 			const r = gPlate.querySelector("[data-plate]")
-			r?.setAttribute("x", -L / 2); r?.setAttribute("y", -W / 2); r?.setAttribute("width", L); r?.setAttribute("height", W)
+			r?.setAttribute("x", g.cx - L / 2); r?.setAttribute("y", g.cy - W / 2); r?.setAttribute("width", L); r?.setAttribute("height", W)
 			for (const h of gEdit.querySelectorAll("[data-plate-handle]")) {
 				const [sx, sy] = CORNERS[h.dataset.plateHandle]
-				h.setAttribute("x", (sx * L) / 2 - 1.6); h.setAttribute("y", (sy * W) / 2 - 1.6)
+				h.setAttribute("x", g.cx + (sx * L) / 2 - 1.6); h.setAttribute("y", g.cy + (sy * W) / 2 - 1.6)
 			}
 			draws++
 			edit?.onPlateDrag?.(L, W)
@@ -381,9 +382,19 @@ export function mountTop(host, opts = {}) {
 			draws++
 		}
 	}
+	// A drag given up (Escape, a cancelled pointer, lost capture): nothing is edited and the drawing goes back.
+	function cancelGesture() {
+		const g = gesture
+		if (!g) return
+		gesture = null
+		g.line?.remove()
+		if (held || world) setWorld(held ?? world)
+	}
 	function endGesture(e) {
 		const g = gesture
 		gesture = null
+		// The click that follows a drag is not a click on empty space (it would close the selected item's card).
+		if (g.moved) swallowClick = true
 		const before = rebuilds
 		if (!g.moved) {
 			if (g.kind === "board") opts.onPick?.(g.name, "board")
@@ -424,6 +435,9 @@ export function mountTop(host, opts = {}) {
 		if (!live()) return
 		if (raf) { touched = true; focusName = null }
 		stop()
+		swallowClick = false
+		// One gesture at a time: a second pointer (another finger) doesn't take it over.
+		if (gesture) return
 		if (edit && e.button === 0) {
 			const g = startGesture(e)
 			if (g) {
@@ -454,7 +468,13 @@ export function mountTop(host, opts = {}) {
 	svg.addEventListener("pointerdown", onDown)
 	window.addEventListener("pointerup", onUp)
 	svg.addEventListener("pointerleave", onLeave)
-	svg.addEventListener("pointercancel", () => { press = null; if (gesture) { const g = gesture; gesture = null; g.line?.remove(); setWorld(held ?? world) } })
+	svg.addEventListener("pointercancel", () => { press = null; cancelGesture() })
+	// After a normal release the gesture is already over; lost capture without one (a blur, the browser taking the pointer) ends it.
+	svg.addEventListener("lostpointercapture", () => cancelGesture())
+	let swallowClick = false
+	svg.addEventListener("click", (e) => { if (swallowClick) { swallowClick = false; e.stopPropagation() } }, true)
+	const onKey = (e) => { if (e.key === "Escape" && gesture) { e.preventDefault(); cancelGesture() } }
+	window.addEventListener("keydown", onKey)
 	svg.addEventListener("wheel", onWheel, { passive: false })
 
 	return {
@@ -467,6 +487,7 @@ export function mountTop(host, opts = {}) {
 			disposed = true
 			stop()
 			window.removeEventListener("pointerup", onUp)
+			window.removeEventListener("keydown", onKey)
 			press = null
 			svg.remove()
 		},

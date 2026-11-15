@@ -12,7 +12,7 @@ export type EditOp =
 	| { kind: "cable-kind"; link: string; cableKind: string }
 	| { kind: "cable-route"; link: string; points: { xMm: number; yMm: number }[] }
 	| { kind: "cable-edge"; link: string; end: "a" | "b"; edge: "left" | "right" | "top" | "bottom" }
-export interface EditStart { assembly: SystemAssembly; links: SystemLink[]; chassis?: ChassisSpec | null; maxSizeMm?: [number, number] | null; i2cDevicesByBoard?: Record<string, number> }
+export interface EditStart { assembly: SystemAssembly; links: SystemLink[]; chassis?: (ChassisSpec & { standoffMm?: number }) | null; maxSizeMm?: [number, number] | null; i2cDevicesByBoard?: Record<string, number> }
 export interface EditFinding { target: { board?: string; link?: string; plate?: true }; level: "error" | "warn"; message: string }
 export interface Editor {
 	apply(op: EditOp): boolean
@@ -24,6 +24,8 @@ export interface Editor {
 	diff(): { assembly?: Partial<SystemAssembly>; links?: SystemLink[] } | null
 	markApplied(): void
 	findings(): EditFinding[]
+	check(op: EditOp): EditFinding[]
+	pending(): EditOp[]
 }
 export const SNAP_MM: number
 export const STANDOFF_DEFAULT_MM: number

@@ -20,7 +20,9 @@ const exe = chromiumPath()
 const skip = !existsSync(join(ROOT, "out", "robot-2", "system.json")) ? "no recorded robot-2 in out/" : !exe ? "no Playwright Chromium" : false
 
 type Diff = { assembly?: { boards?: { name: string; xMm: number; yMm: number; rotDeg: number; standoffMm?: number }[]; plate?: { lengthMm: number; widthMm: number }; cables?: { link: string; points: { xMm: number; yMm: number }[] }[] }; links?: { id: string; kind: string; a: { board: string; edge?: string }; b: { board: string; edge?: string } }[] } | null
-interface Ctx { page: Page; name: string; posts: { body: Record<string, unknown> }[]; gets: () => number; errors: string[] }
+type Design = { assembly: { boards: { name: string; xMm: number }[] } }
+// setDesign: how the design's GET is changed from now on (the round's result, another change).
+interface Ctx { page: Page; name: string; posts: { body: Record<string, unknown> }[]; gets: () => number; errors: string[]; setDesign: (f: (d: Design) => void) => void }
 // answer: what the intercepted requests endpoint says (202 by default).
 async function withEdit(fn: (c: Ctx) => Promise<void>, { status = "waiting for a change", answer }: { status?: string; answer?: (route: Route) => Promise<void> } = {}) {
 	const name = `robot-edit-${Math.random().toString(36).slice(2, 8)}`
@@ -35,11 +37,13 @@ async function withEdit(fn: (c: Ctx) => Promise<void>, { status = "waiting for a
 		page.on("pageerror", (e) => errors.push(e.message))
 		page.on("response", (r) => { if (r.status() >= 400 && !/\/requests$/.test(r.url())) errors.push(`${r.status()} ${r.url()}`) })
 		let gets = 0
+		let change: (d: Design) => void = () => {}
 		// The design as if its system stayed up for changes.
 		await page.route((u) => u.pathname === `/api/systems/${name}`, async (route) => {
 			gets++
 			const r = await route.fetch()
 			const d = await r.json()
+			change(d)
 			await route.fulfill({ response: r, json: { ...d, status, settled: true } })
 		})
 		const posts: { body: Record<string, unknown> }[] = []
@@ -50,7 +54,7 @@ async function withEdit(fn: (c: Ctx) => Promise<void>, { status = "waiting for a
 		})
 		await page.goto(`${hub.url}/system?id=${name}&view=top`)
 		await page.waitForSelector("#stage-top svg [data-board=climate]", { timeout: 30_000 })
-		await fn({ page, name, posts, gets: () => gets, errors })
+		await fn({ page, name, posts, gets: () => gets, errors, setDesign: (f) => { change = f } })
 		assert.deepEqual(errors.filter((e) => !/WebGL|GPU|swiftshader/i.test(e)), [])
 	} finally {
 		await browser.close()
@@ -255,5 +259,96 @@ test("add a cable from a board's dot, pick I2C, then bend its route; the card de
 		await page.click("#facts [data-act=delete]")
 		d = await diff(page)
 		assert.ok(!d?.links?.some((l) => l.id === "L2"), "deleted")
+	})
+})
+
+const at = (x: number) => (d: Design) => { d.assembly.boards.find((b) => b.name === "main")!.xMm = x }
+const stateX = (page: Page, board: string) => page.evaluate((b) => (window as unknown as { __edit: { state: () => { assembly: { boards: { name: string; xMm: number }[] } } } }).__edit.state().assembly.boards.find((x) => x.name === b)!.xMm, board)
+
+test("after Apply, the next poll rebuilds the editor from the round's result", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, setDesign }) => {
+		await enter(page)
+		const g = await geom(page, "climate")
+		await drag(page, g, { x: g.x - 10 * g.k, y: g.y })
+		await page.click("#edit-apply")
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes")
+		// The round moved main (and kept climate where it was sent).
+		setDesign((d) => { at(-5)(d); d.assembly.boards.find((b) => b.name === "climate")!.xMm = 38 })
+		await page.waitForFunction(() => (window as unknown as { __edit: { state: () => { assembly: { boards: { name: string; xMm: number }[] } } } }).__edit.state().assembly.boards.find((b) => b.name === "main")!.xMm === -5, null, { timeout: 15_000 })
+		assert.equal(await diff(page), null)
+		assert.equal(await page.locator("#edit-stale").isVisible(), false)
+	})
+})
+
+test("the design changing under unsent edits asks Rebase or Discard; Apply waits; Rebase replays the edits on the new design", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts, setDesign }) => {
+		await enter(page)
+		let g = await geom(page, "climate")
+		await drag(page, g, { x: g.x - 10 * g.k, y: g.y })
+		setDesign(at(-10))
+		await page.waitForSelector("#edit-stale:not(.hidden)", { timeout: 15_000 })
+		assert.match(await page.locator("#edit-stale").textContent() ?? "", /changed since you started editing/)
+		assert.equal(await page.locator("#edit-apply").isDisabled(), true, "never send a diff based on an old snapshot")
+		await page.click("#edit-rebase")
+		assert.equal(await page.locator("#edit-stale").isVisible(), false)
+		assert.equal(await stateX(page, "main"), -10, "the new design")
+		assert.ok(Math.abs((await stateX(page, "climate")) - 38) <= 0.5, "with the edit replayed")
+		await page.click("#edit-apply")
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes")
+		const boards = (posts[0].body as { assembly: { boards: { name: string; xMm: number }[] } }).assembly.boards
+		assert.equal(boards.find((b) => b.name === "main")!.xMm, -10, "based on the new design, not the old snapshot")
+		// Discard: the edits go, the new design stays.
+		g = await geom(page, "climate")
+		await drag(page, g, { x: g.x - 4 * g.k, y: g.y })
+		setDesign(at(-12))
+		await page.waitForSelector("#edit-stale:not(.hidden)", { timeout: 15_000 })
+		await page.click("#edit-discard")
+		assert.equal(await diff(page), null)
+		assert.equal(await stateX(page, "main"), -12)
+	}, { status: "running" })
+})
+
+test("leaving with unsent edits says so on the button; coming back to a changed design asks the same question", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, gets, setDesign }) => {
+		await enter(page)
+		const g = await geom(page, "climate")
+		await drag(page, g, { x: g.x - 10 * g.k, y: g.y })
+		await page.click("#edit-btn")
+		await page.waitForSelector("#edit-bar.hidden", { state: "attached" })
+		assert.match(await page.locator("#edit-btn").textContent() ?? "", /1 unsent/)
+		setDesign(at(-10))
+		const n = gets()
+		while (gets() < n + 2) await page.waitForTimeout(250)
+		await page.click("#edit-btn")
+		await page.waitForSelector("#edit-stale:not(.hidden)")
+		assert.ok(await diff(page), "the kept edits are still there")
+	}, { status: "running" })
+})
+
+test("drag details: back to the start keeps redo, Escape cancels a drag, a dragged board keeps its card", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page }) => {
+		await enter(page)
+		const g = await geom(page, "climate")
+		await drag(page, g, { x: g.x - 10 * g.k, y: g.y })
+		await page.keyboard.press("Control+z")
+		assert.equal(await page.locator("#edit-redo").isDisabled(), false)
+		// Out and back: no edit, and redo survives.
+		await page.mouse.move(g.x, g.y); await page.mouse.down()
+		await page.mouse.move(g.x - 8 * g.k, g.y, { steps: 6 }); await page.mouse.move(g.x, g.y, { steps: 6 }); await page.mouse.up()
+		assert.equal(await diff(page), null)
+		assert.equal(await page.locator("#edit-redo").isDisabled(), false, "redo kept")
+		// Escape mid-drag: nothing changes, the board is back.
+		await page.mouse.move(g.x, g.y); await page.mouse.down()
+		await page.mouse.move(g.x - 10 * g.k, g.y, { steps: 6 })
+		await page.keyboard.press("Escape")
+		await page.mouse.up()
+		assert.equal(await diff(page), null)
+		assert.ok(Math.abs((await geom(page, "climate")).x - g.x) < 1, "drawn where it was")
+		// Select, then drag: the card stays.
+		await page.mouse.click(g.x, g.y)
+		await page.waitForSelector("#facts:not(.hidden) [data-act=turn]")
+		await drag(page, g, { x: g.x - 6 * g.k, y: g.y })
+		await page.waitForTimeout(200)
+		assert.equal(await page.locator("#facts [data-act=turn]").isVisible(), true)
 	})
 })

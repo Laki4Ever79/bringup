@@ -86,6 +86,7 @@
 	#edit-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 2px 0; font-size: 13px; }
 	#edit-count { font: 600 13px var(--mono); }
 	#edit-why { color: var(--ink-2); }
+	#edit-stale { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); font-weight: 600; }
 	#edit-findings { flex-basis: 100%; margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 	#edit-findings li { border-left: 4px solid var(--error); background: var(--error-wash); padding: 4px 8px; }
 	#edit-findings li[data-level="warn"] { border-color: var(--warn); background: var(--warn-wash); }
@@ -147,7 +148,7 @@
 	<div id="view-switch" role="group" aria-label="View"><button type="button" data-view="3d" aria-pressed="true">3D</button><button type="button" data-view="top" aria-pressed="false">Top</button><button type="button" id="edit-btn" class="hidden" aria-pressed="false" title="Edit the robot in the Top view: move, turn, the plate, cables">Edit</button></div>
 	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
 	<div id="stage-top" class="hidden"></div>
-	<div id="edit-bar" class="hidden"><span id="edit-count">0 changes</span><button type="button" class="pill primary" id="edit-apply" disabled>Apply</button><button type="button" class="pill" id="edit-undo" disabled title="Undo (Ctrl+Z)">Undo</button><button type="button" class="pill" id="edit-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button><span id="edit-why"></span><span class="muted" style="margin-left:auto;font-size:12px">Drag a board · R turns the selected one · drag a corner for the plate · drag a board's dot onto another for a cable · drag a cable's handles to bend it</span><ul id="edit-findings"></ul></div>
+	<div id="edit-bar" class="hidden"><span id="edit-count">0 changes</span><button type="button" class="pill primary" id="edit-apply" disabled>Apply</button><button type="button" class="pill" id="edit-undo" disabled title="Undo (Ctrl+Z)">Undo</button><button type="button" class="pill" id="edit-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button><span id="edit-why"></span><span id="edit-stale" class="hidden">The design changed since you started editing: <button type="button" class="pill" id="edit-rebase" title="Make your unsent edits again on the design as it is now">Rebase</button> <button type="button" class="pill" id="edit-discard" title="Drop your unsent edits">Discard</button></span><span class="muted" style="margin-left:auto;font-size:12px">Drag a board · R turns the selected one · drag a corner for the plate · drag a board's dot onto another for a cable · drag a cable's handles to bend it</span><ul id="edit-findings"></ul></div>
 	<div id="edit-picker"><span style="font-size:12px;align-self:center">Cable:</span><button type="button" data-kind="uart">UART</button><button type="button" data-kind="i2c">I²C</button><button type="button" data-kind="">×</button></div>
 	<div id="facts" class="hidden" role="tooltip"></div>
 	<div id="plan-side"></div>
@@ -505,6 +506,8 @@ async function startStage(d) {
 	followProgress(d)
 	if (stage.started) {
 		stage.meta = d
+		// Edit mode follows the live design (the round's result, another change).
+		if (syncEditor() && editing.on) editRefresh()
 		if (activeView()) { subscribe(d); schedule() }
 		return
 	}
@@ -738,7 +741,9 @@ function drawTop() {
 
 // ── Edit mode (Top only): system-edit.js holds the edits, their checks on every move, undo and redo; top2d.js the
 // gestures. Nothing calls a model here: Apply sends the diff, and the run's agents act on it.
-const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false }
+// key: the design (assembly and links) the editor was built from; stale: it changed while edits were unsent.
+const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false }
+const designKey = (m) => JSON.stringify({ a: m?.assembly ?? null, l: m?.spec?.links ?? [] })
 const editBtn = document.getElementById("edit-btn"), editBar = document.getElementById("edit-bar"), picker = document.getElementById("edit-picker")
 function makeEditor() {
 	const m = stage.meta
@@ -747,6 +752,34 @@ function makeEditor() {
 	editing.base = editing.ed.state()
 	editing.server = []
 	editing.msg = ""
+	editing.key = designKey(m)
+	editing.stale = false
+}
+// The polled design changed since the editor was built: with nothing unsent, edit the new design (after a 202 this is
+// the round's result); with unsent edits, ask (Rebase or Discard), and Apply waits, so no diff on an old snapshot is
+// ever sent. A drag in progress is left alone. true when something changed.
+function syncEditor() {
+	if (!editing.ed || !editing.mod || !stage.meta?.assembly) return false
+	if (designKey(stage.meta) === editing.key || stage.top?.dragging()) return false
+	if (!editing.ed.diff()) { const msg = editing.msg; makeEditor(); editing.msg = msg; return true }
+	if (editing.stale) return false
+	editing.stale = true
+	return true
+}
+function rebase() {
+	const ops = editing.ed.pending()
+	makeEditor()
+	let lost = 0
+	for (const op of ops) { try { editing.ed.apply(op) } catch { lost++ } }
+	if (lost) editing.msg = `${lost} edit${lost === 1 ? "" : "s"} no longer applied to the new design and ${lost === 1 ? "was" : "were"} dropped.`
+	editRefresh()
+}
+const changeCount = () => (editing.ed?.diff() ? Math.max(1, describeEdits(editing.base, editing.ed.state()).length) : 0)
+// Outside edit mode, unsent edits are kept and the button says so.
+function editLabel() {
+	const n = editing.on ? 0 : changeCount()
+	editBtn.textContent = n ? `Edit (${n} unsent)` : "Edit"
+	editBtn.title = n ? "Your edits are kept, not sent: Edit to see them, then Apply or Undo" : "Edit the robot in the Top view: move, turn, the plate, cables"
 }
 async function enterEdit() {
 	if (editing.on || openName || !stage.meta?.assembly || stage.meta.single) return
@@ -761,6 +794,7 @@ async function enterEdit() {
 	}
 	// Unsent edits from an earlier visit are kept; with none, edit what the design is now.
 	if (!editing.ed || !editing.ed.diff()) makeEditor()
+	else syncEditor()
 	editing.on = true
 	editBtn.setAttribute("aria-pressed", "true")
 	editBar.classList.remove("hidden")
@@ -789,17 +823,10 @@ function exitEdit() {
 	cardClose()
 	stage.top?.setEdit(null)
 	drawTop()
+	editLabel()
 }
-// The checks of an edit not made yet (a drag in progress): applied, read, undone.
-function trial(op) {
-	const ed = editing.ed
-	try {
-		if (!ed.apply(op)) return [...ed.findings(), ...editing.server]
-		const f = ed.findings()
-		ed.undo()
-		return f
-	} catch { return ed.findings() }
-}
+// The checks of an edit not made yet (a drag in progress), the history untouched.
+function trial(op) { return editing.ed.check(op) }
 function act(op) {
 	try {
 		if (editing.ed.apply(op)) { editing.msg = ""; editing.server = [] }
@@ -807,20 +834,22 @@ function act(op) {
 	editRefresh()
 }
 function editRefresh() {
+	editLabel()
 	if (!editing.on) return
+	syncEditor()
 	drawTop()
 	const findings = [...editing.ed.findings(), ...editing.server]
 	stage.top.setFindings(findings)
-	const changes = describeEdits(editing.base, editing.ed.state())
-	const n = editing.ed.diff() ? Math.max(1, changes.length) : 0
+	const n = changeCount()
 	document.getElementById("edit-count").textContent = `${n} change${n === 1 ? "" : "s"}`
 	const running = stage.meta.status === "running" || stage.meta.status === "waiting for a change"
 	const errors = findings.some((f) => f.level === "error")
 	const why = !n ? "" : errors ? "Fix the errors first: Apply is off while one stands." : !running ? "This design isn't running; start it again to apply changes." : ""
-	document.getElementById("edit-apply").disabled = !n || errors || !running || editing.posting
+	document.getElementById("edit-apply").disabled = !n || errors || !running || editing.posting || editing.stale
+	document.getElementById("edit-stale").classList.toggle("hidden", !editing.stale)
 	document.getElementById("edit-undo").disabled = !editing.ed.canUndo()
 	document.getElementById("edit-redo").disabled = !editing.ed.canRedo()
-	document.getElementById("edit-why").textContent = editing.msg || why
+	document.getElementById("edit-why").textContent = editing.stale ? "" : editing.msg || why
 	const label = (t) => t.board ?? t.link ?? "plate"
 	document.getElementById("edit-findings").innerHTML = findings.map((f) => `<li data-level="${esc(f.level)}"><b class="mono">${esc(label(f.target))}</b> ${esc(f.message)}</li>`).join("")
 	renderCard()
@@ -864,7 +893,7 @@ function serverFindings(errors) {
 }
 async function applyEdits() {
 	const d = editing.ed.diff()
-	if (!d || editing.posting) return
+	if (!d || editing.posting || editing.stale) return
 	const text = describeEdits(editing.base, editing.ed.state()).join("; ") || "changed the layout"
 	editing.posting = true
 	editRefresh()
@@ -943,6 +972,8 @@ picker.addEventListener("click", (e) => {
 document.getElementById("stage-top").addEventListener("pointerdown", () => picker.classList.remove("on"))
 editBtn.addEventListener("click", () => (editing.on ? exitEdit() : enterEdit()))
 document.getElementById("edit-apply").addEventListener("click", applyEdits)
+document.getElementById("edit-rebase").addEventListener("click", rebase)
+document.getElementById("edit-discard").addEventListener("click", () => { makeEditor(); editRefresh() })
 document.getElementById("edit-undo").addEventListener("click", () => { if (editing.ed?.undo()) { editing.server = []; editing.msg = ""; editRefresh() } })
 document.getElementById("edit-redo").addEventListener("click", () => { if (editing.ed?.redo()) { editing.server = []; editing.msg = ""; editRefresh() } })
 addEventListener("keydown", (e) => {
@@ -956,7 +987,7 @@ addEventListener("keydown", (e) => {
 	else if ((e.key === "Delete" || e.key === "Backspace") && selectedOf("cable")) removeCable(selectedOf("cable"))
 })
 // For tests: what Apply would send now.
-window.__edit = { diff: () => editing.ed?.diff() ?? null, findings: () => (editing.ed ? [...editing.ed.findings(), ...editing.server] : []), on: () => editing.on }
+window.__edit = { diff: () => editing.ed?.diff() ?? null, state: () => editing.ed?.state() ?? null, findings: () => (editing.ed ? [...editing.ed.findings(), ...editing.server] : []), on: () => editing.on }
 
 // ── Board ↔ system: the camera flies to the board first, then a plain "Opening…" panel covers the stage while the
 // board's run page loads behind it, and the page fades in. The run page is same-origin, so it loads on this page's
@@ -1050,7 +1081,7 @@ main.addEventListener("click", (e) => {
 })
 document.getElementById("back-system").addEventListener("click", () => closeBoard())
 // Esc closes an open board first; with none open, an open facts card.
-addEventListener("keydown", (e) => { if (e.key === "Escape") { if (!openName && cardClose()) return; closeBoard() } })
+addEventListener("keydown", (e) => { if (e.key === "Escape") { if (stage.top?.dragging()) return; if (!openName && cardClose()) return; closeBoard() } })
 addEventListener("message", (e) => { if (e.origin === location.origin && e.data?.type === "bringup-close") closeBoard() })
 addEventListener("popstate", async () => {
 	const q = new URLSearchParams(location.search)

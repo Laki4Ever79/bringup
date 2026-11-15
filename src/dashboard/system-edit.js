@@ -41,13 +41,13 @@ const rectsOverlap = (b, r) => {
 	return Math.abs(b.xMm - r.xMm) < (f.xMm + r.wMm) / 2 && Math.abs(b.yMm - r.yMm) < (f.yMm + r.hMm) / 2
 }
 
-// What a board may not sit over, from the chassis spec (src/tools/chassis.ts ChassisSpec): the two wheels, the caster, the battery.
+// What a board may not sit over, from the chassis spec (src/tools/chassis.ts ChassisSpec): the two wheels and the battery.
+// The caster is not one: it hangs under the plate (src/mechanics/model.ts), and the boards stand on standoffs above it.
 export function keepOuts(chassis) {
 	if (!chassis) return []
 	const out = []
 	const d = chassis.drive
 	if (d) for (const s of [1, -1]) out.push({ what: "a wheel", xMm: d.axleXMm, yMm: s * d.trackMm / 2, wMm: d.wheelDiameterMm, hMm: d.wheelWidthMm })
-	if (chassis.caster) out.push({ what: "the caster", xMm: chassis.caster.xMm, yMm: 0, wMm: chassis.caster.wheelMm, hMm: chassis.caster.wheelMm })
 	// The battery lies on the plate: a board on standoffs may stand over it when they clear its thickness (thickMm), the
 	// rule src/mechanics/checks.ts applies (the pack fits when it is at most the standoff height less 1 mm).
 	if (chassis.battery) out.push({ what: "the battery", xMm: chassis.battery.xMm, yMm: chassis.battery.yMm, wMm: chassis.battery.sizeMm[0], hMm: chassis.battery.sizeMm[1], ...(chassis.battery.sizeMm[2] > 0 ? { thickMm: chassis.battery.sizeMm[2] } : {}) })
@@ -62,7 +62,8 @@ export function editor(start) {
 	// A snapshot is the editable part: the assembly, the links, and which cables the user routed by hand.
 	const snapshot = (assembly, links, custom = [], pinned = []) => ({ assembly: clone(assembly), links: clone(links), custom: [...custom], pinned: [...pinned] })
 	const applied0 = snapshot(start.assembly, start.links)
-	let history = [applied0], at = 0, floor = 0
+	// ops[i] is the edit that made history[i] (pending() replays them on a newer design).
+	let history = [applied0], ops = [null], at = 0, floor = 0
 	let applied = applied0
 	const cur = () => history[at]
 
@@ -208,7 +209,8 @@ export function editor(start) {
 			if (a.plate) for (const b of bs) if (offPlate(b, a.plate)) bad({ board: b.name }, `${b.name} sticks out of the ${a.plate.lengthMm} × ${a.plate.widthMm} mm plate`)
 			for (const b of bs) for (const k of keepOuts(chassis)) {
 				if (!rectsOverlap(b, k)) continue
-				const standoff = b.standoffMm ?? STANDOFF_DEFAULT_MM
+				// The board's own standoffs, else the chassis's (the mechanics' estimate, 10 mm), else the default.
+				const standoff = b.standoffMm ?? chassis?.standoffMm ?? STANDOFF_DEFAULT_MM
 				if (k.thickMm === undefined) bad({ board: b.name }, `${b.name} is over ${k.what}`)
 				else if (k.thickMm > standoff - 1) bad({ board: b.name }, `${b.name} is over ${k.what}: the ${k.thickMm} mm pack needs standoffs of at least ${k.thickMm + 1} mm (now ${standoff} mm)`)
 			}
@@ -253,7 +255,9 @@ export function editor(start) {
 			const s = next(op)
 			if (same(s, cur())) return false
 			history = history.slice(0, at + 1)
+			ops = ops.slice(0, at + 1)
 			history.push(s)
+			ops.push(clone(op))
 			at = history.length - 1
 			return true
 		},
@@ -267,5 +271,9 @@ export function editor(start) {
 		diff: () => patch(applied, cur()),
 		markApplied() { applied = cur(); floor = at },
 		findings: () => checks(cur()),
+		// The findings an edit would give, without making it (a drag in progress): the history, redo included, is untouched.
+		check(op) { try { return checks(next(op)) } catch { return checks(cur()) } },
+		// The edits since the last Apply, in order (undone ones left out).
+		pending: () => clone(ops.slice(floor + 1, at + 1)),
 	}
 }

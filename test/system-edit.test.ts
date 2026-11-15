@@ -189,3 +189,47 @@ test("standoffs: kept by the request merge; 3-30 mm is the range and 5-20 the us
 	const tooLow = { ...merged, assembly: { ...merged.assembly!, boards: [{ ...merged.assembly!.boards[0], standoffMm: 2 }, merged.assembly!.boards[1]] } }
 	assert.ok(assemblyErrors(tooLow).some((m) => /standoffs/.test(m)))
 })
+
+test("a board with no standoff of its own takes the chassis's standoffs for the battery rule (a 9 mm pack under 10 mm)", () => {
+	const ch = { ...chassis, standoffMm: 10, battery: { xMm: 0, yMm: 40, sizeMm: [30, 20, 9] } } as unknown as ChassisSpec
+	const e = editor(start({ chassis: ch }))
+	e.apply({ kind: "move", board: "front", xMm: 0, yMm: 40 })
+	assert.ok(!e.findings().some((x) => /battery/.test(x.message)), "10 mm chassis standoffs clear a 9 mm pack")
+	const thick = editor(start({ chassis: { ...ch, battery: { xMm: 0, yMm: 40, sizeMm: [30, 20, 9.5] } } as unknown as ChassisSpec }))
+	thick.apply({ kind: "move", board: "front", xMm: 0, yMm: 40 })
+	assert.ok(thick.findings().some((x) => x.level === "error" && /battery/.test(x.message)), "9.5 mm is over 10 − 1")
+})
+
+test("a board over the caster is not a finding: the caster hangs under the plate", () => {
+	const e = editor(start({ chassis }))
+	e.apply({ kind: "move", board: "front", xMm: 75, yMm: 0 })
+	assert.deepEqual(e.findings().filter((x) => /caster/.test(x.message)), [])
+})
+
+test("check(op) gives an edit's findings without touching the history", () => {
+	const e = editor(start())
+	e.apply({ kind: "move", board: "front", xMm: 30, yMm: 0 })
+	e.undo()
+	assert.ok(e.canRedo())
+	const f = e.check({ kind: "move", board: "front", xMm: -40, yMm: 0 })
+	assert.ok(f.some((x) => /overlaps/.test(x.message)))
+	assert.ok(e.canRedo(), "redo kept")
+	assert.equal(e.diff(), null)
+	assert.equal(e.apply({ kind: "move", board: "front", xMm: 40, yMm: 0 }), false, "a move back to the start is no edit")
+	assert.ok(e.canRedo(), "and keeps redo")
+})
+
+test("pending() lists the edits since the last Apply, to replay on a newer design", () => {
+	const e = editor(start())
+	e.apply({ kind: "move", board: "front", xMm: 30, yMm: 0 })
+	e.markApplied()
+	e.apply({ kind: "rotate", board: "main" })
+	e.apply({ kind: "move", board: "main", xMm: -45, yMm: 0 })
+	e.undo()
+	assert.deepEqual(e.pending(), [{ kind: "rotate", board: "main" }])
+	const newer = assembly()
+	newer.boards[1].xMm = 50 // the round moved front
+	const r = editor({ assembly: newer, links: [] })
+	for (const op of e.pending()) r.apply(op)
+	assert.deepEqual(r.state().assembly.boards.map((b) => [b.name, b.xMm, b.rotDeg]), [["main", -40, 90], ["front", 50, 0]])
+})
