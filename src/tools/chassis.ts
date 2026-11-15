@@ -28,8 +28,11 @@ export interface ChassisSpec {
 	battery: { xMm: number; yMm: number; sizeMm: [number, number, number] }
 	// holes: the board's own mounting holes on the plate (its mountingHoles, or a bought module's record holes, turned by
 	// rotDeg); a standoff under each. standoffs false: a HAT on another board's spacers, with none of its own on the plate.
-	boards: { name: string; xMm: number; yMm: number; widthMm: number; heightMm: number; rotDeg: number; holeInsetMm: number; holes: { xMm: number; yMm: number }[]; standoffs?: false }[]
-	// The board's screw, the case's: an M2 self-tapping screw through the board's hole into the standoff's pilot hole.
+	// screwHoleMm / pilotMm: the board's own hole and the standoff's pilot for the screw that hole takes (BOARD_SCREWS): a
+	// designed board's Ø2.2 mm hole takes M2, a Raspberry Pi's Ø2.7 mm M2.5.
+	boards: { name: string; xMm: number; yMm: number; widthMm: number; heightMm: number; rotDeg: number; holeInsetMm: number; holes: { xMm: number; yMm: number }[]; standoffs?: false; screwHoleMm: number; pilotMm: number }[]
+	// The designed boards' screw, the case's: an M2 self-tapping screw through the board's hole into the standoff's pilot
+	// hole. A board with other holes has its own (boards[].screwHoleMm, pilotMm).
 	boardScrew: { boardHoleMm: number; pilotMm: number }
 	sensor: { xMm: number; yMm: number; zMm: number; sizeMm: [number, number, number]; rangeMm: number; updateMs: number }
 	massG: number
@@ -74,6 +77,14 @@ export function holesInChassis(b: { at: { xMm: number; yMm: number }; rotDeg: nu
 }
 
 // others: the outlines of the robot's other boards, by name; this board is "main".
+// The self-tapping screw a board's mounting hole takes (the largest metric size that passes it), and the pilot the
+// printed standoff gets for it. M2 1.6 mm is the case's (STANDOFF.pilotMm); M2.5 2.1 mm is an ESTIMATE for a
+// thread-forming screw in PLA (about 85 % of the thread), to be checked on a print.
+export const BOARD_SCREWS: { threadMm: number; pilotMm: number }[] = [{ threadMm: 2, pilotMm: STANDOFF.pilotMm }, { threadMm: 2.5, pilotMm: 2.1 }]
+export function boardScrew(holeMm: number): { threadMm: number; pilotMm: number } {
+	return [...BOARD_SCREWS].reverse().find((x) => x.threadMm < holeMm) ?? BOARD_SCREWS[0]
+}
+
 export function chassisSpec(s: ContractSnapshot, others: { name: string; outline: { widthMm: number; heightMm: number } }[] = []): ChassisSpec | null {
 	const v = s.values
 	const mech = withAssembly(v), motion = v.motion
@@ -103,7 +114,9 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 			const o = known.find((k) => k.name === b.name)!.outline
 			const hat = Boolean(b.on && placed.some((x) => x.name === b.on))
 			const holes = hat ? [] : b.holes?.length ? holesInChassis(b, o).map(([xMm, yMm]) => ({ xMm, yMm })) : boardHoles(s, b.name, o).map((h) => turn(h, b.rotDeg)).map((h) => ({ xMm: +(b.at.xMm + h.x).toFixed(3), yMm: +(b.at.yMm + h.y).toFixed(3) }))
-			return { name: b.name, xMm: b.at.xMm, yMm: b.at.yMm, widthMm: o.widthMm, heightMm: o.heightMm, rotDeg: b.rotDeg, holeInsetMm: BOARD_HOLE_INSET_MM, holes, ...(hat ? { standoffs: false as const } : {}) }
+			// A record's hole diameter (a bought module's) picks its screw; a designed board drills the generator's hole.
+			const dia = b.holes?.find((h) => typeof h.dia === "number" && h.dia > 0)?.dia ?? MOUNTING_HOLE.diameterMm
+			return { name: b.name, xMm: b.at.xMm, yMm: b.at.yMm, widthMm: o.widthMm, heightMm: o.heightMm, rotDeg: b.rotDeg, holeInsetMm: BOARD_HOLE_INSET_MM, holes, ...(hat ? { standoffs: false as const } : {}), screwHoleMm: dia, pilotMm: boardScrew(dia).pilotMm }
 		}),
 		boardScrew: { boardHoleMm: MOUNTING_HOLE.diameterMm, pilotMm: STANDOFF.pilotMm },
 		unplaced,

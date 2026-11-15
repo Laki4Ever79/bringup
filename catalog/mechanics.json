@@ -767,6 +767,30 @@
 			}
 		},
 		{
+			"mpn": "M2.5x8 thread-forming pan head screw (for plastic)",
+			"kind": "screw",
+			"threadMm": 2.5,
+			"lengthMm": 8,
+			"selfTapping": true,
+			"buy": [
+				{
+					"supplier": "McMaster-Carr",
+					"url": "https://www.mcmaster.com/product/99461A931/"
+				}
+			],
+			"notes": "The board screw for a Ø2.7 mm hole (a Raspberry Pi's) into the printed standoff's pilot (src/tools/chassis.ts boardScrew). Pack quantity not checked.",
+			"source": {
+				"threadMm": {
+					"url": "https://www.mcmaster.com/product/99461A931/",
+					"where": "listing: Phillips rounded head thread-forming screws for plastic, 18-8 stainless, M2.5"
+				},
+				"lengthMm": {
+					"url": "https://www.mcmaster.com/product/99461A931/",
+					"where": "listing: 8 mm long"
+				}
+			}
+		},
+		{
 			"mpn": "M4x10 socket head cap screw (ISO 4762)",
 			"kind": "screw",
 			"threadMm": 4,

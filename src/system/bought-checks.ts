@@ -7,9 +7,10 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "../mechanics/catalog.ts"
 import { est } from "../mechanics/estimates.ts"
 import type { SystemAssembly } from "./assembly.ts"
-import { moduleById } from "./bought.ts"
+import { HAT_STACK, moduleById } from "./bought.ts"
+import { loadCatalog } from "../tools/parts-search.ts"
 import type { SystemFinding } from "./checks.ts"
-import { headerCheck, headerSignals, mechanicsCheck, powerBudget, railCheck, regulatorFromCatalog, type ComputeFinding, type SensorMount } from "./compute.ts"
+import { headerCheck, headerSignals, mechanicsCheck, stackFit, powerBudget, railCheck, regulatorFromCatalog, type ComputeFinding, type SensorMount } from "./compute.ts"
 import type { SystemSpec } from "./spec.ts"
 
 const ROOT = resolve(import.meta.dirname, "../..")
@@ -52,6 +53,10 @@ export function boughtChecks(spec: SystemSpec, contracts: Record<string, Contrac
 		if (carrier) {
 			add(railCheck(m, regulator), [carrier.name])
 			add(headerCheck(m, headerSignals(m, carrier.bridge ?? "usb")), [carrier.name])
+			// The carrier's 40-pin header (once its parts exist) against the HAT stack.
+			const hdr = contracts[carrier.name]?.values.parts?.find((p) => p.role === "connector" && p.pins.length === 40)
+			const rec = hdr ? (loadCatalog(ROOT) as unknown as { mpn: string; socketHeightMm?: number; heightSource?: string }[]).find((c) => c.mpn === hdr.mpn) ?? { mpn: hdr.mpn } : undefined
+			add(stackFit(m, rec, HAT_STACK.mm, HAT_STACK.source), [carrier.name])
 		} else out.push({ kind: "compute-rail", link: "", message: `${b.name}: no carrier in the system feeds it through its header (add one: src/system/carrier.ts addCarrier); its rail and header can't be checked`, boards: [], level: "warning" })
 		const placed = assembly?.boards.find((x) => x.name === b.name)
 		if (assembly?.body === "chassis" && assembly.plate && placed) {

@@ -74,14 +74,16 @@ def build(spec):
 
     # A standoff under each of the board's mounting holes, with a pilot hole for the board's screw (the case's: an M2
     # self-tapping screw into a 1.6 mm pilot, spec boardScrew) through standoff and plate.
+    # Each board's own pilot when the spec gives one (a Raspberry Pi's Ø2.7 mm holes take M2.5, spec boards[].pilotMm).
     pilot = spec.get("boardScrew", {}).get("pilotMm", M25_HOLE)
     holes = []
     for b in spec["boards"]:
         for x, y in _board_holes(b):
             part += Pos(x, y, t + so / 2) * Cylinder(STANDOFF_OD / 2, so)
-            holes.append((x, y))
-    for x, y in holes:
-        part -= Pos(x, y, (t + so) / 2) * Cylinder(pilot / 2, t + so + 2)
+            holes.append((x, y, b.get("pilotMm", pilot)))
+    for x, y, d in holes:
+        part -= Pos(x, y, (t + so) / 2) * Cylinder(d / 2, t + so + 2)
+    pilots = sorted({d for _, _, d in holes}) or [pilot]
 
     # The caster's bolt holes.
     c = spec["caster"]
@@ -122,7 +124,7 @@ def build(spec):
                     found.append((cx, cy))
         return [{"xMm": x, "yMm": y} for x, y in found]
 
-    mounts = {"standoffHoles": centres(pilot / 2), "casterHoles": centres(c["holeDiaMm"] / 2)}
+    mounts = {"standoffHoles": [h for d in pilots for h in centres(d / 2)], "casterHoles": centres(c["holeDiaMm"] / 2)}
     return part, mounts
 
 
