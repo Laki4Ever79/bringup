@@ -51,3 +51,23 @@ export function i2cCableLimit(khz, devices) {
 export const STANDOFF_DEFAULT_MM = 8
 export const STANDOFF_RANGE_MM = [3, 30]
 export const STANDOFF_USUAL_MM = [5, 20]
+
+// JSON with object keys sorted and undefined fields left out, so the page and the server write a value the same way.
+export function canonicalJson(v) {
+	if (Array.isArray(v)) return `[${v.map((x) => (x === undefined ? "null" : canonicalJson(x))).join(",")}]`
+	if (v && typeof v === "object") return `{${Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canonicalJson(v[k])}`).join(",")}}`
+	return JSON.stringify(v ?? null)
+}
+// The design an edit was made from (its assembly and links), as a short hash: Apply sends it as `base`, and the
+// requests endpoint refuses an edit made from a design that has changed since. FNV-1a, two 32-bit lanes (not secure;
+// it only tells two designs apart).
+export function designHash(d) {
+	const s = canonicalJson({ assembly: d?.assembly ?? null, links: d?.links ?? [] })
+	let h1 = 0x811c9dc5, h2 = 0x01000193 ^ 0x5bd1e995
+	for (let i = 0; i < s.length; i++) {
+		const c = s.charCodeAt(i)
+		h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0
+		h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0
+	}
+	return h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0")
+}
