@@ -10,7 +10,7 @@ import { PlanStore } from "../src/dashboard/plans.ts"
 import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
 import { planChecks } from "../src/system/plan.ts"
 import { tempDir, waitFor } from "./helpers.ts"
-import { designResult, forksFile, recordForkBuild, setForkResult } from "../src/dashboard/starters.ts"
+import { designResult, forksFile, recordForkBuild, setForkResult, starterSeed } from "../src/dashboard/starters.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -181,6 +181,14 @@ test("the shipped Rover + climate starter is the two-board robot of briefs/syste
 		assert.deepEqual(v.plan.forkedFrom.title, "Rover + climate board")
 		assert.deepEqual(v.issues, [])
 	})
+})
+
+test("a starter seeded from a spec with a bought board keeps it bought and its HAT a carrier; only designed boards bring briefs", () => {
+	const spec = JSON.parse(readFileSync(resolve(import.meta.dirname, "..", "briefs", "systems", "rover-pi.json"), "utf8"))
+	const seed = starterSeed({ sentence: "a rover with a Pi", why: "w", robot: true, spec, briefs: { main: "# main", "rpi-5-carrier": "# hat" } })
+	assert.deepEqual(seed.spec.boards, [{ name: "main", brief: "briefs/main.md" }, { name: "brain", kind: "bought", module: "rpi-5" }, { name: "rpi-5-carrier", brief: "briefs/rpi-5-carrier.md", carries: "brain" }])
+	assert.deepEqual(Object.keys(seed.briefs).sort(), ["main", "rpi-5-carrier"])
+	assert.deepEqual(planChecks({ ...seed, id: "plan-x", version: 1, spendUsd: null }), [])
 })
 
 test("a system example keeps its assembly, so the start page stands a robot's boards on its chassis", () => {

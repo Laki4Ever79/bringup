@@ -64,9 +64,18 @@ export const hasStarter = (examplesRoot: string, name: string) => STARTER_NAME.t
 // is dropped: a plan places its boards at Build (buildSpec), so a fork that adds or removes a board stays consistent.
 export function starterSeed(input: { sentence: string; why: string; robot: boolean; spec?: SystemSpec; briefs: Record<string, string> }): StarterSeed {
 	const spec: SystemSpec = input.spec
-		? { name: input.spec.name, boards: input.spec.boards.map((b) => ({ name: b.name, brief: `briefs/${b.name}.md` })), links: input.spec.links }
+		? {
+				name: input.spec.name,
+				// A bought board (a compute module) stays bought, with no brief; a carrier keeps the board it carries and its choices.
+				boards: input.spec.boards.map((b) =>
+					b.kind === "bought"
+						? { name: b.name, kind: "bought" as const, module: b.module }
+						: { name: b.name, brief: `briefs/${b.name}.md`, ...(b.carries ? { carries: b.carries } : {}), ...(b.regulator ? { regulator: b.regulator } : {}), ...(b.bridge ? { bridge: b.bridge } : {}) },
+				),
+				links: input.spec.links,
+			}
 		: { name: input.sentence.slice(0, 60), boards: [{ name: "main", brief: "briefs/main.md" }], links: [] }
-	const names = spec.boards.map((b) => b.name)
+	const names = spec.boards.filter((b) => b.brief).map((b) => b.name)
 	return {
 		sentence: input.sentence,
 		spec,

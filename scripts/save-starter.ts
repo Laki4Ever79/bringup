@@ -23,7 +23,7 @@ const { sentence } = JSON.parse(readFileSync(join(dest, "example.json"), "utf8")
 const seed = source.endsWith(".json")
 	? (() => {
 			const spec = JSON.parse(readFileSync(source, "utf8")) as SystemSpec
-			const briefs = Object.fromEntries(spec.boards.map((b) => [b.name, readFileSync(resolve(dirname(source), b.brief ?? ""), "utf8")]))
+			const briefs = Object.fromEntries(spec.boards.filter((b) => b.brief).map((b) => [b.name, readFileSync(resolve(dirname(source), b.brief!), "utf8")]))
 			return starterSeed({ sentence, why, robot, spec, briefs })
 		})()
 	: starterSeed({ sentence, why, robot, briefs: { main: readFileSync(source, "utf8") } })
