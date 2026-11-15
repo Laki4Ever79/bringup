@@ -5,6 +5,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { readTrace } from "../runner/ripple.ts"
+import { stepOfEvent } from "../dashboard/progress.js"
 
 export const SYSTEM_TRACE = "system-trace.jsonl"
 
@@ -22,34 +23,9 @@ export interface SystemTraceLine {
 	detail?: string
 }
 
-const KIND_STEP: Record<string, SystemStep> = { board: "board", enclosure: "case", chassis: "chassis", firmware: "firmware", drive: "drive", testkit: "testkit" }
-
 // One board trace event as a system line (without at/round/board), or null for events the system page doesn't show.
-export function stepOf(event: { type: string; payload: unknown }): Omit<SystemTraceLine, "at" | "round" | "board"> | null {
-	const p = event.payload as Record<string, unknown>
-	if (event.type === "artifact.ready") {
-		const step = KIND_STEP[String(p.kind)]
-		if (!step) return null
-		// The drive's result rides under its kind (builders.ts summary): pass, fail or not run.
-		const summary = p[String(p.kind)] as { result?: string; failed?: string; reason?: string } | undefined
-		const skipped = typeof p.skipped === "string" ? p.skipped : undefined
-		const notRun = Boolean(skipped) || summary?.result === "not run"
-		// A board with DRC errors was built but isn't one to order: the page shows it failed, with the count.
-		const drc = p.drc as { errors?: number; firstError?: string | null } | undefined
-		const drcErrors = step === "board" && (drc?.errors ?? 0) > 0
-		const failed = summary?.result === "fail" || drcErrors
-		const detail = skipped ?? (summary?.result === "not run" && summary.reason ? summary.reason : undefined) ?? (drcErrors ? `DRC: ${drc!.errors} error(s)${drc!.firstError ? `, first: ${drc!.firstError}` : ""}` : failed && summary?.failed ? `failed at ${summary.failed}` : undefined)
-		return { step, status: notRun ? "not run" : failed ? "failed" : "ok", revision: Number(p.revision), ...(detail ? { detail } : {}) }
-	}
-	if (event.type === "artifact.failed") {
-		const step = KIND_STEP[String(p.kind)]
-		return step ? { step, status: "failed", revision: Number(p.revision), detail: String(p.error ?? "").split("\n")[0].slice(0, 200) } : null
-	}
-	if (event.type === "firmware.booted") return { step: "boot", status: p.booted ? "ok" : "failed", revision: Number(p.revision) }
-	if (event.type === "design.settled") return { step: "settled", status: p.settled ? "ok" : "failed", revision: Number(p.revision) }
-	if (event.type === "contract.changed") return { step: "contract", status: "ok", revision: Number(p.revision ?? p.version ?? 0), detail: String(p.field ?? "") }
-	return null
-}
+// The mapping lives in the dashboard module so the one-board design page uses the very same one.
+export const stepOf = stepOfEvent as (event: { type: string; payload: unknown }) => Omit<SystemTraceLine, "at" | "round" | "board"> | null
 
 export class SystemTrace {
 	round = 0
