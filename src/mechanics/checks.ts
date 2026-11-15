@@ -401,11 +401,18 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// A 4-pin connector the boards already have under another ref, serving no link: the mechanics points at it (one field)
 	// instead of the parts agent adding a second one (real rover run 10, 15 Nov: J5 and JT1 were added and removed in
 	// turn for 20 revisions, each a "duplicate" of the other).
-	else if (!plug && spare4Pin(boards, mech.sensor.connector)) push("mech-wiring", `the board already has a 4-pin connector ${spare4Pin(boards, mech.sensor.connector)} and no ${mech.sensor.connector}: set mechanics.sensor.connector to ${spare4Pin(boards, mech.sensor.connector)} (don't add a second one)`, ["mechanics"], ["mechanics"])
+	// The plug's name converges on the mechanics' (JT1 from the layout solver), never the other way: pointing the mechanics
+	// at the board's name made the solver's next layout flip it back (real rover run 3 on the Claude subscription, 15 Nov:
+	// JT1 and J5 swapped six times). So the parts agent and the architect rename their plug, keeping it the only one.
+	else if (!plug && spare4Pin(boards, mech.sensor.connector)) push("mech-wiring", `the board's 4-pin connector ${spare4Pin(boards, mech.sensor.connector)} is the distance sensor's plug: rename it ${mech.sensor.connector} (mechanics.sensor.connector) in parts and in connectors, and keep only that one (don't add a second)`, ["parts", "architect"], ["parts", "connectors"])
 	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["parts"], ["parts"])
 	// The board generator joins the plug's IO1/IO2 to the bus (linkBusTraces): the bus must exist on its board.
 	else if (!["I2C_SDA", "I2C_SCL"].every((sig) => boards.some((b) => (b.snapshot.values.parts ?? []).some((p) => p.ref === plug.ref) && (b.snapshot.values.pins ?? []).some((p) => p.signal === sig))))
 		push("mech-wiring", `the sensor connector ${plug.ref} needs an I2C bus on its board: assign I2C_SDA and I2C_SCL`, ["architect"], ["pins"])
+	// The sensor's plug takes no pins: the board generator joins its IO1/IO2 to the I2C bus (real rover run 3 on the
+	// Claude subscription: the architect wired JT1 to two spare GPIOs as "EXP_IO1/2", which left it on no bus).
+	const onPlug = mech.sensor ? pins.filter((p) => p.partRef === mech.sensor.connector) : []
+	if (onPlug.length) push("mech-wiring", `${onPlug.map((p) => `${p.signal} (GPIO${p.gpio})`).join(", ")} go${onPlug.length === 1 ? "es" : ""} to the distance sensor's plug ${mech.sensor.connector}: remove ${onPlug.length === 1 ? "it" : "them"}. The plug takes no pins; the board generator joins it to the I2C bus (I2C_SDA, I2C_SCL)`, ["architect"], ["pins"])
 	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", "no battery connector on any board: the cell needs one", ["parts"], ["parts"])
 	return out
 }
