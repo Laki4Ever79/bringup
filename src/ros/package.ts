@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ChassisSpec } from "../tools/chassis.ts"
 import { controllersYaml, robotUrdf, type RosHardware } from "./urdf.ts"
+import { acceptanceScript } from "./acceptance.ts"
 
 // The robot's ROS 2 package (docs/ros.md), written beside each chassis build: an ament_cmake package that installs
 // the URDF, the controllers' settings and a launch file (robot_state_publisher, the ros2_control node, the joint state
@@ -15,7 +16,8 @@ export function writeRosPackage(dir: string, spec: ChassisSpec, opts: { robot?: 
 	const robot = opts.robot ?? "rover"
 	const pkg = rosPackageName(robot)
 	const root = join(dir, pkg)
-	for (const d of ["urdf", "config", "launch"]) mkdirSync(join(root, d), { recursive: true })
+	for (const d of ["urdf", "config", "launch", "test"]) mkdirSync(join(root, d), { recursive: true })
+	writeFileSync(join(root, "test", "acceptance.py"), acceptanceScript(spec), { mode: 0o755 })
 	const stamp = opts.revision !== undefined ? ` (design revision ${opts.revision})` : ""
 	for (const hw of ["mock", "bringup"] as RosHardware[]) writeFileSync(join(root, "urdf", `${robot}.${hw}.urdf`), robotUrdf(spec, { name: robot, hardware: hw }))
 	writeFileSync(join(root, "config", "controllers.yaml"), controllersYaml(spec))
@@ -44,7 +46,7 @@ export function writeRosPackage(dir: string, spec: ChassisSpec, opts: { robot?: 
 		`cmake_minimum_required(VERSION 3.8)
 project(${pkg})
 find_package(ament_cmake REQUIRED)
-install(DIRECTORY urdf config launch DESTINATION share/\${PROJECT_NAME})
+install(DIRECTORY urdf config launch test DESTINATION share/\${PROJECT_NAME})
 ament_package()
 `,
 	)

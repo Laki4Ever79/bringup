@@ -54,7 +54,12 @@ static char hostLine[48];
 static size_t hostLen = 0;
 static float hostLeft = 0, hostRight = 0;
 static uint32_t hostAt = 0;
+// A ROS test build (-DROVER_HOST_ONLY): the motors stay off until the host commands them, so the test starts from rest.
+#ifdef ROVER_HOST_ONLY
+static bool hostSeen = true;
+#else
 static bool hostSeen = false;
+#endif
 
 static void hostPoll(uint32_t now) {
 	while (Serial.available()) {

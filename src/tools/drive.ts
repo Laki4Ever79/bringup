@@ -41,6 +41,8 @@ export interface DriveOptions {
 	// The firmware's console (UART0) on this TCP port instead of a log file: a ROS 2 host drives it in host mode
 	// (docs/ros.md), while UART1 still turns the MuJoCo model.
 	consolePort?: number
+	// Extra compile flags for the simulation firmware (PLATFORMIO_BUILD_FLAGS), e.g. -DROVER_HOST_ONLY for a ROS test.
+	buildFlags?: string
 }
 
 // MuJoCo, from npm run setup -- --robotics: a .venv without it gets "not run", like a machine without QEMU.
@@ -57,7 +59,7 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 	if (!existsSync(qemu)) return notRun("QEMU is not installed (npm run setup): not proven in simulation")
 	if (!hasMujoco(o.python)) return notRun("MuJoCo is not installed (npm run setup -- --robotics): not proven in simulation")
 	const env = o.env ?? "esp32c3_sim"
-	const build = await run(o.pio, ["run", "-d", o.fwDir, "-e", env], { timeoutMs: 900_000 })
+	const build = await run(o.pio, ["run", "-d", o.fwDir, "-e", env], { timeoutMs: 900_000, ...(o.buildFlags ? { env: { ...(process.env as Record<string, string>), PLATFORMIO_BUILD_FLAGS: o.buildFlags } } : {}) })
 	if (build.code !== 0) return notRun(`the simulation firmware didn't build: ${(build.stdout + build.stderr).trim().split("\n").slice(-3).join(" ")}`)
 	const { image, log } = await mergeFlash(o.fwDir, env)
 	if (!image) return notRun(`no flash image: ${log.trim().split("\n").at(-1)}`)
