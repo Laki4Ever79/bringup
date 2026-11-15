@@ -112,6 +112,22 @@ test("no drawing while idle", { skip, timeout: 60_000 }, async () => {
 	})
 })
 
+test("every SVG update counts as a draw: a rebuild, a selection, a zoom", { skip, timeout: 60_000 }, async () => {
+	await withTop(async (page) => {
+		const draws = () => page.evaluate(() => (window as any).tv.stats().draws as number)
+		let d = await draws()
+		await page.evaluate(() => (window as any).tv.setWorld((window as any).world))
+		assert.ok((await draws()) > d, "setWorld")
+		d = await draws()
+		await page.evaluate(() => (window as any).tv.select("climate", "board"))
+		assert.ok((await draws()) > d, "select")
+		d = await draws()
+		await page.mouse.move(500, 350)
+		await page.mouse.wheel(0, 300)
+		await page.waitForFunction((n) => (window as any).tv.stats().draws > n, d, { timeout: 5000 })
+	})
+})
+
 test("hover and click report the board, and select outlines it in the signal colour", { skip, timeout: 60_000 }, async () => {
 	await withTop(async (page) => {
 		const box = await page.locator('[data-board="climate"] [data-outline]').boundingBox()

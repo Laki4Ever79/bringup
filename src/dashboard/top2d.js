@@ -24,7 +24,8 @@ export function mountTop(host, opts = {}) {
 	host.append(svg)
 
 	let scene = null, home = null, focusName = null, touched = false, view = { x: 0, y: 0, w: 100, h: 60 }, draws = 0, raf = 0, selected = null, disposed = false, finish = null
-	const setView = (v) => { view = v; svg.setAttribute("viewBox", fmt(v)) }
+	// draws counts every real update of the drawing: a viewBox change (flight, pan, zoom), a rebuild, a selection.
+	const setView = (v) => { const changed = fmt(v) !== fmt(view); view = v; svg.setAttribute("viewBox", fmt(v)); if (changed) draws++ }
 	setView(view)
 
 	const live = () => !disposed
@@ -51,7 +52,7 @@ export function mountTop(host, opts = {}) {
 			const step = (now) => {
 				const f = flight, t = f.ms > 0 ? Math.min(1, (now - f.t0) / f.ms) : 1, k = ease(t)
 				const next = t === 1 ? f.to : { x: f.from.x + (f.to.x - f.from.x) * k, y: f.from.y + (f.to.y - f.from.y) * k, w: f.from.w + (f.to.w - f.from.w) * k, h: f.from.h + (f.to.h - f.from.h) * k }
-				if (fmt(next) !== fmt(view)) { setView(next); draws++ }
+				if (fmt(next) !== fmt(view)) setView(next)
 				if (t < 1) raf = requestAnimationFrame(step)
 				else { raf = 0; flight = null; const r = finish; finish = null; r?.() }
 			}
@@ -69,13 +70,14 @@ export function mountTop(host, opts = {}) {
 	}
 	const select = (name, kind = "board") => {
 		if (!live()) return
-		selected = name == null ? null : { name, kind }; applySelection() }
+		selected = name == null ? null : { name, kind }; applySelection(); draws++ }
 
 	function setWorld(w) {
 		if (!live()) return
 		const boards = w.boards ?? []
 		const links = w.cables ?? []
 		scene = topLayout(w.assembly ?? null, boards, links)
+		draws++
 		for (const g of [gPlate, gMech, gBoards, gCables, gLabels]) g.replaceChildren()
 		if (scene.plate) {
 			const p = scene.plate

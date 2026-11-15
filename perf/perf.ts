@@ -136,24 +136,44 @@ try {
 		await page.waitForSelector("#stage-top svg [data-board]", { timeout: 30_000 })
 		await page.waitForTimeout(1500)
 		const name = (await page.evaluate(`document.querySelector("#stage-top [data-board]").dataset.board`)) as string
-		const flyIn = await frames(page, async () => {
-			await page.evaluate(`window.openBoard(${JSON.stringify(name)})`)
-			await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 10_000 })
-		})
-		check("system page Top: zoom into a board, slowest frame (ms)", Math.max(...flyIn), BUDGET.maxFrameMs)
+		// The zoom in ends where the panel covers the stage (the board-view `on` class), as in the 3D rows: the board page
+		// loads behind that panel afterwards, a page load and not part of the zoom. The zoom out is cut at the end of the
+		// close flight (the viewBox back home), not at a fixed wait.
+		await page.evaluate(`(() => {
+			window.__ft = []; window.__m = []; window.__on = true
+			let last = performance.now()
+			const tick = (t) => { window.__ft.push([t - last, t]); last = t; if (window.__on) requestAnimationFrame(tick) }
+			requestAnimationFrame(tick)
+			const v = document.getElementById("board-view")
+			new MutationObserver(() => window.__m.push([v.classList.contains("on") ? "on" : "off", performance.now()])).observe(v, { attributes: true, attributeFilter: ["class"] })
+		})()`)
+		const home = await page.evaluate(`document.querySelector("#stage-top svg").getAttribute("viewBox")`)
+		await page.evaluate(`window.__m.push(["open", performance.now()]); void window.openBoard(${JSON.stringify(name)})`)
+		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 10_000 })
 		await page.waitForTimeout(2500)
-		const flyOut = await frames(page, async () => {
-			await page.keyboard.press("Escape")
-			await page.waitForFunction(() => !document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 10_000 })
-			await page.waitForTimeout(600)
-		})
-		check("system page Top: zoom out, slowest frame (ms)", Math.max(...flyOut), BUDGET.maxFrameMs)
+		await page.keyboard.press("Escape")
+		await page.waitForFunction((h) => !document.getElementById("board-view")?.classList.contains("on") && document.querySelector("#stage-top svg")?.getAttribute("viewBox") === h, home, { timeout: 10_000 })
+		await page.evaluate(`window.__m.push(["home", performance.now()])`)
+		const rec = (await page.evaluate(`(() => { window.__on = false; return { ft: window.__ft, m: window.__m } })()`)) as { ft: [number, number][]; m: [string, number][] }
+		const at = (label: string) => rec.m.find(([l]) => l === label)![1]
+		const between = (from: number, to: number) => rec.ft.filter(([, t]) => t > from && t <= to).map(([d]) => d)
+		check("system page Top: zoom into a board, slowest frame (ms)", Math.max(...between(at("open"), at("on"))), BUDGET.maxFrameMs)
+		check("system page Top: zoom out, slowest frame (ms)", Math.max(...between(at("off"), at("home"))), BUDGET.maxFrameMs)
+		// Idle: nothing in the Top view changes, so it draws nothing. draws counts every real SVG update (a rebuild, a
+		// selection, a viewBox change); a control first (one wheel step over the drawing, a zoom) proves the counter moves,
+		// so its 0 means something.
+		const before = (await page.evaluate(`window.__topStats().draws`)) as number
+		const svgBox = (await page.locator("#stage-top svg").boundingBox())!
+		await page.mouse.move(svgBox.x + svgBox.width / 2, svgBox.y + svgBox.height / 2)
+		await page.mouse.wheel(0, 200)
+		await page.waitForFunction((n) => (window as unknown as { __topStats: () => { draws: number } }).__topStats().draws > n, before, { timeout: 5000 }).catch(() => {})
+		const moved = ((await page.evaluate(`window.__topStats().draws`)) as number) > before
+		check("system page Top: control zoom not counted as a draw (must be 0)", moved ? 0 : 1, 0)
 		const idleTop: number = await page.evaluate(`(async () => {
-			const t = window.__stage.top
 			await new Promise((r) => setTimeout(r, 500))
-			const before = t.stats().draws
+			const before = window.__topStats().draws
 			await new Promise((r) => setTimeout(r, 3000))
-			return t.stats().draws - before
+			return window.__topStats().draws - before
 		})()`)
 		check("system page Top: draws while idle", idleTop, BUDGET.idleDraws)
 	} else console.log(`(no out/${TOP_RUN} on this machine: the Top view rows are skipped)`)

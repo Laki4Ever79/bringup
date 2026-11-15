@@ -541,7 +541,7 @@ function showView(view) {
 	else u.searchParams.delete("view")
 	history.replaceState(history.state, "", u)
 }
-window.__stage = stage // read by npm run perf (stage.top.stats().draws)
+window.__topStats = () => stage.top?.stats() // read by npm run perf (the Top view's draws while idle)
 // Ignored while a board is opening, open or closing: the flight belongs to the view that began it.
 window.setView = async (view) => {
 	view = view === "top" ? "top" : "3d"

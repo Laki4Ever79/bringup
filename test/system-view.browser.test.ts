@@ -660,7 +660,7 @@ test("every section of today's design overview is still there in both views", { 
 		const sections = async (view: string) => {
 			for (const sel of ["#timeline", "#topology", "[data-open]"]) assert.equal(await visible(page, sel), true, `${sel} in ${view}`)
 			const pills = await page.$$eval("#file-links a.pill", (els) => els.map((e) => e.textContent))
-			for (const n of ["Report", "Cable", "WireViz"]) assert.ok(pills.includes(n), `${n} pill in ${view}: ${pills.join(",")}`)
+			for (const n of ["Report", "Cable", "WireViz", "Bench test"]) assert.ok(pills.includes(n), `${n} pill in ${view}: ${pills.join(",")}`)
 			const cards = await page.$$eval(".board .name", (els) => els.map((e) => e.textContent))
 			for (const b of boards) assert.ok(cards.includes(b), `board card ${b} in ${view}`)
 			const opens = await page.$$eval("[data-open]", (els) => els.map((e) => (e as HTMLElement).dataset.open))
@@ -681,6 +681,10 @@ test("every section of today's design overview is still there in both views", { 
 		await page.goto(`${hub.url}/?run=robot-2.${SECOND}&standalone=1`)
 		await page.waitForSelector("#pcb-host", { timeout: 30_000 })
 		assert.equal(new URL(page.url()).pathname, "/", "the plain board page, not redirected")
+		// The plain board page: its own trail ending at this board's run and its brief as the title, no design levels.
+		await page.waitForFunction(() => Boolean(document.querySelector("#site-nav .nv-trail b")) && /^Bringup · ./.test(document.title) && document.title !== "Bringup · new design", null, { timeout: 30_000 })
+		assert.equal(await page.locator("#site-nav .nv-levels").count(), 0, "no design levels on the plain board page")
+		assert.equal(await page.locator("#site-nav .nv-trail b").textContent(), `robot-2.${SECOND}`, "the trail names this board's run")
 	} finally {
 		await browser.close()
 		await hub.close()
