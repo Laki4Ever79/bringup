@@ -1,3 +1,4 @@
+import { readBrief } from "../brief-file.ts"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { OWNERS, type FieldName } from "../contract/types.ts"
 import { join } from "node:path"
@@ -8,7 +9,6 @@ import { emit, roleOf, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 import { ALL_KINDS, BUILD_REQUIRES, OPTIONAL_KINDS } from "./builders.ts"
 
-const readBrief = (outDir: string) => (existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : "")
 
 export const MAX_REVISIONS = 25
 // A robot (a motion field) carries more fields than a board alone: the drive, the chassis, the driver and its

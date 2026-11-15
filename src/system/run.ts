@@ -7,6 +7,7 @@ import { join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { assemblyFitError, mergeRequest, withOutlines, type SystemAssembly } from "./assembly.ts"
 import type { BoardAssembly } from "../mechanics/assembly.ts"
+import { plateLimitMm } from "../mechanics/checks.ts"
 import { appendRequest, watchJsonl } from "../runner/requests.ts"
 import { readTrace } from "../runner/ripple.ts"
 import { startRunProcess, type RunProcess } from "../runner/spawn-run.ts"
@@ -159,7 +160,11 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	// holds an older one (each board needs its siblings' real outlines for its chassis and mass).
 	// With `send` false (the rounds are used up) it only merges and writes system.json, and names the boards left stale.
 	// The brief's size limit, from the first board that has a motion field (the robot's main board).
-	const limitOf = (contracts: Record<string, ContractSnapshot | undefined>): [number, number] | undefined => Object.values(contracts).find((c) => c?.values.motion?.maxSizeMm)?.values.motion?.maxSizeMm
+	// The plate's limit from the robot's brief, with room for the wheels outside it (plateLimitMm).
+	const limitOf = (contracts: Record<string, ContractSnapshot | undefined>): [number, number] | undefined => {
+		const c = Object.values(contracts).find((x) => x?.values.motion?.maxSizeMm)
+		return c ? plateLimitMm(c) : undefined
+	}
 	const syncAssembly = (contracts: Record<string, ContractSnapshot | undefined>, send: boolean): string[] => {
 		const stale: string[] = []
 		if (!assembly) return stale

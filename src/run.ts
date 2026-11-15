@@ -1,3 +1,4 @@
+import { readBrief } from "./brief-file.ts"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -247,7 +248,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		settled,
 		outDir: opts.outDir,
 		revision: state.contract.revision,
-		violations: checkConsistency(state.contract.snapshot(), state.artifacts),
+		violations: checkConsistency(state.contract.snapshot(), state.artifacts, readBrief(opts.outDir)),
 		reportPath,
 	}
 }

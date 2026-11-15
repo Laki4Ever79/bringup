@@ -131,8 +131,8 @@ test("an old robot derives its assembly from its mechanics", () => {
 	const d = derivedAssembly(sys, ROVER_BOARD.mechanics, { main: { widthMm: 60, heightMm: 40 } })
 	assert.equal(d.derived, true)
 	assert.equal(d.body, "chassis")
-	assert.deepEqual(d.plate, { lengthMm: 150, widthMm: 110 })
-	assert.deepEqual(d.boards.map((b) => [b.name, b.xMm, b.yMm, b.rotDeg, b.outlineSource]), [["main", 10, 0, 0, "built"]])
+	assert.deepEqual(d.plate, { lengthMm: 150, widthMm: 96 })
+	assert.deepEqual(d.boards.map((b) => [b.name, b.xMm, b.yMm, b.rotDeg, b.outlineSource]), [["main", 0, 0, 0, "built"]])
 	assert.deepEqual(d.boards[0].outline, { widthMm: 60, heightMm: 40 })
 })
 
@@ -181,6 +181,6 @@ test("boards that can't fit within the limit at all are named, not silently exce
 	const huge = { widthMm: 200, heightMm: 30 }
 	const a = defaultAssembly(spec(undefined, ["main", "climate"]), "chassis", { main: { widthMm: 43, heightMm: 30 }, climate: huge }, limit)
 	const err = assemblyFitError(a, limit)
-	assert.match(err ?? "", /need a \d+ × \d+ mm plate, over the 160 × 150 mm the brief allows/)
+	assert.match(err ?? "", /need a \d+ × \d+ mm plate, over the 160 × 150 mm plate the brief's size allows/)
 	assert.equal(assemblyFitError(a), null, "no limit, no finding")
 })

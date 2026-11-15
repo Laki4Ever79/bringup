@@ -1,4 +1,5 @@
 import type { RobotParts } from "./tools/robot-parts.ts"
+import { readBrief } from "./brief-file.ts"
 import type { DriveArtifact } from "./tools/drive.ts"
 import { caseOuter } from "./contract/case.ts"
 import { enclosureMode, type ContractSnapshot, type Part } from "./contract/types.ts"
@@ -215,7 +216,7 @@ export function writeBench(outDir: string, s: ContractSnapshot, board?: { debugP
 
 export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean; bench?: boolean; mock?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
-	const violations = checkConsistency(snapshot, s.artifacts)
+	const violations = checkConsistency(snapshot, s.artifacts, readBrief(outDir))
 	const c = counts(join(outDir, "trace.jsonl"))
 	const v = snapshot.values
 	// With --no-hardware the tools are never used, so their absence is not news.
