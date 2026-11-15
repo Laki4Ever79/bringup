@@ -51,5 +51,6 @@ test("an outline change that leaves a connector past its edge moves it back, as 
 	const now = state.contract.snapshot()
 	assert.equal(now.values.outline!.heightMm, 16)
 	assert.deepEqual(connectorsOffEdge(now), [])
-	assert.equal(now.values.connectors!.find((k) => k.ref === "J5")!.offsetMm, 12.5)
+	// J5, a JST SH plug, by its 7.8 mm courtyard: at most 12.1 mm along the 16 mm edge.
+	assert.equal(now.values.connectors!.find((k) => k.ref === "J5")!.offsetMm, 12)
 })
