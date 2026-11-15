@@ -280,8 +280,12 @@ them as well, although it might not be the focus here".
 - [ ] **Charger vs pack:** main still carries the 1S TP4054 charger and plug on the rover-pi's 2S pack; no check
       compares them.
 - [ ] **Runtime leaves out the Pi:** a bought board's contract has no power rails.
-- [ ] **Simulation ~10 % faster than planned** (MuJoCo has no rolling resistance); the 100 mm turn clearance was measured
-      on one design. The real fix is a turn closed on heading (an IMU).
+- [x] **Simulation ~10 % faster than planned**: measured 15 Nov on the test rover, the reference rover and Rover with a
+      Pi at duty 0.4 and 0.8, the simulated cruise is -1.6 % to +0.4 % of the load line's speed (adding Crr in MuJoCo
+      made it 3-5 % slow: its contacts and the caster's friction already cost that). The gap predated the caster
+      friction fix and the one load-line model. Guarded by py/tests/test_mech_speed.py (within 3 %).
+- [ ] **Turn closed on heading**: the 100 mm turn clearance was measured on one design; turning by time stays open-loop.
+      Needs an IMU on the robot's board (a hardware choice for the user).
 - [ ] **examples/rover is stale** (saved 11 Nov, before the 150 × 120 brief and the current axle/wheelbase); re-save
       from a mock run. examples/rover-pi has no still.png.
 - [ ] **Null values in module records:** Jetson hole positions, ROCK 5B absolute holes, heights.
