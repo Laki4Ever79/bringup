@@ -15,6 +15,8 @@ const el = (tag, attrs = {}, text) => {
 	if (text !== undefined) e.textContent = text
 	return e
 }
+// A bought board (a compute module) is drawn dark, so it reads as bought, not designed here.
+const BOUGHT_FILL = "#222428", BOUGHT_INK = "#f4f2ec"
 const INK = "var(--ink, #1c1c1c)", SIGNAL = "var(--signal, #e8590c)", PAPER2 = "var(--paper-2, #ece8df)", OK = "var(--ok, #2f9e44)", ERROR = "var(--error, #c8231a)", WARN = "var(--warn, #b86e00)"
 const SNAP = 0.5 // mm, system-edit.js SNAP_MM
 const snap = (v) => Math.round(v / SNAP) * SNAP + 0
@@ -117,14 +119,19 @@ export function mountTop(host, opts = {}) {
 			if (w.assembly?.body === "chassis") {
 				// Standoff holes at each board's four corners. 3.5 mm is BOARD_HOLE_INSET_MM in src/tools/chassis.ts (the spec's
 				// boards[].holeInsetMm); browser JS can't import it.
-				for (const b of scene.boards) for (const [hx, hy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+				// A bought board and its carrier have the record's holes instead (drawn with the bought board).
+				const own = (n) => { const i = boards.find((x) => x.name === n); return i?.bought || i?.carries }
+				for (const b of scene.boards.filter((x) => !own(x.name))) for (const [hx, hy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
 					const inset = 3.5
 					gPlate.append(el("circle", { cx: b.x + inset + hx * (b.w - 2 * inset), cy: b.y + inset + hy * (b.h - 2 * inset), r: 1.1, fill: "none", stroke: INK, "stroke-width": 0.3, "stroke-opacity": 0.6, "data-hole": "" }))
 				}
 			}
 		}
 		const mech = drawChassis(w.chassis)
-		for (const b of scene.boards) {
+		// A carrier is a HAT on its bought board: drawn after it, on top.
+		const isHat = (n) => Boolean(boards.find((x) => x.name === n)?.carries)
+		const order = [...scene.boards].sort((p, q) => Number(isHat(p.name)) - Number(isHat(q.name)))
+		for (const b of order) {
 			const info = boards.find((x) => x.name === b.name) ?? {}
 			const turned = b.rotDeg === 90 || b.rotDeg === 270
 			const W = turned ? b.h : b.w, H = turned ? b.w : b.h
@@ -139,15 +146,25 @@ export function mountTop(host, opts = {}) {
 			// The board's own case: its outer footprint, dashed like the other mechanical outlines, centred on the board
 			// and inside the board's group so it turns with it. It takes no clicks: the board under it does.
 			if (kase) g.append(el("rect", { "data-case": "", "data-mech": "case", x: (W - kase.w) / 2, y: (H - kase.h) / 2, width: kase.w, height: kase.h, rx: 1.5, fill: "none", stroke: INK, "stroke-width": 0.35, "stroke-dasharray": "1.5 1", "stroke-opacity": 0.7, "pointer-events": "none" }))
-			if (!b.built) {
-				g.append(el("rect", { "data-outline": "", width: W, height: H, fill: "none", stroke: INK, "stroke-width": 0.6, "stroke-dasharray": "2 1.5", "pointer-events": "all" }))
+			// A HAT over a bought board takes clicks on its edge only, so the board under it can still be picked.
+			const hatOver = Boolean(info.carries && boards.some((x) => x.name === info.carries && x.bought))
+			const pe = hatOver ? "stroke" : "all"
+			if (info.bought) {
+				g.dataset.bought = info.module ?? ""
+				drawBought(g, b, info, W, H)
+			} else if (!b.built) {
+				g.append(el("rect", { "data-outline": "", width: W, height: H, fill: "none", stroke: INK, "stroke-width": 0.6, "stroke-dasharray": "2 1.5", "pointer-events": pe }))
+				// A HAT's name goes over its top edge, clear of the bought board's label under it.
+				if (hatOver) g.append(el("text", { x: 1.5, y: -1.2, fill: INK, "font-size": 3, transform: `rotate(${b.rotDeg} 0 0)`, "pointer-events": "none" }, `${b.name} (HAT on ${info.carries})`))
 				// Upright text inside the (possibly turned) group.
+				else {
 				const t = el("text", { x: W / 2, y: H / 2, "text-anchor": "middle", "dominant-baseline": "middle", fill: INK, "font-size": 3.2, transform: `rotate(${b.rotDeg} ${W / 2} ${H / 2})` })
 				t.append(el("tspan", { x: W / 2, dy: "-0.6em" }, b.name), el("tspan", { x: W / 2, dy: "1.4em", "fill-opacity": 0.6 }, `${Math.round(W)} × ${Math.round(H)} mm`))
 				g.append(t)
+				}
 			} else {
 				const s = info.circuit ? boardShapes(info.circuit) : null
-				g.append(el("rect", { "data-outline": "", width: W, height: H, fill: PAPER2, "fill-opacity": 0.6, stroke: INK, "stroke-width": 0.6, "pointer-events": "all" }))
+				g.append(el("rect", { "data-outline": "", width: W, height: H, fill: PAPER2, "fill-opacity": hatOver ? 0.3 : 0.6, stroke: INK, "stroke-width": 0.6, "pointer-events": pe }))
 				for (const p of s?.parts ?? []) g.append(el("rect", { x: p.x, y: p.y, width: p.w, height: p.h, fill: INK, "fill-opacity": 0.18, stroke: INK, "stroke-width": 0.15, "stroke-opacity": 0.5, "data-part": p.ref }))
 				for (const p of s?.pads ?? []) g.append(el("rect", { x: p.x, y: p.y, width: p.w, height: p.h, fill: SIGNAL, "fill-opacity": 0.7, "data-pad": "" }))
 				const t = el("text", { x: 1.5, y: -1.2, fill: INK, "font-size": 3, transform: `rotate(${b.rotDeg} 0 0)` }, b.name)
@@ -181,6 +198,22 @@ export function mountTop(host, opts = {}) {
 		} else if (flight) flight.to = targetOf(focusName)
 		else if (focusName != null) { const t = targetOf(focusName); if (t) setView(t) }
 		else if (!touched) setView(home)
+	}
+
+	// A bought board, in its group's own frame (W × H before the turn): a dark board with the record's holes and header
+	// (the record's frame: origin at the lower-left corner, y up), labelled "bought", at its true place. Its HAT carrier
+	// is drawn over it.
+	function drawBought(g, b, info, W, H) {
+		g.append(el("rect", { "data-outline": "", width: W, height: H, rx: 1.5, fill: BOUGHT_FILL, stroke: INK, "stroke-width": 0.6, "pointer-events": "all" }))
+		for (const h of info.holes ?? []) g.append(el("circle", { "data-hole": "bought", cx: h.x, cy: H - h.y, r: (h.dia ?? 2.7) / 2, fill: PAPER2, stroke: BOUGHT_INK, "stroke-width": 0.2 }))
+		const hd = info.header
+		if (hd && Number.isFinite(hd.x) && Number.isFinite(hd.y)) {
+			const hw = (hd.cols ?? 20) * (hd.pitchMm ?? 2.54), hh = (hd.rows ?? 2) * (hd.pitchMm ?? 2.54)
+			g.append(el("rect", { "data-header": "", x: hd.x - hw / 2, y: H - hd.y - hh / 2, width: hw, height: hh, fill: "none", stroke: BOUGHT_INK, "stroke-width": 0.3, "stroke-opacity": 0.8 }))
+		}
+		const t = el("text", { x: W / 2, y: H / 2, "text-anchor": "middle", "dominant-baseline": "middle", fill: BOUGHT_INK, "font-size": 3.2, transform: `rotate(${b.rotDeg} ${W / 2} ${H / 2})`, "pointer-events": "none" })
+		t.append(el("tspan", { x: W / 2, dy: "-0.6em" }, b.name), el("tspan", { x: W / 2, dy: "1.4em", "fill-opacity": 0.75, "data-bought-label": "" }, "bought"))
+		g.append(t)
 	}
 
 	// A small status badge over each board's top-left corner (progress.js badgeOf: {text, kind, title}). Drawn in the

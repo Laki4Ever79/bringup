@@ -6,7 +6,7 @@ import { plateLimitForBrief, blocksSensor, motorHalfUnder, motorUnderPlateMm, mo
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
-import { edgeForceN, G, massAndCom, motorAt, mounts, supportPolygon } from "./model.ts"
+import { brakeDecel, brakeMm, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon, TURN_CLEARANCE_MM, turnStopMm, turnSweepMm } from "./model.ts"
 import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 
 // The plain-code mechanics checks: free, instant, run on every contract change. Each states its numbers, the limit,
@@ -34,10 +34,9 @@ export interface CheckCatalog {
 }
 
 export const TORQUE_MARGIN = 1.5
-export const SPEED_LOAD_DERATE = 0.8 // speed under load vs no-load at the cell's nominal voltage
 export const USABLE_ENERGY = 0.85 // of the pack's rated Wh, before the cut-off
 export const TIP_MARGIN_MM = 10
-export const CLIMB_MARGIN = 1.2 // the drive wheels' grip must push the caster up the edge with this margin
+export const CLIMB_MARGIN = 1.2 // the drive wheels' grip must push the caster up the edge with this margin (static; the simulation from rest climbs a little more, docs/mechanics.md)
 export const LEVEL_TOLERANCE_MM = 3 // caster and wheels must hold the plate level within this
 
 const ROOT = resolve(import.meta.dirname, "../..")
@@ -156,10 +155,12 @@ const USES: Record<string, [PartKey, string[]][]> = {
 	"Edge torque per wheel": [["motor", ["stallTorqueNm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]], ...MASSES],
 	"mech-climb": [["caster", ["wheelMm"]], ...MASSES],
 	"Caster climb": [["caster", ["wheelMm"]], ...MASSES],
-	"mech-speed": [["motor", ["noLoadRpm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]]],
-	"Top speed": [["motor", ["noLoadRpm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]]],
+	"mech-speed": [["motor", ["noLoadRpm", "stallTorqueNm", "stallA", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV", "fullV"]], ...MASSES],
+	"Top speed": [["motor", ["noLoadRpm", "stallTorqueNm", "stallA", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]], ...MASSES],
+	"Cruise duty": [["motor", ["noLoadRpm", "stallTorqueNm", "stallA", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["fullV"]], ...MASSES],
 	"mech-stopping": [["sensor", ["rangeMm", "updateMs"]]],
 	"Stopping distance": [["sensor", ["rangeMm", "updateMs"]]],
+	"Turn clearance": [["sensor", ["rangeMm"]], ["wheel", ["diameterMm", "widthMm"]]],
 	"mech-current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV", "peakA"]]],
 	"Motor stall current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV"]]],
 	"Pack peak current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV", "peakA"]]],
@@ -231,15 +232,13 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const boardInfo = boards.map((b) => ({ name: b.name, outline: { widthMm: b.snapshot.values.outline?.widthMm ?? 0, heightMm: b.snapshot.values.outline?.heightMm ?? 0 } }))
 	for (const b of mech.chassis.boards) if (!boards.some((x) => x.name === b.name)) push("mech-fit", `the chassis places board "${b.name}", which this design doesn't have (its boards: ${boards.map((x) => x.name).join(", ")}): place only the design's boards`)
 	const ms: Mount[] = mounts(mech, boardInfo, cat.mech)
-	const plateTop = mech.chassis.clearanceMm + mech.chassis.thicknessMm
-	ms.push({ what: "payload", xMm: 0, yMm: 0, zMm: plateTop + 10, sizeMm: [20, 20, 20], massG: motion.payloadG })
+	ms.push(payloadMount(mech, motion.payloadG))
 	const { massG, com } = massAndCom(ms)
 	const fig = (check: string, value: string, limit: string, ok: boolean, note?: string) => figures.push({ check, value, limit, ok, ...(note ? { note } : {}) })
 	const massKg = massG / 1000
 	const r = wheel.diameterMm / 2 / 1000
-	const casterX = d.axleXMm - d.wheelbaseMm
 	// Share of the weight on the drive wheels (moments about the caster).
-	const onWheels = Math.min(1, Math.max(0, (com[0] - casterX) / (d.axleXMm - casterX)))
+	const onWheels = onWheelsShare(d, com[0])
 	const nominal = motorAt(motor, pack.nominalV)
 	const full = motorAt(motor, pack.fullV)
 
@@ -253,8 +252,10 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 
 	// Climb, the caster: the drive wheels push it into the edge, which meets its wheel at height h. Lifting its load W
 	// takes a push of W·√(r² − (r − h)²)/(r − h) (the edge's reaction along the line to the axle); the wheels push with at
-	// most μ times their own load. The simulation found this one: a 38 mm caster under 41 % of a 255 g rover stalls at
-	// a 10 mm step whatever the motors give.
+	// most μ times their own load. A static bound, for a rover with no momentum (stopped on the edge, or starting against
+	// it). Re-measured 15 Nov with the caster at its own friction (docs/mechanics.md, "What the simulation found"): from
+	// rest a 38 mm caster climbs 10 mm under up to about 28 % of the weight (this limit: 21 %), 5 mm under about 50 %
+	// (35 %), 3 mm under about 70 % (44 %); at cruise momentum carries much more, which the check doesn't count on.
 	const cr = caster.wheelMm / 2, h = motion.edgeMm
 	const casterShare = 1 - onWheels
 	if (h >= cr) fig("Caster climb", `${Math.round(casterShare * 100)} % of the weight`, `edge under the caster's axle`, false)
@@ -267,22 +268,40 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 			push("mech-climb", `the caster carries ${Math.round(casterShare * 100)} % of the weight; for the drive wheels to push its ${caster.wheelMm} mm wheel up the ${h} mm edge it may carry at most ${Math.round(maxShare * 100)} % (${CLIMB_MARGIN}× margin, ${estNote("floorMu")}): move weight (the battery) toward the axle, lengthen the wheelbase, or pick a bigger caster`)
 	}
 
-	// Top speed under load at the nominal voltage.
-	const topMps = (nominal.noLoadRadS * SPEED_LOAD_DERATE) * r
-	fig("Top speed", `${r2(topMps)} m/s`, `at least ${motion.speedMps} m/s`, topMps >= motion.speedMps, `loaded, ${SPEED_LOAD_DERATE} of no-load at ${pack.nominalV} V`)
+	// Top speed: full duty on the motor's load line (model.ts loadedSpeedMps, the model the firmware's cruise duty comes
+	// from) at the pack's nominal voltage, the plateau it spends most of its charge on: the speed it can still hold there.
+	const topMps = loadedSpeedMps(motor, pack, pack.nominalV, 1, massKg, r)
+	fig("Top speed", `${r2(topMps)} m/s`, `at least ${motion.speedMps} m/s`, topMps >= motion.speedMps, `full duty on the load line at ${pack.nominalV} V, ${Math.round(massG)} g rolling ${estNote("rollingCrr")}`)
 	if (topMps < motion.speedMps)
-		push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels reaches about ${r2(topMps)} m/s at ${pack.nominalV} V under load (${SPEED_LOAD_DERATE} of no-load), short of the ${motion.speedMps} m/s target: pick a lower gear ratio or bigger wheels`)
+		push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels reaches about ${r2(topMps)} m/s at full duty from ${pack.nominalV} V (its load line with ${Math.round(massG)} g rolling, ${estNote("rollingCrr")}), short of the ${motion.speedMps} m/s target: pick a lower gear ratio or bigger wheels`)
+
+	// Cruise duty: what the firmware drives at (firmware.ts, the same cruiseDuty). A motor geared far faster than the
+	// target cruises at a sliver of its duty; the firmware used to raise it silently to the floor, overshooting the speed.
+	const duty = cruiseDuty(motor, pack, motion.speedMps, massKg, r)
+	if (duty <= 1) {
+		fig("Cruise duty", `${r2(duty)}`, `at least ${MIN_CRUISE_DUTY}`, duty >= MIN_CRUISE_DUTY, `${motion.speedMps} m/s on the load line from a full ${pack.fullV} V pack ${estNote("rollingCrr")}`)
+		if (duty < MIN_CRUISE_DUTY)
+			push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels holds ${motion.speedMps} m/s at only ${r2(duty)} duty from a full ${pack.fullV} V pack (at least ${MIN_CRUISE_DUTY} wanted): it is geared about ${r1(MIN_CRUISE_DUTY / duty)}× too fast, with little torque in hand at that duty; pick a higher gear ratio or smaller wheels`)
+	}
 
 	// Stopping: braking distance plus one sensor period of travel must fit between the sensor's range and the wall
 	// distance the brief allows.
 	const rangeMm = sensor?.rangeMm ?? 0, updateMs = sensor?.updateMs ?? 0
 	if (sensor && rangeMm > 0) {
-		const decel = est("floorMu") * G * onWheels
-		const brakeMm = ((motion.speedMps ** 2) / (2 * decel)) * 1000 + motion.speedMps * updateMs
+		const stopMm = brakeMm(motion.speedMps, onWheels) + motion.speedMps * updateMs
 		const roomMm = rangeMm - motion.stopBeforeWallMm
-		fig("Stopping distance", `${r1(brakeMm)} mm`, `at most ${r1(roomMm)} mm`, brakeMm <= roomMm, `braking plus one ${updateMs} ms sensor period ${estNote("floorMu")}`)
-		if (brakeMm > roomMm)
-			push("mech-stopping", `from ${motion.speedMps} m/s the rover needs ${r1(brakeMm)} mm to stop (braking plus one ${updateMs} ms sensor period, ${estNote("floorMu")}), but the ${sensor.chip} sees ${rangeMm} mm and must stop ${motion.stopBeforeWallMm} mm from the wall, leaving ${r1(roomMm)} mm: slow down, or use a longer-range sensor`, ["mechanics", "architect"])
+		fig("Stopping distance", `${r1(stopMm)} mm`, `at most ${r1(roomMm)} mm`, stopMm <= roomMm, `braking on the wheels' ${Math.round(onWheels * 100)} % of the weight plus one ${updateMs} ms sensor period ${estNote("floorMu")} ${estNote("casterMu")}`)
+		if (stopMm > roomMm)
+			push("mech-stopping", `from ${motion.speedMps} m/s the rover needs ${r1(stopMm)} mm to stop (braking on the wheels' ${Math.round(onWheels * 100)} % of the weight plus one ${updateMs} ms sensor period, ${estNote("floorMu")} ${estNote("casterMu")}), but the ${sensor.chip} sees ${rangeMm} mm and must stop ${motion.stopBeforeWallMm} mm from the wall, leaving ${r1(roomMm)} mm: slow down, or use a longer-range sensor`, ["mechanics", "architect"])
+	}
+
+	// Turning in place: the firmware turns where it stops, so it stops where its sweep clears the wall (model.ts
+	// turnStopMm, the firmware's own stop): that reading must be within the sensor's range.
+	if (sensor && rangeMm > 0 && mech.sensor) {
+		const turnMm = turnStopMm(mech, wheel)
+		fig("Turn clearance", `${r1(turnMm)} mm`, `at most ${rangeMm} mm`, turnMm <= rangeMm, `turns in place from this reading: a ${r1(turnSweepMm(mech, wheel))} mm sweep about the axle plus ${TURN_CLEARANCE_MM} mm, less the sensor's ${r1(mech.sensor.at.xMm - d.axleXMm)} mm ahead of the axle`)
+		if (turnMm > rangeMm)
+			push("mech-stopping", `turning in place, the rover sweeps ${r1(turnSweepMm(mech, wheel))} mm about its axle, so it must start turning ${r1(turnMm)} mm from the wall, beyond the ${sensor.chip}'s ${rangeMm} mm range: move the axle toward the plate's middle, shorten the plate, or use a longer-range sensor`)
 	}
 
 	// Current: a motor at stall on a full cell, per driver channel and for the pack.
@@ -319,7 +338,7 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// grip caps both: braking moves it forward by h·a/g, accelerating (or braking in reverse) back by as much, toward the
 	// caster, where the triangle is narrowest.
 	const poly = supportPolygon(mech, cat.mech)
-	const decel = est("floorMu") * G * onWheels
+	const decel = brakeDecel(onWheels)
 	const still = insideMargin([com[0], com[1]], poly)
 	const braking = insideMargin([com[0] + (com[2] * decel) / G, com[1]], poly)
 	const accelerating = insideMargin([com[0] - (com[2] * decel) / G, com[1]], poly)
@@ -342,14 +361,21 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		if (!motorHalfUnder(Wd, m)) push("mech-fit", `${m.what.replace(":", " ")} reaches only ${r1(Math.max(0, under))} mm under the plate (half its ${m.sizeMm[1]} mm body needed for the bracket): widen the plate or narrow the track`)
 	}
 	const boardsM = ms.filter((m) => m.what.startsWith("board:"))
+	// A HAT and the board it sits on stack on the same holes: not an overlap.
+	const stacked = (p: string, q: string) => mech.chassis.boards.some((x) => (x.name === p && x.on === q) || (x.name === q && x.on === p))
 	for (let i = 0; i < boardsM.length; i++)
 		for (let j = i + 1; j < boardsM.length; j++) {
 			const a = boardsM[i], b = boardsM[j]
+			if (stacked(a.what.slice(6), b.what.slice(6))) continue
 			if (Math.abs(a.xMm - b.xMm) < (a.sizeMm[0] + b.sizeMm[0]) / 2 && Math.abs(a.yMm - b.yMm) < (a.sizeMm[1] + b.sizeMm[1]) / 2)
 				push("mech-fit", `${a.what.slice(6)} and ${b.what.slice(6)} overlap on the chassis: move one`)
 		}
-	if (pack.sizeMm[2] > est("standoffMm") - 1 && boardsM.length)
-		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")}: pick a thinner pack or put it beside the boards`)
+	// Only the boards above the pack matter: one beside every board needs no headroom (the rover-pi run, 15 Nov: a 2S
+	// pack 18 mm thick was refused on any plate with a board, so "put it beside the boards" could never be followed).
+	const packM = ms.find((m) => m.what === "battery")
+	const packUnder = packM ? boardsM.filter((b) => Math.abs(b.xMm - packM.xMm) < (b.sizeMm[0] + packM.sizeMm[0]) / 2 && Math.abs(b.yMm - packM.yMm) < (b.sizeMm[1] + packM.sizeMm[1]) / 2) : []
+	if (pack.sizeMm[2] > est("standoffMm") - 1 && packUnder.length)
+		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")} (it lies under ${packUnder.map((b) => b.what.slice(6)).join(", ")}): pick a thinner pack or put it beside the boards`)
 	const wheelInner = d.trackMm / 2 - wheel.widthMm / 2
 	if (wheelsRubPlate(Wd, d.trackMm, wheel.widthMm)) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): make trackMm at least ${r1(Wd + 4 + wheel.widthMm)} (the plate's width + 4 + the ${wheel.widthMm} mm wheel), or the plate at most ${r1(plateMaxWidthMm(d.trackMm, wheel.widthMm))} mm wide`)
 	// Level: the caster sets the plate's height; the motors hang from it on brackets, at least half their body below

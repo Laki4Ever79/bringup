@@ -1,6 +1,7 @@
-import { byMpn, type MechCatalog, type MotorPart } from "./catalog.ts"
+import { byMpn, type BatteryPack, type MechCatalog, type MotorPart } from "./catalog.ts"
 import { est } from "./estimates.ts"
 import type { Mechanics, Mount } from "./types.ts"
+import { hatBaseZ } from "../dashboard/assembly-geom.js"
 
 export const G = 9.81
 
@@ -15,6 +16,83 @@ export function motorAt(m: MotorPart, volts: number): { noLoadRadS: number; stal
 	const stallA = volts / rOhm
 	const stallNm = m.stallTorqueNm * k
 	return { noLoadRadS, stallNm, stallA, kt: stallA > 0 ? stallNm / stallA : 0, ke: noLoadRadS > 0 ? volts / noLoadRadS : 0, rOhm }
+}
+
+// The drive's load line, one model for the firmware's cruise duty, the "Top speed" and "Cruise duty" checks and the
+// simulation (py/mech/model.py motor_torque, battery_volts): on a flat floor each wheel carries half the rolling load
+// T = Crr·m·g·r/2, which draws i = T/kt through the winding, so at duty d on supply V the wheel turns at
+// ω = (d·V − i·R)/ke. The pack's terminal voltage sags by both motors' current through its internal resistance.
+export function rollingLoadNmPerWheel(massKg: number, wheelRadiusM: number): number {
+	return (est("rollingCrr") * massKg * G * wheelRadiusM) / 2
+}
+export const packOhm = (pack: BatteryPack) => pack.internalOhm ?? est("packInternalOhm")
+function loadLine(motor: MotorPart, pack: BatteryPack, openV: number, massKg: number, wheelRadiusM: number) {
+	const m = motorAt(motor, openV)
+	const loadA = m.kt > 0 ? rollingLoadNmPerWheel(massKg, wheelRadiusM) / m.kt : 0
+	return { m, loadA, volts: openV - 2 * loadA * packOhm(pack) }
+}
+// The wheel's ground speed at `duty` from a pack whose open-circuit voltage is openV.
+export function loadedSpeedMps(motor: MotorPart, pack: BatteryPack, openV: number, duty: number, massKg: number, wheelRadiusM: number): number {
+	const { m, loadA, volts } = loadLine(motor, pack, openV, massKg, wheelRadiusM)
+	return m.ke > 0 ? Math.max(0, ((duty * volts - loadA * m.rOhm) / m.ke) * wheelRadiusM) : 0
+}
+// The duty that holds speedMps on the load line from a pack at openV (unclamped: above 1 the motor can't reach it).
+export function dutyFor(motor: MotorPart, pack: BatteryPack, openV: number, speedMps: number, massKg: number, wheelRadiusM: number): number {
+	const { m, loadA, volts } = loadLine(motor, pack, openV, massKg, wheelRadiusM)
+	return volts > 0 ? ((speedMps / wheelRadiusM) * m.ke + loadA * m.rOhm) / volts : Infinity
+}
+// The firmware's cruise duty. The rover has no battery sense (no divider on an ADC pin), so the duty is a fixed PWM;
+// it is set for a full pack, where the rover runs fastest and where the simulated drive starts (soc 1). The speed it
+// plans is then the most it ever goes: the stop distance and the quarter turn timed at that speed hold on a fresh pack
+// and err short, never long, as the pack drains (at the nominal plateau it runs about nominalV/fullV of it, 0.88 for a
+// LiPo). Set at the nominal voltage, a fresh pack ran 1.135× fast and the timed turn overshot.
+export function cruiseDuty(motor: MotorPart, pack: BatteryPack, speedMps: number, massKg: number, wheelRadiusM: number): number {
+	return dutyFor(motor, pack, pack.fullV, speedMps, massKg, wheelRadiusM)
+}
+// Under this cruise duty the gearmotor is geared too fast for the target: little torque in hand at that duty (stalled,
+// a wheel gives duty × its stall torque) and the speed set by a few PWM steps. It used to be a silent floor in the
+// firmware (the duty raised to 0.3), which ran a badly geared rover up to 1.4× its planned speed and timed its turns
+// wrong; the "Cruise duty" check names it to the mechanics engineer instead.
+export const MIN_CRUISE_DUTY = 0.3
+
+// Braking: only the drive wheels grip the floor (floorMu); the caster slides at its own casterMu (the simulation's
+// caster contact), so it barely brakes. Deceleration g·(μ·onWheels + μc·(1 − onWheels)), with the weight split as
+// standing (braking moves weight forward onto the front wheels, so this errs long). The firmware's stop distance, the
+// "Stopping distance" and "Tipping margin" checks all use it.
+export function brakeDecel(onWheels: number): number {
+	return G * (est("floorMu") * onWheels + est("casterMu") * (1 - onWheels))
+}
+export function brakeMm(speedMps: number, onWheels: number): number {
+	return ((speedMps ** 2) / (2 * brakeDecel(onWheels))) * 1000
+}
+// Turning in place: the rover pivots on its axle's midpoint, so its footprint sweeps a circle as far as its farthest
+// point from there (a plate corner, usually the rear one, or a wheel's outer edge).
+export function turnSweepMm(mech: Mechanics, wheel: { diameterMm: number; widthMm: number }): number {
+	const d = mech.drive, [L, W] = mech.chassis.plateMm
+	const plate = [L / 2 - d.axleXMm, -L / 2 - d.axleXMm].map((dx) => Math.hypot(dx, W / 2))
+	const wheels = Math.hypot(wheel.diameterMm / 2, d.trackMm / 2 + wheel.widthMm / 2)
+	return Math.max(...plate, wheels)
+}
+// After an open-loop quarter turn the rover drives on beside the wall it turned from, a few degrees off parallel; the
+// next turn in place must not sweep into it. This much beyond the sweep (a design margin, measured on the rover-pi's
+// simulated drive, 15 Nov: its pivot moved 35 mm toward the wall while turning from forward motion, and drifted 30 mm
+// more over 0.7 m at 2° off parallel; 50 mm still hit, 100 mm cleared by 33 mm).
+export const TURN_CLEARANCE_MM = 100
+// The sensor reading at which the rover must start a turn in place so its sweep clears the wall ahead and the one it
+// will drive beside: the pivot stands sweep + clearance from the wall, the sensor is sensorAheadMm in front of the pivot.
+export function turnStopMm(mech: Mechanics, wheel: { diameterMm: number; widthMm: number }): number {
+	return turnSweepMm(mech, wheel) + TURN_CLEARANCE_MM - (mech.sensor.at.xMm - mech.drive.axleXMm)
+}
+
+// The share of the weight on the drive wheels (moments about the caster, wheelbaseMm behind the axle).
+export function onWheelsShare(d: { axleXMm: number; wheelbaseMm: number }, comXMm: number): number {
+	const casterX = d.axleXMm - d.wheelbaseMm
+	return Math.min(1, Math.max(0, (comXMm - casterX) / (d.axleXMm - casterX)))
+}
+
+// The payload the brief carries, on the plate's centre 10 mm up (the checks, the firmware and the chassis spec agree).
+export function payloadMount(mech: Mechanics, payloadG: number): Mount {
+	return { what: "payload", xMm: 0, yMm: 0, zMm: mech.chassis.clearanceMm + mech.chassis.thicknessMm + 10, sizeMm: [20, 20, 20], massG: payloadG }
 }
 
 // The horizontal force at the axle that lifts a wheel of radius r over a step of height h carrying weight m·g:
@@ -45,12 +123,15 @@ export function mounts(mech: Mechanics, boards: { name: string; outline: { width
 	if (pack) out.push({ what: "battery", xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, zMm: plateTop + pack.sizeMm[2] / 2, sizeMm: pack.sizeMm, massG: pack.massG })
 	const sensor = byMpn(cat.sensors ?? [], mech.sensor?.module ?? "")
 	if (sensor && mech.sensor) out.push({ what: "sensor", xMm: mech.sensor.at.xMm, yMm: mech.sensor.at.yMm, zMm: mech.sensor.at.zMm, sizeMm: [sensor.sizeMm[2], sensor.sizeMm[0], sensor.sizeMm[1]], massG: sensor.massG })
+	// A HAT (`on`) stands on its board's spacers (hatBaseZ), the others on the plate's standoffs.
+	const onPlate = plateTop + est("standoffMm")
 	for (const b of c.boards) {
 		const info = boards.find((x) => x.name === b.name)
 		if (!info) continue
 		const turned = b.rotDeg === 90 || b.rotDeg === 270
 		const w = turned ? info.outline.heightMm : info.outline.widthMm, h = turned ? info.outline.widthMm : info.outline.heightMm
-		out.push({ what: `board:${b.name}`, xMm: b.at.xMm, yMm: b.at.yMm, zMm: plateTop + est("standoffMm") + 0.8, sizeMm: [w, h, 1.6], massG: info.massG ?? ((w * h) / 100) * est("boardMassGPerCm2") })
+		const base = b.on && c.boards.some((x) => x.name === b.on && !x.on) ? hatBaseZ(onPlate) : onPlate
+		out.push({ what: `board:${b.name}`, xMm: b.at.xMm, yMm: b.at.yMm, zMm: base + 0.8, sizeMm: [w, h, 1.6], massG: info.massG ?? ((w * h) / 100) * est("boardMassGPerCm2") })
 	}
 	return out
 }

@@ -352,3 +352,16 @@ test("a move that leaves a cable's edge facing away from its peer re-faces it, m
 	assert.ok(e.findings().some((x) => x.level === "warn" && x.message === "moves JL1 on climate from top to bottom edge: a board change"), "climate's top now faces away from main")
 	assert.deepEqual(e.state().assembly.cables![0].points.at(-1), { xMm: 48, yMm: 27 }, "the end is on climate's bottom edge")
 })
+
+test("a bought board and its HAT carrier move and turn together, whichever is dragged; the pair is never an overlap (ruling R3)", () => {
+	const pi = { name: "brain", xMm: -50, yMm: 0, rotDeg: 0 as const, outline: { widthMm: 85, heightMm: 56 }, outlineSource: "built" as const }
+	const e = editor({ assembly: { body: "chassis", plate: { lengthMm: 300, widthMm: 150 }, boards: [bd("main", 60), pi, { ...pi, name: "rpi-5-carrier", outlineSource: "estimate" as const, carries: "brain" }] }, links: [] as SystemLink[] })
+	const where = () => e.state().assembly.boards.filter((b) => b.name !== "main").map((b) => [b.name, b.xMm, b.yMm, b.rotDeg])
+	e.apply({ kind: "move", board: "brain", xMm: -60, yMm: 10 })
+	assert.deepEqual(where(), [["brain", -60, 10, 0], ["rpi-5-carrier", -60, 10, 0]])
+	e.apply({ kind: "move", board: "rpi-5-carrier", xMm: -70, yMm: -5 })
+	assert.deepEqual(where(), [["brain", -70, -5, 0], ["rpi-5-carrier", -70, -5, 0]])
+	e.apply({ kind: "rotate", board: "brain" })
+	assert.deepEqual(where(), [["brain", -70, -5, 90], ["rpi-5-carrier", -70, -5, 90]])
+	assert.deepEqual(e.findings().filter((f) => /overlaps/.test(f.message)), [])
+})

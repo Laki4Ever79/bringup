@@ -14,11 +14,13 @@ import { peripheralsFree } from "../mcu/solver.ts"
 import { byMpn, loadMechCatalog } from "../mechanics/catalog.ts"
 
 export interface SystemFinding {
-	kind: "link-pending" | "uart-crossover" | "uart-baud" | "i2c-controllers" | "i2c-address" | "i2c-target-has-bus" | "i2c-pullups" | "i2c-cable-too-long" | "link-power" | "link-voltage" | "message-mismatch" | "logic-level" | "assembly-fit"
+	kind: "link-pending" | "uart-crossover" | "uart-baud" | "i2c-controllers" | "i2c-address" | "i2c-target-has-bus" | "i2c-pullups" | "i2c-cable-too-long" | "link-power" | "link-voltage" | "message-mismatch" | "logic-level" | "assembly-fit" | "compute-power" | "compute-rail" | "compute-header" | "compute-mechanics"
 	link: string
 	message: string
 	boards: string[] // who can fix it
 	estimate?: boolean // the figure behind it is an estimate, and says so
+	// A warning (a value the check needs is unknown, or a margin is thin): reported, never blocking a settle.
+	level?: "warning"
 }
 
 // Figures behind the electrical checks. The ESP32-C3-MINI-1's supply floor is from the catalog's datasheet note; the

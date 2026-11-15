@@ -18,6 +18,8 @@ import { cableMarkdown, systemReport, wirevizYaml } from "./outputs.ts"
 import { benchPlan, benchPlanMarkdown } from "./bench-plan.ts"
 import type { SystemLink, SystemSpec } from "./spec.ts"
 import { SystemTrace } from "./trace.ts"
+import { boughtChecks } from "./bought-checks.ts"
+import { boughtContract, boughtOutlines, moduleById } from "./bought.ts"
 
 export interface SystemRunOptions {
 	spec: SystemSpec
@@ -93,6 +95,23 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	const designed = spec.boards.filter((b) => b.brief)
 	// A robot's boards each get the whole body (its plate, every board's place and outline) and which board they are.
 	let assembly: SystemAssembly | undefined = spec.assembly?.body === "chassis" ? spec.assembly : undefined
+	// A bought board is never designed: its contract is its module record's (outline), from the start. Its outline goes
+	// into the body before any board is handed it.
+	const boughtOf = (name: string) => {
+		const b = spec.boards.find((x) => x.name === name)
+		const m = b?.kind === "bought" && b.module ? moduleById(b.module) : undefined
+		return m ? boughtContract(m) : undefined
+	}
+	if (assembly) {
+		const fresh = Object.fromEntries(Object.entries(boughtOutlines(spec.boards)).filter(([n, o]) => {
+			const ab = assembly!.boards.find((x) => x.name === n)
+			return ab && (ab.outlineSource !== "built" || ab.outline.widthMm !== o.widthMm || ab.outline.heightMm !== o.heightMm)
+		}))
+		if (Object.keys(fresh).length) {
+			assembly = withOutlines(assembly, fresh)
+			writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
+		}
+	}
 	// board → what it was last handed about its siblings (as JSON). A board's own entry is left out: its own contract's
 	// outline is the truth for itself, so a change there is nothing to tell it.
 	const assemblySent = new Map<string, string>()
@@ -122,6 +141,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	const contractsNow = (): Record<string, ContractSnapshot | undefined> =>
 		Object.fromEntries(
 			spec.boards.map((b) => {
+				if (b.kind === "bought") return [b.name, boughtOf(b.name)]
 				if (b.run) return [b.name, existsSync(join(b.run, "contract.json")) ? JSON.parse(readFileSync(join(b.run, "contract.json"), "utf8")) : undefined]
 				return [b.name, settledContract(boardDir(outDir, b.name), asked.get(b.name) ?? 0) ?? undefined]
 			}),
@@ -131,6 +151,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	const lastContracts = (): Record<string, ContractSnapshot | undefined> =>
 		Object.fromEntries(
 			spec.boards.map((b) => {
+				if (b.kind === "bought") return [b.name, boughtOf(b.name)]
 				const path = join(b.run ?? boardDir(outDir, b.name), "contract.json")
 				return [b.name, existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as ContractSnapshot) : undefined]
 			}),
@@ -242,9 +263,11 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 				write(contracts, findings, `round ${rounds}: the robot's body sent again to ${resent.join(", ")}`)
 				continue
 			}
-			findings = systemChecks(spec, contracts)
-			const real = findings.filter((f) => f.kind !== "link-pending")
-			if (findings.length === 0) {
+			// The bought boards' compute checks join the checks between boards; their warnings are reported, not blocking.
+			findings = [...systemChecks(spec, contracts), ...boughtChecks(spec, contracts, assembly ?? spec.assembly)]
+			const blocking = findings.filter((f) => f.level !== "warning")
+			const real = blocking.filter((f) => f.kind !== "link-pending")
+			if (blocking.length === 0) {
 				if (o.linkTest) {
 					trace.emit({ board: "system", step: "link", status: "started" })
 					tests = await runLinkTests(spec, contracts, o.linkTest, outDir)

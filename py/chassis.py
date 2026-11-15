@@ -50,10 +50,15 @@ def _check(spec):
 
 
 def _board_holes(b):
-    """The board's own mounting holes on the plate (the spec's, from the board: chassis.ts boardHoles). A spec from
-    before they were sent: the four corners at holeInsetMm."""
+    """The board's own mounting holes on the plate (the spec's, from the board: chassis.ts boardHoles; a bought module's
+    from its record). A HAT stands on its board's spacers: no standoffs of its own. A spec from before holes were sent:
+    holesMm, else the four corners at holeInsetMm."""
+    if b.get("standoffs") is False:
+        return []
     if "holes" in b:
         return [(h["xMm"], h["yMm"]) for h in b["holes"]]
+    if b.get("holesMm"):
+        return [(x, y) for x, y in b["holesMm"]]
     w, h = (b["heightMm"], b["widthMm"]) if b["rotDeg"] in (90, 270) else (b["widthMm"], b["heightMm"])
     i = b.get("holeInsetMm", 3.5)
     return [(b["xMm"] + sx * (w / 2 - i), b["yMm"] + sy * (h / 2 - i)) for sx in (-1, 1) for sy in (-1, 1)]

@@ -1,4 +1,4 @@
-export interface GeomBoard { xMm: number; yMm: number; rotDeg: number; outline: { widthMm: number; heightMm: number } }
+export interface GeomBoard { name?: string; xMm: number; yMm: number; rotDeg: number; outline: { widthMm: number; heightMm: number }; carries?: string }
 export const CABLE_SLACK_MM: number
 export function cableLength(points: { xMm: number; yMm: number }[]): number
 export function footprint(b: GeomBoard): { xMm: number; yMm: number }
@@ -23,3 +23,7 @@ export function motorUnderPlateMm(plateWidthMm: number, m: GeomMount): number
 export function motorHalfUnder(plateWidthMm: number, m: GeomMount): boolean
 export function mountOnPlate(m: GeomMount, lengthMm: number, widthMm: number): boolean
 export function blocksSensor(m: GeomMount & { zMm: number }, sensor: GeomMount & { zMm: number }): boolean
+export const HAT_STACK_MM: number
+export const HAT_STACK_SOURCE: { url: string; where: string }
+export function hatBaseZ(baseZ: number): number
+export function snapCarriers<T extends GeomBoard & { name: string }>(boards: T[], moved?: string): T[]

@@ -2,6 +2,7 @@
 // test (project 4) measures it; every report line that uses one says "(estimate: <name> <value>)".
 export const ESTIMATES = {
 	floorMu: { value: 0.6, why: "rubber tread on wood, laminate or tile: published dry-friction tables give about 0.5–0.8; the low middle is used" },
+	casterMu: { value: 0.02, why: "a swivel caster rolls and turns rather than grips: its drag is about a rolling-resistance coefficient (0.01–0.03), so it barely brakes; the simulation slides it at this friction" },
 	rollingCrr: { value: 0.02, why: "small rubber wheels on hard floors: rolling-resistance coefficients of about 0.01–0.03" },
 	plaDensityGcm3: { value: 1.24, why: "PLA filament density as printed solid; infill lowers it, so this overstates the plate's mass slightly" },
 	motorOvervoltMax: { value: 1.3, why: "small brushed gearmotors take some overvoltage at a cost in brush and gear life; 1.3× keeps a 3 V motor off a full 4.2 V cell (1.4×)" },

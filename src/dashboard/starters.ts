@@ -62,11 +62,25 @@ export const hasStarter = (examplesRoot: string, name: string) => STARTER_NAME.t
 
 // A seed from a system spec (its boards' briefs as text) or one brief (one board, "main"). The spec's own assembly
 // is dropped: a plan places its boards at Build (buildSpec), so a fork that adds or removes a board stays consistent.
+// Every designed board brings its brief's text: a board that is an existing run (no brief), or whose brief text wasn't
+// given, is an error naming it, never an undefined entry in the seed's briefs (premerge review, 15 Nov).
 export function starterSeed(input: { sentence: string; why: string; robot: boolean; spec?: SystemSpec; briefs: Record<string, string> }): StarterSeed {
+	const designed = input.spec ? input.spec.boards.filter((b) => b.kind !== "bought") : [{ name: "main", brief: "main" } as SystemSpec["boards"][number]]
+	const lacking = designed.filter((b) => !b.brief || typeof input.briefs[b.name] !== "string").map((b) => (b.brief ? `${b.name} (its brief ${b.brief} wasn't read)` : `${b.name} (no brief${b.run ? `: it is the existing run ${b.run}` : ""})`))
+	if (lacking.length) throw new Error(`a starter seeds a plan from each designed board's brief; these have none: ${lacking.join(", ")}`)
 	const spec: SystemSpec = input.spec
-		? { name: input.spec.name, boards: input.spec.boards.map((b) => ({ name: b.name, brief: `briefs/${b.name}.md` })), links: input.spec.links }
+		? {
+				name: input.spec.name,
+				// A bought board (a compute module) stays bought, with no brief; a carrier keeps the board it carries and its choices.
+				boards: input.spec.boards.map((b) =>
+					b.kind === "bought"
+						? { name: b.name, kind: "bought" as const, module: b.module }
+						: { name: b.name, brief: `briefs/${b.name}.md`, ...(b.carries ? { carries: b.carries } : {}), ...(b.regulator ? { regulator: b.regulator } : {}), ...(b.bridge ? { bridge: b.bridge } : {}) },
+				),
+				links: input.spec.links,
+			}
 		: { name: input.sentence.slice(0, 60), boards: [{ name: "main", brief: "briefs/main.md" }], links: [] }
-	const names = spec.boards.map((b) => b.name)
+	const names = spec.boards.filter((b) => b.brief).map((b) => b.name)
 	return {
 		sentence: input.sentence,
 		spec,
