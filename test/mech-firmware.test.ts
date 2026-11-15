@@ -182,3 +182,22 @@ test("the firmware's stop distance brakes on the drive wheels' share of the weig
 	// And it is longer than braking on every wheel at floorMu·g (the caster barely brakes).
 	assert.ok(brakeMm(0.3, 0.5) > brakeMm(0.3, 1) * 1.5)
 })
+
+// Premerge review (15 Nov): with the duty right, the rover-pi (246 mm plate, axle 74 mm forward) turned 90° 230 mm from
+// the front wall, drove beside it 3° off parallel, and its next turn in place swept the rear corner (208 mm from the
+// axle) into it. The stop reading now leaves the sweep plus a margin, and the report shows it.
+test("the stop reading leaves room for the turn in place: the pivot stands its sweep plus a margin from the wall", async () => {
+	const { turnSweepMm, TURN_CLEARANCE_MM } = await import("../src/mechanics/model.ts")
+	const s = rover()
+	const mech = s.values.mechanics!
+	mech.chassis = { ...mech.chassis, plateMm: [246, mech.chassis.plateMm[1]] }
+	mech.drive = { ...mech.drive, axleXMm: 74, wheelbaseMm: 125 }
+	const cat = defaultCheckCatalog()!
+	const wheel = byMpn(cat.mech.wheels, mech.drive.wheel)!
+	const stop = Number(/#define ROVER_STOP_MM (\d+)/.exec(roverHeader(s))![1])
+	const pivotFromWall = stop + (mech.sensor.at.xMm - mech.drive.axleXMm)
+	assert.ok(pivotFromWall >= turnSweepMm(mech, wheel) + TURN_CLEARANCE_MM, `pivot ${pivotFromWall} mm from the wall, sweep ${turnSweepMm(mech, wheel)} mm`)
+	const figures: MechFigure[] = []
+	mechanicsCheckOver(s.values.motion, mech, [{ name: "main", snapshot: s }], cat, figures)
+	assert.equal(Math.ceil(Number(figures.find((f) => f.check === "Turn clearance")!.value.split(" ")[0])), stop, "the report's figure is the firmware's stop")
+})
