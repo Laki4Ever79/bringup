@@ -263,3 +263,35 @@ export function derivedAssembly(spec: SystemSpec, mainMechanics?: Mechanics, out
 	})
 	return { body: "chassis", plate: { lengthMm: chassis.plateMm[0], widthMm: chassis.plateMm[1] }, boards, derived: true }
 }
+
+// In words why a request body is not the shape it must be (types and finiteness only; the rules are assemblyErrors'). [] when it is.
+export function requestShapeErrors(b: { assembly?: unknown; links?: unknown }): string[] {
+	const obj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
+	const num = (v: unknown) => typeof v === "number" && Number.isFinite(v)
+	const out: string[] = []
+	if (b.links !== undefined) {
+		if (!Array.isArray(b.links)) out.push("links must be a list")
+		else b.links.forEach((l, i) => {
+			if (!obj(l) || typeof l.id !== "string" || typeof l.kind !== "string" || !obj(l.a) || typeof l.a.board !== "string" || !obj(l.b) || typeof l.b.board !== "string" || !obj(l.cable) || !num(l.cable.lengthMm)) out.push(`links[${i}] needs id, kind, a.board, b.board and cable.lengthMm`)
+		})
+	}
+	if (b.assembly !== undefined) {
+		const a = b.assembly
+		if (!obj(a)) return [...out, "assembly must be an object"]
+		if (a.body !== undefined && !["chassis", "enclosure", "separate"].includes(a.body as string)) out.push("assembly.body must be chassis, enclosure or separate")
+		if (a.boards !== undefined) {
+			if (!Array.isArray(a.boards)) out.push("assembly.boards must be a list")
+			else a.boards.forEach((x, i) => {
+				if (!obj(x) || typeof x.name !== "string" || !num(x.xMm) || !num(x.yMm) || !num(x.rotDeg) || !obj(x.outline) || !num(x.outline.widthMm) || !num(x.outline.heightMm)) out.push(`assembly.boards[${i}] needs name, xMm, yMm, rotDeg and outline {widthMm, heightMm}`)
+			})
+		}
+		if (a.plate !== undefined && (!obj(a.plate) || !num(a.plate.lengthMm) || !num(a.plate.widthMm))) out.push("assembly.plate needs lengthMm and widthMm")
+		if (a.cables !== undefined) {
+			if (!Array.isArray(a.cables)) out.push("assembly.cables must be a list")
+			else a.cables.forEach((c, i) => {
+				if (!obj(c) || typeof c.link !== "string" || !Array.isArray(c.points) || !c.points.every((p) => obj(p) && num(p.xMm) && num(p.yMm))) out.push(`assembly.cables[${i}] needs link and points [{xMm, yMm}]`)
+			})
+		}
+	}
+	return out
+}

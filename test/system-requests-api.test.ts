@@ -94,3 +94,34 @@ test("an invalid merged result is a 400 with the list, and nothing is appended",
 		assert.equal(existsSync(join(dir, SYSTEM_REQUESTS)), false)
 	})
 })
+
+test("malformed shapes and a plate on a body with no plate are 400, never 500", async () => {
+	await withSystem(async ({ id, dir, post, stay }) => {
+		stay()
+		const boards = spec().assembly!.boards
+		const bad: object[] = [
+			{ links: [1] },
+			{ assembly: { boards: "x" } },
+			{ assembly: { cables: "x" } },
+			{ assembly: { boards: [{ name: "main", rotDeg: 0, outline: { widthMm: 40, heightMm: 30 }, outlineSource: "estimate" }, boards[1]] } },
+			{ assembly: { cables: [{ link: "L1", points: [{ xMm: "a", yMm: 0 }] }] } },
+			{ assembly: { plate: { lengthMm: "wide", widthMm: 10 } } },
+		]
+		for (const b of bad) assert.equal((await post(`/api/systems/${id}/requests`, b)).status, 400, JSON.stringify(b))
+		assert.equal(existsSync(join(dir, SYSTEM_REQUESTS)), false)
+		writeFileSync(join(dir, "system.json"), JSON.stringify({ ...spec(), assembly: { ...spec().assembly!, body: "separate" } }))
+		const r = await post(`/api/systems/${id}/requests`, { assembly: { plate: { lengthMm: 200, widthMm: 150 } } })
+		assert.equal(r.status, 400)
+		assert.match(((await r.json()) as { error: string }).error, /no shared plate/)
+	})
+})
+
+test("a rebuild under the same id is not up until its own staying-up line", async () => {
+	await withSystem(async ({ id, dir, post, url }) => {
+		// A line from before this process started (an earlier run of the same id).
+		appendFileSync(join(dir, SYSTEM_TRACE), JSON.stringify({ at: "2020-01-01T00:00:00Z", round: 0, board: "system", step: "request", status: "ok", detail: "staying up for system-level changes" }) + "\n")
+		const r = await post(`/api/systems/${id}/requests`, { assembly: { boards: spec().assembly!.boards } })
+		assert.equal(r.status, 409)
+		void url
+	})
+})

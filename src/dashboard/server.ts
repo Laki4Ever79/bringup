@@ -25,7 +25,7 @@ import { mcuPinName } from "../mcu/pins.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { boardFacts, systemFacts } from "../system/facts.ts"
-import { assemblyErrors, defaultAssembly, derivedAssembly, mergeRequest } from "../system/assembly.ts"
+import { assemblyErrors, defaultAssembly, derivedAssembly, mergeRequest, requestShapeErrors } from "../system/assembly.ts"
 import { SYSTEM_REQUESTS } from "../system/run.ts"
 import { buildSpec } from "../system/plan.ts"
 import { specErrors, type SystemSpec } from "../system/spec.ts"
@@ -304,7 +304,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	const outRoot = resolve(opts.outRoot)
 	mkdirSync(outRoot, { recursive: true })
 	const rootReal = await realpath(outRoot)
-	const live = new Map<string, { exit: number | null; kill?: () => void }>()
+	const live = new Map<string, { exit: number | null; kill?: () => void; startedAt?: number }>()
 	const streams = new Map<string, { tail: TraceTail; clients: Set<ServerResponse>; watcher: FSWatcher | null }>()
 	const frame = (line: string) => `data: ${line}\n\n`
 	let port = opts.port ?? 4317
@@ -435,9 +435,24 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		return dir && !BOARD_RUN_ID.test(id) && existsSync(join(dir, "system.json")) ? dir : null
 	}
 	const readJsonFile = (path: string) => readFile(path, "utf8").then((t) => JSON.parse(t), () => null)
+	// A live system process whose current run wrote "staying up for system-level changes" (--stay, after its first settle).
+	const systemStays = (run: { exit: number | null; startedAt?: number } | undefined, lines: { at: string; board: string; step: string; detail?: string }[]) =>
+		Boolean(run && run.exit === null && lines.some((l) => l.board === "system" && l.step === "request" && /staying up/.test(l.detail ?? "") && Date.parse(l.at) >= (run.startedAt ?? 0)))
 	const systemStatus = async (id: string, dir: string, state: { status?: string; settled?: boolean } | null) => {
 		const run = live.get(id)
-		if (run && run.exit === null) return { status: "running", settled: null }
+		if (run && run.exit === null) {
+			// Staying up and between rounds: settled, and waiting for the next change (Stop ends it).
+			const lines = readSystemTrace(dir)
+			if (systemStays(run, lines)) {
+				let idle = false
+				for (const l of lines) {
+					if (l.step === "request" && l.status === "started") idle = false
+					else if (l.board === "system" && l.step === "settled") idle = true
+				}
+				if (idle) return { status: "waiting for a change", settled: true }
+			}
+			return { status: "running", settled: null }
+		}
 		if (state?.status) return { status: state.status, settled: state.settled === true }
 		// A system from before system-state.json: its report's status line.
 		const line = (await readFile(join(dir, "system-report.md"), "utf8").catch(() => "")).split("\n").find((l) => l.startsWith("Status: "))
@@ -639,8 +654,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		mkdirSync(outDir, { recursive: true })
 		if (usagePath && existsSync(usagePath)) copyFileSync(usagePath, join(outDir, "usage.jsonl"))
 		// `main.ts system <spec> …`: the launcher puts its first argument after main.ts.
-		const run = opts.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, ...(mock ? ["--mock"] : []), ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"])] })
-		const entry = { exit: null as number | null, kill: run.kill }
+		const run = opts.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, "--stay", ...(mock ? ["--mock"] : []), ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"])] })
+		const entry = { exit: null as number | null, kill: run.kill, startedAt: Date.now() }
 		live.set(id, entry)
 		void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
 		return id
@@ -778,15 +793,17 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					if (!dir) return json(res, 404, { error: "unknown system" })
 					const body = await readJson(req)
 					if (body.text !== undefined) text(body.text, "text", MAX_TEXT)
-					for (const k of ["assembly", "links"]) if (body[k] !== undefined && (typeof body[k] !== "object" || body[k] === null || (k === "links") !== Array.isArray(body[k]))) throw new HttpError(400, `${k} is the wrong shape`)
+					const shape = requestShapeErrors(body)
+					if (shape.length > 0) return json(res, 400, { error: shape[0], errors: shape })
 					if (body.assembly === undefined && body.links === undefined) throw new HttpError(400, "send an assembly and/or links")
 					// Up means: a live process started here, and its trace says it stays up for requests (the line --stay writes once settled).
 					const run = live.get(sysRequest[1])
 					const lines = readSystemTrace(dir)
-					if (!run || run.exit !== null || !lines.some((l) => l.board === "system" && l.step === "request" && /staying up/.test(l.detail ?? ""))) return json(res, 409, { error: "This design isn't running; start it again to apply changes" })
+					if (!systemStays(run, lines)) return json(res, 409, { error: "This design isn't running; start it again to apply changes" })
 					const spec = (await readJsonFile(join(dir, "system.json"))) as SystemSpec | null
 					if (!spec) return json(res, 404, { error: "unknown system" })
 					if (body.assembly && !spec.assembly) throw new HttpError(400, "this system has no assembly to change")
+					if ((body.assembly as { plate?: unknown } | undefined)?.plate && spec.assembly?.body !== "chassis") throw new HttpError(400, "this design has no shared plate")
 					const merged = mergeRequest(spec, body)
 					const errors = [...specErrors(merged), ...assemblyErrors(merged)]
 					if (errors.length > 0) return json(res, 400, { error: errors[0], errors })
