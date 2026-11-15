@@ -10,4 +10,8 @@ export const PRICES: Record<string, { inputPerM: number; cachedInputPerM: number
 	"gpt-5.4-mini": { inputPerM: 0.75, cachedInputPerM: 0.075, outputPerM: 4.5 },
 	"claude-sonnet-4-6": { inputPerM: 3, cachedInputPerM: 0.3, outputPerM: 15, cacheWritePerM: 3.75 },
 	"claude-haiku-4-5": { inputPerM: 1, cachedInputPerM: 0.1, outputPerM: 5, cacheWritePerM: 1.25 },
+	// The Claude subscription through the local Claude Code (inference/claude-code-runner.ts): no per-token charge.
+	"cc-sonnet": { inputPerM: 0, cachedInputPerM: 0, outputPerM: 0 },
+	"cc-haiku": { inputPerM: 0, cachedInputPerM: 0, outputPerM: 0 },
+	"cc-opus": { inputPerM: 0, cachedInputPerM: 0, outputPerM: 0 },
 }
