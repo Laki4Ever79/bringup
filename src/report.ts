@@ -1,3 +1,4 @@
+import { standardsSection } from "./contract/standards.ts"
 import { rosSection } from "./ros/report.ts"
 import type { RobotParts } from "./tools/robot-parts.ts"
 import { readBrief } from "./brief-file.ts"
@@ -270,6 +271,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		``,
 		...mechanicsSection(snapshot, s.artifacts.drive),
 		...rosSection(outDir),
+		...standardsSection(snapshot),
 		...addedForYouSection(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""),
 		...changeRequestsSection(outDir),
 		...reviewSection(s, Boolean(opts.mock)),
