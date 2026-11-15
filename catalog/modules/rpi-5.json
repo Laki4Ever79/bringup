@@ -314,12 +314,24 @@
 			}
 		},
 		"bridgeDevice": {
-			"value": "/dev/ttyAMA0",
+			"value": "/dev/ttyACM0",
+			"via": "the MCU board's native USB (CDC-ACM), one cable per board through the robot's USB-C hub",
 			"source": {
-				"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/configuration/interfaces.adoc",
-				"where": "'/dev/ttyAMA0 — First PL011 (UART0)'; Raspberry Pi 5: UART0..UART4 and UART10 'disabled by default'"
+				"url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/usb-serial-jtag-console.html",
+				"where": "Uploading the Application, note: the USB Serial/JTAG Controller's serial port appears 'as /dev/ttyACM* on Linux'"
 			},
-			"note": "GPIO14/15 is UART0: enable it (it's off by default). Don't rely on enable_uart=1 alone: with no cable on the debug header, Raspberry Pi 5 then routes kernel debug output to GPIO 14 and 15 (interfaces.adoc, Prerequisite information), which would garble the link to the MCU board"
+			"note": "the first board to enumerate gets ttyACM0; with several MCU boards, pin each by its USB serial number (a udev rule or /dev/serial/by-id) rather than by order",
+			"alternatives": [
+				{
+					"value": "/dev/ttyAMA0",
+					"source": {
+						"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/configuration/interfaces.adoc",
+						"where": "'/dev/ttyAMA0 — First PL011 (UART0)'; Raspberry Pi 5: UART0..UART4 and UART10 'disabled by default'"
+					},
+					"note": "GPIO14/15 is UART0: enable it (it's off by default). Don't rely on enable_uart=1 alone: with no cable on the debug header, Raspberry Pi 5 then routes kernel debug output to GPIO 14 and 15 (interfaces.adoc, Prerequisite information), which would garble the link to the MCU board",
+					"via": "UART0 on header pins 8 (GPIO14 TX) and 10 (GPIO15 RX)"
+				}
+			]
 		}
 	}
 }
