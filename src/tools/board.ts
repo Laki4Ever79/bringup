@@ -8,7 +8,7 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
 import { kicadCli, toolPath, type Env } from "./env.ts"
 import { FAB_RULES, runDrc } from "./drc.ts"
-import { nudgeEdgeVias } from "./via-edge.ts"
+import { nudgeVias } from "./via-edge.ts"
 import { run, tail } from "./exec.ts"
 
 // Contract -> tscircuit source -> placed and autorouted board -> KiCad project, STEP and render.
@@ -149,9 +149,10 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	const pcbRel = "dist/board/kicad/board.kicad_pcb"
 	// The routing keepouts were for the autorouter only; the board KiCad checks and exports is without them.
 	const pcbFile = join(work, pcbRel)
-	// A via the router dropped nearer the edge than the fab allows moves inward, its traces' ends with it (via-edge.ts);
+	// A via the router dropped nearer the edge or an unplated hole than the fab allows moves clear, its traces' ends with
+	// it (via-edge.ts);
 	// the DRC below checks the result.
-	if (existsSync(pcbFile)) writeFileSync(pcbFile, nudgeEdgeVias(stripKeepouts(readFileSync(pcbFile, "utf8")), FAB_RULES.minEdgeClearanceMm).pcb)
+	if (existsSync(pcbFile)) writeFileSync(pcbFile, nudgeVias(stripKeepouts(readFileSync(pcbFile, "utf8")), { edgeMm: FAB_RULES.minEdgeClearanceMm, holeMm: FAB_RULES.minHoleClearanceMm }).pcb)
 
 	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], work, 180_000)
 	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], work, 180_000)

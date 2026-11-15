@@ -48,3 +48,13 @@ test("the 42×29 mm rover with its driver turned 180° routes clean with its deb
 	assert.equal(board.drc?.errors, 0, board.drc?.firstError ?? "")
 	assert.equal(board.debugPortDropped, undefined, board.debugPortDropped)
 })
+
+// The scripted rover at 43×28 mm (d9610c's mod-rover run, revision 11, 15 Nov 2026) left its debug footprint off for a
+// GND via 0.1734 mm from one of the TC2030's unplated holes (the fab's 0.2 mm). The via now moves clear of the hole.
+test("the scripted rover at 43×28 mm routes clean with its debug footprint", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 900_000 }, async () => {
+	const { readFileSync } = await import("node:fs")
+	const s = JSON.parse(readFileSync(fileURLToPath(new URL("fixtures/mod-rover-43x28-rev11.json", import.meta.url)), "utf8")) as ContractSnapshot
+	const board = await buildBoard(env, tempDir(), s, s.revision)
+	assert.equal(board.drc?.errors, 0, board.drc?.firstError ?? "")
+	assert.equal(board.debugPortDropped, undefined, board.debugPortDropped)
+})
