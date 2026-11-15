@@ -101,3 +101,13 @@ test("the compute rover's mechanics: the catalog's 2S pack, regulator and 12 V m
 	assert.ok(!left.some((v) => /battery doesn't fit under boards/.test(v.message)), "the pack is beside the boards")
 	assert.deepEqual(left.map((v) => v.message), [])
 })
+
+test("the HAT board drills the module's own holes (its outline's), not the generic M2 corners", async () => {
+	const { mountingHoles } = await import("../src/codegen/circuit.ts")
+	const d = hatDesign(hatFromBrief(read("briefs/rpi-5-carrier.md"))!)
+	const c = fixtureContract() as ContractSnapshot
+	c.values.outline = d.outline
+	c.values.parts = d.parts
+	c.values.connectors = []
+	assert.deepEqual(mountingHoles(c).map((h) => [h.x, h.y, h.diameterMm]), [[-39, -24.5, 2.7], [19, -24.5, 2.7], [-39, 24.5, 2.7], [19, 24.5, 2.7]])
+})
