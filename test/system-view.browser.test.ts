@@ -223,8 +223,12 @@ const skipSingle = !SINGLE ? "no recorded out/rover-fresh" : !exe ? "no Playwrig
 const topUp = (page: Page) => page.waitForFunction(() => document.querySelector("#stage-top svg [data-board]"), null, { timeout: 30_000 })
 const boardBox = async (page: Page, name: string) => {
 	const loc = page.locator(`#stage-top [data-board="${name}"] [data-outline]`)
-	await loc.waitFor({ state: "visible", timeout: 10_000 })
-	const box = await loc.boundingBox()
+	// A live redraw can replace the node between the wait and the read: read again until a box comes back.
+	let box: Awaited<ReturnType<typeof loc.boundingBox>> = null
+	for (let i = 0; i < 20 && !box; i++) {
+		await loc.waitFor({ state: "visible", timeout: 10_000 })
+		box = await loc.boundingBox()
+	}
 	assert.ok(box, `board ${name} drawn in Top`)
 	return box
 }
