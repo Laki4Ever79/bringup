@@ -493,13 +493,15 @@ function track(l) {
 	if (l.board !== "system" && !e.boards.includes(l.board)) e.boards.push(l.board)
 	renderChanges()
 }
+// A board's own address on this page (a new tab or a copied link opens it there).
+const boardAddress = (board) => `/system?${new URLSearchParams({ id, board })}`
 function renderChanges() {
 	const host = document.getElementById("sys-changes")
 	const list = [...stage.requests].sort((a, b) => b.round - a.round || String(b.at).localeCompare(String(a.at)))
 	host.classList.toggle("hidden", !list.length)
 	if (!list.length) return
 	const time = (at) => { const t = new Date(at); return Number.isNaN(t.getTime()) ? "" : t.toLocaleTimeString() }
-	host.innerHTML = `<h2>System changes</h2><ol>${list.map((e) => `<li data-round="${e.round}"><span class="mono">round ${e.round}</span><span class="when">${esc(time(e.at))}</span><span class="text">${esc(e.text)}</span>${e.boards.map((b) => `<a href="/?board=${encodeURIComponent(b)}" data-board-link="${esc(b)}">${esc(b)}</a>`).join("")}</li>`).join("")}</ol>`
+	host.innerHTML = `<h2>System changes</h2><ol>${list.map((e) => `<li data-round="${e.round}"><span class="mono">round ${e.round}</span><span class="when">${esc(time(e.at))}</span><span class="text">${esc(e.text)}</span>${e.boards.map((b) => `<a href="${esc(boardAddress(b))}" data-board-link="${esc(b)}">${esc(b)}</a>`).join("")}</li>`).join("")}</ol>`
 }
 document.getElementById("sys-changes").addEventListener("click", (e) => {
 	const a = e.target.closest?.("[data-board-link]")

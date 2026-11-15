@@ -532,7 +532,7 @@ test("the round changed the design under a queued edit: the banner, not a post",
 })
 
 test("the system change list shows each request's text, newest first, with links to its boards", { skip, timeout: 120_000 }, async () => {
-	await withEdit(async ({ page, trace }) => {
+	await withEdit(async ({ page, trace, name }) => {
 		trace(
 			line(1, "system", "request", "ok", "staying up for system-level changes"),
 			line(2, "system", "request", "started", "moved climate 10 mm back"),
@@ -544,6 +544,7 @@ test("the system change list shows each request's text, newest first, with links
 		const texts = await page.locator("#sys-changes li .text").allTextContents()
 		assert.deepEqual(texts, ["made the plate 120 × 80 mm", "moved climate 10 mm back"])
 		assert.equal(await page.locator("#sys-changes li").first().locator("a").textContent(), "main")
+		assert.equal(await page.locator("#sys-changes li").first().locator("a").getAttribute("href"), `/system?id=${name}&board=main`, "the board's real address, for a new tab or a copied link")
 		assert.match(await page.locator("#sys-changes li").first().textContent() ?? "", /round 3/)
 	})
 })
