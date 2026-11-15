@@ -143,6 +143,7 @@ is a change to the firmware toolchain, not just the code.
       bit rate, termination at both ends and only there, every board on the bus has a controller and a transceiver,
       one bit rate per bus); tests: host codec and compile (QEMU has no TWAI), bench with two boards. A brief or a
       system spec that names CAN gets it; the architect never swaps it for UART.
+      (built 15 Nov, see above)
 - [ ] **Open standards by default** (the user, 15 Nov, asked whether we insist on them; recommended yes). Today open
       where it was the obvious choice (KiCad, STEP/STL, PlatformIO/Arduino, BTHome v2, CycloneDX) but not a rule, and
       some interfaces are ours or one vendor's: the board-to-board message framing (`templates/fw/include/linkframe.h`,
