@@ -145,10 +145,10 @@ const ROVER_PINS = [
 ]
 export const ROVER_MOTION: ContractValues["motion"] = { speedMps: 0.3, runtimeMin: 30, edgeMm: 3, maxSlopeDeg: 5, stopBeforeWallMm: 150, payloadG: 20, maxSizeMm: [150, 120], maxMassG: 500 }
 export const ROVER_MECHANICS: ContractValues["mechanics"] = {
-	// 80 mm wheels and a 38 mm caster. The brief's edge is 3 mm (floor seams, tile and rug edges), not 1 cm: the
-	// simulated drive showed the trailing caster stalls at a 1 cm step. It carries about 42 % of the weight (its own
-	// 71 g, the plate and the board sit behind the axle) and could carry at most about 21 % to be pushed up 1 cm; no
-	// layout within 160 mm and no catalog caster gets there (the mech-climb check). Door thresholds are out of scope.
+	// 80 mm wheels and a 38 mm caster. The brief's edge is 3 mm (floor seams, tile and rug edges), not 1 cm: the caster
+	// carries about 43 % of the weight (its own 71 g, the plate and the board sit behind the axle); from rest the
+	// simulation pushes it up 1 cm only under about 28 % (the mech-climb check: 21 %). At cruise its momentum carries it
+	// over 1 cm, but a rover that stops on such an edge stays there (docs/mechanics.md). Door thresholds are out of scope.
 	drive: { kind: "differential", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "TENTE 1430POI038P60-46x38 swivel caster 38 mm", trackMm: 110, wheelbaseMm: 100, axleXMm: 45 },
 	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: 45, yMm: 0 } },
 	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 73.6, yMm: 0, zMm: 66 }, connector: "JT1" },

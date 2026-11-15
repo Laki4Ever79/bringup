@@ -36,7 +36,7 @@ export interface CheckCatalog {
 export const TORQUE_MARGIN = 1.5
 export const USABLE_ENERGY = 0.85 // of the pack's rated Wh, before the cut-off
 export const TIP_MARGIN_MM = 10
-export const CLIMB_MARGIN = 1.2 // the drive wheels' grip must push the caster up the edge with this margin
+export const CLIMB_MARGIN = 1.2 // the drive wheels' grip must push the caster up the edge with this margin (static; the simulation from rest climbs a little more, docs/mechanics.md)
 export const LEVEL_TOLERANCE_MM = 3 // caster and wheels must hold the plate level within this
 
 const ROOT = resolve(import.meta.dirname, "../..")
@@ -251,8 +251,10 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 
 	// Climb, the caster: the drive wheels push it into the edge, which meets its wheel at height h. Lifting its load W
 	// takes a push of W·√(r² − (r − h)²)/(r − h) (the edge's reaction along the line to the axle); the wheels push with at
-	// most μ times their own load. The simulation found this one: a 38 mm caster under 41 % of a 255 g rover stalls at
-	// a 10 mm step whatever the motors give.
+	// most μ times their own load. A static bound, for a rover with no momentum (stopped on the edge, or starting against
+	// it). Re-measured 15 Nov with the caster at its own friction (docs/mechanics.md, "What the simulation found"): from
+	// rest a 38 mm caster climbs 10 mm under up to about 28 % of the weight (this limit: 21 %), 5 mm under about 50 %
+	// (35 %), 3 mm under about 70 % (44 %); at cruise momentum carries much more, which the check doesn't count on.
 	const cr = caster.wheelMm / 2, h = motion.edgeMm
 	const casterShare = 1 - onWheels
 	if (h >= cr) fig("Caster climb", `${Math.round(casterShare * 100)} % of the weight`, `edge under the caster's axle`, false)

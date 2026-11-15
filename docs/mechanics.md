@@ -114,10 +114,25 @@ The first simulated drives showed two things the plain checks had missed:
 
 1. **60 mm wheels can't climb a 1 cm step.** A rigid driven wheel on a floor with grip 0.6 climbs only about 0.14 of
    its radius. The design moved to 80 mm wheels.
-2. **The trailing caster stalls at a 1 cm step**, even with full motor power. It carries about 42 % of the weight:
-   its own 71 g, plus the plate and the board, sit behind the axle. To be pushed up 1 cm it may carry at most about
-   21 %. No layout within the brief's 160 mm and no caster in the catalog gets there. **The brief's edge is now 3 mm**:
-   floor seams and rug edges, not door thresholds. The `mech-climb` check now catches this in milliseconds.
+2. **A trailing caster that carries too much of the weight stalls at a step.** The first measurement overstated it:
+   MuJoCo took the larger friction of the caster–floor pair, so the 38 mm caster dragged against the step's edge at
+   the floor's 0.6 and stalled at 1 cm under 42 % of the weight even at full power. Re-measured (15 Nov) with the
+   caster sliding at its own 0.02 (`casterMu`), on the scripted rover (247 g, 38 mm caster, 80 mm wheels):
+
+   | Step | From rest, full power: caster share that still climbs | At cruise (0.3 m/s) | `mech-climb` limit (1.2× margin) |
+   |---|---|---|---|
+   | 3 mm | about 70 % (stalls at 80 %) | 43 % crosses | 44 % |
+   | 5 mm | about 50 % (stalls at 60 %) | 43 % crosses | 35 % |
+   | 10 mm | about 28 % (stalls at 30 %) | up to about 52 % crosses (stalls at 55 %) | 21 % |
+
+   From rest is the case the check bounds: a rover that stops on an edge, or starts against one, has no momentum to
+   carry it. There the check's static limit sits under the simulation's at every height, so it stays as it was. At
+   cruise the rover's momentum carries the caster over much more (its kinetic energy is about the work of lifting the
+   caster's share 1 cm); the scripted rover (43 % on the caster) crosses 10 and 12 mm at cruise and stops at 14 mm,
+   where its 80 mm drive wheels stall first. **The brief's edge stays 3 mm** (floor seams and rug edges, not door
+   thresholds): a 1 cm edge is crossed only with momentum, and stalls the rover if it ever stops on one. The
+   `mech-climb` check catches it in milliseconds; `py/tests/test_mech_drive.py` (CasterClimbTest) holds the
+   from-rest measurement to it.
 
 ## Not proven
 
