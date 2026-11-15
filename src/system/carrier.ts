@@ -74,6 +74,7 @@ export function carrierBrief(m: Module, o: CarrierOptions): string {
 		need
 			? `- **5 V supply: ${mm(need.amps)} A at ${mm(need.volts ?? 5)} V** from ${supplyFrom}, into header pins ${and(pins("5V"))} (5V), ground on pins ${and(pins("GND"))}. Sized from the ${name}'s ${need.peak.value} A peak (${cite(need.peak.source)})${need.supplyRating ? ": that is the vendor's recommended supply and already includes its headroom, so no margin on top" : ` plus ${need.margin * 100} % margin`}.`
 			: `- **5 V supply** from ${supplyFrom} into the header's 5 V pins: the ${name}'s peak current is unknown, so size it from a measurement first.`,
+		...(need ? [`- **A 5 V power input rated for at least ${mm(need.amps)} A** (a 2-pin screw terminal), where the 5 V arrives from ${pb ? "the robot's step-down regulator" : "the robot's supply"}, joined to the header's 5 V and ground pins by copper sized for ${mm(need.amps)} A (a pour, not a signal track).`] : []),
 		link,
 		`- **No 5 V on any other header pin.** The ${name}'s GPIO run at 3.3 V and aren't 5 V tolerant (${cite(field(m, "gpioLevel")?.source)}).`,
 		"",

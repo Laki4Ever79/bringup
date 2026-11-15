@@ -2,7 +2,7 @@ import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 import { LINK_CONNECTOR } from "../contract/links.ts"
 import { FREE_GPIOS } from "../contract/link-kinds.ts"
 import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
-import { testPoints } from "../codegen/circuit.ts"
+import { supportParts, testPoints } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
 import type { CaseSpec, ContractSnapshot, ContractValues, EnclosureMode, FieldName } from "../contract/types.ts"
 import { boardWidthFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
@@ -229,6 +229,8 @@ export function picksComputeMechanics(current: ContractValues["mechanics"] | und
 // The scripted HAT: a carrier brief (src/system/carrier.ts carrierBrief) read back into a design. Every number comes
 // from the brief, which is written from the module record, so any compute module's carrier gets its own.
 export const HAT_HEADER_MPN = "ADAFRUIT-2223"
+// The HAT's 5 V input: a 2-pin screw terminal rated well above the module's 5 A (catalog/parts.json).
+export const HAT_INPUT_MPN = "KF301-5.0-2P"
 export interface HatBrief {
 	module: string
 	outline: { widthMm: number; heightMm: number }
@@ -268,6 +270,10 @@ export function hatFromBrief(brief: string): HatBrief | null {
 export function hatDesign(h: HatBrief) {
 	const header = CATALOG.find((p) => p.mpn === HAT_HEADER_MPN)
 	if (!header) throw new Error(`catalog/parts.json has no ${HAT_HEADER_MPN}`)
+	const input = CATALOG.find((p) => p.mpn === HAT_INPUT_MPN)
+	if (!input) throw new Error(`catalog/parts.json has no ${HAT_INPUT_MPN}`)
+	// The header's pins are the module's own numbers: the brief's 5 V pins carry the rail, its ground pins ground.
+	const headerNets = Object.fromEntries([...h.supply.pins.map((n) => [String(n), "5V"]), ...h.supply.ground.map((n) => [String(n), "GND"])])
 	const and = (xs: number[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : String(xs[0]))
 	return {
 		requirements: { summary: `HAT for the ${h.module}: ${h.supply.volts} V from the robot's battery into its 40-pin header`, peripherals: [] as string[], batteryLifeDays: null, enclosure: "none" as const, size: { ...h.outline, exact: true } },
@@ -285,10 +291,19 @@ export function hatDesign(h: HatBrief) {
 				pins: [...header.pins],
 				at: { xMm: h.header.xMm, yMm: h.header.yMm },
 				reason: `The ${h.module}'s 40-pin header, female, on the underside where the ${h.module}'s pins meet it: ${h.supply.volts} V in on pins ${and(h.supply.pins)}, ground on pins ${and(h.supply.ground)} (the carrier brief)`,
+				nets: headerNets,
+			},
+			{
+				ref: "J2",
+				role: "connector",
+				mpn: input.mpn,
+				lcsc: input.lcsc ?? null,
+				footprint: input.footprint,
+				pins: [...input.pins],
+				reason: `The ${h.supply.volts} V input from the robot's step-down regulator: ${h.supply.amps} A for the ${h.module}, on a screw terminal rated 17 A (the carrier brief)`,
+				nets: { VIN: "5V" },
 			},
 		] as NonNullable<ContractValues["parts"]>,
-		// Which header pins take the 5 V rail and ground (the brief's, from the module's pin map).
-		supplyPins: { rail: "5V", pins: h.supply.pins, ground: h.supply.ground },
 	}
 }
 
@@ -714,6 +729,15 @@ export function mockScripts(): Record<string, Script> {
 					return propose("parts", [...parts, { ref: linkRef, role: "connector", ...LINK_CONNECTOR }], `${linkRef}: the link's JST SH 4-pin connector (catalog)`)
 				if (stepsTaken(items) === 0 && violationKinds(instruction).has("model-sensor-missing") && !parts.some((p) => p.role === "microphone"))
 					return propose("parts", [...parts, MIC_PART], "the model listens: the ICS-43434 I2S microphone (catalog)")
+				// A 1-cell charger on a multi-cell pack (charger-pack): the pack charges off the board on a balance charger, so the
+				// charger, its LED and the two resistors only they use (the charge LED's and PROG's) go; without the charger the
+				// LDO takes its input from USB (VBUS), not the pack.
+				if (stepsTaken(items) === 0 && violationKinds(instruction).has("charger-pack") && parts.some((p) => p.role === "charger")) {
+					const drop = new Set(parts.filter((p) => p.role === "charger" || p.role === "charge-led").map((p) => p.ref))
+					const used = supportParts(state().contract.snapshot()).filter((sp) => [sp.a, sp.b].some((e) => "ref" in e && drop.has(e.ref))).map((sp) => sp.ref)
+					const kept = parts.filter((p) => !drop.has(p.ref) && !used.includes(p.ref))
+					return propose("parts", kept, `the ${[...drop].join(" and ")} are for one cell, the pack is multi-cell: it charges off the board on a balance charger (${[...drop, ...used].join(", ")} dropped)`)
+				}
 				return say("noted")
 			}
 			// The beacon's parts follow its requirements: the sensor joins when they ask for one (or the engineer does).

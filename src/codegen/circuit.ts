@@ -534,6 +534,8 @@ const GAP_MM = 1.5
 const CHIP_GAP_MM = 0.5
 const EDGE_MARGIN_MM = 0.5
 const GRID_MM = 0.5
+// Footprints with plated holes (pads on both faces): nothing goes on the bottom over them.
+export const THROUGH_HOLE_FOOTPRINT = /^(pinrow|pinheader|dip|to92|to220|axial|jst\d+_ph)/
 
 // What tscircuit counts as each part's extent at rotation 0: its courtyard where it has one, else its pads, measured
 // from circuit.json of tscircuit 0.0.3042 builds (6 Nov 2026). Pad boxes alone left parts reaching past the board edge
@@ -555,6 +557,9 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	"tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm": [7.9, 5.6],
 	// A HAT's 2 × 20 female header (ADAFRUIT-2223): 20 columns and 2 rows at 2.54 mm, the housing's 50.8 × 5.08 mm.
 	"pinrow40_rows2_female_pinnumbering(columnmajor)": [50.8, 5.08],
+	// A 2-pin 5.0 mm screw terminal (KF301-5.0-2P, a 5 A power input): two Ø2.6 mm pads 5 mm apart; the housing is
+	// about 10 × 7.5 mm (ESTIMATE from the KF301 family's drawings, not measured on a build).
+	"pinrow2_p5_id1.3_od2.6": [10, 7.5],
 }
 const DEFAULT_SIZE: [number, number] = [3, 3]
 
@@ -1261,8 +1266,9 @@ function bottomPadsUncached(s: ContractSnapshot, capsAlong = false): BottomPads 
 	const connectorRefs = new Set((s.values.connectors ?? []).map((c) => c.ref))
 	const roleBox = (...roles: string[]) => roles.map((r) => parts.find((p) => p.role === r)).map((p) => p && byRef.get(p.ref)).find(Boolean)
 	const blocked: { x: number; y: number; w: number; h: number }[] = [
-		// Parts with a body or holes below the board's bottom face, or (the module) an antenna over it.
-		...boxes.filter((b) => connectorRefs.has(b.ref) || ["mcu", "usb-c", "connector", "button", "battery"].includes(parts.find((p) => p.ref === b.ref)?.role ?? "")).map((b) =>
+		// Parts with a body or holes below the board's bottom face, or (the module) an antenna over it: by role, and any
+		// through-hole footprint whatever its role (a power terminal has plated holes on both faces).
+		...boxes.filter((b) => { const p = parts.find((x) => x.ref === b.ref); return connectorRefs.has(b.ref) || ["mcu", "usb-c", "connector", "button", "battery"].includes(p?.role ?? "") || (p ? THROUGH_HOLE_FOOTPRINT.test(footprintFor(p)) : false) }).map((b) =>
 			// The USB-C connector's pads and locating holes leave its routing little room; a pad beside it pushed a via
 			// next to a locating hole (45 mm logger: 2 hole-clearance errors, 0 without the pads).
 			connectorRefs.has(b.ref) || parts.find((p) => p.ref === b.ref)?.role === "usb-c" ? { ...b, w: b.w + 2 * TEST_PAD.usbClearMm, h: b.h + 2 * TEST_PAD.usbClearMm } : b),
@@ -1466,6 +1472,47 @@ const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_
 // A rover's motor connectors: two-pin connectors, in ref order (JM1 motor A, JM2 motor B).
 export const motorConnectors = (parts: Part[]) => parts.filter((p) => p.role === "connector" && p.pins.length === 2 && p.pins[0] === "1" && p.pins[1] === "2").sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
 
+// The router's default track (tscircuit 0.0.3042: 0.15 mm), enough for the rails up to about 0.6 A (IPC-2221 below).
+export const DEFAULT_TRACE_MM = 0.15
+// IPC-2221's external-layer track width for a current: A = (I / (k·ΔT^0.44))^(1/0.725) mil², k = 0.048, over 1 oz
+// copper (1.378 mil thick), for a 10 °C rise (IPC-2221 §6.2 / Fig. 6-4; the common chart's conservative choice). An
+// ESTIMATE of the chart, not a thermal simulation; rounded up to 0.05 mm.
+export function ipc2221WidthMm(amps: number, riseC = 10): number {
+	const areaMil2 = (amps / (0.048 * riseC ** 0.44)) ** (1 / 0.725)
+	return Math.round(Math.ceil(((areaMil2 / 1.378) * 0.0254) / 0.05 - 1e-9) * 5) / 100
+}
+// The widest track that still reaches a pin of a 2.54 mm header without touching its neighbours (pads about Ø1.7 mm,
+// 0.2 mm clearance each side: 2.54 - 1.7 - 0.4 ≈ 0.45 mm beside a pad, about 1 mm onto one). Wider than this, a track
+// cut across the next pins (a 2.8 mm GND track over a HAT's header pins 27-29, 15 Nov 2026): such a net is a pour.
+export const MAX_TRACK_MM = 1
+export const POUR = { clearanceMm: 0.3, edgeMm: 0.5 }
+// The track width each supply net needs where the default is too thin: a rail by its peak load (loadMa), ground by the
+// largest rail's (the return carries it). A board whose rails all fit the default gets none, so its routing is unchanged.
+export function supplyWidths(s: ContractSnapshot): Map<string, number> {
+	const out = new Map<string, number>()
+	for (const r of s.values.rails ?? []) {
+		const w = Math.round(ipc2221WidthMm(r.loadMa / 1000) * 100) / 100
+		if (w <= DEFAULT_TRACE_MM) continue
+		out.set(netName(r.name), w)
+		out.set("GND", Math.max(out.get("GND") ?? 0, w))
+	}
+	return out
+}
+// A net too wide for a track (MAX_TRACK_MM) becomes a copper pour: the one rail on top, ground on the bottom. A board
+// with two such rails can't pour both on two layers: the second keeps its wide track, and the check says so
+// (rail-current-copper).
+export function supplyPours(s: ContractSnapshot): { net: string; layer: "top" | "bottom" }[] {
+	const wide = [...supplyWidths(s)].filter(([, w]) => w > MAX_TRACK_MM).map(([n]) => n)
+	if (!wide.length) return []
+	const rail = wide.filter((n) => n !== "GND").sort((a, b) => supplyWidths(s).get(b)! - supplyWidths(s).get(a)!)[0]
+	return [...(rail ? [{ net: rail, layer: "top" as const }] : []), { net: "GND", layer: "bottom" as const }]
+}
+// The track widths codegen asks for: the supply widths, except the nets poured (their tracks stay the default).
+export function netTraceWidths(s: ContractSnapshot): Map<string, number> {
+	const poured = new Set(supplyPours(s).map((p) => p.net))
+	return new Map([...supplyWidths(s)].filter(([n]) => !poured.has(n)).map(([n, w]) => [n, Math.min(w, Math.max(MAX_TRACK_MM, DEFAULT_TRACE_MM))]))
+}
+
 export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const { parts = [], rails = [], pins = [] } = s.values
 	const supply = netName(SUPPLY_RAIL)
@@ -1486,6 +1533,16 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 			if (hasSupply && p.role !== "ldo" && p.role !== "charger" && p.role !== "connector" && SUPPLY_PINS.has(pin)) join(supply, p.ref, pin)
 		}
 	}
+	// Pins the contract names a rail for (Part.nets): a numbered header's 5 V and ground pins, a power input's VIN. A rail
+	// the contract doesn't have is skipped here and reported by the check (part-net-unknown), never wired to a guess.
+	const railNames = new Set(rails.map((r) => r.name))
+	for (const p of parts)
+		for (const [pin, rail] of Object.entries(p.nets ?? {})) {
+			if (!p.pins.includes(pin) || (rail !== "GND" && !railNames.has(rail))) continue
+			const net = rail === "GND" ? "GND" : netName(rail)
+			if (!nets.has(net)) nets.set(net, [])
+			if (!nets.get(net)!.includes(`${p.ref}.${pin}`)) join(net, p.ref, pin)
+		}
 	// A bare chip's supply and ground pads (its profile), joined to the rails by label.
 	const chip = chipProfile(mcu)
 	if (chip && mcu) {
@@ -1509,8 +1566,10 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		if (chargeLed && charger.pins.includes("CHRG")) join("VBUS", chargeLed.ref, "A")
 		if (charger.pins.includes("VCC")) join("VBUS", charger.ref, "VCC")
 		if (charger.pins.includes("BAT")) join("VBAT", charger.ref, "BAT")
-		if (battery?.pins.includes("VBAT")) join("VBAT", battery.ref, "VBAT")
 	}
+	// The battery joins VBAT with or without a charger on the board: a 2S pack charged off the board still feeds the
+	// motor driver (before, a board without a charger left the pack's socket unwired and the driver's VM alone on VBAT).
+	if (battery?.pins.includes("VBAT")) join("VBAT", battery.ref, "VBAT")
 	if (usb) {
 		for (const pad of USBC_PADS.GND) join("GND", usb, pad)
 		for (const pad of USBC_PADS.VBUS) join("VBUS", usb, pad)
@@ -1774,13 +1833,18 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 			else if (!POWER_NETS.includes(end.net)) lines.push(`<trace name=${q(`${end.net}_${sp.ref}_${pin}`)} from=${q(port(sp.ref, pin))} to=${q(`net.${end.net}`)} />`)
 		}
 	}
+	const widths = netTraceWidths(s)
 	for (const [net, ends] of generatedNets(s)) {
-		lines.push(`<net name=${q(net)} />`)
+		const w = widths.get(net)
+		lines.push(`<net name=${q(net)}${w ? ` nominalTraceWidth="${w}mm"` : ""} />`)
 		for (const end of ends) {
 			const [ref, pin] = end.split(".")
 			lines.push(`<trace name=${q(`${net}_${ref}_${pin}`)} from=${q(port(ref, pin))} to=${q(`net.${net}`)} />`)
 		}
 	}
+	// Margins over JLCPCB's 2-layer rules (0.2 mm hole clearance, 0.3 mm copper to edge): tscircuit's defaults left the
+	// pours 0.19 mm from the mounting holes and on the edge clearance (the rpi-5 HAT, 15 Nov 2026: 10 KiCad DRC errors).
+	for (const pour of supplyPours(s)) lines.push(`<copperpour connectsTo=${q(`net.${pour.net}`)} layer=${q(pour.layer)} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
 	return lines
 }
 

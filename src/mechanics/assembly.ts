@@ -35,7 +35,7 @@ export function withAssembly(values: ContractValues | Partial<ContractValues>): 
 		chassis: {
 			...mech.chassis,
 			plateMm: a.plate ? [a.plate.lengthMm, a.plate.widthMm] : mech.chassis.plateMm,
-			boards: a.boards.map((b) => ({ name: asMain(a, b.name), at: { xMm: b.xMm, yMm: b.yMm }, rotDeg: b.rotDeg, ...(b.carries ? { on: asMain(a, b.carries) } : {}), ...(b.holes ? { holes: b.holes } : {}) })),
+			boards: a.boards.map((b) => ({ name: asMain(a, b.name), at: { xMm: b.xMm, yMm: b.yMm }, rotDeg: b.rotDeg, ...(b.carries ? { on: asMain(a, b.carries) } : {}), ...(b.holes ? { holes: b.holes } : {}), ...(b.module ? { module: b.module } : {}) })),
 		},
 	}
 }

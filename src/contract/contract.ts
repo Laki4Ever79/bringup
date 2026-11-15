@@ -199,6 +199,8 @@ function shapeError(field: FieldName, value: unknown): string | null {
 			if (shape) return shape
 			const noReason = (value as { ref: string; reason?: unknown }[]).filter((p) => p.reason !== undefined && typeof p.reason !== "string")
 			if (noReason.length) return `part reason must be a string: ${noReason.map((p) => p.ref).join(", ")}`
+			const badNets = (value as { ref: string; nets?: unknown }[]).filter((p) => p.nets !== undefined && !(obj(p.nets) && Object.values(p.nets).every(isStr)))
+			if (badNets.length) return `part nets must map a pin to a rail name or "GND", e.g. { "2": "5V", "6": "GND" }: ${badNets.map((p) => p.ref).join(", ")}`
 			const bad = (value as { ref: string; role: string }[]).filter((p) => !(PART_ROLES as readonly string[]).includes(p.role))
 			return bad.length ? `part role must be one of ${PART_ROLES.join(", ")}; got ${bad.map((p) => `${p.ref}: "${p.role}"`).join(", ")}` : null
 		}

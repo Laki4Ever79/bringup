@@ -130,6 +130,10 @@ export interface Part {
 	// Absent: the layout chooses (the default). rotationDeg: turned counter-clockwise, top view, in 90° steps (absent: 0);
 	// its pin capacitors turn with it.
 	at?: { xMm: number; yMm: number; rotationDeg?: 0 | 90 | 180 | 270 }
+	// The rail (a rails[] name) or "GND" each of these pins carries, for pins whose label doesn't say it: a numbered
+	// header's 5 V and ground pins (a HAT's 40-pin header, pins "2" and "4" for 5V), a power input's "VIN". Pins named
+	// GND/VSS or 3V3/VDD/VCC are joined by their label as before; this names the rest, so a power pin is never left open.
+	nets?: Record<string, string>
 }
 
 export interface PinAssignment {

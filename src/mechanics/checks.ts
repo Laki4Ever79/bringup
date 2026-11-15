@@ -9,6 +9,7 @@ import { est, estNote } from "./estimates.ts"
 import { brakeDecel, brakeMm, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon, TURN_CLEARANCE_MM, turnStopMm, turnSweepMm } from "./model.ts"
 import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 import { driveTrainChecks } from "./drivetrain.ts"
+import { field, moduleById } from "../system/bought.ts"
 
 // The plain-code mechanics checks: free, instant, run on every contract change. Each states its numbers, the limit,
 // the margin and what to change; any estimate it leans on is named "(estimate: <name> <value>)". They never assume
@@ -207,6 +208,28 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 	return out
 }
 
+// A bought computer's typical draw (compute.currentA.typical at compute.inputV.nom, its record) as current from the pack:
+// through the mechanics' 5 V regulator's efficiency (catalog/mechanics.json regulators) at the pack's nominal voltage.
+// A module without a typical figure counts nothing and says so; a regulator not chosen uses ASSUMED_REGULATOR_EFFICIENCY.
+export const ASSUMED_REGULATOR_EFFICIENCY = 0.85 // ESTIMATE: a synchronous buck at a few amps
+export function boughtComputeA(mech: Mechanics, pack: { nominalV: number; mpn: string }, cat: CheckCatalog): { amps: number; how: string } {
+	const regMpn = (mech as Mechanics & { regulator?: string }).regulator
+	const reg = regMpn ? byMpn(cat.mech.regulators ?? [], regMpn) : undefined
+	const eff = reg?.efficiency ?? ASSUMED_REGULATOR_EFFICIENCY
+	let amps = 0
+	const how: string[] = []
+	for (const b of mech.chassis?.boards ?? []) {
+		const m = b.module ? moduleById(b.module) : undefined
+		if (!m) continue
+		const typ = field<number>(m, "currentA.typical")?.value, v = field<{ nom: number }>(m, "inputV")?.value?.nom
+		if (typeof typ !== "number" || typeof v !== "number") { how.push(`${b.name} (${m.id}): no typical current in its record, not counted`); continue }
+		const fromPack = (typ * v) / eff / pack.nominalV
+		amps += fromPack
+		how.push(`${b.name} (${m.id}) ${typ} A at ${v} V typical, through ${reg ? reg.mpn : "a 5 V regulator"} at ${Math.round(eff * 100)} %${reg ? "" : " (ESTIMATE)"}, ${pack.nominalV} V nominal: ${Math.round(fromPack * 100) / 100} A`)
+	}
+	return { amps, how: how.join("; ") }
+}
+
 function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanics | undefined, boards: { name: string; snapshot: ContractSnapshot }[], cat: CheckCatalog, figures: MechFigure[] = []): MechViolation[] {
 	if (!motion) return []
 	const out: MechViolation[] = []
@@ -318,7 +341,11 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		if (pack.cutoffV < supplyMin || pack.fullV > supplyMax)
 			push("mech-voltage", `the ${driver.part.mpn} runs from ${supplyMin}–${supplyMax} V but the cell spans ${pack.cutoffV}–${pack.fullV} V: pick a driver that covers it`, ["mechanics", "parts"])
 	}
-	const boardMa = boards.reduce((t, b) => t + (b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0)
+	// The designed boards' rails, plus each bought computer's typical draw (its record) through the 5 V regulator, as pack
+	// current at the nominal voltage (before, a Pi 5's 0.8 A at 5.1 V was left out of the runtime altogether).
+	const computeA = boughtComputeA(mech, pack, cat)
+	const boardMa = boards.reduce((t, b) => t + (b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0) + computeA.amps * 1000
+	if (computeA.amps > 0) fig("Computer draw", `${r2(computeA.amps)} A`, "from the pack", true, computeA.how)
 	const packNeedA = 2 * full.stallA + boardMa / 1000
 	fig("Pack peak current", `${r2(packNeedA)} A`, `at most ${pack.peakA} A`, packNeedA <= pack.peakA, "both motors at stall plus the electronics")
 	if (packNeedA > pack.peakA)

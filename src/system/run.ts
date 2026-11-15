@@ -95,6 +95,9 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	const designed = spec.boards.filter((b) => b.brief)
 	// A robot's boards each get the whole body (its plate, every board's place and outline) and which board they are.
 	let assembly: SystemAssembly | undefined = spec.assembly?.body === "chassis" ? spec.assembly : undefined
+	// Each bought board's module id rides in the body, so the boards' checks can read its record (a spec saved before
+	// assembly boards carried it gets it here).
+	if (assembly) assembly = { ...assembly, boards: assembly.boards.map((ab) => { const sb = spec.boards.find((x) => x.name === ab.name); return sb?.kind === "bought" && sb.module && !ab.module ? { ...ab, module: sb.module } : ab }) }
 	// A bought board is never designed: its contract is its module record's (outline), from the start. Its outline goes
 	// into the body before any board is handed it.
 	const boughtOf = (name: string) => {
