@@ -1,5 +1,6 @@
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { execFileSync } from "node:child_process"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { SIM_READING, wokwiProject } from "../codegen/wokwi.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { firmwareSimBackend, type Env } from "./env.ts"
@@ -31,6 +32,29 @@ export interface SimResult {
 	reason?: string
 	passed?: boolean
 	serial?: string
+}
+
+// WOKWI_CLI_TOKEN, and only it, from the repo's .env or, in a git worktree (which has no .env of its own), from the
+// main checkout's .env, into this process's environment. The test runner loads no .env (so no model key reaches the
+// tests); without this the Wokwi test went unrun in every worktree (15 Nov). The token is never printed or returned.
+export function loadWokwiToken(root: string): boolean {
+	if (process.env.WOKWI_CLI_TOKEN) return true
+	const files = [join(root, ".env")]
+	try {
+		const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()
+		files.push(join(dirname(common), ".env"))
+	} catch {
+		// not a git checkout: the repo's own .env only
+	}
+	for (const f of files) {
+		if (!existsSync(f)) continue
+		const m = readFileSync(f, "utf8").match(/^\s*WOKWI_CLI_TOKEN\s*=\s*["']?([^"'\r\n]+)["']?\s*$/m)
+		if (m) {
+			process.env.WOKWI_CLI_TOKEN = m[1]
+			return true
+		}
+	}
+	return false
 }
 
 // The custom chips, compiled to WASM once per machine (NOTES.md), live beside the CLI.
