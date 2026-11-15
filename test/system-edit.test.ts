@@ -55,6 +55,15 @@ test("a board over the battery is an error", () => {
 	assert.ok(e.findings().some((x) => x.target.board === "front" && /battery/.test(x.message)))
 })
 
+test("a board over a battery thin enough for its standoffs is fine (the mechanics' rule: the pack fits under boards on standoffs)", () => {
+	const thin = { ...chassis, battery: { xMm: 0, yMm: 40, sizeMm: [30, 20, 7] } } as unknown as ChassisSpec
+	const e = editor(start({ chassis: thin }))
+	e.apply({ kind: "move", board: "front", xMm: 0, yMm: 40 })
+	assert.ok(!e.findings().some((x) => /battery/.test(x.message)), "7 mm under 8 mm standoffs")
+	e.apply({ kind: "standoff", board: "front", heightMm: 6 })
+	assert.ok(e.findings().some((x) => x.target.board === "front" && /battery/.test(x.message)), "6 mm standoffs don't clear a 7 mm pack")
+})
+
 test("the brief's size limit is checked, wheels included", () => {
 	const e = editor(start({ chassis, maxSizeMm: [200, 120] }))
 	assert.ok(e.findings().some((x) => x.target.plate && /over the/.test(x.message)), "track + wheel is 140 wide")

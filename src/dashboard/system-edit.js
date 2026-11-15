@@ -48,7 +48,9 @@ export function keepOuts(chassis) {
 	const d = chassis.drive
 	if (d) for (const s of [1, -1]) out.push({ what: "a wheel", xMm: d.axleXMm, yMm: s * d.trackMm / 2, wMm: d.wheelDiameterMm, hMm: d.wheelWidthMm })
 	if (chassis.caster) out.push({ what: "the caster", xMm: chassis.caster.xMm, yMm: 0, wMm: chassis.caster.wheelMm, hMm: chassis.caster.wheelMm })
-	if (chassis.battery) out.push({ what: "the battery", xMm: chassis.battery.xMm, yMm: chassis.battery.yMm, wMm: chassis.battery.sizeMm[0], hMm: chassis.battery.sizeMm[1] })
+	// The battery lies on the plate: a board on standoffs may stand over it when they clear its thickness (thickMm), the
+	// rule src/mechanics/checks.ts applies (the pack fits when it is at most the standoff height less 1 mm).
+	if (chassis.battery) out.push({ what: "the battery", xMm: chassis.battery.xMm, yMm: chassis.battery.yMm, wMm: chassis.battery.sizeMm[0], hMm: chassis.battery.sizeMm[1], ...(chassis.battery.sizeMm[2] > 0 ? { thickMm: chassis.battery.sizeMm[2] } : {}) })
 	return out
 }
 
@@ -204,7 +206,12 @@ export function editor(start) {
 				bad({ board: bs[j].name }, `${bs[j].name} overlaps ${bs[i].name}`)
 			}
 			if (a.plate) for (const b of bs) if (offPlate(b, a.plate)) bad({ board: b.name }, `${b.name} sticks out of the ${a.plate.lengthMm} × ${a.plate.widthMm} mm plate`)
-			for (const b of bs) for (const k of keepOuts(chassis)) if (rectsOverlap(b, k)) bad({ board: b.name }, `${b.name} is over ${k.what}`)
+			for (const b of bs) for (const k of keepOuts(chassis)) {
+				if (!rectsOverlap(b, k)) continue
+				const standoff = b.standoffMm ?? STANDOFF_DEFAULT_MM
+				if (k.thickMm === undefined) bad({ board: b.name }, `${b.name} is over ${k.what}`)
+				else if (k.thickMm > standoff - 1) bad({ board: b.name }, `${b.name} is over ${k.what}: the ${k.thickMm} mm pack needs standoffs of at least ${k.thickMm + 1} mm (now ${standoff} mm)`)
+			}
 			if (maxSizeMm && a.plate) {
 				const outerW = Math.max(a.plate.widthMm, chassis?.drive ? chassis.drive.trackMm + chassis.drive.wheelWidthMm : 0)
 				if (a.plate.lengthMm > maxSizeMm[0] || outerW > maxSizeMm[1]) bad({ plate: true }, `the robot is ${a.plate.lengthMm} × ${r1(outerW)} mm, over the ${maxSizeMm[0]} × ${maxSizeMm[1]} mm the brief allows`)

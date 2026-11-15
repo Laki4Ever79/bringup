@@ -29,5 +29,5 @@ export const SNAP_MM: number
 export const STANDOFF_DEFAULT_MM: number
 export const STANDOFF_RANGE_MM: [number, number]
 export const STANDOFF_USUAL_MM: [number, number]
-export function keepOuts(chassis: ChassisSpec | null | undefined): { what: string; xMm: number; yMm: number; wMm: number; hMm: number }[]
+export function keepOuts(chassis: ChassisSpec | null | undefined): { what: string; xMm: number; yMm: number; wMm: number; hMm: number; thickMm?: number }[]
 export function editor(start: EditStart): Editor
