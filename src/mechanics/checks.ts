@@ -2,7 +2,7 @@ import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 import type { AgentRole, ContractSnapshot, FieldName, Part, PinAssignment as Pin } from "../contract/types.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
-import { blocksSensor, motorHalfUnder, motorUnderPlateMm, mountOnPlate, plateMaxWidthMm, wheelsRubPlate } from "../dashboard/assembly-geom.js"
+import { plateLimitForBrief, blocksSensor, motorHalfUnder, motorUnderPlateMm, mountOnPlate, plateMaxWidthMm, wheelsRubPlate } from "../dashboard/assembly-geom.js"
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
@@ -81,7 +81,8 @@ export function plateLimitMm(c: ContractSnapshot): [number, number] | undefined 
 	if (!max) return undefined
 	const cat = defaultCheckCatalog()
 	const wheel = cat && c.values.mechanics ? byMpn(cat.mech.wheels, c.values.mechanics.drive.wheel) : undefined
-	return wheel ? [max[0], max[1] - 2 * wheel.widthMm - 4] : max
+	// One formula with the Top-view editor's (src/dashboard/assembly-geom.js), so the editor and the checks agree.
+	return plateLimitForBrief(max, wheel?.widthMm) as [number, number]
 }
 
 export function mechanicsChecks(c: ContractSnapshot): MechViolation[] {
