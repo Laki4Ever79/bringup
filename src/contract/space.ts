@@ -1,4 +1,4 @@
-import { antennaOverhang, boardParts, debugPort, layoutBoard, placeParts, recoveryPads, testPoints } from "../codegen/circuit.ts"
+import { antennaOverhang, boardParts, debugPort, layoutBoard, moduleBlocked, placeParts, recoveryPads, testPoints } from "../codegen/circuit.ts"
 import { caseOf, minCaseHeight } from "./case.ts"
 import type { AgentRole, ContractSnapshot, FieldName, SizeReason } from "./types.ts"
 
@@ -194,6 +194,11 @@ export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {})
 		// A part the engineer placed where it doesn't fit is part-pinned-blocked's, for the parts owner: a bigger board
 		// is not the answer to a part placed on top of another.
 		const blocked = new Set(blockedPins(s).map((b) => b.ref))
+		// So is a radio module kept off its edge by connectors: module-blocked says which to move, and "make it that size"
+		// for the same missing spot sent the real rover's architect resizing until its connectors ran off the edge (run 5,
+		// 15 Nov 2026). A module too big for its edge with nothing in the way is still this check's.
+		const mod = moduleBlocked(s)
+		if (mod && mod.blockers.length > 0) blocked.add(mod.ref)
 		const parts = unplacedParts(s).filter((r) => !blocked.has(r))
 		const pads = [...recoveryPads(s).unplaced.map((n) => `recovery pad ${n}`), ...testPoints(s).unplaced.map((n) => `test pad ${n}`)]
 		if (blocked.size > 0 && parts.length === 0 && pads.length === 0) return v
