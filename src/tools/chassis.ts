@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process"
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { writeRosPackage } from "../ros/package.ts"
 import { join } from "node:path"
 import { promisify } from "node:util"
 import type { ContractSnapshot } from "../contract/types.ts"
@@ -108,5 +109,17 @@ export async function buildChassis(python: string, root: string, dir: string, s:
 		const stderr = String((e as { stderr?: string }).stderr ?? e).trim().split("\n").filter(Boolean).at(-1) ?? "the chassis generator failed"
 		return { ok: false, reason: stderr }
 	}
-	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")) }
+	// The robot's ROS 2 workspace beside its chassis (docs/ros.md): its own package from the same spec, and the shared
+	// ros2_control hardware that speaks to its firmware. Best effort: a ROS package that can't be written never fails
+	// the chassis.
+	const ros: string[] = []
+	try {
+		const ws = join(dir, "ros", "src")
+		ros.push(writeRosPackage(ws, spec, { robot: "rover", revision }))
+		cpSync(join(root, "templates", "ros", "bringup_hardware"), join(ws, "bringup_hardware"), { recursive: true })
+		ros.push(join(ws, "bringup_hardware"))
+	} catch (e) {
+		console.error("[chassis] ROS package not written:", e)
+	}
+	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)).concat(ros), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")) }
 }
