@@ -1,0 +1,9 @@
+{
+	"id": "climate-shtc3",
+	"kind": "sensor",
+	"title": "SHTC3 temperature and humidity sensor on the board's I2C bus",
+	"parts": [{ "mpn": "SHTC3-TR-2.5KS", "role": "sensor", "qty": 1 }],
+	"circuit": "sensor on I2C with pull-ups (src/codegen/circuit.ts)",
+	"driver": "include/drivers/sensirion.h",
+	"interfaces": [{ "kind": "i2c", "signals": ["I2C_SDA", "I2C_SCL"], "address": "0x70" }]
+}

@@ -1,0 +1,13 @@
+{
+	"id": "motor-stage-drv8833",
+	"kind": "motor-stage",
+	"title": "Two N20 gearmotors on a DRV8833, each on a 2-pin JST PH",
+	"parts": [
+		{ "mpn": "DRV8833PWPR", "role": "motor-driver", "qty": 1 },
+		{ "mpn": "B2B-PH-K-S(LF)(SN)", "role": "connector", "qty": 2 },
+		{ "mpn": "POLOLU-2367 100:1 MP 6V", "role": "motor", "qty": 2, "alternatives": ["POLOLU-2365 50:1 MP 6V", "POLOLU-2366 75:1 MP 6V", "POLOLU-998 50:1 HP 6V"] }
+	],
+	"circuit": "drv8833 stage (src/codegen/circuit.ts): AIN1/AIN2/BIN1/BIN2 on GPIOs, AOUT/BOUT to the motor connectors in ref order",
+	"driver": "include/drivers/drv8833.h",
+	"interfaces": [{ "kind": "pwm", "signals": ["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2"] }, { "kind": "power", "signals": ["VBAT"] }]
+}
