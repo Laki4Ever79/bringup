@@ -34,7 +34,9 @@ export interface ChassisSpec {
 	// The designed boards' screw, the case's: an M2 self-tapping screw through the board's hole into the standoff's pilot
 	// hole. A board with other holes has its own (boards[].screwHoleMm, pilotMm).
 	boardScrew: { boardHoleMm: number; pilotMm: number }
-	sensor: { xMm: number; yMm: number; zMm: number; sizeMm: [number, number, number]; rangeMm: number; updateMs: number }
+	// holes: the breakout's mounting holes through the bracket (yMm across the robot, zMm up from the plate's underside),
+	// the ones that land on the bracket above the plate; holeDiaMm their clearance.
+	sensor: { xMm: number; yMm: number; zMm: number; sizeMm: [number, number, number]; rangeMm: number; updateMs: number; holes: { yMm: number; zMm: number }[]; holeDiaMm: number }
 	massG: number
 	com: [number, number, number] // the whole rover's, wheels and caster included
 	wheelMassG: number // each; the simulation hangs these on the wheels and the rest on the chassis body
@@ -51,6 +53,14 @@ export interface ChassisSpec {
 	estimates: { floorMu: number; casterMu: number; rollingCrr: number; packOhm: number }
 }
 
+// The sensor breakout's M2.5 screws: ISO 273's medium clearance hole.
+export const SENSOR_HOLE_MM = 2.7
+// The bracket's holes for the breakout: its mounting holes at the breakout's place (its centre at zMm − clearance above
+// the plate's underside), the ones whose edge clears the plate's top by a millimetre (the lower pair can sit in the plate).
+export function sensorHoles(sensor: { mountHolesMm?: [number, number][] }, at: { yMm: number; zMm: number }, plate: { thicknessMm: number; clearanceMm: number }): { yMm: number; zMm: number }[] {
+	const zc = at.zMm - plate.clearanceMm
+	return (sensor.mountHolesMm ?? []).map(([dy, dz]) => ({ yMm: +(at.yMm + dy).toFixed(3), zMm: +(zc + dz).toFixed(3) })).filter((h) => h.zMm - SENSOR_HOLE_MM / 2 >= plate.thicknessMm + 1)
+}
 // The caster's M4 screws (the catalog's casters have 4.2–5 mm holes).
 const CASTER_HOLE_MM = 4.2
 // A board's holes, from its centre: this board's own (mountingHoles, which leaves out a corner a connector took); another
@@ -120,7 +130,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		}),
 		boardScrew: { boardHoleMm: MOUNTING_HOLE.diameterMm, pilotMm: STANDOFF.pilotMm },
 		unplaced,
-		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs },
+		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs, holes: sensorHoles(sensor, mech.sensor.at, mech.chassis), holeDiaMm: SENSOR_HOLE_MM },
 		massG,
 		com,
 		wheelMassG: wheel.massG,

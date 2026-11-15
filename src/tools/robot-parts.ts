@@ -18,7 +18,7 @@ export interface BuyLink {
 }
 
 export interface RobotPartLine {
-	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut"
+	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut"
 	mpn: string
 	qty: number
 	packs: number // packs to buy at the first link's pack size
@@ -77,6 +77,10 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 	const boardScrews = [...boardThreads].filter(([, n]) => n > 0).map(([t, n]) => ({ n, part: hw.find((h) => h.kind === "screw" && h.selfTapping && h.threadMm === t) }))
 	const casterScrew = spec && hw.find((h) => h.kind === "screw" && !h.selfTapping && h.threadMm === screwFor(spec.caster.holeDiaMm))
 	const casterNut = casterScrew && hw.find((h) => h.kind === "nut" && h.threadMm === casterScrew.threadMm)
+	// The distance sensor's breakout: a machine screw and a nut through each bracket hole (chassis.ts sensorHoles).
+	const sensorHoleCount = spec?.sensor.holes.length ?? 0
+	const sensorScrew = sensorHoleCount ? hw.find((h) => h.kind === "screw" && !h.selfTapping && h.threadMm === screwFor(spec!.sensor.holeDiaMm)) : undefined
+	const sensorNut = sensorScrew && hw.find((h) => h.kind === "nut" && h.threadMm === sensorScrew.threadMm)
 	const casterHoles = spec ? spec.caster.holesMm.length : 0
 	return [
 		line("motor", cat.motors as WithBuy[], drive.motor, 2),
@@ -87,6 +91,8 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 		...boardScrews.map((x) => (x.part ? line("board screw", hw, x.part.mpn, x.n) : null)),
 		casterScrew && casterHoles ? line("caster screw", hw, casterScrew.mpn, casterHoles) : null,
 		casterNut && casterHoles ? line("caster nut", hw, casterNut.mpn, casterHoles) : null,
+		sensorScrew ? line("sensor screw", hw, sensorScrew.mpn, sensorHoleCount) : null,
+		sensorNut ? line("sensor nut", hw, sensorNut.mpn, sensorHoleCount) : null,
 	].filter((l): l is RobotPartLine => l !== null)
 }
 
@@ -102,7 +108,7 @@ function screwFor(holeMm: number): number {
 export function robotPartNotes(s: ContractSnapshot): string[] {
 	if (!s.values.mechanics) return []
 	return [
-		"the sensor bracket: the printed bracket has no screw holes for the distance sensor's breakout yet (it has two mounting holes)",
+		...(chassisSpec(s)?.sensor.holes.length ? [] : ["the sensor bracket: no screw holes for the distance sensor's breakout (its catalog entry has no mounting holes, or none lands above the plate)"]),
 		"the motors sit in printed cradles under the plate, held by shape: no clamp or screw yet",
 		"the battery sits between two printed rails: no strap or holder yet",
 		"cables (motor leads, the sensor's STEMMA QT cable, the battery lead) and their crimp housings aren't listed yet",
@@ -117,6 +123,8 @@ export function hardwareFit(s: ContractSnapshot, spec: ChassisSpec | null = chas
 	const thread = (item: string) => (cat.hardware ?? []).find((h) => h.mpn === lines.find((l) => l.item === item)?.mpn)?.threadMm
 	const caster = thread("caster screw")
 	if (caster !== undefined && spec.caster.holeDiaMm <= caster) out.push(`caster hole ${spec.caster.holeDiaMm} mm is smaller than the M${caster} screw`)
+	const sensorT = thread("sensor screw")
+	if (sensorT !== undefined && spec.sensor.holeDiaMm <= sensorT) out.push(`sensor bracket hole ${spec.sensor.holeDiaMm} mm is smaller than the M${sensorT} screw`)
 	// Each board's screw (by its hole) against its hole and its standoff's pilot; a thread the catalog has no screw for is
 	// said too, not left off the list.
 	const threads = new Set(lines.filter((l) => l.item === "board screw").map((l) => (cat.hardware ?? []).find((h) => h.mpn === l.mpn)?.threadMm))
