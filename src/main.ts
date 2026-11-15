@@ -256,7 +256,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			: undefined
 		if (stay) console.log("bringup system: --stay; after the system settles it keeps taking system-level change requests. Ctrl-C ends it.")
 		const r = await runSystem({ spec, outDir: out, mock: flag("--mock"), ...(stay ? { stay } : {}), ...(argv.includes("--timeout-min") && minutes > 0 ? { timeoutMs: minutes * 60_000 } : {}), boardArgs: [...(flag("--no-hardware") ? ["--no-hardware"] : []), ...(flag("--no-review") ? ["--no-review"] : []), ...rounds], ...(env ? { linkTest: { root: ROOT, pio: env.pio, qemu: Boolean(env.qemu), renode: Boolean(env.renode) } } : {}) })
-		console.log(`\n${r.ok ? "settled" : "UNSETTLED"}: ${r.findings.filter((f) => f.kind !== "link-pending").length} system finding(s)${r.linkTests.length ? `; link tests: ${r.linkTests.map((t) => `${t.link} ${!t.ran ? "not run" : t.passed ? "pass" : "FAIL"}`).join(", ")}` : ""}\nreport: ${r.reportPath}`)
+		console.log(`\n${r.ok ? "settled" : "UNSETTLED"}: ${r.findings.filter((f) => f.kind !== "link-pending" && f.level !== "warning").length} system finding(s)${r.findings.some((f) => f.level === "warning") ? ` and ${r.findings.filter((f) => f.level === "warning").length} warning(s)` : ""}${r.linkTests.length ? `; link tests: ${r.linkTests.map((t) => `${t.link} ${!t.ran ? "not run" : t.passed ? "pass" : "FAIL"}`).join(", ")}` : ""}\nreport: ${r.reportPath}`)
 		return r.ok ? 0 : 2
 	}
 	// `bringup link <runDir> <dir>`: a git working copy for the run's files (runner/linked.ts).
