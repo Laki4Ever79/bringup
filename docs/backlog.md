@@ -236,3 +236,27 @@ is a change to the firmware toolchain, not just the code.
       (test/board-rotate.int.test.ts). A via whose inward move lands on something else still shows in DRC.
 - [ ] **Bulk capacitance for Wi-Fi bursts:** the board has 10 µF on the 3V3 rail. Check against the rail droop measured
       above before adding more.
+
+## Compute boards and the Rover with a Pi (merged into adopt 1d6f68d, 15 Nov)
+User, 15 Nov: "sure, for now, until we think of a better solution for that one" (buy the brain, design the body);
+"We should handle every relevant one so stop caring which comes first"; mini PCs/NUCs: "We should be able to handle
+them as well, although it might not be the focus here".
+- [ ] **Fork Rover + climate doesn't settle (already broken on adopt 7c2fa2b, not from compute):**
+      test/starters.int.test.ts (slow). The starter has no assembly, so the system lays one out with plateFor's
+      150 × 110 floor and no brief limit (src/system/assembly.ts plateFor/withOutlines, run.ts:111 passes no maxSizeMm):
+      plate 156 × 110, then main's mech-fit says the wheels rub it and "Size with wheels 156 × 120 > 150 × 120". Fix:
+      pass the brief's plate limit (plateLimitMm) on every relayout, or save the assembly in the starter seed.
+- [ ] **The Pi HAT's 5 V isn't wired into header pins 2/4 on the PCB** (only in the contract): the board generator wires
+      power by part role and pin label, and the header's pins are labelled 1–40. No 5 A input connector either.
+- [ ] **ADAFRUIT-2223 stacking header:** no LCSC number; an 8.5 mm socket + 10 mm pins against the 16 mm spacer stack
+      needs a fit check (09741c's hardware list). Pi holes are M2.5 (Ø2.7) but the chassis' boardScrew pilot is the M2
+      self-tapping one: a per-board screw is needed.
+- [ ] **Charger vs pack:** main still carries the 1S TP4054 charger and plug on the rover-pi's 2S pack; no check
+      compares them.
+- [ ] **Runtime leaves out the Pi:** a bought board's contract has no power rails.
+- [ ] **Simulation ~10 % faster than planned** (MuJoCo has no rolling resistance); the 100 mm turn clearance was measured
+      on one design. The real fix is a turn closed on heading (an IMU).
+- [ ] **examples/rover is stale** (saved 11 Nov, before the 150 × 120 brief and the current axle/wheelbase); re-save
+      from a mock run. examples/rover-pi has no still.png.
+- [ ] **Null values in module records:** Jetson hole positions, ROCK 5B absolute holes, heights.
+- [ ] **Eurobot starter:** waits for the e-stop, pull-cord and rule-check modules. recordRunEvidence hook into fork settles.
