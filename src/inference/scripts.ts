@@ -929,7 +929,7 @@ export function mockScripts(): Record<string, Script> {
 			const pins = state().contract.get("pins") ?? []
 			if (pins.some((p) => p.signal === "STATUS_LED")) return say("pins are sufficient")
 			// A board with no MCU (a HAT that only carries power) runs no firmware of its own.
-			if (hat && !(state().contract.get("parts") ?? []).some((p) => p.role === "mcu")) return say("no MCU on this board: no firmware pins")
+			if (hat && !(state().contract.get("parts") ?? []).some((p) => p.role === "mcu")) return say("no MCU, no pins")
 			// On the ESP32-C3 the LED keeps GPIO10, as it always had; on another chip its profile's solver picks a free pin.
 			const chip = mcuProfileOf(state().contract.get("parts"))
 			if (!chip || chip.id === LEGACY_MCU_ID) return propose("pins", [...pins, STATUS_LED], "firmware drives a status LED")
