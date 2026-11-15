@@ -790,7 +790,7 @@ function drawTop() {
 // ── Edit mode (Top only): system-edit.js holds the edits, their checks on every move, undo and redo; top2d.js the
 // gestures. Nothing calls a model here: Apply sends the diff, and the run's agents act on it.
 // key: the design (assembly and links) the editor was built from; stale: it changed while edits were unsent.
-const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, queuedRound: 0, queuedAt: 0, sending: false, stored: false }
+const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, queuedRound: 0, queuedAt: 0, sending: false }
 const designKey = (m) => JSON.stringify({ a: m?.assembly ?? null, l: m?.spec?.links ?? [] })
 const editBtn = document.getElementById("edit-btn"), editBar = document.getElementById("edit-bar"), picker = document.getElementById("edit-picker")
 function makeEditor() {
@@ -894,7 +894,8 @@ function act(op) {
 }
 function editRefresh() {
 	if (editing.queued && !editing.ed?.diff()) editing.queued = false
-	if (editing.queued || editing.stored) savePending() // the queue mirrors the editor: more edits change what is sent
+	// Every edit is kept in sessionStorage, queued or not, so a reload or a closed tab never loses unsent edits.
+	if (editing.ed) savePending()
 	editLabel()
 	if (!editing.on) return
 	syncEditor()
@@ -961,7 +962,8 @@ function serverFindings(errors) {
 		return { target: board ? { board } : link ? { link } : { plate: true }, level: "error", message: m, server: true }
 	})
 }
-// ── Apply during a round: queued, kept across a reload (sessionStorage, never required), posted once the round settles ──
+// ── Unsent edits are kept across a reload (sessionStorage, never required); Apply during a round is queued and posted
+// once the round settles ──
 const pendKey = `bringup-pending-${id}`
 const roundBusy = () => stage.meta?.status === "running" || Boolean(stage.roundOpen)
 const editText = () => describeEdits(editing.base, editing.ed.state()).join("; ") || "changed the layout"
@@ -969,11 +971,9 @@ function savePending() {
 	try {
 		if (!editing.ed?.diff()) return clearPending()
 		sessionStorage.setItem(pendKey, JSON.stringify({ ops: editing.ed.pending(), base: editing.baseHash, text: editText(), queued: editing.queued, round: editing.queuedRound }))
-		editing.stored = true
 	} catch {}
 }
 function clearPending() {
-	editing.stored = false
 	try { sessionStorage.removeItem(pendKey) } catch {}
 }
 function readPending() {
@@ -1025,7 +1025,11 @@ async function restorePending() {
 	for (const op of p.ops) { try { editing.ed.apply(op) } catch { lost++ } }
 	if (!editing.ed.diff()) return clearPending()
 	if (p.queued && p.base === editing.baseHash && !lost) { editing.queued = true; editing.queuedRound = Number(p.round) || 0; editing.queuedAt = 0 }
-	else editing.msg = "The design changed while the page was closed: your edits were made again on it. Apply to send them."
+	else {
+		const n = changeCount(), what = `Restored ${n} unsent edit${n === 1 ? "" : "s"}`
+		const dropped = lost ? ` ${lost} no longer applied and ${lost === 1 ? "was" : "were"} dropped.` : ""
+		editing.msg = p.base === editing.baseHash ? `${what}. Apply to send, or Discard.${dropped}` : `${what}: the design changed while the page was closed, so they were made again on it. Apply to send them.${dropped}`
+	}
 	savePending()
 	await enterEdit()
 	if (editing.queued) trySend()

@@ -493,6 +493,25 @@ test("a reload keeps the queued edits and posts them after the round", { skip, t
 	})
 })
 
+test("unsent edits that were never queued survive a reload, with a note", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts }) => {
+		await enter(page)
+		await dragClimate(page)
+		await page.reload()
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "1 change", null, { timeout: 30_000 })
+		assert.match(await page.locator("#edit-why").textContent() ?? "", /^Restored 1 unsent edit\./)
+		const d = await diff(page)
+		assert.ok(Math.abs(d!.assembly!.boards!.find((b) => b.name === "climate")!.xMm - 38) <= 0.5, "the same edit")
+		await sleep(1200)
+		assert.equal(posts.length, 0, "a reload never sends what wasn't queued")
+		await page.click("#edit-drop")
+		await page.reload()
+		await page.waitForSelector("#stage-top svg [data-board=climate]", { timeout: 30_000 })
+		await sleep(800)
+		assert.equal(await diff(page), null, "discarded edits stay gone")
+	})
+})
+
 test("the round changed the design under a queued edit: the banner, not a post", { skip, timeout: 120_000 }, async () => {
 	await withEdit(async ({ page, posts, trace, setDesign }) => {
 		trace(line(1, "system", "request", "started", "make it wider"))
