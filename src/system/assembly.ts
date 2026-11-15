@@ -16,7 +16,12 @@ export interface AssemblyBoard {
 	// The board's size before rotation. "estimate" until the board is built, then the built outline.
 	outline: { widthMm: number; heightMm: number }
 	outlineSource: "estimate" | "built"
+	// The height of the board's standoffs; readers default it (STANDOFF_DEFAULT_MM). Allowed 3-30 mm.
+	standoffMm?: number
 }
+
+export const STANDOFF_DEFAULT_MM = 8
+export const STANDOFF_RANGE_MM: [number, number] = [3, 30]
 
 export interface AssemblyPlate { lengthMm: number; widthMm: number }
 
@@ -30,14 +35,9 @@ export interface SystemAssembly {
 	cables?: AssemblyCable[]
 }
 
-// A routed cable is cut this much longer than its route, for the bends at both plugs.
-export const CABLE_SLACK_MM = 40
-
-export function cableLength(points: { xMm: number; yMm: number }[]): number {
-	let sum = 0
-	for (let i = 1; i < points.length; i++) sum += Math.hypot(points[i].xMm - points[i - 1].xMm, points[i].yMm - points[i - 1].yMm)
-	return sum
-}
+// The pure geometry lives in the dashboard module, so the design page checks with the same code.
+import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate } from "../dashboard/assembly-geom.js"
+export { cableLength, CABLE_SLACK_MM, footprint }
 
 // The spec a system request makes: its assembly patch over the current one (boards and plate replaced whole, the rest
 // merged), its links replacing the old, and every routed link's cable length set from its route. Pure: the run applies
@@ -57,12 +57,6 @@ export function mergeRequest(spec: SystemSpec, r: { assembly?: Partial<SystemAss
 	return out
 }
 
-// Size along x and y once the rotation is applied (a quarter turn swaps them).
-export function footprint(b: AssemblyBoard): { xMm: number; yMm: number } {
-	const turned = b.rotDeg === 90 || b.rotDeg === 270
-	return turned ? { xMm: b.outline.heightMm, yMm: b.outline.widthMm } : { xMm: b.outline.widthMm, yMm: b.outline.heightMm }
-}
-
 // Every reason the assembly can't be used, in words; [] when it can (or when the spec has none).
 export function assemblyErrors(spec: SystemSpec): string[] {
 	const a = spec.assembly
@@ -75,6 +69,7 @@ export function assemblyErrors(spec: SystemSpec): string[] {
 		seen.add(b.name)
 		if (!specNames.has(b.name)) out.push(`assembly: board ${b.name} is not in the system`)
 		if (![0, 90, 180, 270].includes(b.rotDeg)) out.push(`assembly: board ${b.name} is rotated ${b.rotDeg}°; use 0, 90, 180 or 270`)
+		if (b.standoffMm !== undefined && !(b.standoffMm >= STANDOFF_RANGE_MM[0] && b.standoffMm <= STANDOFF_RANGE_MM[1])) out.push(`assembly: board ${b.name} has ${b.standoffMm} mm standoffs; use ${STANDOFF_RANGE_MM[0]} to ${STANDOFF_RANGE_MM[1]} mm`)
 	}
 	if (a.body === "chassis") {
 		for (const n of specNames) if (!seen.has(n)) out.push(`assembly: board ${n} has no place on the chassis`)
@@ -82,14 +77,13 @@ export function assemblyErrors(spec: SystemSpec): string[] {
 		else {
 			const { lengthMm, widthMm } = a.plate
 			for (const b of a.boards) {
-				const f = footprint(b)
-				if (Math.abs(b.xMm) + f.xMm / 2 > lengthMm / 2 || Math.abs(b.yMm) + f.yMm / 2 > widthMm / 2) out.push(`assembly: board ${b.name} sticks out of the ${lengthMm} × ${widthMm} mm plate`)
+				if (offPlate(b, a.plate)) out.push(`assembly: board ${b.name} sticks out of the ${lengthMm} × ${widthMm} mm plate`)
 			}
 		}
 		// Boards that only touch edge to edge don't overlap.
 		for (let i = 0; i < a.boards.length; i++) for (let j = i + 1; j < a.boards.length; j++) {
-			const p = a.boards[i], q = a.boards[j], fp = footprint(p), fq = footprint(q)
-			if (Math.abs(p.xMm - q.xMm) < (fp.xMm + fq.xMm) / 2 && Math.abs(p.yMm - q.yMm) < (fp.yMm + fq.yMm) / 2) out.push(`assembly: boards ${p.name} and ${q.name} overlap`)
+			const p = a.boards[i], q = a.boards[j]
+			if (boardsOverlap(p, q)) out.push(`assembly: boards ${p.name} and ${q.name} overlap`)
 		}
 	}
 	return out
@@ -207,10 +201,7 @@ export function withOutlines(a: SystemAssembly, outlines: Record<string, Outline
 	const updated: AssemblyBoard[] = a.boards.map((b) => outlines[b.name] ? { ...b, outline: { ...outlines[b.name] }, outlineSource: "built" } : { ...b })
 	if (a.body === "separate") return { ...a, boards: updated }
 	const plate = a.plate ?? DEFAULT_PLATE_MM
-	const overlaps = (p: AssemblyBoard, q: AssemblyBoard) => {
-		const fp = footprint(p), fq = footprint(q)
-		return Math.abs(p.xMm - q.xMm) < (fp.xMm + fq.xMm) / 2 && Math.abs(p.yMm - q.yMm) < (fp.yMm + fq.yMm) / 2
-	}
+	const overlaps = boardsOverlap
 	const lim = reachLimit(maxSizeMm)
 	// Past the plate, or past what the brief's size limit leaves for a board's edge.
 	const sticksOut = (b: AssemblyBoard) => {
@@ -283,6 +274,7 @@ export function requestShapeErrors(b: { assembly?: unknown; links?: unknown }): 
 			if (!Array.isArray(a.boards)) out.push("assembly.boards must be a list")
 			else a.boards.forEach((x, i) => {
 				if (!obj(x) || typeof x.name !== "string" || !num(x.xMm) || !num(x.yMm) || !num(x.rotDeg) || !obj(x.outline) || !num(x.outline.widthMm) || !num(x.outline.heightMm)) out.push(`assembly.boards[${i}] needs name, xMm, yMm, rotDeg and outline {widthMm, heightMm}`)
+				else if (x.standoffMm !== undefined && !num(x.standoffMm)) out.push(`assembly.boards[${i}].standoffMm must be a number`)
 			})
 		}
 		if (a.plate !== undefined && (!obj(a.plate) || !num(a.plate.lengthMm) || !num(a.plate.widthMm))) out.push("assembly.plate needs lengthMm and widthMm")

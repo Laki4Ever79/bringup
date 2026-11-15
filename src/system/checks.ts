@@ -5,6 +5,9 @@ import type { BoardLink, ContractSnapshot } from "../contract/types.ts"
 import { uartSignals } from "../contract/links.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { boardLinks } from "./derive.ts"
+// The cable limit and its figures live in the dashboard module, so the design page checks with the same code.
+import { BOARD_PF, CABLE_PF_PER_M, DEVICE_PF, i2cCableLimit, PULLUP_OHM } from "../dashboard/assembly-geom.js"
+export { BOARD_PF, CABLE_PF_PER_M, DEVICE_PF, i2cCableLimit, PULLUP_OHM }
 import { DEFAULT_I2C_KHZ, type SystemLink, type SystemSpec } from "./spec.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { peripheralsFree } from "../mcu/solver.ts"
@@ -21,22 +24,7 @@ export interface SystemFinding {
 // Figures behind the electrical checks. The ESP32-C3-MINI-1's supply floor is from the catalog's datasheet note; the
 // wire's resistance is copper's; the cable's capacitance is an ESTIMATE for an untwisted 28 AWG JST SH cable.
 export const WIRE_OHM_PER_M = 0.213 // 28 AWG copper
-export const CABLE_PF_PER_M = 50 // estimate
-export const BOARD_PF = 10 // estimate: pins, pads and traces on each board
-export const DEVICE_PF = 5 // estimate: each other device on the bus
-export const PULLUP_OHM = 10_000 // the board generator's I2C pull-ups (codegen/circuit.ts SUPPORT.pullup)
 export const MCU_MIN_V = 3.0
-// I2C rise-time limits (I2C specification, standard and fast mode); rise time ≈ 0.8473 × R × C.
-const RISE_NS = (khz: number) => (khz > 100 ? 300 : 1000)
-
-// The longest cable an I2C bus allows at this speed with the generator's pull-ups (estimate: the cable's pF/m), and the
-// capacitance budget it comes from. `devices` counts the I2C devices on the bus besides the two boards' own pins.
-export function i2cCableLimit(khz: number, devices: number): { maxPf: number; maxMm: number } {
-	const fixedPf = 2 * BOARD_PF + devices * DEVICE_PF
-	const maxPf = (RISE_NS(khz) * 1e-9) / (0.8473 * PULLUP_OHM) / 1e-12
-	return { maxPf, maxMm: Math.max(0, ((maxPf - fixedPf) / CABLE_PF_PER_M) * 1000) }
-}
-
 const catalog = loadCatalog(resolve(import.meta.dirname, "../.."))
 const mechCatalog = loadMechCatalog(resolve(import.meta.dirname, "../.."))
 // Every device on the board's one I2C bus: the parts soldered on it, and a rover's distance sensor, a breakout on a
