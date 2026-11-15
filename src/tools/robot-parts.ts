@@ -67,10 +67,16 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 	// case's M2 self-tapping screw into the standoff's pilot), and a machine screw and a nut per caster hole.
 	const spec = chassisSpec(s)
 	const hw = (cat.hardware ?? []) as (HardwarePart & WithBuy)[]
-	const boardScrew = spec && hw.find((h) => h.kind === "screw" && h.selfTapping && h.threadMm === screwFor(spec.boardScrew.boardHoleMm))
+	// The board screws by thread: each board's hole picks its own (a Raspberry Pi's Ø2.7 mm takes M2.5, the designed
+	// boards' M2). A HAT on spacers has no holes on the plate, so no screws here.
+	const boardThreads = new Map<number, number>()
+	for (const b of spec?.boards ?? []) {
+		const t = screwFor(b.screwHoleMm ?? spec!.boardScrew.boardHoleMm)
+		boardThreads.set(t, (boardThreads.get(t) ?? 0) + b.holes.length)
+	}
+	const boardScrews = [...boardThreads].filter(([, n]) => n > 0).map(([t, n]) => ({ n, part: hw.find((h) => h.kind === "screw" && h.selfTapping && h.threadMm === t) }))
 	const casterScrew = spec && hw.find((h) => h.kind === "screw" && !h.selfTapping && h.threadMm === screwFor(spec.caster.holeDiaMm))
 	const casterNut = casterScrew && hw.find((h) => h.kind === "nut" && h.threadMm === casterScrew.threadMm)
-	const boardHoles = spec ? spec.boards.reduce((n, b) => n + b.holes.length, 0) : 0
 	const casterHoles = spec ? spec.caster.holesMm.length : 0
 	return [
 		line("motor", cat.motors as WithBuy[], drive.motor, 2),
@@ -78,7 +84,7 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 		line("caster", cat.casters as WithBuy[], drive.caster, 1),
 		line("battery", cat.batteries as WithBuy[], m.battery?.pack, 1),
 		line("distance sensor", cat.sensors as WithBuy[], m.sensor?.module, 1),
-		boardScrew && boardHoles ? line("board screw", hw, boardScrew.mpn, boardHoles) : null,
+		...boardScrews.map((x) => (x.part ? line("board screw", hw, x.part.mpn, x.n) : null)),
 		casterScrew && casterHoles ? line("caster screw", hw, casterScrew.mpn, casterHoles) : null,
 		casterNut && casterHoles ? line("caster nut", hw, casterNut.mpn, casterHoles) : null,
 	].filter((l): l is RobotPartLine => l !== null)
@@ -111,9 +117,16 @@ export function hardwareFit(s: ContractSnapshot, spec: ChassisSpec | null = chas
 	const thread = (item: string) => (cat.hardware ?? []).find((h) => h.mpn === lines.find((l) => l.item === item)?.mpn)?.threadMm
 	const caster = thread("caster screw")
 	if (caster !== undefined && spec.caster.holeDiaMm <= caster) out.push(`caster hole ${spec.caster.holeDiaMm} mm is smaller than the M${caster} screw`)
-	const board = thread("board screw")
-	if (board !== undefined && spec.boardScrew.boardHoleMm <= board) out.push(`board hole ${spec.boardScrew.boardHoleMm} mm is smaller than the M${board} screw`)
-	if (board !== undefined && spec.boardScrew.pilotMm >= board) out.push(`the standoff's ${spec.boardScrew.pilotMm} mm pilot leaves the M${board} self-tapping screw nothing to cut`)
+	// Each board's screw (by its hole) against its hole and its standoff's pilot; a thread the catalog has no screw for is
+	// said too, not left off the list.
+	const threads = new Set(lines.filter((l) => l.item === "board screw").map((l) => (cat.hardware ?? []).find((h) => h.mpn === l.mpn)?.threadMm))
+	for (const b of spec.boards.filter((x) => x.holes.length)) {
+		const hole = b.screwHoleMm ?? spec.boardScrew.boardHoleMm, pilot = b.pilotMm ?? spec.boardScrew.pilotMm
+		const t = screwFor(hole)
+		if (!threads.has(t)) { out.push(`${b.name}: no M${t} self-tapping screw in catalog/mechanics.json hardware for its ${hole} mm holes`); continue }
+		if (hole <= t) out.push(`${b.name}: board hole ${hole} mm is smaller than the M${t} screw`)
+		if (pilot >= t) out.push(`${b.name}: the standoff's ${pilot} mm pilot leaves the M${t} self-tapping screw nothing to cut`)
+	}
 	return out
 }
 

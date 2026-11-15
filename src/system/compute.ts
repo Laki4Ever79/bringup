@@ -172,6 +172,25 @@ export function headerSignals(m: Module, bridge: "usb" | "uart"): HeaderSignal[]
 	return [...by("5V"), ...by("GND"), ...(bridge === "uart" ? [...by("UART TX"), ...by("UART RX")] : [])]
 }
 
+// The length a male 2.54 mm pin must reach into a female socket to make contact (ESTIMATE: the usual 2.54 mm socket's
+// contact sits about 2-3 mm in; no datasheet for the HAT's socket gives it).
+export const MIN_ENGAGEMENT_MM = 3
+// The carrier's header against the stack: its socket hangs from the HAT, so its mouth is the stack's height less the
+// socket's above the module's board, and the module's own header pins must reach MIN_ENGAGEMENT_MM past that. A
+// module record without its pins' height (compute.header.pinHeightMm) can't be checked: said as a warning with what is
+// needed, never passed.
+export function stackFit(m: Module, header: { mpn: string; socketHeightMm?: number; heightSource?: string } | undefined, stackMm: number, stackSource?: Cite): ComputeFinding[] {
+	if (!header) return []
+	if (typeof header.socketHeightMm !== "number") return [{ check: "compute-header", level: "warning", message: `the carrier's ${header.mpn} header has no socket height in catalog/parts.json (socketHeightMm): whether it reaches ${m.id}'s pins at the ${stackMm} mm stack can't be checked`, sources: srcs(stackSource) }]
+	const mouth = stackMm - header.socketHeightMm
+	const need = mouth + MIN_ENGAGEMENT_MM
+	const pinH = field<number>(m, "header.pinHeightMm")
+	const what = `the ${header.mpn}'s ${header.socketHeightMm} mm socket (${header.heightSource ?? "catalog"}) hangs from the HAT, so at the ${stackMm} mm stack (${cite(stackSource)}) its mouth is ${r2(mouth)} mm above ${m.id}'s board and ${m.id}'s header pins must stand at least ${r2(need)} mm tall for ${MIN_ENGAGEMENT_MM} mm of contact (an estimate)`
+	if (typeof pinH?.value !== "number") return [{ check: "compute-header", level: "warning", message: `${what}; the record doesn't give their height (compute.header.pinHeightMm${pinH?.note ? `: ${pinH.note}` : ""}): measure them, or use a header made for a ${stackMm} mm stack, or lower the stack to the header`, sources: srcs(stackSource) }]
+	if (pinH.value < need) return [{ check: "compute-header", level: "error", message: `${what}, but they stand ${pinH.value} mm (${cite(pinH.source)}): the header doesn't reach them. Use a header made for a ${stackMm} mm stack, or lower the stack to ${r2(header.socketHeightMm + pinH.value - MIN_ENGAGEMENT_MM)} mm`, sources: srcs(stackSource, pinH.source) }]
+	return []
+}
+
 // (3) Header: every carrier signal lands on a pin with that function, and 5 V goes only onto the 5 V pins.
 export function headerCheck(m: Module, signals: HeaderSignal[]): ComputeFinding[] {
 	const pins = field<Record<string, string>>(m, "header.pins")
