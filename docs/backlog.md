@@ -114,6 +114,11 @@ is a change to the firmware toolchain, not just the code.
       MOSFET and trace, thermistor curve, every motor/heater/sensor wired and named in the firmware config). Output of
       the check: what Bringup can make today, what each missing piece costs, and the smallest board worth building
       first (e.g. 4 axes + 1 heater + bed).
+      Feasibility check done 15 Nov (bringup-board, docs/cnc-board.md): not today. The core exists (motion-capable MCUs,
+      the board pipeline, case, checks); missing are stepper drivers, a 12/24 V input, heater/fan outputs, thermistor
+      and endstop inputs, current-sized copper and thermal checks, and the firmware config (about 2-3 weeks, estimate).
+      Two risks to test first: copper width per net in tscircuit's autorouter, and routing a ~100x80 mm board with 20+
+      connectors on 2 layers. First board: 3 drivers, hotend, 2 fans, 3 endstops, 24 V in, the bed switched off-board.
 
 - [x] **Board and chassis disagree on how a board mounts** (found 15 Nov; fixed 15 Nov: chassisSpec takes each board's
       holes and the case's M2 screw, py/chassis.py cuts them, board-mount-mismatch checks the built chassis): the board has M2 holes (2.2 mm,
