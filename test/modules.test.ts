@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { appendEvidence, levelOf, loadModules, moduleStatus, modulesUsed, readEvidence, runEvidence, type Evidence } from "../src/modules/library.ts"
+import { appendEvidence, computeProblems, levelOf, loadModules, moduleStatus, modulesUsed, readEvidence, runEvidence, type Evidence, type Module } from "../src/modules/library.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
 import type { Artifacts } from "../src/contract/consistency.ts"
 
@@ -16,6 +16,17 @@ test("every module in catalog/modules is cited: each part is in a catalog and ev
 	assert.ok(status.length >= 5)
 	for (const s of status) assert.deepEqual(s.problems, [], s.module.id)
 	assert.ok(status.every((s) => s.level === "cited"))
+})
+
+test("a compute module (bought board) is cited when every value has a source, or is unknown with a reason", () => {
+	const pi = loadModules(ROOT).find((m) => m.id === "rpi-5") as Module & { compute: Record<string, unknown> }
+	assert.ok(pi, "catalog/modules/rpi-5.json")
+	assert.deepEqual(computeProblems(pi), [])
+	const s = { url: "https://example.com/d.pdf", where: "p.1" }
+	const bad = { ...pi, compute: { outline: { value: { widthMm: 85, heightMm: 56 } }, tallestMm: { value: null, source: null }, inputV: { value: { nom: 5.1 }, unit: "V", source: s }, currentA: { peak: { value: 5, unit: "A" } } } }
+	assert.deepEqual(computeProblems(bad as never).sort(), ["rpi-5: compute.currentA.peak has no source", "rpi-5: compute.outline has no source", "rpi-5: compute.tallestMm is unknown and gives no reason (a note)"])
+	const none = { ...pi, compute: undefined }
+	assert.deepEqual(computeProblems(none as never), ["rpi-5: a compute module has no compute block"])
 })
 
 test("the scripted rover uses the motor stage, the power, the distance sensor and the SHT40 modules", () => {
