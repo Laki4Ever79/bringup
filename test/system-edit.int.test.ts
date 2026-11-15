@@ -63,12 +63,12 @@ test("a running robot takes a moved, rotated board, a bigger plate and a re-rout
 		const first = spec()
 		assert.equal(first.assembly?.boards.find((b) => b.name === "climate")?.outlineSource, "built")
 
-		// Round 2: one Apply, built with the page's editor: climate 10 mm back, turned 90°, the plate 10 mm longer.
+		// Round 2: one Apply, built with the page's editor: climate 10 mm back, turned 90°, the plate 4 mm longer and 6 mm wider: the rover's brief and wheel track leave only that (a plate over 160 mm long or 116 mm wide is refused by main's mech-fit, as it should be).
 		const ed = editor({ assembly: first.assembly!, links: first.links })
 		const c0 = first.assembly!.boards.find((b) => b.name === "climate")!
 		assert.ok(ed.apply({ kind: "rotate", board: "climate" }))
 		assert.ok(ed.apply({ kind: "move", board: "climate", xMm: c0.xMm - 10, yMm: c0.yMm }))
-		assert.ok(ed.apply({ kind: "plate", lengthMm: first.assembly!.plate!.lengthMm + 10, widthMm: first.assembly!.plate!.widthMm }))
+		assert.ok(ed.apply({ kind: "plate", lengthMm: first.assembly!.plate!.lengthMm + 4, widthMm: first.assembly!.plate!.widthMm + 6 }))
 		assert.deepEqual(ed.findings().filter((f) => f.level === "error"), [])
 		const diff1 = ed.diff()!
 		const sentAt = trace().length
@@ -84,7 +84,7 @@ test("a running robot takes a moved, rotated board, a bigger plate and a re-rout
 		const c2 = sys2.assembly!.boards.find((b) => b.name === "climate")!
 		assert.equal(c2.rotDeg, 90)
 		assert.equal(c2.xMm, c0.xMm - 10)
-		assert.deepEqual(sys2.assembly!.plate, { lengthMm: first.assembly!.plate!.lengthMm + 10, widthMm: first.assembly!.plate!.widthMm })
+		assert.deepEqual(sys2.assembly!.plate, { lengthMm: first.assembly!.plate!.lengthMm + 4, widthMm: first.assembly!.plate!.widthMm + 6 })
 		const newest = (() => {
 			const specs = chassisSpecs(boardDir(out, "main")).sort((a, b) => rev(a) - rev(b))
 			return JSON.parse(readFileSync(specs.at(-1)!, "utf8")) as ChassisSpec
@@ -92,13 +92,18 @@ test("a running robot takes a moved, rotated board, a bigger plate and a re-rout
 		const placed = newest.boards.find((b) => b.name === "climate")!
 		assert.equal(placed.rotDeg, 90, "main's newest chassis has climate unturned")
 		assert.equal(placed.xMm, c2.xMm, "main's newest chassis has climate at its old place")
-		assert.equal(newest.plate.lengthMm, sys2.assembly!.plate!.lengthMm, "main's newest chassis has the old plate")
+		assert.equal(newest.plate.lengthMm, sys2.assembly!.plate!.lengthMm, "main's newest chassis has the old plate length")
+		assert.equal(newest.plate.widthMm, sys2.assembly!.plate!.widthMm, "main's newest chassis has the old plate")
 
 		// Round 3: a cable route that changes L1's length.
 		const m = sys2.assembly!.boards.find((b) => b.name === "main")!
-		const route = [{ xMm: m.xMm + 20, yMm: m.yMm }, { xMm: m.xMm + 20, yMm: 45 }, { xMm: c2.xMm, yMm: 45 }, { xMm: c2.xMm, yMm: c2.yMm }]
+		// A detour round the front of the plate, longer than the default 300 mm. It leaves main's right edge and enters climate
+		// (turned 90°) from its -x side, so L1 keeps the edges JL1 is already on (main right, climate top): a route that
+		// changes an edge asks the boards to move the connector, which the scripted agents don't do.
+		const route = [{ xMm: m.xMm + 16.5, yMm: 0 }, { xMm: 30, yMm: 0 }, { xMm: 30, yMm: -50 }, { xMm: 75, yMm: -50 }, { xMm: 75, yMm: 50 }, { xMm: 25, yMm: 50 }, { xMm: 25, yMm: 0 }, { xMm: c2.xMm, yMm: c2.yMm }]
 		assert.ok(ed.apply({ kind: "cable-route", link: "L1", points: route }))
 		const diff2 = ed.diff()!
+		assert.deepEqual([diff2.links![0].a.edge, diff2.links![0].b.edge], ["right", "top"], "the route changed an edge of L1")
 		const sentAt3 = trace().length
 		const before = sys2.links[0].cable.lengthMm
 		const r2 = await post(`/api/systems/${id}/requests`, diff2)
@@ -110,7 +115,7 @@ test("a running robot takes a moved, rotated board, a bigger plate and a re-rout
 		const sys3 = spec()
 		const pts = diff2.assembly!.cables!.find((c: any) => c.link === "L1")!.points
 		assert.equal(sys3.links[0].cable.lengthMm, Math.round(cableLength(pts) + CABLE_SLACK_MM), "the cable length does not follow the route")
-		assert.notEqual(sys3.links[0].cable.lengthMm, before)
+		assert.ok(sys3.links[0].cable.lengthMm > before, `the cable is not longer: ${before} -> ${sys3.links[0].cable.lengthMm}`)
 
 		// The run ends clean, and its trace shows every board's steps.
 		const state = JSON.parse(readFileSync(join(out, "system-state.json"), "utf8"))
