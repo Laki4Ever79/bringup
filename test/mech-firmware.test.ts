@@ -102,3 +102,12 @@ test("the rover firmware names a mechanics part the catalog doesn't have", () =>
 	s.values.mechanics = { ...s.values.mechanics!, drive: { ...s.values.mechanics!.drive, wheel: "POLOLU-1430" } }
 	assert.match(roverHeader(s), /#define/, "the part number alone is enough")
 })
+
+// Real rover run 8 (15 Nov): "firmware drives BUTTON on ?" for pins the rover firmware didn't name; nobody could fix it.
+test("the rover header names every contract pin, so the firmware's pin table covers the pin map", async () => {
+	const { parsePinsHeader } = await import("../src/codegen/firmware.ts")
+	const s = rover()
+	s.values.pins = [...s.values.pins!, { signal: "BUTTON", gpio: 3, partRef: "SW1", partPin: "A" }, { signal: "USB_DP", gpio: 19, partRef: "J1", partPin: "DP" }]
+	const pins = parsePinsHeader(roverHeader(s))
+	for (const p of s.values.pins!) assert.equal(pins[p.signal], p.gpio, p.signal)
+})
