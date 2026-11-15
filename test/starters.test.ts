@@ -215,6 +215,15 @@ test("a starter seeded from a spec with a bought board keeps it bought and its H
 	assert.deepEqual(planChecks({ ...seed, id: "plan-x", version: 1, spendUsd: null }), [])
 })
 
+// Premerge review (15 Nov): a designed board with no brief (an existing run) or whose brief text wasn't given became an
+// undefined entry in the seed's briefs; it is an error naming the board now.
+test("a starter refuses a designed board without a brief's text, naming it, instead of seeding an undefined brief", () => {
+	const spec = JSON.parse(readFileSync(resolve(import.meta.dirname, "..", "briefs", "systems", "rover-pi.json"), "utf8"))
+	assert.throws(() => starterSeed({ sentence: "s", why: "w", robot: true, spec, briefs: { main: "# main" } }), /these have none: rpi-5-carrier \(its brief .* wasn't read\)/)
+	const withRun = { ...spec, boards: spec.boards.map((b: Any) => (b.name === "main" ? { name: "main", run: "out/old-run" } : b)) }
+	assert.throws(() => starterSeed({ sentence: "s", why: "w", robot: true, spec: withRun, briefs: { main: "# main", "rpi-5-carrier": "# hat" } }), /main \(no brief: it is the existing run out\/old-run\)/)
+})
+
 test("a system example keeps its assembly, so the start page stands a robot's boards on its chassis", () => {
 	const meta = JSON.parse(readFileSync(join(EXAMPLES, "rover-climate", "example.json"), "utf8"))
 	assert.equal(meta.assembly.body, "chassis")
