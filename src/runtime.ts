@@ -16,7 +16,9 @@ import type { AgentRole, FieldName } from "./contract/types.ts"
 import { makeEvent, type ReviewFinding, type ReviewVerdict } from "./events.ts"
 import { Outbox } from "./outbox.ts"
 
-export const APPROVAL_TIMEOUT_MS = 120_000
+// How long an owner has to decide a held change: 2 min, 5 on the Claude subscription, whose turns take about 20 s each
+// (its second rover run, 15 Nov: two proposals timed out undecided and the run ended with their violations open).
+export const APPROVAL_TIMEOUT_MS = process.env.BRINGUP_PROVIDER === "claude-code" ? 300_000 : 120_000
 
 export class BringupState extends RuntimeState {
 	readonly contract = new DesignContract()

@@ -19,6 +19,7 @@ export const ROBOT_MAX_REVISIONS = 40
 // the report judges built artifacts, not ones still building (real rover run 10, 15 Nov: 41 revisions in 2 minutes, the
 // run ended with no board ever built and the firmware 15 revisions old).
 export const DRAIN_MS = 15 * 60_000
+export const REMIND_ROUNDS = 2
 export const FROZEN_REASON = "the run's revision budget is spent: the contract takes no more changes; the builds of this revision finish, then the run ends"
 const KINDS: ArtifactKind[] = ALL_KINDS
 
@@ -126,6 +127,8 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 	}
 
 	const nudged = new Set<FieldName>()
+	// Reminders sent for open violations at quiet (reset when the contract changes: a new round of work).
+	let reminders = 0
 	const evaluate = () => {
 		timer = null
 		if (done) return
@@ -169,6 +172,15 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		const busy = agentsBusy || stale.length > 0 || !grounding
 		if (busy) return
 		const consistent = violations.length === 0 && s.groundingFindings.length === 0 && KINDS.every((k) => s.artifactFailures[k] === undefined)
+		// Quiet with violations still open: the owners are told again, up to REMIND_ROUNDS times, before the run ends
+		// unsettled. An agent whose turn ended without fixing its finding (its proposal timed out, or it thought it was
+		// done) heard nothing more, because the report hadn't changed (real rover run 2 on the Claude subscription, 15 Nov:
+		// it ended with a missing sensor part and a connector clash that nobody was working on).
+		if (!consistent && violations.length > 0 && reminders < REMIND_ROUNDS) {
+			reminders++
+			emit(makeEvent("consistency.checked", self.id, { revision: s.contract.revision, violations }), self.id)
+			return
+		}
 		if (!consistent || !s.review.enabled) return settle(consistent)
 		reviewGate()
 	}
@@ -243,6 +255,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 							state().contract.thaw()
 							rearm()
 						}
+						if (isEvent(event, "contract.changed")) reminders = 0
 						if (isEvent(event, "contract.changed") || isEvent(event, "artifact.ready") || isEvent(event, "artifact.failed")) check()
 						if (type === "message_received.started" && awaitingReview && roleOf(event.producerId) === "reviewer") reviewerStarted = true
 						if (isEvent(event, "review.completed")) {
