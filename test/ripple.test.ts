@@ -201,8 +201,11 @@ test("a mock run with a mid-run 60 mm request writes ripples.json and a Change r
 
 test("each scripted change adds its own time to the run's default timeout", async () => {
 	const { runTimeoutMs } = await import("../src/run.ts")
-	assert.equal(runTimeoutMs({}), 30 * 60_000)
-	assert.equal(runTimeoutMs({ changes: ["a", "b"] }), 70 * 60_000)
+	assert.equal(runTimeoutMs({}, {}), 30 * 60_000)
+	assert.equal(runTimeoutMs({ changes: ["a", "b"] }, {}), 70 * 60_000)
+	// The Claude subscription's turns are slower: an hour for the design; BRINGUP_TIMEOUT_MIN overrides either.
+	assert.equal(runTimeoutMs({}, { BRINGUP_PROVIDER: "claude-code" }), 60 * 60_000)
+	assert.equal(runTimeoutMs({}, { BRINGUP_PROVIDER: "claude-code", BRINGUP_TIMEOUT_MIN: "90" }), 90 * 60_000)
 	assert.equal(runTimeoutMs({ timeoutMs: 5_000, changes: ["a"] }), 5_000, "an explicit timeout wins")
 })
 
