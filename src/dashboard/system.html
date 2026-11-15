@@ -86,6 +86,13 @@
 	#edit-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 2px 0; font-size: 13px; }
 	#edit-count { font: 600 13px var(--mono); }
 	#edit-why { color: var(--ink-2); }
+	#edit-queued { color: var(--info); font-weight: 600; }
+	#sys-changes { margin-top: 12px; }
+	#sys-changes h2 { margin: 0 0 6px; }
+	#sys-changes ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+	#sys-changes li { border-left: 4px solid var(--ink-3); padding: 4px 8px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+	#sys-changes .when { font: 12px var(--mono); color: var(--ink-3); }
+	#sys-changes a { font: 600 12px var(--mono); }
 	#edit-stale { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); font-weight: 600; }
 	#edit-findings { flex-basis: 100%; margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 	#edit-findings li { border-left: 4px solid var(--error); background: var(--error-wash); padding: 4px 8px; }
@@ -148,11 +155,12 @@
 	<div id="view-switch" role="group" aria-label="View"><button type="button" data-view="3d" aria-pressed="true">3D</button><button type="button" data-view="top" aria-pressed="false">Top</button><button type="button" id="edit-btn" class="hidden" aria-pressed="false" title="Edit the robot in the Top view: move, turn, the plate, cables">Edit</button></div>
 	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
 	<div id="stage-top" class="hidden"></div>
-	<div id="edit-bar" class="hidden"><span id="edit-count">0 changes</span><button type="button" class="pill primary" id="edit-apply" disabled>Apply</button><button type="button" class="pill" id="edit-undo" disabled title="Undo (Ctrl+Z)">Undo</button><button type="button" class="pill" id="edit-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button><span id="edit-why"></span><span id="edit-stale" class="hidden">The design changed since you started editing: <button type="button" class="pill" id="edit-rebase" title="Make your unsent edits again on the design as it is now">Rebase</button> <button type="button" class="pill" id="edit-discard" title="Drop your unsent edits">Discard</button></span><span class="muted" style="margin-left:auto;font-size:12px">Drag a board · R turns the selected one · drag a corner for the plate · drag a board's dot onto another for a cable · drag a cable's handles to bend it</span><ul id="edit-findings"></ul></div>
+	<div id="edit-bar" class="hidden"><span id="edit-count">0 changes</span><button type="button" class="pill primary" id="edit-apply" disabled>Apply</button><button type="button" class="pill" id="edit-undo" disabled title="Undo (Ctrl+Z)">Undo</button><button type="button" class="pill" id="edit-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button><span id="edit-why"></span><span id="edit-queued" class="hidden">applies after the current round</span><span id="edit-stale" class="hidden">The design changed since you started editing: <button type="button" class="pill" id="edit-rebase" title="Make your unsent edits again on the design as it is now">Rebase</button> <button type="button" class="pill" id="edit-discard" title="Drop your unsent edits">Discard</button></span><span class="muted" style="margin-left:auto;font-size:12px">Drag a board · R turns the selected one · drag a corner for the plate · drag a board's dot onto another for a cable · drag a cable's handles to bend it</span><ul id="edit-findings"></ul></div>
 	<div id="edit-picker"><span style="font-size:12px;align-self:center">Cable:</span><button type="button" data-kind="uart">UART</button><button type="button" data-kind="i2c">I²C</button><button type="button" data-kind="">×</button></div>
 	<div id="facts" class="hidden" role="tooltip"></div>
 	<div id="plan-side"></div>
 	<div id="progress-host"></div>
+	<section id="sys-changes" class="hidden"></section>
 	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
 </div>
 <main id="main"></main>
@@ -456,6 +464,35 @@ function subscribe(d) {
 		src.onmessage = (m) => { try { stage.traces[b.name].push(JSON.parse(m.data)); schedule() } catch {} }
 	}
 }
+// What the system trace says about rounds: a request line opens one and the system's settled line closes it; the
+// request lines are the "System changes" list. Replayed lines are the whole history, so each is kept once.
+const requestSeen = new Set()
+stage.requests = []
+function track(l) {
+	if (l.board === "system" && l.step === "settled") { stage.roundOpen = false; scheduleSend() }
+	else if (l.step === "request" && l.status === "started") stage.roundOpen = true
+	if (l.step !== "request" || !l.detail || /^staying up for system-level/.test(l.detail) || /^no board's view/.test(l.detail)) return
+	const key = `${l.at}|${l.board}|${l.detail}`
+	if (requestSeen.has(key)) return
+	requestSeen.add(key)
+	const text = l.board === "system" ? l.detail : (/^The engineer changed the system \([^)]*\)(?:: (.*?))?\.?$/s.exec(l.detail)?.[1] ?? l.detail)
+	let e = stage.requests.find((x) => x.round === l.round && x.text === text)
+	if (!e) stage.requests.push((e = { round: l.round, at: l.at, text, boards: [] }))
+	if (l.board !== "system" && !e.boards.includes(l.board)) e.boards.push(l.board)
+	renderChanges()
+}
+function renderChanges() {
+	const host = document.getElementById("sys-changes")
+	const list = [...stage.requests].sort((a, b) => b.round - a.round || String(b.at).localeCompare(String(a.at)))
+	host.classList.toggle("hidden", !list.length)
+	if (!list.length) return
+	const time = (at) => { const t = new Date(at); return Number.isNaN(t.getTime()) ? "" : t.toLocaleTimeString() }
+	host.innerHTML = `<h2>System changes</h2><ol>${list.map((e) => `<li data-round="${e.round}"><span class="mono">round ${e.round}</span><span class="when">${esc(time(e.at))}</span><span class="text">${esc(e.text)}</span>${e.boards.map((b) => `<a href="/?board=${encodeURIComponent(b)}" data-board-link="${esc(b)}">${esc(b)}</a>`).join("")}</li>`).join("")}</ol>`
+}
+document.getElementById("sys-changes").addEventListener("click", (e) => {
+	const a = e.target.closest?.("[data-board-link]")
+	if (a) { e.preventDefault(); window.openBoard?.(a.dataset.boardLink) }
+})
 // The system's own trace (system-trace.jsonl) as a strip of every board's steps, plus a badge on each board in both
 // views. An old run has no trace: the stream stays quiet and the strip stays hidden. A one-board design has no stream.
 function followProgress(d) {
@@ -479,7 +516,7 @@ function followProgress(d) {
 		src.onmessage = (m) => {
 			try {
 				const l = JSON.parse(m.data)
-				if (!one) return strip.push(l)
+				if (!one) { track(l); return strip.push(l) }
 				const s = stepOfEvent(l)
 				if (s) strip.push({ at: l.at ?? new Date().toISOString(), round: 0, board: one.name, ...s })
 			} catch {}
@@ -523,6 +560,7 @@ async function startStage(d) {
 	schedule()
 	const b = new URLSearchParams(location.search).get("board")
 	if (b) activeView().ready.then(() => window.openBoard(b, { push: false }))
+	else restorePending().catch(() => {})
 }
 // ── 3D · Top: one switch over the same data. Only the visible view is made, fed and drawn; the other is made on its
 // first switch and kept, hidden, and fed again from the latest data when it is shown.
@@ -742,7 +780,7 @@ function drawTop() {
 // ── Edit mode (Top only): system-edit.js holds the edits, their checks on every move, undo and redo; top2d.js the
 // gestures. Nothing calls a model here: Apply sends the diff, and the run's agents act on it.
 // key: the design (assembly and links) the editor was built from; stale: it changed while edits were unsent.
-const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false }
+const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, sending: false, stored: false }
 const designKey = (m) => JSON.stringify({ a: m?.assembly ?? null, l: m?.spec?.links ?? [] })
 const editBtn = document.getElementById("edit-btn"), editBar = document.getElementById("edit-bar"), picker = document.getElementById("edit-picker")
 function makeEditor() {
@@ -785,10 +823,7 @@ function editLabel() {
 	editBtn.textContent = n ? `Edit (${n} unsent)` : "Edit"
 	editBtn.title = n ? "Your edits are kept, not sent: Edit to see them, then Apply or Undo" : "Edit the robot in the Top view: move, turn, the plate, cables"
 }
-async function enterEdit() {
-	if (editing.on || openName || !stage.meta?.assembly || stage.meta.single) return
-	if (stage.view !== "top") await window.setView("top")
-	if (stage.view !== "top" || !stage.top) return
+async function loadEditDeps() {
 	if (!editing.mod) {
 		const [m, { designHash }] = await Promise.all([import("/system-edit.js"), import("/assembly-geom.js")])
 		editing.mod = { ...m, designHash }
@@ -799,6 +834,12 @@ async function enterEdit() {
 		const found = await Promise.all(runs.map((b) => fetch(`/runs/${encodeURIComponent(b.runId)}/files/contract.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
 		editing.maxSizeMm = found.map((c) => c?.values?.motion?.maxSizeMm).find((x) => Array.isArray(x)) ?? null
 	}
+}
+async function enterEdit() {
+	if (editing.on || openName || !stage.meta?.assembly || stage.meta.single) return
+	if (stage.view !== "top") await window.setView("top")
+	if (stage.view !== "top" || !stage.top) return
+	await loadEditDeps()
 	// Unsent edits from an earlier visit are kept; with none, edit what the design is now.
 	if (!editing.ed || !editing.ed.diff()) makeEditor()
 	else syncEditor()
@@ -841,6 +882,8 @@ function act(op) {
 	editRefresh()
 }
 function editRefresh() {
+	if (editing.queued && !editing.ed?.diff()) editing.queued = false
+	if (editing.queued || editing.stored) savePending() // the queue mirrors the editor: more edits change what is sent
 	editLabel()
 	if (!editing.on) return
 	syncEditor()
@@ -852,8 +895,9 @@ function editRefresh() {
 	const running = stage.meta.status === "running" || stage.meta.status === "waiting for a change"
 	const errors = findings.some((f) => f.level === "error")
 	const why = !n ? "" : errors ? "Fix the errors first: Apply is off while one stands." : !running ? "This design isn't running; start it again to apply changes." : ""
-	document.getElementById("edit-apply").disabled = !n || errors || !running || editing.posting || editing.stale
+	document.getElementById("edit-apply").disabled = !n || errors || !running || editing.posting || editing.stale || editing.queued
 	document.getElementById("edit-stale").classList.toggle("hidden", !editing.stale)
+	document.getElementById("edit-queued").classList.toggle("hidden", !editing.queued)
 	// Rebase and Discard replace the editor: never while a POST is out (its answer marks this editor as applied).
 	document.getElementById("edit-rebase").disabled = editing.posting
 	document.getElementById("edit-discard").disabled = editing.posting
@@ -901,10 +945,75 @@ function serverFindings(errors) {
 		return { target: board ? { board } : link ? { link } : { plate: true }, level: "error", message: m, server: true }
 	})
 }
-async function applyEdits() {
+// ── Apply during a round: queued, kept across a reload (sessionStorage, never required), posted once the round settles ──
+const pendKey = `bringup-pending-${id}`
+const roundBusy = () => stage.meta?.status === "running" || Boolean(stage.roundOpen)
+const editText = () => describeEdits(editing.base, editing.ed.state()).join("; ") || "changed the layout"
+function savePending() {
+	try {
+		if (!editing.ed?.diff()) return clearPending()
+		sessionStorage.setItem(pendKey, JSON.stringify({ ops: editing.ed.pending(), base: editing.baseHash, text: editText() }))
+		editing.stored = true
+	} catch {}
+}
+function clearPending() {
+	editing.stored = false
+	try { sessionStorage.removeItem(pendKey) } catch {}
+}
+function readPending() {
+	try {
+		const p = JSON.parse(sessionStorage.getItem(pendKey) ?? "null")
+		return p && Array.isArray(p.ops) && p.ops.length ? p : null
+	} catch { return null }
+}
+let sendTimer = null
+// After a settled line (or a restore): once the lines have gone quiet and no round runs, post the queued diff.
+function scheduleSend() {
+	if (!editing.queued) return
+	clearTimeout(sendTimer)
+	sendTimer = setTimeout(trySend, 400)
+}
+async function trySend() {
+	if (!editing.queued || editing.sending || editing.posting || roundBusy()) return
+	editing.sending = true
+	try {
+		await showSystem() // the design as the round left it; syncEditor marks the editor stale when it changed
+		if (!editing.queued || roundBusy()) return
+		if (editing.stale || editing.key !== designKey(stage.meta)) {
+			// The round changed the design under the edits: ask, never post on an old base.
+			editing.queued = false
+			editing.stale = true
+			editing.msg = ""
+			editRefresh()
+			return
+		}
+		await applyEdits(true)
+	} finally { editing.sending = false }
+}
+async function restorePending() {
+	const p = readPending()
+	if (!p || editing.ed || !stage.meta?.assembly || stage.meta.single || !stage.meta.spec) return
+	for (let i = 0; i < 100 && !stage.topBoards; i++) await new Promise((r) => setTimeout(r, 50))
+	await loadEditDeps()
+	makeEditor()
+	let lost = 0
+	for (const op of p.ops) { try { editing.ed.apply(op) } catch { lost++ } }
+	if (!editing.ed.diff()) return clearPending()
+	if (p.base === editing.baseHash && !lost) editing.queued = true
+	else editing.msg = "The design changed while the page was closed: your edits were made again on it. Apply to send them."
+	savePending()
+	await enterEdit()
+	if (editing.queued) scheduleSend()
+}
+async function applyEdits(fromQueue = false) {
 	const d = editing.ed.diff()
 	if (!d || editing.posting || editing.stale) return
-	const text = describeEdits(editing.base, editing.ed.state()).join("; ") || "changed the layout"
+	if (!fromQueue) {
+		if (editing.queued) return
+		if (roundBusy()) { editing.queued = true; savePending(); editing.msg = ""; editRefresh(); return }
+	}
+	editing.queued = false
+	const text = editText()
 	editing.posting = true
 	editRefresh()
 	try {
@@ -912,6 +1021,7 @@ async function applyEdits() {
 		const body = await r.json().catch(() => ({}))
 		if (r.status === 202) {
 			editing.ed.markApplied()
+			clearPending()
 			editing.base = editing.ed.state()
 			editing.server = []
 			editing.stale = false
@@ -988,9 +1098,9 @@ picker.addEventListener("click", (e) => {
 })
 document.getElementById("stage-top").addEventListener("pointerdown", () => picker.classList.remove("on"))
 editBtn.addEventListener("click", () => (editing.on ? exitEdit() : enterEdit()))
-document.getElementById("edit-apply").addEventListener("click", applyEdits)
+document.getElementById("edit-apply").addEventListener("click", () => applyEdits())
 document.getElementById("edit-rebase").addEventListener("click", rebase)
-document.getElementById("edit-discard").addEventListener("click", () => { if (editing.posting) return; makeEditor(); editRefresh() })
+document.getElementById("edit-discard").addEventListener("click", () => { if (editing.posting) return; editing.queued = false; clearPending(); makeEditor(); editRefresh() })
 document.getElementById("edit-undo").addEventListener("click", () => { if (editing.ed?.undo()) { editing.server = []; editing.msg = ""; editRefresh() } })
 document.getElementById("edit-redo").addEventListener("click", () => { if (editing.ed?.redo()) { editing.server = []; editing.msg = ""; editRefresh() } })
 addEventListener("keydown", (e) => {

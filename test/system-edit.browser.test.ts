@@ -4,7 +4,7 @@
 // the design's GET is rewritten to the status asked for, and the requests endpoint is intercepted with page.route.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { cpSync, existsSync, readdirSync, rmSync } from "node:fs"
+import { appendFileSync, cpSync, existsSync, readdirSync, rmSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { chromium, type Page, type Route } from "playwright"
@@ -22,13 +22,14 @@ const skip = !existsSync(join(ROOT, "out", "robot-2", "system.json")) ? "no reco
 type Diff = { assembly?: { boards?: { name: string; xMm: number; yMm: number; rotDeg: number; standoffMm?: number }[]; plate?: { lengthMm: number; widthMm: number }; cables?: { link: string; points: { xMm: number; yMm: number }[] }[] }; links?: { id: string; kind: string; a: { board: string; edge?: string }; b: { board: string; edge?: string } }[] } | null
 type Design = { assembly: { boards: { name: string; xMm: number }[] } }
 // setDesign: how the design's GET is changed from now on (the round's result, another change).
-interface Ctx { page: Page; name: string; posts: { body: Record<string, unknown> }[]; gets: () => number; errors: string[]; setDesign: (f: (d: Design) => void) => void }
+interface Ctx { page: Page; name: string; posts: { body: Record<string, unknown> }[]; gets: () => number; errors: string[]; setDesign: (f: (d: Design) => void) => void; setStatus: (s: string) => void; trace: (...lines: { round: number; board: string; step: string; status: string; detail?: string }[]) => void }
 // answer: what the intercepted requests endpoint says (202 by default).
-async function withEdit(fn: (c: Ctx) => Promise<void>, { status = "waiting for a change", answer }: { status?: string; answer?: (route: Route) => Promise<void> } = {}) {
+async function withEdit(fn: (c: Ctx) => Promise<void>, { status: status0 = "waiting for a change", answer }: { status?: string; answer?: (route: Route) => Promise<void> } = {}) {
 	const name = `robot-edit-${Math.random().toString(36).slice(2, 8)}`
 	const dir = join(ROOT, "out", name)
 	cpSync(join(ROOT, "out", "robot-2"), dir, { recursive: true })
 	rmSync(join(dir, "system-trace.jsonl"), { force: true })
+	let status = status0
 	const hub = await serveHub({ outRoot: join(ROOT, "out"), port: 0 })
 	const browser = await chromium.launch({ executablePath: exe!, headless: true })
 	try {
@@ -54,7 +55,7 @@ async function withEdit(fn: (c: Ctx) => Promise<void>, { status = "waiting for a
 		})
 		await page.goto(`${hub.url}/system?id=${name}&view=top`)
 		await page.waitForSelector("#stage-top svg [data-board=climate]", { timeout: 30_000 })
-		await fn({ page, name, posts, gets: () => gets, errors, setDesign: (f) => { change = f } })
+		await fn({ page, name, posts, gets: () => gets, errors, setDesign: (f) => { change = f }, setStatus: (s) => { status = s }, trace: (...ls) => appendFileSync(join(dir, "system-trace.jsonl"), ls.map((l) => JSON.stringify({ at: new Date().toISOString(), ...l }) + "\n").join("")) })
 		assert.deepEqual(errors.filter((e) => !/WebGL|GPU|swiftshader/i.test(e)), [])
 	} finally {
 		await browser.close()
@@ -63,6 +64,7 @@ async function withEdit(fn: (c: Ctx) => Promise<void>, { status = "waiting for a
 	}
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const diff = (page: Page) => page.evaluate(() => (window as unknown as { __edit: { diff: () => unknown } }).__edit.diff()) as Promise<Diff>
 // Screen pixels per millimetre, and a board's centre on screen.
 async function geom(page: Page, board: string) {
@@ -282,7 +284,7 @@ test("after Apply, the next poll rebuilds the editor from the round's result", {
 })
 
 test("the design changing under unsent edits asks Rebase or Discard; Apply waits; Rebase replays the edits on the new design", { skip, timeout: 120_000 }, async () => {
-	await withEdit(async ({ page, posts, setDesign }) => {
+	await withEdit(async ({ page, posts, setDesign, setStatus }) => {
 		await enter(page)
 		let g = await geom(page, "climate")
 		await drag(page, g, { x: g.x - 10 * g.k, y: g.y })
@@ -291,6 +293,8 @@ test("the design changing under unsent edits asks Rebase or Discard; Apply waits
 		assert.match(await page.locator("#edit-stale").textContent() ?? "", /changed since you started editing/)
 		assert.equal(await page.locator("#edit-apply").isDisabled(), true, "never send a diff based on an old snapshot")
 		await page.click("#edit-rebase")
+		setStatus("waiting for a change") // a running round would queue the Apply
+		await sleep(2600) // the page's next poll (2 s) sees the status
 		assert.equal(await page.locator("#edit-stale").isVisible(), false)
 		assert.equal(await stateX(page, "main"), -10, "the new design")
 		assert.ok(Math.abs((await stateX(page, "climate")) - 38) <= 0.5, "with the edit replayed")
@@ -422,4 +426,87 @@ test("a poll that changes only progress (statuses, findings, link tests) is not 
 		assert.equal(await page.locator("#edit-apply").isDisabled(), false)
 		assert.ok(await diff(page))
 	}, { status: "running" })
+})
+
+// ── Apply during a round: queued, posted once after the settled line, kept across a reload, listed ──
+const line = (round: number, board: string, step: string, status: string, detail?: string) => ({ round, board, step, status, ...(detail ? { detail } : {}) })
+const dragClimate = async (page: Page, mm = 10) => { const g = await geom(page, "climate"); await drag(page, g, { x: g.x - mm * g.k, y: g.y }) }
+
+test("Apply mid-round is queued, says so, and posts exactly once after the settled line", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts, trace }) => {
+		trace(line(1, "system", "request", "started", "make it wider"))
+		await page.waitForFunction(() => document.querySelector("#sys-changes li"))
+		await enter(page)
+		await dragClimate(page)
+		await page.click("#edit-apply")
+		await page.waitForSelector("#edit-queued:not(.hidden)")
+		assert.match(await page.locator("#edit-queued").textContent() ?? "", /applies after the current round/)
+		assert.equal(await page.locator("#edit-apply").isDisabled(), true)
+		await sleep(1500)
+		assert.equal(posts.length, 0, "nothing is posted while the round runs")
+		trace(line(1, "system", "settled", "ok", "settled"))
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes", null, { timeout: 15_000 })
+		await sleep(1500)
+		assert.equal(posts.length, 1, "posted once")
+		assert.ok(posts[0].body.base && posts[0].body.assembly)
+		assert.equal(await page.locator("#edit-queued").isVisible(), false)
+		assert.equal(await page.evaluate((k) => sessionStorage.getItem(k), `bringup-pending-${new URL(page.url()).searchParams.get("id")}`), null, "cleared on 202")
+	})
+})
+
+test("a reload keeps the queued edits and posts them after the round", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts, trace }) => {
+		trace(line(1, "system", "request", "started", "make it wider"))
+		await page.waitForFunction(() => document.querySelector("#sys-changes li"))
+		await enter(page)
+		await dragClimate(page)
+		await page.click("#edit-apply")
+		await page.waitForSelector("#edit-queued:not(.hidden)")
+		await page.reload()
+		await page.waitForSelector("#edit-queued:not(.hidden)", { timeout: 30_000 })
+		assert.equal(await page.locator("#edit-count").textContent(), "1 change")
+		const d = await diff(page)
+		assert.ok(Math.abs(d!.assembly!.boards!.find((b) => b.name === "climate")!.xMm - 38) <= 0.5, "the same edit")
+		assert.equal(posts.length, 0)
+		trace(line(1, "system", "settled", "ok", "settled"))
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes", null, { timeout: 15_000 })
+		await sleep(1200)
+		assert.equal(posts.length, 1)
+	})
+})
+
+test("the round changed the design under a queued edit: the banner, not a post", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, posts, trace, setDesign }) => {
+		trace(line(1, "system", "request", "started", "make it wider"))
+		await page.waitForFunction(() => document.querySelector("#sys-changes li"))
+		await enter(page)
+		await dragClimate(page)
+		await page.click("#edit-apply")
+		await page.waitForSelector("#edit-queued:not(.hidden)")
+		setDesign(at(-10))
+		trace(line(1, "system", "settled", "ok", "settled"))
+		await page.waitForSelector("#edit-stale:not(.hidden)", { timeout: 15_000 })
+		await sleep(1200)
+		assert.equal(posts.length, 0, "never post on an old base")
+		assert.equal(await page.locator("#edit-queued").isVisible(), false)
+		await page.click("#edit-rebase")
+		assert.ok(await diff(page), "the edit is still there to rebase")
+	})
+})
+
+test("the system change list shows each request's text, newest first, with links to its boards", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, trace }) => {
+		trace(
+			line(1, "system", "request", "ok", "staying up for system-level changes"),
+			line(2, "system", "request", "started", "moved climate 10 mm back"),
+			line(2, "climate", "request", "started", "The engineer changed the system (robot): moved climate 10 mm back."),
+			line(3, "system", "request", "started", "made the plate 120 × 80 mm"),
+			line(3, "main", "request", "started", "The engineer changed the system (robot): made the plate 120 × 80 mm."),
+		)
+		await page.waitForFunction(() => document.querySelectorAll("#sys-changes li").length === 2, null, { timeout: 15_000 })
+		const texts = await page.locator("#sys-changes li .text").allTextContents()
+		assert.deepEqual(texts, ["made the plate 120 × 80 mm", "moved climate 10 mm back"])
+		assert.equal(await page.locator("#sys-changes li").first().locator("a").textContent(), "main")
+		assert.match(await page.locator("#sys-changes li").first().textContent() ?? "", /round 3/)
+	})
 })
