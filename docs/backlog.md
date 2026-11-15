@@ -80,6 +80,28 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
+- [ ] **Board and chassis disagree on how a board mounts** (found 15 Nov): the board has M2 holes (2.2 mm,
+      `MOUNTING_HOLE`, 3.0 mm in from each corner, `src/codegen/circuit.ts`), the printed chassis has M2.5 standoff holes
+      (2.7 mm, `py/chassis.py`) at 3.5 mm in (`BOARD_HOLE_INSET_MM`, `src/tools/chassis.ts`): the standoffs are 0.5 mm
+      off on each axis, and an M2.5 screw doesn't pass a 2.2 mm hole. No check compares them. Fix: the chassis takes each
+      board's holes from the board itself (mountingHoles, including corners a connector took), one screw size for both,
+      and a check that every board hole has a standoff and a screw that fits (goes with the hardware list below).
+- [ ] **CAN as a link between boards, when the user asks for it** (the user, 15 Nov: "allow for user insisting on using
+      CAN communication for robot if they want"). Today: the MCU profiles know which chips have a CAN controller
+      (ESP32-C3 / WROOM TWAI, STM32F103, STM32F446), but `src/contract/link-kinds.ts` has no CAN kind and the catalog
+      no transceiver. Needs: a `can` link kind; a 3.3 V transceiver part with sources (e.g. SN65HVD230 / TJA1051T/3);
+      120 Ω termination at the two bus ends; the connector; firmware for TWAI and bxCAN; checks (bus length against
+      bit rate, termination at both ends and only there, every board on the bus has a controller and a transceiver,
+      one bit rate per bus); tests: host codec and compile (QEMU has no TWAI), bench with two boards. A brief or a
+      system spec that names CAN gets it; the architect never swaps it for UART.
+- [ ] **Open standards by default** (the user, 15 Nov, asked whether we insist on them; recommended yes). Today open
+      where it was the obvious choice (KiCad, STEP/STL, PlatformIO/Arduino, BTHome v2, CycloneDX) but not a rule, and
+      some interfaces are ours or one vendor's: the board-to-board message framing (`templates/fw/include/linkframe.h`,
+      our own sync + hash + XOR), the TC2030 debug cable (its maker's product; the footprint is free), JST connectors
+      (industry, not open). Do: a rule that each interface uses an open standard where one fits; a report section that
+      lists every vendor-locked or home-made interface with its open alternative; first move, the link messages onto an
+      open protocol (Cyphal or CANopen once CAN exists; COBS-framed CBOR or similar on UART).
+
 - [ ] **Every bought mechanical part in the parts list** (the user, 15 Nov: "nuts, bolts, bearings, threaded inserts,
       metal rods,... whatever can't be printed or ordered by the PCB provider"). Today the robot parts list
       (`src/tools/robot-parts.ts`, bom.json `robot`) has the motors, wheels, caster, battery and distance sensor only.
