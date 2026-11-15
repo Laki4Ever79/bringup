@@ -8,6 +8,7 @@ import type { SystemSpec } from "./spec.ts"
 import type { AssemblyBoard } from "./assembly.ts"
 import { field, HAT_STACK, moduleHoles, moduleOutline, type Cite } from "./bought.ts"
 import { headerSignals, railNeed } from "./compute.ts"
+import { MOUNTING_HOLE } from "../codegen/circuit.ts"
 
 export type Bridge = "usb" | "uart"
 interface HeaderAt { x: number; y: number; pitchMm: number; rows: number; cols: number; pin1: string }
@@ -43,6 +44,11 @@ export function carrierBrief(m: Module, o: CarrierOptions): string {
 	const and = (xs: number[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : String(xs[0] ?? "?"))
 	const mcu = o.mcuBoard ?? "main"
 	const xs = [...new Set(holes.map((h) => h.x))].sort((a, b) => a - b), ys = [...new Set(holes.map((h) => h.y))].sort((a, b) => a - b)
+	// One diameter for all the holes when the record gives it; otherwise said to be unknown, never written as Ø0 (which
+	// the HAT then drilled as a 0 mm hole): the board's default hole is drilled, and the brief says so.
+	const dias = [...new Set(holes.map((h) => h.dia))]
+	const dia = dias.length === 1 && typeof dias[0] === "number" && dias[0] > 0 ? dias[0] : null
+	const holeWords = dia !== null ? `${holes.length} Ø${mm(dia)} mm mounting holes` : `${holes.length} mounting holes of unknown diameter (the module record doesn't give it: the board's default Ø${mm(MOUNTING_HOLE.diameterMm)} mm hole is drilled until it is measured)`
 	const spacing = xs.length > 1 && ys.length > 1 ? `${mm(xs.at(-1)! - xs[0])} × ${mm(ys.at(-1)! - ys[0])} mm between centres` : ""
 	const pb = o.battery
 	// The converter follows the pack against the module's input voltage; with either unknown it isn't guessed.
@@ -63,7 +69,7 @@ export function carrierBrief(m: Module, o: CarrierOptions): string {
 		`A HAT for the ${name}, for a robot: it sits on top of the ${name}, plugged onto its 40-pin header, and feeds it 5 V from the robot's battery through that header. The ${name} is bought, not designed here; this board is designed around it. The motor driver and real-time control stay on the robot's ${mcu} board.`,
 		"",
 		"## Must have",
-		...(outline ? [`- **The ${name}'s own outline and holes, so the two stack:** ${mm(outline.widthMm)} × ${mm(outline.heightMm)} mm, with ${holes.length} Ø${mm(holes[0]?.dia ?? 0)} mm mounting holes at ${holes.map((h) => `(${mm(h.x)}, ${mm(h.y)})`).join(", ")} mm from the lower-left corner${spacing ? `, ${spacing}` : ""} (${cite(holesSrc)}), seen from above as the ${name} is. The HAT stands on ${HAT_STACK.mm} mm spacers on those holes (${cite(HAT_STACK.source)}).`] : []),
+		...(outline ? [`- **The ${name}'s own outline and holes, so the two stack:** ${mm(outline.widthMm)} × ${mm(outline.heightMm)} mm, ${holes.length ? `with ${holeWords} at ${holes.map((h) => `(${mm(h.x)}, ${mm(h.y)})`).join(", ")} mm from the lower-left corner${spacing ? `, ${spacing}` : ""} (${cite(holesSrc)})` : "with no mounting holes in the module record (measure them first)"}, seen from above as the ${name} is. The HAT stands on ${HAT_STACK.mm} mm spacers on those holes (${cite(HAT_STACK.source)}).`] : []),
 		...(header?.value ? [`- **A ${header.value.rows} × ${header.value.cols} female stacking header on the underside, ${header.value.pitchMm} mm pitch,** centred at (${mm(header.value.x)}, ${mm(header.value.y)}) mm in the same frame, so it mates with the ${name}'s header pins, which point up from its top face; pin 1 at the ${header.value.pin1} (${cite(header.source)}).`] : []),
 		need
 			? `- **5 V supply: ${mm(need.amps)} A at ${mm(need.volts ?? 5)} V** from ${supplyFrom}, into header pins ${and(pins("5V"))} (5V), ground on pins ${and(pins("GND"))}. Sized from the ${name}'s ${need.peak.value} A peak (${cite(need.peak.source)})${need.supplyRating ? ": that is the vendor's recommended supply and already includes its headroom, so no margin on top" : ` plus ${need.margin * 100} % margin`}.`

@@ -736,7 +736,12 @@ export function mountingHoles(s: ContractSnapshot): MountingHole[] {
 	if (!outline) return []
 	const [W, H] = [outline.widthMm, outline.heightMm]
 	// A board that must match another's mounting pattern (a HAT on a bought module) drills that pattern, as given.
-	if (outline.holes?.length) return outline.holes.map((h, i) => ({ ref: `H${i + 1}`, x: +(h.x - W / 2).toFixed(3), y: +(h.y - H / 2).toFixed(3), diameterMm: h.dia ?? MOUNTING_HOLE.diameterMm }))
+	// A diameter the pattern doesn't give (null) is the default hole; a zero or negative one is an error, not a hole.
+	if (outline.holes?.length)
+		return outline.holes.map((h, i) => {
+			if (h.dia != null && !(h.dia > 0)) throw new Error(`outline.holes[${i}] at (${h.x}, ${h.y}) mm has diameter ${h.dia} mm: a mounting hole needs a positive diameter (or null for the default Ø${MOUNTING_HOLE.diameterMm} mm)`)
+			return { ref: `H${i + 1}`, x: +(h.x - W / 2).toFixed(3), y: +(h.y - H / 2).toFixed(3), diameterMm: h.dia ?? MOUNTING_HOLE.diameterMm }
+		})
 	const dx = W / 2 - MOUNTING_HOLE.insetMm
 	const dy = H / 2 - MOUNTING_HOLE.insetMm
 	const corners = [[-dx, -dy], [dx, -dy], [-dx, dy], [dx, dy]]

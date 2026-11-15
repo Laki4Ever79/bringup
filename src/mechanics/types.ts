@@ -36,6 +36,6 @@ export interface Mechanics {
 		clearanceMm: number
 		// on: the board this one sits on as a HAT (a compute module's carrier); holes: its mounting holes when they aren't
 		// at the corners (a bought board's record: mm from its lower-left corner, before the turn).
-		boards: { name: string; at: { xMm: number; yMm: number }; rotDeg: 0 | 90 | 180 | 270; on?: string; holes?: { x: number; y: number; dia: number }[] }[]
+		boards: { name: string; at: { xMm: number; yMm: number }; rotDeg: 0 | 90 | 180 | 270; on?: string; holes?: { x: number; y: number; dia: number | null }[] }[]
 	}
 }
