@@ -30,7 +30,7 @@ async function drafted() {
 	const parts = createPartsAgent({ mock: true })
 	const firmware = createFirmwareReviewer({ mock: true })
 	sendMessage("Battery BLE temperature logger with USB-C and a status LED.", engineer.getId())
-	await waitFor(() => CORE_FIELDS.every((f) => state.contract.version(f) >= 1) && (state.contract.get("pins") ?? []).some((p) => p.signal === "STATUS_LED"), 5000)
+	await waitFor(() => CORE_FIELDS.every((f) => state.contract.version(f) >= 1) && (state.contract.get("pins") ?? []).some((p) => p.signal === "STATUS_LED"), 20_000) // a loaded machine (the full suite beside other runs) took over 5 s
 	await new Promise((r) => setTimeout(r, 300))
 	// The text each agent's turns started with, from Mozaik's loop events.
 	const turns = (agentId: string) =>
