@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { assemblyFitError, mergeRequest, withOutlines, type SystemAssembly } from "./assembly.ts"
+import { assemblyFitError, briefPlateLimitMm, mergeRequest, withOutlines, type SystemAssembly } from "./assembly.ts"
 import type { BoardAssembly } from "../mechanics/assembly.ts"
 import { plateLimitMm } from "../mechanics/checks.ts"
 import { appendRequest, watchJsonl } from "../runner/requests.ts"
@@ -93,6 +93,14 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	const asked = new Map<string, number>() // board → trace length when last asked; its next settle must come after
 	const sent: { board: string; text: string }[] = []
 	const designed = spec.boards.filter((b) => b.brief)
+	// The brief's size limit: from the first board that has a motion field (the robot's main board), with room for the
+	// wheels outside it (plateLimitMm).
+	// Before any board has written motion, the briefs' own size (briefPlateLimitMm): every relayout keeps within it.
+	const briefLimit = briefPlateLimitMm(designed.map((b) => { try { return readFileSync(b.brief!, "utf8") } catch { return "" } }))
+	const limitOf = (contracts: Record<string, ContractSnapshot | undefined>): [number, number] | undefined => {
+		const c = Object.values(contracts).find((x) => x?.values.motion?.maxSizeMm)
+		return c ? plateLimitMm(c) : briefLimit
+	}
 	// A robot's boards each get the whole body (its plate, every board's place and outline) and which board they are.
 	let assembly: SystemAssembly | undefined = spec.assembly?.body === "chassis" ? spec.assembly : undefined
 	// Each bought board's module id rides in the body, so the boards' checks can read its record (a spec saved before
@@ -111,7 +119,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			return ab && (ab.outlineSource !== "built" || ab.outline.widthMm !== o.widthMm || ab.outline.heightMm !== o.heightMm)
 		}))
 		if (Object.keys(fresh).length) {
-			assembly = withOutlines(assembly, fresh)
+			assembly = withOutlines(assembly, fresh, limitOf({}))
 			writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
 		}
 	}
@@ -183,11 +191,28 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	// A settled board's outline replaces the estimate; the new assembly goes to system.json and to every robot board that
 	// holds an older one (each board needs its siblings' real outlines for its chassis and mass).
 	// With `send` false (the rounds are used up) it only merges and writes system.json, and names the boards left stale.
-	// The brief's size limit, from the first board that has a motion field (the robot's main board).
-	// The plate's limit from the robot's brief, with room for the wheels outside it (plateLimitMm).
-	const limitOf = (contracts: Record<string, ContractSnapshot | undefined>): [number, number] | undefined => {
-		const c = Object.values(contracts).find((x) => x?.values.motion?.maxSizeMm)
-		return c ? plateLimitMm(c) : undefined
+	// The limit the assembly was last fitted to.
+	let laidOutFor: [number, number] | undefined = briefLimit
+	// The limit tightens while a board is still designing (the mechanics choose the wheels, whose width comes off the
+	// plate's sides): the plate is re-fitted at once and the new body sent, so the board isn't left fighting a plate it
+	// can't change (the forked Rover + climate: a 110 mm plate under a 96 mm limit, wheels rubbing, main stuck).
+	const refitToLimit = () => {
+		if (!assembly) return
+		const limit = limitOf(lastContracts())
+		if (JSON.stringify(limit) === JSON.stringify(laidOutFor)) return
+		laidOutFor = limit
+		const next = withOutlines(assembly, {}, limit)
+		if (JSON.stringify(next) === JSON.stringify(assembly)) return
+		assembly = next
+		writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
+		for (const b of designed) {
+			if (!assembly.boards.some((ab) => ab.name === b.name) || assemblySent.get(b.name) === siblingsOf(assembly, b.name)) continue
+			assemblySent.set(b.name, siblingsOf(assembly, b.name))
+			const text = `The robot's body (${spec.name}) changed: the plate was re-fitted to the brief's size with the chosen wheels (${limit?.join(" × ")} mm).`
+			appendRequest(boardDir(outDir, b.name), text, undefined, undefined, { ...assembly, self: b.name })
+			sent.push({ board: b.name, text })
+			asked.set(b.name, readTrace(boardDir(outDir, b.name)).length)
+		}
 	}
 	const syncAssembly = (contracts: Record<string, ContractSnapshot | undefined>, send: boolean): string[] => {
 		const stale: string[] = []
@@ -197,8 +222,14 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			const o = contracts[ab.name]?.values.outline
 			if (o && (ab.outlineSource !== "built" || o.widthMm !== ab.outline.widthMm || o.heightMm !== ab.outline.heightMm)) built[ab.name] = { widthMm: o.widthMm, heightMm: o.heightMm }
 		}
-		if (Object.keys(built).length > 0) {
-			assembly = withOutlines(assembly, built, limitOf(contracts))
+		// The limit tightens once the mechanics choose the wheels (their width comes off the sides): the plate is re-fitted
+		// then too, not only when an outline changes (the forked Rover + climate kept the default 110 mm plate under a 96 mm
+		// limit, so its wheels rubbed and main never settled).
+		const limit = limitOf(contracts)
+		const limitChanged = JSON.stringify(limit) !== JSON.stringify(laidOutFor)
+		if (Object.keys(built).length > 0 || limitChanged) {
+			laidOutFor = limit
+			assembly = withOutlines(assembly, built, limit)
 			writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
 		}
 		for (const b of designed) {
@@ -232,6 +263,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 		while (Date.now() < deadline) {
 			await new Promise((r) => setTimeout(r, o.pollMs ?? 2000))
 			followBoards()
+			refitToLimit()
 			const contracts = contractsNow()
 			// A board that ended unsettled (stuck, or at its revision cap) won't fix itself: stop and say which.
 			const stuck = designed.filter((b) => unsettledSince(boardDir(outDir, b.name), asked.get(b.name) ?? 0)).map((b) => b.name)
