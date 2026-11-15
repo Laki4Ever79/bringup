@@ -68,10 +68,12 @@ def blind(distance, state):
 
 
 def careful(distance, state):
+    # About a quarter turn and a half: with the caster sliding at its own friction (no longer the floor's) the rover spins
+    # at about 8 rad/s at 0.9 duty, so the old 700 ms went round nearly once and faced the wall again.
     if state["now"] < state["turn_until"]:
         return 0.9, -0.9
     if 0 <= distance < 400:
-        state["turn_until"] = state["now"] + 700
+        state["turn_until"] = state["now"] + 250
         return 0.9, -0.9
     return 0.9, 0.9
 
