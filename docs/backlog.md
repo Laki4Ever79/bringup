@@ -91,6 +91,14 @@ is a change to the firmware toolchain, not just the code.
       traces fail on congestion, 8-9 mm against 5. Today's working path: the build reports the too-long trace and the
       architect grows the board for routing; the run's 64×25 revision routes. Open: a routing-aware smallest board (the
       space rule's minimum from what has routed, not from placement alone), so the architect doesn't shrink there first.)
+      Cause found 15 Nov (bringup-board, a kept 60×21 build): the too-long trace is C4's second end, U5.VM to C4.pin2
+      (8.4 mm; VCP's own trace is 2.3 mm). C4 is wired between two neighbouring pins; standing out from the pin row its
+      far end's trace must loop round the capacitor, and at 60×21 other parts (C6 1.6 mm past C3) leave it no room, so it
+      detours through vias. Along the pins (capsAlong) C3 and C4 collide (1.86 mm bodies, 0.65 mm pin pitch) and C4 lands
+      2.5 mm off: 9.1 mm. At 64×25 the same caps have free room beside them and route. Decision (the user, 15 Nov, chose
+      "Both" of the offered fixes): (1) placement keeps clear the room a capacitor's far end needs to loop round it when
+      both its ends go to one part, so the smallest board grows where routing would fail; (2) a size that failed to route
+      is recorded and the smallest board never offers it, or anything smaller, again.
       Original entry: **The smallest board reserves the room a chip's pin capacitors need** (agreed with d9610c, 15 Nov, after the real
       subscription rover run: the architect shrank the board to 60×21 mm under the space rule, and there U5's VCP and
       VINT capacitors couldn't route within their 5 mm bound, 8-9 mm, since other parts took the room beside its pins).

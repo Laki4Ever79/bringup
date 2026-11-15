@@ -40,7 +40,37 @@ export interface MinimumBoard {
 	limitedBy: "placement" | "density"
 	// For each board height, the narrowest width that places every part: the shapes a compact board can take.
 	shapes: { widthMm: number; heightMm: number }[]
+	// Sizes of this design that were built and failed to route (recordRoutingFailure): no shape sits inside one.
+	failed?: { widthMm: number; heightMm: number }[]
 }
+
+// The sizes of each design (its parts, connectors, pins and rails) that were built and failed to route. Measured, so the
+// smallest board never offers them, or any size inside one, again: placement alone said the 60×21 mm rover fit, the
+// build failed after 10 minutes, and nothing stopped the architect shrinking back to it (backlog, 15 Nov 2026). Kept for
+// the process (one run); a changed design starts clean, since what crowded the router may be gone.
+const failures = new Map<string, { widthMm: number; heightMm: number }[]>()
+const designKey = (s: ContractSnapshot) => {
+	const { parts, connectors, pins, rails } = s.values
+	return JSON.stringify({ parts, connectors, pins, rails, t: s.values.outline?.thicknessMm })
+}
+// Connectors are stored at their place on the failed board; the same design at another size has them elsewhere, so
+// the key keeps only which edge each is on.
+const keyOf = (s: ContractSnapshot) => designKey({ ...s, values: { ...s.values, connectors: (s.values.connectors ?? []).map((c) => ({ ...c, offsetMm: 0 })) } })
+
+export function recordRoutingFailure(s: ContractSnapshot, widthMm: number, heightMm: number): void {
+	const key = keyOf(s)
+	const list = failures.get(key) ?? []
+	if (list.some((f) => widthMm <= f.widthMm && heightMm <= f.heightMm)) return
+	failures.set(key, [...list.filter((f) => !(f.widthMm <= widthMm && f.heightMm <= heightMm)), { widthMm, heightMm }])
+	cache.clear()
+}
+
+export function routingFailures(s: ContractSnapshot): { widthMm: number; heightMm: number }[] {
+	return failures.get(keyOf(s)) ?? []
+}
+
+// Inside a size that failed to route: no bigger in either direction.
+const insideFailed = (s: ContractSnapshot, w: number, h: number) => routingFailures(s).some((f) => w <= f.widthMm + 1e-9 && h <= f.heightMm + 1e-9)
 
 // The design with the outline set to w x h, connectors kept at the same relative place along their edges.
 function resized(s: ContractSnapshot, w: number, h: number): ContractSnapshot {
@@ -103,9 +133,11 @@ export function minimumBoard(s: ContractSnapshot): MinimumBoard | null {
 	const o = s.values.outline
 	if (!o || !s.values.parts?.length) return null
 	const { parts, connectors, pins, rails } = s.values
-	const key = JSON.stringify({ parts, connectors, pins, rails, t: o.thicknessMm, aspect: [o.widthMm, o.heightMm] })
+	const failed = routingFailures(s)
+	const key = JSON.stringify({ parts, connectors, pins, rails, t: o.thicknessMm, aspect: [o.widthMm, o.heightMm], failed })
 	if (cache.has(key)) return cache.get(key)!
-	const fits = (w: number, h: number) => placesAll(s, w, h)
+	// A size inside one that failed to route doesn't count, however well it places.
+	const fits = (w: number, h: number) => !insideFailed(s, w, h) && placesAll(s, w, h)
 	const atSize = placeParts(s)
 	const courtyardMm2 = Math.round(atSize.reduce((a, b) => a + (b.w + 2 * COURTYARD_MM) * (b.h + 2 * COURTYARD_MM), 0))
 	const floorArea = courtyardMm2 / MAX_DENSITY
@@ -135,8 +167,8 @@ export function minimumBoard(s: ContractSnapshot): MinimumBoard | null {
 	const packed = best.w * best.h
 	const result: MinimumBoard =
 		packed >= floorArea
-			? { widthMm: best.w, heightMm: best.h, areaMm2: packed, courtyardMm2, limitedBy: "placement", shapes }
-			: { widthMm: best.w, heightMm: best.h, areaMm2: Math.round(floorArea), courtyardMm2, limitedBy: "density", shapes }
+			? { widthMm: best.w, heightMm: best.h, areaMm2: packed, courtyardMm2, limitedBy: "placement", shapes, ...(failed.length ? { failed } : {}) }
+			: { widthMm: best.w, heightMm: best.h, areaMm2: Math.round(floorArea), courtyardMm2, limitedBy: "density", shapes, ...(failed.length ? { failed } : {}) }
 	cache.set(key, result)
 	return result
 }
@@ -267,13 +299,20 @@ export function sizeReasonError(r: unknown): string | null {
 }
 
 // Design facts: where the design stands against the space rules.
+const failedNote = (min: MinimumBoard) => {
+	const f = min.failed ?? []
+	if (!f.length) return ""
+	const one = f.length === 1
+	return `, and outside ${f.map((x) => `${x.widthMm}×${x.heightMm}`).join(", ")} mm, which ${one ? "was" : "were"} built and failed to route (measured: don't shrink back into ${one ? "it" : "them"})`
+}
+
 export function spaceFactLines(s: ContractSnapshot): string[] {
 	const o = s.values.outline
 	const min = o ? minimumBoard(s) : null
 	if (!o || !min) return []
 	const slack = (o.widthMm * o.heightMm) / min.areaMm2 - 1
 	const lines = [
-		`Board: ${o.widthMm}×${o.heightMm} mm = ${o.widthMm * o.heightMm} mm²; the smallest it can be is ${min.areaMm2} mm² (${min.limitedBy === "placement" ? `every part placed at ${min.widthMm}×${min.heightMm} mm` : `courtyards ${min.courtyardMm2} mm² at the ${pct(MAX_DENSITY)} routing ceiling`}); slack ${pct(slack)}, limit ${pct(SLACK_LIMIT)}${o.sizeReason ? `, over it for a recorded reason: ${o.sizeReason.kind} (${o.sizeReason.detail})` : ""}.`,
+		`Board: ${o.widthMm}×${o.heightMm} mm = ${o.widthMm * o.heightMm} mm²; the smallest it can be is ${min.areaMm2} mm² (${min.limitedBy === "placement" ? `every part placed at ${min.widthMm}×${min.heightMm} mm` : `courtyards ${min.courtyardMm2} mm² at the ${pct(MAX_DENSITY)} routing ceiling`}${failedNote(min)}); slack ${pct(slack)}, limit ${pct(SLACK_LIMIT)}${o.sizeReason ? `, over it for a recorded reason: ${o.sizeReason.kind} (${o.sizeReason.detail})` : ""}.`,
 	]
 	const c = caseOf(s)
 	const need = minCaseHeight(s, c)

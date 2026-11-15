@@ -226,3 +226,22 @@ test("what counts as the board running out of room: unrouted pins, a via dropped
 	assert.doesNotMatch("Could not save autorouting paths for subcircuit_source_group_0: Routes contain a junction or endpoint that cannot select a unique PCB port", ROUTING_FAILURE)
 	assert.doesNotMatch("Unknown footprint 'sot99' for U3", ROUTING_FAILURE)
 })
+
+// A size that failed to route is measured evidence: the smallest board never offers it, or anything inside it, again
+// (the backlog's routing-aware smallest board, 15 Nov 2026).
+test("a board size that failed to route is never offered as the smallest board again", async () => {
+	const { recordRoutingFailure, routingFailures } = await import("../src/contract/space.ts")
+	const s0 = JSON.parse(readFileSync(join(import.meta.dirname, "fixtures/cc-rover-60x21-rev17.json"), "utf8"))
+	const before = minimumBoard(s0)!
+	assert.ok(before.widthMm <= 60 && before.heightMm <= 21, `${before.widthMm}×${before.heightMm}`)
+	recordRoutingFailure(s0, 60, 21)
+	assert.deepEqual(routingFailures(s0), [{ widthMm: 60, heightMm: 21 }])
+	const after = minimumBoard(s0)!
+	assert.ok(!(after.widthMm <= 60 && after.heightMm <= 21), `${after.widthMm}×${after.heightMm} sits inside the failed 60×21`)
+	assert.ok(after.shapes.every((x) => !(x.widthMm <= 60 && x.heightMm <= 21)))
+	assert.ok(after.failed?.some((f) => f.widthMm === 60 && f.heightMm === 21))
+	assert.match(spaceFactLines(s0).join("\n"), /outside 60×21 mm, which was built and failed to route/)
+	// Another design (a part changed) starts clean.
+	const other = { ...s0, values: { ...s0.values, parts: s0.values.parts.slice(0, -1) } }
+	assert.deepEqual(routingFailures(other), [])
+})
