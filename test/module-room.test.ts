@@ -30,3 +30,17 @@ test("the board build waits on the connector instead of failing for room", async
 	const env = { root: "/nonexistent", tsci: "/nonexistent/tsci", kicad: null } as never
 	await assert.rejects(buildBoard(env, tempDir(), blocked(), 1), (e: Error) => WAITING_ON_CONTRACT.test(e.message) && /U1/.test(e.message) && /J9/.test(e.message))
 })
+
+// But when a connector in the way has no spot on its own edge that clears the module, a bigger board is an answer too
+// (module-blocked says "move it to another edge … before making the board bigger"): space-room keeps saying so and the
+// build fails for room as before. Without it the scripted rover in a system ended unsettled, its link connector JL1 on
+// the module's edge with nowhere to go along it (bringup-lead, 15 Nov 2026).
+test("a connector with no clearing spot on its own edge leaves the bigger-board answer in place", async () => {
+	const s = blocked()
+	s.values.connectors = s.values.connectors!.map((k) => (k.ref === "J9" ? { ...k, widthMm: 24 } : k))
+	const v = checkConsistency(s, {})
+	assert.ok(v.some((x) => x.kind === "module-blocked" && /no spot on the right edge clears it/.test(x.message)), v.map((x) => x.message).join(" | "))
+	assert.ok(v.some((x) => x.kind === "space-room" && /\bU1\b/.test(x.message)), v.map((x) => x.kind).join(" "))
+	const env = { root: "/nonexistent", tsci: "/nonexistent/tsci", kicad: null } as never
+	await assert.rejects(buildBoard(env, tempDir(), s, 1), (e: Error) => !WAITING_ON_CONTRACT.test(e.message) && /no room on the board for U1/.test(e.message))
+})
