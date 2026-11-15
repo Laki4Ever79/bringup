@@ -73,7 +73,8 @@
 						"y": 52.5,
 						"dia": 2.7
 					}
-				]
+				],
+				"module": "rpi-5"
 			},
 			{
 				"name": "rpi-5-carrier",

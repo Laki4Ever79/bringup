@@ -28,9 +28,11 @@ test("a 2S pack: the 1-cell charger and the 5.5 V LDO on VBAT are each named, wi
 test("without the charger (and its LED and resistors) the LDO takes USB, the pack feeds only the motor driver, and nothing is flagged", () => {
 	const c = rover(COMPUTE_ROVER_PACK)
 	const drop = new Set(["U4", "D2"])
-	const used = supportParts(c).filter((sp) => [sp.a, sp.b].some((e) => "ref" in e && drop.has(e.ref))).map((sp) => sp.ref)
-	assert.deepEqual(used.sort(), ["R4", "R7"])
-	c.values.parts = c.values.parts!.filter((p) => !drop.has(p.ref) && !used.includes(p.ref))
+	const without = c.values.parts!.filter((p) => !drop.has(p.ref))
+	const claimed = new Set(supportParts({ ...c, values: { ...c.values, parts: without } }).map((sp) => sp.ref))
+	const used = without.filter((p) => (p.role === "resistor" || p.role === "capacitor") && !claimed.has(p.ref)).map((p) => p.ref)
+	assert.deepEqual(used.sort(), ["C4", "R4", "R7"])
+	c.values.parts = without.filter((p) => !used.includes(p.ref))
 	const nets = generatedNets(c)
 	assert.ok(nets.get("VBUS")!.includes("U3.VIN"))
 	// The pack's socket, the driver's VM and their capacitors; no regulator, no charger.
