@@ -341,10 +341,13 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		if (pack.cutoffV < supplyMin || pack.fullV > supplyMax)
 			push("mech-voltage", `the ${driver.part.mpn} runs from ${supplyMin}–${supplyMax} V but the cell spans ${pack.cutoffV}–${pack.fullV} V: pick a driver that covers it`, ["mechanics", "parts"])
 	}
-	// The designed boards' rails, plus each bought computer's typical draw (its record) through the 5 V regulator, as pack
-	// current at the nominal voltage (before, a Pi 5's 0.8 A at 5.1 V was left out of the runtime altogether).
+	// The designed boards' rails the cell feeds, plus each bought computer's typical draw (its record) through the 5 V
+	// regulator, as pack current at the nominal voltage (before, a Pi 5's 0.8 A at 5.1 V was left out of the runtime
+	// altogether). Not VBUS (USB feeds it, not the cell) and not the cell's own rail (VBAT), whose load on a robot is the
+	// motor driver plus those same rails (rover run cc-rover-5 on the Claude subscription, 15 Nov 2026: VBUS 300 + VBAT
+	// 1400 + 3V3 190 mA counted 1.89 A of "electronics", the motors twice, so no catalog motor fit the 2 A cell).
 	const computeA = boughtComputeA(mech, pack, cat)
-	const boardMa = boards.reduce((t, b) => t + (b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0) + computeA.amps * 1000
+	const boardMa = boards.reduce((t, b) => t + cellFedElectronics(b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0) + computeA.amps * 1000
 	if (computeA.amps > 0) fig("Computer draw", `${r2(computeA.amps)} A`, "from the pack", true, computeA.how)
 	const packNeedA = 2 * full.stallA + boardMa / 1000
 	fig("Pack peak current", `${r2(packNeedA)} A`, `at most ${pack.peakA} A`, packNeedA <= pack.peakA, "both motors at stall plus the electronics")
@@ -472,4 +475,12 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	if (onPlug.length) push("mech-wiring", `${onPlug.map((p) => `${p.signal} (GPIO${p.gpio})`).join(", ")} go${onPlug.length === 1 ? "es" : ""} to the distance sensor's plug ${mech.sensor.connector}: remove ${onPlug.length === 1 ? "it" : "them"}. The plug takes no pins; the board generator joins it to the I2C bus (I2C_SDA, I2C_SCL)`, ["architect"], ["pins"])
 	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", 'no battery connector on any board: the cell plugs into a 2-pin connector whose part has role "battery" (not "connector": a role-"connector" 2-pin part is a motor\'s plug, JM1 or JM2)', ["parts"], ["parts"])
 	return out
+}
+
+// A board's rails that draw on the cell as electronics: every rail but USB's input and the cell's own rail (when other
+// rails hang off it, the cell rail's load is theirs plus the motors').
+export function cellFedElectronics<R extends { name: string }>(rails: R[]): R[] {
+	const fed = rails.filter((r) => !/VBUS|USB/i.test(r.name))
+	const downstream = fed.filter((r) => !/BAT|CELL/i.test(r.name))
+	return downstream.length ? downstream : fed
 }
