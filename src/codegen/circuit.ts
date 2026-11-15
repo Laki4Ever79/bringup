@@ -626,6 +626,25 @@ export function antennaOverhang(s: ContractSnapshot): { edge: Connector["edge"];
 // connector there, or a mounting hole at that edge's corners, can leave it no spot whatever the board's size. The build
 // said only "no room for U1", and the architect grew the beacon from 50×30 to 64×40 mm when moving SW1 off that edge
 // would have done (real system run 4, 9 Nov). null when there's no module or it is placed.
+// Whether moving connectors along their own edges frees the module: each one in its way has an offset on its edge
+// that clears it. Then module-blocked's "move it to …" is the answer and a bigger board is not; otherwise (a connector
+// with no clearing spot on its edge: the rover's link connector JL1 on the module's edge in a system, 15 Nov 2026) a
+// bigger board is an answer too.
+export function moduleFreedAlongEdges(s: ContractSnapshot): boolean {
+	const m = moduleBlocked(s)
+	const outline = s.values.outline
+	if (!m || !outline || m.blockers.length === 0) return false
+	const conns = s.values.connectors ?? []
+	return m.blockers.every((ref) => {
+		const k = conns.find((x) => x.ref === ref)
+		if (!k) return false
+		const len = k.edge === "left" || k.edge === "right" ? outline.heightMm : outline.widthMm
+		for (let off = k.widthMm / 2 + 1; off <= len - k.widthMm / 2 - 1; off += 0.5)
+			if (!moduleBlocked({ ...s, values: { ...s.values, connectors: conns.map((x) => (x.ref === ref ? { ...x, offsetMm: off } : x)) } })) return true
+		return false
+	})
+}
+
 export function moduleBlocked(s: ContractSnapshot): { ref: string; edge: Connector["edge"]; usbRef?: string; needMm: number; depthMm: number; edgeMm: number; blockers: string[] } | null {
 	const { outline, parts = [], connectors = [] } = s.values
 	const mcu = parts.find((p) => p.role === "mcu")
