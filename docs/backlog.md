@@ -80,6 +80,16 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
+- [ ] **Every bought mechanical part in the parts list** (the user, 15 Nov: "nuts, bolts, bearings, threaded inserts,
+      metal rods,... whatever can't be printed or ordered by the PCB provider"). Today the robot parts list
+      (`src/tools/robot-parts.ts`, bom.json `robot`) has the motors, wheels, caster, battery and distance sensor only.
+      Missing: the screws that hold each board (case.ts: M2 self-tapping into 5 mm posts) and the plate (standoffs,
+      estimates.ts `standoffMm`), motor bracket screws and nuts, threaded inserts where a printed part takes a machine
+      screw, bearings, shafts and rods, cables and their crimp housings, battery holder or strap, spacers. Each with a
+      quantity worked out from the design (holes × screws, one insert per screw boss), a size (M2 × length from the stack
+      height), a shop link and live price where the shop states one, like the rest. Then a check: every hole, boss and
+      bracket in the printed parts has its fastener in the list, and every fastener in the list has a hole to go in.
+
 - [x] **Bring-up test pads on every design, on by default** (built 13 Nov, 54e83ec; the nets a learned part adds come
       with learned-part wiring) (the user, 13 Nov: "we should be adding test points as well
       to our designs"). Today pads come only with a production test ("add a production test fixture"), which probes
