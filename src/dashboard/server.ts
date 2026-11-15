@@ -1,4 +1,4 @@
-import { SYSTEM_TRACE } from "../system/trace.ts"
+import { readSystemTrace, SYSTEM_TRACE } from "../system/trace.ts"
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, rmSync, statSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
@@ -25,9 +25,10 @@ import { mcuPinName } from "../mcu/pins.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { boardFacts, systemFacts } from "../system/facts.ts"
-import { defaultAssembly, derivedAssembly } from "../system/assembly.ts"
+import { assemblyErrors, defaultAssembly, derivedAssembly, mergeRequest } from "../system/assembly.ts"
+import { SYSTEM_REQUESTS } from "../system/run.ts"
 import { buildSpec } from "../system/plan.ts"
-import type { SystemSpec } from "../system/spec.ts"
+import { specErrors, type SystemSpec } from "../system/spec.ts"
 import type { Mechanics } from "../mechanics/types.ts"
 
 const TRACE = "trace.jsonl"
@@ -769,6 +770,28 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					} catch (error) {
 						return planError(res, error)
 					}
+				}
+				// Apply on the design page: one validated request line for the running system (--stay watches the file).
+				const sysRequest = /^\/api\/systems\/([^/]+)\/requests$/.exec(path)
+				if (sysRequest) {
+					const dir = await systemDir(sysRequest[1])
+					if (!dir) return json(res, 404, { error: "unknown system" })
+					const body = await readJson(req)
+					if (body.text !== undefined) text(body.text, "text", MAX_TEXT)
+					for (const k of ["assembly", "links"]) if (body[k] !== undefined && (typeof body[k] !== "object" || body[k] === null || (k === "links") !== Array.isArray(body[k]))) throw new HttpError(400, `${k} is the wrong shape`)
+					if (body.assembly === undefined && body.links === undefined) throw new HttpError(400, "send an assembly and/or links")
+					// Up means: a live process started here, and its trace says it stays up for requests (the line --stay writes once settled).
+					const run = live.get(sysRequest[1])
+					const lines = readSystemTrace(dir)
+					if (!run || run.exit !== null || !lines.some((l) => l.board === "system" && l.step === "request" && /staying up/.test(l.detail ?? ""))) return json(res, 409, { error: "This design isn't running; start it again to apply changes" })
+					const spec = (await readJsonFile(join(dir, "system.json"))) as SystemSpec | null
+					if (!spec) return json(res, 404, { error: "unknown system" })
+					if (body.assembly && !spec.assembly) throw new HttpError(400, "this system has no assembly to change")
+					const merged = mergeRequest(spec, body)
+					const errors = [...specErrors(merged), ...assemblyErrors(merged)]
+					if (errors.length > 0) return json(res, 400, { error: errors[0], errors })
+					appendFileSync(join(dir, SYSTEM_REQUESTS), JSON.stringify({ at: new Date().toISOString(), ...(body.text ? { text: body.text } : {}), ...(body.assembly ? { assembly: body.assembly } : {}), ...(body.links ? { links: body.links } : {}) }) + "\n")
+					return json(res, 202, { round: Math.max(0, ...lines.map((l) => l.round)) + 1 })
 				}
 				const stopSystem = /^\/api\/systems\/([^/]+)\/stop$/.exec(path)
 				if (stopSystem) {
