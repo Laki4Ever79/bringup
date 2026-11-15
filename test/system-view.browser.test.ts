@@ -604,7 +604,7 @@ test("Try for free opens its own design and leaves the plan buildable", { skip: 
 	const outDirs: string[] = []
 	const launch = (args: { outDir: string; extraArgs?: string[] }) => {
 		outDirs.push(args.outDir)
-		setTimeout(() => copyFileSync(args.extraArgs![0], join(args.outDir, "system.json")), 300)
+		copyFileSync(args.extraArgs![0], join(args.outDir, "system.json")) // at once: nothing outlives the test
 		return { done: new Promise<{ code: number; stderr: string }>(() => {}), kill: () => {} }
 	}
 	await withPlanHub(async ({ url, root, page, id }) => {
