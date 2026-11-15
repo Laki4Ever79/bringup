@@ -31,7 +31,7 @@ cd /ws && colcon build --event-handlers console_direct- > /out/colcon-${outName}
 source /ws/install/setup.bash
 export ROS_DOMAIN_ID=$((RANDOM % 100 + 100)) ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 ros2 launch ${robot}_bringup bringup.launch.py hardware:=${hardware} > /out/launch-${outName}.log 2>&1 &
-for i in $(seq 1 60); do ros2 control list_controllers 2>/dev/null | grep -q "diff_drive_controller.*active" && break; sleep 1; done
+for i in $(seq 1 180); do ros2 control list_controllers 2>/dev/null | grep -q "diff_drive_controller.*active" && break; sleep 1; done
 rm -rf /out/bag-${outName}
 timeout -s INT 25 ros2 bag record -s mcap -o /out/bag-${outName} /cmd_vel /diff_drive_controller/odom /joint_states /range_sensor_broadcaster/range /tf > /out/bag-${outName}.log 2>&1 &
 BAG=$!

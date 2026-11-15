@@ -14,6 +14,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -32,6 +34,7 @@ class BringupSystem : public hardware_interface::SystemInterface {
     if (SystemInterface::on_init(info) != CallbackReturn::SUCCESS) return CallbackReturn::ERROR;
     port_ = info.hardware_parameters.count("port") ? info.hardware_parameters.at("port") : "tcp:127.0.0.1:5555";
     max_rad_s_ = info.hardware_parameters.count("max_wheel_rad_s") ? std::stod(info.hardware_parameters.at("max_wheel_rad_s")) : 10.0;
+    connect_timeout_s_ = info.hardware_parameters.count("connect_timeout_s") ? std::stoi(info.hardware_parameters.at("connect_timeout_s")) : 120;
     if (info.joints.size() != 2) {
       RCLCPP_ERROR(get_logger(), "expected 2 wheel joints, got %zu", info.joints.size());
       return CallbackReturn::ERROR;
@@ -60,9 +63,15 @@ class BringupSystem : public hardware_interface::SystemInterface {
   }
 
   CallbackReturn on_activate(const rclcpp_lifecycle::State &) override {
-    fd_ = open_port(port_);
+    // The robot may still be booting (a real board after power-up, the firmware in QEMU after its build): keep trying
+    // for connect_timeout_s (default 120 s) before giving up.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(connect_timeout_s_);
+    while ((fd_ = open_port(port_)) < 0 && std::chrono::steady_clock::now() < deadline) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *rclcpp::Clock::make_shared(), 5000, "waiting for the firmware on %s", port_.c_str());
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
     if (fd_ < 0) {
-      RCLCPP_ERROR(get_logger(), "can't open %s", port_.c_str());
+      RCLCPP_ERROR(get_logger(), "can't open %s after %d s", port_.c_str(), connect_timeout_s_);
       return CallbackReturn::ERROR;
     }
     RCLCPP_INFO(get_logger(), "talking to the firmware on %s (max %.2f rad/s at duty 1)", port_.c_str(), max_rad_s_);
@@ -142,6 +151,7 @@ class BringupSystem : public hardware_interface::SystemInterface {
 
   std::string port_, rx_;
   double max_rad_s_ = 10.0;
+  int connect_timeout_s_ = 120;
   int fd_ = -1;
   std::vector<double> cmd_, pos_, vel_;
   double applied_[2] = {0, 0};
