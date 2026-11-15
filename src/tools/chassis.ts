@@ -9,6 +9,8 @@ import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
 import { est } from "../mechanics/estimates.ts"
 import { massAndCom, mounts } from "../mechanics/model.ts"
+import { MOUNTING_HOLE, mountingHoles } from "../codegen/circuit.ts"
+import { STANDOFF } from "../contract/case.ts"
 
 const exec = promisify(execFile)
 
@@ -24,7 +26,10 @@ export interface ChassisSpec {
 	motors: { side: "left" | "right"; xMm: number; yMm: number; bodyMm: [number, number, number]; axleDropMm: number }[]
 	caster: { xMm: number; holesMm: [number, number][]; holeDiaMm: number; wheelMm: number; heightMm: number }
 	battery: { xMm: number; yMm: number; sizeMm: [number, number, number] }
-	boards: { name: string; xMm: number; yMm: number; widthMm: number; heightMm: number; rotDeg: number; holeInsetMm: number }[]
+	// holes: the board's own mounting holes on the plate (its mountingHoles, turned by rotDeg); a standoff under each.
+	boards: { name: string; xMm: number; yMm: number; widthMm: number; heightMm: number; rotDeg: number; holeInsetMm: number; holes: { xMm: number; yMm: number }[] }[]
+	// The board's screw, the case's: an M2 self-tapping screw through the board's hole into the standoff's pilot hole.
+	boardScrew: { boardHoleMm: number; pilotMm: number }
 	sensor: { xMm: number; yMm: number; zMm: number; sizeMm: [number, number, number]; rangeMm: number; updateMs: number }
 	massG: number
 	com: [number, number, number] // the whole rover's, wheels and caster included
@@ -44,7 +49,18 @@ export interface ChassisSpec {
 
 // The caster's M4 screws (the catalog's casters have 4.2–5 mm holes).
 const CASTER_HOLE_MM = 4.2
-const BOARD_HOLE_INSET_MM = 3.5
+// A board's holes, from its centre: this board's own (mountingHoles, which leaves out a corner a connector took); another
+// board of the robot, known only by its outline, at the four corners where every board puts them (MOUNTING_HOLE).
+const BOARD_HOLE_INSET_MM = MOUNTING_HOLE.insetMm
+function boardHoles(s: ContractSnapshot, name: string, outline: { widthMm: number; heightMm: number }): { x: number; y: number }[] {
+	if (name === "main") return mountingHoles(s).map((h) => ({ x: h.x, y: h.y }))
+	const [dx, dy] = [outline.widthMm / 2 - MOUNTING_HOLE.insetMm, outline.heightMm / 2 - MOUNTING_HOLE.insetMm]
+	return [[-dx, -dy], [dx, -dy], [-dx, dy], [dx, dy]].map(([x, y]) => ({ x, y }))
+}
+const turn = (p: { x: number; y: number }, deg: number) => {
+	const r = (deg * Math.PI) / 180
+	return { x: p.x * Math.cos(r) - p.y * Math.sin(r), y: p.x * Math.sin(r) + p.y * Math.cos(r) }
+}
 
 // others: the outlines of the robot's other boards, by name; this board is "main".
 export function chassisSpec(s: ContractSnapshot, others: { name: string; outline: { widthMm: number; heightMm: number } }[] = []): ChassisSpec | null {
@@ -74,8 +90,10 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		battery: { xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, sizeMm: pack.sizeMm },
 		boards: placed.map((b) => {
 			const o = known.find((k) => k.name === b.name)!.outline
-			return { name: b.name, xMm: b.at.xMm, yMm: b.at.yMm, widthMm: o.widthMm, heightMm: o.heightMm, rotDeg: b.rotDeg, holeInsetMm: BOARD_HOLE_INSET_MM }
+			const holes = boardHoles(s, b.name, o).map((h) => turn(h, b.rotDeg)).map((h) => ({ xMm: +(b.at.xMm + h.x).toFixed(3), yMm: +(b.at.yMm + h.y).toFixed(3) }))
+			return { name: b.name, xMm: b.at.xMm, yMm: b.at.yMm, widthMm: o.widthMm, heightMm: o.heightMm, rotDeg: b.rotDeg, holeInsetMm: BOARD_HOLE_INSET_MM, holes }
 		}),
+		boardScrew: { boardHoleMm: MOUNTING_HOLE.diameterMm, pilotMm: STANDOFF.pilotMm },
 		unplaced,
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs },
 		massG,
@@ -123,3 +141,22 @@ export async function buildChassis(python: string, root: string, dir: string, s:
 	}
 	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)).concat(ros), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")) }
 }
+
+// Every hole of a board on the chassis has a standoff under it in the built chassis (mounts.json, measured back from the
+// solid), and every standoff a board hole over it: the board and the chassis disagreed by 0.5 mm and a screw size before
+// (15 Nov 2026), and nothing compared them.
+const MOUNT_TOL_MM = 0.2
+export function boardMountChecks(s: ContractSnapshot, built: { standoffHoles?: { xMm: number; yMm: number }[]; casterHoles?: unknown } | null | undefined): { kind: "board-mount-mismatch"; message: string; fields: ["mechanics"]; affects: ["mechanics"] }[] {
+	const spec = chassisSpec(s)
+	const standoffs = built?.standoffHoles
+	if (!spec || !standoffs) return []
+	const near = (a: { xMm: number; yMm: number }, b: { xMm: number; yMm: number }) => Math.hypot(a.xMm - b.xMm, a.yMm - b.yMm) <= MOUNT_TOL_MM
+	const fmt = (h: { xMm: number; yMm: number }) => `(${+h.xMm.toFixed(2)}, ${+h.yMm.toFixed(2)})`
+	const problems: string[] = []
+	for (const b of spec.boards) for (const h of b.holes) if (!standoffs.some((o) => near(o, h))) problems.push(`${b.name}'s hole at ${fmt(h)} has no standoff under it`)
+	const all = spec.boards.flatMap((b) => b.holes)
+	for (const o of standoffs) if (!all.some((h) => near(o, h))) problems.push(`the standoff at ${fmt(o)} has no board hole over it`)
+	if (!problems.length) return []
+	return [{ kind: "board-mount-mismatch", message: `the chassis and the boards disagree on where the boards mount (mm on the plate): ${problems.join("; ")}`, fields: ["mechanics"], affects: ["mechanics"] }]
+}
+
