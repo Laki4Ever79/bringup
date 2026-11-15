@@ -79,6 +79,23 @@ function unplatedHoles(pcb: string): { x: number; y: number; r: number }[] {
 	return out
 }
 
+// Every pad's centre in board coordinates and the radius that covers it: a trace end on one isn't moved.
+function padSpots(pcb: string): { x: number; y: number; r: number }[] {
+	const out: { x: number; y: number; r: number }[] = []
+	for (const fp of blocks(pcb, "footprint")) {
+		const at = new RegExp(String.raw`\(at ${NUM} ${NUM}(?: ${NUM})?\)`).exec(fp.text)
+		if (!at) continue
+		const [fx, fy, deg] = [Number(at[1]), Number(at[2]), Number(at[3] ?? 0)]
+		const th = (deg * Math.PI) / 180
+		for (const pad of blocks(fp.text, "pad")) {
+			const p = point(pad.text, "at"), size = point(pad.text, "size")
+			if (!p || !size) continue
+			out.push({ x: fx + p[0] * Math.cos(th) + p[1] * Math.sin(th), y: fy - p[0] * Math.sin(th) + p[1] * Math.cos(th), r: Math.hypot(size[0], size[1]) / 2 })
+		}
+	}
+	return out
+}
+
 // Moves every via whose copper is nearer an unplated hole than holeMm straight away from it, and then every via nearer
 // the outline than edgeMm inward, with its own net's trace ends on it.
 export function nudgeVias(pcb: string, rules: { edgeMm: number; holeMm: number }): { pcb: string; moved: ViaMove[] } {
@@ -106,17 +123,40 @@ export function nudgeVias(pcb: string, rules: { edgeMm: number; holeMm: number }
 		moved.push({ net, from: at, to: [x, y] })
 		edits.push({ start: v.start, end: v.end, text: v.text.replace(new RegExp(String.raw`\(at ${NUM} ${NUM}`), `(at ${fmt(x)} ${fmt(y)}`) })
 	}
-	if (!moved.length) return { pcb, moved }
-	for (const s of blocks(pcb, "segment")) {
+	// A trace's corner nearer the edge than the clearance (the router ignores it for traces too: the 64×25 rover's
+	// JD1.pin2 trace ran along the edge, 0.25 mm off, 15 Nov 2026) moves inward by what's missing; every segment end of
+	// that net at the same point moves the same way, so joints stay joined. Ends on a moved via follow the via.
+	const segments = blocks(pcb, "segment")
+	const pads = padSpots(pcb)
+	const onPad = (p: [number, number]) => pads.some((q) => Math.hypot(p[0] - q.x, p[1] - q.y) <= q.r)
+	const corner = new Map<string, [number, number]>()
+	const keyOf = (net: number, p: [number, number]) => `${net}|${p[0].toFixed(4)}|${p[1].toFixed(4)}`
+	for (const s of segments) {
+		const net = value(s.text, "net"), width = value(s.text, "width") ?? 0
+		if (net === null) continue
+		const need = rules.edgeMm + width / 2 + MARGIN
+		for (const key of ["start", "end"]) {
+			const p = point(s.text, key)
+			if (!p || onPad(p)) continue
+			const k = keyOf(net, p)
+			const [x0, y0] = corner.get(k) ?? p
+			corner.set(k, [Math.min(Math.max(x0, box.minX + need), box.maxX - need), Math.min(Math.max(y0, box.minY + need), box.maxY - need)])
+		}
+	}
+	for (const s of segments) {
 		const net = value(s.text, "net")
+		if (net === null) continue
 		let text = s.text
 		for (const key of ["start", "end"]) {
 			const p = point(text, key)
-			const m = p && moved.find((mv) => mv.net === net && near(mv.from, p))
-			if (m) text = text.replace(new RegExp(String.raw`\(${key} ${NUM} ${NUM}`), `(${key} ${fmt(m.to[0])} ${fmt(m.to[1])}`)
+			if (!p) continue
+			const m = moved.find((mv) => mv.net === net && near(mv.from, p))
+			const to = m ? m.to : corner.get(keyOf(net, p))
+			if (to && !near(to, p)) text = text.replace(new RegExp(String.raw`\(${key} ${NUM} ${NUM}`), `(${key} ${fmt(to[0])} ${fmt(to[1])}`)
 		}
 		if (text !== s.text) edits.push({ start: s.start, end: s.end, text })
 	}
+	if (!edits.length) return { pcb, moved }
 	let out = ""
 	let i = 0
 	for (const e of edits.sort((a, b) => a.start - b.start)) {

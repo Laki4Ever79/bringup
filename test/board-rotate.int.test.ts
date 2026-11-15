@@ -62,11 +62,12 @@ test("the scripted rover at 43×28 mm routes clean with its debug footprint", { 
 // The real rover run on the Claude subscription (cc-rover-1, 15 Nov 2026), revision 19: the architect's 64×25 mm board
 // after 60×21 didn't route. Its build ran 12 minutes without a board until the run's deadline (every layout failed on
 // VCP's capacitor and the along-the-pads retry was never built). It routes now.
-// The debug footprint may be left off (a copper-to-edge clearance of 0.25 mm with it, backlog): the board building at
-// all is what the run lacked.
-test("the subscription run's 64×25 mm rover routes clean", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 1_200_000 }, async () => {
+// It keeps its debug footprint since a trace's corner too near the edge moves inward (JD1.pin2's trace ran 0.25 mm
+// from the edge, via-edge.ts).
+test("the subscription run's 64×25 mm rover routes clean with its debug footprint", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 1_200_000 }, async () => {
 	const { readFileSync } = await import("node:fs")
 	const s = JSON.parse(readFileSync(fileURLToPath(new URL("fixtures/cc-rover-64x25-rev19.json", import.meta.url)), "utf8")) as ContractSnapshot
 	const board = await buildBoard(env, tempDir(), s, s.revision)
 	assert.equal(board.drc?.errors, 0, board.drc?.firstError ?? "")
+	assert.equal(board.debugPortDropped, undefined, board.debugPortDropped)
 })
