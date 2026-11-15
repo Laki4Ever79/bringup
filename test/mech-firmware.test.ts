@@ -9,6 +9,9 @@ import { roverHeader, unassignedRoverPins } from "../src/mechanics/firmware.ts"
 import { prepareFirmware } from "../src/tools/firmware.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
+import { defaultCheckCatalog } from "../src/mechanics/checks.ts"
+import { byMpn } from "../src/mechanics/catalog.ts"
+import { motorAt } from "../src/mechanics/model.ts"
 import { tempDir, slow } from "./helpers.ts"
 
 const ROOT = resolve(import.meta.dirname, "..")
@@ -112,4 +115,23 @@ test("the rover header names every contract pin, so the firmware's pin table cov
 	s.values.pins = [...s.values.pins!, { signal: "BUTTON", gpio: 3, partRef: "SW1", partPin: "A" }, { signal: "USB_DP", gpio: 19, partRef: "J1", partPin: "DP" }]
 	const pins = parsePinsHeader(roverHeader(s))
 	for (const p of s.values.pins!) assert.equal(pins[p.signal], p.gpio, p.signal)
+})
+
+// The rover-pi run (15 Nov): with the caster's drag gone from the simulation, the 0.8 "under load" derate made the
+// rover cruise at 0.42 m/s for a 0.3 m/s target and turn 1.4× too far, into the side wall. The duty now follows the
+// motor's own load line (its resistance, the rolling load), so the speed the firmware plans is the speed it gets.
+test("the cruise duty puts the target speed on the motor's load line", () => {
+	const s = rover()
+	const h = roverHeader(s)
+	const d = Number(/#define ROVER_CRUISE_DUTY ([\d.]+)f/.exec(h)![1])
+	const cat = defaultCheckCatalog()!
+	const motor = byMpn(cat.mech.motors, s.values.mechanics!.drive.motor)!, pack = byMpn(cat.mech.batteries, s.values.mechanics!.battery.pack)!
+	const wheel = byMpn(cat.mech.wheels, s.values.mechanics!.drive.wheel)!
+	const m = motorAt(motor, pack.nominalV)
+	const r = wheel.diameterMm / 2000
+	// No load at all is the upper bound: at that duty the wheel can't turn faster than ω0·d.
+	const noLoadMps = m.noLoadRadS * d * r
+	assert.ok(noLoadMps >= s.values.motion!.speedMps, `${noLoadMps} m/s with no load`)
+	// And the rolling load takes only a few per cent: within 10 % of the target.
+	assert.ok(noLoadMps <= s.values.motion!.speedMps * 1.1, `${noLoadMps} m/s with no load, target ${s.values.motion!.speedMps}`)
 })
