@@ -439,6 +439,6 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// Claude subscription: the architect wired JT1 to two spare GPIOs as "EXP_IO1/2", which left it on no bus).
 	const onPlug = mech.sensor ? pins.filter((p) => p.partRef === mech.sensor.connector) : []
 	if (onPlug.length) push("mech-wiring", `${onPlug.map((p) => `${p.signal} (GPIO${p.gpio})`).join(", ")} go${onPlug.length === 1 ? "es" : ""} to the distance sensor's plug ${mech.sensor.connector}: remove ${onPlug.length === 1 ? "it" : "them"}. The plug takes no pins; the board generator joins it to the I2C bus (I2C_SDA, I2C_SCL)`, ["architect"], ["pins"])
-	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", "no battery connector on any board: the cell needs one", ["parts"], ["parts"])
+	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", 'no battery connector on any board: the cell plugs into a 2-pin connector whose part has role "battery" (not "connector": a role-"connector" 2-pin part is a motor\'s plug, JM1 or JM2)', ["parts"], ["parts"])
 	return out
 }
