@@ -442,3 +442,32 @@ test("a build that exits without writing the design leaves the plan buildable, n
 		await hub.close()
 	}
 })
+
+test("Build of a plan with a bought Raspberry Pi writes briefs only for designed boards; the plan page shows the Pi as bought (review C3, I5)", async () => {
+	const { addCarrier } = await import("../src/system/carrier.ts")
+	const { moduleById } = await import("../src/system/bought.ts")
+	await withHub(async ({ url, root, calls }) => {
+		const { id } = (await (await send(`${url}/api/plans`, "POST", { sentence: "a temperature logger", mock: true })).json()) as Any
+		const { plan } = (await (await fetch(`${url}/api/plans/${id}`)).json()) as Any
+		const name = plan.spec.boards[0].name
+		const withPi = { ...plan.spec, boards: [...plan.spec.boards, { name: "brain", kind: "bought", module: "rpi-5" }] }
+		const c = addCarrier(withPi, "brain", moduleById("rpi-5")!)
+		const edited = { ...plan, spec: c.spec, briefs: { ...plan.briefs, [c.name]: c.brief } }
+		const put = await send(`${url}/api/plans/${id}`, "PUT", { plan: edited })
+		assert.equal(put.status, 200)
+		assert.deepEqual(((await put.json()) as Any).issues, [])
+		const view = (await (await fetch(`${url}/api/systems/${id}`)).json()) as Any
+		const brain = view.boards.find((b: Any) => b.name === "brain")
+		assert.deepEqual([brain.bought, brain.module, brain.carrier, brain.holes.length], [true, "rpi-5", "rpi-5-carrier", 4])
+		assert.equal(view.boards.find((b: Any) => b.name === "rpi-5-carrier").carries, "brain")
+		const b = await send(`${url}/api/plans/${id}/build`, "POST", { mock: false, hardware: false, review: false })
+		assert.equal(b.status, 201, await b.clone().text())
+		assert.equal(calls[0].briefPath, "system")
+		const dir = join(root, "plans", id, "briefs")
+		assert.ok(existsSync(join(dir, `${name}.md`)))
+		assert.match(readFileSync(join(dir, "rpi-5-carrier.md"), "utf8"), /A HAT for the Raspberry Pi 5/)
+		assert.equal(existsSync(join(dir, "brain.md")), false, "nothing to write for a bought board")
+		const spec = JSON.parse(readFileSync(calls[0].extraArgs![0], "utf8"))
+		assert.deepEqual(spec.boards.find((x: Any) => x.name === "brain"), { name: "brain", kind: "bought", module: "rpi-5" })
+	}, KEY)
+})

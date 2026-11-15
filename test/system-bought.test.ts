@@ -131,3 +131,7 @@ test("a request that moves the Pi brings its carrier along; a carrier off its bo
 	assert.deepEqual([c.xMm, c.yMm, c.rotDeg], [p.xMm, p.yMm, 180])
 	assert.match(assemblyErrors({ ...withA, assembly: { ...withA.assembly, boards: moved } }).join("\n"), /board rpi-5-carrier is a HAT on brain and must have its place and turn/)
 })
+
+test("a system of bought boards alone is refused: nothing to design (review C3)", () => {
+	assert.match(specErrors({ name: "x", boards: [{ name: "brain", kind: "bought", module: "rpi-5" }], links: [] }).join("\n"), /at least one designed board/)
+})

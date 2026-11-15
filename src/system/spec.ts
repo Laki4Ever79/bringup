@@ -64,6 +64,8 @@ export function specErrors(s: SystemSpec): string[] {
 			else if (s.boards.find((x) => x.carries === b.carries) !== b) out.push(`board ${b.name}: ${b.carries} already has a carrier`)
 		}
 	}
+	// Something must be designed: a system of bought boards alone has nothing for Bringup to do.
+	if (s.boards.length && s.boards.every((b) => b.kind === "bought")) out.push("a system needs at least one designed board (a brief or a run) besides its bought boards")
 	// A bought board's own link to the robot is the MCU board's USB, or its carrier's header: not a cable the system designs.
 	const bought = new Set(s.boards.filter((b) => b.kind === "bought").map((b) => b.name))
 	for (const l of s.links) for (const end of [l.a, l.b]) if (bought.has(end.board)) out.push(`link ${l.id}: ${end.board} is a bought board; links to it go through its carrier or the MCU board's USB, not a system cable`)

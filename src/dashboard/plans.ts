@@ -290,9 +290,10 @@ export class PlanStore {
 		if (issues.length) throw Object.assign(new Error(`fix the plan first: ${issues.map((i) => i.message).join("; ")}`), { status: 409 })
 		const learning = this.learning(id).filter((l) => l.status === "learning")
 		if (learning.length) throw Object.assign(new Error(`parts are still being learned: ${learning.map((l) => l.need).join(", ")}`), { status: 409 })
-		if (plan.spec.boards.length === 1) return { kind: "board", brief: plan.briefs[plan.spec.boards[0].name] }
+		// One designed board and nothing bought: an ordinary run. A bought board has no brief to write (nobody designs it).
+		if (plan.spec.boards.length === 1 && plan.spec.boards[0].brief) return { kind: "board", brief: plan.briefs[plan.spec.boards[0].name] }
 		const dir = this.dir(id)
-		for (const b of plan.spec.boards) writeFileSync(join(dir, "briefs", `${b.name}.md`), plan.briefs[b.name])
+		for (const b of plan.spec.boards) if (b.brief) writeFileSync(join(dir, "briefs", `${b.name}.md`), plan.briefs[b.name] ?? "")
 		const specPath = join(dir, specName)
 		writeFileSync(specPath, JSON.stringify(buildSpec(plan), null, "\t"))
 		return { kind: "system", specPath, usagePath: join(dir, "usage.jsonl") }
