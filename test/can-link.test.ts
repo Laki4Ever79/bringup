@@ -117,3 +117,12 @@ test("the generator wires the bus side: CANH/CANL to the connector, RS to GND, 1
 	mid.values.links![0].can!.terminate = false
 	assert.ok(!supportParts(mid).some((sp) => sp.spec.value === "120"))
 })
+
+test("the report's standards table lists the CAN link as open and its messages as ours, with Cyphal or CANopen", async () => {
+	const { interfacesOf } = await import("../src/contract/standards.ts")
+	const rows = interfacesOf(board(canSpec(), "a"))
+	assert.equal(rows.find((r) => r.interface.startsWith("CAN link"))?.openness, "open")
+	const m = rows.find((r) => r.interface === "messages over a CAN link")!
+	assert.equal(m.openness, "ours")
+	assert.match(m.alternative!, /Cyphal\/CAN .* CANopen/)
+})
