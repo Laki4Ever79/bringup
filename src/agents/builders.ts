@@ -62,7 +62,9 @@ export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	testkit: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"],
 	// The chassis follows the mechanics layout, the targets (the payload's mass) and the board's size (its standoffs).
 	// assembly: the other boards' places and built sizes (a re-sent assembly rebuilds it).
-	chassis: ["mechanics", "motion", "outline", "assembly"],
+	// connectors, parts: where the board's mounting holes are (a corner a connector covers has none), so its standoffs
+	// (the scripted rover moved its connectors at revision 11 and kept a chassis with the old corners, 15 Nov 2026).
+	chassis: ["mechanics", "motion", "outline", "assembly", "connectors", "parts"],
 	// The simulated drive runs the firmware (pins, parts) on the mechanics (mechanics, motion, the board's size).
 	drive: ["mechanics", "motion", "pins", "parts", "outline", "assembly"],
 }
