@@ -38,6 +38,11 @@ export interface DriveOptions {
 	env?: "esp32c3_sim" | "esp32c3" // the build QEMU runs (the board build never answers: a test of "not run")
 	courseS?: number
 	timeoutMs?: number
+	// The firmware's console (UART0) on this TCP port instead of a log file: a ROS 2 host drives it in host mode
+	// (docs/ros.md), while UART1 still turns the MuJoCo model.
+	consolePort?: number
+	// Extra compile flags for the simulation firmware (PLATFORMIO_BUILD_FLAGS), e.g. -DROVER_HOST_ONLY for a ROS test.
+	buildFlags?: string
 }
 
 // MuJoCo, from npm run setup -- --robotics: a .venv without it gets "not run", like a machine without QEMU.
@@ -54,7 +59,7 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 	if (!existsSync(qemu)) return notRun("QEMU is not installed (npm run setup): not proven in simulation")
 	if (!hasMujoco(o.python)) return notRun("MuJoCo is not installed (npm run setup -- --robotics): not proven in simulation")
 	const env = o.env ?? "esp32c3_sim"
-	const build = await run(o.pio, ["run", "-d", o.fwDir, "-e", env], { timeoutMs: 900_000 })
+	const build = await run(o.pio, ["run", "-d", o.fwDir, "-e", env], { timeoutMs: 900_000, ...(o.buildFlags ? { env: { ...(process.env as Record<string, string>), PLATFORMIO_BUILD_FLAGS: o.buildFlags } } : {}) })
 	if (build.code !== 0) return notRun(`the simulation firmware didn't build: ${(build.stdout + build.stderr).trim().split("\n").slice(-3).join(" ")}`)
 	const { image, log } = await mergeFlash(o.fwDir, env)
 	if (!image) return notRun(`no flash image: ${log.trim().split("\n").at(-1)}`)
@@ -66,7 +71,7 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 	const local = join(o.outDir, "uart1.sock")
 	const sock = Buffer.byteLength(local) <= 100 ? local : join(mkdtempSync(join(tmpdir(), "bringup-drive-")), "uart1.sock")
 	rmSync(sock, { force: true })
-	const q = spawn(qemu, ["-display", "none", "-machine", "esp32c3", "-icount", "3", "-drive", `file=${image},if=mtd,format=raw`, "-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true", "-serial", `file:${join(o.outDir, "uart0.txt")}`, "-serial", `unix:${sock},server=on,wait=on`], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
+	const q = spawn(qemu, ["-display", "none", "-machine", "esp32c3", "-icount", "3", "-drive", `file=${image},if=mtd,format=raw`, "-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true", "-serial", o.consolePort ? `tcp:127.0.0.1:${o.consolePort},server=on,wait=off` : `file:${join(o.outDir, "uart0.txt")}`, "-serial", `unix:${sock},server=on,wait=on`], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
 	try {
 		const bridge = spawn(o.python, ["-B", join(o.root, "py/mech/drive.py"), specPath, sock, o.outDir, String(o.courseS ?? 25)], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
 		let stderr = ""

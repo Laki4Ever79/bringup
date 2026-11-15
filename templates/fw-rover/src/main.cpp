@@ -45,10 +45,54 @@ void setup() {
 	Serial.println("ROVER ready");
 }
 
+// Host mode (docs/ros.md): a ROS 2 host drives the wheels over the console, one line per command, `H <left> <right>`
+// (duties -1..1). While its commands keep coming (each one holds for HOST_HOLD_MS) they replace the wall-avoidance
+// logic, and every tick reports `R <now_ms> <distance_mm|-1> <left> <right>`. The firmware keeps its own safety: it
+// never drives forward into something nearer than its stop distance, whoever asks.
+static const uint32_t HOST_HOLD_MS = 500;
+static char hostLine[48];
+static size_t hostLen = 0;
+static float hostLeft = 0, hostRight = 0;
+static uint32_t hostAt = 0;
+// A ROS test build (-DROVER_HOST_ONLY): the motors stay off until the host commands them, so the test starts from rest.
+#ifdef ROVER_HOST_ONLY
+static bool hostSeen = true;
+#else
+static bool hostSeen = false;
+#endif
+
+static void hostPoll(uint32_t now) {
+	while (Serial.available()) {
+		const char c = (char)Serial.read();
+		if (c == '\n' || c == '\r') {
+			hostLine[hostLen] = 0;
+			float l, r;
+			if (hostLen && sscanf(hostLine, "H %f %f", &l, &r) == 2) {
+				hostLeft = constrain(l, -1.0f, 1.0f);
+				hostRight = constrain(r, -1.0f, 1.0f);
+				hostAt = now;
+				hostSeen = true;
+			}
+			hostLen = 0;
+		} else if (hostLen < sizeof hostLine - 1) {
+			hostLine[hostLen++] = c;
+		}
+	}
+}
+
 void loop() {
 	int d = hw_distance_mm();
 	uint32_t now = hw_now_ms();
+	hostPoll(now);
 	RoverOut out = rover_step(CFG, state, d, now);
+	if (hostSeen) {
+		const bool fresh = (uint32_t)(now - hostAt) <= HOST_HOLD_MS;
+		out.left = fresh ? hostLeft : 0;
+		out.right = fresh ? hostRight : 0;
+		// The safety the firmware owns: no forward drive into what the sensor sees within the stop distance.
+		if (d >= 0 && d < ROVER_STOP_MM && out.left > 0 && out.right > 0) out.left = out.right = 0;
+		Serial.printf("R %lu %d %.3f %.3f\n", (unsigned long)now, d, out.left, out.right);
+	}
 	hw_motor(0, out.left);
 	hw_motor(1, out.right);
 	linkPoll(0);  // what has arrived on the links, without waiting: the distance sensor paces the loop
