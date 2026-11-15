@@ -204,3 +204,14 @@ test("a sensor connector ref that another part already has goes back to mechanic
 	assert.match(w.message, /mechanics\.sensor\.connector is J2, but J2 is already the battery .*name a free ref/)
 	assert.deepEqual(w.affects, ["mechanics"])
 })
+
+// Real rover run 6 (15 Nov): a motor driver, no motion field; the run settled as a plain board and passed review.
+test("a motor driver without motion targets asks the architect for the motion field", () => {
+	const { c, cat } = variant((v) => delete v.motion)
+	const w = mechanicsChecksWith(c, cat)
+	assert.equal(w.length, 1)
+	assert.match(w[0].message, /motor driver but no motion targets/)
+	assert.deepEqual([w[0].affects, w[0].fields], [["architect"], ["motion"]])
+	const plain = variant((v) => { delete v.motion; v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver") })
+	assert.deepEqual(mechanicsChecksWith(plain.c, plain.cat), [], "a board without a driver is no robot")
+})
