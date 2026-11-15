@@ -692,6 +692,12 @@ export interface PlacementOptions {
 	// false: the board without the debug footprint (its spot stays reserved). The board build's last attempt, when the
 	// board doesn't route with it.
 	debugPort?: false
+	// true: a part's pin capacitors may lie along its pads (alongPads), whichever orientation and order keeps their
+	// traces shortest. Off by default: pointing out from the pads is what has routed on every scripted board, and along
+	// the pads two capacitors' traces must pass each other's pads (the 43×28 rover: VCP's 7.2 mm against 5, 15 Nov
+	// 2026). The board build tries it next when the default layout's trace runs past its bound (the 42×29 rover with U5
+	// turned 180°, where pointing out GND's trace ran 14.7 mm).
+	capsAlong?: boolean
 }
 
 // Board mounting holes for M2 screws: 2.2 mm clearance holes, centred 3 mm in from each corner. Nothing is placed
@@ -1079,7 +1085,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 			// (at most 2^4) and the one whose farthest capacitor end is nearest its pad is kept.
 			const owner = "ref" in sp.a ? sp.a.ref : null
 			const group = owner && sp.spec.kind === "capacitor" ? supports.filter((o) => o.added && o.spec.kind === "capacitor" && "ref" in o.a && o.a.ref === owner && !done.has(o.ref)) : []
-			if (group.length && group.length <= 4 && group.some((o) => alongPads(o))) {
+			if (opts.capsAlong && group.length && group.length <= 4 && group.some((o) => alongPads(o))) {
 				const mark = placed.length
 				const lay = (order: Support[], mask: number): number => {
 					placed.length = mark
