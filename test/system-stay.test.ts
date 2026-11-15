@@ -127,7 +127,7 @@ test("--stay: a board that settles again after its own edit makes the system che
 
 // Drives a --stay run, sends one request line, waits for the system's next settle (or, for a request touching nothing,
 // for its "no board's view changed" line), and returns how many requests each board got.
-async function stayRequest(spec: SystemSpec, request: object) {
+async function stayRequest(spec: SystemSpec, request: object, settleAgain = false) {
 	const out = tempDir(), timers: NodeJS.Timeout[] = []
 	let stop!: () => void
 	const until = new Promise<void>((r) => (stop = r))
@@ -137,7 +137,8 @@ async function stayRequest(spec: SystemSpec, request: object) {
 		const count = (n: string) => requestsOf(join(out, "boards", n)).length
 		const before = Object.fromEntries(spec.boards.map((b) => [b.name, count(b.name)]))
 		appendFileSync(join(out, SYSTEM_REQUESTS), JSON.stringify({ at: new Date().toISOString(), ...request }) + "\n")
-		await waitFor(() => readSystemTrace(out).some((l) => l.step === "request" && l.round >= 1 && (l.status === "started" || /no board/.test(l.detail ?? ""))), 3000)
+		if (settleAgain) await waitFor(() => readSystemTrace(out).filter((l) => l.board === "system" && l.step === "settled").length >= 2, 3000)
+		else await waitFor(() => readSystemTrace(out).some((l) => l.step === "request" && l.round >= 1 && (l.status === "started" || /no board/.test(l.detail ?? ""))), 3000)
 		await new Promise((r) => setTimeout(r, 200))
 		const gained = Object.fromEntries(spec.boards.map((b) => [b.name, count(b.name) - before[b.name]]))
 		return { out, gained, system: JSON.parse(readFileSync(join(out, "system.json"), "utf8")) as SystemSpec }
@@ -177,4 +178,21 @@ test("--stay: a cable route survives the merge and sets the link's cable length 
 	assert.deepEqual(system.assembly!.cables, cables)
 	assert.equal(system.links[0].cable.lengthMm, 70 + CABLE_SLACK_MM)
 	assert.equal(system.assembly!.boards.length, 2, "boards and plate are kept")
+})
+
+test("--stay: a cable-length-only change makes the system check again with no board request, saying why", async () => {
+	const spec = robot()
+	const l = spec.links[0]
+	const r = await stayRequest(spec, { links: [{ ...l, cable: { lengthMm: 340 } }] }, true)
+	assert.deepEqual(r.gained, { main: 0, front: 0 })
+	const lines = readSystemTrace(r.out)
+	assert.ok(lines.some((x) => x.board === "system" && x.step === "request" && /cable L1 is now 340 mm; checking the system again/.test(x.detail ?? "")))
+	assert.equal(lines.filter((x) => x.board === "system" && x.step === "settled").length, 2, "a new settled line")
+	assert.equal(r.system.links[0].cable.lengthMm, 340)
+})
+
+test("--stay: moving a cable route alone re-sends nothing to the boards", async () => {
+	const spec = robot()
+	const cables = [{ link: "L1", points: [{ xMm: 0, yMm: 0 }, { xMm: 30, yMm: 0 }] }]
+	assert.deepEqual((await stayRequest(spec, { assembly: { cables } }, true)).gained, { main: 0, front: 0 })
 })

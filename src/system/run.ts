@@ -95,7 +95,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	// board → what it was last handed about its siblings (as JSON). A board's own entry is left out: its own contract's
 	// outline is the truth for itself, so a change there is nothing to tell it.
 	const assemblySent = new Map<string, string>()
-	const siblingsOf = (a: SystemAssembly, name: string) => JSON.stringify({ ...a, boards: a.boards.filter((x) => x.name !== name) })
+	const siblingsOf = (a: SystemAssembly, name: string) => JSON.stringify({ ...a, cables: undefined, boards: a.boards.filter((x) => x.name !== name) })
 	const handAssembly = (name: string): BoardAssembly | undefined => {
 		if (!assembly) return undefined
 		assemblySent.set(name, siblingsOf(assembly, name))
@@ -274,10 +274,12 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 	}
 
 	// A system-level request: the new body and links go to the boards they concern; those settle again.
+	let recheck = false
 	const applyRequest = (r: SystemRequest): string[] => {
 		const touched = new Set<string>()
 		const beforeLinks = new Map(designed.map((b) => [b.name, JSON.stringify(boardLinks(spec, b.name))]))
 		const was = assembly
+		const linksBefore = spec.links, cablesBefore = JSON.stringify(spec.assembly?.cables ?? null)
 		const merged = mergeRequest({ ...spec, ...(assembly ? { assembly } : {}) }, { ...r, ...(assembly ? {} : { assembly: undefined }) })
 		spec = merged
 		if (assembly) assembly = merged.assembly
@@ -293,7 +295,18 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 		for (const b of designed) if (beforeLinks.get(b.name) !== JSON.stringify(boardLinks(spec, b.name))) touched.add(b.name)
 		writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, ...(assembly ? { assembly } : {}) }, null, 2))
 		trace.round++
-		if (touched.size === 0) trace.emit({ board: "system", step: "request", status: "ok", detail: "no board's view of the system changed" })
+		// Links or cable routes that changed make the system's own checks run again, even when no board is told.
+		const why: string[] = []
+		for (const l of spec.links) {
+			const old = linksBefore.find((x) => x.id === l.id)
+			if (old && old.cable.lengthMm !== l.cable.lengthMm) why.push(`cable ${l.id} is now ${l.cable.lengthMm} mm`)
+			else if (JSON.stringify(old) !== JSON.stringify(l)) why.push(`link ${l.id} changed`)
+		}
+		if (linksBefore.length !== spec.links.length) why.push("the links changed")
+		if (cablesBefore !== JSON.stringify(spec.assembly?.cables ?? null)) why.push("a cable route changed")
+		recheck = why.length > 0
+		if (recheck && touched.size === 0) trace.emit({ board: "system", step: "request", status: "started", detail: `${[...new Set(why)].join(", ")}; checking the system again` })
+		else if (touched.size === 0) trace.emit({ board: "system", step: "request", status: "ok", detail: "no board's view of the system changed" })
 		for (const name of touched) {
 			const dir = boardDir(outDir, name)
 			const text = `The engineer changed the system (${spec.name})${r.text ? `: ${r.text}` : ""}.`
@@ -326,7 +339,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 					const resettled = designed.filter((b) => settles(b.name) > (seen.get(b.name) ?? 0)).map((b) => b.name)
 					if (r) {
 						const touched = applyRequest(r)
-						if (touched.length) await settle()
+						if (touched.length || recheck) await settle()
 					} else if (resettled.length) {
 						trace.round++
 						trace.emit({ board: "system", step: "request", status: "started", detail: `${resettled.join(", ")} changed on ${resettled.length > 1 ? "their" : "its"} own page: checking the system again` })
