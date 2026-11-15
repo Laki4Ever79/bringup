@@ -99,6 +99,14 @@
 			"note": "not on the mechanical drawing (it has no side view or heights): measure a board before relying on it"
 		},
 		"header": {
+			"fitted": {
+				"value": false,
+				"source": {
+					"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf",
+					"where": "'an unpopulated footprint for a HAT-compatible 40-pin GPIO header'"
+				},
+				"note": "the 40-pin header is an unpopulated footprint: solder one in (or the carrier brings its own) before a HAT can sit on it"
+			},
 			"at": {
 				"value": {
 					"x": 32.5,
@@ -117,10 +125,6 @@
 					"where": "'On classic SBCs and Zero models, Pin 1 is located in the lower-left corner of the header' (Pin layout section)"
 				},
 				"note": "the board ships with an unpopulated footprint: solder a 2×20 header, or the generated carrier can't plug in"
-			},
-			"headerSource": {
-				"url": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf",
-				"where": "'an unpopulated footprint for a HAT-compatible 40-pin GPIO header'"
 			},
 			"pins": {
 				"value": {

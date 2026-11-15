@@ -67,22 +67,22 @@
 		"holes": {
 			"value": null,
 			"source": null,
-			"note": "the edge offsets aren't readable: on the published PDF the dimension labels sit apart from their arrows (8.95, 5.08, 2.60 and 8.68 don't match the geometry they're next to), and no hole diameter is given. Take positions from Radxa's v1.42 STEP model (download page) before drilling",
-			"spacing": {
-				"value": {
-					"xMm": [
-						58.05,
-						35.1
-					],
-					"yMm": 49.05,
-					"bottomRowYMm": 21.85
-				},
-				"source": {
-					"url": "https://dl.radxa.com/rock5/5b/docs/hw/radxa_rock5b_v141_dimension_20220728_pdf.zip",
-					"where": "top drawing: 58.05mm and 35.10mm between the top-row holes, 49.05mm between the rows, 21.85mm from the bottom edge to the lower row"
-				},
-				"note": "these four agree with the drawn geometry; the left and right edge offsets together are 100.20 - 58.05 - 35.10 = 7.05"
-			}
+			"note": "the edge offsets aren't readable: on the published PDF the dimension labels sit apart from their arrows (8.95, 5.08, 2.60 and 8.68 don't match the geometry they're next to), and no hole diameter is given. Take positions from Radxa's v1.42 STEP model (download page) before drilling"
+		},
+		"holeSpacing": {
+			"value": {
+				"xMm": [
+					58.05,
+					35.1
+				],
+				"yMm": 49.05,
+				"bottomRowYMm": 21.85
+			},
+			"source": {
+				"url": "https://dl.radxa.com/rock5/5b/docs/hw/radxa_rock5b_v141_dimension_20220728_pdf.zip",
+				"where": "top drawing: 58.05mm and 35.10mm between the top-row holes, 49.05mm between the rows, 21.85mm from the bottom edge to the lower row"
+			},
+			"note": "these four agree with the drawn geometry; the left and right edge offsets together are 100.20 - 58.05 - 35.10 = 7.05"
 		},
 		"tallestMm": {
 			"value": null,

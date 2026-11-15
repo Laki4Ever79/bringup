@@ -22,7 +22,7 @@ const withPi = (over: Partial<SystemSpec["boards"][0]> = {}): SystemSpec => ({
 
 test("a bought board needs a known compute module, and nothing to design", () => {
 	assert.deepEqual(specErrors(withPi()), [])
-	assert.match(specErrors(withPi({ module: "rpi-9" })).join("\n"), /board brain: no module rpi-9 in catalog\/modules \(compute modules: rpi-5\)/)
+	assert.match(specErrors(withPi({ module: "rpi-9" })).join("\n"), /board brain: no module rpi-9 in catalog\/modules \(compute modules: [^)]*\brpi-5\b[^)]*\)/)
 	assert.match(specErrors(withPi({ module: "climate-sht40" })).join("\n"), /board brain: module climate-sht40 is a sensor module, not a compute board/)
 	assert.match(specErrors(withPi({ module: undefined })).join("\n"), /board brain: a bought board needs a module/)
 	assert.match(specErrors(withPi({ brief: "x.md" })).join("\n"), /board brain: a bought board is not designed/)
