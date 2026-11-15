@@ -287,8 +287,13 @@ export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mech
 		push("mech-wiring", `${onMotor.map((p) => `${p.signal} (GPIO${p.gpio}) goes to motor connector ${p.partRef}`).join("; ")}: a motor never connects to a GPIO. Remove these pins: the board generator wires the motor driver's outputs to the 2-pin motor connectors, and the GPIOs drive the driver's inputs MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2`, ["architect"], ["pins"])
 	// Each motor's two wires need a 2-pin connector on the driver's outputs (real rover run 5, 15 Nov: nothing asked for
 	// them, so the motors were never connected). The generator wires the driver's AOUT/BOUT to them, in ref order.
-	if (driver && motorPlugs.size < 2)
-		push("mech-wiring", `the motors need ${2 - motorPlugs.size} more 2-pin connector${motorPlugs.size === 1 ? "" : "s"} (role connector, pins ["1", "2"], the JST PH B2B-PH-K-S in the catalog; refs JM1 and JM2), one per motor: the board generator wires the driver's outputs to them`, ["parts"], ["parts"])
+	if (driver && motorPlugs.size < 2) {
+		// The refs to use: header connectors the board already places with no part (the architect named them), then JM1, JM2.
+		const partRefs = new Set(parts.map((p) => p.ref))
+		const placed = boards.flatMap((b) => b.snapshot.values.connectors ?? []).filter((k) => k.kind === "header" && !partRefs.has(k.ref) && k.ref !== mech.sensor?.connector).map((k) => k.ref)
+		const refs = [...placed, ...["JM1", "JM2"].filter((r) => !partRefs.has(r) && !placed.includes(r))].slice(0, 2 - motorPlugs.size)
+		push("mech-wiring", `the motors need ${2 - motorPlugs.size} more 2-pin connector${motorPlugs.size === 1 ? "" : "s"} (role connector, pins ["1", "2"], the JST PH B2B-PH-K-S in the catalog), one per motor, as ${refs.join(" and ")}${placed.length ? " (the connectors the board already places)" : ""}: the board generator wires the driver's outputs to them`, ["parts"], ["parts"])
+	}
 	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector" && p.pins.length === 4) : undefined
 	// The sensor's connector ref taken by another part (real rover run 5: "J2", the battery connector): no part can be
 	// added under it, so the ref itself is what to change.

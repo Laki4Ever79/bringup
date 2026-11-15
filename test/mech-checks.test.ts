@@ -187,7 +187,13 @@ test("a robot without its two motor connectors is told to add them, to parts", (
 	const w = mechanicsChecksWith(c, cat).find((x) => /2-pin connector/.test(x.message))
 	assert.ok(w, "a driver and no motor connectors")
 	assert.deepEqual([w!.affects, w!.fields], [["parts"], ["parts"]])
-	assert.match(w!.message, /need 2 more 2-pin connectors.*JM1 and JM2/)
+	assert.match(w!.message, /need 2 more 2-pin connectors.*as JM1 and JM2/)
+	// Connectors the architect already placed (run 5: J3, J4) are the refs to use.
+	const named = variant((v) => {
+		v.parts = v.parts.filter((p: Any) => !["JM1", "JM2"].includes(p.ref))
+		v.connectors = [...(v.connectors ?? []), { ref: "J3", kind: "header", edge: "left", offsetMm: 10 }, { ref: "J4", kind: "header", edge: "right", offsetMm: 10 }]
+	})
+	assert.match(mechanicsChecksWith(named.c, named.cat).find((x) => /2-pin connector/.test(x.message))!.message, /as J3 and J4 \(the connectors the board already places\)/)
 	const two = variant(() => {})
 	assert.ok(!mechanicsChecksWith(two.c, two.cat).some((x) => /2-pin connector/.test(x.message)), "the reference rover has both")
 })
