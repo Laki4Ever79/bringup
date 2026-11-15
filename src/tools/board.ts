@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { boardParts, circuitFromContract, debugPort, LDO_FROM_USB_MM, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
+import { boardParts, circuitFromContract, debugPort, LDO_FROM_USB_MM, moduleBlocked, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
 import { pinPartsMissing, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
@@ -42,6 +42,10 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	if (fitting.length === 0) {
 		const placed = new Set(placeParts(s).map((b) => b.ref))
 		const left = boardParts(s).map((p) => p.ref).filter((ref) => !placed.has(ref))
+		// The module alone, kept off its edge by connectors: no room is not the answer, moving them is (module-blocked).
+		const mod = moduleBlocked(s)
+		if (mod && mod.blockers.length > 0 && left.every((r) => r === mod.ref))
+			throw new Error(`waiting on the contract: ${mod.ref} (the radio module) goes on the ${mod.edge} edge and ${mod.blockers.join(", ")} ${mod.blockers.length === 1 ? "is" : "are"} in its way (module-blocked); the board is built once ${mod.blockers.length === 1 ? "it moves" : "they move"}`)
 		throw new Error(`tscircuit build failed: no room on the board for ${left.join(", ")} at ${s.values.outline?.widthMm}×${s.values.outline?.heightMm} mm (the placer found no free spot)`)
 	}
 	// Last: the same layouts without the debug footprint, when none built with it (the rover at 42×29 mm: its five
