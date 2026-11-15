@@ -19,7 +19,12 @@ export type MechViolation = {
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]
+	// The datasheet numbers the check used, each with where it was read (catalog/mechanics.json's source).
+	sources?: Source[]
 }
+
+// One catalog number and where it comes from: the datasheet or seller's spec table, and the place on it.
+export type Source = { mpn: string; field: string; url: string; where: string }
 
 // Board parts with the numbers the checks read (catalog/parts.json entries carry extra keys).
 export type BoardPartData = { mpn: string; role?: string; [k: string]: unknown }
@@ -55,6 +60,7 @@ export interface MechFigure {
 	limit: string
 	ok: boolean
 	note?: string
+	sources?: Source[]
 }
 
 // The figures behind the checks for one board's contract (empty without motion targets or a complete mechanics design).
@@ -140,7 +146,65 @@ export function casterWindow(m: { sizeMm: number[]; xMm: number; yMm: number }, 
 	return `the caster sits at axleXMm − wheelbaseMm (${r1(d.axleXMm)} − ${r1(d.wheelbaseMm)}); on this plate wheelbaseMm must be between ${r1(Math.max(1, d.axleXMm - hx))} and ${r1(d.axleXMm + hx)} with axleXMm ${r1(d.axleXMm)}, or move the axle, or make the plate longer`
 }
 
+// Which catalog numbers each check reads, by violation kind and by figure name: every finding and figure shows them with
+// their datasheet source (the module library's item 5, 15 Nov: "stall current 0.67 A, Pololu specs table @ 6 V").
+type PartKey = "motor" | "wheel" | "caster" | "pack" | "sensor"
+const MASSES: [PartKey, string[]][] = [["motor", ["massG"]], ["wheel", ["massG"]], ["caster", ["massG"]], ["pack", ["massG"]], ["sensor", ["massG"]]]
+const USES: Record<string, [PartKey, string[]][]> = {
+	"mech-torque": [["motor", ["stallTorqueNm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]], ...MASSES],
+	"Edge torque per wheel": [["motor", ["stallTorqueNm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]], ...MASSES],
+	"mech-climb": [["caster", ["wheelMm"]], ...MASSES],
+	"Caster climb": [["caster", ["wheelMm"]], ...MASSES],
+	"mech-speed": [["motor", ["noLoadRpm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]]],
+	"Top speed": [["motor", ["noLoadRpm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]]],
+	"mech-stopping": [["sensor", ["rangeMm", "updateMs"]]],
+	"Stopping distance": [["sensor", ["rangeMm", "updateMs"]]],
+	"mech-current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV", "peakA"]]],
+	"Motor stall current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV"]]],
+	"Pack peak current": [["motor", ["stallA", "ratedV"]], ["pack", ["fullV", "peakA"]]],
+	"mech-voltage": [["motor", ["ratedV"]], ["pack", ["fullV", "cutoffV"]]],
+	"Motor voltage": [["motor", ["ratedV"]], ["pack", ["fullV"]]],
+	"mech-runtime": [["pack", ["mAh", "nominalV"]], ["motor", ["noLoadA", "stallA"]]],
+	"Runtime": [["pack", ["mAh", "nominalV"]], ["motor", ["noLoadA", "stallA"]]],
+	"mech-tipping": [["caster", ["heightMm"]], ...MASSES],
+	"Tipping margin": [["caster", ["heightMm"]], ...MASSES],
+	"Mass": MASSES,
+	"Size with wheels": [["wheel", ["widthMm"]]],
+}
+
+function sourcesFor(key: string, parts: Partial<Record<PartKey, { mpn: string; source: Record<string, { url: string; where: string }> }>>): Source[] {
+	const out: Source[] = []
+	for (const [k, fields] of USES[key] ?? []) {
+		const p = parts[k]
+		if (!p) continue
+		for (const f of fields) if (p.source?.[f]) out.push({ mpn: p.mpn, field: f, url: p.source[f].url, where: p.source[f].where })
+	}
+	return out
+}
+
 export function mechanicsCheckOver(motion: MotionTargets | undefined, mech: Mechanics | undefined, boards: { name: string; snapshot: ContractSnapshot }[], cat: CheckCatalog, figures: MechFigure[] = []): MechViolation[] {
+	const first = figures.length
+	const out = mechanicsCheckOverRaw(motion, mech, boards, cat, figures)
+	if (!mech) return out
+	const parts = {
+		motor: byMpn(cat.mech.motors, mech.drive.motor),
+		wheel: byMpn(cat.mech.wheels, mech.drive.wheel),
+		caster: byMpn(cat.mech.casters, mech.drive.caster),
+		pack: byMpn(cat.mech.batteries, mech.battery.pack),
+		sensor: mech.sensor ? byMpn(cat.mech.sensors ?? [], mech.sensor.module) : undefined,
+	}
+	for (const v of out) {
+		const s = sourcesFor(v.kind, parts)
+		if (s.length) v.sources = s
+	}
+	for (const f of figures.slice(first)) {
+		const s = sourcesFor(f.check, parts)
+		if (s.length) f.sources = s
+	}
+	return out
+}
+
+function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanics | undefined, boards: { name: string; snapshot: ContractSnapshot }[], cat: CheckCatalog, figures: MechFigure[] = []): MechViolation[] {
 	if (!motion) return []
 	const out: MechViolation[] = []
 	const push = (kind: MechViolation["kind"], message: string, affects: AgentRole[] = ["mechanics"], fields: FieldName[] = ALL) => out.push({ kind, message, fields, affects })

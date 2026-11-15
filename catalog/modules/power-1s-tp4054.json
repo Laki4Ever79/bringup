@@ -1,0 +1,13 @@
+{
+	"id": "power-1s-tp4054",
+	"kind": "power",
+	"title": "One Li-ion cell charged from USB-C by a TP4054, 3.3 V from an RT9080",
+	"parts": [
+		{ "mpn": "TP4054-42-SOT25R", "role": "charger", "qty": 1 },
+		{ "mpn": "RT9080-33GJ5", "role": "ldo", "qty": 1 },
+		{ "mpn": "S2B-PH-K-S(LF)(SN)", "role": "battery", "qty": 1 },
+		{ "mpn": "ADAFRUIT-2011 LP-803860 2000 mAh", "role": "cell", "qty": 1, "alternatives": ["ADAFRUIT-258 LP-503562 1200 mAh"] }
+	],
+	"circuit": "charger, LDO and battery connector (src/codegen/circuit.ts)",
+	"interfaces": [{ "kind": "power", "signals": ["VBUS", "VBAT", "3V3"] }]
+}
