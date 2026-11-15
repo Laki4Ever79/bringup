@@ -29,7 +29,7 @@ const catalog = loadCatalog(resolve(import.meta.dirname, "../.."))
 const mechCatalog = loadMechCatalog(resolve(import.meta.dirname, "../.."))
 // Every device on the board's one I2C bus: the parts soldered on it, and a rover's distance sensor, a breakout on a
 // cable from the mechanics catalog that shares the same bus.
-const i2cDevices = (s: ContractSnapshot) => {
+export const boardI2cDevices = (s: ContractSnapshot) => {
 	const onBoard = (s.values.parts ?? []).flatMap((p) => {
 		const a = (catalog.find((c) => c.mpn.toUpperCase() === p.mpn.toUpperCase()) as { i2cAddress?: number } | undefined)?.i2cAddress
 		return a === undefined ? [] : [{ ref: p.ref, mpn: p.mpn, address: a }]
@@ -90,7 +90,7 @@ function i2cChecks(l: SystemLink, contracts: Record<string, ContractSnapshot | u
 	const seen = new Map<number, string>()
 	for (const [i, board] of ends.entries()) {
 		const s = contracts[board]!
-		const addrs = [...(links[i].i2c?.address !== undefined ? [{ who: `${board} (target)`, address: links[i].i2c!.address! }] : []), ...i2cDevices(s).map((d) => ({ who: `${board} ${d.ref} ${d.mpn}`, address: d.address }))]
+		const addrs = [...(links[i].i2c?.address !== undefined ? [{ who: `${board} (target)`, address: links[i].i2c!.address! }] : []), ...boardI2cDevices(s).map((d) => ({ who: `${board} ${d.ref} ${d.mpn}`, address: d.address }))]
 		for (const { who, address } of addrs) {
 			const was = seen.get(address)
 			if (was) out.push({ kind: "i2c-address", link: l.id, message: `${l.id}: ${who} and ${was} both answer at ${hex(address)} on the shared bus: give the target another address in the system spec`, boards: [board] })
@@ -100,13 +100,13 @@ function i2cChecks(l: SystemLink, contracts: Record<string, ContractSnapshot | u
 		// two (an STM32G031) can, on its second controller. The count is the board's chip profile's.
 		const chip = mcuProfileOf(s.values.parts)
 		const controllers = chip ? peripheralsFree(chip).i2c : 1
-		if (links[i].i2c?.role === "target" && i2cDevices(s).length && controllers < 2) out.push({ kind: "i2c-target-has-bus", link: l.id, message: `${l.id}: ${board} is the link's target but also drives ${i2cDevices(s).map((d) => d.ref).join(", ")} on its own bus; its ${chip?.mpn ?? "ESP32-C3"} has one I2C controller. Make ${board} the controller, or move the link to UART`, boards: [board] })
+		if (links[i].i2c?.role === "target" && boardI2cDevices(s).length && controllers < 2) out.push({ kind: "i2c-target-has-bus", link: l.id, message: `${l.id}: ${board} is the link's target but also drives ${boardI2cDevices(s).map((d) => d.ref).join(", ")} on its own bus; its ${chip?.mpn ?? "ESP32-C3"} has one I2C controller. Make ${board} the controller, or move the link to UART`, boards: [board] })
 	}
 	const pullups = ends.filter((_, i) => links[i].i2c?.pullups)
 	if (pullups.length !== 1) out.push({ kind: "i2c-pullups", link: l.id, message: `${l.id}: the bus needs exactly one set of pull-ups; ${pullups.length ? `${pullups.join(" and ")} both fit them` : "no board fits them"}`, boards: ends })
 	// Rise time ≈ 0.8473 × R × C must stay under the limit: the cable's capacitance is an estimate.
 	const khz = links[0].i2c?.khz ?? DEFAULT_I2C_KHZ
-	const devices = ends.reduce((n, b) => n + i2cDevices(contracts[b]!).length, 0)
+	const devices = ends.reduce((n, b) => n + boardI2cDevices(contracts[b]!).length, 0)
 	const { maxPf, maxMm } = i2cCableLimit(khz, devices)
 	if (l.cable.lengthMm > maxMm)
 		out.push({ kind: "i2c-cable-too-long", link: l.id, message: `${l.id}: at ${khz} kHz with ${PULLUP_OHM / 1000}k pull-ups the bus allows about ${Math.round(maxPf)} pF, so about ${Math.round(maxMm)} mm of cable (estimate: ${CABLE_PF_PER_M} pF/m); this cable is ${l.cable.lengthMm} mm. Shorten it, slow the bus, or use UART`, boards: ends, estimate: true })

@@ -45,3 +45,9 @@ export function i2cCableLimit(khz, devices) {
 	const maxPf = (RISE_NS(khz) * 1e-9) / (0.8473 * PULLUP_OHM) / 1e-12
 	return { maxPf, maxMm: Math.max(0, ((maxPf - fixedPf) / CABLE_PF_PER_M) * 1000) }
 }
+
+// A board's standoffs: the default height, the range the assembly allows (an error outside it) and the usual range (a
+// warning outside it).
+export const STANDOFF_DEFAULT_MM = 8
+export const STANDOFF_RANGE_MM = [3, 30]
+export const STANDOFF_USUAL_MM = [5, 20]
