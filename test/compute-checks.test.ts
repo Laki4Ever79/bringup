@@ -61,12 +61,12 @@ test("power budget: the Pi's peak plus two motors at stall against the 1S pack's
 	assert.match(err[0].message, /^brown-out risk: rpi-5's 5 A peak at 5\.1 V/)
 	assert.match(err[0].message, /25\.5 W/)
 	assert.match(err[0].message, /2 × POLOLU-2366/)
-	assert.match(err[0].message, /over the ADAFRUIT-2011 .*'s 2 A discharge rating/)
+	assert.match(err[0].message, /over the ADAFRUIT-2011 .*'s 2 A continuous discharge rating/)
 	assert.match(err[0].message, DOCS)
 	assert.match(err[0].message, /cdn-shop\.adafruit\.com/, "the battery's source")
 	assert.ok(err[0].sources.length >= 2)
 	// A pack big enough passes the budget (a hand-made 2S pack rated 15 A).
-	const big = { ...pack, mpn: "BIG-2S", cutoffV: 6, fullV: 8.4, peakA: 15 }
+	const big = { ...pack, mpn: "BIG-2S", cutoffV: 6, fullV: 8.4, maxContA: 15, peakA: 15 }
 	assert.deepEqual(powerBudget(pi, { battery: big, motors: { part: motor, count: 2 }, regulator: good }).filter((x) => x.level === "error"), [])
 	// The regulator's input limit is the other bound.
 	assert.match(powerBudget(pi, { battery: big, motors: "none", regulator: { ...good, maxInA: 2 } })[0].message, /over the carrier regulator's 2 A input limit/)
@@ -78,7 +78,7 @@ test("power budget says what it can't check: no battery, unknown peak, no regula
 	const f = powerBudget(noPeak, { battery: mech.batteries[0], motors: "none", regulator: good })
 	assert.equal(f[0].level, "warning")
 	assert.match(f[0].message, /compute\.currentA\.peak is null/)
-	const big = { ...mech.batteries[0], cutoffV: 6, fullV: 8.4, peakA: 15 }
+	const big = { ...mech.batteries[0], cutoffV: 6, fullV: 8.4, maxContA: 15, peakA: 15 }
 	assert.match(powerBudget(pi, { battery: big, motors: "none", regulator: null }).map((x) => x.message).join("\n"), /regulator isn't chosen yet/)
 	assert.match(powerBudget(pi, { battery: big, motors: "none", regulator: { ...good, maxInA: null } }).map((x) => x.message).join("\n"), /input current limit is unknown/)
 })
@@ -142,13 +142,13 @@ test("a carrier that feeds no 5 V or ground onto the header doesn't pass (review
 })
 
 test("motors not chosen yet are a warning, not 0 A; other boards' draw is added or said to be left out (review M4, M5)", () => {
-	const big = { ...mech.batteries[0], cutoffV: 6, fullV: 8.4, peakA: 15 }
+	const big = { ...mech.batteries[0], cutoffV: 6, fullV: 8.4, maxContA: 15, peakA: 15 }
 	const f = powerBudget(pi, { battery: big, motors: null, regulator: good })
 	assert.match(f.map((x) => x.message).join("\n"), /mechanics\.drive\.motor is not chosen yet/)
 	assert.deepEqual(powerBudget(pi, { battery: big, motors: "none", regulator: good }), [])
-	const small = { ...big, peakA: 4 }
+	const small = { ...big, maxContA: 4 }
 	assert.match(powerBudget(pi, { battery: small, motors: "none", regulator: good })[0].message, /with no motors, the other boards' draw left out/)
-	assert.match(powerBudget(pi, { battery: { ...big, peakA: 6 }, motors: "none", regulator: good, otherBoardsA: 1.5 })[0].message, /plus 1\.5 A for the other boards: 6\.12 A in all/)
+	assert.match(powerBudget(pi, { battery: { ...big, maxContA: 6 }, motors: "none", regulator: good, otherBoardsA: 1.5 })[0].message, /plus 1\.5 A for the other boards: 6\.12 A in all/)
 })
 
 test("a regulator from the catalog's regulators list: its figures, its input range against the pack (ruling R5)", () => {
@@ -175,4 +175,33 @@ test("mechanics with a HAT carrier on top: the pair isn't an overlap; the stack'
 	assert.equal(mechanicsCheck(pi, { placed: brain, plate, others: [], sensor, baseZMm: 8 }).some((f) => /distance sensor/.test(f.message)), false)
 	assert.match(mechanicsCheck(pi, { placed: brain, plate, others: [hat], sensor, baseZMm: 8, hat: "rpi-5-carrier" }).map((f) => f.message).join("\n"), /stands in front of the distance sensor .*the stack with rpi-5-carrier on top/)
 	assert.match(mechanicsCheck(pi, { placed: brain, plate, others: [], hat: "rpi-5-carrier" }).at(-1)!.message, /compute\.tallestMm is null .*clear the 16 mm spacers under rpi-5-carrier/)
+})
+
+test("the catalog's 2S pack and D36V50F5 for the Pi: 5 V ±4 % against 5.1 V is a warning naming both; the thin input headroom near cut-off is a warning; the current is within the pack's continuous rating (ruling R5)", () => {
+	const pack = mech.batteries.find((b) => b.cells === 2)!
+	const rec = (mech.regulators ?? [])[0]
+	assert.ok(pack && rec, "catalog/mechanics.json has a 2S pack and a regulator")
+	const reg = regulatorFromCatalog(rec as unknown as Record<string, unknown>)
+	assert.equal(reg.outV, rec.outV)
+	assert.equal(reg.maxOutA, rec.maxA)
+	assert.equal(reg.efficiency, rec.efficiency)
+	assert.ok(reg.outTolPct! > 0, "the accuracy its outV source quotes")
+	// (1) The rail voltage: a warning with both numbers, not an error, not a pass.
+	const rail = railCheck(pi, reg)
+	assert.deepEqual(rail.map((f) => f.level), ["warning"])
+	assert.match(rail[0].message, new RegExp(`rail is ${rec.outV} V ±${reg.outTolPct} % \\(${String(Math.round(rec.outV * (1 - reg.outTolPct! / 100) * 100) / 100).replace(".", "\\.")} V at worst\\).* asks for 5\\.1 V`))
+	assert.match(rail[0].message, /thepihut\.com/)
+	// (2) The pack's cut-off against the regulator's minimum input: thin headroom, a warning that names both.
+	const f = powerBudget(pi, { battery: pack, motors: { part: motor, count: 2 }, regulator: reg })
+	const thin = f.filter((x) => /thin input headroom/.test(x.message))
+	assert.equal(thin.length, 1)
+	assert.equal(thin[0].level, "warning")
+	assert.match(thin[0].message, new RegExp(`ends at ${pack.cutoffV} V .*over the .*'s ${rec.inMinV} V minimum input`))
+	// (3) (5 A × 5.1 V / efficiency) / cut-off + the motors' stall, against the continuous rating: no error.
+	assert.deepEqual(f.filter((x) => x.level === "error"), [])
+	const needA = (5 * 5.1) / rec.efficiency / pack.cutoffV + 2 * motor.stallA * (pack.fullV / motor.ratedV)
+	assert.ok(needA < pack.maxContA)
+	// The same draw over a pack with a small continuous rating is the brown-out, naming the continuous rating.
+	const weak = { ...pack, maxContA: Math.floor(needA) }
+	assert.match(powerBudget(pi, { battery: weak, motors: { part: motor, count: 2 }, regulator: reg }).find((x) => x.level === "error")!.message, new RegExp(`${Math.floor(needA)} A continuous discharge rating`))
 })
