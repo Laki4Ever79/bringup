@@ -65,7 +65,7 @@ export function planChecks(p: Plan): PlanIssue[] {
 	if (s.boards.length > 1)
 		for (const b of s.boards)
 			// A bought board and its carrier stack: the carrier's header is their connection.
-			if (b.kind !== "bought" && !b.carries && !s.links.some((l) => l.a.board === b.name || l.b.board === b.name)) out.push({ target: { board: b.name }, message: `${b.name} is connected to nothing: draw a cable to another board, or remove it` })
+			if (b.kind !== "bought" && !b.carries && s.boards.some((x) => x !== b && x.kind !== "bought" && !x.carries) && !s.links.some((l) => l.a.board === b.name || l.b.board === b.name)) out.push({ target: { board: b.name }, message: `${b.name} is connected to nothing: draw a cable to another board, or remove it` })
 	for (const l of s.links) {
 		if (l.kind !== "i2c" || !l.i2c || !(l.cable?.lengthMm > 0)) continue
 		const khz = l.i2c.khz ?? DEFAULT_I2C_KHZ
