@@ -1,5 +1,5 @@
 import type { DriveArtifact } from "../tools/drive.ts"
-import type { ChassisArtifact } from "../tools/chassis.ts"
+import { boardMountChecks, type ChassisArtifact } from "../tools/chassis.ts"
 import { mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
 import { motionBriefChecks } from "../mechanics/brief.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
@@ -134,6 +134,7 @@ export type ViolationKind =
 	| "rail-overload"
 	| "regulator-overclaimed"
 	| "firmware-build-failed"
+	| "board-mount-mismatch"
 	| "firmware-driver-test-failed"
 	| "sensor-mismatch"
 	| "history-overflow"
@@ -195,6 +196,8 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	if (a.drive?.result === "fail")
 		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics"] })
 	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c), ...motionBriefChecks(c, brief))
+	// A built chassis (not a stub) whose standoffs miss a board's mounting holes.
+	if (a.chassis && !a.chassis.stub) v.push(...boardMountChecks(c, a.chassis.mounts as { standoffHoles?: { xMm: number; yMm: number }[] } | null))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
 	// battery-life target, the design can't meet it; the architect hears it during design, not at the final review.
 	const power = estimatePower(c, brief)

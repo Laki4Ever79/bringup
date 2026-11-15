@@ -20,6 +20,15 @@ SPEC = {
 
 
 class ChassisTest(unittest.TestCase):
+    def test_the_standoffs_sit_under_the_boards_own_holes_with_a_pilot_for_its_screw(self):
+        # The board's holes come with the spec (chassis.ts boardHoles): 3.0 mm in, not the old 3.5, and the pilot for
+        # the case's M2 self-tapping screw (1.6 mm), not an M2.5 clearance hole (15 Nov 2026).
+        holes = [{"xMm": 10 + sx * 27, "yMm": sy * 17} for sx in (-1, 1) for sy in (-1, 1)]
+        spec = {**SPEC, "boards": [{**SPEC["boards"][0], "holes": holes}], "boardScrew": {"boardHoleMm": 2.2, "pilotMm": 1.6}}
+        part, mounts = build(spec)
+        got = sorted((round(h["xMm"], 2), round(h["yMm"], 2)) for h in mounts["standoffHoles"])
+        self.assertEqual(got, sorted((h["xMm"], h["yMm"]) for h in holes))
+
     def test_the_standoff_and_caster_holes_sit_where_the_spec_says(self):
         part, mounts = build(SPEC)
         want = sorted([(round(x, 1), round(y, 1)) for x in (10 - 26.5, 10 + 26.5) for y in (-16.5, 16.5)])

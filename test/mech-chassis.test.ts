@@ -70,3 +70,57 @@ test("each board on the chassis gets its own outline; one whose outline isn't kn
 	assert.deepEqual(unknown.boards.map((b) => b.name), ["main"])
 	assert.deepEqual(unknown.unplaced, ["lamp"])
 })
+
+// The board and the chassis disagreed on how a board mounts (15 Nov 2026): the board has M2 holes 3.0 mm in from its
+// corners (circuit.ts MOUNTING_HOLE), the chassis cut M2.5 standoff holes 3.5 mm in: 0.5 mm off on each axis, and an
+// M2.5 screw doesn't pass the board's 2.2 mm hole. The chassis now takes each board's own holes and the case's screw
+// (an M2 self-tapping screw into a 1.6 mm pilot hole, case.ts STANDOFF).
+test("the chassis puts a standoff under each of the board's own mounting holes, sized for the board's screw", async () => {
+	const { mountingHoles } = await import("../src/codegen/circuit.ts")
+	const { STANDOFF } = await import("../src/contract/case.ts")
+	const s = rover()
+	const spec = chassisSpec(s)!
+	const main = spec.boards.find((b) => b.name === "main")!
+	const own = mountingHoles(s).map((h) => [+(main.xMm + h.x).toFixed(3), +(main.yMm + h.y).toFixed(3)])
+	assert.ok(own.length > 0)
+	assert.deepEqual(main.holes.map((h) => [h.xMm, h.yMm]), own)
+	assert.equal(spec.boardScrew.pilotMm, STANDOFF.pilotMm)
+	assert.equal(spec.boardScrew.boardHoleMm, 2.2)
+})
+
+test("a board turned on the plate has its holes turned with it", async () => {
+	const { mountingHoles } = await import("../src/codegen/circuit.ts")
+	const s = rover()
+	s.values.mechanics!.chassis.boards[0].rotDeg = 90
+	const main = chassisSpec(s)!.boards[0]
+	// Counter-clockwise: a hole at (x, y) from the board's centre goes to (-y, x).
+	const own = mountingHoles(s).map((h) => [+(main.xMm - h.y).toFixed(3), +(main.yMm + h.x).toFixed(3)])
+	assert.deepEqual(main.holes.map((h) => [h.xMm, h.yMm]), own)
+})
+
+// The check: every hole of a board on the chassis has a standoff under it in the built chassis (its mounts.json,
+// measured back from the solid), and every standoff has a board hole over it.
+test("a built chassis whose standoffs miss the board's holes is a violation", async () => {
+	const { boardMountChecks } = await import("../src/tools/chassis.ts")
+	const s = rover()
+	const holes = chassisSpec(s)!.boards[0].holes
+	assert.deepEqual(boardMountChecks(s, { standoffHoles: holes, casterHoles: [] }), [])
+	// The old chassis: standoffs 3.5 mm in, the board's holes 3.0 mm in.
+	const old = holes.map((h) => ({ xMm: h.xMm - Math.sign(h.xMm) * 0.5, yMm: h.yMm - Math.sign(h.yMm) * 0.5 }))
+	const v = boardMountChecks(s, { standoffHoles: old, casterHoles: [] })
+	assert.equal(v.length, 1)
+	assert.equal(v[0].kind, "board-mount-mismatch")
+	assert.match(v[0].message, /main's hole at \(-27, -17\) has no standoff under it/)
+	assert.deepEqual(v[0].affects, ["mechanics"])
+})
+
+test("the consistency check reports a chassis whose standoffs miss the board, and not a stub chassis", async () => {
+	const { checkConsistency } = await import("../src/contract/consistency.ts")
+	const s = rover()
+	const holes = chassisSpec(s)!.boards[0].holes
+	const off = holes.map((h) => ({ xMm: h.xMm + 0.5, yMm: h.yMm }))
+	const chassis = (mounts: unknown, stub = false) => ({ chassis: { ok: true, revision: 3, dir: "", files: [], mounts, ...(stub ? { stub } : {}) } }) as never
+	assert.ok(checkConsistency(s, chassis({ standoffHoles: off })).some((v) => v.kind === "board-mount-mismatch"))
+	assert.ok(!checkConsistency(s, chassis({ standoffHoles: holes })).some((v) => v.kind === "board-mount-mismatch"))
+	assert.ok(!checkConsistency(s, chassis(null, true)).some((v) => v.kind === "board-mount-mismatch"))
+})

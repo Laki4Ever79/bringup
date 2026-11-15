@@ -5,7 +5,7 @@ Usage: chassis.py <spec.json> <out-dir>  →  chassis.step, chassis.stl, mounts.
 The spec (src/tools/chassis.ts chassisSpec) is in the chassis frame: origin at the plate's centre, +x forward, +y left,
 millimetres. Here z = 0 is the plate's underside (the rover's clearance is added by whoever places it). The part:
 the plate; under it, a cradle per motor and the caster's four bolt holes; on it, two rails that keep the battery in
-place, a standoff with an M2.5 hole at each board corner, and an upright bracket the distance sensor's breakout screws
+place, a standoff under each of the board's mounting holes (a pilot for its M2 screw), and an upright bracket the distance sensor's breakout screws
 to at the front. mounts.json lists the hole centres measured back from the built solid, so the board and caster are
 checked against what was really made.
 """
@@ -17,7 +17,7 @@ from pathlib import Path
 from build123d import Box, Cylinder, GeomType, Pos, export_step, export_stl
 
 STANDOFF_OD = 5.0
-M25_HOLE = 2.7  # an M2.5 screw's clearance hole
+M25_HOLE = 2.7  # an M2.5 screw's clearance hole: the standoff hole of a spec from before boardScrew
 WALL = 2.0
 RAIL_H = 3.0
 
@@ -50,6 +50,10 @@ def _check(spec):
 
 
 def _board_holes(b):
+    """The board's own mounting holes on the plate (the spec's, from the board: chassis.ts boardHoles). A spec from
+    before they were sent: the four corners at holeInsetMm."""
+    if "holes" in b:
+        return [(h["xMm"], h["yMm"]) for h in b["holes"]]
     w, h = (b["heightMm"], b["widthMm"]) if b["rotDeg"] in (90, 270) else (b["widthMm"], b["heightMm"])
     i = b.get("holeInsetMm", 3.5)
     return [(b["xMm"] + sx * (w / 2 - i), b["yMm"] + sy * (h / 2 - i)) for sx in (-1, 1) for sy in (-1, 1)]
@@ -63,14 +67,16 @@ def build(spec):
     so = spec.get("standoffMm", 10)
     part = Pos(0, 0, t / 2) * Box(p["lengthMm"], p["widthMm"], t)
 
-    # Standoffs at each board's corners, with an M2.5 hole through standoff and plate.
+    # A standoff under each of the board's mounting holes, with a pilot hole for the board's screw (the case's: an M2
+    # self-tapping screw into a 1.6 mm pilot, spec boardScrew) through standoff and plate.
+    pilot = spec.get("boardScrew", {}).get("pilotMm", M25_HOLE)
     holes = []
     for b in spec["boards"]:
         for x, y in _board_holes(b):
             part += Pos(x, y, t + so / 2) * Cylinder(STANDOFF_OD / 2, so)
             holes.append((x, y))
     for x, y in holes:
-        part -= Pos(x, y, (t + so) / 2) * Cylinder(M25_HOLE / 2, t + so + 2)
+        part -= Pos(x, y, (t + so) / 2) * Cylinder(pilot / 2, t + so + 2)
 
     # The caster's bolt holes.
     c = spec["caster"]
@@ -111,7 +117,7 @@ def build(spec):
                     found.append((cx, cy))
         return [{"xMm": x, "yMm": y} for x, y in found]
 
-    mounts = {"standoffHoles": centres(M25_HOLE / 2), "casterHoles": centres(c["holeDiaMm"] / 2)}
+    mounts = {"standoffHoles": centres(pilot / 2), "casterHoles": centres(c["holeDiaMm"] / 2)}
     return part, mounts
 
 
