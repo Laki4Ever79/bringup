@@ -631,7 +631,27 @@ export function connectorsOntoEdges(c: ContractSnapshot): ContractValues["connec
 			return i < 0 || target[i] === spans[i].p ? k : { ...k, offsetMm: spans[i].offset + (target[i] - spans[i].p) }
 		})
 	}
-	return problems(connectors) < before ? connectors : null
+	// Across a corner (rover run cc-rover-4: J1 at bottom@42 mm and JM2 at right@10 mm overlapped on a 54x24 board, which
+	// packing each edge alone can't see): the smallest single move along its own edge that leaves fewer problems, repeated.
+	let now = problems(connectors)
+	for (let round = 0; round < 2 * connectors.length && now > 0; round++) {
+		let best: { connectors: Connector[]; step: number; left: number } | null = null
+		for (const k of connectors) {
+			const len = k.edge === "top" || k.edge === "bottom" ? o.widthMm : o.heightMm
+			for (let step = 0.5; step <= len && (best === null || step <= best.step); step += 0.5) {
+				for (const at of [k.offsetMm - step, k.offsetMm + step]) {
+					if (at < 0 || at > len) continue
+					const tried = connectors.map((x) => (x.ref === k.ref ? { ...x, offsetMm: at } : x))
+					const left = problems(tried)
+					if (left < now && (best === null || step < best.step || left < best.left)) best = { connectors: tried, step, left }
+				}
+			}
+		}
+		if (best === null) break
+		connectors = best.connectors
+		now = best.left
+	}
+	return now < before ? connectors : null
 }
 
 // A part the engineer placed on the board page (Part.at) that doesn't fit there: the layout leaves it off rather than

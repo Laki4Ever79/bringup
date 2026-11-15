@@ -52,3 +52,19 @@ test("after an outline change, the connectors on an edge are packed back onto it
 	assert.deepEqual(connectorClashes(after), [])
 	assert.equal(connectorsOntoEdges(after), null)
 })
+
+// Rover run cc-rover-4 (15 Nov 2026): J1 at bottom@42 mm and JM2 at right@10 mm overlapped across the corner of a 54x24
+// mm board; packing each edge alone can't see that.
+test("connectors that overlap across a corner are moved apart along their edges", async () => {
+	const { connectorsOntoEdges, connectorClashes } = await import("../src/contract/consistency.ts")
+	const { readFileSync } = await import("node:fs")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/cc-rover-4-54x24-rev40.json", import.meta.url), "utf8")) as ContractSnapshot
+	assert.ok(connectorClashes(s).length > 0, "the fixture has the run's clash")
+	const fitted = connectorsOntoEdges(s)
+	assert.ok(fitted)
+	const after = { ...s, values: { ...s.values, connectors: fitted } }
+	assert.deepEqual(connectorClashes(after), [])
+	assert.deepEqual(connectorsOffEdge(after), [])
+	const moved = fitted.filter((k) => s.values.connectors!.find((b) => b.ref === k.ref)!.offsetMm !== k.offsetMm)
+	assert.ok(moved.length <= 2, JSON.stringify(moved))
+})
