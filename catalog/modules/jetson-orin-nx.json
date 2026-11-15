@@ -1,0 +1,239 @@
+{
+	"id": "jetson-orin-nx",
+	"kind": "compute",
+	"title": "NVIDIA Jetson Orin NX module (bought), on a generated carrier",
+	"parts": [
+		{
+			"mpn": "JETSON-ORIN-NX-16GB",
+			"role": "compute",
+			"qty": 1,
+			"alternatives": [
+				"JETSON-ORIN-NX-8GB"
+			]
+		}
+	],
+	"circuit": "bought; carrier per src/system",
+	"interfaces": [
+		{
+			"kind": "uart",
+			"signals": [
+				"UART1_TXD (module pin 203, 1.8 V)",
+				"UART1_RXD (module pin 205, 1.8 V)"
+			]
+		},
+		{
+			"kind": "i2c",
+			"signals": [
+				"I2C0_SCL (pin 185, 3.3 V OD)",
+				"I2C0_SDA (pin 187, 3.3 V OD)",
+				"I2C1_SCL (pin 189, 3.3 V OD)",
+				"I2C1_SDA (pin 191, 3.3 V OD)"
+			]
+		},
+		{
+			"kind": "pwm",
+			"signals": [
+				"GPIO12 (pin 218, 1.8 V)",
+				"GPIO13 (pin 228, 1.8 V)",
+				"GPIO14 (pin 230, 1.8 V)"
+			]
+		},
+		{
+			"kind": "power",
+			"signals": [
+				"VDD_IN (pins 251-260), 5-20 V"
+			]
+		}
+	],
+	"compute": {
+		"frame": "millimetres, the module's own datum: origin at the Ø1.80 locating hole at the lower left, SO-DIMM edge along the bottom (edge at y = -6.00, top edge at y = 39.00), x right, y up, seen from the top (as Figure 5-1 of the data sheet). The carrier around it is generated (src/system), so its outline, ports and header are ours, not NVIDIA's",
+		"outline": {
+			"value": {
+				"widthMm": 69.6,
+				"heightMm": 45
+			},
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/jetson-orin-nx-module-series-data-sheet",
+				"where": "DS-10712-001 v1.7, section 5.5 Module Drawing and Dimensions: 'Module Size: 69.6 mm x 45 mm'"
+			}
+		},
+		"holes": {
+			"value": [
+				{
+					"x": 11.2,
+					"y": 4.41,
+					"dia": 3.2
+				},
+				{
+					"x": 54.4,
+					"y": 4.41,
+					"dia": 3.2
+				},
+				{
+					"x": 11.2,
+					"y": 33.21,
+					"dia": 3.2
+				},
+				{
+					"x": 54.4,
+					"y": 33.21,
+					"dia": 3.2
+				}
+			],
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/jetson-orin-nx-module-series-data-sheet",
+				"where": "section 5.5, Figure 5-1 Top View (page 48): 4X Ø3.20 at x 11.20 / 54.40 and y 4.41 / 33.21 from the datum hole"
+			},
+			"note": "read from the drawing's leader lines (symmetric about the GPU centroid at x 32.80, y 18.81); the module also has 2X Ø2.75 and Ø1.80 locating holes. Confirm against NVIDIA's module model before the carrier goes to fab"
+		},
+		"tallestMm": {
+			"value": null,
+			"unit": "mm",
+			"source": null,
+			"note": "depends on the generated carrier's SO-DIMM connector and the chosen heatsink or fan, neither of which is the module's: the module itself is 4.08 mm max above and 5.08 mm max below its 1.20 mm PCB (Figure 5-1 side view)"
+		},
+		"header": {
+			"at": {
+				"value": null,
+				"note": "the module has no header: the generated carrier places one and level-shifts it"
+			},
+			"pins": {
+				"value": null,
+				"note": "set by the generated carrier; the module signals it can route are under moduleSignals"
+			}
+		},
+		"moduleSignals": {
+			"value": {
+				"UART1_TXD": 203,
+				"UART1_RXD": 205,
+				"UART1_RTS*": 207,
+				"UART1_CTS*": 209,
+				"I2C0_SCL": 185,
+				"I2C0_SDA": 187,
+				"I2C1_SCL": 189,
+				"I2C1_SDA": 191,
+				"PWM GPIO12": 218,
+				"PWM GPIO13": 228,
+				"PWM GPIO14": 230,
+				"VDD_IN": "251-260"
+			},
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/jetson-orin-nx-module-series-data-sheet",
+				"where": "Table 2-17 UART Pin Descriptions (page 26), Table 2-19 I2C Pin Descriptions (page 28), Table 2-22 PWM Pin Descriptions (page 31), Table 3-1 Power and System Control Pin Descriptions"
+			}
+		},
+		"ports": {
+			"value": null,
+			"note": "the module's only connector is its 260-pin SO-DIMM edge; every port comes from the generated carrier"
+		},
+		"inputV": {
+			"value": {
+				"nom": null,
+				"min": 4.75,
+				"max": 20.0
+			},
+			"unit": "V",
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/jetson-orin-nx-module-series-data-sheet",
+				"where": "Table 5-1 Recommended Operating Conditions (page 44): VDD_IN (MODULE_ID high) 4.75 min, 20 max"
+			},
+			"note": "the carrier picks the voltage. MODULE_ID low (a 5 V-only carrier) narrows it to 4.75-5.25 V; 'MAXN_SUPER at 40W for Jetson Orin NX requires minimum 8.0V to the VDD_IN'. Absolute maximum 20.5 V (Table 5-2)"
+		},
+		"currentA": {
+			"typical": {
+				"value": null,
+				"unit": "A",
+				"source": null,
+				"note": "no typical current is published; it depends on the power mode and the carrier's VDD_IN"
+			},
+			"peak": {
+				"value": null,
+				"unit": "A",
+				"source": null,
+				"note": "the data sheet gives power, not current: divide the mode's budget by the generated carrier's VDD_IN (for example 40 W at 12 V is about 3.3 A, module only)"
+			},
+			"powerModesW": {
+				"value": {
+					"nx16GB": [
+						10,
+						15,
+						25,
+						"40 (MAXN_SUPER)"
+					],
+					"nx8GB": [
+						10,
+						15,
+						20,
+						"40 (MAXN_SUPER)"
+					]
+				},
+				"unit": "W",
+				"source": {
+					"url": "https://developer.nvidia.com/downloads/jetson-orin-nx-module-series-data-sheet",
+					"where": "front specification table, Operating Requirements: 'Jetson Orin NX 16GB Modes: 10W | 15W | 25W | 40W (MAXN_SUPER)', '8GB Modes: 10W | 15W | 20W | 40W (MAXN_SUPER)'"
+				}
+			}
+		},
+		"feeds": {
+			"value": [
+				{
+					"via": "VDD_IN, module pins 251-260",
+					"what": "5-20 V from the generated carrier (8 V or more for MAXN_SUPER)",
+					"source": {
+						"url": "https://developer.nvidia.com/downloads/jetson-orin-nx-module-series-data-sheet",
+						"where": "Table 3-1: VDD_IN 'Main power - Supplies PMIC and other registers', Input, 5V to 20V; 'VDD_IN must be supplied by the carrier board'"
+					}
+				}
+			]
+		},
+		"gpioLevel": {
+			"value": 1.8,
+			"unit": "V",
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/jetson-orin-nx-module-series-data-sheet",
+				"where": "Table 2-17 and Table 2-22: UART and PWM/GPIO pins are 'CMOS - 1.8V'; Table 2-19: I2C0/I2C1 'Open Drain - 3.3V'"
+			},
+			"note": "the module's UART, GPIO and PWM pins are 1.8 V: the generated carrier must level-shift them to the MCU board's 3.3 V"
+		},
+		"os": {
+			"value": "NVIDIA JetPack 7 (Jetson Linux on Ubuntu 24.04)",
+			"source": {
+				"url": "https://developer.nvidia.com/embedded/jetpack",
+				"where": "JetPack 7 Overview: 'JetPack 7 gives you full support for the NVIDIA Jetson Orin and Thor platform' ... 'Built on Linux Kernel 6.8 and Ubuntu 24.04 LTS'"
+			},
+			"note": "older JetPack 6 images run an older Ubuntu: check the flashed release before picking the ROS 2 distro",
+			"also": {
+				"url": "https://docs.nvidia.com/jetson/archives/r39.2.1/DeveloperGuide/index.html",
+				"where": "Jetson Linux r39.2.1 (JetPack 7.2) Developer Guide: supported platforms list Orin NX, Orin Nano and the Orin Nano Developer Kit"
+			}
+		},
+		"ros2": {
+			"value": {
+				"distro": "jazzy",
+				"tier": 1,
+				"platform": "Ubuntu Noble arm64"
+			},
+			"source": {
+				"url": "https://github.com/ros-infrastructure/rep/blob/master/rep-2000.rst",
+				"where": "Jazzy Jalisco: arm64 / Ubuntu Noble (24.04): Tier 1"
+			},
+			"note": "Tier 1 is for Ubuntu Noble arm64; JetPack 7 is NVIDIA's build of it, not a stock Ubuntu image"
+		},
+		"bridgeDevice": {
+			"value": "/dev/ttyACM0",
+			"via": "the MCU board's native USB (CDC-ACM) through a USB port on the generated carrier",
+			"source": {
+				"url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/usb-serial-jtag-console.html",
+				"where": "Uploading the Application, note: the USB Serial/JTAG Controller's serial port appears 'as /dev/ttyACM* on Linux'"
+			},
+			"note": "the first board to enumerate gets ttyACM0; with several MCU boards, pin each by its USB serial number (a udev rule or /dev/serial/by-id) rather than by order",
+			"alternatives": [
+				{
+					"value": null,
+					"note": "NVIDIA's documents name the header UART's signals but not its Linux device; forum answers (not official) point at a /dev/ttyTHS* node, and one reports the TX pin not driving on JetPack 7 (L4T R39.2). Check the node on the flashed image. The data sheet warns: 'The UART receiver input has low baud rate tolerance in 1-stop bit mode. External devices must use two stop bits' (section 2.11.4): set the MCU's UART to 2 stop bits",
+					"via": "UART1 on module pins 203 (TXD) and 205 (RXD), level-shifted by the generated carrier"
+				}
+			]
+		}
+	}
+}

@@ -1,14 +1,15 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import { byMpn } from "./catalog.ts"
 import { defaultCheckCatalog } from "./checks.ts"
-import { est } from "./estimates.ts"
-import { G, motorAt } from "./model.ts"
+import { brakeMm, cruiseDuty, massAndCom, mounts, onWheelsShare, payloadMount, turnStopMm } from "./model.ts"
+import { checkBoards, withAssembly } from "./assembly.ts"
 import { macroName, sensorDriver } from "../codegen/firmware.ts"
 
 // The rover firmware's header (templates/fw-rover/include/hw_pins.h), from the contract: the driver's and the bus's
 // pins, and the control numbers the mechanics fix. Stop distance: the brief's distance from the wall plus 1.5× (the
-// braking distance on the floor and one sensor period of travel at cruise). Cruise duty: the target speed over the
-// loaded top speed at the cell's nominal voltage. Turn: a quarter turn in place at cruise.
+// braking distance on the floor and one sensor period of travel at cruise), and at least what the turn in place there
+// needs to sweep clear. Cruise duty: the target speed on the motor's
+// load line from a full pack (model.ts cruiseDuty). Turn: a quarter turn in place at cruise.
 export const STOP_MARGIN = 1.5
 export const SLOW_ZONE_MM = 300
 
@@ -31,11 +32,19 @@ export function roverHeader(s: ContractSnapshot): string {
 	}
 	const pin = (sig: string) => (v.pins ?? []).find((p) => p.signal === sig)?.gpio ?? -1
 	const r = wheel.diameterMm / 2000
-	const topMps = motorAt(motor, pack.nominalV).noLoadRadS * 0.8 * r
 	const speed = motion.speedMps
-	const brakeMm = (speed ** 2 / (2 * est("floorMu") * G)) * 1000
-	const stop = Math.ceil(motion.stopBeforeWallMm + STOP_MARGIN * (brakeMm + speed * sensor.updateMs))
-	const cruise = Math.min(1, Math.max(0.3, speed / topMps))
+	// Cruise duty on the motor's load line (model.ts cruiseDuty, the same model as the "Top speed" and "Cruise duty"
+	// checks): set for a full pack, where the rover is fastest and the simulated drive starts. No floor: a motor geared so
+	// fast that the duty falls under MIN_CRUISE_DUTY is the "Cruise duty" check's finding, not a silent speed-up.
+	const boards = checkBoards(s).map((b) => ({ name: b.name, outline: { widthMm: b.snapshot.values.outline?.widthMm ?? 0, heightMm: b.snapshot.values.outline?.heightMm ?? 0 } }))
+	const geom = withAssembly(v) ?? mech
+	const { massG, com } = massAndCom([...mounts(geom, boards, cat.mech), payloadMount(geom, motion.payloadG)])
+	// Braking on the drive wheels' share of the weight only (model.ts brakeMm, as the Stopping distance check).
+	// And far enough that the turn in place there sweeps clear of the wall (model.ts turnStopMm): a 246 mm rover-pi with
+	// its axle forward swept its rear corner into the wall it had just turned from (premerge review, 15 Nov).
+	const brakeStop = motion.stopBeforeWallMm + STOP_MARGIN * (brakeMm(speed, onWheelsShare(geom.drive, com[0])) + speed * sensor.updateMs)
+	const stop = Math.ceil(Math.max(brakeStop, turnStopMm(geom, wheel)))
+	const cruise = Math.min(1, Math.max(0, cruiseDuty(motor, pack, speed, massG / 1000, r)))
 	// Three eighths of a turn, not a quarter: an open-loop quarter turn leaves the rover running along the wall it just
 	// faced, at whatever small angle the turn missed by, which its forward-only sensor can't see (real rover run on the
 	// Claude subscription, 15 Nov: stopped 173 mm short, turned, drove 0.73 m and clipped that wall). Turning further

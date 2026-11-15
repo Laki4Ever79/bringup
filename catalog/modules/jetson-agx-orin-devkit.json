@@ -1,0 +1,349 @@
+{
+	"id": "jetson-agx-orin-devkit",
+	"kind": "compute",
+	"title": "NVIDIA Jetson AGX Orin Developer Kit (bought), on a generated carrier",
+	"parts": [
+		{
+			"mpn": "JETSON-AGX-ORIN-DEVKIT-64GB",
+			"role": "compute",
+			"qty": 1,
+			"alternatives": [
+				"JETSON-AGX-ORIN-DEVKIT-32GB"
+			]
+		}
+	],
+	"circuit": "bought; carrier per src/system",
+	"interfaces": [
+		{
+			"kind": "uart",
+			"signals": [
+				"UART1_TX (pin 8)",
+				"UART1_RX (pin 10)"
+			]
+		},
+		{
+			"kind": "i2c",
+			"signals": [
+				"I2C #5 DAT (pin 3)",
+				"I2C #5 CLK (pin 5)",
+				"I2C2_DAT (pin 27)",
+				"I2C2_CLK (pin 28)"
+			]
+		},
+		{
+			"kind": "pwm",
+			"signals": [
+				"GPIO27 / GP88_PWM1 (pin 15)",
+				"GPIO35 PWM (pin 18)"
+			]
+		},
+		{
+			"kind": "can",
+			"signals": [
+				"CAN0_DIN (pin 29)",
+				"CAN0_DOUT (pin 31)",
+				"CAN1_DOUT (pin 33)",
+				"CAN1_DIN (pin 37)"
+			]
+		},
+		{
+			"kind": "usb",
+			"signals": [
+				"2 × USB 3.2 Gen 2 Type-A",
+				"2 × USB 3.2 Gen 1 Type-A",
+				"2 × USB-C",
+				"micro-USB debug UART"
+			]
+		},
+		{
+			"kind": "power",
+			"signals": [
+				"USB-C or DC jack 7-20 V",
+				"5V on header pins 2, 4 (output, 1 A per pin)"
+			]
+		}
+	],
+	"compute": {
+		"frame": "millimetres, the kit's footprint seen from the top; sides named by the user guide's photos: the 'I/O face' carries the DC jack and Ethernet, the 'header face' (opposite it) the 40-pin header, the 'button face' the power, recovery and reset buttons",
+		"outline": {
+			"value": {
+				"widthMm": 110.0,
+				"heightMm": 110.0
+			},
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+				"where": "SP-10900-001 v1.2, Figure 5-3 Developer Kit Mechanical Dimensions - Top View: 110.00 TYP by 110.002 TYP"
+			},
+			"note": "the enclosed kit; the carrier PCB alone is 105.00 × 105.00 (Figure 5-1)"
+		},
+		"carrierOutline": {
+			"value": {
+				"widthMm": 105.0,
+				"heightMm": 105.0
+			},
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+				"where": "Figure 5-1 Developer Kit Carrier Board Dimensions - Top View: 105.00 TYP PCB width, both sides"
+			}
+		},
+		"holes": {
+			"value": null,
+			"source": null,
+			"note": "the kit is a closed enclosure and the specification dimensions no mounting holes: plan a cradle or strap, or take holes from NVIDIA's carrier design files"
+		},
+		"tallestMm": {
+			"value": 71.65,
+			"unit": "mm",
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+				"where": "Figure 5-4 Developer Kit Mechanical Kit - Side View: 71.65 TYP"
+			},
+			"note": "the whole kit; the carrier with its parts is 29.66 TYP (Figure 5-2)"
+		},
+		"header": {
+			"at": {
+				"value": {
+					"x": null,
+					"y": null,
+					"pitchMm": 2.54,
+					"rows": 2,
+					"cols": 20,
+					"along": "header face"
+				},
+				"source": {
+					"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+					"where": "section 3.3: J30, 40-pin (2 × 20, 2.54 mm pitch)"
+				},
+				"also": {
+					"url": "https://developer.nvidia.com/embedded/learn/jetson-agx-orin-devkit-user-guide/developer_kit_layout.html",
+					"where": "40-pin Header: 'To identify the orientation of the 40-pin header (i.e. Pin 1), look for the white triangle marking on the PCB'"
+				},
+				"note": "the header's position isn't dimensioned; find pin 1 by the white triangle"
+			},
+			"pins": {
+				"value": {
+					"1": "3V3",
+					"2": "5V",
+					"3": "I2C5_DAT",
+					"4": "5V",
+					"5": "I2C5_CLK",
+					"6": "GND",
+					"7": "MCLK05",
+					"8": "UART1_TX",
+					"9": "GND",
+					"10": "UART1_RX",
+					"11": "UART1_RTS",
+					"12": "I2S2_CLK",
+					"13": "PWM01",
+					"14": "GND",
+					"15": "GPIO27 (PWM)",
+					"16": "GPIO08",
+					"17": "3V3",
+					"18": "GPIO35 (PWM)",
+					"19": "SPI1_MOSI",
+					"20": "GND",
+					"21": "SPI1_MISO",
+					"22": "GPIO17",
+					"23": "SPI1_SCK",
+					"24": "SPI1_CS0_N",
+					"25": "GND",
+					"26": "SPI1_CS1_N",
+					"27": "I2C2_DAT",
+					"28": "I2C2_CLK",
+					"29": "CAN0_DIN",
+					"30": "GND",
+					"31": "CAN0_DOUT",
+					"32": "GPIO09",
+					"33": "CAN1_DOUT",
+					"34": "GND",
+					"35": "I2S_FS",
+					"36": "UART1_CTS",
+					"37": "CAN1_DIN",
+					"38": "I2S_SDIN",
+					"39": "GND",
+					"40": "I2S_SDOUT"
+				},
+				"source": {
+					"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+					"where": "Figure 3-5 40-pin Expansion Header Top View and Table 3-4 40-Pin Expansion Header Pin Description"
+				},
+				"note": "pin 13 is named PWM01 but Table 3-4 lists it as GPIO only; the PWM functions are on pins 15 and 18"
+			}
+		},
+		"ports": {
+			"value": [
+				{
+					"kind": "usb-c (J24, DFP only, power in)",
+					"side": "I/O face",
+					"atMm": null
+				},
+				{
+					"kind": "dc jack 5.5 mm (J41)",
+					"side": "I/O face",
+					"atMm": null
+				},
+				{
+					"kind": "ethernet up to 10GBASE-T (J17)",
+					"side": "I/O face",
+					"atMm": null
+				},
+				{
+					"kind": "usb-a ×2 (USB 3.2 Gen 2)",
+					"side": "I/O face",
+					"atMm": null
+				},
+				{
+					"kind": "displayport (J18)",
+					"side": "I/O face",
+					"atMm": null
+				},
+				{
+					"kind": "micro-usb debug UART (J26)",
+					"side": "I/O face",
+					"atMm": null
+				},
+				{
+					"kind": "buttons: power, recovery, reset",
+					"side": "button face",
+					"atMm": null
+				},
+				{
+					"kind": "usb-c (J40, UFP and DFP, flashing)",
+					"side": "header face",
+					"atMm": null
+				},
+				{
+					"kind": "usb-a ×2 (USB 3.2 Gen 1)",
+					"side": "header face",
+					"atMm": null
+				},
+				{
+					"kind": "pcie x16 slot (PCIe 4.0 x8)",
+					"side": "under the side cover",
+					"atMm": null
+				}
+			],
+			"source": {
+				"url": "https://developer.nvidia.com/embedded/learn/jetson-agx-orin-devkit-user-guide/developer_kit_layout.html",
+				"where": "Hardware Layout: Part Names (marks 0-12) and Carrier Board Part Names, with the two Side Views photos"
+			},
+			"note": "sides read from the user guide's photos (no dimensioned drawing); positions along each face aren't published"
+		},
+		"inputV": {
+			"value": {
+				"nom": 19.0,
+				"min": 7.0,
+				"max": 20.0
+			},
+			"unit": "V",
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+				"where": "section 1.2 Power: '2× USB Type C (either for power input - 19V Adapter included)', 'DC Jack: 7V to 20V (Alternative to Type C)'; Table 6-1: VCC_SRC 7-20 V"
+			}
+		},
+		"currentA": {
+			"typical": {
+				"value": null,
+				"unit": "A",
+				"source": null,
+				"note": "no typical current is published for the kit"
+			},
+			"peak": {
+				"value": 5.0,
+				"unit": "A",
+				"source": {
+					"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+					"where": "Table 6-2 Interface Supply Current Capabilities: VCC_SRC (USB Type C or DC jack), 7-20 V, max current 5.0 A"
+				},
+				"note": "the input rail's rating, not a measured draw; the included adapter's rating isn't in the specification"
+			},
+			"powerModesW": {
+				"value": {
+					"agx32GB": [
+						15,
+						30,
+						40,
+						"MAXN"
+					],
+					"agx64GB": [
+						15,
+						30,
+						50,
+						"MAXN"
+					]
+				},
+				"unit": "W",
+				"source": {
+					"url": "https://docs.nvidia.com/jetson/archives/r36.4.4/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonOrinNanoSeriesJetsonOrinNxSeriesAndJetsonAgxOrinSeries.html",
+					"where": "NVP Model Clock Configuration for Jetson AGX Orin 32GB: 15W, 30W (default), 40W, MAXN; for Jetson AGX Orin 64GB: 15W, 30W (default), 50W, MAXN"
+				},
+				"note": "module budgets; the module TDP is 40 W (32GB) and 60 W (64GB) in the same page's over-current table"
+			}
+		},
+		"feeds": {
+			"value": [
+				{
+					"via": "usb-c (either of the two)",
+					"what": "USB-C power input (19 V adapter included)",
+					"source": {
+						"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+						"where": "section 1.2 Power"
+					}
+				},
+				{
+					"via": "dc jack J41",
+					"what": "7-20 V, 2.5 mm centre pin, 5.5 mm barrel",
+					"source": {
+						"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+						"where": "section 3.6 DC Power Jack and Table 3-7"
+					}
+				}
+			]
+		},
+		"gpioLevel": {
+			"value": 3.3,
+			"unit": "V",
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/agx_orin/jetson_agx_orin_devkit_carrier_board_specification_sp",
+				"where": "section 3.3: 'All the signal pins are 3.3V level'"
+			},
+			"note": "many header signals come through TXB0108 level translators with very weak outputs (Table 3-4 note 3); the UART pins use an SN74LVC4T245 buffer (note 4)"
+		},
+		"os": {
+			"value": "NVIDIA JetPack 7 (Jetson Linux on Ubuntu 24.04)",
+			"source": {
+				"url": "https://developer.nvidia.com/embedded/jetpack",
+				"where": "JetPack 7 Overview: 'JetPack 7 gives you full support for the NVIDIA Jetson Orin and Thor platform' ... 'Built on Linux Kernel 6.8 and Ubuntu 24.04 LTS'"
+			},
+			"note": "older JetPack 6 images run an older Ubuntu: check the flashed release before picking the ROS 2 distro"
+		},
+		"ros2": {
+			"value": {
+				"distro": "jazzy",
+				"tier": 1,
+				"platform": "Ubuntu Noble arm64"
+			},
+			"source": {
+				"url": "https://github.com/ros-infrastructure/rep/blob/master/rep-2000.rst",
+				"where": "Jazzy Jalisco: arm64 / Ubuntu Noble (24.04): Tier 1"
+			},
+			"note": "Tier 1 is for Ubuntu Noble arm64; JetPack 7 is NVIDIA's build of it, not a stock Ubuntu image"
+		},
+		"bridgeDevice": {
+			"value": "/dev/ttyACM0",
+			"via": "the MCU board's native USB (CDC-ACM), one cable per board through the robot's USB-C hub",
+			"source": {
+				"url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/usb-serial-jtag-console.html",
+				"where": "Uploading the Application, note: the USB Serial/JTAG Controller's serial port appears 'as /dev/ttyACM* on Linux'"
+			},
+			"note": "the first board to enumerate gets ttyACM0; with several MCU boards, pin each by its USB serial number (a udev rule or /dev/serial/by-id) rather than by order",
+			"alternatives": [
+				{
+					"value": null,
+					"note": "NVIDIA's documents name the header UART's signals but not its Linux device; forum answers (not official) point at a /dev/ttyTHS* node, and one reports the TX pin not driving on JetPack 7 (L4T R39.2). Check the node on the flashed image. The micro-USB J26 is the kit's own debug UART for a host PC, not a link to the MCU board",
+					"via": "UART1 on header pins 8 (TX) and 10 (RX)"
+				}
+			]
+		}
+	}
+}

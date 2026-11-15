@@ -68,10 +68,12 @@ def blind(distance, state):
 
 
 def careful(distance, state):
+    # About a quarter turn and a half: with the caster sliding at its own friction (no longer the floor's) the rover spins
+    # at about 8 rad/s at 0.9 duty, so the old 700 ms went round nearly once and faced the wall again.
     if state["now"] < state["turn_until"]:
         return 0.9, -0.9
     if 0 <= distance < 400:
-        state["turn_until"] = state["now"] + 700
+        state["turn_until"] = state["now"] + 250
         return 0.9, -0.9
     return 0.9, 0.9
 
@@ -150,6 +152,47 @@ class DriveTest(unittest.TestCase):
         self.assertNotIn('name="step"', course_xml(0))
         self.assertIn('name="step"', course_xml(0.003))
 
+
+def caster_climbs_from_rest(spec, edge_mm, caster_share, caster_mu=0.02, seconds=3.0):
+    """The worst case the mech-climb check bounds: the drive wheels already on the step, the caster against its edge, the
+    rover at rest (no momentum), then full duty. True when the caster gets over."""
+    import copy
+    import mujoco
+    from mech.drive import STEP_X, course_xml
+    from mech.model import battery_volts, build_model, motor_torque
+
+    spec = copy.deepcopy(spec)
+    d = spec["drive"]
+    spec["edgeMm"] = edge_mm
+    spec["estimates"] = dict(spec["estimates"], casterMu=caster_mu)
+    spec["com"] = [d["axleXMm"] - caster_share * d["wheelbaseMm"], *spec["com"][1:]]
+    m = build_model(spec, course_xml(edge_mm / 1000))
+    data = mujoco.MjData(m)
+    cr = spec["caster"]["wheelMm"] / 2000
+    data.qpos[0] = STEP_X - cr - (d["axleXMm"] - d["wheelbaseMm"]) / 1000 - 0.002
+    data.qpos[2] += edge_mm / 1000 + 0.003
+    for _ in range(500):  # settle with the motors off
+        mujoco.mj_step(m, data)
+    jl, jr = m.joint("left"), m.joint("right")
+    volts = battery_volts(spec["pack"], 1.0, 0, 0)
+    for _ in range(int(seconds / m.opt.timestep)):
+        data.ctrl[0] = motor_torque(spec["motor"], volts, 1.0, data.qvel[jl.dofadr[0]])[0]
+        data.ctrl[1] = motor_torque(spec["motor"], volts, 1.0, data.qvel[jr.dofadr[0]])[0]
+        mujoco.mj_step(m, data)
+    return bool(data.xpos[m.body("caster").id][0] > STEP_X + cr)
+
+
+class CasterClimbTest(unittest.TestCase):
+    # Premerge review (15 Nov): the mech-climb check's limit came from a simulation whose caster dragged at the floor's
+    # 0.6 (MuJoCo took the larger friction of the pair). Re-measured with the caster at its own friction, from rest: the
+    # check's static bound (here 22 % at 10 mm for the 40 mm caster, with its 1.2x margin) still sits under what the
+    # simulation climbs, and a caster under 43 % of the weight still stalls at 10 mm when it has no momentum.
+    def test_the_climb_checks_limit_climbs_from_rest_and_twice_it_stalls(self):
+        self.assertTrue(caster_climbs_from_rest(SPEC_DRIVE, 10, 0.22))
+        self.assertFalse(caster_climbs_from_rest(SPEC_DRIVE, 10, 0.43))
+
+    def test_the_old_finding_came_from_the_caster_dragging_at_the_floors_friction(self):
+        self.assertFalse(caster_climbs_from_rest(SPEC_DRIVE, 10, 0.22, caster_mu=0.6))
 
 if __name__ == "__main__":
     unittest.main()

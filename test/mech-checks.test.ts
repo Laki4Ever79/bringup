@@ -1,7 +1,7 @@
 // The plain-code mechanics checks (src/mechanics/checks.ts): free and instant, run on every contract change.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mechanicsCheckOver, mechanicsChecksWith } from "../src/mechanics/checks.ts"
+import { defaultCheckCatalog, mechanicsCheckOver, mechanicsChecksWith } from "../src/mechanics/checks.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 import { fixtureContract, roverFixture } from "./fixture.ts"
 
@@ -34,6 +34,22 @@ test("a weak motor can't climb the edge", () => {
 test("too slow a motor misses the target speed", () => {
 	const { c, cat } = variant((_v, k) => (k.mech.motors[0].noLoadRpm = 60))
 	assert.match(msg(c, cat, "mech-speed"), /0\.3 m\/s/)
+})
+
+// Premerge review (15 Nov): the check used a flat 0.8 of no-load while the firmware's duty followed the load line, so
+// the report's top speed and the speed the firmware planned came from two models. Now one: model.ts.
+test("the Top speed figure is the firmware's load line at full duty from the nominal voltage", async () => {
+	const { mechanicsFigures } = await import("../src/mechanics/checks.ts")
+	const { dutyFor } = await import("../src/mechanics/model.ts")
+	const { byMpn } = await import("../src/mechanics/catalog.ts")
+	const { ROVER_BOARD } = await import("../src/inference/scripts.ts")
+	const s = { revision: 1, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) }
+	const figs = mechanicsFigures(s)
+	const top = Number(figs.find((f) => f.check === "Top speed")!.value.split(" ")[0])
+	const mass = Number(figs.find((f) => f.check === "Mass")!.value.split(" ")[0]) / 1000
+	const k = defaultCheckCatalog()!.mech, m = s.values.mechanics
+	const motor = byMpn(k.motors, m.drive.motor)!, pack = byMpn(k.batteries, m.battery.pack)!, wheel = byMpn(k.wheels, m.drive.wheel)!
+	assert.ok(Math.abs(dutyFor(motor, pack, pack.nominalV, top, mass, wheel.diameterMm / 2000) - 1) < 0.02, "the top speed takes full duty on the same load line")
 })
 
 test("a short-range sensor can't stop the rover in time", () => {
@@ -221,4 +237,17 @@ test("a motor driver without motion targets asks the architect for the motion fi
 test("a board in a system that only names the robot isn't asked for motion", () => {
 	const { c, cat } = variant((v) => { delete v.motion; v.parts = v.parts.filter((p: Any) => p.role !== "motor-driver"); v.requirements = { ...v.requirements, summary: "climate sensor board on the rover" }; v.assembly = { body: "chassis", plate: { lengthMm: 150, widthMm: 110 }, boards: [], self: "climate" } })
 	assert.deepEqual(mechanicsChecksWith(c, cat), [])
+})
+
+test("a thick pack under a board is flagged; the same pack beside the boards is not (the advice can be followed)", () => {
+	// 18 mm thick: over the 10 mm standoffs. At x -10 it lies under the 60 × 40 board at x 10 (-20 to 40).
+	const under = variant((_v, k) => (k.mech.batteries[0].sizeMm = [60, 36, 18]))
+	assert.match(msg(under.c, under.cat, "mech-fit"), /18 mm-thick battery doesn't fit under boards/)
+	assert.match(msg(under.c, under.cat, "mech-fit"), /under main/)
+	// Moved back past the board's rear edge (-20 - 30 = -50): beside it, nothing above it.
+	const beside = variant((v, k) => {
+		k.mech.batteries[0].sizeMm = [60, 36, 18]
+		v.mechanics.battery.at.xMm = -51
+	})
+	assert.ok(!mechanicsChecksWith(beside.c, beside.cat).some((x) => /battery doesn't fit under boards/.test(x.message)))
 })

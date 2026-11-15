@@ -553,6 +553,8 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	smd3225_4p: [3.6, 2.9],
 	// The DRV8833's TSSOP-16 (6.4 mm lead span, 0.65 mm pitch): pads across x, 8 rows along y.
 	"tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm": [7.9, 5.6],
+	// A HAT's 2 × 20 female header (ADAFRUIT-2223): 20 columns and 2 rows at 2.54 mm, the housing's 50.8 × 5.08 mm.
+	"pinrow40_rows2_female_pinnumbering(columnmajor)": [50.8, 5.08],
 }
 const DEFAULT_SIZE: [number, number] = [3, 3]
 
@@ -733,6 +735,13 @@ export function mountingHoles(s: ContractSnapshot): MountingHole[] {
 	const { outline } = s.values
 	if (!outline) return []
 	const [W, H] = [outline.widthMm, outline.heightMm]
+	// A board that must match another's mounting pattern (a HAT on a bought module) drills that pattern, as given.
+	// A diameter the pattern doesn't give (null) is the default hole; a zero or negative one is an error, not a hole.
+	if (outline.holes?.length)
+		return outline.holes.map((h, i) => {
+			if (h.dia != null && !(h.dia > 0)) throw new Error(`outline.holes[${i}] at (${h.x}, ${h.y}) mm has diameter ${h.dia} mm: a mounting hole needs a positive diameter (or null for the default Ø${MOUNTING_HOLE.diameterMm} mm)`)
+			return { ref: `H${i + 1}`, x: +(h.x - W / 2).toFixed(3), y: +(h.y - H / 2).toFixed(3), diameterMm: h.dia ?? MOUNTING_HOLE.diameterMm }
+		})
 	const dx = W / 2 - MOUNTING_HOLE.insetMm
 	const dy = H / 2 - MOUNTING_HOLE.insetMm
 	const corners = [[-dx, -dy], [dx, -dy], [-dx, dy], [dx, dy]]

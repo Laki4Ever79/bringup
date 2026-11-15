@@ -1,0 +1,336 @@
+{
+	"id": "jetson-orin-nano-devkit",
+	"kind": "compute",
+	"title": "NVIDIA Jetson Orin Nano Super Developer Kit (bought), on a generated carrier",
+	"parts": [
+		{
+			"mpn": "JETSON-ORIN-NANO-DEVKIT-SUPER",
+			"role": "compute",
+			"qty": 1,
+			"alternatives": [
+				"JETSON-ORIN-NANO-DEVKIT"
+			]
+		}
+	],
+	"circuit": "bought; carrier per src/system",
+	"interfaces": [
+		{
+			"kind": "uart",
+			"signals": [
+				"UART1_TXD (pin 8)",
+				"UART1_RXD (pin 10)"
+			]
+		},
+		{
+			"kind": "i2c",
+			"signals": [
+				"I2C1_SDA (pin 3)",
+				"I2C1_SCL (pin 5)",
+				"I2C0_SDA (pin 27)",
+				"I2C0_SCL (pin 28)"
+			]
+		},
+		{
+			"kind": "pwm",
+			"signals": [
+				"GPIO12 / GP88_PWM1 (pin 15)",
+				"GPIO07 / GP113_PWM7 (pin 32)",
+				"GPIO13 PWM (pin 33)"
+			]
+		},
+		{
+			"kind": "usb",
+			"signals": [
+				"4 × USB 3.2 Type-A",
+				"1 × USB-C (data, recovery)"
+			]
+		},
+		{
+			"kind": "power",
+			"signals": [
+				"DC jack 9-20 V (19 V supply)",
+				"5V on header pins 2, 4 (output, 1 A per pin)"
+			]
+		}
+	],
+	"compute": {
+		"frame": "millimetres, origin at the carrier's lower-left corner seen from the top, ports along the bottom edge, 40-pin header along the right edge, x right, y up (as Figure 1-4 of the carrier board specification)",
+		"outline": {
+			"value": {
+				"widthMm": 103.0,
+				"heightMm": 90.5
+			},
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+				"where": "SP-11324-001 v1.3, Figure 4-2 Developer Kit Mechanical Dimensions: 103.00 ± 0.20 by 90.50 ± 0.20 mm"
+			},
+			"note": "the kit as bought, on its base; the carrier PCB alone is 100.00 × 79.00 mm (Figure 4-1)"
+		},
+		"carrierOutline": {
+			"value": {
+				"widthMm": 100.0,
+				"heightMm": 79.0
+			},
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+				"where": "Figure 4-1 Developer Kit Carrier Board Mechanical Dimensions: 100.00 ± 0.13 by 79.00 ± 0.13 mm, PCB 1.57 ± 0.16"
+			}
+		},
+		"holes": {
+			"value": null,
+			"source": null,
+			"note": "not dimensioned in the carrier board specification (Figures 4-1 and 4-2 give only the outline and heights): take them from NVIDIA's carrier reference design files before drilling"
+		},
+		"tallestMm": {
+			"value": 34.77,
+			"unit": "mm",
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+				"where": "Figure 4-2: 34.77 ± 1.09 mm overall height of the developer kit"
+			},
+			"note": "the whole kit, base to the module's fan; the bare carrier is 16.70 mm max above and 4.30 mm max below its PCB (Figure 4-1)"
+		},
+		"header": {
+			"at": {
+				"value": {
+					"x": null,
+					"y": null,
+					"pitchMm": 2.54,
+					"rows": 2,
+					"cols": 20,
+					"along": "right edge",
+					"pin1": "the end nearest the bottom (port) edge"
+				},
+				"source": {
+					"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+					"where": "section 3.3: J12, 2x20 2.54 mm; Figure 1-4 Carrier Board Placement - Top View: J12 along the right edge, pin-1 arrow at its lower end"
+				},
+				"note": "the header's position isn't dimensioned; the pin-1 column (inner or outer row) isn't readable from Figure 1-4"
+			},
+			"pins": {
+				"value": {
+					"1": "3V3",
+					"2": "5V",
+					"3": "I2C1_SDA",
+					"4": "5V",
+					"5": "I2C1_SCL",
+					"6": "GND",
+					"7": "GPIO09",
+					"8": "UART1_TXD",
+					"9": "GND",
+					"10": "UART1_RXD",
+					"11": "UART1_RTS*",
+					"12": "I2S0_SCLK",
+					"13": "SPI1_SCK",
+					"14": "GND",
+					"15": "GPIO12 (PWM)",
+					"16": "SPI1_CS1*",
+					"17": "3V3",
+					"18": "SPI1_CS0*",
+					"19": "SPI0_MOSI",
+					"20": "GND",
+					"21": "SPI0_MISO",
+					"22": "SPI1_MISO",
+					"23": "SPI0_SCK",
+					"24": "SPI0_CS0*",
+					"25": "GND",
+					"26": "SPI0_CS1*",
+					"27": "I2C0_SDA",
+					"28": "I2C0_SCL",
+					"29": "GPIO01",
+					"30": "GND",
+					"31": "GPIO11",
+					"32": "GPIO07 (PWM)",
+					"33": "GPIO13 (PWM)",
+					"34": "GND",
+					"35": "I2S0_FS",
+					"36": "UART1_CTS*",
+					"37": "SPI1_MOSI",
+					"38": "I2S0_DIN",
+					"39": "GND",
+					"40": "I2S0_DOUT"
+				},
+				"source": {
+					"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+					"where": "Figure 3-1 Expansion Header Connections and Table 3-3 Expansion Header Pin Description - J12"
+				}
+			}
+		},
+		"ports": {
+			"value": [
+				{
+					"kind": "dc jack 5.5 × 2.5 mm",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "displayport",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "usb-a ×2 (USB 3.2)",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "usb-a ×2 (USB 3.2)",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "ethernet",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "usb-c (data only, recovery)",
+					"side": "bottom",
+					"atMm": null
+				},
+				{
+					"kind": "mipi csi ×2 (22-pin)",
+					"side": "top face, left edge",
+					"atMm": null
+				},
+				{
+					"kind": "m.2 key-m ×2, key-e",
+					"side": "underside",
+					"atMm": null
+				},
+				{
+					"kind": "microsd (on the module)",
+					"side": "module",
+					"atMm": null
+				}
+			],
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+				"where": "Figure 1-4 Carrier Board Placement - Top View, left to right along the bottom: Power Jack J16, DP J8, USB J7, USB J6, Ethernet J15, USB Type C J5; camera J20/J21 on the left"
+			},
+			"also": {
+				"url": "https://developer.nvidia.com/embedded/learn/jetson-orin-nano-devkit-user-guide/hardware_spec.html",
+				"where": "Hardware Layout, Part Names: USB-C 'For data only', DC power jack 5.5mm x 2.5mm, M.2 slots"
+			},
+			"note": "positions along the edge aren't dimensioned"
+		},
+		"inputV": {
+			"value": {
+				"nom": 19.0,
+				"min": 9.0,
+				"max": 20.0
+			},
+			"unit": "V",
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+				"where": "section 1.2: 'DC Jack: 9-20 V (19V supply provided)'; Table 3-8 DC Jack Pin Description: 'Main DC input supplying DC jack input (9-20 V)'"
+			}
+		},
+		"currentA": {
+			"typical": {
+				"value": null,
+				"unit": "A",
+				"source": null,
+				"note": "no typical current is published for the kit"
+			},
+			"peak": {
+				"value": 3.5,
+				"unit": "A",
+				"source": {
+					"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+					"where": "section 3.8 DC Power Jack: 'Max current supported is 3.5 A'"
+				},
+				"note": "the jack's rating, not a measured draw; Table 5-2 lists DCJ_IN max current 4.2 A at 19.0 V for the input rail. The supplied adapter's rating isn't in the specification"
+			},
+			"powerModesW": {
+				"value": {
+					"original": [
+						7,
+						15
+					],
+					"super": [
+						15,
+						25,
+						"MAXN_SUPER (uncapped)"
+					]
+				},
+				"unit": "W",
+				"source": {
+					"url": "https://docs.nvidia.com/jetson/archives/r36.4.4/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonOrinNanoSeriesJetsonOrinNxSeriesAndJetsonAgxOrinSeries.html",
+					"where": "Supported Modes and Power Efficiency, NVP Model Clock Configuration, Jetson Orin Nano 8GB: 7W, 15W (default); Jetson Orin Nano 8GB Super: 15W, 25W (default), MAXN_SUPER"
+				},
+				"note": "module power budgets: the Super kit and an upgraded original kit flashed with the 'super' configuration differ only in this; MAXN_SUPER has no fixed budget"
+			}
+		},
+		"feeds": {
+			"value": [
+				{
+					"via": "dc jack J16",
+					"what": "9-20 V, center positive (19 V supply provided)",
+					"source": {
+						"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+						"where": "section 3.8 DC Power Jack and Table 3-8"
+					}
+				},
+				{
+					"via": "PoE backpower header J18",
+					"what": "alternate 9-20 V input, 3 A max (PoE needs an external 38-60 V to 5-20 V converter)",
+					"source": {
+						"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+						"where": "section 3.9 and Table 3-10 PoE Backpower Header - J18"
+					}
+				}
+			],
+			"note": "the carrier passes only 5 V to the module (MODULE_ID pull-up removed), and 'Orin NX 40W (MAXN_SUPER) is NOT supported on the developer kit carrier board' (section 1 note)"
+		},
+		"gpioLevel": {
+			"value": 3.3,
+			"unit": "V",
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
+				"where": "Table 3-3 note 6: 'All signals on the 40-pin header are 3.3V levels'"
+			},
+			"note": "most header signals pass TXB0108 level translators with very weak (±20 µA) outputs (note 3), and pull-ups other than I2C must be weak (>50 kΩ): drive LEDs or MOSFET gates through a buffer, not directly"
+		},
+		"os": {
+			"value": "NVIDIA JetPack 7 (Jetson Linux on Ubuntu 24.04)",
+			"source": {
+				"url": "https://developer.nvidia.com/embedded/jetpack",
+				"where": "JetPack 7 Overview: 'JetPack 7 gives you full support for the NVIDIA Jetson Orin and Thor platform' ... 'Built on Linux Kernel 6.8 and Ubuntu 24.04 LTS'"
+			},
+			"note": "older JetPack 6 images run an older Ubuntu: check the flashed release before picking the ROS 2 distro",
+			"also": {
+				"url": "https://docs.nvidia.com/jetson/archives/r39.2.1/DeveloperGuide/index.html",
+				"where": "Jetson Linux r39.2.1 (JetPack 7.2) Developer Guide: supported platforms list Orin NX, Orin Nano and the Orin Nano Developer Kit"
+			}
+		},
+		"ros2": {
+			"value": {
+				"distro": "jazzy",
+				"tier": 1,
+				"platform": "Ubuntu Noble arm64"
+			},
+			"source": {
+				"url": "https://github.com/ros-infrastructure/rep/blob/master/rep-2000.rst",
+				"where": "Jazzy Jalisco: arm64 / Ubuntu Noble (24.04): Tier 1"
+			},
+			"note": "Tier 1 is for Ubuntu Noble arm64; JetPack 7 is NVIDIA's build of it, not a stock Ubuntu image"
+		},
+		"bridgeDevice": {
+			"value": "/dev/ttyACM0",
+			"via": "the MCU board's native USB (CDC-ACM), one cable per board through the robot's USB-C hub",
+			"source": {
+				"url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-guides/usb-serial-jtag-console.html",
+				"where": "Uploading the Application, note: the USB Serial/JTAG Controller's serial port appears 'as /dev/ttyACM* on Linux'"
+			},
+			"note": "the first board to enumerate gets ttyACM0; with several MCU boards, pin each by its USB serial number (a udev rule or /dev/serial/by-id) rather than by order",
+			"alternatives": [
+				{
+					"value": null,
+					"note": "NVIDIA's documents name the header UART's signals but not its Linux device; forum answers (not official) point at a /dev/ttyTHS* node, and one reports the TX pin not driving on JetPack 7 (L4T R39.2). Check the node on the flashed image",
+					"via": "UART1 on header pins 8 (TXD) and 10 (RXD)"
+				}
+			]
+		}
+	}
+}

@@ -21,8 +21,8 @@ fields involved. The report's **Mechanics** section prints every computed value 
 |---|---|
 | `mech-torque` | each wheel lifts its share of the weight over the brief's edge (1.5× margin) |
 | `mech-climb` | the drive wheels' grip can push the caster up the edge (1.2× margin) |
-| `mech-speed` | loaded top speed (0.8 of no-load) reaches the target |
-| `mech-stopping` | braking plus one sensor period fits inside the sensor's range, minus the wall distance |
+| `mech-speed` | top speed on the motor's load line (winding resistance, rolling load, pack sag) at the nominal voltage reaches the target; the cruise duty the firmware runs (set for a full pack) is at least 0.3 |
+| `mech-stopping` | braking (on the drive wheels' share of the weight; the caster barely brakes) plus one sensor period fits inside the sensor's range, minus the wall distance; and the reading at which the rover turns in place (its sweep about the axle plus 100 mm) is within that range |
 | `mech-current` | stall current within the driver's peak per channel, and both motors plus the electronics within the pack's peak |
 | `mech-runtime` | the pack lasts the brief's runtime at cruise |
 | `mech-voltage` | a full cell is at most 1.3× the motor's rating; the driver covers the cell's range |
@@ -39,6 +39,7 @@ estimates. Every report line that uses one says `(estimate: <name> <value>)`.
 |---|---|---|
 | floorMu | 0.6 | rubber on wood, laminate or tile: published tables give 0.5–0.8 |
 | rollingCrr | 0.02 | small rubber wheels on hard floors: 0.01–0.03 |
+| casterMu | 0.02 | a swivel caster rolls rather than grips, so it barely brakes; the simulation slides it at this friction |
 | plaDensityGcm3 | 1.24 | solid PLA; infill makes the real plate lighter |
 | motorOvervoltMax | 1.3 | small brushed gearmotors take some overvoltage at a cost in life; 1.3× keeps a 3 V motor off a full 4.2 V cell |
 | boardMassGPerCm2 | 0.35 | 1.6 mm FR-4 with small parts |
@@ -113,10 +114,25 @@ The first simulated drives showed two things the plain checks had missed:
 
 1. **60 mm wheels can't climb a 1 cm step.** A rigid driven wheel on a floor with grip 0.6 climbs only about 0.14 of
    its radius. The design moved to 80 mm wheels.
-2. **The trailing caster stalls at a 1 cm step**, even with full motor power. It carries about 42 % of the weight:
-   its own 71 g, plus the plate and the board, sit behind the axle. To be pushed up 1 cm it may carry at most about
-   21 %. No layout within the brief's 160 mm and no caster in the catalog gets there. **The brief's edge is now 3 mm**:
-   floor seams and rug edges, not door thresholds. The `mech-climb` check now catches this in milliseconds.
+2. **A trailing caster that carries too much of the weight stalls at a step.** The first measurement overstated it:
+   MuJoCo took the larger friction of the caster–floor pair, so the 38 mm caster dragged against the step's edge at
+   the floor's 0.6 and stalled at 1 cm under 42 % of the weight even at full power. Re-measured (15 Nov) with the
+   caster sliding at its own 0.02 (`casterMu`), on the scripted rover (247 g, 38 mm caster, 80 mm wheels):
+
+   | Step | From rest, full power: caster share that still climbs | At cruise (0.3 m/s) | `mech-climb` limit (1.2× margin) |
+   |---|---|---|---|
+   | 3 mm | about 70 % (stalls at 80 %) | 43 % crosses | 44 % |
+   | 5 mm | about 50 % (stalls at 60 %) | 43 % crosses | 35 % |
+   | 10 mm | about 28 % (stalls at 30 %) | up to about 52 % crosses (stalls at 55 %) | 21 % |
+
+   From rest is the case the check bounds: a rover that stops on an edge, or starts against one, has no momentum to
+   carry it. There the check's static limit sits under the simulation's at every height, so it stays as it was. At
+   cruise the rover's momentum carries the caster over much more (its kinetic energy is about the work of lifting the
+   caster's share 1 cm); the scripted rover (43 % on the caster) crosses 10 and 12 mm at cruise and stops at 14 mm,
+   where its 80 mm drive wheels stall first. **The brief's edge stays 3 mm** (floor seams and rug edges, not door
+   thresholds): a 1 cm edge is crossed only with momentum, and stalls the rover if it ever stops on one. The
+   `mech-climb` check catches it in milliseconds; `py/tests/test_mech_drive.py` (CasterClimbTest) holds the
+   from-rest measurement to it.
 
 ## Not proven
 

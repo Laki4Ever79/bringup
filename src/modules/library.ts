@@ -25,6 +25,9 @@ export interface Module {
 	circuit: string
 	driver?: string
 	interfaces: { kind: string; signals: string[]; address?: string }[]
+	// A bought compute board (kind "compute": Raspberry Pi, Jetson, mini PC): its outline, holes, header, ports, power
+	// and software, each value { value, unit?, source: { url, where } } or unknown ({ value: null, note }).
+	compute?: Record<string, unknown>
 }
 
 // How strongly a module has been shown to work, weakest first (docs/design/module-library.md).
@@ -53,8 +56,49 @@ export function loadModules(root: string): Module[] {
 		.map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")) as Module)
 }
 
-// Why a module isn't cited (level 0): a part no catalog has, or a bought mechanical part with an uncited number.
+// Why a compute module isn't cited. Every leaf under `compute` (but `frame`) must sit in a value node
+// { value, unit?, source: { url, where }, note? } or be part of one:
+// - a value with no source, or a source with an empty url or where, is uncited;
+// - an unknown value (null), or a value object with any null field inside it, needs a note saying why;
+// - a value that is a list whose entries carry their own sources (feeds) is cited entry by entry;
+// - a node's other entries are walked too: `alternatives` (each a value node of its own), `also` and `*Source` (each a
+//   source);
+// - a bare number, string or list that isn't in a value node is uncited.
+export function computeProblems(m: Module): string[] {
+	if (!m.compute) return [`${m.id}: a compute module has no compute block`]
+	const problems: string[] = []
+	const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x)
+	const cite = (c: unknown) => isObj(c) && typeof c.url === "string" && c.url !== "" && typeof c.where === "string" && c.where.trim() !== ""
+	const sourced = (x: Record<string, unknown>) => cite(x.source)
+	const hasNull = (v: unknown): boolean => v === null || (Array.isArray(v) ? v.some(hasNull) : isObj(v) ? Object.values(v).some(hasNull) : false)
+	const META = new Set(["value", "unit", "source", "note", "via"])
+	const node = (x: Record<string, unknown>, path: string) => {
+		const v = x.value
+		const entriesSourced = Array.isArray(v) && v.length > 0 && v.every((e) => isObj(e) && sourced(e))
+		if (v === null) { if (!(typeof x.note === "string" && x.note !== "")) problems.push(`${m.id}: ${path} is unknown and gives no reason (a note)`) }
+		else if (!sourced(x) && !entriesSourced) problems.push(`${m.id}: ${path} has no source${isObj(x.source) ? " (a source needs a url and a where)" : ""}`)
+		else if (hasNull(v) && !entriesSourced && !(typeof x.note === "string" && x.note !== "")) problems.push(`${m.id}: ${path} has an unknown (null) part and gives no reason (a note)`)
+		if (entriesSourced) (v as Record<string, unknown>[]).forEach((e, i) => { if (!cite(e.source)) problems.push(`${m.id}: ${path}[${i}] has no source`) })
+		for (const [k, e] of Object.entries(x)) {
+			if (META.has(k)) continue
+			if (k === "alternatives" && Array.isArray(e)) e.forEach((a, i) => (isObj(a) && "value" in a ? node(a, `${path}.alternatives[${i}]`) : problems.push(`${m.id}: ${path}.alternatives[${i}] is not a value with a source`)))
+			else if (k === "also" || /Source$/.test(k)) { if (!cite(e)) problems.push(`${m.id}: ${path}.${k} is not a source (url and where)`) }
+			else problems.push(`${m.id}: ${path}.${k} is not part of a cited value`)
+		}
+	}
+	const walk = (x: unknown, path: string) => {
+		if (!isObj(x)) return void problems.push(`${m.id}: ${path} has no source (a bare value: wrap it as { value, source })`)
+		if ("value" in x) return node(x, path)
+		for (const [k, v] of Object.entries(x)) walk(v, `${path}.${k}`)
+	}
+	for (const [k, v] of Object.entries(m.compute)) if (k !== "frame") walk(v, `compute.${k}`)
+	return problems
+}
+
+// Why a module isn't cited (level 0): a part no catalog has, or a bought mechanical part with an uncited number. A
+// compute module's board is bought whole and isn't in a parts catalog: its record's own sources stand in for it.
 export function moduleProblems(m: Module, mech: MechCatalog, boardMpns: Set<string>): string[] {
+	if (m.kind === "compute") return computeProblems(m)
 	const problems: string[] = []
 	const mechParts = [...mech.motors, ...mech.wheels, ...mech.casters, ...mech.batteries, ...(mech.sensors ?? [])]
 	for (const p of m.parts)
