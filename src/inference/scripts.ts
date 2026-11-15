@@ -734,8 +734,13 @@ export function mockScripts(): Record<string, Script> {
 				// LDO takes its input from USB (VBUS), not the pack.
 				if (stepsTaken(items) === 0 && violationKinds(instruction).has("charger-pack") && parts.some((p) => p.role === "charger")) {
 					const drop = new Set(parts.filter((p) => p.role === "charger" || p.role === "charge-led").map((p) => p.ref))
-					const used = supportParts(state().contract.snapshot()).filter((sp) => [sp.a, sp.b].some((e) => "ref" in e && drop.has(e.ref))).map((sp) => sp.ref)
-					const kept = parts.filter((p) => !drop.has(p.ref) && !used.includes(p.ref))
+					// The passives the generator still claims without them (by LCSC, in job order): the rest were theirs (the
+					// charge LED's and PROG resistors, the charger's bypass capacitor).
+					const snap = state().contract.snapshot()
+					const without = parts.filter((p) => !drop.has(p.ref))
+					const claimed = new Set(supportParts({ ...snap, values: { ...snap.values, parts: without } }).map((sp) => sp.ref))
+					const used = without.filter((p) => (p.role === "resistor" || p.role === "capacitor") && !claimed.has(p.ref)).map((p) => p.ref)
+					const kept = without.filter((p) => !used.includes(p.ref))
 					return propose("parts", kept, `the ${[...drop].join(" and ")} are for one cell, the pack is multi-cell: it charges off the board on a balance charger (${[...drop, ...used].join(", ")} dropped)`)
 				}
 				return say("noted")

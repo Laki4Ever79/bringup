@@ -71,7 +71,21 @@
    "widthMm": 43,
    "heightMm": 28,
    "rotDeg": 0,
-   "holeInsetMm": 3.5
+   "holeInsetMm": 3,
+   "holes": [
+    {
+     "xMm": 18.5,
+     "yMm": -11
+    },
+    {
+     "xMm": -18.5,
+     "yMm": 11
+    },
+    {
+     "xMm": 18.5,
+     "yMm": 11
+    }
+   ]
   },
   {
    "name": "brain",
@@ -80,24 +94,24 @@
    "widthMm": 85,
    "heightMm": 56,
    "rotDeg": 0,
-   "holeInsetMm": 3.5,
-   "holesMm": [
-    [
-     -109.5,
-     -24.5
-    ],
-    [
-     -51.5,
-     -24.5
-    ],
-    [
-     -109.5,
-     24.5
-    ],
-    [
-     -51.5,
-     24.5
-    ]
+   "holeInsetMm": 3,
+   "holes": [
+    {
+     "xMm": -109.5,
+     "yMm": -24.5
+    },
+    {
+     "xMm": -51.5,
+     "yMm": -24.5
+    },
+    {
+     "xMm": -109.5,
+     "yMm": 24.5
+    },
+    {
+     "xMm": -51.5,
+     "yMm": 24.5
+    }
    ]
   },
   {
@@ -107,10 +121,15 @@
    "widthMm": 85,
    "heightMm": 56,
    "rotDeg": 0,
-   "holeInsetMm": 3.5,
+   "holeInsetMm": 3,
+   "holes": [],
    "standoffs": false
   }
  ],
+ "boardScrew": {
+  "boardHoleMm": 2.2,
+  "pilotMm": 1.6
+ },
  "unplaced": [],
  "sensor": {
   "xMm": 121.6,
@@ -160,6 +179,7 @@
  "edgeMm": 3,
  "estimates": {
   "floorMu": 0.6,
+  "casterMu": 0.02,
   "rollingCrr": 0.02,
   "packOhm": 0.15
  }
