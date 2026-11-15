@@ -80,12 +80,18 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
-- [ ] **Copper too near the edge that isn't a via** (15 Nov): the subscription run's 64×25 mm rover (test/fixtures/
+- [x] **Copper too near the edge that isn't a via** (15 Nov; fixed: via-edge.ts moves a trace corner too near the edge
+      inward, joints kept, ends on a pad left alone; the 64×25 rover keeps its footprint, DRC 0): the subscription run's 64×25 mm rover (test/fixtures/
       cc-rover-64x25-rev19.json) routes clean but leaves its debug footprint off: 3 copper_edge_clearance errors with
       it, 0.2488 mm against 0.3. Not a router via (via-edge.ts moves those): find which copper (a pad, a trace, a test
       pad) and fix it the general way.
 
-- [ ] **The smallest board reserves the room a chip's pin capacitors need** (agreed with d9610c, 15 Nov, after the real
+- [ ] **Narrow boards the router can't route around the motor driver** (15 Nov, revised: reserving the capacitors' boxes
+      was tried and changed nothing: on the 60×21 board C3 and C4 already sit in their spots beside U5's pins; the
+      traces fail on congestion, 8-9 mm against 5. Today's working path: the build reports the too-long trace and the
+      architect grows the board for routing; the run's 64×25 revision routes. Open: a routing-aware smallest board (the
+      space rule's minimum from what has routed, not from placement alone), so the architect doesn't shrink there first.)
+      Original entry: **The smallest board reserves the room a chip's pin capacitors need** (agreed with d9610c, 15 Nov, after the real
       subscription rover run: the architect shrank the board to 60×21 mm under the space rule, and there U5's VCP and
       VINT capacitors couldn't route within their 5 mm bound, 8-9 mm, since other parts took the room beside its pins).
       The bound stays (the datasheet's decoupling intent). Fix: once a part is placed, the boxes its pin capacitors need
