@@ -7,7 +7,7 @@
 			"name": "main",
 			"outline": {
 				"widthMm": 33,
-				"heightMm": 42
+				"heightMm": 40
 			},
 			"chassis": true
 		},
@@ -15,7 +15,7 @@
 			"name": "climate",
 			"outline": {
 				"widthMm": 36,
-				"heightMm": 26
+				"heightMm": 25
 			}
 		}
 	],
@@ -38,8 +38,8 @@
 	"assembly": {
 		"body": "chassis",
 		"plate": {
-			"lengthMm": 156,
-			"widthMm": 110
+			"lengthMm": 150,
+			"widthMm": 96
 		},
 		"boards": [
 			{
@@ -49,18 +49,18 @@
 				"rotDeg": 0,
 				"outline": {
 					"widthMm": 33,
-					"heightMm": 42
+					"heightMm": 40
 				},
 				"outlineSource": "built"
 			},
 			{
 				"name": "climate",
-				"xMm": 48,
+				"xMm": 42.5,
 				"yMm": 0,
 				"rotDeg": 0,
 				"outline": {
 					"widthMm": 36,
-					"heightMm": 26
+					"heightMm": 25
 				},
 				"outlineSource": "built"
 			}

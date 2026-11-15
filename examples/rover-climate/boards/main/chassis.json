@@ -1,7 +1,7 @@
 {
  "plate": {
-  "lengthMm": 156,
-  "widthMm": 110,
+  "lengthMm": 150,
+  "widthMm": 96,
   "thicknessMm": 3,
   "clearanceMm": 50.5
  },
@@ -9,8 +9,8 @@
  "motors": [
   {
    "side": "left",
-   "xMm": 30,
-   "yMm": 47,
+   "xMm": 45,
+   "yMm": 37,
    "bodyMm": [
     26,
     12,
@@ -20,8 +20,8 @@
   },
   {
    "side": "right",
-   "xMm": 30,
-   "yMm": -47,
+   "xMm": 45,
+   "yMm": -37,
    "bodyMm": [
     26,
     12,
@@ -31,7 +31,7 @@
   }
  ],
  "caster": {
-  "xMm": -50,
+  "xMm": -55,
   "holesMm": [
    [
     18,
@@ -55,7 +55,7 @@
   "heightMm": 50.5
  },
  "battery": {
-  "xMm": 25,
+  "xMm": 45,
   "yMm": 0,
   "sizeMm": [
    60,
@@ -69,25 +69,25 @@
    "xMm": 0,
    "yMm": 0,
    "widthMm": 33,
-   "heightMm": 42,
+   "heightMm": 40,
    "rotDeg": 0,
    "holeInsetMm": 3.5
   },
   {
    "name": "climate",
-   "xMm": 48,
+   "xMm": 42.5,
    "yMm": 0,
    "widthMm": 36,
-   "heightMm": 26,
+   "heightMm": 25,
    "rotDeg": 0,
    "holeInsetMm": 3.5
   }
  ],
  "unplaced": [],
  "sensor": {
-  "xMm": 72,
+  "xMm": 73.6,
   "yMm": 0,
-  "zMm": 65,
+  "zMm": 66,
   "sizeMm": [
    21,
    18,
@@ -96,18 +96,18 @@
   "rangeMm": 1200,
   "updateMs": 33
  },
- "massG": 257.2622,
+ "massG": 246.638,
  "com": [
-  -2.639921449789359,
+  2.066003616636528,
   0,
-  43.87448486408031
+  43.5119365223526
  ],
  "wheelMassG": 20,
  "casterMassG": 71,
  "drive": {
-  "trackMm": 130,
-  "axleXMm": 30,
-  "wheelbaseMm": 80,
+  "trackMm": 110,
+  "axleXMm": 45,
+  "wheelbaseMm": 100,
   "wheelDiameterMm": 80,
   "wheelWidthMm": 10
  },
