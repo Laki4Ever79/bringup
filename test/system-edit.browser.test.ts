@@ -143,8 +143,9 @@ test("Apply posts exactly the diff with a short text; 202 marks it applied and p
 		await page.click("#edit-apply")
 		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes")
 		assert.equal(posts.length, 1)
-		const { text, ...rest } = posts[0].body as { text: string }
-		assert.deepEqual(rest, sent, "the body is the diff")
+		const { text, base, ...rest } = posts[0].body as { text: string; base: string }
+		assert.deepEqual(rest, sent, "the body is the diff (plus its text and base)")
+		assert.match(base, /^[0-9a-f]{16}$/)
 		assert.match(text, /^moved climate 10 mm back$/)
 		assert.match(await page.locator("#edit-why").textContent() ?? "", /round 1/)
 		assert.equal(await diff(page), null, "applied: nothing left to send")
@@ -351,4 +352,74 @@ test("drag details: back to the start keeps redo, Escape cancels a drag, a dragg
 		await page.waitForTimeout(200)
 		assert.equal(await page.locator("#facts [data-act=turn]").isVisible(), true)
 	})
+})
+
+test("Apply sends the hash of the design it edited from; a 409 for a changed design asks Rebase or Discard, which wait while a POST is out", { skip, timeout: 120_000 }, async () => {
+	let release: () => void = () => {}
+	let n = 0
+	await withEdit(async ({ page, posts }) => {
+		await enter(page)
+		const g = await geom(page, "climate")
+		await drag(page, g, { x: g.x - 10 * g.k, y: g.y })
+		await page.click("#edit-apply")
+		await page.waitForSelector("#edit-stale:not(.hidden)")
+		assert.match(await page.locator("#edit-stale").textContent() ?? "", /changed since you started editing/)
+		const expected = await page.evaluate(async () => {
+			const { designHash } = await import(String("/assembly-geom.js"))
+			const d = await (await fetch(location.pathname.replace("/system", "/api/systems/") + new URLSearchParams(location.search).get("id"))).json()
+			return designHash({ assembly: d.assembly, links: d.spec.links })
+		})
+		assert.equal(posts[0].body.base, expected, "the base is the design's hash")
+		assert.ok(await diff(page), "the edits are kept")
+		// Rebase, then Apply with a slow answer: Rebase and Discard are off while it is out.
+		await page.click("#edit-rebase")
+		await page.click("#edit-apply")
+		await page.waitForFunction(() => (document.querySelector("#edit-apply") as HTMLButtonElement).disabled)
+		assert.equal(await page.locator("#edit-rebase").isDisabled(), true)
+		assert.equal(await page.locator("#edit-discard").isDisabled(), true)
+		release()
+		await page.waitForFunction(() => document.querySelector("#edit-count")?.textContent === "0 changes")
+		assert.equal(await page.locator("#edit-stale").isVisible(), false, "a 202 clears the banner")
+	}, {
+		answer: async (route) => {
+			n++
+			if (n === 1) return route.fulfill({ status: 409, json: { error: "the design changed since you started editing", stale: true } })
+			await new Promise<void>((r) => (release = r))
+			await route.fulfill({ status: 202, json: { round: 1 } })
+		},
+	})
+})
+
+test("a rebase that can't replay an edit (its board is gone) says it was dropped", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, setDesign }) => {
+		await enter(page)
+		const g = await geom(page, "climate")
+		await drag(page, g, { x: g.x - 10 * g.k, y: g.y })
+		await page.mouse.click(g.x - 10 * g.k, g.y)
+		await page.keyboard.press("r")
+		setDesign((d) => { d.assembly.boards = d.assembly.boards.filter((b) => b.name !== "climate") })
+		await page.waitForSelector("#edit-stale:not(.hidden)", { timeout: 15_000 })
+		await page.click("#edit-rebase")
+		assert.match(await page.locator("#edit-why").textContent() ?? "", /2 edits no longer applied to the new design and were dropped/)
+		assert.equal(await diff(page), null)
+	}, { status: "running" })
+})
+
+test("a poll that changes only progress (statuses, findings, link tests) is not a design change", { skip, timeout: 120_000 }, async () => {
+	await withEdit(async ({ page, gets, setDesign }) => {
+		await enter(page)
+		const g = await geom(page, "climate")
+		await drag(page, g, { x: g.x - 10 * g.k, y: g.y })
+		setDesign((d) => {
+			const x = d as unknown as { boards: { status: string }[]; linkTests: unknown[]; findings: unknown[]; spend: unknown }
+			x.boards[0].status = `running ${Date.now()}`
+			x.linkTests = [{ link: "L1", ran: true, passed: true, detail: "ok" }]
+			x.findings = [{ link: "L1", kind: "baud", message: "x", boards: ["main"] }]
+		})
+		const n = gets()
+		while (gets() < n + 3) await page.waitForTimeout(250)
+		assert.equal(await page.locator("#edit-stale").isVisible(), false)
+		assert.equal(await page.locator("#edit-apply").isDisabled(), false)
+		assert.ok(await diff(page))
+	}, { status: "running" })
 })

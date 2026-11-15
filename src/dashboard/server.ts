@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url"
 import { basename, dirname, extname, join, resolve, sep } from "node:path"
 import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
+import { designHash } from "./assembly-geom.js"
 import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "../runner/drift.ts"
 import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
@@ -805,6 +806,10 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					if (!systemStays(run, lines)) return json(res, 409, { error: "This design isn't running; start it again to apply changes" })
 					const spec = (await readJsonFile(join(dir, "system.json"))) as SystemSpec | null
 					if (!spec) return json(res, 404, { error: "unknown system" })
+					// base: the hash of the design the page edited from; a design changed since (a round, another change) is refused,
+					// so a diff on an old snapshot is never taken. No base: as before.
+					if (body.base !== undefined && typeof body.base !== "string") return json(res, 400, { error: "base must be a string", errors: ["base must be a string"] })
+					if (body.base !== undefined && body.base !== designHash({ assembly: spec.assembly, links: spec.links })) return json(res, 409, { error: "the design changed since you started editing", stale: true })
 					if (body.assembly && !spec.assembly) throw new HttpError(400, "this system has no assembly to change")
 					if ((body.assembly as { plate?: unknown } | undefined)?.plate && spec.assembly?.body !== "chassis") throw new HttpError(400, "this design has no shared plate")
 					const merged = mergeRequest(spec, body)

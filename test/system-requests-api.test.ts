@@ -8,6 +8,7 @@ import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
 import { SYSTEM_REQUESTS } from "../src/system/run.ts"
 import { SYSTEM_TRACE } from "../src/system/trace.ts"
 import { defaultAssembly } from "../src/system/assembly.ts"
+import { designHash } from "../src/dashboard/assembly-geom.js"
 import type { SystemSpec } from "../src/system/spec.ts"
 import { tempDir } from "./helpers.ts"
 
@@ -123,5 +124,27 @@ test("a rebuild under the same id is not up until its own staying-up line", asyn
 		const r = await post(`/api/systems/${id}/requests`, { assembly: { boards: spec().assembly!.boards } })
 		assert.equal(r.status, 409)
 		void url
+	})
+})
+
+test("a request edited from an older design (its base hash) is a 409 saying so; the current base, or none, goes through", async () => {
+	await withSystem(async ({ id, dir, post, stay }) => {
+		stay()
+		const now = spec()
+		const base = designHash({ assembly: now.assembly, links: now.links })
+		const boards = now.assembly!.boards.map((b) => (b.name === "front" ? { ...b, xMm: b.xMm + 5 } : b))
+		const old = designHash({ assembly: { ...now.assembly!, plate: { lengthMm: 1, widthMm: 1 } }, links: now.links })
+		const stale = await post(`/api/systems/${id}/requests`, { base: old, assembly: { boards } })
+		assert.equal(stale.status, 409)
+		assert.match(((await stale.json()) as { error: string }).error, /the design changed since you started editing/)
+		assert.equal(existsSync(join(dir, SYSTEM_REQUESTS)), false, "nothing appended")
+		assert.equal((await post(`/api/systems/${id}/requests`, { base, assembly: { boards } })).status, 202)
+		assert.equal((await post(`/api/systems/${id}/requests`, { assembly: { boards } })).status, 202, "no base: today's behaviour")
+		const lines = readFileSync(join(dir, SYSTEM_REQUESTS), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+		assert.equal(lines.length, 2)
+		assert.ok(lines.every((l) => !("base" in l)), "the base is checked, not stored")
+		// Key order and undefined fields don't change the hash (the page and the server serialise differently).
+		const reordered = JSON.parse(JSON.stringify({ links: now.links, assembly: now.assembly }))
+		assert.equal(designHash({ links: reordered.links, assembly: reordered.assembly, extra: undefined } as never), base)
 	})
 })

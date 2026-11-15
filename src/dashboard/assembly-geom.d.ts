@@ -12,3 +12,5 @@ export function i2cCableLimit(khz: number, devices: number): { maxPf: number; ma
 export const STANDOFF_DEFAULT_MM: number
 export const STANDOFF_RANGE_MM: [number, number]
 export const STANDOFF_USUAL_MM: [number, number]
+export function canonicalJson(v: unknown): string
+export function designHash(d: { assembly?: unknown; links?: unknown } | null | undefined): string

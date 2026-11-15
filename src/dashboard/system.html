@@ -753,6 +753,9 @@ function makeEditor() {
 	editing.server = []
 	editing.msg = ""
 	editing.key = designKey(m)
+	// The hash Apply sends as `base` (assembly-geom.js designHash, the server's own): the server refuses an edit made
+	// from a design that has changed since.
+	editing.baseHash = editing.mod.designHash({ assembly: m.assembly, links: m.spec?.links ?? [] })
 	editing.stale = false
 }
 // The polled design changed since the editor was built: with nothing unsent, edit the new design (after a 202 this is
@@ -767,6 +770,7 @@ function syncEditor() {
 	return true
 }
 function rebase() {
+	if (editing.posting) return
 	const ops = editing.ed.pending()
 	makeEditor()
 	let lost = 0
@@ -785,7 +789,10 @@ async function enterEdit() {
 	if (editing.on || openName || !stage.meta?.assembly || stage.meta.single) return
 	if (stage.view !== "top") await window.setView("top")
 	if (stage.view !== "top" || !stage.top) return
-	editing.mod ??= await import("/system-edit.js")
+	if (!editing.mod) {
+		const [m, { designHash }] = await Promise.all([import("/system-edit.js"), import("/assembly-geom.js")])
+		editing.mod = { ...m, designHash }
+	}
 	// The brief's size limit (motion.maxSizeMm), from the robot's own contract.
 	if (!editing.maxSizeMm) {
 		const runs = stage.meta.boards.filter((b) => b.runId)
@@ -847,6 +854,9 @@ function editRefresh() {
 	const why = !n ? "" : errors ? "Fix the errors first: Apply is off while one stands." : !running ? "This design isn't running; start it again to apply changes." : ""
 	document.getElementById("edit-apply").disabled = !n || errors || !running || editing.posting || editing.stale
 	document.getElementById("edit-stale").classList.toggle("hidden", !editing.stale)
+	// Rebase and Discard replace the editor: never while a POST is out (its answer marks this editor as applied).
+	document.getElementById("edit-rebase").disabled = editing.posting
+	document.getElementById("edit-discard").disabled = editing.posting
 	document.getElementById("edit-undo").disabled = !editing.ed.canUndo()
 	document.getElementById("edit-redo").disabled = !editing.ed.canRedo()
 	document.getElementById("edit-why").textContent = editing.stale ? "" : editing.msg || why
@@ -898,12 +908,13 @@ async function applyEdits() {
 	editing.posting = true
 	editRefresh()
 	try {
-		const r = await fetch(`/api/systems/${encodeURIComponent(id)}/requests`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, ...d }) })
+		const r = await fetch(`/api/systems/${encodeURIComponent(id)}/requests`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, base: editing.baseHash, ...d }) })
 		const body = await r.json().catch(() => ({}))
 		if (r.status === 202) {
 			editing.ed.markApplied()
 			editing.base = editing.ed.state()
 			editing.server = []
+			editing.stale = false
 			editing.msg = `Sent as round ${body.round}: the boards it concerns re-run.`
 			// The page stops polling at rest: follow the round (status, progress strip) again.
 			stage.pollUntil = Date.now() + 30_000
@@ -915,6 +926,12 @@ async function applyEdits() {
 			const errors = Array.isArray(body.errors) && body.errors.length ? body.errors : [body.error ?? "the change was refused"]
 			editing.server = serverFindings(errors)
 			editing.msg = "Not applied: the checks refused it (shown on the items)."
+		} else if (r.status === 409 && body.stale) {
+			// Made from a design that has changed since: fetch the new one, then Rebase or Discard.
+			editing.stale = true
+			editing.msg = ""
+			clearTimeout(timer)
+			showSystem()
 		} else editing.msg = body.error ?? `Apply failed (${r.status})`
 	} catch (e) {
 		editing.msg = `Apply failed: ${e.message}`
@@ -973,7 +990,7 @@ document.getElementById("stage-top").addEventListener("pointerdown", () => picke
 editBtn.addEventListener("click", () => (editing.on ? exitEdit() : enterEdit()))
 document.getElementById("edit-apply").addEventListener("click", applyEdits)
 document.getElementById("edit-rebase").addEventListener("click", rebase)
-document.getElementById("edit-discard").addEventListener("click", () => { makeEditor(); editRefresh() })
+document.getElementById("edit-discard").addEventListener("click", () => { if (editing.posting) return; makeEditor(); editRefresh() })
 document.getElementById("edit-undo").addEventListener("click", () => { if (editing.ed?.undo()) { editing.server = []; editing.msg = ""; editRefresh() } })
 document.getElementById("edit-redo").addEventListener("click", () => { if (editing.ed?.redo()) { editing.server = []; editing.msg = ""; editRefresh() } })
 addEventListener("keydown", (e) => {
