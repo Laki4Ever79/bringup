@@ -61,7 +61,7 @@ export function specErrors(s: SystemSpec): string[] {
 			if (b.kind === "bought") out.push(`board ${b.name}: a bought board can't be a carrier`)
 			else if (!carried) out.push(`board ${b.name}: it carries ${b.carries}, which is not in the system`)
 			else if (carried.kind !== "bought") out.push(`board ${b.name}: it carries ${b.carries}, which is not a bought board`)
-			else if (s.boards.filter((x) => x.carries === b.carries).length > 1 && s.boards.find((x) => x.carries === b.carries) !== b) out.push(`board ${b.name}: ${b.carries} already has a carrier`)
+			else if (s.boards.find((x) => x.carries === b.carries) !== b) out.push(`board ${b.name}: ${b.carries} already has a carrier`)
 		}
 	}
 	// A bought board's own link to the robot is the MCU board's USB, or its carrier's header: not a cable the system designs.
