@@ -21,7 +21,7 @@ fields involved. The report's **Mechanics** section prints every computed value 
 |---|---|
 | `mech-torque` | each wheel lifts its share of the weight over the brief's edge (1.5× margin) |
 | `mech-climb` | the drive wheels' grip can push the caster up the edge (1.2× margin) |
-| `mech-speed` | loaded top speed (0.8 of no-load) reaches the target |
+| `mech-speed` | top speed on the motor's load line (winding resistance, rolling load, pack sag) at the nominal voltage reaches the target; the cruise duty the firmware runs (set for a full pack) is at least 0.3 |
 | `mech-stopping` | braking plus one sensor period fits inside the sensor's range, minus the wall distance |
 | `mech-current` | stall current within the driver's peak per channel, and both motors plus the electronics within the pack's peak |
 | `mech-runtime` | the pack lasts the brief's runtime at cruise |

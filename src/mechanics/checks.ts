@@ -6,7 +6,7 @@ import { plateLimitForBrief, blocksSensor, motorHalfUnder, motorUnderPlateMm, mo
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
-import { cruiseDuty, edgeForceN, G, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, payloadMount, supportPolygon } from "./model.ts"
+import { cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, payloadMount, supportPolygon } from "./model.ts"
 import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 
 // The plain-code mechanics checks: free, instant, run on every contract change. Each states its numbers, the limit,
@@ -34,7 +34,6 @@ export interface CheckCatalog {
 }
 
 export const TORQUE_MARGIN = 1.5
-export const SPEED_LOAD_DERATE = 0.8 // speed under load vs no-load at the cell's nominal voltage
 export const USABLE_ENERGY = 0.85 // of the pack's rated Wh, before the cut-off
 export const TIP_MARGIN_MM = 10
 export const CLIMB_MARGIN = 1.2 // the drive wheels' grip must push the caster up the edge with this margin
@@ -156,8 +155,8 @@ const USES: Record<string, [PartKey, string[]][]> = {
 	"Edge torque per wheel": [["motor", ["stallTorqueNm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]], ...MASSES],
 	"mech-climb": [["caster", ["wheelMm"]], ...MASSES],
 	"Caster climb": [["caster", ["wheelMm"]], ...MASSES],
-	"mech-speed": [["motor", ["noLoadRpm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]]],
-	"Top speed": [["motor", ["noLoadRpm", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]]],
+	"mech-speed": [["motor", ["noLoadRpm", "stallTorqueNm", "stallA", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV", "fullV"]], ...MASSES],
+	"Top speed": [["motor", ["noLoadRpm", "stallTorqueNm", "stallA", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["nominalV"]], ...MASSES],
 	"Cruise duty": [["motor", ["noLoadRpm", "stallTorqueNm", "stallA", "ratedV"]], ["wheel", ["diameterMm"]], ["pack", ["fullV"]], ...MASSES],
 	"mech-stopping": [["sensor", ["rangeMm", "updateMs"]]],
 	"Stopping distance": [["sensor", ["rangeMm", "updateMs"]]],
@@ -267,11 +266,12 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 			push("mech-climb", `the caster carries ${Math.round(casterShare * 100)} % of the weight; for the drive wheels to push its ${caster.wheelMm} mm wheel up the ${h} mm edge it may carry at most ${Math.round(maxShare * 100)} % (${CLIMB_MARGIN}× margin, ${estNote("floorMu")}): move weight (the battery) toward the axle, lengthen the wheelbase, or pick a bigger caster`)
 	}
 
-	// Top speed under load at the nominal voltage.
-	const topMps = (nominal.noLoadRadS * SPEED_LOAD_DERATE) * r
-	fig("Top speed", `${r2(topMps)} m/s`, `at least ${motion.speedMps} m/s`, topMps >= motion.speedMps, `loaded, ${SPEED_LOAD_DERATE} of no-load at ${pack.nominalV} V`)
+	// Top speed: full duty on the motor's load line (model.ts loadedSpeedMps, the model the firmware's cruise duty comes
+	// from) at the pack's nominal voltage, the plateau it spends most of its charge on: the speed it can still hold there.
+	const topMps = loadedSpeedMps(motor, pack, pack.nominalV, 1, massKg, r)
+	fig("Top speed", `${r2(topMps)} m/s`, `at least ${motion.speedMps} m/s`, topMps >= motion.speedMps, `full duty on the load line at ${pack.nominalV} V, ${Math.round(massG)} g rolling ${estNote("rollingCrr")}`)
 	if (topMps < motion.speedMps)
-		push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels reaches about ${r2(topMps)} m/s at ${pack.nominalV} V under load (${SPEED_LOAD_DERATE} of no-load), short of the ${motion.speedMps} m/s target: pick a lower gear ratio or bigger wheels`)
+		push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels reaches about ${r2(topMps)} m/s at full duty from ${pack.nominalV} V (its load line with ${Math.round(massG)} g rolling, ${estNote("rollingCrr")}), short of the ${motion.speedMps} m/s target: pick a lower gear ratio or bigger wheels`)
 
 	// Cruise duty: what the firmware drives at (firmware.ts, the same cruiseDuty). A motor geared far faster than the
 	// target cruises at a sliver of its duty; the firmware used to raise it silently to the floor, overshooting the speed.
