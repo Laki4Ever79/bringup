@@ -14,7 +14,9 @@ const BUDGET = { startDomMs: 1000, start3dMs: 2000, maxFrameMs: 33, p50FrameMs: 
 
 // The hub reads out/ (it resolves run folders inside its root, so a symlinked copy would be refused); it starts nothing.
 const recorded = join(ROOT, "out", SYSTEM)
-const hub = await serveHub({ outRoot: existsSync(recorded) ? join(ROOT, "out") : mkdtempSync(join(tmpdir(), "bringup-perf-")), port: 0 })
+const TOP_RUN = "robot-2" // a recorded system run on a chassis, for the Top view rows
+const topRecorded = existsSync(join(ROOT, "out", TOP_RUN, "system.json"))
+const hub = await serveHub({ outRoot: existsSync(recorded) || topRecorded ? join(ROOT, "out") : mkdtempSync(join(tmpdir(), "bringup-perf-")), port: 0 })
 // Playwright's defaults let Chromium fall back to SwiftShader (software WebGL), which mis-measures by 10–20×; this
 // laptop's AMD GPU is on Chromium's blocklist, so the list is ignored here and a software renderer stops the test.
 function chromiumPath(): string | undefined {
@@ -129,6 +131,52 @@ try {
 		check("system page: board page shown after click, slowest of 3 (ms)", Math.max(...loads), BUDGET.boardPageMs)
 		check("system page: fly back out, slowest frame (ms)", Math.max(...flyOut), BUDGET.maxFrameMs)
 	} else console.log(`(no out/${SYSTEM} on this machine: the system page case is skipped)`)
+	if (topRecorded) {
+		await page.goto(`${hub.url}/system?id=${TOP_RUN}&view=top`)
+		await page.waitForSelector("#stage-top svg [data-board]", { timeout: 30_000 })
+		await page.waitForTimeout(1500)
+		const name = (await page.evaluate(`document.querySelector("#stage-top [data-board]").dataset.board`)) as string
+		// The zoom in ends where the panel covers the stage (the board-view `on` class), as in the 3D rows: the board page
+		// loads behind that panel afterwards, a page load and not part of the zoom. The zoom out is cut at the end of the
+		// close flight (the viewBox back home), not at a fixed wait.
+		await page.evaluate(`(() => {
+			window.__ft = []; window.__m = []; window.__on = true
+			let last = performance.now()
+			const tick = (t) => { window.__ft.push([t - last, t]); last = t; if (window.__on) requestAnimationFrame(tick) }
+			requestAnimationFrame(tick)
+			const v = document.getElementById("board-view")
+			new MutationObserver(() => window.__m.push([v.classList.contains("on") ? "on" : "off", performance.now()])).observe(v, { attributes: true, attributeFilter: ["class"] })
+		})()`)
+		const home = await page.evaluate(`document.querySelector("#stage-top svg").getAttribute("viewBox")`)
+		await page.evaluate(`window.__m.push(["open", performance.now()]); void window.openBoard(${JSON.stringify(name)})`)
+		await page.waitForFunction(() => document.getElementById("board-view")?.classList.contains("on"), null, { timeout: 10_000 })
+		await page.waitForTimeout(2500)
+		await page.keyboard.press("Escape")
+		await page.waitForFunction((h) => !document.getElementById("board-view")?.classList.contains("on") && document.querySelector("#stage-top svg")?.getAttribute("viewBox") === h, home, { timeout: 10_000 })
+		await page.evaluate(`window.__m.push(["home", performance.now()])`)
+		const rec = (await page.evaluate(`(() => { window.__on = false; return { ft: window.__ft, m: window.__m } })()`)) as { ft: [number, number][]; m: [string, number][] }
+		const at = (label: string) => rec.m.find(([l]) => l === label)![1]
+		const between = (from: number, to: number) => rec.ft.filter(([, t]) => t > from && t <= to).map(([d]) => d)
+		check("system page Top: zoom into a board, slowest frame (ms)", Math.max(...between(at("open"), at("on"))), BUDGET.maxFrameMs)
+		check("system page Top: zoom out, slowest frame (ms)", Math.max(...between(at("off"), at("home"))), BUDGET.maxFrameMs)
+		// Idle: nothing in the Top view changes, so it draws nothing. draws counts every real SVG update (a rebuild, a
+		// selection, a viewBox change); a control first (one wheel step over the drawing, a zoom) proves the counter moves,
+		// so its 0 means something.
+		const before = (await page.evaluate(`window.__topStats().draws`)) as number
+		const svgBox = (await page.locator("#stage-top svg").boundingBox())!
+		await page.mouse.move(svgBox.x + svgBox.width / 2, svgBox.y + svgBox.height / 2)
+		await page.mouse.wheel(0, 200)
+		await page.waitForFunction((n) => (window as unknown as { __topStats: () => { draws: number } }).__topStats().draws > n, before, { timeout: 5000 }).catch(() => {})
+		const moved = ((await page.evaluate(`window.__topStats().draws`)) as number) > before
+		check("system page Top: control zoom not counted as a draw (must be 0)", moved ? 0 : 1, 0)
+		const idleTop: number = await page.evaluate(`(async () => {
+			await new Promise((r) => setTimeout(r, 500))
+			const before = window.__topStats().draws
+			await new Promise((r) => setTimeout(r, 3000))
+			return window.__topStats().draws - before
+		})()`)
+		check("system page Top: draws while idle", idleTop, BUDGET.idleDraws)
+	} else console.log(`(no out/${TOP_RUN} on this machine: the Top view rows are skipped)`)
 } finally {
 	await browser.close()
 	await hub.close()

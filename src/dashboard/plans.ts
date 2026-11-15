@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto"
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { appendUsage, readSpend, type Spend } from "../inference/usage.ts"
 import { proposePlan } from "../system/architect.ts"
@@ -136,6 +136,9 @@ export class PlanStore {
 		const dir = this.dir(plan.id)
 		mkdirSync(join(dir, "briefs"), { recursive: true })
 		const saved = { ...plan, spendUsd: readSpend(dir).usd }
+		// builtAs is the build's record, not part of an edit: a save from an older copy never drops it.
+		const kept = this.get(plan.id)?.builtAs
+		if (kept && !saved.builtAs) saved.builtAs = kept
 		// A drag moves only the drawing positions: record just those, not the whole plan on every move. Any other change
 		// records the whole plan, so every version can still be rebuilt from the history.
 		const before = this.get(plan.id)
@@ -205,8 +208,51 @@ export class PlanStore {
 		return Boolean(env.OPENAI_API_KEY || env.ANTHROPIC_API_KEY)
 	}
 
-	// What Build starts: a system run on the plan's own system.json, or for one board an ordinary run on its brief.
-	buildTarget(id: string): { kind: "system"; specPath: string; usagePath: string } | { kind: "board"; brief: string } {
+	// Every plan id in the store.
+	ids(): string[] {
+		try {
+			return readdirSync(join(this.outRoot, "plans")).filter((n) => PLAN_ID.test(n) && existsSync(join(this.outRoot, "plans", n, "plan.json")))
+		} catch {
+			return []
+		}
+	}
+
+	// Build records the design it made, in plan.json (no new version: the plan itself is unchanged).
+	markBuilt(id: string, builtAs: string): void {
+		const plan = this.get(id)
+		if (plan) writeFileSync(join(this.dir(id), "plan.json"), JSON.stringify({ ...plan, builtAs }, null, "\t"))
+	}
+
+	// When the plan was made (ms): the first saved version in history.jsonl, else plan.json's `created`, else the
+	// plan folder's birth (or change) time.
+	createdAt(id: string): number | null {
+		if (!PLAN_ID.test(id)) return null
+		try {
+			const first = readFileSync(join(this.dir(id), "history.jsonl"), "utf8").split("\n", 1)[0]
+			const at = Date.parse((JSON.parse(first) as { at?: string }).at ?? "")
+			if (Number.isFinite(at)) return at
+		} catch {
+			// no history: fall through
+		}
+		const created = Date.parse(String((this.get(id) as { created?: unknown } | null)?.created ?? ""))
+		if (Number.isFinite(created)) return created
+		try {
+			const st = statSync(this.dir(id))
+			return st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs
+		} catch {
+			return null
+		}
+	}
+
+	// A plan folder with a system.json was built under an older, separate system id that nothing recorded.
+	builtBefore(id: string): boolean {
+		return existsSync(join(this.dir(id), "system.json"))
+	}
+
+	// What Build starts: a system run on the plan's own system.json, or for one board an ordinary run on its brief. A
+	// free try writes its spec as free.json instead: system.json in the plan folder marks a plan built before ids were
+	// kept (builtBefore), and a try is not the plan's build.
+	buildTarget(id: string, specName: "system.json" | "free.json" = "system.json"): { kind: "system"; specPath: string; usagePath: string } | { kind: "board"; brief: string } {
 		const plan = this.get(id)
 		if (!plan) throw Object.assign(new Error("unknown plan"), { status: 404 })
 		const issues = planChecks(plan)
@@ -216,7 +262,7 @@ export class PlanStore {
 		if (plan.spec.boards.length === 1) return { kind: "board", brief: plan.briefs[plan.spec.boards[0].name] }
 		const dir = this.dir(id)
 		for (const b of plan.spec.boards) writeFileSync(join(dir, "briefs", `${b.name}.md`), plan.briefs[b.name])
-		const specPath = join(dir, "system.json")
+		const specPath = join(dir, specName)
 		writeFileSync(specPath, JSON.stringify(buildSpec(plan), null, "\t"))
 		return { kind: "system", specPath, usagePath: join(dir, "usage.jsonl") }
 	}

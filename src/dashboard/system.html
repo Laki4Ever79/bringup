@@ -73,18 +73,46 @@
 	#error { color: var(--error); font-weight: 600; }
 	.links-row { display: flex; gap: 8px; flex-wrap: wrap; }
 	.hidden { display: none !important; }
-	#stage-wrap { padding: 14px var(--gap) 0; max-width: 1400px; margin: 0 auto; }
+	#stage-wrap { padding: 14px var(--gap) 0; max-width: 1400px; margin: 0 auto; position: relative; }
+	.mounting { position: absolute !important; visibility: hidden; left: var(--gap); right: var(--gap); top: 14px; }
+	#stage-top { position: relative; height: min(56vh, 520px); min-height: 320px; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: #fff; }
+	#view-switch { position: absolute; left: 50%; top: 24px; transform: translateX(-50%); z-index: 5; display: flex; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; background: #fff; }
+	#view-switch button { font: 12px var(--mono); border: 0; background: #fff; padding: 3px 12px; cursor: pointer; color: var(--ink); }
+	#view-switch button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+	#back-system { position: absolute; left: 12px; top: 10px; z-index: 3; font: 13px inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 3px 10px; cursor: pointer; display: none; }
+	#board-view.on #back-system { display: block; }
 	#stage { position: relative; height: min(56vh, 520px); min-height: 320px; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: #fff; }
 	#stage .hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--ink-3); pointer-events: none; z-index: 2; }
 	#stage .live { position: absolute; right: 12px; top: 10px; font: 12px var(--mono); color: var(--ink-3); z-index: 2; }
 	#crumb { position: absolute; left: 12px; top: 10px; z-index: 4; font-size: 13px; display: none; }
 	#crumb button { font: inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 2px 9px; cursor: pointer; }
+	#facts { position: absolute; z-index: 6; width: 250px; pointer-events: none; background: #fff; border: 1px solid var(--ink); border-radius: 10px; padding: 10px 12px; box-shadow: 0 6px 20px rgba(0,0,0,.14); font-size: 12.5px; }
+	#facts img { display: block; width: 100%; max-height: 110px; object-fit: contain; background: var(--paper-2); border-radius: 6px; margin-bottom: 8px; }
+	#facts h4 { margin: 0 0 6px; font: 600 13px var(--mono); }
+	#facts dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+	#facts dt { color: var(--ink-3); }
+	#facts dd { margin: 0; overflow-wrap: anywhere; }
 	#timeline { display: flex; align-items: center; gap: 10px; padding: 8px 2px 0; font: 12px var(--mono); color: var(--ink-3); }
 	#timeline input { flex: 1; accent-color: var(--signal); }
 	#board-view { position: fixed; inset: 0; z-index: 40; background: #fff; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .25s; }
 	#board-view.on { opacity: 1; pointer-events: auto; }
 	#board-loading { position: absolute; left: var(--gap); top: 12px; font-size: 13px; }
 	#board-view iframe { flex: 1; border: 0; width: 100%; }
+	/* Before a build (status plan or starting) the design page is the plan: Top holds the plan's drawing (plan-canvas.js)
+	   and the side panel beside the stage holds plan-panel.js. 3D and the timeline come with the build. */
+	#plan-side { display: none; }
+	#stage-wrap.planning { padding-right: calc(var(--gap) + 360px); }
+	#stage-wrap.planning #plan-side { display: block; position: absolute; right: var(--gap); top: 14px; width: 340px; max-height: max(320px, min(56vh, 520px)); overflow-y: auto; padding-right: 4px; }
+	#stage-wrap.planning #timeline, #stage-wrap.planning #view-switch [data-view="3d"] { display: none; }
+	#stage-wrap.building .plan-canvas { pointer-events: none; opacity: .6; }
+	#plan-side section { border: 0; background: none; padding: 0; }
+	#stage-top .plan-canvas, #stage-top .plan-canvas #draw { height: 100%; }
+	#stage-top .plan-canvas #draw { border: 0; border-radius: 0; }
+	#plan-said { margin: 0; font-size: 14px; }
+	@media (max-width: 960px) {
+		#stage-wrap.planning { padding-right: var(--gap); }
+		#stage-wrap.planning #plan-side { position: static; width: auto; max-height: none; overflow: visible; margin-top: 14px; }
+	}
 </style>
 </head>
 <body>
@@ -97,11 +125,15 @@
 	<button id="stop" class="pill hidden" title="Stop this system and its board runs">■ Stop</button>
 </header>
 <div id="stage-wrap" class="hidden">
+	<div id="view-switch" role="group" aria-label="View"><button type="button" data-view="3d" aria-pressed="true">3D</button><button type="button" data-view="top" aria-pressed="false">Top</button></div>
 	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
+	<div id="stage-top" class="hidden"></div>
+	<div id="facts" class="hidden" role="tooltip"></div>
+	<div id="plan-side"></div>
 	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
 </div>
 <main id="main"></main>
-<div id="board-view" aria-hidden="true"><div id="board-loading" class="muted">opening…</div></div>
+<div id="board-view" aria-hidden="true"><button id="back-system" type="button" title="Back to the whole system (Esc)">← system</button><div id="board-loading" class="muted">opening…</div></div>
 <script>
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
 const id = new URLSearchParams(location.search).get("id")
@@ -143,8 +175,8 @@ async function showList() {
 			<form class="start" id="start">
 				<select id="spec">${specs.map((s) => `<option value="${esc(s.name)}">${esc(s.spec.name ?? s.name)}</option>`).join("")}</select>
 				<label title="Scripted agents and stub tools: free, about a minute"><input type="checkbox" id="mock" checked> Scripted (free)</label>
-				<label title="Real board, case and firmware builds, and the QEMU link test"><input type="checkbox" id="hardware"> Hardware tools</label>
-				<label title="Each board's brief review by a reviewer agent"><input type="checkbox" id="review"> Review</label>
+				<label title="Real board, case and firmware builds, and the QEMU link test"><input type="checkbox" id="start-hardware"> Hardware tools</label>
+				<label title="Each board's brief review by a reviewer agent"><input type="checkbox" id="start-review"> Review</label>
 				<button class="pill primary" type="submit">Start</button>
 				<span id="error"></span>
 			</form>
@@ -170,7 +202,7 @@ async function showList() {
 		e.preventDefault()
 		const mock = document.getElementById("mock").checked
 		if (!mock && !confirm("Real models: this costs money and takes about an hour. Start?")) return
-		const r = await fetch("/api/systems", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ spec: document.getElementById("spec").value, mock, hardware: document.getElementById("hardware").checked, review: document.getElementById("review").checked }) })
+		const r = await fetch("/api/systems", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ spec: document.getElementById("spec").value, mock, hardware: document.getElementById("start-hardware").checked, review: document.getElementById("start-review").checked }) })
 		const body = await r.json()
 		if (!r.ok) return (document.getElementById("error").textContent = body.error ?? "could not start")
 		location.href = `/system?id=${encodeURIComponent(body.systemId)}`
@@ -265,6 +297,9 @@ async function showSystem() {
 		return
 	}
 	const d = await r.json()
+	// Before a build the design is its plan; once the build has written the design, the page turns into it in place.
+	if (d.status === "plan" || d.status === "starting") return showPlan(d)
+	if (planning.canvas) leavePlan()
 	navMeta = d
 	renderNav()
 	startStage(d)
@@ -302,8 +337,85 @@ async function showSystem() {
 	if (d.status === "running") timer = setTimeout(showSystem, 2000)
 }
 
+// ── Before a build: the plan on the design page (plan-canvas.js in the Top slot, plan-panel.js beside the stage) ──
+// 3D comes with the build: the switch offers Top only until then. Build keeps the id, so the page polls until the
+// design is written and then becomes the built design in place (same URL, no reload).
+const planning = { canvas: null, panel: null }
+async function showPlan(d) {
+	navMeta = d
+	renderNav()
+	document.getElementById("title").textContent = d.spec?.name ?? id
+	document.title = `Bringup · ${d.spec?.name ?? id}`
+	statusEl.className = `status ${d.status === "starting" ? "s-run" : "s-idle"}`
+	statusEl.textContent = statusEl.title = d.status
+	document.getElementById("stop").classList.add("hidden")
+	document.getElementById("file-links").innerHTML = ""
+	const wrap = document.getElementById("stage-wrap")
+	if (!planning.canvas) {
+		const [{ mountPlanCanvas }, { mountPlanPanel }, { spendLabel }] = await Promise.all([import("/plan-canvas.js"), import("/plan-panel.js"), import("/spend.js")])
+		if (planning.canvas) return showPlan(d)
+		wrap.classList.remove("hidden")
+		wrap.classList.add("planning")
+		document.getElementById("stage").classList.add("hidden")
+		const top = document.getElementById("stage-top")
+		top.classList.remove("hidden")
+		for (const b of document.querySelectorAll("#view-switch [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === "top"))
+		main.innerHTML = `<p id="plan-said" class="muted">You said: <b></b></p>`
+		// The page's own lines: what was said, and what planning spent (no calls: scripted; a real call without token counts: unknown, never free).
+		const lines = (v) => {
+			main.querySelector("#plan-said b").textContent = `“${v.plan.sentence}”`
+			if (v.spend) document.getElementById("spend").textContent = v.spend.calls === 0 ? "scripted: free" : `planning ${spendLabel(v.spend, false).toLowerCase()}`
+		}
+		planning.canvas = mountPlanCanvas(top, {
+			id,
+			view: d.plan,
+			// The bar's levels follow the boards on the drawing.
+			onChange: (p) => { navMeta = { ...navMeta, spec: p.spec, boards: p.spec.boards.map((b) => ({ name: b.name, runId: null, status: "plan" })) }; renderNav() },
+			onView: (v) => planning.panel?.apply(v),
+			onMsg: (t, err) => planning.panel?.msg(t, err),
+		})
+		planning.panel = mountPlanPanel(document.getElementById("plan-side"), {
+			id,
+			view: d.plan,
+			canvas: planning.canvas,
+			onView: lines,
+			// A real Build keeps this id: the page becomes the design in place. A free try is its own design
+			// (<id>-free…): open it, and this plan stays as it is.
+			onBuild: (v) => {
+				const built = v?.systemId ?? v?.runId
+				if (built && built !== id) return void (location.href = `/system?id=${encodeURIComponent(built)}`)
+				wrap.classList.add("building"); planning.canvas.lock(true); clearTimeout(timer); timer = setTimeout(showSystem, 1000)
+			},
+		})
+	}
+	if (d.status === "starting") {
+		wrap.classList.add("building")
+		planning.canvas.lock(true)
+		planning.panel.building("Building: the design shows here as soon as it is written…")
+		clearTimeout(timer)
+		timer = setTimeout(showSystem, 1000)
+	} else if (wrap.classList.contains("building")) {
+		// The build process ended without writing the design (the hub says "plan" again): the plan is back, editable and
+		// buildable, and the polling stops.
+		clearTimeout(timer)
+		wrap.classList.remove("building")
+		planning.canvas.lock(false)
+		planning.canvas.apply(d.plan)
+		planning.panel.apply(d.plan)
+		planning.panel.msg("The build did not start; you can build again.", true)
+	}
+}
+// The build wrote the design: the plan's drawing and panel go, and the stage starts as for any design.
+function leavePlan() {
+	planning.canvas.dispose()
+	planning.panel.dispose()
+	planning.canvas = planning.panel = null
+	document.getElementById("stage-wrap").classList.remove("planning", "building")
+	document.getElementById("stage-top").classList.add("hidden")
+}
+
 // ── The live 3D stage: each board's run streams its events; the assembly redraws at most once a frame ──
-const stage = { world: null, traces: {}, runs: {}, meta: null, files: new Map(), pending: false, shownPulse: {}, upTo: null, started: false }
+const stage = { world: null, top: null, view: new URLSearchParams(location.search).get("view") === "top" ? "top" : "3d", topFailed: false, traces: {}, runs: {}, meta: null, files: new Map(), pending: false, shownPulse: {}, upTo: null, started: false }
 // Each board's event stream, opened once its run folder exists: right after Build none do yet, and they appear over
 // the next polls.
 function subscribe(d) {
@@ -318,25 +430,149 @@ function subscribe(d) {
 async function startStage(d) {
 	if (stage.started) {
 		stage.meta = d
-		if (stage.world) { subscribe(d); schedule() }
+		if (activeView()) { subscribe(d); schedule() }
 		return
 	}
 	stage.started = true
 	stage.meta = d
-	let mountWorld
-	try { ({ mountWorld } = await import("/world3d.js")) } catch { return }
 	document.getElementById("stage-wrap").classList.remove("hidden")
-	try {
-		stage.world = mountWorld(document.getElementById("stage"), { onPick: (name) => window.openBoard?.(name) })
-	} catch {
-		document.getElementById("stage-wrap").classList.add("hidden")
-		return
-	}
+	// Only the view asked for is made now; the other on its first switch.
+	let ok = await ensureView(stage.view)
+	if (!ok && stage.view === "top") { stage.view = "3d"; ok = await ensureView("3d") }
+	if (!ok) { document.getElementById("stage-wrap").classList.add("hidden"); return }
+	showView(stage.view)
 	subscribe(stage.meta)
 	schedule()
 	const b = new URLSearchParams(location.search).get("board")
-	if (b) stage.world.ready.then(() => window.openBoard(b, { push: false }))
+	if (b) activeView().ready.then(() => window.openBoard(b, { push: false }))
 }
+// ── 3D · Top: one switch over the same data. Only the visible view is made, fed and drawn; the other is made on its
+// first switch and kept, hidden, and fed again from the latest data when it is shown.
+// ── The facts card (hover a board or a cable, click a cable): one floating card near the pointer, the same facts in
+// both views (src/system/facts.ts, from the design's payload). Esc or a click on empty space closes it.
+const card = { hover: null, pinned: null, x: 0, y: 0, swallow: false }
+const factsEl = document.getElementById("facts")
+function renderCard() {
+	const t = openName ? null : (card.pinned ?? card.hover)
+	if (!t || !stage.meta?.facts) { factsEl.classList.add("hidden"); return }
+	const row = (k, v) => `<dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd>`
+	if (t.kind === "cable") {
+		const f = stage.meta.facts.cables?.[t.name]
+		const l = (stage.meta.spec?.links ?? []).find((x) => x.id === t.name)
+		if (!f) { factsEl.classList.add("hidden"); return }
+		factsEl.innerHTML = `<h4>${esc(t.name)}${l ? ` · ${esc(l.a.board)} ↔ ${esc(l.b.board)}` : ""}</h4><dl>${row("Kind", f.kind)}${row("Length", f.length)}${row("Messages", f.messages.length ? f.messages.join(", ") : "—")}${row("Power", f.power)}</dl>`
+	} else {
+		const f = stage.meta.facts.boards?.[t.name]
+		if (!f) { factsEl.classList.add("hidden"); return }
+		const img = stage.meta.boards.find((b) => b.name === t.name)?.render
+		factsEl.innerHTML = `${img ? `<img src="${esc(img)}" alt="">` : ""}<h4>${esc(t.name)}</h4><dl>${row("Size", f.size)}${row("Chip", f.chip)}${row("Power", f.power)}${row("Links", f.links.length ? f.links.join("; ") : "—")}${row("Mount", f.mount)}${row("Debug", f.debug)}</dl>`
+	}
+	factsEl.classList.remove("hidden")
+	const wrap = document.getElementById("stage-wrap").getBoundingClientRect()
+	const w = factsEl.offsetWidth, h = factsEl.offsetHeight
+	let x = card.x - wrap.left + 16, y = card.y - wrap.top + 16
+	if (x + w > wrap.width - 4) x = card.x - wrap.left - w - 16
+	if (y + h > wrap.height - 4) y = card.y - wrap.top - h - 16
+	factsEl.style.left = `${Math.max(4, x)}px`
+	factsEl.style.top = `${Math.max(4, y)}px`
+}
+const cardHover = (name, kind = "board") => { card.hover = name ? { name, kind } : null; renderCard() }
+// A pick is followed by a click event on the same spot: that click must not count as one on empty space. The flag is
+// consumed by that click, or reset by the next pointerdown (a pick that got no click leaves nothing stale).
+const cardPick = (name, kind) => { card.swallow = true; card.pinned = { name, kind }; card.hover = null; renderCard(); stage.top?.select(name, kind) }
+function cardClose() {
+	const was = !factsEl.classList.contains("hidden") || card.pinned
+	card.hover = card.pinned = null
+	stage.top?.select(null)
+	renderCard()
+	return Boolean(was)
+}
+document.getElementById("stage-wrap").addEventListener("pointermove", (e) => { card.x = e.clientX; card.y = e.clientY; if (card.hover && !card.pinned) renderCard() })
+document.getElementById("stage-wrap").addEventListener("pointerdown", () => { card.swallow = false }, true)
+document.getElementById("stage-wrap").addEventListener("click", (e) => {
+	if (card.swallow) { card.swallow = false; return }
+	if (e.target.closest?.("#view-switch, #timeline, #crumb")) return
+	if (card.pinned) cardClose()
+})
+const activeView = () => (stage.view === "top" ? stage.top : stage.world)
+const designUrl = (board) => {
+	const q = new URLSearchParams({ id })
+	if (board) q.set("board", board)
+	if (stage.view === "top") q.set("view", "top")
+	return `?${q}`
+}
+// Make a view in its own box, measured but not seen (.mounting), so the box on screen stays until the new one is ready.
+async function ensureView(view) {
+	const box = document.getElementById(view === "top" ? "stage-top" : "stage")
+	if (view === "top" ? stage.top : stage.world) return true
+	if (view === "top" && stage.topFailed) return false
+	const onScreen = !box.classList.contains("hidden")
+	if (!onScreen) box.classList.add("mounting")
+	box.classList.remove("hidden")
+	try {
+		if (view === "top") {
+			const { mountTop } = await import("/top2d.js")
+			stage.top = mountTop(box, {
+				onHover: (name, kind) => cardHover(name, kind),
+				onPick: (name, kind) => { if (kind === "board") { card.swallow = true; card.pinned = null; card.hover = null; renderCard(); window.openBoard?.(name) } else cardPick(name, "cable") },
+			})
+			await stage.top.ready
+		} else {
+			// (the 3D world is ready only after its first frame, which needs data: not awaited)
+			const { mountWorld } = await import("/world3d.js")
+			stage.world = mountWorld(box, {
+				onHover: (name) => cardHover(name, "board"),
+				onPick: (name) => { card.hover = card.pinned = null; renderCard(); window.openBoard?.(name) },
+				onHoverCable: (cid) => cardHover(cid, "cable"),
+				onPickCable: (cid) => cardPick(cid, "cable"),
+			})
+		}
+		return true
+	} catch {
+		if (view === "top") stage.topFailed = true
+		return false
+	} finally {
+		box.classList.remove("mounting")
+		if (!onScreen) box.classList.add("hidden")
+	}
+}
+function showView(view) {
+	cardClose()
+	stage.view = view
+	document.getElementById("stage").classList.toggle("hidden", view === "top")
+	document.getElementById("stage-top").classList.toggle("hidden", view !== "top")
+	for (const b of document.querySelectorAll("#view-switch [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === view))
+	const u = new URL(location.href)
+	if (view === "top") u.searchParams.set("view", "top")
+	else u.searchParams.delete("view")
+	history.replaceState(history.state, "", u)
+}
+window.__topStats = () => stage.top?.stats() // read by npm run perf (the Top view's draws while idle)
+// Ignored while a board is opening or open: the flight belongs to the view that began it. Pressed while a board closes
+// (or another view mounts), it is queued: the latest one asked for is applied when that flight ends.
+window.setView = async (view) => {
+	view = view === "top" ? "top" : "3d"
+	if (planning.canvas || openName) return
+	stage.wantView = view
+	while (stage.busy) {
+		await stage.busy
+		if (openName || planning.canvas) return
+	}
+	if (stage.wantView !== view) return // a later press won
+	stage.wantView = null
+	if (view === stage.view) return
+	let done
+	stage.busy = new Promise((r) => (done = r))
+	try {
+		if (!(await ensureView(view))) return
+		showView(view)
+		schedule()
+	} finally { stage.busy = null; done() }
+}
+document.getElementById("view-switch").addEventListener("click", (e) => {
+	const b = e.target.closest?.("[data-view]")
+	if (b) window.setView(b.dataset.view)
+})
 function schedule() {
 	if (stage.pending) return
 	stage.pending = true
@@ -359,7 +595,7 @@ function fileOnce(runId, paths, as) {
 	return stage.files.get(key)
 }
 async function redraw() {
-	if (!stage.world || !stage.meta) return
+	if (!activeView() || !stage.meta) return
 	const { assemblyAt, timeSpan } = await import("/assembly.js")
 	const span = timeSpan(stage.traces)
 	const v = Number(document.getElementById("scrub").value)
@@ -380,12 +616,28 @@ async function redraw() {
 		const chassisStl = runId && chDir && circuit ? fileOnce(runId, `${chDir}/chassis.stl`, "arrayBuffer") : null
 		const chassisSpec = runId && chDir && circuit ? fileOnce(runId, `${chDir}/spec.json`, "json") : null
 		const outline = a.outline ?? b.outline ?? null
-		return { name: b.name, outline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
+		// The Top view follows the timeline: built (a routed board) and the outline at the scrub time; before its outline
+		// exists a board is its estimate box. A stubbed run builds nothing: its outline counts as built, as before.
+		const built = a.boardRevision !== null || (stubbed && a.outline != null)
+		const topOutline = a.outline ?? (stage.upTo ? null : b.outline ?? null)
+		return { name: b.name, outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
 	})
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
 	// The world places a robot's other boards from the assembly (world3d setWorld); no assembly positions, no change.
-	stage.world.setWorld({ boards, cables, assembly: stage.meta.assembly })
-	for (const [name, a] of Object.entries(asm)) {
+	if (stage.view === "3d") stage.world.setWorld({ boards, cables, assembly: stage.meta.assembly })
+	// The same data feeds the Top view once it exists: circuits and the chassis spec come from the files fetched above.
+	if (stage.view === "top") {
+		const chassis = boards.find((b) => b.chassisSpec)?.chassisSpec ?? null
+		// A board in its own case shows the case's outline; a robot's boards stand on the chassis instead.
+		const robot = stage.meta.assembly?.body === "chassis"
+		stage.top.setWorld({
+			boards: boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, caseSpec: robot ? null : b.caseSpec ?? null, connectors: m?.connectors, status: m?.status } }),
+			cables: stage.meta.spec?.links ?? [],
+			assembly: stage.meta.assembly,
+			chassis,
+		})
+	}
+	for (const [name, a] of stage.view === "3d" ? Object.entries(asm) : []) {
 		const caption = a.pulses[0]?.caption ?? null
 		if (caption && stage.shownPulse[name] !== caption) stage.world.pulse({ board: name }, caption)
 		stage.shownPulse[name] = caption
@@ -417,14 +669,21 @@ function frameFor(name) {
 	return frames.get(name)
 }
 let openName = null
+let openView = null
+let openGen = 0
 window.openBoard = async (name, { push = true } = {}) => {
 	if (!stage.runs[name]) return
 	// No 3D stage (no WebGL): the board's own page.
-	if (!stage.world) return void (location.href = `/?run=${encodeURIComponent(stage.runs[name])}`)
+	if (!activeView()) return void (location.href = `/?run=${encodeURIComponent(stage.runs[name])}`)
 	openName = name
 	renderNav()
-	if (push) history.pushState({ board: name }, "", `?id=${encodeURIComponent(id)}&board=${encodeURIComponent(name)}`)
-	await stage.world.focus(name, { ms: 500 })
+	if (push) history.pushState({ board: name }, "", designUrl(name))
+	// A view switch still mounting, or a close flight, ends first: the flight belongs to the view shown after it.
+	while (stage.busy) await stage.busy
+	if (openName !== name) return
+	openView = activeView()
+	openGen++
+	await openView.focus(name, { ms: 500 })
 	if (openName !== name) return
 	const view = document.getElementById("board-view")
 	// The board page fills the window under the shared bar, whose levels say which board this is (and switch to the
@@ -448,29 +707,45 @@ async function closeBoard({ push = true } = {}) {
 	if (!openName) return
 	openName = null
 	renderNav()
-	if (push) history.pushState({}, "", `?id=${encodeURIComponent(id)}`)
+	if (push) history.pushState({}, "", designUrl(null))
 	const view = document.getElementById("board-view")
-	view.classList.remove("on")
-	view.setAttribute("aria-hidden", "true")
-	document.documentElement.style.overflow = ""
-	// Once faded, the board page is closed outright: hidden, it kept its timers and event stream running on this
-	// thread and caused 33–50 ms hitches in later flies (npm run perf). Opening it again reloads it behind the panel.
-	await stage.world?.focus(null, { ms: 500 })
-	// After the fly: tearing a page down takes the thread for a moment.
-	if (!openName) { for (const x of frames.values()) x.f.remove(); frames.clear() }
+	const v = openView, gen = openGen
+	let done
+	stage.busy = new Promise((r) => (done = r))
+	try {
+		// The board page is closed outright, and before the fly out, while the panel still covers the stage: it runs on
+		// this thread (its own spinning 3D, timers, event stream), so left open through the fly, or torn down at its end,
+		// it took 100–600 ms frames from the flight (npm run perf). The teardown lands in the frame after the removal,
+		// so the fly starts once that frame is drawn. Opening it again reloads it behind the panel.
+		for (const x of frames.values()) x.f.remove()
+		frames.clear()
+		document.getElementById("board-loading").hidden = true
+		await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))))
+		view.classList.remove("on")
+		view.setAttribute("aria-hidden", "true")
+		document.documentElement.style.overflow = ""
+		await v?.focus(null, { ms: 500 })
+	} finally { stage.busy = null; done() }
+	if (openGen === gen) openView = null
 }
 // A board card's "Open board →" flies in too, when the 3D stage is up (a new tab or a middle click still opens the page).
 main.addEventListener("click", (e) => {
 	const a = e.target.closest?.("[data-open]")
-	if (!a || !stage.world || e.button !== 0 || e.metaKey || e.ctrlKey) return
+	if (!a || !activeView() || e.button !== 0 || e.metaKey || e.ctrlKey) return
 	e.preventDefault()
 	scrollTo({ top: 0, behavior: "smooth" })
 	window.openBoard(a.dataset.open)
 })
-addEventListener("keydown", (e) => { if (e.key === "Escape") closeBoard() })
+document.getElementById("back-system").addEventListener("click", () => closeBoard())
+// Esc closes an open board first; with none open, an open facts card.
+addEventListener("keydown", (e) => { if (e.key === "Escape") { if (!openName && cardClose()) return; closeBoard() } })
 addEventListener("message", (e) => { if (e.origin === location.origin && e.data?.type === "bringup-close") closeBoard() })
-addEventListener("popstate", () => {
-	const b = new URLSearchParams(location.search).get("board")
+addEventListener("popstate", async () => {
+	const q = new URLSearchParams(location.search)
+	const b = q.get("board")
+	const v = q.get("view") === "top" ? "top" : "3d"
+	// A different view: close the open board first, then switch, so the view and the URL never disagree.
+	if (v !== stage.view) { await closeBoard({ push: false }); await window.setView(v) }
 	if (b) window.openBoard(b, { push: false })
 	else closeBoard({ push: false })
 })
