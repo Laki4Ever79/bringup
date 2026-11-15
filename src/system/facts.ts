@@ -2,7 +2,7 @@
 // system spec, the same words in the 3D and the Top view. A value that is not known shows as "—", never "undefined".
 import type { ContractSnapshot } from "../contract/types.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
-import { bringupPads } from "../codegen/circuit.ts"
+import { bringupPads, debugPort } from "../codegen/circuit.ts"
 import type { SystemLink } from "./spec.ts"
 import type { SystemAssembly } from "./assembly.ts"
 
@@ -24,6 +24,8 @@ export interface CableFacts {
 const DASH = "—"
 const mm = (n: number): string => String(Math.round(n * 10) / 10)
 
+const PORT_BY_VENDOR: Record<string, string> = { espressif: "USB/UART download", st: "SWD", nordic: "SWD", raspberrypi: "SWD" }
+
 const MOUNT = { chassis: "on the chassis", enclosure: "in the shared enclosure", separate: "in its case" } as const
 
 // The pad list is placed with the parts (slow) and the page polls: memoised per run and revision when the caller names one.
@@ -36,7 +38,12 @@ function padsLine(c: ContractSnapshot | null, key?: string): string {
 	const hit = memo ? padsMemo.get(memo) : undefined
 	if (hit !== undefined) return hit
 	const usb = (v.connectors ?? []).some((k) => k.kind === "usb-c") ? ["USB-C"] : []
-	const swd = v.requirements?.debugPort === false || !v.outline ? [] : ["SWD port"]
+	// The debug port only when the contract places it (on, a pinout for this chip, room on the board), named by the
+	// MCU's family: Espressif's is its USB/UART download pinout, ST's, Nordic's (and the RP2040's) SWD.
+	let port: string[] = []
+	try {
+		if (debugPort(c).placed) port = [`debug port (${PORT_BY_VENDOR[mcuProfileOf(v.parts)?.vendor ?? ""] ?? "SWD"})`]
+	} catch { /* the contract is not complete enough to place it */ }
 	let pads: string
 	if (v.requirements?.testPads === false) pads = "no test pads"
 	else {
@@ -44,7 +51,7 @@ function padsLine(c: ContractSnapshot | null, key?: string): string {
 		try { nets = bringupPads(c).placed.map((p) => p.net) } catch { /* the contract is not complete enough to place them */ }
 		pads = nets.length ? `test pads: ${nets.slice(0, 8).join(", ")}${nets.length > 8 ? ", …" : ""}` : "test pads: none placed"
 	}
-	const line = [pads, ...usb, ...swd].join(" · ")
+	const line = [pads, ...usb, ...port].join(" · ")
 	if (memo) { if (padsMemo.size > 200) padsMemo.clear(); padsMemo.set(memo, line) }
 	return line
 }
