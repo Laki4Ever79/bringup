@@ -18,6 +18,7 @@ function chromiumPath(): string | null {
 	return (existsSync(cache) ? readdirSync(cache) : []).filter((d) => /^chromium-\d+$/.test(d)).map((d) => join(cache, d, "chrome-linux64", "chrome")).find((p) => existsSync(p)) ?? null
 }
 const ROBOT = existsSync(join(ROOT, "out", "robot-2", "system.json")) ? "robot-2" : undefined
+const LOGGER = existsSync(join(ROOT, "out", "logger-single", "trace.jsonl")) ? "logger-single" : undefined
 const SINGLE = existsSync(join(ROOT, "out", "rover-fresh", "trace.jsonl")) ? "rover-fresh" : undefined
 const exe = chromiumPath()
 const skip = !SYSTEM ? "no recorded system run in out/" : !exe ? "no Playwright Chromium" : false
@@ -223,8 +224,12 @@ const skipSingle = !SINGLE ? "no recorded out/rover-fresh" : !exe ? "no Playwrig
 const topUp = (page: Page) => page.waitForFunction(() => document.querySelector("#stage-top svg [data-board]"), null, { timeout: 30_000 })
 const boardBox = async (page: Page, name: string) => {
 	const loc = page.locator(`#stage-top [data-board="${name}"] [data-outline]`)
-	await loc.waitFor({ state: "visible", timeout: 10_000 })
-	const box = await loc.boundingBox()
+	// A live redraw can replace the node between the wait and the read: read again until a box comes back.
+	let box: Awaited<ReturnType<typeof loc.boundingBox>> = null
+	for (let i = 0; i < 20 && !box; i++) {
+		await loc.waitFor({ state: "visible", timeout: 10_000 })
+		box = await loc.boundingBox()
+	}
 	assert.ok(box, `board ${name} drawn in Top`)
 	return box
 }
@@ -250,6 +255,20 @@ test("the switch shows 3D by default and Top on click, and the URL keeps it", { 
 		assert.equal(await visible(page, "#stage"), true)
 		assert.equal(new URL(page.url()).searchParams.get("view"), null)
 	}, ROBOT)
+})
+
+test("on a chassis the 3D view draws no case shell for the boards standing on it", { skip: skipRobot, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		// Positive signal first: both boards drawn, the robot with its chassis (a solid), then the negative.
+		await page.waitForFunction(() => (window as any).__worldStats?.().boards === 2 && (window as any).__worldStats().triangles > 1000, null, { timeout: 30_000 })
+		assert.deepEqual(await page.evaluate(() => (window as any).__worldStats().shells), [], "no board on the chassis draws its case")
+	}, ROBOT)
+})
+
+test("a single logger keeps its case shell in 3D", { skip: !LOGGER ? "no recorded out/logger-single" : !exe ? "no Playwright Chromium" : false, timeout: 120_000 }, async () => {
+	await withPage(async (page) => {
+		await page.waitForFunction(() => ((window as any).__worldStats?.().shells ?? []).length >= 1, null, { timeout: 30_000 })
+	}, LOGGER)
 })
 
 test("clicking a board in Top zooms onto it and opens its page in place", { skip: skipRobot, timeout: 120_000 }, async () => {
@@ -313,7 +332,6 @@ test("a single-board design has the switch and opens its board from Top", { skip
 
 // Final review, Important 5: a one-board design in its own case (the logger) shows the case's outer footprint around
 // the board in Top, from the run's enclosure spec (the board's outline plus clearance and walls on each side).
-const LOGGER = existsSync(join(ROOT, "out", "logger-single", "trace.jsonl")) ? "logger-single" : undefined
 test("a one-board logger's Top view draws its case outline around the board, and the board still opens", { skip: !LOGGER ? "no recorded out/logger-single" : !exe ? "no Playwright Chromium" : false, timeout: 120_000 }, async () => {
 	await withPage(async (page) => {
 		await topUp(page)

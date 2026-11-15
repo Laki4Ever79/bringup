@@ -1,12 +1,15 @@
 export interface TopPoint { x: number; y: number }
 export interface TopRect { x: number; y: number; w: number; h: number }
 export interface TopBoard { name: string; x: number; y: number; w: number; h: number; rotDeg: number; built: boolean }
-export interface TopCable { id: string; kind: string; from: TopPoint; to: TopPoint; path: string; label: string; mid: TopPoint }
+// points: the route's corners in SVG mm (a hand route's points, else the two ends).
+export interface TopCable { id: string; kind: string; from: TopPoint; to: TopPoint; points: TopPoint[]; path: string; label: string; mid: TopPoint }
 export interface TopScene { plate: TopRect | null; boards: TopBoard[]; cables: TopCable[]; bounds: TopRect }
 export interface TopAssembly {
 	body: string
 	plate?: { lengthMm: number; widthMm: number }
 	boards: { name: string; xMm: number; yMm: number; rotDeg: number; outline: { widthMm: number; heightMm: number }; outlineSource: string }[]
+	// Hand-routed cables in the assembly frame (src/system/assembly.ts AssemblyCable).
+	cables?: { link: string; points: { xMm: number; yMm: number }[] }[]
 }
 // built: the timeline's state at the scrub time; when given it wins over the assembly's outlineSource.
 export interface TopBoardIn { name: string; built?: boolean; outline?: { widthMm: number; heightMm: number } | null; connectors?: { ref: string; kind: string; edge: string; offsetMm: number }[] }

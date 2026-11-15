@@ -68,6 +68,20 @@ function cablePath(from, to) {
 	return `M${num(from.x)} ${num(from.y)}Q${num(cx)} ${num(cy)} ${num(to.x)} ${num(to.y)}`
 }
 
+// The point half way along a polyline.
+function halfway(pts) {
+	const seg = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y))
+	let left = seg.reduce((a, b) => a + b, 0) / 2
+	for (let i = 0; i < seg.length; i++) {
+		if (left <= seg[i] || i === seg.length - 1) {
+			const k = seg[i] > 0 ? Math.min(1, left / seg[i]) : 0
+			return { x: r6(pts[i].x + (pts[i + 1].x - pts[i].x) * k), y: r6(pts[i].y + (pts[i + 1].y - pts[i].y) * k) }
+		}
+		left -= seg[i]
+	}
+	return { ...pts[0] }
+}
+
 export function topLayout(assembly, boards, links) {
 	const placed = new Map()
 	const given = assembly?.boards ?? []
@@ -110,12 +124,17 @@ export function topLayout(assembly, boards, links) {
 			const c = ref.edge ? info?.connectors?.find((k) => k.edge === ref.edge) : null
 			return endOn(self, edge, c ? c.offsetMm : null)
 		}
-		const from = end(A, B, svgA, svgB, l.a), to = end(B, A, svgB, svgA, l.b)
-		const mid = { x: r6((from.x + to.x) / 2), y: r6((from.y + to.y) / 2) }
+		// A cable routed by hand (assembly.cables, the edit view's route in the chassis frame) follows its points.
+		const route = (assembly?.cables ?? []).find((c) => c.link === l.id)?.points
+		const routed = Array.isArray(route) && route.length >= 2 ? route.map((p) => ({ x: r6(p.xMm), y: r6(-p.yMm) })) : null
+		const from = routed ? routed[0] : end(A, B, svgA, svgB, l.a), to = routed ? routed[routed.length - 1] : end(B, A, svgB, svgA, l.b)
+		const points = routed ?? [{ x: from.x, y: from.y }, { x: to.x, y: to.y }]
+		const mid = routed ? halfway(routed) : { x: r6((from.x + to.x) / 2), y: r6((from.y + to.y) / 2) }
 		cables.push({
 			id: l.id, kind: l.kind,
 			from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y },
-			path: cablePath(from, to),
+			points,
+			path: routed ? `M${routed.map((p) => `${num(p.x)} ${num(p.y)}`).join("L")}` : cablePath(from, to),
 			label: [l.id, String(l.kind).toUpperCase(), ...(l.cable?.lengthMm > 0 ? [`${l.cable.lengthMm} mm`] : [])].join(" · "),
 			mid,
 		})

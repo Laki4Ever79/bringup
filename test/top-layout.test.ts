@@ -192,3 +192,17 @@ test("a placed board follows the timeline: unbuilt at the scrub time, it is its 
 	const live = topLayout(assembly, [{ name: "main", built: true, outline: { widthMm: 33, heightMm: 42 } }, { name: "climate" }], [])
 	assert.deepEqual(live.boards.map((b) => [b.name, b.built, b.w, b.h]), [["main", true, 33, 42], ["climate", true, 36, 26]])
 })
+
+test("a cable routed by hand (assembly.cables) is drawn along its points, with its points for the edit handles", () => {
+	const assembly = { body: "chassis", plate: { lengthMm: 200, widthMm: 100 }, boards: [ab("a", -40, 0, 20, 20), ab("b", 40, 0, 20, 20)], cables: [{ link: "L1", points: [{ xMm: -30, yMm: 0 }, { xMm: 0, yMm: 20 }, { xMm: 30, yMm: 0 }] }] }
+	const s = topLayout(assembly, [{ name: "a" }, { name: "b" }], [link("L1", "a", "b")])
+	const c = s.cables[0]
+	assert.equal(c.path, "M-30 0L0 -20L30 0")
+	assert.deepEqual(c.points, [{ x: -30, y: 0 }, { x: 0, y: -20 }, { x: 30, y: 0 }])
+	assert.deepEqual(c.from, { x: -30, y: 0 })
+	assert.deepEqual(c.to, { x: 30, y: 0 })
+	assert.deepEqual(c.mid, { x: 0, y: -20 })
+	// An unrouted cable's points are its two ends.
+	const t = topLayout({ ...assembly, cables: [] }, [{ name: "a" }, { name: "b" }], [link("L1", "a", "b")])
+	assert.deepEqual(t.cables[0].points, [{ x: -30, y: 0 }, { x: 30, y: 0 }])
+})

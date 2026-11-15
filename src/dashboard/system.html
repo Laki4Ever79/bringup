@@ -79,6 +79,33 @@
 	#view-switch { position: absolute; left: 50%; top: 24px; transform: translateX(-50%); z-index: 5; display: flex; border: 1px solid var(--ink); border-radius: 8px; overflow: hidden; background: #fff; }
 	#view-switch button { font: 12px var(--mono); border: 0; background: #fff; padding: 3px 12px; cursor: pointer; color: var(--ink); }
 	#view-switch button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+	#view-switch #edit-btn { border-left: 1px solid var(--ink); }
+	#view-switch #edit-btn[aria-pressed="true"] { background: var(--signal); }
+	/* Edit mode (Top only): the bar under the stage (N changes · Apply · Undo · Redo, why Apply is off, the findings), the
+	   cable picker (plan-canvas.js's look) and the facts card turned into the selected item's editor. */
+	#edit-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 2px 0; font-size: 13px; }
+	#edit-count { font: 600 13px var(--mono); }
+	#edit-why { color: var(--ink-2); }
+	#edit-queued { color: var(--info); font-weight: 600; }
+	#sys-changes { margin-top: 12px; }
+	#sys-changes h2 { margin: 0 0 6px; }
+	#sys-changes ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+	#sys-changes li { border-left: 4px solid var(--ink-3); padding: 4px 8px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+	#sys-changes .when { font: 12px var(--mono); color: var(--ink-3); }
+	#sys-changes a { font: 600 12px var(--mono); }
+	#edit-stale { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); font-weight: 600; }
+	#edit-findings { flex-basis: 100%; margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+	#edit-findings li { border-left: 4px solid var(--error); background: var(--error-wash); padding: 4px 8px; }
+	#edit-findings li[data-level="warn"] { border-color: var(--warn); background: var(--warn-wash); }
+	#edit-picker { position: absolute; z-index: 7; display: none; background: #fff; border: 1px solid var(--ink); border-radius: 8px; padding: 6px; gap: 6px; }
+	#edit-picker.on { display: flex; }
+	#edit-picker button, #facts.editing button { border: 1px solid var(--ink); background: #fff; border-radius: 8px; padding: 3px 10px; cursor: pointer; font-size: 12.5px; }
+	#facts.editing { pointer-events: auto; }
+	#facts .edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+	#facts .edit-row select, #facts .edit-row input { height: 26px; font: 12px var(--mono); border: 1px solid var(--ink); border-radius: 6px; padding: 0 4px; }
+	#facts .edit-row input { width: 64px; }
+	#facts .issue { display: block; margin-top: 6px; color: var(--error); font-size: 12px; }
+	#facts .issue.warn { color: var(--warn); }
 	#back-system { position: absolute; left: 12px; top: 10px; z-index: 3; font: 13px inherit; border: 1px solid var(--ink); background: #fff; border-radius: 6px; padding: 3px 10px; cursor: pointer; display: none; }
 	#board-view.on #back-system { display: block; }
 	#stage { position: relative; height: min(56vh, 520px); min-height: 320px; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: #fff; }
@@ -125,11 +152,15 @@
 	<button id="stop" class="pill hidden" title="Stop this system and its board runs">■ Stop</button>
 </header>
 <div id="stage-wrap" class="hidden">
-	<div id="view-switch" role="group" aria-label="View"><button type="button" data-view="3d" aria-pressed="true">3D</button><button type="button" data-view="top" aria-pressed="false">Top</button></div>
+	<div id="view-switch" role="group" aria-label="View"><button type="button" data-view="3d" aria-pressed="true">3D</button><button type="button" data-view="top" aria-pressed="false">Top</button><button type="button" id="edit-btn" class="hidden" aria-pressed="false" title="Edit the robot in the Top view: move, turn, the plate, cables">Edit</button></div>
 	<div id="stage"><div id="crumb"><button id="back" title="Back to the whole system (Esc)">←</button> <span id="crumb-text"></span></div><span class="live" id="live"></span><div class="hint" id="hint">Drag to turn · click a board to open it</div></div>
 	<div id="stage-top" class="hidden"></div>
+	<div id="edit-bar" class="hidden"><span id="edit-count">0 changes</span><button type="button" class="pill primary" id="edit-apply" disabled>Apply</button><button type="button" class="pill" id="edit-undo" disabled title="Undo (Ctrl+Z)">Undo</button><button type="button" class="pill" id="edit-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button><span id="edit-why"></span><span id="edit-queued" class="hidden">applies after the current round <button type="button" class="pill" id="edit-cancel-queue" title="Keep the edits, do not send them">Cancel queued Apply</button></span><button type="button" class="pill hidden" id="edit-drop" title="Drop every unsent edit">Discard edits</button><span id="edit-stale" class="hidden">The design changed since you started editing: <button type="button" class="pill" id="edit-rebase" title="Make your unsent edits again on the design as it is now">Rebase</button> <button type="button" class="pill" id="edit-discard" title="Drop your unsent edits">Discard</button></span><span class="muted" style="margin-left:auto;font-size:12px">Drag a board · R turns the selected one · drag a corner for the plate · drag a board's dot onto another for a cable · drag a cable's handles to bend it</span><ul id="edit-findings"></ul></div>
+	<div id="edit-picker"><span style="font-size:12px;align-self:center">Cable:</span><button type="button" data-kind="uart">UART</button><button type="button" data-kind="i2c">I²C</button><button type="button" data-kind="">×</button></div>
 	<div id="facts" class="hidden" role="tooltip"></div>
 	<div id="plan-side"></div>
+	<div id="progress-host"></div>
+	<section id="sys-changes" class="hidden"></section>
 	<div id="timeline"><span>start</span><input type="range" id="scrub" min="0" max="1000" value="1000" aria-label="Scrub through the build"><span id="scrub-at">live</span></div>
 </div>
 <main id="main"></main>
@@ -284,6 +315,7 @@ function boardCard(b) {
 
 let timer = null
 async function showSystem() {
+	const fetchedAt = Date.now()
 	const r = await fetch(`/api/systems/${encodeURIComponent(id)}`)
 	if (!r.ok) {
 		// Just after Build the system process hasn't written system.json yet: wait for it (20 s) before giving up.
@@ -303,12 +335,15 @@ async function showSystem() {
 	navMeta = d
 	renderNav()
 	startStage(d)
+	pollQueue(d, fetchedAt)
+	// Edit (the Top view's editor) is for a built robot: its boards on one shared plate.
+	document.getElementById("edit-btn").classList.toggle("hidden", !(d.assembly?.body === "chassis" && !d.single))
 	document.getElementById("title").textContent = d.spec?.name ?? id
 	document.title = `Bringup · ${d.spec?.name ?? id}`
 	statusEl.className = `status ${statusClass(d.status, d.settled)}`
 	statusEl.textContent = statusLabel(d.status)
 	statusEl.title = d.status
-	document.getElementById("stop").classList.toggle("hidden", d.status !== "running")
+	document.getElementById("stop").classList.toggle("hidden", d.status !== "running" && d.status !== "waiting for a change")
 	import("/spend.js").then((m) => (document.getElementById("spend").textContent = m.spendLabel(d.spend, d.scripted)), () => {})
 	document.getElementById("file-links").innerHTML = [["Report", d.files.report], ["Cable", d.files.cable], ["WireViz", d.files.wireviz], ["Bench test", d.files.bench]].filter(([, u]) => u).map(([n, u]) => `<a class="pill" href="${esc(u)}" target="_blank">${n}</a>`).join("")
 	const real = d.findings.filter((f) => f.kind !== "link-pending")
@@ -317,7 +352,7 @@ async function showSystem() {
 	if (d.single) {
 		main.innerHTML = `<section><h2>Board</h2><div class="boards">${d.boards.map(boardCard).join("")}</div></section>`
 		clearTimeout(timer)
-		if (d.status === "running") timer = setTimeout(showSystem, 2000)
+		if (keepPolling(d)) timer = setTimeout(showSystem, 2000)
 		return
 	}
 	main.innerHTML = `
@@ -334,8 +369,11 @@ async function showSystem() {
 		<section><h2>Cables</h2>${d.cable ? cableHtml(d.cable) : `<p class="muted">Written once the boards have their connectors.</p>`}</section>
 		${d.asked.length ? `<section><h2>Asked of the boards</h2>${d.asked.map((a) => `<p style="font-size:14px"><b>${esc(a.board)}:</b> ${esc(a.text)}</p>`).join("")}</section>` : ""}`
 	clearTimeout(timer)
-	if (d.status === "running") timer = setTimeout(showSystem, 2000)
+	if (keepPolling(d)) timer = setTimeout(showSystem, 2000)
 }
+// A running design is polled; so is one for a while after Apply, until its round has started and settled again (the
+// status is "waiting for a change" both before the run picks the request up and after it settles).
+const keepPolling = (d) => d.status === "running" || editing.queued || Date.now() < (stage.pollUntil ?? 0)
 
 // ── Before a build: the plan on the design page (plan-canvas.js in the Top slot, plan-panel.js beside the stage) ──
 // 3D comes with the build: the switch offers Top only until then. Build keeps the id, so the page polls until the
@@ -407,6 +445,7 @@ async function showPlan(d) {
 }
 // The build wrote the design: the plan's drawing and panel go, and the stage starts as for any design.
 function leavePlan() {
+	stopProgress()
 	planning.canvas.dispose()
 	planning.panel.dispose()
 	planning.canvas = planning.panel = null
@@ -427,9 +466,90 @@ function subscribe(d) {
 		src.onmessage = (m) => { try { stage.traces[b.name].push(JSON.parse(m.data)); schedule() } catch {} }
 	}
 }
+// What the system trace says about rounds: a request line opens one and the system's settled line closes it; the
+// request lines are the "System changes" list. Replayed lines are the whole history, so each is kept once.
+const requestSeen = new Set()
+stage.requests = []
+function track(l) {
+	if (typeof l.round === "number" && l.round > (stage.maxRound ?? 0)) stage.maxRound = l.round
+	// The queue waits for the round that was open when Apply was clicked (or a later one): older lines, and lines
+	// replayed on a reconnect, belong to earlier rounds.
+	if (l.board === "system" && l.step === "settled") { stage.roundOpen = false; if (editing.queued && l.round >= editing.queuedRound) trySend() }
+	else if (l.step === "request" && l.status === "started") stage.roundOpen = true
+	if (l.step !== "request" || !l.detail || /^staying up for system-level/.test(l.detail) || /^no board's view/.test(l.detail)) return
+	const key = `${l.at}|${l.board}|${l.detail}`
+	if (requestSeen.has(key)) return
+	requestSeen.add(key)
+	const text = l.board === "system" ? l.detail : (/^The engineer changed the system \([^)]*\)(?:: (.*?))?\.?$/s.exec(l.detail)?.[1] ?? l.detail)
+	let e = stage.requests.find((x) => x.round === l.round && x.text === text)
+	if (!e) stage.requests.push((e = { round: l.round, at: l.at, text, boards: [] }))
+	if (l.board !== "system" && !e.boards.includes(l.board)) e.boards.push(l.board)
+	renderChanges()
+}
+function renderChanges() {
+	const host = document.getElementById("sys-changes")
+	const list = [...stage.requests].sort((a, b) => b.round - a.round || String(b.at).localeCompare(String(a.at)))
+	host.classList.toggle("hidden", !list.length)
+	if (!list.length) return
+	const time = (at) => { const t = new Date(at); return Number.isNaN(t.getTime()) ? "" : t.toLocaleTimeString() }
+	host.innerHTML = `<h2>System changes</h2><ol>${list.map((e) => `<li data-round="${e.round}"><span class="mono">round ${e.round}</span><span class="when">${esc(time(e.at))}</span><span class="text">${esc(e.text)}</span>${e.boards.map((b) => `<a href="/?board=${encodeURIComponent(b)}" data-board-link="${esc(b)}">${esc(b)}</a>`).join("")}</li>`).join("")}</ol>`
+}
+document.getElementById("sys-changes").addEventListener("click", (e) => {
+	const a = e.target.closest?.("[data-board-link]")
+	if (a) { e.preventDefault(); window.openBoard?.(a.dataset.boardLink) }
+})
+// The system's own trace (system-trace.jsonl) as a strip of every board's steps, plus a badge on each board in both
+// views. An old run has no trace: the stream stays quiet and the strip stays hidden. A one-board design has no stream.
+function followProgress(d) {
+	if (stage.progress || stage.progressGone) return
+	stage.badges = {}
+	const token = { src: null, strip: null }
+	stage.progress = token
+	import("/progress.js").then(({ mountProgress, badgeOf, stepOfEvent }) => {
+		if (stage.progress !== token) return // stopped before the module arrived
+		const strip = mountProgress(document.getElementById("progress-host"), {
+			onPick: (board) => window.openBoard?.(board),
+			onChange: (st) => {
+				stage.badges = Object.fromEntries(Object.keys(st.boards).map((n) => [n, badgeOf(st.boards[n])]))
+				applyBadges()
+			},
+		})
+		// A one-board design has no system trace: its own run's events, mapped to the same steps.
+		const one = d.single ? d.boards[0] : null
+		if (d.single && !one?.runId) { strip.dispose(); stage.progress = null; return }
+		const src = new EventSource(one ? `/runs/${encodeURIComponent(one.runId)}/events` : `/api/systems/${encodeURIComponent(id)}/stream`)
+		src.onmessage = (m) => {
+			try {
+				const l = JSON.parse(m.data)
+				if (!one) { track(l); return strip.push(l) }
+				const s = stepOfEvent(l)
+				if (s) strip.push({ at: l.at ?? new Date().toISOString(), round: 0, board: one.name, ...s })
+			} catch {}
+		}
+		src.onerror = () => { if (src.readyState === 2) { stage.progressGone = true; stopProgress() } }
+		token.src = src; token.strip = strip
+	}, () => { if (stage.progress === token) stage.progress = null }) // a later followProgress retries
+}
+// Closes the stream and takes the strip down (the page leaves the design, or the stream is gone for good).
+function stopProgress() {
+	const p = stage.progress
+	if (!p) return
+	stage.progress = null
+	p.src?.close()
+	p.strip?.dispose()
+	stage.badges = {}
+	applyBadges()
+}
+window.__stopProgress = stopProgress
+window.__progressOpen = () => Boolean(stage.progress?.src && stage.progress.src.readyState !== 2)
+addEventListener("pagehide", stopProgress)
+const applyBadges = () => { stage.top?.setBadges(stage.badges ?? {}); stage.world?.setBadges?.(stage.badges ?? {}) }
 async function startStage(d) {
+	followProgress(d)
 	if (stage.started) {
 		stage.meta = d
+		// Edit mode follows the live design (the round's result, another change).
+		if (syncEditor() && editing.on) editRefresh()
 		if (activeView()) { subscribe(d); schedule() }
 		return
 	}
@@ -445,6 +565,7 @@ async function startStage(d) {
 	schedule()
 	const b = new URLSearchParams(location.search).get("board")
 	if (b) activeView().ready.then(() => window.openBoard(b, { push: false }))
+	else restorePending().catch(() => {})
 }
 // ── 3D · Top: one switch over the same data. Only the visible view is made, fed and drawn; the other is made on its
 // first switch and kept, hidden, and fed again from the latest data when it is shown.
@@ -454,9 +575,11 @@ const card = { hover: null, pinned: null, x: 0, y: 0, swallow: false }
 const factsEl = document.getElementById("facts")
 function renderCard() {
 	const t = openName ? null : (card.pinned ?? card.hover)
+	factsEl.classList.toggle("editing", Boolean(editing.on && card.pinned))
 	if (!t || !stage.meta?.facts) { factsEl.classList.add("hidden"); return }
 	const row = (k, v) => `<dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd>`
-	if (t.kind === "cable") {
+	if (editing.on && card.pinned) { if (!editCard(t)) { factsEl.classList.add("hidden"); return } }
+	else if (t.kind === "cable") {
 		const f = stage.meta.facts.cables?.[t.name]
 		const l = (stage.meta.spec?.links ?? []).find((x) => x.id === t.name)
 		if (!f) { factsEl.classList.add("hidden"); return }
@@ -470,16 +593,18 @@ function renderCard() {
 	factsEl.classList.remove("hidden")
 	const wrap = document.getElementById("stage-wrap").getBoundingClientRect()
 	const w = factsEl.offsetWidth, h = factsEl.offsetHeight
-	let x = card.x - wrap.left + 16, y = card.y - wrap.top + 16
-	if (x + w > wrap.width - 4) x = card.x - wrap.left - w - 16
-	if (y + h > wrap.height - 4) y = card.y - wrap.top - h - 16
+	// A pinned card stays where it was picked (it may hold the selected item's edit controls).
+	const cx = card.pinned ? card.px ?? card.x : card.x, cy = card.pinned ? card.py ?? card.y : card.y
+	let x = cx - wrap.left + 16, y = cy - wrap.top + 16
+	if (x + w > wrap.width - 4) x = cx - wrap.left - w - 16
+	if (y + h > wrap.height - 4) y = cy - wrap.top - h - 16
 	factsEl.style.left = `${Math.max(4, x)}px`
 	factsEl.style.top = `${Math.max(4, y)}px`
 }
 const cardHover = (name, kind = "board") => { card.hover = name ? { name, kind } : null; renderCard() }
 // A pick is followed by a click event on the same spot: that click must not count as one on empty space. The flag is
 // consumed by that click, or reset by the next pointerdown (a pick that got no click leaves nothing stale).
-const cardPick = (name, kind) => { card.swallow = true; card.pinned = { name, kind }; card.hover = null; renderCard(); stage.top?.select(name, kind) }
+const cardPick = (name, kind) => { card.swallow = true; card.pinned = { name, kind }; card.px = card.x; card.py = card.y; card.hover = null; renderCard(); stage.top?.select(name, kind) }
 function cardClose() {
 	const was = !factsEl.classList.contains("hidden") || card.pinned
 	card.hover = card.pinned = null
@@ -491,7 +616,8 @@ document.getElementById("stage-wrap").addEventListener("pointermove", (e) => { c
 document.getElementById("stage-wrap").addEventListener("pointerdown", () => { card.swallow = false }, true)
 document.getElementById("stage-wrap").addEventListener("click", (e) => {
 	if (card.swallow) { card.swallow = false; return }
-	if (e.target.closest?.("#view-switch, #timeline, #crumb")) return
+	// (A control in the card that redrew the card is no longer in the page: still a click inside it.)
+	if (!e.target.isConnected || e.target.closest?.("#view-switch, #timeline, #crumb, #facts, #edit-bar, #edit-picker")) return
 	if (card.pinned) cardClose()
 })
 const activeView = () => (stage.view === "top" ? stage.top : stage.world)
@@ -514,9 +640,10 @@ async function ensureView(view) {
 			const { mountTop } = await import("/top2d.js")
 			stage.top = mountTop(box, {
 				onHover: (name, kind) => cardHover(name, kind),
-				onPick: (name, kind) => { if (kind === "board") { card.swallow = true; card.pinned = null; card.hover = null; renderCard(); window.openBoard?.(name) } else cardPick(name, "cable") },
+				onPick: (name, kind) => { if (kind === "board" && !editing.on) { card.swallow = true; card.pinned = null; card.hover = null; renderCard(); window.openBoard?.(name) } else cardPick(name, kind) },
 			})
 			await stage.top.ready
+			applyBadges()
 		} else {
 			// (the 3D world is ready only after its first frame, which needs data: not awaited)
 			const { mountWorld } = await import("/world3d.js")
@@ -526,6 +653,7 @@ async function ensureView(view) {
 				onHoverCable: (cid) => cardHover(cid, "cable"),
 				onPickCable: (cid) => cardPick(cid, "cable"),
 			})
+			applyBadges()
 		}
 		return true
 	} catch {
@@ -547,6 +675,7 @@ function showView(view) {
 	else u.searchParams.delete("view")
 	history.replaceState(history.state, "", u)
 }
+window.__worldStats = () => stage.world?.stats() // the 3D view's boards and which of them draw a case shell (tests)
 window.__topStats = () => stage.top?.stats() // read by npm run perf (the Top view's draws while idle)
 // Ignored while a board is opening or open: the flight belongs to the view that began it. Pressed while a board closes
 // (or another view mounts), it is queued: the latest one asked for is applied when that flight ends.
@@ -561,6 +690,8 @@ window.setView = async (view) => {
 	if (stage.wantView !== view) return // a later press won
 	stage.wantView = null
 	if (view === stage.view) return
+	// Edit mode is Top-only: 3D shows the result once Apply settles.
+	if (editing.on) exitEdit()
 	let done
 	stage.busy = new Promise((r) => (done = r))
 	try {
@@ -620,7 +751,11 @@ async function redraw() {
 		// exists a board is its estimate box. A stubbed run builds nothing: its outline counts as built, as before.
 		const built = a.boardRevision !== null || (stubbed && a.outline != null)
 		const topOutline = a.outline ?? (stage.upTo ? null : b.outline ?? null)
-		return { name: b.name, outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, key: `${b.name}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
+		// A board the assembly places is turned by its rotDeg; on a chassis body it sits on the chassis, with no case of its own.
+		const placed = stage.meta.assembly?.boards?.find((p) => p.name === b.name)
+		const rotDeg = placed?.rotDeg ?? 0
+		const onChassis = stage.meta.assembly?.body === "chassis"
+		return { name: b.name, outline, built, topOutline, circuit, caseStl, caseSpec, chassisStl, chassisSpec: chassisStl ? chassisSpec : null, rotDeg, onChassis, key: `${b.name}:${rotDeg}:${onChassis}:${a.boardRevision}:${a.enclosureRevision}:${a.chassisRevision}:${outline?.widthMm}x${outline?.heightMm}:${Boolean(circuit)}:${Boolean(caseStl)}:${Boolean(chassisStl && chassisSpec)}` }
 	})
 	const cables = (stage.meta.spec?.links ?? []).map((l) => ({ id: l.id, a: l.a, b: l.b, label: `${l.id} · ${l.kind.toUpperCase()} · ${l.cable?.lengthMm ?? "?"} mm` }))
 	// The world places a robot's other boards from the assembly (world3d setWorld); no assembly positions, no change.
@@ -630,12 +765,11 @@ async function redraw() {
 		const chassis = boards.find((b) => b.chassisSpec)?.chassisSpec ?? null
 		// A board in its own case shows the case's outline; a robot's boards stand on the chassis instead.
 		const robot = stage.meta.assembly?.body === "chassis"
-		stage.top.setWorld({
-			boards: boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, caseSpec: robot ? null : b.caseSpec ?? null, connectors: m?.connectors, status: m?.status } }),
-			cables: stage.meta.spec?.links ?? [],
-			assembly: stage.meta.assembly,
-			chassis,
-		})
+		stage.topBoards = boards.map((b) => { const m = stage.meta.boards.find((x) => x.name === b.name); return { name: b.name, built: b.built, outline: b.topOutline, circuit: b.built ? b.circuit ?? null : null, caseSpec: robot ? null : b.caseSpec ?? null, connectors: m?.connectors, status: m?.status } })
+		stage.chassis = chassis
+		// The chassis spec arrived after Edit was pressed: the editor's keep-outs need it (nothing edited yet, nothing lost).
+		if (editing.on && !editing.chassis && chassis && !editing.ed.canUndo()) makeEditor()
+		drawTop()
 	}
 	for (const [name, a] of stage.view === "3d" ? Object.entries(asm) : []) {
 		const caption = a.pulses[0]?.caption ?? null
@@ -646,6 +780,370 @@ async function redraw() {
 	document.getElementById("live").textContent = `${states.filter((s) => s === "cased" || s === "routed").length} of ${states.length} boards built`
 }
 document.getElementById("scrub").addEventListener("input", schedule)
+// The Top view from the latest data, now: in edit mode the editor's assembly and links, else the design's.
+function drawTop() {
+	if (!stage.top || !stage.topBoards || !stage.meta) return
+	const st = editing.on ? editing.ed.state() : null
+	stage.top.setWorld({ boards: stage.topBoards, cables: st ? st.links : stage.meta.spec?.links ?? [], assembly: st ? st.assembly : stage.meta.assembly, chassis: stage.chassis ?? null })
+}
+
+// ── Edit mode (Top only): system-edit.js holds the edits, their checks on every move, undo and redo; top2d.js the
+// gestures. Nothing calls a model here: Apply sends the diff, and the run's agents act on it.
+// key: the design (assembly and links) the editor was built from; stale: it changed while edits were unsent.
+const editing = { on: false, mod: null, ed: null, base: null, chassis: null, maxSizeMm: null, server: [], msg: "", posting: false, key: null, stale: false, queued: false, queuedRound: 0, queuedAt: 0, sending: false, stored: false }
+const designKey = (m) => JSON.stringify({ a: m?.assembly ?? null, l: m?.spec?.links ?? [] })
+const editBtn = document.getElementById("edit-btn"), editBar = document.getElementById("edit-bar"), picker = document.getElementById("edit-picker")
+function makeEditor() {
+	const m = stage.meta
+	editing.chassis = stage.chassis ?? null
+	editing.ed = editing.mod.editor({ assembly: m.assembly, links: m.spec?.links ?? [], chassis: editing.chassis, maxSizeMm: editing.maxSizeMm, i2cDevicesByBoard: m.i2cDevices ?? {} })
+	editing.base = editing.ed.state()
+	editing.server = []
+	editing.msg = ""
+	editing.key = designKey(m)
+	// The hash Apply sends as `base` (assembly-geom.js designHash, the server's own): the server refuses an edit made
+	// from a design that has changed since.
+	editing.baseHash = editing.mod.designHash({ assembly: m.assembly, links: m.spec?.links ?? [] })
+	editing.stale = false
+}
+// The polled design changed since the editor was built: with nothing unsent, edit the new design (after a 202 this is
+// the round's result); with unsent edits, ask (Rebase or Discard), and Apply waits, so no diff on an old snapshot is
+// ever sent. A drag in progress is left alone. true when something changed.
+function syncEditor() {
+	if (!editing.ed || !editing.mod || !stage.meta?.assembly) return false
+	if (designKey(stage.meta) === editing.key || stage.top?.dragging()) return false
+	if (!editing.ed.diff()) { const msg = editing.msg; makeEditor(); editing.msg = msg; return true }
+	if (editing.stale) return false
+	editing.stale = true
+	return true
+}
+function rebase() {
+	if (editing.posting) return
+	const ops = editing.ed.pending()
+	makeEditor()
+	let lost = 0
+	for (const op of ops) { try { editing.ed.apply(op) } catch { lost++ } }
+	if (lost) editing.msg = `${lost} edit${lost === 1 ? "" : "s"} no longer applied to the new design and ${lost === 1 ? "was" : "were"} dropped.`
+	editRefresh()
+}
+const changeCount = () => (editing.ed?.diff() ? Math.max(1, describeEdits(editing.base, editing.ed.state()).length) : 0)
+// Outside edit mode, unsent edits are kept and the button says so.
+function editLabel() {
+	const n = editing.on ? 0 : changeCount()
+	editBtn.textContent = n ? `Edit (${n} unsent)` : "Edit"
+	editBtn.title = n ? "Your edits are kept, not sent: Edit to see them, then Apply or Undo" : "Edit the robot in the Top view: move, turn, the plate, cables"
+}
+async function loadEditDeps() {
+	if (!editing.mod) {
+		const [m, { designHash }] = await Promise.all([import("/system-edit.js"), import("/assembly-geom.js")])
+		editing.mod = { ...m, designHash }
+	}
+	// The brief's size limit (motion.maxSizeMm), from the robot's own contract.
+	if (!editing.maxSizeMm) {
+		const runs = stage.meta.boards.filter((b) => b.runId)
+		const found = await Promise.all(runs.map((b) => fetch(`/runs/${encodeURIComponent(b.runId)}/files/contract.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
+		editing.maxSizeMm = found.map((c) => c?.values?.motion?.maxSizeMm).find((x) => Array.isArray(x)) ?? null
+	}
+}
+async function enterEdit() {
+	if (editing.on || openName || !stage.meta?.assembly || stage.meta.single) return
+	if (stage.view !== "top") await window.setView("top")
+	if (stage.view !== "top" || !stage.top) return
+	await loadEditDeps()
+	// Unsent edits from an earlier visit are kept; with none, edit what the design is now.
+	if (!editing.ed || !editing.ed.diff()) makeEditor()
+	else syncEditor()
+	editing.on = true
+	editBtn.setAttribute("aria-pressed", "true")
+	editBar.classList.remove("hidden")
+	cardClose()
+	stage.top.setEdit({
+		onDrag: (board, xMm, yMm) => stage.top.setFindings(trial({ kind: "move", board, xMm, yMm }), { chips: false }),
+		onMove: (board, xMm, yMm) => act({ kind: "move", board, xMm, yMm }),
+		onPlateDrag: (lengthMm, widthMm) => stage.top.setFindings(trial({ kind: "plate", lengthMm, widthMm }), { chips: false }),
+		onPlate: (lengthMm, widthMm) => act({ kind: "plate", lengthMm, widthMm }),
+		onRoute: (link, points) => act({ kind: "cable-route", link, points }),
+		onConnect: (a, b, at) => {
+			const wrap = document.getElementById("stage-wrap").getBoundingClientRect()
+			picker.style.left = `${at.x - wrap.left}px`; picker.style.top = `${at.y - wrap.top}px`
+			picker.classList.add("on")
+			picker.dataset.a = a; picker.dataset.b = b
+		},
+	})
+	editRefresh()
+}
+function exitEdit() {
+	if (!editing.on) return
+	editing.on = false
+	editBtn.setAttribute("aria-pressed", "false")
+	editBar.classList.add("hidden")
+	picker.classList.remove("on")
+	cardClose()
+	stage.top?.setEdit(null)
+	drawTop()
+	editLabel()
+}
+// The checks of an edit not made yet (a drag in progress), the history untouched.
+function trial(op) { return editing.ed.check(op) }
+function act(op) {
+	try {
+		if (editing.ed.apply(op)) { editing.msg = ""; editing.server = [] }
+	} catch (e) { editing.msg = e.message }
+	editRefresh()
+}
+function editRefresh() {
+	if (editing.queued && !editing.ed?.diff()) editing.queued = false
+	if (editing.queued || editing.stored) savePending() // the queue mirrors the editor: more edits change what is sent
+	editLabel()
+	if (!editing.on) return
+	syncEditor()
+	drawTop()
+	const findings = [...editing.ed.findings(), ...editing.server]
+	stage.top.setFindings(findings)
+	const n = changeCount()
+	document.getElementById("edit-count").textContent = `${n} change${n === 1 ? "" : "s"}`
+	const running = stage.meta.status === "running" || stage.meta.status === "waiting for a change"
+	const errors = findings.some((f) => f.level === "error")
+	const why = !n ? "" : errors ? "Fix the errors first: Apply is off while one stands." : !running ? "This design isn't running; start it again to apply changes." : ""
+	document.getElementById("edit-apply").disabled = !n || errors || !running || editing.posting || editing.stale || editing.queued
+	document.getElementById("edit-stale").classList.toggle("hidden", !editing.stale)
+	document.getElementById("edit-queued").classList.toggle("hidden", !editing.queued)
+	document.getElementById("edit-drop").classList.toggle("hidden", !n || editing.stale)
+	document.getElementById("edit-drop").disabled = editing.posting
+	// Rebase and Discard replace the editor: never while a POST is out (its answer marks this editor as applied).
+	document.getElementById("edit-rebase").disabled = editing.posting
+	document.getElementById("edit-discard").disabled = editing.posting
+	document.getElementById("edit-undo").disabled = !editing.ed.canUndo()
+	document.getElementById("edit-redo").disabled = !editing.ed.canRedo()
+	document.getElementById("edit-why").textContent = editing.stale ? "" : editing.msg || why
+	const label = (t) => t.board ?? t.link ?? "plate"
+	document.getElementById("edit-findings").innerHTML = findings.map((f) => `<li data-level="${esc(f.level)}"><b class="mono">${esc(label(f.target))}</b> ${esc(f.message)}</li>`).join("")
+	renderCard()
+}
+// What changed since the last Apply, in words: "moved climate 10 mm back", "rotated climate to 90°"… A cable's edge or
+// route that changed only because its board moved or turned is part of that move.
+function describeEdits(from, to) {
+	const out = [], moved = new Set()
+	const mm = (v) => `${Math.round(Math.abs(v) * 10) / 10} mm`
+	for (const b of to.assembly.boards) {
+		const o = from.assembly.boards.find((x) => x.name === b.name)
+		if (!o) continue
+		const dx = b.xMm - o.xMm, dy = b.yMm - o.yMm
+		if (dx || dy) { moved.add(b.name); out.push(`moved ${b.name} ${[dx ? `${mm(dx)} ${dx > 0 ? "forward" : "back"}` : "", dy ? `${mm(dy)} ${dy > 0 ? "left" : "right"}` : ""].filter(Boolean).join(" and ")}`) }
+		if ((b.rotDeg ?? 0) !== (o.rotDeg ?? 0)) { moved.add(b.name); out.push(`rotated ${b.name} to ${b.rotDeg}°`) }
+		if (b.standoffMm !== o.standoffMm) out.push(`set ${b.name}'s standoffs to ${b.standoffMm} mm`)
+	}
+	const p0 = from.assembly.plate, p1 = to.assembly.plate
+	if (p1 && JSON.stringify(p0) !== JSON.stringify(p1)) out.push(`made the plate ${p1.lengthMm} × ${p1.widthMm} mm`)
+	const route = (s, id) => JSON.stringify((s.assembly.cables ?? []).find((c) => c.link === id)?.points ?? null)
+	for (const l of to.links) {
+		const o = from.links.find((x) => x.id === l.id)
+		if (!o) { out.push(`added ${l.id} (${l.kind.toUpperCase()} ${l.a.board} ↔ ${l.b.board})`); continue }
+		if (l.kind !== o.kind) out.push(`made ${l.id} ${l.kind.toUpperCase()}`)
+		const follows = moved.has(l.a.board) || moved.has(l.b.board)
+		if (route(from, l.id) !== route(to, l.id) && !follows) out.push(`routed ${l.id}`)
+		else if ((l.a.edge !== o.a.edge || l.b.edge !== o.b.edge) && !follows) out.push(`moved ${l.id}'s ends to ${l.a.board} ${l.a.edge ?? "auto"}, ${l.b.board} ${l.b.edge ?? "auto"}`)
+	}
+	for (const o of from.links) if (!to.links.some((l) => l.id === o.id)) out.push(`removed ${o.id}`)
+	return out
+}
+// The server's 400 errors, on the items they name (a board, else a cable, else the plate).
+function serverFindings(errors) {
+	const st = editing.ed.state()
+	const names = st.assembly.boards.map((b) => b.name), ids = st.links.map((l) => l.id)
+	const word = (m, w) => new RegExp(`(^|[^\\w-])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\w-]|$)`).test(m)
+	return errors.map((m) => {
+		const board = names.find((n) => word(m, n)), link = ids.find((i) => word(m, i))
+		return { target: board ? { board } : link ? { link } : { plate: true }, level: "error", message: m, server: true }
+	})
+}
+// ── Apply during a round: queued, kept across a reload (sessionStorage, never required), posted once the round settles ──
+const pendKey = `bringup-pending-${id}`
+const roundBusy = () => stage.meta?.status === "running" || Boolean(stage.roundOpen)
+const editText = () => describeEdits(editing.base, editing.ed.state()).join("; ") || "changed the layout"
+function savePending() {
+	try {
+		if (!editing.ed?.diff()) return clearPending()
+		sessionStorage.setItem(pendKey, JSON.stringify({ ops: editing.ed.pending(), base: editing.baseHash, text: editText(), queued: editing.queued, round: editing.queuedRound }))
+		editing.stored = true
+	} catch {}
+}
+function clearPending() {
+	editing.stored = false
+	try { sessionStorage.removeItem(pendKey) } catch {}
+}
+function readPending() {
+	try {
+		const p = JSON.parse(sessionStorage.getItem(pendKey) ?? "null")
+		return p && Array.isArray(p.ops) && p.ops.length ? p : null
+	} catch { return null }
+}
+const LIVE = ["running", "waiting for a change", "bench live"]
+// Each poll while queued: a dead run ends the wait (the edits stay); an idle system whose status was read after the
+// queueing is a round that has settled.
+function pollQueue(d, fetchedAt) {
+	if (!LIVE.includes(d.status)) stage.roundOpen = false
+	if (!editing.queued) return
+	if (!LIVE.includes(d.status)) { stopWaiting("This design isn't running; your edits are kept."); return }
+	if (d.status === "waiting for a change" && fetchedAt > editing.queuedAt) { stage.roundOpen = false; trySend() }
+}
+function stopWaiting(msg) {
+	editing.queued = false
+	editing.msg = msg
+	savePending()
+	editRefresh()
+}
+async function trySend() {
+	if (!editing.queued || editing.sending || editing.posting || roundBusy()) return
+	editing.sending = true
+	try {
+		await showSystem() // the design as the round left it; syncEditor marks the editor stale when it changed
+		if (!editing.queued || roundBusy()) return // still running: the next settled line or poll tries again
+		if (editing.ed.findings().some((f) => f.level === "error")) return stopWaiting("Not sent: fix the errors first.")
+		if (editing.stale || editing.key !== designKey(stage.meta)) {
+			// The round changed the design under the edits: ask, never post on an old base.
+			editing.queued = false
+			editing.stale = true
+			editing.msg = ""
+			editRefresh()
+			return
+		}
+		await applyEdits(true)
+	} finally { editing.sending = false }
+}
+async function restorePending() {
+	const p = readPending()
+	if (!p || editing.ed || !stage.meta?.assembly || stage.meta.single || !stage.meta.spec) return
+	for (let i = 0; i < 100 && !stage.topBoards; i++) await new Promise((r) => setTimeout(r, 50))
+	await loadEditDeps()
+	makeEditor()
+	let lost = 0
+	for (const op of p.ops) { try { editing.ed.apply(op) } catch { lost++ } }
+	if (!editing.ed.diff()) return clearPending()
+	if (p.queued && p.base === editing.baseHash && !lost) { editing.queued = true; editing.queuedRound = Number(p.round) || 0; editing.queuedAt = 0 }
+	else editing.msg = "The design changed while the page was closed: your edits were made again on it. Apply to send them."
+	savePending()
+	await enterEdit()
+	if (editing.queued) trySend()
+}
+async function applyEdits(fromQueue = false) {
+	const d = editing.ed.diff()
+	if (!d || editing.posting || editing.stale) return
+	if (!fromQueue) {
+		if (editing.queued) return
+		if (roundBusy()) { editing.queued = true; editing.queuedRound = stage.maxRound ?? 0; editing.queuedAt = Date.now(); clearTimeout(timer); timer = setTimeout(showSystem, 1500); savePending(); editing.msg = ""; editRefresh(); return }
+	}
+	editing.queued = false
+	const text = editText()
+	editing.posting = true
+	editRefresh()
+	try {
+		const r = await fetch(`/api/systems/${encodeURIComponent(id)}/requests`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, base: editing.baseHash, ...d }) })
+		const body = await r.json().catch(() => ({}))
+		if (r.status === 202) {
+			editing.ed.markApplied()
+			clearPending()
+			editing.base = editing.ed.state()
+			editing.server = []
+			editing.stale = false
+			editing.msg = `Sent as round ${body.round}: the boards it concerns re-run.`
+			// The page stops polling at rest: follow the round (status, progress strip) again.
+			stage.pollUntil = Date.now() + 30_000
+			clearTimeout(timer)
+			timer = setTimeout(showSystem, 1000)
+			stage.progressGone = false
+			if (!stage.progress) followProgress(stage.meta)
+		} else if (r.status === 400) {
+			const errors = Array.isArray(body.errors) && body.errors.length ? body.errors : [body.error ?? "the change was refused"]
+			editing.server = serverFindings(errors)
+			editing.msg = "Not applied: the checks refused it (shown on the items)."
+			savePending()
+		} else if (r.status === 409 && body.stale) {
+			// Made from a design that has changed since: fetch the new one, then Rebase or Discard.
+			editing.stale = true
+			editing.msg = ""
+			clearTimeout(timer)
+			showSystem()
+		} else {
+			editing.msg = r.status === 409 ? "This design isn't running; your edits are kept." : body.error ?? `Apply failed (${r.status})`
+			savePending()
+		}
+	} catch (e) {
+		editing.msg = `Apply failed: ${e.message}. Your edits are kept.`
+		savePending()
+	} finally {
+		editing.posting = false
+		editRefresh()
+	}
+}
+// The selected item's editor in the facts card. false: nothing to show.
+function editCard(t) {
+	const st = editing.ed.state()
+	const findings = [...editing.ed.findings(), ...editing.server].filter((f) => (t.kind === "board" ? f.target.board === t.name : f.target.link === t.name))
+	const issues = findings.map((f) => `<span class="issue${f.level === "warn" ? " warn" : ""}">${esc(f.message)}</span>`).join("")
+	const row = (k, v) => `<dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd>`
+	if (t.kind === "board") {
+		const b = st.assembly.boards.find((x) => x.name === t.name)
+		if (!b) return false
+		const [lo, hi] = editing.mod.STANDOFF_RANGE_MM
+		factsEl.innerHTML = `<h4>${esc(b.name)}</h4><dl>${row("Place", `${b.xMm}, ${b.yMm} mm`)}${row("Turned", `${b.rotDeg ?? 0}°`)}${row("Size", `${b.outline.widthMm} × ${b.outline.heightMm} mm`)}</dl>
+			<div class="edit-row"><button type="button" data-act="turn" title="Turn 90° (R)">↻ Turn</button><label>Standoffs <input type="number" data-act="standoff" min="${lo}" max="${hi}" step="0.5" value="${esc(b.standoffMm ?? editing.mod.STANDOFF_DEFAULT_MM)}"> mm</label></div>${issues}`
+		return true
+	}
+	const l = st.links.find((x) => x.id === t.name)
+	if (!l) return false
+	const edges = (v) => ["left", "right", "top", "bottom"].map((e) => `<option value="${e}"${v === e ? " selected" : ""}>${e}</option>`).join("")
+	factsEl.innerHTML = `<h4>${esc(l.id)} · ${esc(l.a.board)} ↔ ${esc(l.b.board)}</h4><dl>${row("Length", l.cable?.lengthMm ? `${l.cable.lengthMm} mm` : null)}</dl>
+		<div class="edit-row"><label>Kind <select data-act="kind"><option value="uart"${l.kind === "uart" ? " selected" : ""}>UART</option><option value="i2c"${l.kind === "i2c" ? " selected" : ""}>I²C</option></select></label><button type="button" data-act="delete" title="Delete (Delete key)">Delete</button></div>
+		<div class="edit-row"><label>${esc(l.a.board)} <select data-act="edge-a">${l.a.edge ? "" : '<option value="" selected>auto</option>'}${edges(l.a.edge)}</select></label><label>${esc(l.b.board)} <select data-act="edge-b">${l.b.edge ? "" : '<option value="" selected>auto</option>'}${edges(l.b.edge)}</select></label></div>${issues}`
+	return true
+}
+const selectedOf = (kind) => (card.pinned?.kind === kind ? card.pinned.name : null)
+function removeCable(link) { act({ kind: "cable-remove", link }); cardClose() }
+const setStandoff = (input) => { const b = selectedOf("board"), v = Number(input.value); if (b && Number.isFinite(v)) act({ kind: "standoff", board: b, heightMm: v }) }
+factsEl.addEventListener("click", (e) => {
+	const a = e.target.closest?.("button[data-act]")
+	if (!a || !editing.on) return
+	if (a.dataset.act === "turn" && selectedOf("board")) act({ kind: "rotate", board: selectedOf("board") })
+	if (a.dataset.act === "delete" && selectedOf("cable")) removeCable(selectedOf("cable"))
+})
+factsEl.addEventListener("change", (e) => {
+	const t = e.target, link = selectedOf("cable")
+	if (!editing.on) return
+	if (t.dataset.act === "standoff") return setStandoff(t)
+	if (!link) return
+	if (t.dataset.act === "kind") act({ kind: "cable-kind", link, cableKind: t.value })
+	if ((t.dataset.act === "edge-a" || t.dataset.act === "edge-b") && t.value) act({ kind: "cable-edge", link, end: t.dataset.act.slice(5), edge: t.value })
+})
+factsEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.dataset?.act === "standoff") { e.preventDefault(); setStandoff(e.target) } })
+picker.addEventListener("click", (e) => {
+	const kind = e.target.closest?.("button")?.dataset.kind
+	if (kind === undefined) return
+	picker.classList.remove("on")
+	if (kind && editing.on) act({ kind: "cable-add", a: picker.dataset.a, b: picker.dataset.b, cableKind: kind })
+})
+document.getElementById("stage-top").addEventListener("pointerdown", () => picker.classList.remove("on"))
+editBtn.addEventListener("click", () => (editing.on ? exitEdit() : enterEdit()))
+document.getElementById("edit-apply").addEventListener("click", () => applyEdits())
+document.getElementById("edit-rebase").addEventListener("click", rebase)
+const discardEdits = () => { if (editing.posting) return; editing.queued = false; clearPending(); makeEditor(); editRefresh() }
+document.getElementById("edit-discard").addEventListener("click", discardEdits)
+document.getElementById("edit-drop").addEventListener("click", discardEdits)
+document.getElementById("edit-cancel-queue").addEventListener("click", () => { editing.queued = false; editing.msg = ""; savePending(); editRefresh() })
+document.getElementById("edit-undo").addEventListener("click", () => { if (editing.ed?.undo()) { editing.server = []; editing.msg = ""; editRefresh() } })
+document.getElementById("edit-redo").addEventListener("click", () => { if (editing.ed?.redo()) { editing.server = []; editing.msg = ""; editRefresh() } })
+addEventListener("keydown", (e) => {
+	if (!editing.on || openName || e.target.closest?.("input, select, textarea")) return
+	const mod = e.ctrlKey || e.metaKey, key = e.key.toLowerCase()
+	if (mod && (key === "z" || key === "y")) {
+		e.preventDefault()
+		const ok = key === "y" || e.shiftKey ? editing.ed.redo() : editing.ed.undo()
+		if (ok) { editing.server = []; editing.msg = ""; editRefresh() }
+	} else if (!mod && !e.altKey && key === "r" && selectedOf("board")) act({ kind: "rotate", board: selectedOf("board") })
+	else if ((e.key === "Delete" || e.key === "Backspace") && selectedOf("cable")) removeCable(selectedOf("cable"))
+})
+// For tests: what Apply would send now.
+window.__edit = { status: () => stage.meta?.status, queued: () => editing.queued, diff: () => editing.ed?.diff() ?? null, state: () => editing.ed?.state() ?? null, findings: () => (editing.ed ? [...editing.ed.findings(), ...editing.server] : []), on: () => editing.on }
 
 // ── Board ↔ system: the camera flies to the board first, then a plain "Opening…" panel covers the stage while the
 // board's run page loads behind it, and the page fades in. The run page is same-origin, so it loads on this page's
@@ -673,6 +1171,7 @@ let openView = null
 let openGen = 0
 window.openBoard = async (name, { push = true } = {}) => {
 	if (!stage.runs[name]) return
+	if (editing.on) exitEdit()
 	// No 3D stage (no WebGL): the board's own page.
 	if (!activeView()) return void (location.href = `/?run=${encodeURIComponent(stage.runs[name])}`)
 	openName = name
@@ -738,7 +1237,7 @@ main.addEventListener("click", (e) => {
 })
 document.getElementById("back-system").addEventListener("click", () => closeBoard())
 // Esc closes an open board first; with none open, an open facts card.
-addEventListener("keydown", (e) => { if (e.key === "Escape") { if (!openName && cardClose()) return; closeBoard() } })
+addEventListener("keydown", (e) => { if (e.key === "Escape") { if (stage.top?.dragging()) return; if (!openName && cardClose()) return; closeBoard() } })
 addEventListener("message", (e) => { if (e.origin === location.origin && e.data?.type === "bringup-close") closeBoard() })
 addEventListener("popstate", async () => {
 	const q = new URLSearchParams(location.search)

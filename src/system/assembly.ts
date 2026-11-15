@@ -1,6 +1,6 @@
 // The physical body of a system of boards: where each board sits and how big it is, in one description that the boards,
 // the chassis builder and the 3D view all read. Optional on a SystemSpec; a spec without one behaves as before.
-import type { SystemSpec } from "./spec.ts"
+import type { SystemLink, SystemSpec } from "./spec.ts"
 import type { Mechanics } from "../mechanics/types.ts"
 
 export type BodyKind = "chassis" | "enclosure" | "separate"
@@ -16,20 +16,43 @@ export interface AssemblyBoard {
 	// The board's size before rotation. "estimate" until the board is built, then the built outline.
 	outline: { widthMm: number; heightMm: number }
 	outlineSource: "estimate" | "built"
+	// The height of the board's standoffs; readers default it (STANDOFF_DEFAULT_MM). Allowed 3-30 mm.
+	standoffMm?: number
 }
 
+
 export interface AssemblyPlate { lengthMm: number; widthMm: number }
+
+// A cable's route in the chassis frame (same origin and axes as the boards), one point per bend, end to end.
+export interface AssemblyCable { link: string; points: { xMm: number; yMm: number }[] }
 
 export interface SystemAssembly {
 	body: BodyKind
 	plate?: AssemblyPlate
 	boards: AssemblyBoard[]
+	cables?: AssemblyCable[]
 }
 
-// Size along x and y once the rotation is applied (a quarter turn swaps them).
-export function footprint(b: AssemblyBoard): { xMm: number; yMm: number } {
-	const turned = b.rotDeg === 90 || b.rotDeg === 270
-	return turned ? { xMm: b.outline.heightMm, yMm: b.outline.widthMm } : { xMm: b.outline.widthMm, yMm: b.outline.heightMm }
+// The pure geometry lives in the dashboard module, so the design page checks with the same code.
+import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../dashboard/assembly-geom.js"
+export { cableLength, CABLE_SLACK_MM, footprint, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM }
+
+// The spec a system request makes: its assembly patch over the current one (boards and plate replaced whole, the rest
+// merged), its links replacing the old, and every routed link's cable length set from its route. Pure: the run applies
+// it and the dashboard validates it, the same way.
+export function mergeRequest(spec: SystemSpec, r: { assembly?: Partial<SystemAssembly>; links?: SystemLink[] }): SystemSpec {
+	let out = spec
+	const a = spec.assembly
+	if (r.assembly && a) out = { ...out, assembly: { ...a, ...r.assembly, boards: r.assembly.boards ?? a.boards, plate: r.assembly.plate ?? a.plate } }
+	if (r.links) out = { ...out, links: r.links }
+	const cables = r.assembly && a ? r.assembly.cables : undefined
+	if (cables?.length) {
+		out = { ...out, links: out.links.map((l) => {
+			const c = cables.find((x) => x.link === l.id)
+			return c && c.points.length >= 2 ? { ...l, cable: { ...l.cable, lengthMm: Math.round(cableLength(c.points) + CABLE_SLACK_MM) } } : l
+		}) }
+	}
+	return out
 }
 
 // Every reason the assembly can't be used, in words; [] when it can (or when the spec has none).
@@ -44,6 +67,7 @@ export function assemblyErrors(spec: SystemSpec): string[] {
 		seen.add(b.name)
 		if (!specNames.has(b.name)) out.push(`assembly: board ${b.name} is not in the system`)
 		if (![0, 90, 180, 270].includes(b.rotDeg)) out.push(`assembly: board ${b.name} is rotated ${b.rotDeg}°; use 0, 90, 180 or 270`)
+		if (b.standoffMm !== undefined && !(b.standoffMm >= STANDOFF_RANGE_MM[0] && b.standoffMm <= STANDOFF_RANGE_MM[1])) out.push(`assembly: board ${b.name} has ${b.standoffMm} mm standoffs; use ${STANDOFF_RANGE_MM[0]} to ${STANDOFF_RANGE_MM[1]} mm`)
 	}
 	if (a.body === "chassis") {
 		for (const n of specNames) if (!seen.has(n)) out.push(`assembly: board ${n} has no place on the chassis`)
@@ -51,14 +75,13 @@ export function assemblyErrors(spec: SystemSpec): string[] {
 		else {
 			const { lengthMm, widthMm } = a.plate
 			for (const b of a.boards) {
-				const f = footprint(b)
-				if (Math.abs(b.xMm) + f.xMm / 2 > lengthMm / 2 || Math.abs(b.yMm) + f.yMm / 2 > widthMm / 2) out.push(`assembly: board ${b.name} sticks out of the ${lengthMm} × ${widthMm} mm plate`)
+				if (offPlate(b, a.plate)) out.push(`assembly: board ${b.name} sticks out of the ${lengthMm} × ${widthMm} mm plate`)
 			}
 		}
 		// Boards that only touch edge to edge don't overlap.
 		for (let i = 0; i < a.boards.length; i++) for (let j = i + 1; j < a.boards.length; j++) {
-			const p = a.boards[i], q = a.boards[j], fp = footprint(p), fq = footprint(q)
-			if (Math.abs(p.xMm - q.xMm) < (fp.xMm + fq.xMm) / 2 && Math.abs(p.yMm - q.yMm) < (fp.yMm + fq.yMm) / 2) out.push(`assembly: boards ${p.name} and ${q.name} overlap`)
+			const p = a.boards[i], q = a.boards[j]
+			if (boardsOverlap(p, q)) out.push(`assembly: boards ${p.name} and ${q.name} overlap`)
 		}
 	}
 	return out
@@ -176,10 +199,7 @@ export function withOutlines(a: SystemAssembly, outlines: Record<string, Outline
 	const updated: AssemblyBoard[] = a.boards.map((b) => outlines[b.name] ? { ...b, outline: { ...outlines[b.name] }, outlineSource: "built" } : { ...b })
 	if (a.body === "separate") return { ...a, boards: updated }
 	const plate = a.plate ?? DEFAULT_PLATE_MM
-	const overlaps = (p: AssemblyBoard, q: AssemblyBoard) => {
-		const fp = footprint(p), fq = footprint(q)
-		return Math.abs(p.xMm - q.xMm) < (fp.xMm + fq.xMm) / 2 && Math.abs(p.yMm - q.yMm) < (fp.yMm + fq.yMm) / 2
-	}
+	const overlaps = boardsOverlap
 	const lim = reachLimit(maxSizeMm)
 	// Past the plate, or past what the brief's size limit leaves for a board's edge.
 	const sticksOut = (b: AssemblyBoard) => {
@@ -231,4 +251,37 @@ export function derivedAssembly(spec: SystemSpec, mainMechanics?: Mechanics, out
 		return { name, xMm: p.at.xMm, yMm: p.at.yMm, rotDeg: p.rotDeg, outline: built ? { ...built } : { ...ESTIMATED_OUTLINE_MM }, outlineSource: built ? "built" : "estimate" }
 	})
 	return { body: "chassis", plate: { lengthMm: chassis.plateMm[0], widthMm: chassis.plateMm[1] }, boards, derived: true }
+}
+
+// In words why a request body is not the shape it must be (types and finiteness only; the rules are assemblyErrors'). [] when it is.
+export function requestShapeErrors(b: { assembly?: unknown; links?: unknown }): string[] {
+	const obj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
+	const num = (v: unknown) => typeof v === "number" && Number.isFinite(v)
+	const out: string[] = []
+	if (b.links !== undefined) {
+		if (!Array.isArray(b.links)) out.push("links must be a list")
+		else b.links.forEach((l, i) => {
+			if (!obj(l) || typeof l.id !== "string" || typeof l.kind !== "string" || !obj(l.a) || typeof l.a.board !== "string" || !obj(l.b) || typeof l.b.board !== "string" || !obj(l.cable) || !num(l.cable.lengthMm)) out.push(`links[${i}] needs id, kind, a.board, b.board and cable.lengthMm`)
+		})
+	}
+	if (b.assembly !== undefined) {
+		const a = b.assembly
+		if (!obj(a)) return [...out, "assembly must be an object"]
+		if (a.body !== undefined && !["chassis", "enclosure", "separate"].includes(a.body as string)) out.push("assembly.body must be chassis, enclosure or separate")
+		if (a.boards !== undefined) {
+			if (!Array.isArray(a.boards)) out.push("assembly.boards must be a list")
+			else a.boards.forEach((x, i) => {
+				if (!obj(x) || typeof x.name !== "string" || !num(x.xMm) || !num(x.yMm) || !num(x.rotDeg) || !obj(x.outline) || !num(x.outline.widthMm) || !num(x.outline.heightMm)) out.push(`assembly.boards[${i}] needs name, xMm, yMm, rotDeg and outline {widthMm, heightMm}`)
+				else if (x.standoffMm !== undefined && !num(x.standoffMm)) out.push(`assembly.boards[${i}].standoffMm must be a number`)
+			})
+		}
+		if (a.plate !== undefined && (!obj(a.plate) || !num(a.plate.lengthMm) || !num(a.plate.widthMm))) out.push("assembly.plate needs lengthMm and widthMm")
+		if (a.cables !== undefined) {
+			if (!Array.isArray(a.cables)) out.push("assembly.cables must be a list")
+			else a.cables.forEach((c, i) => {
+				if (!obj(c) || typeof c.link !== "string" || !Array.isArray(c.points) || !c.points.every((p) => obj(p) && num(p.xMm) && num(p.yMm))) out.push(`assembly.cables[${i}] needs link and points [{xMm, yMm}]`)
+			})
+		}
+	}
+	return out
 }

@@ -2,7 +2,7 @@
 // and starting a system from the page.
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
@@ -78,7 +78,7 @@ test("the page starts a system with `main.ts system <spec>`, refuses a spec outs
 		assert.match(systemId, /^system-/)
 		assert.equal(calls[0].briefPath, "system")
 		assert.match(calls[0].extraArgs![0], /briefs\/systems\/logger-beacon-uart\.json$/)
-		assert.deepEqual(calls[0].extraArgs!.slice(1), ["--mock", "--no-hardware", "--no-review"])
+		assert.deepEqual(calls[0].extraArgs!.slice(1), ["--stay", "--mock", "--no-hardware", "--no-review"])
 		assert.equal(calls[0].outDir, join(root, systemId))
 		// The process writes system.json once it starts; until then the folder is not yet a system.
 		writeFileSync(join(root, systemId, "system.json"), JSON.stringify({ name: "s", boards: [], links: [] }))
@@ -298,6 +298,32 @@ test("GET /api/systems/:id/stream replays the system trace and streams new lines
 		assert.match(text, /^: replay/)
 	} finally {
 		ctl.abort()
+		await hub.close()
+	}
+})
+
+test("a staying system that has settled is waiting for a change, not running; Stop still ends it", async () => {
+	const root = tempDir()
+	let killed = false
+	const launch: HubLaunch = () => ({ done: new Promise(() => {}), kill: () => (killed = true) })
+	const hub = await serveHub({ outRoot: root, port: 0, launch })
+	try {
+		const post = (p: string, body: object) => fetch(`${hub.url}${p}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+		const { systemId: id } = (await (await post("/api/systems", { spec: "logger-beacon-uart.json", mock: true, hardware: false, review: false })).json()) as { systemId: string }
+		writeFileSync(join(root, id, "system.json"), JSON.stringify({ name: "s", boards: [], links: [] }))
+		const status = async () => ((await (await fetch(`${hub.url}/api/systems/${id}`)).json()) as { status: string; settled: boolean | null })
+		const line = (l: object) => appendFileSync(join(root, id, "system-trace.jsonl"), JSON.stringify({ at: new Date().toISOString(), round: 0, board: "system", status: "ok", ...l }) + "\n")
+		assert.equal((await status()).status, "running")
+		line({ step: "settled" })
+		line({ step: "request", detail: "staying up for system-level changes" })
+		assert.deepEqual(await status(), { ...(await status()), status: "waiting for a change", settled: true })
+		line({ step: "request", status: "started", detail: "cable L1 is now 340 mm; checking the system again" })
+		assert.equal((await status()).status, "running", "a round in progress is running")
+		line({ step: "settled" })
+		assert.equal((await status()).status, "waiting for a change")
+		assert.equal((await post(`/api/systems/${id}/stop`, {})).status, 200)
+		assert.equal(killed, true)
+	} finally {
 		await hub.close()
 	}
 })

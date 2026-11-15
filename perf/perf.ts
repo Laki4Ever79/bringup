@@ -176,6 +176,22 @@ try {
 			return window.__topStats().draws - before
 		})()`)
 		check("system page Top: draws while idle", idleTop, BUDGET.idleDraws)
+		// Edit mode: drag a board around. Only the dragged board's group changes during the drag (and its checks run on
+		// every move); the whole drawing is redrawn on release. Nothing is applied: no request is sent.
+		await page.click("#edit-btn")
+		await page.waitForSelector("#edit-bar:not(.hidden)")
+		const climate = (await page.locator('#stage-top [data-board="climate"] [data-outline]').boundingBox())!
+		const dragFrames = await frames(page, async () => {
+			const x0 = climate.x + climate.width / 2, y0 = climate.y + climate.height / 2
+			await page.mouse.move(x0, y0)
+			await page.mouse.down()
+			for (let i = 0; i < 120; i++) await page.mouse.move(x0 + Math.sin(i / 12) * 60, y0 + Math.cos(i / 17) * 40)
+			await page.mouse.up()
+			await page.waitForTimeout(200)
+		})
+		check("system page Top: drag a board, slowest frame (ms)", Math.max(...dragFrames), BUDGET.maxFrameMs)
+		await page.keyboard.press("Control+z")
+		await page.click("#edit-btn")
 	} else console.log(`(no out/${TOP_RUN} on this machine: the Top view rows are skipped)`)
 } finally {
 	await browser.close()

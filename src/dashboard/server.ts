@@ -1,4 +1,4 @@
-import { SYSTEM_TRACE } from "../system/trace.ts"
+import { readSystemTrace, SYSTEM_TRACE } from "../system/trace.ts"
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, rmSync, statSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { open, readdir, readFile, realpath, stat } from "node:fs/promises"
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url"
 import { basename, dirname, extname, join, resolve, sep } from "node:path"
 import { appendDecision } from "../runner/decisions.ts"
 import { appendRequest } from "../runner/requests.ts"
+import { designHash } from "./assembly-geom.js"
 import { actionRefused, DRIFT_ACTIONS_FILE, readDrift, type DriftAction } from "../runner/drift.ts"
 import { linkedInfo } from "../runner/linked.ts"
 import { orderCheck, orderPackage } from "./order.ts"
@@ -25,9 +26,11 @@ import { mcuPinName } from "../mcu/pins.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { boardFacts, systemFacts } from "../system/facts.ts"
-import { defaultAssembly, derivedAssembly } from "../system/assembly.ts"
+import { boardI2cDevices } from "../system/checks.ts"
+import { assemblyErrors, defaultAssembly, derivedAssembly, mergeRequest, requestShapeErrors } from "../system/assembly.ts"
+import { SYSTEM_REQUESTS } from "../system/run.ts"
 import { buildSpec } from "../system/plan.ts"
-import type { SystemSpec } from "../system/spec.ts"
+import { specErrors, type SystemSpec } from "../system/spec.ts"
 import type { Mechanics } from "../mechanics/types.ts"
 
 const TRACE = "trace.jsonl"
@@ -49,7 +52,7 @@ const SYSTEM_SPECS = new URL("../../briefs/systems/", import.meta.url)
 const EXPERIMENT = new URL("../../docs/experiment-results.json", import.meta.url)
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 // Page modules served from this folder (and nothing else from it).
-const MODULES = new Set(["nav.js", "fwdiff.js", "lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js", "spend.js", "world3d.js", "plan-edit.js", "assembly.js", "drive.js", "top2d.js", "top-layout.js", "plan-canvas.js", "plan-panel.js"])
+const MODULES = new Set(["nav.js", "fwdiff.js", "lanes.js", "stl.js", "model.js", "ripple.js", "rulers.js", "proof.js", "changelog.js", "pcb-view.js", "scene3d.js", "spend.js", "world3d.js", "plan-edit.js", "assembly.js", "drive.js", "top2d.js", "progress.js", "top-layout.js", "plan-canvas.js", "plan-panel.js", "assembly-geom.js", "system-edit.js"])
 // Vendored OFL fonts (fonts/README.md), by exact name.
 const FONTS = new Set(["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"])
 const RUN_ID = /^[\w-]+$/
@@ -303,7 +306,7 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 	const outRoot = resolve(opts.outRoot)
 	mkdirSync(outRoot, { recursive: true })
 	const rootReal = await realpath(outRoot)
-	const live = new Map<string, { exit: number | null; kill?: () => void }>()
+	const live = new Map<string, { exit: number | null; kill?: () => void; startedAt?: number }>()
 	const streams = new Map<string, { tail: TraceTail; clients: Set<ServerResponse>; watcher: FSWatcher | null }>()
 	const frame = (line: string) => `data: ${line}\n\n`
 	let port = opts.port ?? 4317
@@ -434,9 +437,24 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		return dir && !BOARD_RUN_ID.test(id) && existsSync(join(dir, "system.json")) ? dir : null
 	}
 	const readJsonFile = (path: string) => readFile(path, "utf8").then((t) => JSON.parse(t), () => null)
+	// A live system process whose current run wrote "staying up for system-level changes" (--stay, after its first settle).
+	const systemStays = (run: { exit: number | null; startedAt?: number } | undefined, lines: { at: string; board: string; step: string; detail?: string }[]) =>
+		Boolean(run && run.exit === null && lines.some((l) => l.board === "system" && l.step === "request" && /staying up/.test(l.detail ?? "") && Date.parse(l.at) >= (run.startedAt ?? 0)))
 	const systemStatus = async (id: string, dir: string, state: { status?: string; settled?: boolean } | null) => {
 		const run = live.get(id)
-		if (run && run.exit === null) return { status: "running", settled: null }
+		if (run && run.exit === null) {
+			// Staying up and between rounds: settled, and waiting for the next change (Stop ends it).
+			const lines = readSystemTrace(dir)
+			if (systemStays(run, lines)) {
+				let idle = false
+				for (const l of lines) {
+					if (l.step === "request" && l.status === "started") idle = false
+					else if (l.board === "system" && l.step === "settled") idle = true
+				}
+				if (idle) return { status: "waiting for a change", settled: true }
+			}
+			return { status: "running", settled: null }
+		}
 		if (state?.status) return { status: state.status, settled: state.settled === true }
 		// A system from before system-state.json: its report's status line.
 		const line = (await readFile(join(dir, "system-report.md"), "utf8").catch(() => "")).split("\n").find((l) => l.startsWith("Status: "))
@@ -503,6 +521,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 			id,
 			spec,
 			assembly,
+			// The I2C devices each board carries, counted by the same function the checks use (the page's cable limit needs them).
+			i2cDevices: Object.fromEntries(Object.entries(contractOf).flatMap(([n, c]) => (c ? [[n, boardI2cDevices(c).length]] : []))),
 			facts: systemFacts(contractOf, assembly, spec?.links ?? [], Object.fromEntries(boards.flatMap((b) => (b.runId ? [[b.name, b.runId]] : [])))),
 			...(await systemStatus(id, dir, state)),
 			findings: state?.findings ?? (await readJsonFile(join(dir, "system-findings.json"))) ?? [],
@@ -638,8 +658,8 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 		mkdirSync(outDir, { recursive: true })
 		if (usagePath && existsSync(usagePath)) copyFileSync(usagePath, join(outDir, "usage.jsonl"))
 		// `main.ts system <spec> …`: the launcher puts its first argument after main.ts.
-		const run = opts.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, ...(mock ? ["--mock"] : []), ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"])] })
-		const entry = { exit: null as number | null, kill: run.kill }
+		const run = opts.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, "--stay", ...(mock ? ["--mock"] : []), ...(hardware ? [] : ["--no-hardware"]), ...(review ? [] : ["--no-review"])] })
+		const entry = { exit: null as number | null, kill: run.kill, startedAt: Date.now() }
 		live.set(id, entry)
 		void run.done.then(({ code }) => (entry.exit = code), () => (entry.exit = 1))
 		return id
@@ -769,6 +789,34 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 					} catch (error) {
 						return planError(res, error)
 					}
+				}
+				// Apply on the design page: one validated request line for the running system (--stay watches the file).
+				const sysRequest = /^\/api\/systems\/([^/]+)\/requests$/.exec(path)
+				if (sysRequest) {
+					const dir = await systemDir(sysRequest[1])
+					if (!dir) return json(res, 404, { error: "unknown system" })
+					const body = await readJson(req)
+					if (body.text !== undefined) text(body.text, "text", MAX_TEXT)
+					const shape = requestShapeErrors(body)
+					if (shape.length > 0) return json(res, 400, { error: shape[0], errors: shape })
+					if (body.assembly === undefined && body.links === undefined) throw new HttpError(400, "send an assembly and/or links")
+					// Up means: a live process started here, and its trace says it stays up for requests (the line --stay writes once settled).
+					const run = live.get(sysRequest[1])
+					const lines = readSystemTrace(dir)
+					if (!systemStays(run, lines)) return json(res, 409, { error: "This design isn't running; start it again to apply changes" })
+					const spec = (await readJsonFile(join(dir, "system.json"))) as SystemSpec | null
+					if (!spec) return json(res, 404, { error: "unknown system" })
+					// base: the hash of the design the page edited from; a design changed since (a round, another change) is refused,
+					// so a diff on an old snapshot is never taken. No base: as before.
+					if (body.base !== undefined && typeof body.base !== "string") return json(res, 400, { error: "base must be a string", errors: ["base must be a string"] })
+					if (body.base !== undefined && body.base !== designHash({ assembly: spec.assembly, links: spec.links })) return json(res, 409, { error: "the design changed since you started editing", stale: true })
+					if (body.assembly && !spec.assembly) throw new HttpError(400, "this system has no assembly to change")
+					if ((body.assembly as { plate?: unknown } | undefined)?.plate && spec.assembly?.body !== "chassis") throw new HttpError(400, "this design has no shared plate")
+					const merged = mergeRequest(spec, body)
+					const errors = [...specErrors(merged), ...assemblyErrors(merged)]
+					if (errors.length > 0) return json(res, 400, { error: errors[0], errors })
+					appendFileSync(join(dir, SYSTEM_REQUESTS), JSON.stringify({ at: new Date().toISOString(), ...(body.text ? { text: body.text } : {}), ...(body.assembly ? { assembly: body.assembly } : {}), ...(body.links ? { links: body.links } : {}) }) + "\n")
+					return json(res, 202, { round: Math.max(0, ...lines.map((l) => l.round)) + 1 })
 				}
 				const stopSystem = /^\/api\/systems\/([^/]+)\/stop$/.exec(path)
 				if (stopSystem) {

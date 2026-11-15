@@ -1,0 +1,150 @@
+// POST /api/systems/:id/requests: Apply's endpoint. A request is validated as the merged result, refused when the design
+// is not staying up, and otherwise appended as one line to system-requests.jsonl for the --stay run to take.
+import { test } from "node:test"
+import assert from "node:assert/strict"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
+import { SYSTEM_REQUESTS } from "../src/system/run.ts"
+import { SYSTEM_TRACE } from "../src/system/trace.ts"
+import { defaultAssembly } from "../src/system/assembly.ts"
+import { designHash } from "../src/dashboard/assembly-geom.js"
+import type { SystemSpec } from "../src/system/spec.ts"
+import { tempDir } from "./helpers.ts"
+
+const spec = (): SystemSpec => {
+	const s: SystemSpec = { name: "bot", boards: [{ name: "main", brief: "m.md" }, { name: "front", brief: "f.md" }], links: [{ id: "L1", kind: "uart", a: { board: "main" }, b: { board: "front" }, cable: { lengthMm: 100 } }] }
+	const o = { widthMm: 40, heightMm: 30 }
+	return { ...s, assembly: defaultAssembly(s, "chassis", { main: o, front: o }) }
+}
+
+// A hub whose launch is a stub: POST /api/systems puts the id in the live map, and the test writes what the run would.
+async function withSystem(fn: (h: { url: string; dir: string; id: string; post: (p: string, b: object) => Promise<Response>; stay: () => void }) => Promise<void>) {
+	const root = tempDir()
+	const launch: HubLaunch = () => ({ done: new Promise(() => {}), kill: () => {} })
+	const hub = await serveHub({ outRoot: root, port: 0, launch })
+	try {
+		const post = (p: string, body: object) => fetch(`${hub.url}${p}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+		const { systemId: id } = (await (await post("/api/systems", { spec: "logger-beacon-uart.json", mock: true, hardware: false, review: false })).json()) as { systemId: string }
+		const dir = join(root, id)
+		mkdirSync(dir, { recursive: true })
+		writeFileSync(join(dir, "system.json"), JSON.stringify(spec()))
+		const line = (l: object) => appendFileSync(join(dir, SYSTEM_TRACE), JSON.stringify({ at: new Date().toISOString(), ...l }) + "\n")
+		const stay = () => {
+			line({ round: 0, board: "system", step: "settled", status: "ok" })
+			line({ round: 0, board: "system", step: "request", status: "ok", detail: "staying up for system-level changes" })
+		}
+		await fn({ url: hub.url, dir, id, post, stay })
+	} finally {
+		await hub.close()
+	}
+}
+
+test("requests to a system that is not running are refused with the reason", async () => {
+	await withSystem(async ({ id, dir, post }) => {
+		// A live process that was not started with --stay (no staying-up line in its trace).
+		const r = await post(`/api/systems/${id}/requests`, { assembly: { boards: spec().assembly!.boards } })
+		assert.equal(r.status, 409)
+		assert.match(((await r.json()) as { error: string }).error, /This design isn't running; start it again to apply changes/)
+		assert.equal(existsSync(join(dir, SYSTEM_REQUESTS)), false)
+	})
+	// A recorded design no process here owns.
+	const root = tempDir()
+	mkdirSync(join(root, "old"), { recursive: true })
+	writeFileSync(join(root, "old", "system.json"), JSON.stringify(spec()))
+	writeFileSync(join(root, "old", SYSTEM_TRACE), JSON.stringify({ at: "2026-11-01T00:00:00Z", round: 0, board: "system", step: "request", status: "ok", detail: "staying up for system-level changes" }) + "\n")
+	const hub = await serveHub({ outRoot: root, port: 0 })
+	try {
+		const r = await fetch(`${hub.url}/api/systems/old/requests`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ links: [] }) })
+		assert.equal(r.status, 409)
+		assert.equal((await fetch(`${hub.url}/api/systems/nope/requests`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 404)
+	} finally {
+		await hub.close()
+	}
+})
+
+test("a valid request is appended as exactly one line and answers the next round", async () => {
+	await withSystem(async ({ id, dir, post, stay }) => {
+		stay()
+		const boards = spec().assembly!.boards.map((b) => (b.name === "front" ? { ...b, xMm: b.xMm + 5 } : b))
+		const r = await post(`/api/systems/${id}/requests`, { text: "move front", assembly: { boards } })
+		assert.equal(r.status, 202)
+		assert.deepEqual(await r.json(), { round: 1 })
+		const lines = readFileSync(join(dir, SYSTEM_REQUESTS), "utf8").trim().split("\n")
+		assert.equal(lines.length, 1)
+		const got = JSON.parse(lines[0])
+		assert.equal(got.text, "move front")
+		assert.deepEqual(got.assembly.boards, boards)
+		assert.equal(typeof got.at, "string")
+		await post(`/api/systems/${id}/requests`, { assembly: { boards } })
+		assert.equal(readFileSync(join(dir, SYSTEM_REQUESTS), "utf8").trim().split("\n").length, 2)
+	})
+})
+
+test("an invalid merged result is a 400 with the list, and nothing is appended", async () => {
+	await withSystem(async ({ id, dir, post, stay }) => {
+		stay()
+		const boards = spec().assembly!.boards.map((b) => (b.name === "front" ? { ...b, xMm: 0, yMm: 0 } : b))
+		const r = await post(`/api/systems/${id}/requests`, { assembly: { boards } })
+		assert.equal(r.status, 400)
+		const body = (await r.json()) as { errors: string[] }
+		assert.ok(body.errors.some((e) => /overlap/.test(e)), body.errors.join("; "))
+		const bad = await post(`/api/systems/${id}/requests`, { links: [{ id: "L1", kind: "uart", a: { board: "main" }, b: { board: "ghost" }, cable: { lengthMm: 100 } }] })
+		assert.equal(bad.status, 400)
+		assert.equal((await post(`/api/systems/${id}/requests`, { text: "nothing to change" })).status, 400)
+		assert.equal(existsSync(join(dir, SYSTEM_REQUESTS)), false)
+	})
+})
+
+test("malformed shapes and a plate on a body with no plate are 400, never 500", async () => {
+	await withSystem(async ({ id, dir, post, stay }) => {
+		stay()
+		const boards = spec().assembly!.boards
+		const bad: object[] = [
+			{ links: [1] },
+			{ assembly: { boards: "x" } },
+			{ assembly: { cables: "x" } },
+			{ assembly: { boards: [{ name: "main", rotDeg: 0, outline: { widthMm: 40, heightMm: 30 }, outlineSource: "estimate" }, boards[1]] } },
+			{ assembly: { cables: [{ link: "L1", points: [{ xMm: "a", yMm: 0 }] }] } },
+			{ assembly: { plate: { lengthMm: "wide", widthMm: 10 } } },
+		]
+		for (const b of bad) assert.equal((await post(`/api/systems/${id}/requests`, b)).status, 400, JSON.stringify(b))
+		assert.equal(existsSync(join(dir, SYSTEM_REQUESTS)), false)
+		writeFileSync(join(dir, "system.json"), JSON.stringify({ ...spec(), assembly: { ...spec().assembly!, body: "separate" } }))
+		const r = await post(`/api/systems/${id}/requests`, { assembly: { plate: { lengthMm: 200, widthMm: 150 } } })
+		assert.equal(r.status, 400)
+		assert.match(((await r.json()) as { error: string }).error, /no shared plate/)
+	})
+})
+
+test("a rebuild under the same id is not up until its own staying-up line", async () => {
+	await withSystem(async ({ id, dir, post, url }) => {
+		// A line from before this process started (an earlier run of the same id).
+		appendFileSync(join(dir, SYSTEM_TRACE), JSON.stringify({ at: "2020-01-01T00:00:00Z", round: 0, board: "system", step: "request", status: "ok", detail: "staying up for system-level changes" }) + "\n")
+		const r = await post(`/api/systems/${id}/requests`, { assembly: { boards: spec().assembly!.boards } })
+		assert.equal(r.status, 409)
+		void url
+	})
+})
+
+test("a request edited from an older design (its base hash) is a 409 saying so; the current base, or none, goes through", async () => {
+	await withSystem(async ({ id, dir, post, stay }) => {
+		stay()
+		const now = spec()
+		const base = designHash({ assembly: now.assembly, links: now.links })
+		const boards = now.assembly!.boards.map((b) => (b.name === "front" ? { ...b, xMm: b.xMm + 5 } : b))
+		const old = designHash({ assembly: { ...now.assembly!, plate: { lengthMm: 1, widthMm: 1 } }, links: now.links })
+		const stale = await post(`/api/systems/${id}/requests`, { base: old, assembly: { boards } })
+		assert.equal(stale.status, 409)
+		assert.match(((await stale.json()) as { error: string }).error, /the design changed since you started editing/)
+		assert.equal(existsSync(join(dir, SYSTEM_REQUESTS)), false, "nothing appended")
+		assert.equal((await post(`/api/systems/${id}/requests`, { base, assembly: { boards } })).status, 202)
+		assert.equal((await post(`/api/systems/${id}/requests`, { assembly: { boards } })).status, 202, "no base: today's behaviour")
+		const lines = readFileSync(join(dir, SYSTEM_REQUESTS), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+		assert.equal(lines.length, 2)
+		assert.ok(lines.every((l) => !("base" in l)), "the base is checked, not stored")
+		// Key order and undefined fields don't change the hash (the page and the server serialise differently).
+		const reordered = JSON.parse(JSON.stringify({ links: now.links, assembly: now.assembly }))
+		assert.equal(designHash({ links: reordered.links, assembly: reordered.assembly, extra: undefined } as never), base)
+	})
+})
