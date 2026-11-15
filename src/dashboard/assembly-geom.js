@@ -17,8 +17,10 @@ export function footprint(b) {
 	return turned ? { xMm: b.outline.heightMm, yMm: b.outline.widthMm } : { xMm: b.outline.widthMm, yMm: b.outline.heightMm }
 }
 
-// Boards that only touch edge to edge don't overlap.
+// Boards that only touch edge to edge don't overlap. A carrier and the bought board it carries stack (one over the
+// other on the same holes): they don't overlap either.
 export function boardsOverlap(p, q) {
+	if ((p.carries && p.carries === q.name) || (q.carries && q.carries === p.name)) return false
 	const fp = footprint(p), fq = footprint(q)
 	return Math.abs(p.xMm - q.xMm) < (fp.xMm + fq.xMm) / 2 && Math.abs(p.yMm - q.yMm) < (fp.yMm + fq.yMm) / 2
 }
