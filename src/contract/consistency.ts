@@ -163,6 +163,8 @@ export interface Violation {
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]
+	// The datasheet numbers the check used and where each was read (mechanics checks today).
+	sources?: { mpn: string; field: string; url: string; where: string }[]
 }
 
 const OUTLINE_TOLERANCE_MM = 0.1
