@@ -32,3 +32,23 @@ test("connectors on their edges pass: the rover as designed, scaled to 44 mm, an
 	s.values = { ...s.values, ...structuredClone(LOGGER_DESIGN) }
 	assert.deepEqual(connectorsOffEdge(s), [])
 })
+
+// Rover run cc-rover-3 (15 Nov 2026): the architect shrank the board from 78x17 to 78x16 mm and left J5 at right@13.5
+// mm, 1 mm past the edge; the run ended with it open. The outline change now brings such a connector back onto its edge.
+test("after an outline change, the connectors on an edge are packed back onto it with the least moves", async () => {
+	const { connectorsOntoEdges, connectorClashes } = await import("../src/contract/consistency.ts")
+	const { readFileSync } = await import("node:fs")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/cc-rover-3-78x16-rev25.json", import.meta.url), "utf8")) as ContractSnapshot
+	assert.equal(connectorsOffEdge(s).length, 1)
+	const fitted = connectorsOntoEdges(s)
+	assert.ok(fitted)
+	assert.equal(fitted.find((k) => k.ref === "J5")!.offsetMm, 12.5)
+	// J5 alone at 12.5 would overlap JM2 on the 16 mm right edge, so JM2 steps down half a millimetre too.
+	assert.equal(fitted.find((k) => k.ref === "JM2")!.offsetMm, 5.5)
+	const others = (l: typeof fitted) => l.filter((k) => k.ref !== "J5" && k.ref !== "JM2")
+	assert.deepEqual(others(fitted), others(s.values.connectors!))
+	const after = { ...s, values: { ...s.values, connectors: fitted } }
+	assert.deepEqual(connectorsOffEdge(after), [])
+	assert.deepEqual(connectorClashes(after), [])
+	assert.equal(connectorsOntoEdges(after), null)
+})

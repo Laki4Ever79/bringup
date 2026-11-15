@@ -1,0 +1,418 @@
+{
+  "revision": 25,
+  "values": {
+    "requirements": {
+      "summary": "Small wheeled indoor rover (~0.3 m/s, wall avoidance stopping >=15 cm short) with a temperature/humidity sensor reporting over BLE, powered by one Li-ion cell charged over USB-C, running at least 30 min per charge.",
+      "peripherals": [
+        "temperature/humidity sensor (I2C)",
+        "dual DC motor driver",
+        "distance sensor (I2C, 4-pin connector)",
+        "Li-ion charger (USB-C)",
+        "status LED",
+        "charge LED"
+      ],
+      "batteryLifeDays": null,
+      "batteryMah": 1000,
+      "size": {
+        "widthMm": 150,
+        "heightMm": 120,
+        "exact": false
+      },
+      "enclosure": "none"
+    },
+    "motion": {
+      "speedMps": 0.3,
+      "runtimeMin": 30,
+      "edgeMm": 3,
+      "maxSlopeDeg": 5,
+      "stopBeforeWallMm": 150,
+      "payloadG": 20,
+      "maxSizeMm": [
+        150,
+        120
+      ],
+      "maxMassG": 500
+    },
+    "outline": {
+      "widthMm": 78,
+      "heightMm": 16,
+      "thicknessMm": 1.6
+    },
+    "mechanics": {
+      "drive": {
+        "kind": "differential",
+        "motor": "POLOLU-2366 75:1 MP 6V",
+        "wheel": "POLOLU-1420 wheel 60x8 mm",
+        "caster": "BOTLAND-7292 swivel caster 25 mm",
+        "trackMm": 112,
+        "wheelbaseMm": 100,
+        "axleXMm": 45
+      },
+      "battery": {
+        "pack": "ADAFRUIT-2011 LP-803860 2000 mAh",
+        "at": {
+          "xMm": 45,
+          "yMm": 0
+        }
+      },
+      "sensor": {
+        "module": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+        "at": {
+          "xMm": 73.6,
+          "yMm": 0,
+          "zMm": 50.5
+        },
+        "connector": "JT1"
+      },
+      "chassis": {
+        "plateMm": [
+          150,
+          100
+        ],
+        "thicknessMm": 3,
+        "material": "PLA",
+        "clearanceMm": 35,
+        "boards": [
+          {
+            "name": "main",
+            "at": {
+              "xMm": 0,
+              "yMm": 0
+            },
+            "rotDeg": 0
+          }
+        ]
+      }
+    },
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 40,
+        "widthMm": 9,
+        "heightMm": 3.2
+      },
+      {
+        "ref": "JM1",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 8.5,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JM2",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 6,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "J5",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 13.5,
+        "widthMm": 5.8,
+        "heightMm": 3
+      }
+    ],
+    "rails": [
+      {
+        "name": "VBUS",
+        "voltageV": 5,
+        "regulatorMaxMa": 500,
+        "loadMa": 500,
+        "averageMa": 0
+      },
+      {
+        "name": "VBAT",
+        "voltageV": 3.7,
+        "regulatorMaxMa": 1500,
+        "loadMa": 1200,
+        "averageMa": 600
+      },
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 170,
+        "averageMa": 60
+      }
+    ],
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-C3-MINI-1",
+        "lcsc": "C2838502",
+        "footprint": "esp32_c3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO18",
+          "GPIO19",
+          "EN",
+          "3V3",
+          "GND"
+        ],
+        "reason": "BLE reporting plus motor and sensor control for the rover"
+      },
+      {
+        "ref": "U2",
+        "role": "sensor",
+        "mpn": "SHT40-AD1B-R2",
+        "lcsc": "C2909890",
+        "footprint": "dfn4",
+        "pins": [
+          "SDA",
+          "SCL",
+          "VDD",
+          "VSS"
+        ],
+        "reason": "brief: temperature/humidity sensor reporting over BLE (I2C)"
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "RT9080-33GJ5",
+        "lcsc": "C841192",
+        "footprint": "sot23_5",
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ],
+        "reason": "600 mA LDO for the ESP32-C3 radio bursts, 2 uA quiescent"
+      },
+      {
+        "ref": "U4",
+        "role": "charger",
+        "mpn": "TP4054-42-SOT25R",
+        "lcsc": "C32574",
+        "footprint": "sot23_5",
+        "pins": [
+          "CHRG",
+          "GND",
+          "BAT",
+          "VCC",
+          "PROG"
+        ],
+        "reason": "brief: one Li-ion cell charged over USB-C"
+      },
+      {
+        "ref": "U5",
+        "role": "motor-driver",
+        "mpn": "DRV8833PWPR",
+        "lcsc": "C50506",
+        "footprint": "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm",
+        "pins": [
+          "nSLEEP",
+          "AOUT1",
+          "AISEN",
+          "AOUT2",
+          "BOUT2",
+          "BISEN",
+          "BOUT1",
+          "nFAULT",
+          "BIN1",
+          "BIN2",
+          "VCP",
+          "VM",
+          "GND",
+          "VINT",
+          "AIN2",
+          "AIN1"
+        ],
+        "reason": "brief: dual DC motor driver for the two drive wheels"
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ],
+        "reason": "brief: Li-ion cell charged over USB-C"
+      },
+      {
+        "ref": "J2",
+        "role": "connector",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "Li-ion cell battery connector (VBAT, GND): the battery pack plugs in here"
+      },
+      {
+        "ref": "JT1",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "2-pin header on the right edge, wired to spare GPIO4 and GPIO5 (EXP_IO1, EXP_IO2) so the connector has a live function"
+      },
+      {
+        "ref": "JM1",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "brief: left drive motor connector (2-pin)"
+      },
+      {
+        "ref": "JM2",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "brief: right drive motor connector (2-pin)"
+      },
+      {
+        "ref": "J5",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "reason": "brief: distance sensor (I2C, 4-pin connector) for wall avoidance"
+      },
+      {
+        "ref": "D1",
+        "role": "led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ],
+        "reason": "brief: status LED"
+      },
+      {
+        "ref": "D2",
+        "role": "charge-led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ],
+        "reason": "brief: charge LED, lit while charging"
+      },
+      {
+        "ref": "R1",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ],
+        "reason": "1k series resistor for the charge LED"
+      }
+    ],
+    "pins": [
+      {
+        "signal": "I2C_SDA",
+        "gpio": 6,
+        "partRef": "U2",
+        "partPin": "SDA"
+      },
+      {
+        "signal": "I2C_SCL",
+        "gpio": 7,
+        "partRef": "U2",
+        "partPin": "SCL"
+      },
+      {
+        "signal": "MOT_AIN1",
+        "gpio": 0,
+        "partRef": "U5",
+        "partPin": "AIN1"
+      },
+      {
+        "signal": "MOT_AIN2",
+        "gpio": 1,
+        "partRef": "U5",
+        "partPin": "AIN2"
+      },
+      {
+        "signal": "MOT_BIN1",
+        "gpio": 2,
+        "partRef": "U5",
+        "partPin": "BIN1"
+      },
+      {
+        "signal": "MOT_BIN2",
+        "gpio": 3,
+        "partRef": "U5",
+        "partPin": "BIN2"
+      },
+      {
+        "signal": "STATUS_LED",
+        "gpio": 10,
+        "partRef": "D1",
+        "partPin": "A"
+      }
+    ]
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 3,
+    "connectors": 6,
+    "rails": 2,
+    "parts": 3,
+    "pins": 1,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 3,
+    "mechanics": 6,
+    "assembly": 0
+  }
+}
