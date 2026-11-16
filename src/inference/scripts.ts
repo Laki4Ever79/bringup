@@ -1,5 +1,5 @@
 import { pathHash, sensorPath } from "../contract/sensor-path.ts"
-import { LINK_CONNECTOR } from "../contract/links.ts"
+import { LINK_CONNECTOR, CAN_TRANSCEIVER } from "../contract/links.ts"
 import { FREE_GPIOS } from "../contract/link-kinds.ts"
 import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { supportParts, testPoints, nativeUsbIndexes } from "../codegen/circuit.ts"
@@ -777,6 +777,12 @@ export function mockScripts(): Record<string, Script> {
 				const linkRef = /needs its connector: a part (\w+), role connector/.exec(instruction)?.[1]
 				if (stepsTaken(items) === 0 && linkRef && !parts.some((p) => p.ref === linkRef))
 					return propose("parts", [...parts, { ref: linkRef, role: "connector", ...LINK_CONNECTOR }], `${linkRef}: the link's JST SH 4-pin connector (catalog)`)
+				// A CAN link's transceiver (one per board, whatever its links: a middle board's two bus segments share it).
+				if (stepsTaken(items) === 0 && /needs its transceiver: a part role can-transceiver/.test(instruction) && !parts.some((p) => p.role === "can-transceiver")) {
+					const taken = new Set(parts.map((p) => p.ref))
+					const ref = ["U9", "U10", "U11", "U12"].find((r) => !taken.has(r))!
+					return propose("parts", [...parts, { ref, role: "can-transceiver", ...CAN_TRANSCEIVER }], `${ref}: the CAN link's ${CAN_TRANSCEIVER.mpn} transceiver (catalog)`)
+				}
 				if (stepsTaken(items) === 0 && violationKinds(instruction).has("model-sensor-missing") && !parts.some((p) => p.role === "microphone"))
 					return propose("parts", [...parts, MIC_PART], "the model listens: the ICS-43434 I2S microphone (catalog)")
 				// A 1-cell charger on a multi-cell pack (charger-pack): the pack charges off the board on a balance charger, so the
