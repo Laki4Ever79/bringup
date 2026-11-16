@@ -448,7 +448,7 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// (An encoder gearmotor's plug carries its encoder's A and B to GPIOs: only its motor pins never go to one.)
 	const onMotor = pins.filter((p) => motorPlugs.has(p.partRef) && typeof p.gpio === "number" && p.gpio >= 0 && !["ENCA", "ENCB"].includes(p.partPin))
 	if (onMotor.length)
-		push("mech-wiring", `${onMotor.map((p) => `${p.signal} (GPIO${p.gpio}) goes to motor connector ${p.partRef}`).join("; ")}: a motor never connects to a GPIO. Remove these pins: the board generator wires the motor driver's outputs to the 2-pin motor connectors, and the GPIOs drive the driver's inputs MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2`, ["architect"], ["pins"])
+		push("mech-wiring", `${onMotor.map((p) => `${p.signal} (GPIO${p.gpio}) goes to motor connector ${p.partRef}`).join("; ")}: a motor never connects to a GPIO. Remove these pins: the board generator wires the motor driver's outputs to the motor plugs' motor pins (1/2, or M1/M2 on an encoder plug), and the GPIOs drive the driver's inputs MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2`, ["architect"], ["pins"])
 	// Each motor's two wires need a 2-pin connector on the driver's outputs (real rover run 5, 15 Nov: nothing asked for
 	// them, so the motors were never connected). The generator wires the driver's AOUT/BOUT to them, in ref order.
 	if (driver && motorPlugs.size < 2) {

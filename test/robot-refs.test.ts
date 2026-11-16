@@ -97,3 +97,20 @@ test("run 10's revision 25: the mechanics' e-stop plug J3 is written as JE1", as
 	assert.equal(safety.estop!.connector, "JE1")
 	assert.equal(safety.start!.connector, "JS1")
 })
+
+// Run cc-eurobot-13 (16 Nov 2026): the parts agent switched JM1/JM2 between the 2-pin PH and the encoder motor's 6-pin
+// SH plug four times ("the robot checks require a 2-pin connector per motor"). For an encoder motor the plug is the SH.
+test("run 13's revision 41: 2-pin motor plugs for an encoder motor are written as the catalog's 6-pin SH plug", async () => {
+	const s = JSON.parse(readFileSync(new URL("./fixtures/cc-eurobot-13-rev41.json", import.meta.url), "utf8")) as ContractSnapshot
+	const state = new BringupState(tempDir(), 3000)
+	for (const [field, value] of Object.entries(s.values) as [FieldName, never][]) {
+		if (value === undefined || field === "parts") continue
+		assert.equal(state.contract.propose({ field, value, by: OWNERS[field], baseVersion: 0 }).status, "applied", field)
+	}
+	startRuntime(state, inferenceConfig(true, { "mock-parts": once(toolCall("propose_contract_change", { field: "parts", value: s.values.parts, baseVersion: 0, reason: "run 13's parts" })) }), null)
+	startTurn(createRoleAgent({ role: "parts", instruction: "x", handlers: [], mock: true }), "choose the parts")
+	await waitFor(() => state.contract.version("parts") === 1)
+	const plugs = state.contract.get("parts")!.filter((p) => p.ref === "JM1" || p.ref === "JM2")
+	assert.deepEqual(plugs.map((p) => p.mpn), ["SM06B-SRSS-TB(LF)(SN)", "SM06B-SRSS-TB(LF)(SN)"])
+	assert.ok(plugs.every((p) => p.pins.includes("ENCA") && p.pins.includes("M1")))
+})
