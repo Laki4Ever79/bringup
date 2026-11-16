@@ -2,7 +2,7 @@ import { pathHash, sensorPath } from "../contract/sensor-path.ts"
 import { LINK_CONNECTOR } from "../contract/links.ts"
 import { FREE_GPIOS } from "../contract/link-kinds.ts"
 import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
-import { supportParts, testPoints } from "../codegen/circuit.ts"
+import { supportParts, testPoints, nativeUsbIndexes } from "../codegen/circuit.ts"
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
 import type { CaseSpec, ContractSnapshot, ContractValues, EnclosureMode, FieldName } from "../contract/types.ts"
 import { boardWidthFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
@@ -398,7 +398,7 @@ export const ENCLOSURE_MODE_REQUEST = /bare board|no (case|enclosure)\b|without 
 function linkPins(s: ContractSnapshot, needs: Need[], taken: number[]): number[] | null {
 	const chip = mcuProfileOf(s.values.parts)
 	if (!chip || chip.id === LEGACY_MCU_ID) return FREE_GPIOS.filter((g) => !taken.includes(g))
-	const r = solvePins(chip, needs, taken)
+	const r = solvePins(chip, needs, [...taken, ...nativeUsbIndexes(s)])
 	return r.ok ? r.pins.map((p) => p.index) : null
 }
 
@@ -995,7 +995,8 @@ export function mockScripts(): Record<string, Script> {
 			// taken: the Eurobot base's START, 16 Nov) the profile's solver picks a free pin.
 			const chip = mcuProfileOf(state().contract.get("parts"))
 			if (!chip || (chip.id === LEGACY_MCU_ID && !pins.some((p) => p.gpio === STATUS_LED.gpio))) return propose("pins", [...pins, STATUS_LED], "firmware drives a status LED")
-			const r = solvePins(chip, [{ signal: "STATUS_LED", kind: "gpio" }], pins.map((p) => p.gpio))
+			// Not the native USB's pins (the Eurobot base, 16 Nov: its LED went to GPIO18, which unwired the USB-C's D-).
+			const r = solvePins(chip, [{ signal: "STATUS_LED", kind: "gpio" }], [...pins.map((p) => p.gpio), ...nativeUsbIndexes(state().contract.snapshot())])
 			return r.ok ? propose("pins", [...pins, { ...STATUS_LED, gpio: r.pins[0].index }], `firmware drives a status LED (${r.pins[0].pin}, a free pin on the ${chip.mpn})`) : say(r.reason)
 		},
 	}
