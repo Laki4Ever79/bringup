@@ -75,29 +75,38 @@ int main() {
 	}
 	{
 		LinkFrameReader r;
-		// A whole over-long frame with a valid checksum: only the length rule can drop it.
-		std::vector<uint8_t> in = {0xA5, 0x5A, 1, 2, 3, 4, 49};
-		in.resize(in.size() + 49, 0x11);
-		uint8_t sum = 0;
-		for (size_t i = 2; i < in.size(); i++) sum ^= in[i];
-		in.push_back(sum);
+		// Bytes past the longest frame we send, then a delimiter: dropped, and the next good frame read.
+		std::vector<uint8_t> in(LINK_FRAME_MAX + 5, 0x11);
+		in.push_back(0x00);
 		auto good = frame(H, four);
 		in.insert(in.end(), good.begin(), good.end());
 		check("too-long", one(feedAll(r, in), H, four), "an over-long frame was read, or the next good one wasn't");
 	}
 	{
-		// A false sync (A5 5A) in garbage can swallow the frame right after it (known, documented); the reader must
-		// recover by the frame after that.
+		// COBS: a 0x00 never occurs inside a frame, so garbage costs at most the frame it runs into.
 		LinkFrameReader r;
 		std::vector<uint8_t> in = {0x00, 0xA5, 0x5A, 0x01};
 		for (int k = 0; k < 2; k++) {
 			auto f = frame(H + k, four);
 			in.insert(in.end(), f.begin(), f.end());
 		}
-		auto f = frame(H + 7, four);
-		in.insert(in.end(), f.begin(), f.end());
 		auto g = feedAll(r, in);
-		check("false-sync", !g.empty() && g.back().hash == H + 7, "the reader didn't recover after a false sync");
+		check("resync", g.size() >= 1 && g.back().hash == H + 1, "the reader didn't resync at the delimiter");
+	}
+	{
+		LinkFrameReader r;
+		// A payload full of zeros (COBS's worst case for block codes) round-trips, and the wire's only 0x00 bytes are the
+		// delimiters before and after the frame.
+		std::vector<uint8_t> zeros(LINK_MAX_PAYLOAD, 0);
+		auto f = frame(0, zeros);
+		bool clean = true;
+		for (size_t i = 1; i + 1 < f.size(); i++) if (f[i] == 0) clean = false;
+		check("zeros", clean && f.front() == 0 && f.back() == 0 && f.size() <= LINK_FRAME_MAX && one(feedAll(r, f), 0, zeros), "zeros didn't round-trip, leaked onto the wire, or overflowed");
+	}
+	{
+		LinkFrameReader r;
+		// A lone 0x00 (an I2C target with nothing to send) is no frame.
+		check("empty", feedAll(r, {0x00, 0x00}).empty(), "an empty frame was read");
 	}
 	{
 		LinkFrameReader r;
