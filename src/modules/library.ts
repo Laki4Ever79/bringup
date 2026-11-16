@@ -28,6 +28,9 @@ export interface Module {
 	// A bought compute board (kind "compute": Raspberry Pi, Jetson, mini PC): its outline, holes, header, ports, power
 	// and software, each value { value, unit?, source: { url, where } } or unknown ({ value: null, note }).
 	compute?: Record<string, unknown>
+	// A rules module (kind "rules"): the rule set it checks (catalog/rules/<id>.json); a design uses it when its
+	// motion.rules names that set.
+	rules?: string
 }
 
 // How strongly a module has been shown to work, weakest first (docs/design/module-library.md).
@@ -97,8 +100,9 @@ export function computeProblems(m: Module): string[] {
 
 // Why a module isn't cited (level 0): a part no catalog has, or a bought mechanical part with an uncited number. A
 // compute module's board is bought whole and isn't in a parts catalog: its record's own sources stand in for it.
-export function moduleProblems(m: Module, mech: MechCatalog, boardMpns: Set<string>): string[] {
+export function moduleProblems(m: Module, mech: MechCatalog, boardMpns: Set<string>, root?: string): string[] {
 	if (m.kind === "compute") return computeProblems(m)
+	if (m.kind === "rules") return rulesProblems(m, root)
 	const problems: string[] = []
 	const mechParts = [...mech.motors, ...mech.wheels, ...mech.casters, ...mech.batteries, ...(mech.sensors ?? []), ...(mech.safety ?? [])]
 	for (const p of m.parts)
@@ -113,6 +117,15 @@ export function moduleProblems(m: Module, mech: MechCatalog, boardMpns: Set<stri
 	return problems
 }
 
+// Why a rules module isn't cited: its rule set missing, or a limit without its clause (a url and a where).
+function rulesProblems(m: Module, root?: string): string[] {
+	if (!m.rules) return [`${m.id}: a rules module names no rule set (rules)`]
+	const f = root ? join(root, "catalog", "rules", `${m.rules}.json`) : ""
+	if (!f || !existsSync(f)) return [`${m.id}: rule set ${m.rules} is not in catalog/rules`]
+	const set = JSON.parse(readFileSync(f, "utf8")) as { limits?: Record<string, { source?: { url?: string; where?: string } }> }
+	return Object.entries(set.limits ?? {}).filter(([, l]) => !l.source?.url || !l.source?.where?.trim()).map(([k]) => `${m.id}: limit ${k} has no source (url and where)`)
+}
+
 // The MPNs a design uses: its board parts and its bought mechanical parts.
 function designMpns(v: Partial<ContractValues>): string[] {
 	const m = v.mechanics
@@ -123,7 +136,7 @@ function designMpns(v: Partial<ContractValues>): string[] {
 export function modulesUsed(modules: Module[], v: Partial<ContractValues>): Module[] {
 	const have = designMpns(v)
 	const has = (mpn: string) => have.some((x) => x === mpn || x.split(" ")[0] === mpn.split(" ")[0])
-	return modules.filter((m) => m.parts.every((p) => [p.mpn, ...(p.alternatives ?? [])].some(has)))
+	return modules.filter((m) => (m.kind === "rules" ? !!m.rules && v.motion?.rules === m.rules : m.parts.length > 0 && m.parts.every((p) => [p.mpn, ...(p.alternatives ?? [])].some(has))))
 }
 
 // What a finished run shows about each module it used. Built: the board passed DRC and the firmware compiled. Tested:
@@ -208,7 +221,7 @@ export function moduleStatus(root: string, dir = evidenceDir()): ModuleStatus[] 
 	const mech = loadMechCatalog(root)
 	const boardMpns = new Set(loadCatalog(root).map((p) => p.mpn))
 	return loadModules(root).map((m) => {
-		const problems = moduleProblems(m, mech, boardMpns)
+		const problems = moduleProblems(m, mech, boardMpns, root)
 		const ev = readEvidence(m.id, dir)
 		return { module: m, level: levelOf(ev, problems.length === 0), problems, runs: new Set(ev.map((e) => e.run)).size, passes: ev.filter((e) => e.result === "pass").length, fails: ev.filter((e) => e.result === "fail").length, last: ev.at(-1)?.at }
 	})

@@ -1,6 +1,6 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import type { DriveArtifact } from "../tools/drive.ts"
-import { mechanicsFigures } from "./checks.ts"
+import { defaultCheckCatalog, mechanicsFigures } from "./checks.ts"
 import { ESTIMATES } from "./estimates.ts"
 
 // The report's Mechanics section (a robot only): the brief's targets against the computed values, from the same code
@@ -32,6 +32,9 @@ export function mechanicsSection(s: ContractSnapshot, drive: DriveArtifact | und
 			`Estimates (no datasheet states these; the bench test measures the motor's): ${Object.entries(ESTIMATES).map(([k, e]) => `${k} ${e.value}`).join(", ")}.`,
 			"",
 		)
+		// A competition's rules the model can't see yet: listed, never counted as passed.
+		const rules = s.values.motion.rules ? defaultCheckCatalog()?.rules?.[s.values.motion.rules] : undefined
+		if (rules?.notChecked.length) lines.push(`Not checked against ${rules.document.title} (the design doesn't model them yet):`, ...rules.notChecked.map((n) => `- ${n.rule}: ${n.why}`), "")
 	}
 	if (!drive || drive.result === "not run")
 		lines.push(`Simulated drive: not proven in simulation${drive ? ` (${drive.reason})` : ""}.`, "")

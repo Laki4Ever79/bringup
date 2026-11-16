@@ -12,6 +12,8 @@ export interface MotionTargets {
 	payloadG: number
 	maxSizeMm: [number, number]
 	maxMassG: number
+	// A competition's robot rules the design is checked against (catalog/rules/<id>.json: "eurobot-2026").
+	rules?: string
 }
 
 export interface Mount {
@@ -46,5 +48,5 @@ export interface Mechanics {
 	// is at.zMm off the floor, its NC contact wired to the board plug `connector` (role estop) in the motors' supply.
 	// And a pull-cord start (match.h in the rover firmware): the board plug `connector` (role start) whose START pin the
 	// cord's loop holds low; the cord is cordMm long; with matchS the firmware stops every motor that long after the start.
-	safety?: { estop?: { part: string; at: { xMm: number; yMm: number; zMm: number }; connector: string }; start?: { connector: string; cordMm: number; matchS?: number } }
+	safety?: { estop?: { part: string; at: { xMm: number; yMm: number; zMm: number }; connector: string; collarMm?: number }; start?: { connector: string; cordMm: number; matchS?: number } }
 }

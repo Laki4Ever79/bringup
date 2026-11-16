@@ -14,6 +14,8 @@ export interface BriefMotion {
 	payloadG?: number
 	maxSizeMm?: [number, number]
 	maxMassG?: number
+	// A competition the brief names, whose robot rules apply (catalog/rules).
+	rules?: string
 }
 
 const NUM = String.raw`(\d+(?:\.\d+)?)`
@@ -46,6 +48,7 @@ export function motionFromBrief(brief: string): BriefMotion {
 	if (mass) out.maxMassG = Number(mass[1]) * (mass[2].toLowerCase() === "kg" ? 1000 : 1)
 	const size = new RegExp(`${NUM}\\s*[×x]\\s*${NUM}\\s*(mm|cm)\\b`, "i").exec(text)
 	if (size) out.maxSizeMm = [toMm(Number(size[1]), size[3].toLowerCase()), toMm(Number(size[2]), size[3].toLowerCase())]
+	if (/\beurobot\b/i.test(text)) out.rules = "eurobot-2026"
 	return out
 }
 
@@ -59,7 +62,8 @@ export function motionBriefChecks(c: ContractSnapshot, brief: string): MechViola
 	const b = motionFromBrief(brief)
 	const off = (have: number, want: number) => Math.abs(have - want) > BRIEF_TOLERANCE * want
 	const wrong: string[] = []
-	const one = (key: keyof Omit<BriefMotion, "maxSizeMm">, unit: string) => {
+	if (b.rules && motion.rules !== b.rules) wrong.push(`rules ${motion.rules ?? "unset"} where the brief is for ${b.rules} (set motion.rules: "${b.rules}", so the design is checked against that competition's robot rules)`)
+	const one = (key: keyof Omit<BriefMotion, "maxSizeMm" | "rules">, unit: string) => {
 		const want = b[key], have = motion[key]
 		if (want !== undefined && typeof have === "number" && off(have, want)) wrong.push(`${key} ${have} where the brief says ${want} ${unit}`)
 	}
