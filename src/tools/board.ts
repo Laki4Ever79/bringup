@@ -52,6 +52,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	// via can land next to J1's NPTH (the first wake-word board: 4 hole_clearance errors, 0 on the logger without the
 	// microphone). A build with DRC errors also tries the next distance; the build with the fewest errors is kept.
 	let lastError: unknown
+	let tried = 0
 	let best: { board: BoardArtifact; errors: number } | null = null
 	// The default layout first; then the same with keepouts at the USB-C locating holes (the fix for vias beside
 	// them); then the other LDO distances, each with and without the keepouts (the 60 mm logger with recovery pads,
@@ -102,6 +103,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 		const work = mkdtempSync(join(tmpdir(), "bringup-board-"))
 		const out = mkdtempSync(join(tmpdir(), "bringup-board-out-"))
 		try {
+			tried++
 			const board = await buildIn(env, work, s, revision, out, placement)
 			const errors = board.drc?.errors ?? 0
 			if (!best || errors < best.errors) {
@@ -152,7 +154,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	cpSync(best.board.dir, dir, { recursive: true })
 	rmSync(best.board.dir, { recursive: true, force: true })
 	const at = (p: string | null) => (p ? p.replace(best!.board.dir, dir) : p)
-	return { ...best.board, dir, pcbPath: at(best.board.pcbPath)!, stepPath: at(best.board.stepPath), renderPath: at(best.board.renderPath) }
+	return { ...best.board, layoutsTried: tried, dir, pcbPath: at(best.board.pcbPath)!, stepPath: at(best.board.stepPath), renderPath: at(best.board.renderPath) }
 }
 
 // Each layout, then the same with its capacitor traces drawn (drawCaps), then with its pin capacitors allowed along

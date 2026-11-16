@@ -48,7 +48,7 @@ try {
 	const v = checkConsistency(s, { board }).filter((x) => !x.kind.startsWith("space"))
 	const drc = board.drc
 	const errs = drc ? Object.entries(drc.byType).filter(([k]) => !/lib_footprint|text_height|silk/.test(k)) : []
-	console.log(`ROUTED in ${Math.round((Date.now() - t0) / 1000)} s · DRC ${drc ? `${drc.errors} errors${drc.firstError ? ` (first: ${drc.firstError})` : ""}` : "not run"}`)
+	console.log(`ROUTED in ${Math.round((Date.now() - t0) / 1000)} s after ${board.layoutsTried ?? "?"} layout(s) · DRC ${drc ? `${drc.errors} errors${drc.firstError ? ` (first: ${drc.firstError})` : ""}` : "not run"}`)
 	if (errs.length) console.log(`  DRC by type: ${errs.map(([k, n]) => `${k} ${n}`).join(", ")}`)
 	if (board.debugPortDropped) console.log(`  debug footprint left off: ${board.debugPortDropped}`)
 	console.log(v.length ? `  violations: ${v.map((x) => `${x.kind}: ${x.message.split("\n")[0]}`).join("\n              ")}` : "  consistency: clean")
