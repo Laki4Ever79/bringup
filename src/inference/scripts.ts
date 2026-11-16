@@ -561,7 +561,7 @@ const ARCHITECT_FIELDS = ["requirements", "outline", "connectors", "rails", "pin
 // Deterministic stand-ins for each role's model, so a full run needs no API key.
 export function mockScripts(): Record<string, Script> {
 	// The outline the scripted architect shrank from, until it has moved the connectors to match (space rules).
-	let shrinkFrom: { widthMm: number; heightMm: number } | null = null
+	let shrinkFrom: { widthMm: number; heightMm: number; connectors: NonNullable<ContractValues["connectors"]> } | null = null
 	// How many times the scripted architect has widened the board after a failed DRC in this run.
 	let drcGrows = 0
 	// Whether the compute rover's layout has reached the contract in this run (the scripted mechanics engineer picks it once).
@@ -627,7 +627,12 @@ export function mockScripts(): Record<string, Script> {
 					const from = shrinkFrom
 					shrinkFrom = null
 					const connectors = state().contract.get("connectors") ?? []
+					// Only a connector still where it was when the board shrank: one placed since (a link's plug added on the
+					// smaller board) or already moved onto the new edge (the contract packs connectors left past an edge's
+					// end) is on the new outline already. Scaling those again crowded the scripted rover + climate's main
+					// into its corners (JL1 right@14 → 10, JT1 top@39 → 28; its smallest board grew 43×28 → 49×38, 16 Nov).
 					const scaled = connectors.map((c) => {
+						if (!from.connectors.some((k) => k.ref === c.ref && k.edge === c.edge && k.offsetMm === c.offsetMm)) return c
 						const [a, b] = c.edge === "left" || c.edge === "right" ? [from.heightMm, o.heightMm] : [from.widthMm, o.widthMm]
 						return { ...c, offsetMm: Math.round(((c.offsetMm * b) / a) * 2) / 2 }
 					})
@@ -637,7 +642,7 @@ export function mockScripts(): Record<string, Script> {
 				if (target && o && ((o.widthMm * o.heightMm) / (target.widthMm * target.heightMm) - 1 > SLACK_LIMIT || kinds.has("space-room"))) {
 					// The outline the connectors were placed on: a second shrink before they moved (43×28, then 44×28 on the
 					// rover) keeps the first, or they scale from the wrong size (JT1 at top@43 of a 44 mm edge, 14 Nov 2026).
-					shrinkFrom ??= { widthMm: o.widthMm, heightMm: o.heightMm }
+					shrinkFrom ??= { widthMm: o.widthMm, heightMm: o.heightMm, connectors: structuredClone(state().contract.get("connectors") ?? []) }
 					const { sizeReason: _limit, ...rest } = o
 					return propose("outline", { ...rest, widthMm: target.widthMm, heightMm: target.heightMm }, `compact by default: the parts place on ${target.widthMm}×${target.heightMm} mm, and nothing asks for more${o.sizeReason ? ` (the brief's size is a limit the board now fits within)` : ""}`)
 				}
