@@ -98,7 +98,8 @@ def build(spec):
     clamp_screws = []
     for m in spec["motors"]:
         L, W, H = m["bodyMm"]
-        mount = m.get("mount", {"kind": "clamp"})
+        # A spec from before mounts (and the Python tests' fixture): the cradle alone, as before.
+        mount = m.get("mount", {"kind": "cradle"})
         if mount["kind"] == "bracket":
             for h in mount["holes"]:
                 part -= Pos(h["xMm"], h["yMm"], t / 2) * Cylinder(mount["holeDiaMm"] / 2, t + 2)
