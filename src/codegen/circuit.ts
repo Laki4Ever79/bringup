@@ -373,7 +373,8 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	for (const l of (s.values.links ?? []).filter((x) => x.kind === "can" && x.can?.terminate))
 		if (can) jobs.push({ job: `${canName(l)} CAN termination, 120 Ω across CANH and CANL (this board is a bus end)`, spec: SUPPORT.canTerm, a: { net: canSignals(l).h }, b: { net: canSignals(l).l }, near: can.ref })
 	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
-	if (ldo) jobs.push({ job: `decoupling on ${charger ? "VBAT" : "VBUS"} (LDO input)`, spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
+	const ldoInNet = ldoInputNet(s)
+	if (ldo) jobs.push({ job: `decoupling on ${ldoInNet} (LDO input)`, spec: SUPPORT.bypass, a: { net: ldoInNet }, b: GND, near: ldo.ref })
 	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
 	// The download-boot strap pulled high (downloadStrap), unless the I2C pull-up above already does it; not on a pin that
 	// drives an LED (a violation for the architect: the pull-up would light it in deep sleep).
@@ -740,6 +741,8 @@ export interface PlacementOptions {
 	// to the router. A retry, not the default: drawn first, they shift every other route, and boards that routed clean
 	// lost their debug footprint to traces beside its holes (the 43×28 rover, 47 s → 201 s, 15 Nov 2026).
 	drawCaps?: boolean
+	// mm of routing room kept free of other parts around a part's pin-capacitor group (an experiment; 0 or absent: none).
+	capChannelMm?: number
 }
 
 // Board mounting holes for M2 screws: 2.2 mm clearance holes, centred 3 mm in from each corner. Nothing is placed
@@ -767,6 +770,19 @@ export function connectorAlongMm(s: ContractSnapshot, ref: string, boxAlong: num
 	const part = (s.values.parts ?? []).find((p) => p.ref === ref)
 	const footprint = part ? footprintFor(part) : c ? CONNECTOR_FOOTPRINT[c.kind] : undefined
 	return Math.max(boxAlong, (footprint && COURTYARD_ALONG_MM[footprint]) || 0)
+}
+
+// Each connector's box as tscircuit judges it: along its edge as long as connectorAlongMm (its courtyard, or its copper
+// plus the edge clearance), across it as its box. Two connectors on adjacent edges at a corner overlap by these (real run
+// 14, Eurobot: "Courtyard of J2 overlaps with courtyard of JT1" four times, "J1 overlaps JT1" once, while their boxes
+// cleared each other, 16 Nov 2026).
+export function connectorExtents(s: ContractSnapshot, W: number, H: number): Placed[] {
+	const connectors = s.values.connectors ?? []
+	return connectorBoxes(s, W, H).map((b) => {
+		const c = connectors.find((k) => k.ref === b.ref)
+		const alongX = c?.edge === "top" || c?.edge === "bottom"
+		return alongX ? { ...b, w: connectorAlongMm(s, b.ref, b.w) } : { ...b, h: connectorAlongMm(s, b.ref, b.h) }
+	})
 }
 
 export function connectorBoxes(s: ContractSnapshot, W: number, H: number): Placed[] {
@@ -888,6 +904,10 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// trying them in order; a crowded board's search spent most of its time on the parts that weren't in the way).
 	let lastBlock = 0
 	const blocks = (b: Placed, o: Placed, hug?: string) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) < (o.ref === hug ? CHIP_GAP_MM : GAP_MM)
+	// Routing room kept around a part's pin-capacitor group (opts.capChannelMm): the experiment of 16 Nov 2026 after the
+	// drawn-trace retry failed on crowded boards (real rover run 9 at 58×22 mm): other parts kept this far off the
+	// capacitors' outer sides, so other nets pass around the group instead of through the gaps its traces need.
+	const channels: (Placed & { owner: string; caps: Set<string> })[] = []
 	const fits = (b: Placed, hug?: string) => {
 		if (Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM) return false
 		if (lastBlock < placed.length && blocks(b, placed[lastBlock], hug)) return false
@@ -896,6 +916,8 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 				lastBlock = k
 				return false
 			}
+		// The routing channel around a part's pin-capacitor group (capChannel): only that part and its capacitors may sit in it.
+		if (channels.some((c) => b.ref !== c.owner && !c.caps.has(b.ref) && overlaps(b, c))) return false
 		return keepouts.every((o) => !overlaps(b, o))
 	}
 
@@ -947,6 +969,14 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// capacitor's reserved box). The grid alone missed it: on the real rover run 6's 44×29 board U5's VCP box sat at
 	// x −9.12, and the grid's −9.0 was 0.03 mm too near the radio module and −9.5 too near U5, so C4 went 4 mm away from
 	// its pin and its traces ran 8.2 mm against 5 (16 Nov 2026).
+	// The channel box around a part's capacitor boxes, grown by opts.capChannelMm on every side; null without one.
+	const channelOf = (ref: string, boxes: Placed[]): (Placed & { owner: string; caps: Set<string> }) | null => {
+		const ch = opts.capChannelMm ?? Number(process.env.BRINGUP_CAP_CHANNEL_MM ?? 0) // the env: the experiment's switch
+		if (!(ch > 0) || !boxes.length) return null
+		const [x0, x1] = [Math.min(...boxes.map((c) => c.x - c.w / 2)) - ch, Math.max(...boxes.map((c) => c.x + c.w / 2)) + ch]
+		const [y0, y1] = [Math.min(...boxes.map((c) => c.y - c.h / 2)) - ch, Math.max(...boxes.map((c) => c.y + c.h / 2)) + ch]
+		return { ref: `${ref}-channel`, x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0, rotation: 0, owner: ref, caps: new Set(boxes.map((c) => c.ref)) }
+	}
 	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }, hug?: string, exact?: Placed & { owner: string }): Placed | undefined => {
 		const [w, h] = sizeAt(footprint, rotation)
 		// A footprint whose extent isn't centred on its origin (FOOTPRINT_OFFSET): the box is placed, the part sits off it.
@@ -965,7 +995,13 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 			const b = { ref, x: -W / 2 + i * GRID_MM, y: -H / 2 + j * GRID_MM, w, h, rotation }
 			const d = Math.hypot(b.x - want.x, b.y - want.y)
 			const better = d < bestD - 1e-9 || (d <= bestD + 1e-9 && (i < bestIJ[0] || (i === bestIJ[0] && j < bestIJ[1])))
-			if (better && fits(b, hug) && capBoxes(b, footprint).every((c) => fits(c, ref))) [best, bestD, bestIJ] = [b, d, [i, j]]
+			if (better && fits(b, hug)) {
+				const boxes = capBoxes(b, footprint)
+				const chan = channelOf(ref, boxes)
+				// The channel must be free of the parts already placed (and stay on the board).
+				const chanFree = !chan || (placed.every((o) => o.ref === ref || !overlaps(chan, o)) && Math.abs(chan.x) + chan.w / 2 <= W / 2 && Math.abs(chan.y) + chan.h / 2 <= H / 2)
+				if (chanFree && boxes.every((c) => fits(c, ref))) [best, bestD, bestIJ] = [b, d, [i, j]]
+			}
 		}
 		const rMax = Math.max(ci, ni - ci, cj, nj - cj)
 		for (let r = 0; r <= rMax && r * GRID_MM - off <= bestD + 1e-9; r++) {
@@ -984,7 +1020,10 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		if (best && (dx !== 0 || dy !== 0)) best = { ...best, ox: +(best.x - dx).toFixed(3), oy: +(best.y - dy).toFixed(3) }
 		if (best) {
 			placed.push(best)
-			for (const c of capBoxes(best, footprint)) reservedCaps.set(c.ref, { ...c, owner: ref })
+			const boxes = capBoxes(best, footprint)
+			for (const c of boxes) reservedCaps.set(c.ref, { ...c, owner: ref })
+			const chan = channelOf(ref, boxes)
+			if (chan) channels.push(chan)
 		}
 		return best
 	}
@@ -1621,6 +1660,17 @@ export function netTraceWidths(s: ContractSnapshot): Map<string, number> {
 	return new Map([...supplyWidths(s)].filter(([n]) => !poured.has(n)).map(([n, w]) => [n, Math.min(w, Math.max(MAX_TRACK_MM, DEFAULT_TRACE_MM))]))
 }
 
+// The net feeding the LDO's input: the one its nets name (VIN) when they do, else the charger's output (VBAT) when there
+// is one, else USB: a pack charged off the board (often 2S, over a 5.5 V LDO) feeds only the motors unless the contract
+// says otherwise. Before, the default was joined on top of the contract's choice: real run 15 put VIN on VBAT, the
+// default added VBUS, and USB 5 V met the cell on one pad.
+export function ldoInputNet(s: ContractSnapshot): string {
+	const parts = s.values.parts ?? []
+	const own = parts.find((p) => p.role === "ldo")?.nets?.VIN
+	if (own && own !== "GND") return netName(own)
+	return parts.some((p) => p.role === "charger") ? "VBAT" : "VBUS"
+}
+
 export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const { parts = [], rails = [], pins = [] } = s.values
 	const supply = netName(SUPPLY_RAIL)
@@ -1631,6 +1681,9 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const battery = parts.find((p) => p.role === "battery")
 	const mcu = parts.find((p) => p.role === "mcu")
 	const usb = usbRef(s)
+	// A pin on two nets shorts them (real run 15: VIN on VBUS and VBAT, USB 5 V onto the cell): the net-short check
+	// (consistency.ts) refuses it. The contract's assignment doesn't silently win: run 12's put the motor driver's VM on
+	// VBAT, which would bypass the emergency stop's MOTOR_VM.
 	const join = (net: string, ref: string, pin: string) => nets.get(net)!.push(`${ref}.${pin}`)
 
 	for (const p of parts) {
@@ -1663,11 +1716,13 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	if (hasSupply && mcu?.pins.includes("EN")) join(MCU_EN_NET, mcu.ref, "EN")
 
 	// USB-C VBUS feeds the charger when there is one, else the LDO directly. The charger's BAT output, the battery
-	// and the LDO input share VBAT.
-	const ldoIn = charger ? "VBAT" : "VBUS"
+	// and the LDO input share VBAT. A pack with no charger (charged by its own) feeds the LDO alone: USB and the cell
+	// on one input with no power path would short 5 V onto the cell, so USB then carries data only.
+	// The contract may choose the source itself (the LDO's nets.VIN: a 2S pack is over its 5.5 V, so USB feeds it).
+	const ldoIn = ldoInputNet(s)
 	if (ldo) {
 		if (hasSupply && ldo.pins.includes("VOUT")) join(supply, ldo.ref, "VOUT")
-		for (const pin of ["VIN", "EN"]) if (ldo.pins.includes(pin)) join(ldoIn, ldo.ref, pin)
+		for (const pin of ["VIN", "EN"]) if (ldo.pins.includes(pin) && !(pin === "VIN" && ldo.nets?.VIN)) join(ldoIn, ldo.ref, pin)
 	}
 	if (charger) {
 		const chargeLed = parts.find((p) => p.role === "charge-led" && p.pins.includes("A"))

@@ -87,3 +87,21 @@ test("a USB-C is judged along its edge by its copper plus the copper-to-edge cle
 	assert.equal(packed.find((k) => k.ref === "J1")?.offsetMm, 29)
 	assert.deepEqual(connectorsOffEdge({ ...s, values: { ...s.values, connectors: packed } }), [])
 })
+
+// Real run 14 (Eurobot, 16 Nov 2026): five board builds failed on connector courtyards overlapping while their boxes
+// cleared each other: J2 (left@5) and JT1 (bottom@12) across a corner, J1 and JT1 on the bottom edge. Clashes are now
+// judged by the same extent as the edge check (connectorExtents), and the packer moves JT1 half a millimetre.
+test("connectors clash by their courtyard/copper extent, across a corner and along an edge", async () => {
+	const { connectorClashes, connectorsOntoEdges } = await import("../src/contract/consistency.ts")
+	const { readFileSync } = await import("node:fs")
+	for (const [f, a, b, moved] of [["cc-eurobot14-rev21.json", "J2", "JT1", 12.5], ["cc-eurobot14-rev36.json", "J1", "JT1", 20.5]] as const) {
+		const s = JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), "utf8")) as ContractSnapshot
+		const v = connectorClashes(s)
+		assert.equal(v.length, 1, f)
+		assert.match(v[0].message, new RegExp(`${a} .* and ${b} .* overlap on the board`))
+		const packed = connectorsOntoEdges(s)!
+		assert.equal(packed.find((k) => k.ref === "JT1")?.offsetMm, moved, f)
+		const after = { ...s, values: { ...s.values, connectors: packed } }
+		assert.deepEqual([...connectorClashes(after), ...connectorsOffEdge(after)], [])
+	}
+})

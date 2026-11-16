@@ -13,12 +13,13 @@ import { caseFactLines } from "../contract/case.ts"
 import { connectivityOf } from "../contract/connectivity.ts"
 import { DATA_FORMAT } from "../codegen/data-format.ts"
 import { spaceFactLines } from "../contract/space.ts"
+import { standardsFactLines } from "../contract/standards.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { mechanicsFactLines } from "../mechanics/facts.ts"
 import { mechanicsFigures } from "../mechanics/checks.ts"
 import { mcuFacts } from "../mcu/facts.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
-import { roverHeader } from "../mechanics/firmware.ts"
+import { roverHeader, OPPONENT_GAP_MM } from "../mechanics/firmware.ts"
 
 // The facts and computed checks about the current contract, one source for everyone who judges or changes it: the
 // reviewer reads them at the final review, and every designer turn gets them recomputed from the contract as it is
@@ -46,6 +47,7 @@ function designFactsUncached(s: ContractSnapshot, brief: string): string[] {
 		...testFactLines(s),
 		...addedForYouFactLines(s, brief),
 		...linkFactLines(s),
+		...standardsFactLines(s),
 		...mechanicsFactLines(s),
 		...(s.values.outline ? ["", "## Space (computed in code: the smallest board the parts place on, the case's contents)", ...spaceFactLines(s).map((l) => `- ${l}`)] : []),
 		...(s.values.outline && enclosureMode(s.values) === "case" ? ["", "## The case (computed in code from the outline, the connectors and the case field)", ...caseFactLines(s).map((l) => `- ${l}`)] : []),
@@ -183,6 +185,16 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 	const startFact = start
 		? [`- Firmware start (pull cord): the motors stay off until it has seen the start cord in (START on GPIO${start} reads low: the cord's loop to GND), so a robot powered up without its cord never starts; once the cord has stayed out ${debounce} ms it drives${Number.isFinite(matchMs) ? `, and ${matchMs / 1000} s after the start it stops both drive motors for good (until reset; a cord put back doesn't restart it)` : ", with no match length: it drives until it is switched off"}.`]
 		: []
+	// Under a competition's rules (rover_hold.h): the stop for the opponent, in the header's own numbers.
+	const hold = def("ROVER_HOLD_MM")
+	const holdFact = hold
+		? [`- Firmware opponent stop (competition rules, ${s.values.motion?.rules}): when the distance sensor reads under ${hold} mm ahead (at least the ${OPPONENT_GAP_MM} mm gap to the opponent plus the braking distance, and never less than its wall stop distance, so the hold comes before any turn), both motors stop and stay stopped, with no turn away, while it stays there (also when the sensor reads nothing right after a reading under ${def("ROVER_BLIND_MM")} mm, its blind range); when it reads ${def("ROVER_CLEAR_MM")} mm or more, or nothing in range after a farther reading, the robot drives on. After ${Number(def("ROVER_HOLD_MAX_MS")?.replace(/UL$/, "")) / 1000} s still blocked it treats the obstacle as fixed (a wall) and its normal stop-and-turn takes over. The hold runs ahead of any host command too: a host can't drive it forward into what it holds for. The simulated drive tests it with an opponent that appears 0.4 m ahead and leaves 3 s later.`]
+		: []
+	// With wheel encoders (rover_odo.h): odometry and go-to-point, in the header's own numbers.
+	const mmPerCount = def("ROVER_MM_PER_COUNT")
+	const gotoFact = mmPerCount
+		? [`- Firmware odometry and go-to-point (wheel encoders): it tracks its pose (the axle's middle, x ahead, y left of where it started) from the encoder counts, ${mmPerCount.replace(/f$/, "")} mm a count over a ${def("ROVER_TRACK_MM")?.replace(/f$/, "")} mm track, and prints it twice a second (ODO). A host's \`G <x_mm> <y_mm>\` drives it to that point: it turns in place to face it, drives there holding its heading, slows over the last 150 mm, stops within 8 mm by its odometry and stays until the next command (an H command cancels it). On the way it stops for something in its way (a reading inside its ${def("ROVER_HOLD_MM") ? "opponent hold" : "stop"} distance that is nearer than the target plus ${def("ROVER_GOTO_GAP_MM")} mm), not for the wall beyond the target. Successive G commands queue a route (up to 16 points), the odometry carried throughout. Its accuracy is the odometry's: in the reference test (the Eurobot base in the simulated drive, judged by the physics, not the odometry) a full lap of a 600 × 400 mm rectangle ends 9.5 mm from its start, and single targets 0.5 to 0.6 m away 11 to 13 mm off (20 mm allowed); wheel slip on a real table adds to that, and the bench hasn't measured it.`]
+		: []
 	return [
 		`- Firmware (product build of templates/fw-rover, the same control logic the simulated drive runs): never sleeps while powered. Every ${def("ROVER_PERIOD_MS")} ms tick it reads the VL53L0X distance (up to ${def("ROVER_RANGE_MM")} mm), drives both motors through the DRV8833 at cruise duty ${def("ROVER_CRUISE_DUTY")?.replace("f", "")}, slows inside ${def("ROVER_SLOW_MM")} mm and, inside ${def("ROVER_STOP_MM")} mm of a wall, turns in place for ${def("ROVER_TURN_MS")} ms, then drives on.`,
 		"- Firmware payload: every 5 s it reads the temperature/humidity sensor, prints it and broadcasts it over BLE as BTHome v2 service data (and sends it over the board's links, if any).",
@@ -190,6 +202,8 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 			? `- Firmware status LED: STATUS_LED on GPIO${led.gpio} blinks a 1 Hz heartbeat while the control loop runs.`
 			: "- Firmware status LED: the rover firmware drives a pin named exactly STATUS_LED as a 1 Hz heartbeat; this design has none, so no LED shows the rover running.",
 		...startFact,
+		...holdFact,
+		...gotoFact,
 	]
 }
 

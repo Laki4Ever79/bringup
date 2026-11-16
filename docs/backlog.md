@@ -102,6 +102,10 @@ is a change to the firmware toolchain, not just the code.
       no-footprint stage, and there the architect is told to grow the board one step (done, branch length-fallback);
       (c) next experiment: reserve a routing channel around the capacitor group in placement; (b) Freerouting (tools/,
       unused) is a several-day option for the user to decide.
+      (c) measured 16 Nov (branch cap-channel, unmerged): other parts kept 1 mm off the capacitor group's outer sides
+      (opt-in capChannelMm): no effect. Layouts tried, before → after: run 9's 58×22 5 → 5, the 60×21 rover 7 → 7, run 6's
+      44×29 rev 21 2 → 2; the debug footprint outcome and DRC 0 unchanged on all three. The room the drawn traces need is
+      taken by other nets' traces passing through, not by parts, so spacing parts doesn't help. Left: (b) Freerouting.
 
 - [ ] **Narrow boards the router can't route around the motor driver** (15 Nov, revised: reserving the capacitors' boxes
       was tried and changed nothing: on the 60×21 board C3 and C4 already sit in their spots beside U5's pins; the

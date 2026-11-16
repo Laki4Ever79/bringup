@@ -48,3 +48,41 @@ test("a firmware that never answers on UART1 is \"not run\", not a hang", { skip
 	assert.equal(r.result, "not run")
 	assert.match(r.reason, /didn't answer within 10 s/)
 })
+
+// Under Eurobot's rules (motion.rules) the base stops for the opponent ahead, waits without turning, and drives on when
+// it leaves (rover_hold.h): an opponent appears 0.4 m ahead at 1 s and leaves at 4 s. The room's walls still come after.
+test("under Eurobot's rules the base stops 150 mm short of the opponent, holds without turning, and drives on when it leaves", { skip, timeout: 1_200_000 }, async () => {
+	const { EUROBOT_BOARD } = await import("../src/inference/scripts.ts")
+	const s: ContractSnapshot = { revision: 5, versions: {} as never, values: JSON.parse(JSON.stringify(EUROBOT_BOARD)) }
+	const fw = tempDir()
+	assert.match(await prepareFirmware(ROOT, fw, s), /#define ROVER_HOLD_MM \d+/)
+	const spec = { ...chassisSpec(s)!, opponent: { appearS: 1, leaveS: 4, aheadM: 0.4, radiusM: 0.1, gapMm: 150 } }
+	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec, outDir: tempDir(), courseS: 30 }, 5)
+	const seg = (n: string) => r.segments?.find((x: { name: string }) => x.name === n)
+	for (const n of ["stopped for the opponent", "held, didn't turn", "drove on after it left"]) assert.ok(seg(n)?.pass, JSON.stringify(seg(n)))
+	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
+})
+
+// Odometry and go-to-point (rover_odo.h): the Eurobot base's firmware, built with a target, drives there on its wheel
+// encoders; the physics, not the odometry, judges where its axle's middle ends.
+test("with wheel encoders the base drives to a point 500 mm ahead and 300 mm left, within 20 mm, and stops there", { skip, timeout: 1_200_000 }, async () => {
+	const { EUROBOT_BOARD } = await import("../src/inference/scripts.ts")
+	const s: ContractSnapshot = { revision: 5, versions: {} as never, values: JSON.parse(JSON.stringify(EUROBOT_BOARD)) }
+	const fw = tempDir()
+	assert.match(await prepareFirmware(ROOT, fw, s), /#define ROVER_MM_PER_COUNT/)
+	const spec = { ...chassisSpec(s)!, target: { xMm: 500, yMm: 300, tolMm: 20 } }
+	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec, outDir: tempDir(), courseS: 12, buildFlags: "-DROVER_GOTO_X_MM=500.0f -DROVER_GOTO_Y_MM=300.0f" }, 5)
+	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
+})
+
+// The brief's words: "within 2 cm after a full lap". A route round a 600 x 400 mm rectangle and back to the start, the
+// odometry carried throughout; the physics judges how far from the start the axle's middle ends.
+test("with wheel encoders the base laps a 600 x 400 mm rectangle and ends within 20 mm of where it started", { skip, timeout: 1_200_000 }, async () => {
+	const { EUROBOT_BOARD } = await import("../src/inference/scripts.ts")
+	const s: ContractSnapshot = { revision: 5, versions: {} as never, values: JSON.parse(JSON.stringify(EUROBOT_BOARD)) }
+	const fw = tempDir()
+	await prepareFirmware(ROOT, fw, s)
+	const spec = { ...chassisSpec(s)!, target: { xMm: 0, yMm: 0, tolMm: 20 } }
+	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec, outDir: tempDir(), courseS: 40, buildFlags: "-DROVER_GOTO_LAP_W_MM=600.0f -DROVER_GOTO_LAP_H_MM=400.0f" }, 5)
+	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
+})
