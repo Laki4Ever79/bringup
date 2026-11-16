@@ -40,16 +40,19 @@ def build_model(spec, course_xml=""):
     ww = d["wheelWidthMm"] * mm
     track = d["trackMm"] * mm
     axle_x = d["axleXMm"] * mm
-    caster_x = (d["axleXMm"] - d["wheelbaseMm"]) * mm
-    caster_r = spec["caster"]["wheelMm"] / 2 * mm
+    caster_x = (d["axleXMm"] - d["wheelbaseMm"]) * mm  # a skid-steer rover's rear axle stands here
+    skid = d.get("kind") == "skid4"
+    caster_r = r if skid else spec["caster"]["wheelMm"] / 2 * mm
     total = spec["massG"] / 1000
     wheel_kg = spec.get("wheelMassG", WHEEL_MASS_G) / 1000
     caster_kg = spec.get("casterMassG", CASTER_MASS_G) / 1000
+    if skid:
+        caster_kg = 2 * wheel_kg  # the rear wheels, where the caster would be
     body_mass = max(0.01, total - 2 * wheel_kg - caster_kg)
     # The spec's centre of mass is the whole rover's: the body's own is what is left once the wheels and caster
     # (at their axles, in the spec's frame with z from the floor) are taken out, so the whole balances where the checks say.
     whole = [c * mm for c in spec["com"]]
-    parts = [(2 * wheel_kg, [axle_x, 0.0, r]), (caster_kg, [caster_x, 0.0, caster_r])]
+    parts = [(2 * wheel_kg, [axle_x, 0.0, r]), (caster_kg, [caster_x, 0.0, caster_r])]  # skid: the rear pair at the rear axle
     com = [(whole[i] * total - sum(m * at[i] for m, at in parts)) / body_mass for i in range(3)]
     mu = spec["estimates"]["floorMu"]
     caster_mu = spec["estimates"].get("casterMu", 0.02)  # older specs: the value the estimate has
@@ -62,6 +65,22 @@ def build_model(spec, course_xml=""):
     s = spec["sensor"]
     # The chassis body's frame: x from the plate's centre (as the spec), z from the axle line.
     tof = [s["xMm"] * mm, s["yMm"] * mm, s["zMm"] * mm - r]
+    # A skid-steer rover (drive kind "skid4"): a second driven axle wheelbaseMm behind, no caster. The wheels' contact
+    # friction is isotropic, so turning in place scrubs them sideways as model.ts skidTurn assumes.
+    if skid:
+        rear_wheels = "".join(
+            f'<body name="wheel_{side}_rear" pos="{caster_x} {y} 0"><joint name="{side}_rear" type="hinge" axis="0 1 0" damping="0.0001"/>'
+            f'<geom type="cylinder" size="{r} {ww / 2}" euler="90 0 0" mass="{wheel_kg}"/></body>'
+            for side, y in (("left", track / 2), ("right", -track / 2))
+        )
+        rear_motors = '<motor name="m_left_rear" joint="left_rear" gear="1" ctrllimited="false"/><motor name="m_right_rear" joint="right_rear" gear="1" ctrllimited="false"/>'
+        caster_body = ""
+    else:
+        rear_wheels = rear_motors = ""
+        caster_body = (
+            f'<body name="caster" pos="{caster_x} 0 {caster_r - r}">'
+            f'<geom type="sphere" size="{caster_r}" mass="{caster_kg}" friction="{caster_mu} 0.001 0.0001" priority="1"/></body>'
+        )
     xml = f"""
 <mujoco model="rover">
   <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast"/>
@@ -82,18 +101,18 @@ def build_model(spec, course_xml=""):
         <joint name="right" type="hinge" axis="0 1 0" damping="0.0001"/>
         <geom type="cylinder" size="{r} {ww / 2}" euler="90 0 0" mass="{wheel_kg}"/>
       </body>
+      {rear_wheels}
       <!-- The caster slides at its own casterMu, 0.02 (a swivel wheel's rolling drag; src/mechanics/estimates.ts, which
            the firmware's stop distance and the checks brake with too): priority makes its friction the contact's.
            Without it MuJoCo takes the larger of the pair, the floor's mu, and the caster dragged like a skid (rover-pi,
            15 Nov: 1 N of drag held a 395 g rover to 0.2 m/s at the duty that gives 0.3 m/s). -->
-      <body name="caster" pos="{caster_x} 0 {caster_r - r}">
-        <geom type="sphere" size="{caster_r}" mass="{caster_kg}" friction="{caster_mu} 0.001 0.0001" priority="1"/>
-      </body>
+      {caster_body}
     </body>
   </worldbody>
   <actuator>
     <motor name="m_left" joint="left" gear="1" ctrllimited="false"/>
     <motor name="m_right" joint="right" gear="1" ctrllimited="false"/>
+    {rear_motors}
   </actuator>
 </mujoco>"""
     return mujoco.MjModel.from_xml_string(xml)

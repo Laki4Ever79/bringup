@@ -14,6 +14,9 @@ export interface MotionTargets {
 	maxMassG: number
 	// A competition's robot rules the design is checked against (catalog/rules/<id>.json: "eurobot-2026").
 	rules?: string
+	// The drive the brief asks for: "skid4" when it says four-wheel drive, 4WD, skid steer or a rough floor; otherwise
+	// a differential rover with a caster.
+	drive?: "skid4"
 }
 
 export interface Mount {
@@ -29,7 +32,10 @@ export interface Mechanics {
 	// axleXMm: where the wheel axle crosses the plate's long axis; the caster sits wheelbaseMm behind it.
 	// maxAccelMps2: the firmware ramps the duty so the speed changes no faster (a tall robot's stops and starts, e.g. one
 	// carrying a beacon); without it the wheels brake and start as hard as the floor lets them.
-	drive: { kind: "differential"; motor: string; wheel: string; caster: string; trackMm: number; wheelbaseMm: number; axleXMm: number; maxAccelMps2?: number }
+	// differential: two driven wheels on one axle at axleXMm and a caster wheelbaseMm behind it. skid4: four driven wheels,
+	// the front axle at axleXMm and the rear one wheelbaseMm behind it, each side's two motors driven together; no caster
+	// (caster ""). It turns by skidding, so its wheelbase must be shorter than its track (model.ts skidTurn).
+	drive: { kind: "differential" | "skid4"; motor: string; wheel: string; caster: string; trackMm: number; wheelbaseMm: number; axleXMm: number; maxAccelMps2?: number }
 	// enclosure "fireproof-bag": the pack is kept permanently in a certified fireproof bag (Eurobot F.4.b, for a lithium pack
 	// that is neither LiFePO4 nor a manufacturer's cased battery with its BMS; the charger goes to homologation).
 	battery: { pack: string; at: { xMm: number; yMm: number }; enclosure?: "fireproof-bag" }

@@ -180,6 +180,40 @@ export const ROVER_BOARD = {
 	mechanics: ROVER_MECHANICS,
 }
 
+// The scripted four-wheel rover (briefs/rover-4wd.md): the reference rover's board with a second DRV8833 (U6) for the
+// rear motors, whose inputs the generator ties to U5's (each side's two motors on one PWM), and plugs JM3 (rear left)
+// and JM4 (rear right); skid-steer mechanics (drive.kind "skid4": four driven wheels, no caster) laid out by the solver
+// for the brief's 8 mm edges, 200 × 180 mm and 1 kg. The firmware is the reference rover's, unchanged.
+export const FOUR_WD = /\b(4\s?wd|four[- ]wheel[- ]drive|skid[- ]steer)\b/i
+const isRover4 = () => /four-wheel/i.test(state().contract.get("requirements")?.summary ?? "")
+export const ROVER4_MOTION: ContractValues["motion"] = { ...ROVER_MOTION!, edgeMm: 8, maxSizeMm: [200, 180], maxMassG: 1000, drive: "skid4" }
+// The layout solver's answer for these parts (src/mechanics/solve.ts, skid steer): wheelbase 0.71× the track, 22.7 mN·m
+// per wheel for the 8 mm edge and 13.1 mN·m to turn in place against the 56.9 mN·m stall, 24 mm tipping margin.
+export const ROVER4_MECHANICS: ContractValues["mechanics"] = {
+	drive: { kind: "skid4", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "", trackMm: 170, wheelbaseMm: 120, axleXMm: 60 },
+	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: 70, yMm: 0 } },
+	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 98.6, yMm: 0, zMm: 62.7 }, connector: "JT1" },
+	chassis: { plateMm: [200, 156], thicknessMm: 3, material: "PLA", clearanceMm: 45, boards: [{ name: "main", at: { xMm: 0, yMm: 0 }, rotDeg: 0 }] },
+}
+export const ROVER4_BOARD = {
+	...ROVER_BOARD,
+	requirements: { ...ROVER_BOARD.requirements, summary: "four-wheel skid-steer rover for rough floors that avoids walls and carries a temperature and humidity sensor" },
+	outline: { widthMm: 70, heightMm: 45, thicknessMm: 1.6, sizeReason: { kind: "engineer-size" as const, detail: "the rover's chassis takes a 70 × 45 mm board" } },
+	connectors: [
+		...ROVER_BOARD.connectors,
+		{ ref: "JM3", kind: "header" as const, edge: "left" as const, offsetMm: 15, widthMm: 6, heightMm: 6 },
+		{ ref: "JM4", kind: "header" as const, edge: "right" as const, offsetMm: 15, widthMm: 6, heightMm: 6 },
+	],
+	parts: [
+		...ROVER_BOARD.parts,
+		{ ...ROVER_BOARD.parts.find((p) => p.ref === "U5")!, ref: "U6" },
+		{ ...ROVER_BOARD.parts.find((p) => p.ref === "JM1")!, ref: "JM3" },
+		{ ...ROVER_BOARD.parts.find((p) => p.ref === "JM2")!, ref: "JM4" },
+	],
+	motion: ROVER4_MOTION,
+	mechanics: ROVER4_MECHANICS,
+}
+
 // The scripted Eurobot base (briefs/eurobot-base.md): the reference rover's board and drive with the competition's safety
 // parts and rules. The emergency stop (catalog safety, the Omron A22E-M-01) on its printed deck 125 mm up, 20 mm ahead of
 // the centre (its 54.7 mm body clears the board under it; with the deck's PLA, further forward tips it braking), with a 7 mm collar so its 32 mm head stands at most 25 mm over the robot (Eurobot General Rules
@@ -224,6 +258,7 @@ const EUROBOT = /\beurobot\b/i
 // briefs/rover-pi.md: a bigger rover for a Raspberry Pi). The other targets stay the reference rover's.
 export function motionFromBrief(brief: string): NonNullable<ContractValues["motion"]> {
 	if (EUROBOT.test(brief)) return EUROBOT_BOARD.motion
+	if (FOUR_WD.test(brief)) return ROVER4_BOARD.motion
 	const base = ROVER_MOTION!
 	const size = /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*cm\b/.exec(brief)
 	const mass = /\bunder\s+(\d+(?:\.\d+)?)\s*(kg|g)\b/i.exec(brief)
@@ -355,7 +390,7 @@ const SENSOR_PINS = LOGGER_DESIGN.pins.filter((p) => p.partRef === "U2")
 
 // Which scripted design a brief gets: the beacon for a brief that says so, the logger for anything else.
 export const scriptedDesignFor = (brief: string): typeof LOGGER_DESIGN & Partial<Pick<ContractValues, "motion">> =>
-	EUROBOT.test(brief) ? (EUROBOT_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
+	EUROBOT.test(brief) ? (EUROBOT_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : FOUR_WD.test(brief) ? (ROVER4_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
 // A robot's requirements ask for motors (briefs/rover.md).
 const isRover = () => (state().contract.get("requirements")?.peripherals ?? []).includes("motors")
 const isEurobot = () => EUROBOT.test(state().contract.get("requirements")?.summary ?? "")
@@ -841,7 +876,7 @@ export function mockScripts(): Record<string, Script> {
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
 			}
 			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
-			const base = hat ? hat.parts : isEurobot() ? EUROBOT_BOARD.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
+			const base = hat ? hat.parts : isEurobot() ? EUROBOT_BOARD.parts : isRover4() ? ROVER4_BOARD.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
 			const wanted = withSwaps(state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base)
 			if (stepsTaken(items) > 0) return say("parts chosen")
 			return JSON.stringify(state().contract.get("parts")) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")

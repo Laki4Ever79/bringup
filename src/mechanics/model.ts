@@ -29,23 +29,26 @@ export function motorAt(m: MotorPart, volts: number): { noLoadRadS: number; stal
 // simulation (py/mech/model.py motor_torque, battery_volts): on a flat floor each wheel carries half the rolling load
 // T = Crr·m·g·r/2, which draws i = T/kt through the winding, so at duty d on supply V the wheel turns at
 // ω = (d·V − i·R)/ke. The pack's terminal voltage sags by both motors' current through its internal resistance.
-export function rollingLoadNmPerWheel(massKg: number, wheelRadiusM: number): number {
-	return (est("rollingCrr") * massKg * G * wheelRadiusM) / 2
+export function rollingLoadNmPerWheel(massKg: number, wheelRadiusM: number, driven = 2): number {
+	return (est("rollingCrr") * massKg * G * wheelRadiusM) / driven
 }
+// How many wheels drive: two on a differential rover, four on a skid-steer one (each its own motor).
+export const drivenWheels = (d: { kind?: string }) => (d.kind === "skid4" ? 4 : 2)
+export const isSkid = (d: { kind?: string }) => d.kind === "skid4"
 export const packOhm = (pack: BatteryPack) => pack.internalOhm ?? est("packInternalOhm")
-function loadLine(motor: MotorPart, pack: BatteryPack, openV: number, massKg: number, wheelRadiusM: number) {
+function loadLine(motor: MotorPart, pack: BatteryPack, openV: number, massKg: number, wheelRadiusM: number, driven = 2) {
 	const m = motorAt(motor, openV)
-	const loadA = m.kt > 0 ? rollingLoadNmPerWheel(massKg, wheelRadiusM) / m.kt : 0
-	return { m, loadA, volts: openV - 2 * loadA * packOhm(pack) }
+	const loadA = m.kt > 0 ? rollingLoadNmPerWheel(massKg, wheelRadiusM, driven) / m.kt : 0
+	return { m, loadA, volts: openV - driven * loadA * packOhm(pack) }
 }
 // The wheel's ground speed at `duty` from a pack whose open-circuit voltage is openV.
-export function loadedSpeedMps(motor: MotorPart, pack: BatteryPack, openV: number, duty: number, massKg: number, wheelRadiusM: number): number {
-	const { m, loadA, volts } = loadLine(motor, pack, openV, massKg, wheelRadiusM)
+export function loadedSpeedMps(motor: MotorPart, pack: BatteryPack, openV: number, duty: number, massKg: number, wheelRadiusM: number, driven = 2): number {
+	const { m, loadA, volts } = loadLine(motor, pack, openV, massKg, wheelRadiusM, driven)
 	return m.ke > 0 ? Math.max(0, ((duty * volts - loadA * m.rOhm) / m.ke) * wheelRadiusM) : 0
 }
 // The duty that holds speedMps on the load line from a pack at openV (unclamped: above 1 the motor can't reach it).
-export function dutyFor(motor: MotorPart, pack: BatteryPack, openV: number, speedMps: number, massKg: number, wheelRadiusM: number): number {
-	const { m, loadA, volts } = loadLine(motor, pack, openV, massKg, wheelRadiusM)
+export function dutyFor(motor: MotorPart, pack: BatteryPack, openV: number, speedMps: number, massKg: number, wheelRadiusM: number, driven = 2): number {
+	const { m, loadA, volts } = loadLine(motor, pack, openV, massKg, wheelRadiusM, driven)
 	return volts > 0 ? ((speedMps / wheelRadiusM) * m.ke + loadA * m.rOhm) / volts : Infinity
 }
 // The firmware's cruise duty. The rover has no battery sense (no divider on an ADC pin), so the duty is a fixed PWM;
@@ -53,8 +56,8 @@ export function dutyFor(motor: MotorPart, pack: BatteryPack, openV: number, spee
 // plans is then the most it ever goes: the stop distance and the quarter turn timed at that speed hold on a fresh pack
 // and err short, never long, as the pack drains (at the nominal plateau it runs about nominalV/fullV of it, 0.88 for a
 // LiPo). Set at the nominal voltage, a fresh pack ran 1.135× fast and the timed turn overshot.
-export function cruiseDuty(motor: MotorPart, pack: BatteryPack, speedMps: number, massKg: number, wheelRadiusM: number): number {
-	return dutyFor(motor, pack, pack.fullV, speedMps, massKg, wheelRadiusM)
+export function cruiseDuty(motor: MotorPart, pack: BatteryPack, speedMps: number, massKg: number, wheelRadiusM: number, driven = 2): number {
+	return dutyFor(motor, pack, pack.fullV, speedMps, massKg, wheelRadiusM, driven)
 }
 // Under this cruise duty the gearmotor is geared too fast for the target: little torque in hand at that duty (stalled,
 // a wheel gives duty × its stall torque) and the speed set by a few PWM steps. It used to be a silent floor in the
@@ -79,11 +82,24 @@ export function brakeMm(speedMps: number, onWheels: number, maxAccelMps2?: numbe
 }
 // Turning in place: the rover pivots on its axle's midpoint, so its footprint sweeps a circle as far as its farthest
 // point from there (a plate corner, usually the rear one, or a wheel's outer edge).
+// A skid-steer rover pivots halfway between its axles; a differential one on its axle.
+export const pivotXMm = (d: Mechanics["drive"]) => (isSkid(d) ? d.axleXMm - d.wheelbaseMm / 2 : d.axleXMm)
 export function turnSweepMm(mech: Mechanics, wheel: { diameterMm: number; widthMm: number }): number {
-	const d = mech.drive, [L, W] = mech.chassis.plateMm
-	const plate = [L / 2 - d.axleXMm, -L / 2 - d.axleXMm].map((dx) => Math.hypot(dx, W / 2))
-	const wheels = Math.hypot(wheel.diameterMm / 2, d.trackMm / 2 + wheel.widthMm / 2)
+	const d = mech.drive, [L, W] = mech.chassis.plateMm, px = pivotXMm(d)
+	const plate = [L / 2 - px, -L / 2 - px].map((dx) => Math.hypot(dx, W / 2))
+	const reach = isSkid(d) ? d.wheelbaseMm / 2 + wheel.diameterMm / 2 : wheel.diameterMm / 2
+	const wheels = Math.hypot(reach, d.trackMm / 2 + wheel.widthMm / 2)
 	return Math.max(...plate, wheels)
+}
+// Turning a skid-steer rover in place: each wheel's contact scrubs sideways at the floor's grip, a resisting moment of
+// μ·m·g·L/2 about the centre (four wheels, each carrying m·g/4 at L/2 from it), which the wheels' push at B/2 must beat:
+// each wheel pushes F = μ·m·g·L/(4·B). It can only push μ·m·g/4 before it slips itself, so the rover turns only while
+// L/B < 1 (the classic skid-steer limit; the same isotropic friction the simulation uses). Pacejka/Wong, "Theory of
+// Ground Vehicles" ch. 7 gives the same moment balance; the friction coefficient is the estimate's floorMu.
+export function skidTurn(massKg: number, wheelbaseMm: number, trackMm: number, wheelRadiusM: number): { forceN: number; torqueNm: number; ratio: number } {
+	const ratio = wheelbaseMm / trackMm
+	const forceN = (est("floorMu") * massKg * G * ratio) / 4 + (est("rollingCrr") * massKg * G) / 4
+	return { forceN, torqueNm: forceN * wheelRadiusM, ratio }
 }
 // After an open-loop quarter turn the rover drives on beside the wall it turned from, a few degrees off parallel; the
 // next turn in place must not sweep into it. This much beyond the sweep (a design margin, measured on the rover-pi's
@@ -93,11 +109,12 @@ export const TURN_CLEARANCE_MM = 100
 // The sensor reading at which the rover must start a turn in place so its sweep clears the wall ahead and the one it
 // will drive beside: the pivot stands sweep + clearance from the wall, the sensor is sensorAheadMm in front of the pivot.
 export function turnStopMm(mech: Mechanics, wheel: { diameterMm: number; widthMm: number }): number {
-	return turnSweepMm(mech, wheel) + TURN_CLEARANCE_MM - (mech.sensor.at.xMm - mech.drive.axleXMm)
+	return turnSweepMm(mech, wheel) + TURN_CLEARANCE_MM - (mech.sensor.at.xMm - pivotXMm(mech.drive))
 }
 
 // The share of the weight on the drive wheels (moments about the caster, wheelbaseMm behind the axle).
-export function onWheelsShare(d: { axleXMm: number; wheelbaseMm: number }, comXMm: number): number {
+export function onWheelsShare(d: { kind?: string; axleXMm: number; wheelbaseMm: number }, comXMm: number): number {
+	if (isSkid(d)) return 1 // every wheel drives
 	const casterX = d.axleXMm - d.wheelbaseMm
 	return Math.min(1, Math.max(0, (comXMm - casterX) / (d.axleXMm - casterX)))
 }
@@ -142,11 +159,15 @@ export function mounts(mech: Mechanics, boards: { name: string; outline: { width
 	const plateZ = c.clearanceMm + c.thicknessMm / 2
 	const plateTop = c.clearanceMm + c.thicknessMm
 	out.push({ what: "plate", xMm: 0, yMm: 0, zMm: plateZ, sizeMm: [c.plateMm[0], c.plateMm[1], c.thicknessMm], massG: (c.plateMm[0] * c.plateMm[1] * c.thicknessMm * est("plaDensityGcm3")) / 1000 })
-	for (const [side, s] of [["left", 1], ["right", -1]] as const) {
-		if (motor) out.push({ what: `motor:${side}`, xMm: d.axleXMm, yMm: s * (d.trackMm / 2 - (wheel?.widthMm ?? 8) / 2 - motor.bodyMm[0] / 2), zMm: r, sizeMm: [motor.bodyMm[1], motor.bodyMm[0], motor.bodyMm[2]], massG: motor.massG })
-		if (wheel) out.push({ what: `wheel:${side}`, xMm: d.axleXMm, yMm: (s * d.trackMm) / 2, zMm: r, sizeMm: [wheel.diameterMm, wheel.widthMm, wheel.diameterMm], massG: wheel.massG })
+	// A skid-steer rover's second axle, wheelbaseMm behind the first: its motors and wheels named "<side>:rear".
+	const axles: [string, number][] = isSkid(d) ? [["", d.axleXMm], [":rear", d.axleXMm - d.wheelbaseMm]] : [["", d.axleXMm]]
+	for (const [tag, ax] of axles)
+	for (const [side0, s] of [["left", 1], ["right", -1]] as const) {
+		const side = `${side0}${tag}`
+		if (motor) out.push({ what: `motor:${side}`, xMm: ax, yMm: s * (d.trackMm / 2 - (wheel?.widthMm ?? 8) / 2 - motor.bodyMm[0] / 2), zMm: r, sizeMm: [motor.bodyMm[1], motor.bodyMm[0], motor.bodyMm[2]], massG: motor.massG })
+		if (wheel) out.push({ what: `wheel:${side}`, xMm: ax, yMm: (s * d.trackMm) / 2, zMm: r, sizeMm: [wheel.diameterMm, wheel.widthMm, wheel.diameterMm], massG: wheel.massG })
 	}
-	if (caster) out.push({ what: "caster", xMm: d.axleXMm - d.wheelbaseMm, yMm: 0, zMm: caster.heightMm / 2, sizeMm: [caster.wheelMm, caster.wheelMm, caster.heightMm], massG: caster.massG })
+	if (caster && !isSkid(d)) out.push({ what: "caster", xMm: d.axleXMm - d.wheelbaseMm, yMm: 0, zMm: caster.heightMm / 2, sizeMm: [caster.wheelMm, caster.wheelMm, caster.heightMm], massG: caster.massG })
 	if (pack) out.push({ what: "battery", xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, zMm: plateTop + pack.sizeMm[2] / 2, sizeMm: pack.sizeMm, massG: pack.massG })
 	const sensor = byMpn(cat.sensors ?? [], mech.sensor?.module ?? "")
 	if (sensor && mech.sensor) out.push({ what: "sensor", xMm: mech.sensor.at.xMm, yMm: mech.sensor.at.yMm, zMm: mech.sensor.at.zMm, sizeMm: [sensor.sizeMm[2], sensor.sizeMm[0], sensor.sizeMm[1]], massG: sensor.massG })
@@ -197,5 +218,7 @@ export function massAndCom(ms: Mount[]): { massG: number; com: [number, number, 
 // Where the rover touches the floor: the two wheel contacts and the caster's.
 export function supportPolygon(mech: Mechanics, _cat: MechCatalog): [number, number][] {
 	const d = mech.drive
-	return [[d.axleXMm, d.trackMm / 2], [d.axleXMm, -d.trackMm / 2], [d.axleXMm - d.wheelbaseMm, 0]]
+	const rearX = d.axleXMm - d.wheelbaseMm
+	if (isSkid(d)) return [[d.axleXMm, d.trackMm / 2], [d.axleXMm, -d.trackMm / 2], [rearX, -d.trackMm / 2], [rearX, d.trackMm / 2]]
+	return [[d.axleXMm, d.trackMm / 2], [d.axleXMm, -d.trackMm / 2], [rearX, 0]]
 }

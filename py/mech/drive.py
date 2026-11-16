@@ -90,8 +90,12 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     chassis = model.body("chassis").id
-    caster = model.body("caster").id
-    caster_r = spec["caster"]["wheelMm"] / 2000
+    # A skid-steer rover (drive kind "skid4"): its rear wheels are the last to meet the step, and each of its four
+    # motors takes its side's duty at its own wheel's speed.
+    skid = spec["drive"].get("kind") == "skid4"
+    caster = model.body("wheel_left_rear" if skid else "caster").id
+    caster_r = spec["drive"]["wheelDiameterMm"] / 2000 if skid else spec["caster"]["wheelMm"] / 2000
+    rear = (model.joint("left_rear"), model.joint("right_rear")) if skid else ()
     tof = model.site("tof").id
     jl, jr = model.joint("left"), model.joint("right")
     walls = {model.geom(n).id for n in ("wall_front", "wall_back", "wall_left", "wall_right")}
@@ -161,10 +165,16 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
                 volts = battery_volts(pack, soc, last_total, ohm)
                 tl, il = motor_torque(motor, volts, duty[0], omega[0])
                 tr, ir = motor_torque(motor, volts, duty[1], omega[1])
-                last_total = il + ir
+                currents = [il, ir]
                 data.ctrl[0], data.ctrl[1] = tl, tr
-                peak_a = max(peak_a, il, ir)
-                used_as += (il + ir) * model.opt.timestep
+                if skid:
+                    for k, (j, du) in enumerate(zip(rear, duty)):
+                        t, i = motor_torque(motor, volts, du, data.qvel[j.dofadr[0]])
+                        data.ctrl[2 + k] = t
+                        currents.append(i)
+                last_total = sum(currents)
+                peak_a = max(peak_a, *currents)
+                used_as += last_total * model.opt.timestep
                 soc = max(0.0, 1 - used_as / capacity_as)
                 mujoco.mj_step(model, data)
                 for c in data.contact[: data.ncon]:
