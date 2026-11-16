@@ -26,6 +26,20 @@ test("the scripted rover's firmware drives the course: climbs the step, turns aw
 	assert.ok((r.topSpeedMps ?? 0) >= 0.27)
 })
 
+// A pull-cord start (match.h): the firmware waits for the cord, which the simulation pulls at its first tick, then
+// drives the same course; the 100 s match outlasts it.
+test("with a pull-cord start the rover's firmware still drives the course", { skip, timeout: 1_200_000 }, async () => {
+	const s = rover()
+	s.values.parts!.push({ ref: "JS1", role: "start", mpn: "PZ254V-11-02P", lcsc: "C492401", footprint: "pinrow2", pins: ["START", "GND"] })
+	const used = new Set(s.values.pins!.map((p) => p.gpio))
+	s.values.pins!.push({ signal: "START", gpio: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].find((g) => !used.has(g))!, partRef: "JS1", partPin: "START" })
+	s.values.mechanics!.safety = { start: { connector: "JS1", cordMm: 600, matchS: 100 } }
+	const fw = tempDir()
+	assert.match(await prepareFirmware(ROOT, fw, s), /#define MATCH_MS 100000UL/)
+	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec: chassisSpec(s)!, outDir: tempDir(), courseS: 20 }, 5)
+	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
+})
+
 test("a firmware that never answers on UART1 is \"not run\", not a hang", { skip, timeout: 1_200_000 }, async () => {
 	const s = rover()
 	const fw = tempDir()

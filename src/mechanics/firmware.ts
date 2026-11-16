@@ -16,7 +16,7 @@ export const SLOW_ZONE_MM = 300
 // The signals the rover firmware drives that the contract hasn't put on a GPIO yet (roverHeader would write -1).
 export const ROVER_SIGNALS = ["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2", "I2C_SDA", "I2C_SCL"]
 export function unassignedRoverPins(s: ContractSnapshot): string[] {
-	return ROVER_SIGNALS.filter((sig) => !(s.values.pins ?? []).some((p) => p.signal === sig && typeof p.gpio === "number" && p.gpio >= 0))
+	return [...ROVER_SIGNALS, ...(s.values.mechanics?.safety?.start ? ["START"] : [])].filter((sig) => !(s.values.pins ?? []).some((p) => p.signal === sig && typeof p.gpio === "number" && p.gpio >= 0))
 }
 
 export function roverHeader(s: ContractSnapshot): string {
@@ -60,6 +60,8 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_SLOW_MM ${stop + SLOW_ZONE_MM}`,
 		`#define ROVER_CRUISE_DUTY ${cruise.toFixed(3)}f`,
 		`#define ROVER_TURN_MS ${turnMs}`,
+		// A pull-cord start (main.cpp, match.h): the match length, when the mechanics give one; PIN_START comes below.
+		...(mech.safety?.start?.matchS ? [`#define MATCH_MS ${Math.round(mech.safety.start.matchS * 1000)}UL`] : []),
 		// What else the rover firmware drives and reads, named as the product firmware names them so the same checks
 		// apply: the status LED (a 1 Hz heartbeat) and the payload sensor hw_board.cpp reads (SHT40 or SHTC3).
 		...(v.pins ?? []).filter((p) => p.signal === "STATUS_LED").map((p) => `#define PIN_STATUS_LED ${p.gpio}`),

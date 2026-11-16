@@ -7,6 +7,7 @@
 #include "hw.h"
 #include "hw_pins.h"
 #include "rover.h"
+#include "match.h"
 #ifndef HW_SIM
 #define Log Serial  // link.h logs what crosses each link to the console, as the product firmware's Log does
 #include "link.h"
@@ -19,11 +20,32 @@ static void linkSendReading(bool, float, float) {}
 
 static const RoverConfig CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS};
 static RoverState state;
+#ifdef PIN_START
+// A pull-cord start (match.h, Eurobot General Rules 1.2 F.6): no drive until the cord, in at power-up, is pulled; with
+// MATCH_MS (H.3) every motor stops for good that long after. The simulation pulls the cord at its first tick.
+static MatchState match;
+#ifndef MATCH_MS
+#define MATCH_MS 0xFFFFFFFFUL
+#endif
+#ifdef HW_SIM
+static bool cordInOnce = true;
+static bool cordIn(uint32_t) {  // in on the first tick, pulled from the next
+	const bool in = cordInOnce;
+	cordInOnce = false;
+	return in;
+}
+#else
+static bool cordIn(uint32_t) { return digitalRead(PIN_START) == LOW; }
+#endif
+#endif
 static uint32_t nextPayload = 0;
 
 void setup() {
 	Serial.begin(115200);
 	hw_begin();
+#if defined(PIN_START) && !defined(HW_SIM)
+	pinMode(PIN_START, INPUT_PULLUP);  // the board's 10k pulls it up too; the cord's loop holds it low
+#endif
 	linkBegin();  // after hw_begin: the I2C bus is up for a link that shares it
 #ifdef LINK_TEST
 	// The system's link test, as in the product firmware: a known reading (21.50 C, 40.25 %RH) on each link every half
@@ -93,6 +115,9 @@ void loop() {
 		if (d >= 0 && d < ROVER_STOP_MM && out.left > 0 && out.right > 0) out.left = out.right = 0;
 		Serial.printf("R %lu %d %.3f %.3f\n", (unsigned long)now, d, out.left, out.right);
 	}
+#ifdef PIN_START
+	if (!match_step(match, cordIn(now), now, MATCH_MS)) out.left = out.right = 0;
+#endif
 	hw_motor(0, out.left);
 	hw_motor(1, out.right);
 	linkPoll(0);  // what has arrived on the links, without waiting: the distance sensor paces the loop

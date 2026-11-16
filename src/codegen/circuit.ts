@@ -339,6 +339,10 @@ export function supportParts(s: ContractSnapshot): Support[] {
 		if (sd) jobs.push({ job: `${sd.signal} pull-down (${mic.ref}.SD tristates between frames)`, spec: SUPPORT.pulldown, a: { net: sd.signal }, b: GND, near: mic.ref })
 		if (supply && mic.pins.includes("VDD")) jobs.push({ job: `decoupling on ${mic.ref}.VDD`, spec: SUPPORT.decouple, a: { net: supply }, b: GND, near: mic.ref })
 	}
+	// A pull-cord start plug (role start): START pulled up, so it reads high once the cord's loop to GND is pulled out.
+	const start = parts.find((p) => p.role === "start")
+	const startPin = start ? pins.find((p) => p.partRef === start.ref && p.partPin === "START") : undefined
+	if (supply && startPin) jobs.push({ job: `${startPin.signal} pull-up (${start!.ref}: high once the start cord is pulled)`, spec: SUPPORT.pullup, a: { net: startPin.signal }, b: { net: supply }, near: start!.ref })
 	const driver = parts.find((p) => p.role === "motor-driver")
 	if (driver) {
 		const vm = motorSupplyNet(parts)
