@@ -23,8 +23,9 @@ section.
 - **Stops for the other robot**: it sees a robot ahead and stops at least **15 cm** short of it.
 - **The beacon support** for the opponent's beacon: a flat, solid, opaque platform **430 ± 5 mm** above the table,
   within a **20 cm** circle around the robot's centre, covered in Velcro (hook side) (F.6). Its mast doesn't count toward the 350 mm (F.3).
-- **Safe power**: at most **48 V** on board (F.4.a). One rechargeable pack with its own protection circuit, in a
-  solid case, charged by its own charger (F.4.b).
+- **Safe power**: at most **48 V** on board (F.4.a). One rechargeable pack, as the rules allow lithium (F.4.b, p. 11):
+  kept permanently in a certified fireproof bag with a charger submitted for homologation, or a LiFePO4 pack, or a
+  manufacturer's cased battery with its own BMS.
 - **One USB-C cable to program and talk to every board**, as on our other robots.
 
 ## Nice to have
