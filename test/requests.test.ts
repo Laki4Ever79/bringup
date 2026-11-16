@@ -4,12 +4,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
 import { appendRequest, watchRequests, type ChangeRequest } from "../src/runner/requests.ts"
-import { waitFor } from "./helpers.ts"
+import { waitFor, tempDir } from "./helpers.ts"
 
 const line = (text: string) => JSON.stringify({ at: "2026-10-31T15:00:00.000Z", text }) + "\n"
 
 test("each appended request is seen once, in order", async () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-req-"))
+	const dir = tempDir()
 	const seen: ChangeRequest[] = []
 	const w = watchRequests(dir, (r) => seen.push(r))
 	try {
@@ -25,7 +25,7 @@ test("each appended request is seen once, in order", async () => {
 })
 
 test("a request written in two chunks arrives once, whole", async () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-req-"))
+	const dir = tempDir()
 	const seen: ChangeRequest[] = []
 	const w = watchRequests(dir, (r) => seen.push(r))
 	try {
@@ -42,7 +42,7 @@ test("a request written in two chunks arrives once, whole", async () => {
 })
 
 test("requests already in the file when watching starts are delivered", async () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-req-"))
+	const dir = tempDir()
 	writeFileSync(join(dir, "requests.jsonl"), line("early request"))
 	const seen: ChangeRequest[] = []
 	const w = watchRequests(dir, (r) => seen.push(r))
@@ -55,7 +55,7 @@ test("requests already in the file when watching starts are delivered", async ()
 })
 
 test("malformed lines are skipped and the watcher keeps going", async () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-req-"))
+	const dir = tempDir()
 	const seen: ChangeRequest[] = []
 	const w = watchRequests(dir, (r) => seen.push(r))
 	try {
@@ -68,7 +68,7 @@ test("malformed lines are skipped and the watcher keeps going", async () => {
 })
 
 test("nothing is delivered after close", async () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-req-"))
+	const dir = tempDir()
 	const seen: ChangeRequest[] = []
 	watchRequests(dir, (r) => seen.push(r)).close()
 	appendFileSync(join(dir, "requests.jsonl"), line("too late"))
@@ -77,7 +77,7 @@ test("nothing is delivered after close", async () => {
 })
 
 test("appendRequest writes one timestamped line", async () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-req-"))
+	const dir = tempDir()
 	const seen: ChangeRequest[] = []
 	const w = watchRequests(dir, (r) => seen.push(r))
 	try {

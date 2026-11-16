@@ -6,12 +6,13 @@ import { join } from "node:path"
 import { ROOT } from "../src/run.ts"
 import { runDrc } from "../src/tools/drc.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
+import { tempDir } from "./helpers.ts"
 
 const env = await detectEnvironment(ROOT)
 // A logger board as built (rev 8 of a demo run): its J1 (TYPE-C-31-M-12) has GND pads 0.171 mm from its own NPTH holes.
 const FIXTURE = join(ROOT, "test/data/drc-j1")
 const copy = () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-drc-"))
+	const dir = tempDir()
 	cpSync(FIXTURE, dir, { recursive: true })
 	return dir
 }

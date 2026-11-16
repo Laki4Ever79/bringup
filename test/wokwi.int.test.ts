@@ -9,6 +9,7 @@ import { buildFirmware } from "../src/tools/firmware.ts"
 import { detectEnvironment, firmwareSimBackend } from "../src/tools/env.ts"
 import { chipWasm, EXPECTED_LINE, loadWokwiToken, simulateFirmware } from "../src/tools/wokwi.ts"
 import { fixtureContract } from "./fixture.ts"
+import { tempDir } from "./helpers.ts"
 
 const root = resolve(import.meta.dirname, "..")
 loadWokwiToken(root)
@@ -26,7 +27,7 @@ const missing =
 // One short session (≤ 30 s of the free plan's minutes): the firmware reads the simulated sensor and stores it.
 test("the firmware, simulated in Wokwi with the contract's sensor on its I2C pins, reads the sensor and stores the reading", { skip: excluded, timeout: 600_000 }, async () => {
 	assert.equal(missing, null, missing ?? "")
-	const dir = await mkdtemp(join(tmpdir(), "bringup-wokwi-"))
+	const dir = tempDir()
 	try {
 		const fw = await buildFirmware(env.pio!, root, dir, contract, 7)
 		assert.equal(fw.ok, true, fw.log)

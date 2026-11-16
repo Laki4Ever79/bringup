@@ -1,0 +1,325 @@
+{
+  "revision": 15,
+  "values": {
+    "requirements": {
+      "summary": "Eurobot 2026 base robot controller: two driven wheels with encoders, pull-cord start, emergency-stop cut of motor power, distance sensor for opponent stop, USB-C for programming. ESP32-C3 on one board, no case (the chassis is the body).",
+      "peripherals": [
+        "motor driver",
+        "2x wheel encoders",
+        "pull-cord start",
+        "emergency stop",
+        "distance sensor (I2C)",
+        "USB-C"
+      ],
+      "batteryLifeDays": null,
+      "enclosure": "none",
+      "size": {
+        "widthMm": 60,
+        "heightMm": 50,
+        "exact": false
+      }
+    },
+    "motion": {
+      "speedMps": 0.5,
+      "runtimeMin": 5,
+      "edgeMm": 3,
+      "maxSlopeDeg": 5,
+      "stopBeforeWallMm": 100,
+      "payloadG": 200,
+      "maxSizeMm": [
+        300,
+        300
+      ],
+      "maxMassG": 3000,
+      "rules": "eurobot-2026"
+    },
+    "outline": {
+      "widthMm": 60,
+      "heightMm": 50,
+      "thicknessMm": 1.6
+    },
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 25,
+        "widthMm": 9,
+        "heightMm": 3.2
+      }
+    ],
+    "mechanics": {
+      "drive": {
+        "kind": "differential",
+        "motor": "POLOLU-3041 100:1 HPCB 12V",
+        "wheel": "POLOLU-1420 wheel 60x8 mm",
+        "caster": "BOTLAND-7292 swivel caster 25 mm",
+        "trackMm": 292,
+        "wheelbaseMm": 200,
+        "axleXMm": 90
+      },
+      "battery": {
+        "pack": "GENSACE-GEA22002S20X6 2S 2200 mAh 20C LiPo XT60",
+        "at": {
+          "xMm": 112,
+          "yMm": 0
+        }
+      },
+      "sensor": {
+        "module": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+        "at": {
+          "xMm": 148.6,
+          "yMm": 0,
+          "zMm": 52.7
+        },
+        "connector": "JT1"
+      },
+      "chassis": {
+        "plateMm": [
+          300,
+          280
+        ],
+        "thicknessMm": 3,
+        "material": "PLA",
+        "clearanceMm": 35,
+        "boards": [
+          {
+            "name": "main",
+            "at": {
+              "xMm": 0,
+              "yMm": 0
+            },
+            "rotDeg": 0
+          }
+        ]
+      },
+      "safety": {
+        "start": {
+          "connector": "JS1",
+          "cordMm": 500,
+          "matchS": 100
+        }
+      },
+      "beacon": {
+        "at": {
+          "xMm": 0,
+          "yMm": 0
+        },
+        "topMm": 430,
+        "sizeMm": 80,
+        "mastWallMm": 2,
+        "loadG": 400
+      }
+    },
+    "rails": [
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 200
+      },
+      {
+        "name": "VBUS",
+        "voltageV": 5,
+        "regulatorMaxMa": 500,
+        "loadMa": 100
+      }
+    ],
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-C3-MINI-1",
+        "lcsc": "C2838502",
+        "footprint": "esp32_c3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO18",
+          "GPIO19",
+          "EN",
+          "3V3",
+          "GND"
+        ],
+        "reason": "Base robot controller: BLE radio, 4 MB flash for the reading history, runs the rover firmware (Eurobot drive, distance-sensor stop, pull-cord start). Its module sits on the edge opposite USB-C."
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "RT9080-33GJ5",
+        "lcsc": "C841192",
+        "footprint": "sot23_5",
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ],
+        "reason": "Makes the 3V3 rail from the battery for the ESP32-C3 module (needs 500 mA or more). 2 uA quiescent suits the battery target; 600 mA rating covers the 200 mA 3V3 load and the radio peak."
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ],
+        "reason": "USB-C for programming the ESP32-C3 over its USB Serial/JTAG (brief: USB-C for programming); the VBUS rail."
+      },
+      {
+        "ref": "J2",
+        "role": "battery",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "The 2000 mAh LiPo cell plugs in here (mechanics.battery GENSACE 2S 2200 mAh pack); battery connector for the robot."
+      },
+      {
+        "ref": "U5",
+        "role": "motor-driver",
+        "mpn": "DRV8833PWPR",
+        "lcsc": "C50506",
+        "footprint": "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm",
+        "pins": [
+          "nSLEEP",
+          "AOUT1",
+          "AISEN",
+          "AOUT2",
+          "BOUT2",
+          "BISEN",
+          "BOUT1",
+          "nFAULT",
+          "BIN1",
+          "BIN2",
+          "VCP",
+          "VM",
+          "GND",
+          "VINT",
+          "AIN2",
+          "AIN1"
+        ],
+        "reason": "Dual H-bridge driving the two drive motors (differential drive, 0.67 A stall per motor) from the battery; its four inputs are the board's MOT_AIN1/MOT_AIN2/MOT_BIN1/MOT_BIN2 GPIOs."
+      },
+      {
+        "ref": "JM1",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "Left drive motor's two-wire plug (mechanics.drive POLOLU-3041), wired to the motor driver's outputs."
+      },
+      {
+        "ref": "JM2",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "Right drive motor's two-wire plug (mechanics.drive POLOLU-3041), wired to the motor driver's outputs."
+      },
+      {
+        "ref": "JT1",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "reason": "Distance sensor's 4-pin STEMMA QT cable plug (mechanics.sensor.connector JT1, VL53L0X breakout): the I2C bus to the sensor for opponent stop."
+      },
+      {
+        "ref": "JS1",
+        "role": "start",
+        "mpn": "PZ254V-11-02P",
+        "lcsc": "C492401",
+        "footprint": "pinrow2",
+        "pins": [
+          "START",
+          "GND"
+        ],
+        "reason": "Pull-cord start plug (mechanics.safety.start JS1, 500 mm cord): START goes to a free GPIO, GND to ground. Brief: pull-cord start."
+      }
+    ],
+    "pins": [
+      {
+        "signal": "MOT_AIN1",
+        "gpio": 0,
+        "partRef": "U5",
+        "partPin": "AIN1"
+      },
+      {
+        "signal": "MOT_AIN2",
+        "gpio": 1,
+        "partRef": "U5",
+        "partPin": "AIN2"
+      },
+      {
+        "signal": "MOT_BIN1",
+        "gpio": 3,
+        "partRef": "U5",
+        "partPin": "BIN1"
+      },
+      {
+        "signal": "MOT_BIN2",
+        "gpio": 10,
+        "partRef": "U5",
+        "partPin": "BIN2"
+      },
+      {
+        "signal": "START",
+        "gpio": 4,
+        "partRef": "JS1",
+        "partPin": "START"
+      }
+    ]
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 1,
+    "connectors": 2,
+    "rails": 1,
+    "parts": 2,
+    "pins": 2,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 2,
+    "mechanics": 4,
+    "assembly": 0
+  }
+}

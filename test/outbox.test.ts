@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { SemanticEvent } from "@mozaik-ai/core"
 import { Outbox } from "../src/outbox.ts"
+import { tempDir } from "./helpers.ts"
 
 test("outbox delivers in order without re-entrancy", () => {
 	const log: string[] = []
@@ -19,7 +20,7 @@ test("outbox delivers in order without re-entrancy", () => {
 })
 
 test("outbox writes trace lines", () => {
-	const path = join(mkdtempSync(join(tmpdir(), "bringup-")), "trace.jsonl")
+	const path = join(tempDir(), "trace.jsonl")
 	const outbox = new Outbox(() => {}, path)
 	for (const t of ["x", "y", "z"]) outbox.emit(SemanticEvent.create(t, "p", { n: t }), "p")
 	const lines = readFileSync(path, "utf8").trim().split("\n").map((l) => JSON.parse(l))

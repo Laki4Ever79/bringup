@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { simulatePower } from "../src/tools/spice.ts"
 import { fixtureContract } from "./fixture.ts"
+import { tempDir } from "./helpers.ts"
 
 const root = resolve(import.meta.dirname, "..")
 
@@ -20,7 +21,7 @@ function hasImage(): boolean {
 const skip = hasImage() ? false : "docker or kicad/kicad:10.0 missing"
 
 async function simulate(mutate: (c: ReturnType<typeof fixtureContract>) => void = () => {}) {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-spice-"))
+	const dir = tempDir()
 	try {
 		const c = fixtureContract()
 		mutate(c)
