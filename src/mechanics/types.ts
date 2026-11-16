@@ -30,7 +30,9 @@ export interface Mechanics {
 	// maxAccelMps2: the firmware ramps the duty so the speed changes no faster (a tall robot's stops and starts, e.g. one
 	// carrying a beacon); without it the wheels brake and start as hard as the floor lets them.
 	drive: { kind: "differential"; motor: string; wheel: string; caster: string; trackMm: number; wheelbaseMm: number; axleXMm: number; maxAccelMps2?: number }
-	battery: { pack: string; at: { xMm: number; yMm: number } }
+	// enclosure "fireproof-bag": the pack is kept permanently in a certified fireproof bag (Eurobot F.4.b, for a lithium pack
+	// that is neither LiFePO4 nor a manufacturer's cased battery with its BMS; the charger goes to homologation).
+	battery: { pack: string; at: { xMm: number; yMm: number }; enclosure?: "fireproof-bag" }
 	// The front distance sensor's breakout (catalog sensors), standing at `at` facing +x, cabled to the board connector
 	// `connector` (role connector, its IO1/IO2 on I2C_SDA/I2C_SCL and VCC on 3V3).
 	sensor: { module: string; at: { xMm: number; yMm: number; zMm: number }; connector: string }
