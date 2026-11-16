@@ -55,6 +55,22 @@ static const float GOTO_FACE_RAD = 0.035f;   // 2 degrees
 static const float GOTO_REFACE_RAD = 0.35f;  // 20 degrees
 static const float GOTO_SLOW_MM = 150.0f;
 
+// A route: the points to drive to in turn (a lap: a rectangle's corners and back to the start), the odometry carried
+// throughout. rover_route_next starts the next one when the go-to is done; false when the route is over.
+static const int ROUTE_MAX = 16;
+struct RoverRoute {
+	float x[ROUTE_MAX], y[ROUTE_MAX];
+	int n = 0, next = 0;
+};
+inline bool rover_route_add(RoverRoute &r, float xMm, float yMm) {
+	if (r.n >= ROUTE_MAX) return false;
+	r.x[r.n] = xMm;
+	r.y[r.n] = yMm;
+	r.n++;
+	return true;
+}
+inline void rover_route_clear(RoverRoute &r) { r.n = r.next = 0; }
+
 inline float rover_goto_remaining(const RoverGoto &g, const RoverOdo &o) { return hypotf(g.tx - o.x, g.ty - o.y); }
 
 inline void rover_goto_start(RoverGoto &g, float xMm, float yMm) {
@@ -63,6 +79,14 @@ inline void rover_goto_start(RoverGoto &g, float xMm, float yMm) {
 	g.done = false;
 	g.tx = xMm;
 	g.ty = yMm;
+}
+
+// Starts the route's next point when the go-to is idle; false when none is left.
+inline bool rover_route_next(RoverRoute &r, RoverGoto &g) {
+	if (g.active || r.next >= r.n) return false;
+	rover_goto_start(g, r.x[r.next], r.y[r.next]);
+	r.next++;
+	return true;
 }
 
 // cruise: the duty at cruise speed; minDuty: the least duty that keeps it moving.

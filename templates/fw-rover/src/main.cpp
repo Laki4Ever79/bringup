@@ -31,6 +31,7 @@ static RoverState state;
 #include "rover_odo.h"
 static RoverOdo odo;
 static RoverGoto go;
+static RoverRoute route;
 static uint32_t nextOdo = 0;
 #endif
 #ifdef PIN_START
@@ -62,7 +63,14 @@ void setup() {
 	linkBegin();  // after hw_begin: the I2C bus is up for a link that shares it
 #if defined(ROVER_ENC_COUNTS_PER_REV) && defined(ROVER_GOTO_X_MM)
 	// The simulation's go-to test (PLATFORMIO_BUILD_FLAGS): the target from the start.
-	rover_goto_start(go, ROVER_GOTO_X_MM, ROVER_GOTO_Y_MM);
+	rover_route_add(route, ROVER_GOTO_X_MM, ROVER_GOTO_Y_MM);
+#endif
+#if defined(ROVER_ENC_COUNTS_PER_REV) && defined(ROVER_GOTO_LAP_W_MM)
+	// The simulation's lap: a rectangle's corners, counter-clockwise, and back to the start.
+	rover_route_add(route, ROVER_GOTO_LAP_W_MM, 0);
+	rover_route_add(route, ROVER_GOTO_LAP_W_MM, ROVER_GOTO_LAP_H_MM);
+	rover_route_add(route, 0, ROVER_GOTO_LAP_H_MM);
+	rover_route_add(route, 0, 0);
 #endif
 #ifdef LINK_TEST
 	// The system's link test, as in the product firmware: a known reading (21.50 C, 40.25 %RH) on each link every half
@@ -107,10 +115,10 @@ static void hostPoll(uint32_t now) {
 			hostLine[hostLen] = 0;
 			float l, r;
 #ifdef ROVER_ENC_COUNTS_PER_REV
-			// `G <x_mm> <y_mm>`: drive to that point (odometry: from where it started, x ahead, y to its left); an H
-			// command afterwards cancels it.
+			// `G <x_mm> <y_mm>`: drive to that point (odometry: from where it started, x ahead, y to its left), after the
+			// points already queued (a route, up to 16); an H command clears the route and stops it.
 			if (hostLen && sscanf(hostLine, "G %f %f", &l, &r) == 2) {
-				rover_goto_start(go, l, r);
+				if (!rover_route_add(route, l, r)) Serial.println("GOTO route full (16 points)");
 				hostLen = 0;
 				continue;
 			}
@@ -119,6 +127,7 @@ static void hostPoll(uint32_t now) {
 #ifdef ROVER_ENC_COUNTS_PER_REV
 				go.active = false;
 				go.done = false;
+				rover_route_clear(route);
 #endif
 				hostLeft = constrain(l, -1.0f, 1.0f);
 				hostRight = constrain(r, -1.0f, 1.0f);
@@ -175,6 +184,7 @@ void loop() {
 	// avoidance or a host's duties (rover_odo.h). It stops for something in its way: a reading inside the stop (or the
 	// opponent hold) distance that is also nearer than the target plus OPPONENT_GAP, not the wall beyond the target.
 	rover_odo_step(odo, hw_encoder(0), hw_encoder(1), ROVER_MM_PER_COUNT, ROVER_TRACK_MM);
+	rover_route_next(route, go);
 	if (go.active) {
 		out = rover_goto_step(go, odo, ROVER_CRUISE_DUTY, ROVER_GOTO_MIN_DUTY);
 #ifdef ROVER_HOLD_MM
