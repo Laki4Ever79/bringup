@@ -731,7 +731,8 @@ export function mockScripts(): Record<string, Script> {
 				// The brief's own size is the engineer's: "exactly 50 × 30 mm" (or a housing, a chassis) is that very size, recorded
 				// as the reason the board is that big; "about 50 × 30 mm" is a limit (requirements.size exact false), and the
 				// space check then compacts the board within it.
-				const stated = /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/.exec(instruction)
+				// Not a robot's: its brief's size is the robot's (the Eurobot base's 290 × 290 mm start square), not its board's.
+				const stated = design.motion ? null : /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/.exec(instruction)
 				const line = stated ? (instruction.split("\n").find((l) => l.includes(stated[0])) ?? "") : ""
 				const exact = /\bexact(ly)?\b|\bmust be\b|\bfixed\b|\bchassis\b|\b(existing|our own) (housing|enclosure|case)\b|\btakes a\b/i.test(line)
 				const size = stated ? { widthMm: Number(stated[1]), heightMm: Number(stated[2]), exact } : undefined
@@ -987,9 +988,10 @@ export function mockScripts(): Record<string, Script> {
 			if (pins.some((p) => p.signal === "STATUS_LED")) return say("pins are sufficient")
 			// A board with no MCU (a HAT that only carries power) runs no firmware of its own.
 			if (hat && !(state().contract.get("parts") ?? []).some((p) => p.role === "mcu")) return say("no MCU, no pins")
-			// On the ESP32-C3 the LED keeps GPIO10, as it always had; on another chip its profile's solver picks a free pin.
+			// On the ESP32-C3 the LED keeps GPIO10, as it always had, while it is free; otherwise (another chip, or GPIO10
+			// taken: the Eurobot base's START, 16 Nov) the profile's solver picks a free pin.
 			const chip = mcuProfileOf(state().contract.get("parts"))
-			if (!chip || chip.id === LEGACY_MCU_ID) return propose("pins", [...pins, STATUS_LED], "firmware drives a status LED")
+			if (!chip || (chip.id === LEGACY_MCU_ID && !pins.some((p) => p.gpio === STATUS_LED.gpio))) return propose("pins", [...pins, STATUS_LED], "firmware drives a status LED")
 			const r = solvePins(chip, [{ signal: "STATUS_LED", kind: "gpio" }], pins.map((p) => p.gpio))
 			return r.ok ? propose("pins", [...pins, { ...STATUS_LED, gpio: r.pins[0].index }], `firmware drives a status LED (${r.pins[0].pin}, a free pin on the ${chip.mpn})`) : say(r.reason)
 		},
