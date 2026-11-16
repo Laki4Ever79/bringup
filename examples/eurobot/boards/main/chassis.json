@@ -16,7 +16,26 @@
     12,
     10
    ],
-   "axleDropMm": 10.5
+   "axleDropMm": 10.5,
+   "mount": {
+    "kind": "clamp",
+    "screwHoles": [
+     {
+      "xMm": 35,
+      "yMm": 34
+     },
+     {
+      "xMm": 55,
+      "yMm": 34
+     }
+    ],
+    "pilotMm": 1.6,
+    "clampMm": [
+     24,
+     6,
+     2
+    ]
+   }
   },
   {
    "side": "right",
@@ -27,7 +46,26 @@
     12,
     10
    ],
-   "axleDropMm": 10.5
+   "axleDropMm": 10.5,
+   "mount": {
+    "kind": "clamp",
+    "screwHoles": [
+     {
+      "xMm": 35,
+      "yMm": -34
+     },
+     {
+      "xMm": 55,
+      "yMm": -34
+     }
+    ],
+    "pilotMm": 1.6,
+    "clampMm": [
+     24,
+     6,
+     2
+    ]
+   }
   }
  ],
  "caster": {
@@ -99,6 +137,15 @@
   "pilotMm": 1.6
  },
  "unplaced": [],
+ "estop": {
+  "xMm": 20,
+  "yMm": 0,
+  "panelTopMm": 125,
+  "panelMm": 2,
+  "holeMm": 22.3,
+  "headMm": 40,
+  "collarMm": 7
+ },
  "sensor": {
   "xMm": 73.6,
   "yMm": 0,
@@ -130,11 +177,11 @@
   ],
   "holeDiaMm": 2.7
  },
- "massG": 303.34,
+ "massG": 333.8231502294506,
  "com": [
-  11.338168391903475,
+  6.730339112325591,
   0,
-  56.32006197665986
+  59.32706807291777
  ],
  "wheelMassG": 20,
  "casterMassG": 71,
