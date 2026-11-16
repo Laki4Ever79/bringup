@@ -180,7 +180,12 @@ export function compactOutline(s: ContractSnapshot): { widthMm: number; heightMm
 	const min = o ? minimumBoard(s) : null
 	if (!o || !min) return null
 	const ratio = Math.log(o.widthMm / o.heightMm)
-	const ok = min.shapes.filter((x) => x.widthMm * x.heightMm <= min.areaMm2 * (1 + SLACK_LIMIT) && x.widthMm * x.heightMm >= min.areaMm2)
+	const all = min.shapes.filter((x) => x.widthMm * x.heightMm <= min.areaMm2 * (1 + SLACK_LIMIT) && x.widthMm * x.heightMm >= min.areaMm2)
+	// Within the engineer's size limit (requirements.size) when any shape is: a CAN bus's middle board (two connectors and
+	// a transceiver) compacted to 41 x 31 mm against "about 50 x 30 mm", 1 mm too tall, the closest proportions winning.
+	const lim = s.values.requirements?.size
+	const fits = lim ? all.filter((x) => x.widthMm <= lim.widthMm && x.heightMm <= lim.heightMm) : []
+	const ok = fits.length ? fits : all
 	ok.sort((a, b) => Math.abs(Math.log(a.widthMm / a.heightMm) - ratio) - Math.abs(Math.log(b.widthMm / b.heightMm) - ratio) || a.widthMm * a.heightMm - b.widthMm * b.heightMm)
 	return ok[0] ?? { widthMm: min.widthMm, heightMm: min.heightMm }
 }
