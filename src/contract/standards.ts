@@ -43,6 +43,18 @@ export function interfacesOf(s: ContractSnapshot): InterfaceRow[] {
 	return out
 }
 
+// For the agents (design facts): the rule, and each interface that isn't open with its open alternative (the user,
+// 15 Nov 2026: open standards by default). The open ones need no line: they are already what the rule asks.
+export function standardsFactLines(s: ContractSnapshot): string[] {
+	const locked = interfacesOf(s).filter((r) => r.openness !== "open")
+	return [
+		"",
+		"## Interfaces and standards (open standards by default)",
+		"- Rule: where an open standard fits the job (anyone may read and implement it), choose it over a vendor's or a home-made one; keep a non-open one only when no open option fits, and say why in the part's or field's reason.",
+		...locked.map((r) => `- ${r.interface}: ${r.openness === "vendor" ? "one vendor's" : "Bringup's own"} (${r.standard}). Open alternative: ${r.alternative}`),
+	]
+}
+
 // The report's section: a table of every interface, then the ones that aren't open with their alternatives.
 export function standardsSection(s: ContractSnapshot): string[] {
 	const rows = interfacesOf(s)

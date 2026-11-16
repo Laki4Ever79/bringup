@@ -44,3 +44,17 @@ test("a UART link with messages lists our own frame and its open alternative", (
 	assert.match(section, /\| messages over UART\/I²C links .* \| Bringup's own \|/)
 	assert.match(section, /Not open, and the open alternative:\n- /)
 })
+
+// Open standards by default, step 2 (16 Nov 2026): the agents get the rule and each non-open interface with its open
+// alternative in their design facts, so they pick the open option where it fits.
+test("the agents' design facts carry the open-standards rule and each non-open interface's alternative", async () => {
+	const { designFacts } = await import("../src/agents/design-facts.ts")
+	const s = logger()
+	s.values.connectivity = { radio: "ble", report: ["gatt"], updates: "none" } as never
+	const facts = designFacts(s, "").join("\n")
+	assert.match(facts, /## Interfaces and standards \(open standards by default\)/)
+	assert.match(facts, /Rule: where an open standard fits the job .* choose it over a vendor's or a home-made one/)
+	assert.match(facts, /phone reads history over BLE: Bringup's own .* Open alternative: .*Environmental Sensing Service/)
+	// Open interfaces get no line of their own.
+	assert.doesNotMatch(facts, /USB-C port \(power, flashing, serial\):/)
+})
