@@ -37,7 +37,8 @@ test("a UART link with messages lists our own frame and its open alternative", (
 	assert.equal(rows.find((r) => r.interface.startsWith("UART link"))?.openness, "open")
 	const frame = rows.find((r) => r.interface.startsWith("messages over UART"))!
 	assert.equal(frame.openness, "ours")
-	assert.match(frame.alternative!, /COBS .* CBOR/)
+	assert.match(frame.standard, /COBS framing .* CRC-16\/CCITT/)
+	assert.match(frame.alternative!, /CBOR payloads/)
 	assert.equal(rows.find((r) => r.interface.startsWith("link connector"))?.openness, "vendor")
 	const section = standardsSection(s).join("\n")
 	assert.match(section, /^## Interfaces and standards/)

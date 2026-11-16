@@ -183,6 +183,8 @@ is a change to the firmware toolchain, not just the code.
       (industry, not open). Do: a rule that each interface uses an open standard where one fits; a report section that
       lists every vendor-locked or home-made interface with its open alternative; first move, the link messages onto an
       open protocol (Cyphal or CANopen once CAN exists; COBS-framed CBOR or similar on UART).
+      Done 16 Nov (bringup-board): UART/I2C frames are COBS + CRC-16/CCITT (linkframe.h); the payload stays a packed
+      struct (open alternative CBOR, RFC 8949); CAN frames keep the hash as identifier (Cyphal/CANopen left).
       Step 1 done 15 Nov (bringup-board, branch open-standards): src/contract/standards.ts lists every interface a
       design has with its standard and whether it is open, one vendor's or ours; the report's "Interfaces and
       standards" section shows the table and each non-open one's open alternative (the link frame → COBS + CBOR or
