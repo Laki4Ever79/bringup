@@ -230,7 +230,11 @@ function howToOrder(r: PackageResult): string[] {
 	const local = lines.filter((l) => l.lineUsd === null && /screw|nut|washer|standoff/.test(l.item))
 	const bought = lines.filter((l) => !local.includes(l))
 	const shops = new Map<string, typeof bought>()
-	for (const l of bought) shops.set(l.supplier ?? "?", [...(shops.get(l.supplier ?? "?") ?? []), l])
+	// One order per shop: a link's note in its supplier name ("Adafruit (300 mm, in stock … when the 200 mm was out)")
+	// goes on its line, not into a second Adafruit order.
+	const shopOf = (l: (typeof bought)[number]) => (l.supplier ?? "?").replace(/\s*\(.*\)$/, "")
+	const noteOf = (l: (typeof bought)[number]) => /\((.*)\)$/.exec(l.supplier ?? "")?.[1]
+	for (const l of bought) shops.set(shopOf(l), [...(shops.get(shopOf(l)) ?? []), l])
 	const usd = (n: number | null) => (n === null ? "price to check" : `$${n.toFixed(2)}`)
 	return [
 		"## How to order",
@@ -246,7 +250,7 @@ function howToOrder(r: PackageResult): string[] {
 		"### 2. The bought parts, one order per shop",
 		"",
 		...[...shops].flatMap(([shop, ls]) => [
-			`- **${shop}**: ${ls.map((l) => `${l.packs && l.packs !== l.qty ? `${l.packs} pack${l.packs > 1 ? "s" : ""} for ` : ""}${l.qty} × ${l.item} (${l.mpn})${l.url ? ` [link](${l.url})` : ""}, ${usd(l.lineUsd)}${l.status !== "in stock" ? ` (${l.status})` : ""}`).join("; ")}`,
+			`- **${shop}**: ${ls.map((l) => `${l.packs && l.packs !== l.qty ? `${l.packs} pack${l.packs > 1 ? "s" : ""} for ` : ""}${l.qty} × ${l.item} (${noteOf(l) ? `the alternative: ${noteOf(l)}` : l.mpn})${l.url ? ` [link](${l.url})` : ""}, ${usd(l.lineUsd)}${l.status !== "in stock" ? ` (${l.status === "not checked" ? "listed price; the page can't be checked automatically" : l.status})` : ""}`).join("; ")}`,
 		]),
 		"",
 		...(local.length ? ["### 3. From a local hardware store (or a metric screw assortment kit)", "", ...local.map((l) => `- ${l.qty} × ${l.mpn} (${l.item})`), ""] : []),
