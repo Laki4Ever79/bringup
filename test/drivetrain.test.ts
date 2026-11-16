@@ -91,3 +91,24 @@ test("a drive-train part named by a catalog mpn is held to the catalog's numbers
 	assert.match(mates([train[0], { ...train[1], boreMm: 6 } as DriveTrainPart]).join("\n"), /p1 \(ADAFRUIT-1251 .*\) differs from its catalog entry: boreMm 6 \(catalog 5\)/)
 	assert.match(mates([train[0], { ...train[1], mpn: "NOPE-1" } as DriveTrainPart]).join("\n"), /NOPE-1 is not in catalog\/mechanics.json driveTrain/)
 })
+
+// More sourced catalog entries (16 Nov 2026): KHK module-1 spur gears 20T/40T (8 mm bore) and goBILDA's 8 mm lead screw
+// with its nut. Named by mpn with the catalog's numbers, they mate: the gears at (20 + 40) / 2 = 30 mm, the nut on the screw.
+test("the catalog's module-1 gears mesh at 30 mm and its lead screw takes its nut", async () => {
+	const { readFileSync } = await import("node:fs")
+	const { join } = await import("node:path")
+	const { mechanicsChecks } = await import("../src/mechanics/checks.ts")
+	const s = JSON.parse(readFileSync(join(import.meta.dirname, "fixtures/e2e-rover2-rev11.json"), "utf8"))
+	const mech = s.values.mechanics
+	const train: DriveTrainPart[] = [
+		shaft("a", 8), shaft("b", 8),
+		{ id: "g1", kind: "gear", module: 1, teeth: 20, boreMm: 8, shaft: "a", mpn: "KHK-SSA1-20J8" },
+		{ id: "g2", kind: "gear", module: 1, teeth: 40, boreMm: 8, shaft: "b", mpn: "KHK-SSA1-40J8" },
+		{ id: "m", kind: "mesh", gears: ["g1", "g2"], centreMm: 30 },
+		{ id: "ls", kind: "leadscrew", diameterMm: 8, leadMm: 8, nut: "ln", mpn: "GOBILDA-3501-0804-0200" },
+		{ id: "ln", kind: "leadnut", diameterMm: 8, leadMm: 8, mpn: "GOBILDA-3505-0804-3216" },
+	]
+	const mates = (t: DriveTrainPart[]) => mechanicsChecks({ ...s, values: { ...s.values, mechanics: { ...mech, driveTrain: t } } }).filter((v) => v.kind === "mech-mate").map((v) => v.message)
+	assert.deepEqual(mates(train), [])
+	assert.ok(mates(train.map((p) => (p.id === "m" ? { ...p, centreMm: 31 } : p)) as DriveTrainPart[]).length > 0)
+})

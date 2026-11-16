@@ -6,7 +6,7 @@ import { byMpn } from "../mechanics/catalog.ts"
 import { motionBriefChecks } from "../mechanics/brief.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
-import { connectorAlongMm, connectorBoxes, connectorExtents, downloadStrap, generatedNets, MAX_TRACK_MM, netName, supplyPours, supplyWidths, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
+import { powerTree, VIN_OR_NET, connectorAlongMm, connectorBoxes, connectorExtents, downloadStrap, generatedNets, MAX_TRACK_MM, netName, supplyPours, supplyWidths, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type ContractValues, type FieldName } from "./types.ts"
@@ -130,6 +130,7 @@ export type ViolationKind =
 	| "drc-errors"
 	| "outline-mismatch"
 	| "net-missing"
+	| "supply-unwired"
 	| "pin-unwired"
 	| "pin-part-missing"
 	| "pin-mismatch"
@@ -162,6 +163,9 @@ export type ViolationKind =
 	| "rail-underrated"
 	| "part-net-unknown"
 	| "net-short"
+	| "rail-missing"
+	| "rail-battery-source"
+	| "rail-headroom"
 	| "rail-unwired"
 	| "rail-current-copper"
 	| "pack-voltage"
@@ -283,6 +287,21 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 				})
 			}
 		}
+	}
+
+	// Every supply pin of every part is on a net in the board that was built, read from the board itself rather than from the
+	// generator, which could be wrong the same way (run cc-eurobot-16, 16 Nov 2026: 13 boards were built with no V3V3 net, so
+	// U1.3V3 was on nothing, and the net check, comparing with the same generator, saw nothing missing).
+	if (a.board?.parts) {
+		const onNet = new Set(Object.values(a.board.nets).filter((ends) => ends.length >= 2).flat())
+		const unpowered = Object.entries(a.board.parts).flatMap(([ref, part]) => part.pins.filter((pin) => SUPPLY_PIN.test(pin) && !onNet.has(`${ref}.${pin}`)).map((pin) => `${ref}.${pin}`))
+		if (unpowered.length)
+			v.push({
+				kind: "supply-unwired",
+				message: `the built board leaves ${unpowered.join(", ")} on no net: ${unpowered.length === 1 ? "that supply pin has" : "those supply pins have"} no power. The rails field names the rails the board generator wires (a 3V3 rail for the MCU and its sensors, VBAT for the cell): add the missing rail`,
+				fields: ["rails"],
+				affects: ["architect"],
+			})
 	}
 
 	// The firmware is generated from the contract (pins.h), so a pin or sensor-driver mismatch only means it hasn't been
@@ -774,8 +793,14 @@ export function unconnectedParts(c: ContractSnapshot): Violation[] {
 // - rail-current-copper: a second rail too wide for a track while the one top-layer pour is taken (two layers).
 export function supplyWiring(c: ContractSnapshot): Violation[] {
 	const { parts = [], rails = [] } = c.values
+	// Parts on a supply pin (3V3, VDD, VCC) or a regulator with no 3V3 rail in the contract: the generator wires no supply
+	// net at all, and the board's net check (built against the same generator) can't see it. Real run 16 (Eurobot, 16 Nov
+	// 2026): rails arrived at revision 23; the board built at 22 had no V3V3 or MCU_EN net, and was taken as current.
+	const supplied = parts.filter((p) => p.role !== "connector" && p.pins.some((x) => ["3V3", "VDD", "VCC"].includes(x)))
+	if (parts.length && (supplied.length || parts.some((p) => p.role === "ldo")) && !rails.some((r) => r.name === "3V3"))
+		return [{ kind: "rail-missing", message: `the contract has no 3V3 rail${rails.length ? ` (its rails: ${rails.map((r) => r.name).join(", ")})` : ""}, but ${supplied.slice(0, 4).map((p) => p.ref).join(", ")}${supplied.length > 4 ? ` and ${supplied.length - 4} more` : ""} ${supplied.length === 1 ? "runs" : "run"} from it: the board generator wires no supply net without it. Add rails: [{name: "3V3", voltageV: 3.3, regulatorMaxMa, loadMa}] (and VBAT for a battery)`, fields: ["rails", "parts"], affects: ["architect"] }]
 	if (!parts.length || !rails.length) return []
-	const v: Violation[] = []
+	const v: Violation[] = [...powerTreeChecks(c)]
 	const railNames = new Set(rails.map((r) => r.name))
 	for (const p of parts)
 		for (const [pin, rail] of Object.entries(p.nets ?? {})) {
@@ -847,3 +872,48 @@ export function underratedRails(c: ContractSnapshot): Violation[] {
 			affects: ["architect"] as AgentRole[],
 		}))
 }
+
+// A pack with no charger on the board (charged off it) must still run the 3V3 rail: through the power tree (circuit.ts
+// powerTree), the cell (an ideal diode on a 1S cell; a 5 V step-down and a Schottky on a pack over the LDO's maximum)
+// and VBUS (a Schottky) into the LDO. Real run 16 (Eurobot, 16 Nov 2026): the LDO hung on VBUS alone, so on battery the
+// 3V3 rail was dead. And the LDO's input on battery, at the pack's nominal voltage less the path's drop at the rail's
+// load, must clear its 3.3 V plus dropout.
+export function powerTreeChecks(c: ContractSnapshot): Violation[] {
+	const parts = c.values.parts ?? []
+	const ldo = parts.find((p) => p.role === "ldo")
+	if (!ldo || !parts.some((p) => p.role === "battery") || parts.some((p) => p.role === "charger")) return []
+	const cat = defaultCheckCatalog()
+	type Entry = { mpn: string; role: string; maxInV?: number; dropoutMv?: number; dropoutAtMa?: number; vfV?: number; outV?: number; rOnOhm?: number }
+	const list = (cat?.boardParts ?? []) as unknown as Entry[]
+	const entry = (mpn: string) => list.find((x) => x.mpn === mpn)
+	const byRole = (role: string) => list.find((x) => x.role === role)?.mpn
+	const ldoE = entry(ldo.mpn)
+	const pack = c.values.mechanics?.battery?.pack && cat ? byMpn(cat.mech.batteries, c.values.mechanics.battery.pack) : undefined
+	const vbat = (c.values.rails ?? []).find((r) => r.name === "VBAT")?.voltageV
+	const fullV = pack?.fullV ?? vbat, nominalV = pack?.nominalV ?? vbat
+	const over = fullV !== undefined && ldoE?.maxInV !== undefined && fullV > ldoE.maxInV
+	const tree = powerTree(c)
+	const buck = parts.find((p) => p.role === "buck")
+	const ideal = parts.some((p) => p.role === "ideal-diode")
+	const schottkys = parts.filter((p) => p.role === "diode").length
+	if (!tree || (over && !buck)) {
+		const need = over
+			? [...(!buck ? [`a 5 V step-down (role buck, catalog ${byRole("buck")}, ref U7) for the ${fullV} V pack, over the ${ldo.mpn}'s ${ldoE?.maxInV} V`] : []), ...(schottkys < 2 ? [`${2 - schottkys} Schottky diode${schottkys === 0 ? "s" : ""} (role diode, catalog ${byRole("diode")}, D10 for the step-down's 5 V and D11 for VBUS)`] : [])]
+			: [...(!ideal ? [`an ideal diode for the cell (role ideal-diode, catalog ${byRole("ideal-diode")}, ref U8: a Schottky's 0.3–0.6 V would leave the LDO short of input on a 1S cell)`] : []), ...(schottkys < 1 ? [`a Schottky diode for VBUS (role diode, catalog ${byRole("diode")}, ref D10)`] : [])]
+		return [{ kind: "rail-battery-source", message: `the pack has no charger on this board, and nothing feeds the 3V3 rail from it: on battery alone ${ldo.ref} (${ldo.mpn}) has no input, so the MCU and everything on 3V3 are off. Add ${need.join(" and ")}: the board generator ORs the ${over ? "step-down's 5 V" : "cell"} and VBUS through them into ${ldo.ref}.VIN (net ${VIN_OR_NET})`, fields: ["parts"], affects: ["parts"] }]
+	}
+	// Headroom on battery: the path's input (the step-down's output, or the pack at its nominal voltage) less its drop at
+	// the 3V3 rail's load, against 3.3 V plus the LDO's dropout scaled to that load (an estimate: dropout grows about
+	// linearly with current in the datasheet's figures).
+	const loadA = ((c.values.rails ?? []).find((r) => r.name === "3V3")?.loadMa ?? 300) / 1000
+	const bE = entry(tree.battery.mpn)
+	const drop = tree.battery.role === "ideal-diode" ? loadA * (bE?.rOnOhm ?? 0.1) : (bE?.vfV ?? 0.6)
+	const into = tree.buck ? (entry(tree.buck.mpn)?.outV ?? 5) : nominalV
+	const dropout = ((ldoE?.dropoutMv ?? 300) / 1000) * (ldoE?.dropoutAtMa ? Math.min(1, (loadA * 1000) / ldoE.dropoutAtMa) : 1)
+	const need = 3.3 + dropout
+	if (into !== undefined && into - drop < need)
+		return [{ kind: "rail-headroom", message: `on battery the LDO gets about ${(into - drop).toFixed(2)} V (${tree.buck ? "the step-down's output" : `the pack's nominal ${into} V`} less ${tree.battery.ref}'s ${drop.toFixed(2)} V at ${Math.round(loadA * 1000)} mA), under the ${need.toFixed(2)} V its 3.3 V needs (output plus about ${Math.round(dropout * 1000)} mV dropout at that load): the 3V3 rail sags. ${tree.battery.role === "ideal-diode" ? "Charge the cell on the board (the charger's output feeds the LDO directly)" : `Use an ideal diode (role ideal-diode, catalog ${byRole("ideal-diode")}) instead of ${tree.battery.ref}`}`, fields: ["parts"], affects: ["parts"] }]
+	return []
+}
+// A part's supply pin by name: what must be on a powered net in any built board.
+const SUPPLY_PIN = /^(3V3|VDD|VDDIO|AVDD|DVDD|VCC|VIN|VM|VBAT|V\+)$/

@@ -9,7 +9,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { checkConsistency } from "../src/contract/consistency.ts"
+import { checkConsistency, connectorsOntoEdges } from "../src/contract/consistency.ts"
 import { connectorsAt, minimumBoard } from "../src/contract/space.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 import { buildBoard } from "../src/tools/board.ts"
@@ -37,6 +37,14 @@ const s: ContractSnapshot = {
 		connectors: connectorsAt(s0, w, h),
 		...(args.includes("--no-debug-port") ? { requirements: { ...s0.values.requirements!, debugPort: false } } : {}),
 	},
+}
+// The runner packs connectors that run off an edge or overlap before the build (connectorsOntoEdges); a contract saved
+// before that (run 14 rev 36: J1 and JT1 overlap) failed here in 0 s on what a run fixes by itself.
+const packed = connectorsOntoEdges(s)
+if (packed) {
+	const moved = packed.filter((k) => s.values.connectors?.find((x) => x.ref === k.ref)?.offsetMm !== k.offsetMm)
+	console.log(`connectors packed as a run does: ${moved.map((k) => `${k.ref} → ${k.edge}@${k.offsetMm} mm`).join(", ")}`)
+	s.values.connectors = packed
 }
 const min = minimumBoard(s)
 console.log(`${file} at ${w}×${h} mm${min ? ` (smallest by placement: ${min.widthMm}×${min.heightMm} mm)` : ""}`)

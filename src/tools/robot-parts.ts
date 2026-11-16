@@ -18,7 +18,7 @@ export interface BuyLink {
 }
 
 export interface RobotPartLine {
-	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut" | "motor bracket" | "clamp screw" | "sensor cable" | "motor lead"
+	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut" | "motor bracket" | "clamp screw" | "sensor cable" | "motor lead" | DriveTrainItem
 	mpn: string
 	qty: number
 	packs: number // packs to buy at the first link's pack size
@@ -49,6 +49,11 @@ export interface RobotParts {
 }
 
 type WithBuy = { mpn: string; buy?: BuyLink[] }
+
+// A bought drive-train part's line name, by its kind (mechanics.driveTrain, drivetrain.ts). A mesh is a pairing, not
+// a part.
+const DRIVE_TRAIN_ITEM = { shaft: "shaft", gear: "gear", pulley: "pulley", belt: "belt", sprocket: "sprocket", chain: "chain", bearing: "bearing", coupler: "coupler", leadscrew: "lead screw", leadnut: "lead nut" } as const
+type DriveTrainItem = (typeof DRIVE_TRAIN_ITEM)[keyof typeof DRIVE_TRAIN_ITEM]
 
 // The parts the mechanics name, in build order. A part the catalog doesn't have is listed with no shop link (the
 // mech-fit check names it to the mechanics engineer).
@@ -94,6 +99,14 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 	const bracketMpn = bracketMotors[0]?.mount.kind === "bracket" ? bracketMotors[0].mount.mpn : undefined
 	const clampScrews = (spec?.motors ?? []).reduce((n, x) => n + (x.mount.kind === "clamp" ? x.mount.screwHoles.length : 0), 0)
 	const clampScrew = clampScrews ? hw.find((h) => h.kind === "screw" && h.selfTapping && h.threadMm === 2) : undefined
+	// The bought drive-train parts: each one that names an mpn, counted by mpn (two 608ZZ bearings are one line of 2).
+	// One without an mpn is printed or not chosen yet, and the drive-train checks speak for it.
+	const driveTrain = new Map<string, { item: DriveTrainItem; n: number }>()
+	for (const d of m.driveTrain ?? []) {
+		if (d.kind === "mesh" || !d.mpn) continue
+		const got = driveTrain.get(d.mpn)
+		driveTrain.set(d.mpn, { item: DRIVE_TRAIN_ITEM[d.kind], n: (got?.n ?? 0) + 1 })
+	}
 	return [
 		// A skid-steer rover: four motors and wheels, no caster.
 		line("motor", cat.motors as WithBuy[], drive.motor, drive.kind === "skid4" ? 4 : 2),
@@ -110,6 +123,7 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 		cableLine("motor lead", "jst-ph-2-leads"),
 		bracketMpn ? line("motor bracket", (cat.motorMounts ?? []) as WithBuy[], bracketMpn, bracketMotors.length) : null,
 		clampScrew ? line("clamp screw", hw, clampScrew.mpn, clampScrews) : null,
+		...[...driveTrain].map(([mpn, x]) => line(x.item, (cat.driveTrain ?? []) as WithBuy[], mpn, x.n)),
 	].filter((l): l is RobotPartLine => l !== null)
 }
 

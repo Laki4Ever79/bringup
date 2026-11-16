@@ -1256,6 +1256,17 @@
 			}
 		},
 		{
+			"mpn": "ADAFRUIT-1176 flex shaft coupler 5 mm to 8 mm",
+			"kind": "coupler",
+			"boresMm": [5, 8],
+			"lengthMm": 25,
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/1176" }],
+			"source": {
+				"boresMm": { "url": "https://core-electronics.com.au/aluminum-flex-shaft-coupler-5mm-to-8mm.html", "where": "Adafruit Aluminum Flex Shaft Coupler - 5mm to 8mm (ADA1176): bores 5 mm and 8 mm" },
+				"lengthMm": { "url": "https://core-electronics.com.au/aluminum-flex-shaft-coupler-5mm-to-8mm.html", "where": "dimensions: 25 mm long, 18 mm diameter" }
+			}
+		},
+		{
 			"mpn": "GOBILDA-3423-0006-0088 GT2 belt 44T closed",
 			"kind": "belt",
 			"pitchMm": 2,
@@ -1266,6 +1277,68 @@
 				"pitchMm": { "url": "https://www.gobilda.com/2mm-pitch-gt2-timing-belt-6mm-width-88mm-pitch-length-44-tooth/", "where": "title: 2mm Pitch GT2 Timing Belt (6mm Width, 88mm Pitch Length, 44 Tooth)" },
 				"teeth": { "url": "https://www.gobilda.com/2mm-pitch-gt2-timing-belt-6mm-width-88mm-pitch-length-44-tooth/", "where": "title: 44 Tooth; 88 mm pitch length" },
 				"widthMm": { "url": "https://www.gobilda.com/2mm-pitch-gt2-timing-belt-6mm-width-88mm-pitch-length-44-tooth/", "where": "title: 6mm Width" }
+			}
+		},
+		{
+			"mpn": "KHK-SSA1-20J8 spur gear module 1 20T 8 mm bore",
+			"kind": "gear",
+			"module": 1,
+			"teeth": 20,
+			"boreMm": 8,
+			"outerMm": 22,
+			"faceMm": 10,
+			"buy": [{ "supplier": "KHK USA", "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-20j8" }],
+			"source": {
+				"module": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-20j8", "where": "KHK SSA1-20J8, Module 1, 20 Tooth, Carbon Steel Hubless Gears (S45C), 20° pressure angle" },
+				"teeth": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-20j8", "where": "title: 20 Tooth; pitch diameter 20 mm" },
+				"boreMm": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-20j8", "where": "finished bore 8 mm (0.315 in), keyway 3 x 1.4 mm" },
+				"outerMm": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-20j8", "where": "outside diameter 22 mm" },
+				"faceMm": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-20j8", "where": "face width 10 mm" }
+			}
+		},
+		{
+			"mpn": "KHK-SSA1-40J8 spur gear module 1 40T 8 mm bore",
+			"kind": "gear",
+			"module": 1,
+			"teeth": 40,
+			"boreMm": 8,
+			"outerMm": 42,
+			"faceMm": 10,
+			"buy": [{ "supplier": "KHK USA", "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-40j8" }],
+			"source": {
+				"module": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-40j8", "where": "KHK SSA1-40J8, Module 1, 40 Tooth, Carbon Steel Hubless Gears (S45C), 20° pressure angle" },
+				"teeth": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-40j8", "where": "title: 40 Tooth; pitch diameter 40 mm" },
+				"boreMm": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-40j8", "where": "finished bore 8 mm (0.315 in), keyway 3 x 1.4 mm" },
+				"outerMm": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-40j8", "where": "outside diameter 42 mm" },
+				"faceMm": { "url": "https://catalog.khkgears.us/item/spur-gears/hubless-spur-gears-ssa-/ssa1-40j8", "where": "face width 10 mm" }
+			}
+		},
+		{
+			"mpn": "GOBILDA-3501-0804-0200 lead screw 8 mm lead 200 mm",
+			"kind": "leadscrew",
+			"diameterMm": 8,
+			"leadMm": 8,
+			"lengthMm": 200,
+			"buy": [{ "supplier": "goBILDA", "url": "https://www.gobilda.com/3501-series-lead-screw-8mm-lead-4-start-200mm-length/" }],
+			"source": {
+				"diameterMm": { "url": "https://www.gobilda.com/8mm-lead-screws/", "where": "category: 8mm Lead Screws (8 mm diameter, 2 mm pitch, 4 starts)" },
+				"leadMm": { "url": "https://www.gobilda.com/3501-series-lead-screw-8mm-lead-4-start-200mm-length/", "where": "title: 3501 Series Lead Screw (8mm Lead, 4 Start, 200mm Length)" },
+				"lengthMm": { "url": "https://www.gobilda.com/3501-series-lead-screw-8mm-lead-4-start-200mm-length/", "where": "title: 200mm Length" }
+			}
+		},
+		{
+			"mpn": "GOBILDA-3505-0804-3216 lead screw pattern nut 8 mm lead",
+			"kind": "leadnut",
+			"diameterMm": 8,
+			"leadMm": 8,
+			"outerMm": 32,
+			"lengthMm": 16,
+			"buy": [{ "supplier": "goBILDA", "url": "https://www.gobilda.com/3505-series-lead-screw-pattern-nut-8mm-lead-4-start-32mm-od-16mm-length/" }],
+			"source": {
+				"diameterMm": { "url": "https://www.gobilda.com/8mm-lead-screw-nuts/", "where": "category: 8mm Lead Screw Nuts" },
+				"leadMm": { "url": "https://www.gobilda.com/3505-series-lead-screw-pattern-nut-8mm-lead-4-start-32mm-od-16mm-length/", "where": "title: 3505 Series Lead Screw Pattern Nut (8mm Lead, 4 Start, 32mm OD, 16mm Length)" },
+				"outerMm": { "url": "https://www.gobilda.com/3505-series-lead-screw-pattern-nut-8mm-lead-4-start-32mm-od-16mm-length/", "where": "title: 32mm OD" },
+				"lengthMm": { "url": "https://www.gobilda.com/3505-series-lead-screw-pattern-nut-8mm-lead-4-start-32mm-od-16mm-length/", "where": "title: 16mm Length" }
 			}
 		}
 	],

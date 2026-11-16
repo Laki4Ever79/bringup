@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
 import { BUILD_INPUTS, BUILD_REQUIRES, caseNotNeeded, chassisNotNeeded, createBuilder, type BuildLock } from "../agents/builders.ts"
-import { micPorts, mountingHoles, placedByRole, testPoints } from "../codegen/circuit.ts"
+import { micPorts, mountingHoles, placedByRole, testPoints, generatedNets } from "../codegen/circuit.ts"
 import { testPlan, testPlanMarkdown } from "../contract/testkit.ts"
 import { behaviorHeader, modelHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { PORT_MM, STANDOFF } from "./enclosure.ts"
@@ -42,6 +42,12 @@ export function stubBoard(s: ContractSnapshot, revision: number, dir: string): S
 	const mcu = parts?.find((p) => p.role === "mcu")?.ref ?? "U1"
 	const nets: Record<string, string[]> = {}
 	for (const p of pins ?? []) nets[p.signal] = [`${mcu}.${mcuPinName(parts, p.gpio)}`, `${p.partRef}.${p.partPin}`]
+	// The generator's own nets (rails, ground, motor and USB wiring), as a real build has them: supply-unwired reads them.
+	try {
+		for (const [name, ends] of generatedNets(s)) nets[name] = [...new Set([...(nets[name] ?? []), ...ends])]
+	} catch {
+		// a contract the generator can't wire yet: the stub keeps the pin nets only
+	}
 	// The test pads the board generator would place, on their nets (rails by the generator's names: 3V3 is V3V3).
 	const pads = testPoints(s).placed
 	for (const t of pads) (nets[/^\d/.test(t.net) ? `V${t.net}` : t.net] ??= []).push(`${t.ref}.pin1`)
