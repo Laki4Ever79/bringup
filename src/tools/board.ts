@@ -86,7 +86,35 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	let failedWithout = 0
 	// The layout just tried failed to build: its capsAlong variant, next in the list, gets its turn.
 	let baseFailed = false
+	// The first layout placed by tscircuit and routed by Freerouting (src/tools/freerouting.ts), for the boards tscircuit's
+	// router can't finish: run 9's 58×22 rover routes there with its debug footprint kept, where tscircuit only built it
+	// without (7 layouts, 16 Nov 2026).
+	let freerouted = false
+	const viaFreerouting = async (placements: PlacementOptions[]) => {
+		if (freerouted) return
+		freerouted = true
+		for (const placement of placements) {
+			const work = mkdtempSync(join(tmpdir(), "bringup-board-"))
+			const out = mkdtempSync(join(tmpdir(), "bringup-board-out-"))
+			try {
+				tried++
+				const board = await buildIn(env, work, s, revision, out, { ...placement, routingDisabled: true })
+				best = { board: { ...board, routedBy: "freerouting", ...(placement.debugPort === false ? { debugPortDropped: droppedWhy(lastError) } : {}) }, errors: board.drc?.errors ?? 0 }
+				return
+			} catch (error) {
+				rmSync(out, { recursive: true, force: true })
+				lastError = error instanceof Error ? new Error(error.message.replaceAll(out, dir)) : error
+			} finally {
+				rmSync(work, { recursive: true, force: true })
+			}
+		}
+	}
 	for (const placement of withPort ? [...fitting, ...fitting.map((p) => ({ ...p, debugPort: false as const }))] : fitting) {
+		// Every layout with the debug footprint failed: Freerouting keeps the footprint before the layouts without it.
+		if (placement.debugPort === false && !best && withPort) {
+			await viaFreerouting([fitting[0]])
+			if (best) break
+		}
 		// Without the port only when no layout with it built clean (a board with DRC errors is worse than one without it).
 		if (placement.debugPort === false && best && best.errors === 0) break
 		// A failure that no other layout fixes (a trace the router couldn't place) goes straight to the boards without it.
@@ -149,25 +177,8 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			rmSync(work, { recursive: true, force: true })
 		}
 	}
-	// No tscircuit layout routed: the first layout, placed by tscircuit and routed by Freerouting (crowded boards such as
-	// run 9's 58×22 rover, where every tscircuit layout failed and the debug footprint had to go), with the footprint first.
-	if (!best && fitting.length && /routing|autorout|trace|too long|clearance|could not|failed/i.test(String(lastError))) {
-		for (const placement of withPort ? [fitting[0], { ...fitting[0], debugPort: false as const }] : [fitting[0]]) {
-			const work = mkdtempSync(join(tmpdir(), "bringup-board-"))
-			const out = mkdtempSync(join(tmpdir(), "bringup-board-out-"))
-			try {
-				tried++
-				const board = await buildIn(env, work, s, revision, out, { ...placement, routingDisabled: true })
-				best = { board: { ...board, routedBy: "freerouting", ...(placement.debugPort === false ? { debugPortDropped: droppedWhy(lastError) } : {}) }, errors: board.drc?.errors ?? 0 }
-				break
-			} catch (error) {
-				rmSync(out, { recursive: true, force: true })
-				lastError = error instanceof Error ? new Error(`${error.message.replaceAll(out, dir)}\n(after every tscircuit layout failed: ${String(lastError).split("\n")[1] ?? ""})`) : error
-			} finally {
-				rmSync(work, { recursive: true, force: true })
-			}
-		}
-	}
+	// No tscircuit layout routed at all: Freerouting, without the footprint too if need be.
+	if (!best && fitting.length) await viaFreerouting(withPort ? [fitting[0], { ...fitting[0], debugPort: false as const }] : [fitting[0]])
 	if (!best) throw lastError
 	// Moved into the run's own folder, with every path re-pointed there.
 	mkdirSync(dir, { recursive: true })
