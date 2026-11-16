@@ -309,10 +309,10 @@ export function linkHeader(s: ContractSnapshot): string {
 	const targetSends = target && sends.some((x) => x.l.id === target.id)
 	if (targetSends)
 		body.push(
-			`static uint8_t linkReplyFrame[8 + LINK_MAX_PAYLOAD];`,
+			`static uint8_t linkReplyFrame[LINK_FRAME_MAX];`,
 			`static volatile uint8_t linkReplyLen = 0;`,
 			`struct LinkBufferOut : public Print {`,
-			`	uint8_t buf[8 + LINK_MAX_PAYLOAD];`,
+			`	uint8_t buf[LINK_FRAME_MAX];`,
 			`	uint8_t n = 0;`,
 			`	size_t write(uint8_t c) override { if (n < sizeof buf) buf[n++] = c; return 1; }`,
 			`};`,
@@ -409,7 +409,7 @@ export function linkHeader(s: ContractSnapshot): string {
 				// Each reply stands alone: start the reader fresh, and ask for the largest frame, so a target built against a
 				// longer definition is still read whole and reported as unknown, never cut short and lost.
 				`\t\t\tlinkI2cReader_${i2cIn.l.id}.n = 0;`,
-				`\t\t\tWire.requestFrom((uint8_t)${L(i2cIn.l.id)}_I2C_PEER_ADDRESS, (uint8_t)(8 + LINK_MAX_PAYLOAD));`,
+				`\t\t\tWire.requestFrom((uint8_t)${L(i2cIn.l.id)}_I2C_PEER_ADDRESS, (uint8_t)(LINK_FRAME_MAX));`,
 				`\t\t\twhile (Wire.available()) if (linkI2cReader_${i2cIn.l.id}.feed((uint8_t)Wire.read(), ihash, ip, ilen)) linkReceived("${i2cIn.l.id}", ihash, ip, ilen);`,
 				`\t\t}`,
 			)
