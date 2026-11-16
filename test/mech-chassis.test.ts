@@ -178,3 +178,19 @@ test("each motor is held: a bought bracket at its own height, else a printed cla
 	shallow.values.mechanics!.chassis.clearanceMm -= 4.5 // the axle 6 mm under the plate: under the cradle's 7, not the bracket's 5
 	assert.ok(hardwareFit(shallow).some((m) => /printed cradle needs 7 mm/.test(m)), hardwareFit(shallow).join("\n"))
 })
+
+// The motor clamps' screw pilots are the board standoffs' size (16 Nov 2026): measured back as standoffs, the mock rover
+// ended unsettled on four "standoff at (35, 37) has no board hole over it". Built, the clamped rover's standoffs are the
+// board's holes and nothing else.
+test("a clamped rover's chassis: its standoffs are the board's holes, the clamp screws not among them", { skip: existsSync(python) ? false : "needs .venv with build123d", timeout: 180_000 }, async () => {
+	const { boardMountChecks } = await import("../src/tools/chassis.ts")
+	const s = rover()
+	const spec = chassisSpec(s)!
+	assert.ok(spec.motors.some((m) => m.mount.kind === "clamp"), JSON.stringify(spec.motors.map((m) => m.mount.kind)))
+	const r = await buildChassis(python, ROOT, tempDir(), s, 3)
+	assert.ok(r.ok, r.ok ? "" : r.reason)
+	const mounts = (r as { mounts: { standoffHoles: { xMm: number; yMm: number }[]; clampScrews: { xMm: number; yMm: number }[] } }).mounts
+	assert.equal(mounts.clampScrews.length, 4)
+	assert.equal(mounts.standoffHoles.length, spec.boards.reduce((n, b) => n + b.holes.length, 0))
+	assert.deepEqual(boardMountChecks(s, mounts), [])
+})

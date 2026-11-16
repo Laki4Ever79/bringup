@@ -170,7 +170,11 @@ def build(spec):
                 cy, cz = round(c0.Y, 3), round(c0.Z, 3)
                 if abs(c0.X - bx) < WALL and not any(abs(cy - y) < 0.05 and abs(cz - z) < 0.05 for y, z in sensor_holes):
                     sensor_holes.append((cy, cz))
-    mounts = {"standoffHoles": [h for d in pilots for h in centres(d / 2)], "casterHoles": centres(c["holeDiaMm"] / 2), "sensorHoles": [{"yMm": y, "zMm": z} for y, z in sensor_holes]}
+    # The motor clamps' screw pilots are the standoffs' size: they are not board standoffs (the mock rover's four clamp
+    # screws read as standoffs with no board hole over them, 16 Nov 2026), so they are left out here.
+    def not_clamp(h):
+        return not any(abs(h["xMm"] - c["xMm"]) < 0.05 and abs(h["yMm"] - c["yMm"]) < 0.05 for c in clamp_screws)
+    mounts = {"standoffHoles": [h for d in pilots for h in centres(d / 2) if not_clamp(h)], "casterHoles": centres(c["holeDiaMm"] / 2), "sensorHoles": [{"yMm": y, "zMm": z} for y, z in sensor_holes]}
     bracket_holes = []
     for m in spec["motors"]:
         mount = m.get("mount", {})
