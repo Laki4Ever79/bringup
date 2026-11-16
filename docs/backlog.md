@@ -321,6 +321,12 @@ them as well, although it might not be the focus here".
         needs a 7 mm collar (mechanics.safety.estop.collarMm). Not checked (listed in the report): beacon support, the
         100 × 70 mm sticker face, the deployed perimeter, lithium battery conditions.
   - [ ] **Eurobot: model the beacon support mast and the sticker face** (F.6), then check them.
+  - [ ] **Eurobot starter: encoder motors and odometry** (16 Nov). The scripted Eurobot base builds as a robot (was the
+        beacon design) with 1 open problem: the simulated drive clips a side wall. Its timed turn ends at 144° (target
+        135°) and its heading then drifts 0.29 rad over 7 s at equal duties until it meets the wall; without the e-stop's
+        56 g the same course passes, so the course is marginal for an open-loop drive. The brief already asks for
+        "encoders on both drive wheels": encoder gearmotors in the catalog and odometry in the rover firmware close the
+        turn and the straight run on the wheels (no IMU needed). Then save examples/eurobot.
   - [ ] **The e-stop's printed deck:** py/chassis.py doesn't generate the panel (1 to 3 mm thick at the button) yet.
   - [ ] **Motor output traces stay 0.15 mm** (MOTOR_A1…B2 have no width rule; only rails get IPC-2221 widths). a 6 V
         N20 stalls at 0.67 A (more at 2S): check against IPC-2221 and widen.
