@@ -1,5 +1,5 @@
 import { pathHash, sensorPath } from "../contract/sensor-path.ts"
-import { LINK_CONNECTOR, CAN_TRANSCEIVER } from "../contract/links.ts"
+import { LINK_CONNECTOR, CAN_TRANSCEIVER, canName, canSignals } from "../contract/links.ts"
 import { FREE_GPIOS } from "../contract/link-kinds.ts"
 import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { supportParts, testPoints, nativeUsbIndexes } from "../codegen/circuit.ts"
@@ -436,6 +436,20 @@ export function linkProposal(s: ContractSnapshot): { field: "connectors" | "pins
 			const free = linkPins(s, [{ signal: "I2C_SDA", kind: "i2c", role: "SDA", group: "I2C" }, { signal: "I2C_SCL", kind: "i2c", role: "SCL", group: "I2C" }], [...used])
 			if (!free || free.length < 2) return null
 			return { field: "pins", value: [...pins, { signal: "I2C_SDA", gpio: free[0], partRef: l.connector, partPin: "IO1" }, { signal: "I2C_SCL", gpio: free[1], partRef: l.connector, partPin: "IO2" }], reason: `${l.id}'s I2C bus: SDA and SCL to the connector` }
+		}
+		// A CAN link: the controller's TX to the transceiver's D and RX from its R, once per board (a bus's segments share
+		// one transceiver and one controller, and the signals are named after the bus).
+		if (l.kind === "can") {
+			const xcvr = (s.values.parts ?? []).find((p) => p.role === "can-transceiver")
+			if (!xcvr) continue
+			const sig = canSignals(l)
+			const want = [{ signal: sig.tx, partPin: "D" }, { signal: sig.rx, partPin: "R" }]
+			if (want.every((w) => pins.some((p) => p.signal === w.signal && p.partRef === xcvr.ref && p.partPin === w.partPin))) continue
+			const kept = pins.filter((p) => !want.some((w) => w.signal === p.signal))
+			const used = new Set(kept.map((p) => p.gpio))
+			const free = linkPins(s, want.map((w) => ({ signal: w.signal, kind: "can" as const, role: w.partPin === "D" ? "TX" : "RX", group: canName(l) })), [...used])
+			if (!free || free.length < 2) return null
+			return { field: "pins", value: [...kept, ...want.map((w, i) => ({ signal: w.signal, gpio: free[i], partRef: xcvr.ref, partPin: w.partPin }))], reason: `${canName(l)}'s CAN: the controller's TX to ${xcvr.ref}.D and RX from ${xcvr.ref}.R` }
 		}
 		if (l.kind === "uart" && l.txOn) {
 			const want = [
