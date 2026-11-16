@@ -35,5 +35,5 @@ test("pins on the sensor's plug are flagged for the architect: the plug takes no
 	const s = rover()
 	s.values.pins = [...(s.values.pins ?? []), { signal: "EXP_IO1", gpio: 4, partRef: "JT1", partPin: "1" } as never]
 	const w = mechanicsChecks(s).filter((v) => v.kind === "mech-wiring")
-	assert.ok(w.some((v) => /EXP_IO1 \(GPIO4\) goes to the distance sensor's plug JT1: remove it/.test(v.message) && v.affects.includes("architect")), JSON.stringify(w))
+	assert.ok(w.some((v) => /EXP_IO1 \(GPIO4\) on JT1\.1 goes to the distance sensor's plug JT1: remove it/.test(v.message) && v.affects.includes("architect")), JSON.stringify(w))
 })
