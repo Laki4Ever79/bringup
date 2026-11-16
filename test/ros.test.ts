@@ -102,3 +102,16 @@ test("the hardware plugin's template installs only folders git keeps (an empty i
 	const cmake = readFileSync(join(dir, "CMakeLists.txt"), "utf8")
 	for (const m of cmake.matchAll(/install\(DIRECTORY (\S+?)\/? /g)) assert.ok(exists(join(dir, m[1])) && readdirSync(join(dir, m[1])).length > 0, `${m[1]} is missing or empty`)
 })
+
+// A check whose value never arrived (no odometry: nan) is written as null, never as NaN: JSON has no NaN and the run
+// reads acceptance.json with JSON.parse (mock rover run, 16 Nov 2026: "measured": NaN left the acceptance unread).
+test("the acceptance script writes a value that never arrived as null, so its JSON parses", async () => {
+	const { acceptanceScript } = await import("../src/ros/acceptance.ts")
+	const { execFileSync } = await import("node:child_process")
+	const src = acceptanceScript(spec())
+	const helper = /( {4}def finite\(x\):[\s\S]*?\n {4}def check\(name, ok, measured, expected\):\n.*\n)/.exec(src)
+	assert.ok(helper, "the script has finite() and check()")
+	const py = `import json, math\nchecks = []\n${helper[1].replace(/^ {4}/gm, "")}\ncheck("speed", False, float("nan"), 0.3)\nprint(json.dumps(checks, allow_nan=False))\n`
+	const out = JSON.parse(execFileSync("python3", ["-c", py], { encoding: "utf8" }))
+	assert.deepEqual(out, [{ name: "speed", pass: false, measured: null, expected: 0.3 }])
+})
