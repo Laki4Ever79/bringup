@@ -23,6 +23,8 @@ export interface RuleSet {
 		estopMinDiaMm: Limit<number>
 		estopColour: Limit<string>
 		maxVoltageV: Limit<number>
+		// F.4.b lithium batteries: the bag route (value "fireproof-bag"), with the exemptions in its source.
+		lithiumBattery?: Limit<string>
 		cordMinMm: Limit<number>
 		matchS: Limit<number>
 		avoidance: Limit<boolean>
@@ -127,6 +129,18 @@ export function ruleChecks(rules: RuleSet, motion: MotionTargets, mech: Mechanic
 	// F.4.b: at most 48 V on board.
 	fig("Voltage", `${pack.fullV} V`, L.maxVoltageV, pack.fullV <= L.maxVoltageV.value, `${pack.mpn.split(" ")[0]} full`)
 	if (pack.fullV > L.maxVoltageV.value) out.push({ rule: clause(L.maxVoltageV), message: `the pack reaches ${pack.fullV} V, over the ${L.maxVoltageV.value} V the rules allow on board (${L.maxVoltageV.source.where})`, affects: ["mechanics"] })
+
+	// F.4.b: a lithium pack is LiFePO4, or a manufacturer's cased battery with its own BMS, or kept permanently in a certified
+	// fireproof bag (with a charger submitted for homologation, checked at the event). Run cc-eurobot-15's review: a bare
+	// pouch on the plate (16 Nov 2026).
+	if (L.lithiumBattery) {
+		const exempt = pack.chemistry === "LiFePO4" || (pack.bms === true && pack.manufacturerCase === true)
+		const bagged = mech.battery.enclosure === "fireproof-bag"
+		const lithium = pack.chemistry !== "NiMH"
+		fig("Lithium battery", exempt ? (pack.chemistry === "LiFePO4" ? "LiFePO4" : "maker's BMS and case") : bagged ? "fireproof bag" : "bare pack", L.lithiumBattery, !lithium || exempt || bagged, "charger: to homologation")
+		if (lithium && !exempt && !bagged)
+			out.push({ rule: clause(L.lithiumBattery), message: `the ${pack.mpn.split(" ")[0]} is a bare lithium pack${pack.bms ? " (its BMS is on a pouch, not a manufacturer's cased battery)" : " with no BMS"}: keep it permanently in a certified fireproof bag (mechanics.battery.enclosure "fireproof-bag") and submit its charger for homologation, or pick a LiFePO4 pack or a manufacturer's cased battery with its BMS (${L.lithiumBattery.source.where.slice(0, 60)}…)`, affects: ["mechanics"] })
+	}
 
 	// F.6: a pull-cord start, the cord at least 500 mm; H.3: the robot stops after the match.
 	const st = mech.safety?.start

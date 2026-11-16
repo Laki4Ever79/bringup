@@ -150,6 +150,14 @@
 				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
 				"where": "F.6 Other design constraints, p. 13: 'A rectangular, entire and non-deformable space of 100 x 70 mm per robot must be left free on one of the side faces'"
 			}
+		},
+		"lithiumBattery": {
+			"value": "fireproof-bag",
+			"unit": "",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.4.b Energy sources, p. 11, note on Lithium-based batteries: 'Suitable battery charger, which must be submitted for homologation. Batteries permanently kept in certified and unmodified fireproof bags. … Exception … Lithium-based batteries including a BMS (Battery Management System) integrated by the manufacturer and solid case (LEGO Mindstorm / laptop / mobile phone / power tools / USB charging battery), not dismantled and used for the intended purpose of the manufacturer. Lithium-Iron batteries (LiFePo4)'"
+			}
 		}
 	},
 	"notChecked": [
@@ -158,12 +166,12 @@
 			"why": "the design has no deployable mechanism (the team adds it)"
 		},
 		{
-			"rule": "F.4.b lithium batteries: a manufacturer BMS and solid case, or LiFePO4, or a fireproof bag and a homologated charger",
-			"why": "the battery catalog does not record BMS or case yet"
-		},
-		{
 			"rule": "F.6 beacon support: solid and opaque, Velcro (hook side) over its top, as full as possible between 350 mm and its top, no flexing under 400 g",
 			"why": "material, covering and stiffness aren't modelled (the mast's mass and place are)"
+		},
+		{
+			"rule": "F.4.b lithium batteries: the charger submitted for homologation; the bag certified and unmodified",
+			"why": "checked at the event (homologation), not from the design: the design names the bag and leaves the charger to the team"
 		}
 	]
 }
