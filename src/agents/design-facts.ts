@@ -13,6 +13,7 @@ import { caseFactLines } from "../contract/case.ts"
 import { connectivityOf } from "../contract/connectivity.ts"
 import { DATA_FORMAT } from "../codegen/data-format.ts"
 import { spaceFactLines } from "../contract/space.ts"
+import { standardsFactLines } from "../contract/standards.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { mechanicsFactLines } from "../mechanics/facts.ts"
 import { mechanicsFigures } from "../mechanics/checks.ts"
@@ -46,6 +47,7 @@ function designFactsUncached(s: ContractSnapshot, brief: string): string[] {
 		...testFactLines(s),
 		...addedForYouFactLines(s, brief),
 		...linkFactLines(s),
+		...standardsFactLines(s),
 		...mechanicsFactLines(s),
 		...(s.values.outline ? ["", "## Space (computed in code: the smallest board the parts place on, the case's contents)", ...spaceFactLines(s).map((l) => `- ${l}`)] : []),
 		...(s.values.outline && enclosureMode(s.values) === "case" ? ["", "## The case (computed in code from the outline, the connectors and the case field)", ...caseFactLines(s).map((l) => `- ${l}`)] : []),
