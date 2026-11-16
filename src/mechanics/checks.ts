@@ -243,6 +243,15 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 
 	// Every bought drive-train part fits what it mates with (drivetrain.ts), whatever else the design lacks.
 	for (const v of driveTrainChecks(mech.driveTrain ?? [])) push("mech-mate", v.message)
+	// A drive-train part named by a catalog mpn carries the catalog's numbers (a source behind each), not its own.
+	for (const p of mech.driveTrain ?? []) {
+		const mpn = (p as { mpn?: string }).mpn
+		if (!mpn) continue
+		const c = byMpn(cat.mech.driveTrain ?? [], mpn) as Record<string, unknown> | undefined
+		if (!c) { push("mech-mate", `${p.id}: ${mpn} is not in catalog/mechanics.json driveTrain: pick one listed there, so its numbers have a source`); continue }
+		const off = Object.entries(c).filter(([k, v]) => typeof v === "number" && k in p && (p as unknown as Record<string, unknown>)[k] !== v).map(([k, v]) => `${k} ${(p as unknown as Record<string, unknown>)[k]} (catalog ${v})`)
+		if (off.length) push("mech-mate", `${p.id} (${mpn}) differs from its catalog entry: ${off.join(", ")}; use the catalog's numbers`)
+	}
 
 	const d = mech.drive
 	const motor = byMpn(cat.mech.motors, d.motor), wheel = byMpn(cat.mech.wheels, d.wheel), caster = byMpn(cat.mech.casters, d.caster), pack = byMpn(cat.mech.batteries, mech.battery.pack)

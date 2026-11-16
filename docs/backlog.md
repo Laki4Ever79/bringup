@@ -207,6 +207,10 @@ is a change to the firmware toolchain, not just the code.
       travel, an even chain link count, a bearing's printed seat (0–0.2 mm over, estimate), rpm and load against a
       bearing's rating, a coupler's two bores, a lead screw against its nut. Left: catalog entries with a source per
       number (as a design needs them), the parts-list quantities, and the mechanics agent choosing them.
+      Step 2 done 16 Nov: catalog/mechanics.json driveTrain with sourced entries (Adafruit 1251 GT2 pulley 20T 5 mm
+      bore; goBILDA 3423-0006-0088 GT2 belt 44T closed, 6 mm); a part named by its mpn must carry the catalog's numbers
+      (mech-mate); the mechanics agent's instruction says to take drive-train parts from that list. Left: more entries
+      (bearings, couplers, lead screws, gears) as designs need them, and parts-list lines for them.
 - [ ] **Every bought mechanical part in the parts list** (started 15 Nov: catalog/mechanics.json `hardware` with a source
       per number; the rover's board screws (M2x8 self-tapping, one per board hole) and caster screws and nuts (M4x10,
       M4, one per caster hole) counted from chassisSpec; hardware-misfit checks each fits its hole; the parts list and
