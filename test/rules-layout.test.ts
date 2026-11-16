@@ -13,6 +13,7 @@ test("a plain rover proposed under Eurobot's rules comes back with the beacon, e
 	const plain = { ...v.mechanics }
 	delete plain.beacon
 	delete plain.safety
+	delete plain.sticker
 	delete plain.drive.maxAccelMps2
 	const s = { revision: 1, versions: {} as never, values: { ...v, mechanics: plain } }
 	assert.ok(mechanicsChecksWith(s, cat).some((x) => x.kind === "mech-rules"), "the plain rover fails the rules")
@@ -24,6 +25,7 @@ test("a plain rover proposed under Eurobot's rules comes back with the beacon, e
 	assert.equal(m.safety?.estop?.connector, "JE1")
 	assert.equal(m.safety?.start?.connector, "JS1")
 	assert.equal(m.drive.maxAccelMps2, 1.5)
+	assert.equal(m.sticker?.face, "rear")
 	const after = mechanicsChecksWith({ ...s, values: { ...s.values, mechanics: m } }, cat)
 	assert.deepEqual(after.filter((x) => x.affects.includes("mechanics")).map((x) => x.message), [])
 })
