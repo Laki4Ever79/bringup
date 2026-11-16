@@ -20,7 +20,7 @@ test("a rover with encoders gets its odometry numbers; one without has none", ()
 })
 
 const skip = spawnSync("g++", ["--version"]).status === 0 ? false : "no host g++"
-test("odometry follows the wheels, and go-to-point reaches targets ahead, aside and behind within 8 mm", { skip }, () => {
+test("odometry follows the wheels; go-to-point reaches targets ahead, aside and behind, and a route laps a rectangle, within 8 mm", { skip }, () => {
 	const dir = tempDir()
 	writeFileSync(join(dir, "t.cpp"), `#include "rover_odo.h"
 #include <cstdio>
@@ -43,7 +43,29 @@ static int drive(float tx, float ty) {
 	std::printf("target %.0f %.0f: miss %.1f mm, done %d\\n", tx, ty, miss, (int)g.done);
 	return g.done && miss < 8.0 ? 0 : 1;
 }
+// A lap of a 600 x 400 mm rectangle and back to the start, the odometry carried throughout.
+static int lap() {
+	RoverOdo o; RoverGoto g; RoverRoute r;
+	rover_route_add(r, 600, 0); rover_route_add(r, 600, 400); rover_route_add(r, 0, 400); rover_route_add(r, 0, 0);
+	double x = 0, y = 0, th = 0, cl = 0, cr = 0;
+	const double mpc = 0.2782, track = 270, dt = 0.033;
+	int corners = 0;
+	for (int i = 0; i < 8000; i++) {
+		rover_odo_step(o, (int32_t)cl, (int32_t)cr, (float)mpc, (float)track);
+		if (rover_route_next(r, g)) corners++;
+		if (!g.active && r.next >= r.n) break;
+		RoverOut u = rover_goto_step(g, o, 0.504f, 0.202f);
+		const double vl = u.left * 420, vr = u.right * 420;
+		const double ds = (vl + vr) / 2 * dt, dth = (vr - vl) / track * dt;
+		x += ds * cos(th + dth / 2); y += ds * sin(th + dth / 2); th += dth;
+		cl += vl * dt / mpc; cr += vr * dt / mpc;
+	}
+	std::printf("lap: %d points, back %.1f mm from the start\\n", corners, hypot(x, y));
+	return corners == 4 && hypot(x, y) < 8.0 ? 0 : 1;
+}
 int main() {
+	{ RoverRoute r; for (int i = 0; i < 16; i++) CHECK(rover_route_add(r, i, i)); CHECK(!rover_route_add(r, 1, 1)); rover_route_clear(r); CHECK(r.n == 0); }
+	CHECK(lap() == 0);
 	{ RoverOdo o; rover_odo_step(o, 0, 0, 0.5f, 200); rover_odo_step(o, 1000, 1000, 0.5f, 200);
 		CHECK(fabsf(o.x - 500) < 0.01f && fabsf(o.y) < 0.01f && fabsf(o.th) < 1e-6f); }
 	{ RoverOdo o; const float quarter = (float)M_PI / 2 * 100 / 0.5f;  // each wheel's counts for a quarter turn in place
