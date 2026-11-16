@@ -188,6 +188,13 @@ is a change to the firmware toolchain, not just the code.
       height), a shop link and live price where the shop states one, like the rest. Then a check: every hole, boss and
       bracket in the printed parts has its fastener in the list, and every fastener in the list has a hole to go in.
 
+      Step 15 Nov (bringup-board, branch fasteners): the sensor breakout is screwed to its bracket. The catalog's
+      breakout was 21 × 18 mm (Adafruit's product page, the pre-2020 board); its fab print says 25.4 × 17.8 mm with four
+      M2.5 holes at 20.32 × 12.7 mm: fixed, sourced. The bracket gets Ø2.7 holes where they land above the plate
+      (chassis.ts sensorHoles; the built chassis measures them back), and the parts list an M2.5×8 screw and nut per
+      hole (ISO 7045 / DIN 934, sourced). The e2e rover: 0 → 4 screws and 4 nuts, notes of unfastened parts 4 → 3.
+      Measured for the next step: Pololu's motor bracket pair #989 (two Ø2.3 mm holes 18.0 mm apart in a 1.4 mm base,
+      #2-56 screws and nuts included; from Pololu's STEP). Left: motor clamps, battery strap, cables and crimp housings.
 - [x] **Bring-up test pads on every design, on by default** (built 13 Nov, 54e83ec; the nets a learned part adds come
       with learned-part wiring) (the user, 13 Nov: "we should be adding test points as well
       to our designs"). Today pads come only with a production test ("add a production test fixture"), which probes

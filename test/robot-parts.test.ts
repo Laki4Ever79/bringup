@@ -12,7 +12,7 @@ const offerPage = (price: number, availability: string, extra: object = {}) => `
 test("the rover's parts list has two motors, a pair of wheels, a caster, the battery and the distance sensor", () => {
 	const lines = robotPartLines(rover())
 	const by = (item: string) => lines.find((l) => l.item === item)!
-	assert.deepEqual(lines.map((l) => l.item), ["motor", "wheel", "caster", "battery", "distance sensor", "board screw", "caster screw", "caster nut"])
+	assert.deepEqual(lines.map((l) => l.item), ["motor", "wheel", "caster", "battery", "distance sensor", "board screw", "caster screw", "caster nut", "sensor screw", "sensor nut"])
 	assert.equal(by("motor").mpn, "POLOLU-2367 100:1 MP 6V")
 	assert.equal(by("motor").qty, 2)
 	// Wheels are sold in pairs: two wheels are one pack.
@@ -32,9 +32,9 @@ test("a mock run checks nothing and says so", async () => {
 	const r = await checkRobotParts(robotPartLines(rover()), { live: false })
 	assert.ok(r.lines.every((l) => l.status === "not checked"))
 	// The caster the rover uses (TENTE, an industrial part) has no shop link; the rest would be checked in a live run.
-	assert.deepEqual(r.lines.map((l) => l.note), ["not checked (mock run)", "not checked (mock run)", "no shop link in catalog/mechanics.json", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)"])
+	assert.deepEqual(r.lines.map((l) => l.note), ["not checked (mock run)", "not checked (mock run)", "no shop link in catalog/mechanics.json", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)"])
 	assert.equal(r.knownUsd, null)
-	assert.match(r.summary, /8 robot parts · not checked \(mock run\)/)
+	assert.match(r.summary, /10 robot parts · not checked \(mock run\)/)
 })
 
 test("live: a shop's price, stock and lead time are used; a refusing shop is named and not priced", async () => {
@@ -92,8 +92,32 @@ test("the rover's fasteners are in the parts list, counted from its chassis: a s
 
 test("what the design doesn't fasten yet is named, not left out", () => {
 	const notes = robotPartNotes(rover())
-	assert.ok(notes.some((n) => /sensor bracket/.test(n)), notes.join("\n"))
+	// The sensor's breakout is screwed to its bracket now (below); the battery isn't strapped yet.
+	assert.ok(!notes.some((n) => /sensor bracket/.test(n)), notes.join("\n"))
 	assert.ok(notes.some((n) => /battery/.test(n)), notes.join("\n"))
+})
+
+// The breakout's own holes (Adafruit's fab print: four at 0.80" × 0.50", M2.5) through the printed bracket, a machine
+// screw and a nut in each, 15 Nov 2026. Before, the parts list said the bracket had no screw holes.
+test("the distance sensor's breakout is screwed to its bracket: an M2.5 screw and nut per hole that lands above the plate", async () => {
+	const { chassisSpec, SENSOR_HOLE_MM, sensorHoles } = await import("../src/tools/chassis.ts")
+	const s = rover()
+	const spec = chassisSpec(s)!
+	assert.ok(spec.sensor.holes.length >= 2, JSON.stringify(spec.sensor))
+	assert.equal(spec.sensor.holeDiaMm, SENSOR_HOLE_MM)
+	// Four holes 20.32 mm apart across the robot, 12.7 mm up.
+	const ys = [...new Set(spec.sensor.holes.map((h) => h.yMm))].sort((a, b) => a - b)
+	assert.ok(Math.abs(ys[1] - ys[0] - 20.32) < 1e-6, ys.join(","))
+	const lines = robotPartLines(s)
+	const by = (item: string) => lines.find((l) => l.item === item)
+	assert.equal(by("sensor screw")?.qty, spec.sensor.holes.length)
+	assert.match(by("sensor screw")!.mpn, /^M2.5x8 pan head machine screw/)
+	assert.equal(by("sensor nut")?.qty, spec.sensor.holes.length)
+	// A breakout mounted low: its lower pair would sit in the plate, so only the upper pair is drilled.
+	const low = sensorHoles({ mountHolesMm: [[-10.16, -6.35], [10.16, -6.35], [-10.16, 6.35], [10.16, 6.35]] }, { yMm: 0, zMm: 50.5 + 8.9 }, { thicknessMm: 3, clearanceMm: 50.5 })
+	assert.deepEqual(low.map((h) => h.zMm), [15.25, 15.25])
+	// A sensor whose catalog entry has no holes keeps the note.
+	assert.deepEqual(sensorHoles({}, { yMm: 0, zMm: 60 }, { thicknessMm: 3, clearanceMm: 50.5 }), [])
 })
 
 test("each fastener fits its hole: the board's screw passes the board hole, the caster's screw its hole", async () => {

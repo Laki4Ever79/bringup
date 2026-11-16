@@ -69,6 +69,9 @@ export interface SensorModule extends Sourced {
 	sizeMm: [number, number, number]
 	massG: number
 	connector: string
+	// The breakout's mounting holes from its centre (along its width, along its height), and the screw they take.
+	mountHolesMm?: [number, number][]
+	mountScrewMm?: number
 }
 // A bought safety part (catalog safety): an emergency stop button standing through a panel, its contact rated for the
 // motors' current (DC13, an inductive load) and voltage, with the minimum load it switches reliably.
