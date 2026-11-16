@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs"
+import { canName, canSignals } from "../contract/links.ts"
 import { isEncoderPlug, isMotorPlug } from "../mechanics/refs.ts"
 import type { Connector, ContractSnapshot, Part } from "../contract/types.ts"
 import { chipCrystal, chipPadLabels, chipPinLabels, chipPowerPins, chipSupport, type ChipCrystal } from "../mcu/board.ts"
@@ -370,7 +371,7 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const can = parts.find((p) => p.role === "can-transceiver")
 	if (can && supply) jobs.push({ job: `decoupling on ${can.ref}.VCC`, spec: SUPPORT.decouple, a: { net: supply }, b: GND, near: can.ref })
 	for (const l of (s.values.links ?? []).filter((x) => x.kind === "can" && x.can?.terminate))
-		if (can) jobs.push({ job: `${l.id} CAN termination, 120 Ω across CANH and CANL (this board is a bus end)`, spec: SUPPORT.canTerm, a: { net: `${l.id}_CANH` }, b: { net: `${l.id}_CANL` }, near: can.ref })
+		if (can) jobs.push({ job: `${canName(l)} CAN termination, 120 Ω across CANH and CANL (this board is a bus end)`, spec: SUPPORT.canTerm, a: { net: canSignals(l).h }, b: { net: canSignals(l).l }, near: can.ref })
 	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
 	if (ldo) jobs.push({ job: `decoupling on ${charger ? "VBAT" : "VBUS"} (LDO input)`, spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
 	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
@@ -1710,7 +1711,7 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		for (const l of (s.values.links ?? []).filter((x) => x.kind === "can")) {
 			const k = parts.find((p) => p.ref === l.connector && p.role === "connector")
 			for (const [side, io] of [["CANH", "IO1"], ["CANL", "IO2"]] as const) {
-				const net = `${l.id}_${side}`
+				const net = side === "CANH" ? canSignals(l).h : canSignals(l).l
 				if (!nets.has(net)) nets.set(net, [])
 				if (can.pins.includes(side)) join(net, can.ref, side)
 				if (k?.pins.includes(io)) join(net, k.ref, io)

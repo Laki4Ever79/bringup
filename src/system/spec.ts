@@ -144,7 +144,9 @@ export function specErrors(s: SystemSpec): string[] {
 		const by = new Map<Peripheral, string[]>()
 		for (const l of s.links) if ((l.a.board === b.name || l.b.board === b.name) && Object.hasOwn(LINK_KINDS, l.kind)) {
 			const p = LINK_KINDS[l.kind].peripheral
-			if (p !== "i2c") by.set(p, [...(by.get(p) ?? []), l.id])
+			// The segments of one CAN bus share the board's one controller: counted once, by the bus.
+			const use = l.kind === "can" && l.can?.bus ? `bus ${l.can.bus}` : l.id
+			if (p !== "i2c" && !(by.get(p) ?? []).includes(use)) by.set(p, [...(by.get(p) ?? []), use])
 		}
 		for (const [p, ids] of by) if (ids.length > PERIPHERALS_FREE[p]) out.push(`board ${b.name}: ${ids.join(", ")} all need its ${p} (the ESP32-C3 has ${PERIPHERALS_FREE[p]} free); make the others I2C`)
 	}

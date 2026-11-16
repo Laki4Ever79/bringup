@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs"
+import { canSignals } from "../contract/links.ts"
 import { resolve } from "node:path"
 import type { ContractSnapshot, DutyCycle } from "../contract/types.ts"
 import { pathHash, sensorPath } from "../contract/sensor-path.ts"
@@ -310,7 +311,7 @@ export function linkHeader(s: ContractSnapshot): string {
 	if (can) {
 		const timing = CAN_TIMING[can.can!.kbps]
 		body.push(
-			`\ttwai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)${macroName(`${can.id}_CAN_TX`)}, (gpio_num_t)${macroName(`${can.id}_CAN_RX`)}, TWAI_MODE_NORMAL);`,
+			`\ttwai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)${macroName(canSignals(can).tx)}, (gpio_num_t)${macroName(canSignals(can).rx)}, TWAI_MODE_NORMAL);`,
 			`\ttwai_timing_config_t tc = TWAI_TIMING_CONFIG_${timing}();`,
 			`\ttwai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();`,
 			`\tif (twai_driver_install(&g, &tc, &f) != ESP_OK || twai_start() != ESP_OK) Log.println("LINK ${can.id}: the CAN controller didn't start");`,
@@ -320,7 +321,7 @@ export function linkHeader(s: ContractSnapshot): string {
 		const id = canStmLink.id
 		body.push(
 			// The pins and the controller from the core's pin map (it applies an STM32F1's AFIO remap for PB8/PB9).
-			`\tconst PinName rx = digitalPinToPinName(${macroName(`${id}_CAN_RX`)}), tx = digitalPinToPinName(${macroName(`${id}_CAN_TX`)});`,
+			`\tconst PinName rx = digitalPinToPinName(${macroName(canSignals(canStmLink).rx)}), tx = digitalPinToPinName(${macroName(canSignals(canStmLink).tx)});`,
 			`\tlinkCan.Instance = (CAN_TypeDef *)pinmap_peripheral(rx, PinMap_CAN_RD);`,
 			`\t__HAL_RCC_CAN1_CLK_ENABLE();`,
 			`\tpinmap_pinout(rx, PinMap_CAN_RD);`,
