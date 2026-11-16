@@ -51,7 +51,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	let bomRows: string[][] = []
 	if (board) {
 		log("fab: exporting")
-		const fab = await exportFab(env, board, s, join(outDir, "fab"))
+		const fab = await exportFab(env, board, s, outDir) // it writes outDir/fab
 		bomRows = csvRows(fab.bom)
 		const bomRefs = new Set(bomRows.flatMap((r) => r[1]?.split(/[ ,]+/).filter(Boolean) ?? []))
 		const cplRefs = new Set(csvRows(fab.cpl).map((r) => r[0]))
