@@ -152,6 +152,10 @@ is a change to the firmware toolchain, not just the code.
       off on each axis, and an M2.5 screw doesn't pass a 2.2 mm hole. No check compares them. Fix: the chassis takes each
       board's holes from the board itself (mountingHoles, including corners a connector took), one screw size for both,
       and a check that every board hole has a standoff and a screw that fits (goes with the hardware list below).
+- [ ] **CAN simulation gaps (known limits, 16 Nov 2026, bringup-system):** Renode 1.17 models no CAN on the STM32F103
+      (its stm32f103.repl has no CAN) and has no F446 platform (the two-node CAN test runs F446 firmware on its F407 as an
+      approximation); QEMU's ESP32-C3 models no TWAI. Those sides are proven only by compiling until the bench test
+      (docs/bench-can.md) runs on real boards. STM32 bxCAN firmware itself is done (e7fb5e0).
 - [ ] **CAN as a link between boards, when the user asks for it** (the user, 15 Nov: "allow for user insisting on using
       CAN communication for robot if they want"). Today: the MCU profiles know which chips have a CAN controller
       (ESP32-C3 / WROOM TWAI, STM32F103, STM32F446), but `src/contract/link-kinds.ts` has no CAN kind and the catalog
