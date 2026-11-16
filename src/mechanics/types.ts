@@ -44,6 +44,9 @@ export interface Mechanics {
 	// Bought gears, belts, chains, bearings, shafts, couplers and lead screws, each naming what it mates with
 	// (drivetrain.ts); none on today's direct-drive rover.
 	driveTrain?: DriveTrainPart[]
+	// A competition's beacon support (Eurobot General Rules 1.2 F.6): a printed mast from the plate, sizeMm square (wall
+	// mastWallMm), whose flat top stands topMm off the floor and carries loadG (the opponent's beacon and its tag).
+	beacon?: { at: { xMm: number; yMm: number }; topMm: number; sizeMm: number; mastWallMm: number; loadG: number }
 	// Safety parts (safety.ts): an emergency stop button (catalog safety, kind "estop") standing through a panel whose top
 	// is at.zMm off the floor, its NC contact wired to the board plug `connector` (role estop) in the motors' supply.
 	// And a pull-cord start (match.h in the rover firmware): the board plug `connector` (role start) whose START pin the

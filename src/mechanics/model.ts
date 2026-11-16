@@ -1,4 +1,8 @@
 import { byMpn, type BatteryPack, type MechCatalog, type MotorPart } from "./catalog.ts"
+// The beacon support's flat top, printed solid, and the beacon's centre of mass above it (ESTIMATE: half an 80 mm-tall
+// beacon; Eurobot General Rules 1.2 F.6 sets only its mass, 400 g with its tag, and the 430 mm top it sits on).
+export const BEACON_TOP_MM = 3
+export const BEACON_LOAD_HALF_MM = 40
 import { ESTOP_HEAD_CLEARANCE_MM, ESTOP_PANEL_MM } from "./safety.ts"
 // The deck's wall, as py/chassis.py WALL.
 const DECK_WALL_MM = 2
@@ -138,6 +142,14 @@ export function mounts(mech: Mechanics, boards: { name: string; outline: { width
 		const collar = e.collarMm ?? 0
 		const mm3 = 2 * span * DECK_WALL_MM * wallH + span * c.plateMm[1] * panel + Math.PI * ((ringIn + DECK_WALL_MM) ** 2 - ringIn ** 2) * collar
 		out.push({ what: "estop-deck", xMm: e.at.xMm, yMm: 0, zMm: e.at.zMm - (panel + wallH) / 2, sizeMm: [span, c.plateMm[1], wallH + panel + collar], massG: (mm3 * est("plaDensityGcm3")) / 1000 })
+	}
+	// A beacon support (Eurobot F.6): the printed mast, PLA, from the plate to its top, and the load on its top (the
+	// opponent's beacon: its centre of mass an ESTIMATE, BEACON_LOAD_HALF_MM above the top).
+	if (mech.beacon) {
+		const b = mech.beacon, h = Math.max(0, b.topMm - plateTop)
+		const mm3 = 4 * b.sizeMm * b.mastWallMm * h + b.sizeMm * b.sizeMm * BEACON_TOP_MM
+		out.push({ what: "beacon-mast", xMm: b.at.xMm, yMm: b.at.yMm, zMm: plateTop + h / 2, sizeMm: [b.sizeMm, b.sizeMm, h], massG: (mm3 * est("plaDensityGcm3")) / 1000 })
+		out.push({ what: "beacon-load", xMm: b.at.xMm, yMm: b.at.yMm, zMm: b.topMm + BEACON_LOAD_HALF_MM, sizeMm: [80, 80, 2 * BEACON_LOAD_HALF_MM], massG: b.loadG })
 	}
 	// A HAT (`on`) stands on its board's spacers (hatBaseZ), the others on the plate's standoffs.
 	const onPlate = plateTop + est("standoffMm")

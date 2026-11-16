@@ -31,6 +31,10 @@ export function mechanicsShapeError(v: unknown): string | null {
 		pair(c.plateMm) && num(c.thicknessMm, 0.5) && c.material === "PLA" && num(c.clearanceMm) &&
 		Array.isArray(c.boards) && c.boards.every((x) => obj(x) && typeof x.name === "string" && at(x.at) && [0, 90, 180, 270].includes(x.rotDeg as number))
 	if (!ok) return shape
+	if (v.beacon !== undefined) {
+		const b = v.beacon
+		if (!obj(b) || !at(b.at) || !num(b.topMm, 1) || !num(b.sizeMm, 1) || !num(b.mastWallMm, 0.4) || !num(b.loadG)) return "mechanics.beacon must be {at: {xMm, yMm}, topMm (its flat top off the floor), sizeMm (the mast's square side), mastWallMm, loadG (what its top carries)}"
+	}
 	if (v.safety !== undefined) {
 		const e = obj(v.safety) ? v.safety.estop : null
 		const estopOk = e === undefined || (obj(e) && typeof e.part === "string" && e.part !== "" && at(e.at) && typeof (e.at as Record<string, unknown>).zMm === "number" && typeof e.connector === "string" && e.connector !== "" && (e.collarMm === undefined || num(e.collarMm)))

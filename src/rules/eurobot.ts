@@ -26,6 +26,11 @@ export interface RuleSet {
 		cordMinMm: Limit<number>
 		matchS: Limit<number>
 		avoidance: Limit<boolean>
+		beaconTopMm: Limit<number> & { tolerance: number }
+		beaconMinMm: Limit<number>
+		beaconMaxMm: Limit<number>
+		beaconCircleMm: Limit<number>
+		beaconLoadG: Limit<number>
 	}
 	notChecked: { rule: string; why: string }[]
 }
@@ -78,7 +83,7 @@ export function hullPerimeterMm(ms: Mount[]): number {
 // tallest parts (a header, a bought computer's heat sink) and the team's mechanism aren't in it.
 export function robotTopMm(ms: Mount[], mech?: Mechanics): number {
 	const e = mech?.safety?.estop
-	return Math.max(0, ...ms.filter((m) => m.what !== "estop").map((m) => m.zMm + m.sizeMm[2] / 2), e ? e.at.zMm + (e.collarMm ?? 0) : 0)
+	return Math.max(0, ...ms.filter((m) => m.what !== "estop" && !m.what.startsWith("beacon")).map((m) => m.zMm + m.sizeMm[2] / 2), e ? e.at.zMm + (e.collarMm ?? 0) : 0)
 }
 
 export function ruleChecks(rules: RuleSet, motion: MotionTargets, mech: Mechanics, ms: Mount[], pack: BatteryPack, cat: MechCatalog, figures: RuleFigure[] = []): RuleFinding[] {
@@ -129,6 +134,23 @@ export function ruleChecks(rules: RuleSet, motion: MotionTargets, mech: Mechanic
 		if (st.cordMm < L.cordMinMm.value) out.push({ rule: clause(L.cordMinMm), message: `the start cord is ${st.cordMm} mm; the rules ask for at least ${L.cordMinMm.value} mm (${L.cordMinMm.source.where}): set mechanics.safety.start.cordMm to ${L.cordMinMm.value} or more`, affects: ["mechanics"] })
 		fig("Match stop", st.matchS ? `${st.matchS} s` : "never", L.matchS, !!st.matchS && st.matchS <= L.matchS.value)
 		if (!st.matchS || st.matchS > L.matchS.value) out.push({ rule: clause(L.matchS), message: `the firmware ${st.matchS ? `stops the robot ${st.matchS} s after the start` : "never stops the robot on its own"}; the rules stop every actuator at ${L.matchS.value} s (${L.matchS.source.where}): set mechanics.safety.start.matchS to ${L.matchS.value}`, affects: ["mechanics"] })
+	}
+
+	// F.6: the support for the opponent's beacon: its top 430 ± 5 mm up, 70 mm to 100 mm across, within the 200 mm
+	// circle around the robot's centre, holding 400 g (F.3's height leaves its mast out).
+	const b = mech.beacon
+	if (!b) out.push({ rule: clause(L.beaconTopMm), message: `${rules.document.title} asks for a support for the opposing team's beacon (${L.beaconTopMm.source.where}): add mechanics.beacon {at, topMm: ${L.beaconTopMm.value}, sizeMm (${L.beaconMinMm.value} to ${L.beaconMaxMm.value}), mastWallMm, loadG: ${L.beaconLoadG.value}}`, affects: ["mechanics"] })
+	else {
+		const off = Math.abs(b.topMm - L.beaconTopMm.value)
+		fig("Beacon support top", `${b.topMm} mm`, L.beaconTopMm, off <= L.beaconTopMm.tolerance, `± ${L.beaconTopMm.tolerance} mm`)
+		if (off > L.beaconTopMm.tolerance) out.push({ rule: clause(L.beaconTopMm), message: `the beacon support's top is ${b.topMm} mm up; the rules ask for ${L.beaconTopMm.value} ± ${L.beaconTopMm.tolerance} mm (${L.beaconTopMm.source.where}): set mechanics.beacon.topMm to ${L.beaconTopMm.value}`, affects: ["mechanics"] })
+		fig("Beacon support size", `${b.sizeMm} mm`, L.beaconMaxMm, b.sizeMm >= L.beaconMinMm.value && b.sizeMm <= L.beaconMaxMm.value, `at least a ${L.beaconMinMm.value} mm circle`)
+		if (b.sizeMm < L.beaconMinMm.value || b.sizeMm > L.beaconMaxMm.value) out.push({ rule: clause(L.beaconMinMm), message: `the beacon support is ${b.sizeMm} mm across; the rules ask for ${L.beaconMinMm.value} mm (a circle) to ${L.beaconMaxMm.value} mm (a square) (${L.beaconMinMm.source.where})`, affects: ["mechanics"] })
+		const reach = Math.hypot(Math.abs(b.at.xMm), Math.abs(b.at.yMm)) + (b.sizeMm / 2) * Math.SQRT2
+		fig("Beacon support place", `${r1(reach)} mm from the centre`, L.beaconCircleMm, reach <= L.beaconCircleMm.value / 2, "its corners, seen from above")
+		if (reach > L.beaconCircleMm.value / 2) out.push({ rule: clause(L.beaconCircleMm), message: `the beacon support reaches ${r1(reach)} mm from the robot's centre; it must lie within the ${L.beaconCircleMm.value} mm circle around it (${L.beaconCircleMm.source.where}): move it to the centre`, affects: ["mechanics"] })
+		fig("Beacon support load", `${b.loadG} g`, L.beaconLoadG, b.loadG >= L.beaconLoadG.value, "counted in the mass and the tipping")
+		if (b.loadG < L.beaconLoadG.value) out.push({ rule: clause(L.beaconLoadG), message: `the beacon support is designed for ${b.loadG} g; the rules ask it to hold ${L.beaconLoadG.value} g (${L.beaconLoadG.source.where}): set mechanics.beacon.loadG to ${L.beaconLoadG.value}, so the mass and the tipping count it`, affects: ["mechanics"] })
 	}
 
 	// F.6: it detects the opponent.
