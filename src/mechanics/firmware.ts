@@ -73,7 +73,14 @@ export function roverHeader(s: ContractSnapshot): string {
 	// heads it away.
 	// A skid-steer rover turns slower than it rolls: its wheels scrub sideways (model.ts skidTurnWheelMps).
 	const turnSpeed = isSkid(mech.drive) ? skidTurnWheelMps(motor, pack, cruise, massG / 1000, mech.drive, r) : speed
+	// The timed turn (no encoders) of a skid-steer rover runs on the effective track and the measured share below.
 	const turnTrackMm = isSkid(mech.drive) ? skidEffectiveTrackMm(mech.drive) : mech.drive.trackMm
+	// The encoder-closed turn and the odometry count the wheels' own travel, which includes their forward slip: the
+	// derived effective track B·(1+(L/B)²) (1.5 B here). The simulation slips more: 719 counts turned 92° of a planned
+	// 135° (2.2 B, rover-4wd, 16 Nov 2026), and on the plain track B the turn fell to 67° and hit the front wall. Across
+	// 1.5–2.2 B the turn lands between 135° and about 90°, and the drive passed at 92° with 145 mm from every wall; real
+	// tyres measure 1.2–2 B in the literature. A bench calibration of the ratio is open (docs/backlog.md).
+	const countTrackMm = turnTrackMm
 	const turnMs = Math.round(((3 * Math.PI) / 4 / ((2 * turnSpeed * (isSkid(mech.drive) ? SKID_TURN_SIM_SHARE : 1)) / (turnTrackMm / 1000))) * 1000)
 	const lines = [
 		"// Generated from the design contract (src/mechanics/firmware.ts). Do not edit.",
@@ -86,7 +93,7 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_CRUISE_DUTY ${cruise.toFixed(3)}f`,
 		`#define ROVER_TURN_MS ${turnMs}`,
 		// Wheel encoders on GPIOs: the turn and the straight close on their counts (rover.h); the same three eighths of a turn.
-		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [`#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, mech.drive.trackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`, `#define ROVER_MM_PER_COUNT ${((Math.PI * wheel.diameterMm) / cpr).toFixed(4)}f`, `#define ROVER_TRACK_MM ${mech.drive.trackMm.toFixed(1)}f`, `#define ROVER_GOTO_MIN_DUTY ${(GOTO_MIN_SHARE * cruise).toFixed(3)}f`, `#define ROVER_GOTO_GAP_MM ${OPPONENT_GAP_MM}`, `#define ROVER_BACK_COUNTS ${Math.round((TURN_CLEARANCE_MM / (Math.PI * wheel.diameterMm)) * cpr)}`] : []))(countsPerRev(motor)),
+		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [`#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, countTrackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`, `#define ROVER_MM_PER_COUNT ${((Math.PI * wheel.diameterMm) / cpr).toFixed(4)}f`, `#define ROVER_TRACK_MM ${countTrackMm.toFixed(1)}f`, `#define ROVER_GOTO_MIN_DUTY ${(GOTO_MIN_SHARE * cruise).toFixed(3)}f`, `#define ROVER_GOTO_GAP_MM ${OPPONENT_GAP_MM}`, `#define ROVER_BACK_COUNTS ${Math.round((TURN_CLEARANCE_MM / (Math.PI * wheel.diameterMm)) * cpr)}`] : []))(countsPerRev(motor)),
 		// An acceleration limit (mechanics.drive.maxAccelMps2): the duty moves at most this much per control tick, so the speed
 		// (the load line's at full duty from a full pack, at most) changes no faster: main.cpp ramps every output.
 		...(mech.drive.maxAccelMps2 ? [`#define ROVER_RAMP_PER_TICK ${(mech.drive.maxAccelMps2 * (sensor.updateMs / 1000) / Math.max(0.01, loadedSpeedMps(motor, pack, pack.fullV, 1, massG / 1000, r))).toFixed(4)}f`] : []),
