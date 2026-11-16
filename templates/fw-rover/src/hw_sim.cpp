@@ -9,7 +9,9 @@
 static float duty[2] = {0, 0};
 static uint32_t now = 0, tick = 0;
 static float temp = NAN, hum = NAN;
+#ifdef ROVER_TURN_COUNTS
 static long enc[2] = {0, 0};
+#endif
 
 void hw_begin(void) { Serial1.begin(921600); }
 
@@ -29,10 +31,14 @@ int hw_distance_mm(void) {
 	unsigned long t = 0;
 	int d = -1;
 	float tc = NAN, rh = NAN;
+#ifdef ROVER_TURN_COUNTS
 	long el = 0, er = 0;
 	const int n2 = sscanf(line, "S %lu %d %f %f %ld %ld", &t, &d, &tc, &rh, &el, &er);
 	if (n2 >= 2) { now = t; temp = tc; hum = rh; }
 	if (n2 >= 6) { enc[0] = el; enc[1] = er; }  // a design with wheel encoders: the bridge counts them (SIM.md)
+#else
+	if (sscanf(line, "S %lu %d %f %f", &t, &d, &tc, &rh) >= 2) { now = t; temp = tc; hum = rh; }
+#endif
 	return d;
 }
 
@@ -45,7 +51,9 @@ bool hw_payload(float *temp_c, float *rh) {
 
 uint32_t hw_now_ms(void) { return now; }
 
+#ifdef ROVER_TURN_COUNTS
 int32_t hw_encoder(int side) { return (int32_t)enc[side & 1]; }
+#endif
 
 // QEMU has no radio: the reading is printed (main.cpp) and the BTHome bytes are the logger's, checked on the host.
 void hw_report(bool, float, float) {}

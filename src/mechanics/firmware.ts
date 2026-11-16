@@ -1,7 +1,7 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import { byMpn } from "./catalog.ts"
 import { defaultCheckCatalog } from "./checks.ts"
-import { brakeMm, cruiseDuty, massAndCom, mounts, onWheelsShare, payloadMount, turnStopMm } from "./model.ts"
+import { TURN_CLEARANCE_MM, brakeMm, cruiseDuty, massAndCom, mounts, onWheelsShare, payloadMount, turnStopMm } from "./model.ts"
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { macroName, sensorDriver } from "../codegen/firmware.ts"
 
@@ -72,7 +72,7 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_CRUISE_DUTY ${cruise.toFixed(3)}f`,
 		`#define ROVER_TURN_MS ${turnMs}`,
 		// Wheel encoders on GPIOs: the turn and the straight close on their counts (rover.h); the same three eighths of a turn.
-		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [`#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, mech.drive.trackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`] : []))(countsPerRev(motor)),
+		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [`#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, mech.drive.trackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`, `#define ROVER_BACK_COUNTS ${Math.round((TURN_CLEARANCE_MM / (Math.PI * wheel.diameterMm)) * cpr)}`] : []))(countsPerRev(motor)),
 		// A pull-cord start (main.cpp, match.h): the match length, when the mechanics give one; PIN_START comes below.
 		...(mech.safety?.start?.matchS ? [`#define MATCH_MS ${Math.round(mech.safety.start.matchS * 1000)}UL`] : []),
 		// What else the rover firmware drives and reads, named as the product firmware names them so the same checks
