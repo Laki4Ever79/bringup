@@ -37,18 +37,18 @@ function inertial(massKg: number, at: [number, number, number], i: { ixx: number
 export function bodyOf(spec: ChassisSpec) {
 	const d = spec.drive
 	const r = mm(d.wheelDiameterMm) / 2
-	// A skid-steer rover has no caster (spec.caster null): its URDF has the front wheels only (ROS skid-steer export is
-	// not built yet; the mass of the rear wheels stays in the body).
+	// A skid-steer rover (drive kind "skid4") has no caster: a rear pair of wheels wheelbaseMm behind the front one.
+	const skid = d.kind === "skid4"
 	const casterR = mm(spec.caster?.wheelMm ?? 0) / 2
 	const total = spec.massG / 1000
 	const wheelKg = spec.wheelMassG / 1000
 	const casterKg = spec.casterMassG / 1000
-	const bodyKg = Math.max(0.01, total - 2 * wheelKg - casterKg)
+	const bodyKg = Math.max(0.01, total - (skid ? 4 : 2) * wheelKg - casterKg)
 	const axleX = mm(d.axleXMm), casterX = mm(d.axleXMm - d.wheelbaseMm)
 	const whole = spec.com.map(mm) as [number, number, number]
-	const parts: [number, [number, number, number]][] = [[2 * wheelKg, [axleX, 0, r]], [casterKg, [casterX, 0, casterR]]]
+	const parts: [number, [number, number, number]][] = skid ? [[2 * wheelKg, [axleX, 0, r]], [2 * wheelKg, [casterX, 0, r]]] : [[2 * wheelKg, [axleX, 0, r]], [casterKg, [casterX, 0, casterR]]]
 	const com = [0, 1, 2].map((i) => (whole[i] * total - parts.reduce((t, [m, at]) => t + m * at[i], 0)) / bodyKg) as [number, number, number]
-	return { r, casterR, total, wheelKg, casterKg, bodyKg, axleX, casterX, com }
+	return { r, casterR, total, wheelKg, casterKg, bodyKg, axleX, casterX, com, skid }
 }
 
 // The wheel's speed at duty 1: the motor's no-load speed on the cell's nominal voltage, loaded (0.8, the mechanics
@@ -66,7 +66,8 @@ export function robotUrdf(spec: ChassisSpec, opts: { name?: string; hardware?: R
 	const plateZ = mm(p.clearanceMm) + t / 2
 	const ww = mm(d.wheelWidthMm), track = mm(d.trackMm)
 	const s = spec.sensor
-	const wheel = (side: "left" | "right", sign: 1 | -1) => `  <link name="${side}_wheel_link">
+	// A skid-steer rover's rear wheels: <side>_rear_wheel_link on <side>_rear_wheel_joint, at the rear axle.
+	const wheel = (side: "left" | "right" | "left_rear" | "right_rear", sign: 1 | -1, x = b.axleX) => `  <link name="${side}_wheel_link">
     <visual>
       <origin xyz="0 0 0" rpy="1.570796 0 0"/>
       <geometry><cylinder radius="${f(b.r)}" length="${f(ww)}"/></geometry>
@@ -80,7 +81,7 @@ ${inertial(b.wheelKg, [0, 0, 0], wheelInertia(b.wheelKg, b.r, ww))}
   <joint name="${side}_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="${side}_wheel_link"/>
-    <origin xyz="${xyz(b.axleX, (sign * track) / 2, b.r)}" rpy="0 0 0"/>
+    <origin xyz="${xyz(x, (sign * track) / 2, b.r)}" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
   </joint>`
 	const boards = spec.boards
@@ -97,7 +98,7 @@ ${inertial(b.wheelKg, [0, 0, 0], wheelInertia(b.wheelKg, b.r, ww))}
   </joint>`,
 		)
 		.join("\n")
-	const joints = ["left_wheel_joint", "right_wheel_joint"]
+	const joints = ["left_wheel_joint", "right_wheel_joint", ...(b.skid ? ["left_rear_wheel_joint", "right_rear_wheel_joint"] : [])]
 		.map(
 			(j) => `    <joint name="${j}">
       <command_interface name="velocity"/>
@@ -130,7 +131,8 @@ ${inertial(b.bodyKg, b.com, boxInertia(b.bodyKg, L, W, 0.03))}
   </link>
 ${wheel("left", 1)}
 ${wheel("right", -1)}
-  <link name="caster_link">
+${b.skid ? `${wheel("left_rear", 1, b.casterX)}
+${wheel("right_rear", -1, b.casterX)}` : `  <link name="caster_link">
     <visual><geometry><sphere radius="${f(b.casterR)}"/></geometry></visual>
     <collision><geometry><sphere radius="${f(b.casterR)}"/></geometry></collision>
 ${inertial(b.casterKg, [0, 0, 0], sphereInertia(b.casterKg, b.casterR))}
@@ -139,7 +141,7 @@ ${inertial(b.casterKg, [0, 0, 0], sphereInertia(b.casterKg, b.casterR))}
     <parent link="base_link"/>
     <child link="caster_link"/>
     <origin xyz="${xyz(b.casterX, 0, b.casterR)}" rpy="0 0 0"/>
-  </joint>
+  </joint>`}
   <link name="range_sensor_link">
     <visual><geometry><box size="${xyz(mm(s.sizeMm[0]), mm(s.sizeMm[1]), mm(s.sizeMm[2]))}"/></geometry></visual>
   </link>
@@ -190,8 +192,8 @@ controller_manager:
 
 diff_drive_controller:
   ros__parameters:
-    left_wheel_names: ["left_wheel_joint"]
-    right_wheel_names: ["right_wheel_joint"]
+    left_wheel_names: [${d.kind === "skid4" ? '"left_wheel_joint", "left_rear_wheel_joint"' : '"left_wheel_joint"'}]  # skid steer: both wheels of a side
+    right_wheel_names: [${d.kind === "skid4" ? '"right_wheel_joint", "right_rear_wheel_joint"' : '"right_wheel_joint"'}]
     wheel_separation: ${f(mm(d.trackMm))}  # drive.trackMm
     wheel_radius: ${f(r)}  # the wheel's catalog diameter / 2
     open_loop: ${opts.encoders ? "false" : "true"}  # ${opts.encoders ? "encoders on both wheels" : "no wheel encoders: odometry is the integrated command"}
