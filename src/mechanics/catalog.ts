@@ -17,6 +17,9 @@ export interface MotorPart extends Sourced {
 	bodyMm: [number, number, number]
 	shaftMm: number
 	massG: number
+	// A quadrature encoder on the motor shaft (counts per motor revolution, both edges of both channels), its supply range
+	// and its plug's pin order.
+	encoder?: { cpr: number; minV: number; maxV: number; pullupOhm: number; connector: string; pins: string[] }
 }
 export interface WheelPart extends Sourced {
 	diameterMm: number

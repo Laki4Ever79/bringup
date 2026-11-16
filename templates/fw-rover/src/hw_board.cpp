@@ -18,7 +18,28 @@ static bool tofOk = false;
 static const int PWM_HZ = 20000, PWM_BITS = 10;
 static const int IN[2][2] = {{MOT_AIN1, MOT_AIN2}, {MOT_BIN1, MOT_BIN2}};
 
+#if defined(PIN_ENC_LA) && defined(PIN_ENC_RA)
+// The wheel encoders (an encoder gearmotor's Hall encoder): every edge of channel A steps the wheel's count, forward or
+// back as the duty last driven (channel B isn't wired: the ESP32-C3 has the pins for one channel per wheel). The
+// ESP32-C3 has no pulse-counter unit, so GPIO interrupts count them (about 2000 edges a second per wheel at cruise).
+static volatile int32_t encCount[2] = {0, 0};
+static volatile int8_t encDir[2] = {1, 1};
+static void IRAM_ATTR encLeft(void) { encCount[0] += encDir[0]; }
+static void IRAM_ATTR encRight(void) { encCount[1] += encDir[1]; }
+int32_t hw_encoder(int side) { return encCount[side & 1]; }
+#define ENC_DIR(side, duty) (encDir[side] = (duty) < 0 ? -1 : 1)
+#else
+int32_t hw_encoder(int) { return 0; }
+#define ENC_DIR(side, duty)
+#endif
+
 void hw_begin(void) {
+#if defined(PIN_ENC_LA) && defined(PIN_ENC_RA)
+	pinMode(PIN_ENC_LA, INPUT);  // the encoder pulls its outputs up itself (10 kOhm to its Vcc)
+	pinMode(PIN_ENC_RA, INPUT);
+	attachInterrupt(digitalPinToInterrupt(PIN_ENC_LA), encLeft, CHANGE);
+	attachInterrupt(digitalPinToInterrupt(PIN_ENC_RA), encRight, CHANGE);
+#endif
 	for (auto &m : IN) for (int pin : m) { ledcAttach(pin, PWM_HZ, PWM_BITS); ledcWrite(pin, 0); }
 	Wire.begin(I2C_SDA, I2C_SCL);
 	tof.setTimeout(100);
@@ -27,6 +48,7 @@ void hw_begin(void) {
 }
 
 void hw_motor(int side, float duty) {
+	ENC_DIR(side & 1, duty);
 	const Drv8833Levels l = drv8833Levels(duty, (1 << PWM_BITS) - 1);
 	ledcWrite(IN[side][0], l.in1);
 	ledcWrite(IN[side][1], l.in2);

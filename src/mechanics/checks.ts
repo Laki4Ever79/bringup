@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs"
+import { isEncoderPlug, isMotorPlug } from "./refs.ts"
 import { loadRules, RULE_SETS, ruleChecks, type RuleSet } from "../rules/eurobot.ts"
 import { safetyChecks, startChecks } from "./safety.ts"
 import { resolve } from "node:path"
@@ -443,8 +444,9 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// A motor on a GPIO: the pin can't source a motor's current and the motor's back-EMF reaches the MCU (real rover run
 	// 2, 15 Nov: the architect put MOTOR_A_P on GPIO0 through a 2-pin connector, with no driver). The board generator
 	// wires the driver's outputs to the 2-pin motor connectors; the pins field never touches them.
-	const motorPlugs = new Set(parts.filter((p) => p.role === "connector" && p.pins.length === 2 && p.pins[0] === "1" && p.pins[1] === "2").map((p) => p.ref))
-	const onMotor = pins.filter((p) => motorPlugs.has(p.partRef) && typeof p.gpio === "number" && p.gpio >= 0)
+	const motorPlugs = new Set(parts.filter(isMotorPlug).map((p) => p.ref))
+	// (An encoder gearmotor's plug carries its encoder's A and B to GPIOs: only its motor pins never go to one.)
+	const onMotor = pins.filter((p) => motorPlugs.has(p.partRef) && typeof p.gpio === "number" && p.gpio >= 0 && !["ENCA", "ENCB"].includes(p.partPin))
 	if (onMotor.length)
 		push("mech-wiring", `${onMotor.map((p) => `${p.signal} (GPIO${p.gpio}) goes to motor connector ${p.partRef}`).join("; ")}: a motor never connects to a GPIO. Remove these pins: the board generator wires the motor driver's outputs to the 2-pin motor connectors, and the GPIOs drive the driver's inputs MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2`, ["architect"], ["pins"])
 	// Each motor's two wires need a 2-pin connector on the driver's outputs (real rover run 5, 15 Nov: nothing asked for
@@ -454,7 +456,18 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		const partRefs = new Set(parts.map((p) => p.ref))
 		const placed = boards.flatMap((b) => b.snapshot.values.connectors ?? []).filter((k) => k.kind === "header" && !partRefs.has(k.ref) && k.ref !== mech.sensor?.connector).map((k) => k.ref)
 		const refs = [...placed, ...["JM1", "JM2"].filter((r) => !partRefs.has(r) && !placed.includes(r))].slice(0, 2 - motorPlugs.size)
-		push("mech-wiring", `the motors need ${2 - motorPlugs.size} more 2-pin connector${motorPlugs.size === 1 ? "" : "s"} (role connector, pins ["1", "2"], the JST PH B2B-PH-K-S in the catalog), one per motor, as ${refs.join(" and ")}${placed.length ? " (the connectors the board already places)" : ""}: the board generator wires the driver's outputs to them`, ["parts"], ["parts"])
+		const plug = motor.encoder ? `6-pin connector${motorPlugs.size === 1 ? "" : "s"} (role connector, the JST SH SM06B-SRSS-TB(LF)(SN) in the catalog, pins ["GND", "ENCB", "ENCA", "VCC", "M2", "M1"]: the ${motor.mpn.split(" ")[0]} carries an encoder)` : `2-pin connector${motorPlugs.size === 1 ? "" : "s"} (role connector, pins ["1", "2"], the JST PH B2B-PH-K-S in the catalog)`
+		push("mech-wiring", `the motors need ${2 - motorPlugs.size} more ${plug}, one per motor, as ${refs.join(" and ")}${placed.length ? " (the connectors the board already places)" : ""}: the board generator wires the driver's outputs to them`, ["parts"], ["parts"])
+	}
+	// An encoder gearmotor (catalog encoder): its plugs are the 6-pin ones, and each encoder's channel A reaches a GPIO
+	// (ENC_LA on JM1, the left motor; ENC_RA on JM2), whose edges the firmware counts for odometry (rover.h; channel B
+	// stays unconnected: the direction is the duty's).
+	if (motor.encoder) {
+		const plain = parts.filter((p) => isMotorPlug(p) && !isEncoderPlug(p))
+		if (plain.length) push("mech-wiring", `${plain.map((p) => p.ref).join(" and ")} ${plain.length === 1 ? "is a 2-pin plug" : "are 2-pin plugs"}, but the ${motor.mpn.split(" ")[0]} carries an encoder on a 6-pin JST SH plug: make ${plain.length === 1 ? "it" : "them"} the SM06B-SRSS-TB(LF)(SN) in the catalog (pins ["GND", "ENCB", "ENCA", "VCC", "M2", "M1"]), keeping the refs`, ["parts"], ["parts"])
+		const enc = parts.filter(isEncoderPlug).sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true })).slice(0, 2)
+		const missing = enc.flatMap((k, i) => (["A"] as const).map((ch) => ({ k, ch, signal: `ENC_${"LR"[i]}${ch}` }))).filter(({ k, ch, signal }) => !pins.some((p) => p.signal === signal && p.partRef === k.ref && p.partPin === `ENC${ch}` && typeof p.gpio === "number" && p.gpio >= 0))
+		if (missing.length) push("mech-wiring", `the encoders' outputs need GPIOs: ${missing.map(({ k, ch, signal }) => `${signal} (partRef ${k.ref}, partPin ENC${ch})`).join(", ")}; the firmware counts them for odometry (the encoders pull up their own outputs)`, ["architect"], ["pins"])
 	}
 	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector" && p.pins.length === 4) : undefined
 	// The sensor's connector ref taken by another part (real rover run 5: "J2", the battery connector): no part can be
