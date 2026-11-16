@@ -130,14 +130,14 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			} else if (placement.debugPort === false) failedWithout++
 			else failedWith++
 			if (best) continue
-			// The drawn-capacitor retry failing on a trace past its bound means this size is too tight around that part:
-			// the router runs other nets through the room the drawn traces need (real rover run 9 at 58×22 mm, 16 Nov
-			// 2026). No later layout with the debug footprint does better, so go straight to the boards without it; and
-			// there, stop: the architect grows the board one step (run 9 at rev 24), cheaper than every layout left.
-			if (placement.drawCaps && TOO_LONG.test(String(error))) {
-				if (withPort && placement.debugPort !== false) { skipToNoPort = true; continue }
-				throw error
-			}
+			// The drawn-capacitor retry failing means this size is too tight around that part (real rover run 9 at 58×22 mm,
+			// 16 Nov 2026): go straight to the boards without the debug footprint; and there, on a trace past its bound, stop:
+			// the architect grows the board one step (run 9 at rev 24), cheaper than every layout left.
+			// Measured: once the drawn retry fails at a size, for any reason (a trace past its bound, or the router's near-misses
+			// the drawn traces cause), no later layout with the debug footprint has built (run 9's 58×22: 9 layouts, the
+			// footprint left off in the end; the 60×21 rover alike).
+			if (placement.drawCaps && withPort && placement.debugPort !== false) { skipToNoPort = true; continue }
+			if (placement.drawCaps && TOO_LONG.test(String(error))) throw error
 			// Layout-sensitive failures try the next layout; the router's junction tangle too (the STM32 logger: 38×22
 			// fails, 38×21 routes, so a nudged LDO may clear it at the same size).
 			if (!layoutSensitive(String(error))) {
