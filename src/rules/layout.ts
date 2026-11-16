@@ -50,7 +50,10 @@ export function completeForRules(mech: Mechanics, v: Partial<ContractValues>, ca
 		const collarMm = Math.max(0, Math.ceil(button.aboveMm - L.estopAboveRobotMm.value))
 		m.safety = { ...m.safety, estop: { part: button.mpn, at: { xMm: Math.round(x), yMm: 0, zMm }, connector: "JE1", collarMm } }
 	}
-	// The beacon high up: brakes and starts no harder than the cap (firmware ramp, mechanics.drive.maxAccelMps2).
+	// The organisers' sticker (F.6, p. 13): a 100 x 70 mm panel on the rear, the face nothing stands in front of on a
+	// differential rover (its wheels are on the sides, its sensor at the front).
+	m.sticker = { face: m.sticker?.face ?? "rear", widthMm: Math.max(m.sticker?.widthMm ?? 0, L.stickerWidthMm.value), heightMm: Math.max(m.sticker?.heightMm ?? 0, L.stickerHeightMm.value) }
+		// The beacon high up: brakes and starts no harder than the cap (firmware ramp, mechanics.drive.maxAccelMps2).
 	m.drive = { ...m.drive, maxAccelMps2: Math.min(m.drive.maxAccelMps2 ?? Infinity, BEACON_BRAKE_CAP_MPS2) }
 	return m
 }
