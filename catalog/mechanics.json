@@ -707,12 +707,14 @@
 			"updateMs": 33,
 			"i2cAddress": 41,
 			"sizeMm": [
-				21,
-				18,
+				25.4,
+				17.8,
 				2.8
 			],
 			"massG": 1.3,
 			"connector": "STEMMA QT: JST SH 4-pin (GND, V+, SDA, SCL)",
+			"mountHolesMm": [[-10.16, -6.35], [10.16, -6.35], [-10.16, 6.35], [10.16, 6.35]],
+			"mountScrewMm": 2.5,
 			"source": {
 				"rangeMm": {
 					"url": "https://www.st.com/resource/en/datasheet/vl53l0x.pdf",
@@ -731,8 +733,16 @@
 					"where": "Table 2: 0x52 8-bit; derived 0x29 7-bit"
 				},
 				"sizeMm": {
-					"url": "https://www.adafruit.com/product/3317",
-					"where": "Product Dimensions: 21.0mm x 18.0mm x 2.8mm"
+					"url": "https://cdn-learn.adafruit.com/assets/assets/000/093/508/original/adafruit_products_VL53L0X_fab_print.png",
+					"where": "Adafruit's fab print of the STEMMA QT board (learn guide, Downloads): 1.00\" x 0.70\"; the product page's 21.0 x 18.0 mm is the pre-2020 board's. Thickness 2.8 mm from the product page"
+				},
+				"mountHolesMm": {
+					"url": "https://cdn-learn.adafruit.com/assets/assets/000/093/508/original/adafruit_products_VL53L0X_fab_print.png",
+					"where": "fab print: four holes at 0.80\" x 0.50\" centres, from the board's centre (width, height)"
+				},
+				"mountScrewMm": {
+					"url": "https://learn.adafruit.com/adafruit-vl53l0x-micro-lidar-distance-sensor-breakout/downloads",
+					"where": "'Use M2.5 or #2-56 screws to mount.'"
 				},
 				"massG": {
 					"url": "https://www.adafruit.com/product/3317",
@@ -843,6 +853,33 @@
 					"url": "https://www.franksfasteners.co.uk/products/m4-hexagon-nuts-din-934-stainless-steel-a2",
 					"where": "Nut Width A/F (S) 7mm"
 				}
+			}
+		},
+		{
+			"mpn": "M2.5x8 pan head machine screw (ISO 7045)",
+			"kind": "screw",
+			"threadMm": 2.5,
+			"pitchMm": 0.45,
+			"lengthMm": 8,
+			"selfTapping": false,
+			"buy": [{ "supplier": "Fastener SuperStore", "url": "https://www.fastenersuperstore.com/products/509243/machine-screws" }],
+			"source": {
+				"threadMm": { "url": "https://www.fastenersuperstore.com/products/509243/machine-screws", "where": "title: M2.5-0.45 x 8 mm Machine Screws / Six-Lobe / Pan Head / 18-8 Stainless Steel / ISO7045" },
+				"pitchMm": { "url": "https://www.fastenersuperstore.com/products/509243/machine-screws", "where": "title: M2.5-0.45" },
+				"lengthMm": { "url": "https://www.fastenersuperstore.com/products/509243/machine-screws", "where": "title: x 8 mm" }
+			}
+		},
+		{
+			"mpn": "M2.5 hex nut (DIN 934)",
+			"kind": "nut",
+			"threadMm": 2.5,
+			"heightMm": 2,
+			"acrossFlatsMm": 5,
+			"buy": [{ "supplier": "Fastener SuperStore", "url": "https://www.fastenersuperstore.com/products/548570/finished-hex-nuts" }],
+			"source": {
+				"threadMm": { "url": "https://www.fastenersuperstore.com/products/548570/finished-hex-nuts", "where": "title: M2.5-0.45 Finished Hex Nuts / 18-8 Stainless Steel / DIN934" },
+				"heightMm": { "url": "https://www.fastenersuperstore.com/products/548570/finished-hex-nuts", "where": "thickness 2 mm" },
+				"acrossFlatsMm": { "url": "https://www.fastenersuperstore.com/products/548570/finished-hex-nuts", "where": "width across flats 5 mm" }
 			}
 		}
 	],

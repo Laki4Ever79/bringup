@@ -227,6 +227,6 @@ test("the report's sourcing lines include the robot's parts: the summary, then e
 test("the report lists what the robot's design doesn't fasten yet", () => {
 	const dir = tempDir()
 	const path = join(dir, "bom.json")
-	writeFileSync(path, JSON.stringify({ revision: 1, totalUsd: null, items: [], robot: { live: false, knownUsd: null, warn: false, summary: "8 robot parts · not checked (mock run)", lines: [], notes: ["the sensor bracket: no screw holes yet"] } }))
+	writeFileSync(path, JSON.stringify({ revision: 1, totalUsd: null, items: [], robot: { live: false, knownUsd: null, warn: false, summary: "10 robot parts · not checked (mock run)", lines: [], notes: ["the sensor bracket: no screw holes yet"] } }))
 	assert.match(sourcingLine(path), /  - Not fastened yet: the sensor bracket: no screw holes yet/)
 })
