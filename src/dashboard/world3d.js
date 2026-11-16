@@ -190,7 +190,13 @@ function roverParts(spec, chassisTris) {
 	const top = lift + spec.plate.thicknessMm
 	if (spec.battery) { const [l, w, h] = spec.battery.sizeMm; add(boxTris([spec.battery.xMm - l / 2, spec.battery.yMm - w / 2, top], [spec.battery.xMm + l / 2, spec.battery.yMm + w / 2, top + h]), PART) }
 	// The beacon support's mast (printed in sections, drawn whole) up to its top, z from the floor (Eurobot F.6).
-	if (spec.beacon) { const b = spec.beacon, h = b.sizeMm / 2; add(boxTris([b.xMm - h, b.yMm - h, top], [b.xMm + h, b.yMm + h, b.topMm]), CHASSIS) }
+	if (spec.beacon) {
+		const b = spec.beacon, h = b.sizeMm / 2
+		add(boxTris([b.xMm - h, b.yMm - h, top], [b.xMm + h, b.yMm + h, b.topMm]), CHASSIS)
+		// The opposing team's beacon it carries, at the largest the rules allow (G.2, p. 16: a square-based parallelepiped of
+		// 100 mm side and 80 mm height), dark: it isn't ours.
+		add(boxTris([b.xMm - 50, b.yMm - 50, b.topMm], [b.xMm + 50, b.yMm + 50, b.topMm + 80]), BOUGHT)
+	}
 	// The emergency stop: its red head above the deck's panel (the deck and collar are in chassis.stl), its body under it.
 	if (spec.estop && spec.estop.aboveMm) {
 		const e = spec.estop, bh = e.bodyMm / 2
