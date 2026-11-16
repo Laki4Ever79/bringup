@@ -739,6 +739,8 @@ export interface PlacementOptions {
 	// to the router. A retry, not the default: drawn first, they shift every other route, and boards that routed clean
 	// lost their debug footprint to traces beside its holes (the 43×28 rover, 47 s → 201 s, 15 Nov 2026).
 	drawCaps?: boolean
+	// mm of routing room kept free of other parts around a part's pin-capacitor group (an experiment; 0 or absent: none).
+	capChannelMm?: number
 }
 
 // Board mounting holes for M2 screws: 2.2 mm clearance holes, centred 3 mm in from each corner. Nothing is placed
@@ -887,6 +889,10 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// trying them in order; a crowded board's search spent most of its time on the parts that weren't in the way).
 	let lastBlock = 0
 	const blocks = (b: Placed, o: Placed, hug?: string) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) < (o.ref === hug ? CHIP_GAP_MM : GAP_MM)
+	// Routing room kept around a part's pin-capacitor group (opts.capChannelMm): the experiment of 16 Nov 2026 after the
+	// drawn-trace retry failed on crowded boards (real rover run 9 at 58×22 mm): other parts kept this far off the
+	// capacitors' outer sides, so other nets pass around the group instead of through the gaps its traces need.
+	const channels: (Placed & { owner: string; caps: Set<string> })[] = []
 	const fits = (b: Placed, hug?: string) => {
 		if (Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM) return false
 		if (lastBlock < placed.length && blocks(b, placed[lastBlock], hug)) return false
@@ -895,6 +901,8 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 				lastBlock = k
 				return false
 			}
+		// The routing channel around a part's pin-capacitor group (capChannel): only that part and its capacitors may sit in it.
+		if (channels.some((c) => b.ref !== c.owner && !c.caps.has(b.ref) && overlaps(b, c))) return false
 		return keepouts.every((o) => !overlaps(b, o))
 	}
 
@@ -946,6 +954,14 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// capacitor's reserved box). The grid alone missed it: on the real rover run 6's 44×29 board U5's VCP box sat at
 	// x −9.12, and the grid's −9.0 was 0.03 mm too near the radio module and −9.5 too near U5, so C4 went 4 mm away from
 	// its pin and its traces ran 8.2 mm against 5 (16 Nov 2026).
+	// The channel box around a part's capacitor boxes, grown by opts.capChannelMm on every side; null without one.
+	const channelOf = (ref: string, boxes: Placed[]): (Placed & { owner: string; caps: Set<string> }) | null => {
+		const ch = opts.capChannelMm ?? Number(process.env.BRINGUP_CAP_CHANNEL_MM ?? 0) // the env: the experiment's switch
+		if (!(ch > 0) || !boxes.length) return null
+		const [x0, x1] = [Math.min(...boxes.map((c) => c.x - c.w / 2)) - ch, Math.max(...boxes.map((c) => c.x + c.w / 2)) + ch]
+		const [y0, y1] = [Math.min(...boxes.map((c) => c.y - c.h / 2)) - ch, Math.max(...boxes.map((c) => c.y + c.h / 2)) + ch]
+		return { ref: `${ref}-channel`, x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0, rotation: 0, owner: ref, caps: new Set(boxes.map((c) => c.ref)) }
+	}
 	const place = (ref: string, footprint: string, rotation: number, want: { x: number; y: number }, hug?: string, exact?: Placed & { owner: string }): Placed | undefined => {
 		const [w, h] = sizeAt(footprint, rotation)
 		// A footprint whose extent isn't centred on its origin (FOOTPRINT_OFFSET): the box is placed, the part sits off it.
@@ -964,7 +980,13 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 			const b = { ref, x: -W / 2 + i * GRID_MM, y: -H / 2 + j * GRID_MM, w, h, rotation }
 			const d = Math.hypot(b.x - want.x, b.y - want.y)
 			const better = d < bestD - 1e-9 || (d <= bestD + 1e-9 && (i < bestIJ[0] || (i === bestIJ[0] && j < bestIJ[1])))
-			if (better && fits(b, hug) && capBoxes(b, footprint).every((c) => fits(c, ref))) [best, bestD, bestIJ] = [b, d, [i, j]]
+			if (better && fits(b, hug)) {
+				const boxes = capBoxes(b, footprint)
+				const chan = channelOf(ref, boxes)
+				// The channel must be free of the parts already placed (and stay on the board).
+				const chanFree = !chan || (placed.every((o) => o.ref === ref || !overlaps(chan, o)) && Math.abs(chan.x) + chan.w / 2 <= W / 2 && Math.abs(chan.y) + chan.h / 2 <= H / 2)
+				if (chanFree && boxes.every((c) => fits(c, ref))) [best, bestD, bestIJ] = [b, d, [i, j]]
+			}
 		}
 		const rMax = Math.max(ci, ni - ci, cj, nj - cj)
 		for (let r = 0; r <= rMax && r * GRID_MM - off <= bestD + 1e-9; r++) {
@@ -983,7 +1005,10 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		if (best && (dx !== 0 || dy !== 0)) best = { ...best, ox: +(best.x - dx).toFixed(3), oy: +(best.y - dy).toFixed(3) }
 		if (best) {
 			placed.push(best)
-			for (const c of capBoxes(best, footprint)) reservedCaps.set(c.ref, { ...c, owner: ref })
+			const boxes = capBoxes(best, footprint)
+			for (const c of boxes) reservedCaps.set(c.ref, { ...c, owner: ref })
+			const chan = channelOf(ref, boxes)
+			if (chan) channels.push(chan)
 		}
 		return best
 	}

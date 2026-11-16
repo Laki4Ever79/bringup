@@ -84,6 +84,9 @@ export const CRADLE_WALL_MM = 2
 export const BRACKET_PLATE_HOLE_MM = 2.4
 // The clamp's M2 self-tapping screws: the board standoffs' pilot (STANDOFF.pilotMm) in a 4 mm boss beside the cradle.
 export const CLAMP_BOSS_MM = 4
+// The bracket matches by the motor's cross-section, any length: real run 13's POLOLU-5139 (an encoder motor, 32 mm long)
+// was refused by a 26 mm length match and both motors became a hardware misfit (16 Nov 2026). An encoder motor goes
+// in with its encoder's connector side away from the plate (its other sides stay within the cross-section or 0.25 mm).
 // How a motor is held (lead and bringup-board, 16 Nov 2026): Pololu's bracket when it fits the motor and the design's
 // axle drop is its axleFromFaceMm (±0.5 mm: the plate height is never changed for it); else the printed cradle with a
 // clamp, when the cradle can reach that drop; else nothing that holds it there. The printed cradle alone needs a wall above
@@ -91,7 +94,7 @@ export const CLAMP_BOSS_MM = 4
 // 7.0 mm without a word (py/chassis.py clamped it).
 export function motorMount(m: { xMm: number; yMm: number; bodyMm: [number, number, number]; axleDropMm: number }, motorMpn: string, mounts: MotorMountPart[], pilotMm: number): MotorMount {
 	const [L, W, H] = m.bodyMm
-	const bracket = mounts.find((b) => b.kind === "bracket" && /^POLOLU-/i.test(motorMpn) && b.fitsBodyMm.every((v, i) => Math.abs(v - m.bodyMm[i]) < 0.5) && Math.abs(m.axleDropMm - b.axleFromFaceMm) <= 0.5)
+	const bracket = mounts.find((b) => b.kind === "bracket" && /^POLOLU-/i.test(motorMpn) && b.fitsCrossSectionMm.every((v, i) => Math.abs(v - m.bodyMm[i + 1]) < 0.5) && Math.abs(m.axleDropMm - b.axleFromFaceMm) <= 0.5)
 	if (bracket) {
 		// The shaft (and the gearbox's face) points out to the wheel, along y.
 		const out = Math.sign(m.yMm) || 1

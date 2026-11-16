@@ -194,3 +194,15 @@ test("a clamped rover's chassis: its standoffs are the board's holes, the clamp 
 	assert.equal(mounts.standoffHoles.length, spec.boards.reduce((n, b) => n + b.holes.length, 0))
 	assert.deepEqual(boardMountChecks(s, mounts), [])
 })
+
+// Real run 13 (Eurobot, 16 Nov 2026): POLOLU-5139, a micro metal gearmotor with an encoder (32 mm long), at a 5 mm axle
+// drop. The bracket matched the 26 mm body length too and refused it: both motors were a hardware misfit. It clamps the
+// 10 × 12 mm cross-section (Pololu: it fits the longer 1000:1 gearbox too), so any length fits.
+test("an encoder micro metal gearmotor at 5 mm takes the bracket: it fits by cross-section, not length", async () => {
+	const { readFileSync } = await import("node:fs")
+	const { hardwareFit } = await import("../src/tools/robot-parts.ts")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/cc-eurobot13-rev41.json", import.meta.url), "utf8")) as ContractSnapshot
+	const spec = chassisSpec(s)!
+	assert.ok(spec.motors.every((m) => m.mount.kind === "bracket"), JSON.stringify(spec.motors.map((m) => [m.bodyMm, m.axleDropMm, m.mount.kind])))
+	assert.ok(!hardwareFit(s).some((m) => /printed cradle needs/.test(m)), hardwareFit(s).join("\n"))
+})

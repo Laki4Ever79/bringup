@@ -115,7 +115,8 @@ export interface HardwarePart {
 export interface MotorMountPart extends Sourced {
 	kind: "bracket"
 	perPack: number
-	fitsBodyMm: [number, number, number]
+	// The motor cross-section it clamps (width, height): any length (a longer gearbox, an encoder on the back).
+	fitsCrossSectionMm: [number, number]
 	axleFromFaceMm: number
 	holeSpacingMm: number
 	holeDiaMm: number

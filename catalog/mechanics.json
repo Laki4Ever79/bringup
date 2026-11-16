@@ -916,7 +916,7 @@
 			"mpn": "POLOLU-989 Micro Metal Gearmotor Bracket Pair",
 			"kind": "bracket",
 			"perPack": 2,
-			"fitsBodyMm": [26, 12, 10],
+			"fitsCrossSectionMm": [12, 10],
 			"axleFromFaceMm": 5.0,
 			"holeSpacingMm": 18.0,
 			"holeDiaMm": 2.3,
@@ -925,7 +925,7 @@
 			"buy": [{ "supplier": "Pololu", "url": "https://www.pololu.com/product/989", "packQty": 2 }],
 			"source": {
 				"perPack": { "url": "https://www.pololu.com/product/989", "where": "product name: Micro Metal Gearmotor Bracket Pair" },
-				"fitsBodyMm": { "url": "https://www.pololu.com/product/989", "where": "for micro metal gearmotors, 10 mm x 12 mm x 26 mm" },
+				"fitsCrossSectionMm": { "url": "https://www.pololu.com/product/989", "where": "'the ubiquitous 10 mm x 12 mm x 26 mm metal gearhead motors ... such as our micro metal gearmotors'; 'also works with the 1000:1 micro metal gearmotors' (a longer gearbox): it fits by the 10 x 12 mm cross-section, not the length. An encoder version (pololu.com/product/5139): the encoder 'fit[s] within the gearbox cross section on the side opposite the connector', 0.25 mm past it on the two other sides: flat against the plate with its connector side away" },
 				"axleFromFaceMm": { "url": "https://www.pololu.com/file/0J833/micro-metal-gearmotor-with-1086-bracket.step", "where": "measured (build123d): motor axis at y 0, the bracket's mounting face at y -5.0 (flush with the motor's flat side)" },
 				"holeSpacingMm": { "url": "https://www.pololu.com/file/0J833/micro-metal-gearmotor-with-1086-bracket.step", "where": "measured (build123d): two 2.3 mm hole axes at z -9.0 and +9.0, across the motor" },
 				"holeDiaMm": { "url": "https://www.pololu.com/file/0J833/micro-metal-gearmotor-with-1086-bracket.step", "where": "measured (build123d): hole cylinders of radius 1.15 mm through the 1.4 mm base" },
