@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process"
+import { mount } from "./mount.ts"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { promisify } from "node:util"
@@ -48,7 +49,7 @@ export async function simulatePower(root: string, dir: string, s: ContractSnapsh
 	const script = 'for f in *.cir; do ngspice -b "$f" -o "${f%.cir}.log" || exit 1; done'
 	const uid = `${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`
 	try {
-		await exec("docker", ["run", "--rm", "-u", uid, "-e", "HOME=/tmp", "-v", `${dir}:/w`, "-w", "/w", IMAGE, "sh", "-c", script], { timeout: TIMEOUT_MS })
+		await exec("docker", ["run", "--rm", "-u", uid, "-e", "HOME=/tmp", "-v", mount(dir, "/w"), "-w", "/w", IMAGE, "sh", "-c", script], { timeout: TIMEOUT_MS })
 	} catch (e) {
 		const err = e as { stderr?: string; killed?: boolean; message: string }
 		const why = err.killed ? `timed out after ${TIMEOUT_MS / 1000} s` : "failed"
