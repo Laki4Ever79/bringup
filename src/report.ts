@@ -1,4 +1,5 @@
 import { standardsSection } from "./contract/standards.ts"
+import { robotRuntime } from "./agents/design-facts.ts"
 import { rosSection } from "./ros/report.ts"
 import type { RobotParts } from "./tools/robot-parts.ts"
 import { readBrief } from "./brief-file.ts"
@@ -267,7 +268,8 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...(v.model ? [`- Model: ${v.model.task} (${v.model.sensor} at ${v.model.sampleRateHz} Hz, ${v.model.windowMs} ms window), weights ${v.model.weightsKb} KB, arena ${v.model.arenaKb} KB, ${v.model.quantization} ${v.model.runtime}, listening ${v.model.listening}`] : []),
 		...(v.model?.data ? [`- Model data: ${v.model.data.status === "recorded" ? "recorded" : "NEEDED"} on sensor path ${v.model.data.pathHash} (rev ${v.model.data.revision})${v.model.data.status === "needed" ? ": the hardware moved under the model's training data; record it again with the data-collection firmware" : ""}`] : []),
 		`- Rails (peak/rated): ${(v.rails ?? []).map((r) => `${r.name} ${r.loadMa}/${r.regulatorMaxMa} mA${r.averageMa !== undefined ? `, average ${r.averageMa} mA` : ""}`).join("; ")}`,
-		`- Estimated battery life: ${batteryLifeSummary(estimatePower(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""))}`,
+		// A robot's battery life is its runtime while driving (the same line the agents get: design-facts robotRuntime).
+		robotRuntime(snapshot, [`- Estimated battery life: ${batteryLifeSummary(estimatePower(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""))}`])[0],
 		``,
 		...mechanicsSection(snapshot, s.artifacts.drive),
 		...rosSection(outDir),

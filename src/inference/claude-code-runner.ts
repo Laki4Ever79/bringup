@@ -82,9 +82,21 @@ export class ClaudeCodeRunner implements InferenceRunner {
 	async run(input: InferenceInput): Promise<InferenceOutput> {
 		const { system, prompt } = transcriptOf(input.context.getItems(), input.tools)
 		const model = CLI_MODEL[input.model] ?? "sonnet"
-		const r = await claude(["-p", "--output-format", "json", "--model", model, "--tools", "", "--no-session-persistence", "--system-prompt", system, "--json-schema", JSON.stringify(OUTPUT_SCHEMA)], prompt, this.timeoutMs)
+		const base = ["-p", "--output-format", "json", "--model", model, "--tools", "", "--no-session-persistence", "--system-prompt", system]
+		let r = await claude([...base, "--json-schema", JSON.stringify(OUTPUT_SCHEMA)], prompt, this.timeoutMs)
+		// The CLI gives up after its own schema retries on a long answer (rover run cc-eurobot-14, 16 Nov 2026: the reviewer's
+		// submit_review failed it six times and the whole review was lost). Ask once more for the same JSON as plain text.
+		let fallback = false
+		if (r.code !== 0 && /error_max_structured_output_retries|structured_output_retry_exhausted/.test(r.out + r.err)) {
+			r = await claude(base, `${prompt}\n\nAnswer with exactly one JSON object and nothing else: {"message": string or null, "calls": [{"name": <tool>, "arguments": {...}}]}.`, this.timeoutMs)
+			fallback = true
+		}
 		if (r.code !== 0) throw new Error(`claude -p failed (${r.code}): ${(r.err || r.out).trim().split("\n").slice(-3).join(" ")}`)
 		const d = JSON.parse(r.out) as { is_error?: boolean; result?: string; structured_output?: { message?: string | null; calls?: { name: string; arguments: unknown }[] }; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+		if (fallback && !d.is_error && !d.structured_output) {
+			const parsed = answerFromText(String(d.result ?? ""))
+			if (parsed) d.structured_output = parsed
+		}
 		if (d.is_error || !d.structured_output) throw new Error(`claude -p gave no structured answer: ${String(d.result ?? "").slice(0, 200)}`)
 		const names = new Set((input.tools ?? []).map((t) => (t as unknown as { name: string }).name))
 		const items: InferenceOutput["items"] = []
@@ -104,4 +116,23 @@ export class ClaudeCodeRunner implements InferenceRunner {
 	async *stream(input: InferenceInput): AsyncGenerator<SemanticEvent> {
 		yield SemanticEvent.create("inference.output", input.model, await this.run(input))
 	}
+}
+
+// The answer's JSON from a plain-text reply: the last {...} that parses and has a calls array (inside a code fence or not).
+export function answerFromText(text: string): { message?: string | null; calls: { name: string; arguments: unknown }[] } | null {
+	const fenced = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map((m) => m[1])
+	const candidates = [...fenced.reverse(), text]
+	for (const c of candidates) {
+		for (let start = c.lastIndexOf("{"); start >= 0; start = c.lastIndexOf("{", start - 1)) {
+			for (let end = c.length; end > start; end = c.lastIndexOf("}", end - 1)) {
+				const slice = c.slice(start, end + 1)
+				try {
+					const v = JSON.parse(slice) as { calls?: unknown }
+					if (v && Array.isArray(v.calls)) return v as { message?: string | null; calls: { name: string; arguments: unknown }[] }
+				} catch {}
+				if (end <= start + 1) break
+			}
+		}
+	}
+	return null
 }

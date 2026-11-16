@@ -27,6 +27,13 @@ static const RoverEncConfig ENC_CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUIS
 static RoverEncState encState;
 #endif
 static RoverState state;
+#ifdef ROVER_ENC_COUNTS_PER_REV
+#include "rover_odo.h"
+static RoverOdo odo;
+static RoverGoto go;
+static RoverRoute route;
+static uint32_t nextOdo = 0;
+#endif
 #ifdef PIN_START
 // A pull-cord start (match.h, Eurobot General Rules 1.2 F.6): no drive until the cord, in at power-up, is pulled; with
 // MATCH_MS (H.3) every motor stops for good that long after. The simulation pulls the cord at its first tick.
@@ -54,6 +61,17 @@ void setup() {
 	pinMode(PIN_START, INPUT_PULLUP);  // the board's 10k pulls it up too; the cord's loop holds it low
 #endif
 	linkBegin();  // after hw_begin: the I2C bus is up for a link that shares it
+#if defined(ROVER_ENC_COUNTS_PER_REV) && defined(ROVER_GOTO_X_MM)
+	// The simulation's go-to test (PLATFORMIO_BUILD_FLAGS): the target from the start.
+	rover_route_add(route, ROVER_GOTO_X_MM, ROVER_GOTO_Y_MM);
+#endif
+#if defined(ROVER_ENC_COUNTS_PER_REV) && defined(ROVER_GOTO_LAP_W_MM)
+	// The simulation's lap: a rectangle's corners, counter-clockwise, and back to the start.
+	rover_route_add(route, ROVER_GOTO_LAP_W_MM, 0);
+	rover_route_add(route, ROVER_GOTO_LAP_W_MM, ROVER_GOTO_LAP_H_MM);
+	rover_route_add(route, 0, ROVER_GOTO_LAP_H_MM);
+	rover_route_add(route, 0, 0);
+#endif
 #ifdef LINK_TEST
 	// The system's link test, as in the product firmware: a known reading (21.50 C, 40.25 %RH) on each link every half
 	// second and whatever arrives printed, for 10 s (the bench build, LINK_TEST_FOREVER, until reset); the motors stay off.
@@ -96,7 +114,21 @@ static void hostPoll(uint32_t now) {
 		if (c == '\n' || c == '\r') {
 			hostLine[hostLen] = 0;
 			float l, r;
+#ifdef ROVER_ENC_COUNTS_PER_REV
+			// `G <x_mm> <y_mm>`: drive to that point (odometry: from where it started, x ahead, y to its left), after the
+			// points already queued (a route, up to 16); an H command clears the route and stops it.
+			if (hostLen && sscanf(hostLine, "G %f %f", &l, &r) == 2) {
+				if (!rover_route_add(route, l, r)) Serial.println("GOTO route full (16 points)");
+				hostLen = 0;
+				continue;
+			}
+#endif
 			if (hostLen && sscanf(hostLine, "H %f %f", &l, &r) == 2) {
+#ifdef ROVER_ENC_COUNTS_PER_REV
+				go.active = false;
+				go.done = false;
+				rover_route_clear(route);
+#endif
 				hostLeft = constrain(l, -1.0f, 1.0f);
 				hostRight = constrain(r, -1.0f, 1.0f);
 				hostAt = now;
@@ -109,14 +141,32 @@ static void hostPoll(uint32_t now) {
 	}
 }
 
+#ifdef ROVER_HOLD_MM
+#include "rover_hold.h"
+static RoverHold hold;
+#endif
+
 void loop() {
 	int d = hw_distance_mm();
 	uint32_t now = hw_now_ms();
 	hostPoll(now);
+#ifdef ROVER_HOLD_MM
+	// Under a competition's rules: stop for what is ahead and wait for it to leave (rover_hold.h); the drive's own step
+	// doesn't run while holding, so it never starts a turn away from the opponent. Without the define (no rules) the
+	// lines below build exactly as before.
+	const bool holding = rover_hold(hold, d, now, ROVER_HOLD_MM, ROVER_CLEAR_MM, ROVER_BLIND_MM, ROVER_HOLD_MAX_MS);
+	if (holding) Serial.printf("HOLD %lu %d\n", (unsigned long)now, d);
+#ifdef ROVER_TURN_COUNTS
+	RoverOut out = holding ? RoverOut{0, 0} : rover_enc_step(ENC_CFG, encState, d, now, hw_encoder(0), hw_encoder(1));
+#else
+	RoverOut out = holding ? RoverOut{0, 0} : rover_step(CFG, state, d, now);
+#endif
+#else
 #ifdef ROVER_TURN_COUNTS
 	RoverOut out = rover_enc_step(ENC_CFG, encState, d, now, hw_encoder(0), hw_encoder(1));
 #else
 	RoverOut out = rover_step(CFG, state, d, now);
+#endif
 #endif
 	if (hostSeen) {
 		const bool fresh = (uint32_t)(now - hostAt) <= HOST_HOLD_MS;
@@ -124,8 +174,34 @@ void loop() {
 		out.right = fresh ? hostRight : 0;
 		// The safety the firmware owns: no forward drive into what the sensor sees within the stop distance.
 		if (d >= 0 && d < ROVER_STOP_MM && out.left > 0 && out.right > 0) out.left = out.right = 0;
+#ifdef ROVER_HOLD_MM
+		if (holding && out.left > 0 && out.right > 0) out.left = out.right = 0;
+#endif
 		Serial.printf("R %lu %d %.3f %.3f\n", (unsigned long)now, d, out.left, out.right);
 	}
+#ifdef ROVER_ENC_COUNTS_PER_REV
+	// Odometry every tick; while a target is set (G, or the simulation's ROVER_GOTO_X_MM) it drives there instead of the
+	// avoidance or a host's duties (rover_odo.h). It stops for something in its way: a reading inside the stop (or the
+	// opponent hold) distance that is also nearer than the target plus OPPONENT_GAP, not the wall beyond the target.
+	rover_odo_step(odo, hw_encoder(0), hw_encoder(1), ROVER_MM_PER_COUNT, ROVER_TRACK_MM);
+	rover_route_next(route, go);
+	if (go.active) {
+		out = rover_goto_step(go, odo, ROVER_CRUISE_DUTY, ROVER_GOTO_MIN_DUTY);
+#ifdef ROVER_HOLD_MM
+		const int guard = ROVER_HOLD_MM;
+#else
+		const int guard = ROVER_STOP_MM;
+#endif
+		if (d >= 0 && d < guard && d < rover_goto_remaining(go, odo) + ROVER_GOTO_GAP_MM && out.left > 0 && out.right > 0) out.left = out.right = 0;
+		if (go.done) Serial.printf("GOTO done %.1f %.1f (target %.1f %.1f)\n", odo.x, odo.y, go.tx, go.ty);
+	} else if (go.done) {
+		out.left = out.right = 0;  // arrived: it stays there until the next G or H
+	}
+	if ((int32_t)(now - nextOdo) >= 0) {
+		nextOdo = now + 500;
+		Serial.printf("ODO %lu %.1f %.1f %.3f\n", (unsigned long)now, odo.x, odo.y, odo.th);
+	}
+#endif
 #ifdef PIN_START
 	if (!match_step(match, cordIn(now), now, MATCH_MS)) out.left = out.right = 0;
 #endif
