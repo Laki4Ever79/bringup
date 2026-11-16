@@ -86,6 +86,14 @@ is a change to the firmware toolchain, not just the code.
       it, 0.2488 mm against 0.3. Not a router via (via-edge.ts moves those): find which copper (a pad, a trace, a test
       pad) and fix it the general way.
 
+- [ ] **The router doesn't avoid drawn capacitor traces** (16 Nov 2026, real rover run 9 rev 23 at 58×22 mm, fixture
+      cc-rover9-58x22-rev23.json): the drawCaps retry draws U5's capacitor traces (pcbPath), but tscircuit's autorouter
+      routes other nets as if they weren't there: by hand at 678b509 a via landed on VM's drawn trace and BISEN/GND and
+      MOT_BIN1 passed 0.04-0.09 mm from it. Tried and rejected: keepouts along the drawn segments (tscircuit flags the
+      pads, courtyards and the drawn traces themselves) and pcbRouteHints (ignored by the autorouter: 14.59 mm as
+      without). The run recovered by growing the board (rev 24). Fix to build: a post-route repair in the via-edge.ts
+      pattern that moves the router's vias and corners off a drawn trace's clearance, then a routed proof on this fixture.
+
 - [ ] **Narrow boards the router can't route around the motor driver** (15 Nov, revised: reserving the capacitors' boxes
       was tried and changed nothing: on the 60×21 board C3 and C4 already sit in their spots beside U5's pins; the
       traces fail on congestion, 8-9 mm against 5. Today's working path: the build reports the too-long trace and the
