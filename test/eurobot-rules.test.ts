@@ -45,7 +45,7 @@ test("the reference rover without safety parts fails the rules on its e-stop and
 	assert.match(before[1], /^F\.6.*only a pull-cord start/)
 	assert.deepEqual(mechanicsChecksWith(rover(), defaultCheckCatalog()!), [])
 	const figs = mechanicsFigures(rover()).filter((f) => f.check.startsWith("eurobot-2026"))
-	assert.equal(figs.length, 12)
+	assert.equal(figs.length, 13, "12 cited figures + F.4.b lithium battery")
 	assert.ok(figs.every((f) => f.ok && f.sources?.[0].url.includes("eurobot.org")))
 })
 
