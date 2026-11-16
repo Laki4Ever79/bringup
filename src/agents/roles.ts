@@ -13,7 +13,7 @@ import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
 import { rankMcus, type McuRequest } from "../mcu/select.ts"
 import { MECHANICS_SHAPE } from "../mechanics/shape.ts"
-import { solveChassis, type ChassisChoice } from "../mechanics/solve.ts"
+import { solveWithMotorClass, type ChassisChoice } from "../mechanics/solve.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 
 // Splits the grounding check's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
@@ -233,8 +233,8 @@ function layoutChassisTool(): Tool {
 		invoke: async (choice: ChassisChoice) => {
 			const cat = defaultCheckCatalog()
 			if (!cat) return { error: "no mechanics catalog on this machine" }
-			const r = solveChassis(state().contract.snapshot(), choice, cat)
-			return { passes: r.mechanics !== null && r.remaining.length === 0, mechanics: r.mechanics, why: r.why }
+			const r = solveWithMotorClass(state().contract.snapshot(), choice, cat)
+			return { passes: r.mechanics !== null && r.remaining.length === 0, mechanics: r.mechanics, why: r.motorNote ? `${r.why}; ${r.motorNote}` : r.why }
 		},
 	}
 }
