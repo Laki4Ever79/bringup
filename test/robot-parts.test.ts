@@ -12,7 +12,7 @@ const offerPage = (price: number, availability: string, extra: object = {}) => `
 test("the rover's parts list has two motors, a pair of wheels, a caster, the battery and the distance sensor", () => {
 	const lines = robotPartLines(rover())
 	const by = (item: string) => lines.find((l) => l.item === item)!
-	assert.deepEqual(lines.map((l) => l.item), ["motor", "wheel", "caster", "battery", "distance sensor", "board screw", "caster screw", "caster nut", "sensor screw", "sensor nut"])
+	assert.deepEqual(lines.map((l) => l.item), ["motor", "wheel", "caster", "battery", "distance sensor", "board screw", "caster screw", "caster nut", "sensor screw", "sensor nut", "clamp screw"])
 	assert.equal(by("motor").mpn, "POLOLU-2367 100:1 MP 6V")
 	assert.equal(by("motor").qty, 2)
 	// Wheels are sold in pairs: two wheels are one pack.
@@ -32,9 +32,9 @@ test("a mock run checks nothing and says so", async () => {
 	const r = await checkRobotParts(robotPartLines(rover()), { live: false })
 	assert.ok(r.lines.every((l) => l.status === "not checked"))
 	// The caster the rover uses (TENTE, an industrial part) has no shop link; the rest would be checked in a live run.
-	assert.deepEqual(r.lines.map((l) => l.note), ["not checked (mock run)", "not checked (mock run)", "no shop link in catalog/mechanics.json", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)"])
+	assert.deepEqual(r.lines.map((l) => l.note), ["not checked (mock run)", "not checked (mock run)", "no shop link in catalog/mechanics.json", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)"])
 	assert.equal(r.knownUsd, null)
-	assert.match(r.summary, /10 robot parts · not checked \(mock run\)/)
+	assert.match(r.summary, /11 robot parts · not checked \(mock run\)/)
 })
 
 test("live: a shop's price, stock and lead time are used; a refusing shop is named and not priced", async () => {

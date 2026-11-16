@@ -22,10 +22,13 @@ export function interfacesOf(s: ContractSnapshot): InterfaceRow[] {
 	const links = v.links ?? []
 	if (links.some((l) => l.kind === "i2c")) out.push({ interface: "I²C link between boards", standard: "I²C (NXP UM10204, freely published)", openness: "open" })
 	if (links.some((l) => l.kind === "uart")) out.push({ interface: "UART link between boards", standard: "asynchronous serial, 8N1 (a de facto standard; no owner)", openness: "open" })
+	if (links.some((l) => l.kind === "can")) out.push({ interface: "CAN link between boards (physical and frames)", standard: "ISO 11898-1/-2 (CAN), 120 Ω terminated", openness: "open" })
 	if (links.some((l) => l.connector)) out.push({ interface: "link connector (JST SH 4-pin, 1 mm)", standard: "JST's SH series; the pin order is SparkFun's Qwiic convention (open)", openness: "vendor", alternative: "the footprint is JST's, but second sources make compatible 1 mm 4-pin housings; the pinout is already the open Qwiic one" })
 	// The messages over a link: our own frame (sync, definition hash, length, XOR) on UART and I2C.
 	if (links.some((l) => (l.kind === "uart" || l.kind === "i2c") && l.messages?.length))
 		out.push({ interface: "messages over UART/I²C links (templates/fw/include/linkframe.h)", standard: "Bringup's own frame: sync bytes, definition hash, length, payload, XOR", openness: "ours", alternative: "COBS framing (Cheshire and Baker, IEEE/ACM ToN 1999) with CBOR payloads (RFC 8949), or MAVLink v2: open, with existing tools to read them" })
+	if (links.some((l) => l.kind === "can" && l.messages?.length))
+		out.push({ interface: "messages over a CAN link", standard: "Bringup's own: the definition hash as the 29-bit identifier, the packed struct as data", openness: "ours", alternative: "Cyphal/CAN (OpenCyphal, MIT-licensed specification and libraries) or CANopen (CiA 301): open, with existing bus tools" })
 	if (v.requirements?.debugPort !== false && v.outline && debugPinout(s))
 		out.push({ interface: "debug footprint (Tag-Connect TC2030-NL, underside)", standard: "Tag-Connect's cable and footprint (the footprint is free to use; the cable is theirs); ARM's SWD pinout or Espressif's UART-download pins on it", openness: "vendor", alternative: "ARM's 10-pin 0.05\" Cortex Debug connector (an open pinout every SWD probe takes), at about 6 × 6 mm of top-side room; or bare test pads" })
 	const c = v.connectivity

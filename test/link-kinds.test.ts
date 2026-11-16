@@ -13,9 +13,9 @@ const spec = (kind: LinkKind): SystemSpec => ({
 	links: [{ id: "L1", kind, a: { board: "a" }, b: { board: "b" }, cable: { lengthMm: 300 }, messages: [{ name: "reading", from: "a", fields: [{ name: "t", type: "i16" }] }] }],
 })
 
-test("every kind has one entry; only UART and I2C are built", () => {
-	assert.deepEqual(Object.keys(LINK_KINDS), ["uart", "i2c", "spi", "i2s", "espnow", "ble"])
-	assert.deepEqual(BUILT_KINDS, ["uart", "i2c"])
+test("every kind has one entry; UART, I2C and CAN are built", () => {
+	assert.deepEqual(Object.keys(LINK_KINDS), ["uart", "i2c", "can", "spi", "i2s", "espnow", "ble"])
+	assert.deepEqual(BUILT_KINDS, ["uart", "i2c", "can"])
 	assert.equal(LINK_KINDS.spi.gpios, 4)
 	assert.equal(LINK_KINDS.i2s.carries, "stream")
 	assert.equal(LINK_KINDS.ble.connector, null)
@@ -33,7 +33,7 @@ test("a spec naming an unbuilt kind is a clear error, not a crash", () => {
 test("the shape check accepts only kinds the table knows", () => {
 	const [l] = boardLinks(spec("uart"), "a")
 	assert.equal(linksShapeError([l]), null)
-	assert.match(String(linksShapeError([{ ...l, kind: "can" }])), /links must be an array/)
+	assert.match(String(linksShapeError([{ ...l, kind: "rs485" }])), /links must be an array/)
 })
 
 // ---- the pin and peripheral budget ----------------------------------------------------------------------------

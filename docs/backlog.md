@@ -143,6 +143,7 @@ is a change to the firmware toolchain, not just the code.
       bit rate, termination at both ends and only there, every board on the bus has a controller and a transceiver,
       one bit rate per bus); tests: host codec and compile (QEMU has no TWAI), bench with two boards. A brief or a
       system spec that names CAN gets it; the architect never swaps it for UART.
+      (built 15 Nov, see above)
 - [ ] **Open standards by default** (the user, 15 Nov, asked whether we insist on them; recommended yes). Today open
       where it was the obvious choice (KiCad, STEP/STL, PlatformIO/Arduino, BTHome v2, CycloneDX) but not a rule, and
       some interfaces are ours or one vendor's: the board-to-board message framing (`templates/fw/include/linkframe.h`,
@@ -193,6 +194,13 @@ is a change to the firmware toolchain, not just the code.
       M2.5 holes at 20.32 × 12.7 mm: fixed, sourced. The bracket gets Ø2.7 holes where they land above the plate
       (chassis.ts sensorHoles; the built chassis measures them back), and the parts list an M2.5×8 screw and nut per
       hole (ISO 7045 / DIN 934, sourced). The e2e rover: 0 → 4 screws and 4 nuts, notes of unfastened parts 4 → 3.
+      Step 16 Nov (bringup-board, branch motor-mounts, agreed with bringup-lead): each motor is held. Pololu's #989
+      bracket (sourced from its page and measured from its STEP: axle 5.0 mm from the mounting face, holes 18.0 mm apart
+      across the motor) when the motor is a micro metal gearmotor and the design's axle sits 5.0 ± 0.5 mm under the plate:
+      no cradle, two holes through the plate, one bracket per motor in the parts list. Else the printed cradle with a
+      printed clamp (motor-clamp.stl) on two M2 self-tapping screws into bosses. Else a hardware-misfit says nothing holds
+      it there. Found on the way: the cradle needs 2 mm of wall above the motor, so every real subscription rover (5.0 mm
+      asked) was built at 7.0 mm without a word; brackets now hold them at 5.0. The plate height is never changed.
       Measured for the next step: Pololu's motor bracket pair #989 (two Ø2.3 mm holes 18.0 mm apart in a 1.4 mm base,
       #2-56 screws and nuts included; from Pololu's STEP). Left: motor clamps, battery strap, cables and crimp housings.
 - [x] **Bring-up test pads on every design, on by default** (built 13 Nov, 54e83ec; the nets a learned part adds come

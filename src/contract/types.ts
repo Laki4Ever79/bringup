@@ -246,6 +246,8 @@ export interface BoardLink {
 	// i2c (IO1 SDA, IO2 SCL): this board's role on the bus, its address as a target, whether it fits the bus pull-ups
 	// peerAddress: the controller sends to it (the target's own address).
 	i2c?: { role: "controller" | "target"; address?: number; peerAddress?: number; pullups: boolean; khz: number }
+	// can (IO1 CANH, IO2 CANL): the bit rate, and whether this board fits the bus's 120 Ω termination (it is a bus end)
+	can?: { kbps: number; terminate: boolean }
 	// VCC (pin 2): "none" unconnected; "out" this board's 3V3 powers the peer; "in" this board runs from the peer's 3V3
 	supply: "none" | "out" | "in"
 	// What crosses the link, the same definition on both boards (the system checks the hash)
@@ -296,7 +298,7 @@ export type ProposalResult =
 	| { status: "unchanged"; version: number }
 
 // Part roles the board codegen, catalog and checks understand.
-export const PART_ROLES = ["mcu", "sensor", "microphone", "ldo", "charger", "battery", "usb-c", "led", "charge-led", "resistor", "capacitor", "button", "connector", "motor-driver", "estop", "start", "other"] as const
+export const PART_ROLES = ["mcu", "sensor", "microphone", "ldo", "charger", "battery", "usb-c", "led", "charge-led", "resistor", "capacitor", "button", "connector", "motor-driver", "estop", "start", "can-transceiver", "other"] as const
 
 // Signals become C macros (PIN_<SIGNAL>) and net names, so they must be UPPER_SNAKE.
 export const SIGNAL_PATTERN = /^[A-Z][A-Z0-9_]*$/

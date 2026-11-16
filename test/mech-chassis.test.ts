@@ -144,3 +144,37 @@ test("the scripted rover's chassis follows its board's holes: rebuilt when the c
 	const main = chassisSpec(s11)!.boards[0]
 	assert.deepEqual(main.holes.map((h) => [h.xMm, h.yMm]), mountingHoles(s11).map((h) => [main.xMm + h.x, main.yMm + h.y]))
 })
+
+// How each motor is held (16 Nov 2026, agreed with bringup-lead): Pololu's #989 bracket when the motor is a micro metal
+// gearmotor and the axle sits its measured 5.0 mm under the plate; else the printed cradle with a printed clamp on two M2
+// screws, when the cradle (its 2 mm wall above the motor) reaches that drop; else a check says nothing holds it there.
+// The plate height is never changed for it. Before, the cradle silently held every 5.0 mm design at 7.0 mm.
+test("each motor is held: a bought bracket at its own height, else a printed clamp, else a check says so", async () => {
+	const { readFileSync } = await import("node:fs")
+	const { motorMount, CRADLE_WALL_MM } = await import("../src/tools/chassis.ts")
+	const { robotPartLines, robotPartNotes, hardwareFit } = await import("../src/tools/robot-parts.ts")
+	const { loadMechCatalog } = await import("../src/mechanics/catalog.ts")
+	const cat = loadMechCatalog(new URL("..", import.meta.url).pathname)
+	const fx = (n: string) => JSON.parse(readFileSync(new URL(`./fixtures/${n}`, import.meta.url), "utf8")) as ContractSnapshot
+	// A real subscription rover: 5.0 mm drop, a POLOLU micro metal gearmotor: brackets, holes 18 mm apart across the motor.
+	const real = fx("cc-rover-64x25-rev19.json")
+	const rs = chassisSpec(real)!
+	assert.ok(rs.motors.every((m) => m.mount.kind === "bracket"), JSON.stringify(rs.motors.map((m) => m.mount)))
+	for (const m of rs.motors) if (m.mount.kind === "bracket") assert.equal(Math.abs(m.mount.holes[1].xMm - m.mount.holes[0].xMm), 18)
+	const by = (s: ContractSnapshot, item: string) => robotPartLines(s).find((l) => l.item === item)
+	assert.equal(by(real, "motor bracket")?.qty, 2)
+	assert.equal(by(real, "motor bracket")?.packs, 1)
+	assert.ok(!robotPartNotes(real).some((n) => /motors/.test(n)))
+	// The scripted rover: 10.5 mm drop: the cradle and a clamp, two M2 self-tapping screws per motor.
+	const scripted = fx("e2e-rover2-rev11.json")
+	const ss = chassisSpec(scripted)!
+	assert.ok(ss.motors.every((m) => m.mount.kind === "clamp"))
+	assert.equal(by(scripted, "clamp screw")?.qty, 4)
+	assert.match(by(scripted, "clamp screw")!.mpn, /^M2x8 self-tapping/)
+	// A motor no bracket fits, 5 mm under the plate: the cradle can't reach it (it needs 5 + 2), and the check says so.
+	const odd = motorMount({ xMm: 0, yMm: 30, bodyMm: [26, 12, 10], axleDropMm: 5 }, "OTHER-MOTOR", cat.motorMounts ?? [], 1.6)
+	assert.deepEqual(odd, { kind: "cradle-too-shallow", needMm: 5 + CRADLE_WALL_MM })
+	const shallow = structuredClone(scripted)
+	shallow.values.mechanics!.chassis.clearanceMm -= 4.5 // the axle 6 mm under the plate: under the cradle's 7, not the bracket's 5
+	assert.ok(hardwareFit(shallow).some((m) => /printed cradle needs 7 mm/.test(m)), hardwareFit(shallow).join("\n"))
+})

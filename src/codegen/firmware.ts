@@ -211,6 +211,9 @@ const C_TYPE = { u8: "uint8_t", u16: "uint16_t", i16: "int16_t", u32: "uint32_t"
 const READING_FILL: Record<string, string> = { tempCx100: "(int16_t)lroundf(t * 100)", rhx100: "(uint16_t)lroundf(rh * 100)", tempC: "t", rh: "rh", ok: "ok ? 1 : 0" }
 const PRINTF = { u8: ["%u", "(unsigned)"], u16: ["%u", "(unsigned)"], i16: ["%d", "(int)"], u32: ["%lu", "(unsigned long)"], f32: ["%.2f", "(double)"] } as const
 
+// ESP-IDF's TWAI timing macros (driver/twai.h) for each CAN bit rate the spec allows (spec.ts CAN_BUS_MAX_M).
+const CAN_TIMING: Record<number, string> = { 1000: "1MBITS", 800: "800KBITS", 500: "500KBITS", 250: "250KBITS", 125: "125KBITS", 50: "50KBITS", 20: "20KBITS", 10: "10KBITS" }
+
 export function linkHeader(s: ContractSnapshot): string {
 	const links = s.values.links ?? []
 	const L = (id: string) => `LINK_${id.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`
@@ -224,14 +227,16 @@ export function linkHeader(s: ContractSnapshot): string {
 	// turn after its connector, and a firmware built in between failed on PIN_L1_TX (the rover, 14 Nov 2026). Until then
 	// link-unwired tells the architect, and the link here is defines and a note.
 	const signals = new Set((s.values.pins ?? []).map((p) => p.signal))
-	const wired = (l: (typeof links)[number]) => (l.kind === "uart" ? signals.has(`${l.id}_TX`) && signals.has(`${l.id}_RX`) : signals.has("I2C_SDA") && signals.has("I2C_SCL"))
+	const wired = (l: (typeof links)[number]) =>
+		l.kind === "uart" ? signals.has(`${l.id}_TX`) && signals.has(`${l.id}_RX`) : l.kind === "can" ? signals.has(`${l.id}_CAN_TX`) && signals.has(`${l.id}_CAN_RX`) : signals.has("I2C_SDA") && signals.has("I2C_SCL")
 	const live = links.filter(wired)
 	const target = live.find((l) => l.kind === "i2c" && l.i2c?.role === "target")
 	if (target) lines.push(`// This board is an I2C target: it joins the bus at its address instead of driving it.`, `#define LINK_I2C_TARGET 1`)
 	const structs = new Map<string, NonNullable<(typeof links)[number]["messages"]>[number]>()
 	for (const l of links) {
 		lines.push("", `// ${l.id}: ${l.kind.toUpperCase()} to ${l.peer} on ${l.connector}${l.supply === "out" ? ", powering it" : l.supply === "in" ? ", powered by it" : ""}`, `#define ${L(l.id)}_PEER "${l.peer}"`)
-		if (!wired(l)) lines.push(`// ${l.id} has no ${l.kind === "uart" ? "TX and RX" : "SDA and SCL"} pins yet: its code is left out until the contract assigns them.`)
+		if (!wired(l)) lines.push(`// ${l.id} has no ${l.kind === "uart" ? "TX and RX" : l.kind === "can" ? "CAN TX and RX" : "SDA and SCL"} pins yet: its code is left out until the contract assigns them.`)
+		if (l.kind === "can" && l.can) lines.push(`#define ${L(l.id)}_CAN 1`, `#define ${L(l.id)}_CAN_KBPS ${l.can.kbps}`)
 		if (l.kind === "uart") lines.push(`#define ${L(l.id)}_UART 1`, `#define ${L(l.id)}_BAUD ${l.baud}`)
 		if (l.kind === "i2c" && l.i2c) {
 			lines.push(`#define ${L(l.id)}_I2C 1`, `#define ${L(l.id)}_I2C_KHZ ${l.i2c.khz}`, `#define ${L(l.id)}_I2C_${l.i2c.role === "controller" ? "CONTROLLER" : "TARGET"} 1`)
@@ -246,15 +251,24 @@ export function linkHeader(s: ContractSnapshot): string {
 	for (const m of structs.values()) lines.push("", `struct __attribute__((packed)) ${m.name}_msg {`, ...m.fields.map((f) => `\t${C_TYPE[f.type]} ${f.name};`), "};")
 	// The code main.cpp calls, compiled only into the firmware.
 	const uart = live.find((l) => l.kind === "uart")
+	// A CAN link (ESP32 TWAI; the chip has one controller, so one CAN link): each message is one frame, its 29-bit
+	// extended identifier the message's definition hash (so a frame names what it carries, as linkframe's hash does on
+	// UART and I2C), its data the packed struct (8 bytes at most, the spec's check). STM32 bxCAN is not generated yet.
+	const can = stm ? undefined : live.find((l) => l.kind === "can")
+	const canStm = stm && live.some((l) => l.kind === "can")
 	const sends = live.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "send" && m.name === "reading").map((m) => ({ l, m })))
 	const receives = live.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "receive").map((m) => ({ l, m })))
 	const body: string[] = ["", "#ifdef ARDUINO", "#include <Wire.h>", "#include \"linkframe.h\""]
+	if (can) body.push("#include \"driver/twai.h\"")
+	if (canStm) body.push("#error \"Bringup: a CAN link on an STM32 board needs bxCAN code, which is not generated yet (docs/backlog.md)\"")
+	// A CAN frame's identifier holds 29 of the hash's 32 bits: every link on this board compares those.
+	body.push(`#define LINK_HASH_MASK ${can ? "0x1FFFFFFFUL" : "0xFFFFFFFFUL"}`)
 	if (receives.length) {
 		body.push("static void linkReceived(const char *link, uint32_t hash, const uint8_t *p, uint8_t len) {")
 		for (const { l, m } of receives) {
 			const fmt = m.fields.map((f) => `${f.name}=${PRINTF[f.type][0]}`).join(" ")
 			const args = m.fields.map((f) => `, ${PRINTF[f.type][1]}x.${f.name}`).join("")
-			body.push(`\tif (hash == ${M(m.name)}_HASH && len == sizeof(${m.name}_msg)) {`, `\t\t${m.name}_msg x;`, `\t\tmemcpy(&x, p, sizeof x);`, `\t\tLog.printf("LINK %s ${m.name} from ${l.peer}: ${fmt}\\n", link${args});`, `\t\treturn;`, "\t}")
+			body.push(`\tif ((hash & LINK_HASH_MASK) == (${M(m.name)}_HASH & LINK_HASH_MASK) && len == sizeof(${m.name}_msg)) {`, `\t\t${m.name}_msg x;`, `\t\tmemcpy(&x, p, sizeof x);`, `\t\tLog.printf("LINK %s ${m.name} from ${l.peer}: ${fmt}\\n", link${args});`, `\t\treturn;`, "\t}")
 		}
 		body.push(`\tLog.printf("LINK %s: a frame with an unknown definition (hash %08lx), dropped\\n", link, (unsigned long)hash);`, "}")
 	}
@@ -286,6 +300,15 @@ export function linkHeader(s: ContractSnapshot): string {
 	if (uart && stm) body.push(`static HardwareSerial LinkSerial(${macroName(`${uart.id}_RX`)}, ${macroName(`${uart.id}_TX`)});`)
 	body.push("static void linkBegin() {")
 	if (uart) body.push(stm ? `\tLinkSerial.begin(${L(uart.id)}_BAUD, SERIAL_8N1);` : `\tSerial1.begin(${L(uart.id)}_BAUD, SERIAL_8N1, ${macroName(`${uart.id}_RX`)}, ${macroName(`${uart.id}_TX`)});`)
+	if (can) {
+		const timing = CAN_TIMING[can.can!.kbps]
+		body.push(
+			`\ttwai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)${macroName(`${can.id}_CAN_TX`)}, (gpio_num_t)${macroName(`${can.id}_CAN_RX`)}, TWAI_MODE_NORMAL);`,
+			`\ttwai_timing_config_t tc = TWAI_TIMING_CONFIG_${timing}();`,
+			`\ttwai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();`,
+			`\tif (twai_driver_install(&g, &tc, &f) != ESP_OK || twai_start() != ESP_OK) Log.println("LINK ${can.id}: the CAN controller didn't start");`,
+		)
+	}
 	if (targetSends) body.push(`\tWire.onRequest(linkOnRequest);`)
 	if (target && stm) body.push(`\tWire.onReceive(linkOnReceive);`, `\tWire.setSDA(PIN_I2C_SDA);`, `\tWire.setSCL(PIN_I2C_SCL);`, `\tWire.begin((uint8_t)${L(target.id)}_I2C_ADDRESS);`, `\tWire.setClock(${L(target.id)}_I2C_KHZ * 1000UL);`)
 	else if (target) body.push(`\tWire.onReceive(linkOnReceive);`, `\tWire.begin((uint8_t)${L(target.id)}_I2C_ADDRESS, PIN_I2C_SDA, PIN_I2C_SCL, ${L(target.id)}_I2C_KHZ * 1000UL);`)
@@ -294,6 +317,7 @@ export function linkHeader(s: ContractSnapshot): string {
 		// A failed reading goes out only in a message that can say so (an ok field); otherwise it isn't sent.
 		body.push(m.fields.some((f) => f.name === "ok") ? `\t{` : `\tif (ok) {`, `\t\t${m.name}_msg m = {};`, ...m.fields.map((f) => `\t\tm.${f.name} = ${READING_FILL[f.name] ?? "0"};${READING_FILL[f.name] ? "" : " // not a reading field: sent as 0"}`))
 		if (l.kind === "uart") body.push(`\t\tlinkFrameWrite(${ser}, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\t${ser}.flush();`)
+		else if (l.kind === "can") body.push(`\t\ttwai_message_t f = {};`, `\t\tf.extd = 1;`, `\t\tf.identifier = ${M(m.name)}_HASH & LINK_HASH_MASK;`, `\t\tf.data_length_code = sizeof m;`, `\t\tmemcpy(f.data, &m, sizeof m);`, `\t\tif (twai_transmit(&f, pdMS_TO_TICKS(20)) != ESP_OK) Log.println("LINK ${l.id}: no CAN frame sent (bus off, or nobody acknowledged)");`)
 		else if (l.i2c?.role === "target") body.push(`\t\tLinkBufferOut out;`, `\t\tlinkFrameWrite(out, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tlinkReplyLen = 0;`, `\t\tmemcpy(linkReplyFrame, out.buf, out.n);`, `\t\t__atomic_store_n(&linkReplyLen, out.n, __ATOMIC_RELEASE); // last, and after the copy: the request handler sees a whole frame or none`)
 		else body.push(`\t\tWire.beginTransmission((uint8_t)${L(l.id)}_I2C_PEER_ADDRESS);`, `\t\tlinkFrameWrite(Wire, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tconst uint8_t err = Wire.endTransmission();`, `\t\tif (err) Log.printf("LINK ${l.id}: ${l.peer} didn't answer at 0x%02x (%u)\\n", ${L(l.id)}_I2C_PEER_ADDRESS, err);`)
 		body.push(`\t\tLog.println("LINK ${l.id} sent ${m.name}");`, `\t}`)
@@ -319,6 +343,8 @@ export function linkHeader(s: ContractSnapshot): string {
 				`\t\t\twhile (Wire.available()) if (linkI2cReader_${i2cIn.l.id}.feed((uint8_t)Wire.read(), ihash, ip, ilen)) linkReceived("${i2cIn.l.id}", ihash, ip, ilen);`,
 				`\t\t}`,
 			)
+		const canIn = receives.find((r) => r.l.kind === "can")
+		if (can && canIn) body.push(`\t\ttwai_message_t f;`, `\t\twhile (twai_receive(&f, 0) == ESP_OK) if (f.extd && !f.rtr) linkReceived("${canIn.l.id}", f.identifier, f.data, f.data_length_code);`)
 		if (target) body.push(`\t\tif (linkTargetGot) {`, `\t\t\tlinkReceived("${target.id}", linkTargetHash, linkTargetFrame, linkTargetLen);`, `\t\t\tlinkTargetGot = false;`, `\t\t}`)
 		body.push("\t\tdelay(5);", "\t} while (millis() - start < ms);")
 	}

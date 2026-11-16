@@ -2,8 +2,8 @@
 // links field, the budget and the docs read. Adding a kind means one entry here plus its own checks and codegen.
 // Kinds marked built: false are named so the spec can say they are planned, and are rejected until they are built.
 
-export type LinkKind = "uart" | "i2c" | "spi" | "i2s" | "espnow" | "ble"
-export type Peripheral = "uart" | "i2c" | "spi" | "i2s" | "radio"
+export type LinkKind = "uart" | "i2c" | "can" | "spi" | "i2s" | "espnow" | "ble"
+export type Peripheral = "uart" | "i2c" | "can" | "spi" | "i2s" | "radio"
 export type TestLevel = "checks" | "compile" | "host-codec" | "qemu" | "bench"
 
 export interface KindInfo {
@@ -23,6 +23,10 @@ export const LINK_KINDS: Record<LinkKind, KindInfo> = {
 	uart: kind({ kind: "uart", label: "UART", medium: "cable", connector: "jst4_sh", peripheral: "uart", gpios: 2, carries: "messages", built: true, testLevels: ["checks", "compile", "host-codec", "qemu", "bench"] }),
 	// QEMU can't join two chips' I2C buses, so the bench is its only running test.
 	i2c: kind({ kind: "i2c", label: "I²C", medium: "cable", connector: "jst4_sh", peripheral: "i2c", gpios: 2, carries: "messages", built: true, testLevels: ["checks", "compile", "host-codec", "bench"] }),
+	// CAN (the user, 15 Nov 2026: "allow for user insisting on using CAN communication for robot if they want"): the
+	// chip's CAN controller (ESP32 TWAI, STM32 bxCAN) on two GPIOs to a 3.3 V transceiver (links.ts CAN_TRANSCEIVER),
+	// CANH and CANL on the connector's IO1 and IO2, 120 Ω at each end of the bus. Point to point: both boards are ends.
+	can: kind({ kind: "can", label: "CAN", medium: "cable", connector: "jst4_sh", peripheral: "can", gpios: 2, carries: "messages", built: true, testLevels: ["checks"] }),
 	spi: kind({ kind: "spi", label: "SPI", medium: "cable", connector: "jst6_sh", peripheral: "spi", gpios: 4, carries: "messages", built: false, testLevels: [] }),
 	i2s: kind({ kind: "i2s", label: "I²S", medium: "cable", connector: "jst6_sh", peripheral: "i2s", gpios: 3, carries: "stream", built: false, testLevels: [] }),
 	espnow: kind({ kind: "espnow", label: "ESP-NOW", medium: "radio", connector: null, peripheral: "radio", gpios: 0, carries: "messages", built: false, testLevels: [] }),
@@ -33,6 +37,6 @@ export const isLinkKind = (k: unknown): k is LinkKind => typeof k === "string" &
 
 // The ESP32-C3 on a Bringup board (Espressif datasheet): UART0 is the console, so one UART is free; one I2C, one
 // general-purpose SPI (SPI2; SPI0/1 are the flash), one I2S, one radio (Wi-Fi and BLE share it).
-export const PERIPHERALS_FREE: Record<Peripheral, number> = { uart: 1, i2c: 1, spi: 1, i2s: 1, radio: 1 }
+export const PERIPHERALS_FREE: Record<Peripheral, number> = { uart: 1, i2c: 1, can: 1, spi: 1, i2s: 1, radio: 1 }
 // GPIOs a design may use: not the strapping pins (2, 8, 9) nor USB (18, 19); UART0 (20, 21) is the console.
 export const FREE_GPIOS: readonly number[] = [4, 5, 6, 7, 3, 1, 0]
