@@ -97,13 +97,24 @@ test("a running robot takes a moved, rotated board, a narrower plate and a re-ro
 
 		// Round 3: a cable route that changes L1's length.
 		const m = sys2.assembly!.boards.find((b) => b.name === "main")!
-		// A detour round the front of the plate, longer than the default 300 mm. It leaves main's right edge and enters climate
-		// (turned 90°) from its -x side, so L1 keeps the edges JL1 is already on (main right, climate top): a route that
-		// changes an edge asks the boards to move the connector, which the scripted agents don't do.
-		const route = [{ xMm: m.xMm + 16.5, yMm: 0 }, { xMm: 30, yMm: 0 }, { xMm: 30, yMm: -50 }, { xMm: 75, yMm: -50 }, { xMm: 75, yMm: 50 }, { xMm: 25, yMm: 50 }, { xMm: 25, yMm: 0 }, { xMm: c2.xMm, yMm: c2.yMm }]
+		// A detour round the front of the plate, longer than the default 300 mm, that keeps the edges JL1 is already on: each
+		// end leaves along its edge's outward normal (a route that changes an edge asks the boards to move the connector,
+		// which the scripted agents don't do). Built from the boards' real places, so a new layout can't break it (16 Nov
+		// 2026: the hand-placed points entered climate from behind its top edge once the boards moved).
+		const L1 = sys2.links.find((l: any) => l.name === "L1") ?? sys2.links[0]
+		const c = sys2.assembly!.boards.find((b) => b.name === "climate")!
+		// The link's ends have no edge yet (this editor is built without the boards' connectors), so each end takes the edge
+		// of its board that faces the other board.
+		const [ea, eb] = [(L1.a.edge as Edge) ?? facing(m, c), (L1.b.edge as Edge) ?? facing(c, m)]
+		const [pa, na] = [edgeMid(m, ea), outward(m, ea)]
+		const [pb, nb] = [edgeMid(c, eb), outward(c, eb)]
+		const a1 = { xMm: pa.xMm + 15 * na[0], yMm: pa.yMm + 15 * na[1] }
+		const b1 = { xMm: pb.xMm + 15 * nb[0], yMm: pb.yMm + 15 * nb[1] }
+		const far = Math.max(a1.xMm, b1.xMm) + 40
+		const route = [pa, a1, { xMm: a1.xMm, yMm: -50 }, { xMm: far, yMm: -50 }, { xMm: far, yMm: 50 }, { xMm: b1.xMm, yMm: 50 }, b1, pb]
 		assert.ok(ed.apply({ kind: "cable-route", link: "L1", points: route }))
 		const diff2 = ed.diff()!
-		assert.deepEqual([diff2.links![0].a.edge, diff2.links![0].b.edge], ["right", "top"], "the route changed an edge of L1")
+		assert.deepEqual([diff2.links![0].a.edge, diff2.links![0].b.edge], [ea, eb], "the route changed an edge of L1")
 		const sentAt3 = trace().length
 		const before = sys2.links[0].cable.lengthMm
 		const r2 = await post(`/api/systems/${id}/requests`, diff2)
@@ -138,4 +149,28 @@ test("a running robot takes a moved, rotated board, a narrower plate and a re-ro
 async function post_stop(url: string, id: string) {
 	await fetch(`${url}/api/systems/${id}/stop`, { method: "POST" }).catch(() => {})
 	await sleep(3000)
+}
+
+type Edge = "left" | "right" | "top" | "bottom"
+const NORMALS: Record<Edge, [number, number]> = { left: [-1, 0], right: [1, 0], top: [0, 1], bottom: [0, -1] }
+const turned = ([x, y]: [number, number], deg: number): [number, number] => {
+	const r = (deg * Math.PI) / 180
+	return [Math.round(x * Math.cos(r) - y * Math.sin(r)), Math.round(x * Math.sin(r) + y * Math.cos(r))]
+}
+// A board's edge: its outward direction and its middle, in the assembly frame (as src/dashboard/system-edit.js).
+const outward = (b: { rotDeg?: number }, e: Edge) => turned(NORMALS[e], b.rotDeg ?? 0)
+function edgeMid(b: { xMm: number; yMm: number; rotDeg?: number; outline?: { widthMm: number; heightMm: number } }, e: Edge) {
+	const { widthMm: W, heightMm: H } = b.outline!
+	const half: Record<Edge, [number, number]> = { left: [-W / 2, 0], right: [W / 2, 0], top: [0, H / 2], bottom: [0, -H / 2] }
+	const r = ((b.rotDeg ?? 0) * Math.PI) / 180
+	const [x, y] = half[e]
+	return { xMm: b.xMm + x * Math.cos(r) - y * Math.sin(r), yMm: b.yMm + x * Math.sin(r) + y * Math.cos(r) }
+}
+// The edge of board b whose outward direction points most toward board o.
+function facing(b: { xMm: number; yMm: number; rotDeg?: number }, o: { xMm: number; yMm: number }): Edge {
+	const [dx, dy] = [o.xMm - b.xMm, o.yMm - b.yMm]
+	return (Object.keys(NORMALS) as Edge[]).reduce((best, e) => {
+		const [nx, ny] = outward(b, e), [bx, by] = outward(b, best)
+		return nx * dx + ny * dy > bx * dx + by * dy ? e : best
+	})
 }
