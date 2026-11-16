@@ -1,0 +1,498 @@
+{
+  "revision": 27,
+  "values": {
+    "requirements": {
+      "summary": "Eurobot base robot: two-wheel drive with encoder odometry, distance-sensor opponent stop, emergency stop, pull-cord start, one USB-C for programming",
+      "peripherals": [
+        "motor driver",
+        "2 wheel encoders",
+        "distance sensor (I2C)",
+        "emergency stop",
+        "pull-cord start",
+        "status LED"
+      ],
+      "batteryLifeDays": null,
+      "enclosure": "none"
+    },
+    "motion": {
+      "speedMps": 0.5,
+      "runtimeMin": 2,
+      "edgeMm": 5,
+      "maxSlopeDeg": 5,
+      "stopBeforeWallMm": 150,
+      "payloadG": 500,
+      "maxSizeMm": [
+        290,
+        290
+      ],
+      "maxMassG": 8000,
+      "rules": "eurobot-2026"
+    },
+    "rails": [
+      {
+        "name": "VBUS",
+        "voltageV": 5,
+        "regulatorMaxMa": 500,
+        "loadMa": 500
+      },
+      {
+        "name": "VBAT",
+        "voltageV": 3.7,
+        "regulatorMaxMa": 3000,
+        "loadMa": 2000
+      },
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 350
+      }
+    ],
+    "outline": {
+      "widthMm": 64,
+      "heightMm": 28,
+      "thicknessMm": 1.6,
+      "sizeReason": {
+        "kind": "routing",
+        "detail": "The board build at revision 14 (58x25 mm) failed: tscircuit found no free spot for JT1. The outline has since shrunk to 45x25 mm, below the 50x26 mm the parts need to place. Enlarged to 64x28 mm to give the placer and autorouter room."
+      }
+    },
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-C3-MINI-1",
+        "lcsc": "C2838502",
+        "footprint": "esp32_c3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO18",
+          "GPIO19",
+          "EN",
+          "3V3",
+          "GND"
+        ],
+        "reason": "Brief: drives to points on its own, reads encoders and the distance sensor, programs over USB; 4 MB flash on module."
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "AP2112K-3.3TRG1",
+        "lcsc": "C51118",
+        "footprint": "sot23_5",
+        "nets": {
+          "VIN": "VBAT",
+          "VOUT": "3V3"
+        },
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ],
+        "reason": "Makes the 3V3 rail (350 mA peak) for the module and encoders from the VBAT cell; 600 mA rating meets the module's 0.5 A need. No battery-life target in the brief, so the 55 uA quiescent is accepted."
+      },
+      {
+        "ref": "U4",
+        "role": "charger",
+        "mpn": "TP4054-42-SOT25R",
+        "lcsc": "C32574",
+        "footprint": "sot23_5",
+        "pins": [
+          "CHRG",
+          "GND",
+          "BAT",
+          "VCC",
+          "PROG"
+        ],
+        "nets": {
+          "VCC": "VBUS",
+          "BAT": "VBAT"
+        },
+        "reason": "Brief: one rechargeable pack charged by its own charger from the USB-C cable (F.4.b)."
+      },
+      {
+        "ref": "U5",
+        "role": "motor-driver",
+        "mpn": "DRV8833PWPR",
+        "lcsc": "C50506",
+        "footprint": "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm",
+        "pins": [
+          "nSLEEP",
+          "AOUT1",
+          "AISEN",
+          "AOUT2",
+          "BOUT2",
+          "BISEN",
+          "BOUT1",
+          "nFAULT",
+          "BIN1",
+          "BIN2",
+          "VCP",
+          "VM",
+          "GND",
+          "VINT",
+          "AIN2",
+          "AIN1"
+        ],
+        "nets": {
+          "VM": "VBAT"
+        },
+        "reason": "Robot check: motor driver for the two wheel motors, driven by MOT_AIN1/AIN2/BIN1/BIN2; motor supply on VBAT (2.7-10.8 V)."
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ],
+        "reason": "Brief: one USB-C for programming; the module's USB Serial/JTAG on GPIO18/19 flashes over it."
+      },
+      {
+        "ref": "J2",
+        "role": "battery",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "Brief: one rechargeable pack (ADAFRUIT-2011 2000 mAh per mechanics.battery); robot check: the battery connector."
+      },
+      {
+        "ref": "D1",
+        "role": "led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ],
+        "reason": "Brief: status LED, driven from GPIO7 through a series resistor."
+      },
+      {
+        "ref": "R1",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ],
+        "reason": "Series resistor (1k) for the status LED D1 on GPIO7."
+      },
+      {
+        "ref": "JM1",
+        "role": "connector",
+        "mpn": "SM06B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160405",
+        "footprint": "jst6_sh",
+        "pins": [
+          "GND",
+          "ENCB",
+          "ENCA",
+          "VCC",
+          "M2",
+          "M1"
+        ],
+        "nets": {
+          "VCC": "3V3"
+        },
+        "reason": "Brief: two wheel encoders; the left gearmotor's plug (POLOLU-5139) carries its encoder channel A (ENC_LA) and motor leads."
+      },
+      {
+        "ref": "JM2",
+        "role": "connector",
+        "mpn": "SM06B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160405",
+        "footprint": "jst6_sh",
+        "pins": [
+          "GND",
+          "ENCB",
+          "ENCA",
+          "VCC",
+          "M2",
+          "M1"
+        ],
+        "nets": {
+          "VCC": "3V3"
+        },
+        "reason": "Brief: two wheel encoders; the right gearmotor's plug (POLOLU-5139) carries its encoder channel A (ENC_RA) and motor leads."
+      },
+      {
+        "ref": "JM3",
+        "role": "connector",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "Robot check: 2-pin connector for the left motor's leads, wired by the board generator to the driver's outputs."
+      },
+      {
+        "ref": "JM4",
+        "role": "connector",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "Robot check: 2-pin connector for the right motor's leads, wired by the board generator to the driver's outputs."
+      },
+      {
+        "ref": "JT1",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "nets": {
+          "VCC": "3V3"
+        },
+        "reason": "Robot check: the distance sensor's 4-pin connector (STEMMA QT, VL53L0X breakout per mechanics.sensor); VCC on 3V3, IO1/IO2 carry the I2C bus."
+      },
+      {
+        "ref": "JE1",
+        "role": "estop",
+        "mpn": "B2B-XH-A(LF)(SN)",
+        "lcsc": "C158012",
+        "footprint": "pinrow2_p2.5_id1_od1.8",
+        "pins": [
+          "VBAT",
+          "VM"
+        ],
+        "reason": "Mechanics.safety.estop: the emergency stop's plug (OMRON A22E-M-01 button, 1 NC). The board puts its contact between the cell (VBAT) and the motor driver's VM."
+      },
+      {
+        "ref": "JS1",
+        "role": "start",
+        "mpn": "PZ254V-11-02P",
+        "lcsc": "C492401",
+        "footprint": "pinrow2",
+        "pins": [
+          "START",
+          "GND"
+        ],
+        "reason": "Mechanics.safety.start: the pull-cord start plug (JS1, 500 mm cord). START goes to a free GPIO and the plug's GND to ground."
+      }
+    ],
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 34.5,
+        "widthMm": 9,
+        "heightMm": 3.2
+      },
+      {
+        "ref": "JM1",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 20,
+        "widthMm": 9,
+        "heightMm": 3
+      },
+      {
+        "ref": "JM2",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 12,
+        "widthMm": 9,
+        "heightMm": 3
+      },
+      {
+        "ref": "JT1",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 21,
+        "widthMm": 5.8,
+        "heightMm": 3
+      }
+    ],
+    "pins": [
+      {
+        "signal": "MOT_AIN1",
+        "gpio": 1,
+        "partRef": "U5",
+        "partPin": "AIN1"
+      },
+      {
+        "signal": "MOT_AIN2",
+        "gpio": 2,
+        "partRef": "U5",
+        "partPin": "AIN2"
+      },
+      {
+        "signal": "MOT_BIN1",
+        "gpio": 3,
+        "partRef": "U5",
+        "partPin": "BIN1"
+      },
+      {
+        "signal": "MOT_BIN2",
+        "gpio": 4,
+        "partRef": "U5",
+        "partPin": "BIN2"
+      },
+      {
+        "signal": "ENC_LA",
+        "gpio": 5,
+        "partRef": "JM1",
+        "partPin": "ENCA"
+      },
+      {
+        "signal": "ENC_RA",
+        "gpio": 0,
+        "partRef": "JM2",
+        "partPin": "ENCA"
+      },
+      {
+        "signal": "STATUS_LED",
+        "gpio": 7,
+        "partRef": "D1",
+        "partPin": "A"
+      },
+      {
+        "signal": "I2C_SDA",
+        "gpio": 10,
+        "partRef": "JT1",
+        "partPin": "IO1"
+      },
+      {
+        "signal": "I2C_SCL",
+        "gpio": 8,
+        "partRef": "JT1",
+        "partPin": "IO2"
+      },
+      {
+        "signal": "START",
+        "gpio": 6,
+        "partRef": "JS1",
+        "partPin": "START"
+      }
+    ],
+    "mechanics": {
+      "drive": {
+        "kind": "differential",
+        "motor": "POLOLU-5139 100:1 MP 6V 12 CPR encoder",
+        "wheel": "POLOLU-1420 wheel 60x8 mm",
+        "caster": "BOTLAND-7292 swivel caster 25 mm",
+        "trackMm": 282,
+        "wheelbaseMm": 175,
+        "axleXMm": 52,
+        "maxAccelMps2": 1.5
+      },
+      "battery": {
+        "pack": "ADAFRUIT-2011 LP-803860 2000 mAh",
+        "at": {
+          "xMm": 115,
+          "yMm": 0
+        }
+      },
+      "sensor": {
+        "module": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+        "at": {
+          "xMm": 143.6,
+          "yMm": 0,
+          "zMm": 52.7
+        },
+        "connector": "JT1"
+      },
+      "chassis": {
+        "plateMm": [
+          290,
+          270
+        ],
+        "thicknessMm": 3,
+        "material": "PLA",
+        "clearanceMm": 35,
+        "boards": [
+          {
+            "name": "main",
+            "at": {
+              "xMm": -70.2,
+              "yMm": 0
+            },
+            "rotDeg": 0
+          }
+        ]
+      },
+      "beacon": {
+        "at": {
+          "xMm": 0,
+          "yMm": 0
+        },
+        "topMm": 430,
+        "sizeMm": 70,
+        "mastWallMm": 1.2,
+        "loadG": 400
+      },
+      "safety": {
+        "start": {
+          "connector": "JS1",
+          "cordMm": 500,
+          "matchS": 100
+        },
+        "estop": {
+          "part": "OMRON A22E-M-01 emergency stop 40 mm red, 1 NC",
+          "at": {
+            "xMm": 63,
+            "yMm": 0,
+            "zMm": 96
+          },
+          "connector": "JE1",
+          "collarMm": 7
+        }
+      }
+    }
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 5,
+    "connectors": 4,
+    "rails": 2,
+    "parts": 8,
+    "pins": 4,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 2,
+    "mechanics": 1,
+    "assembly": 0
+  }
+}
