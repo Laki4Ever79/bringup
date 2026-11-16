@@ -9,13 +9,14 @@ import { buildEnclosure, enclosureSpec } from "../src/tools/enclosure.ts"
 import { stubBoard } from "../src/tools/stubs.ts"
 import { fixtureContract } from "./fixture.ts"
 import { MIC_PART } from "../src/inference/scripts.ts"
+import { tempDir } from "./helpers.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const python = [join(root, ".venv/bin/python")].find(existsSync)
 const skip = python ? false : "no .venv python with build123d"
 
 function tmp() {
-	return mkdtempSync(join(tmpdir(), "bringup-enclosure-"))
+	return tempDir()
 }
 
 test("enclosure cutouts match connectors", { skip }, async () => {

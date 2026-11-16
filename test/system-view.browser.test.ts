@@ -9,6 +9,7 @@ import { homedir, tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { chromium, type Page } from "playwright"
 import { serveHub } from "../src/dashboard/server.ts"
+import { tempDir } from "./helpers.ts"
 
 const ROOT = resolve(import.meta.dirname, "..")
 const SYSTEM = ["system-real-2", "system-real-5", "system-real-1"].find((s) => existsSync(join(ROOT, "out", s, "system.json")))
@@ -540,7 +541,7 @@ test("hovering a board in either view shows its facts card; clicking a cable in 
 // architect, and the build's launch is a stub that writes the plan's system.json.
 const ROVER_SENTENCE = "a rover with a climate sensor on a separate board joined by a cable"
 async function withPlanHub(fn: (h: { url: string; root: string; page: Page; id: string }) => Promise<void>, launch?: Parameters<typeof serveHub>[0]["launch"], sentence = ROVER_SENTENCE) {
-	const root = mkdtempSync(join(tmpdir(), "bringup-plan-page-"))
+	const root = tempDir()
 	// A stub model key, so the real Build is offered (the launch is a stub: nothing calls a model).
 	const hub = await serveHub({ outRoot: root, port: 0, launch, planEnv: { OPENAI_API_KEY: "test-key" } })
 	const browser = await chromium.launch({ executablePath: exe!, headless: true })

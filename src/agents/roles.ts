@@ -13,7 +13,7 @@ import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
 import { rankMcus, type McuRequest } from "../mcu/select.ts"
 import { MECHANICS_SHAPE } from "../mechanics/shape.ts"
-import { solveChassis, type ChassisChoice } from "../mechanics/solve.ts"
+import { solveWithMotorClass, type ChassisChoice } from "../mechanics/solve.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 
 // Splits the grounding check's findings between the parts list (the parts agent's) and the pin assignments (the architect's).
@@ -43,7 +43,10 @@ function onBuildFailed(kinds: ArtifactKind[], owns: string): SituationHandler {
 					`build-failed@${kind}@${revision}`,
 					`${BUILD_FAILED_PREFIX} the ${kind} build failed at revision ${revision}:\n${error}\n` +
 						`If the failure comes from a contract field you own (${owns}), for example an unknown footprint, a missing part or a pin on a part that doesn't exist, fix it with propose_contract_change. Otherwise change nothing.` +
-						(kind === "board" && ROUTING_FAILURE.test(String(error)) && owns.includes("outline") ? ` This one is the autorouter running out of room: give it room (a bigger outline, with sizeReason "routing" naming this build) or change what crowds it.` : ""),
+						(kind === "board" && ROUTING_FAILURE.test(String(error)) && owns.includes("outline") ? ` This one is the autorouter running out of room: give it room (a bigger outline, with sizeReason "routing" naming this build) or change what crowds it.` : "") +
+						// A capacitor trace past its bound after every layout at this size, the drawn-trace retry included: the board
+						// is too tight around that part (real rover run 9 recovered at rev 24 by growing it one step).
+						(kind === "board" && /exceeding the [\d.]+mm maximum/i.test(String(error)) && owns.includes("outline") ? ` A capacitor's trace ran past its length bound in every layout at this size: the board is too tight around that part. Grow the outline one step (1–2 mm in its tighter direction), with sizeReason "routing" naming this build.` : ""),
 					{ kind: "build-failed", artifact: kind, revision, error: String(error).split("\n")[0] },
 				)
 			},
@@ -230,8 +233,8 @@ function layoutChassisTool(): Tool {
 		invoke: async (choice: ChassisChoice) => {
 			const cat = defaultCheckCatalog()
 			if (!cat) return { error: "no mechanics catalog on this machine" }
-			const r = solveChassis(state().contract.snapshot(), choice, cat)
-			return { passes: r.mechanics !== null && r.remaining.length === 0, mechanics: r.mechanics, why: r.why }
+			const r = solveWithMotorClass(state().contract.snapshot(), choice, cat)
+			return { passes: r.mechanics !== null && r.remaining.length === 0, mechanics: r.mechanics, why: r.motorNote ? `${r.why}; ${r.motorNote}` : r.why }
 		},
 	}
 }

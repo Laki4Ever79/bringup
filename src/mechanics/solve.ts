@@ -6,6 +6,7 @@
 // The search runs the robot's own checks (checks.ts) on each candidate, so a layout the solver returns passes exactly
 // what the run will check. Wiring findings (driver, pins, connectors) are left out: they belong to the board, not the
 // chassis.
+import { completeForRules } from "../rules/layout.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { outlinesWithAssembly } from "./assembly.ts"
 import { byMpn } from "./catalog.ts"
@@ -63,10 +64,15 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 	let tried = 0
 	let best: { mech: Mechanics; remaining: MechViolation[] } | null = null
 	const score = (v: MechViolation[]) => v.length
+	// A competition's rules (motion.rules): every candidate carries what they require (rules/layout.ts), and their
+	// findings count, so the layout returned passes them as it is.
+	const ruled = Boolean(motion.rules && cat.rules?.[motion.rules])
+	const kinds = ruled ? new Set([...CHASSIS_KINDS, "mech-safety", "mech-rules"]) : CHASSIS_KINDS
 	const check = (mech: Mechanics): MechViolation[] => {
 		tried++
 		const s: ContractSnapshot = { ...c, values: { ...c.values, mechanics: mech } }
-		return mechanicsChecksWith(s, cat).filter((v) => CHASSIS_KINDS.has(v.kind))
+		// Only what a layout can fix: a plug the parts agent must add (affects parts) isn't the chassis' to solve.
+		return mechanicsChecksWith(s, cat).filter((v) => kinds.has(v.kind) && (CHASSIS_KINDS.has(v.kind) || v.affects.includes("mechanics")))
 	}
 	// Plate: the system's, or the largest the brief allows (a roomier plate is easier to pack and the brief's limit is the
 	// only bound on it), then smaller ones.
@@ -85,12 +91,12 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 			for (const wheelbaseMm of range(30, axleXMm + hx - caster!.wheelMm / 2, 5))
 				for (const bx of range(hx - pack!.sizeMm[0] / 2, -(hx - pack!.sizeMm[0] / 2), -5)) {
 					if (tried >= budget) return finish()
-					const mech: Mechanics = {
+					const mech: Mechanics = completeForRules({
 						drive: { kind: "differential", motor: motor!.mpn, wheel: wheel!.mpn, caster: caster!.mpn, trackMm: track, wheelbaseMm, axleXMm },
 						battery: { pack: pack!.mpn, at: { xMm: bx, yMm: 0 } },
 						sensor: { module: sensor!.mpn, at: { xMm: sensorX, yMm: 0, zMm: sensorZ }, connector: choice.connector },
 						chassis: { plateMm: [L, W], thicknessMm, material: "PLA", clearanceMm, boards: boardsAt },
-					}
+					}, c.values, cat)
 					const v = check(mech)
 					if (!best || score(v) < score(best.remaining)) best = { mech, remaining: v }
 					if (v.length === 0) return finish()
@@ -111,10 +117,27 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 export function laidOut(c: ContractSnapshot, proposed: Mechanics, cat: CheckCatalog): { mechanics: Mechanics; note: string | null } {
 	if (!c.values.motion || !proposed?.drive || !proposed.battery || !proposed.sensor) return { mechanics: proposed, note: null }
 	const as = { ...c, values: { ...c.values, mechanics: proposed } }
-	const failing = mechanicsChecksWith(as, cat).filter((v) => CHASSIS_KINDS.has(v.kind))
+	// Under a competition's rules their findings count too: a plain rover that passes the chassis checks still lacks them.
+	const ruled = Boolean(c.values.motion.rules && cat.rules?.[c.values.motion.rules])
+	const failing = mechanicsChecksWith(as, cat).filter((v) => CHASSIS_KINDS.has(v.kind) || (ruled && (v.kind === "mech-safety" || v.kind === "mech-rules") && v.affects.includes("mechanics")))
 	if (!failing.length) return { mechanics: proposed, note: null }
-	const r = solveChassis(c, { motor: proposed.drive.motor, wheel: proposed.drive.wheel, caster: proposed.drive.caster, pack: proposed.battery.pack, sensor: proposed.sensor.module, connector: proposed.sensor.connector }, cat)
+	const r = solveWithMotorClass(c, { motor: proposed.drive.motor, wheel: proposed.drive.wheel, caster: proposed.drive.caster, pack: proposed.battery.pack, sensor: proposed.sensor.module, connector: proposed.sensor.connector }, cat)
 	if (!r.mechanics || r.remaining.length) return { mechanics: proposed, note: null }
 	// Fields the layout doesn't touch (a compute robot's `regulator`) stay the engineer's.
 	return { mechanics: { ...proposed, ...r.mechanics }, note: `the proposed layout failed ${failing.length} chassis check(s) (${failing[0].message}); the chassis solver laid out the same parts instead: plate ${r.mechanics.chassis.plateMm.join(" × ")} mm, axle at ${r.mechanics.drive.axleXMm} mm, wheelbase ${r.mechanics.drive.wheelbaseMm} mm, battery at x ${r.mechanics.battery.at.xMm} mm` }
+}
+
+// With a competition's rules (motion.rules), the motor class is part of the layout: when no layout passes with the motor
+// picked, the catalog's encoder gearmotors are tried in turn (lowest stall current first) and the first that passes is
+// returned with a note (real run 11, 16 Nov 2026: the plain 100:1 12 V motor on a 1.6 kg robot lacked torque).
+export function solveWithMotorClass(c: ContractSnapshot, choice: ChassisChoice, cat: CheckCatalog, opts: { budget?: number } = {}): ChassisSolution & { motorNote?: string } {
+	const first = solveChassis(c, choice, cat, opts)
+	const rules = c.values.motion?.rules
+	if (!rules || (first.mechanics && first.remaining.length === 0)) return first
+	const others = cat.mech.motors.filter((m) => m.encoder && m.mpn !== byMpn(cat.mech.motors, choice.motor)?.mpn).sort((a, b) => a.stallA - b.stallA)
+	for (const m of others) {
+		const r = solveChassis(c, { ...choice, motor: m.mpn }, cat, opts)
+		if (r.mechanics && r.remaining.length === 0) return { ...r, motorNote: `${choice.motor} gave no passing layout under ${rules}'s rules (${first.remaining[0]?.message ?? first.why}); ${m.mpn} does` }
+	}
+	return first
 }

@@ -2,6 +2,7 @@
 // Mozaik runtime per process, so each board works exactly as it does alone), in parallel. The system hands each board
 // its links, waits for the boards to settle, checks the links between them, and sends each finding to the board that
 // can fix it, as a change request. It ends when every board has settled with its links and the checks are clean.
+import { sweepStaleTemp } from "../tmp.ts"
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
@@ -80,6 +81,8 @@ function settledContract(dir: string, after: number): ContractSnapshot | null {
 }
 
 export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
+	// Temp folders a killed earlier run left behind (src/tmp.ts).
+	sweepStaleTemp()
 	const { outDir } = o
 	let spec = o.spec
 	const trace = new SystemTrace(outDir)

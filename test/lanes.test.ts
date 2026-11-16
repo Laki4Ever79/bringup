@@ -6,6 +6,7 @@ import { test } from "node:test"
 import { agreeLine, applyLaneEvent, createLanes, LANES, shownLanes } from "../src/dashboard/lanes.js"
 import { featureEdges, parseStl } from "../src/dashboard/stl.js"
 import { serveDashboard } from "../src/dashboard/server.ts"
+import { tempDir } from "./helpers.ts"
 
 let seq = 0
 const ev = (type: string, payload: object, producerId = "p") => ({ seq: seq++, at: new Date().toISOString(), type, producerId, payload })
@@ -179,7 +180,7 @@ test("STL: feature edges of a cube are its 12 edges, not the face diagonals", ()
 })
 
 test("the dashboard serves its page modules", async () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-lanes-"))
+	const dir = tempDir()
 	writeFileSync(join(dir, "trace.jsonl"), "")
 	const dash = await serveDashboard(dir, 0)
 	try {
