@@ -188,6 +188,12 @@ export function mounts(mech: Mechanics, boards: { name: string; outline: { width
 	}
 	if (caster && !isSkid(d)) out.push({ what: "caster", xMm: d.axleXMm - d.wheelbaseMm, yMm: 0, zMm: caster.heightMm / 2, sizeMm: [caster.wheelMm, caster.wheelMm, caster.heightMm], massG: caster.massG })
 	if (pack) out.push({ what: "battery", xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, zMm: plateTop + pack.sizeMm[2] / 2, sizeMm: pack.sizeMm, massG: pack.massG })
+	// The battery strap and its two bosses (py/chassis.py strap: a 2 mm bar 10 mm wide over the pack, legs to 6 mm bosses
+	// 7 mm square beside the rails), in PLA.
+	if (pack) {
+		const span = pack.sizeMm[1] + 2 * 2 + 7 * 2, legs = 2 * 10 * 7 * Math.max(0, pack.sizeMm[2] + 2.5 - 6), bosses = 2 * 7 * 7 * 6
+		out.push({ what: "battery-strap", xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, zMm: plateTop + pack.sizeMm[2] + 1.5, sizeMm: [10, span, 2], massG: ((span * 10 * 2 + legs + bosses) * est("plaDensityGcm3")) / 1000 })
+	}
 	const sensor = byMpn(cat.sensors ?? [], mech.sensor?.module ?? "")
 	if (sensor && mech.sensor) out.push({ what: "sensor", xMm: mech.sensor.at.xMm, yMm: mech.sensor.at.yMm, zMm: mech.sensor.at.zMm, sizeMm: [sensor.sizeMm[2], sensor.sizeMm[0], sensor.sizeMm[1]], massG: sensor.massG })
 	// The emergency stop, its head above the panel and its body below (safety.ts).

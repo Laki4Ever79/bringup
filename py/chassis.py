@@ -26,6 +26,37 @@ MAST_SPIGOT_H = 10.0
 MAST_TOP = 3.0  # the closed top the beacon's Velcro goes on (model.ts BEACON_TOP_MM)
 CLAMP_BOSS = 4.0  # chassis.ts CLAMP_BOSS_MM
 RAIL_H = 3.0
+# The battery strap (battery-strap.stl): a 2 mm bar over the pack, 10 mm wide, its legs down to a boss beside each rail,
+# each held by one M2 self-tapping screw (the board's, spec boardScrew) into the boss's pilot. Before 16 Nov 2026 the pack
+# sat between the rails held by nothing (run 9's build package: "no strap or holder yet").
+STRAP_W = 10.0
+STRAP_T = 2.0
+STRAP_BOSS_H = 6.0
+STRAP_BOSS = 7.0  # the boss's side, and how far beyond the rail its centre sits is half of it plus the wall
+
+
+def strap_geometry(spec):
+    """The strap's boss centres (x, y), the boss top and the bar's underside heights, from the battery's place and size."""
+    bat = spec["battery"]
+    bw, bh = bat["sizeMm"][1], bat["sizeMm"][2]
+    t = spec["plate"]["thicknessMm"]
+    off = bw / 2 + WALL + STRAP_BOSS / 2
+    bosses = [(bat["xMm"], bat["yMm"] + s * off) for s in (-1, 1)]
+    return bosses, t + STRAP_BOSS_H, t + bh + 0.5
+
+
+def strap(spec):
+    """The printed strap: a bar over the pack and a leg down to each boss, with a clearance hole for each M2 screw."""
+    bosses, boss_top, under = strap_geometry(spec)
+    (x, y0), (_, y1) = bosses
+    span = abs(y1 - y0) + STRAP_BOSS
+    leg_h = under + STRAP_T - boss_top
+    yc = (y0 + y1) / 2
+    part = Pos(x, yc, under + STRAP_T / 2) * Box(STRAP_W, span, STRAP_T)
+    for y in (y0, y1):
+        part += Pos(x, y, boss_top + leg_h / 2) * Box(STRAP_W, STRAP_BOSS, leg_h)
+        part -= Pos(x, y, boss_top + leg_h / 2) * Cylinder(spec.get("boardScrew", {}).get("boardHoleMm", 2.4) / 2, leg_h + 2 * STRAP_T)
+    return part
 
 
 class ChassisError(Exception):
@@ -47,6 +78,8 @@ def _check(spec):
 
     bat = spec["battery"]
     on_plate("battery", bat["xMm"], bat["yMm"], bat["sizeMm"][0], bat["sizeMm"][1])
+    for bx, by in strap_geometry(spec)[0]:
+        on_plate("battery strap's boss", bx, by, STRAP_BOSS, STRAP_BOSS)
     c = spec["caster"]  # None on a skid-steer rover (four driven wheels, no caster)
     if c:
         xs = [c["xMm"] + dx for dx, _ in c["holesMm"]]
@@ -127,6 +160,11 @@ def build(spec):
     bl, bw = bat["sizeMm"][0], bat["sizeMm"][1]
     for s in (-1, 1):
         part += Pos(bat["xMm"], bat["yMm"] + s * (bw / 2 + WALL / 2), t + RAIL_H / 2) * Box(bl, WALL, RAIL_H)
+    # The strap's bosses beside the rails, each with an M2 pilot (strap()).
+    strap_bosses, strap_top, _ = strap_geometry(spec)
+    for bx, by in strap_bosses:
+        part += Pos(bx, by, t + STRAP_BOSS_H / 2) * Box(STRAP_BOSS, STRAP_BOSS, STRAP_BOSS_H)
+        part -= Pos(bx, by, t + STRAP_BOSS_H / 2) * Cylinder(spec.get("boardScrew", {}).get("pilotMm", 1.6) / 2, STRAP_BOSS_H + 0.01)
 
     # The sensor's bracket: an upright plate just behind the breakout, up to its top.
     sen = spec["sensor"]
@@ -191,8 +229,11 @@ def build(spec):
                     sensor_holes.append((cy, cz))
     # The motor clamps' screw pilots are the standoffs' size: they are not board standoffs (the mock rover's four clamp
     # screws read as standoffs with no board hole over them, 16 Nov 2026), so they are left out here.
+    # The motor clamps' and the battery strap's pilots are the same size as the standoffs': not board holes.
+    strap_pilots = [{"xMm": x, "yMm": y} for x, y in strap_geometry(spec)[0]]
+
     def not_clamp(h):
-        return not any(abs(h["xMm"] - c["xMm"]) < 0.05 and abs(h["yMm"] - c["yMm"]) < 0.05 for c in clamp_screws)
+        return not any(abs(h["xMm"] - c["xMm"]) < 0.05 and abs(h["yMm"] - c["yMm"]) < 0.05 for c in clamp_screws + strap_pilots)
     mounts = {"standoffHoles": [h for d in pilots for h in centres(d / 2) if not_clamp(h)], "casterHoles": centres(c["holeDiaMm"] / 2) if c else [], "sensorHoles": [{"yMm": y, "zMm": z} for y, z in sensor_holes]}
     bracket_holes = []
     for m in spec["motors"]:
@@ -246,6 +287,8 @@ def main():
         sys.exit(1)
     export_step(part, str(out / "chassis.step"))
     export_stl(part, str(out / "chassis.stl"))
+    export_stl(strap(spec), str(out / "battery-strap.stl"))
+    mounts["strapHoles"] = [{"xMm": x, "yMm": y} for x, y in strap_geometry(spec)[0]]
     for i, (sec, h) in enumerate(mast_sections(spec), 1):
         export_stl(sec, str(out / f"beacon-mast-{i}.stl"))
         mounts.setdefault("beaconMast", []).append({"section": i, "heightMm": h})

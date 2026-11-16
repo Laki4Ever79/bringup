@@ -81,7 +81,8 @@ test("the rover's fasteners are in the parts list, counted from its chassis: a s
 	const lines = robotPartLines(s)
 	const by = (item: string) => lines.find((l) => l.item === item)
 	const boardHoles = spec.boards.reduce((n, b) => n + b.holes.length, 0)
-	assert.equal(by("board screw")?.qty, boardHoles)
+	// A screw per board hole and the battery strap's two (py/chassis.py strap).
+	assert.equal(by("board screw")?.qty, boardHoles + 2)
 	assert.match(by("board screw")!.mpn, /^M2x8 self-tapping/)
 	assert.equal(by("caster screw")?.qty, spec.caster!.holesMm.length)
 	assert.match(by("caster screw")!.mpn, /^M4x10/)
@@ -92,9 +93,8 @@ test("the rover's fasteners are in the parts list, counted from its chassis: a s
 
 test("what the design doesn't fasten yet is named, not left out", () => {
 	const notes = robotPartNotes(rover())
-	// The sensor's breakout is screwed to its bracket now (below); the battery isn't strapped yet.
-	assert.ok(!notes.some((n) => /sensor bracket/.test(n)), notes.join("\n"))
-	assert.ok(notes.some((n) => /battery/.test(n)), notes.join("\n"))
+	// The sensor's breakout is screwed to its bracket (below) and the battery strapped (py/chassis.py strap): neither is named.
+	assert.ok(!notes.some((n) => /sensor bracket|battery/.test(n)), notes.join("\n"))
 })
 
 // The breakout's own holes (Adafruit's fab print: four at 0.80" × 0.50", M2.5) through the printed bracket, a machine

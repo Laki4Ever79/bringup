@@ -84,6 +84,8 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 		const t = screwFor(b.screwHoleMm ?? spec!.boardScrew.boardHoleMm)
 		boardThreads.set(t, (boardThreads.get(t) ?? 0) + b.holes.length)
 	}
+	// The battery strap's two M2 self-tapping screws (py/chassis.py strap), the board screw's kind.
+	if (spec) boardThreads.set(2, (boardThreads.get(2) ?? 0) + 2)
 	const boardScrews = [...boardThreads].filter(([, n]) => n > 0).map(([t, n]) => ({ n, part: hw.find((h) => h.kind === "screw" && h.selfTapping && h.threadMm === t) }))
 	const casterScrew = spec?.caster && hw.find((h) => h.kind === "screw" && !h.selfTapping && h.threadMm === screwFor(spec.caster!.holeDiaMm))
 	const casterNut = casterScrew && hw.find((h) => h.kind === "nut" && h.threadMm === casterScrew.threadMm)
@@ -146,7 +148,6 @@ export function robotPartNotes(s: ContractSnapshot): string[] {
 	return [
 		...(chassisSpec(s)?.sensor.holes.length ? [] : ["the sensor bracket: no screw holes for the distance sensor's breakout (its catalog entry has no mounting holes, or none lands above the plate)"]),
 		...((chassisSpec(s)?.motors ?? []).some((x) => x.mount.kind === "cradle-too-shallow") ? ["the motors: the printed cradle can't hold them at the design's axle height, and no bought bracket fits (the hardware check says what to change)"] : []),
-		"the battery sits between two printed rails: no strap or holder yet",
 		...(chassisSpec(s)?.beacon ? ["the beacon support's mast sections: a spigot into the section below and a socket on the plate, no glue or screw listed yet; its top's Velcro (hook side, Eurobot F.6) isn't in the parts list"] : []),
 		...(() => {
 			const spec = chassisSpec(s)
