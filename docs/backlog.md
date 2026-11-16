@@ -160,6 +160,11 @@ is a change to the firmware toolchain, not just the code.
       (its stm32f103.repl has no CAN) and has no F446 platform (the two-node CAN test runs F446 firmware on its F407 as an
       approximation); QEMU's ESP32-C3 models no TWAI. Those sides are proven only by compiling until the bench test
       (docs/bench-can.md) runs on real boards. STM32 bxCAN firmware itself is done (e7fb5e0).
+- [ ] **Skid-steer turn slip, on the bench.** A skid-steer rover's encoder-closed turn counts on the effective track
+      B·(1+(L/B)²), derived from Coulomb slip (1.5 B for the rover-4wd). The simulation slips more (2.2 B: planned 135°,
+      turned 92°, still clear of walls by 145 mm); real tyres measure 1.2–2 B in the literature. Measure the ratio on a
+      real floor (turn a counted amount, read the heading) and put it in the catalog per wheel/floor, or close the turn
+      on a gyro.
       Tried 16 Nov (branch stm-can 0100d6f, unmerged, capped at a debug build and one fix attempt): two F446 link-test
       firmwares on Renode's stm32f4 (F407) platform with a CAN hub. (1) Both nodes stall in halWireBegin() (the SHT40's
       I2C) on the F407 model, before any CAN code; with it skipped they reach the CAN setup. (2) There PCLK1 reads

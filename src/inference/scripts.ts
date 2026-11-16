@@ -184,13 +184,14 @@ export const ROVER_BOARD = {
 // rear motors, whose inputs the generator ties to U5's (each side's two motors on one PWM), and plugs JM3 (rear left)
 // and JM4 (rear right); skid-steer mechanics (drive.kind "skid4": four driven wheels, no caster) laid out by the solver
 // for the brief's 8 mm edges, 200 × 180 mm and 1 kg. The firmware is the reference rover's, unchanged.
+const encoderPlug = (ref: string) => ({ ref, role: "connector", mpn: "SM06B-SRSS-TB(LF)(SN)", lcsc: "C160405", footprint: "jst6_sh", pins: ["GND", "ENCB", "ENCA", "VCC", "M2", "M1"] })
 export const FOUR_WD = /\b(4\s?wd|four[- ]wheel[- ]drive|skid[- ]steer)\b/i
 const isRover4 = () => /four-wheel/i.test(state().contract.get("requirements")?.summary ?? "")
 export const ROVER4_MOTION: ContractValues["motion"] = { ...ROVER_MOTION!, edgeMm: 8, maxSizeMm: [200, 180], maxMassG: 1000, drive: "skid4" }
 // The layout solver's answer for these parts (src/mechanics/solve.ts, skid steer): wheelbase 0.71× the track, 22.7 mN·m
 // per wheel for the 8 mm edge and 13.1 mN·m to turn in place against the 56.9 mN·m stall, 24 mm tipping margin.
 export const ROVER4_MECHANICS: ContractValues["mechanics"] = {
-	drive: { kind: "skid4", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "", trackMm: 170, wheelbaseMm: 120, axleXMm: 60 },
+	drive: { kind: "skid4", motor: "POLOLU-5139 100:1 MP 6V 12 CPR encoder", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "", trackMm: 170, wheelbaseMm: 120, axleXMm: 60 },
 	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: 70, yMm: 0 } },
 	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 98.6, yMm: 0, zMm: 62.7 }, connector: "JT1" },
 	chassis: { plateMm: [200, 156], thicknessMm: 3, material: "PLA", clearanceMm: 45, boards: [{ name: "main", at: { xMm: 0, yMm: 0 }, rotDeg: 0 }] },
@@ -199,16 +200,20 @@ export const ROVER4_BOARD = {
 	...ROVER_BOARD,
 	requirements: { ...ROVER_BOARD.requirements, summary: "four-wheel skid-steer rover for rough floors that avoids walls and carries a temperature and humidity sensor" },
 	outline: { widthMm: 70, heightMm: 45, thicknessMm: 1.6, sizeReason: { kind: "engineer-size" as const, detail: "the rover's chassis takes a 70 × 45 mm board" } },
+	// Encoder gearmotors (the 5139: the 2367 with a 12 CPR encoder): the skid turn ends on the front wheels' counts, not
+	// on a time (an open-loop skid turn tuned on one simulation cleared a wall by 20 mm). All four plugs are the 6-pin
+	// SH; the front pair's channel A goes to GPIO0/GPIO1 (ENC_LA, ENC_RA); the rear encoders stay unwired.
 	connectors: [
-		...ROVER_BOARD.connectors,
-		{ ref: "JM3", kind: "header" as const, edge: "left" as const, offsetMm: 15, widthMm: 6, heightMm: 6 },
-		{ ref: "JM4", kind: "header" as const, edge: "right" as const, offsetMm: 15, widthMm: 6, heightMm: 6 },
+		...ROVER_BOARD.connectors.map((c) => (c.ref === "JM1" || c.ref === "JM2" ? { ...c, widthMm: 8, heightMm: 4.3 } : c)),
+		{ ref: "JM3", kind: "header" as const, edge: "left" as const, offsetMm: 15, widthMm: 8, heightMm: 4.3 },
+		{ ref: "JM4", kind: "header" as const, edge: "right" as const, offsetMm: 15, widthMm: 8, heightMm: 4.3 },
 	],
+	pins: [...ROVER_PINS, { signal: "ENC_LA", gpio: 0, partRef: "JM1", partPin: "ENCA" }, { signal: "ENC_RA", gpio: 1, partRef: "JM2", partPin: "ENCA" }],
 	parts: [
-		...ROVER_BOARD.parts,
+		...ROVER_BOARD.parts.map((p) => (p.ref === "JM1" || p.ref === "JM2" ? encoderPlug(p.ref) : p)),
 		{ ...ROVER_BOARD.parts.find((p) => p.ref === "U5")!, ref: "U6" },
-		{ ...ROVER_BOARD.parts.find((p) => p.ref === "JM1")!, ref: "JM3" },
-		{ ...ROVER_BOARD.parts.find((p) => p.ref === "JM2")!, ref: "JM4" },
+		encoderPlug("JM3"),
+		encoderPlug("JM4"),
 	],
 	motion: ROVER4_MOTION,
 	mechanics: ROVER4_MECHANICS,
