@@ -47,3 +47,31 @@ test("both sides of a CAN link compile as link tests (ESP32-C3 TWAI)", { skip: s
 		assert.ok(existsSync(join(dir, ".pio", "build", BENCH_ENV, "firmware.bin")), `${name}: no firmware.bin`)
 	}
 })
+
+// STM32 bxCAN (the HAL's CAN driver), on the STM32F103's CAN at PB8 (RX) / PB9 (TX): the same frames as the ESP32's, each
+// message's definition hash its 29-bit identifier. Before 16 Nov 2026 an STM32 board with a CAN link got #error.
+test("both sides of a CAN link compile as link tests on an STM32F103 (bxCAN)", { skip: slow || (pio ? false : "needs PlatformIO"), timeout: 1_200_000 }, async () => {
+	const { STM32_LOGGER_DESIGN } = await import("../src/inference/scripts.ts")
+	for (const name of ["hub", "sensor"]) {
+		const c = fixtureContract()
+		c.values = { ...c.values, ...structuredClone(STM32_LOGGER_DESIGN), links: boardLinks(spec, name) }
+		// The STM32 logger is a G031 (no CAN): the same board on the F103, each pin moved by its name to the F103's index.
+		const { loadProfiles } = await import("../src/mcu/profile.ts")
+		const ps = loadProfiles(), g031 = ps.find((x) => x.id === "stm32g031k8t6")!, f103 = ps.find((x) => x.id === "stm32f103c8t6")!
+		const f103Part = (JSON.parse(readFileSync(join(ROOT, "catalog", "parts.json"), "utf8")) as { mpn: string }[]).find((x) => x.mpn === "STM32F103C8T6")!
+		c.values.parts = c.values.parts!.map((x) => (x.role === "mcu" ? { ...x, ...f103Part, ref: x.ref } : x))
+		c.values.pins = c.values.pins!.map((x) => ({ ...x, gpio: f103.pins.find((q) => q.name === g031.pins.find((g) => g.index === x.gpio)?.name)!.index }))
+		const [l] = c.values.links!
+		c.values.parts = [...c.values.parts!, { ref: l.connector, role: "connector", ...LINK_CONNECTOR }, { ref: "U9", role: "can-transceiver", ...CAN_TRANSCEIVER }]
+		assert.ok(!c.values.pins!.some((p) => p.gpio === 24 || p.gpio === 25), "PB8/PB9 are free on the STM32 logger")
+		c.values.pins = [...c.values.pins!, { signal: canSignals(l).tx, gpio: 25, partRef: "U9", partPin: "D" }, { signal: canSignals(l).rx, gpio: 24, partRef: "U9", partPin: "R" }]
+		const dir = tempDir()
+		await prepareFirmware(ROOT, dir, c)
+		const link = readFileSync(join(dir, "include", "link.h"), "utf8")
+		assert.doesNotMatch(link, /#error "Bringup: a CAN link on an STM32/)
+		assert.match(link, /HAL_CAN_Start/)
+		assert.match(link, name === "hub" ? /HAL_CAN_GetRxMessage/ : /HAL_CAN_AddTxMessage/)
+		const r = await buildLinkTestFirmware(pio!, dir)
+		assert.equal(r.ok, true, `${name}: ${r.log.slice(-3000)}`)
+	}
+})

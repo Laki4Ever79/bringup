@@ -664,7 +664,7 @@
 	"firmware": {
 		"platform": "ststm32@19.6.0",
 		"board": "genericSTM32F103C8",
-		"framework": "arduino",
+		"framework": "arduino", "flags": ["-DHAL_CAN_MODULE_ENABLED"],
 		"arch": "stm32",
 		"pinStyle": "name",
 		"zephyrBoard": "stm32_min_dev",
