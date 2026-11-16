@@ -14,11 +14,11 @@ type Any = any
 const ESTOP = "OMRON A22E-M-01"
 const PLUG = { ref: "JE1", role: "estop", mpn: "B2B-XH-A(LF)(SN)", lcsc: "C158012", footprint: "pinrow2_p2.5_id1_od1.8", pins: ["VBAT", "VM"] }
 
-// The reference rover with an e-stop on a deck 120 mm up (its 54.7 mm body clears the plate) and its plug on the board.
+// The reference rover with an e-stop on a deck 125 mm up (its body clears the board) (its 54.7 mm body clears the plate) and its plug on the board.
 function rover(edit: (v: Any) => void = () => {}): ContractSnapshot {
 	const values = JSON.parse(JSON.stringify(ROVER_BOARD))
 	values.parts.push({ ...PLUG })
-	values.mechanics.safety = { estop: { part: ESTOP, at: { xMm: 20, yMm: 0, zMm: 120 }, connector: "JE1" } }
+	values.mechanics.safety = { estop: { part: ESTOP, at: { xMm: 20, yMm: 0, zMm: 125 }, connector: "JE1" } }
 	edit(values)
 	return { revision: 1, versions: {} as never, values }
 }
@@ -56,7 +56,7 @@ test("the reference rover with an e-stop passes: its motors stall at 0.94 A, und
 	const fig = mechanicsFigures(rover()).find((f) => f.check === "E-stop breaking current")!
 	assert.ok(fig.ok)
 	assert.match(fig.limit, /1\.5 A/)
-	assert.equal(estopTopMm(rover().values.mechanics!, defaultCheckCatalog()!.mech), 152)
+	assert.equal(estopTopMm(rover().values.mechanics!, defaultCheckCatalog()!.mech), 157)
 })
 
 test("motors that draw more than the contact can break are named", () => {
@@ -75,7 +75,7 @@ test("a deck too low for the button's body, a missing plug and an unknown button
 	assert.deepEqual(noPlug[0].affects, ["parts"])
 	assert.match(noPlug[0].message, /B2B-XH-A/)
 	assert.match(safety(rover((v) => (v.mechanics.safety.estop.part = "SOME-BUTTON")))[0].message, /not in catalog\/mechanics\.json safety/)
-	assert.match(safety(rover((v) => (v.mechanics.safety.estop.at.xMm = 70)))[0].message, /overhangs/)
+	assert.ok(safety(rover((v) => (v.mechanics.safety.estop.at.xMm = 70))).some((x) => /overhangs/.test(x.message)))
 })
 
 test("the contract accepts mechanics.safety only in its shape", () => {
@@ -105,4 +105,13 @@ test("the button's place counts in the climb check: behind the middle the caster
 	assert.deepEqual(mechanicsChecksWith(rover(), defaultCheckCatalog()!), [])
 	const back = rover((v) => (v.mechanics.safety.estop.at.xMm = -20))
 	assert.deepEqual(mechanicsChecksWith(back, defaultCheckCatalog()!).map((x) => x.kind), ["mech-climb"])
+})
+
+// Found placing the Eurobot starter's button (16 Nov): on a deck at 120 mm its 34 mm body came down onto the main board.
+test("the button's body may not come down onto a board under it", () => {
+	const low = safety(rover((v) => (v.mechanics.safety.estop.at.zMm = 120)))
+	assert.equal(low.length, 1)
+	assert.match(low[0].message, /comes down onto board main .* at least 122 mm/)
+	// Clear of the board (to one side of it, still over the plate), the same deck is fine.
+	assert.deepEqual(safety(rover((v) => Object.assign(v.mechanics.safety.estop.at, { zMm: 120, xMm: 52 }))), [])
 })

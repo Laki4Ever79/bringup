@@ -484,7 +484,7 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		else for (const f of ruleChecks(rules, motion, mech, ms, pack, cat.mech, figures)) push("mech-rules", `${f.rule}: ${f.message}`, f.affects)
 	}
 	// The emergency stop (safety.ts): its contact against the motors' current and the pack's voltage, its plug, its mount.
-	for (const f of [...safetyChecks(mech, parts, motor, pack, cat.mech, figures), ...startChecks(mech, parts, pins)]) push("mech-safety", f.message, f.affects, f.affects.includes("parts") ? ["parts"] : f.affects.includes("architect") ? ["pins"] : ["mechanics"])
+	for (const f of [...safetyChecks(mech, parts, motor, pack, cat.mech, figures, ms), ...startChecks(mech, parts, pins)]) push("mech-safety", f.message, f.affects, f.affects.includes("parts") ? ["parts"] : f.affects.includes("architect") ? ["pins"] : ["mechanics"])
 	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", 'no battery connector on any board: the cell plugs into a 2-pin connector whose part has role "battery" (not "connector": a role-"connector" 2-pin part is a motor\'s plug, JM1 or JM2)', ["parts"], ["parts"])
 	return out
 }
