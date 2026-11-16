@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process"
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { writeRosPackage } from "../ros/package.ts"
 import { join } from "node:path"
 import { promisify } from "node:util"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { assemblyOutlines, withAssembly } from "../mechanics/assembly.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
-import { byMpn } from "../mechanics/catalog.ts"
+import { byMpn, type MotorMountPart } from "../mechanics/catalog.ts"
 import { est } from "../mechanics/estimates.ts"
 import { massAndCom, mounts, payloadMount } from "../mechanics/model.ts"
 import { MOUNTING_HOLE, mountingHoles } from "../codegen/circuit.ts"
@@ -23,7 +23,11 @@ export interface ChassisSpec {
 	plate: { lengthMm: number; widthMm: number; thicknessMm: number; clearanceMm: number }
 	standoffMm: number
 	// axleDropMm: the axle's depth under the plate's underside (the caster sets the plate's height; the motor's bracket drops to the axle).
-	motors: { side: "left" | "right"; xMm: number; yMm: number; bodyMm: [number, number, number]; axleDropMm: number }[]
+	// mount: how the motor is held. "bracket": a bought bracket (catalog motorMounts) against the plate's underside, its two
+	// screws through holes in the plate, no printed cradle. "clamp": the printed cradle and a printed clamp under the motor,
+	// held by two self-tapping screws into the cradle's bosses. "cradle-too-shallow": the cradle can't hold the axle that
+	// close to the plate (it needs wall above the motor); the mechanics check says so.
+	motors: { side: "left" | "right"; xMm: number; yMm: number; bodyMm: [number, number, number]; axleDropMm: number; mount: MotorMount }[]
 	caster: { xMm: number; holesMm: [number, number][]; holeDiaMm: number; wheelMm: number; heightMm: number }
 	battery: { xMm: number; yMm: number; sizeMm: [number, number, number] }
 	// holes: the board's own mounting holes on the plate (its mountingHoles, or a bought module's record holes, turned by
@@ -51,6 +55,37 @@ export interface ChassisSpec {
 	stopBeforeWallMm: number
 	edgeMm: number // the course's step: the edge the brief says the rover crosses
 	estimates: { floorMu: number; casterMu: number; rollingCrr: number; packOhm: number }
+}
+
+export type MotorMount =
+	| { kind: "bracket"; mpn: string; holes: { xMm: number; yMm: number }[]; holeDiaMm: number }
+	| { kind: "clamp"; screwHoles: { xMm: number; yMm: number }[]; pilotMm: number; clampMm: [number, number, number] }
+	| { kind: "cradle-too-shallow"; needMm: number }
+// The printed cradle's wall above and around the motor (py/chassis.py WALL).
+export const CRADLE_WALL_MM = 2
+// A #2-56 screw (2.18 mm) through the plate: the bracket's own hole size and a little more for printing.
+export const BRACKET_PLATE_HOLE_MM = 2.4
+// The clamp's M2 self-tapping screws: the board standoffs' pilot (STANDOFF.pilotMm) in a 4 mm boss beside the cradle.
+export const CLAMP_BOSS_MM = 4
+// How a motor is held (lead and bringup-board, 16 Nov 2026): Pololu's bracket when it fits the motor and the design's
+// axle drop is its axleFromFaceMm (±0.5 mm: the plate height is never changed for it); else the printed cradle with a
+// clamp, when the cradle can reach that drop; else nothing that holds it there. The printed cradle alone needs a wall above
+// the motor, so it can't hold the axle closer than H/2 + 2 mm: every real subscription rover asked for 5.0 mm and got
+// 7.0 mm without a word (py/chassis.py clamped it).
+export function motorMount(m: { xMm: number; yMm: number; bodyMm: [number, number, number]; axleDropMm: number }, motorMpn: string, mounts: MotorMountPart[], pilotMm: number): MotorMount {
+	const [L, W, H] = m.bodyMm
+	const bracket = mounts.find((b) => b.kind === "bracket" && /^POLOLU-/i.test(motorMpn) && b.fitsBodyMm.every((v, i) => Math.abs(v - m.bodyMm[i]) < 0.5) && Math.abs(m.axleDropMm - b.axleFromFaceMm) <= 0.5)
+	if (bracket) {
+		// The shaft (and the gearbox's face) points out to the wheel, along y.
+		const out = Math.sign(m.yMm) || 1
+		const yHole = +(m.yMm + out * (L / 2 - bracket.holeFromGearboxFaceMm)).toFixed(3)
+		return { kind: "bracket", mpn: bracket.mpn, holes: [-1, 1].map((s) => ({ xMm: +(m.xMm + (s * bracket.holeSpacingMm) / 2).toFixed(3), yMm: yHole })), holeDiaMm: BRACKET_PLATE_HOLE_MM }
+	}
+	const need = H / 2 + CRADLE_WALL_MM
+	if (m.axleDropMm < need - 1e-9) return { kind: "cradle-too-shallow", needMm: need }
+	// Bosses either side of the cradle, mid-length; the clamp spans the cradle and both bosses under the motor.
+	const reach = W / 2 + CRADLE_WALL_MM + CLAMP_BOSS_MM / 2
+	return { kind: "clamp", screwHoles: [-1, 1].map((s) => ({ xMm: +(m.xMm + s * reach).toFixed(3), yMm: m.yMm })), pilotMm, clampMm: [2 * reach + CLAMP_BOSS_MM, 6, 2] }
 }
 
 // The sensor breakout's M2.5 screws: ISO 273's medium clearance hole.
@@ -117,7 +152,10 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 	return {
 		plate: { lengthMm: mech.chassis.plateMm[0], widthMm: mech.chassis.plateMm[1], thicknessMm: mech.chassis.thicknessMm, clearanceMm: mech.chassis.clearanceMm },
 		standoffMm: est("standoffMm"),
-		motors: ms.filter((m) => m.what.startsWith("motor:")).map((m) => ({ side: m.what.endsWith("left") ? ("left" as const) : ("right" as const), xMm: m.xMm, yMm: m.yMm, bodyMm: motor.bodyMm, axleDropMm: mech.chassis.clearanceMm - wheel.diameterMm / 2 })),
+		motors: ms.filter((m) => m.what.startsWith("motor:")).map((m) => {
+			const base = { side: m.what.endsWith("left") ? ("left" as const) : ("right" as const), xMm: m.xMm, yMm: m.yMm, bodyMm: motor.bodyMm, axleDropMm: mech.chassis.clearanceMm - wheel.diameterMm / 2 }
+			return { ...base, mount: motorMount(base, motor.mpn, cat.mech.motorMounts ?? [], STANDOFF.pilotMm) }
+		}),
 		caster: { xMm: mech.drive.axleXMm - mech.drive.wheelbaseMm, holesMm: caster.holesMm, holeDiaMm: CASTER_HOLE_MM, wheelMm: caster.wheelMm, heightMm: caster.heightMm },
 		battery: { xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, sizeMm: pack.sizeMm },
 		boards: placed.map((b) => {
@@ -174,7 +212,9 @@ export async function buildChassis(python: string, root: string, dir: string, s:
 	} catch (e) {
 		console.error("[chassis] ROS package not written:", e)
 	}
-	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)).concat(ros), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")) }
+	// The printed motor clamp, when a motor is clamped (motorMount): print one per clamped motor.
+	const clamp = existsSync(join(dir, "motor-clamp.stl")) ? [join(dir, "motor-clamp.stl")] : []
+	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)).concat(clamp, ros), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")) }
 }
 
 // Every hole of a board on the chassis has a standoff under it in the built chassis (mounts.json, measured back from the

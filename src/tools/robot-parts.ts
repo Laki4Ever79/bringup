@@ -5,7 +5,7 @@
 import { byMpn, loadMechCatalog, type MechCatalog } from "../mechanics/catalog.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { checkOffer, type OfferCheck } from "./offers.ts"
-import { chassisSpec, type ChassisSpec } from "./chassis.ts"
+import { chassisSpec, CRADLE_WALL_MM, type ChassisSpec } from "./chassis.ts"
 import type { HardwarePart } from "../mechanics/catalog.ts"
 import { resolve } from "node:path"
 
@@ -18,7 +18,7 @@ export interface BuyLink {
 }
 
 export interface RobotPartLine {
-	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut"
+	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut" | "motor bracket" | "clamp screw"
 	mpn: string
 	qty: number
 	packs: number // packs to buy at the first link's pack size
@@ -82,6 +82,12 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 	const sensorScrew = sensorHoleCount ? hw.find((h) => h.kind === "screw" && !h.selfTapping && h.threadMm === screwFor(spec!.sensor.holeDiaMm)) : undefined
 	const sensorNut = sensorScrew && hw.find((h) => h.kind === "nut" && h.threadMm === sensorScrew.threadMm)
 	const casterHoles = spec ? spec.caster.holesMm.length : 0
+	// How the motors are held (chassis.ts motorMount): a bought bracket each (screws and nuts come with it), or a printed
+	// clamp held by two of the board's M2 self-tapping screws.
+	const bracketMotors = (spec?.motors ?? []).filter((x) => x.mount.kind === "bracket")
+	const bracketMpn = bracketMotors[0]?.mount.kind === "bracket" ? bracketMotors[0].mount.mpn : undefined
+	const clampScrews = (spec?.motors ?? []).reduce((n, x) => n + (x.mount.kind === "clamp" ? x.mount.screwHoles.length : 0), 0)
+	const clampScrew = clampScrews ? hw.find((h) => h.kind === "screw" && h.selfTapping && h.threadMm === 2) : undefined
 	return [
 		line("motor", cat.motors as WithBuy[], drive.motor, 2),
 		line("wheel", cat.wheels as WithBuy[], drive.wheel, 2),
@@ -92,6 +98,8 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 		casterScrew && casterHoles ? line("caster screw", hw, casterScrew.mpn, casterHoles) : null,
 		casterNut && casterHoles ? line("caster nut", hw, casterNut.mpn, casterHoles) : null,
 		sensorScrew ? line("sensor screw", hw, sensorScrew.mpn, sensorHoleCount) : null,
+		bracketMpn ? line("motor bracket", (cat.motorMounts ?? []) as WithBuy[], bracketMpn, bracketMotors.length) : null,
+		clampScrew ? line("clamp screw", hw, clampScrew.mpn, clampScrews) : null,
 		sensorNut ? line("sensor nut", hw, sensorNut.mpn, sensorHoleCount) : null,
 	].filter((l): l is RobotPartLine => l !== null)
 }
@@ -109,7 +117,7 @@ export function robotPartNotes(s: ContractSnapshot): string[] {
 	if (!s.values.mechanics) return []
 	return [
 		...(chassisSpec(s)?.sensor.holes.length ? [] : ["the sensor bracket: no screw holes for the distance sensor's breakout (its catalog entry has no mounting holes, or none lands above the plate)"]),
-		"the motors sit in printed cradles under the plate, held by shape: no clamp or screw yet",
+		...((chassisSpec(s)?.motors ?? []).some((x) => x.mount.kind === "cradle-too-shallow") ? ["the motors: the printed cradle can't hold them at the design's axle height, and no bought bracket fits (the hardware check says what to change)"] : []),
 		"the battery sits between two printed rails: no strap or holder yet",
 		"cables (motor leads, the sensor's STEMMA QT cable, the battery lead) and their crimp housings aren't listed yet",
 	]
@@ -123,6 +131,8 @@ export function hardwareFit(s: ContractSnapshot, spec: ChassisSpec | null = chas
 	const thread = (item: string) => (cat.hardware ?? []).find((h) => h.mpn === lines.find((l) => l.item === item)?.mpn)?.threadMm
 	const caster = thread("caster screw")
 	if (caster !== undefined && spec.caster.holeDiaMm <= caster) out.push(`caster hole ${spec.caster.holeDiaMm} mm is smaller than the M${caster} screw`)
+	// A motor nothing can hold at the design's axle height: the printed cradle needs its wall above the motor.
+	for (const x of spec.motors) if (x.mount.kind === "cradle-too-shallow") out.push(`the ${x.side} motor's axle is ${x.axleDropMm} mm under the plate, but the printed cradle needs ${x.mount.needMm} mm (its ${CRADLE_WALL_MM} mm wall above the motor) and no bracket in catalog/mechanics.json motorMounts fits the motor at that height: raise the plate (clearanceMm) by ${+(x.mount.needMm - x.axleDropMm).toFixed(1)} mm or choose a motor a bracket fits`)
 	const sensorT = thread("sensor screw")
 	if (sensorT !== undefined && spec.sensor.holeDiaMm <= sensorT) out.push(`sensor bracket hole ${spec.sensor.holeDiaMm} mm is smaller than the M${sensorT} screw`)
 	// Each board's screw (by its hole) against its hole and its standoff's pilot; a thread the catalog has no screw for is
