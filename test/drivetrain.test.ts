@@ -77,3 +77,17 @@ test("the contract takes a drive train, rejects a malformed one, and the robot's
 	assert.match(after[0].message, /brg \(bearing\) has a 6 mm bore on axle, a 8 mm shaft/)
 	assert.deepEqual(after[0].affects, ["mechanics"])
 })
+
+// Drive-train step 2 (16 Nov 2026): sourced catalog entries; a part named by its mpn must carry the catalog's numbers.
+test("a drive-train part named by a catalog mpn is held to the catalog's numbers", async () => {
+	const { readFileSync } = await import("node:fs")
+	const { join } = await import("node:path")
+	const { mechanicsChecks } = await import("../src/mechanics/checks.ts")
+	const s = JSON.parse(readFileSync(join(import.meta.dirname, "fixtures/e2e-rover2-rev11.json"), "utf8"))
+	const mech = s.values.mechanics
+	const train: DriveTrainPart[] = [shaft("motor", 5), { id: "p1", kind: "pulley", pitchMm: 2, teeth: 20, boreMm: 5, shaft: "motor", mpn: "ADAFRUIT-1251 GT2 pulley 20T 5 mm bore" }]
+	const mates = (t: DriveTrainPart[]) => mechanicsChecks({ ...s, values: { ...s.values, mechanics: { ...mech, driveTrain: t } } }).filter((v) => v.kind === "mech-mate").map((v) => v.message)
+	assert.deepEqual(mates(train), [])
+	assert.match(mates([train[0], { ...train[1], boreMm: 6 } as DriveTrainPart]).join("\n"), /p1 \(ADAFRUIT-1251 .*\) differs from its catalog entry: boreMm 6 \(catalog 5\)/)
+	assert.match(mates([train[0], { ...train[1], mpn: "NOPE-1" } as DriveTrainPart]).join("\n"), /NOPE-1 is not in catalog\/mechanics.json driveTrain/)
+})

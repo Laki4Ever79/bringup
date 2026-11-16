@@ -148,6 +148,9 @@ export interface MechCatalog {
 	regulators?: RegulatorPart[]
 	// Bought fasteners and the like (robot-parts.ts lists them, counted from the chassis): screws, nuts.
 	hardware?: HardwarePart[]
+	// Bought drive-train parts (drivetrain.ts): pulleys, belts and the like, each number sourced; a design's
+	// mechanics.driveTrain names them by mpn and copies their numbers.
+	driveTrain?: (Sourced & { kind: string; [k: string]: unknown })[]
 	// Bought cables (chassis.ts robotCables).
 	cables?: CablePart[]
 	// Bought motor mounts (chassis.ts motorMount).
