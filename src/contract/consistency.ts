@@ -162,6 +162,7 @@ export type ViolationKind =
 	| "rail-underrated"
 	| "part-net-unknown"
 	| "net-short"
+	| "rail-missing"
 	| "rail-unwired"
 	| "rail-current-copper"
 	| "pack-voltage"
@@ -774,6 +775,12 @@ export function unconnectedParts(c: ContractSnapshot): Violation[] {
 // - rail-current-copper: a second rail too wide for a track while the one top-layer pour is taken (two layers).
 export function supplyWiring(c: ContractSnapshot): Violation[] {
 	const { parts = [], rails = [] } = c.values
+	// Parts on a supply pin (3V3, VDD, VCC) or a regulator with no 3V3 rail in the contract: the generator wires no supply
+	// net at all, and the board's net check (built against the same generator) can't see it. Real run 16 (Eurobot, 16 Nov
+	// 2026): rails arrived at revision 23; the board built at 22 had no V3V3 or MCU_EN net, and was taken as current.
+	const supplied = parts.filter((p) => p.role !== "connector" && p.pins.some((x) => ["3V3", "VDD", "VCC"].includes(x)))
+	if (parts.length && (supplied.length || parts.some((p) => p.role === "ldo")) && !rails.some((r) => r.name === "3V3"))
+		return [{ kind: "rail-missing", message: `the contract has no 3V3 rail${rails.length ? ` (its rails: ${rails.map((r) => r.name).join(", ")})` : ""}, but ${supplied.slice(0, 4).map((p) => p.ref).join(", ")}${supplied.length > 4 ? ` and ${supplied.length - 4} more` : ""} ${supplied.length === 1 ? "runs" : "run"} from it: the board generator wires no supply net without it. Add rails: [{name: "3V3", voltageV: 3.3, regulatorMaxMa, loadMa}] (and VBAT for a battery)`, fields: ["rails", "parts"], affects: ["architect"] }]
 	if (!parts.length || !rails.length) return []
 	const v: Violation[] = []
 	const railNames = new Set(rails.map((r) => r.name))

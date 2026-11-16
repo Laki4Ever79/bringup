@@ -32,7 +32,8 @@ export interface BuildContext {
 // silent skip: no artifact, no artifact.failed, no recorded inputs, so the consistency participant still
 // sees the artifact as not current and waits (or ends a stuck run, see consistency.ts).
 export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
-	board: ["outline", "parts", "pins"],
+	// rails: a board without them has no supply net (real run 16: 13 boards built at revisions 10–22, none with its 3V3).
+	board: ["outline", "parts", "pins", "rails"],
 	enclosure: ["outline", "connectors"],
 	firmware: ["parts", "pins"],
 	testkit: ["test", "outline", "pins"],
@@ -49,7 +50,10 @@ export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "tes
 export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
 	// test: the board carries a bottom-side test pad for each net the test field names.
 	// links: a link's VCC and an I2C link's bus traces (docs/system.md).
-	board: ["parts", "pins", "outline", "connectors", "test", "links"],
+	// rails: the supply nets and their track widths (real run 16, 16 Nov 2026: rails arrived at revision 23 and the board
+	// built at 22 without its 3V3 net stayed "current"). The few mechanics and requirements values the generator reads
+	// are its derived key (BOARD_DERIVED), so a chassis change alone doesn't rebuild it.
+	board: ["parts", "pins", "outline", "connectors", "test", "links", "rails"],
 	// parts: the lid's vent sits over the sensor, wherever the board generator places it. case: walls, height, features.
 	enclosure: ["outline", "connectors", "parts", "case"],
 	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
@@ -98,6 +102,9 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	lock?: BuildLock
 	// Why this design has no such artifact, when it has none (no case wanted): the build completes with nothing built.
 	notNeeded?: (snapshot: ContractSnapshot) => string | null
+	// Values outside the inputs that shape the artifact (a few in a large field): a change to `fields` rebuilds it only
+	// when `key` changes, and the dedupe below counts it.
+	derived?: { fields: FieldName[]; key: (snapshot: ContractSnapshot) => unknown }
 	// A short summary of the built artifact, carried on artifact.ready under the kind's name (the Drive tile's result).
 	summary?: (artifact: ArtifactOf[K]) => Record<string, unknown>
 }): Human {
@@ -111,6 +118,8 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	// subscription, 16 Nov 2026: the parts agent reworded D1's reason, the board rebuilt for 26 minutes and the run's
 	// hour ran out waiting for it).
 	let lastBuilt: string | null = null
+	let lastKey: string | null = null
+	const keyChanged = (field: string) => Boolean(opts.derived?.fields.includes(field as FieldName)) && JSON.stringify(opts.derived!.key(state().contract.snapshot()) ?? null) !== lastKey
 	const rebuilder = new Rebuilder(async (revision) => {
 		const s = state()
 		const snapshot = s.contract.snapshot()
@@ -126,7 +135,8 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, skipped }), self.id)
 			return
 		}
-		const built = physical(opts.inputs.map((f) => snapshot.values[f]))
+		const built = physical([...opts.inputs.map((f) => snapshot.values[f]), opts.derived?.key(snapshot) ?? null])
+		lastKey = JSON.stringify(opts.derived?.key(snapshot) ?? null)
 		if (built === lastBuilt && (s.artifacts as Record<string, unknown>)[opts.kind] !== undefined && !s.artifactFailures[opts.kind]) {
 			s.artifactInputs[opts.kind] = inputs
 			const drc = ((s.artifacts as Record<string, unknown>)[opts.kind] as { drc?: DrcSummary | null }).drc
@@ -164,7 +174,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 		capabilities: [],
 		handlers: [
 			{
-				specification: when(({ event }) => isEvent(event, "contract.changed") && (opts.inputs.includes(event.payload.field) || (lastNeed !== undefined && needChanged()))),
+				specification: when(({ event }) => isEvent(event, "contract.changed") && (opts.inputs.includes(event.payload.field) || keyChanged(event.payload.field) || (lastNeed !== undefined && needChanged()))),
 				processor: {
 					apply: ({ event }) => {
 						if (isEvent(event, "contract.changed")) rebuilder.request(event.payload.revision)
@@ -177,6 +187,13 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	return Object.assign(builder, { rebuilder })
 }
 
+// What the board generator reads from mechanics and requirements (src/codegen/circuit.ts): the skid-steer rear driver,
+// the sensor plug's VCC, the debug port, the duty cycle and USB wake (power and pads), and the test pads.
+export const BOARD_DERIVED = (s: ContractSnapshot) => {
+	const m = s.values.mechanics, r = s.values.requirements
+	return { driveKind: m?.drive.kind ?? null, sensorPlug: m?.sensor?.connector ?? null, debugPort: r?.debugPort ?? null, dutyCycle: r?.dutyCycle ?? null, usbWake: r?.usbWake ?? null, testPads: r?.testPads ?? null }
+}
+
 // The three domain builders. Each depends only on the contract fields that shape its artifact,
 // so a pin change rebuilds the board and firmware while the enclosure keeps working undisturbed.
 export function createBoardBuilder(env: Env, lock?: BuildLock): Human {
@@ -184,6 +201,7 @@ export function createBoardBuilder(env: Env, lock?: BuildLock): Human {
 		kind: "board",
 		lock,
 		inputs: BUILD_INPUTS.board,
+		derived: { fields: ["mechanics", "requirements"], key: BOARD_DERIVED },
 		requires: BUILD_REQUIRES.board,
 		build: async ({ dir, snapshot, revision }) => {
 			const board = await buildBoard(env, dir, snapshot, revision)
