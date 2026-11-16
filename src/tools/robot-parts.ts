@@ -179,12 +179,15 @@ export function hardwareFit(s: ContractSnapshot, spec: ChassisSpec | null = chas
 	return out
 }
 
+// More parts in one pack than a robot build needs: a bulk carton.
+const BULK_PACK = 100
 function fromCheck(l: RobotPartLine, link: BuyLink, c: OfferCheck): RobotPartCheck {
 	const o = c.offer
 	const usd = o && o.price !== null && (o.currency ?? "USD").toUpperCase() === "USD" ? o.price : null
 	const status: RobotLineStatus = c.status !== "live" ? "not checked" : o!.availability === "unknown" ? "stock unknown" : o!.availability
 	const packs = Math.ceil(l.qty / (link.packQty ?? 1))
 	const currencyNote = o && o.price !== null && usd === null ? ` · ${o.price} ${o.currency} (not converted)` : ""
+	const bulkNote = (link.packQty ?? 1) > BULK_PACK ? ` · sold only by the carton of ${link.packQty} (${usd === null ? "price unknown" : `$${usd}`}): buy a small pack locally` : ""
 	return {
 		...l,
 		packs,
@@ -192,10 +195,12 @@ function fromCheck(l: RobotPartLine, link: BuyLink, c: OfferCheck): RobotPartChe
 		supplier: link.supplier,
 		url: link.url,
 		unitUsd: usd,
-		lineUsd: usd === null ? null : Math.round(usd * packs * 100) / 100,
+		// A shop that sells only bulk cartons (Fastener SuperStore: 3,000 screws for $108.09) prices a hobby build wrong:
+		// such a line is left out of the total and says so (run 9's package, 16 Nov 2026: four M2.5 screws counted $432).
+		lineUsd: usd === null || (link.packQty ?? 1) > BULK_PACK ? null : Math.round(usd * packs * 100) / 100,
 		leadDays: o?.leadDays ?? null,
 		checkedAt: c.checkedAt,
-		note: c.note + currencyNote,
+		note: c.note + currencyNote + bulkNote,
 	}
 }
 

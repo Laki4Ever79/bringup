@@ -1456,7 +1456,8 @@
 			"buy": [
 				{
 					"supplier": "Fastener SuperStore",
-					"url": "https://www.fastenersuperstore.com/products/509243/machine-screws"
+					"url": "https://www.fastenersuperstore.com/products/509243/machine-screws",
+					"packQty": 3000
 				}
 			],
 			"source": {
@@ -1482,8 +1483,14 @@
 			"acrossFlatsMm": 5,
 			"buy": [
 				{
+					"supplier": "Pololu",
+					"url": "https://www.pololu.com/product/1967",
+					"packQty": 25
+				},
+				{
 					"supplier": "Fastener SuperStore",
-					"url": "https://www.fastenersuperstore.com/products/548570/finished-hex-nuts"
+					"url": "https://www.fastenersuperstore.com/products/548570/finished-hex-nuts",
+					"packQty": 10000
 				}
 			],
 			"source": {
