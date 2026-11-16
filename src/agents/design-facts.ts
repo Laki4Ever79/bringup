@@ -15,6 +15,7 @@ import { DATA_FORMAT } from "../codegen/data-format.ts"
 import { spaceFactLines } from "../contract/space.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { mechanicsFactLines } from "../mechanics/facts.ts"
+import { mechanicsFigures } from "../mechanics/checks.ts"
 import { mcuFacts } from "../mcu/facts.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { roverHeader } from "../mechanics/firmware.ts"
@@ -52,7 +53,7 @@ function designFactsUncached(s: ContractSnapshot, brief: string): string[] {
 		...(s.values.model ? ["", "## The on-device model (checked in code against the flash and RAM the firmware leaves, the sensor and its pins, and the battery)", ...modelFactLines(s)] : []),
 		"",
 		"## Power budget (computed in code from the contract and the brief, not by a model)",
-		...powerBudgetLines(power),
+		...robotRuntime(s, powerBudgetLines(power)),
 		...dutyCycleCheckLines(power, s),
 	]
 }
@@ -190,4 +191,15 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 			: "- Firmware status LED: the rover firmware drives a pin named exactly STATUS_LED as a 1 Hz heartbeat; this design has none, so no LED shows the rover running.",
 		...startFact,
 	]
+}
+
+// A robot's battery is sized by its runtime while driving, which the mechanics check computes (motors at cruise plus the
+// electronics), not by a sleep duty cycle: its power budget says so instead of "unknown" (rover runs cc-rover-8 and -9 on
+// the Claude subscription, 16 Nov 2026: the reviewer twice noted "no duty cycle, so the power budget shows unknown").
+export function robotRuntime(s: ContractSnapshot, lines: string[]): string[] {
+	if (!s.values.motion || !s.values.mechanics) return lines
+	const runtime = mechanicsFigures(s).find((f) => f.check === "Runtime")
+	if (!runtime) return lines
+	const line = `- Estimated battery life (a robot: its runtime while driving, from the mechanics check): ${runtime.value} against ${runtime.limit} (${runtime.ok ? "met" : "NOT met"}; ${runtime.note ?? "at cruise"}). A robot awake while driving has no sleep duty cycle, so none is needed.`
+	return lines.map((l) => (l.startsWith("- Estimated battery life:") ? line : l))
 }

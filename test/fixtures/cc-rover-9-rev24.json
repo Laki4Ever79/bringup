@@ -1,0 +1,428 @@
+{
+  "revision": 24,
+  "values": {
+    "requirements": {
+      "summary": "Small indoor rover: two driven wheels, wall-avoiding distance sensor, temperature/humidity sensor reported over BLE, one Li-ion cell charged over USB-C, status LED.",
+      "peripherals": [
+        "motor driver",
+        "distance sensor",
+        "temperature/humidity sensor",
+        "status LED",
+        "USB-C charger"
+      ],
+      "batteryLifeDays": null,
+      "size": {
+        "widthMm": 150,
+        "heightMm": 120,
+        "exact": false
+      },
+      "enclosure": "none"
+    },
+    "motion": {
+      "speedMps": 0.3,
+      "runtimeMin": 30,
+      "edgeMm": 3,
+      "maxSlopeDeg": 5,
+      "stopBeforeWallMm": 150,
+      "payloadG": 20,
+      "maxSizeMm": [
+        150,
+        120
+      ],
+      "maxMassG": 500
+    },
+    "mechanics": {
+      "drive": {
+        "kind": "differential",
+        "motor": "POLOLU-2367 100:1 MP 6V",
+        "wheel": "POLOLU-1420 wheel 60x8 mm",
+        "caster": "BOTLAND-7292 swivel caster 25 mm",
+        "trackMm": 112,
+        "wheelbaseMm": 100,
+        "axleXMm": 45
+      },
+      "battery": {
+        "pack": "ADAFRUIT-2011 LP-803860 2000 mAh",
+        "at": {
+          "xMm": 45,
+          "yMm": 0
+        }
+      },
+      "sensor": {
+        "module": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+        "at": {
+          "xMm": 73.6,
+          "yMm": 0,
+          "zMm": 52.7
+        },
+        "connector": "JT1"
+      },
+      "chassis": {
+        "plateMm": [
+          150,
+          100
+        ],
+        "thicknessMm": 3,
+        "material": "PLA",
+        "clearanceMm": 35,
+        "boards": [
+          {
+            "name": "main",
+            "at": {
+              "xMm": 0,
+              "yMm": 0
+            },
+            "rotDeg": 0
+          }
+        ]
+      }
+    },
+    "outline": {
+      "widthMm": 62,
+      "heightMm": 22,
+      "thicknessMm": 1.6,
+      "sizeReason": {
+        "kind": "routing",
+        "detail": "Revision 23 at 58x22 mm was built and failed routing: the VM and VCP traces from U5 (DRV8833) to bulk capacitor C4 measured 5.84 mm and 6.57 mm, over the 5 mm limit, and R3 overlapped D2. 62 mm gives the driver supply capacitor room beside it."
+      }
+    },
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 44.5,
+        "widthMm": 9,
+        "heightMm": 3.2
+      },
+      {
+        "ref": "J2",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 6,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JM1",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 6,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JM2",
+        "kind": "header",
+        "edge": "bottom",
+        "offsetMm": 18.9,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JT1",
+        "kind": "header",
+        "edge": "bottom",
+        "offsetMm": 33,
+        "widthMm": 5.8,
+        "heightMm": 3
+      }
+    ],
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-C3-MINI-1",
+        "lcsc": "C2838502",
+        "footprint": "esp32_c3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO18",
+          "GPIO19",
+          "EN",
+          "3V3",
+          "GND"
+        ],
+        "reason": "Only catalog MCU with Bluetooth LE for the 'temperature/humidity sensor reported over BLE' line; its 0.5 A supply need sets the LDO choice."
+      },
+      {
+        "ref": "U2",
+        "role": "sensor",
+        "mpn": "SHT40-AD1B-R2",
+        "lcsc": "C2909890",
+        "footprint": "dfn4",
+        "pins": [
+          "SDA",
+          "SCL",
+          "VDD",
+          "VSS"
+        ],
+        "reason": "Brief line 'temperature/humidity sensor reported over BLE'; SHT40 has the tightest accuracy (±1.8 %RH, ±0.2 °C) of the two options."
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "AP2112K-3.3TRG1",
+        "lcsc": "C51118",
+        "footprint": "sot23_5",
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ],
+        "reason": "3.3 V rail for the ESP32-C3 module: 600 mA rating meets the 0.5 A need, with 0.40 V dropout at 600 mA and no lifecycle flag. Its 55 µA quiescent is negligible: the firmware never sleeps and no battery-life target is set."
+      },
+      {
+        "ref": "U4",
+        "role": "charger",
+        "mpn": "TP4054-42-SOT25R",
+        "lcsc": "C32574",
+        "footprint": "sot23_5",
+        "pins": [
+          "CHRG",
+          "GND",
+          "BAT",
+          "VCC",
+          "PROG"
+        ],
+        "reason": "Brief line 'one Li-ion cell charged over USB-C': single-cell Li-ion linear charger with a CHRG pin for the charge LED."
+      },
+      {
+        "ref": "U5",
+        "role": "motor-driver",
+        "mpn": "DRV8833PWPR",
+        "lcsc": "C50506",
+        "footprint": "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm",
+        "pins": [
+          "nSLEEP",
+          "AOUT1",
+          "AISEN",
+          "AOUT2",
+          "BOUT2",
+          "BISEN",
+          "BOUT1",
+          "nFAULT",
+          "BIN1",
+          "BIN2",
+          "VCP",
+          "VM",
+          "GND",
+          "VINT",
+          "AIN2",
+          "AIN1"
+        ],
+        "nets": {
+          "VM": "VBAT"
+        },
+        "reason": "Motion: the two POLOLU-2367 drive motors need an H-bridge driver; the DRV8833 drives both at 1.5 A RMS, above the 0.67 A stall current. VM runs from the Li-ion cell (2.7–10.8 V)."
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ],
+        "reason": "Brief line 'charged over USB-C': the USB-C receptacle for charging and flashing."
+      },
+      {
+        "ref": "J2",
+        "role": "battery",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "Brief line 'one Li-ion cell': 2-pin JST PH connector for the 2000 mAh cell; also the robot's battery connector."
+      },
+      {
+        "ref": "JM1",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "Motion: the left drive motor's 2-pin plug, wired to the DRV8833 outputs."
+      },
+      {
+        "ref": "JM2",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "Motion: the right drive motor's 2-pin plug, wired to the DRV8833 outputs."
+      },
+      {
+        "ref": "JT1",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "reason": "Mechanics: the VL53L0X distance sensor's 4-pin cable (JST SH, Qwiic/STEMMA QT pinout: GND, 3.3 V, SDA, SCL)."
+      },
+      {
+        "ref": "D1",
+        "role": "led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ],
+        "reason": "Brief line 'status LED'; it is driven from GPIO10, not GPIO8, so the reset strap stays high."
+      },
+      {
+        "ref": "D2",
+        "role": "charge-led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ],
+        "reason": "Shows charging state with the MCU asleep, wired to the charger's CHRG pin (brief: charged over USB-C)."
+      },
+      {
+        "ref": "R1",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ],
+        "reason": "1 kΩ series resistor for the charge LED D2, as the charge-LED wiring requires."
+      }
+    ],
+    "pins": [
+      {
+        "signal": "MOT_AIN1",
+        "gpio": 6,
+        "partRef": "U5",
+        "partPin": "AIN1"
+      },
+      {
+        "signal": "MOT_AIN2",
+        "gpio": 7,
+        "partRef": "U5",
+        "partPin": "AIN2"
+      },
+      {
+        "signal": "MOT_BIN1",
+        "gpio": 0,
+        "partRef": "U5",
+        "partPin": "BIN1"
+      },
+      {
+        "signal": "MOT_BIN2",
+        "gpio": 1,
+        "partRef": "U5",
+        "partPin": "BIN2"
+      },
+      {
+        "signal": "I2C_SDA",
+        "gpio": 4,
+        "partRef": "U2",
+        "partPin": "SDA"
+      },
+      {
+        "signal": "I2C_SCL",
+        "gpio": 5,
+        "partRef": "U2",
+        "partPin": "SCL"
+      },
+      {
+        "signal": "USB_DP",
+        "gpio": 19,
+        "partRef": "J1",
+        "partPin": "DP"
+      },
+      {
+        "signal": "USB_DN",
+        "gpio": 18,
+        "partRef": "J1",
+        "partPin": "DN"
+      },
+      {
+        "signal": "STATUS_LED",
+        "gpio": 10,
+        "partRef": "D1",
+        "partPin": "A"
+      }
+    ],
+    "rails": [
+      {
+        "name": "VBUS",
+        "voltageV": 5,
+        "regulatorMaxMa": 500,
+        "loadMa": 500
+      },
+      {
+        "name": "VBAT",
+        "voltageV": 3.7,
+        "regulatorMaxMa": 2000,
+        "loadMa": 1400
+      },
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 170
+      }
+    ]
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 5,
+    "connectors": 7,
+    "rails": 1,
+    "parts": 4,
+    "pins": 1,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 2,
+    "mechanics": 3,
+    "assembly": 0
+  }
+}
