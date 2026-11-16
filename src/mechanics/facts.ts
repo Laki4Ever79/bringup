@@ -19,6 +19,9 @@ export function mechanicsFactLines(s: ContractSnapshot): string[] {
 	lines.push("- Distance sensors:", ...(m.sensors ?? []).map((x) => `  - ${x.mpn}: ${x.chip}, ${x.rangeMm} mm range, ${x.updateMs} ms per reading, ${x.sizeMm.join(" × ")} mm, ${x.massG} g, ${x.connector}`))
 	if (v.mechanics) {
 		const { massG, com } = massAndCom(mounts(withAssembly(v)!, outlinesWithAssembly(v), m))
+		// How the pack is held, so a reviewer doesn't read it as hanging on its wires (run cc-eurobot-16's review, 16 Nov 2026).
+		const bat = v.mechanics.battery
+		lines.push(`- Battery mounting: the pack lies on the plate at (${bat.at.xMm}, ${bat.at.yMm}) mm between two printed rails along its long sides (py/chassis.py), ${bat.enclosure === "fireproof-bag" ? "inside a certified fireproof bag (Eurobot F.4.b: a bare lithium pack is kept permanently in one, its charger submitted for homologation)" : "bare"}; a strap over it is not modelled yet`)
 		lines.push(`- Computed: mass about ${Math.round(massG + v.motion.payloadG)} g with the ${v.motion.payloadG} g payload; centre of mass (${com.map((c) => c.toFixed(1)).join(", ")}) mm without it`)
 	}
 	return lines

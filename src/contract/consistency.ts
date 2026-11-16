@@ -130,6 +130,7 @@ export type ViolationKind =
 	| "drc-errors"
 	| "outline-mismatch"
 	| "net-missing"
+	| "supply-unwired"
 	| "pin-unwired"
 	| "pin-part-missing"
 	| "pin-mismatch"
@@ -286,6 +287,21 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 				})
 			}
 		}
+	}
+
+	// Every supply pin of every part is on a net in the board that was built, read from the board itself rather than from the
+	// generator, which could be wrong the same way (run cc-eurobot-16, 16 Nov 2026: 13 boards were built with no V3V3 net, so
+	// U1.3V3 was on nothing, and the net check, comparing with the same generator, saw nothing missing).
+	if (a.board?.parts) {
+		const onNet = new Set(Object.values(a.board.nets).filter((ends) => ends.length >= 2).flat())
+		const unpowered = Object.entries(a.board.parts).flatMap(([ref, part]) => part.pins.filter((pin) => SUPPLY_PIN.test(pin) && !onNet.has(`${ref}.${pin}`)).map((pin) => `${ref}.${pin}`))
+		if (unpowered.length)
+			v.push({
+				kind: "supply-unwired",
+				message: `the built board leaves ${unpowered.join(", ")} on no net: ${unpowered.length === 1 ? "that supply pin has" : "those supply pins have"} no power. The rails field names the rails the board generator wires (a 3V3 rail for the MCU and its sensors, VBAT for the cell): add the missing rail`,
+				fields: ["rails"],
+				affects: ["architect"],
+			})
 	}
 
 	// The firmware is generated from the contract (pins.h), so a pin or sensor-driver mismatch only means it hasn't been
@@ -899,3 +915,5 @@ export function powerTreeChecks(c: ContractSnapshot): Violation[] {
 		return [{ kind: "rail-headroom", message: `on battery the LDO gets about ${(into - drop).toFixed(2)} V (${tree.buck ? "the step-down's output" : `the pack's nominal ${into} V`} less ${tree.battery.ref}'s ${drop.toFixed(2)} V at ${Math.round(loadA * 1000)} mA), under the ${need.toFixed(2)} V its 3.3 V needs (output plus about ${Math.round(dropout * 1000)} mV dropout at that load): the 3V3 rail sags. ${tree.battery.role === "ideal-diode" ? "Charge the cell on the board (the charger's output feeds the LDO directly)" : `Use an ideal diode (role ideal-diode, catalog ${byRole("ideal-diode")}) instead of ${tree.battery.ref}`}`, fields: ["parts"], affects: ["parts"] }]
 	return []
 }
+// A part's supply pin by name: what must be on a powered net in any built board.
+const SUPPLY_PIN = /^(3V3|VDD|VDDIO|AVDD|DVDD|VCC|VIN|VM|VBAT|V\+)$/
