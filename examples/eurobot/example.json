@@ -1,0 +1,16 @@
+{
+	"name": "eurobot",
+	"sentence": "A Eurobot base robot: two wheels with encoders, an emergency stop and a pull-cord start, checked against the competition's robot rules, with room on top for the team's mechanism",
+	"title": "Eurobot base",
+	"boards": [
+		{
+			"name": "main",
+			"outline": {
+				"widthMm": 46,
+				"heightMm": 32
+			},
+			"chassis": true
+		}
+	],
+	"links": []
+}

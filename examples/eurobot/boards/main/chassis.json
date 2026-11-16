@@ -1,0 +1,174 @@
+{
+ "plate": {
+  "lengthMm": 150,
+  "widthMm": 96,
+  "thicknessMm": 3,
+  "clearanceMm": 50.5
+ },
+ "standoffMm": 10,
+ "motors": [
+  {
+   "side": "left",
+   "xMm": 45,
+   "yMm": 34,
+   "bodyMm": [
+    32,
+    12,
+    10
+   ],
+   "axleDropMm": 10.5
+  },
+  {
+   "side": "right",
+   "xMm": 45,
+   "yMm": -34,
+   "bodyMm": [
+    32,
+    12,
+    10
+   ],
+   "axleDropMm": 10.5
+  }
+ ],
+ "caster": {
+  "xMm": -55,
+  "holesMm": [
+   [
+    18,
+    14
+   ],
+   [
+    -18,
+    14
+   ],
+   [
+    -18,
+    -14
+   ],
+   [
+    18,
+    -14
+   ]
+  ],
+  "holeDiaMm": 4.2,
+  "wheelMm": 38,
+  "heightMm": 50.5
+ },
+ "battery": {
+  "xMm": 45,
+  "yMm": 0,
+  "sizeMm": [
+   60,
+   36,
+   7
+  ]
+ },
+ "boards": [
+  {
+   "name": "main",
+   "xMm": 0,
+   "yMm": 0,
+   "widthMm": 46,
+   "heightMm": 32,
+   "rotDeg": 0,
+   "holeInsetMm": 3,
+   "holes": [
+    {
+     "xMm": -20,
+     "yMm": -13
+    },
+    {
+     "xMm": 20,
+     "yMm": -13
+    },
+    {
+     "xMm": -20,
+     "yMm": 13
+    },
+    {
+     "xMm": 20,
+     "yMm": 13
+    }
+   ],
+   "screwHoleMm": 2.2,
+   "pilotMm": 1.6
+  }
+ ],
+ "boardScrew": {
+  "boardHoleMm": 2.2,
+  "pilotMm": 1.6
+ },
+ "unplaced": [],
+ "sensor": {
+  "xMm": 73.6,
+  "yMm": 0,
+  "zMm": 66,
+  "sizeMm": [
+   25.4,
+   17.8,
+   2.8
+  ],
+  "rangeMm": 1200,
+  "updateMs": 33,
+  "holes": [
+   {
+    "yMm": -10.16,
+    "zMm": 9.15
+   },
+   {
+    "yMm": 10.16,
+    "zMm": 9.15
+   },
+   {
+    "yMm": -10.16,
+    "zMm": 21.85
+   },
+   {
+    "yMm": 10.16,
+    "zMm": 21.85
+   }
+  ],
+  "holeDiaMm": 2.7
+ },
+ "massG": 303.34,
+ "com": [
+  11.338168391903475,
+  0,
+  56.32006197665986
+ ],
+ "wheelMassG": 20,
+ "casterMassG": 71,
+ "drive": {
+  "trackMm": 110,
+  "axleXMm": 45,
+  "wheelbaseMm": 100,
+  "wheelDiameterMm": 80,
+  "wheelWidthMm": 10
+ },
+ "motor": {
+  "ratedV": 6,
+  "noLoadRpm": 220,
+  "stallTorqueNm": 0.0922,
+  "stallA": 0.67,
+  "noLoadA": 0.07,
+  "encoderCountsPerRev": 602.22
+ },
+ "pack": {
+  "nominalV": 3.7,
+  "fullV": 4.2,
+  "cutoffV": 3,
+  "mAh": 2000,
+  "internalOhm": null
+ },
+ "payloadG": 20,
+ "driverPeakA": 2,
+ "speedMps": 0.3,
+ "stopBeforeWallMm": 150,
+ "edgeMm": 3,
+ "estimates": {
+  "floorMu": 0.6,
+  "casterMu": 0.02,
+  "rollingCrr": 0.02,
+  "packOhm": 0.15
+ }
+}
