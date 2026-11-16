@@ -1256,6 +1256,17 @@
 			}
 		},
 		{
+			"mpn": "ADAFRUIT-1176 flex shaft coupler 5 mm to 8 mm",
+			"kind": "coupler",
+			"boresMm": [5, 8],
+			"lengthMm": 25,
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/1176" }],
+			"source": {
+				"boresMm": { "url": "https://core-electronics.com.au/aluminum-flex-shaft-coupler-5mm-to-8mm.html", "where": "Adafruit Aluminum Flex Shaft Coupler - 5mm to 8mm (ADA1176): bores 5 mm and 8 mm" },
+				"lengthMm": { "url": "https://core-electronics.com.au/aluminum-flex-shaft-coupler-5mm-to-8mm.html", "where": "dimensions: 25 mm long, 18 mm diameter" }
+			}
+		},
+		{
 			"mpn": "GOBILDA-3423-0006-0088 GT2 belt 44T closed",
 			"kind": "belt",
 			"pitchMm": 2,
