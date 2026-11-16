@@ -15,6 +15,9 @@ import { run, tail } from "./exec.ts"
 // Contract -> tscircuit source -> placed and autorouted board -> KiCad project, STEP and render.
 // tscircuit's own result is the source of truth for nets and size; KiCad exports are best-effort.
 const FAILED_PER_STAGE = 2
+// Layouts that built with DRC errors before Freerouting routes the best of them: more tscircuit layouts rarely clear a
+// crowded board's last near-miss (run 14 rev 36: 20 layouts, 640 s, still 1 clearance error).
+export const LAYOUTS_BEFORE_FREEROUTING = 4
 
 export { WAITING_ON_CONTRACT }
 
@@ -54,7 +57,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	// microphone). A build with DRC errors also tries the next distance; the build with the fewest errors is kept.
 	let lastError: unknown
 	let tried = 0
-	let best: { board: BoardArtifact; errors: number } | null = null
+	let best: { board: BoardArtifact; errors: number; placement: PlacementOptions } | null = null
 	// The default layout first; then the same with keepouts at the USB-C locating holes (the fix for vias beside
 	// them); then the other LDO distances, each with and without the keepouts (the 60 mm logger with recovery pads,
 	// 8 Nov: only 9.5 mm with keepouts built clean).
@@ -84,6 +87,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	// (Walking all 16 layouts at ~50 s each took one STM32 board 10 minutes, 13 Nov.)
 	let failedWith = 0
 	let failedWithout = 0
+	let builtWithErrors = 0
 	// The layout just tried failed to build: its capsAlong variant, next in the list, gets its turn.
 	let baseFailed = false
 	// The first layout placed by tscircuit and routed by Freerouting (src/tools/freerouting.ts), for the boards tscircuit's
@@ -99,7 +103,12 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			try {
 				tried++
 				const board = await buildIn(env, work, s, revision, out, { ...placement, routingDisabled: true })
-				best = { board: { ...board, routedBy: "freerouting", ...(placement.debugPort === false ? { debugPortDropped: droppedWhy(lastError) } : {}) }, errors: board.drc?.errors ?? 0 }
+				const errors = board.drc?.errors ?? 0
+				// Over a tscircuit board with DRC errors only when it has fewer (it keeps that board's debug-footprint note).
+				if (best && errors >= best.errors) { rmSync(out, { recursive: true, force: true }); return }
+				const note = best ? best.board.debugPortDropped : placement.debugPort === false ? droppedWhy(lastError) : undefined
+				if (best) rmSync(best.board.dir, { recursive: true, force: true })
+				best = { board: { ...board, routedBy: "freerouting", ...(note ? { debugPortDropped: note } : {}) }, errors, placement }
 				return
 			} catch (error) {
 				rmSync(out, { recursive: true, force: true })
@@ -138,9 +147,15 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			if (!best || errors < best.errors) {
 				if (best) rmSync(best.board.dir, { recursive: true, force: true })
 				const why: string = best ? `the board had ${best.errors} DRC error${best.errors === 1 ? "" : "s"} with it${best.board.drc?.firstError ? ` (${best.board.drc.firstError})` : ""}` : droppedWhy(lastError)
-				best = { board: dropped ? { ...board, debugPortDropped: why } : board, errors }
+				best = { board: dropped ? { ...board, debugPortDropped: why } : board, errors, placement }
 			} else rmSync(out, { recursive: true, force: true })
 			if (errors === 0) break
+			// A few layouts built, none clean: Freerouting routes the best one's placement (same footprint choice) before more
+			// tscircuit layouts are tried; clean, it ends the search.
+			if (++builtWithErrors >= LAYOUTS_BEFORE_FREEROUTING && !freerouted) {
+				await viaFreerouting([best!.placement])
+				if (best!.errors === 0) break
+			}
 		} catch (error) {
 			// The failed attempt's log goes to the run's folder, and the message points there. Not when an earlier layout
 			// built: its board is what lands in the folder, and a failed layout's log beside it would mislead.
@@ -179,6 +194,8 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	}
 	// No tscircuit layout routed at all: Freerouting, without the footprint too if need be.
 	if (!best && fitting.length) await viaFreerouting(withPort ? [fitting[0], { ...fitting[0], debugPort: false as const }] : [fitting[0]])
+	// Every layout built with DRC errors: Freerouting routes the best one's placement, kept when it has fewer.
+	else if (best && best.errors > 0) await viaFreerouting([best.placement])
 	if (!best) throw lastError
 	// Moved into the run's own folder, with every path re-pointed there.
 	mkdirSync(dir, { recursive: true })
