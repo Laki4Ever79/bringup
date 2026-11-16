@@ -8,13 +8,13 @@ import { boardLinks } from "./derive.ts"
 // The cable limit and its figures live in the dashboard module, so the design page checks with the same code.
 import { BOARD_PF, CABLE_PF_PER_M, DEVICE_PF, i2cCableLimit, PULLUP_OHM } from "../dashboard/assembly-geom.js"
 export { BOARD_PF, CABLE_PF_PER_M, DEVICE_PF, i2cCableLimit, PULLUP_OHM }
-import { DEFAULT_I2C_KHZ, type SystemLink, type SystemSpec } from "./spec.ts"
+import { CAN_BUS_MAX_M, DEFAULT_I2C_KHZ, type SystemLink, type SystemSpec } from "./spec.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { peripheralsFree } from "../mcu/solver.ts"
 import { byMpn, loadMechCatalog } from "../mechanics/catalog.ts"
 
 export interface SystemFinding {
-	kind: "link-pending" | "uart-crossover" | "uart-baud" | "i2c-controllers" | "i2c-address" | "i2c-target-has-bus" | "i2c-pullups" | "i2c-cable-too-long" | "link-power" | "link-voltage" | "message-mismatch" | "logic-level" | "assembly-fit" | "compute-power" | "compute-rail" | "compute-header" | "compute-mechanics"
+	kind: "link-pending" | "uart-crossover" | "uart-baud" | "i2c-controllers" | "i2c-address" | "i2c-target-has-bus" | "i2c-pullups" | "i2c-cable-too-long" | "link-power" | "link-voltage" | "message-mismatch" | "logic-level" | "assembly-fit" | "compute-power" | "compute-rail" | "compute-header" | "compute-mechanics" | "can-controller" | "can-bitrate" | "can-termination" | "can-bus-length"
 	link: string
 	message: string
 	boards: string[] // who can fix it
@@ -55,7 +55,7 @@ export function systemChecks(spec: SystemSpec, contracts: Record<string, Contrac
 			out.push({ kind: "link-pending", link: l.id, message: `${l.id}: ${!A || !B ? "a board has no contract yet" : `${pending.join(" and ")} ${pending.length > 1 ? "haven't" : "hasn't"} taken the link yet`}`, boards: pending })
 			continue
 		}
-		out.push(...(l.kind === "uart" ? uartChecks(l, A, B, la!, lb!) : l.kind === "i2c" ? i2cChecks(l, contracts) : []))
+		out.push(...(l.kind === "uart" ? uartChecks(l, A, B, la!, lb!) : l.kind === "i2c" ? i2cChecks(l, contracts) : l.kind === "can" ? canChecks(l, A, B, la!, lb!) : []))
 		out.push(...powerChecks(l, A, B))
 		for (const [board, s] of [[l.a.board, A], [l.b.board, B]] as const)
 			if (!rail(s, "3V3")) out.push({ kind: "logic-level", link: l.id, message: `${l.id}: ${board} has no 3V3 rail; both ends of a link run 3.3 V logic`, boards: [board] })
@@ -77,6 +77,25 @@ function uartChecks(l: SystemLink, A: ContractSnapshot, B: ContractSnapshot, la:
 	if (aTx && bRx && aTx !== bRx) out.push({ kind: "uart-crossover", link: l.id, message: `${l.id}: ${l.a.board}'s TX is on ${aTx} but ${l.b.board}'s RX is on ${bRx}: through a straight cable they don't meet (${l.b.board}'s RX belongs on ${aTx})`, boards: [l.b.board] })
 	if (bTx && aRx && bTx !== aRx) out.push({ kind: "uart-crossover", link: l.id, message: `${l.id}: ${l.b.board}'s TX is on ${bTx} but ${l.a.board}'s RX is on ${aRx}: through a straight cable they don't meet`, boards: [l.a.board] })
 	if (la.baud !== lb.baud) out.push({ kind: "uart-baud", link: l.id, message: `${l.id}: ${l.a.board} talks at ${la.baud} baud, ${l.b.board} at ${lb.baud}`, boards: [l.a.board, l.b.board] })
+	return out
+}
+
+// A CAN link (point to point, so both boards are the bus's ends): a CAN controller on each chip, one bit rate, 120 Ω
+// at both ends and nowhere else, and a cable no longer than the bit rate allows (CAN_BUS_MAX_M).
+function canChecks(l: SystemLink, A: ContractSnapshot, B: ContractSnapshot, la: BoardLink, lb: BoardLink): SystemFinding[] {
+	const out: SystemFinding[] = []
+	for (const [board, s] of [[l.a.board, A], [l.b.board, B]] as const) {
+		const profile = mcuProfileOf(s.values.parts ?? [])
+		if (profile && peripheralsFree(profile).can === 0)
+			out.push({ kind: "can-controller", link: l.id, message: `${l.id}: ${board}'s ${profile.mpn} has no CAN controller: pick a chip with one (ESP32-C3/WROOM TWAI, STM32F103 or F446 bxCAN), or the system makes ${l.id} UART`, boards: [board] })
+	}
+	const [ka, kb] = [la.can?.kbps, lb.can?.kbps]
+	if (ka !== kb) out.push({ kind: "can-bitrate", link: l.id, message: `${l.id}: ${l.a.board} runs the bus at ${ka} kbit/s, ${l.b.board} at ${kb}: every node on a CAN bus uses one bit rate`, boards: [l.a.board, l.b.board] })
+	const unterminated = [[l.a.board, la], [l.b.board, lb]].filter(([, x]) => !(x as BoardLink).can?.terminate).map(([b]) => b as string)
+	if (unterminated.length) out.push({ kind: "can-termination", link: l.id, message: `${l.id}: ${unterminated.join(" and ")} ${unterminated.length > 1 ? "don't" : "doesn't"} fit the 120 Ω termination; a CAN bus needs 120 Ω at each of its two ends (TI SLOS346O Figure 37), and on a point-to-point link both boards are ends`, boards: unterminated })
+	const max = ka !== undefined ? CAN_BUS_MAX_M[ka] : undefined
+	if (max !== undefined && l.cable.lengthMm > max * 1000)
+		out.push({ kind: "can-bus-length", link: l.id, message: `${l.id}: at ${ka} kbit/s a CAN bus reaches about ${max} m (${ka === 1000 ? "ISO 11898" : "CiA 301, estimate"}); this cable is ${l.cable.lengthMm / 1000} m. Lower the bit rate or shorten the cable`, boards: [l.a.board, l.b.board], ...(ka === 1000 ? {} : { estimate: true }) })
 	return out
 }
 

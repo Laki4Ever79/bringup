@@ -831,6 +831,29 @@
 			}
 		}
 	],
+	"motorMounts": [
+		{
+			"mpn": "POLOLU-989 Micro Metal Gearmotor Bracket Pair",
+			"kind": "bracket",
+			"perPack": 2,
+			"fitsBodyMm": [26, 12, 10],
+			"axleFromFaceMm": 5.0,
+			"holeSpacingMm": 18.0,
+			"holeDiaMm": 2.3,
+			"holeFromGearboxFaceMm": 4.95,
+			"screws": "#2-56 x 7/16 in, 4 screws and 4 nuts included",
+			"buy": [{ "supplier": "Pololu", "url": "https://www.pololu.com/product/989", "packQty": 2 }],
+			"source": {
+				"perPack": { "url": "https://www.pololu.com/product/989", "where": "product name: Micro Metal Gearmotor Bracket Pair" },
+				"fitsBodyMm": { "url": "https://www.pololu.com/product/989", "where": "for micro metal gearmotors, 10 mm x 12 mm x 26 mm" },
+				"axleFromFaceMm": { "url": "https://www.pololu.com/file/0J833/micro-metal-gearmotor-with-1086-bracket.step", "where": "measured (build123d): motor axis at y 0, the bracket's mounting face at y -5.0 (flush with the motor's flat side)" },
+				"holeSpacingMm": { "url": "https://www.pololu.com/file/0J833/micro-metal-gearmotor-with-1086-bracket.step", "where": "measured (build123d): two 2.3 mm hole axes at z -9.0 and +9.0, across the motor" },
+				"holeDiaMm": { "url": "https://www.pololu.com/file/0J833/micro-metal-gearmotor-with-1086-bracket.step", "where": "measured (build123d): hole cylinders of radius 1.15 mm through the 1.4 mm base" },
+				"holeFromGearboxFaceMm": { "url": "https://www.pololu.com/file/0J833/micro-metal-gearmotor-with-1086-bracket.step", "where": "measured (build123d): hole axes at x 4.95, the bracket's (gearbox) end at x 9.2" },
+				"screws": { "url": "https://www.pololu.com/product/989", "where": "'Four #2-56x7/16\" screws and four nuts are included.'" }
+			}
+		}
+	],
 	"hardware": [
 		{
 			"mpn": "M2x8 self-tapping pan head screw (for plastic)",

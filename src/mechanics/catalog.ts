@@ -110,6 +110,20 @@ export interface HardwarePart {
 	source: Record<string, { url: string; where: string }>
 }
 
+// A bought motor mount (Pololu's micro metal gearmotor bracket): which motor body it fits, how far its mounting face is
+// from the motor's axis, and its two holes (across the motor, holeFromGearboxFaceMm behind the gearbox's face).
+export interface MotorMountPart extends Sourced {
+	kind: "bracket"
+	perPack: number
+	fitsBodyMm: [number, number, number]
+	axleFromFaceMm: number
+	holeSpacingMm: number
+	holeDiaMm: number
+	holeFromGearboxFaceMm: number
+	screws: string
+	buy?: { supplier: string; url: string; packQty?: number }[]
+}
+
 export interface MechCatalog {
 	sensors: SensorModule[]
 	motors: MotorPart[]
@@ -119,6 +133,8 @@ export interface MechCatalog {
 	regulators?: RegulatorPart[]
 	// Bought fasteners and the like (robot-parts.ts lists them, counted from the chassis): screws, nuts.
 	hardware?: HardwarePart[]
+	// Bought motor mounts (chassis.ts motorMount).
+	motorMounts?: MotorMountPart[]
 	// Emergency stop buttons and the like (safety.ts).
 	safety?: SafetyPart[]
 }

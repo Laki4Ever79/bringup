@@ -7,6 +7,12 @@ import { freeGpios, peripheralsFree } from "../mcu/solver.ts"
 
 export const LINK_CONNECTOR = { mpn: "SM04B-SRSS-TB(LF)(SN)", lcsc: "C160404", footprint: "jst4_sh", pins: ["GND", "VCC", "IO1", "IO2"] }
 export const I2C_ON = { SDA: "IO1", SCL: "IO2" } as const
+// A CAN link's transceiver (TI SN65HVD230, 3.3 V, up to 1 Mbit/s; SLOS346O Pin Functions p5): D is the controller's
+// TX in, R its RX out, CANH and CANL to the connector's IO1 and IO2, RS to GND for high-speed mode, Vref left open.
+export const CAN_TRANSCEIVER = { mpn: "SN65HVD230DR", lcsc: "C12084", footprint: "soic8_w4.4mm_p1.27mm", pins: ["D", "GND", "VCC", "R", "Vref", "CANL", "CANH", "RS"] }
+export const CAN_ON = { CANH: "IO1", CANL: "IO2" } as const
+export const canSignals = (l: BoardLink) => ({ tx: `${l.id}_CAN_TX`, rx: `${l.id}_CAN_RX`, h: `${l.id}_CANH`, l: `${l.id}_CANL` })
+export const canTransceiver = (s: ContractSnapshot) => (s.values.parts ?? []).find((p) => p.role === "can-transceiver")
 export const other = (p: LinkPin): LinkPin => (p === "IO1" ? "IO2" : "IO1")
 export const uartSignals = (l: BoardLink) => ({ tx: `${l.id}_TX`, rx: `${l.id}_RX` })
 export const linksOf = (s: ContractSnapshot): BoardLink[] => s.values.links ?? []
@@ -14,11 +20,12 @@ export const linksOf = (s: ContractSnapshot): BoardLink[] => s.values.links ?? [
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x)
 
 export function linksShapeError(value: unknown): string | null {
-	const shape = "links must be an array of {id, kind: \"uart\"|\"i2c\", peer, connector, supply: \"none\"|\"out\"|\"in\", baud and txOn (uart), i2c {role, address?, pullups, khz} (i2c), messages?}"
+	const shape = "links must be an array of {id, kind: \"uart\"|\"i2c\"|\"can\", peer, connector, supply: \"none\"|\"out\"|\"in\", baud and txOn (uart), i2c {role, address?, pullups, khz} (i2c), can {kbps, terminate} (can), messages?}"
 	if (!Array.isArray(value)) return shape
 	for (const l of value) {
 		if (!isObj(l) || typeof l.id !== "string" || typeof l.peer !== "string" || typeof l.connector !== "string" || !isLinkKind(l.kind) || !["none", "out", "in"].includes(l.supply as string)) return shape
 		if (l.kind === "uart" && !(typeof l.baud === "number" && l.baud > 0 && (l.txOn === "IO1" || l.txOn === "IO2"))) return `links: ${l.id} is a UART link: it needs baud and txOn ("IO1" or "IO2")`
+		if (l.kind === "can" && !(isObj(l.can) && typeof l.can.kbps === "number" && l.can.kbps > 0 && typeof l.can.terminate === "boolean")) return `links: ${l.id} is a CAN link: it needs can {kbps, terminate}`
 		if (l.kind === "i2c") {
 			const b = l.i2c
 			if (!isObj(b) || !["controller", "target"].includes(b.role as string) || typeof b.pullups !== "boolean" || typeof b.khz !== "number") return `links: ${l.id} is an I2C link: it needs i2c {role: "controller"|"target", address (a target's 7-bit address), pullups, khz}`
@@ -67,6 +74,16 @@ export function linkChecks(s: ContractSnapshot): LinkViolation[] {
 			if (wrong.length)
 				out.push({ kind: "link-unwired", message: `${what}: assign ${wrong.map((w) => `${w.signal} to ${l.connector}.${w.partPin}`).join(" and ")} on free GPIOs (the system crosses TX and RX between the boards; a straight cable joins them)`, fields: ["pins"], affects: ["architect"] })
 		}
+		if (l.kind === "can") {
+			const t = canTransceiver(s)
+			if (!t || t.mpn !== CAN_TRANSCEIVER.mpn) out.push({ kind: "link-connector-missing", message: `${what} needs its transceiver: a part role can-transceiver, ${CAN_TRANSCEIVER.mpn} (catalog, TI 3.3 V CAN transceiver)${t ? `; ${t.ref} is ${t.mpn}` : ""}. The board generator wires its bus side, its supply and RS`, fields: ["parts"], affects: ["parts"] })
+			else {
+				const { tx, rx } = canSignals(l)
+				const want = [{ signal: tx, partPin: "D" }, { signal: rx, partPin: "R" }]
+				const wrong = want.filter((w) => !pins.some((p) => p.signal === w.signal && p.partRef === t.ref && p.partPin === w.partPin))
+				if (wrong.length) out.push({ kind: "link-unwired", message: `${what}: assign ${wrong.map((w) => `${w.signal} to ${t.ref}.${w.partPin}`).join(" and ")} on free GPIOs the chip's CAN controller can use (its TX to the transceiver's D, its RX from R)`, fields: ["pins"], affects: ["architect"] })
+			}
+		}
 		if (l.kind === "i2c" && !(pins.some((p) => p.signal === "I2C_SDA") && pins.some((p) => p.signal === "I2C_SCL")))
 			out.push({ kind: "link-unwired", message: `${what}: the board has no I2C bus. Assign I2C_SDA and I2C_SCL (to ${l.connector}.IO1 and .IO2 if nothing else is on the bus); the board generator wires the connector to them`, fields: ["pins"], affects: ["architect"] })
 		const regulated = rails.some((r) => r.name === "3V3") && parts.some((p) => p.role === "ldo")
@@ -87,7 +104,9 @@ export function linkFactLines(s: ContractSnapshot): string[] {
 		...links.map((l) => {
 			const power = l.supply === "out" ? `this board's 3V3 powers ${l.peer} through VCC` : l.supply === "in" ? `this board runs from ${l.peer}'s 3V3 through VCC (no regulator of its own)` : "VCC unconnected: each board has its own supply. The board generator connects pin 2 to nothing on either board (its pad has no trace) and the cable leaves that wire out (cable.md), so power on it, from a mis-plugged cable or a Qwiic/STEMMA QT device, reaches nothing: no cross-powering. The connector is the JST SH family Qwiic uses, but this is not a Qwiic port (cable.md says so)"
 			const proto =
-				l.kind === "uart"
+				l.kind === "can"
+					? `CAN at ${l.can?.kbps} kbit/s through a ${CAN_TRANSCEIVER.mpn} transceiver (assign ${canSignals(l).tx} to its D and ${canSignals(l).rx} to its R, on GPIOs the chip's CAN controller can use); CANH on ${l.connector}.IO1, CANL on .IO2 (the generator wires them)${l.can?.terminate ? ", 120 Ω across them on this board (it is a bus end)" : ""}`
+					: l.kind === "uart"
 					? `UART at ${l.baud} baud: ${uartSignals(l).tx} on ${l.connector}.${l.txOn}, ${uartSignals(l).rx} on ${l.connector}.${other(l.txOn!)} (assign both to free GPIOs)`
 					: `I2C at ${l.i2c?.khz} kHz on the board's own bus (I2C_SDA on IO1, I2C_SCL on IO2; the generator wires the connector), this board the ${l.i2c?.role}${l.i2c?.address !== undefined ? ` at 0x${l.i2c.address.toString(16)}` : ""}, ${l.i2c?.pullups ? "fitting the bus pull-ups" : "without pull-ups (the other board fits them)"}`
 			const msgs = (l.messages ?? []).map((m) => `${m.dir === "send" ? "sends" : "receives"} ${m.name} (${m.fields.map((f) => `${f.name}:${f.type}`).join(", ")})`).join("; ")
@@ -120,7 +139,7 @@ export function linkBudget(s: ContractSnapshot): LinkViolation[] {
 	const needs = links.flatMap((l) => {
 		// Only the signals still missing cost a pin; an assigned one already sits on a used GPIO.
 		const missing = (signals: string[]) => signals.filter((x) => !has(x)).length
-		const n = l.kind === "i2c" ? missing(["I2C_SDA", "I2C_SCL"]) : l.kind === "uart" ? missing([uartSignals(l).tx, uartSignals(l).rx]) : LINK_KINDS[l.kind].gpios
+		const n = l.kind === "i2c" ? missing(["I2C_SDA", "I2C_SCL"]) : l.kind === "uart" ? missing([uartSignals(l).tx, uartSignals(l).rx]) : l.kind === "can" ? missing([canSignals(l).tx, canSignals(l).rx]) : LINK_KINDS[l.kind].gpios
 		return n ? [{ l, n }] : []
 	})
 	// Several I2C links on a board without a bus need one bus: count its pins once.

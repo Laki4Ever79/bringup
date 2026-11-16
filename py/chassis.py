@@ -19,6 +19,7 @@ from build123d import Box, Cylinder, GeomType, Pos, Rot, export_step, export_stl
 STANDOFF_OD = 5.0
 M25_HOLE = 2.7  # an M2.5 screw's clearance hole: the standoff hole of a spec from before boardScrew
 WALL = 2.0
+CLAMP_BOSS = 4.0  # chassis.ts CLAMP_BOSS_MM
 RAIL_H = 3.0
 
 
@@ -92,13 +93,27 @@ def build(spec):
 
     # A cradle under the plate per motor, down to the axle (axleDropMm under the plate): a block around the body with
     # the body cut out, axis along y.
+    # How each is held (chassis.ts motorMount): a bought bracket screwed through the plate (no cradle), or the cradle with
+    # two bosses beside it for the printed clamp's self-tapping screws.
+    clamp_screws = []
     for m in spec["motors"]:
         L, W, H = m["bodyMm"]
+        mount = m.get("mount", {"kind": "clamp"})
+        if mount["kind"] == "bracket":
+            for h in mount["holes"]:
+                part -= Pos(h["xMm"], h["yMm"], t / 2) * Cylinder(mount["holeDiaMm"] / 2, t + 2)
+            continue
         drop = max(m.get("axleDropMm", H / 2 + WALL), H / 2 + WALL)
         depth = drop + H / 2 + WALL
         block = Pos(m["xMm"], m["yMm"], -depth / 2) * Box(W + 2 * WALL, L, depth)
         body = Pos(m["xMm"], m["yMm"], -drop) * Box(W, L + 2, H)
         part += block - body
+        if mount["kind"] == "clamp":
+            boss = mount["clampMm"][1]
+            for h in mount["screwHoles"]:
+                part += Pos(h["xMm"], h["yMm"], -depth / 2) * Box(CLAMP_BOSS, boss, depth)
+                part -= Pos(h["xMm"], h["yMm"], -depth + 4) * Cylinder(mount["pilotMm"] / 2, 8.01)
+                clamp_screws.append(h)
 
     # Battery rails along its long sides.
     bat = spec["battery"]
@@ -137,6 +152,15 @@ def build(spec):
                 if abs(c0.X - bx) < WALL and not any(abs(cy - y) < 0.05 and abs(cz - z) < 0.05 for y, z in sensor_holes):
                     sensor_holes.append((cy, cz))
     mounts = {"standoffHoles": [h for d in pilots for h in centres(d / 2)], "casterHoles": centres(c["holeDiaMm"] / 2), "sensorHoles": [{"yMm": y, "zMm": z} for y, z in sensor_holes]}
+    bracket_holes = []
+    for m in spec["motors"]:
+        mount = m.get("mount", {})
+        if mount.get("kind") == "bracket":
+            for h in centres(mount["holeDiaMm"] / 2):
+                if not any(abs(h["xMm"] - b["xMm"]) < 0.05 and abs(h["yMm"] - b["yMm"]) < 0.05 for b in bracket_holes):
+                    bracket_holes.append(h)
+    mounts["motorBracketHoles"] = bracket_holes
+    mounts["clampScrews"] = clamp_screws
     return part, mounts
 
 
@@ -154,6 +178,17 @@ def main():
         sys.exit(1)
     export_step(part, str(out / "chassis.step"))
     export_stl(part, str(out / "chassis.stl"))
+    # The motor clamp (one per clamped motor, all alike): a bar under the motor across the cradle and its bosses, a
+    # clearance hole for each M2 screw.
+    clamped = [m for m in spec["motors"] if m.get("mount", {}).get("kind") == "clamp"]
+    if clamped:
+        mount = clamped[0]["mount"]
+        cl, cw, ct = mount["clampMm"]
+        span = abs(mount["screwHoles"][1]["xMm"] - mount["screwHoles"][0]["xMm"])
+        clamp = Box(cl, cw, ct)
+        for s in (-1, 1):
+            clamp -= Pos(s * span / 2, 0, 0) * Cylinder(1.1, ct + 2)
+        export_stl(clamp, str(out / "motor-clamp.stl"))
     (out / "mounts.json").write_text(json.dumps(mounts, indent=1))
 
 
