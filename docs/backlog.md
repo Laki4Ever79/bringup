@@ -93,6 +93,15 @@ is a change to the firmware toolchain, not just the code.
       pads, courtyards and the drawn traces themselves) and pcbRouteHints (ignored by the autorouter: 14.59 mm as
       without). The run recovered by growing the board (rev 24). Fix to build: a post-route repair in the via-edge.ts
       pattern that moves the router's vias and corners off a drawn trace's clearance, then a routed proof on this fixture.
+      Tried 16 Nov (branch drawn-clearance, unmerged): keepout strips beside each drawn run (allowPlacements, trimmed
+      1 mm at the pads, one middle strip between neighbouring runs). The router stays off the drawn traces (the via on
+      VM is gone), but the 58×22 board then fails elsewhere: 6 clearance errors drawn-only → 7 with strips (8 without
+      the debug footprint), 0.02-0.09 mm near-misses around U3/U4/J1/R5 the plain build doesn't have. A via-edge-style
+      KiCad repair can't reach it (tscircuit exits 1 first, and the errors are spread over the board). Agreed with
+      bringup-lead: (a) make the fallback cheap: a drawCaps retry failing on trace length goes straight to the
+      no-footprint stage, and there the architect is told to grow the board one step (done, branch length-fallback);
+      (c) next experiment: reserve a routing channel around the capacitor group in placement; (b) Freerouting (tools/,
+      unused) is a several-day option for the user to decide.
 
 - [ ] **Narrow boards the router can't route around the motor driver** (15 Nov, revised: reserving the capacitors' boxes
       was tried and changed nothing: on the 60×21 board C3 and C4 already sit in their spots beside U5's pins; the

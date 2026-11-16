@@ -128,6 +128,14 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			} else if (placement.debugPort === false) failedWithout++
 			else failedWith++
 			if (best) continue
+			// The drawn-capacitor retry failing on a trace past its bound means this size is too tight around that part:
+			// the router runs other nets through the room the drawn traces need (real rover run 9 at 58×22 mm, 16 Nov
+			// 2026). No later layout with the debug footprint does better, so go straight to the boards without it; and
+			// there, stop: the architect grows the board one step (run 9 at rev 24), cheaper than every layout left.
+			if (placement.drawCaps && TOO_LONG.test(String(error))) {
+				if (withPort && placement.debugPort !== false) { skipToNoPort = true; continue }
+				throw error
+			}
 			// Layout-sensitive failures try the next layout; the router's junction tangle too (the STM32 logger: 38×22
 			// fails, 38×21 routes, so a nudged LDO may clear it at the same size).
 			if (!layoutSensitive(String(error))) {
@@ -239,6 +247,7 @@ const SUMMARY = /^Circuits\s+\d+ passed \d+ failed/
 // A failure another layout of the same board may not have: parts or traces too close or overlapping, and a trace past
 // its length bound (a pin's capacitor placed where its trace runs long). Not the router's port warning, which shows on
 // clean builds too: it was the only reason a too-long trace got another layout before.
+export const TOO_LONG = /exceeding the [\d.]+mm maximum/i
 export function layoutSensitive(error: string): boolean {
 	return /overlap|clearance|keepout|too close|exceeding the [\d.]+mm maximum/i.test(error)
 }

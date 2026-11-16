@@ -43,7 +43,10 @@ function onBuildFailed(kinds: ArtifactKind[], owns: string): SituationHandler {
 					`build-failed@${kind}@${revision}`,
 					`${BUILD_FAILED_PREFIX} the ${kind} build failed at revision ${revision}:\n${error}\n` +
 						`If the failure comes from a contract field you own (${owns}), for example an unknown footprint, a missing part or a pin on a part that doesn't exist, fix it with propose_contract_change. Otherwise change nothing.` +
-						(kind === "board" && ROUTING_FAILURE.test(String(error)) && owns.includes("outline") ? ` This one is the autorouter running out of room: give it room (a bigger outline, with sizeReason "routing" naming this build) or change what crowds it.` : ""),
+						(kind === "board" && ROUTING_FAILURE.test(String(error)) && owns.includes("outline") ? ` This one is the autorouter running out of room: give it room (a bigger outline, with sizeReason "routing" naming this build) or change what crowds it.` : "") +
+						// A capacitor trace past its bound after every layout at this size, the drawn-trace retry included: the board
+						// is too tight around that part (real rover run 9 recovered at rev 24 by growing it one step).
+						(kind === "board" && /exceeding the [\d.]+mm maximum/i.test(String(error)) && owns.includes("outline") ? ` A capacitor's trace ran past its length bound in every layout at this size: the board is too tight around that part. Grow the outline one step (1–2 mm in its tighter direction), with sizeReason "routing" naming this build.` : ""),
 					{ kind: "build-failed", artifact: kind, revision, error: String(error).split("\n")[0] },
 				)
 			},
