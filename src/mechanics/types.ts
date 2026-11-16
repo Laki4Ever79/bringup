@@ -49,6 +49,9 @@ export interface Mechanics {
 	// A competition's beacon support (Eurobot General Rules 1.2 F.6): a printed mast from the plate, sizeMm square (wall
 	// mastWallMm), whose flat top stands topMm off the floor and carries loadG (the opponent's beacon and its tag).
 	beacon?: { at: { xMm: number; yMm: number }; topMm: number; sizeMm: number; mastWallMm: number; loadG: number }
+	// A flat printed panel at the plate's edge for a competition's sticker (Eurobot F.6: 100 × 70 mm left free on a side
+	// face): on `face`, centred along it, widthMm along the edge and heightMm up from the plate's top.
+	sticker?: { face: "front" | "rear" | "left" | "right"; widthMm: number; heightMm: number }
 	// Safety parts (safety.ts): an emergency stop button (catalog safety, kind "estop") standing through a panel whose top
 	// is at.zMm off the floor, its NC contact wired to the board plug `connector` (role estop) in the motors' supply.
 	// And a pull-cord start (match.h in the rover firmware): the board plug `connector` (role start) whose START pin the

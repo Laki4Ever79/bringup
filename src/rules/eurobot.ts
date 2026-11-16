@@ -31,6 +31,8 @@ export interface RuleSet {
 		beaconMaxMm: Limit<number>
 		beaconCircleMm: Limit<number>
 		beaconLoadG: Limit<number>
+		stickerWidthMm: Limit<number>
+		stickerHeightMm: Limit<number>
 	}
 	notChecked: { rule: string; why: string }[]
 }
@@ -151,6 +153,28 @@ export function ruleChecks(rules: RuleSet, motion: MotionTargets, mech: Mechanic
 		if (reach > L.beaconCircleMm.value / 2) out.push({ rule: clause(L.beaconCircleMm), message: `the beacon support reaches ${r1(reach)} mm from the robot's centre; it must lie within the ${L.beaconCircleMm.value} mm circle around it (${L.beaconCircleMm.source.where}): move it to the centre`, affects: ["mechanics"] })
 		fig("Beacon support load", `${b.loadG} g`, L.beaconLoadG, b.loadG >= L.beaconLoadG.value, "counted in the mass and the tipping")
 		if (b.loadG < L.beaconLoadG.value) out.push({ rule: clause(L.beaconLoadG), message: `the beacon support is designed for ${b.loadG} g; the rules ask it to hold ${L.beaconLoadG.value} g (${L.beaconLoadG.source.where}): set mechanics.beacon.loadG to ${L.beaconLoadG.value}, so the mass and the tipping count it`, affects: ["mechanics"] })
+	}
+
+	// F.6: a flat 100 × 70 mm space on a side face for the organisers' sticker, with nothing standing in front of it.
+	const k = mech.sticker
+	const sw = L.stickerWidthMm.value, sh = L.stickerHeightMm.value
+	if (!k) out.push({ rule: clause(L.stickerWidthMm), message: `${rules.document.title} asks for a free ${sw} × ${sh} mm space on a side face (${L.stickerWidthMm.source.where}): add mechanics.sticker {face (front, rear, left or right), widthMm: ${sw}, heightMm: ${sh}}, a flat panel at that edge`, affects: ["mechanics"] })
+	else {
+		const big = Math.max(k.widthMm, k.heightMm) >= sw && Math.min(k.widthMm, k.heightMm) >= sh
+		fig("Sticker space", `${k.widthMm} × ${k.heightMm} mm on the ${k.face}`, L.stickerWidthMm, big, `at least ${sw} × ${sh} mm`)
+		if (!big) out.push({ rule: clause(L.stickerWidthMm), message: `the sticker space is ${k.widthMm} × ${k.heightMm} mm; the rules ask for ${sw} × ${sh} mm (${L.stickerWidthMm.source.where}): make mechanics.sticker at least that`, affects: ["mechanics"] })
+		// What stands in front of it (further out than the panel, over its width and height): a wheel on a side face, the
+		// sensor on the front.
+		const p = ms.find((m) => m.what === "sticker-panel")
+		if (p) {
+			const outward = (m: Mount) => (k.face === "rear" ? m.xMm - m.sizeMm[0] / 2 < p.xMm - p.sizeMm[0] / 2 : k.face === "front" ? m.xMm + m.sizeMm[0] / 2 > p.xMm + p.sizeMm[0] / 2 : k.face === "left" ? m.yMm + m.sizeMm[1] / 2 > p.yMm + p.sizeMm[1] / 2 : m.yMm - m.sizeMm[1] / 2 < p.yMm - p.sizeMm[1] / 2)
+			const across = (m: Mount) => (k.face === "rear" || k.face === "front" ? Math.abs(m.yMm - p.yMm) < (m.sizeMm[1] + p.sizeMm[1]) / 2 : Math.abs(m.xMm - p.xMm) < (m.sizeMm[0] + p.sizeMm[0]) / 2)
+			const up = (m: Mount) => Math.abs(m.zMm - p.zMm) < (m.sizeMm[2] + p.sizeMm[2]) / 2
+			// Overlapping it (the sensor at the front edge stands where a front panel would) or standing out in front of it.
+			const overlap = (m: Mount) => Math.abs(m.xMm - p.xMm) < (m.sizeMm[0] + p.sizeMm[0]) / 2 && Math.abs(m.yMm - p.yMm) < (m.sizeMm[1] + p.sizeMm[1]) / 2 && up(m)
+			const hide = ms.filter((m) => m !== p && m.what !== "plate" && (overlap(m) || (outward(m) && across(m) && up(m))))
+			if (hide.length) out.push({ rule: clause(L.stickerWidthMm), message: `${hide.map((m) => m.what.replace(":", " ")).join(", ")} ${hide.length === 1 ? "stands" : "stand"} in front of the sticker panel on the ${k.face}: the space must be left free (${L.stickerWidthMm.source.where}): put the sticker on another face`, affects: ["mechanics"] })
+		}
 	}
 
 	// F.6: it detects the opponent.

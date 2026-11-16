@@ -9,7 +9,7 @@ import { assemblyOutlines, withAssembly } from "../mechanics/assembly.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { byMpn, type MotorMountPart } from "../mechanics/catalog.ts"
 import { est } from "../mechanics/estimates.ts"
-import { massAndCom, mounts, payloadMount } from "../mechanics/model.ts"
+import { massAndCom, mounts, payloadMount, stickerPanel } from "../mechanics/model.ts"
 import { connectorBoxes, MOUNTING_HOLE, mountingHoles } from "../codegen/circuit.ts"
 import { CABLE_SLACK_MM } from "../dashboard/assembly-geom.js"
 import { isMotorPlug } from "../mechanics/refs.ts"
@@ -28,6 +28,8 @@ export interface ChassisEstop { xMm: number; yMm: number; panelTopMm: number; pa
 export const MAST_SECTION_MAX_MM = 200
 export interface ChassisBeacon { xMm: number; yMm: number; topMm: number; sizeMm: number; wallMm: number; sectionMaxMm: number }
 export interface ChassisSpec {
+	// The sticker panel (model.ts stickerPanel): its box in the plate's frame, z from the floor.
+	sticker?: { xMm: number; yMm: number; zMm: number; sizeMm: [number, number, number] }
 	// The beacon support's mast, when the robot has one (Eurobot F.6).
 	beacon?: ChassisBeacon
 	// The emergency stop's deck, when the robot has one.
@@ -222,6 +224,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		}),
 		boardScrew: { boardHoleMm: MOUNTING_HOLE.diameterMm, pilotMm: STANDOFF.pilotMm },
 		unplaced,
+		...((p) => (p ? { sticker: { xMm: p.xMm, yMm: p.yMm, zMm: p.zMm, sizeMm: p.sizeMm as [number, number, number] } } : {}))(stickerPanel(mech)),
 		...(mech.beacon ? { beacon: { xMm: mech.beacon.at.xMm, yMm: mech.beacon.at.yMm, topMm: mech.beacon.topMm, sizeMm: mech.beacon.sizeMm, wallMm: mech.beacon.mastWallMm, sectionMaxMm: MAST_SECTION_MAX_MM } } : {}),
 		...((e, b) => (e && b ? { estop: { xMm: e.at.xMm, yMm: e.at.yMm, panelTopMm: e.at.zMm, panelMm: Math.min(b.panelMaxMm, Math.max(b.panelMinMm, ESTOP_PANEL_MM)), holeMm: b.panelHoleMm, headMm: b.headMm, collarMm: e.collarMm ?? 0 } } : {}))(mech.safety?.estop, mech.safety?.estop ? estopPart(cat.mech, mech.safety.estop.part) : undefined),
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs, holes: sensorHoles(sensor, mech.sensor.at, mech.chassis), holeDiaMm: SENSOR_HOLE_MM },

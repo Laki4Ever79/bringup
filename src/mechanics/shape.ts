@@ -36,6 +36,10 @@ export function mechanicsShapeError(v: unknown): string | null {
 		const b = v.beacon
 		if (!obj(b) || !at(b.at) || !num(b.topMm, 1) || !num(b.sizeMm, 1) || !num(b.mastWallMm, 0.4) || !num(b.loadG)) return "mechanics.beacon must be {at: {xMm, yMm}, topMm (its flat top off the floor), sizeMm (the mast's square side), mastWallMm, loadG (what its top carries)}"
 	}
+	if (v.sticker !== undefined) {
+		const k = v.sticker
+		if (!obj(k) || !["front", "rear", "left", "right"].includes(k.face as string) || !num(k.widthMm, 1) || !num(k.heightMm, 1)) return "mechanics.sticker must be {face: front|rear|left|right, widthMm, heightMm} (a flat panel at that edge of the plate)"
+	}
 	if (v.safety !== undefined) {
 		const e = obj(v.safety) ? v.safety.estop : null
 		const estopOk = e === undefined || (obj(e) && typeof e.part === "string" && e.part !== "" && at(e.at) && typeof (e.at as Record<string, unknown>).zMm === "number" && typeof e.connector === "string" && e.connector !== "" && (e.collarMm === undefined || num(e.collarMm)))
