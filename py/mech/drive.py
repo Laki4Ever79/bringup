@@ -13,7 +13,12 @@ afterwards, reaches 90 % of its target speed, and no motor draws more than the d
 
 With spec "opponent" ({appearS, leaveS, aheadM, radiusM, gapMm}), a round robot appears aheadM in front of the sensor at
 appearS and leaves at leaveS (seen by the sensor only: it isn't a body). Three more segments: it stopped at least gapMm
-short of it, held there without turning, and drove on after it left. Results: drive.json and
+short of it, held there without turning, and drove on after it left.
+
+With spec "target" ({xMm, yMm, tolMm}: the firmware's go-to build, ROVER_GOTO_X_MM), the rover drives to that point,
+given from where its axle's middle starts (x ahead, y to its left). The segments are then: no wall contact, the
+driver's peak current, reached the point (the axle's middle within tolMm of it, by the physics, not the odometry) and
+came to rest there. Results: drive.json and
 trajectory.json (10 Hz rows: time s, x m, y m, yaw rad, left duty, right duty, height change mm) in out-dir.
 """
 
@@ -121,6 +126,10 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     moved_after_turn = 0.0
     trajectory = []
     last_sample = -1.0
+    tgt = spec.get("target")
+    axle0 = None  # the axle's middle and heading at the start: the frame the target is given in
+    axle_last = None
+    rest_speed = math.inf
     opp = spec.get("opponent")
     opp_c = None  # the opponent's centre once it has appeared
     opp_gap = math.inf  # the nearest the sensor came to it
@@ -184,6 +193,12 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
                 turned_at = (pos[0], pos[1])
             elif turned_at is not None:
                 moved_after_turn = max(moved_after_turn, math.hypot(pos[0] - turned_at[0], pos[1] - turned_at[1]))
+            if tgt:
+                ax = (data.xpos[model.jnt_bodyid[jl.id]] + data.xpos[model.jnt_bodyid[jr.id]]) / 2
+                if axle0 is None:
+                    axle0 = (float(ax[0]), float(ax[1]), yaw)
+                axle_last = (float(ax[0]), float(ax[1]))
+                rest_speed = abs(speed)
             if data.time - last_sample >= 0.1:
                 last_sample = data.time
                 trajectory.append([round(data.time, 3), round(float(pos[0]), 4), round(float(pos[1]), 4), round(yaw, 4), duty[0], duty[1], round(float(pos[2] - start_z) * 1000, 1)])
@@ -255,11 +270,23 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
             {"name": "held, didn't turn", "pass": bool(opp_c is not None and math.degrees(opp_turn) < 10), "detail": f"its heading changed {math.degrees(opp_turn):.1f}° while the opponent stood there (under 10° needed)"},
             {"name": "drove on after it left", "pass": bool(opp_after >= 0.1), "detail": f"{opp_after:.2f} m forward in the 3 s after it left (0.1 m needed)"},
         ]
+    if tgt and axle0 is not None:
+        c, s0 = math.cos(axle0[2]), math.sin(axle0[2])
+        wx = axle0[0] + (tgt["xMm"] * c - tgt["yMm"] * s0) / 1000
+        wy = axle0[1] + (tgt["xMm"] * s0 + tgt["yMm"] * c) / 1000
+        miss = math.hypot(axle_last[0] - wx, axle_last[1] - wy) * 1000
+        tol = tgt.get("tolMm", 20)
+        segments = [s for s in segments if s["name"] in ("no wall contact", "peak current")] + [
+            {"name": "reached the point", "pass": bool(miss <= tol), "detail": f"the axle's middle ended {miss:.1f} mm from ({tgt['xMm']}, {tgt['yMm']}) mm (within {tol} mm needed)"},
+            {"name": "came to rest", "pass": bool(rest_speed < 0.01), "detail": f"{rest_speed * 1000:.0f} mm/s at the end"},
+        ]
     failed = [s for s in segments if not s["pass"]]
     reason = "; ".join(f"{s['name']}: {s['detail']}" for s in failed) if failed else "every segment passed"
     if wall_contact:
         reason = f"hit the wall ({wall_contact[1]}) at {wall_contact[0]:.2f} s; " + reason
     stats = {"peakA": round(peak_a, 3), "topSpeedMps": round(top_speed, 3), "closestWallMm": round(closest * 1000), "simSeconds": round(data.time, 2), "edgeMm": spec["edgeMm"], "ticks": ticks, "payload": {"tempC": PAYLOAD[0], "rh": PAYLOAD[1]}}
+    if tgt and axle0 is not None:
+        stats["targetMissMm"] = round(miss, 1)
     return _result(out_dir, "fail" if failed else "pass", reason, segments, stats, trajectory)
 
 

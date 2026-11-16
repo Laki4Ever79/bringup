@@ -37,6 +37,9 @@ export const OPPONENT_GAP_MM = 150
 export const HOLD_CLEAR_MM = 50
 export const SENSOR_BLIND_MM = 60
 export const HOLD_MAX_MS = 5000
+// Go-to-point (rover_odo.h, with encoders): the least duty it drives at near the target, as a share of cruise: an
+// estimate that keeps the wheels turning against the gearbox's friction, checked in the simulated drive.
+export const GOTO_MIN_SHARE = 0.4
 
 export function roverHeader(s: ContractSnapshot): string {
 	const v = s.values
@@ -80,7 +83,7 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_CRUISE_DUTY ${cruise.toFixed(3)}f`,
 		`#define ROVER_TURN_MS ${turnMs}`,
 		// Wheel encoders on GPIOs: the turn and the straight close on their counts (rover.h); the same three eighths of a turn.
-		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [`#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, mech.drive.trackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`, `#define ROVER_BACK_COUNTS ${Math.round((TURN_CLEARANCE_MM / (Math.PI * wheel.diameterMm)) * cpr)}`] : []))(countsPerRev(motor)),
+		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [`#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, mech.drive.trackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`, `#define ROVER_MM_PER_COUNT ${((Math.PI * wheel.diameterMm) / cpr).toFixed(4)}f`, `#define ROVER_TRACK_MM ${mech.drive.trackMm.toFixed(1)}f`, `#define ROVER_GOTO_MIN_DUTY ${(GOTO_MIN_SHARE * cruise).toFixed(3)}f`, `#define ROVER_GOTO_GAP_MM ${OPPONENT_GAP_MM}`, `#define ROVER_BACK_COUNTS ${Math.round((TURN_CLEARANCE_MM / (Math.PI * wheel.diameterMm)) * cpr)}`] : []))(countsPerRev(motor)),
 		// An acceleration limit (mechanics.drive.maxAccelMps2): the duty moves at most this much per control tick, so the speed
 		// (the load line's at full duty from a full pack, at most) changes no faster: main.cpp ramps every output.
 		...(mech.drive.maxAccelMps2 ? [`#define ROVER_RAMP_PER_TICK ${(mech.drive.maxAccelMps2 * (sensor.updateMs / 1000) / Math.max(0.01, loadedSpeedMps(motor, pack, pack.fullV, 1, massG / 1000, r))).toFixed(4)}f`] : []),
