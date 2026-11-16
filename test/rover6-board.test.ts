@@ -37,3 +37,16 @@ test("a part's pin capacitors are reserved where placement can put them: beside 
 	assert.equal(paths.length, 4)
 	assert.ok(paths.every((p) => p.lengthMm <= 5), paths.map((p) => p.lengthMm).join(","))
 })
+
+// Real rover run 9 (16 Nov 2026, from 678b509), rev 23 at 58×22 mm: the build failed once on VM's trace (5.84 mm against
+// 5). The layout is right (C3 and C4 beside U5's pins, the four traces drawable at 2.1-4.25 mm, the drawCaps retry
+// offered), but tscircuit's autorouter doesn't avoid drawn traces: by hand at 678b509 the retry had a via on VM's drawn
+// trace and two routes 0.04-0.09 mm from it. Keepouts along them and pcbRouteHints were tried and don't help (backlog).
+test("run 9's 58×22 board gets the drawn-trace retry with its four traces within reach", async () => {
+	const { layoutAttempts } = await import("../src/tools/board.ts")
+	const s = fixture("cc-rover9-58x22-rev23.json")
+	assert.ok(layoutAttempts(s, [{ ldoFromUsbMm: 8 }]).some((p) => p.drawCaps))
+	const paths = capPaths(s, { ldoFromUsbMm: 8 })
+	assert.equal(paths.length, 4)
+	assert.ok(paths.every((p) => p.lengthMm <= 5))
+})
