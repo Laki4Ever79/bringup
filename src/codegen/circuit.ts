@@ -1768,7 +1768,8 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 			for (const [side, io] of [["CANH", "IO1"], ["CANL", "IO2"]] as const) {
 				const net = side === "CANH" ? canSignals(l).h : canSignals(l).l
 				if (!nets.has(net)) nets.set(net, [])
-				if (can.pins.includes(side)) join(net, can.ref, side)
+				// A bus's segments share the transceiver: its pin joins the net once.
+				if (can.pins.includes(side) && !nets.get(net)!.includes(`${can.ref}.${side}`)) join(net, can.ref, side)
 				if (k?.pins.includes(io)) join(net, k.ref, io)
 			}
 		}
