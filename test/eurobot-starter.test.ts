@@ -20,6 +20,20 @@ test("the Eurobot base passes every mechanics, safety and rule check, and its mo
 	assert.deepEqual(mechanicsChecksWith(snap(), defaultCheckCatalog()!), [])
 	assert.deepEqual(motionBriefChecks(snap(), brief), [])
 	const figs = mechanicsFigures(snap()).filter((f) => f.check.startsWith("eurobot-2026"))
-	assert.equal(figs.length, 7)
+	assert.equal(figs.length, 11)
 	assert.ok(figs.every((f) => f.ok))
+})
+
+// The base carries the opponent's 400 g beacon at 430 mm: braking at the floor's grip would tip it, so its firmware ramps
+// the duty (mechanics.drive.maxAccelMps2); the plain rover's header has no ramp (its firmware is as before).
+test("the Eurobot base's firmware ramps its duty; the reference rover's doesn't", async () => {
+	const { roverHeader } = await import("../src/mechanics/firmware.ts")
+	const { ROVER_BOARD } = await import("../src/inference/scripts.ts")
+	const ramp = /#define ROVER_RAMP_PER_TICK ([\d.]+)f/.exec(roverHeader(snap()))
+	assert.ok(ramp && Number(ramp[1]) > 0 && Number(ramp[1]) < 0.2, "a small duty step per tick")
+	assert.doesNotMatch(roverHeader({ revision: 1, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) }), /ROVER_RAMP_PER_TICK/)
+	const noRamp = snap()
+	delete noRamp.values.mechanics.drive.maxAccelMps2
+	const tip = mechanicsChecksWith(noRamp, defaultCheckCatalog()!).find((v) => v.kind === "mech-tipping")
+	assert.match(tip?.message ?? "", /when braking hard/)
 })

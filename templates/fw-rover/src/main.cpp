@@ -129,6 +129,14 @@ void loop() {
 #ifdef PIN_START
 	if (!match_step(match, cordIn(now), now, MATCH_MS)) out.left = out.right = 0;
 #endif
+#ifdef ROVER_RAMP_PER_TICK
+	// The acceleration limit (mechanics.drive.maxAccelMps2): each output moves toward its target at most this much a
+	// tick, so a tall robot's stops and starts stay inside its tipping margin. Without it, this file is as before.
+	static float rampL = 0, rampR = 0;
+	auto toward = [](float &at, float want) { const float s = ROVER_RAMP_PER_TICK; at = want > at + s ? at + s : want < at - s ? at - s : want; return at; };
+	out.left = toward(rampL, out.left);
+	out.right = toward(rampR, out.right);
+#endif
 	hw_motor(0, out.left);
 	hw_motor(1, out.right);
 	linkPoll(0);  // what has arrived on the links, without waiting: the distance sensor paces the loop

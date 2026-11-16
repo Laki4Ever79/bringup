@@ -1,7 +1,7 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import { byMpn } from "./catalog.ts"
 import { defaultCheckCatalog } from "./checks.ts"
-import { TURN_CLEARANCE_MM, brakeMm, cruiseDuty, massAndCom, mounts, onWheelsShare, payloadMount, turnStopMm } from "./model.ts"
+import { TURN_CLEARANCE_MM, brakeMm, cruiseDuty, loadedSpeedMps, massAndCom, mounts, onWheelsShare, payloadMount, turnStopMm } from "./model.ts"
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { macroName, sensorDriver } from "../codegen/firmware.ts"
 
@@ -53,7 +53,7 @@ export function roverHeader(s: ContractSnapshot): string {
 	// Braking on the drive wheels' share of the weight only (model.ts brakeMm, as the Stopping distance check).
 	// And far enough that the turn in place there sweeps clear of the wall (model.ts turnStopMm): a 246 mm rover-pi with
 	// its axle forward swept its rear corner into the wall it had just turned from (premerge review, 15 Nov).
-	const brakeStop = motion.stopBeforeWallMm + STOP_MARGIN * (brakeMm(speed, onWheelsShare(geom.drive, com[0])) + speed * sensor.updateMs)
+	const brakeStop = motion.stopBeforeWallMm + STOP_MARGIN * (brakeMm(speed, onWheelsShare(geom.drive, com[0]), mech.drive.maxAccelMps2) + speed * sensor.updateMs)
 	const stop = Math.ceil(Math.max(brakeStop, turnStopMm(geom, wheel)))
 	const cruise = Math.min(1, Math.max(0, cruiseDuty(motor, pack, speed, massG / 1000, r)))
 	// Three eighths of a turn, not a quarter: an open-loop quarter turn leaves the rover running along the wall it just
@@ -73,6 +73,9 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_TURN_MS ${turnMs}`,
 		// Wheel encoders on GPIOs: the turn and the straight close on their counts (rover.h); the same three eighths of a turn.
 		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [`#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, mech.drive.trackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`, `#define ROVER_BACK_COUNTS ${Math.round((TURN_CLEARANCE_MM / (Math.PI * wheel.diameterMm)) * cpr)}`] : []))(countsPerRev(motor)),
+		// An acceleration limit (mechanics.drive.maxAccelMps2): the duty moves at most this much per control tick, so the speed
+		// (the load line's at full duty from a full pack, at most) changes no faster: main.cpp ramps every output.
+		...(mech.drive.maxAccelMps2 ? [`#define ROVER_RAMP_PER_TICK ${(mech.drive.maxAccelMps2 * (sensor.updateMs / 1000) / Math.max(0.01, loadedSpeedMps(motor, pack, pack.fullV, 1, massG / 1000, r))).toFixed(4)}f`] : []),
 		// A pull-cord start (main.cpp, match.h): the match length, when the mechanics give one; PIN_START comes below.
 		...(mech.safety?.start?.matchS ? [`#define MATCH_MS ${Math.round(mech.safety.start.matchS * 1000)}UL`] : []),
 		// What else the rover firmware drives and reads, named as the product firmware names them so the same checks

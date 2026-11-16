@@ -127,6 +127,7 @@ export function robotPartNotes(s: ContractSnapshot): string[] {
 		...(chassisSpec(s)?.sensor.holes.length ? [] : ["the sensor bracket: no screw holes for the distance sensor's breakout (its catalog entry has no mounting holes, or none lands above the plate)"]),
 		...((chassisSpec(s)?.motors ?? []).some((x) => x.mount.kind === "cradle-too-shallow") ? ["the motors: the printed cradle can't hold them at the design's axle height, and no bought bracket fits (the hardware check says what to change)"] : []),
 		"the battery sits between two printed rails: no strap or holder yet",
+		...(chassisSpec(s)?.beacon ? ["the beacon support's mast sections: a spigot into the section below and a socket on the plate, no glue or screw listed yet; its top's Velcro (hook side, Eurobot F.6) isn't in the parts list"] : []),
 		...(() => {
 			const spec = chassisSpec(s)
 			const cables = spec ? robotCables(s, spec, loadMechCatalog(ROOT).cables ?? []) : []

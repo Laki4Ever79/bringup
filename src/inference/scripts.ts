@@ -197,8 +197,23 @@ export const EUROBOT_BOARD = {
 		{ ref: "JE1", role: "estop", mpn: "B2B-XH-A(LF)(SN)", lcsc: "C158012", footprint: "pinrow2_p2.5_id1_od1.8", pins: ["VBAT", "VM"], reason: "Brief: \"Pressing it cuts power to the motors at once\": the emergency stop's NC contact between the cell and the motor driver's VM" },
 		{ ref: "JS1", role: "start", mpn: "PZ254V-11-02P", lcsc: "C492401", footprint: "pinrow2", pins: ["START", "GND"], reason: "Brief: \"Starts from a pull cord\": the cord's plug shorts START to GND until it is pulled" },
 	],
-	motion: { ...ROVER_MOTION!, maxSizeMm: [290, 290] as [number, number], rules: "eurobot-2026" },
-	mechanics: { ...ROVER_MECHANICS!, drive: { ...ROVER_MECHANICS!.drive, motor: "POLOLU-5139 100:1 MP 6V 12 CPR encoder" }, safety: { estop: { part: "OMRON A22E-M-01", at: { xMm: 20, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } } },
+	// The rules set no mass: 1500 g is this base's own target (it weighs about 1.2 kg with the beacon it must carry).
+	motion: { ...ROVER_MOTION!, maxSizeMm: [290, 290] as [number, number], maxMassG: 1500, rules: "eurobot-2026" },
+	// Sized for the opponent's 400 g beacon at 430 mm (F.6) on a 70 mm printed mast at the centre (16 Nov): a 260 x 256 mm
+	// plate on a 270 mm track (280 mm with the wheels, inside the 290 mm square), the axle 75 mm ahead of centre and the
+	// caster 185 mm behind it (38 % of the weight on it), a two-cell pack and 150:1 12 V encoder gearmotors (64.8 of 72.6
+	// mN·m per wheel at the 1.5x margin, 0.54 m/s), and the firmware's 1.5 m/s² ramp (braking hard at the floor's grip it
+	// would tip: -34.7 mm; with the ramp the margin is 35.7 mm). The board behind the mast, the pack beside it, the e-stop
+	// ahead of it, the sensor at the front edge.
+	mechanics: {
+		...ROVER_MECHANICS!,
+		drive: { ...ROVER_MECHANICS!.drive, motor: "POLOLU-5219 150:1 HPCB 12V 12 CPR encoder", trackMm: 270, wheelbaseMm: 185, axleXMm: 75, maxAccelMps2: 1.5 },
+		battery: { pack: "GENSACE-GEA22002S20X6 2S 2200 mAh 20C LiPo XT60", at: { xMm: 20, yMm: 0 } },
+		sensor: { ...ROVER_MECHANICS!.sensor, at: { ...ROVER_MECHANICS!.sensor.at, xMm: 128.6 } },
+		chassis: { ...ROVER_MECHANICS!.chassis, plateMm: [260, 256] as [number, number], boards: [{ name: "main", at: { xMm: -95, yMm: 0 }, rotDeg: 0 as const }] },
+		beacon: { at: { xMm: 0, yMm: 0 }, topMm: 430, sizeMm: 70, mastWallMm: 1.2, loadG: 400 },
+		safety: { estop: { part: "OMRON A22E-M-01", at: { xMm: 75, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } },
+	},
 }
 const EUROBOT = /\beurobot\b/i
 
