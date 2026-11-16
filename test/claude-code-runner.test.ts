@@ -47,3 +47,13 @@ test("BRINGUP_PROVIDER=claude-code: the architect and reviewer on Sonnet, the re
 	assert.equal(modelFor("architect", false, { ...env, BRINGUP_MODELS: "fast" }), "cc-haiku")
 	assert.equal(modelFor("architect", true, env), "mock-architect")
 })
+
+// Rover run cc-eurobot-14 (16 Nov 2026): the reviewer's answer failed the CLI's schema six times and the review was lost;
+// the runner asks once more for plain-text JSON and reads it from the reply.
+test("an answer's JSON is read from a plain-text reply, fenced or not, with nested arguments", async () => {
+	const { answerFromText } = await import("../src/inference/claude-code-runner.ts")
+	const call = { name: "submit_review", arguments: { verdict: "pass", findings: [{ severity: "minor", fields: ["rails"], issue: "a {brace} in text" }] } }
+	assert.deepEqual(answerFromText(`Here it is:\n\`\`\`json\n${JSON.stringify({ message: null, calls: [call] })}\n\`\`\`\nDone.`)?.calls, [call])
+	assert.deepEqual(answerFromText(`Review follows. ${JSON.stringify({ message: "ok", calls: [call] })}`)?.calls, [call])
+	assert.equal(answerFromText("no json here {not: valid}"), null)
+})
