@@ -279,6 +279,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...reviewSection(s, Boolean(opts.mock)),
 		`## Artifacts`,
 		`- Board: ${s.artifacts.board?.pcbPath ?? "not built"}${s.artifacts.board?.renderPath ? ` (render ${s.artifacts.board.renderPath})` : ""}`,
+		...(s.artifacts.board?.routedBy === "freerouting" ? ["- Routed by Freerouting: no tscircuit layout routed at this size (src/tools/freerouting.ts)"] : []),
 		...drcLines(s.artifacts.board?.drc),
 		`- Bring-up: ${writeBench(outDir, snapshot, s.artifacts.board) ?? "not written (no outline yet)"} (bench.json beside it: pads, rails, flashing, expected I2C devices)`,
 		...(s.artifacts.board?.debugPortDropped ? [`- Debug footprint: left off this board, ${s.artifacts.board.debugPortDropped}. A bigger board or fewer parts brings it back; requirements.debugPort false makes it explicit`] : []),
