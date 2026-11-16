@@ -13,6 +13,9 @@ interface Live {
 	stock: number | null
 	priceUsd: number | null
 	inStock: boolean | null
+	// JLCPCB's part class: a basic or preferred part loads with no feeder fee; any other is "extended".
+	basic?: boolean
+	preferred?: boolean
 }
 
 // iqUa: an LDO's typical quiescent current in µA. sleepUa: an MCU's typical deep-sleep current in µA, the lowest
@@ -43,11 +46,11 @@ async function lookup(lcsc: string, f: typeof fetch, timeoutMs: number): Promise
 		const url = `${JLCSEARCH}/api/search?q=${encodeURIComponent(lcsc)}&limit=1`
 		const res = await f(url, { signal: AbortSignal.timeout(timeoutMs) })
 		if (!res.ok) return UNKNOWN
-		const body = (await res.json()) as { components?: { lcsc: number; stock: number | null; price: number | null }[] }
+		const body = (await res.json()) as { components?: { lcsc: number; stock: number | null; price: number | null; is_basic?: boolean; is_preferred?: boolean }[] }
 		const hit = body.components?.find((c) => `C${c.lcsc}` === lcsc)
 		if (!hit) return UNKNOWN
 		const stock = typeof hit.stock === "number" ? hit.stock : null
-		const live: Live = { stock, priceUsd: typeof hit.price === "number" ? hit.price : null, inStock: stock === null ? null : stock > 0 }
+		const live: Live = { stock, priceUsd: typeof hit.price === "number" ? hit.price : null, inStock: stock === null ? null : stock > 0, ...(typeof hit.is_basic === "boolean" ? { basic: hit.is_basic, preferred: hit.is_preferred === true } : {}) }
 		if (!cache.has(f)) cache.set(f, new Map())
 		cache.get(f)!.set(lcsc, live)
 		return live
