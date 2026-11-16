@@ -57,3 +57,43 @@ test("run 4's revision 26: the parts agent's list is renamed, and the connectors
 	assert.deepEqual(plugs, ["JM1", "JM2", "JT1"])
 	assert.deepEqual(now.connectors!.map((c) => c.ref).sort(), ["J1", "J2", "JM1", "JM2", "JT1"])
 })
+
+// Run cc-eurobot-10 (16 Nov 2026): the start plug was JS1 in the parts and J4 in the pins, the e-stop's J3 in the
+// mechanics; the e-stop's and start cord's plugs have fixed names too.
+const rev25 = () => JSON.parse(readFileSync(new URL("./fixtures/cc-eurobot-10-rev25.json", import.meta.url), "utf8")) as ContractSnapshot
+
+test("the e-stop's and the start cord's plugs take their fixed names, JE1 and JS1", () => {
+	const plug = (ref: string, role: string, pins: string[]) => ({ ref, role, mpn: "x", lcsc: null, footprint: "f", pins })
+	const r = robotRefs([plug("J3", "estop", ["VBAT", "VM"]), plug("J4", "start", ["START", "GND"]), plug("JE1", "led", ["A", "K"])])
+	assert.equal(r.renames.J3, "JE1")
+	assert.equal(r.renames.J4, "JS1")
+	assert.ok(r.renames.JE1 && r.renames.JE1 !== "JE1", "a part holding JE1 that isn't the e-stop's plug moves")
+})
+
+function seeded25(skip: FieldName[]) {
+	const s = rev25()
+	const state = new BringupState(tempDir(), 3000)
+	for (const [field, value] of Object.entries(s.values) as [FieldName, never][]) {
+		if (value === undefined || skip.includes(field)) continue
+		assert.equal(state.contract.propose({ field, value, by: OWNERS[field], baseVersion: 0 }).status, "applied", field)
+	}
+	return { s, state }
+}
+
+test("run 10's revision 25: the START pin proposed on J4 lands on the start plug JS1", async () => {
+	const { s, state } = seeded25(["pins"])
+	startRuntime(state, inferenceConfig(true, { "mock-architect": once(toolCall("propose_contract_change", { field: "pins", value: s.values.pins, baseVersion: 0, reason: "run 10's pins" })) }), null)
+	startTurn(createRoleAgent({ role: "architect", instruction: "x", handlers: [], mock: true }), "assign the pins")
+	await waitFor(() => state.contract.version("pins") === 1)
+	assert.equal(state.contract.get("pins")!.find((p) => p.signal === "START")!.partRef, "JS1")
+})
+
+test("run 10's revision 25: the mechanics' e-stop plug J3 is written as JE1", async () => {
+	const { s, state } = seeded25(["mechanics"])
+	startRuntime(state, inferenceConfig(true, { "mock-mechanics": once(toolCall("propose_contract_change", { field: "mechanics", value: s.values.mechanics, baseVersion: 0, reason: "run 10's mechanics" })) }), null)
+	startTurn(createRoleAgent({ role: "mechanics", instruction: "x", handlers: [], mock: true }), "lay out the robot")
+	await waitFor(() => state.contract.version("mechanics") === 1)
+	const safety = state.contract.get("mechanics")!.safety!
+	assert.equal(safety.estop!.connector, "JE1")
+	assert.equal(safety.start!.connector, "JS1")
+})
