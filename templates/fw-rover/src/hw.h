@@ -9,4 +9,5 @@ void hw_motor(int side, float duty);       // side 0 left, 1 right; duty -1..1 (
 int hw_distance_mm(void);                  // the front distance; -1 when nothing is in range. One control tick.
 bool hw_payload(float *temp_c, float *rh); // the payload sensor's reading; false when none
 uint32_t hw_now_ms(void);                  // the control loop's clock
+int32_t hw_encoder(int side);              // a wheel encoder's count, positive forward; 0 without encoders
 void hw_report(bool ok, float temp_c, float rh); // the payload reading over the radio (the board: BTHome over BLE)

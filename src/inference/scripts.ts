@@ -188,14 +188,17 @@ export const ROVER_BOARD = {
 export const EUROBOT_BOARD = {
 	...ROVER_BOARD,
 	requirements: { ...ROVER_BOARD.requirements, summary: "Eurobot base robot: two-wheeled, finds its way on the table, stops for the opponent, with an emergency stop and a pull-cord start" },
-	pins: [...ROVER_PINS, { signal: "START", gpio: 10, partRef: "JS1", partPin: "START" }],
+	// Each encoder's channel A on a free pin (GPIO0, GPIO1: the ESP32-C3's last two besides the LED's GPIO3).
+	pins: [...ROVER_PINS, { signal: "START", gpio: 10, partRef: "JS1", partPin: "START" }, { signal: "ENC_LA", gpio: 0, partRef: "JM1", partPin: "ENCA" }, { signal: "ENC_RA", gpio: 1, partRef: "JM2", partPin: "ENCA" }],
+	// The brief's "encoders on both drive wheels": the same 100:1 motors with a 12 CPR encoder, each on a 6-pin JST SH plug.
+	connectors: ROVER_BOARD.connectors.map((c) => (c.ref === "JM1" || c.ref === "JM2" ? { ...c, widthMm: 8, heightMm: 4.3 } : c)),
 	parts: [
-		...ROVER_BOARD.parts,
+		...ROVER_BOARD.parts.map((p) => (p.ref === "JM1" || p.ref === "JM2" ? { ...p, mpn: "SM06B-SRSS-TB(LF)(SN)", lcsc: "C160405", footprint: "jst6_sh", pins: ["GND", "ENCB", "ENCA", "VCC", "M2", "M1"], reason: `Brief: "encoders on both drive wheels": the ${p.ref === "JM1" ? "left" : "right"} encoder gearmotor's 6-pin plug (motor and encoder)` } : p)),
 		{ ref: "JE1", role: "estop", mpn: "B2B-XH-A(LF)(SN)", lcsc: "C158012", footprint: "pinrow2_p2.5_id1_od1.8", pins: ["VBAT", "VM"], reason: "Brief: \"Pressing it cuts power to the motors at once\": the emergency stop's NC contact between the cell and the motor driver's VM" },
 		{ ref: "JS1", role: "start", mpn: "PZ254V-11-02P", lcsc: "C492401", footprint: "pinrow2", pins: ["START", "GND"], reason: "Brief: \"Starts from a pull cord\": the cord's plug shorts START to GND until it is pulled" },
 	],
 	motion: { ...ROVER_MOTION!, maxSizeMm: [290, 290] as [number, number], rules: "eurobot-2026" },
-	mechanics: { ...ROVER_MECHANICS!, safety: { estop: { part: "OMRON A22E-M-01", at: { xMm: 52, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } } },
+	mechanics: { ...ROVER_MECHANICS!, drive: { ...ROVER_MECHANICS!.drive, motor: "POLOLU-5139 100:1 MP 6V 12 CPR encoder" }, safety: { estop: { part: "OMRON A22E-M-01", at: { xMm: 52, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } } },
 }
 const EUROBOT = /\beurobot\b/i
 

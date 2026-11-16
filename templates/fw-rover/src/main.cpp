@@ -18,7 +18,12 @@ static void linkPoll(uint32_t) {}
 static void linkSendReading(bool, float, float) {}
 #endif
 
+#ifdef ROVER_TURN_COUNTS
+// Wheel encoders (hw_encoder): the turn and the straight close on the wheels' counts (rover.h).
+static const RoverConfig CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS, ROVER_TURN_COUNTS, ROVER_HOLD_GAIN};
+#else
 static const RoverConfig CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS};
+#endif
 static RoverState state;
 #ifdef PIN_START
 // A pull-cord start (match.h, Eurobot General Rules 1.2 F.6): no drive until the cord, in at power-up, is pulled; with
@@ -106,7 +111,7 @@ void loop() {
 	int d = hw_distance_mm();
 	uint32_t now = hw_now_ms();
 	hostPoll(now);
-	RoverOut out = rover_step(CFG, state, d, now);
+	RoverOut out = rover_step(CFG, state, d, now, hw_encoder(0), hw_encoder(1));
 	if (hostSeen) {
 		const bool fresh = (uint32_t)(now - hostAt) <= HOST_HOLD_MS;
 		out.left = fresh ? hostLeft : 0;

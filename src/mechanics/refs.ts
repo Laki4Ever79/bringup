@@ -8,7 +8,9 @@ export const SENSOR_PLUG_REF = "JT1"
 export const MOTOR_PLUG_REFS = ["JM1", "JM2"] as const
 
 export const isSensorPlug = (p: Part) => p.role === "connector" && p.pins.length === 4
-export const isMotorPlug = (p: Part) => p.role === "connector" && p.pins.length === 2 && p.pins[0] === "1" && p.pins[1] === "2"
+// A motor's plug: 2-pin (pins 1, 2), or an encoder gearmotor's 6-pin (M1, M2, its encoder's VCC, GND, ENCA, ENCB).
+export const isEncoderPlug = (p: Part) => p.role === "connector" && ["M1", "M2", "ENCA", "ENCB", "VCC", "GND"].every((x) => p.pins.includes(x))
+export const isMotorPlug = (p: Part) => (p.role === "connector" && p.pins.length === 2 && p.pins[0] === "1" && p.pins[1] === "2") || isEncoderPlug(p)
 
 // The parts with the robot's plugs under their fixed names, and old ref → new ref for each one renamed (empty when none
 // is). A part that holds one of the names but isn't that plug gets the next free J<n>.

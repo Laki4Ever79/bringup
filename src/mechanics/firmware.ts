@@ -12,11 +12,22 @@ import { macroName, sensorDriver } from "../codegen/firmware.ts"
 // load line from a full pack (model.ts cruiseDuty). Turn: a quarter turn in place at cruise.
 export const STOP_MARGIN = 1.5
 export const SLOW_ZONE_MM = 300
+// With wheel encoders: duty per count of difference between the wheels on a straight (rover.cpp). An ESTIMATE, set in
+// the simulation: about a 0.1 duty correction for 100 counts (2 cm of wheel travel on the 80 mm wheels).
+export const HOLD_GAIN = 0.001
+
+// The counts a wheel turns for the rover to turn by `rad` in place: each wheel runs an arc of rad × track / 2.
+export const turnCounts = (rad: number, trackMm: number, wheelMm: number, countsPerRev: number) => Math.round(((rad * trackMm) / 2 / (Math.PI * wheelMm)) * countsPerRev)
+// Counts per wheel revolution of an encoder gearmotor, or null. The firmware counts both edges of channel A only (half
+// the catalog's cpr, which counts both channels), its direction from the duty it drives: one GPIO per wheel, as the
+// ESP32-C3 has four free pins for the encoders, the start cord and the LED (16 Nov).
+export const countsPerRev = (motor: { gearRatio: number; encoder?: { cpr: number } }) => (motor.encoder ? (motor.encoder.cpr / 2) * motor.gearRatio : null)
 
 // The signals the rover firmware drives that the contract hasn't put on a GPIO yet (roverHeader would write -1).
 export const ROVER_SIGNALS = ["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2", "I2C_SDA", "I2C_SCL"]
 export function unassignedRoverPins(s: ContractSnapshot): string[] {
-	return [...ROVER_SIGNALS, ...(s.values.mechanics?.safety?.start ? ["START"] : [])].filter((sig) => !(s.values.pins ?? []).some((p) => p.signal === sig && typeof p.gpio === "number" && p.gpio >= 0))
+	const motor = s.values.mechanics ? byMpn(defaultCheckCatalog()?.mech.motors ?? [], s.values.mechanics.drive.motor) : undefined
+	return [...ROVER_SIGNALS, ...(s.values.mechanics?.safety?.start ? ["START"] : []), ...(motor?.encoder ? ["ENC_LA", "ENC_RA"] : [])].filter((sig) => !(s.values.pins ?? []).some((p) => p.signal === sig && typeof p.gpio === "number" && p.gpio >= 0))
 }
 
 export function roverHeader(s: ContractSnapshot): string {
@@ -60,6 +71,8 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_SLOW_MM ${stop + SLOW_ZONE_MM}`,
 		`#define ROVER_CRUISE_DUTY ${cruise.toFixed(3)}f`,
 		`#define ROVER_TURN_MS ${turnMs}`,
+		// Wheel encoders on GPIOs: the turn and the straight close on their counts (rover.h); the same three eighths of a turn.
+		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [`#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, mech.drive.trackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`] : []))(countsPerRev(motor)),
 		// A pull-cord start (main.cpp, match.h): the match length, when the mechanics give one; PIN_START comes below.
 		...(mech.safety?.start?.matchS ? [`#define MATCH_MS ${Math.round(mech.safety.start.matchS * 1000)}UL`] : []),
 		// What else the rover firmware drives and reads, named as the product firmware names them so the same checks

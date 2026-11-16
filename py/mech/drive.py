@@ -4,7 +4,8 @@ Usage: drive.py <chassis-spec.json> <port> <out-dir> [course_s]
 
 The firmware's simulation build talks over UART1 (a TCP socket QEMU serves) in lock-step, one line each way per
 control tick (templates/fw-rover/SIM.md): "M <tick> <left> <right>" from the firmware; this bridge steps the physics
-by one control period with those duties and answers "S <now_ms> <distance_mm|-1> <temp_c> <rh>".
+by one control period with those duties and answers "S <now_ms> <distance_mm|-1> <temp_c> <rh>", and with wheel
+encoders (spec motor.encoderCountsPerRev) each wheel's count after it.
 
 The course: a 2.5 × 2 m room; the rover starts at the origin facing a wall 1.5 m ahead, with a step across the floor
 from 0.6 m on, as high as the brief's edge (spec edgeMm). It passes when its caster (the last wheel) gets over the step, never touches a wall, turns away from the wall, keeps driving
@@ -90,6 +91,7 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     steps = max(1, round(period / model.opt.timestep))
     rng = spec["sensor"]["rangeMm"] / 1000
     pack, motor = spec["pack"], spec["motor"]
+    cpr = motor.get("encoderCountsPerRev")
     ohm = spec["estimates"].get("packOhm", 0.15)
     capacity_as = pack["mAh"] * 3.6
     L = spec["plate"]["lengthMm"] / 1000
@@ -182,7 +184,12 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
             reading = int(round(dist * 1000)) if 0 <= dist <= rng else -1
             if reading >= 0 and duty[0] > 0 and duty[1] > 0:
                 nearest_ahead = min(nearest_ahead, reading)
-            f.write(f"S {int(round(data.time * 1000))} {reading} {PAYLOAD[0]} {PAYLOAD[1]}\n")
+            # Wheel encoders (an encoder gearmotor): each wheel's angle in counts (channel A's edges, spec
+            # encoderCountsPerRev), positive forward (a positive turn about the wheels' +y axis rolls them forward).
+            enc = ""
+            if cpr:
+                enc = f" {int(data.qpos[jl.qposadr[0]] / (2 * math.pi) * cpr)} {int(data.qpos[jr.qposadr[0]] / (2 * math.pi) * cpr)}"
+            f.write(f"S {int(round(data.time * 1000))} {reading} {PAYLOAD[0]} {PAYLOAD[1]}{enc}\n")
             f.flush()
             if wall_contact:
                 break

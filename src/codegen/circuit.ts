@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs"
+import { isEncoderPlug, isMotorPlug } from "../mechanics/refs.ts"
 import type { Connector, ContractSnapshot, Part } from "../contract/types.ts"
 import { chipCrystal, chipPadLabels, chipPinLabels, chipPowerPins, chipSupport, type ChipCrystal } from "../mcu/board.ts"
 import { mcuPinName } from "../mcu/pins.ts"
@@ -58,7 +59,7 @@ function pinLabels(pins: string[]): string {
 // opposite of the USB-C footprint's, so it turns a half turn more; and its centre is 2.5 mm in, so the mouth meets the
 // edge (pads to 2.1 mm from centre, the housing's front a little past them). Seen on the 9 Nov render of the logger
 // with a UART link: at the USB-C's 6 mm and rotation, its mouth faced into the board.
-const EDGE_FIT: Record<string, { insetMm: number; turnDeg: number }> = { jst4_sh: { insetMm: 2.5, turnDeg: 180 } }
+const EDGE_FIT: Record<string, { insetMm: number; turnDeg: number }> = { jst4_sh: { insetMm: 2.5, turnDeg: 180 }, jst6_sh: { insetMm: 2.5, turnDeg: 180 } }
 const fitOf = (footprint: string) => EDGE_FIT[footprint] ?? { insetMm: CONNECTOR_INSET_MM, turnDeg: 0 }
 const edgeRotation = (c: Connector, footprint: string) => {
 	const turn = fitOf(footprint).turnDeg
@@ -1515,7 +1516,9 @@ export const MCU_EN_NET = "MCU_EN"
 const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET, MCU_EN_NET, "MOTOR_A1", "MOTOR_A2", "MOTOR_B1", "MOTOR_B2"]
 
 // A rover's motor connectors: two-pin connectors, in ref order (JM1 motor A, JM2 motor B).
-export const motorConnectors = (parts: Part[]) => parts.filter((p) => p.role === "connector" && p.pins.length === 2 && p.pins[0] === "1" && p.pins[1] === "2").sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
+// A motor's plug: a 2-pin one (pins 1 and 2), or an encoder gearmotor's 6-pin one (M1, M2 for the motor, VCC, GND and
+// ENCA/ENCB for its encoder; catalog SM06B-SRSS-TB).
+export const motorConnectors = (parts: Part[]) => parts.filter(isMotorPlug).sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
 
 // The router's default track (tscircuit 0.0.3042: 0.15 mm), enough for the rails up to about 0.6 A (IPC-2221 below).
 export const DEFAULT_TRACE_MM = 0.15
@@ -1667,7 +1670,9 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		for (const pin of ["AISEN", "BISEN"]) if (driver.pins.includes(pin)) join("GND", driver.ref, pin)
 		const [ma, mb] = motorConnectors(parts)
 		for (const [k, side] of [[ma, "A"], [mb, "B"]] as const)
-			if (k) for (const n of ["1", "2"] as const) if (driver.pins.includes(`${side}OUT${n}`)) { join(`MOTOR_${side}${n}`, driver.ref, `${side}OUT${n}`); join(`MOTOR_${side}${n}`, k.ref, n) }
+			if (k) for (const n of ["1", "2"] as const) if (driver.pins.includes(`${side}OUT${n}`)) { join(`MOTOR_${side}${n}`, driver.ref, `${side}OUT${n}`); join(`MOTOR_${side}${n}`, k.ref, isEncoderPlug(k) ? `M${n}` : n) }
+		// An encoder gearmotor's encoder runs from 3V3 (its outputs then swing to 3.3 V, the MCU's level).
+		for (const k of [ma, mb]) if (k && isEncoderPlug(k) && hasSupply) join(supply, k.ref, "VCC")
 	}
 	// A robot's distance-sensor plug (mechanics.sensor.connector) powers the breakout from the 3V3 rail.
 	const plug = parts.find((p) => p.ref === s.values.mechanics?.sensor?.connector && p.role === "connector")
