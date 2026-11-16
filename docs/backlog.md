@@ -156,6 +156,13 @@ is a change to the firmware toolchain, not just the code.
       (its stm32f103.repl has no CAN) and has no F446 platform (the two-node CAN test runs F446 firmware on its F407 as an
       approximation); QEMU's ESP32-C3 models no TWAI. Those sides are proven only by compiling until the bench test
       (docs/bench-can.md) runs on real boards. STM32 bxCAN firmware itself is done (e7fb5e0).
+      Tried 16 Nov (branch stm-can 0100d6f, unmerged, capped at a debug build and one fix attempt): two F446 link-test
+      firmwares on Renode's stm32f4 (F407) platform with a CAN hub. (1) Both nodes stall in halWireBegin() (the SHT40's
+      I2C) on the F407 model, before any CAN code; with it skipped they reach the CAN setup. (2) There PCLK1 reads
+      45 MHz and the timing is right (18 tq, prescaler 5 at 500 kbit/s), but HAL_CAN_Init returns HAL_ERROR with
+      ErrorCode 0x20000 (HAL_CAN_ERROR_TIMEOUT) and MSR 0xC00: Renode's STMCAN never sets MSR.INAK when the HAL requests
+      init mode (MCR.INRQ), so the controller never starts and every send finds no free mailbox. A Renode model limit:
+      we don't patch Renode, so bxCAN stays proven by compiling and by the bench test (docs/bench-can.md).
 - [ ] **CAN as a link between boards, when the user asks for it** (the user, 15 Nov: "allow for user insisting on using
       CAN communication for robot if they want"). Today: the MCU profiles know which chips have a CAN controller
       (ESP32-C3 / WROOM TWAI, STM32F103, STM32F446), but `src/contract/link-kinds.ts` has no CAN kind and the catalog
