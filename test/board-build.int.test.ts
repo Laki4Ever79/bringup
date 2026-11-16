@@ -71,3 +71,17 @@ test("build errors lead with the real cause, not tscircuit's advisory warnings",
 	const out = "All pins on U1 are underspecified (no pinAttributes set)\nU2 has no pin with requires_power=true\nVia hole at (-21.24mm, 2.40mm) overlaps SMD pad J1.pin6\nBuild exiting with code 1: circuit build errors occurred"
 	assert.equal(buildErrors(out), "Via hole at (-21.24mm, 2.40mm) overlaps SMD pad J1.pin6\nBuild exiting with code 1: circuit build errors occurred")
 })
+
+// Real run 14 rev 36 (Eurobot, 16 Nov 2026): every tscircuit layout built with one 0.04 mm clearance near-miss (20
+// layouts, 640 s, DRC 1). After LAYOUTS_BEFORE_FREEROUTING layouts built with errors, Freerouting routes the best one's
+// placement: 7 layouts, 506 s, DRC 0, debug footprint kept.
+test("a crowded board whose layouts all build with DRC errors is routed clean by Freerouting", { skip: slow || (!(env.tsci && env.kicad) && "tsci or KiCad missing"), timeout: 1_200_000 }, async () => {
+	const { connectorsOntoEdges } = await import("../src/contract/consistency.ts")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/cc-eurobot14-rev36.json", import.meta.url), "utf8"))
+	s.values.connectors = connectorsOntoEdges(s) ?? s.values.connectors
+	const board = await buildBoard(env, tempDir(), s, s.revision)
+	assert.equal(board.routedBy, "freerouting")
+	assert.equal(board.drc?.errors, 0, board.drc?.firstError ?? "")
+	assert.equal(board.debugPortDropped, undefined)
+	assert.ok((board.layoutsTried ?? 99) <= 10, `layouts tried: ${board.layoutsTried}`)
+})
