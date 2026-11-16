@@ -6,7 +6,7 @@ import { byMpn } from "../mechanics/catalog.ts"
 import { motionBriefChecks } from "../mechanics/brief.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
-import { connectorAlongMm, connectorBoxes, downloadStrap, generatedNets, MAX_TRACK_MM, netName, supplyPours, supplyWidths, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
+import { connectorAlongMm, connectorBoxes, connectorExtents, downloadStrap, generatedNets, MAX_TRACK_MM, netName, supplyPours, supplyWidths, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
 import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type ContractValues, type FieldName } from "./types.ts"
@@ -542,7 +542,8 @@ export function connectorClashes(c: ContractSnapshot): Violation[] {
 	const o = c.values.outline
 	const connectors = c.values.connectors ?? []
 	if (!o || connectors.length < 2) return []
-	const boxes = connectorBoxes(c, o.widthMm, o.heightMm)
+	// By the extent tscircuit judges (connectorExtents), so a corner's two connectors clear by their courtyards.
+	const boxes = connectorExtents(c, o.widthMm, o.heightMm)
 	const out: Violation[] = []
 	for (let i = 0; i < connectors.length; i++)
 		for (let j = i + 1; j < connectors.length; j++) {
