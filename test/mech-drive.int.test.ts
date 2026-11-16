@@ -62,3 +62,15 @@ test("under Eurobot's rules the base stops 150 mm short of the opponent, holds w
 	for (const n of ["stopped for the opponent", "held, didn't turn", "drove on after it left"]) assert.ok(seg(n)?.pass, JSON.stringify(seg(n)))
 	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
 })
+
+// Odometry and go-to-point (rover_odo.h): the Eurobot base's firmware, built with a target, drives there on its wheel
+// encoders; the physics, not the odometry, judges where its axle's middle ends.
+test("with wheel encoders the base drives to a point 500 mm ahead and 300 mm left, within 20 mm, and stops there", { skip, timeout: 1_200_000 }, async () => {
+	const { EUROBOT_BOARD } = await import("../src/inference/scripts.ts")
+	const s: ContractSnapshot = { revision: 5, versions: {} as never, values: JSON.parse(JSON.stringify(EUROBOT_BOARD)) }
+	const fw = tempDir()
+	assert.match(await prepareFirmware(ROOT, fw, s), /#define ROVER_MM_PER_COUNT/)
+	const spec = { ...chassisSpec(s)!, target: { xMm: 500, yMm: 300, tolMm: 20 } }
+	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec, outDir: tempDir(), courseS: 12, buildFlags: "-DROVER_GOTO_X_MM=500.0f -DROVER_GOTO_Y_MM=300.0f" }, 5)
+	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
+})
