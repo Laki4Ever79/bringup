@@ -1,0 +1,365 @@
+{
+  "revision": 25,
+  "values": {
+    "requirements": {
+      "summary": "Eurobot base robot: two encoder-equipped drive motors, I2C ToF opponent sensor, pull-cord start, emergency stop cutting motor power, single USB-C for programming.",
+      "peripherals": [
+        "motor driver",
+        "2 wheel encoders",
+        "ToF distance sensor",
+        "pull-cord start",
+        "emergency stop",
+        "status LED"
+      ],
+      "batteryLifeDays": null,
+      "enclosure": "none"
+    },
+    "motion": {
+      "speedMps": 0.5,
+      "runtimeMin": 3,
+      "edgeMm": 5,
+      "maxSlopeDeg": 5,
+      "stopBeforeWallMm": 50,
+      "payloadG": 200,
+      "maxSizeMm": [
+        290,
+        290
+      ],
+      "maxMassG": 3000,
+      "rules": "eurobot-2026"
+    },
+    "outline": {
+      "widthMm": 80,
+      "heightMm": 60,
+      "thicknessMm": 1.6
+    },
+    "mechanics": {
+      "drive": {
+        "kind": "differential",
+        "motor": "POLOLU-3041 100:1 HPCB 12V",
+        "wheel": "POLOLU-1420 wheel 60x8 mm",
+        "caster": "BOTLAND-7292 swivel caster 25 mm",
+        "trackMm": 282,
+        "wheelbaseMm": 195,
+        "axleXMm": 67
+      },
+      "battery": {
+        "pack": "GENSACE-GEA22002S20X6 2S 2200 mAh 20C LiPo XT60",
+        "at": {
+          "xMm": 107,
+          "yMm": 0
+        }
+      },
+      "sensor": {
+        "module": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+        "at": {
+          "xMm": 143.6,
+          "yMm": 0,
+          "zMm": 52.7
+        },
+        "connector": "JT1"
+      },
+      "chassis": {
+        "plateMm": [
+          290,
+          270
+        ],
+        "thicknessMm": 3,
+        "material": "PLA",
+        "clearanceMm": 35,
+        "boards": [
+          {
+            "name": "main",
+            "at": {
+              "xMm": 0,
+              "yMm": 0
+            },
+            "rotDeg": 0
+          }
+        ]
+      },
+      "safety": {
+        "estop": {
+          "part": "OMRON A22E-M-01",
+          "at": {
+            "xMm": -60,
+            "yMm": -95,
+            "zMm": 38
+          },
+          "connector": "J3"
+        },
+        "start": {
+          "connector": "JS1",
+          "cordMm": 500,
+          "matchS": 100
+        }
+      }
+    },
+    "rails": [
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 170
+      }
+    ],
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-C3-MINI-1",
+        "lcsc": "C2838502",
+        "footprint": "esp32_c3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO18",
+          "GPIO19",
+          "EN",
+          "3V3",
+          "GND"
+        ],
+        "reason": "Robot controller with BLE for the payload broadcast; 4 MB flash holds the reading history; 0.5 A supply rating per the rover firmware's radio."
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "RT9080-33GJ5",
+        "lcsc": "C841192",
+        "footprint": "sot23_5",
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ],
+        "reason": "3V3 rail for the ESP32-C3 module: 600 mA rating meets the 0.5 A radio supply, 2 uA quiescent for battery life."
+      },
+      {
+        "ref": "U5",
+        "role": "motor-driver",
+        "mpn": "DRV8833PWPR",
+        "lcsc": "C50506",
+        "footprint": "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm",
+        "pins": [
+          "nSLEEP",
+          "AOUT1",
+          "AISEN",
+          "AOUT2",
+          "BOUT2",
+          "BISEN",
+          "BOUT1",
+          "nFAULT",
+          "BIN1",
+          "BIN2",
+          "VCP",
+          "VM",
+          "GND",
+          "VINT",
+          "AIN2",
+          "AIN1"
+        ],
+        "reason": "Drives the two drive motors (brief: motor driver for the differential drive, 2 A peak per bridge covers the 12 V HPCB motors' stall current)."
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ],
+        "reason": "Single USB-C for programming the ESP32-C3 over its USB Serial/JTAG (brief: single USB-C for programming)."
+      },
+      {
+        "ref": "J2",
+        "role": "battery",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "Battery connector: the cell plugs in here (brief: battery pack on the chassis)."
+      },
+      {
+        "ref": "JM1",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "Left drive motor plug (POLOLU-3041 motor leads) to the motor driver's output bridge."
+      },
+      {
+        "ref": "JM2",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "Right drive motor plug (POLOLU-3041 motor leads) to the motor driver's output bridge."
+      },
+      {
+        "ref": "JT1",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "reason": "JST SH 4-pin cable plug for the VL53L0X distance sensor breakout (GND, V+, SDA, SCL) on the chassis (mechanics.sensor.connector)."
+      },
+      {
+        "ref": "JS1",
+        "role": "start",
+        "mpn": "PZ254V-11-02P",
+        "lcsc": "C492401",
+        "footprint": "pinrow2",
+        "pins": [
+          "START",
+          "GND"
+        ],
+        "reason": "Pull-cord start plug (Eurobot F.6: start by pulling a cord at least 500 mm long); START is read on GPIO10 for the 100 s match timer (mechanics.safety.start.connector JS1)."
+      }
+    ],
+    "pins": [
+      {
+        "signal": "MOT_AIN1",
+        "gpio": 4,
+        "partRef": "U5",
+        "partPin": "AIN1"
+      },
+      {
+        "signal": "MOT_AIN2",
+        "gpio": 5,
+        "partRef": "U5",
+        "partPin": "AIN2"
+      },
+      {
+        "signal": "MOT_BIN1",
+        "gpio": 6,
+        "partRef": "U5",
+        "partPin": "BIN1"
+      },
+      {
+        "signal": "MOT_BIN2",
+        "gpio": 7,
+        "partRef": "U5",
+        "partPin": "BIN2"
+      },
+      {
+        "signal": "USB_DP",
+        "gpio": 19,
+        "partRef": "J1",
+        "partPin": "DP"
+      },
+      {
+        "signal": "USB_DN",
+        "gpio": 18,
+        "partRef": "J1",
+        "partPin": "DN"
+      },
+      {
+        "signal": "START",
+        "gpio": 10,
+        "partRef": "J4",
+        "partPin": "START"
+      }
+    ],
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 40,
+        "widthMm": 9,
+        "heightMm": 3.2
+      },
+      {
+        "ref": "JS1",
+        "kind": "header",
+        "edge": "bottom",
+        "offsetMm": 12,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JT1",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 15,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JM1",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 35,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "J2",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 15,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JM2",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 35,
+        "widthMm": 5.8,
+        "heightMm": 3
+      }
+    ]
+  },
+  "versions": {
+    "requirements": 3,
+    "outline": 1,
+    "connectors": 1,
+    "rails": 1,
+    "parts": 5,
+    "pins": 5,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 2,
+    "mechanics": 7,
+    "assembly": 0
+  }
+}
