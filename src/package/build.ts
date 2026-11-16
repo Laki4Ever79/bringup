@@ -18,8 +18,24 @@ import { lookupLcsc } from "../tools/parts-search.ts"
 import { checkRobotParts, robotPartLines, robotPartNotes } from "../tools/robot-parts.ts"
 import { writeBench } from "../report.ts"
 
+// JLCPCB's published price rules (economic PCBA), for a labelled estimate of the order: https://jlcpcb.com/help/article/pcb-assembly-price
+// (setup $8.18, stencil $1.53, $0.0016 a solder joint, $3.07 feeder loading per extended part; basic and preferred parts
+// load free) and the bare board offer (https://jlcpcb.com/blog/free-assembly-1-6-layer-pcb-discount-8-20-layer-pcba: $2
+// for 5 two-layer boards up to 100 x 100 mm). Checked 16 Nov 2026; JLC's quote at upload is the real number.
+export const JLC = { pcb5Usd: 2, pcbMaxMm: 100, setupUsd: 8.18, stencilUsd: 1.53, jointUsd: 0.0016, extendedUsd: 3.07, assembled: 2 }
+export interface JlcEstimate { pcbUsd: number | null; setupUsd: number; stencilUsd: number; joints: number; jointsUsd: number; extended: string[]; extendedUsd: number; partsUsd: number | null; totalUsd: number | null }
+export function jlcEstimate(board: { widthMm: number; heightMm: number }, joints: number, extended: string[], partsPerBoardUsd: number | null): JlcEstimate {
+	const pcbUsd = board.widthMm <= JLC.pcbMaxMm && board.heightMm <= JLC.pcbMaxMm ? JLC.pcb5Usd : null
+	const jointsUsd = Math.round(joints * JLC.assembled * JLC.jointUsd * 100) / 100
+	const extendedUsd = Math.round(extended.length * JLC.extendedUsd * 100) / 100
+	const partsUsd = partsPerBoardUsd === null ? null : Math.round(partsPerBoardUsd * JLC.assembled * 100) / 100
+	const totalUsd = pcbUsd === null || partsUsd === null ? null : Math.round((pcbUsd + JLC.setupUsd + JLC.stencilUsd + jointsUsd + extendedUsd + partsUsd) * 100) / 100
+	return { pcbUsd, setupUsd: JLC.setupUsd, stencilUsd: JLC.stencilUsd, joints, jointsUsd, extended, extendedUsd, partsUsd, totalUsd }
+}
+
 export interface PackageResult {
 	dir: string
+	jlc: JlcEstimate | null
 	boardUsd: number | null
 	robotUsd: number | null
 	missing: string[]
@@ -71,15 +87,19 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	if (bomRows.length) {
 		for (const [comment, refs, , lcsc] of bomRows) if (lcsc) lines.set(lcsc, { mpn: comment, lcsc, refs: refs.split(/[ ,]+/).filter(Boolean) })
 	} else for (const p of s.values.parts ?? []) if (p.lcsc) lines.set(p.lcsc, { mpn: p.mpn, lcsc: p.lcsc, refs: [...(lines.get(p.lcsc)?.refs ?? []), p.ref] })
-	const priced: { mpn: string; lcsc: string; refs: string[]; stock: number | null; unit: number | null }[] = []
+	const priced: { mpn: string; lcsc: string; refs: string[]; stock: number | null; unit: number | null; extended: boolean }[] = []
 	for (const l of lines.values()) {
 		const live = await lookupLcsc(l.lcsc)
-		priced.push({ ...l, stock: live.stock, unit: live.priceUsd })
+		priced.push({ ...l, stock: live.stock, unit: live.priceUsd, extended: live.basic === false && live.preferred !== true })
 		if (live.stock !== null && live.stock < l.refs.length) outOfStock.push(`${l.mpn} (${l.lcsc}): ${live.stock} in stock, ${l.refs.length} needed`)
 		if (live.priceUsd === null) unpriced.push(`${l.mpn} (${l.lcsc})`)
 	}
 	const unbought = (s.values.parts ?? []).filter((p) => !p.lcsc)
 	const boardUsd = priced.some((p) => p.unit !== null) ? priced.reduce((t, p) => t + (p.unit ?? 0) * p.refs.length, 0) : null
+	// The JLCPCB order: every assembled part's pads are its solder joints (the built board's part pins).
+	const assembledRefs = new Set(priced.flatMap((p) => p.refs))
+	const joints = board ? Object.entries(board.parts ?? {}).filter(([ref]) => assembledRefs.has(ref)).reduce((t, [, p]) => t + p.pins.length, 0) : 0
+	const jlc = board ? jlcEstimate(board, joints, priced.filter((p) => p.extended).map((p) => `${p.mpn} (${p.lcsc})`), boardUsd) : null
 	const robot = s.values.mechanics ? await checkRobotParts(robotPartLines(s), { live: true }) : null
 	for (const l of robot?.lines ?? []) {
 		if (l.status === "out of stock" || l.status === "discontinued" || l.status === "backorder") outOfStock.push(`${l.item} ${l.mpn}: ${l.status}`)
@@ -120,7 +140,15 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		"|---|---|---|---|---|---|",
 		...priced.map((p) => `| ${p.refs.join(" ")} | ${p.mpn} | ${p.lcsc} | ${p.stock ?? "?"} | ${usd(p.unit)} | ${usd(p.unit === null ? null : p.unit * p.refs.length)} |`),
 		"",
-		`Parts total: ${usd(boardUsd)} per board (LCSC unit prices; JLCPCB adds the PCB, its assembly fee and a fee per extended part, which its quote shows at upload).`,
+		`Parts total: ${usd(boardUsd)} per board (LCSC unit prices).`,
+		...(jlc ? ["", "## JLCPCB order (an ESTIMATE from JLC's published rules, checked 16 Nov 2026; its quote at upload is the real number)", "", "| Line | Cost |", "|---|---|",
+			`| 5 bare boards (2-layer, ${board!.widthMm} × ${board!.heightMm} mm) | ${jlc.pcbUsd === null ? "over 100 × 100 mm: quote" : usd(jlc.pcbUsd)} |`,
+			`| Assembly setup (economic) | ${usd(jlc.setupUsd)} |`, `| Stencil | ${usd(jlc.stencilUsd)} |`,
+			`| Solder joints: ${jlc.joints} a board × ${JLC.assembled} boards at $${JLC.jointUsd} | ${usd(jlc.jointsUsd)} |`,
+			`| Extended parts' feeder loading: ${jlc.extended.length} × $${JLC.extendedUsd}${jlc.extended.length ? ` (${jlc.extended.join(", ")})` : ""} | ${usd(jlc.extendedUsd)} |`,
+			`| Parts for ${JLC.assembled} assembled boards | ${usd(jlc.partsUsd)} |`,
+			`| **JLCPCB total, before shipping and tax** | **${usd(jlc.totalUsd)}** |`, "",
+			`Assumes JLC's usual minimum of ${JLC.assembled} assembled boards out of 5 made; the robot needs one, the other is a spare.`] : []),
 		...(unbought.length ? ["", `Not assembled by JLCPCB (no LCSC number): ${unbought.map((p) => `${p.ref} ${p.mpn}`).join(", ")}: bought and soldered by hand.`] : []),
 		"",
 		"## Bought parts for the robot",
@@ -134,7 +162,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		"",
 	].join("\n")
 	writeFileSync(join(outDir, "parts.md"), partsMd)
-	const result: PackageResult = { dir: outDir, boardUsd, robotUsd, missing, outOfStock, unpriced, findings }
+	const result: PackageResult = { dir: outDir, jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings }
 	writeFileSync(join(outDir, "README.md"), readme(s, result, fabOk, stls.map((f) => basename(f)), Boolean(fwBin)))
 	return result
 }
@@ -165,7 +193,9 @@ function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
 }
 
 function readme(s: ContractSnapshot, r: PackageResult, fabOk: boolean, stls: string[], fw: boolean): string {
-	const total = r.boardUsd !== null || r.robotUsd !== null ? (r.boardUsd ?? 0) + (r.robotUsd ?? 0) : null
+	// One total: the JLCPCB order (estimate) plus the robot parts a shop priced; without the estimate, the board's parts.
+	const boardSide = r.jlc?.totalUsd ?? r.boardUsd
+	const total = boardSide !== null || r.robotUsd !== null ? Math.round(((boardSide ?? 0) + (r.robotUsd ?? 0)) * 100) / 100 : null
 	return [
 		`# Build package: ${s.values.requirements?.summary ?? "design"} (contract revision ${s.revision})`,
 		"",
@@ -180,7 +210,7 @@ function readme(s: ContractSnapshot, r: PackageResult, fabOk: boolean, stls: str
 		"| Assembly order | assembly.md | |",
 		"| Bench bring-up | bringup.md | |",
 		"",
-		`**Known cost: ${usd(total)}** (parts only: the PCB, JLCPCB's assembly and extended-part fees, shipping and filament are on top; JLCPCB's quote shows its part at upload).`,
+		`**Total: ${usd(total)}** = the JLCPCB order ${r.jlc?.totalUsd !== null && r.jlc ? `${usd(r.jlc.totalUsd)} (an estimate from JLC's published rules: 5 boards, 2 assembled; parts.md has the lines)` : `parts ${usd(r.boardUsd)} (no JLC estimate)`} + robot parts ${usd(r.robotUsd)}. Shipping, tax and filament are on top${r.unpriced.length ? `; ${r.unpriced.length} line(s) below have no price yet` : ""}.`,
 		"",
 		...(r.missing.length ? ["## Missing", "", ...r.missing.map((m) => `- ${m}`), ""] : []),
 		...(r.outOfStock.length ? ["## Out of stock or short", "", ...r.outOfStock.map((m) => `- ${m}`), ""] : []),
