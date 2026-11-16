@@ -106,6 +106,25 @@ export function skidTurn(massKg: number, wheelbaseMm: number, trackMm: number, w
 // simulated drive, 15 Nov: its pivot moved 35 mm toward the wall while turning from forward motion, and drifted 30 mm
 // more over 0.7 m at 2° off parallel; 50 mm still hit, 100 mm cleared by 33 mm).
 export const TURN_CLEARANCE_MM = 100
+// A skid-steer rover's effective track while turning in place. Each contact slides in the direction of the force it
+// carries (isotropic Coulomb friction), and the moment balance makes the push-to-scrub ratio L/B, so each wheel's surface
+// also slips forward by L/B of its sideways slide: the rover turns as if its track were B·(1 + (L/B)²) (here 1.5 × B).
+export const skidEffectiveTrackMm = (d: { wheelbaseMm: number; trackMm: number }) => d.trackMm * (1 + (d.wheelbaseMm / d.trackMm) ** 2)
+// What the simulation turns at, as a share of that model's steady rate: MEASURED in the rover-4wd simulated drive (16 Nov
+// 2026: 64°/s against 77°/s, the wheels' spin-up from forward motion and their contact patch), not derived. An open-loop
+// turn on a real floor differs again; encoders (closing the turn on counts) take this guess out.
+export const SKID_TURN_SIM_SHARE = 0.83
+// A skid-steer rover's wheel speed while turning in place at `duty` from a full pack: each wheel works against the
+// sideways scrub (skidTurn's torque), so on the motor's load line it turns slower than when rolling. The firmware times
+// its open-loop turn with this (rover-4wd mock, 16 Nov: timed at the rolling speed, a planned 135° turn came out at
+// about 43°; the load line at the scrub torque predicts 66°/s, the simulation turned at 65°/s).
+export function skidTurnWheelMps(motor: MotorPart, pack: BatteryPack, duty: number, massKg: number, d: { wheelbaseMm: number; trackMm: number }, wheelRadiusM: number): number {
+	const t = skidTurn(massKg, d.wheelbaseMm, d.trackMm, wheelRadiusM)
+	const m = motorAt(motor, pack.fullV)
+	const amps = m.kt > 0 ? t.torqueNm / m.kt : 0
+	const volts = pack.fullV - 4 * amps * packOhm(pack)
+	return m.ke > 0 ? Math.max(0, ((duty * volts - amps * m.rOhm) / m.ke) * wheelRadiusM) : 0
+}
 // The sensor reading at which the rover must start a turn in place so its sweep clears the wall ahead and the one it
 // will drive beside: the pivot stands sweep + clearance from the wall, the sensor is sensorAheadMm in front of the pivot.
 export function turnStopMm(mech: Mechanics, wheel: { diameterMm: number; widthMm: number }): number {
