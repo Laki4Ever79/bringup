@@ -1001,6 +1001,9 @@ export function mockScripts(): Record<string, Script> {
 			}
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion") && isEurobot())
 				return propose("mechanics", EUROBOT_BOARD.mechanics, "the Eurobot base: the reference rover's drive with the emergency stop on a 125 mm deck beside the board (a 7 mm collar keeps its head within 25 mm of the robot) and the pull-cord start (catalog/mechanics.json safety, Eurobot General Rules 1.2 F.4.c, F.6)")
+			// A four-wheel brief: the skid-steer rover on encoder gearmotors (its turn closes on their counts).
+			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion")?.drive === "skid4")
+				return propose("mechanics", ROVER4_MECHANICS, "the four-wheel skid-steer rover: Pololu 100:1 micro gearmotors with 12 CPR encoders on 80 mm wheels, no caster, wheelbase 0.71× the track; the turn in place ends on the front wheels' counts (catalog/mechanics.json)")
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion"))
 				return propose("mechanics", ROVER_MECHANICS, "the reference rover: Pololu 100:1 micro gearmotors on 60 mm wheels, a 25 mm swivel caster, the 2000 mAh cell, the VL53L0X breakout at the front (catalog/mechanics.json)")
 			return say("mechanics unchanged")
