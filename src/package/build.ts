@@ -35,6 +35,8 @@ export function jlcEstimate(board: { widthMm: number; heightMm: number }, joints
 
 export interface PackageResult {
 	dir: string
+	// The bought lines as the shops list them, for the README's "How to order".
+	robotLines?: { item: string; mpn: string; qty: number; packs?: number; supplier: string | null; url: string | null; lineUsd: number | null; status: string }[]
 	jlc: JlcEstimate | null
 	boardUsd: number | null
 	robotUsd: number | null
@@ -163,7 +165,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		"",
 	].join("\n")
 	writeFileSync(join(outDir, "parts.md"), partsMd)
-	const result: PackageResult = { dir: outDir, jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings }
+	const result: PackageResult = { dir: outDir, robotLines: (robot?.lines ?? []).map((l) => ({ item: l.item, mpn: l.mpn, qty: l.qty, packs: (l as { packs?: number }).packs, supplier: l.supplier, url: l.url, lineUsd: l.lineUsd, status: l.status })), jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings }
 	writeFileSync(join(outDir, "README.md"), readme(s, result, fabOk, stls.map((f) => basename(f)), Boolean(fwBin)))
 	return result
 }
@@ -213,9 +215,44 @@ function readme(s: ContractSnapshot, r: PackageResult, fabOk: boolean, stls: str
 		"",
 		`**Total: ${usd(total)}** = the JLCPCB order ${r.jlc?.totalUsd !== null && r.jlc ? `${usd(r.jlc.totalUsd)} (an estimate from JLC's published rules: 5 boards, 2 assembled; parts.md has the lines)` : `parts ${usd(r.boardUsd)} (no JLC estimate)`} + robot parts ${usd(r.robotUsd)}. Shipping, tax and filament are on top${r.unpriced.length ? `; ${r.unpriced.length} line(s) below have no price yet` : ""}.`,
 		"",
+		...howToOrder(r),
 		...(r.missing.length ? ["## Missing", "", ...r.missing.map((m) => `- ${m}`), ""] : []),
 		...(r.outOfStock.length ? ["## Out of stock or short", "", ...r.outOfStock.map((m) => `- ${m}`), ""] : []),
 		...(r.unpriced.length ? ["## Not priced (check by hand)", "", ...r.unpriced.map((m) => `- ${m}`), ""] : []),
 		...(r.findings.length ? ["## Open design findings on today's checks", "", ...r.findings.map((m) => `- ${m}`), ""] : ["Today's design checks: none open.", ""]),
 	].join("\n")
+}
+
+// How to order, from what the package found: the JLCPCB upload with the options its estimate assumed, one order per
+// shop for the bought lines, and what to buy locally. Nothing is ordered here; the person decides.
+function howToOrder(r: PackageResult): string[] {
+	const lines = r.robotLines ?? []
+	const local = lines.filter((l) => l.lineUsd === null && /screw|nut|washer|standoff/.test(l.item))
+	const bought = lines.filter((l) => !local.includes(l))
+	const shops = new Map<string, typeof bought>()
+	for (const l of bought) shops.set(l.supplier ?? "?", [...(shops.get(l.supplier ?? "?") ?? []), l])
+	const usd = (n: number | null) => (n === null ? "price to check" : `$${n.toFixed(2)}`)
+	return [
+		"## How to order",
+		"",
+		"### 1. The board at JLCPCB (jlcpcb.com, \"Order now\")",
+		"",
+		"1. Upload `fab/gerbers.zip`. Keep the detected size and 2 layers; FR-4, 1.6 mm, HASL, green, quantity 5 (the estimate's options).",
+		"2. Turn on **PCB Assembly**: Economic, **Top side**, quantity 2 (the estimate assumes 2 assembled; one is a spare).",
+		"3. Next, then upload `fab/bom.csv` as the BOM and `fab/cpl.csv` as the CPL (pick-and-place).",
+		"4. Check the parts page: every line matched to its LCSC number and in stock (parts.md lists them). Confirm the placement preview: each part on its pads, the USB-C at the board edge.",
+		`5. The quote shows the real price; this package estimates ${r.jlc?.totalUsd !== null && r.jlc ? `$${r.jlc.totalUsd.toFixed(2)}` : "no figure"} before shipping and tax.`,
+		"",
+		"### 2. The bought parts, one order per shop",
+		"",
+		...[...shops].flatMap(([shop, ls]) => [
+			`- **${shop}**: ${ls.map((l) => `${l.packs && l.packs !== l.qty ? `${l.packs} pack${l.packs > 1 ? "s" : ""} for ` : ""}${l.qty} × ${l.item} (${l.mpn})${l.url ? ` [link](${l.url})` : ""}, ${usd(l.lineUsd)}${l.status !== "in stock" ? ` (${l.status})` : ""}`).join("; ")}`,
+		]),
+		"",
+		...(local.length ? ["### 3. From a local hardware store (or a metric screw assortment kit)", "", ...local.map((l) => `- ${l.qty} × ${l.mpn} (${l.item})`), ""] : []),
+		"### Then",
+		"",
+		"Print the STLs in printed/ in PLA, and follow assembly.md, then bringup.md.",
+		"",
+	]
 }
