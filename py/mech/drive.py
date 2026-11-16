@@ -9,7 +9,11 @@ encoders (spec motor.encoderCountsPerRev) each wheel's count after it.
 
 The course: a 2.5 × 2 m room; the rover starts at the origin facing a wall 1.5 m ahead, with a step across the floor
 from 0.6 m on, as high as the brief's edge (spec edgeMm). It passes when its caster (the last wheel) gets over the step, never touches a wall, turns away from the wall, keeps driving
-afterwards, reaches 90 % of its target speed, and no motor draws more than the driver's peak. Results: drive.json and
+afterwards, reaches 90 % of its target speed, and no motor draws more than the driver's peak.
+
+With spec "opponent" ({appearS, leaveS, aheadM, radiusM, gapMm}), a round robot appears aheadM in front of the sensor at
+appearS and leaves at leaveS (seen by the sensor only: it isn't a body). Three more segments: it stopped at least gapMm
+short of it, held there without turning, and drove on after it left. Results: drive.json and
 trajectory.json (10 Hz rows: time s, x m, y m, yaw rad, left duty, right duty, height change mm) in out-dir.
 """
 
@@ -117,6 +121,13 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     moved_after_turn = 0.0
     trajectory = []
     last_sample = -1.0
+    opp = spec.get("opponent")
+    opp_c = None  # the opponent's centre once it has appeared
+    opp_gap = math.inf  # the nearest the sensor came to it
+    opp_yaw0 = None
+    opp_turn = 0.0  # the most the heading changed while it stood there
+    opp_left_at = None  # (x, y, heading) when it left
+    opp_after = 0.0  # forward travel in the 3 s after it left
     ticks = 0
     try:
         while data.time < course_s:
@@ -183,6 +194,27 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
             geomid = np.array([-1], dtype=np.int32)
             dist = mujoco.mj_ray(model, data, origin, direction, None, 1, chassis, geomid)
             reading = int(round(dist * 1000)) if 0 <= dist <= rng else -1
+            if opp:
+                if opp_c is None and data.time >= opp["appearS"]:
+                    ahead = opp["aheadM"] + opp["radiusM"]
+                    opp_c = (origin[0] + direction[0] * ahead, origin[1] + direction[1] * ahead)
+                    opp_yaw0 = yaw
+                if opp_c is not None and data.time < opp["leaveS"]:
+                    # The ray against the opponent's circle.
+                    ox, oy = origin[0] - opp_c[0], origin[1] - opp_c[1]
+                    b = ox * direction[0] + oy * direction[1]
+                    disc = b * b - (ox * ox + oy * oy - opp["radiusM"] ** 2)
+                    edge = math.hypot(ox, oy) - opp["radiusM"]
+                    opp_gap = min(opp_gap, edge)
+                    if disc >= 0 and -b - math.sqrt(disc) >= 0 and -b - math.sqrt(disc) <= rng:
+                        hit = int(round((-b - math.sqrt(disc)) * 1000))
+                        reading = hit if reading < 0 else min(reading, hit)
+                    opp_turn = max(opp_turn, abs(math.atan2(math.sin(yaw - opp_yaw0), math.cos(yaw - opp_yaw0))))
+                elif opp_c is not None:
+                    if opp_left_at is None:
+                        opp_left_at = (pos[0], pos[1], heading[0], heading[1], data.time)
+                    if data.time - opp_left_at[4] <= 3.0:
+                        opp_after = max(opp_after, (pos[0] - opp_left_at[0]) * opp_left_at[2] + (pos[1] - opp_left_at[1]) * opp_left_at[3])
             if reading >= 0 and duty[0] > 0 and duty[1] > 0:
                 nearest_ahead = min(nearest_ahead, reading)
             # Wheel encoders (an encoder gearmotor): each wheel's angle in counts (channel A's edges, spec
@@ -216,6 +248,13 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
         {"name": "top speed", "pass": bool(top_speed >= 0.9 * target), "detail": f"{top_speed:.2f} m/s (target {target} m/s, 90 % needed)"},
         {"name": "peak current", "pass": bool(peak_a <= (spec.get("driverPeakA") or math.inf)), "detail": f"{peak_a:.2f} A per motor (driver peak {spec['driverPeakA']} A)" if spec.get("driverPeakA") else f"{peak_a:.2f} A per motor (driver peak unknown: not checked)"},
     ]
+    if opp:
+        gap = opp.get("gapMm", 150)
+        segments += [
+            {"name": "stopped for the opponent", "pass": bool(opp_c is not None and opp_gap * 1000 >= gap), "detail": f"the sensor came within {opp_gap * 1000:.0f} mm of the opponent (at least {gap} mm needed)" if opp_c is not None else "the opponent never appeared (the course ended first)"},
+            {"name": "held, didn't turn", "pass": bool(opp_c is not None and math.degrees(opp_turn) < 10), "detail": f"its heading changed {math.degrees(opp_turn):.1f}° while the opponent stood there (under 10° needed)"},
+            {"name": "drove on after it left", "pass": bool(opp_after >= 0.1), "detail": f"{opp_after:.2f} m forward in the 3 s after it left (0.1 m needed)"},
+        ]
     failed = [s for s in segments if not s["pass"]]
     reason = "; ".join(f"{s['name']}: {s['detail']}" for s in failed) if failed else "every segment passed"
     if wall_contact:

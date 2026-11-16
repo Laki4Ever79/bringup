@@ -30,6 +30,14 @@ export function unassignedRoverPins(s: ContractSnapshot): string[] {
 	return [...ROVER_SIGNALS, ...(s.values.mechanics?.safety?.start ? ["START"] : []), ...(motor?.encoder ? ["ENC_LA", "ENC_RA"] : [])].filter((sig) => !(s.values.pins ?? []).some((p) => p.signal === sig && typeof p.gpio === "number" && p.gpio >= 0))
 }
 
+// The opponent hold (rover_hold.h, under motion.rules): the gap kept to the robot ahead, how much farther it must be to
+// count as gone, the VL53L0X's blind range (no reading under about 30 mm; a hold near it keeps holding), and the
+// longest hold before what is ahead counts as fixed (a wall) and the drive turns away as usual: design choices.
+export const OPPONENT_GAP_MM = 150
+export const HOLD_CLEAR_MM = 50
+export const SENSOR_BLIND_MM = 60
+export const HOLD_MAX_MS = 5000
+
 export function roverHeader(s: ContractSnapshot): string {
 	const v = s.values
 	const mech = v.mechanics!, motion = v.motion!
@@ -76,6 +84,11 @@ export function roverHeader(s: ContractSnapshot): string {
 		// An acceleration limit (mechanics.drive.maxAccelMps2): the duty moves at most this much per control tick, so the speed
 		// (the load line's at full duty from a full pack, at most) changes no faster: main.cpp ramps every output.
 		...(mech.drive.maxAccelMps2 ? [`#define ROVER_RAMP_PER_TICK ${(mech.drive.maxAccelMps2 * (sensor.updateMs / 1000) / Math.max(0.01, loadedSpeedMps(motor, pack, pack.fullV, 1, massG / 1000, r))).toFixed(4)}f`] : []),
+		// Under a competition's rules (motion.rules): stop for the opponent ahead and wait for it to leave (rover_hold.h).
+		// OPPONENT_GAP_MM short of it plus the braking and one sensor period, and never inside the wall stop distance, so
+		// the hold always comes before the drive's turn away. Eurobot's F.6 (p. 14) asks for an avoidance system that
+		// prevents collisions and names no distance: the 150 mm is the run 15 review's margin, a design choice.
+		...(motion.rules ? ((hold) => [`#define ROVER_HOLD_MM ${hold}`, `#define ROVER_CLEAR_MM ${hold + HOLD_CLEAR_MM}`, `#define ROVER_BLIND_MM ${SENSOR_BLIND_MM}`, `#define ROVER_HOLD_MAX_MS ${HOLD_MAX_MS}UL`])(Math.ceil(Math.max(stop, brakeStop - motion.stopBeforeWallMm + OPPONENT_GAP_MM))) : []),
 		// A pull-cord start (main.cpp, match.h): the match length, when the mechanics give one; PIN_START comes below.
 		...(mech.safety?.start?.matchS ? [`#define MATCH_MS ${Math.round(mech.safety.start.matchS * 1000)}UL`] : []),
 		// What else the rover firmware drives and reads, named as the product firmware names them so the same checks
