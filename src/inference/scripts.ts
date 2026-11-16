@@ -1,5 +1,5 @@
 import { pathHash, sensorPath } from "../contract/sensor-path.ts"
-import { LINK_CONNECTOR } from "../contract/links.ts"
+import { LINK_CONNECTOR, CAN_TRANSCEIVER, canName, canSignals } from "../contract/links.ts"
 import { FREE_GPIOS } from "../contract/link-kinds.ts"
 import { defaultTestSpec, expectedCurrents, probeableNets } from "../contract/testkit.ts"
 import { supportParts, testPoints, nativeUsbIndexes } from "../codegen/circuit.ts"
@@ -472,6 +472,20 @@ export function linkProposal(s: ContractSnapshot): { field: "connectors" | "pins
 			if (!free || free.length < 2) return null
 			return { field: "pins", value: [...pins, { signal: "I2C_SDA", gpio: free[0], partRef: l.connector, partPin: "IO1" }, { signal: "I2C_SCL", gpio: free[1], partRef: l.connector, partPin: "IO2" }], reason: `${l.id}'s I2C bus: SDA and SCL to the connector` }
 		}
+		// A CAN link: the controller's TX to the transceiver's D and RX from its R, once per board (a bus's segments share
+		// one transceiver and one controller, and the signals are named after the bus).
+		if (l.kind === "can") {
+			const xcvr = (s.values.parts ?? []).find((p) => p.role === "can-transceiver")
+			if (!xcvr) continue
+			const sig = canSignals(l)
+			const want = [{ signal: sig.tx, partPin: "D" }, { signal: sig.rx, partPin: "R" }]
+			if (want.every((w) => pins.some((p) => p.signal === w.signal && p.partRef === xcvr.ref && p.partPin === w.partPin))) continue
+			const kept = pins.filter((p) => !want.some((w) => w.signal === p.signal))
+			const used = new Set(kept.map((p) => p.gpio))
+			const free = linkPins(s, want.map((w) => ({ signal: w.signal, kind: "can" as const, role: w.partPin === "D" ? "TX" : "RX", group: canName(l) })), [...used])
+			if (!free || free.length < 2) return null
+			return { field: "pins", value: [...kept, ...want.map((w, i) => ({ signal: w.signal, gpio: free[i], partRef: xcvr.ref, partPin: w.partPin }))], reason: `${canName(l)}'s CAN: the controller's TX to ${xcvr.ref}.D and RX from ${xcvr.ref}.R` }
+		}
 		if (l.kind === "uart" && l.txOn) {
 			const want = [
 				{ signal: `${l.id}_TX`, partPin: l.txOn },
@@ -812,6 +826,12 @@ export function mockScripts(): Record<string, Script> {
 				const linkRef = /needs its connector: a part (\w+), role connector/.exec(instruction)?.[1]
 				if (stepsTaken(items) === 0 && linkRef && !parts.some((p) => p.ref === linkRef))
 					return propose("parts", [...parts, { ref: linkRef, role: "connector", ...LINK_CONNECTOR }], `${linkRef}: the link's JST SH 4-pin connector (catalog)`)
+				// A CAN link's transceiver (one per board, whatever its links: a middle board's two bus segments share it).
+				if (stepsTaken(items) === 0 && /needs its transceiver: a part role can-transceiver/.test(instruction) && !parts.some((p) => p.role === "can-transceiver")) {
+					const taken = new Set(parts.map((p) => p.ref))
+					const ref = ["U9", "U10", "U11", "U12"].find((r) => !taken.has(r))!
+					return propose("parts", [...parts, { ref, role: "can-transceiver", ...CAN_TRANSCEIVER }], `${ref}: the CAN link's ${CAN_TRANSCEIVER.mpn} transceiver (catalog)`)
+				}
 				if (stepsTaken(items) === 0 && violationKinds(instruction).has("model-sensor-missing") && !parts.some((p) => p.role === "microphone"))
 					return propose("parts", [...parts, MIC_PART], "the model listens: the ICS-43434 I2S microphone (catalog)")
 				// A 1-cell charger on a multi-cell pack (charger-pack): the pack charges off the board on a balance charger, so the
