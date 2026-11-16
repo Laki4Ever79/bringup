@@ -28,7 +28,7 @@ function revisionEnv(runDir: string, revDir: string, purpose: FirmwarePurpose = 
 	return envFor(mcuProfileOf(c?.values?.parts), purpose)
 }
 
-const USAGE = "usage: npm run bringup -- status <runDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud]"
+const USAGE = "usage: npm run bringup -- status <runDir> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -140,6 +140,25 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		console.log(simulationLine(dir, env).replace(/^- /, ""))
 		if (r.serial) console.log(r.serial)
 		return r.ran && !r.passed ? 2 : 0
+	}
+	// `bringup package <contract.json> <outDir>`: a build-ready folder from a design contract, rebuilt on today's code
+	// (src/package/build.ts): fab files checked complete, parts with today's stock and prices, printed parts, firmware,
+	// the assembly order and the bench bring-up. Nothing is ordered.
+	if (argv[0] === "package") {
+		const [contractPath, out] = [argv[1], argv[2]]
+		if (!contractPath || !out || !existsSync(contractPath)) {
+			console.error("bringup: usage: bringup package <contract.json> <outDir>")
+			return 1
+		}
+		const env = await (deps.detect ?? detectEnvironment)(ROOT)
+		if (!env.pio || !env.python) {
+			console.error("bringup: package needs PlatformIO and the Python tools (.venv; npm run setup)")
+			return 1
+		}
+		const { buildPackage } = await import("./package/build.ts")
+		const r = await buildPackage(env, JSON.parse(readFileSync(contractPath, "utf8")), out, { root: ROOT, python: env.python, pio: env.pio, log: (m) => console.log(m) })
+		console.log(`package: ${r.dir}\n  board parts ${r.boardUsd === null ? "?" : `$${r.boardUsd.toFixed(2)}`}, robot parts ${r.robotUsd === null ? "?" : `$${r.robotUsd.toFixed(2)}`}\n  missing: ${r.missing.length}, out of stock: ${r.outOfStock.length}, unpriced: ${r.unpriced.length}, open findings: ${r.findings.length}`)
+		return r.missing.length ? 2 : 0
 	}
 	// `bringup verify-model <modelDir> <contract.json> [--firmware <dir>]`: py/quantize.py's converted model against the
 	// design (contract/verify-model.ts); with --firmware, the real model compiled into the firmware, measured by pio.
