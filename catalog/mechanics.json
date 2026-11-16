@@ -541,7 +541,8 @@
 			"buy": [
 				{
 					"supplier": "Botland",
-					"url": "https://botland.store/chassis-for-robots/7292-universal-swivel-casters-wheel-for-chassis.html"
+					"url": "https://botland.store/chassis-for-robots/7292-universal-swivel-casters-wheel-for-chassis.html",
+					"listed": { "price": 0.9, "currency": "EUR", "checked": "2026-11-16", "note": "incl. tax; the store now sells to registered business customers only" }
 				}
 			],
 			"wheelMm": 25,
@@ -1136,6 +1137,10 @@
 				{
 					"supplier": "Adafruit",
 					"url": "https://www.adafruit.com/product/4401"
+				},
+				{
+					"supplier": "Adafruit (300 mm, in stock 16 Nov 2026 when the 200 mm was out)",
+					"url": "https://www.adafruit.com/product/5384"
 				}
 			],
 			"source": {
@@ -1187,7 +1192,8 @@
 			"buy": [
 				{
 					"supplier": "Artekit",
-					"url": "https://www.artekit.eu/products/prototyping/wires/jst-ph-2-pin-cable-male-female-connector/"
+					"url": "https://www.artekit.eu/products/prototyping/wires/jst-ph-2-pin-cable-male-female-connector/",
+					"listed": { "price": 0.65, "currency": "EUR", "checked": "2026-11-16" }
 				}
 			],
 			"source": {

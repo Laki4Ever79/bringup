@@ -103,7 +103,8 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	const robot = s.values.mechanics ? await checkRobotParts(robotPartLines(s), { live: true }) : null
 	for (const l of robot?.lines ?? []) {
 		if (l.status === "out of stock" || l.status === "discontinued" || l.status === "backorder") outOfStock.push(`${l.item} ${l.mpn}: ${l.status}`)
-		if (l.lineUsd === null) unpriced.push(`${l.item} ${l.mpn} (${l.status})`)
+		// A fastener no small-pack shop prices: name the local fallback (any hardware store or an assortment kit has it).
+		if (l.lineUsd === null) unpriced.push(`${l.item} ${l.mpn} (${l.status})${/screw|nut|washer|standoff/.test(l.item) ? `: buy ${l.qty} locally (a hardware store, or a metric screw assortment kit)` : ""}`)
 	}
 	const robotUsd = robot?.knownUsd ?? null
 

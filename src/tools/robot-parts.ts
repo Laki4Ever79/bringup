@@ -15,7 +15,12 @@ export interface BuyLink {
 	supplier: string
 	url: string
 	packQty?: number // parts in one pack (wheels come in pairs); 1 when absent
+	// The shop's price as read on its page on a date, for a shop whose page publishes no offer data (or blocks a check):
+	// used only when the live check gives no price, and labelled "listed" with its date.
+	listed?: { price: number; currency: string; checked: string; note?: string }
 }
+// Currency to USD for listed prices: ESTIMATES (the rate moves), named in each line's note.
+export const USD_PER = { USD: 1, EUR: 1.08, GBP: 1.27 } as Record<string, number>
 
 export interface RobotPartLine {
 	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut" | "motor bracket" | "clamp screw" | "sensor cable" | "motor lead" | DriveTrainItem
@@ -179,15 +184,21 @@ export function hardwareFit(s: ContractSnapshot, spec: ChassisSpec | null = chas
 	return out
 }
 
-// More parts in one pack than a robot build needs: a bulk carton.
-const BULK_PACK = 100
+// A bulk carton: far more parts than a robot build needs at a price that would distort its total (Fastener SuperStore's
+// 3,000 screws for $108.09). A big cheap pack (Elecrow's 200 M2 screws for $2) is still a hobby buy.
+const BULK_PACK = 100, BULK_USD = 20
+const isBulk = (link: BuyLink, usd: number) => (link.packQty ?? 1) > BULK_PACK && usd > BULK_USD
 function fromCheck(l: RobotPartLine, link: BuyLink, c: OfferCheck): RobotPartCheck {
 	const o = c.offer
-	const usd = o && o.price !== null && (o.currency ?? "USD").toUpperCase() === "USD" ? o.price : null
+	const live = o && o.price !== null && (o.currency ?? "USD").toUpperCase() === "USD" ? o.price : null
+	// A listed price (the catalog's, read on a date) when the page gave none; another currency at an estimated rate.
+	const listedUsd = live === null && link.listed && USD_PER[link.listed.currency.toUpperCase()] ? Math.round(link.listed.price * USD_PER[link.listed.currency.toUpperCase()] * 100) / 100 : null
+	const usd = live ?? listedUsd
+	const listedNote = listedUsd !== null ? ` · listed ${link.listed!.price} ${link.listed!.currency} on ${link.listed!.checked}${link.listed!.currency.toUpperCase() === "USD" ? "" : ` (≈ $${listedUsd} at an estimated rate)`}${link.listed!.note ? `, ${link.listed!.note}` : ""}` : ""
 	const status: RobotLineStatus = c.status !== "live" ? "not checked" : o!.availability === "unknown" ? "stock unknown" : o!.availability
 	const packs = Math.ceil(l.qty / (link.packQty ?? 1))
 	const currencyNote = o && o.price !== null && usd === null ? ` · ${o.price} ${o.currency} (not converted)` : ""
-	const bulkNote = (link.packQty ?? 1) > BULK_PACK ? ` · sold only by the carton of ${link.packQty} (${usd === null ? "price unknown" : `$${usd}`}): buy a small pack locally` : ""
+	const bulkNote = usd !== null && isBulk(link, usd) ? ` · sold only by the carton of ${link.packQty} (${usd === null ? "price unknown" : `$${usd}`}): buy a small pack locally` : ""
 	return {
 		...l,
 		packs,
@@ -197,10 +208,10 @@ function fromCheck(l: RobotPartLine, link: BuyLink, c: OfferCheck): RobotPartChe
 		unitUsd: usd,
 		// A shop that sells only bulk cartons (Fastener SuperStore: 3,000 screws for $108.09) prices a hobby build wrong:
 		// such a line is left out of the total and says so (run 9's package, 16 Nov 2026: four M2.5 screws counted $432).
-		lineUsd: usd === null || (link.packQty ?? 1) > BULK_PACK ? null : Math.round(usd * packs * 100) / 100,
+		lineUsd: usd === null || isBulk(link, usd) ? null : Math.round(usd * packs * 100) / 100,
 		leadDays: o?.leadDays ?? null,
 		checkedAt: c.checkedAt,
-		note: c.note + currencyNote + bulkNote,
+		note: c.note + (listedUsd !== null ? "" : currencyNote) + listedNote + bulkNote,
 	}
 }
 
@@ -217,17 +228,22 @@ export async function checkRobotParts(lines: RobotPartLine[], opts: { live: bool
 			checked.push({ ...l, ...blank, note: "not checked (mock run)" })
 			continue
 		}
+		// The first link in stock wins; past an out-of-stock answer the next shop or alternative is tried (run 9's
+		// package, 16 Nov 2026: the 200 mm STEMMA QT cable was out, the 300 mm one in stock). Else the first answer.
 		let first: RobotPartCheck | null = null
+		let answered: RobotPartCheck | null = null
 		let found: RobotPartCheck | null = null
 		for (const link of l.buy) {
 			const c = fromCheck(l, link, await checkOffer(link.url, { fetch: opts.fetch, now: opts.now }))
 			first ??= c
-			if (c.status !== "not checked") {
+			if (c.status !== "not checked") answered ??= c
+			if (c.status === "in stock") {
 				found = c
 				break
 			}
 		}
-		checked.push(found ?? first!)
+		const pick = found ?? answered ?? first!
+		checked.push(pick === first || !answered || pick === answered ? pick : { ...pick, note: `${pick.note} · ${first!.supplier}'s link: ${first!.status}` })
 	}
 	const priced = checked.filter((c) => c.lineUsd !== null)
 	const knownUsd = priced.length ? Math.round(priced.reduce((s, c) => s + c.lineUsd!, 0) * 100) / 100 : null
