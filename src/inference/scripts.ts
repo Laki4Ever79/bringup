@@ -741,7 +741,9 @@ export function mockScripts(): Record<string, Script> {
 				const size = stated ? { widthMm: Number(stated[1]), heightMm: Number(stated[2]), exact } : undefined
 				const { sizeReason: _reason, ...plain } = design.outline
 				const sized = stated ? { widthMm: size!.widthMm, heightMm: size!.heightMm, sizeReason: { kind: "engineer-size" as const, detail: `the brief asks for ${exact ? "exactly" : "about"} ${stated[1]} × ${stated[2]} mm` } } : {}
-				const housing = enclosureFromText(instruction)
+				// A robot's chassis is its body (the agents' rule: no case unless the brief asks for one); its brief's "case" words
+				// are about other things (the Eurobot base's battery "in a solid case", Eurobot General Rules 1.2 F.4.b).
+				const housing = design.motion ? null : enclosureFromText(instruction)
 				const { size: _s, ...req } = design.requirements as typeof design.requirements & { size?: unknown }
 				const requirements = { ...req, ...(size ? { size } : {}), ...(housing ? { enclosure: housing } : {}) }
 				const value = field === "outline" ? { ...plain, ...sized, widthMm: Math.min(stated ? size!.widthMm : design.outline.widthMm, maxWidth) } : field === "requirements" ? requirements : field === "motion" ? motionFromBrief(instruction) : field ? design[field] : undefined

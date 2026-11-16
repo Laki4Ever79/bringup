@@ -296,7 +296,7 @@ them as well, although it might not be the focus here".
 - [ ] **examples/rover is stale** (saved 11 Nov, before the 150 × 120 brief and the current axle/wheelbase); re-save
       from a mock run. examples/rover-pi has no still.png.
 - [ ] **Null values in module records:** Jetson hole positions, ROCK 5B absolute holes, heights.
-- [ ] **Eurobot starter:** waits for the e-stop, pull-cord and rule-check modules. recordRunEvidence hook into fork settles.
+- [x] **Eurobot starter** (16 Nov, bringup-system): examples/eurobot, saved from a settled mock build of briefs/eurobot-base.md (rev 11, 0 violations, 0 failed builds, the simulated drive passes, 7 of 7 Eurobot rule figures within limits). Before: the brief got the beacon design (unsettled, 9 violations).
   - [x] **Fork evidence** (16 Nov, bringup-system): each run's module evidence now names its design and, for a fork, the
         starter it came from (src/modules/library.ts runSource reads the dashboard's lineage, plans/starters/*/forks.jsonl);
         `bringup modules` counts forks per starter. A system's board runs are labelled <system>/<board>: before, every
@@ -321,7 +321,10 @@ them as well, although it might not be the focus here".
         needs a 7 mm collar (mechanics.safety.estop.collarMm). Not checked (listed in the report): beacon support, the
         100 × 70 mm sticker face, the deployed perimeter, lithium battery conditions.
   - [ ] **Eurobot: model the beacon support mast and the sticker face** (F.6), then check them.
-  - [ ] **Eurobot starter: encoder motors and odometry** (16 Nov). The scripted Eurobot base builds as a robot (was the
+  - [x] **Eurobot starter: encoder motors and odometry** (16 Nov, done: Pololu 5139, channel A on GPIO0/1, rover_enc.*
+        built in only with ROVER_TURN_COUNTS, back-off of 100 mm before turning). Open: the encoder's direction and the
+        hold gain (0.001 duty/count, an estimate) on the bench; channel B unwired (no free GPIO on the ESP32-C3).
+    Was: The scripted Eurobot base builds as a robot (was the
         beacon design) with 1 open problem: the simulated drive clips a side wall. Its timed turn ends at 144° (target
         135°) and its heading then drifts 0.29 rad over 7 s at equal duties until it meets the wall; without the e-stop's
         56 g the same course passes, so the course is marginal for an open-loop drive. The brief already asks for
