@@ -53,8 +53,13 @@ def main():
     rclpy.init()
     n = Acceptance()
     checks = []
+    # A value that never arrived (no odometry: nan) is written as null: JSON has no NaN, and the run reads this file
+    # with JSON.parse (mock rover run, 16 Nov 2026: "measured": NaN left the acceptance unread).
+    def finite(x):
+        return None if isinstance(x, float) and not math.isfinite(x) else x
+
     def check(name, ok, measured, expected):
-        checks.append({"name": name, "pass": bool(ok), "measured": measured, "expected": expected})
+        checks.append({"name": name, "pass": bool(ok), "measured": finite(measured), "expected": finite(expected)})
     start = time.monotonic()
     while n.odom is None and time.monotonic() - start < 30:
         rclpy.spin_once(n, timeout_sec=0.2)
@@ -72,8 +77,8 @@ def main():
     result = {"pass": all(c["pass"] for c in checks), "checks": checks}
     out = sys.argv[1] if len(sys.argv) > 1 else "acceptance.json"
     with open(out, "w") as f:
-        json.dump(result, f, indent=1)
-    print(json.dumps(result))
+        json.dump(result, f, indent=1, allow_nan=False)
+    print(json.dumps(result, allow_nan=False))
     rclpy.shutdown()
     sys.exit(0 if result["pass"] else 1)
 
