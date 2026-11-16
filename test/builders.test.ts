@@ -230,3 +230,32 @@ test("a re-sent assembly wakes the chassis and drive builders (a robot's body fo
 	await waitFor(() => built.includes("chassis") && built.includes("drive"))
 	assert.deepEqual([...built].sort(), ["chassis", "drive"])
 })
+
+// Rover run cc-rover-7 (16 Nov 2026): the parts agent reworded D1's reason, the board rebuilt for 26 minutes and the
+// run's hour ran out waiting for it. A change that only rewrites a reason builds nothing new.
+test("a change that only rewrites a reason reuses the last build for the new revision", async () => {
+	const state = new BringupState(tempDir())
+	startRuntime(state, undefined, null)
+	const events = recorder()
+	const desk = createChangeDesk()
+	join(desk)
+	const builds: number[] = []
+	join(createBuilder({ kind: "enclosure", inputs: ["parts"], build: async ({ revision }) => (builds.push(revision), { ...fixtureArtifacts().enclosure!, revision }) as never }))
+	const part = (reason: string, mpn = "X") => [{ ref: "D1", role: "led", mpn, lcsc: null, footprint: "0603", pins: ["A", "K"], reason }]
+	const change = (value: unknown) => {
+		const r = state.contract.propose({ field: "parts", value, by: "parts", baseVersion: state.contract.version("parts") } as never)
+		if (r.status !== "applied") throw new Error(r.status)
+		emit(makeEvent("contract.changed", desk.getId(), { field: "parts", version: r.version, revision: r.revision, by: "parts" }), desk.getId())
+	}
+	const ready = () => events.filter((e) => e.type === "artifact.ready").map((e) => (e.payload as { revision: number }).revision)
+	change(part("status LED"))
+	await waitFor(() => ready().length === 1)
+	change(part("status LED: blinks while driving"))
+	await waitFor(() => ready().length === 2)
+	assert.deepEqual(builds, [1], "no second build for a reworded reason")
+	assert.deepEqual(ready(), [1, 2])
+	assert.equal(state.artifactInputs.enclosure?.parts, 2, "the artifact counts as current for the new version")
+	change(part("status LED: blinks while driving", "Y"))
+	await waitFor(() => ready().length === 3)
+	assert.deepEqual(builds, [1, 3], "a real change still builds")
+})
