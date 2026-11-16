@@ -770,6 +770,19 @@ export function connectorAlongMm(s: ContractSnapshot, ref: string, boxAlong: num
 	return Math.max(boxAlong, (footprint && COURTYARD_ALONG_MM[footprint]) || 0)
 }
 
+// Each connector's box as tscircuit judges it: along its edge as long as connectorAlongMm (its courtyard, or its copper
+// plus the edge clearance), across it as its box. Two connectors on adjacent edges at a corner overlap by these (real run
+// 14, Eurobot: "Courtyard of J2 overlaps with courtyard of JT1" four times, "J1 overlaps JT1" once, while their boxes
+// cleared each other, 16 Nov 2026).
+export function connectorExtents(s: ContractSnapshot, W: number, H: number): Placed[] {
+	const connectors = s.values.connectors ?? []
+	return connectorBoxes(s, W, H).map((b) => {
+		const c = connectors.find((k) => k.ref === b.ref)
+		const alongX = c?.edge === "top" || c?.edge === "bottom"
+		return alongX ? { ...b, w: connectorAlongMm(s, b.ref, b.w) } : { ...b, h: connectorAlongMm(s, b.ref, b.h) }
+	})
+}
+
 export function connectorBoxes(s: ContractSnapshot, W: number, H: number): Placed[] {
 	const { parts = [], connectors = [] } = s.values
 	return connectors.map((c) => {
