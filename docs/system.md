@@ -191,7 +191,7 @@ poppler (`pdfinfo`, `pdftotext`, `pdftoppm`), which reads the PDFs, is installed
 
 Everything link-specific is generated into `include/link.h`, so `main.cpp` only calls three functions: `linkBegin()`
 at boot, `linkSendReading()` after each reading, and `linkPoll(ms)` while awake. Messages travel in frames
-(`include/linkframe.h`): sync bytes, the definition's hash, the length, the payload, a checksum. A receiver drops a
+(`include/linkframe.h`): the definition's hash, the length, the payload and a CRC-16/CCITT, COBS-encoded between 0x00 delimiters (open framing, since 16 Nov 2026; before, sync bytes and an XOR). A receiver drops a
 frame whose hash it doesn't know, so two boards built against different definitions never misread each other.
 
 - A message named `reading` is filled from the board's reading by field name (`tempCx100`, `rhx100`, `tempC`, `rh`,
