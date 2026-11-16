@@ -5,8 +5,10 @@ import { causeOf } from "./common.ts"
 import { emit, state } from "../runtime.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { laidOut } from "../mechanics/solve.ts"
+import { loadCatalog } from "../tools/parts-search.ts"
+import { fileURLToPath } from "node:url"
 import { connectorsOntoEdges } from "../contract/consistency.ts"
-import { connectorsForParts, ESTOP_PLUG_REF, robotRefs, SENSOR_PLUG_REF, START_PLUG_REF } from "../mechanics/refs.ts"
+import { connectorsForParts, ESTOP_PLUG_REF, isEncoderPlug, isMotorPlug, MOTOR_PLUG_REFS, robotRefs, SENSOR_PLUG_REF, START_PLUG_REF } from "../mechanics/refs.ts"
 
 // Tools every agent gets for reading and changing the shared design contract.
 // `self.id` is filled in once the agent exists, so events carry the agent as producer.
@@ -65,6 +67,20 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						laidOutNote = [laidOutNote, `the e-stop's plug is always ${ESTOP_PLUG_REF} and the start cord's ${START_PLUG_REF} (fixed names): ${was.join(", ")}`].filter(Boolean).join("; ")
 					}
 				}
+				// An encoder gearmotor's plugs are the catalog's 6-pin SH (motor and encoder on one plug): a 2-pin motor plug is
+				// swapped for it, ref kept (run cc-eurobot-13: the parts agent switched JM1/JM2 between 2-pin and 6-pin four times).
+				if (args.field === "parts" && Array.isArray(args.value) && s.contract.get("motion")) {
+					const mech = s.contract.get("mechanics")
+					const cat = defaultCheckCatalog()
+					const motor = mech && cat ? cat.mech.motors.find((m) => m.mpn === mech.drive?.motor || m.mpn.startsWith(`${mech.drive?.motor} `)) : undefined
+					const sh6 = motor && (motor as { encoder?: unknown }).encoder ? loadCatalog(fileURLToPath(new URL("../..", import.meta.url))).find((c) => c.mpn === "SM06B-SRSS-TB(LF)(SN)") : undefined
+					const list = args.value as ContractValues["parts"]
+					const plain = list.filter((p) => isMotorPlug(p) && !isEncoderPlug(p) && (MOTOR_PLUG_REFS as readonly string[]).includes(p.ref))
+					if (sh6 && plain.length) {
+						args = { ...args, value: list.map((p) => (plain.includes(p) ? { ...p, mpn: sh6.mpn, lcsc: sh6.lcsc ?? null, footprint: sh6.footprint ?? p.footprint, pins: [...(sh6.pins ?? [])] } : p)) as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, `${plain.map((p) => p.ref).join(" and ")} became the 6-pin SH plug ${sh6.mpn} the encoder motor needs (one plug for motor and encoder)`].filter(Boolean).join("; ")
+					}
+				}
 				// A robot's plugs have fixed names: the parts list is renamed to them, and the connectors and pins follow below.
 				let renames: Record<string, string> = {}
 				if (args.field === "parts" && Array.isArray(args.value) && s.contract.get("motion")) {
@@ -85,6 +101,15 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					if (refs.has(START_PLUG_REF) && pins.some((p) => p.signal === "START" && p.partRef !== START_PLUG_REF && !refs.has(p.partRef))) {
 						args = { ...args, value: pins.map((p) => (p.signal === "START" && !refs.has(p.partRef) ? { ...p, partRef: START_PLUG_REF } : p)) as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, `START goes to the start cord's plug ${START_PLUG_REF} (fixed name)`].filter(Boolean).join("; ")
+					}
+					// An encoder's channel lands on its motor's plug when that plug carries the encoder: ENC_L* on JM1, ENC_R* on
+					// JM2 (run cc-eurobot-13: the architect sent ENC_LA/ENC_RA to invented encoder plugs JN1/JN2).
+					const encPlug = (ref: string) => (s.contract.get("parts") ?? []).find((p) => p.ref === ref && isEncoderPlug(p))
+					const encTo = (signal: string) => (/^ENC_L/.test(signal) ? MOTOR_PLUG_REFS[0] : /^ENC_R/.test(signal) ? MOTOR_PLUG_REFS[1] : null)
+					const cur = args.value as ContractValues["pins"]
+					if (cur.some((p) => encTo(p.signal) && encPlug(encTo(p.signal)!) && p.partRef !== encTo(p.signal))) {
+						args = { ...args, value: cur.map((p) => { const to = encTo(p.signal); return to && encPlug(to) && p.partRef !== to ? { ...p, partRef: to, partPin: /B$/.test(p.signal) ? "ENCB" : "ENCA" } : p }) as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, `the encoder channels go to the motors' own plugs ${MOTOR_PLUG_REFS.join("/")} (one plug for motor and encoder)`].filter(Boolean).join("; ")
 					}
 				}
 				if (args.field === "connectors" && Array.isArray(args.value)) {
