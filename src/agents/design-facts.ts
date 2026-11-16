@@ -17,6 +17,7 @@ import { loadCatalog } from "../tools/parts-search.ts"
 import { mechanicsFactLines } from "../mechanics/facts.ts"
 import { mcuFacts } from "../mcu/facts.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
+import { roverHeader } from "../mechanics/firmware.ts"
 
 // The facts and computed checks about the current contract, one source for everyone who judges or changes it: the
 // reviewer reads them at the final review, and every designer turn gets them recomputed from the contract as it is
@@ -93,6 +94,7 @@ export function chargeLedFacts(s: ContractSnapshot): string[] {
 // What the product firmware does on each reading, read from the template's own constants and the contract's period,
 // so it stays true if either changes.
 export function firmwareFacts(s: ContractSnapshot): string[] {
+	if (s.values.mechanics && s.values.motion) return roverFirmwareFacts(s)
 	const main = readFileSync(resolve(import.meta.dirname, "../../templates/fw/src/main.cpp"), "utf8")
 	const num = (re: RegExp) => Number(re.exec(main)?.[1] ?? NaN)
 	const blinkMs = num(/READING_BLINK_MS = (\d+)/)
@@ -158,4 +160,26 @@ function testFactLines(s: ContractSnapshot): string[] {
 		lines.push(`- Test pads placed: ${placed.map((p) => `${p.ref} ${p.net} (${p.xMm}, ${p.yMm})`).join(", ") || "none"}${unplaced.length ? `; no room for ${unplaced.join(", ")}` : ""}.`)
 	}
 	return lines
+}
+
+// A robot's product firmware is templates/fw-rover (src/tools/firmware.ts prepareFirmware), not the logger's
+// templates/fw: its facts come from the rover header the build writes (rover run cc-rover-7 on the Claude subscription,
+// 16 Nov 2026: the reviewer was told the rover ran the logger, reading the sensor and deep-sleeping 300 s, and failed a
+// design whose built firmware drives, avoids walls and passed the simulated drive).
+export function roverFirmwareFacts(s: ContractSnapshot): string[] {
+	let header: string
+	try {
+		header = roverHeader(s)
+	} catch (e) {
+		return [`- Firmware (templates/fw-rover): not built yet: ${(e as Error).message}`]
+	}
+	const def = (name: string) => new RegExp(`#define ${name} (\\S+)`).exec(header)?.[1]
+	const led = (s.values.pins ?? []).find((p) => p.signal === "STATUS_LED")
+	return [
+		`- Firmware (product build of templates/fw-rover, the same control logic the simulated drive runs): never sleeps while powered. Every ${def("ROVER_PERIOD_MS")} ms tick it reads the VL53L0X distance (up to ${def("ROVER_RANGE_MM")} mm), drives both motors through the DRV8833 at cruise duty ${def("ROVER_CRUISE_DUTY")?.replace("f", "")}, slows inside ${def("ROVER_SLOW_MM")} mm and, inside ${def("ROVER_STOP_MM")} mm of a wall, turns in place for ${def("ROVER_TURN_MS")} ms, then drives on.`,
+		"- Firmware payload: every 5 s it reads the temperature/humidity sensor, prints it and broadcasts it over BLE as BTHome v2 service data (and sends it over the board's links, if any).",
+		led
+			? `- Firmware status LED: STATUS_LED on GPIO${led.gpio} blinks a 1 Hz heartbeat while the control loop runs.`
+			: "- Firmware status LED: the rover firmware drives a pin named exactly STATUS_LED as a 1 Hz heartbeat; this design has none, so no LED shows the rover running.",
+	]
 }
