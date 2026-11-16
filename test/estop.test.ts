@@ -83,10 +83,15 @@ test("the contract accepts mechanics.safety only in its shape", () => {
 	assert.match(mechanicsShapeError({ ...rover().values.mechanics, safety: { estop: { part: ESTOP } } }) ?? "", /mechanics\.safety must be/)
 })
 
-test("the button's mass counts, high up: the rover gets heavier", () => {
+test("the button's mass counts, high up, and its printed deck's: the rover gets heavier", async () => {
+	const { mounts } = await import("../src/mechanics/model.ts")
 	const mass = (s: ContractSnapshot) => Number(mechanicsFigures(s).find((f) => f.check === "Mass")!.value.split(" ")[0])
 	const without = mass({ revision: 1, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) })
-	assert.ok(Math.abs(mass(rover()) - without - 56) <= 1)
+	const deck = mounts(rover().values.mechanics!, [], defaultCheckCatalog()!.mech).find((m) => m.what === "estop-deck")!
+	// The deck: two walls 48 mm long, 2 mm thick, from the plate (53.5 mm) to under the 2 mm panel at 125 mm; the panel
+	// across the 96 mm plate; no collar here. PLA at the estimate's density.
+	assert.ok(deck.massG > 15 && deck.massG < 30, `deck ${deck.massG} g`)
+	assert.ok(Math.abs(mass(rover()) - without - 56.32 - deck.massG) <= 1)
 })
 
 test("the e-stop module is cited, and a design with the button and its plug uses it", async () => {
