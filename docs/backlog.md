@@ -297,6 +297,11 @@ them as well, although it might not be the focus here".
       from a mock run. examples/rover-pi has no still.png.
 - [ ] **Null values in module records:** Jetson hole positions, ROCK 5B absolute holes, heights.
 - [ ] **Eurobot starter:** waits for the e-stop, pull-cord and rule-check modules. recordRunEvidence hook into fork settles.
+  - [x] **Fork evidence** (16 Nov, bringup-system): each run's module evidence now names its design and, for a fork, the
+        starter it came from (src/modules/library.ts runSource reads the dashboard's lineage, plans/starters/*/forks.jsonl);
+        `bringup modules` counts forks per starter. A system's board runs are labelled <system>/<board>: before, every
+        system's main was "scripted main" (72 of the VL53L0X's 131 records on this machine, one "run"). Old records keep
+        their label.
   - [x] **E-stop module** (16 Nov, bringup-system): `safety-estop-a22e`. An Omron A22E-M-01 (Ø40 mm red, 1 NC), every
         number from Omron's datasheet. Its NC contact sits in the motors' supply (board plug JE1, JST XH: VBAT → MOTOR_VM →
         the driver's VM), not on a logic line: the contact's minimum load is 10 mA at 5 V and a 3.3 V/10 kΩ sense line

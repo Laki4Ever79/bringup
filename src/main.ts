@@ -118,9 +118,9 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	// `bringup modules`: the robot module library, each module's proof level and its evidence (src/modules/library.ts).
 	if (argv[0] === "modules") {
 		const root = resolve(import.meta.dirname, "..")
-		console.log("| Module | Level | Runs | Passes | Fails | Last | Problems |")
-		console.log("|---|---|---|---|---|---|---|")
-		for (const s of moduleStatus(root)) console.log(`| ${s.module.id} | ${s.level ?? "not cited"} | ${s.runs} | ${s.passes} | ${s.fails} | ${s.last ?? "-"} | ${s.problems.join("; ")} |`)
+		console.log("| Module | Level | Runs | Forks (by starter) | Passes | Fails | Last | Problems |")
+		console.log("|---|---|---|---|---|---|---|---|")
+		for (const s of moduleStatus(root)) console.log(`| ${s.module.id} | ${s.level ?? "not cited"} | ${s.runs} | ${Object.entries(s.forks).map(([k, n]) => `${k} ${n}`).join(", ") || "-"} | ${s.passes} | ${s.fails} | ${s.last ?? "-"} | ${s.problems.join("; ")} |`)
 		console.log(`\nLevels: ${LEVELS.join(" < ")}. Evidence: ${evidenceDir()}`)
 		return 0
 	}
