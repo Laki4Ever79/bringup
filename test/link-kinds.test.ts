@@ -167,7 +167,7 @@ test("I2C handover: the reply length is published after the frame (release store
 	const target = linkHeader(wired(s, "b"))
 	assert.match(target, /__atomic_store_n\(&linkReplyLen, out\.n, __ATOMIC_RELEASE\)/)
 	const controller = linkHeader(wired(s, "a"))
-	assert.match(controller, /linkI2cReader_L1\.n = 0;\s*\n\s*Wire\.requestFrom\(\(uint8_t\)LINK_L1_I2C_PEER_ADDRESS, \(uint8_t\)\(8 \+ LINK_MAX_PAYLOAD\)\)/)
+	assert.match(controller, /linkI2cReader_L1\.n = 0;\s*\n\s*Wire\.requestFrom\(\(uint8_t\)LINK_L1_I2C_PEER_ADDRESS, \(uint8_t\)\(LINK_FRAME_MAX\)\)/)
 })
 
 test("a kind not built yet is never shown or checked as UART or I2C", async () => {
@@ -192,4 +192,16 @@ test("the budget charges only the signals still missing: a half-wired UART needs
 	assert.deepEqual(linkBudget(s), [])
 	fill(s, 0)
 	assert.match(linkBudget(s)[0]?.message ?? "", /L1 need 1 more GPIOs/)
+})
+
+// CBOR payloads (16 Nov 2026): on UART and I2C a message travels as a map of its field names to their values, so the
+// names count against the frame's 48 bytes; a CAN frame keeps the packed struct and its 8.
+test("a message's CBOR payload is sized with its field names, and one past the frame's 48 bytes is refused", async () => {
+	const { cborBytes } = await import("../src/system/spec.ts")
+	// {"tempCx100": i16, "rhx100": u16}: a2, 69 "tempCx100" + 3, 66 "rhx100" + 3 = 1 + 13 + 10.
+	assert.equal(cborBytes([{ name: "tempCx100", type: "i16" }, { name: "rhx100", type: "u16" }]), 24)
+	const fields = Array.from({ length: 4 }, (_, i) => ({ name: `a_long_field_name_${i}`, type: "u32" as const }))
+	const spec: SystemSpec = { name: "x", boards: [{ name: "a", brief: "a.md" }, { name: "b", brief: "b.md" }], links: [{ id: "L1", kind: "uart", a: { board: "a" }, b: { board: "b" }, cable: { lengthMm: 200 }, messages: [{ name: "big", from: "a", fields }] }] }
+	// 16 bytes as a struct, 1 + 4 × (1 + 19 + 5) = 101 as CBOR.
+	assert.ok(specErrors(spec).some((e) => /message big is 101 bytes as CBOR .* a frame carries 48 at most/.test(e)), specErrors(spec).join("\n"))
 })

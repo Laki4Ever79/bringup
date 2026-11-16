@@ -33,9 +33,10 @@ export function interfacesOf(s: ContractSnapshot): InterfaceRow[] {
 			openness: "open",
 		})
 	if (links.some((l) => l.connector)) out.push({ interface: "link connector (JST SH 4-pin, 1 mm)", standard: "JST's SH series; the pin order is SparkFun's Qwiic convention (open)", openness: "vendor", alternative: "the footprint is JST's, but second sources make compatible 1 mm 4-pin housings; the pinout is already the open Qwiic one" })
-	// The messages over a link on UART and I2C: open framing (COBS, CRC-16/CCITT), our own payload (a packed struct).
+	// The messages over a link on UART and I2C: open framing (COBS, CRC-16/CCITT) around a CBOR payload (16 Nov 2026;
+	// before, the message's packed C struct).
 	if (links.some((l) => (l.kind === "uart" || l.kind === "i2c") && l.messages?.length))
-		out.push({ interface: "messages over UART/I²C links (templates/fw/include/linkframe.h)", standard: "COBS framing (Cheshire and Baker, IEEE/ACM ToN 1999) and CRC-16/CCITT, open; inside, Bringup's own payload: the definition hash and the message's packed C struct", openness: "ours", alternative: "CBOR payloads (RFC 8949), or MAVLink v2 for the whole message: open, with existing tools to read them" })
+		out.push({ interface: "messages over UART/I²C links (templates/fw/include/linkframe.h, linkcbor.h)", standard: "COBS framing (Cheshire and Baker, IEEE/ACM ToN 1999) and CRC-16/CCITT around a CBOR payload (RFC 8949: a map of the message's field names to their values), all open; the frame also carries the message definition's hash", openness: "open" })
 	if (links.some((l) => l.kind === "can" && l.messages?.length))
 		out.push({ interface: "messages over a CAN link", standard: "Bringup's own: the definition hash as the 29-bit identifier, the packed struct as data", openness: "ours", alternative: "Cyphal/CAN (OpenCyphal, MIT-licensed specification and libraries) or CANopen (CiA 301): open, with existing bus tools" })
 	if (v.requirements?.debugPort !== false && v.outline && debugPinout(s))

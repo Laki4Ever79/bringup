@@ -191,7 +191,7 @@ poppler (`pdfinfo`, `pdftotext`, `pdftoppm`), which reads the PDFs, is installed
 
 Everything link-specific is generated into `include/link.h`, so `main.cpp` only calls three functions: `linkBegin()`
 at boot, `linkSendReading()` after each reading, and `linkPoll(ms)` while awake. Messages travel in frames
-(`include/linkframe.h`): the definition's hash, the length, the payload and a CRC-16/CCITT, COBS-encoded between 0x00 delimiters (open framing, since 16 Nov 2026; before, sync bytes and an XOR). A receiver drops a
+(`include/linkframe.h`): the definition's hash, the length, the payload and a CRC-16/CCITT, COBS-encoded between 0x00 delimiters (open framing, since 16 Nov 2026; before, sync bytes and an XOR). On UART and I²C the payload is CBOR (`include/linkcbor.h`, RFC 8949): a map of the message's field names to their values, so any CBOR tool reads it; a CAN frame keeps the packed struct, which fits its 8 bytes. A receiver drops a
 frame whose hash it doesn't know, so two boards built against different definitions never misread each other.
 
 - A message named `reading` is filled from the board's reading by field name (`tempCx100`, `rhx100`, `tempC`, `rh`,
@@ -210,7 +210,7 @@ frame whose hash it doesn't know, so two boards built against different definiti
 |---|---|
 | Each board | its own checks, builds, QEMU boot and test kit, as for any design |
 | Between boards, static | the system checks above, in code, on every settle |
-| The frame codec | `test/linkframe-host.test.ts`: `linkframe.h`, the one frame every message kind uses, compiled with this computer's g++ and run: round trip, resync after garbage, split reads, a bad checksum, an over-long frame, the largest payload, two frames back to back |
+| The frame codec | `test/linkframe-host.test.ts`: `linkframe.h`, the one frame every message kind uses, compiled with this computer's g++ and run: round trip, resync after garbage, split reads, a bad checksum, an over-long frame, the largest payload, two frames back to back; and `linkcbor.h`, the payload, against RFC 8949's Appendix A bytes |
 | Between boards, running | the link-test build (`pio run -e esp32c3_linktest`: a known reading every half second, whatever arrives printed) of both boards, in two QEMUs joined by a virtual cable (UART links). Verified 9 Nov: the reading arrives intact; with a different definition on one side, its frames are dropped and the test fails |
 | What QEMU can't do | Espressif's QEMU here models no radio, I2C or I2S for the C3 (checked 11 Nov in its device list). It does model the TWAI (CAN) controller. So only UART links run between two QEMUs; I2C, and the radio kinds once built, are tested on the bench |
 | On the bench | `bench-plan.md`, generated with the cable on every check (below). I2C links can only be tested here: QEMU can't join two buses |
