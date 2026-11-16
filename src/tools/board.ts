@@ -8,6 +8,7 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
 import { kicadCli, toolPath, type Env } from "./env.ts"
 import { FAB_RULES, runDrc } from "./drc.ts"
+import { freeroute } from "./freerouting.ts"
 import { nudgeVias } from "./via-edge.ts"
 import { run, tail } from "./exec.ts"
 
@@ -148,6 +149,25 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			rmSync(work, { recursive: true, force: true })
 		}
 	}
+	// No tscircuit layout routed: the first layout, placed by tscircuit and routed by Freerouting (crowded boards such as
+	// run 9's 58×22 rover, where every tscircuit layout failed and the debug footprint had to go), with the footprint first.
+	if (!best && fitting.length && /routing|autorout|trace|too long|clearance|could not|failed/i.test(String(lastError))) {
+		for (const placement of withPort ? [fitting[0], { ...fitting[0], debugPort: false as const }] : [fitting[0]]) {
+			const work = mkdtempSync(join(tmpdir(), "bringup-board-"))
+			const out = mkdtempSync(join(tmpdir(), "bringup-board-out-"))
+			try {
+				tried++
+				const board = await buildIn(env, work, s, revision, out, { ...placement, routingDisabled: true })
+				best = { board: { ...board, routedBy: "freerouting", ...(placement.debugPort === false ? { debugPortDropped: droppedWhy(lastError) } : {}) }, errors: board.drc?.errors ?? 0 }
+				break
+			} catch (error) {
+				rmSync(out, { recursive: true, force: true })
+				lastError = error instanceof Error ? new Error(`${error.message.replaceAll(out, dir)}\n(after every tscircuit layout failed: ${String(lastError).split("\n")[1] ?? ""})`) : error
+			} finally {
+				rmSync(work, { recursive: true, force: true })
+			}
+		}
+	}
 	if (!best) throw lastError
 	// Moved into the run's own folder, with every path re-pointed there.
 	mkdirSync(dir, { recursive: true })
@@ -178,6 +198,14 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	writeFileSync(join(work, "board.circuit.tsx"), circuitFromContract(s, placement))
 	const build = await run(env.tsci!, ["build", "board.circuit.tsx", "--kicad-project"], { cwd: work, timeoutMs: 300_000, env: { PATH: toolPath(env) } })
 	const circuitPath = join(work, "dist/board/circuit.json")
+	// Placed only: Freerouting routes it (src/tools/freerouting.ts).
+	if (placement.routingDisabled && build.code === 0 && existsSync(circuitPath)) {
+		const why = await freeroute(env.root, work, "dist/board/kicad/board.kicad_pcb")
+		if (why) {
+			writeFileSync(join(dir, "build.log"), build.stdout + "\n" + build.stderr)
+			throw new Error(`tscircuit build failed (exit 1):\nFreerouting: ${why}`)
+		}
+	}
 	if (build.code !== 0 || !existsSync(circuitPath)) {
 		writeFileSync(join(dir, "build.log"), build.stdout + "\n" + build.stderr)
 		throw new Error(`tscircuit build failed (exit ${build.code}):\n${failureLines(circuitErrors(circuitPath), build.stdout + "\n" + build.stderr).join("\n")}\nfull log: ${join(dir, "build.log")}`)

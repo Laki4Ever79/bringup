@@ -45,6 +45,8 @@ export interface BoardArtifact {
 	debugPortDropped?: string
 	// How many layouts the build tried before this one (each a full tscircuit build): the cost of the size.
 	layoutsTried?: number
+	// Who routed it: tscircuit (unset) or Freerouting, when no tscircuit layout routed (src/tools/freerouting.ts).
+	routedBy?: "freerouting"
 }
 
 export interface PrintCheck {

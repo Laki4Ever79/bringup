@@ -721,6 +721,8 @@ function sizeAt(footprint: string, rotation: number): [number, number] {
 export const LDO_FROM_USB_MM = 8
 
 export interface PlacementOptions {
+	// Place only, no autorouting: the board goes to Freerouting instead (src/tools/freerouting.ts).
+	routingDisabled?: boolean
 	// Distance from the USB-C connector centre to the LDO target.
 	ldoFromUsbMm?: number
 	// Routing keepouts at the USB-C locating holes. Off by default: on some layouts J1's own pad traces run too close
@@ -2140,7 +2142,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 
 	return [
 		"export default () => (",
-		`  <board width="${outline.widthMm}mm" height="${outline.heightMm}mm" minViaHoleDiameter="0.25mm" minViaPadDiameter="0.45mm">`,
+		`  <board width="${outline.widthMm}mm" height="${outline.heightMm}mm" minViaHoleDiameter="0.25mm" minViaPadDiameter="0.45mm"${opts.routingDisabled ? " routingDisabled" : ""}>`,
 		...lines.map((l) => `    ${l}`),
 		"  </board>",
 		")",
