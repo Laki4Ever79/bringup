@@ -124,6 +124,14 @@ export interface MotorMountPart extends Sourced {
 	buy?: { supplier: string; url: string; packQty?: number }[]
 }
 
+// A bought cable: a STEMMA QT (JST SH 4-pin both ends) or a JST PH 2-pin plug with bare leads (a motor's).
+export interface CablePart extends Sourced {
+	kind: "stemma-qt" | "jst-ph-2-leads"
+	lengthMm: number
+	awg?: number
+	buy?: { supplier: string; url: string; packQty?: number }[]
+}
+
 export interface MechCatalog {
 	sensors: SensorModule[]
 	motors: MotorPart[]
@@ -133,6 +141,8 @@ export interface MechCatalog {
 	regulators?: RegulatorPart[]
 	// Bought fasteners and the like (robot-parts.ts lists them, counted from the chassis): screws, nuts.
 	hardware?: HardwarePart[]
+	// Bought cables (chassis.ts robotCables).
+	cables?: CablePart[]
 	// Bought motor mounts (chassis.ts motorMount).
 	motorMounts?: MotorMountPart[]
 	// Emergency stop buttons and the like (safety.ts).

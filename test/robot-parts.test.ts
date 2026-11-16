@@ -12,7 +12,7 @@ const offerPage = (price: number, availability: string, extra: object = {}) => `
 test("the rover's parts list has two motors, a pair of wheels, a caster, the battery and the distance sensor", () => {
 	const lines = robotPartLines(rover())
 	const by = (item: string) => lines.find((l) => l.item === item)!
-	assert.deepEqual(lines.map((l) => l.item), ["motor", "wheel", "caster", "battery", "distance sensor", "board screw", "caster screw", "caster nut", "sensor screw", "sensor nut", "clamp screw"])
+	assert.deepEqual(lines.map((l) => l.item), ["motor", "wheel", "caster", "battery", "distance sensor", "board screw", "caster screw", "caster nut", "sensor screw", "sensor nut", "sensor cable", "motor lead", "clamp screw"])
 	assert.equal(by("motor").mpn, "POLOLU-2367 100:1 MP 6V")
 	assert.equal(by("motor").qty, 2)
 	// Wheels are sold in pairs: two wheels are one pack.
@@ -32,9 +32,9 @@ test("a mock run checks nothing and says so", async () => {
 	const r = await checkRobotParts(robotPartLines(rover()), { live: false })
 	assert.ok(r.lines.every((l) => l.status === "not checked"))
 	// The caster the rover uses (TENTE, an industrial part) has no shop link; the rest would be checked in a live run.
-	assert.deepEqual(r.lines.map((l) => l.note), ["not checked (mock run)", "not checked (mock run)", "no shop link in catalog/mechanics.json", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)"])
+	assert.deepEqual(r.lines.map((l) => l.note), ["not checked (mock run)", "not checked (mock run)", "no shop link in catalog/mechanics.json", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)", "not checked (mock run)"])
 	assert.equal(r.knownUsd, null)
-	assert.match(r.summary, /11 robot parts · not checked \(mock run\)/)
+	assert.match(r.summary, /13 robot parts · not checked \(mock run\)/)
 })
 
 test("live: a shop's price, stock and lead time are used; a refusing shop is named and not priced", async () => {
@@ -141,4 +141,24 @@ test("a fastener that doesn't fit its hole is a violation for the mechanics engi
 	assert.equal(v[0].kind, "hardware-misfit")
 	assert.deepEqual(v[0].affects, ["mechanics"])
 	assert.match(v[0].message, /caster hole 3\.4 mm is smaller than the M4 screw/)
+})
+
+// The robot's cables (16 Nov 2026): measured along the chassis from the board's plug, plus slack, and the shortest catalog
+// cable that reaches: before, the parts list said cables weren't listed yet.
+test("the sensor's STEMMA QT cable and each motor's leads, by length from the chassis", async () => {
+	const { chassisSpec, robotCables } = await import("../src/tools/chassis.ts")
+	const { loadMechCatalog } = await import("../src/mechanics/catalog.ts")
+	const s = rover()
+	const cables = robotCables(s, chassisSpec(s)!, loadMechCatalog(new URL("..", import.meta.url).pathname).cables ?? [])
+	const sensor = cables.find((c) => c.what === "distance sensor")!
+	assert.equal(sensor.kind, "stemma-qt")
+	assert.ok(sensor.cable && sensor.cable.lengthMm >= sensor.needMm, JSON.stringify(sensor))
+	const motors = cables.filter((c) => c.kind === "jst-ph-2-leads")
+	assert.equal(motors.length, 2)
+	assert.deepEqual(motors.map((c) => c.from).sort(), ["JM1", "JM2"].filter((r) => s.values.parts!.some((p) => p.ref === r)).length === 2 ? ["JM1", "JM2"] : motors.map((c) => c.from).sort())
+	for (const c of motors) assert.ok(c.cable && c.cable.lengthMm >= c.needMm, JSON.stringify(c))
+	// No catalog cable that long: the parts list says so instead of listing a short one.
+	const none = robotCables(s, chassisSpec(s)!, [])
+	assert.ok(none.every((c) => c.cable === null))
+	assert.ok(robotPartNotes(s).every((n) => !/cables \(motor leads/.test(n)))
 })

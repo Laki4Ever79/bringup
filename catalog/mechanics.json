@@ -854,6 +854,65 @@
 			}
 		}
 	],
+	"cables": [
+		{
+			"mpn": "ADAFRUIT-4399 STEMMA QT cable 50 mm",
+			"kind": "stemma-qt",
+			"lengthMm": 50,
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/4399" }],
+			"source": { "lengthMm": { "url": "https://www.adafruit.com/product/4210", "where": "the STEMMA QT cable family on product 4210's page: QT to QT 50 mm, product 4399; JST SH 4-pin female on both ends" } }
+		},
+		{
+			"mpn": "ADAFRUIT-4210 STEMMA QT cable 100 mm",
+			"kind": "stemma-qt",
+			"lengthMm": 100,
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/4210" }],
+			"source": { "lengthMm": { "url": "https://www.adafruit.com/product/4210", "where": "the STEMMA QT cable family on product 4210's page: QT to QT 100 mm, product 4210; JST SH 4-pin female on both ends" } }
+		},
+		{
+			"mpn": "ADAFRUIT-4401 STEMMA QT cable 200 mm",
+			"kind": "stemma-qt",
+			"lengthMm": 200,
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/4401" }],
+			"source": { "lengthMm": { "url": "https://www.adafruit.com/product/4210", "where": "the STEMMA QT cable family on product 4210's page: QT to QT 200 mm, product 4401; JST SH 4-pin female on both ends" } }
+		},
+		{
+			"mpn": "ADAFRUIT-5384 STEMMA QT cable 300 mm",
+			"kind": "stemma-qt",
+			"lengthMm": 300,
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/5384" }],
+			"source": { "lengthMm": { "url": "https://www.adafruit.com/product/4210", "where": "the STEMMA QT cable family on product 4210's page: QT to QT 300 mm, product 5384; JST SH 4-pin female on both ends" } }
+		},
+		{
+			"mpn": "ADAFRUIT-5385 STEMMA QT cable 400 mm",
+			"kind": "stemma-qt",
+			"lengthMm": 400,
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/5385" }],
+			"source": { "lengthMm": { "url": "https://www.adafruit.com/product/4210", "where": "the STEMMA QT cable family on product 4210's page: QT to QT 400 mm, product 5385; JST SH 4-pin female on both ends" } }
+		},
+		{
+			"mpn": "ARTEKIT JST PH 2-pin cable 300 mm",
+			"kind": "jst-ph-2-leads",
+			"lengthMm": 300,
+			"awg": 24,
+			"buy": [{ "supplier": "Artekit", "url": "https://www.artekit.eu/products/prototyping/wires/jst-ph-2-pin-cable-male-female-connector/" }],
+			"source": {
+				"lengthMm": { "url": "https://www.artekit.eu/products/prototyping/wires/jst-ph-2-pin-cable-male-female-connector/", "where": "'300mm length cable, 24 AWG, with female connector'; open red and black wires on the other end, a male counterpart included" },
+				"awg": { "url": "https://www.artekit.eu/products/prototyping/wires/jst-ph-2-pin-cable-male-female-connector/", "where": "'24 AWG'" }
+			}
+		},
+		{
+			"mpn": "ADAFRUIT-261 JST PH 2-pin cable 100 mm",
+			"kind": "jst-ph-2-leads",
+			"lengthMm": 100,
+			"awg": 26,
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/261" }],
+			"source": {
+				"lengthMm": { "url": "https://www.adafruit.com/product/261", "where": "'4\" / 100mm long'; red and black tinned wires with a 2-pin JST PH connector on the end; 'Matches up nicely with our Lipoly chargers' (the board's B2B-PH header)" },
+				"awg": { "url": "https://www.adafruit.com/product/261", "where": "Wire Markings: 26 AWG" }
+			}
+		}
+	],
 	"hardware": [
 		{
 			"mpn": "M2x8 self-tapping pan head screw (for plastic)",
