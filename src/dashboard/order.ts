@@ -11,7 +11,7 @@ export const JLC3DP = "https://jlc3dp.com"
 
 // The board's inputs: a change to one of these after the fab package was written makes its gerbers stale.
 // Same as BUILD_INPUTS["build:board"] in src/agents/builders.ts.
-const BOARD_INPUTS = new Set(["parts", "pins", "outline", "connectors"])
+const BOARD_INPUTS = new Set(["parts", "pins", "outline", "connectors", "rails"])
 
 export type OrderPackage = { ok: true; name: string; revision: number; zip: Buffer } | { ok: false; reason: string }
 

@@ -31,7 +31,7 @@ export function fixtureArtifacts(): Artifacts {
 		board: {
 			revision: 6, dir: "/tmp/b", pcbPath: "/tmp/b/board.kicad_pcb", stepPath: null, renderPath: null,
 			widthMm: 50, heightMm: 30,
-			nets: { I2C_SDA: ["U1.GPIO8", "U2.SDA"], I2C_SCL: ["U1.GPIO9", "U2.SCL"] },
+			nets: { I2C_SDA: ["U1.GPIO8", "U2.SDA"], I2C_SCL: ["U1.GPIO9", "U2.SCL"], V3V3: ["U1.3V3", "U2.VDD"] },
 		},
 		enclosure: {
 			revision: 6, stlPath: "/tmp/e/case.stl", stepPath: "/tmp/e/case.step",

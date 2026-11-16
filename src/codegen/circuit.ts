@@ -562,7 +562,11 @@ export const THROUGH_HOLE_FOOTPRINT = /^(pinrow|pinheader|dip|to92|to220|axial|j
 // (J2 by 0.3 mm on 25 mm boards: tscircuit then skips autorouting altogether).
 const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	dfn4: [5.8, 2.8], sot23_5: [3.6, 2.5], sot23: [3.6, 2.5], "0402": [1.86, 0.94], "0603": [2.96, 1.46], qfn32: [5.8, 5.8],
-	pinrow4: [9.12, 1.5], pushbutton: [7, 9], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
+	pinrow4: [9.12, 1.5], pushbutton: [7, 9],
+	// SOD-123 (a Schottky): pads and body about 4.4 × 1.6 mm (an estimate of the footprinter's sod123).
+	sod123: [4.4, 1.6],
+	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
+	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
@@ -1674,7 +1678,32 @@ export function netTraceWidths(s: ContractSnapshot): Map<string, number> {
 // is one, else USB: a pack charged off the board (often 2S, over a 5.5 V LDO) feeds only the motors unless the contract
 // says otherwise. Before, the default was joined on top of the contract's choice: real run 15 put VIN on VBAT, the
 // default added VBUS, and USB 5 V met the cell on one pad.
+// A robot's power tree when its pack has no charger on the board (the pack charged off it): the cell feeds the LDO
+// through a Schottky, OR'd with USB's VBUS through another, so the 3V3 rail runs on battery and on USB and neither
+// back-feeds the other. A pack over the LDO's maximum input (a 2S LiPo on a 5.5 V LDO) feeds a 5 V step-down first,
+// whose output takes the battery diode. Real run 16 (Eurobot, 16 Nov 2026): the LDO hung on VBUS alone, so on battery
+// the 3V3 rail (MCU, encoders, sensor) was dead. Null when it doesn't apply or its diodes aren't in the parts yet
+// (supplyWiring's rail-battery-source names them).
+export const VIN_OR_NET = "VIN_OR"
+export const BUCK_NET = "V5"
+// The battery path: an ideal diode (role ideal-diode, LM66100: VIN, VOUT, CE on VOUT) on a 1S cell, whose voltage a
+// Schottky's drop would take under the LDO's; behind a step-down, a Schottky (5 V has room for it). VBUS: a Schottky.
+export function powerTree(s: ContractSnapshot): { battery: Part; usb: Part; buck?: Part } | null {
+	const parts = s.values.parts ?? []
+	if (!parts.some((p) => p.role === "battery") || parts.some((p) => p.role === "charger") || !parts.some((p) => p.role === "ldo")) return null
+	const diodes = parts.filter((p) => p.role === "diode" && p.pins.includes("A") && p.pins.includes("K")).sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
+	const ideal = parts.find((p) => p.role === "ideal-diode" && p.pins.includes("VIN") && p.pins.includes("VOUT"))
+	const buck = parts.find((p) => p.role === "buck")
+	const battery = ideal ?? (diodes.length >= 2 ? diodes[0] : undefined)
+	const usb = ideal ? diodes[0] : diodes[1]
+	if (!battery || !usb) return null
+	return { battery, usb, ...(buck ? { buck } : {}) }
+}
+// A battery-path part's input and output pins: an ideal diode's VIN/VOUT, a Schottky's A/K.
+const pathPins = (p: Part) => (p.role === "ideal-diode" ? { in: "VIN", out: "VOUT" } : { in: "A", out: "K" })
+
 export function ldoInputNet(s: ContractSnapshot): string {
+	if (powerTree(s)) return VIN_OR_NET
 	const parts = s.values.parts ?? []
 	const own = parts.find((p) => p.role === "ldo")?.nets?.VIN
 	if (own && own !== "GND") return netName(own)
@@ -1710,6 +1739,8 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	for (const p of parts)
 		for (const [pin, rail] of Object.entries(p.nets ?? {})) {
 			if (!p.pins.includes(pin) || (rail !== "GND" && !railNames.has(rail))) continue
+			// The power tree owns the LDO's input (VIN_OR): a contract rail there would short the tree's sources.
+			if (p.role === "ldo" && pin === "VIN" && powerTree(s)) continue
 			const net = rail === "GND" ? "GND" : netName(rail)
 			if (!nets.has(net)) nets.set(net, [])
 			if (!nets.get(net)!.includes(`${p.ref}.${pin}`)) join(net, p.ref, pin)
@@ -1725,6 +1756,25 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// starts after its supply is up and a debug cable can pull EN low to reset it.
 	if (hasSupply && mcu?.pins.includes("EN")) join(MCU_EN_NET, mcu.ref, "EN")
 
+	// The power tree (powerTree): the cell, or its 5 V step-down, and VBUS each through a Schottky into VIN_OR.
+	const tree = powerTree(s)
+	if (tree) {
+		for (const n of [VIN_OR_NET, BUCK_NET, "VBAT", "VBUS"]) if (!nets.has(n)) nets.set(n, [])
+		if (tree.buck) {
+			if (tree.buck.pins.includes("VIN")) join("VBAT", tree.buck.ref, "VIN")
+			if (tree.buck.pins.includes("VOUT")) join(BUCK_NET, tree.buck.ref, "VOUT")
+		}
+		const bp = pathPins(tree.battery)
+		join(tree.buck ? BUCK_NET : "VBAT", tree.battery.ref, bp.in)
+		join(VIN_OR_NET, tree.battery.ref, bp.out)
+		// The ideal diode: CE on VOUT blocks reverse current (TI LM66100 datasheet, Pin Functions); ST unused, to GND.
+		if (tree.battery.role === "ideal-diode") {
+			if (tree.battery.pins.includes("CE")) join(VIN_OR_NET, tree.battery.ref, "CE")
+			if (tree.battery.pins.includes("ST")) join("GND", tree.battery.ref, "ST")
+		}
+		join("VBUS", tree.usb.ref, "A")
+		join(VIN_OR_NET, tree.usb.ref, "K")
+	}
 	// USB-C VBUS feeds the charger when there is one, else the LDO directly. The charger's BAT output, the battery
 	// and the LDO input share VBAT. A pack with no charger (charged by its own) feeds the LDO alone: USB and the cell
 	// on one input with no power path would short 5 V onto the cell, so USB then carries data only.

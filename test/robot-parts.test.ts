@@ -162,3 +162,25 @@ test("the sensor's STEMMA QT cable and each motor's leads, by length from the ch
 	assert.ok(none.every((c) => c.cable === null))
 	assert.ok(robotPartNotes(s).every((n) => !/cables \(motor leads/.test(n)))
 })
+
+// Bought drive-train parts (mechanics.driveTrain, catalog driveTrain) are parts to buy too, 16 Nov 2026: each that names
+// an mpn is a line, counted by mpn, with the catalog's shop link; a mesh or a part without an mpn (printed) is not.
+test("the drive train's bought parts are parts-list lines, counted by mpn", () => {
+	const s = rover()
+	s.values.mechanics!.driveTrain = [
+		{ id: "s1", kind: "shaft", diameterMm: 8, lengthMm: 60 },
+		{ id: "p1", kind: "pulley", pitchMm: 2, teeth: 20, boreMm: 5, shaft: "s1", mpn: "ADAFRUIT-1251" },
+		{ id: "p2", kind: "pulley", pitchMm: 2, teeth: 20, boreMm: 5, shaft: "s1", mpn: "ADAFRUIT-1251" },
+		{ id: "b1", kind: "belt", pitchMm: 2, teeth: 44, pulleys: ["p1", "p2"], centreMm: 24, tensionTravelMm: 2, mpn: "GOBILDA-3423-0006-0088" },
+		{ id: "br1", kind: "bearing", boreMm: 8, outerMm: 22, shaft: "s1", seatMm: 22.1, mpn: "608ZZ" },
+		{ id: "br2", kind: "bearing", boreMm: 8, outerMm: 22, shaft: "s1", seatMm: 22.1, mpn: "608ZZ" },
+		{ id: "g1", kind: "gear", module: 1, teeth: 20, boreMm: 5, shaft: "s1" },
+		{ id: "g2", kind: "gear", module: 1, teeth: 20, boreMm: 5, shaft: "s1" },
+		{ id: "m1", kind: "mesh", gears: ["g1", "g2"], centreMm: 20 },
+	]
+	const dt = robotPartLines(s).filter((l) => ["pulley", "belt", "bearing", "gear", "shaft"].includes(l.item))
+	assert.deepEqual(dt.map((l) => [l.item, l.mpn, l.qty]), [["pulley", "ADAFRUIT-1251 GT2 pulley 20T 5 mm bore", 2], ["belt", "GOBILDA-3423-0006-0088 GT2 belt 44T closed", 1], ["bearing", "608ZZ bearing 8x22x7 mm (SMB Bearings)", 2]])
+	assert.ok(dt.every((l) => l.buy.length > 0 && l.buy[0].url.startsWith("https://")))
+	// Today's direct-drive rover has none.
+	assert.ok(!robotPartLines(rover()).some((l) => ["pulley", "belt", "bearing"].includes(l.item)))
+})
