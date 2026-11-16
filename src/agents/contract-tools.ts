@@ -6,7 +6,7 @@ import { emit, state } from "../runtime.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { laidOut } from "../mechanics/solve.ts"
 import { connectorsOntoEdges } from "../contract/consistency.ts"
-import { connectorsForParts, robotRefs, SENSOR_PLUG_REF } from "../mechanics/refs.ts"
+import { connectorsForParts, ESTOP_PLUG_REF, robotRefs, SENSOR_PLUG_REF, START_PLUG_REF } from "../mechanics/refs.ts"
 
 // Tools every agent gets for reading and changing the shared design contract.
 // `self.id` is filled in once the agent exists, so events carry the agent as producer.
@@ -56,6 +56,14 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						args = { ...args, value: { ...m, sensor: { ...m.sensor, connector: SENSOR_PLUG_REF } } as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, `the sensor's plug is always ${SENSOR_PLUG_REF} (fixed name), not ${m.sensor.connector}`].filter(Boolean).join("; ")
 					}
+					// The emergency stop's and the start cord's plugs too.
+					const v = args.value as ContractValues["mechanics"]
+					const safety = v?.safety
+					if (safety && ((safety.estop && safety.estop.connector !== ESTOP_PLUG_REF) || (safety.start && safety.start.connector !== START_PLUG_REF))) {
+						const was = [safety.estop && safety.estop.connector !== ESTOP_PLUG_REF ? `${safety.estop.connector} → ${ESTOP_PLUG_REF}` : null, safety.start && safety.start.connector !== START_PLUG_REF ? `${safety.start.connector} → ${START_PLUG_REF}` : null].filter(Boolean)
+						args = { ...args, value: { ...v, safety: { ...safety, ...(safety.estop ? { estop: { ...safety.estop, connector: ESTOP_PLUG_REF } } : {}), ...(safety.start ? { start: { ...safety.start, connector: START_PLUG_REF } } : {}) } } as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, `the e-stop's plug is always ${ESTOP_PLUG_REF} and the start cord's ${START_PLUG_REF} (fixed names): ${was.join(", ")}`].filter(Boolean).join("; ")
+					}
 				}
 				// A robot's plugs have fixed names: the parts list is renamed to them, and the connectors and pins follow below.
 				let renames: Record<string, string> = {}
@@ -69,6 +77,16 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				}
 				// Connectors: one that runs past the end of its edge or overlaps another moves along its edge to fit (rover run
 				// cc-rover-4 proposed J1 and JM2 overlapping across a corner, and left them so for revisions).
+				// A robot's pin on a plug that has its fixed name: the START signal goes to the start cord's plug whatever ref the
+				// proposal names (run cc-eurobot-10: START → J4.START while the plug was JS1).
+				if (args.field === "pins" && Array.isArray(args.value) && s.contract.get("motion")) {
+					const refs = new Set((s.contract.get("parts") ?? []).map((p) => p.ref))
+					const pins = args.value as ContractValues["pins"]
+					if (refs.has(START_PLUG_REF) && pins.some((p) => p.signal === "START" && p.partRef !== START_PLUG_REF && !refs.has(p.partRef))) {
+						args = { ...args, value: pins.map((p) => (p.signal === "START" && !refs.has(p.partRef) ? { ...p, partRef: START_PLUG_REF } : p)) as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, `START goes to the start cord's plug ${START_PLUG_REF} (fixed name)`].filter(Boolean).join("; ")
+					}
+				}
 				if (args.field === "connectors" && Array.isArray(args.value)) {
 					const snap = s.contract.snapshot()
 					// A robot's connector naming no part goes to the plug part that has no connector yet.

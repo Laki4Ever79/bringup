@@ -224,7 +224,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 	const v = snapshot.values
 	// With --no-hardware the tools are never used, so their absence is not news.
 	const missing = opts.noHardware ? [] : missingTools(env)
-	const status = settled ? "settled" : missing.length > 0 ? `UNSETTLED — missing tools: ${missing.map((m) => m.tool).join(", ")}` : "UNSETTLED"
+	const status = settled ? "settled" : s.stopped ? `STOPPED (${s.stopped}); not a verdict on the design` : missing.length > 0 ? `UNSETTLED — missing tools: ${missing.map((m) => m.tool).join(", ")}` : "UNSETTLED"
 	const stubbed = opts.noHardware || [s.artifacts.board, s.artifacts.enclosure, s.artifacts.firmware].some(isStub)
 	const lines = [
 		`# Bringup report`,
