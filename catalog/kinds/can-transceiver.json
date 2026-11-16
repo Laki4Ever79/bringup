@@ -1,0 +1,37 @@
+{
+	"kind": "can-transceiver",
+	"placement": "board",
+	"fields": [
+		{
+			"field": "outline",
+			"unit": "mm",
+			"what": "body width × length (or diameter × depth for round parts): the nominal size, e.g. D and E (or E1) in a dimension table, never a min/max range"
+		},
+		{
+			"field": "height",
+			"unit": "mm",
+			"what": "body height above the board or mounting face (the maximum where a range is given)"
+		},
+		{
+			"field": "pins",
+			"what": "pin names in pin-number order"
+		},
+		{
+			"field": "supplyMaxV",
+			"unit": "V",
+			"what": "absolute maximum supply voltage"
+		},
+		{
+			"field": "supplyRange",
+			"unit": "V",
+			"what": "recommended operating supply range [min, max]"
+		},
+		{
+			"field": "package",
+			"what": "the package name as printed (e.g. QFN-16, SOT-23-5): a hint for the footprint search, never the footprint itself"
+		}
+	],
+	"critical": [],
+	"defaults": {},
+	"calculated": {}
+}

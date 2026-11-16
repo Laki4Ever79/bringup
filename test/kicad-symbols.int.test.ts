@@ -7,8 +7,9 @@ import { groundParts, matchSymbol } from "../src/contract/grounding.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
 import { loadSymbols } from "../src/tools/kicad-symbols.ts"
 import { fixtureContract } from "./fixture.ts"
+import { tempDir } from "./helpers.ts"
 
-const root = await mkdtemp(join(tmpdir(), "bringup-sym-"))
+const root = tempDir()
 const env = await detectEnvironment(root)
 const skip = env.kicad === "docker" ? false : "kicad/kicad:10.0 docker image missing"
 

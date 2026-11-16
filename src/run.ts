@@ -1,4 +1,5 @@
 import { readBrief } from "./brief-file.ts"
+import { sweepStaleTemp } from "./tmp.ts"
 import { modelLimitOf } from "./inference/limit.ts"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join, basename } from "node:path"
@@ -110,6 +111,8 @@ export function runTimeoutMs(opts: Pick<RunOptions, "timeoutMs" | "changes" | "c
 // Runs one design from a brief until the consistency participant reports design.settled.
 // Everything after sendMessage is event-driven; this function only waits for the outcome.
 export async function runDesign(opts: RunOptions): Promise<RunResult> {
+	// Temp folders a killed earlier run left behind (src/tmp.ts).
+	sweepStaleTemp()
 	mkdirSync(opts.outDir, { recursive: true })
 	writeFileSync(join(opts.outDir, "brief.md"), opts.brief)
 	const env = opts.env ?? (await detectEnvironment(ROOT))
