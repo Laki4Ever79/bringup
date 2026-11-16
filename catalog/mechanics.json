@@ -1241,6 +1241,21 @@
 			}
 		},
 		{
+			"mpn": "608ZZ bearing 8x22x7 mm (SMB Bearings)",
+			"kind": "bearing",
+			"boreMm": 8,
+			"outerMm": 22,
+			"widthMm": 7,
+			"ratedLoadN": 3207,
+			"buy": [{ "supplier": "SMB Bearings", "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf" }],
+			"source": {
+				"boreMm": { "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf", "where": "datasheet: 8 mm bore" },
+				"outerMm": { "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf", "where": "datasheet: 22 mm outer diameter" },
+				"widthMm": { "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf", "where": "datasheet: 7 mm width" },
+				"ratedLoadN": { "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf", "where": "datasheet: dynamic load rating 327 kgf; derived 327 x 9.80665 N" }
+			}
+		},
+		{
 			"mpn": "GOBILDA-3423-0006-0088 GT2 belt 44T closed",
 			"kind": "belt",
 			"pitchMm": 2,
