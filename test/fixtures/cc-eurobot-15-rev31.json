@@ -1,0 +1,469 @@
+{
+  "revision": 31,
+  "values": {
+    "requirements": {
+      "summary": "Eurobot 2025/26 base robot controller: two driven wheels with quadrature encoders (odometry and go-to-point to within 2 cm), motor driver, VL53L0X distance sensor for opponent stop (hold motors off inside 150 mm plus braking distance and margin; resume when clear), e-stop and pull-cord start, one USB-C for programming. Power: one 1-cell LiPo (ADAFRUIT-2011, with its own protection circuit) on J2; the LDO input is fed from VBAT only.",
+      "peripherals": [
+        "motor driver",
+        "2 wheel encoders (quadrature, channels A and B)",
+        "distance sensor",
+        "USB-C"
+      ],
+      "batteryLifeDays": null,
+      "enclosure": "none",
+      "usbWake": false
+    },
+    "motion": {
+      "speedMps": 0.3,
+      "runtimeMin": 5,
+      "edgeMm": 0,
+      "maxSlopeDeg": 0,
+      "stopBeforeWallMm": 150,
+      "payloadG": 0,
+      "maxSizeMm": [
+        290,
+        290
+      ],
+      "maxMassG": 3000,
+      "rules": "eurobot-2026"
+    },
+    "mechanics": {
+      "drive": {
+        "kind": "differential",
+        "motor": "POLOLU-5139 100:1 MP 6V 12 CPR encoder",
+        "wheel": "POLOLU-1420 wheel 60x8 mm",
+        "caster": "BOTLAND-7292 swivel caster 25 mm",
+        "trackMm": 282,
+        "wheelbaseMm": 130,
+        "axleXMm": 87,
+        "maxAccelMps2": 1.5
+      },
+      "battery": {
+        "pack": "ADAFRUIT-2011 LP-803860 2000 mAh",
+        "at": {
+          "xMm": 115,
+          "yMm": 0
+        }
+      },
+      "sensor": {
+        "module": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+        "at": {
+          "xMm": 143.6,
+          "yMm": 0,
+          "zMm": 52.7
+        },
+        "connector": "JT1"
+      },
+      "chassis": {
+        "plateMm": [
+          290,
+          270
+        ],
+        "thicknessMm": 3,
+        "material": "PLA",
+        "clearanceMm": 35,
+        "boards": [
+          {
+            "name": "main",
+            "at": {
+              "xMm": -55.7,
+              "yMm": 0
+            },
+            "rotDeg": 0
+          }
+        ]
+      },
+      "beacon": {
+        "at": {
+          "xMm": 0,
+          "yMm": 0
+        },
+        "topMm": 430,
+        "sizeMm": 70,
+        "mastWallMm": 1.2,
+        "loadG": 400
+      },
+      "safety": {
+        "start": {
+          "connector": "JS1",
+          "cordMm": 500,
+          "matchS": 100
+        },
+        "estop": {
+          "part": "OMRON A22E-M-01 emergency stop 40 mm red, 1 NC",
+          "at": {
+            "xMm": 63,
+            "yMm": 0,
+            "zMm": 96
+          },
+          "connector": "JE1",
+          "collarMm": 7
+        }
+      },
+      "sticker": {
+        "face": "rear",
+        "widthMm": 100,
+        "heightMm": 70
+      }
+    },
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-C3-MINI-1",
+        "lcsc": "C2838502",
+        "footprint": "esp32_c3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO18",
+          "GPIO19",
+          "EN",
+          "3V3",
+          "GND"
+        ],
+        "reason": "The MCU for the robot firmware and BLE broadcast; its pins fit the motor, quadrature encoder, start, I2C and USB signals."
+      },
+      {
+        "ref": "U2",
+        "role": "sensor",
+        "mpn": "SHT40-AD1B-R2",
+        "lcsc": "C2909890",
+        "footprint": "dfn4",
+        "pins": [
+          "SDA",
+          "SCL",
+          "VDD",
+          "VSS"
+        ],
+        "reason": "Temperature and humidity sensor the firmware reads every 5 s for the BTHome BLE payload: ±0.2 °C and ±1.8 %RH, I2C 0x44, 80 nA idle. Shares the board's I2C bus."
+      },
+      {
+        "ref": "U5",
+        "role": "motor-driver",
+        "mpn": "DRV8833PWPR",
+        "lcsc": "C50506",
+        "footprint": "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm",
+        "pins": [
+          "nSLEEP",
+          "AOUT1",
+          "AISEN",
+          "AOUT2",
+          "BOUT2",
+          "BISEN",
+          "BOUT1",
+          "nFAULT",
+          "BIN1",
+          "BIN2",
+          "VCP",
+          "VM",
+          "GND",
+          "VINT",
+          "AIN2",
+          "AIN1"
+        ],
+        "reason": "The robot's motor driver: dual H-bridge, 2.7 to 10.8 V, 1.5 A per bridge, fed from the battery through the e-stop plug JE1."
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "RT9080-33GJ5",
+        "lcsc": "C841192",
+        "footprint": "sot23_5",
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ],
+        "nets": {
+          "VIN": "VBAT",
+          "VOUT": "3V3"
+        },
+        "reason": "3.3 V rail for the module, input from VBAT only (USB VBUS is not joined to it): 600 mA covers the 0.5 A the module needs; 2 uA quiescent. Check its lifecycle before a production run."
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ],
+        "reason": "One USB-C for programming; flashes over the module's USB Serial/JTAG on GPIO18/19. It does not power or charge the cell."
+      },
+      {
+        "ref": "J2",
+        "role": "battery",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "Battery connector for the 2000 mAh 1-cell LiPo pack (ADAFRUIT-2011) with its built-in protection circuit; charged off-board by its own charger."
+      },
+      {
+        "ref": "JM1",
+        "role": "connector",
+        "mpn": "SM06B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160405",
+        "footprint": "jst6_sh",
+        "pins": [
+          "GND",
+          "ENCB",
+          "ENCA",
+          "VCC",
+          "M2",
+          "M1"
+        ],
+        "reason": "Left drive motor plug (POLOLU-5139 has an encoder): motor and encoder share this plug; ENCA is ENC_LA, ENCB is ENC_LB."
+      },
+      {
+        "ref": "JM2",
+        "role": "connector",
+        "mpn": "SM06B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160405",
+        "footprint": "jst6_sh",
+        "pins": [
+          "GND",
+          "ENCB",
+          "ENCA",
+          "VCC",
+          "M2",
+          "M1"
+        ],
+        "reason": "Right drive motor plug (POLOLU-5139 has an encoder): motor and encoder share this plug; ENCA is ENC_RA, ENCB is ENC_RB."
+      },
+      {
+        "ref": "JT1",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "reason": "The distance sensor's cable plug (mechanics: ADAFRUIT-3317 VL53L0X, STEMMA QT) on the board's I2C bus."
+      },
+      {
+        "ref": "JE1",
+        "role": "estop",
+        "mpn": "B2B-XH-A(LF)(SN)",
+        "lcsc": "C158012",
+        "footprint": "pinrow2_p2.5_id1_od1.8",
+        "pins": [
+          "VBAT",
+          "VM"
+        ],
+        "reason": "E-stop plug (mechanics: OMRON A22E-M-01 NC contact): the button opens the motor supply between the cell and the driver's VM."
+      },
+      {
+        "ref": "JS1",
+        "role": "start",
+        "mpn": "PZ254V-11-02P",
+        "lcsc": "C492401",
+        "footprint": "pinrow2",
+        "pins": [
+          "START",
+          "GND"
+        ],
+        "reason": "Pull-cord start plug (mechanics: 500 mm cord): START goes to a GPIO, the cord loop shorts it to GND."
+      }
+    ],
+    "pins": [
+      {
+        "signal": "MOT_AIN1",
+        "gpio": 0,
+        "partRef": "U5",
+        "partPin": "AIN1"
+      },
+      {
+        "signal": "MOT_AIN2",
+        "gpio": 1,
+        "partRef": "U5",
+        "partPin": "AIN2"
+      },
+      {
+        "signal": "MOT_BIN1",
+        "gpio": 7,
+        "partRef": "U5",
+        "partPin": "BIN1"
+      },
+      {
+        "signal": "MOT_BIN2",
+        "gpio": 10,
+        "partRef": "U5",
+        "partPin": "BIN2"
+      },
+      {
+        "signal": "I2C_SDA",
+        "gpio": 4,
+        "partRef": "U2",
+        "partPin": "SDA"
+      },
+      {
+        "signal": "I2C_SCL",
+        "gpio": 8,
+        "partRef": "U2",
+        "partPin": "SCL"
+      },
+      {
+        "signal": "START",
+        "gpio": 3,
+        "partRef": "JS1",
+        "partPin": "START"
+      },
+      {
+        "signal": "ENC_LA",
+        "gpio": 6,
+        "partRef": "JM1",
+        "partPin": "ENCA"
+      },
+      {
+        "signal": "ENC_LB",
+        "gpio": 9,
+        "partRef": "JM1",
+        "partPin": "ENCB"
+      },
+      {
+        "signal": "ENC_RA",
+        "gpio": 5,
+        "partRef": "JM2",
+        "partPin": "ENCA"
+      },
+      {
+        "signal": "ENC_RB",
+        "gpio": 2,
+        "partRef": "JM2",
+        "partPin": "ENCB"
+      },
+      {
+        "signal": "USB_DP",
+        "gpio": 19,
+        "partRef": "J1",
+        "partPin": "DP"
+      },
+      {
+        "signal": "USB_DN",
+        "gpio": 18,
+        "partRef": "J1",
+        "partPin": "DN"
+      }
+    ],
+    "outline": {
+      "widthMm": 29,
+      "heightMm": 39,
+      "thicknessMm": 1.6
+    },
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 15.5,
+        "widthMm": 9,
+        "heightMm": 3.2
+      },
+      {
+        "ref": "JM1",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 5,
+        "widthMm": 9,
+        "heightMm": 3.5
+      },
+      {
+        "ref": "JM2",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 15,
+        "widthMm": 9,
+        "heightMm": 3.5
+      },
+      {
+        "ref": "JT1",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 24,
+        "widthMm": 7,
+        "heightMm": 3
+      },
+      {
+        "ref": "J2",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 6,
+        "widthMm": 6,
+        "heightMm": 4.5
+      },
+      {
+        "ref": "JE1",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 13.5,
+        "widthMm": 5,
+        "heightMm": 7
+      },
+      {
+        "ref": "JS1",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 20,
+        "widthMm": 5.1,
+        "heightMm": 2.5
+      }
+    ],
+    "rails": [
+      {
+        "name": "VBAT",
+        "voltageV": 3.7,
+        "regulatorMaxMa": 2000,
+        "loadMa": 1400
+      },
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 170
+      }
+    ]
+  },
+  "versions": {
+    "requirements": 2,
+    "outline": 4,
+    "connectors": 4,
+    "rails": 2,
+    "parts": 6,
+    "pins": 5,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 3,
+    "mechanics": 5,
+    "assembly": 0
+  }
+}

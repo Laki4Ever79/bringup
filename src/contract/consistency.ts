@@ -159,6 +159,7 @@ export type ViolationKind =
 	| "led-pin"
 	| "rail-underrated"
 	| "part-net-unknown"
+	| "net-short"
 	| "rail-unwired"
 	| "rail-current-copper"
 	| "pack-voltage"
@@ -780,6 +781,13 @@ export function supplyWiring(c: ContractSnapshot): Violation[] {
 			if (bad) v.push({ kind: "part-net-unknown", message: `${p.ref}'s nets put pin ${pin} on ${rail}, but ${bad}: the board generator leaves that pin open`, fields: ["parts", "rails"], affects: ["architect"] })
 		}
 	const nets = generatedNets(c)
+	// A pad on two nets joins them: two supplies shorted (USB 5 V onto a cell), or a rail onto a signal. Whatever put it
+	// there, the board must never be built with it.
+	const on = new Map<string, string[]>()
+	for (const [net, ends] of nets) for (const e of new Set(ends)) on.set(e, [...(on.get(e) ?? []), net])
+	for (const [end, ns] of on)
+		if (ns.length > 1)
+			v.push({ kind: "net-short", message: `${end} is on ${ns.join(" and ")}: that pad joins them, shorting ${ns.join(" to ")}. A pin takes one net: if two sources must feed it, add a power path (two Schottky diodes or a load switch, ORing them) and put the pin on its output; else drop it from one net${Object.entries(c.values.parts?.find((p) => p.ref === end.split(".")[0])?.nets ?? {}).some(([pin]) => pin === end.split(".")[1]) ? ` (the board generator wires ${end} itself: drop it from ${end.split(".")[0]}'s nets)` : ""}`, fields: ["parts", "rails"], affects: ["architect"] })
 	for (const r of rails)
 		if (!nets.has(netName(r.name)))
 			v.push({ kind: "rail-unwired", message: `rail ${r.name} (${r.voltageV} V, ${r.loadMa} mA) reaches no two pads: nothing on the board is wired to it. A part whose supply pin isn't labelled ${r.name === "3V3" ? "3V3/VDD/VCC" : "by the rail"} (a numbered header pin, a power input) names it in its nets, e.g. { "2": "${r.name}" }`, fields: ["parts", "rails"], affects: ["architect"] })

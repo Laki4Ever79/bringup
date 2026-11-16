@@ -372,7 +372,8 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	for (const l of (s.values.links ?? []).filter((x) => x.kind === "can" && x.can?.terminate))
 		if (can) jobs.push({ job: `${l.id} CAN termination, 120 Ω across CANH and CANL (this board is a bus end)`, spec: SUPPORT.canTerm, a: { net: `${l.id}_CANH` }, b: { net: `${l.id}_CANL` }, near: can.ref })
 	if (charger) jobs.push({ job: "decoupling on VBUS (charger input)", spec: SUPPORT.bypass, a: { net: "VBUS" }, b: GND, near: charger.ref })
-	if (ldo) jobs.push({ job: `decoupling on ${charger ? "VBAT" : "VBUS"} (LDO input)`, spec: SUPPORT.bypass, a: { net: charger ? "VBAT" : "VBUS" }, b: GND, near: ldo.ref })
+	const ldoInNet = ldoInputNet(s)
+	if (ldo) jobs.push({ job: `decoupling on ${ldoInNet} (LDO input)`, spec: SUPPORT.bypass, a: { net: ldoInNet }, b: GND, near: ldo.ref })
 	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
 	// The download-boot strap pulled high (downloadStrap), unless the I2C pull-up above already does it; not on a pin that
 	// drives an LED (a violation for the architect: the pull-up would light it in deep sleep).
@@ -1658,6 +1659,17 @@ export function netTraceWidths(s: ContractSnapshot): Map<string, number> {
 	return new Map([...supplyWidths(s)].filter(([n]) => !poured.has(n)).map(([n, w]) => [n, Math.min(w, Math.max(MAX_TRACK_MM, DEFAULT_TRACE_MM))]))
 }
 
+// The net feeding the LDO's input: the one its nets name (VIN) when they do, else the charger's output (VBAT) when there
+// is one, else USB: a pack charged off the board (often 2S, over a 5.5 V LDO) feeds only the motors unless the contract
+// says otherwise. Before, the default was joined on top of the contract's choice: real run 15 put VIN on VBAT, the
+// default added VBUS, and USB 5 V met the cell on one pad.
+export function ldoInputNet(s: ContractSnapshot): string {
+	const parts = s.values.parts ?? []
+	const own = parts.find((p) => p.role === "ldo")?.nets?.VIN
+	if (own && own !== "GND") return netName(own)
+	return parts.some((p) => p.role === "charger") ? "VBAT" : "VBUS"
+}
+
 export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const { parts = [], rails = [], pins = [] } = s.values
 	const supply = netName(SUPPLY_RAIL)
@@ -1668,6 +1680,9 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const battery = parts.find((p) => p.role === "battery")
 	const mcu = parts.find((p) => p.role === "mcu")
 	const usb = usbRef(s)
+	// A pin on two nets shorts them (real run 15: VIN on VBUS and VBAT, USB 5 V onto the cell): the net-short check
+	// (consistency.ts) refuses it. The contract's assignment doesn't silently win: run 12's put the motor driver's VM on
+	// VBAT, which would bypass the emergency stop's MOTOR_VM.
 	const join = (net: string, ref: string, pin: string) => nets.get(net)!.push(`${ref}.${pin}`)
 
 	for (const p of parts) {
@@ -1700,11 +1715,13 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	if (hasSupply && mcu?.pins.includes("EN")) join(MCU_EN_NET, mcu.ref, "EN")
 
 	// USB-C VBUS feeds the charger when there is one, else the LDO directly. The charger's BAT output, the battery
-	// and the LDO input share VBAT.
-	const ldoIn = charger ? "VBAT" : "VBUS"
+	// and the LDO input share VBAT. A pack with no charger (charged by its own) feeds the LDO alone: USB and the cell
+	// on one input with no power path would short 5 V onto the cell, so USB then carries data only.
+	// The contract may choose the source itself (the LDO's nets.VIN: a 2S pack is over its 5.5 V, so USB feeds it).
+	const ldoIn = ldoInputNet(s)
 	if (ldo) {
 		if (hasSupply && ldo.pins.includes("VOUT")) join(supply, ldo.ref, "VOUT")
-		for (const pin of ["VIN", "EN"]) if (ldo.pins.includes(pin)) join(ldoIn, ldo.ref, pin)
+		for (const pin of ["VIN", "EN"]) if (ldo.pins.includes(pin) && !(pin === "VIN" && ldo.nets?.VIN)) join(ldoIn, ldo.ref, pin)
 	}
 	if (charger) {
 		const chargeLed = parts.find((p) => p.role === "charge-led" && p.pins.includes("A"))
