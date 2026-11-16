@@ -37,3 +37,12 @@ test("the Eurobot base's firmware ramps its duty; the reference rover's doesn't"
 	const tip = mechanicsChecksWith(noRamp, defaultCheckCatalog()!).find((v) => v.kind === "mech-tipping")
 	assert.match(tip?.message ?? "", /when braking hard/)
 })
+
+// The base's still (16 Nov) showed its battery inside the mast's socket, and no check said so.
+test("nothing may stand where the beacon support's mast does", () => {
+	const s = snap()
+	s.values.mechanics.battery.at = { xMm: 20, yMm: 0 }
+	const v = mechanicsChecksWith(s, defaultCheckCatalog()!).filter((x) => x.kind === "mech-fit")
+	assert.equal(v.length, 1)
+	assert.match(v[0].message, /^battery stands where the beacon support's 70 mm mast/)
+})
