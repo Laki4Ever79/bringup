@@ -18,7 +18,7 @@ test("the chassis spec carries the plate, both motors, the caster's holes, the b
 	const spec = chassisSpec(rover())!
 	assert.deepEqual([spec.plate.lengthMm, spec.plate.widthMm, spec.plate.clearanceMm], [150, 96, 50.5])
 	assert.deepEqual(spec.motors.map((m) => m.side), ["left", "right"])
-	assert.equal(spec.caster.holesMm.length, 4)
+	assert.equal(spec.caster!.holesMm.length, 4)
 	assert.deepEqual(spec.boards.map((b) => [b.name, b.widthMm, b.heightMm]), [["main", 60, 40]])
 	assert.equal(spec.sensor.xMm, 73.6)
 	assert.equal(spec.edgeMm, 3, "the simulated course's step is the brief's edge")
