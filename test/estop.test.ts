@@ -113,5 +113,5 @@ test("the button's body may not come down onto a board under it", () => {
 	assert.equal(low.length, 1)
 	assert.match(low[0].message, /comes down onto board main .* at least 122 mm/)
 	// Clear of the board (to one side of it, still over the plate), the same deck is fine.
-	assert.deepEqual(safety(rover((v) => Object.assign(v.mechanics.safety.estop.at, { zMm: 120, xMm: 52 }))), [])
+	assert.deepEqual(safety(rover((v) => Object.assign(v.mechanics.safety.estop.at, { zMm: 120, xMm: 50 }))), [])
 })

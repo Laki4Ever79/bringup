@@ -8,6 +8,11 @@ import type { Mechanics, Mount } from "./types.ts"
 // (rules/eurobot.ts) adds those limits. These checks hold for any robot that has one.
 
 export const ESTOP_CLEARANCE_MM = 2 // ESTIMATE: air between the button's body and the plate below it
+// The deck's reach past the head on each side: the head's clearance and the collar's wall (chassis.ts, py/chassis.py).
+export const ESTOP_DECK_MARGIN_MM = 4
+// The deck's panel thickness (clamped to the button's panelMin..Max) and the air around the head inside the collar.
+export const ESTOP_PANEL_MM = 2
+export const ESTOP_HEAD_CLEARANCE_MM = 2
 
 export interface SafetyFinding {
 	message: string
@@ -78,10 +83,11 @@ export function safetyChecks(mech: Mechanics, parts: Part[], motor: MotorPart, p
 		const top = Math.max(...under.map((m) => m.zMm + m.sizeMm[2] / 2))
 		out.push({ message: `the emergency stop's ${button.bodyMm} mm body, ${button.belowMm} mm under its panel, comes down onto ${under.map((m) => m.what.replace(":", " ")).join(", ")} (its top at ${Math.round(top * 10) / 10} mm): raise mechanics.safety.estop.at.zMm to at least ${Math.ceil(top + ESTOP_CLEARANCE_MM + button.belowMm)} mm, or move the button clear of it`, affects: ["mechanics"] })
 	}
+	// Its printed deck (chassis.ts ChassisEstop): the head, its clearance and the collar's wall, which must stay over the plate.
 	const [L, W] = c.plateMm
-	const r = button.headMm / 2
+	const r = button.headMm / 2 + ESTOP_DECK_MARGIN_MM
 	if (Math.abs(e.at.xMm) + r > L / 2 || Math.abs(e.at.yMm) + r > W / 2)
-		out.push({ message: `the emergency stop's ${button.headMm} mm head at (${e.at.xMm}, ${e.at.yMm}) overhangs the ${L} × ${W} mm plate: keep its centre within x ±${L / 2 - r}, y ±${W / 2 - r} mm`, affects: ["mechanics"] })
+		out.push({ message: `the emergency stop's deck (its ${button.headMm} mm head, ${ESTOP_DECK_MARGIN_MM} mm of clearance and wall around it) at (${e.at.xMm}, ${e.at.yMm}) overhangs the ${L} × ${W} mm plate: keep its centre within x ±${L / 2 - r}, y ±${W / 2 - r} mm`, affects: ["mechanics"] })
 	return out
 }
 

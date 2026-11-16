@@ -1,4 +1,7 @@
 import { byMpn, type BatteryPack, type MechCatalog, type MotorPart } from "./catalog.ts"
+import { ESTOP_HEAD_CLEARANCE_MM, ESTOP_PANEL_MM } from "./safety.ts"
+// The deck's wall, as py/chassis.py WALL.
+const DECK_WALL_MM = 2
 import { est } from "./estimates.ts"
 import type { Mechanics, Mount } from "./types.ts"
 import { hatBaseZ } from "../dashboard/assembly-geom.js"
@@ -128,6 +131,13 @@ export function mounts(mech: Mechanics, boards: { name: string; outline: { width
 	if (estop && mech.safety?.estop) {
 		const e = mech.safety.estop
 		out.push({ what: "estop", xMm: e.at.xMm, yMm: e.at.yMm, zMm: e.at.zMm + (estop.aboveMm - estop.belowMm) / 2, sizeMm: [estop.headMm, estop.headMm, estop.aboveMm + estop.belowMm], massG: estop.massG })
+		// Its printed deck (py/chassis.py, chassis.ts ChassisEstop): two walls at the plate's long edges, the panel across
+		// the plate and the collar ring, in PLA. The same geometry the chassis prints; the cutout is left in (a little heavy).
+		const ringIn = estop.headMm / 2 + ESTOP_HEAD_CLEARANCE_MM, span = 2 * (ringIn + DECK_WALL_MM), panel = Math.min(estop.panelMaxMm, Math.max(estop.panelMinMm, ESTOP_PANEL_MM))
+		const wallH = Math.max(0, e.at.zMm - panel - plateTop)
+		const collar = e.collarMm ?? 0
+		const mm3 = 2 * span * DECK_WALL_MM * wallH + span * c.plateMm[1] * panel + Math.PI * ((ringIn + DECK_WALL_MM) ** 2 - ringIn ** 2) * collar
+		out.push({ what: "estop-deck", xMm: e.at.xMm, yMm: 0, zMm: e.at.zMm - (panel + wallH) / 2, sizeMm: [span, c.plateMm[1], wallH + panel + collar], massG: (mm3 * est("plaDensityGcm3")) / 1000 })
 	}
 	// A HAT (`on`) stands on its board's spacers (hatBaseZ), the others on the plate's standoffs.
 	const onPlate = plateTop + est("standoffMm")

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process"
+import { ESTOP_HEAD_CLEARANCE_MM, ESTOP_PANEL_MM, estopPart } from "../mechanics/safety.ts"
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { writeRosPackage } from "../ros/package.ts"
 import { join } from "node:path"
@@ -16,7 +17,13 @@ const exec = promisify(execFile)
 
 // What py/chassis.py builds from (chassis frame: origin at the plate centre, +x forward, mm), plus the mass, centre of
 // mass and drive numbers the simulation (py/mech/model.py) reads from the same file.
+// The e-stop's printed deck (py/chassis.py): a bridge across the plate on two walls at its long edges, clear of
+// everything on the plate; its panel PANEL_MM thick (within the button's 1-3 mm) with the button's cutout, and the collar
+// ring around the head (mechanics.safety.estop.collarMm), HEAD_CLEARANCE_MM clear of it so it stays free to hit.
+export interface ChassisEstop { xMm: number; yMm: number; panelTopMm: number; panelMm: number; holeMm: number; headMm: number; collarMm: number }
 export interface ChassisSpec {
+	// The emergency stop's deck, when the robot has one.
+	estop?: ChassisEstop
 	// Boards the chassis places whose outline this run doesn't know (another board of a multi-board robot): left off the
 	// plate and out of the mass, and named, never drawn at the main board's size.
 	unplaced: string[]
@@ -168,6 +175,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		}),
 		boardScrew: { boardHoleMm: MOUNTING_HOLE.diameterMm, pilotMm: STANDOFF.pilotMm },
 		unplaced,
+		...((e, b) => (e && b ? { estop: { xMm: e.at.xMm, yMm: e.at.yMm, panelTopMm: e.at.zMm, panelMm: Math.min(b.panelMaxMm, Math.max(b.panelMinMm, ESTOP_PANEL_MM)), holeMm: b.panelHoleMm, headMm: b.headMm, collarMm: e.collarMm ?? 0 } } : {}))(mech.safety?.estop, mech.safety?.estop ? estopPart(cat.mech, mech.safety.estop.part) : undefined),
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs, holes: sensorHoles(sensor, mech.sensor.at, mech.chassis), holeDiaMm: SENSOR_HOLE_MM },
 		massG,
 		com,

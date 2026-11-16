@@ -181,8 +181,8 @@ export const ROVER_BOARD = {
 }
 
 // The scripted Eurobot base (briefs/eurobot-base.md): the reference rover's board and drive with the competition's safety
-// parts and rules. The emergency stop (catalog safety, the Omron A22E-M-01) on a deck 125 mm up, beside the board so its
-// 54.7 mm body clears it, with a 7 mm collar so its 32 mm head stands at most 25 mm over the robot (Eurobot General Rules
+// parts and rules. The emergency stop (catalog safety, the Omron A22E-M-01) on its printed deck 125 mm up, 20 mm ahead of
+// the centre (its 54.7 mm body clears the board under it; with the deck's PLA, further forward tips it braking), with a 7 mm collar so its 32 mm head stands at most 25 mm over the robot (Eurobot General Rules
 // 1.2 F.4.c); its plug JE1 in the motors' supply. The pull-cord start JS1 with START on GPIO10, a 600 mm cord and the
 // 100 s match (F.6, H.3). motion.rules "eurobot-2026" checks it against the rules; 290 × 290 mm is the brief's square.
 export const EUROBOT_BOARD = {
@@ -198,7 +198,7 @@ export const EUROBOT_BOARD = {
 		{ ref: "JS1", role: "start", mpn: "PZ254V-11-02P", lcsc: "C492401", footprint: "pinrow2", pins: ["START", "GND"], reason: "Brief: \"Starts from a pull cord\": the cord's plug shorts START to GND until it is pulled" },
 	],
 	motion: { ...ROVER_MOTION!, maxSizeMm: [290, 290] as [number, number], rules: "eurobot-2026" },
-	mechanics: { ...ROVER_MECHANICS!, drive: { ...ROVER_MECHANICS!.drive, motor: "POLOLU-5139 100:1 MP 6V 12 CPR encoder" }, safety: { estop: { part: "OMRON A22E-M-01", at: { xMm: 52, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } } },
+	mechanics: { ...ROVER_MECHANICS!, drive: { ...ROVER_MECHANICS!.drive, motor: "POLOLU-5139 100:1 MP 6V 12 CPR encoder" }, safety: { estop: { part: "OMRON A22E-M-01", at: { xMm: 20, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } } },
 }
 const EUROBOT = /\beurobot\b/i
 
