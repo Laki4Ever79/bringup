@@ -276,6 +276,13 @@ function nativeUsbWired(s: ContractSnapshot): boolean {
 	return on.every((p) => p.partRef === usb && ((p.gpio === native.dmIndex && p.partPin === "DN") || (p.gpio === native.dpIndex && p.partPin === "DP")))
 }
 
+// The pins the MCU's native USB takes on a board with a USB-C port (D+ and D-): never free for another signal, or the
+// generator leaves USB unwired (generatedUsb) and the one cable no longer programs the board. Empty without either.
+export function nativeUsbIndexes(s: ContractSnapshot): number[] {
+	const native = mcuUsbPins((s.values.parts ?? []).find((p) => p.role === "mcu"))
+	return native && usbRef(s) ? [native.dpIndex, native.dmIndex] : []
+}
+
 // The MCU's native USB as the generator wires it to the USB-C port: D+/D- to the connector, when the contract uses
 // neither pin for anything else (generatedNets). null when there is no port, no MCU USB, or the pins are taken.
 function generatedUsb(s: ContractSnapshot): (NonNullable<ReturnType<typeof mcuUsbPins>> & { mcu: Part }) | null {
@@ -552,6 +559,12 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	jst2_ph: [6.9, 5.5],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
 	jst4_sh: [7, 5.5],
+	// The robot plugs added 16 Nov, their courtyards from circuit.json of a tscircuit 0.0.3042 build of the Eurobot base
+	// (the 3 × 3 mm default had the space model compact the board until tscircuit's courtyards overlapped): the encoder
+	// gearmotor's JST SH 6-pin (pads 8.8 × 4.2), the e-stop's JST XH 2-pin, the start cord's 2.54 mm header.
+	jst6_sh: [9.8, 5.3],
+	"pinrow2_p2.5_id1_od1.8": [6, 3.5],
+	pinrow2: [6.1, 3.6],
 	// The USB-C courtyard, not its pads: 9.84 mm along the edge (the shell's plated tabs) and 10.35 mm into the board,
 	// measured at rotation 270 on a left edge and turned back to rotation 0 here.
 	usbcmidmount: [9.84, 10.35],
@@ -567,6 +580,8 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	"pinrow2_p5_id1.3_od2.6": [10, 7.5],
 }
 const DEFAULT_SIZE: [number, number] = [3, 3]
+// Whether the space model knows a footprint's size (its table or a chip profile's package); else it gets DEFAULT_SIZE.
+export const knowsFootprintSize = (footprint: string) => footprint in FOOTPRINT_SIZE || packageSize(footprint) !== null
 
 // A dual-row IC's pin position at rotation 0 (tscircuit's soic/tssop: pin 1 top-left, down the left side, then up
 // the right), from the footprint's pin count, lead span (w) and pitch (p). Null for other footprints.
@@ -731,7 +746,7 @@ export interface MountingHole {
 // board whose courtyard crosses the edge. The JST SH 4-pin's box is its pads (6.8 mm, 7 with margin); its courtyard is
 // 7.8 mm (circuit.json pcb_courtyard_rect), and the real rover run 6's JT1 at right@25.5 mm on a 29 mm edge had its box at
 // the edge, its courtyard 0.4 mm past it and pad 5 0.1 mm from it: "Autorouting was skipped" (16 Nov 2026).
-export const COURTYARD_ALONG_MM: Record<string, number> = { jst4_sh: 7.8 }
+export const COURTYARD_ALONG_MM: Record<string, number> = { jst4_sh: 7.8, jst6_sh: 9.8 }
 // Each connector's length along its edge as tscircuit judges it: its box's, or its courtyard's where that is longer.
 export function connectorAlongMm(s: ContractSnapshot, ref: string, boxAlong: number): number {
 	const c = (s.values.connectors ?? []).find((k) => k.ref === ref)
