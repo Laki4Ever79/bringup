@@ -61,3 +61,16 @@ test("its parts list has four motors and four wheels and no caster; its chassis 
 	assert.equal(spec.motors.length, 4)
 	assert.equal(spec.motors.filter((m) => m.rear).length, 2)
 })
+
+test("its ROS export: four wheel joints, no caster, both wheels of a side in the controller, the mass the checks have", async () => {
+	const { robotUrdf, controllersYaml, bodyOf } = await import("../src/ros/urdf.ts")
+	const spec = chassisSpec(snap())!
+	const urdf = robotUrdf(spec)
+	for (const j of ["left_wheel_joint", "right_wheel_joint", "left_rear_wheel_joint", "right_rear_wheel_joint"]) assert.match(urdf, new RegExp(`<joint name="${j}" type="continuous">`))
+	assert.doesNotMatch(urdf, /caster_link/)
+	const y = controllersYaml(spec)
+	assert.match(y, /left_wheel_names: \["left_wheel_joint", "left_rear_wheel_joint"\]/)
+	assert.match(y, /right_wheel_names: \["right_wheel_joint", "right_rear_wheel_joint"\]/)
+	const b = bodyOf(spec)
+	assert.ok(Math.abs(b.bodyKg + 4 * b.wheelKg - spec.massG / 1000) < 1e-9, "body plus four wheels is the whole")
+})
