@@ -44,14 +44,50 @@ wait $BAG 2>/dev/null  # the recorder stops itself (SIGINT after 25 s) and write
 exit $CODE
 `
 
+// No container outlives its run. Killing the docker client on a timeout left the container running: ROS acceptance
+// shells (run-qemu.sh) were still up 30 h later (16 Nov 2026). So each run gets a name and three stops: a timeout inside
+// the container (it ends itself even if this process is killed outright), docker kill when the time is up or the client
+// exits early, and docker kill of whatever is still running when this process exits.
+const running = new Set<string>()
+let exitHook = false
+export function containerArgs(args: string[], timeoutMs: number, name: string): string[] {
+	if (args[0] !== "run") return args
+	const at = args.indexOf(ROS_IMAGE)
+	if (at < 0) return args
+	const secs = Math.max(1, Math.ceil(timeoutMs / 1000))
+	return ["run", "--name", name, "--stop-timeout", "5", ...args.slice(1, at + 1), "timeout", "-k", "10", String(secs), ...args.slice(at + 1)]
+}
+function killContainer(name: string): void {
+	spawnSync("docker", ["kill", name], { stdio: "ignore", timeout: 30_000 })
+	running.delete(name)
+}
 function docker(args: string[], timeoutMs: number): Promise<{ code: number | null; out: string }> {
+	const name = `bringup-ros-${process.pid}-${Math.random().toString(36).slice(2, 8)}`
+	const full = containerArgs(args, timeoutMs, name)
+	const named = full !== args
+	if (named) {
+		running.add(name)
+		if (!exitHook) {
+			exitHook = true
+			process.on("exit", () => { for (const n of running) spawnSync("docker", ["kill", n], { stdio: "ignore", timeout: 10_000 }) })
+		}
+	}
 	return new Promise((res) => {
-		const p = spawn("docker", args, { stdio: ["ignore", "pipe", "pipe"] })
+		const p = spawn("docker", full, { stdio: ["ignore", "pipe", "pipe"] })
 		let out = ""
 		p.stdout.on("data", (d) => (out += d))
 		p.stderr.on("data", (d) => (out += d))
-		const t = setTimeout(() => { p.kill("SIGKILL"); res({ code: null, out }) }, timeoutMs)
-		p.on("close", (code) => { clearTimeout(t); res({ code, out }) })
+		const t = setTimeout(() => {
+			p.kill("SIGKILL")
+			if (named) killContainer(name)
+			res({ code: null, out })
+		}, timeoutMs)
+		p.on("close", (code) => {
+			clearTimeout(t)
+			// --rm removes it once it stops; one still running (the client died early) is stopped here.
+			if (named) killContainer(name)
+			res({ code, out })
+		})
 	})
 }
 
