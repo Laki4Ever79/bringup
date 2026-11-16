@@ -184,3 +184,19 @@ test("boards that can't fit within the limit at all are named, not silently exce
 	assert.match(err ?? "", /need a \d+ × \d+ mm plate, over the 160 × 150 mm plate the brief's size allows/)
 	assert.equal(assemblyFitError(a), null, "no limit, no finding")
 })
+// The scripted rover + climate (16 Nov): the spec's two 40 mm estimates need 88 of the 130 mm the 150 mm limit leaves,
+// but 68 mm on main's side of the centre. The row moves along x as a whole instead of starting a second row (which
+// made the plate 126 mm wide against the brief's 96 and left main unable to settle).
+test("a row that fits the limit's length but not around main is centred, not split into a second row", async () => {
+	const { withOutlines } = await import("../src/system/assembly.ts")
+	const a = { body: "chassis" as const, plate: { lengthMm: 150, widthMm: 96 }, boards: [
+		{ name: "main", xMm: 0, yMm: 0, rotDeg: 0 as const, outline: { widthMm: 40, heightMm: 30 }, outlineSource: "estimate" as const },
+		{ name: "climate", xMm: 48, yMm: 0, rotDeg: 0 as const, outline: { widthMm: 40, heightMm: 30 }, outlineSource: "estimate" as const },
+	] }
+	const r = withOutlines(a, {}, [150, 96])
+	assert.deepEqual(r.plate, { lengthMm: 150, widthMm: 96 })
+	assert.deepEqual(r.boards.map((b) => [b.name, b.xMm, b.yMm]), [["main", -24, 0], ["climate", 24, 0]])
+	// A row too long even centred still starts a second row.
+	const long = withOutlines({ ...a, boards: a.boards.map((b) => ({ ...b, outline: { widthMm: 70, heightMm: 30 } })) }, {}, [150, 96])
+	assert.ok(long.boards.some((b) => b.yMm !== 0))
+})
