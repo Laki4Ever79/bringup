@@ -33,7 +33,9 @@ export interface SystemLink {
 	baud?: number
 	// For I2C: which board drives the bus, each target's 7-bit address, which board fits the pull-ups, the speed.
 	i2c?: { controller: string; targets: Record<string, number>; pullupsOn: string; khz?: number }
-	can?: { kbps?: number }
+	// bus: links that name the same bus are segments of one CAN bus, daisy-chained board to board (a bus of more than two
+	// boards); without it, a link is a bus of its own between its two boards.
+	can?: { kbps?: number; bus?: string }
 	// VCC carries the "from" board's 3V3 to the other one; without it, each board has its own supply.
 	power?: { from: string }
 	cable: { lengthMm: number }
@@ -51,6 +53,8 @@ export interface SystemSpec {
 export const DEFAULT_BAUD = 115200
 export const DEFAULT_I2C_KHZ = 100
 export const DEFAULT_CAN_KBPS = 500
+import { createHash } from "node:crypto"
+const messageHashOf = (m: { name: string; fields: unknown }) => createHash("sha256").update(JSON.stringify({ name: m.name, fields: m.fields })).digest("hex").slice(0, 16)
 // The bit rates CAN nodes agree on (CiA 301's bit timing table), each with the longest bus it allows: 40 m at 1 Mbit/s
 // is ISO 11898's (TI SN65HVD230 datasheet SLOS346O §11.2.1.3, p28); the rest are CiA 301's recommendations, which assume
 // a 5 ns/m cable and the transceivers' loop delay: estimates for a given cable.
@@ -114,6 +118,9 @@ export function specErrors(s: SystemSpec): string[] {
 			if (fromTarget.length > 1) out.push(`link ${l.id}: ${fromTarget[0].from} sends ${fromTarget.map((m) => m.name).join(", ")}; an I2C target holds one frame for the controller to read, so it sends one message`)
 		}
 		if (l.kind === "can" && l.can?.kbps !== undefined && !Object.hasOwn(CAN_BUS_MAX_M, l.can.kbps)) out.push(`link ${l.id}: ${l.can.kbps} kbit/s is not a CAN bit rate nodes agree on; use one of ${Object.keys(CAN_BUS_MAX_M).join(", ")}`)
+	}
+	out.push(...canBusErrors(s))
+	for (const l of s.links) {
 		if (l.power && ![l.a.board, l.b.board].includes(l.power.from)) out.push(`link ${l.id}: power comes from ${l.power.from}, which is not on the link`)
 		if (!(l.cable?.lengthMm > 0)) out.push(`link ${l.id}: cable.lengthMm must be a positive length`)
 		for (const m of l.messages ?? []) {
@@ -150,4 +157,58 @@ export function loadSpec(path: string): SystemSpec {
 	const s = JSON.parse(readFileSync(path, "utf8")) as SystemSpec
 	const base = dirname(resolve(path))
 	return { ...s, boards: s.boards.map((b) => ({ ...b, ...(b.brief ? { brief: resolve(base, b.brief) } : {}), ...(b.run ? { run: resolve(base, b.run) } : {}) })) }
+}
+
+// The CAN buses of a system: each link's own, or the segments that name one bus (link.can.bus), daisy-chained.
+export function canBuses(spec: SystemSpec): { bus: string; links: SystemLink[] }[] {
+	const by = new Map<string, SystemLink[]>()
+	for (const l of spec.links) if (l.kind === "can") by.set(l.can?.bus ?? l.id, [...(by.get(l.can?.bus ?? l.id) ?? []), l])
+	return [...by].map(([bus, links]) => ({ bus, links }))
+}
+// A bus's boards in chain order, or null when its segments don't form one chain (a board on three segments, a loop, two
+// pieces). Its two ends are the boards that terminate it.
+export function canChain(links: SystemLink[]): string[] | null {
+	const deg = new Map<string, number>()
+	for (const l of links) for (const b of [l.a.board, l.b.board]) deg.set(b, (deg.get(b) ?? 0) + 1)
+	if ([...deg.values()].some((d) => d > 2)) return null
+	const ends = [...deg].filter(([, d]) => d === 1).map(([b]) => b)
+	if (ends.length !== 2) return null
+	const order = [ends[0]]
+	const used = new Set<SystemLink>()
+	while (order.length < deg.size) {
+		const at = order.at(-1)!
+		const next = links.find((l) => !used.has(l) && (l.a.board === at || l.b.board === at))
+		if (!next) return null
+		used.add(next)
+		order.push(next.a.board === at ? next.b.board : next.a.board)
+	}
+	return used.size === links.length ? order : null
+}
+// ISO 11898-2's longest unterminated stub at 1 Mbit/s (TI SN65HVD230 datasheet SLOS346O §11.2.1.3): a daisy-chained
+// node's stub is its board's trace from the connector to the transceiver, well under it.
+export const CAN_STUB_MAX_M = 0.3
+// Every reason a bus of several segments isn't one bus, in words.
+export function canBusErrors(spec: SystemSpec): string[] {
+	const out: string[] = []
+	for (const { bus, links } of canBuses(spec)) {
+		if (links.length < 2) continue
+		const ids = links.map((l) => l.id).join(", ")
+		if (!canChain(links)) out.push(`CAN bus ${bus} (${ids}): its segments must chain the boards one after another (each board on at most two of them, no loop), so the bus has two ends to terminate`)
+		const rates = new Set(links.map((l) => l.can?.kbps ?? DEFAULT_CAN_KBPS))
+		if (rates.size > 1) out.push(`CAN bus ${bus} (${ids}): its segments must share one bit rate (they have ${[...rates].join(" and ")} kbit/s)`)
+		const kbps = [...rates][0]
+		const total = links.reduce((t, l) => t + l.cable.lengthMm, 0) / 1000
+		const max = CAN_BUS_MAX_M[kbps]
+		if (max !== undefined && total > max) out.push(`CAN bus ${bus} (${ids}): its cables add up to ${total} m, over the ${max} m a bus allows at ${kbps} kbit/s`)
+		// One identifier per message definition across the whole bus: every node hears every frame.
+		const seen = new Map<string, string>()
+		for (const l of links) for (const m of l.messages ?? []) {
+			const id = (parseInt(messageHashOf(m).slice(0, 8), 16) & 0x1fffffff).toString(16)
+			const key = `${m.name}:${JSON.stringify(m.fields)}`
+			const prior = seen.get(id)
+			if (prior !== undefined && prior !== key) out.push(`CAN bus ${bus}: messages ${prior.split(":")[0]} and ${m.name} share the frame identifier 0x${id}: rename one`)
+			seen.set(id, key)
+		}
+	}
+	return out
 }
