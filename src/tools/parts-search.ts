@@ -34,6 +34,8 @@ export function loadCatalog(root: string): CatalogPart[] {
 	return [...entries, ...learned].map((e) => ({ ...e, ...UNKNOWN }))
 }
 
+// One LCSC part's live stock and unit price (jlcsearch), for a part the catalog may not list (a passive).
+export const lookupLcsc = (lcsc: string, opts: { fetch?: typeof fetch; timeoutMs?: number } = {}) => lookup(lcsc, opts.fetch ?? fetch, opts.timeoutMs ?? TIMEOUT_MS)
 async function lookup(lcsc: string, f: typeof fetch, timeoutMs: number): Promise<Live> {
 	const known = cache.get(f)?.get(lcsc)
 	if (known) return known
