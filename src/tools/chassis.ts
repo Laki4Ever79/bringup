@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process"
 import { ESTOP_HEAD_CLEARANCE_MM, ESTOP_PANEL_MM, estopPart } from "../mechanics/safety.ts"
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from "node:fs"
 import { writeRosPackage } from "../ros/package.ts"
 import { join } from "node:path"
 import { promisify } from "node:util"
@@ -23,7 +23,13 @@ const exec = promisify(execFile)
 // everything on the plate; its panel PANEL_MM thick (within the button's 1-3 mm) with the button's cutout, and the collar
 // ring around the head (mechanics.safety.estop.collarMm), HEAD_CLEARANCE_MM clear of it so it stays free to hit.
 export interface ChassisEstop { xMm: number; yMm: number; panelTopMm: number; panelMm: number; holeMm: number; headMm: number; collarMm: number }
+// A beacon support's printed mast (py/chassis.py): sections of at most this height (an ESTIMATE of a common printer's
+// build height) on a socket on the plate; each section above the first has a spigot into the one below.
+export const MAST_SECTION_MAX_MM = 200
+export interface ChassisBeacon { xMm: number; yMm: number; topMm: number; sizeMm: number; wallMm: number; sectionMaxMm: number }
 export interface ChassisSpec {
+	// The beacon support's mast, when the robot has one (Eurobot F.6).
+	beacon?: ChassisBeacon
 	// The emergency stop's deck, when the robot has one.
 	estop?: ChassisEstop
 	// Boards the chassis places whose outline this run doesn't know (another board of a multi-board robot): left off the
@@ -216,6 +222,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		}),
 		boardScrew: { boardHoleMm: MOUNTING_HOLE.diameterMm, pilotMm: STANDOFF.pilotMm },
 		unplaced,
+		...(mech.beacon ? { beacon: { xMm: mech.beacon.at.xMm, yMm: mech.beacon.at.yMm, topMm: mech.beacon.topMm, sizeMm: mech.beacon.sizeMm, wallMm: mech.beacon.mastWallMm, sectionMaxMm: MAST_SECTION_MAX_MM } } : {}),
 		...((e, b) => (e && b ? { estop: { xMm: e.at.xMm, yMm: e.at.yMm, panelTopMm: e.at.zMm, panelMm: Math.min(b.panelMaxMm, Math.max(b.panelMinMm, ESTOP_PANEL_MM)), holeMm: b.panelHoleMm, headMm: b.headMm, collarMm: e.collarMm ?? 0 } } : {}))(mech.safety?.estop, mech.safety?.estop ? estopPart(cat.mech, mech.safety.estop.part) : undefined),
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs, holes: sensorHoles(sensor, mech.sensor.at, mech.chassis), holeDiaMm: SENSOR_HOLE_MM },
 		massG,
@@ -263,7 +270,9 @@ export async function buildChassis(python: string, root: string, dir: string, s:
 	}
 	// The printed motor clamp, when a motor is clamped (motorMount): print one per clamped motor.
 	const clamp = existsSync(join(dir, "motor-clamp.stl")) ? [join(dir, "motor-clamp.stl")] : []
-	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)).concat(clamp, ros), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")) }
+	// The beacon support's mast, printed in sections (py/chassis.py mast_sections): each its own STL.
+	const mast = readdirSync(dir).filter((f) => /^beacon-mast-\d+\.stl$/.test(f)).sort().map((f) => join(dir, f))
+	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)).concat(clamp, mast, ros), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")) }
 }
 
 // Every hole of a board on the chassis has a standoff under it in the built chassis (mounts.json, measured back from the

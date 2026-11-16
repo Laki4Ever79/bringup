@@ -11,6 +11,7 @@ checked against what was really made.
 """
 
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -19,6 +20,10 @@ from build123d import Box, Cylinder, GeomType, Pos, Rot, export_step, export_stl
 STANDOFF_OD = 5.0
 M25_HOLE = 2.7  # an M2.5 screw's clearance hole: the standoff hole of a spec from before boardScrew
 WALL = 2.0
+MAST_FIT = 0.4  # clearance of the mast in its socket and of a spigot in the section below
+MAST_SOCKET_H = 10.0
+MAST_SPIGOT_H = 10.0
+MAST_TOP = 3.0  # the closed top the beacon's Velcro goes on (model.ts BEACON_TOP_MM)
 CLAMP_BOSS = 4.0  # chassis.ts CLAMP_BOSS_MM
 RAIL_H = 3.0
 
@@ -152,6 +157,12 @@ def build(spec):
         if es["collarMm"] > 0:
             part += Pos(es["xMm"], es["yMm"], top + es["collarMm"] / 2) * (Cylinder(ring_in + WALL, es["collarMm"]) - Cylinder(ring_in, es["collarMm"] + 2))
 
+    # A beacon support's socket on the plate (chassis.ts ChassisBeacon): a square ring the mast's first section stands in.
+    bc = spec.get("beacon")
+    if bc:
+        inner = bc["sizeMm"] + MAST_FIT
+        part += Pos(bc["xMm"], bc["yMm"], t + MAST_SOCKET_H / 2) * (Box(inner + 2 * WALL, inner + 2 * WALL, MAST_SOCKET_H) - Box(inner, inner, MAST_SOCKET_H + 2))
+
     # Measure the holes back from the solid: the circular edges of each hole size, by centre.
     def centres(radius):
         found = []
@@ -191,6 +202,29 @@ def build(spec):
     return part, mounts
 
 
+def mast_sections(spec):
+    """The beacon support's mast as printable sections (chassis.ts ChassisBeacon): square tubes, the last closed on top
+    (the beacon's platform), each above the first with a spigot into the one below. Heights from the plate's top."""
+    bc = spec.get("beacon")
+    if not bc:
+        return []
+    p = spec["plate"]
+    height = bc["topMm"] - p["clearanceMm"] - p["thicknessMm"]
+    n = max(1, math.ceil(height / bc["sectionMaxMm"]))
+    each = height / n
+    s, w = bc["sizeMm"], bc["wallMm"]
+    out = []
+    for i in range(n):
+        tube = Pos(0, 0, each / 2) * (Box(s, s, each) - Box(s - 2 * w, s - 2 * w, each + 2))
+        if i == n - 1:
+            tube += Pos(0, 0, each - MAST_TOP / 2) * Box(s, s, MAST_TOP)
+        if i > 0:
+            sp = s - 2 * w - MAST_FIT
+            tube += Pos(0, 0, -MAST_SPIGOT_H / 2) * (Box(sp, sp, MAST_SPIGOT_H) - Box(sp - 2 * w, sp - 2 * w, MAST_SPIGOT_H + 2))
+        out.append((tube, round(each, 2)))
+    return out
+
+
 def main():
     if len(sys.argv) != 3:
         print("usage: chassis.py <spec.json> <out-dir>", file=sys.stderr)
@@ -205,6 +239,9 @@ def main():
         sys.exit(1)
     export_step(part, str(out / "chassis.step"))
     export_stl(part, str(out / "chassis.stl"))
+    for i, (sec, h) in enumerate(mast_sections(spec), 1):
+        export_stl(sec, str(out / f"beacon-mast-{i}.stl"))
+        mounts.setdefault("beaconMast", []).append({"section": i, "heightMm": h})
     # The motor clamp (one per clamped motor, all alike): a bar under the motor across the cradle and its bosses, a
     # clearance hole for each M2 screw.
     clamped = [m for m in spec["motors"] if m.get("mount", {}).get("kind") == "clamp"]

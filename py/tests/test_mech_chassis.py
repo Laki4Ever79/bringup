@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chassis import ChassisError, build  # noqa: E402
+from chassis import ChassisError, build, mast_sections  # noqa: E402
 
 SPEC = {
     "plate": {"lengthMm": 150, "widthMm": 110, "thicknessMm": 3, "clearanceMm": 35},
@@ -20,6 +20,23 @@ SPEC = {
 
 
 class ChassisTest(unittest.TestCase):
+    def test_the_beacon_mast_prints_in_sections_on_a_socket_with_a_closed_top(self):
+        # The Eurobot base's beacon support (chassis.ts ChassisBeacon, Eurobot General Rules 1.2 F.6): its top at 430 mm,
+        # the plate's top at 38 mm here, so 392 mm of mast: two sections of 196 mm, at most 200 mm each.
+        bc = {"xMm": 0, "yMm": 0, "topMm": 430, "sizeMm": 70, "wallMm": 1.2, "sectionMaxMm": 200}
+        base = {**SPEC, "motors": [{**m, "mount": {"kind": "cradle"}} for m in SPEC["motors"]]}
+        secs = mast_sections({**base, "beacon": bc})
+        self.assertEqual([h for _, h in secs], [196.0, 196.0])
+        top, _ = secs[-1]
+        bb = top.bounding_box()
+        self.assertAlmostEqual(bb.max.Z, 196.0, delta=0.05)
+        self.assertAlmostEqual(bb.min.Z, -10.0, delta=0.05)  # its spigot into the section below
+        self.assertAlmostEqual(bb.max.X - bb.min.X, 70.0, delta=0.05)
+        part, _ = build({**base, "beacon": bc})
+        plain, _ = build(base)
+        self.assertGreater(part.volume, plain.volume)  # the socket on the plate
+        self.assertEqual(mast_sections(base), [])
+
     def test_the_estop_deck_spans_the_plate_with_the_buttons_cutout_and_its_collar(self):
         # The Eurobot base's emergency stop (chassis.ts ChassisEstop, 16 Nov 2026): a bridge on two walls at the plate's
         # long edges, a 2 mm panel with the A22E's 22.3 mm cutout at the button's place, and the 7 mm collar on top.

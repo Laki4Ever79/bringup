@@ -69,8 +69,13 @@ export const MIN_CRUISE_DUTY = 0.3
 export function brakeDecel(onWheels: number): number {
 	return G * (est("floorMu") * onWheels + est("casterMu") * (1 - onWheels))
 }
-export function brakeMm(speedMps: number, onWheels: number): number {
-	return ((speedMps ** 2) / (2 * brakeDecel(onWheels))) * 1000
+// The deceleration (and acceleration) the robot actually sees: the floor's, or less where the firmware ramps the duty
+// (mechanics.drive.maxAccelMps2).
+export function drivenDecel(onWheels: number, maxAccelMps2?: number): number {
+	return Math.min(brakeDecel(onWheels), maxAccelMps2 ?? Infinity)
+}
+export function brakeMm(speedMps: number, onWheels: number, maxAccelMps2?: number): number {
+	return ((speedMps ** 2) / (2 * drivenDecel(onWheels, maxAccelMps2))) * 1000
 }
 // Turning in place: the rover pivots on its axle's midpoint, so its footprint sweeps a circle as far as its farthest
 // point from there (a plate corner, usually the rear one, or a wheel's outer edge).

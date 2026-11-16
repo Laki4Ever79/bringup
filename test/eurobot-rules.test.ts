@@ -8,23 +8,20 @@ import { motionBriefChecks, motionFromBrief } from "../src/mechanics/brief.ts"
 import { mechanicsSection } from "../src/mechanics/report.ts"
 import { motionShapeError } from "../src/mechanics/shape.ts"
 import { hullPerimeterMm } from "../src/rules/eurobot.ts"
-import { ROVER_BOARD } from "../src/inference/scripts.ts"
+import { EUROBOT_BOARD, ROVER_BOARD } from "../src/inference/scripts.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
 const ROOT = new URL("..", import.meta.url).pathname
 const snap = (v: unknown): ContractSnapshot => ({ revision: 1, versions: {} as never, values: v as never })
-// The reference rover, entered for Eurobot, with or without its e-stop (deck 125 mm, 7 mm collar) and pull-cord start.
+// The scripted Eurobot base (EUROBOT_BOARD: sized to carry the beacon), with or without its e-stop and pull-cord start.
 function rover(safe = true, edit: (v: Any) => void = () => {}): ContractSnapshot {
-	const v = JSON.parse(JSON.stringify(ROVER_BOARD))
-	v.motion.rules = "eurobot-2026"
-	if (safe) {
-		const used = new Set(v.pins.map((p: Any) => p.gpio))
-		v.parts.push({ ref: "JS1", role: "start", mpn: "PZ254V-11-02P", lcsc: "C492401", footprint: "pinrow2", pins: ["START", "GND"] })
-		v.parts.push({ ref: "JE1", role: "estop", mpn: "B2B-XH-A(LF)(SN)", lcsc: "C158012", footprint: "pinrow2_p2.5_id1_od1.8", pins: ["VBAT", "VM"] })
-		v.pins.push({ signal: "START", gpio: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].find((g) => !used.has(g)), partRef: "JS1", partPin: "START" })
-		v.mechanics.safety = { estop: { part: "OMRON A22E-M-01", at: { xMm: 20, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } }
+	const v = JSON.parse(JSON.stringify(EUROBOT_BOARD))
+	if (!safe) {
+		v.parts = v.parts.filter((p: Any) => p.ref !== "JS1" && p.ref !== "JE1")
+		v.pins = v.pins.filter((p: Any) => p.signal !== "START")
+		delete v.mechanics.safety
 	}
 	edit(v)
 	return snap(v)
@@ -48,7 +45,7 @@ test("the reference rover without safety parts fails the rules on its e-stop and
 	assert.match(before[1], /^F\.6.*only a pull-cord start/)
 	assert.deepEqual(mechanicsChecksWith(rover(), defaultCheckCatalog()!), [])
 	const figs = mechanicsFigures(rover()).filter((f) => f.check.startsWith("eurobot-2026"))
-	assert.equal(figs.length, 7)
+	assert.equal(figs.length, 11)
 	assert.ok(figs.every((f) => f.ok && f.sources?.[0].url.includes("eurobot.org")))
 })
 
@@ -63,7 +60,7 @@ test("a short cord, no match stop, too high a voltage and too big an outline are
 	assert.match(rules(rover(true, (x) => (x.mechanics.safety.start.cordMm = 300)))[0], /^F\.6.*at least 500 mm/)
 	assert.match(rules(rover(true, (x) => delete x.mechanics.safety.start.matchS))[0], /^H\.2.*never stops the robot/)
 	const cat = JSON.parse(JSON.stringify(defaultCheckCatalog()!))
-	const pack = cat.mech.batteries.find((b: Any) => b.mpn === ROVER_BOARD.mechanics.battery.pack)
+	const pack = cat.mech.batteries.find((b: Any) => b.mpn === EUROBOT_BOARD.mechanics.battery.pack)
 	pack.fullV = 50
 	assert.ok(mechanicsChecksWith(rover(), cat).some((x) => x.kind === "mech-rules" && /^F\.4\.b.*48 V/.test(x.message)))
 	assert.ok(hullPerimeterMm([{ what: "plate", xMm: 0, yMm: 0, zMm: 0, sizeMm: [300, 300, 3], massG: 0 }]) === 1200)
@@ -85,7 +82,7 @@ test("a brief that names Eurobot asks the architect for motion.rules; the contra
 
 test("the report lists what isn't checked against the rules, never as passed", () => {
 	const text = mechanicsSection(rover(), undefined).join("\n")
-	assert.match(text, /Not checked against Eurobot General Rules.*\n- F\.6 beacon support/)
+	assert.match(text, /Not checked against Eurobot General Rules[^\n]*\n(- [^\n]*\n)*- F\.6 beacon support: solid and opaque/)
 	assert.match(text, /eurobot-2026: Start perimeter \| \d+ mm \| 1200 mm \(F\.3 Dimensions\) \| ok/)
 	assert.doesNotMatch(mechanicsSection(snap(JSON.parse(JSON.stringify(ROVER_BOARD))), undefined).join("\n"), /Not checked against/)
 })

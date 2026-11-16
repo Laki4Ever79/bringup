@@ -9,7 +9,7 @@ import { plateLimitForBrief, blocksSensor, motorHalfUnder, motorUnderPlateMm, mo
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
-import { brakeDecel, brakeMm, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon, TURN_CLEARANCE_MM, turnStopMm, turnSweepMm } from "./model.ts"
+import { brakeDecel, brakeMm, drivenDecel, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon, TURN_CLEARANCE_MM, turnStopMm, turnSweepMm } from "./model.ts"
 import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 import { driveTrainChecks } from "./drivetrain.ts"
 import { field, moduleById } from "../system/bought.ts"
@@ -320,7 +320,7 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// distance the brief allows.
 	const rangeMm = sensor?.rangeMm ?? 0, updateMs = sensor?.updateMs ?? 0
 	if (sensor && rangeMm > 0) {
-		const stopMm = brakeMm(motion.speedMps, onWheels) + motion.speedMps * updateMs
+		const stopMm = brakeMm(motion.speedMps, onWheels, d.maxAccelMps2) + motion.speedMps * updateMs
 		const roomMm = rangeMm - motion.stopBeforeWallMm
 		fig("Stopping distance", `${r1(stopMm)} mm`, `at most ${r1(roomMm)} mm`, stopMm <= roomMm, `braking on the wheels' ${Math.round(onWheels * 100)} % of the weight plus one ${updateMs} ms sensor period ${estNote("floorMu")} ${estNote("casterMu")}`)
 		if (stopMm > roomMm)
@@ -377,12 +377,12 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// grip caps both: braking moves it forward by h·a/g, accelerating (or braking in reverse) back by as much, toward the
 	// caster, where the triangle is narrowest.
 	const poly = supportPolygon(mech, cat.mech)
-	const decel = brakeDecel(onWheels)
+	const decel = drivenDecel(onWheels, d.maxAccelMps2)
 	const still = insideMargin([com[0], com[1]], poly)
 	const braking = insideMargin([com[0] + (com[2] * decel) / G, com[1]], poly)
 	const accelerating = insideMargin([com[0] - (com[2] * decel) / G, com[1]], poly)
 	const worst = Math.min(still, braking, accelerating)
-	fig("Tipping margin", `${r1(worst)} mm`, `at least ${TIP_MARGIN_MM} mm`, worst >= TIP_MARGIN_MM, `centre of mass to the support triangle's edge, still, braking and accelerating ${estNote("floorMu")}`)
+	fig("Tipping margin", `${r1(worst)} mm`, `at least ${TIP_MARGIN_MM} mm`, worst >= TIP_MARGIN_MM, `centre of mass to the support triangle's edge, still, braking and accelerating ${d.maxAccelMps2 && d.maxAccelMps2 < brakeDecel(onWheels) ? `at the firmware's ${d.maxAccelMps2} m/s² ramp` : estNote("floorMu")}`)
 	if (worst < TIP_MARGIN_MM) {
 		const when = worst === still ? "" : worst === braking ? "when braking hard " : "when accelerating hard (or braking in reverse) "
 		const fix = worst === accelerating && worst < still ? "lengthen the wheelbase, or move weight (the battery) forward and down" : "lengthen the wheelbase, or move weight (the battery) back and down"
