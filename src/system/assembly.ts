@@ -296,8 +296,23 @@ export function withOutlines(a: SystemAssembly, outlines: Record<string, Outline
 		const right = b.xMm >= 0
 		const reach = kept.reduce((m, k) => Math.max(m, right ? k.xMm + footprint(k).xMm / 2 : -(k.xMm - footprint(k).xMm / 2)), 0)
 		const x = (right ? 1 : -1) * (reach + BOARD_GAP_MM + w / 2)
+		// The row it joins, shifted along x as a whole so it sits centred: main need not stay at the plate's centre when the
+		// row fits the limit's length but not around main (the scripted rover + climate, 16 Nov: two 40 mm estimates need
+		// 88 of the 130 mm, but 68 mm on main's side, so climate went to a second row and the plate grew to 126 mm wide
+		// against the brief's 96; main, handed that plate, never settled).
+		const row = kept.filter((k) => Math.abs(k.yMm - b.yMm) < (footprint(k).yMm + footprint(b).yMm) / 2)
+		const lo = Math.min(x - w / 2, ...row.map((k) => k.xMm - footprint(k).xMm / 2)), hi = Math.max(x + w / 2, ...row.map((k) => k.xMm + footprint(k).xMm / 2))
+		const shift = -(lo + hi) / 2
+		const fitsCentred = Math.abs(x) + w / 2 > lim.x + 1e-9 && hi - lo <= 2 * lim.x + 1e-9 && (() => {
+			const moved = [...row.map((k) => ({ ...k, xMm: k.xMm + shift })), { ...b, xMm: x + shift }]
+			const others = kept.filter((k) => !row.includes(k))
+			return moved.every((m) => others.every((o) => !overlaps(m, o)))
+		})()
 		if (Math.abs(x) + w / 2 <= lim.x + 1e-9) b.xMm = x
-		else {
+		else if (fitsCentred) {
+			for (const k of row) k.xMm = Math.round((k.xMm + shift) * 10) / 10
+			b.xMm = Math.round((x + shift) * 10) / 10
+		} else {
 			// Past the limit along x: a new row along y, on the side with less reach, clear of every board kept.
 			const f = footprint(b)
 			const edge = (sign: 1 | -1) => kept.reduce((m, k) => Math.max(m, sign * k.yMm + footprint(k).yMm / 2), 0)
