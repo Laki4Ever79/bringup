@@ -18,11 +18,13 @@ static void linkPoll(uint32_t) {}
 static void linkSendReading(bool, float, float) {}
 #endif
 
-#ifdef ROVER_TURN_COUNTS
-// Wheel encoders (hw_encoder): the turn and the straight close on the wheels' counts (rover.h).
-static const RoverConfig CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS, ROVER_TURN_COUNTS, ROVER_HOLD_GAIN};
-#else
 static const RoverConfig CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS};
+#ifdef ROVER_TURN_COUNTS
+// Wheel encoders (hw_encoder): the turn and the straight close on the wheels' counts (rover_enc.h). Without them this
+// file compiles to exactly what it did before.
+#include "rover_enc.h"
+static const RoverEncConfig ENC_CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS, ROVER_TURN_COUNTS, ROVER_HOLD_GAIN, ROVER_BACK_COUNTS};
+static RoverEncState encState;
 #endif
 static RoverState state;
 #ifdef PIN_START
@@ -111,7 +113,11 @@ void loop() {
 	int d = hw_distance_mm();
 	uint32_t now = hw_now_ms();
 	hostPoll(now);
-	RoverOut out = rover_step(CFG, state, d, now, hw_encoder(0), hw_encoder(1));
+#ifdef ROVER_TURN_COUNTS
+	RoverOut out = rover_enc_step(ENC_CFG, encState, d, now, hw_encoder(0), hw_encoder(1));
+#else
+	RoverOut out = rover_step(CFG, state, d, now);
+#endif
 	if (hostSeen) {
 		const bool fresh = (uint32_t)(now - hostAt) <= HOST_HOLD_MS;
 		out.left = fresh ? hostLeft : 0;

@@ -1,6 +1,7 @@
 // The rover's control logic on the host: pio test -e native
 #include <unity.h>
 #include "../../src/rover.h"
+#include "../../src/rover_enc.h"
 
 static const RoverConfig CFG = {200, 500, 0.6f, 600};
 
@@ -55,37 +56,51 @@ void test_it_slows_down_approaching_a_wall(void) {
 
 // With wheel encoders (rover.h turnCounts, holdGain): the turn ends on the wheels' counts, not the clock, and a
 // straight holds the wheels' count difference at zero.
-static const RoverConfig ENC = {200, 500, 0.6f, 600, 300, 0.001f};
+static const RoverEncConfig ENC = {200, 500, 0.6f, 600, 300, 0.001f, 0};
 
 void test_with_encoders_the_turn_ends_on_the_counts(void) {
-	RoverState st;
-	RoverOut o = rover_step(ENC, st, 150, 0, 1000, 1000);  // a wall: the turn begins
+	RoverEncState st;
+	RoverOut o = rover_enc_step(ENC, st, 150, 0, 1000, 1000);  // a wall: the turn begins
 	TEST_ASSERT_TRUE(o.left > 0 && o.right < 0);
-	o = rover_step(ENC, st, -1, 100, 1200, 800);  // 200 counts each: still turning
+	o = rover_enc_step(ENC, st, -1, 100, 1200, 800);  // 200 counts each: still turning
 	TEST_ASSERT_TRUE(o.left > 0 && o.right < 0);
-	o = rover_step(ENC, st, -1, 200, 1300, 700);  // 300 counts each: done, though the 600 ms haven't passed
+	o = rover_enc_step(ENC, st, -1, 200, 1300, 700);  // 300 counts each: done, though the 600 ms haven't passed
 	TEST_ASSERT_EQUAL_FLOAT(0.6f, o.left);
 	TEST_ASSERT_EQUAL_FLOAT(0.6f, o.right);
 }
 
 void test_with_encoders_a_stalled_turn_still_ends_on_the_time_limit(void) {
-	RoverState st;
-	rover_step(ENC, st, 150, 0, 0, 0);
-	RoverOut o = rover_step(ENC, st, -1, 1199, 10, -10);
+	RoverEncState st;
+	rover_enc_step(ENC, st, 150, 0, 0, 0);
+	RoverOut o = rover_enc_step(ENC, st, -1, 1199, 10, -10);
 	TEST_ASSERT_TRUE(o.left > 0 && o.right < 0);
-	o = rover_step(ENC, st, -1, 1200, 10, -10);  // twice turnMs: the fail-safe ends it
+	o = rover_enc_step(ENC, st, -1, 1200, 10, -10);  // twice turnMs: the fail-safe ends it
 	TEST_ASSERT_TRUE(o.left > 0 && o.right > 0);
 }
 
 void test_with_encoders_the_straight_steers_back_toward_the_slower_wheel(void) {
-	RoverState st;
-	rover_step(ENC, st, -1, 0, 0, 0);
-	RoverOut o = rover_step(ENC, st, -1, 100, 150, 100);  // the left wheel ran 50 counts ahead: the rover veers right
+	RoverEncState st;
+	rover_enc_step(ENC, st, -1, 0, 0, 0);
+	RoverOut o = rover_enc_step(ENC, st, -1, 100, 150, 100);  // the left wheel ran 50 counts ahead: the rover veers right
 	TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.55f, o.left);
 	TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.65f, o.right);
-	o = rover_step(ENC, st, -1, 200, 1000, 0);  // a large error: the correction stops at a fifth of the duty
+	o = rover_enc_step(ENC, st, -1, 200, 1000, 0);  // a large error: the correction stops at a fifth of the duty
 	TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.48f, o.left);
 	TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.72f, o.right);
+}
+
+// With backCounts: it first backs straight off that far, then turns.
+void test_with_encoders_it_backs_off_before_the_turn(void) {
+	static const RoverEncConfig BACK = {200, 500, 0.6f, 600, 300, 0.001f, 100};
+	RoverEncState st;
+	RoverOut o = rover_enc_step(BACK, st, 150, 0, 0, 0);
+	TEST_ASSERT_TRUE(o.left < 0 && o.right < 0);
+	o = rover_enc_step(BACK, st, -1, 100, -60, -60);  // 60 counts back: still backing
+	TEST_ASSERT_TRUE(o.left < 0 && o.right < 0);
+	o = rover_enc_step(BACK, st, -1, 200, -100, -100);  // 100 counts back: the turn begins
+	TEST_ASSERT_TRUE(o.left > 0 && o.right < 0);
+	o = rover_enc_step(BACK, st, -1, 300, 200, -400);  // 300 counts each since the turn began: done
+	TEST_ASSERT_TRUE(o.left > 0 && o.right > 0);
 }
 
 int main(int, char **) {
@@ -98,5 +113,6 @@ int main(int, char **) {
 	RUN_TEST(test_with_encoders_the_turn_ends_on_the_counts);
 	RUN_TEST(test_with_encoders_a_stalled_turn_still_ends_on_the_time_limit);
 	RUN_TEST(test_with_encoders_the_straight_steers_back_toward_the_slower_wheel);
+	RUN_TEST(test_with_encoders_it_backs_off_before_the_turn);
 	return UNITY_END();
 }
