@@ -202,6 +202,11 @@ export function canBusErrors(spec: SystemSpec): string[] {
 		const total = links.reduce((t, l) => t + l.cable.lengthMm, 0) / 1000
 		const max = CAN_BUS_MAX_M[kbps]
 		if (max !== undefined && total > max) out.push(`CAN bus ${bus} (${ids}): its cables add up to ${total} m, over the ${max} m a bus allows at ${kbps} kbit/s`)
+		// One sender per frame identifier: two nodes sending the same identifier collide in arbitration (CAN gives each
+		// identifier one transmitter, ISO 11898-1), and the receiver couldn't tell them apart.
+		const senders = new Map<string, Set<string>>()
+		for (const l of links) for (const m of l.messages ?? []) senders.set(m.name, new Set([...(senders.get(m.name) ?? []), m.from]))
+		for (const [name, from] of senders) if (from.size > 1) out.push(`CAN bus ${bus}: ${[...from].join(" and ")} all send ${name}: on one bus each frame identifier has one sender; name each node's message apart (${[...from].map((b) => `${name}_${b.replace(/\W+/g, "_")}`).join(", ")})`)
 		// One identifier per message definition across the whole bus: every node hears every frame.
 		const seen = new Map<string, string>()
 		for (const l of links) for (const m of l.messages ?? []) {

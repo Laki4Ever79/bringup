@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs"
-import { canSignals } from "../contract/links.ts"
+import { canSignals, canName } from "../contract/links.ts"
 import { resolve } from "node:path"
 import type { ContractSnapshot, DutyCycle } from "../contract/types.ts"
 import { pathHash, sensorPath } from "../contract/sensor-path.ts"
@@ -229,7 +229,7 @@ export function linkHeader(s: ContractSnapshot): string {
 	// link-unwired tells the architect, and the link here is defines and a note.
 	const signals = new Set((s.values.pins ?? []).map((p) => p.signal))
 	const wired = (l: (typeof links)[number]) =>
-		l.kind === "uart" ? signals.has(`${l.id}_TX`) && signals.has(`${l.id}_RX`) : l.kind === "can" ? signals.has(`${l.id}_CAN_TX`) && signals.has(`${l.id}_CAN_RX`) : signals.has("I2C_SDA") && signals.has("I2C_SCL")
+		l.kind === "uart" ? signals.has(`${l.id}_TX`) && signals.has(`${l.id}_RX`) : l.kind === "can" ? signals.has(canSignals(l).tx) && signals.has(canSignals(l).rx) : signals.has("I2C_SDA") && signals.has("I2C_SCL")
 	const live = links.filter(wired)
 	const target = live.find((l) => l.kind === "i2c" && l.i2c?.role === "target")
 	if (target) lines.push(`// This board is an I2C target: it joins the bus at its address instead of driving it.`, `#define LINK_I2C_TARGET 1`)
@@ -259,7 +259,29 @@ export function linkHeader(s: ContractSnapshot): string {
 	// On an STM32 (bxCAN, the HAL's CAN driver: the profile's firmware flags enable HAL_CAN_MODULE_ENABLED), the same frames.
 	const canStmLink = stm ? live.find((l) => l.kind === "can") : undefined
 	const canStm = Boolean(canStmLink)
-	const sends = live.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "send" && m.name === "reading").map((m) => ({ l, m })))
+	// The reading goes out in each message named "reading", or "reading_<x>" (on a CAN bus each node's own: one frame
+	// identifier per sender). A bus's segments share one controller: a message is sent once per bus, not per segment.
+	const isReading = (name: string) => name === "reading" || name.startsWith("reading_")
+	const sentOnBus = new Set<string>()
+	const sends = live.flatMap((l) =>
+		(l.messages ?? [])
+			.filter((m) => m.dir === "send" && isReading(m.name))
+			.filter((m) => {
+				if (l.kind !== "can") return true
+				const key = `${canName(l)}:${m.hash}`
+				if (sentOnBus.has(key)) return false
+				sentOnBus.add(key)
+				return true
+			})
+			.map((m) => ({ l, m })),
+	)
+	// A CAN frame names its message by its identifier: the link it belongs to is the one that defines it (a bus's segments
+	// all hear every frame), the first CAN link when none does.
+	const canLinkOf = (fallback: string, idExpr: string) =>
+		live
+			.filter((l) => l.kind === "can")
+			.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "receive").map((m) => `(${idExpr}) == (${M(m.name)}_HASH & LINK_HASH_MASK) ? "${l.id}" : `))
+			.join("") + `"${fallback}"`
 	const receives = live.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "receive").map((m) => ({ l, m })))
 	const body: string[] = ["", "#ifdef ARDUINO", "#include <Wire.h>", "#include \"linkframe.h\""]
 	if (can) body.push("#include \"driver/twai.h\"")
@@ -392,8 +414,8 @@ export function linkHeader(s: ContractSnapshot): string {
 				`\t\t}`,
 			)
 		const canIn = receives.find((r) => r.l.kind === "can")
-		if (canStm && canIn) body.push(`\t\tCAN_RxHeaderTypeDef rh;`, `\t\tuint8_t rd[8];`, `\t\twhile (HAL_CAN_GetRxFifoFillLevel(&linkCan, CAN_RX_FIFO0) && HAL_CAN_GetRxMessage(&linkCan, CAN_RX_FIFO0, &rh, rd) == HAL_OK) if (rh.IDE == CAN_ID_EXT && rh.RTR == CAN_RTR_DATA) linkReceived("${canIn.l.id}", rh.ExtId, rd, (uint8_t)rh.DLC);`)
-		if (can && canIn) body.push(`\t\ttwai_message_t f;`, `\t\twhile (twai_receive(&f, 0) == ESP_OK) if (f.extd && !f.rtr) linkReceived("${canIn.l.id}", f.identifier, f.data, f.data_length_code);`)
+		if (canStm && canIn) body.push(`\t\tCAN_RxHeaderTypeDef rh;`, `\t\tuint8_t rd[8];`, `\t\twhile (HAL_CAN_GetRxFifoFillLevel(&linkCan, CAN_RX_FIFO0) && HAL_CAN_GetRxMessage(&linkCan, CAN_RX_FIFO0, &rh, rd) == HAL_OK) if (rh.IDE == CAN_ID_EXT && rh.RTR == CAN_RTR_DATA) linkReceived(${canLinkOf(canIn.l.id, "rh.ExtId")}, rh.ExtId, rd, (uint8_t)rh.DLC);`)
+		if (can && canIn) body.push(`\t\ttwai_message_t f;`, `\t\twhile (twai_receive(&f, 0) == ESP_OK) if (f.extd && !f.rtr) linkReceived(${canLinkOf(canIn.l.id, "f.identifier")}, f.identifier, f.data, f.data_length_code);`)
 		if (target) body.push(`\t\tif (linkTargetGot) {`, `\t\t\tlinkReceived("${target.id}", linkTargetHash, linkTargetFrame, linkTargetLen);`, `\t\t\tlinkTargetGot = false;`, `\t\t}`)
 		body.push("\t\tdelay(5);", "\t} while (millis() - start < ms);")
 	}
