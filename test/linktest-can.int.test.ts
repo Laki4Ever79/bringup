@@ -75,3 +75,42 @@ test("both sides of a CAN link compile as link tests on an STM32F103 (bxCAN)", {
 		assert.equal(r.ok, true, `${name}: ${r.log.slice(-3000)}`)
 	}
 })
+
+// A CAN bus of three boards (link.can.bus): sensor-a and sensor-b at its ends, the hub in the middle on two segments
+// with one transceiver and one controller. Each sensor sends its own message (one sender per frame identifier); the
+// hub receives both and names the segment each came on by its identifier.
+const reading = (name: string, from: string) => ({ name, from, fields: [{ name: "tempCx100", type: "i16" as const }, { name: "rhx100", type: "u16" as const }] })
+const bus: SystemSpec = {
+	name: "three boards on one CAN bus",
+	boards: [{ name: "sensor-a", brief: "a.md" }, { name: "hub", brief: "h.md" }, { name: "sensor-b", brief: "b.md" }],
+	links: [
+		{ id: "L1", kind: "can", a: { board: "sensor-a" }, b: { board: "hub" }, can: { kbps: 500, bus: "B1" }, cable: { lengthMm: 500 }, messages: [reading("reading_a", "sensor-a")] },
+		{ id: "L2", kind: "can", a: { board: "hub" }, b: { board: "sensor-b" }, can: { kbps: 500, bus: "B1" }, cable: { lengthMm: 500 }, messages: [reading("reading_b", "sensor-b")] },
+	],
+}
+function busBoard(name: string): ContractSnapshot {
+	const c = fixtureContract()
+	const links = boardLinks(bus, name)
+	c.values = { ...c.values, ...structuredClone(LOGGER_DESIGN), links }
+	c.values.parts = [...c.values.parts!, ...links.map((l) => ({ ref: l.connector, role: "connector" as const, ...LINK_CONNECTOR })), { ref: "U9", role: "can-transceiver", ...CAN_TRANSCEIVER }]
+	const used = new Set(c.values.pins!.map((p) => p.gpio))
+	const [g1, g2] = [4, 5, 6, 7, 3, 1, 0].filter((g) => !used.has(g))
+	c.values.pins = [...c.values.pins!, { signal: canSignals(links[0]).tx, gpio: g1, partRef: "U9", partPin: "D" }, { signal: canSignals(links[0]).rx, gpio: g2, partRef: "U9", partPin: "R" }]
+	return c
+}
+
+test("a CAN bus of three boards: the middle board receives both ends' messages on one controller; all three compile", { skip: slow || (pio ? false : "needs PlatformIO"), timeout: 1_200_000 }, async () => {
+	for (const name of ["hub", "sensor-a", "sensor-b"]) {
+		const dir = tempDir()
+		await prepareFirmware(ROOT, dir, busBoard(name))
+		const link = readFileSync(join(dir, "include", "link.h"), "utf8")
+		assert.equal(link.match(/twai_driver_install/g)?.length, 1, `${name}: one controller`)
+		if (name === "hub") {
+			assert.match(link, /twai_receive/)
+			assert.match(link, /READING_A_HASH & LINK_HASH_MASK\) \? "L1"/)
+			assert.match(link, /READING_B_HASH & LINK_HASH_MASK\) \? "L2"/)
+		} else assert.match(link, /twai_transmit/)
+		const r = await buildLinkTestFirmware(pio!, dir, BENCH_ENV)
+		assert.equal(r.ok, true, `${name}: ${r.log.slice(-3000)}`)
+	}
+})

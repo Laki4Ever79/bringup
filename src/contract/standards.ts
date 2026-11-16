@@ -22,7 +22,16 @@ export function interfacesOf(s: ContractSnapshot): InterfaceRow[] {
 	const links = v.links ?? []
 	if (links.some((l) => l.kind === "i2c")) out.push({ interface: "I²C link between boards", standard: "I²C (NXP UM10204, freely published)", openness: "open" })
 	if (links.some((l) => l.kind === "uart")) out.push({ interface: "UART link between boards", standard: "asynchronous serial, 8N1 (a de facto standard; no owner)", openness: "open" })
-	if (links.some((l) => l.kind === "can")) out.push({ interface: "CAN link between boards (physical and frames)", standard: "ISO 11898-1/-2 (CAN), 120 Ω terminated", openness: "open" })
+	// A CAN bus of more than two boards (link.can.bus): this board daisy-chains it, terminated only at the bus's two ends.
+	const canLinks = links.filter((l) => l.kind === "can")
+	const bus = canLinks.find((l) => l.can?.bus)?.can?.bus
+	const middle = canLinks.length > 0 && canLinks.every((l) => l.can && !l.can.terminate)
+	if (canLinks.length)
+		out.push({
+			interface: bus ? `CAN bus ${bus} between boards (physical and frames; this board ${middle ? "in the middle of the daisy chain" : "at one end"})` : "CAN link between boards (physical and frames)",
+			standard: bus ? `ISO 11898-1/-2 (CAN): one bus, 120 Ω at its two ends only (${middle ? "not here" : "here"}); each node's stub is its board trace to the transceiver, under ISO 11898-2's 0.3 m at 1 Mbit/s` : "ISO 11898-1/-2 (CAN), 120 Ω terminated",
+			openness: "open",
+		})
 	if (links.some((l) => l.connector)) out.push({ interface: "link connector (JST SH 4-pin, 1 mm)", standard: "JST's SH series; the pin order is SparkFun's Qwiic convention (open)", openness: "vendor", alternative: "the footprint is JST's, but second sources make compatible 1 mm 4-pin housings; the pinout is already the open Qwiic one" })
 	// The messages over a link: our own frame (sync, definition hash, length, XOR) on UART and I2C.
 	if (links.some((l) => (l.kind === "uart" || l.kind === "i2c") && l.messages?.length))

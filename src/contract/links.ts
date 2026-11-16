@@ -11,7 +11,10 @@ export const I2C_ON = { SDA: "IO1", SCL: "IO2" } as const
 // TX in, R its RX out, CANH and CANL to the connector's IO1 and IO2, RS to GND for high-speed mode, Vref left open.
 export const CAN_TRANSCEIVER = { mpn: "SN65HVD230DR", lcsc: "C12084", footprint: "soic8_w4.4mm_p1.27mm", pins: ["D", "GND", "VCC", "R", "Vref", "CANL", "CANH", "RS"] }
 export const CAN_ON = { CANH: "IO1", CANL: "IO2" } as const
-export const canSignals = (l: BoardLink) => ({ tx: `${l.id}_CAN_TX`, rx: `${l.id}_CAN_RX`, h: `${l.id}_CANH`, l: `${l.id}_CANL` })
+// Named after the bus when the link is a segment of one (a middle board's two segments share one transceiver and one
+// controller: the same nets and pins), else after the link.
+export const canName = (l: BoardLink) => l.can?.bus ?? l.id
+export const canSignals = (l: BoardLink) => ({ tx: `${canName(l)}_CAN_TX`, rx: `${canName(l)}_CAN_RX`, h: `${canName(l)}_CANH`, l: `${canName(l)}_CANL` })
 export const canTransceiver = (s: ContractSnapshot) => (s.values.parts ?? []).find((p) => p.role === "can-transceiver")
 export const other = (p: LinkPin): LinkPin => (p === "IO1" ? "IO2" : "IO1")
 export const uartSignals = (l: BoardLink) => ({ tx: `${l.id}_TX`, rx: `${l.id}_RX` })
@@ -131,7 +134,9 @@ export function linkBudget(s: ContractSnapshot): LinkViolation[] {
 	const byPeripheral = new Map<Peripheral, string[]>()
 	for (const l of links) {
 		const p = LINK_KINDS[l.kind].peripheral
-		if (p !== "i2c") byPeripheral.set(p, [...(byPeripheral.get(p) ?? []), l.id])
+		// The segments of one CAN bus share the chip's one controller: counted once, by the bus.
+		const use = l.kind === "can" && l.can?.bus ? `bus ${l.can.bus}` : l.id
+		if (p !== "i2c" && !(byPeripheral.get(p) ?? []).includes(use)) byPeripheral.set(p, [...(byPeripheral.get(p) ?? []), use])
 	}
 	for (const [p, ids] of byPeripheral)
 		if (ids.length > periphFree[p]) out.push({ kind: "link-budget", message: `${ids.join(", ")} all need this board's ${p}, but its ${chip} has ${periphFree[p]} free: the system must move all but ${periphFree[p]} to I2C (links share the board's one I2C bus)`, fields: ["links"], affects: ["integrator"] })

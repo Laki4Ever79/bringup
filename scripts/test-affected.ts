@@ -119,7 +119,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	console.error(`${changed.length} changed file(s) → ${unit.length} unit + ${slow.length} integration/browser test file(s)`)
 	for (const t of tests) console.log(t)
 	if (run && tests.length) {
-		const r = spawnSync("npx", ["tsx", "--test", "--test-concurrency=3", ...tests], { cwd: root, stdio: "inherit", env: { ...process.env, BRINGUP_SLOW: "1", MOZAIK_CREDENTIALS_FILE: "/dev/null", MOZAIK_API_KEY: "" } })
+		// BRINGUP_TEST_CONCURRENCY: fewer files at once when the machine is shared (several sessions' builds, 16 Nov 2026).
+		const concurrency = Math.max(1, Number(process.env.BRINGUP_TEST_CONCURRENCY) || 3)
+		const r = spawnSync("npx", ["tsx", "--test", `--test-concurrency=${concurrency}`, ...tests], { cwd: root, stdio: "inherit", env: { ...process.env, BRINGUP_SLOW: "1", MOZAIK_CREDENTIALS_FILE: "/dev/null", MOZAIK_API_KEY: "" } })
 		process.exit(r.status ?? 1)
 	}
 }

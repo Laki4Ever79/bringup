@@ -175,12 +175,56 @@ export function minimumBoard(s: ContractSnapshot): MinimumBoard | null {
 
 // The compact board closest to the current proportions: of the shapes that place every part within the limit, the
 // one whose width-to-height ratio is nearest. The rule judges area; this keeps a 50×30 board from becoming a strip.
+// The smallest area a board can have and still meet the engineer's size limit (requirements.size, either way round): the
+// base compactness is judged against. Without a limit, or when no shape meets it, the plain minimum. A CAN bus's middle
+// board (two connectors and a transceiver) packs smallest at 41 x 31 mm, but "about 50 x 30 mm" caps it at 30 mm tall,
+// and no shape within 15 % of 41 x 31 is: so the rule and the limit asked for opposite things and it never settled.
+export function compactBase(s: ContractSnapshot, min: MinimumBoard): number {
+	const lim = s.values.requirements?.size
+	if (!lim || lim.exact) return min.areaMm2
+	const within = [...min.shapes, ...limitShapes(s, min, lim)].filter((x) => withinLimit(x, lim)).map((x) => x.widthMm * x.heightMm)
+	return within.length ? Math.max(min.areaMm2, Math.min(...within)) : min.areaMm2
+}
+// The shapes inside the limit, when minimumBoard's (which never grow past the board's own width) has none: for each height
+// up to the limit's, the narrowest width within it that places everything.
+const limitCache = new Map<string, { widthMm: number; heightMm: number }[]>()
+function limitShapes(s: ContractSnapshot, min: MinimumBoard, lim: { widthMm: number; heightMm: number }): { widthMm: number; heightMm: number }[] {
+	if (min.shapes.some((x) => withinLimit(x, lim))) return []
+	const { parts, connectors, pins, rails, outline } = s.values
+	const key = JSON.stringify({ parts, connectors, pins, rails, t: outline?.thicknessMm, lim, failed: routingFailures(s) })
+	if (limitCache.has(key)) return limitCache.get(key)!
+	const fits = (w: number, h: number) => !insideFailed(s, w, h) && placesAll(s, w, h)
+	const out: { widthMm: number; heightMm: number }[] = []
+	const [W, H] = [Math.floor(lim.widthMm), Math.floor(lim.heightMm)]
+	for (let h = H; h >= 10 && out.length < 6; h--) {
+		if (!fits(W, h)) break
+		let [lo, hi] = [10, W]
+		while (lo < hi) {
+			const mid = Math.floor((lo + hi) / 2)
+			if (fits(mid, h)) hi = mid
+			else lo = mid + 1
+		}
+		out.push({ widthMm: hi, heightMm: h })
+	}
+	limitCache.set(key, out)
+	return out
+}
+const withinLimit = (x: { widthMm: number; heightMm: number }, lim: { widthMm: number; heightMm: number }) =>
+	(x.widthMm <= lim.widthMm && x.heightMm <= lim.heightMm) || (x.widthMm <= lim.heightMm && x.heightMm <= lim.widthMm)
+
 export function compactOutline(s: ContractSnapshot): { widthMm: number; heightMm: number } | null {
 	const o = s.values.outline
 	const min = o ? minimumBoard(s) : null
 	if (!o || !min) return null
 	const ratio = Math.log(o.widthMm / o.heightMm)
-	const ok = min.shapes.filter((x) => x.widthMm * x.heightMm <= min.areaMm2 * (1 + SLACK_LIMIT) && x.widthMm * x.heightMm >= min.areaMm2)
+	const base = compactBase(s, min)
+	const lim0 = s.values.requirements?.size
+	const shapes = lim0 && !lim0.exact ? [...min.shapes, ...limitShapes(s, min, lim0)] : min.shapes
+	const all = shapes.filter((x) => x.widthMm * x.heightMm <= base * (1 + SLACK_LIMIT) && x.widthMm * x.heightMm >= min.areaMm2)
+	// Within the engineer's size limit when any shape is, the closest proportions winning.
+	const lim = s.values.requirements?.size
+	const fits = lim && !lim.exact ? all.filter((x) => withinLimit(x, lim)) : []
+	const ok = fits.length ? fits : all
 	ok.sort((a, b) => Math.abs(Math.log(a.widthMm / a.heightMm) - ratio) - Math.abs(Math.log(b.widthMm / b.heightMm) - ratio) || a.widthMm * a.heightMm - b.widthMm * b.heightMm)
 	return ok[0] ?? { widthMm: min.widthMm, heightMm: min.heightMm }
 }
@@ -245,12 +289,13 @@ export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {})
 	}
 	if (opts.quick) return v
 	if (o && min) {
-		const slack = (o.widthMm * o.heightMm) / min.areaMm2 - 1
+		const base = compactBase(s, min)
+		const slack = (o.widthMm * o.heightMm) / base - 1
 		const limit = !sizeReasonHolds(s, o.sizeReason) && o.sizeReason?.kind === "engineer-size"
 		if (slack > SLACK_LIMIT && !sizeReasonHolds(s, o.sizeReason))
 			v.push({
 				kind: "space-slack",
-				message: `the board is ${o.widthMm}×${o.heightMm} mm (${o.widthMm * o.heightMm} mm²), ${pct(slack)} over the smallest it can be (${min.areaMm2} mm², e.g. ${min.widthMm}×${min.heightMm} mm by placement): shrink it to within ${pct(SLACK_LIMIT)}, or record why in outline.sizeReason${limit ? `. The engineer's size (${o.sizeReason!.detail}) is a limit, not a reason for extra room: a board within it and compact meets it. Only an exact size (an existing housing, a chassis: requirements.size exact true) keeps it` : ""}`,
+				message: `the board is ${o.widthMm}×${o.heightMm} mm (${o.widthMm * o.heightMm} mm²), ${pct(slack)} over the smallest it can be (${base} mm², e.g. ${base === min.areaMm2 ? `${min.widthMm}×${min.heightMm} mm by placement` : "the smallest within the engineer's size limit"}): shrink it to within ${pct(SLACK_LIMIT)}, or record why in outline.sizeReason${limit ? `. The engineer's size (${o.sizeReason!.detail}) is a limit, not a reason for extra room: a board within it and compact meets it. Only an exact size (an existing housing, a chassis: requirements.size exact true) keeps it` : ""}`,
 				fields: ["outline"],
 				affects: ["architect"],
 			})

@@ -1224,6 +1224,51 @@
 			}
 		}
 	],
+	"driveTrain": [
+		{
+			"mpn": "ADAFRUIT-1251 GT2 pulley 20T 5 mm bore",
+			"kind": "pulley",
+			"pitchMm": 2,
+			"teeth": 20,
+			"boreMm": 5,
+			"beltWidthMm": 6,
+			"buy": [{ "supplier": "Adafruit", "url": "https://www.adafruit.com/product/1251" }],
+			"source": {
+				"pitchMm": { "url": "https://www.adafruit.com/product/1251", "where": "title: Aluminum GT2 Timing Pulley - 6mm Belt - 20 Tooth - 5mm Bore (GT2: 2 mm pitch)" },
+				"teeth": { "url": "https://www.mouser.com/datasheet/2/737/adafruit_1251_Web-3314737.pdf", "where": "datasheet: 20 teeth" },
+				"boreMm": { "url": "https://www.mouser.com/datasheet/2/737/adafruit_1251_Web-3314737.pdf", "where": "datasheet: 5mm inner bore" },
+				"beltWidthMm": { "url": "https://www.adafruit.com/product/1251", "where": "for GT2 6mm wide belts only" }
+			}
+		},
+		{
+			"mpn": "608ZZ bearing 8x22x7 mm (SMB Bearings)",
+			"kind": "bearing",
+			"boreMm": 8,
+			"outerMm": 22,
+			"widthMm": 7,
+			"ratedLoadN": 3207,
+			"buy": [{ "supplier": "SMB Bearings", "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf" }],
+			"source": {
+				"boreMm": { "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf", "where": "datasheet: 8 mm bore" },
+				"outerMm": { "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf", "where": "datasheet: 22 mm outer diameter" },
+				"widthMm": { "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf", "where": "datasheet: 7 mm width" },
+				"ratedLoadN": { "url": "https://www.smbbearings.com/firebrick/ckeditor/plugins/upload/Uploads/Documents/bearingpdfs/608ZZ-miniature-bearing-8x22x7mm.pdf", "where": "datasheet: dynamic load rating 327 kgf; derived 327 x 9.80665 N" }
+			}
+		},
+		{
+			"mpn": "GOBILDA-3423-0006-0088 GT2 belt 44T closed",
+			"kind": "belt",
+			"pitchMm": 2,
+			"teeth": 44,
+			"widthMm": 6,
+			"buy": [{ "supplier": "goBILDA", "url": "https://www.gobilda.com/2mm-pitch-gt2-timing-belt-6mm-width-88mm-pitch-length-44-tooth/" }],
+			"source": {
+				"pitchMm": { "url": "https://www.gobilda.com/2mm-pitch-gt2-timing-belt-6mm-width-88mm-pitch-length-44-tooth/", "where": "title: 2mm Pitch GT2 Timing Belt (6mm Width, 88mm Pitch Length, 44 Tooth)" },
+				"teeth": { "url": "https://www.gobilda.com/2mm-pitch-gt2-timing-belt-6mm-width-88mm-pitch-length-44-tooth/", "where": "title: 44 Tooth; 88 mm pitch length" },
+				"widthMm": { "url": "https://www.gobilda.com/2mm-pitch-gt2-timing-belt-6mm-width-88mm-pitch-length-44-tooth/", "where": "title: 6mm Width" }
+			}
+		}
+	],
 	"hardware": [
 		{
 			"mpn": "M2x8 self-tapping pan head screw (for plastic)",

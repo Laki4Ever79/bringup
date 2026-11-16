@@ -1,0 +1,12 @@
+{
+	"name": "three climate loggers on one CAN bus",
+	"boards": [
+		{ "name": "sensor-a", "brief": "../logger.md" },
+		{ "name": "hub", "brief": "../logger.md" },
+		{ "name": "sensor-b", "brief": "../logger.md" }
+	],
+	"links": [
+		{ "id": "L1", "kind": "can", "a": { "board": "sensor-a" }, "b": { "board": "hub" }, "can": { "kbps": 500, "bus": "B1" }, "cable": { "lengthMm": 500 }, "messages": [{ "name": "reading_a", "from": "sensor-a", "fields": [{ "name": "tempCx100", "type": "i16" }, { "name": "rhx100", "type": "u16" }] }] },
+		{ "id": "L2", "kind": "can", "a": { "board": "hub" }, "b": { "board": "sensor-b" }, "can": { "kbps": 500, "bus": "B1" }, "cable": { "lengthMm": 500 }, "messages": [{ "name": "reading_b", "from": "sensor-b", "fields": [{ "name": "tempCx100", "type": "i16" }, { "name": "rhx100", "type": "u16" }] }] }
+	]
+}
