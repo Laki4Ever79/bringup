@@ -98,9 +98,9 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 		casterScrew && casterHoles ? line("caster screw", hw, casterScrew.mpn, casterHoles) : null,
 		casterNut && casterHoles ? line("caster nut", hw, casterNut.mpn, casterHoles) : null,
 		sensorScrew ? line("sensor screw", hw, sensorScrew.mpn, sensorHoleCount) : null,
+		sensorNut ? line("sensor nut", hw, sensorNut.mpn, sensorHoleCount) : null,
 		bracketMpn ? line("motor bracket", (cat.motorMounts ?? []) as WithBuy[], bracketMpn, bracketMotors.length) : null,
 		clampScrew ? line("clamp screw", hw, clampScrew.mpn, clampScrews) : null,
-		sensorNut ? line("sensor nut", hw, sensorNut.mpn, sensorHoleCount) : null,
 	].filter((l): l is RobotPartLine => l !== null)
 }
 
