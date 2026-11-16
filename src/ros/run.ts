@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process"
+import { mount } from "../tools/mount.ts"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import type { ChassisSpec } from "../tools/chassis.ts"
@@ -67,7 +68,7 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 	const script = join(out, `run-${o.backend}.sh`)
 	writeFileSync(script, SCRIPT(o.backend === "mock" ? "mock" : "bringup", robot, o.backend), { mode: 0o755 })
 	// Build the workspace first, so the firmware's simulated time isn't spent waiting for colcon.
-	const built = await docker(["run", "--rm", "-u", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, "-e", "HOME=/tmp", "-v", `${ws}:/ws`, "-w", "/ws", ROS_IMAGE, "bash", "-c", "source /opt/ros/jazzy/setup.bash && colcon build --event-handlers console_direct-"], 600_000)
+	const built = await docker(["run", "--rm", "-u", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, "-e", "HOME=/tmp", "-v", mount(ws, "/ws"), "-w", "/ws", ROS_IMAGE, "bash", "-c", "source /opt/ros/jazzy/setup.bash && colcon build --event-handlers console_direct-"], 600_000)
 	if (built.code !== 0) return fail(`colcon build failed: ${built.out.split("\n").slice(-10).join("\n")}`)
 	let drive: Promise<DriveArtifact> | undefined
 	if (o.backend === "qemu") {
@@ -76,7 +77,7 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 		drive = runDrive({ root: o.root, python: o.python, pio: o.pio, fwDir: o.fwDir, spec: o.spec, outDir: join(out, "drive-qemu"), courseS: 90, consolePort: CONSOLE_PORT, timeoutMs: 600_000, buildFlags: "-DROVER_HOST_ONLY" })
 		await new Promise((r) => setTimeout(r, 20_000))
 	}
-	const r = await docker(["run", "--rm", "--network", "host", "-u", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, "-e", "HOME=/tmp", "-v", `${ws}:/ws`, "-v", `${out}:/out`, ROS_IMAGE, `/out/run-${o.backend}.sh`], 300_000)
+	const r = await docker(["run", "--rm", "--network", "host", "-u", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, "-e", "HOME=/tmp", "-v", mount(ws, "/ws"), "-v", mount(out, "/out"), ROS_IMAGE, `/out/run-${o.backend}.sh`], 300_000)
 	const d = drive ? await drive : undefined
 	const file = join(out, `acceptance-${o.backend}.json`)
 	if (!existsSync(file)) return { ...fail(r.out.split("\n").slice(-15).join("\n")), ...(d ? { drive: { result: d.result, reason: d.reason } } : {}) }
@@ -84,7 +85,7 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 	// The bag's rates and the speed reached, against what the design promises.
 	let diagnoses: Diagnosis[] | undefined
 	if (o.spec && o.contract) {
-		const info = await docker(["run", "--rm", "-v", `${out}:/out`, ROS_IMAGE, "bash", "-c", `source /opt/ros/jazzy/setup.bash && ros2 bag info /out/bag-${o.backend}`], 60_000)
+		const info = await docker(["run", "--rm", "-v", mount(out, "/out"), ROS_IMAGE, "bash", "-c", `source /opt/ros/jazzy/setup.bash && ros2 bag info /out/bag-${o.backend}`], 60_000)
 		const achieved = d && d.result !== "not run" ? d.topSpeedMps : undefined
 		diagnoses = diagnose(o.spec, o.contract, { topics: bagStats(info.out), ...(achieved !== undefined ? { achievedSpeedMps: achieved, commandedSpeedMps: o.spec.speedMps } : {}) })
 		writeFileSync(join(out, `diagnoses-${o.backend}.json`), JSON.stringify(diagnoses, null, 1))
