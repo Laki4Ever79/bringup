@@ -1,0 +1,424 @@
+{
+  "revision": 34,
+  "values": {
+    "requirements": {
+      "summary": "Small indoor wheeled rover, avoids walls, carries temp/humidity sensor reporting over BLE, one Li-ion cell charged over USB-C",
+      "peripherals": [
+        "temperature/humidity sensor",
+        "motor driver",
+        "distance sensor",
+        "status LED",
+        "USB-C charger"
+      ],
+      "batteryLifeDays": null,
+      "size": {
+        "widthMm": 150,
+        "heightMm": 120,
+        "exact": false
+      },
+      "enclosure": "none"
+    },
+    "motion": {
+      "speedMps": 0.3,
+      "runtimeMin": 30,
+      "edgeMm": 3,
+      "maxSlopeDeg": 10,
+      "stopBeforeWallMm": 150,
+      "payloadG": 20,
+      "maxSizeMm": [
+        150,
+        120
+      ],
+      "maxMassG": 500
+    },
+    "outline": {
+      "widthMm": 34,
+      "heightMm": 40,
+      "thicknessMm": 1.6
+    },
+    "mechanics": {
+      "drive": {
+        "kind": "differential",
+        "motor": "POLOLU-2365 50:1 MP 6V",
+        "wheel": "POLOLU-1420 wheel 60x8 mm",
+        "caster": "BOTLAND-7292 swivel caster 25 mm",
+        "trackMm": 112,
+        "wheelbaseMm": 100,
+        "axleXMm": 45
+      },
+      "battery": {
+        "pack": "ADAFRUIT-2011 LP-803860 2000 mAh",
+        "at": {
+          "xMm": 45,
+          "yMm": 0
+        }
+      },
+      "sensor": {
+        "module": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+        "at": {
+          "xMm": 73.6,
+          "yMm": 0,
+          "zMm": 50.5
+        },
+        "connector": "JT1"
+      },
+      "chassis": {
+        "plateMm": [
+          150,
+          100
+        ],
+        "thicknessMm": 3,
+        "material": "PLA",
+        "clearanceMm": 35,
+        "boards": [
+          {
+            "name": "main",
+            "at": {
+              "xMm": 0,
+              "yMm": 0
+            },
+            "rotDeg": 0
+          }
+        ]
+      }
+    },
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "bottom",
+        "offsetMm": 17,
+        "widthMm": 9,
+        "heightMm": 3.2
+      },
+      {
+        "ref": "J2",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 26,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JM1",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 10,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JM2",
+        "kind": "header",
+        "edge": "right",
+        "offsetMm": 10,
+        "widthMm": 5.8,
+        "heightMm": 3
+      },
+      {
+        "ref": "JT1",
+        "kind": "header",
+        "edge": "left",
+        "offsetMm": 26,
+        "widthMm": 5.8,
+        "heightMm": 3
+      }
+    ],
+    "rails": [
+      {
+        "name": "VBUS",
+        "voltageV": 5,
+        "regulatorMaxMa": 500,
+        "loadMa": 500
+      },
+      {
+        "name": "VBAT",
+        "voltageV": 3.7,
+        "regulatorMaxMa": 1000,
+        "loadMa": 700
+      },
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 200
+      }
+    ],
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-C3-MINI-1",
+        "lcsc": "C2838502",
+        "footprint": "esp32_c3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO18",
+          "GPIO19",
+          "EN",
+          "3V3",
+          "GND"
+        ],
+        "reason": "Brief: a small rover that reports temperature/humidity over BLE. The module has the BLE radio and 4 MB flash for the reading history, and runs the robot's firmware."
+      },
+      {
+        "ref": "U2",
+        "role": "sensor",
+        "mpn": "SHT40-AD1B-R2",
+        "lcsc": "C2909890",
+        "footprint": "dfn4",
+        "pins": [
+          "SDA",
+          "SCL",
+          "VDD",
+          "VSS"
+        ],
+        "reason": "Brief: carries a temperature/humidity sensor. I2C at 0x44, which does not clash with the VL53L0X at 0x29 on JT1; idle 80 nA."
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "RT9080-33GJ5",
+        "lcsc": "C841192",
+        "footprint": "sot23_5",
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ],
+        "reason": "3V3 rail for the module: rated 600 mA for the ESP32-C3's 0.5 A need, with 2 uA quiescent current for the battery-powered rover."
+      },
+      {
+        "ref": "U4",
+        "role": "charger",
+        "mpn": "TP4054-42-SOT25R",
+        "lcsc": "C32574",
+        "footprint": "sot23_5",
+        "pins": [
+          "CHRG",
+          "GND",
+          "BAT",
+          "VCC",
+          "PROG"
+        ],
+        "reason": "Brief: one Li-ion cell charged over USB-C. Single-cell linear charger, 4.2 V float; the generator sets PROG for about 210 mA."
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ],
+        "reason": "Brief: USB-C charger; also the USB port for flashing the ESP32-C3."
+      },
+      {
+        "ref": "J2",
+        "role": "battery",
+        "mpn": "S2B-PH-K-S(LF)(SN)",
+        "lcsc": "C173752",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "Battery connector: the ADAFRUIT-2011 2000 mAh cell (mechanics.battery.pack) plugs in here."
+      },
+      {
+        "ref": "D1",
+        "role": "led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ],
+        "reason": "Brief: status LED, blinks with the firmware's state."
+      },
+      {
+        "ref": "R1",
+        "role": "resistor",
+        "mpn": "0402WGF4701TCE",
+        "lcsc": "C25900",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ],
+        "reason": "Series current limit for the status LED D1 (470 ohm)."
+      },
+      {
+        "ref": "D2",
+        "role": "charge-led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ],
+        "reason": "Brief: charging state visible with the MCU asleep; wired to the charger's CHRG pin."
+      },
+      {
+        "ref": "R2",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ],
+        "reason": "1k resistor in the charge LED D2 wiring, between its cathode and CHRG."
+      },
+      {
+        "ref": "U5",
+        "role": "motor-driver",
+        "mpn": "DRV8833PWPR",
+        "lcsc": "C50506",
+        "footprint": "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm",
+        "pins": [
+          "nSLEEP",
+          "AOUT1",
+          "AISEN",
+          "AOUT2",
+          "BOUT2",
+          "BISEN",
+          "BOUT1",
+          "nFAULT",
+          "BIN1",
+          "BIN2",
+          "VCP",
+          "VM",
+          "GND",
+          "VINT",
+          "AIN2",
+          "AIN1"
+        ],
+        "reason": "Motion: drives the two POLOLU-2365 motors (0.67 A stall each) from VBAT; 2 A peak per bridge, 2.7-10.8 V motor supply.",
+        "nets": {
+          "VM": "VBAT"
+        }
+      },
+      {
+        "ref": "JM1",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "Motion: the left motor's two wires, 2 A per contact (the generator wires the driver outputs)."
+      },
+      {
+        "ref": "JM2",
+        "role": "connector",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "1",
+          "2"
+        ],
+        "reason": "Motion: the right motor's two wires, 2 A per contact (the generator wires the driver outputs)."
+      },
+      {
+        "ref": "JT1",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "reason": "Motion: the VL53L0X distance sensor's 4-pin connector (mechanics.sensor.connector). The generator joins its IO1 and IO2 to the board's I2C bus."
+      }
+    ],
+    "pins": [
+      {
+        "signal": "MOT_AIN1",
+        "gpio": 6,
+        "partRef": "U5",
+        "partPin": "AIN1"
+      },
+      {
+        "signal": "MOT_AIN2",
+        "gpio": 7,
+        "partRef": "U5",
+        "partPin": "AIN2"
+      },
+      {
+        "signal": "MOT_BIN1",
+        "gpio": 10,
+        "partRef": "U5",
+        "partPin": "BIN1"
+      },
+      {
+        "signal": "MOT_BIN2",
+        "gpio": 3,
+        "partRef": "U5",
+        "partPin": "BIN2"
+      },
+      {
+        "signal": "I2C_SDA",
+        "gpio": 4,
+        "partRef": "U2",
+        "partPin": "SDA"
+      },
+      {
+        "signal": "I2C_SCL",
+        "gpio": 5,
+        "partRef": "U2",
+        "partPin": "SCL"
+      },
+      {
+        "signal": "LED",
+        "gpio": 1,
+        "partRef": "D1",
+        "partPin": "A"
+      }
+    ]
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 13,
+    "connectors": 9,
+    "rails": 1,
+    "parts": 2,
+    "pins": 2,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 2,
+    "mechanics": 4,
+    "assembly": 0
+  }
+}

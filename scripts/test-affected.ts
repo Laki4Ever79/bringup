@@ -13,6 +13,9 @@ import { dirname, join, relative, resolve } from "node:path"
 export const HAND: Record<string, string[]> = {
 	"src/codegen/circuit.ts": ["board-build.int", "space", "debug-port", "en-reset", "bringup-pads", "bench-manifest", "usb-wake", "circuit-codegen"],
 	"src/tools/board.ts": ["board-build.int"],
+	// The parts list reaches bom.json through src/agents/bom.ts, two imports from the test (the fasteners merge, 16 Nov
+	// 2026: bom.test went untested and failed on adopt).
+	"src/tools/robot-parts.ts": ["bom", "robot-parts"],
 	"catalog/mcu/": ["mcu-profile", "mcu-solver", "mcu-board", "mcu-select", "mcu-pins", "mcu-crystal", "mcu-firmware", "mcu-firmware.int"],
 	"catalog/parts.json": ["parts-search", "catalog-facts", "bom"],
 	"templates/fw/": ["firmware.int", "mcu-firmware.int", "mcu-firmware-vendors.int", "firmware-codegen"],
@@ -22,7 +25,7 @@ export const HAND: Record<string, string[]> = {
 	// A bought compute board is read from its module record at run time (src/system/bought.ts).
 	"catalog/modules/": ["modules", "system-bought", "compute-checks", "carrier", "system-facts", "compute-view.browser"],
 	// The compute checks read the bought regulators and packs at run time.
-	"catalog/mechanics.json": ["compute-checks", "system-bought"],
+	"catalog/mechanics.json": ["compute-checks", "system-bought", "bom", "robot-parts", "mech-catalog", "mech-chassis", "mech-checks"],
 	"src/tools/renode.ts": ["mcu-sim", "mcu-system-link.int"],
 	"src/system/linktest.ts": ["system-link.int", "mcu-system-link.int", "linktest-i2c.int", "linktest-usb.int"],
 }

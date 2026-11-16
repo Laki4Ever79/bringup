@@ -106,6 +106,11 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	let lastNeed: string | null | undefined
 	const needChanged = () => opts.notNeeded !== undefined && opts.notNeeded(state().contract.snapshot()) !== lastNeed
 	const self: { id: string } = { id: "" }
+	// What the last successful build was built from, documentation left out: a change that only rewrites why (a part's
+	// reason) builds nothing new, so the last artifact stands for the new revision (rover run cc-rover-7 on the Claude
+	// subscription, 16 Nov 2026: the parts agent reworded D1's reason, the board rebuilt for 26 minutes and the run's
+	// hour ran out waiting for it).
+	let lastBuilt: string | null = null
 	const rebuilder = new Rebuilder(async (revision) => {
 		const s = state()
 		const snapshot = s.contract.snapshot()
@@ -119,6 +124,13 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			delete s.artifactFailures[opts.kind]
 			s.artifactInputs[opts.kind] = inputs
 			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, skipped }), self.id)
+			return
+		}
+		const built = physical(opts.inputs.map((f) => snapshot.values[f]))
+		if (built === lastBuilt && (s.artifacts as Record<string, unknown>)[opts.kind] !== undefined && !s.artifactFailures[opts.kind]) {
+			s.artifactInputs[opts.kind] = inputs
+			const drc = ((s.artifacts as Record<string, unknown>)[opts.kind] as { drc?: DrcSummary | null }).drc
+			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}) }), self.id)
 			return
 		}
 		try {
@@ -135,6 +147,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 				return
 			}
 			delete s.artifactFailures[opts.kind]
+			lastBuilt = built
 			// A board's KiCad DRC summary rides along, so the dashboard can show it live (not only in report.md).
 			const drc = (artifact as { drc?: DrcSummary | null }).drc
 			const summary = opts.summary?.(artifact as ArtifactOf[K])
@@ -300,4 +313,9 @@ export function createTestkitBuilder(env: Env, lock?: BuildLock): Human {
 		build: ({ dir, snapshot, revision }) => buildTestkit(env, env.root, dir, snapshot, revision),
 		failure: (kit) => (env.pio && !kit.firmware.ok ? `factory-test firmware does not compile:\n${kit.firmware.log}` : kit.fixtureIssues.find((i) => !/not installed/.test(i)) ?? null),
 	})
+}
+
+// The build inputs as JSON with every "reason" key left out: what a build is made from, not why.
+function physical(values: unknown[]): string {
+	return JSON.stringify(values, (key, value) => (key === "reason" ? undefined : value))
 }
