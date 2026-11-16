@@ -22,6 +22,8 @@ export const APPROVAL_TIMEOUT_MS = process.env.BRINGUP_PROVIDER === "claude-code
 
 export class BringupState extends RuntimeState {
 	readonly contract = new DesignContract()
+	// Why the run stopped before its design could settle (the model provider's limit), or null.
+	stopped: string | null = null
 	readonly artifacts: Artifacts = {}
 	// Per artifact: the versions of its input fields it was last built from.
 	readonly artifactInputs: Partial<Record<ArtifactKind, Partial<Record<FieldName, number>>>> = {}

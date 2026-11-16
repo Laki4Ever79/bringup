@@ -1,4 +1,5 @@
 import { readBrief } from "./brief-file.ts"
+import { modelLimitOf } from "./inference/limit.ts"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join, basename } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -117,7 +118,19 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	state.contract.setCatalog(loadCatalog(ROOT))
 	state.review.enabled = opts.review ?? true
 	state.review.maxRounds = opts.maxReviewRounds ?? MAX_REVIEW_ROUNDS
-	startRuntime(state, inferenceConfig(opts.mock, opts.scripts ?? mockScripts(), undefined, (r) => appendUsage(opts.outDir, r)), join(opts.outDir, "trace.jsonl"))
+	// The provider's limit stops the run at once, with the reason, instead of letting the silenced agents "settle".
+	let stopOnLimit: (s: Settlement) => void = () => {}
+	const limitHit = new Promise<Settlement>((r) => (stopOnLimit = r))
+	const onFailure = (model: string, error: string) => {
+		console.error(`[bringup] ${model} inference failed: ${error}`)
+		const limit = modelLimitOf(error)
+		if (limit && !state.stopped) {
+			state.stopped = `the model provider's limit was reached: ${limit}`
+			console.error(`[bringup] stopping the run: ${state.stopped}`)
+			stopOnLimit({ settled: false, revision: state.contract.revision })
+		}
+	}
+	startRuntime(state, inferenceConfig(opts.mock, opts.scripts ?? mockScripts(), onFailure, (r) => appendUsage(opts.outDir, r)), join(opts.outDir, "trace.jsonl"))
 
 	// First, so the one Cloud session sees every participant join and every event (null without a key).
 	const cloud = startCloudSession(() => state.getParticipants())
@@ -233,7 +246,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 
 	const timeoutMs = runTimeoutMs(opts)
 	const deadline = new Promise<Settlement>((r) => setTimeout(() => r({ settled: false, revision: state.contract.revision }), timeoutMs).unref())
-	const outcome = await Promise.race([settledPromise, deadline])
+	const outcome = await Promise.race([settledPromise, deadline, limitHit])
 	// Scripted changes, until the last one has settled or the run's time is up.
 	if (scripted) await Promise.race([allChanged, deadline])
 	if (changeTimer) clearTimeout(changeTimer)

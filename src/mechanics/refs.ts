@@ -6,6 +6,10 @@ import type { Part } from "../contract/types.ts"
 // is JT1 (mechanics.sensor.connector); the two motors' 2-pin plugs are JM1 and JM2.
 export const SENSOR_PLUG_REF = "JT1"
 export const MOTOR_PLUG_REFS = ["JM1", "JM2"] as const
+// The emergency stop's plug (role estop) is JE1 and the start cord's (role start) JS1, likewise (run cc-eurobot-10, 16
+// Nov 2026: the start plug went JS1 → J4 while the pins said J4.START and the parts JS1, in its first 13 minutes).
+export const ESTOP_PLUG_REF = "JE1"
+export const START_PLUG_REF = "JS1"
 
 export const isSensorPlug = (p: Part) => p.role === "connector" && p.pins.length === 4
 // A motor's plug: 2-pin (pins 1, 2), or an encoder gearmotor's 6-pin (M1, M2, its encoder's VCC, GND, ENCA, ENCB).
@@ -20,6 +24,10 @@ export function robotRefs(parts: Part[]): { parts: Part[]; renames: Record<strin
 	const want = new Map<Part, string>()
 	if (sensor) want.set(sensor, SENSOR_PLUG_REF)
 	motors.forEach((m, i) => want.set(m, MOTOR_PLUG_REFS[i]))
+	const estop = parts.find((p) => p.role === "estop" && p.ref === ESTOP_PLUG_REF) ?? parts.find((p) => p.role === "estop")
+	const start = parts.find((p) => p.role === "start" && p.ref === START_PLUG_REF) ?? parts.find((p) => p.role === "start")
+	if (estop) want.set(estop, ESTOP_PLUG_REF)
+	if (start) want.set(start, START_PLUG_REF)
 	const fixed = new Set(want.values())
 	const used = new Set(parts.map((p) => p.ref))
 	const renames: Record<string, string> = {}
