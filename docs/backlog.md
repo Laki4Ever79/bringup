@@ -201,6 +201,12 @@ is a change to the firmware toolchain, not just the code.
       printed clamp (motor-clamp.stl) on two M2 self-tapping screws into bosses. Else a hardware-misfit says nothing holds
       it there. Found on the way: the cradle needs 2 mm of wall above the motor, so every real subscription rover (5.0 mm
       asked) was built at 7.0 mm without a word; brackets now hold them at 5.0. The plate height is never changed.
+      Step 16 Nov (branch cables): the robot's cables, measured along the chassis from the board's plug plus 40 mm slack
+      (chassis.ts robotCables): the sensor's STEMMA QT cable (Adafruit 50/100/200/300/400 mm, shortest that reaches) and
+      each motor's JST PH 2-pin leads (Adafruit 261, 100 mm; Artekit 300 mm, 24 AWG). The rovers: 0 → 1 sensor cable +
+      2 motor leads; unfastened notes 2 → 1 (the battery strap: its shops refused automated reads, open). A run no
+      catalog cable reaches, or a motor with no plug, is said in the notes. Left: battery strap, crimp housings for
+      bare motor terminals (soldered leads assumed), a 2S pack's XT60 lead.
       Measured for the next step: Pololu's motor bracket pair #989 (two Ø2.3 mm holes 18.0 mm apart in a 1.4 mm base,
       #2-56 screws and nuts included; from Pololu's STEP). Left: motor clamps, battery strap, cables and crimp housings.
 - [x] **Bring-up test pads on every design, on by default** (built 13 Nov, 54e83ec; the nets a learned part adds come

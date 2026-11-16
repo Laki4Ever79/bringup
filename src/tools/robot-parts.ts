@@ -5,7 +5,7 @@
 import { byMpn, loadMechCatalog, type MechCatalog } from "../mechanics/catalog.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { checkOffer, type OfferCheck } from "./offers.ts"
-import { chassisSpec, CRADLE_WALL_MM, type ChassisSpec } from "./chassis.ts"
+import { chassisSpec, CRADLE_WALL_MM, robotCables, type ChassisSpec } from "./chassis.ts"
 import type { HardwarePart } from "../mechanics/catalog.ts"
 import { resolve } from "node:path"
 
@@ -18,7 +18,7 @@ export interface BuyLink {
 }
 
 export interface RobotPartLine {
-	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut" | "motor bracket" | "clamp screw"
+	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut" | "motor bracket" | "clamp screw" | "sensor cable" | "motor lead"
 	mpn: string
 	qty: number
 	packs: number // packs to buy at the first link's pack size
@@ -82,6 +82,12 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 	const sensorScrew = sensorHoleCount ? hw.find((h) => h.kind === "screw" && !h.selfTapping && h.threadMm === screwFor(spec!.sensor.holeDiaMm)) : undefined
 	const sensorNut = sensorScrew && hw.find((h) => h.kind === "nut" && h.threadMm === sensorScrew.threadMm)
 	const casterHoles = spec ? spec.caster.holesMm.length : 0
+	// The cables, by length from the chassis (chassis.ts robotCables).
+	const cables = spec ? robotCables(s, spec, cat.cables ?? []) : []
+	const cableLine = (item: RobotPartLine["item"], kind: string) => {
+		const got = cables.filter((c) => c.kind === kind && c.cable)
+		return got.length ? line(item, (cat.cables ?? []) as WithBuy[], got.reduce((a, c) => (c.cable!.lengthMm > a.cable!.lengthMm ? c : a)).cable!.mpn, got.length) : null
+	}
 	// How the motors are held (chassis.ts motorMount): a bought bracket each (screws and nuts come with it), or a printed
 	// clamp held by two of the board's M2 self-tapping screws.
 	const bracketMotors = (spec?.motors ?? []).filter((x) => x.mount.kind === "bracket")
@@ -99,6 +105,8 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 		casterNut && casterHoles ? line("caster nut", hw, casterNut.mpn, casterHoles) : null,
 		sensorScrew ? line("sensor screw", hw, sensorScrew.mpn, sensorHoleCount) : null,
 		sensorNut ? line("sensor nut", hw, sensorNut.mpn, sensorHoleCount) : null,
+		cableLine("sensor cable", "stemma-qt"),
+		cableLine("motor lead", "jst-ph-2-leads"),
 		bracketMpn ? line("motor bracket", (cat.motorMounts ?? []) as WithBuy[], bracketMpn, bracketMotors.length) : null,
 		clampScrew ? line("clamp screw", hw, clampScrew.mpn, clampScrews) : null,
 	].filter((l): l is RobotPartLine => l !== null)
@@ -119,7 +127,14 @@ export function robotPartNotes(s: ContractSnapshot): string[] {
 		...(chassisSpec(s)?.sensor.holes.length ? [] : ["the sensor bracket: no screw holes for the distance sensor's breakout (its catalog entry has no mounting holes, or none lands above the plate)"]),
 		...((chassisSpec(s)?.motors ?? []).some((x) => x.mount.kind === "cradle-too-shallow") ? ["the motors: the printed cradle can't hold them at the design's axle height, and no bought bracket fits (the hardware check says what to change)"] : []),
 		"the battery sits between two printed rails: no strap or holder yet",
-		"cables (motor leads, the sensor's STEMMA QT cable, the battery lead) and their crimp housings aren't listed yet",
+		...(() => {
+			const spec = chassisSpec(s)
+			const cables = spec ? robotCables(s, spec, loadMechCatalog(ROOT).cables ?? []) : []
+			const short = cables.filter((c) => !c.cable).map((c) => `the ${c.what}'s cable from ${c.from} needs ${c.needMm} mm, longer than any in catalog/mechanics.json cables`)
+			const leads = cables.filter((c) => c.kind === "jst-ph-2-leads").length
+			if (spec && leads < spec.motors.length) short.push(`${spec.motors.length - leads} of the motors ha${spec.motors.length - leads === 1 ? "s" : "ve"} no 2-pin plug on the board for ${spec.motors.length - leads === 1 ? "its" : "their"} leads`)
+			return cables.length ? short : ["cables: the chassis has no main board placed, so no cable is measured"]
+		})(),
 	]
 }
 

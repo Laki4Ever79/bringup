@@ -10,7 +10,9 @@ import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { byMpn, type MotorMountPart } from "../mechanics/catalog.ts"
 import { est } from "../mechanics/estimates.ts"
 import { massAndCom, mounts, payloadMount } from "../mechanics/model.ts"
-import { MOUNTING_HOLE, mountingHoles } from "../codegen/circuit.ts"
+import { connectorBoxes, MOUNTING_HOLE, mountingHoles } from "../codegen/circuit.ts"
+import { CABLE_SLACK_MM } from "../dashboard/assembly-geom.js"
+import { isMotorPlug } from "../mechanics/refs.ts"
 import { STANDOFF } from "../contract/case.ts"
 
 const exec = promisify(execFile)
@@ -116,6 +118,45 @@ function boardHoles(s: ContractSnapshot, name: string, outline: { widthMm: numbe
 const turn = (p: { x: number; y: number }, deg: number) => {
 	const r = (deg * Math.PI) / 180
 	return { x: p.x * Math.cos(r) - p.y * Math.sin(r), y: p.x * Math.sin(r) + p.y * Math.cos(r) }
+}
+
+// The robot's cables: from the main board's plug to what it serves, along the chassis (each axis's run, as a cable is
+// laid along the plate and up a standoff), plus CABLE_SLACK_MM, and the shortest catalog cable that reaches. The sensor
+// on its STEMMA QT cable from mechanics.sensor.connector (JT1); each motor's leads from the nearer 2-pin plug (JM1/JM2) to
+// its rear terminals, under the plate. A run no catalog cable reaches has cable null (the parts list says so).
+export interface RobotCable { what: string; from: string; needMm: number; kind: "stemma-qt" | "jst-ph-2-leads"; cable: { mpn: string; lengthMm: number } | null }
+export function robotCables(s: ContractSnapshot, spec: ChassisSpec, cables: { mpn: string; kind: string; lengthMm: number }[]): RobotCable[] {
+	const v = s.values
+	const main = spec.boards.find((b) => b.name === "main")
+	if (!main || !v.outline) return []
+	const boxes = connectorBoxes(s, v.outline.widthMm, v.outline.heightMm)
+	const at = (ref: string) => {
+		const b = boxes.find((x) => x.ref === ref)
+		if (!b) return null
+		const p = turn({ x: b.x, y: b.y }, main.rotDeg)
+		return { x: main.xMm + p.x, y: main.yMm + p.y, z: spec.plate.thicknessMm + spec.standoffMm + 1.6 }
+	}
+	const pick = (kind: RobotCable["kind"], need: number) => {
+		const c = cables.filter((x) => x.kind === kind && x.lengthMm >= need).sort((a, b) => a.lengthMm - b.lengthMm)[0]
+		return c ? { mpn: c.mpn, lengthMm: c.lengthMm } : null
+	}
+	const run = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.round(Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + Math.abs(a.z - b.z) + CABLE_SLACK_MM)
+	const out: RobotCable[] = []
+	const plug = v.mechanics?.sensor?.connector
+	const from = plug ? at(plug) : null
+	if (plug && from) {
+		const need = run(from, { x: spec.sensor.xMm, y: spec.sensor.yMm, z: spec.sensor.zMm - spec.plate.clearanceMm })
+		out.push({ what: "distance sensor", from: plug, needMm: need, kind: "stemma-qt", cable: pick("stemma-qt", need) })
+	}
+	const plugs = (v.parts ?? []).filter(isMotorPlug).map((p) => ({ ref: p.ref, at: at(p.ref) })).filter((p) => p.at)
+	for (const m of spec.motors) {
+		const end = { x: m.xMm, y: m.yMm - (Math.sign(m.yMm) || 1) * (m.bodyMm[0] / 2), z: -m.axleDropMm }
+		const near = plugs.sort((a, b) => Math.hypot(a.at!.x - end.x, a.at!.y - end.y) - Math.hypot(b.at!.x - end.x, b.at!.y - end.y)).find((p) => !out.some((o) => o.from === p.ref))
+		if (!near) continue
+		const need = run(near.at!, end)
+		out.push({ what: `${m.side} motor`, from: near.ref, needMm: need, kind: "jst-ph-2-leads", cable: pick("jst-ph-2-leads", need) })
+	}
+	return out
 }
 
 // A board's own holes (mm from its lower-left corner, before the turn) in the chassis frame: centred, turned
