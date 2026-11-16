@@ -301,6 +301,14 @@ them as well, although it might not be the focus here".
         matchS}. Firmware templates/fw-rover/src/match.h: arms only after seeing the cord in (a robot powered up without
         it never starts), starts after 50 ms out, stops the motors MATCH_MS later for good (host tests test_match). The
         simulation pulls the cord at its first tick.
+  - [x] **Rule-check module** (16 Nov, bringup-system): `rules-eurobot-2026`. catalog/rules/eurobot-2026.json: each limit
+        cited to its clause and page of the General Rules 1.2. motion.rules opts a design in (the brief check asks the
+        architect when the brief names Eurobot). Checked: start perimeter (convex shell, 1200 mm), height (350 mm, an
+        estimate from below), e-stop red, at least 20 mm, top at most 375 mm and at most 25 mm over the robot, 48 V, cord
+        at least 500 mm, stop at 100 s, opponent sensor. Found: the A22E's head is 32 mm proud of its deck, so the deck
+        needs a 7 mm collar (mechanics.safety.estop.collarMm). Not checked (listed in the report): beacon support, the
+        100 × 70 mm sticker face, the deployed perimeter, lithium battery conditions.
+  - [ ] **Eurobot: model the beacon support mast and the sticker face** (F.6), then check them.
   - [ ] **The e-stop's printed deck:** py/chassis.py doesn't generate the panel (1 to 3 mm thick at the button) yet.
   - [ ] **Motor output traces stay 0.15 mm** (MOTOR_A1…B2 have no width rule; only rails get IPC-2221 widths). a 6 V
         N20 stalls at 0.67 A (more at 2S): check against IPC-2221 and widen.

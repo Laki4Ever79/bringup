@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs"
+import { loadRules, RULE_SETS, ruleChecks, type RuleSet } from "../rules/eurobot.ts"
 import { safetyChecks, startChecks } from "./safety.ts"
 import { resolve } from "node:path"
 import type { AgentRole, ContractSnapshot, FieldName, Part, PinAssignment as Pin } from "../contract/types.ts"
@@ -18,7 +19,7 @@ import { field, moduleById } from "../system/bought.ts"
 // runs the same checks).
 
 export type MechViolation = {
-	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive" | "mech-mate" | "mech-safety"
+	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive" | "mech-mate" | "mech-safety" | "mech-rules"
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]
@@ -34,6 +35,8 @@ export type BoardPartData = { mpn: string; role?: string; [k: string]: unknown }
 export interface CheckCatalog {
 	mech: MechCatalog
 	boardParts: BoardPartData[]
+	// Competition rule sets by id (catalog/rules), checked when motion.rules names one (rules/eurobot.ts).
+	rules?: Record<string, RuleSet>
 }
 
 export const TORQUE_MARGIN = 1.5
@@ -47,7 +50,7 @@ let cached: CheckCatalog | null = null
 export function defaultCheckCatalog(): CheckCatalog | null {
 	if (cached) return cached
 	if (!existsSync(resolve(ROOT, "catalog/mechanics.json"))) return null
-	cached = { mech: loadMechCatalog(ROOT), boardParts: loadCatalog(ROOT) as unknown as BoardPartData[] }
+	cached = { mech: loadMechCatalog(ROOT), boardParts: loadCatalog(ROOT) as unknown as BoardPartData[], rules: Object.fromEntries(RULE_SETS.flatMap((id) => ((r) => (r ? [[id, r]] : []))(loadRules(ROOT, id)))) }
 	return cached
 }
 
@@ -474,6 +477,12 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// Claude subscription: the architect wired JT1 to two spare GPIOs as "EXP_IO1/2", which left it on no bus).
 	const onPlug = mech.sensor ? pins.filter((p) => p.partRef === mech.sensor.connector) : []
 	if (onPlug.length) push("mech-wiring", `${onPlug.map((p) => `${p.signal} (GPIO${p.gpio})`).join(", ")} go${onPlug.length === 1 ? "es" : ""} to the distance sensor's plug ${mech.sensor.connector}: remove ${onPlug.length === 1 ? "it" : "them"}. The plug takes no pins; the board generator joins it to the I2C bus (I2C_SDA, I2C_SCL)`, ["architect"], ["pins"])
+	// A competition's rules (motion.rules: catalog/rules/<id>.json, rules/eurobot.ts), each finding citing its clause.
+	if (motion.rules) {
+		const rules = cat.rules?.[motion.rules]
+		if (!rules) push("mech-rules", `motion.rules is "${motion.rules}", a rule set Bringup doesn't have (catalog/rules: ${Object.keys(cat.rules ?? {}).join(", ") || "none"})`, ["architect"], ["motion"])
+		else for (const f of ruleChecks(rules, motion, mech, ms, pack, cat.mech, figures)) push("mech-rules", `${f.rule}: ${f.message}`, f.affects)
+	}
 	// The emergency stop (safety.ts): its contact against the motors' current and the pack's voltage, its plug, its mount.
 	for (const f of [...safetyChecks(mech, parts, motor, pack, cat.mech, figures), ...startChecks(mech, parts, pins)]) push("mech-safety", f.message, f.affects, f.affects.includes("parts") ? ["parts"] : f.affects.includes("architect") ? ["pins"] : ["mechanics"])
 	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", 'no battery connector on any board: the cell plugs into a 2-pin connector whose part has role "battery" (not "connector": a role-"connector" 2-pin part is a motor\'s plug, JM1 or JM2)', ["parts"], ["parts"])

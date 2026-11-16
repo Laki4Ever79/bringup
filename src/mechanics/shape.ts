@@ -1,3 +1,4 @@
+import { RULE_SETS } from "../rules/eurobot.ts"
 import { DRIVE_TRAIN_SHAPE, driveTrainShapeError } from "./drivetrain.ts"
 
 // The shapes the contract accepts for motion and mechanics (contract.ts shapeError): what an agent must write.
@@ -6,10 +7,12 @@ const num = (v: unknown, min = 0) => typeof v === "number" && Number.isFinite(v)
 const pair = (v: unknown) => Array.isArray(v) && v.length === 2 && v.every((x) => num(x, 1))
 
 export function motionShapeError(v: unknown): string | null {
-	const shape = "motion must be {speedMps > 0, runtimeMin > 0, edgeMm ≥ 0, maxSlopeDeg ≥ 0, stopBeforeWallMm ≥ 0, payloadG ≥ 0, maxSizeMm: [length, width], maxMassG > 0}"
+	const shape = "motion must be {speedMps > 0, runtimeMin > 0, edgeMm ≥ 0, maxSlopeDeg ≥ 0, stopBeforeWallMm ≥ 0, payloadG ≥ 0, maxSizeMm: [length, width], maxMassG > 0, rules?: eurobot-2026 (only when the brief is for that competition)}"
 	if (!obj(v)) return shape
 	const ok = num(v.speedMps) && (v.speedMps as number) > 0 && num(v.runtimeMin) && (v.runtimeMin as number) > 0 && num(v.edgeMm) && num(v.maxSlopeDeg) && num(v.stopBeforeWallMm) && num(v.payloadG) && pair(v.maxSizeMm) && num(v.maxMassG) && (v.maxMassG as number) > 0
-	return ok ? null : shape
+	if (!ok) return shape
+	if (v.rules !== undefined && !(RULE_SETS as readonly unknown[]).includes(v.rules)) return `motion.rules is one of: ${RULE_SETS.join(", ")} (a competition's robot rules), or left out`
+	return null
 }
 
 // The shape, for the mechanics engineer's instruction (agents/roles.ts) as well as the error.
@@ -30,10 +33,10 @@ export function mechanicsShapeError(v: unknown): string | null {
 	if (!ok) return shape
 	if (v.safety !== undefined) {
 		const e = obj(v.safety) ? v.safety.estop : null
-		const estopOk = e === undefined || (obj(e) && typeof e.part === "string" && e.part !== "" && at(e.at) && typeof (e.at as Record<string, unknown>).zMm === "number" && typeof e.connector === "string" && e.connector !== "")
+		const estopOk = e === undefined || (obj(e) && typeof e.part === "string" && e.part !== "" && at(e.at) && typeof (e.at as Record<string, unknown>).zMm === "number" && typeof e.connector === "string" && e.connector !== "" && (e.collarMm === undefined || num(e.collarMm)))
 		const st = obj(v.safety) ? v.safety.start : null
 		const startOk = st === undefined || (obj(st) && typeof st.connector === "string" && st.connector !== "" && num(st.cordMm, 1) && (st.matchS === undefined || num(st.matchS, 1)))
-		if (!obj(v.safety) || !estopOk || !startOk) return 'mechanics.safety must be {estop?: {part (catalog safety mpn), at: {xMm, yMm, zMm (the top of the panel it stands through, off the floor)}, connector (the board plug ref, role estop)}, start?: {connector (the board plug ref, role start), cordMm, matchS? (seconds the robot drives after the cord is pulled)}}'
+		if (!obj(v.safety) || !estopOk || !startOk) return 'mechanics.safety must be {estop?: {part (catalog safety mpn), at: {xMm, yMm, zMm (the top of the panel it stands through, off the floor)}, connector (the board plug ref, role estop), collarMm? (a printed ring around the button on its deck, mm above the deck)}, start?: {connector (the board plug ref, role start), cordMm, matchS? (seconds the robot drives after the cord is pulled)}}'
 	}
 	return driveTrainShapeError(v.driveTrain)
 }

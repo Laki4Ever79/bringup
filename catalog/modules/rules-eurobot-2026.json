@@ -1,0 +1,10 @@
+{
+	"id": "rules-eurobot-2026",
+	"kind": "rules",
+	"title": "Eurobot 2025/26 robot rules as checks: perimeter, height, emergency stop, start cord, match time, voltage, opponent detection",
+	"rules": "eurobot-2026",
+	"parts": [],
+	"circuit": "None: a check on the whole robot. A design opts in with motion.rules \"eurobot-2026\" (set by the architect; motionBriefChecks asks for it when the brief names Eurobot).",
+	"interfaces": [],
+	"checks": "rules/eurobot.ts ruleChecks, with every limit from catalog/rules/eurobot-2026.json cited to its clause and page of the Eurobot General Rules 1.2: start perimeter (the convex shell of every part seen from above) at most 1200 mm (F.3); height at most 350 mm (F.3, an estimate from below: parts on boards aren't counted); a red emergency stop at least 20 mm across (F.4.c), its top at most 375 mm (F.3) and at most 25 mm over the rest of the robot (F.4.c; the A22E's head is 32 mm proud, so its deck needs a 7 mm collar); at most 48 V (F.4.b); a pull-cord start with a cord of at least 500 mm (F.6); the motors stopped 100 s after the start (H.3); a distance sensor for the opponent (F.6). The report lists what isn't checked yet (beacon support, sticker space, deployed perimeter, lithium battery conditions)."
+}

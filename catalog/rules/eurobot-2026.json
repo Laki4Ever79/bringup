@@ -1,0 +1,116 @@
+{
+	"id": "eurobot-2026",
+	"title": "Eurobot 2025/26: the robot rules a design can be checked against",
+	"document": {
+		"title": "Eurobot General Rules, official version 1.2 (EN)",
+		"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf"
+	},
+	"limits": {
+		"startPerimeterMm": {
+			"value": 1200,
+			"unit": "mm",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.3 Dimensions, p. 10: 'The perimeter of a robot must not exceed 1200 mm at the departure time' (the convex shell of its vertical projection)"
+			}
+		},
+		"deployedPerimeterMm": {
+			"value": 1400,
+			"unit": "mm",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.3 Dimensions, p. 10: 'The perimeter of the fully deployed robot must not exceed 1400 mm during the match'"
+			}
+		},
+		"heightMm": {
+			"value": 350,
+			"unit": "mm",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.3 Dimensions, p. 10: 'the height of each robot and manipulated object must not exceed 350 mm' (excludes the beacon support mast)"
+			}
+		},
+		"estopTopMm": {
+			"value": 375,
+			"unit": "mm",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.3 Dimensions, p. 10: 'it can be tolerated that the emergency stop button exceeds this height limit to reach 375 mm'"
+			}
+		},
+		"estopAboveRobotMm": {
+			"value": 25,
+			"unit": "mm",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.4.c Emergency stop button, p. 11: 'The button may exceed the system's height by 25 mm'"
+			}
+		},
+		"estopMinDiaMm": {
+			"value": 20,
+			"unit": "mm",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.4.c Emergency stop button, p. 11: 'have at least a diameter of 20 mm'"
+			}
+		},
+		"estopColour": {
+			"value": "red",
+			"unit": null,
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.4.c Emergency stop button, p. 11: 'All robots have to be equipped with a red emergency stop button'"
+			}
+		},
+		"maxVoltageV": {
+			"value": 48,
+			"unit": "V",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.4.b Energy sources, p. 11: 'the on-board voltages must not exceed 48 V DC'"
+			}
+		},
+		"cordMinMm": {
+			"value": 500,
+			"unit": "mm",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.6 Other design constraints, p. 13: 'triggered by pulling the end of a cord at least 500 mm long'"
+			}
+		},
+		"matchS": {
+			"value": 100,
+			"unit": "s",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "H.2 The match / H.3 End of match, p. 20: 'it has 100 secondes'; 'At the end of the 100 seconds, the robots must stop and turn off all their actuators'"
+			}
+		},
+		"avoidance": {
+			"value": true,
+			"unit": null,
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.6 Other design constraints, p. 14: 'All teams are required to equip its robot with a system for detecting opposing team's robots'"
+			}
+		}
+	},
+	"notChecked": [
+		{
+			"rule": "F.6 beacon support: flat, opaque, 430 ± 5 mm up, within a 200 mm circle around the centre, 70 mm circle to 100 mm square, Velcro on top, holds 400 g",
+			"why": "the mechanics have no mast yet"
+		},
+		{
+			"rule": "F.6 visibility: a 100 × 70 mm flat space on a side face for the organisers' sticker",
+			"why": "the chassis has no side faces modelled"
+		},
+		{
+			"rule": "F.3 deployed perimeter 1400 mm",
+			"why": "the design has no deployable mechanism (the team adds it)"
+		},
+		{
+			"rule": "F.4.b lithium batteries: a manufacturer BMS and solid case, or LiFePO4, or a fireproof bag and a homologated charger",
+			"why": "the battery catalog does not record BMS or case yet"
+		}
+	]
+}
