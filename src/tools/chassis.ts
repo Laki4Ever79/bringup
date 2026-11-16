@@ -44,8 +44,10 @@ export interface ChassisSpec {
 	// screws through holes in the plate, no printed cradle. "clamp": the printed cradle and a printed clamp under the motor,
 	// held by two self-tapping screws into the cradle's bosses. "cradle-too-shallow": the cradle can't hold the axle that
 	// close to the plate (it needs wall above the motor); the mechanics check says so.
-	motors: { side: "left" | "right"; xMm: number; yMm: number; bodyMm: [number, number, number]; axleDropMm: number; mount: MotorMount }[]
-	caster: { xMm: number; holesMm: [number, number][]; holeDiaMm: number; wheelMm: number; heightMm: number }
+	// rear: a skid-steer rover's rear-axle motor (drive.kind "skid4").
+	motors: { side: "left" | "right"; rear?: true; xMm: number; yMm: number; bodyMm: [number, number, number]; axleDropMm: number; mount: MotorMount }[]
+	// null on a skid-steer rover: four driven wheels, no caster.
+	caster: { xMm: number; holesMm: [number, number][]; holeDiaMm: number; wheelMm: number; heightMm: number } | null
 	battery: { xMm: number; yMm: number; sizeMm: [number, number, number] }
 	// holes: the board's own mounting holes on the plate (its mountingHoles, or a bought module's record holes, turned by
 	// rotDeg); a standoff under each. standoffs false: a HAT on another board's spacers, with none of its own on the plate.
@@ -62,7 +64,7 @@ export interface ChassisSpec {
 	com: [number, number, number] // the whole rover's, wheels and caster included
 	wheelMassG: number // each; the simulation hangs these on the wheels and the rest on the chassis body
 	casterMassG: number
-	drive: { trackMm: number; axleXMm: number; wheelbaseMm: number; wheelDiameterMm: number; wheelWidthMm: number }
+	drive: { kind?: "differential" | "skid4"; trackMm: number; axleXMm: number; wheelbaseMm: number; wheelDiameterMm: number; wheelWidthMm: number }
 	motor: { ratedV: number; noLoadRpm: number; stallTorqueNm: number; stallA: number; noLoadA: number }
 	pack: { nominalV: number; fullV: number; cutoffV: number; mAh: number; internalOhm: number | null }
 	payloadG: number
@@ -196,7 +198,8 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 	if (!mech || !motion || !cat) return null
 	const motor = byMpn(cat.mech.motors, mech.drive.motor), wheel = byMpn(cat.mech.wheels, mech.drive.wheel), caster = byMpn(cat.mech.casters, mech.drive.caster)
 	const pack = byMpn(cat.mech.batteries, mech.battery.pack), sensor = byMpn(cat.mech.sensors ?? [], mech.sensor.module)
-	if (!motor || !wheel || !caster || !pack || !sensor) return null
+	const skid = mech.drive.kind === "skid4"
+	if (!motor || !wheel || (!caster && !skid) || !pack || !sensor) return null
 	const outline = { widthMm: v.outline?.widthMm ?? 0, heightMm: v.outline?.heightMm ?? 0 }
 	// The assembly's outlines win over the caller's for the other boards; this board's own outline is the truth for "main"
 	// (the assembly's copy of it can lag until the system sends it again).
@@ -212,10 +215,10 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		plate: { lengthMm: mech.chassis.plateMm[0], widthMm: mech.chassis.plateMm[1], thicknessMm: mech.chassis.thicknessMm, clearanceMm: mech.chassis.clearanceMm },
 		standoffMm: est("standoffMm"),
 		motors: ms.filter((m) => m.what.startsWith("motor:")).map((m) => {
-			const base = { side: m.what.endsWith("left") ? ("left" as const) : ("right" as const), xMm: m.xMm, yMm: m.yMm, bodyMm: motor.bodyMm, axleDropMm: mech.chassis.clearanceMm - wheel.diameterMm / 2 }
+			const base = { side: m.what.startsWith("motor:left") ? ("left" as const) : ("right" as const), ...(m.what.endsWith(":rear") ? { rear: true as const } : {}), xMm: m.xMm, yMm: m.yMm, bodyMm: motor.bodyMm, axleDropMm: mech.chassis.clearanceMm - wheel.diameterMm / 2 }
 			return { ...base, mount: motorMount(base, motor.mpn, cat.mech.motorMounts ?? [], STANDOFF.pilotMm) }
 		}),
-		caster: { xMm: mech.drive.axleXMm - mech.drive.wheelbaseMm, holesMm: caster.holesMm, holeDiaMm: CASTER_HOLE_MM, wheelMm: caster.wheelMm, heightMm: caster.heightMm },
+		caster: caster && !skid ? { xMm: mech.drive.axleXMm - mech.drive.wheelbaseMm, holesMm: caster.holesMm, holeDiaMm: CASTER_HOLE_MM, wheelMm: caster.wheelMm, heightMm: caster.heightMm } : null,
 		battery: { xMm: mech.battery.at.xMm, yMm: mech.battery.at.yMm, sizeMm: pack.sizeMm },
 		boards: placed.map((b) => {
 			const o = known.find((k) => k.name === b.name)!.outline
@@ -234,8 +237,8 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		massG,
 		com,
 		wheelMassG: wheel.massG,
-		casterMassG: caster.massG,
-		drive: { trackMm: mech.drive.trackMm, axleXMm: mech.drive.axleXMm, wheelbaseMm: mech.drive.wheelbaseMm, wheelDiameterMm: wheel.diameterMm, wheelWidthMm: wheel.widthMm },
+		casterMassG: caster && !skid ? caster.massG : 0,
+		drive: { kind: mech.drive.kind, trackMm: mech.drive.trackMm, axleXMm: mech.drive.axleXMm, wheelbaseMm: mech.drive.wheelbaseMm, wheelDiameterMm: wheel.diameterMm, wheelWidthMm: wheel.widthMm },
 		motor: { ratedV: motor.ratedV, noLoadRpm: motor.noLoadRpm, stallTorqueNm: motor.stallTorqueNm, stallA: motor.stallA, noLoadA: motor.noLoadA, ...(motor.encoder ? { encoderCountsPerRev: (motor.encoder.cpr / 2) * motor.gearRatio } : {}) },
 		pack: { nominalV: pack.nominalV, fullV: pack.fullV, cutoffV: pack.cutoffV, mAh: pack.mAh, internalOhm: pack.internalOhm ?? null },
 		payloadG: motion.payloadG,

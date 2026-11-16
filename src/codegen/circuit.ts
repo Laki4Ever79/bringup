@@ -353,8 +353,7 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const start = parts.find((p) => p.role === "start")
 	const startPin = start ? pins.find((p) => p.partRef === start.ref && p.partPin === "START") : undefined
 	if (supply && startPin) jobs.push({ job: `${startPin.signal} pull-up (${start!.ref}: high once the start cord is pulled)`, spec: SUPPORT.pullup, a: { net: startPin.signal }, b: { net: supply }, near: start!.ref })
-	const driver = parts.find((p) => p.role === "motor-driver")
-	if (driver) {
+	for (const driver of motorDrivers(parts)) {
 		const vm = motorSupplyNet(parts)
 		if (driver.pins.includes("VM")) {
 			jobs.push({ job: `${driver.ref}.VM bulk (the motors' supply)`, spec: SUPPORT.bulk, a: { net: vm }, b: GND, near: driver.ref })
@@ -1580,11 +1579,20 @@ function at(placement: Map<string, Placed>, ref: string): string {
 // two components are kept; a one-component net can't be routed.
 // An ESP32 module's EN, between its RC delay (supportParts) and the chip.
 export const MCU_EN_NET = "MCU_EN"
-const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET, MCU_EN_NET, "MOTOR_A1", "MOTOR_A2", "MOTOR_B1", "MOTOR_B2"]
+const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET, MCU_EN_NET, "MOTOR_A1", "MOTOR_A2", "MOTOR_B1", "MOTOR_B2", "MOTOR_C1", "MOTOR_C2", "MOTOR_D1", "MOTOR_D2"]
 
 // A rover's motor connectors: two-pin connectors, in ref order (JM1 motor A, JM2 motor B).
 // A motor's plug: a 2-pin one (pins 1 and 2), or an encoder gearmotor's 6-pin one (M1, M2 for the motor, VCC, GND and
 // ENCA/ENCB for its encoder; catalog SM06B-SRSS-TB).
+// The motor drivers in ref order: one on a differential rover, two on a skid-steer one (front, then rear).
+export const motorDrivers = (parts: Part[]) => parts.filter((p) => p.role === "motor-driver").sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
+// The rear driver's inputs (a skid-steer rover): its AIN1/AIN2 on the nets of the front driver's AIN1/AIN2 (the left
+// side), its BIN1/BIN2 on those of BIN1/BIN2 (the right): each side's two motors run on the same PWM.
+export function skidDriverTraces(s: ContractSnapshot): { net: string; ref: string; pin: string }[] {
+	const [front, rear] = motorDrivers(s.values.parts ?? [])
+	if (!front || !rear || s.values.mechanics?.drive.kind !== "skid4") return []
+	return (s.values.pins ?? []).filter((p) => p.partRef === front.ref && /^[AB]IN[12]$/.test(p.partPin) && rear.pins.includes(p.partPin)).map((p) => ({ net: p.signal, ref: rear.ref, pin: p.partPin }))
+}
 export const motorConnectors = (parts: Part[]) => parts.filter(isMotorPlug).sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
 
 // The router's default track (tscircuit 0.0.3042: 0.15 mm), enough for the rails up to about 0.6 A (IPC-2221 below).
@@ -1775,20 +1783,26 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 
 	// A motor driver (DRV8833, docs/mechanics.md): motor supply VM from the cell, no current sensing (xISEN to GND),
 	// each output pair to its motor's connector.
-	const driver = parts.find((p) => p.role === "motor-driver")
-	if (driver) {
+	// A skid-steer rover (mechanics.drive.kind "skid4") has a second driver for the rear motors (motorDrivers): its
+	// channel A follows the left side's inputs and B the right's (skidDriverTraces), its outputs to JM3 and JM4.
+	const drivers = motorDrivers(parts)
+	if (drivers.length) {
 		const vm = motorSupplyNet(parts)
 		if (!nets.has(vm)) nets.set(vm, [])
-		if (driver.pins.includes("VM")) join(vm, driver.ref, "VM")
 		// The emergency stop's NC contact (its connector, role estop) between the cell and the motors' supply.
 		const estop = estopPlug(parts)
 		if (estop) { join("VBAT", estop.ref, "VBAT"); join(MOTOR_VM_NET, estop.ref, "VM") }
-		for (const pin of ["AISEN", "BISEN"]) if (driver.pins.includes(pin)) join("GND", driver.ref, pin)
-		const [ma, mb] = motorConnectors(parts)
-		for (const [k, side] of [[ma, "A"], [mb, "B"]] as const)
-			if (k) for (const n of ["1", "2"] as const) if (driver.pins.includes(`${side}OUT${n}`)) { join(`MOTOR_${side}${n}`, driver.ref, `${side}OUT${n}`); join(`MOTOR_${side}${n}`, k.ref, isEncoderPlug(k) ? `M${n}` : n) }
-		// An encoder gearmotor's encoder runs from 3V3 (its outputs then swing to 3.3 V, the MCU's level).
-		for (const k of [ma, mb]) if (k && isEncoderPlug(k) && hasSupply) join(supply, k.ref, "VCC")
+		const plugs = motorConnectors(parts)
+		drivers.forEach((driver, i) => {
+			if (driver.pins.includes("VM")) join(vm, driver.ref, "VM")
+			for (const pin of ["AISEN", "BISEN"]) if (driver.pins.includes(pin)) join("GND", driver.ref, pin)
+			const [ma, mb] = plugs.slice(2 * i, 2 * i + 2)
+			const names = i === 0 ? ["A", "B"] : ["C", "D"]
+			for (const [k, side, net] of [[ma, "A", names[0]], [mb, "B", names[1]]] as const)
+				if (k) for (const n of ["1", "2"] as const) if (driver.pins.includes(`${side}OUT${n}`)) { join(`MOTOR_${net}${n}`, driver.ref, `${side}OUT${n}`); join(`MOTOR_${net}${n}`, k.ref, isEncoderPlug(k) ? `M${n}` : n) }
+			// An encoder gearmotor's encoder runs from 3V3 (its outputs then swing to 3.3 V, the MCU's level).
+			for (const k of [ma, mb]) if (k && isEncoderPlug(k) && hasSupply) join(supply, k.ref, "VCC")
+		})
 	}
 	// A robot's distance-sensor plug (mechanics.sensor.connector) powers the breakout from the 3V3 rail.
 	const plug = parts.find((p) => p.ref === s.values.mechanics?.sensor?.connector && p.role === "connector")
@@ -2086,6 +2100,8 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 			lines.push(`<trace name=${q(`${pin.signal}_part${pads.length > 1 ? `_${pad}` : ""}`)} from=${q(`.${pin.partRef} > .${pad}`)} to=${q(`net.${pin.signal}`)} />`)
 	}
 
+	// A skid-steer rover's rear driver: each input on the signal net of the front driver's channel for its side.
+	for (const t of skidDriverTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
 	// An I2C link joins the board's own bus: the connector's IO1 and IO2 to I2C_SDA and I2C_SCL (docs/system.md).
 	for (const t of linkBusTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
 	lines.push(...powerLines(s, placement, !!opts.drawCaps))

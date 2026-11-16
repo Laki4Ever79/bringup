@@ -254,7 +254,7 @@ export function mountTop(host, opts = {}) {
 		const line = { fill: "none", stroke: INK, "stroke-width": 0.35, "stroke-dasharray": "1.5 1", "stroke-opacity": 0.7, "pointer-events": "none" }
 		const box = (kind, cx, cy, w, h) => { rects.push({ x: cx - w / 2, y: -cy - h / 2, w, h }); gMech.append(el("rect", { ...line, "data-mech": kind, x: cx - w / 2, y: -cy - h / 2, width: w, height: h, rx: 0.8 })) }
 		const d = ch.drive
-		if (d) for (const s of [1, -1]) box("wheel", d.axleXMm, s * (d.trackMm / 2), d.wheelDiameterMm, d.wheelWidthMm)
+		if (d) for (const ax of d.kind === "skid4" ? [d.axleXMm, d.axleXMm - d.wheelbaseMm] : [d.axleXMm]) for (const s of [1, -1]) box("wheel", ax, s * (d.trackMm / 2), d.wheelDiameterMm, d.wheelWidthMm)
 		for (const m of ch.motors ?? []) box("motor", m.xMm, m.yMm, m.bodyMm[0], m.bodyMm[1])
 		if (ch.caster) { const r = ch.caster.wheelMm / 2; rects.push({ x: ch.caster.xMm - r, y: -r, w: 2 * r, h: 2 * r }); gMech.append(el("circle", { ...line, "data-mech": "caster", cx: ch.caster.xMm, cy: 0, r })) }
 		if (ch.battery) box("battery", ch.battery.xMm, ch.battery.yMm, ch.battery.sizeMm[0], ch.battery.sizeMm[1])

@@ -18,14 +18,15 @@ export function motionShapeError(v: unknown): string | null {
 // The shape, for the mechanics engineer's instruction (agents/roles.ts) as well as the error.
 
 export const MECHANICS_SHAPE =
-	'mechanics must be {drive: {kind: "differential", motor, wheel, caster (catalog/mechanics.json mpns), trackMm, wheelbaseMm, axleXMm}, battery: {pack (mpn), at: {xMm, yMm}, enclosure? ("fireproof-bag": kept in a certified fireproof bag, for a competition battery rule)}, sensor: {module (catalog sensors mpn), at: {xMm, yMm, zMm}, connector (board connector ref)}, chassis: {plateMm: [length, width], thicknessMm, material: "PLA", clearanceMm, boards: [{name, at: {xMm, yMm}, rotDeg: 0|90|180|270}]}, safety?: {estop?: {part (catalog safety mpn), at: {xMm, yMm, zMm (the top of the panel it stands through)}, connector (board plug ref, role estop)}, start?: {connector (board plug ref, role start), cordMm, matchS?}}, driveTrain?} (mm; origin at the plate centre, +x forward). ' + DRIVE_TRAIN_SHAPE
+	'mechanics must be {drive: {kind: "differential" (two driven wheels + caster) or "skid4" (four driven wheels, the rear axle wheelbaseMm behind the front one at axleXMm, caster ""), motor, wheel, caster (catalog/mechanics.json mpns), trackMm, wheelbaseMm, axleXMm}, battery: {pack (mpn), at: {xMm, yMm}, enclosure? ("fireproof-bag": kept in a certified fireproof bag, for a competition battery rule)}, sensor: {module (catalog sensors mpn), at: {xMm, yMm, zMm}, connector (board connector ref)}, chassis: {plateMm: [length, width], thicknessMm, material: "PLA", clearanceMm, boards: [{name, at: {xMm, yMm}, rotDeg: 0|90|180|270}]}, safety?: {estop?: {part (catalog safety mpn), at: {xMm, yMm, zMm (the top of the panel it stands through)}, connector (board plug ref, role estop)}, start?: {connector (board plug ref, role start), cordMm, matchS?}}, driveTrain?} (mm; origin at the plate centre, +x forward). ' + DRIVE_TRAIN_SHAPE
 export function mechanicsShapeError(v: unknown): string | null {
 	const shape = MECHANICS_SHAPE
 	if (!obj(v) || !obj(v.drive) || !obj(v.battery) || !obj(v.chassis) || !obj(v.sensor)) return shape
 	const d = v.drive, b = v.battery, c = v.chassis, s = v.sensor
 	const at = (p: unknown) => obj(p) && typeof p.xMm === "number" && typeof p.yMm === "number"
 	const ok =
-		d.kind === "differential" && [d.motor, d.wheel, d.caster].every((x) => typeof x === "string" && x) && num(d.trackMm, 1) && num(d.wheelbaseMm, 1) && typeof d.axleXMm === "number" &&
+		// A skid-steer rover (kind "skid4") has no caster: its caster is "".
+		((d.kind === "differential" && [d.motor, d.wheel, d.caster].every((x) => typeof x === "string" && x)) || (d.kind === "skid4" && [d.motor, d.wheel].every((x) => typeof x === "string" && x) && typeof d.caster === "string")) && num(d.trackMm, 1) && num(d.wheelbaseMm, 1) && typeof d.axleXMm === "number" &&
 		typeof b.pack === "string" && at(b.at) &&
 		typeof s.module === "string" && at(s.at) && typeof (s.at as Record<string, unknown>).zMm === "number" && typeof s.connector === "string" &&
 		pair(c.plateMm) && num(c.thicknessMm, 0.5) && c.material === "PLA" && num(c.clearanceMm) &&

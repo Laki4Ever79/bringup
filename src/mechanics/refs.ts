@@ -5,7 +5,8 @@ import type { Part } from "../contract/types.ts"
 // JT1, JMOT1, JMOT2 in turn for 30 revisions, each following the other's last change). The distance sensor's 4-pin plug
 // is JT1 (mechanics.sensor.connector); the two motors' 2-pin plugs are JM1 and JM2.
 export const SENSOR_PLUG_REF = "JT1"
-export const MOTOR_PLUG_REFS = ["JM1", "JM2"] as const
+// JM3 and JM4: a skid-steer rover's rear motors (mechanics.drive.kind "skid4").
+export const MOTOR_PLUG_REFS = ["JM1", "JM2", "JM3", "JM4"] as const
 // The emergency stop's plug (role estop) is JE1 and the start cord's (role start) JS1, likewise (run cc-eurobot-10, 16
 // Nov 2026: the start plug went JS1 → J4 while the pins said J4.START and the parts JS1, in its first 13 minutes).
 export const ESTOP_PLUG_REF = "JE1"
@@ -20,7 +21,7 @@ export const isMotorPlug = (p: Part) => (p.role === "connector" && p.pins.length
 // is). A part that holds one of the names but isn't that plug gets the next free J<n>.
 export function robotRefs(parts: Part[]): { parts: Part[]; renames: Record<string, string> } {
 	const sensor = parts.find((p) => isSensorPlug(p) && p.ref === SENSOR_PLUG_REF) ?? parts.find(isSensorPlug)
-	const motors = parts.filter(isMotorPlug).sort((a, b) => rank(a.ref) - rank(b.ref)).slice(0, 2)
+	const motors = parts.filter(isMotorPlug).sort((a, b) => rank(a.ref) - rank(b.ref)).slice(0, MOTOR_PLUG_REFS.length)
 	const want = new Map<Part, string>()
 	if (sensor) want.set(sensor, SENSOR_PLUG_REF)
 	motors.forEach((m, i) => want.set(m, MOTOR_PLUG_REFS[i]))

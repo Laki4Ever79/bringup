@@ -37,7 +37,9 @@ function inertial(massKg: number, at: [number, number, number], i: { ixx: number
 export function bodyOf(spec: ChassisSpec) {
 	const d = spec.drive
 	const r = mm(d.wheelDiameterMm) / 2
-	const casterR = mm(spec.caster.wheelMm) / 2
+	// A skid-steer rover has no caster (spec.caster null): its URDF has the front wheels only (ROS skid-steer export is
+	// not built yet; the mass of the rear wheels stays in the body).
+	const casterR = mm(spec.caster?.wheelMm ?? 0) / 2
 	const total = spec.massG / 1000
 	const wheelKg = spec.wheelMassG / 1000
 	const casterKg = spec.casterMassG / 1000

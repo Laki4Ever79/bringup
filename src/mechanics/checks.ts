@@ -1,3 +1,4 @@
+import { MOTOR_PLUG_REFS } from "./refs.ts"
 import { existsSync } from "node:fs"
 import { isEncoderPlug, isMotorPlug } from "./refs.ts"
 import { loadRules, RULE_SETS, ruleChecks, type RuleSet } from "../rules/eurobot.ts"
@@ -9,7 +10,7 @@ import { plateLimitForBrief, blocksSensor, motorHalfUnder, motorUnderPlateMm, mo
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
-import { brakeDecel, brakeMm, drivenDecel, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon, TURN_CLEARANCE_MM, turnStopMm, turnSweepMm } from "./model.ts"
+import { brakeDecel, brakeMm, drivenDecel, cruiseDuty, edgeForceN, G, loadedSpeedMps, massAndCom, MIN_CRUISE_DUTY, motorAt, mounts, onWheelsShare, payloadMount, supportPolygon, TURN_CLEARANCE_MM, turnStopMm, turnSweepMm, drivenWheels, isSkid, skidTurn } from "./model.ts"
 import type { Mechanics, Mount, MotionTargets } from "./types.ts"
 import { driveTrainChecks } from "./drivetrain.ts"
 import { field, moduleById } from "../system/bought.ts"
@@ -43,6 +44,9 @@ export interface CheckCatalog {
 export const TORQUE_MARGIN = 1.5
 export const USABLE_ENERGY = 0.85 // of the pack's rated Wh, before the cut-off
 export const TIP_MARGIN_MM = 10
+// A skid-steer rover's wheelbase over its track: past 1 a wheel slips before the rover turns (model.ts skidTurn); this
+// keeps a margin under it (a design choice).
+export const SKID_RATIO_MAX = 0.9
 export const CLIMB_MARGIN = 1.2 // the drive wheels' grip must push the caster up the edge with this margin (static; the simulation from rest climbs a little more, docs/mechanics.md)
 export const LEVEL_TOLERANCE_MM = 3 // caster and wheels must hold the plate level within this
 
@@ -246,9 +250,14 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 
 	const d = mech.drive
 	const motor = byMpn(cat.mech.motors, d.motor), wheel = byMpn(cat.mech.wheels, d.wheel), caster = byMpn(cat.mech.casters, d.caster), pack = byMpn(cat.mech.batteries, mech.battery.pack)
-	for (const [what, mpn, found] of [["motor", d.motor, motor], ["wheel", d.wheel, wheel], ["caster", d.caster, caster], ["battery", mech.battery.pack, pack]] as const)
+	// A skid-steer rover (drive.kind "skid4") has no caster: four driven wheels.
+	const skid = isSkid(d), n = drivenWheels(d)
+	for (const [what, mpn, found] of [["motor", d.motor, motor], ["wheel", d.wheel, wheel], ["caster", d.caster, skid || caster], ["battery", mech.battery.pack, pack]] as const)
 		if (!found) push("mech-fit", `${what} ${mpn} is not in catalog/mechanics.json: pick one listed there, so its numbers have a datasheet behind them`)
-	if (!motor || !wheel || !caster || !pack) return out
+	if (!motor || !wheel || (!caster && !skid) || !pack) return out
+	// The drive the brief asks for (motion.drive): a four-wheel brief laid out as a differential rover misses it.
+	if (motion.drive === "skid4" && !skid)
+		push("mech-fit", `the brief asks for four-wheel drive (skid steer: four driven wheels, no caster), but the drive is ${d.kind}: lay it out as drive.kind "skid4" (the layout solver does when the proposal fails this)`)
 
 	// Parts and pins over every board of the robot.
 	const parts: Part[] = boards.flatMap((b) => b.snapshot.values.parts ?? [])
@@ -275,8 +284,9 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const full = motorAt(motor, pack.fullV)
 
 	// Torque: each wheel lifts its share over the edge and overcomes rolling resistance, with margin.
-	const perWheelKg = (massKg * onWheels) / 2
-	const needN = edgeForceN(perWheelKg, r, motion.edgeMm / 1000) + (est("rollingCrr") * massKg * G) / 2
+	// Skid-steer: each front wheel lifts its quarter, conservatively without counting the rear wheels' push.
+	const perWheelKg = (massKg * onWheels) / n
+	const needN = edgeForceN(perWheelKg, r, motion.edgeMm / 1000) + (est("rollingCrr") * massKg * G) / n
 	const needNm = needN * r
 	fig("Edge torque per wheel", `${r2(needNm * 1000)} mN·m`, `stall ${r2(nominal.stallNm * 1000)} mN·m ÷ ${TORQUE_MARGIN}`, nominal.stallNm >= TORQUE_MARGIN * needNm, `${motion.edgeMm} mm edge, ${Math.round(onWheels * 100)} % of ${Math.round(massG)} g on the wheels ${estNote("rollingCrr")}`)
 	if (!(nominal.stallNm >= TORQUE_MARGIN * needNm))
@@ -288,11 +298,22 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// it). Re-measured 15 Nov with the caster at its own friction (docs/mechanics.md, "What the simulation found"): from
 	// rest a 38 mm caster climbs 10 mm under up to about 28 % of the weight (this limit: 21 %), 5 mm under about 50 %
 	// (35 %), 3 mm under about 70 % (44 %); at cruise momentum carries much more, which the check doesn't count on.
-	const cr = caster.wheelMm / 2, h = motion.edgeMm
+	// Skid-steer: no caster to climb; turning in place scrubs every wheel sideways instead (model.ts skidTurn).
+	if (skid) {
+		const t = skidTurn(massKg, d.wheelbaseMm, d.trackMm, r)
+		fig("Skid turn", `wheelbase ${r2(t.ratio)}× the track, ${r2(t.torqueNm * 1000)} mN·m per wheel`, `under ${SKID_RATIO_MAX}×, stall ${r2(nominal.stallNm * 1000)} mN·m ÷ ${TORQUE_MARGIN}`, t.ratio <= SKID_RATIO_MAX && nominal.stallNm >= TORQUE_MARGIN * t.torqueNm, `turning in place scrubs the wheels sideways ${estNote("floorMu")}`)
+		if (t.ratio > SKID_RATIO_MAX)
+			push("mech-torque", `a skid-steer rover turns in place only while its wheelbase is shorter than its track (each wheel's push must beat its sideways scrub before it slips): this one's wheelbase is ${r2(t.ratio)}× its track (${d.wheelbaseMm} over ${d.trackMm} mm), over ${SKID_RATIO_MAX}×; shorten the wheelbase to at most ${Math.floor(SKID_RATIO_MAX * d.trackMm)} mm or widen the track`, ["mechanics"])
+		else if (nominal.stallNm < TORQUE_MARGIN * t.torqueNm)
+			push("mech-torque", `turning in place, each wheel must push ${r2(t.forceN)} N against the sideways scrub: ${r2(t.torqueNm * 1000)} mN·m, but ${d.motor} stalls at ${r2(nominal.stallNm * 1000)} mN·m at ${pack.nominalV} V, under the ${TORQUE_MARGIN}× margin: pick a stronger or slower-geared motor, a smaller wheel, or a shorter wheelbase`, ["mechanics"])
+	}
+	const cr = (caster?.wheelMm ?? 0) / 2, h = motion.edgeMm
 	const casterShare = 1 - onWheels
-	if (h >= cr) fig("Caster climb", `${Math.round(casterShare * 100)} % of the weight`, `edge under the caster's axle`, false)
-	if (h >= cr) push("mech-climb", `the ${h} mm edge is at or above the caster's axle (${caster.wheelMm} mm wheel): no push lifts it over; pick a caster with a wheel over ${2 * h} mm`)
-	else {
+	if (skid || !caster) {
+		// no caster
+	} else if (h >= cr) fig("Caster climb", `${Math.round(casterShare * 100)} % of the weight`, `edge under the caster's axle`, false)
+	if (!skid && caster && h >= cr) push("mech-climb", `the ${h} mm edge is at or above the caster's axle (${caster.wheelMm} mm wheel): no push lifts it over; pick a caster with a wheel over ${2 * h} mm`)
+	else if (!skid && caster) {
 		const pushPerLoad = Math.sqrt(cr * cr - (cr - h) ** 2) / (cr - h)
 		const maxShare = est("floorMu") / (est("floorMu") + CLIMB_MARGIN * pushPerLoad)
 		fig("Caster climb", `${Math.round(casterShare * 100)} % of the weight`, `at most ${Math.round(maxShare * 100)} %`, casterShare <= maxShare, `${caster.wheelMm} mm caster, ${h} mm edge, ${CLIMB_MARGIN}× margin ${estNote("floorMu")}`)
@@ -302,14 +323,14 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 
 	// Top speed: full duty on the motor's load line (model.ts loadedSpeedMps, the model the firmware's cruise duty comes
 	// from) at the pack's nominal voltage, the plateau it spends most of its charge on: the speed it can still hold there.
-	const topMps = loadedSpeedMps(motor, pack, pack.nominalV, 1, massKg, r)
+	const topMps = loadedSpeedMps(motor, pack, pack.nominalV, 1, massKg, r, n)
 	fig("Top speed", `${r2(topMps)} m/s`, `at least ${motion.speedMps} m/s`, topMps >= motion.speedMps, `full duty on the load line at ${pack.nominalV} V, ${Math.round(massG)} g rolling ${estNote("rollingCrr")}`)
 	if (topMps < motion.speedMps)
 		push("mech-speed", `${d.motor} on ${wheel.diameterMm} mm wheels reaches about ${r2(topMps)} m/s at full duty from ${pack.nominalV} V (its load line with ${Math.round(massG)} g rolling, ${estNote("rollingCrr")}), short of the ${motion.speedMps} m/s target: pick a lower gear ratio or bigger wheels`)
 
 	// Cruise duty: what the firmware drives at (firmware.ts, the same cruiseDuty). A motor geared far faster than the
 	// target cruises at a sliver of its duty; the firmware used to raise it silently to the floor, overshooting the speed.
-	const duty = cruiseDuty(motor, pack, motion.speedMps, massKg, r)
+	const duty = cruiseDuty(motor, pack, motion.speedMps, massKg, r, n)
 	if (duty <= 1) {
 		fig("Cruise duty", `${r2(duty)}`, `at least ${MIN_CRUISE_DUTY}`, duty >= MIN_CRUISE_DUTY, `${motion.speedMps} m/s on the load line from a full ${pack.fullV} V pack ${estNote("rollingCrr")}`)
 		if (duty < MIN_CRUISE_DUTY)
@@ -354,14 +375,14 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const computeA = boughtComputeA(mech, pack, cat)
 	const boardMa = boards.reduce((t, b) => t + cellFedElectronics(b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0) + computeA.amps * 1000
 	if (computeA.amps > 0) fig("Computer draw", `${r2(computeA.amps)} A`, "from the pack", true, computeA.how)
-	const packNeedA = 2 * full.stallA + boardMa / 1000
-	fig("Pack peak current", `${r2(packNeedA)} A`, `at most ${pack.peakA} A`, packNeedA <= pack.peakA, "both motors at stall plus the electronics")
+	const packNeedA = n * full.stallA + boardMa / 1000
+	fig("Pack peak current", `${r2(packNeedA)} A`, `at most ${pack.peakA} A`, packNeedA <= pack.peakA, `${n === 2 ? "both" : `all ${n}`} motors at stall plus the electronics`)
 	if (packNeedA > pack.peakA)
 		push("mech-current", `both motors at stall plus the electronics draw ${r2(packNeedA)} A from a full cell, over the ${mech.battery.pack}'s ${pack.peakA} A peak: pick a pack rated higher or a gentler motor`)
 
 	// Runtime at cruise: rolling resistance only (flat floors), plus the electronics.
-	const rollNmPerWheel = (est("rollingCrr") * massKg * G * r) / 2
-	const cruiseA = 2 * (motor.noLoadA + (nominal.kt > 0 ? rollNmPerWheel / nominal.kt : 0)) + boardMa / 1000
+	const rollNmPerWheel = (est("rollingCrr") * massKg * G * r) / n
+	const cruiseA = n * (motor.noLoadA + (nominal.kt > 0 ? rollNmPerWheel / nominal.kt : 0)) + boardMa / 1000
 	const runtimeMin = ((pack.mAh / 1000) * USABLE_ENERGY) / cruiseA * 60
 	fig("Runtime", `${Math.round(runtimeMin)} min`, `at least ${motion.runtimeMin} min`, runtimeMin >= motion.runtimeMin, `${r2(cruiseA)} A at cruise ${estNote("rollingCrr")}`)
 	if (runtimeMin < motion.runtimeMin)
@@ -420,8 +441,9 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// Level: the caster sets the plate's height; the motors hang from it on brackets, at least half their body below
 	// it (they can drop lower on a spacer, not rise into the plate).
 	const axleLevel = wheel.diameterMm / 2 + motor.bodyMm[2] / 2
-	if (mech.chassis.clearanceMm < axleLevel - LEVEL_TOLERANCE_MM || Math.abs(caster.heightMm - mech.chassis.clearanceMm) > LEVEL_TOLERANCE_MM)
-		push("mech-fit", `the plate isn't level: its underside is ${mech.chassis.clearanceMm} mm up, the motors need at least ${r1(axleLevel)} mm and the ${d.caster} holds it at ${caster.heightMm} mm (within ${LEVEL_TOLERANCE_MM} mm): set the clearance to the caster's height, or pick a caster that matches`)
+	// Skid-steer: both axles' brackets set the height, so only the motors' minimum counts.
+	if (mech.chassis.clearanceMm < axleLevel - LEVEL_TOLERANCE_MM || (!skid && caster && Math.abs(caster.heightMm - mech.chassis.clearanceMm) > LEVEL_TOLERANCE_MM))
+		push("mech-fit", `the plate isn't level: its underside is ${mech.chassis.clearanceMm} mm up, the motors need at least ${r1(axleLevel)} mm and the ${d.caster} holds it at ${caster?.heightMm} mm (within ${LEVEL_TOLERANCE_MM} mm): set the clearance to the caster's height, or pick a caster that matches`)
 	// The sensor looks forward: nothing may stand in front of it across its width.
 	const sm = ms.find((m) => m.what === "sensor")
 	if (sm) for (const m of ms) if (m !== sm && !m.what.startsWith("wheel:") && blocksSensor(m, sm))
@@ -451,13 +473,17 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		push("mech-wiring", `${onMotor.map((p) => `${p.signal} (GPIO${p.gpio}) goes to motor connector ${p.partRef}`).join("; ")}: a motor never connects to a GPIO. Remove these pins: the board generator wires the motor driver's outputs to the motor plugs' motor pins (1/2, or M1/M2 on an encoder plug), and the GPIOs drive the driver's inputs MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2`, ["architect"], ["pins"])
 	// Each motor's two wires need a 2-pin connector on the driver's outputs (real rover run 5, 15 Nov: nothing asked for
 	// them, so the motors were never connected). The generator wires the driver's AOUT/BOUT to them, in ref order.
-	if (driver && motorPlugs.size < 2) {
+	// A skid-steer rover: four motors, so four plugs (JM3, JM4 for the rear pair) and a second driver for them.
+	const nMotors = n
+	if (skid && motorDriversOf(parts).length < 2)
+		push("mech-wiring", `a skid-steer rover's four motors need a second motor driver (role motor-driver, the ${driver?.part.mpn ?? "DRV8833PWPR"} again, ref U6) for the rear pair: the board generator wires its inputs to the first driver's, so each side's two motors run together`, ["parts"], ["parts"])
+	if (driver && motorPlugs.size < nMotors) {
 		// The refs to use: header connectors the board already places with no part (the architect named them), then JM1, JM2.
 		const partRefs = new Set(parts.map((p) => p.ref))
 		const placed = boards.flatMap((b) => b.snapshot.values.connectors ?? []).filter((k) => k.kind === "header" && !partRefs.has(k.ref) && k.ref !== mech.sensor?.connector).map((k) => k.ref)
-		const refs = [...placed, ...["JM1", "JM2"].filter((r) => !partRefs.has(r) && !placed.includes(r))].slice(0, 2 - motorPlugs.size)
+		const refs = [...placed, ...MOTOR_PLUG_REFS.slice(0, nMotors).filter((r) => !partRefs.has(r) && !placed.includes(r))].slice(0, nMotors - motorPlugs.size)
 		const plug = motor.encoder ? `6-pin connector${motorPlugs.size === 1 ? "" : "s"} (role connector, the JST SH SM06B-SRSS-TB(LF)(SN) in the catalog, pins ["GND", "ENCB", "ENCA", "VCC", "M2", "M1"]: the ${motor.mpn.split(" ")[0]} carries an encoder)` : `2-pin connector${motorPlugs.size === 1 ? "" : "s"} (role connector, pins ["1", "2"], the JST PH B2B-PH-K-S in the catalog)`
-		push("mech-wiring", `the motors need ${2 - motorPlugs.size} more ${plug}, one per motor, as ${refs.join(" and ")}${placed.length ? " (the connectors the board already places)" : ""}: the board generator wires the driver's outputs to them`, ["parts"], ["parts"])
+		push("mech-wiring", `the motors need ${nMotors - motorPlugs.size} more ${plug}, one per motor, as ${refs.join(" and ")}${placed.length ? " (the connectors the board already places)" : ""}: the board generator wires the driver's outputs to them`, ["parts"], ["parts"])
 	}
 	// An encoder gearmotor (catalog encoder): its plugs are the 6-pin ones, and each encoder's channel A reaches a GPIO
 	// (ENC_LA on JM1, the left motor; ENC_RA on JM2), whose edges the firmware counts for odometry (rover.h; channel B
@@ -520,4 +546,9 @@ export function cellFedElectronics<R extends { name: string }>(rails: R[]): R[] 
 	const fed = rails.filter((r) => !/VBUS|USB/i.test(r.name))
 	const downstream = fed.filter((r) => !/BAT|CELL/i.test(r.name))
 	return downstream.length ? downstream : fed
+}
+
+// The boards' motor drivers (role motor-driver): a skid-steer rover needs two.
+function motorDriversOf(parts: { role: string }[]) {
+	return parts.filter((p) => p.role === "motor-driver")
 }

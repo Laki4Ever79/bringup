@@ -47,10 +47,11 @@ def _check(spec):
 
     bat = spec["battery"]
     on_plate("battery", bat["xMm"], bat["yMm"], bat["sizeMm"][0], bat["sizeMm"][1])
-    c = spec["caster"]
-    xs = [c["xMm"] + dx for dx, _ in c["holesMm"]]
-    ys = [dy for _, dy in c["holesMm"]]
-    on_plate("caster's bolt holes", (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs), max(ys) - min(ys))
+    c = spec["caster"]  # None on a skid-steer rover (four driven wheels, no caster)
+    if c:
+        xs = [c["xMm"] + dx for dx, _ in c["holesMm"]]
+        ys = [dy for _, dy in c["holesMm"]]
+        on_plate("caster's bolt holes", (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs), max(ys) - min(ys))
     sen = spec["sensor"]
     on_plate("sensor bracket", sen["xMm"] - sen["sizeMm"][2] / 2 - WALL / 2, sen["yMm"], WALL, sen["sizeMm"][0] + 2 * WALL)
 
@@ -93,7 +94,7 @@ def build(spec):
 
     # The caster's bolt holes.
     c = spec["caster"]
-    for dx, dy in c["holesMm"]:
+    for dx, dy in (c["holesMm"] if c else []):
         part -= Pos(c["xMm"] + dx, dy, t / 2) * Cylinder(c["holeDiaMm"] / 2, t + 2)
 
     # A cradle under the plate per motor, down to the axle (axleDropMm under the plate): a block around the body with
@@ -192,7 +193,7 @@ def build(spec):
     # screws read as standoffs with no board hole over them, 16 Nov 2026), so they are left out here.
     def not_clamp(h):
         return not any(abs(h["xMm"] - c["xMm"]) < 0.05 and abs(h["yMm"] - c["yMm"]) < 0.05 for c in clamp_screws)
-    mounts = {"standoffHoles": [h for d in pilots for h in centres(d / 2) if not_clamp(h)], "casterHoles": centres(c["holeDiaMm"] / 2), "sensorHoles": [{"yMm": y, "zMm": z} for y, z in sensor_holes]}
+    mounts = {"standoffHoles": [h for d in pilots for h in centres(d / 2) if not_clamp(h)], "casterHoles": centres(c["holeDiaMm"] / 2) if c else [], "sensorHoles": [{"yMm": y, "zMm": z} for y, z in sensor_holes]}
     bracket_holes = []
     for m in spec["motors"]:
         mount = m.get("mount", {})

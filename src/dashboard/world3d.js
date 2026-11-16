@@ -180,7 +180,9 @@ function roverParts(spec, chassisTris) {
 	if (chassisTris?.length) add(shift(chassisTris, [0, 0, lift]), CHASSIS)
 	else add(boxTris([-spec.plate.lengthMm / 2, -spec.plate.widthMm / 2, lift], [spec.plate.lengthMm / 2, spec.plate.widthMm / 2, lift + spec.plate.thicknessMm]), CHASSIS)
 	const r = d.wheelDiameterMm / 2
-	for (const s of [1, -1]) add(cylinderY(d.axleXMm, (s * d.trackMm) / 2, r, r, d.wheelWidthMm), TYRE)
+	// A skid-steer rover (drive kind "skid4"): a second pair of wheels wheelbaseMm behind the first.
+	for (const ax of d.kind === "skid4" ? [d.axleXMm, d.axleXMm - d.wheelbaseMm] : [d.axleXMm])
+		for (const s of [1, -1]) add(cylinderY(ax, (s * d.trackMm) / 2, r, r, d.wheelWidthMm), TYRE)
 	for (const m of spec.motors ?? []) add(boxTris([m.xMm - m.bodyMm[0] / 2, m.yMm - m.bodyMm[1] / 2, r - m.bodyMm[2] / 2], [m.xMm + m.bodyMm[0] / 2, m.yMm + m.bodyMm[1] / 2, r + m.bodyMm[2] / 2]), METAL)
 	if (spec.caster) {
 		const cr = spec.caster.wheelMm / 2

@@ -44,7 +44,9 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 	if (!motion) return { mechanics: null, remaining: [], tried: 0, why: "the design has no motion field: it isn't a robot" }
 	const m = cat.mech
 	const motor = byMpn(m.motors, choice.motor), wheel = byMpn(m.wheels, choice.wheel), caster = byMpn(m.casters, choice.caster), pack = byMpn(m.batteries, choice.pack), sensor = byMpn(m.sensors ?? [], choice.sensor)
-	const missing = [!motor && `motor ${choice.motor}`, !wheel && `wheel ${choice.wheel}`, !caster && `caster ${choice.caster}`, !pack && `battery ${choice.pack}`, !sensor && `sensor ${choice.sensor}`].filter(Boolean)
+	// Four-wheel skid steer when the brief asks for it (motion.drive): no caster.
+	const skid = motion.drive === "skid4"
+	const missing = [!motor && `motor ${choice.motor}`, !wheel && `wheel ${choice.wheel}`, !caster && !skid && `caster ${choice.caster}`, !pack && `battery ${choice.pack}`, !sensor && `sensor ${choice.sensor}`].filter(Boolean)
 	if (missing.length) return { mechanics: null, remaining: [], tried: 0, why: `${missing.join(", ")} not in catalog/mechanics.json: pick from the design facts' list` }
 	// A connector ref another part already has (real rover run 5: "J2", the battery's) can't be the sensor's plug: JT1.
 	const clash = (c.values.parts ?? []).find((p) => p.ref === choice.connector && !(p.role === "connector" && p.pins.length === 4))
@@ -55,7 +57,8 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 	const boards = outlinesWithAssembly(c.values)
 	// The plate's underside at the caster's height: the level check wants them within a few mm, and the motors hang
 	// below it on brackets.
-	const clearanceMm = caster!.heightMm
+	// Skid steer: both axles hang from the plate, so its underside is where the motors put it (the level check's minimum).
+	const clearanceMm = skid ? Math.ceil(wheel!.diameterMm / 2 + motor!.bodyMm[2] / 2) : caster!.heightMm
 	const thicknessMm = 3
 	const plateTop = clearanceMm + thicknessMm
 	const sensorZ = Math.round((plateTop + Math.max(...sensor!.sizeMm) / 2 + 2) * 10) / 10
@@ -87,12 +90,15 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 		})
 		const sensorX = Math.round((L / 2 - sensor!.sizeMm[2] / 2) * 10) / 10
 		const hx = L / 2
-		for (const axleXMm of range(hx * 0.6, -hx * 0.2, -5))
-			for (const wheelbaseMm of range(30, axleXMm + hx - caster!.wheelMm / 2, 5))
+		// Skid steer: the front axle near the front, the rear one wheelbaseMm behind, the wheelbase under 0.9 × the track
+		// (checks.ts SKID_RATIO_MAX) and both axles' wheels under the plate's length.
+		const axles = skid ? range(hx - wheel!.diameterMm / 2, hx * 0.2, -5) : range(hx * 0.6, -hx * 0.2, -5)
+		for (const axleXMm of axles)
+			for (const wheelbaseMm of skid ? range(Math.min(Math.floor(0.9 * track), axleXMm + hx - wheel!.diameterMm / 2), wheel!.diameterMm + 10, -5) : range(30, axleXMm + hx - caster!.wheelMm / 2, 5))
 				for (const bx of range(hx - pack!.sizeMm[0] / 2, -(hx - pack!.sizeMm[0] / 2), -5)) {
 					if (tried >= budget) return finish()
 					const mech: Mechanics = completeForRules({
-						drive: { kind: "differential", motor: motor!.mpn, wheel: wheel!.mpn, caster: caster!.mpn, trackMm: track, wheelbaseMm, axleXMm },
+						drive: { kind: skid ? "skid4" : "differential", motor: motor!.mpn, wheel: wheel!.mpn, caster: skid ? "" : caster!.mpn, trackMm: track, wheelbaseMm, axleXMm },
 						battery: { pack: pack!.mpn, at: { xMm: bx, yMm: 0 } },
 						sensor: { module: sensor!.mpn, at: { xMm: sensorX, yMm: 0, zMm: sensorZ }, connector: choice.connector },
 						chassis: { plateMm: [L, W], thicknessMm, material: "PLA", clearanceMm, boards: boardsAt },
