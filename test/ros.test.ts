@@ -44,7 +44,7 @@ test("a hand-edited stale YAML is caught: the old 60 mm wheel, a speed the motor
 
 test("the package is written with both hardware variants and passes its own checks; an edited URDF mass is caught", () => {
 	const s = spec()
-	const pkg = writeRosPackage(mkdtempSync(join(tmpdir(), "bringup-ros-")), s, { robot: "rover", revision: 9 })
+	const pkg = writeRosPackage(tempDir(), s, { robot: "rover", revision: 9 })
 	assert.match(readFileSync(join(pkg, "package.xml"), "utf8"), /<exec_depend>bringup_hardware<\/exec_depend>/)
 	assert.match(readFileSync(join(pkg, "launch", "bringup.launch.py"), "utf8"), /hardware/)
 	assert.deepEqual(rosPackageChecks(s, pkg), [])
@@ -54,6 +54,7 @@ test("the package is written with both hardware variants and passes its own chec
 })
 
 import { bagStats, diagnose, i2cRise } from "../src/ros/diagnose.ts"
+import { tempDir } from "./helpers.ts"
 
 const rover = () => ({ revision: 9, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) }) as ContractSnapshot
 const healthy = { "/range_sensor_broadcaster/range": { count: 568, durationS: 18.9 }, "/joint_states": { count: 569, durationS: 18.9 } }

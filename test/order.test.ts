@@ -6,6 +6,7 @@ import { test } from "node:test"
 import { orderPackage, JLCPCB_QUOTE } from "../src/dashboard/order.ts"
 import { serveHub } from "../src/dashboard/server.ts"
 import { zipEntries, zipStore } from "../src/tools/fab.ts"
+import { tempDir } from "./helpers.ts"
 
 // "Ready to order": one zip with what JLCPCB's PCBA upload asks for, plus the case for JLC3DP, from the latest settled
 // revision only. Never an order: no upload, no account; the page opens JLCPCB's quote page.
@@ -14,7 +15,7 @@ const line = (seq: number, type: string, payload: object) => JSON.stringify({ se
 const GERBERS = zipStore([{ name: "board-F_Cu.gtl", data: Buffer.from("G04 copper*") }])
 
 function run(o: { noHardware?: boolean; settled?: boolean | null; fabRev?: number; fab?: boolean; enclosure?: boolean; after?: string; drcErrors?: number | null; review?: "pass" | "fail" | null } = {}): string {
-	const root = mkdtempSync(join(tmpdir(), "bringup-order-"))
+	const root = tempDir()
 	const dir = join(root, ID)
 	mkdirSync(join(dir, "fab"), { recursive: true })
 	let trace = line(0, "run.started", { review: true, noHardware: o.noHardware ?? false, bench: false, stay: true })

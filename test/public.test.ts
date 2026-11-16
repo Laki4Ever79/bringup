@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
 import { PUBLIC_BANNER, PUBLIC_RUNS, PublicGate, preparePublicRoot } from "../src/dashboard/public.ts"
+import { tempDir } from "./helpers.ts"
 
 const HOUR = 3_600_000
 
@@ -40,7 +41,7 @@ test("the gate: one typed change per run, only from the scripted set", () => {
 })
 
 test("the recorded runs are copied from docs/runs into the public out root", () => {
-	const root = mkdtempSync(join(tmpdir(), "bringup-public-"))
+	const root = tempDir()
 	const copied = preparePublicRoot(root)
 	assert.ok(copied.includes("add-sensor") && copied.includes("real-20"), copied.join(" "))
 	for (const id of copied) assert.ok(existsSync(join(root, id, "trace.jsonl")), id)
@@ -48,7 +49,7 @@ test("the recorded runs are copied from docs/runs into the public out root", () 
 })
 
 function publicRoot() {
-	const root = mkdtempSync(join(tmpdir(), "bringup-public-"))
+	const root = tempDir()
 	mkdirSync(join(root, "add-sensor"))
 	writeFileSync(join(root, "add-sensor", "trace.jsonl"), JSON.stringify({ seq: 0, at: "2026-10-31T12:00:00.000Z", type: "design.settled", producerId: "x", payload: { revision: 7, settled: true } }) + "\n")
 	return root

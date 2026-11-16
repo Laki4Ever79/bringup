@@ -11,6 +11,7 @@ import { netsFromCircuitJson, partsFromCircuitJson } from "../src/tools/board-ne
 import { readBoardEdits } from "../src/tools/kicad-read.ts"
 import { fixtureContract } from "./fixture.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
+import { tempDir } from "./helpers.ts"
 
 const KICAD_IMAGE = "kicad/kicad:10.0"
 const PATH = [fileURLToPath(new URL("../tools/node/node_modules/.bin", import.meta.url)), process.env.PATH].join(delimiter)
@@ -19,7 +20,7 @@ const hasKicad = spawnSync("docker", ["image", "inspect", KICAD_IMAGE], { stdio:
 
 test("board builds and passes consistency", { skip: !(hasTsci && hasKicad) && "tsci or the kicad docker image is missing", timeout: 300_000 }, () => {
 	const s = fixtureContract()
-	const dir = mkdtempSync(join(tmpdir(), "bringup-board-"))
+	const dir = tempDir()
 	writeFileSync(join(dir, "board.circuit.tsx"), circuitFromContract(s))
 	execFileSync("tsci", ["build", "board.circuit.tsx", "--kicad-project"], { cwd: dir, env: { ...process.env, PATH }, stdio: "pipe" })
 
@@ -75,7 +76,7 @@ function busyContract() {
 
 test("busy mock-run contract: J1 on the bottom and SW1 on top read back from the .kicad_pcb", { skip: !hasTsci && "tsci is missing", timeout: 300_000 }, () => {
 	const s = busyContract()
-	const dir = mkdtempSync(join(tmpdir(), "bringup-board-"))
+	const dir = tempDir()
 	writeFileSync(join(dir, "board.circuit.tsx"), circuitFromContract(s))
 	execFileSync("tsci", ["build", "board.circuit.tsx", "--kicad-project"], { cwd: dir, env: { ...process.env, PATH }, stdio: "pipe" })
 	assertRoundTrip(s, readFileSync(join(dir, "dist/board/kicad/board.kicad_pcb"), "utf8"))
@@ -84,7 +85,7 @@ test("busy mock-run contract: J1 on the bottom and SW1 on top read back from the
 for (const [name, contract] of [["fixture", fixtureContract], ["busy mock-run contract", busyContract]] as const) {
 	test(`${name}: built components don't overlap and stay on the board`, { skip: !hasTsci && "tsci is missing", timeout: 300_000 }, () => {
 		const s = contract()
-		const dir = mkdtempSync(join(tmpdir(), "bringup-board-"))
+		const dir = tempDir()
 		writeFileSync(join(dir, "board.circuit.tsx"), circuitFromContract(s))
 		execFileSync("tsci", ["build", "board.circuit.tsx"], { cwd: dir, env: { ...process.env, PATH }, stdio: "pipe" })
 		const elements = JSON.parse(readFileSync(join(dir, "dist/board/circuit.json"), "utf8"))

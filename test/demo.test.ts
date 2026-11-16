@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { test } from "node:test"
 import { createCloudRelay, parseDemoArgs, runDemo, summarize, type DemoDeps } from "../src/demo.ts"
+import { tempDir } from "./helpers.ts"
 
 const ev = (seq: number, type: string, payload: object) => JSON.stringify({ seq, at: new Date().toISOString(), type, producerId: "x", payload }) + "\n"
 
@@ -76,7 +77,7 @@ const quiet: Pick<DemoDeps, "log" | "openUrl"> = { log: () => {}, openUrl: () =>
 
 test("the change rides on the run's own after-settle mechanism, and the run stays up for more", { timeout: 10_000 }, async () => {
 	const stub = stubLaunch(50, 200)
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const outRoot = tempDir()
 	const r = await runDemo(parseDemoArgs(["--after", "6", "--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
 	try {
 		assert.equal(r.code, 0)
@@ -90,7 +91,7 @@ test("the change rides on the run's own after-settle mechanism, and the run stay
 
 test("--no-change: no scripted change, and the run still stays up for changes from the dashboard", { timeout: 10_000 }, async () => {
 	const stub = stubLaunch(50, 200)
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const outRoot = tempDir()
 	const r = await runDemo(parseDemoArgs(["--no-change", "--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
 	try {
 		assert.deepEqual(stub.seen.args.extraArgs, ["--stay"])
@@ -101,7 +102,7 @@ test("--no-change: no scripted change, and the run still stays up for changes fr
 
 test("the demo's dashboard tracks its run: 'waiting for a change' while it stays up, Stop reaches it", { timeout: 10_000 }, async () => {
 	const stub = stubLaunch(50, 1500)
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const outRoot = tempDir()
 	let url = ""
 	const statuses: string[] = []
 	const r = await runDemo(parseDemoArgs(["--port", "0", "--no-open"]), {
@@ -127,7 +128,7 @@ test("the demo's dashboard tracks its run: 'waiting for a change' while it stays
 
 test("the dashboard serves the run", { timeout: 10_000 }, async () => {
 	const stub = stubLaunch(100, 300)
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const outRoot = tempDir()
 	const r = await runDemo(parseDemoArgs(["--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
 	try {
 		assert.match(r.outDir, /demo-[\w-]+$/)
@@ -145,7 +146,7 @@ test("the dashboard serves the run", { timeout: 10_000 }, async () => {
 const cloud = (id: string) => `\x1b[36m▶ mozaik cloud — watching live: https://app.jigjoy.ai/?s=loop_${id}\x1b[0m\n`
 
 test("the cloud relay prints the first link, then only counts, and records every URL", () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const dir = tempDir()
 	const log: string[] = []
 	let now = 0
 	const relay = createCloudRelay(dir, (l) => log.push(l), () => now)
@@ -166,7 +167,7 @@ test("the cloud relay prints the first link, then only counts, and records every
 })
 
 test("a run without Cloud output prints nothing about Cloud", () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const dir = tempDir()
 	const log: string[] = []
 	const relay = createCloudRelay(dir, (l) => log.push(l))
 	relay.write("mozaik cloud: no API key — telemetry disabled.\n")
@@ -176,7 +177,7 @@ test("a run without Cloud output prints nothing about Cloud", () => {
 })
 
 test("runDemo relays the run's Cloud links and the dashboard can read them", { timeout: 10_000 }, async () => {
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const outRoot = tempDir()
 	const log: string[] = []
 	const launch: DemoDeps["launch"] = (args, hooks) => {
 		writeFileSync(join(args.outDir, "trace.jsonl"), "")
@@ -201,7 +202,7 @@ test("runDemo relays the run's Cloud links and the dashboard can read them", { t
 test("--no-hardware: the whole story with only npm ci (stubbed builders), passed to the run", { timeout: 10_000 }, async () => {
 	assert.equal(parseDemoArgs(["--no-hardware"]).noHardware, true)
 	const stub = stubLaunch(50, 200)
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const outRoot = tempDir()
 	const r = await runDemo(parseDemoArgs(["--no-hardware", "--port", "0", "--no-open"]), { launch: stub.launch, outRoot, ...quiet })
 	try {
 		assert.deepEqual(stub.seen.args.extraArgs, ["--stay", "--no-hardware", "--change", "make the board 60 mm wide", "--change-delay", "8"])
@@ -212,7 +213,7 @@ test("--no-hardware: the whole story with only npm ci (stubbed builders), passed
 
 test("the run's own notices (\"bringup: …\") reach the demo's terminal, e.g. why the change was not sent", { timeout: 10_000 }, async () => {
 	const log: string[] = []
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-demo-"))
+	const outRoot = tempDir()
 	const launch: DemoDeps["launch"] = (args, hooks) => {
 		writeFileSync(join(args.outDir, "trace.jsonl"), "")
 		hooks.onStdout("bringup: mock models (no API key)\nsome other line\n")

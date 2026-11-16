@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { test } from "node:test"
 import { askPrompt, revisionsToLoad } from "../src/dashboard/ask.ts"
 import { serveHub } from "../src/dashboard/server.ts"
+import { tempDir } from "./helpers.ts"
 
 const line = (seq: number, type: string, payload: object) => JSON.stringify({ seq, at: `2026-10-31T12:00:${String(seq).padStart(2, "0")}.000Z`, type, producerId: "x", payload }) + "\n"
 const outline = (w: number) => ({ widthMm: w, heightMm: 30, thicknessMm: 1.6 })
@@ -15,7 +16,7 @@ const trace = (mock: boolean) =>
 	line(3, "contract.changed", { field: "outline", version: 2, revision: 8, by: "architect", reason: "engineer asked for 40 mm wide", before: outline(50), after: outline(40), cause: { kind: "request", id: "req-1", text: "make it 40 mm wide" } })
 
 function run(mock: boolean): { root: string; id: string } {
-	const root = mkdtempSync(join(tmpdir(), "bringup-ask-"))
+	const root = tempDir()
 	const id = "20261031-120000-aaaaaa"
 	mkdirSync(join(root, id, "contracts"), { recursive: true })
 	writeFileSync(join(root, id, "trace.jsonl"), trace(mock))

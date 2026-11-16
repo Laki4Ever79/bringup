@@ -5,11 +5,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
 import { serveHub, type HubLaunch } from "../src/dashboard/server.ts"
+import { tempDir } from "./helpers.ts"
 
 const line = (seq: number, type: string, payload: object, at = `2026-10-31T12:00:0${seq}.000Z`) => JSON.stringify({ seq, at, type, producerId: "x", payload }) + "\n"
 
 function outRoot() {
-	const root = mkdtempSync(join(tmpdir(), "bringup-hub-"))
+	const root = tempDir()
 	const run = (id: string, trace: string, brief = "BLE logger\n") => {
 		mkdirSync(join(root, id))
 		writeFileSync(join(root, id, "trace.jsonl"), trace)

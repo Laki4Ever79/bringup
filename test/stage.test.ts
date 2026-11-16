@@ -4,10 +4,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
 import { serveHub } from "../src/dashboard/server.ts"
+import { tempDir } from "./helpers.ts"
 
 // The talk's /stage page: three cards, the finished runs from out/stage.json.
 test("/stage serves the stage page; /api/stage reads stage.json (or says what's missing)", async () => {
-	const root = mkdtempSync(join(tmpdir(), "bringup-stage-"))
+	const root = tempDir()
 	const hub = await serveHub({ outRoot: root, port: 0 })
 	try {
 		const page = await fetch(`${hub.url}/stage`)

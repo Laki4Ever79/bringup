@@ -6,9 +6,10 @@ import { join, resolve } from "node:path"
 import { appendEvidence, computeProblems, levelOf, loadModules, moduleStatus, modulesUsed, readEvidence, runEvidence, type Evidence, type Module } from "../src/modules/library.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
 import type { Artifacts } from "../src/contract/consistency.ts"
+import { tempDir } from "./helpers.ts"
 
 const ROOT = resolve(import.meta.dirname, "..")
-const dir = () => mkdtempSync(join(tmpdir(), "bringup-modules-"))
+const dir = () => tempDir()
 const ev = (level: Evidence["level"], result: Evidence["result"]): Evidence => ({ at: "t", module: "m", level, result, by: "build" })
 
 test("every module in catalog/modules is cited: each part is in a catalog and every bought number has a source", () => {
