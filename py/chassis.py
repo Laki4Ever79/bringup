@@ -14,7 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-from build123d import Box, Cylinder, GeomType, Pos, export_step, export_stl
+from build123d import Box, Cylinder, GeomType, Pos, Rot, export_step, export_stl
 
 STANDOFF_OD = 5.0
 M25_HOLE = 2.7  # an M2.5 screw's clearance hole: the standoff hole of a spec from before boardScrew
@@ -111,7 +111,11 @@ def build(spec):
     sw, sh, sd = sen["sizeMm"]
     top = sen["zMm"] - p["clearanceMm"] + sh / 2
     height = max(top - t, 5)
-    part += Pos(sen["xMm"] - sd / 2 - WALL / 2, sen["yMm"], t + height / 2) * Box(WALL, sw + 2 * WALL, height)
+    bx = sen["xMm"] - sd / 2 - WALL / 2
+    part += Pos(bx, sen["yMm"], t + height / 2) * Box(WALL, sw + 2 * WALL, height)
+    # The breakout's screw holes through the bracket (chassis.ts sensorHoles: the ones above the plate).
+    for h in sen.get("holes", []):
+        part -= Pos(bx, h["yMm"], h["zMm"]) * Rot(0, 90, 0) * Cylinder(sen["holeDiaMm"] / 2, WALL + 2)
 
     # Measure the holes back from the solid: the circular edges of each hole size, by centre.
     def centres(radius):
@@ -124,7 +128,15 @@ def build(spec):
                     found.append((cx, cy))
         return [{"xMm": x, "yMm": y} for x, y in found]
 
-    mounts = {"standoffHoles": [h for d in pilots for h in centres(d / 2)], "casterHoles": centres(c["holeDiaMm"] / 2)}
+    sensor_holes = []
+    if sen.get("holes"):
+        for e in part.edges().filter_by(GeomType.CIRCLE):
+            if e.radius is not None and abs(e.radius - sen["holeDiaMm"] / 2) < 0.05:
+                c0 = e.arc_center
+                cy, cz = round(c0.Y, 3), round(c0.Z, 3)
+                if abs(c0.X - bx) < WALL and not any(abs(cy - y) < 0.05 and abs(cz - z) < 0.05 for y, z in sensor_holes):
+                    sensor_holes.append((cy, cz))
+    mounts = {"standoffHoles": [h for d in pilots for h in centres(d / 2)], "casterHoles": centres(c["holeDiaMm"] / 2), "sensorHoles": [{"yMm": y, "zMm": z} for y, z in sensor_holes]}
     return part, mounts
 
 
