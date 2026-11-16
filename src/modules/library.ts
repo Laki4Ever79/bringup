@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import type { Artifacts } from "../contract/consistency.ts"
 import type { ContractValues } from "../contract/types.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "../mechanics/catalog.ts"
@@ -45,6 +45,10 @@ export interface Evidence {
 	note?: string
 	// Measured against expected, for bench evidence: { stallA: { value, unit, expected, tolerance } }.
 	measured?: Record<string, { value: number; unit: string; expected: number; tolerance: number }>
+	// The design the run belongs to, and the starter it was forked from (runSource): a starter's forks add up as its
+	// modules' evidence.
+	design?: string
+	starter?: string
 }
 
 export function loadModules(root: string): Module[] {
@@ -194,11 +198,44 @@ export function levelOf(evidence: Evidence[], cited: boolean): Level | null {
 	return level
 }
 
+// Where a run's output folder sits: a board of a system (<out>/<system>/boards/<board>) or a design of its own
+// (<out>/<design>). Its run label names both for a system's board: every system's main was "main" before, so their
+// evidence counted as one run. And the starter the design was forked from, from the dashboard's lineage
+// (<out>/plans/starters/<starter>/forks.jsonl, src/dashboard/starters.ts), when it is a fork.
+export function runSource(outDir: string): { run: string; design: string; starter?: string } {
+	const inSystem = basename(dirname(outDir)) === "boards"
+	const designDir = inSystem ? dirname(dirname(outDir)) : outDir
+	const design = basename(designDir)
+	const run = inSystem ? `${design}/${basename(outDir)}` : design
+	const lineage = join(dirname(designDir), "plans", "starters")
+	let starter: string | undefined
+	try {
+		for (const s of readdirSync(lineage)) {
+			const f = join(lineage, s, "forks.jsonl")
+			if (!existsSync(f)) continue
+			const hit = readFileSync(f, "utf8").split("\n").some((l) => { try { return (JSON.parse(l) as { design?: string }).design === design } catch { return false } })
+			if (hit) { starter = s; break }
+		}
+	} catch {
+		// no lineage: not a fork
+	}
+	return { run, design, ...(starter ? { starter } : {}) }
+}
+
+// How many forked designs of each starter a module's evidence comes from.
+export function forkCounts(ev: Evidence[]): Record<string, number> {
+	const by = new Map<string, Set<string>>()
+	for (const e of ev) if (e.starter && e.design) by.set(e.starter, (by.get(e.starter) ?? new Set()).add(e.design))
+	return Object.fromEntries([...by].map(([s, d]) => [s, d.size]))
+}
+
 export interface ModuleStatus {
 	module: Module
 	level: Level | null
 	problems: string[]
 	runs: number
+	// Forked designs of a starter that used it, by starter (the starters' evidence).
+	forks: Record<string, number>
 	passes: number
 	fails: number
 	last?: string
@@ -210,14 +247,14 @@ export function moduleStatus(root: string, dir = evidenceDir()): ModuleStatus[] 
 	return loadModules(root).map((m) => {
 		const problems = moduleProblems(m, mech, boardMpns)
 		const ev = readEvidence(m.id, dir)
-		return { module: m, level: levelOf(ev, problems.length === 0), problems, runs: new Set(ev.map((e) => e.run)).size, passes: ev.filter((e) => e.result === "pass").length, fails: ev.filter((e) => e.result === "fail").length, last: ev.at(-1)?.at }
+		return { module: m, level: levelOf(ev, problems.length === 0), problems, runs: new Set(ev.map((e) => e.run)).size, forks: forkCounts(ev), passes: ev.filter((e) => e.result === "pass").length, fails: ev.filter((e) => e.result === "fail").length, last: ev.at(-1)?.at }
 	})
 }
 
 // After a run: record what it showed for the modules it used. Never fails a run.
-export function recordRun(root: string, v: Partial<ContractValues>, a: Artifacts, run: string, revision: number, dir = evidenceDir(), failures: Partial<Record<string, string>> = {}): Evidence[] {
+export function recordRun(root: string, v: Partial<ContractValues>, a: Artifacts, run: string, revision: number, dir = evidenceDir(), failures: Partial<Record<string, string>> = {}, source: { design?: string; starter?: string } = {}): Evidence[] {
 	try {
-		const records = runEvidence(modulesUsed(loadModules(root), v), a, run, revision, undefined, failures)
+		const records = runEvidence(modulesUsed(loadModules(root), v), a, run, revision, undefined, failures).map((e) => ({ ...e, ...source }))
 		appendEvidence(records, dir)
 		return records
 	} catch (error) {
