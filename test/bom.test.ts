@@ -118,9 +118,11 @@ test("a robot's mechanics put its motors, wheels, caster, battery and sensor in 
 	}
 	await waitFor(() => existsSync(t.path))
 	const bom = t.read()
-	assert.deepEqual(bom.robot?.lines.map((l) => `${l.qty}× ${l.item}`), ["2× motor", "2× wheel", "1× caster", "1× battery", "1× distance sensor", "4× board screw", "4× caster screw", "4× caster nut"])
+	assert.deepEqual(bom.robot?.lines.map((l) => `${l.qty}× ${l.item}`), ["2× motor", "2× wheel", "1× caster", "1× battery", "1× distance sensor", "4× board screw", "4× caster screw", "4× caster nut", "4× sensor screw", "4× sensor nut"])
 	assert.match(bom.robot?.summary ?? "", /not checked \(mock run\)/)
 	// The fasteners, counted from the chassis, and what the design doesn't fasten yet.
 	assert.ok(bom.robot?.lines.some((l) => l.item === "board screw" && l.qty > 0))
-	assert.ok(bom.robot?.notes?.some((n) => /sensor bracket/.test(n)))
+	// The sensor is screwed to its bracket (16 Nov 2026); the battery isn't strapped yet.
+	assert.ok(!bom.robot?.notes?.some((n) => /sensor bracket/.test(n)), (bom.robot?.notes ?? []).join("\n"))
+	assert.ok(bom.robot?.notes?.some((n) => /battery/.test(n)))
 })
