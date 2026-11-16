@@ -122,9 +122,13 @@ export function laidOut(c: ContractSnapshot, proposed: Mechanics, cat: CheckCata
 	const failing = mechanicsChecksWith(as, cat).filter((v) => CHASSIS_KINDS.has(v.kind) || (ruled && (v.kind === "mech-safety" || v.kind === "mech-rules") && v.affects.includes("mechanics")))
 	if (!failing.length) return { mechanics: proposed, note: null }
 	const r = solveWithMotorClass(c, { motor: proposed.drive.motor, wheel: proposed.drive.wheel, caster: proposed.drive.caster, pack: proposed.battery.pack, sensor: proposed.sensor.module, connector: proposed.sensor.connector }, cat)
-	if (!r.mechanics || r.remaining.length) return { mechanics: proposed, note: null }
+	// No layout passes: the solver's best still goes in when it leaves fewer of these findings than the proposal (it
+	// carries the rules' parts too: real run 12's proposal lacked the sticker panel and stood a board in the mast).
+	if (r.mechanics && r.remaining.length && r.remaining.length < failing.length)
+		return { mechanics: { ...proposed, ...r.mechanics }, note: `no layout passes every check with these parts; the solver's best leaves ${r.remaining.length} of the proposal's ${failing.length} finding(s): ${r.remaining.map((v) => v.message).join("; ")}${r.motorNote ? `; ${r.motorNote}` : ""}` }
+	if (!r.mechanics || r.remaining.length) return { mechanics: proposed, note: r.motorNote ?? null }
 	// Fields the layout doesn't touch (a compute robot's `regulator`) stay the engineer's.
-	return { mechanics: { ...proposed, ...r.mechanics }, note: `the proposed layout failed ${failing.length} chassis check(s) (${failing[0].message}); the chassis solver laid out the same parts instead: plate ${r.mechanics.chassis.plateMm.join(" × ")} mm, axle at ${r.mechanics.drive.axleXMm} mm, wheelbase ${r.mechanics.drive.wheelbaseMm} mm, battery at x ${r.mechanics.battery.at.xMm} mm` }
+	return { mechanics: { ...proposed, ...r.mechanics }, note: `the proposed layout failed ${failing.length} chassis check(s) (${failing[0].message}); ${r.motorNote ? `${r.motorNote}; ` : ""}the chassis solver laid out ${r.motorNote ? "those parts" : "the same parts"} instead: plate ${r.mechanics.chassis.plateMm.join(" × ")} mm, axle at ${r.mechanics.drive.axleXMm} mm, wheelbase ${r.mechanics.drive.wheelbaseMm} mm, battery at x ${r.mechanics.battery.at.xMm} mm` }
 }
 
 // With a competition's rules (motion.rules), the motor class is part of the layout: when no layout passes with the motor
@@ -134,10 +138,21 @@ export function solveWithMotorClass(c: ContractSnapshot, choice: ChassisChoice, 
 	const first = solveChassis(c, choice, cat, opts)
 	const rules = c.values.motion?.rules
 	if (!rules || (first.mechanics && first.remaining.length === 0)) return first
-	const others = cat.mech.motors.filter((m) => m.encoder && m.mpn !== byMpn(cat.mech.motors, choice.motor)?.mpn).sort((a, b) => a.stallA - b.stallA)
-	for (const m of others) {
-		const r = solveChassis(c, { ...choice, motor: m.mpn }, cat, opts)
-		if (r.mechanics && r.remaining.length === 0) return { ...r, motorNote: `${choice.motor} gave no passing layout under ${rules}'s rules (${first.remaining[0]?.message ?? first.why}); ${m.mpn} does` }
-	}
+	// The drive class: encoder gearmotors x packs x wheels (real run 12, 16 Nov 2026: the agent's 6 V encoder motor on one
+	// cell lacked torque and speed for a 1.6 kg robot, and 5219 needs the two-cell pack). Lowest stall current first, the
+	// agent's own parts first within it; the first that passes is returned with what it changed.
+	const own = <T extends { mpn: string }>(list: T[], mpn: string) => [...list].sort((a, b) => (a.mpn === byMpn(list, mpn)?.mpn ? -1 : 0) - (b.mpn === byMpn(list, mpn)?.mpn ? -1 : 0))
+	const motors = [...cat.mech.motors.filter((m) => m.encoder)].sort((a, b) => a.stallA - b.stallA)
+	for (const m of motors)
+		for (const p of own(cat.mech.batteries, choice.pack))
+			for (const w of own(cat.mech.wheels, choice.wheel)) {
+				const next = { ...choice, motor: m.mpn, pack: p.mpn, wheel: w.mpn }
+				if (next.motor === byMpn(cat.mech.motors, choice.motor)?.mpn && next.pack === byMpn(cat.mech.batteries, choice.pack)?.mpn && next.wheel === byMpn(cat.mech.wheels, choice.wheel)?.mpn) continue
+				const r = solveChassis(c, next, cat, { budget: Math.min(opts.budget ?? 40_000, 8_000) })
+				if (r.mechanics && r.remaining.length === 0) {
+					const changed = [next.motor !== choice.motor && `motor ${m.mpn}`, next.pack !== choice.pack && `pack ${p.mpn}`, next.wheel !== choice.wheel && `wheels ${w.mpn}`].filter(Boolean).join(", ")
+					return { ...r, motorNote: `${choice.motor} on ${choice.pack} gave no passing layout under ${rules}'s rules (${first.remaining[0]?.message ?? first.why}); with ${changed} it passes` }
+				}
+			}
 	return first
 }
