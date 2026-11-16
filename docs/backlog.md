@@ -338,6 +338,8 @@ them as well, although it might not be the focus here".
         56 g the same course passes, so the course is marginal for an open-loop drive. The brief already asks for
         "encoders on both drive wheels": encoder gearmotors in the catalog and odometry in the rover firmware close the
         turn and the straight run on the wheels (no IMU needed). Then save examples/eurobot.
-  - [ ] **The e-stop's printed deck:** py/chassis.py doesn't generate the panel (1 to 3 mm thick at the button) yet.
+  - [ ] **The e-stop's printed deck:** py/chassis.py doesn't generate the panel (1 to 3 mm thick at the button) yet, and
+        the 3D view doesn't draw the button: examples/eurobot/still.png (16 Nov) shows the robot without it. Re-capture
+        the still once both do.
   - [ ] **Motor output traces stay 0.15 mm** (MOTOR_A1…B2 have no width rule; only rails get IPC-2221 widths). a 6 V
         N20 stalls at 0.67 A (more at 2S): check against IPC-2221 and widen.
