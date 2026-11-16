@@ -1,4 +1,5 @@
-import { mkdtempSync } from "node:fs"
+import { mkdtempSync, rmSync } from "node:fs"
+import { sweepStaleTemp } from "../src/tmp.ts"
 import { tmpdir } from "node:os"
 import { join as joinPath } from "node:path"
 import { createHuman, type SemanticEvent } from "@mozaik-ai/core"
@@ -10,8 +11,30 @@ export function exactSize(brief: string): string {
 	return brief.replace(/\babout (\d+(?:\.\d+)? × \d+(?:\.\d+)? mm)/, "exactly $1")
 }
 
+// Each test file's temp folders, removed when its process ends cleanly. They were never removed: 32,044 /tmp/bringup-*
+// folders (some 780 MB, a board build or a mock run each) filled the disk on 16 Nov 2026. A file that fails keeps them,
+// since its failures print their paths (BRINGUP_KEEP_TMP=1 keeps them always).
+const made: string[] = []
+// And the ones a killed test left behind, once per test file (src/tmp.ts).
+sweepStaleTemp()
+let cleanupArmed = false
 export function tempDir(): string {
-	return mkdtempSync(joinPath(tmpdir(), "bringup-"))
+	const dir = mkdtempSync(joinPath(tmpdir(), "bringup-"))
+	made.push(dir)
+	if (!cleanupArmed) {
+		cleanupArmed = true
+		process.once("exit", (code) => {
+			if (code !== 0 || process.exitCode || process.env.BRINGUP_KEEP_TMP) return
+			for (const d of made) {
+				try {
+					rmSync(d, { recursive: true, force: true })
+				} catch {
+					// a folder a still-running child holds: left for the next clean
+				}
+			}
+		})
+	}
+	return dir
 }
 
 // Joins a participant that records every event it sees, in delivery order.

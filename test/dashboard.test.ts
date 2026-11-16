@@ -5,11 +5,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
 import { serveDashboard } from "../src/dashboard/server.ts"
+import { tempDir } from "./helpers.ts"
 
 const line = (seq: number) => ({ seq, at: new Date(1000 * seq).toISOString(), type: "contract.changed", producerId: "contract", payload: { field: "outline", version: seq, revision: seq, by: "architect" } })
 
 function tempRun(lines: object[]): string {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-dash-"))
+	const dir = tempDir()
 	writeFileSync(join(dir, "trace.jsonl"), lines.map((l) => JSON.stringify(l) + "\n").join(""))
 	return dir
 }
@@ -101,7 +102,7 @@ function rawStatus(base: string, path: string): Promise<number> {
 }
 
 test("raw traversal paths cannot reach a file next to the run dir", async () => {
-	const root = mkdtempSync(join(tmpdir(), "bringup-dash-root-"))
+	const root = tempDir()
 	writeFileSync(join(root, "secret.txt"), "secret")
 	const dir = join(root, "run")
 	mkdirSync(dir)

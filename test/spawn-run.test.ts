@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { startRunProcess } from "../src/runner/spawn-run.ts"
+import { tempDir } from "./helpers.ts"
 
 const args = { briefPath: "/tmp/b/brief.md", mock: true, outDir: "/tmp/b" }
 const node = (code: string): [string, ...string[]] => [process.execPath, "-e", code]
@@ -80,7 +81,7 @@ test("extraArgs go between the brief flags and --out", async () => {
 })
 
 test("a run sees its parent go: its stdin is a pipe that closes when the parent process exits, however it exits", { timeout: 20_000 }, async () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-orphan-"))
+	const dir = tempDir()
 	const marker = join(dir, "parent-gone")
 	// The "run": waits for its stdin to close (only when told it has a parent pipe), then leaves a marker.
 	const child = join(dir, "child.mjs")

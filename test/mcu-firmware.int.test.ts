@@ -12,6 +12,7 @@ import { renodePath } from "../src/tools/renode.ts"
 import { chipPartPins } from "../src/mcu/board.ts"
 import { profileById } from "../src/mcu/profile.ts"
 import { fixtureContract } from "./fixture.ts"
+import { tempDir } from "./helpers.ts"
 
 function stmContract() {
 	const stm = profileById("stm32g031k8t6")!
@@ -30,7 +31,7 @@ const pio = [join(root, ".venv/bin/pio")].find(existsSync)
 const skip = pio ? false : "pio not found"
 
 test("the STM32G031K8 logger (SHT40 on PB7/PB6, LED on PA5) builds, its pins read back as the contract's, and it boots in Renode", { skip, timeout: 900_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-stm-"))
+	const dir = tempDir()
 	try {
 		const firmware = await buildFirmware(pio!, root, dir, stmContract(), 6)
 		assert.equal(firmware.ok, true, firmware.log)

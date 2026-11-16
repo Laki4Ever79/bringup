@@ -9,13 +9,14 @@ import { buildFirmware } from "../src/tools/firmware.ts"
 import { fixtureContract } from "./fixture.ts"
 import { MIC_PART, MIC_PINS, WAKE_WORD_MODEL } from "../src/inference/scripts.ts"
 import { pathHash, sensorPath } from "../src/contract/sensor-path.ts"
+import { tempDir } from "./helpers.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const pio = [join(root, ".venv/bin/pio")].find(existsSync)
 const skip = pio ? false : "pio not found"
 
 test("fixture firmware builds and its pins match the contract", { skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	const dir = tempDir()
 	try {
 		const firmware = await buildFirmware(pio!, root, dir, fixtureContract(), 6)
 		assert.equal(firmware.ok, true, firmware.log)
@@ -28,7 +29,7 @@ test("fixture firmware builds and its pins match the contract", { skip, timeout:
 })
 
 test("a pin on a non-existent GPIO fails the build instead of throwing", { skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	const dir = tempDir()
 	try {
 		const c = fixtureContract()
 		c.values.pins![0].gpio = 99
@@ -48,7 +49,7 @@ function withStatusLed(gpio: number) {
 }
 
 test("a STATUS_LED pin builds and is reported back", { skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	const dir = tempDir()
 	try {
 		const firmware = await buildFirmware(pio!, root, dir, withStatusLed(10), 6)
 		assert.equal(firmware.ok, true, firmware.log)
@@ -60,7 +61,7 @@ test("a STATUS_LED pin builds and is reported back", { skip, timeout: 600_000 },
 })
 
 test("a STATUS_LED on a non-existent GPIO fails the static_assert", { skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	const dir = tempDir()
 	try {
 		const firmware = await buildFirmware(pio!, root, dir, withStatusLed(99), 7)
 		assert.equal(firmware.ok, false)
@@ -71,7 +72,7 @@ test("a STATUS_LED on a non-existent GPIO fails the static_assert", { skip, time
 })
 
 test("an SHTC3 in the parts compiles the SHTC3 driver, and the firmware reports it", { skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	const dir = tempDir()
 	try {
 		const c = fixtureContract()
 		c.values.parts = c.values.parts!.map((p) => (p.role === "sensor" ? { ...p, mpn: "SHTC3-TR-2.5KS", lcsc: "C194656", pins: ["VDD", "SCL", "SDA", "VSS"] } : p))
@@ -91,7 +92,7 @@ test("an SHTC3 in the parts compiles the SHTC3 driver, and the firmware reports 
 
 // The product path: wake, read, store the reading, blink, deep-sleep for the contract's period.
 test("the product firmware compiles its duty cycle: the period from the contract, deep sleep and the history", { skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	const dir = tempDir()
 	try {
 		const c = fixtureContract()
 		c.values.requirements = { ...c.values.requirements!, dutyCycle: { activeMs: 100, periodS: 240, sleepUa: 5 } }
@@ -109,7 +110,7 @@ test("the product firmware compiles its duty cycle: the period from the contract
 })
 
 test("the firmware compiles with the contract's 180-day history", { skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	const dir = tempDir()
 	try {
 		const c = fixtureContract()
 		c.values.requirements = { ...c.values.requirements!, historyDays: 180, dutyCycle: { activeMs: 100, periodS: 300, sleepUa: 5 } }
@@ -124,7 +125,7 @@ test("the firmware compiles with the contract's 180-day history", { skip, timeou
 // A board with no sensor (briefs/beacon.md): no I2C pins, no sensor part. It wakes, blinks, advertises "no sensor" over
 // BLE and sleeps, and never reads or writes the history.
 test("a design with no sensor compiles the no-sensor product path: no reading, no history writes", { skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+	const dir = tempDir()
 	try {
 		const c = fixtureContract()
 		c.values.parts = c.values.parts!.filter((p) => p.role !== "sensor")
@@ -154,7 +155,7 @@ test("a design with no sensor compiles the no-sensor product path: no reading, n
 test("the model's arena and weights are counted in the firmware's own RAM and flash", { skip, timeout: 900_000 }, async () => {
 	const used = (log: string, what: "RAM" | "Flash") => Number(new RegExp(`${what}:.*used (\\d+) bytes`).exec(log)?.[1])
 	const sizes = async (withModel: boolean) => {
-		const dir = await mkdtemp(join(tmpdir(), "bringup-fw-"))
+		const dir = tempDir()
 		try {
 			const c = fixtureContract()
 			if (withModel) c.values.model = { ...WAKE_WORD_MODEL }
@@ -176,7 +177,7 @@ test("the model's arena and weights are counted in the firmware's own RAM and fl
 test("with a microphone model, bringup collect-firmware builds the data-collection firmware and records its sensor path", { skip, timeout: 900_000 }, async () => {
 	const { main } = await import("../src/main.ts")
 	const { mkdir, writeFile } = await import("node:fs/promises")
-	const run = await mkdtemp(join(tmpdir(), "bringup-run-"))
+	const run = tempDir()
 	try {
 		const c = fixtureContract()
 		c.values.model = { ...WAKE_WORD_MODEL }

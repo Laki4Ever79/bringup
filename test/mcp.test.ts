@@ -7,6 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createBringupMcpServer } from "../src/mcp/server.ts"
 import { fixtureContract } from "./fixture.ts"
+import { tempDir } from "./helpers.ts"
 
 const trace = [
 	{ seq: 0, at: "2026-10-30T12:00:00.000Z", type: "contract.changed", producerId: "architect", payload: { field: "outline", version: 1, revision: 1, by: "architect" } },
@@ -39,7 +40,7 @@ function stubRun() {
 
 const exitWith = (code: number, stderr: string): Launch => () => ({ done: Promise.resolve({ code, stderr }) })
 
-async function connect(launch: Launch, outRoot = mkdtempSync(join(tmpdir(), "bringup-mcp-"))) {
+async function connect(launch: Launch, outRoot = tempDir()) {
 	const server = createBringupMcpServer({ launch, outRoot })
 	const [a, b] = InMemoryTransport.createLinkedPair()
 	const client = new Client({ name: "test", version: "0" })
@@ -128,7 +129,7 @@ test("read_contract, get_report and list_events read the run files", async () =>
 })
 
 test("an existing run dir under outRoot is readable", async () => {
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-mcp-"))
+	const outRoot = tempDir()
 	mkdirSync(join(outRoot, "old-run"))
 	writeFileSync(join(outRoot, "old-run", "trace.jsonl"), trace.map((l) => JSON.stringify(l) + "\n").join(""))
 	const mcp = await connect(stubRun().launch, outRoot)
@@ -232,7 +233,7 @@ test("request_change with a bad runId is an error result", async () => {
 })
 
 test("design_status counts approved and rejected from change.resolved, not from votes", async () => {
-	const outRoot = mkdtempSync(join(tmpdir(), "bringup-mcp-"))
+	const outRoot = tempDir()
 	mkdirSync(join(outRoot, "voted"))
 	const t = [
 		{ seq: 0, at: "", type: "change.proposed", producerId: "f", payload: { proposalId: "p1", field: "pins", by: "firmware", reason: "", needsEngineer: true } },

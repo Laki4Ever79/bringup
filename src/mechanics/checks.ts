@@ -485,11 +485,16 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	else if (!plug) push("mech-wiring", `the distance sensor's cable needs a 4-pin connector ${mech.sensor.connector} (role connector, JST SH) on a board: add it`, ["parts"], ["parts"])
 	// The board generator joins the plug's IO1/IO2 to the bus (linkBusTraces): the bus must exist on its board.
 	else if (!["I2C_SDA", "I2C_SCL"].every((sig) => boards.some((b) => (b.snapshot.values.parts ?? []).some((p) => p.ref === plug.ref) && (b.snapshot.values.pins ?? []).some((p) => p.signal === sig))))
-		push("mech-wiring", `the sensor connector ${plug.ref} needs an I2C bus on its board: assign I2C_SDA and I2C_SCL`, ["architect"], ["pins"])
+		push("mech-wiring", `the sensor connector ${plug.ref} needs an I2C bus on its board: assign I2C_SDA and I2C_SCL to two free GPIOs, on another I2C part of the board (its SDA, SCL) or, when the plug is the only one, on the plug itself as I2C_SDA → ${plug.ref}.IO1 and I2C_SCL → ${plug.ref}.IO2`, ["architect"], ["pins"])
 	// The sensor's plug takes no pins: the board generator joins its IO1/IO2 to the I2C bus (real rover run 3 on the
 	// Claude subscription: the architect wired JT1 to two spare GPIOs as "EXP_IO1/2", which left it on no bus).
-	const onPlug = mech.sensor ? pins.filter((p) => p.partRef === mech.sensor.connector) : []
-	if (onPlug.length) push("mech-wiring", `${onPlug.map((p) => `${p.signal} (GPIO${p.gpio})`).join(", ")} go${onPlug.length === 1 ? "es" : ""} to the distance sensor's plug ${mech.sensor.connector}: remove ${onPlug.length === 1 ? "it" : "them"}. The plug takes no pins; the board generator joins it to the I2C bus (I2C_SDA, I2C_SCL)`, ["architect"], ["pins"])
+	// The bus itself may sit on the plug in the STEMMA QT order (I2C_SDA on IO1, I2C_SCL on IO2), which is where it must go
+	// when the plug is the board's only I2C device: "needs an I2C bus" and "the plug takes no pins" then contradicted each
+	// other, and the architect moved the bus on and off JT1 six times (run cc-eurobot-11 on the Claude subscription, 16 Nov
+	// 2026, revisions 15-29, half its revision budget).
+	const busOnPlug = (p: { signal: string; partPin: string }) => (p.signal === "I2C_SDA" && p.partPin === "IO1") || (p.signal === "I2C_SCL" && p.partPin === "IO2")
+	const onPlug = mech.sensor ? pins.filter((p) => p.partRef === mech.sensor.connector && !busOnPlug(p)) : []
+	if (onPlug.length) push("mech-wiring", `${onPlug.map((p) => `${p.signal} (GPIO${p.gpio}) on ${p.partRef}.${p.partPin}`).join(", ")} go${onPlug.length === 1 ? "es" : ""} to the distance sensor's plug ${mech.sensor.connector}: remove ${onPlug.length === 1 ? "it" : "them"}. The plug takes only the I2C bus, as I2C_SDA → ${mech.sensor.connector}.IO1 and I2C_SCL → ${mech.sensor.connector}.IO2 (or the bus on another I2C part, and the generator joins the plug to it)`, ["architect"], ["pins"])
 	// A competition's rules (motion.rules: catalog/rules/<id>.json, rules/eurobot.ts), each finding citing its clause.
 	if (motion.rules) {
 		const rules = cat.rules?.[motion.rules]

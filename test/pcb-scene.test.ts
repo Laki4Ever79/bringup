@@ -2,6 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { circuitIndex, diffRefs, fitTransform, netColor, PCB_COLORS } from "../src/dashboard/pcb-view.js"
 import { boardMesh, boxTris, heightFor, orbitCamera, paintOrder, placeBoardInCase, project, shade } from "../src/dashboard/scene3d.js"
+import { tempDir } from "./helpers.ts"
 
 // A two-part board: U1 (a module) and R1, joined by net SDA (by source_net) and GND (by source_trace).
 function circuit(r1x = 10) {
@@ -150,7 +151,7 @@ test("the dashboard server serves both modules and the preview page", async () =
 	const { tmpdir } = await import("node:os")
 	const { join } = await import("node:path")
 	const { serveDashboard } = await import("../src/dashboard/server.ts")
-	const d = await serveDashboard(mkdtempSync(join(tmpdir(), "bringup-dash-")), 0)
+	const d = await serveDashboard(tempDir(), 0)
 	try {
 		for (const m of ["/pcb-view.js", "/scene3d.js"]) {
 			const r = await fetch(d.url + m)
