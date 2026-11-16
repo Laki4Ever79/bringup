@@ -140,3 +140,15 @@ print(json.dumps(sorted(set(clashes))))
 	const out = JSON.parse(execFileSync("python3", ["-c", py], { input: acceptanceScript(spec()), encoding: "utf8" }))
 	assert.deepEqual(out, [])
 })
+
+// The QEMU back end starts ROS once the firmware's console takes a connection (runDrive onConsoleReady): the probe.
+test("portOpen tells a listening port from a closed one", async () => {
+	const { portOpen } = await import("../src/tools/drive.ts")
+	const { createServer } = await import("node:net")
+	const srv = createServer((c) => c.end())
+	await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()))
+	const port = (srv.address() as { port: number }).port
+	assert.equal(await portOpen(port), true)
+	await new Promise<void>((r) => srv.close(() => r()))
+	assert.equal(await portOpen(port), false)
+})

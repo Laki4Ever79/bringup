@@ -46,6 +46,9 @@ export interface DriveOptions {
 	buildFlags?: string
 	// Called once the console's TCP port takes a connection (the firmware built and QEMU up): what a ROS host waits for.
 	onConsoleReady?: () => void
+	// Stops the drive when it settles: a ROS test's physics runs until the test is done, not for a set number of
+	// simulated seconds (which an idle machine runs about 3x faster than real time).
+	until?: Promise<unknown>
 }
 
 // Whether something listens on a local TCP port: a connection opened and closed at once (QEMU's console server takes
@@ -100,6 +103,9 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 		const bridge = spawn(o.python, ["-B", join(o.root, "py/mech/drive.py"), specPath, sock, o.outDir, String(o.courseS ?? 25)], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
 		let stderr = ""
 		bridge.stderr.on("data", (d) => (stderr += d))
+		// A host's test that ends first asks the bridge to end the course (a "stop" file it checks); it writes its results.
+		rmSync(join(o.outDir, "stop"), { force: true })
+		void o.until?.then(() => writeFileSync(join(o.outDir, "stop"), ""))
 		const code = await new Promise<number | null>((resolve) => {
 			const timer = setTimeout(() => { bridge.kill("SIGKILL"); resolve(null) }, o.timeoutMs ?? 300_000)
 			bridge.on("close", (c) => { clearTimeout(timer); resolve(c) })

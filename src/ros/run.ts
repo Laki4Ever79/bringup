@@ -71,6 +71,8 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 	const built = await docker(["run", "--rm", "-u", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, "-e", "HOME=/tmp", "-v", mount(ws, "/ws"), "-w", "/ws", ROS_IMAGE, "bash", "-c", "source /opt/ros/jazzy/setup.bash && colcon build --event-handlers console_direct-"], 600_000)
 	if (built.code !== 0) return fail(`colcon build failed: ${built.out.split("\n").slice(-10).join("\n")}`)
 	let drive: Promise<DriveArtifact> | undefined
+	let rosEnded: () => void = () => {}
+	const rosDone = new Promise<void>((r) => (rosEnded = r))
 	if (o.backend === "qemu") {
 		if (!o.spec || !o.fwDir || !o.python || !o.pio) return fail("the qemu back end needs the chassis spec, the firmware folder, python and pio")
 		// The firmware builds, then boots in QEMU and serves its console; the physics runs as long as the test may take.
@@ -78,11 +80,15 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 		// 20 s it used to wait under load, and ROS then found no console and got no odometry (mock rover runs, 16 Nov).
 		let ready: () => void = () => {}
 		const consoleUp = new Promise<void>((r) => (ready = r))
-		drive = runDrive({ root: o.root, python: o.python, pio: o.pio, fwDir: o.fwDir, spec: o.spec, outDir: join(out, "drive-qemu"), courseS: 90, consolePort: CONSOLE_PORT, timeoutMs: 600_000, buildFlags: "-DROVER_HOST_ONLY", onConsoleReady: () => ready() })
+		// The physics runs until the ROS test is done (until: rosDone), not for a set number of simulated seconds: an idle
+		// machine ran the 90 s it used to get in 29 s of wall time, before ROS was up (a mock rover, 16 Nov 03:22: the
+		// controllers came up at :08, the physics stopped at :13, the acceptance read no odometry and no range).
+		drive = runDrive({ root: o.root, python: o.python, pio: o.pio, fwDir: o.fwDir, spec: o.spec, outDir: join(out, "drive-qemu"), courseS: 3600, consolePort: CONSOLE_PORT, timeoutMs: 600_000, buildFlags: "-DROVER_HOST_ONLY", onConsoleReady: () => ready(), until: rosDone })
 		const early = await Promise.race([consoleUp.then(() => null), drive])
 		if (early) return { ...fail(`the firmware's console never came up: ${early.reason}`), drive: { result: early.result, reason: early.reason } }
 	}
 	const r = await docker(["run", "--rm", "--network", "host", "-u", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, "-e", "HOME=/tmp", "-v", mount(ws, "/ws"), "-v", mount(out, "/out"), ROS_IMAGE, `/out/run-${o.backend}.sh`], 300_000)
+	rosEnded()
 	const d = drive ? await drive : undefined
 	const file = join(out, `acceptance-${o.backend}.json`)
 	if (!existsSync(file)) return { ...fail(r.out.split("\n").slice(-15).join("\n")), ...(d ? { drive: { result: d.result, reason: d.reason } } : {}) }

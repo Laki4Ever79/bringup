@@ -110,6 +110,7 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     max_x, caster_x = 0.0, -math.inf
     wall_contact = None
     closest = math.inf
+    stop_file = Path(out_dir) / "stop"
     nearest_ahead = math.inf  # the front reading while driving forward: the brief's "stops short of the wall"
     yaw0 = None
     turned_at = None
@@ -192,6 +193,10 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
             f.write(f"S {int(round(data.time * 1000))} {reading} {PAYLOAD[0]} {PAYLOAD[1]}{enc}\n")
             f.flush()
             if wall_contact:
+                break
+            # A host's test (ROS) that ends before the course: runDrive drops "stop" in the out-dir (src/tools/drive.ts
+            # until); the course ends here and the results are written as usual.
+            if ticks % 30 == 0 and stop_file.exists():
                 break
     finally:
         try:
