@@ -175,11 +175,19 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 	}
 	const def = (name: string) => new RegExp(`#define ${name} (\\S+)`).exec(header)?.[1]
 	const led = (s.values.pins ?? []).find((p) => p.signal === "STATUS_LED")
+	// A pull-cord start (templates/fw-rover/src/match.h): PIN_START and MATCH_MS from the same header, the debounce from
+	// match.h itself.
+	const start = def("PIN_START"), matchMs = Number(def("MATCH_MS")?.replace(/UL$/, ""))
+	const debounce = /#define MATCH_DEBOUNCE_MS (\d+)/.exec(readFileSync(resolve(import.meta.dirname, "../../templates/fw-rover/src/match.h"), "utf8"))?.[1]
+	const startFact = start
+		? [`- Firmware start (pull cord): the motors stay off until it has seen the start cord in (START on GPIO${start} reads low: the cord's loop to GND), so a robot powered up without its cord never starts; once the cord has stayed out ${debounce} ms it drives${Number.isFinite(matchMs) ? `, and ${matchMs / 1000} s after the start it stops both drive motors for good (until reset; a cord put back doesn't restart it)` : ", with no match length: it drives until it is switched off"}.`]
+		: []
 	return [
 		`- Firmware (product build of templates/fw-rover, the same control logic the simulated drive runs): never sleeps while powered. Every ${def("ROVER_PERIOD_MS")} ms tick it reads the VL53L0X distance (up to ${def("ROVER_RANGE_MM")} mm), drives both motors through the DRV8833 at cruise duty ${def("ROVER_CRUISE_DUTY")?.replace("f", "")}, slows inside ${def("ROVER_SLOW_MM")} mm and, inside ${def("ROVER_STOP_MM")} mm of a wall, turns in place for ${def("ROVER_TURN_MS")} ms, then drives on.`,
 		"- Firmware payload: every 5 s it reads the temperature/humidity sensor, prints it and broadcasts it over BLE as BTHome v2 service data (and sends it over the board's links, if any).",
 		led
 			? `- Firmware status LED: STATUS_LED on GPIO${led.gpio} blinks a 1 Hz heartbeat while the control loop runs.`
 			: "- Firmware status LED: the rover firmware drives a pin named exactly STATUS_LED as a 1 Hz heartbeat; this design has none, so no LED shows the rover running.",
+		...startFact,
 	]
 }
