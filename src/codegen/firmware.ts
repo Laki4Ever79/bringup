@@ -255,14 +255,21 @@ export function linkHeader(s: ContractSnapshot): string {
 	// extended identifier the message's definition hash (so a frame names what it carries, as linkframe's hash does on
 	// UART and I2C), its data the packed struct (8 bytes at most, the spec's check). STM32 bxCAN is not generated yet.
 	const can = stm ? undefined : live.find((l) => l.kind === "can")
-	const canStm = stm && live.some((l) => l.kind === "can")
+	// On an STM32 (bxCAN, the HAL's CAN driver: the profile's firmware flags enable HAL_CAN_MODULE_ENABLED), the same frames.
+	const canStmLink = stm ? live.find((l) => l.kind === "can") : undefined
+	const canStm = Boolean(canStmLink)
 	const sends = live.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "send" && m.name === "reading").map((m) => ({ l, m })))
 	const receives = live.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "receive").map((m) => ({ l, m })))
 	const body: string[] = ["", "#ifdef ARDUINO", "#include <Wire.h>", "#include \"linkframe.h\""]
 	if (can) body.push("#include \"driver/twai.h\"")
-	if (canStm) body.push("#error \"Bringup: a CAN link on an STM32 board needs bxCAN code, which is not generated yet (docs/backlog.md)\"")
+	if (canStmLink) body.push(
+		"#ifndef HAL_CAN_MODULE_ENABLED",
+		"#error \"Bringup: this STM32's firmware flags don't enable HAL_CAN_MODULE_ENABLED (catalog/mcu: a profile with bxCAN lists it)\"",
+		"#endif",
+		"static CAN_HandleTypeDef linkCan;",
+	)
 	// A CAN frame's identifier holds 29 of the hash's 32 bits: every link on this board compares those.
-	body.push(`#define LINK_HASH_MASK ${can ? "0x1FFFFFFFUL" : "0xFFFFFFFFUL"}`)
+	body.push(`#define LINK_HASH_MASK ${can || canStm ? "0x1FFFFFFFUL" : "0xFFFFFFFFUL"}`)
 	if (receives.length) {
 		body.push("static void linkReceived(const char *link, uint32_t hash, const uint8_t *p, uint8_t len) {")
 		for (const { l, m } of receives) {
@@ -309,6 +316,45 @@ export function linkHeader(s: ContractSnapshot): string {
 			`\tif (twai_driver_install(&g, &tc, &f) != ESP_OK || twai_start() != ESP_OK) Log.println("LINK ${can.id}: the CAN controller didn't start");`,
 		)
 	}
+	if (canStmLink) {
+		const id = canStmLink.id
+		body.push(
+			// The pins and the controller from the core's pin map (it applies an STM32F1's AFIO remap for PB8/PB9).
+			`\tconst PinName rx = digitalPinToPinName(${macroName(`${id}_CAN_RX`)}), tx = digitalPinToPinName(${macroName(`${id}_CAN_TX`)});`,
+			`\tlinkCan.Instance = (CAN_TypeDef *)pinmap_peripheral(rx, PinMap_CAN_RD);`,
+			`\t__HAL_RCC_CAN1_CLK_ENABLE();`,
+			`\tpinmap_pinout(rx, PinMap_CAN_RD);`,
+			`\tpinmap_pinout(tx, PinMap_CAN_TD);`,
+			// Bit timing from the bus clock at run time: N time quanta a bit (8..25), sampled at about 87.5 %.
+			`\tconst uint32_t pclk = HAL_RCC_GetPCLK1Freq(), bps = ${L(id)}_CAN_KBPS * 1000UL;`,
+			`\tuint32_t n = 0;`,
+			`\tfor (uint32_t q = 25; q >= 8 && !n; q--) if (pclk % (bps * q) == 0) { const uint32_t b1 = (q * 7 + 4) / 8 - 1; if (b1 <= 16 && q - 1 - b1 <= 8 && q - 1 - b1 >= 1) n = q; }`,
+			`\tif (!n) Log.println("LINK ${id}: no CAN bit timing for this bus clock");`,
+			`\telse {`,
+			`\tconst uint32_t bs1 = (n * 7 + 4) / 8 - 1, bs2 = n - 1 - bs1;`,
+			`\tlinkCan.Init.Prescaler = pclk / (bps * n);`,
+			`\tlinkCan.Init.Mode = CAN_MODE_NORMAL;`,
+			`\tlinkCan.Init.SyncJumpWidth = CAN_SJW_1TQ;`,
+			`\tlinkCan.Init.TimeSeg1 = (bs1 - 1) << CAN_BTR_TS1_Pos;`,
+			`\tlinkCan.Init.TimeSeg2 = (bs2 - 1) << CAN_BTR_TS2_Pos;`,
+			`\tlinkCan.Init.TimeTriggeredMode = DISABLE;`,
+			`\tlinkCan.Init.AutoBusOff = ENABLE;`,
+			`\tlinkCan.Init.AutoWakeUp = DISABLE;`,
+			`\tlinkCan.Init.AutoRetransmission = ENABLE;`,
+			`\tlinkCan.Init.ReceiveFifoLocked = DISABLE;`,
+			`\tlinkCan.Init.TransmitFifoPriority = DISABLE;`,
+			// Every frame into FIFO 0: the definition hash in each frame's identifier says what it is (linkReceived).
+			`\tCAN_FilterTypeDef flt = {};`,
+			`\tflt.FilterBank = 0;`,
+			`\tflt.FilterMode = CAN_FILTERMODE_IDMASK;`,
+			`\tflt.FilterScale = CAN_FILTERSCALE_32BIT;`,
+			`\tflt.FilterFIFOAssignment = CAN_RX_FIFO0;`,
+			`\tflt.FilterActivation = ENABLE;`,
+			`\tflt.SlaveStartFilterBank = 14;`,
+			`\tif (HAL_CAN_Init(&linkCan) != HAL_OK || HAL_CAN_ConfigFilter(&linkCan, &flt) != HAL_OK || HAL_CAN_Start(&linkCan) != HAL_OK) Log.println("LINK ${id}: the CAN controller didn't start");`,
+			`\t}`,
+		)
+	}
 	if (targetSends) body.push(`\tWire.onRequest(linkOnRequest);`)
 	if (target && stm) body.push(`\tWire.onReceive(linkOnReceive);`, `\tWire.setSDA(PIN_I2C_SDA);`, `\tWire.setSCL(PIN_I2C_SCL);`, `\tWire.begin((uint8_t)${L(target.id)}_I2C_ADDRESS);`, `\tWire.setClock(${L(target.id)}_I2C_KHZ * 1000UL);`)
 	else if (target) body.push(`\tWire.onReceive(linkOnReceive);`, `\tWire.begin((uint8_t)${L(target.id)}_I2C_ADDRESS, PIN_I2C_SDA, PIN_I2C_SCL, ${L(target.id)}_I2C_KHZ * 1000UL);`)
@@ -317,6 +363,7 @@ export function linkHeader(s: ContractSnapshot): string {
 		// A failed reading goes out only in a message that can say so (an ok field); otherwise it isn't sent.
 		body.push(m.fields.some((f) => f.name === "ok") ? `\t{` : `\tif (ok) {`, `\t\t${m.name}_msg m = {};`, ...m.fields.map((f) => `\t\tm.${f.name} = ${READING_FILL[f.name] ?? "0"};${READING_FILL[f.name] ? "" : " // not a reading field: sent as 0"}`))
 		if (l.kind === "uart") body.push(`\t\tlinkFrameWrite(${ser}, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\t${ser}.flush();`)
+		else if (l.kind === "can" && stm) body.push(`\t\tCAN_TxHeaderTypeDef h = {};`, `\t\th.ExtId = ${M(m.name)}_HASH & LINK_HASH_MASK;`, `\t\th.IDE = CAN_ID_EXT;`, `\t\th.RTR = CAN_RTR_DATA;`, `\t\th.DLC = sizeof m;`, `\t\tuint32_t mailbox;`, `\t\tif (HAL_CAN_AddTxMessage(&linkCan, &h, (uint8_t *)&m, &mailbox) != HAL_OK) Log.println("LINK ${l.id}: no CAN frame sent (no free mailbox, or bus off)");`)
 		else if (l.kind === "can") body.push(`\t\ttwai_message_t f = {};`, `\t\tf.extd = 1;`, `\t\tf.identifier = ${M(m.name)}_HASH & LINK_HASH_MASK;`, `\t\tf.data_length_code = sizeof m;`, `\t\tmemcpy(f.data, &m, sizeof m);`, `\t\tif (twai_transmit(&f, pdMS_TO_TICKS(20)) != ESP_OK) Log.println("LINK ${l.id}: no CAN frame sent (bus off, or nobody acknowledged)");`)
 		else if (l.i2c?.role === "target") body.push(`\t\tLinkBufferOut out;`, `\t\tlinkFrameWrite(out, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tlinkReplyLen = 0;`, `\t\tmemcpy(linkReplyFrame, out.buf, out.n);`, `\t\t__atomic_store_n(&linkReplyLen, out.n, __ATOMIC_RELEASE); // last, and after the copy: the request handler sees a whole frame or none`)
 		else body.push(`\t\tWire.beginTransmission((uint8_t)${L(l.id)}_I2C_PEER_ADDRESS);`, `\t\tlinkFrameWrite(Wire, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tconst uint8_t err = Wire.endTransmission();`, `\t\tif (err) Log.printf("LINK ${l.id}: ${l.peer} didn't answer at 0x%02x (%u)\\n", ${L(l.id)}_I2C_PEER_ADDRESS, err);`)
@@ -344,6 +391,7 @@ export function linkHeader(s: ContractSnapshot): string {
 				`\t\t}`,
 			)
 		const canIn = receives.find((r) => r.l.kind === "can")
+		if (canStm && canIn) body.push(`\t\tCAN_RxHeaderTypeDef rh;`, `\t\tuint8_t rd[8];`, `\t\twhile (HAL_CAN_GetRxFifoFillLevel(&linkCan, CAN_RX_FIFO0) && HAL_CAN_GetRxMessage(&linkCan, CAN_RX_FIFO0, &rh, rd) == HAL_OK) if (rh.IDE == CAN_ID_EXT && rh.RTR == CAN_RTR_DATA) linkReceived("${canIn.l.id}", rh.ExtId, rd, (uint8_t)rh.DLC);`)
 		if (can && canIn) body.push(`\t\ttwai_message_t f;`, `\t\twhile (twai_receive(&f, 0) == ESP_OK) if (f.extd && !f.rtr) linkReceived("${canIn.l.id}", f.identifier, f.data, f.data_length_code);`)
 		if (target) body.push(`\t\tif (linkTargetGot) {`, `\t\t\tlinkReceived("${target.id}", linkTargetHash, linkTargetFrame, linkTargetLen);`, `\t\t\tlinkTargetGot = false;`, `\t\t}`)
 		body.push("\t\tdelay(5);", "\t} while (millis() - start < ms);")
