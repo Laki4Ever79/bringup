@@ -18,3 +18,13 @@ test("the link frame round-trips and drops what is bad, compiled on this compute
 	for (const c of cases) assert.match(r.stdout, new RegExp(`^PASS ${c}$`, "m"), r.stdout)
 	assert.equal(r.status, 0, r.stdout)
 })
+
+// The payload inside the frame (templates/fw/include/linkcbor.h, 16 Nov 2026): CBOR (RFC 8949) checked against the
+// RFC's Appendix A bytes, a message read back by field name, and what another encoder may send (half/double floats).
+test("the link payload codec writes and reads CBOR as RFC 8949 gives it, compiled on this computer", { skip: gxx ? false : "needs g++" }, () => {
+	const bin = join(tempDir(), "linkcbor_test")
+	execFileSync("g++", ["-std=c++17", "-Wall", "-Werror", "-I", join(ROOT, "test/fw-host"), "-I", join(ROOT, "templates/fw/include"), join(ROOT, "test/fw-host/linkcbor_test.cpp"), "-o", bin])
+	const r = spawnSync(bin, { encoding: "utf8" })
+	for (const c of ["uint", "negative", "int32-min", "float", "map", "overflow", "roundtrip", "truncated", "half", "double", "uint64", "not-ours"]) assert.match(r.stdout, new RegExp(`^PASS ${c}$`, "m"), r.stdout)
+	assert.equal(r.status, 0, r.stdout)
+})
