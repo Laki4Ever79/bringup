@@ -1,7 +1,7 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import { byMpn } from "./catalog.ts"
 import { defaultCheckCatalog } from "./checks.ts"
-import { TURN_CLEARANCE_MM, brakeMm, cruiseDuty, loadedSpeedMps, massAndCom, mounts, onWheelsShare, payloadMount, turnStopMm } from "./model.ts"
+import { TURN_CLEARANCE_MM, brakeMm, cruiseDuty, loadedSpeedMps, massAndCom, mounts, onWheelsShare, payloadMount, turnStopMm, drivenWheels, isSkid, SKID_TURN_SIM_SHARE, skidEffectiveTrackMm, skidTurnWheelMps } from "./model.ts"
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { macroName, sensorDriver } from "../codegen/firmware.ts"
 
@@ -66,12 +66,15 @@ export function roverHeader(s: ContractSnapshot): string {
 	// its axle forward swept its rear corner into the wall it had just turned from (premerge review, 15 Nov).
 	const brakeStop = motion.stopBeforeWallMm + STOP_MARGIN * (brakeMm(speed, onWheelsShare(geom.drive, com[0]), mech.drive.maxAccelMps2) + speed * sensor.updateMs)
 	const stop = Math.ceil(Math.max(brakeStop, turnStopMm(geom, wheel)))
-	const cruise = Math.min(1, Math.max(0, cruiseDuty(motor, pack, speed, massG / 1000, r)))
+	const cruise = Math.min(1, Math.max(0, cruiseDuty(motor, pack, speed, massG / 1000, r, drivenWheels(mech.drive))))
 	// Three eighths of a turn, not a quarter: an open-loop quarter turn leaves the rover running along the wall it just
 	// faced, at whatever small angle the turn missed by, which its forward-only sensor can't see (real rover run on the
 	// Claude subscription, 15 Nov: stopped 173 mm short, turned, drove 0.73 m and clipped that wall). Turning further
 	// heads it away.
-	const turnMs = Math.round(((3 * Math.PI) / 4 / ((2 * speed) / (mech.drive.trackMm / 1000))) * 1000)
+	// A skid-steer rover turns slower than it rolls: its wheels scrub sideways (model.ts skidTurnWheelMps).
+	const turnSpeed = isSkid(mech.drive) ? skidTurnWheelMps(motor, pack, cruise, massG / 1000, mech.drive, r) : speed
+	const turnTrackMm = isSkid(mech.drive) ? skidEffectiveTrackMm(mech.drive) : mech.drive.trackMm
+	const turnMs = Math.round(((3 * Math.PI) / 4 / ((2 * turnSpeed * (isSkid(mech.drive) ? SKID_TURN_SIM_SHARE : 1)) / (turnTrackMm / 1000))) * 1000)
 	const lines = [
 		"// Generated from the design contract (src/mechanics/firmware.ts). Do not edit.",
 		"#pragma once",
