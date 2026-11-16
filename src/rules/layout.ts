@@ -26,6 +26,8 @@ export function completeForRules(mech: Mechanics, v: Partial<ContractValues>, ca
 	const keep = m.beacon.sizeMm / 2 + MAST_SOCKET_MM + 2 // clear of the mast's socket, with 2 mm of air
 	// The pack beside the mast when it would stand in it.
 	const pack = byMpn(cat.mech.batteries, m.battery.pack)
+	// F.4.b: a lithium pack that is neither LiFePO4 nor a manufacturer's cased battery with its BMS lives in a fireproof bag.
+	if (pack && pack.chemistry !== "NiMH" && pack.chemistry !== "LiFePO4" && !(pack.bms && pack.manufacturerCase)) m.battery = { ...m.battery, enclosure: "fireproof-bag" }
 	if (pack && Math.abs(m.battery.at.xMm) < keep + pack.sizeMm[0] / 2 && Math.abs(m.battery.at.yMm) < keep + pack.sizeMm[1] / 2)
 		m.battery.at = { xMm: m.battery.at.xMm, yMm: Math.min(PW / 2 - pack.sizeMm[1] / 2 - 2, keep + pack.sizeMm[1] / 2) }
 	// Boards behind the mast when they would stand in it (not a system's: its assembly places them).

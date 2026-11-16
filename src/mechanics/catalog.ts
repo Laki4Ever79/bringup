@@ -46,6 +46,12 @@ export interface BatteryPack extends Sourced {
 	internalOhm?: number
 	sizeMm: [number, number, number]
 	massG: number
+	// Lithium chemistry, whether the pack carries its maker's protection circuit (BMS), and whether it is a manufacturer's
+	// cased battery product (a power-tool, laptop or USB power-bank battery): Eurobot's F.4.b exempts LiFePO4 and a
+	// maker's BMS in its own solid case; any other lithium pack lives in a certified fireproof bag with a homologated charger.
+	chemistry?: "LiPo" | "Li-ion" | "LiFePO4" | "NiMH"
+	bms?: boolean
+	manufacturerCase?: boolean
 	notes?: string
 }
 // A bought step-down module (no board circuit): it feeds a computer such as a Raspberry Pi 5 from a 2S pack.
