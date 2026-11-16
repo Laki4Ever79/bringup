@@ -134,13 +134,25 @@
 				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
 				"where": "F.6 Other design constraints, p. 14: 'must be able to support a minimum weight of 400 g (the opposing team's beacon and the aruco tag), without flexing or compressing'"
 			}
+		},
+		"stickerWidthMm": {
+			"value": 100,
+			"unit": "mm",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.6 Other design constraints, p. 13: 'A rectangular, entire and non-deformable space of 100 x 70 mm per robot must be left free on one of the side faces'"
+			}
+		},
+		"stickerHeightMm": {
+			"value": 70,
+			"unit": "mm",
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf",
+				"where": "F.6 Other design constraints, p. 13: 'A rectangular, entire and non-deformable space of 100 x 70 mm per robot must be left free on one of the side faces'"
+			}
 		}
 	},
 	"notChecked": [
-		{
-			"rule": "F.6 visibility: a 100 × 70 mm flat space on a side face for the organisers' sticker",
-			"why": "the chassis has no side faces modelled"
-		},
 		{
 			"rule": "F.3 deployed perimeter 1400 mm",
 			"why": "the design has no deployable mechanism (the team adds it)"

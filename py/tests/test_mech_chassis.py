@@ -20,6 +20,15 @@ SPEC = {
 
 
 class ChassisTest(unittest.TestCase):
+    def test_the_sticker_panel_stands_at_the_plates_edge(self):
+        # Eurobot F.6's sticker space (model.ts stickerPanel): a 2 mm panel at the rear edge, 104 x 74 mm.
+        base = {**SPEC, "motors": [{**m, "mount": {"kind": "cradle"}} for m in SPEC["motors"]]}
+        sk = {"xMm": -74, "yMm": 0, "zMm": 35 + 3 + 37, "sizeMm": [2, 104, 74]}
+        part, _ = build({**base, "sticker": sk})
+        plain, _ = build(base)
+        self.assertAlmostEqual(part.volume - plain.volume, 2 * 104 * 74, delta=50)
+        self.assertAlmostEqual(part.bounding_box().max.Z, 3 + 74, delta=0.05)
+
     def test_the_beacon_mast_prints_in_sections_on_a_socket_with_a_closed_top(self):
         # The Eurobot base's beacon support (chassis.ts ChassisBeacon, Eurobot General Rules 1.2 F.6): its top at 430 mm,
         # the plate's top at 38 mm here, so 392 mm of mast: two sections of 196 mm, at most 200 mm each.

@@ -119,6 +119,21 @@ export function edgeForceN(massKg: number, wheelRadiusM: number, edgeM: number):
 // Every part's place, size and mass in the chassis frame (types.ts). Motors and wheels on the axle at x = axleXMm, the
 // caster wheelbaseMm behind it, the battery on the plate, boards on standoffs above it. Board mass from the outline
 // (estimate) unless given; the plate's from its volume and PLA density (estimate).
+// The sticker panel's box (py/chassis.py prints the same): STICKER_PANEL_MM thick at the plate's edge on its face,
+// STICKER_MARGIN_MM wider and taller than the sticker's space, from the plate's top. Null without one.
+export const STICKER_PANEL_MM = 2
+export const STICKER_MARGIN_MM = 2
+export function stickerPanel(mech: Mechanics): Omit<Mount, "massG"> | null {
+	const k = mech.sticker
+	if (!k) return null
+	const [L, W] = mech.chassis.plateMm
+	const along = k.widthMm + 2 * STICKER_MARGIN_MM, up = k.heightMm + 2 * STICKER_MARGIN_MM
+	const z = mech.chassis.clearanceMm + mech.chassis.thicknessMm + up / 2
+	const t = STICKER_PANEL_MM
+	if (k.face === "front" || k.face === "rear") return { what: "sticker-panel", xMm: (k.face === "front" ? 1 : -1) * (L / 2 - t / 2), yMm: 0, zMm: z, sizeMm: [t, along, up] }
+	return { what: "sticker-panel", xMm: 0, yMm: (k.face === "left" ? 1 : -1) * (W / 2 - t / 2), zMm: z, sizeMm: [along, t, up] }
+}
+
 export function mounts(mech: Mechanics, boards: { name: string; outline: { widthMm: number; heightMm: number }; massG?: number }[], cat: MechCatalog): Mount[] {
 	const d = mech.drive, c = mech.chassis
 	const motor = byMpn(cat.motors, d.motor), wheel = byMpn(cat.wheels, d.wheel), caster = byMpn(cat.casters, d.caster), pack = byMpn(cat.batteries, mech.battery.pack)
@@ -156,6 +171,9 @@ export function mounts(mech: Mechanics, boards: { name: string; outline: { width
 		out.push({ what: "beacon-mast", xMm: b.at.xMm, yMm: b.at.yMm, zMm: plateTop + h / 2, sizeMm: [b.sizeMm, b.sizeMm, h], massG: (mm3 * est("plaDensityGcm3")) / 1000 })
 		out.push({ what: "beacon-load", xMm: b.at.xMm, yMm: b.at.yMm, zMm: b.topMm + BEACON_LOAD_HALF_MM, sizeMm: [80, 80, 2 * BEACON_LOAD_HALF_MM], massG: b.loadG })
 	}
+	// A sticker panel (mechanics.sticker): a flat printed plate standing at the plate's edge.
+	const panel = stickerPanel(mech)
+	if (panel) out.push({ ...panel, massG: (panel.sizeMm[0] * panel.sizeMm[1] * panel.sizeMm[2] * est("plaDensityGcm3")) / 1000 })
 	// A HAT (`on`) stands on its board's spacers (hatBaseZ), the others on the plate's standoffs.
 	const onPlate = plateTop + est("standoffMm")
 	for (const b of c.boards) {

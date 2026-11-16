@@ -157,6 +157,12 @@ def build(spec):
         if es["collarMm"] > 0:
             part += Pos(es["xMm"], es["yMm"], top + es["collarMm"] / 2) * (Cylinder(ring_in + WALL, es["collarMm"]) - Cylinder(ring_in, es["collarMm"] + 2))
 
+    # A sticker panel at the plate's edge (chassis.ts, model.ts stickerPanel): a flat plate standing on the plate.
+    sk = spec.get("sticker")
+    if sk:
+        sx, sy, sz = sk["sizeMm"]
+        part += Pos(sk["xMm"], sk["yMm"], sk["zMm"] - p["clearanceMm"]) * Box(sx, sy, sz)
+
     # A beacon support's socket on the plate (chassis.ts ChassisBeacon): a square ring the mast's first section stands in.
     bc = spec.get("beacon")
     if bc:

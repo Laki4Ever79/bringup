@@ -20,7 +20,7 @@ test("the Eurobot base passes every mechanics, safety and rule check, and its mo
 	assert.deepEqual(mechanicsChecksWith(snap(), defaultCheckCatalog()!), [])
 	assert.deepEqual(motionBriefChecks(snap(), brief), [])
 	const figs = mechanicsFigures(snap()).filter((f) => f.check.startsWith("eurobot-2026"))
-	assert.equal(figs.length, 11)
+	assert.equal(figs.length, 12)
 	assert.ok(figs.every((f) => f.ok))
 })
 

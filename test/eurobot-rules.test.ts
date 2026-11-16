@@ -45,7 +45,7 @@ test("the reference rover without safety parts fails the rules on its e-stop and
 	assert.match(before[1], /^F\.6.*only a pull-cord start/)
 	assert.deepEqual(mechanicsChecksWith(rover(), defaultCheckCatalog()!), [])
 	const figs = mechanicsFigures(rover()).filter((f) => f.check.startsWith("eurobot-2026"))
-	assert.equal(figs.length, 11)
+	assert.equal(figs.length, 12)
 	assert.ok(figs.every((f) => f.ok && f.sources?.[0].url.includes("eurobot.org")))
 })
 
@@ -94,4 +94,13 @@ test("the rules module is cited and counts as used only by a design entered for 
 	assert.deepEqual(moduleProblems(m, loadMechCatalog(ROOT), new Set(), ROOT), [])
 	assert.equal(modulesUsed([m], rover().values).length, 1)
 	assert.equal(modulesUsed([m], JSON.parse(JSON.stringify(ROVER_BOARD))).length, 0)
+})
+
+// F.6 (p. 13): a free 100 × 70 mm space on a side face for the organisers' sticker: a printed panel (mechanics.sticker).
+test("the sticker space is checked: present, big enough, with nothing in front of it", () => {
+	assert.deepEqual(rules(rover()), [])
+	assert.match(rules(rover(true, (x) => delete x.mechanics.sticker))[0], /^F\.6.*free 100 × 70 mm space on a side face/)
+	assert.match(rules(rover(true, (x) => (x.mechanics.sticker.heightMm = 50)))[0], /the sticker space is 100 × 50 mm/)
+	assert.match(rules(rover(true, (x) => (x.mechanics.sticker.face = "left")))[0], /wheel left(, estop-deck)? stands? in front of the sticker panel/)
+	assert.match(rules(rover(true, (x) => (x.mechanics.sticker.face = "front")))[0], /sensor stands in front of the sticker panel/)
 })

@@ -212,6 +212,9 @@ export const EUROBOT_BOARD = {
 		sensor: { ...ROVER_MECHANICS!.sensor, at: { ...ROVER_MECHANICS!.sensor.at, xMm: 128.6 } },
 		chassis: { ...ROVER_MECHANICS!.chassis, plateMm: [260, 256] as [number, number], boards: [{ name: "main", at: { xMm: -95, yMm: 0 }, rotDeg: 0 as const }] },
 		beacon: { at: { xMm: 0, yMm: 0 }, topMm: 430, sizeMm: 70, mastWallMm: 1.2, loadG: 400 },
+		// The organisers' sticker (F.6: 100 × 70 mm left free on a side face): a panel on the rear, where nothing stands
+		// outside it (the wheels are on the sides, the sensor at the front).
+		sticker: { face: "rear" as const, widthMm: 100, heightMm: 70 },
 		safety: { estop: { part: "OMRON A22E-M-01", at: { xMm: 75, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } },
 	},
 }
