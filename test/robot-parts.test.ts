@@ -83,9 +83,9 @@ test("the rover's fasteners are in the parts list, counted from its chassis: a s
 	const boardHoles = spec.boards.reduce((n, b) => n + b.holes.length, 0)
 	assert.equal(by("board screw")?.qty, boardHoles)
 	assert.match(by("board screw")!.mpn, /^M2x8 self-tapping/)
-	assert.equal(by("caster screw")?.qty, spec.caster.holesMm.length)
+	assert.equal(by("caster screw")?.qty, spec.caster!.holesMm.length)
 	assert.match(by("caster screw")!.mpn, /^M4x10/)
-	assert.equal(by("caster nut")?.qty, spec.caster.holesMm.length)
+	assert.equal(by("caster nut")?.qty, spec.caster!.holesMm.length)
 	// 200 board screws come in one pack.
 	assert.equal(by("board screw")?.packs, 1)
 })
@@ -127,7 +127,7 @@ test("each fastener fits its hole: the board's screw passes the board hole, the 
 	// A caster whose holes are too small for its M4 screw.
 	const { chassisSpec } = await import("../src/tools/chassis.ts")
 	const spec = chassisSpec(s)!
-	assert.match(hardwareFit(s, { ...spec, caster: { ...spec.caster, holeDiaMm: 3.4 } }).join(" "), /caster hole 3\.4 mm is smaller than the M4 screw/)
+	assert.match(hardwareFit(s, { ...spec, caster: { ...spec.caster!, holeDiaMm: 3.4 } }).join(" "), /caster hole 3\.4 mm is smaller than the M4 screw/)
 })
 
 test("a fastener that doesn't fit its hole is a violation for the mechanics engineer", async () => {
@@ -136,7 +136,7 @@ test("a fastener that doesn't fit its hole is a violation for the mechanics engi
 	const { chassisSpec } = await import("../src/tools/chassis.ts")
 	assert.ok(!checkConsistency(rover(), {}).some((v) => v.kind === "hardware-misfit"))
 	const spec = chassisSpec(rover())!
-	const v = hardwareChecks(rover(), { ...spec, caster: { ...spec.caster, holeDiaMm: 3.4 } })
+	const v = hardwareChecks(rover(), { ...spec, caster: { ...spec.caster!, holeDiaMm: 3.4 } })
 	assert.equal(v.length, 1)
 	assert.equal(v[0].kind, "hardware-misfit")
 	assert.deepEqual(v[0].affects, ["mechanics"])
