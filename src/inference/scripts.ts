@@ -180,9 +180,29 @@ export const ROVER_BOARD = {
 	mechanics: ROVER_MECHANICS,
 }
 
+// The scripted Eurobot base (briefs/eurobot-base.md): the reference rover's board and drive with the competition's safety
+// parts and rules. The emergency stop (catalog safety, the Omron A22E-M-01) on a deck 125 mm up, beside the board so its
+// 54.7 mm body clears it, with a 7 mm collar so its 32 mm head stands at most 25 mm over the robot (Eurobot General Rules
+// 1.2 F.4.c); its plug JE1 in the motors' supply. The pull-cord start JS1 with START on GPIO10, a 600 mm cord and the
+// 100 s match (F.6, H.3). motion.rules "eurobot-2026" checks it against the rules; 290 × 290 mm is the brief's square.
+export const EUROBOT_BOARD = {
+	...ROVER_BOARD,
+	requirements: { ...ROVER_BOARD.requirements, summary: "Eurobot base robot: two-wheeled, finds its way on the table, stops for the opponent, with an emergency stop and a pull-cord start" },
+	pins: [...ROVER_PINS, { signal: "START", gpio: 10, partRef: "JS1", partPin: "START" }],
+	parts: [
+		...ROVER_BOARD.parts,
+		{ ref: "JE1", role: "estop", mpn: "B2B-XH-A(LF)(SN)", lcsc: "C158012", footprint: "pinrow2_p2.5_id1_od1.8", pins: ["VBAT", "VM"], reason: "Brief: \"Pressing it cuts power to the motors at once\": the emergency stop's NC contact between the cell and the motor driver's VM" },
+		{ ref: "JS1", role: "start", mpn: "PZ254V-11-02P", lcsc: "C492401", footprint: "pinrow2", pins: ["START", "GND"], reason: "Brief: \"Starts from a pull cord\": the cord's plug shorts START to GND until it is pulled" },
+	],
+	motion: { ...ROVER_MOTION!, maxSizeMm: [290, 290] as [number, number], rules: "eurobot-2026" },
+	mechanics: { ...ROVER_MECHANICS!, safety: { estop: { part: "OMRON A22E-M-01", at: { xMm: 52, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } } },
+}
+const EUROBOT = /\beurobot\b/i
+
 // The brief's own size and mass over the reference rover's motion (briefs/rover.md: "about 15 × 12 cm", "under 500 g";
 // briefs/rover-pi.md: a bigger rover for a Raspberry Pi). The other targets stay the reference rover's.
 export function motionFromBrief(brief: string): NonNullable<ContractValues["motion"]> {
+	if (EUROBOT.test(brief)) return EUROBOT_BOARD.motion
 	const base = ROVER_MOTION!
 	const size = /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*cm\b/.exec(brief)
 	const mass = /\bunder\s+(\d+(?:\.\d+)?)\s*(kg|g)\b/i.exec(brief)
@@ -314,9 +334,10 @@ const SENSOR_PINS = LOGGER_DESIGN.pins.filter((p) => p.partRef === "U2")
 
 // Which scripted design a brief gets: the beacon for a brief that says so, the logger for anything else.
 export const scriptedDesignFor = (brief: string): typeof LOGGER_DESIGN & Partial<Pick<ContractValues, "motion">> =>
-	/\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
+	EUROBOT.test(brief) ? (EUROBOT_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
 // A robot's requirements ask for motors (briefs/rover.md).
 const isRover = () => (state().contract.get("requirements")?.peripherals ?? []).includes("motors")
+const isEurobot = () => EUROBOT.test(state().contract.get("requirements")?.summary ?? "")
 
 // The beacon's parts for its current requirements: with a sensor once the requirements ask for one.
 function beaconParts(): ContractValues["parts"] {
@@ -697,7 +718,7 @@ export function mockScripts(): Record<string, Script> {
 					const f = ARCHITECT_FIELDS[step]
 					return f ? propose(f, hat[f], `initial ${f} from the carrier brief`) : say("contract drafted")
 				}
-				const fields: FieldName[] = /\brover\b/i.test(instruction) ? [...ARCHITECT_FIELDS, "motion"] : [...ARCHITECT_FIELDS]
+				const fields: FieldName[] = /\brover\b/i.test(instruction) || EUROBOT.test(instruction) ? [...ARCHITECT_FIELDS, "motion"] : [...ARCHITECT_FIELDS]
 				const field = fields[step] as (typeof ARCHITECT_FIELDS)[number] | "motion" | undefined
 				// Tournament variants may cap the width: "Board must be at most <N> mm wide".
 				const maxWidth = Number(/Board must be at most (\d+(?:\.\d+)?) mm wide/i.exec(instruction)?.[1] ?? Infinity)
@@ -791,7 +812,7 @@ export function mockScripts(): Record<string, Script> {
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
 			}
 			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
-			const base = hat ? hat.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
+			const base = hat ? hat.parts : isEurobot() ? EUROBOT_BOARD.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
 			const wanted = withSwaps(state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base)
 			if (stepsTaken(items) > 0) return say("parts chosen")
 			return JSON.stringify(state().contract.get("parts")) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")
@@ -889,6 +910,8 @@ export function mockScripts(): Record<string, Script> {
 					if (mech) return propose("mechanics", mech, `a rover with a bought compute board: the ${mech.battery.pack} through the ${mech.regulator}, ${mech.drive.motor} motors, laid out by the chassis solver (catalog/mechanics.json)`)
 				}
 			}
+			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion") && isEurobot())
+				return propose("mechanics", EUROBOT_BOARD.mechanics, "the Eurobot base: the reference rover's drive with the emergency stop on a 125 mm deck beside the board (a 7 mm collar keeps its head within 25 mm of the robot) and the pull-cord start (catalog/mechanics.json safety, Eurobot General Rules 1.2 F.4.c, F.6)")
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion"))
 				return propose("mechanics", ROVER_MECHANICS, "the reference rover: Pololu 100:1 micro gearmotors on 60 mm wheels, a 25 mm swivel caster, the 2000 mAh cell, the VL53L0X breakout at the front (catalog/mechanics.json)")
 			return say("mechanics unchanged")

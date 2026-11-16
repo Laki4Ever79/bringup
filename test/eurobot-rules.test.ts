@@ -15,7 +15,7 @@ import type { ContractSnapshot } from "../src/contract/types.ts"
 type Any = any
 const ROOT = new URL("..", import.meta.url).pathname
 const snap = (v: unknown): ContractSnapshot => ({ revision: 1, versions: {} as never, values: v as never })
-// The reference rover, entered for Eurobot, with or without its e-stop (deck 120 mm, 7 mm collar) and pull-cord start.
+// The reference rover, entered for Eurobot, with or without its e-stop (deck 125 mm, 7 mm collar) and pull-cord start.
 function rover(safe = true, edit: (v: Any) => void = () => {}): ContractSnapshot {
 	const v = JSON.parse(JSON.stringify(ROVER_BOARD))
 	v.motion.rules = "eurobot-2026"
@@ -24,7 +24,7 @@ function rover(safe = true, edit: (v: Any) => void = () => {}): ContractSnapshot
 		v.parts.push({ ref: "JS1", role: "start", mpn: "PZ254V-11-02P", lcsc: "C492401", footprint: "pinrow2", pins: ["START", "GND"] })
 		v.parts.push({ ref: "JE1", role: "estop", mpn: "B2B-XH-A(LF)(SN)", lcsc: "C158012", footprint: "pinrow2_p2.5_id1_od1.8", pins: ["VBAT", "VM"] })
 		v.pins.push({ signal: "START", gpio: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].find((g) => !used.has(g)), partRef: "JS1", partPin: "START" })
-		v.mechanics.safety = { estop: { part: "OMRON A22E-M-01", at: { xMm: 20, yMm: 0, zMm: 120 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } }
+		v.mechanics.safety = { estop: { part: "OMRON A22E-M-01", at: { xMm: 20, yMm: 0, zMm: 125 }, connector: "JE1", collarMm: 7 }, start: { connector: "JS1", cordMm: 600, matchS: 100 } }
 	}
 	edit(v)
 	return snap(v)

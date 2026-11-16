@@ -1,6 +1,6 @@
 import type { Part, PinAssignment as Pin } from "../contract/types.ts"
 import { byMpn, type BatteryPack, type MechCatalog, type MotorPart, type SafetyPart } from "./catalog.ts"
-import type { Mechanics } from "./types.ts"
+import type { Mechanics, Mount } from "./types.ts"
 
 // A robot's emergency stop (catalog/mechanics.json safety, kind "estop"): a red mushroom button whose NC contact sits
 // in the motors' supply, through the board's e-stop plug (role estop: VBAT in, the driver's VM out). Eurobot General
@@ -43,7 +43,7 @@ export function startChecks(mech: Mechanics, parts: Part[], pins: Pin[]): Safety
 	return []
 }
 
-export function safetyChecks(mech: Mechanics, parts: Part[], motor: MotorPart, pack: BatteryPack, cat: MechCatalog, figures: SafetyFigure[] = []): SafetyFinding[] {
+export function safetyChecks(mech: Mechanics, parts: Part[], motor: MotorPart, pack: BatteryPack, cat: MechCatalog, figures: SafetyFigure[] = [], ms: Mount[] = []): SafetyFinding[] {
 	const e = mech.safety?.estop
 	if (!e) return []
 	const out: SafetyFinding[] = []
@@ -70,6 +70,14 @@ export function safetyChecks(mech: Mechanics, parts: Part[], motor: MotorPart, p
 	const bodyBottom = e.at.zMm - button.belowMm
 	if (bodyBottom < plateTop + ESTOP_CLEARANCE_MM)
 		out.push({ message: `the emergency stop's body hangs ${button.belowMm} mm under its panel, so a panel at ${e.at.zMm} mm reaches down to ${Math.round(bodyBottom * 10) / 10} mm, into the plate (its top at ${plateTop} mm): raise mechanics.safety.estop.at.zMm to at least ${Math.ceil(plateTop + ESTOP_CLEARANCE_MM + button.belowMm)} mm`, affects: ["mechanics"] })
+	// Nor may it come down onto what stands on the plate under it (a board, the pack, the sensor): its square body,
+	// bodyMm across, from the panel down to bodyBottom.
+	const half = button.bodyMm / 2
+	const under = ms.filter((m) => !/^(plate|wheel:|motor:|caster|estop|payload)/.test(m.what) && Math.abs(m.xMm - e.at.xMm) < half + m.sizeMm[0] / 2 && Math.abs(m.yMm - e.at.yMm) < half + m.sizeMm[1] / 2 && m.zMm + m.sizeMm[2] / 2 + ESTOP_CLEARANCE_MM > bodyBottom)
+	if (under.length) {
+		const top = Math.max(...under.map((m) => m.zMm + m.sizeMm[2] / 2))
+		out.push({ message: `the emergency stop's ${button.bodyMm} mm body, ${button.belowMm} mm under its panel, comes down onto ${under.map((m) => m.what.replace(":", " ")).join(", ")} (its top at ${Math.round(top * 10) / 10} mm): raise mechanics.safety.estop.at.zMm to at least ${Math.ceil(top + ESTOP_CLEARANCE_MM + button.belowMm)} mm, or move the button clear of it`, affects: ["mechanics"] })
+	}
 	const [L, W] = c.plateMm
 	const r = button.headMm / 2
 	if (Math.abs(e.at.xMm) + r > L / 2 || Math.abs(e.at.yMm) + r > W / 2)
