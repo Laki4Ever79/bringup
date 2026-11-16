@@ -43,6 +43,8 @@ export interface BoardArtifact {
 	placements?: Record<string, { xMm: number; yMm: number }>
 	// The debug footprint (codegen/circuit.ts debugPort) was in the contract but the board only built without it.
 	debugPortDropped?: string
+	// How many layouts the build tried before this one (each a full tscircuit build): the cost of the size.
+	layoutsTried?: number
 }
 
 export interface PrintCheck {

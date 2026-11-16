@@ -143,3 +143,14 @@ test("a pin-mismatch (firmware not rebuilt yet) wakes no agent; a failed firmwar
 	t.fail("firmware", t.state.contract.revision, error)
 	await waitFor(() => t.turns(t.parts.getId()).some((m) => m.includes(error)))
 })
+
+// A capacitor trace past its bound in every layout, the drawn-trace retry included (real rover run 9 at 58×22 mm, 16 Nov
+// 2026): the architect is told the board is too tight around that part and to grow it one step, as run 9 did at rev 24.
+test("a board that fails on a capacitor trace past its bound tells the architect to grow it one step", async () => {
+	const t = await drafted()
+	const err = "tscircuit build failed (exit 1):\nPCB trace is 5.84mm long, exceeding the 5mm maximum (.U5 > .VM to .C4 > .pin2)"
+	t.fail("board", t.state.contract.revision, err)
+	await waitFor(() => t.turns(t.architect.getId()).some((m) => m.includes("5.84mm")))
+	const msg = t.turns(t.architect.getId()).find((m) => m.includes("5.84mm"))!
+	assert.match(msg, /ran past its length bound in every layout at this size: the board is too tight around that part\. Grow the outline one step/)
+})
