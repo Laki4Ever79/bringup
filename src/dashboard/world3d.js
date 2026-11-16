@@ -142,6 +142,19 @@ function bounds(tris) {
 const CHASSIS = [222, 222, 226]
 const TYRE = [28, 28, 30]
 const METAL = [150, 150, 158]
+const ESTOP_RED = [214, 40, 40] // the emergency stop's mushroom head (Eurobot F.4.c: red)
+
+// A cylinder whose axis runs along z (a button's head), as triangles, from z0 up to z1.
+function cylinderZ(cx, cy, z0, z1, r, n = 24) {
+	const out = []
+	for (let i = 0; i < n; i++) {
+		const a = (i / n) * 2 * Math.PI, b = ((i + 1) / n) * 2 * Math.PI
+		const [xa, ya, xb, yb] = [cx + r * Math.cos(a), cy + r * Math.sin(a), cx + r * Math.cos(b), cy + r * Math.sin(b)]
+		out.push(xa, ya, z0, xb, yb, z0, xb, yb, z1, xa, ya, z0, xb, yb, z1, xa, ya, z1)
+		out.push(cx, cy, z1, xa, ya, z1, xb, yb, z1, cx, cy, z0, xb, yb, z0, xa, ya, z0)
+	}
+	return out
+}
 
 // A cylinder whose axis runs along y (a wheel), as triangles.
 function cylinderY(cx, cy, cz, r, w, n = 24) {
@@ -176,6 +189,14 @@ function roverParts(spec, chassisTris) {
 	}
 	const top = lift + spec.plate.thicknessMm
 	if (spec.battery) { const [l, w, h] = spec.battery.sizeMm; add(boxTris([spec.battery.xMm - l / 2, spec.battery.yMm - w / 2, top], [spec.battery.xMm + l / 2, spec.battery.yMm + w / 2, top + h]), PART) }
+	// The beacon support's mast (printed in sections, drawn whole) up to its top, z from the floor (Eurobot F.6).
+	if (spec.beacon) { const b = spec.beacon, h = b.sizeMm / 2; add(boxTris([b.xMm - h, b.yMm - h, top], [b.xMm + h, b.yMm + h, b.topMm]), CHASSIS) }
+	// The emergency stop: its red head above the deck's panel (the deck and collar are in chassis.stl), its body under it.
+	if (spec.estop && spec.estop.aboveMm) {
+		const e = spec.estop, bh = e.bodyMm / 2
+		add(cylinderZ(e.xMm, e.yMm, e.panelTopMm, e.panelTopMm + e.aboveMm, e.headMm / 2), ESTOP_RED)
+		add(boxTris([e.xMm - bh, e.yMm - bh, e.panelTopMm - e.panelMm - e.belowMm], [e.xMm + bh, e.yMm + bh, e.panelTopMm - e.panelMm]), PART)
+	}
 	if (spec.sensor) { const [w, h, t] = spec.sensor.sizeMm; add(boxTris([spec.sensor.xMm - t / 2, spec.sensor.yMm - w / 2, spec.sensor.zMm - h / 2], [spec.sensor.xMm + t / 2, spec.sensor.yMm + w / 2, spec.sensor.zMm + h / 2]), PART) }
 	return { parts, boardAt: spec.boards?.[0] ?? { xMm: 0, yMm: 0 }, boardZ: top + (spec.standoffMm ?? 10) }
 }
@@ -419,7 +440,9 @@ export function mountWorld(host, opts = {}) {
 		const ext = names.map((n) => S.boards.get(n)).filter(Boolean).map((b) => ({ min: b.extent.min.map((v, k) => v + (k < 2 ? b.at[k] : 0)), max: b.extent.max.map((v, k) => v + (k < 2 ? b.at[k] : 0)) }))
 		if (!ext.length) return { ...S.cam }
 		const min = [0, 1, 2].map((k) => Math.min(...ext.map((e) => e.min[k]))), max = [0, 1, 2].map((k) => Math.max(...ext.map((e) => e.max[k])))
-		const size = Math.max(max[0] - min[0], max[1] - min[1], 20)
+		// The height counts too: a robot carrying a beacon mast (430 mm on a 260 mm plate) had its top cut off. Anything
+		// lower than it is wide (every board, case and the indoor rovers) frames as before.
+		const size = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2], 20)
 		return { yaw: S.cam.yaw, pitch: names.length === 1 ? 0.75 : 0.55, distance: size * (names.length === 1 ? 2.1 : 1.25), target: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2] }
 	}
 

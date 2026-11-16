@@ -22,7 +22,7 @@ const exec = promisify(execFile)
 // The e-stop's printed deck (py/chassis.py): a bridge across the plate on two walls at its long edges, clear of
 // everything on the plate; its panel PANEL_MM thick (within the button's 1-3 mm) with the button's cutout, and the collar
 // ring around the head (mechanics.safety.estop.collarMm), HEAD_CLEARANCE_MM clear of it so it stays free to hit.
-export interface ChassisEstop { xMm: number; yMm: number; panelTopMm: number; panelMm: number; holeMm: number; headMm: number; collarMm: number }
+export interface ChassisEstop { xMm: number; yMm: number; panelTopMm: number; panelMm: number; holeMm: number; headMm: number; collarMm: number; aboveMm: number; belowMm: number; bodyMm: number }
 // A beacon support's printed mast (py/chassis.py): sections of at most this height (an ESTIMATE of a common printer's
 // build height) on a socket on the plate; each section above the first has a spigot into the one below.
 export const MAST_SECTION_MAX_MM = 200
@@ -226,7 +226,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		unplaced,
 		...((p) => (p ? { sticker: { xMm: p.xMm, yMm: p.yMm, zMm: p.zMm, sizeMm: p.sizeMm as [number, number, number] } } : {}))(stickerPanel(mech)),
 		...(mech.beacon ? { beacon: { xMm: mech.beacon.at.xMm, yMm: mech.beacon.at.yMm, topMm: mech.beacon.topMm, sizeMm: mech.beacon.sizeMm, wallMm: mech.beacon.mastWallMm, sectionMaxMm: MAST_SECTION_MAX_MM } } : {}),
-		...((e, b) => (e && b ? { estop: { xMm: e.at.xMm, yMm: e.at.yMm, panelTopMm: e.at.zMm, panelMm: Math.min(b.panelMaxMm, Math.max(b.panelMinMm, ESTOP_PANEL_MM)), holeMm: b.panelHoleMm, headMm: b.headMm, collarMm: e.collarMm ?? 0 } } : {}))(mech.safety?.estop, mech.safety?.estop ? estopPart(cat.mech, mech.safety.estop.part) : undefined),
+		...((e, b) => (e && b ? { estop: { xMm: e.at.xMm, yMm: e.at.yMm, panelTopMm: e.at.zMm, panelMm: Math.min(b.panelMaxMm, Math.max(b.panelMinMm, ESTOP_PANEL_MM)), holeMm: b.panelHoleMm, headMm: b.headMm, collarMm: e.collarMm ?? 0, aboveMm: b.aboveMm, belowMm: b.belowMm, bodyMm: b.bodyMm } } : {}))(mech.safety?.estop, mech.safety?.estop ? estopPart(cat.mech, mech.safety.estop.part) : undefined),
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs, holes: sensorHoles(sensor, mech.sensor.at, mech.chassis), holeDiaMm: SENSOR_HOLE_MM },
 		massG,
 		com,

@@ -162,7 +162,10 @@
   "panelMm": 2,
   "holeMm": 22.3,
   "headMm": 40,
-  "collarMm": 7
+  "collarMm": 7,
+  "aboveMm": 32,
+  "belowMm": 54.7,
+  "bodyMm": 34
  },
  "sensor": {
   "xMm": 128.6,
