@@ -496,6 +496,13 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		if (!rules) push("mech-rules", `motion.rules is "${motion.rules}", a rule set Bringup doesn't have (catalog/rules: ${Object.keys(cat.rules ?? {}).join(", ") || "none"})`, ["architect"], ["motion"])
 		else for (const f of ruleChecks(rules, motion, mech, ms, pack, cat.mech, figures)) push("mech-rules", `${f.rule}: ${f.message}`, f.affects)
 	}
+	// The beacon support's mast stands on the plate with its socket: nothing else may stand where it does (the Eurobot
+	// base's still, 16 Nov: its battery lay inside the mast's socket, and no check said so).
+	if (mech.beacon) {
+		const b = mech.beacon, half = b.sizeMm / 2 + 2.2 // the socket's wall and fit (py/chassis.py)
+		const inMast = ms.filter((m) => !/^(plate|wheel:|motor:|caster|beacon|payload|estop-deck)/.test(m.what) && Math.abs(m.xMm - b.at.xMm) < half + m.sizeMm[0] / 2 && Math.abs(m.yMm - b.at.yMm) < half + m.sizeMm[1] / 2 && m.zMm - m.sizeMm[2] / 2 < b.topMm)
+		if (inMast.length) push("mech-fit", `${inMast.map((m) => m.what.replace(":", " ")).join(", ")} ${inMast.length === 1 ? "stands" : "stand"} where the beacon support's ${b.sizeMm} mm mast and its socket do (centred at ${b.at.xMm}, ${b.at.yMm}): move ${inMast.length === 1 ? "it" : "them"} clear of x ${b.at.xMm - half}..${b.at.xMm + half}, y ${b.at.yMm - half}..${b.at.yMm + half} mm`)
+	}
 	// The emergency stop (safety.ts): its contact against the motors' current and the pack's voltage, its plug, its mount.
 	for (const f of [...safetyChecks(mech, parts, motor, pack, cat.mech, figures, ms), ...startChecks(mech, parts, pins)]) push("mech-safety", f.message, f.affects, f.affects.includes("parts") ? ["parts"] : f.affects.includes("architect") ? ["pins"] : ["mechanics"])
 	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", 'no battery connector on any board: the cell plugs into a 2-pin connector whose part has role "battery" (not "connector": a role-"connector" 2-pin part is a motor\'s plug, JM1 or JM2)', ["parts"], ["parts"])

@@ -203,12 +203,12 @@ export const EUROBOT_BOARD = {
 	// plate on a 270 mm track (280 mm with the wheels, inside the 290 mm square), the axle 75 mm ahead of centre and the
 	// caster 185 mm behind it (38 % of the weight on it), a two-cell pack and 150:1 12 V encoder gearmotors (64.8 of 72.6
 	// mN·m per wheel at the 1.5x margin, 0.54 m/s), and the firmware's 1.5 m/s² ramp (braking hard at the floor's grip it
-	// would tip: -34.7 mm; with the ramp the margin is 35.7 mm). The board behind the mast, the pack beside it, the e-stop
+	// would tip: -34.7 mm; with the ramp the margin is 37.5 mm). The board behind the mast, the pack beside it, the e-stop
 	// ahead of it, the sensor at the front edge.
 	mechanics: {
 		...ROVER_MECHANICS!,
 		drive: { ...ROVER_MECHANICS!.drive, motor: "POLOLU-5219 150:1 HPCB 12V 12 CPR encoder", trackMm: 270, wheelbaseMm: 185, axleXMm: 75, maxAccelMps2: 1.5 },
-		battery: { pack: "GENSACE-GEA22002S20X6 2S 2200 mAh 20C LiPo XT60", at: { xMm: 20, yMm: 0 } },
+		battery: { pack: "GENSACE-GEA22002S20X6 2S 2200 mAh 20C LiPo XT60", at: { xMm: 0, yMm: 70 } },
 		sensor: { ...ROVER_MECHANICS!.sensor, at: { ...ROVER_MECHANICS!.sensor.at, xMm: 128.6 } },
 		chassis: { ...ROVER_MECHANICS!.chassis, plateMm: [260, 256] as [number, number], boards: [{ name: "main", at: { xMm: -95, yMm: 0 }, rotDeg: 0 as const }] },
 		beacon: { at: { xMm: 0, yMm: 0 }, topMm: 430, sizeMm: 70, mastWallMm: 1.2, loadG: 400 },
