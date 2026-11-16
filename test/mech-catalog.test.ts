@@ -10,7 +10,7 @@ const ROOT = resolve(import.meta.dirname, "..")
 
 test("every number of every drive part has a source: a URL and where on it", () => {
 	const cat = loadMechCatalog(ROOT)
-	for (const list of [cat.sensors, cat.motors, cat.wheels, cat.casters, cat.batteries, cat.regulators ?? [], cat.hardware ?? [], cat.motorMounts ?? []]) {
+	for (const list of [cat.sensors, cat.motors, cat.wheels, cat.casters, cat.batteries, cat.regulators ?? [], cat.hardware ?? [], cat.motorMounts ?? [], cat.driveTrain ?? []]) {
 		assert.ok(list.length > 0)
 		for (const part of list as unknown as Record<string, unknown>[]) {
 			const source = part.source as Record<string, { url?: string; where?: string }>
