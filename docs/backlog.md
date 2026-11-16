@@ -335,6 +335,12 @@ them as well, although it might not be the focus here".
         needs a 7 mm collar (mechanics.safety.estop.collarMm). Not checked (listed in the report): beacon support, the
         100 × 70 mm sticker face, the deployed perimeter, lithium battery conditions.
   - [ ] **Eurobot: model the beacon support mast and the sticker face** (F.6), then check them.
+        Measured first (16 Nov, bringup-system): on the Eurobot base as saved (the reference rover's 150 x 96 mm plate,
+        317 g), the opponent's 400 g beacon at 430 mm (F.6: it must hold 400 g) on an 80 mm printed mast (about 323 g of
+        PLA, an estimate) makes it about 1040 g with its centre of mass at 274 mm: braking at the floor's estimate moves
+        it 96 mm forward (22 mm today), far past the wheels-and-caster triangle. The small base can't carry the beacon:
+        the Eurobot base needs a wider, heavier, lower base (the 290 mm square allows a ~270 mm track) or a much lighter
+        mast, before the mast is modelled. The design choice (bigger base vs light mast) is open.
   - [x] **Eurobot starter: encoder motors and odometry** (16 Nov, done: Pololu 5139, channel A on GPIO0/1, rover_enc.*
         built in only with ROVER_TURN_COUNTS, back-off of 100 mm before turning). Open: the encoder's direction and the
         hold gain (0.001 duty/count, an estimate) on the bench; channel B unwired (no free GPIO on the ESP32-C3).
