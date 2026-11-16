@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs"
-import { safetyChecks } from "./safety.ts"
+import { safetyChecks, startChecks } from "./safety.ts"
 import { resolve } from "node:path"
 import type { AgentRole, ContractSnapshot, FieldName, Part, PinAssignment as Pin } from "../contract/types.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
@@ -475,7 +475,7 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const onPlug = mech.sensor ? pins.filter((p) => p.partRef === mech.sensor.connector) : []
 	if (onPlug.length) push("mech-wiring", `${onPlug.map((p) => `${p.signal} (GPIO${p.gpio})`).join(", ")} go${onPlug.length === 1 ? "es" : ""} to the distance sensor's plug ${mech.sensor.connector}: remove ${onPlug.length === 1 ? "it" : "them"}. The plug takes no pins; the board generator joins it to the I2C bus (I2C_SDA, I2C_SCL)`, ["architect"], ["pins"])
 	// The emergency stop (safety.ts): its contact against the motors' current and the pack's voltage, its plug, its mount.
-	for (const f of safetyChecks(mech, parts, motor, pack, cat.mech, figures)) push("mech-safety", f.message, f.affects, f.affects.includes("parts") ? ["parts"] : ["mechanics"])
+	for (const f of [...safetyChecks(mech, parts, motor, pack, cat.mech, figures), ...startChecks(mech, parts, pins)]) push("mech-safety", f.message, f.affects, f.affects.includes("parts") ? ["parts"] : f.affects.includes("architect") ? ["pins"] : ["mechanics"])
 	if (!parts.some((p) => p.role === "battery")) push("mech-wiring", 'no battery connector on any board: the cell plugs into a 2-pin connector whose part has role "battery" (not "connector": a role-"connector" 2-pin part is a motor\'s plug, JM1 or JM2)', ["parts"], ["parts"])
 	return out
 }

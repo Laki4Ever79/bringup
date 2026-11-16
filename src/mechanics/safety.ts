@@ -1,4 +1,4 @@
-import type { Part } from "../contract/types.ts"
+import type { Part, PinAssignment as Pin } from "../contract/types.ts"
 import { byMpn, type BatteryPack, type MechCatalog, type MotorPart, type SafetyPart } from "./catalog.ts"
 import type { Mechanics } from "./types.ts"
 
@@ -11,7 +11,7 @@ export const ESTOP_CLEARANCE_MM = 2 // ESTIMATE: air between the button's body a
 
 export interface SafetyFinding {
 	message: string
-	affects: ("mechanics" | "parts")[]
+	affects: ("mechanics" | "parts" | "architect")[]
 }
 export interface SafetyFigure {
 	check: string
@@ -28,6 +28,19 @@ export const motorsStallA = (motor: MotorPart, pack: BatteryPack) => 2 * motor.s
 export function estopPart(cat: MechCatalog, mpn: string): SafetyPart | undefined {
 	const p = byMpn(cat.safety ?? [], mpn)
 	return p?.kind === "estop" ? p : undefined
+}
+
+// A pull-cord start (match.h in the rover firmware): the board plug (role start) and its START pin on a GPIO.
+export function startChecks(mech: Mechanics, parts: Part[], pins: Pin[]): SafetyFinding[] {
+	const s = mech.safety?.start
+	if (!s) return []
+	const plug = parts.find((p) => p.ref === s.connector)
+	if (!plug) return [{ message: `the start cord needs a 2-pin plug ${s.connector} (role start, the header PZ254V-11-02P in the catalog, pins ["START", "GND"]) on the board with the MCU: add it`, affects: ["parts"] }]
+	if (plug.role !== "start") return [{ message: `mechanics.safety.start.connector is ${plug.ref}, but ${plug.ref} is the ${plug.role} ${plug.mpn}: name a free ref for the start plug (JS1)`, affects: ["mechanics"] }]
+	const pin = pins.find((p) => p.partRef === plug.ref && p.partPin === "START")
+	if (!pin || typeof pin.gpio !== "number" || pin.gpio < 0) return [{ message: `the start plug ${plug.ref}'s START pin has no GPIO: assign the signal START to a free GPIO (partRef ${plug.ref}, partPin START); the firmware waits on it and the board generator pulls it up`, affects: ["architect"] }]
+	if (pin.signal !== "START") return [{ message: `the start plug's pin is on signal ${pin.signal}: name it START, the signal the rover firmware waits on`, affects: ["architect"] }]
+	return []
 }
 
 export function safetyChecks(mech: Mechanics, parts: Part[], motor: MotorPart, pack: BatteryPack, cat: MechCatalog, figures: SafetyFigure[] = []): SafetyFinding[] {

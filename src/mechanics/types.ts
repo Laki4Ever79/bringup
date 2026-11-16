@@ -44,5 +44,7 @@ export interface Mechanics {
 	driveTrain?: DriveTrainPart[]
 	// Safety parts (safety.ts): an emergency stop button (catalog safety, kind "estop") standing through a panel whose top
 	// is at.zMm off the floor, its NC contact wired to the board plug `connector` (role estop) in the motors' supply.
-	safety?: { estop?: { part: string; at: { xMm: number; yMm: number; zMm: number }; connector: string } }
+	// And a pull-cord start (match.h in the rover firmware): the board plug `connector` (role start) whose START pin the
+	// cord's loop holds low; the cord is cordMm long; with matchS the firmware stops every motor that long after the start.
+	safety?: { estop?: { part: string; at: { xMm: number; yMm: number; zMm: number }; connector: string }; start?: { connector: string; cordMm: number; matchS?: number } }
 }

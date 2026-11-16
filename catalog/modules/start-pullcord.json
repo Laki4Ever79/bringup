@@ -1,0 +1,15 @@
+{
+	"id": "start-pullcord",
+	"kind": "safety",
+	"title": "Pull-cord start: a 2-pin header whose START pin a cord's wire loop holds low; the firmware starts when it is pulled and stops after the match",
+	"parts": [{ "mpn": "PZ254V-11-02P", "role": "start", "qty": 1 }],
+	"circuit": "START (pin 1) on a GPIO, pulled up 10 kOhm to 3V3 (circuit.ts supportParts); GND on pin 2. The cord ends in a 2-way 2.54 mm socket with a wire loop: in, START reads low; pulled, it reads high. The header has no latch, so the socket comes away with the cord.",
+	"driver": "src/match.h",
+	"interfaces": [{ "kind": "gpio", "signals": ["START"] }],
+	"checks": "mechanics/safety.ts startChecks: the plug on a board, START on a GPIO at its pin. Firmware (templates/fw-rover/src/match.h, host-tested in test/test_match): arms only after seeing the cord in, starts once it has stayed out 50 ms, stops every motor MATCH_MS after the start (mechanics.safety.start.matchS) and never restarts until reset.",
+	"rules": [
+		{ "rule": "Eurobot General Rules 1.2, F.6 Starting cord", "url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf", "where": "p. 13: started by pulling a cord at least 500 mm long that must not stay attached; no other start (remote, switch) is homologated" },
+		{ "rule": "Eurobot General Rules 1.2, H.3 End of match", "url": "https://www.eurobot.org/wp-content/uploads/2025/09/Eurobot_General_Rules_1.2_EN.pdf", "where": "p. 20: at the end of the 100 seconds the robots must stop and turn off all their actuators" }
+	],
+	"open": "The cord itself (at least 500 mm, the rule check's figure) and its socket are the team's: no catalog entry. Actuators a team adds besides the drive motors must check the match too (main.cpp gates only the drive)."
+}
