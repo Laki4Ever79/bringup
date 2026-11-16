@@ -278,7 +278,7 @@ export async function buildChassis(python: string, root: string, dir: string, s:
 		console.error("[chassis] ROS package not written:", e)
 	}
 	// The printed motor clamp, when a motor is clamped (motorMount): print one per clamped motor.
-	const clamp = existsSync(join(dir, "motor-clamp.stl")) ? [join(dir, "motor-clamp.stl")] : []
+	const clamp = [...(existsSync(join(dir, "motor-clamp.stl")) ? [join(dir, "motor-clamp.stl")] : []), ...(existsSync(join(dir, "battery-strap.stl")) ? [join(dir, "battery-strap.stl")] : [])]
 	// The beacon support's mast, printed in sections (py/chassis.py mast_sections): each its own STL.
 	const mast = readdirSync(dir).filter((f) => /^beacon-mast-\d+\.stl$/.test(f)).sort().map((f) => join(dir, f))
 	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)).concat(clamp, mast, ros), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")) }

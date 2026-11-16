@@ -56,6 +56,6 @@ test("the rover rests on its two wheels and the caster behind the axle", () => {
 
 test("mounts list every part once, with the board, battery, motors, wheels, caster and plate", () => {
 	const m = mounts(mech, [{ name: "main", outline: { widthMm: 50, heightMm: 30 } }], cat)
-	assert.deepEqual(m.map((x) => x.what).sort(), ["battery", "board:main", "caster", "motor:left", "motor:right", "plate", "wheel:left", "wheel:right"])
+	assert.deepEqual(m.map((x) => x.what).sort(), ["battery", "battery-strap", "board:main", "caster", "motor:left", "motor:right", "plate", "wheel:left", "wheel:right"])
 	assert.ok(m.every((x) => x.massG > 0))
 })
