@@ -752,11 +752,14 @@ export interface MountingHole {
 	diameterMm: number
 }
 
-// A connector footprint's courtyard along its edge, where it is longer than its box (FOOTPRINT_SIZE): tscircuit refuses a
-// board whose courtyard crosses the edge. The JST SH 4-pin's box is its pads (6.8 mm, 7 with margin); its courtyard is
-// 7.8 mm (circuit.json pcb_courtyard_rect), and the real rover run 6's JT1 at right@25.5 mm on a 29 mm edge had its box at
-// the edge, its courtyard 0.4 mm past it and pad 5 0.1 mm from it: "Autorouting was skipped" (16 Nov 2026).
-export const COURTYARD_ALONG_MM: Record<string, number> = { jst4_sh: 7.8, jst6_sh: 9.8 }
+// A connector footprint's length along its edge as tscircuit judges a board, where that is longer than its box
+// (FOOTPRINT_SIZE): the larger of its courtyard and its copper (pads and plated holes) plus the 0.2 mm copper-to-edge
+// clearance on both ends, measured from tscircuit's circuit.json (16 Nov 2026). The JST SH 4-pin: courtyard 7.8 mm (its
+// box is its 6.8 mm pads; real rover run 6's JT1 0.4 mm past the edge). The USB-C: copper 10.65 mm (its pads and shell
+// tabs' plated holes) + 0.4 = 11.05 mm, courtyard 10.35, box 9.84 (real run 11: J1 at bottom@30 mm on a 35 mm edge,
+// "extends outside board boundaries by 0.18mm", plated holes 0.075 mm from the edge, both board builds failed).
+export const COPPER_EDGE_MM = 0.2
+export const COURTYARD_ALONG_MM: Record<string, number> = { jst4_sh: 7.8, usbcmidmount: 10.65 + 2 * COPPER_EDGE_MM }
 // Each connector's length along its edge as tscircuit judges it: its box's, or its courtyard's where that is longer.
 export function connectorAlongMm(s: ContractSnapshot, ref: string, boxAlong: number): number {
 	const c = (s.values.connectors ?? []).find((k) => k.ref === ref)

@@ -72,3 +72,18 @@ test("connectors that overlap across a corner are moved apart along their edges"
 	const moved = fitted.filter((k) => s.values.connectors!.find((b) => b.ref === k.ref)!.offsetMm !== k.offsetMm)
 	assert.ok(moved.length <= 2, JSON.stringify(moved))
 })
+
+// Real run 11 (Eurobot, 16 Nov 2026): J1, the USB-C, at bottom@30 mm on a 35 mm edge. Its box (9.84 mm) fit, but its
+// copper spans 10.65 mm (pads and the shell's plated holes): "extends outside board boundaries by 0.18mm", plated holes
+// 0.075 mm from the edge, and both board builds failed. Along its edge it is judged by copper + 0.2 mm each end.
+test("a USB-C is judged along its edge by its copper plus the copper-to-edge clearance, so the packer keeps it inside", async () => {
+	const { connectorsOntoEdges } = await import("../src/contract/consistency.ts")
+	const { readFileSync } = await import("node:fs")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/cc-eurobot11-35x39-rev41.json", import.meta.url), "utf8")) as ContractSnapshot
+	const v = connectorsOffEdge(s)
+	assert.equal(v.length, 1)
+	assert.match(v[0].message, /J1 \(bottom@30 mm\) runs 0\.5 mm past the end of the 35 mm bottom edge: its footprint is 11\.05 mm along it/)
+	const packed = connectorsOntoEdges(s)!
+	assert.equal(packed.find((k) => k.ref === "J1")?.offsetMm, 29)
+	assert.deepEqual(connectorsOffEdge({ ...s, values: { ...s.values, connectors: packed } }), [])
+})
