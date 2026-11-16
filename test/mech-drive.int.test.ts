@@ -48,3 +48,17 @@ test("a firmware that never answers on UART1 is \"not run\", not a hang", { skip
 	assert.equal(r.result, "not run")
 	assert.match(r.reason, /didn't answer within 10 s/)
 })
+
+// Under Eurobot's rules (motion.rules) the base stops for the opponent ahead, waits without turning, and drives on when
+// it leaves (rover_hold.h): an opponent appears 0.4 m ahead at 1 s and leaves at 4 s. The room's walls still come after.
+test("under Eurobot's rules the base stops 150 mm short of the opponent, holds without turning, and drives on when it leaves", { skip, timeout: 1_200_000 }, async () => {
+	const { EUROBOT_BOARD } = await import("../src/inference/scripts.ts")
+	const s: ContractSnapshot = { revision: 5, versions: {} as never, values: JSON.parse(JSON.stringify(EUROBOT_BOARD)) }
+	const fw = tempDir()
+	assert.match(await prepareFirmware(ROOT, fw, s), /#define ROVER_HOLD_MM \d+/)
+	const spec = { ...chassisSpec(s)!, opponent: { appearS: 1, leaveS: 4, aheadM: 0.4, radiusM: 0.1, gapMm: 150 } }
+	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec, outDir: tempDir(), courseS: 30 }, 5)
+	const seg = (n: string) => r.segments?.find((x: { name: string }) => x.name === n)
+	for (const n of ["stopped for the opponent", "held, didn't turn", "drove on after it left"]) assert.ok(seg(n)?.pass, JSON.stringify(seg(n)))
+	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
+})

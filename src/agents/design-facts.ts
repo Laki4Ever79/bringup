@@ -19,7 +19,7 @@ import { mechanicsFactLines } from "../mechanics/facts.ts"
 import { mechanicsFigures } from "../mechanics/checks.ts"
 import { mcuFacts } from "../mcu/facts.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
-import { roverHeader } from "../mechanics/firmware.ts"
+import { roverHeader, OPPONENT_GAP_MM } from "../mechanics/firmware.ts"
 
 // The facts and computed checks about the current contract, one source for everyone who judges or changes it: the
 // reviewer reads them at the final review, and every designer turn gets them recomputed from the contract as it is
@@ -185,6 +185,11 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 	const startFact = start
 		? [`- Firmware start (pull cord): the motors stay off until it has seen the start cord in (START on GPIO${start} reads low: the cord's loop to GND), so a robot powered up without its cord never starts; once the cord has stayed out ${debounce} ms it drives${Number.isFinite(matchMs) ? `, and ${matchMs / 1000} s after the start it stops both drive motors for good (until reset; a cord put back doesn't restart it)` : ", with no match length: it drives until it is switched off"}.`]
 		: []
+	// Under a competition's rules (rover_hold.h): the stop for the opponent, in the header's own numbers.
+	const hold = def("ROVER_HOLD_MM")
+	const holdFact = hold
+		? [`- Firmware opponent stop (competition rules, ${s.values.motion?.rules}): when the distance sensor reads under ${hold} mm ahead (at least the ${OPPONENT_GAP_MM} mm gap to the opponent plus the braking distance, and never less than its wall stop distance, so the hold comes before any turn), both motors stop and stay stopped, with no turn away, while it stays there (also when the sensor reads nothing right after a reading under ${def("ROVER_BLIND_MM")} mm, its blind range); when it reads ${def("ROVER_CLEAR_MM")} mm or more, or nothing in range after a farther reading, the robot drives on. After ${Number(def("ROVER_HOLD_MAX_MS")?.replace(/UL$/, "")) / 1000} s still blocked it treats the obstacle as fixed (a wall) and its normal stop-and-turn takes over. The hold runs ahead of any host command too: a host can't drive it forward into what it holds for. The simulated drive tests it with an opponent that appears 0.4 m ahead and leaves 3 s later.`]
+		: []
 	return [
 		`- Firmware (product build of templates/fw-rover, the same control logic the simulated drive runs): never sleeps while powered. Every ${def("ROVER_PERIOD_MS")} ms tick it reads the VL53L0X distance (up to ${def("ROVER_RANGE_MM")} mm), drives both motors through the DRV8833 at cruise duty ${def("ROVER_CRUISE_DUTY")?.replace("f", "")}, slows inside ${def("ROVER_SLOW_MM")} mm and, inside ${def("ROVER_STOP_MM")} mm of a wall, turns in place for ${def("ROVER_TURN_MS")} ms, then drives on.`,
 		"- Firmware payload: every 5 s it reads the temperature/humidity sensor, prints it and broadcasts it over BLE as BTHome v2 service data (and sends it over the board's links, if any).",
@@ -192,6 +197,7 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 			? `- Firmware status LED: STATUS_LED on GPIO${led.gpio} blinks a 1 Hz heartbeat while the control loop runs.`
 			: "- Firmware status LED: the rover firmware drives a pin named exactly STATUS_LED as a 1 Hz heartbeat; this design has none, so no LED shows the rover running.",
 		...startFact,
+		...holdFact,
 	]
 }
 

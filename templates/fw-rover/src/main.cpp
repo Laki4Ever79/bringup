@@ -109,14 +109,32 @@ static void hostPoll(uint32_t now) {
 	}
 }
 
+#ifdef ROVER_HOLD_MM
+#include "rover_hold.h"
+static RoverHold hold;
+#endif
+
 void loop() {
 	int d = hw_distance_mm();
 	uint32_t now = hw_now_ms();
 	hostPoll(now);
+#ifdef ROVER_HOLD_MM
+	// Under a competition's rules: stop for what is ahead and wait for it to leave (rover_hold.h); the drive's own step
+	// doesn't run while holding, so it never starts a turn away from the opponent. Without the define (no rules) the
+	// lines below build exactly as before.
+	const bool holding = rover_hold(hold, d, now, ROVER_HOLD_MM, ROVER_CLEAR_MM, ROVER_BLIND_MM, ROVER_HOLD_MAX_MS);
+	if (holding) Serial.printf("HOLD %lu %d\n", (unsigned long)now, d);
+#ifdef ROVER_TURN_COUNTS
+	RoverOut out = holding ? RoverOut{0, 0} : rover_enc_step(ENC_CFG, encState, d, now, hw_encoder(0), hw_encoder(1));
+#else
+	RoverOut out = holding ? RoverOut{0, 0} : rover_step(CFG, state, d, now);
+#endif
+#else
 #ifdef ROVER_TURN_COUNTS
 	RoverOut out = rover_enc_step(ENC_CFG, encState, d, now, hw_encoder(0), hw_encoder(1));
 #else
 	RoverOut out = rover_step(CFG, state, d, now);
+#endif
 #endif
 	if (hostSeen) {
 		const bool fresh = (uint32_t)(now - hostAt) <= HOST_HOLD_MS;
@@ -124,6 +142,9 @@ void loop() {
 		out.right = fresh ? hostRight : 0;
 		// The safety the firmware owns: no forward drive into what the sensor sees within the stop distance.
 		if (d >= 0 && d < ROVER_STOP_MM && out.left > 0 && out.right > 0) out.left = out.right = 0;
+#ifdef ROVER_HOLD_MM
+		if (holding && out.left > 0 && out.right > 0) out.left = out.right = 0;
+#endif
 		Serial.printf("R %lu %d %.3f %.3f\n", (unsigned long)now, d, out.left, out.right);
 	}
 #ifdef PIN_START
