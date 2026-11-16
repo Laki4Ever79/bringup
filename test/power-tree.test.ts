@@ -59,3 +59,21 @@ test("a 1S cell through a Schottky is refused for headroom; with a charger on th
 	c.values.parts.push({ ...(cat.boardParts as unknown as { role: string }[]).find((p) => p.role === "charger")!, ref: "U4" })
 	assert.ok(!kinds(c).some((k) => k === "rail-battery-source" || k === "rail-headroom"))
 })
+
+// Real run 16: rails arrived at revision 23, and the board built at 22 without its 3V3 net stayed current.
+test("the board is built from the rails and waits for them; the mechanics it reads are a narrow derived key", async () => {
+	const { BUILD_INPUTS, BUILD_REQUIRES, BOARD_DERIVED } = await import("../src/agents/builders.ts")
+	assert.ok(BUILD_INPUTS.board.includes("rails") && BUILD_REQUIRES.board.includes("rails"))
+	const s = load()
+	const k0 = JSON.stringify(BOARD_DERIVED(s))
+	s.values.mechanics.chassis.plateMm = [280, 260]
+	assert.equal(JSON.stringify(BOARD_DERIVED(s)), k0, "a chassis change alone doesn't rebuild the board")
+	s.values.mechanics.sensor.connector = "JT9"
+	assert.notEqual(JSON.stringify(BOARD_DERIVED(s)), k0, "the sensor plug's VCC does")
+})
+
+test("a design with supplied parts and no 3V3 rail is refused (run 16 rev 22)", () => {
+	const s = load()
+	delete s.values.rails
+	assert.ok(supplyWiring(s).some((v) => v.kind === "rail-missing" && /U1/.test(v.message)))
+})
