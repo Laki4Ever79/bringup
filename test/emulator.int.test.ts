@@ -8,7 +8,7 @@ import { join, resolve } from "node:path"
 import { bootFirmware } from "../src/tools/emulator.ts"
 import { buildFirmware } from "../src/tools/firmware.ts"
 import { fixtureContract } from "./fixture.ts"
-import { slow } from "./helpers.ts"
+import { slow, tempDir } from "./helpers.ts"
 
 const root = resolve(import.meta.dirname, "..")
 const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
@@ -19,7 +19,7 @@ const pio = [join(root, ".venv/bin/pio")].find(existsSync)
 const skip = !toolsRoot ? "tools/qemu not installed" : !qemuRuns ? "tools/qemu is installed but does not start (missing shared libraries?)" : !pio ? "pio not found" : false
 
 test("fixture firmware boots in QEMU and reports the contract revision", { skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-emu-"))
+	const dir = tempDir()
 	try {
 		const c = fixtureContract()
 		const firmware = await buildFirmware(pio!, root, dir, c, c.revision)
@@ -34,7 +34,7 @@ test("fixture firmware boots in QEMU and reports the contract revision", { skip,
 })
 
 test("a no-sensor build (briefs/beacon.md) boots in QEMU, reports its revision and says it has no sensor", { skip: slow || skip, timeout: 600_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-emu-"))
+	const dir = tempDir()
 	try {
 		const c = fixtureContract()
 		c.values.parts = c.values.parts!.filter((p) => p.role !== "sensor")
@@ -51,7 +51,7 @@ test("a no-sensor build (briefs/beacon.md) boots in QEMU, reports its revision a
 })
 
 test("booting a directory with no build returns booted:false instead of throwing", { skip, timeout: 60_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-emu-"))
+	const dir = tempDir()
 	try {
 		const boot = await bootFirmware(toolsRoot!, dir, 2000)
 		assert.equal(boot.booted, false)

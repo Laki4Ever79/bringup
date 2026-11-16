@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { applyFabRules, summarizeDrc, FAB_RULES, vendorLandPatternRules, writeFabRules } from "../src/tools/drc.ts"
+import { tempDir } from "./helpers.ts"
 
 test("fab rules set the JLCPCB 2-layer minimums and the default net class", () => {
 	const pro = applyFabRules({ meta: { version: 3 } }) as any
@@ -60,13 +61,13 @@ test("the USB-C vendor land pattern rule: pad ↔ its own locating hole, only in
 })
 
 test("the fab rules go into the project, and the vendor rule into a .kicad_dru beside it", () => {
-	const dir = mkdtempSync(join(tmpdir(), "bringup-dru-"))
+	const dir = tempDir()
 	writeFileSync(join(dir, "board.kicad_pro"), JSON.stringify({ meta: { version: 3 } }))
 	const exemptions = writeFabRules(dir, "board.kicad_pro", ["J1"])
 	assert.equal(JSON.parse(readFileSync(join(dir, "board.kicad_pro"), "utf8")).board.design_settings.rules.min_hole_clearance, 0.2)
 	assert.match(readFileSync(join(dir, "board.kicad_dru"), "utf8"), /memberOfFootprint\('J1'\)/)
 	assert.deepEqual(exemptions, ["USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm"])
-	const none = mkdtempSync(join(tmpdir(), "bringup-dru-"))
+	const none = tempDir()
 	writeFileSync(join(none, "board.kicad_pro"), "{}")
 	assert.deepEqual(writeFabRules(none, "board.kicad_pro", []), [])
 	assert.equal(existsSync(join(none, "board.kicad_dru")), false)

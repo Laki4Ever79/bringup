@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs"
+import { sweepStaleTemp } from "../src/tmp.ts"
 import { tmpdir } from "node:os"
 import { join as joinPath } from "node:path"
 import { createHuman, type SemanticEvent } from "@mozaik-ai/core"
@@ -14,6 +15,8 @@ export function exactSize(brief: string): string {
 // folders (some 780 MB, a board build or a mock run each) filled the disk on 16 Nov 2026. A file that fails keeps them,
 // since its failures print their paths (BRINGUP_KEEP_TMP=1 keeps them always).
 const made: string[] = []
+// And the ones a killed test left behind, once per test file (src/tmp.ts).
+sweepStaleTemp()
 let cleanupArmed = false
 export function tempDir(): string {
 	const dir = mkdtempSync(joinPath(tmpdir(), "bringup-"))

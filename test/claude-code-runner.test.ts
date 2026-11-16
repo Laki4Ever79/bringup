@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { FunctionCallItem, FunctionCallOutputItem, ModelContext, SystemMessageItem, UserMessageItem } from "@mozaik-ai/core"
 import { ClaudeCodeRunner, transcriptOf } from "../src/inference/claude-code-runner.ts"
 import { modelFor } from "../src/inference/models.ts"
+import { tempDir } from "./helpers.ts"
 
 const TOOL = { type: "function", name: "propose_contract_change", description: "Write a field.", parameters: { type: "object", properties: { field: { type: "string" } } }, strict: false }
 
@@ -20,7 +21,7 @@ test("the agent's context becomes a system prompt (with its tools) and a transcr
 
 test("claude -p's structured answer becomes Mozaik's message and function-call items; an unknown tool becomes words", async () => {
 	// A stand-in for the claude CLI (no subscription used): it prints what claude -p --output-format json prints.
-	const dir = mkdtempSync(join(tmpdir(), "bringup-cc-"))
+	const dir = tempDir()
 	const bin = join(dir, "claude")
 	const answer = { is_error: false, structured_output: { message: "writing motion", calls: [{ name: "propose_contract_change", arguments: { field: "motion" } }, { name: "rm_rf", arguments: {} }] }, usage: { input_tokens: 10, cache_read_input_tokens: 90, output_tokens: 5 } }
 	writeFileSync(bin, `#!/bin/sh\ncat > /dev/null\necho '${JSON.stringify(answer)}'\n`)

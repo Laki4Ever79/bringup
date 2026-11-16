@@ -13,7 +13,7 @@ import { renodePath } from "../src/tools/renode.ts"
 import { bootFirmware } from "../src/tools/emulator.ts"
 import { profileById } from "../src/mcu/profile.ts"
 import { fixtureContract } from "./fixture.ts"
-import { slow } from "./helpers.ts"
+import { slow, tempDir } from "./helpers.ts"
 
 function contractFor(mpn: string, pins: { sda: number; scl: number; led: number }) {
 	const s = fixtureContract()
@@ -31,7 +31,7 @@ const pio = [join(root, ".venv/bin/pio")].find(existsSync)
 const skip = pio ? false : "pio not found"
 
 test("the RP2040 logger (SHT40 on I2C0 GPIO4/GPIO5, LED on GPIO25) builds with no radio, and its pins read back", { skip, timeout: 900_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-rp-"))
+	const dir = tempDir()
 	try {
 		const firmware = await buildFirmware(pio!, root, dir, contractFor("RP2040", { sda: 4, scl: 5, led: 25 }), 6)
 		assert.equal(firmware.ok, true, firmware.log)
@@ -50,7 +50,7 @@ test("the RP2040 logger (SHT40 on I2C0 GPIO4/GPIO5, LED on GPIO25) builds with n
 })
 
 test("the nRF52840 logger (SHT40 on P0.26/P0.27, LED on P0.13) builds with Bluetooth LE on Bluefruit, its pins read back, and it boots in Renode as far as the first I2C transfer", { skip: slow || skip, timeout: 900_000 }, async () => {
-	const dir = await mkdtemp(join(tmpdir(), "bringup-fw-nrf-"))
+	const dir = tempDir()
 	try {
 		const profile = profileById("nrf52840-mdbt50q")!
 		const firmware = await buildFirmware(pio!, root, dir, contractFor("MDBT50Q-1MV2", { sda: 26, scl: 27, led: 13 }), 6)
