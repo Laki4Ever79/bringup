@@ -1,0 +1,1 @@
+[bringup] claude-haiku inference failed: Error: claude -p failed (1): {"type":"result","subtype":"success","is_error":true,"api_error_status":429,"duration_api_ms":0,"result":"You've hit your 5-hour limit · resets 5:20am (Europe/Belgrade)","stop_reason":"stop_sequence","total_cost_usd":0}
