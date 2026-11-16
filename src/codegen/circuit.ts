@@ -1573,6 +1573,16 @@ export function motorSupplyNet(parts: Part[]): string {
 	if (estopPlug(parts)) return MOTOR_VM_NET
 	return parts.some((p) => p.role === "charger" || p.role === "battery") ? "VBAT" : "VBUS"
 }
+// A robot's motor stall current at its pack's full voltage (catalog/mechanics.json, the mech-current check's model), or
+// null without a motor driver and mechanics naming catalog parts.
+const MECH = JSON.parse(readFileSync(new URL("../../catalog/mechanics.json", import.meta.url), "utf8")) as { motors: { mpn: string; stallA: number; ratedV: number }[]; batteries: { mpn: string; fullV: number }[] }
+const mechByMpn = <T extends { mpn: string }>(list: T[], mpn: string) => list.find((p) => p.mpn === mpn) ?? list.find((p) => p.mpn.split(/\s+/)[0] === mpn.split(/\s+/)[0])
+export function motorStallA(s: ContractSnapshot): number | null {
+	const m = s.values.mechanics
+	if (!m || !(s.values.parts ?? []).some((p) => p.role === "motor-driver")) return null
+	const motor = mechByMpn(MECH.motors, m.drive.motor), pack = mechByMpn(MECH.batteries, m.battery.pack)
+	return motor && pack ? (motor.stallA * pack.fullV) / motor.ratedV : null
+}
 export function supplyWidths(s: ContractSnapshot): Map<string, number> {
 	const out = new Map<string, number>()
 	for (const r of s.values.rails ?? []) {
@@ -1580,6 +1590,13 @@ export function supplyWidths(s: ContractSnapshot): Map<string, number> {
 		if (w <= DEFAULT_TRACE_MM) continue
 		out.set(netName(r.name), w)
 		out.set("GND", Math.max(out.get("GND") ?? 0, w))
+	}
+	// The motor outputs (MOTOR_A1…B2) carry a motor's stall current at the pack's full voltage (stall scales with the
+	// voltage): IPC-2221 width for it when that is over the default track (a high-power motor, or a 6 V one on 2S).
+	const stall = motorStallA(s)
+	if (stall !== null) {
+		const w = Math.round(ipc2221WidthMm(stall) * 100) / 100
+		if (w > DEFAULT_TRACE_MM) for (const side of ["A", "B"]) for (const n of ["1", "2"]) out.set(`MOTOR_${side}${n}`, w)
 	}
 	// The motors' supply after the emergency stop carries the cell's current, as VBAT does.
 	if (estopPlug(s.values.parts ?? []) && out.has("VBAT")) out.set(MOTOR_VM_NET, out.get("VBAT")!)
