@@ -132,6 +132,25 @@ def build(spec):
     for h in sen.get("holes", []):
         part -= Pos(bx, h["yMm"], h["zMm"]) * Rot(0, 90, 0) * Cylinder(sen["holeDiaMm"] / 2, WALL + 2)
 
+    # The emergency stop's deck (chassis.ts ChassisEstop): a bridge across the plate's width on two walls at its long
+    # edges (clear of the boards and the pack under it), the panel with the button's cutout, its top panelTopMm off the
+    # floor, and the collar ring around the head so the head stands at most 25 mm over the robot (Eurobot F.4.c).
+    es = spec.get("estop")
+    if es:
+        top = es["panelTopMm"] - p["clearanceMm"]  # in the part's frame: the plate's underside is z = 0
+        pm = es["panelMm"]
+        ring_in = es["headMm"] / 2 + 2.0  # chassis.ts ESTOP_HEAD_CLEARANCE_MM
+        span = 2 * (ring_in + WALL)
+        wall_h = top - pm - t
+        if wall_h < 1:
+            raise ChassisError(f"the e-stop's deck at {es['panelTopMm']} mm is under the plate's top")
+        for s in (-1, 1):
+            part += Pos(es["xMm"], s * (p["widthMm"] / 2 - WALL / 2), t + wall_h / 2) * Box(span, WALL, wall_h)
+        part += Pos(es["xMm"], 0, top - pm / 2) * Box(span, p["widthMm"], pm)
+        part -= Pos(es["xMm"], es["yMm"], top - pm / 2) * Cylinder(es["holeMm"] / 2, pm + 2)
+        if es["collarMm"] > 0:
+            part += Pos(es["xMm"], es["yMm"], top + es["collarMm"] / 2) * (Cylinder(ring_in + WALL, es["collarMm"]) - Cylinder(ring_in, es["collarMm"] + 2))
+
     # Measure the holes back from the solid: the circular edges of each hole size, by centre.
     def centres(radius):
         found = []
@@ -161,6 +180,9 @@ def build(spec):
                     bracket_holes.append(h)
     mounts["motorBracketHoles"] = bracket_holes
     mounts["clampScrews"] = clamp_screws
+    if es:
+        hole = [h for h in centres(es["holeMm"] / 2)]
+        mounts["estopHole"] = {**hole[0], "diaMm": es["holeMm"], "panelTopMm": es["panelTopMm"]} if hole else None
     return part, mounts
 
 

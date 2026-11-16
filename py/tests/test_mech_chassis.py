@@ -20,6 +20,25 @@ SPEC = {
 
 
 class ChassisTest(unittest.TestCase):
+    def test_the_estop_deck_spans_the_plate_with_the_buttons_cutout_and_its_collar(self):
+        # The Eurobot base's emergency stop (chassis.ts ChassisEstop, 16 Nov 2026): a bridge on two walls at the plate's
+        # long edges, a 2 mm panel with the A22E's 22.3 mm cutout at the button's place, and the 7 mm collar on top.
+        es = {"xMm": 40, "yMm": 0, "panelTopMm": 125, "panelMm": 2, "holeMm": 22.3, "headMm": 40, "collarMm": 7}
+        # Cradled motors (no clamp): this test is about the deck, not the motor mounts.
+        base = {**SPEC, "motors": [{**m, "mount": {"kind": "cradle"}} for m in SPEC["motors"]]}
+        part, mounts = build({**base, "estop": es})
+        hole = mounts["estopHole"]
+        self.assertAlmostEqual(hole["xMm"], 40, delta=0.05)
+        self.assertAlmostEqual(hole["yMm"], 0, delta=0.05)
+        bb = part.bounding_box()
+        self.assertAlmostEqual(bb.max.Z, 125 - 35 + 7, delta=0.05)  # the collar's top, in the plate's frame
+        plain, m0 = build(base)
+        self.assertNotIn("estopHole", m0)
+        # The deck's walls stand on the plate: it reaches no further sideways than the chassis without it.
+        self.assertAlmostEqual(bb.max.Y, plain.bounding_box().max.Y, delta=0.05)
+        self.assertAlmostEqual(bb.min.Y, plain.bounding_box().min.Y, delta=0.05)
+        self.assertLess(plain.bounding_box().max.Z, 40)
+
     def test_the_standoffs_sit_under_the_boards_own_holes_with_a_pilot_for_its_screw(self):
         # The board's holes come with the spec (chassis.ts boardHoles): 3.0 mm in, not the old 3.5, and the pilot for
         # the case's M2 self-tapping screw (1.6 mm), not an M2.5 clearance hole (15 Nov 2026).
