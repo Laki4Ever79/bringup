@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process"
+import { mount } from "./mount.ts"
+import { resolve } from "node:path"
 import { randomBytes } from "node:crypto"
 import { existsSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -87,7 +89,7 @@ async function sharedContainer(): Promise<string | null> {
 	starting = (async () => {
 		const name = `bringup-kicad-${process.pid}-${randomBytes(3).toString("hex")}`
 		const root = tmpRoot()
-		const r = await run("docker", ["run", "-d", "--rm", "--name", name, "-u", user(), "-e", "HOME=/var/tmp", "-v", `${root}:${root}`, KICAD_IMAGE, "sleep", String(CONTAINER_LIFE_S)], { timeoutMs: 60_000 })
+		const r = await run("docker", ["run", "-d", "--rm", "--name", name, "-u", user(), "-e", "HOME=/var/tmp", "-v", mount(root, resolve(root)), KICAD_IMAGE, "sleep", String(CONTAINER_LIFE_S)], { timeoutMs: 60_000 })
 		if (r.code !== 0) return null
 		// The one it replaces finishes on its own (its sleep ends); calls already in it run to their end.
 		shared = { name, until: Date.now() + (CONTAINER_LIFE_S - RENEW_BEFORE_S) * 1000 }
@@ -117,7 +119,7 @@ export async function kicadCli(env: Env, args: string[], cwd: string, timeoutMs:
 				if (again) return run("docker", ["exec", "-u", user(), "-w", real, again, "kicad-cli", ...args], { timeoutMs })
 			}
 		}
-		return run("docker", ["run", "--rm", "-u", user(), "-e", "HOME=/tmp", "-v", `${cwd}:/w`, "-w", "/w", KICAD_IMAGE, "kicad-cli", ...args], { timeoutMs })
+		return run("docker", ["run", "--rm", "-u", user(), "-e", "HOME=/tmp", "-v", mount(cwd, "/w"), "-w", "/w", KICAD_IMAGE, "kicad-cli", ...args], { timeoutMs })
 	}
 	return Promise.resolve({ code: -1, stdout: "", stderr: "KiCad is not available (no kicad-cli and no kicad/kicad:10.0 image)", ms: 0 })
 }
