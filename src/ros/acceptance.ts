@@ -55,11 +55,12 @@ def main():
     checks = []
     # A value that never arrived (no odometry: nan) is written as null: JSON has no NaN, and the run reads this file
     # with JSON.parse (mock rover run, 16 Nov 2026: "measured": NaN left the acceptance unread).
-    def finite(x):
+    # (named apart from the readings below: a later "finite = [...]" in this scope made it a list, and every check raised)
+    def json_safe(x):
         return None if isinstance(x, float) and not math.isfinite(x) else x
 
     def check(name, ok, measured, expected):
-        checks.append({"name": name, "pass": bool(ok), "measured": finite(measured), "expected": finite(expected)})
+        checks.append({"name": name, "pass": bool(ok), "measured": json_safe(measured), "expected": json_safe(expected)})
     start = time.monotonic()
     while n.odom is None and time.monotonic() - start < 30:
         rclpy.spin_once(n, timeout_sec=0.2)

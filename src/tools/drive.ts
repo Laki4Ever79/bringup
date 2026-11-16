@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process"
+import { createConnection } from "node:net"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
@@ -43,6 +44,20 @@ export interface DriveOptions {
 	consolePort?: number
 	// Extra compile flags for the simulation firmware (PLATFORMIO_BUILD_FLAGS), e.g. -DROVER_HOST_ONLY for a ROS test.
 	buildFlags?: string
+	// Called once the console's TCP port takes a connection (the firmware built and QEMU up): what a ROS host waits for.
+	onConsoleReady?: () => void
+}
+
+// Whether something listens on a local TCP port: a connection opened and closed at once (QEMU's console server takes
+// a client again after one leaves).
+export function portOpen(port: number): Promise<boolean> {
+	return new Promise((res) => {
+		const s = createConnection({ host: "127.0.0.1", port })
+		const done = (ok: boolean) => { s.destroy(); res(ok) }
+		s.once("connect", () => done(true))
+		s.once("error", () => done(false))
+		s.setTimeout(1000, () => done(false))
+	})
 }
 
 // MuJoCo, from npm run setup -- --robotics: a .venv without it gets "not run", like a machine without QEMU.
@@ -72,6 +87,15 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 	const sock = Buffer.byteLength(local) <= 100 ? local : join(mkdtempSync(join(tmpdir(), "bringup-drive-")), "uart1.sock")
 	rmSync(sock, { force: true })
 	const q = spawn(qemu, ["-display", "none", "-machine", "esp32c3", "-icount", "3", "-drive", `file=${image},if=mtd,format=raw`, "-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true", "-serial", o.consolePort ? `tcp:127.0.0.1:${o.consolePort},server=on,wait=off` : `file:${join(o.outDir, "uart0.txt")}`, "-serial", `unix:${sock},server=on,wait=on`], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
+	// The console is up once QEMU listens on it (polled; it stops when the drive ends).
+	let ended = false
+	if (o.consolePort && o.onConsoleReady)
+		void (async () => {
+			while (!ended) {
+				if (await portOpen(o.consolePort!)) return o.onConsoleReady!()
+				await new Promise((r) => setTimeout(r, 250))
+			}
+		})()
 	try {
 		const bridge = spawn(o.python, ["-B", join(o.root, "py/mech/drive.py"), specPath, sock, o.outDir, String(o.courseS ?? 25)], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
 		let stderr = ""
@@ -86,6 +110,7 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 		const r = JSON.parse(readFileSync(file, "utf8")) as Omit<DriveArtifact, "revision" | "dir">
 		return { ...r, revision, dir: o.outDir }
 	} finally {
+		ended = true
 		q.kill("SIGKILL")
 		rmSync(sock, { force: true })
 		if (sock !== local) rmSync(dirname(sock), { recursive: true, force: true })

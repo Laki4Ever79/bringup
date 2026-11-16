@@ -109,9 +109,34 @@ test("the acceptance script writes a value that never arrived as null, so its JS
 	const { acceptanceScript } = await import("../src/ros/acceptance.ts")
 	const { execFileSync } = await import("node:child_process")
 	const src = acceptanceScript(spec())
-	const helper = /( {4}def finite\(x\):[\s\S]*?\n {4}def check\(name, ok, measured, expected\):\n.*\n)/.exec(src)
-	assert.ok(helper, "the script has finite() and check()")
+	const helper = /( {4}def json_safe\(x\):[\s\S]*?\n {4}def check\(name, ok, measured, expected\):\n.*\n)/.exec(src)
+	assert.ok(helper, "the script has json_safe() and check()")
 	const py = `import json, math\nchecks = []\n${helper[1].replace(/^ {4}/gm, "")}\ncheck("speed", False, float("nan"), 0.3)\nprint(json.dumps(checks, allow_nan=False))\n`
 	const out = JSON.parse(execFileSync("python3", ["-c", py], { encoding: "utf8" }))
 	assert.deepEqual(out, [{ name: "speed", pass: false, measured: null, expected: 0.3 }])
+})
+
+// Mock rover runs on adopt feed1d1 (16 Nov 2026): every acceptance raised "'list' object is not callable" and recorded
+// no check, because main() later rebound the helper's name (finite = [readings]). The whole script is checked: no
+// function nested in a scope may be rebound by an assignment in that scope.
+test("the acceptance script never rebinds a helper's name in the scope that defines it", async () => {
+	const { acceptanceScript } = await import("../src/ros/acceptance.ts")
+	const { execFileSync } = await import("node:child_process")
+	const py = `import ast, json, sys
+tree = ast.parse(sys.stdin.read())
+clashes = []
+for scope in ast.walk(tree):
+    if not isinstance(scope, (ast.FunctionDef, ast.Module)):
+        continue
+    body = list(ast.iter_child_nodes(scope))
+    defs = {n.name for n in body if isinstance(n, ast.FunctionDef)}
+    for n in ast.walk(scope):
+        if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
+            for t in (n.targets if isinstance(n, ast.Assign) else [n.target]):
+                if isinstance(t, ast.Name) and t.id in defs:
+                    clashes.append(t.id)
+print(json.dumps(sorted(set(clashes))))
+`
+	const out = JSON.parse(execFileSync("python3", ["-c", py], { input: acceptanceScript(spec()), encoding: "utf8" }))
+	assert.deepEqual(out, [])
 })

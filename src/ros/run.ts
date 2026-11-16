@@ -73,9 +73,14 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 	let drive: Promise<DriveArtifact> | undefined
 	if (o.backend === "qemu") {
 		if (!o.spec || !o.fwDir || !o.python || !o.pio) return fail("the qemu back end needs the chassis spec, the firmware folder, python and pio")
-		// The firmware boots first and serves its console; the physics runs as long as the test may take.
-		drive = runDrive({ root: o.root, python: o.python, pio: o.pio, fwDir: o.fwDir, spec: o.spec, outDir: join(out, "drive-qemu"), courseS: 90, consolePort: CONSOLE_PORT, timeoutMs: 600_000, buildFlags: "-DROVER_HOST_ONLY" })
-		await new Promise((r) => setTimeout(r, 20_000))
+		// The firmware builds, then boots in QEMU and serves its console; the physics runs as long as the test may take.
+		// ROS starts once the console takes a connection, not after a fixed wait: the build alone took longer than the
+		// 20 s it used to wait under load, and ROS then found no console and got no odometry (mock rover runs, 16 Nov).
+		let ready: () => void = () => {}
+		const consoleUp = new Promise<void>((r) => (ready = r))
+		drive = runDrive({ root: o.root, python: o.python, pio: o.pio, fwDir: o.fwDir, spec: o.spec, outDir: join(out, "drive-qemu"), courseS: 90, consolePort: CONSOLE_PORT, timeoutMs: 600_000, buildFlags: "-DROVER_HOST_ONLY", onConsoleReady: () => ready() })
+		const early = await Promise.race([consoleUp.then(() => null), drive])
+		if (early) return { ...fail(`the firmware's console never came up: ${early.reason}`), drive: { result: early.result, reason: early.reason } }
 	}
 	const r = await docker(["run", "--rm", "--network", "host", "-u", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, "-e", "HOME=/tmp", "-v", mount(ws, "/ws"), "-v", mount(out, "/out"), ROS_IMAGE, `/out/run-${o.backend}.sh`], 300_000)
 	const d = drive ? await drive : undefined
