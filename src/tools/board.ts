@@ -259,7 +259,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 
 	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], work, 180_000)
 	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], work, 180_000)
-	const usbRefs = (s.values.connectors ?? []).filter((c) => c.kind === "usb-c").map((c) => c.ref)
+	const usbRefs = usbRefsOf(s)
 	const drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro", usbRefs)
 	cpSync(work, dir, { recursive: true })
 
@@ -364,4 +364,11 @@ export function buildErrors(output: string): string {
 		if (unrouted.length > 0) return [...unrouted.slice(0, 8), ...(unrouted.length > 8 ? [`(${unrouted.length - 8} more pins without a trace)`] : []), ...relevant].join("\n")
 	}
 	return (relevant.length > 0 ? relevant : lines).slice(-20).join("\n")
+}
+
+// The USB-C receptacles whose vendor land pattern the DRC exempts (drc.ts vendorLandPatternRules). The land pattern is the
+// part's (role usb-c), whether or not the contract lists it among its connectors: run 17's rev-41 contract had no
+// connectors field, and J1's own pads beside its locating holes counted as 2 DRC errors.
+export function usbRefsOf(s: ContractSnapshot): string[] {
+	return [...new Set([...(s.values.parts ?? []).filter((p) => p.role === "usb-c").map((p) => p.ref), ...(s.values.connectors ?? []).filter((c) => c.kind === "usb-c").map((c) => c.ref)])]
 }
