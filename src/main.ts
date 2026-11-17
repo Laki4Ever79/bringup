@@ -151,7 +151,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			return 1
 		}
 		// Nothing is packaged from an unfinished run unless the engineer says so (src/package/gate.ts).
-		const { packageGate } = await import("./package/gate.ts")
+		const { packageGate, runDirOf } = await import("./package/gate.ts")
 		const held = packageGate(contractPath, JSON.parse(readFileSync(contractPath, "utf8")))
 		if (held.length && !argv.includes("--force")) {
 			console.error(`bringup: not packaged: the design isn't finished:\n${held.map((h) => `  - ${h}`).join("\n")}\nFix these and rerun, or pass --force to package it anyway.`)
@@ -164,7 +164,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			return 1
 		}
 		const { buildPackage } = await import("./package/build.ts")
-		const r = await buildPackage(env, JSON.parse(readFileSync(contractPath, "utf8")), out, { root: ROOT, python: env.python, pio: env.pio, log: (m) => console.log(m) })
+		const r = await buildPackage(env, JSON.parse(readFileSync(contractPath, "utf8")), out, { root: ROOT, python: env.python, pio: env.pio, log: (m) => console.log(m), runDir: runDirOf(contractPath) })
 		console.log(`package: ${r.dir}\n  board parts ${r.boardUsd === null ? "?" : `$${r.boardUsd.toFixed(2)}`}, robot parts ${r.robotUsd === null ? "?" : `$${r.robotUsd.toFixed(2)}`}\n  missing: ${r.missing.length}, out of stock: ${r.outOfStock.length}, unpriced: ${r.unpriced.length}, open findings: ${r.findings.length}`)
 		return r.missing.length ? 2 : 0
 	}

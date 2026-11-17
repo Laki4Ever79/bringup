@@ -8,8 +8,11 @@ import { basename, dirname, join } from "node:path"
 import { checkConsistency } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
+// The run a contract belongs to: out/<run>/contract.json, or out/<run>/contracts/rev-N.json.
+export const runDirOf = (contractPath: string) => (basename(dirname(contractPath)) === "contracts" ? dirname(dirname(contractPath)) : dirname(contractPath))
+
 export function packageGate(contractPath: string, s: ContractSnapshot): string[] {
-	const dir = basename(dirname(contractPath)) === "contracts" ? dirname(dirname(contractPath)) : dirname(contractPath)
+	const dir = runDirOf(contractPath)
 	const reportPath = join(dir, "report.md")
 	const out: string[] = []
 	const today = checkConsistency(s, {})

@@ -18,6 +18,7 @@ import { loadCatalog, lookupLcsc } from "../tools/parts-search.ts"
 import { jlcSwaps, type JlcClass } from "./jlc-swaps.ts"
 import { checkRobotParts, robotPartLines, robotPartNotes } from "../tools/robot-parts.ts"
 import { writeBench } from "../report.ts"
+import { assemblyPictures } from "./assembly-pictures.ts"
 
 // JLCPCB's published price rules (economic PCBA), for a labelled estimate of the order: https://jlcpcb.com/help/article/pcb-assembly-price
 // (setup $8.18, stencil $1.53, $0.0016 a solder joint, $3.07 feeder loading per extended part; basic and preferred parts
@@ -46,12 +47,14 @@ export interface PackageResult {
 	outOfStock: string[]
 	unpriced: string[]
 	findings: string[]
+	// The assembly pictures (assembly-pictures.ts), or why there are none.
+	pictures?: { files: string[]; note: string | null }
 }
 
 const csvRows = (path: string) => readFileSync(path, "utf8").trim().split(/\r?\n/).slice(1).map((l) => l.match(/("([^"]|"")*"|[^,]*)(,|$)/g)!.map((c) => c.replace(/,$/, "").replace(/^"|"$/g, "").replace(/""/g, '"')))
 const usd = (n: number | null) => (n === null ? "?" : `$${n.toFixed(2)}`)
 
-export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string, opts: { root: string; python: string; pio: string; log?: (m: string) => void }): Promise<PackageResult> {
+export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string, opts: { root: string; python: string; pio: string; log?: (m: string) => void; runDir?: string }): Promise<PackageResult> {
 	const log = opts.log ?? (() => {})
 	const rev = s.revision
 	mkdirSync(outDir, { recursive: true })
@@ -145,7 +148,12 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 
 	// 5. Bench bring-up, the assembly order, the parts list and the summary.
 	writeBench(outDir, s, board)
-	writeFileSync(join(outDir, "assembly.md"), assemblyOrder(s, stls.map((f) => basename(f))))
+	// The robot drawn step by step in the 3D view, from the run the contract came from (assembly-pictures.ts).
+	const pictures = opts.runDir ? await assemblyPictures(opts.runDir, outDir, log) : { files: [], note: "no assembly pictures: packaged from a contract outside a run" }
+	writeFileSync(
+		join(outDir, "assembly.md"),
+		assemblyOrder(s, stls.map((f) => basename(f))) + (pictures.files.length ? `\n## Pictures\n\nThe robot after each step, and exploded (the run's board and chassis in the 3D view):\n\n${pictures.files.map((f) => `![${basename(f, ".png")}](${f})`).join("\n")}\n` : pictures.note ? `\n${pictures.note}\n` : ""),
+	)
 	const partsMd = [
 		`# Parts (prices and stock checked ${new Date().toISOString().slice(0, 10)})`,
 		"",
@@ -183,7 +191,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		"",
 	].join("\n")
 	writeFileSync(join(outDir, "parts.md"), partsMd)
-	const result: PackageResult = { dir: outDir, cheaper, robotLines: (robot?.lines ?? []).map((l) => ({ item: l.item, mpn: l.mpn, qty: l.qty, packs: (l as { packs?: number }).packs, supplier: l.supplier, url: l.url, lineUsd: l.lineUsd, status: l.status })), jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings }
+	const result: PackageResult = { dir: outDir, cheaper, robotLines: (robot?.lines ?? []).map((l) => ({ item: l.item, mpn: l.mpn, qty: l.qty, packs: (l as { packs?: number }).packs, supplier: l.supplier, url: l.url, lineUsd: l.lineUsd, status: l.status })), jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings, pictures }
 	writeFileSync(join(outDir, "README.md"), readme(s, result, fabOk, stls.map((f) => basename(f)), Boolean(fwBin)))
 	return result
 }
@@ -228,7 +236,7 @@ function readme(s: ContractSnapshot, r: PackageResult, fabOk: boolean, stls: str
 		`| Parts with stock and prices | parts.md | board parts ${usd(r.boardUsd)}, robot parts ${usd(r.robotUsd)} |`,
 		`| Printed parts | printed/ | ${stls.length ? stls.join(", ") : "none"} |`,
 		`| Firmware | firmware/firmware.bin | ${fw ? "built" : "NOT built"} |`,
-		"| Assembly order | assembly.md | |",
+		`| Assembly order | assembly.md | ${r.pictures?.files.length ? `with ${r.pictures.files.length} pictures (assembly/)` : r.pictures?.note ?? ""} |`,
 		"| Bench bring-up | bringup.md | |",
 		"",
 		`**Total: ${usd(total)}** = the JLCPCB order ${r.jlc?.totalUsd !== null && r.jlc ? `${usd(r.jlc.totalUsd)} (an estimate from JLC's published rules: 5 boards, 2 assembled; parts.md has the lines)` : `parts ${usd(r.boardUsd)} (no JLC estimate)`} + robot parts ${usd(r.robotUsd)}. Shipping, tax and filament are on top${r.unpriced.length ? `; ${r.unpriced.length} line(s) below have no price yet` : ""}.`,
