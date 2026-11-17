@@ -21,12 +21,13 @@ const logger = () => {
 	return s
 }
 
-test("the logger's smallest board, by placement: every part fits on 33×26 mm, under the 70% density ceiling", () => {
+test("the logger's smallest board, by placement: every part fits on 32×27 mm, under the 70% density ceiling", () => {
 	const min = minimumBoard(logger())!
 	// The module's antenna hangs past the edge, so only its pad area takes board space.
-	assert.deepEqual([min.widthMm, min.heightMm, min.areaMm2, min.limitedBy], [33, 26, 858, "placement"])
+	assert.deepEqual([min.widthMm, min.heightMm, min.areaMm2, min.limitedBy], [32, 27, 864, "placement"])
 	assert.ok(min.courtyardMm2 / min.areaMm2 < 0.7, `${min.courtyardMm2} mm² of courtyards`)
-	assert.ok(placesAll(logger(), 33, 26))
+	// 33×26 no longer holds it: its 0402s at the edge are judged by their pads (copperExtent, 17 Nov 2026).
+	assert.ok(placesAll(logger(), 32, 27))
 	assert.ok(!placesAll(logger(), 33, 25), "33×25 held every part before the EN reset RC and the debug footprint (13 Nov)")
 	// 30×27 held every part before the USB-sense divider (two 0402s by the module, 9 Nov).
 	assert.ok(!placesAll(logger(), 30, 27))
@@ -37,14 +38,14 @@ test("a board over the limit with no reason wakes the architect; a recorded reas
 	assert.equal(s.values.outline!.sizeReason, undefined)
 	const v = spaceChecks(s)
 	assert.deepEqual(v.map((x) => [x.kind, x.affects[0]]), [["space-slack", "architect"]])
-	assert.match(v[0].message, /50×30 mm \(1500 mm²\), 75% over the smallest it can be \(858 mm²/)
+	assert.match(v[0].message, /50×30 mm \(1500 mm²\), 74% over the smallest it can be \(864 mm²/)
 	s.values.outline = { ...s.values.outline!, sizeReason: { kind: "engineer-size", detail: "the housing takes exactly 50 × 30 mm" } }
 	s.values.requirements = { ...s.values.requirements!, size: { widthMm: 50, heightMm: 30, exact: true } }
 	assert.deepEqual(spaceChecks(s), [])
 	const compact = logger()
 	compact.values.outline = { ...compact.values.outline!, widthMm: 34, heightMm: 27 }
-	// 918 mm² is 7% over 858: within the limit.
-	assert.ok(918 / 858 - 1 <= SLACK_LIMIT)
+	// 918 mm² is 6% over 864: within the limit.
+	assert.ok(918 / 864 - 1 <= SLACK_LIMIT)
 	assert.deepEqual(spaceChecks(compact), [])
 })
 
@@ -54,7 +55,7 @@ test("a size the brief gives as \"about\" is a limit: it keeps no extra room, an
 	// No requirements.size: the reason's own words say it's a limit.
 	const { size: _z, ...req } = s.values.requirements!
 	s.values.requirements = req
-	assert.match(spaceChecks(s)[0]?.message ?? "", /75% over .* is a limit, not a reason for extra room/)
+	assert.match(spaceChecks(s)[0]?.message ?? "", /74% over .* is a limit, not a reason for extra room/)
 	// With requirements.size exact false, the same.
 	s.values.requirements = { ...req, size: { widthMm: 50, heightMm: 30, exact: false } }
 	assert.equal(spaceChecks(s).length, 1)
@@ -121,8 +122,8 @@ test("the design facts give every designer the minimum, the slack, the limit, th
 	const s = logger()
 	s.values.outline = { ...s.values.outline!, sizeReason: { kind: "engineer-size", detail: "the housing takes exactly 50 × 30 mm" } }
 	const lines = spaceFactLines(s).join("\n")
-	assert.match(lines, /the smallest it can be is 858 mm²/)
-	assert.match(lines, /slack 75%, limit 15%, over it for a recorded reason: engineer-size/)
+	assert.match(lines, /the smallest it can be is 864 mm²/)
+	assert.match(lines, /slack 74%, limit 15%, over it for a recorded reason: engineer-size/)
 	assert.match(lines, /Priority when rules conflict: safety and manufacturability, the engineer's own words, function, usability, compactness, cost/)
 	for (const k of Object.keys(SIZE_REASONS)) assert.ok(lines.includes(k), k)
 })
