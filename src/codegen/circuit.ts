@@ -1800,7 +1800,7 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 			if (!nets.has(net)) nets.set(net, [])
 			join(net, so.pwm.ref, `LED${i}`)
 			if (sv.pins.includes("SIG")) join(net, sv.ref, "SIG")
-			if (sv.pins.includes("V+")) join(SERVO_5V_NET, sv.ref, "V+")
+			if (sv.pins.includes("V5")) join(SERVO_5V_NET, sv.ref, "V5")
 		})
 		if (so.supply) {
 			if (so.supply.pins.includes("VIN")) join(parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS", so.supply.ref, "VIN")
