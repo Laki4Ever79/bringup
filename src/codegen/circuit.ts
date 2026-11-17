@@ -568,7 +568,9 @@ export const THROUGH_HOLE_FOOTPRINT = /^(pinrow|pinheader|dip|to92|to220|axial|j
 // (J2 by 0.3 mm on 25 mm boards: tscircuit then skips autorouting altogether).
 const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	dfn4: [5.8, 2.8], sot23_5: [3.6, 2.5], sot23: [3.6, 2.5], "0402": [1.86, 0.94], "0603": [2.96, 1.46], qfn32: [5.8, 5.8],
-	pinrow4: [9.12, 1.5], pushbutton: [7, 9],
+	// A 4-pin 2.54 mm header (a bought module on pins): 4 × 2.54 + 1 mm by 3.6 mm, like pinrow2 and pinrow3 (it was
+	// 1.5 mm deep, so the placer put the Eurobot base's 5 V module 0.27 mm past the board edge, 17 Nov 2026).
+	pinrow4: [11.2, 3.6], pushbutton: [7, 9],
 	// SOD-123 (a Schottky): pads and body about 4.4 × 1.6 mm (an estimate of the footprinter's sod123).
 	sod123: [4.4, 1.6],
 	// TSSOP-28 (the PCA9685): 9.7 mm long, leads across 6.4 mm, with pads about 10.4 × 7.9 mm (an estimate).
