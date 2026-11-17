@@ -17,6 +17,8 @@ export interface MotionTargets {
 	// The drive the brief asks for: "skid4" when it says four-wheel drive, 4WD, skid steer or a rough floor; otherwise
 	// a differential rover with a caster.
 	drive?: "skid4"
+	// Wheel encoders the brief asks for (odometry): the drive must be an encoder gearmotor on 6-pin plugs.
+	encoders?: true
 }
 
 export interface Mount {

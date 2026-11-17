@@ -254,7 +254,7 @@ export const EUROBOT_BOARD = {
 		{ ref: "JS1", role: "start", mpn: "PZ254V-11-02P", lcsc: "C492401", footprint: "pinrow2", pins: ["START", "GND"], reason: "Brief: \"Starts from a pull cord\": the cord's plug shorts START to GND until it is pulled" },
 	],
 	// The rules set no mass: 1500 g is this base's own target (it weighs about 1.2 kg with the beacon it must carry).
-	motion: { ...ROVER_MOTION!, maxSizeMm: [290, 290] as [number, number], maxMassG: 1500, rules: "eurobot-2026" },
+	motion: { ...ROVER_MOTION!, maxSizeMm: [290, 290] as [number, number], maxMassG: 1500, rules: "eurobot-2026", encoders: true as const },
 	// Sized for the opponent's 400 g beacon at 430 mm (F.6) on a 70 mm printed mast at the centre (16 Nov): a 260 x 256 mm
 	// plate on a 270 mm track (280 mm with the wheels, inside the 290 mm square), the axle 75 mm ahead of centre and the
 	// caster 185 mm behind it (38 % of the weight on it), a two-cell pack and 150:1 12 V encoder gearmotors (64.8 of 72.6
