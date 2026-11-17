@@ -44,5 +44,6 @@ test("nothing may stand where the beacon support's mast does", () => {
 	s.values.mechanics.battery.at = { xMm: 20, yMm: 0 }
 	const v = mechanicsChecksWith(s, defaultCheckCatalog()!).filter((x) => x.kind === "mech-fit")
 	assert.equal(v.length, 1)
-	assert.match(v[0].message, /^battery stands where the beacon support's 70 mm mast/)
+	// The battery's strap (py/chassis.py strap) moves with it.
+	assert.match(v[0].message, /^battery, battery-strap stand where the beacon support's 70 mm mast/)
 })
