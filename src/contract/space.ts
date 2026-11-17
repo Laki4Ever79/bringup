@@ -333,7 +333,10 @@ export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {})
 // U1.GPIO9") and the placer finding no free spot for a part (tools/board.ts): the same answer, more room. Not the
 // router's "cannot select a unique PCB port": it shows on boards that build clean too, so the cause was always another
 // error, and "more room" for it widened the rover five times over for a trace past its length bound (15 Nov 2026).
-export const ROUTING_FAILURE = /missing a trace|could not (?:be )?route|failed to route|no route|no room on the board|via hole at .* overlaps/i
+// Also tscircuit's own placement check refusing to route (parts crowding each other on a board too small for them: the
+// Eurobot base with servos and a spare motor at 60 × 40 mm, 17 Nov 2026), and traces left with no PCB trace: before,
+// neither recorded the size, so no finding asked for a bigger board and the run stayed unsettled with none open.
+export const ROUTING_FAILURE = /Autorouting was skipped because \d+ PCB placement errors? (?:was|were) found|has no PCB trace|missing a trace|could not (?:be )?route|failed to route|no route|no room on the board|via hole at .* overlaps/i
 
 export const SIZE_REASON_SHAPE = `sizeReason (optional): {kind: ${Object.keys(SIZE_REASONS).map((k) => `"${k}"`).join("|")}, detail: string}`
 

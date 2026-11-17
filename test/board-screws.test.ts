@@ -21,7 +21,8 @@ test("Rover with a Pi: the Pi's standoffs get the M2.5 pilot, main keeps M2; the
 	const own = spec.boards.find((b) => b.name === "main")!
 	assert.equal(own.pilotMm, 1.6)
 	const screws = robotPartLines(main).filter((l) => l.item === "board screw").map((l) => [l.mpn, l.qty])
-	assert.deepEqual(screws, [["M2x8 self-tapping pan head screw (for plastic)", own.holes.length], ["M2.5x8 thread-forming pan head screw (for plastic)", 4]])
+	// The M2 screws: main's holes and the battery strap's two (py/chassis.py strap).
+	assert.deepEqual(screws, [["M2x8 self-tapping pan head screw (for plastic)", own.holes.length + 2], ["M2.5x8 thread-forming pan head screw (for plastic)", 4]])
 	assert.deepEqual(hardwareFit(main), [])
 })
 
