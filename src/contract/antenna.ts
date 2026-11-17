@@ -22,8 +22,8 @@ function antennaBox(s: ContractSnapshot): { x: number; y: number; w: number; h: 
 	const o = s.values.outline
 	if (!a || !o) return null
 	const W = o.widthMm, H = o.heightMm
-	const inward = ANTENNA_MM - a.overhangMm
-	const depth = ANTENNA_MM
+	const inward = a.antennaMm - a.overhangMm
+	const depth = a.antennaMm
 	// Its centre across the edge: half its length from where it starts, inward of the edge.
 	const across = depth / 2 - inward
 	if (a.edge === "top") return { x: a.alongMm - W / 2, y: H / 2 + across, w: a.widthMm, h: depth, edge: a.edge }

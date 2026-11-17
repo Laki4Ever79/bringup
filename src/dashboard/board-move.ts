@@ -4,7 +4,7 @@
 // run uses, and says what else it moves: on the board, in the case, across the system's cables. Nothing is sent until
 // the engineer sends the batch; then it is one change request through requests.jsonl, so the owners write it and the
 // run's checks and review see it once.
-import { connectorBoxes, footprintFor, layoutBoard, MODULE_FOOTPRINT, supportParts } from "../codegen/circuit.ts"
+import { connectorBoxes, footprintFor, layoutBoard, moduleOf, supportParts } from "../codegen/circuit.ts"
 import { checkConsistency, type Violation } from "../contract/consistency.ts"
 import { enclosureMode, type Connector, type ContractSnapshot } from "../contract/types.ts"
 import { changedRefs, previewCircuit } from "./board-view.ts"
@@ -67,7 +67,7 @@ export function movables(s: ContractSnapshot): { movable: Record<string, Movable
 	}
 	for (const p of s.values.parts ?? []) {
 		if (movable[p.ref]) continue
-		if (footprintFor(p) === MODULE_FOOTPRINT) {
+		if (moduleOf(p)) {
 			fixed[p.ref] = "The radio module sits at the edge opposite the USB-C connector, its antenna past the board's edge (the module's datasheet keeps copper away from it). Move the USB-C connector to another edge to move it."
 			continue
 		}

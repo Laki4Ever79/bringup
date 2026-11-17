@@ -472,7 +472,8 @@ export function boardParts(s: ContractSnapshot): BoardPart[] {
 // named in the catalog but never labelled: codegen addresses its pads directly (USBC_PADS).
 function labelsFor(p: Part, footprint: string): string {
 	if (p.pins.length === 0 || footprint === USBC_FOOTPRINT) return ""
-	if (footprint === MODULE_FOOTPRINT) return ` pinLabels=${modulePinLabels(p.pins)}`
+	const m = MODULES[footprint]
+	if (m) return ` pinLabels=${modulePinLabels(m, p.pins)}`
 	const chip = chipProfile(p)
 	if (chip && footprint === chip.package.footprint) return ` pinLabels={${JSON.stringify(chipPinLabels(chip))}}`
 	if (footprint === BUTTON_FOOTPRINT && p.pins.includes("A") && p.pins.includes("B")) return ` pinLabels={{ pin1: "A", pin3: "B" }}`
@@ -500,12 +501,59 @@ function modulePads(): { pin: number; x: number; y: number; w: number; h: number
 	return pads
 }
 
-function moduleFootprint(): string {
+// ESP32-S3-MINI-1 (datasheet v1.7: Figure 3-1 pin layout, Figure 11-1 recommended land pattern). Origin at the module
+// centre, antenna toward +y. 15 pads a side at 0.85 mm pitch (11.9 mm between the end pads), the side columns 14 mm
+// apart, the top row 5.05 mm below the antenna end; left 1-15 top down, bottom 16-30 left to right, right 31-45 bottom up,
+// top 46-60 right to left; corner pads 62 (top left), 63, 64, 65 (top right); pin 61 the 4.5 mm thermal pad of nine
+// 1.2 mm squares. The offsets are read off the figure, approximate (see catalog/README.md), like the C3's.
+const S3_BODY = { w: 15.4, h: 20.5 }
+const S3_TOP_ROW = S3_BODY.h / 2 - 5.05
+function s3Pads(): { pin: number; x: number; y: number; w: number; h: number }[] {
+	const pads = []
+	const c = S3_TOP_ROW - 7 // the pad field's centre
+	const at = (k: number) => 0.85 * (k - 7) // k = 0..14 along a side
+	for (let k = 0; k < 15; k++) pads.push({ pin: 1 + k, x: -7, y: c - at(k), w: 0.8, h: 0.4 }) // left, top down
+	for (let k = 0; k < 15; k++) pads.push({ pin: 16 + k, x: at(k), y: c - 7, w: 0.4, h: 0.8 }) // bottom, left to right
+	for (let k = 0; k < 15; k++) pads.push({ pin: 31 + k, x: 7, y: c + at(k), w: 0.8, h: 0.4 }) // right, bottom up
+	for (let k = 0; k < 15; k++) pads.push({ pin: 46 + k, x: -at(k), y: c + 7, w: 0.4, h: 0.8 }) // top, right to left
+	pads.push({ pin: 61, x: 0, y: c, w: 4.5, h: 4.5 }) // thermal pad (nine 1.2 mm squares in the datasheet, one pad here)
+	for (const [pin, x, y] of [[62, -7, c + 7], [63, -7, c - 7], [64, 7, c - 7], [65, 7, c + 7]]) pads.push({ pin, x, y, w: 0.8, h: 0.8 })
+	return pads
+}
+
+// A radio module whose PCB antenna hangs past the board edge: its body, where its pad area ends toward the antenna, its
+// pins by datasheet pad number, and its land pattern.
+export interface RadioModule {
+	footprint: string
+	body: { w: number; h: number }
+	padAreaTop: number
+	pins: Record<string, number>
+	pads: () => { pin: number; x: number; y: number; w: number; h: number }[]
+}
+// The S3's pins by pad, from its profile (catalog/mcu/esp32-s3-mini-1.json, the datasheet's Table 3-1): each GPIO's pad,
+// and one pad each for GND, 3V3 and EN.
+const s3Pins = (): Record<string, number> => {
+	const prof = loadProfiles().find((x) => x.id === "esp32-s3-mini-1")
+	if (!prof) return {}
+	return Object.fromEntries([...prof.pins.map((x) => [x.name, +x.pads[0]] as const), ...prof.power.map((x) => [x.name, +x.pads[0]] as const)])
+}
+export const MODULES: Record<string, RadioModule> = {
+	[MODULE_FOOTPRINT]: { footprint: MODULE_FOOTPRINT, body: MODULE_BODY, padAreaTop: MODULE_PAD_AREA_TOP, pins: MODULE_PINS, pads: modulePads },
+	esp32_s3_mini_1: { footprint: "esp32_s3_mini_1", body: S3_BODY, padAreaTop: +(S3_TOP_ROW + 0.4).toFixed(2), get pins() { return s3Pins() }, pads: s3Pads },
+}
+// The radio module a part is, by its footprint; null for any other part.
+export function moduleOf(p: Part | undefined): RadioModule | null {
+	return p ? MODULES[footprintFor(p)] ?? null : null
+}
+// How far the antenna reaches past the pad area.
+export const antennaOf = (m: RadioModule) => +(m.body.h / 2 - m.padAreaTop).toFixed(3)
+
+function moduleFootprint(m: RadioModule): string {
 	const n = (v: number) => `${+v.toFixed(2)}mm`
-	const pads = modulePads().map((p) => `<smtpad portHints={["pin${p.pin}"]} pcbX="${n(p.x)}" pcbY="${n(p.y)}" width="${n(p.w)}" height="${n(p.h)}" shape="rect" />`)
+	const pads = m.pads().map((p) => `<smtpad portHints={["pin${p.pin}"]} pcbX="${n(p.x)}" pcbY="${n(p.y)}" width="${n(p.w)}" height="${n(p.h)}" shape="rect" />`)
 	// Silkscreen on the board only: the antenna hangs past the edge (placeParts), where the fab would cut it away.
-	const [hw, hh] = [MODULE_BODY.w / 2, MODULE_BODY.h / 2]
-	const top = +(MODULE_PAD_AREA_TOP + MODULE_EDGE_MM - 0.25).toFixed(2)
+	const [hw, hh] = [m.body.w / 2, m.body.h / 2]
+	const top = +(m.padAreaTop + MODULE_EDGE_MM - 0.25).toFixed(2)
 	const outline = [[-hw, top], [-hw, -hh], [hw, -hh], [hw, top]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
 	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
 }
@@ -534,9 +582,10 @@ function micFootprint(): string {
 	return `{<footprint>${smt}${ring}<silkscreenpath route={[${outline}]} /></footprint>}`
 }
 
-function modulePinLabels(pins: string[]): string {
-	const known = pins.filter((name) => MODULE_PINS[name] !== undefined)
-	return `{{ ${known.map((name) => `pin${MODULE_PINS[name]}: ${q(name)}`).join(", ")} }}`
+function modulePinLabels(m: RadioModule, pins: string[]): string {
+	const map = m.pins
+	const known = pins.filter((name) => map[name] !== undefined)
+	return `{{ ${known.map((name) => `pin${map[name]}: ${q(name)}`).join(", ")} }}`
 }
 
 // Deterministic placement. Connectors sit at their contract edge and offset; every other part takes the free
@@ -578,7 +627,7 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// A 3-pin 2.54 mm header (a servo's plug).
 	pinrow3: [8.6, 3.6],
 	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
-	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
+	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
@@ -663,17 +712,18 @@ const OPPOSITE: Record<Connector["edge"], Connector["edge"]> = { left: "right", 
 export const MODULE_EDGE_MM = 0.5
 export const ANTENNA_MM = MODULE_BODY.h / 2 - MODULE_PAD_AREA_TOP
 // How far the antenna reaches past the board edge, which edge, and where along it (contract frame, its centre), for
-// the case and the test fixture, which must leave it room. null when the design has no ESP32-C3 module.
-export function antennaOverhang(s: ContractSnapshot): { edge: Connector["edge"]; alongMm: number; widthMm: number; overhangMm: number } | null {
+// the case and the test fixture, which must leave it room; antennaMm its whole length. null with no radio module.
+export function antennaOverhang(s: ContractSnapshot): { edge: Connector["edge"]; alongMm: number; widthMm: number; overhangMm: number; antennaMm: number } | null {
 	const { outline, parts = [] } = s.values
 	const mcu = parts.find((p) => p.role === "mcu")
-	if (!outline || !mcu || footprintFor(mcu) !== MODULE_FOOTPRINT) return null
+	const m = moduleOf(mcu)
+	if (!outline || !mcu || !m) return null
 	const b = placeParts(s).find((p) => p.ref === mcu.ref)
 	if (!b) return null
 	const usb = (s.values.connectors ?? []).find((c) => c.kind === "usb-c")
 	const edge = OPPOSITE[usb?.edge ?? "left"]
 	const along = edge === "left" || edge === "right" ? (b.oy ?? b.y) + outline.heightMm / 2 : (b.ox ?? b.x) + outline.widthMm / 2
-	return { edge, alongMm: +along.toFixed(3), widthMm: MODULE_BODY.w, overhangMm: +(ANTENNA_MM - MODULE_EDGE_MM).toFixed(3) }
+	return { edge, alongMm: +along.toFixed(3), widthMm: m.body.w, overhangMm: +(antennaOf(m) - MODULE_EDGE_MM).toFixed(3), antennaMm: antennaOf(m) }
 }
 
 // Where the module must go, and what keeps it out: it only ever sits at the edge opposite USB-C (placeModule), so a
@@ -702,12 +752,13 @@ export function moduleFreedAlongEdges(s: ContractSnapshot): boolean {
 export function moduleBlocked(s: ContractSnapshot): { ref: string; edge: Connector["edge"]; usbRef?: string; needMm: number; depthMm: number; edgeMm: number; blockers: string[] } | null {
 	const { outline, parts = [], connectors = [] } = s.values
 	const mcu = parts.find((p) => p.role === "mcu")
-	if (!outline || !mcu || footprintFor(mcu) !== MODULE_FOOTPRINT) return null
+	const m = moduleOf(mcu)
+	if (!outline || !mcu || !m) return null
 	if (placeParts(s).some((b) => b.ref === mcu.ref)) return null
 	const usb = connectors.find((c) => c.kind === "usb-c")
 	const edge = OPPOSITE[usb?.edge ?? "left"]
 	const [W, H] = [outline.widthMm, outline.heightMm]
-	const depthMm = +(MODULE_BODY.h / 2 + MODULE_PAD_AREA_TOP + MODULE_EDGE_MM).toFixed(1)
+	const depthMm = +(m.body.h / 2 + m.padAreaTop + MODULE_EDGE_MM).toFixed(1)
 	// Connectors whose box reaches into the strip along that edge the module's on-board part needs, gap included.
 	const reach = depthMm + GAP_MM
 	const into = (b: Placed) => {
@@ -719,7 +770,7 @@ export function moduleBlocked(s: ContractSnapshot): { ref: string; edge: Connect
 		}
 	}
 	const blockers = connectorBoxes(s, W, H).filter(into).map((b) => b.ref)
-	return { ref: mcu.ref, edge, usbRef: usb?.ref, needMm: +(MODULE_BODY.w + 2 * EDGE_MARGIN_MM).toFixed(1), depthMm, edgeMm: edge === "left" || edge === "right" ? H : W, blockers }
+	return { ref: mcu.ref, edge, usbRef: usb?.ref, needMm: +(m.body.w + 2 * EDGE_MARGIN_MM).toFixed(1), depthMm, edgeMm: edge === "left" || edge === "right" ? H : W, blockers }
 }
 
 // A chip package's land pattern from its profile, plus 0.5 mm of courtyard around the pads.
@@ -1073,16 +1124,16 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// The module: at the far edge, centred along it, its antenna past the edge (MODULE_ROTATION, antennaOverhang).
 	// Only its on-board part reserves room; a module that collides with a connector or a hole keep-out isn't placed.
 	// Centred along the edge, or the nearest free spot along it (a connector on that edge, a hole keep-out).
-	const placeModule = (p: Part): Placed | undefined => {
+	const placeModule = (p: Part, m: RadioModule): Placed | undefined => {
 		done.add(p.ref)
 		const rotation = MODULE_ROTATION[edge]
-		const onBoard = MODULE_BODY.h / 2 + MODULE_PAD_AREA_TOP + MODULE_EDGE_MM
-		const [w, h] = edge === "left" || edge === "right" ? [onBoard, MODULE_BODY.w] : [MODULE_BODY.w, onBoard]
-		const half = MODULE_BODY.w / 2 + EDGE_MARGIN_MM
+		const onBoard = m.body.h / 2 + m.padAreaTop + MODULE_EDGE_MM
+		const [w, h] = edge === "left" || edge === "right" ? [onBoard, m.body.w] : [m.body.w, onBoard]
+		const half = m.body.w / 2 + EDGE_MARGIN_MM
 		for (let k = 0; k <= span / GRID_MM; k++) {
 			const v = span / 2 + (k % 2 === 0 ? k / 2 : -(k + 1) / 2) * GRID_MM
 			if (v < half || v > span - half) continue
-			const c = frame(depth - MODULE_PAD_AREA_TOP - MODULE_EDGE_MM, v)
+			const c = frame(depth - m.padAreaTop - MODULE_EDGE_MM, v)
 			const box = frame(depth - onBoard / 2, v)
 			const b: Placed = { ref: p.ref, x: box.x, y: box.y, w, h, rotation, ox: c.x, oy: c.y }
 			const clear = placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= GAP_MM) && keepouts.every((o) => !overlaps(b, o))
@@ -1097,7 +1148,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// engineer chose that spot. The radio module isn't placeable this way (its antenna goes past the far edge).
 	const blocked: { ref: string; why: string }[] = []
 	for (const p of free) {
-		if (!p.at || footprintFor(p) === MODULE_FOOTPRINT) continue
+		if (!p.at || moduleOf(p)) continue
 		done.add(p.ref)
 		const rotation = p.at.rotationDeg ?? (p.role === "mcu" && !chipProfile(p) ? MODULE_ROTATION[edge] : 0)
 		const [w, h] = sizeAt(footprintFor(p), rotation)
@@ -1122,7 +1173,8 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	}
 	const mcuPart = byRole("mcu")
 	// A bare chip stays at rotation 0, so its decoupling lands beside the right pads (besidePin).
-	const mcu = mcuPart && footprintFor(mcuPart) === MODULE_FOOTPRINT ? placeModule(mcuPart) : put(mcuPart, { x: 0, y: 0 }, chipProfile(mcuPart) ? 0 : MODULE_ROTATION[edge])
+	const mcuModule = moduleOf(mcuPart)
+	const mcu = mcuPart && mcuModule ? placeModule(mcuPart, mcuModule) : put(mcuPart, { x: 0, y: 0 }, chipProfile(mcuPart) ? 0 : MODULE_ROTATION[edge])
 	const centre = mcu ?? { x: 0, y: 0 }
 	// The LDO sits a fixed distance in from the USB-C connector, not halfway to the MCU: on wider boards the
 	// halfway point left a gap where tscircuit's router dropped a via onto the VBUS pad (55–60 mm boards).
@@ -2208,7 +2260,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 			if (b && opts.usbKeepouts) lines.push(...usbKeepouts(b.x, b.y, b.rotation))
 			continue
 		}
-		const fp = footprint === MODULE_FOOTPRINT ? moduleFootprint() : footprint === MIC_FOOTPRINT ? micFootprint() : q(footprint)
+		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : q(footprint)
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
 	}
 
