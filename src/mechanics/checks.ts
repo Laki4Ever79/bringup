@@ -47,6 +47,10 @@ export const TIP_MARGIN_MM = 10
 // A skid-steer rover's wheelbase over its track: past 1 a wheel slips before the rover turns (model.ts skidTurn); this
 // keeps a margin under it (a design choice).
 export const SKID_RATIO_MAX = 0.9
+// A standard hobby servo's stall current at 5 V (an ESTIMATE: an MG996R-class servo draws about 2.5 A stalled; micro
+// servos far less) and the 5 V step-down's efficiency from a 2S pack (an ESTIMATE, Pololu D36V50F5's curves run 80-90 %).
+export const SERVO_STALL_A = 2.5
+export const SERVO_SUPPLY_EFF = 0.85
 export const CLIMB_MARGIN = 1.2 // the drive wheels' grip must push the caster up the edge with this margin (static; the simulation from rest climbs a little more, docs/mechanics.md)
 export const LEVEL_TOLERANCE_MM = 3 // caster and wheels must hold the plate level within this
 
@@ -386,8 +390,12 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const computeA = boughtComputeA(mech, pack, cat)
 	const boardMa = boards.reduce((t, b) => t + cellFedElectronics(b.snapshot.values.rails ?? []).reduce((s, rail) => s + ((rail as { averageMa?: number }).averageMa ?? rail.loadMa), 0), 0) + computeA.amps * 1000
 	if (computeA.amps > 0) fig("Computer draw", `${r2(computeA.amps)} A`, "from the pack", true, computeA.how)
-	const packNeedA = n * full.stallA + boardMa / 1000
-	fig("Pack peak current", `${r2(packNeedA)} A`, `at most ${pack.peakA} A`, packNeedA <= pack.peakA, `${n === 2 ? "both" : `all ${n}`} motors at stall plus the electronics`)
+	// Servo plugs (role servo) through a 5 V step-down: each servo at stall (SERVO_STALL_A, an estimate for a standard
+	// servo; the brief names none) as pack current at the nominal voltage through the module (SERVO_SUPPLY_EFF, an estimate).
+	const servos = parts.filter((p) => p.role === "servo").length
+	const servoA = servos ? (servos * SERVO_STALL_A * 5) / (pack.nominalV * SERVO_SUPPLY_EFF) : 0
+	const packNeedA = n * full.stallA + boardMa / 1000 + servoA
+	fig("Pack peak current", `${r2(packNeedA)} A`, `at most ${pack.peakA} A`, packNeedA <= pack.peakA, `${n === 2 ? "both" : `all ${n}`} motors at stall plus the electronics${servos ? ` plus ${servos} servo${servos > 1 ? "s" : ""} at stall (${r2(servoA)} A from the pack, an estimate: ${SERVO_STALL_A} A each at 5 V, ${SERVO_SUPPLY_EFF * 100} % through the step-down)` : ""}`)
 	if (packNeedA > pack.peakA)
 		push("mech-current", `both motors at stall plus the electronics draw ${r2(packNeedA)} A from a full cell, over the ${mech.battery.pack}'s ${pack.peakA} A peak: pick a pack rated higher or a gentler motor`)
 
