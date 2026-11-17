@@ -5,7 +5,7 @@
 import { byMpn, loadMechCatalog, type MechCatalog } from "../mechanics/catalog.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { checkOffer, type OfferCheck } from "./offers.ts"
-import { chassisSpec, CRADLE_WALL_MM, robotCables, type ChassisSpec } from "./chassis.ts"
+import { boardScrew, chassisSpec, CRADLE_WALL_MM, robotCables, type ChassisSpec } from "./chassis.ts"
 import type { HardwarePart } from "../mechanics/catalog.ts"
 import { resolve } from "node:path"
 
@@ -81,7 +81,9 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 	// boards' M2). A HAT on spacers has no holes on the plate, so no screws here.
 	const boardThreads = new Map<number, number>()
 	for (const b of spec?.boards ?? []) {
-		const t = screwFor(b.screwHoleMm ?? spec!.boardScrew.boardHoleMm)
+		// The chassis' own choice (boardScrew), which drilled the standoff's pilot for it: one chooser, so the parts list
+		// never names a screw the standoff wasn't made for (a ROCK 5B's Ø3.5 mm holes: M2.5, not an M3 the catalog lacks).
+		const t = boardScrew(b.screwHoleMm ?? spec!.boardScrew.boardHoleMm).threadMm
 		boardThreads.set(t, (boardThreads.get(t) ?? 0) + b.holes.length)
 	}
 	// The battery strap's two M2 self-tapping screws (py/chassis.py strap), the board screw's kind.
@@ -177,7 +179,7 @@ export function hardwareFit(s: ContractSnapshot, spec: ChassisSpec | null = chas
 	const threads = new Set(lines.filter((l) => l.item === "board screw").map((l) => (cat.hardware ?? []).find((h) => h.mpn === l.mpn)?.threadMm))
 	for (const b of spec.boards.filter((x) => x.holes.length)) {
 		const hole = b.screwHoleMm ?? spec.boardScrew.boardHoleMm, pilot = b.pilotMm ?? spec.boardScrew.pilotMm
-		const t = screwFor(hole)
+		const t = boardScrew(hole).threadMm
 		if (!threads.has(t)) { out.push(`${b.name}: no M${t} self-tapping screw in catalog/mechanics.json hardware for its ${hole} mm holes`); continue }
 		if (hole <= t) out.push(`${b.name}: board hole ${hole} mm is smaller than the M${t} screw`)
 		if (pilot >= t) out.push(`${b.name}: the standoff's ${pilot} mm pilot leaves the M${t} self-tapping screw nothing to cut`)
