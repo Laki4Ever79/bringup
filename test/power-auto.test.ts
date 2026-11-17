@@ -73,7 +73,7 @@ test("the mock Eurobot's first mechanics write: the charger goes with its passiv
 	await waitFor(() => state.contract.version("mechanics") === 1)
 	const now = state.contract.snapshot()
 	assert.equal(now.versions.parts, 2)
-	assert.ok(!now.values.parts!.some((p) => ["U4", "D2", "R4", "R7", "C4"].includes(p.ref)))
+	assert.ok(!now.values.parts!.some((p) => p.role === "charger" || p.role === "charge-led" || ["R4", "R7", "C4"].includes(p.ref)))
 	assert.deepEqual(unconnectedParts(now).map((v) => v.message.split(" is ")[0]), [])
 	assert.deepEqual(powerKinds(now), [])
 })

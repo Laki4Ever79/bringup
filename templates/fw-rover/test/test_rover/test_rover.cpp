@@ -134,6 +134,27 @@ void test_quadrature_sign_is_learned_from_the_first_drive(void) {
 	TEST_ASSERT_EQUAL_INT32(40, quad_forward(r, 40, 0.6f));
 }
 
+// With a gyro the turn ends on the heading, not the counts: the wheels slip in a turn in place.
+void test_with_a_gyro_the_turn_ends_on_the_heading(void) {
+	RoverEncConfig cfg = {200, 500, 0.6f, 600, 1000, 0.001f, 0, 2.3562f};
+	RoverEncState st;
+	RoverOut o = rover_enc_step(cfg, st, 150, 0, 0, 0, 0.0f);  // wall: the turn begins at heading 0
+	TEST_ASSERT_EQUAL_FLOAT(0.6f, o.left);
+	TEST_ASSERT_EQUAL_FLOAT(-0.6f, o.right);
+	o = rover_enc_step(cfg, st, -1, 100, 2000, -2000, 1.0f);   // counts past turnCounts, heading short: still turning
+	TEST_ASSERT_EQUAL_FLOAT(-0.6f, o.right);
+	o = rover_enc_step(cfg, st, -1, 200, 2100, -2100, 2.40f);  // heading past 3/8 of a turn: straight on
+	TEST_ASSERT_EQUAL_FLOAT(o.left, o.right);
+}
+// No heading (NAN): the turn closes on the counts as before.
+void test_without_a_heading_the_turn_ends_on_the_counts(void) {
+	RoverEncConfig cfg = {200, 500, 0.6f, 600, 1000, 0.001f, 0, 2.3562f};
+	RoverEncState st;
+	rover_enc_step(cfg, st, 150, 0, 0, 0);
+	RoverOut o = rover_enc_step(cfg, st, -1, 100, 1000, -1000);
+	TEST_ASSERT_EQUAL_FLOAT(o.left, o.right);
+}
+
 int main(int, char **) {
 	UNITY_BEGIN();
 	RUN_TEST(test_no_reading_means_nothing_ahead);
@@ -146,6 +167,8 @@ int main(int, char **) {
 	RUN_TEST(test_with_encoders_the_straight_steers_back_toward_the_slower_wheel);
 	RUN_TEST(test_with_encoders_it_backs_off_before_the_turn);
 	RUN_TEST(test_quadrature_counts_four_per_cycle_each_way);
+	RUN_TEST(test_with_a_gyro_the_turn_ends_on_the_heading);
+	RUN_TEST(test_without_a_heading_the_turn_ends_on_the_counts);
 	RUN_TEST(test_quadrature_jitter_on_an_edge_nets_zero);
 	RUN_TEST(test_quadrature_sign_is_learned_from_the_first_drive);
 	return UNITY_END();

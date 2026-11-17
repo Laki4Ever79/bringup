@@ -97,6 +97,31 @@ int32_t hw_encoder(int side) { return encCount[side & 1]; }
 #define ENC_DIR(side, duty)
 #endif
 
+#ifdef IMU_LSM6DS3
+// The robot's IMU (the LSM6DS3TR-C on the I2C bus, drivers/lsm6ds3.h): the yaw rate's bias measured over the first
+// IMU_BIAS_SAMPLES readings while the robot stands at power-up, then integrated into the heading on every call.
+#include "drivers/lsm6ds3.h"
+static const int IMU_BIAS_SAMPLES = 100;  // 100 readings 10 ms apart: 1 s at rest (a design choice)
+static bool imuOk = false;
+static GyroHeading heading;
+static void imuBegin(void) {
+	imuOk = lsm6Begin();
+	if (!imuOk) return;
+	float sum = 0, dps = 0;
+	int n = 0;
+	for (int i = 0; i < IMU_BIAS_SAMPLES; i++, delay(10)) if (lsm6YawDps(&dps)) { sum += dps; n++; }
+	heading.biasDps = n ? sum / n : 0;
+}
+float hw_heading_rad(void) {
+	float dps = 0;
+	if (!imuOk || !lsm6YawDps(&dps)) return NAN;
+	gyroHeadingStep(heading, dps, micros());
+	return heading.rad;
+}
+#else
+float hw_heading_rad(void) { return NAN; }
+#endif
+
 void hw_begin(void) {
 #if defined(ROVER_TURN_COUNTS) && defined(ROVER_ENC_QUADRATURE) && defined(PIN_ENC_LA) && defined(PIN_ENC_RA) && defined(PIN_ENC_LB) && defined(PIN_ENC_RB)
 	for (int pin : {PIN_ENC_LA, PIN_ENC_LB, PIN_ENC_RA, PIN_ENC_RB}) pinMode(pin, INPUT);  // the encoder pulls its outputs up
@@ -110,6 +135,9 @@ void hw_begin(void) {
 #endif
 	for (auto &m : IN) for (int pin : m) { ledcAttach(pin, PWM_HZ, PWM_BITS); ledcWrite(pin, 0); }
 	Wire.begin(I2C_SDA, I2C_SCL);
+#ifdef IMU_LSM6DS3
+	imuBegin();
+#endif
 	tof.setTimeout(100);
 	tofOk = tof.init();
 	if (tofOk) { tof.setMeasurementTimingBudget(ROVER_PERIOD_MS * 1000); tof.startContinuous(); }
