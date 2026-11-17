@@ -110,7 +110,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		const snapshot = s.contract.snapshot()
 		writeFileSync(join(s.outDir, "contract.json"), JSON.stringify(snapshot, null, 2))
 		writeRevisions(snapshot.revision)
-		violations = checkConsistency(snapshot, s.artifacts, readBrief(s.outDir))
+		violations = checkConsistency(snapshot, s.artifacts, readBrief(s.outDir), { boardStale: s.artifacts.board !== undefined && !current("board") })
 		const report = JSON.stringify({ revision: snapshot.revision, violations })
 		if (report !== lastReport) {
 			lastReport = report
