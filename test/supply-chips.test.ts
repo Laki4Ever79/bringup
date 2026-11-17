@@ -4,7 +4,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { assemblableSupplies, completePowerTree, SUPPLY_HEADROOM } from "../src/contract/power-auto.ts"
-import { generatedNets, SERVO_5V_NET, SERVO_FB_NET, SERVO_SW_NET, supportParts } from "../src/codegen/circuit.ts"
+import { circuitFromContract, generatedNets, SERVO_5V_NET, SERVO_FB_NET, SERVO_SW_NET, supportParts } from "../src/codegen/circuit.ts"
 import { supplyWiring, unconnectedParts } from "../src/contract/consistency.ts"
 import type { ContractSnapshot, Part } from "../src/contract/types.ts"
 
@@ -22,23 +22,41 @@ test("run 20 rev 20: the agents' step-down and Schottkys written as \"other\" ar
 	assert.equal(tree(s.values.parts!).length, 6)
 })
 
-test("the chip rule keeps 25 % headroom: two servos at stall (5 A, 6.25 A with headroom) keep the module; one (3.1 A) takes the SY8205", () => {
+test("the chip rule keeps 25 % headroom: one servo (3.1 A) takes the SY8205, two (6.25 A) the 8 A SY8368A, three (9.4 A) keep the module", () => {
 	const s = fx("mock-eurobot-rev8.json")
 	const before = s.values.parts!.find((p) => p.role === "servo-supply")!
 	assert.equal(before.lcsc, null)
 	assert.equal(SUPPLY_HEADROOM, 1.25)
-	// Two servos: 2 x 2.5 A = 5 A, over the SY8205's 5 A once 1.25x: the module stays.
-	assert.equal(s.values.parts!.filter((p) => p.role === "servo").length, 2)
-	assert.equal(assemblableSupplies(s.values.parts!, s.values.mechanics!).parts.find((p) => p.role === "servo-supply")!.mpn, before.mpn)
-	// One servo: 3.125 A with headroom: the chip.
-	const one = s.values.parts!.filter((p) => p.ref !== s.values.parts!.filter((q) => q.role === "servo")[1].ref)
-	const u9 = assemblableSupplies(one, s.values.mechanics!).parts.find((p) => p.role === "servo-supply")!
-	assert.deepEqual([u9.ref, u9.mpn, u9.lcsc], [before.ref, "SY8205FCC", "C111875"])
+	const servos = s.values.parts!.filter((p) => p.role === "servo")
+	assert.equal(servos.length, 2)
+	const supply = (ps: Part[]) => assemblableSupplies(ps, s.values.mechanics!).parts.find((p) => p.role === "servo-supply")!
+	assert.deepEqual([supply(s.values.parts!).ref, supply(s.values.parts!).mpn, supply(s.values.parts!).lcsc], [before.ref, "SY8368AQQC", "C207642"])
+	assert.equal(supply(s.values.parts!.filter((p) => p.ref !== servos[1].ref)).mpn, "SY8205FCC")
+	const three = [...s.values.parts!, { ...servos[0], ref: "JV9" }]
+	assert.equal(supply(three).mpn, before.mpn)
+})
+
+test("the SY8368A (two servos): its three IN pads on the pack, both GND, LX and FB on theirs, 5 x 22 uF out, no soft-start part, and JLCPCB's polygon pads", () => {
+	const s = fx("mock-eurobot-rev8.json")
+	s.values.parts = completePowerTree(s.values.parts!, s.values.mechanics!, s).parts
+	const u = s.values.parts!.find((p) => p.role === "servo-supply")!
+	assert.equal(u.mpn, "SY8368AQQC")
+	const n = generatedNets(s)
+	for (const pin of ["IN", "IN_2", "IN_3"]) assert.ok(n.get("VBAT")!.includes(`${u.ref}.${pin}`), pin)
+	for (const pin of ["GND", "GND_2"]) assert.ok(n.get("GND")!.includes(`${u.ref}.${pin}`), pin)
+	assert.ok(n.get(SERVO_SW_NET)!.includes(`${u.ref}.LX`) && n.get(SERVO_FB_NET)!.includes(`${u.ref}.FB`))
+	const mine = supportParts(s).filter((x) => x.near === u.ref)
+	assert.equal(mine.filter((x) => x.spec.value === "22uF").length, 5)
+	assert.ok(!mine.some((x) => /soft-start/.test(x.job ?? "")))
+	assert.deepEqual(unconnectedParts(s).map((v) => v.message.split(" is ")[0]), [])
+	const tsx = circuitFromContract(s)
+	const line = tsx.split("\n").find((l) => l.includes(`name="${u.ref}"`)) ?? ""
+	assert.equal((line.match(/shape="polygon"/g) ?? []).length, 12)
 })
 
 test("the SY8205 is wired as its application note draws it, with its parts, and nothing is left open", () => {
 	const s = fx("mock-eurobot-rev8.json")
-	const second = s.values.parts!.filter((q) => q.role === "servo")[1].ref
+	const second = s.values.parts!.filter((q) => q.role === "servo")[1].ref // one servo: the SY8205
 	s.values.parts = completePowerTree(s.values.parts!.filter((p) => p.ref !== second), s.values.mechanics!, s).parts
 	const u = s.values.parts!.find((p) => p.role === "servo-supply")!
 	assert.equal(u.mpn, "SY8205FCC")
