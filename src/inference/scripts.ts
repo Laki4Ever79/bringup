@@ -231,8 +231,23 @@ export const EUROBOT_BOARD = {
 	// STATUS_LED on GPIO3 (the module's last free pin besides the GPIO2 strap): ready / running / stopped (status_led.h).
 	pins: [...ROVER_PINS, { signal: "START", gpio: 10, partRef: "JS1", partPin: "START" }, { signal: "STATUS_LED", gpio: 3, partRef: "D1", partPin: "A" }, { signal: "ENC_LA", gpio: 0, partRef: "JM1", partPin: "ENCA" }, { signal: "ENC_RA", gpio: 1, partRef: "JM2", partPin: "ENCA" }],
 	// The brief's "encoders on both drive wheels": the same 100:1 motors with a 12 CPR encoder, each on a 6-pin JST SH plug.
-	connectors: ROVER_BOARD.connectors.map((c) => (c.ref === "JM1" || c.ref === "JM2" ? { ...c, widthMm: 8, heightMm: 4.3 } : c)),
+	// The brief's nice-to-haves: two servo plugs (JV1, JV2) and a spare motor plug (JM3, the 6-pin SH like the drive's).
+	connectors: [
+		...ROVER_BOARD.connectors.map((c) => (c.ref === "JM1" || c.ref === "JM2" ? { ...c, widthMm: 8, heightMm: 4.3 } : c)),
+		{ ref: "JM3", kind: "header" as const, edge: "bottom" as const, offsetMm: 38, widthMm: 8, heightMm: 4.3 },
+		{ ref: "JV1", kind: "header" as const, edge: "bottom" as const, offsetMm: 50, widthMm: 8.6, heightMm: 3.6 },
+		{ ref: "JV2", kind: "header" as const, edge: "top" as const, offsetMm: 28, widthMm: 8.6, heightMm: 3.6 },
+	],
 	parts: [
+		// Two servos and a spare motor through a PCA9685 on the I2C bus (the ESP32-C3 has no pins left: GPIO2 is a strap,
+		// GPIO3 the LED): U7 drives JV1/JV2 on channels 0-1 and U6 (a second DRV8833) on 2-3; U9, a 5 V 5.5 A step-down
+		// module, powers the servos and is switched off by the emergency stop through its EN.
+		{ ref: "U6", role: "motor-driver", mpn: "DRV8833PWPR", lcsc: "C50506", footprint: "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm", pins: ["nSLEEP", "AOUT1", "AISEN", "AOUT2", "BOUT2", "BISEN", "BOUT1", "nFAULT", "BIN1", "BIN2", "VCP", "VM", "GND", "VINT", "AIN2", "AIN1"], reason: "Brief (nice to have): \"a spare motor output\": its channel A, inputs from U7 channels 2-3" },
+		{ ref: "U7", role: "pwm-driver", mpn: "PCA9685PW,118", lcsc: "C2678753", footprint: "tssop28_w6.4mm_p0.65mm", pins: ["A0", "A1", "A2", "A3", "A4", "LED0", "LED1", "LED2", "LED3", "LED4", "LED5", "LED6", "LED7", "VSS", "LED8", "LED9", "LED10", "LED11", "LED12", "LED13", "LED14", "LED15", "OE", "A5", "EXTCLK", "SCL", "SDA", "VDD"], reason: "Brief (nice to have): servo outputs and a spare motor: 16 PWM channels on the I2C bus, address 0x40" },
+		{ ref: "U9", role: "servo-supply", mpn: "POLOLU-4091 D36V50F5", lcsc: null, footprint: "pinrow4", pins: ["EN", "VIN", "GND", "VOUT"], reason: "The servos' 5 V from the 2S pack, off when the emergency stop opens (its EN)" },
+		{ ref: "JV1", role: "servo", mpn: "PZ254V-11-03P", lcsc: "C492402", footprint: "pinrow3", pins: ["SIG", "V+", "GND"], reason: "Brief (nice to have): servo output 1" },
+		{ ref: "JV2", role: "servo", mpn: "PZ254V-11-03P", lcsc: "C492402", footprint: "pinrow3", pins: ["SIG", "V+", "GND"], reason: "Brief (nice to have): servo output 2" },
+		{ ref: "JM3", role: "connector", mpn: "SM06B-SRSS-TB(LF)(SN)", lcsc: "C160405", footprint: "jst6_sh", pins: ["GND", "ENCB", "ENCA", "VCC", "M2", "M1"], reason: "Brief (nice to have): a spare motor output, the drive motors' 6-pin plug" },
 		...ROVER_BOARD.parts.map((p) => (p.ref === "JM1" || p.ref === "JM2" ? { ...p, mpn: "SM06B-SRSS-TB(LF)(SN)", lcsc: "C160405", footprint: "jst6_sh", pins: ["GND", "ENCB", "ENCA", "VCC", "M2", "M1"], reason: `Brief: "encoders on both drive wheels": the ${p.ref === "JM1" ? "left" : "right"} encoder gearmotor's 6-pin plug (motor and encoder)` } : p)),
 		{ ref: "JE1", role: "estop", mpn: "B2B-XH-A(LF)(SN)", lcsc: "C158012", footprint: "pinrow2_p2.5_id1_od1.8", pins: ["VBAT", "VM"], reason: "Brief: \"Pressing it cuts power to the motors at once\": the emergency stop's NC contact between the cell and the motor driver's VM" },
 		{ ref: "JS1", role: "start", mpn: "PZ254V-11-02P", lcsc: "C492401", footprint: "pinrow2", pins: ["START", "GND"], reason: "Brief: \"Starts from a pull cord\": the cord's plug shorts START to GND until it is pulled" },

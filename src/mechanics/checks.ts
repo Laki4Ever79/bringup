@@ -271,8 +271,10 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// Parts and pins over every board of the robot.
 	const parts: Part[] = boards.flatMap((b) => b.snapshot.values.parts ?? [])
 	const pins: Pin[] = boards.flatMap((b) => b.snapshot.values.pins ?? [])
+	// The first part of a role in ref order (U5 before U6): the drive's motor driver, as the board generator orders them
+	// (circuit.ts motorDrivers), whatever order the parts list has.
 	const data = (role: string) => {
-		const p = parts.find((x) => x.role === role)
+		const p = parts.filter((x) => x.role === role).sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))[0]
 		return p ? { part: p, data: cat.boardParts.find((x) => x.mpn === p.mpn) } : null
 	}
 	const driver = data("motor-driver")
