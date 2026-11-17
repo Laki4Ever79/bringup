@@ -97,6 +97,9 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_TURN_MS ${turnMs}`,
 		// Wheel encoders on GPIOs: the turn and the straight close on their counts (rover.h); the same three eighths of a turn.
 		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [...(quadratureWired(v.pins) ? ["#define ROVER_ENC_QUADRATURE 1"] : []), `#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, countTrackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`, `#define ROVER_MM_PER_COUNT ${((Math.PI * wheel.diameterMm) / cpr).toFixed(4)}f`, `#define ROVER_TRACK_MM ${countTrackMm.toFixed(1)}f`, `#define ROVER_GOTO_MIN_DUTY ${(GOTO_MIN_SHARE * cruise).toFixed(3)}f`, `#define ROVER_GOTO_GAP_MM ${OPPONENT_GAP_MM}`, `#define ROVER_BACK_COUNTS ${Math.round((TURN_CLEARANCE_MM / (Math.PI * wheel.diameterMm)) * cpr)}`] : []))(countsPerRev(motor, quadratureWired(v.pins))),
+		// The robot's IMU (role imu, the LSM6DS3TR-C; the user, 17 Nov 2026: "Every robot"): the turn closes on the gyro's
+		// heading, the same three eighths of a turn the counts aim for (rover_enc.h; hw_board.cpp reads it).
+		...((v.parts ?? []).some((p) => p.role === "imu") ? ["#define IMU_LSM6DS3 1", `#define ROVER_TURN_RAD ${((3 * Math.PI) / 4).toFixed(4)}f`] : []),
 		// An acceleration limit (mechanics.drive.maxAccelMps2): the duty moves at most this much per control tick, so the speed
 		// (the load line's at full duty from a full pack, at most) changes no faster: main.cpp ramps every output.
 		...(mech.drive.maxAccelMps2 ? [`#define ROVER_RAMP_PER_TICK ${(mech.drive.maxAccelMps2 * (sensor.updateMs / 1000) / Math.max(0.01, loadedSpeedMps(motor, pack, pack.fullV, 1, massG / 1000, r))).toFixed(4)}f`] : []),

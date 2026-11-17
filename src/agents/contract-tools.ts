@@ -1,6 +1,7 @@
 import type { Tool } from "@mozaik-ai/core"
 import { completePowerTree } from "../contract/power-auto.ts"
 import { moveUpMcu } from "../contract/mcu-move.ts"
+import { withRobotImu } from "../contract/imu-auto.ts"
 import { FIELDS, OWNERS, type AgentRole, type ContractValues, type FieldName } from "../contract/types.ts"
 import { makeEvent, type Cause } from "../events.ts"
 import { causeOf } from "./common.ts"
@@ -93,6 +94,12 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					if (t.note) {
 						args = { ...args, value: t.parts as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, t.note].filter(Boolean).join("; ")
+					}
+					// Every robot carries an IMU (contract/imu-auto.ts; the user, 17 Nov 2026: "Every robot").
+					const i = withRobotImu(args.value as NonNullable<ContractValues["parts"]>, mcuCatalog())
+					if (i.note) {
+						args = { ...args, value: i.parts as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, i.note].filter(Boolean).join("; ")
 					}
 				}
 				// A robot's plugs have fixed names: the parts list is renamed to them, and the connectors and pins follow below.
@@ -208,9 +215,11 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						const parts = s.contract.get("parts")
 						const pins = s.contract.get("pins")
 						const t = parts && args.field === "mechanics" ? completePowerTree(parts, args.value as ContractValues["mechanics"], s.contract.snapshot()) : null
-						const tree = t?.note ? t.parts : parts
+						const powered = t?.note ? t.parts : parts
+						const imu = powered ? withRobotImu(powered, mcuCatalog()) : null
+						const tree = imu?.note ? imu.parts : powered
 						const up = tree && pins ? moveUpMcu(tree, pins, s.contract.get("motion") ?? undefined, mcuCatalog()) : null
-						const why = [t?.note ? `the pack changed: ${t.note}` : null, up?.note].filter(Boolean).join("; ")
+						const why = [t?.note ? `the pack changed: ${t.note}` : null, imu?.note, up?.note].filter(Boolean).join("; ")
 						if (why && follow("parts", up?.parts ?? tree!, why)) {
 							if (up) follow("pins", up.pins, up.note)
 							laidOutNote = [laidOutNote, why].filter(Boolean).join("; ")
