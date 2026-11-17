@@ -22,6 +22,8 @@ export const LAYOUTS_BEFORE_FREEROUTING = 4
 // and the search ends: a live run can't wait 20 layouts (run cc-eurobot-17, 16 Nov 2026: no board build finished in 21
 // minutes under load, and the run ended judging a board 30 revisions old).
 export const MAX_TSCIRCUIT_LAYOUTS = 6
+// Which router a board build tries first: tscircuit's own (its layouts, Freerouting as the fallback), or Freerouting.
+export const routerOrder = (): "tscircuit-first" | "freerouting-first" => (process.env.BRINGUP_ROUTER === "freerouting-first" ? "freerouting-first" : "tscircuit-first")
 
 export { WAITING_ON_CONTRACT }
 
@@ -122,7 +124,11 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			}
 		}
 	}
+	// Freerouting first (BRINGUP_ROUTER=freerouting-first, measured against tscircuit-first on every board fixture): the
+	// first layout, placed by tscircuit and routed by Freerouting; clean, the search ends there.
+	if (routerOrder() === "freerouting-first" && fitting.length) await viaFreerouting([fitting[0]])
 	for (const placement of withPort ? [...fitting, ...fitting.map((p) => ({ ...p, debugPort: false as const }))] : fitting) {
+		if (best && best.errors === 0) break
 		// Every layout with the debug footprint failed: Freerouting keeps the footprint before the layouts without it.
 		if (placement.debugPort === false && !best && withPort) {
 			await viaFreerouting([fitting[0]])
