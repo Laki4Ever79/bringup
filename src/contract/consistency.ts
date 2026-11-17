@@ -294,7 +294,11 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	// U1.3V3 was on nothing, and the net check, comparing with the same generator, saw nothing missing).
 	if (a.board?.parts) {
 		const onNet = new Set(Object.values(a.board.nets).filter((ends) => ends.length >= 2).flat())
-		const unpowered = Object.entries(a.board.parts).flatMap(([ref, part]) => part.pins.filter((pin) => SUPPLY_PIN.test(pin) && !onNet.has(`${ref}.${pin}`)).map((pin) => `${ref}.${pin}`))
+		// A link connector's VCC when its link carries no power (supply "none"): the generator leaves it on nothing on purpose,
+		// so two boards' supplies never meet (the scripted logger and beacon over UART, 17 Nov 2026: every system run ended
+		// unsettled on JL1.VCC).
+		const unpoweredByDesign = new Set((c.values.links ?? []).filter((l) => l.supply === "none").map((l) => `${l.connector}.VCC`))
+		const unpowered = Object.entries(a.board.parts).flatMap(([ref, part]) => part.pins.filter((pin) => SUPPLY_PIN.test(pin) && !onNet.has(`${ref}.${pin}`) && !unpoweredByDesign.has(`${ref}.${pin}`)).map((pin) => `${ref}.${pin}`))
 		if (unpowered.length)
 			v.push({
 				kind: "supply-unwired",

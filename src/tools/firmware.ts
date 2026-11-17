@@ -91,6 +91,7 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 		// links gets stubs).
 		await writeFile(join(dir, "include/link.h"), linkHeader(s))
 		await cp(join(root, "templates/fw/include/linkframe.h"), join(dir, "include/linkframe.h"))
+		await cp(join(root, "templates/fw/include/linkcbor.h"), join(dir, "include/linkcbor.h"))
 		return rover
 	}
 	const header = pinsHeader(s)

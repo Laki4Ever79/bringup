@@ -127,7 +127,8 @@ export function specErrors(s: SystemSpec): string[] {
 			if (![l.a.board, l.b.board].includes(m.from)) out.push(`link ${l.id}: message ${m.name} comes from ${m.from}, which is not on the link`)
 			const bytes = m.fields.reduce((n, f) => n + ({ u8: 1, u16: 2, i16: 2, u32: 4, f32: 4 } as const)[f.type], 0)
 			if (l.kind === "can" && bytes > CAN_FRAME_BYTES) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a CAN frame carries ${CAN_FRAME_BYTES}: split it into messages of ${CAN_FRAME_BYTES} bytes or less`)
-			else if (bytes > 48) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a frame carries 48 at most`)
+			// On UART and I2C the payload is CBOR (linkcbor.h): a map of each field's name to its value, at its largest.
+			else if (l.kind !== "can" && cborBytes(m.fields) > 48) out.push(`link ${l.id}: message ${m.name} is ${cborBytes(m.fields)} bytes as CBOR (its field names travel with it); a frame carries 48 at most: shorter field names, or split it`)
 		}
 	}
 	// One I2C controller per chip: in target mode the board can't also drive a bus. So a board on I2C links is the
@@ -218,4 +219,12 @@ export function canBusErrors(spec: SystemSpec): string[] {
 		}
 	}
 	return out
+}
+
+// A message's largest CBOR payload (templates/fw/include/linkcbor.h): the map's head, then per field its name as a text
+// string and its value in the widest form its type takes (an integer's head and up to 4 bytes, a float 0xFA and 4).
+export function cborBytes(fields: { name: string; type: "u8" | "u16" | "i16" | "u32" | "f32" }[]): number {
+	const head = (n: number) => (n < 24 ? 1 : n <= 0xff ? 2 : 3)
+	const value = { u8: 2, u16: 3, i16: 3, u32: 5, f32: 5 } as const
+	return head(fields.length) + fields.reduce((n, f) => n + head(f.name.length) + f.name.length + value[f.type], 0)
 }

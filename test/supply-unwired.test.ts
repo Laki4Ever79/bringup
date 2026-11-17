@@ -19,3 +19,16 @@ test("run 16's rev-22 board: the MCU's 3V3 and the plugs' VCC on no net are name
 	assert.match(v[0].message, /JT1\.VCC/)
 	assert.deepEqual(v[0].affects, ["architect"])
 })
+
+// A link connector's VCC on a link that carries no power (supply "none") is left on nothing by design (circuit.ts: two
+// boards' supplies never meet). The scripted logger and beacon over UART (17 Nov 2026) ended unsettled on JL1.VCC.
+test("a link connector's VCC is not a missing supply when its link carries no power, and is when it carries power", () => {
+	const s = fx("cc-eurobot-16-rev22.json") as ContractSnapshot
+	const b = fx("cc-eurobot-16-rev22-board.json")
+	const board = { revision: 22, dir: "", pcbPath: "", stepPath: null, renderPath: null, widthMm: 0, heightMm: 0, ...b, parts: { ...b.parts, JL1: { mpn: "SM04B-SRSS-TB", pins: ["GND", "VCC", "IO1", "IO2"] } } }
+	const link = (supply: "none" | "out") => ({ ...s, values: { ...s.values, links: [{ id: "L1", kind: "uart", peer: "b", connector: "JL1", supply, baud: 115200, txOn: "IO1" }] } }) as unknown as ContractSnapshot
+	const msg = (x: ContractSnapshot) => checkConsistency(x, { board }).filter((v) => v.kind === "supply-unwired").map((v) => v.message).join("\n")
+	assert.doesNotMatch(msg(link("none")), /JL1\.VCC/)
+	assert.match(msg(link("none")), /U1\.3V3/)
+	assert.match(msg(link("out")), /JL1\.VCC/)
+})
