@@ -13,7 +13,7 @@ const sensor: Need[] = [
 test("a BLE design: only chips with BLE fit", () => {
 	const r = rankMcus({ needs: sensor, radio: ["ble"] })
 	const fit = r.filter((x) => x.fits).map((x) => x.id).sort()
-	assert.deepEqual(fit, ["esp32-c3-mini-1", "esp32-wroom-32e", "nrf52840-mdbt50q", "stm32wb55cgu6"])
+	assert.deepEqual(fit, ["esp32-c3-mini-1", "esp32-s3-mini-1", "esp32-wroom-32e", "nrf52840-mdbt50q", "stm32wb55cgu6"])
 	// The one Bringup can build a board for today ranks first.
 	assert.equal(r[0].id, "esp32-c3-mini-1")
 	assert.ok(r.find((x) => x.id === "stm32g031k8t6")!.why.includes("radio: no ble"))
