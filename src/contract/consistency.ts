@@ -495,6 +495,12 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 		if (unwired.length > 0) v.push({ kind: "sensor-unwired", message: `sensor ${sensor.ref} (${sensor.mpn}) has no GPIO on ${unwired.join(", ")}`, fields: ["pins"], affects: ["architect"] })
 	}
 
+
+	// The board shrinks once, when what it carries is settled: while an open finding still asks for parts or connectors,
+	// "too big" (space-slack on the outline) waits. Real run 20b compacted to 38×44 at rev 17, then JT1 (rev 18) and the
+	// servo outputs (rev 25) arrived, and the outline chased them 6 more times. "Too small" (space-room) is never held.
+	if (v.some((x) => x.kind !== "space-slack" && x.fields.some((f) => f === "parts" || f === "connectors")))
+		return v.filter((x) => !(x.kind === "space-slack" && x.fields.includes("outline")))
 	return v
 }
 
