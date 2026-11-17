@@ -345,7 +345,11 @@ is a change to the firmware toolchain, not just the code.
 User, 15 Nov: "sure, for now, until we think of a better solution for that one" (buy the brain, design the body);
 "We should handle every relevant one so stop caring which comes first"; mini PCs/NUCs: "We should be able to handle
 them as well, although it might not be the focus here".
-- [ ] **Fork Rover + climate doesn't settle (already broken on adopt 7c2fa2b, not from compute):**
+- [x] **Fork Rover + climate doesn't settle (already broken on adopt 7c2fa2b, not from compute):** Done 15 Nov
+      (4164770: the brief's plate limit on every layout before motion is written, an over-wide row centred, the plate
+      re-fitted when a board's live limit changes); the box was left open. Re-checked 17 Nov on adopt 4234327: the fork
+      settles with 0 findings in 183 s (plate 150 × 96 mm), and BRINGUP_SLOW=1 test/starters.int.test.ts passes.
+      Was:
       test/starters.int.test.ts (slow). The starter has no assembly, so the system lays one out with plateFor's
       150 × 110 floor and no brief limit (src/system/assembly.ts plateFor/withOutlines, run.ts:111 passes no maxSizeMm):
       plate 156 × 110, then main's mech-fit says the wheels rub it and "Size with wheels 156 × 120 > 150 × 120". Fix:
@@ -357,8 +361,10 @@ them as well, although it might not be the focus here".
 - [ ] **ADAFRUIT-2223 stacking header:** no LCSC number; an 8.5 mm socket + 10 mm pins against the 16 mm spacer stack
       needs a fit check (09741c's hardware list). Pi holes are M2.5 (Ø2.7) but the chassis' boardScrew pilot is the M2
       self-tapping one: a per-board screw is needed.
-- [ ] **Charger vs pack:** main still carries the 1S TP4054 charger and plug on the rover-pi's 2S pack; no check
-      compares them.
+- [x] **Charger vs pack:** main still carries the 1S TP4054 charger and plug on the rover-pi's 2S pack; no check
+      compares them. Done: the charger-pack and pack-voltage checks (d886638), and since 17 Nov (af18628) a robot's
+      power tree is decided in code from its pack: a 1-cell charger on a multi-cell pack is dropped with its passives
+      and the step-down and Schottkys added, on every parts or pack write.
 - [ ] **Runtime leaves out the Pi:** a bought board's contract has no power rails.
 - [x] **Simulation ~10 % faster than planned**: measured 15 Nov on the test rover, the reference rover and Rover with a
       Pi at duty 0.4 and 0.8, the simulated cruise is -1.6 % to +0.4 % of the load line's speed (adding Crr in MuJoCo
