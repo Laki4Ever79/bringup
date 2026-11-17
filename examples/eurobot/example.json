@@ -6,8 +6,8 @@
 		{
 			"name": "main",
 			"outline": {
-				"widthMm": 46,
-				"heightMm": 32
+				"widthMm": 66,
+				"heightMm": 45
 			},
 			"chassis": true
 		}

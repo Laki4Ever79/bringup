@@ -5,6 +5,7 @@
   "thicknessMm": 3,
   "clearanceMm": 50.5
  },
+ "gridMm": 20,
  "standoffMm": 10,
  "motors": [
   {
@@ -106,26 +107,26 @@
    "name": "main",
    "xMm": -95,
    "yMm": 0,
-   "widthMm": 46,
-   "heightMm": 32,
+   "widthMm": 66,
+   "heightMm": 45,
    "rotDeg": 0,
    "holeInsetMm": 3,
    "holes": [
     {
-     "xMm": -115,
-     "yMm": -13
+     "xMm": -125,
+     "yMm": -19.5
     },
     {
-     "xMm": -75,
-     "yMm": -13
+     "xMm": -65,
+     "yMm": -19.5
     },
     {
-     "xMm": -115,
-     "yMm": 13
+     "xMm": -125,
+     "yMm": 19.5
     },
     {
-     "xMm": -75,
-     "yMm": 13
+     "xMm": -65,
+     "yMm": 19.5
     }
    ],
    "screwHoleMm": 2.2,
@@ -198,15 +199,16 @@
   ],
   "holeDiaMm": 2.7
  },
- "massG": 1213.0837902294509,
+ "massG": 1222.8627102294508,
  "com": [
-  1.6440347841360363,
-  6.116642609325883,
-  221.2027609628048
+  1.2235772132818157,
+  6.327377828495709,
+  219.98032034806573
  ],
  "wheelMassG": 20,
  "casterMassG": 71,
  "drive": {
+  "kind": "differential",
   "trackMm": 270,
   "axleXMm": 75,
   "wheelbaseMm": 185,
