@@ -13,6 +13,13 @@ export const CAN_TRANSCEIVER = { mpn: "SN65HVD230DR", lcsc: "C12084", footprint:
 export const CAN_ON = { CANH: "IO1", CANL: "IO2" } as const
 // Named after the bus when the link is a segment of one (a middle board's two segments share one transceiver and one
 // controller: the same nets and pins), else after the link.
+// A message's Cyphal subject-ID: its definition hash folded into the unregulated range 0..6143 (Cyphal v1.0 §2.1.2.2;
+// 6144 and up are reserved for fixed and regulated IDs). The spec check names two messages on one bus that land on one.
+export const CYPHAL_SUBJECTS = 6144
+export function cyphalSubject(hash: string): number {
+	return parseInt(hash.slice(0, 8), 16) % CYPHAL_SUBJECTS
+}
+
 export const canName = (l: BoardLink) => l.can?.bus ?? l.id
 export const canSignals = (l: BoardLink) => ({ tx: `${canName(l)}_CAN_TX`, rx: `${canName(l)}_CAN_RX`, h: `${canName(l)}_CANH`, l: `${canName(l)}_CANL` })
 export const canTransceiver = (s: ContractSnapshot) => (s.values.parts ?? []).find((p) => p.role === "can-transceiver")

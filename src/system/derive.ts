@@ -28,7 +28,10 @@ export function boardLinks(spec: SystemSpec, board: string): BoardLink[] {
 				const bus = l.can?.bus
 				const chain = bus ? canChain(spec.links.filter((x) => x.kind === "can" && x.can?.bus === bus)) : null
 				const terminate = !bus || !chain || chain[0] === board || chain.at(-1) === board
-				return { ...base, can: { kbps: l.can?.kbps ?? DEFAULT_CAN_KBPS, terminate, ...(bus ? { bus } : {}) } }
+				// Its Cyphal/CAN node-ID: its place along the bus (or the link's a, b), from 1; unique on the bus by construction.
+				const order = chain ?? [l.a.board, l.b.board]
+				const node = order.indexOf(board) + 1
+				return { ...base, can: { kbps: l.can?.kbps ?? DEFAULT_CAN_KBPS, terminate, ...(bus ? { bus } : {}), ...(node > 0 ? { node } : {}) } }
 			}
 			// A kind not built yet (the spec check says so) carries only what every link has.
 			if (l.kind !== "i2c" || !l.i2c) return base

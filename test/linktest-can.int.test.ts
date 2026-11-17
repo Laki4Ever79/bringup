@@ -49,7 +49,7 @@ test("both sides of a CAN link compile as link tests (ESP32-C3 TWAI)", { skip: s
 })
 
 // STM32 bxCAN (the HAL's CAN driver), on the STM32F103's CAN at PB8 (RX) / PB9 (TX): the same frames as the ESP32's, each
-// message's definition hash its 29-bit identifier. Before 16 Nov 2026 an STM32 board with a CAN link got #error.
+// message a Cyphal/CAN single-frame transfer (linkcyphal.h). Before 16 Nov 2026 an STM32 board with a CAN link got #error.
 test("both sides of a CAN link compile as link tests on an STM32F103 (bxCAN)", { skip: slow || (pio ? false : "needs PlatformIO"), timeout: 1_200_000 }, async () => {
 	const { STM32_LOGGER_DESIGN } = await import("../src/inference/scripts.ts")
 	for (const name of ["hub", "sensor"]) {
@@ -107,8 +107,10 @@ test("a CAN bus of three boards: the middle board receives both ends' messages o
 		assert.equal(link.match(/twai_driver_install/g)?.length, 1, `${name}: one controller`)
 		if (name === "hub") {
 			assert.match(link, /twai_receive/)
-			assert.match(link, /READING_A_HASH & LINK_HASH_MASK\) \? "L1"/)
-			assert.match(link, /READING_B_HASH & LINK_HASH_MASK\) \? "L2"/)
+			// Each frame's subject-ID names its message, and the message its segment.
+			assert.match(link, /if \(subject == MSG_READING_A_SUBJECT\) \{\n\t\tlinkReceived\("L1", MSG_READING_A_HASH/)
+			assert.match(link, /if \(subject == MSG_READING_B_SUBJECT\) \{\n\t\tlinkReceived\("L2", MSG_READING_B_HASH/)
+			assert.ok(existsSync(join(dir, "dsdl/bringup/ReadingA.1.0.dsdl")) && existsSync(join(dir, "dsdl/bringup/ReadingB.1.0.dsdl")))
 		} else assert.match(link, /twai_transmit/)
 		const r = await buildLinkTestFirmware(pio!, dir, BENCH_ENV)
 		assert.equal(r.ok, true, `${name}: ${r.log.slice(-3000)}`)

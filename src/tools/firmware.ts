@@ -2,8 +2,8 @@ import { roverHeader } from "../mechanics/firmware.ts"
 import { spawn } from "node:child_process"
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
-import { join, resolve as resolvePath } from "node:path"
-import { behaviorHeader, connectivityHeader, linkHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
+import { dirname, join, resolve as resolvePath } from "node:path"
+import { behaviorHeader, connectivityHeader, dsdlFiles, linkHeader, modelHeader, parsePinsHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
 import { partitionTable } from "../contract/connectivity.ts"
 import { dataFormatHeader, readerPython } from "../codegen/data-format.ts"
 import { complianceMarkdown } from "../contract/compliance.ts"
@@ -90,8 +90,10 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 		// Its links to the system's other boards: the same link.h and frame code as the product firmware (a board with no
 		// links gets stubs).
 		await writeFile(join(dir, "include/link.h"), linkHeader(s))
+		await writeDsdl(dir, s)
 		await cp(join(root, "templates/fw/include/linkframe.h"), join(dir, "include/linkframe.h"))
 		await cp(join(root, "templates/fw/include/linkcbor.h"), join(dir, "include/linkcbor.h"))
+		await cp(join(root, "templates/fw/include/linkcyphal.h"), join(dir, "include/linkcyphal.h"))
 		return rover
 	}
 	const header = pinsHeader(s)
@@ -112,6 +114,7 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 	await writeFile(join(dir, "include/model.h"), modelHeader(s))
 	await writeFile(join(dir, "include/connectivity.h"), connectivityHeader(s))
 	await writeFile(join(dir, "include/link.h"), linkHeader(s))
+	await writeDsdl(dir, s)
 	// The data format, and the reader made from the same source: whoever reads the device decodes what it writes.
 	await writeFile(join(dir, "include/dataformat.h"), dataFormatHeader())
 	await mkdir(join(dir, "reader"), { recursive: true })
@@ -212,3 +215,10 @@ export async function checkModelOnDevice(pio: string, root: string, dir: string)
 	return { ran: true, ok: line[1] === "ok", arenaUsedBytes: used ? Number(used[1]) : undefined, log: line[0] }
 }
 
+// The CAN messages' DSDL definitions beside the firmware (codegen/firmware.ts dsdlFiles), for yakut or pycyphal.
+async function writeDsdl(dir: string, s: ContractSnapshot): Promise<void> {
+	for (const f of dsdlFiles(s)) {
+		await mkdir(dirname(join(dir, f.path)), { recursive: true })
+		await writeFile(join(dir, f.path), f.text)
+	}
+}
