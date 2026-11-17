@@ -141,15 +141,23 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		if (r.serial) console.log(r.serial)
 		return r.ran && !r.passed ? 2 : 0
 	}
-	// `bringup package <contract.json> <outDir>`: a build-ready folder from a design contract, rebuilt on today's code
+	// `bringup package <contract.json> <outDir> [--force]`: a build-ready folder from a design contract, rebuilt on today's code
 	// (src/package/build.ts): fab files checked complete, parts with today's stock and prices, printed parts, firmware,
 	// the assembly order and the bench bring-up. Nothing is ordered.
 	if (argv[0] === "package") {
 		const [contractPath, out] = [argv[1], argv[2]]
 		if (!contractPath || !out || !existsSync(contractPath)) {
-			console.error("bringup: usage: bringup package <contract.json> <outDir>")
+			console.error("bringup: usage: bringup package <contract.json> <outDir> [--force]")
 			return 1
 		}
+		// Nothing is packaged from an unfinished run unless the engineer says so (src/package/gate.ts).
+		const { packageGate } = await import("./package/gate.ts")
+		const held = packageGate(contractPath, JSON.parse(readFileSync(contractPath, "utf8")))
+		if (held.length && !argv.includes("--force")) {
+			console.error(`bringup: not packaged: the design isn't finished:\n${held.map((h) => `  - ${h}`).join("\n")}\nFix these and rerun, or pass --force to package it anyway.`)
+			return 3
+		}
+		if (held.length) console.log(`packaging anyway (--force), over:\n${held.map((h) => `  - ${h}`).join("\n")}`)
 		const env = await (deps.detect ?? detectEnvironment)(ROOT)
 		if (!env.pio || !env.python) {
 			console.error("bringup: package needs PlatformIO and the Python tools (.venv; npm run setup)")
