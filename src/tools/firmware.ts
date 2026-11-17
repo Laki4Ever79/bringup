@@ -148,7 +148,7 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 // PlatformIO env builds it.
 async function copyDrivers(root: string, dir: string): Promise<void> {
 	await mkdir(join(dir, "include/drivers"), { recursive: true })
-	for (const f of ["sensirion.h", "drv8833.h", "vl53l0x.h"]) await cp(join(root, "templates/drivers", f), join(dir, "include/drivers", f))
+	for (const f of ["sensirion.h", "drv8833.h", "vl53l0x.h", "lsm6ds3.h"]) await cp(join(root, "templates/drivers", f), join(dir, "include/drivers", f))
 	await cp(join(root, "templates/drivers/host"), join(dir, "test_host"), { recursive: true })
 }
 

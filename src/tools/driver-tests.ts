@@ -11,7 +11,7 @@ import { sensorDriver } from "../codegen/firmware.ts"
 import { roverHeader } from "../mechanics/firmware.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 
-export type DriverId = "drv8833" | "vl53l0x" | "sht40" | "shtc3"
+export type DriverId = "drv8833" | "vl53l0x" | "sht40" | "shtc3" | "lsm6ds3"
 
 export interface DriverTestResult {
 	ok: boolean | null // null: not run (skipped says why)
@@ -30,7 +30,9 @@ export function driverSet(s: ContractSnapshot): DriverId[] {
 	const sensorMpn = (s.values.parts ?? []).find((p) => p.role === "sensor")?.mpn ?? ""
 	if (s.values.mechanics && s.values.motion) {
 		const payload = /#define SENSOR_SHT40 1/.test(safeRoverHeader(s)) ? (["sht40"] as const) : []
-		return ["drv8833", "vl53l0x", ...payload]
+		// Every robot's IMU (the user, 17 Nov 2026: "Every robot"): the gyro's heading closes its turns.
+		const imu = (s.values.parts ?? []).some((p) => p.role === "imu") ? (["lsm6ds3"] as const) : []
+		return ["drv8833", "vl53l0x", ...payload, ...imu]
 	}
 	const d = sensorDriver(sensorMpn)
 	return d === "SHTC3" ? ["shtc3"] : d === "SHT40" ? ["sht40"] : []

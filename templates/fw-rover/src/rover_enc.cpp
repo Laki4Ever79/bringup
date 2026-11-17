@@ -14,7 +14,8 @@ static RoverOut straight(const RoverEncConfig &cfg, const RoverEncState &st, flo
 	return {duty - c, duty + c};
 }
 
-static void startTurn(const RoverEncConfig &cfg, RoverEncState &st, uint32_t nowMs, int32_t encL, int32_t encR) {
+static void startTurn(const RoverEncConfig &cfg, RoverEncState &st, uint32_t nowMs, int32_t encL, int32_t encR, float headingRad) {
+	st.turnHeading = headingRad;
 	st.backing = false;
 	st.turning = true;
 	st.turnUntil = nowMs + (cfg.turnCounts > 0 ? 2 * cfg.turnMs : cfg.turnMs);
@@ -22,18 +23,22 @@ static void startTurn(const RoverEncConfig &cfg, RoverEncState &st, uint32_t now
 	st.turnR = encR;
 }
 
-RoverOut rover_enc_step(const RoverEncConfig &cfg, RoverEncState &st, int distanceMm, uint32_t nowMs, int32_t encL, int32_t encR) {
+RoverOut rover_enc_step(const RoverEncConfig &cfg, RoverEncState &st, int distanceMm, uint32_t nowMs, int32_t encL, int32_t encR, float headingRad) {
 	if (st.backing) {
 		// Back off until each wheel has run backCounts back on average (the turn time as a fail-safe), then turn.
 		const bool timeLeft = (int32_t)(nowMs - st.turnUntil) < 0;
 		if (timeLeft && (iabs(encL - st.turnL) + iabs(encR - st.turnR)) / 2 < cfg.backCounts) return {-cfg.cruise, -cfg.cruise};
-		startTurn(cfg, st, nowMs, encL, encR);
+		startTurn(cfg, st, nowMs, encL, encR, headingRad);
 		return {cfg.cruise, -cfg.cruise};
 	}
 	if (st.turning) {
 		const bool timeLeft = (int32_t)(nowMs - st.turnUntil) < 0;
 		// With encoders: until each wheel has turned turnCounts on average (the time limit as a fail-safe).
-		const bool more = cfg.turnCounts > 0 ? (iabs(encL - st.turnL) + iabs(encR - st.turnR)) / 2 < cfg.turnCounts : true;
+		// With a gyro: until the heading has turned turnRad (the wheels slip in a turn in place); else with encoders, until
+		// each wheel has turned turnCounts on average; else on time alone.
+		const bool gyro = cfg.turnRad > 0 && !isnan(headingRad) && !isnan(st.turnHeading);
+		const bool more = gyro ? fabsf(headingRad - st.turnHeading) < cfg.turnRad
+			: cfg.turnCounts > 0 ? (iabs(encL - st.turnL) + iabs(encR - st.turnR)) / 2 < cfg.turnCounts : true;
 		if (timeLeft && more) return {cfg.cruise, -cfg.cruise};
 		st.turning = false;
 		st.straightL = encL;
@@ -51,7 +56,7 @@ RoverOut rover_enc_step(const RoverEncConfig &cfg, RoverEncState &st, int distan
 			st.turnR = encR;
 			return {-cfg.cruise, -cfg.cruise};
 		}
-		startTurn(cfg, st, nowMs, encL, encR);
+		startTurn(cfg, st, nowMs, encL, encR, headingRad);
 		return {cfg.cruise, -cfg.cruise};
 	}
 	st.lastMm = distanceMm;

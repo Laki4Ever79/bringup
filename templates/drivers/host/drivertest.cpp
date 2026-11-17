@@ -12,6 +12,7 @@
 #include "drivers/sensirion.h"
 #include "drivers/drv8833.h"
 #include "drivers/vl53l0x.h"
+#include "drivers/lsm6ds3.h"
 
 static int failures = 0;
 static std::string why;
@@ -198,6 +199,72 @@ static bool tofRange() {
 }
 #endif
 
+#ifdef TEST_LSM6DS3
+// An LSM6DS3TR-C: a register file behind an address pointer, auto-incrementing (IF_INC); WHO_AM_I 0x6A; the yaw rate
+// in OUTZ_L_G/OUTZ_H_G only once the gyro's ODR is set (power-down before: zeros).
+struct Lsm6Chip : HostChip {
+	uint8_t reg[0x80] = {};
+	uint8_t ptr = 0;
+	int16_t yaw = 0;
+	Lsm6Chip() { reg[LSM6_WHO_AM_I] = LSM6_WHO; reg[LSM6_CTRL3_C] = 0x04; }
+	bool onWrite(const std::vector<uint8_t> &b, uint64_t) override {
+		if (b.empty()) return false;
+		ptr = b[0];
+		for (size_t i = 1; i < b.size(); i++) reg[(ptr + i - 1) & 0x7F] = b[i];
+		return true;
+	}
+	bool onRead(size_t n, uint64_t, std::vector<uint8_t> &out) override {
+		const bool on = (reg[LSM6_CTRL2_G] >> 4) != 0;
+		reg[LSM6_OUTZ_L_G] = on ? (uint8_t)yaw : 0;
+		reg[LSM6_OUTZ_L_G + 1] = on ? (uint8_t)((uint16_t)yaw >> 8) : 0;
+		out.clear();
+		for (size_t i = 0; i < n; i++) out.push_back(reg[(ptr + i) & 0x7F]);
+		ptr = (uint8_t)(ptr + n);
+		return true;
+	}
+};
+static bool lsmBegins() {
+	Lsm6Chip chip;
+	Wire.chips[LSM6_ADDR] = &chip;
+	EXPECT(lsm6Begin(), "lsm6Begin failed against a chip whose WHO_AM_I is 0x6A");
+	EXPECT(chip.reg[LSM6_CTRL2_G] == 0x44, "CTRL2_G = 0x%02X; 104 Hz at +/-500 dps is 0x44", chip.reg[LSM6_CTRL2_G]);
+	EXPECT(chip.reg[LSM6_CTRL3_C] == 0x44, "CTRL3_C = 0x%02X; BDU with IF_INC is 0x44", chip.reg[LSM6_CTRL3_C]);
+	EXPECT(host::nowUs() >= 35000, "it read on before the gyro's 35 ms turn-on time");
+	return true;
+}
+static bool lsmRefusesAnotherChip() {
+	Lsm6Chip chip;
+	chip.reg[LSM6_WHO_AM_I] = 0x69;  // an LSM6DS3 (not TR-C) or anything else
+	Wire.chips[LSM6_ADDR] = &chip;
+	EXPECT(!lsm6Begin(), "lsm6Begin accepted WHO_AM_I 0x69");
+	Wire.reset();
+	EXPECT(!lsm6Begin(), "lsm6Begin succeeded with no chip on the bus");
+	return true;
+}
+static bool lsmYaw() {
+	Lsm6Chip chip;
+	Wire.chips[LSM6_ADDR] = &chip;
+	lsm6Begin();
+	chip.yaw = 5143;  // 5143 x 17.5 mdps = 90.0 dps
+	float dps = 0;
+	EXPECT(lsm6YawDps(&dps) && near(dps, 90.0f, 0.01f), "5143 LSB read as %.3f dps; 17.5 mdps/LSB gives 90.0", dps);
+	chip.yaw = -5143;
+	EXPECT(lsm6YawDps(&dps) && near(dps, -90.0f, 0.01f), "-5143 LSB read as %.3f dps", dps);
+	return true;
+}
+// 90 dps for 1 s turns pi/2; a 0.5 dps bias measured at rest is taken off, so standing still stays at 0.
+static bool lsmHeading() {
+	GyroHeading h;
+	for (uint32_t t = 0; t <= 1000000; t += 10000) gyroHeadingStep(h, 90.0f, t);
+	EXPECT(near(h.rad, (float)M_PI / 2, 0.001f), "90 dps for 1 s came to %.4f rad, pi/2 is 1.5708", h.rad);
+	GyroHeading still;
+	still.biasDps = 0.5f;
+	for (uint32_t t = 0; t <= 10000000; t += 10000) gyroHeadingStep(still, 0.5f, t);
+	EXPECT(near(still.rad, 0.0f, 1e-6f), "a 0.5 dps bias drifted to %.5f rad in 10 s", still.rad);
+	return true;
+}
+#endif
+
 int main() {
 	run("sensirion crc matches the datasheet example", crcExample);
 #ifdef TEST_SHT40
@@ -219,6 +286,12 @@ int main() {
 #endif
 #ifdef TEST_VL53L0X
 	run("vl53l0x out of range is nothing ahead", tofRange);
+#endif
+#ifdef TEST_LSM6DS3
+	run("lsm6ds3 begins: WHO_AM_I, 104 Hz at +/-500 dps, BDU, turn-on time", lsmBegins);
+	run("lsm6ds3 refuses another chip or none", lsmRefusesAnotherChip);
+	run("lsm6ds3 reads the yaw rate at 17.5 mdps/LSB", lsmYaw);
+	run("gyro heading integrates and takes off the bias", lsmHeading);
 #endif
 	return failures ? 1 : 0;
 }

@@ -370,6 +370,9 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	// hold it on once the emergency stop opens (EN at about 0.76 V from a full 2S pack, under its 1.2 V threshold).
 	const pwmPart = parts.find((p) => p.role === "pwm-driver")
 	if (pwmPart && supply) jobs.push({ job: `decoupling on ${pwmPart.ref}.VDD`, spec: SUPPORT.decouple, a: { net: supply }, b: GND, near: pwmPart.ref })
+	// The IMU: 100 nF on VDD and on VDDIO (ST DocID030071 Rev 3, Table 2 note 1).
+	const imuPart = parts.find((p) => p.role === "imu")
+	if (imuPart && supply) for (const pin of ["VDD", "VDDIO"]) if (imuPart.pins.includes(pin)) jobs.push({ job: `decoupling on ${imuPart.ref}.${pin}`, spec: SUPPORT.decouple, a: { ref: imuPart.ref, pin }, b: GND, near: imuPart.ref })
 	const servoSupply = parts.find((p) => p.role === "servo-supply")
 	if (servoSupply?.pins.includes("EN")) jobs.push({ job: `${servoSupply.ref}.EN pull-down (the servos off when the emergency stop opens)`, spec: SUPPORT.pullup, a: { ref: servoSupply.ref, pin: "EN" }, b: GND, near: servoSupply.ref })
 	// A CAN transceiver: 100 nF at its VCC, and 120 Ω across the bus at a bus end (links' can.terminate).
@@ -582,6 +585,34 @@ function micFootprint(): string {
 	return `{<footprint>${smt}${ring}<silkscreenpath route={[${outline}]} /></footprint>}`
 }
 
+// LSM6DS3TR-C IMU (ST DocID030071 Rev 3: Figure 1 pin connections, bottom view; Figure 17 LGA-14 2.5x3x0.86 mm).
+// Origin at the package centre, x along its 3.0 mm width, y along its 2.5 mm length, top view (the bottom view
+// mirrored in x). Pads 0.25 x 0.475 mm on a 0.5 mm pitch, flush with the body's edges: 1-4 down the left side, 5-7
+// left to right along the bottom, 8-11 up the right side, 12-14 right to left along the top. The lands are the pads
+// 0.05 mm wider and 0.1 mm longer outward (0.3 x 0.575 mm, an estimate: ST gives its land pattern in a separate
+// technical note). 0.2 mm between lands.
+export const IMU_FOOTPRINT = "lga14_2.5x3"
+export const IMU_BODY = { w: 3.0, h: 2.5 }
+export function imuLands(): { pin: number; x: number; y: number; w: number; h: number }[] {
+	const side = +(IMU_BODY.w / 2 - 0.475 / 2 + 0.05).toFixed(4) // 1.3125
+	const row = +(IMU_BODY.h / 2 - 0.475 / 2 + 0.05).toFixed(4) // 1.0625
+	const out = []
+	for (let k = 0; k < 4; k++) out.push({ pin: 1 + k, x: -side, y: 0.75 - 0.5 * k, w: 0.575, h: 0.3 })
+	for (let k = 0; k < 3; k++) out.push({ pin: 5 + k, x: -0.5 + 0.5 * k, y: -row, w: 0.3, h: 0.575 })
+	for (let k = 0; k < 4; k++) out.push({ pin: 8 + k, x: side, y: -0.75 + 0.5 * k, w: 0.575, h: 0.3 })
+	for (let k = 0; k < 3; k++) out.push({ pin: 12 + k, x: 0.5 - 0.5 * k, y: row, w: 0.3, h: 0.575 })
+	return out
+}
+function imuFootprint(): string {
+	const n = (v: number) => `${+v.toFixed(4)}mm`
+	const pads = imuLands().map((p) => `<smtpad portHints={["pin${p.pin}"]} pcbX="${n(p.x)}" pcbY="${n(p.y)}" width="${n(p.w)}" height="${n(p.h)}" shape="rect" />`).join("")
+	// The body outline on silkscreen, 0.25 mm outside it, with the pin-1 corner marked.
+	const [hw, hh] = [IMU_BODY.w / 2 + 0.25, IMU_BODY.h / 2 + 0.25]
+	const outline = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+	const dot = `<silkscreenpath route={[{ x: ${-hw - 0.3}, y: ${hh} }, { x: ${-hw - 0.3}, y: ${hh - 0.3} }]} />`
+	return `{<footprint>${pads}<silkscreenpath route={[${outline}]} />${dot}</footprint>}`
+}
+
 function modulePinLabels(m: RadioModule, pins: string[]): string {
 	const map = m.pins
 	const known = pins.filter((name) => map[name] !== undefined)
@@ -627,7 +658,7 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// A 3-pin 2.54 mm header (a servo's plug).
 	pinrow3: [8.6, 3.6],
 	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
-	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h],
+	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
@@ -1804,12 +1835,14 @@ export function servoOutputs(parts: Part[]): { pwm: Part; servos: Part[]; supply
 	const spare = motorDrivers(parts)[1]
 	return { pwm, servos, ...(supply ? { supply } : {}), ...(spare ? { spare } : {}) }
 }
-// The PCA9685's I2C pins on the board's bus (the contract's I2C_SDA and I2C_SCL nets).
-export function pwmDriverTraces(s: ContractSnapshot): { net: string; ref: string; pin: string }[] {
-	const pwm = (s.values.parts ?? []).find((p) => p.role === "pwm-driver")
+// The I2C pins of the bus devices the generator wires itself (the PCA9685, the IMU) on the board's bus: the contract's
+// I2C_SDA and I2C_SCL nets, which come from its pins, not from generatedNets.
+export const I2C_DEVICE_ROLES = ["pwm-driver", "imu"]
+export function i2cDeviceTraces(s: ContractSnapshot): { net: string; ref: string; pin: string }[] {
 	const signals = new Set((s.values.pins ?? []).map((p) => p.signal))
-	if (!pwm) return []
-	return ([["I2C_SDA", "SDA"], ["I2C_SCL", "SCL"]] as const).filter(([net, pin]) => signals.has(net) && pwm.pins.includes(pin)).map(([net, pin]) => ({ net, ref: pwm.ref, pin }))
+	return (s.values.parts ?? [])
+		.filter((p) => I2C_DEVICE_ROLES.includes(p.role ?? ""))
+		.flatMap((d) => ([["I2C_SDA", "SDA"], ["I2C_SCL", "SCL"]] as const).filter(([net, pin]) => signals.has(net) && d.pins.includes(pin)).map(([net, pin]) => ({ net, ref: d.ref, pin })))
 }
 
 export function ldoInputNet(s: ContractSnapshot): string {
@@ -1866,6 +1899,14 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// starts after its supply is up and a debug cable can pull EN low to reset it.
 	if (hasSupply && mcu?.pins.includes("EN")) join(MCU_EN_NET, mcu.ref, "EN")
 
+	// The IMU (role imu, the LSM6DS3TR-C) on the I2C bus in I2C mode, address 0x6A (ST DocID030071 Rev 3, Table 2 and
+	// 6.1.1): CS and VDDIO to the supply (CS high selects I2C), SA0 low, the master pins SDx/SCx to GND (Mode 1), its
+	// second GND pad to ground; INT1, INT2 and the NC pads stay open (NC soldered, unconnected). SCL/SDA join the bus in
+	// circuitFromContract (i2cDeviceTraces).
+	for (const imu of parts.filter((p) => p.role === "imu")) {
+		for (const pin of ["GND_2", "SA0", "SDX", "SCX"]) if (imu.pins.includes(pin)) join("GND", imu.ref, pin)
+		if (hasSupply) for (const pin of ["VDDIO", "CS"]) if (imu.pins.includes(pin)) join(supply, imu.ref, pin)
+	}
 	// Servos and a spare motor through a PCA9685 on the I2C bus (servoOutputs): channels 0 and 1 to the servo plugs'
 	// signal pins, 2 and 3 to the spare driver's AIN1/AIN2 (its channel B off). Address 0x40: A0-A5, OE and EXTCLK low.
 	// The servo supply (a 5 V step-down module) takes the cell before the emergency stop, and its EN the motors' supply
@@ -2265,7 +2306,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 			if (b && opts.usbKeepouts) lines.push(...usbKeepouts(b.x, b.y, b.rotation))
 			continue
 		}
-		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : q(footprint)
+		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : q(footprint)
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
 	}
 
@@ -2297,7 +2338,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	}
 
 	// A skid-steer rover's rear driver: each input on the signal net of the front driver's channel for its side.
-	for (const t of pwmDriverTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
+	for (const t of i2cDeviceTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
 	for (const t of skidDriverTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
 	// An I2C link joins the board's own bus: the connector's IO1 and IO2 to I2C_SDA and I2C_SCL (docs/system.md).
 	for (const t of linkBusTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
