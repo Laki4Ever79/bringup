@@ -38,6 +38,7 @@ export interface ChassisSpec {
 	// plate and out of the mass, and named, never drawn at the main board's size.
 	unplaced: string[]
 	plate: { lengthMm: number; widthMm: number; thicknessMm: number; clearanceMm: number }
+	gridMm?: number // a mounting grid's pitch (py/chassis.py grid_holes)
 	standoffMm: number
 	// axleDropMm: the axle's depth under the plate's underside (the caster sets the plate's height; the motor's bracket drops to the axle).
 	// mount: how the motor is held. "bracket": a bought bracket (catalog motorMounts) against the plate's underside, its two
@@ -213,6 +214,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 	const { massG, com } = massAndCom(ms)
 	return {
 		plate: { lengthMm: mech.chassis.plateMm[0], widthMm: mech.chassis.plateMm[1], thicknessMm: mech.chassis.thicknessMm, clearanceMm: mech.chassis.clearanceMm },
+		...(mech.chassis.gridMm ? { gridMm: mech.chassis.gridMm } : {}),
 		standoffMm: est("standoffMm"),
 		motors: ms.filter((m) => m.what.startsWith("motor:")).map((m) => {
 			const base = { side: m.what.startsWith("motor:left") ? ("left" as const) : ("right" as const), ...(m.what.endsWith(":rear") ? { rear: true as const } : {}), xMm: m.xMm, yMm: m.yMm, bodyMm: motor.bodyMm, axleDropMm: mech.chassis.clearanceMm - wheel.diameterMm / 2 }

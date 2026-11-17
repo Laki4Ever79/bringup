@@ -205,6 +205,8 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 			: "- Firmware status LED: the rover firmware drives a pin named exactly STATUS_LED as a 1 Hz heartbeat; this design has none, so no LED shows the rover running.",
 		...startFact,
 		...holdFact,
+		// Servos and a spare motor through a PCA9685 (pca9685.h), in the header's own numbers.
+		...(def("PCA9685_ADDR") ? [`- Firmware servos${def("SPARE_MOTOR_CH") ? " and spare motor" : ""}: a PCA9685 at I2C address ${def("PCA9685_ADDR")} runs at 50 Hz; ${def("SERVO_COUNT")} servo(s) on its channels 0.. start centred (1500 us) and a host moves one with \`V <n> <us>\` (500-2500 us)${def("SPARE_MOTOR_CH") ? `; the spare motor (a second DRV8833's channel A on channels ${def("SPARE_MOTOR_CH")} and ${Number(def("SPARE_MOTOR_CH")) + 1}) runs with \`W <duty>\` (-1..1, PWM at the same 50 Hz)` : ""}. The servos' 5 V step-down is switched off by the emergency stop through its EN.`] : []),
 		...gotoFact,
 	]
 }

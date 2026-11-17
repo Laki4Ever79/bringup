@@ -101,7 +101,7 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 						drive: { kind: skid ? "skid4" : "differential", motor: motor!.mpn, wheel: wheel!.mpn, caster: skid ? "" : caster!.mpn, trackMm: track, wheelbaseMm, axleXMm },
 						battery: { pack: pack!.mpn, at: { xMm: bx, yMm: 0 } },
 						sensor: { module: sensor!.mpn, at: { xMm: sensorX, yMm: 0, zMm: sensorZ }, connector: choice.connector },
-						chassis: { plateMm: [L, W], thicknessMm, material: "PLA", clearanceMm, boards: boardsAt },
+						chassis: { plateMm: [L, W], thicknessMm, material: "PLA", clearanceMm, boards: boardsAt, ...(c.values.mechanics?.chassis.gridMm ? { gridMm: c.values.mechanics.chassis.gridMm } : {}) },
 					}, c.values, cat)
 					const v = check(mech)
 					if (!best || score(v) < score(best.remaining)) best = { mech, remaining: v }

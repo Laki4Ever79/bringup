@@ -45,6 +45,57 @@ def strap_geometry(spec):
     return bosses, t + STRAP_BOSS_H, t + bh + 0.5
 
 
+GRID_HOLE = 3.2  # an M3 screw's clearance (ISO 273 medium)
+GRID_EDGE = 6.0  # from the plate's edge to a hole's centre
+GRID_CLEAR = 4.0  # from anything on or under the plate to a hole's centre, beyond its footprint
+
+
+def grid_holes(spec):
+    """The mounting grid's hole centres (spec gridMm): every point of the pitch on the plate, GRID_EDGE in from its edge,
+    clear by GRID_CLEAR of the boards, the pack with its rails and strap bosses, the sensor, the caster, the motors, the
+    beacon's socket, the e-stop's deck (its whole span across the plate) and the sticker panel."""
+    g = spec.get("gridMm")
+    if not g:
+        return []
+    p = spec["plate"]
+    L, W = p["lengthMm"], p["widthMm"]
+    keep = []  # (centre x, centre y, size x, size y)
+    for b in spec["boards"]:
+        w, h = (b["heightMm"], b["widthMm"]) if b.get("rotDeg") in (90, 270) else (b["widthMm"], b["heightMm"])
+        keep.append((b["xMm"], b["yMm"], w + 8, h + 8))
+    bat = spec["battery"]
+    keep.append((bat["xMm"], bat["yMm"], bat["sizeMm"][0] + 2 * WALL, bat["sizeMm"][1] + 2 * (WALL + STRAP_BOSS)))
+    sen = spec["sensor"]
+    keep.append((sen["xMm"], sen["yMm"], sen["sizeMm"][2] + 4 * WALL, sen["sizeMm"][0] + 4 * WALL))
+    c = spec.get("caster")
+    if c:
+        xs = [c["xMm"] + dx for dx, _ in c["holesMm"]]
+        ys = [dy for _, dy in c["holesMm"]]
+        keep.append(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs) + 8, max(ys) - min(ys) + 8))
+    for m in spec["motors"]:
+        size = max(m["bodyMm"]) + 6
+        keep.append((m["xMm"], m["yMm"], size, size))
+    bc = spec.get("beacon")
+    if bc:
+        side = bc["sizeMm"] + MAST_FIT + 2 * WALL
+        keep.append((bc["xMm"], bc["yMm"], side, side))
+    es = spec.get("estop")
+    if es:
+        keep.append((es["xMm"], 0, 2 * (es["headMm"] / 2 + 2.0 + WALL), W))
+    sk = spec.get("sticker")
+    if sk:
+        keep.append((sk["xMm"], sk["yMm"], sk["sizeMm"][0], sk["sizeMm"][1]))
+    out = []
+    n_x, n_y = int((L / 2 - GRID_EDGE) // g), int((W / 2 - GRID_EDGE) // g)
+    for i in range(-n_x, n_x + 1):
+        for j in range(-n_y, n_y + 1):
+            x, y = i * g, j * g
+            if any(abs(x - kx) < kw / 2 + GRID_CLEAR and abs(y - ky) < kh / 2 + GRID_CLEAR for kx, ky, kw, kh in keep):
+                continue
+            out.append((x, y))
+    return out
+
+
 def strap(spec):
     """The printed strap: a bar over the pack and a leg down to each boss, with a clearance hole for each M2 screw."""
     bosses, boss_top, under = strap_geometry(spec)
@@ -208,6 +259,11 @@ def build(spec):
         inner = bc["sizeMm"] + MAST_FIT
         part += Pos(bc["xMm"], bc["yMm"], t + MAST_SOCKET_H / 2) * (Box(inner + 2 * WALL, inner + 2 * WALL, MAST_SOCKET_H) - Box(inner, inner, MAST_SOCKET_H + 2))
 
+    # A mounting grid (spec gridMm): M3 clearance holes on the pitch wherever nothing stands on or hangs under the plate.
+    grid = grid_holes(spec)
+    for gx, gy in grid:
+        part -= Pos(gx, gy, t / 2) * Cylinder(GRID_HOLE / 2, t + 2)
+
     # Measure the holes back from the solid: the circular edges of each hole size, by centre.
     def centres(radius):
         found = []
@@ -289,6 +345,7 @@ def main():
     export_stl(part, str(out / "chassis.stl"))
     export_stl(strap(spec), str(out / "battery-strap.stl"))
     mounts["strapHoles"] = [{"xMm": x, "yMm": y} for x, y in strap_geometry(spec)[0]]
+    mounts["gridHoles"] = [{"xMm": x, "yMm": y} for x, y in grid_holes(spec)]
     for i, (sec, h) in enumerate(mast_sections(spec), 1):
         export_stl(sec, str(out / f"beacon-mast-{i}.stl"))
         mounts.setdefault("beaconMast", []).append({"section": i, "heightMm": h})
