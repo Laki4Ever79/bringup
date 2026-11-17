@@ -16,7 +16,7 @@ import { createBriefReviewer, MAX_REVIEW_ROUNDS } from "./agents/reviewer.ts"
 import type { Script } from "./inference/scripted-runner.ts"
 import { inferenceConfig } from "./inference/models.ts"
 import { mockScripts } from "./inference/scripts.ts"
-import { writeReport } from "./report.ts"
+import { heldBy, writeReport } from "./report.ts"
 import { createEmulatorCheck, emulatorEnabled } from "./agents/emulator.ts"
 import { appendRequest, watchRequests } from "./runner/requests.ts"
 import { createRippleRecorder } from "./runner/ripple.ts"
@@ -79,6 +79,8 @@ export interface RunOptions {
 
 export interface RunResult {
 	settled: boolean
+	// What else held an unsettled design (report.ts heldBy): grounding findings, failed or unfinished builds, approvals.
+	held?: string[]
 	outDir: string
 	revision: number
 	violations: Violation[]
@@ -276,6 +278,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		outDir: opts.outDir,
 		revision: state.contract.revision,
 		violations: checkConsistency(state.contract.snapshot(), state.artifacts, readBrief(opts.outDir)),
+		held: settled ? [] : heldBy(state),
 		reportPath,
 	}
 }
