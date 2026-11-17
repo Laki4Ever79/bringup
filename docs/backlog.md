@@ -415,11 +415,18 @@ them as well, although it might not be the focus here".
       Pi at duty 0.4 and 0.8, the simulated cruise is -1.6 % to +0.4 % of the load line's speed (adding Crr in MuJoCo
       made it 3-5 % slow: its contacts and the caster's friction already cost that). The gap predated the caster
       friction fix and the one load-line model. Guarded by py/tests/test_mech_speed.py (within 3 %).
-- [ ] **Turn closed on heading**: the 100 mm turn clearance was measured on one design; turning by time stays open-loop.
+- [x] **Turn closed on heading**: the 100 mm turn clearance was measured on one design; turning by time stays open-loop.
       Needs an IMU on the robot's board (a hardware choice for the user).
       Audit 17 Nov (bringup-system): turns close on the wheel encoders' counts since 16 Nov (rover_enc.h,
       ROVER_TURN_COUNTS), quadrature on the S3 since f620338; left: a heading sensor (IMU) for wheel slip. Next for
       bringup-system.
+      Done 17 Nov (bringup-system): the user, asked which robots get an IMU: "Every robot". The LSM6DS3TR-C (LCSC
+      C967633, ST DocID030071 Rev 3) is added in code to every robot's parts (contract/imu-auto.ts) and wired on the I2C
+      bus at 0x6A with 100 nF on VDD and VDDIO (its LGA-14 lands from Figure 17, the outward extension an estimate);
+      the firmware's turn ends on the gyro's heading (hw_heading_rad, bias taken over 1 s at rest; rover_enc turnRad),
+      encoder counts as before without one. Driver host tests 4/4, native 18/18, test/imu.test.ts; esp32c3 and sim
+      builds pass; scripted Eurobot mock settled rev 13, 0 violations. Not proven on hardware: the bench (the drive
+      simulation has no gyro).
 - [x] **examples/rover is stale** (saved 11 Nov, before the 150 × 120 brief and the current axle/wheelbase); re-save
       from a mock run. examples/rover-pi has no still.png.
       Audit 17 Nov (bringup-system): done 15 Nov in 282b51f: the reference rover re-saved from a settled mock build, and
