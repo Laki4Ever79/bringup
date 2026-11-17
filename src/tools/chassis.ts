@@ -162,11 +162,14 @@ export function robotCables(s: ContractSnapshot, spec: ChassisSpec, cables: { mp
 		const need = run(from, { x: spec.sensor.xMm, y: spec.sensor.yMm, z: spec.sensor.zMm - spec.plate.clearanceMm })
 		out.push({ what: "distance sensor", from: plug, needMm: need, kind: "stemma-qt", cable: pick("stemma-qt", need) })
 	}
-	const plugs = (v.parts ?? []).filter(isMotorPlug).map((p) => ({ ref: p.ref, at: at(p.ref) })).filter((p) => p.at)
+	// Each motor's plug is the one the board generator wires to it (circuit.ts: the motor plugs in ref order, JM1 the
+	// left, JM2 the right, a skid-steer rover's JM3/JM4 its rear pair), not the nearest: the Eurobot base's spare plug JM3
+	// sat nearest its left motor and the cable list ran that motor from it (17 Nov 2026).
+	const plugs = (v.parts ?? []).filter(isMotorPlug).sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true })).map((p) => ({ ref: p.ref, at: at(p.ref) }))
 	for (const m of spec.motors) {
 		const end = { x: m.xMm, y: m.yMm - (Math.sign(m.yMm) || 1) * (m.bodyMm[0] / 2), z: -m.axleDropMm }
-		const near = plugs.sort((a, b) => Math.hypot(a.at!.x - end.x, a.at!.y - end.y) - Math.hypot(b.at!.x - end.x, b.at!.y - end.y)).find((p) => !out.some((o) => o.from === p.ref))
-		if (!near) continue
+		const near = plugs[(m.rear ? 2 : 0) + (m.side === "right" ? 1 : 0)]
+		if (!near?.at) continue
 		const need = run(near.at!, end)
 		out.push({ what: `${m.side} motor`, from: near.ref, needMm: need, kind: "jst-ph-2-leads", cable: pick("jst-ph-2-leads", need) })
 	}
