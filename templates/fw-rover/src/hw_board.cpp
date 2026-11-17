@@ -18,7 +18,72 @@ static bool tofOk = false;
 static const int PWM_HZ = 20000, PWM_BITS = 10;
 static const int IN[2][2] = {{MOT_AIN1, MOT_AIN2}, {MOT_BIN1, MOT_BIN2}};
 
-#if defined(ROVER_TURN_COUNTS) && defined(PIN_ENC_LA) && defined(PIN_ENC_RA)
+#if defined(ROVER_TURN_COUNTS) && defined(ROVER_ENC_QUADRATURE) && defined(PIN_ENC_LA) && defined(PIN_ENC_RA) && defined(PIN_ENC_LB) && defined(PIN_ENC_RB)
+// Both channels of each wheel's encoder (an MCU with the pins, the ESP32-S3): the direction is the encoder's. The
+// ESP32-S3 decodes them in hardware: one PCNT unit per wheel, two channels counting every edge of A and of B, each
+// with the other channel's level as its direction (x4, Espressif's rotary-encoder example), the 16-bit counter
+// accumulated into 32 bits at its limits. A chip with no pulse counters steps rover_quad.h's table on every edge.
+// The sign against the duty is learned once from the first drive (rover_quad.h quad_forward).
+#include "rover_quad.h"
+static QuadSign encSign[2];
+static volatile float encDuty[2] = {0, 0};
+#define ENC_DIR(side, duty) (encDuty[side] = (duty))
+#include "soc/soc_caps.h"
+#if SOC_PCNT_SUPPORTED
+#include "driver/pulse_cnt.h"
+static pcnt_unit_handle_t encUnit[2] = {nullptr, nullptr};
+static void encBegin(int side, int a, int b) {
+	pcnt_unit_config_t u = {};
+	u.low_limit = -30000;
+	u.high_limit = 30000;
+	u.flags.accum_count = 1;
+	pcnt_new_unit(&u, &encUnit[side]);
+	pcnt_glitch_filter_config_t f = {.max_glitch_ns = 1000};
+	pcnt_unit_set_glitch_filter(encUnit[side], &f);
+	pcnt_chan_config_t ca = {};
+	ca.edge_gpio_num = a;
+	ca.level_gpio_num = b;
+	pcnt_channel_handle_t cha, chb;
+	pcnt_new_channel(encUnit[side], &ca, &cha);
+	pcnt_chan_config_t cb = {};
+	cb.edge_gpio_num = b;
+	cb.level_gpio_num = a;
+	pcnt_new_channel(encUnit[side], &cb, &chb);
+	pcnt_channel_set_edge_action(cha, PCNT_CHANNEL_EDGE_ACTION_DECREASE, PCNT_CHANNEL_EDGE_ACTION_INCREASE);
+	pcnt_channel_set_level_action(cha, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE);
+	pcnt_channel_set_edge_action(chb, PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_DECREASE);
+	pcnt_channel_set_level_action(chb, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE);
+	pcnt_unit_add_watch_point(encUnit[side], u.high_limit);
+	pcnt_unit_add_watch_point(encUnit[side], u.low_limit);
+	pcnt_unit_enable(encUnit[side]);
+	pcnt_unit_clear_count(encUnit[side]);
+	pcnt_unit_start(encUnit[side]);
+}
+static int32_t encRaw(int side) {
+	int v = 0;
+	if (encUnit[side]) pcnt_unit_get_count(encUnit[side], &v);
+	return v;
+}
+#else
+static volatile int32_t encCount[2] = {0, 0};
+static volatile uint8_t encAB[2] = {0, 0};
+static const int ENC_PINS[2][2] = {{PIN_ENC_LA, PIN_ENC_LB}, {PIN_ENC_RA, PIN_ENC_RB}};
+static void IRAM_ATTR encEdge(int side) {
+	const uint8_t ab = (uint8_t)((digitalRead(ENC_PINS[side][0]) << 1) | digitalRead(ENC_PINS[side][1]));
+	encCount[side] += quad_delta(encAB[side], ab);
+	encAB[side] = ab;
+}
+static void IRAM_ATTR encLeft(void) { encEdge(0); }
+static void IRAM_ATTR encRight(void) { encEdge(1); }
+static void encBegin(int side, int a, int b) {
+	encAB[side] = (uint8_t)((digitalRead(a) << 1) | digitalRead(b));
+	attachInterrupt(digitalPinToInterrupt(a), side ? encRight : encLeft, CHANGE);
+	attachInterrupt(digitalPinToInterrupt(b), side ? encRight : encLeft, CHANGE);
+}
+static int32_t encRaw(int side) { return encCount[side]; }
+#endif
+int32_t hw_encoder(int side) { return quad_forward(encSign[side & 1], encRaw(side & 1), encDuty[side & 1]); }
+#elif defined(ROVER_TURN_COUNTS) && defined(PIN_ENC_LA) && defined(PIN_ENC_RA)
 // The wheel encoders (an encoder gearmotor's Hall encoder): every edge of channel A steps the wheel's count, forward or
 // back as the duty last driven (channel B isn't wired: the ESP32-C3 has the pins for one channel per wheel). The
 // ESP32-C3 has no pulse-counter unit, so GPIO interrupts count them (about 2000 edges a second per wheel at cruise).
@@ -33,7 +98,11 @@ int32_t hw_encoder(int side) { return encCount[side & 1]; }
 #endif
 
 void hw_begin(void) {
-#if defined(ROVER_TURN_COUNTS) && defined(PIN_ENC_LA) && defined(PIN_ENC_RA)
+#if defined(ROVER_TURN_COUNTS) && defined(ROVER_ENC_QUADRATURE) && defined(PIN_ENC_LA) && defined(PIN_ENC_RA) && defined(PIN_ENC_LB) && defined(PIN_ENC_RB)
+	for (int pin : {PIN_ENC_LA, PIN_ENC_LB, PIN_ENC_RA, PIN_ENC_RB}) pinMode(pin, INPUT);  // the encoder pulls its outputs up
+	encBegin(0, PIN_ENC_LA, PIN_ENC_LB);
+	encBegin(1, PIN_ENC_RA, PIN_ENC_RB);
+#elif defined(ROVER_TURN_COUNTS) && defined(PIN_ENC_LA) && defined(PIN_ENC_RA)
 	pinMode(PIN_ENC_LA, INPUT);  // the encoder pulls its outputs up itself (10 kOhm to its Vcc)
 	pinMode(PIN_ENC_RA, INPUT);
 	attachInterrupt(digitalPinToInterrupt(PIN_ENC_LA), encLeft, CHANGE);

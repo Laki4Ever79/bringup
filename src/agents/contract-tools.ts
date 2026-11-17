@@ -1,5 +1,6 @@
 import type { Tool } from "@mozaik-ai/core"
 import { completePowerTree } from "../contract/power-auto.ts"
+import { moveUpMcu } from "../contract/mcu-move.ts"
 import { FIELDS, OWNERS, type AgentRole, type ContractValues, type FieldName } from "../contract/types.ts"
 import { makeEvent, type Cause } from "../events.ts"
 import { causeOf } from "./common.ts"
@@ -13,6 +14,8 @@ import { connectorsForParts, ESTOP_PLUG_REF, isEncoderPlug, isMotorPlug, MOTOR_P
 
 // Tools every agent gets for reading and changing the shared design contract.
 // `self.id` is filled in once the agent exists, so events carry the agent as producer.
+const mcuCatalog = () => loadCatalog(fileURLToPath(new URL("../..", import.meta.url))) as never
+
 export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 	return [
 		{
@@ -140,6 +143,19 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						laidOutNote = [laidOutNote, `moved along their edges to fit the board and clear each other: ${moved.join(", ")}`].filter(Boolean).join("; ")
 					}
 				}
+				// A robot asking for wheel encoders whose MCU can't carry both channels of each on pins free at reset moves up
+				// to one that can (contract/mcu-move.ts): this write lands moved, and the other field follows once it applies.
+				let moved: { parts?: ContractValues["parts"]; pins?: ContractValues["pins"]; note: string } | null = null
+				if ((args.field === "parts" || args.field === "pins") && Array.isArray(args.value) && s.contract.get("motion")) {
+					const parts = args.field === "parts" ? (args.value as ContractValues["parts"]) : s.contract.get("parts")
+					const pins = args.field === "pins" ? (args.value as ContractValues["pins"]) : s.contract.get("pins")
+					const up = parts && pins ? moveUpMcu(parts, pins, s.contract.get("motion") ?? undefined, mcuCatalog()) : null
+					if (up) {
+						args = { ...args, value: (args.field === "parts" ? up.parts : up.pins) as ContractValues[FieldName] }
+						moved = args.field === "parts" ? { pins: up.pins, note: up.note } : { parts: up.parts, note: up.note }
+						laidOutNote = [laidOutNote, up.note].filter(Boolean).join("; ")
+					}
+				}
 				const result = s.contract.propose({ field: args.field, value: args.value, by: role, baseVersion: args.baseVersion, approvedBy })
 				if (result.status === "applied") {
 					// Why: the writer's own reason, the field before and after, and what woke it (or the approval it wrote under).
@@ -166,12 +182,24 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 								laidOutNote = `connectors follow the outline: moved ${moved.join(", ")}`
 						}
 					}
-					// A new pack regenerates the power tree in the same step, written as the parts owner's own change (real run
-					// 19b: the switch to the 2S pack at revision 17 left the 1-cell charger on the board until the agents found it).
-					if (args.field === "mechanics" && s.contract.get("motion")) {
+					// The other field of an MCU move-up made on this write (below, before propose).
+					if (moved?.pins) follow("pins", moved.pins, moved.note)
+					if (moved?.parts) follow("parts", moved.parts, moved.note)
+					// A new pack regenerates the power tree, and a robot asking for wheel encoders moves its MCU up when it can't
+					// carry both channels (contract/mcu-move.ts): one parts write as the parts owner's own change, and the pins
+					// the move needs, in the same step (real run 19b: the switch to the 2S pack at revision 17 left the 1-cell
+					// charger on the board until the agents found it).
+					if ((args.field === "mechanics" || args.field === "motion") && s.contract.get("motion")) {
 						const parts = s.contract.get("parts")
-						const t = parts ? completePowerTree(parts, args.value as ContractValues["mechanics"], s.contract.snapshot()) : null
-						if (t?.note && follow("parts", t.parts, `the pack changed: ${t.note}`)) laidOutNote = [laidOutNote, `parts follow the pack: ${t.note}`].filter(Boolean).join("; ")
+						const pins = s.contract.get("pins")
+						const t = parts && args.field === "mechanics" ? completePowerTree(parts, args.value as ContractValues["mechanics"], s.contract.snapshot()) : null
+						const tree = t?.note ? t.parts : parts
+						const up = tree && pins ? moveUpMcu(tree, pins, s.contract.get("motion") ?? undefined, mcuCatalog()) : null
+						const why = [t?.note ? `the pack changed: ${t.note}` : null, up?.note].filter(Boolean).join("; ")
+						if (why && follow("parts", up?.parts ?? tree!, why)) {
+							if (up) follow("pins", up.pins, up.note)
+							laidOutNote = [laidOutNote, why].filter(Boolean).join("; ")
+						}
 					}
 					// Renamed plugs: the connectors and pins that named the old refs take the new ones.
 					if (Object.keys(renames).length) {

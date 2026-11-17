@@ -18,10 +18,13 @@ export const HOLD_GAIN = 0.001
 
 // The counts a wheel turns for the rover to turn by `rad` in place: each wheel runs an arc of rad × track / 2.
 export const turnCounts = (rad: number, trackMm: number, wheelMm: number, countsPerRev: number) => Math.round(((rad * trackMm) / 2 / (Math.PI * wheelMm)) * countsPerRev)
-// Counts per wheel revolution of an encoder gearmotor, or null. The firmware counts both edges of channel A only (half
-// the catalog's cpr, which counts both channels), its direction from the duty it drives: one GPIO per wheel, as the
-// ESP32-C3 has four free pins for the encoders, the start cord and the LED (16 Nov).
-export const countsPerRev = (motor: { gearRatio: number; encoder?: { cpr: number } }) => (motor.encoder ? (motor.encoder.cpr / 2) * motor.gearRatio : null)
+// Counts per wheel revolution of an encoder gearmotor, or null. With channel A only (the ESP32-C3: one GPIO per wheel,
+// 16 Nov) the firmware counts both edges of A, half the catalog's cpr (which counts both channels), its direction from
+// the duty it drives; with both channels (quadrature, the ESP32-S3's PCNT or rover_quad.h) every edge of A and B: the
+// catalog's cpr.
+export const countsPerRev = (motor: { gearRatio: number; encoder?: { cpr: number } }, quadrature = false) => (motor.encoder ? (quadrature ? motor.encoder.cpr : motor.encoder.cpr / 2) * motor.gearRatio : null)
+// Both channels of both drive wheels' encoders on GPIOs: the firmware counts in quadrature.
+export const quadratureWired = (pins: { signal: string; gpio: number }[] | undefined) => ["ENC_LA", "ENC_LB", "ENC_RA", "ENC_RB"].every((sig) => (pins ?? []).some((p) => p.signal === sig && typeof p.gpio === "number" && p.gpio >= 0))
 
 // The signals the rover firmware drives that the contract hasn't put on a GPIO yet (roverHeader would write -1).
 export const ROVER_SIGNALS = ["MOT_AIN1", "MOT_AIN2", "MOT_BIN1", "MOT_BIN2", "I2C_SDA", "I2C_SCL"]
@@ -93,7 +96,7 @@ export function roverHeader(s: ContractSnapshot): string {
 		`#define ROVER_CRUISE_DUTY ${cruise.toFixed(3)}f`,
 		`#define ROVER_TURN_MS ${turnMs}`,
 		// Wheel encoders on GPIOs: the turn and the straight close on their counts (rover.h); the same three eighths of a turn.
-		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [`#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, countTrackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`, `#define ROVER_MM_PER_COUNT ${((Math.PI * wheel.diameterMm) / cpr).toFixed(4)}f`, `#define ROVER_TRACK_MM ${countTrackMm.toFixed(1)}f`, `#define ROVER_GOTO_MIN_DUTY ${(GOTO_MIN_SHARE * cruise).toFixed(3)}f`, `#define ROVER_GOTO_GAP_MM ${OPPONENT_GAP_MM}`, `#define ROVER_BACK_COUNTS ${Math.round((TURN_CLEARANCE_MM / (Math.PI * wheel.diameterMm)) * cpr)}`] : []))(countsPerRev(motor)),
+		...((cpr) => (cpr && ["ENC_LA", "ENC_RA"].every((sig) => pin(sig) >= 0) ? [...(quadratureWired(v.pins) ? ["#define ROVER_ENC_QUADRATURE 1"] : []), `#define ROVER_ENC_COUNTS_PER_REV ${cpr.toFixed(1)}f`, `#define ROVER_TURN_COUNTS ${turnCounts((3 * Math.PI) / 4, countTrackMm, wheel.diameterMm, cpr)}`, `#define ROVER_HOLD_GAIN ${HOLD_GAIN}f`, `#define ROVER_MM_PER_COUNT ${((Math.PI * wheel.diameterMm) / cpr).toFixed(4)}f`, `#define ROVER_TRACK_MM ${countTrackMm.toFixed(1)}f`, `#define ROVER_GOTO_MIN_DUTY ${(GOTO_MIN_SHARE * cruise).toFixed(3)}f`, `#define ROVER_GOTO_GAP_MM ${OPPONENT_GAP_MM}`, `#define ROVER_BACK_COUNTS ${Math.round((TURN_CLEARANCE_MM / (Math.PI * wheel.diameterMm)) * cpr)}`] : []))(countsPerRev(motor, quadratureWired(v.pins))),
 		// An acceleration limit (mechanics.drive.maxAccelMps2): the duty moves at most this much per control tick, so the speed
 		// (the load line's at full duty from a full pack, at most) changes no faster: main.cpp ramps every output.
 		...(mech.drive.maxAccelMps2 ? [`#define ROVER_RAMP_PER_TICK ${(mech.drive.maxAccelMps2 * (sensor.updateMs / 1000) / Math.max(0.01, loadedSpeedMps(motor, pack, pack.fullV, 1, massG / 1000, r))).toFixed(4)}f`] : []),

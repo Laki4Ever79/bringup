@@ -2,6 +2,7 @@
 #include <unity.h>
 #include "../../src/rover.h"
 #include "../../src/rover_enc.h"
+#include "../../src/rover_quad.h"
 
 static const RoverConfig CFG = {200, 500, 0.6f, 600};
 
@@ -103,6 +104,36 @@ void test_with_encoders_it_backs_off_before_the_turn(void) {
 	TEST_ASSERT_TRUE(o.left > 0 && o.right > 0);
 }
 
+// Quadrature (rover_quad.h): a full cycle of both channels one way counts 4, the other way -4; a skipped state counts 0.
+static int32_t run(const uint8_t *seq, int n) {
+	int32_t c = 0;
+	for (int i = 1; i < n; i++) c += quad_delta(seq[i - 1], seq[i]);
+	return c;
+}
+void test_quadrature_counts_four_per_cycle_each_way(void) {
+	const uint8_t fwd[] = {0, 1, 3, 2, 0};
+	const uint8_t back[] = {0, 2, 3, 1, 0};
+	TEST_ASSERT_EQUAL_INT32(4, run(fwd, 5));
+	TEST_ASSERT_EQUAL_INT32(-4, run(back, 5));
+	TEST_ASSERT_EQUAL_INT8(0, quad_delta(0, 3));  // both channels changed: direction unknown
+	TEST_ASSERT_EQUAL_INT8(0, quad_delta(2, 2));  // no change
+}
+// A back-and-forth jitter on one edge (a wheel resting on a transition) nets zero.
+void test_quadrature_jitter_on_an_edge_nets_zero(void) {
+	const uint8_t jitter[] = {1, 3, 1, 3, 1, 3, 1};
+	TEST_ASSERT_EQUAL_INT32(0, run(jitter, 7));
+}
+// The sign is learned from the first drive: an encoder counting down while driven forward reads positive from then on.
+void test_quadrature_sign_is_learned_from_the_first_drive(void) {
+	QuadSign q;
+	TEST_ASSERT_EQUAL_INT32(-5, quad_forward(q, -5, 0.6f));  // not enough counts yet: raw
+	TEST_ASSERT_EQUAL_INT32(20, quad_forward(q, -20, 0.6f)); // learned: this encoder counts down going forward
+	TEST_ASSERT_EQUAL_INT32(-30, quad_forward(q, 30, -0.6f)); // backing: negative
+	QuadSign r;
+	TEST_ASSERT_EQUAL_INT32(-20, quad_forward(r, -20, -0.6f)); // backing first, counting down: already forward-positive
+	TEST_ASSERT_EQUAL_INT32(40, quad_forward(r, 40, 0.6f));
+}
+
 int main(int, char **) {
 	UNITY_BEGIN();
 	RUN_TEST(test_no_reading_means_nothing_ahead);
@@ -114,5 +145,8 @@ int main(int, char **) {
 	RUN_TEST(test_with_encoders_a_stalled_turn_still_ends_on_the_time_limit);
 	RUN_TEST(test_with_encoders_the_straight_steers_back_toward_the_slower_wheel);
 	RUN_TEST(test_with_encoders_it_backs_off_before_the_turn);
+	RUN_TEST(test_quadrature_counts_four_per_cycle_each_way);
+	RUN_TEST(test_quadrature_jitter_on_an_edge_nets_zero);
+	RUN_TEST(test_quadrature_sign_is_learned_from_the_first_drive);
 	return UNITY_END();
 }

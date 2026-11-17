@@ -1,3 +1,4 @@
+import { mcuProfileOf } from "../mcu/profile.ts"
 import { MOTOR_PLUG_REFS } from "./refs.ts"
 import { existsSync } from "node:fs"
 import { isEncoderPlug, isMotorPlug } from "./refs.ts"
@@ -509,13 +510,15 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		push("mech-wiring", `the motors need ${nMotors - motorPlugs.size} more ${plug}, one per motor, as ${refs.join(" and ")}${placed.length ? " (the connectors the board already places)" : ""}: the board generator wires the driver's outputs to them`, ["parts"], ["parts"])
 	}
 	// An encoder gearmotor (catalog encoder): its plugs are the 6-pin ones, and each encoder's channel A reaches a GPIO
-	// (ENC_LA on JM1, the left motor; ENC_RA on JM2), whose edges the firmware counts for odometry (rover.h; channel B
-	// stays unconnected: the direction is the duty's).
+	// (ENC_LA on JM1, the left motor; ENC_RA on JM2), whose edges the firmware counts for odometry (rover.h; on an MCU
+	// without quadrature counters channel B stays unconnected and the direction is the duty's).
 	if (motor.encoder) {
 		const plain = parts.filter((p) => isMotorPlug(p) && !isEncoderPlug(p))
 		if (plain.length) push("mech-wiring", `${plain.map((p) => p.ref).join(" and ")} ${plain.length === 1 ? "is a 2-pin plug" : "are 2-pin plugs"}, but the ${motor.mpn.split(" ")[0]} carries an encoder on a 6-pin JST SH plug: make ${plain.length === 1 ? "it" : "them"} the SM06B-SRSS-TB(LF)(SN) in the catalog (pins ["GND", "ENCB", "ENCA", "VCC", "M2", "M1"]), keeping the refs`, ["parts"], ["parts"])
 		const enc = parts.filter(isEncoderPlug).sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true })).slice(0, 2)
-		const missing = enc.flatMap((k, i) => (["A"] as const).map((ch) => ({ k, ch, signal: `ENC_${"LR"[i]}${ch}` }))).filter(({ k, ch, signal }) => !pins.some((p) => p.signal === signal && p.partRef === k.ref && p.partPin === `ENC${ch}` && typeof p.gpio === "number" && p.gpio >= 0))
+		// On an MCU with hardware quadrature counters (the ESP32-S3's PCNT), both channels: direction from the encoder.
+		const channels = mcuProfileOf(parts)?.peripherals.pcnt ? (["A", "B"] as const) : (["A"] as const)
+		const missing = enc.flatMap((k, i) => channels.map((ch) => ({ k, ch, signal: `ENC_${"LR"[i]}${ch}` }))).filter(({ k, ch, signal }) => !pins.some((p) => p.signal === signal && p.partRef === k.ref && p.partPin === `ENC${ch}` && typeof p.gpio === "number" && p.gpio >= 0))
 		if (missing.length) push("mech-wiring", `the encoders' outputs need GPIOs: ${missing.map(({ k, ch, signal }) => `${signal} (partRef ${k.ref}, partPin ENC${ch})`).join(", ")}; the firmware counts them for odometry (the encoders pull up their own outputs)`, ["architect"], ["pins"])
 	}
 	const plug = mech.sensor ? parts.find((p) => p.ref === mech.sensor.connector && p.role === "connector" && p.pins.length === 4) : undefined

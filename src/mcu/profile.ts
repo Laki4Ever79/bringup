@@ -54,7 +54,8 @@ export interface McuProfile {
 	pins: McuPin[]
 	// Pads that are not design pins, by net: supply, ground, reset, boot, and the pins reserved above are listed in pins.
 	power: { name: string; net: "supply" | "ground" | "analog" | "reset" | "boot" | "vbat" | "usb" | "nc" | "other"; pads: string[] }[]
-	peripherals: Record<PeriphKind, string[]>
+	// pcnt: hardware pulse counters that decode quadrature (the ESP32-S3's PCNT; the ESP32-C3 has none).
+	peripherals: Record<PeriphKind, string[]> & { pcnt?: { units: number; note?: string } }
 	// The console the firmware logs on (and the simulator reads), on fixed pins.
 	console: { instance: string; tx: string; rx: string } | null
 	// uart: the ROM bootloader over a UART (the classic ESP32 has no native USB: a USB-UART bridge or pads flash it).

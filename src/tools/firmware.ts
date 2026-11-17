@@ -94,6 +94,11 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 		await cp(join(root, "templates/fw/include/linkframe.h"), join(dir, "include/linkframe.h"))
 		await cp(join(root, "templates/fw/include/linkcbor.h"), join(dir, "include/linkcbor.h"))
 		await cp(join(root, "templates/fw/include/linkcyphal.h"), join(dir, "include/linkcyphal.h"))
+		// An ESP32-S3 robot (moved up for its pins, contract/mcu-move.ts): `pio run` builds the template's esp32s3 env.
+		if (mcuProfileOf(s.values.parts)?.id === "esp32-s3-mini-1") {
+			const ini = join(dir, "platformio.ini")
+			await writeFile(ini, (await readFile(ini, "utf8")).replace(/^default_envs = .*$/m, "default_envs = esp32s3"))
+		}
 		return rover
 	}
 	const header = pinsHeader(s)
