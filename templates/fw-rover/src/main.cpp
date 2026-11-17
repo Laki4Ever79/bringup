@@ -41,6 +41,38 @@ static MatchState match;
 #ifdef PIN_STATUS_LED
 #include "status_led.h"
 #endif
+#if defined(PCA9685_ADDR) && !defined(HW_SIM)
+// Servos and a spare motor through a PCA9685 on the I2C bus (pca9685.h): 50 Hz for the servos, the spare motor's two
+// inputs on channels SPARE_MOTOR_CH and +1 at the same rate. Host commands: `V <n> <us>` a servo's pulse, `W <duty>`
+// the spare motor (-1..1).
+#include <Wire.h>
+#include "pca9685.h"
+static void pcaWrite(uint8_t reg, const uint8_t *b, uint8_t n) {
+	Wire.beginTransmission(PCA9685_ADDR);
+	Wire.write(reg);
+	Wire.write(b, n);
+	Wire.endTransmission();
+}
+static void pcaBegin() {
+	uint8_t sleep = 0x10, pre = pca9685_prescale(50), wake = 0x20;  // asleep to set the prescaler, then auto-increment
+	pcaWrite(PCA9685_MODE1, &sleep, 1);
+	pcaWrite(PCA9685_PRESCALE, &pre, 1);
+	pcaWrite(PCA9685_MODE1, &wake, 1);
+	delay(1);  // the oscillator's 500 us start
+	uint8_t restart = 0xA0;
+	pcaWrite(PCA9685_MODE1, &restart, 1);
+}
+static void pcaServo(uint8_t ch, uint32_t us) {
+	const uint16_t off = pca9685_ticks_us(us, 50);
+	const uint8_t b[4] = {0, 0, (uint8_t)(off & 0xFF), (uint8_t)(off >> 8)};
+	pcaWrite(PCA9685_LED0 + 4 * ch, b, 4);
+}
+static void pcaDuty(uint8_t ch, float d) {
+	uint8_t b[4];
+	pca9685_duty_bytes(d, b);
+	pcaWrite(PCA9685_LED0 + 4 * ch, b, 4);
+}
+#endif
 #ifndef MATCH_MS
 #define MATCH_MS 0xFFFFFFFFUL
 #endif
@@ -64,6 +96,14 @@ void setup() {
 	pinMode(PIN_START, INPUT_PULLUP);  // the board's 10k pulls it up too; the cord's loop holds it low
 #endif
 	linkBegin();  // after hw_begin: the I2C bus is up for a link that shares it
+#if defined(PCA9685_ADDR) && !defined(HW_SIM)
+	pcaBegin();
+	for (uint8_t i = 0; i < SERVO_COUNT; i++) pcaServo(i, 1500);  // the servos centred
+#ifdef SPARE_MOTOR_CH
+	pcaDuty(SPARE_MOTOR_CH, 0);
+	pcaDuty(SPARE_MOTOR_CH + 1, 0);
+#endif
+#endif
 #if defined(ROVER_ENC_COUNTS_PER_REV) && defined(ROVER_GOTO_X_MM)
 	// The simulation's go-to test (PLATFORMIO_BUILD_FLAGS): the target from the start.
 	rover_route_add(route, ROVER_GOTO_X_MM, ROVER_GOTO_Y_MM);
@@ -125,6 +165,23 @@ static void hostPoll(uint32_t now) {
 				hostLen = 0;
 				continue;
 			}
+#endif
+#if defined(PCA9685_ADDR) && !defined(HW_SIM)
+			if (hostLen && sscanf(hostLine, "V %f %f", &l, &r) == 2) {
+				if (l >= 0 && l < SERVO_COUNT && r >= 500 && r <= 2500) pcaServo((uint8_t)l, (uint32_t)r);
+				hostLen = 0;
+				continue;
+			}
+#ifdef SPARE_MOTOR_CH
+			if (hostLen && sscanf(hostLine, "W %f", &l) == 1) {
+				float a, b;
+				pca9685_motor(l, a, b);
+				pcaDuty(SPARE_MOTOR_CH, a);
+				pcaDuty(SPARE_MOTOR_CH + 1, b);
+				hostLen = 0;
+				continue;
+			}
+#endif
 #endif
 			if (hostLen && sscanf(hostLine, "H %f %f", &l, &r) == 2) {
 #ifdef ROVER_ENC_COUNTS_PER_REV

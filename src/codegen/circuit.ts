@@ -366,6 +366,12 @@ export function supportParts(s: ContractSnapshot): Support[] {
 		if (driver.pins.includes("VCP")) jobs.push({ job: `${driver.ref}.VCP (charge pump) to VM`, spec: SUPPORT.vcp, a: { ref: driver.ref, pin: "VCP" }, b: driver.pins.includes("VM") ? { ref: driver.ref, pin: "VM" } : { net: vm }, near: driver.ref })
 		if (supply && driver.pins.includes("nSLEEP")) jobs.push({ job: `${driver.ref}.nSLEEP pull-up (the driver awake)`, spec: SUPPORT.pullup, a: { ref: driver.ref, pin: "nSLEEP" }, b: { net: supply }, near: driver.ref })
 	}
+	// The PCA9685: 100 nF at its VDD. The servo supply's EN: 10 kΩ to GND, so the module's own 100 kΩ pull-up to VIN can't
+	// hold it on once the emergency stop opens (EN at about 0.76 V from a full 2S pack, under its 1.2 V threshold).
+	const pwmPart = parts.find((p) => p.role === "pwm-driver")
+	if (pwmPart && supply) jobs.push({ job: `decoupling on ${pwmPart.ref}.VDD`, spec: SUPPORT.decouple, a: { net: supply }, b: GND, near: pwmPart.ref })
+	const servoSupply = parts.find((p) => p.role === "servo-supply")
+	if (servoSupply?.pins.includes("EN")) jobs.push({ job: `${servoSupply.ref}.EN pull-down (the servos off when the emergency stop opens)`, spec: SUPPORT.pullup, a: { ref: servoSupply.ref, pin: "EN" }, b: GND, near: servoSupply.ref })
 	// A CAN transceiver: 100 nF at its VCC, and 120 Ω across the bus at a bus end (links' can.terminate).
 	const can = parts.find((p) => p.role === "can-transceiver")
 	if (can && supply) jobs.push({ job: `decoupling on ${can.ref}.VCC`, spec: SUPPORT.decouple, a: { net: supply }, b: GND, near: can.ref })
@@ -565,6 +571,10 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	pinrow4: [9.12, 1.5], pushbutton: [7, 9],
 	// SOD-123 (a Schottky): pads and body about 4.4 × 1.6 mm (an estimate of the footprinter's sod123).
 	sod123: [4.4, 1.6],
+	// TSSOP-28 (the PCA9685): 9.7 mm long, leads across 6.4 mm, with pads about 10.4 × 7.9 mm (an estimate).
+	"tssop28_w6.4mm_p0.65mm": [10.4, 7.9],
+	// A 3-pin 2.54 mm header (a servo's plug).
+	pinrow3: [8.6, 3.6],
 	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
 	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
@@ -1586,7 +1596,7 @@ function at(placement: Map<string, Placed>, ref: string): string {
 // two components are kept; a one-component net can't be routed.
 // An ESP32 module's EN, between its RC delay (supportParts) and the chip.
 export const MCU_EN_NET = "MCU_EN"
-const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET, MCU_EN_NET, "MOTOR_A1", "MOTOR_A2", "MOTOR_B1", "MOTOR_B2", "MOTOR_C1", "MOTOR_C2", "MOTOR_D1", "MOTOR_D2"]
+const POWER_NETS = ["GND", netName(SUPPLY_RAIL), "VBUS", "VBAT", "USB_DP", "USB_DN", USB_SENSE_NET, MCU_EN_NET, "MOTOR_A1", "MOTOR_A2", "MOTOR_B1", "MOTOR_B2", "MOTOR_C1", "MOTOR_C2", "MOTOR_D1", "MOTOR_D2", "SERVO1", "SERVO2"]
 
 // A rover's motor connectors: two-pin connectors, in ref order (JM1 motor A, JM2 motor B).
 // A motor's plug: a 2-pin one (pins 1 and 2), or an encoder gearmotor's 6-pin one (M1, M2 for the motor, VCC, GND and
@@ -1702,6 +1712,26 @@ export function powerTree(s: ContractSnapshot): { battery: Part; usb: Part; buck
 // A battery-path part's input and output pins: an ideal diode's VIN/VOUT, a Schottky's A/K.
 const pathPins = (p: Part) => (p.role === "ideal-diode" ? { in: "VIN", out: "VOUT" } : { in: "A", out: "K" })
 
+// A robot's servo outputs (parts with role servo), driven by a PCA9685 (role pwm-driver) on the I2C bus, powered by a
+// servo supply (role servo-supply), and a spare motor on a second DRV8833 whose inputs come from the PCA9685 (on a
+// differential rover; a skid-steer rover's second driver is its rear pair). Null without a PWM driver.
+export const SERVO_5V_NET = "SERVO_5V"
+export function servoOutputs(parts: Part[]): { pwm: Part; servos: Part[]; supply?: Part; spare?: Part } | null {
+	const pwm = parts.find((p) => p.role === "pwm-driver")
+	if (!pwm) return null
+	const servos = parts.filter((p) => p.role === "servo").sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true })).slice(0, 2)
+	const supply = parts.find((p) => p.role === "servo-supply")
+	const spare = motorDrivers(parts)[1]
+	return { pwm, servos, ...(supply ? { supply } : {}), ...(spare ? { spare } : {}) }
+}
+// The PCA9685's I2C pins on the board's bus (the contract's I2C_SDA and I2C_SCL nets).
+export function pwmDriverTraces(s: ContractSnapshot): { net: string; ref: string; pin: string }[] {
+	const pwm = (s.values.parts ?? []).find((p) => p.role === "pwm-driver")
+	const signals = new Set((s.values.pins ?? []).map((p) => p.signal))
+	if (!pwm) return []
+	return ([["I2C_SDA", "SDA"], ["I2C_SCL", "SCL"]] as const).filter(([net, pin]) => signals.has(net) && pwm.pins.includes(pin)).map(([net, pin]) => ({ net, ref: pwm.ref, pin }))
+}
+
 export function ldoInputNet(s: ContractSnapshot): string {
 	if (powerTree(s)) return VIN_OR_NET
 	const parts = s.values.parts ?? []
@@ -1756,6 +1786,35 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// starts after its supply is up and a debug cable can pull EN low to reset it.
 	if (hasSupply && mcu?.pins.includes("EN")) join(MCU_EN_NET, mcu.ref, "EN")
 
+	// Servos and a spare motor through a PCA9685 on the I2C bus (servoOutputs): channels 0 and 1 to the servo plugs'
+	// signal pins, 2 and 3 to the spare driver's AIN1/AIN2 (its channel B off). Address 0x40: A0-A5, OE and EXTCLK low.
+	// The servo supply (a 5 V step-down module) takes the cell before the emergency stop, and its EN the motors' supply
+	// after it (with 10 kΩ to GND): the stop's NC contact switches the servos off without carrying their current (the
+	// OMRON A22E breaks 1.5 A inductive; two servos at stall through it would pass that).
+	const so = servoOutputs(parts)
+	if (so) {
+		for (const n of [SERVO_5V_NET, "SPARE_IN1", "SPARE_IN2", "SERVO_EN"]) if (!nets.has(n)) nets.set(n, [])
+		for (const pin of ["A0", "A1", "A2", "A3", "A4", "A5", "OE", "EXTCLK"]) if (so.pwm.pins.includes(pin)) join("GND", so.pwm.ref, pin)
+		so.servos.forEach((sv, i) => {
+			const net = `SERVO${i + 1}`
+			if (!nets.has(net)) nets.set(net, [])
+			join(net, so.pwm.ref, `LED${i}`)
+			if (sv.pins.includes("SIG")) join(net, sv.ref, "SIG")
+			if (sv.pins.includes("V+")) join(SERVO_5V_NET, sv.ref, "V+")
+		})
+		if (so.supply) {
+			if (so.supply.pins.includes("VIN")) join(parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS", so.supply.ref, "VIN")
+			if (so.supply.pins.includes("VOUT")) join(SERVO_5V_NET, so.supply.ref, "VOUT")
+			if (so.supply.pins.includes("EN")) join(estopPlug(parts) ? MOTOR_VM_NET : "SERVO_EN", so.supply.ref, "EN")
+		}
+		if (so.spare) {
+			join("SPARE_IN1", so.pwm.ref, "LED2")
+			join("SPARE_IN2", so.pwm.ref, "LED3")
+			if (so.spare.pins.includes("AIN1")) join("SPARE_IN1", so.spare.ref, "AIN1")
+			if (so.spare.pins.includes("AIN2")) join("SPARE_IN2", so.spare.ref, "AIN2")
+			for (const pin of ["BIN1", "BIN2"]) if (so.spare.pins.includes(pin)) join("GND", so.spare.ref, pin)
+		}
+	}
 	// The power tree (powerTree): the cell, or its 5 V step-down, and VBUS each through a Schottky into VIN_OR.
 	const tree = powerTree(s)
 	if (tree) {
@@ -2155,6 +2214,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	}
 
 	// A skid-steer rover's rear driver: each input on the signal net of the front driver's channel for its side.
+	for (const t of pwmDriverTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
 	for (const t of skidDriverTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
 	// An I2C link joins the board's own bus: the connector's IO1 and IO2 to I2C_SDA and I2C_SCL (docs/system.md).
 	for (const t of linkBusTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)

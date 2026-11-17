@@ -107,6 +107,9 @@ export function roverHeader(s: ContractSnapshot): string {
 		// What else the rover firmware drives and reads, named as the product firmware names them so the same checks
 		// apply: the status LED (a 1 Hz heartbeat) and the payload sensor hw_board.cpp reads (SHT40 or SHTC3).
 		...(v.pins ?? []).filter((p) => p.signal === "STATUS_LED").map((p) => `#define PIN_STATUS_LED ${p.gpio}`),
+		// Servos and a spare motor through a PCA9685 on the I2C bus (circuit.ts servoOutputs; pca9685.h): its address
+		// (A0-A5 low), the servo count on channels 0.., and the spare motor on channels 2 and 3.
+		...((pwm) => (pwm ? [`#define PCA9685_ADDR 0x${(pwm.i2cAddress ?? 0x40).toString(16)}`, `#define SERVO_COUNT ${(v.parts ?? []).filter((p) => p.role === "servo").slice(0, 2).length}`, ...((v.parts ?? []).filter((p) => p.role === "motor-driver").length > 1 && v.mechanics?.drive.kind !== "skid4" ? ["#define SPARE_MOTOR_CH 2"] : [])] : []))((v.parts ?? []).find((p) => p.role === "pwm-driver") as { i2cAddress?: number } | undefined),
 		// A link's pins (a UART's TX and RX), as the product firmware's pins.h names them: link.h opens the UART on them.
 		...(v.pins ?? []).filter((p) => (v.links ?? []).some((l) => p.signal === `${l.id}_TX` || p.signal === `${l.id}_RX`)).map((p) => `#define ${macroName(p.signal)} ${p.gpio}`),
 		// Every other contract pin, as the product firmware's pins.h names it (PIN_<SIGNAL>), so the firmware's pin table

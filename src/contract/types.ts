@@ -300,7 +300,7 @@ export type ProposalResult =
 
 // Part roles the board codegen, catalog and checks understand. Every catalog role must be here (test/part-roles.test.ts):
 // real run 17 (16 Nov 2026) added the power tree's LM66100 and B5819W as "other" because diode and ideal-diode were missing.
-export const PART_ROLES = ["mcu", "sensor", "microphone", "ldo", "charger", "battery", "usb-c", "led", "charge-led", "resistor", "capacitor", "button", "connector", "motor-driver", "estop", "start", "can-transceiver", "diode", "ideal-diode", "buck", "other"] as const
+export const PART_ROLES = ["mcu", "sensor", "microphone", "ldo", "charger", "battery", "usb-c", "led", "charge-led", "resistor", "capacitor", "button", "connector", "motor-driver", "estop", "start", "can-transceiver", "diode", "ideal-diode", "buck", "pwm-driver", "servo-supply", "servo", "other"] as const
 
 // Signals become C macros (PIN_<SIGNAL>) and net names, so they must be UPPER_SNAKE.
 export const SIGNAL_PATTERN = /^[A-Z][A-Z0-9_]*$/
