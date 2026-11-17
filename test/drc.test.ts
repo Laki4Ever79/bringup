@@ -79,3 +79,11 @@ test("the report says which rule a clean DRC relies on", async () => {
 		"- Design rules (KiCad, JLCPCB 2-layer): 0 errors, 3 warnings, 0 unconnected (silk_over_copper 3); 1 rule: USB-C vendor land pattern (J1): pad ↔ its own locating hole ≥ 0.15 mm",
 	])
 })
+
+// Drills nearer than the fab's hole-to-hole minimum break into each other: KiCad's default warning is an error under the
+// fab rules (run 17 rev 41 passed with three same-net via pairs 0.11-0.15 mm apart, 17 Nov 2026).
+test("the fab rules count hole-to-hole as an error", async () => {
+	const { applyFabRules } = await import("../src/tools/drc.ts")
+	const p = applyFabRules({ board: { design_settings: { rule_severities: { silk_overlap: "ignore" } } } })
+	assert.deepEqual(p.board.design_settings.rule_severities, { silk_overlap: "ignore", hole_to_hole: "error" })
+})

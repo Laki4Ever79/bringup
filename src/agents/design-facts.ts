@@ -14,7 +14,7 @@ import { connectivityOf } from "../contract/connectivity.ts"
 import { DATA_FORMAT } from "../codegen/data-format.ts"
 import { spaceFactLines } from "../contract/space.ts"
 import { standardsFactLines } from "../contract/standards.ts"
-import { loadCatalog } from "../tools/parts-search.ts"
+import { catalogEntry, loadCatalog } from "../tools/parts-search.ts"
 import { mechanicsFactLines } from "../mechanics/facts.ts"
 import { mechanicsFigures } from "../mechanics/checks.ts"
 import { mcuFacts } from "../mcu/facts.ts"
@@ -147,7 +147,7 @@ export function firmwareFacts(s: ContractSnapshot): string[] {
 export function partFactsSection(s: ContractSnapshot): string[] {
 	const catalog = loadCatalog(resolve(import.meta.dirname, "../.."))
 	const facts = (s.values.parts ?? []).flatMap((p) => {
-		const notes = catalog.find((c) => c.mpn.toUpperCase() === p.mpn.toUpperCase())?.notes
+		const notes = catalogEntry(catalog, p)?.notes
 		return notes ? [`- ${p.ref} ${p.mpn}: ${notes}`] : []
 	})
 	return ["## Part facts (from the catalog)", ...(facts.length ? facts : ["- none"]), ...chargeLedFacts(s), ...firmwareFacts(s)]

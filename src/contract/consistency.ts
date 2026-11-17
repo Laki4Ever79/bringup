@@ -130,6 +130,7 @@ export type ViolationKind =
 	| "drc-errors"
 	| "outline-mismatch"
 	| "net-missing"
+	| "plug-without-edge"
 	| "supply-unwired"
 	| "pin-unwired"
 	| "pin-part-missing"
@@ -212,7 +213,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	// guess that the sensor was off the bus, and the next drive crawled at 0.09 m/s).
 	if (a.drive?.result === "fail")
 		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics"] })
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...supplyWiring(c), ...packVoltage(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c), ...motionBriefChecks(c, brief))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...plugsWithoutEdge(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...supplyWiring(c), ...packVoltage(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c), ...motionBriefChecks(c, brief))
 	// A built chassis (not a stub) whose standoffs miss a board's mounting holes.
 	if (a.chassis && !a.chassis.stub) v.push(...boardMountChecks(c, a.chassis.mounts as { standoffHoles?: { xMm: number; yMm: number }[] } | null))
 	// Every fastener in the robot's parts list fits the hole it goes through (tools/robot-parts.ts).
@@ -497,6 +498,22 @@ export function connectorsWithoutParts(c: ContractSnapshot): Violation[] {
 			fields: ["connectors", "parts"] as FieldName[],
 			affects: ["architect", "parts"] as AgentRole[],
 		}))
+}
+
+// The reverse, for the plug whose cable goes in sideways: a USB-C the connectors field places on no edge is put anywhere
+// inside the board, where no cable reaches it (run cc-eurobot-17, 16 Nov 2026: no connectors field at all). A JST plug
+// inside the board is fine, its cable comes from above (run 8's battery plug, reviewed and passed).
+const PLUG_ROLES = new Set(["usb-c"])
+export function plugsWithoutEdge(c: ContractSnapshot): Violation[] {
+	const placed = new Set((c.values.connectors ?? []).map((k) => k.ref))
+	const loose = (c.values.parts ?? []).filter((p) => PLUG_ROLES.has(p.role) && !placed.has(p.ref)).map((p) => p.ref)
+	if (!loose.length) return []
+	return [{
+		kind: "plug-without-edge" as const,
+		message: `${loose.join(", ")} ${loose.length === 1 ? "is a USB-C plug" : "are USB-C plugs"}, whose cable goes in from the side, but the connectors field places ${loose.length === 1 ? "it" : "them"} on no board edge, so the board would put ${loose.length === 1 ? "it" : "them"} inside where no cable reaches: add ${loose.length === 1 ? "it" : "each"} to connectors ({ref, kind, edge, offsetMm})`,
+		fields: ["connectors"] as FieldName[],
+		affects: ["architect"] as AgentRole[],
+	}]
 }
 
 // A deep-sleeping design needs its MCU's boot pin free (an I2C line may share it): the board generator puts the recovery

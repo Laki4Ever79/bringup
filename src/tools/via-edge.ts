@@ -96,18 +96,41 @@ function padSpots(pcb: string): { x: number; y: number; r: number }[] {
 	return out
 }
 
-// Moves every via whose copper is nearer an unplated hole than holeMm straight away from it, and then every via nearer
-// the outline than edgeMm inward, with its own net's trace ends on it.
-export function nudgeVias(pcb: string, rules: { edgeMm: number; holeMm: number }): { pcb: string; moved: ViaMove[] } {
+// Two vias of one net whose drills are nearer than holeToHoleMm (the router drops them side by side: run 17 rev 41's VBAT
+// and GND pairs 0.11-0.15 mm apart, under JLCPCB's 0.25 mm, where the drills can break into each other) are one via:
+// the first is kept, the others are removed and their trace ends join it. Then every via whose copper is nearer an
+// unplated hole than holeMm moves straight away from it, and every via nearer the outline than edgeMm inward, with its
+// own net's trace ends on it.
+export function nudgeVias(pcb: string, rules: { edgeMm: number; holeMm: number; holeToHoleMm?: number }): { pcb: string; moved: ViaMove[]; merged: ViaMove[] } {
 	const box = outlineBox(pcb)
-	if (!box) return { pcb, moved: [] }
+	if (!box) return { pcb, moved: [], merged: [] }
 	const holes = unplatedHoles(pcb)
 	const moved: ViaMove[] = []
 	const edits: { start: number; end: number; text: string }[] = []
 	const vias = blocks(pcb, "via")
-	for (const v of vias) {
+	// Which via each removed one joins (by index), and where the kept via ends up.
+	const into = new Map<number, number>()
+	if (rules.holeToHoleMm !== undefined) {
+		const spec = vias.map((v) => ({ at: point(v.text, "at"), drill: value(v.text, "drill"), net: value(v.text, "net") }))
+		for (let i = 0; i < vias.length; i++) {
+			const a = spec[i]
+			if (into.has(i) || !a.at || a.drill === null || a.net === null) continue
+			for (let j = i + 1; j < vias.length; j++) {
+				const b = spec[j]
+				if (into.has(j) || !b.at || b.drill === null || b.net !== a.net) continue
+				if (Math.hypot(a.at[0] - b.at[0], a.at[1] - b.at[1]) - a.drill / 2 - b.drill / 2 < rules.holeToHoleMm) into.set(j, i)
+			}
+		}
+	}
+	const finalAt = new Map<number, [number, number]>()
+	for (const [k, v] of vias.entries()) {
+		if (into.has(k)) {
+			edits.push({ start: v.start, end: v.end, text: "" })
+			continue
+		}
 		const at = point(v.text, "at"), size = value(v.text, "size"), net = value(v.text, "net")
 		if (!at || size === null || net === null) continue
+		finalAt.set(k, at)
 		let [hx, hy] = at
 		for (const h of holes) {
 			const away = h.r + size / 2 + rules.holeMm + MARGIN
@@ -120,8 +143,15 @@ export function nudgeVias(pcb: string, rules: { edgeMm: number; holeMm: number }
 		const y = Math.min(Math.max(hy, box.minY + need), box.maxY - need)
 		const keep = (a: number, b: number) => Math.abs(a - b) < 1e-9
 		if (keep(x, at[0]) && keep(y, at[1])) continue
+		finalAt.set(k, [x, y])
 		moved.push({ net, from: at, to: [x, y] })
 		edits.push({ start: v.start, end: v.end, text: v.text.replace(new RegExp(String.raw`\(at ${NUM} ${NUM}`), `(at ${fmt(x)} ${fmt(y)}`) })
+	}
+	// A removed via's trace ends go where the via it joined ends up.
+	const merged: ViaMove[] = []
+	for (const [j, i] of into) {
+		const from = point(vias[j].text, "at"), to = finalAt.get(i), net = value(vias[j].text, "net")
+		if (from && to && net !== null) merged.push({ net, from, to })
 	}
 	// A trace's corner nearer the edge than the clearance (the router ignores it for traces too: the 64×25 rover's
 	// JD1.pin2 trace ran along the edge, 0.25 mm off, 15 Nov 2026) moves inward by what's missing; every segment end of
@@ -150,23 +180,26 @@ export function nudgeVias(pcb: string, rules: { edgeMm: number; holeMm: number }
 		for (const key of ["start", "end"]) {
 			const p = point(text, key)
 			if (!p) continue
-			const m = moved.find((mv) => mv.net === net && near(mv.from, p))
+			const m = [...moved, ...merged].find((mv) => mv.net === net && near(mv.from, p))
 			const to = m ? m.to : corner.get(keyOf(net, p))
 			if (to && !near(to, p)) text = text.replace(new RegExp(String.raw`\(${key} ${NUM} ${NUM}`), `(${key} ${fmt(to[0])} ${fmt(to[1])}`)
 		}
+		// A trace that ran between two merged vias is now a point: removed.
+		const [a, b] = [point(text, "start"), point(text, "end")]
+		if (text !== s.text && a && b && near(a, b)) text = ""
 		if (text !== s.text) edits.push({ start: s.start, end: s.end, text })
 	}
-	if (!edits.length) return { pcb, moved }
+	if (!edits.length) return { pcb, moved, merged }
 	let out = ""
 	let i = 0
 	for (const e of edits.sort((a, b) => a.start - b.start)) {
 		out += pcb.slice(i, e.start) + e.text
 		i = e.end
 	}
-	return { pcb: out + pcb.slice(i), moved }
+	return { pcb: out + pcb.slice(i), moved, merged }
 }
 
 // The edge rule alone (the board build applies both through nudgeVias).
-export function nudgeEdgeVias(pcb: string, clearanceMm: number): { pcb: string; moved: ViaMove[] } {
+export function nudgeEdgeVias(pcb: string, clearanceMm: number): { pcb: string; moved: ViaMove[]; merged: ViaMove[] } {
 	return nudgeVias(pcb, { edgeMm: clearanceMm, holeMm: 0 })
 }
