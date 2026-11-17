@@ -52,6 +52,8 @@ export const SKID_RATIO_MAX = 0.9
 // servos far less) and the 5 V step-down's efficiency from a 2S pack (an ESTIMATE, Pololu D36V50F5's curves run 80-90 %).
 export const SERVO_STALL_A = 2.5
 export const SERVO_SUPPLY_EFF = 0.85
+// A connector carrying a rail is asked for this much over its peak (the figure; over the plain rating is a violation).
+export const CONNECTOR_HEADROOM = 1.25
 export const CLIMB_MARGIN = 1.2 // the drive wheels' grip must push the caster up the edge with this margin (static; the simulation from rest climbs a little more, docs/mechanics.md)
 export const LEVEL_TOLERANCE_MM = 3 // caster and wheels must hold the plate level within this
 
@@ -403,6 +405,27 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	fig("Pack peak current", `${r2(packNeedA)} A`, `at most ${pack.peakA} A`, packNeedA <= pack.peakA, `${n === 2 ? "both" : `all ${n}`} motors at stall plus the electronics${servos ? ` plus ${servos} servo${servos > 1 ? "s" : ""} at stall (${r2(servoA)} A from the pack, an estimate: ${SERVO_STALL_A} A each at 5 V, ${SERVO_SUPPLY_EFF * 100} % through the step-down)` : ""}`)
 	if (packNeedA > pack.peakA)
 		push("mech-current", `both motors at stall plus the electronics draw ${r2(packNeedA)} A from a full cell, over the ${mech.battery.pack}'s ${pack.peakA} A peak: pick a pack rated higher or a gentler motor`)
+	// Every connector carrying a rail against its rated current (catalog ratedA; lead decision, 17 Nov 2026): the battery
+	// plug takes the pack's peak, the e-stop's plug both motors at stall, a motor plug one, a servo plug one servo's
+	// stall. The figure asks for CONNECTOR_HEADROOM over the peak; a peak over the plain rating is a violation (the
+	// Eurobot base with two servos drew 5.07 A through a 2 A JST PH battery plug).
+	const boardCat = loadCatalog(ROOT) as unknown as { mpn: string; ratedA?: number; source?: Record<string, { url: string; where: string }> }[]
+	const rated = (p: Part) => boardCat.find((c) => c.mpn === p.mpn)?.ratedA
+	const ratedSource = (p: Part) => boardCat.find((c) => c.mpn === p.mpn)?.source?.ratedA
+	const conns: [Part, number, string][] = [
+		...parts.filter((p) => p.role === "battery").map((p): [Part, number, string] => [p, packNeedA, "the pack's peak"]),
+		...parts.filter((p) => p.role === "estop").map((p): [Part, number, string] => [p, n * full.stallA, `${n === 2 ? "both" : `all ${n}`} motors at stall`]),
+		...parts.filter((p) => isMotorPlug(p)).map((p): [Part, number, string] => [p, full.stallA, "one motor at stall"]),
+		...parts.filter((p) => p.role === "servo").map((p): [Part, number, string] => [p, SERVO_STALL_A, `one servo at stall (${SERVO_STALL_A} A, an estimate)`]),
+	]
+	for (const [p, peakA, what] of conns) {
+		const r = rated(p)
+		if (r === undefined) continue
+		fig(`Connector current ${p.ref}`, `${r2(peakA)} A`, `at most ${r2(r / CONNECTOR_HEADROOM)} A (${r} A rated, ${CONNECTOR_HEADROOM}x headroom)`, peakA * CONNECTOR_HEADROOM <= r, `${p.mpn}: ${what}`)
+		const src = ratedSource(p)
+		if (src) figures[figures.length - 1].sources = [{ mpn: p.mpn, field: "ratedA", url: src.url, where: src.where }]
+		if (peakA > r) push("mech-current", `${p.ref} ${p.mpn} is rated ${r} A but carries ${r2(peakA)} A (${what}): use a connector rated for it (an XT60 pack's XT60PW-M takes 30 A)`, ["parts"], ["parts"])
+	}
 
 	// Runtime at cruise: rolling resistance only (flat floors), plus the electronics.
 	const rollNmPerWheel = (est("rollingCrr") * massKg * G * r) / n

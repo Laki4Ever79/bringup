@@ -49,7 +49,12 @@ export function assemblableSupplies(parts: Part[], mechanics: Mechanics | undefi
 		changed.push(`${p.ref} ${p.mpn} (a module, no LCSC number) became ${chip.mpn} (${chip.lcsc}, ${chip.maxA} A, up to ${chip.maxInV} V${need(p.role!) ? `; the ${servos} servos at stall need ${need(p.role!)} A, ${SUPPLY_HEADROOM}x is ${SUPPLY_HEADROOM * need(p.role!)} A` : ""})`)
 		return { ...(rest as unknown as Part), ref: p.ref, ...(p.at ? { at: p.at } : {}) }
 	})
-	return { parts: out, note: changed.length ? `power modules became chips JLCPCB assembles: ${changed.join("; ")}` : null }
+	// The battery plug mates the pack's own connector (catalog connector / mates): an XT60 pack gets the XT60PW-M, which
+	// carries 30 A where the JST PH carries 2 A (the Eurobot base with two servos: 5.07 A), and needs no lead or crimping.
+	const packPlug = (pack as { connector?: string }).connector
+	const plug = packPlug ? list.find((x) => x.role === "battery" && (x as { mates?: string }).mates === packPlug) : undefined
+	const fixedPlug = plug ? out.map((p) => (p.role === "battery" && p.mpn !== plug.mpn ? (changed.push(`${p.ref} ${p.mpn} became ${plug.mpn} (${plug.lcsc}), the ${packPlug} the ${pack.mpn} ends in`), { ...(plug as unknown as Part), ref: p.ref, ...(p.at ? { at: p.at } : {}) }) : p)) : out
+	return { parts: fixedPlug, note: changed.length ? `power parts JLCPCB assembles: ${changed.join("; ")}` : null }
 }
 
 // A part the catalog knows by its part number takes the catalog's role when it came as "other" (real run 20, rev 20:
