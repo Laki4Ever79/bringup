@@ -23,6 +23,8 @@ export class DesignContract {
 	private versions = Object.fromEntries(FIELDS.map((f) => [f, 0])) as Record<FieldName, number>
 	private rev = 0
 	private catalog: CatalogEntry[] | null = null
+	// Per field, its version before the last amend (a proposal on that version still applies: see propose).
+	private amendedFrom: Partial<Record<FieldName, number>> = {}
 	// Every revision as it was applied, so diffs between revisions can be shown after the fact.
 	private history: ContractSnapshot[] = []
 	// Why no change is taken now (the run's revision budget is spent and its builds are finishing), or null.
@@ -125,9 +127,13 @@ export class DesignContract {
 		if (isDeepStrictEqual(this.values[p.field], p.value)) {
 			return { status: "unchanged", version: this.versions[p.field] }
 		}
-		if (p.baseVersion !== this.versions[p.field]) {
+		// A field amended along with another change (amend) is not news to whoever read it just before: a proposal on the
+		// version from before the amend still applies (the scripted logger re-proposed its connectors on the version it read
+		// before its own outline change, and every retry came back stale).
+		if (p.baseVersion !== this.versions[p.field] && p.baseVersion !== this.amendedFrom[p.field]) {
 			return { status: "stale", current: this.versions[p.field] }
 		}
+		delete this.amendedFrom[p.field]
 		this.values[p.field] = structuredClone(p.value)
 		this.versions[p.field]++
 		this.rev++
@@ -148,6 +154,7 @@ export class DesignContract {
 		const value = this.canonical(p.field, p.value)
 		if (isDeepStrictEqual(this.values[p.field], value)) return { status: "unchanged", version: this.versions[p.field] }
 		this.values[p.field] = structuredClone(value)
+		this.amendedFrom[p.field] ??= this.versions[p.field]
 		this.versions[p.field]++
 		this.history[this.history.length - 1] = structuredClone({ revision: this.rev, values: this.values, versions: this.versions })
 		return { status: "applied", version: this.versions[p.field], revision: this.rev }

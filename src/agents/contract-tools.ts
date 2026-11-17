@@ -159,20 +159,9 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				}
 				const result = s.contract.propose({ field: args.field, value: args.value, by: role, baseVersion: args.baseVersion, approvedBy })
 				if (result.status === "applied") {
-					// Why: the writer's own reason, the field before and after, and what woke it (or the approval it wrote under).
-					const decision = args.approvalId && approvedBy ? s.approvals.decisionOf(args.approvalId) : undefined
-					const cause: Cause | undefined = decision ? { kind: "approval", proposalId: args.approvalId!, approvedBy: decision.decidedBy ?? [decision.by], reason: decision.reason } : causeOf(self.id)
-					emit(makeEvent("contract.changed", self.id, { field: args.field, version: result.version, revision: result.revision, by: role, reason: args.reason, before, after: args.value, ...(cause ? { cause } : {}) }), self.id)
-					// A change another field must follow, written as its own change by that field's owner, with its reason.
-					const follow = <G extends FieldName>(field: G, value: ContractValues[G], why: string): boolean => {
-						const owner = OWNERS[field]
-						const beforeF = s.contract.get(field) ?? null
-						const r = s.contract.propose({ field, value, by: owner, baseVersion: s.contract.version(field), approvedBy: owner })
-						if (r.status !== "applied") return false
-						emit(makeEvent("contract.changed", self.id, { field, version: r.version, revision: r.revision, by: owner, reason: why, before: beforeF, after: value, cause: { kind: "field-changed", fields: [args.field] } }), self.id)
-						return true
-					}
-					// A new outline carries its connectors in the same revision: each at the same relative place along its edge, as
+					let carried: (() => void) | null = null
+					// Before the outline's own event, so every build woken by it sees the whole revision (an enclosure built on the
+					// outline event alone kept J1's cutout where the old board had it). A new outline carries its connectors in the same revision: each at the same relative place along its edge, as
 					// the space model judged the size (space.ts scaledConnectors), then fitted onto its edge and clear of the others.
 					// Runs 19 and 19b spent a second revision per outline change on them, and kept them where the old board had
 					// them, so a size the space check called placeable didn't place.
@@ -189,10 +178,24 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 							const owner = OWNERS.connectors
 							const r = s.contract.amend({ field: "connectors", value: next, by: owner, approvedBy: owner })
 							if (r.status === "applied") {
-								emit(makeEvent("contract.changed", self.id, { field: "connectors", version: r.version, revision: r.revision, by: owner, reason: why, before: beforeC, after: next, cause: { kind: "field-changed", fields: ["outline"] } }), self.id)
+								carried = () => emit(makeEvent("contract.changed", self.id, { field: "connectors", version: r.version, revision: r.revision, by: owner, reason: why, before: beforeC, after: next, cause: { kind: "field-changed", fields: ["outline"] } }), self.id)
 								laidOutNote = `connectors follow the outline in the same revision: ${moved.join(", ")}`
 							}
 						}
+					}
+					// Why: the writer's own reason, the field before and after, and what woke it (or the approval it wrote under).
+					const decision = args.approvalId && approvedBy ? s.approvals.decisionOf(args.approvalId) : undefined
+					const cause: Cause | undefined = decision ? { kind: "approval", proposalId: args.approvalId!, approvedBy: decision.decidedBy ?? [decision.by], reason: decision.reason } : causeOf(self.id)
+					emit(makeEvent("contract.changed", self.id, { field: args.field, version: result.version, revision: result.revision, by: role, reason: args.reason, before, after: args.value, ...(cause ? { cause } : {}) }), self.id)
+					;(carried as (() => void) | null)?.()
+					// A change another field must follow, written as its own change by that field's owner, with its reason.
+					const follow = <G extends FieldName>(field: G, value: ContractValues[G], why: string): boolean => {
+						const owner = OWNERS[field]
+						const beforeF = s.contract.get(field) ?? null
+						const r = s.contract.propose({ field, value, by: owner, baseVersion: s.contract.version(field), approvedBy: owner })
+						if (r.status !== "applied") return false
+						emit(makeEvent("contract.changed", self.id, { field, version: r.version, revision: r.revision, by: owner, reason: why, before: beforeF, after: value, cause: { kind: "field-changed", fields: [args.field] } }), self.id)
+						return true
 					}
 					// The other field of an MCU move-up made on this write (below, before propose).
 					if (moved?.pins) follow("pins", moved.pins, moved.note)
