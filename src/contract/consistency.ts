@@ -205,7 +205,9 @@ const MOUNTING_PAIR_MM = 5
 // so a half-built design reports what is wrong so far rather than what is missing.
 // brief: the product brief, for the battery capacity it states; without it, requirements.batteryMah.
 // quick: the board page's per-move check, which leaves out the smallest-board search (spaceChecks).
-export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean } = {}): Violation[] {
+// opts.boardStale: the board artifact was built from older inputs than the contract's (the consistency participant knows
+// from the build inputs). Its net findings are then judged against what the current contract generates.
+export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean; boardStale?: boolean } = {}): Violation[] {
 	const v: Violation[] = []
 	// A failed firmware-in-the-loop drive (docs/mechanics.md): the mechanics must change. "not run" (no QEMU, a stubbed
 	// run) wakes nobody: the report says "not proven in simulation". Not the firmware reviewer: the rover's firmware is
@@ -282,9 +284,10 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 			if (missing.length > 0) {
 				v.push({
 					kind: "net-missing",
-					message: `net ${pin.signal} does not connect ${missing.join(", ")}`,
+					message: `net ${pin.signal} does not connect ${missing.join(", ")}${opts.boardStale ? ` on the board built for revision ${a.board.revision} (being rebuilt)` : ""}`,
 					fields: ["pins"],
-					affects: ["board"],
+					// A board built from older pins: the rebuild wires them; nobody is woken.
+					affects: opts.boardStale ? [] : ["board"],
 				})
 			}
 		}
@@ -300,6 +303,19 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 		// unsettled on JL1.VCC).
 		const unpoweredByDesign = new Set((c.values.links ?? []).filter((l) => l.supply === "none").map((l) => `${l.connector}.VCC`))
 		const unpowered = Object.entries(a.board.parts).flatMap(([ref, part]) => part.pins.filter((pin) => SUPPLY_PIN.test(pin) && !onNet.has(`${ref}.${pin}`) && !unpoweredByDesign.has(`${ref}.${pin}`)).map((pin) => `${ref}.${pin}`))
+		// A board built from older inputs: a pin the current contract wires (or a part it no longer has) is the rebuild's to
+		// fix, not an agent's (real run 19b, 17 Nov 2026: the rev-10 board's JM2.VCC and JE1.VBAT, wired from rev 12 on, were
+		// reported for 25 revisions while the next board built, and the architect rewrote the parts to "name" them).
+		if (opts.boardStale) {
+			let wired: Set<string> | null = null
+			try {
+				wired = new Set([...generatedNets(c).values()].filter((ends) => ends.length >= 2).flat())
+			} catch {
+				// a contract the generator can't wire yet: judged on the built board as before
+			}
+			const refs = new Set((parts ?? []).map((p) => p.ref))
+			if (wired) for (let i = unpowered.length - 1; i >= 0; i--) if (wired.has(unpowered[i]) || !refs.has(unpowered[i].split(".")[0])) unpowered.splice(i, 1)
+		}
 		if (unpowered.length)
 			v.push({
 				kind: "supply-unwired",

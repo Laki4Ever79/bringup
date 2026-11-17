@@ -166,6 +166,13 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 								laidOutNote = `connectors follow the outline: moved ${moved.join(", ")}`
 						}
 					}
+					// A new pack regenerates the power tree in the same step, written as the parts owner's own change (real run
+					// 19b: the switch to the 2S pack at revision 17 left the 1-cell charger on the board until the agents found it).
+					if (args.field === "mechanics" && s.contract.get("motion")) {
+						const parts = s.contract.get("parts")
+						const t = parts ? completePowerTree(parts, args.value as ContractValues["mechanics"]) : null
+						if (t?.note && follow("parts", t.parts, `the pack changed: ${t.note}`)) laidOutNote = [laidOutNote, `parts follow the pack: ${t.note}`].filter(Boolean).join("; ")
+					}
 					// Renamed plugs: the connectors and pins that named the old refs take the new ones.
 					if (Object.keys(renames).length) {
 						const to = (ref: string) => renames[ref] ?? ref
