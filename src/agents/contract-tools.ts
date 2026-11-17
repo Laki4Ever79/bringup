@@ -85,7 +85,7 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				// A robot's power tree is decided in code from its pack and regulator (contract/power-auto.ts): every parts write
 				// lands it complete (real run 19b spent 19 revisions on it by hand).
 				if (args.field === "parts" && Array.isArray(args.value) && s.contract.get("motion")) {
-					const t = completePowerTree(args.value as NonNullable<ContractValues["parts"]>, s.contract.get("mechanics") ?? undefined)
+					const t = completePowerTree(args.value as NonNullable<ContractValues["parts"]>, s.contract.get("mechanics") ?? undefined, s.contract.snapshot())
 					if (t.note) {
 						args = { ...args, value: t.parts as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, t.note].filter(Boolean).join("; ")
@@ -170,7 +170,7 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					// 19b: the switch to the 2S pack at revision 17 left the 1-cell charger on the board until the agents found it).
 					if (args.field === "mechanics" && s.contract.get("motion")) {
 						const parts = s.contract.get("parts")
-						const t = parts ? completePowerTree(parts, args.value as ContractValues["mechanics"]) : null
+						const t = parts ? completePowerTree(parts, args.value as ContractValues["mechanics"], s.contract.snapshot()) : null
 						if (t?.note && follow("parts", t.parts, `the pack changed: ${t.note}`)) laidOutNote = [laidOutNote, `parts follow the pack: ${t.note}`].filter(Boolean).join("; ")
 					}
 					// Renamed plugs: the connectors and pins that named the old refs take the new ones.

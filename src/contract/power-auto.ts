@@ -7,14 +7,30 @@
 //     VBUS (circuit.ts powerTree wires them; consistency.ts powerTreeChecks judges them);
 //   - parts the tree no longer needs (an ideal diode once a step-down feeds the LDO) are dropped.
 // Pure: the contract tools apply it to every robot parts write, so the tree is right in one revision.
-import type { Part } from "./types.ts"
+import type { ContractSnapshot, Part } from "./types.ts"
+import { usedRefs } from "./consistency.ts"
 import type { Mechanics } from "../mechanics/types.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
 
 type Entry = Part & { lcsc: string | null; maxInV?: number; cells?: number }
 
-export function completePowerTree(parts: Part[], mechanics: Mechanics | undefined): { parts: Part[]; note: string | null } {
+// With the contract (ctx), the passives only a dropped part used go with it (the Eurobot mock, 17 Nov 2026: the 2S pack
+// dropped the TP4054 and its LED, and left its PROG resistor R4, LED resistor R7 and C4 connected to nothing).
+export function completePowerTree(parts: Part[], mechanics: Mechanics | undefined, ctx?: ContractSnapshot): { parts: Part[]; note: string | null } {
+	const t = treeOf(parts, mechanics)
+	if (!ctx || !t.note) return t
+	const gone = parts.filter((p) => !t.parts.some((q) => q.ref === p.ref))
+	if (!gone.length) return t
+	const used = (list: Part[]) => usedRefs({ ...ctx, values: { ...ctx.values, parts: list } })
+	const before = used(parts)
+	const after = used(t.parts)
+	const orphans = t.parts.filter((p) => ["resistor", "capacitor", "led"].includes(p.role ?? "") && before.has(p.ref) && !after.has(p.ref))
+	if (!orphans.length) return t
+	return { parts: t.parts.filter((p) => !orphans.includes(p)), note: `${t.note}; dropped ${orphans.map((p) => `${p.ref} (${p.role})`).join(", ")}, used only by ${gone.map((p) => p.ref).join(", ")}` }
+}
+
+function treeOf(parts: Part[], mechanics: Mechanics | undefined): { parts: Part[]; note: string | null } {
 	const cat = defaultCheckCatalog()
 	const ldo = parts.find((p) => p.role === "ldo")
 	if (!cat || !ldo || !parts.some((p) => p.role === "battery")) return { parts, note: null }
