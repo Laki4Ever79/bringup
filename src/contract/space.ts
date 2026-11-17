@@ -266,6 +266,10 @@ const complete = (s: ContractSnapshot) => SPACE_INPUTS.every((f) => s.values[f] 
 const LIMIT_WORDS = /\b(about|around|roughly|approx(imately)?|circa|up to|at most|no (bigger|larger|more) than|within|under|max(imum)?|fits? (in|into))\b|~/i
 export function sizeReasonHolds(s: ContractSnapshot, r: SizeReason | undefined): boolean {
 	if (!r) return false
+	// Room for routing only when a build of this design failed to route (recordRoutingFailure): real run 20 grew a
+	// 50×41 board to 56×46 citing "no room for U8 at 46×38", a placement failure at an older size, which the smallest
+	// board already counts, and ended 85% over it.
+	if (r.kind === "routing") return routingFailures(s).length > 0
 	if (r.kind !== "engineer-size") return true
 	const size = s.values.requirements?.size
 	return size ? size.exact : !LIMIT_WORDS.test(r.detail)
@@ -317,7 +321,7 @@ export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {})
 	}
 	// Bigger than the engineer's limit, in either orientation, unless a failed build needs the room.
 	const size = s.values.requirements?.size
-	if (o && size && !size.exact && o.sizeReason?.kind !== "routing") {
+	if (o && size && !size.exact && !(o.sizeReason?.kind === "routing" && sizeReasonHolds(s, o.sizeReason))) {
 		const fits = (w: number, h: number) => o.widthMm <= w + 1e-9 && o.heightMm <= h + 1e-9
 		if (!fits(size.widthMm, size.heightMm) && !fits(size.heightMm, size.widthMm))
 			v.push({

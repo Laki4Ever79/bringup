@@ -2,7 +2,7 @@ import type { Tool } from "@mozaik-ai/core"
 import { completePowerTree } from "../contract/power-auto.ts"
 import { moveUpMcu } from "../contract/mcu-move.ts"
 import { withRobotImu } from "../contract/imu-auto.ts"
-import { FIELDS, OWNERS, type AgentRole, type ContractValues, type FieldName } from "../contract/types.ts"
+import { FIELDS, OWNERS, type AgentRole, type ContractSnapshot, type ContractValues, type FieldName } from "../contract/types.ts"
 import { makeEvent, type Cause } from "../events.ts"
 import { causeOf } from "./common.ts"
 import { emit, state } from "../runtime.ts"
@@ -11,7 +11,7 @@ import { laidOut } from "../mechanics/solve.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { fileURLToPath } from "node:url"
 import { connectorsOntoEdges } from "../contract/consistency.ts"
-import { scaledConnectors } from "../contract/space.ts"
+import { minimumBoard, placesAll, scaledConnectors } from "../contract/space.ts"
 import { connectorsForParts, ESTOP_PLUG_REF, isEncoderPlug, isMotorPlug, MOTOR_PLUG_REFS, robotRefs, SENSOR_PLUG_REF, START_PLUG_REF } from "../mechanics/refs.ts"
 
 // Tools every agent gets for reading and changing the shared design contract.
@@ -164,6 +164,13 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						laidOutNote = [laidOutNote, up.note].filter(Boolean).join("; ")
 					}
 				}
+				// A new size that can't hold what the board carries is refused before it becomes a revision, naming the sizes
+				// near it that do (real run 20: the space check said 44×35, the architect chose 46×38, which has no spot for U8,
+				// though 44×35 does: placement isn't monotonic, and each such guess cost a revision and a board build).
+				if (args.field === "outline" && isObjectValue(args.value)) {
+					const refusal = outlineRefusal(s.contract.snapshot(), args.value as ContractValues["outline"])
+					if (refusal) return { status: "invalid", reason: refusal }
+				}
 				const result = s.contract.propose({ field: args.field, value: args.value, by: role, baseVersion: args.baseVersion, approvedBy })
 				if (result.status === "applied") {
 					let carried: (() => void) | null = null
@@ -263,4 +270,22 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 			},
 		},
 	]
+}
+
+const isObjectValue = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
+
+// Why a proposed outline can't be taken: the board it makes has no spot for something it carries (placesAll, with the
+// connectors where the change will put them). The answer names the placing sizes nearest the one asked for, and the
+// smallest. Null when it places, or when there is nothing to place yet (no outline or no parts: the first outline).
+export function outlineRefusal(snap: ContractSnapshot, next: ContractValues["outline"]): string | null {
+	const o = snap.values.outline
+	if (!o || !snap.values.parts?.length || !next || !(next.widthMm > 0) || !(next.heightMm > 0)) return null
+	if (placesAll(snap, next.widthMm, next.heightMm)) return null
+	const min = minimumBoard(snap)
+	const near = (min?.shapes ?? [])
+		.map((x) => ({ ...x, d: Math.abs(x.widthMm - next.widthMm) + Math.abs(x.heightMm - next.heightMm) }))
+		.sort((a, b) => a.d - b.d || a.widthMm * a.heightMm - b.widthMm * b.heightMm)
+		.slice(0, 3)
+		.map((x) => `${x.widthMm}×${x.heightMm}`)
+	return `a ${next.widthMm}×${next.heightMm} mm board has no spot for everything it carries (the placer, with the connectors where this change puts them)${near.length ? `; sizes near it that place: ${near.join(", ")} mm` : ""}${min ? `; the smallest: ${min.widthMm}×${min.heightMm} mm` : ""}. A bigger board isn't always the answer: placement isn't monotonic, so pick one of these`
 }
