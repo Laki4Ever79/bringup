@@ -77,3 +77,11 @@ test("a design with supplied parts and no 3V3 rail is refused (run 16 rev 22)", 
 	delete s.values.rails
 	assert.ok(supplyWiring(s).some((v) => v.kind === "rail-missing" && /U1/.test(v.message)))
 })
+
+// Real run 18: the agents gave U3 its own nets (VIN on VIN_OR); the nets loop skips the LDO's VIN under a power tree and
+// the LDO block skipped it for having nets, so U3.VIN ended on no net (supply-unwired at the revision cap).
+test("an LDO with its own nets under a power tree still gets its input (run 18 rev 43)", () => {
+	const s = JSON.parse(readFileSync(new URL("./fixtures/cc-eurobot-18-rev43.json", import.meta.url), "utf8"))
+	assert.ok(generatedNets(s).get("VIN_OR")!.includes("U3.VIN"))
+	assert.deepEqual(shorts(s), [])
+})

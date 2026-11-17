@@ -1843,7 +1843,10 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const ldoIn = ldoInputNet(s)
 	if (ldo) {
 		if (hasSupply && ldo.pins.includes("VOUT")) join(supply, ldo.ref, "VOUT")
-		for (const pin of ["VIN", "EN"]) if (ldo.pins.includes(pin) && !(pin === "VIN" && ldo.nets?.VIN)) join(ldoIn, ldo.ref, pin)
+		// VIN on the input net: the contract's own nets.VIN wires it in the nets loop above, except under a power tree, which
+		// owns the LDO's input and which that loop skips (real run 18: U3's nets said VIN_OR, both skipped it, and U3.VIN
+		// was left on no net at the revision cap).
+		for (const pin of ["VIN", "EN"]) if (ldo.pins.includes(pin) && !(pin === "VIN" && ldo.nets?.VIN && !powerTree(s))) join(ldoIn, ldo.ref, pin)
 	}
 	if (charger) {
 		const chargeLed = parts.find((p) => p.role === "charge-led" && p.pins.includes("A"))
