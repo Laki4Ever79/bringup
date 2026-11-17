@@ -1,4 +1,4 @@
-import type { CatalogPart } from "../tools/parts-search.ts"
+import { catalogEntry, type CatalogPart } from "../tools/parts-search.ts"
 import type { ContractSnapshot, Part } from "./types.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 
@@ -120,7 +120,7 @@ interface Truth {
 }
 
 function truthFor(part: Part, catalog: CatalogPart[], symbols: Record<string, KicadSymbol>): Truth | null {
-	const entry = catalog.find((c) => c.mpn.toUpperCase() === part.mpn.toUpperCase())
+	const entry = catalogEntry(catalog, part)
 	if (entry && entry.pins.length > 0) return { source: "catalog", label: `catalog ${entry.mpn}`, pins: new Set(entry.pins.map((p) => p.toUpperCase())) }
 	const name = matchSymbol(part.mpn, symbols)
 	if (name && symbols[name].pins.length > 0) {
