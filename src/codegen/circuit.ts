@@ -127,13 +127,19 @@ function freeRef(prefix: string, taken: Set<string>): string {
 // Passives every board of this kind needs. Each job takes a contract part with the same LCSC number if there is
 // one, else codegen adds the part, so the board is complete either way and the BOM lists what is really on it.
 interface SupportSpec {
-	kind: "resistor" | "capacitor"
+	kind: "resistor" | "capacitor" | "inductor"
 	value: string
 	lcsc: string
 	mpn: string
 	footprint: string
 }
 const SUPPORT = {
+	// The AP63205 step-down's parts at 5 V (Diodes AP63200/1/3/5 datasheet, Table 3 and Figure 21): L 4.7 uH (Taiyo
+	// Yuden NRS4018T4R7MDGJ: 2.0 A saturation, 70 mOhm, its catalog's land pattern), C1 10 uF in, C2 2 x 22 uF out (25 V
+	// X5R 0805, JLCPCB basic parts, rated over a 2S-6S pack's input), C3 100 nF BST to SW.
+	buckL: { kind: "inductor", value: "4.7uH", lcsc: "C92961", mpn: "NRS4018T4R7MDGJ", footprint: "nrs4018" },
+	buckIn: { kind: "capacitor", value: "10uF", lcsc: "C15850", mpn: "CL21A106KAYNNNE", footprint: "0805" },
+	buckOut: { kind: "capacitor", value: "22uF", lcsc: "C45783", mpn: "CL21A226MAQNNNE", footprint: "0805" },
 	led: { kind: "resistor", value: "1k", lcsc: "C11702", mpn: "0402WGF1001TCE", footprint: "0402" },
 	cc: { kind: "resistor", value: "5.1k", lcsc: "C25905", mpn: "0402WGF5101TCE", footprint: "0402" },
 	prog: { kind: "resistor", value: "4.7k", lcsc: "C25900", mpn: "0402WGF4701TCE", footprint: "0402" },
@@ -167,6 +173,9 @@ const SUPPORT = {
 // Where each support passive's value comes from, for the part card (engineer, 13 Nov 2026: "explanation for each
 // individual component as to why it was used"). The same sources as the comments above, as data.
 const SUPPORT_SOURCES: Record<keyof typeof SUPPORT, string> = {
+	buckL: "the AP63205 step-down's inductor: 4.7 µH at 5 V out (Diodes AP63200/1/3/5 datasheet, Table 3)",
+	buckIn: "the AP63205 step-down's input capacitor: 10 µF (Diodes AP63200/1/3/5 datasheet, Table 3)",
+	buckOut: "the AP63205 step-down's output capacitors: 2 x 22 µF (Diodes AP63200/1/3/5 datasheet, Table 3)",
 	led: "a current-limiting resistor in series with the LED (any LED driven from a GPIO needs one)",
 	cc: "USB Type-C: a sink presents 5.1 kΩ (Rd) on CC1 and CC2, or a C-to-C charger supplies no VBUS",
 	prog: "the charger's PROG resistor sets its charge current (TP4054 datasheet, PROG table)",
@@ -384,6 +393,15 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const ldoInNet = ldoInputNet(s)
 	if (ldo) jobs.push({ job: `decoupling on ${ldoInNet} (LDO input)`, spec: SUPPORT.bypass, a: { net: ldoInNet }, b: GND, near: ldo.ref })
 	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
+	// The AP63205 step-down (a chip: its pins include SW): Table 3's parts at 5 V, beside it.
+	const buckIc = powerTree(s)?.buck
+	if (buckIc?.pins.includes("SW")) {
+		const near = buckIc.ref
+		jobs.push({ job: `${buckIc.ref} input capacitor (VBAT)`, spec: SUPPORT.buckIn, a: { net: "VBAT" }, b: GND, near })
+		jobs.push({ job: `${buckIc.ref} inductor (SW to ${BUCK_NET})`, spec: SUPPORT.buckL, a: { net: BUCK_SW_NET }, b: { net: BUCK_NET }, near })
+		for (const k of [1, 2]) jobs.push({ job: `${buckIc.ref} output capacitor ${k} of 2 (${BUCK_NET})`, spec: SUPPORT.buckOut, a: { net: BUCK_NET }, b: GND, near })
+		if (buckIc.pins.includes("BST")) jobs.push({ job: `${buckIc.ref} bootstrap capacitor (BST to SW)`, spec: SUPPORT.decouple, a: { ref: buckIc.ref, pin: "BST" }, b: { net: BUCK_SW_NET }, near })
+	}
 	// The download-boot strap pulled high (downloadStrap), unless the I2C pull-up above already does it; not on a pin that
 	// drives an LED (a violation for the architect: the pull-up would light it in deep sleep).
 	const strap = downloadStrap(s)
@@ -440,7 +458,7 @@ export function supportParts(s: ContractSnapshot): Support[] {
 			claimed.add(own.ref)
 			return { ...j, ref: own.ref, added: false, pins: [own.pins[0] ?? "pin1", own.pins[1] ?? "pin2"] }
 		}
-		const ref = freeRef(j.spec.kind === "resistor" ? "R" : "C", taken)
+		const ref = freeRef(j.spec.kind === "resistor" ? "R" : j.spec.kind === "inductor" ? "L" : "C", taken)
 		taken.add(ref)
 		return { ...j, ref, added: true, pins: ["pin1", "pin2"] }
 	})
@@ -591,6 +609,14 @@ function micFootprint(): string {
 // left to right along the bottom, 8-11 up the right side, 12-14 right to left along the top. The lands are the pads
 // 0.05 mm wider and 0.1 mm longer outward (0.3 x 0.575 mm, an estimate: ST gives its land pattern in a separate
 // technical note). 0.2 mm between lands.
+// Taiyo Yuden NR/NRS4018 power inductor (catalog "Standard external dimensions", Recommended Land Patterns: A 1.2, B 2.8,
+// C 3.7 mm): two 1.2 x 3.7 mm pads, 2.8 mm apart, centred on the 4 x 4 mm body.
+export const INDUCTOR_FOOTPRINT = "nrs4018"
+function inductorFootprint(): string {
+	const pads = [1, 2].map((pin, i) => `<smtpad portHints={["pin${pin}"]} pcbX="${i ? 2 : -2}mm" pcbY="0mm" width="1.2mm" height="3.7mm" shape="rect" />`).join("")
+	const outline = [[-2.2, -2.2], [2.2, -2.2], [2.2, 2.2], [-2.2, 2.2], [-2.2, -2.2]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+	return `{<footprint>${pads}<silkscreenpath route={[${outline}]} /></footprint>}`
+}
 export const IMU_FOOTPRINT = "lga14_2.5x3"
 export const IMU_BODY = { w: 3.0, h: 2.5 }
 export function imuLands(): { pin: number; x: number; y: number; w: number; h: number }[] {
@@ -658,7 +684,7 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// A 3-pin 2.54 mm header (a servo's plug).
 	pinrow3: [8.6, 3.6],
 	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
-	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1],
+	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], [INDUCTOR_FOOTPRINT]: [5.6, 4.4],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
@@ -1807,6 +1833,8 @@ export function netTraceWidths(s: ContractSnapshot): Map<string, number> {
 // (supplyWiring's rail-battery-source names them).
 export const VIN_OR_NET = "VIN_OR"
 export const BUCK_NET = "V5"
+// The step-down chip's switch node (SW to its inductor).
+export const BUCK_SW_NET = "BUCK_SW"
 // The battery path: an ideal diode (role ideal-diode, LM66100: VIN, VOUT, CE on VOUT) on a 1S cell, whose voltage a
 // Schottky's drop would take under the LDO's; behind a step-down, a Schottky (5 V has room for it). VBUS: a Schottky.
 export function powerTree(s: ContractSnapshot): { battery: Part; usb: Part; buck?: Part } | null {
@@ -1943,6 +1971,14 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		if (tree.buck) {
 			if (tree.buck.pins.includes("VIN")) join("VBAT", tree.buck.ref, "VIN")
 			if (tree.buck.pins.includes("VOUT")) join(BUCK_NET, tree.buck.ref, "VOUT")
+			// The AP63205: EN to VIN (it starts with the pack), FB senses its fixed 5 V output, SW to the inductor
+			// (Diodes AP63200/1/3/5 datasheet, Figure 21; its parts in supportParts).
+			if (tree.buck.pins.includes("SW")) {
+				if (!nets.has(BUCK_SW_NET)) nets.set(BUCK_SW_NET, [])
+				join(BUCK_SW_NET, tree.buck.ref, "SW")
+				if (tree.buck.pins.includes("EN")) join("VBAT", tree.buck.ref, "EN")
+				if (tree.buck.pins.includes("FB")) join(BUCK_NET, tree.buck.ref, "FB")
+			}
 		}
 		const bp = pathPins(tree.battery)
 		join(tree.buck ? BUCK_NET : "VBAT", tree.battery.ref, bp.in)
@@ -2250,7 +2286,7 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 	const port = (ref: string, pin: string) => `.${ref} > .${pin}`
 	for (const sp of supportParts(s)) {
 		if (sp.added) {
-			const attr = sp.spec.kind === "resistor" ? "resistance" : "capacitance"
+			const attr = sp.spec.kind === "resistor" ? "resistance" : sp.spec.kind === "inductor" ? "inductance" : "capacitance"
 			// A capacitor wired straight to a chip pin (the DRV8833's VINT and VCP): tscircuit would cap the trace at 1 mm,
 			// which the placer's 1.5 mm part gap can never meet; 5 mm keeps it at the pin and reaches a ground.
 			// A bare MCU's decoupling gets 20 mm: the placer puts each cap beside its own pad (besidePin), but tscircuit's
@@ -2260,7 +2296,8 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 			// A crystal's load capacitors are not decoupling: no bound (their crystal pin is no supply pin). capBound.
 			const bound = capBound(s, sp)
 			const pinBound = bound !== null ? ` maxDecouplingTraceLength={${bound}}` : ""
-			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${q(sp.spec.footprint)}${pinBound} />`)
+			const fpAttr = sp.spec.footprint === INDUCTOR_FOOTPRINT ? inductorFootprint() : q(sp.spec.footprint)
+			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${fpAttr}${pinBound} />`)
 		}
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) {
 			const path = "ref" in end ? drawn.find((d) => d.cap === sp.ref && d.part === end.ref && d.pin === end.pin) : undefined

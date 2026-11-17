@@ -37,7 +37,10 @@ function treeOf(parts: Part[], mechanics: Mechanics | undefined): { parts: Part[
 	const pack = mechanics?.battery?.pack ? byMpn(cat.mech.batteries, mechanics.battery.pack) : undefined
 	if (!pack) return { parts, note: null }
 	const list = cat.boardParts as unknown as Entry[]
-	const entry = (role: string) => list.find((x) => x.role === role)
+	// A step-down: the first one rated for the pack's full voltage (the AP63205 chip, assembled by JLCPCB), else one
+	// whose rating isn't in the catalog (the Pololu module, the fallback). Run 20: the module had no LCSC number and no room.
+	const entry = (role: string) =>
+		role === "buck" ? list.find((x) => x.role === "buck" && x.maxInV !== undefined && x.maxInV !== null && x.maxInV >= pack.fullV) ?? list.find((x) => x.role === "buck" && (x.maxInV === undefined || x.maxInV === null)) : list.find((x) => x.role === role)
 	const ldoE = list.find((x) => x.mpn === ldo.mpn)
 	const changed: string[] = []
 	let out = parts
