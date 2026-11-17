@@ -524,3 +524,12 @@ Or we can offer sending them the full package with all elements, mechanical or 3
       private projects and team seats paid; a compliance pack (EU CRA docs, CE/FCC pre-compliance) for companies;
       competition rules packs per season; retrofit kits as a marketplace with revenue share; real-model runs as credits.
       Rule kept in every tier: the checks are never gated (correct designs for everyone).
+
+## Setup on a new machine (the user, 17 Nov 2026)
+
+- [ ] **Streamline setup:** the user, verbatim: "add to backlog streamlinging setup process. Like it should be as simple as
+      possible to setup on a new machine and this should be added to readme as waell". Today: `npm run setup` installs the
+      repo-local toolchain (about 14 min the first time), `npm run doctor` reports what each tool will use (README,
+      "Install & run"). Do: measure a fresh-clone setup on a clean machine (or container) step by step, remove every manual
+      step that can be automated (prerequisite checks with the exact fix, one command end to end, a quick-look mode that
+      needs no toolchain), and keep the README's "Install & run" section to that one path, tested on each release.
