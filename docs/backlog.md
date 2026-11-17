@@ -164,6 +164,13 @@ is a change to the firmware toolchain, not just the code.
       (its stm32f103.repl has no CAN) and has no F446 platform (the two-node CAN test runs F446 firmware on its F407 as an
       approximation); QEMU's ESP32-C3 models no TWAI. Those sides are proven only by compiling until the bench test
       (docs/bench-can.md) runs on real boards. STM32 bxCAN firmware itself is done (e7fb5e0).
+- [ ] **Encoder count direction, on the real robot.** With both channels wired (the ESP32-S3, f620338, 17 Nov) the
+      firmware learns each wheel's count sign from the first drive that moves it 16 counts (templates/fw-rover/src/
+      rover_quad.h quad_forward): an encoder's phase against its motor's terminals, and how the board wires the motor,
+      aren't known before the bench. Check on the real robot: drive forward 1 m, both counts must rise by about
+      1000 mm / ROVER_MM_PER_COUNT; then back, both must fall. A wheel that counts the wrong way, or a first drive that
+      starts backwards with the sign still unlearned, shows here. Host tests cover the decode and the learning only;
+      the drive simulation doesn't run the S3's firmware (Xtensa QEMU not installed).
 - [ ] **Skid-steer turn slip, on the bench.** A skid-steer rover's encoder-closed turn counts on the effective track
       B·(1+(L/B)²), derived from Coulomb slip (1.5 B for the rover-4wd). The simulation slips more (2.2 B: planned 135°,
       turned 92°, still clear of walls by 145 mm); real tyres measure 1.2–2 B in the literature. Measure the ratio on a
@@ -395,7 +402,9 @@ them as well, although it might not be the focus here".
         mast, before the mast is modelled. The design choice (bigger base vs light mast) is open.
   - [x] **Eurobot starter: encoder motors and odometry** (16 Nov, done: Pololu 5139, channel A on GPIO0/1, rover_enc.*
         built in only with ROVER_TURN_COUNTS, back-off of 100 mm before turning). Open: the encoder's direction and the
-        hold gain (0.001 duty/count, an estimate) on the bench; channel B unwired (no free GPIO on the ESP32-C3).
+        hold gain (0.001 duty/count, an estimate) on the bench. Channel B: since 17 Nov (f620338) a robot asking for
+        encoders moves up to the ESP32-S3 when the C3 can't carry both channels on pins free at reset, and the S3
+        counts quadrature in its PCNT; the C3 alone keeps channel A (no free GPIO).
     Was: The scripted Eurobot base builds as a robot (was the
         beacon design) with 1 open problem: the simulated drive clips a side wall. Its timed turn ends at 144° (target
         135°) and its heading then drifts 0.29 rad over 7 s at equal duties until it meets the wall; without the e-stop's

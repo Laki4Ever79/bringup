@@ -1,5 +1,7 @@
+import { BUILDS } from "../contract/builds.js"
 // Lane state for the dashboard: one row per participant, updated from trace events.
-// Plain ES module with no dependencies: the page imports it from /lanes.js and the tests import it in Node.
+// Plain ES module whose one dependency is the builders' table (../contract/builds.js): the page imports it from
+// /lanes.js and the tests import it in Node.
 
 export const LANES = [
 	{ key: "architect", label: "Architect" },
@@ -45,18 +47,19 @@ export function agreeLine(events) {
 	return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)} agree`
 }
 
-// Same as BUILD_INPUTS and BUILD_REQUIRES in src/agents/builders.ts.
-// A test holds these equal to the builders' (test/lanes.test.ts).
-export const BUILDS = {
-	board: { inputs: ["parts", "pins", "outline", "connectors", "test", "links"], requires: ["outline", "parts", "pins"] },
-	// parts: the lid's vent sits over the sensor; case: the case designer's walls, height and features.
-	enclosure: { inputs: ["outline", "connectors", "parts", "case"], requires: ["outline", "connectors"] },
-	firmware: { inputs: ["parts", "pins", "behavior", "requirements", "model", "connectivity", "links"], requires: ["parts", "pins"] },
-	// Only when the contract has a test field (OPTIONAL_KINDS in builders.ts).
-	testkit: { inputs: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"], requires: ["test", "outline", "pins"], optional: "test" },
-	// A robot's chassis, only with a mechanics field (OPTIONAL_KINDS in builders.ts).
-	chassis: { inputs: ["mechanics", "motion", "outline", "assembly", "connectors", "parts"], requires: ["mechanics", "motion", "outline"], optional: "mechanics" },
-	drive: { inputs: ["mechanics", "motion", "pins", "parts", "outline", "assembly"], requires: ["mechanics", "motion", "pins"], optional: "mechanics" },
+// What each build waits for and wakes on: the builders' own table (src/contract/builds.js), not a copy.
+export { BUILDS }
+
+// A waiting build's tile text on one line (20 characters, the tile's width): the fields it waits for as far as they fit,
+// then how many more ("needs parts, pins +1"); the history popover lists them all.
+export function needsText(missing) {
+	const all = `needs ${missing.join(", ")}`
+	if (all.length <= 20) return all
+	for (let n = missing.length - 1; n >= 1; n--) {
+		const t = `needs ${missing.slice(0, n).join(", ")} +${missing.length - n}`
+		if (t.length <= 20) return t
+	}
+	return `needs ${missing.length} fields`
 }
 
 // agent.activity phase → lane status
@@ -119,7 +122,7 @@ export function applyLaneEvent(lanes, e) {
 					lanes.pending[kind] = p.revision
 					changed.push(...set(lanes, `build:${kind}`, "building", `building rev ${p.revision}…`, e.at))
 				}
-				else changed.push(...set(lanes, `build:${kind}`, "idle", `needs ${missing.join(", ")}`, e.at))
+				else changed.push(...set(lanes, `build:${kind}`, "idle", needsText(missing), e.at, false, `waiting for ${missing.join(", ")}`))
 			}
 			if (p.field === "parts" || p.field === "pins") changed.push(...set(lanes, "grounding", "checking", `checking rev ${p.revision}…`, e.at))
 			return changed
