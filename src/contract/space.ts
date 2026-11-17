@@ -73,13 +73,21 @@ export function routingFailures(s: ContractSnapshot): { widthMm: number; heightM
 const insideFailed = (s: ContractSnapshot, w: number, h: number) => routingFailures(s).some((f) => w <= f.widthMm + 1e-9 && h <= f.heightMm + 1e-9)
 
 // The design with the outline set to w x h, connectors kept at the same relative place along their edges.
-function resized(s: ContractSnapshot, w: number, h: number): ContractSnapshot {
+// The connectors on a board resized to w × h: each at the same relative place along its edge, on the 0.5 mm grid. The
+// space model judges every size this way, and an outline change moves the contract's connectors the same way in the
+// same revision (agents/contract-tools.ts), so a size it calls placeable is the one the build gets (run 19b: "e.g.
+// 48×29 mm" at rev 33, then "48×29 has no spot for U7" at rev 35, with the connectors left where the 42×28 board had them).
+export function scaledConnectors(s: ContractSnapshot, w: number, h: number): ContractSnapshot["values"]["connectors"] {
 	const o = s.values.outline!
-	const connectors = (s.values.connectors ?? []).map((c) => {
+	return (s.values.connectors ?? []).map((c) => {
 		const along = c.edge === "left" || c.edge === "right" ? [o.heightMm, h] : [o.widthMm, w]
 		return { ...c, offsetMm: Math.round(((c.offsetMm * along[1]) / along[0]) * 2) / 2 }
 	})
-	return { ...s, values: { ...s.values, outline: { ...o, widthMm: w, heightMm: h }, connectors } }
+}
+
+function resized(s: ContractSnapshot, w: number, h: number): ContractSnapshot {
+	const o = s.values.outline!
+	return { ...s, values: { ...s.values, outline: { ...o, widthMm: w, heightMm: h }, connectors: scaledConnectors(s, w, h) } }
 }
 
 const cache = new Map<string, MinimumBoard | null>()

@@ -188,3 +188,15 @@ test("a value the contract would refuse is not held: the requester gets the reas
 	assert.match(seen[0], /partRef must be the part the GPIO connects to/)
 	assert.equal(t.state.contract.version("pins"), 0)
 })
+
+// A field a change carries along is written in that change's revision (17 Nov 2026: an outline's connectors).
+test("amend writes a companion field in the current revision, with the same owner and validation rules", async () => {
+	const { DesignContract } = await import("../src/contract/contract.ts")
+	const c = new DesignContract()
+	assert.equal(c.amend({ field: "connectors", value: [], by: "architect" }).status, "invalid")
+	c.propose({ field: "outline", value: { widthMm: 40, heightMm: 25, thicknessMm: 1.6 }, by: "architect", baseVersion: 0 })
+	const r = c.amend({ field: "connectors", value: [{ ref: "J1", kind: "usb-c", edge: "left", offsetMm: 12.5, widthMm: 9, heightMm: 3.2 }], by: "architect" })
+	assert.deepEqual([r.status, (r as { revision: number }).revision, c.revision, c.version("connectors")], ["applied", 1, 1, 1])
+	assert.equal(c.snapshotAt(1)!.values.connectors!.length, 1)
+	assert.equal(c.amend({ field: "connectors", value: [], by: "firmware" }).status, "not-owner")
+})

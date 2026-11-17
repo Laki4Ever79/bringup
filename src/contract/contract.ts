@@ -134,6 +134,24 @@ export class DesignContract {
 		this.history.push(structuredClone({ revision: this.rev, values: this.values, versions: this.versions }))
 		return { status: "applied", version: this.versions[p.field], revision: this.rev }
 	}
+
+	// A field a change just applied carries along, written in that same revision (an outline's connectors, 17 Nov 2026:
+	// in runs 19 and 19b each outline change cost a second revision for its connectors, 16 of the 40 on board size alone).
+	// The same owner, validation and freeze rules as propose; no new revision, so nobody sees the half-done state.
+	amend<F extends FieldName>(p: Omit<Proposal<F>, "baseVersion">): ProposalResult {
+		const owner = OWNERS[p.field]
+		if (p.by !== owner && p.approvedBy !== owner) return { status: "not-owner", owner }
+		if (this.frozen) return { status: "invalid", reason: this.frozen }
+		if (this.rev === 0) return { status: "invalid", reason: "nothing to amend: no revision yet" }
+		const invalid = this.validate({ ...p, baseVersion: this.versions[p.field] } as Proposal<F>)
+		if (invalid) return { status: "invalid", reason: invalid }
+		const value = this.canonical(p.field, p.value)
+		if (isDeepStrictEqual(this.values[p.field], value)) return { status: "unchanged", version: this.versions[p.field] }
+		this.values[p.field] = structuredClone(value)
+		this.versions[p.field]++
+		this.history[this.history.length - 1] = structuredClone({ revision: this.rev, values: this.values, versions: this.versions })
+		return { status: "applied", version: this.versions[p.field], revision: this.rev }
+	}
 }
 
 const isNum = (v: unknown) => typeof v === "number" && Number.isFinite(v)

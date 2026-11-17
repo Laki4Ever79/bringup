@@ -10,6 +10,7 @@ import { laidOut } from "../mechanics/solve.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { fileURLToPath } from "node:url"
 import { connectorsOntoEdges } from "../contract/consistency.ts"
+import { scaledConnectors } from "../contract/space.ts"
 import { connectorsForParts, ESTOP_PLUG_REF, isEncoderPlug, isMotorPlug, MOTOR_PLUG_REFS, robotRefs, SENSOR_PLUG_REF, START_PLUG_REF } from "../mechanics/refs.ts"
 
 // Tools every agent gets for reading and changing the shared design contract.
@@ -171,15 +172,26 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						emit(makeEvent("contract.changed", self.id, { field, version: r.version, revision: r.revision, by: owner, reason: why, before: beforeF, after: value, cause: { kind: "field-changed", fields: [args.field] } }), self.id)
 						return true
 					}
-					// A new outline: a connector it leaves past the end of its edge (or on another) moves along its edge to fit.
-					if (args.field === "outline") {
-						const beforeC = s.contract.get("connectors") ?? []
-						const fitted = connectorsOntoEdges(s.contract.snapshot())
-						if (fitted) {
-							const moved = fitted.filter((k) => !beforeC.some((b) => b.ref === k.ref && b.offsetMm === k.offsetMm)).map((k) => `${k.ref} to ${k.edge}@${k.offsetMm} mm`)
-							const o = args.value as ContractValues["outline"]
-							if (follow("connectors", fitted, `the new ${o.widthMm}x${o.heightMm} mm outline left them past the end of their edge: moved ${moved.join(", ")}`))
-								laidOutNote = `connectors follow the outline: moved ${moved.join(", ")}`
+					// A new outline carries its connectors in the same revision: each at the same relative place along its edge, as
+					// the space model judged the size (space.ts scaledConnectors), then fitted onto its edge and clear of the others.
+					// Runs 19 and 19b spent a second revision per outline change on them, and kept them where the old board had
+					// them, so a size the space check called placeable didn't place.
+					const oldOutline = before as ContractValues["outline"] | null
+					if (args.field === "outline" && oldOutline && (s.contract.get("connectors") ?? []).length) {
+						const snap = s.contract.snapshot()
+						const beforeC = snap.values.connectors ?? []
+						const o = args.value as ContractValues["outline"]
+						const scaled = scaledConnectors({ ...snap, values: { ...snap.values, outline: oldOutline } }, o.widthMm, o.heightMm)
+						const next = connectorsOntoEdges({ ...snap, values: { ...snap.values, connectors: scaled } }) ?? scaled ?? []
+						const moved = next.filter((k) => !beforeC.some((b) => b.ref === k.ref && b.edge === k.edge && b.offsetMm === k.offsetMm)).map((k) => `${k.ref} to ${k.edge}@${k.offsetMm} mm`)
+						if (moved.length) {
+							const why = `the new ${o.widthMm}x${o.heightMm} mm outline: each connector at the same place along its edge (the space check judged the size so): ${moved.join(", ")}`
+							const owner = OWNERS.connectors
+							const r = s.contract.amend({ field: "connectors", value: next, by: owner, approvedBy: owner })
+							if (r.status === "applied") {
+								emit(makeEvent("contract.changed", self.id, { field: "connectors", version: r.version, revision: r.revision, by: owner, reason: why, before: beforeC, after: next, cause: { kind: "field-changed", fields: ["outline"] } }), self.id)
+								laidOutNote = `connectors follow the outline in the same revision: ${moved.join(", ")}`
+							}
 						}
 					}
 					// The other field of an MCU move-up made on this write (below, before propose).
