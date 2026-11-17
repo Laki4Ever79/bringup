@@ -39,10 +39,12 @@ export async function assemblyPictures(runDir: string, outDir: string, log: (m: 
 		await page.addInitScript("window.__name = (f) => f")
 		const shot = async (query: string, file: string) => {
 			await page.goto(`${hub.url}/system?id=${encodeURIComponent(basename(runDir))}&${query}`)
-			await page.waitForFunction(() => ((window as unknown as { __worldStats?: () => { triangles: number } }).__worldStats?.().triangles ?? 0) > 0, null, { timeout: 60_000 })
+			await page.waitForFunction(() => ((window as unknown as { __worldStats?: () => { triangles: number } | undefined }).__worldStats?.()?.triangles ?? 0) > 0, null, { timeout: 60_000 })
+			// Only the scene: the page's switches, badges and hints hidden (a picture for the builder, not of the dashboard).
+			await page.addStyleTag({ content: "body * { visibility: hidden !important } #stage canvas { visibility: visible !important }" })
 			// One frame after the scene is up, so the canvas holds it.
 			await page.waitForTimeout(500)
-			await page.locator("#stage").screenshot({ path: join(outDir, "assembly", file) })
+			await page.locator("#stage canvas").first().screenshot({ path: join(outDir, "assembly", file) })
 			files.push(`assembly/${file}`)
 		}
 		for (const [k, name] of ASSEMBLY_STEPS.entries()) await shot(`step=${k}`, `step-${k + 1}-${name}.png`)
