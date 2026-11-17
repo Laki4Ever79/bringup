@@ -117,3 +117,21 @@ test("a board built without the port (it didn't route) has no debug section in i
 	assert.equal(benchManifest(s, { debugPortDropped: "the board didn't route with it" })!.debug, null)
 	assert.doesNotMatch(circuitFromContract(s, { debugPort: false }), /JD1/)
 })
+
+// The 60×21 rover (17 Nov 2026): 2 DRC errors whichever router routed it: JD1's unplated hole inside U5's courtyard,
+// 0.14 mm from its pad 9. The placement table keeps the DRV8833's TSSOP-16 at 7.9 mm across, but its pads reach
+// 9.3 mm: the holes now clear each part's own copper and courtyard extent (dualRowExtent), not its placement box.
+test("the debug footprint's unplated holes clear a dual-row IC's pads and courtyard, not only its placement box", async () => {
+	const { readFileSync } = await import("node:fs")
+	const { dualRowExtent } = await import("../src/codegen/circuit.ts")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/cc-rover-60x21-rev17.json", import.meta.url), "utf8"))
+	const d = debugPort(s).placed!
+	const u5 = placeParts(s).find((b) => b.ref === "U5")!
+	const [w, h] = dualRowExtent("tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm")!
+	assert.deepEqual([w, h], [9.8, 5.35])
+	const [ew, eh] = Math.abs(u5.rotation) % 180 === 90 ? [h, w] : [w, h]
+	for (const hole of d.holes) {
+		const gap = Math.max(Math.abs(hole.x - u5.x) - ew / 2, Math.abs(hole.y - u5.y) - eh / 2) - TC2030.holeDiameterMm / 2
+		assert.ok(gap >= 0.3 - 1e-9, `hole at ${hole.x},${hole.y}: ${gap.toFixed(2)} mm from U5's pads and courtyard`)
+	}
+})

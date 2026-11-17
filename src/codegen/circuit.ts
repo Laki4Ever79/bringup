@@ -728,6 +728,20 @@ function packageSize(footprint: string): [number, number] | null {
 	return e ? [e.w + 0.5, e.h + 0.5] : null
 }
 
+// A dual-row IC's extent at rotation 0 from its own land pattern (icPinOffset's pad rows, padGeometry's pads) plus a
+// 0.25 mm courtyard each side (IPC-7351's nominal): the pads across x, the rows along y. The placement table keeps the
+// DRV8833's TSSOP-16 at 7.9 mm across (the rover layouts are tuned to it and build clean), but its pads reach 9.3 mm: an
+// unplated hole judged by the table box landed in its courtyard, 0.14 mm from pad 9 (the 60×21 rover: 2 DRC errors
+// whichever router routed it, 17 Nov 2026). What a hole must clear is this extent.
+export function dualRowExtent(footprint: string): [number, number] | null {
+	const m = /^(?:tssop|soic)(\d+)(?:_w([\d.]+)mm)?(?:_p([\d.]+)mm)?/.exec(footprint)
+	if (!m) return null
+	const n = Number(m[1]), w = Number(m[2] ?? 6.4), p = Number(m[3] ?? 0.65)
+	const pad = padGeometry(footprint)
+	const x = w / 2 + pad.out + pad.l / 2, y = ((n / 2 - 1) / 2) * p + pad.w / 2
+	return [+(2 * x + 0.5).toFixed(2), +(2 * y + 0.5).toFixed(2)]
+}
+
 function sizeAt(footprint: string, rotation: number): [number, number] {
 	const [w, h] = FOOTPRINT_SIZE[footprint] ?? packageSize(footprint) ?? DEFAULT_SIZE
 	return Math.abs(rotation) % 180 === 90 ? [h, w] : [w, h]
@@ -1275,6 +1289,13 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		const usbBoxes = placed.filter((b) => connectorRefs.has(b.ref) || parts.find((p) => p.ref === b.ref)?.role === "usb-c")
 		const supports = mountingHoles(s).length ? [] : [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => ({ x: sx * (W / 2 - 3), y: sy * (H / 2 - 3), w: 5, h: 5 }))
 		const gap = (a: { x: number; y: number; w: number; h: number }, o: { x: number; y: number; w: number; h: number }) => Math.max(Math.abs(a.x - o.x) - (a.w + o.w) / 2, Math.abs(a.y - o.y) - (a.h + o.h) / 2)
+		// Each part as far as its copper and courtyard reach (a dual-row IC's pads past its placement box): the holes clear that.
+		const copperBoxes = placed.map((o) => {
+			const d = dualRowExtent(parts.find((p) => p.ref === o.ref)?.footprint ?? "")
+			if (!d) return o
+			const [dw, dh] = Math.abs(o.rotation) % 180 === 90 ? [d[1], d[0]] : d
+			return { ...o, w: Math.max(o.w, dw), h: Math.max(o.h, dh) }
+		})
 		let bestD = Infinity
 		for (const rotation of [0, 90] as const) {
 			const [w, h] = rotation === 0 ? [TC2030_ENVELOPE.w, TC2030_ENVELOPE.h] : [TC2030_ENVELOPE.h, TC2030_ENVELOPE.w]
@@ -1288,7 +1309,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 					// button) keeps clear of the whole footprint. Every top part keeps clear of the three holes.
 					if (placed.some((o) => underside(o.ref) && gap(b, o) < TC2030.clearMm)) continue
 					const holes = TC2030.holes.map(([hx, hy]) => ({ ...debugAt(hx, hy, b.x, b.y, rotation), w: TC2030.holeDiameterMm, h: TC2030.holeDiameterMm }))
-					if (holes.some((hb) => placed.some((o) => gap(hb, o) < DEBUG_HOLE_CLEAR_MM) || keepouts.some((o) => overlaps(hb, o)))) continue
+					if (holes.some((hb) => copperBoxes.some((o) => gap(hb, o) < DEBUG_HOLE_CLEAR_MM) || keepouts.some((o) => overlaps(hb, o)))) continue
 					if (keepouts.some((o) => overlaps(b, o)) || usbBoxes.some((o) => gap(b, o) < TEST_PAD.usbClearMm) || supports.some((o) => overlaps(b, o))) continue
 					;[debug, bestD] = [b, d]
 				}
