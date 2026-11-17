@@ -1,4 +1,5 @@
 import { standardsSection } from "./contract/standards.ts"
+import { BUILD_INPUTS } from "./agents/builders.ts"
 import { robotRuntime } from "./agents/design-facts.ts"
 import { rosSection } from "./ros/report.ts"
 import type { RobotParts } from "./tools/robot-parts.ts"
@@ -231,6 +232,11 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`# Bringup report`,
 		``,
 		`Status: ${status} at contract revision ${snapshot.revision}`,
+		// A board older than the contract's last board-input change: the run ended before its rebuild finished, so the
+		// board findings below are about an old board (run cc-eurobot-17: built at rev 11, judged at rev 41).
+		...(s.artifacts.board && s.artifacts.board.revision < snapshot.revision && BUILD_INPUTS.board.some((f) => (s.artifactInputs.board?.[f] ?? 0) !== snapshot.versions[f])
+			? [`Board: built at revision ${s.artifacts.board.revision}; the contract changed it after that and the run ended before the rebuild finished, so the board findings below are about that older board`]
+			: []),
 		...(opts.mock ? [`Models: mock (scripted agents: no model judged this design)`] : []),
 		`Violations: ${violations.length}`,
 		...violations.map((x) => `- ${x.kind}: ${x.message}`),
