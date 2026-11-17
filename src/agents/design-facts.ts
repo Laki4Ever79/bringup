@@ -199,7 +199,9 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 		`- Firmware (product build of templates/fw-rover, the same control logic the simulated drive runs): never sleeps while powered. Every ${def("ROVER_PERIOD_MS")} ms tick it reads the VL53L0X distance (up to ${def("ROVER_RANGE_MM")} mm), drives both motors through the DRV8833 at cruise duty ${def("ROVER_CRUISE_DUTY")?.replace("f", "")}, slows inside ${def("ROVER_SLOW_MM")} mm and, inside ${def("ROVER_STOP_MM")} mm of a wall, turns in place for ${def("ROVER_TURN_MS")} ms, then drives on.`,
 		"- Firmware payload: every 5 s it reads the temperature/humidity sensor, prints it and broadcasts it over BLE as BTHome v2 service data (and sends it over the board's links, if any).",
 		led
-			? `- Firmware status LED: STATUS_LED on GPIO${led.gpio} blinks a 1 Hz heartbeat while the control loop runs.`
+			? start
+				? `- Firmware status LED: STATUS_LED on GPIO${led.gpio} shows the match: two short flashes every 2 s while it waits for the start cord, steady on when ready (cord in, armed), a fast 4 Hz blink while running, a slow 0.5 Hz blink once the match is over (templates/fw-rover/src/status_led.h).`
+				: `- Firmware status LED: STATUS_LED on GPIO${led.gpio} blinks a 1 Hz heartbeat while the control loop runs.`
 			: "- Firmware status LED: the rover firmware drives a pin named exactly STATUS_LED as a 1 Hz heartbeat; this design has none, so no LED shows the rover running.",
 		...startFact,
 		...holdFact,

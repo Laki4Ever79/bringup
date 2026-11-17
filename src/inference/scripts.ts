@@ -228,7 +228,8 @@ export const EUROBOT_BOARD = {
 	...ROVER_BOARD,
 	requirements: { ...ROVER_BOARD.requirements, summary: "Eurobot base robot: two-wheeled, finds its way on the table, stops for the opponent, with an emergency stop and a pull-cord start" },
 	// Each encoder's channel A on a free pin (GPIO0, GPIO1: the ESP32-C3's last two besides the LED's GPIO3).
-	pins: [...ROVER_PINS, { signal: "START", gpio: 10, partRef: "JS1", partPin: "START" }, { signal: "ENC_LA", gpio: 0, partRef: "JM1", partPin: "ENCA" }, { signal: "ENC_RA", gpio: 1, partRef: "JM2", partPin: "ENCA" }],
+	// STATUS_LED on GPIO3 (the module's last free pin besides the GPIO2 strap): ready / running / stopped (status_led.h).
+	pins: [...ROVER_PINS, { signal: "START", gpio: 10, partRef: "JS1", partPin: "START" }, { signal: "STATUS_LED", gpio: 3, partRef: "D1", partPin: "A" }, { signal: "ENC_LA", gpio: 0, partRef: "JM1", partPin: "ENCA" }, { signal: "ENC_RA", gpio: 1, partRef: "JM2", partPin: "ENCA" }],
 	// The brief's "encoders on both drive wheels": the same 100:1 motors with a 12 CPR encoder, each on a 6-pin JST SH plug.
 	connectors: ROVER_BOARD.connectors.map((c) => (c.ref === "JM1" || c.ref === "JM2" ? { ...c, widthMm: 8, heightMm: 4.3 } : c)),
 	parts: [
