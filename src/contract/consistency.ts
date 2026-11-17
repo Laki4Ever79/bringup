@@ -901,9 +901,17 @@ export function powerTreeChecks(c: ContractSnapshot): Violation[] {
 	const ideal = parts.some((p) => p.role === "ideal-diode")
 	const schottkys = parts.filter((p) => p.role === "diode").length
 	if (!tree || (over && !buck)) {
+		// Free refs (the Eurobot base's U7 is its PCA9685), named in one parseable form: (role R, catalog M, refs A, B).
+		const taken = new Set(parts.map((p) => p.ref))
+		const free = (prefix: string, n: number) => {
+			const out: string[] = []
+			for (let i = prefix === "U" ? 7 : 10; out.length < n; i++) if (!taken.has(`${prefix}${i}`)) { out.push(`${prefix}${i}`); taken.add(`${prefix}${i}`) }
+			return out
+		}
+		const want = (what: string, role: string, mpn: string | undefined, refs: string[], why: string) => `${what} (role ${role}, catalog ${mpn}, refs ${refs.join(", ")}): ${why}`
 		const need = over
-			? [...(!buck ? [`a 5 V step-down (role buck, catalog ${byRole("buck")}, ref U7) for the ${fullV} V pack, over the ${ldo.mpn}'s ${ldoE?.maxInV} V`] : []), ...(schottkys < 2 ? [`${2 - schottkys} Schottky diode${schottkys === 0 ? "s" : ""} (role diode, catalog ${byRole("diode")}, D10 for the step-down's 5 V and D11 for VBUS)`] : [])]
-			: [...(!ideal ? [`an ideal diode for the cell (role ideal-diode, catalog ${byRole("ideal-diode")}, ref U8: a Schottky's 0.3–0.6 V would leave the LDO short of input on a 1S cell)`] : []), ...(schottkys < 1 ? [`a Schottky diode for VBUS (role diode, catalog ${byRole("diode")}, ref D10)`] : [])]
+			? [...(!buck ? [want("a 5 V step-down", "buck", byRole("buck"), free("U", 1), `for the ${fullV} V pack, over the ${ldo.mpn}'s ${ldoE?.maxInV} V`)] : []), ...(schottkys < 2 ? [want(`${2 - schottkys} Schottky diode${schottkys === 0 ? "s" : ""}`, "diode", byRole("diode"), free("D", 2 - schottkys), "the first for the step-down's 5 V, the second for VBUS")] : [])]
+			: [...(!ideal ? [want("an ideal diode for the cell", "ideal-diode", byRole("ideal-diode"), free("U", 1), "a Schottky's 0.3–0.6 V would leave the LDO short of input on a 1S cell")] : []), ...(schottkys < 1 ? [want("a Schottky diode for VBUS", "diode", byRole("diode"), free("D", 1), "VBUS into the same rail")] : [])]
 		return [{ kind: "rail-battery-source", message: `the pack has no charger on this board, and nothing feeds the 3V3 rail from it: on battery alone ${ldo.ref} (${ldo.mpn}) has no input, so the MCU and everything on 3V3 are off. Add ${need.join(" and ")}: the board generator ORs the ${over ? "step-down's 5 V" : "cell"} and VBUS through them into ${ldo.ref}.VIN (net ${VIN_OR_NET})`, fields: ["parts"], affects: ["parts"] }]
 	}
 	// Headroom on battery: the path's input (the step-down's output, or the pack at its nominal voltage) less its drop at

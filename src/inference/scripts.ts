@@ -9,6 +9,7 @@ import { boardWidthFor, caseChecks, caseOf, LID, minCaseHeight } from "../contra
 import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT, sizeReasonHolds } from "../contract/space.ts"
 import { state } from "../runtime.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
+import type { Part } from "../contract/types.ts"
 import { parseSwap } from "../tools/sourcing.ts"
 import { parseMoves, type PartMove, type Release } from "../dashboard/board-move.ts"
 import { resolve } from "node:path"
@@ -848,6 +849,16 @@ export function mockScripts(): Record<string, Script> {
 				const linkRef = /needs its connector: a part (\w+), role connector/.exec(instruction)?.[1]
 				if (stepsTaken(items) === 0 && linkRef && !parts.some((p) => p.ref === linkRef))
 					return propose("parts", [...parts, { ref: linkRef, role: "connector", ...LINK_CONNECTOR }], `${linkRef}: the link's JST SH 4-pin connector (catalog)`)
+				// The power tree's parts, as rail-battery-source names them: (role R, catalog M, refs A, B), each from the catalog.
+				if (stepsTaken(items) === 0 && violationKinds(instruction).has("rail-battery-source")) {
+					const cat = loadCatalog(process.cwd()) as unknown as (Part & { lcsc: string | null })[]
+					const add: Part[] = []
+					for (const m of instruction.matchAll(/\(role ([\w-]+), catalog ([^,]+), refs ([A-Z]+\d+(?:, [A-Z]+\d+)*)\)/g)) {
+						const entry = cat.find((c) => c.role === m[1] && c.mpn === m[2].trim())
+						if (entry) for (const ref of m[3].split(", ")) if (!parts.some((p) => p.ref === ref)) add.push({ ...entry, ref } as Part)
+					}
+					if (add.length) return propose("parts", [...parts, ...add], `${add.map((p) => p.ref).join(", ")}: the robot's power tree (the cell and VBUS into the 3V3 rail), as the check names them (catalog)`)
+				}
 				// A CAN link's transceiver (one per board, whatever its links: a middle board's two bus segments share it).
 				if (stepsTaken(items) === 0 && /needs its transceiver: a part role can-transceiver/.test(instruction) && !parts.some((p) => p.role === "can-transceiver")) {
 					const taken = new Set(parts.map((p) => p.ref))
