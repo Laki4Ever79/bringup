@@ -190,6 +190,9 @@ is a change to the firmware toolchain, not just the code.
       open protocol (Cyphal or CANopen once CAN exists; COBS-framed CBOR or similar on UART).
       Done 16 Nov (bringup-board): UART/I2C frames are COBS + CRC-16/CCITT (linkframe.h); the payload stays a packed
       struct (open alternative CBOR, RFC 8949); CAN frames keep the hash as identifier (Cyphal/CANopen left).
+      Done 17 Nov (bringup-board): UART/I2C payloads are CBOR (linkcbor.h); CAN messages are Cyphal/CAN v1.0 single-frame
+      transfers (linkcyphal.h: subject-ID from the definition hash, node-ID per bus, DSDL files beside the firmware).
+      CANopen not done: it needs an object dictionary and NMT, and Cyphal already makes the bus open.
       Step 1 done 15 Nov (bringup-board, branch open-standards): src/contract/standards.ts lists every interface a
       design has with its standard and whether it is open, one vendor's or ours; the report's "Interfaces and
       standards" section shows the table and each non-open one's open alternative (the link frame → COBS + CBOR or
