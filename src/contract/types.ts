@@ -248,7 +248,8 @@ export interface BoardLink {
 	i2c?: { role: "controller" | "target"; address?: number; peerAddress?: number; pullups: boolean; khz: number }
 	// can (IO1 CANH, IO2 CANL): the bit rate, and whether this board fits the bus's 120 Ω termination (it is a bus end)
 	// bus: the CAN bus this link is a segment of (a bus of more than two boards); its nets and signals are named after it.
-	can?: { kbps: number; terminate: boolean; bus?: string }
+	// node: this board's Cyphal/CAN node-ID on the bus (1..125, derive.ts), the source of every frame it sends.
+	can?: { kbps: number; terminate: boolean; bus?: string; node?: number }
 	// VCC (pin 2): "none" unconnected; "out" this board's 3V3 powers the peer; "in" this board runs from the peer's 3V3
 	supply: "none" | "out" | "in"
 	// What crosses the link, the same definition on both boards (the system checks the hash)

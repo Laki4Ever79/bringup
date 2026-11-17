@@ -38,7 +38,7 @@ export function interfacesOf(s: ContractSnapshot): InterfaceRow[] {
 	if (links.some((l) => (l.kind === "uart" || l.kind === "i2c") && l.messages?.length))
 		out.push({ interface: "messages over UART/I²C links (templates/fw/include/linkframe.h, linkcbor.h)", standard: "COBS framing (Cheshire and Baker, IEEE/ACM ToN 1999) and CRC-16/CCITT around a CBOR payload (RFC 8949: a map of the message's field names to their values), all open; the frame also carries the message definition's hash", openness: "open" })
 	if (links.some((l) => l.kind === "can" && l.messages?.length))
-		out.push({ interface: "messages over a CAN link", standard: "Bringup's own: the definition hash as the 29-bit identifier, the packed struct as data", openness: "ours", alternative: "Cyphal/CAN (OpenCyphal, MIT-licensed specification and libraries) or CANopen (CiA 301): open, with existing bus tools" })
+		out.push({ interface: "messages over a CAN link (templates/fw/include/linkcyphal.h)", standard: "Cyphal/CAN v1.0 (OpenCyphal, open specification, MIT-licensed tools): single-frame message transfers, a subject-ID and node-ID in the 29-bit identifier, DSDL-serialized fields and the tail byte; a .dsdl file per message lets yakut or pycyphal read the bus", openness: "open" })
 	if (v.requirements?.debugPort !== false && v.outline && debugPinout(s))
 		out.push({ interface: "debug footprint (Tag-Connect TC2030-NL, underside)", standard: "Tag-Connect's cable and footprint (the footprint is free to use; the cable is theirs); ARM's SWD pinout or Espressif's UART-download pins on it", openness: "vendor", alternative: "ARM's 10-pin 0.05\" Cortex Debug connector (an open pinout every SWD probe takes), at about 6 × 6 mm of top-side room; or bare test pads" })
 	const c = v.connectivity

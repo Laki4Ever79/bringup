@@ -6,6 +6,7 @@ import type { Connector, LinkMessage } from "../contract/types.ts"
 import { assemblyErrors, type SystemAssembly } from "./assembly.ts"
 import { boughtErrors } from "./bought.ts"
 import { LINK_KINDS, PERIPHERALS_FREE, type LinkKind, type Peripheral } from "../contract/link-kinds.ts"
+import { cyphalSubject } from "../contract/links.ts"
 
 export interface SystemBoard {
 	name: string
@@ -59,8 +60,9 @@ const messageHashOf = (m: { name: string; fields: unknown }) => createHash("sha2
 // is ISO 11898's (TI SN65HVD230 datasheet SLOS346O §11.2.1.3, p28); the rest are CiA 301's recommendations, which assume
 // a 5 ns/m cable and the transceivers' loop delay: estimates for a given cable.
 export const CAN_BUS_MAX_M: Record<number, number> = { 1000: 40, 800: 50, 500: 100, 250: 250, 125: 500, 50: 1000, 20: 2500, 10: 5000 }
-// A classic CAN frame carries 8 data bytes (ISO 11898-1): one message per frame.
-export const CAN_FRAME_BYTES = 8
+// A classic CAN frame carries 8 data bytes (ISO 11898-1); a Cyphal/CAN single-frame transfer keeps the last for its tail
+// byte (linkcyphal.h), so a message's fields take 7 at most: one message per frame.
+export const CAN_FRAME_BYTES = 7
 
 // Every reason the spec can't be used, in words; [] when it can.
 export function specErrors(s: SystemSpec): string[] {
@@ -126,7 +128,7 @@ export function specErrors(s: SystemSpec): string[] {
 		for (const m of l.messages ?? []) {
 			if (![l.a.board, l.b.board].includes(m.from)) out.push(`link ${l.id}: message ${m.name} comes from ${m.from}, which is not on the link`)
 			const bytes = m.fields.reduce((n, f) => n + ({ u8: 1, u16: 2, i16: 2, u32: 4, f32: 4 } as const)[f.type], 0)
-			if (l.kind === "can" && bytes > CAN_FRAME_BYTES) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a CAN frame carries ${CAN_FRAME_BYTES}: split it into messages of ${CAN_FRAME_BYTES} bytes or less`)
+			if (l.kind === "can" && bytes > CAN_FRAME_BYTES) out.push(`link ${l.id}: message ${m.name} is ${bytes} bytes; a Cyphal/CAN frame carries ${CAN_FRAME_BYTES} (8 less its tail byte): split it into messages of ${CAN_FRAME_BYTES} bytes or less`)
 			// On UART and I2C the payload is CBOR (linkcbor.h): a map of each field's name to its value, at its largest.
 			else if (l.kind !== "can" && cborBytes(m.fields) > 48) out.push(`link ${l.id}: message ${m.name} is ${cborBytes(m.fields)} bytes as CBOR (its field names travel with it); a frame carries 48 at most: shorter field names, or split it`)
 		}
@@ -193,6 +195,19 @@ export const CAN_STUB_MAX_M = 0.3
 // Every reason a bus of several segments isn't one bus, in words.
 export function canBusErrors(spec: SystemSpec): string[] {
 	const out: string[] = []
+	// One subject-ID per message definition on a bus (a lone link is a bus of two): every node hears every frame, and a
+	// Cyphal frame names its message by its subject-ID alone (linkcyphal.h).
+	for (const { bus, links } of canBuses(spec)) {
+		const seen = new Map<number, string>()
+		for (const l of links)
+			for (const m of l.messages ?? []) {
+				const subject = cyphalSubject(messageHashOf(m))
+				const key = `${m.name}:${JSON.stringify(m.fields)}`
+				const prior = seen.get(subject)
+				if (prior !== undefined && prior !== key) out.push(`CAN bus ${bus}: messages ${prior.split(":")[0]} and ${m.name} share the Cyphal subject-ID ${subject}: rename one`)
+				seen.set(subject, key)
+			}
+	}
 	for (const { bus, links } of canBuses(spec)) {
 		if (links.length < 2) continue
 		const ids = links.map((l) => l.id).join(", ")
@@ -208,15 +223,6 @@ export function canBusErrors(spec: SystemSpec): string[] {
 		const senders = new Map<string, Set<string>>()
 		for (const l of links) for (const m of l.messages ?? []) senders.set(m.name, new Set([...(senders.get(m.name) ?? []), m.from]))
 		for (const [name, from] of senders) if (from.size > 1) out.push(`CAN bus ${bus}: ${[...from].join(" and ")} all send ${name}: on one bus each frame identifier has one sender; name each node's message apart (${[...from].map((b) => `${name}_${b.replace(/\W+/g, "_")}`).join(", ")})`)
-		// One identifier per message definition across the whole bus: every node hears every frame.
-		const seen = new Map<string, string>()
-		for (const l of links) for (const m of l.messages ?? []) {
-			const id = (parseInt(messageHashOf(m).slice(0, 8), 16) & 0x1fffffff).toString(16)
-			const key = `${m.name}:${JSON.stringify(m.fields)}`
-			const prior = seen.get(id)
-			if (prior !== undefined && prior !== key) out.push(`CAN bus ${bus}: messages ${prior.split(":")[0]} and ${m.name} share the frame identifier 0x${id}: rename one`)
-			seen.set(id, key)
-		}
 	}
 	return out
 }
