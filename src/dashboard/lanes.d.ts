@@ -4,6 +4,8 @@ export const LANES: { key: string; label: string }[]
 export function createLanes(): Record<string, any>
 export function applyLaneEvent(lanes: Record<string, any>, e: { type: string; at?: string; producerId?: string; payload?: any }): string[]
 export const BUILDS: Record<"board" | "enclosure" | "firmware" | "testkit" | "chassis" | "drive", { inputs: string[]; requires: string[]; optional?: string }>
+// A waiting build's tile text on one line: the fields it waits for as far as they fit, then how many more.
+export function needsText(missing: string[]): string
 type TraceLike = { type: string; at?: string; payload?: any }
 export function shownLanes(events: TraceLike[]): string[]
 export function agreeLine(events: TraceLike[]): string

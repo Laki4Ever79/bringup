@@ -135,6 +135,12 @@ test("the ripple module and the vendored fonts are served; nothing else from the
 		const mod = await fetch(`${dash.url}/ripple.js`)
 		assert.equal(mod.status, 200)
 		assert.match(mod.headers.get("content-type") ?? "", /javascript/)
+		// lanes.js imports the builders' table as ../contract/builds.js: from /lanes.js the page asks /contract/builds.js.
+		const builds = await fetch(`${dash.url}/contract/builds.js`)
+		assert.equal(builds.status, 200)
+		assert.match(builds.headers.get("content-type") ?? "", /javascript/)
+		assert.match(await builds.text(), /export const BUILDS/)
+		assert.equal(await rawStatus(dash.url, "/contract/types.ts"), 404, "only the builders' table, not the folder")
 		for (const f of ["BigShouldersDisplay.woff", "InstrumentSans.woff", "JetBrainsMono.woff"]) {
 			const res = await fetch(`${dash.url}/fonts/${f}`)
 			assert.equal(res.status, 200, f)

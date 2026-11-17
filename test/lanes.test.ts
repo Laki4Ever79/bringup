@@ -40,9 +40,12 @@ test("builders show building only once their required fields exist, then done or
 	applyLaneEvent(lanes, changed("outline", 1, 3))
 	applyLaneEvent(lanes, changed("connectors", 1, 4))
 	assert.equal(lanes["build:enclosure"].status, "building")
-	applyLaneEvent(lanes, changed("pins", 1, 6))
-	assert.equal(lanes["build:board"].status, "building")
+	applyLaneEvent(lanes, changed("pins", 1, 5))
+	assert.equal(lanes["build:board"].status, "idle", "no rails yet: the board waits (no supply net without them, real run 16)")
+	assert.equal(lanes["build:board"].history.at(-1).detail, "waiting for rails")
 	assert.equal(lanes["build:firmware"].status, "building")
+	applyLaneEvent(lanes, changed("rails", 1, 6))
+	assert.equal(lanes["build:board"].status, "building")
 	applyLaneEvent(lanes, ev("artifact.ready", { kind: "board", revision: 6 }))
 	assert.equal(lanes["build:board"].status, "done")
 	assert.match(lanes["build:board"].text, /rev 6/)
@@ -249,7 +252,7 @@ test("every lane text a run produces fits one line (failures carry their error i
 	const lanes = createLanes()
 	const texts: string[] = []
 	const apply = (e: object) => { for (const k of applyLaneEvent(lanes, e as any)) texts.push(`${k}: ${(lanes as any)[k].text}`) }
-	for (const [f, v, r] of [["outline", 1, 1], ["connectors", 1, 2], ["parts", 1, 3], ["pins", 1, 4], ["behavior", 1, 5], ["requirements", 1, 6]] as const) apply(changed(f, v, r))
+	for (const [f, v, r] of [["outline", 1, 1], ["connectors", 1, 2], ["parts", 1, 3], ["pins", 1, 4], ["behavior", 1, 5], ["requirements", 1, 6], ["rails", 1, 7]] as const) apply(changed(f, v, r))
 	apply(changed("outline", 2, 12))
 	apply(ev("artifact.ready", { kind: "board", revision: 11, drc: { errors: 0, warnings: 92, unconnected: 0, rules: "jlcpcb" } }))
 	apply(ev("artifact.ready", { kind: "board", revision: 12, drc: { errors: 0, warnings: 92, unconnected: 0, rules: "jlcpcb" } }))
@@ -332,4 +335,12 @@ test("the Drive tile says how the simulated drive went, not just that it was bui
 	assert.equal(lanes["build:drive"].status, "failed")
 	applyLaneEvent(lanes, ev("artifact.ready", { kind: "drive", revision: 5, drive: { result: "not run" } }) as any)
 	assert.equal(lanes["build:drive"].text, "rev 5 · not run")
+})
+
+test("a waiting build's text fits its tile; the history names every field it waits for", async () => {
+	const { needsText } = await import("../src/dashboard/lanes.js")
+	assert.equal(needsText(["parts", "pins"]), "needs parts, pins")
+	assert.equal(needsText(["parts", "pins", "rails"]), "needs parts, pins +1")
+	assert.equal(needsText(["connectors", "outline"]), "needs connectors +1")
+	for (const m of [["outline", "parts", "pins", "rails"], ["mechanics", "motion", "outline"], ["connectivity"]]) assert.ok(needsText(m).length <= 20, needsText(m))
 })

@@ -1061,6 +1061,11 @@ export async function serveHub(opts: HubOptions): Promise<Dashboard> {
 				// The run's status, as the run list shows it: the card's swap is sent only to a run that is up to take it.
 				return view ? json(res, 200, { ...view, status: (await summarize(bv[1], dir)).status }) : json(res, 404, { error: "no contract yet" })
 			}
+			// The builders' table (src/contract/builds.js), which lanes.js imports as ../contract/builds.js.
+			if (path === "/contract/builds.js") {
+				res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" })
+				return res.end(await readFile(new URL("../contract/builds.js", import.meta.url)))
+			}
 			if (MODULES.has(path.slice(1))) {
 				const source = await readFile(new URL(`.${path}`, import.meta.url)).catch(() => null)
 				// pcb-view.js and scene3d.js are optional: the page falls back without them.

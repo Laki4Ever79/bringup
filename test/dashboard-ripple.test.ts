@@ -19,6 +19,8 @@ const initial = [
 	changed(3, "pins", 1, 3, "architect"),
 	changed(4, "outline", 1, 4, "architect"),
 	changed(5, "connectors", 1, 5, "architect"),
+	// rails: a board builds only once the contract has them (src/contract/builds.js, real run 16).
+	changed(5, "rails", 1, 5, "architect"),
 	checked(6, 5, 0),
 	ev(30, "artifact.ready", { kind: "board", revision: 5 }),
 	ev(31, "artifact.ready", { kind: "enclosure", revision: 5 }),

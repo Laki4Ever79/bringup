@@ -1,3 +1,4 @@
+import { BUILDS } from "../contract/builds.js"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { unassignedRoverPins } from "../mechanics/firmware.ts"
 import { prepareFirmware } from "../tools/firmware.ts"
@@ -29,50 +30,13 @@ export interface BuildContext {
 	dir: string
 }
 
-// Fields an artifact can't be built without. Until each has been written (version > 0) a build request is a
-// silent skip: no artifact, no artifact.failed, no recorded inputs, so the consistency participant still
-// sees the artifact as not current and waits (or ends a stuck run, see consistency.ts).
-export const BUILD_REQUIRES: Record<ArtifactKind, FieldName[]> = {
-	// rails: a board without them has no supply net (real run 16: 13 boards built at revisions 10–22, none with its 3V3).
-	board: ["outline", "parts", "pins", "rails"],
-	enclosure: ["outline", "connectors"],
-	firmware: ["parts", "pins"],
-	testkit: ["test", "outline", "pins"],
-	chassis: ["mechanics", "motion", "outline"],
-	drive: ["mechanics", "motion", "pins"],
-}
-
-// Artifacts a design has only when it asks for them: the test kit exists once the contract has a test field. Without
-// that field the kind counts as current (nothing to build), so it never holds a design from settling.
-export const OPTIONAL_KINDS: Partial<Record<ArtifactKind, FieldName>> = { testkit: "test", chassis: "mechanics", drive: "mechanics" }
+// What each artifact is built from: src/contract/builds.js, shared with the dashboard (its reasons are there).
+export const BUILD_REQUIRES = Object.fromEntries(Object.entries(BUILDS).map(([k, b]) => [k, b.requires])) as Record<ArtifactKind, FieldName[]>
+export const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b]) => [k, b.inputs])) as Record<ArtifactKind, FieldName[]>
+// Artifacts a design has only when it asks for them: without the field the kind counts as current (nothing to build),
+// so it never holds a design from settling.
+export const OPTIONAL_KINDS = Object.fromEntries(Object.entries(BUILDS).filter(([, b]) => b.optional).map(([k, b]) => [k, b.optional])) as Partial<Record<ArtifactKind, FieldName>>
 export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive"]
-
-// Every field that shapes each artifact; a change to one rebuilds it. behavior and model are optional (behavior.h has defaults; model.h says MODEL_PRESENT 0).
-export const BUILD_INPUTS: Record<ArtifactKind, FieldName[]> = {
-	// test: the board carries a bottom-side test pad for each net the test field names.
-	// links: a link's VCC and an I2C link's bus traces (docs/system.md).
-	// rails: the supply nets and their track widths (real run 16, 16 Nov 2026: rails arrived at revision 23 and the board
-	// built at 22 without its 3V3 net stayed "current"). The few mechanics and requirements values the generator reads
-	// are its derived key (BOARD_DERIVED), so a chassis change alone doesn't rebuild it.
-	board: ["parts", "pins", "outline", "connectors", "test", "links", "rails"],
-	// parts: the lid's vent sits over the sensor, wherever the board generator places it. case: walls, height, features.
-	enclosure: ["outline", "connectors", "parts", "case"],
-	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
-	// model: model.h sizes the tensor arena and the weights the firmware reserves.
-	// connectivity: the radio code, the reports and the partition table (connectivity.h, platformio.ini).
-	// links: link.h, the links' protocols and the messages that cross them.
-	firmware: ["parts", "pins", "behavior", "requirements", "model", "connectivity", "links"],
-	// The test pads follow the board's placement (outline, connectors, parts); the limits follow the power budget (rails,
-	// requirements); the self-tests follow the pins and parts.
-	testkit: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"],
-	// The chassis follows the mechanics layout, the targets (the payload's mass) and the board's size (its standoffs).
-	// assembly: the other boards' places and built sizes (a re-sent assembly rebuilds it).
-	// connectors, parts: where the board's mounting holes are (a corner a connector covers has none), so its standoffs
-	// (the scripted rover moved its connectors at revision 11 and kept a chassis with the old corners, 15 Nov 2026).
-	chassis: ["mechanics", "motion", "outline", "assembly", "connectors", "parts"],
-	// The simulated drive runs the firmware (pins, parts) on the mechanics (mechanics, motion, the board's size).
-	drive: ["mechanics", "motion", "pins", "parts", "outline", "assembly"],
-}
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
 // its builds awaited one after another instead of concurrently. Runs never pass one.
