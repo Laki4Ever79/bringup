@@ -397,10 +397,12 @@ export function supportParts(s: ContractSnapshot): Support[] {
 		const vin = parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS"
 		for (const k of [1, 2]) jobs.push({ job: `${near} input capacitor ${k} of 2 (PVIN, at least 10 uF)`, spec: SUPPORT.buckIn, a: { net: vin }, b: GND, near })
 		jobs.push({ job: `${near} inductor (LX to ${SERVO_5V_NET})`, spec: SUPPORT.servoL, a: { net: SERVO_SW_NET }, b: { net: SERVO_5V_NET }, near })
-		for (const k of [1, 2, 3]) jobs.push({ job: `${near} output capacitor ${k} of 3 (over 47 uF)`, spec: SUPPORT.buckOut, a: { net: SERVO_5V_NET }, b: GND, near })
+		// Over 47 uF for the SY8205 (AN_SY8205), 100 uF for the 8 A SY8368A (its characterisation's COUT): 3 or 5 x 22 uF.
+		const outs = servoSupply.pins.includes("SS") ? 3 : 5
+		for (let k = 1; k <= outs; k++) jobs.push({ job: `${near} output capacitor ${k} of ${outs}`, spec: SUPPORT.buckOut, a: { net: SERVO_5V_NET }, b: GND, near })
 		jobs.push({ job: `${near} bootstrap capacitor (BS to LX)`, spec: SUPPORT.decouple, a: { ref: near, pin: "BS" }, b: { net: SERVO_SW_NET }, near })
 		jobs.push({ job: `${near} internal LDO capacitor (VCC)`, spec: SUPPORT.bypass, a: { ref: near, pin: "VCC_INT" }, b: GND, near })
-		jobs.push({ job: `${near} soft-start capacitor (0.6 ms)`, spec: SUPPORT.vcp, a: { ref: near, pin: "SS" }, b: GND, near })
+		if (servoSupply.pins.includes("SS")) jobs.push({ job: `${near} soft-start capacitor (0.6 ms)`, spec: SUPPORT.vcp, a: { ref: near, pin: "SS" }, b: GND, near })
 		jobs.push({ job: `${near} feedback divider top (5.00 V)`, spec: SUPPORT.fbTop, a: { net: SERVO_5V_NET }, b: { net: SERVO_FB_NET }, near })
 		jobs.push({ job: `${near} feedback divider bottom`, spec: SUPPORT.fbBottom, a: { net: SERVO_FB_NET }, b: GND, near })
 	}
@@ -650,6 +652,14 @@ function inductorFootprint(name: string): string {
 // Silergy SO8E (AN_SY8205 Rev. 0.4, SO8E Package outline & PCB layout design, Recommended Pad Layout): 0.60 x 1.55 mm
 // pads at 1.27 mm pitch, the rows 5.40 mm apart centre to centre; 1-4 down the left, 5-8 up the right (top view); the
 // exposed pad 2.55 x 3.20 mm is pin 9 (the chip's GND), so its label can wire it.
+// SY8368AQQC QFN3x3-12: polygon pads from JLCPCB's own footprint (catalog/footprints/sy8368a.json, its _about).
+export const SY8368_FOOTPRINT = "qfn12_sy8368a"
+function sy8368Footprint(): string {
+	const f = JSON.parse(readFileSync(new URL("../../catalog/footprints/sy8368a.json", import.meta.url), "utf8")) as { pads: { pin: number; points: [number, number][] }[] }
+	const pads = f.pads.map((p) => `<smtpad portHints={["pin${p.pin}"]} shape="polygon" points={[${p.points.map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")}]} />`).join("")
+	const outline = [[-1.6, -1.65], [1.6, -1.65], [1.6, 1.65], [-1.6, 1.65], [-1.6, -1.65]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+	return `{<footprint>${pads}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[{ x: -1.9, y: 1.7 }, { x: -1.9, y: 1.4 }]} /></footprint>}`
+}
 export const SO8E_FOOTPRINT = "so8e_silergy"
 function so8eFootprint(): string {
 	const pads: string[] = []
@@ -726,7 +736,7 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// A 3-pin 2.54 mm header (a servo's plug).
 	pinrow3: [8.6, 3.6],
 	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
-	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4],
+	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4], [SY8368_FOOTPRINT]: [3.9, 3.6],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
@@ -2001,8 +2011,9 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 			// The SY8205 (a chip): both PVIN pins from the cell, LX to its inductor, FB on its divider (supportParts).
 			if (so.supply.pins.includes("LX")) {
 				for (const n of [SERVO_SW_NET, SERVO_FB_NET]) if (!nets.has(n)) nets.set(n, [])
-				for (const pin of ["PVIN", "PVIN_2"]) if (so.supply.pins.includes(pin)) join(parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS", so.supply.ref, pin)
+				for (const pin of ["PVIN", "PVIN_2", "IN", "IN_2", "IN_3"]) if (so.supply.pins.includes(pin)) join(parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS", so.supply.ref, pin)
 				join(SERVO_SW_NET, so.supply.ref, "LX")
+				if (so.supply.pins.includes("GND_2")) join("GND", so.supply.ref, "GND_2")
 				if (so.supply.pins.includes("FB")) join(SERVO_FB_NET, so.supply.ref, "FB")
 			}
 			if (so.supply.pins.includes("VOUT")) join(SERVO_5V_NET, so.supply.ref, "VOUT")
@@ -2395,7 +2406,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 			if (b && opts.usbKeepouts) lines.push(...usbKeepouts(b.x, b.y, b.rotation))
 			continue
 		}
-		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : footprint === SO8E_FOOTPRINT ? so8eFootprint() : q(footprint)
+		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : footprint === SO8E_FOOTPRINT ? so8eFootprint() : footprint === SY8368_FOOTPRINT ? sy8368Footprint() : q(footprint)
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
 	}
 
