@@ -343,8 +343,10 @@ them as well, although it might not be the focus here".
       150 × 110 floor and no brief limit (src/system/assembly.ts plateFor/withOutlines, run.ts:111 passes no maxSizeMm):
       plate 156 × 110, then main's mech-fit says the wheels rub it and "Size with wheels 156 × 120 > 150 × 120". Fix:
       pass the brief's plate limit (plateLimitMm) on every relayout, or save the assembly in the starter seed.
-- [ ] **The Pi HAT's 5 V isn't wired into header pins 2/4 on the PCB** (only in the contract): the board generator wires
+- [x] **The Pi HAT's 5 V isn't wired into header pins 2/4 on the PCB** (only in the contract): the board generator wires
       power by part role and pin label, and the header's pins are labelled 1–40. No 5 A input connector either.
+      Done (d886638): a part's pin→rail map (Part.nets) is wired by the generator; the HAT's 5 V input is a KF301 screw
+      terminal (J2). test/supply-wiring.test.ts: 5 V on J1.2, J1.4 and J2.VIN; ground on pins 6/9/14/20/25/30/34/39.
 - [ ] **ADAFRUIT-2223 stacking header:** no LCSC number; an 8.5 mm socket + 10 mm pins against the 16 mm spacer stack
       needs a fit check (09741c's hardware list). Pi holes are M2.5 (Ø2.7) but the chassis' boardScrew pilot is the M2
       self-tapping one: a per-board screw is needed.
