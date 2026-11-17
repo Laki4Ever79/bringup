@@ -325,6 +325,13 @@ export function layoutSensitive(error: string): boolean {
 // then the placement error and the skip lead, and the unrouted nets are left out.
 export function failureLines(named: string[], log: string): string[] {
 	const logged = buildErrors(log).split("\n").filter((l) => l && !named.some((n) => n.startsWith(l)))
+	// Nothing taken for an error, yet the build failed: the traces the router left unrouted ("Trace [.U5 > .VM to .C6 >
+	// .pin2] is not connected (it has no PCB trace)"), a few of them, so the failure reads as routing and the board's size
+	// is recorded (the Eurobot base with servos at 60 × 40 mm, 17 Nov 2026: an empty message, no finding, the run stuck).
+	if (!named.length && !logged.length) {
+		const unrouted = log.split("\n").map((l) => l.trim()).filter((l) => /has no PCB trace/.test(l))
+		if (unrouted.length) return [...unrouted.slice(0, 5), ...(unrouted.length > 5 ? [`and ${unrouted.length - 5} more traces with no PCB trace`] : [])]
+	}
 	if (!/Autorouting was skipped/i.test(log)) return [...named, ...logged]
 	const lines = log.split("\n").map((l) => l.trim())
 	const placement = lines.filter((l) => /overlaps? with|outside the board|Autorouting was skipped/i.test(l))
