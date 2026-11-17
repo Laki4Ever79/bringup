@@ -16,6 +16,8 @@ export interface BriefMotion {
 	maxMassG?: number
 	// A competition the brief names, whose robot rules apply (catalog/rules).
 	rules?: string
+	// The brief asks for wheel encoders or odometry ("encoders on both drive wheels", "knows where it is").
+	encoders?: true
 }
 
 const NUM = String.raw`(\d+(?:\.\d+)?)`
@@ -49,6 +51,7 @@ export function motionFromBrief(brief: string): BriefMotion {
 	const size = new RegExp(`${NUM}\\s*[×x]\\s*${NUM}\\s*(mm|cm)\\b`, "i").exec(text)
 	if (size) out.maxSizeMm = [toMm(Number(size[1]), size[3].toLowerCase()), toMm(Number(size[2]), size[3].toLowerCase())]
 	if (/\beurobot\b/i.test(text)) out.rules = "eurobot-2026"
+	if (/\bencoders?\b|\bodometry\b/i.test(text)) out.encoders = true
 	return out
 }
 
@@ -63,10 +66,12 @@ export function motionBriefChecks(c: ContractSnapshot, brief: string): MechViola
 	const off = (have: number, want: number) => Math.abs(have - want) > BRIEF_TOLERANCE * want
 	const wrong: string[] = []
 	if (b.rules && motion.rules !== b.rules) wrong.push(`rules ${motion.rules ?? "unset"} where the brief is for ${b.rules} (set motion.rules: "${b.rules}", so the design is checked against that competition's robot rules)`)
-	const one = (key: keyof Omit<BriefMotion, "maxSizeMm" | "rules">, unit: string) => {
+	const one = (key: keyof Omit<BriefMotion, "maxSizeMm" | "rules" | "encoders">, unit: string) => {
 		const want = b[key], have = motion[key]
 		if (want !== undefined && typeof have === "number" && off(have, want)) wrong.push(`${key} ${have} where the brief says ${want} ${unit}`)
 	}
+	// Real run 18 (Eurobot): the brief asked for "encoders on both drive wheels" and the design drove plain gearmotors.
+	if (b.encoders && !motion.encoders) wrong.push("encoders unset where the brief asks for wheel encoders (set motion.encoders: true: the checks then require an encoder gearmotor and its plugs)")
 	one("speedMps", "m/s")
 	one("runtimeMin", "min")
 	one("edgeMm", "mm")

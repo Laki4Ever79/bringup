@@ -143,7 +143,9 @@ export function laidOut(c: ContractSnapshot, proposed: Mechanics, cat: CheckCata
 export function solveWithMotorClass(c: ContractSnapshot, choice: ChassisChoice, cat: CheckCatalog, opts: { budget?: number } = {}): ChassisSolution & { motorNote?: string } {
 	const first = solveChassis(c, choice, cat, opts)
 	const rules = c.values.motion?.rules
-	if (!rules || (first.mechanics && first.remaining.length === 0)) return first
+	// Also when the brief asks for wheel encoders (motion.encoders): the agent's plain gearmotor fails that check, and the
+	// encoder gearmotors below are the class to pick from (real run 18).
+	if ((!rules && !c.values.motion?.encoders) || (first.mechanics && first.remaining.length === 0)) return first
 	// The drive class: encoder gearmotors x packs x wheels (real run 12, 16 Nov 2026: the agent's 6 V encoder motor on one
 	// cell lacked torque and speed for a 1.6 kg robot, and 5219 needs the two-cell pack). Lowest stall current first, the
 	// agent's own parts first within it; the first that passes is returned with what it changed.

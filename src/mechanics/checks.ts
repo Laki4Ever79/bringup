@@ -268,6 +268,10 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	for (const [what, mpn, found] of [["motor", d.motor, motor], ["wheel", d.wheel, wheel], ["caster", d.caster, skid || caster], ["battery", mech.battery.pack, pack]] as const)
 		if (!found) push("mech-fit", `${what} ${mpn} is not in catalog/mechanics.json: pick one listed there, so its numbers have a datasheet behind them`)
 	if (!motor || !wheel || (!caster && !skid) || !pack) return out
+	// Wheel encoders the brief asks for (motion.encoders): real run 18 drove POLOLU-2365 (no encoder) though its brief said
+	// "encoders on both drive wheels", and nothing refused it.
+	if (motion.encoders && !motor.encoder)
+		push("mech-fit", `the brief asks for wheel encoders (motion.encoders), but ${d.motor} has none: pick an encoder gearmotor (${cat.mech.motors.filter((m) => m.encoder).map((m) => m.mpn).slice(0, 4).join(", ")}; the plugs become the 6-pin SH with its channels on GPIOs)`)
 	// The drive the brief asks for (motion.drive): a four-wheel brief laid out as a differential rover misses it.
 	if (motion.drive === "skid4" && !skid)
 		push("mech-fit", `the brief asks for four-wheel drive (skid steer: four driven wheels, no caster), but the drive is ${d.kind}: lay it out as drive.kind "skid4" (the layout solver does when the proposal fails this)`)
