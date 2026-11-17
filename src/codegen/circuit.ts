@@ -1793,7 +1793,7 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// OMRON A22E breaks 1.5 A inductive; two servos at stall through it would pass that).
 	const so = servoOutputs(parts)
 	if (so) {
-		for (const n of [SERVO_5V_NET, "SPARE_IN1", "SPARE_IN2", "SERVO_EN"]) if (!nets.has(n)) nets.set(n, [])
+		for (const n of [SERVO_5V_NET, "SPARE_IN1", "SPARE_IN2", "SERVO_EN", MOTOR_VM_NET, "VBAT", "VBUS"]) if (!nets.has(n)) nets.set(n, [])
 		for (const pin of ["A0", "A1", "A2", "A3", "A4", "A5", "OE", "EXTCLK"]) if (so.pwm.pins.includes(pin)) join("GND", so.pwm.ref, pin)
 		so.servos.forEach((sv, i) => {
 			const net = `SERVO${i + 1}`
