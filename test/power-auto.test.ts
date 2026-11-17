@@ -12,7 +12,7 @@ import { inferenceConfig } from "../src/inference/models.ts"
 import { toolCall, type Script } from "../src/inference/scripted-runner.ts"
 import { createRoleAgent, startTurn } from "../src/agents/common.ts"
 import { completePowerTree } from "../src/contract/power-auto.ts"
-import { checkConsistency, packVoltage, supplyWiring } from "../src/contract/consistency.ts"
+import { checkConsistency, packVoltage, supplyWiring, unconnectedParts } from "../src/contract/consistency.ts"
 import { OWNERS, type ContractSnapshot, type FieldName } from "../src/contract/types.ts"
 import { stubBoard } from "../src/tools/stubs.ts"
 import { tempDir, waitFor } from "./helpers.ts"
@@ -35,10 +35,10 @@ test("19b rev 17 (2S pack, 1-cell TP4054 left on): the parts write lands the tre
 	assert.equal(completePowerTree(t.parts, s.values.mechanics!).note, null)
 })
 
-function seeded(s: ContractSnapshot) {
+function seeded(s: ContractSnapshot, skip: FieldName[] = []) {
 	const state = new BringupState(tempDir(), 3000)
 	for (const [field, value] of Object.entries(s.values) as [FieldName, never][]) {
-		if (value === undefined) continue
+		if (value === undefined || skip.includes(field)) continue
 		const r = state.contract.propose({ field, value, by: OWNERS[field], baseVersion: 0 })
 		assert.equal(r.status, "applied", `${field}: ${JSON.stringify(r)}`)
 	}
@@ -58,6 +58,23 @@ test("19b rev 16 → 17: the switch to the 2S pack regenerates the power tree in
 	const now = state.contract.snapshot()
 	assert.equal(now.versions.parts, 2, "one parts write follows the pack")
 	assert.deepEqual(tree(now), ["D10 diode", "D11 diode", "U7 buck"])
+	assert.deepEqual(powerKinds(now), [])
+	assert.deepEqual(unconnectedParts(now).map((v) => v.message.split(" is ")[0]), [])
+})
+
+// The scripted Eurobot (mock, 17 Nov 2026): the mechanics' 2S pack dropped the TP4054 and its LED and left R4 (PROG),
+// R7 (the LED's resistor) and C4 on nothing; the run ended unsettled at revision 9 on them.
+test("the mock Eurobot's first mechanics write: the charger goes with its passives, nothing left unconnected", async () => {
+	const s = JSON.parse(readFileSync(new URL("./fixtures/mock-eurobot-rev8.json", import.meta.url), "utf8")) as ContractSnapshot
+	const state = seeded(s, ["mechanics"])
+	startRuntime(state, inferenceConfig(true, { "mock-mechanics": once(toolCall("propose_contract_change", { field: "mechanics", value: s.values.mechanics, baseVersion: 0, reason: "the 2S pack" })) }), null)
+	const mech = createRoleAgent({ role: "mechanics", instruction: "x", handlers: [], mock: true })
+	startTurn(mech, "lay out the robot")
+	await waitFor(() => state.contract.version("mechanics") === 1)
+	const now = state.contract.snapshot()
+	assert.equal(now.versions.parts, 2)
+	assert.ok(!now.values.parts!.some((p) => ["U4", "D2", "R4", "R7", "C4"].includes(p.ref)))
+	assert.deepEqual(unconnectedParts(now).map((v) => v.message.split(" is ")[0]), [])
 	assert.deepEqual(powerKinds(now), [])
 })
 

@@ -794,7 +794,7 @@ export function unreachableButtons(c: ContractSnapshot): Violation[] {
 }
 
 // Every ref something connects: a contract pin, a net the board generator wires, or a support part's end.
-function usedRefs(c: ContractSnapshot): Set<string> {
+export function usedRefs(c: ContractSnapshot): Set<string> {
 	const used = new Set<string>((c.values.pins ?? []).map((p) => p.partRef))
 	for (const ends of generatedNets(c).values()) for (const end of ends) used.add(end.split(".")[0])
 	for (const sp of supportParts(c)) {
