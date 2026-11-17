@@ -15,9 +15,10 @@ import { run, tail } from "./exec.ts"
 // Contract -> tscircuit source -> placed and autorouted board -> KiCad project, STEP and render.
 // tscircuit's own result is the source of truth for nets and size; KiCad exports are best-effort.
 const FAILED_PER_STAGE = 2
-// Layouts that built with DRC errors before Freerouting routes the best of them: more tscircuit layouts rarely clear a
-// crowded board's last near-miss (run 14 rev 36: 20 layouts, 640 s, still 1 clearance error).
-export const LAYOUTS_BEFORE_FREEROUTING = 4
+// tscircuit layouts that weren't clean (built with DRC errors, or failed) before Freerouting routes the best of them: more
+// layouts rarely clear a crowded board (run 14 rev 36: 20 layouts, 640 s, still 1 clearance error), and on 12 measured
+// boards every one tscircuit routes clean, it routes within 2 layouts (17 Nov 2026).
+export const LAYOUTS_BEFORE_FREEROUTING = 2
 // tscircuit builds per board build, whatever their outcome, before Freerouting takes the best placement (or the first)
 // and the search ends: a live run can't wait 20 layouts (run cc-eurobot-17, 16 Nov 2026: no board build finished in 21
 // minutes under load, and the run ended judging a board 30 revisions old).
@@ -93,7 +94,8 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	// (Walking all 16 layouts at ~50 s each took one STM32 board 10 minutes, 13 Nov.)
 	let failedWith = 0
 	let failedWithout = 0
-	let builtWithErrors = 0
+	// tscircuit layouts that built with DRC errors or failed to build.
+	let nonClean = 0
 	// The layout just tried failed to build: its capsAlong variant, next in the list, gets its turn.
 	let baseFailed = false
 	// The first layout placed by tscircuit and routed by Freerouting (src/tools/freerouting.ts), for the boards tscircuit's
@@ -129,6 +131,16 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	if (routerOrder() === "freerouting-first" && fitting.length) await viaFreerouting([fitting[0]])
 	for (const placement of withPort ? [...fitting, ...fitting.map((p) => ({ ...p, debugPort: false as const }))] : fitting) {
 		if (best && best.errors === 0) break
+		// A couple of tscircuit layouts not clean (built with DRC errors, or failed): Freerouting routes the best one's
+		// placement (the first when none built), before more layouts are tried. Measured
+		// 17 Nov 2026 on 12 boards: every board tscircuit routes clean does so within 2 layouts, and the crowded ones it can't
+		// (run 14 rev 36) spent up to 7 layouts first.
+		// Its result ends the search, as at the cap (more tscircuit layouts after it only cost time: the 60×21 rover went
+		// from 3 layouts to 6 for the same 2 errors).
+		if (nonClean >= LAYOUTS_BEFORE_FREEROUTING && !freerouted) {
+			await viaFreerouting([best?.placement ?? fitting[0]])
+			if (best) break
+		}
 		// Every layout with the debug footprint failed: Freerouting keeps the footprint before the layouts without it.
 		if (placement.debugPort === false && !best && withPort) {
 			await viaFreerouting([fitting[0]])
@@ -165,12 +177,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 				best = { board: dropped ? { ...board, debugPortDropped: why } : board, errors, placement }
 			} else rmSync(out, { recursive: true, force: true })
 			if (errors === 0) break
-			// A few layouts built, none clean: Freerouting routes the best one's placement (same footprint choice) before more
-			// tscircuit layouts are tried; clean, it ends the search.
-			if (++builtWithErrors >= LAYOUTS_BEFORE_FREEROUTING && !freerouted) {
-				await viaFreerouting([best!.placement])
-				if (best!.errors === 0) break
-			}
+			nonClean++
 		} catch (error) {
 			// The failed attempt's log goes to the run's folder, and the message points there. Not when an earlier layout
 			// built: its board is what lands in the folder, and a failed layout's log beside it would mislead.
@@ -180,6 +187,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			}
 			rmSync(out, { recursive: true, force: true })
 			lastError = error instanceof Error ? new Error(error.message.replaceAll(out, dir)) : error
+			nonClean++
 			// Once an earlier layout has built, a later one failing only means it isn't better: keep the board we have
 			// (before, a keepout attempt that failed threw, and the built board with a few DRC errors was lost).
 			// A failed retry leaves the layout failed: the next retry gets its turn.
