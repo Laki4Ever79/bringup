@@ -1,5 +1,6 @@
 import { standardsSection } from "./contract/standards.ts"
 import { BUILD_INPUTS } from "./agents/builders.ts"
+import { antennaLine } from "./contract/antenna.ts"
 import { robotRuntime } from "./agents/design-facts.ts"
 import { rosSection } from "./ros/report.ts"
 import type { RobotParts } from "./tools/robot-parts.ts"
@@ -281,6 +282,15 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 			if (!v.outline || !min) return []
 			const slack = Math.round(((v.outline.widthMm * v.outline.heightMm) / min.areaMm2 - 1) * 100)
 			return [`- Space: board ${v.outline.widthMm}×${v.outline.heightMm} mm is ${slack}% over the smallest it can be (${min.areaMm2} mm², every part placed at ${min.widthMm}×${min.heightMm} mm, routing not proven at that size)${v.outline.sizeReason ? `; kept for a reason: ${v.outline.sizeReason.kind}, ${v.outline.sizeReason.detail}` : ""}`]
+		})(),
+		// The module's antenna and the board parts within Espressif's recommended clearance (advisory, contract/antenna.ts).
+		...(() => {
+			try {
+				const line = antennaLine(snapshot)
+				return line ? [line] : []
+			} catch {
+				return []
+			}
 		})(),
 		...(() => {
 			const items = complianceItems(snapshot)
