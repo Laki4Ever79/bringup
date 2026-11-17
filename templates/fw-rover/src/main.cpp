@@ -38,6 +38,9 @@ static uint32_t nextOdo = 0;
 // A pull-cord start (match.h, Eurobot General Rules 1.2 F.6): no drive until the cord, in at power-up, is pulled; with
 // MATCH_MS (H.3) every motor stops for good that long after. The simulation pulls the cord at its first tick.
 static MatchState match;
+#ifdef PIN_STATUS_LED
+#include "status_led.h"
+#endif
 #ifndef MATCH_MS
 #define MATCH_MS 0xFFFFFFFFUL
 #endif
@@ -217,7 +220,11 @@ void loop() {
 	hw_motor(1, out.right);
 	linkPoll(0);  // what has arrived on the links, without waiting: the distance sensor paces the loop
 #ifdef PIN_STATUS_LED
+#ifdef PIN_START
+	digitalWrite(PIN_STATUS_LED, status_led(match.phase, now));  // ready / running / stopped (status_led.h)
+#else
 	digitalWrite(PIN_STATUS_LED, (now / 500) % 2);  // a 1 Hz heartbeat: the control loop is running
+#endif
 #endif
 	if ((int32_t)(now - nextPayload) >= 0) {
 		nextPayload = now + 5000;
