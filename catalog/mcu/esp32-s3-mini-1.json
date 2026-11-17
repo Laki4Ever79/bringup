@@ -38,7 +38,8 @@
 			"signals": [
 				"*"
 			],
-			"wake": true
+			"wake": true,
+			"reserved": "strap"
 		},
 		{
 			"name": "GPIO1",
@@ -77,7 +78,8 @@
 				"TOUCH3",
 				"ADC1_CH2"
 			],
-			"wake": true
+			"wake": true,
+			"reserved": "strap"
 		},
 		{
 			"name": "GPIO4",
@@ -281,7 +283,8 @@
 				"ADC2_CH8",
 				"USB_D-"
 			],
-			"wake": true
+			"wake": true,
+			"reserved": "usb"
 		},
 		{
 			"name": "GPIO20",
@@ -294,7 +297,8 @@
 				"ADC2_CH9",
 				"USB_D+"
 			],
-			"wake": true
+			"wake": true,
+			"reserved": "usb"
 		},
 		{
 			"name": "GPIO21",
@@ -427,7 +431,8 @@
 			"signals": [
 				"*",
 				"U0TXD"
-			]
+			],
+			"reserved": "console"
 		},
 		{
 			"name": "GPIO44",
@@ -438,7 +443,8 @@
 			"signals": [
 				"*",
 				"U0RXD"
-			]
+			],
+			"reserved": "console"
 		},
 		{
 			"name": "GPIO45",
@@ -448,7 +454,8 @@
 			],
 			"signals": [
 				"*"
-			]
+			],
+			"reserved": "strap"
 		},
 		{
 			"name": "GPIO46",
@@ -458,7 +465,8 @@
 			],
 			"signals": [
 				"*"
-			]
+			],
+			"reserved": "strap"
 		},
 		{
 			"name": "GPIO47",

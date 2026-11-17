@@ -1,3 +1,4 @@
+import { mcuProfileOf } from "../mcu/profile.ts"
 import { unassignedRoverPins } from "../mechanics/firmware.ts"
 import { prepareFirmware } from "../tools/firmware.ts"
 import { runDrive, type DriveArtifact } from "../tools/drive.ts"
@@ -268,6 +269,10 @@ export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
 		build: async ({ dir, snapshot, revision }) => {
 			const notRun = (reason: string): DriveArtifact => ({ revision, dir, result: "not run", reason, segments: [] })
 			if (!env.pio || !env.qemu || !env.python) return notRun("PlatformIO, QEMU or the .venv simulation tools are missing: not proven in simulation")
+			// The drive runs the firmware in QEMU riscv32 (the ESP32-C3's machine): an MCU it can't run isn't simulated.
+			const chip = mcuProfileOf(snapshot.values.parts)
+			if (chip && chip.sim.machine !== "esp32c3")
+				return notRun(chip.firmware.arch === "esp32" ? `drive sim: not run (Xtensa QEMU not installed): the ${chip.mpn}'s firmware needs Espressif's qemu-system-xtensa; the drive simulation runs the ESP32-C3's (riscv32)` : `drive sim: not run: the drive simulation runs only the ESP32-C3's firmware (QEMU riscv32), not the ${chip.mpn}'s`)
 			const spec = chassisSpec(snapshot)
 			if (!spec) return notRun("no complete mechanics design to simulate")
 			// Driving without a board's weight would prove a lighter robot than the real one.
