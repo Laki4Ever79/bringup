@@ -42,10 +42,11 @@ test("with them, the cell feeds 3V3 through the ideal diode and USB through the 
 test("a 2S pack (over the LDO's 5.5 V): a 5 V step-down and two Schottkys; with them, clean", () => {
 	const s = load()
 	s.values.mechanics.battery.pack = "GENSACE-GEA22002S20X6 2S 2200 mAh 20C LiPo XT60"
-	assert.match(supplyWiring(s).find((x) => x.kind === "rail-battery-source")?.message ?? "", /a 5 V step-down \(role buck, catalog POLOLU-2843 D24V5F5.*2 Schottky diodes/)
+	assert.match(supplyWiring(s).find((x) => x.kind === "rail-battery-source")?.message ?? "", /a 5 V step-down \(role buck, catalog AP63205WU-7.*2 Schottky diodes/)
 	s.values.parts.push(part("buck", "U7"), part("diode", "D10"), part("diode", "D11"))
 	const n = generatedNets(s)
-	assert.ok(n.get("VBAT")!.includes("U7.VIN") && n.get("V5")!.includes("U7.VOUT") && n.get("V5")!.includes("D10.A"))
+	// The AP63205 (the step-down chip, run 20): VIN from the pack, its fixed 5 V sensed on FB.
+	assert.ok(n.get("VBAT")!.includes("U7.VIN") && n.get("V5")!.includes("U7.FB") && n.get("V5")!.includes("D10.A"))
 	assert.ok(n.get("VIN_OR")!.includes("D10.K") && n.get("VIN_OR")!.includes("D11.K") && n.get("VBUS")!.includes("D11.A"))
 	assert.deepEqual(shorts(s), [])
 	assert.deepEqual(kinds(s), [])
