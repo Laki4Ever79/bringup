@@ -1,0 +1,559 @@
+{
+	"id": "esp32-s3-mini-1",
+	"vendor": "espressif",
+	"family": "ESP32-S3",
+	"mpn": "ESP32-S3-MINI-1",
+	"lcsc": "C2913206",
+	"kind": "module",
+	"package": {
+		"name": "ESP32-S3-MINI-1 (65-pad LGA module)",
+		"footprint": "esp32_s3_mini_1",
+		"bodyMm": {
+			"w": 15.4,
+			"h": 20.5
+		},
+		"extentMm": {
+			"w": 15.4,
+			"h": 20.5
+		}
+	},
+	"board": {
+		"supported": true
+	},
+	"core": "Xtensa LX7 dual core",
+	"mhz": 240,
+	"flashKb": 8192,
+	"ramKb": 512,
+	"voltage": {
+		"min": 3.0,
+		"max": 3.6
+	},
+	"pins": [
+		{
+			"name": "GPIO0",
+			"index": 0,
+			"pads": [
+				"4"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO1",
+			"index": 1,
+			"pads": [
+				"5"
+			],
+			"signals": [
+				"*",
+				"TOUCH1",
+				"ADC1_CH0"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO2",
+			"index": 2,
+			"pads": [
+				"6"
+			],
+			"signals": [
+				"*",
+				"TOUCH2",
+				"ADC1_CH1"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO3",
+			"index": 3,
+			"pads": [
+				"7"
+			],
+			"signals": [
+				"*",
+				"TOUCH3",
+				"ADC1_CH2"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO4",
+			"index": 4,
+			"pads": [
+				"8"
+			],
+			"signals": [
+				"*",
+				"TOUCH4",
+				"ADC1_CH3"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO5",
+			"index": 5,
+			"pads": [
+				"9"
+			],
+			"signals": [
+				"*",
+				"TOUCH5",
+				"ADC1_CH4"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO6",
+			"index": 6,
+			"pads": [
+				"10"
+			],
+			"signals": [
+				"*",
+				"TOUCH6",
+				"ADC1_CH5"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO7",
+			"index": 7,
+			"pads": [
+				"11"
+			],
+			"signals": [
+				"*",
+				"TOUCH7",
+				"ADC1_CH6"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO8",
+			"index": 8,
+			"pads": [
+				"12"
+			],
+			"signals": [
+				"*",
+				"TOUCH8",
+				"ADC1_CH7"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO9",
+			"index": 9,
+			"pads": [
+				"13"
+			],
+			"signals": [
+				"*",
+				"TOUCH9",
+				"ADC1_CH8"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO11",
+			"index": 11,
+			"pads": [
+				"15"
+			],
+			"signals": [
+				"*",
+				"TOUCH11",
+				"ADC2_CH0"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO13",
+			"index": 13,
+			"pads": [
+				"17"
+			],
+			"signals": [
+				"*",
+				"TOUCH13",
+				"ADC2_CH2"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO15",
+			"index": 15,
+			"pads": [
+				"19"
+			],
+			"signals": [
+				"*",
+				"ADC2_CH4"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO16",
+			"index": 16,
+			"pads": [
+				"20"
+			],
+			"signals": [
+				"*",
+				"ADC2_CH5"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO17",
+			"index": 17,
+			"pads": [
+				"21"
+			],
+			"signals": [
+				"*",
+				"ADC2_CH6"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO18",
+			"index": 18,
+			"pads": [
+				"22"
+			],
+			"signals": [
+				"*",
+				"ADC2_CH7"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO19",
+			"index": 19,
+			"pads": [
+				"23"
+			],
+			"signals": [
+				"*",
+				"ADC2_CH8",
+				"USB_D-"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO20",
+			"index": 20,
+			"pads": [
+				"24"
+			],
+			"signals": [
+				"*",
+				"ADC2_CH9",
+				"USB_D+"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO21",
+			"index": 21,
+			"pads": [
+				"25"
+			],
+			"signals": [
+				"*"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO33",
+			"index": 33,
+			"pads": [
+				"28"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO34",
+			"index": 34,
+			"pads": [
+				"29"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO35",
+			"index": 35,
+			"pads": [
+				"31"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO36",
+			"index": 36,
+			"pads": [
+				"32"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO37",
+			"index": 37,
+			"pads": [
+				"33"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO38",
+			"index": 38,
+			"pads": [
+				"34"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO39",
+			"index": 39,
+			"pads": [
+				"35"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO40",
+			"index": 40,
+			"pads": [
+				"36"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO41",
+			"index": 41,
+			"pads": [
+				"37"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO42",
+			"index": 42,
+			"pads": [
+				"38"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO43",
+			"index": 43,
+			"pads": [
+				"39"
+			],
+			"signals": [
+				"*",
+				"U0TXD"
+			]
+		},
+		{
+			"name": "GPIO44",
+			"index": 44,
+			"pads": [
+				"40"
+			],
+			"signals": [
+				"*",
+				"U0RXD"
+			]
+		},
+		{
+			"name": "GPIO45",
+			"index": 45,
+			"pads": [
+				"41"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO46",
+			"index": 46,
+			"pads": [
+				"44"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO47",
+			"index": 47,
+			"pads": [
+				"27"
+			],
+			"signals": [
+				"*"
+			]
+		},
+		{
+			"name": "GPIO48",
+			"index": 48,
+			"pads": [
+				"30"
+			],
+			"signals": [
+				"*"
+			]
+		}
+	],
+	"power": [
+		{
+			"name": "GND",
+			"net": "ground",
+			"pads": [
+				"1"
+			]
+		},
+		{
+			"name": "3V3",
+			"net": "supply",
+			"pads": [
+				"3"
+			]
+		},
+		{
+			"name": "EN",
+			"net": "reset",
+			"pads": [
+				"8"
+			]
+		}
+	],
+	"peripherals": {
+		"uart": [
+			"UART0",
+			"UART1"
+		],
+		"i2c": [
+			"I2C0"
+		],
+		"spi": [
+			"SPI2"
+		],
+		"i2s": [
+			"I2S0"
+		],
+		"adc": [
+			"ADC1"
+		],
+		"usb": [
+			"USB_SERIAL_JTAG"
+		],
+		"can": [
+			"TWAI0"
+		],
+		"radio": [
+			"WIFI_BLE"
+		],
+		"pcnt": {
+			"units": 4,
+			"note": "hardware pulse counters with quadrature decode: wheel encoders (ESP32-S3 TRM, PCNT)"
+		}
+	},
+	"console": {
+		"instance": "UART0",
+		"tx": "GPIO43",
+		"rx": "GPIO44"
+	},
+	"programming": {
+		"method": "usb-serial-jtag",
+		"pins": [
+			"GPIO19",
+			"GPIO20"
+		]
+	},
+	"boot": {
+		"pin": "GPIO0",
+		"level": "low",
+		"straps": [
+			"GPIO3",
+			"GPIO45",
+			"GPIO46"
+		]
+	},
+	"usb": {
+		"dp": "GPIO20",
+		"dm": "GPIO19"
+	},
+	"support": [],
+	"currents": {
+		"sleepUa": 5,
+		"cpuMa": 28,
+		"radioMa": 84,
+		"bleTxMa": 170,
+		"bleRxMa": 86,
+		"wifiTxMa": 350,
+		"supplyMinMa": 500,
+		"source": "ESP32-C3-MINI-1 & MINI-1U datasheet v2.2 (2026-05-06): Bluetooth LE transmit 170 mA peak at 0 dBm and receive 86 mA (Table 6-5); Wi-Fi transmit up to 350 mA (802.11b at 20.5 dBm, Table 6-4); external supply at least 0.5 A (Table 6-2), 3.3 V, 25 °C; chip: ESP32-C3 Series Datasheet v2.4 Tables 5-7, 5-8, 5-9"
+	},
+	"firmware": {
+		"platform": "espressif32@8.0.0",
+		"board": "esp32-s3-devkitc-1",
+		"framework": "arduino",
+		"arch": "esp32s3",
+		"pinStyle": "number",
+		"flags": [
+			"board_build.flash_mode = dio"
+		],
+		"libs": [
+			"h2zero/NimBLE-Arduino@2.5.2",
+			"knolleary/PubSubClient@2.8"
+		],
+		"zephyrBoard": "esp32c3_devkitm",
+		"env": "esp32c3",
+		"history": {
+			"store": "littlefs",
+			"bytes": 1441792,
+			"source": "Arduino-ESP32 default.csv spiffs partition 0x160000 (codegen/firmware.ts HISTORY_PARTITION_BYTES)"
+		}
+	},
+	"sim": {
+		"backend": "none",
+		"note": "Xtensa: Espressif's QEMU for the ESP32-S3 (qemu-system-xtensa) is not installed, so the simulated drive is not run"
+	},
+	"radio": [
+		"ble",
+		"wifi"
+	],
+	"preferred": false,
+	"sources": [
+		"ESP32-S3-MINI-1 & MINI-1U datasheet (Espressif), Table 3-1 Pin Definitions (pads, functions, USB_D-/D+ on IO19/IO20, U0TXD/U0RXD on GPIO43/44)",
+		"ESP32-S3 Series Datasheet (strapping pins GPIO0, GPIO3, GPIO45, GPIO46)",
+		"LCSC C2913206 ESP32-S3-MINI-1-N8 (jlcsearch, extended part, about $4.75)"
+	]
+}
