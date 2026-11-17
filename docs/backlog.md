@@ -492,3 +492,35 @@ them as well, although it might not be the focus here".
         button itself.
   - [x] **Motor output traces stay 0.15 mm** (done 16 Nov: IPC-2221 width for the stall current when over the default) (MOTOR_A1…B2 have no width rule; only rails get IPC-2221 widths). a 6 V
         N20 stalls at 0.67 A (more at 2S): check against IPC-2221 and widen.
+
+## Retrofit and reverse engineering existing hardware (decided 17 Nov 2026: "something we will definitely cover")
+The user, 17 Nov 2026: "can you tell me whether HW hacking is part oof bringup and should it be? Like will we able to
+reverse-engineer air-purifier's HW and replace it with custom board and firmware?" and then "I want to take this much
+further than stupid air purifiers, hopefully you get that. You should put this in backlog as something we will
+definitely cover."
+- [ ] **Retrofit mode: a host device as hard constraints.** The contract gets a host device: its enclosure, mounting
+      holes, connector positions and pinouts, supply voltages and the protocols on its cables. Bringup designs the drop-in
+      replacement for the control electronics (board, firmware, any printed adapter parts) against them, the same way it
+      checks board/case/firmware today with the constraints given instead of chosen. Scope is any product, not one class:
+      appliances, robots, vehicles' and machines' control boards, instruments. Safety rule in code: never redesign a
+      mains or high-energy power stage; the certified power side stays, Bringup replaces the low-voltage control side.
+- [ ] **Capture: from a device on the bench to the constraints.** Photos and measurements of the original board (outline,
+      holes, connectors), a continuity/pinout map, voltages per pin, protocol captures (UART/I2C/SPI via a logic
+      analyser; the existing bench harness and test pads are the start), the MCU and sensors identified. First version
+      entered by hand; then assisted (the bench companion probes and records).
+- [ ] **Compliance for a retrofit board**: pre-certified radio modules only (as the ESP32 modules today); no vendor
+      firmware redistributed; the report says what the owner may and may not do with it.
+
+## Verified builds and complete kits (the user, 17 Nov 2026)
+The user: "Maybe we have verify builds option where we build it ourselves and send it or just to make sure it works...
+Or we can offer sending them the full package with all elements, mechanical or 3D printed or whatever."
+- [ ] **Verified build:** we build the design ourselves (board assembled, firmware flashed, the factory test and the
+      bench test pads run, the mechanics assembled), then either ship it to the customer or just certify it works and
+      hand over the evidence (test report, measurements, photos) so they build with confidence.
+- [ ] **Full kit:** ship everything the design needs in one box: the assembled board(s), 3D-printed and other
+      mechanical parts, bought parts (motors, wheels, battery, fasteners, cables), from the build package Bringup already
+      generates (bringup package: BOM with shops, printed STLs, assembly steps and pictures).
+- [ ] **Business shape (proposed 17 Nov, to decide):** free to design, pay to build (fab package / verified build / kit);
+      private projects and team seats paid; a compliance pack (EU CRA docs, CE/FCC pre-compliance) for companies;
+      competition rules packs per season; retrofit kits as a marketplace with revenue share; real-model runs as credits.
+      Rule kept in every tier: the checks are never gated (correct designs for everyone).
