@@ -185,6 +185,12 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 				mkdirSync(dir, { recursive: true })
 				cpSync(join(out, "build.log"), join(dir, "build.log"))
 			}
+			// Every failed layout's own log too, as layout-N.log: a layout that failed after another built kept no detail (a
+			// mock Eurobot at 64×45: "9 placement errors", and nothing said which, 17 Nov 2026).
+			if (existsSync(join(out, "build.log"))) {
+				mkdirSync(dir, { recursive: true })
+				cpSync(join(out, "build.log"), join(dir, `layout-${tried}.log`))
+			}
 			rmSync(out, { recursive: true, force: true })
 			lastError = error instanceof Error ? new Error(error.message.replaceAll(out, dir)) : error
 			nonClean++
