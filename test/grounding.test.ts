@@ -130,3 +130,16 @@ test("a pin assignment to a part that is not in the contract is unknown-part", (
 	const findings = groundParts(c, { catalog })
 	assert.deepEqual(findings.map((f) => [f.partRef, f.kind, f.source]), [["U9", "unknown-part", "none"]])
 })
+
+// One mpn in the catalog under two roles with different pins (the JST PH 2-pin: motor plug "1"/"2", battery plug
+// VBAT/GND, since e22dd9c). A part is checked against the entry with its own role: by mpn alone the rover's motor plugs
+// were checked against the battery's pins, and the mock rover stopped settling (17 Nov 2026).
+test("a part is grounded against the catalog entry with its own role when one mpn has two", async () => {
+	const { ROVER_BOARD } = await import("../src/inference/scripts.ts")
+	const s = { revision: 1, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) }
+	const found = groundParts(s, { catalog }).filter((f) => /^JM\d/.test(f.partRef))
+	assert.deepEqual(found, [])
+	// The same plug as a battery connector with motor-plug pins is still named.
+	s.values.parts.find((p: { ref: string }) => p.ref === "JM1").role = "battery"
+	assert.match(groundParts(s, { catalog }).map((f) => f.detail).join("\n"), /JM1 lists pin 1, which catalog B2B-PH-K-S/)
+})

@@ -29,6 +29,15 @@ const UNKNOWN: Live = { stock: null, priceUsd: null, inStock: null }
 // injected fetch never sees another one's answers.
 const cache = new WeakMap<typeof fetch, Map<string, Live>>()
 
+// A part's catalog entry: the one with its mpn and its role, else the first with its mpn. One mpn can sit in the catalog
+// under two roles with different pins (the JST PH 2-pin as a motor plug, pins 1 and 2, and as the battery plug, VBAT and
+// GND, since e22dd9c): by mpn alone the rover's motor plugs were checked against the battery's pins, and the mock rover
+// stopped settling (17 Nov 2026).
+export function catalogEntry<T extends { mpn: string; role?: string }>(catalog: T[], part: { mpn: string; role?: string }): T | undefined {
+	const same = catalog.filter((c) => c.mpn.toUpperCase() === part.mpn.toUpperCase())
+	return same.find((c) => c.role === part.role) ?? same[0]
+}
+
 export function loadCatalog(root: string): CatalogPart[] {
 	const entries = JSON.parse(readFileSync(join(root, "catalog/parts.json"), "utf8")) as CatalogPart[]
 	// Then the parts Bringup learned by itself (catalog/learned/); a hand entry wins on the same MPN.
