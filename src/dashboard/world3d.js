@@ -175,6 +175,20 @@ function cylinderY(cx, cy, cz, r, w, n = 24) {
 // The assembly order's steps, as groups of the rover's parts (src/package/build.ts assemblyOrder): a build package draws
 // the rover up to a step (opts.upTo, a step index) and an exploded view (opts.explode, mm of lift per step).
 export const ASSEMBLY_STEPS = ["plate", "motors", "wheels", "board", "battery", "sensor", "top"]
+// The assembly view a page URL asks for: ?step=N (an index into ASSEMBLY_STEPS, or a step's name) draws the rover up to
+// that step; ?explode lifts each step's parts by 40 mm (or ?explode=<mm>). The build package's pictures are taken this
+// way (src/package/assembly-pictures.ts). An empty search is the whole rover, assembled.
+export function assemblyView(search) {
+	const q = new URLSearchParams(search ?? "")
+	const out = {}
+	const step = q.get("step")
+	if (step !== null && step !== "") {
+		const k = /^\d+$/.test(step) ? Number(step) : ASSEMBLY_STEPS.indexOf(step)
+		if (k >= 0 && k < ASSEMBLY_STEPS.length) out.upTo = k
+	}
+	if (q.has("explode")) out.explode = Number(q.get("explode")) > 0 ? Number(q.get("explode")) : 40
+	return out
+}
 export function roverParts(spec, chassisTris, opts = {}) {
 	const lift = spec.plate.clearanceMm
 	const d = spec.drive
@@ -318,12 +332,16 @@ export function boardGeometry(b) {
 		}
 		if (b.chassisSpec) {
 			// A rover: the board on its standoffs over the chassis, the whole robot standing on the floor at z 0.
-			const rover = roverParts(b.chassisSpec, b.chassisStl ? parseStl(b.chassisStl) : null)
+			// An assembly step from the page URL (assemblyView): the parts up to it, maybe lifted apart; the board, drawn here and
+			// not by roverParts, shows from its own step on and lifts with it.
+			const view = assemblyView(globalThis.location?.search)
+			const rover = roverParts(b.chassisSpec, b.chassisStl ? parseStl(b.chassisStl) : null, view)
+			const boardStep = ASSEMBLY_STEPS.indexOf("board")
 			// The chassis builder turns the board by the spec's rotDeg (py/chassis.py), so the 3D board turns the same way.
 			const turned = rotateZ(boardTris, rover.boardAt.rotDeg ?? 0)
 			const tb = bounds(turned)
-			off = [-(tb.min[0] + tb.max[0]) / 2 + rover.boardAt.xMm, -(tb.min[1] + tb.max[1]) / 2 + rover.boardAt.yMm, -tb.min[2] + rover.boardZ]
-			boardTris = shift(turned, off)
+			off = [-(tb.min[0] + tb.max[0]) / 2 + rover.boardAt.xMm, -(tb.min[1] + tb.max[1]) / 2 + rover.boardAt.yMm, -tb.min[2] + rover.boardZ + (view.explode ? boardStep * view.explode : 0)]
+			boardTris = view.upTo !== undefined && view.upTo < boardStep ? new Float32Array(0) : shift(turned, off)
 			const colours = [...Array(boardTris.length / 9).keys()].map((i) => (m.kinds[i] === "slab" ? ORANGE : m.kinds[i] === "pad" ? PAD : PART))
 			for (const p of rover.parts) for (let i = 0; i < p.tris.length / 9; i++) colours.push(p.color)
 			const all = new Float32Array(boardTris.length + rover.parts.reduce((n, p) => n + p.tris.length, 0))

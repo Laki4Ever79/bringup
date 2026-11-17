@@ -16,4 +16,5 @@ export function resolvePlaces(boards: { name: string; at?: { x: number; y: numbe
 export function rotateZ(tris: Float32Array | number[], rotDeg: number): Float32Array
 // A rover drawn up to an assembly step (ASSEMBLY_STEPS index) or exploded (mm of lift per step), for a build package.
 export const ASSEMBLY_STEPS: string[]
+export function assemblyView(search: string | null | undefined): { upTo?: number; explode?: number }
 export function roverParts(spec: unknown, chassisTris: Float32Array | null, opts?: { upTo?: number; explode?: number }): { parts: { tris: Float32Array; color: number[]; group: string }[]; boardAt: { xMm: number; yMm: number }; boardZ: number }
