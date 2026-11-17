@@ -802,6 +802,9 @@ function sizeAt(footprint: string, rotation: number): [number, number] {
 export const LDO_FROM_USB_MM = 8
 
 export interface PlacementOptions {
+	// The gap kept between two parts' boxes, in mm (default GAP_MM, 1.5): the tight-first experiment places at 1.0 mm
+	// and keeps the wider gap as the retry (backlog "Tighter part spacing, proven by the router").
+	gapMm?: number
 	// Place only, no autorouting: the board goes to Freerouting instead (src/tools/freerouting.ts).
 	routingDisabled?: boolean
 	// Distance from the USB-C connector centre to the LDO target.
@@ -961,6 +964,8 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): L
 }
 
 function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
+	// The gap between two parts: GAP_MM, or a build's own (PlacementOptions.gapMm: the tight-first experiment).
+	const gapMm = opts.gapMm ?? GAP_MM
 	const { outline, parts = [], connectors = [] } = s.values
 	if (!outline) throw new Error("placeParts: contract has no outline")
 	const [W, H] = [outline.widthMm, outline.heightMm]
@@ -981,11 +986,11 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		}
 	}
 
-	// hug: a part allowed CHIP_GAP_MM from that part's box instead of GAP_MM (a bare chip's own pin parts, below).
+	// hug: a part allowed CHIP_GAP_MM from that part's box instead of the parts' gap (a bare chip's own pin parts, below).
 	// The part that blocked the last spot is tried first: the next spot is usually blocked by it too (the same answer as
 	// trying them in order; a crowded board's search spent most of its time on the parts that weren't in the way).
 	let lastBlock = 0
-	const blocks = (b: Placed, o: Placed, hug?: string) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) < (o.ref === hug ? CHIP_GAP_MM : GAP_MM)
+	const blocks = (b: Placed, o: Placed, hug?: string) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) < (o.ref === hug ? CHIP_GAP_MM : gapMm)
 	// Routing room kept around a part's pin-capacitor group (opts.capChannelMm): the experiment of 16 Nov 2026 after the
 	// drawn-trace retry failed on crowded boards (real rover run 9 at 58×22 mm): other parts kept this far off the
 	// capacitors' outer sides, so other nets pass around the group instead of through the gaps its traces need.
@@ -1005,7 +1010,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 
 	// The capacitors wired straight to a part's pins (the DRV8833's VINT and VCP, a bare chip's decoupling), each in the
 	// box it takes just past its pad, as far off the part's box as it will be placed (CHIP_GAP_MM for a bare chip's own,
-	// GAP_MM otherwise: 0.5 mm from the DRV8833 overlapped its courtyard, 14 Nov 2026): a part goes only where these fit
+	// the parts' gap otherwise: 0.5 mm from the DRV8833 overlapped its courtyard, 14 Nov 2026): a part goes only where these fit
 	// too. On a 33 mm
 	// wide rover the driver went hard against the module and VINT's capacitor landed across it, 7.98 mm of trace against
 	// tscircuit's 5 mm, and every build failed (14 Nov 2026).
@@ -1021,7 +1026,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 			const at = padOffset(footprint, part.pins.indexOf(end.pin) + 1, b.rotation)
 			if (!at) return []
 			const [cw, ch] = sizeAt(sp.spec.footprint, 0)
-			const gap = chipProfile(part) ? CHIP_GAP_MM : GAP_MM
+			const gap = chipProfile(part) ? CHIP_GAP_MM : gapMm
 			return [Math.abs(at.x) >= Math.abs(at.y)
 				? { ref: sp.ref, x: b.x + Math.sign(at.x) * (b.w / 2 + gap + cw / 2), y: b.y + at.y, w: cw, h: ch, rotation: 0 }
 				: { ref: sp.ref, x: b.x + at.x, y: b.y + Math.sign(at.y) * (b.h / 2 + gap + ch / 2), w: cw, h: ch, rotation: 0 }]
@@ -1036,7 +1041,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 			}
 			const across = Math.abs(c.x - b.x) > b.w / 2
 			let box = across ? { ...c, x: snap(c.x, W / 2, Math.sign(c.x - b.x)), y: snap(c.y, H / 2, 0) } : { ...c, x: snap(c.x, W / 2, 0), y: snap(c.y, H / 2, Math.sign(c.y - b.y)) }
-			const clash = (x: Placed) => kept.find((o) => Math.max(Math.abs(x.x - o.x) - (x.w + o.w) / 2, Math.abs(x.y - o.y) - (x.h + o.h) / 2) < GAP_MM - 1e-9)
+			const clash = (x: Placed) => kept.find((o) => Math.max(Math.abs(x.x - o.x) - (x.w + o.w) / 2, Math.abs(x.y - o.y) - (x.h + o.h) / 2) < gapMm - 1e-9)
 			for (let step = 0, o = clash(box); o && step < 8; step++, o = clash(box)) {
 				const away = across ? Math.sign(box.y - o.y) || 1 : Math.sign(box.x - o.x) || 1
 				box = across ? { ...box, y: box.y + away * GRID_MM } : { ...box, x: box.x + away * GRID_MM }
@@ -1136,7 +1141,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 			const c = frame(depth - m.padAreaTop - MODULE_EDGE_MM, v)
 			const box = frame(depth - onBoard / 2, v)
 			const b: Placed = { ref: p.ref, x: box.x, y: box.y, w, h, rotation, ox: c.x, oy: c.y }
-			const clear = placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= GAP_MM) && keepouts.every((o) => !overlaps(b, o))
+			const clear = placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= gapMm) && keepouts.every((o) => !overlaps(b, o))
 			if (!clear) continue
 			placed.push(b)
 			return b
@@ -1165,7 +1170,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		const gap = (o: { x: number; y: number; w: number; h: number }) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2)
 		const why = [
 			...(Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM ? [`closer than ${EDGE_MARGIN_MM} mm to the board's edge, or off it`] : []),
-			...placed.filter((o) => gap(o) < GAP_MM).map((o) => `${gap(o) < 0 ? "on top of" : `${Math.max(0, gap(o)).toFixed(1)} mm from`} ${o.ref} (parts keep ${GAP_MM} mm apart)`),
+			...placed.filter((o) => gap(o) < gapMm).map((o) => `${gap(o) < 0 ? "on top of" : `${Math.max(0, gap(o)).toFixed(1)} mm from`} ${o.ref} (parts keep ${gapMm} mm apart)`),
 			...(keepouts.some((o) => overlaps(b, o)) ? ["over a mounting hole's keep-out"] : []),
 			...(fits(b) ? capsBlocked.map((c) => `no room for ${c.ref} beside the pin it serves (its trace is held short)`) : []),
 		]

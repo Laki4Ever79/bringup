@@ -307,6 +307,10 @@ is a change to the firmware toolchain, not just the code.
       covered. Real builds at each design's compact size, 13 Nov (0 DRC errors = routed):
       Audit 17 Nov (bringup-system): still open: no tight-first retry yet (bringup-board's min-place work is on the
       space model).
+      17 Nov (bringup-board): the gap is a build option now (PlacementOptions.gapMm, default 1.5: all 39 fixtures' layouts
+      unchanged); at 1.0 the logger places on 30×25 (1.5 needs more than 33×25 today). Left, needing routed builds: the
+      tight-first order in board.ts (1.0, then 1.5 at the same size, then Freerouting), and the space model judging the
+      minimum at 1.0 so the architect asks for the tight size (min-place: the minimum must be what the build places).
 
       | Board | 1.5 mm everywhere (today) | 1.0 mm everywhere | 1.0 mm between small parts only |
       | --- | --- | --- | --- |
