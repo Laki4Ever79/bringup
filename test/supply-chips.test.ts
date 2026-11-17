@@ -3,7 +3,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
-import { assemblableSupplies, completePowerTree } from "../src/contract/power-auto.ts"
+import { assemblableSupplies, completePowerTree, SUPPLY_HEADROOM } from "../src/contract/power-auto.ts"
 import { generatedNets, SERVO_5V_NET, SERVO_FB_NET, SERVO_SW_NET, supportParts } from "../src/codegen/circuit.ts"
 import { supplyWiring, unconnectedParts } from "../src/contract/consistency.ts"
 import type { ContractSnapshot, Part } from "../src/contract/types.ts"
@@ -22,21 +22,24 @@ test("run 20 rev 20: the agents' step-down and Schottkys written as \"other\" ar
 	assert.equal(tree(s.values.parts!).length, 6)
 })
 
-test("U9: the servos' module supply becomes the SY8205 when it covers the pack and two servos at stall (5 A)", () => {
+test("the chip rule keeps 25 % headroom: two servos at stall (5 A, 6.25 A with headroom) keep the module; one (3.1 A) takes the SY8205", () => {
 	const s = fx("mock-eurobot-rev8.json")
 	const before = s.values.parts!.find((p) => p.role === "servo-supply")!
 	assert.equal(before.lcsc, null)
-	const a = assemblableSupplies(s.values.parts!, s.values.mechanics!)
-	const u9 = a.parts.find((p) => p.role === "servo-supply")!
+	assert.equal(SUPPLY_HEADROOM, 1.25)
+	// Two servos: 2 x 2.5 A = 5 A, over the SY8205's 5 A once 1.25x: the module stays.
+	assert.equal(s.values.parts!.filter((p) => p.role === "servo").length, 2)
+	assert.equal(assemblableSupplies(s.values.parts!, s.values.mechanics!).parts.find((p) => p.role === "servo-supply")!.mpn, before.mpn)
+	// One servo: 3.125 A with headroom: the chip.
+	const one = s.values.parts!.filter((p) => p.ref !== s.values.parts!.filter((q) => q.role === "servo")[1].ref)
+	const u9 = assemblableSupplies(one, s.values.mechanics!).parts.find((p) => p.role === "servo-supply")!
 	assert.deepEqual([u9.ref, u9.mpn, u9.lcsc], [before.ref, "SY8205FCC", "C111875"])
-	// Three servos (7.5 A) are over its 5 A: the module stays.
-	const three = [...s.values.parts!, { ref: "JV9", role: "servo", mpn: "PZ254V-11-03P", lcsc: "C492402", footprint: "pinrow3", pins: ["SIG", "V5", "GND"] } as Part]
-	assert.equal(assemblableSupplies(three, s.values.mechanics!).parts.find((p) => p.role === "servo-supply")!.mpn, before.mpn)
 })
 
 test("the SY8205 is wired as its application note draws it, with its parts, and nothing is left open", () => {
 	const s = fx("mock-eurobot-rev8.json")
-	s.values.parts = completePowerTree(s.values.parts!, s.values.mechanics!, s).parts
+	const second = s.values.parts!.filter((q) => q.role === "servo")[1].ref
+	s.values.parts = completePowerTree(s.values.parts!.filter((p) => p.ref !== second), s.values.mechanics!, s).parts
 	const u = s.values.parts!.find((p) => p.role === "servo-supply")!
 	assert.equal(u.mpn, "SY8205FCC")
 	const n = generatedNets(s)
