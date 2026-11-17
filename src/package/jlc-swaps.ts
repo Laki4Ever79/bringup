@@ -53,7 +53,11 @@ export function jlcSwaps(s: ContractSnapshot, classOf: (lcsc: string) => JlcClas
 			offered = true
 			break
 		}
-		if (!offered) stays.push({ ref: p.ref, mpn: p.mpn, reason: `its catalog alternatives fail the design's checks (${refused.filter((r) => r.ref === p.ref).map((r) => `${r.to}: ${r.reason.split(":")[0]}`).join("; ")})` })
+		if (!offered) {
+			const mine = refused.filter((r) => r.ref === p.ref)
+			const allShape = mine.every((r) => r.reason.startsWith("not a drop-in"))
+			stays.push({ ref: p.ref, mpn: p.mpn, reason: allShape ? `no drop-in alternative in the catalog (${mine.map((r) => `${r.to}: ${r.reason.replace(/^not a drop-in: /, "")}`).join("; ")})` : `its drop-in alternatives fail the design's checks (${mine.map((r) => `${r.to}: ${r.reason.split(":")[0]}`).join("; ")})` })
+		}
 	}
 	return { swaps, refused, stays }
 }
