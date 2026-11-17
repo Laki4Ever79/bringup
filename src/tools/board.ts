@@ -18,6 +18,10 @@ const FAILED_PER_STAGE = 2
 // Layouts that built with DRC errors before Freerouting routes the best of them: more tscircuit layouts rarely clear a
 // crowded board's last near-miss (run 14 rev 36: 20 layouts, 640 s, still 1 clearance error).
 export const LAYOUTS_BEFORE_FREEROUTING = 4
+// tscircuit builds per board build, whatever their outcome, before Freerouting takes the best placement (or the first)
+// and the search ends: a live run can't wait 20 layouts (run cc-eurobot-17, 16 Nov 2026: no board build finished in 21
+// minutes under load, and the run ended judging a board 30 revisions old).
+export const MAX_TSCIRCUIT_LAYOUTS = 6
 
 export { WAITING_ON_CONTRACT }
 
@@ -123,6 +127,11 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 		if (placement.debugPort === false && !best && withPort) {
 			await viaFreerouting([fitting[0]])
 			if (best) break
+		}
+		// The search is bounded: past MAX_TSCIRCUIT_LAYOUTS builds, Freerouting routes the best placement so far and it ends.
+		if (tried >= MAX_TSCIRCUIT_LAYOUTS) {
+			if (!best || best.errors > 0) await viaFreerouting([best?.placement ?? fitting[0]])
+			break
 		}
 		// Without the port only when no layout with it built clean (a board with DRC errors is worse than one without it).
 		if (placement.debugPort === false && best && best.errors === 0) break

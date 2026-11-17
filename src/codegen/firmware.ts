@@ -210,6 +210,8 @@ export function connectivityHeader(s: ContractSnapshot): string {
 const C_TYPE = { u8: "uint8_t", u16: "uint16_t", i16: "int16_t", u32: "uint32_t", f32: "float" } as const
 // How a sent "reading" field is filled from the reading, by its name; any other field is sent as 0.
 const READING_FILL: Record<string, string> = { tempCx100: "(int16_t)lroundf(t * 100)", rhx100: "(uint16_t)lroundf(rh * 100)", tempC: "t", rh: "rh", ok: "ok ? 1 : 0" }
+// How each field type goes into CBOR (linkcbor.h): unsigned and signed integers, floats as single precision.
+const CBOR_PUT = { u8: "u", u16: "u", i16: "i", u32: "u", f32: "f" } as const
 const PRINTF = { u8: ["%u", "(unsigned)"], u16: ["%u", "(unsigned)"], i16: ["%d", "(int)"], u32: ["%lu", "(unsigned long)"], f32: ["%.2f", "(double)"] } as const
 
 // ESP-IDF's TWAI timing macros (driver/twai.h) for each CAN bit rate the spec allows (spec.ts CAN_BUS_MAX_M).
@@ -283,7 +285,18 @@ export function linkHeader(s: ContractSnapshot): string {
 			.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "receive").map((m) => `(${idExpr}) == (${M(m.name)}_HASH & LINK_HASH_MASK) ? "${l.id}" : `))
 			.join("") + `"${fallback}"`
 	const receives = live.flatMap((l) => (l.messages ?? []).filter((m) => m.dir === "receive").map((m) => ({ l, m })))
-	const body: string[] = ["", "#ifdef ARDUINO", "#include <Wire.h>", "#include \"linkframe.h\""]
+	const body: string[] = ["", "#ifdef ARDUINO", "#include <Wire.h>", "#include \"linkframe.h\"", "#include \"linkcbor.h\""]
+	// On UART and I2C a message's payload is CBOR (linkcbor.h, RFC 8949): a map of its field names to their values. A CAN
+	// frame keeps the packed struct (8 bytes; CBOR's field names wouldn't fit).
+	const cborMsgs = [...new Map(links.filter((l) => l.kind !== "can").flatMap((l) => l.messages ?? []).map((m) => [m.name, m])).values()]
+	for (const m of cborMsgs) {
+		body.push(`static inline uint8_t ${m.name}_to_cbor(const ${m.name}_msg &m, uint8_t *p) {`, `\tLinkCborWriter w(p, LINK_MAX_PAYLOAD);`, `\tw.map(${m.fields.length});`)
+		for (const f of m.fields) body.push(`\tw.key("${f.name}");`, `\tw.${CBOR_PUT[f.type]}(m.${f.name});`)
+		body.push(`\treturn w.ok ? w.n : 0;`, `}`)
+		body.push(`static inline bool ${m.name}_from_cbor(const uint8_t *p, uint8_t len, ${m.name}_msg &m) {`, `\tdouble v;`)
+		for (const f of m.fields) body.push(`\tif (!linkCborNumber(p, len, "${f.name}", v)) return false;`, `\tm.${f.name} = (${C_TYPE[f.type]})v;`)
+		body.push(`\treturn true;`, `}`)
+	}
 	if (can) body.push("#include \"driver/twai.h\"")
 	if (canStmLink) body.push(
 		"#ifndef HAL_CAN_MODULE_ENABLED",
@@ -298,7 +311,11 @@ export function linkHeader(s: ContractSnapshot): string {
 		for (const { l, m } of receives) {
 			const fmt = m.fields.map((f) => `${f.name}=${PRINTF[f.type][0]}`).join(" ")
 			const args = m.fields.map((f) => `, ${PRINTF[f.type][1]}x.${f.name}`).join("")
-			body.push(`\tif ((hash & LINK_HASH_MASK) == (${M(m.name)}_HASH & LINK_HASH_MASK) && len == sizeof(${m.name}_msg)) {`, `\t\t${m.name}_msg x;`, `\t\tmemcpy(&x, p, sizeof x);`, `\t\tLog.printf("LINK %s ${m.name} from ${l.peer}: ${fmt}\\n", link${args});`, `\t\treturn;`, "\t}")
+			const match = `(hash & LINK_HASH_MASK) == (${M(m.name)}_HASH & LINK_HASH_MASK)`
+			if (l.kind === "can") body.push(`\tif (${match} && len == sizeof(${m.name}_msg)) {`, `\t\t${m.name}_msg x;`, `\t\tmemcpy(&x, p, sizeof x);`)
+			// The hash names the message: a payload that doesn't carry its fields is dropped, and said so.
+			else body.push(`\tif (${match}) {`, `\t\t${m.name}_msg x;`, `\t\tif (!${m.name}_from_cbor(p, len, x)) {`, `\t\t\tLog.printf("LINK %s ${m.name}: the payload isn't a CBOR map with its fields, dropped\\n", link);`, `\t\t\treturn;`, `\t\t}`)
+			body.push(`\t\tLog.printf("LINK %s ${m.name} from ${l.peer}: ${fmt}\\n", link${args});`, `\t\treturn;`, "\t}")
 		}
 		body.push(`\tLog.printf("LINK %s: a frame with an unknown definition (hash %08lx), dropped\\n", link, (unsigned long)hash);`, "}")
 	}
@@ -385,11 +402,12 @@ export function linkHeader(s: ContractSnapshot): string {
 	for (const { l, m } of sends) {
 		// A failed reading goes out only in a message that can say so (an ok field); otherwise it isn't sent.
 		body.push(m.fields.some((f) => f.name === "ok") ? `\t{` : `\tif (ok) {`, `\t\t${m.name}_msg m = {};`, ...m.fields.map((f) => `\t\tm.${f.name} = ${READING_FILL[f.name] ?? "0"};${READING_FILL[f.name] ? "" : " // not a reading field: sent as 0"}`))
-		if (l.kind === "uart") body.push(`\t\tlinkFrameWrite(${ser}, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\t${ser}.flush();`)
+		if (l.kind !== "can") body.push(`\t\tuint8_t pl[LINK_MAX_PAYLOAD];`, `\t\tconst uint8_t plen = ${m.name}_to_cbor(m, pl);`)
+		if (l.kind === "uart") body.push(`\t\tlinkFrameWrite(${ser}, ${M(m.name)}_HASH, pl, plen);`, `\t\t${ser}.flush();`)
 		else if (l.kind === "can" && stm) body.push(`\t\tCAN_TxHeaderTypeDef h = {};`, `\t\th.ExtId = ${M(m.name)}_HASH & LINK_HASH_MASK;`, `\t\th.IDE = CAN_ID_EXT;`, `\t\th.RTR = CAN_RTR_DATA;`, `\t\th.DLC = sizeof m;`, `\t\tuint32_t mailbox;`, `\t\tif (HAL_CAN_AddTxMessage(&linkCan, &h, (uint8_t *)&m, &mailbox) != HAL_OK) Log.println("LINK ${l.id}: no CAN frame sent (no free mailbox, or bus off)");`)
 		else if (l.kind === "can") body.push(`\t\ttwai_message_t f = {};`, `\t\tf.extd = 1;`, `\t\tf.identifier = ${M(m.name)}_HASH & LINK_HASH_MASK;`, `\t\tf.data_length_code = sizeof m;`, `\t\tmemcpy(f.data, &m, sizeof m);`, `\t\tif (twai_transmit(&f, pdMS_TO_TICKS(20)) != ESP_OK) Log.println("LINK ${l.id}: no CAN frame sent (bus off, or nobody acknowledged)");`)
-		else if (l.i2c?.role === "target") body.push(`\t\tLinkBufferOut out;`, `\t\tlinkFrameWrite(out, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tlinkReplyLen = 0;`, `\t\tmemcpy(linkReplyFrame, out.buf, out.n);`, `\t\t__atomic_store_n(&linkReplyLen, out.n, __ATOMIC_RELEASE); // last, and after the copy: the request handler sees a whole frame or none`)
-		else body.push(`\t\tWire.beginTransmission((uint8_t)${L(l.id)}_I2C_PEER_ADDRESS);`, `\t\tlinkFrameWrite(Wire, ${M(m.name)}_HASH, &m, sizeof m);`, `\t\tconst uint8_t err = Wire.endTransmission();`, `\t\tif (err) Log.printf("LINK ${l.id}: ${l.peer} didn't answer at 0x%02x (%u)\\n", ${L(l.id)}_I2C_PEER_ADDRESS, err);`)
+		else if (l.i2c?.role === "target") body.push(`\t\tLinkBufferOut out;`, `\t\tlinkFrameWrite(out, ${M(m.name)}_HASH, pl, plen);`, `\t\tlinkReplyLen = 0;`, `\t\tmemcpy(linkReplyFrame, out.buf, out.n);`, `\t\t__atomic_store_n(&linkReplyLen, out.n, __ATOMIC_RELEASE); // last, and after the copy: the request handler sees a whole frame or none`)
+		else body.push(`\t\tWire.beginTransmission((uint8_t)${L(l.id)}_I2C_PEER_ADDRESS);`, `\t\tlinkFrameWrite(Wire, ${M(m.name)}_HASH, pl, plen);`, `\t\tconst uint8_t err = Wire.endTransmission();`, `\t\tif (err) Log.printf("LINK ${l.id}: ${l.peer} didn't answer at 0x%02x (%u)\\n", ${L(l.id)}_I2C_PEER_ADDRESS, err);`)
 		body.push(`\t\tLog.println("LINK ${l.id} sent ${m.name}");`, `\t}`)
 	}
 	body.push("}", "// Listens for ms milliseconds (a board that receives nothing just waits).", "static void linkPoll(uint32_t ms) {")
