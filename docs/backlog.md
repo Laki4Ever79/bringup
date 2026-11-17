@@ -323,11 +323,14 @@ is a change to the firmware toolchain, not just the code.
       first and, when the build doesn't route, retry the same size with the wider gap before the board grows, so a
       board only gets the room its routing needed (one more build per failure, about 50 s).
 
-- [ ] **STM32 logger "unique PCB port" routing failure:** the scripted STM32 logger fails at 50×30 and 37×20 with
+- [x] **STM32 logger "unique PCB port" routing failure:** the scripted STM32 logger fails at 50×30 and 37×20 with
       tscircuit's "Routes contain a junction or endpoint that cannot select a unique PCB port", with or without the
       debug footprint; 39×21 routes (`npm run board`, 13 Nov). Belongs with the routing-aware retry above.
       Audit 17 Nov (bringup-system): not re-run since the Freerouting fallback (746afdd), which may route it: one npm
       run board at 37x20 would tell.
+      Done 17 Nov (bringup-board, adopt a4af9d5): 50×30 routes on tscircuit's first layout, DRC 0, 0 unconnected, 31 s.
+      37×20 no longer places (the logger has gained parts: "no room for C5"); at its smallest by placement today, 47×16,
+      it routes via Freerouting: 3 layouts, 88 s, DRC 0, 0 unconnected.
 - [ ] **Antenna keep-out:** Espressif recommends 15 mm clear around the module's antenna; the case leaves 2 mm. No
       ground copper is kept away from it yet either.
       Audit 17 Nov (bringup-system): the report names parts within 15 mm (b95dfb3, advisory); left: the layout, the case
