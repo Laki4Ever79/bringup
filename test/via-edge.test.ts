@@ -47,7 +47,7 @@ test("a via already clear of the edge, and another net's trace through the old s
 
 test("a board with no Edge.Cuts outline is returned unchanged", () => {
 	const text = `(kicad_pcb\n${via(79.512, 100, 7)})\n`
-	assert.deepEqual(nudgeEdgeVias(text, 0.3), { pcb: text, moved: [] })
+	assert.deepEqual(nudgeEdgeVias(text, 0.3), { pcb: text, moved: [], merged: [] })
 })
 
 // The scripted rover at 43×28 mm (15 Nov 2026) left its debug footprint off: a GND via 0.1734 mm from one of the
@@ -94,4 +94,19 @@ test("a trace end on a pad at the edge stays on the pad (an edge connector's pad
 	const pad = `  (footprint\n    "tscircuit:usb"\n    (layer F.Cu)\n    (at 100 85.7 0)\n    (pad "1" smd rect\n      (at 0 0 0)\n      (size 0.6 1.2)\n      (layers F.Cu)\n    )\n  )\n`
 	const r = nudgeVias(pcb(pad, seg(100, 85.7, 100, 90, 5)), { edgeMm: 0.3, holeMm: 0.2 })
 	assert.deepEqual(segs(r.pcb)[0], [100, 85.7, 100, 90])
+})
+
+// Real run 17 rev 41 and run 18 (17 Nov 2026): the router left same-net via pairs with drills 0.11-0.15 mm apart, under
+// JLCPCB's 0.25 mm hole-to-hole. The pair becomes one via: the first kept, the other removed, its traces joining it; a
+// trace that ran between them is gone; another net's via that close is left for the DRC to name.
+test("two vias of one net with drills nearer than the fab's hole-to-hole become one, their traces joined", async () => {
+	const { nudgeVias } = await import("../src/tools/via-edge.ts")
+	// Centres 0.4 mm apart, drills 0.25: 0.15 mm between the drills.
+	const board = pcb(via(100, 100, 3), via(100.4, 100, 3), seg(95, 100, 100, 100, 3), seg(100.4, 100, 100.4, 105, 3, "B.Cu"), seg(100, 100, 100.4, 100, 3), via(110, 100, 4), via(110.4, 100, 5))
+	const r = nudgeVias(board, { edgeMm: 0.3, holeMm: 0.2, holeToHoleMm: 0.25 })
+	assert.deepEqual(r.merged, [{ net: 3, from: [100.4, 100], to: [100, 100] }])
+	assert.deepEqual(vias(r.pcb), [[100, 100], [110, 100], [110.4, 100]])
+	assert.deepEqual(segs(r.pcb), [[95, 100, 100, 100], [100, 100, 100.4, 105]])
+	// Without the rule (the edge-only pass), both stay.
+	assert.equal(vias(nudgeVias(board, { edgeMm: 0.3, holeMm: 0.2 }).pcb).length, 4)
 })
