@@ -1088,6 +1088,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	const { outline, parts = [], connectors = [] } = s.values
 	if (!outline) throw new Error("placeParts: contract has no outline")
 	const [W, H] = [outline.widthMm, outline.heightMm]
+	const footprintOfRef = (ref: string) => { const p = parts.find((x) => x.ref === ref); return p ? footprintFor(p) : "" }
 	const placed: Placed[] = connectorBoxes(s, W, H)
 	// Hole keep-outs block placement but are not parts, so they are not returned.
 	const keepouts = mountingHoles(s).map((h) => ({ x: h.x, y: h.y, w: MOUNTING_HOLE.keepoutMm, h: MOUNTING_HOLE.keepoutMm }))
@@ -1114,8 +1115,20 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// drawn-trace retry failed on crowded boards (real rover run 9 at 58×22 mm): other parts kept this far off the
 	// capacitors' outer sides, so other nets pass around the group instead of through the gaps its traces need.
 	const channels: (Placed & { owner: string; caps: Set<string> })[] = []
+	// The board edge is judged by a part's copper and courtyard (dualRowExtent), not its placement box: run 20b's PCA9685
+	// (TSSOP-28, box 7.9 mm along its pin rows, pads 9.25) had pads 0.125 mm from the edge, and tscircuit refused the board.
+	const edgeBox = (b: Placed): Placed => {
+		const d = dualRowExtent(footprintOfRef(b.ref))
+		if (!d) return b
+		const [dw, dh] = Math.abs(b.rotation) % 180 === 90 ? [d[1], d[0]] : d
+		return { ...b, w: Math.max(b.w, dw), h: Math.max(b.h, dh) }
+	}
+	const offEdge = (b: Placed) => {
+		const e = edgeBox(b)
+		return Math.abs(e.x) + e.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(e.y) + e.h / 2 > H / 2 - EDGE_MARGIN_MM
+	}
 	const fits = (b: Placed, hug?: string) => {
-		if (Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM) return false
+		if (offEdge(b)) return false
 		if (lastBlock < placed.length && blocks(b, placed[lastBlock], hug)) return false
 		for (let k = 0; k < placed.length; k++)
 			if (blocks(b, placed[k], hug)) {
@@ -1288,7 +1301,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		}
 		const gap = (o: { x: number; y: number; w: number; h: number }) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2)
 		const why = [
-			...(Math.abs(b.x) + b.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(b.y) + b.h / 2 > H / 2 - EDGE_MARGIN_MM ? [`closer than ${EDGE_MARGIN_MM} mm to the board's edge, or off it`] : []),
+			...(offEdge(b) ? [`closer than ${EDGE_MARGIN_MM} mm to the board's edge, or off it`] : []),
 			...placed.filter((o) => gap(o) < gapMm).map((o) => `${gap(o) < 0 ? "on top of" : `${Math.max(0, gap(o)).toFixed(1)} mm from`} ${o.ref} (parts keep ${gapMm} mm apart)`),
 			...(keepouts.some((o) => overlaps(b, o)) ? ["over a mounting hole's keep-out"] : []),
 			...(fits(b) ? capsBlocked.map((c) => `no room for ${c.ref} beside the pin it serves (its trace is held short)`) : []),
