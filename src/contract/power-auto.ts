@@ -28,6 +28,11 @@ export function completePowerTree(parts: Part[], mechanics: Mechanics | undefine
 // voltage and the role's current: the module stays the fallback (lead decision after real run 20, 17 Nov 2026: the
 // D24V5F5 and the D36V50F5 had no LCSC number). The current a role needs: the servos', each at stall (SERVO_STALL_A,
 // an estimate) times their count; a step-down's, the catalog chip's own rating (the logic rail's few hundred mA).
+// A supply chip must be rated at least this much over the role's peak (lead decision, 17 Nov 2026): servos stall
+// together (a blocked arm, a start), the stall figure itself is an estimate, and a converter run at its limit runs hot
+// and trips its current limit; 25 % is the usual derating for a supply's continuous rating.
+export const SUPPLY_HEADROOM = 1.25
+
 export function assemblableSupplies(parts: Part[], mechanics: Mechanics | undefined): { parts: Part[]; note: string | null } {
 	const cat = defaultCheckCatalog()
 	const pack = cat && mechanics?.battery?.pack ? byMpn(cat.mech.batteries, mechanics.battery.pack) : undefined
@@ -38,10 +43,10 @@ export function assemblableSupplies(parts: Part[], mechanics: Mechanics | undefi
 	const changed: string[] = []
 	const out = parts.map((p) => {
 		if (!["buck", "servo-supply"].includes(p.role ?? "") || p.lcsc) return p
-		const chip = list.find((x) => x.role === p.role && x.lcsc && (x.maxInV ?? 0) >= pack.fullV && (x.maxA ?? 0) >= need(p.role!))
+		const chip = list.find((x) => x.role === p.role && x.lcsc && (x.maxInV ?? 0) >= pack.fullV && (x.maxA ?? 0) >= SUPPLY_HEADROOM * need(p.role!))
 		if (!chip) return p
 		const { maxInV: _m, cells: _c, ...rest } = chip as typeof chip & Record<string, unknown>
-		changed.push(`${p.ref} ${p.mpn} (a module, no LCSC number) became ${chip.mpn} (${chip.lcsc}, ${chip.maxA} A, up to ${chip.maxInV} V${need(p.role!) ? `; the ${servos} servos at stall need ${need(p.role!)} A` : ""})`)
+		changed.push(`${p.ref} ${p.mpn} (a module, no LCSC number) became ${chip.mpn} (${chip.lcsc}, ${chip.maxA} A, up to ${chip.maxInV} V${need(p.role!) ? `; the ${servos} servos at stall need ${need(p.role!)} A, ${SUPPLY_HEADROOM}x is ${SUPPLY_HEADROOM * need(p.role!)} A` : ""})`)
 		return { ...(rest as unknown as Part), ref: p.ref, ...(p.at ? { at: p.at } : {}) }
 	})
 	return { parts: out, note: changed.length ? `power modules became chips JLCPCB assembles: ${changed.join("; ")}` : null }
