@@ -421,7 +421,12 @@ them as well, although it might not be the focus here".
       Audit 17 Nov (bringup-system): done 15 Nov in 282b51f: the reference rover re-saved from a settled mock build, and
       Rover with a Pi got its still.png.
 - [ ] **Null values in module records:** Jetson hole positions, ROCK 5B absolute holes, heights.
-      Audit 17 Nov (bringup-system): still open: next for bringup-system (sourced from datasheets only).
+      17 Nov (bringup-system): the ROCK 5B's holes (five Ø3.5 mm) and height (16.35 mm) from Radxa's v1.42 STEP, agreeing
+      with the V1.41 drawing's spacings within 0.2 mm. Its Ø3.5 holes showed two screw choosers disagreeing (the
+      chassis M2.5, the parts list M3, which the catalog lacks): the parts list and the fit check now use the chassis'
+      boardScrew (test/board-screws.test.ts). Left, with no public source found: the Pi 5, Zero 2 W and CM5 IO heights
+      (no vendor STEP; the drawings have no heights), the Jetson Orin Nano kit's holes (NVIDIA's devkit STEP needs a
+      developer login). The other nulls are values vendors don't publish (typical currents, the NUC's VESA bracket).
 - [x] **Eurobot starter** (16 Nov, bringup-system): examples/eurobot, saved from a settled mock build of briefs/eurobot-base.md (rev 11, 0 violations, 0 failed builds, the simulated drive passes, 7 of 7 Eurobot rule figures within limits). Before: the brief got the beacon design (unsettled, 9 violations).
   - [x] **Fork evidence** (16 Nov, bringup-system): each run's module evidence now names its design and, for a fork, the
         starter it came from (src/modules/library.ts runSource reads the dashboard's lineage, plans/starters/*/forks.jsonl);

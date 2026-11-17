@@ -65,9 +65,38 @@
 			"note": "the introduction rounds it to 100 x 75 mm; the drawing is V1.41 (pre-production), the latest Radxa publishes as a dimension drawing"
 		},
 		"holes": {
-			"value": null,
-			"source": null,
-			"note": "the edge offsets aren't readable: on the published PDF the dimension labels sit apart from their arrows (8.95, 5.08, 2.60 and 8.68 don't match the geometry they're next to), and no hole diameter is given. Take positions from Radxa's v1.42 STEP model (download page) before drilling"
+			"value": [
+				{
+					"x": 3.52,
+					"y": 70.69,
+					"dia": 3.5
+				},
+				{
+					"x": 61.57,
+					"y": 70.64,
+					"dia": 3.5
+				},
+				{
+					"x": 96.67,
+					"y": 70.69,
+					"dia": 3.5
+				},
+				{
+					"x": 3.57,
+					"y": 21.69,
+					"dia": 3.5
+				},
+				{
+					"x": 96.72,
+					"y": 21.64,
+					"dia": 3.5
+				}
+			],
+			"source": {
+				"url": "https://dl.radxa.com/rock5/5b/docs/hw/ROCK5B_v1.42_3D.step.zip",
+				"where": "ROCK5B_v1.42_3D.step (Radxa download page, v1.42 3D drawings): the board's through-holes, centres of the Ø3.5 mm hole walls, measured from the board face's lower-left corner (outline 100.19 x 74.24 mm, as the V1.41 drawing's 100.20 x 74.25)"
+			},
+			"note": "the pattern the V1.41 drawing dimensions (holeSpacing: 58.05 and 35.10 along the top row, 49.05 between rows, the lower row 21.85 from the bottom edge) agrees within 0.2 mm. The model's five Ø3.2 mm holes (a 54 x 33 mm rectangle around the SoC, and one at 61.35, 34.89) are the heatsink's, not board mounts, and are left out. Radxa forum users report the CAD off on received boards: check one board before drilling"
 		},
 		"holeSpacing": {
 			"value": {
@@ -85,10 +114,13 @@
 			"note": "these four agree with the drawn geometry; the left and right edge offsets together are 100.20 - 58.05 - 35.10 = 7.05"
 		},
 		"tallestMm": {
-			"value": null,
+			"value": 16.35,
 			"unit": "mm",
-			"source": null,
-			"note": "not on the dimension drawing (top and bottom views only): measure a board or take the v1.42 STEP model"
+			"source": {
+				"url": "https://dl.radxa.com/rock5/5b/docs/hw/ROCK5B_v1.42_3D.step.zip",
+				"where": "ROCK5B_v1.42_3D.step: the highest part (the USB-A stacks) reaches 16.35 mm above the board's top face"
+			},
+			"note": "above the top face only; through-hole pins reach 2.7 mm below the 1.5 mm board"
 		},
 		"header": {
 			"at": {
