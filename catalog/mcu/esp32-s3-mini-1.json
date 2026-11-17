@@ -18,7 +18,8 @@
 		}
 	},
 	"board": {
-		"supported": true
+		"supported": false,
+		"reason": "the module's 65-pad land pattern isn't entered yet (ESP32-S3-MINI-1 datasheet, PCB land pattern); firmware, pins and chip choice work, and its PCNT counts quadrature"
 	},
 	"core": "Xtensa LX7 dual core",
 	"mhz": 240,
@@ -158,6 +159,19 @@
 			"wake": true
 		},
 		{
+			"name": "GPIO10",
+			"index": 10,
+			"pads": [
+				"14"
+			],
+			"signals": [
+				"*",
+				"TOUCH10",
+				"ADC1_CH9"
+			],
+			"wake": true
+		},
+		{
 			"name": "GPIO11",
 			"index": 11,
 			"pads": [
@@ -171,6 +185,19 @@
 			"wake": true
 		},
 		{
+			"name": "GPIO12",
+			"index": 12,
+			"pads": [
+				"16"
+			],
+			"signals": [
+				"*",
+				"TOUCH12",
+				"ADC2_CH1"
+			],
+			"wake": true
+		},
+		{
 			"name": "GPIO13",
 			"index": 13,
 			"pads": [
@@ -180,6 +207,19 @@
 				"*",
 				"TOUCH13",
 				"ADC2_CH2"
+			],
+			"wake": true
+		},
+		{
+			"name": "GPIO14",
+			"index": 14,
+			"pads": [
+				"18"
+			],
+			"signals": [
+				"*",
+				"TOUCH14",
+				"ADC2_CH3"
 			],
 			"wake": true
 		},
@@ -436,7 +476,30 @@
 			"name": "GND",
 			"net": "ground",
 			"pads": [
-				"1"
+				"1",
+				"2",
+				"42",
+				"43",
+				"46",
+				"47",
+				"48",
+				"49",
+				"50",
+				"51",
+				"52",
+				"53",
+				"54",
+				"55",
+				"56",
+				"57",
+				"58",
+				"59",
+				"60",
+				"61",
+				"62",
+				"63",
+				"64",
+				"65"
 			]
 		},
 		{
@@ -450,7 +513,7 @@
 			"name": "EN",
 			"net": "reset",
 			"pads": [
-				"8"
+				"45"
 			]
 		}
 	],
@@ -512,20 +575,20 @@
 	},
 	"support": [],
 	"currents": {
-		"sleepUa": 5,
-		"cpuMa": 28,
-		"radioMa": 84,
-		"bleTxMa": 170,
-		"bleRxMa": 86,
-		"wifiTxMa": 350,
+		"sleepUa": 8,
+		"cpuMa": 66.2,
+		"radioMa": 93,
+		"bleTxMa": 189,
+		"bleRxMa": 93,
+		"wifiTxMa": 355,
 		"supplyMinMa": 500,
-		"source": "ESP32-C3-MINI-1 & MINI-1U datasheet v2.2 (2026-05-06): Bluetooth LE transmit 170 mA peak at 0 dBm and receive 86 mA (Table 6-5); Wi-Fi transmit up to 350 mA (802.11b at 20.5 dBm, Table 6-4); external supply at least 0.5 A (Table 6-2), 3.3 V, 25 °C; chip: ESP32-C3 Series Datasheet v2.4 Tables 5-7, 5-8, 5-9"
+		"source": "ESP32-S3-MINI-1 & MINI-1U datasheet v1.7: Table 6-5 Bluetooth LE TX 189 mA at 0 dBm, RX 93 mA; Table 6-4 Wi-Fi 802.11b TX 355 mA peak; Table 6-6 dual core at 240 MHz 66.2 mA typ; Table 6-7 Deep-sleep with RTC memory and peripherals 8 uA; supplyMinMa 500 (as the C3, the module's recommended supply)"
 	},
 	"firmware": {
 		"platform": "espressif32@8.0.0",
 		"board": "esp32-s3-devkitc-1",
 		"framework": "arduino",
-		"arch": "esp32s3",
+		"arch": "esp32",
 		"pinStyle": "number",
 		"flags": [
 			"board_build.flash_mode = dio"
@@ -550,7 +613,16 @@
 		"ble",
 		"wifi"
 	],
-	"preferred": false,
+	"preferred": [
+		4,
+		5,
+		6,
+		7,
+		15,
+		16,
+		17,
+		18
+	],
 	"sources": [
 		"ESP32-S3-MINI-1 & MINI-1U datasheet (Espressif), Table 3-1 Pin Definitions (pads, functions, USB_D-/D+ on IO19/IO20, U0TXD/U0RXD on GPIO43/44)",
 		"ESP32-S3 Series Datasheet (strapping pins GPIO0, GPIO3, GPIO45, GPIO46)",
