@@ -10,7 +10,7 @@
 import type { ContractSnapshot, Part } from "./types.ts"
 import { usedRefs } from "./consistency.ts"
 import type { Mechanics } from "../mechanics/types.ts"
-import { defaultCheckCatalog } from "../mechanics/checks.ts"
+import { defaultCheckCatalog, SERVO_STALL_A } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
 
 type Entry = Part & { lcsc: string | null; maxInV?: number; cells?: number }
@@ -18,7 +18,59 @@ type Entry = Part & { lcsc: string | null; maxInV?: number; cells?: number }
 // With the contract (ctx), the passives only a dropped part used go with it (the Eurobot mock, 17 Nov 2026: the 2S pack
 // dropped the TP4054 and its LED, and left its PROG resistor R4, LED resistor R7 and C4 connected to nothing).
 export function completePowerTree(parts: Part[], mechanics: Mechanics | undefined, ctx?: ContractSnapshot): { parts: Part[]; note: string | null } {
-	const t = treeOf(parts, mechanics)
+	const t = completeTree(parts, mechanics, ctx)
+	const a = assemblableSupplies(t.parts, mechanics)
+	return a.note ? { parts: a.parts, note: [t.note, a.note].filter(Boolean).join("; ") } : t
+}
+
+// Every power module the code or an agent picks (a step-down, the servos' supply) becomes a chip JLCPCB assembles, with
+// its datasheet's parts (the board generator adds them), when the catalog has one of that role rated for the pack's full
+// voltage and the role's current: the module stays the fallback (lead decision after real run 20, 17 Nov 2026: the
+// D24V5F5 and the D36V50F5 had no LCSC number). The current a role needs: the servos', each at stall (SERVO_STALL_A,
+// an estimate) times their count; a step-down's, the catalog chip's own rating (the logic rail's few hundred mA).
+export function assemblableSupplies(parts: Part[], mechanics: Mechanics | undefined): { parts: Part[]; note: string | null } {
+	const cat = defaultCheckCatalog()
+	const pack = cat && mechanics?.battery?.pack ? byMpn(cat.mech.batteries, mechanics.battery.pack) : undefined
+	if (!cat || !pack) return { parts, note: null }
+	const list = cat.boardParts as unknown as (Part & { lcsc: string | null; maxInV?: number | null; maxA?: number | null })[]
+	const servos = parts.filter((p) => p.role === "servo").length
+	const need = (role: string) => (role === "servo-supply" ? servos * SERVO_STALL_A : 0)
+	const changed: string[] = []
+	const out = parts.map((p) => {
+		if (!["buck", "servo-supply"].includes(p.role ?? "") || p.lcsc) return p
+		const chip = list.find((x) => x.role === p.role && x.lcsc && (x.maxInV ?? 0) >= pack.fullV && (x.maxA ?? 0) >= need(p.role!))
+		if (!chip) return p
+		const { maxInV: _m, cells: _c, ...rest } = chip as typeof chip & Record<string, unknown>
+		changed.push(`${p.ref} ${p.mpn} (a module, no LCSC number) became ${chip.mpn} (${chip.lcsc}, ${chip.maxA} A, up to ${chip.maxInV} V${need(p.role!) ? `; the ${servos} servos at stall need ${need(p.role!)} A` : ""})`)
+		return { ...(rest as unknown as Part), ref: p.ref, ...(p.at ? { at: p.at } : {}) }
+	})
+	return { parts: out, note: changed.length ? `power modules became chips JLCPCB assembles: ${changed.join("; ")}` : null }
+}
+
+// A part the catalog knows by its part number takes the catalog's role when it came as "other" (real run 20, rev 20:
+// the agents rewrote U7 D24V5F5 and D10/D11 B5819W as "other", the prompt not naming buck or diode then, and the tree
+// added a second step-down and pair of Schottkys beside them: no room left for the board). Recognised by function, the
+// tree adopts them instead of adding a second.
+export function catalogRoles(parts: Part[]): { parts: Part[]; note: string | null } {
+	const cat = defaultCheckCatalog()
+	if (!cat) return { parts, note: null }
+	const list = cat.boardParts as unknown as Part[]
+	const fixed: string[] = []
+	const out = parts.map((p) => {
+		if (p.role && p.role !== "other") return p
+		const e = list.find((x) => x.mpn === p.mpn)
+		if (!e?.role || e.role === "other") return p
+		fixed.push(`${p.ref} ${p.mpn} is the catalog's ${e.role}`)
+		return { ...p, role: e.role }
+	})
+	return { parts: out, note: fixed.length ? `roles from the catalog: ${fixed.join(", ")}` : null }
+}
+
+function completeTree(partsIn: Part[], mechanics: Mechanics | undefined, ctx?: ContractSnapshot): { parts: Part[]; note: string | null } {
+	const roles = catalogRoles(partsIn)
+	const parts = roles.parts
+	const t0 = treeOf(parts, mechanics)
+	const t = roles.note ? { parts: t0.parts, note: [roles.note, t0.note].filter(Boolean).join("; ") } : t0
 	if (!ctx || !t.note) return t
 	const gone = parts.filter((p) => !t.parts.some((q) => q.ref === p.ref))
 	if (!gone.length) return t
