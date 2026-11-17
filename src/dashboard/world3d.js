@@ -172,26 +172,41 @@ function cylinderY(cx, cy, cz, r, w, n = 24) {
 // A rover (the chassis builder's spec.json and chassis.stl): the printed plate, the drive wheels on their axle, the
 // motors, the caster, the battery under the boards, the distance sensor at the front, and the board on its standoffs.
 // The chassis frame has the plate's underside at z 0; here the floor is z 0, so everything rises by the clearance.
-function roverParts(spec, chassisTris) {
+// The assembly order's steps, as groups of the rover's parts (src/package/build.ts assemblyOrder): a build package draws
+// the rover up to a step (opts.upTo, a step index) and an exploded view (opts.explode, mm of lift per step).
+export const ASSEMBLY_STEPS = ["plate", "motors", "wheels", "board", "battery", "sensor", "top"]
+export function roverParts(spec, chassisTris, opts = {}) {
 	const lift = spec.plate.clearanceMm
 	const d = spec.drive
 	const parts = []
-	const add = (tris, color) => parts.push({ tris: tris instanceof Float32Array ? tris : new Float32Array(tris), color })
+	let group = "plate"
+	const step = (g) => ASSEMBLY_STEPS.indexOf(g)
+	const add = (tris, color) => {
+		const k = step(group)
+		if (opts.upTo !== undefined && k > opts.upTo) return
+		const t = tris instanceof Float32Array ? tris : new Float32Array(tris)
+		parts.push({ tris: opts.explode ? shift(t, [0, 0, k * opts.explode]) : t, color, group })
+	}
 	if (chassisTris?.length) add(shift(chassisTris, [0, 0, lift]), CHASSIS)
 	else add(boxTris([-spec.plate.lengthMm / 2, -spec.plate.widthMm / 2, lift], [spec.plate.lengthMm / 2, spec.plate.widthMm / 2, lift + spec.plate.thicknessMm]), CHASSIS)
 	const r = d.wheelDiameterMm / 2
+	group = "wheels"
 	// A skid-steer rover (drive kind "skid4"): a second pair of wheels wheelbaseMm behind the first.
 	for (const ax of d.kind === "skid4" ? [d.axleXMm, d.axleXMm - d.wheelbaseMm] : [d.axleXMm])
 		for (const s of [1, -1]) add(cylinderY(ax, (s * d.trackMm) / 2, r, r, d.wheelWidthMm), TYRE)
+	group = "motors"
 	for (const m of spec.motors ?? []) add(boxTris([m.xMm - m.bodyMm[0] / 2, m.yMm - m.bodyMm[1] / 2, r - m.bodyMm[2] / 2], [m.xMm + m.bodyMm[0] / 2, m.yMm + m.bodyMm[1] / 2, r + m.bodyMm[2] / 2]), METAL)
+	group = "wheels"
 	if (spec.caster) {
 		const cr = spec.caster.wheelMm / 2
 		add(cylinderY(spec.caster.xMm, 0, cr, cr, 12), TYRE)
 		add(boxTris([spec.caster.xMm - 6, -6, 2 * cr], [spec.caster.xMm + 6, 6, lift]), METAL)
 	}
 	const top = lift + spec.plate.thicknessMm
+	group = "battery"
 	if (spec.battery) { const [l, w, h] = spec.battery.sizeMm; add(boxTris([spec.battery.xMm - l / 2, spec.battery.yMm - w / 2, top], [spec.battery.xMm + l / 2, spec.battery.yMm + w / 2, top + h]), PART) }
 	// The beacon support's mast (printed in sections, drawn whole) up to its top, z from the floor (Eurobot F.6).
+	group = "top"
 	if (spec.beacon) {
 		const b = spec.beacon, h = b.sizeMm / 2
 		add(boxTris([b.xMm - h, b.yMm - h, top], [b.xMm + h, b.yMm + h, b.topMm]), CHASSIS)
@@ -205,6 +220,7 @@ function roverParts(spec, chassisTris) {
 		add(cylinderZ(e.xMm, e.yMm, e.panelTopMm, e.panelTopMm + e.aboveMm, e.headMm / 2), ESTOP_RED)
 		add(boxTris([e.xMm - bh, e.yMm - bh, e.panelTopMm - e.panelMm - e.belowMm], [e.xMm + bh, e.yMm + bh, e.panelTopMm - e.panelMm]), PART)
 	}
+	group = "sensor"
 	if (spec.sensor) { const [w, h, t] = spec.sensor.sizeMm; add(boxTris([spec.sensor.xMm - t / 2, spec.sensor.yMm - w / 2, spec.sensor.zMm - h / 2], [spec.sensor.xMm + t / 2, spec.sensor.yMm + w / 2, spec.sensor.zMm + h / 2]), PART) }
 	return { parts, boardAt: spec.boards?.[0] ?? { xMm: 0, yMm: 0 }, boardZ: top + (spec.standoffMm ?? 10) }
 }
