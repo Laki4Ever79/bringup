@@ -30,6 +30,17 @@ GND → 1, and so on. Pad *offsets* are reconstructed from the figure's dimensio
 0.5 mm. The 5.4 mm thermal-pad size is our best reading of the figure. Only pad 1 is wired to GND; the other GND pads
 (2, 11, 14, 36–53) are left unconnected. Check against Espressif's land-pattern source files before ordering boards.
 
+**ESP32-S3-MINI-1** uses `esp32_s3_mini_1`, emitted the same way from the module datasheet (v1.7, Figure 3-1 pin
+layout and Figure 11-1 recommended land pattern):
+- a 15.4 × 20.5 mm body; the top pad row sits 5.05 mm below the antenna end
+- 65 pads: 1–15 down the left, 16–30 along the bottom, 31–45 up the right, 46–60 right to left along the top, 61 the
+  4.5 mm thermal pad (the datasheet's nine 1.2 mm squares drawn as one pad), 62–65 the corner pads
+- 0.4 × 0.8 mm edge pads on a 0.85 mm pitch (11.9 mm between the end pads), the side columns 14 mm apart, 0.8 mm corners
+
+Pin names map to pads through the chip's profile (`catalog/mcu/esp32-s3-mini-1.json`): GPIO0 → 4, GPIO19/20 (USB) →
+23/24, GPIO43/44 (UART0) → 39/40, 3V3 → 3, EN → 45, GND → 1. Offsets are read off the figure and approximate, as for
+the C3; check against Espressif's land-pattern source files before ordering boards.
+
 **Placement** (`placeParts` in `src/codegen/circuit.ts`) is deterministic. Connectors go to their contract
 edge and offset. The MCU goes near the board centre, its whole body reserved and its antenna turned away from USB-C.
 The LDO goes between USB-C and the MCU. The sensor goes to the far edge, in the corner away from the MCU, to keep it
