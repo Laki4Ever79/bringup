@@ -78,3 +78,15 @@ test("an outline change carries its connectors at the same place along their edg
 	// The same change with the connectors left where they were doesn't place: what the run did.
 	assert.equal(placesAll({ ...now, values: { ...now.values, connectors: s.values.connectors } }, 52, 25), false)
 })
+
+// The space model judges a size with the connectors where an outline change puts them: scaled along their edges and
+// then packed onto them (17 Nov 2026; before, only scaled: cc-rover-3's shrink to 78×16 left J5 at right@12.5 in the model,
+// 0.5 mm past its edge, where the contract moved it to 12).
+test("the space model places the connectors where an outline change puts them, packed onto their edges", async () => {
+	const { connectorsAt } = await import("../src/contract/space.ts")
+	const s = fixture("cc-rover-3-78x16-rev25.json")
+	const t = { ...s, values: { ...s.values, outline: { ...s.values.outline!, heightMm: 17 } } }
+	const at = connectorsAt(t, 78, 16)
+	assert.equal(at.find((k) => k.ref === "J5")!.offsetMm, 12)
+	assert.deepEqual(connectorsOffEdge({ ...t, values: { ...t.values, outline: { ...t.values.outline!, heightMm: 16 }, connectors: at } }), [])
+})
