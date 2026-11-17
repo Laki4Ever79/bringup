@@ -140,6 +140,11 @@ const SUPPORT = {
 	buckL: { kind: "inductor", value: "4.7uH", lcsc: "C92961", mpn: "NRS4018T4R7MDGJ", footprint: "nrs4018" },
 	buckIn: { kind: "capacitor", value: "10uF", lcsc: "C15850", mpn: "CL21A106KAYNNNE", footprint: "0805" },
 	buckOut: { kind: "capacitor", value: "22uF", lcsc: "C45783", mpn: "CL21A226MAQNNNE", footprint: "0805" },
+	// The SY8205 servo supply's parts (Silergy AN_SY8205 Rev. 0.4, Applications Information): L 4.7 uH with saturation
+	// over 5.9 A (TDK SPM7054VT-4R7M-D: 11.2 A, 16.6 mOhm), Vout = 0.6 x (1 + 22k/3k) = 5.00 V (JLCPCB basic resistors).
+	servoL: { kind: "inductor", value: "4.7uH", lcsc: "C2047699", mpn: "SPM7054VT-4R7M-D", footprint: "spm7054" },
+	fbTop: { kind: "resistor", value: "22k", lcsc: "C25768", mpn: "0402WGF2202TCE", footprint: "0402" },
+	fbBottom: { kind: "resistor", value: "3k", lcsc: "C25895", mpn: "0402WGF3001TCE", footprint: "0402" },
 	led: { kind: "resistor", value: "1k", lcsc: "C11702", mpn: "0402WGF1001TCE", footprint: "0402" },
 	cc: { kind: "resistor", value: "5.1k", lcsc: "C25905", mpn: "0402WGF5101TCE", footprint: "0402" },
 	prog: { kind: "resistor", value: "4.7k", lcsc: "C25900", mpn: "0402WGF4701TCE", footprint: "0402" },
@@ -176,6 +181,9 @@ const SUPPORT_SOURCES: Record<keyof typeof SUPPORT, string> = {
 	buckL: "the AP63205 step-down's inductor: 4.7 µH at 5 V out (Diodes AP63200/1/3/5 datasheet, Table 3)",
 	buckIn: "the AP63205 step-down's input capacitor: 10 µF (Diodes AP63200/1/3/5 datasheet, Table 3)",
 	buckOut: "the AP63205 step-down's output capacitors: 2 x 22 µF (Diodes AP63200/1/3/5 datasheet, Table 3)",
+	servoL: "the SY8205 servo supply's inductor: 4.7 µH, saturation over 5.9 A at 5 A out (Silergy AN_SY8205, Output inductor L)",
+	fbTop: "the SY8205's feedback divider top: Vout = 0.6 V x (1 + 22k/3k) = 5.00 V (Silergy AN_SY8205)",
+	fbBottom: "the SY8205's feedback divider bottom: Vout = 0.6 V x (1 + 22k/3k) = 5.00 V (Silergy AN_SY8205)",
 	led: "a current-limiting resistor in series with the LED (any LED driven from a GPIO needs one)",
 	cc: "USB Type-C: a sink presents 5.1 kΩ (Rd) on CC1 and CC2, or a C-to-C charger supplies no VBUS",
 	prog: "the charger's PROG resistor sets its charge current (TP4054 datasheet, PROG table)",
@@ -383,6 +391,19 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const imuPart = parts.find((p) => p.role === "imu")
 	if (imuPart && supply) for (const pin of ["VDD", "VDDIO"]) if (imuPart.pins.includes(pin)) jobs.push({ job: `decoupling on ${imuPart.ref}.${pin}`, spec: SUPPORT.decouple, a: { ref: imuPart.ref, pin }, b: GND, near: imuPart.ref })
 	const servoSupply = parts.find((p) => p.role === "servo-supply")
+	// The SY8205 servo supply (a chip: its pins include LX): AN_SY8205's parts beside it.
+	if (servoSupply?.pins.includes("LX")) {
+		const near = servoSupply.ref
+		const vin = parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS"
+		for (const k of [1, 2]) jobs.push({ job: `${near} input capacitor ${k} of 2 (PVIN, at least 10 uF)`, spec: SUPPORT.buckIn, a: { net: vin }, b: GND, near })
+		jobs.push({ job: `${near} inductor (LX to ${SERVO_5V_NET})`, spec: SUPPORT.servoL, a: { net: SERVO_SW_NET }, b: { net: SERVO_5V_NET }, near })
+		for (const k of [1, 2, 3]) jobs.push({ job: `${near} output capacitor ${k} of 3 (over 47 uF)`, spec: SUPPORT.buckOut, a: { net: SERVO_5V_NET }, b: GND, near })
+		jobs.push({ job: `${near} bootstrap capacitor (BS to LX)`, spec: SUPPORT.decouple, a: { ref: near, pin: "BS" }, b: { net: SERVO_SW_NET }, near })
+		jobs.push({ job: `${near} internal LDO capacitor (VCC)`, spec: SUPPORT.bypass, a: { ref: near, pin: "VCC_INT" }, b: GND, near })
+		jobs.push({ job: `${near} soft-start capacitor (0.6 ms)`, spec: SUPPORT.vcp, a: { ref: near, pin: "SS" }, b: GND, near })
+		jobs.push({ job: `${near} feedback divider top (5.00 V)`, spec: SUPPORT.fbTop, a: { net: SERVO_5V_NET }, b: { net: SERVO_FB_NET }, near })
+		jobs.push({ job: `${near} feedback divider bottom`, spec: SUPPORT.fbBottom, a: { net: SERVO_FB_NET }, b: GND, near })
+	}
 	if (servoSupply?.pins.includes("EN")) jobs.push({ job: `${servoSupply.ref}.EN pull-down (the servos off when the emergency stop opens)`, spec: SUPPORT.pullup, a: { ref: servoSupply.ref, pin: "EN" }, b: GND, near: servoSupply.ref })
 	// A CAN transceiver: 100 nF at its VCC, and 120 Ω across the bus at a bus end (links' can.terminate).
 	const can = parts.find((p) => p.role === "can-transceiver")
@@ -609,13 +630,34 @@ function micFootprint(): string {
 // left to right along the bottom, 8-11 up the right side, 12-14 right to left along the top. The lands are the pads
 // 0.05 mm wider and 0.1 mm longer outward (0.3 x 0.575 mm, an estimate: ST gives its land pattern in a separate
 // technical note). 0.2 mm between lands.
-// Taiyo Yuden NR/NRS4018 power inductor (catalog "Standard external dimensions", Recommended Land Patterns: A 1.2, B 2.8,
-// C 3.7 mm): two 1.2 x 3.7 mm pads, 2.8 mm apart, centred on the 4 x 4 mm body.
+// Power inductors drawn from their makers' recommended land patterns: two rectangular pads, centred on the body.
+//   nrs4018: Taiyo Yuden NR/NRS4018 (catalog, Recommended Land Patterns: A 1.2, B 2.8, C 3.7 mm): 1.2 x 3.7 mm pads,
+//            2.8 mm apart, 4 x 4 mm body.
+//   spm7054: TDK SPM7054VT-D (data sheet, Recommended land pattern: 3.3 mm tall, 3.1 mm apart, 8.8 mm overall): 2.85 x
+//            3.3 mm pads, 7.5 x 7.0 mm body.
+export const INDUCTOR_FOOTPRINTS: Record<string, { padW: number; padH: number; cx: number; body: [number, number] }> = {
+	nrs4018: { padW: 1.2, padH: 3.7, cx: 2.0, body: [4, 4] },
+	spm7054: { padW: 2.85, padH: 3.3, cx: 2.975, body: [7.5, 7.0] },
+}
 export const INDUCTOR_FOOTPRINT = "nrs4018"
-function inductorFootprint(): string {
-	const pads = [1, 2].map((pin, i) => `<smtpad portHints={["pin${pin}"]} pcbX="${i ? 2 : -2}mm" pcbY="0mm" width="1.2mm" height="3.7mm" shape="rect" />`).join("")
-	const outline = [[-2.2, -2.2], [2.2, -2.2], [2.2, 2.2], [-2.2, 2.2], [-2.2, -2.2]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+function inductorFootprint(name: string): string {
+	const f = INDUCTOR_FOOTPRINTS[name]
+	const pads = [1, 2].map((pin, i) => `<smtpad portHints={["pin${pin}"]} pcbX="${i ? f.cx : -f.cx}mm" pcbY="0mm" width="${f.padW}mm" height="${f.padH}mm" shape="rect" />`).join("")
+	const [hw, hh] = [f.body[0] / 2 + 0.2, f.body[1] / 2 + 0.2]
+	const outline = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]].map(([x, y]) => `{ x: ${+x.toFixed(2)}, y: ${+y.toFixed(2)} }`).join(", ")
 	return `{<footprint>${pads}<silkscreenpath route={[${outline}]} /></footprint>}`
+}
+// Silergy SO8E (AN_SY8205 Rev. 0.4, SO8E Package outline & PCB layout design, Recommended Pad Layout): 0.60 x 1.55 mm
+// pads at 1.27 mm pitch, the rows 5.40 mm apart centre to centre; 1-4 down the left, 5-8 up the right (top view); the
+// exposed pad 2.55 x 3.20 mm is pin 9 (the chip's GND), so its label can wire it.
+export const SO8E_FOOTPRINT = "so8e_silergy"
+function so8eFootprint(): string {
+	const pads: string[] = []
+	for (let k = 0; k < 4; k++) pads.push(`<smtpad portHints={["pin${1 + k}"]} pcbX="-2.7mm" pcbY="${+(1.905 - 1.27 * k).toFixed(3)}mm" width="1.55mm" height="0.6mm" shape="rect" />`)
+	for (let k = 0; k < 4; k++) pads.push(`<smtpad portHints={["pin${5 + k}"]} pcbX="2.7mm" pcbY="${+(-1.905 + 1.27 * k).toFixed(3)}mm" width="1.55mm" height="0.6mm" shape="rect" />`)
+	pads.push(`<smtpad portHints={["pin9"]} pcbX="0mm" pcbY="0mm" width="2.55mm" height="3.2mm" shape="rect" />`)
+	const outline = [[-2, -2.55], [2, -2.55], [2, 2.55], [-2, 2.55], [-2, -2.55]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[{ x: -3.7, y: 2.4 }, { x: -3.7, y: 2.0 }]} /></footprint>}`
 }
 export const IMU_FOOTPRINT = "lga14_2.5x3"
 export const IMU_BODY = { w: 3.0, h: 2.5 }
@@ -684,7 +726,7 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// A 3-pin 2.54 mm header (a servo's plug).
 	pinrow3: [8.6, 3.6],
 	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
-	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], [INDUCTOR_FOOTPRINT]: [5.6, 4.4],
+	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
@@ -1855,6 +1897,9 @@ const pathPins = (p: Part) => (p.role === "ideal-diode" ? { in: "VIN", out: "VOU
 // servo supply (role servo-supply), and a spare motor on a second DRV8833 whose inputs come from the PCA9685 (on a
 // differential rover; a skid-steer rover's second driver is its rear pair). Null without a PWM driver.
 export const SERVO_5V_NET = "SERVO_5V"
+// The SY8205 servo supply's switch node and feedback point.
+export const SERVO_SW_NET = "SERVO_SW"
+export const SERVO_FB_NET = "SERVO_FB"
 export function servoOutputs(parts: Part[]): { pwm: Part; servos: Part[]; supply?: Part; spare?: Part } | null {
 	const pwm = parts.find((p) => p.role === "pwm-driver")
 	if (!pwm) return null
@@ -1953,6 +1998,13 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		})
 		if (so.supply) {
 			if (so.supply.pins.includes("VIN")) join(parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS", so.supply.ref, "VIN")
+			// The SY8205 (a chip): both PVIN pins from the cell, LX to its inductor, FB on its divider (supportParts).
+			if (so.supply.pins.includes("LX")) {
+				for (const n of [SERVO_SW_NET, SERVO_FB_NET]) if (!nets.has(n)) nets.set(n, [])
+				for (const pin of ["PVIN", "PVIN_2"]) if (so.supply.pins.includes(pin)) join(parts.some((p) => p.role === "battery") ? "VBAT" : "VBUS", so.supply.ref, pin)
+				join(SERVO_SW_NET, so.supply.ref, "LX")
+				if (so.supply.pins.includes("FB")) join(SERVO_FB_NET, so.supply.ref, "FB")
+			}
 			if (so.supply.pins.includes("VOUT")) join(SERVO_5V_NET, so.supply.ref, "VOUT")
 			if (so.supply.pins.includes("EN")) join(estopPlug(parts) ? MOTOR_VM_NET : "SERVO_EN", so.supply.ref, "EN")
 		}
@@ -2296,7 +2348,7 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 			// A crystal's load capacitors are not decoupling: no bound (their crystal pin is no supply pin). capBound.
 			const bound = capBound(s, sp)
 			const pinBound = bound !== null ? ` maxDecouplingTraceLength={${bound}}` : ""
-			const fpAttr = sp.spec.footprint === INDUCTOR_FOOTPRINT ? inductorFootprint() : q(sp.spec.footprint)
+			const fpAttr = INDUCTOR_FOOTPRINTS[sp.spec.footprint] ? inductorFootprint(sp.spec.footprint) : q(sp.spec.footprint)
 			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${fpAttr}${pinBound} />`)
 		}
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) {
@@ -2343,7 +2395,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 			if (b && opts.usbKeepouts) lines.push(...usbKeepouts(b.x, b.y, b.rotation))
 			continue
 		}
-		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : q(footprint)
+		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : footprint === SO8E_FOOTPRINT ? so8eFootprint() : q(footprint)
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
 	}
 
