@@ -14,7 +14,8 @@ import { buildBoard } from "../tools/board.ts"
 import { exportFab } from "../tools/fab.ts"
 import { buildChassis } from "../tools/chassis.ts"
 import { buildFirmware } from "../tools/firmware.ts"
-import { lookupLcsc } from "../tools/parts-search.ts"
+import { loadCatalog, lookupLcsc } from "../tools/parts-search.ts"
+import { jlcSwaps, type JlcClass } from "./jlc-swaps.ts"
 import { checkRobotParts, robotPartLines, robotPartNotes } from "../tools/robot-parts.ts"
 import { writeBench } from "../report.ts"
 
@@ -35,6 +36,7 @@ export function jlcEstimate(board: { widthMm: number; heightMm: number }, joints
 
 export interface PackageResult {
 	dir: string
+	cheaper?: ReturnType<typeof jlcSwaps>
 	// The bought lines as the shops list them, for the README's "How to order".
 	robotLines?: { item: string; mpn: string; qty: number; packs?: number; supplier: string | null; url: string | null; lineUsd: number | null; status: string }[]
 	jlc: JlcEstimate | null
@@ -89,10 +91,13 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	if (bomRows.length) {
 		for (const [comment, refs, , lcsc] of bomRows) if (lcsc) lines.set(lcsc, { mpn: comment, lcsc, refs: refs.split(/[ ,]+/).filter(Boolean) })
 	} else for (const p of s.values.parts ?? []) if (p.lcsc) lines.set(p.lcsc, { mpn: p.mpn, lcsc: p.lcsc, refs: [...(lines.get(p.lcsc)?.refs ?? []), p.ref] })
-	const priced: { mpn: string; lcsc: string; refs: string[]; stock: number | null; unit: number | null; extended: boolean }[] = []
+	const priced: { mpn: string; lcsc: string; refs: string[]; stock: number | null; unit: number | null; extended: boolean; cls: string }[] = []
+	const classes = new Map<string, JlcClass>()
 	for (const l of lines.values()) {
 		const live = await lookupLcsc(l.lcsc)
-		priced.push({ ...l, stock: live.stock, unit: live.priceUsd, extended: live.basic === false && live.preferred !== true })
+		if (typeof live.basic === "boolean") classes.set(l.lcsc, { basic: live.basic, preferred: live.preferred === true })
+		const cls = typeof live.basic !== "boolean" ? "?" : live.basic ? "basic" : live.preferred ? "preferred" : "extended"
+		priced.push({ ...l, stock: live.stock, unit: live.priceUsd, extended: live.basic === false && live.preferred !== true, cls })
 		if (live.stock !== null && live.stock < l.refs.length) outOfStock.push(`${l.mpn} (${l.lcsc}): ${live.stock} in stock, ${l.refs.length} needed`)
 		if (live.priceUsd === null) unpriced.push(`${l.mpn} (${l.lcsc})`)
 	}
@@ -102,6 +107,13 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	const assembledRefs = new Set(priced.flatMap((p) => p.refs))
 	const joints = board ? Object.entries(board.parts ?? {}).filter(([ref]) => assembledRefs.has(ref)).reduce((t, [, p]) => t + p.pins.length, 0) : 0
 	const jlc = board ? jlcEstimate(board, joints, priced.filter((p) => p.extended).map((p) => `${p.mpn} (${p.lcsc})`), boardUsd) : null
+	// Cheaper at JLC: the catalog's same-role parts that load free or share a feeder, each tried on the design's checks.
+	for (const c of loadCatalog(opts.root)) {
+		if (!c.lcsc || classes.has(c.lcsc)) continue
+		const live = await lookupLcsc(c.lcsc)
+		if (typeof live.basic === "boolean") classes.set(c.lcsc, { basic: live.basic, preferred: live.preferred === true })
+	}
+	const cheaper = jlcSwaps(s, (lcsc) => classes.get(lcsc) ?? null, { root: opts.root, feeUsd: JLC.extendedUsd })
 	const robot = s.values.mechanics ? await checkRobotParts(robotPartLines(s), { live: true }) : null
 	for (const l of robot?.lines ?? []) {
 		if (l.status === "out of stock" || l.status === "discontinued" || l.status === "backorder") outOfStock.push(`${l.item} ${l.mpn}: ${l.status}`)
@@ -139,9 +151,9 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		"",
 		"## The board's parts (JLCPCB assembles them from the fab files; LCSC unit price at quantity 1)",
 		"",
-		"| Refs | Part | LCSC | In stock | Unit | Line |",
-		"|---|---|---|---|---|---|",
-		...priced.map((p) => `| ${p.refs.join(" ")} | ${p.mpn} | ${p.lcsc} | ${p.stock ?? "?"} | ${usd(p.unit)} | ${usd(p.unit === null ? null : p.unit * p.refs.length)} |`),
+		"| Refs | Part | LCSC | JLC class | JLC fee | In stock | Unit | Line |",
+		"|---|---|---|---|---|---|---|---|",
+		...priced.map((p) => `| ${p.refs.join(" ")} | ${p.mpn} | ${p.lcsc} | ${p.cls} | ${p.extended ? `$${JLC.extendedUsd} feeder` : p.cls === "?" ? "?" : "none"} | ${p.stock ?? "?"} | ${usd(p.unit)} | ${usd(p.unit === null ? null : p.unit * p.refs.length)} |`),
 		"",
 		`Parts total: ${usd(boardUsd)} per board (LCSC unit prices).`,
 		...(jlc ? ["", "## JLCPCB order (an ESTIMATE from JLC's published rules, checked 16 Nov 2026; its quote at upload is the real number)", "", "| Line | Cost |", "|---|---|",
@@ -152,6 +164,12 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 			`| Parts for ${JLC.assembled} assembled boards | ${usd(jlc.partsUsd)} |`,
 			`| **JLCPCB total, before shipping and tax** | **${usd(jlc.totalUsd)}** |`, "",
 			`Assumes JLC's usual minimum of ${JLC.assembled} assembled boards out of 5 made; the robot needs one, the other is a spare.`] : []),
+		"",
+		"## Cheaper at JLCPCB (each swap tried on the design's checks; nothing changed here)",
+		"",
+		...(cheaper.swaps.length ? cheaper.swaps.map((w) => `- **${w.ref}: ${w.from} → ${w.to} (${w.toLcsc})**, saves $${w.savesUsd.toFixed(2)}: ${w.why}`) : ["- No swap passes the design's checks."]),
+		...cheaper.stays.map((x) => `- ${x.ref} ${x.mpn} stays extended: ${x.reason}`),
+		...(jlc && jlc.totalUsd !== null && cheaper.swaps.length ? ["", `With the swaps: ${jlc.extended.length - cheaper.swaps.length} extended parts, JLCPCB total ${usd(Math.round((jlc.totalUsd - cheaper.swaps.reduce((t, w) => t + w.savesUsd, 0)) * 100) / 100)} (from ${usd(jlc.totalUsd)}).`] : []),
 		...(unbought.length ? ["", `Not assembled by JLCPCB (no LCSC number): ${unbought.map((p) => `${p.ref} ${p.mpn}`).join(", ")}: bought and soldered by hand.`] : []),
 		"",
 		"## Bought parts for the robot",
@@ -165,7 +183,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		"",
 	].join("\n")
 	writeFileSync(join(outDir, "parts.md"), partsMd)
-	const result: PackageResult = { dir: outDir, robotLines: (robot?.lines ?? []).map((l) => ({ item: l.item, mpn: l.mpn, qty: l.qty, packs: (l as { packs?: number }).packs, supplier: l.supplier, url: l.url, lineUsd: l.lineUsd, status: l.status })), jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings }
+	const result: PackageResult = { dir: outDir, cheaper, robotLines: (robot?.lines ?? []).map((l) => ({ item: l.item, mpn: l.mpn, qty: l.qty, packs: (l as { packs?: number }).packs, supplier: l.supplier, url: l.url, lineUsd: l.lineUsd, status: l.status })), jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings }
 	writeFileSync(join(outDir, "README.md"), readme(s, result, fabOk, stls.map((f) => basename(f)), Boolean(fwBin)))
 	return result
 }

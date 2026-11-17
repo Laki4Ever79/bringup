@@ -64,5 +64,14 @@ async function lookup(lcsc: string, f: typeof fetch, timeoutMs: number): Promise
 export async function searchParts(role: string, opts: { fetch?: typeof fetch; root?: string; timeoutMs?: number } = {}): Promise<CatalogPart[]> {
 	const f = opts.fetch ?? fetch
 	const parts = loadCatalog(opts.root ?? ROOT).filter((p) => p.role === role)
-	return Promise.all(parts.map(async (p) => (p.lcsc ? { ...p, ...(await lookup(p.lcsc, f, opts.timeoutMs ?? TIMEOUT_MS)) } : p)))
+	// JLCPCB basic and preferred parts first: they load with no feeder fee ($3.07 a unique extended part), the biggest
+	// avoidable line in a small order (run 9's package: 8 extended parts, $24.56 of a $51.45 order). Stable otherwise.
+	const found = await Promise.all(parts.map(async (p) => (p.lcsc ? { ...p, ...(await lookup(p.lcsc, f, opts.timeoutMs ?? TIMEOUT_MS)) } : p)))
+	// Only among drop-ins (the same footprint and pins): a preferred STM32 doesn't go ahead of the ESP32-C3 module, a
+	// different chip family; the catalog's order between them stands.
+	const free = (p: (typeof found)[number]) => ("basic" in p && (p.basic || p.preferred) ? 0 : 1)
+	const group = (p: (typeof found)[number]) => `${p.footprint}|${[...p.pins].sort().join(",")}`
+	const firstOf = new Map<string, number>()
+	found.forEach((p, i) => { if (!firstOf.has(group(p))) firstOf.set(group(p), i) })
+	return found.map((p, i) => ({ p, i })).sort((a, b) => firstOf.get(group(a.p))! - firstOf.get(group(b.p))! || free(a.p) - free(b.p) || a.i - b.i).map((x) => x.p)
 }
