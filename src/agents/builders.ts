@@ -159,6 +159,13 @@ export const BOARD_DERIVED = (s: ContractSnapshot) => {
 	return { driveKind: m?.drive.kind ?? null, sensorPlug: m?.sensor?.connector ?? null, debugPort: r?.debugPort ?? null, dutyCycle: r?.dutyCycle ?? null, usbWake: r?.usbWake ?? null, testPads: r?.testPads ?? null }
 }
 
+// Each artifact's derived inputs (createBuilder's derived), shared by the real builders and the stubs (tools/stubs.ts):
+// the stub board had none, so under --no-hardware a robot's mechanics (its sensor plug's 3V3) never rebuilt the board,
+// and the scripted rover ended on "supply-unwired JT1.VCC" (17 Nov 2026).
+export const BUILD_DERIVED: Partial<Record<ArtifactKind, { fields: FieldName[]; key: (s: ContractSnapshot) => unknown }>> = {
+	board: { fields: ["mechanics", "requirements"], key: BOARD_DERIVED },
+}
+
 // The three domain builders. Each depends only on the contract fields that shape its artifact,
 // so a pin change rebuilds the board and firmware while the enclosure keeps working undisturbed.
 export function createBoardBuilder(env: Env, lock?: BuildLock): Human {
@@ -166,7 +173,7 @@ export function createBoardBuilder(env: Env, lock?: BuildLock): Human {
 		kind: "board",
 		lock,
 		inputs: BUILD_INPUTS.board,
-		derived: { fields: ["mechanics", "requirements"], key: BOARD_DERIVED },
+		derived: BUILD_DERIVED.board,
 		requires: BUILD_REQUIRES.board,
 		build: async ({ dir, snapshot, revision }) => {
 			const board = await buildBoard(env, dir, snapshot, revision)
