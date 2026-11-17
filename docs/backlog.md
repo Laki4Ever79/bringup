@@ -86,7 +86,7 @@ is a change to the firmware toolchain, not just the code.
       it, 0.2488 mm against 0.3. Not a router via (via-edge.ts moves those): find which copper (a pad, a trace, a test
       pad) and fix it the general way.
 
-- [ ] **The router doesn't avoid drawn capacitor traces** (16 Nov 2026, real rover run 9 rev 23 at 58×22 mm, fixture
+- [x] **The router doesn't avoid drawn capacitor traces** (16 Nov 2026, real rover run 9 rev 23 at 58×22 mm, fixture
       cc-rover9-58x22-rev23.json): the drawCaps retry draws U5's capacitor traces (pcbPath), but tscircuit's autorouter
       routes other nets as if they weren't there: by hand at 678b509 a via landed on VM's drawn trace and BISEN/GND and
       MOT_BIN1 passed 0.04-0.09 mm from it. Tried and rejected: keepouts along the drawn segments (tscircuit flags the
@@ -106,6 +106,10 @@ is a change to the firmware toolchain, not just the code.
       (opt-in capChannelMm): no effect. Layouts tried, before → after: run 9's 58×22 5 → 5, the 60×21 rover 7 → 7, run 6's
       44×29 rev 21 2 → 2; the debug footprint outcome and DRC 0 unchanged on all three. The room the drawn traces need is
       taken by other nets' traces passing through, not by parts, so spacing parts doesn't help. Left: (b) Freerouting.
+      Done 17 Nov by (b): Freerouting (src/tools/freerouting.ts) routes this fixture clean, so the via-edge-style repair
+      isn't built (it couldn't reach these boards anyway: tscircuit exits 1 before KiCad sees them). Run 9's 58×22 rev 23:
+      tscircuit first, Freerouting after 2 unclean layouts: 3 layouts / 115 s / DRC 0 (debug footprint kept);
+      Freerouting first: 1 layout / 51 s / DRC 0 (bringup-board's 12-board sweep).
 
 - [ ] **Narrow boards the router can't route around the motor driver** (15 Nov, revised: reserving the capacitors' boxes
       was tried and changed nothing: on the 60×21 board C3 and C4 already sit in their spots beside U5's pins; the
