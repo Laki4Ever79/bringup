@@ -135,3 +135,19 @@ test("the debug footprint's unplated holes clear a dual-row IC's pads and courty
 		assert.ok(gap >= 0.3 - 1e-9, `hole at ${hole.x},${hole.y}: ${gap.toFixed(2)} mm from U5's pads and courtyard`)
 	}
 })
+
+// Real run 20b (Eurobot, 17 Nov 2026), rev 20 at 40×41 mm: tscircuit refused the board, "SMT pad U6.LED8 violates
+// copper-to-board-edge clearance (measured 0.125mm, required 0.200mm)": the PCA9685's TSSOP-28 box is 7.9 mm along its
+// pin rows, its pads reach 9.25 mm. The placer now keeps a part's copper and courtyard (dualRowExtent), not its box,
+// EDGE margin off the edge; before, U6's copper was the 0.125 mm the build measured.
+test("a dual-row IC is kept off the board edge by its pads and courtyard, not its placement box", async () => {
+	const { readFileSync } = await import("node:fs")
+	const { dualRowExtent, footprintFor } = await import("../src/codegen/circuit.ts")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/cc-eurobot20b-rev20.json", import.meta.url), "utf8"))
+	const o = s.values.outline
+	const u6 = placeParts(s).find((b) => b.ref === "U6")!
+	const [w, h] = dualRowExtent(footprintFor(s.values.parts.find((p: { ref: string }) => p.ref === "U6")))!
+	const [ew, eh] = Math.abs(u6.rotation) % 180 === 90 ? [h, w] : [w, h]
+	const clear = Math.min(o.widthMm / 2 - (Math.abs(u6.x) + ew / 2), o.heightMm / 2 - (Math.abs(u6.y) + eh / 2))
+	assert.ok(clear >= 0.5 - 1e-9, `U6's pads and courtyard ${clear.toFixed(3)} mm from the edge`)
+})
