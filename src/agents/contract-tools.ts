@@ -1,4 +1,5 @@
 import type { Tool } from "@mozaik-ai/core"
+import { completePowerTree } from "../contract/power-auto.ts"
 import { FIELDS, OWNERS, type AgentRole, type ContractValues, type FieldName } from "../contract/types.ts"
 import { makeEvent, type Cause } from "../events.ts"
 import { causeOf } from "./common.ts"
@@ -79,6 +80,15 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					if (sh6 && plain.length) {
 						args = { ...args, value: list.map((p) => (plain.includes(p) ? { ...p, mpn: sh6.mpn, lcsc: sh6.lcsc ?? null, footprint: sh6.footprint ?? p.footprint, pins: [...(sh6.pins ?? [])] } : p)) as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, `${plain.map((p) => p.ref).join(" and ")} became the 6-pin SH plug ${sh6.mpn} the encoder motor needs (one plug for motor and encoder)`].filter(Boolean).join("; ")
+					}
+				}
+				// A robot's power tree is decided in code from its pack and regulator (contract/power-auto.ts): every parts write
+				// lands it complete (real run 19b spent 19 revisions on it by hand).
+				if (args.field === "parts" && Array.isArray(args.value) && s.contract.get("motion")) {
+					const t = completePowerTree(args.value as NonNullable<ContractValues["parts"]>, s.contract.get("mechanics") ?? undefined)
+					if (t.note) {
+						args = { ...args, value: t.parts as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, t.note].filter(Boolean).join("; ")
 					}
 				}
 				// A robot's plugs have fixed names: the parts list is renamed to them, and the connectors and pins follow below.
