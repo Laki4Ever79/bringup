@@ -1,3 +1,4 @@
+import { connectorsOntoEdges } from "./connectors.ts"
 import { antennaOverhang, boardParts, debugPort, layoutBoard, moduleBlocked, moduleFreedAlongEdges, placeParts, recoveryPads, testPoints } from "../codegen/circuit.ts"
 import { caseOf, minCaseHeight } from "./case.ts"
 import type { AgentRole, ContractSnapshot, FieldName, SizeReason } from "./types.ts"
@@ -85,9 +86,15 @@ export function scaledConnectors(s: ContractSnapshot, w: number, h: number): Con
 	})
 }
 
+// The board as an outline change makes it (agents/contract-tools.ts): the connectors scaled along their edges, then
+// fitted onto them and clear of each other (connectorsOntoEdges), so a size judged here is the one the contract gets.
+// Before (17 Nov 2026), only scaled: the contract packed them and the model didn't, so a size the model called
+// placeable could fail (run 20: "the smallest is 31×45", and 46×38 had no room for U8).
 function resized(s: ContractSnapshot, w: number, h: number): ContractSnapshot {
 	const o = s.values.outline!
-	return { ...s, values: { ...s.values, outline: { ...o, widthMm: w, heightMm: h }, connectors: scaledConnectors(s, w, h) } }
+	const r = { ...s, values: { ...s.values, outline: { ...o, widthMm: w, heightMm: h }, connectors: scaledConnectors(s, w, h) } }
+	const packed = connectorsOntoEdges(r)
+	return packed ? { ...r, values: { ...r.values, connectors: packed } } : r
 }
 
 const cache = new Map<string, MinimumBoard | null>()
