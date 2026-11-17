@@ -903,6 +903,13 @@ function packageSize(footprint: string): [number, number] | null {
 // DRV8833's TSSOP-16 at 7.9 mm across (the rover layouts are tuned to it and build clean), but its pads reach 9.3 mm: an
 // unplated hole judged by the table box landed in its courtyard, 0.14 mm from pad 9 (the 60×21 rover: 2 DRC errors
 // whichever router routed it, 17 Nov 2026). What a hole must clear is this extent.
+// Small parts whose placement box is smaller than their pads + 0.25 mm a side, measured from the pads in circuit.json of
+// the real runs' boards (17 Nov 2026 audit): the edge is judged by these (copperExtent), the parts' gaps stay on the box.
+const PAD_EXTENT: Record<string, [number, number]> = { sot23_5: [4.1, 3.0], sot363: [3.2, 2.6], sod123: [4.7, 1.7], "0402": [2.1, 1.1] }
+// A part's copper and courtyard extent at rotation 0, where it is more than its placement box: a dual-row IC's from its own
+// pin geometry, a small part's from the audit table. Null: the box already covers it.
+export const copperExtent = (footprint: string): [number, number] | null => dualRowExtent(footprint) ?? PAD_EXTENT[footprint] ?? null
+
 export function dualRowExtent(footprint: string): [number, number] | null {
 	const m = /^(?:tssop|soic)(\d+)(?:_w([\d.]+)mm)?(?:_p([\d.]+)mm)?/.exec(footprint)
 	if (!m) return null
@@ -911,6 +918,9 @@ export function dualRowExtent(footprint: string): [number, number] | null {
 	const x = w / 2 + pad.out + pad.l / 2, y = ((n / 2 - 1) / 2) * p + pad.w / 2
 	return [+(2 * x + 0.5).toFixed(2), +(2 * y + 0.5).toFixed(2)]
 }
+
+// A footprint's placement box at rotation 0 (the table, a chip profile's package, or the default), for audits.
+export const footprintBox = (footprint: string): [number, number] => FOOTPRINT_SIZE[footprint] ?? packageSize(footprint) ?? DEFAULT_SIZE
 
 function sizeAt(footprint: string, rotation: number): [number, number] {
 	const [w, h] = FOOTPRINT_SIZE[footprint] ?? packageSize(footprint) ?? DEFAULT_SIZE
@@ -1118,7 +1128,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// The board edge is judged by a part's copper and courtyard (dualRowExtent), not its placement box: run 20b's PCA9685
 	// (TSSOP-28, box 7.9 mm along its pin rows, pads 9.25) had pads 0.125 mm from the edge, and tscircuit refused the board.
 	const edgeBox = (b: Placed): Placed => {
-		const d = dualRowExtent(footprintOfRef(b.ref))
+		const d = copperExtent(footprintOfRef(b.ref))
 		if (!d) return b
 		const [dw, dh] = Math.abs(b.rotation) % 180 === 90 ? [d[1], d[0]] : d
 		return { ...b, w: Math.max(b.w, dw), h: Math.max(b.h, dh) }
