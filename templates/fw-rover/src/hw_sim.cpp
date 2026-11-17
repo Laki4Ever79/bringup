@@ -57,4 +57,6 @@ int32_t hw_encoder(int side) { return (int32_t)enc[side & 1]; }
 
 // QEMU has no radio: the reading is printed (main.cpp) and the BTHome bytes are the logger's, checked on the host.
 void hw_report(bool, float, float) {}
+// The simulation has no gyro (the bridge sends wheel counts only): the turn closes on the counts, as without an IMU.
+float hw_heading_rad(void) { return NAN; }
 #endif

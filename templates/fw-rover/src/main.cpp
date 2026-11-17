@@ -19,11 +19,24 @@ static void linkSendReading(bool, float, float) {}
 #endif
 
 static const RoverConfig CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS};
-#ifdef ROVER_TURN_COUNTS
-// Wheel encoders (hw_encoder): the turn and the straight close on the wheels' counts (rover_enc.h). Without them this
-// file compiles to exactly what it did before.
+#if defined(ROVER_TURN_COUNTS) || defined(ROVER_TURN_RAD)
+// Wheel encoders (hw_encoder) and/or a gyro (hw_heading_rad, an IMU on the board): the turn closes on the heading, else
+// on the wheels' counts, and the straight on the counts (rover_enc.h). Without either this file compiles to exactly what
+// it did before.
+#define ROVER_ENC_LOGIC 1
 #include "rover_enc.h"
-static const RoverEncConfig ENC_CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS, ROVER_TURN_COUNTS, ROVER_HOLD_GAIN, ROVER_BACK_COUNTS};
+#ifndef ROVER_TURN_RAD
+#define ROVER_TURN_RAD 0.0f
+#endif
+#ifdef ROVER_TURN_COUNTS
+#define ENC_L hw_encoder(0)
+#define ENC_R hw_encoder(1)
+static const RoverEncConfig ENC_CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS, ROVER_TURN_COUNTS, ROVER_HOLD_GAIN, ROVER_BACK_COUNTS, ROVER_TURN_RAD};
+#else
+#define ENC_L 0
+#define ENC_R 0
+static const RoverEncConfig ENC_CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS, 0, 0.0f, 0, ROVER_TURN_RAD};
+#endif
 static RoverEncState encState;
 #endif
 static RoverState state;
@@ -216,14 +229,14 @@ void loop() {
 	// lines below build exactly as before.
 	const bool holding = rover_hold(hold, d, now, ROVER_HOLD_MM, ROVER_CLEAR_MM, ROVER_BLIND_MM, ROVER_HOLD_MAX_MS);
 	if (holding) Serial.printf("HOLD %lu %d\n", (unsigned long)now, d);
-#ifdef ROVER_TURN_COUNTS
-	RoverOut out = holding ? RoverOut{0, 0} : rover_enc_step(ENC_CFG, encState, d, now, hw_encoder(0), hw_encoder(1));
+#ifdef ROVER_ENC_LOGIC
+	RoverOut out = holding ? RoverOut{0, 0} : rover_enc_step(ENC_CFG, encState, d, now, ENC_L, ENC_R, hw_heading_rad());
 #else
 	RoverOut out = holding ? RoverOut{0, 0} : rover_step(CFG, state, d, now);
 #endif
 #else
-#ifdef ROVER_TURN_COUNTS
-	RoverOut out = rover_enc_step(ENC_CFG, encState, d, now, hw_encoder(0), hw_encoder(1));
+#ifdef ROVER_ENC_LOGIC
+	RoverOut out = rover_enc_step(ENC_CFG, encState, d, now, ENC_L, ENC_R, hw_heading_rad());
 #else
 	RoverOut out = rover_step(CFG, state, d, now);
 #endif
