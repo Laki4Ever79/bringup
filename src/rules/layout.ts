@@ -10,6 +10,8 @@ import type { ContractValues } from "../contract/types.ts"
 // then added the rules' parts by hand at rev 37-40: a made-up e-stop ("ESTOP-RED-20MM"), the beacon support 164.7 mm from
 // the centre, a 1625 g robot that tipped and lacked torque. Applied to every candidate layout before it is checked.
 // Fixed names: the e-stop's plug JE1, the start's JS1 (mechanics/refs.ts).
+// The sticker panel (2 mm) plus 4 mm of air: how far in from the plate's rear edge a board's rear edge must stay.
+const STICKER_CLEAR_MM = 6
 const MAST_SOCKET_MM = 2.2 // the beacon socket's wall and fit around the mast (py/chassis.py)
 export const BEACON_BRAKE_CAP_MPS2 = 1.5 // a robot carrying the beacon high brakes and starts no harder (firmware ramp)
 
@@ -35,7 +37,16 @@ export function completeForRules(mech: Mechanics, v: Partial<ContractValues>, ca
 		m.chassis.boards = m.chassis.boards.map((b) => {
 			const o = v.outline, w = o?.widthMm ?? 40, h = o?.heightMm ?? 30
 			const [bw, bh] = b.rotDeg === 90 || b.rotDeg === 270 ? [h, w] : [w, h]
-			return Math.abs(b.at.xMm) < keep + bw / 2 && Math.abs(b.at.yMm) < keep + bh / 2 ? { ...b, at: { xMm: -(keep + bw / 2 + 2), yMm: b.at.yMm } } : b
+			let at = Math.abs(b.at.xMm) < keep + bw / 2 && Math.abs(b.at.yMm) < keep + bh / 2 ? { xMm: -(keep + bw / 2 + 2), yMm: b.at.yMm } : b.at
+			// Clear of the sticker panel on the rear (F.6: nothing in front of it): the board's rear edge at least
+			// STICKER_CLEAR_MM in from the plate's rear edge (the Eurobot mock, 17 Nov 2026: a board grown for its servos
+			// and spare motor reached over the panel). Back over the mast then, it goes beside it, away from the pack.
+			const xMin = -m.chassis.plateMm[0] / 2 + STICKER_CLEAR_MM + bw / 2
+			if (at.xMm < xMin) {
+				at = { xMm: xMin, yMm: at.yMm }
+				if (Math.abs(at.xMm) < keep + bw / 2 && Math.abs(at.yMm) < keep + bh / 2) at = { xMm: at.xMm, yMm: (m.battery.at.yMm > 0 ? -1 : 1) * (keep + bh / 2 + 2) }
+			}
+			return at === b.at ? b : { ...b, at }
 		})
 	// A pull-cord start (F.6) and the match's end (H.3).
 	m.safety = { ...m.safety, start: { connector: "JS1", cordMm: Math.max(m.safety?.start?.cordMm ?? 0, L.cordMinMm.value), matchS: L.matchS.value } }
