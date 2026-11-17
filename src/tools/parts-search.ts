@@ -46,6 +46,26 @@ export function loadCatalog(root: string): CatalogPart[] {
 	return [...entries, ...learned].map((e) => ({ ...e, ...UNKNOWN }))
 }
 
+// A part's stock from its LCSC product page: the page embeds every listed product's stockNumber; the part's own sits
+// in its object, after its "productCode" and before the next product's. null when the page holds no number for it.
+export function stockFromLcscPage(html: string, lcsc: string): number | null {
+	const at = html.indexOf(`"productCode":"${lcsc}"`)
+	if (at < 0) return null
+	// The part's own object: from its productCode to the next product's.
+	const next = html.indexOf(`"productCode":"`, at + 1)
+	const own = html.slice(at, next < 0 ? at + 4000 : next)
+	const m = /"stockNumber":(\d+)/.exec(own)
+	return m ? Number(m[1]) : null
+}
+async function lcscPageStock(lcsc: string, f: typeof fetch, timeoutMs: number): Promise<number | null> {
+	try {
+		const res = await f(`https://www.lcsc.com/product-detail/${encodeURIComponent(lcsc)}.html`, { signal: AbortSignal.timeout(timeoutMs), headers: { "user-agent": "Mozilla/5.0" } })
+		return res.ok ? stockFromLcscPage(await res.text(), lcsc) : null
+	} catch {
+		return null
+	}
+}
+
 // One LCSC part's live stock and unit price (jlcsearch), for a part the catalog may not list (a passive).
 export const lookupLcsc = (lcsc: string, opts: { fetch?: typeof fetch; timeoutMs?: number } = {}) => lookup(lcsc, opts.fetch ?? fetch, opts.timeoutMs ?? TIMEOUT_MS)
 async function lookup(lcsc: string, f: typeof fetch, timeoutMs: number): Promise<Live> {
@@ -58,7 +78,9 @@ async function lookup(lcsc: string, f: typeof fetch, timeoutMs: number): Promise
 		const body = (await res.json()) as { components?: { lcsc: number; stock: number | null; price: number | null; is_basic?: boolean; is_preferred?: boolean }[] }
 		const hit = body.components?.find((c) => `C${c.lcsc}` === lcsc)
 		if (!hit) return UNKNOWN
-		const stock = typeof hit.stock === "number" ? hit.stock : null
+		// jlcsearch stopped carrying stock (17 Nov 2026: null for every part, stock_checked_at 3 Nov), so its "unknown" is
+		// read from LCSC's own product page instead (the stockNumber beside the part's productCode).
+		const stock = typeof hit.stock === "number" ? hit.stock : await lcscPageStock(lcsc, f, timeoutMs)
 		const live: Live = { stock, priceUsd: typeof hit.price === "number" ? hit.price : null, inStock: stock === null ? null : stock > 0, ...(typeof hit.is_basic === "boolean" ? { basic: hit.is_basic, preferred: hit.is_preferred === true } : {}) }
 		if (!cache.has(f)) cache.set(f, new Map())
 		cache.get(f)!.set(lcsc, live)
