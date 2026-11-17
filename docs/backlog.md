@@ -9,10 +9,14 @@ The checks and agents are tested piece by piece with scripted agents. What hasn'
 
 - [ ] A real-model run that passes the final brief review under the space, case, connectivity and security rules
       added 6–7 Nov. Three runs on 7 Nov (below) reach every output and a consistent design, but not a pass yet.
+      Audit 17 Nov (bringup-system): robots pass it (cc-rover-8 rev 32, cc-rover-9 rev 24, real-rover-6); no real-model
+      logger run (case, connectivity, security) has passed yet.
 - [ ] Order one generated board and bring it up: flash, the factory test, a Bluetooth read with the passkey, BTHome in
       Home Assistant. Nothing from the IoT work has run on hardware.
+      Audit 17 Nov (bringup-system): still open: no board ordered (ordering is the user's call).
 - [ ] Measure on that board: deep-sleep current, the radio's peak against the RT9080 (rail droop at transmit), and a
       Wi-Fi upload's energy (today a 3 s × 120 mA estimate).
+      Audit 17 Nov (bringup-system): still open: needs the board above.
 
 ### What the real-model runs on 7 Nov showed (logger brief, then "show the readings in Home Assistant")
 
@@ -58,6 +62,7 @@ Decision from run 4, agreed with the engineer on 9 Nov and built:
       (run 5 said "500 mA awake" against 170 mA on 3V3).
 - [ ] **Phone use as a contract value:** the one-connection-a-day assumption is a constant; the "Added for you" table
       says so. Making it `requirements` data would let the brief set it.
+      Audit 17 Nov (bringup-system): still open: still a constant (no requirements field reads it).
 
 ## 2. Security (needed before selling under the EU Cyber Resilience Act; vulnerability reporting from 11 Sep 2026, everything else from 11 Dec 2027)
 
@@ -77,6 +82,9 @@ is a change to the firmware toolchain, not just the code.
       of compiling them in.
 - [ ] **Vulnerability handling:** the manufacturer's contact, a disclosure policy, and ENISA reporting within 24 h.
       This is the company's process; the design can only point to it.
+      Audit 17 Nov (bringup-system): none of the seven security items above is in the firmware yet (no Secure Boot,
+      flash encryption, signed images, factory reset, BTHome key or provisioning); src/contract/compliance.ts lists them
+      as open in each report.
 
 ## 3. Hardware robustness
 
@@ -111,7 +119,7 @@ is a change to the firmware toolchain, not just the code.
       tscircuit first, Freerouting after 2 unclean layouts: 3 layouts / 115 s / DRC 0 (debug footprint kept);
       Freerouting first: 1 layout / 51 s / DRC 0 (bringup-board's 12-board sweep).
 
-- [ ] **Narrow boards the router can't route around the motor driver** (15 Nov, revised: reserving the capacitors' boxes
+- [x] **Narrow boards the router can't route around the motor driver** (15 Nov, revised: reserving the capacitors' boxes
       was tried and changed nothing: on the 60×21 board C3 and C4 already sit in their spots beside U5's pins; the
       traces fail on congestion, 8-9 mm against 5. Today's working path: the build reports the too-long trace and the
       architect grows the board for routing; the run's 64×25 revision routes. Open: a routing-aware smallest board (the
@@ -131,8 +139,12 @@ is a change to the firmware toolchain, not just the code.
       beside its pads (capBoxes) are kept free of every other part, so a board too small for them doesn't place all its
       parts, the space rule's minimum grows to fit, and the architect never shrinks below a routable size. Prove with
       routed builds of every scripted board and the run's 60×21 contract.
+      Audit 17 Nov (bringup-system): done 15 Nov in e22ac78 (both fixes the user chose: a capacitor wired between two
+      pins of one part gets its traces drawn, and a size that failed to route is never offered again;
+      test/cap-paths.test.ts, test/board-errors.test.ts), with 1c06f0d (a placement refusal or unrouted traces count as
+      a size failure).
 
-- [ ] **Check: can Bringup design a 3D-printer / CNC controller board, Duet-like, from a prompt?** (the user, 15 Nov:
+- [x] **Check: can Bringup design a 3D-printer / CNC controller board, Duet-like, from a prompt?** (the user, 15 Nov:
       "can I simply ask bringup to create CNC board optimized for 3D printing work and get something resembling what
       Duet 3D is/was"). A feasibility check first, then a plan. Borrow the product idea only, never Duet's design files
       or text. What exists: MCU profiles that run motion firmware (STM32F411/F446 and RP2350 for grblHAL, ESP32-WROOM
@@ -152,6 +164,8 @@ is a change to the firmware toolchain, not just the code.
       and endstop inputs, current-sized copper and thermal checks, and the firmware config (about 2-3 weeks, estimate).
       Two risks to test first: copper width per net in tscircuit's autorouter, and routing a ~100x80 mm board with 20+
       connectors on 2 layers. First board: 3 drivers, hotend, 2 fans, 3 endstops, 24 V in, the bed switched off-board.
+      Audit 17 Nov (bringup-system): the check is done (c0c523e, docs/cnc-board.md: not today, about 2-3 weeks, an
+      estimate). Building it is a separate decision, not started.
 
 - [x] **Board and chassis disagree on how a board mounts** (found 15 Nov; fixed 15 Nov: chassisSpec takes each board's
       holes and the case's M2 screw, py/chassis.py cuts them, board-mount-mismatch checks the built chassis): the board has M2 holes (2.2 mm,
@@ -164,6 +178,7 @@ is a change to the firmware toolchain, not just the code.
       (its stm32f103.repl has no CAN) and has no F446 platform (the two-node CAN test runs F446 firmware on its F407 as an
       approximation); QEMU's ESP32-C3 models no TWAI. Those sides are proven only by compiling until the bench test
       (docs/bench-can.md) runs on real boards. STM32 bxCAN firmware itself is done (e7fb5e0).
+      Audit 17 Nov (bringup-system): still open: until docs/bench-can.md runs on real boards.
 - [ ] **Encoder count direction, on the real robot.** With both channels wired (the ESP32-S3, f620338, 17 Nov) the
       firmware learns each wheel's count sign from the first drive that moves it 16 counts (templates/fw-rover/src/
       rover_quad.h quad_forward): an encoder's phase against its motor's terminals, and how the board wires the motor,
@@ -183,7 +198,8 @@ is a change to the firmware toolchain, not just the code.
       ErrorCode 0x20000 (HAL_CAN_ERROR_TIMEOUT) and MSR 0xC00: Renode's STMCAN never sets MSR.INAK when the HAL requests
       init mode (MCR.INRQ), so the controller never starts and every send finds no free mailbox. A Renode model limit:
       we don't patch Renode, so bxCAN stays proven by compiling and by the bench test (docs/bench-can.md).
-- [ ] **CAN as a link between boards, when the user asks for it** (the user, 15 Nov: "allow for user insisting on using
+      Audit 17 Nov (bringup-system): still open: needs a real floor.
+- [x] **CAN as a link between boards, when the user asks for it** (the user, 15 Nov: "allow for user insisting on using
       CAN communication for robot if they want"). Today: the MCU profiles know which chips have a CAN controller
       (ESP32-C3 / WROOM TWAI, STM32F103, STM32F446), but `src/contract/link-kinds.ts` has no CAN kind and the catalog
       no transceiver. Needs: a `can` link kind; a 3.3 V transceiver part with sources (e.g. SN65HVD230 / TJA1051T/3);
@@ -192,6 +208,9 @@ is a change to the firmware toolchain, not just the code.
       one bit rate per bus); tests: host codec and compile (QEMU has no TWAI), bench with two boards. A brief or a
       system spec that names CAN gets it; the architect never swaps it for UART.
       (built 15 Nov, see above)
+      Audit 17 Nov (bringup-system): done: 64642ff (the can link kind, each board's side, the checks;
+      test/can-link.test.ts), buses of three or more boards d6824ca (test/can-bus.test.ts), merged into adopt with
+      d14d856.
 - [ ] **Open standards by default** (the user, 15 Nov, asked whether we insist on them; recommended yes). Today open
       where it was the obvious choice (KiCad, STEP/STL, PlatformIO/Arduino, BTHome v2, CycloneDX) but not a rule, and
       some interfaces are ours or one vendor's: the board-to-board message framing (`templates/fw/include/linkframe.h`,
@@ -210,6 +229,8 @@ is a change to the firmware toolchain, not just the code.
       MAVLink v2; the TC2030 → ARM's 10-pin Cortex Debug; our GATT layout → ESS). Left: the rule for the agents (pick
       the open one where it fits), CAN's rows once the can branch is in, and moving the link messages onto an open
       protocol.
+      Audit 17 Nov (bringup-system): left: only the agents' rule (pick the open standard where one fits); CAN's rows
+      (d6824ca) and the open link protocols (COBS+CBOR, Cyphal) are done.
 
 - [ ] **Power transmission and motion parts in the parts list, each checked against its mate** (the user, 15 Nov, via
       d9610c: "yeah along with fasteners we should add gears, belts, chains and all other mechanical pieces to the list
@@ -232,6 +253,8 @@ is a change to the firmware toolchain, not just the code.
       bore; goBILDA 3423-0006-0088 GT2 belt 44T closed, 6 mm); a part named by its mpn must carry the catalog's numbers
       (mech-mate); the mechanics agent's instruction says to take drive-train parts from that list. Left: more entries
       (bearings, couplers, lead screws, gears) as designs need them, and parts-list lines for them.
+      Audit 17 Nov (bringup-system): left: more sourced catalog entries (bearings, couplers, lead screws, gears) and
+      their parts-list lines, as designs need them.
 - [ ] **Every bought mechanical part in the parts list** (started 15 Nov: catalog/mechanics.json `hardware` with a source
       per number; the rover's board screws (M2x8 self-tapping, one per board hole) and caster screws and nuts (M4x10,
       M4, one per caster hole) counted from chassisSpec; hardware-misfit checks each fits its hole; the parts list and
@@ -245,6 +268,8 @@ is a change to the firmware toolchain, not just the code.
       quantity worked out from the design (holes × screws, one insert per screw boss), a size (M2 × length from the stack
       height), a shop link and live price where the shop states one, like the rest. Then a check: every hole, boss and
       bracket in the printed parts has its fastener in the list, and every fastener in the list has a hole to go in.
+      Audit 17 Nov (bringup-system): the battery strap is done (a82d20f, its two screws in the parts list); left: crimp
+      housings for bare motor terminals and the 2S pack's XT60 lead.
 
       Step 15 Nov (bringup-board, branch fasteners): the sensor breakout is screwed to its bracket. The catalog's
       breakout was 21 × 18 mm (Adafruit's product page, the pre-2020 board); its fab print says 25.4 × 17.8 mm with four
@@ -280,6 +305,8 @@ is a change to the firmware toolchain, not just the code.
 - [ ] **Tighter part spacing, proven by the router** (engineer, 13 Nov: "each component in optimal space and yet keeping
       proper distance"). The placer keeps 1.5 mm between every two parts, so even a compact board is only about half
       covered. Real builds at each design's compact size, 13 Nov (0 DRC errors = routed):
+      Audit 17 Nov (bringup-system): still open: no tight-first retry yet (bringup-board's min-place work is on the
+      space model).
 
       | Board | 1.5 mm everywhere (today) | 1.0 mm everywhere | 1.0 mm between small parts only |
       | --- | --- | --- | --- |
@@ -295,10 +322,15 @@ is a change to the firmware toolchain, not just the code.
 - [ ] **STM32 logger "unique PCB port" routing failure:** the scripted STM32 logger fails at 50×30 and 37×20 with
       tscircuit's "Routes contain a junction or endpoint that cannot select a unique PCB port", with or without the
       debug footprint; 39×21 routes (`npm run board`, 13 Nov). Belongs with the routing-aware retry above.
+      Audit 17 Nov (bringup-system): not re-run since the Freerouting fallback (746afdd), which may route it: one npm
+      run board at 37x20 would tell.
 - [ ] **Antenna keep-out:** Espressif recommends 15 mm clear around the module's antenna; the case leaves 2 mm. No
       ground copper is kept away from it yet either.
+      Audit 17 Nov (bringup-system): the report names parts within 15 mm (b95dfb3, advisory); left: the layout, the case
+      and ground copper keeping clear.
 - [ ] **RT9080 lifecycle:** one LCSC page flagged it "not recommended for new designs". Confirm with Richtek or a
       distributor, and name a second source.
+      Audit 17 Nov (bringup-system): still open: needs Richtek or a distributor; the robots' power tree uses it too.
 - [x] **EN reset delay:** done 13 Nov (049027a): 10 kΩ to 3V3 and 1 µF to GND on MCU_EN, under "Added for you". A
       reset button on EN is still open.
 - [x] **Standard debug footprint:** done 13 Nov (e541ae2): Tag-Connect TC2030-NL on the underside, SWD pinout or
@@ -340,6 +372,7 @@ is a change to the firmware toolchain, not just the code.
       (test/board-rotate.int.test.ts). A via whose inward move lands on something else still shows in DRC.
 - [ ] **Bulk capacitance for Wi-Fi bursts:** the board has 10 µF on the 3V3 rail. Check against the rail droop measured
       above before adding more.
+      Audit 17 Nov (bringup-system): still open: needs the measured droop (no board yet).
 
 ## Compute boards and the Rover with a Pi (merged into adopt 1d6f68d, 15 Nov)
 User, 15 Nov: "sure, for now, until we think of a better solution for that one" (buy the brain, design the body);
@@ -358,23 +391,33 @@ them as well, although it might not be the focus here".
       power by part role and pin label, and the header's pins are labelled 1–40. No 5 A input connector either.
       Done (d886638): a part's pin→rail map (Part.nets) is wired by the generator; the HAT's 5 V input is a KF301 screw
       terminal (J2). test/supply-wiring.test.ts: 5 V on J1.2, J1.4 and J2.VIN; ground on pins 6/9/14/20/25/30/34/39.
-- [ ] **ADAFRUIT-2223 stacking header:** no LCSC number; an 8.5 mm socket + 10 mm pins against the 16 mm spacer stack
+- [x] **ADAFRUIT-2223 stacking header:** no LCSC number; an 8.5 mm socket + 10 mm pins against the 16 mm spacer stack
       needs a fit check (09741c's hardware list). Pi holes are M2.5 (Ø2.7) but the chassis' boardScrew pilot is the M2
       self-tapping one: a per-board screw is needed.
+      Audit 17 Nov (bringup-system): done in d47325b: each board's screw follows its own holes (the Pi's Ø2.7 take M2.5
+      into a 2.1 mm pilot) and the HAT's stacking header is checked against the 16 mm stack. No LCSC number: it is an
+      Adafruit part, bought from Adafruit.
 - [x] **Charger vs pack:** main still carries the 1S TP4054 charger and plug on the rover-pi's 2S pack; no check
       compares them. Done: the charger-pack and pack-voltage checks (d886638), and since 17 Nov (af18628) a robot's
       power tree is decided in code from its pack: a 1-cell charger on a multi-cell pack is dropped with its passives
       and the step-down and Schottkys added, on every parts or pack write.
 - [ ] **Runtime leaves out the Pi:** a bought board's contract has no power rails.
+      Audit 17 Nov (bringup-system): still open: next for bringup-system.
 - [x] **Simulation ~10 % faster than planned**: measured 15 Nov on the test rover, the reference rover and Rover with a
       Pi at duty 0.4 and 0.8, the simulated cruise is -1.6 % to +0.4 % of the load line's speed (adding Crr in MuJoCo
       made it 3-5 % slow: its contacts and the caster's friction already cost that). The gap predated the caster
       friction fix and the one load-line model. Guarded by py/tests/test_mech_speed.py (within 3 %).
 - [ ] **Turn closed on heading**: the 100 mm turn clearance was measured on one design; turning by time stays open-loop.
       Needs an IMU on the robot's board (a hardware choice for the user).
-- [ ] **examples/rover is stale** (saved 11 Nov, before the 150 × 120 brief and the current axle/wheelbase); re-save
+      Audit 17 Nov (bringup-system): turns close on the wheel encoders' counts since 16 Nov (rover_enc.h,
+      ROVER_TURN_COUNTS), quadrature on the S3 since f620338; left: a heading sensor (IMU) for wheel slip. Next for
+      bringup-system.
+- [x] **examples/rover is stale** (saved 11 Nov, before the 150 × 120 brief and the current axle/wheelbase); re-save
       from a mock run. examples/rover-pi has no still.png.
+      Audit 17 Nov (bringup-system): done 15 Nov in 282b51f: the reference rover re-saved from a settled mock build, and
+      Rover with a Pi got its still.png.
 - [ ] **Null values in module records:** Jetson hole positions, ROCK 5B absolute holes, heights.
+      Audit 17 Nov (bringup-system): still open: next for bringup-system (sourced from datasheets only).
 - [x] **Eurobot starter** (16 Nov, bringup-system): examples/eurobot, saved from a settled mock build of briefs/eurobot-base.md (rev 11, 0 violations, 0 failed builds, the simulated drive passes, 7 of 7 Eurobot rule figures within limits). Before: the brief got the beacon design (unsettled, 9 violations).
   - [x] **Fork evidence** (16 Nov, bringup-system): each run's module evidence now names its design and, for a fork, the
         starter it came from (src/modules/library.ts runSource reads the dashboard's lineage, plans/starters/*/forks.jsonl);
@@ -399,13 +442,17 @@ them as well, although it might not be the focus here".
         at least 500 mm, stop at 100 s, opponent sensor. Found: the A22E's head is 32 mm proud of its deck, so the deck
         needs a 7 mm collar (mechanics.safety.estop.collarMm). Not checked (listed in the report): beacon support, the
         100 × 70 mm sticker face, the deployed perimeter, lithium battery conditions.
-  - [ ] **Eurobot: model the beacon support mast and the sticker face** (F.6), then check them.
+  - [x] **Eurobot: model the beacon support mast and the sticker face** (F.6), then check them.
         Measured first (16 Nov, bringup-system): on the Eurobot base as saved (the reference rover's 150 x 96 mm plate,
         317 g), the opponent's 400 g beacon at 430 mm (F.6: it must hold 400 g) on an 80 mm printed mast (about 323 g of
         PLA, an estimate) makes it about 1040 g with its centre of mass at 274 mm: braking at the floor's estimate moves
         it 96 mm forward (22 mm today), far past the wheels-and-caster triangle. The small base can't carry the beacon:
         the Eurobot base needs a wider, heavier, lower base (the 290 mm square allows a ~270 mm track) or a much lighter
         mast, before the mast is modelled. The design choice (bigger base vs light mast) is open.
+        Audit 17 Nov (bringup-system): done: 9862c02 (mechanics.beacon: the printed mast and its 400 g in the mass
+        model, so the tipping check carries them; F.6's limits checked), a518398 and 6e97c62 (the 100 × 70 mm sticker
+        panel, boards kept clear of it); examples/eurobot re-saved on it (0c11d6c: mock rev 12, 0 violations, so the
+        saved base passes the tipping check with the mast and its load aboard).
   - [x] **Eurobot starter: encoder motors and odometry** (16 Nov, done: Pololu 5139, channel A on GPIO0/1, rover_enc.*
         built in only with ROVER_TURN_COUNTS, back-off of 100 mm before turning). Open: the encoder's direction and the
         hold gain (0.001 duty/count, an estimate) on the bench. Channel B: since 17 Nov (f620338) a robot asking for
