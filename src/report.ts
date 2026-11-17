@@ -219,6 +219,24 @@ export function writeBench(outDir: string, s: ContractSnapshot, board?: { debugP
 	return join(outDir, "bringup.md")
 }
 
+// What holds an unsettled design besides the consistency violations, so a report never says "UNSETTLED" with nothing
+// named (the mock rover, 17 Nov 2026: UNSETTLED with 0 violations, held by two grounding findings nobody saw).
+export function heldBy(s: BringupState): string[] {
+	const snapshot = s.contract.snapshot()
+	const blockers = (s.review.results.at(-1)?.findings ?? []).filter((f) => f.severity === "blocker")
+	const stale = (Object.keys(BUILD_INPUTS) as (keyof typeof BUILD_INPUTS)[]).filter(
+		(k) => s.artifactFailures[k] === undefined && BUILD_INPUTS[k].every((f) => snapshot.versions[f] > 0) && BUILD_INPUTS[k].some((f) => (s.artifactInputs[k]?.[f] ?? 0) !== snapshot.versions[f]),
+	)
+	const open = s.approvals.openCount()
+	return [
+		...s.groundingFindings.map((f) => `grounding: ${f.partRef} ${f.kind}: ${f.detail}`),
+		...Object.entries(s.artifactFailures).map(([k, e]) => `${k} build failed: ${String(e).split("\n")[0]}`),
+		...stale.map((k) => `${k}: not built at this revision (the run ended before its build finished)`),
+		...(open > 0 ? [`${open} contract change${open === 1 ? "" : "s"} still waiting for approval`] : []),
+		...blockers.map((f) => `review blocker: ${f.issue}`),
+	]
+}
+
 export function writeReport(outDir: string, s: BringupState, env: Env, settled: boolean, opts: { noHardware?: boolean; bench?: boolean; mock?: boolean } = {}): string {
 	const snapshot = s.contract.snapshot()
 	const violations = checkConsistency(snapshot, s.artifacts, readBrief(outDir))
@@ -240,6 +258,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...(opts.mock ? [`Models: mock (scripted agents: no model judged this design)`] : []),
 		`Violations: ${violations.length}`,
 		...violations.map((x) => `- ${x.kind}: ${x.message}`),
+		...(settled || s.stopped ? [] : heldBy(s).length ? [`Held by (besides the violations): ${heldBy(s).length}`, ...heldBy(s).map((x) => `- ${x}`)] : []),
 		``,
 		...(missing.length > 0
 			? [

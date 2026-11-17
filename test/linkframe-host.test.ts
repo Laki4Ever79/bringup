@@ -28,3 +28,14 @@ test("the link payload codec writes and reads CBOR as RFC 8949 gives it, compile
 	for (const c of ["uint", "negative", "int32-min", "float", "map", "overflow", "roundtrip", "truncated", "half", "double", "uint64", "not-ours"]) assert.match(r.stdout, new RegExp(`^PASS ${c}$`, "m"), r.stdout)
 	assert.equal(r.status, 0, r.stdout)
 })
+
+// CAN messages as Cyphal/CAN v1.0 (templates/fw/include/linkcyphal.h, 17 Nov 2026): the identifier checked against the
+// specification's heartbeat example (subject 7509 from node 42 at nominal priority: 0x107D552A), the tail byte, and the
+// frames that aren't single-frame messages refused.
+test("the Cyphal/CAN identifier and tail byte match the specification, compiled on this computer", { skip: gxx ? false : "needs g++" }, () => {
+	const bin = join(tempDir(), "linkcyphal_test")
+	execFileSync("g++", ["-std=c++17", "-Wall", "-Werror", "-I", join(ROOT, "test/fw-host"), "-I", join(ROOT, "templates/fw/include"), join(ROOT, "test/fw-host/linkcyphal_test.cpp"), "-o", bin])
+	const r = spawnSync(bin, { encoding: "utf8" })
+	for (const c of ["heartbeat-id", "tail", "parse", "not-ours"]) assert.match(r.stdout, new RegExp(`^PASS ${c}$`, "m"), r.stdout)
+	assert.equal(r.status, 0, r.stdout)
+})
