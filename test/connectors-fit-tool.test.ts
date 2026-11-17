@@ -41,20 +41,23 @@ test("connectors the architect proposes overlapping across a corner are applied 
 	assert.deepEqual(connectorsOffEdge(now), [])
 })
 
-test("an outline change that leaves a connector past its edge moves it back, in the same revision", async () => {
+test("an outline change carries its connectors in the same revision, each still on its edge", async () => {
+	// cc-rover-3 shrinks 78×18 → 78×17 (78×16, its own size then, no longer places on today's code: the outline guard
+	// refuses it, naming 76×17; test/outline-guard.test.ts). Packing onto the edge is covered by the space-model test below.
 	const s = fixture("cc-rover-3-78x16-rev25.json")
-	const state = seeded({ ...s, values: { ...s.values, outline: { ...s.values.outline!, heightMm: 17 } } }, [])
-	startRuntime(state, inferenceConfig(true, { "mock-architect": once(toolCall("propose_contract_change", { field: "outline", value: s.values.outline, baseVersion: 1, reason: "shrink to 78x16" })) }), null)
+	const state = seeded({ ...s, values: { ...s.values, outline: { ...s.values.outline!, heightMm: 18 } } }, [])
+	startRuntime(state, inferenceConfig(true, { "mock-architect": once(toolCall("propose_contract_change", { field: "outline", value: { ...s.values.outline, heightMm: 17 }, baseVersion: 1, reason: "shrink to 78x17" })) }), null)
 	const architect = createRoleAgent({ role: "architect", instruction: "x", handlers: [], mock: true })
 	startTurn(architect, "shrink the board")
 	await waitFor(() => state.contract.version("connectors") === 2)
 	const now = state.contract.snapshot()
-	assert.equal(now.values.outline!.heightMm, 16)
+	assert.equal(now.values.outline!.heightMm, 17)
 	// One revision for both: the seed's last, plus the outline change that carried the connectors.
 	assert.equal(now.revision, Object.keys(s.values).filter((f) => (s.values as Record<string, unknown>)[f] !== undefined).length + 1)
 	assert.deepEqual(connectorsOffEdge(now), [])
-	// J5, a JST SH plug, by its 7.8 mm courtyard: at most 12.1 mm along the 16 mm edge.
-	assert.equal(now.values.connectors!.find((k) => k.ref === "J5")!.offsetMm, 12)
+	// J5 on the right edge, at the same place along it: scaled 18 → 17 mm, on the 0.5 mm grid.
+	const was = s.values.connectors!.find((k) => k.ref === "J5")!.offsetMm
+	assert.equal(now.values.connectors!.find((k) => k.ref === "J5")!.offsetMm, Math.round(((was * 17) / 18) * 2) / 2)
 })
 
 // Real run 19b (Eurobot, 17 Nov 2026): the space check said "e.g. 48×29 mm" at rev 33, judging each size with the
