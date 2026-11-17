@@ -67,6 +67,9 @@ export function applyFabRules(project: Record<string, any>): Record<string, any>
 		min_hole_to_hole: FAB_RULES.minHoleToHoleMm,
 		min_copper_edge_clearance: FAB_RULES.minEdgeClearanceMm,
 	}
+	// Drills nearer each other than the fab's hole-to-hole minimum break into each other: an error, not KiCad's default
+	// warning (run 17 rev 41 passed DRC 0 with three same-net via pairs 0.11-0.15 mm apart, 17 Nov 2026).
+	p.board.design_settings.rule_severities = { ...(p.board.design_settings.rule_severities ?? {}), hole_to_hole: "error" }
 	p.net_settings ??= {}
 	const classes: any[] = (p.net_settings.classes ??= [])
 	const def = classes.find((c) => c.name === "Default") ?? (classes.push({ name: "Default" }), classes.at(-1))

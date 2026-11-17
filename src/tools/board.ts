@@ -255,7 +255,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	// A via the router dropped nearer the edge or an unplated hole than the fab allows moves clear, its traces' ends with
 	// it (via-edge.ts);
 	// the DRC below checks the result.
-	if (existsSync(pcbFile)) writeFileSync(pcbFile, nudgeVias(stripKeepouts(readFileSync(pcbFile, "utf8")), { edgeMm: FAB_RULES.minEdgeClearanceMm, holeMm: FAB_RULES.minHoleClearanceMm }).pcb)
+	if (existsSync(pcbFile)) writeFileSync(pcbFile, nudgeVias(stripKeepouts(readFileSync(pcbFile, "utf8")), { edgeMm: FAB_RULES.minEdgeClearanceMm, holeMm: FAB_RULES.minHoleClearanceMm, holeToHoleMm: FAB_RULES.minHoleToHoleMm }).pcb)
 
 	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], work, 180_000)
 	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], work, 180_000)
