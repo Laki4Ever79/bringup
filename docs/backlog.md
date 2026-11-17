@@ -401,8 +401,12 @@ them as well, although it might not be the focus here".
       compares them. Done: the charger-pack and pack-voltage checks (d886638), and since 17 Nov (af18628) a robot's
       power tree is decided in code from its pack: a 1-cell charger on a multi-cell pack is dropped with its passives
       and the step-down and Schottkys added, on every parts or pack write.
-- [ ] **Runtime leaves out the Pi:** a bought board's contract has no power rails.
-      Audit 17 Nov (bringup-system): still open: next for bringup-system.
+- [x] **Runtime leaves out the Pi:** a bought board's contract has no power rails.
+      Done 15 Nov in d886638, box left open (found 17 Nov, bringup-system): the robot's runtime and pack current add
+      each bought computer's typical draw through the 5 V regulator (boughtComputeA, from its module record), and the
+      system's compute-power check judges its peak (rpi-5: 5.0 A) against the pack and the regulator (powerBudget). On
+      examples/rover-pi: the Pi is 0.69 A of the 0.91 A cruise current, runtime 123 min (without it about 509 min).
+      Tests: test/compute-runtime.test.ts, test/compute-checks.test.ts (15/15).
 - [x] **Simulation ~10 % faster than planned**: measured 15 Nov on the test rover, the reference rover and Rover with a
       Pi at duty 0.4 and 0.8, the simulated cruise is -1.6 % to +0.4 % of the load line's speed (adding Crr in MuJoCo
       made it 3-5 % slow: its contacts and the caster's friction already cost that). The gap predated the caster
