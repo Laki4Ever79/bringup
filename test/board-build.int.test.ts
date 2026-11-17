@@ -73,7 +73,7 @@ test("build errors lead with the real cause, not tscircuit's advisory warnings",
 })
 
 // Real run 14 rev 36 (Eurobot, 16 Nov 2026): every tscircuit layout built with one 0.04 mm clearance near-miss (20
-// layouts, 640 s, DRC 1). After LAYOUTS_BEFORE_FREEROUTING layouts built with errors, Freerouting routes the best one's
+// layouts, 640 s, DRC 1). After LAYOUTS_BEFORE_FREEROUTING layouts that aren't clean, Freerouting routes the best one's
 // placement: 7 layouts, 506 s, DRC 0, debug footprint kept.
 test("a crowded board whose layouts all build with DRC errors is routed clean by Freerouting", { skip: slow || (!(env.tsci && env.kicad) && "tsci or KiCad missing"), timeout: 1_200_000 }, async () => {
 	const { connectorsOntoEdges } = await import("../src/contract/consistency.ts")
