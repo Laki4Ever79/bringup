@@ -59,12 +59,15 @@ export const ROBOTICS: Step = {
 
 // NOTES.md "Firmware emulation": Espressif's prebuilt QEMU into tools/qemu, and libslirp fetched user-level with
 // `apt download` (no install, no sudo).
-const QEMU_URL = "https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417/qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz"
+// Both machines from one release: riscv32 for the ESP32-C3, xtensa for the ESP32 and ESP32-S3 (src/tools/qemu.ts); each
+// tarball unpacks into tools/qemu (bin/ and share/ side by side).
+const QEMU_RELEASE = "https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417"
+const QEMU_URLS = ["riscv32", "xtensa"].map((a) => `${QEMU_RELEASE}/qemu-${a}-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz`)
 export const QEMU: Step = {
 	id: "qemu",
 	name: "QEMU (tools/qemu)",
 	commands: [
-		["bash", ["-c", `set -e; mkdir -p tools && cd tools && curl -fL -o qemu.tar.xz ${QEMU_URL} && tar xf qemu.tar.xz && rm qemu.tar.xz`]],
+		...QEMU_URLS.map((url): [string, string[]] => ["bash", ["-c", `set -e; mkdir -p tools && cd tools && curl -fL -o qemu.tar.xz ${url} && tar xf qemu.tar.xz && rm qemu.tar.xz`]]),
 		["bash", ["-c", "set -e; d=$(mktemp -d); (cd $d && apt download libslirp0 && dpkg -x libslirp0_*.deb x); mkdir -p tools/qemu/lib; cp -a $d/x/usr/lib/x86_64-linux-gnu/libslirp.so.0* tools/qemu/lib/; rm -rf $d"]],
 	],
 }
@@ -210,6 +213,6 @@ export function presentOn(root: string, check: Probe["check"]): Probe["present"]
 		if (step === "renode") return existsSync(join(root, "tools/renode", `renode_${RENODE_VERSION}-portable`, "renode"))
 		if (step === "vendors")
 			return ["ststm32", "raspberrypi", "nordicnrf52"].every((p) => existsSync(join(pioHome, "platforms", p))) && existsSync(join(root, "tools/vendor/STM32_open_pin_data/mcu"))
-		return existsSync(join(root, "tools/qemu/bin/qemu-system-riscv32")) && existsSync(join(root, "tools/qemu/lib"))
+		return ["riscv32", "xtensa"].every((a) => existsSync(join(root, `tools/qemu/bin/qemu-system-${a}`))) && existsSync(join(root, "tools/qemu/lib"))
 	}
 }

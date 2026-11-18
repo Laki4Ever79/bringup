@@ -624,8 +624,16 @@
 		}
 	},
 	"sim": {
-		"backend": null,
-		"note": "Xtensa: Espressif's QEMU for the ESP32-S3 (qemu-system-xtensa) is not installed, so the simulated drive is not run"
+		"backend": "qemu",
+		"machine": "esp32s3",
+		"consoleUart": "UART0",
+		"models": [
+			"gpio",
+			"uart",
+			"timers",
+			"twai"
+		],
+		"note": "Espressif QEMU (qemu-system-xtensa, esp_develop_9.2.2_20260417, machine esp32s3): no radio, I2C, PCNT or LEDC model (info qtree, 18 Nov 2026); the simulation build (esp32s3_sim) takes the encoder counts and the distance from the drive bridge over UART1, so neither is needed"
 	},
 	"radio": [
 		"ble",

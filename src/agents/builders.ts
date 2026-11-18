@@ -1,4 +1,5 @@
 import { BUILDS } from "../contract/builds.js"
+import { qemuTarget } from "../tools/qemu.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { unassignedRoverPins } from "../mechanics/firmware.ts"
 import { prepareFirmware } from "../tools/firmware.ts"
@@ -240,10 +241,12 @@ export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
 		build: async ({ dir, snapshot, revision }) => {
 			const notRun = (reason: string): DriveArtifact => ({ revision, dir, result: "not run", reason, segments: [] })
 			if (!env.pio || !env.qemu || !env.python) return notRun("PlatformIO, QEMU or the .venv simulation tools are missing: not proven in simulation")
-			// The drive runs the firmware in QEMU riscv32 (the ESP32-C3's machine): an MCU it can't run isn't simulated.
+			// The drive runs the firmware in the chip's QEMU (tools/qemu.ts: riscv32 for the ESP32-C3, xtensa for the S3); an
+			// MCU it has no machine for isn't simulated.
 			const chip = mcuProfileOf(snapshot.values.parts)
-			if (chip && chip.sim.machine !== "esp32c3")
-				return notRun(chip.firmware.arch === "esp32" ? `drive sim: not run (Xtensa QEMU not installed): the ${chip.mpn}'s firmware needs Espressif's qemu-system-xtensa; the drive simulation runs the ESP32-C3's (riscv32)` : `drive sim: not run: the drive simulation runs only the ESP32-C3's firmware (QEMU riscv32), not the ${chip.mpn}'s`)
+			const machine = chip ? chip.sim.machine : "esp32c3"
+			if (chip && (chip.sim.backend !== "qemu" || !qemuTarget(machine)))
+				return notRun(`drive sim: not run: the drive simulation runs the firmware in Espressif's QEMU (ESP32-C3, ESP32-S3), not the ${chip.mpn}'s`)
 			const spec = chassisSpec(snapshot)
 			if (!spec) return notRun("no complete mechanics design to simulate")
 			// Driving without a board's weight would prove a lighter robot than the real one.
@@ -255,7 +258,7 @@ export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
 			if (unassigned.length) return notRun(`pins not assigned yet: ${unassigned.join(", ")}`)
 			const fw = join(dir, "fw")
 			await prepareFirmware(env.root, fw, snapshot)
-			return runDrive({ root: env.root, python: env.python, pio: env.pio, fwDir: fw, spec, outDir: dir }, revision)
+			return runDrive({ root: env.root, python: env.python, pio: env.pio, fwDir: fw, spec, outDir: dir, machine }, revision)
 		},
 	})
 }
