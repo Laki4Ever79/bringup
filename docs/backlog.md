@@ -311,6 +311,11 @@ is a change to the firmware toolchain, not just the code.
       unchanged); at 1.0 the logger places on 30×25 (1.5 needs more than 33×25 today). Left, needing routed builds: the
       tight-first order in board.ts (1.0, then 1.5 at the same size, then Freerouting), and the space model judging the
       minimum at 1.0 so the architect asks for the tight size (min-place: the minimum must be what the build places).
+      Measured 18 Nov (bringup-board, branch tight-first, dropped): at each tight minimum, 6 of 8 boards route DRC 0
+      (logger 32×25, beacon 34×25, STM32 logger 50×14, rover 39×27, run 9 57×19 on the first layout; rover 6 41×29 via
+      Freerouting), 2 fail (scripted Eurobot 56×39; run 19b rev 39 49×25, which routes at its 1.5 mm minimum 52×25).
+      Judging the minimum at 1.0 mm offers sizes the build can't always make. gapMm stays as an option.
+      A tighter pass may only follow a routed proof (try 1.0 mm at a smaller size after settle, keep it only if it routes DRC 0).
 
       | Board | 1.5 mm everywhere (today) | 1.0 mm everywhere | 1.0 mm between small parts only |
       | --- | --- | --- | --- |
