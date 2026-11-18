@@ -37,3 +37,50 @@ export function collidingReferences(violations: { type: string; items?: { descri
 	const refs = violations.filter((v) => kinds.has(v.type)).flatMap((v) => (v.items ?? []).map((i) => /^Reference field of (\S+)/.exec(i.description ?? "")?.[1]).filter((r): r is string => !!r))
 	return [...new Set(refs)]
 }
+
+// The footprints whose pin labels ("Footprint text of JS1 (GND)") a DRC report names in silkscreen collisions.
+export function collidingLabelFootprints(violations: { type: string; items?: { description?: string }[] }[]): string[] {
+	const kinds = new Set(["silk_overlap", "silk_edge_clearance", "silk_over_copper"])
+	return [...new Set(violations.filter((v) => kinds.has(v.type)).flatMap((v) => (v.items ?? []).map((i) => /^Footprint text of (\S+) \(/.exec(i.description ?? "")?.[1]).filter((r): r is string => !!r)))]
+}
+
+// The footprint blocks of the given refs: start and end offsets in the board file.
+function footprintBlocks(pcb: string, refs: string[]): { start: number; end: number }[] {
+	const out: { start: number; end: number }[] = []
+	const re = /\(footprint "/g
+	for (let m = re.exec(pcb); m; m = re.exec(pcb)) {
+		let depth = 0
+		let i = m.index
+		for (; i < pcb.length; i++) {
+			if (pcb[i] === "(") depth++
+			else if (pcb[i] === ")" && --depth === 0) break
+		}
+		const text = pcb.slice(m.index, i + 1)
+		const ref = /\(property "Reference" "([^"]+)"/.exec(text)?.[1]
+		if (ref && refs.includes(ref)) out.push({ start: m.index, end: i + 1 })
+		re.lastIndex = i + 1
+	}
+	return out
+}
+
+const editBlocks = (pcb: string, refs: string[], edit: (block: string) => string): string => {
+	let out = pcb
+	for (const b of footprintBlocks(pcb, refs).reverse()) out = out.slice(0, b.start) + edit(out.slice(b.start, b.end)) + out.slice(b.end)
+	return out
+}
+
+// Pin labels that collide at the minimum text height alternate sides of the header: by x, every second label's y is
+// mirrored about the footprint's origin (odd pins on one side, even on the other).
+export function alternatePinLabels(pcb: string, refs: string[]): string {
+	return editBlocks(pcb, refs, (block) => {
+		const labels = [...block.matchAll(/\(fp_text user "[^"]*"\s*\(at (-?[\d.]+) (-?[\d.]+)/g)].map((m) => ({ at: m.index!, x: Number(m[1]), y: Number(m[2]), text: m[0] }))
+		const flip = new Set(labels.sort((a, b) => a.x - b.x).filter((_, i) => i % 2 === 1).map((l) => l.at))
+		return block.replace(/\(fp_text user "[^"]*"\s*\(at (-?[\d.]+) (-?[\d.]+)/g, (m, x: string, y: string, at: number) => (flip.has(at) ? m.replace(`(at ${x} ${y}`, `(at ${x} ${-Number(y)}`) : m))
+	})
+}
+
+// Pin labels with no room on the silkscreen go to the assembly drawing (F.Fab): the board stays readable, the label stays
+// in the documents.
+export function pinLabelsToFab(pcb: string, refs: string[]): string {
+	return editBlocks(pcb, refs, (block) => block.replace(/(\(fp_text user "[^"]*"\s*\(at [^)]*\)\s*\(layer ")([FB])\.SilkS(")/g, "$1$2.Fab$3"))
+}

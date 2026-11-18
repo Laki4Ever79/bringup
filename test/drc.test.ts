@@ -24,7 +24,7 @@ test("a DRC report is summarised by severity and type", () => {
 		],
 		unconnected_items: [{}],
 	})
-	assert.deepEqual(s, { rules: "JLCPCB 2-layer", errors: 2, warnings: 1, unconnected: 1, byType: { clearance: 2, silk_over_copper: 1 }, firstError: "a", silkRefs: [], ownFootprint: {} })
+	assert.deepEqual(s, { rules: "JLCPCB 2-layer", errors: 2, warnings: 1, unconnected: 1, byType: { clearance: 2, silk_over_copper: 1 }, firstError: "a", silkRefs: [], labelRefs: [], ownFootprint: {} })
 })
 
 test("errors inside one part's own footprint are counted per part (a vendor land pattern vs the fab's generic rule)", () => {
