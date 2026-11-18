@@ -35,7 +35,9 @@ const local = (root: string, rel: string) => (existsSync(join(root, rel)) ? join
 // Picks a backend per tool from what this machine has. Repo-local tools come first so a
 // checkout stays self-contained; KiCad falls back from a local install to the Docker image.
 export async function detectEnvironment(root: string): Promise<Env> {
-	const qemuPath = local(root, "tools/qemu/bin/qemu-system-riscv32")
+	// Either of Espressif's QEMUs (src/tools/qemu.ts): the riscv32 one (ESP32-C3), else the xtensa one (ESP32-S3); each
+	// run checks its own chip's binary.
+	const qemuPath = local(root, "tools/qemu/bin/qemu-system-riscv32") ?? local(root, "tools/qemu/bin/qemu-system-xtensa")
 	const [localKicad, dockerKicad, qemu] = await Promise.all([
 		run("kicad-cli", ["version"], { timeoutMs: 10_000 }),
 		run("docker", ["image", "inspect", KICAD_IMAGE], { timeoutMs: 10_000 }),

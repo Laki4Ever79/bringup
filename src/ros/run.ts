@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process"
+import { mcuProfileOf } from "../mcu/profile.ts"
 import { mount } from "../tools/mount.ts"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
@@ -119,7 +120,7 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 		// The physics runs until the ROS test is done (until: rosDone), not for a set number of simulated seconds: an idle
 		// machine ran the 90 s it used to get in 29 s of wall time, before ROS was up (a mock rover, 16 Nov 03:22: the
 		// controllers came up at :08, the physics stopped at :13, the acceptance read no odometry and no range).
-		drive = runDrive({ root: o.root, python: o.python, pio: o.pio, fwDir: o.fwDir, spec: o.spec, outDir: join(out, "drive-qemu"), courseS: 3600, consolePort: CONSOLE_PORT, timeoutMs: 600_000, buildFlags: "-DROVER_HOST_ONLY", onConsoleReady: () => ready(), until: rosDone })
+		drive = runDrive({ root: o.root, python: o.python, pio: o.pio, fwDir: o.fwDir, spec: o.spec, machine: o.contract ? (mcuProfileOf(o.contract.values.parts)?.sim.machine ?? "esp32c3") : "esp32c3", outDir: join(out, "drive-qemu"), courseS: 3600, consolePort: CONSOLE_PORT, timeoutMs: 600_000, buildFlags: "-DROVER_HOST_ONLY", onConsoleReady: () => ready(), until: rosDone })
 		const early = await Promise.race([consoleUp.then(() => null), drive])
 		if (early) return { ...fail(`the firmware's console never came up: ${early.reason}`), drive: { result: early.result, reason: early.reason } }
 	}

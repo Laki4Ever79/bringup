@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { envFor } from "../mcu/firmware.ts"
 import type { McuProfile } from "../mcu/profile.ts"
 import { qemuEnv } from "./env.ts"
+import { qemuBaseArgs, qemuBinary, qemuTarget, type QemuTarget } from "./qemu.ts"
 import { consoleLines, renodeScript, runRenode } from "./renode.ts"
 
 // Boots a buildFirmware output in Espressif's QEMU fork (machine esp32c3) and captures its serial port.
@@ -56,7 +57,7 @@ function run(cmd: string, args: string[], timeoutMs: number, until?: RegExp, env
 }
 
 // Merges bootloader, partitions, boot_app0 and the app into one image QEMU can mount as flash.
-export async function mergeFlash(fwDir: string, env = "esp32c3"): Promise<{ image: string | null; log: string }> {
+export async function mergeFlash(fwDir: string, env = "esp32c3", chip = "esp32c3"): Promise<{ image: string | null; log: string }> {
 	const build = join(fwDir, ".pio/build", env)
 	const parts: [string, string][] = [
 		["0x0", join(build, "bootloader.bin")],
@@ -67,22 +68,18 @@ export async function mergeFlash(fwDir: string, env = "esp32c3"): Promise<{ imag
 	const missing = parts.filter(([, p]) => !existsSync(p)).map(([, p]) => p)
 	if (missing.length) return { image: null, log: `missing build output: ${missing.join(", ")}` }
 	const image = join(build, "flash.bin")
-	const args = ["--chip", "esp32c3", "merge-bin", "-o", image, "--pad-to-size", FLASH_SIZE, ...parts.flat()]
+	const args = ["--chip", chip, "merge-bin", "-o", image, "--pad-to-size", FLASH_SIZE, ...parts.flat()]
 	const { code, output } = await run(esptoolPath(), args, 60_000)
 	return { image: code === 0 ? image : null, log: output }
 }
 
 // Runs a merged flash image in QEMU (machine esp32c3) until `until` matches UART0's output, or the timeout. Time inside
 // is virtual (-icount): don't read timings from it. null when QEMU isn't installed.
-export async function runImage(root: string, image: string, until: RegExp, timeoutMs: number): Promise<string | null> {
-	const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
-	if (!existsSync(qemu)) return null
-	const args = [
-		// -nographic, not "-display none -serial stdio": with the latter the ESP32-C3's UART0 never reaches stdout.
-		"-nographic", "-machine", "esp32c3", "-icount", "3",
-		"-drive", `file=${image},if=mtd,format=raw`,
-		"-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true",
-	]
+export async function runImage(root: string, image: string, until: RegExp, timeoutMs: number, target: QemuTarget = qemuTarget()!): Promise<string | null> {
+	const qemu = qemuBinary(root, target)
+	if (!qemu) return null
+	// -nographic, not "-display none -serial stdio": with the latter the ESP32-C3's UART0 never reaches stdout.
+	const args = ["-nographic", ...qemuBaseArgs(target, image)]
 	return (await run(qemu, args, timeoutMs, until, { ...process.env, ...qemuEnv(root) })).output
 }
 
@@ -90,12 +87,16 @@ export async function runImage(root: string, image: string, until: RegExp, timeo
 // Espressif QEMU for the ESP32-C3 (no profile: a design from before profiles).
 export async function bootFirmware(root: string, fwDir: string, timeoutMs = 15000, profile?: McuProfile | null): Promise<BootResult> {
 	if (profile && profile.sim.backend === "renode") return bootRenode(root, fwDir, profile, timeoutMs)
-	const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
-	if (!existsSync(qemu)) return { booted: false, serial: `qemu not found at ${qemu}`, revision: null, backend: "qemu" }
-	const { image, log } = await mergeFlash(fwDir)
+	// The logger template builds only the C3's envs for an ESP32-family chip (profile firmware.env "esp32c3"): its image
+	// runs on the C3's machine whatever the profile's own.
+	const target = qemuTarget(!profile || profile.firmware.env === "esp32c3" ? "esp32c3" : profile.sim.machine)
+	if (!target) return { booted: false, serial: `QEMU has no model of the ${profile?.sim.machine} machine`, revision: null, backend: "qemu" }
+	const qemu = qemuBinary(root, target)
+	if (!qemu) return { booted: false, serial: `qemu not found at ${join(root, target.bin)}`, revision: null, backend: "qemu" }
+	const { image, log } = await mergeFlash(fwDir, profile?.firmware.env ?? "esp32c3", target.chip)
 	if (!image) return { booted: false, serial: log, revision: null, backend: "qemu" }
 	// Stop at the first sensor line: by then the boot banner and setup() have run.
-	const output = (await runImage(root, image, /SENSOR (OK|FAIL)/, timeoutMs)) ?? ""
+	const output = (await runImage(root, image, /SENSOR (OK|FAIL)/, timeoutMs, target)) ?? ""
 	const m = output.match(/bringup rev (\d+)/)
 	return { booted: m !== null, serial: output, revision: m ? Number(m[1]) : null, backend: "qemu" }
 }
@@ -103,9 +104,9 @@ export async function bootFirmware(root: string, fwDir: string, timeoutMs = 1500
 // Two boards joined by a cable, in QEMU: board A's UART1 listens on a local TCP port and board B's connects to it, so
 // what one sends on its link UART the other receives (docs/system.md, the link test). Each UART0 goes to its own
 // file; both are returned once each prints `until` or the timeout passes. Time inside is virtual (-icount).
-export async function runLinkedPair(root: string, imageA: string, imageB: string, workDir: string, until: RegExp, timeoutMs: number): Promise<{ a: string; b: string } | null> {
-	const qemu = join(root, "tools/qemu/bin/qemu-system-riscv32")
-	if (!existsSync(qemu)) return null
+export async function runLinkedPair(root: string, imageA: string, imageB: string, workDir: string, until: RegExp, timeoutMs: number, target: QemuTarget = qemuTarget()!): Promise<{ a: string; b: string } | null> {
+	const qemu = qemuBinary(root, target)
+	if (!qemu) return null
 	const { readFileSync, rmSync } = await import("node:fs")
 	const { createServer } = await import("node:net")
 	// A free port, picked by the OS.
@@ -119,7 +120,7 @@ export async function runLinkedPair(root: string, imageA: string, imageB: string
 	const outA = join(workDir, "uart0-a.txt")
 	const outB = join(workDir, "uart0-b.txt")
 	for (const f of [outA, outB]) rmSync(f, { force: true })
-	const args = (image: string, out: string, uart1: string) => ["-display", "none", "-machine", "esp32c3", "-icount", "3", "-drive", `file=${image},if=mtd,format=raw`, "-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true", "-serial", `file:${out}`, "-serial", uart1]
+	const args = (image: string, out: string, uart1: string) => ["-display", "none", ...qemuBaseArgs(target, image), "-serial", `file:${out}`, "-serial", uart1]
 	const a = spawn(qemu, args(imageA, outA, `tcp:127.0.0.1:${port},server=on,wait=on`), { stdio: "ignore", env })
 	// B connects once A listens; A waits for it before it starts (wait=on), so both start together.
 	await new Promise((r) => setTimeout(r, 500))

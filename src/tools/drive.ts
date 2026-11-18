@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { mergeFlash } from "./emulator.ts"
 import { qemuEnv } from "./env.ts"
+import { qemuBaseArgs, qemuBinary, qemuTarget } from "./qemu.ts"
 import { run } from "./exec.ts"
 import type { ChassisSpec } from "./chassis.ts"
 
@@ -36,7 +37,8 @@ export interface DriveOptions {
 	fwDir: string // a prepared rover firmware (prepareFirmware)
 	spec: ChassisSpec
 	outDir: string
-	env?: "esp32c3_sim" | "esp32c3" // the build QEMU runs (the board build never answers: a test of "not run")
+	env?: string // the build QEMU runs (default: the machine's simulation build; a board build never answers: a test of "not run")
+	machine?: string // the MCU profile's sim.machine (qemu.ts): esp32c3 (default) or esp32s3
 	courseS?: number
 	timeoutMs?: number
 	// The firmware's console (UART0) on this TCP port instead of a log file: a ROS 2 host drives it in host mode
@@ -73,13 +75,16 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 	const o = { ...opts, root: resolve(opts.root), fwDir: resolve(opts.fwDir), outDir: resolve(opts.outDir) }
 	mkdirSync(o.outDir, { recursive: true })
 	const notRun = (reason: string): DriveArtifact => ({ revision, dir: o.outDir, result: "not run", reason, segments: [] })
-	const qemu = join(o.root, "tools/qemu/bin/qemu-system-riscv32")
-	if (!existsSync(qemu)) return notRun("QEMU is not installed (npm run setup): not proven in simulation")
+	// The chip's QEMU (qemu.ts): riscv32 for the ESP32-C3, xtensa for the ESP32-S3.
+	const target = qemuTarget(o.machine)
+	if (!target) return notRun(`QEMU has no model of the ${o.machine} machine: not proven in simulation`)
+	const qemu = qemuBinary(o.root, target)
+	if (!qemu) return notRun(`QEMU for the ${target.machine} (${target.bin.split("/").pop()}) is not installed (npm run setup): not proven in simulation`)
 	if (!hasMujoco(o.python)) return notRun("MuJoCo is not installed (npm run setup -- --robotics): not proven in simulation")
-	const env = o.env ?? "esp32c3_sim"
+	const env = o.env ?? target.simEnv
 	const build = await run(o.pio, ["run", "-d", o.fwDir, "-e", env], { timeoutMs: 900_000, ...(o.buildFlags ? { env: { ...(process.env as Record<string, string>), PLATFORMIO_BUILD_FLAGS: o.buildFlags } } : {}) })
 	if (build.code !== 0) return notRun(`the simulation firmware didn't build: ${(build.stdout + build.stderr).trim().split("\n").slice(-3).join(" ")}`)
-	const { image, log } = await mergeFlash(o.fwDir, env)
+	const { image, log } = await mergeFlash(o.fwDir, env, target.chip)
 	if (!image) return notRun(`no flash image: ${log.trim().split("\n").at(-1)}`)
 	const specPath = join(o.outDir, "spec.json")
 	writeFileSync(specPath, JSON.stringify(o.spec, null, 1))
@@ -89,7 +94,7 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 	const local = join(o.outDir, "uart1.sock")
 	const sock = Buffer.byteLength(local) <= 100 ? local : join(mkdtempSync(join(tmpdir(), "bringup-drive-")), "uart1.sock")
 	rmSync(sock, { force: true })
-	const q = spawn(qemu, ["-display", "none", "-machine", "esp32c3", "-icount", "3", "-drive", `file=${image},if=mtd,format=raw`, "-global", "driver=timer.esp32c3.timg,property=wdt_disable,value=true", "-serial", o.consolePort ? `tcp:127.0.0.1:${o.consolePort},server=on,wait=off` : `file:${join(o.outDir, "uart0.txt")}`, "-serial", `unix:${sock},server=on,wait=on`], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
+	const q = spawn(qemu, ["-display", "none", ...qemuBaseArgs(target, image), "-serial", o.consolePort ? `tcp:127.0.0.1:${o.consolePort},server=on,wait=off` : `file:${join(o.outDir, "uart0.txt")}`, "-serial", `unix:${sock},server=on,wait=on`], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
 	// The console is up once QEMU listens on it (polled; it stops when the drive ends).
 	let ended = false
 	if (o.consolePort && o.onConsoleReady)
