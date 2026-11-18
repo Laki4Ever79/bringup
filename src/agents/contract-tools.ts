@@ -2,6 +2,7 @@ import type { Tool } from "@mozaik-ai/core"
 import { completePowerTree } from "../contract/power-auto.ts"
 import { moveUpMcu } from "../contract/mcu-move.ts"
 import { withRobotImu } from "../contract/imu-auto.ts"
+import { withDriverOutputs } from "../contract/outputs-auto.ts"
 import { FIELDS, OWNERS, type AgentRole, type ContractSnapshot, type ContractValues, type FieldName } from "../contract/types.ts"
 import { makeEvent, type Cause } from "../events.ts"
 import { causeOf } from "./common.ts"
@@ -90,13 +91,19 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				// A robot's power tree is decided in code from its pack and regulator (contract/power-auto.ts): every parts write
 				// lands it complete (real run 19b spent 19 revisions on it by hand).
 				if (args.field === "parts" && Array.isArray(args.value) && s.contract.get("motion")) {
+					// A PWM driver comes with its servo plugs, their supply and the spare motor (contract/outputs-auto.ts; run 20b).
+					const o = withDriverOutputs(args.value as NonNullable<ContractValues["parts"]>, mcuCatalog(), s.contract.get("mechanics"))
+					if (o.note) {
+						args = { ...args, value: o.parts as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, o.note].filter(Boolean).join("; ")
+					}
 					const t = completePowerTree(args.value as NonNullable<ContractValues["parts"]>, s.contract.get("mechanics") ?? undefined, s.contract.snapshot())
 					if (t.note) {
 						args = { ...args, value: t.parts as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, t.note].filter(Boolean).join("; ")
 					}
 					// Every robot carries an IMU (contract/imu-auto.ts; the user, 17 Nov 2026: "Every robot").
-					const i = withRobotImu(args.value as NonNullable<ContractValues["parts"]>, mcuCatalog())
+					const i = withRobotImu(args.value as NonNullable<ContractValues["parts"]>, mcuCatalog(), s.contract.get("mechanics"))
 					if (i.note) {
 						args = { ...args, value: i.parts as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, i.note].filter(Boolean).join("; ")
@@ -219,14 +226,17 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					// the move needs, in the same step (real run 19b: the switch to the 2S pack at revision 17 left the 1-cell
 					// charger on the board until the agents found it).
 					if ((args.field === "mechanics" || args.field === "motion") && s.contract.get("motion")) {
-						const parts = s.contract.get("parts")
+						const mech = args.field === "mechanics" ? (args.value as ContractValues["mechanics"]) : s.contract.get("mechanics")
+						const before = s.contract.get("parts")
+						const outs = before ? withDriverOutputs(before, mcuCatalog(), mech) : null
+						const parts = outs?.note ? outs.parts : before
 						const pins = s.contract.get("pins")
-						const t = parts && args.field === "mechanics" ? completePowerTree(parts, args.value as ContractValues["mechanics"], s.contract.snapshot()) : null
+						const t = parts && (args.field === "mechanics" || outs?.note) ? completePowerTree(parts, mech ?? undefined, s.contract.snapshot()) : null
 						const powered = t?.note ? t.parts : parts
-						const imu = powered ? withRobotImu(powered, mcuCatalog()) : null
+						const imu = powered ? withRobotImu(powered, mcuCatalog(), mech) : null
 						const tree = imu?.note ? imu.parts : powered
 						const up = tree && pins ? moveUpMcu(tree, pins, s.contract.get("motion") ?? undefined, mcuCatalog()) : null
-						const why = [t?.note ? `the pack changed: ${t.note}` : null, imu?.note, up?.note].filter(Boolean).join("; ")
+						const why = [outs?.note, t?.note ? (args.field === "mechanics" ? `the pack changed: ${t.note}` : t.note) : null, imu?.note, up?.note].filter(Boolean).join("; ")
 						if (why && follow("parts", up?.parts ?? tree!, why)) {
 							if (up) follow("pins", up.pins, up.note)
 							laidOutNote = [laidOutNote, why].filter(Boolean).join("; ")
