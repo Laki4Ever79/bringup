@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { kicadCli, type Env } from "./env.ts"
+import { collidingReferences } from "./silk.ts"
 
 // JLCPCB's standard 2-layer capabilities, so the check says whether a fab can actually make the board
 // (KiCad's own defaults are stricter than any fab and would flag every tscircuit board).
@@ -16,6 +17,8 @@ export interface DrcSummary {
 	// Errors whose items all belong to one part, by ref: the part's own land pattern against the fab's generic rule
 	// (e.g. a USB-C receptacle's GND pads 0.17 mm from its own locating holes), not the layout. Still errors.
 	ownFootprint?: Record<string, number>
+	// Reference designators the silkscreen checks found colliding (silk.ts): the build hides them and checks again.
+	silkRefs?: string[]
 	// The custom rules this check relied on (vendorLandPatternRules), so a clean result says what made it clean.
 	exemptions?: string[]
 }
@@ -69,7 +72,9 @@ export function applyFabRules(project: Record<string, any>): Record<string, any>
 	}
 	// Drills nearer each other than the fab's hole-to-hole minimum break into each other: an error, not KiCad's default
 	// warning (run 17 rev 41 passed DRC 0 with three same-net via pairs 0.11-0.15 mm apart, 17 Nov 2026).
-	p.board.design_settings.rule_severities = { ...(p.board.design_settings.rule_severities ?? {}), hole_to_hole: "error" }
+	// The footprints are embedded in the board (tscircuit writes them), so there is no library to check them against:
+	// lib_footprint_issues ("doesn't include the footprint library 'tscircuit'", 46 on run 20b) says nothing about the board.
+	p.board.design_settings.rule_severities = { ...(p.board.design_settings.rule_severities ?? {}), hole_to_hole: "error", lib_footprint_issues: "ignore", lib_footprint_mismatch: "ignore" }
 	p.net_settings ??= {}
 	const classes: any[] = (p.net_settings.classes ??= [])
 	const def = classes.find((c) => c.name === "Default") ?? (classes.push({ name: "Default" }), classes.at(-1))
@@ -95,6 +100,7 @@ export function summarizeDrc(report: { violations?: { type: string; severity: st
 		unconnected: (report.unconnected_items ?? []).length,
 		byType,
 		firstError: v.find((x) => x.severity === "error")?.description ?? null,
+		silkRefs: collidingReferences(v),
 		ownFootprint,
 	}
 }
