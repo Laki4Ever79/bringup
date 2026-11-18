@@ -10,6 +10,7 @@ import { kicadCli, toolPath, type Env } from "./env.ts"
 import { FAB_RULES, runDrc } from "./drc.ts"
 import { freeroute } from "./freerouting.ts"
 import { nudgeVias } from "./via-edge.ts"
+import { hideReferences, raiseSilkText } from "./silk.ts"
 import { run, tail } from "./exec.ts"
 
 // Contract -> tscircuit source -> placed and autorouted board -> KiCad project, STEP and render.
@@ -275,12 +276,18 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	// A via the router dropped nearer the edge or an unplated hole than the fab allows moves clear, its traces' ends with
 	// it (via-edge.ts);
 	// the DRC below checks the result.
+	if (existsSync(pcbFile)) writeFileSync(pcbFile, raiseSilkText(readFileSync(pcbFile, "utf8")))
 	if (existsSync(pcbFile)) writeFileSync(pcbFile, nudgeVias(stripKeepouts(readFileSync(pcbFile, "utf8")), { edgeMm: FAB_RULES.minEdgeClearanceMm, holeMm: FAB_RULES.minHoleClearanceMm, holeToHoleMm: FAB_RULES.minHoleToHoleMm }).pcb)
 
 	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], work, 180_000)
 	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], work, 180_000)
 	const usbRefs = usbRefsOf(s)
-	const drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro", usbRefs)
+	let drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro", usbRefs)
+	// A reference designator on another outline, the edge or a pad: hidden on the silkscreen, then checked again (silk.ts).
+	if (drc?.silkRefs?.length && existsSync(pcbFile)) {
+		writeFileSync(pcbFile, hideReferences(readFileSync(pcbFile, "utf8"), drc.silkRefs))
+		drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro", usbRefs)
+	}
 	cpSync(work, dir, { recursive: true })
 
 	return {

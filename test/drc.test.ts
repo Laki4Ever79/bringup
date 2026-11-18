@@ -24,7 +24,7 @@ test("a DRC report is summarised by severity and type", () => {
 		],
 		unconnected_items: [{}],
 	})
-	assert.deepEqual(s, { rules: "JLCPCB 2-layer", errors: 2, warnings: 1, unconnected: 1, byType: { clearance: 2, silk_over_copper: 1 }, firstError: "a", ownFootprint: {} })
+	assert.deepEqual(s, { rules: "JLCPCB 2-layer", errors: 2, warnings: 1, unconnected: 1, byType: { clearance: 2, silk_over_copper: 1 }, firstError: "a", silkRefs: [], ownFootprint: {} })
 })
 
 test("errors inside one part's own footprint are counted per part (a vendor land pattern vs the fab's generic rule)", () => {
@@ -85,5 +85,5 @@ test("the report says which rule a clean DRC relies on", async () => {
 test("the fab rules count hole-to-hole as an error", async () => {
 	const { applyFabRules } = await import("../src/tools/drc.ts")
 	const p = applyFabRules({ board: { design_settings: { rule_severities: { silk_overlap: "ignore" } } } })
-	assert.deepEqual(p.board.design_settings.rule_severities, { silk_overlap: "ignore", hole_to_hole: "error" })
+	assert.deepEqual(p.board.design_settings.rule_severities, { silk_overlap: "ignore", hole_to_hole: "error", lib_footprint_issues: "ignore", lib_footprint_mismatch: "ignore" })
 })
