@@ -66,6 +66,13 @@ test("a short cord, no match stop, too high a voltage and too big an outline are
 	assert.ok(hullPerimeterMm([{ what: "plate", xMm: 0, yMm: 0, zMm: 0, sizeMm: [300, 300, 3], massG: 0 }]) === 1200)
 	const big = mechanicsFigures(rover(true, (x) => { x.mechanics.chassis.plateMm = [320, 300] })).find((f) => f.check === "eurobot-2026: Start perimeter")!
 	assert.equal(big.ok, false)
+	// Run 20b's review: a robot at the limit fails homologation on a tyre's bulge; within 10 mm is a finding too.
+	const tight = rover(true, (x) => { x.mechanics.chassis.plateMm = [x.mechanics.chassis.plateMm[0], x.mechanics.chassis.plateMm[1]] })
+	const per = Number(/^(\d+)/.exec(mechanicsFigures(tight).find((f) => f.check === "eurobot-2026: Start perimeter")!.value)![1])
+	const near = rover(true, (x) => { x.mechanics.chassis.plateMm = [x.mechanics.chassis.plateMm[0] + (1200 - per - 4) / 2, x.mechanics.chassis.plateMm[1]] })
+	const f = mechanicsFigures(near).find((f) => f.check === "eurobot-2026: Start perimeter")!
+	assert.equal(f.ok, false, f.value)
+	assert.ok(rules(near).some((m) => /only \d+ mm under the 1200 mm limit/.test(m)), rules(near).join("\n"))
 })
 
 test("a brief that names Eurobot asks the architect for motion.rules; the contract takes only known rule sets", () => {
@@ -83,7 +90,7 @@ test("a brief that names Eurobot asks the architect for motion.rules; the contra
 test("the report lists what isn't checked against the rules, never as passed", () => {
 	const text = mechanicsSection(rover(), undefined).join("\n")
 	assert.match(text, /Not checked against Eurobot General Rules[^\n]*\n(- [^\n]*\n)*- F\.6 beacon support: solid and opaque/)
-	assert.match(text, /eurobot-2026: Start perimeter \| \d+ mm \| 1200 mm \(F\.3 Dimensions\) \| ok/)
+	assert.match(text, /eurobot-2026: Start perimeter \| \d+ mm \(\d+ mm under; \d+ × \d+ mm across\) \| 1200 mm \(F\.3 Dimensions\) \| ok/)
 	assert.doesNotMatch(mechanicsSection(snap(JSON.parse(JSON.stringify(ROVER_BOARD))), undefined).join("\n"), /Not checked against/)
 })
 

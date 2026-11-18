@@ -10,6 +10,9 @@ import { loadCatalog } from "../src/tools/parts-search.ts"
 import { generatedNets, servoOutputs } from "../src/codegen/circuit.ts"
 import { roverHeader } from "../src/mechanics/firmware.ts"
 import { roverFirmwareFacts } from "../src/agents/design-facts.ts"
+import { withStatusLed } from "../src/contract/status-led-auto.ts"
+import { unreservedGpios } from "../src/contract/mcu-move.ts"
+import { mcuProfileOf } from "../src/mcu/profile.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 
 const catalog = loadCatalog(fileURLToPath(new URL("..", import.meta.url))) as never
@@ -59,3 +62,27 @@ test("no PWM driver, nothing added; a skid-steer base gets no spare driver", () 
 	const skid = withDriverOutputs(s.values.parts!, catalog, { ...s.values.mechanics!, drive: { ...s.values.mechanics!.drive, kind: "skid4" } })
 	assert.equal(skid.parts.filter((p) => p.role === "motor-driver").length, 1)
 })
+
+test("run 20b: no temperature/humidity sensor, so the firmware facts claim no payload", () => {
+	const facts = roverFirmwareFacts(run20b())
+	assert.ok(!facts.some((l) => /reads the .*temperature\/humidity sensor/.test(l)))
+	assert.ok(facts.some((l) => l.startsWith("- Firmware payload: none")))
+})
+
+test("run 20b: the robot gets its status LED: an LED part and STATUS_LED on a pin free at reset, once", () => {
+	const s = run20b()
+	assert.ok(!s.values.pins!.some((p) => p.signal === "STATUS_LED"), "before: none")
+	const r = withStatusLed(s.values.parts!, s.values.pins!, s.values.mechanics, s.values.motion, catalog)!
+	const pin = r.pins.find((p) => p.signal === "STATUS_LED")!
+	const led = r.parts.find((p) => p.ref === pin.partRef)!
+	assert.equal(led.role, "led")
+	assert.equal(pin.partPin, "A")
+	assert.ok(unreservedGpios(mcuProfileOf(r.parts)!).includes(pin.gpio), "free at reset")
+	assert.ok(!s.values.pins!.some((p) => p.gpio === pin.gpio), "not a used pin")
+	s.values.parts = r.parts
+	s.values.pins = r.pins
+	assert.match(roverHeader(s), new RegExp(`#define PIN_STATUS_LED ${pin.gpio}`))
+	assert.equal(withStatusLed(r.parts, r.pins, s.values.mechanics, s.values.motion, catalog), null, "added once")
+	assert.equal(withStatusLed(run20b().values.parts!, run20b().values.pins!, null, null, catalog), null, "no drive, no LED")
+})
+

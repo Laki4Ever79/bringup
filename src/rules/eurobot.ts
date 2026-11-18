@@ -60,6 +60,17 @@ export interface RuleFigure {
 	sources?: { mpn: string; field: string; url: string; where: string }[]
 }
 
+// The margin a start perimeter keeps under the limit for homologation: an ESTIMATE (a tyre's bulge, a cable's bend,
+// the referee's measuring), about 1 % of the 1200 mm.
+export const PERIMETER_MARGIN_MM = 10
+
+// The robot's size across seen from above (x, y): every mount's footprint.
+export function hullExtentMm(ms: Mount[]): [number, number] {
+	if (!ms.length) return [0, 0]
+	const xs = ms.flatMap((m) => [m.xMm - m.sizeMm[0] / 2, m.xMm + m.sizeMm[0] / 2]), ys = ms.flatMap((m) => [m.yMm - m.sizeMm[1] / 2, m.yMm + m.sizeMm[1] / 2])
+	return [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)]
+}
+
 // The perimeter of the convex shell of the robot seen from above (F.3): the hull of every mount's footprint.
 export function hullPerimeterMm(ms: Mount[]): number {
 	const pts: [number, number][] = []
@@ -97,9 +108,15 @@ export function ruleChecks(rules: RuleSet, motion: MotionTargets, mech: Mechanic
 	const clause = (l: Limit<unknown>) => l.source.where.split(",")[0]
 	const fig = (check: string, value: string, l: Limit<unknown>, ok: boolean, note?: string) => figures.push({ check: `${rules.id}: ${check}`, value, limit: `${l.value}${l.unit ? ` ${l.unit}` : ""} (${clause(l)})`, ok, ...(note ? { note } : {}), sources: [{ mpn: rules.document.title, field: check, url: l.source.url, where: l.source.where }] })
 
-	// F.3: the perimeter at the start.
+	// F.3: the perimeter at the start, with a margin for homologation (real run 20b's review: a robot sized to the limit
+	// fails on a tyre's bulge, a cable or the referee's tape). The figure shows the margin and the size across, so the
+	// reviewer reads the hull's own numbers rather than the motion target's.
 	const perimeter = hullPerimeterMm(ms)
-	fig("Start perimeter", `${Math.round(perimeter)} mm`, L.startPerimeterMm, perimeter <= L.startPerimeterMm.value, "the convex shell of every part seen from above")
+	const margin = L.startPerimeterMm.value - perimeter
+	const [ax, ay] = hullExtentMm(ms)
+	fig("Start perimeter", `${Math.round(perimeter)} mm (${Math.round(margin)} mm under; ${Math.round(ax)} × ${Math.round(ay)} mm across)`, L.startPerimeterMm, margin >= PERIMETER_MARGIN_MM, `the convex shell of every part seen from above; at least ${PERIMETER_MARGIN_MM} mm under the limit kept for homologation`)
+	if (perimeter <= L.startPerimeterMm.value && margin < PERIMETER_MARGIN_MM)
+		out.push({ rule: clause(L.startPerimeterMm), message: `the robot's outline seen from above is ${Math.round(perimeter)} mm around, only ${Math.round(margin)} mm under the ${L.startPerimeterMm.value} mm limit (${L.startPerimeterMm.source.where}): keep at least ${PERIMETER_MARGIN_MM} mm for homologation (a tyre's bulge, a cable, the referee's tape): shrink the plate or the track a little`, affects: ["mechanics"] })
 	if (perimeter > L.startPerimeterMm.value)
 		out.push({ rule: clause(L.startPerimeterMm), message: `the robot's outline seen from above is ${Math.round(perimeter)} mm around, over the ${L.startPerimeterMm.value} mm ${rules.document.title} allows at the start (${L.startPerimeterMm.source.where}): shrink the plate or the track (a ${L.startPerimeterMm.value / 4} × ${L.startPerimeterMm.value / 4} mm square is the most a square robot may be)`, affects: ["mechanics"] })
 

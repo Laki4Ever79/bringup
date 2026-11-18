@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { generatedNets, supportParts } from "../codegen/circuit.ts"
 import { addedForYouFactLines } from "../contract/added.ts"
 import { linkFactLines } from "../contract/links.ts"
-import { bleAdvertiseMs } from "../codegen/firmware.ts"
+import { bleAdvertiseMs, sensorDriver } from "../codegen/firmware.ts"
 import { dutyCycleCheckLines, estimatePower, powerBudgetLines } from "../contract/power.ts"
 import { enclosureMode, type ContractSnapshot } from "../contract/types.ts"
 import { modelFactLines } from "../contract/model.ts"
@@ -206,7 +206,10 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 		: []
 	return [
 		`- Firmware (product build of templates/fw-rover, the same control logic the simulated drive runs): never sleeps while powered. Every ${def("ROVER_PERIOD_MS")} ms tick it reads the VL53L0X distance (up to ${def("ROVER_RANGE_MM")} mm), drives both motors through the DRV8833 at cruise duty ${def("ROVER_CRUISE_DUTY")?.replace("f", "")}, slows inside ${def("ROVER_SLOW_MM")} mm and, inside ${def("ROVER_STOP_MM")} mm of a wall, turns in place for ${def("ROVER_TURN_MS")} ms, then drives on.`,
-		"- Firmware payload: every 5 s it reads the temperature/humidity sensor, prints it and broadcasts it over BLE as BTHome v2 service data (and sends it over the board's links, if any).",
+		// The payload as the parts have it (run 20b: the fact named a temperature/humidity sensor the Eurobot base doesn't carry).
+		((sensor) => sensor
+			? `- Firmware payload: every 5 s it reads the ${sensor.ref} ${sensor.mpn} temperature/humidity sensor, prints it and broadcasts it over BLE as BTHome v2 service data (and sends it over the board's links, if any).`
+			: "- Firmware payload: none. The design has no temperature/humidity sensor, so the firmware reads, prints and sends no reading; its BLE beacon carries only its packet count.")((s.values.parts ?? []).find((p) => p.role === "sensor" && sensorDriver(p.mpn))),
 		led
 			? start
 				? `- Firmware status LED: STATUS_LED on GPIO${led.gpio} shows the match: two short flashes every 2 s while it waits for the start cord, steady on when ready (cord in, armed), a fast 4 Hz blink while running, a slow 0.5 Hz blink once the match is over (templates/fw-rover/src/status_led.h).`
