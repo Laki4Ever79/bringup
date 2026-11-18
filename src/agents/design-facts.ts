@@ -169,6 +169,15 @@ function testFactLines(s: ContractSnapshot): string[] {
 // templates/fw: its facts come from the rover header the build writes (rover run cc-rover-7 on the Claude subscription,
 // 16 Nov 2026: the reviewer was told the rover ran the logger, reading the sensor and deep-sleeping 300 s, and failed a
 // design whose built firmware drives, avoids walls and passed the simulated drive).
+// The servos' supply as the parts have it (run 20b: the fact named a step-down the board didn't have).
+function servoSupplyFact(s: ContractSnapshot): string {
+	const parts = s.values.parts ?? []
+	const supply = parts.find((p) => p.role === "servo-supply")
+	if (!supply) return " The board has no servo supply (no part with role servo-supply): the servo plugs' +5 V is not powered."
+	const estop = parts.some((p) => p.role === "estop") && supply.pins.includes("EN")
+	return ` The servos' 5 V comes from ${supply.ref} ${supply.mpn}${estop ? ", switched off by the emergency stop through its EN" : ""}.`
+}
+
 export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 	let header: string
 	try {
@@ -206,7 +215,7 @@ export function roverFirmwareFacts(s: ContractSnapshot): string[] {
 		...startFact,
 		...holdFact,
 		// Servos and a spare motor through a PCA9685 (pca9685.h), in the header's own numbers.
-		...(def("PCA9685_ADDR") ? [`- Firmware servos${def("SPARE_MOTOR_CH") ? " and spare motor" : ""}: a PCA9685 at I2C address ${def("PCA9685_ADDR")} runs at 50 Hz; ${def("SERVO_COUNT")} servo(s) on its channels 0.. start centred (1500 us) and a host moves one with \`V <n> <us>\` (500-2500 us)${def("SPARE_MOTOR_CH") ? `; the spare motor (a second DRV8833's channel A on channels ${def("SPARE_MOTOR_CH")} and ${Number(def("SPARE_MOTOR_CH")) + 1}) runs with \`W <duty>\` (-1..1, PWM at the same 50 Hz)` : ""}. The servos' 5 V step-down is switched off by the emergency stop through its EN.`] : []),
+		...(def("PCA9685_ADDR") ? [`- Firmware servos${def("SPARE_MOTOR_CH") ? " and spare motor" : ""}: a PCA9685 at I2C address ${def("PCA9685_ADDR")} runs at 50 Hz; ${def("SERVO_COUNT")} servo(s) on its channels 0.. start centred (1500 us) and a host moves one with \`V <n> <us>\` (500-2500 us)${def("SPARE_MOTOR_CH") ? `; the spare motor (a second DRV8833's channel A on channels ${def("SPARE_MOTOR_CH")} and ${Number(def("SPARE_MOTOR_CH")) + 1}) runs with \`W <duty>\` (-1..1, PWM at the same 50 Hz)` : ""}.${servoSupplyFact(s)}`] : []),
 		...gotoFact,
 	]
 }

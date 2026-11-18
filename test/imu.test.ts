@@ -16,18 +16,24 @@ const catalog = loadCatalog(fileURLToPath(new URL("..", import.meta.url))) as ne
 const rover = () => JSON.parse(readFileSync(new URL("./fixtures/cc-rover-9-rev24.json", import.meta.url), "utf8")) as ContractSnapshot
 const withImu = () => {
 	const s = rover()
-	s.values.parts = withRobotImu(s.values.parts!, catalog).parts
+	s.values.parts = withRobotImu(s.values.parts!, catalog, s.values.mechanics).parts
 	return s
 }
 
 test("a robot's parts get the IMU once, under a free U ref", () => {
 	const s = rover()
-	const r = withRobotImu(s.values.parts!, catalog)
+	const r = withRobotImu(s.values.parts!, catalog, s.values.mechanics)
 	const imu = r.parts.filter((p) => p.role === "imu")
 	assert.equal(imu.length, 1)
 	assert.equal(imu[0].mpn, "LSM6DS3TR-C")
 	assert.ok(!s.values.parts!.some((p) => p.ref === imu[0].ref), "a ref no other part has")
-	assert.equal(withRobotImu(r.parts, catalog).note, null, "added once")
+	assert.equal(withRobotImu(r.parts, catalog, s.values.mechanics).note, null, "added once")
+})
+
+test("a machine that doesn't drive on wheels (a CNC: no mechanics.drive) gets no IMU", () => {
+	const s = rover()
+	assert.equal(withRobotImu(s.values.parts!, catalog, null).note, null)
+	assert.equal(withRobotImu(s.values.parts!, catalog, { ...s.values.mechanics!, drive: undefined } as never).note, null)
 })
 
 test("the board wires it on the bus in I2C mode at 0x6A, with 100 nF on VDD and VDDIO, and nothing left unconnected", () => {

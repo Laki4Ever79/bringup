@@ -1,0 +1,570 @@
+{
+  "revision": 38,
+  "values": {
+    "requirements": {
+      "summary": "Two-wheeled Eurobot base controller: encoder odometry, motor driver, distance-sensor input, pull-cord start, emergency stop, spare motor and two servo outputs, one USB-C cable for programming.",
+      "peripherals": [
+        "motor driver",
+        "2 wheel encoders",
+        "distance sensor",
+        "IMU",
+        "PCA9685 servo/motor PWM",
+        "pull-cord start",
+        "emergency stop plug"
+      ],
+      "batteryLifeDays": null,
+      "enclosure": "none"
+    },
+    "motion": {
+      "speedMps": 0.3,
+      "runtimeMin": 2,
+      "edgeMm": 0,
+      "maxSlopeDeg": 0,
+      "stopBeforeWallMm": 150,
+      "payloadG": 0,
+      "maxSizeMm": [
+        300,
+        300
+      ],
+      "maxMassG": 3000,
+      "rules": "eurobot-2026",
+      "encoders": true
+    },
+    "mechanics": {
+      "drive": {
+        "kind": "differential",
+        "motor": "POLOLU-5139 100:1 MP 6V 12 CPR encoder",
+        "wheel": "POLOLU-1420 wheel 60x8 mm",
+        "caster": "BOTLAND-7292 swivel caster 25 mm",
+        "trackMm": 292,
+        "wheelbaseMm": 130,
+        "axleXMm": 90,
+        "maxAccelMps2": 1.5
+      },
+      "battery": {
+        "pack": "ADAFRUIT-2011 LP-803860 2000 mAh",
+        "at": {
+          "xMm": 120,
+          "yMm": 0
+        },
+        "enclosure": "fireproof-bag"
+      },
+      "sensor": {
+        "module": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+        "at": {
+          "xMm": 148.6,
+          "yMm": 0,
+          "zMm": 52.7
+        },
+        "connector": "JT1"
+      },
+      "chassis": {
+        "plateMm": [
+          300,
+          280
+        ],
+        "thicknessMm": 3,
+        "material": "PLA",
+        "clearanceMm": 35,
+        "boards": [
+          {
+            "name": "main",
+            "at": {
+              "xMm": -82,
+              "yMm": 0
+            },
+            "rotDeg": 0
+          }
+        ]
+      },
+      "beacon": {
+        "at": {
+          "xMm": 0,
+          "yMm": 0
+        },
+        "topMm": 430,
+        "sizeMm": 70,
+        "mastWallMm": 1.2,
+        "loadG": 400
+      },
+      "safety": {
+        "start": {
+          "connector": "JS1",
+          "cordMm": 500,
+          "matchS": 100
+        },
+        "estop": {
+          "part": "OMRON A22E-M-01 emergency stop 40 mm red, 1 NC",
+          "at": {
+            "xMm": 63,
+            "yMm": 0,
+            "zMm": 96
+          },
+          "connector": "JE1",
+          "collarMm": 7
+        }
+      },
+      "sticker": {
+        "face": "rear",
+        "widthMm": 100,
+        "heightMm": 70
+      }
+    },
+    "outline": {
+      "widthMm": 43,
+      "heightMm": 43,
+      "thicknessMm": 1.6
+    },
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-S3-MINI-1",
+        "lcsc": "C2913206",
+        "footprint": "esp32_s3_mini_1",
+        "pins": [
+          "GPIO0",
+          "GPIO1",
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO11",
+          "GPIO12",
+          "GPIO13",
+          "GPIO14",
+          "GPIO15",
+          "GPIO16",
+          "GPIO17",
+          "GPIO18",
+          "GPIO19",
+          "GPIO20",
+          "GPIO21",
+          "GPIO26",
+          "GPIO33",
+          "GPIO34",
+          "GPIO35",
+          "GPIO36",
+          "GPIO37",
+          "GPIO38",
+          "GPIO39",
+          "GPIO40",
+          "GPIO41",
+          "GPIO42",
+          "GPIO43",
+          "GPIO44",
+          "GPIO45",
+          "GPIO46",
+          "GPIO47",
+          "GPIO48",
+          "EN",
+          "3V3",
+          "GND"
+        ],
+        "reason": "moved up from the ESP32-C3-MINI-1: 12 signals need pins free at reset (ENC_LA, ENC_LB, ENC_RA, ENC_RB for quadrature), it has 8; the ESP32-S3-MINI-1 has 31 and hardware quadrature counters (PCNT)"
+      },
+      {
+        "ref": "U2",
+        "role": "imu",
+        "mpn": "LSM6DS3TR-C",
+        "lcsc": "C967633",
+        "footprint": "lga14_2.5x3",
+        "pins": [
+          "SA0",
+          "SDX",
+          "SCX",
+          "INT1",
+          "VDDIO",
+          "GND",
+          "GND_2",
+          "VDD",
+          "INT2",
+          "NC_10",
+          "NC_11",
+          "CS",
+          "SCL",
+          "SDA"
+        ],
+        "i2cAddress": 106,
+        "whoAmI": 106,
+        "reason": "every robot carries an IMU: the turns close on the gyro's heading"
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "RT9080-33GJ5",
+        "lcsc": "C841192",
+        "footprint": "sot23_5",
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ],
+        "nets": {
+          "VIN": "VBAT",
+          "VOUT": "3V3"
+        },
+        "reason": "600 mA 3.3 V LDO: the ESP32-S3 needs a supply that can deliver 500 mA or more for its radio bursts."
+      },
+      {
+        "ref": "U4",
+        "role": "charger",
+        "mpn": "TP4054-42-SOT25R",
+        "lcsc": "C32574",
+        "footprint": "sot23_5",
+        "pins": [
+          "CHRG",
+          "GND",
+          "BAT",
+          "VCC",
+          "PROG"
+        ],
+        "nets": {
+          "VCC": "VBUS",
+          "BAT": "VBAT"
+        },
+        "reason": "Brief: the robot runs on the rechargeable 2000 mAh pack (J2), so USB-C recharges it. Single-cell Li-ion charger, 4.2 V float; the generator's 4.7 kOhm PROG gives about 210 mA."
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ],
+        "reason": "Brief: one USB-C cable to program and talk to every board."
+      },
+      {
+        "ref": "U5",
+        "role": "motor-driver",
+        "mpn": "DRV8833PWPR",
+        "lcsc": "C50506",
+        "footprint": "tssop16_w6.4mm_p0.65mm_thermalpad2.31mmx2.46mm",
+        "pins": [
+          "nSLEEP",
+          "AOUT1",
+          "AISEN",
+          "AOUT2",
+          "BOUT2",
+          "BISEN",
+          "BOUT1",
+          "nFAULT",
+          "BIN1",
+          "BIN2",
+          "VCP",
+          "VM",
+          "GND",
+          "VINT",
+          "AIN2",
+          "AIN1"
+        ],
+        "reason": "Dual H-bridge for the two drive motors (brief: two-wheeled robot); inputs MOT_AIN1, MOT_AIN2, MOT_BIN1, MOT_BIN2; VM wired by the board generator."
+      },
+      {
+        "ref": "U6",
+        "role": "pwm-driver",
+        "mpn": "PCA9685PW,118",
+        "lcsc": "C2678753",
+        "footprint": "tssop28_w6.4mm_p0.65mm",
+        "pins": [
+          "A0",
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "LED0",
+          "LED1",
+          "LED2",
+          "LED3",
+          "LED4",
+          "LED5",
+          "LED6",
+          "LED7",
+          "VSS",
+          "LED8",
+          "LED9",
+          "LED10",
+          "LED11",
+          "LED12",
+          "LED13",
+          "LED14",
+          "LED15",
+          "OE",
+          "A5",
+          "EXTCLK",
+          "SCL",
+          "SDA",
+          "VDD"
+        ],
+        "reason": "Brief nice-to-have: spare motor output and two servo outputs, driven over I2C."
+      },
+      {
+        "ref": "JM1",
+        "role": "connector",
+        "mpn": "SM06B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160405",
+        "footprint": "jst6_sh",
+        "pins": [
+          "GND",
+          "ENCB",
+          "ENCA",
+          "VCC",
+          "M2",
+          "M1"
+        ],
+        "reason": "Left drive motor with encoder on one 6-pin plug (brief: encoders on both drive wheels)."
+      },
+      {
+        "ref": "JM2",
+        "role": "connector",
+        "mpn": "SM06B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160405",
+        "footprint": "jst6_sh",
+        "pins": [
+          "GND",
+          "ENCB",
+          "ENCA",
+          "VCC",
+          "M2",
+          "M1"
+        ],
+        "reason": "Right drive motor with encoder on one 6-pin plug (brief: encoders on both drive wheels)."
+      },
+      {
+        "ref": "JS1",
+        "role": "start",
+        "mpn": "PZ254V-11-02P",
+        "lcsc": "C492401",
+        "footprint": "pinrow2",
+        "pins": [
+          "START",
+          "GND"
+        ],
+        "reason": "Brief: starts from a pull cord, no other start (F.6)."
+      },
+      {
+        "ref": "JE1",
+        "role": "estop",
+        "mpn": "B2B-XH-A(LF)(SN)",
+        "lcsc": "C158012",
+        "footprint": "pinrow2_p2.5_id1_od1.8",
+        "pins": [
+          "VBAT",
+          "VM"
+        ],
+        "reason": "Brief: red emergency stop that cuts power to the motors (F.4.c)."
+      },
+      {
+        "ref": "JT1",
+        "role": "connector",
+        "mpn": "SM04B-SRSS-TB(LF)(SN)",
+        "lcsc": "C160404",
+        "footprint": "jst4_sh",
+        "pins": [
+          "GND",
+          "VCC",
+          "IO1",
+          "IO2"
+        ],
+        "reason": "Mechanics: the VL53L0X breakout's STEMMA QT cable (JST SH 4-pin: GND, V+, SDA, SCL) plugs here; VCC is wired to 3V3 by its label and IO1/IO2 join the board's I2C bus."
+      },
+      {
+        "ref": "J2",
+        "role": "battery",
+        "mpn": "B2B-PH-K-S(LF)(SN)",
+        "lcsc": "C131337",
+        "footprint": "jst2_ph",
+        "pins": [
+          "VBAT",
+          "GND"
+        ],
+        "reason": "Mechanics: the ADAFRUIT-2011 2000 mAh cell plugs in here; a 2-pin battery-role connector, shares the JST PH part of the motor plugs."
+      },
+      {
+        "ref": "U7",
+        "role": "ideal-diode",
+        "mpn": "LM66100DCKR",
+        "lcsc": "C2869734",
+        "footprint": "sot363",
+        "pins": [
+          "VIN",
+          "GND",
+          "CE",
+          "NC",
+          "ST",
+          "VOUT"
+        ],
+        "nets": {
+          "VIN": "VBAT"
+        },
+        "reason": "Ideal diode on the 1S cell's path into the LDO, where a Schottky's drop would leave the 3.3 V LDO out of regulation; VIN is fed from the VBAT rail."
+      },
+      {
+        "ref": "D2",
+        "role": "charge-led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ],
+        "reason": "Charge LED: lit while the charger U4 charges, even with the MCU asleep. Wired to VBUS, its cathode through R8 to the charger's CHRG."
+      },
+      {
+        "ref": "R8",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ],
+        "reason": "1 kOhm series resistor for the charge LED D2 (sets its current from the charger's CHRG pin)."
+      }
+    ],
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "left",
+        "offsetMm": 21.5,
+        "widthMm": 9,
+        "heightMm": 3.2
+      }
+    ],
+    "rails": [
+      {
+        "name": "VBUS",
+        "voltageV": 5,
+        "regulatorMaxMa": 500,
+        "loadMa": 500
+      },
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 189,
+        "averageMa": 60
+      },
+      {
+        "name": "VBAT",
+        "voltageV": 3.7,
+        "regulatorMaxMa": 2000,
+        "loadMa": 1550
+      }
+    ],
+    "pins": [
+      {
+        "signal": "MOT_AIN1",
+        "gpio": 6,
+        "partRef": "U5",
+        "partPin": "AIN1"
+      },
+      {
+        "signal": "MOT_AIN2",
+        "gpio": 7,
+        "partRef": "U5",
+        "partPin": "AIN2"
+      },
+      {
+        "signal": "MOT_BIN1",
+        "gpio": 5,
+        "partRef": "U5",
+        "partPin": "BIN1"
+      },
+      {
+        "signal": "MOT_BIN2",
+        "gpio": 4,
+        "partRef": "U5",
+        "partPin": "BIN2"
+      },
+      {
+        "signal": "ENC_LA",
+        "gpio": 11,
+        "partRef": "JM1",
+        "partPin": "ENCA"
+      },
+      {
+        "signal": "ENC_RA",
+        "gpio": 1,
+        "partRef": "JM2",
+        "partPin": "ENCA"
+      },
+      {
+        "signal": "I2C_SDA",
+        "gpio": 8,
+        "partRef": "U2",
+        "partPin": "SDA"
+      },
+      {
+        "signal": "I2C_SCL",
+        "gpio": 10,
+        "partRef": "U2",
+        "partPin": "SCL"
+      },
+      {
+        "signal": "START",
+        "gpio": 2,
+        "partRef": "JS1",
+        "partPin": "START"
+      },
+      {
+        "signal": "USB_DM",
+        "gpio": 19,
+        "partRef": "J1",
+        "partPin": "DN"
+      },
+      {
+        "signal": "USB_DP",
+        "gpio": 20,
+        "partRef": "J1",
+        "partPin": "DP"
+      },
+      {
+        "signal": "ENC_LB",
+        "gpio": 12,
+        "partRef": "JM1",
+        "partPin": "ENCB"
+      },
+      {
+        "signal": "ENC_RB",
+        "gpio": 13,
+        "partRef": "JM2",
+        "partPin": "ENCB"
+      }
+    ]
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 7,
+    "connectors": 7,
+    "rails": 4,
+    "parts": 15,
+    "pins": 5,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 3,
+    "mechanics": 2,
+    "assembly": 0
+  }
+}
