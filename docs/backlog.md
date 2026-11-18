@@ -88,6 +88,17 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
+- [x] **Run 20b review minors** (18 Nov; branch driver-outputs): a PWM driver comes with its servo plugs, servo supply
+      and spare motor (outputs-auto.ts); every wheeled robot gets its STATUS_LED (status-led-auto.ts); the payload and
+      servo-supply facts follow the parts; the start
+      perimeter keeps 10 mm for homologation (an estimate) and its figure shows the margin; the IMU only on robots that
+      drive on wheels (the user, 18 Nov: "should CNCs carry IMUs?").
+- [ ] **1S sustained-stall sag needs the pack's R_int in the catalog** (18 Nov, bringup-system): bulk capacitors
+      would only smooth the motors' PWM edges, not hold up a sustained stall's sag through the cell's own resistance
+      (tried 2 x 22 µF at the LDO input: the compact 43x28 and 42x29 rovers lost their fit, for little effect; reverted). To
+      check it, the catalog needs each pack's internal resistance (datasheet or measured), then: cell at cutoff minus
+      stall current x R_int minus the LDO dropout against the MCU's minimum supply.
+
 - [x] **Copper too near the edge that isn't a via** (15 Nov; fixed: via-edge.ts moves a trace corner too near the edge
       inward, joints kept, ends on a pad left alone; the 64×25 rover keeps its footprint, DRC 0): the subscription run's 64×25 mm rover (test/fixtures/
       cc-rover-64x25-rev19.json) routes clean but leaves its debug footprint off: 3 copper_edge_clearance errors with

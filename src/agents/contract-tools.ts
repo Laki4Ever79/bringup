@@ -3,6 +3,7 @@ import { completePowerTree } from "../contract/power-auto.ts"
 import { moveUpMcu } from "../contract/mcu-move.ts"
 import { withRobotImu } from "../contract/imu-auto.ts"
 import { withDriverOutputs } from "../contract/outputs-auto.ts"
+import { withStatusLed } from "../contract/status-led-auto.ts"
 import { FIELDS, OWNERS, type AgentRole, type ContractSnapshot, type ContractValues, type FieldName } from "../contract/types.ts"
 import { makeEvent, type Cause } from "../events.ts"
 import { causeOf } from "./common.ts"
@@ -169,6 +170,16 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						args = { ...args, value: (args.field === "parts" ? up.parts : up.pins) as ContractValues[FieldName] }
 						moved = args.field === "parts" ? { pins: up.pins, note: up.note } : { parts: up.parts, note: up.note }
 						laidOutNote = [laidOutNote, up.note].filter(Boolean).join("; ")
+					}
+					// Every wheeled robot's status LED (contract/status-led-auto.ts; run 20b had none).
+					const curParts = args.field === "parts" ? (args.value as ContractValues["parts"]) : (moved?.parts ?? parts)
+					const curPins = args.field === "pins" ? (args.value as ContractValues["pins"]) : (moved?.pins ?? pins)
+					const led = curParts && curPins?.length ? withStatusLed(curParts, curPins, s.contract.get("mechanics"), s.contract.get("motion"), mcuCatalog()) : null
+					if (led) {
+						args = { ...args, value: (args.field === "parts" ? led.parts : led.pins) as ContractValues[FieldName] }
+						const other = args.field === "parts" ? { pins: led.pins } : led.parts !== curParts ? { parts: led.parts } : {}
+						moved = { ...(moved ?? {}), ...other, note: [moved?.note, led.note].filter(Boolean).join("; ") }
+						laidOutNote = [laidOutNote, led.note].filter(Boolean).join("; ")
 					}
 				}
 				// A new size that can't hold what the board carries is refused before it becomes a revision, naming the sizes
