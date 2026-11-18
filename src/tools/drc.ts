@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { kicadCli, type Env } from "./env.ts"
-import { collidingReferences } from "./silk.ts"
+import { collidingLabelFootprints, collidingReferences } from "./silk.ts"
 
 // JLCPCB's standard 2-layer capabilities, so the check says whether a fab can actually make the board
 // (KiCad's own defaults are stricter than any fab and would flag every tscircuit board).
@@ -19,6 +19,8 @@ export interface DrcSummary {
 	ownFootprint?: Record<string, number>
 	// Reference designators the silkscreen checks found colliding (silk.ts): the build hides them and checks again.
 	silkRefs?: string[]
+	// Footprints whose pin labels collide on the silkscreen (silk.ts): alternated, then moved to the assembly drawing.
+	labelRefs?: string[]
 	// The custom rules this check relied on (vendorLandPatternRules), so a clean result says what made it clean.
 	exemptions?: string[]
 }
@@ -101,6 +103,7 @@ export function summarizeDrc(report: { violations?: { type: string; severity: st
 		byType,
 		firstError: v.find((x) => x.severity === "error")?.description ?? null,
 		silkRefs: collidingReferences(v),
+		labelRefs: collidingLabelFootprints(v),
 		ownFootprint,
 	}
 }

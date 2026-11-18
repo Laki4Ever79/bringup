@@ -29,3 +29,18 @@ test("the fab rules don't check footprints against a library: they are embedded 
 	assert.equal(p.board.design_settings.rule_severities.lib_footprint_issues, "ignore")
 	assert.equal(p.board.design_settings.rule_severities.hole_to_hole, "error")
 })
+
+// Pin labels that overlap at 0.8 mm (run 20b's JS1: "GND" and "START" 2.54 mm apart) alternate sides of the header; with
+// still no room they go to the assembly drawing (F.Fab). On 20b's rev-38 board: 1 warning -> 0, START readable.
+test("colliding pin labels alternate sides of the header, then go to the assembly drawing", async () => {
+	const { alternatePinLabels, pinLabelsToFab, collidingLabelFootprints } = await import("../src/tools/silk.ts")
+	const label = (t: string, x: number) => `\t\t(fp_text user "${t}"\n\t\t\t(at ${x} -1.35 0)\n\t\t\t(layer "F.SilkS")\n\t\t)\n`
+	const fp = `(footprint "h"\n${ref("JS1", "F.SilkS", 0.8)}${label("START", -1.27)}${label("GND", 1.27)})`
+	assert.deepEqual(collidingLabelFootprints([{ type: "silk_overlap", items: [{ description: "Footprint text of JS1 (GND)" }, { description: "Footprint text of JS1 (START)" }] }]), ["JS1"])
+	const alt = alternatePinLabels(fp, ["JS1"])
+	assert.match(alt, /"START"\s*\(at -1\.27 -1\.35/)
+	assert.match(alt, /"GND"\s*\(at 1\.27 1\.35/)
+	assert.match(pinLabelsToFab(fp, ["JS1"]), /"GND"\s*\(at 1\.27 -1\.35 0\)\s*\(layer "F\.Fab"\)/)
+	// Another footprint is left alone.
+	assert.equal(alternatePinLabels(fp, ["J9"]), fp)
+})
