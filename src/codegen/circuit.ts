@@ -2379,7 +2379,7 @@ function segGap(a: { x: number; y: number }, b: { x: number; y: number }, c: { x
 	return Math.min(toSeg(a, c, d), toSeg(b, c, d), toSeg(c, a, b), toSeg(d, a, b))
 }
 
-function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = false): string[] {
+function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = false, unbounded = false): string[] {
 	const drawn = draw ? drawnCapPaths(s, placement) : []
 	const lines: string[] = []
 	const port = (ref: string, pin: string) => `.${ref} > .${pin}`
@@ -2393,7 +2393,11 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 			// (STM32F103: 16.4 mm from the pad-48 cap's GND end, 11 Nov 2026). Without a bound tscircuit applies 1 mm, which
 			// no placement meets. The DRV8833's caps keep 5 mm.
 			// A crystal's load capacitors are not decoupling: no bound (their crystal pin is no supply pin). capBound.
-			const bound = capBound(s, sp)
+			// A board placed for Freerouting (routingDisabled): tscircuit still checks the bound and exits 1 on a cap it can't
+			// reach (a mock Eurobot, 19 Nov 2026: "5mm maximum length for .U5 > .VINT to .C5 … 56.25mm apart"), so Freerouting
+			// was never reached. There the bound is the board's diagonal: the router, not tscircuit, makes the traces.
+			const o = s.values.outline
+			const bound = unbounded && o ? Math.ceil(Math.hypot(o.widthMm, o.heightMm)) : capBound(s, sp)
 			const pinBound = bound !== null ? ` maxDecouplingTraceLength={${bound}}` : ""
 			const fpAttr = INDUCTOR_FOOTPRINTS[sp.spec.footprint] ? inductorFootprint(sp.spec.footprint) : q(sp.spec.footprint)
 			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${fpAttr}${pinBound} />`)
@@ -2478,7 +2482,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	for (const t of skidDriverTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
 	// An I2C link joins the board's own bus: the connector's IO1 and IO2 to I2C_SDA and I2C_SCL (docs/system.md).
 	for (const t of linkBusTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
-	lines.push(...powerLines(s, placement, !!opts.drawCaps))
+	lines.push(...powerLines(s, placement, !!opts.drawCaps, !!opts.routingDisabled))
 	// Test pads join their net by name: a contract signal's net, or a generated power net (one that reaches two parts).
 	const nets = new Set([...pins.map((p) => p.signal), ...generatedNets(s).keys()])
 	const bootNet = recoveryBootNet(s)
