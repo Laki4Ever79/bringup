@@ -323,3 +323,21 @@ export function interferenceChecks(built: { interference?: Interference } | null
 		out.push({ kind: "part-interference", message: `the interference check couldn't measure ${r.unmeasured.map((u) => `${u.a} against ${u.b}`).join(", ")}: not a pass; the chassis geometry needs a look`, fields: ["mechanics"], affects: ["mechanics"] })
 	return out
 }
+
+// A board's standoffs stand on the plate under its holes; the pack lies on the plate between two rails. A pack thinner
+// than the standoffs may lie under a board (checks.ts), but not on a standoff: the rover mock's pack ran onto the main
+// board's standoffs (246.7 mm³, found by the interference check, 19 Nov 2026), which the 2D fit check couldn't see
+// because it doesn't know the boards' holes. This does (chassisSpec's), so the layout solver can avoid it.
+export const STANDOFF_OD_MM = 5 // py/chassis.py STANDOFF_OD
+export const RAIL_WALL_MM = 2 // py/chassis.py WALL: the rails beside the pack's long sides
+export function packOnStandoffs(s: ContractSnapshot): { kind: "mech-fit"; message: string; fields: ["mechanics"]; affects: ["mechanics"] }[] {
+	const mech = s.values.mechanics
+	if (!mech?.battery) return []
+	const spec = chassisSpec(s)
+	if (!spec) return []
+	const b = spec.battery
+	const halfX = b.sizeMm[0] / 2 + STANDOFF_OD_MM / 2, halfY = b.sizeMm[1] / 2 + RAIL_WALL_MM + STANDOFF_OD_MM / 2
+	const hits = spec.boards.filter((x) => x.standoffs !== false).flatMap((x) => x.holes.filter((h) => Math.abs(h.xMm - b.xMm) < halfX && Math.abs(h.yMm - b.yMm) < halfY).map((h) => `${x.name}'s at (${+h.xMm.toFixed(1)}, ${+h.yMm.toFixed(1)})`))
+	if (!hits.length) return []
+	return [{ kind: "mech-fit", message: `the battery (${b.sizeMm[0]} × ${b.sizeMm[1]} mm at x ${b.xMm}, y ${b.yMm}, with its rails) lies on board standoffs: ${hits.join(", ")}: move the battery clear of the boards' mounting holes, or beside the boards`, fields: ["mechanics"], affects: ["mechanics"] }]
+}

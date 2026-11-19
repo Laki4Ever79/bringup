@@ -150,13 +150,15 @@ export const ROVER_MECHANICS: ContractValues["mechanics"] = {
 	// carries about 43 % of the weight (its own 71 g, the plate and the board sit behind the axle); from rest the
 	// simulation pushes it up 1 cm only under about 28 % (the mech-climb check: 21 %). At cruise its momentum carries it
 	// over 1 cm, but a rover that stops on such an edge stays there (docs/mechanics.md). Door thresholds are out of scope.
-	drive: { kind: "differential", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "TENTE 1430POI038P60-46x38 swivel caster 38 mm", trackMm: 110, wheelbaseMm: 100, axleXMm: 45 },
+	drive: { kind: "differential", motor: "POLOLU-2367 100:1 MP 6V", wheel: "POLOLU-1430 wheel 80x10 mm", caster: "TENTE 1430POI038P60-46x38 swivel caster 38 mm", trackMm: 110, wheelbaseMm: 90, axleXMm: 40 },
 	battery: { pack: "ADAFRUIT-2011 LP-803860 2000 mAh", at: { xMm: 40, yMm: 0 } },
 	sensor: { module: "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)", at: { xMm: 73.6, yMm: 0, zMm: 66 }, connector: "JT1" },
 	// The plate's underside at the caster's 50.5 mm (the motors' brackets drop 10.5 mm to the 40 mm axle). Within the
 	// brief's 150 × 120 mm with the wheels: a 110 mm track and 10 mm wheels leave a 96 mm plate (the layout solver's
 	// answer for these parts; the old 150 × 110 plate on a 130 mm track was 140 mm wide and was laid out again each run).
-	chassis: { plateMm: [150, 96], thicknessMm: 3, material: "PLA", clearanceMm: 50.5, boards: [{ name: "main", at: { xMm: 0, yMm: 0 }, rotDeg: 0 }] },
+	// The board 20 mm back, the axle at 40 and a 90 mm wheelbase (the solver's answer, 19 Nov 2026): with the board at 0
+	// its standoffs stood in the pack and the pack's front in the sensor's bracket (the interference check found both).
+	chassis: { plateMm: [150, 96], thicknessMm: 3, material: "PLA", clearanceMm: 50.5, boards: [{ name: "main", at: { xMm: -20, yMm: 0 }, rotDeg: 0 }] },
 }
 export const ROVER_BOARD = {
 	requirements: { summary: "indoor rover that avoids walls and carries a temperature and humidity sensor", peripherals: ["i2c-sensor", "usb-c", "status-led", "motors", "distance-sensor"], batteryLifeDays: null, enclosure: "none" as const },

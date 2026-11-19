@@ -77,7 +77,9 @@ aren't modelled). It writes the result to `mounts.json` (`interference`: pairs c
 centre, pairs it couldn't measure), and `part-interference` wakes the mechanics agent for any clash or unmeasured pair.
 The 2D fit checks above name the pairs they compare; this check compares every pair. Its first run found the pack
 running into the sensor's bracket on three of the four example robots (the solver placed the pack as far forward as the
-plate allowed), now also a fit check the solver avoids. The idea is text-to-cad's `cad model interference` (MIT).
+plate allowed), now also a fit check the solver avoids; and the rover mock's pack standing on the main board's
+standoffs, now a check that knows the boards' holes, with the solver moving a board the system doesn't place along the
+centre line until its standoffs clear the pack. The idea is text-to-cad's `cad model interference` (MIT).
 
 Rules the real runs taught (15 Nov), each now a check or part of the agents' instructions:
 - A design that moves (a motor driver, or requirements naming motors, wheels or a rover) needs the motion field; the

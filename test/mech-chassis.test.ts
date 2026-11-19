@@ -110,7 +110,7 @@ test("a built chassis whose standoffs miss the board's holes is a violation", as
 	const v = boardMountChecks(s, { standoffHoles: old, casterHoles: [] })
 	assert.equal(v.length, 1)
 	assert.equal(v[0].kind, "board-mount-mismatch")
-	assert.match(v[0].message, /main's hole at \(-27, -17\) has no standoff under it/)
+	assert.match(v[0].message, /main's hole at \(-47, -17\) has no standoff under it/)
 	assert.deepEqual(v[0].affects, ["mechanics"])
 })
 
@@ -234,4 +234,21 @@ test("a pack laid out into the distance sensor's bracket fails the fit check, wi
 	assert.ok(v, "flagged")
 	assert.equal(v.kind, "mech-fit")
 	assert.match(v.message, /move it back to x 40.2 or less/)
+})
+
+test("a pack on a board's standoffs fails, and the solver moves the board along the centre line to clear it", async () => {
+	const { packOnStandoffs } = await import("../src/tools/chassis.ts")
+	const { solveChassis } = await import("../src/mechanics/solve.ts")
+	const { defaultCheckCatalog } = await import("../src/mechanics/checks.ts")
+	const s = rover()
+	assert.deepEqual(packOnStandoffs(s), [], "the scripted rover's board at x -20 is clear of the pack at x 40")
+	s.values.mechanics!.chassis.boards[0].at.xMm = 0 // the scripted rover before 19 Nov: main's standoffs at x 27 under the pack
+	const v = packOnStandoffs(s)
+	assert.equal(v.length, 1)
+	assert.match(v[0].message, /lies on board standoffs: main's at \(27, -17\), main's at \(27, 17\)/)
+	const m = s.values.mechanics!
+	const r = solveChassis(s, { motor: m.drive.motor, wheel: m.drive.wheel, caster: m.drive.caster, pack: m.battery.pack, sensor: m.sensor.module, connector: m.sensor.connector }, defaultCheckCatalog())
+	assert.deepEqual(r.remaining, [], r.why)
+	assert.notEqual(r.mechanics!.chassis.boards[0].at.xMm, 0, "the board moved")
+	assert.deepEqual(packOnStandoffs({ ...s, values: { ...s.values, mechanics: r.mechanics! } }), [])
 })
