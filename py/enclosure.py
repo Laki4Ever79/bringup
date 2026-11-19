@@ -18,6 +18,7 @@ z_assembled = heightMm + lid.plateMm - z), cutouts.json, standoffs.json, vents.j
 A feature that can't be built is reported in features.json (ok false, with the reason) rather than failing the build.
 """
 
+import inspect
 import json
 import struct
 import sys
@@ -321,7 +322,7 @@ def add_case_features(case, d):
                 reports.append({"id": f["id"], "kind": kind, "ok": False, "issue": "a tab's screw hole is closed"})
                 continue
             x, y, _, size = measured[0]
-            reports.append({"id": f["id"], "kind": kind, "ok": True, "xMm": round(x, 3), "yMm": round(y, 3), "diameterMm": round(size.X, 3), "tabs": len(measured)})
+            reports.append({"id": f["id"], "kind": kind, "ok": True, "xMm": round(x, 3), "yMm": round(y, 3), "diameterMm": round(size.X, 3), "tabs": len(measured), "atMm": [round(x, 3), round(y, 3), round(holes[0][2]["thickMm"] / 2, 3)]})
         elif kind == "hole":
             edge, off, dia = f["edge"], float(f["offsetMm"]), float(f["diameterMm"])
             case = case - teardrop(edge, off, dia, d)
@@ -339,7 +340,7 @@ def add_case_features(case, d):
                 reports.append({"id": f["id"], "kind": kind, "ok": False, "issue": f"no opening was cut through the {edge} wall"})
                 continue
             cx, cy, _, size = got
-            reports.append({"id": f["id"], "kind": kind, "ok": True, "edge": edge, "offsetMm": round(cy if axis == "x" else cx, 3), "zMm": round(z, 3), "diameterMm": round(size.Y if axis == "x" else size.X, 3)})
+            reports.append({"id": f["id"], "kind": kind, "ok": True, "edge": edge, "offsetMm": round(cy if axis == "x" else cx, 3), "zMm": round(z, 3), "diameterMm": round(size.Y if axis == "x" else size.X, 3), "atMm": [round(cx, 3), round(cy, 3), round(z, 3)]})
     return case, reports
 
 
@@ -462,6 +463,32 @@ def lid_fit(case, lid, d):
     return min((cavity.size.X - lip.size.X) / 2, (cavity.size.Y - lip.size.Y) / 2)
 
 
+def made_by(fn):
+    """Where a feature is made: this file, the line its function starts on, and the function's name."""
+    return f"py/enclosure.py:{inspect.getsourcelines(fn)[1]} {fn.__name__}"
+
+
+def case_refs(conns, features, standoffs, shift, post_z=0.0):
+    """What a click on the case can name (refs.json): each connector's opening, each built case feature (tab, loop, wall
+    hole) and each standoff, with its centre in the files' frame (case.stl's: the board's bottom-left at the origin, z
+    from the case's underside), a label a person reads and the code that makes it. The dashboard names the nearest one
+    to a picked point (scene3d.js nearestCaseRef) and puts the reference before the change request, so the case designer
+    edits that feature rather than guessing which one was meant (text-to-cad's prompt references)."""
+    sx, sy = shift
+    at = lambda x, y, z: [round(x - sx, 3), round(y - sy, 3), round(z, 3)]  # noqa: E731
+    refs = []
+    for c in conns:
+        if "_at" in c:
+            refs.append({"ref": f"case#cutout:{c['ref']}", "kind": "cutout", "label": f"{c['ref']}'s opening in the {c['edge']} wall", "atMm": at(*c["_at"]), "madeBy": made_by(slot)})
+    for f in features:
+        if f.get("ok") and f.get("atMm") and f.get("kind") in ("wall-mount", "lanyard", "hole"):
+            what = {"wall-mount": "wall-mount tab", "lanyard": "lanyard loop", "hole": f"{f.get('diameterMm', 0):g} mm hole in the {f.get('edge')} wall"}[f["kind"]]
+            refs.append({"ref": f"case#feature:{f['id']}", "kind": f["kind"], "label": what, "atMm": at(*f["atMm"]), "madeBy": made_by(teardrop if f["kind"] == "hole" else tab)})
+    for st in standoffs:
+        refs.append({"ref": f"case#standoff:{st.get('ref')}", "kind": "standoff", "label": f"the standoff under {st.get('ref')}", "atMm": at(st["xMm"], st["yMm"], post_z), "madeBy": made_by(build_case)})
+    return refs
+
+
 def main():
     if len(sys.argv) != 3:
         fail("usage: enclosure.py <spec.json> <outdir>")
@@ -477,6 +504,8 @@ def main():
         if hole.volume <= 0:
             fail(f"{conn['ref']}: cutout does not reach the {conn['edge']} wall")
         off, along, up, zc = measure(hole, conn["edge"])
+        hc = hole.center()
+        conn["_at"] = (hc.X, hc.Y, hc.Z)
         cutouts.append({"ref": conn["ref"], "edge": conn["edge"], "offsetMm": round(off, 3), "widthMm": round(along, 3), "heightMm": round(up, 3), "zMm": round(zc, 3)})
         slots.append((conn["ref"], s))
         case = case - s
@@ -534,6 +563,7 @@ def main():
     (out / "vents.json").write_text(json.dumps(vents, indent=2) + "\n")
     (out / "ports.json").write_text(json.dumps(ports, indent=2) + "\n")
     (out / "features.json").write_text(json.dumps(features, indent=2) + "\n")
+    (out / "refs.json").write_text(json.dumps(case_refs(conns, features, standoffs, (sx, sy), d["wall"] + d["post_h"] / 2), indent=2) + "\n")
     (out / "print.json").write_text(json.dumps(check, indent=2) + "\n")
     verdict = "print check ok" if check["ok"] else f"print check: {len(issues)} issue(s)"
     print(f"case {iw + 2 * d['wall']:.1f}x{ih + 2 * d['wall']:.1f}x{d['height']:.1f} mm + {d['plate']:.1f} mm lid, "
