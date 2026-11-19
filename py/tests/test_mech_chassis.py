@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chassis import ChassisError, build, mast_sections  # noqa: E402
+from chassis import ChassisError, build, interference, mast_sections  # noqa: E402
 
 SPEC = {
     "plate": {"lengthMm": 150, "widthMm": 110, "thicknessMm": 3, "clearanceMm": 35},
@@ -109,6 +109,34 @@ class ChassisTest(unittest.TestCase):
         spec = dict(SPEC, caster=dict(SPEC["caster"], xMm=-80))
         with self.assertRaisesRegex(ChassisError, "caster"):
             build(spec)
+
+
+    # Exact interference (text-to-cad's `cad model interference`, 19 Nov 2026): the pack placed at the plate's front ran
+    # into the sensor's bracket on three of four example robots, and no 2D check compared those two.
+    def test_the_chassis_and_its_parts_share_no_volume(self):
+        # The pack behind the board, clear of its standoffs (a pack under a board meets them: see the next test).
+        spec = dict(SPEC, drive={"trackMm": 132, "wheelDiameterMm": 80, "wheelWidthMm": 10}, battery=dict(SPEC["battery"], xMm=-40), boards=[dict(SPEC["boards"][0], xMm=20)])
+        part, _ = build(spec)
+        r = interference(spec, part)
+        self.assertEqual(r["clashes"], [])
+        self.assertEqual(r["unmeasured"], [])
+        self.assertEqual(r["pairs"], 28)  # 8 solids (chassis, board, pack, two motors, two wheels, sensor): every pair
+
+    def test_a_pack_into_the_sensor_bracket_is_a_clash_with_its_volume_and_place(self):
+        spec = dict(SPEC, battery=dict(SPEC["battery"], xMm=44), boards=[dict(SPEC["boards"][0], xMm=-30)])  # front end at 74, past the bracket at 69.6
+        part, _ = build(spec)
+        r = interference(spec, part)
+        clash = [c for c in r["clashes"] if (c["a"], c["b"]) == ("chassis", "battery")]
+        self.assertEqual(len(clash), 1)
+        self.assertGreater(clash[0]["volumeMm3"], 0.5)
+        self.assertAlmostEqual(clash[0]["atMm"][0], 70.6, delta=1.5)
+
+    def test_a_thin_pack_under_a_board_meets_its_standoffs(self):
+        # The 2D fit check lets a pack thinner than the standoffs lie under a board; the standoffs then stand in it.
+        spec = dict(SPEC, battery=dict(SPEC["battery"], xMm=-25))  # under the board at x 10, its holes at x -16.5
+        part, _ = build(spec)
+        r = interference(spec, part)
+        self.assertTrue(any((c["a"], c["b"]) == ("chassis", "battery") for c in r["clashes"]))
 
 
 if __name__ == "__main__":

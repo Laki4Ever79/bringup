@@ -71,9 +71,10 @@ test("only the integrator owns the assembly", () => {
 })
 
 test("the assembly's other boards are known to the checks, and their mass counts", () => {
-	// Front clear of the main board (which ends at x 40) and inside the plate.
+	// Front clear of the main board (which ends at x 40), inside the plate and behind the sensor's bracket (x 70.2; the
+	// 40 mm board at x 65 here ran into it, which the bracket check added 19 Nov 2026 catches).
 	const s = withAsm()
-	Object.assign(s.values.assembly!.boards[1], { xMm: 65, outline: { widthMm: 40, heightMm: 30 } })
+	Object.assign(s.values.assembly!.boards[1], { xMm: 55, outline: { widthMm: 28, heightMm: 30 } })
 	assert.ok(!mechanicsChecks(s).some((v) => /front/.test(v.message)), "no finding names the assembly's other board")
 	const mass = (c: ContractSnapshot) => Number(/(\d+) g/.exec(mechanicsFigures(c).find((f) => f.check === "Mass")!.value)![1])
 	assert.ok(mass(s) > mass(rover()), "front's board is in the mass")

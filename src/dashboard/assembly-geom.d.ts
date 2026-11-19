@@ -23,6 +23,8 @@ export function motorUnderPlateMm(plateWidthMm: number, m: GeomMount): number
 export function motorHalfUnder(plateWidthMm: number, m: GeomMount): boolean
 export function mountOnPlate(m: GeomMount, lengthMm: number, widthMm: number): boolean
 export function blocksSensor(m: GeomMount & { zMm: number }, sensor: GeomMount & { zMm: number }): boolean
+export const SENSOR_BRACKET_WALL_MM: number
+export function reachesSensorBracket(m: GeomMount, sensor: GeomMount): boolean
 export const HAT_STACK_MM: number
 export const HAT_STACK_SOURCE: { url: string; where: string }
 export function hatBaseZ(baseZ: number): number

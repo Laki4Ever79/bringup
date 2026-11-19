@@ -546,7 +546,12 @@ the aradotso text-to-cad-harness skill (a rewrite of an older text-to-cad, nothi
 well; nothing re-checks the case when the board changes, which is what our contract does. Six ideas to borrow, in
 order (effort as estimated in the study):
 
-- [ ] 1. Exact interference between the chassis, case, board, motors and wheels as a contract check (~1 day).
+- [x] 1. Exact interference between the chassis, case, board, motors and wheels as a contract check (~1 day). Built
+      19 Nov (py/chassis.py interference, part-interference): every pair among the chassis, boards, pack, motors,
+      wheels, sensor and e-stop. The case isn't in it (a rover has no case; a case's own checks cover its features).
+      Found: the pack ran into the sensor's bracket on 3 of 4 example robots and both scripted mock robots, now a fit
+      check too. Follow-up: a thin pack under a board meets the board's standoffs; the 2D fit check allows it, so only
+      this check sees it, and the solver can't avoid it until the fit check knows the boards' holes (chassisSpec's).
 - [ ] 2. Real inertias in the URDF from the built parts' mass properties (today boxes and cylinders marked ESTIMATES),
       and `check_urdf` as a violation (~1 day).
 - [ ] 3. Click-to-reference editing: a pick in the 3D view names a feature and the code that made it, and the case

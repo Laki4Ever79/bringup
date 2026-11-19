@@ -1,5 +1,5 @@
 import type { DriveArtifact } from "../tools/drive.ts"
-import { boardMountChecks, type ChassisArtifact } from "../tools/chassis.ts"
+import { boardMountChecks, interferenceChecks, type ChassisArtifact, type Interference } from "../tools/chassis.ts"
 import { hardwareChecks } from "../tools/robot-parts.ts"
 import { defaultCheckCatalog, mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
@@ -143,6 +143,7 @@ export type ViolationKind =
 	| "regulator-overclaimed"
 	| "firmware-build-failed"
 	| "board-mount-mismatch"
+	| "part-interference"
 	| "hardware-misfit"
 	| "firmware-driver-test-failed"
 	| "sensor-mismatch"
@@ -218,6 +219,8 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...plugsWithoutEdge(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...supplyWiring(c), ...packVoltage(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c), ...motionBriefChecks(c, brief))
 	// A built chassis (not a stub) whose standoffs miss a board's mounting holes.
 	if (a.chassis && !a.chassis.stub) v.push(...boardMountChecks(c, a.chassis.mounts as { standoffHoles?: { xMm: number; yMm: number }[] } | null))
+	// The built chassis and the bought parts it carries share no volume (py/chassis.py interference: exact booleans).
+	if (a.chassis && !a.chassis.stub) v.push(...interferenceChecks(a.chassis.mounts as { interference?: Interference } | null))
 	// Every fastener in the robot's parts list fits the hole it goes through (tools/robot-parts.ts).
 	if (c.values.mechanics) v.push(...hardwareChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its
