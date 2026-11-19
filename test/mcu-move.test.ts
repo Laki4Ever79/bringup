@@ -72,9 +72,11 @@ test("the firmware counts in quadrature when both channels are wired: every edge
 	assert.ok(def(h3, "PIN_ENC_LB") && def(h3, "PIN_ENC_RB"))
 })
 
-test("when both fit, the C3 still ranks above the S3 (it has a simulator and costs less)", () => {
+// Both have a simulator since the Xtensa QEMU (19 Nov 2026: the S3's drive runs in qemu-system-xtensa); the C3 still
+// ranks above on price, so a design that fits the C3 keeps it.
+test("when both fit, the C3 still ranks above the S3 (both simulate; the C3 costs less)", () => {
 	const r = rankMcus({ needs: [{ signal: "LED", kind: "gpio" }] })
 	const pos = (id: string) => r.findIndex((x) => x.id === id)
 	assert.ok(pos("esp32-c3-mini-1") < pos("esp32-s3-mini-1"))
-	assert.ok(!r.find((x) => x.id === "esp32-s3-mini-1")!.why.some((w) => /simulator/.test(w)))
+	for (const id of ["esp32-c3-mini-1", "esp32-s3-mini-1"]) assert.ok(r.find((x) => x.id === id)!.why.some((w) => /simulator qemu/.test(w)), id)
 })
