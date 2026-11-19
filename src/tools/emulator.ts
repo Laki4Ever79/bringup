@@ -19,7 +19,6 @@ export interface BootResult {
 }
 
 // Arduino-ESP32 flash layout for the ESP32-C3: offsets match what `pio run -t upload` writes.
-const FLASH_SIZE = "4MB"
 const SERIAL_LIMIT = 64_000
 
 function esptoolPath(): string {
@@ -57,7 +56,7 @@ function run(cmd: string, args: string[], timeoutMs: number, until?: RegExp, env
 }
 
 // Merges bootloader, partitions, boot_app0 and the app into one image QEMU can mount as flash.
-export async function mergeFlash(fwDir: string, env = "esp32c3", chip = "esp32c3"): Promise<{ image: string | null; log: string }> {
+export async function mergeFlash(fwDir: string, env = "esp32c3", chip = "esp32c3", flash = qemuTarget(chip)?.flash ?? "4MB"): Promise<{ image: string | null; log: string }> {
 	const build = join(fwDir, ".pio/build", env)
 	const parts: [string, string][] = [
 		["0x0", join(build, "bootloader.bin")],
@@ -68,7 +67,7 @@ export async function mergeFlash(fwDir: string, env = "esp32c3", chip = "esp32c3
 	const missing = parts.filter(([, p]) => !existsSync(p)).map(([, p]) => p)
 	if (missing.length) return { image: null, log: `missing build output: ${missing.join(", ")}` }
 	const image = join(build, "flash.bin")
-	const args = ["--chip", chip, "merge-bin", "-o", image, "--pad-to-size", FLASH_SIZE, ...parts.flat()]
+	const args = ["--chip", chip, "merge-bin", "-o", image, "--pad-to-size", flash, ...parts.flat()]
 	const { code, output } = await run(esptoolPath(), args, 60_000)
 	return { image: code === 0 ? image : null, log: output }
 }
