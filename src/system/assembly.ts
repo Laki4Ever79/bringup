@@ -43,7 +43,8 @@ export interface SystemAssembly {
 }
 
 // The pure geometry lives in the dashboard module, so the design page checks with the same code.
-import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, plateLimitForBrief, snapCarriers, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../dashboard/assembly-geom.js"
+import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, plateLimitForBrief, SENSOR_BRACKET_WALL_MM, snapCarriers, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../dashboard/assembly-geom.js"
+import { RAIL_WALL_MM, STANDOFF_OD_MM } from "../tools/chassis.ts"
 import { motionFromBrief } from "../mechanics/brief.ts"
 export { cableLength, CABLE_SLACK_MM, footprint, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM }
 
@@ -334,6 +335,63 @@ export function withOutlines(a: SystemAssembly, outlines: Record<string, Outline
 		if (n.widthMm <= maxSizeMm[1]) widthMm = Math.min(widthMm, maxSizeMm[1])
 	}
 	return { ...a, plate: { lengthMm, widthMm }, boards: updated }
+}
+
+// Where main's pack must lie on the plate, from its chassis (tools/chassis.ts chassisSpec): its length plus a standoff's
+// width, ending just behind the distance sensor's bracket, across the pack's width with its rails and a standoff. The
+// system lays out the boards, so it keeps this stretch free; main's mechanics then put the pack there (bringup-cad, 19
+// Nov 2026: the Rover + climate system put main at x 24 and climate at -24 on its 150 mm plate, no 65 mm gap was left
+// behind the bracket, and the pack ran onto main's standoffs and into the bracket: mech-fit and part-interference).
+export type PackSlot = { xLo: number; xHi: number; yHalf: number }
+export function packSlotOf(spec: { battery: { sizeMm: [number, number, number] }; sensor?: { xMm: number; sizeMm: [number, number, number] } | null; plate: { lengthMm: number } }): PackSlot {
+	const front = spec.sensor ? spec.sensor.xMm - spec.sensor.sizeMm[0] / 2 - SENSOR_BRACKET_WALL_MM - 1 : spec.plate.lengthMm / 2
+	const [len, wid] = spec.battery.sizeMm
+	return { xLo: front - len - STANDOFF_OD_MM, xHi: front, yHalf: wid / 2 + RAIL_WALL_MM + STANDOFF_OD_MM / 2 }
+}
+
+// The boards moved off the pack's slot: the boards over it (within its width) keep their order along x and are packed
+// behind it, the front one BOARD_GAP_MM behind the slot. Only when that row still fits the plate and the brief's limit;
+// otherwise the assembly is returned as it was (the mechanics checks then say what doesn't fit). A carrier moves with
+// the board it carries.
+export function clearPackSlot(a: SystemAssembly, slot: PackSlot | null | undefined, maxSizeMm?: [number, number]): SystemAssembly {
+	if (!slot || a.body === "separate") return a
+	const plate = a.plate ?? DEFAULT_PLATE_MM
+	const lim = reachLimit(maxSizeMm)
+	const boards = a.boards.map((b) => ({ ...b }))
+	const isCarrier = (b: AssemblyBoard) => Boolean(b.carries && boards.some((x) => x.name === b.carries))
+	const units = boards.filter((b) => !isCarrier(b)).map((b) => {
+		const c = boards.find((x) => x.carries === b.name)
+		return { b, p: c ? { ...b, outline: unitOutline(b.outline, c.outline) } : { ...b } }
+	})
+	const inBand = (u: AssemblyBoard) => Math.abs(u.yMm) < slot.yHalf + footprint(u).yMm / 2
+	const onSlot = (u: AssemblyBoard) => inBand(u) && u.xMm + footprint(u).xMm / 2 > slot.xLo && u.xMm - footprint(u).xMm / 2 < slot.xHi
+	if (!units.some((u) => onSlot(u.p))) return a
+	// Behind the slot: rows along x, front board first; a board that doesn't fit the row's length starts a new row, and
+	// the rows stand side by side across the plate, centred on its middle line (two 40 mm boards and the 65 mm slot don't
+	// fit one 150 mm row with the gaps).
+	const moving = units.filter((u) => inBand(u.p)).sort((p, q) => q.p.xMm - p.p.xMm)
+	const xMax = slot.xLo - BOARD_GAP_MM, xMin = Math.max(-plate.lengthMm / 2, -lim.x)
+	const rows: { units: typeof moving; height: number; edge: number }[] = []
+	for (const u of moving) {
+		const f = footprint(u.p)
+		if (f.xMm > xMax - xMin + 1e-9) return a
+		let row = rows.find((r) => r.edge - f.xMm >= xMin - 1e-9)
+		if (!row) rows.push((row = { units: [], height: 0, edge: xMax }))
+		u.p.xMm = Math.round((row.edge - f.xMm / 2) * 10) / 10
+		row.edge -= f.xMm + BOARD_GAP_MM
+		row.height = Math.max(row.height, f.yMm)
+		row.units.push(u)
+	}
+	const total = rows.reduce((t, r) => t + r.height, 0) + BOARD_GAP_MM * (rows.length - 1)
+	if (total / 2 > Math.min(plate.widthMm / 2, lim.y) + 1e-9) return a
+	let y = total / 2
+	for (const r of rows) {
+		for (const u of r.units) u.p.yMm = Math.round((y - r.height / 2) * 10) / 10
+		y -= r.height + BOARD_GAP_MM
+	}
+	if (units.some((u) => !moving.includes(u) && moving.some((m) => boardsOverlap(m.p, u.p)))) return a
+	for (const u of units) { u.b.xMm = u.p.xMm; u.b.yMm = u.p.yMm }
+	return { ...a, boards: snapCarriers(boards) }
 }
 
 // The assembly of a run that predates assemblies, read from what it has (never stored, so an old run stays as it was):
