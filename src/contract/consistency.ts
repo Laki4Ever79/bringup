@@ -1,4 +1,5 @@
 import type { DriveArtifact } from "../tools/drive.ts"
+import { rosBuiltChecks } from "../ros/checks.ts"
 import { boardMountChecks, interferenceChecks, packOnStandoffs, type ChassisArtifact, type Interference } from "../tools/chassis.ts"
 import { hardwareChecks } from "../tools/robot-parts.ts"
 import { defaultCheckCatalog, mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
@@ -144,6 +145,7 @@ export type ViolationKind =
 	| "firmware-build-failed"
 	| "board-mount-mismatch"
 	| "part-interference"
+	| "ros-package"
 	| "hardware-misfit"
 	| "firmware-driver-test-failed"
 	| "sensor-mismatch"
@@ -220,6 +222,8 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	// A built chassis (not a stub) whose standoffs miss a board's mounting holes.
 	if (a.chassis && !a.chassis.stub) v.push(...boardMountChecks(c, a.chassis.mounts as { standoffHoles?: { xMm: number; yMm: number }[] } | null))
 	// The built chassis and the bought parts it carries share no volume (py/chassis.py interference: exact booleans).
+	// The ROS package built with it: one URDF tree, physical inertials, the design's mass, wheels, limits and rate.
+	if (a.chassis && !a.chassis.stub) for (const r of rosBuiltChecks(a.chassis.dir)) v.push({ kind: "ros-package", message: `the robot's ROS package (${r.kind}): ${r.message}`, fields: ["mechanics"], affects: ["mechanics"] })
 	if (a.chassis && !a.chassis.stub) v.push(...interferenceChecks(a.chassis.mounts as { interference?: Interference } | null))
 	// The pack clear of the boards' standoffs (the 2D fit check doesn't know the boards' holes).
 	if (c.values.mechanics) v.push(...packOnStandoffs(c))

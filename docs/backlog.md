@@ -564,8 +564,13 @@ order (effort as estimated in the study):
       check too. The rover mock then showed the pack also standing on the main board's standoffs (246.7 mm³): a check
       that knows the boards' holes (packOnStandoffs) now fails it, and the layout solver moves unplaced boards along
       the centre line to clear the pack (the scripted rover: board at x -20, axle 40, wheelbase 90).
-- [ ] 2. Real inertias in the URDF from the built parts' mass properties (today boxes and cylinders marked ESTIMATES),
-      and `check_urdf` as a violation (~1 day).
+- [x] 2. Real inertias in the URDF from the built parts' mass properties (today boxes and cylinders marked ESTIMATES),
+      and `check_urdf` as a violation (~1 day). Built 19 Nov: the body's tensor is composed from the parts its mass
+      and centre of mass come from (chassisSpec bodyParts, parallel-axis, products included); the old plate box
+      overstated the rover's by 28-45 %. check_urdf's checks (one tree, defined links) and the inertial sanity gates
+      (positive mass, positive definite, triangle inequality) run in plain code in every build with the existing ROS
+      package checks, as `ros-package` (those checks ran only in tests before). Not check_urdf itself: the ROS image
+      lacks liburdfdom-tools and the post-run test's robot_state_publisher already loads the URDF.
 - [ ] 3. Click-to-reference editing: a pick in the 3D view names a feature and the code that made it, and the case
       designer edits that (1–2 days).
 - [ ] 4. A motor, bearing and fastener library with named frames and ISO 286 fits, from cadsmith's data with its MIT

@@ -63,6 +63,10 @@ export interface ChassisSpec {
 	sensor: { xMm: number; yMm: number; zMm: number; sizeMm: [number, number, number]; rangeMm: number; updateMs: number; holes: { yMm: number; zMm: number }[]; holeDiaMm: number }
 	massG: number
 	com: [number, number, number] // the whole rover's, wheels and caster included
+	// The body's parts (every mount but the wheels and the caster, the payload included): each one's mass, centre and box
+	// in the chassis frame (z from the floor), the same list massG and com come from. The URDF composes the body's
+	// inertia from them (src/ros/urdf.ts bodyInertia). Absent in a spec written before 19 Nov 2026.
+	bodyParts?: { what: string; atMm: [number, number, number]; sizeMm: [number, number, number]; massG: number }[]
 	wheelMassG: number // each; the simulation hangs these on the wheels and the rest on the chassis body
 	casterMassG: number
 	drive: { kind?: "differential" | "skid4"; trackMm: number; axleXMm: number; wheelbaseMm: number; wheelDiameterMm: number; wheelWidthMm: number }
@@ -241,6 +245,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs, holes: sensorHoles(sensor, mech.sensor.at, mech.chassis), holeDiaMm: SENSOR_HOLE_MM },
 		massG,
 		com,
+		bodyParts: ms.filter((m) => !m.what.startsWith("wheel:") && m.what !== "caster").map((m) => ({ what: m.what, atMm: [m.xMm, m.yMm, m.zMm] as [number, number, number], sizeMm: [...m.sizeMm] as [number, number, number], massG: m.massG })),
 		wheelMassG: wheel.massG,
 		casterMassG: caster && !skid ? caster.massG : 0,
 		drive: { kind: mech.drive.kind, trackMm: mech.drive.trackMm, axleXMm: mech.drive.axleXMm, wheelbaseMm: mech.drive.wheelbaseMm, wheelDiameterMm: wheel.diameterMm, wheelWidthMm: wheel.widthMm },

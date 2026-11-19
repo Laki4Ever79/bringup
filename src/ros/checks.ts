@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
+import { rosPackageName } from "./package.ts"
 import type { ChassisSpec } from "../tools/chassis.ts"
 import { bodyOf, maxWheelRadS } from "./urdf.ts"
 
@@ -8,7 +10,7 @@ import { bodyOf, maxWheelRadS } from "./urdf.ts"
 // like the mechanics checks; each finding names the file, the number and the design value it should be.
 
 export interface RosFinding {
-	kind: "ros-wheel-geometry" | "ros-limits" | "ros-rate" | "ros-inertials" | "ros-hardware"
+	kind: "ros-wheel-geometry" | "ros-limits" | "ros-rate" | "ros-inertials" | "ros-hardware" | "ros-urdf"
 	message: string
 }
 
@@ -39,9 +41,61 @@ export function rosControllerChecks(spec: ChassisSpec, yaml: string, file = "con
 	return out
 }
 
+// What check_urdf (liburdfdom) checks, in plain code so it runs in every build without the ROS image: the links form
+// one tree (unique names, every joint's parent and child a link, no link a child twice, one root); and what a physics
+// engine needs of each inertial (text-to-cad's inertial sanity gates): a positive mass, positive principal moments that
+// satisfy the triangle inequality (each at most the sum of the other two), a positive-definite tensor. A bad one makes
+// Gazebo or MuJoCo explode or silently drop the link.
+export function urdfStructureChecks(urdf: string, file = "urdf/robot.urdf"): RosFinding[] {
+	const out: RosFinding[] = []
+	const links = [...urdf.matchAll(/<link name="([^"]+)"/g)].map((m) => m[1])
+	const dup = links.filter((l, i) => links.indexOf(l) !== i)
+	if (dup.length) out.push({ kind: "ros-urdf", message: `${file}: link names used twice: ${[...new Set(dup)].join(", ")}` })
+	const joints = [...urdf.matchAll(/<joint name="([^"]+)"[^>]*>([\s\S]*?)<\/joint>/g)]
+		.map((m) => ({ name: m[1], parent: /<parent link="([^"]+)"/.exec(m[2])?.[1], child: /<child link="([^"]+)"/.exec(m[2])?.[1] }))
+		.filter((j) => j.parent !== undefined || j.child !== undefined) // ros2_control's <joint> entries have neither
+	const children = new Set<string>()
+	for (const j of joints) {
+		for (const [role, l] of [["parent", j.parent], ["child", j.child]] as const) if (!l || !links.includes(l)) out.push({ kind: "ros-urdf", message: `${file}: joint ${j.name}'s ${role} ${l ? `link ${l} isn't defined` : "is missing"}` })
+		if (j.child && children.has(j.child)) out.push({ kind: "ros-urdf", message: `${file}: link ${j.child} is the child of two joints: not a tree` })
+		if (j.child) children.add(j.child)
+	}
+	const roots = links.filter((l) => !children.has(l))
+	if (links.length && roots.length !== 1) out.push({ kind: "ros-urdf", message: `${file}: ${roots.length} root links (${roots.join(", ") || "none"}); a URDF has exactly one` })
+	for (const m of urdf.matchAll(/<link name="([^"]+)">([\s\S]*?)<\/link>/g)) {
+		const body = m[2]
+		if (!body.includes("<inertial>")) continue
+		const mass = Number(/<mass value="([^"]+)"/.exec(body)?.[1])
+		const n = (k: string) => Number(new RegExp(`${k}="([^"]+)"`).exec(/<inertia [^>]*\/>/.exec(body)?.[0] ?? "")?.[1] ?? NaN)
+		const [xx, yy, zz, xy, xz, yz] = ["ixx", "iyy", "izz", "ixy", "ixz", "iyz"].map(n)
+		if (!(mass > 0)) out.push({ kind: "ros-inertials", message: `${file}: link ${m[1]} has mass ${mass}: it must be positive` })
+		const eig = symEigen3(xx, yy, zz, xy, xz, yz)
+		const tol = 1e-12
+		if (!eig || eig.some((e) => !(e > tol))) out.push({ kind: "ros-inertials", message: `${file}: link ${m[1]}'s inertia isn't positive definite (principal moments ${eig ? eig.map((e) => e.toExponential(3)).join(", ") : "unreadable"})` })
+		else if (eig[0] + eig[1] < eig[2] * (1 - 1e-6)) out.push({ kind: "ros-inertials", message: `${file}: link ${m[1]}'s principal moments ${eig.map((e) => e.toExponential(3)).join(", ")} break the triangle inequality (no real body has them)` })
+	}
+	return out
+}
+
+// The eigenvalues of a symmetric 3×3 matrix, ascending (closed form; Smith 1961). Null for a non-finite entry.
+export function symEigen3(a: number, b: number, c: number, d: number, e: number, f: number): [number, number, number] | null {
+	if (![a, b, c, d, e, f].every(Number.isFinite)) return null
+	const p1 = d * d + e * e + f * f
+	if (p1 === 0) return [a, b, c].sort((x, y) => x - y) as [number, number, number]
+	const q = (a + b + c) / 3
+	const p2 = (a - q) ** 2 + (b - q) ** 2 + (c - q) ** 2 + 2 * p1
+	const p = Math.sqrt(p2 / 6)
+	const B = [[(a - q) / p, d / p, e / p], [d / p, (b - q) / p, f / p], [e / p, f / p, (c - q) / p]]
+	const det = B[0][0] * (B[1][1] * B[2][2] - B[1][2] * B[2][1]) - B[0][1] * (B[1][0] * B[2][2] - B[1][2] * B[2][0]) + B[0][2] * (B[1][0] * B[2][1] - B[1][1] * B[2][0])
+	const r = Math.min(1, Math.max(-1, det / 2))
+	const phi = Math.acos(r) / 3
+	const e1 = q + 2 * p * Math.cos(phi), e3 = q + 2 * p * Math.cos(phi + (2 * Math.PI) / 3)
+	return [e3, 3 * q - e1 - e3, e1].sort((x, y) => x - y) as [number, number, number]
+}
+
 // The URDF's total mass and its wheel joints against the design.
 export function rosUrdfChecks(spec: ChassisSpec, urdf: string, file = "urdf/robot.urdf"): RosFinding[] {
-	const out: RosFinding[] = []
+	const out: RosFinding[] = [...urdfStructureChecks(urdf, file)]
 	const masses = [...urdf.matchAll(/<mass value="([\d.eE+-]+)"/g)].map((m) => Number(m[1]))
 	const total = masses.reduce((a, b) => a + b, 0)
 	const want = spec.massG / 1000
@@ -64,4 +118,15 @@ export function rosPackageChecks(spec: ChassisSpec, pkgDir: string, robot = "rov
 		if (existsSync(urdf)) out.push(...rosUrdfChecks(spec, readFileSync(urdf, "utf8"), `urdf/${robot}.${hw}.urdf`))
 	}
 	return out
+}
+
+// The ROS package built with a chassis (tools/chassis.ts buildChassis: <dir>/ros/src/<pkg>), checked against the spec
+// it was built from (<dir>/spec.json), in every build: before 19 Nov 2026 these checks ran only in the test suite, so a
+// generated URDF that a robot_state_publisher or a simulator would refuse went unnoticed until the post-run ROS test
+// (when the ROS image was there at all). Nothing to check when the package or the spec isn't there.
+export function rosBuiltChecks(chassisDir: string, robot = "rover"): RosFinding[] {
+	const specPath = join(chassisDir, "spec.json")
+	const pkg = join(chassisDir, "ros", "src", rosPackageName(robot))
+	if (!existsSync(specPath) || !existsSync(pkg)) return []
+	return rosPackageChecks(JSON.parse(readFileSync(specPath, "utf8")) as ChassisSpec, pkg, robot)
 }
