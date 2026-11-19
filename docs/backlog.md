@@ -538,3 +538,20 @@ Or we can offer sending them the full package with all elements, mechanical or 3
       "Install & run"). Do: measure a fresh-clone setup on a clean machine (or container) step by step, remove every manual
       step that can be automated (prerequisite checks with the exact fix, one command end to end, a quick-look mode that
       needs no toolchain), and keep the README's "Install & run" section to that one path, tested on each release.
+
+## Lessons from text-to-CAD tools (the user, 19 Nov 2026: "proceed with implementation")
+
+A read-only study (bringup-cad, 19 Nov) of text-to-cad (earthtojake, MIT, v0.11.13), cadsmith (JonFermin, MIT) and
+the aradotso text-to-cad-harness skill (a rewrite of an older text-to-cad, nothing original). They check one part
+well; nothing re-checks the case when the board changes, which is what our contract does. Six ideas to borrow, in
+order (effort as estimated in the study):
+
+- [ ] 1. Exact interference between the chassis, case, board, motors and wheels as a contract check (~1 day).
+- [ ] 2. Real inertias in the URDF from the built parts' mass properties (today boxes and cylinders marked ESTIMATES),
+      and `check_urdf` as a violation (~1 day).
+- [ ] 3. Click-to-reference editing: a pick in the 3D view names a feature and the code that made it, and the case
+      designer edits that (1–2 days).
+- [ ] 4. A motor, bearing and fastener library with named frames and ISO 286 fits, from cadsmith's data with its MIT
+      notice kept (~1 day).
+- [ ] 5. Print-DFM as named violations: overhang, minimum wall, bed size (~0.5 day).
+- [ ] 6. A one-screen run summary with the change from the previous run and exit codes (~0.5 day).
