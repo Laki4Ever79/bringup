@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { recordRoutingFailure, ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -254,6 +254,11 @@ export function layoutAttempts(s: ContractSnapshot, attempts: PlacementOptions[]
 
 async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: number, dir: string, placement: PlacementOptions): Promise<BoardArtifact> {
 	writeFileSync(join(work, "board.circuit.tsx"), circuitFromContract(s, placement))
+	// tscircuit resolves react and its own packages from the work dir: linked to the repo's pinned install
+	// (tools/node/node_modules), so a build needs no network and uses the versions the repo tested (a mock Eurobot's board
+	// failed overnight on "DNSResolveFailed downloading package manifest react", 18 Nov 2026).
+	const modules = join(env.root, "tools", "node", "node_modules")
+	if (existsSync(modules) && !existsSync(join(work, "node_modules"))) symlinkSync(modules, join(work, "node_modules"), "dir")
 	const build = await run(env.tsci!, ["build", "board.circuit.tsx", "--kicad-project"], { cwd: work, timeoutMs: 300_000, env: { PATH: toolPath(env) } })
 	const circuitPath = join(work, "dist/board/circuit.json")
 	// Placed only: Freerouting routes it (src/tools/freerouting.ts).
@@ -294,7 +299,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 		writeFileSync(pcbFile, fix(readFileSync(pcbFile, "utf8"), drc.labelRefs))
 		drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro", usbRefs)
 	}
-	cpSync(work, dir, { recursive: true })
+	cpSync(work, dir, { recursive: true, filter: (src) => !src.endsWith("/node_modules") })
 
 	return {
 		revision,
