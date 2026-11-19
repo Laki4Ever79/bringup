@@ -204,6 +204,34 @@ const CASE_ALPHA = 0.34
 const IDLE_AFTER_MS = 3000
 const IDLE_SPEED = 0.12 // rad/s
 
+// Click-to-reference (19 Nov 2026, text-to-cad's prompt references): what a click on the case names. `refs` is the
+// case build's refs.json (each opening, built feature and standoff with its centre in case.stl's frame, a label and the
+// code that makes it); the nearest within `radius` mm of the picked point wins. Elsewhere the click names the surface:
+// the lid, the floor, or the wall whose side of the case's box (`bounds`, case.stl's) the point is nearest. Pure, so
+// tests can call it.
+export function nearestCaseRef(point, kind, refs, bounds, radius = 8) {
+	let best = null, bestD = radius
+	for (const r of refs ?? []) {
+		const d = Math.hypot(point[0] - r.atMm[0], point[1] - r.atMm[1], point[2] - r.atMm[2])
+		if (d <= bestD) { best = r; bestD = d }
+	}
+	if (best) return best
+	if (kind === "lid") return { ref: "case#lid", kind: "lid", label: "the lid", madeBy: "py/enclosure.py build_lid" }
+	if (kind === "post") return { ref: "case#standoffs", kind: "standoff", label: "the standoffs", madeBy: "py/enclosure.py build_case" }
+	if (bounds) {
+		const sides = [["left", point[0] - bounds.min[0]], ["right", bounds.max[0] - point[0]], ["bottom", point[1] - bounds.min[1]], ["top", bounds.max[1] - point[1]], ["floor", point[2] - bounds.min[2]]]
+		const [edge] = sides.reduce((a, b) => (b[1] < a[1] ? b : a))
+		if (edge === "floor") return { ref: "case#floor", kind: "floor", label: "the case's floor", madeBy: "py/enclosure.py build_case" }
+		return { ref: `case#wall:${edge}`, kind: "wall", label: `the ${edge} wall`, madeBy: "py/enclosure.py build_case" }
+	}
+	return { ref: "case", kind: "case", label: "the case", madeBy: "py/enclosure.py" }
+}
+
+// The reference a picked feature puts before the change request: what the case designer reads first.
+export function refPrefix(r) {
+	return r ? `[${r.ref}: ${r.label}; made by ${r.madeBy}] ` : ""
+}
+
 export function mountScene(host, opts = {}) {
 	if (getComputedStyle(host).position === "static") host.style.position = "relative"
 	const canvas = document.createElement("canvas")
@@ -489,6 +517,30 @@ export function mountScene(host, opts = {}) {
 	}
 	requestAnimationFrame(loop)
 
+	// Topmost triangle of any kind under the pointer: its index and kind, or null.
+	function pickTri(x, y) {
+		for (let k = drawn.length - 1; k >= 0; k--) {
+			const d = drawn[k]
+			const s = (p, q) => (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0])
+			const s1 = s(d.pa, d.pb), s2 = s(d.pb, d.pc), s3 = s(d.pc, d.pa)
+			if ((s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0)) return { t: d.t, kind: tris.kind[d.t] }
+		}
+		return null
+	}
+	// A click on the case, lid or a post: the triangle's centre in case.stl's frame, for nearestCaseRef.
+	function pickCase(x, y) {
+		const hit = pickTri(x, y)
+		if (!hit || !["case", "lid", "post"].includes(hit.kind)) return null
+		const p = tris.pos, i = hit.t * 9
+		return { kind: hit.kind, point: [(p[i] + p[i + 3] + p[i + 6]) / 3, (p[i + 1] + p[i + 4] + p[i + 7]) / 3, (p[i + 2] + p[i + 5] + p[i + 8]) / 3] }
+	}
+	function caseBounds() {
+		if (!caseTris) return null
+		const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity]
+		for (let i = 0; i < caseTris.length; i++) { min[i % 3] = Math.min(min[i % 3], caseTris[i]); max[i % 3] = Math.max(max[i % 3], caseTris[i]) }
+		return { min, max }
+	}
+
 	// Topmost part triangle under the pointer.
 	function pick(x, y) {
 		for (let k = drawn.length - 1; k >= 0; k--) {
@@ -529,7 +581,15 @@ export function mountScene(host, opts = {}) {
 		drag = null
 		canvas.style.cursor = "grab"
 	}
-	canvas.addEventListener("pointerup", end)
+	// A click (no drag) on the case names what was clicked (opts.onPickCase).
+	canvas.addEventListener("pointerup", (e) => {
+		if (drag && opts.onPickCase && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) {
+			const r = canvas.getBoundingClientRect()
+			const hit = pickCase(e.clientX - r.left, e.clientY - r.top)
+			if (hit) opts.onPickCase({ ...hit, bounds: caseBounds() })
+		}
+		end()
+	})
 	canvas.addEventListener("pointercancel", end)
 	canvas.addEventListener("pointerleave", () => {
 		if (hovered !== null) {

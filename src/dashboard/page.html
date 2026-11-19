@@ -143,6 +143,9 @@
 	#changebar .box { display: flex; align-items: center; min-width: 0; }
 	#change-input { flex: 1; min-width: 160px; height: 58px; padding: 0 18px; border: 0; outline: none; background: transparent; font: 500 clamp(17px, 1.35vw, 22px)/1 var(--sans); }
 	#change-input::placeholder { color: var(--ink-3); }
+	/* A feature picked on the case (click-to-reference): it goes before the request, so the case designer edits that one. */
+	#change-ref { flex: none; margin-left: 12px; padding: 6px 10px; border: 1px solid var(--line, currentColor); border-radius: 999px; font: 500 13px/1.2 var(--mono, monospace); cursor: pointer; white-space: nowrap; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+	#change-ref.hidden { display: none; }
 	#change-input:disabled { cursor: not-allowed; }
 	#send-btn { border: 0; border-left: 2px solid var(--ink); background: var(--ink); color: var(--paper); padding: 0 22px; font: 800 20px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
 	#send-btn:hover:not(:disabled) { background: var(--signal); }
@@ -685,7 +688,7 @@
 	<!-- The composer: change one thing, any time during the run -->
 	<footer id="changebar" class="hidden">
 		<span class="who">Change <q>one thing</q></span>
-		<div class="box"><input id="change-input" placeholder="Ask for a change while the agents work…" autocomplete="off" maxlength="500" aria-label="Change request"></div>
+		<div class="box"><button id="change-ref" class="hidden" type="button" title="The case feature this change is about (click to clear)"></button><input id="change-input" placeholder="Ask for a change while the agents work…" autocomplete="off" maxlength="500" aria-label="Change request"></div>
 		<button id="send-btn" title="Send the change (Enter); ⌘K focuses the box">Send ⏎</button>
 	</footer>
 
@@ -1050,7 +1053,19 @@
 		let pcb = null, scene = null
 		const hover = (ref) => setHover(ref)
 		try { pcb = (await import("/pcb-view.js")).mountPcb($("pcb-host"), { onHover: hover, onView: (v) => { S.pcbView = v; drawRulers() } }) } catch { pcb = null }
-		try { scene = (await import("/scene3d.js")).mountScene($("scene-host"), { onHover: hover }) } catch { scene = null }
+		// A click on the case names the feature it hit (refs.json); the composer carries it to the case designer.
+		let sceneMod = null
+		const pickCase = (hit) => {
+			if (!sceneMod) return
+			S.pickedRef = sceneMod.nearestCaseRef(hit.point, hit.kind, S.caseRefs, hit.bounds)
+			const chip = $("change-ref")
+			chip.textContent = S.pickedRef.label
+			chip.title = `${S.pickedRef.ref}, made by ${S.pickedRef.madeBy} (click to clear)`
+			chip.classList.remove("hidden")
+			$("change-input").focus()
+		}
+		$("change-ref").addEventListener("click", () => { S.pickedRef = null; $("change-ref").classList.add("hidden") })
+		try { sceneMod = await import("/scene3d.js"); scene = sceneMod.mountScene($("scene-host"), { onHover: hover, onPickCase: pickCase }) } catch { scene = null }
 		if (!pcb) $("tabs").querySelector('[data-tab="pcb"]').disabled = true
 		const wire = scene ? null : wireframe($("scene-host"))
 		setTab(pcb ? "pcb" : "render")
@@ -1373,6 +1388,7 @@
 				const buf = await r.arrayBuffer()
 				// The lid, the spec (heights) and the measured standoffs: optional, older runs have none of them.
 				const opt = async (p, as) => { try { const x = await fetch(file(`${dir}/${p}`)); return x.ok ? await x[as]() : null } catch { return null } }
+				opt("refs.json", "json").then((r) => { S.caseRefs = Array.isArray(r) ? r : [] })
 				const [lid, spec, standoffs, print, vents] = await Promise.all([opt("lid.stl", "arrayBuffer"), opt("spec.json", "json"), opt("standoffs.json", "json"), opt("print.json", "json"), opt("vents.json", "json")])
 				S.vents = Array.isArray(vents) ? vents : []
 				applyMarks()
@@ -2258,18 +2274,21 @@
 		})
 		$("change-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChange($("change-input").value) })
 		async function sendChange(raw) {
-			const text = String(raw ?? "").trim()
-			if (!text || $("change-input").disabled) return
+			const typed = String(raw ?? "").trim()
+			if (!typed || $("change-input").disabled) return
+			const text = `${sceneMod?.refPrefix(S.pickedRef) ?? ""}${typed}`
 			$("change-input").disabled = true
 			setBarButtons(true)
 			try {
 				const res = await fetch(`/api/runs/${encodeURIComponent(id)}/requests`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) })
 				if (!res.ok) throw new Error((await res.json()).error)
 				$("change-input").value = ""
+				S.pickedRef = null
+				$("change-ref").classList.add("hidden")
 				// The newest ripple takes the stage.
 				S.pinned = null
 				fetchRequests()
-			} catch (err) { $("change-input").value = text; $("change-input").placeholder = `couldn't send: ${err.message ?? err}` }
+			} catch (err) { $("change-input").value = typed; $("change-input").placeholder = `couldn't send: ${err.message ?? err}` }
 			// Sending disabled the input: force a refresh.
 			barKey = ""
 			syncChangeBar()

@@ -28,7 +28,7 @@ export interface SceneView {
 	// rgb lights the part; null shows it dark; ref null stops mirroring.
 	setLit(ref: string | null, rgb: [number, number, number] | null): void
 }
-export function mountScene(el: HTMLElement, opts?: { onHover?(ref: string | null): void; parts?: { ref: string; role?: string }[] }): SceneView
+export function mountScene(el: HTMLElement, opts?: { onHover?(ref: string | null): void; onPickCase?(hit: { kind: string; point: [number, number, number]; bounds: { min: number[]; max: number[] } | null }): void; parts?: { ref: string; role?: string }[] }): SceneView
 export interface PaintItem {
 	kind: string
 	depth: number
@@ -37,3 +37,6 @@ export interface PaintItem {
 }
 export function paintOrder<T extends PaintItem>(items: T[], opts: { boardDepth: number; boardZ: number; above: boolean }): T[]
 export function ventOutline(vent: { ref?: string; xMm: number; yMm: number; widthMm: number; heightMm: number; openMm2?: number }, origin: number[], z: number): { box: number[][]; slots: number[][][] }
+export interface CaseRef { ref: string; kind: string; label: string; atMm?: [number, number, number]; madeBy: string }
+export function nearestCaseRef(point: [number, number, number], kind: string, refs: CaseRef[] | null | undefined, bounds: { min: number[]; max: number[] } | null | undefined, radius?: number): CaseRef
+export function refPrefix(r: CaseRef | null | undefined): string

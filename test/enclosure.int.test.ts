@@ -165,3 +165,33 @@ test("the module's antenna hangs past the board edge, and the built case and lid
 		assert.deepEqual(checkConsistency(c, { enclosure }).filter((v) => /cutout|standoff|vent|port/.test(v.kind)), [], `USB-C on the ${edge}`)
 	}
 })
+
+// Click-to-reference editing (19 Nov 2026, text-to-cad's prompt references): refs.json names each opening, built
+// feature and standoff with its centre in case.stl's frame and the function that makes it, so a click on the case can
+// name the exact feature the change is about.
+test("refs.json names each opening, built feature and standoff where the case has it, and the code that makes it", { skip }, () => {
+	const dir = tmp()
+	const spec = enclosureSpec(fixtureContract()) as Record<string, any>
+	spec.features = [{ id: "gland", kind: "hole", edge: "left", offsetMm: 15, diameterMm: 6 }]
+	writeFileSync(join(dir, "spec.json"), JSON.stringify(spec))
+	const r = spawnSync(python!, [join(root, "py/enclosure.py"), join(dir, "spec.json"), dir], { encoding: "utf8" })
+	assert.equal(r.status, 0, r.stderr)
+	const refs = JSON.parse(readFileSync(join(dir, "refs.json"), "utf8")) as { ref: string; kind: string; label: string; atMm: [number, number, number]; madeBy: string }[]
+	const cutouts = JSON.parse(readFileSync(join(dir, "cutouts.json"), "utf8")) as { ref: string }[]
+	for (const c of cutouts) assert.ok(refs.some((x) => x.ref === `case#cutout:${c.ref}`), `no ref for ${c.ref}`)
+	const gland = refs.find((x) => x.ref === "case#feature:gland")
+	assert.ok(gland, JSON.stringify(refs.map((x) => x.ref)))
+	assert.match(gland.label, /6 mm hole in the left wall/)
+	// The left wall is the case's lowest x (case.stl's frame): the hole's centre sits in it.
+	const stl = readFileSync(join(dir, "case.stl"))
+	const n = stl.readUInt32LE(80)
+	let minX = Infinity
+	for (let i = 0; i < n; i++) for (let v = 0; v < 3; v++) minX = Math.min(minX, stl.readFloatLE(84 + i * 50 + 12 + v * 12))
+	assert.ok(Math.abs(gland.atMm[0] - minX) < spec.wallMm + 0.5, `hole at x ${gland.atMm[0]}, left wall at ${minX}`)
+	const src = readFileSync(join(root, "py/enclosure.py"), "utf8").split("\n")
+	for (const x of refs) {
+		const [, line, fn] = /^py\/enclosure\.py:(\d+) (\w+)$/.exec(x.madeBy) ?? []
+		assert.ok(line && src[Number(line) - 1].startsWith(`def ${fn}(`), `${x.ref}: ${x.madeBy}`)
+	}
+	assert.ok(refs.some((x) => x.kind === "standoff"))
+})
