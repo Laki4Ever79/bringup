@@ -13,12 +13,15 @@ export interface QemuTarget {
 	bin: string // the binary, relative to the repo root
 	chip: string // esptool's --chip
 	simEnv: string // the rover firmware's simulation build (templates/fw-rover/platformio.ini)
+	flash: string // the flash image's size: the board's own (PlatformIO writes it into the image header, and the
+	// firmware asserts at boot when QEMU's flash is smaller: the S3 sim's first boot, 19 Nov 2026, "Detected size(4096k)
+	// smaller than the size in the binary image header(8192k)")
 }
 
 const TARGETS: Record<QemuMachine, QemuTarget> = {
-	esp32c3: { machine: "esp32c3", bin: "tools/qemu/bin/qemu-system-riscv32", chip: "esp32c3", simEnv: "esp32c3_sim" },
-	esp32s3: { machine: "esp32s3", bin: "tools/qemu/bin/qemu-system-xtensa", chip: "esp32s3", simEnv: "esp32s3_sim" },
-	esp32: { machine: "esp32", bin: "tools/qemu/bin/qemu-system-xtensa", chip: "esp32", simEnv: "esp32_sim" },
+	esp32c3: { machine: "esp32c3", bin: "tools/qemu/bin/qemu-system-riscv32", chip: "esp32c3", simEnv: "esp32c3_sim", flash: "4MB" },
+	esp32s3: { machine: "esp32s3", bin: "tools/qemu/bin/qemu-system-xtensa", chip: "esp32s3", simEnv: "esp32s3_sim", flash: "8MB" },
+	esp32: { machine: "esp32", bin: "tools/qemu/bin/qemu-system-xtensa", chip: "esp32", simEnv: "esp32_sim", flash: "4MB" },
 }
 
 export const QEMU_MACHINES = Object.keys(TARGETS) as QemuMachine[]
