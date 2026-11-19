@@ -35,7 +35,7 @@
 		"boards": [
 			{
 				"name": "main",
-				"xMm": 0,
+				"xMm": -15,
 				"yMm": 0,
 				"rotDeg": 0,
 				"outline": {
@@ -46,7 +46,7 @@
 			},
 			{
 				"name": "climate",
-				"xMm": 48,
+				"xMm": -55,
 				"yMm": 0,
 				"rotDeg": 0,
 				"outline": {

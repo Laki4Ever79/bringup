@@ -63,11 +63,11 @@ test("a running robot takes a moved, rotated board, a narrower plate and a re-ro
 		const first = spec()
 		assert.equal(first.assembly?.boards.find((b) => b.name === "climate")?.outlineSource, "built")
 
-		// Round 2: one Apply, built with the page's editor: climate 10 mm back, turned 90°, the plate 6 mm narrower: the system's plate already uses all the rover's brief allows (150 × 96 mm: 150 × 120 mm less the 10 mm wheels and their clearance), so a bigger one is refused by main's mech-fit, as it should be, and a shorter one leaves the battery and sensor off the plate.
+		// Round 2: one Apply, built with the page's editor: climate 10 mm forward, turned 90°, the plate 6 mm narrower: the system's plate already uses all the rover's brief allows (150 × 96 mm: 150 × 120 mm less the 10 mm wheels and their clearance), so a bigger one is refused by main's mech-fit, as it should be, and a shorter one leaves the battery and sensor off the plate.
 		const ed = editor({ assembly: first.assembly!, links: first.links })
 		const c0 = first.assembly!.boards.find((b) => b.name === "climate")!
 		assert.ok(ed.apply({ kind: "rotate", board: "climate" }))
-		assert.ok(ed.apply({ kind: "move", board: "climate", xMm: c0.xMm - 10, yMm: c0.yMm }))
+		assert.ok(ed.apply({ kind: "move", board: "climate", xMm: c0.xMm + 10, yMm: c0.yMm })) // forward: at x -55 since 19 Nov, 10 mm back is off the plate
 		assert.ok(ed.apply({ kind: "plate", lengthMm: first.assembly!.plate!.lengthMm, widthMm: first.assembly!.plate!.widthMm - 6 }))
 		assert.deepEqual(ed.findings().filter((f) => f.level === "error"), [])
 		const diff1 = ed.diff()!
@@ -83,7 +83,7 @@ test("a running robot takes a moved, rotated board, a narrower plate and a re-ro
 		const sys2 = spec()
 		const c2 = sys2.assembly!.boards.find((b) => b.name === "climate")!
 		assert.equal(c2.rotDeg, 90)
-		assert.equal(c2.xMm, c0.xMm - 10)
+		assert.equal(c2.xMm, c0.xMm + 10)
 		assert.deepEqual(sys2.assembly!.plate, { lengthMm: first.assembly!.plate!.lengthMm, widthMm: first.assembly!.plate!.widthMm - 6 })
 		const newest = (() => {
 			const specs = chassisSpecs(boardDir(out, "main")).sort((a, b) => rev(a) - rev(b))
