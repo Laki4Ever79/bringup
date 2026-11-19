@@ -105,6 +105,11 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
     rng = spec["sensor"]["rangeMm"] / 1000
     pack, motor = spec["pack"], spec["motor"]
     cpr = motor.get("encoderCountsPerRev")
+    # The board's gyro (spec imu, an IMU on the board): its heading since the start, the body's yaw unwrapped, with an
+    # angle random walk and a residual bias (both ESTIMATES, tools/chassis.ts IMU_SIM). Seeded: a drive is reproducible.
+    imu = spec.get("imu")
+    gyro_rng = np.random.default_rng(1)
+    gyro = {"last": None, "turned": 0.0, "walk": 0.0}
     ohm = spec["estimates"].get("packOhm", 0.15)
     capacity_as = pack["mAh"] * 3.6
     L = spec["plate"]["lengthMm"] / 1000
@@ -247,7 +252,16 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10
             enc = ""
             if cpr:
                 enc = f" {int(data.qpos[jl.qposadr[0]] / (2 * math.pi) * cpr)} {int(data.qpos[jr.qposadr[0]] / (2 * math.pi) * cpr)}"
-            f.write(f"S {int(round(data.time * 1000))} {reading} {PAYLOAD[0]} {PAYLOAD[1]}{enc}\n")
+            gyro_txt = ""
+            if imu:
+                if gyro["last"] is not None:
+                    gyro["turned"] += math.atan2(math.sin(yaw - gyro["last"]), math.cos(yaw - gyro["last"]))
+                gyro["last"] = yaw
+                dt = steps * model.opt.timestep
+                gyro["walk"] += math.radians(imu["noiseDegPerSqrtS"]) * math.sqrt(dt) * float(gyro_rng.standard_normal())
+                h = gyro["turned"] + gyro["walk"] + math.radians(imu["biasDegPerS"]) * data.time
+                gyro_txt = f" H {int(round(h * 1000))}"
+            f.write(f"S {int(round(data.time * 1000))} {reading} {PAYLOAD[0]} {PAYLOAD[1]}{enc}{gyro_txt}\n")
             f.flush()
             if wall_contact:
                 break

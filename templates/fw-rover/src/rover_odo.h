@@ -13,6 +13,7 @@ struct RoverOdo {
 	float x = 0, y = 0, th = 0;
 	int32_t lastL = 0, lastR = 0;
 	bool started = false;
+	float lastHeading = NAN; // the gyro's heading at the last tick (NAN: no gyro)
 };
 
 static inline float rover_wrap(float a) {
@@ -22,17 +23,23 @@ static inline float rover_wrap(float a) {
 }
 
 // Each tick: the wheels' travel since the last one (counts x mm per count), the arc it makes, the pose moved along it.
-inline void rover_odo_step(RoverOdo &o, int32_t encL, int32_t encR, float mmPerCount, float trackMm) {
+// With a gyro (headingRad not NAN: an IMU on the board, hw_heading_rad) the turn comes from its heading, the distance
+// from the wheels: wheels scrub on a turn in place, so their difference under-reads it (run 20b's S3 in simulation,
+// 19 Nov 2026: 0.679 rad counted for 0.816 turned, a go-to 75 mm off); without one, from the wheels' difference.
+inline void rover_odo_step(RoverOdo &o, int32_t encL, int32_t encR, float mmPerCount, float trackMm, float headingRad = NAN) {
 	if (!o.started) {
 		o.lastL = encL;
 		o.lastR = encR;
+		o.lastHeading = headingRad;
 		o.started = true;
 		return;
 	}
 	const float dl = (float)(encL - o.lastL) * mmPerCount, dr = (float)(encR - o.lastR) * mmPerCount;
 	o.lastL = encL;
 	o.lastR = encR;
-	const float ds = (dl + dr) / 2, dth = (dr - dl) / trackMm;
+	const bool gyro = !isnan(headingRad) && !isnan(o.lastHeading);
+	const float ds = (dl + dr) / 2, dth = gyro ? rover_wrap(headingRad - o.lastHeading) : (dr - dl) / trackMm;
+	o.lastHeading = headingRad;
 	o.x += ds * cosf(o.th + dth / 2);
 	o.y += ds * sinf(o.th + dth / 2);
 	o.th = rover_wrap(o.th + dth);

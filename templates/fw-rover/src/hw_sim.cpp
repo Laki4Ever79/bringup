@@ -1,7 +1,8 @@
 // The simulation build (-DHW_SIM): the four functions talk to the bridge (py/mech/drive.py) over UART1 in lock-step.
 // Each hw_distance_mm() is one control tick: it sends the motors' duties ("M <tick> <left> <right>") and waits for the
-// bridge to step the physics and answer ("S <now_ms> <distance_mm|-1> <temp_c> <rh> [<enc_left> <enc_right>]"). See SIM.md.
+// bridge to step the physics and answer ("S <now_ms> <distance_mm|-1> <temp_c> <rh> [<enc_left> <enc_right>] [H <heading_mrad>]"). See SIM.md.
 #ifdef HW_SIM
+#include <string.h>
 #include <Arduino.h>
 #include "hw.h"
 #include "hw_pins.h"
@@ -12,6 +13,7 @@ static float temp = NAN, hum = NAN;
 #ifdef ROVER_TURN_COUNTS
 static long enc[2] = {0, 0};
 #endif
+static float heading = NAN;
 
 void hw_begin(void) { Serial1.begin(921600); }
 
@@ -39,6 +41,9 @@ int hw_distance_mm(void) {
 #else
 	if (sscanf(line, "S %lu %d %f %f", &t, &d, &tc, &rh) >= 2) { now = t; temp = tc; hum = rh; }
 #endif
+	// The board's gyro, when the design has an IMU: " H <heading mrad>" after the rest (the drive bridge's estimate).
+	const char *h = strstr(line, " H ");
+	if (h) heading = atol(h + 3) / 1000.0f;
 	return d;
 }
 
@@ -58,5 +63,5 @@ int32_t hw_encoder(int side) { return (int32_t)enc[side & 1]; }
 // QEMU has no radio: the reading is printed (main.cpp) and the BTHome bytes are the logger's, checked on the host.
 void hw_report(bool, float, float) {}
 // The simulation has no gyro (the bridge sends wheel counts only): the turn closes on the counts, as without an IMU.
-float hw_heading_rad(void) { return NAN; }
+float hw_heading_rad(void) { return heading; }  // NAN until the bridge sends one (a design without an IMU never does)
 #endif
