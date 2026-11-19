@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process"
+import { countsPerRev, quadratureWired } from "../mechanics/firmware.ts"
 import { ESTOP_HEAD_CLEARANCE_MM, ESTOP_PANEL_MM, estopPart } from "../mechanics/safety.ts"
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from "node:fs"
 import { writeRosPackage } from "../ros/package.ts"
@@ -249,7 +250,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		wheelMassG: wheel.massG,
 		casterMassG: caster && !skid ? caster.massG : 0,
 		drive: { kind: mech.drive.kind, trackMm: mech.drive.trackMm, axleXMm: mech.drive.axleXMm, wheelbaseMm: mech.drive.wheelbaseMm, wheelDiameterMm: wheel.diameterMm, wheelWidthMm: wheel.widthMm },
-		motor: { ratedV: motor.ratedV, noLoadRpm: motor.noLoadRpm, stallTorqueNm: motor.stallTorqueNm, stallA: motor.stallA, noLoadA: motor.noLoadA, ...(motor.encoder ? { encoderCountsPerRev: (motor.encoder.cpr / 2) * motor.gearRatio } : {}) },
+		motor: { ratedV: motor.ratedV, noLoadRpm: motor.noLoadRpm, stallTorqueNm: motor.stallTorqueNm, stallA: motor.stallA, noLoadA: motor.noLoadA, ...(motor.encoder ? { encoderCountsPerRev: countsPerRev(motor, quadratureWired(s.values.pins))! } : {}) },
 		pack: { nominalV: pack.nominalV, fullV: pack.fullV, cutoffV: pack.cutoffV, mAh: pack.mAh, internalOhm: pack.internalOhm ?? null },
 		payloadG: motion.payloadG,
 		driverPeakA: Number(cat.boardParts.find((p) => p.mpn === (v.parts ?? []).find((x) => x.role === "motor-driver")?.mpn)?.peakA ?? NaN) || null,

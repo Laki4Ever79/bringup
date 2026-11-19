@@ -6,9 +6,10 @@ import { sweepStaleTemp } from "../tmp.ts"
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { assemblyFitError, briefPlateLimitMm, mergeRequest, withOutlines, type SystemAssembly } from "./assembly.ts"
+import { assemblyFitError, briefPlateLimitMm, mergeRequest, withOutlines, type SystemAssembly, clearPackSlot, packSlotOf } from "./assembly.ts"
 import type { BoardAssembly } from "../mechanics/assembly.ts"
 import { plateLimitMm } from "../mechanics/checks.ts"
+import { chassisSpec } from "../tools/chassis.ts"
 import { appendRequest, watchJsonl } from "../runner/requests.ts"
 import { readTrace } from "../runner/ripple.ts"
 import { startRunProcess, type RunProcess } from "../runner/spawn-run.ts"
@@ -233,6 +234,15 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 		if (Object.keys(built).length > 0 || limitChanged) {
 			laidOutFor = limit
 			assembly = withOutlines(assembly, built, limit)
+			writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
+		}
+		// Main's pack slot (assembly.ts clearPackSlot): once main's mechanics have a pack and a sensor, the boards over the
+		// stretch the pack needs behind the sensor's bracket move behind it, so main's mechanics can place it there.
+		const owner = Object.values(contracts).find((x) => x?.values.mechanics?.battery)
+		const chassis = owner ? chassisSpec(owner) : null
+		const cleared = chassis ? clearPackSlot(assembly, packSlotOf(chassis), limit) : assembly
+		if (cleared !== assembly) {
+			assembly = cleared
 			writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
 		}
 		for (const b of designed) {
