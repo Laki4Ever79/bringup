@@ -14,7 +14,7 @@ import { mergeFlash, runImage } from "./emulator.ts"
 import { testkitHeader } from "../contract/testkit.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { runDriverTests } from "./driver-tests.ts"
-import { envFor, platformioEnvs, type FirmwarePurpose } from "../mcu/firmware.ts"
+import { envFor, esp32FamilyEnvs, platformioEnvs, type FirmwarePurpose } from "../mcu/firmware.ts"
 
 const TIMEOUT_MS = 600_000
 
@@ -94,11 +94,13 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 		await cp(join(root, "templates/fw/include/linkframe.h"), join(dir, "include/linkframe.h"))
 		await cp(join(root, "templates/fw/include/linkcbor.h"), join(dir, "include/linkcbor.h"))
 		await cp(join(root, "templates/fw/include/linkcyphal.h"), join(dir, "include/linkcyphal.h"))
-		// An ESP32-S3 robot (moved up for its pins, contract/mcu-move.ts): `pio run` builds the template's esp32s3 env.
-		if (mcuProfileOf(s.values.parts)?.id === "esp32-s3-mini-1") {
-			const ini = join(dir, "platformio.ini")
-			await writeFile(ini, (await readFile(ini, "utf8")).replace(/^default_envs = .*$/m, "default_envs = esp32s3"))
-		}
+		// The robot's own chip (an ESP32-S3 moved up for its pins, contract/mcu-move.ts): `pio run` builds that chip's env
+		// of the rover template, never the C3's on another chip.
+		const roverEnv = envFor(mcuProfileOf(s.values.parts), "app")
+		const rIni = join(dir, "platformio.ini")
+		const rText = await readFile(rIni, "utf8")
+		if (!new RegExp(`^\\[env:${roverEnv}\\]`, "m").test(rText)) throw new Error(`the rover firmware has no build for the ${mcuProfileOf(s.values.parts)?.mpn} (no [env:${roverEnv}] in templates/fw-rover/platformio.ini)`)
+		await writeFile(rIni, rText.replace(/^default_envs = .*$/m, `default_envs = ${roverEnv}`))
 		return rover
 	}
 	const header = pinsHeader(s)
@@ -130,6 +132,14 @@ export async function prepareFirmware(root: string, dir: string, s: ContractSnap
 	const text = await readFile(ini, "utf8")
 	await writeFile(join(dir, "sbom.cdx.json"), sbomJson(s, text, s.revision))
 	const profile = mcuProfileOf(s.values.parts)
+	// Another ESP32-family chip: the C3's envs cloned for it (esp32FamilyEnvs), its product env the default; the
+	// partition table below goes on its product env.
+	const appEnv = envFor(profile, "app")
+	if (profile && profile.firmware.arch === "esp32" && appEnv !== "esp32c3") {
+		const own = `${text.replace(/^default_envs = .*$/m, `default_envs = ${appEnv}`).trimEnd()}\n\n${esp32FamilyEnvs(text, profile)}`
+		await writeFile(ini, own.replace(new RegExp(`(\\[env:${appEnv}\\]\\n(?:[^\\[]*?\\n)?board = [^\\n]+\\n)(board_build\\.partitions = .*\\n)?`), `$1board_build.partitions = ${partitionTable(s)}\n`))
+		return header
+	}
 	if (profile && profile.firmware.arch !== "esp32") {
 		// Another chip: its envs, generated from its profile, appended; `pio run` with no -e builds its product env. The
 		// template's ESP32 envs stay in the file, unbuilt.
