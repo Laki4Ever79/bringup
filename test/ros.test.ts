@@ -153,3 +153,58 @@ test("portOpen tells a listening port from a closed one", async () => {
 	await new Promise<void>((r) => srv.close(() => r()))
 	assert.equal(await portOpen(port), false)
 })
+
+// Real inertias (19 Nov 2026, text-to-cad's lesson): the body's inertia is composed from the parts the mass and centre of
+// mass come from, not one plate-sized box (which overstated the rover's by 28-45 %).
+test("the URDF body's inertia is composed from its parts: the same mass, a smaller spread than the plate box, a real ixz", async () => {
+	const { bodyOf, bodyInertia } = await import("../src/ros/urdf.ts")
+	const s = spec()
+	const b = bodyOf(s)
+	const parts = s.bodyParts!
+	assert.ok(parts.some((p) => p.what === "battery") && !parts.some((p) => p.what.startsWith("wheel:") || p.what === "caster"))
+	assert.ok(Math.abs(parts.reduce((t, p) => t + p.massG, 0) / 1000 - b.bodyKg) < 1e-9, "the parts weigh what the body does")
+	const i = bodyInertia(s, b.com)!
+	const L = s.plate.lengthMm / 1000, W = s.plate.widthMm / 1000
+	assert.ok(i.izz < (b.bodyKg * (L * L + W * W)) / 12, "the weight sits nearer the centre than a uniform plate")
+	assert.notEqual(i.ixz, 0, "the pack forward and up of the centre of mass tilts the tensor")
+	const u = robotUrdf(s)
+	assert.match(u, /The body's inertia is composed from its \d+ parts/)
+	assert.match(u, new RegExp(`izz="${Number(i.izz.toPrecision(8))}"`))
+	assert.deepEqual(rosUrdfChecks(s, u), [])
+	// A spec written before bodyParts: the old box, still a valid URDF.
+	const { bodyParts: _, ...old } = s
+	assert.equal(bodyInertia(old, b.com), null)
+	assert.deepEqual(rosUrdfChecks(old, robotUrdf(old)), [])
+})
+
+test("what check_urdf would refuse is caught: two roots, a dangling joint, a non-positive mass, an impossible inertia", async () => {
+	const { urdfStructureChecks, symEigen3 } = await import("../src/ros/checks.ts")
+	assert.deepEqual(symEigen3(2, 3, 1, 0, 0, 0), [1, 2, 3])
+	const e = symEigen3(2, 2, 3, 1, 0, 0)!
+	assert.ok(Math.abs(e[0] - 1) < 1e-6 && Math.abs(e[1] - 3) < 1e-6 && Math.abs(e[2] - 3) < 1e-6, "a repeated root: the closed form is good to ~1e-8")
+	const u = robotUrdf(spec())
+	const kinds = (x: string) => urdfStructureChecks(x).map((f) => f.message)
+	assert.deepEqual(kinds(u), [])
+	assert.match(kinds(u.replace('<link name="base_footprint"/>', '<link name="base_footprint"/>\n  <link name="stray_link"/>')).join(), /2 root links \(base_footprint, stray_link\)/)
+	assert.match(kinds(u.replace('<parent link="base_link"/>', '<parent link="base_lnk"/>')).join(), /parent link base_lnk isn't defined/)
+	const bad = u.replace(/(<link name="left_wheel_link">[\s\S]*?)<mass value="[^"]+"\/>/, '$1<mass value="0"/>')
+	assert.match(kinds(bad).join(), /link left_wheel_link has mass 0/)
+	const tri = u.replace(/(<link name="left_wheel_link">[\s\S]*?<inertia )[^/]*\/>/, '$1ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="3"/>')
+	assert.match(kinds(tri).join(), /left_wheel_link's principal moments .* break the triangle inequality/)
+})
+
+test("a built chassis whose ROS package a simulator would refuse is a ros-package violation in every build", async () => {
+	const { checkConsistency } = await import("../src/contract/consistency.ts")
+	const s = spec()
+	const dir = tempDir()
+	writeFileSync(join(dir, "spec.json"), JSON.stringify(s))
+	const pkg = writeRosPackage(join(dir, "ros", "src"), s, { robot: "rover", revision: 9 })
+	const c = rover()
+	const chassis = { chassis: { ok: true, revision: 9, dir, files: [], mounts: null } } as never
+	assert.ok(!checkConsistency(c, chassis).some((v) => v.kind === "ros-package"), "the generated package is clean")
+	const u = join(pkg, "urdf", "rover.mock.urdf")
+	writeFileSync(u, readFileSync(u, "utf8").replace(/<mass value="([\d.]+)"\/>/, '<mass value="-1"/>'))
+	const v = checkConsistency(c, chassis).filter((x) => x.kind === "ros-package")
+	assert.ok(v.some((x) => /has mass -1/.test(x.message)), JSON.stringify(v))
+	assert.deepEqual(v[0].affects, ["mechanics"])
+})
