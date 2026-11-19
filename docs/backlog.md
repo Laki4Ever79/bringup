@@ -571,6 +571,12 @@ order (effort as estimated in the study):
       (positive mass, positive definite, triangle inequality) run in plain code in every build with the existing ROS
       package checks, as `ros-package` (those checks ran only in tests before). Not check_urdf itself: the ROS image
       lacks liburdfdom-tools and the post-run test's robot_state_publisher already loads the URDF.
+- [ ] Examples on the new layouts (19 Nov): the rover is re-saved (board at x -20, pack at 40). Rover + climate can't
+      settle yet: the system's own board layout (src/system/assembly.ts) doesn't know the pack and the sensor's bracket,
+      so main has no pack spot (bringup-system has it; a brief edit doesn't help, the system overrides it). Rover with a
+      Pi: its mock hit the wall in the drive simulation after the pack moved 85 -> 80; being settled. The examples'
+      still.png pictures are hand-made screenshots, so the rover's shows the old layout: a scripted capture (as the
+      assembly pictures do) would keep every still current.
 - [ ] 3. Click-to-reference editing: a pick in the 3D view names a feature and the code that made it, and the case
       designer edits that (1–2 days).
 - [ ] 4. A motor, bearing and fastener library with named frames and ISO 286 fits, from cadsmith's data with its MIT
