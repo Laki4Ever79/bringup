@@ -379,6 +379,59 @@ def interference(spec, part):
     return {"pairs": pairs, "clashes": clashes, "unmeasured": unmeasured}
 
 
+def _made_at(marker):
+    """Where the chassis makes something: this file and the line of the comment that starts that code in build()."""
+    for n, line in enumerate(Path(__file__).read_text().splitlines(), 1):
+        if marker in line:
+            return f"py/chassis.py:{n} build"
+    return "py/chassis.py build"
+
+
+def chassis_refs(spec):
+    """What a click on the printed chassis can name (refs.json, the same shape as the case's: py/enclosure.py
+    case_refs): each board's standoffs, each motor's mount, the caster's mount, the pack's rails and strap bosses, the
+    sensor's bracket, the e-stop's deck, the mast's socket and the sticker panel, with a centre in chassis.stl's frame
+    (the plate's centre, z = 0 its underside), a label a person reads and the code that makes it. Anything else a click
+    hits is the plate."""
+    p = spec["plate"]
+    t = p["thicknessMm"]
+    so = spec.get("standoffMm", 10)
+    r3 = lambda x, y, z: [round(x, 2), round(y, 2), round(z, 2)]  # noqa: E731
+    refs = []
+    for b in spec["boards"]:
+        for i, (x, y) in enumerate(_board_holes(b), 1):
+            refs.append({"ref": f"chassis#standoff:{b['name']}:{i}", "kind": "standoff", "label": f"board {b['name']}'s standoff {i}", "atMm": r3(x, y, t + so / 2), "madeBy": _made_at("A standoff under each")})
+    for m in spec["motors"]:
+        L, W, H = m["bodyMm"]
+        drop = max(m.get("axleDropMm", H / 2 + WALL), H / 2 + WALL)
+        kind = m.get("mount", {"kind": "cradle"})["kind"]
+        side = f"{m['side']}{' rear' if m.get('rear') else ''}"
+        what = "bracket's screw holes" if kind == "bracket" else "cradle"
+        refs.append({"ref": f"chassis#motor-mount:{side.replace(' ', '-')}", "kind": "motor-mount", "label": f"the {side} motor's {what}", "atMm": r3(m["xMm"], m["yMm"], t / 2 if kind == "bracket" else -drop / 2), "madeBy": _made_at("A cradle under the plate per motor")})
+    c = spec.get("caster")
+    if c:
+        refs.append({"ref": "chassis#caster-mount", "kind": "caster-mount", "label": "the caster's bolt holes", "atMm": r3(c["xMm"], 0, t / 2), "madeBy": _made_at("The caster's bolt holes")})
+    bat = spec["battery"]
+    refs.append({"ref": "chassis#battery-rails", "kind": "battery-rails", "label": "the battery's rails", "atMm": r3(bat["xMm"], bat["yMm"], t + RAIL_H / 2), "madeBy": _made_at("Battery rails along")})
+    for i, (bx, by) in enumerate(strap_geometry(spec)[0], 1):
+        refs.append({"ref": f"chassis#strap-boss:{i}", "kind": "strap-boss", "label": f"the battery strap's boss {i}", "atMm": r3(bx, by, t + STRAP_BOSS_H / 2), "madeBy": _made_at("The strap's bosses")})
+    sen = spec["sensor"]
+    sw, sh, sd = sen["sizeMm"]
+    top = sen["zMm"] - p["clearanceMm"] + sh / 2
+    height = max(top - t, 5)
+    refs.append({"ref": "chassis#sensor-bracket", "kind": "sensor-bracket", "label": "the distance sensor's bracket", "atMm": r3(sen["xMm"] - sd / 2 - WALL / 2, sen["yMm"], t + height / 2), "madeBy": _made_at("The sensor's bracket")})
+    es = spec.get("estop")
+    if es:
+        refs.append({"ref": "chassis#estop-deck", "kind": "estop-deck", "label": "the emergency stop's deck", "atMm": r3(es["xMm"], es["yMm"], es["panelTopMm"] - p["clearanceMm"] - es["panelMm"] / 2), "madeBy": _made_at("The emergency stop's deck")})
+    bc = spec.get("beacon")
+    if bc:
+        refs.append({"ref": "chassis#mast-socket", "kind": "mast-socket", "label": "the beacon mast's socket", "atMm": r3(bc["xMm"], bc["yMm"], t + MAST_SOCKET_H / 2), "madeBy": _made_at("A beacon support's socket")})
+    sk = spec.get("sticker")
+    if sk:
+        refs.append({"ref": "chassis#sticker-panel", "kind": "sticker-panel", "label": "the sticker panel", "atMm": r3(sk["xMm"], sk["yMm"], sk["zMm"] - p["clearanceMm"]), "madeBy": _made_at("A sticker panel")})
+    return refs
+
+
 def mast_sections(spec):
     """The beacon support's mast as printable sections (chassis.ts ChassisBeacon): square tubes, the last closed on top
     (the beacon's platform), each above the first with a spigot into the one below. Heights from the plate's top."""
@@ -434,6 +487,7 @@ def main():
             clamp -= Pos(s * span / 2, 0, 0) * Cylinder(1.1, ct + 2)
         export_stl(clamp, str(out / "motor-clamp.stl"))
     mounts["interference"] = interference(spec, part)
+    (out / "refs.json").write_text(json.dumps(chassis_refs(spec), indent=1))
     (out / "mounts.json").write_text(json.dumps(mounts, indent=1))
 
 

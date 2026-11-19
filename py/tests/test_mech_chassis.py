@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chassis import ChassisError, build, interference, mast_sections  # noqa: E402
+from chassis import ChassisError, build, chassis_refs, interference, mast_sections  # noqa: E402
 
 SPEC = {
     "plate": {"lengthMm": 150, "widthMm": 110, "thicknessMm": 3, "clearanceMm": 35},
@@ -137,6 +137,20 @@ class ChassisTest(unittest.TestCase):
         part, _ = build(spec)
         r = interference(spec, part)
         self.assertTrue(any((c["a"], c["b"]) == ("chassis", "battery") for c in r["clashes"]))
+
+    # Click-to-reference on the robot (19 Nov 2026): refs.json names each printed part a click can hit, at its place,
+    # with the line of build() that makes it.
+    def test_refs_name_each_printed_part_where_it_is_and_the_line_that_makes_it(self):
+        spec = dict(SPEC, motors=[{**m, "mount": {"kind": "cradle"}} for m in SPEC["motors"]])
+        refs = {r["ref"]: r for r in chassis_refs(spec)}
+        self.assertIn("chassis#sensor-bracket", refs)
+        self.assertIn("chassis#motor-mount:left", refs)
+        self.assertEqual(len([k for k in refs if k.startswith("chassis#standoff:main:")]), 4)
+        self.assertLess(refs["chassis#motor-mount:left"]["atMm"][2], 0, "the cradle hangs under the plate")
+        src = open(os.path.join(os.path.dirname(__file__), "..", "chassis.py")).read().splitlines()
+        for r in refs.values():
+            line = int(r["madeBy"].split(":")[1].split()[0])
+            self.assertTrue(src[line - 1].lstrip().startswith("#"), r["madeBy"])
 
 
 if __name__ == "__main__":

@@ -432,7 +432,8 @@ export const MECHANICS_RULES = `The checks your design must pass (src/mechanics/
 - runtime: the pack's usable energy at cruise ≥ motion.runtimeMin; voltage: a full cell ≤ 1.5× the motor's rating, within the driver's range;
 - tipping: the centre of mass stays 10 mm inside the wheels-and-caster triangle, also when braking hard;
 - fit: boards, battery, caster and sensor on the plate; motors half under it; wheels clear it by 2 mm; the plate level (clearanceMm = wheel radius + half the motor height = the caster's height, within 3 mm); clearance ≥ the edge; within motion.maxSizeMm and maxMassG; nothing in front of the sensor.
-Pick motors, wheels, casters, packs and sensor modules only from catalog/mechanics.json (every number there has a datasheet behind it).`
+Pick motors, wheels, casters, packs and sensor modules only from catalog/mechanics.json (every number there has a datasheet behind it).
+- A request may start with the printed part the engineer clicked on the robot, in brackets: [chassis#standoff:<board>:<n>: …], [chassis#motor-mount:<side>: …], [chassis#caster-mount: …], [chassis#battery-rails: …], [chassis#strap-boss:<n>: …], [chassis#sensor-bracket: …], [chassis#estop-deck: …], [chassis#mast-socket: …], [chassis#sticker-panel: …] or [chassis#plate: …]. The request is about that part, which the chassis builds from your mechanics field: change the field that places it (a board's place, the battery's, the sensor's, the plate's size, the drive's axle or wheelbase), then lay out again with layout_chassis if the checks fail.`
 
 export function createMechanicsAgent(opts: { mock: boolean }): Agent {
 	return createRoleAgent({
