@@ -62,6 +62,10 @@ export interface ChassisSpec {
 	// holes: the breakout's mounting holes through the bracket (yMm across the robot, zMm up from the plate's underside),
 	// the ones that land on the bracket above the plate; holeDiaMm their clearance.
 	sensor: { xMm: number; yMm: number; zMm: number; sizeMm: [number, number, number]; rangeMm: number; updateMs: number; holes: { yMm: number; zMm: number }[]; holeDiaMm: number }
+	// The board's IMU (a part with role imu): the drive's bridge gives the firmware its gyro heading, so a robot is
+	// simulated as built (its turns and odometry close on the gyro). noise and residual bias are ESTIMATES for the
+	// LSM6DS3TR-C after the firmware's 1 s at-rest bias calibration (hw_board.cpp), not measured.
+	imu?: { noiseDegPerSqrtS: number; biasDegPerS: number }
 	massG: number
 	com: [number, number, number] // the whole rover's, wheels and caster included
 	// The body's parts (every mount but the wheels and the caster, the payload included): each one's mass, centre and box
@@ -244,6 +248,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		...(mech.beacon ? { beacon: { xMm: mech.beacon.at.xMm, yMm: mech.beacon.at.yMm, topMm: mech.beacon.topMm, sizeMm: mech.beacon.sizeMm, wallMm: mech.beacon.mastWallMm, sectionMaxMm: MAST_SECTION_MAX_MM } } : {}),
 		...((e, b) => (e && b ? { estop: { xMm: e.at.xMm, yMm: e.at.yMm, panelTopMm: e.at.zMm, panelMm: Math.min(b.panelMaxMm, Math.max(b.panelMinMm, ESTOP_PANEL_MM)), holeMm: b.panelHoleMm, headMm: b.headMm, collarMm: e.collarMm ?? 0, aboveMm: b.aboveMm, belowMm: b.belowMm, bodyMm: b.bodyMm } } : {}))(mech.safety?.estop, mech.safety?.estop ? estopPart(cat.mech, mech.safety.estop.part) : undefined),
 		sensor: { ...mech.sensor.at, sizeMm: sensor.sizeMm, rangeMm: sensor.rangeMm, updateMs: sensor.updateMs, holes: sensorHoles(sensor, mech.sensor.at, mech.chassis), holeDiaMm: SENSOR_HOLE_MM },
+		...((s.values.parts ?? []).some((p) => p.role === "imu") ? { imu: { ...IMU_SIM } } : {}),
 		massG,
 		com,
 		bodyParts: ms.filter((m) => !m.what.startsWith("wheel:") && m.what !== "caster").map((m) => ({ what: m.what, atMm: [m.xMm, m.yMm, m.zMm] as [number, number, number], sizeMm: [...m.sizeMm] as [number, number, number], massG: m.massG })),
@@ -334,6 +339,10 @@ export function interferenceChecks(built: { interference?: Interference } | null
 // than the standoffs may lie under a board (checks.ts), but not on a standoff: the rover mock's pack ran onto the main
 // board's standoffs (246.7 mm³, found by the interference check, 19 Nov 2026), which the 2D fit check couldn't see
 // because it doesn't know the boards' holes. This does (chassisSpec's), so the layout solver can avoid it.
+// The simulated gyro (ChassisSpec.imu): ESTIMATES. Noise: a few mdps/sqrt(Hz) is the order of a MEMS gyro's rate noise
+// density (the LSM6DS3TR-C's datasheet gives its typical value; 5 mdps/sqrt(Hz) here, rounded up), as an angle random
+// walk of 0.005 deg/sqrt(s). Bias: what a 1 s at-rest average leaves, 0.05 deg/s (a design choice, not measured).
+export const IMU_SIM = { noiseDegPerSqrtS: 0.005, biasDegPerS: 0.05 }
 export const STANDOFF_OD_MM = 5 // py/chassis.py STANDOFF_OD
 export const RAIL_WALL_MM = 2 // py/chassis.py WALL: the rails beside the pack's long sides
 export function packOnStandoffs(s: ContractSnapshot): { kind: "mech-fit"; message: string; fields: ["mechanics"]; affects: ["mechanics"] }[] {

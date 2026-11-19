@@ -256,7 +256,7 @@ void loop() {
 	// Odometry every tick; while a target is set (G, or the simulation's ROVER_GOTO_X_MM) it drives there instead of the
 	// avoidance or a host's duties (rover_odo.h). It stops for something in its way: a reading inside the stop (or the
 	// opponent hold) distance that is also nearer than the target plus OPPONENT_GAP, not the wall beyond the target.
-	rover_odo_step(odo, hw_encoder(0), hw_encoder(1), ROVER_MM_PER_COUNT, ROVER_TRACK_MM);
+	rover_odo_step(odo, hw_encoder(0), hw_encoder(1), ROVER_MM_PER_COUNT, ROVER_TRACK_MM, hw_heading_rad());
 	rover_route_next(route, go);
 	if (go.active) {
 		out = rover_goto_step(go, odo, ROVER_CRUISE_DUTY, ROVER_GOTO_MIN_DUTY);

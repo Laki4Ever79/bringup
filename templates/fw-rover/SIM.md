@@ -6,7 +6,10 @@ so physics and firmware stay in step whatever the host's speed.
 
 - firmware → bridge: `M <tick> <dutyLeft> <dutyRight>` — the duties the firmware set (−1…1, sign = direction).
 - bridge → firmware: `S <now_ms> <distance_mm|-1> <temp_c> <rh>` — the bridge has stepped the physics by one control
-  period (the sensor's update period, ROVER_PERIOD_MS); −1 means nothing within the sensor's range.
+  period (the sensor's update period, ROVER_PERIOD_MS); −1 means nothing within the sensor's range. A design with wheel
+  encoders gets ` <enc_left> <enc_right>` after it (the counts its firmware counts: channel A, or both channels in
+  quadrature), and one with an IMU ` H <heading_mrad>`: the gyro's heading since the start, with an estimated noise and
+  bias (src/tools/chassis.ts IMU_SIM).
 
 Only `src/hw_sim.cpp` differs from the board build (`src/hw_board.cpp`); the control logic (`src/rover.cpp`) and the
 loop (`src/main.cpp`) are the same program.
