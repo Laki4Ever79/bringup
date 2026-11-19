@@ -247,7 +247,7 @@ test("a pack on a board's standoffs fails, and the solver moves the board along 
 	assert.equal(v.length, 1)
 	assert.match(v[0].message, /lies on board standoffs: main's at \(27, -17\), main's at \(27, 17\)/)
 	const m = s.values.mechanics!
-	const r = solveChassis(s, { motor: m.drive.motor, wheel: m.drive.wheel, caster: m.drive.caster, pack: m.battery.pack, sensor: m.sensor.module, connector: m.sensor.connector }, defaultCheckCatalog())
+	const r = solveChassis(s, { motor: m.drive.motor, wheel: m.drive.wheel, caster: m.drive.caster, pack: m.battery.pack, sensor: m.sensor.module, connector: m.sensor.connector }, defaultCheckCatalog()!)
 	assert.deepEqual(r.remaining, [], r.why)
 	assert.notEqual(r.mechanics!.chassis.boards[0].at.xMm, 0, "the board moved")
 	assert.deepEqual(packOnStandoffs({ ...s, values: { ...s.values, mechanics: r.mechanics! } }), [])
