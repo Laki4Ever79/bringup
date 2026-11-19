@@ -306,6 +306,79 @@ def build(spec):
     return part, mounts
 
 
+BOARD_T = 1.6  # a board's thickness: the slab that sits on the standoffs (components on it are not modelled)
+CLASH_MM3 = 0.5  # common volume above this is a clash; touching faces measure ~0
+
+
+def bought_parts(spec):
+    """The bought things the chassis carries, as solids in its frame (z = 0 the plate's underside): each board's slab on
+    its standoffs, the pack between its rails, each motor's body in its cradle, each driven wheel on its motor's axle,
+    the sensor breakout at its bracket and the e-stop's body under its deck. Simplified envelopes from the spec's own
+    sizes, so a clash between them is a clash in the design, not in a mesh."""
+    p = spec["plate"]
+    t = p["thicknessMm"]
+    so = spec.get("standoffMm", 10)
+    out = []
+    for b in spec["boards"]:
+        if b.get("standoffs") is False:
+            continue  # a HAT on another board's spacers: its height isn't in the spec
+        w, h = (b["heightMm"], b["widthMm"]) if b["rotDeg"] in (90, 270) else (b["widthMm"], b["heightMm"])
+        out.append((f"board {b['name']}", Pos(b["xMm"], b["yMm"], t + so + BOARD_T / 2) * Box(w, h, BOARD_T)))
+    bat = spec["battery"]
+    bl, bw, bh = bat["sizeMm"]
+    out.append(("battery", Pos(bat["xMm"], bat["yMm"], t + bh / 2) * Box(bl, bw, bh)))
+    d = spec.get("drive")
+    for m in spec["motors"]:
+        L, W, H = m["bodyMm"]
+        drop = max(m.get("axleDropMm", H / 2 + WALL), H / 2 + WALL)
+        name = f"{m['side']}{' rear' if m.get('rear') else ''} motor"
+        out.append((name, Pos(m["xMm"], m["yMm"], -drop) * Box(W, L, H)))
+        if d:
+            r, ww = d["wheelDiameterMm"] / 2, d["wheelWidthMm"]
+            y = math.copysign(d["trackMm"] / 2, m["yMm"])
+            out.append((name.replace("motor", "wheel"), Pos(m["xMm"], y, -drop) * Rot(90, 0, 0) * Cylinder(r, ww)))
+    sen = spec["sensor"]
+    sw, sh, sd = sen["sizeMm"]
+    out.append(("sensor", Pos(sen["xMm"], sen["yMm"], sen["zMm"] - p["clearanceMm"]) * Box(sd, sw, sh)))
+    es = spec.get("estop")
+    if es:
+        under = es["panelTopMm"] - p["clearanceMm"] - es["panelMm"]
+        out.append(("e-stop body", Pos(es["xMm"], es["yMm"], under - es["belowMm"] / 2) * Cylinder(es["bodyMm"] / 2, es["belowMm"])))
+    return out
+
+
+def _overlap(a, b):
+    """The two bounding boxes overlap (the cheap test before a boolean)."""
+    x, y = a.bounding_box(), b.bounding_box()
+    lo_a, hi_a, lo_b, hi_b = (tuple(v) for v in (x.min, x.max, y.min, y.max))
+    return all(lo_a[i] < hi_b[i] and lo_b[i] < hi_a[i] for i in range(3))
+
+
+def interference(spec, part):
+    """Exact common volume of every pair among the printed chassis and the bought parts (OpenCASCADE booleans). Returns
+    {"pairs": n checked, "clashes": [{a, b, volumeMm3, atMm}], "unmeasured": [{a, b, error}]}. A pair whose boolean
+    fails is unmeasured, never a pass. The rover's parts don't move against the chassis (the wheels spin about their own
+    axis), so one pose covers every state."""
+    solids = [("chassis", part)] + bought_parts(spec)
+    pairs, clashes, unmeasured = 0, [], []
+    for i in range(len(solids)):
+        for j in range(i + 1, len(solids)):
+            (na, a), (nb, b) = solids[i], solids[j]
+            pairs += 1
+            if not _overlap(a, b):
+                continue
+            try:
+                common = a & b
+                v = common.volume if common is not None else 0.0
+            except Exception as e:  # noqa: BLE001 - any kernel failure leaves the pair unmeasured
+                unmeasured.append({"a": na, "b": nb, "error": str(e)[:200]})
+                continue
+            if v > CLASH_MM3:
+                c = common.center()
+                clashes.append({"a": na, "b": nb, "volumeMm3": round(v, 1), "atMm": [round(c.X, 1), round(c.Y, 1), round(c.Z, 1)]})
+    return {"pairs": pairs, "clashes": clashes, "unmeasured": unmeasured}
+
+
 def mast_sections(spec):
     """The beacon support's mast as printable sections (chassis.ts ChassisBeacon): square tubes, the last closed on top
     (the beacon's platform), each above the first with a spigot into the one below. Heights from the plate's top."""
@@ -360,6 +433,7 @@ def main():
         for s in (-1, 1):
             clamp -= Pos(s * span / 2, 0, 0) * Cylinder(1.1, ct + 2)
         export_stl(clamp, str(out / "motor-clamp.stl"))
+    mounts["interference"] = interference(spec, part)
     (out / "mounts.json").write_text(json.dumps(mounts, indent=1))
 
 

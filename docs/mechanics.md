@@ -68,6 +68,17 @@ solver for the same parts, and the tool result says so: the parts are the engine
 code's. Real models moved parts by hand a few millimetres at a time for 30 revisions without landing on the plate
 (real rover run 3, 15 Nov); with the solver the drive passed in the first ten revisions.
 
+### The built chassis against its parts
+
+After the chassis is built, `py/chassis.py` measures the exact common volume of every pair among the printed chassis
+and the bought parts it carries: each board's slab on its standoffs, the pack, the motors, the driven wheels, the
+sensor breakout and the e-stop's body (OpenCASCADE booleans on envelopes from the spec's sizes; components on a board
+aren't modelled). It writes the result to `mounts.json` (`interference`: pairs checked, clashes with their volume and
+centre, pairs it couldn't measure), and `part-interference` wakes the mechanics agent for any clash or unmeasured pair.
+The 2D fit checks above name the pairs they compare; this check compares every pair. Its first run found the pack
+running into the sensor's bracket on three of the four example robots (the solver placed the pack as far forward as the
+plate allowed), now also a fit check the solver avoids. The idea is text-to-cad's `cad model interference` (MIT).
+
 Rules the real runs taught (15 Nov), each now a check or part of the agents' instructions:
 - A design that moves (a motor driver, or requirements naming motors, wheels or a rover) needs the motion field; the
   architect is told when it's missing.

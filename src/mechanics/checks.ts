@@ -7,7 +7,7 @@ import { safetyChecks, startChecks } from "./safety.ts"
 import { resolve } from "node:path"
 import type { AgentRole, ContractSnapshot, FieldName, Part, PinAssignment as Pin } from "../contract/types.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
-import { plateLimitForBrief, blocksSensor, motorHalfUnder, motorUnderPlateMm, mountOnPlate, plateMaxWidthMm, wheelsRubPlate } from "../dashboard/assembly-geom.js"
+import { plateLimitForBrief, blocksSensor, reachesSensorBracket, motorHalfUnder, motorUnderPlateMm, mountOnPlate, plateMaxWidthMm, wheelsRubPlate } from "../dashboard/assembly-geom.js"
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { byMpn, loadMechCatalog, type MechCatalog } from "./catalog.ts"
 import { est, estNote } from "./estimates.ts"
@@ -495,6 +495,8 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const sm = ms.find((m) => m.what === "sensor")
 	if (sm) for (const m of ms) if (m !== sm && !m.what.startsWith("wheel:") && blocksSensor(m, sm))
 		push("mech-fit", `${m.what.replace(":", " ")} stands in front of the distance sensor: move the sensor to the front edge`)
+	if (sm) for (const m of ms) if ((m.what === "battery" || m.what.startsWith("board:")) && reachesSensorBracket(m, sm))
+		push("mech-fit", `${m.what.replace(/^board:/, "board ")} (${r1(m.sizeMm[0])} mm long at x ${r1(m.xMm)}) runs into the distance sensor's bracket at x ${r1(sm.xMm - sm.sizeMm[0] / 2)} mm: move it back to x ${r1(sm.xMm - sm.sizeMm[0] / 2 - 2 - m.sizeMm[0] / 2)} or less`)
 	if (mech.chassis.clearanceMm < motion.edgeMm)
 		push("mech-fit", `the plate is ${mech.chassis.clearanceMm} mm off the floor, under the ${motion.edgeMm} mm edge the rover must cross: raise it (bigger wheels)`)
 	const outerW = Math.max(Wd, d.trackMm + wheel.widthMm)

@@ -81,6 +81,17 @@ export function blocksSensor(m, sensor) {
 	return m.xMm - m.sizeMm[0] / 2 > sensor.xMm && Math.abs(m.yMm - sensor.yMm) < (m.sizeMm[1] + sensor.sizeMm[1]) / 2 && m.zMm + m.sizeMm[2] / 2 > sensor.zMm - sensor.sizeMm[2] / 2
 }
 
+// The sensor's printed bracket (py/chassis.py: a 2 mm upright plate just behind the breakout, across its width plus a
+// wall each side, from the plate up) and the breakout in front of it: nothing that stands on the plate may reach into
+// that footprint. The pack placed at the plate's front ran into it on three of the four example robots (found by the
+// exact interference check, 19 Nov 2026).
+export const SENSOR_BRACKET_WALL_MM = 2
+export function reachesSensorBracket(m, sensor) {
+	const back = sensor.xMm - sensor.sizeMm[0] / 2 - SENSOR_BRACKET_WALL_MM
+	const front = sensor.xMm + sensor.sizeMm[0] / 2
+	return m.xMm + m.sizeMm[0] / 2 > back && m.xMm - m.sizeMm[0] / 2 < front && Math.abs(m.yMm - sensor.yMm) < (m.sizeMm[1] + sensor.sizeMm[1]) / 2 + SENSOR_BRACKET_WALL_MM
+}
+
 // Figures behind the electrical checks. The wire's resistance is copper's; the capacitances are ESTIMATES for an
 // untwisted 28 AWG JST SH cable.
 export const CABLE_PF_PER_M = 50 // estimate

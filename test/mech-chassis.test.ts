@@ -206,3 +206,32 @@ test("an encoder micro metal gearmotor at 5 mm takes the bracket: it fits by cro
 	assert.ok(spec.motors.every((m) => m.mount.kind === "bracket"), JSON.stringify(spec.motors.map((m) => [m.bodyMm, m.axleDropMm, m.mount.kind])))
 	assert.ok(!hardwareFit(s).some((m) => /printed cradle needs/.test(m)), hardwareFit(s).join("\n"))
 })
+
+// Exact interference (py/chassis.py interference, 19 Nov 2026): a clash in the built chassis wakes the mechanics agent
+// with each pair, its volume and where; a pair the kernel couldn't measure is reported, never passed.
+test("parts of the built robot that share volume are a violation; unmeasured pairs aren't a pass", async () => {
+	const { interferenceChecks } = await import("../src/tools/chassis.ts")
+	const { checkConsistency } = await import("../src/contract/consistency.ts")
+	assert.deepEqual(interferenceChecks({ interference: { pairs: 28, clashes: [], unmeasured: [] } }), [])
+	assert.deepEqual(interferenceChecks(null), [])
+	const clash = { pairs: 28, clashes: [{ a: "chassis", b: "battery", volumeMm3: 596.7, atMm: [49.2, 0, 6.5] as [number, number, number] }], unmeasured: [{ a: "chassis", b: "sensor", error: "BRep_API: command not done" }] }
+	const v = interferenceChecks({ interference: clash })
+	assert.deepEqual(v.map((x) => x.kind), ["part-interference", "part-interference"])
+	assert.match(v[0].message, /chassis and battery: 596.7 mm³ around \(49.2, 0, 6.5\)/)
+	assert.match(v[1].message, /couldn't measure chassis against sensor: not a pass/)
+	assert.deepEqual(v[0].affects, ["mechanics"])
+	const chassis = (mounts: unknown, stub = false) => ({ chassis: { ok: true, revision: 3, dir: "", files: [], mounts, ...(stub ? { stub } : {}) } }) as never
+	assert.ok(checkConsistency(rover(), chassis({ interference: clash })).some((x) => x.kind === "part-interference"))
+	assert.ok(!checkConsistency(rover(), chassis({ interference: clash }, true)).some((x) => x.kind === "part-interference"))
+})
+
+test("a pack laid out into the distance sensor's bracket fails the fit check, with how far back it must go", async () => {
+	const { mechanicsChecks } = await import("../src/mechanics/checks.ts")
+	const s = rover()
+	assert.ok(!mechanicsChecks(s).some((v) => /sensor's bracket/.test(v.message)), "the scripted rover's pack at x 40 is clear")
+	s.values.mechanics!.battery.at.xMm = 45 // the scripted rover before 19 Nov: its front end 3 mm into the bracket
+	const v = mechanicsChecks(s).find((x) => /sensor's bracket/.test(x.message))
+	assert.ok(v, "flagged")
+	assert.equal(v.kind, "mech-fit")
+	assert.match(v.message, /move it back to x 40.2 or less/)
+})

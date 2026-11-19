@@ -307,3 +307,19 @@ export function boardMountChecks(s: ContractSnapshot, built: { standoffHoles?: {
 	return [{ kind: "board-mount-mismatch", message: `the chassis and the boards disagree on where the boards mount (mm on the plate): ${problems.join("; ")}`, fields: ["mechanics"], affects: ["mechanics"] }]
 }
 
+
+// The chassis and the bought parts it carries (boards, pack, motors, wheels, sensor, e-stop) share no volume: py/chassis.py
+// measures every pair's common volume with exact booleans (mounts.json "interference"). The 2D fit checks name the pairs
+// they compare; this one compares every pair, so a pair nobody listed still shows (the pack ran into the sensor's bracket
+// on three of four example robots, 19 Nov 2026). A pair the kernel couldn't measure is reported, never passed.
+export interface Interference { pairs: number; clashes: { a: string; b: string; volumeMm3: number; atMm: [number, number, number] }[]; unmeasured: { a: string; b: string; error: string }[] }
+export function interferenceChecks(built: { interference?: Interference } | null | undefined): { kind: "part-interference"; message: string; fields: ["mechanics"]; affects: ["mechanics"] }[] {
+	const r = built?.interference
+	if (!r) return []
+	const out: { kind: "part-interference"; message: string; fields: ["mechanics"]; affects: ["mechanics"] }[] = []
+	if (r.clashes.length)
+		out.push({ kind: "part-interference", message: `parts of the robot occupy the same space (exact common volume, chassis frame, mm): ${r.clashes.map((c) => `${c.a} and ${c.b}: ${c.volumeMm3} mm³ around (${c.atMm.join(", ")})`).join("; ")}: move one of each pair`, fields: ["mechanics"], affects: ["mechanics"] })
+	if (r.unmeasured.length)
+		out.push({ kind: "part-interference", message: `the interference check couldn't measure ${r.unmeasured.map((u) => `${u.a} against ${u.b}`).join(", ")}: not a pass; the chassis geometry needs a look`, fields: ["mechanics"], affects: ["mechanics"] })
+	return out
+}
