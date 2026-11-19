@@ -71,12 +71,14 @@ test("power is never a dash beside a feed; an unbuilt board fed by a link says p
 test("debug line names the port by MCU family, and only when the board has it", async () => {
 	const { LOGGER_DESIGN, STM32_LOGGER_DESIGN } = await import("../src/inference/scripts.ts")
 	const { debugPort } = await import("../src/codegen/circuit.ts")
-	const { minimumBoard } = await import("../src/contract/space.ts")
+	const { minimumBoard, resized } = await import("../src/contract/space.ts")
+	// At its smallest board, as an outline change makes it: the connectors follow onto the new edges (the space model
+	// judges each size so; keeping the old size's connectors left the STM32 logger's port no room at 40x19).
 	const design = (d: typeof LOGGER_DESIGN) => {
 		const s = fixtureContract()
 		s.values = { ...s.values, ...structuredClone(d) }
-		s.values.outline = { ...s.values.outline!, ...minimumBoard(s) }
-		return s
+		const m = minimumBoard(s)!
+		return resized(s, m.widthMm, m.heightMm)
 	}
 	const esp = design(LOGGER_DESIGN)
 	assert.ok(debugPort(esp).placed, "the ESP32 logger places its port")

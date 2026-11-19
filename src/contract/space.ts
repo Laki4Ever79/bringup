@@ -90,7 +90,7 @@ export function scaledConnectors(s: ContractSnapshot, w: number, h: number): Con
 // fitted onto them and clear of each other (connectorsOntoEdges), so a size judged here is the one the contract gets.
 // Before (17 Nov 2026), only scaled: the contract packed them and the model didn't, so a size the model called
 // placeable could fail (run 20: "the smallest is 31×45", and 46×38 had no room for U8).
-function resized(s: ContractSnapshot, w: number, h: number): ContractSnapshot {
+export function resized(s: ContractSnapshot, w: number, h: number): ContractSnapshot {
 	const o = s.values.outline!
 	const r = { ...s, values: { ...s.values, outline: { ...o, widthMm: w, heightMm: h }, connectors: scaledConnectors(s, w, h) } }
 	const packed = connectorsOntoEdges(r)

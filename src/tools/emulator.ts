@@ -87,13 +87,11 @@ export async function runImage(root: string, image: string, until: RegExp, timeo
 // Espressif QEMU for the ESP32-C3 (no profile: a design from before profiles).
 export async function bootFirmware(root: string, fwDir: string, timeoutMs = 15000, profile?: McuProfile | null): Promise<BootResult> {
 	if (profile && profile.sim.backend === "renode") return bootRenode(root, fwDir, profile, timeoutMs)
-	// The logger template builds only the C3's envs for an ESP32-family chip (profile firmware.env "esp32c3"): its image
-	// runs on the C3's machine whatever the profile's own.
-	const target = qemuTarget(!profile || profile.firmware.env === "esp32c3" ? "esp32c3" : profile.sim.machine)
+	const target = qemuTarget(profile ? profile.sim.machine : "esp32c3")
 	if (!target) return { booted: false, serial: `QEMU has no model of the ${profile?.sim.machine} machine`, revision: null, backend: "qemu" }
 	const qemu = qemuBinary(root, target)
 	if (!qemu) return { booted: false, serial: `qemu not found at ${join(root, target.bin)}`, revision: null, backend: "qemu" }
-	const { image, log } = await mergeFlash(fwDir, profile?.firmware.env ?? "esp32c3", target.chip)
+	const { image, log } = await mergeFlash(fwDir, envFor(profile, "app"), target.chip)
 	if (!image) return { booted: false, serial: log, revision: null, backend: "qemu" }
 	// Stop at the first sensor line: by then the boot banner and setup() have run.
 	const output = (await runImage(root, image, /SENSOR (OK|FAIL)/, timeoutMs, target)) ?? ""
