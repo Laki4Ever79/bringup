@@ -268,7 +268,7 @@ test("the system detail carries the assembly: derived for old runs, the spec's o
 		const rover = await get("rover-1")
 		assert.equal(rover.assembly.body, "chassis")
 		assert.deepEqual(rover.assembly.plate, { lengthMm: 150, widthMm: 96 })
-		assert.deepEqual(rover.assembly.boards.map((b: { name: string; xMm: number }) => [b.name, b.xMm]), [["main", 0]])
+		assert.deepEqual(rover.assembly.boards.map((b: { name: string; xMm: number }) => [b.name, b.xMm]), [["main", -20]])
 	} finally {
 		await hub.close()
 	}

@@ -1,5 +1,5 @@
 import type { DriveArtifact } from "../tools/drive.ts"
-import { boardMountChecks, interferenceChecks, type ChassisArtifact, type Interference } from "../tools/chassis.ts"
+import { boardMountChecks, interferenceChecks, packOnStandoffs, type ChassisArtifact, type Interference } from "../tools/chassis.ts"
 import { hardwareChecks } from "../tools/robot-parts.ts"
 import { defaultCheckCatalog, mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
@@ -221,6 +221,8 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	if (a.chassis && !a.chassis.stub) v.push(...boardMountChecks(c, a.chassis.mounts as { standoffHoles?: { xMm: number; yMm: number }[] } | null))
 	// The built chassis and the bought parts it carries share no volume (py/chassis.py interference: exact booleans).
 	if (a.chassis && !a.chassis.stub) v.push(...interferenceChecks(a.chassis.mounts as { interference?: Interference } | null))
+	// The pack clear of the boards' standoffs (the 2D fit check doesn't know the boards' holes).
+	if (c.values.mechanics) v.push(...packOnStandoffs(c))
 	// Every fastener in the robot's parts list fits the hole it goes through (tools/robot-parts.ts).
 	if (c.values.mechanics) v.push(...hardwareChecks(c))
 	// Battery life, live: when even the contract's own stated averages (the optimistic figure) fall short of its

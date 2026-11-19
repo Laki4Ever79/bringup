@@ -132,7 +132,7 @@ test("an old robot derives its assembly from its mechanics", () => {
 	assert.equal(d.derived, true)
 	assert.equal(d.body, "chassis")
 	assert.deepEqual(d.plate, { lengthMm: 150, widthMm: 96 })
-	assert.deepEqual(d.boards.map((b) => [b.name, b.xMm, b.yMm, b.rotDeg, b.outlineSource]), [["main", 0, 0, 0, "built"]])
+	assert.deepEqual(d.boards.map((b) => [b.name, b.xMm, b.yMm, b.rotDeg, b.outlineSource]), [["main", -20, 0, 0, "built"]])
 	assert.deepEqual(d.boards[0].outline, { widthMm: 60, heightMm: 40 })
 })
 

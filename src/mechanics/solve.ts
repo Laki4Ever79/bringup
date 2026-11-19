@@ -11,6 +11,7 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { outlinesWithAssembly } from "./assembly.ts"
 import { byMpn } from "./catalog.ts"
 import { mechanicsChecksWith, type CheckCatalog, type MechViolation } from "./checks.ts"
+import { chassisSpec, packOnStandoffs, RAIL_WALL_MM, STANDOFF_OD_MM } from "../tools/chassis.ts"
 import type { Mechanics } from "./types.ts"
 
 export interface ChassisChoice {
@@ -75,18 +76,21 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 		tried++
 		const s: ContractSnapshot = { ...c, values: { ...c.values, mechanics: mech } }
 		// Only what a layout can fix: a plug the parts agent must add (affects parts) isn't the chassis' to solve.
-		return mechanicsChecksWith(s, cat).filter((v) => kinds.has(v.kind) && (CHASSIS_KINDS.has(v.kind) || v.affects.includes("mechanics")))
+		return [...mechanicsChecksWith(s, cat), ...packOnStandoffs(s)].filter((v) => kinds.has(v.kind) && (CHASSIS_KINDS.has(v.kind) || v.affects.includes("mechanics")))
 	}
 	// Plate: the system's, or the largest the brief allows (a roomier plate is easier to pack and the brief's limit is the
 	// only bound on it), then smaller ones.
 	const plates: [number, number][] = assembly?.plate
 		? [[assembly.plate.lengthMm, assembly.plate.widthMm]]
 		: range(maxL, Math.max(60, maxL - 60), -10).flatMap((L) => range(maxW - 2 * wheelW - 4, Math.max(50, maxW - 2 * wheelW - 64), -10).map((W): [number, number] => [L, W]))
+	let holes: { xMm: number; yMm: number; moves: boolean }[] | undefined
 	for (const [L, W] of plates) {
 		const track = Math.min(maxW - wheelW, W + 4 + wheelW)
-		const boardsAt = boards.map((b) => {
+		// Boards a system doesn't place go on the centre line, moved along it (dx) when their standoffs would stand on the
+		// pack (packOnStandoffs): the reference rover's pack fits nowhere on its 150 mm plate with the board at x 0.
+		const boardsAt = (dx: number) => boards.map((b) => {
 			const placed = assembly?.boards.find((x) => x.name === b.name)
-			return { name: b.name, at: { xMm: placed?.xMm ?? 0, yMm: placed?.yMm ?? 0 }, rotDeg: (placed?.rotDeg ?? 0) as 0 | 90 | 180 | 270 }
+			return { name: b.name, at: { xMm: placed?.xMm ?? dx, yMm: placed?.yMm ?? 0 }, rotDeg: (placed?.rotDeg ?? 0) as 0 | 90 | 180 | 270 }
 		})
 		const sensorX = Math.round((L / 2 - sensor!.sizeMm[2] / 2) * 10) / 10
 		const hx = L / 2
@@ -97,11 +101,12 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 			for (const wheelbaseMm of skid ? range(Math.min(Math.floor(0.9 * track), axleXMm + hx - wheel!.diameterMm / 2), wheel!.diameterMm + 10, -5) : range(30, axleXMm + hx - caster!.wheelMm / 2, 5))
 				for (const bx of range(hx - pack!.sizeMm[0] / 2, -(hx - pack!.sizeMm[0] / 2), -5)) {
 					if (tried >= budget) return finish()
+					const dx = clearShift(L, bx, axleXMm, wheelbaseMm, track)
 					const mech: Mechanics = completeForRules({
 						drive: { kind: skid ? "skid4" : "differential", motor: motor!.mpn, wheel: wheel!.mpn, caster: skid ? "" : caster!.mpn, trackMm: track, wheelbaseMm, axleXMm },
 						battery: { pack: pack!.mpn, at: { xMm: bx, yMm: 0 } },
 						sensor: { module: sensor!.mpn, at: { xMm: sensorX, yMm: 0, zMm: sensorZ }, connector: choice.connector },
-						chassis: { plateMm: [L, W], thicknessMm, material: "PLA", clearanceMm, boards: boardsAt, ...(c.values.mechanics?.chassis.gridMm ? { gridMm: c.values.mechanics.chassis.gridMm } : {}) },
+						chassis: { plateMm: [L, W], thicknessMm, material: "PLA", clearanceMm, boards: boardsAt(dx), ...(c.values.mechanics?.chassis.gridMm ? { gridMm: c.values.mechanics.chassis.gridMm } : {}) },
 					}, c.values, cat)
 					const v = check(mech)
 					if (!best || score(v) < score(best.remaining)) best = { mech, remaining: v }
@@ -109,6 +114,34 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 				}
 	}
 	return finish()
+
+	// The first shift of the unplaced boards along the centre line (0 first, then 5 mm steps either way, up to the plate's
+	// half-length) whose standoffs miss the pack at bx and its rails. The holes are read once from a chassis spec with the
+	// boards at x 0 (they move with their board). 0 when nothing is unplaced, or no shift helps (the checks then say so).
+	function clearShift(L: number, bx: number, axleXMm: number, wheelbaseMm: number, trackMm: number): number {
+		if (!assembly || boards.some((b) => !assembly.boards.some((x) => x.name === b.name))) {
+			holes ??= holesAtZero(L, axleXMm, wheelbaseMm, trackMm)
+			const halfX = pack!.sizeMm[0] / 2 + STANDOFF_OD_MM / 2, halfY = pack!.sizeMm[1] / 2 + RAIL_WALL_MM + STANDOFF_OD_MM / 2
+			const hits = (dx: number) => holes!.some((h) => Math.abs(h.xMm + (h.moves ? dx : 0) - bx) < halfX && Math.abs(h.yMm) < halfY)
+			for (let i = 0; i <= L / 10; i++) for (const dx of i ? [-5 * i, 5 * i] : [0]) if (!hits(dx)) return dx
+		}
+		return 0
+	}
+	function holesAtZero(L: number, axleXMm: number, wheelbaseMm: number, trackMm: number): { xMm: number; yMm: number; moves: boolean }[] {
+		const W = maxW - 2 * wheel!.widthMm - 4
+		const probe: Mechanics = {
+			drive: { kind: skid ? "skid4" : "differential", motor: motor!.mpn, wheel: wheel!.mpn, caster: skid ? "" : caster!.mpn, trackMm, wheelbaseMm, axleXMm },
+			battery: { pack: pack!.mpn, at: { xMm: 0, yMm: 0 } },
+			sensor: { module: sensor!.mpn, at: { xMm: 0, yMm: 0, zMm: sensorZ }, connector: choice.connector },
+			chassis: { plateMm: [L, W], thicknessMm, material: "PLA", clearanceMm, boards: boards.map((b) => {
+				const placed = assembly?.boards.find((x) => x.name === b.name)
+				return { name: b.name, at: { xMm: placed?.xMm ?? 0, yMm: placed?.yMm ?? 0 }, rotDeg: (placed?.rotDeg ?? 0) as 0 | 90 | 180 | 270 }
+			}) },
+		}
+		const spec = chassisSpec({ ...c, values: { ...c.values, mechanics: probe } })
+		const unplaced = (name: string) => !assembly?.boards.some((x) => x.name === name)
+		return (spec?.boards ?? []).filter((b) => b.standoffs !== false).flatMap((b) => b.holes.map((h) => ({ xMm: h.xMm, yMm: h.yMm, moves: unplaced(b.name) })))
+	}
 
 	function finish(): ChassisSolution {
 		if (!best) return { mechanics: null, remaining: [], tried, why: "no layout to try" }
@@ -125,7 +158,7 @@ export function laidOut(c: ContractSnapshot, proposed: Mechanics, cat: CheckCata
 	const as = { ...c, values: { ...c.values, mechanics: proposed } }
 	// Under a competition's rules their findings count too: a plain rover that passes the chassis checks still lacks them.
 	const ruled = Boolean(c.values.motion.rules && cat.rules?.[c.values.motion.rules])
-	const failing = mechanicsChecksWith(as, cat).filter((v) => CHASSIS_KINDS.has(v.kind) || (ruled && (v.kind === "mech-safety" || v.kind === "mech-rules") && v.affects.includes("mechanics")))
+	const failing = [...mechanicsChecksWith(as, cat), ...packOnStandoffs(as)].filter((v) => CHASSIS_KINDS.has(v.kind) || (ruled && (v.kind === "mech-safety" || v.kind === "mech-rules") && v.affects.includes("mechanics")))
 	if (!failing.length) return { mechanics: proposed, note: null }
 	const r = solveWithMotorClass(c, { motor: proposed.drive.motor, wheel: proposed.drive.wheel, caster: proposed.drive.caster, pack: proposed.battery.pack, sensor: proposed.sensor.module, connector: proposed.sensor.connector }, cat)
 	// No layout passes: the solver's best still goes in when it leaves fewer of these findings than the proposal (it

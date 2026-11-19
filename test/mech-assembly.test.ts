@@ -24,7 +24,7 @@ const withAsm = (): ContractSnapshot => { const s = rover(); s.values.assembly =
 test("no assembly: chassisSpec is exactly today's", () => {
 	const spec = chassisSpec(rover())!
 	assert.deepEqual([spec.plate.lengthMm, spec.plate.widthMm], [150, 96])
-	assert.deepEqual(spec.boards.map((b) => [b.name, b.xMm, b.widthMm, b.heightMm]), [["main", 0, 60, 40]])
+	assert.deepEqual(spec.boards.map((b) => [b.name, b.xMm, b.widthMm, b.heightMm]), [["main", -20, 60, 40]])
 	assert.deepEqual(spec.unplaced, [])
 })
 
