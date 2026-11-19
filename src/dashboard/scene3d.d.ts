@@ -38,5 +38,5 @@ export interface PaintItem {
 export function paintOrder<T extends PaintItem>(items: T[], opts: { boardDepth: number; boardZ: number; above: boolean }): T[]
 export function ventOutline(vent: { ref?: string; xMm: number; yMm: number; widthMm: number; heightMm: number; openMm2?: number }, origin: number[], z: number): { box: number[][]; slots: number[][][] }
 export interface CaseRef { ref: string; kind: string; label: string; atMm?: [number, number, number]; madeBy: string }
-export function nearestCaseRef(point: [number, number, number], kind: string, refs: CaseRef[] | null | undefined, bounds: { min: number[]; max: number[] } | null | undefined, radius?: number): CaseRef
+export function nearestCaseRef(point: [number, number, number], kind: string, refs: CaseRef[] | null | undefined, bounds: { min: number[]; max: number[] } | null | undefined, radius?: number, doc?: "case" | "chassis"): CaseRef
 export function refPrefix(r: CaseRef | null | undefined): string

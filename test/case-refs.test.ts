@@ -29,3 +29,12 @@ test("the reference goes before the request, in the form the case designer is to
 	assert.equal(refPrefix(null), "")
 	assert.match(CASE_DESIGN, /\[case#feature:<id>: …\]/)
 })
+
+test("on a robot a click names the printed part nearby, else the chassis plate; the mechanics engineer reads the prefix", async () => {
+	const chassisRefs = [{ ref: "chassis#sensor-bracket", kind: "sensor-bracket", label: "the distance sensor's bracket", atMm: [70.2, 0, 15] as [number, number, number], madeBy: "py/chassis.py:220 build" }]
+	const b = { min: [-75, -48, -20], max: [75, 48, 30] }
+	assert.equal(nearestCaseRef([72, 5, 20], "case", chassisRefs, b, undefined, "chassis").ref, "chassis#sensor-bracket", "within the robot's 20 mm radius")
+	assert.equal(nearestCaseRef([-40, 10, 1], "case", chassisRefs, b, undefined, "chassis").ref, "chassis#plate")
+	const { MECHANICS_RULES } = await import("../src/agents/roles.ts")
+	assert.match(MECHANICS_RULES, /\[chassis#sensor-bracket: …\]/)
+})

@@ -207,15 +207,18 @@ const IDLE_SPEED = 0.12 // rad/s
 // Click-to-reference (19 Nov 2026, text-to-cad's prompt references): what a click on the case names. `refs` is the
 // case build's refs.json (each opening, built feature and standoff with its centre in case.stl's frame, a label and the
 // code that makes it); the nearest within `radius` mm of the picked point wins. Elsewhere the click names the surface:
-// the lid, the floor, or the wall whose side of the case's box (`bounds`, case.stl's) the point is nearest. Pure, so
-// tests can call it.
-export function nearestCaseRef(point, kind, refs, bounds, radius = 8) {
+// the lid, the floor, or the wall whose side of the case's box (`bounds`, case.stl's) the point is nearest. On a robot
+// (`doc` "chassis": the printed chassis' refs.json from py/chassis.py, larger parts, a wider radius) it names the
+// plate. Pure, so tests can call it.
+export function nearestCaseRef(point, kind, refs, bounds, radius, doc = "case") {
+	radius ??= doc === "chassis" ? 20 : 8
 	let best = null, bestD = radius
 	for (const r of refs ?? []) {
 		const d = Math.hypot(point[0] - r.atMm[0], point[1] - r.atMm[1], point[2] - r.atMm[2])
 		if (d <= bestD) { best = r; bestD = d }
 	}
 	if (best) return best
+	if (doc === "chassis") return { ref: "chassis#plate", kind: "plate", label: "the chassis plate", madeBy: "py/chassis.py build" }
 	if (kind === "lid") return { ref: "case#lid", kind: "lid", label: "the lid", madeBy: "py/enclosure.py build_lid" }
 	if (kind === "post") return { ref: "case#standoffs", kind: "standoff", label: "the standoffs", madeBy: "py/enclosure.py build_case" }
 	if (bounds) {

@@ -688,7 +688,7 @@
 	<!-- The composer: change one thing, any time during the run -->
 	<footer id="changebar" class="hidden">
 		<span class="who">Change <q>one thing</q></span>
-		<div class="box"><button id="change-ref" class="hidden" type="button" title="The case feature this change is about (click to clear)"></button><input id="change-input" placeholder="Ask for a change while the agents work…" autocomplete="off" maxlength="500" aria-label="Change request"></div>
+		<div class="box"><button id="change-ref" class="hidden" type="button" title="The printed part this change is about (click to clear)"></button><input id="change-input" placeholder="Ask for a change while the agents work…" autocomplete="off" maxlength="500" aria-label="Change request"></div>
 		<button id="send-btn" title="Send the change (Enter); ⌘K focuses the box">Send ⏎</button>
 	</footer>
 
@@ -1057,7 +1057,7 @@
 		let sceneMod = null
 		const pickCase = (hit) => {
 			if (!sceneMod) return
-			S.pickedRef = sceneMod.nearestCaseRef(hit.point, hit.kind, S.caseRefs, hit.bounds)
+			S.pickedRef = sceneMod.nearestCaseRef(hit.point, hit.kind, S.caseRefs, hit.bounds, undefined, S.sceneDoc ?? "case")
 			const chip = $("change-ref")
 			chip.textContent = S.pickedRef.label
 			chip.title = `${S.pickedRef.ref}, made by ${S.pickedRef.madeBy} (click to clear)`
@@ -1388,7 +1388,7 @@
 				const buf = await r.arrayBuffer()
 				// The lid, the spec (heights) and the measured standoffs: optional, older runs have none of them.
 				const opt = async (p, as) => { try { const x = await fetch(file(`${dir}/${p}`)); return x.ok ? await x[as]() : null } catch { return null } }
-				opt("refs.json", "json").then((r) => { S.caseRefs = Array.isArray(r) ? r : [] })
+				opt("refs.json", "json").then((r) => { S.caseRefs = Array.isArray(r) ? r : []; S.sceneDoc = "case" })
 				const [lid, spec, standoffs, print, vents] = await Promise.all([opt("lid.stl", "arrayBuffer"), opt("spec.json", "json"), opt("standoffs.json", "json"), opt("print.json", "json"), opt("vents.json", "json")])
 				S.vents = Array.isArray(vents) ? vents : []
 				applyMarks()
@@ -1414,6 +1414,8 @@
 			try {
 				const r = await fetch(file(`chassis/rev-${rev}/chassis.stl`))
 				if (!r.ok) return
+				// What a click on the printed chassis names (py/chassis.py chassis_refs); older runs have none.
+				fetch(file(`chassis/rev-${rev}/refs.json`)).then((x) => (x.ok ? x.json() : [])).then((x) => { S.caseRefs = Array.isArray(x) ? x : []; S.sceneDoc = "chassis" }).catch(() => {})
 				const buf = await r.arrayBuffer()
 				$("scene-empty").classList.add("hidden")
 				if (scene) scene.update({ caseStl: buf, lidStl: null, enclosure: { spec: null, standoffs: null } })
