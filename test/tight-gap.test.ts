@@ -19,11 +19,12 @@ const placesAt = (w: number, h: number, gapMm?: number) => {
 	return layoutBoard(t, gapMm === undefined ? {} : { gapMm }).parts.length >= boardParts(s).length
 }
 
-test("a 1.0 mm gap places the logger on 30×25 mm, where the default 1.5 mm doesn't", () => {
-	assert.equal(placesAt(30, 25, 1.0), true)
-	assert.equal(placesAt(30, 25), false)
-	assert.equal(placesAt(30, 25, 1.5), false)
-	assert.equal(placesAt(29, 25, 1.0), false)
+// 31×25 since the small parts are kept off the edge by their pads (copperExtent, 3dd750f); 30×25 before.
+test("a 1.0 mm gap places the logger on 31×25 mm, where the default 1.5 mm doesn't", () => {
+	assert.equal(placesAt(31, 25, 1.0), true)
+	assert.equal(placesAt(31, 25), false)
+	assert.equal(placesAt(31, 25, 1.5), false)
+	assert.equal(placesAt(30, 25, 1.0), false)
 })
 
 test("the default gap is the one every layout had: no option, 1.5 mm and none give the same placement", () => {
