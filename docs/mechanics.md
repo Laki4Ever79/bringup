@@ -128,9 +128,8 @@ Results go to `drive/rev-N/drive.json` and `trajectory.json`, in the report and 
 A firmware that never answers is reported as **not run** within 10 s, not as a hang. Without QEMU or PlatformIO, the
 design still settles on the plain checks, and the report says "not proven in simulation".
 
-Run it alone: `npx tsx --test test/mech-drive.int.test.ts` (it needs PlatformIO from `npm run setup`, QEMU from
-`npm run setup -- --qemu` and MuJoCo from `npm run setup -- --robotics`; MuJoCo is robots-only, so a PCB-only setup
-leaves it out, and without it the drive is "not run").
+Run it alone: `npx tsx --test test/mech-drive.int.test.ts` (it needs PlatformIO from `npm run setup`, and QEMU and MuJoCo, both from `npm run setup -- --robotics`; they are robots-only, so a PCB-only setup leaves them out,
+and without them the drive is "not run").
 
 ## What the simulation found
 

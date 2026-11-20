@@ -264,11 +264,14 @@ npm run bringup -- briefs/beacon.md --mock    # then: scripted models, real tool
 
 `npm run setup` first checks the prerequisites and says plainly what's missing (Node 24, uv, and a Docker daemon that
 works without `sudo`: "Docker isn't running: start it, then re-run"). It installs the same pinned versions as the
-manual steps below, all repo-local (`.venv/`, `tools/`), never with `sudo` and never system-wide. Optional:
-`npm run setup -- --qemu` adds firmware emulation (QEMU), and `npm run setup -- --wokwi` adds Wokwi simulation (the
+manual steps below, all repo-local (`.venv/`, `tools/`), never with `sudo` and never system-wide. For robots,
+`npm run setup -- --robotics` adds their simulation in one flag: QEMU for the firmware (the ESP32-C3's and the
+ESP32-S3's) and MuJoCo for the body (a PCB-only setup installs neither). Optional: `npm run setup -- --qemu` adds
+firmware emulation alone, and `npm run setup -- --wokwi` adds Wokwi simulation (the
 pinned CLI, checked by sha256, plus the stand-in sensor chips; linux-x64; about 44 s, plus a ~360 MB toolchain download
 into `~/.wokwi` on a new machine), plus `WOKWI_CLI_TOKEN` in `.env`. A fresh machine takes about 20 min end to end (checked on a fresh
-clone on 31 Oct; every step exited 0).
+clone on 31 Oct; every step exited 0). With the downloads already cached (Docker image, `~/.platformio`, uv, npm), a
+fresh clone's `npm ci && npm run setup -- --robotics` took 51 s (21 Nov 2026, no manual step).
 
 | Prerequisite | Tested with | Notes |
 |---|---|---|
@@ -288,16 +291,19 @@ simulation, `BRINGUP_NTFY_TOPIC` (unguessable) / `BRINGUP_NTFY_SERVER` for phone
 ```bash
 npm ci
 uv venv --python 3.12 .venv && uv pip install platformio==6.2.0 build123d==0.13.0
-uv pip install --python .venv/bin/python mujoco==3.17.0   # robots only (npm run setup -- --robotics): the simulated drive
+uv pip install --python .venv/bin/python mujoco==3.17.0   # robots only (npm run setup -- --robotics, with QEMU below): the simulated drive
 npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4    # pinned: tscircuit releases daily; ERESOLVE peer warnings are expected
 docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngspice; 0.8 GB download, a few minutes
 .venv/bin/pio pkg install -d templates/fw -e esp32c3      # ESP32-C3 toolchain + libraries into ~/.platformio, about 4 min
+.venv/bin/pio pkg install -d templates/fw-rover -e esp32s3  # ESP32-S3 toolchain: a robot that needs more pins moves up to the S3
+# robots: Espressif's QEMU (riscv32 and xtensa, esp-develop-9.2.2-20260417) into tools/qemu, see src/setup/setup.ts
 ```
 
 Repo-local installs go in `.venv/` and `tools/node/`, both gitignored. The exceptions are PlatformIO's package cache
 (`~/.platformio`) and Docker's image store. The last command downloads the toolchain up front, so the first run
 doesn't stall on it. Without it, the first firmware build downloads it and takes several minutes; later builds take
-about 5 s. `-e esp32c3` matters: without it PlatformIO also fetches the ESP32-S3 toolchain for the bench build.
+about 5 s. The ESP32-S3's toolchain comes with it, since a robot that moves up to the S3 builds for it; the bench build
+(`esp32s3_bench`) uses the same one.
 
 </details>
 
