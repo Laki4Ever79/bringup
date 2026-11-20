@@ -592,8 +592,14 @@ order (effort as estimated in the study):
       firmware's gyro-turn fail-safe (bringup-system fixed it; it re-saves that example). The examples'
       still.png pictures are hand-made screenshots, so the rover's shows the old layout: a scripted capture (as the
       assembly pictures do) would keep every still current.
-- [ ] 3. Click-to-reference editing: a pick in the 3D view names a feature and the code that made it, and the case
-      designer edits that (1–2 days).
+- [x] 3. Click-to-reference editing: a pick in the 3D view names a feature and the code that made it, and the case
+      designer edits that (1–2 days). Built 20-21 Nov: py/enclosure.py and py/chassis.py write refs.json (each opening,
+      case feature, standoff, motor mount, rail, boss, bracket, deck, socket, panel: centre, label, file:line); a click
+      in the board page's 3D view names the nearest one (else the wall, floor, lid or plate), the composer shows it and
+      sends [ref: label; made by file:line] before the request; the case designer and the mechanics engineer read it.
+      Proof: on a rover mock (--stay) clicks named 10 of 11 chassis parts and the plate, and a sent request reached
+      every agent with its prefix; on a logger's case every opening, standoff and surface. Not yet: the system page's
+      own robot view (world3d.js) has no click-to-reference; the board page inside it does.
 - [ ] 4. A motor, bearing and fastener library with named frames and ISO 286 fits, from cadsmith's data with its MIT
       notice kept (~1 day).
 - [ ] 5. Print-DFM as named violations: overhang, minimum wall, bed size (~0.5 day).
