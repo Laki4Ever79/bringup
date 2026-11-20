@@ -12,7 +12,7 @@ const MODEL_KEYS = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
 export interface VendorStatus {
 	platforms: Record<string, boolean>
 	stPinData: boolean
-	// MuJoCo in .venv (npm run setup -- --robotics): robots' simulated drive only.
+	// MuJoCo in .venv (npm run setup): robots' simulated drive only.
 	mujoco?: boolean
 }
 
@@ -45,14 +45,14 @@ export function doctorReport(env: Env, vars: Record<string, string | undefined>,
 		row("KiCad 10", env.kicad === "local" ? "local kicad-cli" : env.kicad === "docker" ? `Docker (${KICAD_IMAGE})` : "missing: npm run setup (needs Docker)"),
 		row("python/build123d", tool(env.python)),
 		row("PlatformIO", tool(env.pio)),
-		row("QEMU", env.qemu ? "local" : "missing (optional: npm run setup -- --qemu)"),
+		row("QEMU", ((have) => (have.length ? `local (${have.join(", ")})` : "missing (robots: npm run setup -- --robotics)"))(["riscv32", "xtensa"].filter((a) => existsSync(join(env.root, `tools/qemu/bin/qemu-system-${a}`))).map((a) => (a === "riscv32" ? "ESP32-C3" : "ESP32-S3")))),
 		row("Wokwi (sim)", !env.wokwi ? "CLI missing: npm run setup -- --wokwi" : env.wokwiToken ? "local (token set)" : "not set up (WOKWI_CLI_TOKEN not set)"),
 		row("poppler (PDF)", env.poppler ? "local" : "missing (optional: part learning needs pdfinfo, pdftotext, pdftoppm)"),
 		row("Renode (STM32/nRF)", env.renode ? "local" : "missing (optional: npm run setup -- --renode)"),
 		...(vendors
 			? [
 					...Object.entries(vendors.platforms).map(([spec, ok]) => row(`pio ${spec.replace(/^platformio\//, "").replace(/@.*/, "")}`, ok ? "installed" : `missing (optional: npm run setup -- --vendors, ${spec})`)),
-					row("MuJoCo (robots)", vendors.mujoco ? "local (.venv)" : "missing (optional: npm run setup -- --robotics; only robots' simulated drive)"),
+					row("MuJoCo (robots)", vendors.mujoco ? "local (.venv)" : "missing (robots: npm run setup -- --robotics; only robots' simulated drive)"),
 					row("ST pin data", vendors.stPinData ? "local (tools/vendor)" : "missing (optional: npm run setup -- --vendors; only to regenerate STM32 profiles)"),
 				]
 			: []),

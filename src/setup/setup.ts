@@ -1,6 +1,6 @@
 // `npm run setup`: the README's Install steps, in order, skipping what is already there. Repo-local only (.venv,
 // tools/node, tools/qemu); the exceptions are the ones the README names: PlatformIO's ~/.platformio and Docker's image
-// store. Never sudo, never system-wide. Optional parts only behind their flags (--qemu, --wokwi, --robotics, --renode,
+// store. Never sudo, never system-wide. Optional parts only behind their flags (--robotics: QEMU and MuJoCo for robots; --qemu, --wokwi, --renode,
 // --vendors).
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
@@ -46,7 +46,9 @@ export const INSTALL: Step[] = [
 	},
 	{ id: "tscircuit", name: "tscircuit + bun (tools/node)", commands: [["npm", ["i", "--prefix", "tools/node", "tscircuit@0.0.3042", "bun@1.4.4"]]] },
 	{ id: "kicad", name: "KiCad 10 (Docker image)", commands: [["docker", ["pull", "kicad/kicad:10.0"]]] },
-	{ id: "toolchain", name: "ESP32-C3 toolchain (PlatformIO)", commands: [[".venv/bin/pio", ["pkg", "install", "-d", "templates/fw", "-e", "esp32c3"]]] },
+	// The C3's and the S3's: a robot that moves up to the ESP32-S3 (contract/mcu-move.ts) builds the rover template's
+	// esp32s3 env, and without its Xtensa toolchain installed here the first such run downloaded it mid-run.
+	{ id: "toolchain", name: "ESP32-C3 and ESP32-S3 toolchains (PlatformIO)", commands: [[".venv/bin/pio", ["pkg", "install", "-d", "templates/fw", "-e", "esp32c3"]], [".venv/bin/pio", ["pkg", "install", "-d", "templates/fw-rover", "-e", "esp32s3"]]] },
 ]
 
 // Robots only (docs/mechanics.md): MuJoCo for the simulated drive. Its own step behind --robotics (domain isolation,
@@ -133,9 +135,15 @@ export async function runSetup(probe: Probe, flags: { qemu?: boolean; wokwi?: bo
 		lines.push(`${step.name}: installed`)
 	}
 	for (const step of INSTALL) await doStep(step)
-	if (flags.qemu) await doStep(QEMU)
-	else lines.push(`${QEMU.name}: ${(await probe.present("qemu")) ? "already there" : "not installed (optional: npm run setup -- --qemu)"}`)
-	for (const [step, flag, hint] of [[ROBOTICS, flags.robotics, "--robotics"], [RENODE, flags.renode, "--renode"], [VENDORS, flags.vendors, "--vendors"]] as const) {
+	// A robot needs both halves of its simulation, the firmware's (QEMU) and the body's (MuJoCo): --robotics installs
+	// both, one flag (it took --qemu --robotics before; the user, 17 Nov 2026: "as simple as possible to setup on a new
+	// machine"). A PCB-only setup still installs neither MuJoCo nor anything else of the robots' (domain isolation, 14
+	// Nov 2026); --qemu alone adds the firmware emulation for boards.
+	if (flags.robotics || flags.qemu) await doStep(QEMU)
+	else lines.push(`${QEMU.name}: ${(await probe.present("qemu")) ? "already there" : "not installed (robots: npm run setup -- --robotics; boards only: -- --qemu)"}`)
+	if (flags.robotics) await doStep(ROBOTICS)
+	else lines.push(`${ROBOTICS.name}: ${(await probe.present(ROBOTICS.id)) ? "already there" : "not installed (robots: npm run setup -- --robotics)"}`)
+	for (const [step, flag, hint] of [[RENODE, flags.renode, "--renode"], [VENDORS, flags.vendors, "--vendors"]] as const) {
 		if (flag) await doStep(step)
 		else lines.push(`${step.name}: ${(await probe.present(step.id)) ? "already there" : `not installed (optional: npm run setup -- ${hint})`}`)
 	}
@@ -207,6 +215,7 @@ export function presentOn(root: string, check: Probe["check"]): Probe["present"]
 			return (
 				version(join(pioHome, "platforms/espressif32/platform.json")) === "8.0.0" &&
 				existsSync(join(pioHome, "packages/toolchain-riscv32-esp")) &&
+				existsSync(join(pioHome, "packages/toolchain-xtensa-esp-elf")) &&
 				existsSync(join(pioHome, "packages/framework-arduinoespressif32")) &&
 				existsSync(join(root, "templates/fw/.pio/libdeps/esp32c3/NimBLE-Arduino"))
 			)
