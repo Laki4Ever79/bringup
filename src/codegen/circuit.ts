@@ -736,8 +736,8 @@ export const THROUGH_HOLE_FOOTPRINT = /^(pinrow|pinheader|dip|to92|to220|axial|j
 // (J2 by 0.3 mm on 25 mm boards: tscircuit then skips autorouting altogether).
 const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	dfn4: [5.8, 2.8], sot23_5: [3.6, 2.5], sot23: [3.6, 2.5],
-	// SOT-23-6 (the AP63205 buck): the SOT-23-5's outline with a sixth lead (JEDEC MO-178): its box, an ESTIMATE until a
-	// build measures it.
+	// SOT-23-6 (the AP63205 buck): the SOT-23-5's outline with a sixth lead (JEDEC MO-178); measured on a mock Eurobot's
+	// board (20 Nov 2026): pads + 0.25 mm 4.1 × 3.0, as PAD_EXTENT has it.
 	sot23_6: [3.6, 2.5], "0402": [1.86, 0.94], "0603": [2.96, 1.46], qfn32: [5.8, 5.8],
 	// A 4-pin 2.54 mm header (a bought module on pins): 4 × 2.54 + 1 mm by 3.6 mm, like pinrow2 and pinrow3 (it was
 	// 1.5 mm deep, so the placer put the Eurobot base's 5 V module 0.27 mm past the board edge, 17 Nov 2026).
@@ -908,7 +908,8 @@ function packageSize(footprint: string): [number, number] | null {
 // whichever router routed it, 17 Nov 2026). What a hole must clear is this extent.
 // Small parts whose placement box is smaller than their pads + 0.25 mm a side, measured from the pads in circuit.json of
 // the real runs' boards (17 Nov 2026 audit): the edge is judged by these (copperExtent), the parts' gaps stay on the box.
-const PAD_EXTENT: Record<string, [number, number]> = { sot23_5: [4.1, 3.0], sot23_6: [4.1, 3.0], sot363: [3.2, 2.6], sod123: [4.7, 1.7], "0402": [2.1, 1.1] }
+// The XT60PW-M battery plug: pads + 0.25 mm 9.6 mm across (its box 9.4), measured on a mock Eurobot's board, 20 Nov 2026.
+const PAD_EXTENT: Record<string, [number, number]> = { xt60pw_m: [9.6, 17.0], sot23_5: [4.1, 3.0], sot23_6: [4.1, 3.0], sot363: [3.2, 2.6], sod123: [4.7, 1.7], "0402": [2.1, 1.1] }
 // A part's copper and courtyard extent at rotation 0, where it is more than its placement box: a dual-row IC's from its own
 // pin geometry, a small part's from the audit table. Null: the box already covers it.
 export const copperExtent = (footprint: string): [number, number] | null => dualRowExtent(footprint) ?? PAD_EXTENT[footprint] ?? null
