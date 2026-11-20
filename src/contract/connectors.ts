@@ -68,7 +68,10 @@ export function connectorsOffEdge(c: ContractSnapshot): Violation[] {
 // open; J5 moved alone then overlapped JM2 on the same 16 mm edge). Per edge, in order along it, each footprint is pushed
 // inside the edge and clear of its neighbour (by the case's minimum wall when the openings share a case wall), moving
 // each as little as that allows, in half millimetres; the checks themselves judge the result.
-export function connectorsOntoEdges(c: ContractSnapshot): ContractValues["connectors"] | null {
+// opts.clearModule: also move a connector out of the radio module's strip (clearModule). Only for the architect's own
+// connector write: the space model's size search (space.ts resized) judges sizes as they are, and clearing there
+// changed which sizes it accepted, so scripted runs stopped settling (agents-scripted, mech-agent, 21 Nov 2026).
+export function connectorsOntoEdges(c: ContractSnapshot, opts: { clearModule?: boolean } = {}): ContractValues["connectors"] | null {
 	const o = c.values.outline
 	if (!o || !c.values.connectors?.length) return null
 	const problems = (connectors: Connector[]) => {
@@ -76,7 +79,7 @@ export function connectorsOntoEdges(c: ContractSnapshot): ContractValues["connec
 		return connectorsOffEdge(t).length + connectorClashes(t).length
 	}
 	const before = problems(c.values.connectors)
-	if (before === 0) return clearModule(c, c.values.connectors)
+	if (before === 0) return opts.clearModule ? clearModule(c, c.values.connectors) : null
 	const gap = enclosureMode(c.values) === "case" ? MIN_WALL_MM : 0
 	const boxAt = (connectors: Connector[], ref: string) => {
 		const k = connectors.find((x) => x.ref === ref)!
@@ -132,6 +135,7 @@ export function connectorsOntoEdges(c: ContractSnapshot): ContractValues["connec
 		connectors = best.connectors
 		now = best.left
 	}
+	if (!opts.clearModule) return now < before ? connectors : null
 	const packed = now < before ? connectors : c.values.connectors
 	return clearModule(c, packed) ?? (now < before ? connectors : null)
 }
