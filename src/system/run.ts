@@ -218,6 +218,27 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			asked.set(b.name, readTrace(boardDir(outDir, b.name)).length)
 		}
 	}
+	// Main's pack slot (assembly.ts clearPackSlot): as soon as main's mechanics have a pack and a sensor, settled or not,
+	// the boards over the stretch the pack needs behind the sensor's bracket move behind it and the new body is sent.
+	// Like refitToLimit, on every poll: waiting for main to settle deadlocks, since main can't settle with a board on its
+	// pack (the Rover + climate system mock, 20 Nov 2026: main stuck with climate on the slot, the system never moved it).
+	const refitPackSlot = () => {
+		if (!assembly) return
+		const owner = Object.values(lastContracts()).find((x) => x?.values.mechanics?.battery)
+		const chassis = owner ? chassisSpec(owner) : null
+		const next = chassis ? clearPackSlot(assembly, packSlotOf(chassis), laidOutFor) : assembly
+		if (next === assembly) return
+		assembly = next
+		writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
+		for (const b of designed) {
+			if (!assembly.boards.some((ab) => ab.name === b.name) || assemblySent.get(b.name) === siblingsOf(assembly, b.name)) continue
+			assemblySent.set(b.name, siblingsOf(assembly, b.name))
+			const text = `The robot's body (${spec.name}) changed: the boards moved off the pack's place behind the sensor's bracket.`
+			appendRequest(boardDir(outDir, b.name), text, undefined, undefined, { ...assembly, self: b.name })
+			sent.push({ board: b.name, text })
+			asked.set(b.name, readTrace(boardDir(outDir, b.name)).length)
+		}
+	}
 	const syncAssembly = (contracts: Record<string, ContractSnapshot | undefined>, send: boolean): string[] => {
 		const stale: string[] = []
 		if (!assembly) return stale
@@ -236,15 +257,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			assembly = withOutlines(assembly, built, limit)
 			writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
 		}
-		// Main's pack slot (assembly.ts clearPackSlot): once main's mechanics have a pack and a sensor, the boards over the
-		// stretch the pack needs behind the sensor's bracket move behind it, so main's mechanics can place it there.
-		const owner = Object.values(contracts).find((x) => x?.values.mechanics?.battery)
-		const chassis = owner ? chassisSpec(owner) : null
-		const cleared = chassis ? clearPackSlot(assembly, packSlotOf(chassis), limit) : assembly
-		if (cleared !== assembly) {
-			assembly = cleared
-			writeFileSync(join(outDir, "system.json"), JSON.stringify({ ...spec, assembly }, null, 2))
-		}
+
 		for (const b of designed) {
 			if (!assembly.boards.some((ab) => ab.name === b.name)) continue
 			if (assemblySent.get(b.name) === siblingsOf(assembly, b.name)) continue
@@ -277,6 +290,7 @@ export async function runSystem(o: SystemRunOptions): Promise<SystemResult> {
 			await new Promise((r) => setTimeout(r, o.pollMs ?? 2000))
 			followBoards()
 			refitToLimit()
+			refitPackSlot()
 			const contracts = contractsNow()
 			// A board that ended unsettled (stuck, or at its revision cap) won't fix itself: stop and say which.
 			const stuck = designed.filter((b) => unsettledSince(boardDir(outDir, b.name), asked.get(b.name) ?? 0)).map((b) => b.name)
