@@ -206,7 +206,8 @@ Events, checks, the full Mozaik table and our 4.1 workarounds (#113, #114, #115)
 
 ```bash
 npm ci              # about 12 s
-npm run setup       # the full toolchain, repo-local; installs only what's missing (about 14 min the first time)
+npm run setup -- --robotics   # the full toolchain, repo-local, robot simulation included; installs only what's missing
+                              # (about 20 min on a new machine; drop --robotics for PCB-only)
 npm run doctor      # what each tool will use, and which optional settings are set (never their values)
 npm run demo        # the dashboard opens, a design settles, a change ripples; type your own change after it
 npm run dashboard   # the start screen: describe a device, see the split into boards, build it, explore it in 3D

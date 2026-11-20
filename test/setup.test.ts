@@ -62,9 +62,10 @@ test("on a bare machine it runs the README's install steps, in order, with the R
 		"npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4",
 		"docker pull kicad/kicad:10.0",
 		".venv/bin/pio pkg install -d templates/fw -e esp32c3",
+		".venv/bin/pio pkg install -d templates/fw-rover -e esp32s3",
 	])
 	// The same pins as the README's Install block.
-	for (const pin of ["platformio==6.2.0", "build123d==0.13.0", "mujoco==3.17.0", "tscircuit@0.0.3042", "bun@1.4.4", "kicad/kicad:10.0", "-e esp32c3"]) assert.ok(README.includes(pin), pin)
+	for (const pin of ["platformio==6.2.0", "build123d==0.13.0", "mujoco==3.17.0", "tscircuit@0.0.3042", "bun@1.4.4", "kicad/kicad:10.0", "-e esp32c3", "-e esp32s3"]) assert.ok(README.includes(pin), pin)
 	assert.equal(INSTALL.length, 4)
 })
 
@@ -72,9 +73,9 @@ test("idempotent: what is present is skipped, and the summary says what is ready
 	const m = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
 	const summary = await runSetup(m.probe, {})
 	assert.deepEqual(m.ran, [])
-	assert.deepEqual(summary.lines.slice(0, 4).map((l) => l.split(":")[0]), ["python tools (.venv)", "tscircuit + bun (tools/node)", "KiCad 10 (Docker image)", "ESP32-C3 toolchain (PlatformIO)"])
+	assert.deepEqual(summary.lines.slice(0, 4).map((l) => l.split(":")[0]), ["python tools (.venv)", "tscircuit + bun (tools/node)", "KiCad 10 (Docker image)", "ESP32-C3 and ESP32-S3 toolchains (PlatformIO)"])
 	assert.ok(summary.lines.slice(0, 4).every((l) => /already there/.test(l)), summary.lines.join("\n"))
-	assert.match(summary.lines.join("\n"), /QEMU .*not installed \(optional: npm run setup -- --qemu\)/)
+	assert.match(summary.lines.join("\n"), /QEMU .*not installed \(robots: npm run setup -- --robotics; boards only: -- --qemu\)/)
 })
 
 test("optional parts only behind their flags; a failed step is reported and the rest still run", async () => {
@@ -87,7 +88,7 @@ test("optional parts only behind their flags; a failed step is reported and the 
 	const s = await runSetup(failing.probe, {})
 	assert.equal(s.ok, false)
 	assert.match(s.lines.join("\n"), /KiCad 10 \(Docker image\): FAILED/)
-	assert.match(s.lines.join("\n"), /ESP32-C3 toolchain \(PlatformIO\): installed/)
+	assert.match(s.lines.join("\n"), /ESP32-C3 and ESP32-S3 toolchains \(PlatformIO\): installed/)
 })
 
 test("nothing in setup uses sudo or installs system-wide", () => {
@@ -103,7 +104,7 @@ test("doctor names each tool's backend and which optional settings are set, neve
 	assert.match(text, /tscircuit\s+local/)
 	assert.match(text, /KiCad 10\s+Docker \(kicad\/kicad:10\.0\)/)
 	assert.match(text, /PlatformIO\s+missing: npm run setup/)
-	assert.match(text, /QEMU\s+missing \(optional: npm run setup -- --qemu\)/)
+	assert.match(text, /QEMU\s+missing \(robots: npm run setup -- --robotics\)/)
 	assert.match(text, /model key\s+set \(OPENAI_API_KEY\)/)
 	assert.match(text, /WOKWI_CLI_TOKEN\s+not set/)
 	assert.match(text, /BRINGUP_NTFY_TOPIC\s+set/)
@@ -117,7 +118,7 @@ test("doctor lists Renode, each vendor platform and ST's pin data (docs/mcu.md)"
 	assert.match(text, /pio ststm32\s+installed/)
 	assert.match(text, /pio nordicnrf52\s+missing \(optional: npm run setup -- --vendors, platformio\/nordicnrf52@11\.0\.0\)/)
 	assert.match(text, /ST pin data\s+missing/)
-	assert.match(text, /MuJoCo \(robots\)\s+missing \(optional: npm run setup -- --robotics/)
+	assert.match(text, /MuJoCo \(robots\)\s+missing \(robots: npm run setup -- --robotics/)
 	assert.match(doctorReport(env, {}, { platforms: {}, stPinData: false, mujoco: true }), /MuJoCo \(robots\)\s+local/)
 	assert.match(doctorReport({ ...env, renode: null }, {}), /Renode \(STM32\/nRF\)\s+missing \(optional: npm run setup -- --renode\)/)
 })
@@ -201,13 +202,15 @@ test("doctor names the firmware simulator: Wokwi when its CLI and token are ther
 
 // Domain isolation (14 Nov 2026): MuJoCo is the robots' alone; a PCB-only setup never installs it, and a failed robotics
 // install leaves the PCB tools installed.
-test("the robot simulator is installed only with --robotics, as its own step", async () => {
+test("the robot simulation (QEMU and MuJoCo) is installed by --robotics alone, as its own steps", async () => {
 	const plain = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
 	await runSetup(plain.probe, {})
 	assert.ok(!plain.ran.some((c) => c.includes("mujoco")), plain.ran.join("\n"))
 	const robots = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
 	const summary = await runSetup(robots.probe, { robotics: true })
 	assert.deepEqual(robots.ran.filter((c) => c.includes("mujoco")), ["uv pip install --python .venv/bin/python mujoco==3.17.0"])
+	assert.ok(robots.ran.some((c) => c.includes("qemu-xtensa-softmmu")) && robots.ran.some((c) => c.includes("qemu-riscv32-softmmu")), "both QEMUs with --robotics, no --qemu needed")
+	assert.ok(!plain.ran.some((c) => c.includes("qemu")), "a PCB-only setup installs no QEMU")
 	assert.match(summary.lines.join("\n"), /robot simulation \(MuJoCo in \.venv\): installed/)
 	assert.ok(!INSTALL.some((s) => s.commands.some(([, args]) => args.some((a) => a.includes("mujoco")))), "MuJoCo is out of the default install")
 })
