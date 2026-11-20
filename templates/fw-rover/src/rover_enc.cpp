@@ -1,3 +1,4 @@
+#include <math.h>
 #include "rover_enc.h"
 
 static int32_t iabs(int32_t x) { return x < 0 ? -x : x; }
@@ -18,7 +19,11 @@ static void startTurn(const RoverEncConfig &cfg, RoverEncState &st, uint32_t now
 	st.turnHeading = headingRad;
 	st.backing = false;
 	st.turning = true;
-	st.turnUntil = nowMs + (cfg.turnCounts > 0 ? 2 * cfg.turnMs : cfg.turnMs);
+	// A measured turn (encoders, or a gyro's heading) gets twice the planned time as its fail-safe; only a timed one ends
+	// on the time itself. With a gyro and no encoders it was the planned time, so the gyro never closed the turn: the
+	// rover with a Pi turned the timed ~72 deg, not 135, and drove on into the wall (system mock, 20 Nov 2026).
+	const bool measured = cfg.turnCounts > 0 || (cfg.turnRad > 0 && !isnan(headingRad));
+	st.turnUntil = nowMs + (measured ? 2 * cfg.turnMs : cfg.turnMs);
 	st.turnL = encL;
 	st.turnR = encR;
 }

@@ -147,6 +147,21 @@ void test_with_a_gyro_the_turn_ends_on_the_heading(void) {
 	o = rover_enc_step(cfg, st, -1, 200, 2100, -2100, 2.40f);  // heading past 3/8 of a turn: straight on
 	TEST_ASSERT_EQUAL_FLOAT(o.left, o.right);
 }
+// A gyro and no encoders: the turn runs past its planned time until the heading has turned (twice the time as the
+// fail-safe), not cut at the planned time as a timed turn is.
+void test_with_a_gyro_and_no_encoders_the_turn_outlasts_its_planned_time(void) {
+	RoverEncConfig cfg = {200, 500, 0.6f, 600, 0, 0.0f, 0, 2.3562f};
+	RoverEncState st;
+	rover_enc_step(cfg, st, 150, 0, 0, 0, 0.0f);                       // the turn begins
+	RoverOut o = rover_enc_step(cfg, st, -1, 900, 0, 0, 1.3f);         // past the 600 ms plan, heading short: still turning
+	TEST_ASSERT_EQUAL_FLOAT(-0.6f, o.right);
+	o = rover_enc_step(cfg, st, -1, 1000, 0, 0, 2.40f);                // the heading has turned: straight on
+	TEST_ASSERT_EQUAL_FLOAT(o.left, o.right);
+	RoverEncState st2;
+	rover_enc_step(cfg, st2, 150, 0, 0, 0, 0.0f);
+	o = rover_enc_step(cfg, st2, -1, 1300, 0, 0, 1.0f);                // past twice the plan: the fail-safe ends it
+	TEST_ASSERT_EQUAL_FLOAT(o.left, o.right);
+}
 // No heading (NAN): the turn closes on the counts as before.
 void test_without_a_heading_the_turn_ends_on_the_counts(void) {
 	RoverEncConfig cfg = {200, 500, 0.6f, 600, 1000, 0.001f, 0, 2.3562f};
@@ -189,6 +204,7 @@ int main(int, char **) {
 	RUN_TEST(test_quadrature_counts_four_per_cycle_each_way);
 	RUN_TEST(test_with_a_gyro_the_turn_ends_on_the_heading);
 	RUN_TEST(test_without_a_heading_the_turn_ends_on_the_counts);
+	RUN_TEST(test_with_a_gyro_and_no_encoders_the_turn_outlasts_its_planned_time);
 	RUN_TEST(test_quadrature_jitter_on_an_edge_nets_zero);
 	RUN_TEST(test_quadrature_sign_is_learned_from_the_first_drive);
 	RUN_TEST(test_with_a_gyro_the_odometry_turns_by_the_heading);
