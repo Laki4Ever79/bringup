@@ -84,7 +84,11 @@ def _connect(port, wait_s):
             time.sleep(0.1)
 
 
-def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=10.0, tick_wait_s=10.0):
+# firmware_wait_s: wall-clock time for the firmware's first answer (its boot). 60 s: the ESP32-S3 in qemu-system-xtensa
+# boots slower than the C3, and inside a run the machine is busy with board builds (the Eurobot mock's S3 drive, 20 Nov
+# 2026: booted, then no answer within the old 10 s; the same firmware answered on an idle machine). Time inside QEMU is
+# virtual and lock-stepped, so a longer wait costs only when the firmware never answers.
+def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=60.0, tick_wait_s=10.0):
     step_h = spec["edgeMm"] / 1000
     model = build_model(spec, course_xml(step_h))
     data = mujoco.MjData(model)
