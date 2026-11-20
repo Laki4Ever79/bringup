@@ -6,8 +6,8 @@
 		{
 			"name": "main",
 			"outline": {
-				"widthMm": 43,
-				"heightMm": 28
+				"widthMm": 51,
+				"heightMm": 33
 			},
 			"chassis": true
 		},
@@ -37,8 +37,8 @@
 				"yMm": 0,
 				"rotDeg": 0,
 				"outline": {
-					"widthMm": 43,
-					"heightMm": 28
+					"widthMm": 51,
+					"heightMm": 33
 				},
 				"outlineSource": "built"
 			},
