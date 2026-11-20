@@ -17,8 +17,10 @@ from pathlib import Path
 
 from build123d import Box, Cylinder, GeomType, Pos, Rot, export_step, export_stl
 
+from fits import clearance_hole
+
 STANDOFF_OD = 5.0
-M25_HOLE = 2.7  # an M2.5 screw's clearance hole: the standoff hole of a spec from before boardScrew
+M25_HOLE = clearance_hole(2.5, "close")  # 2.7 mm, ISO 273 close: the standoff hole of a spec from before boardScrew
 WALL = 2.0
 MAST_FIT = 0.4  # clearance of the mast in its socket and of a spigot in the section below
 MAST_SOCKET_H = 10.0
@@ -45,7 +47,9 @@ def strap_geometry(spec):
     return bosses, t + STRAP_BOSS_H, t + bh + 0.5
 
 
-GRID_HOLE = 3.2  # an M3 screw's clearance (ISO 273 medium)
+# An M3 screw's clearance, ISO 273 medium: 3.4 mm. It was 3.2 mm labelled "medium", which is ISO 273's close series;
+# a printed hole comes out undersize, so the medium series is the one a printed plate needs (fits.py, 20 Nov 2026).
+GRID_HOLE = clearance_hole(3, "normal")
 GRID_EDGE = 6.0  # from the plate's edge to a hole's centre
 GRID_CLEAR = 4.0  # from anything on or under the plate to a hole's centre, beyond its footprint
 

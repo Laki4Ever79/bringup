@@ -152,6 +152,16 @@ class ChassisTest(unittest.TestCase):
             line = int(r["madeBy"].split(":")[1].split()[0])
             self.assertTrue(src[line - 1].lstrip().startswith("#"), r["madeBy"])
 
+    # py/fits.py, ported from cadsmith (MIT): the chassis' screw holes come from the ISO 273 table, not typed numbers.
+    def test_fits_match_the_iso_tables_and_the_chassis_uses_them(self):
+        import chassis
+        import fits
+        self.assertEqual(fits.fit(10, "H7/g6"), {"hole": (10.0, 10.015), "shaft": (9.986, 9.995), "clearance": (0.005, 0.029)})
+        self.assertEqual(fits.clearance_hole("M3", "normal"), 3.4)
+        self.assertEqual(chassis.GRID_HOLE, 3.4)
+        self.assertEqual(chassis.M25_HOLE, 2.7)
+        self.assertEqual(fits.tap_drill("M3"), 2.5)
+
 
 if __name__ == "__main__":
     unittest.main()
