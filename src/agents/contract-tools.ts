@@ -152,7 +152,7 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 							args = { ...args, value: named as ContractValues[FieldName] }
 						}
 					}
-					const fitted = connectorsOntoEdges({ ...snap, values: { ...snap.values, connectors: args.value as ContractValues["connectors"] } })
+					const fitted = connectorsOntoEdges({ ...snap, values: { ...snap.values, connectors: args.value as ContractValues["connectors"] } }, { clearModule: true })
 					if (fitted) {
 						const moved = fitted.filter((k) => !(args.value as ContractValues["connectors"]).some((b) => b.ref === k.ref && b.offsetMm === k.offsetMm)).map((k) => `${k.ref} to ${k.edge}@${k.offsetMm} mm`)
 						args = { ...args, value: fitted as ContractValues[FieldName] }
@@ -203,7 +203,7 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						const beforeC = snap.values.connectors ?? []
 						const o = args.value as ContractValues["outline"]
 						const scaled = scaledConnectors({ ...snap, values: { ...snap.values, outline: oldOutline } }, o.widthMm, o.heightMm)
-						const next = connectorsOntoEdges({ ...snap, values: { ...snap.values, connectors: scaled } }) ?? scaled ?? []
+						const next = connectorsOntoEdges({ ...snap, values: { ...snap.values, connectors: scaled } }, { clearModule: true }) ?? scaled ?? []
 						const moved = next.filter((k) => !beforeC.some((b) => b.ref === k.ref && b.edge === k.edge && b.offsetMm === k.offsetMm)).map((k) => `${k.ref} to ${k.edge}@${k.offsetMm} mm`)
 						if (moved.length) {
 							const why = `the new ${o.widthMm}x${o.heightMm} mm outline: each connector at the same place along its edge (the space check judged the size so): ${moved.join(", ")}`
