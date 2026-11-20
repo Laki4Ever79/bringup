@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "bun": "^1.4.4",
+    "tscircuit": "^0.0.3042"
+  }
+}

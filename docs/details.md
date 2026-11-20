@@ -292,7 +292,8 @@ simulation, `BRINGUP_NTFY_TOPIC` (unguessable) / `BRINGUP_NTFY_SERVER` for phone
 npm ci
 uv venv --python 3.12 .venv && uv pip install platformio==6.2.0 build123d==0.13.0
 uv pip install --python .venv/bin/python mujoco==3.17.0   # robots only (npm run setup -- --robotics, with QEMU below): the simulated drive
-npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4    # pinned: tscircuit releases daily; ERESOLVE peer warnings are expected
+mkdir -p tools/node && cp src/setup/tools-node/package*.json tools/node/ && npm ci --prefix tools/node
+                                                          # tscircuit 0.0.3042 + bun 1.4.4 and every dependency at the tested version (src/setup/tools-node)
 docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngspice; 0.8 GB download, a few minutes
 .venv/bin/pio pkg install -d templates/fw -e esp32c3      # ESP32-C3 toolchain + libraries into ~/.platformio, about 4 min
 .venv/bin/pio pkg install -d templates/fw-rover -e esp32s3  # ESP32-S3 toolchain: a robot that needs more pins moves up to the S3

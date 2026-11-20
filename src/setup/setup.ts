@@ -44,7 +44,9 @@ export const INSTALL: Step[] = [
 			["uv", ["pip", "install", "--python", ".venv/bin/python", "platformio==6.2.0", "build123d==0.13.0"]],
 		],
 	},
-	{ id: "tscircuit", name: "tscircuit + bun (tools/node)", commands: [["npm", ["i", "--prefix", "tools/node", "tscircuit@0.0.3042", "bun@1.4.4"]]] },
+	// From the tested lockfile (src/setup/tools-node): pinning tscircuit alone let its own dependencies float, and a fresh
+	// clone got @tscircuit/cli 0.1.2480 for the tested 0.1.2423, whose rover board no longer built (21 Nov 2026).
+	{ id: "tscircuit", name: "tscircuit + bun (tools/node)", commands: [["bash", ["-c", "set -e; mkdir -p tools/node && cp src/setup/tools-node/package.json src/setup/tools-node/package-lock.json tools/node/ && npm ci --prefix tools/node"]]] },
 	{ id: "kicad", name: "KiCad 10 (Docker image)", commands: [["docker", ["pull", "kicad/kicad:10.0"]]] },
 	// The C3's and the S3's: a robot that moves up to the ESP32-S3 (contract/mcu-move.ts) builds the rover template's
 	// esp32s3 env, and without its Xtensa toolchain installed here the first such run downloaded it mid-run.
@@ -209,7 +211,12 @@ export function presentOn(root: string, check: Probe["check"]): Probe["present"]
 			return r.code === 0 && r.out.trim() === "6.2.0 0.13.0"
 		}
 		if (step === "robotics") return (await check(join(root, ".venv/bin/python"), ["-c", "import importlib.metadata as m; print(m.version('mujoco'))"])).out.trim() === "3.17.0"
-		if (step === "tscircuit") return version(join(root, "tools/node/node_modules/tscircuit/package.json")) === "0.0.3042" && version(join(root, "tools/node/node_modules/bun/package.json")) === "1.4.4"
+		if (step === "tscircuit") {
+			// Every package at the lockfile's version (a tools/node installed before the lockfile, with a newer @tscircuit/cli,
+			// is reinstalled from it).
+			const lock = JSON.parse(readFileSync(join(root, "src/setup/tools-node/package-lock.json"), "utf8")) as { packages: Record<string, { version?: string }> }
+			return ["tscircuit", "bun", "@tscircuit/cli"].every((n) => version(join(root, "tools/node/node_modules", n, "package.json")) === lock.packages[`node_modules/${n}`]?.version)
+		}
 		if (step === "kicad") return (await check("docker", ["image", "inspect", "kicad/kicad:10.0"])).code === 0
 		if (step === "toolchain")
 			return (

@@ -59,13 +59,13 @@ test("on a bare machine it runs the README's install steps, in order, with the R
 	assert.deepEqual(m.ran, [
 		"uv venv --allow-existing --python 3.12 .venv",
 		"uv pip install --python .venv/bin/python platformio==6.2.0 build123d==0.13.0",
-		"npm i --prefix tools/node tscircuit@0.0.3042 bun@1.4.4",
+		"bash -c set -e; mkdir -p tools/node && cp src/setup/tools-node/package.json src/setup/tools-node/package-lock.json tools/node/ && npm ci --prefix tools/node",
 		"docker pull kicad/kicad:10.0",
 		".venv/bin/pio pkg install -d templates/fw -e esp32c3",
 		".venv/bin/pio pkg install -d templates/fw-rover -e esp32s3",
 	])
 	// The same pins as the README's Install block.
-	for (const pin of ["platformio==6.2.0", "build123d==0.13.0", "mujoco==3.17.0", "tscircuit@0.0.3042", "bun@1.4.4", "kicad/kicad:10.0", "-e esp32c3", "-e esp32s3"]) assert.ok(README.includes(pin), pin)
+	for (const pin of ["platformio==6.2.0", "build123d==0.13.0", "mujoco==3.17.0", "src/setup/tools-node", "kicad/kicad:10.0", "-e esp32c3", "-e esp32s3"]) assert.ok(README.includes(pin), pin)
 	assert.equal(INSTALL.length, 4)
 })
 
@@ -213,4 +213,15 @@ test("the robot simulation (QEMU and MuJoCo) is installed by --robotics alone, a
 	assert.ok(!plain.ran.some((c) => c.includes("qemu")), "a PCB-only setup installs no QEMU")
 	assert.match(summary.lines.join("\n"), /robot simulation \(MuJoCo in \.venv\): installed/)
 	assert.ok(!INSTALL.some((s) => s.commands.some(([, args]) => args.some((a) => a.includes("mujoco")))), "MuJoCo is out of the default install")
+})
+
+// tools/node comes from the tested lockfile: tscircuit and every package it pulls in at the versions this repo tested
+// (a fresh clone once got @tscircuit/cli 0.1.2480 for 0.1.2423, and its rover board stopped building).
+test("tools/node is installed from the tested lockfile, tscircuit 0.0.3042 and the CLI it was tested with", () => {
+	const lock = JSON.parse(readFileSync(new URL("../src/setup/tools-node/package-lock.json", import.meta.url), "utf8"))
+	assert.equal(lock.packages["node_modules/tscircuit"].version, "0.0.3042")
+	assert.equal(lock.packages["node_modules/bun"].version, "1.4.4")
+	assert.equal(lock.packages["node_modules/@tscircuit/cli"].version, "0.1.2423")
+	const tscircuit = INSTALL.find((x) => x.id === "tscircuit")!
+	assert.match(tscircuit.commands.flat(2).join(" "), /npm ci --prefix tools\/node/)
 })
