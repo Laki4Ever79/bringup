@@ -1,7 +1,7 @@
 // Connectors on the board's edges (moved from consistency.ts, 17 Nov 2026): each on its edge and clear of the others, the
 // checks that say when one isn't, and the packer an outline change uses (agents/contract-tools.ts) and the space model
 // judges every size with (space.ts resized), so both put them in the same place.
-import { connectorAlongMm, connectorBoxes, connectorExtents } from "../codegen/circuit.ts"
+import { connectorAlongMm, connectorBoxes, connectorExtents, moduleBlocked } from "../codegen/circuit.ts"
 import { MIN_WALL_MM, SLOT_MARGIN_MM } from "./case.ts"
 import type { Violation } from "./consistency.ts"
 import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type ContractValues, type FieldName } from "./types.ts"
@@ -76,7 +76,7 @@ export function connectorsOntoEdges(c: ContractSnapshot): ContractValues["connec
 		return connectorsOffEdge(t).length + connectorClashes(t).length
 	}
 	const before = problems(c.values.connectors)
-	if (before === 0) return null
+	if (before === 0) return clearModule(c, c.values.connectors)
 	const gap = enclosureMode(c.values) === "case" ? MIN_WALL_MM : 0
 	const boxAt = (connectors: Connector[], ref: string) => {
 		const k = connectors.find((x) => x.ref === ref)!
@@ -132,5 +132,33 @@ export function connectorsOntoEdges(c: ContractSnapshot): ContractValues["connec
 		connectors = best.connectors
 		now = best.left
 	}
-	return now < before ? connectors : null
+	const packed = now < before ? connectors : c.values.connectors
+	return clearModule(c, packed) ?? (now < before ? connectors : null)
+}
+
+// The radio module's edge cleared (moduleBlocked): each connector in its way moves along its own edge to the nearest
+// offset that leaves the module its spot and adds no off-edge or clash, as module-blocked's message words it (the Rover +
+// climate system mock, 20 Nov 2026: the link plug JL1 at right@20 mm sat in the antenna's strip; "right@15.9 mm is the
+// nearest spot that clears it" was said every revision, and the board never built). null when nothing changes.
+function clearModule(c: ContractSnapshot, connectors: Connector[]): Connector[] | null {
+	const o = c.values.outline
+	const at = (cs: Connector[]) => ({ ...c, values: { ...c.values, connectors: cs } })
+	const m = moduleBlocked(at(connectors))
+	if (!o || !m || m.blockers.length === 0) return connectors === c.values.connectors ? null : connectors
+	const problems = (cs: Connector[]) => connectorsOffEdge(at(cs)).length + connectorClashes(at(cs)).length
+	const base = problems(connectors)
+	let out = connectors
+	for (const ref of m.blockers) {
+		const k = out.find((x) => x.ref === ref)
+		if (!k) continue
+		const len = k.edge === "left" || k.edge === "right" ? o.heightMm : o.widthMm
+		let best: number | null = null
+		for (let off = k.widthMm / 2 + 1; off <= len - k.widthMm / 2 - 1; off += 0.5) {
+			if (best !== null && Math.abs(off - k.offsetMm) >= Math.abs(best - k.offsetMm)) continue
+			const tried = out.map((x) => (x.ref === ref ? { ...x, offsetMm: off } : x))
+			if (problems(tried) <= base && !moduleBlocked(at(tried))?.blockers.includes(ref)) best = off
+		}
+		if (best !== null) out = out.map((x) => (x.ref === ref ? { ...x, offsetMm: best! } : x))
+	}
+	return out === c.values.connectors ? null : out
 }
