@@ -6,15 +6,15 @@
 		{
 			"name": "main",
 			"outline": {
-				"widthMm": 33,
-				"heightMm": 40
+				"widthMm": 44,
+				"heightMm": 30
 			},
 			"chassis": true
 		},
 		{
 			"name": "climate",
 			"outline": {
-				"widthMm": 36,
+				"widthMm": 38,
 				"heightMm": 25
 			}
 		}
@@ -44,22 +44,22 @@
 		"boards": [
 			{
 				"name": "main",
-				"xMm": 0,
-				"yMm": 0,
+				"xMm": -35.1,
+				"yMm": -19,
 				"rotDeg": 0,
 				"outline": {
-					"widthMm": 33,
-					"heightMm": 40
+					"widthMm": 44,
+					"heightMm": 30
 				},
 				"outlineSource": "built"
 			},
 			{
 				"name": "climate",
-				"xMm": 42.5,
-				"yMm": 0,
+				"xMm": -35.1,
+				"yMm": 19,
 				"rotDeg": 0,
 				"outline": {
-					"widthMm": 36,
+					"widthMm": 38,
 					"heightMm": 25
 				},
 				"outlineSource": "built"
