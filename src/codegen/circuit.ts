@@ -909,7 +909,8 @@ function packageSize(footprint: string): [number, number] | null {
 // Small parts whose placement box is smaller than their pads + 0.25 mm a side, measured from the pads in circuit.json of
 // the real runs' boards (17 Nov 2026 audit): the edge is judged by these (copperExtent), the parts' gaps stay on the box.
 // The XT60PW-M battery plug: pads + 0.25 mm 9.6 mm across (its box 9.4), measured on a mock Eurobot's board, 20 Nov 2026.
-const PAD_EXTENT: Record<string, [number, number]> = { xt60pw_m: [9.6, 17.0], sot23_5: [4.1, 3.0], sot23_6: [4.1, 3.0], sot363: [3.2, 2.6], sod123: [4.7, 1.7], "0402": [2.1, 1.1] }
+// The SPM7054 inductor (the SY8368A's): pads 8.8 mm overall + 0.25 mm a side = 9.3, its box 8.8 (same audit).
+const PAD_EXTENT: Record<string, [number, number]> = { spm7054: [9.3, 7.6], xt60pw_m: [9.6, 17.0], sot23_5: [4.1, 3.0], sot23_6: [4.1, 3.0], sot363: [3.2, 2.6], sod123: [4.7, 1.7], "0402": [2.1, 1.1] }
 // A part's copper and courtyard extent at rotation 0, where it is more than its placement box: a dual-row IC's from its own
 // pin geometry, a small part's from the audit table. Null: the box already covers it.
 export const copperExtent = (footprint: string): [number, number] | null => dualRowExtent(footprint) ?? PAD_EXTENT[footprint] ?? null
