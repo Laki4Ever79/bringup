@@ -93,7 +93,7 @@ export function scaledConnectors(s: ContractSnapshot, w: number, h: number): Con
 export function resized(s: ContractSnapshot, w: number, h: number): ContractSnapshot {
 	const o = s.values.outline!
 	const r = { ...s, values: { ...s.values, outline: { ...o, widthMm: w, heightMm: h }, connectors: scaledConnectors(s, w, h) } }
-	const packed = connectorsOntoEdges(r)
+	const packed = connectorsOntoEdges(r, { clearModule: true })
 	return packed ? { ...r, values: { ...r.values, connectors: packed } } : r
 }
 

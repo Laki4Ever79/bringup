@@ -1,7 +1,7 @@
 // Connectors on the board's edges (moved from consistency.ts, 17 Nov 2026): each on its edge and clear of the others, the
 // checks that say when one isn't, and the packer an outline change uses (agents/contract-tools.ts) and the space model
 // judges every size with (space.ts resized), so both put them in the same place.
-import { connectorAlongMm, connectorBoxes, connectorExtents, moduleBlocked } from "../codegen/circuit.ts"
+import { connectorAlongMm, connectorBoxes, connectorExtents, moduleBlocked, moduleSpotFree } from "../codegen/circuit.ts"
 import { MIN_WALL_MM, SLOT_MARGIN_MM } from "./case.ts"
 import type { Violation } from "./consistency.ts"
 import { enclosureMode, type AgentRole, type Connector, type ContractSnapshot, type ContractValues, type FieldName } from "./types.ts"
@@ -151,18 +151,47 @@ function clearModule(c: ContractSnapshot, connectors: Connector[]): Connector[] 
 	if (!o || !m || m.blockers.length === 0) return connectors === c.values.connectors ? null : connectors
 	const problems = (cs: Connector[]) => connectorsOffEdge(at(cs)).length + connectorClashes(at(cs)).length
 	const base = problems(connectors)
+	// Along the module's edge, centred: each box's span. An offset can only free the module if it leaves a window at
+	// least the module's width (needMm) between the strip's other connectors and the edge's ends; that is screened by
+	// arithmetic first, and only the nearest few that pass are judged by the placement (moduleBlocked runs it, and run on
+	// every half millimetre of every size the space model tries it took minimumBoard from 1.4 s to 166 s, 21 Nov 2026).
+	const alongX = m.edge === "top" || m.edge === "bottom"
+	const half = m.edgeMm / 2
+	const span = (b: { x: number; y: number; w: number; h: number }): [number, number] => (alongX ? [b.x - b.w / 2, b.x + b.w / 2] : [b.y - b.h / 2, b.y + b.h / 2])
+	const leavesWindow = (spans: [number, number][]) => {
+		const sorted = spans.map(([a, b]) => [Math.max(a, -half), Math.min(b, half)] as [number, number]).filter(([a, b]) => b > a).sort((p, q) => p[0] - q[0])
+		let from = -half
+		for (const [a, b] of sorted) {
+			if (a - from >= m.needMm) return true
+			from = Math.max(from, b)
+		}
+		return half - from >= m.needMm
+	}
 	let out = connectors
 	for (const ref of m.blockers) {
 		const k = out.find((x) => x.ref === ref)
 		if (!k) continue
 		const len = k.edge === "left" || k.edge === "right" ? o.heightMm : o.widthMm
-		let best: number | null = null
-		for (let off = k.widthMm / 2 + 1; off <= len - k.widthMm / 2 - 1; off += 0.5) {
-			if (best !== null && Math.abs(off - k.offsetMm) >= Math.abs(best - k.offsetMm)) continue
+		const others = connectorBoxes(at(out), o.widthMm, o.heightMm).filter((b) => b.ref !== ref && m.blockers.includes(b.ref)).map(span)
+		const offs: number[] = []
+		for (let off = k.widthMm / 2 + 1; off <= len - k.widthMm / 2 - 1; off += 0.5) offs.push(off)
+		offs.sort((p, q) => Math.abs(p - k.offsetMm) - Math.abs(q - k.offsetMm))
+		let judged = 0
+		for (const off of offs) {
 			const tried = out.map((x) => (x.ref === ref ? { ...x, offsetMm: off } : x))
-			if (problems(tried) <= base && !moduleBlocked(at(tried))?.blockers.includes(ref)) best = off
+			const box = connectorBoxes(at(tried), o.widthMm, o.heightMm).find((b) => b.ref === ref)
+			// A box still in the strip must leave the module its window; one moved off the module's edge is judged as is.
+			if (box && k.edge === m.edge && !leavesWindow([...others, span(box)])) continue
+			if (problems(tried) > base) continue
+			// The module's own spot check where it decides alone (no engineer-placed parts), else the full placement, capped.
+			const spot = moduleSpotFree(at(tried))
+			if (spot === false) continue
+			if (spot === null && ++judged > 24) break
+			if (spot === true || !moduleBlocked(at(tried))?.blockers.includes(ref)) {
+				out = tried
+				break
+			}
 		}
-		if (best !== null) out = out.map((x) => (x.ref === ref ? { ...x, offsetMm: best! } : x))
 	}
 	return out === c.values.connectors ? null : out
 }

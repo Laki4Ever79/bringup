@@ -895,6 +895,43 @@ export function moduleBlocked(s: ContractSnapshot): { ref: string; edge: Connect
 	return { ref: mcu.ref, edge, usbRef: usb?.ref, needMm: +(m.body.w + 2 * EDGE_MARGIN_MM).toFixed(1), depthMm, edgeMm: edge === "left" || edge === "right" ? H : W, blockers }
 }
 
+// Whether the radio module finds its spot, judged without the whole placement: the layout places it right after the
+// connectors and the hole keep-outs (layoutUncached placeModule, same grid, frame and gap), so this is its answer when no
+// part was placed by the engineer (Part.at, placed before it); null then, and for a board without a module. The
+// connector fitting asks it for every offset it tries (contract/connectors.ts clearModule): the full placement there took
+// the space model's size search from 1.4 s to 166 s (21 Nov 2026).
+export function moduleSpotFree(s: ContractSnapshot, gapMm = GAP_MM): boolean | null {
+	const { outline, parts = [], connectors = [] } = s.values
+	const mcu = parts.find((p) => p.role === "mcu")
+	const m = moduleOf(mcu)
+	if (!outline || !mcu || !m || parts.some((p) => p.at && !moduleOf(p))) return null
+	const [W, H] = [outline.widthMm, outline.heightMm]
+	const placed = connectorBoxes(s, W, H)
+	const keepouts = mountingHoles(s).map((h) => ({ x: h.x, y: h.y, w: MOUNTING_HOLE.keepoutMm, h: MOUNTING_HOLE.keepoutMm }))
+	const usb = connectors.find((c) => c.kind === "usb-c")
+	const edge = usb?.edge ?? "left"
+	const [depth, span] = edge === "left" || edge === "right" ? [W, H] : [H, W]
+	const frame = (u: number, v: number): { x: number; y: number } => {
+		switch (edge) {
+			case "left": return { x: -W / 2 + u, y: -H / 2 + v }
+			case "right": return { x: W / 2 - u, y: -H / 2 + v }
+			case "bottom": return { x: -W / 2 + v, y: -H / 2 + u }
+			case "top": return { x: -W / 2 + v, y: H / 2 - u }
+		}
+	}
+	const onBoard = m.body.h / 2 + m.padAreaTop + MODULE_EDGE_MM
+	const [w, h] = edge === "left" || edge === "right" ? [onBoard, m.body.w] : [m.body.w, onBoard]
+	const half = m.body.w / 2 + EDGE_MARGIN_MM
+	for (let k = 0; k <= span / GRID_MM; k++) {
+		const v = span / 2 + (k % 2 === 0 ? k / 2 : -(k + 1) / 2) * GRID_MM
+		if (v < half || v > span - half) continue
+		const box = frame(depth - onBoard / 2, v)
+		const b = { x: box.x, y: box.y, w, h }
+		if (placed.every((o) => Math.max(Math.abs(b.x - o.x) - (b.w + o.w) / 2, Math.abs(b.y - o.y) - (b.h + o.h) / 2) >= gapMm) && keepouts.every((o) => !overlaps(b, o))) return true
+	}
+	return false
+}
+
 // A chip package's land pattern from its profile, plus 0.5 mm of courtyard around the pads.
 function packageSize(footprint: string): [number, number] | null {
 	const e = loadProfiles().find((p) => p.package.footprint === footprint)?.package.extentMm
