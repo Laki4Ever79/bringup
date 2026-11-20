@@ -20,7 +20,7 @@ import { chipPartPins } from "../mcu/board.ts"
 import { solvePins, type Need } from "../mcu/solver.ts"
 import { defaultCheckCatalog, type CheckCatalog } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
-import { solveChassis } from "../mechanics/solve.ts"
+import { laidOut, solveChassis } from "../mechanics/solve.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
 export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics"> & { parts: ContractValues["parts"] } = {
@@ -1037,6 +1037,15 @@ export function mockScripts(): Record<string, Script> {
 				return propose("mechanics", ROVER4_MECHANICS, "the four-wheel skid-steer rover: Pololu 100:1 micro gearmotors with 12 CPR encoders on 80 mm wheels, no caster, wheelbase 0.71× the track; the turn in place ends on the front wheels' counts (catalog/mechanics.json)")
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion"))
 				return propose("mechanics", ROVER_MECHANICS, "the reference rover: Pololu 100:1 micro gearmotors on 60 mm wheels, a 25 mm swivel caster, the 2000 mAh cell, the VL53L0X breakout at the front (catalog/mechanics.json)")
+			// Woken by a chassis finding with its own layout in the contract: lay the same parts out again for the contract
+			// as it is now (laidOut: the solver, with the system's board positions), as a real engineer calls layout_chassis.
+			// Rover + climate (20 Nov 2026): the system moved both boards behind the axle after the layout, the caster's load
+			// went to the climb limit, and the mock said "mechanics unchanged" every wake. Only a layout that changes goes in.
+			if (instruction.startsWith("Consistency violations for you") && step === 0 && current && /\bmech-(fit|tipping|climb|stopping|torque|speed)\b/.test(instruction)) {
+				const cat = defaultCheckCatalog()
+				const r = cat ? laidOut(state().contract.snapshot(), current, cat) : null
+				if (r?.note && JSON.stringify(r.mechanics) !== JSON.stringify(current)) return propose("mechanics", r.mechanics, `laid out again for the contract as it is now: ${r.note}`)
+			}
 			return say("mechanics unchanged")
 		},
 		"mock-enclosure": (items) => {
