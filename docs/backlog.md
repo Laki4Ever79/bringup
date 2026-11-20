@@ -88,6 +88,18 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
+- [ ] **Go-to final approach stops short** (20 Nov, bringup-system): run 20b's S3 in simulation with the gyro: (550, 0)
+      0.6 mm, lap 600x400 12.0 mm, but (400, 400) 21.8 mm (20 allowed). Its own odometry ends 9.6 mm short of the target
+      though the go-to stops within 8 mm: the final approach (rover_goto_step, GOTO_MIN_DUTY 0.269 on 60 mm wheels?) is
+      the next suspect, then ~12 mm of odometry translation.
+- [ ] **Encoder-only heading under-reads turns in place** (20 Nov, lead-2: "it's the encoder-only fallback's real
+      accuracy on scrubbing skid turns"): about 17 % on run 20b's geometry (0.679 rad counted for 0.816 turned). Robots
+      with an IMU now take the turn from the gyro (rover_odo_step); a robot without one keeps this error.
+- [ ] **Timed-turn swept-path check** (20 Nov, bringup-cad): a robot turning on time alone (no gyro, no encoders) can
+      stop its turn short (rover-pi's timed turn: ~72 deg of 135) and drive on toward the wall; a static check that the
+      body's path after the turn keeps TURN_CLEARANCE from the wall. Every wheeled robot now gets an IMU, so only a robot
+      that can't carry one is exposed.
+
 - [x] **Run 20b review minors** (18 Nov; branch driver-outputs): a PWM driver comes with its servo plugs, servo supply
       and spare motor (outputs-auto.ts); every wheeled robot gets its STATUS_LED (status-led-auto.ts); the payload and
       servo-supply facts follow the parts; the start
