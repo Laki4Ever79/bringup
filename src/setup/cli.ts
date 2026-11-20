@@ -1,4 +1,4 @@
-// npm run setup [-- --qemu] [-- --wokwi] [-- --robotics] [-- --renode] [-- --vendors]   install the toolchain (idempotent)
+// npm run setup [-- --robotics] [-- --qemu] [-- --wokwi] [-- --renode] [-- --vendors]   install the toolchain (idempotent; --robotics: QEMU and MuJoCo)
 // npm run doctor                           show what this machine has
 import "dotenv/config"
 import { spawn } from "node:child_process"
@@ -54,6 +54,6 @@ if (command === "doctor") {
 	if (summary.ok) console.log("\nnext: npm run doctor, then npm run bringup -- briefs/beacon.md --mock")
 	process.exit(summary.ok ? 0 : 1)
 } else {
-	console.error("usage: tsx src/setup/cli.ts setup [--qemu] [--wokwi] [--robotics] [--renode] [--vendors] | doctor")
+	console.error("usage: tsx src/setup/cli.ts setup [--robotics] [--qemu] [--wokwi] [--renode] [--vendors] | doctor")
 	process.exit(2)
 }
