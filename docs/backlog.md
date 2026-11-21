@@ -555,7 +555,10 @@ Or we can offer sending them the full package with all elements, mechanical or 3
 
 ## Setup on a new machine (the user, 17 Nov 2026)
 
-- [ ] **Streamline setup:** the user, verbatim: "add to backlog streamlinging setup process. Like it should be as simple as
+- [x] **Streamline setup:** (21 Nov, da05e41: one flag for robots, `npm run setup -- --robotics`; the S3 toolchain in the
+      base; tools/node from the tested lockfile; Freerouting installed. Measured on a fresh clone with caches warm: setup
+      37 s, then the README's rover settled at 0 violations with its drive passing. A truly clean machine (no Docker image,
+      no ~/.platformio) is still about 20 min, not re-measured.) the user, verbatim: "add to backlog streamlinging setup process. Like it should be as simple as
       possible to setup on a new machine and this should be added to readme as waell". Today: `npm run setup` installs the
       repo-local toolchain (about 14 min the first time), `npm run doctor` reports what each tool will use (README,
       "Install & run"). Do: measure a fresh-clone setup on a clean machine (or container) step by step, remove every manual
