@@ -15,7 +15,8 @@ compiles against the real pin map. Then the design changes, the way real designs
 part of it consistent. Even designing from scratch is just the first change: the beacon's first design took 7 contract
 revisions.
 
-Bringup is a demonstrator for one product family: ESP32-C3 boards built from a small, vetted parts catalog.
+Bringup started as a demonstrator for one product family (ESP32-C3 boards from a small, vetted parts catalog) and now
+designs robots too: their boards, printed parts and firmware, simulated together.
 3ALET Hackathon 2026, Freestyle track. Built on `@mozaik-ai/core` 4.1.0. Full details: [docs/details.md](docs/details.md).
 
 **The fastest way to see it: [bringup-demo.onrender.com](https://bringup-demo.onrender.com/)**, nothing to install. A read-only dashboard of recorded
@@ -23,6 +24,35 @@ runs (the first load after idle takes about 30 s), or press **Try it**: a stubbe
 ("add a temperature/humidity sensor"). The recorded runs used the real tools; live runs there are stubbed, because
 the real toolchain (KiCad in Docker, the ESP32 compiler, about 9.6 GB and minutes of full CPU per build) doesn't fit a
 free web host. [Why, in detail](docs/details.md#why-the-live-demo-is-stubbed).
+
+## Robots
+
+Describe a robot and Bringup designs all of it, in parallel, against one contract: the boards (motor drivers, the
+power tree from the pack, an IMU, servo outputs), the printed chassis and mounts, the firmware (odometry, go-to-point,
+stop for an opponent, a match timer), the parts list with live LCSC stock, a ROS 2 package, and a build package with
+the assembly steps. A change to any of it (a bigger pack, encoders, a servo) wakes only what it affects.
+
+- **The Eurobot base** (`briefs/eurobot-base.md`, the Eurobot 2026 rules): an ESP32-S3 (moved up from the C3 by code
+  when the encoders needed more pins), wheel encoders in quadrature, an IMU, an emergency stop and a pull-cord start,
+  checked against the rules (start perimeter, height, battery). A real-model run (20b) settled and passed its brief
+  review.
+- **The rover** (`briefs/rover.md`): the reference robot. Its build package (rover-9) prices the whole robot, board
+  and bought parts, with the assembly steps.
+- **Simulated as built**: the robot's own firmware runs in Espressif's QEMU (RISC-V for the C3, Xtensa for the S3) and
+  drives a MuJoCo model of the chassis, with the gyro and the encoders it really has. The Eurobot base's S3 drives a
+  600 × 400 mm lap and ends 12 mm from its start; its ROS 2 package passes its acceptance test on that simulation.
+- **Checked in code**: motor stall current against the driver, the pack's current against its connector, the power
+  tree from the pack's voltage, parts that collide in 3D, the drive's clearance to the walls.
+
+Honest status: no robot board has been built yet (a prototype order is planned); the physics and the gyro's noise are
+estimates; a diagonal go-to still ends 22 mm off (20 allowed). Details: [docs/mechanics.md](docs/mechanics.md),
+[docs/system.md](docs/system.md).
+
+```bash
+npm run setup -- --robotics                       # adds QEMU (C3 and S3) and MuJoCo to the toolchain
+npm run bringup -- briefs/rover.md --mock         # the rover: board, chassis, firmware, simulated drive
+npm run bringup -- briefs/eurobot-base.md --mock  # the Eurobot base on the ESP32-S3
+```
 
 ## What's real, what's scripted
 
