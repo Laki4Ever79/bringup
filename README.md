@@ -243,6 +243,8 @@ Apache-2.0 (see [LICENSE](LICENSE) and [NOTICE](NOTICE)). Contributions are welc
 
 ## Credits
 
+Built on [Mozaik](https://www.npmjs.com/package/@mozaik-ai/core) (`@mozaik-ai/core` 4.1.0, by [JigJoy](https://jigjoy.ai)): every agent is a Mozaik participant, and the live design contract is Mozaik's shared `RuntimeState`.
+
 Prior art we credit: Odem, MeshCue Forge, Copperhead, DRCY, Engineering Studio AI, text-to-cad (exact interference, prompt references, URDF checks: the ideas) and cadsmith (py/fits.py: ISO 286 fits and ISO 273 holes, ported under its MIT License); tscircuit and KiCad do the real EDA
 work. What Bringup adds is change propagation across board, case, firmware and parts (details and links in
 [docs/details.md](docs/details.md#prior-art-and-whats-new)).
