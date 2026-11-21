@@ -1,0 +1,9 @@
+Bringup
+Copyright 2026 The Bringup Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It includes third-party code under its own licence:
+- py/fits.py: ISO 286 fits and ISO 273 clearance holes, ported from cadsmith
+  (https://github.com/JonFermin/cadsmith), MIT License, Copyright (c) 2026 Jonathan Fermin.
+  The MIT notice is kept in that file.

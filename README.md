@@ -237,6 +237,10 @@ the tests are in [docs/details.md](docs/details.md).
 - **A real-model run has passed the final brief review.** We used the night's real-model runs to find and fix general problems (the designers now see the same computed facts as the reviewer, and the review's computable checks run live during design). After those fixes, run real-pass ([docs/runs/real-pass](docs/runs/real-pass/)) designed the beacon from its brief with real models and real tools, failed review 1, fixed itself and passed review 2 (settled at rev 19, 0 violations, about 8 minutes). Each real run tonight surfaced a concrete blocker, and each fix removed it for every run after it; that is how this run got through. A few known blockers remain (a lower-dropout regulator for the parts catalog, a longer advertising window, clearer battery assumptions), and each one removed should raise the pass rate further.
 - Boards need a human review before ordering (`fab/README.txt` lists every item); the parts catalog is small.
 
+## License
+
+Apache-2.0 (see [LICENSE](LICENSE) and [NOTICE](NOTICE)). Contributions are welcome under the same licence.
+
 ## Credits
 
 Prior art we credit: Odem, MeshCue Forge, Copperhead, DRCY, Engineering Studio AI, text-to-cad (exact interference, prompt references, URDF checks: the ideas) and cadsmith (py/fits.py: ISO 286 fits and ISO 273 holes, ported under its MIT License); tscircuit and KiCad do the real EDA

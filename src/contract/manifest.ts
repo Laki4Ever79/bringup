@@ -2,7 +2,7 @@
 // bring the board up without asking anyone: the target chip and how to flash it, each rail's expected voltage and
 // current, each bottom pad's net and place, each signal's pin, the I2C devices that should answer, and the bring-up
 // steps in a safe order. Plain JSON in an open schema ("bringup-bench/1"): any tool may read it, ours included
-// (/home/aleksa/Documents/hw_agent's board manifest has the same parts). bringup.md is the same, for a person.
+// (the hw_agent board manifest has the same parts). bringup.md is the same, for a person.
 import { resolve } from "node:path"
 import { bringupPads, debugPort, netName, recoveryPads, TC2030, testPoints, type TestPoint } from "../codegen/circuit.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
