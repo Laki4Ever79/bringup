@@ -33,6 +33,14 @@ power tree from the pack, an IMU, servo outputs), the printed chassis and mounts
 stop for an opponent, a match timer), the parts list with live LCSC stock, a ROS 2 package, and a build package with
 the assembly steps. A change to any of it (a bigger pack, encoders, a servo) wakes only what it affects.
 
+<p>
+<img src="docs/img/eurobot-assembled.png" height="280" alt="The Eurobot base from real run 20b in the 3D view: the plate with its wheels, the board, the red emergency stop and the beacon mast with its platform">
+<img src="docs/img/eurobot-exploded.png" height="280" alt="The same robot exploded: the board, the emergency stop and the mast lifted off the plate, in assembly order">
+</p>
+
+<sub>Real run 20b's Eurobot base, as designed and assembled, then exploded (captured by
+<code>npx tsx scripts/readme-images.ts &lt;run folder&gt; &lt;name&gt;</code>).</sub>
+
 - **The Eurobot base** (`briefs/eurobot-base.md`, the Eurobot 2026 rules): an ESP32-S3 (moved up from the C3 by code
   when the encoders needed more pins), wheel encoders in quadrature, an IMU, an emergency stop and a pull-cord start,
   checked against the rules (start perimeter, height, battery). A real-model run (20b) settled and passed its brief
