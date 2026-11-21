@@ -61,25 +61,27 @@ test("on a bare machine it runs the README's install steps, in order, with the R
 		"uv pip install --python .venv/bin/python platformio==6.2.0 build123d==0.13.0",
 		"bash -c set -e; mkdir -p tools/node && cp src/setup/tools-node/package.json src/setup/tools-node/package-lock.json tools/node/ && npm ci --prefix tools/node",
 		"docker pull kicad/kicad:10.0",
+		"bash -c set -e; mkdir -p tools && curl -fL -o tools/freerouting-2.5.0.jar.part https://github.com/freerouting/freerouting/releases/download/v2.5.0/freerouting-2.5.0.jar && echo \"f6f51bb02245e8e717f9359bd260cc9c5c0b1bc0acc8b7cb2cd5b8ffeb5de3c7  tools/freerouting-2.5.0.jar.part\" | sha256sum -c - && mv tools/freerouting-2.5.0.jar.part tools/freerouting-2.5.0.jar",
+		"docker pull eclipse-temurin:25-jre",
 		".venv/bin/pio pkg install -d templates/fw -e esp32c3",
 		".venv/bin/pio pkg install -d templates/fw-rover -e esp32s3",
 	])
 	// The same pins as the README's Install block.
 	for (const pin of ["platformio==6.2.0", "build123d==0.13.0", "mujoco==3.17.0", "src/setup/tools-node", "kicad/kicad:10.0", "-e esp32c3", "-e esp32s3"]) assert.ok(README.includes(pin), pin)
-	assert.equal(INSTALL.length, 4)
+	assert.equal(INSTALL.length, 5)
 })
 
 test("idempotent: what is present is skipped, and the summary says what is ready", async () => {
-	const m = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
+	const m = machine({ ready: ["python", "tscircuit", "kicad", "freerouting", "toolchain"] })
 	const summary = await runSetup(m.probe, {})
 	assert.deepEqual(m.ran, [])
-	assert.deepEqual(summary.lines.slice(0, 4).map((l) => l.split(":")[0]), ["python tools (.venv)", "tscircuit + bun (tools/node)", "KiCad 10 (Docker image)", "ESP32-C3 and ESP32-S3 toolchains (PlatformIO)"])
-	assert.ok(summary.lines.slice(0, 4).every((l) => /already there/.test(l)), summary.lines.join("\n"))
+	assert.deepEqual(summary.lines.slice(0, 5).map((l) => l.split(":")[0]), ["python tools (.venv)", "tscircuit + bun (tools/node)", "KiCad 10 (Docker image)", "Freerouting 2.5.0 (tools/, Java 25 image)", "ESP32-C3 and ESP32-S3 toolchains (PlatformIO)"])
+	assert.ok(summary.lines.slice(0, 5).every((l) => /already there/.test(l)), summary.lines.join("\n"))
 	assert.match(summary.lines.join("\n"), /QEMU .*not installed \(robots: npm run setup -- --robotics; boards only: -- --qemu\)/)
 })
 
 test("optional parts only behind their flags; a failed step is reported and the rest still run", async () => {
-	const m = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
+	const m = machine({ ready: ["python", "tscircuit", "kicad", "freerouting", "toolchain"] })
 	const qemu = await runSetup(m.probe, { qemu: true })
 	assert.ok(m.ran.some((c) => c.includes("esp-develop-9.2.2-20260417")), m.ran.join("\n"))
 	assert.equal(qemu.ok, true)
@@ -125,7 +127,7 @@ test("doctor lists Renode, each vendor platform and ST's pin data (docs/mcu.md)"
 
 // --wokwi: 5b's pinned release (src/tools/wokwi.ts), the one source of truth.
 function wokwiMachine(opts: { platform?: string; files?: Record<string, string>; download?: string } = {}) {
-	const m = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
+	const m = machine({ ready: ["python", "tscircuit", "kicad", "freerouting", "toolchain"] })
 	const files = new Map(Object.entries(opts.files ?? {}))
 	const steps: string[] = []
 	Object.assign(m.probe, {
@@ -203,10 +205,10 @@ test("doctor names the firmware simulator: Wokwi when its CLI and token are ther
 // Domain isolation (14 Nov 2026): MuJoCo is the robots' alone; a PCB-only setup never installs it, and a failed robotics
 // install leaves the PCB tools installed.
 test("the robot simulation (QEMU and MuJoCo) is installed by --robotics alone, as its own steps", async () => {
-	const plain = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
+	const plain = machine({ ready: ["python", "tscircuit", "kicad", "freerouting", "toolchain"] })
 	await runSetup(plain.probe, {})
 	assert.ok(!plain.ran.some((c) => c.includes("mujoco")), plain.ran.join("\n"))
-	const robots = machine({ ready: ["python", "tscircuit", "kicad", "toolchain"] })
+	const robots = machine({ ready: ["python", "tscircuit", "kicad", "freerouting", "toolchain"] })
 	const summary = await runSetup(robots.probe, { robotics: true })
 	assert.deepEqual(robots.ran.filter((c) => c.includes("mujoco")), ["uv pip install --python .venv/bin/python mujoco==3.17.0"])
 	assert.ok(robots.ran.some((c) => c.includes("qemu-xtensa-softmmu")) && robots.ran.some((c) => c.includes("qemu-riscv32-softmmu")), "both QEMUs with --robotics, no --qemu needed")

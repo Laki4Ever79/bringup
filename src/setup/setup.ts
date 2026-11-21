@@ -26,7 +26,7 @@ export interface Probe {
 	remove?(path: string): Promise<void>
 }
 
-export type StepId = "python" | "tscircuit" | "kicad" | "toolchain" | "qemu" | "renode" | "vendors" | "robotics"
+export type StepId = "python" | "tscircuit" | "kicad" | "freerouting" | "toolchain" | "qemu" | "renode" | "vendors" | "robotics"
 
 interface Step {
 	id: StepId
@@ -35,6 +35,9 @@ interface Step {
 }
 
 // The same commands and pins as the README's Install block.
+const FREEROUTING_URL = "https://github.com/freerouting/freerouting/releases/download/v2.5.0/freerouting-2.5.0.jar"
+const FREEROUTING_SHA256 = "f6f51bb02245e8e717f9359bd260cc9c5c0b1bc0acc8b7cb2cd5b8ffeb5de3c7"
+
 export const INSTALL: Step[] = [
 	{
 		id: "python",
@@ -48,6 +51,17 @@ export const INSTALL: Step[] = [
 	// clone got @tscircuit/cli 0.1.2480 for the tested 0.1.2423, whose rover board no longer built (21 Nov 2026).
 	{ id: "tscircuit", name: "tscircuit + bun (tools/node)", commands: [["bash", ["-c", "set -e; mkdir -p tools/node && cp src/setup/tools-node/package.json src/setup/tools-node/package-lock.json tools/node/ && npm ci --prefix tools/node"]]] },
 	{ id: "kicad", name: "KiCad 10 (Docker image)", commands: [["docker", ["pull", "kicad/kicad:10.0"]]] },
+	// The router a board falls back to when tscircuit's can't finish it (tools/freerouting.ts): the release jar, checked
+	// by sha256, and the Java 25 it needs, in a container. Never installed before, so on a new machine every board that
+	// needed it failed to build (the reference rover on a fresh clone, 21 Nov 2026).
+	{
+		id: "freerouting",
+		name: "Freerouting 2.5.0 (tools/, Java 25 image)",
+		commands: [
+			["bash", ["-c", `set -e; mkdir -p tools && curl -fL -o tools/freerouting-2.5.0.jar.part ${FREEROUTING_URL} && echo "${FREEROUTING_SHA256}  tools/freerouting-2.5.0.jar.part" | sha256sum -c - && mv tools/freerouting-2.5.0.jar.part tools/freerouting-2.5.0.jar`]],
+			["docker", ["pull", "eclipse-temurin:25-jre"]],
+		],
+	},
 	// The C3's and the S3's: a robot that moves up to the ESP32-S3 (contract/mcu-move.ts) builds the rover template's
 	// esp32s3 env, and without its Xtensa toolchain installed here the first such run downloaded it mid-run.
 	{ id: "toolchain", name: "ESP32-C3 and ESP32-S3 toolchains (PlatformIO)", commands: [[".venv/bin/pio", ["pkg", "install", "-d", "templates/fw", "-e", "esp32c3"]], [".venv/bin/pio", ["pkg", "install", "-d", "templates/fw-rover", "-e", "esp32s3"]]] },
@@ -218,6 +232,7 @@ export function presentOn(root: string, check: Probe["check"]): Probe["present"]
 			return ["tscircuit", "bun", "@tscircuit/cli"].every((n) => version(join(root, "tools/node/node_modules", n, "package.json")) === lock.packages[`node_modules/${n}`]?.version)
 		}
 		if (step === "kicad") return (await check("docker", ["image", "inspect", "kicad/kicad:10.0"])).code === 0
+		if (step === "freerouting") return existsSync(join(root, "tools/freerouting-2.5.0.jar")) && (await check("docker", ["image", "inspect", "eclipse-temurin:25-jre"])).code === 0
 		if (step === "toolchain")
 			return (
 				version(join(pioHome, "platforms/espressif32/platform.json")) === "8.0.0" &&
