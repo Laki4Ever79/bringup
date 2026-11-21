@@ -612,3 +612,25 @@ order (effort as estimated in the study):
       motor and bearing pockets.
 - [ ] 5. Print-DFM as named violations: overhang, minimum wall, bed size (~0.5 day).
 - [ ] 6. A one-screen run summary with the change from the previous run and exit codes (~0.5 day).
+
+## A robot arm as the representative example (the user, 21 Nov 2026)
+
+The user asked: "can we build a robot arm using bringup, along with its electronics and have that as a more
+representative example?" and answered "yes, please" to queuing it. Why an arm: link length → joint torque → servo →
+supply → board → firmware limits is the tightest cross-domain chain, so "change one thing, everything follows" shows
+best there. Benchmark (not a copy): Hugging Face LeRobot SO-100/SO-101 class reach and payload.
+
+- [ ] **Design pass first (short):** joint count (4–5), hobby PWM vs serial bus servos, payload and reach targets, the
+      gripper; written up as a spec before code.
+- [ ] **Arm mechanics type (bringup-cad):** an arm generator (links, joint brackets, base, gripper) in build123d with
+      the fits library; checks: torque per joint at the worst pose with margin, reach/workspace, payload, interference
+      swept over every joint's range; servo catalog entries with real dimensions.
+- [ ] **Electronics + firmware (bringup-system):** a servo board (PCA9685 PWM or a bus-servo UART interface), supply sized
+      from the summed stall currents with headroom; firmware with inverse kinematics and trajectory limits from the
+      contract.
+- [ ] **Board (bringup-board):** the arm controller PCB through the usual path (DRC 0, 0 warnings, antenna keep-out).
+- [ ] **Simulation:** a serial-chain URDF with real inertias; MuJoCo pick-and-place with the firmware in QEMU; ROS 2
+      (MoveIt-compatible description) acceptance.
+- [ ] **Example + README:** examples/arm saved from a settled run, scripted pictures, a change-ripple demo ("make the
+      reach 300 mm" → links, servos, supply, board, firmware all follow).
+Estimate: 5–8 working days across the three sessions; starts after the weekly usage reset (Sun 23 Nov 15:00).
