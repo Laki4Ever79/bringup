@@ -280,7 +280,7 @@ fresh clone's `npm ci && npm run setup -- --robotics` took 51 s (21 Nov 2026, no
 | [uv](https://docs.astral.sh/uv/) + Python 3.12 | uv 0.10.2, CPython 3.12.3 | for build123d and PlatformIO |
 | Docker, with the daemon running and usable without `sudo` | Docker 29.6.1 | for KiCad and ngspice |
 | Disk | about 9.6 GB | `.venv` 0.9 GB, `tools/node` 0.8 GB, KiCad image 2.6 GB, `~/.platformio` about 5.3 GB (1.1 GB of it a download cache you can delete) |
-| Java 17+ (optional) | | only for the Freerouting fallback |
+| (no Java needed) | | the Freerouting fallback runs its jar (installed by `npm run setup`, sha256-checked) in the `eclipse-temurin:25-jre` image, 0.34 GB |
 
 **Optional settings** go in `.env` (copy `.env.example`): a model key for real models, `WOKWI_CLI_TOKEN` for Wokwi
 simulation, `BRINGUP_NTFY_TOPIC` (unguessable) / `BRINGUP_NTFY_SERVER` for phone approvals.
@@ -295,6 +295,8 @@ uv pip install --python .venv/bin/python mujoco==3.17.0   # robots only (npm run
 mkdir -p tools/node && cp src/setup/tools-node/package*.json tools/node/ && npm ci --prefix tools/node
                                                           # tscircuit 0.0.3042 + bun 1.4.4 and every dependency at the tested version (src/setup/tools-node)
 docker pull kicad/kicad:10.0                              # kicad-cli 10 and ngspice; 0.8 GB download, a few minutes
+curl -fL -o tools/freerouting-2.5.0.jar https://github.com/freerouting/freerouting/releases/download/v2.5.0/freerouting-2.5.0.jar
+docker pull eclipse-temurin:25-jre                        # Freerouting, the router a board falls back to, runs in it
 .venv/bin/pio pkg install -d templates/fw -e esp32c3      # ESP32-C3 toolchain + libraries into ~/.platformio, about 4 min
 .venv/bin/pio pkg install -d templates/fw-rover -e esp32s3  # ESP32-S3 toolchain: a robot that needs more pins moves up to the S3
 # robots: Espressif's QEMU (riscv32 and xtensa, esp-develop-9.2.2-20260417) into tools/qemu, see src/setup/setup.ts
