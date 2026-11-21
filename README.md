@@ -27,7 +27,8 @@ free web host. [Why, in detail](docs/details.md#why-the-live-demo-is-stubbed).
 
 ## Robots
 
-Describe a robot and Bringup designs all of it, in parallel, against one contract: the boards (motor drivers, the
+Describe a robot and Bringup's concurrent [Mozaik](https://www.npmjs.com/package/@mozaik-ai/core) agents (electronics,
+mechanics, firmware, parts, each a Mozaik participant) design all of it, in parallel, against one shared contract: the boards (motor drivers, the
 power tree from the pack, an IMU, servo outputs), the printed chassis and mounts, the firmware (odometry, go-to-point,
 stop for an opponent, a match timer), the parts list with live LCSC stock, a ROS 2 package, and a build package with
 the assembly steps. A change to any of it (a bigger pack, encoders, a servo) wakes only what it affects.
