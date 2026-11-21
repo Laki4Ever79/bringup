@@ -205,18 +205,23 @@ Events, checks, the full Mozaik table and our 4.1 workarounds (#113, #114, #115)
 ## Install & run
 
 ```bash
-npm ci              # about 12 s
-npm run setup -- --robotics   # the full toolchain, repo-local, robot simulation included; installs only what's missing
-                              # (about 20 min on a new machine; drop --robotics for PCB-only)
-npm run doctor      # what each tool will use, and which optional settings are set (never their values)
-npm run demo        # the dashboard opens, a design settles, a change ripples; type your own change after it
-npm run dashboard   # the start screen: describe a device, see the split into boards, build it, explore it in 3D
-npm run perf        # the dashboard's speed budget, measured in a visible Chromium (no model calls)
+git clone https://github.com/Laki4Ever79/bringup && cd bringup
+npm ci
+npm run setup -- --robotics                 # the whole toolchain, repo-local; drop --robotics for boards only
+npm run bringup -- briefs/rover.md --mock   # a robot from its brief: parts, board, chassis, firmware, simulated drive
+```
 
-npm run bringup -- briefs/beacon.md --mock                                    # scripted models, real tools
-npm run bringup -- briefs/logger.md --mock --change "make the board 40 mm wide"   # a change from the CLI
-npm run bringup -- briefs/rover.md --mock                                     # a robot: mechanics, chassis, simulated drive (docs/mechanics.md)
-npm run bringup -- briefs/logger.md                                           # real models: a key in .env
+On a fresh clone with the downloads already cached, setup took 37 s and the rover settled with 0 violations and its
+simulated drive passing (21 Nov 2026); on a new machine, setup is about 20 min (an estimate from 31 Oct).
+
+Then:
+
+```bash
+npm run doctor                               # what each tool will use, and which optional settings are set (never values)
+npm run dashboard                            # the start screen: describe a device, build it, explore it in 3D
+npm run demo                                 # a design settles, then a change ripples through it
+npm run bringup -- briefs/beacon.md --mock   # a board without a robot; add --change "make the board 40 mm wide"
+npm run bringup -- briefs/logger.md          # real models: a key in .env
 ```
 
 Prerequisites: Linux x86-64, Node 24, [uv](https://docs.astral.sh/uv/), and Docker usable without `sudo`; about 9.6 GB

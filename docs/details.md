@@ -353,6 +353,9 @@ npm run demo
 # With nothing but `npm ci` (hardware stubbed): the same settle → change → ripple → consistent story, in about 10 s.
 npm run demo -- --no-hardware
 
+# The dashboard's speed budget, measured in a visible Chromium (no model calls).
+npm run perf
+
 # The same from the CLI: each --change is sent after the design settles, and the run ends once the last one re-settles.
 npm run bringup -- briefs/logger.md --mock --change "make the board 40 mm wide"
 
