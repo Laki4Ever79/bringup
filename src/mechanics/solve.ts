@@ -159,7 +159,11 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 // run 5, 15 Nov: the engineer called layout_chassis, then swapped the battery "keeping the layout otherwise unchanged",
 // and the new battery didn't fit). Parts are the engineer's choice; where they go is the code's. A layout that passes is
 // kept as written, and parts no layout fits are left for the checks to name.
-export function laidOut(c: ContractSnapshot, proposed: Mechanics, cat: CheckCatalog): { mechanics: Mechanics; note: string | null } {
+// refusal: the proposal changed the chassis' size (plate or track) and the layout that passes the checks puts it back
+// where it was: the engineer's change can't be made, so it is refused with the check that forbids it, never applied as a
+// silent no-op (the rover's "make it 2 cm wider", 22 Nov 2026: 150 x 140 mm with its wheels, over the brief's 150 x 120,
+// was re-laid out at the old 96 mm plate, and the run settled as if it had been made).
+export function laidOut(c: ContractSnapshot, proposed: Mechanics, cat: CheckCatalog): { mechanics: Mechanics; note: string | null; refusal?: string } {
 	if (!c.values.motion || !proposed?.drive || !proposed.battery || !proposed.sensor) return { mechanics: proposed, note: null }
 	const as = { ...c, values: { ...c.values, mechanics: proposed } }
 	// Under a competition's rules their findings count too: a plain rover that passes the chassis checks still lacks them.
@@ -172,6 +176,10 @@ export function laidOut(c: ContractSnapshot, proposed: Mechanics, cat: CheckCata
 	if (r.mechanics && r.remaining.length && r.remaining.length < failing.length)
 		return { mechanics: { ...proposed, ...r.mechanics }, note: `no layout passes every check with these parts; the solver's best leaves ${r.remaining.length} of the proposal's ${failing.length} finding(s): ${r.remaining.map((v) => v.message).join("; ")}${r.motorNote ? `; ${r.motorNote}` : ""}` }
 	if (!r.mechanics || r.remaining.length) return { mechanics: proposed, note: r.motorNote ?? null }
+	const was = c.values.mechanics
+	const size = (m: Mechanics) => `${m.chassis.plateMm.join("x")}/${m.drive.trackMm}`
+	if (was && size(proposed) !== size(was) && size(r.mechanics) === size(was))
+		return { mechanics: proposed, note: null, refusal: `the chassis can't change size that way: ${failing[0].message}` }
 	// Fields the layout doesn't touch (a compute robot's `regulator`) stay the engineer's.
 	return { mechanics: { ...proposed, ...r.mechanics }, note: `the proposed layout failed ${failing.length} chassis check(s) (${failing[0].message}); ${r.motorNote ? `${r.motorNote}; ` : ""}the chassis solver laid out ${r.motorNote ? "those parts" : "the same parts"} instead: plate ${r.mechanics.chassis.plateMm.join(" × ")} mm, axle at ${r.mechanics.drive.axleXMm} mm, wheelbase ${r.mechanics.drive.wheelbaseMm} mm, battery at x ${r.mechanics.battery.at.xMm} mm` }
 }

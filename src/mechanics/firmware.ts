@@ -100,6 +100,10 @@ export function roverHeader(s: ContractSnapshot): string {
 		// The robot's IMU (role imu, the LSM6DS3TR-C; the user, 17 Nov 2026: "Every robot"): the turn closes on the gyro's
 		// heading, the same three eighths of a turn the counts aim for (rover_enc.h; hw_board.cpp reads it).
 		...((v.parts ?? []).some((p) => p.role === "imu") ? ["#define IMU_LSM6DS3 1", `#define ROVER_TURN_RAD ${((3 * Math.PI) / 4).toFixed(4)}f`] : []),
+		// Without encoders, the back-off before a turn in place is timed: the same TURN_CLEARANCE_MM at cruise speed (the
+		// narrow rover turned in place 188 mm from the side wall, straddling the course's step, walked ~170 mm and touched
+		// it, 22 Nov 2026; an encoder rover backs off by counts and didn't).
+		`#define ROVER_BACK_MS ${Math.round((TURN_CLEARANCE_MM / (speed * 1000)) * 1000)}`,
 		// An acceleration limit (mechanics.drive.maxAccelMps2): the duty moves at most this much per control tick, so the speed
 		// (the load line's at full duty from a full pack, at most) changes no faster: main.cpp ramps every output.
 		...(mech.drive.maxAccelMps2 ? [`#define ROVER_RAMP_PER_TICK ${(mech.drive.maxAccelMps2 * (sensor.updateMs / 1000) / Math.max(0.01, loadedSpeedMps(motor, pack, pack.fullV, 1, massG / 1000, r))).toFixed(4)}f`] : []),

@@ -57,6 +57,7 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					const cat = defaultCheckCatalog()
 					if (cat) {
 						const l = laidOut(s.contract.snapshot(), args.value as ContractValues["mechanics"], cat)
+						if (l.refusal) return { status: "invalid", reason: l.refusal }
 						args = { ...args, value: l.mechanics as ContractValues[FieldName] }
 						laidOutNote = l.note
 					}

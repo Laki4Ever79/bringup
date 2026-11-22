@@ -22,6 +22,8 @@ struct RoverEncConfig {
 	// With a gyro (an IMU on the board, 0 without): the turn ends once the heading has turned this many radians, whatever
 	// the wheels counted (they slip in a turn in place). The time limit stays the fail-safe.
 	float turnRad = 0;
+	// Without encoders: the back-off before a turn in place lasts this long at cruise duty (0: turn at once).
+	uint32_t backMs = 0;
 };
 
 struct RoverEncState {

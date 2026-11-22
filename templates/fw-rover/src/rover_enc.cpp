@@ -32,7 +32,9 @@ RoverOut rover_enc_step(const RoverEncConfig &cfg, RoverEncState &st, int distan
 	if (st.backing) {
 		// Back off until each wheel has run backCounts back on average (the turn time as a fail-safe), then turn.
 		const bool timeLeft = (int32_t)(nowMs - st.turnUntil) < 0;
-		if (timeLeft && (iabs(encL - st.turnL) + iabs(encR - st.turnR)) / 2 < cfg.backCounts) return {-cfg.cruise, -cfg.cruise};
+		// Without encoders the back-off is timed (backMs, turnUntil set to its end).
+		const bool more = cfg.backCounts > 0 ? (iabs(encL - st.turnL) + iabs(encR - st.turnR)) / 2 < cfg.backCounts : true;
+		if (timeLeft && more) return {-cfg.cruise, -cfg.cruise};
 		startTurn(cfg, st, nowMs, encL, encR, headingRad);
 		return {cfg.cruise, -cfg.cruise};
 	}
@@ -54,9 +56,9 @@ RoverOut rover_enc_step(const RoverEncConfig &cfg, RoverEncState &st, int distan
 	if (distanceMm < 0 && !tooClose) return straight(cfg, st, cfg.cruise, encL, encR);
 	if (tooClose || distanceMm < cfg.stopMm) {
 		st.lastMm = -1;
-		if (cfg.turnCounts > 0 && cfg.backCounts > 0) {
+		if ((cfg.turnCounts > 0 && cfg.backCounts > 0) || cfg.backMs > 0) {
 			st.backing = true;
-			st.turnUntil = nowMs + cfg.turnMs;
+			st.turnUntil = nowMs + (cfg.backCounts > 0 ? cfg.turnMs : cfg.backMs);
 			st.turnL = encL;
 			st.turnR = encR;
 			return {-cfg.cruise, -cfg.cruise};

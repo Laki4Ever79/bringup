@@ -35,7 +35,10 @@ static const RoverEncConfig ENC_CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUIS
 #else
 #define ENC_L 0
 #define ENC_R 0
-static const RoverEncConfig ENC_CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS, 0, 0.0f, 0, ROVER_TURN_RAD};
+#ifndef ROVER_BACK_MS
+#define ROVER_BACK_MS 0
+#endif
+static const RoverEncConfig ENC_CFG = {ROVER_STOP_MM, ROVER_SLOW_MM, ROVER_CRUISE_DUTY, ROVER_TURN_MS, 0, 0.0f, 0, ROVER_TURN_RAD, ROVER_BACK_MS};
 #endif
 static RoverEncState encState;
 #endif

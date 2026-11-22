@@ -162,6 +162,19 @@ void test_with_a_gyro_and_no_encoders_the_turn_outlasts_its_planned_time(void) {
 	o = rover_enc_step(cfg, st2, -1, 1300, 0, 0, 1.0f);                // past twice the plan: the fail-safe ends it
 	TEST_ASSERT_EQUAL_FLOAT(o.left, o.right);
 }
+// Without encoders a timed back-off comes before the turn in place: backward for backMs at cruise, then the turn.
+void test_without_encoders_it_backs_off_for_its_time_before_the_turn(void) {
+	RoverEncConfig cfg = {200, 500, 0.6f, 600, 0, 0.0f, 0, 2.3562f, 330};
+	RoverEncState st;
+	RoverOut o = rover_enc_step(cfg, st, 150, 0, 0, 0, 0.0f);          // the wall: back off
+	TEST_ASSERT_EQUAL_FLOAT(-0.6f, o.left);
+	TEST_ASSERT_EQUAL_FLOAT(-0.6f, o.right);
+	o = rover_enc_step(cfg, st, -1, 300, 0, 0, 0.0f);                   // still within its 330 ms
+	TEST_ASSERT_EQUAL_FLOAT(-0.6f, o.right);
+	o = rover_enc_step(cfg, st, -1, 340, 0, 0, 0.0f);                   // its time is up: the turn
+	TEST_ASSERT_EQUAL_FLOAT(0.6f, o.left);
+	TEST_ASSERT_EQUAL_FLOAT(-0.6f, o.right);
+}
 // No heading (NAN): the turn closes on the counts as before.
 void test_without_a_heading_the_turn_ends_on_the_counts(void) {
 	RoverEncConfig cfg = {200, 500, 0.6f, 600, 1000, 0.001f, 0, 2.3562f};
@@ -204,6 +217,7 @@ int main(int, char **) {
 	RUN_TEST(test_quadrature_counts_four_per_cycle_each_way);
 	RUN_TEST(test_with_a_gyro_the_turn_ends_on_the_heading);
 	RUN_TEST(test_without_a_heading_the_turn_ends_on_the_counts);
+	RUN_TEST(test_without_encoders_it_backs_off_for_its_time_before_the_turn);
 	RUN_TEST(test_with_a_gyro_and_no_encoders_the_turn_outlasts_its_planned_time);
 	RUN_TEST(test_quadrature_jitter_on_an_edge_nets_zero);
 	RUN_TEST(test_quadrature_sign_is_learned_from_the_first_drive);
