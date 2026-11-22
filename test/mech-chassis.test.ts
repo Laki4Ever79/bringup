@@ -275,3 +275,11 @@ test("the fit check keeps the printed chassis within the printer's bed, so the s
 	s.values.mechanics!.chassis.plateMm = [260, 96]
 	assert.ok(mechanicsChecks(s).some((v) => v.kind === "mech-fit" && /the printed chassis is 260 × \d+ mm.*256 mm bed/.test(v.message)))
 })
+
+test("a motor shaft that barely reaches its wheel is a part-interference violation", async () => {
+	const { interferenceChecks } = await import("../src/tools/chassis.ts")
+	const v = interferenceChecks({ interference: { pairs: 28, clashes: [], unmeasured: [], shortShafts: [{ motor: "left motor", engagementMm: 1 }], shaftMinMm: 4 } })
+	assert.equal(v.length, 1)
+	assert.match(v[0].message, /left motor 1 mm into the hub \(at least 4 mm, an estimate\)/)
+	assert.deepEqual(interferenceChecks({ interference: { pairs: 28, clashes: [], unmeasured: [], shortShafts: [], shaftMinMm: 4 } }), [])
+})

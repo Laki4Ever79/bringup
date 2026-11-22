@@ -173,6 +173,22 @@ class ChassisTest(unittest.TestCase):
         part, _ = build(dict(SPEC, motors=[{**m, "mount": {"kind": "cradle"}} for m in SPEC["motors"]]))
         self.assertRegex(support_notes("chassis", part)[0], r"chassis: \d+ downward face\(s\), \d+ mm² in all, need support")
 
+    # Real motor shapes (py/parts N20) in the interference check, 22 Nov 2026: the shaft now exists, so whether it reaches
+    # into its wheel's hub is measured.
+    def test_a_motor_is_its_real_shape_and_its_shaft_must_reach_its_wheel(self):
+        from chassis import SHAFT_ENGAGE_MIN_MM, motor_solid, shaft_engagement
+        m = {"side": "left", "xMm": 30, "yMm": 48, "bodyMm": [26, 12, 10]}
+        solid, (s0, s1) = motor_solid(m, 10.5)
+        self.assertEqual((s0, s1), (61.0, 71.0), "the shaft runs 10 mm out of the gearbox face at y 61")
+        self.assertLess(solid.volume, 26 * 12 * 10, "the round can is smaller than the old box")
+        ok = dict(SPEC, drive={"trackMm": 132, "wheelDiameterMm": 80, "wheelWidthMm": 10})
+        self.assertEqual([s["engagementMm"] for s in shaft_engagement(ok)], [10.0, 10.0])
+        far = dict(SPEC, drive={"trackMm": 150, "wheelDiameterMm": 80, "wheelWidthMm": 10})  # wheels 9 mm further out
+        part, _ = build(dict(far, motors=[{**x, "mount": {"kind": "cradle"}} for x in far["motors"]]))
+        r = interference(far, part)
+        self.assertEqual([s["engagementMm"] for s in r["shortShafts"]], [1.0, 1.0])
+        self.assertLess(1.0, SHAFT_ENGAGE_MIN_MM)
+
 
 if __name__ == "__main__":
     unittest.main()

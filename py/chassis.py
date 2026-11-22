@@ -17,6 +17,7 @@ from pathlib import Path
 
 from build123d import Box, Cylinder, GeomType, Pos, Rot, export_step, export_stl
 
+import parts
 from fits import clearance_hole
 from printcheck import bed_issue, support_notes, wall_issues
 
@@ -334,14 +335,13 @@ def bought_parts(spec):
     out.append(("battery", Pos(bat["xMm"], bat["yMm"], t + bh / 2) * Box(bl, bw, bh)))
     d = spec.get("drive")
     for m in spec["motors"]:
-        L, W, H = m["bodyMm"]
+        H = m["bodyMm"][2]
         drop = max(m.get("axleDropMm", H / 2 + WALL), H / 2 + WALL)
         name = f"{m['side']}{' rear' if m.get('rear') else ''} motor"
-        out.append((name, Pos(m["xMm"], m["yMm"], -drop) * Box(W, L, H)))
+        motor, _ = motor_solid(m, drop)
+        out.append((name, motor))
         if d:
-            r, ww = d["wheelDiameterMm"] / 2, d["wheelWidthMm"]
-            y = math.copysign(d["trackMm"] / 2, m["yMm"])
-            out.append((name.replace("motor", "wheel"), Pos(m["xMm"], y, -drop) * Rot(90, 0, 0) * Cylinder(r, ww)))
+            out.append((name.replace("motor", "wheel"), wheel_solid(spec, m, drop)))
     sen = spec["sensor"]
     sw, sh, sd = sen["sizeMm"]
     out.append(("sensor", Pos(sen["xMm"], sen["yMm"], sen["zMm"] - p["clearanceMm"]) * Box(sd, sw, sh)))
@@ -349,6 +349,51 @@ def bought_parts(spec):
     if es:
         under = es["panelTopMm"] - p["clearanceMm"] - es["panelMm"]
         out.append(("e-stop body", Pos(es["xMm"], es["yMm"], under - es["belowMm"] / 2) * Cylinder(es["bodyMm"] / 2, es["belowMm"])))
+    return out
+
+
+N20_BODY_MM = 24.0  # parts.n20_gearmotor: the gearbox face at z 0, the can back to z -24, the shaft 0..10
+N20_SHAFT_MM = 10.0
+# How far a motor's shaft must reach into its wheel's hub to drive it: an ESTIMATE (a set-screw or press-fit hub on a
+# 3 mm D-shaft wants a few millimetres of shaft in it); the chassis' interference check reports anything less.
+SHAFT_ENGAGE_MIN_MM = 4.0
+
+
+def motor_solid(m, drop):
+    """The motor as its real shape (py/parts, cadsmith's N20 micro gearmotor: the round can, the gearbox, the 3 mm shaft),
+    longer at the back to the catalog's body length (an encoder board), its shaft toward its wheel. Returns the solid
+    and the shaft's span along y. Before 22 Nov 2026 a motor was a box, and its shaft wasn't there at all."""
+    L = m["bodyMm"][0]
+    body = parts.n20_gearmotor().shape
+    if L > N20_BODY_MM + 0.01:
+        body = body + Pos(0, 0, -N20_BODY_MM - (L - N20_BODY_MM) / 2) * Box(12, 10, L - N20_BODY_MM)
+    sign = 1 if m["yMm"] >= 0 else -1
+    face = m["yMm"] + sign * L / 2
+    return Pos(m["xMm"], face, -drop) * Rot(-90 * sign, 0, 0) * body, sorted((face, face + sign * N20_SHAFT_MM))
+
+
+def wheel_solid(spec, m, drop):
+    """The driven wheel on its motor's axle, with the bore its shaft goes into (spec motor shaftMm, else 3 mm)."""
+    d = spec["drive"]
+    r, ww = d["wheelDiameterMm"] / 2, d["wheelWidthMm"]
+    y = math.copysign(d["trackMm"] / 2, m["yMm"])
+    bore = spec.get("motor", {}).get("shaftMm", 3.0)
+    return Pos(m["xMm"], y, -drop) * Rot(90, 0, 0) * (Cylinder(r, ww) - Cylinder(bore / 2, ww + 2))
+
+
+def shaft_engagement(spec):
+    """How far each motor's shaft reaches into its wheel, in mm along the axle."""
+    d = spec.get("drive")
+    if not d:
+        return []
+    out = []
+    for m in spec["motors"]:
+        H = m["bodyMm"][2]
+        drop = max(m.get("axleDropMm", H / 2 + WALL), H / 2 + WALL)
+        _, (s0, s1) = motor_solid(m, drop)
+        y = math.copysign(d["trackMm"] / 2, m["yMm"])
+        w0, w1 = y - d["wheelWidthMm"] / 2, y + d["wheelWidthMm"] / 2
+        out.append({"motor": f"{m['side']}{' rear' if m.get('rear') else ''} motor", "engagementMm": round(max(0.0, min(s1, w1) - max(s0, w0)), 2)})
     return out
 
 
@@ -381,7 +426,9 @@ def interference(spec, part):
             if v > CLASH_MM3:
                 c = common.center()
                 clashes.append({"a": na, "b": nb, "volumeMm3": round(v, 1), "atMm": [round(c.X, 1), round(c.Y, 1), round(c.Z, 1)]})
-    return {"pairs": pairs, "clashes": clashes, "unmeasured": unmeasured}
+    shafts = shaft_engagement(spec)
+    short = [s for s in shafts if s["engagementMm"] < SHAFT_ENGAGE_MIN_MM]
+    return {"pairs": pairs, "clashes": clashes, "unmeasured": unmeasured, "shafts": shafts, "shortShafts": short, "shaftMinMm": SHAFT_ENGAGE_MIN_MM}
 
 
 def _made_at(marker):

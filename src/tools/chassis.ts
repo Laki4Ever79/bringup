@@ -326,13 +326,16 @@ export function boardMountChecks(s: ContractSnapshot, built: { standoffHoles?: {
 // measures every pair's common volume with exact booleans (mounts.json "interference"). The 2D fit checks name the pairs
 // they compare; this one compares every pair, so a pair nobody listed still shows (the pack ran into the sensor's bracket
 // on three of four example robots, 19 Nov 2026). A pair the kernel couldn't measure is reported, never passed.
-export interface Interference { pairs: number; clashes: { a: string; b: string; volumeMm3: number; atMm: [number, number, number] }[]; unmeasured: { a: string; b: string; error: string }[] }
+export interface Interference { pairs: number; clashes: { a: string; b: string; volumeMm3: number; atMm: [number, number, number] }[]; unmeasured: { a: string; b: string; error: string }[]; shortShafts?: { motor: string; engagementMm: number }[]; shaftMinMm?: number }
 export function interferenceChecks(built: { interference?: Interference } | null | undefined): { kind: "part-interference"; message: string; fields: ["mechanics"]; affects: ["mechanics"] }[] {
 	const r = built?.interference
 	if (!r) return []
 	const out: { kind: "part-interference"; message: string; fields: ["mechanics"]; affects: ["mechanics"] }[] = []
 	if (r.clashes.length)
 		out.push({ kind: "part-interference", message: `parts of the robot occupy the same space (exact common volume, chassis frame, mm): ${r.clashes.map((c) => `${c.a} and ${c.b}: ${c.volumeMm3} mm³ around (${c.atMm.join(", ")})`).join("; ")}: move one of each pair`, fields: ["mechanics"], affects: ["mechanics"] })
+	// A motor's shaft must reach into its wheel's hub (py/chassis.py shaft_engagement; the minimum is an ESTIMATE).
+	if (r.shortShafts?.length)
+		out.push({ kind: "part-interference", message: `a motor's shaft barely reaches its wheel: ${r.shortShafts.map((x) => `${x.motor} ${x.engagementMm} mm into the hub`).join(", ")} (at least ${r.shaftMinMm ?? 4} mm, an estimate): narrow the track or move the motors outward`, fields: ["mechanics"], affects: ["mechanics"] })
 	if (r.unmeasured.length)
 		out.push({ kind: "part-interference", message: `the interference check couldn't measure ${r.unmeasured.map((u) => `${u.a} against ${u.b}`).join(", ")}: not a pass; the chassis geometry needs a look`, fields: ["mechanics"], affects: ["mechanics"] })
 	return out
