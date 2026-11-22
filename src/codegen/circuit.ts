@@ -876,7 +876,12 @@ export function moduleBlocked(s: ContractSnapshot): { ref: string; edge: Connect
 	const mcu = parts.find((p) => p.role === "mcu")
 	const m = moduleOf(mcu)
 	if (!outline || !mcu || !m) return null
-	if (placeParts(s).some((b) => b.ref === mcu.ref)) return null
+	// Whether the module got its spot: the module-only check (moduleSpotFree, the placement's own answer for the module,
+	// 810/810 sizes in test/module-clear.test.ts) where it decides alone, the whole placement only when the engineer
+	// placed parts. A full placement per call made the space model's size search 3.5x slower once the connector fitting
+	// asked this for every offset (the rover-with-a-Pi system test timed out, 22 Nov 2026).
+	const spot = moduleSpotFree(s)
+	if (spot === true || (spot === null && placeParts(s).some((b) => b.ref === mcu.ref))) return null
 	const usb = connectors.find((c) => c.kind === "usb-c")
 	const edge = OPPOSITE[usb?.edge ?? "left"]
 	const [W, H] = [outline.widthMm, outline.heightMm]
