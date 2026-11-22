@@ -608,8 +608,8 @@ order (effort as estimated in the study):
       in the board page's 3D view names the nearest one (else the wall, floor, lid or plate), the composer shows it and
       sends [ref: label; made by file:line] before the request; the case designer and the mechanics engineer read it.
       Proof: on a rover mock (--stay) clicks named 10 of 11 chassis parts and the plate, and a sent request reached
-      every agent with its prefix; on a logger's case every opening, standoff and surface. Not yet: the system page's
-      own robot view (world3d.js) has no click-to-reference; the board page inside it does.
+      every agent with its prefix; on a logger's case every opening, standoff and surface. 22 Nov: the system page's
+      robot view too (world3d.js ray against the printed chassis; the board page opens with the part in its change box).
 - [x] 4. A motor, bearing and fastener library with named frames and ISO 286 fits, from cadsmith's data with its MIT
       notice kept (~1 day).
       Part done 20-21 Nov: py/fits.py (cadsmith's ISO 286 fits, ISO 273 clearance holes, tap drills, heat-set inserts;
