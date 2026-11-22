@@ -617,8 +617,10 @@ order (effort as estimated in the study):
       hole is now 3.4 mm (it was 3.2, labelled ISO 273 medium but the close series; a printed hole comes out undersize).
       Then 22 Nov: the whole library as py/parts/ (cadsmith's motors and servos (SG90, MG996R, N20, NEMA 17/23),
       bearings, ISO fasteners, involute gears, rods, leadscrews and extrusions with named frames and mate(); its
-      MIT licence in py/parts/LICENSE and a header in each file), ready for the robot arm's servos. Open: using it in
-      the chassis (real motor solids in the interference check, fits on the motor and bearing pockets).
+      MIT licence in py/parts/LICENSE and a header in each file), ready for the robot arm's servos. In use (22 Nov): the
+      interference check's motors are N20 solids (round can, gearbox, 3 mm shaft) and the wheels have their bore; each
+      shaft's reach into its wheel is measured (at least 4 mm, an estimate). Rover and Eurobot mocks: 0 clashes, 10 mm
+      engaged. Open: fits on the motor and bearing pockets.
 - [x] 5. Print-DFM as named violations: overhang, minimum wall, bed size (~0.5 day). Built 22 Nov: py/printcheck.py
       checks every printed chassis part (chassis, battery strap, motor clamp, mast sections) against the printer's bed
       (estimate printBedMm 256) in any orientation and its walls against three perimeters, into print.json; a failure
