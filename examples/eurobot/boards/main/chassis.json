@@ -1,7 +1,7 @@
 {
  "plate": {
-  "lengthMm": 260,
-  "widthMm": 256,
+  "lengthMm": 256,
+  "widthMm": 252,
   "thicknessMm": 3,
   "clearanceMm": 50.5
  },
@@ -11,7 +11,7 @@
   {
    "side": "left",
    "xMm": 75,
-   "yMm": 114,
+   "yMm": 112,
    "bodyMm": [
     32,
     12,
@@ -23,11 +23,11 @@
     "screwHoles": [
      {
       "xMm": 65,
-      "yMm": 114
+      "yMm": 112
      },
      {
       "xMm": 85,
-      "yMm": 114
+      "yMm": 112
      }
     ],
     "pilotMm": 1.6,
@@ -41,7 +41,7 @@
   {
    "side": "right",
    "xMm": 75,
-   "yMm": -114,
+   "yMm": -112,
    "bodyMm": [
     32,
     12,
@@ -53,11 +53,11 @@
     "screwHoles": [
      {
       "xMm": 65,
-      "yMm": -114
+      "yMm": -112
      },
      {
       "xMm": 85,
-      "yMm": -114
+      "yMm": -112
      }
     ],
     "pilotMm": 1.6,
@@ -70,7 +70,7 @@
   }
  ],
  "caster": {
-  "xMm": -110,
+  "xMm": -105,
   "holesMm": [
    [
     18,
@@ -105,7 +105,7 @@
  "boards": [
   {
    "name": "main",
-   "xMm": -95,
+   "xMm": -90,
    "yMm": 0,
    "widthMm": 66,
    "heightMm": 45,
@@ -113,19 +113,19 @@
    "holeInsetMm": 3,
    "holes": [
     {
-     "xMm": -125,
+     "xMm": -120,
      "yMm": -19.5
     },
     {
-     "xMm": -65,
+     "xMm": -60,
      "yMm": -19.5
     },
     {
-     "xMm": -125,
+     "xMm": -120,
      "yMm": 19.5
     },
     {
-     "xMm": -65,
+     "xMm": -60,
      "yMm": 19.5
     }
    ],
@@ -139,7 +139,7 @@
  },
  "unplaced": [],
  "sticker": {
-  "xMm": -129,
+  "xMm": -127,
   "yMm": 0,
   "zMm": 90.5,
   "sizeMm": [
@@ -169,7 +169,7 @@
   "bodyMm": 34
  },
  "sensor": {
-  "xMm": 128.6,
+  "xMm": 126.6,
   "yMm": 0,
   "zMm": 66,
   "sizeMm": [
@@ -199,19 +199,212 @@
   ],
   "holeDiaMm": 2.7
  },
- "massG": 1222.8627102294508,
+ "imu": {
+  "noiseDegPerSqrtS": 0.005,
+  "biasDegPerS": 0.05
+ },
+ "massG": 1214.7679902294508,
  "com": [
-  1.2235772132818157,
-  6.327377828495709,
-  219.98032034806573
+  1.5666383395971226,
+  6.369540901829743,
+  221.08507179815493
+ ],
+ "printBedMm": [
+  256,
+  256,
+  256
+ ],
+ "bodyParts": [
+  {
+   "what": "plate",
+   "atMm": [
+    0,
+    0,
+    52
+   ],
+   "sizeMm": [
+    256,
+    252,
+    3
+   ],
+   "massG": 239.98463999999998
+  },
+  {
+   "what": "motor:left",
+   "atMm": [
+    75,
+    112,
+    40
+   ],
+   "sizeMm": [
+    12,
+    32,
+    10
+   ],
+   "massG": 11
+  },
+  {
+   "what": "motor:right",
+   "atMm": [
+    75,
+    -112,
+    40
+   ],
+   "sizeMm": [
+    12,
+    32,
+    10
+   ],
+   "massG": 11
+  },
+  {
+   "what": "battery",
+   "atMm": [
+    0,
+    70,
+    62.5
+   ],
+   "sizeMm": [
+    76,
+    34,
+    18
+   ],
+   "massG": 106
+  },
+  {
+   "what": "battery-strap",
+   "atMm": [
+    0,
+    70,
+    73
+   ],
+   "sizeMm": [
+    10,
+    52,
+    2
+   ],
+   "massG": 4.53592
+  },
+  {
+   "what": "sensor",
+   "atMm": [
+    126.6,
+    0,
+    66
+   ],
+   "sizeMm": [
+    2.8,
+    25.4,
+    17.8
+   ],
+   "massG": 1.3
+  },
+  {
+   "what": "estop",
+   "atMm": [
+    75,
+    0,
+    113.65
+   ],
+   "sizeMm": [
+    40,
+    40,
+    86.7
+   ],
+   "massG": 56.32
+  },
+  {
+   "what": "estop-deck",
+   "atMm": [
+    75,
+    0,
+    89.25
+   ],
+   "sizeMm": [
+    48,
+    252,
+    78.5
+   ],
+   "massG": 49.05339022945067
+  },
+  {
+   "what": "beacon-mast",
+   "atMm": [
+    0,
+    0,
+    241.75
+   ],
+   "sizeMm": [
+    70,
+    70,
+    376.5
+   ],
+   "massG": 175.09296
+  },
+  {
+   "what": "beacon-load",
+   "atMm": [
+    0,
+    0,
+    470
+   ],
+   "sizeMm": [
+    80,
+    80,
+    80
+   ],
+   "massG": 400
+  },
+  {
+   "what": "sticker-panel",
+   "atMm": [
+    -127,
+    0,
+    90.5
+   ],
+   "sizeMm": [
+    2,
+    104,
+    74
+   ],
+   "massG": 19.08608
+  },
+  {
+   "what": "board:main",
+   "atMm": [
+    -90,
+    0,
+    64.3
+   ],
+   "sizeMm": [
+    66,
+    45,
+    1.6
+   ],
+   "massG": 10.395
+  },
+  {
+   "what": "payload",
+   "atMm": [
+    0,
+    0,
+    63.5
+   ],
+   "sizeMm": [
+    20,
+    20,
+    20
+   ],
+   "massG": 20
+  }
  ],
  "wheelMassG": 20,
  "casterMassG": 71,
  "drive": {
   "kind": "differential",
-  "trackMm": 270,
+  "trackMm": 266,
   "axleXMm": 75,
-  "wheelbaseMm": 185,
+  "wheelbaseMm": 180,
   "wheelDiameterMm": 80,
   "wheelWidthMm": 10
  },
@@ -221,7 +414,7 @@
   "stallTorqueNm": 0.1765,
   "stallA": 0.75,
   "noLoadA": 0.08,
-  "encoderCountsPerRev": 903.48
+  "encoderCountsPerRev": 1806.96
  },
  "pack": {
   "nominalV": 7.4,
