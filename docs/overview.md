@@ -23,8 +23,15 @@ the assembly steps. A change to any of it (a bigger pack, encoders, a servo) wak
   when the encoders needed more pins), wheel encoders in quadrature, an IMU, an emergency stop and a pull-cord start,
   checked against the rules (start perimeter, height, battery). A real-model run (20b) settled and passed its brief
   review.
+<p><img src="img/rover-assembled.png" height="220" alt="The rover: the plate with two wheels, the board on standoffs at the back, the battery pack ahead of it and the distance sensor on its bracket at the front"> <img src="img/rover-exploded.png" height="220" alt="The rover exploded in assembly order"></p>
+
 - **The rover** (`briefs/rover.md`): the reference robot. Its build package (rover-9) prices the whole robot, board
   and bought parts, with the assembly steps.
+<img src="img/eurobot-drive.svg" width="420" alt="Top-down view of the simulated course: the Eurobot base's own S3 firmware drives a 600 by 400 mm lap in the physics model and returns to 12 mm from its start; every segment passes">
+
+<sub>The Eurobot base's S3 firmware in QEMU driving the MuJoCo model: a 600 × 400 mm lap by odometry and the gyro, the
+axle's middle drawn as it went (recaptured by <code>npx tsx scripts/readme-images.ts --drive &lt;drive folder&gt; &lt;name&gt;</code>).</sub>
+
 - **Simulated as built**: the robot's own firmware runs in Espressif's QEMU (RISC-V for the C3, Xtensa for the S3) and
   drives a MuJoCo model of the chassis, with the gyro and the encoders it really has. The Eurobot base's S3 drives a
   600 × 400 mm lap and ends 12 mm from its start; its ROS 2 package passes its acceptance test on that simulation.
