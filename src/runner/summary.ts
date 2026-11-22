@@ -29,21 +29,24 @@ function boardSummary(dir: string, board: string): BoardSummary {
 	const vblock = /^Violations: \d+\n((?:- .+\n?)*)/m.exec(report)?.[1] ?? ""
 	const violations = vblock.split("\n").filter((l) => l.startsWith("- ")).map((l) => l.slice(2))
 	const artifacts: ArtifactLine[] = []
+	// A folder alone isn't a build: a stubbed or skipped build (no toolchain, --no-hardware) leaves it empty.
+	const ended = report !== ""
+	const absent = ended ? "not built (stubbed, or its tool is missing: the report says which)" : "building"
 	const b = latestRev(join(dir, "board"))
 	if (b) {
 		const drc = json(join(b.path, "drc.json"))
 		const errors = Array.isArray(drc?.violations) ? drc.violations.filter((v: any) => v.severity === "error").length : null
-		artifacts.push({ what: "board", revision: b.rev, verdict: errors === null ? (existsSync(join(b.path, "board.png")) ? "built" : "building or failed") : `built, DRC ${errors} error(s)`, file: existsSync(join(b.path, "board.png")) ? join(b.path, "board.png") : undefined })
+		artifacts.push({ what: "board", revision: b.rev, verdict: errors === null ? (existsSync(join(b.path, "board.png")) ? "built" : absent) : `built, DRC ${errors} error(s)`, file: existsSync(join(b.path, "board.png")) ? join(b.path, "board.png") : undefined })
 	}
 	const e = latestRev(join(dir, "enclosure"))
 	if (e) {
 		const p = json(join(e.path, "print.json"))
-		artifacts.push({ what: "case", revision: e.rev, verdict: p ? (p.ok ? "print check ok" : `print check: ${p.issues.join("; ")}`) : "built", file: join(e.path, "case.stl") })
+		artifacts.push({ what: "case", revision: e.rev, verdict: p ? (p.ok ? "print check ok" : `print check: ${p.issues.join("; ")}`) : existsSync(join(e.path, "case.stl")) ? "built" : absent, file: existsSync(join(e.path, "case.stl")) ? join(e.path, "case.stl") : undefined })
 	}
 	const c = latestRev(join(dir, "chassis"))
 	if (c) {
 		const i = json(join(c.path, "mounts.json"))?.interference
-		artifacts.push({ what: "chassis", revision: c.rev, verdict: i ? `interference: ${i.pairs} pairs, ${i.clashes.length} clash(es), ${i.unmeasured.length} unmeasured` : "built", file: join(c.path, "chassis.stl") })
+		artifacts.push({ what: "chassis", revision: c.rev, verdict: i ? `interference: ${i.pairs} pairs, ${i.clashes.length} clash(es), ${i.unmeasured.length} unmeasured` : existsSync(join(c.path, "chassis.stl")) ? "built" : absent, file: existsSync(join(c.path, "chassis.stl")) ? join(c.path, "chassis.stl") : undefined })
 		const urdf = existsSync(join(c.path, "ros", "src")) ? readdirSync(join(c.path, "ros", "src")).map((p) => join(c.path, "ros", "src", p, "urdf")).find((p) => existsSync(p)) : undefined
 		if (urdf) artifacts.push({ what: "ROS package", revision: c.rev, verdict: "URDF and controllers written", file: urdf })
 	}

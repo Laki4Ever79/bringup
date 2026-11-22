@@ -8,6 +8,7 @@ import { z } from "zod"
 import { appendRequest } from "../runner/requests.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 import { runSummary } from "../runner/summary.ts"
+import { detectEnvironment } from "../tools/env.ts"
 
 export interface BringupMcpDeps {
 	// Starts one run (by default a `tsx src/main.ts` child, see startRunProcess). Exit 0 settled, 2 unsettled.
@@ -17,7 +18,14 @@ export interface BringupMcpDeps {
 	// provider is configured (process.env by default).
 	root?: string
 	env?: Record<string, string | undefined>
+	// Which hardware tools this machine has (src/tools/env.ts detectEnvironment by default), for hardware: "auto".
+	detect?: () => Promise<{ tsci: string | null; python: string | null; pio: string | null }>
 }
+
+// hardware "auto": the real builds where the toolchain is (tscircuit, Python with build123d, PlatformIO), else the
+// builds stubbed (--no-hardware) so the design still settles: an `npx bringup-mcp` with nothing else installed ran a
+// mock to "UNSETTLED: missing tools" in 10 s (22 Nov 2026). The result says which it was.
+const HARDWARE = z.enum(["auto", "build", "stub"]).optional().describe('"build": board, case, chassis and firmware built for real (needs the toolchain: npm run setup); "stub": the contract and its checks only, builds stubbed; "auto" (default): build when the toolchain is there, else stub')
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url))
 
@@ -115,6 +123,13 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	const kills = new Map<string, () => void>()
 	const root = deps.root ?? ROOT
 	const server = new McpServer({ name: "bringup", version: SERVER_VERSION })
+	async function hardwareFlags(hardware: "auto" | "build" | "stub" | undefined): Promise<{ flags: string[]; said: string }> {
+		if (hardware === "stub") return { flags: ["--no-hardware"], said: "stubbed (asked)" }
+		if (hardware === "build") return { flags: [], said: "built" }
+		const env = await (deps.detect ?? (() => detectEnvironment(root)))()
+		const missing = [!env.tsci && "tscircuit", !env.python && "Python with build123d", !env.pio && "PlatformIO"].filter(Boolean)
+		return missing.length ? { flags: ["--no-hardware"], said: `stubbed: this machine lacks ${missing.join(", ")} (npm run setup in a clone installs them)` } : { flags: [], said: "built" }
+	}
 	// Not awaited: a run goes on in its own process while the client polls.
 	function track(runId: string, run: ReturnType<BringupMcpDeps["launch"]>) {
 		if (run.kill) kills.set(runId, run.kill)
@@ -146,9 +161,10 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 				mock: z.boolean().optional().describe("Scripted agents: free, no API key, a complete design in minutes. Default true."),
 				realModels: z.boolean().optional().describe("Required with mock: false. Real models cost money or quota; the server refuses without it."),
 				stay: z.boolean().optional().describe("Keep the run up after it settles so request_change can reach it; end it with stop_design. Default false."),
+				hardware: HARDWARE,
 			},
 		},
-		async ({ brief, mock, realModels, stay }) => {
+		async ({ brief, mock, realModels, stay, hardware }) => {
 			const refused = paidRunRefusal(mock, realModels, deps.env ?? process.env)
 			if (refused) return fail(refused)
 			const runId = newRunId()
@@ -158,8 +174,10 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			writeFileSync(briefPath, brief.endsWith("\n") ? brief : brief + "\n")
 			runs.set(runId, { status: "running" })
 			// Not awaited: the run goes on in its own process while the client polls.
-			track(runId, deps.launch({ briefPath, mock: mock ?? true, outDir, ...(stay ? { extraArgs: ["--stay"] } : {}) }))
-			return ok({ runId, outDir, mock: mock ?? true, stay: Boolean(stay) })
+			const hw = await hardwareFlags(hardware)
+			const extraArgs = [...(stay ? ["--stay"] : []), ...hw.flags]
+			track(runId, deps.launch({ briefPath, mock: mock ?? true, outDir, ...(extraArgs.length ? { extraArgs } : {}) }))
+			return ok({ runId, outDir, mock: mock ?? true, stay: Boolean(stay), hardware: hw.said })
 		},
 	)
 
@@ -301,9 +319,10 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 				mock: z.boolean().optional().describe("Scripted agents: free, no API key. Default true."),
 				realModels: z.boolean().optional().describe("Required with mock: false. Real models cost money or quota."),
 				stay: z.boolean().optional().describe("Keep the system up after it settles, for request_change. Default false."),
+				hardware: HARDWARE,
 			},
 		},
-		async ({ system, mock, realModels, stay }) => {
+		async ({ system, mock, realModels, stay, hardware }) => {
 			const refused = paidRunRefusal(mock, realModels, deps.env ?? process.env)
 			if (refused) return fail(refused)
 			let specPath: string
@@ -318,9 +337,10 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 				writeFileSync(specPath, JSON.stringify(system, null, 1))
 			}
 			mkdirSync(outDir, { recursive: true })
+			const hw = await hardwareFlags(hardware)
 			runs.set(runId, { status: "running" })
-			track(runId, deps.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, ...(mock === false ? [] : ["--mock"]), ...(stay ? ["--stay"] : [])] }))
-			return ok({ runId, outDir, mock: mock ?? true, stay: Boolean(stay) })
+			track(runId, deps.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, ...(mock === false ? [] : ["--mock"]), ...(stay ? ["--stay"] : []), ...hw.flags] }))
+			return ok({ runId, outDir, mock: mock ?? true, stay: Boolean(stay), hardware: hw.said })
 		},
 	)
 

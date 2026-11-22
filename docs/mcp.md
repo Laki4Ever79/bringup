@@ -23,12 +23,15 @@ Claude Desktop, Cursor and other clients take the same command in their MCP sett
 
 Needs Node 24 or later. The first `npx` call downloads the package (about 3 MB).
 
-What runs depends on what the machine has:
-- **Nothing else installed:** mock designs run. The agents are scripted and free. The contract, the checks and the
-  report all work, and the tools that aren't there are skipped (the report says which).
+What a run builds depends on the machine (`hardware`, `auto` by default):
+- **Nothing else installed:** the agents design the contract (parts, pins, outline, mechanics) and every check runs on
+  it. The board, case, chassis and firmware builds are stubbed, so the design settles in seconds. The start result
+  names the missing tools (`hardware: "stubbed: this machine lacks …"`).
 - **The full toolchain** (`git clone`, then `npm run setup`; see the [README](../README.md)): real boards, cases,
-  chassis, firmware, simulation and ROS. From a clone, register it with
+  chassis, firmware, simulation and ROS. From a clone, register the server with
   `claude mcp add bringup -- node "$PWD/bin/bringup-mcp.js"`.
+- `hardware: "build"` asks for the real builds anyway. On a machine without the tools the run then ends unsettled,
+  and `run_summary` names the missing tools. `hardware: "stub"` stubs them even where they are installed.
 
 Runs go to `~/.bringup/runs`, or to `out/` in a git clone. Set `BRINGUP_OUT` to choose another folder.
 
@@ -46,7 +49,7 @@ Runs go to `~/.bringup/runs`, or to `out/` in a git clone. Set `BRINGUP_OUT` to 
 | Tool | What it does |
 |---|---|
 | `list_starters` | The shipped example devices and robots, multi-board systems and briefs |
-| `start_design` | Start a design from a brief (`mock` by default; `stay: true` keeps it up to take changes). Returns a `runId` at once |
+| `start_design` | Start a design from a brief (`mock` by default; `stay: true` keeps it up to take changes; `hardware` as above). Returns a `runId` at once |
 | `start_system` | Start a multi-board system: a robot's boards on one chassis, a sensor board on a cable, a Pi with its HAT. Takes a shipped system's name or a spec |
 | `design_status` | Running, settled, unsettled or failed, with the revision, the open violations and event counts |
 | `run_summary` | One screen: the status, the open violations, and each artifact's own verdict (board DRC, the case's print check, the chassis' interference, the simulated drive, the ROS test), with the files to open |

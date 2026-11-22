@@ -41,7 +41,7 @@ function stubRun() {
 const exitWith = (code: number, stderr: string): Launch => () => ({ done: Promise.resolve({ code, stderr }) })
 
 async function connect(launch: Launch, outRoot = tempDir()) {
-	const server = createBringupMcpServer({ launch, outRoot })
+	const server = createBringupMcpServer({ launch, outRoot, detect: async () => ({ tsci: "tsci", python: "python", pio: "pio" }) })
 	const [a, b] = InMemoryTransport.createLinkedPair()
 	const client = new Client({ name: "test", version: "0" })
 	await Promise.all([server.connect(a), client.connect(b)])
@@ -255,7 +255,7 @@ test("design_status counts approved and rejected from change.resolved, not from 
 // part references, packages, and the npx entry point over real stdio.
 
 async function connectWith(deps: Partial<Parameters<typeof createBringupMcpServer>[0]> & { launch: Launch }) {
-	const server = createBringupMcpServer({ outRoot: tempDir(), ...deps })
+	const server = createBringupMcpServer({ outRoot: tempDir(), detect: async () => ({ tsci: "tsci", python: "python", pio: "pio" }), ...deps })
 	const [a, b] = InMemoryTransport.createLinkedPair()
 	const client = new Client({ name: "test", version: "0" })
 	await Promise.all([server.connect(a), client.connect(b)])
@@ -399,5 +399,21 @@ test("over stdio, a mock design runs to the end and run_summary reports it", { s
 		assert.match(s.text, /board \(rev \d+\)/)
 	} finally {
 		await client.close()
+	}
+})
+
+test("hardware auto builds where the toolchain is and stubs where it isn't, and says which", async () => {
+	const stub = stubRun()
+	const bare = await connectWith({ launch: stub.launch, detect: async () => ({ tsci: null, python: null, pio: "pio" }) })
+	try {
+		const r = (await bare.call("start_design", { brief: "x" })).json()
+		assert.match(r.hardware, /stubbed: this machine lacks tscircuit, Python with build123d/)
+		assert.deepEqual(stub.calls[0].extraArgs, ["--no-hardware"])
+		const b = (await bare.call("start_design", { brief: "x", hardware: "build" })).json()
+		assert.equal(b.hardware, "built")
+		assert.equal(stub.calls[1].extraArgs, undefined)
+		stub.release()
+	} finally {
+		await bare.close()
 	}
 })
