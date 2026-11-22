@@ -391,6 +391,10 @@ contract field) and Revert.
 ```bash
 # What was edited by hand in a run folder, like git status: open, adopted or reverted, with the diff lines
 npm run bringup -- status out/quick
+# One screen about a run: the status, open violations and each artifact's own verdict (board DRC, case print check,
+# chassis interference, simulated drive, ROS test), then what changed since the last run of the same brief.
+# Exit code: 0 settled, 2 unsettled, 1 anything else. --prev <runDir> compares with another run, --json for scripts.
+npm run bringup -- summary out/quick
 ```
 
 `--no-hardware` swaps the three builders for stubs (`src/tools/stubs.ts`). Each stub derives its artifact straight

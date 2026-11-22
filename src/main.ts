@@ -115,6 +115,28 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		for (const line of [...linkedStatusLines(dir), ...driftStatusLines(readDrift(dir), dir)]) console.log(line)
 		return 0
 	}
+	// `bringup summary <runDir> [--prev <runDir>] [--json]`: one screen about a run (src/runner/summary.ts), what changed
+	// from the run before it of the same brief, and an exit code a script can act on: 0 settled, 2 unsettled, 1 else.
+	if (argv[0] === "summary") {
+		const dir = argv[1]
+		if (!dir || !existsSync(dir)) {
+			console.error(`bringup: summary needs a run folder${dir ? `; ${dir} does not exist` : ""}`)
+			return 1
+		}
+		const { runSummary, previousRun, summaryDelta, summaryExitCode } = await import("./runner/summary.ts")
+		const name = (d: string) => resolve(d).split("/").pop()!
+		const cur = runSummary(resolve(dir), name(dir))
+		const prevAt = argv.indexOf("--prev")
+		const prevDir = prevAt > 0 ? argv[prevAt + 1] : previousRun(resolve(dir))
+		const prev = prevDir && existsSync(prevDir) ? runSummary(resolve(prevDir), name(prevDir)) : null
+		const delta = prev ? summaryDelta(prev, cur) : null
+		if (argv.includes("--json")) console.log(JSON.stringify({ ...cur, previous: prev?.runId ?? null, delta }, null, 1))
+		else {
+			console.log(cur.text)
+			console.log(prev ? (delta!.length ? `Δ since ${prev.runId}:\n${delta!.map((l) => `  ${l}`).join("\n")}` : `Δ since ${prev.runId}: no change`) : "Δ: first run of this brief")
+		}
+		return summaryExitCode(cur)
+	}
 	// `bringup modules`: the robot module library, each module's proof level and its evidence (src/modules/library.ts).
 	if (argv[0] === "modules") {
 		const root = resolve(import.meta.dirname, "..")

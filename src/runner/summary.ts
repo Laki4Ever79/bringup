@@ -75,3 +75,46 @@ export function runSummary(dir: string, runId: string): RunSummary {
 	}
 	return { runId, kind: system ? "system" : "design", status, boards, files, text: lines.join("\n") }
 }
+
+// The run before this one of the same design: the newest sibling folder (by name, which starts with its time) whose
+// brief.md, or system spec, is the same text. Null when there is none.
+export function previousRun(dir: string): string | null {
+	const parent = join(dir, "..")
+	const keyOf = (d: string) => {
+		for (const f of ["brief.md", "system.json", "system-spec.json"]) if (existsSync(join(d, f))) return readFileSync(join(d, f), "utf8")
+		return null
+	}
+	const key = keyOf(dir)
+	if (key === null) return null
+	const name = dir.replace(/\/+$/, "").split("/").pop()!
+	const older = readdirSync(parent).filter((n) => n < name && keyOf(join(parent, n)) === key).sort()
+	return older.length ? join(parent, older[older.length - 1]) : null
+}
+
+// What changed from `prev` to `cur`, one line each: the status, the number of open violations, and every artifact
+// verdict that differs (cadsmith's Δprev line; the user's rule: every report carries before → after).
+export function summaryDelta(prev: RunSummary, cur: RunSummary): string[] {
+	const out: string[] = []
+	if (prev.status !== cur.status) out.push(`status: ${prev.status} → ${cur.status}`)
+	const count = (s: RunSummary) => s.boards.reduce((t, b) => t + b.violations.length, 0)
+	if (count(prev) !== count(cur)) out.push(`open violations: ${count(prev)} → ${count(cur)}`)
+	for (const b of cur.boards) {
+		const pb = prev.boards.find((x) => x.board === b.board)
+		const tag = cur.boards.length > 1 ? `${b.board} ` : ""
+		if (!pb) { out.push(`${tag}new board`); continue }
+		for (const a of b.artifacts) {
+			const pa = pb.artifacts.find((x) => x.what === a.what)
+			if (!pa) out.push(`${tag}${a.what}: (none) → ${a.verdict}`)
+			else if (pa.verdict !== a.verdict) out.push(`${tag}${a.what}: ${pa.verdict} → ${a.verdict}`)
+		}
+		for (const pa of pb.artifacts) if (!b.artifacts.some((x) => x.what === pa.what)) out.push(`${tag}${pa.what}: ${pa.verdict} → (none)`)
+	}
+	return out
+}
+
+// The exit code a script can act on: 0 settled, 2 unsettled, 1 anything else (failed, still running, no report).
+export function summaryExitCode(s: RunSummary): number {
+	if (/^settled\b/i.test(s.status)) return 0
+	if (/^UNSETTLED\b/.test(s.status)) return 2
+	return 1
+}

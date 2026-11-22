@@ -611,7 +611,10 @@ order (effort as estimated in the study):
       Open: the motor, bearing and fastener solids with named frames ("shaft", "hole_1") and mate(), and fits on the
       motor and bearing pockets.
 - [ ] 5. Print-DFM as named violations: overhang, minimum wall, bed size (~0.5 day).
-- [ ] 6. A one-screen run summary with the change from the previous run and exit codes (~0.5 day).
+- [x] 6. A one-screen run summary with the change from the previous run and exit codes (~0.5 day). Built 22 Nov:
+      src/runner/summary.ts (each artifact's own verdict: board DRC, case print check, chassis interference, simulated
+      drive, ROS test; per board for a system), `bringup summary <run>` with the change since the last run of the same
+      brief and exit codes 0/2/1, and the MCP's run_summary.
 
 ## A robot arm as the representative example (the user, 21 Nov 2026)
 
