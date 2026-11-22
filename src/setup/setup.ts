@@ -116,7 +116,7 @@ export const VENDORS: Step = {
 	],
 }
 
-export async function checkPrerequisites(probe: Probe): Promise<string[]> {
+export async function checkPrerequisites(probe: Probe, flags: { qemu?: boolean; robotics?: boolean } = {}): Promise<string[]> {
 	const problems: string[] = []
 	const major = Number(probe.nodeVersion.split(".")[0])
 	if (major !== 24) problems.push(`Node 24 is needed (this is Node ${probe.nodeVersion}): install Node 24, then re-run.`)
@@ -132,6 +132,11 @@ export async function checkPrerequisites(probe: Probe): Promise<string[]> {
 	// shared object file"). It is a system library, so it is named here with its install command, never installed.
 	if ((await probe.check("bash", ["-c", "ldconfig -p 2>/dev/null | grep -q 'libGL.so.1 ' || ls /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib64/libGL.so.1 2>/dev/null | grep -q ."])).code !== 0)
 		problems.push("libGL isn't installed (the CAD kernel for cases and chassis needs it): install the libgl1 package (Debian/Ubuntu) with your package manager, then re-run.")
+	// Espressif's QEMU links SDL2 (its display, unused here, still loaded at start): a desktop has it, a minimal image
+	// doesn't, and QEMU then didn't start, so a robot's drive was "not run" (the clean-machine run, 22 Nov 2026). Its own
+	// dependencies (X11, Wayland, ALSA, ...) are too many to fetch user-level, so it is named, only when QEMU is wanted.
+	if ((flags.qemu || flags.robotics) && (await probe.check("bash", ["-c", "ldconfig -p 2>/dev/null | grep -q 'libSDL2-2.0.so.0 '"])).code !== 0)
+		problems.push("SDL2 isn't installed (Espressif's QEMU, for the robots' simulated drive, needs it): install the libsdl2-2.0-0 package (Debian/Ubuntu) with your package manager, then re-run.")
 	return problems
 }
 
@@ -141,7 +146,7 @@ export interface SetupSummary {
 }
 
 export async function runSetup(probe: Probe, flags: { qemu?: boolean; wokwi?: boolean; renode?: boolean; vendors?: boolean; robotics?: boolean }): Promise<SetupSummary> {
-	const problems = await checkPrerequisites(probe)
+	const problems = await checkPrerequisites(probe, flags)
 	if (problems.length > 0) {
 		for (const p of problems) probe.log(p)
 		return { ok: false, lines: problems }
