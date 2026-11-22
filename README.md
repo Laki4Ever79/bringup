@@ -15,8 +15,8 @@ npm run setup -- --robotics                 # the whole toolchain, repo-local; d
 npm run bringup -- briefs/rover.md --mock   # a robot from its brief, no API key needed
 ```
 
-Needs Linux x86-64, Node 24, [uv](https://docs.astral.sh/uv/) and Docker without `sudo`; `npm run setup` checks them
-and says what's missing. Then try `npm run dashboard` (describe a device, build it, explore it in 3D).
+Needs Linux x86-64, Node 24, [uv](https://docs.astral.sh/uv/), Docker without `sudo` and libGL (a desktop has it; on a
+minimal system, the `libgl1` package); `npm run setup` checks them and says what's missing. Then try `npm run dashboard` (describe a device, build it, explore it in 3D).
 
 ## What you get
 

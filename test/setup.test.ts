@@ -9,7 +9,7 @@ import { WOKWI_CHIPS, WOKWI_CLI } from "../src/tools/wokwi.ts"
 const README = readFileSync(new URL("../README.md", import.meta.url), "utf8") + readFileSync(new URL("../docs/details.md", import.meta.url), "utf8")
 
 // A machine where `ready` names what is already installed; every command run is recorded.
-function machine(opts: { node?: string; uv?: boolean; docker?: "ok" | "down" | "missing" | "denied"; ready?: string[] } = {}) {
+function machine(opts: { node?: string; uv?: boolean; docker?: "ok" | "down" | "missing" | "denied"; libgl?: boolean; ready?: string[] } = {}) {
 	const ran: string[] = []
 	const ready = new Set(opts.ready ?? [])
 	const probe: Probe = {
@@ -17,6 +17,7 @@ function machine(opts: { node?: string; uv?: boolean; docker?: "ok" | "down" | "
 		async check(cmd, args) {
 			const line = [cmd, ...args].join(" ")
 			if (cmd === "uv") return { code: opts.uv === false ? -1 : 0, out: "uv 0.10.2" }
+			if (cmd === "bash" && /libGL/.test(line)) return { code: opts.libgl === false ? 1 : 0, out: "" }
 			if (line === "docker info") {
 				const d = opts.docker ?? "ok"
 				return d === "ok" ? { code: 0, out: "" } : d === "missing" ? { code: -1, out: "spawn docker ENOENT" } : d === "denied" ? { code: 1, out: "permission denied while trying to connect to the Docker daemon socket" } : { code: 1, out: "Cannot connect to the Docker daemon. Is the docker daemon running?" }
@@ -43,6 +44,8 @@ test("prerequisites first, in plain words: Node 24, uv, and a Docker daemon reac
 	assert.match((await checkPrerequisites(machine({ docker: "down" }).probe)).join("\n"), /Docker isn't running: start it, then re-run/)
 	assert.match((await checkPrerequisites(machine({ docker: "missing" }).probe)).join("\n"), /Docker isn't installed/)
 	assert.match((await checkPrerequisites(machine({ docker: "denied" }).probe)).join("\n"), /without sudo/)
+	// The clean-machine run (node:24-bookworm): no libGL, so every case and chassis build failed; named, never installed.
+	assert.match((await checkPrerequisites(machine({ libgl: false }).probe)).join("\n"), /libGL isn't installed.*libgl1 package/)
 })
 
 test("a failed prerequisite stops setup before anything is installed", async () => {

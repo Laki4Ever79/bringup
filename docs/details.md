@@ -279,6 +279,7 @@ fresh clone's `npm ci && npm run setup -- --robotics` took 51 s (21 Nov 2026, no
 | Node 24 + npm | Node 24.0.2, npm 11.3.0 | the only requirement for `--no-hardware` |
 | [uv](https://docs.astral.sh/uv/) + Python 3.12 | uv 0.10.2, CPython 3.12.3 | for build123d and PlatformIO |
 | Docker, with the daemon running and usable without `sudo` | Docker 29.6.1 | for KiCad and ngspice |
+| libGL (`libgl1` on Debian/Ubuntu) | | the CAD kernel for cases and chassis loads it; a desktop has it, a minimal image doesn't |
 | Disk | about 9.6 GB | `.venv` 0.9 GB, `tools/node` 0.8 GB, KiCad image 2.6 GB, `~/.platformio` about 5.3 GB (1.1 GB of it a download cache you can delete) |
 | (no Java needed) | | the Freerouting fallback runs its jar (installed by `npm run setup`, sha256-checked) in the `eclipse-temurin:25-jre` image, 0.34 GB |
 
@@ -299,7 +300,7 @@ curl -fL -o tools/freerouting-2.5.0.jar https://github.com/freerouting/freerouti
 docker pull eclipse-temurin:25-jre                        # Freerouting, the router a board falls back to, runs in it
 .venv/bin/pio pkg install -d templates/fw -e esp32c3      # ESP32-C3 toolchain + libraries into ~/.platformio, about 4 min
 .venv/bin/pio pkg install -d templates/fw-rover -e esp32s3  # ESP32-S3 toolchain: a robot that needs more pins moves up to the S3
-# robots: Espressif's QEMU (riscv32 and xtensa, esp-develop-9.2.2-20260417) into tools/qemu, see src/setup/setup.ts
+# robots: Espressif's QEMU (riscv32 and xtensa, esp-develop-9.2.2-20260417) and its libslirp (a pinned Ubuntu package) into tools/qemu, see src/setup/setup.ts
 ```
 
 Repo-local installs go in `.venv/` and `tools/node/`, both gitignored. The exceptions are PlatformIO's package cache

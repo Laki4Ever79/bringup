@@ -35,6 +35,9 @@ interface Step {
 }
 
 // The same commands and pins as the README's Install block.
+// libslirp 4.7.0 as Ubuntu 24.04 ships it (security update 1ubuntu3.1): the build the tested QEMU runs with, byte for byte.
+const SLIRP_URL = "http://archive.ubuntu.com/ubuntu/pool/main/libs/libslirp/libslirp0_4.7.0-1ubuntu3.1_amd64.deb"
+const SLIRP_SHA256 = "4efa2d1c509de4d10fe965e86a3d864bf542996caf476d9111fd882c73857164"
 const FREEROUTING_URL = "https://github.com/freerouting/freerouting/releases/download/v2.5.0/freerouting-2.5.0.jar"
 const FREEROUTING_SHA256 = "f6f51bb02245e8e717f9359bd260cc9c5c0b1bc0acc8b7cb2cd5b8ffeb5de3c7"
 
@@ -86,7 +89,9 @@ export const QEMU: Step = {
 	name: "QEMU (tools/qemu)",
 	commands: [
 		...QEMU_URLS.map((url): [string, string[]] => ["bash", ["-c", `set -e; mkdir -p tools && cd tools && curl -fL -o qemu.tar.xz ${url} && tar xf qemu.tar.xz && rm qemu.tar.xz`]]),
-		["bash", ["-c", "set -e; d=$(mktemp -d); (cd $d && apt download libslirp0 && dpkg -x libslirp0_*.deb x); mkdir -p tools/qemu/lib; cp -a $d/x/usr/lib/x86_64-linux-gnu/libslirp.so.0* tools/qemu/lib/; rm -rf $d"]],
+		// QEMU's libslirp from a pinned package, checked by sha256: `apt download` needed apt's package lists, which a fresh
+		// or minimal machine doesn't have and can't refresh without root (the clean-machine run, 22 Nov 2026: exited 100).
+		["bash", ["-c", `set -e; d=$(mktemp -d); curl -fL -o $d/s.deb ${SLIRP_URL}; echo "${SLIRP_SHA256}  $d/s.deb" | sha256sum -c -; (cd $d && dpkg -x s.deb x); mkdir -p tools/qemu/lib; cp -a $d/x/usr/lib/x86_64-linux-gnu/libslirp.so.0* tools/qemu/lib/; rm -rf $d`]],
 	],
 }
 
@@ -122,6 +127,11 @@ export async function checkPrerequisites(probe: Probe): Promise<string[]> {
 		else if (/permission denied/i.test(docker.out)) problems.push("Docker needs sudo here: it must work without sudo (add yourself to the docker group, log in again), then re-run.")
 		else problems.push("Docker isn't running: start it, then re-run.")
 	}
+	// The CAD kernel under build123d (OCP) loads the system's libGL; a desktop Linux has it, a minimal image doesn't (the
+	// clean-machine run, node:24-bookworm, 22 Nov 2026: every case and chassis build failed on "libGL.so.1: cannot open
+	// shared object file"). It is a system library, so it is named here with its install command, never installed.
+	if ((await probe.check("bash", ["-c", "ldconfig -p 2>/dev/null | grep -q 'libGL.so.1 ' || ls /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib64/libGL.so.1 2>/dev/null | grep -q ."])).code !== 0)
+		problems.push("libGL isn't installed (the CAD kernel for cases and chassis needs it): install the libgl1 package (Debian/Ubuntu) with your package manager, then re-run.")
 	return problems
 }
 
