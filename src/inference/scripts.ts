@@ -272,7 +272,7 @@ export const EUROBOT_BOARD = {
 		battery: { pack: "GENSACE-GEA22002S20X6 2S 2200 mAh 20C LiPo XT60", at: { xMm: 0, yMm: 70 }, enclosure: "fireproof-bag" as const },
 		sensor: { ...ROVER_MECHANICS!.sensor, at: { ...ROVER_MECHANICS!.sensor.at, xMm: 126.6 } },
 		// gridMm: the brief's mounting grid (M3 holes on 20 mm wherever nothing stands) for the team's mechanism.
-		chassis: { ...ROVER_MECHANICS!.chassis, plateMm: [256, 252] as [number, number], boards: [{ name: "main", at: { xMm: -95, yMm: 0 }, rotDeg: 0 as const }], gridMm: 20 },
+		chassis: { ...ROVER_MECHANICS!.chassis, plateMm: [256, 252] as [number, number], boards: [{ name: "main", at: { xMm: -90, yMm: 0 }, rotDeg: 0 as const }], gridMm: 20 },
 		beacon: { at: { xMm: 0, yMm: 0 }, topMm: 430, sizeMm: 70, mastWallMm: 1.2, loadG: 400 },
 		// The organisers' sticker (F.6: 100 × 70 mm left free on a side face): a panel on the rear, where nothing stands
 		// outside it (the wheels are on the sides, the sensor at the front).
