@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync } from "node:fs"
+import { homedir } from "node:os"
+import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { startRunProcess, type RunProcess } from "../runner/spawn-run.ts"
@@ -7,8 +10,11 @@ import { createBringupMcpServer } from "./server.ts"
 // captured output (startRunProcess), so nothing they print reaches stdout either.
 console.log = console.info = console.debug = (...args: unknown[]) => console.error(...args)
 
-// Runs land in the repo's out/ whatever directory the client launches us from.
-const outRoot = process.env.BRINGUP_OUT ?? fileURLToPath(new URL("../../out", import.meta.url))
+// Runs land in a git checkout's out/ whatever directory the client launches us from; an npm install (npx bringup-mcp)
+// lives in npm's cache, so its runs go to ~/.bringup/runs. BRINGUP_OUT overrides both.
+const root = fileURLToPath(new URL("../..", import.meta.url))
+const outRoot = process.env.BRINGUP_OUT ?? (existsSync(join(root, ".git")) ? join(root, "out") : join(homedir(), ".bringup", "runs"))
+mkdirSync(outRoot, { recursive: true })
 
 // Runs die with the server, so closing the client leaves no orphaned tsx processes behind.
 const live = new Set<RunProcess>()

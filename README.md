@@ -42,7 +42,7 @@ so a prototype order is next.
 
 - [docs/overview.md](docs/overview.md): robots in detail, every feature, the architecture, the honest status
 - [docs/details.md](docs/details.md): every command, the run folder, the tests, the manual install
-- MCP server (use Bringup from a coding agent): [docs/details.md](docs/details.md#use-from-claude-code) (to be updated when the MCP is published)
+- MCP server (use Bringup from Claude Code, Cursor or any MCP client): `claude mcp add bringup -- npx -y bringup-mcp`, see [docs/mcp.md](docs/mcp.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License

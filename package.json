@@ -1,9 +1,44 @@
 {
-	"name": "bringup",
-	"version": "0.1.0",
+	"name": "bringup-mcp",
+	"mcpName": "io.github.Laki4Ever79/bringup",
+	"version": "0.2.0",
+	"description": "Bringup: concurrent agents design a whole device or robot (board, printed parts, firmware, ROS) against one checked contract. MCP server: describe a device, change one thing, read the checks.",
 	"license": "Apache-2.0",
 	"type": "module",
-	"private": true,
+	"bin": {
+		"bringup-mcp": "bin/bringup-mcp.js"
+	},
+	"files": [
+		"bin/",
+		"src/",
+		"py/",
+		"catalog/",
+		"templates/",
+		"briefs/",
+		"examples/",
+		"docker/",
+		"docs/mcp.md",
+		"server.json",
+		"LICENSE",
+		"NOTICE",
+		"README.md",
+		".env.example"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Laki4Ever79/bringup.git"
+	},
+	"homepage": "https://github.com/Laki4Ever79/bringup#readme",
+	"keywords": [
+		"mcp",
+		"model-context-protocol",
+		"hardware",
+		"pcb",
+		"robotics",
+		"cad",
+		"agents",
+		"mozaik"
+	],
 	"scripts": {
 		"start": "tsx src/main.ts",
 		"typecheck": "tsc --noEmit",
@@ -25,12 +60,12 @@
 		"@mozaik-ai/cloud-sdk": "0.1.3",
 		"@mozaik-ai/core": "4.1.0",
 		"dotenv": "^17.4.2",
+		"tsx": "^4.23.13",
 		"zod": "4.6.7"
 	},
 	"devDependencies": {
 		"@types/node": "^24.0.0",
 		"playwright": "1.65.0",
-		"tsx": "^4.23.13",
 		"typescript": "^7.0.2"
 	},
 	"engines": {

@@ -434,19 +434,10 @@ pick the same parts for every variant.
 
 ## Use from Claude Code
 
-Bringup is also an MCP server (stdio), so a coding agent can start runs and read their results. Register it from
-the repo root:
-
-```bash
-claude mcp add bringup -- "$PWD/node_modules/.bin/tsx" "$PWD/src/mcp/cli.ts"
-```
-
-Tools: `start_design {brief, mock?}` starts a run in the background and returns its `runId` at once (`mock` defaults to
-true: scripted models, no API key). `design_status`, `read_contract`, `get_report` and `list_events {sinceSeq?}` read
-`out/<runId>/`. `request_change {runId, text}` sends a change request to a running design, as the engineer would
-("make it 60 mm wide"). Cursor and other MCP clients take the same command. In Claude Code, the `bringup` skill
-(`.claude/skills/bringup/`) tells the agent how to drive all of this. Set `BRINGUP_OUT` to keep runs somewhere other than
-`out/`.
+Bringup is also an MCP server (stdio), so a coding agent can describe a device, start runs, change one thing and read
+the checks. Install it with `claude mcp add bringup -- npx -y bringup-mcp`. The tools, the safe defaults (mock unless
+asked; a real-model run needs `realModels: true` and a provider) and every client's setup are in [mcp.md](mcp.md). In
+Claude Code, the `bringup` skill (`.claude/skills/bringup/`) tells the agent how to drive it.
 
 ## Tests
 

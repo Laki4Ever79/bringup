@@ -37,12 +37,17 @@ npm run bringup -- system briefs/systems/logger-beacon-uart.json           # sev
 ## From Claude Code, through the MCP server
 
 ```bash
-claude mcp add bringup -- "$PWD/node_modules/.bin/tsx" "$PWD/src/mcp/cli.ts"
+claude mcp add bringup -- npx -y bringup-mcp
 ```
 
-`start_design {brief, mock?}` returns a `runId` at once (`mock` defaults to true). Then poll `design_status {runId}`;
-read `read_contract`, `get_report`, `list_events {sinceSeq?}`; send `request_change {runId, text}` to a running design,
-in the engineer's words ("make it 60 mm wide", "the SHT40 is out of stock").
+`list_starters` names the shipped examples, systems and briefs. `start_design {brief, mock?, stay?}` or
+`start_system {system, mock?, stay?}` returns a `runId` at once; mock is the default and free. A real-model run needs
+`mock: false` and `realModels: true`, and the engineer must have asked for it. Poll `design_status {runId}`, then
+`run_summary {runId}` gives the status, the open violations and each artifact's verdict. Use `read_contract`,
+`get_report` and `list_events {sinceSeq?}` for the details. For a change, start the run with `stay: true`, then send
+`request_change {runId, text, ref?, board?}` in the engineer's words ("make it 60 mm wide", "the SHT40 is out of
+stock"); `ref`, from `list_part_refs`, names the printed feature it is about. End the run with `stop_design`.
+`export_package` writes the manufacturing files. All of it is in docs/mcp.md.
 
 ## Read the results
 

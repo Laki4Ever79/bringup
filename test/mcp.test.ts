@@ -7,7 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createBringupMcpServer } from "../src/mcp/server.ts"
 import { fixtureContract } from "./fixture.ts"
-import { tempDir } from "./helpers.ts"
+import { slow, tempDir } from "./helpers.ts"
 
 const trace = [
 	{ seq: 0, at: "2026-10-30T12:00:00.000Z", type: "contract.changed", producerId: "architect", payload: { field: "outline", version: 1, revision: 1, by: "architect" } },
@@ -248,5 +248,156 @@ test("design_status counts approved and rejected from change.resolved, not from 
 		assert.deepEqual({ proposed: counts.proposed, approved: counts.approved, rejected: counts.rejected }, { proposed: 1, approved: 0, rejected: 1 })
 	} finally {
 		await mcp.close()
+	}
+})
+
+// ── The publishable server (22 Nov 2026, "We should also publish an MCP"): safe defaults, systems, summaries,
+// part references, packages, and the npx entry point over real stdio.
+
+async function connectWith(deps: Partial<Parameters<typeof createBringupMcpServer>[0]> & { launch: Launch }) {
+	const server = createBringupMcpServer({ outRoot: tempDir(), ...deps })
+	const [a, b] = InMemoryTransport.createLinkedPair()
+	const client = new Client({ name: "test", version: "0" })
+	await Promise.all([server.connect(a), client.connect(b)])
+	const call = async (name: string, args: Record<string, unknown>) => {
+		const res: any = await client.callTool({ name, arguments: args })
+		const text = res.content?.[0]?.text ?? ""
+		return { isError: res.isError === true, text, json: () => JSON.parse(text) }
+	}
+	return { call, close: () => client.close() }
+}
+
+test("a real-model run needs realModels: true and a configured provider; mock stays the free default", async () => {
+	const stub = stubRun()
+	const none = await connectWith({ launch: stub.launch, env: {} })
+	try {
+		assert.match((await none.call("start_design", { brief: "x", mock: false })).text, /pass realModels: true/)
+		assert.match((await none.call("start_design", { brief: "x", mock: false, realModels: true })).text, /no model provider is configured/)
+		assert.match((await none.call("start_system", { system: "rover-pi", mock: false })).text, /pass realModels: true/)
+		assert.equal(stub.calls.length, 0, "nothing launched")
+	} finally {
+		await none.close()
+	}
+	const keyed = await connectWith({ launch: stub.launch, env: { OPENAI_API_KEY: "set" } })
+	try {
+		const r = await keyed.call("start_design", { brief: "x", mock: false, realModels: true })
+		assert.equal(r.isError, false, r.text)
+		assert.equal(stub.calls[0].mock, false)
+		stub.release()
+	} finally {
+		await keyed.close()
+	}
+})
+
+test("stay keeps a run up for changes and stop_design ends it", async () => {
+	let killed = 0
+	const launch: Launch = (args) => ({ done: new Promise(() => {}), kill: () => { killed++ } , ...(void args, {}) })
+	const calls: LaunchArgs[] = []
+	const mcp = await connectWith({ launch: (a) => (calls.push(a), launch(a)) })
+	try {
+		const { runId } = (await mcp.call("start_design", { brief: "x", stay: true })).json()
+		assert.deepEqual(calls[0].extraArgs, ["--stay"])
+		assert.equal((await mcp.call("stop_design", { runId })).isError, false)
+		assert.equal(killed, 1)
+		assert.match((await mcp.call("stop_design", { runId: "nope" })).text, /wasn't started by this server/)
+	} finally {
+		await mcp.close()
+	}
+})
+
+test("start_system takes a bundled system by name or a spec, mock by default", async () => {
+	const stub = stubRun()
+	const mcp = await connectWith({ launch: stub.launch })
+	try {
+		const r = await mcp.call("start_system", { system: "rover-pi" })
+		assert.equal(r.isError, false, r.text)
+		assert.equal(stub.calls[0].briefPath, "system")
+		assert.match(stub.calls[0].extraArgs![0], /briefs\/systems\/rover-pi\.json$/)
+		assert.deepEqual(stub.calls[0].extraArgs!.slice(1), ["--mock"])
+		assert.match((await mcp.call("start_system", { system: "../etc" })).text, /no bundled system/)
+		const spec = { name: "two boards", boards: [{ name: "a", brief: "x" }], links: [] }
+		const s = (await mcp.call("start_system", { system: spec })).json()
+		assert.deepEqual(JSON.parse(readFileSync(join(s.outDir, "system-spec.json"), "utf8")), spec)
+		stub.release()
+	} finally {
+		await mcp.close()
+	}
+})
+
+test("list_starters names the shipped examples, systems and briefs", async () => {
+	const mcp = await connectWith({ launch: stubRun().launch })
+	try {
+		const s = (await mcp.call("list_starters", {})).json()
+		assert.ok(s.examples.some((e: { name: string }) => e.name === "rover"))
+		assert.ok(s.systems.some((e: { name: string }) => e.name === "rover-climate"))
+		assert.ok(s.briefs.some((e: { name: string }) => e.name === "rover"))
+	} finally {
+		await mcp.close()
+	}
+})
+
+test("run_summary gives each artifact's own verdict; a part ref goes before the change request", async () => {
+	const outRoot = tempDir()
+	const dir = join(outRoot, "r1")
+	mkdirSync(join(dir, "chassis", "rev-3"), { recursive: true })
+	writeFileSync(join(dir, "trace.jsonl"), "")
+	writeFileSync(join(dir, "report.md"), "# Bringup report\n\nStatus: UNSETTLED at contract revision 3\nModels: mock\nViolations: 1\n- mech-climb: the caster carries 44 %\n\n## Design\n")
+	writeFileSync(join(dir, "chassis", "rev-3", "mounts.json"), JSON.stringify({ interference: { pairs: 28, clashes: [], unmeasured: [] } }))
+	writeFileSync(join(dir, "chassis", "rev-3", "refs.json"), JSON.stringify([{ ref: "chassis#sensor-bracket", kind: "sensor-bracket", label: "the distance sensor's bracket", atMm: [70, 0, 15], madeBy: "py/chassis.py:220 build" }]))
+	const mcp = await connectWith({ launch: stubRun().launch, outRoot })
+	try {
+		const s = (await mcp.call("run_summary", { runId: "r1" })).json()
+		assert.equal(s.status, "UNSETTLED at contract revision 3")
+		assert.match(s.text, /! mech-climb: the caster carries 44 %/)
+		assert.match(s.text, /chassis \(rev 3\): interference: 28 pairs, 0 clash\(es\), 0 unmeasured/)
+		const refs = (await mcp.call("list_part_refs", { runId: "r1" })).json()
+		assert.deepEqual(refs.chassis.map((r: { ref: string }) => r.ref), ["chassis#sensor-bracket"])
+		assert.equal((await mcp.call("request_change", { runId: "r1", text: "make it 2 mm thicker", ref: "chassis#sensor-bracket" })).isError, false)
+		const line = JSON.parse(readFileSync(join(dir, "requests.jsonl"), "utf8").trim())
+		assert.equal(line.text, "[chassis#sensor-bracket: the distance sensor's bracket; made by py/chassis.py:220 build] make it 2 mm thicker")
+		assert.match((await mcp.call("request_change", { runId: "r1", text: "x", ref: "chassis#nope" })).text, /no part chassis#nope/)
+	} finally {
+		await mcp.close()
+	}
+})
+
+// The npx entry point itself, over real stdio: the handshake, the tool list and a refused paid run (nothing launched).
+test("bin/bringup-mcp.js speaks MCP on stdio: handshake, every tool listed, safe defaults", async () => {
+	const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js")
+	const root = join(import.meta.dirname, "..")
+	const transport = new StdioClientTransport({ command: process.execPath, args: [join(root, "bin", "bringup-mcp.js")], env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", BRINGUP_OUT: tempDir() }, stderr: "pipe" })
+	const client = new Client({ name: "stdio-test", version: "0" })
+	await client.connect(transport)
+	try {
+		assert.equal(client.getServerVersion()?.name, "bringup")
+		const names = (await client.listTools()).tools.map((t) => t.name).sort()
+		assert.deepEqual(names, ["design_status", "export_package", "get_report", "list_events", "list_part_refs", "list_starters", "read_contract", "request_change", "run_summary", "start_design", "start_system", "stop_design"])
+		const refused: any = await client.callTool({ name: "start_design", arguments: { brief: "x", mock: false } })
+		assert.equal(refused.isError, true)
+	} finally {
+		await client.close()
+	}
+})
+
+// One whole mock design through the npx entry point (minutes; the machine's heavy-job slot).
+test("over stdio, a mock design runs to the end and run_summary reports it", { skip: slow, timeout: 1_800_000 }, async () => {
+	const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js")
+	const root = join(import.meta.dirname, "..")
+	const transport = new StdioClientTransport({ command: process.execPath, args: [join(root, "bin", "bringup-mcp.js")], env: { ...(process.env as Record<string, string>), BRINGUP_OUT: tempDir(), MOZAIK_API_KEY: "", MOZAIK_CREDENTIALS_FILE: "/dev/null" }, stderr: "pipe" })
+	const client = new Client({ name: "stdio-test", version: "0" })
+	await client.connect(transport)
+	const call = async (name: string, args: Record<string, unknown>) => JSON.parse(((await client.callTool({ name, arguments: args })) as any).content[0].text)
+	try {
+		const { runId } = await call("start_design", { brief: readFileSync(join(root, "briefs", "logger.md"), "utf8") })
+		let status = "running"
+		for (let i = 0; i < 340 && status === "running"; i++) {
+			await new Promise((r) => setTimeout(r, 5000))
+			status = (await call("design_status", { runId })).status
+		}
+		assert.ok(status === "settled" || status === "unsettled", status)
+		const s = await call("run_summary", { runId })
+		assert.match(s.text, /board \(rev \d+\)/)
+	} finally {
+		await client.close()
 	}
 })
