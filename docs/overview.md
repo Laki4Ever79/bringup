@@ -25,6 +25,12 @@ the assembly steps. A change to any of it (a bigger pack, encoders, a servo) wak
   review.
 <p><img src="img/rover-assembled.png" height="220" alt="The rover: the plate with two wheels, the board on standoffs at the back, the battery pack ahead of it and the distance sensor on its bracket at the front"> <img src="img/rover-exploded.png" height="220" alt="The rover exploded in assembly order"></p>
 
+<img src="img/rover-change.gif" width="420" alt="The rover before and after the change make it 2 cm wider: the plate and the wheel track grow; the mechanics agent and the chassis and drive builders woke, the board and firmware stayed as they were">
+
+<sub>A change on a robot: "make it 2 cm wider" woke the mechanics agent and the chassis and drive builders; the board,
+the firmware and the other agents stayed idle; it settled again with its drive passing (recaptured by
+<code>npx tsx scripts/readme-images.ts --change &lt;run before&gt; &lt;run after&gt; &lt;name&gt; "&lt;change&gt;"</code>).</sub>
+
 - **The rover** (`briefs/rover.md`): the reference robot. Its build package (rover-9) prices the whole robot, board
   and bought parts, with the assembly steps.
 <img src="img/eurobot-drive.svg" width="420" alt="Top-down view of the simulated course: the Eurobot base's own S3 firmware drives a 600 by 400 mm lap in the physics model and returns to 12 mm from its start; every segment passes">
