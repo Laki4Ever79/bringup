@@ -68,6 +68,7 @@ export interface ChassisSpec {
 	imu?: { noiseDegPerSqrtS: number; biasDegPerS: number }
 	massG: number
 	com: [number, number, number] // the whole rover's, wheels and caster included
+	printBedMm: [number, number, number] // the printer the printed parts must fit (estimate printBedMm)
 	// The body's parts (every mount but the wheels and the caster, the payload included): each one's mass, centre and box
 	// in the chassis frame (z from the floor), the same list massG and com come from. The URDF composes the body's
 	// inertia from them (src/ros/urdf.ts bodyInertia). Absent in a spec written before 19 Nov 2026.
@@ -251,6 +252,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		...((s.values.parts ?? []).some((p) => p.role === "imu") ? { imu: { ...IMU_SIM } } : {}),
 		massG,
 		com,
+		printBedMm: [est("printBedMm"), est("printBedMm"), est("printBedMm")],
 		bodyParts: ms.filter((m) => !m.what.startsWith("wheel:") && m.what !== "caster").map((m) => ({ what: m.what, atMm: [m.xMm, m.yMm, m.zMm] as [number, number, number], sizeMm: [...m.sizeMm] as [number, number, number], massG: m.massG })),
 		wheelMassG: wheel.massG,
 		casterMassG: caster && !skid ? caster.massG : 0,
@@ -266,7 +268,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 	}
 }
 
-export type ChassisArtifact = { ok: true; revision: number; dir: string; files: string[]; mounts: unknown; stub?: boolean }
+export type ChassisArtifact = { ok: true; revision: number; dir: string; files: string[]; mounts: unknown; stub?: boolean; printCheck?: { ok: boolean; issues: string[]; notes: string[] } }
 export type ChassisResult = ChassisArtifact | { ok: false; reason: string }
 
 export async function buildChassis(python: string, root: string, dir: string, s: ContractSnapshot, revision: number): Promise<ChassisResult> {
@@ -297,7 +299,8 @@ export async function buildChassis(python: string, root: string, dir: string, s:
 	const clamp = [...(existsSync(join(dir, "motor-clamp.stl")) ? [join(dir, "motor-clamp.stl")] : []), ...(existsSync(join(dir, "battery-strap.stl")) ? [join(dir, "battery-strap.stl")] : [])]
 	// The beacon support's mast, printed in sections (py/chassis.py mast_sections): each its own STL.
 	const mast = readdirSync(dir).filter((f) => /^beacon-mast-\d+\.stl$/.test(f)).sort().map((f) => join(dir, f))
-	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)).concat(clamp, mast, ros), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")) }
+	const printCheck = existsSync(join(dir, "print.json")) ? (JSON.parse(readFileSync(join(dir, "print.json"), "utf8")) as { ok: boolean; issues: string[]; notes: string[] }) : undefined
+	return { ok: true, revision, dir, files: ["chassis.step", "chassis.stl", "mounts.json", "spec.json"].map((f) => join(dir, f)).concat(clamp, mast, ros), mounts: JSON.parse(readFileSync(join(dir, "mounts.json"), "utf8")), ...(printCheck ? { printCheck } : {}) }
 }
 
 // Every hole of a board on the chassis has a standoff under it in the built chassis (mounts.json, measured back from the
@@ -355,4 +358,14 @@ export function packOnStandoffs(s: ContractSnapshot): { kind: "mech-fit"; messag
 	const hits = spec.boards.filter((x) => x.standoffs !== false).flatMap((x) => x.holes.filter((h) => Math.abs(h.xMm - b.xMm) < halfX && Math.abs(h.yMm - b.yMm) < halfY).map((h) => `${x.name}'s at (${+h.xMm.toFixed(1)}, ${+h.yMm.toFixed(1)})`))
 	if (!hits.length) return []
 	return [{ kind: "mech-fit", message: `the battery (${b.sizeMm[0]} × ${b.sizeMm[1]} mm at x ${b.xMm}, y ${b.yMm}, with its rails) lies on board standoffs: ${hits.join(", ")}: move the battery clear of the boards' mounting holes, or beside the boards`, fields: ["mechanics"], affects: ["mechanics"] }]
+}
+
+// The printed parts can be printed: each fits the printer's bed in some orientation and no designed wall is thinner
+// than three perimeters (py/printcheck.py, print.json). Parts that only need support are notes in the report, not
+// violations. text-to-cad's lesson 5 (design for the process), 22 Nov 2026: before it, nothing checked the chassis
+// against a printer, and the Eurobot base's 260 mm plate fits no 256 mm bed.
+export function chassisPrintChecks(built: ChassisArtifact | undefined): { kind: "print-check"; message: string; fields: ["mechanics"]; affects: ["mechanics"] }[] {
+	const p = built?.printCheck
+	if (!p || p.ok) return []
+	return [{ kind: "print-check", message: `the printed chassis parts can't be printed as designed: ${p.issues.join("; ")}: make the part smaller (the plate's size is the mechanics' chassis.plateMm) or thicker`, fields: ["mechanics"], affects: ["mechanics"] }]
 }

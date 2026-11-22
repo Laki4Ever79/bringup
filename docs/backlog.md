@@ -617,7 +617,13 @@ order (effort as estimated in the study):
       hole is now 3.4 mm (it was 3.2, labelled ISO 273 medium but the close series; a printed hole comes out undersize).
       Open: the motor, bearing and fastener solids with named frames ("shaft", "hole_1") and mate(), and fits on the
       motor and bearing pockets.
-- [ ] 5. Print-DFM as named violations: overhang, minimum wall, bed size (~0.5 day).
+- [x] 5. Print-DFM as named violations: overhang, minimum wall, bed size (~0.5 day). Built 22 Nov: py/printcheck.py
+      checks every printed chassis part (chassis, battery strap, motor clamp, mast sections) against the printer's bed
+      (estimate printBedMm 256) in any orientation and its walls against three perimeters, into print.json; a failure
+      is print-check for mechanics, and the case's existing print check (which only the report showed) is print-check
+      for the case designer. Overhangs are support notes, not failures. The fit check keeps the plate and its motor
+      cradles within the bed, so the solver lays out one that fits; it found the Eurobot base at 260 x 260 mm, now
+      256 x 252 on a 266 mm track.
 - [x] 6. A one-screen run summary with the change from the previous run and exit codes (~0.5 day). Built 22 Nov:
       src/runner/summary.ts (each artifact's own verdict: board DRC, case print check, chassis interference, simulated
       drive, ROS test; per board for a system), `bringup summary <run>` with the change since the last run of the same

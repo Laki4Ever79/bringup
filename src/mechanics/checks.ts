@@ -483,6 +483,13 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	const packUnder = packM ? boardsM.filter((b) => Math.abs(b.xMm - packM.xMm) < (b.sizeMm[0] + packM.sizeMm[0]) / 2 && Math.abs(b.yMm - packM.yMm) < (b.sizeMm[1] + packM.sizeMm[1]) / 2) : []
 	if (pack.sizeMm[2] > est("standoffMm") - 1 && packUnder.length)
 		push("mech-fit", `the ${pack.sizeMm[2]} mm-thick battery doesn't fit under boards on ${est("standoffMm")} mm standoffs ${estNote("standoffMm")} (it lies under ${packUnder.map((b) => b.what.slice(6)).join(", ")}): pick a thinner pack or put it beside the boards`)
+	// The printed chassis fits the printer (py/printcheck.py checks the built part; this lets the layout solver avoid an
+	// oversize one): its length is the plate's, its width the plate's or the motor cradles' outer edges, whichever is
+	// wider (the Eurobot base's cradles reach 2 mm past its 256 mm plate: 260 mm, on a 256 mm bed).
+	const cradleOuter = Math.max(0, ...ms.filter((m) => m.what.startsWith("motor:")).map((m) => 2 * (Math.abs(m.yMm) + m.sizeMm[1] / 2)))
+	const printedW = Math.max(Wd, cradleOuter), bed = est("printBedMm")
+	if (Math.max(L, printedW) > bed + 1e-6)
+		push("mech-fit", `the printed chassis is ${r1(L)} × ${r1(printedW)} mm (the plate, and the motor cradles across), more than the printer's ${bed} mm bed ${estNote("printBedMm")}: make the plate at most ${bed} mm long and the track at most ${r1(bed + wheel.widthMm)} mm`)
 	const wheelInner = d.trackMm / 2 - wheel.widthMm / 2
 	if (wheelsRubPlate(Wd, d.trackMm, wheel.widthMm)) push("mech-fit", `the wheels' inner faces (${r1(wheelInner)} mm from the centre) rub the ${Wd} mm-wide plate (2 mm clearance needed): make trackMm at least ${r1(Wd + 4 + wheel.widthMm)} (the plate's width + 4 + the ${wheel.widthMm} mm wheel), or the plate at most ${r1(plateMaxWidthMm(d.trackMm, wheel.widthMm))} mm wide`)
 	// Level: the caster sets the plate's height; the motors hang from it on brackets, at least half their body below

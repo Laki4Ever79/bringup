@@ -13,6 +13,7 @@ import { byMpn } from "./catalog.ts"
 import { mechanicsChecksWith, type CheckCatalog, type MechViolation } from "./checks.ts"
 import { chassisSpec, packOnStandoffs, RAIL_WALL_MM, STANDOFF_OD_MM } from "../tools/chassis.ts"
 import type { Mechanics } from "./types.ts"
+import { est } from "./estimates.ts"
 
 export interface ChassisChoice {
 	motor: string
@@ -53,6 +54,10 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 	const clash = (c.values.parts ?? []).find((p) => p.ref === choice.connector && !(p.role === "connector" && p.pins.length === 4))
 	if (clash || !choice.connector) choice = { ...choice, connector: "JT1" }
 	const [maxL, maxW] = motion.maxSizeMm
+	// The printed chassis must fit the printer (checks.ts, estimate printBedMm): no plate longer than the bed, and none so
+	// wide that its track's motor cradles (the track less a wheel) pass it (W + 4 + wheel = track). The search starts
+	// there: from the brief's limit it spent its whole budget on plates no printer takes (the Eurobot base, 79 s).
+	const bed = est("printBedMm")
 	// A system's body fixes the plate and where its boards sit (assembly); otherwise the boards go on the centre line.
 	const assembly = c.values.assembly
 	const boards = outlinesWithAssembly(c.values)
@@ -64,6 +69,7 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 	const plateTop = clearanceMm + thicknessMm
 	const sensorZ = Math.round((plateTop + Math.max(...sensor!.sizeMm) / 2 + 2) * 10) / 10
 	const wheelW = wheel!.widthMm
+	const topL = Math.min(maxL, bed), topW = Math.min(maxW - 2 * wheelW - 4, bed - 4)
 	const budget = opts.budget ?? 40_000
 	let tried = 0
 	let best: { mech: Mechanics; remaining: MechViolation[] } | null = null
@@ -82,7 +88,7 @@ export function solveChassis(c: ContractSnapshot, choice: ChassisChoice, cat: Ch
 	// only bound on it), then smaller ones.
 	const plates: [number, number][] = assembly?.plate
 		? [[assembly.plate.lengthMm, assembly.plate.widthMm]]
-		: range(maxL, Math.max(60, maxL - 60), -10).flatMap((L) => range(maxW - 2 * wheelW - 4, Math.max(50, maxW - 2 * wheelW - 64), -10).map((W): [number, number] => [L, W]))
+		: range(topL, Math.max(60, topL - 60), -10).flatMap((L) => range(topW, Math.max(50, topW - 60), -10).map((W): [number, number] => [L, W]))
 	let holes: { xMm: number; yMm: number; moves: boolean }[] | undefined
 	for (const [L, W] of plates) {
 		const track = Math.min(maxW - wheelW, W + 4 + wheelW)

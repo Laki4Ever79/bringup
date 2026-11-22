@@ -162,6 +162,17 @@ class ChassisTest(unittest.TestCase):
         self.assertEqual(chassis.M25_HOLE, 2.7)
         self.assertEqual(fits.tap_drill("M3"), 2.5)
 
+    # Print-DFM (text-to-cad lesson 5, 22 Nov 2026): a printed part must fit the bed in some orientation; walls at
+    # least three perimeters; downward faces are support notes, not failures.
+    def test_print_checks_name_an_oversize_part_and_a_thin_wall_and_note_supports(self):
+        from build123d import Box
+        from printcheck import bed_issue, support_notes, wall_issues
+        self.assertIsNone(bed_issue("plate", Box(40, 250, 250), [256, 256, 256]), "fits laid on its side")
+        self.assertRegex(bed_issue("plate", Box(260, 260, 5), [256, 256, 256]), r"260 x 260 x 5 mm doesn't fit a 256 x 256 x 256 mm bed")
+        self.assertEqual(wall_issues({"strap": 2, "mast": 1.0}), ["mast: 1 mm wall < 1.2 mm"])
+        part, _ = build(dict(SPEC, motors=[{**m, "mount": {"kind": "cradle"}} for m in SPEC["motors"]]))
+        self.assertRegex(support_notes("chassis", part)[0], r"chassis: \d+ downward face\(s\), \d+ mm² in all, need support")
+
 
 if __name__ == "__main__":
     unittest.main()

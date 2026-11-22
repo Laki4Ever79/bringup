@@ -14,7 +14,7 @@ const snap = (b: unknown) => ({ revision: 1, versions: {} as never, values: JSON
 test("a rover with encoders gets its odometry numbers; one without has none", () => {
 	const h = roverHeader(snap(EUROBOT_BOARD))
 	assert.match(h, /#define ROVER_MM_PER_COUNT 0\.\d+f/)
-	assert.match(h, /#define ROVER_TRACK_MM 270\.0f/)
+	assert.match(h, /#define ROVER_TRACK_MM 266\.0f/)
 	assert.match(h, /#define ROVER_GOTO_MIN_DUTY 0\.\d+f/)
 	assert.doesNotMatch(roverHeader(snap(ROVER_BOARD)), /ROVER_MM_PER_COUNT|ROVER_GOTO/)
 })

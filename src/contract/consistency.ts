@@ -1,6 +1,6 @@
 import type { DriveArtifact } from "../tools/drive.ts"
 import { rosBuiltChecks } from "../ros/checks.ts"
-import { boardMountChecks, interferenceChecks, packOnStandoffs, type ChassisArtifact, type Interference } from "../tools/chassis.ts"
+import { boardMountChecks, chassisPrintChecks, interferenceChecks, packOnStandoffs, type ChassisArtifact, type Interference } from "../tools/chassis.ts"
 import { hardwareChecks } from "../tools/robot-parts.ts"
 import { defaultCheckCatalog, mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
@@ -145,6 +145,7 @@ export type ViolationKind =
 	| "firmware-build-failed"
 	| "board-mount-mismatch"
 	| "part-interference"
+	| "print-check"
 	| "ros-package"
 	| "hardware-misfit"
 	| "firmware-driver-test-failed"
@@ -224,6 +225,11 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	// The built chassis and the bought parts it carries share no volume (py/chassis.py interference: exact booleans).
 	// The ROS package built with it: one URDF tree, physical inertials, the design's mass, wheels, limits and rate.
 	if (a.chassis && !a.chassis.stub) for (const r of rosBuiltChecks(a.chassis.dir)) v.push({ kind: "ros-package", message: `the robot's ROS package (${r.kind}): ${r.message}`, fields: ["mechanics"], affects: ["mechanics"] })
+	if (a.chassis && !a.chassis.stub) v.push(...chassisPrintChecks(a.chassis))
+	// The case's own print check (py/enclosure.py print.json: thin walls, long bridges, overhangs, an open mesh, the lid's
+	// fit), which before 22 Nov 2026 only the report showed: the design settled with a case that wouldn't print.
+	if (a.enclosure?.printCheck && !a.enclosure.printCheck.ok)
+		v.push({ kind: "print-check", message: `the case can't be printed as designed: ${a.enclosure.printCheck.issues.join("; ")}`, fields: ["case"], affects: ["enclosure"] })
 	if (a.chassis && !a.chassis.stub) v.push(...interferenceChecks(a.chassis.mounts as { interference?: Interference } | null))
 	// The pack clear of the boards' standoffs (the 2D fit check doesn't know the boards' holes).
 	if (c.values.mechanics) v.push(...packOnStandoffs(c))

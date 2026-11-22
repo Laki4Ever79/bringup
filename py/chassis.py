@@ -18,6 +18,7 @@ from pathlib import Path
 from build123d import Box, Cylinder, GeomType, Pos, Rot, export_step, export_stl
 
 from fits import clearance_hole
+from printcheck import bed_issue, support_notes, wall_issues
 
 STANDOFF_OD = 5.0
 M25_HOLE = clearance_hole(2.5, "close")  # 2.7 mm, ISO 273 close: the standoff hole of a spec from before boardScrew
@@ -471,12 +472,14 @@ def main():
     except ChassisError as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
+    printed = [("chassis", part), ("battery strap", strap(spec))]
     export_step(part, str(out / "chassis.step"))
     export_stl(part, str(out / "chassis.stl"))
     export_stl(strap(spec), str(out / "battery-strap.stl"))
     mounts["strapHoles"] = [{"xMm": x, "yMm": y} for x, y in strap_geometry(spec)[0]]
     mounts["gridHoles"] = [{"xMm": x, "yMm": y} for x, y in grid_holes(spec)]
     for i, (sec, h) in enumerate(mast_sections(spec), 1):
+        printed.append((f"beacon mast section {i}", sec))
         export_stl(sec, str(out / f"beacon-mast-{i}.stl"))
         mounts.setdefault("beaconMast", []).append({"section": i, "heightMm": h})
     # The motor clamp (one per clamped motor, all alike): a bar under the motor across the cradle and its bosses, a
@@ -490,7 +493,16 @@ def main():
         for s in (-1, 1):
             clamp -= Pos(s * span / 2, 0, 0) * Cylinder(1.1, ct + 2)
         export_stl(clamp, str(out / "motor-clamp.stl"))
+        printed.append(("motor clamp", clamp))
     mounts["interference"] = interference(spec, part)
+    # The printed parts against the printer (spec printBedMm, an estimate) and the minimum wall; supports as notes.
+    bed = spec.get("printBedMm", [256, 256, 256])
+    walls = {"chassis wall": WALL, "plate": spec["plate"]["thicknessMm"], "battery strap": STRAP_T}
+    if spec.get("beacon"):
+        walls["beacon mast wall"] = spec["beacon"]["wallMm"]
+    issues = [i for i in (bed_issue(n, s_, bed) for n, s_ in printed) if i] + wall_issues(walls)
+    notes = [n for name, s_ in printed for n in support_notes(name, s_)]
+    (out / "print.json").write_text(json.dumps({"ok": not issues, "issues": issues, "notes": notes, "bedMm": bed}, indent=1))
     (out / "refs.json").write_text(json.dumps(chassis_refs(spec), indent=1))
     (out / "mounts.json").write_text(json.dumps(mounts, indent=1))
 

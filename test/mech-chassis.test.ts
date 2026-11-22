@@ -252,3 +252,26 @@ test("a pack on a board's standoffs fails, and the solver moves the board along 
 	assert.notEqual(r.mechanics!.chassis.boards[0].at.xMm, 0, "the board moved")
 	assert.deepEqual(packOnStandoffs({ ...s, values: { ...s.values, mechanics: r.mechanics! } }), [])
 })
+
+test("a chassis part no printer takes, or a case that won't print, is a print-check violation for its owner", async () => {
+	const { chassisPrintChecks } = await import("../src/tools/chassis.ts")
+	const { checkConsistency } = await import("../src/contract/consistency.ts")
+	const ok = { ok: true as const, revision: 3, dir: "", files: [], mounts: null, printCheck: { ok: true, issues: [], notes: ["chassis: 11 downward face(s), 14172 mm² in all, need support printed as built"] } }
+	assert.deepEqual(chassisPrintChecks(ok), [], "supports are notes, not violations")
+	const big = { ...ok, printCheck: { ok: false, issues: ["chassis: 260 x 260 x 99 mm doesn't fit a 256 x 256 x 256 mm bed in any orientation"], notes: [] } }
+	const v = chassisPrintChecks(big)
+	assert.equal(v[0].kind, "print-check")
+	assert.deepEqual(v[0].affects, ["mechanics"])
+	assert.ok(checkConsistency(rover(), { chassis: big } as never).some((x) => x.kind === "print-check" && /256 mm bed/.test(x.message)))
+	const enclosure = { cutouts: [], standoffs: [], ports: [], printCheck: { ok: false, issues: ["case: J9: 17 mm bridge at z 9 mm (max 10 mm without support)"] } }
+	const c = checkConsistency(rover(), { enclosure } as never).find((x) => x.kind === "print-check")
+	assert.ok(c && c.affects.includes("enclosure"), JSON.stringify(c))
+})
+
+test("the fit check keeps the printed chassis within the printer's bed, so the solver lays out one that fits", async () => {
+	const { mechanicsChecks } = await import("../src/mechanics/checks.ts")
+	const s = rover()
+	assert.ok(!mechanicsChecks(s).some((v) => /printer's/.test(v.message)))
+	s.values.mechanics!.chassis.plateMm = [260, 96]
+	assert.ok(mechanicsChecks(s).some((v) => v.kind === "mech-fit" && /the printed chassis is 260 × \d+ mm.*256 mm bed/.test(v.message)))
+})

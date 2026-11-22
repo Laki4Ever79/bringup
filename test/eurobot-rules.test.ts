@@ -69,7 +69,16 @@ test("a short cord, no match stop, too high a voltage and too big an outline are
 	// Run 20b's review: a robot at the limit fails homologation on a tyre's bulge; within 10 mm is a finding too.
 	const tight = rover(true, (x) => { x.mechanics.chassis.plateMm = [x.mechanics.chassis.plateMm[0], x.mechanics.chassis.plateMm[1]] })
 	const per = Number(/^(\d+)/.exec(mechanicsFigures(tight).find((f) => f.check === "eurobot-2026: Start perimeter")!.value)![1])
-	const near = rover(true, (x) => { x.mechanics.chassis.plateMm = [x.mechanics.chassis.plateMm[0] + (1200 - per - 4) / 2, x.mechanics.chassis.plateMm[1]] })
+	// Lengthen the plate until the hull is within 10 mm under the limit: with the wheels wider than the plate (22 Nov
+	// 2026: a 252 mm plate on a 266 mm track) the hull's ends slant, so the perimeter grows less than 2 mm per mm.
+	const perOf = (c: ContractSnapshot) => Number(/^(\d+)/.exec(mechanicsFigures(c).find((f) => f.check === "eurobot-2026: Start perimeter")!.value)![1])
+	let grow = 0
+	let near = tight
+	while (perOf(near) < 1200 - 9 && grow < 200) {
+		grow += 1
+		near = rover(true, (x) => { x.mechanics.chassis.plateMm = [x.mechanics.chassis.plateMm[0] + grow, x.mechanics.chassis.plateMm[1]] })
+	}
+	assert.ok(perOf(near) < 1200 && per < perOf(near), `${per} → ${perOf(near)} mm`)
 	const f = mechanicsFigures(near).find((f) => f.check === "eurobot-2026: Start perimeter")!
 	assert.equal(f.ok, false, f.value)
 	assert.ok(rules(near).some((m) => /only \d+ mm under the 1200 mm limit/.test(m)), rules(near).join("\n"))
