@@ -136,6 +136,8 @@ export function ownerReviewsChanges(role: AgentRole): SituationHandler {
 					`Change request proposalId=${proposalId} from ${by}: change "${field}" because: ${reason}. ` +
 						(predicted?.length ? `The checks say it would raise: ${predicted.join("; ")}. ` : "") +
 						`Read the contract, then call decide_change with this proposalId.`,
+					undefined,
+					{ now: true },
 				)
 			},
 		},

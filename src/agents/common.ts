@@ -1,9 +1,10 @@
-import { createAgent, DeveloperMessageItem, ModelContext, type Agent, type InferenceInput, type SituationHandler, type Tool } from "@mozaik-ai/core"
+import { createAgent, createHuman, DeveloperMessageItem, ModelContext, type Agent, type InferenceInput, type SituationHandler, type Tool } from "@mozaik-ai/core"
 import { OWNERS, type AgentRole } from "../contract/types.ts"
 import type { Cause } from "../events.ts"
 import { modelFor } from "../inference/models.ts"
 import { join, safeRunLoop, state } from "../runtime.ts"
-import { ChangeControl } from "../change-control.ts"
+import { ChangeControl, when } from "../change-control.ts"
+import { isEvent } from "../events.ts"
 import { contractTools } from "./contract-tools.ts"
 import { designFacts } from "./design-facts.ts"
 import { existsSync, readFileSync } from "node:fs"
@@ -60,19 +61,114 @@ export function withDesignFacts(role: AgentRole | undefined, message: string): s
 	return `${message}\n\n# Design facts (computed from the current contract; the final brief review judges with the same facts)\n${facts.join("\n")}`
 }
 
-export function startTurn(agent: Agent, message: string, cause?: Cause): void {
+// One live turn per agent (lead-2's 20b analysis, 23 Nov 2026: the parts agent ran 29 turns in one Eurobot run, mostly
+// "Consistency violations at revision N", each woken while its earlier turns still ran, all resending the same
+// transcript). A turn ends with its model.answer (or agent.halted); what arrives meanwhile waits:
+//   - a request that must not be lost (the brief, an engineer's change request) is queued and runs in order;
+//   - a wake about the design's state (violations, review findings, grounding, a field changed) waits as one pending
+//     follow-up per kind, the latest replacing the earlier, and runs only if it still holds when the turn ends;
+//   - a decide_change prompt starts at once: the proposer's turn is held until the owner decides, so queueing it behind
+//     a turn that is itself held on a proposal would deadlock.
+// A turn older than TURN_STALE_MS no longer blocks: a loop that died without an event (Mozaik #114) can't hold an
+// agent forever.
+export const TURN_STALE_MS = 10 * 60_000
+
+interface Pending { message: string; cause?: Cause; stillHolds?: () => boolean }
+interface Turns { live: number[]; queue: Pending[]; pending: Map<string, Pending> }
+const turnsOf = new Map<string, Turns>()
+const tracked = new WeakSet<object>()
+type Check = { revision: number; violations: { kind: string; affects: AgentRole[] }[] }
+const lastCheck = new WeakMap<object, Check>()
+
+// This runtime's latest consistency check (not a draining one): what a pending violations follow-up checks before it
+// runs. Per runtime: a tournament runs several designs in one process.
+export const latestCheck = (): Check | undefined => lastCheck.get(state() as object)
+
+const turns = (id: string): Turns => {
+	let t = turnsOf.get(id)
+	if (!t) turnsOf.set(id, (t = { live: [], queue: [], pending: new Map() }))
+	return t
+}
+const busy = (t: Turns) => {
+	const now = Date.now()
+	t.live = t.live.filter((at) => now - at < TURN_STALE_MS)
+	return t.live.length > 0
+}
+
+// One listener per runtime: a turn's end releases what waited for it.
+function track(): void {
+	const s = state() as object
+	if (tracked.has(s)) return
+	tracked.add(s)
+	join(
+		createHuman({
+			name: "turns",
+			capabilities: [],
+			handlers: [
+				{
+					specification: when(({ event }) => event.type === "model.answer" || isEvent(event, "agent.halted") || (isEvent(event, "consistency.checked") && !event.payload.draining)),
+					processor: {
+						apply: ({ event }) => {
+							if (isEvent(event, "consistency.checked")) {
+								lastCheck.set(state() as object, { revision: event.payload.revision, violations: event.payload.violations })
+								return
+							}
+							const id = isEvent(event, "agent.halted") ? event.payload.agentId : event.producerId
+							const t = turnsOf.get(id)
+							if (!t || !t.live.length) return
+							t.live.shift()
+							if (busy(t)) return
+							const agent = state().getParticipant(id) as Agent | undefined
+							if (agent) next(agent, t)
+						},
+					},
+				},
+			],
+		}),
+	)
+}
+
+// What runs when an agent's turn ends: the oldest queued request, else every pending follow-up that still holds, as one turn.
+function next(agent: Agent, t: Turns): void {
+	const queued = t.queue.shift()
+	if (queued) return launch(agent, queued.message, queued.cause)
+	const ready = [...t.pending.values()].filter((p) => p.stillHolds?.() ?? true)
+	t.pending.clear()
+	if (ready.length) launch(agent, ready.map((p) => p.message).join("\n\n"), ready[0].cause)
+}
+
+function launch(agent: Agent, message: string, cause?: Cause): void {
+	track()
 	if (cause) causes.set(agent.getId(), cause)
+	turns(agent.getId()).live.push(Date.now())
 	safeRunLoop(agent.getId(), withDesignFacts(state().roles.get(agent.getId()), message), inferenceInputFor(agent), new ChangeControl(agent.getId()))
+}
+
+// A turn that must run: now if the agent is free, else queued behind its live turn. `now` starts it regardless (a
+// decide_change prompt: see above).
+export function startTurn(agent: Agent, message: string, cause?: Cause, opts: { now?: boolean } = {}): void {
+	const t = turns(agent.getId())
+	if (!opts.now && busy(t)) {
+		t.queue.push({ message, cause })
+		return
+	}
+	launch(agent, message, cause)
 }
 
 const handled = new WeakMap<Agent, Set<string>>()
 
-// Starts a turn unless this agent already handled the same situation (key), so repeated
-// events about one contract version wake an agent once.
-export function requestTurn(agent: Agent, key: string, message: string, cause?: Cause): void {
+// Starts a turn unless this agent already handled the same situation (key), so repeated events about one contract
+// version wake an agent once. While the agent is in a turn, the wake waits as the pending follow-up of its kind (the
+// cause's kind), replacing an earlier one; `stillHolds` is asked when the turn ends (violations: still open?).
+export function requestTurn(agent: Agent, key: string, message: string, cause?: Cause, stillHolds?: () => boolean): void {
 	const seen = handled.get(agent) ?? new Set<string>()
 	handled.set(agent, seen)
 	if (seen.has(key)) return
 	seen.add(key)
-	startTurn(agent, message, cause)
+	const t = turns(agent.getId())
+	if (busy(t)) {
+		t.pending.set(cause?.kind ?? "wake", { message, cause, stillHolds })
+		return
+	}
+	launch(agent, message, cause)
 }

@@ -8,7 +8,7 @@ import { CASE_SHAPE } from "../contract/case.ts"
 import { ROUTING_FAILURE } from "../contract/space.ts"
 import { WAITING_ON_CONTRACT } from "../contract/consistency.ts"
 import { CONNECTIVITY_SHAPE } from "../contract/connectivity.ts"
-import { createRoleAgent, requestTurn, startTurn } from "./common.ts"
+import { createRoleAgent, latestCheck, requestTurn, startTurn } from "./common.ts"
 import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
 import { rankMcus, type McuRequest } from "../mcu/select.ts"
@@ -157,7 +157,7 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "consistency.checked")) return
 						const mine = event.payload.violations.filter((v) => v.affects.includes("architect"))
-						requestTurn(participant as Agent, `violations@${event.payload.revision}:${mine.map((v) => v.kind).join(",")}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\nFix them by changing the fields you own.`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
+						requestTurn(participant as Agent, `violations@${event.payload.revision}:${mine.map((v) => v.kind).join(",")}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\nFix them by changing the fields you own.`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) }, () => (latestCheck()?.violations ?? []).some((v) => v.affects.includes("architect")))
 					},
 				},
 			},
@@ -250,7 +250,7 @@ function violationsFor(role: AgentRole, guidance: string, only: (kind: string) =
 			apply: ({ event, participant }) => {
 				if (!isEvent(event, "consistency.checked")) return
 				const mine = event.payload.violations.filter(ours)
-				requestTurn(participant as Agent, `${role}-violations@${event.payload.revision}:${mine.map((v) => v.kind).join(",")}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\n${guidance}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
+				requestTurn(participant as Agent, `${role}-violations@${event.payload.revision}:${mine.map((v) => v.kind).join(",")}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\n${guidance}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) }, () => (latestCheck()?.violations ?? []).some(ours))
 			},
 		},
 	}
@@ -356,7 +356,7 @@ export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "consistency.checked")) return
 						const mine = event.payload.violations.filter((v) => v.affects.includes("firmware"))
-						requestTurn(participant as Agent, `fw-violations@${event.payload.revision}`, `Firmware violations at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) })
+						requestTurn(participant as Agent, `fw-violations@${event.payload.revision}`, `Firmware violations at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) }, () => (latestCheck()?.violations ?? []).some((v) => v.affects.includes("firmware")))
 					},
 				},
 			},
