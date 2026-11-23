@@ -6,6 +6,7 @@ import { UsageRunner, type UsageRecord } from "./usage.ts"
 import { CC_MODELS, ClaudeCodeRunner } from "./claude-code-runner.ts"
 import { EstimateRunner } from "./estimate.ts"
 import { TrimRunner } from "./trim.ts"
+import { AnthropicCacheRunner } from "./anthropic-cache.ts"
 
 const MODELS = {
 	// The event's Claude credit (build.jigjoy.ai/credits) serves Sonnet 4.6 and Haiku 4.5 through
@@ -43,7 +44,10 @@ export function inferenceConfig(
 	// Mozaik does not export its input validator; the provider rejects invalid requests anyway,
 	// and SafeRunner turns that rejection into a message instead of a dead loop.
 	const noValidation = { validate: () => {} } as unknown as ConstructorParameters<typeof DefaultInferenceRunner>[1]
-	const provider = process.env.BRINGUP_PROVIDER === "claude-code" ? new ClaudeCodeRunner() : new DefaultInferenceRunner(supportedModels, noValidation)
+	// The API path: Claude models through AnthropicCacheRunner (prompt caching, which Mozaik 4.1.0 doesn't send), the rest
+	// through Mozaik's own runner. TrimRunner asks it which models cache, so a trim never costs more than it saves.
+	const cache = process.env.BRINGUP_PROVIDER === "claude-code" ? null : new AnthropicCacheRunner(new DefaultInferenceRunner(supportedModels, noValidation))
+	const provider = cache ?? new ClaudeCodeRunner()
 	// Every call's tokens and price go to onUsage (usage.jsonl); inside SafeRunner, so a failed call records nothing.
-	return { runner: new SafeRunner(new TrimRunner(onUsage ? new UsageRunner(provider, onUsage, "agents") : provider), onFailure) }
+	return { runner: new SafeRunner(new TrimRunner(onUsage ? new UsageRunner(provider, onUsage, "agents") : provider, (m) => cache?.caches(m) ?? false), onFailure) }
 }

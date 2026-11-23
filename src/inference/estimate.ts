@@ -18,7 +18,7 @@ export class EstimateRunner implements InferenceRunner {
 			const k = raw.type === "function_call_output" ? "tool-result" : raw.type === "function_call" ? `call:${raw.name}` : `${raw.type}:${raw.role ?? ""}`
 			byKind[k] = (byKind[k] ?? 0) + JSON.stringify(raw).length
 		}
-		appendFileSync(this.file, JSON.stringify({ participant: participantOf(input.context.id) ?? input.model, items: items.length, systemChars: system.length, promptChars: prompt.length, estInputTokens: Math.round((system.length + prompt.length) / 4), byKind }) + "\n")
+		appendFileSync(this.file, JSON.stringify({ participant: participantOf(input.context.id) ?? input.model, context: input.context.id, items: items.length, systemChars: system.length, promptChars: prompt.length, estInputTokens: Math.round((system.length + prompt.length) / 4), byKind }) + "\n")
 		return this.inner.run(input)
 	}
 

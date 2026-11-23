@@ -34,3 +34,32 @@ test("a turn with nothing repeated goes through untouched", () => {
 	assert.equal(r.dropped, 0)
 	assert.deepEqual(r.items, items)
 })
+
+// With prompt caching a trim rewrites the cache from the trimmed result on (1.25x instead of 0.1x for that whole
+// suffix): it happens only when the stale text costs more than that over the calls to come, and stays once made.
+import { TrimRunner, trimPays } from "../src/inference/trim.ts"
+import { ModelContext, type InferenceInput, type InferenceRunner } from "@mozaik-ai/core"
+
+test("on a cached model a trim waits until it pays for its cache rewrite; on an uncached one it trims at once", async () => {
+	const big = "CONTRACT ".repeat(2000)  // ~4.5K tokens
+	const items = [UserMessageItem.create("go"), call("a", "read_contract", {}), out("a", big), call("b", "search_parts", { role: "x" }), out("b", "PARTS ".repeat(4000)), call("e", "read_contract", {}), out("e", "CONTRACT v2")]
+	// The stale read (~4.5K tokens) heads a ~10.5K suffix: keeping it costs 4.5K x 0.1 a call, trimming 10.5K x 1.15
+	// once, so it pays only past ~27 calls to come. A cache read makes stale text cheap; most trims won't pay.
+	const stale = [{ index: 2, tokens: Math.ceil(big.length / 4) }]
+	assert.equal(trimPays(stale, items, 10), false)
+	assert.equal(trimPays(stale, items, 30), true)
+
+	const seen: string[][] = []
+	const inner = { run: async (i: InferenceInput) => (seen.push(outputs(i.context.getItems())), { items: [], tokenUsage: undefined, rowResponse: {} }), stream: async function* () {} } as unknown as InferenceRunner
+	const input = (id: string, model: string) => ({ model, context: ModelContext.rehydrate({ id, items }), tools: [] }) as unknown as InferenceInput
+	const cachedRunner = new TrimRunner(inner, (m) => m.startsWith("claude-"))
+	await cachedRunner.run(input("t1", "claude-haiku-4-5"))
+	assert.ok(!seen[0][0].startsWith("(stale"), "first call: the trim doesn't pay yet, the cached prefix stays")
+	for (let k = 0; k < 30; k++) await cachedRunner.run(input("t1", "claude-haiku-4-5"))
+	assert.match(seen[seen.length - 1][0], /^\(stale: read_contract/, "once the calls so far say it pays, it is trimmed")
+	const firstTrim = seen.findIndex((o) => o[0].startsWith("(stale"))
+	assert.ok(seen.slice(firstTrim).every((o) => o[0].startsWith("(stale")), "and stays trimmed: the prefix never changes back")
+
+	await new TrimRunner(inner, (m) => m.startsWith("claude-")).run(input("t2", "gpt-5.4-mini"))
+	assert.match(seen[seen.length - 1][0], /^\(stale: read_contract/, "uncached: trimmed at once, as before")
+})
