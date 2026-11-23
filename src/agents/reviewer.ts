@@ -15,6 +15,7 @@ import type { Env } from "../tools/env.ts"
 import { simulatePower } from "../tools/spice.ts"
 import { isStub } from "../tools/stubs.ts"
 import { designFacts } from "./design-facts.ts"
+import { roleContext } from "./common.ts"
 export { firmwareFacts, partFactsSection } from "./design-facts.ts"
 
 export const MAX_REVIEW_ROUNDS = 1
@@ -250,7 +251,7 @@ export function createBriefReviewer(opts: { mock: boolean; env?: Env }): Agent {
 						const { revision, round } = event.payload
 						void reviewMessage(opts.env, revision, round, [...past]).then((message) => {
 							pending.revision = revision
-							const context = ModelContext.create().addContextItem(DeveloperMessageItem.create(agent.getDeveloperMessage()))
+							const context = roleContext("reviewer").addContextItem(DeveloperMessageItem.create(agent.getDeveloperMessage()))
 							safeRunLoop(self.id, message, { model: modelFor("reviewer", opts.mock), context, tools: agent.getTools() })
 						})
 					},

@@ -92,7 +92,7 @@ export class ClaudeCodeRunner implements InferenceRunner {
 			fallback = true
 		}
 		if (r.code !== 0) throw new Error(`claude -p failed (${r.code}): ${(r.err || r.out).trim().split("\n").slice(-3).join(" ")}`)
-		const d = JSON.parse(r.out) as { is_error?: boolean; result?: string; structured_output?: { message?: string | null; calls?: { name: string; arguments: unknown }[] }; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+		const d = JSON.parse(r.out) as { is_error?: boolean; result?: string; structured_output?: { message?: string | null; calls?: { name: string; arguments: unknown }[] }; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }; modelUsage?: Record<string, { outputTokens?: number }> }
 		if (fallback && !d.is_error && !d.structured_output) {
 			const parsed = answerFromText(String(d.result ?? ""))
 			if (parsed) d.structured_output = parsed
@@ -110,12 +110,21 @@ export class ClaudeCodeRunner implements InferenceRunner {
 		if (!items.length) items.push(ModelMessageItem.rehydrate({ text: "done" }))
 		const u = d.usage ?? {}
 		const inTok = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
-		return { items, tokenUsage: { inputTokens: inTok, outputTokens: u.output_tokens ?? 0, totalTokens: inTok + (u.output_tokens ?? 0) } as never, rowResponse: { provider: "claude-code", model } }
+		// Anthropic's own usage block goes on, so usage.jsonl keeps cache reads and writes apart from plain input (real runs
+		// up to 20b logged them folded into inputTokens), and the model that answered: the CLI's alias names no version.
+		return { items, tokenUsage: { inputTokens: inTok, outputTokens: u.output_tokens ?? 0, totalTokens: inTok + (u.output_tokens ?? 0) } as never, rowResponse: { provider: "claude-code", model, usage: d.usage, servedBy: servedBy(d.modelUsage, model) } }
 	}
 
 	async *stream(input: InferenceInput): AsyncGenerator<SemanticEvent> {
 		yield SemanticEvent.create("inference.output", input.model, await this.run(input))
 	}
+}
+
+// The model id that answered, from the CLI's per-model usage (keyed by full model id): the one of the asked family
+// (sonnet, haiku, opus) with the most output, as the CLI may also make small calls of its own on another model.
+export function servedBy(modelUsage: Record<string, { outputTokens?: number }> | undefined, family: string): string | undefined {
+	const ids = Object.entries(modelUsage ?? {}).sort((a, b) => (b[1]?.outputTokens ?? 0) - (a[1]?.outputTokens ?? 0)).map(([id]) => id)
+	return ids.find((id) => id.includes(family)) ?? ids[0]
 }
 
 // The answer's JSON from a plain-text reply: the last {...} that parses and has a calls array (inside a code fence or not).

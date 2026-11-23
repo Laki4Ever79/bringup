@@ -16,6 +16,19 @@ export interface UsageRecord {
 	cacheWriteTokens?: number | null
 	outputTokens: number | null
 	usd: number | null
+	// Which agent made the call (the role its context is tagged with: participantOf) and, when the provider says, the
+	// model id that answered. apiUsd: the call at that model's API list price, for subscription calls (usd 0).
+	participant?: string
+	servedBy?: string
+	apiUsd?: number | null
+}
+
+// A turn's context, tagged with the agent's role so the usage record can say who made each call (real runs up to 20b
+// could only be split per agent by matching timestamps against the trace).
+export const roleContextId = (role: string, id: string) => `${role}:${id}`
+export function participantOf(contextId: string | undefined): string | undefined {
+	const i = contextId?.indexOf(":") ?? -1
+	return i > 0 ? contextId!.slice(0, i) : undefined
 }
 
 // `input` is all input tokens: uncached, plus `cached` read from the cache, plus `cacheWrite` written to it.
@@ -62,8 +75,16 @@ export class UsageRunner implements InferenceRunner {
 		// Claude: Mozaik's TokenUsage merges cache writes and reads, so price from the provider's own usage block.
 		const a = anthropicUsage((output.rowResponse as { usage?: Parameters<typeof anthropicUsage>[0] } | undefined)?.usage)
 		const u = output.tokenUsage
-		if (a) this.record(usageRecord(input.model, this.source, a.input, a.cached, a.output, a.cacheWrite))
-		else this.record(usageRecord(input.model, this.source, u?.inputTokens, u?.inputTokenDetails?.cached_tokens, u?.outputTokens))
+		const r = a ? usageRecord(input.model, this.source, a.input, a.cached, a.output, a.cacheWrite) : usageRecord(input.model, this.source, u?.inputTokens, u?.inputTokenDetails?.cached_tokens, u?.outputTokens)
+		const participant = participantOf(input.context?.id)
+		if (participant) r.participant = participant
+		const servedBy = (output.rowResponse as { servedBy?: unknown } | undefined)?.servedBy
+		if (typeof servedBy === "string") {
+			r.servedBy = servedBy
+			const known = r.inputTokens !== null && r.outputTokens !== null
+			r.apiUsd = known ? costUsd(servedBy, r.inputTokens!, r.cachedTokens ?? 0, r.outputTokens!, r.cacheWriteTokens ?? 0) : null
+		}
+		this.record(r)
 		return output
 	}
 

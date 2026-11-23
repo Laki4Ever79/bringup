@@ -7,6 +7,8 @@ import { ChangeControl } from "../change-control.ts"
 import { contractTools } from "./contract-tools.ts"
 import { designFacts } from "./design-facts.ts"
 import { existsSync, readFileSync } from "node:fs"
+import { randomUUID } from "node:crypto"
+import { roleContextId } from "../inference/usage.ts"
 import { join as joinPath } from "node:path"
 
 const models = new Map<string, string>()
@@ -28,10 +30,13 @@ export function createRoleAgent(opts: { role: AgentRole; instruction: string; ha
 	return agent
 }
 
+// A fresh context whose id carries the role, so usage.jsonl names the agent behind each call.
+export const roleContext = (role: string) => ModelContext.rehydrate({ id: roleContextId(role, randomUUID()), items: [] })
+
 // Each turn starts from a fresh context holding the agent's instruction, so concurrent turns
 // of one agent never share (and corrupt) a context.
 export function inferenceInputFor(agent: Agent): InferenceInput {
-	const context = ModelContext.create().addContextItem(DeveloperMessageItem.create(agent.getDeveloperMessage()))
+	const context = roleContext(state().roles.get(agent.getId()) ?? "agent").addContextItem(DeveloperMessageItem.create(agent.getDeveloperMessage()))
 	return { model: models.get(agent.getId())!, context, tools: agent.getTools() }
 }
 

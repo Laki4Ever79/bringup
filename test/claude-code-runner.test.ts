@@ -57,3 +57,31 @@ test("an answer's JSON is read from a plain-text reply, fenced or not, with nest
 	assert.deepEqual(answerFromText(`Review follows. ${JSON.stringify({ message: "ok", calls: [call] })}`)?.calls, [call])
 	assert.equal(answerFromText("no json here {not: valid}"), null)
 })
+
+// The cost report of 23 Nov 2026 could not split cache reads from plain input, name the agent behind a call, or say
+// which model answered: usage.jsonl now records all three for subscription calls.
+test("a subscription call is logged with cache reads apart, the agent that made it and the model that answered", async () => {
+	const { UsageRunner, roleContextId } = await import("../src/inference/usage.ts")
+	const dir = tempDir()
+	const bin = join(dir, "claude")
+	const answer = { is_error: false, structured_output: { message: null, calls: [] }, usage: { input_tokens: 1000, cache_read_input_tokens: 9000, cache_creation_input_tokens: 500, output_tokens: 200 }, modelUsage: { "claude-haiku-4-5": { outputTokens: 200 }, "claude-sonnet-4-6": { outputTokens: 3 } } }
+	writeFileSync(bin, `#!/bin/sh\ncat > /dev/null\necho '${JSON.stringify(answer)}'\n`)
+	chmodSync(bin, 0o755)
+	process.env.BRINGUP_CLAUDE_BIN = bin
+	try {
+		const rows: Record<string, unknown>[] = []
+		const ctx = ModelContext.rehydrate({ id: roleContextId("parts", "x1"), items: [] }).addContextItem(UserMessageItem.create("go"))
+		await new UsageRunner(new ClaudeCodeRunner(), (r) => rows.push(r as never), "agents").run({ model: "cc-haiku", context: ctx, tools: [TOOL] } as never)
+		const r = rows[0]
+		assert.equal(r.participant, "parts")
+		assert.equal(r.servedBy, "claude-haiku-4-5")
+		assert.equal(r.inputTokens, 10_500)
+		assert.equal(r.cachedTokens, 9000)
+		assert.equal(r.cacheWriteTokens, 500)
+		assert.equal(r.usd, 0)
+		// Haiku 4.5: 1000 uncached at $1, 9000 read at $0.10, 500 written at $1.25, 200 out at $5 (per million).
+		assert.ok(Math.abs((r.apiUsd as number) - (1000 * 1 + 9000 * 0.1 + 500 * 1.25 + 200 * 5) / 1e6) < 1e-12)
+	} finally {
+		delete process.env.BRINGUP_CLAUDE_BIN
+	}
+})
