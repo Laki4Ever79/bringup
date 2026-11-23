@@ -21,7 +21,7 @@ Claude Desktop, Cursor and other clients take the same command in their MCP sett
 }
 ```
 
-Needs Node 24 or later. The first `npx` call downloads the package (about 3 MB) and its dependencies (about 110 MB in all,
+Needs Node 22 or later (tested on 22 and 24; the full toolchain below needs Node 24). The first `npx` call downloads the package (about 3 MB) and its dependencies (about 110 MB in all,
 mostly the model SDKs Mozaik uses); on a fresh machine that took about 25 s (an estimate from one Docker test).
 
 What a run builds depends on the machine (`hardware`, `auto` by default):

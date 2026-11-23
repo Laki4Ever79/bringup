@@ -19,3 +19,9 @@ docs/HANDOFF.md
 docs/superpowers/
 CLAUDE.md
 .cache/
+
+# Local caches: also kept out of the npm package (package.json files)
+__pycache__/
+*.pyc
+catalog/learned/
+.cache/

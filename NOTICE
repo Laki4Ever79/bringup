@@ -4,6 +4,9 @@ Copyright 2026 The Bringup Authors
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
 It includes third-party code under its own licence:
-- py/fits.py: ISO 286 fits and ISO 273 clearance holes, ported from cadsmith
-  (https://github.com/JonFermin/cadsmith), MIT License, Copyright (c) 2026 Jonathan Fermin.
-  The MIT notice is kept in that file.
+- py/parts/: cadsmith's parts library (servos, motors, bearings, fasteners, gears, ISO 286 fits and ISO 273
+  clearance holes), from https://github.com/JonFermin/cadsmith, MIT License, Copyright (c) 2026 Jonathan Fermin.
+  The MIT licence is in py/parts/LICENSE and named at the top of each file; py/fits.py re-exports py/parts/fits.py.
+
+Firmware libraries the templates name (for example pololu/VL53L0X, nickjgniklu/ESP_TF) are fetched by PlatformIO at
+build time under their own licences; they are not included here.

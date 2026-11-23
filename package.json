@@ -22,7 +22,12 @@
 		"LICENSE",
 		"NOTICE",
 		"README.md",
-		".env.example"
+		".env.example",
+		"!**/__pycache__/",
+		"!**/*.pyc",
+		"!catalog/learned/",
+		"!**/.cache/",
+		"!**/.pio/"
 	],
 	"repository": {
 		"type": "git",
@@ -70,6 +75,6 @@
 		"typescript": "^7.0.2"
 	},
 	"engines": {
-		"node": ">=24"
+		"node": ">=22"
 	}
 }
