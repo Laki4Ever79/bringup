@@ -21,6 +21,9 @@ export interface UsageRecord {
 	participant?: string
 	servedBy?: string
 	apiUsd?: number | null
+	// The model requests behind the call, when more than one: claude -p retries its structured answer inside one call, and
+	// its usage sums them (one cc-eurobot-20b parts call reported 418K input tokens).
+	requests?: number
 }
 
 // A turn's context, tagged with the agent's role so the usage record can say who made each call (real runs up to 20b
@@ -84,6 +87,8 @@ export class UsageRunner implements InferenceRunner {
 			const known = r.inputTokens !== null && r.outputTokens !== null
 			r.apiUsd = known ? costUsd(servedBy, r.inputTokens!, r.cachedTokens ?? 0, r.outputTokens!, r.cacheWriteTokens ?? 0) : null
 		}
+		const requests = (output.rowResponse as { requests?: unknown } | undefined)?.requests
+		if (typeof requests === "number" && requests > 1) r.requests = requests
 		this.record(r)
 		return output
 	}

@@ -92,7 +92,7 @@ export class ClaudeCodeRunner implements InferenceRunner {
 			fallback = true
 		}
 		if (r.code !== 0) throw new Error(`claude -p failed (${r.code}): ${(r.err || r.out).trim().split("\n").slice(-3).join(" ")}`)
-		const d = JSON.parse(r.out) as { is_error?: boolean; result?: string; structured_output?: { message?: string | null; calls?: { name: string; arguments: unknown }[] }; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }; modelUsage?: Record<string, { outputTokens?: number }> }
+		const d = JSON.parse(r.out) as { is_error?: boolean; result?: string; structured_output?: { message?: string | null; calls?: { name: string; arguments: unknown }[] }; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }; modelUsage?: Record<string, { outputTokens?: number }>; num_turns?: number }
 		if (fallback && !d.is_error && !d.structured_output) {
 			const parsed = answerFromText(String(d.result ?? ""))
 			if (parsed) d.structured_output = parsed
@@ -112,7 +112,7 @@ export class ClaudeCodeRunner implements InferenceRunner {
 		const inTok = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
 		// Anthropic's own usage block goes on, so usage.jsonl keeps cache reads and writes apart from plain input (real runs
 		// up to 20b logged them folded into inputTokens), and the model that answered: the CLI's alias names no version.
-		return { items, tokenUsage: { inputTokens: inTok, outputTokens: u.output_tokens ?? 0, totalTokens: inTok + (u.output_tokens ?? 0) } as never, rowResponse: { provider: "claude-code", model, usage: d.usage, servedBy: servedBy(d.modelUsage, model) } }
+		return { items, tokenUsage: { inputTokens: inTok, outputTokens: u.output_tokens ?? 0, totalTokens: inTok + (u.output_tokens ?? 0) } as never, rowResponse: { provider: "claude-code", model, usage: d.usage, servedBy: servedBy(d.modelUsage, model), requests: d.num_turns } }
 	}
 
 	async *stream(input: InferenceInput): AsyncGenerator<SemanticEvent> {
