@@ -288,6 +288,16 @@ static void serveBle(uint32_t latest, bool ok, float tempC, float rh) {
 	offset->setCallbacks(new OffsetCallbacks());
 	service->createCharacteristic(BLE_HISTORY_UUID, SECURE_READ)->setCallbacks(new HistoryCallbacks());
 	service->start();
+	// The latest reading on the Bluetooth SIG's Environmental Sensing Service as well (open standards by default, the
+	// user 15 Nov 2026): any BLE app reads it without our reader. GATT Specification Supplement: Temperature (0x2A6E)
+	// sint16 in 0.01 °C, Humidity (0x2A6F) uint16 in 0.01 %, 0x8000 / 0xFFFF for "value is not known" (a failed read).
+	// The same pairing as our own service. The history stays there: no open GATT profile fits a log.
+	NimBLEService *ess = server->createService(NimBLEUUID((uint16_t)0x181A));
+	const int16_t essTemp = ok ? (int16_t)lroundf(tempC * 100.0f) : (int16_t)0x8000;
+	const uint16_t essRh = ok ? (uint16_t)lroundf(constrain(rh, 0.0f, 100.0f) * 100.0f) : (uint16_t)0xFFFF;
+	ess->createCharacteristic(NimBLEUUID((uint16_t)0x2A6E), SECURE_READ)->setValue((const uint8_t *)&essTemp, sizeof essTemp);
+	ess->createCharacteristic(NimBLEUUID((uint16_t)0x2A6F), SECURE_READ)->setValue((const uint8_t *)&essRh, sizeof essRh);
+	ess->start();
 #ifndef REPORT_BTHOME
 	adv->setName(name);
 	adv->addServiceUUID(BLE_SERVICE_UUID);
