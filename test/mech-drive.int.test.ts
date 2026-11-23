@@ -46,7 +46,7 @@ test("a firmware that never answers on UART1 is \"not run\", not a hang", { skip
 	await prepareFirmware(ROOT, fw, s)
 	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec: chassisSpec(s)!, outDir: tempDir(), env: "esp32c3", courseS: 20 }, 5)
 	assert.equal(r.result, "not run")
-	assert.match(r.reason, /didn't answer within 10 s/)
+	assert.match(r.reason, /didn't answer within 60 s/)
 })
 
 // Under Eurobot's rules (motion.rules) the base stops for the opponent ahead, waits without turning, and drives on when

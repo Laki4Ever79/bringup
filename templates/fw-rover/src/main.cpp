@@ -253,7 +253,16 @@ void loop() {
 #ifdef ROVER_HOLD_MM
 		if (holding && out.left > 0 && out.right > 0) out.left = out.right = 0;
 #endif
-		Serial.printf("R %lu %d %.3f %.3f\n", (unsigned long)now, d, out.left, out.right);
+		// The report a ROS host reads (templates/ros/bringup_hardware): time, distance, the duties applied, then what the
+		// robot measured: " E <left> <right>" its encoder counts (with encoders), " H <mrad>" its gyro heading (with an
+		// IMU). A host that reads only the first four fields still parses it.
+		Serial.printf("R %lu %d %.3f %.3f", (unsigned long)now, d, out.left, out.right);
+#ifdef ROVER_ENC_COUNTS_PER_REV
+		Serial.printf(" E %ld %ld", (long)hw_encoder(0), (long)hw_encoder(1));
+#endif
+		const float headingNow = hw_heading_rad();
+		if (!isnan(headingNow)) Serial.printf(" H %ld", lroundf(headingNow * 1000.0f));
+		Serial.print("\n");
 	}
 #ifdef ROVER_ENC_COUNTS_PER_REV
 	// Odometry every tick; while a target is set (G, or the simulation's ROVER_GOTO_X_MM) it drives there instead of the

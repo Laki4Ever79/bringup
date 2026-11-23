@@ -42,7 +42,8 @@ export interface DriveOptions {
 	courseS?: number
 	timeoutMs?: number
 	// The firmware's console (UART0) on this TCP port instead of a log file: a ROS 2 host drives it in host mode
-	// (docs/ros.md), while UART1 still turns the MuJoCo model.
+	// (docs/ros.md), while UART1 still turns the MuJoCo model. The simulation is then paced to real time: the host
+	// runs on its own clock.
 	consolePort?: number
 	// Extra compile flags for the simulation firmware (PLATFORMIO_BUILD_FLAGS), e.g. -DROVER_HOST_ONLY for a ROS test.
 	buildFlags?: string
@@ -105,7 +106,7 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 			}
 		})()
 	try {
-		const bridge = spawn(o.python, ["-B", join(o.root, "py/mech/drive.py"), specPath, sock, o.outDir, String(o.courseS ?? 25)], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
+		const bridge = spawn(o.python, ["-B", join(o.root, "py/mech/drive.py"), specPath, sock, o.outDir, String(o.courseS ?? 25), ...(o.consolePort ? ["realtime"] : [])], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
 		let stderr = ""
 		bridge.stderr.on("data", (d) => (stderr += d))
 		// A host's test that ends first asks the bridge to end the course (a "stop" file it checks); it writes its results.

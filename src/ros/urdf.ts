@@ -1,4 +1,5 @@
 import type { ChassisSpec } from "../tools/chassis.ts"
+import { drivenDecel, onWheelsShare } from "../mechanics/model.ts"
 
 // The robot's ROS 2 description (URDF) from the chassis spec, the same numbers the MuJoCo model (py/mech/model.py)
 // and the mechanics checks use, in ROS units (REP-103: metres, kilograms, x forward, y left, z up). Frames (REP-105):
@@ -12,6 +13,9 @@ import type { ChassisSpec } from "../tools/chassis.ts"
 // limits) or "bringup" (the bridge to the robot's own firmware over its serial frames, real or in QEMU).
 
 export type RosHardware = "mock" | "bringup"
+// The interfaces imu_sensor_broadcaster reads, in its order. The bridge fills the orientation and the yaw rate from the
+// gyro's heading; the rest stay 0 and the broadcaster's covariance marks them unknown.
+export const IMU_INTERFACES = ["orientation.x", "orientation.y", "orientation.z", "orientation.w", "angular_velocity.x", "angular_velocity.y", "angular_velocity.z", "linear_acceleration.x", "linear_acceleration.y", "linear_acceleration.z"]
 export const HARDWARE_PLUGIN: Record<RosHardware, string> = {
 	mock: "mock_components/GenericSystem",
 	bringup: "bringup_hardware/BringupSystem",
@@ -126,6 +130,26 @@ ${inertial(b.wheelKg, [0, 0, 0], wheelInertia(b.wheelKg, b.r, ww))}
   </joint>`,
 		)
 		.join("\n")
+	// The IMU's frame: on the board that carries it (the main board, else the first), aligned with the robot. The
+	// firmware reports its heading already in the robot's frame (counter-clockwise about z), so no rotation here.
+	const imuBoard = spec.boards.find((bd) => bd.name === "main") ?? spec.boards[0]
+	const imuAt: [number, number, number] = imuBoard ? [mm(imuBoard.xMm), mm(imuBoard.yMm), plateZ + t / 2 + mm(spec.standoffMm)] : [0, 0, plateZ]
+	const imuLink = spec.imu
+		? `
+  <link name="imu_link"/>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="${xyz(...imuAt)}" rpy="0 0 0"/>
+  </joint>`
+		: ""
+	const imuSensor = spec.imu
+		? `
+    <sensor name="imu">
+${IMU_INTERFACES.map((i) => (i === "orientation.w" && hw === "mock" ? `      <state_interface name="${i}"><param name="initial_value">1.0</param></state_interface>` : `      <state_interface name="${i}"/>`)).join("\n")}
+    </sensor>`
+		: ""
+	const cpr = spec.motor.encoderCountsPerRev
 	const joints = ["left_wheel_joint", "right_wheel_joint", ...(b.skid ? ["left_rear_wheel_joint", "right_rear_wheel_joint"] : [])]
 		.map(
 			(j) => `    <joint name="${j}">
@@ -177,36 +201,47 @@ ${inertial(b.casterKg, [0, 0, 0], sphereInertia(b.casterKg, b.casterR))}
     <parent link="base_link"/>
     <child link="range_sensor_link"/>
     <origin xyz="${xyz(mm(s.xMm), mm(s.yMm), mm(s.zMm))}" rpy="0 0 0"/>
-  </joint>
+  </joint>${imuLink}
 ${boards}
   <ros2_control name="${name}_system" type="system">
     <hardware>
       <plugin>${HARDWARE_PLUGIN[hw]}</plugin>${
+				hw === "mock"
+					? `
+      <param name="calculate_dynamics">true</param>`
+					: ""
+			}${
 				hw === "bringup"
 					? `
       <param name="port">${opts.port ?? "tcp:127.0.0.1:5555"}</param>
-      <param name="max_wheel_rad_s">${f(maxWheelRadS(spec))}</param>`
+      <param name="max_wheel_rad_s">${f(maxWheelRadS(spec))}</param>${cpr ? `
+      <param name="rad_per_count">${g((2 * Math.PI) / cpr)}</param>` : ""}`
 					: ""
 			}
     </hardware>
 ${joints}
     <sensor name="range_sensor">
       <state_interface name="range"/>
-    </sensor>
+    </sensor>${imuSensor}
   </ros2_control>
 </robot>
 `
 }
 
 // The diff_drive_controller's settings from the same design: wheel separation and radius from the drive, speed and
-// acceleration limits from the brief and the motor. No encoders on today's rover: open loop, so odometry integrates
-// the commands (the ros-odometry check blocks navigation on it).
+// acceleration limits from the brief and the motor. With encoders (the motor's encoderCountsPerRev) the odometry is the
+// wheels' measured turns; without, open loop: it integrates the commands (the ros-odometry check blocks navigation on
+// it). With an IMU, its broadcaster publishes the gyro's heading on /imu_sensor_broadcaster/imu.
 export function controllersYaml(spec: ChassisSpec, opts: { updateRateHz?: number; encoders?: boolean } = {}): string {
+	const encoders = opts.encoders ?? !!spec.motor.encoderCountsPerRev
 	const d = spec.drive
 	const r = mm(d.wheelDiameterMm) / 2
 	const topMps = ((spec.motor.noLoadRpm * spec.pack.nominalV) / spec.motor.ratedV) * 0.8 * ((2 * Math.PI) / 60) * r
 	const vmax = Math.min(topMps, Math.max(spec.speedMps, 0.05))
 	const rate = opts.updateRateHz ?? Math.max(1, Math.round(1000 / spec.sensor.updateMs))
+	// ROS's commands ramp no faster than the robot can follow: a step from +0.9 to -0.9 m/s overshot the wheels through
+	// the motor's delay (QEMU rover, 23 Nov 2026).
+	const accel = d.maxAccelMps2 ?? drivenDecel(onWheelsShare(d, spec.com[0])) / 2
 	return `# Generated by Bringup from the design contract (src/ros/urdf.ts). Do not edit: change the design instead.
 controller_manager:
   ros__parameters:
@@ -216,7 +251,9 @@ controller_manager:
     diff_drive_controller:
       type: diff_drive_controller/DiffDriveController
     range_sensor_broadcaster:
-      type: range_sensor_broadcaster/RangeSensorBroadcaster
+      type: range_sensor_broadcaster/RangeSensorBroadcaster${spec.imu ? `
+    imu_sensor_broadcaster:
+      type: imu_sensor_broadcaster/IMUSensorBroadcaster` : ""}
 
 diff_drive_controller:
   ros__parameters:
@@ -224,7 +261,7 @@ diff_drive_controller:
     right_wheel_names: [${d.kind === "skid4" ? '"right_wheel_joint", "right_rear_wheel_joint"' : '"right_wheel_joint"'}]
     wheel_separation: ${f(mm(d.trackMm))}  # drive.trackMm
     wheel_radius: ${f(r)}  # the wheel's catalog diameter / 2
-    open_loop: ${opts.encoders ? "false" : "true"}  # ${opts.encoders ? "encoders on both wheels" : "no wheel encoders: odometry is the integrated command"}
+    open_loop: ${encoders ? "false" : "true"}  # ${encoders ? "encoders on both wheels: odometry is the measured wheel turns" : "no wheel encoders: odometry is the integrated command"}
     base_frame_id: base_footprint
     odom_frame_id: odom
     publish_rate: ${rate}.0
@@ -234,6 +271,8 @@ diff_drive_controller:
     linear.x.min_velocity: ${f(-vmax)}
     angular.z.max_velocity: ${f((2 * vmax) / mm(d.trackMm))}  # wheels at full speed in opposite directions
     angular.z.min_velocity: ${f((-2 * vmax) / mm(d.trackMm))}
+    linear.x.max_acceleration: ${f(accel)}  # ${d.maxAccelMps2 ? "the design's drive.maxAccelMps2" : "half the floor's grip on the driven wheels (the mechanics checks' traction limit): an ESTIMATE"}; braking the same
+    angular.z.max_acceleration: ${f((2 * accel) / mm(d.trackMm))}  # the wheels at that acceleration in opposite directions
 
 range_sensor_broadcaster:
   ros__parameters:
@@ -243,5 +282,16 @@ range_sensor_broadcaster:
     field_of_view: ${f(((spec.sensor as { fovDeg?: number }).fovDeg ?? 25) * Math.PI / 180)}
     min_range: 0.03
     max_range: ${f(mm(spec.sensor.rangeMm))}  # the sensor's datasheet range
-`
+${spec.imu ? `
+imu_sensor_broadcaster:
+  ros__parameters:
+    sensor_name: imu
+    frame_id: imu_link
+    # Variances: heading from the gyro's drift (${spec.imu.biasDegPerS} deg/s bias, an ESTIMATE), yaw rate from its noise
+    # (${spec.imu.noiseDegPerSqrtS} deg/sqrt(s)). Roll and pitch aren't measured: a huge variance, so a filter ignores them
+    # (-1 in element 0 would mark the whole field unknown, heading included). Accelerations: none, -1 (sensor_msgs/Imu).
+    static_covariance_orientation: [1.0e6, 0.0, 0.0, 0.0, 1.0e6, 0.0, 0.0, 0.0, ${g(((spec.imu.biasDegPerS * Math.PI) / 180) ** 2)}]
+    static_covariance_angular_velocity: [1.0e6, 0.0, 0.0, 0.0, 1.0e6, 0.0, 0.0, 0.0, ${g(((spec.imu.noiseDegPerSqrtS * Math.PI) / 180) ** 2)}]
+    static_covariance_linear_acceleration: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+` : ""}`
 }

@@ -88,7 +88,10 @@ def _connect(port, wait_s):
 # boots slower than the C3, and inside a run the machine is busy with board builds (the Eurobot mock's S3 drive, 20 Nov
 # 2026: booted, then no answer within the old 10 s; the same firmware answered on an idle machine). Time inside QEMU is
 # virtual and lock-stepped, so a longer wait costs only when the firmware never answers.
-def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=60.0, tick_wait_s=10.0):
+# realtime: simulated time kept to wall-clock time (never ahead of it), for a host that drives the robot on its own
+# clock (ROS). Unpaced, the lock-step ran ~2.8x faster than real time: a 1.35 s ROS turn became 3.8 simulated seconds and
+# ROS's odometry and gyro read 3x the motion it commanded (23 Nov 2026). A machine too slow for real time just lags.
+def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=60.0, tick_wait_s=10.0, realtime=False):
     step_h = spec["edgeMm"] / 1000
     model = build_model(spec, course_xml(step_h))
     data = mujoco.MjData(model)
@@ -151,6 +154,7 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=60.0, tick_wait_s=10
     opp_left_at = None  # (x, y, heading) when it left
     opp_after = 0.0  # forward travel in the 3 s after it left
     ticks = 0
+    paced_from = None  # (wall, simulated) time of the first tick, with realtime
     try:
         while data.time < course_s:
             try:
@@ -265,6 +269,12 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=60.0, tick_wait_s=10
                 gyro["walk"] += math.radians(imu["noiseDegPerSqrtS"]) * math.sqrt(dt) * float(gyro_rng.standard_normal())
                 h = gyro["turned"] + gyro["walk"] + math.radians(imu["biasDegPerS"]) * data.time
                 gyro_txt = f" H {int(round(h * 1000))}"
+            if realtime:
+                if paced_from is None:
+                    paced_from = (time.monotonic(), data.time)
+                ahead = (data.time - paced_from[1]) - (time.monotonic() - paced_from[0])
+                if ahead > 0:
+                    time.sleep(ahead)
             f.write(f"S {int(round(data.time * 1000))} {reading} {PAYLOAD[0]} {PAYLOAD[1]}{enc}{gyro_txt}\n")
             f.flush()
             if wall_contact:
@@ -320,10 +330,10 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=60.0, tick_wait_s=10
 
 def main():
     if len(sys.argv) < 4:
-        print("usage: drive.py <chassis-spec.json> <port or unix socket path> <out-dir> [course_s]", file=sys.stderr)
+        print("usage: drive.py <chassis-spec.json> <port or unix socket path> <out-dir> [course_s] [realtime]", file=sys.stderr)
         sys.exit(2)
     spec = json.loads(Path(sys.argv[1]).read_text())
-    r = run(spec, int(sys.argv[2]) if sys.argv[2].isdigit() else sys.argv[2], sys.argv[3], float(sys.argv[4]) if len(sys.argv) > 4 else 25.0)
+    r = run(spec, int(sys.argv[2]) if sys.argv[2].isdigit() else sys.argv[2], sys.argv[3], float(sys.argv[4]) if len(sys.argv) > 4 else 25.0, realtime=len(sys.argv) > 5 and sys.argv[5] == "realtime")
     print(json.dumps({"result": r["result"], "reason": r["reason"]}))
 
 

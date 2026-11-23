@@ -75,8 +75,8 @@ export interface ChassisSpec {
 	bodyParts?: { what: string; atMm: [number, number, number]; sizeMm: [number, number, number]; massG: number }[]
 	wheelMassG: number // each; the simulation hangs these on the wheels and the rest on the chassis body
 	casterMassG: number
-	drive: { kind?: "differential" | "skid4"; trackMm: number; axleXMm: number; wheelbaseMm: number; wheelDiameterMm: number; wheelWidthMm: number }
-	motor: { ratedV: number; noLoadRpm: number; stallTorqueNm: number; stallA: number; noLoadA: number }
+	drive: { kind?: "differential" | "skid4"; trackMm: number; axleXMm: number; wheelbaseMm: number; wheelDiameterMm: number; wheelWidthMm: number; maxAccelMps2?: number }
+	motor: { ratedV: number; noLoadRpm: number; stallTorqueNm: number; stallA: number; noLoadA: number; encoderCountsPerRev?: number }
 	pack: { nominalV: number; fullV: number; cutoffV: number; mAh: number; internalOhm: number | null }
 	payloadG: number
 	// For the simulated drive's pass rules: the motor driver's peak per channel, the brief's speed and wall distance.
@@ -256,7 +256,7 @@ export function chassisSpec(s: ContractSnapshot, others: { name: string; outline
 		bodyParts: ms.filter((m) => !m.what.startsWith("wheel:") && m.what !== "caster").map((m) => ({ what: m.what, atMm: [m.xMm, m.yMm, m.zMm] as [number, number, number], sizeMm: [...m.sizeMm] as [number, number, number], massG: m.massG })),
 		wheelMassG: wheel.massG,
 		casterMassG: caster && !skid ? caster.massG : 0,
-		drive: { kind: mech.drive.kind, trackMm: mech.drive.trackMm, axleXMm: mech.drive.axleXMm, wheelbaseMm: mech.drive.wheelbaseMm, wheelDiameterMm: wheel.diameterMm, wheelWidthMm: wheel.widthMm },
+		drive: { kind: mech.drive.kind, trackMm: mech.drive.trackMm, axleXMm: mech.drive.axleXMm, wheelbaseMm: mech.drive.wheelbaseMm, wheelDiameterMm: wheel.diameterMm, wheelWidthMm: wheel.widthMm, ...(mech.drive.maxAccelMps2 ? { maxAccelMps2: mech.drive.maxAccelMps2 } : {}) },
 		motor: { ratedV: motor.ratedV, noLoadRpm: motor.noLoadRpm, stallTorqueNm: motor.stallTorqueNm, stallA: motor.stallA, noLoadA: motor.noLoadA, ...(motor.encoder ? { encoderCountsPerRev: countsPerRev(motor, quadratureWired(s.values.pins))! } : {}) },
 		pack: { nominalV: pack.nominalV, fullV: pack.fullV, cutoffV: pack.cutoffV, mAh: pack.mAh, internalOhm: pack.internalOhm ?? null },
 		payloadG: motion.payloadG,

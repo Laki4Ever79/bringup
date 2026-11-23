@@ -654,3 +654,17 @@ best there. Benchmark (not a copy): Hugging Face LeRobot SO-100/SO-101 class rea
 - [ ] **Example + README:** examples/arm saved from a settled run, scripted pictures, a change-ripple demo ("make the
       reach 300 mm" → links, servos, supply, board, firmware all follow).
 Estimate: 5–8 working days across the three sessions; starts after the weekly usage reset (Sun 23 Nov 15:00).
+
+## ROS out on a real robot (the user approved step 1 on 23 Nov 2026: "yes")
+- [x] **Step 1: the bridge on the robot's measured motion** (docs/ros.md). The firmware's report carries encoder
+      counts and the gyro's heading. The bridge reads them, with closed-loop odometry, an IMU topic, a learned
+      feed-forward plus a PI speed loop, 4-wheel skid-steer support, and survives a dropped connection. The controller
+      gets acceleration limits from the design. The QEMU simulation is paced to real time when ROS drives it.
+      `npm run ros -- <run> [--port /dev/ttyACM0 | --workspace <dir>]`. Before, the speed checks passed on the echoed
+      command while the robot drove 0.40 m/s on a 0.3 command; now 0.292 m/s measured.
+- [ ] After a turn in place, odometry x and the simulation's x differ by 6 cm (0.146 vs 0.209 m): find which point each
+      one tracks.
+- [ ] Run `npm run ros -- <run> --port /dev/ttyACM0` on the bench S3 rover (needs the real robot with encoders).
+- [ ] Step 2: provisioning a Pi 5 (Ubuntu 24.04 + Jazzy + the package at boot) and a Nav2 config from the design;
+      demo: the Eurobot starter reaching a Nav2 goal in simulation.
+- [ ] Step 3 (later): micro-ROS on the S3 (optional), URDF import, carrier boards, Gazebo (optional).

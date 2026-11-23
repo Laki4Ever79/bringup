@@ -208,3 +208,55 @@ test("a built chassis whose ROS package a simulator would refuse is a ros-packag
 	assert.ok(v.some((x) => /has mass -1/.test(x.message)), JSON.stringify(v))
 	assert.deepEqual(v[0].affects, ["mechanics"])
 })
+
+// ROS on the real robot (docs/ros.md): with encoders the bridge reads the firmware's counts (rad_per_count from the
+// counts the firmware itself counts) and the controller closes its odometry on them; with an IMU its heading is a
+// ros2_control sensor published by imu_sensor_broadcaster; the launch takes the real robot's serial device.
+test("encoders and an IMU reach ROS: the bridge's count scale, closed-loop odometry, the IMU sensor and its broadcaster", () => {
+	const s = { ...spec(), motor: { ...spec().motor, encoderCountsPerRev: 1400 }, imu: { noiseDegPerSqrtS: 0.005, biasDegPerS: 0.05 } }
+	const u = robotUrdf(s, { name: "rover", hardware: "bringup" })
+	assert.match(u, new RegExp(`<param name="rad_per_count">${Number(((2 * Math.PI) / 1400).toPrecision(8))}</param>`))
+	assert.match(u, /<sensor name="imu">[\s\S]*orientation\.w[\s\S]*linear_acceleration\.z[\s\S]*<\/sensor>/)
+	assert.match(u, /<joint name="imu_joint" type="fixed">/)
+	assert.match(robotUrdf(s, { hardware: "mock" }), /<state_interface name="orientation\.w"><param name="initial_value">1\.0<\/param>/)
+	assert.deepEqual(rosUrdfChecks(s, u), [])
+	const y = controllersYaml(s)
+	assert.match(y, /open_loop: false/)
+	assert.match(y, /imu_sensor_broadcaster:\n {6}type: imu_sensor_broadcaster\/IMUSensorBroadcaster/)
+	assert.match(y, /static_covariance_orientation: \[1\.0e6, [^\]]*, 7\.6154355e-7\]/)
+	assert.deepEqual(rosControllerChecks(s, y), [])
+	const pkg = writeRosPackage(tempDir(), s, { robot: "rover" })
+	assert.match(readFileSync(join(pkg, "package.xml"), "utf8"), /<exec_depend>imu_sensor_broadcaster<\/exec_depend>/)
+	const launch = readFileSync(join(pkg, "launch", "bringup.launch.py"), "utf8")
+	assert.match(launch, /arguments=\["imu_sensor_broadcaster"\]/)
+	assert.match(launch, /DeclareLaunchArgument\("port"/)
+	assert.deepEqual(rosPackageChecks(s, pkg), [])
+	// Without either, nothing of them is written.
+	const plain = robotUrdf(spec(), { hardware: "bringup" })
+	assert.doesNotMatch(plain, /rad_per_count|name="imu"/)
+	assert.doesNotMatch(controllersYaml(spec()), /imu/)
+})
+
+// The launch's port:= replaces the URDF's console with the robot's serial device, the rest of the file untouched.
+test("the launch's port argument points the bridge at a real robot's serial device", async () => {
+	const { execFileSync } = await import("node:child_process")
+	const pkg = writeRosPackage(tempDir(), spec(), { robot: "rover" })
+	const launch = readFileSync(join(pkg, "launch", "bringup.launch.py"), "utf8")
+	const line = /description = re\.sub\((.*)\)/.exec(launch)![1]
+	const urdf = robotUrdf(spec(), { name: "rover", hardware: "bringup" })
+	const py = `import re, sys\ndescription = sys.stdin.read()\nport = "/dev/ttyACM0"\ndescription = re.sub(${line})\nsys.stdout.write(description)`
+	const out = execFileSync("python3", ["-c", py], { input: urdf, encoding: "utf8" })
+	assert.match(out, /<param name="port">\/dev\/ttyACM0<\/param>/)
+	assert.equal(out.replace("/dev/ttyACM0", "tcp:127.0.0.1:5555"), urdf)
+})
+
+// A skid-steer robot has four wheel joints; the bridge refused anything but two (on_init: "expected 2 wheel joints").
+test("the hardware bridge takes a skid-steer robot's four wheel joints and the firmware's measured fields", () => {
+	const src = readFileSync(join(import.meta.dirname, "..", "templates", "ros", "bringup_hardware", "src", "bringup_system.cpp"), "utf8")
+	assert.match(src, /info\.joints\.size\(\) != 2 && info\.joints\.size\(\) != 4/)
+	assert.match(src, /p\[0\] == 'E'/)
+	assert.match(src, /p\[0\] == 'H'/)
+	const fw = readFileSync(join(import.meta.dirname, "..", "templates", "fw-rover", "src", "main.cpp"), "utf8")
+	assert.match(fw, /Serial\.printf\(" E %ld %ld"/)
+	assert.match(fw, /Serial\.printf\(" H %ld"/)
+})
