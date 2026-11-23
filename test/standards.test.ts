@@ -20,7 +20,10 @@ test("every interface of the logger, with its standard and whether it is open", 
 	assert.equal(by("USB-C")?.openness, "open")
 	assert.equal(by("BLE advertising")?.openness, "open")
 	assert.equal(by("phone reads history")?.openness, "ours")
-	assert.match(by("phone reads history")!.alternative!, /Environmental Sensing Service/)
+	// The latest reading is on the SIG's Environmental Sensing Service (open); only the history log stays ours.
+	assert.equal(by("latest reading over BLE GATT")?.openness, "open")
+	assert.match(by("latest reading over BLE GATT")!.standard, /Environmental Sensing Service \(0x181A\)/)
+	assert.match(by("phone reads history")!.alternative!, /no open GATT profile fits a log/)
 	assert.equal(by("design files")?.openness, "open")
 	assert.equal(by("SBOM")?.openness, "open")
 	// No links: no link rows.
@@ -56,7 +59,19 @@ test("the agents' design facts carry the open-standards rule and each non-open i
 	const facts = designFacts(s, "").join("\n")
 	assert.match(facts, /## Interfaces and standards \(open standards by default\)/)
 	assert.match(facts, /Rule: where an open standard fits the job .* choose it over a vendor's or a home-made one/)
-	assert.match(facts, /phone reads history over BLE: Bringup's own .* Open alternative: .*Environmental Sensing Service/)
+	assert.match(facts, /phone reads history over BLE: Bringup's own .* Open alternative: no open GATT profile fits a log/)
+	assert.doesNotMatch(facts, /latest reading over BLE GATT:/)
 	// Open interfaces get no line of their own.
 	assert.doesNotMatch(facts, /USB-C port \(power, flashing, serial\):/)
+})
+
+// The firmware serves what the table claims: the ESS service and its two characteristics, in the standard's units.
+test("the logger firmware serves the latest reading on the Environmental Sensing Service, in the standard's units", async () => {
+	const { readFileSync } = await import("node:fs")
+	const { join } = await import("node:path")
+	const fw = readFileSync(join(import.meta.dirname, "..", "templates", "fw", "src", "main.cpp"), "utf8")
+	assert.match(fw, /createService\(NimBLEUUID\(\(uint16_t\)0x181A\)\)/)
+	assert.match(fw, /0x2A6E\)\, SECURE_READ/)
+	assert.match(fw, /0x2A6F\)\, SECURE_READ/)
+	assert.match(fw, /lroundf\(tempC \* 100\.0f\) : \(int16_t\)0x8000/)
 })

@@ -240,7 +240,7 @@ is a change to the firmware toolchain, not just the code.
       Audit 17 Nov (bringup-system): done: 64642ff (the can link kind, each board's side, the checks;
       test/can-link.test.ts), buses of three or more boards d6824ca (test/can-bus.test.ts), merged into adopt with
       d14d856.
-- [ ] **Open standards by default** (the user, 15 Nov, asked whether we insist on them; recommended yes). Today open
+- [x] **Open standards by default** (the user, 15 Nov, asked whether we insist on them; recommended yes). Today open
       where it was the obvious choice (KiCad, STEP/STL, PlatformIO/Arduino, BTHome v2, CycloneDX) but not a rule, and
       some interfaces are ours or one vendor's: the board-to-board message framing (`templates/fw/include/linkframe.h`,
       our own sync + hash + XOR), the TC2030 debug cable (its maker's product; the footprint is free), JST connectors
@@ -260,6 +260,11 @@ is a change to the firmware toolchain, not just the code.
       protocol.
       Audit 17 Nov (bringup-system): left: only the agents' rule (pick the open standard where one fits); CAN's rows
       (d6824ca) and the open link protocols (COBS+CBOR, Cyphal) are done.
+      Closed 23 Nov (bringup-system): the agents' rule was already in the design facts (b6f9f87, test/standards.test.ts).
+      The latest reading moved onto the Bluetooth SIG's Environmental Sensing Service (0x181A; Temperature 0x2A6E,
+      Humidity 0x2A6F, same pairing): a logger's non-open interfaces 2 → 1 of its GATT pair, +406 B flash. Left non-open,
+      each with no open option that fits: the history log's GATT layout (OTS is the nearest, much heavier), the JST SH
+      plug (Qwiic pinout already open), the TC2030 cable (ARM 10-pin needs a header part), ESP-IDF's OTA layout.
 
 - [ ] **Power transmission and motion parts in the parts list, each checked against its mate** (the user, 15 Nov, via
       d9610c: "yeah along with fasteners we should add gears, belts, chains and all other mechanical pieces to the list
