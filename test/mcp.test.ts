@@ -410,10 +410,42 @@ test("hardware auto builds where the toolchain is and stubs where it isn't, and 
 		assert.match(r.hardware, /stubbed: this machine lacks tscircuit, Python with build123d/)
 		assert.deepEqual(stub.calls[0].extraArgs, ["--no-hardware"])
 		const b = (await bare.call("start_design", { brief: "x", hardware: "build" })).json()
-		assert.equal(b.hardware, "built")
+		assert.match(b.hardware, /^built \(asked\), but this machine lacks tscircuit, Python with build123d: the run will end unsettled/)
 		assert.equal(stub.calls[1].extraArgs, undefined)
 		stub.release()
 	} finally {
 		await bare.close()
+	}
+})
+
+test("a system run's tools read each board's folder: status per board, contract, report, events, package", async () => {
+	const outRoot = tempDir()
+	const runDir = join(outRoot, "sys-1")
+	for (const [name, settled] of [["main", true], ["rpi-5-carrier", false]] as const) {
+		const dir = join(runDir, "boards", name)
+		mkdirSync(dir, { recursive: true })
+		const lines = trace.map((l) => (l.type === "design.settled" ? { ...l, payload: { ...l.payload, settled } } : l))
+		writeFileSync(join(dir, "trace.jsonl"), lines.map((l) => JSON.stringify(l) + "\n").join(""))
+		writeFileSync(join(dir, "contract.json"), JSON.stringify(fixtureContract()))
+		writeFileSync(join(dir, "report.md"), `# ${name}\n`)
+	}
+	const launches: LaunchArgs[] = []
+	const mcp = await connectWith({ outRoot, launch: (args) => (launches.push(args), { done: Promise.resolve({ code: 3, stderr: "bringup: not packaged: the design isn't finished:\n  - x\nFix these and rerun, or pass --force to package it anyway." }) }) })
+	try {
+		const all = (await mcp.call("design_status", { runId: "sys-1" })).json()
+		assert.equal(all.status, "unsettled")
+		assert.deepEqual(all.boards.map((b: any) => [b.board, b.status, b.revision, b.counts.events]), [["main", "settled", 4, 5], ["rpi-5-carrier", "unsettled", 4, 5]])
+		assert.equal((await mcp.call("design_status", { runId: "sys-1", board: "main" })).json().status, "settled")
+		assert.equal((await mcp.call("get_report", { runId: "sys-1", board: "rpi-5-carrier" })).text, "# rpi-5-carrier\n")
+		assert.equal((await mcp.call("read_contract", { runId: "sys-1" })).isError, false)
+		assert.equal((await mcp.call("list_events", { runId: "sys-1", board: "main" })).json().events.length, 5)
+		assert.match((await mcp.call("read_contract", { runId: "sys-1", board: "arm" })).text, /has no board arm/)
+		const pkg = await mcp.call("export_package", { runId: "sys-1", board: "rpi-5-carrier" })
+		assert.equal(pkg.isError, true)
+		assert.match(pkg.text, /pass force: true/)
+		assert.doesNotMatch(pkg.text, /--force/)
+		assert.equal(launches[0].outDir, join(runDir, "boards", "rpi-5-carrier"))
+	} finally {
+		await mcp.close()
 	}
 })

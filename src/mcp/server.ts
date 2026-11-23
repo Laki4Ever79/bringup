@@ -57,6 +57,18 @@ interface TraceLine {
 
 const RUN_ID = /^[\w-]+$/
 const SYSTEM_NAME = /^[\w-]+$/
+const BOARD = z.string().optional().describe("For a system run: the board (default main; design_status lists them).")
+
+// A system run keeps each board's run under boards/<name>; a single design is the run folder itself.
+function boardDir(dir: string, runId: string, board: string | undefined): { dir: string; system: boolean } | { error: string } {
+	const system = existsSync(join(dir, "boards"))
+	if (board !== undefined && !SYSTEM_NAME.test(board)) return { error: `invalid board ${JSON.stringify(board)}` }
+	if (board !== undefined && !system) return { error: `run ${runId} is a single design: leave board out` }
+	if (!system) return { dir, system }
+	const sub = join(dir, "boards", board ?? "main")
+	if (!existsSync(sub)) return { error: `run ${runId} has no board ${board ?? "main"} yet` }
+	return { dir: sub, system }
+}
 export const SERVER_VERSION = (() => {
 	try { return JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version as string } catch { return "0.0.0" }
 })()
@@ -125,9 +137,9 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	const server = new McpServer({ name: "bringup", version: SERVER_VERSION })
 	async function hardwareFlags(hardware: "auto" | "build" | "stub" | undefined): Promise<{ flags: string[]; said: string }> {
 		if (hardware === "stub") return { flags: ["--no-hardware"], said: "stubbed (asked)" }
-		if (hardware === "build") return { flags: [], said: "built" }
 		const env = await (deps.detect ?? (() => detectEnvironment(root)))()
 		const missing = [!env.tsci && "tscircuit", !env.python && "Python with build123d", !env.pio && "PlatformIO"].filter(Boolean)
+		if (hardware === "build") return { flags: [], said: missing.length ? `built (asked), but this machine lacks ${missing.join(", ")}: the run will end unsettled (npm run setup in a clone installs them)` : "built" }
 		return missing.length ? { flags: ["--no-hardware"], said: `stubbed: this machine lacks ${missing.join(", ")} (npm run setup in a clone installs them)` } : { flags: [], said: "built" }
 	}
 	// Not awaited: a run goes on in its own process while the client polls.
@@ -185,33 +197,41 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 		"design_status",
 		{
 			description: "Status of a run (running, settled, unsettled, failed, or unknown for runs from an earlier server), its revision, the latest violations and event counts.",
-			inputSchema: { runId: z.string() },
+			inputSchema: { runId: z.string(), board: BOARD },
 		},
-		async ({ runId }) => {
+		async ({ runId, board }) => {
 			const r = await runDir(runId)
 			if ("error" in r) return fail(r.error)
-			const { counts, revision, violations, settled } = summarise(await readTrace(r.dir))
+			const b = boardDir(r.dir, runId, board)
+			if ("error" in b) return fail(b.error)
 			const state = runs.get(runId)
-			// For runs this server did not start, the trace's design.settled is all there is to go on.
-			const status = state?.status ?? (settled ? (settled.settled ? "settled" : "unsettled") : "unknown")
-			return ok({
-				runId,
-				status,
-				revision,
-				violations,
-				counts,
-				...(state?.status === "failed" ? { error: state.error } : {}),
-			})
+			const failed = state?.status === "failed" ? { error: state.error } : {}
+			const one = async (dir: string) => {
+				const { counts, revision, violations, settled } = summarise(await readTrace(dir))
+				// For runs this server did not start, the trace's design.settled is all there is to go on.
+				return { status: settled ? (settled.settled ? "settled" : "unsettled") : "unknown", revision, violations, counts }
+			}
+			// A whole system: one block per board it has so far.
+			if (b.system && board === undefined) {
+				const names = readdirSync(join(r.dir, "boards")).filter((n) => SYSTEM_NAME.test(n)).sort()
+				const boards = await Promise.all(names.map(async (n) => ({ board: n, ...(await one(join(r.dir, "boards", n))) })))
+				const traced = boards.length && boards.every((x) => x.status === "settled") ? "settled" : boards.some((x) => x.status === "unsettled") ? "unsettled" : "unknown"
+				return ok({ runId, status: state?.status ?? traced, boards, ...failed })
+			}
+			const s = await one(b.dir)
+			return ok({ runId, ...(board ? { board } : {}), ...s, status: state?.status ?? s.status, ...failed })
 		},
 	)
 
 	server.registerTool(
 		"read_contract",
-		{ description: "The run's current design contract (contract.json): outline, connectors, rails, parts, pins, with versions.", inputSchema: { runId: z.string() } },
-		async ({ runId }) => {
+		{ description: "The run's current design contract (contract.json): outline, connectors, rails, parts, pins, with versions.", inputSchema: { runId: z.string(), board: BOARD } },
+		async ({ runId, board }) => {
 			const r = await runDir(runId)
 			if ("error" in r) return fail(r.error)
-			const text = await readFile(join(r.dir, "contract.json"), "utf8").catch(() => null)
+			const b = boardDir(r.dir, runId, board)
+			if ("error" in b) return fail(b.error)
+			const text = await readFile(join(b.dir, "contract.json"), "utf8").catch(() => null)
 			if (text === null) return fail(`run ${runId} has no contract.json yet`)
 			return ok(text)
 		},
@@ -219,11 +239,13 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 
 	server.registerTool(
 		"get_report",
-		{ description: "The run's consistency report (report.md), written when the run ends.", inputSchema: { runId: z.string() } },
-		async ({ runId }) => {
+		{ description: "The run's consistency report (report.md), written when the run ends.", inputSchema: { runId: z.string(), board: BOARD } },
+		async ({ runId, board }) => {
 			const r = await runDir(runId)
 			if ("error" in r) return fail(r.error)
-			const text = await readFile(join(r.dir, "report.md"), "utf8").catch(() => null)
+			const b = boardDir(r.dir, runId, board)
+			if ("error" in b) return fail(b.error)
+			const text = await readFile(join(b.dir, "report.md"), "utf8").catch(() => null)
 			if (text === null) return fail(`run ${runId} has no report.md yet`)
 			return ok(text)
 		},
@@ -245,10 +267,9 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			if ("error" in r) return fail(r.error)
 			const state = runs.get(runId)
 			if (state && state.status !== "running") return fail(`run ${runId} is ${state.status}; change requests only reach a running design (start it with stay: true)`)
-			const system = existsSync(join(r.dir, "boards"))
-			if (board !== undefined && (!SYSTEM_NAME.test(board) || !system)) return fail(board && system ? `invalid board ${JSON.stringify(board)}` : `run ${runId} is a single design: leave board out`)
-			const dir = system ? join(r.dir, "boards", board ?? "main") : r.dir
-			if (!existsSync(dir)) return fail(`run ${runId} has no board ${board ?? "main"}`)
+			const b = boardDir(r.dir, runId, board)
+			if ("error" in b) return fail(b.error)
+			const { dir, system } = b
 			let prefix = ""
 			if (ref) {
 				const found = [...partRefs(dir).case, ...partRefs(dir).chassis].find((x) => x.ref === ref)
@@ -263,12 +284,14 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 		"list_events",
 		{
 			description: `Trace events of a run with seq greater than sinceSeq (all when omitted), at most ${MAX_EVENTS} per call.`,
-			inputSchema: { runId: z.string(), sinceSeq: z.number().int().optional() },
+			inputSchema: { runId: z.string(), sinceSeq: z.number().int().optional(), board: BOARD },
 		},
-		async ({ runId, sinceSeq }) => {
+		async ({ runId, sinceSeq, board }) => {
 			const r = await runDir(runId)
 			if ("error" in r) return fail(r.error)
-			const after = (await readTrace(r.dir)).filter((e) => sinceSeq === undefined || e.seq > sinceSeq)
+			const b = boardDir(r.dir, runId, board)
+			if ("error" in b) return fail(b.error)
+			const after = (await readTrace(b.dir)).filter((e) => sinceSeq === undefined || e.seq > sinceSeq)
 			const events = after.slice(0, MAX_EVENTS)
 			return ok({ events, more: after.length > events.length })
 		},
@@ -363,14 +386,14 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 		"list_part_refs",
 		{
 			description: "The printed features of a run's newest case and chassis that a change can name (each connector opening, hole, tab, standoff, motor mount, rail, bracket...), with where each is and the line of code that makes it. Pass one as request_change's ref.",
-			inputSchema: { runId: z.string(), board: z.string().optional().describe("For a system run: the board (default main).") },
+			inputSchema: { runId: z.string(), board: BOARD },
 		},
 		async ({ runId, board }) => {
 			const r = await runDir(runId)
 			if ("error" in r) return fail(r.error)
-			if (board !== undefined && !SYSTEM_NAME.test(board)) return fail(`invalid board ${JSON.stringify(board)}`)
-			const dir = existsSync(join(r.dir, "boards")) ? join(r.dir, "boards", board ?? "main") : r.dir
-			return ok(partRefs(dir))
+			const b = boardDir(r.dir, runId, board)
+			if ("error" in b) return fail(b.error)
+			return ok(partRefs(b.dir))
 		},
 	)
 
@@ -388,18 +411,20 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	server.registerTool(
 		"export_package",
 		{
-			description: "Build a run's manufacturing package (fabrication files, BOM, firmware, printed parts, assembly notes) into <run>/package. Refused for an unfinished design unless force is true. Needs the full toolchain (npm run setup).",
-			inputSchema: { runId: z.string(), force: z.boolean().optional() },
+			description: "Build a run's manufacturing package (fabrication files, BOM, firmware, printed parts, assembly notes) into <run>/package (a system run: one board at a time). Refused for an unfinished design unless force is true. Needs the full toolchain (npm run setup).",
+			inputSchema: { runId: z.string(), force: z.boolean().optional(), board: BOARD },
 		},
-		async ({ runId, force }) => {
+		async ({ runId, force, board }) => {
 			const r = await runDir(runId)
 			if ("error" in r) return fail(r.error)
-			const contract = join(r.dir, "contract.json")
-			if (!existsSync(contract)) return fail(`run ${runId} has no contract.json (a system run: package each board's run under boards/<name>)`)
-			const out = join(r.dir, "package")
-			const run = deps.launch({ briefPath: "package", mock: false, outDir: r.dir, extraArgs: [contract, out, ...(force ? ["--force"] : [])] })
+			const b = boardDir(r.dir, runId, board)
+			if ("error" in b) return fail(b.error)
+			const contract = join(b.dir, "contract.json")
+			if (!existsSync(contract)) return fail(`run ${runId}${b.system ? ` board ${board ?? "main"}` : ""} has no contract.json yet`)
+			const out = join(b.dir, "package")
+			const run = deps.launch({ briefPath: "package", mock: false, outDir: b.dir, extraArgs: [contract, out, ...(force ? ["--force"] : [])] })
 			const { code, stderr } = await run.done
-			if (code !== 0) return fail(code === 3 ? `not packaged, the design isn't finished: ${stderr.trim()}` : `packaging failed: ${stderr.trim().split("\n").slice(-ERROR_TAIL_LINES).join("\n")}`)
+			if (code !== 0) return fail(code === 3 ? `not packaged, the design isn't finished:\n${stderr.trim().replace(/^bringup: not packaged: the design isn't finished:\n/, "").replace("pass --force", "pass force: true")}` : `packaging failed: ${stderr.trim().split("\n").slice(-ERROR_TAIL_LINES).join("\n")}`)
 			return ok({ runId, package: out, files: existsSync(out) ? readdirSync(out) : [] })
 		},
 	)

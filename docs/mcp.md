@@ -21,7 +21,8 @@ Claude Desktop, Cursor and other clients take the same command in their MCP sett
 }
 ```
 
-Needs Node 24 or later. The first `npx` call downloads the package (about 3 MB).
+Needs Node 24 or later. The first `npx` call downloads the package (about 3 MB) and its dependencies (about 110 MB in all,
+mostly the model SDKs Mozaik uses); on a fresh machine that took about 25 s (an estimate from one Docker test).
 
 What a run builds depends on the machine (`hardware`, `auto` by default):
 - **Nothing else installed:** the agents design the contract (parts, pins, outline, mechanics) and every check runs on
@@ -30,8 +31,8 @@ What a run builds depends on the machine (`hardware`, `auto` by default):
 - **The full toolchain** (`git clone`, then `npm run setup`; see the [README](../README.md)): real boards, cases,
   chassis, firmware, simulation and ROS. From a clone, register the server with
   `claude mcp add bringup -- node "$PWD/bin/bringup-mcp.js"`.
-- `hardware: "build"` asks for the real builds anyway. On a machine without the tools the run then ends unsettled,
-  and `run_summary` names the missing tools. `hardware: "stub"` stubs them even where they are installed.
+- `hardware: "build"` asks for the real builds anyway. On a machine without the tools the start result says so, the
+  run ends unsettled, and `run_summary` names the missing tools. `hardware: "stub"` stubs them even where they are installed.
 
 Runs go to `~/.bringup/runs`, or to `out/` in a git clone. Set `BRINGUP_OUT` to choose another folder.
 
@@ -51,7 +52,7 @@ Runs go to `~/.bringup/runs`, or to `out/` in a git clone. Set `BRINGUP_OUT` to 
 | `list_starters` | The shipped example devices and robots, multi-board systems and briefs |
 | `start_design` | Start a design from a brief (`mock` by default; `stay: true` keeps it up to take changes; `hardware` as above). Returns a `runId` at once |
 | `start_system` | Start a multi-board system: a robot's boards on one chassis, a sensor board on a cable, a Pi with its HAT. Takes a shipped system's name or a spec |
-| `design_status` | Running, settled, unsettled or failed, with the revision, the open violations and event counts |
+| `design_status` | Running, settled, unsettled or failed, with the revision, the open violations and event counts. A system run gives one block per board |
 | `run_summary` | One screen: the status, the open violations, and each artifact's own verdict (board DRC, the case's print check, the chassis' interference, the simulated drive, the ROS test), with the files to open |
 | `read_contract` | The live design contract: outline, connectors, rails, parts, pins, mechanics |
 | `get_report` | The run's consistency report, written when it ends |
@@ -59,7 +60,10 @@ Runs go to `~/.bringup/runs`, or to `out/` in a git clone. Set `BRINGUP_OUT` to 
 | `list_part_refs` | The printed features a change can name: each opening, hole, tab and standoff of the case; each standoff, motor mount, rail and bracket of the chassis. Each one comes with its place and the line of code that makes it |
 | `request_change` | Change one thing in a running design ("make it 50 mm wide"). `ref` names the printed feature the change is about; `board` picks a system's board |
 | `stop_design` | End a run that stays up |
-| `export_package` | Write the manufacturing package (fabrication files, BOM, firmware, printed parts). Refused for an unfinished design unless `force` is set. Needs the toolchain |
+| `export_package` | Write the manufacturing package (fabrication files, BOM, firmware, printed parts). Refused for an unfinished design unless `force` is set. One board of a system at a time (`board`). Needs the toolchain |
+
+For a system run, `read_contract`, `get_report`, `list_events`, `list_part_refs`, `request_change` and `export_package`
+take `board` (default `main`); `design_status` names the boards.
 
 A typical session:
 
