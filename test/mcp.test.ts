@@ -449,3 +449,13 @@ test("a system run's tools read each board's folder: status per board, contract,
 		await mcp.close()
 	}
 })
+
+test("server.json passes the MCP registry's limits and matches package.json", () => {
+	const server = JSON.parse(readFileSync(new URL("../server.json", import.meta.url), "utf8"))
+	const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))
+	// The registry rejects a description over 100 characters (the 0.2.0 publish had to shorten it by hand).
+	assert.ok(server.description.length <= 100, `server.json description is ${server.description.length} characters; the registry takes 100`)
+	assert.equal(server.name, pkg.mcpName)
+	assert.equal(server.version, pkg.version)
+	assert.ok(server.packages.every((p: any) => p.identifier !== pkg.name || p.version === pkg.version))
+})

@@ -1,7 +1,7 @@
 {
 	"$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 	"name": "io.github.Laki4Ever79/bringup",
-	"description": "Design a whole device or robot (board, printed parts, firmware, ROS) with concurrent agents on one checked contract.",
+	"description": "Design a whole robot or device: board, printed parts, firmware and ROS, checked across domains.",
 	"repository": {
 		"url": "https://github.com/Laki4Ever79/bringup",
 		"source": "github"
