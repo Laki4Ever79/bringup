@@ -118,6 +118,16 @@ npm run ros -- out/<run> --nav       # the acceptance test, then one Nav2 goal (
 The goal is judged against the design: Nav2 reports it reached, the odometry ends within 5 cm, in time for the
 distance at the brief's speed; with the firmware in QEMU, the simulated robot itself must end within 8 cm of it.
 
+Measured on the Eurobot-style rover (its mock run, revision 15), 25 Nov 2026:
+
+| Check | Mock hardware | Firmware in QEMU driving MuJoCo |
+|---|---|---|
+| Nav2 reports the goal reached | yes | yes |
+| odometry's end vs the goal (0.76 m away) | 2.7 cm | 3.0 cm |
+| time to the goal (budget 22.6 s) | 3.7 s | 5.1 s |
+| the simulated robot's end vs the goal | (no simulation) | 4.2 cm |
+| odometry vs the simulation | (no simulation) | 1.2 cm |
+
 ### A Raspberry Pi 5, set up from the design
 
 ```bash

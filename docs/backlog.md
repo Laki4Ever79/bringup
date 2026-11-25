@@ -693,8 +693,13 @@ Estimate: 5–8 working days across the three sessions; starts after the weekly 
       odometry moves the axle's middle (9 mm from the simulated axle), the comparison and the URDF used the plate's
       centre. base_link now sits at the drive's pivot, and a check flags a URDF that doesn't.
 - [ ] Run `npm run ros -- <run> --port /dev/ttyACM0` on the bench S3 rover (needs the real robot with encoders).
-- [ ] Step 2: provisioning a Pi 5 (Ubuntu 24.04 + Jazzy + the package at boot) and a Nav2 config from the design;
-      demo: the Eurobot starter reaching a Nav2 goal in simulation.
+- [x] Step 2: provisioning a Pi 5 (Ubuntu 24.04 + Jazzy + the package at boot) and a Nav2 config from the design;
+      demo: the Eurobot starter reaching a Nav2 goal in simulation. Done 25 Nov (user, via lead-2: "proceed with ROS
+      step 2"): `npm run ros -- <run> --nav` and `--pi5 <dir>` (docs/ros.md). Eurobot (mock run rev 15), its firmware in
+      QEMU driving MuJoCo: Nav2 reached a goal 0.76 m away in 5.1 s; the simulated robot ended 4.2 cm from it, the
+      odometry 1.2 cm from the simulation. The Pi's user-data passes cloud-init 26.2's schema check; its first boot on a
+      real Pi 5 (and in a container: a ~1 GB install) is not yet run.
+- [ ] Step 2 on hardware: flash a Pi 5 with the generated user-data and time its first boot (estimate 20-40 min).
 - [ ] Step 3 (later): micro-ROS on the S3 (optional), URDF import, carrier boards, Gazebo (optional).
 
 ## Web UI cleanup (the user, 25 Nov 2026: "Add to backlog the webui cleanup. IT should also look really cool when developing a robot")
