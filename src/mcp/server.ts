@@ -1,3 +1,4 @@
+import { providerProblem } from "../inference/providers.ts"
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { readFile, realpath, stat } from "node:fs/promises"
@@ -39,7 +40,8 @@ const ROOT = fileURLToPath(new URL("../..", import.meta.url))
 export function paidRunRefusal(mock: boolean | undefined, realModels: boolean | undefined, env: Record<string, string | undefined>): string | null {
 	if (mock !== false) return null
 	if (realModels !== true) return "mock: false starts real models, which cost money or quota: pass realModels: true as well to confirm (the default, mock, is scripted and free)"
-	if (!(env.OPENAI_API_KEY || env.ANTHROPIC_API_KEY || env.BRINGUP_PROVIDER === "claude-code")) return "no model provider is configured: set OPENAI_API_KEY or ANTHROPIC_API_KEY in the server's environment, or BRINGUP_PROVIDER=claude-code to use this machine's Claude Code login"
+	const problem = providerProblem(env)
+	if (problem) return `${problem} (in the MCP server's environment)`
 	return null
 }
 

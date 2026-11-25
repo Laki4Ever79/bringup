@@ -1,12 +1,12 @@
 // `npm run doctor`: which backend each tool will use on this machine (src/tools/env.ts, the same detection a run
 // uses) and which optional settings are present. It names settings, never prints their values.
+import { providerProblem, resolveProvider } from "../inference/providers.ts"
 import { existsSync, readdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { firmwareSimBackend, KICAD_IMAGE, type Env } from "../tools/env.ts"
 import { VENDOR_PLATFORMS } from "./setup.ts"
 
-const MODEL_KEYS = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
 
 // What the other vendors need (docs/mcu.md), found on disk by vendorStatus: PlatformIO platforms and ST's pin data.
 export interface VendorStatus {
@@ -38,7 +38,8 @@ export function doctorReport(env: Env, vars: Record<string, string | undefined>,
 	const set = (name: string) => Boolean(vars[name]?.trim())
 	const row = (label: string, value: string) => `${label.padEnd(20)}${value}`
 	const tool = (path: string | null | undefined, missing = "missing: npm run setup") => (path ? "local" : missing)
-	const keys = MODEL_KEYS.filter(set)
+	const ai = resolveProvider(vars)
+	const aiProblem = providerProblem(vars)
 	return [
 		"Tools (what a run will use)",
 		row("tscircuit", tool(env.tsci)),
@@ -59,7 +60,7 @@ export function doctorReport(env: Env, vars: Record<string, string | undefined>,
 		row("firmware sim", `→ ${{ wokwi: "Wokwi", qemu: "QEMU", none: "none" }[firmwareSimBackend(env) ?? "none"]}`),
 		"",
 		"Settings (from the environment or .env; values are never shown)",
-		row("model key", keys.length ? `set (${keys.join(", ")})` : "not set: scripted mode only (--mock)"),
+		row("AI", ai && !aiProblem ? `${ai.label}${ai.keyVar && !ai.local ? ` (${ai.keyVar} set)` : ""}` : ai ? `${ai.label}: ${aiProblem}` : "not set: scripted mode only (--mock); BRINGUP_AI picks one (see docs/ai.md)"),
 		row("WOKWI_CLI_TOKEN", set("WOKWI_CLI_TOKEN") ? "set" : "not set (optional: Wokwi simulation)"),
 		row("BRINGUP_NTFY_TOPIC", set("BRINGUP_NTFY_TOPIC") ? "set" : "not set (optional: phone approvals)"),
 	].join("\n")

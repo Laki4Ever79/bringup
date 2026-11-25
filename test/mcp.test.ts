@@ -272,7 +272,7 @@ test("a real-model run needs realModels: true and a configured provider; mock st
 	const none = await connectWith({ launch: stub.launch, env: {} })
 	try {
 		assert.match((await none.call("start_design", { brief: "x", mock: false })).text, /pass realModels: true/)
-		assert.match((await none.call("start_design", { brief: "x", mock: false, realModels: true })).text, /no model provider is configured/)
+		assert.match((await none.call("start_design", { brief: "x", mock: false, realModels: true })).text, /no AI is configured/)
 		assert.match((await none.call("start_system", { system: "rover-pi", mock: false })).text, /pass realModels: true/)
 		assert.equal(stub.calls.length, 0, "nothing launched")
 	} finally {

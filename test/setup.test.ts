@@ -114,7 +114,7 @@ test("doctor names each tool's backend and which optional settings are set, neve
 	assert.match(text, /KiCad 10\s+Docker \(kicad\/kicad:10\.0\)/)
 	assert.match(text, /PlatformIO\s+missing: npm run setup/)
 	assert.match(text, /QEMU\s+missing \(robots: npm run setup -- --robotics\)/)
-	assert.match(text, /model key\s+set \(OPENAI_API_KEY\)/)
+	assert.match(text, /AI\s+OpenAI \(OPENAI_API_KEY set\)/)
 	assert.match(text, /WOKWI_CLI_TOKEN\s+not set/)
 	assert.match(text, /BRINGUP_NTFY_TOPIC\s+set/)
 	assert.ok(!text.includes("sk-very-secret-value") && !text.includes("bringup-secret-topic"))

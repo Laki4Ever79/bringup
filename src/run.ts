@@ -1,3 +1,4 @@
+import { resolveProvider } from "./inference/providers.ts"
 import { readBrief } from "./brief-file.ts"
 import { sweepStaleTemp } from "./tmp.ts"
 import { modelLimitOf } from "./inference/limit.ts"
@@ -108,7 +109,7 @@ export function changesMayStart(first: Settlement, reviewRound: number): boolean
 // the first rover run there, 15 Nov, hit 30 min with a board build in flight), plus one change timeout per scripted
 // change request. BRINGUP_TIMEOUT_MIN overrides it.
 export function runTimeoutMs(opts: Pick<RunOptions, "timeoutMs" | "changes" | "changeTimeoutMs">, env: Record<string, string | undefined> = process.env): number {
-	const base = Number(env.BRINGUP_TIMEOUT_MIN) > 0 ? Number(env.BRINGUP_TIMEOUT_MIN) * 60_000 : env.BRINGUP_PROVIDER === "claude-code" ? 60 * 60_000 : 30 * 60_000
+	const base = Number(env.BRINGUP_TIMEOUT_MIN) > 0 ? Number(env.BRINGUP_TIMEOUT_MIN) * 60_000 : resolveProvider(env)?.protocol === "claude-code" ? 60 * 60_000 : 30 * 60_000
 	return opts.timeoutMs ?? base + (opts.changes ?? []).length * (opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
 }
 

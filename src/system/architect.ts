@@ -1,3 +1,4 @@
+import { providerProblem } from "../inference/providers.ts"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { callModel, NoModelKey } from "../dashboard/ask.ts"
@@ -220,7 +221,7 @@ export async function proposePlan(
 ): Promise<ProposedPlan> {
 	if (deps.mock) return "sentence" in input ? scriptedPlan(input.sentence) : scriptedChange(input.plan, input.instruction)
 	const env = deps.env ?? process.env
-	if (!env.OPENAI_API_KEY && !env.ANTHROPIC_API_KEY) throw new NoModelKey()
+	if (providerProblem(env)) throw new NoModelKey()
 	const sentence = "sentence" in input ? input.sentence : input.plan.sentence
 	const ask =
 		"sentence" in input

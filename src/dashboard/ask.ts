@@ -1,5 +1,6 @@
 import "dotenv/config"
 import { modelFor } from "../inference/models.ts"
+import { baseURL, providerProblem, resolveProvider } from "../inference/providers.ts"
 import type { AgentRole } from "../contract/types.ts"
 import { changeLog } from "./changelog.js"
 import { anthropicUsage, usageRecord, type UsageRecord } from "../inference/usage.ts"
@@ -56,8 +57,8 @@ export function askPrompt(o: { question: string; events: Ev[]; from: Snapshot; t
 
 export class NoModelKey extends Error {
 	readonly code = "NO_KEY"
-	constructor() {
-		super("no model key on this machine: set OPENAI_API_KEY (or ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL) in .env")
+	constructor(detail?: string) {
+		super(detail ?? providerProblem() ?? "no AI is configured on this machine: set BRINGUP_AI and that provider's key in .env")
 	}
 }
 
@@ -71,17 +72,21 @@ export async function callModel(
 	onUsage?: (r: UsageRecord) => void,
 	opts: { role?: AgentRole; maxTokens?: number; json?: boolean; source?: string } = {},
 ): Promise<string> {
+	const provider = resolveProvider(env)
+	const problem = providerProblem(env)
+	if (!provider || problem) throw new NoModelKey(problem ?? undefined)
 	const model = modelFor(opts.role ?? "reviewer", false, env)
 	const source = opts.source ?? "ask"
-	const anthropic = model.startsWith("claude")
-	if (anthropic ? !env.ANTHROPIC_API_KEY : !env.OPENAI_API_KEY) throw new NoModelKey()
+	if (provider.protocol === "claude-code") throw new NoModelKey("one-off questions (the Ask box, the system architect) need an API provider: set BRINGUP_AI to one with a key, or a local model")
+	const anthropic = provider.protocol === "anthropic"
+	const key = provider.keyVar ? env[provider.keyVar]!.trim() : "local"
 	const signal = AbortSignal.timeout(90_000)
 	if (anthropic) {
-		const base = (env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(/\/$/, "")
+		const base = (baseURL(provider, env) ?? "https://api.anthropic.com").replace(/\/$/, "")
 		const res = await fetchImpl(`${base}/v1/messages`, {
 			method: "POST",
 			signal,
-			headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
+			headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
 			body: JSON.stringify({ model, max_tokens: opts.maxTokens ?? 800, system: p.system, messages: [{ role: "user", content: p.user }] }),
 		})
 		const body = (await res.json()) as { content?: { text?: string }[]; error?: { message?: string }; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
@@ -90,10 +95,13 @@ export async function callModel(
 		onUsage?.(a ? usageRecord(model, source, a.input, a.cached, a.output, a.cacheWrite) : usageRecord(model, source, null, null, null))
 		return (body.content ?? []).map((c) => c.text ?? "").join("").trim()
 	}
-	const res = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+	// Every other provider speaks OpenAI's chat completions: OpenAI itself, Gemini's OpenAI-compatible endpoint, and the
+	// OpenAI-compatible ones (OpenRouter, Mistral, Ollama, LM Studio, any server, Bringup AI).
+	const chatBase = provider.protocol === "openai-responses" ? "https://api.openai.com/v1" : provider.protocol === "gemini" ? "https://generativelanguage.googleapis.com/v1beta/openai" : baseURL(provider, env)!
+	const res = await fetchImpl(`${chatBase.replace(/\/$/, "")}/chat/completions`, {
 		method: "POST",
 		signal,
-		headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY}` },
+		headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
 		body: JSON.stringify({ model, messages: [{ role: "system", content: p.system }, { role: "user", content: p.user }], ...(opts.json ? { response_format: { type: "json_object" } } : {}) }),
 	})
 	const body = (await res.json()) as { choices?: { message?: { content?: string } }[]; error?: { message?: string }; usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } }

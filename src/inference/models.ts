@@ -1,4 +1,5 @@
-import { DefaultInferenceRunner, supportedModels, type InferenceRunnerConfig } from "@mozaik-ai/core"
+import { DefaultInferenceRunner, type InferenceRunnerConfig } from "@mozaik-ai/core"
+import { modelsFor, providerModel, resolveProvider } from "./providers.ts"
 import { SafeRunner } from "./safe-runner.ts"
 import type { AgentRole } from "../contract/types.ts"
 import { ScriptedRunner, type Script } from "./scripted-runner.ts"
@@ -8,25 +9,12 @@ import { EstimateRunner } from "./estimate.ts"
 import { TrimRunner } from "./trim.ts"
 import { AnthropicCacheRunner } from "./anthropic-cache.ts"
 
-const MODELS = {
-	// The event's Claude credit (build.jigjoy.ai/credits) serves Sonnet 4.6 and Haiku 4.5 through
-	// a gateway set by ANTHROPIC_API_KEY + ANTHROPIC_BASE_URL.
-	anthropic: { strong: "claude-sonnet-4-6", fast: "claude-haiku-4-5" },
-	openai: { strong: "gpt-5.4", fast: "gpt-5.4-mini" },
-}
-
-// The architect plans the whole design and the reviewer judges it against the brief, so both get the
-// strong model; the other roles use the fast one.
+// The architect plans the whole design and the reviewer judges it against the brief, so both get the strong model; the
+// other roles use the fast one. Which provider and models: providers.ts (BRINGUP_AI, any provider).
 export function modelFor(role: AgentRole, mock: boolean, env: Record<string, string | undefined> = process.env): string {
 	if (mock) return `mock-${role}`
-	// The Claude subscription this machine's Claude Code uses (claude-code-runner.ts): development runs at no API cost.
-	if (env.BRINGUP_PROVIDER === "claude-code") return env.BRINGUP_MODELS === "fast" || !(role === "architect" || role === "reviewer") ? CC_MODELS.fast : CC_MODELS.strong
-	// OpenAI by default; the event credit (Claude Sonnet/Haiku only) is opt-in or the fallback when it is the only key.
-	const provider = env.BRINGUP_PROVIDER === "openai" || env.BRINGUP_PROVIDER === "anthropic" ? env.BRINGUP_PROVIDER : env.OPENAI_API_KEY ? "openai" : env.ANTHROPIC_API_KEY ? "anthropic" : "openai"
-	// BRINGUP_MODELS=fast: every role on the fast model (about a third of a run's cost; for development runs under a
-	// spend cap, 15 Nov 2026). The default keeps the strong model for the architect and the reviewer.
-	if (env.BRINGUP_MODELS === "fast") return MODELS[provider].fast
-	return role === "architect" || role === "reviewer" ? MODELS[provider].strong : MODELS[provider].fast
+	if (resolveProvider(env)?.protocol === "claude-code") return env.BRINGUP_MODELS === "fast" || !(role === "architect" || role === "reviewer") ? CC_MODELS.fast : CC_MODELS.strong
+	return providerModel(role === "architect" || role === "reviewer", env)
 }
 
 // Mock runs swap in the scripted runner; real runs use Mozaik's default runner and built-in models.
@@ -46,7 +34,7 @@ export function inferenceConfig(
 	const noValidation = { validate: () => {} } as unknown as ConstructorParameters<typeof DefaultInferenceRunner>[1]
 	// The API path: Claude models through AnthropicCacheRunner (prompt caching, which Mozaik 4.1.0 doesn't send), the rest
 	// through Mozaik's own runner. TrimRunner asks it which models cache, so a trim never costs more than it saves.
-	const cache = process.env.BRINGUP_PROVIDER === "claude-code" ? null : new AnthropicCacheRunner(new DefaultInferenceRunner(supportedModels, noValidation))
+	const cache = resolveProvider()?.protocol === "claude-code" ? null : new AnthropicCacheRunner(new DefaultInferenceRunner(modelsFor(), noValidation))
 	const provider = cache ?? new ClaudeCodeRunner()
 	// Every call's tokens and price go to onUsage (usage.jsonl); inside SafeRunner, so a failed call records nothing.
 	return { runner: new SafeRunner(new TrimRunner(onUsage ? new UsageRunner(provider, onUsage, "agents") : provider, (m) => cache?.caches(m) ?? false), onFailure) }
