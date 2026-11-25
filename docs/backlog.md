@@ -599,6 +599,14 @@ Or we can offer sending them the full package with all elements, mechanical or 3
       step that can be automated (prerequisite checks with the exact fix, one command end to end, a quick-look mode that
       needs no toolchain), and keep the README's "Install & run" section to that one path, tested on each release.
 
+- [ ] **Setup for MCP users, as simple as possible** (the user, 25 Nov 2026, verbatim: "regarding the setup streamlining
+      you've suggested - that is very necessary and should be done as much as possible to simplify it"). Measured 25 Nov:
+      `npx bringup-mcp` 0.2.0 in an empty folder installs in 27 s and settles the logger in 45 s, but on a machine without
+      the toolchain every board, case and firmware is stubbed. Do (bringup-lead-3): a toolchain Docker image (tscircuit,
+      build123d, PlatformIO; KiCad stays kicad/kicad:10.0) that hardware "auto" uses when local tools are missing; then a
+      zero-prerequisite path for each OS (only Node and Docker needed), the first-run download stated up front, and a
+      fresh-machine test of the npx path on each release.
+
 ## Lessons from text-to-CAD tools (the user, 19 Nov 2026: "proceed with implementation")
 
 A read-only study (bringup-cad, 19 Nov) of text-to-cad (earthtojake, MIT, v0.11.13), cadsmith (JonFermin, MIT) and
