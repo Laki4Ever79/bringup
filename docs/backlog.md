@@ -698,8 +698,9 @@ Seen on the run page of the recorded "make it 2 cm narrower" rover (out/rover-na
 - [x] **Show the robot being developed, live.** Done (cad-ui): a chassis revision eases the robot from its old size to
       its new one at the start (world3d morph), captioned with what moved ("track 110 → 90 mm · plate 150×96 → 150×76 mm"),
       then the simulated drive replays on the course (walls, the path traced in orange, the result over it); each drive
-      rebuild replays it, and so does a button. Open: a ruler on the changed dimension (a caption today), and lighting
-      only the changed part rather than the whole robot.
+      rebuild replays it, and so does a button. A ruler on each changed dimension (track, wheelbase,
+      wheel, plate width and length) counts from the old value to the new one as the robot changes size and stays with
+      "was"; only the changed parts light (world3d robotChanges: chassis, wheels, motors, battery, sensor or board).
       Was: As agents work, the 3D robot changes in place: the part an agent is
       changing highlights, a changed dimension animates to its new value with a ruler, and the simulated drive replays
       after each rebuild. The ripple of a change request should read on the robot itself, not only in the agent grid.
