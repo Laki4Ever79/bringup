@@ -1,7 +1,7 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import { byMpn } from "./catalog.ts"
 import { defaultCheckCatalog } from "./checks.ts"
-import { TURN_CLEARANCE_MM, brakeMm, cruiseDuty, loadedSpeedMps, massAndCom, mounts, onWheelsShare, payloadMount, turnStopMm, drivenWheels, isSkid, SKID_TURN_SIM_SHARE, skidEffectiveTrackMm, skidTurnWheelMps } from "./model.ts"
+import { TURN_CLEARANCE_MM, brakeMm, drivenDecel, cruiseDuty, loadedSpeedMps, massAndCom, mounts, onWheelsShare, payloadMount, turnStopMm, drivenWheels, isSkid, SKID_TURN_SIM_SHARE, skidEffectiveTrackMm, skidTurnWheelMps } from "./model.ts"
 import { checkBoards, withAssembly } from "./assembly.ts"
 import { macroName, sensorDriver } from "../codegen/firmware.ts"
 
@@ -104,6 +104,10 @@ export function roverHeader(s: ContractSnapshot): string {
 		// narrow rover turned in place 188 mm from the side wall, straddling the course's step, walked ~170 mm and touched
 		// it, 22 Nov 2026; an encoder rover backs off by counts and didn't).
 		`#define ROVER_BACK_MS ${Math.round((TURN_CLEARANCE_MM / (speed * 1000)) * 1000)}`,
+		// Before a turn in place the motors stop long enough to brake from cruise (rover_enc.h restMs), so the robot
+		// pivots where turnStopMm placed it: wheels spun against each other don't brake the body, and the narrow rover
+		// slid 94 mm toward the side wall during its turn (22 Nov 2026).
+		`#define ROVER_REST_MS ${Math.ceil(STOP_MARGIN * (speed / drivenDecel(onWheelsShare(geom.drive, com[0]), mech.drive.maxAccelMps2)) * 1000 + sensor.updateMs)}`,
 		// An acceleration limit (mechanics.drive.maxAccelMps2): the duty moves at most this much per control tick, so the speed
 		// (the load line's at full duty from a full pack, at most) changes no faster: main.cpp ramps every output.
 		...(mech.drive.maxAccelMps2 ? [`#define ROVER_RAMP_PER_TICK ${(mech.drive.maxAccelMps2 * (sensor.updateMs / 1000) / Math.max(0.01, loadedSpeedMps(motor, pack, pack.fullV, 1, massG / 1000, r))).toFixed(4)}f`] : []),

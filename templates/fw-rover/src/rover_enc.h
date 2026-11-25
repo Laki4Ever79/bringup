@@ -24,11 +24,16 @@ struct RoverEncConfig {
 	float turnRad = 0;
 	// Without encoders: the back-off before a turn in place lasts this long at cruise duty (0: turn at once).
 	uint32_t backMs = 0;
+	// Before a turn in place the motors stop for this long, so the robot pivots from rest. Spinning the wheels against
+	// each other doesn't brake the body: the narrow rover turned at 0.13 m/s and slid 94 mm into the side wall during
+	// the turn (22 Nov 2026). 0: turn at once.
+	uint32_t restMs = 0;
 };
 
 struct RoverEncState {
 	bool turning = false;
 	bool backing = false;
+	bool resting = false;
 	uint32_t turnUntil = 0;
 	int lastMm = -1; // the last reading since the last turn; -1 = none
 	int32_t turnL = 0, turnR = 0;     // the encoders when the turn began

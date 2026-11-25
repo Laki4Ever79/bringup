@@ -28,15 +28,32 @@ static void startTurn(const RoverEncConfig &cfg, RoverEncState &st, uint32_t now
 	st.turnR = encR;
 }
 
+// Come to rest first (cfg.restMs), then turn: the turn's start is where the robot stands still, not where it decided.
+static RoverOut restThenTurn(const RoverEncConfig &cfg, RoverEncState &st, uint32_t nowMs, int32_t encL, int32_t encR, float headingRad) {
+	st.backing = false;
+	if (cfg.restMs > 0) {
+		st.resting = true;
+		st.turnUntil = nowMs + cfg.restMs;
+		return {0, 0};
+	}
+	startTurn(cfg, st, nowMs, encL, encR, headingRad);
+	return {cfg.cruise, -cfg.cruise};
+}
+
 RoverOut rover_enc_step(const RoverEncConfig &cfg, RoverEncState &st, int distanceMm, uint32_t nowMs, int32_t encL, int32_t encR, float headingRad) {
+	if (st.resting) {
+		if ((int32_t)(nowMs - st.turnUntil) < 0) return {0, 0};
+		st.resting = false;
+		startTurn(cfg, st, nowMs, encL, encR, headingRad);
+		return {cfg.cruise, -cfg.cruise};
+	}
 	if (st.backing) {
 		// Back off until each wheel has run backCounts back on average (the turn time as a fail-safe), then turn.
 		const bool timeLeft = (int32_t)(nowMs - st.turnUntil) < 0;
 		// Without encoders the back-off is timed (backMs, turnUntil set to its end).
 		const bool more = cfg.backCounts > 0 ? (iabs(encL - st.turnL) + iabs(encR - st.turnR)) / 2 < cfg.backCounts : true;
 		if (timeLeft && more) return {-cfg.cruise, -cfg.cruise};
-		startTurn(cfg, st, nowMs, encL, encR, headingRad);
-		return {cfg.cruise, -cfg.cruise};
+		return restThenTurn(cfg, st, nowMs, encL, encR, headingRad);
 	}
 	if (st.turning) {
 		const bool timeLeft = (int32_t)(nowMs - st.turnUntil) < 0;
@@ -63,8 +80,7 @@ RoverOut rover_enc_step(const RoverEncConfig &cfg, RoverEncState &st, int distan
 			st.turnR = encR;
 			return {-cfg.cruise, -cfg.cruise};
 		}
-		startTurn(cfg, st, nowMs, encL, encR, headingRad);
-		return {cfg.cruise, -cfg.cruise};
+		return restThenTurn(cfg, st, nowMs, encL, encR, headingRad);
 	}
 	st.lastMm = distanceMm;
 	if (distanceMm < cfg.slowMm) {

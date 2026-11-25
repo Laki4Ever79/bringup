@@ -19,7 +19,7 @@ With spec "target" ({xMm, yMm, tolMm}: the firmware's go-to build, ROVER_GOTO_X_
 given from where its axle's middle starts (x ahead, y to its left). The segments are then: no wall contact, the
 driver's peak current, reached the point (the axle's middle within tolMm of it, by the physics, not the odometry) and
 came to rest there. Results: drive.json and
-trajectory.json (10 Hz rows: time s, x m, y m, yaw rad, left duty, right duty, height change mm) in out-dir.
+trajectory.json (10 Hz rows: time s, x m, y m, yaw rad, left duty, right duty, height change mm, the axle's middle x m, y m) in out-dir.
 """
 
 import json
@@ -222,9 +222,10 @@ def run(spec, port, out_dir, course_s=25.0, firmware_wait_s=60.0, tick_wait_s=10
                     axle0 = (float(ax[0]), float(ax[1]), yaw)
                 axle_last = (float(ax[0]), float(ax[1]))
                 rest_speed = abs(speed)
+            axm = (data.xpos[model.jnt_bodyid[jl.id]] + data.xpos[model.jnt_bodyid[jr.id]]) / 2
             if data.time - last_sample >= 0.1:
                 last_sample = data.time
-                trajectory.append([round(data.time, 3), round(float(pos[0]), 4), round(float(pos[1]), 4), round(yaw, 4), duty[0], duty[1], round(float(pos[2] - start_z) * 1000, 1)])
+                trajectory.append([round(data.time, 3), round(float(pos[0]), 4), round(float(pos[1]), 4), round(yaw, 4), duty[0], duty[1], round(float(pos[2] - start_z) * 1000, 1), round(float(axm[0]), 4), round(float(axm[1]), 4)])
             # The distance sensor: a ray along the rover's heading from its mount, up to its range.
             origin = data.site_xpos[tof].copy()
             direction = np.array([heading[0], heading[1], 0.0])

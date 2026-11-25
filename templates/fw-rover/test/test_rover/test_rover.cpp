@@ -91,6 +91,23 @@ void test_with_encoders_the_straight_steers_back_toward_the_slower_wheel(void) {
 	TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.72f, o.right);
 }
 
+// With restMs: the motors stop that long before the turn in place, after a back-off too, so it pivots from rest.
+void test_it_comes_to_rest_before_turning_in_place(void) {
+	static const RoverEncConfig REST = {200, 500, 0.6f, 600, 300, 0.001f, 100, 0, 0, 150};
+	RoverEncState st;
+	RoverOut o = rover_enc_step(REST, st, 150, 0, 0, 0);  // a wall: back off first
+	TEST_ASSERT_TRUE(o.left < 0 && o.right < 0);
+	o = rover_enc_step(REST, st, -1, 100, -100, -100);  // backed off: rest, not turn
+	TEST_ASSERT_EQUAL_FLOAT(0.0f, o.left);
+	TEST_ASSERT_EQUAL_FLOAT(0.0f, o.right);
+	o = rover_enc_step(REST, st, -1, 249, -100, -100);  // still resting
+	TEST_ASSERT_EQUAL_FLOAT(0.0f, o.left);
+	o = rover_enc_step(REST, st, -1, 250, -100, -100);  // rested: the turn begins, its counts from here
+	TEST_ASSERT_TRUE(o.left > 0 && o.right < 0);
+	o = rover_enc_step(REST, st, -1, 350, 200, -400);  // 300 counts each: done
+	TEST_ASSERT_TRUE(o.left > 0 && o.right > 0);
+}
+
 // With backCounts: it first backs straight off that far, then turns.
 void test_with_encoders_it_backs_off_before_the_turn(void) {
 	static const RoverEncConfig BACK = {200, 500, 0.6f, 600, 300, 0.001f, 100};
@@ -214,6 +231,7 @@ int main(int, char **) {
 	RUN_TEST(test_with_encoders_a_stalled_turn_still_ends_on_the_time_limit);
 	RUN_TEST(test_with_encoders_the_straight_steers_back_toward_the_slower_wheel);
 	RUN_TEST(test_with_encoders_it_backs_off_before_the_turn);
+	RUN_TEST(test_it_comes_to_rest_before_turning_in_place);
 	RUN_TEST(test_quadrature_counts_four_per_cycle_each_way);
 	RUN_TEST(test_with_a_gyro_the_turn_ends_on_the_heading);
 	RUN_TEST(test_without_a_heading_the_turn_ends_on_the_counts);

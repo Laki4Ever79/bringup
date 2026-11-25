@@ -95,12 +95,13 @@ is a change to the firmware toolchain, not just the code.
 - [ ] **Encoder-only heading under-reads turns in place** (20 Nov, lead-2: "it's the encoder-only fallback's real
       accuracy on scrubbing skid turns"): about 17 % on run 20b's geometry (0.679 rad counted for 0.816 turned). Robots
       with an IMU now take the turn from the gyro (rover_odo_step); a robot without one keeps this error.
-- [ ] **A narrow rover's turn in place walks into the side wall** (22 Nov, bringup-system): the scripted rover after
-      "make it 2 cm narrower" (track 90 mm, plate 76 mm, 80 mm wheels, caster 90 mm behind the axle) stops 188 mm from
-      the right wall as designed, but in its 135 deg turn in place the axle walks ~170 mm toward it instead of pivoting,
-      and a corner touches the wall at 17.48 s (evidence: out/rover-narrower-20261122-212038). The turn-clearance check
-      assumes a pivot about the axle; the cause (the caster's drag on a track this narrow?) is not proven yet. Next: the
-      swept path in the drive's own figures, and a check or a stop distance that covers the walk.
+- [x] **A narrow rover's turn in place walks into the side wall** (22 Nov, bringup-system; fixed 25 Nov): the firmware
+      started the spin while the robot still rolled (0.13 m/s forward, or ~0.28 m/s backward after the back-off), and
+      wheels spun against each other don't brake the body, so the axle slid during the turn (94 mm toward the wall at
+      17.48 s). Now it stops for ROVER_REST_MS (braking from cruise on the model's deceleration, x1.5, plus one sensor
+      period: 165 ms here) before every turn in place. Axle slide per turn, same robot and firmware otherwise: 77-87 mm
+      -> 15-20 mm; without the back-off the old failing build now passes too. Measured on the axle's middle, now column
+      8-9 of trajectory.json.
 - [ ] **Timed-turn swept-path check** (20 Nov, bringup-cad): a robot turning on time alone (no gyro, no encoders) can
       stop its turn short (rover-pi's timed turn: ~72 deg of 135) and drive on toward the wall; a static check that the
       body's path after the turn keeps TURN_CLEARANCE from the wall. Every wheeled robot now gets an IMU, so only a robot
