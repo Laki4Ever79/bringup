@@ -88,3 +88,15 @@ test("an OpenAI response's own usage block keeps Mozaik's cached count (it is no
 	await new UsageRunner(inner, (r) => seen.push(r), "agents").run(input)
 	assert.deepEqual([seen[0].inputTokens, seen[0].cachedTokens, seen[0].cacheWriteTokens], [1796, 1664, 0])
 })
+
+test("costUsd prices the 5.5 models the subscription serves, Haiku 5.5 by its long-prompt tier", async () => {
+	const { costUsd } = await import("../src/inference/usage.ts")
+	// Sonnet 5.5: 1M uncached in at $2 + 1M out at $10
+	assert.equal(costUsd("claude-sonnet-5-5", 1_000_000, 0, 1_000_000), 12)
+	// Haiku 5.5 under 100K: 50K in at $0.10, 10K cached at $0.01, 1K out at $0.50
+	assert.ok(Math.abs(costUsd("claude-haiku-5-5", 60_000, 10_000, 1_000)! - (50_000 * 0.1 + 10_000 * 0.01 + 1_000 * 0.5) / 1e6) < 1e-12)
+	// over 100K: the whole request at $0.50 in / $2.50 out
+	assert.ok(Math.abs(costUsd("claude-haiku-5-5", 200_000, 0, 1_000)! - (200_000 * 0.5 + 1_000 * 2.5) / 1e6) < 1e-12)
+	// a dated id takes its family's price
+	assert.equal(costUsd("claude-haiku-4-5-20251001", 1_000_000, 0, 0), 1)
+})

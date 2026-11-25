@@ -36,8 +36,10 @@ export function participantOf(contextId: string | undefined): string | undefined
 
 // `input` is all input tokens: uncached, plus `cached` read from the cache, plus `cacheWrite` written to it.
 export function costUsd(model: string, input: number, cached: number, output: number, cacheWrite = 0): number | null {
-	const p = PRICES[model]
-	if (!p) return null
+	// A dated id (claude-haiku-4-5-20251001) takes its family's price.
+	const entry = PRICES[model] ?? Object.entries(PRICES).find(([k]) => model.startsWith(`${k}-`))?.[1]
+	if (!entry) return null
+	const p = entry.over && input > entry.over.inputTokens ? entry.over.price : entry
 	return (Math.max(0, input - cached - cacheWrite) * p.inputPerM + cached * p.cachedInputPerM + cacheWrite * (p.cacheWritePerM ?? p.inputPerM) + output * p.outputPerM) / 1_000_000
 }
 
