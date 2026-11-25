@@ -57,7 +57,7 @@ interface TraceLine {
 
 const RUN_ID = /^[\w-]+$/
 const SYSTEM_NAME = /^[\w-]+$/
-const BOARD = z.string().optional().describe("For a system run: the board (default main; design_status lists them).")
+const BOARD = z.string().optional().describe("For a system run: the board (default main when it has one; design_status lists them).")
 
 // A system run keeps each board's run under boards/<name>; a single design is the run folder itself.
 function boardDir(dir: string, runId: string, board: string | undefined): { dir: string; system: boolean } | { error: string } {
@@ -65,8 +65,12 @@ function boardDir(dir: string, runId: string, board: string | undefined): { dir:
 	if (board !== undefined && !SYSTEM_NAME.test(board)) return { error: `invalid board ${JSON.stringify(board)}` }
 	if (board !== undefined && !system) return { error: `run ${runId} is a single design: leave board out` }
 	if (!system) return { dir, system }
-	const sub = join(dir, "boards", board ?? "main")
-	if (!existsSync(sub)) return { error: `run ${runId} has no board ${board ?? "main"} yet` }
+	// A system's boards carry their own names (logger, beacon): "main" is only the default when there is one.
+	const names = readdirSync(join(dir, "boards")).filter((n) => SYSTEM_NAME.test(n)).sort()
+	const pick = board ?? (names.includes("main") ? "main" : names.length === 1 ? names[0] : undefined)
+	if (pick === undefined) return { error: `run ${runId} is a system: pass board, one of ${names.join(", ") || "(none yet)"}` }
+	const sub = join(dir, "boards", pick)
+	if (!existsSync(sub)) return { error: `run ${runId} has no board ${pick} yet${names.length ? ` (it has ${names.join(", ")})` : ""}` }
 	return { dir: sub, system }
 }
 export const SERVER_VERSION = (() => {
@@ -133,6 +137,7 @@ function exitState(code: number, stderr: string): RunState {
 export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	const runs = new Map<string, RunState>()
 	const kills = new Map<string, () => void>()
+	const stays = new Set<string>()
 	const root = deps.root ?? ROOT
 	const server = new McpServer({ name: "bringup", version: SERVER_VERSION })
 	async function hardwareFlags(hardware: "auto" | "build" | "stub" | undefined): Promise<{ flags: string[]; said: string }> {
@@ -185,6 +190,7 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			const briefPath = join(outDir, "brief.md")
 			writeFileSync(briefPath, brief.endsWith("\n") ? brief : brief + "\n")
 			runs.set(runId, { status: "running" })
+			if (stay) stays.add(runId)
 			// Not awaited: the run goes on in its own process while the client polls.
 			const hw = await hardwareFlags(hardware)
 			const extraArgs = [...(stay ? ["--stay"] : []), ...hw.flags]
@@ -202,24 +208,30 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 		async ({ runId, board }) => {
 			const r = await runDir(runId)
 			if ("error" in r) return fail(r.error)
-			const b = boardDir(r.dir, runId, board)
+			const system = existsSync(join(r.dir, "boards"))
+			const b = system && board === undefined ? { dir: r.dir, system } : boardDir(r.dir, runId, board)
 			if ("error" in b) return fail(b.error)
 			const state = runs.get(runId)
 			const failed = state?.status === "failed" ? { error: state.error } : {}
 			const one = async (dir: string) => {
 				const { counts, revision, violations, settled } = summarise(await readTrace(dir))
 				// For runs this server did not start, the trace's design.settled is all there is to go on.
-				return { status: settled ? (settled.settled ? "settled" : "unsettled") : "unknown", revision, violations, counts }
+				return { status: settled ? (settled.settled ? "settled" : "unsettled") : "unknown", revision, violations, counts, settledAt: settled?.revision }
 			}
+			// A run kept up for changes (stay) is still running after it settles: report the settle of its latest revision,
+			// and that it stays up (25 Nov 2026: an npx probe saw "running" for 8 minutes after the logger settled).
+			const live = (s: { status: string; revision: number; settledAt?: number }) => stays.has(runId) && state?.status === "running" && s.settledAt !== undefined && s.settledAt >= s.revision ? { status: s.status, staying: true } : { status: state?.status ?? s.status }
 			// A whole system: one block per board it has so far.
 			if (b.system && board === undefined) {
 				const names = readdirSync(join(r.dir, "boards")).filter((n) => SYSTEM_NAME.test(n)).sort()
 				const boards = await Promise.all(names.map(async (n) => ({ board: n, ...(await one(join(r.dir, "boards", n))) })))
 				const traced = boards.length && boards.every((x) => x.status === "settled") ? "settled" : boards.some((x) => x.status === "unsettled") ? "unsettled" : "unknown"
-				return ok({ runId, status: state?.status ?? traced, boards, ...failed })
+				const allSettled = boards.length > 0 && boards.every((x) => x.settledAt !== undefined && x.settledAt >= x.revision)
+				const sys = stays.has(runId) && state?.status === "running" && allSettled ? { status: traced, staying: true } : { status: state?.status ?? traced }
+				return ok({ runId, ...sys, boards: boards.map(({ settledAt: _s, ...x }) => x), ...failed })
 			}
-			const s = await one(b.dir)
-			return ok({ runId, ...(board ? { board } : {}), ...s, status: state?.status ?? s.status, ...failed })
+			const { settledAt: _s, ...s } = await one(b.dir)
+			return ok({ runId, ...(board ? { board } : {}), ...s, ...live({ ...s, settledAt: _s }), ...failed })
 		},
 	)
 
@@ -362,6 +374,7 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			mkdirSync(outDir, { recursive: true })
 			const hw = await hardwareFlags(hardware)
 			runs.set(runId, { status: "running" })
+			if (stay) stays.add(runId)
 			track(runId, deps.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, ...(mock === false ? [] : ["--mock"]), ...(stay ? ["--stay"] : []), ...hw.flags] }))
 			return ok({ runId, outDir, mock: mock ?? true, stay: Boolean(stay), hardware: hw.said })
 		},

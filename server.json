@@ -6,12 +6,12 @@
 		"url": "https://github.com/Laki4Ever79/bringup",
 		"source": "github"
 	},
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"packages": [
 		{
 			"registryType": "npm",
 			"identifier": "bringup-mcp",
-			"version": "0.2.0",
+			"version": "0.2.1",
 			"transport": {
 				"type": "stdio"
 			}

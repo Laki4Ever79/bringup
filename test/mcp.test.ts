@@ -459,3 +459,45 @@ test("server.json passes the MCP registry's limits and matches package.json", ()
 	assert.equal(server.version, pkg.version)
 	assert.ok(server.packages.every((p: any) => p.identifier !== pkg.name || p.version === pkg.version))
 })
+
+test("a run kept up with stay reports settled (staying) once its latest revision settles", async () => {
+	const launch: Launch = (args) => {
+		writeFileSync(join(args.outDir, "trace.jsonl"), trace.map((l) => JSON.stringify(l) + "\n").join(""))
+		return { done: new Promise(() => {}), kill: () => {} }
+	}
+	const mcp = await connect(launch)
+	try {
+		const { runId } = (await mcp.call("start_design", { brief: "x", stay: true })).json()
+		const s = (await mcp.call("design_status", { runId })).json()
+		assert.equal(s.status, "settled")
+		assert.equal(s.staying, true)
+		assert.equal(s.settledAt, undefined)
+		// A change moves the contract past the settle: running again until the new revision settles.
+		const more = { seq: 5, at: "2026-10-30T12:00:05.000Z", type: "contract.changed", producerId: "architect", payload: { field: "outline", version: 2, revision: 5, by: "engineer" } }
+		writeFileSync(join(mcp.outRoot, runId, "trace.jsonl"), [...trace, more].map((l) => JSON.stringify(l) + "\n").join(""))
+		assert.equal((await mcp.call("design_status", { runId })).json().status, "running")
+		// Without stay, a live process stays "running".
+		const plain = (await mcp.call("start_design", { brief: "y" })).json()
+		assert.equal((await mcp.call("design_status", { runId: plain.runId })).json().status, "running")
+	} finally {
+		await mcp.close()
+	}
+})
+
+test("a system with no board named main: status lists its boards and the other tools name them", async () => {
+	const mcp = await connect(stubRun().launch)
+	try {
+		const runDir = join(mcp.outRoot, "sys-run")
+		for (const name of ["beacon", "logger"]) {
+			mkdirSync(join(runDir, "boards", name), { recursive: true })
+			writeFileSync(join(runDir, "boards", name, "trace.jsonl"), trace.map((l) => JSON.stringify(l) + "\n").join(""))
+		}
+		const all = (await mcp.call("design_status", { runId: "sys-run" })).json()
+		assert.deepEqual(all.boards.map((b: any) => b.board), ["beacon", "logger"])
+		assert.equal(all.status, "settled")
+		assert.match((await mcp.call("read_contract", { runId: "sys-run" })).text, /is a system: pass board, one of beacon, logger/)
+		assert.equal((await mcp.call("design_status", { runId: "sys-run", board: "logger" })).json().revision, 4)
+	} finally {
+		await mcp.close()
+	}
+})
