@@ -689,10 +689,15 @@ Estimate: 5–8 working days across the three sessions; starts after the weekly 
 Seen on the run page of the recorded "make it 2 cm narrower" rover (out/rover-narrower-20261122-212038), 1440x900:
 - [x] **The robot is not the hero on a robot run.** Done (cad-ui): a Robot tab, first and open by default on a robot run,
       draws the robot with world3d.js on a dark stage (key, fill and rim light, a 10 mm floor grid, green board, orange
-      hub caps); the PCB is one tab away. Still open: the drive simulation playing in it (next item). The PCB fills the main panel; the robot is a small grey render in
+      hub caps); the PCB is one tab away. The drive simulation plays in it (next item). The PCB fills the main panel; the robot is a small grey render in
       the corner panel "07 Chassis", cut off at the right edge. A robot run should open on the robot: lit 3D, framed to
       fit, wheels and parts in colour, the drive simulation playing in it, the board one click away.
-- [ ] **Show the robot being developed, live.** As agents work, the 3D robot changes in place: the part an agent is
+- [x] **Show the robot being developed, live.** Done (cad-ui): a chassis revision eases the robot from its old size to
+      its new one at the start (world3d morph), captioned with what moved ("track 110 → 90 mm · plate 150×96 → 150×76 mm"),
+      then the simulated drive replays on the course (walls, the path traced in orange, the result over it); each drive
+      rebuild replays it, and so does a button. Open: a ruler on the changed dimension (a caption today), and lighting
+      only the changed part rather than the whole robot.
+      Was: As agents work, the 3D robot changes in place: the part an agent is
       changing highlights, a changed dimension animates to its new value with a ruler, and the simulated drive replays
       after each rebuild. The ripple of a change request should read on the robot itself, not only in the agent grid.
 - [x] **Overlapping labels on the PCB view:** Done (cad-ui): pcb-view.js placeLabels: centre or above, else below,

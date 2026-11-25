@@ -21,6 +21,10 @@ export const HAND: Record<string, string[]> = {
 	"templates/fw/": ["firmware.int", "mcu-firmware.int", "mcu-firmware-vendors.int", "firmware-codegen"],
 	"templates/wokwi/": ["wokwi", "wokwi.int"],
 	"src/dashboard/": ["dashboard", "system-page"],
+	// The run page reaches the robot view (world3d.js, ses.js) at run time, not by import.
+	"src/dashboard/page.html": ["robot-view.browser", "dashboard-ui-cleanup"],
+	"src/dashboard/world3d.js": ["robot-view.browser"],
+	"src/dashboard/ses.js": ["dashboard-ui-cleanup", "robot-view.browser"],
 	"examples/": ["starters", "examples"],
 	// A bought compute board is read from its module record at run time (src/system/bought.ts).
 	"catalog/modules/": ["modules", "system-bought", "compute-checks", "carrier", "system-facts", "compute-view.browser"],
