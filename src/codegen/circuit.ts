@@ -680,6 +680,20 @@ function xt60Footprint(): string {
 	const outline = [[-4.4, -8.2], [4.4, -8.2], [4.4, 8.2], [-4.4, 8.2], [-4.4, -8.2]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
 	return `{<footprint>${[...pins, ...pegs].join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
 }
+// The 24 V brick input (the arm, 25 Nov 2026): XunPu DC-091-A250, rated 24 V 8 A, pads from JLCPCB's own footprint
+// (catalog/footprints/dc091a250.json). Pin 1 the centre pin, 2 the switch, 3-6 the sleeve's four shield legs.
+export const DC091_FOOTPRINT = "dc091a250"
+export function dc091Footprint(): string {
+	type Pad = { pin: number; shape: string; x: number; y: number; outer?: number; hole?: number; outerW?: number; outerH?: number; holeW?: number; holeH?: number }
+	const f = JSON.parse(readFileSync(new URL("../../catalog/footprints/dc091a250.json", import.meta.url), "utf8")) as { pads: Pad[]; holes: { x: number; y: number; d: number }[]; body: { w: number; h: number } }
+	const pads = f.pads.map((p) => p.shape === "circle"
+		? `<platedhole portHints={["pin${p.pin}"]} pcbX="${p.x}mm" pcbY="${p.y}mm" holeDiameter="${p.hole}mm" outerDiameter="${p.outer}mm" shape="circle" />`
+		: `<platedhole portHints={["pin${p.pin}"]} pcbX="${p.x}mm" pcbY="${p.y}mm" holeWidth="${p.holeW}mm" holeHeight="${p.holeH}mm" outerWidth="${p.outerW}mm" outerHeight="${p.outerH}mm" shape="pill" />`)
+	const holes = f.holes.map((h) => `<hole pcbX="${h.x}mm" pcbY="${h.y}mm" diameter="${h.d}mm" />`)
+	const [w, h] = [f.body.w / 2, f.body.h / 2]
+	const outline = [[-w, -h], [w, -h], [w, h], [-w, h], [-w, -h]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
+	return `{<footprint>${[...pads, ...holes].join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
+}
 export const SO8E_FOOTPRINT = "so8e_silergy"
 function so8eFootprint(): string {
 	const pads: string[] = []
@@ -759,7 +773,7 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// A 3-pin 2.54 mm header (a servo's plug).
 	pinrow3: [8.6, 3.6],
 	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
-	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4], [SY8368_FOOTPRINT]: [3.9, 3.6], [XT60_FOOTPRINT]: [9.4, 17],
+	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4], [SY8368_FOOTPRINT]: [3.9, 3.6], [XT60_FOOTPRINT]: [9.4, 17], [DC091_FOOTPRINT]: [13.6, 10.6],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
@@ -2536,7 +2550,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 			if (b && opts.usbKeepouts) lines.push(...usbKeepouts(b.x, b.y, b.rotation))
 			continue
 		}
-		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : footprint === SO8E_FOOTPRINT ? so8eFootprint() : footprint === XT60_FOOTPRINT ? xt60Footprint() : footprint === SY8368_FOOTPRINT ? sy8368Footprint() : q(footprint)
+		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : footprint === SO8E_FOOTPRINT ? so8eFootprint() : footprint === XT60_FOOTPRINT ? xt60Footprint() : footprint === SY8368_FOOTPRINT ? sy8368Footprint() : footprint === DC091_FOOTPRINT ? dc091Footprint() : q(footprint)
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
 	}
 

@@ -1,0 +1,80 @@
+{
+ "_about": "XunPu DC-091-A250 DC power jack (LCSC C720588), right angle, through hole, 5.5 x 2.5 mm plug. Millimetres, top view, origin at the centre between the centre-pin hole and the locating hole, y up. Source: JLCPCB/LCSC EasyEDA footprint DC-IN-TH_DC-091-A250 for C720588 (easyeda.com/api/products/C720588/components, 25 Nov 2026; 10 mil units, y flipped to up). Pin numbers as the maker's schematic (datasheet.lcsc.com d518c1ac5815932daf091d84664d5ffa.pdf, XunPu drawing DC-091-A250 rev A): 3 the centre pin (round hole, 1.50 mm), 6 the sleeve on four shield legs, 4 the switch spring. Here pin1 = 3 (VIN), pin2 = 4 (SW), pins 3-6 = the four 6 legs (GND, GND_2..GND_4).",
+ "pads": [
+  {
+   "pin": 1,
+   "maker": "3",
+   "shape": "circle",
+   "x": 4.825,
+   "y": 0,
+   "outer": 2.5,
+   "hole": 1.5
+  },
+  {
+   "pin": 2,
+   "maker": "4",
+   "shape": "pill",
+   "x": -1.425,
+   "y": 0,
+   "outerW": 1.6,
+   "outerH": 3.0,
+   "holeW": 0.914,
+   "holeH": 2.0
+  },
+  {
+   "pin": 3,
+   "maker": "6",
+   "shape": "pill",
+   "x": -1.825,
+   "y": 4.725,
+   "outerW": 3.2,
+   "outerH": 1.6,
+   "holeW": 2.4,
+   "holeH": 0.914
+  },
+  {
+   "pin": 4,
+   "maker": "6",
+   "shape": "pill",
+   "x": 2.775,
+   "y": 4.725,
+   "outerW": 3.2,
+   "outerH": 1.6,
+   "holeW": 2.4,
+   "holeH": 0.914
+  },
+  {
+   "pin": 5,
+   "maker": "6",
+   "shape": "pill",
+   "x": -1.825,
+   "y": -4.725,
+   "outerW": 3.2,
+   "outerH": 1.6,
+   "holeW": 2.4,
+   "holeH": 0.914
+  },
+  {
+   "pin": 6,
+   "maker": "6",
+   "shape": "pill",
+   "x": 2.775,
+   "y": -4.725,
+   "outerW": 3.2,
+   "outerH": 1.6,
+   "holeW": 2.4,
+   "holeH": 0.914
+  }
+ ],
+ "holes": [
+  {
+   "x": -4.825,
+   "y": 0,
+   "d": 1.6
+  }
+ ],
+ "body": {
+  "w": 13.05,
+  "h": 10.0
+ }
+}

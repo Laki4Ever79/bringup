@@ -421,7 +421,7 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		...parts.filter((p) => p.role === "battery").map((p): [Part, number, string] => [p, packNeedA, "the pack's peak"]),
 		...parts.filter((p) => p.role === "estop").map((p): [Part, number, string] => [p, n * full.stallA, `${n === 2 ? "both" : `all ${n}`} motors at stall`]),
 		...parts.filter((p) => isMotorPlug(p)).map((p): [Part, number, string] => [p, full.stallA, "one motor at stall"]),
-		...parts.filter((p) => p.role === "servo").map((p): [Part, number, string] => [p, SERVO_STALL_A, `one servo at stall (${SERVO_STALL_A} A at 5 V: an MG996R-class servo, 2.5 A at 6 V scaled)`]),
+		...parts.filter((p) => p.role === "servo").map((p): [Part, number, string] => [p, SERVO_STALL_A, `one servo at stall (${SERVO_STALL_A} A at 5 V: an MG996R-class servo, 2.5 A at 6 V scaled); the servo's own 2.54 mm lead housing (about 3 A, an estimate) is the real limit, not this header`]),
 	]
 	for (const [p, peakA, what] of conns) {
 		const r = rated(p)
