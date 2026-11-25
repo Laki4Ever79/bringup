@@ -94,6 +94,40 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true
 The serial device needs the user in the `dialout` group. `stream:=true` serves the topics to Bringup's dashboard over
 rosbridge (ws://127.0.0.1:9090).
 
+## Navigation (Nav2) and the robot's computer (step 2)
+
+The package carries Nav2's settings, made from the design (`src/ros/nav2.ts`):
+
+- the footprint: the plate and the wheels seen from above, from the pivot (a narrow plate's wheels widen it);
+- the controller (Regulated Pure Pursuit, turning in place to the path first): the brief's speed and the drive's
+  acceleration, the same figures the diff-drive controller holds the robot to;
+- both costmaps read the robot's own range sensor; a competition robot gets its table as the map (Eurobot 2026: the
+  3000 × 2000 mm table and its 22 mm walls, rules D.2 p. 7, from `catalog/rules/eurobot-2026.json`), a robot without
+  one plans in a 6 m window around itself;
+- no lidar: map → odom is fixed at the start pose (launch arguments `start_x`, `start_y`, `start_yaw`), so the robot's
+  place on the table is its odometry (encoders plus the gyro) from there, drift included.
+
+```bash
+ros2 launch rover_bringup bringup.launch.py hardware:=bringup port:=/dev/bringup nav:=true
+npm run ros -- out/<run> --nav       # the acceptance test, then one Nav2 goal (0.7 m ahead, 0.3 m left)
+```
+
+The goal is judged against the design: Nav2 reports it reached, the odometry ends within 5 cm, in time for the
+distance at the brief's speed; with the firmware in QEMU, the simulated robot itself must end within 8 cm of it.
+
+### A Raspberry Pi 5, set up from the design
+
+```bash
+npm run ros -- out/<run> --pi5 out/<run>/ros/pi5 --ssh-key ~/.ssh/id_ed25519.pub [--hostname name] [--wifi-ssid lab] [--no-nav]
+```
+
+writes a cloud-init `user-data` (and `network-config` with `--wifi-ssid`, its password from `BRINGUP_WIFI_PASSWORD`)
+for the system-boot partition of an Ubuntu Server 24.04 card. The first boot installs ROS 2 Jazzy (through ROS's own
+`ros2-apt-source` package) and the apt packages the workspace's `package.xml` files name, builds the workspace, and
+enables `bringup-robot.service`, which starts the robot (and Nav2) at every boot. A udev rule names the board's serial
+port `/dev/bringup` from its USB id (the ESP32-S3's own USB: 303a:1001; a CP2102 or CH340 bridge's when the board has
+one). The first boot's time on a Pi 5 (~20–40 min) is an ESTIMATE, not measured.
+
 ## Estimates and limits
 
 - `max_wheel_rad_s` is the motor model's loaded speed (80 % of no-load at the pack's nominal voltage). Without
@@ -118,4 +152,4 @@ Measured on the Eurobot-style rover (encoders and IMU), its firmware in QEMU dri
   flag a URDF whose wheels aren't at the pivot.
 - The IMU's covariances come from the simulated gyro's noise and bias (`spec.imu`), which are estimates, not a
   datasheet.
-- Not yet: Nav2 configuration, provisioning the robot's computer, micro-ROS on the microcontroller.
+- Not yet: micro-ROS on the microcontroller, a localizer (lidar or beacons) to correct the odometry's drift.
