@@ -91,6 +91,8 @@ function set(lanes, key, status, text, at, result = RESULT.has(status), detail) 
 }
 
 const firstLine = (s) => String(s ?? "").split("\n")[0]
+// The first open violation's own message, in full (the tile wraps it), and how many more there are.
+const violationText = (v) => `${String(v[0].message ?? v[0].kind)}${v.length > 1 ? ` (and ${v.length - 1} more)` : ""}`
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`
 
 // Applies one trace line to the lanes. Returns the keys of the lanes it changed, so the page redraws only those.
@@ -167,7 +169,8 @@ export function applyLaneEvent(lanes, e) {
 		case "consistency.checked": {
 			const v = p.violations ?? []
 			const status = v.length ? "failed" : "done"
-			return set(lanes, "consistency", status, v.length ? `rev ${p.revision}: ${plural(v.length, "violation")}` : `rev ${p.revision}: consistent`, e.at, RESULT.has(status), v.length ? [...new Set(v.map((x) => x.kind))].join(", ") : undefined)
+			if (lanes.consistency) lanes.consistency.violations = v
+			return set(lanes, "consistency", status, v.length ? `rev ${p.revision}: ${violationText(v)}` : `rev ${p.revision}: consistent`, e.at, RESULT.has(status), v.length ? [...new Set(v.map((x) => x.kind))].join(", ") : undefined)
 		}
 		case "design.ready":
 			return set(lanes, "consistency", "held", "waiting for review", e.at, false, `rev ${p.revision} ready: waiting for the brief review`)
@@ -177,7 +180,7 @@ export function applyLaneEvent(lanes, e) {
 			// The run is over: nobody is still thinking, whatever their last loop event said.
 			lanes.ended = true
 			const ended = ["architect", "parts", "ml", "test", "enclosure", "connectivity", "firmware", "reviewer"].filter((k) => ["thinking", "tool", "held"].includes(lanes[k].status)).flatMap((k) => set(lanes, k, "idle", "run ended", e.at, false))
-			return [...ended, ...set(lanes, "consistency", p.settled ? "done" : "failed", p.settled ? `settled at rev ${p.revision}` : `unsettled at rev ${p.revision}`, e.at)]
+			return [...ended, ...set(lanes, "consistency", p.settled ? "done" : "failed", p.settled ? `settled at rev ${p.revision}` : `unsettled at rev ${p.revision}${lanes.consistency?.violations?.length ? `: ${violationText(lanes.consistency.violations)}` : ""}`, e.at)]
 		}
 		case "agent.halted":
 			return lanes.agents[p.agentId] ? set(lanes, lanes.agents[p.agentId], "failed", `halted: ${firstLine(p.error)}`, e.at) : []

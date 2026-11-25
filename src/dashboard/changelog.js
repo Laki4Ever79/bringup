@@ -4,7 +4,7 @@
 // Plain ES module: the page imports it from /changelog.js, the tests in Node.
 import { agreeLine } from "./lanes.js"
 import { contractDiff } from "./model.js"
-import { PROBLEM } from "./ripple.js"
+import { failureText } from "./ripple.js"
 
 const WHO = { architect: "Architect", parts: "Parts", ml: "ML engineer", test: "Test engineer", enclosure: "Case designer", connectivity: "Connectivity", firmware: "Firmware", reviewer: "Reviewer", engineer: "You", bench: "Bench", consistency: "Consistency" }
 const who = (role) => WHO[role] ?? role
@@ -79,6 +79,33 @@ export function fileDrift(events) {
 		})
 }
 
+// What a change moved on the design, value by value (01 under the request): every "path a → b" line of the contract
+// writes from fromMs up to toMs, newest value per path, with a short label and unit ("drive.trackMm" → "drive track", mm).
+export function changeMoves(events, { fromMs, toMs = Infinity, max = 6 } = {}) {
+	const moves = new Map()
+	for (const e of events) {
+		if (e.type !== "contract.changed" || !("after" in (e.payload ?? {}))) continue
+		const at = Date.parse(e.at)
+		if (at < fromMs || at >= toMs) continue
+		for (const line of readableDiff(e.payload.field, e.payload.before, e.payload.after)) {
+			const m = /^[~+−-] (\S+) (.+?) → (.+)$/.exec(line) ?? /^[+] (\S+) (.+)$/.exec(line)
+			if (!m) continue
+			const [path, before, after] = m[3] === undefined ? [m[1], "", m[2]] : [m[1], m[2], m[3]]
+			const prev = moves.get(path)
+			moves.set(path, { path, field: e.payload.field, by: e.payload.by, before: prev?.before ?? before, after, ...moveLabel(path) })
+		}
+	}
+	return [...moves.values()].filter((m) => m.before !== m.after).slice(0, max)
+}
+function moveLabel(path) {
+	const parts = path.split(".")
+	const last = parts.at(-1) ?? path
+	const unit = /Mm$/.test(last) ? "mm" : /Deg$/.test(last) ? "°" : /Ms$/.test(last) ? "ms" : /G$/.test(last) && parts.length > 1 ? "g" : ""
+	const words = (s) => s.replace(/(Mm|Deg|Ms)$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()
+	const label = [parts.length > 1 ? words(parts.at(-2)) : "", words(last)].filter(Boolean).join(" ")
+	return { label, unit }
+}
+
 // ── The timeline beside 03 Agents: how a change travelled, step by step, with times from the request ──────────────
 const ACTOR = { architect: "architect", parts: "parts", ml: "ML engineer", test: "test engineer", enclosure: "case designer", connectivity: "connectivity engineer", firmware: "firmware agent", reviewer: "reviewer", engineer: "you", bench: "bench" }
 const BUILT = { board: "board", enclosure: "case", firmware: "firmware", testkit: "test kit", chassis: "chassis", drive: "simulated drive" }
@@ -115,7 +142,7 @@ export function rippleTimeline(events, { fromMs, toMs = Infinity, consistentAtMs
 		if (at < fromMs || at >= toMs) continue
 		if (e.type === "consistency.checked") {
 			const v = e.payload.violations ?? []
-			if (v.length && v.length !== mismatches) steps.push({ key: `c${e.seq}`, at, text: `${v.length} mismatch${v.length === 1 ? "" : "es"}: ${PROBLEM[v[0].kind] ?? v[0].kind}` })
+			if (v.length && v.length !== mismatches) steps.push({ key: `c${e.seq}`, at, text: `${v.length} mismatch${v.length === 1 ? "" : "es"}: ${failureText(v.slice(0, 1))}`, bad: true })
 			mismatches = v.length
 			continue
 		}
@@ -125,5 +152,5 @@ export function rippleTimeline(events, { fromMs, toMs = Infinity, consistentAtMs
 	if (consistentAtMs !== null && consistentAtMs < toMs) steps.push({ key: "done", at: consistentAtMs, text: `consistent: ${agreeLine(events.filter((e) => Date.parse(e.at) <= consistentAtMs))}` })
 	steps.sort((a, b) => a.at - b.at)
 	const shown = steps.length > max ? [{ key: "earlier", at: fromMs, text: `… ${steps.length - (max - 1)} earlier steps` }, ...steps.slice(-(max - 1))] : steps
-	return shown.map((s) => ({ key: s.key, t: s.key === "earlier" ? "" : since(s.at - fromMs), text: s.text }))
+	return shown.map((s) => ({ key: s.key, t: s.key === "earlier" ? "" : since(s.at - fromMs), text: s.text, ...(s.bad ? { bad: true } : {}) }))
 }

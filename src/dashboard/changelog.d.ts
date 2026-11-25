@@ -6,5 +6,6 @@ export function changeLog(events: { type: string; payload?: any }[], from: numbe
 export function defaultRange(events: { type: string; payload?: any }[]): { from: number; to: number } | null
 export interface FileDrift { seq: number; at: string; name: string; path: string; reason: "not-in-contract" | "stale"; items: string[]; line: string }
 export function fileDrift(events: { seq?: number; at?: string; type: string; payload?: any }[]): FileDrift[]
-export interface TimelineStep { key: string; t: string; text: string }
+export interface TimelineStep { key: string; t: string; text: string; bad?: boolean }
 export function rippleTimeline(events: { seq?: number; at: string; type: string; payload?: any }[], opts: { fromMs: number; toMs?: number; consistentAtMs?: number | null; start?: string | null; max?: number }): TimelineStep[]
+export function changeMoves(events: unknown[], opts?: { fromMs?: number; toMs?: number; max?: number }): { path: string; field: string; by: string; before: string; after: string; label: string; unit: string }[]

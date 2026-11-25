@@ -687,18 +687,27 @@ Estimate: 5–8 working days across the three sessions; starts after the weekly 
 
 ## Web UI cleanup (the user, 25 Nov 2026: "Add to backlog the webui cleanup. IT should also look really cool when developing a robot")
 Seen on the run page of the recorded "make it 2 cm narrower" rover (out/rover-narrower-20261122-212038), 1440x900:
-- [ ] **The robot is not the hero on a robot run.** The PCB fills the main panel; the robot is a small grey render in
+- [x] **The robot is not the hero on a robot run.** Done (cad-ui): a Robot tab, first and open by default on a robot run,
+      draws the robot with world3d.js on a dark stage (key, fill and rim light, a 10 mm floor grid, green board, orange
+      hub caps); the PCB is one tab away. Still open: the drive simulation playing in it (next item). The PCB fills the main panel; the robot is a small grey render in
       the corner panel "07 Chassis", cut off at the right edge. A robot run should open on the robot: lit 3D, framed to
       fit, wheels and parts in colour, the drive simulation playing in it, the board one click away.
 - [ ] **Show the robot being developed, live.** As agents work, the 3D robot changes in place: the part an agent is
       changing highlights, a changed dimension animates to its new value with a ruler, and the simulated drive replays
       after each rebuild. The ripple of a change request should read on the robot itself, not only in the agent grid.
-- [ ] **Overlapping labels on the PCB view:** test pads and their names sit on top of R5/R6/TP3, U4 on J1, C4 on JD1.
-- [ ] **The PCB view shows the net legend but no traces or ratsnest.**
-- [ ] **Failure text is cut off or points nowhere:** the result says "see the Consistency tile", whose text is only
+- [x] **Overlapping labels on the PCB view:** Done (cad-ui): pcb-view.js placeLabels: centre or above, else below,
+      left, right, else smaller; never on another label or another part's pads; left out (the tip names it) when no room. test pads and their names sit on top of R5/R6/TP3, U4 on J1, C4 on JD1.
+- [x] **The PCB view shows the net legend but no traces or ratsnest.** Done (cad-ui): the cause was Freerouting:
+      its copper is in board.ses, and circuit.json is written before routing. ses.js adds the session's wires and vias in
+      circuit.json's frame (270 tracks, 42 vias on the narrow rover); KiCad's pin-named nets stay out of the legend.
+- [x] **Failure text is cut off or points nowhere:** Done (cad-ui): ripple.js failureText (plain words + the check's
+      own message) in 05 Result, the timeline and the Consistency tile; failed tiles take the row and wrap. the result says "see the Consistency tile", whose text is only
       "unsettled at rev 13"; the Drive tile ends "no wall co..."; timeline lines are truncated. A failure should say what
       failed and why, in full, where it is shown.
-- [ ] **Agent grid:** 15 tiles of equal weight; idle agents take as much room as working ones. Working and failed agents
+- [x] **Agent grid:** Done (cad-ui): failed first across the row, then working, then woke; idle agents fold into one
+      line that opens them. Was: 15 tiles of equal weight; idle agents take as much room as working ones. Working and failed agents
       first and larger, idle ones collapsed into one line.
-- [ ] **Empty space:** panel "01 The change" is mostly blank below the request.
-- [ ] Small: /favicon.ico is a 404 (console error on every page).
+- [x] **Empty space:** panel "01 The change" is mostly blank below the request. Done (cad-ui): it lists what the change
+      moved, value by value (changelog.js changeMoves: "drive track 110 → 90 mm", "chassis plate 150×96 → 150×76 mm").
+- [x] Small: /favicon.ico is a 404 (console error on every page). Done (cad-ui): an SVG icon on every server and page;
+      the optional probes (ROS, refs.json, the case's side files, board.ses) ask with ?optional=1, so no 404s either.

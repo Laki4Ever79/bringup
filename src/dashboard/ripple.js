@@ -285,6 +285,16 @@ export const PROBLEM = {
 const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", "build:testkit": "test kit", test: "test engineer", enclosure: "case designer", connectivity: "connectivity engineer", mechanics: "mechanics engineer", ml: "ML engineer", grounding: "datasheet check", consistency: "consistency check" }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 const and = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`)
+// What failed and why, in full: the plain words for the kind when there are some, then the check's own message.
+export function failureText(violations) {
+	const v = violations ?? []
+	if (!v.length) return null
+	const { kind, message = "" } = v[0]
+	const plain = PROBLEM[kind]
+	const msg = String(message).trim()
+	const text = plain && msg && !msg.toLowerCase().startsWith(plain.toLowerCase()) ? `${plain}: ${msg}` : msg || plain || kind
+	return v.length > 1 ? `${text} (and ${v.length - 1} more)` : text
+}
 const mismatches = (n) => `${n} mismatch${n === 1 ? "" : "es"}`
 
 // The change in a few words: a width, a file edit, or the request itself in quotes.
@@ -303,7 +313,7 @@ export function statusLine({ ripple: r, now = Date.now(), stubbed = false, viola
 		if (firstAtMs === null) return { state: "initial", headline: "Starting up", detail: "" }
 		if (!settled) return { state: "rippling", headline: "Designing from the brief", detail: `${workingCount} agent${workingCount === 1 ? "" : "s"} working · rev ${revision} · ${secs(now - firstAtMs)}` }
 		if (settled.settled) return { state: "consistent", headline: `First design consistent at rev ${settled.revision}`, detail: `${secs((endAtMs ?? now) - firstAtMs)} from the brief · ${open ? "now change one thing ↑" : "this run has ended"}` }
-		return { state: "unsettled", headline: `Stopped: not consistent at rev ${settled.revision}`, detail: problem(violations) ?? "see the Consistency tile" }
+		return { state: "unsettled", headline: `Stopped: not consistent at rev ${settled.revision}`, detail: failureText(violations) ?? "the run ended unsettled with no open violation: the report says why" }
 	}
 	const label = changeLabel(r)
 	const bench = r.checks?.find((c) => c.key === "bench")
@@ -327,7 +337,7 @@ export function statusLine({ ripple: r, now = Date.now(), stubbed = false, viola
 		case "no-change": return { state: "no-change", headline: `Nothing to change for ${label}`, detail: `${r.checked?.length ?? 0} agent${r.checked?.length === 1 ? "" : "s"} checked it · no field moved` }
 		case "unsettled": {
 			const n = r.violations.at(-1) ?? r.violationsPeak
-			return { state: "unsettled", headline: `Stopped: ${mismatches(n)} left after ${label}`, detail: problem(violations) ?? "see the Consistency tile" }
+			return { state: "unsettled", headline: `Stopped: ${mismatches(n)} left after ${label}`, detail: failureText(violations) ?? "the run ended unsettled with no open violation: the report says why" }
 		}
 	}
 	// Rippling: a mismatch in words if there is one, else who is working on it.

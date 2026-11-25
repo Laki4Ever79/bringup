@@ -34,3 +34,4 @@ export interface Moved {
 export function whatMoved(before: any, after: any): Moved
 export interface StatusLine { state: "initial" | "rippling" | "sent" | "consistent" | "no-change" | "unsettled"; headline: string; detail: string }
 export function statusLine(o: { ripple: Ripple | null; now?: number; stubbed?: boolean; violations?: { kind: string }[]; settled?: { settled: boolean; revision: number } | null; revision?: number; firstAtMs?: number | null; endAtMs?: number | null; workingCount?: number; open?: boolean; benchAsk?: string | null }): StatusLine
+export function failureText(violations: { kind: string; message?: string }[] | null | undefined): string | null
