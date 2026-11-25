@@ -673,3 +673,21 @@ Estimate: 5–8 working days across the three sessions; starts after the weekly 
 - [ ] Step 2: provisioning a Pi 5 (Ubuntu 24.04 + Jazzy + the package at boot) and a Nav2 config from the design;
       demo: the Eurobot starter reaching a Nav2 goal in simulation.
 - [ ] Step 3 (later): micro-ROS on the S3 (optional), URDF import, carrier boards, Gazebo (optional).
+
+## Web UI cleanup (the user, 25 Nov 2026: "Add to backlog the webui cleanup. IT should also look really cool when developing a robot")
+Seen on the run page of the recorded "make it 2 cm narrower" rover (out/rover-narrower-20261122-212038), 1440x900:
+- [ ] **The robot is not the hero on a robot run.** The PCB fills the main panel; the robot is a small grey render in
+      the corner panel "07 Chassis", cut off at the right edge. A robot run should open on the robot: lit 3D, framed to
+      fit, wheels and parts in colour, the drive simulation playing in it, the board one click away.
+- [ ] **Show the robot being developed, live.** As agents work, the 3D robot changes in place: the part an agent is
+      changing highlights, a changed dimension animates to its new value with a ruler, and the simulated drive replays
+      after each rebuild. The ripple of a change request should read on the robot itself, not only in the agent grid.
+- [ ] **Overlapping labels on the PCB view:** test pads and their names sit on top of R5/R6/TP3, U4 on J1, C4 on JD1.
+- [ ] **The PCB view shows the net legend but no traces or ratsnest.**
+- [ ] **Failure text is cut off or points nowhere:** the result says "see the Consistency tile", whose text is only
+      "unsettled at rev 13"; the Drive tile ends "no wall co..."; timeline lines are truncated. A failure should say what
+      failed and why, in full, where it is shown.
+- [ ] **Agent grid:** 15 tiles of equal weight; idle agents take as much room as working ones. Working and failed agents
+      first and larger, idle ones collapsed into one line.
+- [ ] **Empty space:** panel "01 The change" is mostly blank below the request.
+- [ ] Small: /favicon.ico is a 404 (console error on every page).
