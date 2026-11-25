@@ -178,7 +178,7 @@ once, exactly one applies and the other gets `stale` and re-reads.
 1. **The field's owner** approves or rejects it, through Mozaik interception (change control). An invalid proposal is
    returned with the reason before the owner is ever asked. **Approvals where you are**: a change held for the
    engineer can be pushed to a phone through [ntfy](https://ntfy.sh), with Approve and Reject buttons that decide it
-   like the dashboard's. It's opt-in (off unless `BRINGUP_NTFY_TOPIC` is set), the push carries only the field and a
+   like the hosted page's. It's opt-in (off unless `BRINGUP_NTFY_TOPIC` is set), the push carries only the field and a
    one-line reason, and the phone reaches the hub only through a token-guarded decision route; a failed push leaves
    the change held. Built and tested; not yet tried on a real phone. Setup: `docs/design/phone-approvals.md`.
 2. **Plain code** checks what was actually built, and grounds every pin in the catalog and KiCad's symbols.
@@ -217,7 +217,7 @@ were actually built. For example, the firmware's pins are parsed back out of the
 | `design.ready` | The design is consistent and quiet; the brief reviewer judges it before it settles |
 | `review.completed` | The reviewer's verdict (`pass`/`fail`) with findings, each naming the contract fields it concerns |
 | `design.settled` | Every artifact is built against the latest revision with no violations, and the review is done |
-| `change.requested` | An engineer's mid-run change request (`req-N`), from the dashboard, the CLI's `--change`, `src/request.ts` or the MCP server. Its ripple ends at the next `design.ready` |
+| `change.requested` | An engineer's mid-run change request (`req-N`), from the hosted page, the CLI's `--change`, `src/request.ts` or the MCP server. Its ripple ends at the next `design.ready` |
 | `firmware.booted` | The newest firmware booted in QEMU and printed its revision |
 | `bench.*` | The real board: `flashing`, `flashed`, `telemetry`, `blink` (LED period measured from telemetry), `instruction` ("tilt the board"), `measured`, `verdict` |
 | `agent.halted` | An agent loop crashed (Mozaik #114 workaround) |
@@ -348,23 +348,16 @@ npm run bringup -- briefs/logger.md
 **Change one thing yourself.**
 
 ```bash
-# The demo: the dashboard opens, the first design settles, then "make it 60 mm wide" goes in and ripples.
-# The run stays up afterwards: type your own change in the dashboard ("make it 40 mm wide"). Stop ends it.
-npm run demo
-
-# With nothing but `npm ci` (hardware stubbed): the same settle → change → ripple → consistent story, in about 10 s.
-npm run demo -- --no-hardware
-
-# The dashboard's speed budget, measured in a visible Chromium (no model calls).
-npm run perf
-
-# The same from the CLI: each --change is sent after the design settles, and the run ends once the last one re-settles.
+# Each --change is sent after the design settles, and the run ends once the last one re-settles.
 npm run bringup -- briefs/logger.md --mock --change "make the board 40 mm wide"
 
-# Dashboard for any run, live or finished (http://localhost:4317; if that port is taken it picks a free one and
-# prints the URL, or pass a port: `npx tsx src/dashboard/cli.ts out/quick 4400`)
-npx tsx src/dashboard/cli.ts
+# Keep the run up after it settles, then send changes to it from another terminal or from an MCP client (docs/mcp.md).
+npm run bringup -- briefs/logger.md --mock --stay --out out/quick
+npx tsx src/request.ts out/quick "make the board 60 mm wide"
 ```
+
+Watching a run live in 3D, typing changes into it and following every agent's trace is Bringup's hosted page, the paid
+part of Bringup; it is not in this repository (see the README).
 
 Each change gets a row in `ripples.json` and in the report's "Change requests" table: the contract fields it touched,
 the agents that reworked something, the ones that only checked it, the ones that stayed idle, and the time until the
@@ -385,10 +378,10 @@ npm run bringup -- simulate <runDir>
 npm run bringup -- link <runDir> <dir>
 ```
 
-**Edit a generated file.** On a run that stays up (`npm run demo`, or `--stay`), save an edited `firmware/rev-N/include/pins.h`
+**Edit a generated file.** On a run that stays up (`--stay`), save an edited `firmware/rev-N/include/pins.h`
 or `board/rev-N/dist/board/kicad/board.kicad_pcb`: a pin, outline or connector change becomes a change request and
-ripples like a typed one. Anything else shows up in the dashboard's drift drawer, with Adopt (for edits that map to a
-contract field) and Revert.
+ripples like a typed one. Anything else is listed by `bringup status` below, and the hosted page offers Adopt (for
+edits that map to a contract field) and Revert.
 
 ```bash
 # What was edited by hand in a run folder, like git status: open, adopted or reverted, with the diff lines
@@ -422,8 +415,6 @@ choose the folder with `--out <dir>`. The last line of the run prints the report
 
 Exit codes: 0 when settled with no violations, 2 when unsettled (including when a hardware tool is missing), and 1 on
 bad arguments.
-
-Dashboard: `npx tsx src/dashboard/cli.ts out/<runId>`.
 
 **Design tournament.** Run several variants of one brief at the same time, each in its own process, then rank them:
 

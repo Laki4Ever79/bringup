@@ -1,10 +1,31 @@
 # Bringup
 
-**Change “one thing”, and the whole hardware design follows: board, printed parts, firmware and parts, in parallel.**
+**Describe a circuit board or a whole robot in a few sentences. Bringup designs it: a custom PCB, the printed parts,
+the firmware and the parts list.**
+
+- **Custom PCBs**: the schematic and a routed board, with Gerbers, BOM and pick-and-place files in JLCPCB's format, a
+  case whose cutouts match the connectors, and firmware that compiles against the real pin map.
+- **Entire robots**: everything above, plus the chassis and mounts as printable parts (STL, STEP), the motors, battery
+  and sensors chosen and checked against each other, the robot's own firmware driving a physics model of it in
+  simulation, and a ROS 2 package.
+
+**Change “one thing”, and the whole design follows: board, printed parts, firmware and parts, in parallel.**
 
 ![The engineer types "add a temperature/humidity sensor": the affected agents wake, the checks find the mismatches, and board, case and firmware agree again](docs/img/hero.gif)
 
-<sub>A recorded run with the real tools; the waiting is cut. ▶ [3-minute demo video](https://youtu.be/b0B6R5KyZ64)</sub>
+<sub>A recorded run with the real tools, shown in Bringup's hosted page; the waiting is cut. ▶ [3-minute demo video](https://youtu.be/b0B6R5KyZ64)</sub>
+
+## Free and open, plus a hosted page
+
+The engine is open source and free: it runs on your machine and every file it makes is yours. Bringup's hosted page,
+where you watch and steer a design live, is the paid part, the way Mozaik pairs its open framework with Mozaik Cloud.
+
+| Free and open source (this repo, Apache-2.0) | Bringup's hosted page (paid, coming soon) |
+|---|---|
+| The engine, the agents, every check, the CLI and the MCP server | The live 3D robot and its simulation in 3D |
+| Every file a design produces: KiCad project, Gerbers, BOM, pick-and-place, STL/STEP, firmware, URDF and ROS 2, the report | Editing on the design itself: click a part, change it, watch the change ripple |
+| Still pictures of the board and the robot in the build package | Logs and debugging: the timeline, why each change happened, every agent's trace |
+| | Run history, sharing and teams, with nothing to install |
 
 ## Install & run
 
@@ -19,16 +40,17 @@ Needs Linux x86-64, Node 24, [uv](https://docs.astral.sh/uv/), Docker without `s
 them; on a minimal system, the `libgl1` and `libsdl2-2.0-0` packages); `npm run setup` checks them and says what's missing.
 On a new machine (an empty container, 22 Nov 2026) setup took 5 min and the rover then settled in 4 min, its simulated
 drive passing. Every design's files land in its run folder: the board (KiCad, Gerbers, parts list), the printed parts
-(STL, STEP), the firmware, the ROS description and the report. Exploring a design live in 3D, editing it and debugging
-its run is Bringup's hosted page (coming soon).
+(STL, STEP), the firmware, the ROS description and the report. A board-only brief works the same way, for example
+`npm run bringup -- briefs/logger.md --mock`.
 
 ## What you get
 
-From a short brief (for example [the Eurobot base](briefs/eurobot-base.md)):
+From a short brief (a board: [the climate logger](briefs/logger.md); a robot: [the Eurobot base](briefs/eurobot-base.md)):
 
-- **Robots**: the chassis and mounts as printable parts, the motors, battery and sensors chosen and checked, and the
-  robot's own firmware driving a physics model of it in simulation, with a ROS 2 package.
-- **Boards**: parts with JLCPCB order numbers, a routed PCB, and a case whose cutouts match it.
+- **A custom PCB**: parts with JLCPCB order numbers, a schematic and a routed board, and the fab package (Gerbers, BOM,
+  pick-and-place) to order it; a case whose cutouts match it when the design needs one.
+- **An entire robot**: the chassis and mounts as printable parts, the motors, battery and sensors chosen and checked,
+  the robot's own firmware driving a physics model of it in simulation, and a ROS 2 package.
 - **Firmware** that compiles against the real pin map.
 - **A parts list** with live stock and prices, and a build package with the assembly steps.
 - **Checks** across all of it: wiring, power, motor and battery currents, parts that collide, the competition's rules.
