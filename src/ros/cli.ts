@@ -4,13 +4,16 @@ import type { ChassisSpec } from "../tools/chassis.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { writeRosPackage } from "./package.ts"
 import { rosImageReady, runRosAcceptance, ROS_IMAGE } from "./run.ts"
+import { prepareFirmware } from "../tools/firmware.ts"
 
 // One command for a finished robot's ROS 2 side (docs/ros.md):
 //   npm run ros -- <run dir>                         the package, tested on mock hardware and the firmware in QEMU
 //   npm run ros -- <run dir> --port /dev/ttyACM0     the same test on the real robot, over its USB serial port
 //   npm run ros -- <run dir> --workspace <dir>       only write the colcon workspace (for the robot's own computer)
 // The package is written fresh from the run's last chassis spec with this checkout's generator and bridge, so an older
-// run gets today's ROS side; the firmware is the run's own.
+// run gets today's ROS side. The firmware too, from the run's contract with this checkout's template, so the bridge
+// and the firmware speak the same report: a 22 Nov run's saved firmware sent no gyro heading, and its ROS turn check
+// read 0 rad (25 Nov 2026). Without a contract, the run's saved firmware.
 const usage = "usage: npm run ros -- <run dir> [--port /dev/ttyACM0 | --workspace <dir>]"
 
 const lastRev = (dir: string): string | null => {
@@ -54,14 +57,16 @@ export async function rosCli(argv: string[], root = process.cwd()): Promise<numb
 	}
 	const am = (p: string) => (existsSync(join(root, p)) ? join(root, p) : undefined)
 	const python = am(".venv/bin/python"), pio = am(".venv/bin/pio")
-	const backends = port ? (["real"] as const) : fw && python && pio ? (["mock", "qemu"] as const) : (["mock"] as const)
+	const fresh = !!(contract?.values.mechanics && contract.values.motion)
+	const backends = port ? (["real"] as const) : (fw || fresh) && python && pio ? (["mock", "qemu"] as const) : (["mock"] as const)
 	let pass = true
 	for (const backend of backends) {
 		let fwDir: string | undefined
 		if (backend === "qemu") {
 			fwDir = join(out, "fw")
 			rmSync(fwDir, { recursive: true, force: true })
-			cpSync(fw!, fwDir, { recursive: true, filter: (src) => !src.includes("/.pio/") })
+			if (fresh) await prepareFirmware(root, fwDir, contract!)
+			else cpSync(fw!, fwDir, { recursive: true, filter: (src) => !src.includes("/.pio/") })
 		}
 		const r = await runRosAcceptance({ root, wsDir: ws, outDir: join(out, "accept"), backend, ...(port ? { device: port } : {}), spec, ...(contract ? { contract } : {}), ...(fwDir ? { fwDir, python, pio } : {}) })
 		pass &&= r.pass
