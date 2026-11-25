@@ -95,9 +95,13 @@ is a change to the firmware toolchain, not just the code.
       learned and taken off the next approach. Run 20b's S3 in simulation: (400, 400) 21.8 -> 4.7 mm, the lap 12.0 ->
       5.2 mm, (550, 0) 0.6 -> 0.6 mm; odometry drift on the diagonal 29.2 -> 15.2 mm. Cost: the lap takes 17.2 s, was
       12.4 s.
-- [ ] **Encoder-only heading under-reads turns in place** (20 Nov, lead-2: "it's the encoder-only fallback's real
-      accuracy on scrubbing skid turns"): about 17 % on run 20b's geometry (0.679 rad counted for 0.816 turned). Robots
-      with an IMU now take the turn from the gyro (rover_odo_step); a robot without one keeps this error.
+- [x] **Encoder-only heading under-reads turns in place** (20 Nov, lead-2: "it's the encoder-only fallback's real
+      accuracy on scrubbing skid turns"; moved 25 Nov by f182f5f): the under-read came from turning while still moving.
+      With every turn now started and ended at rest, run 20b with the gyro removed: heading error on the (400, 400)
+      go-to -12.0 % -> +2.2 %, on the lap -3.7 % -> +1.2 %; (400, 400) 75.3 -> 13.9 mm (pass). Left: the lap without a
+      gyro ends 32.3 mm from the start (20 allowed; was 106.7). The ~2 % over-read fits the simulation's 8 mm cylinder
+      wheels touching at their edges (an effective track ~2.7 % wider), so the firmware is not tuned to it. Every
+      wheeled robot carries an IMU, so only a robot that can't is exposed.
 - [x] **A narrow rover's turn in place walks into the side wall** (22 Nov, bringup-system; fixed 25 Nov): the firmware
       started the spin while the robot still rolled (0.13 m/s forward, or ~0.28 m/s backward after the back-off), and
       wheels spun against each other don't brake the body, so the axle slid during the turn (94 mm toward the wall at
