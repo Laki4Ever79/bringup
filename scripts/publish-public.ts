@@ -17,7 +17,7 @@ import { tmpdir } from "node:os"
 import { dirname, join, normalize } from "node:path"
 
 // The page and what serves it.
-export const PRIVATE_ROOTS = ["src/dashboard/", "src/demo.ts"]
+export const PRIVATE_ROOTS = ["src/dashboard/", "src/demo.ts", "docs/design/dashboard.md"]
 // Never in a public tree (they are gitignored; a hit means something slipped in).
 const FORBIDDEN = [/(^|\/)\.env(\.(?!example$)[^/]*)?$/, /^catalog\/learned\//, /(^|\/)\.cache\//]
 const CODE = /\.(ts|mts|js|mjs|tsx)$/
