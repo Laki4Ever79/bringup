@@ -147,10 +147,13 @@
 				"note": "no typical current is published; it depends on the power mode and the carrier's VDD_IN"
 			},
 			"peak": {
-				"value": null,
+				"value": 5.0,
 				"unit": "A",
-				"source": null,
-				"note": "the data sheet gives power, not current: divide the mode's budget by the generated carrier's VDD_IN (for example 40 W at 12 V is about 3.3 A, module only)"
+				"source": {
+					"url": "https://developer.nvidia.com/downloads/jetson-orin-nx-module-series-data-sheet",
+					"where": "DS-10712 Table 5-2: 'IDDMAX VDD_IN Imax - 5 A'"
+				},
+				"note": "the module's maximum input current at any VDD_IN; the power modes (10-40 W) set the typical draw, which isn't published"
 			},
 			"powerModesW": {
 				"value": {

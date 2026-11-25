@@ -96,7 +96,7 @@
 			"value": null,
 			"unit": "mm",
 			"source": null,
-			"note": "not on the mechanical drawing (it has no side view or heights): measure a board before relying on it"
+			"note": "not on the mechanical drawing (it has no side view or heights): measure a board before relying on it; checked 25 Nov 2026: no side view, STEP or DXF is published for the Zero 2 W"
 		},
 		"header": {
 			"fitted": {

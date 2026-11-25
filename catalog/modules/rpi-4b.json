@@ -209,18 +209,19 @@
 				},
 				{
 					"kind": "mipi dsi",
-					"side": "top face",
-					"atMm": null
+					"side": "top face, left edge",
+					"atMm": 28.0
 				},
 				{
 					"kind": "mipi csi",
-					"side": "top face",
-					"atMm": null
+					"side": "top face, bottom edge",
+					"atMm": 46.5
 				},
 				{
 					"kind": "microsd",
 					"side": "left (underside)",
-					"atMm": null
+					"atMm": 28.0,
+					"note": "the card sticks out 2.3 mm past the left edge"
 				}
 			],
 			"source": {
@@ -231,7 +232,11 @@
 				"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-product-brief.pdf",
 				"where": "Specification: 2 × USB 3.0, 2 × USB 2.0, Gigabit Ethernet, 2 × micro HDMI, 2-lane MIPI DSI, 2-lane MIPI CSI, 4-pole stereo audio and composite video"
 			},
-			"note": "which USB-A stack is USB 3.0 isn't on the drawing"
+			"note": "which USB-A stack is USB 3.0 isn't on the drawing",
+			"drawingSource": {
+				"url": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf",
+				"where": "top view: DISPLAY 4 from the left edge, 3.5 + 24.5 up; CAMERA 39.5 + 7 along the bottom, 11.5 up; the DXF (https://pip-assets.raspberrypi.com/categories/545-raspberry-pi-4-model-b/documents/RP-008342-DS-1-raspberry-pi-4-mechanical-drawing.dxf) agrees and places the microSD on PARTS_BOTTOM at y 22.5-33.5, silkscreen 'DISPLAY', 'CAMERA', 'MICRO SD CARD'"
+			}
 		},
 		"inputV": {
 			"value": {
@@ -244,7 +249,7 @@
 				"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
 				"where": "'All models require a 5.1V supply'"
 			},
-			"note": "no tolerance published; min and max unknown. The firmware logs a low-voltage warning below 4.63 V (±5%)",
+			"note": "no tolerance published; min and max unknown. The firmware logs a low-voltage warning below 4.63 V (±5%); the data sheet's only limit is the absolute maximum, 6.0 V (Table 2, a damage limit, not an operating maximum), checked 25 Nov 2026",
 			"also": {
 				"url": "https://github.com/raspberrypi/documentation/blob/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
 				"where": "Power supply warnings: low-voltage detection 'if the supply voltage drops below 4.63 V (±5%)' on all models since B+ 'except the Zero range'"

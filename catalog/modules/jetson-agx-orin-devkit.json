@@ -89,7 +89,7 @@
 		"holes": {
 			"value": null,
 			"source": null,
-			"note": "the kit is a closed enclosure and the specification dimensions no mounting holes: plan a cradle or strap, or take holes from NVIDIA's carrier design files"
+			"note": "the kit is a closed enclosure and the specification dimensions no mounting holes: plan a cradle or strap, or take holes from NVIDIA's carrier design files. Checked 25 Nov 2026: SP-10900 Figure 1-2 draws four corner holes but doesn't dimension them; the carrier design files and the kit's STEP (P3730) need an NVIDIA developer login"
 		},
 		"tallestMm": {
 			"value": 71.65,
@@ -118,7 +118,7 @@
 					"url": "https://developer.nvidia.com/embedded/learn/jetson-agx-orin-devkit-user-guide/developer_kit_layout.html",
 					"where": "40-pin Header: 'To identify the orientation of the 40-pin header (i.e. Pin 1), look for the white triangle marking on the PCB'"
 				},
-				"note": "the header's position isn't dimensioned; find pin 1 by the white triangle"
+				"note": "the position isn't published: SP-10900 gives J30's part and pinout only, and the files that place it (carrier design files, STEP) need an NVIDIA developer login (checked 25 Nov 2026)"
 			},
 			"pins": {
 				"value": {
@@ -227,7 +227,7 @@
 				"url": "https://developer.nvidia.com/embedded/learn/jetson-agx-orin-devkit-user-guide/developer_kit_layout.html",
 				"where": "Hardware Layout: Part Names (marks 0-12) and Carrier Board Part Names, with the two Side Views photos"
 			},
-			"note": "sides read from the user guide's photos (no dimensioned drawing); positions along each face aren't published"
+			"note": "sides read from the user guide's photos (no dimensioned drawing); positions along each face aren't published; SP-10900 Figure 5-4's side view shows the ports without dimensions (checked 25 Nov 2026)"
 		},
 		"inputV": {
 			"value": {

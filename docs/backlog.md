@@ -486,7 +486,16 @@ them as well, although it might not be the focus here".
       from a mock run. examples/rover-pi has no still.png.
       Audit 17 Nov (bringup-system): done 15 Nov in 282b51f: the reference rover re-saved from a settled mock build, and
       Rover with a Pi got its still.png.
-- [ ] **Null values in module records:** Jetson hole positions, ROCK 5B absolute holes, heights.
+- [x] **Null values in module records:** Jetson hole positions, ROCK 5B absolute holes, heights. 25 Nov
+      (bringup-system): 111 -> 64 nulls, every new value cited. Jetson Orin Nano carrier: six Ø2.75 holes, the header and
+      every connector from NVIDIA's public P3768 reference design files (drill file and layout export); Orin NX peak 5 A.
+      Pi 5 height 17.53 mm and its FPC/microSD positions from Raspberry Pi's STEP; Pi 4 DSI/CSI/microSD from the drawing
+      and its DXF; CM5 IO: all eight holes Ø2.7 (H6, H8 at x 132.5 were missing), height, header, microSD, M.2 and fan
+      from the KiCad design files. ROCK 5B header and every connector from Radxa's DXF, agreeing with the STEP within
+      0.05 mm; its microSD moved to the top edge, where it is. Still null, each with its reason: AGX Orin positions
+      (NVIDIA's files need a login), NUC VESA and port positions (undimensioned), Zero 2 W hole diameter and height,
+      Pi input ranges, typical currents (not published). Open: the ROCK 5B's hole size (STEP walls Ø3.5 against the
+      DXF's 2.8 mm drill name).
       17 Nov (bringup-system): the ROCK 5B's holes (five Ø3.5 mm) and height (16.35 mm) from Radxa's v1.42 STEP, agreeing
       with the V1.41 drawing's spacings within 0.2 mm. Its Ø3.5 holes showed two screw choosers disagreeing (the
       chassis M2.5, the parts list M3, which the catalog lacks): the parts list and the fit check now use the chassis'

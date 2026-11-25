@@ -73,54 +73,67 @@
 				{
 					"x": 3.5,
 					"y": 3.5,
-					"dia": null
+					"dia": 2.7
 				},
 				{
 					"x": 61.5,
 					"y": 3.5,
-					"dia": null
+					"dia": 2.7
 				},
 				{
 					"x": 11.0,
 					"y": 8.0,
-					"dia": null
+					"dia": 2.7
 				},
 				{
 					"x": 11.0,
 					"y": 77.0,
-					"dia": null
+					"dia": 2.7
 				},
 				{
 					"x": 3.5,
 					"y": 52.5,
-					"dia": null
+					"dia": 2.7
 				},
 				{
 					"x": 61.5,
 					"y": 52.5,
-					"dia": null
+					"dia": 2.7
+				},
+				{
+					"x": 132.5,
+					"y": 8.0,
+					"dia": 2.7
+				},
+				{
+					"x": 132.5,
+					"y": 77.0,
+					"dia": 2.7
 				}
 			],
 			"source": {
+				"url": "https://pip-assets.raspberrypi.com/categories/1098-design-files/documents/RP-008099-DD-1-CM5%20IO%20Board,%20revision%202,%20KiCAD%20files..zip",
+				"where": "CM5IO.kicad_pcb (rev 2): H1-H8, footprint MountingHole_2.7mm_M2.5_DIN965, drill 2.7, page coordinates less (79, -160) with y flipped"
+			},
+			"also": {
 				"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
 				"where": "Figure 2 (page 10): 3.50/3.50 to the lower-left hole, 61.50 to the hole by J9, 11.00/8.00 and 11.00/77.00 to the holes left of HDMI0 and below CAM/DISP 0, 52.50 to the HAT holes' row"
 			},
-			"note": "the hole diameters aren't on Figure 2. The upper HAT pair's x is read off the drawing's scale (the same 58 mm column as the dimensioned lower pair), not dimensioned. The holes on the right half (by the fan connector and the M.2 slot) aren't dimensioned: take them from the CM5 design files"
+			"note": "eight holes, not six: H6 and H8 at x 132.5 were missing (the datasheet's Figure 2 chain ends at 132.5 too). The CM5 module's own four Ø2.7 holes are at (83.5, 38.5), (116.5, 38.5), (83.5, 86.5), (116.5, 86.5)"
 		},
 		"tallestMm": {
-			"value": null,
+			"value": 17.9,
 			"unit": "mm",
-			"source": null,
-			"note": "not in the CM5IO datasheet (Figure 2 is a top view): measure a board or take the CM5 design files' model before relying on it",
-			"also": {
-				"url": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
-				"where": "section 4.1.1 PCB dimensions: the module alone is 4.6 mm deep; mounted, 4.94 mm or 7.44 mm depending on the stacking connector"
-			}
+			"source": {
+				"url": "https://pip-assets.raspberrypi.com/categories/1098-design-files/documents/RP-008099-DD-1-CM5%20IO%20Board,%20revision%202,%20KiCAD%20files..zip",
+				"where": "measured from the design files' 3D model: J12 (stacked USB 3.0 Type-A, USB3stacked.STEP) 16.3 above the 1.6 mm board's top face"
+			},
+			"note": "above the bottom face; the design files' README warns some models are approximations. Next tallest: Ethernet U3 at 13.45 above the top face"
 		},
 		"header": {
 			"at": {
 				"value": {
-					"x": null,
+					"x": 32.5,
 					"y": 52.5,
 					"pitchMm": 2.54,
 					"rows": 2,
@@ -131,7 +144,10 @@
 					"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
 					"where": "Figure 2: J8 'Raspberry Pi HAT' on the 52.50 row, square pin-1 pad at its lower left"
 				},
-				"note": "the header's x isn't dimensioned; it sits between the 58 mm-spaced HAT holes, in the HAT position"
+				"positionSource": {
+					"url": "https://pip-assets.raspberrypi.com/categories/1098-design-files/documents/RP-008099-DD-1-CM5%20IO%20Board,%20revision%202,%20KiCAD%20files..zip",
+					"where": "CM5IO.kicad_pcb: J8 PinHeader_2x20, pad centre (32.5, 52.5), pin 1 at (8.37, 51.23)"
+				}
 			},
 			"pins": {
 				"value": {
@@ -216,7 +232,11 @@
 				{
 					"kind": "microsd (CM5Lite only)",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 121.25,
+					"source": {
+						"url": "https://datasheets.raspberrypi.com/cm5/cm5io-datasheet.pdf",
+						"where": "Figure 2 (p.10): bottom chain 3.5 + 19.5 + 25 + 26 + 19 + 15 + 13.25 = 121.25 to the card's centreline; KiCad J7 agrees"
+					}
 				},
 				{
 					"kind": "cam/disp 0 fpc",
@@ -231,12 +251,14 @@
 				{
 					"kind": "m.2 m-key",
 					"side": "top face, right",
-					"atMm": null
+					"atMm": 7.5,
+					"note": "connector centre (147.5, 7.5), the card running up along y; standoffs at y 35.75/47.75/65.75/85.75 for 2230/2242/2260/2280 (KiCad J4)"
 				},
 				{
 					"kind": "fan (4-pin JST-SH)",
 					"side": "top face",
-					"atMm": null
+					"atMm": 126.36,
+					"note": "centre (126.36, 77.3) (KiCad J14)"
 				}
 			],
 			"source": {

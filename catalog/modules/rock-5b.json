@@ -96,7 +96,7 @@
 				"url": "https://dl.radxa.com/rock5/5b/docs/hw/ROCK5B_v1.42_3D.step.zip",
 				"where": "ROCK5B_v1.42_3D.step (Radxa download page, v1.42 3D drawings): the board's through-holes, centres of the Ø3.5 mm hole walls, measured from the board face's lower-left corner (outline 100.19 x 74.24 mm, as the V1.41 drawing's 100.20 x 74.25)"
 			},
-			"note": "the pattern the V1.41 drawing dimensions (holeSpacing: 58.05 and 35.10 along the top row, 49.05 between rows, the lower row 21.85 from the bottom edge) agrees within 0.2 mm. The model's five Ø3.2 mm holes (a 54 x 33 mm rectangle around the SoC, and one at 61.35, 34.89) are the heatsink's, not board mounts, and are left out. Radxa forum users report the CAD off on received boards: check one board before drilling"
+			"note": "the pattern the V1.41 drawing dimensions (holeSpacing: 58.05 and 35.10 along the top row, 49.05 between rows, the lower row 21.85 from the bottom edge) agrees within 0.2 mm. The model's five Ø3.2 mm holes (a 54 x 33 mm rectangle around the SoC, and one at 61.35, 34.89) are the heatsink's, not board mounts, and are left out. Radxa forum users report the CAD off on received boards: check one board before drilling; the DXF names the footprint HOLE_PTH_R6D2_8 (a 2.8 mm drill), against the Ø3.5 hole walls measured in the STEP: confirm on a board before choosing M3 over M2.5. Heatsink holes at (9.87, 21.84), (63.87, 21.84), (63.87, 54.84), (9.87, 54.84) (DXF HOLE8-11)"
 		},
 		"holeSpacing": {
 			"value": {
@@ -125,8 +125,8 @@
 		"header": {
 			"at": {
 				"value": {
-					"x": null,
-					"y": null,
+					"x": 32.73,
+					"y": 70.78,
 					"pitchMm": 2.54,
 					"rows": 2,
 					"cols": 20,
@@ -137,7 +137,10 @@
 					"url": "https://dl.radxa.com/rock5/5b/docs/hw/radxa_rock5b_v141_dimension_20220728_pdf.zip",
 					"where": "top drawing: 40-pin block along the top edge, pins numbered 1 (lower left) and 2 (upper left)"
 				},
-				"note": "the header's position isn't reliably dimensioned (see holes)"
+				"positionSource": {
+					"url": "https://dl.radxa.com/rock5/5b/docs/hw/radxa_rock5b_v141_dimension_20220728_dxf.zip",
+					"where": "radxa_rock5b_v141_dimension_top_20220728.dxf: CON1 'DIP40PIN-2_54MM' footprint centre, outline offset (+32.869, +35.938) to this frame; its first column 5.08 right of HOLE3 (the PDF's 5.08mm)"
+				}
 			},
 			"pins": {
 				"value": {
@@ -193,57 +196,60 @@
 				{
 					"kind": "3.5 mm headphone jack",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 6.37
 				},
 				{
 					"kind": "usb-c PD power (also DP alt mode, USB 3.0 OTG)",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 14.87
 				},
 				{
 					"kind": "hdmi out 1",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 24.67
 				},
 				{
 					"kind": "hdmi out 2",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 37.37
 				},
 				{
 					"kind": "usb-a ×2 (USB 2.0)",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 52.87
 				},
 				{
 					"kind": "usb-a ×2 (USB 3.0)",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 71.6
 				},
 				{
 					"kind": "2.5GbE (PoE via HAT)",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 89.99
 				},
 				{
 					"kind": "micro-hdmi input",
 					"side": "top",
-					"atMm": null
+					"atMm": 68.55
 				},
 				{
 					"kind": "microsd",
-					"side": "underside, left",
-					"atMm": null
+					"side": "top edge (underside)",
+					"atMm": 85.87,
+					"note": "J10 on the bottom side; the card goes in from the top edge (the record had it on the left)"
 				},
 				{
 					"kind": "m.2 m-key (NVMe)",
 					"side": "underside",
-					"atMm": null
+					"atMm": 84.88,
+					"note": "connector centre (84.88, 52.63) underneath, the 2280 card running toward -x to HOLE6 at (5.14, 52.63)"
 				},
 				{
 					"kind": "m.2 e-key",
 					"side": "top face",
-					"atMm": null
+					"atMm": 81.47,
+					"note": "connector centre (81.47, 61.25), its screw hole HOLE7 at (81.47, 32.14)"
 				}
 			],
 			"source": {
@@ -254,7 +260,11 @@
 				"url": "https://docs.radxa.com/en/rock5/rock5b/getting-started/introduction",
 				"where": "specification table: two HDMI out, micro HDMI input, 2x USB 2, 2x USB 3, 2.5G Ethernet, M.2 E and M keys"
 			},
-			"note": "positions along the edge are left unset: the drawing's labels are unreliable (see holes)"
+			"note": "positions along the edge are left unset: the drawing's labels are unreliable (see holes)",
+			"positionSource": {
+				"url": "https://dl.radxa.com/rock5/5b/docs/hw/radxa_rock5b_v141_dimension_20220728_dxf.zip",
+				"where": "V1.41 dimension DXF (top and bottom): each connector's footprint centre (J15 jack, J2600 USB-C, J5003/J5004 HDMI, J4 USB 2.0, J9509 USB 3.0, J6 RJ45, J4802 micro-HDMI in, J10 microSD, U19 M-key, U23 E-key); the v1.42 STEP (https://dl.radxa.com/rock5/5b/docs/hw/ROCK5B_v1.42_3D.step.zip) agrees within 0.05 mm. Also: fan header (4.54, 62.19), RTC header (95.79, 59.94), PoE header (61.51, 64.01), CSI FPC (97.44, 51.22) and DSI FPC (97.05, 31.98) underneath at the right edge, buttons RECOVER 82.44 and PWR 89.34 on the top edge"
+			}
 		},
 		"inputV": {
 			"value": {

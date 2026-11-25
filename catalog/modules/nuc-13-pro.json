@@ -47,7 +47,7 @@
 		"holes": {
 			"value": null,
 			"source": null,
-			"note": "no board holes are used: the mini PC mounts by the included VESA bracket, whose hole pattern the TPS doesn't give (measure the bracket)"
+			"note": "no board holes are used: the mini PC mounts by the included VESA bracket, whose hole pattern the TPS doesn't give (measure the bracket). Checked 25 Nov 2026: TPS rev 1.0 and 1.1, the user guide §7.0 and the ASUS datasheet give no VESA pattern or position. The board's own holes (TPS Figure 15: rear pair 95.00 apart, front pair 94.75, sides 90.55 front to back) are inside the closed chassis"
 		},
 		"mounting": {
 			"value": "VESA bracket and screws, included",
@@ -112,7 +112,7 @@
 				"url": "https://www.intel.com/content/dam/support/us/en/documents/intel-nuc/NUC13AN_TechProdSpec.pdf",
 				"where": "section 2.1.3 Figure 3 Front Panel Connectors and section 2.1.4 Figure 4 Back Panel Connectors; Table 2: Kensington slot 'on the left side of the chassis when viewed from the front'"
 			},
-			"note": "positions along each panel aren't dimensioned"
+			"note": "positions along each panel aren't dimensioned; the TPS (https://kmpic.asus.com/images/nuc/NUC13AN_NUC13LC_TechProdSpec.pdf, Figures 3 and 4) gives each face's port order only, undimensioned (checked 25 Nov 2026)"
 		},
 		"inputV": {
 			"value": {
@@ -136,7 +136,7 @@
 				"value": null,
 				"unit": "A",
 				"source": null,
-				"note": "no typical current is published"
+				"note": "no DC-side figure is published (checked 25 Nov 2026). ENERGY STAR record 4481367 measures 5.1 W short idle at the wall, adapter included (https://www.energystar.gov/productfinder/product/certified-computers/details/4481367/export/pdf): under about 0.26 A at 20 V, not a typical working draw"
 			},
 			"peak": {
 				"value": 6.0,

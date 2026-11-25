@@ -16,6 +16,13 @@ const motor = mech.motors.find((m) => m.mpn.startsWith("POLOLU-2366"))!
 const DOCS = /https:\/\/github\.com\/raspberrypi\/documentation\/.*power-supplies\.adoc/
 const good: CarrierRegulator = { outV: 5.1, maxOutA: 5, maxInA: 12, efficiency: 0.92, source: { url: "https://example.com/reg.pdf", where: "table 1" } }
 // A copy of the record with one value changed (the record itself is d9610c's and stays as it is).
+// The Pi 5 with its height unknown again (the record has it from Raspberry Pi's STEP since 25 Nov 2026), for the
+// unknown-height paths.
+const blindOf = (m: Module): Module => {
+	const b = structuredClone(m)
+	;(b.compute as { tallestMm: unknown }).tallestMm = { value: null, unit: "mm", source: null, note: "not on the mechanical drawing: take the vendor's STEP model" }
+	return b
+}
 const edited = (path: string, value: unknown): Module => {
 	const m = structuredClone(pi)
 	let x = m.compute as Record<string, unknown>
@@ -107,7 +114,8 @@ test("mechanics: the Pi fits the plate or is named; it mustn't stand in front of
 	const at = (xMm: number, yMm = 0): AssemblyBoard => ({ name: "brain", xMm, yMm, rotDeg: 0, outline: { widthMm: 85, heightMm: 56 }, outlineSource: "built" })
 	const plate = { lengthMm: 180, widthMm: 110 }
 	const main: AssemblyBoard = { name: "main", xMm: -60, yMm: 0, rotDeg: 0, outline: { widthMm: 40, heightMm: 30 }, outlineSource: "built" }
-	const ok = mechanicsCheck(pi, { placed: at(20), plate, others: [main] })
+	assert.deepEqual(mechanicsCheck(pi, { placed: at(20), plate, others: [main] }), [], "on the plate, clear of main, its height known: nothing")
+	const ok = mechanicsCheck(blindOf(pi), { placed: at(20), plate, others: [main] })
 	assert.deepEqual(ok.map((f) => f.level), ["warning"], "on the plate, clear of main: only the height")
 	assert.match(ok[0].message, /unknown height/)
 	assert.match(ok[0].message, /STEP model/, "the record's own note says why")
@@ -118,7 +126,7 @@ test("mechanics: the Pi fits the plate or is named; it mustn't stand in front of
 	const sensor = { xMm: 0, yMm: 0, zMm: 9, sizeMm: [3, 21, 18] as [number, number, number] }
 	const blocked = mechanicsCheck(pi, { placed: at(50), plate: { lengthMm: 200, widthMm: 110 }, others: [], sensor, baseZMm: 8 })
 	assert.match(blocked.map((f) => f.message).join("\n"), /stands in front of the distance sensor/)
-	assert.deepEqual(mechanicsCheck(pi, { placed: at(-50), plate: { lengthMm: 200, widthMm: 110 }, others: [], sensor, baseZMm: 8 }).map((f) => f.level), ["warning"])
+	assert.deepEqual(mechanicsCheck(blindOf(pi), { placed: at(-50), plate: { lengthMm: 200, widthMm: 110 }, others: [], sensor, baseZMm: 8 }).map((f) => f.level), ["warning"])
 	// With a height known, the brief's limit is checked instead of the warning.
 	const tall = edited("tallestMm", 20)
 	;(tall.compute as { tallestMm: { source: unknown } }).tallestMm.source = { url: "https://example.com/step", where: "measured" }
@@ -169,12 +177,14 @@ test("mechanics with a HAT carrier on top: the pair isn't an overlap; the stack'
 	const brain: AssemblyBoard = { name: "brain", xMm: 50, yMm: 0, rotDeg: 0, outline: { widthMm: 85, heightMm: 56 }, outlineSource: "built" }
 	const hat: AssemblyBoard = { ...brain, name: "rpi-5-carrier", carries: "brain" }
 	const plate = { lengthMm: 200, widthMm: 110 }
-	assert.deepEqual(mechanicsCheck(pi, { placed: { ...brain, xMm: -50 }, plate, others: [{ ...hat, xMm: -50 }], hat: "rpi-5-carrier" }).map((f) => f.level), ["warning"])
+	assert.deepEqual(mechanicsCheck(blindOf(pi), { placed: { ...brain, xMm: -50 }, plate, others: [{ ...hat, xMm: -50 }], hat: "rpi-5-carrier" }).map((f) => f.level), ["warning"])
 	// A sensor high above the bare board (base 8 mm + 1.6) but under the HAT (8 + 1.6 + 16 + 1.6): only the stack blocks it.
 	const sensor = { xMm: 0, yMm: 0, zMm: 22, sizeMm: [3, 21, 4] as [number, number, number] }
-	assert.equal(mechanicsCheck(pi, { placed: brain, plate, others: [], sensor, baseZMm: 8 }).some((f) => /distance sensor/.test(f.message)), false)
-	assert.match(mechanicsCheck(pi, { placed: brain, plate, others: [hat], sensor, baseZMm: 8, hat: "rpi-5-carrier" }).map((f) => f.message).join("\n"), /stands in front of the distance sensor .*the stack with rpi-5-carrier on top/)
-	assert.match(mechanicsCheck(pi, { placed: brain, plate, others: [], hat: "rpi-5-carrier" }).at(-1)!.message, /compute\.tallestMm is null .*clear the 16 mm spacers under rpi-5-carrier/)
+	assert.equal(mechanicsCheck(blindOf(pi), { placed: brain, plate, others: [], sensor, baseZMm: 8 }).some((f) => /distance sensor/.test(f.message)), false)
+	// With its real height (17.53 mm from the STEP) the Pi alone already reaches the sensor at 22 mm.
+	assert.equal(mechanicsCheck(pi, { placed: brain, plate, others: [], sensor, baseZMm: 8 }).some((f) => /distance sensor/.test(f.message)), true)
+	assert.match(mechanicsCheck(blindOf(pi), { placed: brain, plate, others: [hat], sensor, baseZMm: 8, hat: "rpi-5-carrier" }).map((f) => f.message).join("\n"), /stands in front of the distance sensor .*the stack with rpi-5-carrier on top/)
+	assert.match(mechanicsCheck(blindOf(pi), { placed: brain, plate, others: [], hat: "rpi-5-carrier" }).at(-1)!.message, /compute\.tallestMm is null .*clear the 16 mm spacers under rpi-5-carrier/)
 })
 
 test("the catalog's 2S pack and D36V50F5 for the Pi: 5 V ±4 % against 5.1 V is a warning naming both; the thin input headroom near cut-off is a warning; the current is within the pack's continuous rating (ruling R5)", () => {

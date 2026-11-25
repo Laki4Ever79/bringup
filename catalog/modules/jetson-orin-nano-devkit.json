@@ -77,9 +77,43 @@
 			}
 		},
 		"holes": {
-			"value": null,
-			"source": null,
-			"note": "not dimensioned in the carrier board specification (Figures 4-1 and 4-2 give only the outline and heights): take them from NVIDIA's carrier reference design files before drilling"
+			"value": [
+				{
+					"x": 4.0,
+					"y": 17.0,
+					"dia": 2.75
+				},
+				{
+					"x": 90.0,
+					"y": 17.0,
+					"dia": 2.75
+				},
+				{
+					"x": 96.0,
+					"y": 17.0,
+					"dia": 2.75
+				},
+				{
+					"x": 4.0,
+					"y": 75.0,
+					"dia": 2.75
+				},
+				{
+					"x": 90.0,
+					"y": 75.0,
+					"dia": 2.75
+				},
+				{
+					"x": 96.0,
+					"y": 75.0,
+					"dia": 2.75
+				}
+			],
+			"source": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_reference_design_files_a04_20230320.zip/",
+				"where": "P3768 A04 reference design files: P3768_A04_Gerber_files.zip, ncdrill-1-6.tap, tool 15 'Holesize 15. = 2.750000 ... NON_PLATED MM Quantity = 6' at design (0,0) (86,0) (92,0) (0,58) (86,58) (92,58); the board outline in P3768_A04.brd.alg runs -4..96 x -17..62, so +4, +17 to this frame"
+			},
+			"note": "an 86 x 58 pattern and a 92 x 58 one sharing the left pair; positions agree with the holes drawn in SP-11324 Figure 4-1. Also on the board: 2 plated Ø2.75 module holes at (16.2, 75.5) and (79.8, 75.5), and plated Ø3.8 M.2 standoffs underneath at (36.3, 55.7), (77.3, 55.7), (86.3, 32.5)"
 		},
 		"tallestMm": {
 			"value": 34.77,
@@ -93,8 +127,8 @@
 		"header": {
 			"at": {
 				"value": {
-					"x": null,
-					"y": null,
+					"x": 96.0,
+					"y": 46.0,
 					"pitchMm": 2.54,
 					"rows": 2,
 					"cols": 20,
@@ -105,7 +139,10 @@
 					"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf",
 					"where": "section 3.3: J12, 2x20 2.54 mm; Figure 1-4 Carrier Board Placement - Top View: J12 along the right edge, pin-1 arrow at its lower end"
 				},
-				"note": "the header's position isn't dimensioned; the pin-1 column (inner or outer row) isn't readable from Figure 1-4"
+				"positionSource": {
+					"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_reference_design_files_a04_20230320.zip/",
+					"where": "P3768_A04.brd.alg placement and pin rows: J12 pin 1 (97.27, 21.87), pin 40 (94.73, 70.13), +4/+17 to this frame; centre (96.0, 46.0)"
+				}
 			},
 			"pins": {
 				"value": {
@@ -161,47 +198,50 @@
 				{
 					"kind": "dc jack 5.5 × 2.5 mm",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 6.2
 				},
 				{
 					"kind": "displayport",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 22.76
 				},
 				{
 					"kind": "usb-a ×2 (USB 3.2)",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 42.6
 				},
 				{
 					"kind": "usb-a ×2 (USB 3.2)",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 59.6
 				},
 				{
 					"kind": "ethernet",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 76.95
 				},
 				{
 					"kind": "usb-c (data only, recovery)",
 					"side": "bottom",
-					"atMm": null
+					"atMm": 91.97
 				},
 				{
 					"kind": "mipi csi ×2 (22-pin)",
 					"side": "top face, left edge",
-					"atMm": null
+					"atMm": 58.5,
+					"also": "CAM1 at 33.5 (both on the left edge, from the bottom)"
 				},
 				{
 					"kind": "m.2 key-m ×2, key-e",
 					"side": "underside",
-					"atMm": null
+					"atMm": 6.7,
+					"note": "connectors at x 6.7 (2280 key-M at y 32.5, 2230 key-M at y 55.7) and 47.8 (key-E, y 55.7), underneath"
 				},
 				{
 					"kind": "microsd (on the module)",
 					"side": "module",
-					"atMm": null
+					"atMm": null,
+					"note": "on the module, not the carrier: no position on the carrier"
 				}
 			],
 			"source": {
@@ -212,7 +252,11 @@
 				"url": "https://developer.nvidia.com/embedded/learn/jetson-orin-nano-devkit-user-guide/hardware_spec.html",
 				"where": "Hardware Layout, Part Names: USB-C 'For data only', DC power jack 5.5mm x 2.5mm, M.2 slots"
 			},
-			"note": "positions along the edge aren't dimensioned"
+			"note": "positions along the edge aren't dimensioned",
+			"positionSource": {
+				"url": "https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_reference_design_files_a04_20230320.zip/",
+				"where": "P3768_A04.brd.alg: centres of each connector's ASSEMBLY_TOP outline, +4/+17 to this frame (J16 DC jack, J8 DisplayPort, J6/J7 USB-A, J15 Ethernet, J5 USB-C, J20/J21 cameras, J11/J24/J10 M.2); the I/O bodies reach ~1.8 mm past the bottom edge"
+			}
 		},
 		"inputV": {
 			"value": {
