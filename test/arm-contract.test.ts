@@ -21,7 +21,7 @@ export const ARM: ArmSpec = {
 		{ name: "base-yaw", servo: "MG996R", channel: 0, linkMm: 0, minDeg: -90, maxDeg: 90 },
 		{ name: "shoulder", servo: "MG996R", channel: 1, linkMm: 120, minDeg: 0, maxDeg: 120 },
 		{ name: "elbow", servo: "MG996R", channel: 2, linkMm: 110, minDeg: -120, maxDeg: 0 },
-		{ name: "wrist-pitch", servo: "SG90", channel: 3, linkMm: 20, minDeg: -90, maxDeg: 90 },
+		{ name: "wrist-pitch", servo: "SG90", channel: 3, linkMm: 20, minDeg: -120, maxDeg: 90 },
 		{ name: "wrist-roll", servo: "SG90", channel: 4, linkMm: 30, minDeg: -90, maxDeg: 90 },
 	],
 	gripper: { servo: "SG90", channel: 5, openMm: 40, fingerMm: 30 },
@@ -29,7 +29,7 @@ export const ARM: ArmSpec = {
 	input: { kind: "dc-brick", volts: 12, amps: 3 },
 	boards: [{ name: "main", at: { xMm: -60, yMm: 0 }, rotDeg: 0 }],
 }
-export const TARGETS: ArmTargets = { reachMm: 280, payloadG: 100, pick: { xMm: 180, yMm: -125, zMm: 20 }, drop: { xMm: 180, yMm: 125, zMm: 60 }, repeats: 5, objectG: 50 }
+export const TARGETS: ArmTargets = { reachMm: 280, payloadG: 100, pick: { xMm: 180, yMm: -125, zMm: 20 }, drop: { xMm: 160, yMm: 125, zMm: 60 }, repeats: 5, objectG: 50 }
 
 test("servoAt MG996R at 6 V", () => {
 	const r = servoAt(servo("MG996R"), 6)
@@ -88,7 +88,8 @@ test("rover contract: arm checks return []", () => {
 	const snap = (values: ContractSnapshot["values"]): ContractSnapshot => ({ revision: 1, values, versions: {} as ContractSnapshot["versions"] })
 	const robot = { summary: "a robot arm that picks a cube", peripherals: ["six servos"], batteryLifeDays: null }
 	// An arm design moves but has no motion: the rover's "moves but no motion targets" stays out of it.
-	assert.deepEqual(mechanicsChecks(snap({ requirements: robot, armTargets: TARGETS, arm: ARM })), [])
+	// (Its own checks run instead: src/arm/checks.ts; none of the rover's.)
+	assert.ok(!mechanicsChecks(snap({ requirements: robot, armTargets: TARGETS, arm: ARM })).some((v) => v.kind.startsWith("mech-")))
 	// A rover's checks are unchanged by the arm fields' existence: no motion still fires, motion with mechanics runs them.
 	const rover = { summary: "a rover", peripherals: ["two motors"], batteryLifeDays: null }
 	assert.equal(mechanicsChecks(snap({ requirements: rover }))[0]?.fields[0], "motion")

@@ -1,4 +1,5 @@
 import { mcuProfileOf } from "../mcu/profile.ts"
+import { armChecks } from "../arm/checks.ts"
 import { MOTOR_PLUG_REFS } from "./refs.ts"
 import { existsSync } from "node:fs"
 import { isEncoderPlug, isMotorPlug } from "./refs.ts"
@@ -22,7 +23,7 @@ import { field, moduleById } from "../system/bought.ts"
 // runs the same checks).
 
 export type MechViolation = {
-	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive" | "mech-mate" | "mech-safety" | "mech-rules"
+	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive" | "mech-mate" | "mech-safety" | "mech-rules" | "arm-torque" | "arm-reach" | "arm-tipping" | "arm-supply" | "arm-interference" | "arm-dfm"
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]
@@ -121,8 +122,8 @@ export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): Mec
 	const req = c.values.requirements
 	// Not for a board in a system (an assembly): the climate board on a rover names the rover but carries no motion.
 	const saysRobot = !c.values.assembly && /\b(motors?|wheels?|rover|robot|drives? (around|on|itself)|self-driving|differential drive)\b/i.test(`${req?.summary ?? ""} ${(req?.peripherals ?? []).join(" ")}`)
-	// A robot arm (armTargets/arm) moves too, but it isn't a rover: its own checks (src/arm) cover it.
-	if (c.values.armTargets || c.values.arm) return []
+	// A robot arm (armTargets/arm) moves too, but it isn't a rover: its own checks (src/arm/checks.ts) cover it.
+	if (c.values.armTargets || c.values.arm) return armChecks(c.values, cat)
 	if (!v.motion && ((c.values.parts ?? []).some((p) => p.role === "motor-driver") || saysRobot))
 		return [{ kind: "mech-fit", message: "the design moves (a motor driver, or requirements that name motors, wheels or a rover) but has no motion targets: a robot needs its motion field (the brief's speedMps, runtimeMin, edgeMm, maxSlopeDeg, stopBeforeWallMm, payloadG, maxSizeMm, maxMassG); write it, and the mechanics engineer designs the drive and chassis", fields: ["motion"], affects: ["architect"] }]
 	return mechanicsCheckOver(v.motion, withAssembly(c.values), checkBoards(c), cat)

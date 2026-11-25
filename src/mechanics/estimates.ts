@@ -9,6 +9,9 @@ export const ESTIMATES = {
 	boardMassGPerCm2: { value: 0.35, why: "a 1.6 mm FR-4 board with small parts weighs roughly 0.3–0.4 g per cm²" },
 	packInternalOhm: { value: 0.15, why: "only for a pack without internalOhm in the catalog (each catalog pack has its own, 25 Nov 2026): small 1S LiPo cells with protection circuits measure roughly 0.1–0.2 Ω" },
 	standoffMm: { value: 10, why: "board standoffs above the plate, to clear the battery and wiring" },
+	armLinkG: { value: 25, why: "a printed PLA arm bracket with its servo horn and screws, per 100 mm of link: a guess until the arm geometry tool weighs the real links (arm.links)" },
+	armGripperG: { value: 15, why: "a printed two-finger gripper's fingers and linkage, without its servo: a guess until the arm geometry tool weighs it" },
+	ARM_TORQUE_SHARE: { value: 0.5, why: "a hobby servo is held to half its stall torque at the worst static pose: a common rule of thumb (hobby servos publish no continuous rating); the simulation's force range is the full stall torque, so it holds no better than the bench would" },
 	printBedMm: { value: 256, why: "a common prosumer printer's bed, 256 × 256 × 256 mm (Bambu Lab X1/P1); a smaller printer needs smaller printed parts" },
 } as const
 

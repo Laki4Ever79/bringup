@@ -11,13 +11,18 @@
 import type { Part } from "./types.ts"
 import type { Mechanics } from "../mechanics/types.ts"
 import { isMotorPlug } from "../mechanics/refs.ts"
+import type { ArmSpec } from "../arm/types.ts"
+import { armOutputs } from "./power-auto.ts"
 
 type CatalogPart = Part & { lcsc: string | null }
 export const SERVO_PLUG_REFS = ["JV1", "JV2"] as const
 
-export function withDriverOutputs(parts: Part[], catalog: CatalogPart[], mechanics: Mechanics | null | undefined): { parts: Part[]; note: string | null } {
+// arm (a robot arm's contract field): one plug per arm servo on its channel, a rail chip per rail and the brick's jack
+// instead (power-auto.ts armOutputs), and no spare motor.
+export function withDriverOutputs(parts: Part[], catalog: CatalogPart[], mechanics: Mechanics | null | undefined, arm?: ArmSpec | null): { parts: Part[]; note: string | null } {
 	const pwm = parts.find((p) => p.role === "pwm-driver")
 	if (!pwm) return { parts, note: null }
+	if (arm) return armOutputs(parts, catalog, arm, pwm.ref)
 	const taken = new Set(parts.map((p) => p.ref))
 	const freeU = () => {
 		let n = 2

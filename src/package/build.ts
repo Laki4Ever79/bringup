@@ -196,7 +196,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	return result
 }
 
-function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
+export function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
 	const v = s.values, m = v.mechanics
 	const parts = v.parts ?? []
 	const plug = (role: string) => parts.filter((p) => p.role === role).map((p) => p.ref).join(", ")

@@ -92,9 +92,10 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				}
 				// A robot's power tree is decided in code from its pack and regulator (contract/power-auto.ts): every parts write
 				// lands it complete (real run 19b spent 19 revisions on it by hand).
-				if (args.field === "parts" && Array.isArray(args.value) && s.contract.get("motion")) {
-					// A PWM driver comes with its servo plugs, their supply and the spare motor (contract/outputs-auto.ts; run 20b).
-					const o = withDriverOutputs(args.value as NonNullable<ContractValues["parts"]>, mcuCatalog(), s.contract.get("mechanics"))
+				if (args.field === "parts" && Array.isArray(args.value) && (s.contract.get("motion") || s.contract.get("arm"))) {
+					// A PWM driver comes with its servo plugs, their supply and the spare motor (contract/outputs-auto.ts; run 20b);
+					// on an arm, a plug per servo, its rails and the brick's jack (power-auto.ts armOutputs).
+					const o = withDriverOutputs(args.value as NonNullable<ContractValues["parts"]>, mcuCatalog(), s.contract.get("mechanics"), s.contract.get("arm"))
 					if (o.note) {
 						args = { ...args, value: o.parts as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, o.note].filter(Boolean).join("; ")
@@ -253,6 +254,16 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 							if (up) follow("pins", up.pins, up.note)
 							laidOutNote = [laidOutNote, why].filter(Boolean).join("; ")
 						}
+					}
+					// An arm's change (a servo swapped, the rail or the brick changed) regenerates its servo plugs, rails and input
+					// in the same step, as a new pack does a rover's power tree.
+					if (args.field === "arm" && s.contract.get("parts")) {
+						const arm = args.value as ContractValues["arm"]
+						const snap = s.contract.snapshot()
+						const outs = withDriverOutputs(s.contract.get("parts")!, mcuCatalog(), null, arm)
+						const t = completePowerTree(outs.parts, undefined, { ...snap, values: { ...snap.values, arm } })
+						const why = [outs.note, t.note].filter(Boolean).join("; ")
+						if (why && follow("parts", t.parts, `the arm changed: ${why}`)) laidOutNote = [laidOutNote, why].filter(Boolean).join("; ")
 					}
 					// Renamed plugs: the connectors and pins that named the old refs take the new ones.
 					if (Object.keys(renames).length) {
