@@ -81,6 +81,9 @@ export function describeLoopEvent(type: string, p: any): { phase: ActivityPhase;
 		case "model.answer":
 			return { phase: "answer", text: clip(String(p?.answer?.content?.text ?? ""), ANSWER_CHARS) }
 		case "interception.started": {
+			// The engineer's pause or stop (runner/steer-gate.ts), not change control.
+			if (p?.steerHold === "paused") return { phase: "held", text: "paused by the engineer" }
+			if (p?.steerHold === "stopped") return { phase: "held", text: "stopping: the engineer stopped this step" }
 			const c = p?.input?.call
 			// The proposed value too: a held call's tool line only appears once it is released.
 			const args = c?.name ? summarizeArgs(c.name, String(c.args ?? "{}")) : ""

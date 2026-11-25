@@ -13,6 +13,8 @@
 		"src/",
 		"!src/dashboard/**",
 		"!src/demo.ts",
+		"!py/mech/live.py",
+		"!src/sim/**",
 		"src/dashboard/ask.ts",
 		"src/dashboard/assembly-geom.d.ts",
 		"src/dashboard/assembly-geom.js",

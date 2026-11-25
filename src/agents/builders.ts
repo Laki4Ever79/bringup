@@ -86,9 +86,21 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	let lastBuilt: string | null = null
 	let lastKey: string | null = null
 	const keyChanged = (field: string) => Boolean(opts.derived?.fields.includes(field as FieldName)) && JSON.stringify(opts.derived!.key(state().contract.snapshot()) ?? null) !== lastKey
+	// Steering (runner/steer.ts): a paused or stopped builder starts no build until it is resumed; Redo rebuilds the
+	// current revision even when its inputs haven't changed. A build in flight is never killed: it finishes.
+	const name = `${opts.kind}-builder`
+	state().steer.register(name, "builder")
+	let force = false
 	const rebuilder = new Rebuilder(async (revision) => {
+		await state().steer.gate(name)
 		const s = state()
 		const snapshot = s.contract.snapshot()
+		const forced = force
+		force = false
+		state().steer.noteStep(name, `build ${opts.kind} at rev ${snapshot.revision}`, () => {
+			force = true
+			rebuilder.redo(state().contract.revision)
+		})
 		if ((opts.requires ?? []).some((f) => snapshot.versions[f] === 0)) return
 		const inputs = Object.fromEntries(opts.inputs.map((f) => [f, snapshot.versions[f]]))
 		const skipped = opts.notNeeded?.(snapshot) ?? null
@@ -103,7 +115,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 		}
 		const built = physical([...opts.inputs.map((f) => snapshot.values[f]), opts.derived?.key(snapshot) ?? null])
 		lastKey = JSON.stringify(opts.derived?.key(snapshot) ?? null)
-		if (built === lastBuilt && (s.artifacts as Record<string, unknown>)[opts.kind] !== undefined && !s.artifactFailures[opts.kind]) {
+		if (!forced && built === lastBuilt && (s.artifacts as Record<string, unknown>)[opts.kind] !== undefined && !s.artifactFailures[opts.kind]) {
 			s.artifactInputs[opts.kind] = inputs
 			const drc = ((s.artifacts as Record<string, unknown>)[opts.kind] as { drc?: DrcSummary | null }).drc
 			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}) }), self.id)

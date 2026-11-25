@@ -15,6 +15,8 @@ import type { GroundingFinding } from "./contract/grounding.ts"
 import type { AgentRole, FieldName } from "./contract/types.ts"
 import { makeEvent, type ReviewFinding, type ReviewVerdict } from "./events.ts"
 import { Outbox } from "./outbox.ts"
+import { Steering } from "./runner/steer.ts"
+import { SteerGate } from "./runner/steer-gate.ts"
 
 // How long an owner has to decide a held change: 2 min, 5 on the Claude subscription, whose turns take about 20 s each
 // (its second rover run, 15 Nov: two proposals timed out undecided and the run ended with their violations open).
@@ -50,11 +52,15 @@ export class BringupState extends RuntimeState {
 		missingVerdict: boolean
 	} = { enabled: false, maxRounds: 1, round: 0, results: [], missingVerdict: false }
 
+	// Pause, stop and redo, of the run or of one agent (runner/steer.ts).
+	readonly steer = new Steering()
+
 	constructor(
 		readonly outDir: string,
 		readonly approvalTimeoutMs: number = APPROVAL_TIMEOUT_MS,
 	) {
 		super()
+		this.approvals.holdWhile = () => this.steer.anyHeld()
 	}
 }
 
@@ -106,7 +112,7 @@ let haltReporterInstalled = false
 
 // Mozaik 4.1's runLoop does not catch loop errors (issue #114), so a crashed agent looks idle.
 // Failures surface as unhandled rejections; report them as agent.halted events instead.
-export function safeRunLoop(agentId: string, message: string, input: InferenceInput, handler?: InterceptionHandler): void {
+export function safeRunLoop(agentId: string, message: string, input: InferenceInput, handler?: InterceptionHandler, step?: { summary: string; redo: () => void }): void {
 	if (!haltReporterInstalled) {
 		haltReporterInstalled = true
 		process.on("unhandledRejection", (reason) => {
@@ -117,7 +123,10 @@ export function safeRunLoop(agentId: string, message: string, input: InferenceIn
 		})
 	}
 	try {
-		rt().runLoop(agentId, message, input, handler)
+		// Every loop goes through the steering gate: a paused or stopped agent waits or ends at its next step.
+		const name = state().getParticipant(agentId)?.getManifest().name ?? agentId
+		state().steer.register(name, "agent")
+		rt().runLoop(agentId, message, input, new SteerGate(state().steer, name, handler, step))
 	} catch (error) {
 		emit(makeEvent("agent.halted", agentId, { agentId, error: String(error) }), agentId)
 	}

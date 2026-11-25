@@ -21,6 +21,9 @@ export const HAND: Record<string, string[]> = {
 	"templates/fw/": ["firmware.int", "mcu-firmware.int", "mcu-firmware-vendors.int", "firmware-codegen"],
 	"templates/wokwi/": ["wokwi", "wokwi.int"],
 	"src/dashboard/": ["dashboard", "system-page"],
+	// The live simulation session runs py/mech/live.py as a process; the mission-control panel is loaded by the page.
+	"py/mech/live.py": ["sim-session.int"],
+	"src/dashboard/sim-panel.js": ["sim-panel"],
 	// The run page reaches the robot view (world3d.js, ses.js) at run time, not by import.
 	"src/dashboard/page.html": ["robot-view.browser", "dashboard-ui-cleanup"],
 	"src/dashboard/world3d.js": ["robot-view.browser"],

@@ -105,6 +105,15 @@ export interface Payloads {
 	"review.completed": { revision: number; verdict: ReviewVerdict; findings: ReviewFinding[] }
 	"design.settled": { revision: number; settled: boolean }
 	"agent.halted": { agentId: string; error: string }
+	// Steering (runner/steer.ts): the engineer paused the run, or resumed it with the edits it applied (each sent as an
+	// engineer change, edit-N, like a typed request).
+	"run.paused": { at: string }
+	"run.resumed": { at: string; applied: { id: string; requestId: string; summary: string; decision?: "mine" | "fix" }[]; dropped: string[] }
+	// One agent or builder paused, resumed, stopped (its step in flight ends at its next step) or redone (its last step
+	// runs again).
+	"agent.steered": { agent: string; action: "pause" | "resume" | "stop" | "redo" }
+	// An edit made while paused, checked: ok, or what it breaks and whether a fix is suggested.
+	"edit.verified": { id: string; ok: boolean; broke: string[]; fix: string | null }
 	// The live hardware bench (agents/bench.ts, docs/design/bench.md). Post-settle: none of these hold up settling.
 	"bench.connected": { source: BenchSourceName; ports: { dut: string | null; fixture: string | null; telemetry: string | null }; meter: boolean }
 	"bench.flashing": { revision: number; stage: "build" | "connect" | "write" | "boot"; pct: number }

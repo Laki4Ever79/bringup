@@ -1,0 +1,51 @@
+{
+ "result": "pass",
+ "reason": "every segment passed",
+ "segments": [
+  {
+   "name": "edge crossed",
+   "pass": true,
+   "detail": "the caster reached x = 1.38 m (the step is 3 mm at 0.6 m)"
+  },
+  {
+   "name": "no wall contact",
+   "pass": true,
+   "detail": "the plate's corners came within 82 mm of a wall (any side: the sensor looks ahead only)"
+  },
+  {
+   "name": "kept its distance",
+   "pass": true,
+   "detail": "driving forward, it came 190 mm from what was ahead (the brief: at least 150 mm)"
+  },
+  {
+   "name": "turned away",
+   "pass": true,
+   "detail": "turned more than 45\u00b0 from its start"
+  },
+  {
+   "name": "kept driving",
+   "pass": true,
+   "detail": "2.15 m after turning (nothing ahead in range: the reading is -1, not 0 mm)"
+  },
+  {
+   "name": "top speed",
+   "pass": true,
+   "detail": "0.31 m/s (target 0.3 m/s, 90 % needed)"
+  },
+  {
+   "name": "peak current",
+   "pass": true,
+   "detail": "0.45 A per motor (driver peak 2 A)"
+  }
+ ],
+ "peakA": 0.454,
+ "topSpeedMps": 0.314,
+ "closestWallMm": 82,
+ "simSeconds": 25.01,
+ "edgeMm": 3,
+ "ticks": 758,
+ "payload": {
+  "tempC": 22.5,
+  "rh": 45.0
+ }
+}

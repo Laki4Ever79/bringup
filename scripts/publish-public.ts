@@ -16,8 +16,9 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, normalize } from "node:path"
 
-// The page and what serves it.
-export const PRIVATE_ROOTS = ["src/dashboard/", "src/demo.ts", "docs/design/dashboard.md"]
+// The page and what serves it: the page itself, the demo that launches it, its design doc, and the live simulation
+// session behind its Simulation chapter (src/sim, py/mech/live.py: "simulation in 3D" is the paid part, 25 Nov 2026).
+export const PRIVATE_ROOTS = ["src/dashboard/", "src/demo.ts", "docs/design/dashboard.md", "src/sim/", "py/mech/live.py"]
 // Never in a public tree (they are gitignored; a hit means something slipped in).
 const FORBIDDEN = [/(^|\/)\.env(\.(?!example$)[^/]*)?$/, /^catalog\/learned\//, /(^|\/)\.cache\//]
 const CODE = /\.(ts|mts|js|mjs|tsx)$/

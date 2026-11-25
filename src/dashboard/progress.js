@@ -63,18 +63,19 @@ export function badgeOf(b) {
 const CSS = `
 .pg { border: 1.5px solid var(--ink, #16140f); background: var(--paper, #fff); margin-top: 10px; padding: 8px 10px; display: grid; gap: 6px; font: 12px/1.3 var(--mono, ui-monospace, monospace); }
 .pg[hidden] { display: none; }
-.pg-head { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; color: var(--ink-3, #807865); }
+.pg-head { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; justify-content: space-between; color: var(--ink-3, #6b6455); }
 .pg-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; cursor: pointer; padding: 2px 0; }
 .pg-row:hover { background: var(--paper-2, #faf9f6); }
 .pg-name { font-weight: 700; min-width: 84px; color: var(--ink, #16140f); }
-.pg-chip { padding: 1px 7px; border: 1px solid var(--ink-3, #807865); color: var(--ink-2, #4b463c); background: var(--paper, #fff); }
-.pg-chip.ok { border-color: var(--ok, #11804a); color: var(--ok, #11804a); background: var(--ok-wash, rgba(17,128,74,.13)); }
+.pg-chip { padding: 1px 7px; border: 1px solid var(--ink-3, #6b6455); color: var(--ink-2, #4b463c); background: var(--paper, #fff); }
+.pg-chip.ok { border-color: var(--ok, #0d6e3f); color: var(--ok, #0d6e3f); background: var(--ok-wash, rgba(17,128,74,.13)); }
 .pg-chip.failed { border-color: var(--error, #c8231a); color: var(--error, #c8231a); background: var(--error-wash, rgba(200,35,26,.12)); }
-.pg-chip.prev { opacity: .45; animation: none; }
-.pg-chip.notrun { border-style: dashed; color: var(--ink-3, #807865); }
-.pg-chip.started { border-color: var(--signal, #ff4a17); color: var(--signal, #ff4a17); animation: pg-pulse 1.1s ease-in-out infinite; }
+.pg-chip.prev { animation: none; color: var(--ink-3, #6b6455); border-style: dotted; background: var(--paper, #fff); }
+.pg-chip.notrun { border-style: dashed; color: var(--ink-3, #6b6455); }
+.pg-chip.started { border-color: var(--signal, #ff4a17); color: var(--signal-ink, #c2330a); animation: pg-pulse 1.1s ease-in-out infinite; }
 @keyframes pg-pulse { 50% { background: var(--signal-wash, rgba(255,74,23,.12)); } }
 @media (prefers-reduced-motion: reduce) { .pg-chip.started { animation: none; } }
+@media (pointer: coarse) { .pg-row { min-height: 44px; } }
 `
 
 export function mountProgress(host, opts = {}) {

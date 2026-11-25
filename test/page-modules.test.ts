@@ -1,12 +1,16 @@
-// Every module a dashboard page imports must be on the server's list, or the page breaks in the browser only.
+// Every module a dashboard page imports must exist in src/dashboard (the hub serves any plain-named .js file there),
+// or the page breaks in the browser only.
 import assert from "node:assert/strict"
-import { readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { test } from "node:test"
 
-test("the hub serves every module the dashboard pages import", () => {
-	const served = new Set(JSON.parse(/const MODULES = new Set\((\[[^\]]*\])\)/.exec(readFileSync("src/dashboard/server.ts", "utf8"))![1]))
-	for (const page of readdirSync("src/dashboard").filter((f) => f.endsWith(".html"))) {
-		const html = readFileSync(`src/dashboard/${page}`, "utf8")
-		for (const m of html.matchAll(/from "\/([\w-]+\.js)"/g)) assert.ok(served.has(m[1]), `${page} imports /${m[1]}, which the server doesn't serve`)
+test("every module the dashboard pages and modules import is a file the hub serves", () => {
+	for (const f of readdirSync("src/dashboard").filter((f) => f.endsWith(".html") || f.endsWith(".js"))) {
+		const text = readFileSync(`src/dashboard/${f}`, "utf8")
+		for (const m of text.matchAll(/(?:from |import\()"\/([^"]+\.js)"/g)) {
+			if (m[1] === "contract/builds.js") continue // served from src/contract by its own route
+			assert.match(m[1], /^[\w-]+\.js$/, `${f} imports /${m[1]}, a name the hub doesn't serve`)
+			assert.ok(existsSync(`src/dashboard/${m[1]}`), `${f} imports /${m[1]}, which is not in src/dashboard`)
+		}
 	}
 })

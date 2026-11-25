@@ -23,6 +23,8 @@ import { createRippleRecorder } from "./runner/ripple.ts"
 import { createFileSync } from "./runner/file-sync.ts"
 import { createLinkedSync } from "./runner/linked.ts"
 import { watchDecisions } from "./runner/decisions.ts"
+import { createSteerDesk } from "./runner/steer-run.ts"
+import { steerTools } from "./runner/steer-tools.ts"
 import { loadCatalog } from "./tools/parts-search.ts"
 import { createEngineer } from "./agents/engineer.ts"
 import { startCloudSession } from "./runner/cloud.ts"
@@ -221,6 +223,9 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	if (state.review.enabled) createBriefReviewer({ mock: opts.mock, env })
 	const engineer = createEngineer()
 	joinRuntime(engineer)
+	// Pause, edit, verify, resume; pause, stop or redo one agent (runner/steer.ts), from <outDir>/steer.jsonl.
+	const steerDesk = createSteerDesk({ outDir: opts.outDir, tools: opts.noHardware ? null : steerTools(env) })
+	joinRuntime(steerDesk)
 
 	emit(makeEvent("run.started", engineer.getId(), { review: state.review.enabled, engineerApproval: state.engineerApproval, noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench), stay: Boolean(opts.stay), mock: opts.mock }), engineer.getId())
 	sendMessage(opts.brief, engineer.getId())
@@ -262,6 +267,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	// The page closes its composer on this: nobody is taking change requests any more.
 	files?.close()
 	linked?.close()
+	steerDesk.close()
 	emit(makeEvent("run.ended", engineer.getId(), { settled: (latest as Settlement | null)?.settled ?? outcome.settled, revision: state.contract.revision }), engineer.getId())
 	requests.close()
 	decisions.close()

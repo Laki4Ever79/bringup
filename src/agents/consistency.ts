@@ -134,6 +134,9 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		if (done) return
 		flushCheck()
 		const s = state()
+		// The engineer paused the run or an agent (runner/steer.ts): nothing settles until it goes on; the resume's own
+		// event re-arms this evaluation.
+		if (s.steer.anyHeld()) return
 		const grounding =
 			!s.groundingEnabled ||
 			s.contract.version("parts") === 0 ||

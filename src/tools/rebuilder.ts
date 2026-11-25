@@ -11,6 +11,12 @@ export class Rebuilder {
 		return !this.running && this.pending === null
 	}
 
+	// Builds this revision again even when it was the last one built (the engineer's Redo).
+	redo(revision: number): void {
+		this.lastBuilt = Math.min(this.lastBuilt, revision - 1)
+		this.request(revision)
+	}
+
 	request(revision: number): void {
 		if (revision <= this.lastBuilt) return
 		this.pending = Math.max(this.pending ?? revision, revision)

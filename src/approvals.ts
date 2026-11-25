@@ -24,6 +24,9 @@ interface Entry {
 // Open change requests waiting for the owner of a contract field to decide.
 export class ApprovalRegistry {
 	private entries = new Map<string, Entry>()
+	// While this says so (the engineer paused the run or an agent: runner/steer.ts), a held change doesn't time out: its
+	// clock starts again when nothing is held, so a pause never rejects a change nobody could decide.
+	holdWhile: () => boolean = () => false
 
 	open(field: FieldName, requester: AgentRole, valueKey?: string, needsEngineer = false): string {
 		const id = randomUUID().slice(0, 8)
@@ -36,7 +39,11 @@ export class ApprovalRegistry {
 		if (!entry) return Promise.resolve({ approved: false, reason: "unknown proposal", by: "consistency" })
 		if (entry.decision) return Promise.resolve(entry.decision)
 		return new Promise((resolve) => {
-			const timer = setTimeout(() => this.resolve(id, { approved: false, reason: "timeout", by: OWNERS[entry.field] }), timeoutMs)
+			let timer: NodeJS.Timeout
+			const arm = () => {
+				timer = setTimeout(() => (this.holdWhile() ? arm() : this.resolve(id, { approved: false, reason: "timeout", by: OWNERS[entry.field] })), timeoutMs)
+			}
+			arm()
 			entry.waiters.push((d) => {
 				clearTimeout(timer)
 				resolve(d)

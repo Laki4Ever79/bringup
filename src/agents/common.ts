@@ -141,7 +141,9 @@ function launch(agent: Agent, message: string, cause?: Cause): void {
 	track()
 	if (cause) causes.set(agent.getId(), cause)
 	turns(agent.getId()).live.push(Date.now())
-	safeRunLoop(agent.getId(), withDesignFacts(state().roles.get(agent.getId()), message), inferenceInputFor(agent), new ChangeControl(agent.getId()))
+	// Redo (runner/steer.ts) reruns this step as a fresh turn: its own context, the design facts as they are then.
+	const step = { summary: message.split("\n")[0], redo: () => startTurn(agent, message, cause, { now: true }) }
+	safeRunLoop(agent.getId(), withDesignFacts(state().roles.get(agent.getId()), message), inferenceInputFor(agent), new ChangeControl(agent.getId()), step)
 }
 
 // A turn that must run: now if the agent is free, else queued behind its live turn. `now` starts it regardless (a
