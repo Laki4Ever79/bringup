@@ -93,8 +93,10 @@ is a change to the firmware toolchain, not just the code.
       counted 29 mm that weren't driven; then it rolled 13-15 mm past each stop. Now each change of manoeuvre starts
       from rest (turn, stop, look again; drive, stop, look again, up to 3 corrections), and the coast after a stop is
       learned and taken off the next approach. Run 20b's S3 in simulation: (400, 400) 21.8 -> 4.7 mm, the lap 12.0 ->
-      5.2 mm, (550, 0) 0.6 -> 0.6 mm; odometry drift on the diagonal 29.2 -> 15.2 mm. Cost: the lap takes 17.2 s, was
-      12.4 s.
+      5.2 mm, (550, 0) 0.6 -> 0.6 mm; odometry drift on the diagonal 29.2 -> 15.2 mm. Cost: the lap took 17.2 s, was
+      12.4 s; then won back (lead-2's ask): a heading within 4 deg is accepted from rest (the drive's hold takes the
+      rest), rest is under 0.3 mm and 0.005 rad a tick, the turn's rotation after it stops is learned too, and a learned
+      stop aims at the tolerance's middle. Lap 17.2 -> 14.2 s at 2.9 mm, (400, 400) 4.7 s -> 3.9 s at 5.0 mm.
 - [x] **Encoder-only heading under-reads turns in place** (20 Nov, lead-2: "it's the encoder-only fallback's real
       accuracy on scrubbing skid turns"; moved 25 Nov by f182f5f): the under-read came from turning while still moving.
       With every turn now started and ended at rest, run 20b with the gyro removed: heading error on the (400, 400)
