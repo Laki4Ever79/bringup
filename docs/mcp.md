@@ -25,12 +25,27 @@ Needs Node 22 or later (tested on 22 and 24; the full toolchain below needs Node
 mostly the model SDKs Mozaik uses); on a fresh machine that took about 25 s (an estimate from one Docker test).
 
 What a run builds depends on the machine (`hardware`, `auto` by default):
-- **Nothing else installed:** the agents design the contract (parts, pins, outline, mechanics) and every check runs on
-  it. The board, case, chassis and firmware builds are stubbed, so the design settles in seconds. The start result
-  names the missing tools (`hardware: "stubbed: this machine lacks …"`).
+- **Docker, nothing else installed:** the builds run in Bringup's toolchain image (`docker/toolchain/Dockerfile`:
+  tscircuit + bun, Python with build123d and MuJoCo, PlatformIO with the ESP32-C3 and ESP32-S3 toolchains) and KiCad's
+  `kicad/kicad:10.0`. The first run builds the one and pulls the other: about 2.7 GB to download, an estimate from the
+  compressed images (1.86 GB + 0.81 GB), and 5.2 GB on disk for the toolchain image. Every run after that finds both.
+  The start result says so (`hardware: "built in Docker: this machine lacks …"`). Measured with the logger brief in an
+  empty folder (25 Nov 2026, a loaded 16-core laptop):
+
+  | | Builds | Wall time |
+  |---|---|---|
+  | Before (stubbed) | 0 of 6: no routed board, case or firmware | 76 s |
+  | First run (image built) | 6 of 6, 0 failed | 854 s (500 s of it the image) |
+  | Later runs | 6 of 6, 0 failed | 123 s |
+
+  The first run's 500 s built the image before its trim, with KiCad's image already on the machine (its pull is extra).
+  Set `BRINGUP_TOOLCHAIN=local` to never use the image.
+- **Neither the tools nor Docker:** the agents design the contract (parts, pins, outline, mechanics) and every check
+  runs on it. The board, case, chassis and firmware builds are stubbed, so the design settles in seconds. The start
+  result names what is missing (`hardware: "stubbed: this machine lacks … and Docker"`).
 - **The full toolchain** (`git clone`, then `npm run setup`; see the [README](../README.md)): real boards, cases,
   chassis, firmware, simulation and ROS. From a clone, register the server with
-  `claude mcp add bringup -- node "$PWD/bin/bringup-mcp.js"`.
+  `claude mcp add bringup -- node "$PWD/bin/bringup-mcp.js"`. Local tools always come first.
 - `hardware: "build"` asks for the real builds anyway. On a machine without the tools the start result says so, the
   run ends unsettled, and `run_summary` names the missing tools. `hardware: "stub"` stubs them even where they are installed.
 

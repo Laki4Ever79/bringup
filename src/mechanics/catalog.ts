@@ -140,6 +140,44 @@ export interface CablePart extends Sourced {
 	buy?: { supplier: string; url: string; packQty?: number }[]
 }
 
+// A bought servo (an arm's joints): a hobby PWM servo or a serial bus servo. Torque, current and speed per supply voltage,
+// as the datasheet lists them (ascending v); servoAt reads them at the arm's rail. estimates: the keys no primary source
+// gives (the hobby servos' ear holes, a stall current sellers disagree on): reports say so.
+export interface ServoPart extends Sourced {
+	control: "pwm" | "ttl-bus"
+	minV: number
+	maxV: number
+	stallNm: { v: number; nm: number }[]
+	stallA: { v: number; a: number }[]
+	secPer60: { v: number; s: number }[] // no-load speed
+	rangeDeg: number
+	pulseUs?: [number, number] // pwm: the pulse for 0 and rangeDeg
+	massG: number
+	bodyMm: [number, number, number]
+	earsMm: number // over the mounting ears (a bus servo with none: its body length)
+	holesMm: [number, number][] // mounting holes from the output shaft's axis, along the body and across it
+	holeDiaMm: number
+	spline: string // "25T" etc.
+	estimates?: string[]
+	buy?: { supplier: string; url: string; packQty?: number }[]
+}
+
+// A list of {v, value} points read at v: linear between the listed voltages, the nearest end beyond them.
+function atV<T extends { v: number }>(pts: T[], v: number, get: (p: T) => number): number {
+	const s = [...pts].sort((a, b) => a.v - b.v)
+	if (v <= s[0].v) return get(s[0])
+	for (let i = 1; i < s.length; i++)
+		if (v <= s[i].v) return get(s[i - 1]) + ((get(s[i]) - get(s[i - 1])) * (v - s[i - 1].v)) / (s[i].v - s[i - 1].v)
+	return get(s[s.length - 1])
+}
+
+// The servo at its supply voltage: stall torque (N·m), stall current (A) and no-load speed (deg/s). Outside the servo's
+// rated range it refuses (an SG90 on a 7.4 V rail burns out), naming the servo and its range.
+export function servoAt(p: ServoPart, v: number): { stallNm: number; stallA: number; degPerS: number } | { error: string } {
+	if (!(v >= p.minV - 1e-9 && v <= p.maxV + 1e-9)) return { error: `${p.mpn} is rated ${p.minV}–${p.maxV} V, not ${v} V` }
+	return { stallNm: atV(p.stallNm, v, (x) => x.nm), stallA: atV(p.stallA, v, (x) => x.a), degPerS: 60 / atV(p.secPer60, v, (x) => x.s) }
+}
+
 export interface MechCatalog {
 	sensors: SensorModule[]
 	motors: MotorPart[]
@@ -158,6 +196,8 @@ export interface MechCatalog {
 	motorMounts?: MotorMountPart[]
 	// Emergency stop buttons and the like (safety.ts).
 	safety?: SafetyPart[]
+	// Servos for an arm's joints (src/arm).
+	servos?: ServoPart[]
 }
 
 export function loadMechCatalog(root: string): MechCatalog {

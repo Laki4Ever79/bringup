@@ -9,6 +9,7 @@ import { getuid, getgid } from "node:process"
 import { run, type RunResult } from "./exec.ts"
 import { renodePath } from "./renode.ts"
 import { popplerAvailable } from "../learn/docs.ts"
+import { imagePresent, mountDirs, toolchainImage, writeShims } from "./toolchain.ts"
 
 export const KICAD_IMAGE = "kicad/kicad:10.0"
 
@@ -28,6 +29,8 @@ export interface Env {
 	renode?: string | null
 	// poppler's pdfinfo, pdftotext and pdftoppm on PATH: the part learner reads datasheets with them. Optional.
 	poppler?: boolean
+	// Set when tsci, python or pio run in the toolchain image (src/tools/toolchain.ts) because this machine lacks them.
+	toolchain?: { image: string; tools: string[] }
 }
 
 const local = (root: string, rel: string) => (existsSync(join(root, rel)) ? join(root, rel) : null)
@@ -43,18 +46,30 @@ export async function detectEnvironment(root: string): Promise<Env> {
 		run("docker", ["image", "inspect", KICAD_IMAGE], { timeoutMs: 10_000 }),
 		qemuPath ? run(qemuPath, ["--version"], { timeoutMs: 10_000, env: qemuEnv(root) }) : Promise.resolve(null),
 	])
+	const tools = { tsci: local(root, "tools/node/node_modules/.bin/tsci"), python: local(root, ".venv/bin/python"), pio: local(root, ".venv/bin/pio") }
+	const toolchain = await dockerToolchain(root, tools)
 	return {
 		root,
-		tsci: local(root, "tools/node/node_modules/.bin/tsci"),
+		...tools,
+		...(toolchain ? { ...toolchain.shims, toolchain: { image: toolchain.image, tools: toolchain.tools } } : {}),
 		kicad: localKicad.code === 0 ? "local" : dockerKicad.code === 0 ? "docker" : null,
-		python: local(root, ".venv/bin/python"),
-		pio: local(root, ".venv/bin/pio"),
 		qemu: qemu?.code === 0 ? qemuPath : null,
 		wokwi: local(root, "tools/wokwi-cli/wokwi-cli"),
 		wokwiToken: Boolean(process.env.WOKWI_CLI_TOKEN),
 		renode: renodePath(root),
 		poppler: Object.values(await popplerAvailable()).every(Boolean),
 	}
+}
+
+// The tools this machine lacks, run from the toolchain image when it is here (src/tools/toolchain.ts prepares it).
+// Local tools always win; BRINGUP_TOOLCHAIN=local turns the image off.
+async function dockerToolchain(root: string, tools: Record<"tsci" | "python" | "pio", string | null>) {
+	const missing = (Object.keys(tools) as (keyof typeof tools)[]).filter((t) => !tools[t])
+	if (missing.length === 0 || process.env.BRINGUP_TOOLCHAIN === "local") return null
+	const image = toolchainImage(root)
+	if (!image || !(await imagePresent(image))) return null
+	const all = writeShims(image, mountDirs(root))
+	return { image, tools: missing, shims: Object.fromEntries(missing.map((t) => [t, all[t]])) }
 }
 
 // Espressif's prebuilt QEMU links libslirp, which NOTES.md installs into tools/qemu/lib.
@@ -132,6 +147,7 @@ export function describeEnv(env: Env): string {
 		`KiCad 10:  ${env.kicad ?? "missing"}`,
 		`python:    ${env.python ?? "missing"}`,
 		`pio:       ${env.pio ?? "missing"}`,
+		...(env.toolchain ? [`toolchain: ${env.toolchain.tools.join(", ")} in Docker (${env.toolchain.image})`] : []),
 		`QEMU:      ${env.qemu ?? "missing (optional)"}`,
 		`Renode:    ${env.renode ?? "missing (optional: STM32/nRF52 simulation, npm run setup)"}`,
 		`Wokwi:     ${env.wokwi && env.wokwiToken ? `${env.wokwi} (token set)` : "not set up (optional: WOKWI_CLI_TOKEN in .env and tools/wokwi-cli, see NOTES.md)"}`,

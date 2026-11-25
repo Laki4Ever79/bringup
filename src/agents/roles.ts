@@ -265,7 +265,7 @@ export const REQUEST_WORDS: Partial<Record<AgentRole, RegExp>> = {
 	test: /test|fixture|bed of nails|pogo|probe|factory|production|end[- ]of[- ]line|\bpads?\b|\beol\b/i,
 }
 export function hearsRequest(role: AgentRole, has: (field: FieldName) => boolean, message: string): boolean {
-	if (role === "mechanics") return has("motion") || has("mechanics")
+	if (role === "mechanics") return has("motion") || has("mechanics") || has("armTargets") || has("arm")
 	const field = role === "ml" ? "model" : role === "test" ? "test" : null
 	if (!field) return true
 	return has(field) || (REQUEST_WORDS[role]?.test(message) ?? true)

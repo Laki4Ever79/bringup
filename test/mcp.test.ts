@@ -404,17 +404,35 @@ test("over stdio, a mock design runs to the end and run_summary reports it", { s
 
 test("hardware auto builds where the toolchain is and stubs where it isn't, and says which", async () => {
 	const stub = stubRun()
-	const bare = await connectWith({ launch: stub.launch, detect: async () => ({ tsci: null, python: null, pio: "pio" }) })
+	const bare = await connectWith({ launch: stub.launch, detect: async () => ({ tsci: null, python: null, pio: "pio" }), docker: async () => false })
 	try {
 		const r = (await bare.call("start_design", { brief: "x" })).json()
 		assert.match(r.hardware, /stubbed: this machine lacks tscircuit, Python with build123d/)
 		assert.deepEqual(stub.calls[0].extraArgs, ["--no-hardware"])
 		const b = (await bare.call("start_design", { brief: "x", hardware: "build" })).json()
-		assert.match(b.hardware, /^built \(asked\), but this machine lacks tscircuit, Python with build123d: the run will end unsettled/)
+		assert.match(b.hardware, /^built \(asked\), but this machine lacks tscircuit, Python with build123d and Docker: the run will end unsettled/)
 		assert.equal(stub.calls[1].extraArgs, undefined)
 		stub.release()
 	} finally {
 		await bare.close()
+	}
+})
+
+test("hardware auto builds in Docker where the tools are missing and Docker works, and says so", async () => {
+	const stub = stubRun()
+	const bare = await connectWith({ launch: stub.launch, detect: async () => ({ tsci: null, python: null, pio: null, kicad: null }), docker: async () => true })
+	const ready = await connectWith({ launch: stub.launch, detect: async () => ({ tsci: "/s/tsci", python: "/s/python", pio: "/s/pio", kicad: "docker", toolchain: { image: "bringup-toolchain:abc", tools: ["tsci", "python", "pio"] } }), docker: async () => true })
+	try {
+		const r = (await bare.call("start_design", { brief: "x" })).json()
+		assert.match(r.hardware, /^built in Docker: this machine lacks tscircuit, Python with build123d, PlatformIO, KiCad, so they run in Bringup's toolchain image/)
+		assert.deepEqual(stub.calls[0].extraArgs, ["--docker-toolchain"])
+		const again = (await ready.call("start_design", { brief: "x" })).json()
+		assert.equal(again.hardware, "built (tsci, python, pio in Docker, bringup-toolchain:abc)")
+		assert.equal(stub.calls[1].extraArgs, undefined)
+		stub.release()
+	} finally {
+		await bare.close()
+		await ready.close()
 	}
 })
 

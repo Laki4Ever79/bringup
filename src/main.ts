@@ -13,6 +13,7 @@ import { ROOT, runDesign } from "./run.ts"
 import { driftStatusLines, readDrift } from "./runner/drift.ts"
 import { linkedStatusLines, linkRun } from "./runner/linked.ts"
 import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
+import { prepareToolchain } from "./tools/toolchain.ts"
 import { openBench } from "./bench/open.ts"
 import { verifyConverted, type ConvertedModel } from "./contract/verify-model.ts"
 import { buildCollectFirmware, buildFirmware, checkModelOnDevice, type DeviceModelCheck } from "./tools/firmware.ts"
@@ -28,7 +29,7 @@ function revisionEnv(runDir: string, revDir: string, purpose: FirmwarePurpose = 
 	return envFor(mcuProfileOf(c?.values?.parts), purpose)
 }
 
-const USAGE = "usage: npm run bringup -- status <runDir> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud]"
+const USAGE = "usage: npm run bringup -- status <runDir> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--docker-toolchain] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud]"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -103,6 +104,15 @@ export function parentGone(stdin: NodeJS.ReadableStream, env: Record<string, str
 
 // Returns the exit code: 0 settled, 2 unsettled, 1 bad arguments. A missing tool is a warning, not an exit:
 // its builder reports artifact.failed and the run ends unsettled with a report naming what to install.
+// --docker-toolchain (the MCP passes it on a machine without the local tools): build the toolchain image and pull KiCad's
+// before the tools are looked up, so detectEnvironment finds them. First run only; later runs find both images.
+async function dockerToolchain(argv: string[]): Promise<void> {
+	if (!argv.includes("--docker-toolchain") || argv.includes("--no-hardware")) return
+	const p = await prepareToolchain(ROOT, (line) => console.log(`bringup: ${line}`))
+	if (!p.ok) console.warn(`bringup: WARNING: the toolchain image isn't ready (${p.error}); the builds that need it will fail`)
+	else if (p.built || p.pulledKicad) console.log(`bringup: toolchain ready in ${Math.round(p.ms / 1000)} s (${p.image})`)
+}
+
 export async function main(argv: string[], deps: { detect?: (root: string) => Promise<Env> } = {}): Promise<number> {
 	argv = takeNoCloudFlag(argv)
 	// `bringup status <runDir>`: the run's drifted files, like git status (runner/drift.ts).
@@ -289,6 +299,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		const outAt = argv.indexOf("--out")
 		const out = resolve(outAt > 0 ? argv[outAt + 1] : join(ROOT, "out", `system-${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}`))
 		console.log(`bringup system: ${spec.name}, ${spec.boards.length} boards, ${spec.links.length} links; output ${out}`)
+		await dockerToolchain(argv)
 		const env = flag("--no-hardware") ? null : await (deps.detect ?? detectEnvironment)(ROOT)
 		const minutes = Number(argv[argv.indexOf("--timeout-min") + 1])
 		// Each board's review rounds, as for a single design (real system run 3: boards got 1 fix round, not the 4 asked).
@@ -325,6 +336,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	}
 	const runId = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)
 	const outDir = args.outDir ?? join(ROOT, "out", runId)
+	await dockerToolchain(argv)
 	const env = await (deps.detect ?? detectEnvironment)(ROOT)
 	// The machine-wide spend cap (inference/spend.ts): a real-model run doesn't start past it, and says where it stands.
 	if (!args.mock) {

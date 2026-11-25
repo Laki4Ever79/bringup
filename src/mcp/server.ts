@@ -5,6 +5,7 @@ import { join, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
+import { dockerUsable } from "../tools/toolchain.ts"
 import { appendRequest } from "../runner/requests.ts"
 import type { RunProcessArgs } from "../runner/spawn-run.ts"
 import { runSummary } from "../runner/summary.ts"
@@ -19,13 +20,17 @@ export interface BringupMcpDeps {
 	root?: string
 	env?: Record<string, string | undefined>
 	// Which hardware tools this machine has (src/tools/env.ts detectEnvironment by default), for hardware: "auto".
-	detect?: () => Promise<{ tsci: string | null; python: string | null; pio: string | null }>
+	detect?: () => Promise<{ tsci: string | null; python: string | null; pio: string | null; kicad?: "docker" | "local" | null; toolchain?: { image: string; tools: string[] } }>
+	// Whether Docker works here without sudo (src/tools/toolchain.ts dockerUsable by default): then a machine without the
+	// tools builds in the toolchain image instead of stubbing.
+	docker?: () => Promise<boolean>
 }
 
-// hardware "auto": the real builds where the toolchain is (tscircuit, Python with build123d, PlatformIO), else the
-// builds stubbed (--no-hardware) so the design still settles: an `npx bringup-mcp` with nothing else installed ran a
+// hardware "auto": the real builds where the toolchain is (tscircuit, Python with build123d, PlatformIO, KiCad); where it
+// isn't but Docker is, the builds run in Bringup's toolchain image (--docker-toolchain; src/tools/toolchain.ts); with
+// neither, the builds stubbed (--no-hardware) so the design still settles: an `npx bringup-mcp` with nothing else installed ran a
 // mock to "UNSETTLED: missing tools" in 10 s (22 Nov 2026). The result says which it was.
-const HARDWARE = z.enum(["auto", "build", "stub"]).optional().describe('"build": board, case, chassis and firmware built for real (needs the toolchain: npm run setup); "stub": the contract and its checks only, builds stubbed; "auto" (default): build when the toolchain is there, else stub')
+const HARDWARE = z.enum(["auto", "build", "stub"]).optional().describe('"build": board, case, chassis and firmware built for real (needs the toolchain: npm run setup); "stub": the contract and its checks only, builds stubbed; "auto" (default): build when the toolchain is there, else build in Docker (Bringup\'s toolchain image, built on the first run), else stub')
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url))
 
@@ -143,9 +148,14 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	async function hardwareFlags(hardware: "auto" | "build" | "stub" | undefined): Promise<{ flags: string[]; said: string }> {
 		if (hardware === "stub") return { flags: ["--no-hardware"], said: "stubbed (asked)" }
 		const env = await (deps.detect ?? (() => detectEnvironment(root)))()
-		const missing = [!env.tsci && "tscircuit", !env.python && "Python with build123d", !env.pio && "PlatformIO"].filter(Boolean)
-		if (hardware === "build") return { flags: [], said: missing.length ? `built (asked), but this machine lacks ${missing.join(", ")}: the run will end unsettled (npm run setup in a clone installs them)` : "built" }
-		return missing.length ? { flags: ["--no-hardware"], said: `stubbed: this machine lacks ${missing.join(", ")} (npm run setup in a clone installs them)` } : { flags: [], said: "built" }
+		const missing = [!env.tsci && "tscircuit", !env.python && "Python with build123d", !env.pio && "PlatformIO", env.kicad === null && "KiCad"].filter(Boolean)
+		const inDocker = env.toolchain ? ` (${env.toolchain.tools.join(", ")} in Docker, ${env.toolchain.image})` : ""
+		if (missing.length === 0) return { flags: [], said: `built${hardware === "build" ? " (asked)" : ""}${inDocker}` }
+		// The toolchain image (docker/toolchain/Dockerfile) stands in for what is missing: the run builds it first.
+		if (await (deps.docker ?? dockerUsable)())
+			return { flags: ["--docker-toolchain"], said: `built in Docker${hardware === "build" ? " (asked)" : ""}: this machine lacks ${missing.join(", ")}, so they run in Bringup's toolchain image; the first run builds it and pulls KiCad's (several minutes and a few GB, once)` }
+		if (hardware === "build") return { flags: [], said: `built (asked), but this machine lacks ${missing.join(", ")} and Docker: the run will end unsettled (npm run setup in a clone installs them)` }
+		return { flags: ["--no-hardware"], said: `stubbed: this machine lacks ${missing.join(", ")} and Docker (install Docker to build in Bringup's toolchain image, or npm run setup in a clone)` }
 	}
 	// Not awaited: a run goes on in its own process while the client polls.
 	function track(runId: string, run: ReturnType<BringupMcpDeps["launch"]>) {

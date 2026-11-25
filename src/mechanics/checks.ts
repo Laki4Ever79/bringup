@@ -121,6 +121,8 @@ export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): Mec
 	const req = c.values.requirements
 	// Not for a board in a system (an assembly): the climate board on a rover names the rover but carries no motion.
 	const saysRobot = !c.values.assembly && /\b(motors?|wheels?|rover|robot|drives? (around|on|itself)|self-driving|differential drive)\b/i.test(`${req?.summary ?? ""} ${(req?.peripherals ?? []).join(" ")}`)
+	// A robot arm (armTargets/arm) moves too, but it isn't a rover: its own checks (src/arm) cover it.
+	if (c.values.armTargets || c.values.arm) return []
 	if (!v.motion && ((c.values.parts ?? []).some((p) => p.role === "motor-driver") || saysRobot))
 		return [{ kind: "mech-fit", message: "the design moves (a motor driver, or requirements that name motors, wheels or a rover) but has no motion targets: a robot needs its motion field (the brief's speedMps, runtimeMin, edgeMm, maxSlopeDeg, stopBeforeWallMm, payloadG, maxSizeMm, maxMassG); write it, and the mechanics engineer designs the drive and chassis", fields: ["motion"], affects: ["architect"] }]
 	return mechanicsCheckOver(v.motion, withAssembly(c.values), checkBoards(c), cat)

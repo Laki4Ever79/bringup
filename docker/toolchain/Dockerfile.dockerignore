@@ -1,0 +1,6 @@
+# The build context is the package root; the image needs only these.
+*
+!src/setup/tools-node/package.json
+!src/setup/tools-node/package-lock.json
+!templates/fw/platformio.ini
+!templates/fw-rover/platformio.ini

@@ -1616,5 +1616,494 @@
 				}
 			}
 		}
+	],
+	"servos": [
+		{
+			"mpn": "SG90",
+			"control": "pwm",
+			"minV": 4.8,
+			"maxV": 6,
+			"stallNm": [
+				{
+					"v": 4.8,
+					"nm": 0.1765
+				},
+				{
+					"v": 6,
+					"nm": 0.2354
+				}
+			],
+			"stallA": [
+				{
+					"v": 4.8,
+					"a": 0.7
+				},
+				{
+					"v": 6,
+					"a": 0.7
+				}
+			],
+			"secPer60": [
+				{
+					"v": 4.8,
+					"s": 0.12
+				},
+				{
+					"v": 6,
+					"s": 0.1
+				}
+			],
+			"rangeDeg": 180,
+			"pulseUs": [
+				1000,
+				2000
+			],
+			"massG": 11,
+			"bodyMm": [
+				22.2,
+				11.8,
+				31
+			],
+			"earsMm": 32.2,
+			"holesMm": [
+				[
+					8.7,
+					0
+				],
+				[
+					-19.1,
+					0
+				]
+			],
+			"holeDiaMm": 2,
+			"spline": "21T",
+			"estimates": [
+				"stallA",
+				"earsMm",
+				"holesMm",
+				"holeDiaMm"
+			],
+			"source": {
+				"minV": {
+					"url": "https://www.kjell.com/globalassets/mediaassets/701916_87897_datasheet_en.pdf",
+					"where": "Luxorparts SG90 (87897) datasheet"
+				},
+				"maxV": {
+					"url": "https://www.kjell.com/globalassets/mediaassets/701916_87897_datasheet_en.pdf",
+					"where": "Luxorparts SG90 (87897) datasheet"
+				},
+				"stallNm": {
+					"url": "https://www.kjell.com/globalassets/mediaassets/701916_87897_datasheet_en.pdf",
+					"where": "derived: 1.8 @ 4.8 V, 2.4 @ 6 V kg·cm × 0.0980665 N·m per kg·cm (Luxorparts datasheet)"
+				},
+				"stallA": {
+					"url": "https://servodatabase.com/servo/towerpro/sg90",
+					"where": "sources disagree (0.36–0.7 A measured/listed; Luxorparts: under 600 mA max): the high figure, an estimate"
+				},
+				"secPer60": {
+					"url": "https://www.kjell.com/globalassets/mediaassets/701916_87897_datasheet_en.pdf",
+					"where": "Luxorparts SG90 (87897) datasheet"
+				},
+				"rangeDeg": {
+					"url": "https://www.kjell.com/globalassets/mediaassets/701916_87897_datasheet_en.pdf",
+					"where": "Luxorparts SG90 (87897) datasheet"
+				},
+				"pulseUs": {
+					"url": "https://www.kjell.com/globalassets/mediaassets/701916_87897_datasheet_en.pdf",
+					"where": "Luxorparts datasheet: 1 ms = 0°, 2 ms = 180°"
+				},
+				"massG": {
+					"url": "https://www.kjell.com/globalassets/mediaassets/701916_87897_datasheet_en.pdf",
+					"where": "Luxorparts SG90 (87897) datasheet"
+				},
+				"bodyMm": {
+					"url": "https://servodatabase.com/servo/towerpro/sg90",
+					"where": "ServoDatabase SG90 spec table"
+				},
+				"earsMm": {
+					"url": "https://github.com/Laki4Ever79/bringup/blob/main/py/parts/motors.py",
+					"where": "py/parts/motors.py (cadsmith's parts library, MIT): the servo solid's ears and holes; no maker's drawing found"
+				},
+				"holesMm": {
+					"url": "https://github.com/Laki4Ever79/bringup/blob/main/py/parts/motors.py",
+					"where": "py/parts/motors.py (cadsmith's parts library, MIT): the servo solid's ears and holes; no maker's drawing found"
+				},
+				"holeDiaMm": {
+					"url": "https://github.com/Laki4Ever79/bringup/blob/main/py/parts/motors.py",
+					"where": "py/parts/motors.py (cadsmith's parts library, MIT): the servo solid's ears and holes; no maker's drawing found"
+				},
+				"spline": {
+					"url": "https://servodatabase.com/servo/towerpro/sg90",
+					"where": "ServoDatabase SG90 spec table"
+				}
+			},
+			"buy": [
+				{
+					"supplier": "Kjell & Company",
+					"url": "https://www.kjell.com/"
+				}
+			]
+		},
+		{
+			"mpn": "MG996R",
+			"control": "pwm",
+			"minV": 4.8,
+			"maxV": 7.2,
+			"stallNm": [
+				{
+					"v": 4.8,
+					"nm": 0.9218
+				},
+				{
+					"v": 6,
+					"nm": 1.0787
+				}
+			],
+			"stallA": [
+				{
+					"v": 6,
+					"a": 2.5
+				}
+			],
+			"secPer60": [
+				{
+					"v": 4.8,
+					"s": 0.17
+				},
+				{
+					"v": 6,
+					"s": 0.14
+				}
+			],
+			"rangeDeg": 120,
+			"pulseUs": [
+				1000,
+				2000
+			],
+			"massG": 55,
+			"bodyMm": [
+				40.7,
+				19.7,
+				42.9
+			],
+			"earsMm": 54,
+			"holesMm": [
+				[
+					14.25,
+					5
+				],
+				[
+					14.25,
+					-5
+				],
+				[
+					-35.25,
+					5
+				],
+				[
+					-35.25,
+					-5
+				]
+			],
+			"holeDiaMm": 4.2,
+			"spline": "25T",
+			"estimates": [
+				"earsMm",
+				"holesMm",
+				"holeDiaMm",
+				"pulseUs"
+			],
+			"source": {
+				"minV": {
+					"url": "https://people.ece.cornell.edu/land/courses/ece4760/FinalProjects/f2017/kmv48_rp625/kmv48_rp625/kmv48_rp625/MG996RTowerPro.pdf",
+					"where": "TowerPro MG996R datasheet, Specifications"
+				},
+				"maxV": {
+					"url": "https://people.ece.cornell.edu/land/courses/ece4760/FinalProjects/f2017/kmv48_rp625/kmv48_rp625/kmv48_rp625/MG996RTowerPro.pdf",
+					"where": "TowerPro MG996R datasheet, Specifications"
+				},
+				"stallNm": {
+					"url": "https://people.ece.cornell.edu/land/courses/ece4760/FinalProjects/f2017/kmv48_rp625/kmv48_rp625/kmv48_rp625/MG996RTowerPro.pdf",
+					"where": "derived: 9.4 @ 4.8 V, 11 @ 6 V kg·cm × 0.0980665 N·m per kg·cm (TowerPro datasheet)"
+				},
+				"stallA": {
+					"url": "https://people.ece.cornell.edu/land/courses/ece4760/FinalProjects/f2017/kmv48_rp625/kmv48_rp625/kmv48_rp625/MG996RTowerPro.pdf",
+					"where": "TowerPro MG996R datasheet, Specifications"
+				},
+				"secPer60": {
+					"url": "https://people.ece.cornell.edu/land/courses/ece4760/FinalProjects/f2017/kmv48_rp625/kmv48_rp625/kmv48_rp625/MG996RTowerPro.pdf",
+					"where": "TowerPro MG996R datasheet, Specifications"
+				},
+				"rangeDeg": {
+					"url": "https://people.ece.cornell.edu/land/courses/ece4760/FinalProjects/f2017/kmv48_rp625/kmv48_rp625/kmv48_rp625/MG996RTowerPro.pdf",
+					"where": "TowerPro datasheet: rotates approximately 120 degrees (60 in each direction)"
+				},
+				"pulseUs": {
+					"url": "https://people.ece.cornell.edu/land/courses/ece4760/FinalProjects/f2017/kmv48_rp625/kmv48_rp625/kmv48_rp625/MG996RTowerPro.pdf",
+					"where": "the common 1–2 ms servo pulse; the datasheet gives no pulse table, an estimate"
+				},
+				"massG": {
+					"url": "https://people.ece.cornell.edu/land/courses/ece4760/FinalProjects/f2017/kmv48_rp625/kmv48_rp625/kmv48_rp625/MG996RTowerPro.pdf",
+					"where": "TowerPro MG996R datasheet, Specifications"
+				},
+				"bodyMm": {
+					"url": "https://people.ece.cornell.edu/land/courses/ece4760/FinalProjects/f2017/kmv48_rp625/kmv48_rp625/kmv48_rp625/MG996RTowerPro.pdf",
+					"where": "TowerPro MG996R datasheet, Specifications"
+				},
+				"earsMm": {
+					"url": "https://github.com/Laki4Ever79/bringup/blob/main/py/parts/motors.py",
+					"where": "py/parts/motors.py (cadsmith's parts library, MIT): the servo solid's ears and holes; no maker's drawing found"
+				},
+				"holesMm": {
+					"url": "https://github.com/Laki4Ever79/bringup/blob/main/py/parts/motors.py",
+					"where": "py/parts/motors.py (cadsmith's parts library, MIT): the servo solid's ears and holes; no maker's drawing found"
+				},
+				"holeDiaMm": {
+					"url": "https://github.com/Laki4Ever79/bringup/blob/main/py/parts/motors.py",
+					"where": "py/parts/motors.py (cadsmith's parts library, MIT): the servo solid's ears and holes; no maker's drawing found"
+				},
+				"spline": {
+					"url": "https://servodatabase.com/servo/towerpro/mg996r",
+					"where": "ServoDatabase MG996R spec table"
+				}
+			}
+		},
+		{
+			"mpn": "DS3218MG",
+			"control": "pwm",
+			"minV": 4.8,
+			"maxV": 6.8,
+			"stallNm": [
+				{
+					"v": 5,
+					"nm": 1.8633
+				},
+				{
+					"v": 6.8,
+					"nm": 2.1084
+				}
+			],
+			"stallA": [
+				{
+					"v": 5,
+					"a": 1.8
+				},
+				{
+					"v": 6.8,
+					"a": 2.6
+				}
+			],
+			"secPer60": [
+				{
+					"v": 5,
+					"s": 0.16
+				},
+				{
+					"v": 6.8,
+					"s": 0.14
+				}
+			],
+			"rangeDeg": 180,
+			"pulseUs": [
+				500,
+				2500
+			],
+			"massG": 60,
+			"bodyMm": [
+				40,
+				20,
+				40.5
+			],
+			"earsMm": 54,
+			"holesMm": [
+				[
+					14.75,
+					5
+				],
+				[
+					14.75,
+					-5
+				],
+				[
+					-34.75,
+					5
+				],
+				[
+					-34.75,
+					-5
+				]
+			],
+			"holeDiaMm": 4.2,
+			"spline": "25T",
+			"estimates": [
+				"stallA",
+				"earsMm",
+				"holesMm",
+				"holeDiaMm",
+				"pulseUs"
+			],
+			"source": {
+				"minV": {
+					"url": "https://aifitlab.com/collections/dsservo-motor/products/dsservo-ds3218-mg-servo-motor",
+					"where": "DSSERVO DS3218MG spec table"
+				},
+				"maxV": {
+					"url": "https://aifitlab.com/collections/dsservo-motor/products/dsservo-ds3218-mg-servo-motor",
+					"where": "DSSERVO DS3218MG spec table"
+				},
+				"stallNm": {
+					"url": "https://aifitlab.com/collections/dsservo-motor/products/dsservo-ds3218-mg-servo-motor",
+					"where": "derived: 19 @ 5 V, 21.5 @ 6.8 V kg·cm × 0.0980665 N·m per kg·cm (most listings; one reseller says 18 @ 5 V)"
+				},
+				"stallA": {
+					"url": "https://manuals.plus/asin/B07FMBBPD2",
+					"where": "one reseller's table only (1.8 A @ 5 V, 2.6 A @ 6.8 V), not confirmed elsewhere: an estimate"
+				},
+				"secPer60": {
+					"url": "https://aifitlab.com/collections/dsservo-motor/products/dsservo-ds3218-mg-servo-motor",
+					"where": "DSSERVO DS3218MG spec table"
+				},
+				"rangeDeg": {
+					"url": "https://aifitlab.com/collections/dsservo-motor/products/dsservo-ds3218-mg-servo-motor",
+					"where": "DSSERVO DS3218MG spec table"
+				},
+				"pulseUs": {
+					"url": "https://aifitlab.com/collections/dsservo-motor/products/dsservo-ds3218-mg-servo-motor",
+					"where": "the 500–2500 µs range sellers list for the 180° version: an estimate"
+				},
+				"massG": {
+					"url": "https://aifitlab.com/collections/dsservo-motor/products/dsservo-ds3218-mg-servo-motor",
+					"where": "DSSERVO DS3218MG spec table"
+				},
+				"bodyMm": {
+					"url": "https://aifitlab.com/collections/dsservo-motor/products/dsservo-ds3218-mg-servo-motor",
+					"where": "DSSERVO DS3218MG spec table"
+				},
+				"earsMm": {
+					"url": "https://github.com/Laki4Ever79/bringup/blob/main/py/parts/motors.py",
+					"where": "a standard-size servo's ears and holes as the MG996R's (py/parts/motors.py), no drawing found: an estimate"
+				},
+				"holesMm": {
+					"url": "https://github.com/Laki4Ever79/bringup/blob/main/py/parts/motors.py",
+					"where": "as earsMm: an estimate"
+				},
+				"holeDiaMm": {
+					"url": "https://github.com/Laki4Ever79/bringup/blob/main/py/parts/motors.py",
+					"where": "as earsMm: an estimate"
+				},
+				"spline": {
+					"url": "https://aifitlab.com/collections/dsservo-motor/products/dsservo-ds3218-mg-servo-motor",
+					"where": "DSSERVO DS3218MG spec table"
+				}
+			}
+		},
+		{
+			"mpn": "STS3215 C001 7.4V",
+			"control": "ttl-bus",
+			"minV": 6,
+			"maxV": 7.4,
+			"stallNm": [
+				{
+					"v": 6,
+					"nm": 1.6181
+				},
+				{
+					"v": 7.4,
+					"nm": 1.9123
+				}
+			],
+			"stallA": [
+				{
+					"v": 6,
+					"a": 2.0
+				},
+				{
+					"v": 7.4,
+					"a": 2.5
+				}
+			],
+			"secPer60": [
+				{
+					"v": 6,
+					"s": 0.238
+				},
+				{
+					"v": 7.4,
+					"s": 0.192
+				}
+			],
+			"rangeDeg": 360,
+			"massG": 55,
+			"bodyMm": [
+				45.2,
+				24.7,
+				35
+			],
+			"earsMm": 45.2,
+			"holesMm": [],
+			"holeDiaMm": 2,
+			"spline": "25T",
+			"estimates": [
+				"minV",
+				"holesMm",
+				"holeDiaMm"
+			],
+			"source": {
+				"minV": {
+					"url": "https://www.dfrobot.com/product-2961.html",
+					"where": "DFRobot lists 6 V and 7.4 V ratings; the lowest rated voltage is not stated: an estimate"
+				},
+				"maxV": {
+					"url": "https://www.mantech.co.za/datasheets/products/sts3215-200620a-1.pdf",
+					"where": "Feetech STS3215 (200620a) datasheet, page 1"
+				},
+				"stallNm": {
+					"url": "https://www.dfrobot.com/product-2961.html",
+					"where": "derived: 16.5 @ 6 V, 19.5 @ 7.4 V kg·cm × 0.0980665 N·m per kg·cm (DFRobot; Feetech sheet: 19.5 @ 7.4 V)"
+				},
+				"stallA": {
+					"url": "https://www.dfrobot.com/product-2961.html",
+					"where": "DFRobot ST3215 spec table (the same servo body and gearbox, 1:345)"
+				},
+				"secPer60": {
+					"url": "https://www.dfrobot.com/product-2961.html",
+					"where": "DFRobot ST3215 spec table (the same servo body and gearbox, 1:345)"
+				},
+				"rangeDeg": {
+					"url": "https://www.mantech.co.za/datasheets/products/sts3215-200620a-1.pdf",
+					"where": "Feetech datasheet: 360° absolute position, 4096 steps"
+				},
+				"massG": {
+					"url": "https://www.dfrobot.com/product-2961.html",
+					"where": "DFRobot ST3215 spec table (the same servo body and gearbox, 1:345)"
+				},
+				"bodyMm": {
+					"url": "https://www.mantech.co.za/datasheets/products/sts3215-200620a-1.pdf",
+					"where": "Feetech STS3215 (200620a) datasheet, page 1"
+				},
+				"earsMm": {
+					"url": "https://www.mantech.co.za/datasheets/products/sts3215-200620a-1.pdf",
+					"where": "no ears: the body's length"
+				},
+				"holesMm": {
+					"url": "https://github.com/TheRobotStudio/SO-ARM100",
+					"where": "threaded holes in the case faces: take them from the SO-ARM100 STS3215 STEP (phase 2); none listed yet"
+				},
+				"holeDiaMm": {
+					"url": "https://github.com/TheRobotStudio/SO-ARM100",
+					"where": "as holesMm: an estimate"
+				},
+				"spline": {
+					"url": "https://www.dfrobot.com/product-2961.html",
+					"where": "DFRobot ST3215 spec table (the same servo body and gearbox, 1:345)"
+				}
+			},
+			"buy": [
+				{
+					"supplier": "DFRobot",
+					"url": "https://www.dfrobot.com/product-2961.html"
+				}
+			]
+		}
 	]
 }
