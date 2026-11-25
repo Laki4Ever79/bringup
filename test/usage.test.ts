@@ -78,3 +78,13 @@ test("a Claude call is priced from Anthropic's own usage: uncached input, cache 
 	assert.ok(Math.abs((seen[0].usd ?? -1) - expected) < 1e-12, `${seen[0].usd} vs ${expected}`)
 	assert.deepEqual([seen[0].inputTokens, seen[0].cachedTokens, seen[0].cacheWriteTokens], [1300, 1000, 200])
 })
+
+test("an OpenAI response's own usage block keeps Mozaik's cached count (it is not Anthropic's)", async () => {
+	// The shape gpt-5.4-mini returned in the 25 Nov 2026 probe: the second identical call read 1664 of 1796 from the cache.
+	const usage = new TokenUsage(1796, 5, 1801, new InputTokenDetails(1664), new OutputTokenDetails(0))
+	const raw = { usage: { input_tokens: 1796, input_tokens_details: { cached_tokens: 1664, cache_write_tokens: 0 }, output_tokens: 5, total_tokens: 1801 } }
+	const inner = { ...fakeRunner(usage), async run(): Promise<InferenceOutput> { return { items: [ModelMessageItem.rehydrate({ text: "ok" })], tokenUsage: usage, rowResponse: raw } } } as InferenceRunner
+	const seen: UsageRecord[] = []
+	await new UsageRunner(inner, (r) => seen.push(r), "agents").run(input)
+	assert.deepEqual([seen[0].inputTokens, seen[0].cachedTokens, seen[0].cacheWriteTokens], [1796, 1664, 0])
+})

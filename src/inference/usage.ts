@@ -58,8 +58,10 @@ export function usageRecord(model: string, source: string, input: number | null 
 }
 
 // Anthropic's usage block (input_tokens excludes both cache counts) as total input, cache reads and cache writes.
-export function anthropicUsage(u: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined) {
-	if (typeof u?.input_tokens !== "number") return null
+// OpenAI's Responses usage also has input_tokens, but keeps its cache count in input_tokens_details: that block is not
+// Anthropic's (taking it for one recorded every OpenAI cache hit as 0 and priced it at full input; probe 25 Nov 2026).
+export function anthropicUsage(u: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; input_tokens_details?: unknown } | undefined) {
+	if (typeof u?.input_tokens !== "number" || u.input_tokens_details !== undefined) return null
 	const read = u.cache_read_input_tokens ?? 0, write = u.cache_creation_input_tokens ?? 0
 	return { input: u.input_tokens + read + write, cached: read, cacheWrite: write, output: u.output_tokens }
 }
