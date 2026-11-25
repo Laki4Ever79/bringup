@@ -12,6 +12,7 @@
 		"bin/",
 		"src/",
 		"!src/dashboard/**",
+		"!src/demo.ts",
 		"src/dashboard/ask.ts",
 		"src/dashboard/assembly-geom.d.ts",
 		"src/dashboard/assembly-geom.js",

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { test } from "node:test"
-import { privateFiles, publicPackageJson, staticImports } from "../scripts/publish-public.ts"
+import { PRIVATE_ROOTS, privateFiles, publicPackageJson, staticImports } from "../scripts/publish-public.ts"
 import { sharedFromWorkingTree } from "../scripts/publish-public.ts"
 
 // The npm package carries the page modules the engine reaches and nothing else of the page (the open-core split,
@@ -9,6 +9,8 @@ import { sharedFromWorkingTree } from "../scripts/publish-public.ts"
 test("npm package files re-include exactly the page modules the engine reaches", () => {
 	const files: string[] = JSON.parse(readFileSync("package.json", "utf8")).files
 	assert.ok(files.includes("!src/dashboard/**"))
+	// Every private root is out of the package too (src/demo.ts serves the page; 0.2.1's first pack still had it).
+	for (const r of PRIVATE_ROOTS) assert.ok(files.includes(r.endsWith("/") ? `!${r}**` : `!${r}`) || !files.some((f) => r.startsWith(f) && !f.startsWith("!")) , `package.json files must exclude ${r}`)
 	assert.deepEqual(files.filter((f) => f.startsWith("src/dashboard/")).sort(), sharedFromWorkingTree())
 })
 
