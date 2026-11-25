@@ -121,12 +121,15 @@ is a change to the firmware toolchain, not just the code.
       servo-supply facts follow the parts; the start
       perimeter keeps 10 mm for homologation (an estimate) and its figure shows the margin; the IMU only on robots that
       drive on wheels (the user, 18 Nov: "should CNCs carry IMUs?").
-- [ ] **1S sustained-stall sag needs the pack's R_int in the catalog** (18 Nov, bringup-system): bulk capacitors
-      would only smooth the motors' PWM edges, not hold up a sustained stall's sag through the cell's own resistance
-      (tried 2 x 22 µF at the LDO input: the compact 43x28 and 42x29 rovers lost their fit, for little effect; reverted). To
-      check it, the catalog needs each pack's internal resistance (datasheet or measured), then: cell at cutoff minus
-      stall current x R_int minus the LDO dropout against the MCU's minimum supply.
-
+- [x] **1S sustained-stall sag needs the pack's R_int in the catalog** (18 Nov, bringup-system; done 25 Nov): every
+      catalog pack has internalOhm with its source (the 1200 mAh pack's protection board 10-60 mOhm from its spec §13;
+      the cells' own resistance no datasheet states, so ESTIMATES flagged internalOhmEstimate: 0.21, 0.15 and 0.025
+      ohm), and the ESP32 modules their 3.0 V minimum supply (Table 6-2). New check rail-stall-sag (consistency.ts
+      stallSagChecks): a 1S robot with every drive motor stalled through the driver's Rds(on), the cell at nominal sagging
+      through internalOhm, less the battery path and the LDO's dropout at the rail's load, must keep the MCU's minimum;
+      it reports only what the stall adds (a rail already short at idle is rail-headroom's). Every saved robot passes;
+      high-power motors on the 1200 mAh cell at a 400 mA rail don't (2.9x V). The motor load line now uses each pack's
+      own resistance (the 2S pack was 0.15 ohm by default, 0.025 now).
 - [x] **Copper too near the edge that isn't a via** (15 Nov; fixed: via-edge.ts moves a trace corner too near the edge
       inward, joints kept, ends on a pad left alone; the 64×25 rover keeps its footprint, DRC 0): the subscription run's 64×25 mm rover (test/fixtures/
       cc-rover-64x25-rev19.json) routes clean but leaves its debug footprint off: 3 copper_edge_clearance errors with

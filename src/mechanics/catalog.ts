@@ -44,6 +44,7 @@ export interface BatteryPack extends Sourced {
 	maxContA: number
 	peakA: number
 	internalOhm?: number
+	internalOhmEstimate?: boolean // no datasheet states it: the value is reasoned, and reports say so
 	sizeMm: [number, number, number]
 	massG: number
 	// Lithium chemistry, whether the pack carries its maker's protection circuit (BMS), and whether it is a manufacturer's

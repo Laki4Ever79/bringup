@@ -4,6 +4,7 @@ import { boardMountChecks, chassisPrintChecks, interferenceChecks, packOnStandof
 import { hardwareChecks } from "../tools/robot-parts.ts"
 import { defaultCheckCatalog, mechanicsChecks, type MechViolation } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
+import { drivenWheels, packOhm } from "../mechanics/model.ts"
 import { motionBriefChecks } from "../mechanics/brief.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
@@ -171,6 +172,7 @@ export type ViolationKind =
 	| "rail-missing"
 	| "rail-battery-source"
 	| "rail-headroom"
+	| "rail-stall-sag"
 	| "rail-unwired"
 	| "rail-current-copper"
 	| "pack-voltage"
@@ -734,7 +736,7 @@ export function supplyWiring(c: ContractSnapshot): Violation[] {
 	if (parts.length && (supplied.length || parts.some((p) => p.role === "ldo")) && !rails.some((r) => r.name === "3V3"))
 		return [{ kind: "rail-missing", message: `the contract has no 3V3 rail${rails.length ? ` (its rails: ${rails.map((r) => r.name).join(", ")})` : ""}, but ${supplied.slice(0, 4).map((p) => p.ref).join(", ")}${supplied.length > 4 ? ` and ${supplied.length - 4} more` : ""} ${supplied.length === 1 ? "runs" : "run"} from it: the board generator wires no supply net without it. Add rails: [{name: "3V3", voltageV: 3.3, regulatorMaxMa, loadMa}] (and VBAT for a battery)`, fields: ["rails", "parts"], affects: ["architect"] }]
 	if (!parts.length || !rails.length) return []
-	const v: Violation[] = [...powerTreeChecks(c)]
+	const v: Violation[] = [...powerTreeChecks(c), ...stallSagChecks(c)]
 	const railNames = new Set(rails.map((r) => r.name))
 	for (const p of parts)
 		for (const [pin, rail] of Object.entries(p.nets ?? {})) {
@@ -856,6 +858,40 @@ export function powerTreeChecks(c: ContractSnapshot): Violation[] {
 	if (into !== undefined && into - drop < need)
 		return [{ kind: "rail-headroom", message: `on battery the LDO gets about ${(into - drop).toFixed(2)} V (${tree.buck ? "the step-down's output" : `the pack's nominal ${into} V`} less ${tree.battery.ref}'s ${drop.toFixed(2)} V at ${Math.round(loadA * 1000)} mA), under the ${need.toFixed(2)} V its 3.3 V needs (output plus about ${Math.round(dropout * 1000)} mV dropout at that load): the 3V3 rail sags. ${tree.battery.role === "ideal-diode" ? "Charge the cell on the board (the charger's output feeds the LDO directly)" : `Use an ideal diode (role ideal-diode, catalog ${byRole("ideal-diode")}) instead of ${tree.battery.ref}`}`, fields: ["parts"], affects: ["parts"] }]
 	return []
+}
+// A robot on one cell feeds its 3V3 LDO from the same cell as its motors. With every drive motor stalled (a wheel
+// against a wall, a start uphill), the stall current through the cell's internal resistance (catalog internalOhm, an
+// estimate where the pack's datasheet gives none) sags the cell, and the 3V3 rail with it: the rail, after the battery
+// path's drop and the LDO's dropout, must stay at or above the MCU's minimum supply (catalog supplyMinV), or the MCU
+// browns out and resets each time the robot stalls. Bulk capacitors only bridge PWM edges, not a sustained stall: two
+// 22 uF at the LDO input changed nothing (backlog, 18 Nov 2026). At the cell's nominal voltage, as the headroom check.
+export function stallSagChecks(c: ContractSnapshot): Violation[] {
+	const v = c.values, parts = v.parts ?? []
+	const ldo = parts.find((p) => p.role === "ldo"), mcu = parts.find((p) => p.role === "mcu")
+	const cat = defaultCheckCatalog()
+	if (!ldo || !mcu || !cat || !v.mechanics?.battery?.pack || !v.mechanics.drive?.motor || parts.some((p) => p.role === "buck")) return []
+	const pack = byMpn(cat.mech.batteries, v.mechanics.battery.pack), motor = byMpn(cat.mech.motors, v.mechanics.drive.motor)
+	if (!pack || !motor || (pack.cells ?? 1) !== 1 || !(motor.stallA > 0)) return []
+	type Entry = { mpn: string; role: string; supplyMinV?: number; dropoutMv?: number; dropoutAtMa?: number; vfV?: number; rOnOhm?: number; rdsOnOhm?: number }
+	const list = (cat.boardParts ?? []) as unknown as Entry[]
+	const entry = (mpn: string) => list.find((x) => x.mpn === mpn)
+	const ldoE = entry(ldo.mpn), driver = parts.find((p) => p.role === "motor-driver")
+	const rint = packOhm(pack), estimated = pack.internalOhm === undefined || pack.internalOhmEstimate === true
+	const n = drivenWheels(v.mechanics.drive)
+	const rLoad = (motor.ratedV / motor.stallA + ((driver && entry(driver.mpn)?.rdsOnOhm) ?? 0)) / n
+	const loadA = ((v.rails ?? []).find((r) => r.name === "3V3")?.loadMa ?? 300) / 1000
+	const cellV = (pack.nominalV - rint * loadA) / (1 + rint / rLoad)
+	const stallA = cellV / rLoad
+	const tree = powerTree(c)
+	const pathE = tree ? entry(tree.battery.mpn) : undefined
+	const pathDrop = !tree ? 0 : tree.battery.role === "ideal-diode" ? loadA * (pathE?.rOnOhm ?? 0.1) : (pathE?.vfV ?? 0.6)
+	const dropout = ((ldoE?.dropoutMv ?? 300) / 1000) * (ldoE?.dropoutAtMa ? Math.min(1, (loadA * 1000) / ldoE.dropoutAtMa) : 1)
+	const rail = Math.min(3.3, cellV - pathDrop - dropout)
+	const need = entry(mcu.mpn)?.supplyMinV ?? 3.0
+	// Only what the stall adds: a rail already short with the motors idle is the headroom check's finding.
+	const idle = Math.min(3.3, pack.nominalV - rint * loadA - pathDrop - dropout)
+	if (rail >= need || idle < need) return []
+	return [{ kind: "rail-stall-sag", message: `with ${n === 2 ? "both" : `all ${n}`} drive motors stalled (${motor.mpn}: ${motor.stallA} A at ${motor.ratedV} V, ${stallA.toFixed(2)} A together) the ${pack.mpn} sags from ${pack.nominalV} V to ${cellV.toFixed(2)} V through its ${Math.round(rint * 1000)} mOhm internal resistance${estimated ? " (an estimate: its datasheet gives none)" : ""}, leaving the 3V3 rail ${rail.toFixed(2)} V after ${pathDrop > 0 ? `${pathDrop.toFixed(2)} V of battery path and ` : ""}${Math.round(dropout * 1000)} mV of ${ldo.mpn} dropout: under the ${mcu.mpn}'s ${need} V minimum, so it resets whenever the robot stalls. Limit the motors' current (the driver's current-sense resistors), pick a lower-stall motor or a larger cell, or use a 2S pack with a step-down`, fields: ["parts"], affects: ["parts", "mechanics"] }]
 }
 // A part's supply pin by name: what must be on a powered net in any built board.
 const SUPPLY_PIN = /^(3V3|VDD|VDDIO|AVDD|DVDD|VCC|VIN|VM|VBAT|V\+)$/

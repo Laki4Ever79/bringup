@@ -703,7 +703,10 @@
 				5
 			],
 			"massG": 23,
+			"internalOhm": 0.21,
+			"internalOhmEstimate": true,
 			"source": {
+				"internalOhm": { "url": "https://www.gotron.be/media/files/Downloads/ADA258.pdf", "where": "ESTIMATE 0.21 ohm: the protection board's resistance is 10-60 mOhm (LIPO503562 spec §13 'Protection board electrical properties', item 5; 60 taken); the cell's own is left blank there ('Internal impedance', item 4: '—') and in Adafruit's PKCELL sheet, so 0.15 ohm is estimated for a 1.2 Ah 1C pouch cell (published 1 kHz figures for such cells: about 0.1-0.2 ohm; DC under load is higher)" },
 				"connector": { "url": "https://www.adafruit.com/product/258", "where": "Adafruit 258 product page: 2-pin JST-PH connector" },
 				"nominalV": {
 					"url": "https://cdn-shop.adafruit.com/product-files/258/C101-_Li-Polymer_503562_1200mAh_3.7V_with_PCM_APPROVED_8.18.pdf",
@@ -780,7 +783,10 @@
 				7
 			],
 			"massG": 34,
+			"internalOhm": 0.15,
+			"internalOhmEstimate": true,
 			"source": {
+				"internalOhm": { "url": "https://cdn-shop.adafruit.com/datasheets/LiIon2000mAh37V.pdf", "where": "ESTIMATE 0.15 ohm: the PKCELL sheet states no internal impedance; the 1.2 Ah cell's 0.15 ohm estimate scaled by capacity (0.09) plus the same family's protection board, 60 mOhm at most (LIPO503562 spec §13, the 1.2 Ah sibling)" },
 				"connector": { "url": "https://www.adafruit.com/product/2011", "where": "Adafruit 2011 product page: 2-pin JST-PH connector" },
 				"nominalV": {
 					"url": "https://cdn-shop.adafruit.com/datasheets/LiIon2000mAh37V.pdf",
@@ -857,8 +863,11 @@
 				18
 			],
 			"massG": 106,
+			"internalOhm": 0.025,
+			"internalOhmEstimate": true,
 			"notes": "2S for a Raspberry Pi 5 robot: feeds the bought 5 V regulator (regulators list). The catalog's 6 V Pololu micro-metal gearmotors would see 8.4 V on a full pack, 1.4x rated, over the mech-voltage check's 1.3x limit (7.8 V): a 2S robot needs a motor duty limit (PWM cap near 6/8.4 = 71 %) or 12 V motors.",
 			"source": {
+				"internalOhm": { "url": "https://gensace.de/products/gea22002s20x6", "where": "ESTIMATE 0.025 ohm: Gens ace publishes no internal resistance; hobby 20C 2.2 Ah cells measure about 5-12 mOhm each, two in series plus the XT60 and leads; no protection board" },
 				"connector": { "url": "https://gensace.de/products/gea22002s20x6", "where": "product name and spec list: XT60 plug" },
 				"nominalV": {
 					"url": "https://gensace.de/products/gea22002s20x6",
