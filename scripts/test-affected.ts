@@ -20,6 +20,7 @@ export const HAND: Record<string, string[]> = {
 	"catalog/parts.json": ["parts-search", "catalog-facts", "bom"],
 	"templates/fw/": ["firmware.int", "mcu-firmware.int", "mcu-firmware-vendors.int", "firmware-codegen"],
 	"templates/wokwi/": ["wokwi", "wokwi.int"],
+	"templates/fw-arm/": ["arm-firmware"],
 	"src/dashboard/": ["dashboard", "system-page"],
 	// The live simulation session runs py/mech/live.py as a process; the mission-control panel is loaded by the page.
 	"py/mech/live.py": ["sim-session.int"],

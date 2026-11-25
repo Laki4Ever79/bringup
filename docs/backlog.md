@@ -742,3 +742,17 @@ Seen on the run page of the recorded "make it 2 cm narrower" rover (out/rover-na
       moved, value by value (changelog.js changeMoves: "drive track 110 → 90 mm", "chassis plate 150×96 → 150×76 mm").
 - [x] Small: /favicon.ico is a 404 (console error on every page). Done (cad-ui): an SVG icon on every server and page;
       the optional probes (ROS, refs.json, the case's side files, board.ses) ask with ?optional=1, so no 404s either.
+
+## A CNC example for the home page (the user, 25 Nov 2026)
+
+- [ ] **One-shot a CNC, fix every issue on the way.** The user, verbatim: "add to backlog CNC example for the home page.
+      In fact, we should fix all issues we face along the way of trying to one-shot a CNC". Do: a brief for a small
+      hobby CNC (a desktop 3-axis router or engraver), run it with the mock first and then, with the user's yes, one real
+      run; every failure on the way gets a general fix in code (a check, a catalog part, a generator), not a hand edit,
+      until the brief settles at 0 in one go. Then save it as an example (`npm run bringup -- save-example`) with pictures
+      for the README's home section next to the rover, the Eurobot base and the arm. Starting points: the motion-firmware
+      MCU profiles (grblHAL on STM32F411/F446 and RP2350, FluidNC on the ESP32; `compare_mcus` with `motion`, docs/mcu.md)
+      and the 15 Nov check of a Duet-like controller board (above, "Check: can Bringup design a 3D-printer / CNC controller
+      board"). What a CNC adds that robots don't have: stepper drivers and their current, limit switches and homing, a
+      spindle or laser output and its safety, a frame of rails and lead screws (drivetrain.ts parts), and work-area
+      checks instead of a drive.

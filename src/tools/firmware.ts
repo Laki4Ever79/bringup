@@ -1,4 +1,5 @@
 import { roverHeader } from "../mechanics/firmware.ts"
+import { armHeader } from "../arm/firmware.ts"
 import { spawn } from "node:child_process"
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
@@ -78,6 +79,19 @@ export async function buildFirmware(pio: string, root: string, dir: string, s: C
 // The template copied into dir with the design's headers (pins.h, behavior.h, model.h); returns pins.h. Every env
 // in the template builds from these, so the product, data-collection and factory-test firmware agree on the pins.
 export async function prepareFirmware(root: string, dir: string, s: ContractSnapshot, opts: { modelData?: string } = {}): Promise<string> {
+	// A robot arm gets the arm firmware (templates/fw-arm): IK, moves and the pick plan behind one servo interface.
+	if (s.values.arm && s.values.armTargets) {
+		const arm = armHeader(s)
+		await cp(join(root, "templates/fw-arm"), dir, { recursive: true })
+		await mkdir(join(dir, "include"), { recursive: true })
+		await writeFile(join(dir, "include/arm.h"), arm)
+		const env = envFor(mcuProfileOf(s.values.parts), "app")
+		const ini = join(dir, "platformio.ini")
+		const text = await readFile(ini, "utf8")
+		if (!new RegExp(`^\\[env:${env}\\]`, "m").test(text)) throw new Error(`the arm firmware has no build for the ${mcuProfileOf(s.values.parts)?.mpn} (no [env:${env}] in templates/fw-arm/platformio.ini)`)
+		await writeFile(ini, text.replace(/^default_envs = .*$/m, `default_envs = ${env}`))
+		return arm
+	}
 	// A robot (docs/mechanics.md) gets the rover firmware: the control logic behind the four-function hardware layer.
 	if (s.values.mechanics && s.values.motion) {
 		const rover = roverHeader(s)
