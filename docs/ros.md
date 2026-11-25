@@ -104,6 +104,9 @@ The package carries Nav2's settings, made from the design (`src/ros/nav2.ts`):
 - both costmaps read the robot's own range sensor; a competition robot gets its table as the map (Eurobot 2026: the
   3000 × 2000 mm table and its 22 mm walls, rules D.2 p. 7, from `catalog/rules/eurobot-2026.json`), a robot without
   one plans in a 6 m window around itself;
+- the planner (NavFn) plans for a round robot, kept off obstacles by an inflation radius of the footprint's corner
+  radius plus 5 cm (an ESTIMATE of the odometry's error near a wall): right on an open table; a cluttered course would
+  want Smac Hybrid-A*, which plans with the real outline;
 - no lidar: map → odom is fixed at the start pose (launch arguments `start_x`, `start_y`, `start_yaw`), so the robot's
   place on the table is its odometry (encoders plus the gyro) from there, drift included.
 
