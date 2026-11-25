@@ -14,6 +14,7 @@ struct RoverOdo {
 	int32_t lastL = 0, lastR = 0;
 	bool started = false;
 	float lastHeading = NAN; // the gyro's heading at the last tick (NAN: no gyro)
+	float lastDs = 0, lastDth = 0; // the last tick's travel (mm) and turn (rad): whether the robot is still
 };
 
 static inline float rover_wrap(float a) {
@@ -40,6 +41,8 @@ inline void rover_odo_step(RoverOdo &o, int32_t encL, int32_t encR, float mmPerC
 	const bool gyro = !isnan(headingRad) && !isnan(o.lastHeading);
 	const float ds = (dl + dr) / 2, dth = gyro ? rover_wrap(headingRad - o.lastHeading) : (dr - dl) / trackMm;
 	o.lastHeading = headingRad;
+	o.lastDs = ds;
+	o.lastDth = dth;
 	o.x += ds * cosf(o.th + dth / 2);
 	o.y += ds * sinf(o.th + dth / 2);
 	o.th = rover_wrap(o.th + dth);
@@ -50,6 +53,13 @@ struct RoverGoto {
 	bool facing = false; // turned toward the target: driving to it
 	bool done = false;
 	float tx = 0, ty = 0;
+	// Every change of manoeuvre waits for the robot to stand still (rover_goto_step): after the turn toward the target,
+	// and on arrival. settle: 0 none, 1 after the turn, 2 after the stop at the target.
+	int settle = 0, still = 0, tries = 0;
+	float stopX = 0, stopY = 0;
+	// How far it rolled on after a stop at the target, learned from the last one (kept across targets): the next approach
+	// stops that much short.
+	float coastMm = 0;
 };
 
 // The design choices of the go-to controller: within ROVER_GOTO_TOL_MM it has arrived; it turns in place until it faces
@@ -61,6 +71,9 @@ struct RoverGoto {
 static const float GOTO_FACE_RAD = 0.035f;   // 2 degrees
 static const float GOTO_REFACE_RAD = 0.35f;  // 20 degrees
 static const float GOTO_SLOW_MM = 150.0f;
+// Still: under 0.05 mm and 0.003 rad a tick for this many ticks. A correction after a stop: at most this many.
+static const int GOTO_STILL_TICKS = 3;
+static const int GOTO_TRIES = 3;
 
 // A route: the points to drive to in turn (a lap: a rectangle's corners and back to the start), the odometry carried
 // throughout. rover_route_next starts the next one when the go-to is done; false when the route is over.
@@ -86,6 +99,7 @@ inline void rover_goto_start(RoverGoto &g, float xMm, float yMm) {
 	g.done = false;
 	g.tx = xMm;
 	g.ty = yMm;
+	g.settle = g.still = g.tries = 0;
 }
 
 // Starts the route's next point when the go-to is idle; false when none is left.
@@ -97,20 +111,52 @@ inline bool rover_route_next(RoverRoute &r, RoverGoto &g) {
 }
 
 // cruise: the duty at cruise speed; minDuty: the least duty that keeps it moving.
+// Each change of manoeuvre starts from rest: the turn toward the target ends, the robot stops, and only then is the
+// heading checked again and the drive begun; the drive ends, the robot stops, and only then is the distance checked
+// again. Run 20b's S3 in simulation turned 11 deg past the target's bearing and set off on a hard correcting arc while
+// still rotating: its wheels slipped, the odometry counted 29 mm that weren't driven, and it ended 21.8 mm from (400,
+// 400) (20 Nov 2026). It also rolled 13-15 mm on after each stop; the coast is learned and the next stop comes earlier.
 inline RoverOut rover_goto_step(RoverGoto &g, const RoverOdo &o, float cruise, float minDuty) {
 	if (!g.active) return RoverOut{0, 0};
+	if (g.settle) {
+		const bool moving = fabsf(o.lastDs) > 0.05f || fabsf(o.lastDth) > 0.003f;
+		g.still = moving ? 0 : g.still + 1;
+		if (g.still < GOTO_STILL_TICKS) return RoverOut{0, 0};
+		const int was = g.settle;
+		g.settle = g.still = 0;
+		if (was == 2) {
+			const float rolled = hypotf(o.x - g.stopX, o.y - g.stopY);
+			g.coastMm = g.coastMm > 0 ? 0.5f * (g.coastMm + rolled) : rolled;
+			const float dist = rover_goto_remaining(g, o);
+			const float err = rover_wrap(atan2f(g.ty - o.y, g.tx - o.x) - o.th);
+			// There, out of corrections, or past it: done where it stands.
+			if (dist < ROVER_GOTO_TOL_MM || ++g.tries > GOTO_TRIES || fabsf(err) > (float)M_PI / 2) {
+				g.active = false;
+				g.done = true;
+				return RoverOut{0, 0};
+			}
+			g.facing = false;  // short of it: face it again from here and creep the rest
+		} else {
+			const float err = rover_wrap(atan2f(g.ty - o.y, g.tx - o.x) - o.th);
+			if (fabsf(err) >= GOTO_FACE_RAD && ++g.tries <= GOTO_TRIES) g.facing = false;
+			else g.tries = 0;
+		}
+	}
 	const float dist = rover_goto_remaining(g, o);
 	const float err = rover_wrap(atan2f(g.ty - o.y, g.tx - o.x) - o.th);
-	// Arrived, or passed it (it is behind, close): stop there.
-	if (dist < ROVER_GOTO_TOL_MM || (g.facing && dist < 2 * ROVER_GOTO_TOL_MM && fabsf(err) > (float)M_PI / 2)) {
-		g.active = false;
-		g.done = true;
+	// Arrived (less the coast it will roll on), or passed it (it is behind, close): stop, then check from rest.
+	if (dist < ROVER_GOTO_TOL_MM + (g.facing ? g.coastMm : 0) || (g.facing && dist < 2 * ROVER_GOTO_TOL_MM && fabsf(err) > (float)M_PI / 2)) {
+		g.settle = 2;
+		g.stopX = o.x;
+		g.stopY = o.y;
 		return RoverOut{0, 0};
 	}
 	if (g.facing && fabsf(err) > GOTO_REFACE_RAD && dist > GOTO_SLOW_MM) g.facing = false;
 	if (!g.facing) {
 		if (fabsf(err) < GOTO_FACE_RAD) {
 			g.facing = true;
+			g.settle = 1;  // faced it: stop turning, and look again from rest
+			return RoverOut{0, 0};
 		} else {
 			// In place, toward it: slower as the error closes.
 			float u = cruise * fminf(1.0f, fabsf(err) / 0.5f);

@@ -88,10 +88,13 @@ is a change to the firmware toolchain, not just the code.
 
 ## 3. Hardware robustness
 
-- [ ] **Go-to final approach stops short** (20 Nov, bringup-system): run 20b's S3 in simulation with the gyro: (550, 0)
-      0.6 mm, lap 600x400 12.0 mm, but (400, 400) 21.8 mm (20 allowed). Its own odometry ends 9.6 mm short of the target
-      though the go-to stops within 8 mm: the final approach (rover_goto_step, GOTO_MIN_DUTY 0.269 on 60 mm wheels?) is
-      the next suspect, then ~12 mm of odometry translation.
+- [x] **Go-to final approach stops short** (20 Nov, bringup-system; fixed 25 Nov): the turn toward the target overshot
+      11 deg and the drive set off on a hard correcting arc while still rotating; the wheels slipped and the odometry
+      counted 29 mm that weren't driven; then it rolled 13-15 mm past each stop. Now each change of manoeuvre starts
+      from rest (turn, stop, look again; drive, stop, look again, up to 3 corrections), and the coast after a stop is
+      learned and taken off the next approach. Run 20b's S3 in simulation: (400, 400) 21.8 -> 4.7 mm, the lap 12.0 ->
+      5.2 mm, (550, 0) 0.6 -> 0.6 mm; odometry drift on the diagonal 29.2 -> 15.2 mm. Cost: the lap takes 17.2 s, was
+      12.4 s.
 - [ ] **Encoder-only heading under-reads turns in place** (20 Nov, lead-2: "it's the encoder-only fallback's real
       accuracy on scrubbing skid turns"): about 17 % on run 20b's geometry (0.679 rad counted for 0.816 turned). Robots
       with an IMU now take the turn from the gyro (rover_odo_step); a robot without one keeps this error.
