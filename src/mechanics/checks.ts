@@ -48,9 +48,14 @@ export const TIP_MARGIN_MM = 10
 // A skid-steer rover's wheelbase over its track: past 1 a wheel slips before the rover turns (model.ts skidTurn); this
 // keeps a margin under it (a design choice).
 export const SKID_RATIO_MAX = 0.9
-// A standard hobby servo's stall current at 5 V (an ESTIMATE: an MG996R-class servo draws about 2.5 A stalled; micro
-// servos far less) and the 5 V step-down's efficiency from a 2S pack (an ESTIMATE, Pololu D36V50F5's curves run 80-90 %).
-export const SERVO_STALL_A = 2.5
+// A standard hobby servo's stall current on the board's 5 V servo supply: TowerPro's MG996R datasheet gives 2.5 A
+// stalled at 6 V; a stalled motor draws its supply over its winding resistance, so at 5 V that is 2.5 x 5 / 6 = 2.08 A
+// (micro servos far less). Before (25 Nov 2026) the 6 V figure stood for 5 V: 2.5 A with the 1.25x headroom asked 3.1 A
+// of the 3 A servo header, a FAILS figure on run 21's J3/J4 that no agent could act on (the servo's plug is set by its
+// 2.54 mm lead). The 5 V step-down's efficiency from a 2S pack is an ESTIMATE (Pololu D36V50F5's curves run 80-90 %).
+export const SERVO_STALL_AT_6V_A = 2.5
+export const SERVO_STALL_A = +((SERVO_STALL_AT_6V_A * 5) / 6).toFixed(2)
+export const SERVO_STALL_SOURCE = { url: "https://courses.ece.cornell.edu/ece5990/ECE5725_Spring2020_Projects/May_15_Demo/Smart%20Lock/W_pp445_yl656/datasheet/MG996R_Tower-Pro.pdf", where: "TowerPro MG996R datasheet: stall current 2.5 A at 6 V; scaled to the 5 V servo supply (a stalled motor's current is its voltage over its winding resistance): 2.08 A" }
 export const SERVO_SUPPLY_EFF = 0.85
 // A connector carrying a rail is asked for this much over its peak (the figure; over the plain rating is a violation).
 export const CONNECTOR_HEADROOM = 1.25
@@ -416,14 +421,14 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 		...parts.filter((p) => p.role === "battery").map((p): [Part, number, string] => [p, packNeedA, "the pack's peak"]),
 		...parts.filter((p) => p.role === "estop").map((p): [Part, number, string] => [p, n * full.stallA, `${n === 2 ? "both" : `all ${n}`} motors at stall`]),
 		...parts.filter((p) => isMotorPlug(p)).map((p): [Part, number, string] => [p, full.stallA, "one motor at stall"]),
-		...parts.filter((p) => p.role === "servo").map((p): [Part, number, string] => [p, SERVO_STALL_A, `one servo at stall (${SERVO_STALL_A} A, an estimate)`]),
+		...parts.filter((p) => p.role === "servo").map((p): [Part, number, string] => [p, SERVO_STALL_A, `one servo at stall (${SERVO_STALL_A} A at 5 V: an MG996R-class servo, 2.5 A at 6 V scaled)`]),
 	]
 	for (const [p, peakA, what] of conns) {
 		const r = rated(p)
 		if (r === undefined) continue
 		fig(`Connector current ${p.ref}`, `${r2(peakA)} A`, `at most ${r2(r / CONNECTOR_HEADROOM)} A (${r} A rated, ${CONNECTOR_HEADROOM}x headroom)`, peakA * CONNECTOR_HEADROOM <= r, `${p.mpn}: ${what}`)
 		const src = ratedSource(p)
-		if (src) figures[figures.length - 1].sources = [{ mpn: p.mpn, field: "ratedA", url: src.url, where: src.where }]
+		if (src) figures[figures.length - 1].sources = [{ mpn: p.mpn, field: "ratedA", url: src.url, where: src.where }, ...(p.role === "servo" ? [{ mpn: "MG996R", field: "stallA", ...SERVO_STALL_SOURCE }] : [])]
 		if (peakA > r) push("mech-current", `${p.ref} ${p.mpn} is rated ${r} A but carries ${r2(peakA)} A (${what}): use a connector rated for it (an XT60 pack's XT60PW-M takes 30 A)`, ["parts"], ["parts"])
 	}
 

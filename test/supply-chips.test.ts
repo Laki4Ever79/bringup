@@ -22,7 +22,7 @@ test("run 20 rev 20: the agents' step-down and Schottkys written as \"other\" ar
 	assert.equal(tree(s.values.parts!).length, 6)
 })
 
-test("the chip rule keeps 25 % headroom: one servo (3.1 A) takes the SY8205, two (6.25 A) the 8 A SY8368A, three (9.4 A) keep the module", () => {
+test("the chip rule keeps 25 % headroom: one servo (2.6 A) takes the SY8205, two (5.2 A) the 8 A SY8368A, three (7.8 A) too, four (10.4 A) keep the module", () => {
 	const s = fx("mock-eurobot-rev8.json")
 	const before = s.values.parts!.find((p) => p.role === "servo-supply")!
 	assert.equal(before.lcsc, null)
@@ -33,7 +33,9 @@ test("the chip rule keeps 25 % headroom: one servo (3.1 A) takes the SY8205, two
 	assert.deepEqual([supply(s.values.parts!).ref, supply(s.values.parts!).mpn, supply(s.values.parts!).lcsc], [before.ref, "SY8368AQQC", "C207642"])
 	assert.equal(supply(s.values.parts!.filter((p) => p.ref !== servos[1].ref)).mpn, "SY8205FCC")
 	const three = [...s.values.parts!, { ...servos[0], ref: "JV9" }]
-	assert.equal(supply(three).mpn, before.mpn)
+	assert.equal(supply(three).mpn, "SY8368AQQC")
+	const four = [...three, { ...servos[0], ref: "JV10" }]
+	assert.equal(supply(four).mpn, before.mpn)
 })
 
 test("the SY8368A (two servos): its three IN pads on the pack, both GND, LX and FB on theirs, 5 x 22 uF out, no soft-start part, and JLCPCB's polygon pads", () => {

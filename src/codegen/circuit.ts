@@ -654,6 +654,16 @@ function inductorFootprint(name: string): string {
 // exposed pad 2.55 x 3.20 mm is pin 9 (the chip's GND), so its label can wire it.
 // SY8368AQQC QFN3x3-12: polygon pads from JLCPCB's own footprint (catalog/footprints/sy8368a.json, its _about).
 export const SY8368_FOOTPRINT = "qfn12_sy8368a"
+// A pad's centre (its polygon's box) on the SY8368A's land pattern: without it the servo buck's BS and VCC capacitors had
+// no pad to sit beside and went 5-11 mm away, past their 5 mm bound (real run 21, 25 Nov 2026).
+let sy8368Pads: { pin: number; points: [number, number][] }[] | undefined
+function sy8368PadCentre(pin: number): { x: number; y: number } | null {
+	sy8368Pads ??= (JSON.parse(readFileSync(new URL("../../catalog/footprints/sy8368a.json", import.meta.url), "utf8")) as { pads: { pin: number; points: [number, number][] }[] }).pads
+	const pts = sy8368Pads.find((p) => p.pin === pin)?.points
+	if (!pts) return null
+	const [xs, ys] = [pts.map((q) => q[0]), pts.map((q) => q[1])]
+	return { x: +((Math.min(...xs) + Math.max(...xs)) / 2).toFixed(3), y: +((Math.min(...ys) + Math.max(...ys)) / 2).toFixed(3) }
+}
 function sy8368Footprint(): string {
 	const f = JSON.parse(readFileSync(new URL("../../catalog/footprints/sy8368a.json", import.meta.url), "utf8")) as { pads: { pin: number; points: [number, number][] }[] }
 	const pads = f.pads.map((p) => `<smtpad portHints={["pin${p.pin}"]} shape="polygon" points={[${p.points.map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")}]} />`).join("")
@@ -808,7 +818,7 @@ export function quadPinOffset(footprint: string, pin: number, ringMm: number | u
 // A pad's centre from the part's origin at the part's rotation (counter-clockwise, as tscircuit's pcbRotation and
 // offsetAt turn), for a dual-row or quad package; null for other footprints.
 function padOffset(footprint: string, pad: number, rotation: number): { x: number; y: number } | null {
-	const at = icPinOffset(footprint, pad) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm)
+	const at = icPinOffset(footprint, pad) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
 	if (!at) return null
 	const t = (rotation * Math.PI) / 180
 	return { x: +(at.x * Math.cos(t) - at.y * Math.sin(t)).toFixed(3), y: +(at.x * Math.sin(t) + at.y * Math.cos(t)).toFixed(3) }
@@ -1391,7 +1401,10 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// The microphone goes halfway along, against the other side edge from the sensor, away from the module's noise.
 	put(byRole("microphone"), frame(depth / 2, 4))
 	// The motor driver mid-board, between the module and the USB-C side, before its capacitors (they sit beside it).
-	put(byRole("motor-driver"), frame(depth / 2, span / 2))
+	// Every motor driver, not only the first: a second DRV8833 (the Eurobot's spare motor, run 21) was left to the last
+	// pass, after the capacitors: its VINT and VCP capacitors found no driver to sit beside and went mid-board, the driver
+	// then took a spot 13-30 mm away and every build of the run failed on their 5 mm bound (25 Nov 2026).
+	for (const d of motorDrivers(free)) put(d, frame(depth / 2, span / 2))
 	// Each support passive sits next to the part it serves; one that ends on a pin of a TSSOP/SOIC part sits just past
 	// that pin (a 7.9 mm TSSOP's far side is too far: tscircuit caps a decoupling trace at 1 mm).
 	const boxOf = (ref: string) => placed.find((b) => b.ref === ref)
@@ -1485,6 +1498,10 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		const via = (e: number, p: { x: number; y: number } | null) => d(end(e), p) + (p && d(end(-e), p) < d(end(e), p) - 0.25 ? 1 : 0)
 		return Math.max(via(-1, pa), via(1, pb))
 	}
+	// Any other part with its own pin parts (wired to its pins) is placed before them, for the same reason: a support
+	// placed before its part has no pin to sit beside.
+	const owners = new Set(supportParts(s).flatMap((sp) => (sp.added && "ref" in sp.a ? [sp.a.ref] : [])))
+	for (const p of free) if (owners.has(p.ref)) put(p, centre)
 	const supports = [...supportParts(s)].sort((a, b) => first(a) - first(b))
 	for (const sp of supports) {
 		const want = besidePin(sp.a) ?? besideCrystal(sp.a) ?? boxOf(sp.near) ?? centre
@@ -2280,6 +2297,33 @@ function capBound(s: ContractSnapshot, sp: Support): number | null {
 
 // Half the distance between a chip capacitor's two pad centres (tscircuit's footprints).
 const CAP_TERMINAL_MM: Record<string, number> = { "0402": 0.5, "0603": 0.75, "0805": 0.95 }
+
+// The pin capacitors a placement leaves farther from their pad than tscircuit's bound (capBound), in tscircuit's own
+// words: straight from the part's pad to the capacitor's pin 1, which no route can beat. tscircuit decides this before it
+// routes and exits; run 21 built six such layouts and a Freerouting pass for it, 13-19 min a failed build, where this
+// takes milliseconds (25 Nov 2026). A small margin keeps a layout tscircuit might still accept.
+export const CAP_REACH_MARGIN_MM = 0.5
+export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}): string[] {
+	if (opts.routingDisabled) return []
+	const placed = layoutBoard(s, opts).parts
+	const parts = s.values.parts ?? []
+	const out: string[] = []
+	for (const sp of supportParts(s)) {
+		const bound = capBound(s, sp)
+		if (bound === null || !("ref" in sp.a)) continue
+		const part = parts.find((p) => p.ref === (sp.a as { ref: string }).ref)
+		const [box, cap] = [placed.find((b) => b.ref === part?.ref), placed.find((b) => b.ref === sp.ref)]
+		if (!part || !box || !cap || box.rotation % 90 !== 0) continue
+		const at = padOffset(footprintFor(part), part.pins.indexOf(sp.a.pin) + 1, box.rotation)
+		const t = CAP_TERMINAL_MM[sp.spec.footprint]
+		if (!at || t === undefined) continue
+		const r = (cap.rotation * Math.PI) / 180
+		const pin1 = { x: (cap.ox ?? cap.x) - t * Math.cos(r), y: (cap.oy ?? cap.y) - t * Math.sin(r) }
+		const d = Math.hypot((box.ox ?? box.x) + at.x - pin1.x, (box.oy ?? box.y) + at.y - pin1.y)
+		if (d > bound + CAP_REACH_MARGIN_MM) out.push(`the ${bound}mm maximum length for .${part.ref} > .${sp.a.pin} to .${sp.ref} > .pin1 cannot be satisfied: its endpoints are ${d.toFixed(2)}mm apart`)
+	}
+	return out
+}
 // tscircuit's trace width and copper clearance, and a little margin: drawn traces keep this far from other copper.
 const DRAWN_CLEAR_MM = 0.075 + 0.1 + 0.05
 

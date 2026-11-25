@@ -12,11 +12,11 @@ const fx = (f: string) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, imp
 const conn = (s: ContractSnapshot, ref: string) => mechanicsFigures(s).find((f) => f.check === `Connector current ${ref}`)!
 const over = (s: ContractSnapshot) => mechanicsChecks(s).filter((v) => /is rated .* but carries/.test(v.message))
 
-test("the mock Eurobot (2S XT60 pack, two servos): 5.07 A through the 2 A JST PH is refused; the XT60PW-M that mates the pack carries it", () => {
+test("the mock Eurobot (2S XT60 pack, two servos): 4.4 A through the 2 A JST PH is refused; the XT60PW-M that mates the pack carries it", () => {
 	const s = fx("mock-eurobot-rev8.json")
-	assert.equal(conn(s, "J2").value, "5.07 A")
+	assert.equal(conn(s, "J2").value, "4.4 A")
 	assert.equal(conn(s, "J2").ok, false)
-	assert.match(over(s)[0]?.message ?? "", /J2 .* is rated 2 A but carries 5\.07 A/)
+	assert.match(over(s)[0]?.message ?? "", /J2 .* is rated 2 A but carries 4\.4 A/)
 	s.values.parts = completePowerTree(s.values.parts!, s.values.mechanics!, s).parts
 	const j2 = s.values.parts!.find((p) => p.ref === "J2")!
 	assert.deepEqual([j2.mpn, j2.lcsc, j2.role], ["XT60PW-M", "C98732", "battery"])
@@ -24,9 +24,12 @@ test("the mock Eurobot (2S XT60 pack, two servos): 5.07 A through the 2 A JST PH
 	assert.deepEqual(over(s), [])
 	const n = generatedNets(s)
 	assert.ok(n.get("GND")!.includes("J2.GND"))
-	// The servo plugs: 2.5 A on a 3 A header passes the rating but not the 1.25x headroom: a figure, not a violation.
+	// The servo plugs: an MG996R-class servo's stall on the 5 V supply, 2.08 A (2.5 A at 6 V, scaled, sourced), keeps the
+	// 1.25x headroom on the 3 A header. With the 6 V figure (2.5 A) it failed, a figure no agent could act on (run 21's J3/J4).
 	assert.equal(CONNECTOR_HEADROOM, 1.25)
-	assert.equal(conn(s, "JV1").ok, false)
+	assert.equal(conn(s, "JV1").value, "2.08 A")
+	assert.equal(conn(s, "JV1").ok, true)
+	assert.ok(conn(s, "JV1").sources?.some((x) => /MG996R/.test(x.where)))
 })
 
 test("a 1S Adafruit pack keeps the JST PH it mates (1.11 A of 2 A), and run 20's 2S pack gets its XT60", () => {

@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symli
 import { recordRoutingFailure, ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { boardParts, capPaths, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, type PlacementOptions } from "../codegen/circuit.ts"
+import { boardParts, capPaths, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, unreachableCaps, type PlacementOptions } from "../codegen/circuit.ts"
 import { connectorClashes, pinPartsMissing, pinsWithoutMcu, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
@@ -74,7 +74,14 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	// is there (the wake-word board at 35×25 mm, LDO 11 mm from J1: "C3 overlaps U3", and autorouting skipped).
 	const count = boardParts(s).length
 	const withAlong = layoutAttempts(s, attempts)
-	const fitting = withAlong.filter((placement) => placeParts(s, placement).length >= count)
+	const placing = withAlong.filter((placement) => placeParts(s, placement).length >= count)
+	// A layout with a pin capacitor out of its trace bound's reach is never built: tscircuit refuses it before routing, and
+	// a build costs minutes (unreachableCaps). None left: the build fails now, in tscircuit's words, for the architect.
+	const fitting = placing.filter((placement) => unreachableCaps(s, placement).length === 0)
+	if (placing.length && !fitting.length) {
+		const far = unreachableCaps(s, placing[0])
+		throw new Error(`tscircuit build failed (placement check, no layout built):\nAutorouting was skipped because ${far[0]}${far.length > 1 ? ` (${far.length - 1} additional violations)` : ""}. Every one of ${placing.length} layouts leaves a pin capacitor out of reach.`)
+	}
 	if (fitting.length === 0) {
 		const placed = new Set(placeParts(s).map((b) => b.ref))
 		const left = boardParts(s).map((p) => p.ref).filter((ref) => !placed.has(ref))
