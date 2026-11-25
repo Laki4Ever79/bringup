@@ -143,6 +143,15 @@
 				"where": "F.6 Other design constraints, p. 13: 'A rectangular, entire and non-deformable space of 100 x 70 mm per robot must be left free on one of the side faces'"
 			}
 		},
+		"table": {
+			"value": [3000, 2000],
+			"unit": "mm",
+			"wallMm": 22,
+			"source": {
+				"url": "https://www.eurobot.org/wp-content/uploads/2025/10/Eurobot2026_Rules_1.0_EN.pdf",
+				"where": "D.2 Playing area, p. 7 (the year's own rules, Eurobot 2026 Rules 1.0): 'The playing area is a horizontal rectangular plane of 3000 mm by 2000 mm with 70 mm heigh, 22 mm thick borders on each outer side'"
+			}
+		},
 		"stickerHeightMm": {
 			"value": 70,
 			"unit": "mm",

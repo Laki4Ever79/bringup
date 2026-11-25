@@ -31,7 +31,10 @@ const rules = (s: ContractSnapshot) => mechanicsChecksWith(s, defaultCheckCatalo
 test("every limit in the rule set cites its clause and page in the official rules", () => {
 	const r = JSON.parse(readFileSync(`${ROOT}catalog/rules/eurobot-2026.json`, "utf8"))
 	assert.match(r.document.url, /eurobot\.org\/.*General_Rules_1\.2_EN\.pdf$/)
-	for (const [k, l] of Object.entries(r.limits) as [string, Any][]) assert.match(l.source.where, /^[FH]\.\d.*p\. \d+/, `${k} names its clause and page`)
+	for (const [k, l] of Object.entries(r.limits) as [string, Any][]) {
+		assert.match(l.source.where, /^[DFH]\.\d.*p\. \d+/, `${k} names its clause and page`)
+		assert.match(l.source.url, /^https:\/\/www\.eurobot\.org\/.*\.pdf$/, `${k} cites an official Eurobot document`)
+	}
 	assert.equal(r.limits.startPerimeterMm.value, 1200)
 	assert.equal(r.limits.heightMm.value, 350)
 	assert.equal(r.limits.cordMinMm.value, 500)

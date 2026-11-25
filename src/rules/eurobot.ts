@@ -35,6 +35,8 @@ export interface RuleSet {
 		beaconLoadG: Limit<number>
 		stickerWidthMm: Limit<number>
 		stickerHeightMm: Limit<number>
+		// The year's playing area (its theme rules, not the general ones) and its walls' thickness: the robot's Nav2 map.
+		table?: Limit<[number, number]> & { wallMm: number }
 	}
 	notChecked: { rule: string; why: string }[]
 }

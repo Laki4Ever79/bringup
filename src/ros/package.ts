@@ -3,6 +3,7 @@ import { join } from "node:path"
 import type { ChassisSpec } from "../tools/chassis.ts"
 import { controllersYaml, robotUrdf, type RosHardware } from "./urdf.ts"
 import { acceptanceScript } from "./acceptance.ts"
+import { arenaMap, defaultStart, nav2Params, navGoalScript, navigationLaunch, NAV_GOAL_OFFSET, type Arena } from "./nav2.ts"
 
 // The robot's ROS 2 package (docs/ros.md), written beside each chassis build: an ament_cmake package that installs
 // the URDF, the controllers' settings and a launch file (robot_state_publisher, the ros2_control node, the joint state
@@ -12,15 +13,26 @@ import { acceptanceScript } from "./acceptance.ts"
 
 export const rosPackageName = (robot: string) => `${robot.replace(/[^a-z0-9_]/gi, "_").toLowerCase()}_bringup`
 
-export function writeRosPackage(dir: string, spec: ChassisSpec, opts: { robot?: string; revision?: number } = {}): string {
+export function writeRosPackage(dir: string, spec: ChassisSpec, opts: { robot?: string; revision?: number; arena?: Arena } = {}): string {
 	const robot = opts.robot ?? "rover"
 	const pkg = rosPackageName(robot)
 	const root = join(dir, pkg)
-	for (const d of ["urdf", "config", "launch", "test"]) mkdirSync(join(root, d), { recursive: true })
+	for (const d of ["urdf", "config", "launch", "test", "maps"]) mkdirSync(join(root, d), { recursive: true })
 	writeFileSync(join(root, "test", "acceptance.py"), acceptanceScript(spec), { mode: 0o755 })
 	const stamp = opts.revision !== undefined ? ` (design revision ${opts.revision})` : ""
 	for (const hw of ["mock", "bringup"] as RosHardware[]) writeFileSync(join(root, "urdf", `${robot}.${hw}.urdf`), robotUrdf(spec, { name: robot, hardware: hw }))
 	writeFileSync(join(root, "config", "controllers.yaml"), controllersYaml(spec))
+	// Nav2 from the design (nav2.ts); a competition robot's table as its map.
+	const nav = { ...(opts.revision !== undefined ? { revision: opts.revision } : {}), ...(opts.arena ? { arena: opts.arena } : {}) }
+	writeFileSync(join(root, "config", "nav2.yaml"), nav2Params(spec, nav))
+	writeFileSync(join(root, "launch", "navigation.launch.py"), navigationLaunch(pkg, nav))
+	const start = defaultStart(opts.arena)
+	writeFileSync(join(root, "test", "nav_goal.py"), navGoalScript(spec, start, [start[0] + NAV_GOAL_OFFSET[0], start[1] + NAV_GOAL_OFFSET[1]]), { mode: 0o755 })
+	if (opts.arena) {
+		const m = arenaMap(opts.arena)
+		writeFileSync(join(root, "maps", "arena.pgm"), m.pgm)
+		writeFileSync(join(root, "maps", "arena.yaml"), m.yaml)
+	} else writeFileSync(join(root, "maps", "README"), "No map: the design names no table, so Nav2 plans in a window around the robot.\n")
 	writeFileSync(
 		join(root, "package.xml"),
 		`<?xml version="1.0"?>
@@ -39,6 +51,15 @@ export function writeRosPackage(dir: string, spec: ChassisSpec, opts: { robot?: 
   <exec_depend>imu_sensor_broadcaster</exec_depend>` : ""}
   <exec_depend>bringup_hardware</exec_depend>
   <exec_depend>rosbridge_server</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_behaviors</exec_depend>
+  <exec_depend>nav2_bt_navigator</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_regulated_pure_pursuit_controller</exec_depend>
+  <exec_depend>nav2_navfn_planner</exec_depend>${opts.arena ? `
+  <exec_depend>nav2_map_server</exec_depend>` : ""}
   <export><build_type>ament_cmake</build_type></export>
 </package>
 `,
@@ -48,7 +69,7 @@ export function writeRosPackage(dir: string, spec: ChassisSpec, opts: { robot?: 
 		`cmake_minimum_required(VERSION 3.8)
 project(${pkg})
 find_package(ament_cmake REQUIRED)
-install(DIRECTORY urdf config launch test DESTINATION share/\${PROJECT_NAME})
+install(DIRECTORY urdf config launch test maps DESTINATION share/\${PROJECT_NAME})
 ament_package()
 `,
 	)
@@ -59,7 +80,9 @@ import os
 import re
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -91,7 +114,12 @@ def generate_launch_description():
         DeclareLaunchArgument("hardware", default_value="mock", description="mock (commands mirrored back) or bringup (the robot's own firmware)"),
         DeclareLaunchArgument("port", default_value="", description="hardware:=bringup only: the robot's serial device (/dev/ttyACM0) instead of the firmware in QEMU (tcp:127.0.0.1:5555)"),
         DeclareLaunchArgument("stream", default_value="false", description="true: serve the topics to Bringup's dashboard over rosbridge (ws://127.0.0.1:9090)"),
+        DeclareLaunchArgument("nav", default_value="false", description="true: Nav2 too (launch/navigation.launch.py), from the design"),
         OpaqueFunction(function=nodes),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(get_package_share_directory("${pkg}"), "launch", "navigation.launch.py")),
+            condition=IfCondition(LaunchConfiguration("nav")),
+        ),
     ])
 `,
 	)

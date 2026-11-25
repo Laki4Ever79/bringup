@@ -28,19 +28,21 @@ export interface RosAcceptance {
 	log: string
 }
 
-const SCRIPT = (hardware: string, robot: string, outName: string, port = "") => `#!/bin/bash
+const SCRIPT = (hardware: string, robot: string, outName: string, port = "", nav = false) => `#!/bin/bash
 source /opt/ros/jazzy/setup.bash
 cd /ws && colcon build --event-handlers console_direct- > /out/colcon-${outName}.log 2>&1 || { echo "COLCON FAILED"; exit 3; }
 source /ws/install/setup.bash
 export ROS_DOMAIN_ID=$((RANDOM % 100 + 100)) ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
-ros2 launch ${robot}_bringup bringup.launch.py hardware:=${hardware}${port ? ` port:=${port}` : ""} > /out/launch-${outName}.log 2>&1 &
+ros2 launch ${robot}_bringup bringup.launch.py hardware:=${hardware}${port ? ` port:=${port}` : ""}${nav ? " nav:=true" : ""} > /out/launch-${outName}.log 2>&1 &
 for i in $(seq 1 180); do ros2 control list_controllers 2>/dev/null | grep -q "diff_drive_controller.*active" && break; sleep 1; done
 rm -rf /out/bag-${outName}
 timeout -s INT 25 ros2 bag record -s mcap -o /out/bag-${outName} /cmd_vel /diff_drive_controller/odom /joint_states /range_sensor_broadcaster/range /imu_sensor_broadcaster/imu /tf > /out/bag-${outName}.log 2>&1 &
 BAG=$!
 sleep 2
 python3 /ws/install/${robot}_bringup/share/${robot}_bringup/test/acceptance.py /out/acceptance-${outName}.json ${outName}
-CODE=$?
+CODE=$?${nav ? `
+# Nav2 (ROS step 2): one goal from the design's start, after the acceptance drive.
+python3 /ws/install/${robot}_bringup/share/${robot}_bringup/test/nav_goal.py /out/nav-${outName}.json || CODE=1` : ""}
 wait $BAG 2>/dev/null  # the recorder stops itself (SIGINT after 25 s) and writes its metadata
 [ -f /out/bag-${outName}/metadata.yaml ] || ros2 bag reindex /out/bag-${outName} -s mcap > /dev/null 2>&1
 exit $CODE
@@ -93,11 +95,32 @@ function docker(args: string[], timeoutMs: number): Promise<{ code: number | nul
 	})
 }
 
+// The Nav2 goal's checks (test/nav_goal.py), and in simulation where the robot really ended: the simulated axle's middle
+// (trajectory.json columns 7-8, world positions: taken from its first row's) placed at the start pose, against the goal
+// and the odometry. The simulated room's x runs along the table's (both start facing +x).
+export function navResult(file: string, trajectory?: string): RosAcceptance["checks"] {
+	if (!existsSync(file)) return [{ name: "nav: the goal script ran", pass: false, measured: null, expected: "nav-<backend>.json" }]
+	const n = JSON.parse(readFileSync(file, "utf8")) as { checks: RosAcceptance["checks"]; start: [number, number]; goal: [number, number]; end: [number, number] | null }
+	const out = n.checks.map((c) => ({ ...c, name: `nav: ${c.name}` }))
+	if (trajectory && existsSync(trajectory)) {
+		const rows = JSON.parse(readFileSync(trajectory, "utf8")) as number[][]
+		const first = rows[0], last = rows[rows.length - 1]
+		if (first && last && last.length >= 9) {
+			const truth: [number, number] = [n.start[0] + last[7] - first[7], n.start[1] + last[8] - first[8]]
+			const err = Math.hypot(truth[0] - n.goal[0], truth[1] - n.goal[1])
+			// 0.08 m: the goal's 5 cm plus the odometry's drift over a ~1 m drive with turns (an ESTIMATE).
+			out.push({ name: "nav: the simulated robot is at the goal", pass: err <= 0.08, measured: Number(err.toFixed(4)), expected: "<= 0.08 m" })
+			if (n.end) out.push({ name: "nav: odometry vs the simulation (information)", pass: true, measured: Number(Math.hypot(truth[0] - n.end[0], truth[1] - n.end[1]).toFixed(4)), expected: "m" })
+		}
+	}
+	return out
+}
+
 export function rosImageReady(): boolean {
 	return spawnSync("docker", ["image", "inspect", ROS_IMAGE], { stdio: "ignore" }).status === 0
 }
 
-export async function runRosAcceptance(o: { root: string; wsDir: string; outDir: string; backend: "mock" | "qemu" | "real"; device?: string; robot?: string; spec?: ChassisSpec; contract?: ContractSnapshot; fwDir?: string; python?: string; pio?: string }): Promise<RosAcceptance> {
+export async function runRosAcceptance(o: { root: string; wsDir: string; outDir: string; backend: "mock" | "qemu" | "real"; device?: string; robot?: string; nav?: boolean; spec?: ChassisSpec; contract?: ContractSnapshot; fwDir?: string; python?: string; pio?: string }): Promise<RosAcceptance> {
 	const robot = o.robot ?? "rover"
 	const ws = resolve(o.wsDir), out = resolve(o.outDir)
 	mkdirSync(out, { recursive: true })
@@ -105,7 +128,7 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 	if (!rosImageReady()) return fail(`the ROS image ${ROS_IMAGE} is not built (docker build -t ${ROS_IMAGE} docker/ros)`)
 	const script = join(out, `run-${o.backend}.sh`)
 	if (o.backend === "real" && (!o.device || !existsSync(o.device))) return fail(`the real robot's serial device ${o.device ?? "(none given)"} is not there: plug the robot in by USB and pass --port`)
-	writeFileSync(script, SCRIPT(o.backend === "mock" ? "mock" : "bringup", robot, o.backend, o.backend === "real" ? o.device : ""), { mode: 0o755 })
+	writeFileSync(script, SCRIPT(o.backend === "mock" ? "mock" : "bringup", robot, o.backend, o.backend === "real" ? o.device : "", !!o.nav), { mode: 0o755 })
 	// The real robot's serial device inside the container, readable by the container's user (the device's own group).
 	const device = o.backend === "real" ? ["--device", o.device!, "--group-add", String(statSync(o.device!).gid)] : []
 	// Build the workspace first, so the firmware's simulated time isn't spent waiting for colcon.
@@ -134,6 +157,11 @@ export async function runRosAcceptance(o: { root: string; wsDir: string; outDir:
 	const file = join(out, `acceptance-${o.backend}.json`)
 	if (!existsSync(file)) return { ...fail(r.out.split("\n").slice(-15).join("\n")), ...(d ? { drive: { result: d.result, reason: d.reason } } : {}) }
 	const res = JSON.parse(readFileSync(file, "utf8")) as { pass: boolean; checks: RosAcceptance["checks"] }
+	if (o.nav) {
+		const nav = navResult(join(out, `nav-${o.backend}.json`), o.backend === "qemu" ? join(out, "drive-qemu", "trajectory.json") : undefined)
+		res.checks.push(...nav)
+		res.pass &&= nav.every((c) => c.pass)
+	}
 	// The bag's rates and the speed reached, against what the design promises.
 	let diagnoses: Diagnosis[] | undefined
 	if (o.spec && o.contract) {
