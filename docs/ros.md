@@ -111,8 +111,11 @@ Measured on the Eurobot-style rover (encoders and IMU), its firmware in QEMU dri
 | a ~1.5 rad turn: odometry vs gyro | no gyro in ROS | 1.549 vs 1.543 rad |
 | odometry vs the simulation's position | not compared | 0.606 vs 0.600 m at the far point |
 
-- After the turn, the odometry's x and the simulation's differ by 6 cm (0.146 vs 0.209 m). Not explained yet; likely the
-  point each one tracks (the axle's middle in ROS).
+- `base_link` sits at the drive's pivot (the axle's middle; a skid-steer's halfway between its axles), the point
+  diff_drive_controller's odometry moves. Before 25 Nov it sat under the plate's centre, so the robot was drawn (and a
+  navigation footprint placed) off its real position after every turn: after a 1.55 rad turn the odometry read
+  (0.146, 0.005) m, the simulated axle was at (0.137, 0.005), the plate's centre at (0.209, -0.070). The ROS checks now
+  flag a URDF whose wheels aren't at the pivot.
 - The IMU's covariances come from the simulated gyro's noise and bias (`spec.imu`), which are estimates, not a
   datasheet.
 - Not yet: Nav2 configuration, provisioning the robot's computer, micro-ROS on the microcontroller.

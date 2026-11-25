@@ -105,6 +105,11 @@ export function rosUrdfChecks(spec: ChassisSpec, urdf: string, file = "urdf/robo
 	const axle = new RegExp(`<joint name="left_wheel_joint"[\\s\\S]*?<origin xyz="([-\\d.eE+]+) ([-\\d.eE+]+) ([-\\d.eE+]+)"`).exec(urdf)
 	if (axle && (!near(Number(axle[2]) * 2, spec.drive.trackMm / 1000) || !near(Number(axle[3]), b.r)))
 		out.push({ kind: "ros-wheel-geometry", message: `${file}: the left wheel sits at y ${axle[2]}, z ${axle[3]} m; the design puts it at y ${spec.drive.trackMm / 2000}, z ${b.r} m (half the track, the wheel's radius)` })
+	// base_link at the drive's pivot: diff_drive_controller's odometry moves that point, so any other origin drifts from
+	// the robot's real position in every turn (63 mm after a 1.55 rad turn, 23 Nov 2026).
+	const pivotX = b.skid ? (b.axleX - b.casterX) / 2 : 0
+	if (axle && Math.abs(Number(axle[1]) - pivotX) > 0.001)
+		out.push({ kind: "ros-wheel-geometry", message: `${file}: the left wheel sits ${axle[1]} m ahead of base_link; the odometry moves the drive's pivot, so base_link must sit there (the wheel ${pivotX.toFixed(4)} m ahead)` })
 	return out
 }
 

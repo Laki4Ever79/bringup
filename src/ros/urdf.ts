@@ -3,8 +3,8 @@ import { drivenDecel, onWheelsShare } from "../mechanics/model.ts"
 
 // The robot's ROS 2 description (URDF) from the chassis spec, the same numbers the MuJoCo model (py/mech/model.py)
 // and the mechanics checks use, in ROS units (REP-103: metres, kilograms, x forward, y left, z up). Frames (REP-105):
-// base_footprint on the floor under the plate's centre, base_link at the same point (the spec's own origin, z from the
-// floor), a wheel link on each continuous joint at the axle, the caster, the range sensor and each board.
+// base_link at the drive's pivot (the axle's middle; a skid-steer's halfway between its axles), the point
+// diff_drive_controller's odometry moves, and base_footprint on the floor under it (z from the floor); a wheel link on each continuous joint at the axle, the caster, the range sensor and each board.
 //
 // The body's inertia is composed from its parts (the spec's bodyParts: each a box of its own mass, centre and size,
 // moved to the body's centre of mass by the parallel-axis rule, products of inertia included); the wheels are
@@ -98,6 +98,11 @@ export function robotUrdf(spec: ChassisSpec, opts: { name?: string; hardware?: R
 	const plateZ = mm(p.clearanceMm) + t / 2
 	const ww = mm(d.wheelWidthMm), track = mm(d.trackMm)
 	const s = spec.sensor
+	// The spec's coordinates are from the plate's centre; the URDF's from the pivot. With base_link under the plate's
+	// centre, the odometry (which moves the pivot) and the robot's drawn position drifted apart in every turn: 63 mm in x
+	// after a 1.55 rad turn of the Eurobot rover, its axle 64 mm ahead of the centre (ROS step 1, 23 Nov 2026).
+	const px = b.skid ? (b.axleX + b.casterX) / 2 : b.axleX
+	const X = (x: number) => x - px
 	// A skid-steer rover's rear wheels: <side>_rear_wheel_link on <side>_rear_wheel_joint, at the rear axle.
 	const wheel = (side: "left" | "right" | "left_rear" | "right_rear", sign: 1 | -1, x = b.axleX) => `  <link name="${side}_wheel_link">
     <visual>
@@ -113,7 +118,7 @@ ${inertial(b.wheelKg, [0, 0, 0], wheelInertia(b.wheelKg, b.r, ww))}
   <joint name="${side}_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="${side}_wheel_link"/>
-    <origin xyz="${xyz(x, (sign * track) / 2, b.r)}" rpy="0 0 0"/>
+    <origin xyz="${xyz(X(x), (sign * track) / 2, b.r)}" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
   </joint>`
 	const boards = spec.boards
@@ -126,14 +131,14 @@ ${inertial(b.wheelKg, [0, 0, 0], wheelInertia(b.wheelKg, b.r, ww))}
   <joint name="board_${bd.name}_joint" type="fixed">
     <parent link="base_link"/>
     <child link="board_${bd.name}_link"/>
-    <origin xyz="${xyz(mm(bd.xMm), mm(bd.yMm), plateZ + t / 2 + mm(spec.standoffMm))}" rpy="0 0 ${f((bd.rotDeg * Math.PI) / 180)}"/>
+    <origin xyz="${xyz(X(mm(bd.xMm)), mm(bd.yMm), plateZ + t / 2 + mm(spec.standoffMm))}" rpy="0 0 ${f((bd.rotDeg * Math.PI) / 180)}"/>
   </joint>`,
 		)
 		.join("\n")
 	// The IMU's frame: on the board that carries it (the main board, else the first), aligned with the robot. The
 	// firmware reports its heading already in the robot's frame (counter-clockwise about z), so no rotation here.
 	const imuBoard = spec.boards.find((bd) => bd.name === "main") ?? spec.boards[0]
-	const imuAt: [number, number, number] = imuBoard ? [mm(imuBoard.xMm), mm(imuBoard.yMm), plateZ + t / 2 + mm(spec.standoffMm)] : [0, 0, plateZ]
+	const imuAt: [number, number, number] = imuBoard ? [X(mm(imuBoard.xMm)), mm(imuBoard.yMm), plateZ + t / 2 + mm(spec.standoffMm)] : [X(0), 0, plateZ]
 	const imuLink = spec.imu
 		? `
   <link name="imu_link"/>
@@ -172,14 +177,14 @@ ${IMU_INTERFACES.map((i) => (i === "orientation.w" && hw === "mock" ? `      <st
   </joint>
   <link name="base_link">
     <visual>
-      <origin xyz="${xyz(0, 0, plateZ)}" rpy="0 0 0"/>
+      <origin xyz="${xyz(X(0), 0, plateZ)}" rpy="0 0 0"/>
       <geometry><box size="${xyz(L, W, t)}"/></geometry>
     </visual>
     <collision>
-      <origin xyz="${xyz(0, 0, plateZ)}" rpy="0 0 0"/>
+      <origin xyz="${xyz(X(0), 0, plateZ)}" rpy="0 0 0"/>
       <geometry><box size="${xyz(L, W, t)}"/></geometry>
     </collision>
-${inertial(b.bodyKg, b.com, bodyInertia(spec, b.com) ?? boxInertia(b.bodyKg, L, W, 0.03))}
+${inertial(b.bodyKg, [X(b.com[0]), b.com[1], b.com[2]], bodyInertia(spec, b.com) ?? boxInertia(b.bodyKg, L, W, 0.03))}
   </link>
 ${wheel("left", 1)}
 ${wheel("right", -1)}
@@ -192,7 +197,7 @@ ${inertial(b.casterKg, [0, 0, 0], sphereInertia(b.casterKg, b.casterR))}
   <joint name="caster_joint" type="fixed">
     <parent link="base_link"/>
     <child link="caster_link"/>
-    <origin xyz="${xyz(b.casterX, 0, b.casterR)}" rpy="0 0 0"/>
+    <origin xyz="${xyz(X(b.casterX), 0, b.casterR)}" rpy="0 0 0"/>
   </joint>`}
   <link name="range_sensor_link">
     <visual><geometry><box size="${xyz(mm(s.sizeMm[0]), mm(s.sizeMm[1]), mm(s.sizeMm[2]))}"/></geometry></visual>
@@ -200,7 +205,7 @@ ${inertial(b.casterKg, [0, 0, 0], sphereInertia(b.casterKg, b.casterR))}
   <joint name="range_sensor_joint" type="fixed">
     <parent link="base_link"/>
     <child link="range_sensor_link"/>
-    <origin xyz="${xyz(mm(s.xMm), mm(s.yMm), mm(s.zMm))}" rpy="0 0 0"/>
+    <origin xyz="${xyz(X(mm(s.xMm)), mm(s.yMm), mm(s.zMm))}" rpy="0 0 0"/>
   </joint>${imuLink}
 ${boards}
   <ros2_control name="${name}_system" type="system">

@@ -260,3 +260,16 @@ test("the hardware bridge takes a skid-steer robot's four wheel joints and the f
 	assert.match(fw, /Serial\.printf\(" E %ld %ld"/)
 	assert.match(fw, /Serial\.printf\(" H %ld"/)
 })
+
+test("base_link sits at the drive's pivot, the point the odometry moves; a URDF from the plate's centre is caught", () => {
+	const s = spec()
+	const u = robotUrdf(s, { name: "rover", hardware: "bringup" })
+	const at = (joint: string) => Number(new RegExp(`<joint name="${joint}"[\\s\\S]*?<origin xyz="([-\\d.eE+]+) `).exec(u)![1])
+	assert.equal(at("left_wheel_joint"), 0)
+	assert.ok(Math.abs(at("caster_joint") + s.drive.wheelbaseMm / 1000) < 1e-4)
+	assert.ok(Math.abs(at("range_sensor_joint") - (s.sensor.xMm - s.drive.axleXMm) / 1000) < 1e-4)
+	assert.deepEqual(rosUrdfChecks(s, u), [])
+	// The old frame: every origin from the plate's centre, the wheels axleXMm ahead of base_link.
+	const old = u.replace(/(<joint name="left_wheel_joint"[\s\S]*?<origin xyz=")0 /, `$1${s.drive.axleXMm / 1000} `)
+	assert.deepEqual(rosUrdfChecks(s, old).map((x) => x.kind), ["ros-wheel-geometry"])
+})

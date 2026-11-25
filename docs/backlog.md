@@ -668,8 +668,9 @@ Estimate: 5–8 working days across the three sessions; starts after the weekly 
       gets acceleration limits from the design. The QEMU simulation is paced to real time when ROS drives it.
       `npm run ros -- <run> [--port /dev/ttyACM0 | --workspace <dir>]`. Before, the speed checks passed on the echoed
       command while the robot drove 0.40 m/s on a 0.3 command; now 0.292 m/s measured.
-- [ ] After a turn in place, odometry x and the simulation's x differ by 6 cm (0.146 vs 0.209 m): find which point each
-      one tracks.
+- [x] After a turn in place, odometry x and the simulation's x differ by 6 cm (0.146 vs 0.209 m) (fixed 25 Nov): the
+      odometry moves the axle's middle (9 mm from the simulated axle), the comparison and the URDF used the plate's
+      centre. base_link now sits at the drive's pivot, and a check flags a URDF that doesn't.
 - [ ] Run `npm run ros -- <run> --port /dev/ttyACM0` on the bench S3 rover (needs the real robot with encoders).
 - [ ] Step 2: provisioning a Pi 5 (Ubuntu 24.04 + Jazzy + the package at boot) and a Nav2 config from the design;
       demo: the Eurobot starter reaching a Nav2 goal in simulation.
