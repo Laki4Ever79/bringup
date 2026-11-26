@@ -5,6 +5,7 @@
 import { byMpn, loadMechCatalog, type MechCatalog } from "../mechanics/catalog.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import type { ArmSpec } from "../arm/types.ts"
+import { loadCatalog } from "./parts-search.ts"
 import { checkOffer, readableShop, shopHost, UNREADABLE_SHOPS, type OfferCheck } from "./offers.ts"
 import { boardScrew, chassisSpec, CRADLE_WALL_MM, robotCables, type ChassisSpec } from "./chassis.ts"
 import type { HardwarePart } from "../mechanics/catalog.ts"
@@ -66,7 +67,20 @@ type DriveTrainItem = (typeof DRIVE_TRAIN_ITEM)[keyof typeof DRIVE_TRAIN_ITEM]
 // first brick at the input's voltage with at least its current. Each servo's horns and screws come in its box, and each
 // joint turns on its servo's own bearing (py/arm.py), so there are no separate horns or bearings to buy. Its printed
 // parts are the package's printed/.
-export function armPartLines(arm: ArmSpec, cat: MechCatalog = loadMechCatalog(ROOT)): RobotPartLine[] {
+// The board's DC input jack: the design's part whose board-catalog entry names the plug it takes (plugMm).
+export function inputJack(s: ContractSnapshot): { mpn: string; plugMm: [number, number] } | null {
+	const board = loadCatalog(ROOT) as unknown as { mpn: string; plugMm?: [number, number] }[]
+	for (const p of s.values.parts ?? []) {
+		const c = board.find((x) => x.mpn === p.mpn)
+		if (c?.plugMm) return { mpn: p.mpn, plugMm: c.plugMm }
+	}
+	return null
+}
+
+// A brick's nominal voltage may differ from the input's by this much (a 19 V brick for a 19.5 V input would not).
+export const BRICK_VOLTS_TOL = 0.25
+
+export function armPartLines(arm: ArmSpec, cat: MechCatalog = loadMechCatalog(ROOT), jack: { mpn: string; plugMm: [number, number] } | null = null): RobotPartLine[] {
 	const count = new Map<string, number>()
 	for (const mpn of [...arm.joints.map((j) => j.servo), arm.gripper.servo]) count.set(mpn, (count.get(mpn) ?? 0) + 1)
 	const servos = [...count].map(([mpn, qty]) => {
@@ -75,9 +89,13 @@ export function armPartLines(arm: ArmSpec, cat: MechCatalog = loadMechCatalog(RO
 		return { item: "servo" as const, mpn: part?.mpn ?? mpn, qty, packs: Math.ceil(qty / (buy[0]?.packQty ?? 1)), buy } as RobotPartLine
 	})
 	const want = arm.input
-	const brick = want.kind === "dc-brick" ? (cat.powerBricks ?? []).find((b) => b.volts === want.volts && b.amps >= want.amps) : undefined
+	// The brick: the input's voltage (within BRICK_VOLTS_TOL), at least its current, and the plug the board's jack takes
+	// (its catalog plugMm), so a 5.5 x 2.1 mm plug never goes to a 2.5 mm jack. Without a known jack, no brick is picked.
+	const plugOk = (b: { plugMm: [number, number] }) => jack !== null && b.plugMm[0] === jack.plugMm[0] && b.plugMm[1] === jack.plugMm[1]
+	const brick = want.kind === "dc-brick" ? (cat.powerBricks ?? []).find((b) => Math.abs(b.volts - want.volts) <= BRICK_VOLTS_TOL && b.amps >= want.amps && plugOk(b)) : undefined
 	// No brick in the catalog fits: the line names what to buy, with no shop link (the parts list says so).
-	const brickLine: RobotPartLine = brick ? { item: "power brick", mpn: brick.mpn, qty: 1, packs: 1, buy: brick.buy ?? [] } : { item: "power brick", mpn: `${want.volts} V ${want.amps} A DC brick, 5.5 x 2.1 mm plug`, qty: 1, packs: 1, buy: [] }
+	const plug = jack ? `${jack.plugMm[0]} x ${jack.plugMm[1]} mm plug (the board's ${jack.mpn})` : "the plug the board's input jack takes"
+	const brickLine: RobotPartLine = brick ? { item: "power brick", mpn: brick.mpn, qty: 1, packs: 1, buy: brick.buy ?? [] } : { item: "power brick", mpn: `${want.volts} V ${want.amps} A DC brick, ${plug}`, qty: 1, packs: 1, buy: [] }
 	return [...servos, brickLine]
 }
 
@@ -86,7 +104,7 @@ export function armPartLines(arm: ArmSpec, cat: MechCatalog = loadMechCatalog(RO
 export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechCatalog(ROOT)): RobotPartLine[] {
 	const m = s.values.mechanics
 	// Whatever the design has: a mobile robot's mechanics, an arm, or both (an arm on a rover); later a CNC's.
-	const arm = s.values.arm ? armPartLines(s.values.arm, cat) : []
+	const arm = s.values.arm ? armPartLines(s.values.arm, cat, inputJack(s)) : []
 	if (!m) return arm
 	const line = (item: RobotPartLine["item"], list: WithBuy[], mpn: string | undefined, qty: number): RobotPartLine | null => {
 		if (!mpn) return null

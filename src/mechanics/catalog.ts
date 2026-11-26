@@ -149,6 +149,11 @@ export interface PowerBrickPart extends Sourced {
 	volts: number
 	amps: number
 	plug: string
+	// [outer, inner] diameter of the barrel plug, mm: it must match the board's jack (its catalog plugMm).
+	plugMm: [number, number]
+	// The output's tolerance, %, set-up, line and load together (the maker's datasheet); unknown when the maker doesn't
+	// publish it. brickMaxV is what the board's input must stand.
+	tolerancePct?: number
 	mains: string
 	buy?: { supplier: string; url: string; packQty?: number }[]
 }
@@ -225,3 +230,6 @@ export const byMpn = <T extends { mpn: string }>(list: T[], mpn: string): T | un
 	const hits = list.filter((p) => p.mpn.toLowerCase().split(/\s+/)[0] === key || p.mpn.toLowerCase().startsWith(key + " "))
 	return hits.length === 1 ? hits[0] : undefined
 }
+
+// The most a brick can put out: nominal × (1 + tolerance). Unknown tolerance: null, never a guess.
+export const brickMaxV = (b: { volts: number; tolerancePct?: number }): number | null => (b.tolerancePct === undefined ? null : Math.round(b.volts * (1 + b.tolerancePct / 100) * 1000) / 1000)

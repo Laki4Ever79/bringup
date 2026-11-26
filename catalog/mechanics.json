@@ -2154,6 +2154,7 @@
 			"volts": 12,
 			"amps": 5,
 			"plug": "5.5 x 2.1 mm, centre positive",
+			"plugMm": [5.5, 2.1],
 			"mains": "US/Canada/Japan two-prong; elsewhere a plug adapter",
 			"source": {
 				"volts": {
@@ -2180,7 +2181,9 @@
 			"mpn": "MEANWELL-GST60A12-P1J 12V 5A 60W power supply",
 			"volts": 12,
 			"amps": 5,
+			"tolerancePct": 3,
 			"plug": "5.5 x 2.1 mm, centre positive",
+			"plugMm": [5.5, 2.1],
 			"mains": "IEC C14 inlet: needs a C13 mains cable (not included)",
 			"source": {
 				"volts": {
@@ -2190,6 +2193,10 @@
 				"amps": {
 					"url": "https://thepihut.com/products/meanwell-12v-5a-60w-power-supply-gst60a12-p1j",
 					"where": "Title: 12V 5A 60W"
+				},
+				"tolerancePct": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST60A/GST60A-SPEC.PDF",
+					"where": "Specification, 12V column: VOLTAGE TOLERANCE ±3.0% (Note 4: includes set up tolerance, line regulation, load regulation)"
 				},
 				"plug": {
 					"url": "https://thepihut.com/products/meanwell-12v-5a-60w-power-supply-gst60a12-p1j",

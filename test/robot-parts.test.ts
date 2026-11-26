@@ -202,17 +202,42 @@ test("an arm's bought parts: its servos, one line per model, with the catalog's 
 	const { fixtureContract } = await import("./fixture.ts")
 	const base = fixtureContract()
 	const lines = robotPartLines({ ...base, values: { ...base.values, mechanics: undefined, arm: ARM } })
-	// Three MG996R (base yaw, shoulder, elbow) and three SG90 (wrist pitch, wrist roll, gripper).
-	// and the mains brick for its 12 V 3 A input: the catalog's first 12 V brick of at least 3 A.
-	assert.deepEqual(lines.map((l) => [l.item, l.mpn, l.qty]), [["servo", "MG996R", 3], ["servo", "SG90", 3], ["power brick", "ADAFRUIT-352 12V 5A switching power supply", 1]])
-	assert.ok(lines.every((l) => l.buy.length > 0))
+	// Three MG996R (base yaw, shoulder, elbow) and three SG90 (wrist pitch, wrist roll, gripper), and a brick line: with no
+	// input jack in the design, no brick is picked (its plug can't be matched), only named.
+	assert.deepEqual(lines.map((l) => [l.item, l.mpn, l.qty]), [["servo", "MG996R", 3], ["servo", "SG90", 3], ["power brick", "12 V 3 A DC brick, the plug the board's input jack takes", 1]])
+	assert.ok(lines.slice(0, 2).every((l) => l.buy.length > 0))
 	const r = await checkRobotParts(lines, { live: false })
 	assert.match(r.summary, /3 robot parts · not checked \(mock run\)/)
-	// A brick the catalog can't supply (24 V) is still listed, by what to buy, with no shop.
-	const big = robotPartLines({ ...base, values: { ...base.values, mechanics: undefined, arm: { ...ARM, input: { kind: "dc-brick", volts: 24, amps: 3 } } } })
-	assert.deepEqual(big.at(-1), { item: "power brick", mpn: "24 V 3 A DC brick, 5.5 x 2.1 mm plug", qty: 1, packs: 1, buy: [] })
 	// A rover with an arm on it: both sets of lines.
 	const rover = robotPartLines(base)
 	const both = robotPartLines({ ...base, values: { ...base.values, arm: ARM } })
 	assert.deepEqual(both.map((l) => l.item), [...rover.map((l) => l.item), "servo", "servo", "power brick"])
+})
+
+test("an arm's brick fits the board's jack: a 5.5 x 2.1 mm plug never goes to the 2.5 mm DC-091-A250", async () => {
+	const { ARM } = await import("./arm-contract.test.ts")
+	const { armPartLines } = await import("../src/tools/robot-parts.ts")
+	const { loadMechCatalog } = await import("../src/mechanics/catalog.ts")
+	const cat = loadMechCatalog(".")
+	const jack = { mpn: "DC-091-A250", plugMm: [5.5, 2.5] as [number, number] }
+	// The catalog's 12 V bricks (Adafruit 352, Mean Well GST60A12) both have 2.1 mm plugs: neither is picked.
+	assert.ok((cat.powerBricks ?? []).some((b) => b.volts === 12 && b.amps >= 3 && b.plugMm[1] === 2.1))
+	assert.equal(armPartLines(ARM, cat, jack).at(-1)!.mpn, "12 V 3 A DC brick, 5.5 x 2.5 mm plug (the board's DC-091-A250)")
+	// A brick with the jack's plug is picked; one a little off the input's voltage too (within 0.25 V), not one 0.5 V off.
+	const fits = { mpn: "TEST 12V 4A 2.5", volts: 12, amps: 4, plug: "5.5 x 2.5 mm", plugMm: [5.5, 2.5] as [number, number], mains: "", buy: [{ supplier: "x", url: "https://example.com/p" }], source: {} }
+	assert.equal(armPartLines(ARM, { ...cat, powerBricks: [...(cat.powerBricks ?? []), fits] }, jack).at(-1)!.mpn, "TEST 12V 4A 2.5")
+	assert.equal(armPartLines({ ...ARM, input: { kind: "dc-brick", volts: 11.5, amps: 3 } }, { ...cat, powerBricks: [fits] }, jack).at(-1)!.buy.length, 0)
+	// The jack comes from the design's parts: the board catalog's plugMm for DC-091-A250.
+	const { inputJack } = await import("../src/tools/robot-parts.ts")
+	const { fixtureContract } = await import("./fixture.ts")
+	const base = fixtureContract()
+	assert.deepEqual(inputJack({ ...base, values: { ...base.values, parts: [...(base.values.parts ?? []), { ref: "J9", mpn: "DC-091-A250", role: "connector" } as never] } }), jack)
+})
+
+test("a brick's maximum output: nominal times its stated tolerance, unknown when the maker states none", async () => {
+	const { brickMaxV, loadMechCatalog } = await import("../src/mechanics/catalog.ts")
+	assert.equal(brickMaxV({ volts: 20, tolerancePct: 5 }), 21)
+	assert.equal(brickMaxV({ volts: 12 }), null)
+	const mw = (loadMechCatalog(".").powerBricks ?? []).find((b) => b.mpn.startsWith("MEANWELL-GST60A12"))!
+	assert.equal(brickMaxV(mw), 12.36)
 })

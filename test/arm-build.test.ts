@@ -61,5 +61,5 @@ test("an arm package's bought parts list every servo in values.arm, and the bric
 		const n = [...ARM.joints.map((j) => j.servo), ARM.gripper.servo].filter((x) => x === mpn).length
 		assert.match(md, new RegExp(`\\| servo \\| ${mpn} \\| ${n} \\|`), md)
 	}
-	assert.match(md, /\| power brick \| ADAFRUIT-352 12V 5A switching power supply \| 1 \| \[Adafruit\]/)
+	assert.match(md, /\| power brick \| 12 V 3 A DC brick, the plug the board's input jack takes \| 1 \|/)
 })
