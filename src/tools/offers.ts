@@ -29,6 +29,9 @@ const TIMEOUT_MS = 8000
 export const UNREADABLE_SHOPS: Record<string, string> = {
 	"pololu.com": "refuses automated reads (HTTP 403)",
 	"gobilda.com": "refuses automated reads (HTTP 403)",
+	// Measured 26 Nov 2026 with checkOffer: both refused the automated check.
+	"digikey.co.uk": "refuses automated reads (measured 26 Nov 2026)",
+	"servocity.com": "refuses automated reads (measured 26 Nov 2026)",
 	"botland.store": "refuses automated reads (HTTP 403)",
 	"gensace.de": "refuses automated reads (HTTP 403)",
 	"ifuturetech.org": "refuses automated reads (HTTP 403)",

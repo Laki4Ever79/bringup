@@ -24,6 +24,11 @@ const NO_READABLE_SHOP_YET: Record<string, string> = {
 	"608ZZ bearing 8x22x7 mm (SMB Bearings)": "the link is SMB's datasheet PDF, not a shop page",
 	"ARTEKIT JST PH 2-pin cable 300 mm": "only Artekit, which publishes no price",
 	"M2.5x8 thread-forming pan head screw (for plastic)": "only McMaster-Carr, which publishes no price",
+	// The CNC's (26 Nov 2026, checkOffer on each): RobotShop, ServoCity and goBILDA refuse; DigiKey refuses.
+	"GOBILDA-3501-0804-0300 lead screw 8 mm lead 300 mm": "RobotShop (ServoCity listing), servocity.com and gobilda.com all refuse",
+	"GOBILDA-3501-0804-0400 lead screw 8 mm lead 400 mm": "RobotShop (ServoCity listing), servocity.com and gobilda.com all refuse",
+	"HIWIN MGN12H": "no shop link yet: HIWIN's catalog (via Motion USA) has the numbers but no price",
+	"MEANWELL-GST160A24-R7B 24V 6.67A 160W power supply + P1M quick adapter": "DigiKey refuses; Mouser not checked yet",
 }
 
 type Part = { mpn: string; buy?: { url?: string | null }[] }
