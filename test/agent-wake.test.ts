@@ -9,12 +9,13 @@ import { FIELDS, OWNERS, type AgentRole, type FieldName } from "../src/contract/
 
 const ROOT = join(import.meta.dirname, "..")
 
-test("recipients: the agents a violation affects; else the owners of its fields", () => {
+test("recipients: the agents a violation affects, and only those", () => {
 	// The mechanics agent hears every domain's checks addressed to it (it heard only mech-* before).
 	for (const kind of ["mech-torque", "arm-torque", "cnc-fit", "ros-package"]) assert.deepEqual(recipients({ affects: ["mechanics"], fields: ["mechanics"] }), ["mechanics"], kind)
-	// A builder's mismatch (no agent "board") goes to the owner of the field it names.
-	assert.deepEqual(recipients({ affects: ["board"], fields: ["parts"] }), ["parts"])
-	assert.deepEqual(recipients({ affects: ["board"], fields: ["outline"] }), ["architect"])
+	// A built artifact behind the contract (affects [] or a builder): nobody, the rebuild clears it. A fallback to the
+	// fields' owners spent 4 turns of a settled rover mock on exactly these (9 → 13 turns, 26 Nov 2026).
+	assert.deepEqual(recipients({ affects: [], fields: ["pins"] }), [])
+	assert.deepEqual(recipients({ affects: ["board"], fields: ["parts"] }), [])
 	assert.deepEqual(recipients({ affects: ["mechanics", "architect"], fields: ["arm", "armTargets"] }), ["mechanics", "architect"])
 })
 
@@ -41,9 +42,10 @@ test("every check in src reaches at least one agent that can fix it", () => {
 	const checks = checkLiterals()
 	assert.ok(checks.length > 100, `found ${checks.length} checks: the scan reads the literals`)
 	const lost = checks.filter((c) => recipients({ affects: c.affects, fields: c.fields ?? [] }).length === 0)
-	// The one exception: a board's links are the system's (the integrator's), fixed before any board runs; the system's
-	// spec check (specErrors) refuses the same over-budget links first (test/link-kinds.test.ts).
-	assert.deepEqual(lost.map((c) => `${c.file}: ${c.kind} → ${c.affects.join(", ")} (fields ${c.fields?.join(", ") ?? "?"})`), ["src/contract/links.ts: link-budget → integrator (fields links)"])
+	// The named exceptions, each answered elsewhere: the board builder's mismatches (the built board against a contract
+	// that moved on: the rebuild clears them), and a board's links, the system's (the integrator's), fixed before any
+	// board runs, whose spec check (specErrors) refuses the same over-budget links first (test/link-kinds.test.ts).
+	assert.deepEqual(lost.map((c) => `${c.file}: ${c.kind} → ${c.affects.join(", ")}`).sort(), ["src/contract/consistency.ts: outline-mismatch → board", "src/contract/consistency.ts: part-mismatch → board", "src/contract/links.ts: link-budget → integrator"])
 	// The domains with their own prefixes reach the mechanics agent.
 	for (const prefix of ["mech-", "arm-", "cnc-"]) {
 		const mine = checks.filter((c) => c.kind.startsWith(prefix) && c.affects.includes("mechanics"))

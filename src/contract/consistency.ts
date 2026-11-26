@@ -218,7 +218,7 @@ const MOUNTING_PAIR_MM = 5
 // quick: the board page's per-move check, which leaves out the smallest-board search (spaceChecks).
 // opts.boardStale: the board artifact was built from older inputs than the contract's (the consistency participant knows
 // from the build inputs). Its net findings are then judged against what the current contract generates.
-export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean; boardStale?: boolean } = {}): Violation[] {
+export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean; boardStale?: boolean; chassisStale?: boolean } = {}): Violation[] {
 	const v: Violation[] = []
 	// A failed firmware-in-the-loop drive (docs/mechanics.md): the mechanics must change. "not run" (no QEMU, a stubbed
 	// run) wakes nobody: the report says "not proven in simulation". Not the firmware reviewer: the rover's firmware is
@@ -228,7 +228,9 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics"] })
 	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...plugsWithoutEdge(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...supplyWiring(c), ...packVoltage(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c), ...armPowerChecks(c), ...motionBriefChecks(c, brief))
 	// A built chassis (not a stub) whose standoffs miss a board's mounting holes.
-	if (a.chassis && !a.chassis.stub) v.push(...boardMountChecks(c, a.chassis.mounts as { standoffHoles?: { xMm: number; yMm: number }[] } | null))
+	// The chassis built for an older contract disagrees until it's rebuilt: addressed to nobody meanwhile, as net-missing
+	// on a stale board (rover mock, 26 Nov 2026: it woke the mechanics agent at the revision before the rebuild).
+	if (a.chassis && !a.chassis.stub) v.push(...boardMountChecks(c, a.chassis.mounts as { standoffHoles?: { xMm: number; yMm: number }[] } | null).map((x) => (opts.chassisStale || opts.boardStale ? { ...x, affects: [] } : x)))
 	// The built chassis and the bought parts it carries share no volume (py/chassis.py interference: exact booleans).
 	// The ROS package built with it: one URDF tree, physical inertials, the design's mass, wheels, limits and rate.
 	if (a.chassis && !a.chassis.stub) for (const r of rosBuiltChecks(a.chassis.dir)) v.push({ kind: "ros-package", message: `the robot's ROS package (${r.kind}): ${r.message}`, fields: ["mechanics"], affects: ["mechanics"] })
