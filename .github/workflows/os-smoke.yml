@@ -29,3 +29,32 @@ jobs:
             src/setup/tools-node/package-lock.json
       - name: Smoke test (each step timed in the job summary)
         run: node scripts/ci-smoke.mjs
+
+  # Is Windows' slow setup Defender's real-time scan? The same two installs with the scan excluded from the folders
+  # they write, timed beside the main job's (run 4: setup board 197 s, setup case 70 s; Linux 10 s and 8 s).
+  windows-defender-excluded:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            src/setup/tools-node/package-lock.json
+      - name: Exclude the folders the installs write from Defender's scan
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath $env:TEMP, $env:RUNNER_TEMP, "$env:LOCALAPPDATA\npm-cache", $env:GITHUB_WORKSPACE
+      - run: npm ci --no-audit --no-fund
+      - name: setup board and setup case, timed
+        shell: pwsh
+        env:
+          BRINGUP_HOME: ${{ runner.temp }}\bringup-home
+        run: |
+          $b = Measure-Command { node bin/bringup-mcp.js setup board | Out-Host }
+          $c = Measure-Command { node bin/bringup-mcp.js setup case | Out-Host }
+          $md = "### Windows, Defender's scan excluded`n`n| Step | Time |`n|---|---|`n| setup board | $([math]::Round($b.TotalSeconds, 1)) s |`n| setup case | $([math]::Round($c.TotalSeconds, 1)) s |`n"
+          $md | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          $md
