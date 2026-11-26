@@ -5,7 +5,7 @@ import type { ContractSnapshot } from "../src/contract/types.ts"
 export function fixtureContract(): ContractSnapshot {
 	return {
 		revision: 6,
-		versions: { requirements: 1, outline: 1, connectors: 1, rails: 1, parts: 1, pins: 1, behavior: 0, model: 0, test: 0, case: 0, connectivity: 0, links: 0, motion: 0, mechanics: 0, assembly: 0, armTargets: 0, arm: 0 },
+		versions: { requirements: 1, outline: 1, connectors: 1, rails: 1, parts: 1, pins: 1, behavior: 0, model: 0, test: 0, case: 0, connectivity: 0, links: 0, motion: 0, mechanics: 0, assembly: 0, armTargets: 0, arm: 0, cncTargets: 0, cnc: 0 },
 		values: {
 			// Held at exactly 50 × 30 mm, so tests of other rules see one fixed board (a brief's "about" would be a limit).
 			requirements: { summary: "BLE temperature logger", peripherals: ["i2c-sensor", "usb-c"], batteryLifeDays: 180, size: { widthMm: 50, heightMm: 30, exact: true } },

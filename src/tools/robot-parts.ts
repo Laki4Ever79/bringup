@@ -98,8 +98,10 @@ export function armPartLines(arm: ArmSpec, cat: MechCatalog = loadMechCatalog(RO
 	const want = arm.input
 	// The brick: the input's voltage (within BRICK_VOLTS_TOL), at least its current, and the plug the board's jack takes
 	// (its catalog plugMm), so a 5.5 x 2.1 mm plug never goes to a 2.5 mm jack. Without a known jack, no brick is picked.
+	// Of those, the smallest (a 160 W brick for a 3 A arm only when nothing smaller fits); on a tie in amps the one nearest
+	// the input's voltage, then catalog order (Array.prototype.sort is stable).
 	const plugOk = (b: { plugMm: [number, number] }) => jack !== null && b.plugMm[0] === jack.plugMm[0] && b.plugMm[1] === jack.plugMm[1]
-	const brick = want.kind === "dc-brick" ? (cat.powerBricks ?? []).find((b) => Math.abs(b.volts - want.volts) <= BRICK_VOLTS_TOL && b.amps >= want.amps && plugOk(b)) : undefined
+	const brick = want.kind === "dc-brick" ? (cat.powerBricks ?? []).filter((b) => Math.abs(b.volts - want.volts) <= BRICK_VOLTS_TOL && b.amps >= want.amps && plugOk(b)).sort((a, b) => a.amps - b.amps || Math.abs(a.volts - want.volts) - Math.abs(b.volts - want.volts))[0] : undefined
 	// No brick in the catalog fits: the line names what to buy, with no shop link (the parts list says so).
 	const plug = jack ? `${jack.plugMm[0]} x ${jack.plugMm[1]} mm plug (the board's ${jack.mpn})` : "the plug the board's input jack takes"
 	const brickLine: RobotPartLine = brick ? { item: "power brick", mpn: brick.mpn, qty: 1, packs: 1, buy: brick.buy ?? [] } : { item: "power brick", mpn: `${want.volts} V ${want.amps} A DC brick, ${plug}`, qty: 1, packs: 1, buy: [] }

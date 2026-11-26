@@ -2,14 +2,15 @@ import type { LinkKind } from "./link-kinds.ts"
 import type { BoardAssembly } from "../mechanics/assembly.ts"
 import type { Mechanics, MotionTargets } from "../mechanics/types.ts"
 import type { ArmSpec, ArmTargets } from "../arm/types.ts"
+import type { CncSpec, CncTargets } from "../cnc/types.ts"
 // "reviewer" is the LLM brief reviewer and "bench" the hardware bench (agents/bench.ts); neither owns a field. "ml" owns
 // the on-device model, "test" the production test (test pads, pass limits), "enclosure" the case designer's field (case:
 // walls, height, added features); the enclosure builder makes the case from it.
 export type AgentRole = "engineer" | "architect" | "parts" | "board" | "enclosure" | "firmware" | "consistency" | "reviewer" | "bench" | "ml" | "test" | "connectivity" | "integrator" | "mechanics"
 
-export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics" | "assembly" | "armTargets" | "arm"
+export type FieldName = "requirements" | "outline" | "connectors" | "rails" | "parts" | "pins" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics" | "assembly" | "armTargets" | "arm" | "cncTargets" | "cnc"
 
-export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case", "connectivity", "links", "motion", "mechanics", "assembly", "armTargets", "arm"]
+export const FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins", "behavior", "model", "test", "case", "connectivity", "links", "motion", "mechanics", "assembly", "armTargets", "arm", "cncTargets", "cnc"]
 
 // The fields every design writes; behavior is optional (the firmware has defaults).
 export const CORE_FIELDS: readonly FieldName[] = ["requirements", "outline", "connectors", "rails", "parts", "pins"]
@@ -37,6 +38,10 @@ export const OWNERS: Record<FieldName, AgentRole> = {
 	// base that meet them. An arm design has no mechanics field, so the rover checks stay out of it.
 	armTargets: "architect",
 	arm: "mechanics",
+	// A desktop CNC (src/cnc/types.ts, docs/cnc.md): the brief's work area, feeds and cut, and the axes, spindle and
+	// homing that meet them.
+	cncTargets: "architect",
+	cnc: "mechanics",
 }
 
 // How the device spends its time: awake for activeMs every periodS seconds, drawing sleepUa in between.
@@ -290,7 +295,9 @@ export type ContractValues = {
 	mechanics: Mechanics
 	assembly?: BoardAssembly
 	armTargets?: ArmTargets
+	cncTargets?: CncTargets
 	arm?: ArmSpec
+	cnc?: CncSpec
 }
 
 export interface ContractSnapshot {
@@ -308,7 +315,7 @@ export type ProposalResult =
 
 // Part roles the board codegen, catalog and checks understand. Every catalog role must be here (test/part-roles.test.ts):
 // real run 17 (16 Nov 2026) added the power tree's LM66100 and B5819W as "other" because diode and ideal-diode were missing.
-export const PART_ROLES = ["mcu", "sensor", "microphone", "ldo", "charger", "battery", "usb-c", "led", "charge-led", "resistor", "capacitor", "button", "connector", "motor-driver", "estop", "start", "can-transceiver", "diode", "ideal-diode", "buck", "pwm-driver", "servo-supply", "imu", "servo", "other"] as const
+export const PART_ROLES = ["mcu", "sensor", "microphone", "ldo", "charger", "battery", "usb-c", "led", "charge-led", "resistor", "capacitor", "button", "connector", "motor-driver", "stepper-driver", "estop", "start", "can-transceiver", "diode", "ideal-diode", "buck", "pwm-driver", "servo-supply", "imu", "servo", "other"] as const
 
 // Signals become C macros (PIN_<SIGNAL>) and net names, so they must be UPPER_SNAKE.
 export const SIGNAL_PATTERN = /^[A-Z][A-Z0-9_]*$/

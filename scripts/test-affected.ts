@@ -35,7 +35,7 @@ export const HAND: Record<string, string[]> = {
 	// A bought compute board is read from its module record at run time (src/system/bought.ts).
 	"catalog/modules/": ["modules", "system-bought", "compute-checks", "carrier", "system-facts", "compute-view.browser"],
 	// The compute checks read the bought regulators and packs at run time.
-	"catalog/mechanics.json": ["compute-checks", "system-bought", "bom", "robot-parts", "mech-catalog", "mech-chassis", "mech-checks"],
+	"catalog/mechanics.json": ["compute-checks", "system-bought", "bom", "robot-parts", "mech-catalog", "mech-chassis", "mech-checks", "cnc-catalog", "cnc-contract"],
 	"src/tools/renode.ts": ["mcu-sim", "mcu-system-link.int"],
 	"src/system/linktest.ts": ["system-link.int", "mcu-system-link.int", "linktest-i2c.int", "linktest-usb.int"],
 }

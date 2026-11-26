@@ -1039,7 +1039,16 @@ export function moduleSpotFree(s: ContractSnapshot, gapMm = GAP_MM): boolean | n
 // A chip package's land pattern from its profile, plus 0.5 mm of courtyard around the pads.
 function packageSize(footprint: string): [number, number] | null {
 	const e = loadProfiles().find((p) => p.package.footprint === footprint)?.package.extentMm
-	return e ? [e.w + 0.5, e.h + 0.5] : null
+	return e ? [e.w + 0.5, e.h + 0.5] : quadSize(footprint)
+}
+
+// A quad package whose footprint string states its size (qfn28_w5.8mm_h5.8mm_…: w and h toe to toe, as tscircuit draws
+// it) plus 0.25 mm a side. Before (26 Nov 2026) an unlisted one got the 3 × 3 mm default: the CNC's four TMC2209s
+// (pads 5.6 mm across) were placed on top of their capacitors and each other, and every board build failed on
+// overlapping courtyards.
+export function quadSize(footprint: string): [number, number] | null {
+	const m = /^(?:lqfp|qfn)\d+_w([\d.]+)mm_h([\d.]+)mm/.exec(footprint)
+	return m ? [Number(m[1]) + 0.5, Number(m[2]) + 0.5] : null
 }
 
 // A dual-row IC's extent at rotation 0 from its own land pattern (icPinOffset's pad rows, padGeometry's pads) plus a

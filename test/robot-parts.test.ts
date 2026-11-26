@@ -234,6 +234,22 @@ test("an arm's brick fits the board's jack: a 5.5 x 2.1 mm plug never goes to th
 	assert.deepEqual(inputJack({ ...base, values: { ...base.values, parts: [...(base.values.parts ?? []), { ref: "J9", mpn: "DC-091-A250", role: "connector" } as never] } }), jack)
 })
 
+test("of the bricks that fit, the smallest is bought; on a tie in amps the nearest voltage, then catalog order", async () => {
+	const { ARM } = await import("./arm-contract.test.ts")
+	const { armPartLines } = await import("../src/tools/robot-parts.ts")
+	const { loadMechCatalog } = await import("../src/mechanics/catalog.ts")
+	const cat = loadMechCatalog(".")
+	const jack = { mpn: "DC-091-A250", plugMm: [5.5, 2.5] as [number, number] }
+	const brick = (mpn: string, volts: number, amps: number) => ({ mpn, volts, amps, plug: "5.5 x 2.5 mm", plugMm: [5.5, 2.5] as [number, number], mains: "", buy: [{ supplier: "x", url: "https://example.com/p" }], source: {} })
+	const pick = (...bricks: ReturnType<typeof brick>[]) => armPartLines(ARM, { ...cat, powerBricks: bricks }, jack).at(-1)!.mpn
+	// The 160 W one listed first, the 60 W one after: the 3 A arm gets the 60 W.
+	assert.equal(pick(brick("BIG 12V 13A", 12, 13.3), brick("SMALL 12V 5A", 12, 5)), "SMALL 12V 5A")
+	// Same amps: the one nearer the input's 12 V (12.1 V beats 11.8 V, both within the tolerance).
+	assert.equal(pick(brick("LOW 11.8V 5A", 11.8, 5), brick("HIGH 12.1V 5A", 12.1, 5)), "HIGH 12.1V 5A")
+	// A full tie: the catalog's order.
+	assert.equal(pick(brick("FIRST 12V 5A", 12, 5), brick("SECOND 12V 5A", 12, 5)), "FIRST 12V 5A")
+})
+
 test("a brick's maximum output: nominal times its stated tolerance, unknown when the maker states none", async () => {
 	const { brickMaxV, loadMechCatalog } = await import("../src/mechanics/catalog.ts")
 	assert.equal(brickMaxV({ volts: 20, tolerancePct: 5 }), 21)

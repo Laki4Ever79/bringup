@@ -214,6 +214,54 @@ export interface MechCatalog {
 	// Servos for an arm's joints (src/arm).
 	servos?: ServoPart[]
 	powerBricks?: PowerBrickPart[]
+	// A CNC's axes and spindle (src/cnc): stepper motors, linear rails, spindles.
+	steppers?: StepperPart[]
+	rails?: RailPart[]
+	spindles?: SpindlePart[]
+}
+
+// A stepper motor: per-phase rating, and its pull-out torque by speed (from the maker's curve, at pulloutAt's supply).
+export interface StepperPart extends Sourced {
+	frame: string
+	frameMm: number
+	bodyMm: number
+	shaftMm: number
+	ratedA: number
+	holdingNm: number
+	stepDeg: number
+	phaseOhm: number
+	phaseMh: number
+	massG: number
+	pulloutNm: { rpm: number; nm: number }[]
+	pulloutAt: { supplyV: number; peakA: number; driver: string }
+	notes?: string
+}
+
+// A profile linear rail and its carriage: basic load ratings (N) and masses.
+export interface RailPart extends Sourced {
+	kind: "linear-rail"
+	railWidthMm: number
+	railHeightMm: number
+	heightMm: number
+	blockWidthMm: number
+	blockLengthMm: number
+	dynamicN: number
+	staticN: number
+	blockMassG: number
+	railGPerM: number
+}
+
+// A DC spindle: its supply, speed and collet; watts/amps at rated load (often estimates: makers rarely state them).
+export interface SpindlePart extends Sourced {
+	volts: number
+	noLoadRpm: number
+	collet: string
+	bodyDiaMm: number
+	bodyLengthMm: number
+	watts: number
+	amps: number
+	estimates?: string[]
+	notes?: string
 }
 
 export function loadMechCatalog(root: string): MechCatalog {

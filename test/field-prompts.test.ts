@@ -10,6 +10,7 @@ import { join, resolve } from "node:path"
 import * as roles from "../src/agents/roles.ts"
 import { MECHANICS_SHAPE } from "../src/mechanics/shape.ts"
 import { ARM_SHAPE, ARM_TARGETS_SHAPE } from "../src/arm/shape.ts"
+import { CNC_SHAPE, CNC_TARGETS_SHAPE } from "../src/cnc/shape.ts"
 import { OWNERS, type FieldName } from "../src/contract/types.ts"
 
 const SRC = resolve(import.meta.dirname, "../src")
@@ -50,7 +51,7 @@ function keysRead(src: string): string[] {
 }
 
 // Each role's prompt: its instruction in roles.ts with the shared texts it interpolates filled in.
-const SHARED: Record<string, string> = { ...Object.fromEntries(Object.entries(roles).filter(([, v]) => typeof v === "string")), MECHANICS_SHAPE, ARM_SHAPE, ARM_TARGETS_SHAPE } as Record<string, string>
+const SHARED: Record<string, string> = { ...Object.fromEntries(Object.entries(roles).filter(([, v]) => typeof v === "string")), MECHANICS_SHAPE, ARM_SHAPE, ARM_TARGETS_SHAPE, CNC_SHAPE, CNC_TARGETS_SHAPE } as Record<string, string>
 function prompts(): Map<string, string> {
 	const s = readFileSync(join(SRC, "agents/roles.ts"), "utf8")
 	const out = new Map<string, string>()

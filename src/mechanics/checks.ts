@@ -1,5 +1,6 @@
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { armChecks } from "../arm/checks.ts"
+import { cncChecks } from "../cnc/checks.ts"
 import { MOTOR_PLUG_REFS } from "./refs.ts"
 import { existsSync } from "node:fs"
 import { isEncoderPlug, isMotorPlug } from "./refs.ts"
@@ -23,7 +24,7 @@ import { field, moduleById } from "../system/bought.ts"
 // runs the same checks).
 
 export type MechViolation = {
-	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive" | "mech-mate" | "mech-safety" | "mech-rules" | "arm-torque" | "arm-reach" | "arm-tipping" | "arm-supply" | "arm-interference" | "arm-dfm"
+	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive" | "mech-mate" | "mech-safety" | "mech-rules" | "arm-torque" | "arm-reach" | "arm-tipping" | "arm-supply" | "arm-interference" | "arm-dfm" | "cnc-travel" | "cnc-supply" | "cnc-parts" | "cnc-axis" | "cnc-fit" | "cnc-wiring"
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]
@@ -120,6 +121,11 @@ export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): Mec
 	if (c.values.armTargets && !c.values.arm)
 		return [{ kind: "arm-reach", message: `the brief asks for a robot arm (armTargets: ${c.values.armTargets.reachMm} mm reach, ${c.values.armTargets.payloadG} g payload) but there is no arm design yet: choose the joints' servos, the link lengths, the base and the supply, and write the arm field`, fields: ["arm"], affects: ["mechanics"] }]
 	if (c.values.armTargets || c.values.arm) return armChecks(c.values, cat)
+	// A CNC (cncTargets/cnc) moves on steppers, not wheels: its own checks (src/cnc/checks.ts) cover it, none of the rover's.
+	if (c.values.cncTargets || c.values.cnc) return cncChecks(c.values, cat)
+	// A machine tool that moves on steppers (a CNC router, engraver, plotter) gets the CNC's fields, not a rover's motion.
+	if (/\b(cnc|router|engraver|milling|mill|plotter|stepper|spindle|lead ?screws?|gantry)\b/i.test(`${req?.summary ?? ""} ${(req?.peripherals ?? []).join(" ")}`))
+		return [{ kind: "mech-fit", message: "the design is a machine tool (a CNC, router, engraver or plotter on stepper motors) but has no cncTargets: write its work area, feeds, cut, spindle power and repeatability (cncTargets: travelMm {x, y, z}, footprintMm, rapidMmMin, feedMmMin, cut {material, depthMm, toolMm}, spindleW, repeatMm), and the mechanics engineer designs the axes, spindle and homing (cnc)", fields: ["cncTargets"], affects: ["architect"] }]
 	if (!v.motion && ((c.values.parts ?? []).some((p) => p.role === "motor-driver") || saysRobot))
 		return [{ kind: "mech-fit", message: "the design moves (a motor driver, or requirements that name motors, wheels or a rover) but has no motion targets: a robot needs its motion field (the brief's speedMps, runtimeMin, edgeMm, maxSlopeDeg, stopBeforeWallMm, payloadG, maxSizeMm, maxMassG); write it, and the mechanics engineer designs the drive and chassis", fields: ["motion"], affects: ["architect"] }]
 	return mechanicsCheckOver(v.motion, withAssembly(c.values), checkBoards(c), cat)

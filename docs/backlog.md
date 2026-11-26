@@ -756,6 +756,11 @@ Seen on the run page of the recorded "make it 2 cm narrower" rover (out/rover-na
       board"). What a CNC adds that robots don't have: stepper drivers and their current, limit switches and homing, a
       spindle or laser output and its safety, a frame of rails and lead screws (drivetrain.ts parts), and work-area
       checks instead of a drive.
+      - 26 Nov (bringup-lead-3, plan agreed with bringup-lead-2): step 0 done: `briefs/cnc.md` (300 × 200 × 50 mm,
+        NEMA 17 on T8, ≤100 W 24 V spindle, ESP32-WROOM-32E + FluidNC) and the gap list in `docs/cnc.md` (13 gaps:
+        contract fields, catalog, checks, board, firmware, sim). Today the brief designs the data logger. The scripted
+        design is the pipeline's test; the finish line is a one-shot by the real agents. Board copper reuses
+        bringup-lead-4's arm-board wide-net work; the FluidNC download is asked first; the example is saved privately.
 - [x] **The named board size drifted to a strip.** lead-2 (26 Nov 2026): "fix it now rather than only logging it. Every
       caller that sizes an outline should go through compactOutline, and a test should show that chaining it is stable."
       Before: the space messages named minimumBoard's width × height, whose search is bounded by the current outline; taken

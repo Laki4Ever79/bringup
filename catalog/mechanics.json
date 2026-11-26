@@ -1391,6 +1391,65 @@
 				"outerMm": { "url": "https://www.gobilda.com/3505-series-lead-screw-pattern-nut-8mm-lead-4-start-32mm-od-16mm-length/", "where": "title: 32mm OD" },
 				"lengthMm": { "url": "https://www.gobilda.com/3505-series-lead-screw-pattern-nut-8mm-lead-4-start-32mm-od-16mm-length/", "where": "title: 16mm Length" }
 			}
+		},
+		{
+			"mpn": "GOBILDA-3501-0804-0300 lead screw 8 mm lead 300 mm",
+			"kind": "leadscrew",
+			"diameterMm": 8,
+			"leadMm": 8,
+			"lengthMm": 300,
+			"buy": [
+				{
+					"supplier": "RobotShop (ServoCity)",
+					"url": "https://www.robotshop.com/products/3501-series-lead-screw-8mm-lead-4-start-300mm-length-us"
+				}
+			],
+			"source": {
+				"diameterMm": {
+					"url": "https://www.gobilda.com/8mm-lead-screws/",
+					"where": "category: 8mm Lead Screws (8 mm diameter, 2 mm pitch, 4 starts)"
+				},
+				"leadMm": {
+					"url": "https://www.robotshop.com/products/3501-series-lead-screw-8mm-lead-4-start-300mm-length-us",
+					"where": "title and specs: 8 mm lead, 4 start, 2 mm pitch"
+				},
+				"lengthMm": {
+					"url": "https://www.robotshop.com/products/3501-series-lead-screw-8mm-lead-4-start-300mm-length-us",
+					"where": "title: 300mm Length"
+				}
+			}
+		},
+		{
+			"mpn": "GOBILDA-3501-0804-0400 lead screw 8 mm lead 400 mm",
+			"kind": "leadscrew",
+			"diameterMm": 8,
+			"leadMm": 8,
+			"lengthMm": 400,
+			"massG": 121,
+			"buy": [
+				{
+					"supplier": "RobotShop (ServoCity)",
+					"url": "https://www.robotshop.com/products/servocity-3501-series-lead-screw-8mm-lead-4-start-400mm-length"
+				}
+			],
+			"source": {
+				"diameterMm": {
+					"url": "https://www.gobilda.com/8mm-lead-screws/",
+					"where": "category: 8mm Lead Screws (8 mm diameter, 2 mm pitch, 4 starts)"
+				},
+				"leadMm": {
+					"url": "https://www.robotshop.com/products/servocity-3501-series-lead-screw-8mm-lead-4-start-400mm-length",
+					"where": "title and specs: 8 mm lead, 4 start, 2 mm pitch"
+				},
+				"lengthMm": {
+					"url": "https://www.robotshop.com/products/servocity-3501-series-lead-screw-8mm-lead-4-start-400mm-length",
+					"where": "title: 400mm Length"
+				},
+				"massG": {
+					"url": "https://www.robotshop.com/products/servocity-3501-series-lead-screw-8mm-lead-4-start-400mm-length",
+					"where": "specs: weight 121 g"
+				}
+			}
 		}
 	],
 	"hardware": [
@@ -2209,6 +2268,247 @@
 					"url": "https://thepihut.com/products/meanwell-12v-5a-60w-power-supply-gst60a12-p1j"
 				}
 			]
+		},
+		{
+			"mpn": "MEANWELL-GST160A24-R7B 24V 6.67A 160W power supply + P1M quick adapter",
+			"volts": 24,
+			"amps": 6.67,
+			"plugMm": [
+				5.5,
+				2.5
+			],
+			"tolerancePct": 3,
+			"plug": "5.5 x 2.5 mm barrel through Mean Well's P1M quick adapter (sold separately) on the standard R7B 4-pin locking mini-DIN",
+			"mains": "IEC C14 inlet, 85–264 VAC: needs a C13 mains cable (not included)",
+			"source": {
+				"plugMm": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST160A/GST160A-SPEC.PDF",
+					"where": "p.4 Optional DC plug: P1M 5.5 mm OD, 2.5 mm ID, 11.0 mm long; as a quick adapter accessory (sold separately, no MOQ) \"Available for 24 ~ 48V (Current rating: 7.5A max.)\""
+				},
+				"tolerancePct": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST160A/GST160A-SPEC.PDF",
+					"where": "p.1 SPECIFICATION, GST160A24-R7B: VOLTAGE TOLERANCE ±3.0% (Note 4: includes set up tolerance, line regulation, load regulation)"
+				},
+				"volts": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST160A/GST160A-SPEC.PDF",
+					"where": "GST160A-SPEC (2026-04-03) p.1 SPECIFICATION, OUTPUT, DC VOLTAGE, GST160A24-R7B: 24 V"
+				},
+				"amps": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST160A/GST160A-SPEC.PDF",
+					"where": "p.1 SPECIFICATION, OUTPUT, RATED CURRENT: 6.67 A (RATED POWER 160 W max., efficiency 93 % typ.)"
+				},
+				"plug": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST160A/GST160A-SPEC.PDF",
+					"where": "p.3 DC output plug, standard plug R7B (the suffix): KYCON KPPX-4P equivalent, pins 1/4 +Vo, 2/3 −Vo; p.4 optional plugs P1J 5.5/2.1 mm"
+				},
+				"mains": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST160A/GST160A-SPEC.PDF",
+					"where": "p.3 Mechanical Specification: AC Inlet IEC320-C14; p.1 VOLTAGE RANGE 85–264 VAC. Cord sold separately (DigiKey listing)"
+				}
+			},
+			"buy": [
+				{
+					"supplier": "DigiKey",
+					"url": "https://www.digikey.co.uk/en/products/detail/mean-well-usa-inc/GST160A24-R7B/7703602"
+				}
+			]
+		}
+	],
+	"steppers": [
+		{
+			"mpn": "17HS15-1504S1",
+			"frame": "NEMA17",
+			"frameMm": 42,
+			"bodyMm": 39,
+			"shaftMm": 5,
+			"ratedA": 1.5,
+			"holdingNm": 0.45,
+			"stepDeg": 1.8,
+			"phaseOhm": 2.3,
+			"phaseMh": 4.4,
+			"massG": 280,
+			"pulloutNm": [
+				{
+					"rpm": 30,
+					"nm": 0.42
+				},
+				{
+					"rpm": 300,
+					"nm": 0.4
+				},
+				{
+					"rpm": 600,
+					"nm": 0.25
+				},
+				{
+					"rpm": 1200,
+					"nm": 0.1
+				}
+			],
+			"pulloutAt": {
+				"supplyV": 24,
+				"peakA": 1.6,
+				"driver": "DM320T"
+			},
+			"buy": [
+				{
+					"supplier": "StepperOnline",
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1"
+				}
+			],
+			"source": {
+				"frameMm": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Description, Physical Specification: 42 x 42 mm"
+				},
+				"bodyMm": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Description, Physical Specification: body length 39 mm"
+				},
+				"shaftMm": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Description, Physical Specification: shaft diameter 5 mm (D-cut 15 mm)"
+				},
+				"ratedA": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Description, Electrical Specification: rated current 1.50 A/phase"
+				},
+				"holdingNm": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "derived: holding torque 45 N·cm (Electrical Specification) / 100 = 0.45 N·m"
+				},
+				"stepDeg": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Electrical Specification: step angle 1.8°"
+				},
+				"phaseOhm": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Electrical Specification: phase resistance 2.3 Ω"
+				},
+				"phaseMh": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Electrical Specification: inductance 4.4 mH ±20% (1 kHz)"
+				},
+				"massG": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Physical Specification: weight 280 g"
+				},
+				"pulloutNm": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Torque Curves tab, data table (DM320T, 24 V, 1.6 A peak, 2000 pulses/rev): 42/40/25/10 N·cm at 30/300/600/1200 rpm, ÷100 to N·m"
+				},
+				"pulloutAt": {
+					"url": "https://www.omc-stepperonline.com/nema-17-bipolar-45ncm-63-74oz-in-1-5a-42x42x39mm-4-wires-w-1m-cable-connector-17hs15-1504s1",
+					"where": "Torque Curves tab: test conditions DM320T driver, 24 V, 1.6 A peak"
+				}
+			},
+			"notes": "Stand-in for the 17HS4401S, whose StepperOnline page is gone (26 Nov 2026); StepperOnline's search lands here. Same series 17HS15-1504S-X1 (40 mm body) has the same electrical specs."
+		}
+	],
+	"rails": [
+		{
+			"mpn": "HIWIN MGN12H",
+			"kind": "linear-rail",
+			"railWidthMm": 12,
+			"railHeightMm": 8,
+			"heightMm": 13,
+			"blockWidthMm": 27,
+			"blockLengthMm": 45.4,
+			"dynamicN": 3720,
+			"staticN": 5880,
+			"blockMassG": 54,
+			"railGPerM": 650,
+			"source": {
+				"railWidthMm": {
+					"url": "https://s3.amazonaws.com/www.motionusa.com/hiwin/2025/MG%20Series-2025.pdf",
+					"where": "HIWIN MG Series catalog G99TE24-2410, MGN-C/MGN-H dimension table p.89, row MGN 12H: W_R 12 mm"
+				},
+				"railHeightMm": {
+					"url": "https://s3.amazonaws.com/www.motionusa.com/hiwin/2025/MG%20Series-2025.pdf",
+					"where": "HIWIN MG Series catalog G99TE24-2410, MGN-C/MGN-H dimension table p.89, row MGN 12H: H_R 8 mm"
+				},
+				"heightMm": {
+					"url": "https://s3.amazonaws.com/www.motionusa.com/hiwin/2025/MG%20Series-2025.pdf",
+					"where": "HIWIN MG Series catalog G99TE24-2410, MGN-C/MGN-H dimension table p.89, row MGN 12H: H 13 mm"
+				},
+				"blockWidthMm": {
+					"url": "https://s3.amazonaws.com/www.motionusa.com/hiwin/2025/MG%20Series-2025.pdf",
+					"where": "HIWIN MG Series catalog G99TE24-2410, MGN-C/MGN-H dimension table p.89, row MGN 12H: W 27 mm"
+				},
+				"blockLengthMm": {
+					"url": "https://s3.amazonaws.com/www.motionusa.com/hiwin/2025/MG%20Series-2025.pdf",
+					"where": "HIWIN MG Series catalog G99TE24-2410, MGN-C/MGN-H dimension table p.89, row MGN 12H: L 45.4 mm"
+				},
+				"dynamicN": {
+					"url": "https://s3.amazonaws.com/www.motionusa.com/hiwin/2025/MG%20Series-2025.pdf",
+					"where": "HIWIN MG Series catalog G99TE24-2410, MGN-C/MGN-H dimension table p.89, row MGN 12H: C 3.72 kN"
+				},
+				"staticN": {
+					"url": "https://s3.amazonaws.com/www.motionusa.com/hiwin/2025/MG%20Series-2025.pdf",
+					"where": "HIWIN MG Series catalog G99TE24-2410, MGN-C/MGN-H dimension table p.89, row MGN 12H: C0 5.88 kN"
+				},
+				"blockMassG": {
+					"url": "https://s3.amazonaws.com/www.motionusa.com/hiwin/2025/MG%20Series-2025.pdf",
+					"where": "HIWIN MG Series catalog G99TE24-2410, MGN-C/MGN-H dimension table p.89, row MGN 12H: block 0.054 kg"
+				},
+				"railGPerM": {
+					"url": "https://s3.amazonaws.com/www.motionusa.com/hiwin/2025/MG%20Series-2025.pdf",
+					"where": "HIWIN MG Series catalog G99TE24-2410, MGN-C/MGN-H dimension table p.89, row MGN 12H: rail 0.65 kg/m"
+				}
+			}
+		}
+	],
+	"spindles": [
+		{
+			"mpn": "Genmitsu GS-775MR",
+			"volts": 24,
+			"noLoadRpm": 20000,
+			"collet": "ER11",
+			"bodyDiaMm": 43,
+			"bodyLengthMm": 68,
+			"watts": 75,
+			"amps": 3.1,
+			"estimates": [
+				"watts",
+				"amps"
+			],
+			"buy": [
+				{
+					"supplier": "SainSmart",
+					"url": "https://www.sainsmart.com/products/genmitsu-gs-775m-20000rpm-775-cnc-spindle-motor-noise-suppression-compatible-with-3018-series"
+				}
+			],
+			"source": {
+				"volts": {
+					"url": "https://www.sainsmart.com/products/genmitsu-gs-775m-20000rpm-775-cnc-spindle-motor-noise-suppression-compatible-with-3018-series",
+					"where": "product page: DC 24 V"
+				},
+				"noLoadRpm": {
+					"url": "https://www.sainsmart.com/products/genmitsu-gs-775m-20000rpm-775-cnc-spindle-motor-noise-suppression-compatible-with-3018-series",
+					"where": "product page: speed 20000/min"
+				},
+				"collet": {
+					"url": "https://www.sainsmart.com/products/genmitsu-gs-775m-20000rpm-775-cnc-spindle-motor-noise-suppression-compatible-with-3018-series",
+					"where": "product page: ER11 collet (5 mm)"
+				},
+				"bodyDiaMm": {
+					"url": "https://www.sainsmart.com/products/genmitsu-gs-775m-24v-20-000-rpm-motor-noise-suppression",
+					"where": "motor-only page, specs: 43 x 68 mm (D x L)"
+				},
+				"bodyLengthMm": {
+					"url": "https://www.sainsmart.com/products/genmitsu-gs-775m-24v-20-000-rpm-motor-noise-suppression",
+					"where": "motor-only page, specs: 43 x 68 mm (D x L)"
+				},
+				"watts": {
+					"url": "https://www.sainsmart.com/products/genmitsu-gs-775m-20000rpm-775-cnc-spindle-motor-noise-suppression-compatible-with-3018-series",
+					"where": "estimate: no maker's power rating found (26 Nov 2026); third-party listings say 75 W"
+				},
+				"amps": {
+					"url": "https://www.sainsmart.com/products/genmitsu-gs-775m-20000rpm-775-cnc-spindle-motor-noise-suppression-compatible-with-3018-series",
+					"where": "estimate: derived 75 W / 24 V = 3.1 A at rated load, no maker's current found"
+				}
+			},
+			"notes": "The maker states 24 V, 20000 rpm and ER11 only; power and current are estimates until a datasheet turns up."
 		}
 	]
 }
