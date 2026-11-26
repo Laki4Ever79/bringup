@@ -790,3 +790,19 @@ We need to make the studio enticing and useful enough to bring and keep paid use
 - [ ] **The examples page's 3D previews** (the user, 26 Nov 2026: "I don't really like how our example robots/boards look
       in the examples page. All of the PCB elements are shadowed and you can't really tell them apart"): parts must read
       as distinct objects; fix the shared lighting/materials, with before/after screenshots.
+
+## Output policy: best effort, no wasted money, the solution shown first (the user, 26 Nov 2026)
+
+The user: "regarding our policy, it should be like claude code. Having good output is vastly correlated to good input.
+So we do not promise perfectly working system with each output, but we do our damn best to make it work. We do as much
+as possible to not waste user's money on useless iterations. Ideally, it should be perfect on the first try, and user
+should be presented the solution, so we are made sure they are happy with it."
+
+- [ ] **Show the solution before spending:** a paid (real-model) run starts from a plan the person approves (parts,
+      board size, robot figures, estimated cost and time), built by the free plan step and the checks, not by a full run.
+- [ ] **Better input up front:** the brief is checked for what it leaves open (size, power, environment) and the gaps
+      asked about before a paid run, never guessed and paid for twice.
+- [ ] **No useless iterations:** a run stops and asks instead of looping (the same violation fixed and broken again, a
+      revision cap, a cost cap), and says what it would need.
+- [ ] **Say it plainly:** the docs and Studio say what Bringup promises (its best, every check run, the open problems
+      named) and what it doesn't (a design guaranteed to work first time).
