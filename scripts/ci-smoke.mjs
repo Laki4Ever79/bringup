@@ -1,9 +1,10 @@
 // The free tier on a fresh machine of each OS (.github/workflows/os-smoke.yml): install, typecheck, the MCP server's
-// handshake, a mock design with no tools, then `setup board` and a mock design that builds the board and its pictures.
+// handshake, a mock design with no tools, then each setup domain and a design that needs it: the board and its
+// pictures, a rover's printed parts and ROS workspace, a firmware build.
 // Each step is timed, a failed step doesn't stop the rest, and the table goes to the job summary
 // ($GITHUB_STEP_SUMMARY), or stdout when run by hand: node scripts/ci-smoke.mjs
 import { spawn, spawnSync } from "node:child_process"
-import { appendFileSync, existsSync, mkdtempSync, readdirSync, statSync } from "node:fs"
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -82,11 +83,13 @@ function files(dir) {
 	return all
 }
 
-async function design(server, expectBoard) {
-	const start = await server.tool("start_design", { brief: "BLE temperature logger, USB-C, 50x30 mm", mock: true })
+const LOGGER = "BLE temperature logger, USB-C, 50x30 mm"
+// expect: what the run must have made (board pictures, printed parts, the ROS workspace, a firmware image).
+async function design(server, expect = {}, brief = LOGGER) {
+	const start = await server.tool("start_design", { brief, mock: true })
 	const t = Date.now()
 	let st
-	while (Date.now() - t < 30 * 60_000) {
+	while (Date.now() - t < 45 * 60_000) {
 		await new Promise((r) => setTimeout(r, 5000))
 		st = await server.tool("design_status", { runId: start.runId })
 		if (st.status !== "running" && st.status !== "installing") break
@@ -95,8 +98,13 @@ async function design(server, expectBoard) {
 	const fs = files(start.outDir)
 	const pics = fs.filter((x) => /board(\.png|-pcb\.svg|-schematic\.svg)$/.test(x.f)).length
 	const gerbers = fs.filter((x) => x.f.endsWith("gerbers.zip")).length
-	if (expectBoard && !pics) throw new Error(`settled, but no board pictures (${fs.length} files); hardware: ${start.hardware}`)
-	return `settled at revision ${st.revision}, ${fs.length} files, ${pics} board pictures, ${gerbers} gerber zips`
+	const printed = fs.filter((x) => /\.(stl|step)$/.test(x.f) && !/[\\/]board[\\/]/.test(x.f)).length
+	const ros = fs.filter((x) => /[\\/]ros[\\/]src[\\/].*\.urdf$/.test(x.f)).length
+	const firmware = fs.filter((x) => /firmware\.bin$/.test(x.f)).length
+	const said = `settled at revision ${st.revision}, ${fs.length} files, ${pics} board pictures, ${gerbers} gerber zips, ${printed} printed-part files, ${ros} URDFs, ${firmware} firmware images`
+	const missing = [expect.board && !pics && "board pictures", expect.printed && !printed && "printed parts", expect.ros && !ros && "the ROS workspace", expect.firmware && !firmware && "a firmware image"].filter(Boolean)
+	if (missing.length) throw new Error(`settled, but no ${missing.join(", ")}: ${said}; hardware: ${start.hardware}`)
+	return said
 }
 
 await step("npm ci", () => (sh("npm ci --no-audit --no-fund"), ""))
@@ -107,9 +115,15 @@ await step("MCP handshake (initialize, tools/list)", async () => {
 	const tools = await server.call("tools/list", {})
 	return `${init.result?.serverInfo?.name} ${init.result?.serverInfo?.version}, ${tools.result?.tools?.length} tools`
 })
-await step("mock design, no tools (design only)", () => design(server, false))
+await step("mock design, no tools (design only)", () => design(server))
 await step("setup board", () => (sh("node bin/bringup-mcp.js setup board", 1_200_000), files(join(out, "home")).length ? "installed into BRINGUP_HOME" : "nothing installed"))
-await step("mock design with the board tools (board + pictures)", () => design(server, true))
+await step("mock design with the board tools (board + pictures)", () => design(server, { board: true }))
+// The case's CAD kernel (build123d) and a robot: its chassis as printed parts and its ROS 2 workspace.
+await step("setup case", () => (sh("node bin/bringup-mcp.js setup case", 1_800_000), ""))
+await step("mock rover with the case tools (printed parts + ROS workspace)", () => design(server, { board: true, printed: true, ros: true }, readFileSync("briefs/rover.md", "utf8")))
+// PlatformIO; the first firmware build fetches the chip's platform and compiler.
+await step("setup firmware", () => (sh("node bin/bringup-mcp.js setup firmware", 1_800_000), ""))
+await step("mock design with the firmware tools (firmware built)", () => design(server, { board: true, firmware: true }))
 server.close()
 
 const md = [`### ${process.platform} ${process.arch}, Node ${process.versions.node}`, "", "| Step | Result | Time | Notes |", "|---|---|---|---|", ...steps.map((x) => `| ${x.name} | ${x.ok ? "pass" : "**FAIL**"} | ${x.s.toFixed(1)} s | ${x.note.replace(/\|/g, "/")} |`), ""].join("\n")

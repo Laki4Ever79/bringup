@@ -1,5 +1,5 @@
 # The free tier on a fresh machine of each OS: npm ci, typecheck, the MCP server's handshake, a mock design with no
-# tools, then `setup board` and a mock design with the board and its pictures (scripts/ci-smoke.mjs). Each step's time
+# tools, then each setup domain (board, case, firmware) and a design that needs it (scripts/ci-smoke.mjs). Each step's time
 # and pass/fail are in the job summary. On demand and on pushes to main, not on every commit.
 name: OS smoke test
 
@@ -15,11 +15,17 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          # npm's download cache for the repo and the board tools' lockfile (a fresh Windows runner took 135 s for
+          # setup board's 371 packages, Linux 9 s): a CI speed-up only; a user's first install is what it is.
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            src/setup/tools-node/package-lock.json
       - name: Smoke test (each step timed in the job summary)
         run: node scripts/ci-smoke.mjs
