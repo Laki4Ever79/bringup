@@ -412,7 +412,7 @@ test("hardware auto builds where the toolchain is and stubs where it isn't, and 
 		// Builds what the tools allow (here firmware) and stubs the rest; says per domain what one command would add, how
 		// big, and that the agent asks its user first (setup streamlining, 26 Nov 2026).
 		assert.match(r.hardware, /^partly stubbed \(board, case\): this machine lacks tscircuit, Python with build123d and Docker\./)
-		assert.match(r.hardware, /ask your user first, then either run `npx bringup-mcp setup board case` or start the design again with installTools: true: board: .* about 923 MB .*; case: .* about 945 MB/)
+		assert.match(r.hardware, /ask your user first, then either run `npx bringup-mcp setup board case` or start the design again with installTools: true: board: about 923 MB .*; case: about 945 MB/)
 		assert.deepEqual(stub.calls[0].extraArgs, ["--stub-missing"])
 		const b = (await bare.call("start_design", { brief: "x", hardware: "build" })).json()
 		assert.match(b.hardware, /^built where the tools are \(asked\), stubbed where this machine lacks tscircuit, Python with build123d \(no Docker\)\./)
@@ -544,7 +544,7 @@ test("installTools: the missing domains install first (the call returns at once)
 	})
 	try {
 		const r = (await c.call("start_design", { brief: "x", installTools: true })).json()
-		assert.match(r.hardware, /^installing board: .* about 923 MB .*; case: .*; the run starts when that's done/)
+		assert.match(r.hardware, /^installing board: about 923 MB .*; case: about 945 MB .*; the run starts when that's done/)
 		assert.equal((await c.call("design_status", { runId: r.runId })).json().status, "installing")
 		assert.equal(stub.calls.length, 0, "nothing runs before the tools are in")
 		finish()

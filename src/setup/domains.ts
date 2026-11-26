@@ -32,7 +32,7 @@ export const DOMAINS: Record<Domain, DomainInfo> = {
 	firmware: { what: "PlatformIO 6.2, pinned (the firmware's build tool); the first firmware build then fetches the chip's platform and compiler, about 1 GB more (an estimate)", sizeMb: 125, seconds: 15, gives: "firmware built against the board's real pin map" },
 }
 
-export const describeDomain = (d: Domain): string => `${d}: ${DOMAINS[d].what}, about ${DOMAINS[d].sizeMb >= 1000 ? `${(DOMAINS[d].sizeMb / 1000).toFixed(1)} GB` : `${DOMAINS[d].sizeMb} MB`} and ${DOMAINS[d].seconds} s, once; gives ${DOMAINS[d].gives}`
+export const describeDomain = (d: Domain): string => `${d}: about ${DOMAINS[d].sizeMb >= 1000 ? `${(DOMAINS[d].sizeMb / 1000).toFixed(1)} GB` : `${DOMAINS[d].sizeMb} MB`} and ${DOMAINS[d].seconds} s, once, for ${DOMAINS[d].what}; gives ${DOMAINS[d].gives}`
 
 // uv, pinned by release and checksum: it brings its own Python, so the case and firmware domains need nothing from the
 // system but the libraries the CAD kernel loads.

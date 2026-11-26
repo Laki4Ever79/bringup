@@ -15,19 +15,54 @@ the firmware and the parts list.**
 
 <sub>A recorded run with the real tools, shown in Bringup's hosted page; the waiting is cut. ▶ [3-minute demo video](https://youtu.be/b0B6R5KyZ64)</sub>
 
-## Free and open, plus a hosted page
+## Free and open, plus Bringup Studio
 
-The engine is open source and free: it runs on your machine and every file it makes is yours. Bringup's hosted page,
-where you watch and steer a design live, is the paid part, the way Mozaik pairs its open framework with Mozaik Cloud.
+The engine is open source and free: it runs on your machine and every file it makes is yours. Bringup Studio, the
+hosted page where you watch and steer a design live, is the paid part, the way Mozaik pairs its open framework with
+Mozaik Cloud.
 
-| Free and open source (this repo, Apache-2.0) | Bringup's hosted page (paid, coming soon) |
+| Free and open source (this repo, Apache-2.0) | Bringup Studio (paid, coming soon) |
 |---|---|
 | The engine, the agents, every check, the CLI and the MCP server | The live 3D robot and its simulation in 3D |
 | Every file a design produces: KiCad project, Gerbers, BOM, pick-and-place, STL/STEP, firmware, URDF and ROS 2, the report | Editing on the design itself: click a part, change it, watch the change ripple |
 | Still pictures of the board and the robot in the build package | Logs and debugging: the timeline, why each change happened, every agent's trace |
 | | Run history, sharing and teams, with nothing to install |
 
-## Install & run
+## Quick start
+
+Needs Node 22 or later. Nothing else to install first.
+
+1. **Add Bringup to your AI client and ask for a design.** In Claude Code:
+
+   ```bash
+   claude mcp add bringup -- npx -y bringup-mcp
+   ```
+
+   Then ask, for example, "design a BLE temperature logger, USB-C, 50x30 mm". The first `npx` downloads about 185 MB
+   (about 15 s). Without the hardware tools, the agents still design the whole contract (parts, pins, outline) and run
+   every check, and the reply says what one command would add. Cursor, Claude Desktop and other clients:
+   [docs/mcp.md](docs/mcp.md).
+
+2. **Real boards with pictures** (from 0.2.3): `npx -y bringup-mcp setup board`, about 923 MB and 30 s, once. The next
+   design builds a routed board, its JLCPCB fab files (Gerbers, BOM, pick-and-place) and pictures of it: a 3D view,
+   the PCB and the schematic. On a clean machine that design took 45 s.
+
+3. **The rest, when you need it** (from 0.2.3), one domain at a time, installed into `~/.bringup`:
+
+   | Command | Size, once | Adds |
+   |---|---|---|
+   | `npx -y bringup-mcp setup board` | ~923 MB, ~30 s | routed boards, fab files and their pictures |
+   | `npx -y bringup-mcp setup case` | ~945 MB, ~75 s | cases, robot chassis and printed parts (STEP, STL); needs the system's OpenGL library, `sudo apt install libgl1` on a minimal Linux |
+   | `npx -y bringup-mcp setup firmware` | ~125 MB, then ~1 GB on the first firmware build | firmware compiled against the board's real pins |
+
+   `npx -y bringup-mcp setup` lists them and installs nothing. With Docker, Bringup builds everything in its own
+   toolchain image instead (a few GB, once).
+
+4. **Bringup Studio** (from 0.2.3): `npx -y bringup-mcp login --url <studio address>` connects this machine, and every
+   run streams there ([docs/studio.md](docs/studio.md)). Designing, every file and every change's ripple stay free;
+   Studio adds editing, the 3D simulation, debugging and run history.
+
+## From source
 
 ```bash
 git clone https://github.com/Laki4Ever79/bringup && cd bringup

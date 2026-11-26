@@ -9,10 +9,10 @@ import { missingBuilders } from "../src/tools/stubs.ts"
 import { tempDir } from "./helpers.ts"
 
 test("each domain says what it downloads, how big and how long, before anything is installed", () => {
-	assert.match(describeDomain("board"), /^board: tscircuit and bun, pinned .*, about 923 MB and 35 s, once; gives a routed board, its fab files and pictures of it$/)
-	assert.match(describeDomain("case"), /build123d .* about 945 MB/)
+	assert.match(describeDomain("board"), /^board: about 923 MB and 35 s, once, for tscircuit and bun, pinned .*; gives a routed board, its fab files and pictures of it$/)
+	assert.match(describeDomain("case"), /^case: about 945 MB .*build123d/)
 	assert.match(DOMAINS.case.needs!, /libGL\.so\.1.*apt install libgl1/)
-	assert.match(describeDomain("firmware"), /PlatformIO .* about 1 GB more \(an estimate\)/)
+	assert.match(describeDomain("firmware"), /^firmware: about 125 MB .*PlatformIO .* about 1 GB more \(an estimate\)/)
 })
 
 test("setup with no domain only lists them; an unknown domain is refused; nothing is installed", async () => {

@@ -21,8 +21,9 @@ Claude Desktop, Cursor and other clients take the same command in their MCP sett
 }
 ```
 
-Needs Node 22 or later (tested on 22 and 24; the full toolchain below needs Node 24). The first `npx` call downloads the package (about 3 MB) and its dependencies (about 110 MB in all,
-mostly the model SDKs Mozaik uses); on a fresh machine that took about 25 s (an estimate from one Docker test).
+Needs Node 22 or later (tested on 22 and 24; the full toolchain below needs Node 24). The first `npx` call downloads the
+package and its dependencies, about 183 MB in npm's cache, most of it the model SDKs Mozaik uses; on a clean Node 24
+container that took 15-17 s (26 Nov 2026).
 
 What a run builds depends on the machine (`hardware`, `auto` by default):
 - **Docker, nothing else installed:** the builds run in Bringup's toolchain image (`docker/toolchain/Dockerfile`:

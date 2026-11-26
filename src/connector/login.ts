@@ -56,7 +56,9 @@ export async function login(url: string, open: (u: string) => void, opts: { fetc
 	const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
 	const base = url.replace(/\/+$/, "")
 	const post = async (path: string, body: object) => {
-		const res = await f(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) })
+		const res = await f(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) }).catch((e: unknown) => {
+			throw new Error(`couldn't reach Bringup Studio at ${base} (${e instanceof Error ? e.message : String(e)}): check the address and your connection`)
+		})
 		return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> }
 	}
 	const start = await post("/api/connector/pair", {})
