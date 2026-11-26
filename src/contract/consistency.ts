@@ -8,7 +8,7 @@ import { drivenWheels, packOhm } from "../mechanics/model.ts"
 import { motionBriefChecks } from "../mechanics/brief.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
-import { powerTree, VIN_OR_NET, connectorAlongMm, connectorBoxes, connectorExtents, downloadStrap, generatedNets, MAX_TRACK_MM, netName, supplyPours, supplyWidths, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
+import { powerTree, VIN_OR_NET, connectorAlongMm, connectorBoxes, connectorExtents, downloadStrap, generatedNets, netName, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { armPowerChecks } from "./power-auto.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
@@ -34,6 +34,8 @@ export interface BoardArtifact {
 	nets: Record<string, string[]>
 	// KiCad design-rule check against the fab's rules (null when KiCad could not run).
 	drc?: import("../tools/drc.ts").DrcSummary | null
+	// The wide nets routed thinner than they need over more than the neck-downs into pins (track-widths.ts).
+	narrowNets?: import("../tools/track-widths.ts").NetCopper[]
 	// The JLC/PCBWay fab package (gerbers.zip, bom.csv, cpl.csv, README.txt), or why it could not be exported.
 	// Best-effort: a failed export never fails the board build.
 	fabDir?: string
@@ -131,6 +133,7 @@ export const WAITING_ON_CONTRACT = /^waiting on the contract:/
 
 export type ViolationKind =
 	| "drc-errors"
+	| "track-width-narrow"
 	| "outline-mismatch"
 	| "net-missing"
 	| "plug-without-edge"
@@ -265,6 +268,13 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 			affects: ["architect"],
 		})
 	}
+	for (const n of a.board?.narrowNets ?? [])
+		v.push({
+			kind: "track-width-narrow",
+			message: `${n.net} needs ${n.needMm} mm of 1 oz copper for its peak (IPC-2221, 10 °C rise, an estimate), but only ${Math.round(n.atWidthMm)} of its ${Math.round(n.totalMm)} mm of track on the rev ${a.board!.revision} board is that wide (narrower than the neck-downs into pins allow): give the router room for it (outline.sizeReason "routing"), or lower the rail's peak`,
+			fields: ["outline", "rails"],
+			affects: ["architect"],
+		})
 	if (a.board && outline) {
 		if (Math.abs(a.board.widthMm - outline.widthMm) > OUTLINE_TOLERANCE_MM || Math.abs(a.board.heightMm - outline.heightMm) > OUTLINE_TOLERANCE_MM) {
 			v.push({
@@ -756,10 +766,9 @@ export function supplyWiring(c: ContractSnapshot): Violation[] {
 	for (const r of rails)
 		if (!nets.has(netName(r.name)))
 			v.push({ kind: "rail-unwired", message: `rail ${r.name} (${r.voltageV} V, ${r.loadMa} mA) reaches no two pads: nothing on the board is wired to it. A part whose supply pin isn't labelled ${r.name === "3V3" ? "3V3/VDD/VCC" : "by the rail"} (a numbered header pin, a power input) names it in its nets, e.g. { "2": "${r.name}" }`, fields: ["parts", "rails"], affects: ["architect"] })
-	const poured = new Set(supplyPours(c).map((x) => x.net))
-	for (const [net, w] of supplyWidths(c))
-		if (w > MAX_TRACK_MM && !poured.has(net))
-			v.push({ kind: "rail-current-copper", message: `${net} needs ${w} mm of 1 oz copper for its peak (IPC-2221, 10 °C rise, an estimate), wider than a track reaching a 2.54 mm pin (${MAX_TRACK_MM} mm), and the board's one supply pour is taken by ${[...poured].filter((n) => n !== "GND").join(", ")}: lower its peak or put it on its own board`, fields: ["rails", "parts"], affects: ["architect"] })
+	// A rail wider than a track reaching a pin (MAX_TRACK_MM) with the pour taken was a violation here (rail-current-copper);
+	// since 26 Nov 2026 it is routed at its width by Freerouting, which necks it down at the pins (circuit.ts wideTracks),
+	// and the routed board's copper is measured instead (board.ts, track-widths.ts: track-width-narrow).
 	return v
 }
 

@@ -11,7 +11,8 @@ import type { ArmSpec } from "../src/arm/types.ts"
 import type { ContractSnapshot, Part } from "../src/contract/types.ts"
 
 const mcuCatalog = () => defaultCheckCatalog()!.boardParts as unknown as (Part & { lcsc: string | null })[]
-const ARM24: ArmSpec = { ...ARM, input: { kind: "dc-brick", volts: 24, amps: 5 } }
+// The arm's brick (lead decision, 25 Nov 2026): a 19.5 V 90 W laptop brick, under the input TVS's 20 V stand-off (src/arm/inrush.ts).
+const ARM24: ArmSpec = { ...ARM, input: { kind: "dc-brick", volts: 19.5, amps: 4.62 } }
 
 // The arm's board before the code adds its power: the S3, its LDO and the PCA9685 (what the parts agent writes).
 function armParts(): Part[] {
@@ -66,9 +67,9 @@ test("rail divider gives 6.0 V ±2 %", () => {
 test("input connector carries brick amps × 1.25", () => {
 	const s = armContract(ARM24)
 	const jack = s.values.parts!.find((p) => p.mpn === "DC-091-A250")
-	assert.ok(jack, "the 24 V input jack")
+	assert.ok(jack, "the brick input jack")
 	assert.equal(jack.nets?.VIN, armInputNet)
-	// The logic side from the 24 V input: a step-down to 5 V and its two Schottkys.
+	// The logic side from the brick input: a step-down to 5 V and its two Schottkys.
 	assert.ok(s.values.parts!.some((p) => p.role === "buck"))
 	assert.equal(s.values.parts!.filter((p) => p.role === "diode").length, 2)
 	// 12 V needs about 7.3 A, × 1.25 = 9.1 A through an 8 A jack: a violation naming the numbers.
@@ -78,7 +79,7 @@ test("input connector carries brick amps × 1.25", () => {
 	assert.equal(jackV.kind, "arm-supply")
 	assert.match(jackV.message, new RegExp(`${CONNECTOR_HEADROOM}`))
 	// A brick rated under what the rails draw.
-	const small = armPowerChecks(armContract({ ...ARM24, input: { kind: "dc-brick", volts: 24, amps: 2 } }))
+	const small = armPowerChecks(armContract({ ...ARM24, input: { kind: "dc-brick", volts: 19.5, amps: 2 } }))
 	assert.ok(small.some((v) => v.kind === "arm-supply" && /brick/.test(v.message) && v.fields.includes("arm")), JSON.stringify(small))
 	// A rail voltage outside a servo's range: arm-supply naming the servo, no NaN.
 	const hot = armPowerChecks(armContract({ ...ARM24, railV: 7.4 }))

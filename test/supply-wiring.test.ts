@@ -4,7 +4,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import type { ContractSnapshot } from "../src/contract/types.ts"
-import { circuitFromContract, DEFAULT_TRACE_MM, generatedNets, ipc2221WidthMm, MAX_TRACK_MM, netTraceWidths, supplyPours, THROUGH_HOLE_FOOTPRINT } from "../src/codegen/circuit.ts"
+import { circuitFromContract, DEFAULT_TRACE_MM, generatedNets, ipc2221WidthMm, MAX_TRACK_MM, netTraceWidths, supplyPours, THROUGH_HOLE_FOOTPRINT, wideTracks } from "../src/codegen/circuit.ts"
 import { supplyWiring } from "../src/contract/consistency.ts"
 import { hatDesign, hatFromBrief } from "../src/inference/scripts.ts"
 
@@ -47,7 +47,7 @@ test("a 1 A rail gets a wider track, no pour; a board within the default gets ne
 	assert.doesNotMatch(circuitFromContract(c), /copperpour|nominalTraceWidth/)
 })
 
-test("the checks: a nets entry on a missing pin or rail, a rail wired to nothing, a second rail too wide for a track", () => {
+test("the checks: a nets entry on a missing pin or rail, a rail wired to nothing, a second wide rail routed at width", () => {
 	const c = hat()
 	c.values.parts = c.values.parts!.map((p) => (p.ref === "J1" ? { ...p, nets: { ...p.nets, "41": "5V", "1": "3V3" } } : p))
 	const kinds = supplyWiring(c).map((v) => v.kind)
@@ -59,7 +59,9 @@ test("the checks: a nets entry on a missing pin or rail, a rail wired to nothing
 	const two = hat()
 	two.values.rails = [...two.values.rails!, { name: "12V", voltageV: 12, regulatorMaxMa: 3000, loadMa: 3000 }]
 	two.values.parts = two.values.parts!.map((p) => (p.ref === "J2" ? { ...p, nets: { VIN: "5V" } } : p.ref === "J1" ? { ...p, nets: { ...p.nets, "1": "12V" } } : p))
-	assert.ok(supplyWiring(two).some((v) => v.kind === "rail-current-copper" && /V12V needs/.test(v.message)))
+	// The second wide rail is routed at its width (Freerouting necks it down at the pins), not refused.
+	assert.ok(!supplyWiring(two).some((v) => v.kind === "rail-current-copper"))
+	assert.ok(wideTracks(two).some(([n]) => n === "V12V"))
 })
 
 test("through-hole footprints keep the bottom test pads off their holes", () => {

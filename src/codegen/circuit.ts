@@ -1,3 +1,4 @@
+import { armInputNet, armRails, withArmRails } from "../contract/arm-rails.ts"
 import { readFileSync } from "node:fs"
 import { canName, canSignals } from "../contract/links.ts"
 import { isEncoderPlug, isMotorPlug } from "../mechanics/refs.ts"
@@ -127,7 +128,7 @@ function freeRef(prefix: string, taken: Set<string>): string {
 // Passives every board of this kind needs. Each job takes a contract part with the same LCSC number if there is
 // one, else codegen adds the part, so the board is complete either way and the BOM lists what is really on it.
 interface SupportSpec {
-	kind: "resistor" | "capacitor" | "inductor"
+	kind: "resistor" | "capacitor" | "inductor" | "diode"
 	value: string
 	lcsc: string
 	mpn: string
@@ -145,6 +146,17 @@ const SUPPORT = {
 	servoL: { kind: "inductor", value: "4.7uH", lcsc: "C2047699", mpn: "SPM7054VT-4R7M-D", footprint: "spm7054" },
 	fbTop: { kind: "resistor", value: "22k", lcsc: "C25768", mpn: "0402WGF2202TCE", footprint: "0402" },
 	fbBottom: { kind: "resistor", value: "3k", lcsc: "C25895", mpn: "0402WGF3001TCE", footprint: "0402" },
+	// The arm's brick input (arm task 6, a 19.5 V laptop brick; up to 24 V): 10 uF rated 50 V; the 25 V CL21A106 sits at its rating there and keeps little of
+	// its capacitance under that bias. Samsung CL31A106KBHNNNE (LCSC C13585: 10uF 50V X5R 1206).
+	buckIn50: { kind: "capacitor", value: "10uF", lcsc: "C13585", mpn: "CL31A106KBHNNNE", footprint: "1206" },
+	// The arm rails' 6.0 V divider top: 0.6 V x (1 + 27k/3k) (UNI-ROYAL 0402WGF2702TCE, LCSC C25771).
+	fbTop27k: { kind: "resistor", value: "27k", lcsc: "C25771", mpn: "0402WGF2702TCE", footprint: "0402" },
+	// The arm's brick input protection (arm task 6, lead decision 25 Nov 2026; armInrush): a TVS across the input, cathode
+	// (pad 1, the band) on the brick's net, and a bulk electrolytic whose ESR damps the cable's ringing on a hot plug.
+	// MDD SMBJ20A (LCSC C364296): VRWM 20.0 V, VBR 22.2-24.5 V at 1 mA, VC 32.4 V at IPP 18.6 A, 600 W (MDD SMBJ datasheet).
+	tvs: { kind: "diode", value: "SMBJ20A", lcsc: "C364296", mpn: "SMBJ20A", footprint: "smb" },
+	// Panasonic EEEFK1V101P (LCSC C128462): 100 uF 35 V, case F 8 x 10.2 mm, 0.16 ohm at 100 kHz, 600 mA ripple (FK datasheet).
+	bulkElec: { kind: "capacitor", value: "100uF", lcsc: "C128462", mpn: "EEEFK1V101P", footprint: "cap_elec_8x10" },
 	led: { kind: "resistor", value: "1k", lcsc: "C11702", mpn: "0402WGF1001TCE", footprint: "0402" },
 	cc: { kind: "resistor", value: "5.1k", lcsc: "C25905", mpn: "0402WGF5101TCE", footprint: "0402" },
 	prog: { kind: "resistor", value: "4.7k", lcsc: "C25900", mpn: "0402WGF4701TCE", footprint: "0402" },
@@ -184,6 +196,10 @@ const SUPPORT_SOURCES: Record<keyof typeof SUPPORT, string> = {
 	servoL: "the SY8205 servo supply's inductor: 4.7 µH, saturation over 5.9 A at 5 A out (Silergy AN_SY8205, Output inductor L)",
 	fbTop: "the SY8205's feedback divider top: Vout = 0.6 V x (1 + 22k/3k) = 5.00 V (Silergy AN_SY8205)",
 	fbBottom: "the SY8205's feedback divider bottom: Vout = 0.6 V x (1 + 22k/3k) = 5.00 V (Silergy AN_SY8205)",
+	buckIn50: "a brick input's capacitors: 10 uF rated 50 V (the SY8368A asks at least 10 uF at IN; the AP63205's Table 3 10 uF), twice the input's voltage",
+	tvs: "the brick input's TVS: SMBJ20A, stand-off 20 V over a 19.5 V brick, breakdown 22.2-24.5 V, so a hot-plug spike is held under the SY8368A's 28 V (armInrush; MDD SMBJ series datasheet)",
+	bulkElec: "the brick input's bulk electrolytic: 100 uF 35 V, its ESR (0.16 ohm) damps the ringing of the cable's inductance with the ceramic input capacitors on a hot plug (Panasonic FK series datasheet)",
+	fbTop27k: "the SY8368A's feedback divider top for the arm's 6 V rail: Vout = 0.6 V x (1 + 27k/3k) = 6.00 V (Silergy SY8368A Rev. 0.9C)",
 	led: "a current-limiting resistor in series with the LED (any LED driven from a GPIO needs one)",
 	cc: "USB Type-C: a sink presents 5.1 kΩ (Rd) on CC1 and CC2, or a C-to-C charger supplies no VBUS",
 	prog: "the charger's PROG resistor sets its charge current (TP4054 datasheet, PROG table)",
@@ -390,7 +406,25 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	// The IMU: 100 nF on VDD and on VDDIO (ST DocID030071 Rev 3, Table 2 note 1).
 	const imuPart = parts.find((p) => p.role === "imu")
 	if (imuPart && supply) for (const pin of ["VDD", "VDDIO"]) if (imuPart.pins.includes(pin)) jobs.push({ job: `decoupling on ${imuPart.ref}.${pin}`, spec: SUPPORT.decouple, a: { ref: imuPart.ref, pin }, b: GND, near: imuPart.ref })
-	const servoSupply = parts.find((p) => p.role === "servo-supply")
+	// An arm (values.arm) has a servo supply per rail (armRails) and no emergency stop: its rails are built below.
+	const servoSupply = s.values.arm ? undefined : parts.find((p) => p.role === "servo-supply")
+	const jack = armJack(s)
+	if (jack) {
+		jobs.push({ job: `${armInputNet} TVS (${jack.ref}: a hot-plugged brick's spike under the rail chips' maximum)`, spec: SUPPORT.tvs, a: { net: armInputNet }, b: GND, near: jack.ref })
+		jobs.push({ job: `${armInputNet} bulk electrolytic (${jack.ref}: damps the cable's ringing)`, spec: SUPPORT.bulkElec, a: { net: armInputNet }, b: GND, near: jack.ref })
+	}
+	for (const rail of armRails(s) ?? []) {
+		const near = rail.supplyRef
+		if (!parts.some((p) => p.ref === near)) continue
+		const [sw, fb] = [`${rail.net}_SW`, `${rail.net}_FB`]
+		for (const k of [1, 2]) jobs.push({ job: `${near} input capacitor ${k} of 2 (IN, ${armInputNet}, at least 10 uF)`, spec: SUPPORT.buckIn50, a: { net: armInputNet }, b: GND, near })
+		jobs.push({ job: `${near} inductor (LX to ${rail.net})`, spec: SUPPORT.servoL, a: { net: sw }, b: { net: rail.net }, near })
+		for (let k = 1; k <= 5; k++) jobs.push({ job: `${near} output capacitor ${k} of 5 (${rail.net})`, spec: SUPPORT.buckOut, a: { net: rail.net }, b: GND, near })
+		jobs.push({ job: `${near} bootstrap capacitor (BS to LX)`, spec: SUPPORT.decouple, a: { ref: near, pin: "BS" }, b: { net: sw }, near })
+		jobs.push({ job: `${near} internal LDO capacitor (VCC)`, spec: SUPPORT.bypass, a: { ref: near, pin: "VCC_INT" }, b: GND, near })
+		jobs.push({ job: `${near} feedback divider top (${rail.divider.voutV.toFixed(2)} V)`, spec: rail.divider.r1 === "27k" ? SUPPORT.fbTop27k : SUPPORT.fbTop, a: { net: rail.net }, b: { net: fb }, near })
+		jobs.push({ job: `${near} feedback divider bottom`, spec: SUPPORT.fbBottom, a: { net: fb }, b: GND, near })
+	}
 	// The SY8205 servo supply (a chip: its pins include LX): AN_SY8205's parts beside it.
 	if (servoSupply?.pins.includes("LX")) {
 		const near = servoSupply.ref
@@ -420,7 +454,7 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const buckIc = powerTree(s)?.buck
 	if (buckIc?.pins.includes("SW")) {
 		const near = buckIc.ref
-		jobs.push({ job: `${buckIc.ref} input capacitor (VBAT)`, spec: SUPPORT.buckIn, a: { net: "VBAT" }, b: GND, near })
+		jobs.push({ job: `${buckIc.ref} input capacitor (${packNet(s)})`, spec: s.values.arm ? SUPPORT.buckIn50 : SUPPORT.buckIn, a: { net: packNet(s) }, b: GND, near })
 		jobs.push({ job: `${buckIc.ref} inductor (SW to ${BUCK_NET})`, spec: SUPPORT.buckL, a: { net: BUCK_SW_NET }, b: { net: BUCK_NET }, near })
 		for (const k of [1, 2]) jobs.push({ job: `${buckIc.ref} output capacitor ${k} of 2 (${BUCK_NET})`, spec: SUPPORT.buckOut, a: { net: BUCK_NET }, b: GND, near })
 		if (buckIc.pins.includes("BST")) jobs.push({ job: `${buckIc.ref} bootstrap capacitor (BST to SW)`, spec: SUPPORT.decouple, a: { ref: buckIc.ref, pin: "BST" }, b: { net: BUCK_SW_NET }, near })
@@ -481,7 +515,7 @@ export function supportParts(s: ContractSnapshot): Support[] {
 			claimed.add(own.ref)
 			return { ...j, ref: own.ref, added: false, pins: [own.pins[0] ?? "pin1", own.pins[1] ?? "pin2"] }
 		}
-		const ref = freeRef(j.spec.kind === "resistor" ? "R" : j.spec.kind === "inductor" ? "L" : "C", taken)
+		const ref = freeRef(j.spec.kind === "resistor" ? "R" : j.spec.kind === "inductor" ? "L" : j.spec.kind === "diode" ? "D" : "C", taken)
 		taken.add(ref)
 		return { ...j, ref, added: true, pins: ["pin1", "pin2"] }
 	})
@@ -640,6 +674,10 @@ function micFootprint(): string {
 export const INDUCTOR_FOOTPRINTS: Record<string, { padW: number; padH: number; cx: number; body: [number, number] }> = {
 	nrs4018: { padW: 1.2, padH: 3.7, cx: 2.0, body: [4, 4] },
 	spm7054: { padW: 2.85, padH: 3.3, cx: 2.975, body: [7.5, 7.0] },
+	// An 8 x 10.2 mm SMD aluminium electrolytic (Panasonic FK case F): JLCPCB's EasyEDA footprint CAP-SMD_BD8.0-L8.3-W8.3-FD for
+	// C128462 (easyeda.com/api/products/C128462/components, 25 Nov 2026): 4.2 x 1.4 mm pads, centres 6.53 mm apart; pad 1 is +
+	// (the chamfered corners and the + mark on its side).
+	cap_elec_8x10: { padW: 4.2, padH: 1.4, cx: 3.267, body: [8.3, 8.3] },
 }
 export const INDUCTOR_FOOTPRINT = "nrs4018"
 function inductorFootprint(name: string): string {
@@ -680,7 +718,7 @@ function xt60Footprint(): string {
 	const outline = [[-4.4, -8.2], [4.4, -8.2], [4.4, 8.2], [-4.4, 8.2], [-4.4, -8.2]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
 	return `{<footprint>${[...pins, ...pegs].join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
 }
-// The 24 V brick input (the arm, 25 Nov 2026): XunPu DC-091-A250, rated 24 V 8 A, pads from JLCPCB's own footprint
+// The brick input jack (the arm, 25 Nov 2026): XunPu DC-091-A250, rated 24 V 8 A, pads from JLCPCB's own footprint
 // (catalog/footprints/dc091a250.json). Pin 1 the centre pin, 2 the switch, 3-6 the sleeve's four shield legs.
 export const DC091_FOOTPRINT = "dc091a250"
 export function dc091Footprint(): string {
@@ -766,6 +804,15 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// A 4-pin 2.54 mm header (a bought module on pins): 4 × 2.54 + 1 mm by 3.6 mm, like pinrow2 and pinrow3 (it was
 	// 1.5 mm deep, so the placer put the Eurobot base's 5 V module 0.27 mm past the board edge, 17 Nov 2026).
 	pinrow4: [11.2, 3.6], pushbutton: [7, 9],
+	// A 1206 chip part (the arm's 50 V input capacitors): tscircuit's pads span 4.05 x 1.75 mm (measured from circuit.json,
+	// 25 Nov 2026), plus 0.25 mm a side.
+	"1206": [4.55, 2.25],
+	// The electrolytic (cap_elec_8x10): its pads reach past the 8.3 mm base (centres 6.53 mm apart, 4.2 mm long: 10.73 mm)
+	// plus 0.25 mm a side; 8.3 mm tall. Before (26 Nov 2026) the base alone (8.8): pad 2 sat on JD1's locating hole.
+	cap_elec_8x10: [11.25, 8.8],
+	// SMB (DO-214AA, the input TVS): tscircuit's pads 2.5 x 2.3 mm at +-2.15 mm span 6.8 x 2.3 mm (measured from circuit.json,
+	// 25 Nov 2026), plus 0.25 mm a side.
+	smb: [7.3, 2.8],
 	// SOD-123 (a Schottky): pads and body about 4.4 × 1.6 mm (an estimate of the footprinter's sod123).
 	sod123: [4.4, 1.6],
 	// TSSOP-28 (the PCA9685): 9.7 mm long, leads across 6.4 mm, with pads about 10.4 × 7.9 mm (an estimate).
@@ -831,8 +878,18 @@ export function quadPinOffset(footprint: string, pin: number, ringMm: number | u
 
 // A pad's centre from the part's origin at the part's rotation (counter-clockwise, as tscircuit's pcbRotation and
 // offsetAt turn), for a dual-row or quad package; null for other footprints.
+// A SOT-23-5/6's pad centre at rotation 0, from tscircuit 0.0.3042's own pads (circuit.json of the arm board, 26 Nov
+// 2026): pins 1-3 down the left at 0.95 mm pitch, the rest back up the right (sot23_5 has no middle pin on the right).
+// Without it the AP63205's BST capacitor had no pad to sit beside: placed last, 14.56 mm away, past its 5 mm bound, and
+// unreachableCaps couldn't see it (the arm board, 26 Nov 2026).
+const SOT23_PADS: Record<string, { x: number; ys: number[] }> = { sot23_6: { x: 1.3, ys: [0.95, 0, -0.95, -0.95, 0, 0.95] }, sot23_5: { x: 1.137, ys: [0.95, 0, -0.95, -0.95, 0.95] } }
+export function sotPinOffset(footprint: string, pin: number): { x: number; y: number } | null {
+	const f = SOT23_PADS[footprint]
+	if (!f || pin < 1 || pin > f.ys.length) return null
+	return { x: pin <= 3 ? -f.x : f.x, y: f.ys[pin - 1] }
+}
 function padOffset(footprint: string, pad: number, rotation: number): { x: number; y: number } | null {
-	const at = icPinOffset(footprint, pad) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
+	const at = icPinOffset(footprint, pad) ?? sotPinOffset(footprint, pad) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
 	if (!at) return null
 	const t = (rotation * Math.PI) / 180
 	return { x: +(at.x * Math.cos(t) - at.y * Math.sin(t)).toFixed(3), y: +(at.x * Math.sin(t) + at.y * Math.cos(t)).toFixed(3) }
@@ -1954,7 +2011,8 @@ export function motorStallA(s: ContractSnapshot): number | null {
 }
 export function supplyWidths(s: ContractSnapshot): Map<string, number> {
 	const out = new Map<string, number>()
-	for (const r of s.values.rails ?? []) {
+	// The rails the code generates (an arm's servo rails and brick input) count with the contract's.
+	for (const r of withArmRails(s.values.rails ?? [], s)) {
 		const w = Math.round(ipc2221WidthMm(r.loadMa / 1000) * 100) / 100
 		if (w <= DEFAULT_TRACE_MM) continue
 		out.set(netName(r.name), w)
@@ -1974,16 +2032,31 @@ export function supplyWidths(s: ContractSnapshot): Map<string, number> {
 // A net too wide for a track (MAX_TRACK_MM) becomes a copper pour: the one rail on top, ground on the bottom. A board
 // with two such rails can't pour both on two layers: the second keeps its wide track, and the check says so
 // (rail-current-copper).
-export function supplyPours(s: ContractSnapshot): { net: string; layer: "top" | "bottom" }[] {
+// On a board Freerouting routes (freerouting), ground only: it routes over a plane as one conductor, so a top-layer rail
+// pour came back cut into islands by the top tracks, each holding pads it never joined (the arm board, 26 Nov 2026:
+// VIN_BRICK in 11 pieces after the refill); it routes each rail as a track at its width instead (routedWidths).
+// tscircuit pours after routing, around its tracks, so its boards keep the rail pour (the rpi-5 HAT's 5 V).
+export function supplyPours(s: ContractSnapshot, freerouting = false): { net: string; layer: "top" | "bottom" }[] {
 	const wide = [...supplyWidths(s)].filter(([, w]) => w > MAX_TRACK_MM).map(([n]) => n)
 	if (!wide.length) return []
+	if (freerouting) return [{ net: "GND", layer: "bottom" }]
 	const rail = wide.filter((n) => n !== "GND").sort((a, b) => supplyWidths(s).get(b)! - supplyWidths(s).get(a)!)[0]
 	return [...(rail ? [{ net: rail, layer: "top" as const }] : []), { net: "GND", layer: "bottom" as const }]
 }
-// The track widths codegen asks for: the supply widths, except the nets poured (their tracks stay the default).
+// The track widths each routed net needs: the supply widths, except the nets poured (their tracks stay the default).
+// Full width: Freerouting takes it as the net's class and necks the track down only to enter a pin, so MAX_TRACK_MM
+// bounds the track where it meets a pin, not the run between (lead-2, 26 Nov 2026: "MAX_TRACK_MM then caps only where a
+// track must pass between pins, not on a short rail run from a chip to its own plug group").
+export function routedWidths(s: ContractSnapshot, freerouting = false): Map<string, number> {
+	const poured = new Set(supplyPours(s, freerouting).map((p) => p.net))
+	return new Map([...supplyWidths(s)].filter(([n]) => !poured.has(n)))
+}
+// The nets wider than a track reaching a pin (MAX_TRACK_MM) that no pour carries: only Freerouting routes them at width
+// (tscircuit's router has no neck-down), so a board with one goes to Freerouting first (board.ts).
+export const wideTracks = (s: ContractSnapshot) => [...routedWidths(s)].filter(([, w]) => w > MAX_TRACK_MM)
+// The track widths codegen asks tscircuit for: routedWidths capped at MAX_TRACK_MM (its router can't neck down at a pin).
 export function netTraceWidths(s: ContractSnapshot): Map<string, number> {
-	const poured = new Set(supplyPours(s).map((p) => p.net))
-	return new Map([...supplyWidths(s)].filter(([n]) => !poured.has(n)).map(([n, w]) => [n, Math.min(w, Math.max(MAX_TRACK_MM, DEFAULT_TRACE_MM))]))
+	return new Map([...routedWidths(s)].map(([n, w]) => [n, Math.min(w, Math.max(MAX_TRACK_MM, DEFAULT_TRACE_MM))]))
 }
 
 // The net feeding the LDO's input: the one its nets name (VIN) when they do, else the charger's output (VBAT) when there
@@ -2004,7 +2077,7 @@ export const BUCK_SW_NET = "BUCK_SW"
 // Schottky's drop would take under the LDO's; behind a step-down, a Schottky (5 V has room for it). VBUS: a Schottky.
 export function powerTree(s: ContractSnapshot): { battery: Part; usb: Part; buck?: Part } | null {
 	const parts = s.values.parts ?? []
-	if (!parts.some((p) => p.role === "battery") || parts.some((p) => p.role === "charger") || !parts.some((p) => p.role === "ldo")) return null
+	if (!(parts.some((p) => p.role === "battery") || armJack(s)) || parts.some((p) => p.role === "charger") || !parts.some((p) => p.role === "ldo")) return null
 	const diodes = parts.filter((p) => p.role === "diode" && p.pins.includes("A") && p.pins.includes("K")).sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
 	const ideal = parts.find((p) => p.role === "ideal-diode" && p.pins.includes("VIN") && p.pins.includes("VOUT"))
 	const buck = parts.find((p) => p.role === "buck")
@@ -2013,6 +2086,10 @@ export function powerTree(s: ContractSnapshot): { battery: Part; usb: Part; buck
 	if (!battery || !usb) return null
 	return { battery, usb, ...(buck ? { buck } : {}) }
 }
+// The net the power tree's input sits on: the cell (VBAT), or an arm's brick (armInputNet, its DC jack).
+export const packNet = (s: ContractSnapshot) => (armJack(s) ? armInputNet : "VBAT")
+// An arm's DC input jack (the catalog's DC-091-A250: VIN on its centre pin).
+export const armJack = (s: ContractSnapshot) => (s.values.arm ? (s.values.parts ?? []).find((p) => p.mpn === "DC-091-A250") : undefined)
 // A battery-path part's input and output pins: an ideal diode's VIN/VOUT, a Schottky's A/K.
 const pathPins = (p: Part) => (p.role === "ideal-diode" ? { in: "VIN", out: "VOUT" } : { in: "A", out: "K" })
 
@@ -2062,7 +2139,12 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// A pin on two nets shorts them (real run 15: VIN on VBUS and VBAT, USB 5 V onto the cell): the net-short check
 	// (consistency.ts) refuses it. The contract's assignment doesn't silently win: run 12's put the motor driver's VM on
 	// VBAT, which would bypass the emergency stop's MOTOR_VM.
-	const join = (net: string, ref: string, pin: string) => nets.get(net)!.push(`${ref}.${pin}`)
+	// A pin listed once per net: a part's own nets (Part.nets, the arm's rail chips and jack, 25 Nov 2026) and the wiring
+	// below may both name it.
+	const join = (net: string, ref: string, pin: string) => {
+		const list = nets.get(net)!
+		if (!list.includes(`${ref}.${pin}`)) list.push(`${ref}.${pin}`)
+	}
 
 	for (const p of parts) {
 		if (footprintFor(p) === USBC_FOOTPRINT || p.role === "button") continue
@@ -2108,7 +2190,38 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// The servo supply (a 5 V step-down module) takes the cell before the emergency stop, and its EN the motors' supply
 	// after it (with 10 kΩ to GND): the stop's NC contact switches the servos off without carrying their current (the
 	// OMRON A22E breaks 1.5 A inductive; two servos at stall through it would pass that).
-	const so = servoOutputs(parts)
+	// An arm (values.arm, arm task 6): one plug per servo on its joint's PCA9685 channel (LED<channel>), its +V on its
+	// rail (armRails: VSERVO1.., each an SY8368A at the arm's rail voltage from the brick), and the DC jack's centre
+	// pin on armInputNet. No emergency stop: each rail's EN on the input (the SY8368A's EN takes up to 30 V).
+	const armRailList = armRails(s)
+	const pwmArm = armRailList ? parts.find((p) => p.role === "pwm-driver") : undefined
+	if (armRailList) {
+		if (!nets.has(armInputNet)) nets.set(armInputNet, [])
+		const jack = armJack(s)
+		if (jack?.pins.includes("VIN")) join(armInputNet, jack.ref, "VIN")
+		for (const pin of ["GND_2", "GND_3", "GND_4"]) if (jack?.pins.includes(pin)) join("GND", jack.ref, pin)
+		if (pwmArm) for (const pin of ["A0", "A1", "A2", "A3", "A4", "A5", "OE", "EXTCLK"]) if (pwmArm.pins.includes(pin)) join("GND", pwmArm.ref, pin)
+		for (const rail of armRailList) {
+			for (const n of [rail.net, `${rail.net}_SW`, `${rail.net}_FB`]) if (!nets.has(n)) nets.set(n, [])
+			const chip = parts.find((p) => p.ref === rail.supplyRef)
+			if (chip) {
+				for (const pin of ["IN", "IN_2", "IN_3", "EN"]) if (chip.pins.includes(pin)) join(armInputNet, chip.ref, pin)
+				if (chip.pins.includes("LX")) join(`${rail.net}_SW`, chip.ref, "LX")
+				if (chip.pins.includes("FB")) join(`${rail.net}_FB`, chip.ref, "FB")
+				if (chip.pins.includes("GND_2")) join("GND", chip.ref, "GND_2")
+			}
+			for (const plug of rail.plugs) {
+				const part = parts.find((p) => p.ref === plug.ref)
+				if (!part) continue
+				const sig = `SERVO_CH${plug.channel}`
+				if (!nets.has(sig)) nets.set(sig, [])
+				if (pwmArm) join(sig, pwmArm.ref, `LED${plug.channel}`)
+				if (part.pins.includes("SIG")) join(sig, part.ref, "SIG")
+				if (part.pins.includes("V5")) join(rail.net, part.ref, "V5")
+			}
+		}
+	}
+	const so = armRailList ? null : servoOutputs(parts)
 	if (so) {
 		for (const n of [SERVO_5V_NET, "SPARE_IN1", "SPARE_IN2", "SERVO_EN", MOTOR_VM_NET, "VBAT", "VBUS"]) if (!nets.has(n)) nets.set(n, [])
 		for (const pin of ["A0", "A1", "A2", "A3", "A4", "A5", "OE", "EXTCLK"]) if (so.pwm.pins.includes(pin)) join("GND", so.pwm.ref, pin)
@@ -2143,21 +2256,21 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// The power tree (powerTree): the cell, or its 5 V step-down, and VBUS each through a Schottky into VIN_OR.
 	const tree = powerTree(s)
 	if (tree) {
-		for (const n of [VIN_OR_NET, BUCK_NET, "VBAT", "VBUS"]) if (!nets.has(n)) nets.set(n, [])
+		for (const n of [VIN_OR_NET, BUCK_NET, packNet(s), "VBUS"]) if (!nets.has(n)) nets.set(n, [])
 		if (tree.buck) {
-			if (tree.buck.pins.includes("VIN")) join("VBAT", tree.buck.ref, "VIN")
+			if (tree.buck.pins.includes("VIN")) join(packNet(s), tree.buck.ref, "VIN")
 			if (tree.buck.pins.includes("VOUT")) join(BUCK_NET, tree.buck.ref, "VOUT")
 			// The AP63205: EN to VIN (it starts with the pack), FB senses its fixed 5 V output, SW to the inductor
 			// (Diodes AP63200/1/3/5 datasheet, Figure 21; its parts in supportParts).
 			if (tree.buck.pins.includes("SW")) {
 				if (!nets.has(BUCK_SW_NET)) nets.set(BUCK_SW_NET, [])
 				join(BUCK_SW_NET, tree.buck.ref, "SW")
-				if (tree.buck.pins.includes("EN")) join("VBAT", tree.buck.ref, "EN")
+				if (tree.buck.pins.includes("EN")) join(packNet(s), tree.buck.ref, "EN")
 				if (tree.buck.pins.includes("FB")) join(BUCK_NET, tree.buck.ref, "FB")
 			}
 		}
 		const bp = pathPins(tree.battery)
-		join(tree.buck ? BUCK_NET : "VBAT", tree.battery.ref, bp.in)
+		join(tree.buck ? BUCK_NET : packNet(s), tree.battery.ref, bp.in)
 		join(VIN_OR_NET, tree.battery.ref, bp.out)
 		// The ideal diode: CE on VOUT blocks reverse current (TI LM66100 datasheet, Pin Functions); ST unused, to GND.
 		if (tree.battery.role === "ideal-diode") {
@@ -2504,7 +2617,8 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 			const bound = unbounded && o ? Math.ceil(Math.hypot(o.widthMm, o.heightMm)) : capBound(s, sp)
 			const pinBound = bound !== null ? ` maxDecouplingTraceLength={${bound}}` : ""
 			const fpAttr = INDUCTOR_FOOTPRINTS[sp.spec.footprint] ? inductorFootprint(sp.spec.footprint) : q(sp.spec.footprint)
-			lines.push(`<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${fpAttr}${pinBound} />`)
+			// A diode (the arm input's TVS) has no value attribute; its pads by number: pad 1 the cathode (the band).
+			lines.push(sp.spec.kind === "diode" ? `<diode name=${q(sp.ref)}${at(placement, sp.ref)} footprint=${fpAttr} />` : `<${sp.spec.kind} name=${q(sp.ref)} ${attr}=${q(sp.spec.value)}${at(placement, sp.ref)} footprint=${fpAttr}${pinBound} />`)
 		}
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) {
 			const path = "ref" in end ? drawn.find((d) => d.cap === sp.ref && d.part === end.ref && d.pin === end.pin) : undefined
@@ -2524,7 +2638,7 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 	}
 	// Margins over JLCPCB's 2-layer rules (0.2 mm hole clearance, 0.3 mm copper to edge): tscircuit's defaults left the
 	// pours 0.19 mm from the mounting holes and on the edge clearance (the rpi-5 HAT, 15 Nov 2026: 10 KiCad DRC errors).
-	for (const pour of supplyPours(s)) lines.push(`<copperpour connectsTo=${q(`net.${pour.net}`)} layer=${q(pour.layer)} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
+	for (const pour of supplyPours(s, unbounded)) lines.push(`<copperpour connectsTo=${q(`net.${pour.net}`)} layer=${q(pour.layer)} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
 	return lines
 }
 

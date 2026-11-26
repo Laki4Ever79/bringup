@@ -1,5 +1,6 @@
 import type { Tool } from "@mozaik-ai/core"
 import { completePowerTree } from "../contract/power-auto.ts"
+import { withArmRails } from "../contract/arm-rails.ts"
 import { moveUpMcu } from "../contract/mcu-move.ts"
 import { withRobotImu } from "../contract/imu-auto.ts"
 import { withDriverOutputs } from "../contract/outputs-auto.ts"
@@ -13,7 +14,7 @@ import { laidOut } from "../mechanics/solve.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { fileURLToPath } from "node:url"
 import { connectorsOntoEdges } from "../contract/consistency.ts"
-import { minimumBoard, placesAll, scaledConnectors } from "../contract/space.ts"
+import { compactOutline, minimumBoard, placesAll, scaledConnectors, sizeOf } from "../contract/space.ts"
 import { connectorsForParts, ESTOP_PLUG_REF, isEncoderPlug, isMotorPlug, MOTOR_PLUG_REFS, robotRefs, SENSOR_PLUG_REF, START_PLUG_REF } from "../mechanics/refs.ts"
 
 // Tools every agent gets for reading and changing the shared design contract.
@@ -265,6 +266,17 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						const why = [outs.note, t.note].filter(Boolean).join("; ")
 						if (why && follow("parts", t.parts, `the arm changed: ${why}`)) laidOutNote = [laidOutNote, why].filter(Boolean).join("; ")
 					}
+					// An arm's servo rails and brick input go into the contract's rails with their peak, sized like any rail
+					// (lead-2, 26 Nov 2026), on any write that changes them (the arm, its parts, the rails themselves).
+					if (s.contract.get("arm") && (args.field === "arm" || args.field === "parts" || args.field === "rails")) {
+						const snap = s.contract.snapshot()
+						const before = snap.values.rails ?? []
+						const rails = withArmRails(before, snap)
+						if (JSON.stringify(rails) !== JSON.stringify(before)) {
+							const why = `the arm's rails at their peak: ${rails.filter((r) => !before.some((b) => JSON.stringify(b) === JSON.stringify(r))).map((r) => `${r.name} ${r.voltageV} V ${r.loadMa} mA`).join(", ")}`
+							if (follow("rails", rails, why)) laidOutNote = [laidOutNote, why].filter(Boolean).join("; ")
+						}
+					}
 					// Renamed plugs: the connectors and pins that named the old refs take the new ones.
 					if (Object.keys(renames).length) {
 						const to = (ref: string) => renames[ref] ?? ref
@@ -320,5 +332,5 @@ export function outlineRefusal(snap: ContractSnapshot, next: ContractValues["out
 		.sort((a, b) => a.d - b.d || a.widthMm * a.heightMm - b.widthMm * b.heightMm)
 		.slice(0, 3)
 		.map((x) => `${x.widthMm}×${x.heightMm}`)
-	return `a ${next.widthMm}×${next.heightMm} mm board has no spot for everything it carries (the placer, with the connectors where this change puts them)${near.length ? `; sizes near it that place: ${near.join(", ")} mm` : ""}${min ? `; the smallest: ${min.widthMm}×${min.heightMm} mm` : ""}. A bigger board isn't always the answer: placement isn't monotonic, so pick one of these`
+	return `a ${next.widthMm}×${next.heightMm} mm board has no spot for everything it carries (the placer, with the connectors where this change puts them)${near.length ? `; sizes near it that place: ${near.join(", ")} mm` : ""}${min ? `; the smallest: ${sizeOf(compactOutline(snap), min)}` : ""}. A bigger board isn't always the answer: placement isn't monotonic, so pick one of these`
 }

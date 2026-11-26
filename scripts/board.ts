@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { checkConsistency, connectorsOntoEdges } from "../src/contract/consistency.ts"
-import { connectorsAt, minimumBoard } from "../src/contract/space.ts"
+import { compactOutline, connectorsAt, minimumBoard, sizeOf } from "../src/contract/space.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 import { buildBoard, routerOrder } from "../src/tools/board.ts"
 import { detectEnvironment } from "../src/tools/env.ts"
@@ -48,7 +48,7 @@ if (packed) {
 	s.values.connectors = packed
 }
 const min = minimumBoard(s)
-console.log(`${file} at ${w}×${h} mm${min ? ` (smallest by placement: ${min.widthMm}×${min.heightMm} mm)` : ""}`)
+console.log(`${file} at ${w}×${h} mm${min ? ` (smallest: ${sizeOf(compactOutline(s), min)}, ${min.limitedBy})` : ""}`)
 const env = await detectEnvironment(resolve(import.meta.dirname, ".."))
 const dir = mkdtempSync(join(tmpdir(), "bringup-board-cli-"))
 const t0 = Date.now()

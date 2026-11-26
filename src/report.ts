@@ -12,7 +12,7 @@ import { mcuProfileOf } from "./mcu/profile.ts"
 import { interfaceMarkdown, mechanicalInterface } from "./contract/interface.ts"
 import { benchManifest, bringupMarkdown } from "./contract/manifest.ts"
 import { addedForYouSection } from "./contract/added.ts"
-import { minimumBoard } from "./contract/space.ts"
+import { compactOutline, minimumBoard, sizeOf } from "./contract/space.ts"
 import { complianceItems } from "./contract/compliance.ts"
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import type { StockSuggestion } from "./tools/sourcing.ts"
@@ -281,7 +281,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 			const min = v.outline ? minimumBoard(s.contract.snapshot()) : null
 			if (!v.outline || !min) return []
 			const slack = Math.round(((v.outline.widthMm * v.outline.heightMm) / min.areaMm2 - 1) * 100)
-			return [`- Space: board ${v.outline.widthMm}×${v.outline.heightMm} mm is ${slack}% over the smallest it can be (${min.areaMm2} mm², every part placed at ${min.widthMm}×${min.heightMm} mm, routing not proven at that size)${v.outline.sizeReason ? `; kept for a reason: ${v.outline.sizeReason.kind}, ${v.outline.sizeReason.detail}` : ""}`]
+			return [`- Space: board ${v.outline.widthMm}×${v.outline.heightMm} mm is ${slack}% over the smallest it can be (${min.areaMm2} mm², every part placed at ${sizeOf(compactOutline(s.contract.snapshot()), min)}, routing not proven at that size)${v.outline.sizeReason ? `; kept for a reason: ${v.outline.sizeReason.kind}, ${v.outline.sizeReason.detail}` : ""}`]
 		})(),
 		// The module's antenna and the board parts within Espressif's recommended clearance (advisory, contract/antenna.ts).
 		...(() => {

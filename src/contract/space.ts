@@ -1,5 +1,6 @@
 import { connectorsOntoEdges } from "./connectors.ts"
-import { antennaOverhang, boardParts, debugPort, layoutBoard, moduleBlocked, moduleFreedAlongEdges, placeParts, recoveryPads, testPoints } from "../codegen/circuit.ts"
+import { antennaOverhang, boardParts, debugPort, generatedNets, layoutBoard, MAX_TRACK_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, recoveryPads, routedWidths, testPoints, wideTracks } from "../codegen/circuit.ts"
+import { ROUTE } from "../tools/freerouting.ts"
 import { caseOf, minCaseHeight } from "./case.ts"
 import type { AgentRole, ContractSnapshot, FieldName, SizeReason } from "./types.ts"
 
@@ -38,7 +39,9 @@ export interface MinimumBoard {
 	// Courtyards of every part the board carries, generated support parts included.
 	courtyardMm2: number
 	// What set the minimum: the packed placement, or the routing ceiling.
-	limitedBy: "placement" | "density"
+	limitedBy: "placement" | "density" | "rail-copper"
+	// The lanes the wide rails need beside the parts (railCorridors), counted into the area when there are any.
+	corridors?: RailCorridor[]
 	// For each board height, the narrowest width that places every part: the shapes a compact board can take.
 	shapes: { widthMm: number; heightMm: number }[]
 	// Sizes of this design that were built and failed to route (recordRoutingFailure): no shape sits inside one.
@@ -141,6 +144,40 @@ export function connectorsAt(s: ContractSnapshot, w: number, h: number): NonNull
 	return resized(s, w, h).values.connectors ?? []
 }
 
+// A wide rail's lane: the copper a rail wider than a track reaching a pin (MAX_TRACK_MM) needs between its parts, which
+// placement alone doesn't count (the arm board, 26 Nov 2026: at its placement minimum 62×47 the rails reached their
+// IPC-2221 width on only 10-21 % of their track). Its length is ESTIMATED as the Manhattan spanning tree over its parts'
+// centres (88-116 mm on the arm against 94-155 mm routed), its width the rail's own plus the fab's clearance a side.
+export interface RailCorridor {
+	net: string
+	widthMm: number
+	lengthMm: number
+	areaMm2: number
+}
+export function railCorridors(s: ContractSnapshot, placed: { ref: string; x: number; y: number }[] = placeParts(s)): RailCorridor[] {
+	const freerouted = wideTracks(s).length > 0
+	const wide = [...routedWidths(s, freerouted)].filter(([, w]) => w > MAX_TRACK_MM)
+	if (!wide.length) return []
+	const at = new Map(placed.map((b) => [b.ref, b]))
+	const nets = generatedNets(s)
+	return wide.map(([net, widthMm]) => {
+		const pts = [...new Set((nets.get(net) ?? []).map((e) => e.split(".")[0]))].flatMap((r) => (at.has(r) ? [at.get(r)!] : []))
+		let lengthMm = 0
+		const tree = new Set(pts.length ? [0] : [])
+		while (tree.size < pts.length) {
+			let best = Infinity
+			let next = -1
+			for (const i of tree) for (let j = 0; j < pts.length; j++) if (!tree.has(j)) {
+				const d = Math.abs(pts[i].x - pts[j].x) + Math.abs(pts[i].y - pts[j].y)
+				if (d < best) [best, next] = [d, j]
+			}
+			tree.add(next)
+			lengthMm += best
+		}
+		return { net, widthMm, lengthMm: Math.round(lengthMm), areaMm2: Math.round(lengthMm * (widthMm + 2 * ROUTE.clearanceMm)) }
+	})
+}
+
 // The smallest board outline (1 mm steps) the board generator places every part on, and no smaller than the routing
 // ceiling allows. Only placement, which takes milliseconds; routing is proven by building the chosen size. Cached:
 // it doesn't depend on the outline's own size, which is what changes most.
@@ -180,6 +217,22 @@ export function minimumBoard(s: ContractSnapshot): MinimumBoard | null {
 		return null
 	}
 	const packed = best.w * best.h
+	// Wide rails need their own lanes beside the parts (a listed reason for room: rail copper): the board grows by their
+	// area, every shape scaled alike so it keeps its proportions.
+	const corridors = railCorridors(s, atSize)
+	const corridorMm2 = corridors.reduce((a, c) => a + c.areaMm2, 0)
+	if (corridorMm2 > 0) {
+		const need = Math.max(packed, floorArea) + corridorMm2
+		const grow = (x: { widthMm: number; heightMm: number }) => {
+			const k = Math.sqrt(need / (x.widthMm * x.heightMm))
+			return { widthMm: Math.ceil(x.widthMm * k), heightMm: Math.ceil(x.heightMm * k) }
+		}
+		const grown = shapes.map(grow)
+		const g = grow({ widthMm: best.w, heightMm: best.h })
+		const result: MinimumBoard = { widthMm: g.widthMm, heightMm: g.heightMm, areaMm2: Math.round(need), courtyardMm2, limitedBy: "rail-copper", corridors, shapes: grown, ...(failed.length ? { failed } : {}) }
+		cache.set(key, result)
+		return result
+	}
 	const result: MinimumBoard =
 		packed >= floorArea
 			? { widthMm: best.w, heightMm: best.h, areaMm2: packed, courtyardMm2, limitedBy: "placement", shapes, ...(failed.length ? { failed } : {}) }
@@ -226,6 +279,12 @@ function limitShapes(s: ContractSnapshot, min: MinimumBoard, lim: { widthMm: num
 }
 const withinLimit = (x: { widthMm: number; heightMm: number }, lim: { widthMm: number; heightMm: number }) =>
 	(x.widthMm <= lim.widthMm && x.heightMm <= lim.heightMm) || (x.widthMm <= lim.heightMm && x.heightMm <= lim.widthMm)
+
+// The size a message names for the architect to take: compactOutline's (the board's own proportions, stable when taken
+// again), not minimumBoard's width × height, whose search is bounded by the current outline: chaining that drifted
+// toward a strip at the same area (the arm board, 26 Nov 2026: 62×47 → 71×54 → 81×47 → 91×41 → 102×37 → 103×37;
+// compactOutline: 62×47 → 71×54 → 71×54).
+export const sizeOf = (c: { widthMm: number; heightMm: number } | null, min: MinimumBoard) => `${c?.widthMm ?? min.widthMm}×${c?.heightMm ?? min.heightMm} mm`
 
 export function compactOutline(s: ContractSnapshot): { widthMm: number; heightMm: number } | null {
 	const o = s.values.outline
@@ -300,7 +359,7 @@ export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {})
 		if (blocked.size > 0 && parts.length === 0 && pads.length === 0) return v
 		v.push({
 			kind: "space-room",
-			message: `the ${o.widthMm}×${o.heightMm} mm board has no spot for ${[...parts, ...pads].join(", ") || "everything it carries"}${min ? `: the smallest board that holds everything is ${min.areaMm2} mm², e.g. ${min.widthMm}×${min.heightMm} mm` : ""}; make it that size, or move what crowds it`,
+			message: `the ${o.widthMm}×${o.heightMm} mm board has no spot for ${[...parts, ...pads].join(", ") || "everything it carries"}${min ? `: the smallest board that holds everything is ${min.areaMm2} mm², e.g. ${sizeOf(compactOutline(s), min)}` : ""}; make it that size, or move what crowds it`,
 			fields: ["outline"],
 			affects: ["architect"],
 		})
@@ -314,7 +373,7 @@ export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {})
 		if (slack > SLACK_LIMIT && !sizeReasonHolds(s, o.sizeReason))
 			v.push({
 				kind: "space-slack",
-				message: `the board is ${o.widthMm}×${o.heightMm} mm (${o.widthMm * o.heightMm} mm²), ${pct(slack)} over the smallest it can be (${base} mm², e.g. ${base === min.areaMm2 ? `${min.widthMm}×${min.heightMm} mm by placement` : "the smallest within the engineer's size limit"}): shrink it to within ${pct(SLACK_LIMIT)}, or record why in outline.sizeReason${limit ? `. The engineer's size (${o.sizeReason!.detail}) is a limit, not a reason for extra room: a board within it and compact meets it. Only an exact size (an existing housing, a chassis: requirements.size exact true) keeps it` : ""}`,
+				message: `the board is ${o.widthMm}×${o.heightMm} mm (${o.widthMm * o.heightMm} mm²), ${pct(slack)} over the smallest it can be (${base} mm², e.g. ${base === min.areaMm2 ? `${sizeOf(compactOutline(s), min)} by placement` : "the smallest within the engineer's size limit"}): shrink it to within ${pct(SLACK_LIMIT)}, or record why in outline.sizeReason${limit ? `. The engineer's size (${o.sizeReason!.detail}) is a limit, not a reason for extra room: a board within it and compact meets it. Only an exact size (an existing housing, a chassis: requirements.size exact true) keeps it` : ""}`,
 				fields: ["outline"],
 				affects: ["architect"],
 			})
@@ -379,7 +438,7 @@ export function spaceFactLines(s: ContractSnapshot): string[] {
 	if (!o || !min) return []
 	const slack = (o.widthMm * o.heightMm) / min.areaMm2 - 1
 	const lines = [
-		`Board: ${o.widthMm}×${o.heightMm} mm = ${o.widthMm * o.heightMm} mm²; the smallest it can be is ${min.areaMm2} mm² (${min.limitedBy === "placement" ? `every part placed at ${min.widthMm}×${min.heightMm} mm` : `courtyards ${min.courtyardMm2} mm² at the ${pct(MAX_DENSITY)} routing ceiling`}${failedNote(min)}); slack ${pct(slack)}, limit ${pct(SLACK_LIMIT)}${o.sizeReason ? `, over it for a recorded reason: ${o.sizeReason.kind} (${o.sizeReason.detail})` : ""}.`,
+		`Board: ${o.widthMm}×${o.heightMm} mm = ${o.widthMm * o.heightMm} mm²; the smallest it can be is ${min.areaMm2} mm² (${min.limitedBy === "placement" ? `every part placed at ${sizeOf(compactOutline(s), min)}` : min.limitedBy === "rail-copper" ? `the parts placed, plus the wide rails' lanes (${(min.corridors ?? []).map((c) => `${c.net} ${c.widthMm} mm × ${c.lengthMm} mm`).join(", ")}, IPC-2221 widths, lengths estimated)` : `courtyards ${min.courtyardMm2} mm² at the ${pct(MAX_DENSITY)} routing ceiling`}${failedNote(min)}); slack ${pct(slack)}, limit ${pct(SLACK_LIMIT)}${o.sizeReason ? `, over it for a recorded reason: ${o.sizeReason.kind} (${o.sizeReason.detail})` : ""}.`,
 	]
 	const c = caseOf(s)
 	const need = minCaseHeight(s, c)

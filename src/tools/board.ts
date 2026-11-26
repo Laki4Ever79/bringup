@@ -2,13 +2,14 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symli
 import { recordRoutingFailure, ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { boardParts, capPaths, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, unreachableCaps, type PlacementOptions } from "../codegen/circuit.ts"
+import { boardParts, capPaths, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, routedWidths, DEFAULT_TRACE_MM, unreachableCaps, wideTracks, type PlacementOptions } from "../codegen/circuit.ts"
 import { connectorClashes, pinPartsMissing, pinsWithoutMcu, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
 import { kicadCli, toolPath, type Env } from "./env.ts"
 import { FAB_RULES, runDrc } from "./drc.ts"
 import { freeroute } from "./freerouting.ts"
+import { narrowNets, netCopper } from "./track-widths.ts"
 import { nudgeVias } from "./via-edge.ts"
 import { alternatePinLabels, hideReferences, pinLabelsToFab, raiseSilkText } from "./silk.ts"
 import { run, tail } from "./exec.ts"
@@ -110,6 +111,9 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	// router can't finish: run 9's 58×22 rover routes there with its debug footprint kept, where tscircuit only built it
 	// without (7 layouts, 16 Nov 2026).
 	let freerouted = false
+	let freeroutingError: string | undefined
+	// A failure ending the search carries Freerouting's own reason too, when it ran and failed.
+	const withFreerouting = (e: unknown): unknown => (freeroutingError && e instanceof Error && !e.message.includes(freeroutingError) ? new Error(`${e.message}\nFreerouting's layout: ${freeroutingError}`) : e)
 	const viaFreerouting = async (placements: PlacementOptions[]) => {
 		if (freerouted) return
 		freerouted = true
@@ -129,6 +133,13 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			} catch (error) {
 				rmSync(out, { recursive: true, force: true })
 				lastError = error instanceof Error ? new Error(error.message.replaceAll(out, dir)) : error
+				// Its own log, layout-N-freerouting.log, and its reason kept for the final error: a later tscircuit layout's
+				// failure overwrote it (the arm board, 26 Nov 2026: Freerouting's result was lost behind a cap bound).
+				mkdirSync(dir, { recursive: true })
+				writeFileSync(join(dir, `layout-${tried}-freerouting.log`), String(error instanceof Error ? error.message : error))
+				// What it was given and what it routed, to see which connections it left (board.dsn, board.ses, its output).
+				for (const f of ["board.dsn", "board.ses", "freerouting.log"]) if (existsSync(join(work, f))) cpSync(join(work, f), join(dir, `layout-${tried}-${f}`))
+				freeroutingError = error instanceof Error ? error.message.replaceAll(out, dir) : String(error)
 			} finally {
 				rmSync(work, { recursive: true, force: true })
 			}
@@ -136,7 +147,9 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	}
 	// Freerouting first (BRINGUP_ROUTER=freerouting-first, measured against tscircuit-first on every board fixture): the
 	// first layout, placed by tscircuit and routed by Freerouting; clean, the search ends there.
-	if (routerOrder() === "freerouting-first" && fitting.length) await viaFreerouting([fitting[0]])
+	// A net wider than a track reaching a pin (a servo rail's 2.4 mm) routes at width only in Freerouting, which necks it
+	// down at the pins: such a board goes there first too.
+	if ((routerOrder() === "freerouting-first" || wideTracks(s).length) && fitting.length) await viaFreerouting([fitting[0]])
 	for (const placement of withPort ? [...fitting, ...fitting.map((p) => ({ ...p, debugPort: false as const }))] : fitting) {
 		if (best && best.errors === 0) break
 		// A couple of tscircuit layouts not clean (built with DRC errors, or failed): Freerouting routes the best one's
@@ -218,12 +231,12 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			// the drawn traces cause), no later layout with the debug footprint has built (run 9's 58×22: 9 layouts, the
 			// footprint left off in the end; the 60×21 rover alike).
 			if (placement.drawCaps && withPort && placement.debugPort !== false) { skipToNoPort = true; continue }
-			if (placement.drawCaps && TOO_LONG.test(String(error))) throw error
+			if (placement.drawCaps && TOO_LONG.test(String(error))) throw withFreerouting(error)
 			// Layout-sensitive failures try the next layout; the router's junction tangle too (the STM32 logger: 38×22
 			// fails, 38×21 routes, so a nudged LDO may clear it at the same size).
 			if (!layoutSensitive(String(error))) {
 				if (withPort && placement.debugPort !== false) { skipToNoPort = true; continue }
-				throw error
+				throw withFreerouting(error)
 			}
 		} finally {
 			rmSync(work, { recursive: true, force: true })
@@ -233,7 +246,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	if (!best && fitting.length) await viaFreerouting(withPort ? [fitting[0], { ...fitting[0], debugPort: false as const }] : [fitting[0]])
 	// Every layout built with DRC errors: Freerouting routes the best one's placement, kept when it has fewer.
 	else if (best && best.errors > 0) await viaFreerouting([best.placement])
-	if (!best) throw lastError
+	if (!best) throw withFreerouting(lastError)
 	// Moved into the run's own folder, with every path re-pointed there.
 	mkdirSync(dir, { recursive: true })
 	cpSync(best.board.dir, dir, { recursive: true })
@@ -270,7 +283,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	const circuitPath = join(work, "dist/board/circuit.json")
 	// Placed only: Freerouting routes it (src/tools/freerouting.ts).
 	if (placement.routingDisabled && build.code === 0 && existsSync(circuitPath)) {
-		const why = await freeroute(env.root, work, "dist/board/kicad/board.kicad_pcb")
+		const why = await freeroute(env.root, work, "dist/board/kicad/board.kicad_pcb", routedWidths(s, true))
 		if (why) {
 			writeFileSync(join(dir, "build.log"), build.stdout + "\n" + build.stderr)
 			throw new Error(`tscircuit build failed (exit 1):\nFreerouting: ${why}`)
@@ -307,6 +320,9 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 		drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro", usbRefs)
 	}
 	cpSync(work, dir, { recursive: true, filter: (src) => !src.endsWith("/node_modules") })
+	// Each rail routed at its width, not the fab's default (only Freerouting routes a wide net at width; track-widths.ts).
+	const wide = new Map([...routedWidths(s, !!placement.routingDisabled)].filter(([, w]) => w > DEFAULT_TRACE_MM))
+	const narrow = wide.size && existsSync(pcbFile) ? narrowNets(netCopper(readFileSync(pcbFile, "utf8"), wide)) : []
 
 	return {
 		revision,
@@ -321,6 +337,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 		parts: partsFromCircuitJson(elements),
 		placements: placementsFromCircuitJson(elements),
 		drc,
+		...(narrow.length ? { narrowNets: narrow } : {}),
 	}
 }
 

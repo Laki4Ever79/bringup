@@ -756,3 +756,17 @@ Seen on the run page of the recorded "make it 2 cm narrower" rover (out/rover-na
       board"). What a CNC adds that robots don't have: stepper drivers and their current, limit switches and homing, a
       spindle or laser output and its safety, a frame of rails and lead screws (drivetrain.ts parts), and work-area
       checks instead of a drive.
+- [x] **The named board size drifted to a strip.** lead-2 (26 Nov 2026): "fix it now rather than only logging it. Every
+      caller that sizes an outline should go through compactOutline, and a test should show that chaining it is stable."
+      Before: the space messages named minimumBoard's width × height, whose search is bounded by the current outline; taken
+      again and again the arm board went 62×47 → 71×54 → 81×47 → 91×41 → 102×37 → 103×37 at the same area. After: every
+      message names compactOutline's size (space.ts sizeOf; the space-room and space-slack violations, the space facts,
+      outlineRefusal, the report, scripts/board.ts): 62×47 → 71×54 → 71×54. test/space-chain.test.ts.
+- [ ] **4 layers when the rails' copper doesn't fit on 2** (arm task 6, option a). lead-2 (26 Nov 2026): "Make the layer
+      count a general decision, not an arm special case: the design asks for 4 layers only when its rails' corridors
+      don't fit on 2 (your +32 % test, written down as the reason in the report), and the cost difference shows in the
+      parts/order summary." Why, measured on the arm board (2 layers, rails routed at 0.2 mm then widened where clearance
+      allows): VSERVO1 at its 2.8 mm on 10/94 mm of track at 62×47 and 5/101 at 71×54; VSERVO2 at 2.5 mm on 21/100 and
+      5/78; VIN_BRICK at 1.8 mm on 17/155 and 53/169. The rails' lanes (space.ts railCorridors) cost +32 % area and bought
+      no copper. With the widths as Freerouting net classes instead, 20 connections stayed unrouted. Tell bringup-lead-3
+      when it lands (their CNC: spindle ~4.2 A, stepper VM).

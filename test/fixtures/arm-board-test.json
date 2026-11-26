@@ -1,0 +1,489 @@
+{
+ "revision": 27,
+ "values": {
+  "requirements": {
+   "summary": "Desktop robot arm (task 6 test board): ESP32-S3, PCA9685, six hobby servos on two 6 V rails from a 24 V brick, USB-C for programming.",
+   "peripherals": [
+    "servo driver",
+    "6 servo outputs"
+   ],
+   "batteryLifeDays": null,
+   "size": {
+    "widthMm": 290,
+    "heightMm": 290,
+    "exact": false
+   },
+   "enclosure": "none"
+  },
+  "outline": {
+   "widthMm": 71,
+   "heightMm": 54,
+   "thicknessMm": 1.6
+  },
+  "connectors": [
+   {
+    "ref": "J1",
+    "kind": "usb-c",
+    "edge": "left",
+    "offsetMm": 32.5,
+    "widthMm": 9,
+    "heightMm": 3.2
+   }
+  ],
+  "rails": [
+   {
+    "name": "VBUS",
+    "voltageV": 5,
+    "regulatorMaxMa": 500,
+    "loadMa": 500
+   },
+   {
+    "name": "3V3",
+    "voltageV": 3.3,
+    "regulatorMaxMa": 600,
+    "loadMa": 250
+   },
+   {
+    "name": "VIN_BRICK",
+    "voltageV": 24,
+    "regulatorMaxMa": 3500,
+    "loadMa": 3500
+   }
+  ],
+  "parts": [
+   {
+    "ref": "U1",
+    "role": "mcu",
+    "mpn": "ESP32-S3-MINI-1",
+    "lcsc": "C2913206",
+    "footprint": "esp32_s3_mini_1",
+    "pins": [
+     "GPIO0",
+     "GPIO1",
+     "GPIO2",
+     "GPIO3",
+     "GPIO4",
+     "GPIO5",
+     "GPIO6",
+     "GPIO7",
+     "GPIO8",
+     "GPIO9",
+     "GPIO10",
+     "GPIO11",
+     "GPIO12",
+     "GPIO13",
+     "GPIO14",
+     "GPIO15",
+     "GPIO16",
+     "GPIO17",
+     "GPIO18",
+     "GPIO19",
+     "GPIO20",
+     "GPIO21",
+     "GPIO26",
+     "GPIO33",
+     "GPIO34",
+     "GPIO35",
+     "GPIO36",
+     "GPIO37",
+     "GPIO38",
+     "GPIO39",
+     "GPIO40",
+     "GPIO41",
+     "GPIO42",
+     "GPIO43",
+     "GPIO44",
+     "GPIO45",
+     "GPIO46",
+     "GPIO47",
+     "GPIO48",
+     "EN",
+     "3V3",
+     "GND"
+    ]
+   },
+   {
+    "role": "ldo",
+    "mpn": "AP2112K-3.3TRG1",
+    "lcsc": "C51118",
+    "footprint": "sot23_5",
+    "pins": [
+     "VIN",
+     "GND",
+     "EN",
+     "NC",
+     "VOUT"
+    ],
+    "ref": "U2"
+   },
+   {
+    "role": "pwm-driver",
+    "mpn": "PCA9685PW,118",
+    "lcsc": "C2678753",
+    "footprint": "tssop28_w6.4mm_p0.65mm",
+    "pins": [
+     "A0",
+     "A1",
+     "A2",
+     "A3",
+     "A4",
+     "LED0",
+     "LED1",
+     "LED2",
+     "LED3",
+     "LED4",
+     "LED5",
+     "LED6",
+     "LED7",
+     "VSS",
+     "LED8",
+     "LED9",
+     "LED10",
+     "LED11",
+     "LED12",
+     "LED13",
+     "LED14",
+     "LED15",
+     "OE",
+     "A5",
+     "EXTCLK",
+     "SCL",
+     "SDA",
+     "VDD"
+    ],
+    "ref": "U6"
+   },
+   {
+    "role": "usb-c",
+    "mpn": "TYPE-C-31-M-12",
+    "lcsc": "C165948",
+    "footprint": "usbcmidmount",
+    "pins": [
+     "VBUS",
+     "GND",
+     "CC1",
+     "CC2",
+     "DP",
+     "DN"
+    ],
+    "ref": "J1"
+   },
+   {
+    "ref": "D1",
+    "role": "led",
+    "mpn": "KT-0603R",
+    "lcsc": "C2286",
+    "footprint": "0603",
+    "pins": [
+     "A",
+     "K"
+    ],
+    "reason": "Brief: status LED that shows the robot is running (driven by STATUS_LED)."
+   },
+   {
+    "role": "servo",
+    "mpn": "PZ254V-11-03P",
+    "lcsc": "C492402",
+    "footprint": "pinrow3",
+    "pins": [
+     "SIG",
+     "V5",
+     "GND"
+    ],
+    "ref": "JV1",
+    "reason": "the base-yaw servo's plug, on U6 channel 0: signal, its rail, ground"
+   },
+   {
+    "role": "servo",
+    "mpn": "PZ254V-11-03P",
+    "lcsc": "C492402",
+    "footprint": "pinrow3",
+    "pins": [
+     "SIG",
+     "V5",
+     "GND"
+    ],
+    "ref": "JV2",
+    "reason": "the shoulder servo's plug, on U6 channel 1: signal, its rail, ground"
+   },
+   {
+    "role": "servo",
+    "mpn": "PZ254V-11-03P",
+    "lcsc": "C492402",
+    "footprint": "pinrow3",
+    "pins": [
+     "SIG",
+     "V5",
+     "GND"
+    ],
+    "ref": "JV3",
+    "reason": "the elbow servo's plug, on U6 channel 2: signal, its rail, ground"
+   },
+   {
+    "role": "servo",
+    "mpn": "PZ254V-11-03P",
+    "lcsc": "C492402",
+    "footprint": "pinrow3",
+    "pins": [
+     "SIG",
+     "V5",
+     "GND"
+    ],
+    "ref": "JV4",
+    "reason": "the wrist-pitch servo's plug, on U6 channel 3: signal, its rail, ground"
+   },
+   {
+    "role": "servo",
+    "mpn": "PZ254V-11-03P",
+    "lcsc": "C492402",
+    "footprint": "pinrow3",
+    "pins": [
+     "SIG",
+     "V5",
+     "GND"
+    ],
+    "ref": "JV5",
+    "reason": "the wrist-roll servo's plug, on U6 channel 4: signal, its rail, ground"
+   },
+   {
+    "role": "servo",
+    "mpn": "PZ254V-11-03P",
+    "lcsc": "C492402",
+    "footprint": "pinrow3",
+    "pins": [
+     "SIG",
+     "V5",
+     "GND"
+    ],
+    "ref": "JV6",
+    "reason": "the gripper servo's plug, on U6 channel 5: signal, its rail, ground"
+   },
+   {
+    "role": "servo-supply",
+    "mpn": "SY8368AQQC",
+    "lcsc": "C207642",
+    "footprint": "qfn12_sy8368a",
+    "pins": [
+     "GND",
+     "LX",
+     "GND_2",
+     "IN",
+     "IN_2",
+     "IN_3",
+     "BS",
+     "VCC_INT",
+     "FB",
+     "ILMT",
+     "PG",
+     "EN"
+    ],
+    "ref": "U7",
+    "nets": {
+     "IN": "VIN_BRICK",
+     "IN_2": "VIN_BRICK",
+     "IN_3": "VIN_BRICK"
+    },
+    "reason": "servo rail VSERVO1 at 6 V from the 24 V brick"
+   },
+   {
+    "role": "servo-supply",
+    "mpn": "SY8368AQQC",
+    "lcsc": "C207642",
+    "footprint": "qfn12_sy8368a",
+    "pins": [
+     "GND",
+     "LX",
+     "GND_2",
+     "IN",
+     "IN_2",
+     "IN_3",
+     "BS",
+     "VCC_INT",
+     "FB",
+     "ILMT",
+     "PG",
+     "EN"
+    ],
+    "ref": "U8",
+    "nets": {
+     "IN": "VIN_BRICK",
+     "IN_2": "VIN_BRICK",
+     "IN_3": "VIN_BRICK"
+    },
+    "reason": "servo rail VSERVO2 at 6 V from the 24 V brick"
+   },
+   {
+    "role": "connector",
+    "mpn": "DC-091-A250",
+    "lcsc": "C720588",
+    "footprint": "dc091a250",
+    "pins": [
+     "VIN",
+     "SW",
+     "GND",
+     "GND_2",
+     "GND_3",
+     "GND_4"
+    ],
+    "ref": "J10",
+    "nets": {
+     "VIN": "VIN_BRICK"
+    },
+    "reason": "the arm's 24 V brick input (5 A)"
+   },
+   {
+    "role": "buck",
+    "mpn": "AP63205WU-7",
+    "lcsc": "C2071056",
+    "footprint": "sot23_6",
+    "pins": [
+     "FB",
+     "EN",
+     "VIN",
+     "GND",
+     "SW",
+     "BST"
+    ],
+    "ref": "U9",
+    "nets": {
+     "VIN": "VIN_BRICK"
+    }
+   },
+   {
+    "role": "diode",
+    "mpn": "B5819W SL",
+    "lcsc": "C8598",
+    "footprint": "sod123",
+    "pins": [
+     "K",
+     "A"
+    ],
+    "ref": "D10"
+   },
+   {
+    "role": "diode",
+    "mpn": "B5819W SL",
+    "lcsc": "C8598",
+    "footprint": "sod123",
+    "pins": [
+     "K",
+     "A"
+    ],
+    "ref": "D11"
+   }
+  ],
+  "pins": [
+   {
+    "signal": "STATUS_LED",
+    "gpio": 10,
+    "partRef": "D1",
+    "partPin": "A"
+   },
+   {
+    "signal": "I2C_SDA",
+    "gpio": 6,
+    "partRef": "U6",
+    "partPin": "SDA"
+   },
+   {
+    "signal": "I2C_SCL",
+    "gpio": 7,
+    "partRef": "U6",
+    "partPin": "SCL"
+   }
+  ],
+  "arm": {
+   "base": {
+    "plateMm": [
+     200,
+     160
+    ],
+    "thicknessMm": 5,
+    "shoulderZMm": 60,
+    "holdDown": "mass",
+    "ballastG": 300
+   },
+   "joints": [
+    {
+     "name": "base-yaw",
+     "servo": "MG996R",
+     "channel": 0,
+     "linkMm": 0,
+     "minDeg": -90,
+     "maxDeg": 90
+    },
+    {
+     "name": "shoulder",
+     "servo": "MG996R",
+     "channel": 1,
+     "linkMm": 120,
+     "minDeg": 0,
+     "maxDeg": 120
+    },
+    {
+     "name": "elbow",
+     "servo": "MG996R",
+     "channel": 2,
+     "linkMm": 110,
+     "minDeg": -120,
+     "maxDeg": 0
+    },
+    {
+     "name": "wrist-pitch",
+     "servo": "SG90",
+     "channel": 3,
+     "linkMm": 20,
+     "minDeg": -90,
+     "maxDeg": 90
+    },
+    {
+     "name": "wrist-roll",
+     "servo": "SG90",
+     "channel": 4,
+     "linkMm": 30,
+     "minDeg": -90,
+     "maxDeg": 90
+    }
+   ],
+   "gripper": {
+    "servo": "SG90",
+    "channel": 5,
+    "openMm": 40,
+    "fingerMm": 30
+   },
+   "railV": 6,
+   "input": {
+    "kind": "dc-brick",
+    "volts": 19.5,
+    "amps": 4.62
+   },
+   "boards": [
+    {
+     "name": "main",
+     "at": {
+      "xMm": -60,
+      "yMm": 0
+     },
+     "rotDeg": 0
+    }
+   ]
+  }
+ },
+ "versions": {
+  "requirements": 1,
+  "outline": 4,
+  "connectors": 3,
+  "rails": 5,
+  "parts": 8,
+  "pins": 3,
+  "behavior": 0,
+  "model": 0,
+  "test": 0,
+  "case": 0,
+  "connectivity": 0,
+  "links": 0,
+  "motion": 2,
+  "mechanics": 3,
+  "assembly": 0
+ }
+}
