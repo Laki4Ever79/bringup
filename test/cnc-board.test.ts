@@ -106,8 +106,8 @@ test("the spindle switch (gap 6): PA8 PWM into a 5 V AHCT buffer, its gate resis
 	// The drain, the spindle's minus lead and the flyback's anode on one node; the cathode on the motor rail.
 	assert.deepEqual(d.a, { net: "VMOT" })
 	assert.deepEqual(d.b, { net: "SPINDLE_N" })
-	for (const e of ["Q1.D", "Q1.D_4", "J3.M-"]) assert.ok(nets.get("SPINDLE_N")!.includes(e), e)
-	assert.ok(nets.get("VMOT")!.includes("J3.M+"), "the spindle's plus lead on the motor rail")
+	for (const e of ["Q1.D", "Q1.D_4", "J3.NEG"]) assert.ok(nets.get("SPINDLE_N")!.includes(e), e)
+	assert.ok(nets.get("VMOT")!.includes("J3.POS"), "the spindle's plus lead on the motor rail")
 	for (const e of ["Q1.S", "Q1.S_3"]) assert.ok(nets.get("GND")!.includes(e), e)
 	// A typo'd @-net still reports (part-net-unknown): every @ net here has another end.
 	assert.deepEqual(checkConsistency(s, {}).filter((v) => v.kind === "part-net-unknown"), [])

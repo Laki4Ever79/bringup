@@ -107,3 +107,12 @@ test("the firmware fact names the wake button: a BUTTON pin on GPIO0..5 wakes it
 test("the agents are told how the firmware recognises a wake button: signal BUTTON on GPIO0..5", () => {
 	assert.match(CONTRACT_SHAPES, /signal BUTTON on one of GPIO0\.\.5/)
 })
+
+test("every catalog pin name is a plain identifier: tscircuit can address it as a port", async () => {
+	// The spindle terminal's "M+"/"M-" broke the selector ".J3 > .M+": tscircuit gave J3 no ports and every CNC board build
+	// failed, 2 and 4 layers alike (CNC mock 12, 27 Nov 2026).
+	const { readFileSync } = await import("node:fs")
+	const parts = JSON.parse(readFileSync(new URL("../catalog/parts.json", import.meta.url), "utf8")) as { mpn: string; pins?: string[] }[]
+	const bad = parts.flatMap((p) => (p.pins ?? []).filter((x) => !/^[A-Za-z0-9_]+$/.test(x)).map((x) => `${p.mpn}: ${x}`))
+	assert.deepEqual(bad, [])
+})

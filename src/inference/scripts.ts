@@ -199,7 +199,7 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		// low-side MOSFET between the spindle's minus lead and ground, and the spindle's screw terminal on the motor rail.
 		catalogPart("SN74AHCT1G125DBVR", "U8"),
 		catalogPart("AO4468", "Q1", { S: "GND", S_2: "GND", S_3: "GND", G: "@SPINDLE_GATE", D: "@SPINDLE_N", D_2: "@SPINDLE_N", D_3: "@SPINDLE_N", D_4: "@SPINDLE_N" }),
-		catalogPart("KF128R-5.08-2P", "J3", { "M+": "VMOT", "M-": "@SPINDLE_N" }),
+		catalogPart("KF128R-5.08-2P", "J3", { POS: "VMOT", NEG: "@SPINDLE_N" }),
 	],
 }
 const isCnc = () => !!state().contract.get("cncTargets") || CNC_BRIEF.test(state().contract.get("requirements")?.summary ?? "")
