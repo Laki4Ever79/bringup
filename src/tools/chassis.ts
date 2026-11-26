@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process"
+import { explainToolError } from "./explain.ts"
 import { countsPerRev, quadratureWired } from "../mechanics/firmware.ts"
 import { ESTOP_HEAD_CLEARANCE_MM, ESTOP_PANEL_MM, estopPart } from "../mechanics/safety.ts"
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from "node:fs"
@@ -281,7 +282,7 @@ export async function buildChassis(python: string, root: string, dir: string, s:
 		await exec(python, [join(root, "py", "chassis.py"), specPath, dir], { timeout: 300_000 })
 	} catch (e) {
 		const stderr = String((e as { stderr?: string }).stderr ?? e).trim().split("\n").filter(Boolean).at(-1) ?? "the chassis generator failed"
-		return { ok: false, reason: stderr }
+		return { ok: false, reason: explainToolError(String((e as { stderr?: string }).stderr ?? e)) ?? stderr }
 	}
 	// The robot's ROS 2 workspace beside its chassis (docs/ros.md): its own package from the same spec, and the shared
 	// ros2_control hardware that speaks to its firmware. Best effort: a ROS package that can't be written never fails

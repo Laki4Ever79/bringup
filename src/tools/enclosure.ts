@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process"
+import { explainToolError } from "./explain.ts"
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -86,7 +87,7 @@ export async function buildEnclosure(python: string, root: string, dir: string, 
 		const err = e as { stderr?: string; killed?: boolean; message: string }
 		const tail = (err.stderr ?? "").trimEnd().split("\n").slice(-STDERR_TAIL_LINES).join("\n")
 		const why = err.killed ? `timed out after ${TIMEOUT_MS / 1000} s` : "failed"
-		throw new Error(`enclosure build ${why}: ${tail || err.message}`)
+		throw new Error(`enclosure build ${why}: ${explainToolError(err.stderr ?? "") ?? (tail || err.message)}`)
 	}
 	const read = async <T>(name: string) => JSON.parse(await readFile(join(dir, name), "utf8")) as T
 	// The script measures in the case view's frame; back to the contract's (positions, and offsets along an edge).

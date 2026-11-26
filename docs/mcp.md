@@ -41,8 +41,21 @@ What a run builds depends on the machine (`hardware`, `auto` by default):
   The first run's 500 s built the image before its trim, with KiCad's image already on the machine (its pull is extra).
   Set `BRINGUP_TOOLCHAIN=local` to never use the image.
 - **Neither the tools nor Docker:** the agents design the contract (parts, pins, outline, mechanics) and every check
-  runs on it. The board, case, chassis and firmware builds are stubbed, so the design settles in seconds. The start
-  result names what is missing (`hardware: "stubbed: this machine lacks … and Docker"`).
+  runs on it; what the machine has is built and the rest is stubbed. The start result names, per domain, what one
+  command would add and how big it is. Install a domain once, into `~/.bringup`:
+
+  ```bash
+  npx -y bringup-mcp setup board      # tscircuit and bun: about 923 MB, ~30 s. Routed boards and their pictures
+  npx -y bringup-mcp setup case       # Python and build123d: about 945 MB, ~75 s. Cases, chassis, printed parts
+  npx -y bringup-mcp setup firmware   # PlatformIO: about 125 MB, then the chip's compiler on the first build (~1 GB)
+  npx -y bringup-mcp setup            # lists them, installs nothing
+  ```
+
+  Or let the client install it: `start_design` with `installTools: true`, which a client should only pass after its
+  user agreed to the download. Measured on a clean Node 24 container with no Docker (26 Nov 2026): after `setup board`
+  the logger brief settled in 45 s with a routed board, a 3D `board.png` and the PCB and schematic as SVGs (drawn by
+  tscircuit; KiCad isn't needed for them). The fab files still need KiCad. The case's CAD kernel needs the system's
+  OpenGL library (`sudo apt install libgl1` on a minimal Linux; a desktop has it).
 - **The full toolchain** (`git clone`, then `npm run setup`; see the [README](../README.md)): real boards, cases,
   chassis, firmware, simulation and ROS. From a clone, register the server with
   `claude mcp add bringup -- node "$PWD/bin/bringup-mcp.js"`. Local tools always come first.
@@ -50,6 +63,9 @@ What a run builds depends on the machine (`hardware`, `auto` by default):
   run ends unsettled, and `run_summary` names the missing tools. `hardware: "stub"` stubs them even where they are installed.
 
 Runs go to `~/.bringup/runs`, or to `out/` in a git clone. Set `BRINGUP_OUT` to choose another folder.
+
+Connect the machine to Bringup Studio, and every run the MCP starts streams there ([docs/studio.md](studio.md)):
+`npx -y bringup-mcp login --url https://<studio address>`; `npx -y bringup-mcp logout` disconnects it.
 
 ## Safe by default
 

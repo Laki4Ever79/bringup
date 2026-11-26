@@ -1,7 +1,7 @@
 {
 	"name": "bringup-mcp",
 	"mcpName": "io.github.Laki4Ever79/bringup",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"description": "Bringup: concurrent agents design a whole device or robot (board, printed parts, firmware, ROS) against one checked contract. MCP server: describe a device, change one thing, read the checks.",
 	"license": "Apache-2.0",
 	"type": "module",

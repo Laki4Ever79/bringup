@@ -33,7 +33,7 @@ import { createActivityParticipant } from "./agents/activity.ts"
 import { APPROVAL_TIMEOUT_MS, BringupState, emit, join as joinRuntime, sendMessage, startRuntime } from "./runtime.ts"
 import { makeEvent } from "./events.ts"
 import { detectEnvironment, type Env } from "./tools/env.ts"
-import { createStubBuilders } from "./tools/stubs.ts"
+import { createStubBuilders, missingBuilders } from "./tools/stubs.ts"
 import { createBench, type Bench, type BenchOptions } from "./agents/bench.ts"
 import type { Bridge, BridgeHello } from "./tools/bench-bridge.ts"
 import { appendUsage } from "./inference/usage.ts"
@@ -54,6 +54,9 @@ export interface RunOptions {
 	noHardware?: boolean
 	// Skip the scorecard course (lap and go-to) a gyro-less encoder rover drives after each settle (--no-scorecard).
 	noScorecard?: boolean
+	// Build what this machine's tools allow and derive the rest from the contract (a fresh install with only the board
+	// tools still gets a real board: setup streamlining, 26 Nov 2026).
+	stubMissing?: boolean
 	// The LLM brief reviewer gates settling (default on); maxReviewRounds is how many fix rounds it may ask for.
 	review?: boolean
 	// Every held change also needs the human engineer (votes arrive in <outDir>/decisions.jsonl).
@@ -221,7 +224,9 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		bench = createBench({ ...(await opts.bench.open()), ...opts.bench.timings })
 		joinRuntime(bench)
 	}
-	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env), createTestkitBuilder(env), createChassisBuilder(env), createDriveBuilder(env), createArmBuilder(env), createArmSimBuilder(env)]
+	const real = { board: () => createBoardBuilder(env), enclosure: () => createEnclosureBuilder(env), firmware: () => createFirmwareBuilder(env), testkit: () => createTestkitBuilder(env), chassis: () => createChassisBuilder(env), drive: () => createDriveBuilder(env), arm: () => createArmBuilder(env), armsim: () => createArmSimBuilder(env) }
+	const stubbed = opts.noHardware ? Object.keys(real) : opts.stubMissing ? missingBuilders(env) : []
+	const builders = [...Object.entries(real).filter(([k]) => !stubbed.includes(k)).map(([, make]) => make()), ...(stubbed.length ? createStubBuilders(undefined, stubbed) : [])]
 	for (const b of builders) joinRuntime(b)
 	// A run that stays up syncs edits to its generated files back into the design (runner/file-sync.ts).
 	const files = opts.stay || opts.bench ? createFileSync({ outDir: opts.outDir }) : null

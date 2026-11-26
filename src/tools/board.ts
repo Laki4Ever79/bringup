@@ -290,12 +290,31 @@ export function layoutAttempts(s: ContractSnapshot, attempts: PlacementOptions[]
 	})
 }
 
+// tscircuit's own pictures of a built board (tsci snapshot): board.png (3D), board-pcb.svg and board-schematic.svg in
+// the work dir. Best effort: a board without pictures is still a board.
+export const SNAPSHOT_FILES = { "board.circuit-3d.snap.png": "board.png", "board.circuit-pcb.snap.svg": "board-pcb.svg", "board.circuit-schematic.snap.svg": "board-schematic.svg" } as const
+export async function snapshotPictures(env: Env, work: string): Promise<string[]> {
+	if (!env.tsci) return []
+	const r = await run(env.tsci, ["snapshot", "board.circuit.tsx", "--update", "--3d"], { cwd: work, timeoutMs: 180_000, env: { PATH: toolPath(env) } })
+	if (r.code !== 0) return []
+	const out: string[] = []
+	for (const [from, to] of Object.entries(SNAPSHOT_FILES)) {
+		const f = join(work, "__snapshots__", from)
+		if (existsSync(f)) {
+			cpSync(f, join(work, to))
+			out.push(to)
+		}
+	}
+	rmSync(join(work, "__snapshots__"), { recursive: true, force: true })
+	return out
+}
+
 async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: number, dir: string, placement: PlacementOptions): Promise<BoardArtifact> {
 	writeFileSync(join(work, "board.circuit.tsx"), circuitFromContract(s, placement))
 	// tscircuit resolves react and its own packages from the work dir: linked to the repo's pinned install
 	// (tools/node/node_modules), so a build needs no network and uses the versions the repo tested (a mock Eurobot's board
 	// failed overnight on "DNSResolveFailed downloading package manifest react", 18 Nov 2026).
-	const modules = join(env.root, "tools", "node", "node_modules")
+	const modules = env.nodeModules ?? join(env.root, "tools", "node", "node_modules")
 	if (existsSync(modules) && !existsSync(join(work, "node_modules"))) symlinkSync(modules, join(work, "node_modules"), "dir")
 	const build = await run(env.tsci!, ["build", "board.circuit.tsx", "--kicad-project"], { cwd: work, timeoutMs: 300_000, env: { PATH: toolPath(env) } })
 	const circuitPath = join(work, "dist/board/circuit.json")
@@ -324,6 +343,9 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 
 	const step = await kicadCli(env, ["pcb", "export", "step", "-o", "board.step", pcbRel], work, 180_000)
 	const render = await kicadCli(env, ["pcb", "render", "-o", "board.png", "--side", "top", pcbRel], work, 180_000)
+	// Without KiCad (an npx install has no Docker image), tscircuit draws the board itself: a 3D view as board.png, the
+	// PCB and the schematic as SVGs (setup streamlining, 26 Nov 2026: the free tier got no picture of its board).
+	if (!(render.code === 0 && existsSync(join(work, "board.png")))) await snapshotPictures(env, work)
 	const usbRefs = usbRefsOf(s)
 	let drc = await runDrc(env, work, pcbRel, "dist/board/kicad/board.kicad_pro", usbRefs)
 	// A reference designator on another outline, the edge or a pad: hidden on the silkscreen, then checked again (silk.ts).
@@ -347,7 +369,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 		dir,
 		pcbPath: join(dir, pcbRel),
 		stepPath: step.code === 0 && existsSync(join(dir, "board.step")) ? join(dir, "board.step") : null,
-		renderPath: render.code === 0 && existsSync(join(dir, "board.png")) ? join(dir, "board.png") : null,
+		renderPath: existsSync(join(dir, "board.png")) ? join(dir, "board.png") : null,
 		widthMm: pcb?.width ?? 0,
 		heightMm: pcb?.height ?? 0,
 		nets: netsFromCircuitJson(elements),

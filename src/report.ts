@@ -44,10 +44,11 @@ function counts(tracePath: string): Record<string, number> {
 }
 
 const INSTALL = {
-	tsci: { tool: "tscircuit", install: "npm i --prefix tools/node tscircuit bun" },
-	kicad: { tool: "KiCad 10", install: "docker pull kicad/kicad:10.0" },
-	python: { tool: "python with build123d", install: "uv venv .venv && uv pip install platformio build123d" },
-	pio: { tool: "PlatformIO", install: "uv venv .venv && uv pip install platformio build123d" },
+	// The pinned installs (src/setup/domains.ts): one command per domain from npm or npx, or npm run setup in a clone.
+	tsci: { tool: "tscircuit", install: "npx bringup-mcp setup board (or npm run setup in a clone)" },
+	kicad: { tool: "KiCad 10", install: "docker pull kicad/kicad:10.0 (optional: the board's pictures come from tscircuit without it)" },
+	python: { tool: "python with build123d", install: "npx bringup-mcp setup case (or npm run setup in a clone)" },
+	pio: { tool: "PlatformIO", install: "npx bringup-mcp setup firmware (or npm run setup in a clone)" },
 } as const
 
 // The hardware tools this machine lacks, in the order the README installs them.

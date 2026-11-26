@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { readFile, realpath, stat } from "node:fs/promises"
 import { join, sep } from "node:path"
 import { fileURLToPath } from "node:url"
+import { describeDomain, installDomain, type Domain } from "../setup/domains.ts"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
 import { dockerUsable } from "../tools/toolchain.ts"
@@ -25,6 +26,8 @@ export interface BringupMcpDeps {
 	// Whether Docker works here without sudo (src/tools/toolchain.ts dockerUsable by default): then a machine without the
 	// tools builds in the toolchain image instead of stubbing.
 	docker?: () => Promise<boolean>
+	// Installs one setup domain into the tools home (src/setup/domains.ts installDomain by default), for installTools.
+	install?: (domain: Domain) => Promise<{ installed: boolean; note: string }>
 }
 
 // hardware "auto": the real builds where the toolchain is (tscircuit, Python with build123d, PlatformIO, KiCad); where it
@@ -34,6 +37,11 @@ export interface BringupMcpDeps {
 const HARDWARE = z.enum(["auto", "build", "stub"]).optional().describe('"build": board, case, chassis and firmware built for real (needs the toolchain: npm run setup); "stub": the contract and its checks only, builds stubbed; "auto" (default): build when the toolchain is there, else build in Docker (Bringup\'s toolchain image, built on the first run), else stub')
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url))
+
+// The setup domains (src/setup/domains.ts) a machine lacks, from its detected tools.
+function domainsLacking(env: { tsci: string | null; python: string | null; pio: string | null }): Domain[] {
+	return [...(!env.tsci ? ["board" as const] : []), ...(!env.python ? ["case" as const] : []), ...(!env.pio ? ["firmware" as const] : [])]
+}
 
 // A real-model run spends money or a subscription's quota, so it needs an explicit yes and a provider; the default is
 // the scripted mock (free, no key). The user's rule: no paid run without an explicit flag.
@@ -51,6 +59,8 @@ const refText = (r: { ref: string; label: string; madeBy: string }) => `[${r.ref
 
 type RunState =
 	| { status: "running" }
+	// Installing the missing tools first (start_design installTools); the run starts after.
+	| { status: "installing"; installing: string[] }
 	| { status: "settled" | "unsettled" }
 	| { status: "failed"; error: string }
 
@@ -156,8 +166,12 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 		// The toolchain image (docker/toolchain/Dockerfile) stands in for what is missing: the run builds it first.
 		if (await (deps.docker ?? dockerUsable)())
 			return { flags: ["--docker-toolchain"], said: `built in Docker${hardware === "build" ? " (asked)" : ""}: this machine lacks ${missing.join(", ")}, so they run in Bringup's toolchain image; the first run builds it and pulls KiCad's (several minutes and a few GB, once)` }
-		if (hardware === "build") return { flags: [], said: `built (asked), but this machine lacks ${missing.join(", ")} and Docker: the run will end unsettled (npm run setup in a clone installs them)` }
-		return { flags: ["--no-hardware"], said: `stubbed: this machine lacks ${missing.join(", ")} and Docker (install Docker to build in Bringup's toolchain image, or npm run setup in a clone)` }
+		// Without Docker: build what is installed, stub the rest, and say per domain what one command would add and what it
+		// downloads, so the calling agent can ask its user (an agent never says yes to ~1 GB on a person's behalf).
+		const lacking = domainsLacking(env)
+		const offer = lacking.length ? ` To build ${lacking.length > 1 ? "them" : "it"} for real, ask your user first, then either run \`npx bringup-mcp setup ${lacking.join(" ")}\` or start the design again with installTools: true: ${lacking.map(describeDomain).join("; ")}.` : ""
+		if (hardware === "build") return { flags: ["--stub-missing"], said: `built where the tools are (asked), stubbed where this machine lacks ${missing.join(", ")} (no Docker).${offer}` }
+		return { flags: ["--stub-missing"], said: `${lacking.length === 3 ? "stubbed" : `partly stubbed (${lacking.join(", ")})`}: this machine lacks ${missing.join(", ")} and Docker.${offer}` }
 	}
 	// Not awaited: a run goes on in its own process while the client polls.
 	function track(runId: string, run: ReturnType<BringupMcpDeps["launch"]>) {
@@ -191,9 +205,10 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 				realModels: z.boolean().optional().describe("Required with mock: false. Real models cost money or quota; the server refuses without it."),
 				stay: z.boolean().optional().describe("Keep the run up after it settles so request_change can reach it; end it with stop_design. Default false."),
 				hardware: HARDWARE,
+				installTools: z.boolean().optional().describe("Install the missing tools first (into ~/.bringup), only after the user said yes: start_design without it says per domain what would be downloaded and how big (about 1 GB each for board and case). Never pass it on the user's behalf without asking. The run starts when the install is done; design_status says installing meanwhile."),
 			},
 		},
-		async ({ brief, mock, realModels, stay, hardware }) => {
+		async ({ brief, mock, realModels, stay, hardware, installTools }) => {
 			const refused = paidRunRefusal(mock, realModels, deps.env ?? process.env)
 			if (refused) return fail(refused)
 			const runId = newRunId()
@@ -203,6 +218,27 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			writeFileSync(briefPath, brief.endsWith("\n") ? brief : brief + "\n")
 			runs.set(runId, { status: "running" })
 			if (stay) stays.add(runId)
+			// The missing tools, installed first on the user's yes (installTools): the run starts after, so the call returns now.
+			const lacking = installTools && hardware !== "stub" ? domainsLacking(await (deps.detect ?? (() => detectEnvironment(root)))()) : []
+			if (lacking.length) {
+				runs.set(runId, { status: "installing", installing: lacking })
+				void (async () => {
+					const notes: string[] = []
+					for (const d of lacking) {
+						try {
+							notes.push(`${d}: ${(await (deps.install ?? ((x: Domain) => installDomain(x, { log: () => {} })))(d)).note}`)
+						} catch (e) {
+							notes.push(`${d}: not installed (${(e as Error).message})`)
+						}
+					}
+					writeFileSync(join(outDir, "setup.log"), notes.join("\n") + "\n")
+					const hw = await hardwareFlags(hardware)
+					const extraArgs = [...(stay ? ["--stay"] : []), ...hw.flags]
+					runs.set(runId, { status: "running" })
+					track(runId, deps.launch({ briefPath, mock: mock ?? true, outDir, ...(extraArgs.length ? { extraArgs } : {}) }))
+				})()
+				return ok({ runId, outDir, mock: mock ?? true, stay: Boolean(stay), hardware: `installing ${lacking.map(describeDomain).join("; ")}; the run starts when that's done (design_status says installing until then)` })
+			}
 			// Not awaited: the run goes on in its own process while the client polls.
 			const hw = await hardwareFlags(hardware)
 			const extraArgs = [...(stay ? ["--stay"] : []), ...hw.flags]

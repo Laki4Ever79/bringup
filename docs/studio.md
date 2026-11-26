@@ -7,12 +7,13 @@ free and on your machine; Studio only shows what your machine sends it.
 ## Connect this machine
 
 ```bash
-npm run bringup -- login --url https://<studio address>     # or set BRINGUP_STUDIO_URL
+npx -y bringup-mcp login --url https://<studio address>     # from npm; or set BRINGUP_STUDIO_URL
+npm run bringup -- login --url https://<studio address>     # the same from a clone
 ```
 
 It prints a code and opens the approval page in your browser; approve it while signed in to Studio. The token is saved
-in `~/.bringup/studio.json` (readable only by you, mode 0600) and is never printed. `npm run bringup -- logout` removes
-it.
+in `~/.bringup/studio.json` (readable only by you, mode 0600) and is never printed. `npx -y bringup-mcp logout` (or
+`npm run bringup -- logout`) removes it. Runs started through the MCP server (Claude Code, Cursor) stream too.
 
 ## What streams
 

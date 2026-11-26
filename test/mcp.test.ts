@@ -409,11 +409,14 @@ test("hardware auto builds where the toolchain is and stubs where it isn't, and 
 	const bare = await connectWith({ launch: stub.launch, detect: async () => ({ tsci: null, python: null, pio: "pio" }), docker: async () => false })
 	try {
 		const r = (await bare.call("start_design", { brief: "x" })).json()
-		assert.match(r.hardware, /stubbed: this machine lacks tscircuit, Python with build123d/)
-		assert.deepEqual(stub.calls[0].extraArgs, ["--no-hardware"])
+		// Builds what the tools allow (here firmware) and stubs the rest; says per domain what one command would add, how
+		// big, and that the agent asks its user first (setup streamlining, 26 Nov 2026).
+		assert.match(r.hardware, /^partly stubbed \(board, case\): this machine lacks tscircuit, Python with build123d and Docker\./)
+		assert.match(r.hardware, /ask your user first, then either run `npx bringup-mcp setup board case` or start the design again with installTools: true: board: .* about 923 MB .*; case: .* about 945 MB/)
+		assert.deepEqual(stub.calls[0].extraArgs, ["--stub-missing"])
 		const b = (await bare.call("start_design", { brief: "x", hardware: "build" })).json()
-		assert.match(b.hardware, /^built \(asked\), but this machine lacks tscircuit, Python with build123d and Docker: the run will end unsettled/)
-		assert.equal(stub.calls[1].extraArgs, undefined)
+		assert.match(b.hardware, /^built where the tools are \(asked\), stubbed where this machine lacks tscircuit, Python with build123d \(no Docker\)\./)
+		assert.deepEqual(stub.calls[1].extraArgs, ["--stub-missing"])
 		stub.release()
 	} finally {
 		await bare.close()
@@ -519,5 +522,38 @@ test("a system with no board named main: status lists its boards and the other t
 		assert.equal((await mcp.call("design_status", { runId: "sys-run", board: "logger" })).json().revision, 4)
 	} finally {
 		await mcp.close()
+	}
+})
+
+test("installTools: the missing domains install first (the call returns at once), then the run starts with them", async () => {
+	const stub = stubRun()
+	let tools = { tsci: null as string | null, python: null as string | null, pio: "pio" as string | null }
+	const installed: string[] = []
+	let finish: () => void = () => {}
+	const gate = new Promise<void>((r) => (finish = r))
+	const c = await connectWith({
+		launch: stub.launch,
+		detect: async () => tools,
+		docker: async () => false,
+		install: async (d) => {
+			await gate
+			installed.push(d)
+			tools = { ...tools, ...(d === "board" ? { tsci: "/h/tsci" } : { python: "/h/python" }) }
+			return { installed: true, note: `${d} tools in ~/.bringup` }
+		},
+	})
+	try {
+		const r = (await c.call("start_design", { brief: "x", installTools: true })).json()
+		assert.match(r.hardware, /^installing board: .* about 923 MB .*; case: .*; the run starts when that's done/)
+		assert.equal((await c.call("design_status", { runId: r.runId })).json().status, "installing")
+		assert.equal(stub.calls.length, 0, "nothing runs before the tools are in")
+		finish()
+		await until(async () => stub.calls.length === 1)
+		assert.deepEqual(installed, ["board", "case"])
+		assert.deepEqual(stub.calls[0].extraArgs, undefined) // everything is there now: nothing stubbed
+		assert.match(readFileSync(join(r.outDir, "setup.log"), "utf8"), /board: board tools in ~\/\.bringup\ncase: case tools/)
+		stub.release()
+	} finally {
+		await c.close()
 	}
 })

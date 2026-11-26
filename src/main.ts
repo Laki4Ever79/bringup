@@ -5,8 +5,10 @@ import { runSystem } from "./system/run.ts"
 import { addedForYou } from "./contract/added.ts"
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { basename, join, resolve } from "node:path"
+import { missingBuilders } from "./tools/stubs.ts"
 import { studioConnector } from "./connector/client.ts"
-import { login, logout, openInBrowser, readToken, STUDIO_URL, tokenPath } from "./connector/login.ts"
+import { readToken } from "./connector/login.ts"
+import { connectorCli } from "./connector/cli.ts"
 import { fileURLToPath } from "node:url"
 import { missingTools, simulationLine } from "./report.ts"
 import { ledgerPath, spendCap, spentUsd } from "./inference/spend.ts"
@@ -31,7 +33,7 @@ function revisionEnv(runDir: string, revDir: string, purpose: FirmwarePurpose = 
 	return envFor(mcuProfileOf(c?.values?.parts), purpose)
 }
 
-const USAGE = "usage: npm run bringup -- status <runDir> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-scorecard] [--docker-toolchain] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud] [--offline] | login [--url <studio>] | logout"
+const USAGE = "usage: npm run bringup -- status <runDir> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-scorecard] [--stub-missing] [--docker-toolchain] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud] [--offline] | login [--url <studio>] | logout"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -40,6 +42,8 @@ export interface CliArgs {
 	mock: boolean
 	noHardware: boolean
 	noScorecard?: boolean
+	// --stub-missing: build what this machine's tools allow, stub the rest (run.ts stubMissing).
+	stubMissing?: boolean
 	review: boolean
 	engineerApproval: boolean
 	outDir?: string
@@ -91,7 +95,7 @@ export function parseArgs(argv: string[]): CliArgs | { error: string } {
 	const briefPath = argv.find((a, i) => !a.startsWith("--") && !valueAt.has(i))
 	if (!briefPath) return { error: "no brief given" }
 	if (!existsSync(briefPath)) return { error: `brief not found: ${briefPath}` }
-	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), ...(argv.includes("--no-scorecard") ? { noScorecard: true } : {}), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(maxRevisions ? { maxRevisions } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}), ...(delayS !== undefined ? { changeDelayMs: delayS * 1000 } : {}), ...(argv.includes("--stay") ? { stay: true } : {}), ...(link ? { link } : {}) }
+	return { briefPath, mock: argv.includes("--mock"), noHardware: argv.includes("--no-hardware"), ...(argv.includes("--no-scorecard") ? { noScorecard: true } : {}), ...(argv.includes("--stub-missing") ? { stubMissing: true } : {}), review: !argv.includes("--no-review"), engineerApproval: argv.includes("--engineer-approval"), ...(outDir ? { outDir } : {}), ...(reviewRounds ? { reviewRounds } : {}), ...(maxRevisions ? { maxRevisions } : {}), ...(benchIndex >= 0 || benchReplay ? { bench: benchSource ?? (benchReplay ? "replay" : "real") } : {}), ...(benchReplay ? { benchReplay } : {}), ...(argv.includes("--bench-no-meter") ? { benchNoMeter: true } : {}), ...(argv.includes("--bench-no-imu") ? { benchNoImu: true } : {}), ...(changes.length > 0 ? { changes } : {}), ...(delayS !== undefined ? { changeDelayMs: delayS * 1000 } : {}), ...(argv.includes("--stay") ? { stay: true } : {}), ...(link ? { link } : {}) }
 }
 
 // A run started by the hub or the demo (spawn-run.ts) has a stdin pipe from it: when that closes, its parent is
@@ -122,26 +126,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	const offline = argv.includes("--offline")
 	argv = argv.filter((a) => a !== "--offline")
 	// `bringup login [--url <studio>]` / `bringup logout`: pair this machine with a Bringup Studio account (docs/studio.md).
-	if (argv[0] === "login") {
-		const at = argv.indexOf("--url")
-		const url = at > 0 ? argv[at + 1] : STUDIO_URL
-		if (!url) {
-			console.error("bringup: login needs Bringup Studio's address: --url <https://...> or BRINGUP_STUDIO_URL")
-			return 1
-		}
-		try {
-			const { account } = await login(url, (u) => openInBrowser(u))
-			console.log(`bringup: this machine is connected to Bringup Studio${account ? ` as ${account}` : ""}; runs stream there unless --offline (token in ${tokenPath()})`)
-			return 0
-		} catch (e) {
-			console.error(`bringup: login failed: ${(e as Error).message}`)
-			return 1
-		}
-	}
-	if (argv[0] === "logout") {
-		console.log(logout() ? `bringup: disconnected from Bringup Studio (removed ${tokenPath()})` : "bringup: this machine wasn't connected to Bringup Studio")
-		return 0
-	}
+	if (argv[0] === "login" || argv[0] === "logout") return connectorCli(argv)
 	// `bringup status <runDir>`: the run's drifted files, like git status (runner/drift.ts).
 	if (argv[0] === "status") {
 		const dir = argv[1]
@@ -380,7 +365,11 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	const mode = `${args.mock ? "mock models (no API key)" : "real models"}${args.noHardware ? ", hardware stubbed" : ""}${args.review ? "" : ", no brief review"}`
 	console.log(`bringup: ${mode}\n${describeEnv(env)}\noutput: ${outDir}`)
 	const missing = missingTools(env)
-	if (missing.length > 0 && !args.noHardware) {
+	if (missing.length > 0 && args.stubMissing) {
+		const stubbed = missingBuilders(env)
+		console.warn(`bringup: missing ${missing.map((m) => m.tool).join(", ")}: ${stubbed.join(", ")} derived from the contract (stubbed), the rest built.`)
+		for (const m of missing) console.warn(`  ${m.tool}: ${m.install}`)
+	} else if (missing.length > 0 && !args.noHardware) {
 		console.warn(`bringup: WARNING: missing ${missing.map((m) => m.tool).join(", ")}; those builds will fail and the run will end unsettled.`)
 		for (const m of missing) console.warn(`  ${m.tool}: ${m.install}`)
 		console.warn("  Or rerun with --no-hardware to see the agents coordinate without the hardware tools.")
@@ -413,7 +402,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	// connector never fails the run: Studio down only delays what it shows.
 	const studio = studioConnector(outDir, basename(outDir), { offline, token: readToken(), log: (m) => console.warn(`bringup: ${m}`) })
 	if (studio) console.log(`bringup: streaming to Bringup Studio (${readToken()!.url}); --offline to keep this run local`)
-	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, ...(args.noScorecard ? { noScorecard: true } : {}), review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, ...(args.maxRevisions ? { maxRevisions: args.maxRevisions } : {}), bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}), ...(args.link ? { link: resolve(args.link) } : {}) })
+	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, ...(args.noScorecard ? { noScorecard: true } : {}), ...(args.stubMissing ? { stubMissing: true } : {}), review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, ...(args.maxRevisions ? { maxRevisions: args.maxRevisions } : {}), bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}), ...(args.link ? { link: resolve(args.link) } : {}) })
 	await studio?.stop()
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)${result.held?.length ? `, held by ${result.held.length} more (report: "Held by")` : ""}\nreport: ${result.reportPath}`)
 	// What Bringup added without being asked, in one line each; the report's "Added for you" says how each shows and

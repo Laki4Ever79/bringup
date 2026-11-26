@@ -1,6 +1,7 @@
 // The arm's printed parts (py/arm.py, arm task 3): run only for a design with an `arm`; its sweep's clashes become
 // arm-interference and its print problems arm-dfm, and the printed links' masses go back into the contract's arm.links
 // (the torque check then uses them instead of the armLinkG estimate).
+import { explainToolError } from "./explain.ts"
 import { execFile } from "node:child_process"
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -40,7 +41,7 @@ export async function buildArm(python: string, root: string, dir: string, values
 		await exec(python, [join(root, "py", "arm.py"), input, dir], { timeout: 600_000 })
 	} catch (e) {
 		const said = existsSync(join(out, "interference.json")) ? (JSON.parse(readFileSync(join(out, "interference.json"), "utf8")) as { error?: string }).error : undefined
-		return { ok: false, reason: said ?? String((e as { stderr?: string }).stderr ?? e).trim().split("\n").filter(Boolean).at(-1) ?? "the arm generator failed" }
+		return { ok: false, reason: said ?? explainToolError(String((e as { stderr?: string }).stderr ?? e)) ?? String((e as { stderr?: string }).stderr ?? e).trim().split("\n").filter(Boolean).at(-1) ?? "the arm generator failed" }
 	}
 	const built = JSON.parse(readFileSync(join(out, "interference.json"), "utf8")) as ArmBuilt
 	const links = JSON.parse(readFileSync(join(out, "links.json"), "utf8")) as ArmLink[]

@@ -101,8 +101,9 @@ export function stubTestkit(s: ContractSnapshot, revision: number, dir: string):
 
 // Same inputs, required fields and derived inputs as the real builders in agents/builders.ts, so the same contract
 // changes wake them.
-export function createStubBuilders(lock?: BuildLock): Human[] {
-	return [
+// kinds: only these (a run that builds what its tools allow and stubs the rest, run.ts stubMissing); all by default.
+export function createStubBuilders(lock?: BuildLock, kinds?: readonly string[]): Human[] {
+	const all = [
 		createBuilder({ kind: "board", inputs: BUILD_INPUTS.board, requires: BUILD_REQUIRES.board, derived: BUILD_DERIVED.board, lock, build: async ({ snapshot, revision, dir }) => stubBoard(snapshot, revision, dir) }),
 		createBuilder({ kind: "enclosure", inputs: BUILD_INPUTS.enclosure, requires: BUILD_REQUIRES.enclosure, derived: BUILD_DERIVED.enclosure, notNeeded: caseNotNeeded, lock, build: async ({ snapshot, revision, dir }) => stubEnclosure(snapshot, revision, dir) }),
 		createBuilder({ kind: "firmware", inputs: BUILD_INPUTS.firmware, requires: BUILD_REQUIRES.firmware, derived: BUILD_DERIVED.firmware, lock, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
@@ -111,7 +112,24 @@ export function createStubBuilders(lock?: BuildLock): Human[] {
 		createBuilder({ kind: "arm", inputs: BUILD_INPUTS.arm, requires: BUILD_REQUIRES.arm, notNeeded: armNotNeeded, lock, build: async ({ revision, dir }) => ({ ok: true as const, revision, dir: note(dir, "arm"), files: [], links: [], built: { poses: 0, pairs: 0, clashes: [], print: { ok: true, issues: [], notes: [], bedMm: [] } }, stub: true as const }) }),
 		createBuilder({ kind: "armsim", inputs: BUILD_INPUTS.armsim, requires: BUILD_REQUIRES.armsim, notNeeded: armNotNeeded, lock, build: async ({ revision, dir }) => ({ revision, dir: note(dir, "armsim"), result: "not run" as const, reason: "hardware tools off (--no-hardware): not proven in simulation", note: "", stub: true as const }) }),
 		createBuilder({ kind: "testkit", inputs: BUILD_INPUTS.testkit, requires: BUILD_REQUIRES.testkit, derived: BUILD_DERIVED.testkit, lock, build: async ({ snapshot, revision, dir }) => stubTestkit(snapshot, revision, dir) }),
-	]
+	] as const
+	const order = ["board", "enclosure", "firmware", "chassis", "drive", "arm", "armsim", "testkit"]
+	return kinds ? all.filter((_, i) => kinds.includes(order[i])) : [...all]
+}
+
+// The tools each builder needs (src/tools/env.ts): a builder whose tools are missing is stubbed under stubMissing.
+export const BUILDER_TOOLS: Record<string, ("tsci" | "python" | "pio")[]> = {
+	board: ["tsci"],
+	testkit: ["tsci"],
+	enclosure: ["python"],
+	chassis: ["python"],
+	arm: ["python"],
+	firmware: ["pio"],
+	drive: ["python", "pio"],
+	armsim: ["python", "pio"],
+}
+export function missingBuilders(env: { tsci: string | null; python: string | null; pio: string | null }): string[] {
+	return Object.entries(BUILDER_TOOLS).filter(([, tools]) => tools.some((t) => !env[t])).map(([k]) => k)
 }
 
 export function isStub(artifact: unknown): boolean {
