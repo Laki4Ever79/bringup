@@ -1386,8 +1386,11 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	const channels: (Placed & { owner: string; caps: Set<string> })[] = []
 	// The board edge is judged by a part's copper and courtyard (dualRowExtent), not its placement box: run 20b's PCA9685
 	// (TSSOP-28, box 7.9 mm along its pin rows, pads 9.25) had pads 0.125 mm from the edge, and tscircuit refused the board.
+	// copperExtent per ref, once: offEdge asks it for every candidate spot (pure in the footprint).
+	const extentOf = new Map<string, ReturnType<typeof copperExtent>>()
 	const edgeBox = (b: Placed): Placed => {
-		const d = copperExtent(footprintOfRef(b.ref))
+		let d = extentOf.get(b.ref)
+		if (d === undefined && !extentOf.has(b.ref)) extentOf.set(b.ref, (d = copperExtent(footprintOfRef(b.ref))))
 		if (!d) return b
 		const [dw, dh] = Math.abs(b.rotation) % 180 === 90 ? [d[1], d[0]] : d
 		return { ...b, w: Math.max(b.w, dw), h: Math.max(b.h, dh) }
@@ -1396,14 +1399,45 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		const e = edgeBox(b)
 		return Math.abs(e.x) + e.w / 2 > W / 2 - EDGE_MARGIN_MM || Math.abs(e.y) + e.h / 2 > H / 2 - EDGE_MARGIN_MM
 	}
+	// The placed boxes in a bucket grid (BUCKET_MM cells), so a candidate is judged against the boxes near it, not every
+	// one: the same answer (a box sits in every cell its gap-widened bounds touch, so any box that can block a candidate
+	// shares a cell with it), ~2/3 of a layout's time before (the 70-part CNC board, 26 Nov 2026). It follows placed by
+	// its length: grown, the new boxes are added; cut back (the capacitor-combination trials), it is rebuilt.
+	const BUCKET_MM = 4
+	const blockReach = Math.max(gapMm, CHIP_GAP_MM)
+	const cols = Math.max(1, Math.ceil((W + 2 * BUCKET_MM) / BUCKET_MM)), rows = Math.max(1, Math.ceil((H + 2 * BUCKET_MM) / BUCKET_MM))
+	const cellX = (x: number) => Math.min(cols - 1, Math.max(0, Math.floor((x + W / 2 + BUCKET_MM) / BUCKET_MM)))
+	const cellY = (y: number) => Math.min(rows - 1, Math.max(0, Math.floor((y + H / 2 + BUCKET_MM) / BUCKET_MM)))
+	let buckets: number[][] = []
+	let indexed = 0
+	const syncIndex = () => {
+		if (placed.length < indexed) {
+			buckets = []
+			indexed = 0
+		}
+		for (; indexed < placed.length; indexed++) {
+			const o = placed[indexed]
+			for (let i = cellX(o.x - o.w / 2 - blockReach); i <= cellX(o.x + o.w / 2 + blockReach); i++)
+				for (let j = cellY(o.y - o.h / 2 - blockReach); j <= cellY(o.y + o.h / 2 + blockReach); j++) (buckets[i * rows + j] ??= []).push(indexed)
+		}
+	}
+	let stamp = 0
+	const seen: number[] = []
 	const fits = (b: Placed, hug?: string) => {
 		if (offEdge(b)) return false
+		syncIndex()
 		if (lastBlock < placed.length && blocks(b, placed[lastBlock], hug)) return false
-		for (let k = 0; k < placed.length; k++)
-			if (blocks(b, placed[k], hug)) {
-				lastBlock = k
-				return false
-			}
+		stamp++
+		for (let i = cellX(b.x - b.w / 2); i <= cellX(b.x + b.w / 2); i++)
+			for (let j = cellY(b.y - b.h / 2); j <= cellY(b.y + b.h / 2); j++)
+				for (const k of buckets[i * rows + j] ?? []) {
+					if (seen[k] === stamp) continue
+					seen[k] = stamp
+					if (blocks(b, placed[k], hug)) {
+						lastBlock = k
+						return false
+					}
+				}
 		// The routing channel around a part's pin-capacitor group (capChannel): only that part and its capacitors may sit in it.
 		if (channels.some((c) => b.ref !== c.owner && !c.caps.has(b.ref) && overlaps(b, c))) return false
 		// A pin capacitor's reserved spot (capBoxes) is kept for it until it is placed: parts placed after its owner took
