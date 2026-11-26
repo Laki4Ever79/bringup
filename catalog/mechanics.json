@@ -2147,5 +2147,61 @@
 				}
 			]
 		}
+	],
+	"powerBricks": [
+		{
+			"mpn": "ADAFRUIT-352 12V 5A switching power supply",
+			"volts": 12,
+			"amps": 5,
+			"plug": "5.5 x 2.1 mm, centre positive",
+			"mains": "US/Canada/Japan two-prong; elsewhere a plug adapter",
+			"source": {
+				"volts": {
+					"url": "https://www.adafruit.com/product/352",
+					"where": "Technical Details: 12V up to 5A output"
+				},
+				"amps": {
+					"url": "https://www.adafruit.com/product/352",
+					"where": "Technical Details: 12V up to 5A output"
+				},
+				"plug": {
+					"url": "https://www.adafruit.com/product/352",
+					"where": "Technical Details: 5.5mm/2.1mm plug with approx 40-inch-long cable"
+				}
+			},
+			"buy": [
+				{
+					"supplier": "Adafruit",
+					"url": "https://www.adafruit.com/product/352"
+				}
+			]
+		},
+		{
+			"mpn": "MEANWELL-GST60A12-P1J 12V 5A 60W power supply",
+			"volts": 12,
+			"amps": 5,
+			"plug": "5.5 x 2.1 mm, centre positive",
+			"mains": "IEC C14 inlet: needs a C13 mains cable (not included)",
+			"source": {
+				"volts": {
+					"url": "https://thepihut.com/products/meanwell-12v-5a-60w-power-supply-gst60a12-p1j",
+					"where": "Title: Meanwell 12V 5A 60W Power Supply (GST60A12-P1J)"
+				},
+				"amps": {
+					"url": "https://thepihut.com/products/meanwell-12v-5a-60w-power-supply-gst60a12-p1j",
+					"where": "Title: 12V 5A 60W"
+				},
+				"plug": {
+					"url": "https://thepihut.com/products/meanwell-12v-5a-60w-power-supply-gst60a12-p1j",
+					"where": "Description: the output is a standard 2.1mm DC barrel jack with a centre-positive tip; the PSU does not come with a mains cable"
+				}
+			},
+			"buy": [
+				{
+					"supplier": "The Pi Hut",
+					"url": "https://thepihut.com/products/meanwell-12v-5a-60w-power-supply-gst60a12-p1j"
+				}
+			]
+		}
 	]
 }

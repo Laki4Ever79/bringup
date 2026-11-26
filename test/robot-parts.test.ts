@@ -196,3 +196,23 @@ test("a part whose only shop refuses automated reads isn't asked; the line says 
 	assert.equal(r.lines[0].status, "not checked")
 	assert.match(r.lines[0].note, /not checked: botland\.store refuses automated reads \(HTTP 403\), and the catalog has no other shop for it/)
 })
+
+test("an arm's bought parts: its servos, one line per model, with the catalog's readable shops", async () => {
+	const { ARM } = await import("./arm-contract.test.ts")
+	const { fixtureContract } = await import("./fixture.ts")
+	const base = fixtureContract()
+	const lines = robotPartLines({ ...base, values: { ...base.values, mechanics: undefined, arm: ARM } })
+	// Three MG996R (base yaw, shoulder, elbow) and three SG90 (wrist pitch, wrist roll, gripper).
+	// and the mains brick for its 12 V 3 A input: the catalog's first 12 V brick of at least 3 A.
+	assert.deepEqual(lines.map((l) => [l.item, l.mpn, l.qty]), [["servo", "MG996R", 3], ["servo", "SG90", 3], ["power brick", "ADAFRUIT-352 12V 5A switching power supply", 1]])
+	assert.ok(lines.every((l) => l.buy.length > 0))
+	const r = await checkRobotParts(lines, { live: false })
+	assert.match(r.summary, /3 robot parts · not checked \(mock run\)/)
+	// A brick the catalog can't supply (24 V) is still listed, by what to buy, with no shop.
+	const big = robotPartLines({ ...base, values: { ...base.values, mechanics: undefined, arm: { ...ARM, input: { kind: "dc-brick", volts: 24, amps: 3 } } } })
+	assert.deepEqual(big.at(-1), { item: "power brick", mpn: "24 V 3 A DC brick, 5.5 x 2.1 mm plug", qty: 1, packs: 1, buy: [] })
+	// A rover with an arm on it: both sets of lines.
+	const rover = robotPartLines(base)
+	const both = robotPartLines({ ...base, values: { ...base.values, arm: ARM } })
+	assert.deepEqual(both.map((l) => l.item), [...rover.map((l) => l.item), "servo", "servo", "power brick"])
+})

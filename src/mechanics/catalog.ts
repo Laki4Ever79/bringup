@@ -143,6 +143,16 @@ export interface CablePart extends Sourced {
 // A bought servo (an arm's joints): a hobby PWM servo or a serial bus servo. Torque, current and speed per supply voltage,
 // as the datasheet lists them (ascending v); servoAt reads them at the arm's rail. estimates: the keys no primary source
 // gives (the hobby servos' ear holes, a stall current sellers disagree on): reports say so.
+// A mains power brick (an arm's DC input, ArmSpec.input): its output and plug; the arm's board takes the plug.
+export interface PowerBrickPart extends Sourced {
+	mpn: string
+	volts: number
+	amps: number
+	plug: string
+	mains: string
+	buy?: { supplier: string; url: string; packQty?: number }[]
+}
+
 export interface ServoPart extends Sourced {
 	control: "pwm" | "ttl-bus"
 	minV: number
@@ -198,6 +208,7 @@ export interface MechCatalog {
 	safety?: SafetyPart[]
 	// Servos for an arm's joints (src/arm).
 	servos?: ServoPart[]
+	powerBricks?: PowerBrickPart[]
 }
 
 export function loadMechCatalog(root: string): MechCatalog {

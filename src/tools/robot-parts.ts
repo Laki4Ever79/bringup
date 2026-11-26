@@ -4,6 +4,7 @@
 // states is used: a shop that refuses or publishes nothing leaves that line "not checked", named in the summary.
 import { byMpn, loadMechCatalog, type MechCatalog } from "../mechanics/catalog.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
+import type { ArmSpec } from "../arm/types.ts"
 import { checkOffer, readableShop, shopHost, UNREADABLE_SHOPS, type OfferCheck } from "./offers.ts"
 import { boardScrew, chassisSpec, CRADLE_WALL_MM, robotCables, type ChassisSpec } from "./chassis.ts"
 import type { HardwarePart } from "../mechanics/catalog.ts"
@@ -23,7 +24,7 @@ export interface BuyLink {
 export const USD_PER = { USD: 1, EUR: 1.08, GBP: 1.27 } as Record<string, number>
 
 export interface RobotPartLine {
-	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut" | "motor bracket" | "clamp screw" | "sensor cable" | "motor lead" | DriveTrainItem
+	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut" | "motor bracket" | "clamp screw" | "sensor cable" | "motor lead" | "servo" | "power brick" | DriveTrainItem
 	mpn: string
 	qty: number
 	packs: number // packs to buy at the first link's pack size
@@ -60,11 +61,33 @@ type WithBuy = { mpn: string; buy?: BuyLink[] }
 const DRIVE_TRAIN_ITEM = { shaft: "shaft", gear: "gear", pulley: "pulley", belt: "belt", sprocket: "sprocket", chain: "chain", bearing: "bearing", coupler: "coupler", leadscrew: "lead screw", leadnut: "lead nut" } as const
 type DriveTrainItem = (typeof DRIVE_TRAIN_ITEM)[keyof typeof DRIVE_TRAIN_ITEM]
 
+// An arm's bought parts (values.arm, src/arm/types.ts): its servos, one line per model, counted over the joints and
+// the gripper (three MG996R and three SG90 for the phase-1 arm), and the mains brick for its DC input: the catalog's
+// first brick at the input's voltage with at least its current. Each servo's horns and screws come in its box, and each
+// joint turns on its servo's own bearing (py/arm.py), so there are no separate horns or bearings to buy. Its printed
+// parts are the package's printed/.
+export function armPartLines(arm: ArmSpec, cat: MechCatalog = loadMechCatalog(ROOT)): RobotPartLine[] {
+	const count = new Map<string, number>()
+	for (const mpn of [...arm.joints.map((j) => j.servo), arm.gripper.servo]) count.set(mpn, (count.get(mpn) ?? 0) + 1)
+	const servos = [...count].map(([mpn, qty]) => {
+		const part = byMpn((cat.servos ?? []) as never[], mpn) as WithBuy | undefined
+		const buy = part?.buy ?? []
+		return { item: "servo" as const, mpn: part?.mpn ?? mpn, qty, packs: Math.ceil(qty / (buy[0]?.packQty ?? 1)), buy } as RobotPartLine
+	})
+	const want = arm.input
+	const brick = want.kind === "dc-brick" ? (cat.powerBricks ?? []).find((b) => b.volts === want.volts && b.amps >= want.amps) : undefined
+	// No brick in the catalog fits: the line names what to buy, with no shop link (the parts list says so).
+	const brickLine: RobotPartLine = brick ? { item: "power brick", mpn: brick.mpn, qty: 1, packs: 1, buy: brick.buy ?? [] } : { item: "power brick", mpn: `${want.volts} V ${want.amps} A DC brick, 5.5 x 2.1 mm plug`, qty: 1, packs: 1, buy: [] }
+	return [...servos, brickLine]
+}
+
 // The parts the mechanics name, in build order. A part the catalog doesn't have is listed with no shop link (the
 // mech-fit check names it to the mechanics engineer).
 export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechCatalog(ROOT)): RobotPartLine[] {
 	const m = s.values.mechanics
-	if (!m) return []
+	// Whatever the design has: a mobile robot's mechanics, an arm, or both (an arm on a rover); later a CNC's.
+	const arm = s.values.arm ? armPartLines(s.values.arm, cat) : []
+	if (!m) return arm
 	const line = (item: RobotPartLine["item"], list: WithBuy[], mpn: string | undefined, qty: number): RobotPartLine | null => {
 		if (!mpn) return null
 		const part = byMpn(list as never[], mpn) as WithBuy | undefined
@@ -133,6 +156,7 @@ export function robotPartLines(s: ContractSnapshot, cat: MechCatalog = loadMechC
 		bracketMpn ? line("motor bracket", (cat.motorMounts ?? []) as WithBuy[], bracketMpn, bracketMotors.length) : null,
 		clampScrew ? line("clamp screw", hw, clampScrew.mpn, clampScrews) : null,
 		...[...driveTrain].map(([mpn, x]) => line(x.item, (cat.driveTrain ?? []) as WithBuy[], mpn, x.n)),
+		...arm,
 	].filter((l): l is RobotPartLine => l !== null)
 }
 

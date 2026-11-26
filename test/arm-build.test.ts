@@ -4,7 +4,8 @@ import assert from "node:assert/strict"
 import { armBuildChecks, armPoses, armWithLinks, type ArmArtifact } from "../src/tools/arm.ts"
 import { forward } from "../src/arm/kinematics.ts"
 import { ARM, TARGETS } from "./arm-contract.test.ts"
-import { assemblyOrder } from "../src/package/build.ts"
+import { assemblyOrder, boughtPartsMd } from "../src/package/build.ts"
+import { checkRobotParts, robotPartLines } from "../src/tools/robot-parts.ts"
 import { fixtureContract } from "./fixture.ts"
 
 const artifact = (over: Partial<ArmArtifact["built"]> = {}): ArmArtifact => ({ ok: true, dir: "/x", files: [], links: [], built: { poses: 182, pairs: 1820, clashes: [], print: { ok: true, issues: [], notes: [], bedMm: [256, 256, 256] }, ...over } })
@@ -50,4 +51,15 @@ test("the package's assembly order builds an arm from the plate up, its servos' 
 	assert.match(md, /base yaw servo \(MG996R\) in the base plate's cradle/)
 	assert.match(md, /add the 300 g ballast/)
 	assert.match(md, /base-yaw 0, shoulder 1, elbow 2, wrist-pitch 3, wrist-roll 4, gripper 5/)
+})
+
+test("an arm package's bought parts list every servo in values.arm, and the brick", async () => {
+	const base = fixtureContract()
+	const s = { ...base, values: { ...base.values, mechanics: undefined, arm: ARM, armTargets: TARGETS } }
+	const md = boughtPartsMd(await checkRobotParts(robotPartLines(s), { live: false })).join("\n")
+	for (const mpn of new Set([...ARM.joints.map((j) => j.servo), ARM.gripper.servo])) {
+		const n = [...ARM.joints.map((j) => j.servo), ARM.gripper.servo].filter((x) => x === mpn).length
+		assert.match(md, new RegExp(`\\| servo \\| ${mpn} \\| ${n} \\|`), md)
+	}
+	assert.match(md, /\| power brick \| ADAFRUIT-352 12V 5A switching power supply \| 1 \| \[Adafruit\]/)
 })

@@ -121,7 +121,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		if (typeof live.basic === "boolean") classes.set(c.lcsc, { basic: live.basic, preferred: live.preferred === true })
 	}
 	const cheaper = jlcSwaps(s, (lcsc) => classes.get(lcsc) ?? null, { root: opts.root, feeUsd: JLC.extendedUsd })
-	const robot = s.values.mechanics ? await checkRobotParts(robotPartLines(s), { live: true }) : null
+	const robot = s.values.mechanics || s.values.arm ? await checkRobotParts(robotPartLines(s), { live: true }) : null
 	for (const l of robot?.lines ?? []) {
 		if (l.status === "out of stock" || l.status === "discontinued" || l.status === "backorder") outOfStock.push(`${l.item} ${l.mpn}: ${l.status}`)
 		// A fastener no small-pack shop prices: name the local fallback (any hardware store or an assortment kit has it).
@@ -213,13 +213,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		...(jlc && jlc.totalUsd !== null && cheaper.swaps.length ? ["", `With the swaps: ${jlc.extended.length - cheaper.swaps.length} extended parts, JLCPCB total ${usd(Math.round((jlc.totalUsd - cheaper.swaps.reduce((t, w) => t + w.savesUsd, 0)) * 100) / 100)} (from ${usd(jlc.totalUsd)}).`] : []),
 		...(unbought.length ? ["", `Not assembled by JLCPCB (no LCSC number): ${unbought.map((p) => `${p.ref} ${p.mpn}`).join(", ")}: bought and soldered by hand.`] : []),
 		"",
-		"## Bought parts for the robot",
-		"",
-		"| Item | Part | Qty | Shop | Status | Line |",
-		"|---|---|---|---|---|---|",
-		...(robot?.lines ?? []).map((l) => `| ${l.item} | ${l.mpn} | ${l.qty} | ${l.url ? `[${l.supplier}](${l.url})` : (l.supplier ?? "?")} | ${l.status} | ${usd(l.lineUsd)} |`),
-		"",
-		`Robot parts total: ${usd(robotUsd)} (the lines a shop priced). ${robot?.summary ?? ""}`,
+		...boughtPartsMd(robot),
 		...(s.values.mechanics ? robotPartNotes(s).map((n) => `- Not covered yet: ${n}`) : []),
 		"",
 	].join("\n")
@@ -227,6 +221,20 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	const result: PackageResult = { dir: outDir, cheaper, robotLines: (robot?.lines ?? []).map((l) => ({ item: l.item, mpn: l.mpn, qty: l.qty, packs: (l as { packs?: number }).packs, supplier: l.supplier, url: l.url, lineUsd: l.lineUsd, status: l.status })), jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings, pictures }
 	writeFileSync(join(outDir, "README.md"), readme(s, result, fabOk, [...stls.map((f) => basename(f)), ...armFiles], Boolean(fwBin)))
 	return result
+}
+
+// parts.md's bought robot parts: every line robotPartLines lists for the design (a rover's mechanics, an arm's servos
+// and brick, or both), its shop and what the shop said.
+export function boughtPartsMd(robot: Awaited<ReturnType<typeof checkRobotParts>> | null): string[] {
+	return [
+		"## Bought parts for the robot",
+		"",
+		"| Item | Part | Qty | Shop | Status | Line |",
+		"|---|---|---|---|---|---|",
+		...(robot?.lines ?? []).map((l) => `| ${l.item} | ${l.mpn} | ${l.qty} | ${l.url ? `[${l.supplier}](${l.url})` : (l.supplier ?? "?")} | ${l.status} | ${usd(l.lineUsd)} |`),
+		"",
+		`Robot parts total: ${usd(robot?.knownUsd ?? null)} (the lines a shop priced). ${robot?.summary ?? ""}`,
+	]
 }
 
 export function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
