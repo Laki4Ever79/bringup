@@ -11,7 +11,7 @@ import { state } from "../runtime.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { Part } from "../contract/types.ts"
 import { parseSwap } from "../tools/sourcing.ts"
-import { mechanicsFromRequest, partsAfterSwap } from "../runner/request-map.ts"
+import { armLinksForReach, armTargetsFromRequest, mechanicsFromRequest, partsAfterSwap } from "../runner/request-map.ts"
 import { parseMoves, type PartMove, type Release } from "../board-edit/board-move.ts"
 import { resolve } from "node:path"
 import { toolCall, type Script } from "./scripted-runner.ts"
@@ -895,6 +895,11 @@ export function mockScripts(): Record<string, Script> {
 				}
 				return say("violations handled")
 			}
+			if (instruction.startsWith("Change request from the engineer:") && state().contract.get("armTargets")) {
+				// An arm's reach (runner/request-map.ts, the one mapper the "what if" preview uses too).
+				const change = armTargetsFromRequest(instruction.split("\n")[1] ?? "", state().contract.get("armTargets")!)
+				if (change) return step === 0 ? propose("armTargets", change.value, change.reason) : say("arm targets updated")
+			}
 			if (instruction.startsWith("Change request from the engineer:")) {
 				// A saved pins.h (runner/file-sync.ts): "edited pins.h: I2C_SDA GPIO8 → GPIO4; …".
 				const moves = [...instruction.matchAll(/(\w+) GPIO(\d+) → GPIO(\d+)/g)]
@@ -1203,13 +1208,17 @@ export function mockScripts(): Record<string, Script> {
 				const fixes = armServoFixes(instruction)
 				const brick = /^- arm-supply: the [\d.]+ V brick is rated [\d.]+ A .*: ([\d.]+) A$/m.exec(instruction)
 				const tips = /^- arm-tipping: /m.test(instruction)
+				// The links follow the targets' reach (a reach change request): longer links, then the torque check picks servos.
+				const targets = state().contract.get("armTargets")
+				const relinked = targets ? armLinksForReach(arm, targets.reachMm) : null
+				const base = relinked ?? arm
 				const next: ArmSpec = {
-					...arm,
-					joints: arm.joints.map((j) => ({ ...j, servo: fixes.find((f) => f.joint === j.name)?.servo ?? j.servo })),
+					...base,
+					joints: base.joints.map((j) => ({ ...j, servo: fixes.find((f) => f.joint === j.name)?.servo ?? j.servo })),
 					input: brick ? { ...arm.input, amps: Math.ceil(Number(brick[1]) * 10) / 10 } : arm.input,
 					base: tips ? { ...arm.base, ballastG: arm.base.ballastG + 200 } : arm.base,
 				}
-				const why = [...fixes.map((f) => `the ${f.joint} takes the ${f.servo}, the weakest catalog servo that carries its torque (arm-torque)`), ...(brick ? [`a ${arm.input.volts} V brick of ${next.input.amps} A, what the servos at stall need (arm-supply)`] : []), ...(tips ? ["200 g more ballast on the base (arm-tipping)"] : [])]
+				const why = [...(relinked ? [`the links ${relinked.joints.filter((j) => j.name !== "base-yaw").map((j) => j.linkMm).join(" + ")} mm reach the targets' ${targets!.reachMm} mm (arm-reach)`] : []), ...fixes.map((f) => `the ${f.joint} takes the ${f.servo}, the weakest catalog servo that carries its torque (arm-torque)`), ...(brick ? [`a ${arm.input.volts} V brick of ${next.input.amps} A, what the servos at stall need (arm-supply)`] : []), ...(tips ? ["200 g more ballast on the base (arm-tipping)"] : [])]
 				if (why.length && JSON.stringify(next) !== JSON.stringify(arm)) return propose("arm", next, why.join("; "))
 			}
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion") && isEurobot())

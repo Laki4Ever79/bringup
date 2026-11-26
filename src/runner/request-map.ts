@@ -4,6 +4,8 @@
 // real agents handle it, and the preview says so instead of guessing.
 import { resolve } from "node:path"
 import type { Mechanics } from "../mechanics/types.ts"
+import type { ArmSpec, ArmTargets } from "../arm/types.ts"
+import { ARM_POINT_SHARE } from "../mechanics/brief.ts"
 import type { Part } from "../contract/types.ts"
 import { loadCatalog, type CatalogPart } from "../tools/parts-search.ts"
 import { parseSwap } from "../tools/sourcing.ts"
@@ -38,4 +40,34 @@ export function partsAfterSwap(request: string, parts: Part[], cat: CatalogPart[
 	if (old.mpn === to.mpn) return { error: `${old.ref} is already the ${to.mpn}` }
 	const part = { ref: old.ref, role: old.role, mpn: to.mpn, lcsc: to.lcsc, footprint: to.footprint, pins: [...to.pins], reason: `The engineer swapped it in for the ${old.mpn}, from the catalog, in a change request.` } as Part
 	return { part, value: parts.map((p) => (p.ref === old.ref ? part : p)), reason: `engineer swapped ${old.ref} ${old.mpn} for the ${to.mpn} from the catalog` }
+}
+
+// "make the reach 300 mm" (or "reach of 30 cm"): the arm's targets at the new reach, the pick and drop moved out with it
+// exactly as the brief's reader places them (ARM_POINT_SHARE of the reach out, the same distance apart, same heights).
+export function armTargetsFromRequest(request: string, current: ArmTargets): FieldChange<ArmTargets> | null {
+	const m = /\breach\b[^.;\d]*?(\d+(?:\.\d+)?)\s*(cm|mm)\b/i.exec(request)
+	if (!m) return null
+	const reachMm = Number(m[1]) * (m[2].toLowerCase() === "cm" ? 10 : 1)
+	if (reachMm === current.reachMm) return null
+	const half = Math.hypot(current.drop.xMm - current.pick.xMm, current.drop.yMm - current.pick.yMm) / 2
+	const r = ARM_POINT_SHARE * reachMm
+	const x = Math.round(Math.sqrt(Math.max(0, r * r - half * half)) / 5) * 5
+	return { value: { ...current, reachMm, pick: { ...current.pick, xMm: x }, drop: { ...current.drop, xMm: x } }, reason: `engineer asked: ${request} (the pick and drop move out with it, ${Math.round(ARM_POINT_SHARE * 100)} % of the reach, the same ${Math.round(half * 2)} mm apart)` }
+}
+
+// The arm's links long enough for its targets' reach: the shoulder and elbow links grow (or shrink) in proportion, in
+// 5 mm steps, the wrist and the gripper as they are. null when they already reach exactly that far.
+export function armLinksForReach(arm: ArmSpec, reachMm: number): ArmSpec | null {
+	const sum = arm.joints.filter((j) => j.name !== "base-yaw").reduce((s, j) => s + j.linkMm, 0)
+	if (sum === reachMm) return null
+	const grow = ["shoulder", "elbow"]
+	const base = arm.joints.filter((j) => grow.includes(j.name)).reduce((s, j) => s + j.linkMm, 0)
+	const fixed = sum - base
+	const scale = (reachMm - fixed) / base
+	const joints = arm.joints.map((j) => (grow.includes(j.name) ? { ...j, linkMm: Math.round((j.linkMm * scale) / 5) * 5 } : j))
+	// Rounding: the elbow takes up what's left, so the sum is the reach exactly.
+	const now = joints.filter((j) => j.name !== "base-yaw").reduce((s, j) => s + j.linkMm, 0)
+	const elbow = joints.find((j) => j.name === "elbow")!
+	elbow.linkMm += reachMm - now
+	return { ...arm, joints, links: undefined }
 }

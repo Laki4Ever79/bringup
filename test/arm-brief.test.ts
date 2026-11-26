@@ -95,3 +95,18 @@ test("the scripted arm's board: the S3 and the PCA9685; the parts tools add six 
 	// Every chip on the brick's input is rated over its TVS's clamp (rail chips and logic step-down at 65 V): no finding.
 	assert.deepEqual(armPowerChecks(s).map((v) => v.message), [])
 })
+
+test("a reach change request: the targets move out with the reach, the links grow to meet it exactly, the rest as before", async () => {
+	const { armLinksForReach, armTargetsFromRequest } = await import("../src/runner/request-map.ts")
+	const t = armTargetsFromBrief(ARM_BRIEF)!
+	const change = armTargetsFromRequest("make the reach 300 mm", t)!
+	assert.equal(change.value.reachMm, 300)
+	assert.ok(change.value.pick.xMm > t.pick.xMm && change.value.drop.xMm === change.value.pick.xMm)
+	assert.equal(Math.hypot(change.value.drop.xMm - change.value.pick.xMm, change.value.drop.yMm - change.value.pick.yMm), 250, "still the brief's distance apart")
+	assert.equal(armTargetsFromRequest("make the reach 28 cm", t), null, "the same reach is no change")
+	assert.equal(armTargetsFromRequest("make it blue", t), null)
+	const arm = armLinksForReach(ARM_SPEC, 300)!
+	assert.equal(arm.joints.filter((j) => j.name !== "base-yaw").reduce((s, j) => s + j.linkMm, 0), 300)
+	assert.deepEqual(arm.joints.filter((j) => j.name === "wrist-pitch" || j.name === "wrist-roll").map((j) => j.linkMm), [20, 30])
+	assert.equal(armLinksForReach(ARM_SPEC, 280), null)
+})

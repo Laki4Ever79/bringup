@@ -114,3 +114,9 @@ test("a Freerouting board always pours ground, whatever its widths (GND at 0.35 
 	const none = { ...small, values: { ...small.values, rails: [] } }
 	assert.deepEqual(supplyPours(none, true), [{ net: "GND", layer: "bottom" }])
 })
+
+test("a part tscircuit can't address is no size failure: no 4-layer retry, no bigger board (lead-3's CNC mock 12)", async () => {
+	const { sizeFailure } = await import("../src/tools/board.ts")
+	assert.equal(sizeFailure("tscircuit build failed (exit 1):\nCould not find port for selector '.J3 > .M+' ... It has no ports\nPort pin1 on R13 is missing a trace"), false)
+	assert.equal(sizeFailure("tscircuit build failed (exit 1):\nPort pin1 on R13 is missing a trace"), true)
+})

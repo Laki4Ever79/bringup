@@ -80,7 +80,11 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	return l.layers === 4 ? { ...board, layers: 4, ...(l.reason ? { layersReason: l.reason } : {}) } : board
 }
 
-export const sizeFailure = (message: string): boolean => /^tscircuit build failed \(exit/.test(message) && (ROUTING_FAILURE.test(message) || layoutSensitive(message))
+// A part tscircuit can't address (a pin name it can't select: lead-3's CNC mock 12, "Could not find port for selector
+// '.J3 > .M+' ... It has no ports") leaves its traces missing too, but neither more room nor more layers fixes it: not a
+// size failure, and no 4-layer retry (it built every failing revision twice).
+const PART_ERROR = /Could not find port for selector|has no ports/
+export const sizeFailure = (message: string): boolean => /^tscircuit build failed \(exit/.test(message) && !PART_ERROR.test(message) && (ROUTING_FAILURE.test(message) || layoutSensitive(message))
 
 async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
 	// A pin on a part that isn't there yet would only fail in tscircuit ("Could not find port for selector"), slowly and
