@@ -66,11 +66,17 @@ export async function runDriverTests(fwDir: string, s: ContractSnapshot, opts: {
 	const cxx = opts.cxx ?? process.env.CXX ?? "g++"
 	const out = await mkdtemp(join(tmpdir(), "bringup-drivertest-"))
 	try {
-		const exe = join(out, "drivertest")
+		// MinGW's g++ on Windows writes drivertest.exe whatever -o says: name it so, so it can be run.
+		const exe = join(out, process.platform === "win32" ? "drivertest.exe" : "drivertest")
 		const flags = ["-std=c++17", "-O0", "-Wall", `-I${join(fwDir, "test_host")}`, `-I${join(fwDir, "include")}`, ...drivers.map((d) => `-DTEST_${d.toUpperCase()}`)]
 		const build = await run(cxx, [...flags, src, "-o", exe])
 		if (build.spawnError) return { ...base, ok: null, log: build.spawnError, skipped: `no host C++ compiler (${cxx}): ${build.spawnError}` }
-		if (build.code !== 0) return { ...base, ok: false, failed: [{ name: "host build", message: "the drivers don't compile on the host" }], log: build.output.trim().split("\n").slice(-30).join("\n") }
+		if (build.code !== 0) {
+			// The compiler's own first error lines in the message, so the violation says what broke (OS smoke run 6: on
+			// Windows it said only "the drivers don't compile on the host").
+			const errors = build.output.split("\n").filter((l) => /\berror\b/i.test(l)).slice(0, 3).map((l) => l.trim())
+			return { ...base, ok: false, failed: [{ name: "host build", message: `the drivers don't compile on the host (${cxx})${errors.length ? `: ${errors.join(" / ")}` : ""}` }], log: build.output.trim().split("\n").slice(-30).join("\n") }
+		}
 		const r = await run(exe, [])
 		const lines = r.output.split("\n")
 		const passed = lines.filter((l) => l.startsWith("PASS ")).map((l) => l.slice(5))

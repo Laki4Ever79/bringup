@@ -56,7 +56,9 @@ Needs Node 22 or later. Nothing else to install first.
    | `npx -y bringup-mcp setup firmware` | ~125 MB, then ~1 GB on the first firmware build | firmware compiled against the board's real pins |
    | ROS 2 (robots) | comes with `setup case` | a ROS 2 Jazzy workspace in the build package (URDF, ros2_control, Nav2, launch); build it with colcon on Ubuntu 24.04 with ROS 2 Jazzy: [docs/ros.md](docs/ros.md#from-npm-no-clone) |
 
-   `npx -y bringup-mcp setup` lists them and installs nothing. With Docker, Bringup builds everything in its own
+   `npx -y bringup-mcp setup` lists them and installs nothing. On Windows, Defender scans every file the board tools
+   unpack, so `setup board` takes 2–3 min there (24 s on GitHub's Windows runner with the scan excluded); to speed it up,
+   exclude `%USERPROFILE%\.bringup` in Windows Security, Virus & threat protection, Exclusions. With Docker, Bringup builds everything in its own
    toolchain image instead (a few GB, once).
 
 4. **Bringup Studio** (from 0.2.3): `npx -y bringup-mcp login --url <studio address>` connects this machine, and every
