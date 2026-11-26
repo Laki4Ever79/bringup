@@ -10,7 +10,7 @@ import { run } from "./exec.ts"
 import type { ChassisSpec } from "./chassis.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { ARM_JOINTS } from "../arm/types.ts"
-import { ARM_GRIP_CLOSED_DEG, ARM_PERIOD_MS, armGripOpenDeg } from "../arm/firmware.ts"
+import { ARM_GRIP_CLOSED_DEG, ARM_PERIOD_MS, ARM_SERVO_HZ, armGripOpenDeg, armPcaAddr, armServos } from "../arm/firmware.ts"
 
 // Firmware in the loop (docs/mechanics.md): the rover's simulation build in QEMU, its UART1 on a local TCP port, and
 // py/mech/drive.py stepping MuJoCo in lock-step with it over a course. Results: drive.json and trajectory.json.
@@ -161,13 +161,17 @@ export async function calibrateTurn(opts: DriveOptions): Promise<TurnCalibration
 
 // The robot arm's pick-and-place in the loop (task 8): the arm firmware's simulation build (templates/fw-arm, SIM.md)
 // in QEMU, py/mech/arm_drive.py stepping the MuJoCo arm (py/mech/arm_model.py) in lock-step with it. Results: arm.json.
-// The simulation doesn't exercise the PCA9685 I2C driver (servo_uart.cpp replaces servo_pca9685.cpp); its register
-// bytes are checked on the host (test/arm-firmware.test.ts).
+// The firmware's PCA9685 driver runs as built: its I2C writes go over UART1 to the bridge's model of the chip (SIM.md);
+// only the ESP32's I2C peripheral and the Wire library under the driver aren't simulated.
 export interface ArmSimSpec {
 	mjcf: string
 	joints: readonly string[]
 	// closedQ/openQ: the gripper actuator's targets; absent, the bridge takes them from py/mech/arm_model.py.
 	gripper: { closedDeg: number; openDeg: number; closedQ?: number; openQ?: number }
+	// The firmware's PCA9685 and servo map (one per joint, then the gripper): the bridge's model of the chip turns the
+	// driver's register writes into pulses and those back into joint angles (templates/fw-arm/SIM.md).
+	pca: { addr: number; hz: number }
+	servos: { channel: number; minDeg: number; maxDeg: number; rangeDeg: number; pulseUs: [number, number] }[]
 	periodMs: number
 	repeats: number
 	spawn?: [number, number, number] // mm: where each new cube appears; absent, where the model put the first (on the plate at the pick point)
@@ -184,10 +188,11 @@ export interface ArmDriveArtifact {
 	worstMm?: number // the farthest a landed or missed cube came to rest from the cup's centre
 	cycleS?: number[] // simulated seconds per pick-and-drop
 	simS?: number
+	i2c?: { writes: number; hz: number; ignoredPrescale: number; otherAddr: number[] } // what the bridge's PCA9685 model saw
 	drops?: { tS: number; atMm: [number, number, number]; fromCupMm: number; landed: boolean }[] // each cube's rest point
 	note: string
 }
-export const ARM_SIM_NOTE = "the simulation doesn't exercise the PCA9685 I2C driver (its register bytes are checked on the host)"
+export const ARM_SIM_NOTE = "the PCA9685 driver runs as built, its register writes into a model of the chip; not simulated: the ESP32's I2C peripheral and the Wire library under it"
 
 // The bridge's spec from the contract: the brief's drop point (the cup), its repeats, the firmware's period and gripper
 // angles. The model (py/mech/arm_model.py) places the cube on the plate at the pick point; each new one goes there too.
@@ -198,6 +203,8 @@ export function armSimSpec(s: ContractSnapshot, mjcf: string): ArmSimSpec {
 		mjcf,
 		joints: ARM_JOINTS,
 		gripper: { closedDeg: ARM_GRIP_CLOSED_DEG, openDeg: armGripOpenDeg(s) },
+		pca: { addr: armPcaAddr(s), hz: ARM_SERVO_HZ },
+		servos: armServos(s).map((x) => ({ channel: x.channel, minDeg: x.minDeg, maxDeg: x.maxDeg, rangeDeg: x.part.rangeDeg, pulseUs: x.part.pulseUs! })),
 		periodMs: ARM_PERIOD_MS,
 		repeats: t.repeats,
 		cup: { xMm: t.drop.xMm, yMm: t.drop.yMm },

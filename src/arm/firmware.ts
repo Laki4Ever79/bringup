@@ -41,11 +41,15 @@ export function armGripOpenDeg(s: ContractSnapshot): number {
 	return part ? gripOpen(part.rangeDeg) : ARM_GRIP_OPEN_DEG
 }
 
-export function armHeader(s: ContractSnapshot): string {
-	const arm = s.values.arm, t = s.values.armTargets
-	if (!arm || !t) throw new Error("arm firmware not built: the contract has no arm or armTargets")
+// The firmware's servo map: one per joint (ARM_JOINTS order) then the gripper, with its catalog part, PCA9685 channel and
+// the joint range it covers (the gripper: closed..open). armHeader writes it into the firmware; the simulation's bridge
+// inverts it (pulse → joint, py/mech/arm_drive.py). Throws, naming the cause, when a servo can't be driven.
+export type ArmServo = { name: string; part: ServoPart; channel: number; minDeg: number; maxDeg: number }
+export function armServos(s: ContractSnapshot): ArmServo[] {
+	const arm = s.values.arm
+	if (!arm) throw new Error("arm firmware not built: the contract has no arm or armTargets")
 	const cat = defaultCheckCatalog()
-	const servos: { name: string; part: ServoPart; channel: number; minDeg: number; maxDeg: number }[] = []
+	const servos: ArmServo[] = []
 	const missing: string[] = []
 	for (const [name, mpn, channel, lim] of [...arm.joints.map((j) => [j.name, j.servo, j.channel, [j.minDeg, j.maxDeg]] as const), ["gripper", arm.gripper.servo, arm.gripper.channel, null] as const]) {
 		const part = cat?.mech.servos?.find((p) => p.mpn === mpn)
@@ -56,6 +60,18 @@ export function armHeader(s: ContractSnapshot): string {
 	if (missing.length) throw new Error(`arm firmware not built: ${missing.join(", ")} not in catalog/mechanics.json servos`)
 	const bus = servos.filter((x) => x.part.control !== "pwm" || !x.part.pulseUs)
 	if (bus.length) throw new Error(`arm firmware not built: ${bus.map((x) => `${x.name} ${x.part.mpn} (${x.part.control})`).join(", ")}: phase 1 drives PWM servos only; bus servos are phase 2`)
+	return servos
+}
+
+// The PCA9685's I2C address: the board's pwm-driver part's, else the chip's default 0x40.
+export function armPcaAddr(s: ContractSnapshot): number {
+	return ((s.values.parts ?? []).find((p) => p.role === "pwm-driver") as { i2cAddress?: number } | undefined)?.i2cAddress ?? 0x40
+}
+
+export function armHeader(s: ContractSnapshot): string {
+	const arm = s.values.arm, t = s.values.armTargets
+	if (!arm || !t) throw new Error("arm firmware not built: the contract has no arm or armTargets")
+	const servos = armServos(s)
 	const full = servos.map((x) => {
 		const r = servoAt(x.part, arm.railV)
 		if ("error" in r) throw new Error(`arm firmware not built: the ${x.name} servo: ${r.error}`)
@@ -63,7 +79,7 @@ export function armHeader(s: ContractSnapshot): string {
 	})
 	const speed = full.map((v) => v * ARM_SPEED_SHARE)
 	const pin = (sig: string) => (s.values.pins ?? []).find((p) => p.signal === sig)?.gpio ?? -1
-	const pwm = (s.values.parts ?? []).find((p) => p.role === "pwm-driver") as { i2cAddress?: number } | undefined
+	const pwm = { i2cAddress: armPcaAddr(s) }
 	const by = (name: string) => arm.joints.find((j) => j.name === name)!
 	const lim = (k: "minDeg" | "maxDeg") => ARM_JOINTS.map((n) => by(n)[k])
 	const xyz = (p: { xMm: number; yMm: number; zMm: number }) => list([p.xMm, p.yMm, p.zMm])
@@ -75,7 +91,7 @@ export function armHeader(s: ContractSnapshot): string {
 		'#include "arm_logic.h"',
 		`#define I2C_SDA ${pin("I2C_SDA")}`,
 		`#define I2C_SCL ${pin("I2C_SCL")}`,
-		`#define PCA9685_ADDR 0x${(pwm?.i2cAddress ?? 0x40).toString(16)}`,
+		`#define PCA9685_ADDR 0x${pwm.i2cAddress.toString(16)}`,
 		`#define ARM_SERVO_HZ ${ARM_SERVO_HZ}`,
 		`#define ARM_PERIOD_MS ${ARM_PERIOD_MS}`,
 		`#define ARM_RAMP_S ${f(ARM_RAMP_S)}`,

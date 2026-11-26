@@ -1,4 +1,4 @@
-// Arm task 8's acceptance, end to end: the fixture arm's real firmware (esp32s3_sim) in QEMU drives the MuJoCo arm
+// Arm task 8's acceptance, end to end: the fixture arm's real firmware (esp32s3_sim, its PCA9685 driver included) in QEMU drives the MuJoCo arm
 // (py/mech/arm_model.py) through the brief's pick-and-place; every cube must land in the cup. Needs PlatformIO, QEMU for
 // the S3, MuJoCo (.venv) and the arm model; skipped otherwise.
 import { test } from "node:test"
@@ -29,4 +29,8 @@ test("arm pick-and-place lands 5/5", { skip, timeout: 1_200_000 }, async () => {
 	console.log(`arm acceptance: ${r.result}: ${r.reason}; landed ${r.landed}/${r.attempts}, worst ${r.worstMm} mm, cycles ${r.cycleS?.join(", ")} s (sim ${r.simS} s); ${r.note}\n${JSON.stringify(r.drops)}`)
 	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
 	assert.equal(r.landed, s.values.armTargets!.repeats)
+	// The servos moved through the firmware's PCA9685 driver: the chip model saw its writes, at 50 Hz, none refused.
+	assert.ok((r.i2c?.writes ?? 0) > 1000, JSON.stringify(r.i2c))
+	assert.equal(r.i2c?.ignoredPrescale, 0)
+	assert.ok(Math.abs((r.i2c?.hz ?? 0) - 50) < 0.1)
 })

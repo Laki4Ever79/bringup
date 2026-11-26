@@ -12,7 +12,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from mech.arm_drive import grip_target, landed, run, with_model_defaults  # noqa: E402
+from mech.arm_drive import Pca9685, grip_target, joint_deg, landed, run, with_model_defaults  # noqa: E402
 
 JOINTS = ["base-yaw", "shoulder", "elbow", "wrist-pitch", "wrist-roll"]
 
@@ -36,10 +36,29 @@ TOY = """<mujoco>
 
 CUP = {"xMm": 160, "yMm": 125, "innerRMm": 35, "rimZMm": 60}
 GRIP = {"closedDeg": 0, "openDeg": 90, "closedQ": 0.0, "openQ": 0.04}
+# The servo map as src/arm/firmware.ts armServos writes it: joints -90..90 on 180° servos, the gripper 0..90 on one.
+SERVOS = [{"channel": i, "minDeg": -90, "maxDeg": 90, "rangeDeg": 180, "pulseUs": [500, 2500]} for i in range(5)] + [{"channel": 5, "minDeg": 0, "maxDeg": 90, "rangeDeg": 180, "pulseUs": [500, 2500]}]
+PCA = {"addr": 0x40, "hz": 50}
 
 
-def fake_firmware(unix_path, ticks, grip_deg):
-    """QEMU's UART1 stand-in: `ticks` lock-step ticks of "A" lines with the gripper at grip_deg, then "E"."""
+def pca_lines(joint_deg_list):
+    """What the firmware's PCA9685 driver writes for these joint angles (servo_pca9685.cpp servo_write, offsets 0)."""
+    out = []
+    for sv, j in zip(SERVOS, joint_deg_list):
+        s = min(sv["rangeDeg"], max(0, j - sv["minDeg"] + (sv["rangeDeg"] - (sv["maxDeg"] - sv["minDeg"])) / 2))
+        us = int(sv["pulseUs"][0] + (sv["pulseUs"][1] - sv["pulseUs"][0]) * s / sv["rangeDeg"] + 0.5)
+        off = min(4095, (us * 4096 * 50 + 500000) // 1000000)
+        out.append(f"I 40 {0x06 + 4 * sv['channel']:02x} 00 00 {off & 0xFF:02x} {off >> 8:02x}")
+    return out
+
+
+# The driver's start: asleep, PRE_SCALE 121 (50 Hz), awake with auto-increment, restart (servo_pca9685.cpp servo_begin).
+PCA_INIT = ["I 40 00 10", "I 40 fe 79", "I 40 00 20", "I 40 00 a0"]
+
+
+def fake_firmware(unix_path, ticks, grip_deg, init=PCA_INIT):
+    """QEMU's UART1 stand-in: the driver's start, then `ticks` lock-step ticks writing the servos' PCA9685 registers
+    with the gripper at grip_deg ("T" ends each), then "E"."""
     srv = socket.socket(socket.AF_UNIX)
     srv.bind(unix_path)
     srv.listen(1)
@@ -48,8 +67,12 @@ def fake_firmware(unix_path, ticks, grip_deg):
     def serve():
         c, _ = srv.accept()
         f = c.makefile("rw", newline="\n")
+        for line in init:
+            f.write(line + "\n")
         for t in range(ticks):
-            f.write(f"A {t} 10.00 20.00 -30.00 -80.00 0.00 {grip_deg:.2f}\n")
+            for line in pca_lines([10, 20, -30, -80, 0, grip_deg]):
+                f.write(line + "\n")
+            f.write(f"T {t}\n")
             f.flush()
             seen.append(f.readline().split())
         f.write(f"E {ticks}\n")
@@ -69,10 +92,10 @@ class ArmDriveTest(unittest.TestCase):
         with open(self.mjcf, "w") as f:
             f.write(TOY)
 
-    def drive(self, spawn, grip_deg, ticks=200):
-        spec = {"mjcf": self.mjcf, "joints": JOINTS, "gripper": GRIP, "periodMs": 20, "repeats": 5, "spawn": spawn, "cup": CUP}
+    def drive(self, spawn, grip_deg, ticks=200, init=None):
+        spec = {"mjcf": self.mjcf, "joints": JOINTS, "gripper": GRIP, "pca": PCA, "servos": SERVOS, "periodMs": 20, "repeats": 5, "spawn": spawn, "cup": CUP}
         sock = os.path.join(self.dir, "u.sock")
-        th, seen = fake_firmware(sock, ticks, grip_deg)
+        th, seen = fake_firmware(sock, ticks, grip_deg, **({"init": init} if init is not None else {}))
         r = run(spec, sock, self.dir, firmware_wait_s=5, tick_wait_s=5)
         th.join(5)
         with open(os.path.join(self.dir, "arm.json")) as f:
@@ -128,7 +151,7 @@ class ArmDriveTest(unittest.TestCase):
         self.assertIn("unstable", r["reason"])
 
     def test_no_firmware_is_not_run(self):
-        spec = {"mjcf": self.mjcf, "joints": JOINTS, "gripper": GRIP, "periodMs": 20, "repeats": 5, "spawn": [0, 0, 0], "cup": CUP}
+        spec = {"mjcf": self.mjcf, "joints": JOINTS, "gripper": GRIP, "pca": PCA, "servos": SERVOS, "periodMs": 20, "repeats": 5, "spawn": [0, 0, 0], "cup": CUP}
         r = run(spec, os.path.join(self.dir, "nobody.sock"), self.dir, firmware_wait_s=0.5)
         self.assertEqual(r["result"], "not run")
 
@@ -148,7 +171,7 @@ class ArmDriveTest(unittest.TestCase):
             from mech import arm_model  # noqa: F401
         except ImportError:
             # Before py/mech/arm_model.py exists the bridge says so instead of guessing.
-            spec = {"mjcf": self.mjcf, "joints": JOINTS, "gripper": {"closedDeg": 0, "openDeg": 90}, "periodMs": 20, "repeats": 5, "spawn": [0, 0, 0], "cup": {"xMm": 0, "yMm": 0}}
+            spec = {"mjcf": self.mjcf, "joints": JOINTS, "gripper": {"closedDeg": 0, "openDeg": 90}, "pca": PCA, "servos": SERVOS, "periodMs": 20, "repeats": 5, "spawn": [0, 0, 0], "cup": {"xMm": 0, "yMm": 0}}
             r = run(spec, os.path.join(self.dir, "nobody.sock"), self.dir, firmware_wait_s=0.5)
             self.assertEqual(r["result"], "not run")
             self.assertIn("arm_model", r["reason"])
@@ -156,6 +179,32 @@ class ArmDriveTest(unittest.TestCase):
         got = with_model_defaults({"gripper": {"closedDeg": 0, "openDeg": 90}, "cup": {"xMm": 1, "yMm": 2}})
         self.assertEqual(got["cup"]["innerRMm"], arm_model.CUP_INNER_MM)
         self.assertEqual(got["gripper"]["openQ"], arm_model.GRIPPER_OPEN_Q)
+
+    def test_the_driver_left_asleep_moves_nothing(self):
+        # Without the wake-up the chip's outputs stay off: the gripper never opens, no cube is dropped (the first cube
+        # falls into the cup anyway only with the gripper commanded open).
+        r, _ = self.drive([160, 125, 80], 90, init=["I 40 00 10", "I 40 fe 79"])
+        self.assertEqual(r["attempts"], 0, r)
+        self.assertEqual(r["i2c"]["hz"], 50.03)
+
+    def test_the_chip_model_follows_the_datasheet(self):
+        p = Pca9685()
+        self.assertIsNone(p.pulse_us(0), "asleep at power-on: no output")
+        p.write([0xFE, 121])  # PRE_SCALE while asleep: takes
+        self.assertAlmostEqual(p.hz(), 50.03, places=2)
+        p.write([0x00, 0x20])  # awake, AI
+        p.write([0xFE, 30])  # PRE_SCALE while awake: the chip ignores it
+        self.assertEqual(p.ignored_prescale, 1)
+        self.assertAlmostEqual(p.hz(), 50.03, places=2)
+        p.write([0x06 + 4 * 3, 0, 0, 307 & 0xFF, 307 >> 8])  # LED3, auto-increment across ON_L..OFF_H
+        self.assertAlmostEqual(p.pulse_us(3), 307 * 1e6 / (4096 * p.hz()), places=6)
+        self.assertAlmostEqual(p.pulse_us(3), 1498.0, delta=0.5)
+        p.write([0x00, 0x00])  # AI off: every byte lands on the same register
+        p.write([0x06, 1, 2, 3])
+        self.assertEqual(p.reg[0x06:0x0A], [3, 0, 0, 0])
+        # The pulse back to the joint: the firmware's map inverted (centre of a 120° servo on a 0..120 joint).
+        self.assertAlmostEqual(joint_deg(1500, {"minDeg": 0, "maxDeg": 120, "rangeDeg": 120, "pulseUs": [1000, 2000]}), 60)
+        self.assertAlmostEqual(joint_deg(1083.33, {"minDeg": -120, "maxDeg": 90, "rangeDeg": 180, "pulseUs": [1000, 2000]}), -90, places=1)
 
 
 if __name__ == "__main__":

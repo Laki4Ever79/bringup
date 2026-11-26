@@ -2,16 +2,18 @@
 
 Usage: arm_drive.py <arm-sim-spec.json> <port> <out-dir> [limit_s]
 
-The firmware's simulation build talks over UART1 in lock-step, one line each way per control tick
-(templates/fw-arm/SIM.md): "A <tick> <deg0> … <deg5>" from the firmware, the joints in ARM_JOINTS order then the
-gripper; this bridge sets each position actuator's target, steps the physics by one control period and answers
-"S <now_ms>". "E <tick>" ends the run.
+The firmware's simulation build talks over UART1 in lock-step (templates/fw-arm/SIM.md): its servo driver's I2C writes
+arrive as "I <addr> <bytes…>" (hex) and go to a model of the chip (Pca9685 below: registers → each channel's pulse →
+the servo's angle → the joint's); "T <tick>" ends a tick: this bridge sets each position actuator's target, steps the
+physics by one control period and answers "S <now_ms>". "E <tick>" ends the run.
 
 The spec (src/tools/drive.ts runArmDrive writes it):
   mjcf: the model file (py/mech/arm_model.py); its position actuators are named after the joints and "gripper", and
-        it has a free body "cube" and the cup at `cup`
+        it has a free body "cube"
   joints: the actuator names in the firmware's order; gripper: {closedDeg, openDeg, closedQ, openQ}, the firmware's
         gripper angle mapped linearly onto the gripper actuator's target
+  pca: {addr, hz}; servos: one per joint then the gripper, {channel, minDeg, maxDeg, rangeDeg, pulseUs: [us0, us1]}
+        (the firmware's servo map, src/arm/firmware.ts armServos)
   periodMs: one control tick; repeats: the cycles the firmware runs
   spawn: [x, y, z] mm, where a new cube is placed; absent, where the model put the first one (arm_model.py: resting on
          the plate at the pick point)
@@ -20,9 +22,11 @@ The gripper's closedQ/openQ and the cup's innerRMm/rimZMm, when the spec leaves 
 (py/mech/arm_model.py: GRIPPER_CLOSED_Q, GRIPPER_OPEN_Q, CUP_INNER_MM, CUP_RIM_MM): one number for model and judge.
 
 A cube that has left the height it was placed at (LIFTED_MM: picked up) and has then come to rest (under SETTLE_MPS for
-SETTLE_S) away from it, with the gripper commanded open, has been dropped (one only nudged is still waiting to be picked): it landed when its centre is within the cup's inner radius and below its rim, else it missed.
+SETTLE_S) away from it, with the gripper commanded open, has been dropped (one only nudged is still waiting to be picked):
+it landed when its centre is within the cup's inner radius and below its rim, else it missed.
 Either way a new cube is placed at the spawn point for the next cycle. Pass: every cycle's cube landed.
-Results: arm.json (result, reason, landed, attempts, worstMm, cycleS, drops: each cube's rest point) in out-dir.
+Results: arm.json (result, reason, landed, attempts, worstMm, cycleS, drops: each cube's rest point, i2c: what the chip
+model saw) in out-dir.
 """
 
 import json
@@ -65,6 +69,61 @@ def _connect(port, wait_s):
             if time.monotonic() > deadline:
                 return None
             time.sleep(0.1)
+
+
+class Pca9685:
+    """The NXP PCA9685 (datasheet rev 4) as far as a servo driver uses it: MODE1 (0x00) SLEEP (bit 4) and AI (bit 5),
+    PRE_SCALE (0xFE, written only while asleep, 7.3.5), LEDn_ON/OFF (0x06 + 4n, 12 bits, 7.3.3), the 25 MHz oscillator.
+    write() takes one I2C transaction: the register pointer, then data, the pointer auto-incrementing only with AI."""
+
+    OSC_HZ = 25_000_000
+
+    def __init__(self):
+        self.reg = [0] * 256
+        self.reg[0x00] = 0x11  # power-on MODE1: asleep, ALLCALL (7.3.1)
+        self.reg[0xFE] = 0x1E  # power-on PRE_SCALE: 200 Hz
+        self.writes = 0
+        self.ignored_prescale = 0
+
+    def write(self, data):
+        if not data:
+            return
+        self.writes += 1
+        ptr = data[0]
+        for b in data[1:]:
+            if ptr == 0xFE and not self.reg[0x00] & 0x10:
+                self.ignored_prescale += 1  # the chip blocks PRE_SCALE writes while awake
+            else:
+                self.reg[ptr] = b
+            if self.reg[0x00] & 0x20:
+                ptr = (ptr + 1) & 0xFF
+                if ptr == 0xFE + 1:
+                    ptr = 0  # (past PRE_SCALE: wraps)
+
+    def hz(self):
+        return self.OSC_HZ / (4096 * (self.reg[0xFE] + 1))
+
+    def pulse_us(self, ch):
+        """The channel's high time in microseconds, or None while asleep or off."""
+        if self.reg[0x00] & 0x10:
+            return None
+        r = 0x06 + 4 * ch
+        on = self.reg[r] | (self.reg[r + 1] & 0x0F) << 8
+        off = self.reg[r + 2] | (self.reg[r + 3] & 0x0F) << 8
+        if self.reg[r + 3] & 0x10:  # full off
+            return None
+        if self.reg[r + 1] & 0x10:  # full on
+            return 1e6 / self.hz()
+        ticks = (off - on) % 4096
+        return None if ticks == 0 else ticks * 1e6 / (4096 * self.hz())
+
+
+def joint_deg(us, servo):
+    """A servo's pulse back to its joint angle: the inverse of the firmware's arm_servo_deg (offset 0) and arm_pulse_us."""
+    us0, us1 = servo["pulseUs"]
+    s = (us - us0) / (us1 - us0) * servo["rangeDeg"]
+    s = min(servo["rangeDeg"], max(0.0, s))
+    return s + servo["minDeg"] - (servo["rangeDeg"] - (servo["maxDeg"] - servo["minDeg"])) / 2
 
 
 def landed(pos_m, cup):
@@ -130,9 +189,12 @@ def run(spec, port, out_dir, limit_s=600.0, firmware_wait_s=60.0, tick_wait_s=10
     cycle_start = 0.0
     landings, cycles, drops = [], [], []
     lifted = False
+    pca, pca_addr, servos = Pca9685(), spec["pca"]["addr"], spec["servos"]
+    other_addr = set()
+    deg = [None] * len(servos)
     ticks = 0
-    grip_open = True
-    stats = lambda: {"landed": sum(1 for ok, _ in landings if ok), "attempts": len(landings), "worstMm": round(max((d for _, d in landings), default=0.0), 1), "cycleS": [round(c, 2) for c in cycles], "simS": round(data.time, 2), "drops": drops}
+    grip_open = False  # open only once the chip's output says so (an unpowered servo opens nothing)
+    stats = lambda: {"landed": sum(1 for ok, _ in landings if ok), "attempts": len(landings), "worstMm": round(max((d for _, d in landings), default=0.0), 1), "cycleS": [round(c, 2) for c in cycles], "simS": round(data.time, 2), "drops": drops, "i2c": {"writes": pca.writes, "hz": round(pca.hz(), 2), "ignoredPrescale": pca.ignored_prescale, "otherAddr": sorted(other_addr)}}
     while data.time < limit_s:
         try:
             line = f.readline()
@@ -145,16 +207,32 @@ def run(spec, port, out_dir, limit_s=600.0, firmware_wait_s=60.0, tick_wait_s=10
         parts = line.split()
         if parts and parts[0] == "E":
             break
-        if len(parts) < 8 or parts[0] != "A":
+        if parts and parts[0] == "I" and len(parts) >= 2:
+            try:
+                addr, payload = int(parts[1], 16), [int(x, 16) for x in parts[2:]]
+            except ValueError:
+                continue
+            if addr == pca_addr:
+                pca.write(payload)
+            else:
+                other_addr.add(addr)
+            continue
+        if not parts or parts[0] != "T":
             continue
         if ticks == 0:
             sock.settimeout(tick_wait_s)
         ticks += 1
-        deg = [float(x) for x in parts[2:8]]
+        # The chip's outputs → joint targets; a channel with no pulse (asleep, off) leaves its servo where it was.
+        for i, sv in enumerate(servos):
+            us = pca.pulse_us(sv["channel"])
+            if us is not None:
+                deg[i] = joint_deg(us, sv)
         for a, d in zip(acts, deg[:5]):
-            data.ctrl[a] = math.radians(d)
-        data.ctrl[grip_act] = grip_target(deg[5], grip)
-        grip_open = deg[5] >= (grip["closedDeg"] + grip["openDeg"]) / 2
+            if d is not None:
+                data.ctrl[a] = math.radians(d)
+        if deg[5] is not None:
+            data.ctrl[grip_act] = grip_target(deg[5], grip)
+            grip_open = deg[5] >= (grip["closedDeg"] + grip["openDeg"]) / 2
         for _ in range(steps):
             mujoco.mj_step(model, data)
         # MuJoCo resets the state when it blows up (NaN accelerations): a model problem, never a quiet restart.

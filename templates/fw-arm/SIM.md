@@ -1,15 +1,18 @@
 # The arm's simulation protocol (UART1, 921600 baud, ASCII lines)
 
-The simulation build (`pio run -e esp32s3_sim`) runs in Espressif's QEMU; its UART1 is a TCP socket the MuJoCo bridge
-connects to. One line each way per control tick (ARM_PERIOD_MS), in lock-step: the firmware waits for the answer.
+The simulation build (`pio run -e esp32s3_sim`) runs in Espressif's QEMU, whose ESP32-S3 has no I2C controller. Its
+UART1 is a socket the MuJoCo bridge (py/mech/arm_drive.py) connects to. The firmware is the board's: the same PCA9685
+driver (`src/servo_pca9685.cpp`) writes the same register bytes; only the bus under it (`src/link.h`) differs, Wire on
+the board (`link_board.cpp`), these lines in simulation (`link_sim.cpp`). Lock-step: the firmware waits for each answer.
 
-- firmware → bridge: `A <tick> <deg0> <deg1> <deg2> <deg3> <deg4> <deg5>`: the joint angles the firmware commands, in
-  ARM_JOINTS order (base-yaw, shoulder, elbow, wrist-pitch, wrist-roll), then the gripper's (ARM_GRIP_CLOSED_DEG closed,
-  ARM_GRIP_OPEN_DEG open). Joint angles as in src/arm/types.ts: 0 stretched forward and level, each relative to the link
-  before it.
-- bridge → firmware: `S <now_ms>`: the bridge has stepped the physics by one control period.
+- firmware → bridge: `I <addr> <b0> <b1> …`: one I2C write transaction, hex. The bridge's model of the chip at that
+  address takes it: the PCA9685 at 0x40 (NXP datasheet rev 4) keeps its registers, so the driver's order matters as on
+  the chip (PRE_SCALE takes only while MODE1's SLEEP is set; LEDn registers auto-increment only with MODE1's AI; no
+  output while asleep). Each channel's pulse goes back through its servo's pulse range and travel to the joint angle
+  (src/arm/firmware.ts armServos), which sets that joint's position actuator.
+- firmware → bridge: `T <tick>`: the end of one control tick (ARM_PERIOD_MS); bridge → firmware: `S <now_ms>`, the
+  physics stepped by one period.
 - firmware → bridge, at the end: `E <tick>`.
 
-Only `src/servo_uart.cpp` differs from the board build (`src/servo_pca9685.cpp`); the IK, the moves and the pick plan
-are the same code. The simulation doesn't exercise the I2C driver: its register bytes are checked on the host against
-the PCA9685 datasheet (test/arm-firmware.test.ts).
+Not exercised in simulation: the ESP32's I2C peripheral and the Wire library (the bytes they would carry are the ones
+above), and the servos' calibration offsets (NVS starts empty, so every offset is 0).

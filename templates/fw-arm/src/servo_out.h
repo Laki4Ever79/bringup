@@ -1,6 +1,5 @@
-// The arm's servo output: one interface, two back ends. The board build drives the PCA9685 over I2C
-// (servo_pca9685.cpp); the simulation build (-DHW_SIM) sends each tick's angles to the MuJoCo bridge over UART1 in
-// lock-step (servo_uart.cpp, SIM.md). Everything above it (IK, moves, the pick plan) is the same code in both.
+// The arm's servo output: the PCA9685 driver (servo_pca9685.cpp) in both builds. Only the bus under it differs (link.h):
+// Wire on the board, UART1 to the MuJoCo bridge's model of the chip in the simulation (-DHW_SIM, SIM.md).
 #pragma once
 #include <stdint.h>
 

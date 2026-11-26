@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { armContract, INSIDE } from "./arm-fixture.ts"
 import { armSimSpec, runArmDrive, ARM_SIM_NOTE } from "../src/tools/drive.ts"
 import { ARM_JOINTS } from "../src/arm/types.ts"
-import { ARM_GRIP_CLOSED_DEG, ARM_PERIOD_MS } from "../src/arm/firmware.ts"
+import { ARM_GRIP_CLOSED_DEG, ARM_PERIOD_MS, armHeader } from "../src/arm/firmware.ts"
 import { tempDir } from "./helpers.ts"
 
 const ROOT = join(import.meta.dirname, "..")
@@ -20,6 +20,12 @@ test("armSimSpec: the brief's drop point is the cup, its repeats are the run; ne
 	assert.equal(spec.periodMs, ARM_PERIOD_MS)
 	assert.equal(spec.gripper.closedDeg, ARM_GRIP_CLOSED_DEG)
 	assert.ok(spec.gripper.openDeg > spec.gripper.closedDeg)
+	// The bridge's model of the PCA9685 inverts the firmware's own servo map: the same channels, ranges and pulses.
+	assert.deepEqual(spec.pca, { addr: 0x40, hz: 50 })
+	const h = armHeader(armContract())
+	assert.match(h, new RegExp(`ARM_CHANNEL\\[ARM_NS\\] = \\{${spec.servos.map((x) => x.channel).join(", ")}\\}`))
+	assert.match(h, new RegExp(`ARM_PULSE_US\\[ARM_NS\\]\\[2\\] = \\{${spec.servos.map((x) => `\\{${x.pulseUs.join(", ")}\\}`).join(", ")}\\}`))
+	assert.deepEqual(spec.servos.at(-1)!.minDeg, ARM_GRIP_CLOSED_DEG, "the gripper's servo covers closed..open")
 })
 
 test("runArmDrive on a machine QEMU has no model of is \"not run\", with the I2C note", async () => {
