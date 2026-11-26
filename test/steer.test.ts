@@ -197,3 +197,13 @@ test("steer commands: parsed from steer.jsonl lines, refused by the hub when the
 	] as never
 	assert.deepEqual(editsToApply(edits).map((e) => e.id), ["e1", "e2"])
 })
+
+test("two signals moved onto the same GPIO are caught before the edit is used (steering gap, 25 Nov)", () => {
+	const s = rover()
+	const pins = structuredClone(s.values.pins!)
+	const [a, b] = pins.filter((p: { gpio?: unknown }) => p.gpio !== undefined && p.gpio !== null)
+	;(b as { gpio: unknown }).gpio = (a as { gpio: unknown }).gpio
+	const broke = contractBreakage(s, "pins", pins, brief, validate)
+	assert.ok(broke.length > 0, "a duplicate GPIO breaks something")
+	assert.match(JSON.stringify(broke), new RegExp(String((a as { gpio: unknown }).gpio)))
+})

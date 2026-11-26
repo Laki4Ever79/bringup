@@ -112,6 +112,16 @@ export class DesignContract {
 			}
 			const bad = (p.value as ContractValues["pins"]).filter((pin) => !SIGNAL_PATTERN.test(pin.signal)).map((pin) => pin.signal)
 			if (bad.length > 0) return `signal names must match ${SIGNAL_PATTERN}: ${bad.join(", ")}`
+			// One GPIO, one signal. The same signal on several parts is a shared bus (I2C_SDA to two sensors) and fine; two
+			// different signals on one GPIO short them together (a hand edit while paused, 25 Nov 2026, went through).
+			const onGpio = new Map<string, Set<string>>()
+			for (const pin of p.value as ContractValues["pins"]) {
+				if (pin.gpio === undefined || pin.gpio === null) continue
+				const k = String(pin.gpio)
+				onGpio.set(k, (onGpio.get(k) ?? new Set()).add(pin.signal))
+			}
+			const clash = [...onGpio].filter(([, s]) => s.size > 1)
+			if (clash.length > 0) return `each GPIO carries one signal: ${clash.map(([g, s]) => `GPIO ${g} has ${[...s].join(" and ")}`).join("; ")}. Move one of them to a free GPIO.`
 		}
 		return null
 	}
