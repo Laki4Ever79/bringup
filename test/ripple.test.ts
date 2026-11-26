@@ -128,7 +128,8 @@ test("a held proposal counts as woken; a participant outside the 14 lanes (the b
 		ev(1_003, "contract.changed", { field: "rails", version: 2, revision: 9, by: "bench" }),
 	]
 	const [r] = changeRipples(trace)
-	assert.deepEqual(r.woke, ["firmware", "consistency"])
+	// The bench itself is no lane, but its rails change wakes the board build: the board waits for rails (4234327).
+	assert.deepEqual(r.woke, ["firmware", "build:board", "consistency"])
 	assert.equal(r.woke.length + r.checked.length + r.stayedIdle.length, 14)
 })
 
