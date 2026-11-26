@@ -34,7 +34,7 @@
 		"catalog/",
 		"templates/",
 		"briefs/",
-		"examples/",
+		"examples/learn/",
 		"docker/",
 		"docs/mcp.md",
 		"server.json",

@@ -18,7 +18,10 @@ import { dirname, join, normalize } from "node:path"
 
 // The page and what serves it: the page itself, the demo that launches it, its design doc, and the live simulation
 // session behind its Simulation chapter (src/sim, py/mech/live.py: "simulation in 3D" is the paid part, 25 Nov 2026).
-export const PRIVATE_ROOTS = ["src/dashboard/", "src/demo.ts", "docs/design/dashboard.md", "src/sim/", "py/mech/live.py"]
+// The finished example designs (examples/, the page's home screen) are private too (the user, 25 Nov 2026: "examples
+// should stay on private repo"); examples/learn stays public: the datasheet fixtures the engine's mock and tests read.
+export const PRIVATE_ROOTS = ["src/dashboard/", "src/demo.ts", "docs/design/dashboard.md", "src/sim/", "py/mech/live.py", "examples/"]
+export const PUBLIC_INSIDE = ["examples/learn/"]
 // Never in a public tree (they are gitignored; a hit means something slipped in).
 const FORBIDDEN = [/(^|\/)\.env(\.(?!example$)[^/]*)?$/, /^catalog\/learned\//, /(^|\/)\.cache\//]
 const CODE = /\.(ts|mts|js|mjs|tsx)$/
@@ -42,7 +45,16 @@ export function resolveImport(from: string, spec: string, files: Set<string>): s
 	return null
 }
 
-const underRoots = (f: string) => PRIVATE_ROOTS.some((r) => (r.endsWith("/") ? f.startsWith(r) : f === r))
+const underRoots = (f: string) => !PUBLIC_INSIDE.some((p) => f.startsWith(p)) && PRIVATE_ROOTS.some((r) => (r.endsWith("/") ? f.startsWith(r) : f === r))
+
+// A test or script that reads a private example by a literal file path (examples/rover-pi/boards/main/contract.json)
+// would fail in the public tree: it goes too. Only the data roots count: code roots are followed through imports, and
+// tools like this one name the roots themselves.
+const DATA_ROOTS = ["examples/"]
+export function readsPrivatePath(source: string, isPrivate: (f: string) => boolean = underRoots): boolean {
+	for (const m of source.matchAll(/["'`/]([\w-]+\/[\w./-]*\.\w+)["'`]/g)) if (DATA_ROOTS.some((r) => m[1].startsWith(r)) && isPrivate(m[1])) return true
+	return false
+}
 
 // Every file to leave out. The page modules the engine reaches (src/ and bin/ outside the page, followed through
 // static imports) stay public, shared, until they move into the engine; the rest of the page is private, and so is
@@ -62,7 +74,8 @@ export function privateFiles(files: string[], read: (f: string) => string): { ou
 	// A .js module's types (its .d.ts beside it) go wherever it goes.
 	for (const f of [...reach]) if (f.endsWith(".js") && all.has(f.replace(/\.js$/, ".d.ts"))) reach.add(f.replace(/\.js$/, ".d.ts"))
 	const shared = files.filter((f) => underRoots(f) && reach.has(f)).sort()
-	const out = new Set(files.filter((f) => underRoots(f) && !reach.has(f)))
+	const isPrivate = (f: string) => underRoots(f) && !reach.has(f)
+	const out = new Set(files.filter((f) => isPrivate(f) || (CODE.test(f) && /^(test|scripts)\//.test(f) && readsPrivatePath(read(f), isPrivate))))
 	for (let changed = true; changed; ) {
 		changed = false
 		for (const [f, ds] of deps) if (!out.has(f) && ds.some((d) => out.has(d))) (out.add(f), (changed = true))

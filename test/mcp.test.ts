@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
@@ -328,7 +328,9 @@ test("list_starters names the shipped examples, systems and briefs", async () =>
 	const mcp = await connectWith({ launch: stubRun().launch })
 	try {
 		const s = (await mcp.call("list_starters", {})).json()
-		assert.ok(s.examples.some((e: { name: string }) => e.name === "rover"))
+		// The finished examples ship with the private repo only (examples/ minus learn): list what this checkout has.
+		const shipped = readdirSync("examples").filter((n) => existsSync(join("examples", n, "example.json")))
+		assert.deepEqual(s.examples.map((e: { name: string }) => e.name).sort(), shipped.sort())
 		assert.ok(s.systems.some((e: { name: string }) => e.name === "rover-climate"))
 		assert.ok(s.briefs.some((e: { name: string }) => e.name === "rover"))
 	} finally {
