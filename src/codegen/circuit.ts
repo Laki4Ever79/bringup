@@ -741,6 +741,11 @@ function so8eFootprint(): string {
 	const outline = [[-2, -2.55], [2, -2.55], [2, 2.55], [-2, 2.55], [-2, -2.55]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
 	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[{ x: -3.7, y: 2.4 }, { x: -3.7, y: 2.0 }]} /></footprint>}`
 }
+// The footprints the generator draws itself (a module's land pattern, or a part tscircuit's string doesn't draw right):
+// the land pattern as JSX, or null for a tscircuit footprint string. test/footprint-clearance.test.ts skips these.
+export function ownFootprint(footprint: string): string | null {
+	return MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : footprint === SO8E_FOOTPRINT ? so8eFootprint() : footprint === XT60_FOOTPRINT ? xt60Footprint() : footprint === SY8368_FOOTPRINT ? sy8368Footprint() : footprint === DC091_FOOTPRINT ? dc091Footprint() : null
+}
 export const IMU_FOOTPRINT = "lga14_2.5x3"
 export const IMU_BODY = { w: 3.0, h: 2.5 }
 export function imuLands(): { pin: number; x: number; y: number; w: number; h: number }[] {
@@ -2664,7 +2669,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 			if (b && opts.usbKeepouts) lines.push(...usbKeepouts(b.x, b.y, b.rotation))
 			continue
 		}
-		const fp = MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : footprint === SO8E_FOOTPRINT ? so8eFootprint() : footprint === XT60_FOOTPRINT ? xt60Footprint() : footprint === SY8368_FOOTPRINT ? sy8368Footprint() : footprint === DC091_FOOTPRINT ? dc091Footprint() : q(footprint)
+		const fp = ownFootprint(footprint) ?? q(footprint)
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
 	}
 
