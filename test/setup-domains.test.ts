@@ -32,11 +32,11 @@ test("setup with no domain only lists them; an unknown domain is refused; nothin
 test("board: the pinned lockfile goes into the tools home and npm ci installs it there; a second run is a no-op", async () => {
 	const home = tempDir()
 	const calls: string[][] = []
-	const exec = async (cmd: string, args: string[]) => {
+	const exec = async (cmd: string, args: string[], opts?: { cwd?: string }) => {
 		calls.push([cmd, ...args])
-		// npm ci "installs": the .bin/tsci it would put there.
+		// npm ci "installs", in the folder it runs in: the .bin/tsci it would put there.
 		if (cmd === "npm") {
-			const prefix = args[args.indexOf("--prefix") + 1]
+			const prefix = opts!.cwd!
 			mkdirSync(join(prefix, "node_modules", ".bin"), { recursive: true })
 			writeFileSync(join(prefix, "node_modules", ".bin", "tsci"), "")
 		}
@@ -45,6 +45,7 @@ test("board: the pinned lockfile goes into the tools home and npm ci installs it
 	const r = await installDomain("board", { home, exec, log: () => {} })
 	assert.equal(r.installed, true)
 	assert.deepEqual(calls[0].slice(0, 2), ["npm", "ci"])
+	assert.ok(!calls[0].includes("--prefix"), "npm ci runs in the tools folder, not through --prefix")
 	assert.ok(existsSync(join(home, "tools", "node", "package-lock.json")), "the tested lockfile, so nothing floats")
 	assert.equal(JSON.parse(readFileSync(join(home, "tools", "node", "package-lock.json"), "utf8")).lockfileVersion > 0, true)
 	assert.deepEqual(installedDomains(home), ["board"])

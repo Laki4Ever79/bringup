@@ -63,7 +63,8 @@ const ROOT = fileURLToPath(new URL("../..", import.meta.url))
 
 function execDefault(cmd: string, args: string[], opts: { cwd?: string; env?: Record<string, string> } = {}): Promise<number> {
 	return new Promise((done) => {
-		const child = spawn(cmd, args, { cwd: opts.cwd, env: { ...process.env, ...opts.env }, stdio: ["ignore", "inherit", "inherit"] })
+		// npm is npm.cmd on Windows, which only starts through the shell.
+		const child = spawn(cmd, args, { cwd: opts.cwd, env: { ...process.env, ...opts.env }, stdio: ["ignore", "inherit", "inherit"], shell: process.platform === "win32" && cmd === "npm" })
 		child.on("error", () => done(-1))
 		child.on("exit", (code) => done(code ?? -1))
 	})
@@ -105,7 +106,9 @@ export async function installDomain(domain: Domain, deps: InstallDeps = {}): Pro
 		// The tested lockfile (src/setup/tools-node): its dependencies don't float.
 		for (const f of ["package.json", "package-lock.json"]) copyFileSync(join(ROOT, "src", "setup", "tools-node", f), join(dir, f))
 		d.log(`board: ${DOMAINS.board.what} into ${dir}`)
-		const code = await d.exec("npm", ["ci", "--no-audit", "--no-fund", "--prefix", dir])
+		// In the tools folder itself, not --prefix: macOS's npm read the folder's package.json and lock out of step through
+		// --prefix ("Missing: node@ from lock file", OS smoke run 2), though the same lock installs cleanly here.
+		const code = await d.exec("npm", ["ci", "--no-audit", "--no-fund"], { cwd: dir })
 		if (code !== 0 || !existsSync(join(dir, "node_modules", ".bin", BIN.tsci))) throw new Error(`board tools didn't install (npm ci exited ${code})`)
 		return { installed: true, note: `board tools in ${dir}` }
 	}

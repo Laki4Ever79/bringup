@@ -52,12 +52,14 @@ test("a missing command resolves with code 1 instead of throwing", async () => {
 	assert.match(r.stderr, /ENOENT/)
 })
 
-test("the default command is tsx running src/main.ts from the repo root", async () => {
+test("the default command is node with tsx's loader running src/main.ts, on every OS (no .bin shim)", async () => {
 	// Only checks where the default points; the real CLI is exercised by the end-to-end tests.
 	const { defaultCommand } = await import("../src/runner/spawn-run.ts")
-	const [bin, script] = defaultCommand()
-	assert.match(bin, /node_modules\/\.bin\/tsx$/)
-	assert.match(script, /src\/main\.ts$/)
+	const [bin, flag, loader, script] = defaultCommand()
+	assert.equal(bin, process.execPath)
+	assert.equal(flag, "--import")
+	assert.match(loader, /^file:.*tsx/)
+	assert.match(script, /src[\\/]main\.ts$/)
 })
 
 test("onStdout and onStderr see output as it arrives, and done still has it", async () => {

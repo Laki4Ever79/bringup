@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process"
-import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 export interface RunProcessArgs {
@@ -28,9 +27,9 @@ const TAIL_BYTES = 64 * 1024
 // `tsx src/main.ts`, by absolute path so it works whatever the caller's cwd.
 export function defaultCommand(): [string, ...string[]] {
 	const main = fileURLToPath(new URL("../main.ts", import.meta.url))
-	const local = fileURLToPath(new URL("../../node_modules/.bin/tsx", import.meta.url))
-	if (existsSync(local)) return [local, main]
-	// An npm install (npx bringup-mcp) hoists tsx beside the package, not under it: node loads it by resolution.
+	// Node itself with tsx's loader, on every OS: the .bin/tsx shim is a shell script, and tsx.cmd on Windows, which a
+	// spawn without the shell can't start (OS smoke run 2, 26 Nov 2026: "spawn …\\node_modules\\.bin\\tsx ENOENT").
+	// Resolved, so an npm install that hoists tsx beside the package finds it too.
 	return [process.execPath, "--import", import.meta.resolve("tsx"), main]
 }
 
