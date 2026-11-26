@@ -1,5 +1,5 @@
 import { createAgent, createHuman, DeveloperMessageItem, ModelContext, type Agent, type InferenceInput, type SituationHandler, type Tool } from "@mozaik-ai/core"
-import { OWNERS, type AgentRole } from "../contract/types.ts"
+import { OWNERS, type AgentRole, type FieldName } from "../contract/types.ts"
 import type { Cause } from "../events.ts"
 import { modelFor } from "../inference/models.ts"
 import { join, safeRunLoop, state } from "../runtime.ts"
@@ -77,7 +77,7 @@ interface Pending { message: string; cause?: Cause; stillHolds?: () => boolean }
 interface Turns { live: number[]; queue: Pending[]; pending: Map<string, Pending> }
 const turnsOf = new Map<string, Turns>()
 const tracked = new WeakSet<object>()
-type Check = { revision: number; violations: { kind: string; affects: AgentRole[] }[] }
+type Check = { revision: number; violations: { kind: string; affects: AgentRole[]; fields: FieldName[] }[] }
 const lastCheck = new WeakMap<object, Check>()
 
 // This runtime's latest consistency check (not a draining one): what a pending violations follow-up checks before it

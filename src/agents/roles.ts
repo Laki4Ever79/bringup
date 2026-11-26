@@ -9,6 +9,7 @@ import { ROUTING_FAILURE } from "../contract/space.ts"
 import { WAITING_ON_CONTRACT } from "../contract/consistency.ts"
 import { CONNECTIVITY_SHAPE } from "../contract/connectivity.ts"
 import { createRoleAgent, latestCheck, requestTurn, startTurn } from "./common.ts"
+import { recipients } from "./recipients.ts"
 import { isPinAssignmentFinding } from "./grounding-check.ts"
 import type { GroundingFinding } from "../contract/grounding.ts"
 import { rankMcus, type McuRequest } from "../mcu/select.ts"
@@ -152,11 +153,11 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 			onBuildFailed(["board", "enclosure"], "outline, connectors, rails, pins"),
 			ownerFixesReview("architect"),
 			{
-				specification: when(({ event }) => isEvent(event, "consistency.checked") && !event.payload.draining && event.payload.violations.some((v) => v.affects.includes("architect"))),
+				specification: when(({ event }) => isEvent(event, "consistency.checked") && !event.payload.draining && event.payload.violations.some((v) => recipients(v).includes("architect"))),
 				processor: {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "consistency.checked")) return
-						const mine = event.payload.violations.filter((v) => v.affects.includes("architect"))
+						const mine = event.payload.violations.filter((v) => recipients(v).includes("architect"))
 						requestTurn(participant as Agent, `violations@${event.payload.revision}:${mine.map((v) => v.kind).join(",")}`, `Consistency violations for you at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}\nFix them by changing the fields you own.`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) }, () => (latestCheck()?.violations ?? []).some((v) => v.affects.includes("architect")))
 					},
 				},
@@ -242,8 +243,8 @@ function layoutChassisTool(): Tool {
 // Consistency violations addressed to a role wake it once per revision, with what to do about them.
 // only: which of the role's violations it can act on (the case designer shares the "enclosure" role with the case
 // builder, whose cutout and vent violations a rebuild fixes).
-function violationsFor(role: AgentRole, guidance: string, only: (kind: string) => boolean = () => true): SituationHandler {
-	const ours = (v: { kind: string; affects: AgentRole[] }) => v.affects.includes(role) && only(v.kind)
+function violationsFor(role: AgentRole, guidance: string): SituationHandler {
+	const ours = (v: { affects: AgentRole[]; fields: FieldName[] }) => recipients(v).includes(role)
 	return {
 		specification: when(({ event }) => isEvent(event, "consistency.checked") && !event.payload.draining && event.payload.violations.some(ours)),
 		processor: {
@@ -351,11 +352,11 @@ export function createFirmwareReviewer(opts: { mock: boolean }): Agent {
 				processor: { apply: ({ participant }) => requestTurn(participant as Agent, `pins@${state().contract.version("pins")}`, "The pin map changed. Review it against the requirements.", { kind: "field-changed", fields: ["pins"] }) },
 			},
 			{
-				specification: when(({ event }) => isEvent(event, "consistency.checked") && !event.payload.draining && event.payload.violations.some((v) => v.affects.includes("firmware"))),
+				specification: when(({ event }) => isEvent(event, "consistency.checked") && !event.payload.draining && event.payload.violations.some((v) => recipients(v).includes("firmware"))),
 				processor: {
 					apply: ({ event, participant }) => {
 						if (!isEvent(event, "consistency.checked")) return
-						const mine = event.payload.violations.filter((v) => v.affects.includes("firmware"))
+						const mine = event.payload.violations.filter((v) => recipients(v).includes("firmware"))
 						requestTurn(participant as Agent, `fw-violations@${event.payload.revision}`, `Firmware violations at revision ${event.payload.revision}:\n${mine.map((v) => `- ${v.kind}: ${v.message}`).join("\n")}`, { kind: "violation", revision: event.payload.revision, items: mine.map((v) => ({ kind: v.kind, message: v.message })) }, () => (latestCheck()?.violations ?? []).some((v) => v.affects.includes("firmware")))
 					},
 				},
@@ -446,7 +447,7 @@ export function createMechanicsAgent(opts: { mock: boolean }): Agent {
 			ownerReviewsChanges("mechanics"),
 			ownerFixesReview("mechanics"),
 			engineerRequests("If it is about the robot's body (its size, wheels, motors, battery, where things sit, how fast it drives), meet it: call read_contract, then propose_contract_change on the mechanics field with its current baseVersion, keeping everything the request does not mention, so every check above still passes. Otherwise change nothing.", "mechanics"),
-			violationsFor("mechanics", "Fix them by changing the mechanics field you own (other parts, a longer wheelbase, the battery moved back, a wider plate), with propose_contract_change and its current baseVersion.", (kind) => kind.startsWith("mech-")),
+			violationsFor("mechanics", "Fix them by changing the mechanics field you own (other parts, a longer wheelbase, the battery moved back, a wider plate), with propose_contract_change and its current baseVersion."),
 		],
 	})
 }
@@ -463,7 +464,7 @@ export function createCaseAgent(opts: { mock: boolean }): Agent {
 			engineerRequests(
 				"If requirements.enclosure is \"none\" or \"own\", change nothing: whether there is a case at all is the architect's field. Otherwise, if it is about the case (its outer size, walls, height, lid, lettering on it, wall-mount tabs, a lanyard loop, a hole for a cable or a cable gland), meet it: call read_contract, then propose_contract_change on the case field with its current baseVersion (a new case field has baseVersion 0, starting from walls 2 mm, height 14 mm, no features), keeping every feature the request does not mention. If it sets the case's outer size, also propose the board outline that gives it. Otherwise change nothing.",
 			),
-			violationsFor("enclosure", "Fix them by changing the case field you own (move or resize a hole, a taller or lower body, tabs on other walls, or a sizeReason when the room is wanted), with propose_contract_change and its current baseVersion.", (kind) => kind.startsWith("case-") || kind === "space-slack"),
+			violationsFor("enclosure", "Fix them by changing the case field you own (move or resize a hole, a taller or lower body, tabs on other walls, or a sizeReason when the room is wanted), with propose_contract_change and its current baseVersion."),
 		],
 	})
 }
