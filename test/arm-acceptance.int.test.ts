@@ -26,7 +26,7 @@ test("arm pick-and-place lands 5/5", { skip, timeout: 1_200_000 }, async () => {
 	const m = spawnSync(python, ["-B", model, contract, mjcf], { cwd: join(ROOT, "py"), encoding: "utf8", env: { ...process.env, PYTHONPATH: join(ROOT, "py") } })
 	assert.equal(m.status, 0, m.stderr)
 	const r = await runArmDrive({ root: ROOT, python, pio, fwDir: fw, outDir: out, spec: armSimSpec(s, mjcf), timeoutMs: 900_000 }, 1)
-	console.log(`arm acceptance: ${r.result}: ${r.reason}; landed ${r.landed}/${r.attempts}, worst ${r.worstMm} mm, cycles ${r.cycleS?.join(", ")} s (sim ${r.simS} s); ${r.note}`)
+	console.log(`arm acceptance: ${r.result}: ${r.reason}; landed ${r.landed}/${r.attempts}, worst ${r.worstMm} mm, cycles ${r.cycleS?.join(", ")} s (sim ${r.simS} s); ${r.note}\n${JSON.stringify(r.drops)}`)
 	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
 	assert.equal(r.landed, s.values.armTargets!.repeats)
 })

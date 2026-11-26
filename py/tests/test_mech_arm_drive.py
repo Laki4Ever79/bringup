@@ -94,6 +94,19 @@ class ArmDriveTest(unittest.TestCase):
         r, _ = self.drive(None, 90)
         self.assertEqual(r["result"], "pass", r)
 
+    def test_a_cube_only_nudged_along_the_table_is_not_a_drop(self):
+        # The cube rests on a 4° low-friction ramp beside the cup and slides ~60 mm into a stop: moved, at rest, the
+        # gripper open, but its height changed by only ~4 mm, never picked up: not a drop (before: a "missed" cube).
+        ramp = ('    <geom name="ramp" type="box" pos="0.3 0.125 0.01" size="0.1 0.03 0.01" euler="0 -4 0" friction="0.02"/>\n'
+                '    <geom name="stop" type="box" pos="0.235 0.125 0.03" size="0.005 0.03 0.03"/>\n'
+                '    <body name="cube" pos="0.3 0.125 0.035">')
+        with open(self.mjcf, "w") as f:
+            # MuJoCo takes the larger friction of the two geoms: the cube's is lowered too.
+            f.write(TOY.replace('    <body name="cube" pos="0.16 0.125 0.08">', ramp).replace('mass="0.05"/>', 'mass="0.05" friction="0.02"/>'))
+        r, _ = self.drive(None, 90)
+        self.assertEqual(r["attempts"], 0, r)
+        self.assertEqual(r["drops"], [])
+
     def test_cubes_beside_the_cup_miss(self):
         r, _ = self.drive([300, 125, 80], 90)
         self.assertEqual(r["result"], "fail")

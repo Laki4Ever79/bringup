@@ -43,6 +43,7 @@ typedef struct {
 	float approachMm;           // how far above pick and drop the arm comes in (lowered until both solve)
 	float gripOpenDeg, gripClosedDeg;
 	uint16_t gripHoldMs;
+	uint16_t settleMs;          // held at the pick and drop before the gripper moves: the servos catch up with the plan
 } arm_task;
 // Writes one cycle (8 waypoints) into out; returns the count, or -1 when pick or drop can't be solved even with no approach.
 int arm_plan(const arm_task *t, arm_waypoint out[], int max, float *approachUsedMm);

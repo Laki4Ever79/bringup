@@ -20,6 +20,14 @@ export const ARM_RAMP_S = 0.15
 export const ARM_GRIP_CLOSED_DEG = 0
 export const ARM_GRIP_OPEN_DEG = 90
 export const ARM_GRIP_HOLD_MS = 400
+// Held at the pick and drop before the gripper moves, so the servos (which lag the commanded profile) arrive first; and
+// added to the power-on hold (ARM_START_MS, below). An estimate: the simulated wrist settled in ~0.3 s (26 Nov trace).
+export const ARM_SETTLE_MS = 300
+// The power-on hold: the slowest servo across its whole travel at full no-load speed, twice over (an estimate covering the
+// load and the ramp), plus the settle.
+export function armStartMs(servos: { rangeDeg: number; degPerS: number }[]): number {
+	return Math.ceil((2 * Math.max(...servos.map((x) => x.rangeDeg / x.degPerS)) * 1000) / 100) * 100 + ARM_SETTLE_MS
+}
 
 // A C float literal: always with a decimal point ("60f" isn't C).
 const f = (n: number) => { const t = String(Number(n.toFixed(3))); return `${/[.e]/.test(t) ? t : `${t}.0`}f` }
@@ -48,11 +56,12 @@ export function armHeader(s: ContractSnapshot): string {
 	if (missing.length) throw new Error(`arm firmware not built: ${missing.join(", ")} not in catalog/mechanics.json servos`)
 	const bus = servos.filter((x) => x.part.control !== "pwm" || !x.part.pulseUs)
 	if (bus.length) throw new Error(`arm firmware not built: ${bus.map((x) => `${x.name} ${x.part.mpn} (${x.part.control})`).join(", ")}: phase 1 drives PWM servos only; bus servos are phase 2`)
-	const speed = servos.map((x) => {
+	const full = servos.map((x) => {
 		const r = servoAt(x.part, arm.railV)
 		if ("error" in r) throw new Error(`arm firmware not built: the ${x.name} servo: ${r.error}`)
-		return r.degPerS * ARM_SPEED_SHARE
+		return r.degPerS
 	})
+	const speed = full.map((v) => v * ARM_SPEED_SHARE)
 	const pin = (sig: string) => (s.values.pins ?? []).find((p) => p.signal === sig)?.gpio ?? -1
 	const pwm = (s.values.parts ?? []).find((p) => p.role === "pwm-driver") as { i2cAddress?: number } | undefined
 	const by = (name: string) => arm.joints.find((j) => j.name === name)!
@@ -71,6 +80,7 @@ export function armHeader(s: ContractSnapshot): string {
 		`#define ARM_PERIOD_MS ${ARM_PERIOD_MS}`,
 		`#define ARM_RAMP_S ${f(ARM_RAMP_S)}`,
 		`#define ARM_REPEATS ${t.repeats}`,
+		`#define ARM_START_MS ${armStartMs(servos.map((x, i) => ({ rangeDeg: x.part.rangeDeg, degPerS: full[i] })))}`,
 		`#define ARM_RAIL_V ${f(arm.railV)}`,
 		`#define ARM_GRIP_CLOSED_DEG ${f(grip.minDeg)}`,
 		`#define ARM_GRIP_OPEN_DEG ${f(grip.maxDeg)}`,
@@ -83,7 +93,7 @@ export function armHeader(s: ContractSnapshot): string {
 		`// ${ARM_SPEED_SHARE * 100} % of each servo's no-load speed at ${arm.railV} V (catalog secPer60).`,
 		`static const float ARM_DEG_PER_S[ARM_NS] = ${list(speed)};`,
 		"// The geometry (src/arm/kinematics.ts conventions) and the brief's task.",
-		`#define ARM_TASK { {${f(by("base-yaw").linkMm)}, ${f(arm.base.shoulderZMm)}, ${f(by("shoulder").linkMm)}, ${f(by("elbow").linkMm)}, ${f(by("wrist-pitch").linkMm + by("wrist-roll").linkMm)}, ${list(lim("minDeg"))}, ${list(lim("maxDeg"))}}, ${xyz(t.pick)}, ${xyz(t.drop)}, ${f(ARM_APPROACH_MM)}, ${f(grip.maxDeg)}, ${f(grip.minDeg)}, ${ARM_GRIP_HOLD_MS} }`,
+		`#define ARM_TASK { {${f(by("base-yaw").linkMm)}, ${f(arm.base.shoulderZMm)}, ${f(by("shoulder").linkMm)}, ${f(by("elbow").linkMm)}, ${f(by("wrist-pitch").linkMm + by("wrist-roll").linkMm)}, ${list(lim("minDeg"))}, ${list(lim("maxDeg"))}}, ${xyz(t.pick)}, ${xyz(t.drop)}, ${f(ARM_APPROACH_MM)}, ${f(grip.maxDeg)}, ${f(grip.minDeg)}, ${ARM_GRIP_HOLD_MS}, ${ARM_SETTLE_MS} }`,
 		"",
 	].join("\n")
 }

@@ -38,6 +38,9 @@ test("header values come from the contract", () => {
 	const h = armHeader(armContract())
 	assert.match(h, /#define I2C_SDA 8\n#define I2C_SCL 9/)
 	assert.match(h, /#define ARM_REPEATS 5/)
+	// The power-on hold: the SG90 crosses its 180° in 0.30 s at 6 V (the slowest), twice over, plus the 300 ms settle.
+	assert.match(h, /#define ARM_START_MS 900\n/)
+	assert.match(h, /, 400, 300 \}/, "the grip hold, then the settle at the pick and drop")
 	assert.match(h, /ARM_CHANNEL\[ARM_NS\] = \{0, 1, 2, 3, 4, 5\}/)
 	// MG996R 0.14 s/60° and SG90 0.10 s/60° at 6 V, × 0.8.
 	const mg = (60 / 0.14) * ARM_SPEED_SHARE, sg = (60 / 0.1) * ARM_SPEED_SHARE
@@ -128,7 +131,8 @@ test("pick plan: 8 waypoints per cycle, gripper open to grip and closed to carry
 	assert.ok(p.approach >= 0 && p.approach <= 40)
 	const grip = p.w.map((w) => w.deg[5])
 	assert.deepEqual(grip, [90, 90, 0, 0, 0, 0, 90, 90])
-	assert.deepEqual(p.w.map((w) => w.hold > 0), [false, false, true, false, false, false, true, false])
+	// Held: down at the pick and drop (the servos settle before the gripper moves), and after the grip and the release.
+	assert.deepEqual(p.w.map((w) => w.hold > 0), [false, true, true, false, false, true, true, false])
 	// The pick waypoint's grip point is the brief's pick point.
 	const [tip] = await ask<{ p: number[] }>([`forward ${p.w[1].deg.slice(0, 5).join(" ")}`])
 	assert.ok(Math.hypot(tip.p[0] - 150, tip.p[1] + 100, tip.p[2] - 20) < 0.1, `${tip.p}`)

@@ -19,10 +19,10 @@ The spec (src/tools/drive.ts runArmDrive writes it):
 The gripper's closedQ/openQ and the cup's innerRMm/rimZMm, when the spec leaves them out, come from the model's module
 (py/mech/arm_model.py: GRIPPER_CLOSED_Q, GRIPPER_OPEN_Q, CUP_INNER_MM, CUP_RIM_MM): one number for model and judge.
 
-A cube that has come to rest (under SETTLE_MPS for SETTLE_S) away from where it was placed, with the gripper commanded
-open, has been dropped: it landed when its centre is within the cup's inner radius and below its rim, else it missed.
+A cube that has left the height it was placed at (LIFTED_MM: picked up) and has then come to rest (under SETTLE_MPS for
+SETTLE_S) away from it, with the gripper commanded open, has been dropped (one only nudged is still waiting to be picked): it landed when its centre is within the cup's inner radius and below its rim, else it missed.
 Either way a new cube is placed at the spawn point for the next cycle. Pass: every cycle's cube landed.
-Results: arm.json (result, reason, landed, attempts, worstMm, cycleS) in out-dir.
+Results: arm.json (result, reason, landed, attempts, worstMm, cycleS, drops: each cube's rest point) in out-dir.
 """
 
 import json
@@ -38,6 +38,7 @@ import numpy as np
 SETTLE_MPS = 0.01
 SETTLE_S = 0.3
 MOVED_MM = 20  # how far from its spawn a cube must be to count as dropped (one still in place hasn't been picked)
+LIFTED_MM = 10  # how far a cube must have left its placed height: one the opening gripper only nudged was never picked
 
 
 def _result(out_dir, result, reason, stats=None):
@@ -69,7 +70,7 @@ def _connect(port, wait_s):
 def landed(pos_m, cup):
     """(landed, horizontal distance mm from the cup's centre) for a cube centre at rest."""
     d = math.hypot(pos_m[0] * 1000 - cup["xMm"], pos_m[1] * 1000 - cup["yMm"])
-    return d < cup["innerRMm"] and pos_m[2] * 1000 < cup["rimZMm"], d
+    return bool(d < cup["innerRMm"] and pos_m[2] * 1000 < cup["rimZMm"]), float(d)
 
 
 def grip_target(deg, g):
@@ -127,10 +128,11 @@ def run(spec, port, out_dir, limit_s=600.0, firmware_wait_s=60.0, tick_wait_s=10
     placed_at = data.xpos[cube.id].copy()
     still_since = None
     cycle_start = 0.0
-    landings, cycles = [], []
+    landings, cycles, drops = [], [], []
+    lifted = False
     ticks = 0
     grip_open = True
-    stats = lambda: {"landed": sum(1 for ok, _ in landings if ok), "attempts": len(landings), "worstMm": round(max((d for _, d in landings), default=0.0), 1), "cycleS": [round(c, 2) for c in cycles], "simS": round(data.time, 2)}
+    stats = lambda: {"landed": sum(1 for ok, _ in landings if ok), "attempts": len(landings), "worstMm": round(max((d for _, d in landings), default=0.0), 1), "cycleS": [round(c, 2) for c in cycles], "simS": round(data.time, 2), "drops": drops}
     while data.time < limit_s:
         try:
             line = f.readline()
@@ -162,14 +164,17 @@ def run(spec, port, out_dir, limit_s=600.0, firmware_wait_s=60.0, tick_wait_s=10
         pos = data.xpos[cube.id]
         speed = float(np.linalg.norm(data.qvel[cube_v:cube_v + 3]))
         moved = np.linalg.norm(pos - placed_at) * 1000 > MOVED_MM
-        if speed < SETTLE_MPS and moved and grip_open:
+        lifted = lifted or abs(pos[2] - placed_at[2]) * 1000 > LIFTED_MM  # picked up, or (a test's cube placed in the air) fallen
+        if speed < SETTLE_MPS and moved and lifted and grip_open:
             still_since = data.time if still_since is None else still_since
             if data.time - still_since >= SETTLE_S:
                 landings.append(landed(pos, cup))
+                drops.append({"tS": round(data.time, 2), "atMm": [round(float(v) * 1000, 1) for v in pos], "fromCupMm": round(landings[-1][1], 1), "landed": landings[-1][0]})
                 cycles.append(data.time - cycle_start)
                 cycle_start = data.time
                 place()
                 placed_at = data.xpos[cube.id].copy()
+                lifted = False
                 still_since = None
         else:
             still_since = None

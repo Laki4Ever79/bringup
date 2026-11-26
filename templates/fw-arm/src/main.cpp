@@ -36,7 +36,10 @@ void setup() {
 	}
 	Serial.printf("ARM plan: %d waypoints, approach %.0f mm, %d cycles\n", n, approach, ARM_REPEATS);
 	for (int i = 0; i < ARM_NS; i++) pose[i] = w[0].deg[i];
-	for (int i = 0; i < ARM_NS; i++) servo_write(i, pose[i]);
+	// At power-on the servos jump from wherever they are to the first pose at full speed: hold it (gripper open) until the
+	// slowest could have crossed its whole travel, before the plan assumes the arm is there.
+	for (uint32_t start = servo_flush(), now = start; now - start < ARM_START_MS; now = servo_flush())
+		for (int i = 0; i < ARM_NS; i++) servo_write(i, pose[i]);
 	for (int r = 0; r < ARM_REPEATS; r++) {
 		for (int k = 0; k < n; k++) go(w[k].deg, w[k].holdMs);
 		Serial.printf("ARM cycle %d done\n", r + 1);

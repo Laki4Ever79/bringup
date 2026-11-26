@@ -106,6 +106,7 @@ export interface ArmDriveArtifact {
 	worstMm?: number // the farthest a landed or missed cube came to rest from the cup's centre
 	cycleS?: number[] // simulated seconds per pick-and-drop
 	simS?: number
+	drops?: { tS: number; atMm: [number, number, number]; fromCupMm: number; landed: boolean }[] // each cube's rest point
 	note: string
 }
 export const ARM_SIM_NOTE = "the simulation doesn't exercise the PCA9685 I2C driver (its register bytes are checked on the host)"
