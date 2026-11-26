@@ -14,6 +14,8 @@ export function historyFixture(dir: string = tempDir()): string {
 		ev(3, "change.requested", { id: "req-1", text: "make it 2 cm narrower" }),
 		ev(4, "contract.changed", { field: "outline", revision: 3, by: "architect", reason: "2 cm narrower, as asked", cause: { kind: "request", id: "req-1", text: "make it 2 cm narrower" } }),
 		ev(5, "contract.changed", { field: "parts", revision: 3, by: "parts", reason: "the sensor moves", cause: { kind: "violation", items: [{ kind: "part-off-board" }] } }),
+		ev(6, "design.settled", { revision: 2, settled: true }),
+		ev(7, "design.settled", { revision: 3, settled: true }),
 		"not json",
 	].join("\n"))
 	writeFileSync(join(d, "ripples.json"), JSON.stringify({ requests: [{ id: "req-1", woke: ["architect", "build:board"], checked: ["parts"], stayedIdle: ["ml"], violationsPeak: 1, durationMs: 41_250 }] }))

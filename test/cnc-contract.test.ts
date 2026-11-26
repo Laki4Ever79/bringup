@@ -76,7 +76,7 @@ test("cnc checks with the catalog: the fixture passes; each axis's screw, curren
 	assert.deepEqual(run(CNC, { ...CNC_TARGETS, rapidMmMin: 9000 }), [])
 	assert.ok(Math.abs(pulloutAt(cat.mech.steppers![0], 450) - 0.325) < 1e-9, "linear between 300 and 600 rpm")
 	// A brick the catalog doesn't have (48 V): a parts finding.
-	assert.match(run({ ...CNC, input: { ...CNC.input, volts: 48 } }).find((v) => v.kind === "cnc-parts")?.message ?? "", /a 48 V brick of at least 6\.67 A \(powerBricks: 12 V 5 A, 12 V 5 A, 24 V 6\.67 A\)/)
+	assert.match(run({ ...CNC, input: { ...CNC.input, volts: 48 } }).find((v) => v.kind === "cnc-parts")?.message ?? "", /a 48 V brick of at least 6\.67 A \(powerBricks: [^)]*24 V 6\.67 A[^)]*\)/) // the catalog's bricks listed, whatever else it holds
 	// A 3 A brick: 72 W for ~133 W of motors, spindle and logic.
 	assert.match(run({ ...CNC, input: { ...CNC.input, amps: 3 } })[0].message, /gives 72 W; .* need 133 W/)
 })

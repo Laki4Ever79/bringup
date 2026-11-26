@@ -54,7 +54,8 @@ test("the scripted arm: the brief's servos, the shoulder fails torque at 280 mm 
 	// The brief's servos as it names them.
 	assert.deepEqual(ARM_SPEC.joints.map((j) => j.servo), ["MG996R", "MG996R", "MG996R", "SG90", "SG90"])
 	assert.equal(ARM_SPEC.gripper.servo, "SG90")
-	assert.equal(ARM_SPEC.input.volts, 19.5)
+	assert.equal(ARM_SPEC.input.volts, 20)
+	assert.equal(ARM_SPEC.input.tolerancePct, 5)
 	assert.ok(ARM_SPEC.input.volts * ARM_SPEC.input.amps >= 119.9)
 	const v = armChecks({ arm: ARM_SPEC, armTargets: t }, cat)
 	const message = v.map((x) => `- ${x.kind}: ${x.message}`).join("\n")
@@ -75,7 +76,7 @@ test("armTargets with no arm yet wake the mechanics engineer", () => {
 	assert.match(v[0].message, /no arm design yet/)
 })
 
-test("the scripted arm's board: the S3 and the PCA9685; the parts tools add six plugs, three 6 V rails and the 19.5 V jack, and the brick passes", () => {
+test("the scripted arm's board: the S3 and the PCA9685; the parts tools add six plugs, three 6 V rails and the 20 V jack, and the brick passes", () => {
 	assert.equal(scriptedDesignFor(ARM_BRIEF), ARM_BOARD as never)
 	assert.ok(ARM_SUMMARY.test(ARM_BOARD.requirements.summary))
 	// No word that makes the design a rover (src/mechanics/checks.ts saysRobot; the mock's isRover reads "motors").

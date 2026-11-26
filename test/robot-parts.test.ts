@@ -276,3 +276,18 @@ test("a shop that quotes in pounds: priced at the estimated rate, the shop's own
 	assert.equal(p.lineUsd, null)
 	assert.match(p.note, /99\.2 CHF \(not converted\)/)
 })
+
+test("the scripted arm buys the Mean Well GST120A20: 20 V 6 A, its P1M plug fits the DC-091-A250, its tolerance is the input's", async () => {
+	const { ARM_SPEC } = await import("../src/inference/scripts.ts")
+	const { armPartLines } = await import("../src/tools/robot-parts.ts")
+	const { brickMaxV, loadMechCatalog } = await import("../src/mechanics/catalog.ts")
+	const cat = loadMechCatalog(".")
+	const brick = armPartLines(ARM_SPEC, cat, { mpn: "DC-091-A250", plugMm: [5.5, 2.5] }).at(-1)!
+	assert.equal(brick.mpn, "MEANWELL-GST120A20-P1M 20V 6A 120W power supply")
+	assert.ok(brick.buy.length > 0)
+	// The arm's input names the brick it was sized for, with that brick's tolerance (the TVS is picked for its maximum).
+	const entry = (cat.powerBricks ?? []).find((b) => b.mpn === brick.mpn)!
+	assert.equal(ARM_SPEC.input.mpn, entry.mpn)
+	assert.equal(ARM_SPEC.input.tolerancePct, entry.tolerancePct)
+	assert.equal(brickMaxV(entry), 21)
+})

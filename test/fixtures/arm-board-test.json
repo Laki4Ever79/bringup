@@ -802,8 +802,8 @@
      "servo": "MG996R",
      "channel": 0,
      "linkMm": 0,
-     "minDeg": -90,
-     "maxDeg": 90
+     "minDeg": -60,
+     "maxDeg": 60
     },
     {
      "name": "shoulder",

@@ -331,8 +331,8 @@ export const CNC_MACHINE: NonNullable<ContractValues["cnc"]> = {
 // (150, -125, 15) and dropped at (150, 125, 60) mm, 250 mm apart, 5 times. The mechanics engineer's arm is the brief's
 // servos as it names them (MG996R at the base, shoulder and elbow; SG90 at the wrist and gripper) on links of 120 + 110
 // + 20 + 30 mm (280 mm from the shoulder axis to the grip point), the shoulder 60 mm over a 200 × 160 mm plate held down
-// by its mass and 300 g of ballast, on PCA9685 channels 0..5, a 6 V rail and the brick the brief names: 19.5 V, the
-// recommended 120 W (6.15 A). The checks then say whether the brief's servos carry it (arm-torque names the servo that
+// by its mass and 300 g of ballast, on PCA9685 channels 0..5, a 6 V rail and the brick the brief names: the Mean Well
+// GST120A20, 20 V 6 A (120 W), ±5 % (catalog/mechanics.json powerBricks). The checks then say whether the brief's servos carry it (arm-torque names the servo that
 // does when one doesn't), and the scripted engineer takes that servo.
 export const ARM_SPEC: ArmSpec = {
 	base: { plateMm: [200, 160], thicknessMm: 5, shoulderZMm: 60, holdDown: "mass", ballastG: 300 },
@@ -345,7 +345,7 @@ export const ARM_SPEC: ArmSpec = {
 	],
 	gripper: { servo: "SG90", channel: 5, openMm: 40, fingerMm: 30 },
 	railV: 6,
-	input: { kind: "dc-brick", volts: 19.5, amps: 6.15 },
+	input: { kind: "dc-brick", volts: 20, amps: 6, mpn: "MEANWELL-GST120A20-P1M 20V 6A 120W power supply", tolerancePct: 5 },
 	boards: [{ name: "main", at: { xMm: -60, yMm: 0 }, rotDeg: 0 }],
 }
 // The arm's controller: an ESP32-S3 (the plan's controller; its native USB programs it over the one USB-C) with the
@@ -356,14 +356,15 @@ export const ARM_SPEC: ArmSpec = {
 // divider (R8, R9). The 3V3 rail's peak covers the S3's 189 mA Bluetooth LE transmit with a fifth on top.
 export const ARM_SUMMARY = /\bdesktop arm\b/i
 export const ARM_BOARD = {
-	requirements: { summary: "desktop arm that picks a cube and drops it into a cup: six hobby servos on a PCA9685, a 19.5 V laptop brick, one USB-C", peripherals: ["usb-c", "status-led"], batteryLifeDays: null, enclosure: "none" as const },
+	requirements: { summary: "desktop arm that picks a cube and drops it into a cup: six hobby servos on a PCA9685, a 20 V 120 W brick, one USB-C", peripherals: ["usb-c", "status-led"], batteryLifeDays: null, enclosure: "none" as const },
 	outline: { widthMm: 70, heightMm: 50, thicknessMm: 1.6 },
 	connectors: [{ ref: "J1", kind: "usb-c" as const, edge: "left" as const, offsetMm: 25, widthMm: 9, heightMm: 3.5 }],
 	// The brick's input as a rail, so the parts' nets on it (the rail chips' IN, the logic buck's VIN, the jack's VIN) are
-	// wired: rated the brick's 6.15 A, its peak the servos at stall plus the logic (4.39 A at 19.5 V, the arm-supply figure).
+	// wired: rated the brick's 6 A, its peak the servos at stall plus the logic (4.28 A at 20 V: the 4.39 A at 19.5 V of the
+	// arm-supply figure at the same power).
 	rails: [
 		{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 230, averageMa: 100 },
-		{ name: armInputNet, voltageV: 19.5, regulatorMaxMa: 6150, loadMa: 4390 },
+		{ name: armInputNet, voltageV: 20, regulatorMaxMa: 6000, loadMa: 4280 },
 	],
 	pins: [
 		{ signal: "I2C_SDA", gpio: 8, partRef: "U7", partPin: "SDA" },
@@ -1155,7 +1156,7 @@ export function mockScripts(): Record<string, Script> {
 			// violation names, a brick as big as arm-supply asks, and ballast while it tips.
 			const arm = state().contract.get("arm")
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && !arm && state().contract.get("armTargets"))
-				return propose("arm", ARM_SPEC, "the brief's servos (MG996R at the base, shoulder and elbow; SG90 at the wrist and gripper) on 120 + 110 + 20 + 30 mm links (280 mm from the shoulder axis to the grip point), PCA9685 channels 0-5, a 6 V rail and the brief's 19.5 V 120 W brick; the base plate 200 × 160 mm with 300 g of ballast (catalog/mechanics.json servos)")
+				return propose("arm", ARM_SPEC, "the brief's servos (MG996R at the base, shoulder and elbow; SG90 at the wrist and gripper) on 120 + 110 + 20 + 30 mm links (280 mm from the shoulder axis to the grip point), PCA9685 channels 0-5, a 6 V rail and the brief's 20 V 120 W brick (Mean Well GST120A20); the base plate 200 × 160 mm with 300 g of ballast (catalog/mechanics.json servos)")
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && arm) {
 				const fixes = armServoFixes(instruction)
 				const brick = /^- arm-supply: the [\d.]+ V brick is rated [\d.]+ A .*: ([\d.]+) A$/m.exec(instruction)

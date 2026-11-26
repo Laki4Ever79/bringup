@@ -15,8 +15,8 @@ a laptop power brick, and is programmed and watched over one USB-C cable.
   and the gripper. They run from a **6 V** servo rail.
 - **A fixed base plate** that doesn't tip with the payload at full reach in any direction: heavy enough on its own (or
   with ballast), or clamped to the desk.
-- **Powered by a laptop power brick: 19.5 V, at least 90 W** (120 W recommended, for margin when several servos stall
-  at once).
+- **Powered by a 20 V mains brick of 120 W** (a Mean Well GST120A20 desktop unit with the 5.5 × 2.5 mm plug), for
+  margin when several servos stall at once.
 - **One USB-C cable to program and talk to the board**, as on our other robots.
 
 ## Nice to have

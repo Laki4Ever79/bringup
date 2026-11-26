@@ -2312,6 +2312,39 @@
 					"url": "https://www.digikey.co.uk/en/products/detail/mean-well-usa-inc/GST160A24-R7B/7703602"
 				}
 			]
+		},
+		{
+			"mpn": "MEANWELL-GST120A20-P1M 20V 6A 120W power supply",
+			"volts": 20,
+			"amps": 6,
+			"tolerancePct": 5,
+			"plug": "5.5 x 2.5 mm, centre positive (P1M)",
+			"plugMm": [5.5, 2.5],
+			"mains": "IEC C14 inlet: needs a C13 mains cable (not included)",
+			"source": {
+				"volts": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST120A/GST120A-SPEC.PDF",
+					"where": "GST120A specification, 20V column: DC VOLTAGE 20V"
+				},
+				"amps": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST120A/GST120A-SPEC.PDF",
+					"where": "GST120A specification, 20V column: RATED CURRENT 6A, RATED POWER 120W"
+				},
+				"tolerancePct": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST120A/GST120A-SPEC.PDF",
+					"where": "GST120A specification, 20V column: VOLTAGE TOLERANCE ±5.0% (Note 3: includes set up tolerance, line regulation, load regulation)"
+				},
+				"plugMm": {
+					"url": "https://www.meanwell.com/Upload/PDF/GST120A/GST120A-SPEC.PDF",
+					"where": "Mechanical specification, DC output plug table: P1M straight, 5.5 mm outside, 2.5 mm inside, 11.0 mm long"
+				}
+			},
+			"buy": [
+				{
+					"supplier": "StepperOnline",
+					"url": "https://www.omc-stepperonline.com/gst120a20-p1m-mean-well-120w-20vdc-6a-115-230vac-ac-dc-reliable-green-industrial-adaptor-gst120a20-p1m"
+				}
+			]
 		}
 	],
 	"steppers": [
