@@ -6,7 +6,7 @@
 //   ros/       an arm's URDF and ros2_control controllers (src/ros/urdf.ts armUrdf), with its printed links' masses
 //   firmware/  the built firmware and how to flash it
 //   assembly.md, bringup.md (bench bring-up), README.md (totals and what's missing)
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { basename, join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { checkConsistency } from "../contract/consistency.ts"
@@ -138,6 +138,9 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 			mkdirSync(join(outDir, "printed"), { recursive: true })
 			stls = ch.files.filter((f) => f.endsWith(".stl"))
 			for (const f of stls) copyFileSync(f, join(outDir, "printed", basename(f)))
+			// The robot's ROS 2 workspace, written beside its chassis (docs/ros.md): free, like every file (the user, 26 Nov
+			// 2026: "approved with ROS free"). Before, only the run folder had it, deep in chassis/rev-N/ros.
+			copyRosWorkspace(join(work, "chassis"), outDir)
 		} else missing.push(`the chassis didn't build: ${(ch as { error?: string }).error ?? "see .work/chassis"}`)
 	}
 
@@ -237,6 +240,15 @@ export function boughtPartsMd(robot: Awaited<ReturnType<typeof checkRobotParts>>
 	]
 }
 
+// Copies a built chassis's ROS 2 workspace (<chassis>/ros/src: the robot's package and bringup_hardware) into
+// <package>/ros/src. True when there was one.
+export function copyRosWorkspace(chassisDir: string, outDir: string): boolean {
+	const src = join(chassisDir, "ros", "src")
+	if (!existsSync(src)) return false
+	cpSync(src, join(outDir, "ros", "src"), { recursive: true })
+	return true
+}
+
 export function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
 	const v = s.values, m = v.mechanics
 	const parts = v.parts ?? []
@@ -292,6 +304,7 @@ function readme(s: ContractSnapshot, r: PackageResult, fabOk: boolean, stls: str
 		`| Printed parts | printed/ | ${stls.length ? stls.join(", ") : "none"} |`,
 		`| Firmware | firmware/firmware.bin | ${fw ? "built" : "NOT built"} |`,
 		...(s.values.arm ? [`| ROS 2 description (URDF, controllers) | ros/ | ${existsSync(join(r.dir, "ros", "arm.urdf")) ? "arm.urdf, controllers.yaml" : "NOT written"} |`] : []),
+		...(s.values.mechanics ? [`| ROS 2 workspace (URDF, ros2_control, Nav2, launch) | ros/src/ | ${existsSync(join(r.dir, "ros", "src")) ? "colcon build it on Ubuntu 24.04 with ROS 2 Jazzy (docs/ros.md)" : "NOT written"} |`] : []),
 		`| Assembly order | assembly.md | ${r.pictures?.files.length ? `with ${r.pictures.files.length} pictures (assembly/)` : r.pictures?.note ?? ""} |`,
 		"| Bench bring-up | bringup.md | |",
 		"",

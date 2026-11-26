@@ -3,6 +3,31 @@
 Every robot Bringup designs comes with a ROS 2 Jazzy package generated from the same design contract as its board,
 firmware and chassis. Change the design, and the package changes with it.
 
+## From npm (no clone)
+
+With Bringup installed as an MCP server (`npx bringup-mcp`, the README's Quick start), a robot's ROS 2 workspace needs
+only the board and case tools (`npx -y bringup-mcp setup board case`; on a minimal Linux also `sudo apt install libgl1`).
+Measured on a clean Node 24 container (26 Nov 2026): the rover brief settled in 8 min and wrote the workspace with the
+chassis. The build package (`export_package`) has it in `ros/src/`; the run folder in
+`~/.bringup/runs/<run>/chassis/rev-<N>/ros/src/` (the highest N is the latest):
+
+- `rover_bringup`: the URDF (`urdf/*.urdf`, one for mock hardware, one for the real robot), the ros2_control
+  controllers (`config/controllers.yaml`), Nav2's settings, launch files and an acceptance test;
+- `bringup_hardware`: the ros2_control plugin that talks to the robot's firmware over its serial frames (C++).
+
+Building and running it needs what ROS itself needs, none of which Bringup installs: Ubuntu 24.04 with ROS 2 Jazzy and
+colcon (ROS's own install guide), then on that machine:
+
+```bash
+cp -r <package>/ros ~/robot_ws && cd ~/robot_ws
+rosdep install --from-paths src -y --ignore-src     # ros2_control, Nav2 and the rest the package.xml files name
+colcon build && source install/setup.bash
+ros2 launch rover_bringup bringup.launch.py                       # mock hardware: the robot model, no robot needed
+ros2 launch rover_bringup bringup.launch.py hardware:=bringup port:=/dev/ttyACM0   # the real robot by USB
+```
+
+The automatic mock and QEMU tests below (`npm run ros`) run from a clone, in Bringup's ROS Docker image.
+
 ## One command
 
 ```bash
