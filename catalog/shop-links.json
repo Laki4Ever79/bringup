@@ -1,0 +1,354 @@
+{
+	"measured": "2026-11-26",
+	"live": 33,
+	"links": 57,
+	"currencies": [
+		"GBP",
+		"PLN",
+		"USD"
+	],
+	"rows": [
+		{
+			"mpn": "ADAFRUIT-2011 LP-803860 2000 mAh",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "ADAFRUIT-258 LP-503562 1200 mAh",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "GENSACE-GEA22002S20X6 2S 2200 mAh 20C LiPo XT60",
+			"host": "gensace.de",
+			"status": "refused (HTTP 429)",
+			"currency": null
+		},
+		{
+			"mpn": "ADAFRUIT-261 JST PH 2-pin cable 100 mm",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "ADAFRUIT-4210 STEMMA QT cable 100 mm",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "ADAFRUIT-4399 STEMMA QT cable 50 mm",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "ADAFRUIT-4401 STEMMA QT cable 200 mm",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "ADAFRUIT-4401 STEMMA QT cable 200 mm",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "ADAFRUIT-5384 STEMMA QT cable 300 mm",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "ADAFRUIT-5385 STEMMA QT cable 400 mm",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "ARTEKIT JST PH 2-pin cable 300 mm",
+			"host": "artekit.eu",
+			"status": "no offer data",
+			"currency": null
+		},
+		{
+			"mpn": "BOTLAND-7292 swivel caster 25 mm",
+			"host": "botland.store",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "IFUTURETECH 1in castor wheel",
+			"host": "ifuturetech.org",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "608ZZ bearing 8x22x7 mm (SMB Bearings)",
+			"host": "smbbearings.com",
+			"status": "no offer data",
+			"currency": null
+		},
+		{
+			"mpn": "ADAFRUIT-1176 flex shaft coupler 5 mm to 8 mm",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "ADAFRUIT-1251 GT2 pulley 20T 5 mm bore",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "GOBILDA-3423-0006-0088 GT2 belt 44T closed",
+			"host": "gobilda.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "GOBILDA-3501-0804-0200 lead screw 8 mm lead 200 mm",
+			"host": "gobilda.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "GOBILDA-3505-0804-3216 lead screw pattern nut 8 mm lead",
+			"host": "gobilda.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "KHK-SSA1-20J8 spur gear module 1 20T 8 mm bore",
+			"host": "catalog.khkgears.us",
+			"status": "no offer data",
+			"currency": null
+		},
+		{
+			"mpn": "KHK-SSA1-40J8 spur gear module 1 40T 8 mm bore",
+			"host": "catalog.khkgears.us",
+			"status": "no offer data",
+			"currency": null
+		},
+		{
+			"mpn": "M2.5 hex nut (DIN 934)",
+			"host": "fastenersuperstore.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "M2.5 hex nut (DIN 934)",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "M2.5x8 pan head machine screw (ISO 7045)",
+			"host": "fastenersuperstore.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "M2.5x8 thread-forming pan head screw (for plastic)",
+			"host": "mcmaster.com",
+			"status": "no offer data",
+			"currency": null
+		},
+		{
+			"mpn": "M2x8 self-tapping pan head screw (for plastic)",
+			"host": "elecrow.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "M4 hex nut (DIN 934 / ISO 4032)",
+			"host": "franksfasteners.co.uk",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "M4x10 socket head cap screw (ISO 4762)",
+			"host": "mwcomponents.com",
+			"status": "live",
+			"currency": null
+		},
+		{
+			"mpn": "POLOLU-989 Micro Metal Gearmotor Bracket Pair",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "POLOLU-989 Micro Metal Gearmotor Bracket Pair",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "POLOLU-2365 50:1 MP 6V",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "POLOLU-2365 50:1 MP 6V",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "POLOLU-2366 75:1 MP 6V",
+			"host": "melopero.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "POLOLU-2366 75:1 MP 6V",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "POLOLU-2367 100:1 MP 6V",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "POLOLU-2367 100:1 MP 6V",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "POLOLU-3041 100:1 HPCB 12V",
+			"host": "kamami.pl",
+			"status": "live",
+			"currency": "PLN"
+		},
+		{
+			"mpn": "POLOLU-3041 100:1 HPCB 12V",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "POLOLU-5139 100:1 MP 6V 12 CPR encoder",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "POLOLU-5219 150:1 HPCB 12V 12 CPR encoder",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "POLOLU-998 50:1 HP 6V",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "POLOLU-998 50:1 HP 6V",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "ADAFRUIT-352 12V 5A switching power supply",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "MEANWELL-GST60A12-P1J 12V 5A 60W power supply",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "POLOLU-4091 D36V50F5 5 V 5.5 A step-down",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "POLOLU-4091 D36V50F5 5 V 5.5 A step-down",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "OMRON A22E-M-01 emergency stop 40 mm red, 1 NC",
+			"host": "lcsc.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "OMRON A22E-M-01 emergency stop 40 mm red, 1 NC",
+			"host": "mouser.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "ADAFRUIT-3317 VL53L0X breakout (STEMMA QT)",
+			"host": "adafruit.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "DS3218MG",
+			"host": "aliseoperations.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "MG996R",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "SG90",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "STS3215 C001 7.4V",
+			"host": "dfrobot.com",
+			"status": "live",
+			"currency": "USD"
+		},
+		{
+			"mpn": "POLOLU-1420 wheel 60x8 mm",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "POLOLU-1420 wheel 60x8 mm",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		},
+		{
+			"mpn": "POLOLU-1430 wheel 80x10 mm",
+			"host": "thepihut.com",
+			"status": "live",
+			"currency": "GBP"
+		},
+		{
+			"mpn": "POLOLU-1430 wheel 80x10 mm",
+			"host": "pololu.com",
+			"status": "refused (HTTP 403)",
+			"currency": null
+		}
+	]
+}

@@ -48,3 +48,12 @@ test("every shop link is a product page, never a shop's home page", () => {
 	const bare = parts.flatMap((p) => (p.buy ?? []).filter((b) => b.url && new URL(b.url).pathname.replace(/\/$/, "") === "").map(() => p.mpn))
 	assert.deepEqual(bare, [])
 })
+
+test("every currency a catalog shop answers in has a USD_PER rate (catalog/shop-links.json, the last measurement)", async () => {
+	const { USD_PER } = await import("../src/tools/robot-parts.ts")
+	const m = JSON.parse(readFileSync("catalog/shop-links.json", "utf8")) as { measured: string; currencies: string[]; rows: { currency: string | null }[] }
+	assert.ok(m.currencies.length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(m.measured))
+	// The list agrees with its rows, and each currency converts (else its lines would say "not converted").
+	assert.deepEqual(m.currencies, [...new Set(m.rows.flatMap((r) => (r.currency ? [r.currency] : [])))].sort())
+	assert.deepEqual(m.currencies.filter((c) => !(c in USD_PER)), [], "add a USD_PER rate (an estimate) for these")
+})

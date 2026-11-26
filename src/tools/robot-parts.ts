@@ -22,7 +22,9 @@ export interface BuyLink {
 	listed?: { price: number; currency: string; checked: string; note?: string }
 }
 // Currency to USD for listed prices: ESTIMATES (the rate moves), named in each line's note.
-export const USD_PER = { USD: 1, EUR: 1.08, GBP: 1.27 } as Record<string, number>
+// Every currency a catalog shop answers in needs a rate here (test/catalog-shops.test.ts reads catalog/shop-links.json):
+// PLN for Kamami (26 Nov 2026).
+export const USD_PER = { USD: 1, EUR: 1.08, GBP: 1.27, PLN: 0.25 } as Record<string, number>
 
 const SYMBOL: Record<string, string> = { GBP: "£", EUR: "€" }
 // A price as the shop states it: £19.20, €12.50, or 99.20 PLN.

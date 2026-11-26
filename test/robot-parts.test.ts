@@ -255,8 +255,8 @@ test("a shop that quotes in pounds: priced at the estimated rate, the shop's own
 	assert.match(l.note, /£9\.00 ≈ \$11\.43, estimate/)
 	assert.match(boughtPartsMd(r).join("\n"), /\| \$22\.86 \(£18\.00, estimated rate\) \|/)
 	// A currency without a rate stays unpriced and says so.
-	const pln: typeof fetch = (async () => new Response(`<meta property="product:price:amount" content="99.20"><meta property="product:price:currency" content="PLN">`, { status: 200 })) as unknown as typeof fetch
-	const p = (await checkRobotParts([{ ...line, buy: [{ supplier: "Kamami", url: "https://kamami.pl/x" }] }], { live: true, fetch: pln })).lines[0]
+	const pln: typeof fetch = (async () => new Response(`<meta property="product:price:amount" content="99.20"><meta property="product:price:currency" content="CHF">`, { status: 200 })) as unknown as typeof fetch
+	const p = (await checkRobotParts([{ ...line, buy: [{ supplier: "A Swiss shop", url: "https://example.ch/x" }] }], { live: true, fetch: pln })).lines[0]
 	assert.equal(p.lineUsd, null)
-	assert.match(p.note, /99\.2 PLN \(not converted\)/)
+	assert.match(p.note, /99\.2 CHF \(not converted\)/)
 })
