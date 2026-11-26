@@ -25,7 +25,7 @@ import { EXPECTED_LINE } from "./tools/wokwi.ts"
 import { isStub } from "./tools/stubs.ts"
 import type { Payloads } from "./events.ts"
 import { bringupSection } from "./bench/report.ts"
-import { mechanicsSection } from "./mechanics/report.ts"
+import { armSection, mechanicsSection } from "./mechanics/report.ts"
 import { changeRipples, readTrace } from "./runner/ripple.ts"
 import { mcuPinName } from "./mcu/pins.ts"
 import { simBackendFor } from "./mcu/sim.ts"
@@ -307,6 +307,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		robotRuntime(snapshot, [`- Estimated battery life: ${batteryLifeSummary(estimatePower(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""))}`])[0],
 		``,
 		...mechanicsSection(snapshot, s.artifacts.drive),
+		...armSection(snapshot),
 		...rosSection(outDir),
 		...standardsSection(snapshot),
 		...addedForYouSection(snapshot, existsSync(join(outDir, "brief.md")) ? readFileSync(join(outDir, "brief.md"), "utf8") : ""),

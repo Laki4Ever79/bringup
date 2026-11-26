@@ -21,6 +21,9 @@ import { solvePins, type Need } from "../mcu/solver.ts"
 import { defaultCheckCatalog, type CheckCatalog } from "../mechanics/checks.ts"
 import { byMpn } from "../mechanics/catalog.ts"
 import { laidOut, solveChassis } from "../mechanics/solve.ts"
+import { armTargetsFromBrief } from "../mechanics/brief.ts"
+import type { ArmSpec } from "../arm/types.ts"
+import { armInputNet } from "../contract/power-auto.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
 export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics"> & { parts: ContractValues["parts"] } = {
@@ -282,6 +285,64 @@ export const EUROBOT_BOARD = {
 }
 const EUROBOT = /\beurobot\b/i
 
+// The scripted desktop arm (briefs/arm.md; docs/superpowers/specs/2026-11-25-robot-arm-design.md). The architect's
+// armTargets come from the brief (src/mechanics/brief.ts armTargetsFromBrief): reach 280 mm, 100 g, the cube picked at
+// (150, -125, 15) and dropped at (150, 125, 60) mm, 250 mm apart, 5 times. The mechanics engineer's arm is the brief's
+// servos as it names them (MG996R at the base, shoulder and elbow; SG90 at the wrist and gripper) on links of 120 + 110
+// + 20 + 30 mm (280 mm from the shoulder axis to the grip point), the shoulder 60 mm over a 200 × 160 mm plate held down
+// by its mass and 300 g of ballast, on PCA9685 channels 0..5, a 6 V rail and the brick the brief names: 19.5 V, the
+// recommended 120 W (6.15 A). The checks then say whether the brief's servos carry it (arm-torque names the servo that
+// does when one doesn't), and the scripted engineer takes that servo.
+export const ARM_SPEC: ArmSpec = {
+	base: { plateMm: [200, 160], thicknessMm: 5, shoulderZMm: 60, holdDown: "mass", ballastG: 300 },
+	joints: [
+		{ name: "base-yaw", servo: "MG996R", channel: 0, linkMm: 0, minDeg: -60, maxDeg: 60 },
+		{ name: "shoulder", servo: "MG996R", channel: 1, linkMm: 120, minDeg: 0, maxDeg: 120 },
+		{ name: "elbow", servo: "MG996R", channel: 2, linkMm: 110, minDeg: -90, maxDeg: 30 },
+		{ name: "wrist-pitch", servo: "SG90", channel: 3, linkMm: 20, minDeg: -120, maxDeg: 60 },
+		{ name: "wrist-roll", servo: "SG90", channel: 4, linkMm: 30, minDeg: -90, maxDeg: 90 },
+	],
+	gripper: { servo: "SG90", channel: 5, openMm: 40, fingerMm: 30 },
+	railV: 6,
+	input: { kind: "dc-brick", volts: 19.5, amps: 6.15 },
+	boards: [{ name: "main", at: { xMm: -60, yMm: 0 }, rotDeg: 0 }],
+}
+// The arm's controller: an ESP32-S3 (the plan's controller; its native USB programs it over the one USB-C) with the
+// PCA9685 (U7) on its I2C bus, the 3.3 V LDO and the status LED. What the PCA9685 drives comes in code with each parts
+// write once the arm exists (contract/power-auto.ts armOutputs: one plug per servo JV1..JV6, a 6 V SY8368A per rail and
+// the brick's jack; armLogicTree: the logic's 5 V from the brick, OR'd with VBUS). No cell, so no charger, battery plug
+// or charge LED, nor the passives only they use (the charge LED's R7 and PROG's R4); always awake, so no USB-sense
+// divider (R8, R9). The 3V3 rail's peak covers the S3's 189 mA Bluetooth LE transmit with a fifth on top.
+export const ARM_SUMMARY = /\bdesktop arm\b/i
+export const ARM_BOARD = {
+	requirements: { summary: "desktop arm that picks a cube and drops it into a cup: six hobby servos on a PCA9685, a 19.5 V laptop brick, one USB-C", peripherals: ["usb-c", "status-led"], batteryLifeDays: null, enclosure: "none" as const },
+	outline: { widthMm: 70, heightMm: 50, thicknessMm: 1.6 },
+	connectors: [{ ref: "J1", kind: "usb-c" as const, edge: "left" as const, offsetMm: 25, widthMm: 9, heightMm: 3.5 }],
+	// The brick's input as a rail, so the parts' nets on it (the rail chips' IN, the logic buck's VIN, the jack's VIN) are
+	// wired: rated the brick's 6.15 A, its peak the servos at stall plus the logic (4.39 A at 19.5 V, the arm-supply figure).
+	rails: [
+		{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 230, averageMa: 100 },
+		{ name: armInputNet, voltageV: 19.5, regulatorMaxMa: 6150, loadMa: 4390 },
+	],
+	pins: [
+		{ signal: "I2C_SDA", gpio: 8, partRef: "U7", partPin: "SDA" },
+		{ signal: "I2C_SCL", gpio: 9, partRef: "U7", partPin: "SCL" },
+	],
+	parts: [
+		{ ref: "U1", role: "mcu", mpn: "ESP32-S3-MINI-1", lcsc: "C2913206", footprint: "esp32_s3_mini_1", pins: ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO11", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO20", "GPIO21", "GPIO26", "GPIO33", "GPIO34", "GPIO35", "GPIO36", "GPIO37", "GPIO38", "GPIO39", "GPIO40", "GPIO41", "GPIO42", "GPIO43", "GPIO44", "GPIO45", "GPIO46", "GPIO47", "GPIO48", "EN", "3V3", "GND"], reason: "Brief: \"One USB-C cable to program and talk to the board\": the ESP32-S3's native USB programs it with no bridge, and its dual core runs the arm's inverse kinematics and moves" },
+		{ ref: "U7", role: "pwm-driver", mpn: "PCA9685PW,118", lcsc: "C2678753", footprint: "tssop28_w6.4mm_p0.65mm", pins: ["A0", "A1", "A2", "A3", "A4", "LED0", "LED1", "LED2", "LED3", "LED4", "LED5", "LED6", "LED7", "VSS", "LED8", "LED9", "LED10", "LED11", "LED12", "LED13", "LED14", "LED15", "OE", "A5", "EXTCLK", "SCL", "SDA", "VDD"], reason: "Brief: \"5 joints plus a gripper\" on \"hobby PWM servos\": six 50 Hz servo pulses on channels 0-5 from the I2C bus, address 0x40" },
+		...LOGGER_DESIGN.parts.filter((p) => ["U3", "J1", "D1", "R1", "R2", "R3", "R5", "R6", "C1", "C2", "C3", "R10", "C4"].includes(p.ref)).map((p) =>
+			p.ref === "J1" ? { ...p, reason: "Brief: \"One USB-C cable to program and talk to the board\"" } : p.ref === "D1" ? { ...p, reason: "Brief (nice to have): \"A status LED that shows ready, moving and fault\"" } : p.ref === "U3" ? { ...p, reason: "The 3.3 V rail for the S3 and the PCA9685 from the logic's 5 V, rated for the module's 0.5 A" } : p,
+		),
+	],
+}
+const isArm = () => ARM_SUMMARY.test(state().contract.get("requirements")?.summary ?? "") || Boolean(state().contract.get("armTargets"))
+// The servo a joint's arm-torque violation names as the weakest that carries it ("the shoulder joint carries … the
+// weakest catalog servo that carries it is DS3218MG"): the scripted engineer takes it.
+export function armServoFixes(instruction: string): { joint: string; servo: string }[] {
+	return [...instruction.matchAll(/^- arm-torque: the (base-yaw|shoulder|elbow|wrist-pitch|wrist-roll) joint carries .*the weakest catalog servo that carries it is (.+?)$/gm)].map((m) => ({ joint: m[1], servo: m[2] }))
+}
+
 // The brief's own size and mass over the reference rover's motion (briefs/rover.md: "about 15 × 12 cm", "under 500 g";
 // briefs/rover-pi.md: a bigger rover for a Raspberry Pi). The other targets stay the reference rover's.
 export function motionFromBrief(brief: string): NonNullable<ContractValues["motion"]> {
@@ -418,7 +479,7 @@ const SENSOR_PINS = LOGGER_DESIGN.pins.filter((p) => p.partRef === "U2")
 
 // Which scripted design a brief gets: the beacon for a brief that says so, the logger for anything else.
 export const scriptedDesignFor = (brief: string): typeof LOGGER_DESIGN & Partial<Pick<ContractValues, "motion">> =>
-	EUROBOT.test(brief) ? (EUROBOT_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : FOUR_WD.test(brief) ? (ROVER4_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
+	armTargetsFromBrief(brief) ? (ARM_BOARD as unknown as typeof LOGGER_DESIGN) : EUROBOT.test(brief) ? (EUROBOT_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : FOUR_WD.test(brief) ? (ROVER4_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
 // A robot's requirements ask for motors (briefs/rover.md).
 const isRover = () => (state().contract.get("requirements")?.peripherals ?? []).includes("motors")
 const isEurobot = () => EUROBOT.test(state().contract.get("requirements")?.summary ?? "")
@@ -821,8 +882,10 @@ export function mockScripts(): Record<string, Script> {
 					const f = ARCHITECT_FIELDS[step]
 					return f ? propose(f, hat[f], `initial ${f} from the carrier brief`) : say("contract drafted")
 				}
-				const fields: FieldName[] = /\brover\b/i.test(instruction) || EUROBOT.test(instruction) ? [...ARCHITECT_FIELDS, "motion"] : [...ARCHITECT_FIELDS]
-				const field = fields[step] as (typeof ARCHITECT_FIELDS)[number] | "motion" | undefined
+				// A robot arm's brief: its targets (armTargets) after the board's fields, never a rover's motion.
+				const armTargets = armTargetsFromBrief(instruction)
+				const fields: FieldName[] = armTargets ? [...ARCHITECT_FIELDS, "armTargets"] : /\brover\b/i.test(instruction) || EUROBOT.test(instruction) ? [...ARCHITECT_FIELDS, "motion"] : [...ARCHITECT_FIELDS]
+				const field = fields[step] as (typeof ARCHITECT_FIELDS)[number] | "motion" | "armTargets" | undefined
 				// Tournament variants may cap the width: "Board must be at most <N> mm wide".
 				const maxWidth = Number(/Board must be at most (\d+(?:\.\d+)?) mm wide/i.exec(instruction)?.[1] ?? Infinity)
 				const design = scriptedDesignFor(instruction)
@@ -830,7 +893,8 @@ export function mockScripts(): Record<string, Script> {
 				// as the reason the board is that big; "about 50 × 30 mm" is a limit (requirements.size exact false), and the
 				// space check then compacts the board within it.
 				// Not a robot's: its brief's size is the robot's (the Eurobot base's 290 × 290 mm start square), not its board's.
-				const stated = design.motion ? null : /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/.exec(instruction)
+				const robot = Boolean(design.motion || armTargets)
+				const stated = robot ? null : /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/.exec(instruction)
 				const line = stated ? (instruction.split("\n").find((l) => l.includes(stated[0])) ?? "") : ""
 				const exact = /\bexact(ly)?\b|\bmust be\b|\bfixed\b|\bchassis\b|\b(existing|our own) (housing|enclosure|case)\b|\btakes a\b/i.test(line)
 				const size = stated ? { widthMm: Number(stated[1]), heightMm: Number(stated[2]), exact } : undefined
@@ -838,10 +902,10 @@ export function mockScripts(): Record<string, Script> {
 				const sized = stated ? { widthMm: size!.widthMm, heightMm: size!.heightMm, sizeReason: { kind: "engineer-size" as const, detail: `the brief asks for ${exact ? "exactly" : "about"} ${stated[1]} × ${stated[2]} mm` } } : {}
 				// A robot's chassis is its body (the agents' rule: no case unless the brief asks for one); its brief's "case" words
 				// are about other things (the Eurobot base's battery "in a solid case", Eurobot General Rules 1.2 F.4.b).
-				const housing = design.motion ? null : enclosureFromText(instruction)
+				const housing = robot ? null : enclosureFromText(instruction)
 				const { size: _s, ...req } = design.requirements as typeof design.requirements & { size?: unknown }
 				const requirements = { ...req, ...(size ? { size } : {}), ...(housing ? { enclosure: housing } : {}) }
-				const value = field === "outline" ? { ...plain, ...sized, widthMm: Math.min(stated ? size!.widthMm : design.outline.widthMm, maxWidth) } : field === "requirements" ? requirements : field === "motion" ? motionFromBrief(instruction) : field ? design[field] : undefined
+				const value = field === "outline" ? { ...plain, ...sized, widthMm: Math.min(stated ? size!.widthMm : design.outline.widthMm, maxWidth) } : field === "requirements" ? requirements : field === "motion" ? motionFromBrief(instruction) : field === "armTargets" ? armTargets : field ? design[field] : undefined
 				return field ? propose(field, value, `initial ${field} from the brief`) : say("contract drafted")
 			}
 			return say("noted")
@@ -870,6 +934,10 @@ export function mockScripts(): Record<string, Script> {
 					const ref = ["U9", "U10", "U11", "U12"].find((r) => !taken.has(r))!
 					return propose("parts", [...parts, { ref, role: "can-transceiver", ...CAN_TRANSCEIVER }], `${ref}: the CAN link's ${CAN_TRANSCEIVER.mpn} transceiver (catalog)`)
 				}
+				// An arm whose parts lack its servo rails' chips or the brick's jack (the arm arrived after the parts list): the
+				// same list written again, and the contract tools add them in code (power-auto.ts armOutputs).
+				if (stepsTaken(items) === 0 && state().contract.get("arm") && /^- arm-supply: .*(servo rails need|no input jack)/m.test(instruction))
+					return propose("parts", parts, "the arm's servo plugs, rails and the brick's jack, which the contract tools add for the arm in the contract now")
 				if (stepsTaken(items) === 0 && violationKinds(instruction).has("model-sensor-missing") && !parts.some((p) => p.role === "microphone"))
 					return propose("parts", [...parts, MIC_PART], "the model listens: the ICS-43434 I2S microphone (catalog)")
 				// A 1-cell charger on a multi-cell pack (charger-pack): the pack charges off the board on a balance charger, so the
@@ -934,10 +1002,14 @@ export function mockScripts(): Record<string, Script> {
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
 			}
 			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
-			const base = hat ? hat.parts : isEurobot() ? EUROBOT_BOARD.parts : isRover4() ? ROVER4_BOARD.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
+			const base = hat ? hat.parts : isArm() ? ARM_BOARD.parts : isEurobot() ? EUROBOT_BOARD.parts : isRover4() ? ROVER4_BOARD.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : LOGGER_DESIGN.parts
 			const wanted = withSwaps(state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base)
 			if (stepsTaken(items) > 0) return say("parts chosen")
-			return JSON.stringify(state().contract.get("parts")) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")
+			// An arm's parts list grows in code past the scripted one (the servo plugs, rails and jack, the logic's power tree):
+			// it is unchanged while every scripted part is still in it.
+			const now = state().contract.get("parts") ?? []
+			if (isArm() && wanted.every((p) => now.some((q) => q.ref === p.ref && q.mpn === p.mpn))) return say("parts unchanged")
+			return JSON.stringify(now) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")
 		},
 		"mock-ml": (items) => {
 			const instruction = text(items.findLast((i) => i instanceof UserMessageItem))
@@ -1034,6 +1106,24 @@ export function mockScripts(): Record<string, Script> {
 					const mech = computeRoverMechanics(state().contract.snapshot())
 					if (mech) return propose("mechanics", mech, `a rover with a bought compute board: the ${mech.battery.pack} through the ${mech.regulator}, ${mech.drive.motor} motors, laid out by the chassis solver (catalog/mechanics.json)`)
 				}
+			}
+			// A robot arm: the brief's servos on the scripted links once the targets exist, then the servo each arm-torque
+			// violation names, a brick as big as arm-supply asks, and ballast while it tips.
+			const arm = state().contract.get("arm")
+			if (instruction.startsWith("Consistency violations for you") && step === 0 && !arm && state().contract.get("armTargets"))
+				return propose("arm", ARM_SPEC, "the brief's servos (MG996R at the base, shoulder and elbow; SG90 at the wrist and gripper) on 120 + 110 + 20 + 30 mm links (280 mm from the shoulder axis to the grip point), PCA9685 channels 0-5, a 6 V rail and the brief's 19.5 V 120 W brick; the base plate 200 × 160 mm with 300 g of ballast (catalog/mechanics.json servos)")
+			if (instruction.startsWith("Consistency violations for you") && step === 0 && arm) {
+				const fixes = armServoFixes(instruction)
+				const brick = /^- arm-supply: the [\d.]+ V brick is rated [\d.]+ A .*: ([\d.]+) A$/m.exec(instruction)
+				const tips = /^- arm-tipping: /m.test(instruction)
+				const next: ArmSpec = {
+					...arm,
+					joints: arm.joints.map((j) => ({ ...j, servo: fixes.find((f) => f.joint === j.name)?.servo ?? j.servo })),
+					input: brick ? { ...arm.input, amps: Math.ceil(Number(brick[1]) * 10) / 10 } : arm.input,
+					base: tips ? { ...arm.base, ballastG: arm.base.ballastG + 200 } : arm.base,
+				}
+				const why = [...fixes.map((f) => `the ${f.joint} takes the ${f.servo}, the weakest catalog servo that carries its torque (arm-torque)`), ...(brick ? [`a ${arm.input.volts} V brick of ${next.input.amps} A, what the servos at stall need (arm-supply)`] : []), ...(tips ? ["200 g more ballast on the base (arm-tipping)"] : [])]
+				if (why.length && JSON.stringify(next) !== JSON.stringify(arm)) return propose("arm", next, why.join("; "))
 			}
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && !current && state().contract.get("motion") && isEurobot())
 				return propose("mechanics", EUROBOT_BOARD.mechanics, "the Eurobot base: the reference rover's drive with the emergency stop on a 125 mm deck beside the board (a 7 mm collar keeps its head within 25 mm of the robot) and the pull-cord start (catalog/mechanics.json safety, Eurobot General Rules 1.2 F.4.c, F.6)")

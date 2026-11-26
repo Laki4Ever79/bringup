@@ -1,5 +1,6 @@
 import type { ContractSnapshot } from "../contract/types.ts"
 import type { MechViolation } from "./checks.ts"
+import type { ArmTargets } from "../arm/types.ts"
 
 // The robot's targets as the brief states them, read by code, so the motion field the architect writes can be checked
 // against them. Real rover run 9 (15 Nov, fast models): the architect wrote edgeMm 10, stopBeforeWallMm 50,
@@ -53,6 +54,55 @@ export function motionFromBrief(brief: string): BriefMotion {
 	if (/\beurobot\b/i.test(text)) out.rules = "eurobot-2026"
 	if (/\bencoders?\b|\bodometry\b/i.test(text)) out.encoders = true
 	return out
+}
+
+// A robot arm's targets as the brief states them (briefs/arm.md), or null for a brief that isn't an arm's: one that
+// names an arm and its reach ("reach about 280 mm"). The brief states how far the cup is from the pick point, not where
+// either stands; where they go is decided here (the spec leaves it to the builder):
+//   - both on the table, symmetric about +x (the arm's forward), so the drop is exactly the brief's distance from the
+//     pick, measured on the table;
+//   - each ARM_POINT_SHARE of the reach out from the base axis, well inside the workspace, so both still solve with
+//     the gripper pointing down from ARM_APPROACH_MM above (src/arm/checks.ts arm-reach);
+//   - the pick's grip point at the cube's middle, the drop's high enough that the cube's bottom clears the cup's rim
+//     by ARM_RIM_CLEARANCE_MM.
+// A number the brief doesn't state takes its default: a 30 mm cube, a 40 mm cup, a 250 mm drop, 100 g payload, half
+// of it for the object, 1 repeat.
+export const ARM_POINT_SHARE = 0.7
+export const ARM_RIM_CLEARANCE_MM = 5
+const ARM_WORD = /\b(robot(?:ic)? arm|desktop arm)\b/i
+const WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 }
+
+export function armTargetsFromBrief(brief: string): ArmTargets | null {
+	const text = brief.replace(/\*\*|__|`/g, "").replace(/\s+/g, " ")
+	if (!ARM_WORD.test(text)) return null
+	const reach = new RegExp(`\\breach(?:es)?\\b[^.;]*?${NUM}\\s*(mm|cm)\\b`, "i").exec(text)
+	if (!reach) return null
+	const mm = (n: string, unit: string) => toMm(Number(n), unit.toLowerCase())
+	const reachMm = mm(reach[1], reach[2])
+	const payload = new RegExp(`${NUM}\\s*g\\b[^.;]*?\\bpayload\\b|\\bpayload\\b[^.;]*?${NUM}\\s*g\\b`, "i").exec(text)
+	const payloadG = payload ? Number(payload[1] ?? payload[2]) : 100
+	const object = new RegExp(`${NUM}\\s*g\\s+(?:cube|ball|block|object)`, "i").exec(text)
+	const objectG = object ? Number(object[1]) : payloadG / 2
+	const side = new RegExp(`(?:cube|block)[^.;]*?${NUM}\\s*(mm|cm)\\s+on a side`, "i").exec(text)
+	const sideMm = side ? mm(side[1], side[2]) : 30
+	const cup = new RegExp(`\\bcup\\s+(?:about\\s+)?${NUM}\\s*(mm|cm)\\s+(?:from|away)`, "i").exec(text)
+	const apart = cup ? mm(cup[1], cup[2]) : 250
+	const cupTall = new RegExp(`\\bcup\\b[^.;]*?${NUM}\\s*(mm|cm)\\s+tall`, "i").exec(text)
+	const cupMm = cupTall ? mm(cupTall[1], cupTall[2]) : 40
+	const times = /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+times in a row\b/i.exec(text)
+	const repeats = times ? (WORDS[times[1].toLowerCase()] ?? Number(times[1])) : 1
+	// Both points ARM_POINT_SHARE of the reach out, half the distance apart either side of +x (on the y axis when the
+	// distance is more than that circle allows: the reach check then names the shortfall).
+	const r = ARM_POINT_SHARE * reachMm, half = apart / 2
+	const x = Math.round(Math.sqrt(Math.max(0, r * r - half * half)) / 5) * 5
+	return {
+		reachMm,
+		payloadG,
+		pick: { xMm: x, yMm: -half, zMm: sideMm / 2 },
+		drop: { xMm: x, yMm: half, zMm: cupMm + sideMm / 2 + ARM_RIM_CLEARANCE_MM },
+		repeats,
+		objectG,
+	}
 }
 
 // How far the motion field may stray from the brief's number: the brief says "about", and rounding is not a mistake.

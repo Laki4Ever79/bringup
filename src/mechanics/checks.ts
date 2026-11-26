@@ -116,6 +116,9 @@ export function mechanicsChecksWith(c: ContractSnapshot, cat: CheckCatalog): Mec
 	// Not for a board in a system (an assembly): the climate board on a rover names the rover but carries no motion.
 	const saysRobot = !c.values.assembly && /\b(motors?|wheels?|rover|robot|drives? (around|on|itself)|self-driving|differential drive)\b/i.test(`${req?.summary ?? ""} ${(req?.peripherals ?? []).join(" ")}`)
 	// A robot arm (armTargets/arm) moves too, but it isn't a rover: its own checks (src/arm/checks.ts) cover it.
+	// The targets with no arm yet wake the mechanics engineer, who designs it (as a rover's missing mechanics does).
+	if (c.values.armTargets && !c.values.arm)
+		return [{ kind: "arm-reach", message: `the brief asks for a robot arm (armTargets: ${c.values.armTargets.reachMm} mm reach, ${c.values.armTargets.payloadG} g payload) but there is no arm design yet: choose the joints' servos, the link lengths, the base and the supply, and write the arm field`, fields: ["arm"], affects: ["mechanics"] }]
 	if (c.values.armTargets || c.values.arm) return armChecks(c.values, cat)
 	if (!v.motion && ((c.values.parts ?? []).some((p) => p.role === "motor-driver") || saysRobot))
 		return [{ kind: "mech-fit", message: "the design moves (a motor driver, or requirements that name motors, wheels or a rover) but has no motion targets: a robot needs its motion field (the brief's speedMps, runtimeMin, edgeMm, maxSlopeDeg, stopBeforeWallMm, payloadG, maxSizeMm, maxMassG); write it, and the mechanics engineer designs the drive and chassis", fields: ["motion"], affects: ["architect"] }]
