@@ -52,6 +52,18 @@ static RoverOdo odo;
 static RoverGoto go;
 static RoverRoute route;
 static uint32_t nextOdo = 0;
+// The turn calibration (mechanics.drive.turnScale: counted over real; 1 until measured).
+#ifndef ROVER_TURN_SCALE
+#define ROVER_TURN_SCALE 1.0f
+#endif
+static RoverCal cal;
+#ifdef ROVER_CAL_QUARTERS
+static bool calStart = true;  // the simulation's calibration build: from the start
+static int calQuarters = ROVER_CAL_QUARTERS;
+#else
+static bool calStart = false;
+static int calQuarters = 8;
+#endif
 #endif
 #ifdef PIN_START
 // A pull-cord start (match.h, Eurobot General Rules 1.2 F.6): no drive until the cord, in at power-up, is pulled; with
@@ -179,6 +191,15 @@ static void hostPoll(uint32_t now) {
 #ifdef ROVER_ENC_COUNTS_PER_REV
 			// `G <x_mm> <y_mm>`: drive to that point (odometry: from where it started, x ahead, y to its left), after the
 			// points already queued (a route, up to 16); an H command clears the route and stops it.
+			// `C <quarters>`: the turn calibration, that many quarter-turns each way (8 when not given).
+			if (hostLen && hostLine[0] == 'C' && (hostLine[1] == 0 || hostLine[1] == ' ')) {
+				int q = 8;
+				sscanf(hostLine, "C %d", &q);
+				calQuarters = q > 0 && q <= 40 ? q : 8;
+				calStart = true;
+				hostLen = 0;
+				continue;
+			}
 			if (hostLen && sscanf(hostLine, "G %f %f", &l, &r) == 2) {
 				if (!rover_route_add(route, l, r)) Serial.println("GOTO route full (16 points)");
 				hostLen = 0;
@@ -271,7 +292,7 @@ void loop() {
 	// Odometry every tick; while a target is set (G, or the simulation's ROVER_GOTO_X_MM) it drives there instead of the
 	// avoidance or a host's duties (rover_odo.h). It stops for something in its way: a reading inside the stop (or the
 	// opponent hold) distance that is also nearer than the target plus OPPONENT_GAP, not the wall beyond the target.
-	rover_odo_step(odo, hw_encoder(0), hw_encoder(1), ROVER_MM_PER_COUNT, ROVER_TRACK_MM, hw_heading_rad());
+	rover_odo_step(odo, hw_encoder(0), hw_encoder(1), ROVER_MM_PER_COUNT, ROVER_TRACK_MM * ROVER_TURN_SCALE, hw_heading_rad());
 	rover_route_next(route, go);
 	if (go.active) {
 		out = rover_goto_step(go, odo, ROVER_CRUISE_DUTY, ROVER_GOTO_MIN_DUTY);
@@ -284,6 +305,25 @@ void loop() {
 		if (go.done) Serial.printf("GOTO done %.1f %.1f (target %.1f %.1f)\n", odo.x, odo.y, go.tx, go.ty);
 	} else if (go.done) {
 		out.left = out.right = 0;  // arrived: it stays there until the next G or H
+	}
+	// A turn calibration (C, or the simulation's ROVER_CAL_QUARTERS): it turns in place both ways and says what it
+	// counted (rover_odo.h RoverCal); nothing else drives meanwhile.
+	if (calStart) {
+		calStart = false;
+		rover_cal_start(cal, calQuarters, odo);
+		Serial.printf("CAL start %lu %d\n", (unsigned long)now, calQuarters);
+	}
+	if (cal.phase >= 1 && cal.phase <= 3) {
+		const int was = cal.phase;
+		if (!rover_cal_step(cal, odo, ROVER_CRUISE_DUTY, ROVER_GOTO_MIN_DUTY, out)) out.left = out.right = 0;
+		if (was == 1 && cal.phase == 2) Serial.printf("CAL turned ccw %lu %.5f\n", (unsigned long)now, cal.ccw);
+		if (was == 2 && cal.phase == 3) Serial.printf("CAL turned cw %lu %.5f scale %.5f\n", (unsigned long)now, cal.cw, (float)ROVER_TURN_SCALE);
+		if (cal.phase == 4) {
+			go.coastMm = cal.coastMm;  // this session's go-to stops allow for it from the first one
+			Serial.printf("CAL coast %lu %.1f\n", (unsigned long)now, cal.coastMm);
+		}
+	} else if (cal.phase == 4) {
+		out.left = out.right = 0;
 	}
 	if ((int32_t)(now - nextOdo) >= 0) {
 		nextOdo = now + 500;

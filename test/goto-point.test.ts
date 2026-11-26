@@ -80,3 +80,65 @@ int main() {
 	const r = spawnSync(join(dir, "t"), { encoding: "utf8" })
 	assert.equal(r.status, 0, r.stdout)
 })
+
+// Turn calibration (rover_odo.h RoverCal): a robot whose wheels scrub when it turns in place really turns 3 % less than
+// its counts say (the Eurobot base in MuJoCo: ~0.55 %). The calibration spin finds that factor from its counts and the
+// real angle, and with it (mechanics.drive.turnScale) the odometry's heading after a lap is right again.
+test("a turn calibration finds how much more a scrubbing robot counts than it turns, and the lap closes with it", { skip }, () => {
+	const dir = tempDir()
+	writeFileSync(join(dir, "t.cpp"), `#include "rover_odo.h"
+#include <cstdio>
+#include <cmath>
+// Kinematic, but turning in place (the wheels opposite) rotates the body only 1/SCRUB of what the wheels roll.
+static const double SCRUB = 1.03, mpc = 0.2782, track = 270, dt = 0.033;
+struct Bot { double x = 0, y = 0, th = 0, cl = 0, cr = 0; };
+static void move(Bot &b, RoverOut u) {
+	const double vl = u.left * 420, vr = u.right * 420;
+	const double ds = (vl + vr) / 2 * dt;
+	double dth = (vr - vl) / track * dt;
+	if (vl * vr < 0) dth /= SCRUB;
+	b.x += ds * cos(b.th + dth / 2); b.y += ds * sin(b.th + dth / 2); b.th += dth;
+	b.cl += vl * dt / mpc; b.cr += vr * dt / mpc;
+}
+static double calibrate() {
+	RoverOdo o; RoverCal c; Bot b; RoverOut u;
+	rover_odo_step(o, 0, 0, (float)mpc, (float)track);
+	rover_cal_start(c, 8, o);
+	double th0 = 0, ccwReal = 0;
+	for (int i = 0; i < 20000; i++) {
+		rover_odo_step(o, (int32_t)b.cl, (int32_t)b.cr, (float)mpc, (float)track);
+		const int was = c.phase;
+		if (!rover_cal_step(c, o, 0.504f, 0.202f, u)) break;
+		if (was == 1 && c.phase == 2) { ccwReal = b.th - th0; th0 = b.th; }
+		move(b, u);
+	}
+	const double cwReal = th0 - b.th;
+	std::printf("counted ccw %.4f cw %.4f, real ccw %.4f cw %.4f\\n", c.ccw, c.cw, ccwReal, cwReal);
+	if (c.phase != 4 || ccwReal < 12 || cwReal < 12 || c.coastMm < 0 || c.coastMm > 5) return -1;  // kinematic: no coast
+	return (c.ccw + c.cw) / (ccwReal + cwReal);
+}
+static double lap(double scale, double *headingErr) {
+	RoverOdo o; RoverGoto g; RoverRoute r; Bot b;
+	rover_route_add(r, 600, 0); rover_route_add(r, 600, 400); rover_route_add(r, 0, 400); rover_route_add(r, 0, 0);
+	for (int i = 0; i < 20000; i++) {
+		rover_odo_step(o, (int32_t)b.cl, (int32_t)b.cr, (float)mpc, (float)(track * scale));
+		rover_route_next(r, g);
+		if (!g.active && r.next >= r.n) break;
+		move(b, rover_goto_step(g, o, 0.504f, 0.202f));
+	}
+	*headingErr = fabs(remainder(o.th - b.th, 2 * M_PI)) * 180 / M_PI;
+	return hypot(b.x, b.y);
+}
+int main() {
+	const double k = calibrate();
+	double e1, e2;
+	const double before = lap(1.0, &e1), after = lap(k, &e2);
+	std::printf("scale %.4f; lap %.1f mm (heading %.2f deg) -> %.1f mm (heading %.2f deg)\\n", k, before, e1, after, e2);
+	if (fabs(k - SCRUB) > 0.004) return 1;
+	if (!(e2 < 0.3 && e1 > 2 && after < 8 && after < before)) return 2;
+	return 0;
+}`)
+	execFileSync("g++", ["-std=c++17", "-Wall", "-Werror", "-I", resolve(import.meta.dirname, "../templates/fw-rover/src"), "-o", join(dir, "t"), join(dir, "t.cpp")])
+	const r = spawnSync(join(dir, "t"), { encoding: "utf8" })
+	assert.equal(r.status, 0, r.stdout)
+})

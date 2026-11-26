@@ -14,7 +14,8 @@ struct RoverOdo {
 	int32_t lastL = 0, lastR = 0;
 	bool started = false;
 	float lastHeading = NAN; // the gyro's heading at the last tick (NAN: no gyro)
-	float lastDs = 0, lastDth = 0; // the last tick's travel (mm) and turn (rad): whether the robot is still
+	float lastDs = 0, lastDth = 0;
+	float turned = 0; // every turn added up, not wrapped (rad): what a calibration spin counted // the last tick's travel (mm) and turn (rad): whether the robot is still
 };
 
 static inline float rover_wrap(float a) {
@@ -43,11 +44,15 @@ inline void rover_odo_step(RoverOdo &o, int32_t encL, int32_t encR, float mmPerC
 	o.lastHeading = headingRad;
 	o.lastDs = ds;
 	o.lastDth = dth;
+	o.turned += dth;
 	o.x += ds * cosf(o.th + dth / 2);
 	o.y += ds * sinf(o.th + dth / 2);
 	o.th = rover_wrap(o.th + dth);
 }
 
+#ifndef ROVER_COAST_MM
+#define ROVER_COAST_MM 0.0f
+#endif
 struct RoverGoto {
 	bool active = false;
 	bool facing = false; // turned toward the target: driving to it
@@ -58,8 +63,8 @@ struct RoverGoto {
 	int settle = 0, still = 0, tries = 0;
 	float stopX = 0, stopY = 0;
 	// How far it rolled on after a stop at the target, learned from the last one (kept across targets): the next approach
-	// stops that much short.
-	float coastMm = 0;
+	// stops that much short. Before the first: a turn calibration's straight stop (ROVER_COAST_MM, or C at run time).
+	float coastMm = ROVER_COAST_MM;
 };
 
 // The design choices of the go-to controller: within ROVER_GOTO_TOL_MM it has arrived; it turns in place until it faces
@@ -184,4 +189,97 @@ inline RoverOut rover_goto_step(RoverGoto &g, const RoverOdo &o, float cruise, f
 	if (w > 0.5f * v) w = 0.5f * v;
 	if (w < -0.5f * v) w = -0.5f * v;
 	return RoverOut{v - w, v + w};
+}
+
+// ── Turn calibration (UMBmark-style, in place). Without a gyro the heading is the wheels' difference over the track,
+// and turning in place scrubs them: the Eurobot base counted ~0.55 % more turn than it made, the same sign at every
+// corner, ~2 deg after a lap (26 Nov 2026). The robot turns `quarters` quarter-turns one way and then the other, each
+// with the go-to's own turn (slowing to minDuty, cut at GOTO_FACE_RAD, then still), and reports what its counts said
+// it turned each way. Whoever knows the real angle (the simulation's physics, or a mark on the floor) divides the two:
+// that is mechanics.drive.turnScale (counted / real), and the odometry's track is the geometric one times it.
+struct RoverCal {
+	int phase = 0;       // 0 idle, 1 counter-clockwise, 2 clockwise, 3 a straight stop, 4 done
+	int quarters = 0, left = 0;
+	bool settling = false;
+	int still = 0;
+	float goal = 0;      // the counted angle (odometry.turned) this quarter ends at
+	float start = 0;     // odometry.turned when this direction began
+	float ccw = 0, cw = 0; // counted each way (rad, both positive)
+	float sx = 0, sy = 0;  // the straight's start, then where its motors were cut
+	float coastMm = 0;     // how far it rolled on after that cut (the go-to's first stop starts from this)
+};
+
+inline void rover_cal_start(RoverCal &c, int quarters, const RoverOdo &o) {
+	c = RoverCal{};
+	c.phase = 1;
+	c.quarters = c.left = quarters;
+	c.start = o.turned;
+	c.goal = o.turned + (float)M_PI / 2;
+}
+
+static const float CAL_STRAIGHT_MM = 200.0f;
+// The straight part (phase 3): goal 0 while driving, 1 once cut and rolling on.
+inline bool rover_cal_straight(RoverCal &c, const RoverOdo &o, float cruise, float minDuty, RoverOut &out) {
+	out = RoverOut{0, 0};
+	if (c.goal > 0) {
+		const bool moving = fabsf(o.lastDs) > 0.3f || fabsf(o.lastDth) > 0.005f;
+		c.still = moving ? 0 : c.still + 1;
+		if (c.still < GOTO_STILL_TICKS) return true;
+		c.coastMm = hypotf(o.x - c.sx, o.y - c.sy);
+		c.phase = 4;
+		return false;
+	}
+	const float rest = CAL_STRAIGHT_MM - hypotf(o.x - c.sx, o.y - c.sy);
+	if (rest <= 0) {
+		c.goal = 1;
+		c.sx = o.x;
+		c.sy = o.y;
+		return true;
+	}
+	float v = cruise * fminf(1.0f, rest / GOTO_SLOW_MM);
+	if (v < minDuty) v = minDuty;
+	out = RoverOut{v, v};
+	return true;
+}
+// One tick; true while it runs. Once done, c.ccw and c.cw hold the counted angles and c.coastMm the straight's coast.
+inline bool rover_cal_step(RoverCal &c, const RoverOdo &o, float cruise, float minDuty, RoverOut &out) {
+	out = RoverOut{0, 0};
+	if (c.phase == 0 || c.phase == 4) return false;
+	if (c.phase == 3) return rover_cal_straight(c, o, cruise, minDuty, out);
+	const float dir = c.phase == 1 ? 1.0f : -1.0f;
+	if (c.settling) {
+		const bool moving = fabsf(o.lastDs) > 0.3f || fabsf(o.lastDth) > 0.005f;
+		c.still = moving ? 0 : c.still + 1;
+		if (c.still < GOTO_STILL_TICKS) return true;
+		c.settling = false;
+		c.still = 0;
+		if (--c.left > 0) {
+			c.goal += dir * (float)M_PI / 2;
+		} else if (c.phase == 1) {
+			c.ccw = o.turned - c.start;
+			c.phase = 2;
+			c.left = c.quarters;
+			c.start = o.turned;
+			c.goal = o.turned - (float)M_PI / 2;
+		} else {
+			c.cw = c.start - o.turned;
+			// Then a straight stop as the go-to makes one (slowing to minDuty, the motors cut at the point): how far it
+			// rolls on after the cut is the coast the go-to's first stop allows for. The counts measure it: on a straight
+			// they don't scrub.
+			c.phase = 3;
+			c.sx = o.x;
+			c.sy = o.y;
+			c.goal = 0;
+			return true;
+		}
+	}
+	const float rest = dir * (c.goal - o.turned);  // still to turn this quarter (rad)
+	if (rest < GOTO_FACE_RAD) {
+		c.settling = true;
+		return true;
+	}
+	float u = cruise * fminf(1.0f, (rest - GOTO_FACE_RAD) / 0.5f);
+	if (u < minDuty) u = minDuty;
+	out = dir > 0 ? RoverOut{-u, u} : RoverOut{u, -u};
+	return true;
 }

@@ -33,6 +33,8 @@ export function mechanicsShapeError(v: unknown): string | null {
 		Array.isArray(c.boards) && c.boards.every((x) => obj(x) && typeof x.name === "string" && at(x.at) && [0, 90, 180, 270].includes(x.rotDeg as number))
 	if (!ok) return shape
 	if (d.maxAccelMps2 !== undefined && !(num(d.maxAccelMps2) && (d.maxAccelMps2 as number) > 0)) return "mechanics.drive.maxAccelMps2, when set, is the firmware's acceleration limit in m/s² (> 0)"
+	// A turn calibration's result (rover_odo.h RoverCal): the turn the wheels count over the turn the robot makes, in place.
+	if (d.turnScale !== undefined && !(typeof d.turnScale === "number" && d.turnScale >= 0.8 && d.turnScale <= 1.25)) return "mechanics.drive.turnScale, when set, is a turn calibration's counted turn over the real one (0.8 to 1.25; 1 = no scrub)"
 	if (v.beacon !== undefined) {
 		const b = v.beacon
 		if (!obj(b) || !at(b.at) || !num(b.topMm, 1) || !num(b.sizeMm, 1) || !num(b.mastWallMm, 0.4) || !num(b.loadG)) return "mechanics.beacon must be {at: {xMm, yMm}, topMm (its flat top off the floor), sizeMm (the mast's square side), mastWallMm, loadG (what its top carries)}"

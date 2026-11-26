@@ -26,6 +26,8 @@ export interface DriveArtifact {
 	result: "pass" | "fail" | "not run"
 	reason: string
 	segments: DriveSegment[]
+	// The turn calibration measured before the drive (calibrateTurn), when the robot needed one.
+	turnCalibration?: TurnCalibration
 	peakA?: number
 	topSpeedMps?: number
 	closestWallMm?: number
@@ -50,6 +52,8 @@ export interface DriveOptions {
 	consolePort?: number
 	// Extra compile flags for the simulation firmware (PLATFORMIO_BUILD_FLAGS), e.g. -DROVER_HOST_ONLY for a ROS test.
 	buildFlags?: string
+	// Wheel odometry without a gyro is turn-calibrated in the same physics before the drive (calibrateTurn); false: not.
+	calibrateTurn?: boolean
 	// Called once the console's TCP port takes a connection (the firmware built and QEMU up): what a ROS host waits for.
 	onConsoleReady?: () => void
 	// Stops the drive when it settles: a ROS test's physics runs until the test is done, not for a set number of
@@ -76,9 +80,83 @@ function hasMujoco(python: string): boolean {
 
 export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveArtifact> {
 	const outDir = resolve(opts.outDir)
+	// Wheel odometry without a gyro, not yet calibrated: the turn calibration first, in the same physics, and the drive's
+	// firmware built with its factor (the simulated robot's own; a real robot measures its own: docs, the build guide).
+	let cal: TurnCalibration | null = null
+	if (needsTurnCalibration(opts)) {
+		cal = await calibrateTurn({ ...opts, outDir: join(outDir, "turn-cal") })
+		if (cal) opts = { ...opts, buildFlags: [opts.buildFlags, `-DROVER_TURN_SCALE=${cal.scale.toFixed(5)}f`, ...(cal.coastMm !== undefined ? [`-DROVER_COAST_MM=${cal.coastMm.toFixed(1)}f`] : [])].filter(Boolean).join(" ") }
+	}
 	const r = await simInLoop({ ...opts, script: "py/mech/drive.py", resultFile: "drive.json", args: [String(opts.courseS ?? 25), ...(opts.consolePort ? ["realtime"] : [])] })
 	if ("notRun" in r) return { revision, dir: outDir, result: "not run", reason: r.notRun, segments: [] }
-	return { ...(r.json as Omit<DriveArtifact, "revision" | "dir">), revision, dir: outDir }
+	return { ...(r.json as Omit<DriveArtifact, "revision" | "dir">), revision, dir: outDir, ...(cal ? { turnCalibration: cal } : {}) }
+}
+
+// ── Turn calibration (UMBmark-style, in place; 26 Nov 2026). Without a gyro, the heading is the wheels' difference over
+// the track, and turning in place scrubs them: the Eurobot base in MuJoCo counted ~0.55 % more turn than it made, ~2 deg
+// after a lap. The firmware's calibration build (ROVER_CAL_QUARTERS) turns 8 quarter-turns each way with the go-to's
+// own turn and prints what it counted ("CAL turned ccw|cw <ms> <rad>"); the physics' yaw over the same spans is the
+// real turn. scale = counted / real (mechanics.drive.turnScale's meaning), both ways together (a wheel-size difference
+// between left and right cancels out).
+// coastMm: how far it rolled on after a go-to-like stop (the counts measure it; straight, they don't scrub): the go-to's
+// first stop allows for it (ROVER_COAST_MM), where it would otherwise roll past its first target.
+export interface TurnCalibration { scale: number; countedRad: [number, number]; realRad: [number, number]; coastMm?: number }
+export const CAL_QUARTERS = 8
+
+function needsTurnCalibration(o: DriveOptions): boolean {
+	if (o.calibrateTurn === false || o.consolePort || o.spec.imu) return false
+	if (/-DROVER_TURN_SCALE=|-DROVER_CAL_QUARTERS=|-DROVER_HOST_ONLY/.test(o.buildFlags ?? "")) return false
+	const header = firmwareConfig(o.fwDir)
+	return /#define ROVER_ENC_COUNTS_PER_REV/.test(header) && !/#define ROVER_TURN_SCALE/.test(header)
+}
+
+function firmwareConfig(fwDir: string): string {
+	for (const f of ["include/hw_pins.h"]) {
+		try { return readFileSync(join(fwDir, f), "utf8") } catch {}
+	}
+	return ""
+}
+
+// The counted turns from the calibration build's console, and the real ones from the physics' yaw (trajectory.json:
+// [t s, x m, y m, yaw rad, ...]) over the same spans. null when the firmware didn't finish its calibration.
+export function turnCalibrationFrom(uart0: string, trajectory: number[][]): TurnCalibration | null {
+	const start = /CAL start (\d+)/.exec(uart0)
+	const ccw = /CAL turned ccw (\d+) (-?[\d.]+)/.exec(uart0)
+	const cw = /CAL turned cw (\d+) (-?[\d.]+) scale (-?[\d.]+)/.exec(uart0)
+	if (!start || !ccw || !cw || trajectory.length < 2) return null
+	// The yaw unwrapped, then read at a time (the sample nearest it: the robot is still at each of these moments).
+	const unwrapped: [number, number][] = []
+	let prev = trajectory[0][3], acc = trajectory[0][3]
+	for (const row of trajectory) {
+		let d = row[3] - prev
+		while (d > Math.PI) d -= 2 * Math.PI
+		while (d < -Math.PI) d += 2 * Math.PI
+		acc += d
+		prev = row[3]
+		unwrapped.push([row[0], acc])
+	}
+	const yawAt = (ms: number) => unwrapped.reduce((best, r) => (Math.abs(r[0] - ms / 1000) < Math.abs(best[0] - ms / 1000) ? r : best))[1]
+	const real: [number, number] = [yawAt(+ccw[1]) - yawAt(+start[1]), yawAt(+ccw[1]) - yawAt(+cw[1])]
+	const counted: [number, number] = [+ccw[2], +cw[2]]
+	if (real[0] <= 1 || real[1] <= 1) return null
+	// Counted with the factor the firmware already had (ROVER_TURN_SCALE): the result is the whole factor.
+	const scale = (+cw[3] || 1) * ((counted[0] + counted[1]) / (real[0] + real[1]))
+	const coast = /CAL coast (\d+) (-?[\d.]+)/.exec(uart0)
+	return { scale, countedRad: counted, realRad: real, ...(coast ? { coastMm: +coast[2] } : {}) }
+}
+
+export async function calibrateTurn(opts: DriveOptions): Promise<TurnCalibration | null> {
+	const outDir = resolve(opts.outDir)
+	// 8 quarter-turns each way take ~20 s of simulated time on the bases so far; 45 s leaves room for a slow one.
+	const r = await simInLoop({ ...opts, outDir, script: "py/mech/drive.py", resultFile: "drive.json", buildFlags: [opts.buildFlags, `-DROVER_CAL_QUARTERS=${CAL_QUARTERS}`].filter(Boolean).join(" "), args: ["45"] })
+	if ("notRun" in r) return null
+	try {
+		const cal = turnCalibrationFrom(readFileSync(join(outDir, "uart0.txt"), "utf8"), JSON.parse(readFileSync(join(outDir, "trajectory.json"), "utf8")))
+		if (cal) writeFileSync(join(outDir, "turn-calibration.json"), JSON.stringify(cal, null, 1))
+		return cal
+	} catch {
+		return null
+	}
 }
 
 // The robot arm's pick-and-place in the loop (task 8): the arm firmware's simulation build (templates/fw-arm, SIM.md)
