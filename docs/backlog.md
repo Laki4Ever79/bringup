@@ -787,3 +787,6 @@ We need to make the studio enticing and useful enough to bring and keep paid use
 - [ ] **ROS integration stays free** (engine and MCP): the ROS package and controllers, as the URDF already is.
 - [ ] **Worth paying for, and worth staying for:** find and build what makes Bringup Studio the place a robot builder
       wants to work (editing, the 3D simulation, logs and debugging, history), measured by the hosted page's numbers.
+- [ ] **The examples page's 3D previews** (the user, 26 Nov 2026: "I don't really like how our example robots/boards look
+      in the examples page. All of the PCB elements are shadowed and you can't really tell them apart"): parts must read
+      as distinct objects; fix the shared lighting/materials, with before/after screenshots.

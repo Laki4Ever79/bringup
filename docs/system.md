@@ -91,7 +91,7 @@ writes `system.json`, sends the change to every board it concerns, and settles a
 
 ## On the dashboard
 
-`npm run dashboard` opens **Home**. Every page has the same bar: **Bringup · Home · Designs · Docs**, the section
+`npm run dashboard` opens **Home**. Every page has the same bar: **Bringup Studio · Home · Designs · Docs**, the section
 you're in underlined, and on the right a trail of where you are (*Designs › logger and beacon over UART › logger*), each
 step a link back up. The pages follow the levels of what is designed: a **design** (the device) has one board or
 several, and each **board** has its layers (PCB, case, firmware).
