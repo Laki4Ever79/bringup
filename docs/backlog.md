@@ -770,3 +770,15 @@ Seen on the run page of the recorded "make it 2 cm narrower" rover (out/rover-na
       5/78; VIN_BRICK at 1.8 mm on 17/155 and 53/169. The rails' lanes (space.ts railCorridors) cost +32 % area and bought
       no copper. With the widths as Freerouting net classes instead, 20 connections stayed unrouted. Tell bringup-lead-3
       when it lands (their CNC: spindle ~4.2 A, stepper VM).
+
+## Bringup Studio, the hosted web UI (the user, 26 Nov 2026)
+
+The user: "yes, approved with ROS free, go ahead. Most of features go in public, in mcp, but how we get users to pay is
+through our bringup studio (that's how we'll rename the hosted webui, we'll also need to rename the figma-like studio).
+We need to make the studio enticing and useful enough to bring and keep paid users."
+
+- [ ] **The name:** the hosted web UI is "Bringup Studio" everywhere (page title, nav, docs, README). The design tool
+      that had the name (the Figma-like MCP studio) gets a new one.
+- [ ] **ROS integration stays free** (engine and MCP): the ROS package and controllers, as the URDF already is.
+- [ ] **Worth paying for, and worth staying for:** find and build what makes Bringup Studio the place a robot builder
+      wants to work (editing, the 3D simulation, logs and debugging, history), measured by the hosted page's numbers.
