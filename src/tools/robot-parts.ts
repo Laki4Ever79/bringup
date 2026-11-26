@@ -4,7 +4,7 @@
 // states is used: a shop that refuses or publishes nothing leaves that line "not checked", named in the summary.
 import { byMpn, loadMechCatalog, type MechCatalog } from "../mechanics/catalog.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
-import { checkOffer, type OfferCheck } from "./offers.ts"
+import { checkOffer, readableShop, shopHost, UNREADABLE_SHOPS, type OfferCheck } from "./offers.ts"
 import { boardScrew, chassisSpec, CRADLE_WALL_MM, robotCables, type ChassisSpec } from "./chassis.ts"
 import type { HardwarePart } from "../mechanics/catalog.ts"
 import { resolve } from "node:path"
@@ -236,7 +236,14 @@ export async function checkRobotParts(lines: RobotPartLine[], opts: { live: bool
 		let first: RobotPartCheck | null = null
 		let answered: RobotPartCheck | null = null
 		let found: RobotPartCheck | null = null
-		for (const link of l.buy) {
+		// Shops measured not to answer (UNREADABLE_SHOPS) aren't asked: when no other link is left, the line says why.
+		const askable = l.buy.filter((b) => readableShop(b.url))
+		if (!askable.length) {
+			const h = shopHost(l.buy[0].url)
+			checked.push({ ...l, ...blank, note: `not checked: ${h} ${UNREADABLE_SHOPS[h]}, and the catalog has no other shop for it` })
+			continue
+		}
+		for (const link of askable) {
 			const c = fromCheck(l, link, await checkOffer(link.url, { fetch: opts.fetch, now: opts.now }))
 			first ??= c
 			if (c.status !== "not checked") answered ??= c

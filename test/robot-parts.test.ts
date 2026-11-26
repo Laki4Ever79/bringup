@@ -38,29 +38,33 @@ test("a mock run checks nothing and says so", async () => {
 })
 
 test("live: a shop's price, stock and lead time are used; a refusing shop is named and not priced", async () => {
+	const asked: string[] = []
 	const shops: typeof fetch = (async (url: string) => {
+		asked.push(url)
 		if (url.includes("pololu.com")) return new Response("denied", { status: 403 })
 		if (url.includes("adafruit.com/product/2011")) return new Response(offerPage(12.5, "http://schema.org/OutOfStock"), { status: 200 })
 		return new Response(offerPage(14.95, "http://schema.org/InStock", { deliveryLeadTime: { value: 3, unitCode: "DAY" } }), { status: 200 })
 	}) as unknown as typeof fetch
 	const r = await checkRobotParts(robotPartLines(rover()).slice(0, 5), { live: true, fetch: shops, now: () => new Date("2026-11-15T12:00:00Z") })
 	const by = (item: string) => r.lines.find((l) => l.item === item)!
-	assert.equal(by("motor").status, "not checked")
-	assert.match(by("motor").note, /pololu\.com refused the automated check \(HTTP 403\)/)
-	assert.equal(by("motor").unitUsd, null)
+	// Pololu refuses automated reads (UNREADABLE_SHOPS): it isn't asked at all; the motor's second shop prices it.
+	assert.ok(!asked.some((u) => u.includes("pololu.com")), asked.join(" "))
+	assert.equal(by("motor").supplier, "The Pi Hut")
+	assert.equal(by("motor").status, "in stock")
 	assert.equal(by("battery").status, "out of stock")
 	assert.equal(by("distance sensor").status, "in stock")
 	assert.equal(by("distance sensor").leadDays, 3)
 	assert.equal(by("distance sensor").lineUsd, 14.95)
 	assert.equal(r.warn, true)
 	assert.match(r.summary, /out of stock: battery/)
-	// Pololu refused the wheels too, so the second shop in the catalog (The Pi Hut) priced them: one pair.
+	// The wheels too: the second shop in the catalog (The Pi Hut) prices them, one pair.
 	assert.equal(by("wheel").supplier, "The Pi Hut")
 	assert.equal(by("wheel").packs, 1)
-	assert.match(r.summary, /not checked: motor, caster/)
+	assert.match(r.summary, /not checked: caster/)
+	assert.match(by("caster").note, /no shop link in catalog\/mechanics\.json/)
 	// Only what shops stated is added up, and the summary says how much is left out.
-	assert.equal(r.knownUsd, Math.round((14.95 + 14.95 + 12.5) * 100) / 100)
-	assert.match(r.summary, /\$42\.40 known for 3 of 5 lines/)
+	assert.equal(r.knownUsd, Math.round((2 * 14.95 + 14.95 + 14.95 + 12.5) * 100) / 100)
+	assert.match(r.summary, /\$72\.30 known for 4 of 5 lines/)
 	assert.match(r.summary, /longest stated lead time 3 days/)
 })
 
@@ -183,4 +187,12 @@ test("the drive train's bought parts are parts-list lines, counted by mpn", () =
 	assert.ok(dt.every((l) => l.buy.length > 0 && l.buy[0].url.startsWith("https://")))
 	// Today's direct-drive rover has none.
 	assert.ok(!robotPartLines(rover()).some((l) => ["pulley", "belt", "bearing"].includes(l.item)))
+})
+
+test("a part whose only shop refuses automated reads isn't asked; the line says so", async () => {
+	const lines = robotPartLines(rover())
+	const caster = lines.find((l) => l.item === "caster")!
+	const r = await checkRobotParts([{ ...caster, buy: [{ supplier: "Botland", url: "https://botland.store/x/7292-caster.html" }] }], { live: true, fetch: (async () => { throw new Error("no fetch expected") }) as unknown as typeof fetch })
+	assert.equal(r.lines[0].status, "not checked")
+	assert.match(r.lines[0].note, /not checked: botland\.store refuses automated reads \(HTTP 403\), and the catalog has no other shop for it/)
 })

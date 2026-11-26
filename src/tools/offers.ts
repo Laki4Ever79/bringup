@@ -22,6 +22,38 @@ export interface OfferCheck {
 }
 
 const TIMEOUT_MS = 8000
+
+// Shops measured not to answer the check (scripts/check-shop-links.ts, 26 Nov 2026), by host: the live check never
+// asks them (one request per part, to a shop that answers), and every bought part in the catalog needs a link
+// elsewhere (test/catalog-shops.test.ts). A shop that refuses stays refused: no user-agent tricks, another shop instead.
+export const UNREADABLE_SHOPS: Record<string, string> = {
+	"pololu.com": "refuses automated reads (HTTP 403)",
+	"gobilda.com": "refuses automated reads (HTTP 403)",
+	"botland.store": "refuses automated reads (HTTP 403)",
+	"gensace.de": "refuses automated reads (HTTP 403)",
+	"ifuturetech.org": "refuses automated reads (HTTP 403)",
+	"mouser.com": "refuses automated reads (HTTP 403)",
+	"core-electronics.com.au": "refuses automated reads (HTTP 403)",
+	"robotshop.com": "refuses automated reads (HTTP 403)",
+	"au.rs-online.com": "refuses automated reads (HTTP 403)",
+	"eckstein-shop.de": "refuses automated reads (HTTP 403)",
+	"exp-tech.de": "refuses automated reads (HTTP 429)",
+	"catalog.khkgears.us": "publishes no price or stock",
+	"mcmaster.com": "publishes no price or stock",
+	"artekit.eu": "publishes no price or stock",
+	"abra-electronics.com": "publishes no price or stock",
+	"robotgear.com.au": "publishes no price or stock",
+	"smbbearings.com": "the catalog's link is a datasheet PDF, not a shop page",
+}
+export const shopHost = (url: string): string => {
+	try {
+		return new URL(url).hostname.replace(/^www\./, "")
+	} catch {
+		return url
+	}
+}
+export const readableShop = (url: string): boolean => !(shopHost(url) in UNREADABLE_SHOPS)
+
 // A page's answer is kept this long (offline ones aren't kept): the parts list is rewritten on every parts or
 // mechanics change, and a shop shouldn't see a request for each. Keyed by fetch, so an injected fetch never sees
 // another one's answers.
@@ -69,6 +101,28 @@ function offerOf(o: Record<string, any>): Offer | null {
 	}
 }
 
+// A page with no JSON-LD Offer may still state its price in Open Graph product tags (product:price:amount and
+// :currency, as Shopify shops do: The Pi Hut, 26 Nov 2026) and sometimes its stock (product:availability or
+// og:availability). Only what the tags state: no availability tag leaves the stock unknown.
+function metaOffer(html: string): Offer | null {
+	const meta = (name: string): string | null => {
+		for (const m of html.matchAll(/<meta\b[^>]*>/gi)) {
+			const tag = m[0]
+			const key = /\b(?:property|name)=["']([^"']+)["']/i.exec(tag)?.[1]
+			if (key?.toLowerCase() !== name) continue
+			const v = /\bcontent=["']([^"']*)["']/i.exec(tag)?.[1]
+			if (v !== undefined) return v
+		}
+		return null
+	}
+	const raw = meta("product:price:amount") ?? meta("og:price:amount")
+	const price = raw === null || raw.trim() === "" ? NaN : Number(raw.replace(/,/g, ""))
+	if (!Number.isFinite(price)) return null
+	const avail = meta("product:availability") ?? meta("og:availability")
+	const a = avail === null ? "unknown" : availabilityOf(avail.replace(/[\s_-]/g, ""))
+	return { price, currency: meta("product:price:currency") ?? meta("og:price:currency"), availability: a, leadDays: null }
+}
+
 // Every Offer in the page's JSON-LD (inside a Product, a @graph or a list); the lowest-priced one, preferring one in
 // stock at the same price. null when the page has none.
 export function readOffer(html: string): Offer | null {
@@ -93,7 +147,7 @@ export function readOffer(html: string): Offer | null {
 			// A broken block: skip it; the page's other blocks may still hold the Offer.
 		}
 	}
-	if (!offers.length) return null
+	if (!offers.length) return metaOffer(html)
 	const priced = offers.filter((o) => o.price !== null)
 	if (!priced.length) return offers[0]
 	return priced.sort((a, b) => a.price! - b.price! || Number(b.availability === "in stock") - Number(a.availability === "in stock"))[0]

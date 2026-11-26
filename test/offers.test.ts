@@ -73,3 +73,16 @@ test("a page is fetched once per half hour: a parts list rewritten on every chan
 	await checkOffer("https://shop.example/cached", { fetch: f, now })
 	assert.equal(calls, 2)
 })
+
+test("a page without a JSON-LD Offer: its Open Graph product price, stock unknown unless a tag states it (The Pi Hut)", () => {
+	const html = `<html><head><meta property="og:type" content="product"><meta property="product:price:amount" content="8.10"><meta property="product:price:currency" content="GBP"></head><body><script>new ReviewsWidget({ "@type": "Offer", "price": "1" })</script></body></html>`
+	assert.deepEqual(readOffer(html), { price: 8.1, currency: "GBP", availability: "unknown", leadDays: null })
+	const stocked = html.replace("</head>", `<meta property="product:availability" content="in stock"></head>`)
+	assert.equal(readOffer(stocked)?.availability, "in stock")
+	const out = html.replace("</head>", `<meta property="og:availability" content="out of stock"></head>`)
+	assert.equal(readOffer(out)?.availability, "out of stock")
+	// No price tag: still nothing.
+	assert.equal(readOffer(`<meta property="og:type" content="product">`), null)
+	// A JSON-LD Offer wins over the tags.
+	assert.equal(readOffer(html.replace("</head>", `<script type="application/ld+json">{"@type":"Offer","price":"7.00","priceCurrency":"GBP"}</script></head>`))?.price, 7)
+})

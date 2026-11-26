@@ -7,6 +7,10 @@
 				{
 					"supplier": "Pololu",
 					"url": "https://www.pololu.com/product/2365"
+				},
+				{
+					"supplier": "The Pi Hut",
+					"url": "https://thepihut.com/products/pololu-medium-power-50-1-6v-micro-metal-gearmotor"
 				}
 			],
 			"ratedV": 6,
@@ -67,6 +71,10 @@
 				{
 					"supplier": "Pololu",
 					"url": "https://www.pololu.com/product/2366"
+				},
+				{
+					"supplier": "Melopero",
+					"url": "https://www.melopero.com/shop/components/robotica/751-micro-metal-gearmotor-mp-6v/"
 				}
 			],
 			"ratedV": 6,
@@ -127,6 +135,10 @@
 				{
 					"supplier": "Pololu",
 					"url": "https://www.pololu.com/product/2367"
+				},
+				{
+					"supplier": "The Pi Hut",
+					"url": "https://thepihut.com/products/pololu-medium-power-100-1-6v-micro-metal-gearmotor"
 				}
 			],
 			"ratedV": 6,
@@ -187,6 +199,10 @@
 				{
 					"supplier": "Pololu",
 					"url": "https://www.pololu.com/product/998"
+				},
+				{
+					"supplier": "The Pi Hut",
+					"url": "https://thepihut.com/products/pololu-high-power-50-1-6v-micro-metal-gearmotor"
 				}
 			],
 			"ratedV": 6,
@@ -247,6 +263,10 @@
 				{
 					"supplier": "Pololu",
 					"url": "https://www.pololu.com/product/3041"
+				},
+				{
+					"supplier": "Kamami",
+					"url": "https://kamami.pl/en/micro-metal-gearmotors/579857-pololu-hpcb-motor-with-gear-1001-12v-3041.html"
 				}
 			],
 			"ratedV": 12,
@@ -469,6 +489,11 @@
 				{
 					"supplier": "Pololu",
 					"url": "https://www.pololu.com/product/1420",
+					"packQty": 2
+				},
+				{
+					"supplier": "The Pi Hut",
+					"url": "https://thepihut.com/products/pololu-wheel-60x8mm-pair-black",
 					"packQty": 2
 				}
 			],
@@ -1074,6 +1099,11 @@
 				{
 					"supplier": "Pololu",
 					"url": "https://www.pololu.com/product/989",
+					"packQty": 2
+				},
+				{
+					"supplier": "The Pi Hut",
+					"url": "https://thepihut.com/products/pololu-micro-metal-gearmotor-bracket-pair-black",
 					"packQty": 2
 				}
 			],
@@ -1739,13 +1769,19 @@
 			},
 			"buy": [
 				{
-					"supplier": "Kjell & Company",
-					"url": "https://www.kjell.com/"
+					"supplier": "The Pi Hut",
+					"url": "https://thepihut.com/products/towerpro-servo-motor-sg90-digital"
 				}
 			]
 		},
 		{
 			"mpn": "MG996R",
+			"buy": [
+				{
+					"supplier": "The Pi Hut",
+					"url": "https://thepihut.com/products/towerpro-servo-motor-mg996r-metal-gear-180"
+				}
+			],
 			"control": "pwm",
 			"minV": 4.8,
 			"maxV": 7.2,
@@ -1870,6 +1906,12 @@
 		},
 		{
 			"mpn": "DS3218MG",
+			"buy": [
+				{
+					"supplier": "Alise Operations",
+					"url": "https://aliseoperations.com/shop/rc-hobby/servosmotors/dsservo-ds3218mg-20kg-waterproof-digital-servo-180/"
+				}
+			],
 			"control": "pwm",
 			"minV": 4.8,
 			"maxV": 6.8,
