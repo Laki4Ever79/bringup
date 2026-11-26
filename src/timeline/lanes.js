@@ -19,6 +19,7 @@ export const LANES = [
 	{ key: "build:firmware", label: "Firmware build" },
 	{ key: "build:drive", label: "Simulated drive" },
 	{ key: "build:arm", label: "Printed arm" },
+	{ key: "build:armsim", label: "Simulated pick-and-place" },
 	{ key: "build:testkit", label: "Test kit" },
 	{ key: "grounding", label: "Grounding check" },
 	{ key: "consistency", label: "Consistency" },
@@ -30,7 +31,7 @@ const HISTORY = 40
 // design has no case of ours (the enclosure build said "not needed").
 const ROBOT_LANES = new Set(["mechanics", "build:chassis", "build:drive"])
 // A robot arm's tiles: its mechanics engineer (who owns the arm field) and its printed parts.
-const ARM_LANES = new Set(["build:arm"])
+const ARM_LANES = new Set(["build:arm", "build:armsim"])
 const isArm = (events) => events.some((e) => e.type === "contract.changed" && e.payload?.field === "arm")
 const CASE_LANES = new Set(["enclosure", "build:enclosure"])
 const isRobot = (events) => events.some((e) => e.type === "contract.changed" && e.payload?.field === "mechanics")

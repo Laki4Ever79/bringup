@@ -3,10 +3,10 @@ import { qemuTarget } from "../tools/qemu.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { unassignedRoverPins } from "../mechanics/firmware.ts"
 import { prepareFirmware } from "../tools/firmware.ts"
-import { runDrive, type DriveArtifact } from "../tools/drive.ts"
+import { armSimSpec, runArmDrive, runDrive, type ArmDriveArtifact, type DriveArtifact } from "../tools/drive.ts"
 import { buildArm, type ArmArtifact } from "../tools/arm.ts"
 import { buildChassis, chassisSpec, type ChassisArtifact } from "../tools/chassis.ts"
-import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import type { BoardArtifact, EnclosureArtifact, FirmwareArtifact, TestkitArtifact } from "../contract/consistency.ts"
@@ -15,7 +15,7 @@ import { isEvent, makeEvent, type ArtifactKind } from "../events.ts"
 import { emit, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 import { Rebuilder } from "../tools/rebuilder.ts"
-import { tail, failureExcerpt } from "../tools/exec.ts"
+import { failureExcerpt, run, tail } from "../tools/exec.ts"
 import { buildBoard } from "../tools/board.ts"
 import { exportFab } from "../tools/fab.ts"
 import { buildEnclosure } from "../tools/enclosure.ts"
@@ -24,7 +24,7 @@ import { buildTestkit } from "../tools/testkit.ts"
 import type { Env } from "../tools/env.ts"
 import type { DrcSummary } from "../tools/drc.ts"
 
-type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact; drive: DriveArtifact; arm: ArmBuildArtifact }
+type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact; drive: DriveArtifact; arm: ArmBuildArtifact; armsim: ArmDriveArtifact & { stub?: true } }
 
 export interface BuildContext {
 	revision: number
@@ -38,7 +38,7 @@ export const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b
 // Artifacts a design has only when it asks for them: without the field the kind counts as current (nothing to build),
 // so it never holds a design from settling.
 export const OPTIONAL_KINDS = Object.fromEntries(Object.entries(BUILDS).filter(([, b]) => b.optional).map(([k, b]) => [k, b.optional])) as Partial<Record<ArtifactKind, FieldName>>
-export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive", "arm"]
+export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive", "arm", "armsim"]
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
 // its builds awaited one after another instead of concurrently. Runs never pass one.
@@ -250,6 +250,35 @@ export function createArmBuilder(env: Env, lock?: BuildLock): Human {
 			const r = await buildArm(env.python, env.root, dir, snapshot.values)
 			if (!r.ok) throw new Error(`arm build failed: ${r.reason}`)
 			return { ...r, revision }
+		},
+	})
+}
+
+// The arm's pick-and-place in the loop (arm task 8): the arm firmware's simulation build in QEMU drives the MuJoCo arm
+// (py/mech/arm_model.py, made from this contract) through the brief's picks and drops; arm.json says how many landed.
+// Without PlatformIO, QEMU or MuJoCo the design can still settle on the plain checks: the artifact says "not run".
+export function createArmSimBuilder(env: Env, lock?: BuildLock): Human {
+	return createBuilder({
+		kind: "armsim",
+		lock,
+		inputs: BUILD_INPUTS.armsim,
+		requires: BUILD_REQUIRES.armsim,
+		notNeeded: armNotNeeded,
+		build: async ({ dir, snapshot, revision }) => {
+			const notRun = (reason: string): ArmDriveArtifact => ({ revision, dir, result: "not run", reason, note: "" })
+			if (!env.pio || !env.qemu || !env.python) return notRun("PlatformIO, QEMU or the .venv simulation tools are missing: not proven in simulation")
+			if (!snapshot.values.armTargets) return notRun("no arm targets: nothing to pick and place")
+			const chip = mcuProfileOf(snapshot.values.parts)
+			const machine = chip ? chip.sim.machine : "esp32s3"
+			if (chip && (chip.sim.backend !== "qemu" || !qemuTarget(machine))) return notRun(`arm sim: not run: it runs the firmware in Espressif's QEMU (ESP32-C3, ESP32-S3), not the ${chip.mpn}'s`)
+			mkdirSync(dir, { recursive: true })
+			const contract = join(dir, "contract.json"), mjcf = join(dir, "arm.xml")
+			writeFileSync(contract, JSON.stringify(snapshot))
+			const m = await run(env.python, ["-B", join(env.root, "py/mech/arm_model.py"), contract, mjcf], { cwd: join(env.root, "py"), env: { ...(process.env as Record<string, string>), PYTHONPATH: join(env.root, "py") }, timeoutMs: 120_000 })
+			if (m.code !== 0) return notRun(`the arm's simulation model didn't build: ${(m.stdout + m.stderr).trim().split("\n").at(-1)}`)
+			const fw = join(dir, "fw")
+			await prepareFirmware(env.root, fw, snapshot)
+			return runArmDrive({ root: env.root, python: env.python, pio: env.pio, fwDir: fw, outDir: dir, spec: armSimSpec(snapshot, mjcf), machine, timeoutMs: 900_000 }, revision)
 		},
 	})
 }

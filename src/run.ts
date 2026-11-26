@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url"
 import type { FieldName } from "./contract/types.ts"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
-import { createBoardBuilder, createArmBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
+import { createBoardBuilder, createArmBuilder, createArmSimBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
 import { createGroundingCheck } from "./agents/grounding-check.ts"
 import { createBomWriter } from "./agents/bom.ts"
@@ -198,7 +198,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		bench = createBench({ ...(await opts.bench.open()), ...opts.bench.timings })
 		joinRuntime(bench)
 	}
-	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env), createTestkitBuilder(env), createChassisBuilder(env), createDriveBuilder(env), createArmBuilder(env)]
+	const builders = opts.noHardware ? createStubBuilders() : [createBoardBuilder(env), createEnclosureBuilder(env), createFirmwareBuilder(env), createTestkitBuilder(env), createChassisBuilder(env), createDriveBuilder(env), createArmBuilder(env), createArmSimBuilder(env)]
 	for (const b of builders) joinRuntime(b)
 	// A run that stays up syncs edits to its generated files back into the design (runner/file-sync.ts).
 	const files = opts.stay || opts.bench ? createFileSync({ outDir: opts.outDir }) : null

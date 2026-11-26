@@ -43,6 +43,21 @@ test("a built arm's clash and print problem reach the mechanics engineer; a stal
 test("an arm design shows the mechanics engineer and the printed arm, not a rover's chassis and drive", () => {
 	const lanes = shownLanes([{ type: "contract.changed", payload: { field: "arm" } }])
 	assert.ok(lanes.includes("build:arm") && lanes.includes("mechanics"))
+	assert.ok(lanes.includes("build:armsim"))
 	assert.ok(!lanes.includes("build:chassis") && !lanes.includes("build:drive"))
 	assert.ok(!shownLanes([]).includes("build:arm"))
+})
+
+test("the simulated pick-and-place is a build of its own; a miss reaches the mechanics engineer, a stale one waits", () => {
+	assert.ok(ALL_KINDS.includes("armsim"))
+	assert.deepEqual(BUILDS.armsim, { inputs: ["arm", "armTargets", "pins", "parts"], requires: ["arm", "armTargets", "pins"], optional: "arm" })
+	const c = fixtureContract()
+	const sim = (result: "pass" | "fail" | "not run"): NonNullable<Artifacts["armsim"]> => ({ revision: 4, dir: "/nowhere", result, reason: result === "fail" ? "2 cubes missed the cup" : "", landed: 3, attempts: 5, worstMm: 41, note: "" })
+	const of = (a: Artifacts, armsimStale = false) => checkConsistency(c, a, "", { quick: true, armsimStale }).filter((v) => v.kind === "arm-sim")
+	assert.deepEqual(of({ armsim: sim("pass") }), [])
+	assert.deepEqual(of({ armsim: sim("not run") }), [])
+	const [v] = of({ armsim: sim("fail") })
+	assert.deepEqual(v.affects, ["mechanics"])
+	assert.match(v.message, /3 of 5 landed, worst 41 mm/)
+	assert.deepEqual(of({ armsim: sim("fail") }, true)[0].affects, [])
 })

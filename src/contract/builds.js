@@ -38,4 +38,7 @@ export const BUILDS = {
 	// A robot arm's printed parts (py/arm.py through src/tools/arm.ts): the arm's joints, servos and base, swept through
 	// the poses armTargets asks for (pick, drop and the approach above each). Only with an arm field.
 	arm: { inputs: ["arm", "armTargets"], requires: ["arm"], optional: "arm" },
+	// The arm's pick-and-place in the loop (src/tools/drive.ts runArmDrive): its firmware (pins, parts) drives the MuJoCo
+	// arm (arm, armTargets: the cup, the repeats) in QEMU. Only with an arm field.
+	armsim: { inputs: ["arm", "armTargets", "pins", "parts"], requires: ["arm", "armTargets", "pins"], optional: "arm" },
 }

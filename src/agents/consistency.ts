@@ -112,7 +112,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		writeFileSync(join(s.outDir, "contract.json"), JSON.stringify(snapshot, null, 2))
 		writeRevisions(snapshot.revision)
 		// A disagreement that waits on a rebuild goes to an owner once its artifact is current (recipients.ts routeWaiting).
-		violations = routeWaiting(checkConsistency(snapshot, s.artifacts, readBrief(s.outDir), { boardStale: s.artifacts.board !== undefined && !current("board"), chassisStale: s.artifacts.chassis !== undefined && !current("chassis"), armStale: s.artifacts.arm !== undefined && !current("arm") }), (kind) => current(kind as ArtifactKind))
+		violations = routeWaiting(checkConsistency(snapshot, s.artifacts, readBrief(s.outDir), { boardStale: s.artifacts.board !== undefined && !current("board"), chassisStale: s.artifacts.chassis !== undefined && !current("chassis"), armStale: s.artifacts.arm !== undefined && !current("arm"), armsimStale: s.artifacts.armsim !== undefined && !current("armsim") }), (kind) => current(kind as ArtifactKind))
 		const report = JSON.stringify({ revision: snapshot.revision, violations })
 		if (report !== lastReport) {
 			lastReport = report
