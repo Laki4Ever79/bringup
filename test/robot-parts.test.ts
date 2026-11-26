@@ -241,3 +241,22 @@ test("a brick's maximum output: nominal times its stated tolerance, unknown when
 	const mw = (loadMechCatalog(".").powerBricks ?? []).find((b) => b.mpn.startsWith("MEANWELL-GST60A12"))!
 	assert.equal(brickMaxV(mw), 12.36)
 })
+
+test("a shop that quotes in pounds: priced at the estimated rate, the shop's own price kept beside it", async () => {
+	const { USD_PER } = await import("../src/tools/robot-parts.ts")
+	const { boughtPartsMd } = await import("../src/package/build.ts")
+	const gbp: typeof fetch = (async () => new Response(`<meta property="product:price:amount" content="9.00"><meta property="product:price:currency" content="GBP">`, { status: 200 })) as unknown as typeof fetch
+	const line = { item: "servo" as const, mpn: "MG996R", qty: 2, packs: 2, buy: [{ supplier: "The Pi Hut", url: "https://thepihut.com/products/x" }] }
+	const r = await checkRobotParts([line], { live: true, fetch: gbp })
+	const l = r.lines[0]
+	assert.equal(l.unitUsd, Math.round(9 * USD_PER.GBP * 100) / 100)
+	assert.equal(l.lineUsd, Math.round(9 * USD_PER.GBP * 100) / 100 * 2)
+	assert.deepEqual(l.shopPrice, { price: 9, currency: "GBP" })
+	assert.match(l.note, /£9\.00 ≈ \$11\.43, estimate/)
+	assert.match(boughtPartsMd(r).join("\n"), /\| \$22\.86 \(£18\.00, estimated rate\) \|/)
+	// A currency without a rate stays unpriced and says so.
+	const pln: typeof fetch = (async () => new Response(`<meta property="product:price:amount" content="99.20"><meta property="product:price:currency" content="PLN">`, { status: 200 })) as unknown as typeof fetch
+	const p = (await checkRobotParts([{ ...line, buy: [{ supplier: "Kamami", url: "https://kamami.pl/x" }] }], { live: true, fetch: pln })).lines[0]
+	assert.equal(p.lineUsd, null)
+	assert.match(p.note, /99\.2 PLN \(not converted\)/)
+})

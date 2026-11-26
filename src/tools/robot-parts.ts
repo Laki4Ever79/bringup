@@ -24,6 +24,10 @@ export interface BuyLink {
 // Currency to USD for listed prices: ESTIMATES (the rate moves), named in each line's note.
 export const USD_PER = { USD: 1, EUR: 1.08, GBP: 1.27 } as Record<string, number>
 
+const SYMBOL: Record<string, string> = { GBP: "£", EUR: "€" }
+// A price as the shop states it: £19.20, €12.50, or 99.20 PLN.
+export const money = (price: number, currency: string) => (SYMBOL[currency] ? `${SYMBOL[currency]}${price.toFixed(2)}` : `${price.toFixed(2)} ${currency}`)
+
 export interface RobotPartLine {
 	item: "motor" | "wheel" | "caster" | "battery" | "distance sensor" | "board screw" | "caster screw" | "caster nut" | "sensor screw" | "sensor nut" | "motor bracket" | "clamp screw" | "sensor cable" | "motor lead" | "servo" | "power brick" | DriveTrainItem
 	mpn: string
@@ -38,7 +42,8 @@ export interface RobotPartCheck extends RobotPartLine {
 	status: RobotLineStatus
 	supplier: string | null
 	url: string | null
-	unitUsd: number | null // one pack's price, in USD only (another currency is noted, not converted)
+	unitUsd: number | null // one pack's price in USD: the shop's own, or converted from its currency at USD_PER (an ESTIMATE)
+	shopPrice?: { price: number; currency: string } | null // the shop's price when it isn't in USD, as the shop states it
 	lineUsd: number | null // unitUsd × packs
 	leadDays: number | null
 	checkedAt: string | null
@@ -235,14 +240,19 @@ const BULK_PACK = 100, BULK_USD = 20
 const isBulk = (link: BuyLink, usd: number) => (link.packQty ?? 1) > BULK_PACK && usd > BULK_USD
 function fromCheck(l: RobotPartLine, link: BuyLink, c: OfferCheck): RobotPartCheck {
 	const o = c.offer
-	const live = o && o.price !== null && (o.currency ?? "USD").toUpperCase() === "USD" ? o.price : null
+	const cur = (o?.currency ?? "USD").toUpperCase()
+	// The shop's own price in its currency; another currency than USD is converted at USD_PER, an ESTIMATE, and the line
+	// keeps the shop's figure beside it (The Pi Hut quotes in GBP: before 26 Nov 2026 those lines stayed unpriced).
+	const rate = o && o.price !== null ? USD_PER[cur] : undefined
+	const live = o && o.price !== null && rate !== undefined ? Math.round(o.price * rate * 100) / 100 : null
+	const shopPrice = o && o.price !== null && cur !== "USD" ? { price: o.price, currency: cur } : null
 	// A listed price (the catalog's, read on a date) when the page gave none; another currency at an estimated rate.
 	const listedUsd = live === null && link.listed && USD_PER[link.listed.currency.toUpperCase()] ? Math.round(link.listed.price * USD_PER[link.listed.currency.toUpperCase()] * 100) / 100 : null
 	const usd = live ?? listedUsd
 	const listedNote = listedUsd !== null ? ` · listed ${link.listed!.price} ${link.listed!.currency} on ${link.listed!.checked}${link.listed!.currency.toUpperCase() === "USD" ? "" : ` (≈ $${listedUsd} at an estimated rate)`}${link.listed!.note ? `, ${link.listed!.note}` : ""}` : ""
 	const status: RobotLineStatus = c.status !== "live" ? "not checked" : o!.availability === "unknown" ? "stock unknown" : o!.availability
 	const packs = Math.ceil(l.qty / (link.packQty ?? 1))
-	const currencyNote = o && o.price !== null && usd === null ? ` · ${o.price} ${o.currency} (not converted)` : ""
+	const currencyNote = o && o.price !== null && usd === null ? ` · ${o.price} ${o.currency} (not converted)` : shopPrice && live !== null ? ` · ${money(shopPrice.price, shopPrice.currency)} ≈ $${live.toFixed(2)}, estimate` : ""
 	const bulkNote = usd !== null && isBulk(link, usd) ? ` · sold only by the carton of ${link.packQty} (${usd === null ? "price unknown" : `$${usd}`}): buy a small pack locally` : ""
 	return {
 		...l,
@@ -251,6 +261,7 @@ function fromCheck(l: RobotPartLine, link: BuyLink, c: OfferCheck): RobotPartChe
 		supplier: link.supplier,
 		url: link.url,
 		unitUsd: usd,
+		shopPrice,
 		// A shop that sells only bulk cartons (Fastener SuperStore: 3,000 screws for $108.09) prices a hobby build wrong:
 		// such a line is left out of the total and says so (run 9's package, 16 Nov 2026: four M2.5 screws counted $432).
 		lineUsd: usd === null || isBulk(link, usd) ? null : Math.round(usd * packs * 100) / 100,

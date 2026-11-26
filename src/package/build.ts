@@ -17,7 +17,7 @@ import { buildChassis } from "../tools/chassis.ts"
 import { buildFirmware } from "../tools/firmware.ts"
 import { loadCatalog, lookupLcsc } from "../tools/parts-search.ts"
 import { jlcSwaps, type JlcClass } from "./jlc-swaps.ts"
-import { checkRobotParts, robotPartLines, robotPartNotes } from "../tools/robot-parts.ts"
+import { checkRobotParts, money, robotPartLines, robotPartNotes } from "../tools/robot-parts.ts"
 import { writeBench } from "../report.ts"
 import { armPictures, assemblyPictures } from "./assembly-pictures.ts"
 import { armBuildChecks, armWithLinks, buildArm, type ArmArtifact } from "../tools/arm.ts"
@@ -231,7 +231,7 @@ export function boughtPartsMd(robot: Awaited<ReturnType<typeof checkRobotParts>>
 		"",
 		"| Item | Part | Qty | Shop | Status | Line |",
 		"|---|---|---|---|---|---|",
-		...(robot?.lines ?? []).map((l) => `| ${l.item} | ${l.mpn} | ${l.qty} | ${l.url ? `[${l.supplier}](${l.url})` : (l.supplier ?? "?")} | ${l.status} | ${usd(l.lineUsd)} |`),
+		...(robot?.lines ?? []).map((l) => `| ${l.item} | ${l.mpn} | ${l.qty} | ${l.url ? `[${l.supplier}](${l.url})` : (l.supplier ?? "?")} | ${l.status} | ${usd(l.lineUsd)}${l.shopPrice && l.lineUsd !== null ? ` (${money(l.shopPrice.price * l.packs, l.shopPrice.currency)}, estimated rate)` : ""} |`),
 		"",
 		`Robot parts total: ${usd(robot?.knownUsd ?? null)} (the lines a shop priced). ${robot?.summary ?? ""}`,
 	]
