@@ -17,7 +17,7 @@ Each joint's bracket nests just outside the one before it, so neighbouring brack
 are src/arm/kinematics.ts's (a positive angle raises the link); the brackets' sideways offsets don't move the grip point.
 
 usage: arm.py <contract.json> <out dir>
-writes <out>/arm/<part>.step and .stl for each printed part, links.json (ArmLink[]: each moving link's printed mass and
+writes <out>/arm/<part>.step and .stl for each printed part, posed/ (the assembled arm at rest for the pictures), links.json (ArmLink[]: each moving link's printed mass and
 centre of mass in its joint's frame) and interference.json ({poses, pairs, clashes: [{pose, a, b, mm3}], print}).
 """
 
@@ -76,8 +76,9 @@ def u_bracket(x0, x1, half):
     return out
 
 
-def build(arm):
-    """The rigid bodies: [(name, solid in its joint's frame, printed solids [(part name, solid)])]."""
+def build(arm, servos_out=None):
+    """The rigid bodies: [(name, solid in its joint's frame, printed solids [(part name, solid)])]. With a dict as
+    servos_out, each body's bought servos (their solids, same frame) by body name, for the package's pictures."""
     j = {x["name"]: x for x in arm["joints"]}
     sv = {n: servo(j[n]["servo"]) for n in JOINTS}
     grip = servo(arm["gripper"]["servo"])
@@ -138,6 +139,8 @@ def build(arm):
     gs = Pos(8, 0, 5 + 0.1 - grip.shape.bounding_box().min.Z) * Rot(0, 0, 180) * grip.shape
     gripper = gplate + palm + fingers[0] + fingers[1]
 
+    if servos_out is not None:
+        servos_out.update({"base": [yaw_solid], "turntable": [sh_solid], "upper arm": [el_solid], "forearm": [wp_solid], "wrist": [roll_solid], "gripper": [gs]})
     return [
         ("base", plate + yaw_solid + cradle, [("base plate", base_printed)]),
         ("turntable", turntable + sh_solid, [("turntable", turntable)]),
@@ -220,6 +223,35 @@ def links(bodies):
     return out
 
 
+# The pose the package's pictures show (world3d.js armRestPose): shoulder up 45°, forearm level, gripper down, each
+# clamped to its joint's limits.
+def rest_pose(arm):
+    lim = {x["name"]: (x["minDeg"], x["maxDeg"]) for x in arm["joints"]}
+    want = {"base-yaw": 0, "shoulder": 45, "elbow": -45, "wrist-pitch": -90, "wrist-roll": 0}
+    return tuple(max(lim[n][0], min(lim[n][1], want[n])) for n in JOINTS)
+
+
+def export_posed(arm, bodies, servos, out):
+    """The assembled arm at rest_pose, for py/stills.py: one STL per body's printed part and one per its servos, in
+    assembly order, and groups.json naming them ({steps: [{name, files: [[file, kind]]}], floorZ})."""
+    out.mkdir(parents=True, exist_ok=True)
+    locs = poses_of(arm, rest_pose(arm))
+    steps = []
+    for k, (name, _, printed) in enumerate(bodies):
+        stem = name.replace(" ", "-")
+        files = []
+        for i, (_, solid) in enumerate(printed):
+            f = f"{stem}-printed-{i}.stl"
+            export_stl(locs[k] * solid, str(out / f))
+            files.append([f, "printed"])
+        for i, solid in enumerate(servos.get(name, [])):
+            f = f"{stem}-servo-{i}.stl"
+            export_stl(locs[k] * solid, str(out / f))
+            files.append([f, "bought"])
+        steps.append({"name": stem, "files": files})
+    (out / "groups.json").write_text(json.dumps({"steps": steps, "floorZ": -arm["base"]["thicknessMm"], "pose": rest_pose(arm)}, indent=1))
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__, file=sys.stderr)
@@ -230,7 +262,8 @@ def main():
     out = Path(sys.argv[2]) / "arm"
     out.mkdir(parents=True, exist_ok=True)
     try:
-        bodies = build(arm)
+        servos = {}
+        bodies = build(arm, servos)
     except ArmError as e:
         (out / "interference.json").write_text(json.dumps({"error": str(e)}))
         print(str(e), file=sys.stderr)
@@ -241,6 +274,7 @@ def main():
         export_step(solid, str(out / f"{stem}.step"))
         export_stl(solid, str(out / f"{stem}.stl"))
     (out / "links.json").write_text(json.dumps(links(bodies), indent=1))
+    export_posed(arm, bodies, servos, out / "posed")
     extra = []
     if targets:
         # The pick and drop poses, solved by the TS side (src/tools/arm.ts passes them in the contract as armPoses).

@@ -4,6 +4,8 @@ import assert from "node:assert/strict"
 import { armBuildChecks, armPoses, armWithLinks, type ArmArtifact } from "../src/tools/arm.ts"
 import { forward } from "../src/arm/kinematics.ts"
 import { ARM, TARGETS } from "./arm-contract.test.ts"
+import { assemblyOrder } from "../src/package/build.ts"
+import { fixtureContract } from "./fixture.ts"
 
 const artifact = (over: Partial<ArmArtifact["built"]> = {}): ArmArtifact => ({ ok: true, dir: "/x", files: [], links: [], built: { poses: 182, pairs: 1820, clashes: [], print: { ok: true, issues: [], notes: [], bedMm: [256, 256, 256] }, ...over } })
 
@@ -38,4 +40,14 @@ test("armWithLinks: writes the measured links once, null when they're already th
 	const next = armWithLinks(ARM, links)
 	assert.deepEqual(next?.links, links)
 	assert.equal(armWithLinks(next!, links), null)
+})
+
+test("the package's assembly order builds an arm from the plate up, its servos' channels named", () => {
+	const base = fixtureContract()
+	const s = { ...base, values: { ...base.values, mechanics: undefined, arm: ARM, armTargets: TARGETS } }
+	const md = assemblyOrder(s, ["base-plate.stl", "turntable.stl", "gripper.stl"])
+	assert.match(md, /Print the arm's parts in printed\/ \(base-plate\.stl, turntable\.stl, gripper\.stl\)/)
+	assert.match(md, /base yaw servo \(MG996R\) in the base plate's cradle/)
+	assert.match(md, /add the 300 g ballast/)
+	assert.match(md, /base-yaw 0, shoulder 1, elbow 2, wrist-pitch 3, wrist-roll 4, gripper 5/)
 })

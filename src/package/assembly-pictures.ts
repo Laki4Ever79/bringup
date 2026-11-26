@@ -28,3 +28,18 @@ export async function assemblyPictures(python: string, root: string, chassisDir:
 		return { files: [], note: `no assembly pictures: py/stills.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
 	}
 }
+
+// An arm (py/arm.py's posed/ folder: the assembled arm at rest, groups.json in assembly order): the same pictures, one
+// per body from the base plate to the gripper, the printed parts in PLA orange and the servos dark.
+export async function armPictures(python: string, root: string, posedDir: string, outDir: string, log: (m: string) => void = () => {}): Promise<AssemblyPictures> {
+	if (!existsSync(join(posedDir, "groups.json"))) return { files: [], note: `no assembly pictures: ${posedDir} holds no posed arm` }
+	const dir = join(outDir, "assembly")
+	try {
+		const { stdout } = await exec(python, [join(root, "py", "stills.py"), "--groups", posedDir, dir], { timeout: 600_000 })
+		const files = stdout.split("\n").filter((f) => f.endsWith(".png")).map((f) => `assembly/${f}`)
+		log(`assembly pictures: ${files.length} in ${dir}`)
+		return { files, note: null }
+	} catch (e) {
+		return { files: [], note: `no assembly pictures: py/stills.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
+	}
+}

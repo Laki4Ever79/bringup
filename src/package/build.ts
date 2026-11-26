@@ -2,7 +2,8 @@
 // order; nothing here orders). It rebuilds every artifact on today's code from the contract alone:
 //   fab/       JLCPCB gerbers, BOM and CPL, checked complete against the contract's parts
 //   parts.md   the board's LCSC parts with today's stock and unit price, and the bought robot parts with shop links
-//   printed/   the chassis STLs (and any clamp or mast sections)
+//   printed/   the chassis STLs (and any clamp or mast sections); an arm's printed parts as STL and STEP
+//   ros/       an arm's URDF and ros2_control controllers (src/ros/urdf.ts armUrdf), with its printed links' masses
 //   firmware/  the built firmware and how to flash it
 //   assembly.md, bringup.md (bench bring-up), README.md (totals and what's missing)
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
@@ -18,7 +19,10 @@ import { loadCatalog, lookupLcsc } from "../tools/parts-search.ts"
 import { jlcSwaps, type JlcClass } from "./jlc-swaps.ts"
 import { checkRobotParts, robotPartLines, robotPartNotes } from "../tools/robot-parts.ts"
 import { writeBench } from "../report.ts"
-import { assemblyPictures } from "./assembly-pictures.ts"
+import { armPictures, assemblyPictures } from "./assembly-pictures.ts"
+import { armBuildChecks, armWithLinks, buildArm, type ArmArtifact } from "../tools/arm.ts"
+import { armControllersYaml, armUrdf } from "../ros/urdf.ts"
+import { defaultCheckCatalog } from "../mechanics/checks.ts"
 
 // JLCPCB's published price rules (economic PCBA), for a labelled estimate of the order: https://jlcpcb.com/help/article/pcb-assembly-price
 // (setup $8.18, stencil $1.53, $0.0016 a solder joint, $3.07 feeder loading per extended part; basic and preferred parts
@@ -137,6 +141,31 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		} else missing.push(`the chassis didn't build: ${(ch as { error?: string }).error ?? "see .work/chassis"}`)
 	}
 
+	// 3b. An arm (values.arm): its printed parts (py/arm.py through src/tools/arm.ts) as STL and STEP, its sweep's and
+	// print check's findings, and its ROS 2 description with the printed links' measured masses.
+	let arm: ArmArtifact | null = null
+	const armFiles: string[] = []
+	if (s.values.arm) {
+		log("arm: building")
+		const a = await buildArm(opts.python, opts.root, join(work, "arm"), s.values)
+		if (a.ok) {
+			arm = a
+			mkdirSync(join(outDir, "printed"), { recursive: true })
+			for (const f of a.files.filter((x) => /\.(stl|step)$/.test(x))) {
+				copyFileSync(f, join(outDir, "printed", basename(f)))
+				armFiles.push(basename(f))
+			}
+			for (const v of armBuildChecks(a)) findings.push(`${v.kind}: ${v.message}`)
+			const cat = defaultCheckCatalog()
+			if (cat) {
+				const measured = armWithLinks(s.values.arm, a.links) ?? s.values.arm
+				mkdirSync(join(outDir, "ros"), { recursive: true })
+				writeFileSync(join(outDir, "ros", "arm.urdf"), armUrdf(measured, cat.mech))
+				writeFileSync(join(outDir, "ros", "controllers.yaml"), armControllersYaml(measured, cat.mech))
+			} else missing.push("the arm's URDF: catalog/mechanics.json is missing")
+		} else missing.push(`the arm's printed parts didn't build: ${a.reason}`)
+	}
+
 	// 4. The firmware.
 	log("firmware: building")
 	const fw = await buildFirmware(opts.pio, opts.root, join(work, "firmware"), s, rev)
@@ -149,10 +178,14 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	// 5. Bench bring-up, the assembly order, the parts list and the summary.
 	writeBench(outDir, s, board)
 	// The robot drawn step by step from the chassis built above (assembly-pictures.ts, py/stills.py).
-	const pictures = stls.length ? await assemblyPictures(opts.python, opts.root, join(work, "chassis"), outDir, log) : { files: [], note: s.values.mechanics ? "no assembly pictures: the chassis didn't build" : null }
+	const pictures = stls.length
+		? await assemblyPictures(opts.python, opts.root, join(work, "chassis"), outDir, log)
+		: arm
+			? await armPictures(opts.python, opts.root, join(arm.dir, "posed"), outDir, log)
+			: { files: [], note: s.values.mechanics ? "no assembly pictures: the chassis didn't build" : s.values.arm ? "no assembly pictures: the arm's parts didn't build" : null }
 	writeFileSync(
 		join(outDir, "assembly.md"),
-		assemblyOrder(s, stls.map((f) => basename(f))) + (pictures.files.length ? `\n## Pictures\n\nThe robot after each step, exploded, and from the top and the side (the chassis built here, with the bought parts where they go):\n\n${pictures.files.map((f) => `![${basename(f, ".png")}](${f})`).join("\n")}\n` : pictures.note ? `\n${pictures.note}\n` : ""),
+		assemblyOrder(s, [...stls.map((f) => basename(f)), ...armFiles.filter((f) => f.endsWith(".stl"))]) + (pictures.files.length ? `\n## Pictures\n\nThe robot after each step, exploded, and from the top and the side (${arm ? "the arm's printed parts built here, at rest, with its servos" : "the chassis built here, with the bought parts where they go"}):\n\n${pictures.files.map((f) => `![${basename(f, ".png")}](${f})`).join("\n")}\n` : pictures.note ? `\n${pictures.note}\n` : ""),
 	)
 	const partsMd = [
 		`# Parts (prices and stock checked ${new Date().toISOString().slice(0, 10)})`,
@@ -192,7 +225,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	].join("\n")
 	writeFileSync(join(outDir, "parts.md"), partsMd)
 	const result: PackageResult = { dir: outDir, cheaper, robotLines: (robot?.lines ?? []).map((l) => ({ item: l.item, mpn: l.mpn, qty: l.qty, packs: (l as { packs?: number }).packs, supplier: l.supplier, url: l.url, lineUsd: l.lineUsd, status: l.status })), jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings, pictures }
-	writeFileSync(join(outDir, "README.md"), readme(s, result, fabOk, stls.map((f) => basename(f)), Boolean(fwBin)))
+	writeFileSync(join(outDir, "README.md"), readme(s, result, fabOk, [...stls.map((f) => basename(f)), ...armFiles], Boolean(fwBin)))
 	return result
 }
 
@@ -218,6 +251,20 @@ export function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
 			"Plug the battery in last, wheels off the floor, and run the rest of bringup.md (motors, encoders, sensor, then a first drive).",
 		)
 	}
+	const a = v.arm
+	if (a) {
+		const sv = (n: string) => a.joints.find((j) => j.name === n)?.servo ?? "?"
+		const printed = stls.filter((f) => f.endsWith(".stl"))
+		steps.push(
+			`Print the arm's parts in printed/ (${printed.join(", ")}) in PLA; the STEP files beside them are the same parts for editing.`,
+			`Stand the base yaw servo (${sv("base-yaw")}) in the base plate's cradle, shaft up; ${a.base.holdDown === "clamps" ? "clamp the plate to the table" : `add the ${a.base.ballastG} g ballast on the plate`}.`,
+			`Fit the turntable on the yaw horn and the shoulder servo (${sv("shoulder")}) in its pedestal.`,
+			`Fit the upper arm bracket on the shoulder horn, with the elbow servo (${sv("elbow")}) at its far end; then the forearm bracket with the wrist pitch servo (${sv("wrist-pitch")}).`,
+			`Fit the wrist bracket, its roll servo (${sv("wrist-roll")}) along the arm, then the gripper and its servo (${a.gripper.servo}).`,
+			`Centre every servo before fitting its horn: the firmware's angle 0 is the arm stretched forward and level.`,
+			`Plug the servos into the board's channels (${a.joints.map((j) => `${j.name} ${j.channel}`).join(", ")}, gripper ${a.gripper.channel}) and the ${a.input.volts} V brick last, then run bringup.md.`,
+		)
+	}
 	return ["# Assembly order", "", ...steps.map((t, i) => `${i + 1}. ${t}`), ""].join("\n")
 }
 
@@ -236,6 +283,7 @@ function readme(s: ContractSnapshot, r: PackageResult, fabOk: boolean, stls: str
 		`| Parts with stock and prices | parts.md | board parts ${usd(r.boardUsd)}, robot parts ${usd(r.robotUsd)} |`,
 		`| Printed parts | printed/ | ${stls.length ? stls.join(", ") : "none"} |`,
 		`| Firmware | firmware/firmware.bin | ${fw ? "built" : "NOT built"} |`,
+		...(s.values.arm ? [`| ROS 2 description (URDF, controllers) | ros/ | ${existsSync(join(r.dir, "ros", "arm.urdf")) ? "arm.urdf, controllers.yaml" : "NOT written"} |`] : []),
 		`| Assembly order | assembly.md | ${r.pictures?.files.length ? `with ${r.pictures.files.length} pictures (assembly/)` : r.pictures?.note ?? ""} |`,
 		"| Bench bring-up | bringup.md | |",
 		"",

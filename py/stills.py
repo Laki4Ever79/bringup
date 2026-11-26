@@ -4,6 +4,9 @@ flat-shaded painter's-algorithm rasterizer (numpy + Pillow). One picture per ass
 the parts up to that step), one exploded, and a top and a side view of the whole robot.
 
 usage: stills.py <chassis rev dir (spec.json, chassis.stl)> <out dir> <step names, comma-separated>
+       stills.py --groups <dir with groups.json> <out dir>
+The second form draws any posed assembly from STLs in its steps' order (py/arm.py writes the arm's posed/ folder:
+groups.json {steps: [{name, files: [[stl, "printed" | "bought"]]}], floorZ}).
 prints the files written, one per line."""
 
 import json
@@ -150,35 +153,53 @@ def render(parts, path, yaw, pitch, floor_z, extent=None):
     img.resize(SIZE, Image.LANCZOS).save(path)
 
 
+KIND_COLOURS = {"printed": COLOURS["plate"], "bought": (58, 60, 66)}
+
+
+def file_groups(src):
+    """A posed assembly from groups.json: {step: [(triangles, colour)]} in its order, and its floor height."""
+    spec = json.loads((src / "groups.json").read_text())
+    g = {}
+    for step in spec["steps"]:
+        g[step["name"]] = [(read_stl(src / f), KIND_COLOURS.get(kind, COLOURS["top"])) for f, kind in step["files"]]
+    return g, spec["floorZ"]
+
+
+def draw_steps(g, steps, out, floor_z):
+    """g: {step: [(triangles, colour)]}. One picture per step (the parts up to it), one exploded, a top and a side view."""
+    out.mkdir(parents=True, exist_ok=True)
+    order = [s for s in steps if s in g] + [k for k in g if k not in steps]
+    whole = np.concatenate([t.reshape(-1, 3) for k in order for t, _ in g[k] if len(t)] + [np.array([[0, 0, floor_z]])])
+    written = []
+    yaw, pitch = 35, 28  # from the front left, above
+    for k, name in enumerate(steps):
+        file = f"step-{k + 1}-{name}.png"
+        render([p for s in steps[: k + 1] if s in g for p in g[s]], out / file, yaw, pitch, floor_z, whole)
+        written.append(file)
+    # Exploded: each step's parts lifted by its place in the order.
+    lift = 30.0
+    render([(t + np.array([0, 0, i * lift]), c) for i, s in enumerate(order) for t, c in g[s]], out / "exploded.png", yaw, pitch, floor_z)
+    written.append("exploded.png")
+    full = [p for s in order for p in g[s]]
+    render(full, out / "view-top.png", 0, 89.5, floor_z)
+    render(full, out / "view-side.png", 90, 4, floor_z)
+    return written + ["view-top.png", "view-side.png"]
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--groups":
+        src, out = Path(sys.argv[2]), Path(sys.argv[3])
+        g, floor_z = file_groups(src)
+        print("\n".join(draw_steps(g, list(g), out, floor_z)))
+        return
     if len(sys.argv) != 4:
         print(__doc__, file=sys.stderr)
         sys.exit(2)
     rev, out = Path(sys.argv[1]), Path(sys.argv[2])
     steps = [s for s in sys.argv[3].split(",") if s]
     spec = json.loads((rev / "spec.json").read_text())
-    g = groups(spec, rev)
-    out.mkdir(parents=True, exist_ok=True)
-    floor_z = -spec["plate"]["clearanceMm"]
-    order = [s for s in steps if s in g] + [k for k in g if k not in steps]
-    whole = np.concatenate([g[k].reshape(-1, 3) for k in order if len(g[k])] + [np.array([[0, 0, floor_z]])])
-    written = []
-    yaw, pitch = 35, 28  # from the front left, above
-    for k, name in enumerate(steps):
-        upto = steps[: k + 1]
-        file = f"step-{k + 1}-{name}.png"
-        render([(g[s], COLOURS[s]) for s in upto if s in g], out / file, yaw, pitch, floor_z, whole)
-        written.append(file)
-    # Exploded: each step's parts lifted by its place in the order.
-    lift = 30.0
-    exploded = [(g[s] + np.array([0, 0, i * lift]), COLOURS[s]) for i, s in enumerate(order)]
-    render(exploded, out / "exploded.png", yaw, pitch, floor_z)
-    written.append("exploded.png")
-    full = [(g[s], COLOURS[s]) for s in order]
-    render(full, out / "view-top.png", 0, 89.5, floor_z)
-    render(full, out / "view-side.png", 90, 4, floor_z)
-    written += ["view-top.png", "view-side.png"]
-    print("\n".join(written))
+    g = {k: [(t, COLOURS[k])] for k, t in groups(spec, rev).items()}
+    print("\n".join(draw_steps(g, steps, out, -spec["plate"]["clearanceMm"])))
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ export async function buildArm(python: string, root: string, dir: string, values
 	}
 	const built = JSON.parse(readFileSync(join(out, "interference.json"), "utf8")) as ArmBuilt
 	const links = JSON.parse(readFileSync(join(out, "links.json"), "utf8")) as ArmLink[]
-	return { ok: true, dir: out, files: readdirSync(out).sort().map((f) => join(out, f)), links, built }
+	return { ok: true, dir: out, files: readdirSync(out, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(out, e.name)).sort(), links, built }
 }
 
 // The arm with its printed links' measured masses, for the contract (mechanics writes `arm`); null when they're the
