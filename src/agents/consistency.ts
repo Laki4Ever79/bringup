@@ -8,6 +8,7 @@ import { isEvent, makeEvent, type ArtifactKind, type Payloads } from "../events.
 import { emit, roleOf, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 import { ALL_KINDS, BUILD_REQUIRES, OPTIONAL_KINDS } from "./builders.ts"
+import { routeWaiting } from "./recipients.ts"
 
 
 export const MAX_REVISIONS = 25
@@ -110,7 +111,8 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		const snapshot = s.contract.snapshot()
 		writeFileSync(join(s.outDir, "contract.json"), JSON.stringify(snapshot, null, 2))
 		writeRevisions(snapshot.revision)
-		violations = checkConsistency(snapshot, s.artifacts, readBrief(s.outDir), { boardStale: s.artifacts.board !== undefined && !current("board"), chassisStale: s.artifacts.chassis !== undefined && !current("chassis"), armStale: s.artifacts.arm !== undefined && !current("arm") })
+		// A disagreement that waits on a rebuild goes to an owner once its artifact is current (recipients.ts routeWaiting).
+		violations = routeWaiting(checkConsistency(snapshot, s.artifacts, readBrief(s.outDir), { boardStale: s.artifacts.board !== undefined && !current("board"), chassisStale: s.artifacts.chassis !== undefined && !current("chassis"), armStale: s.artifacts.arm !== undefined && !current("arm") }), (kind) => current(kind as ArtifactKind))
 		const report = JSON.stringify({ revision: snapshot.revision, violations })
 		if (report !== lastReport) {
 			lastReport = report

@@ -53,3 +53,26 @@ test("the STM32G031K8 logger (SHT40 on PB7/PB6, LED on PA5) builds, its pins rea
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+// The ESP32-S3 product firmware (26 Nov 2026: an arm mock's S3 board built the logger template at revision 6 and it
+// didn't compile: hal.h's deep-sleep wake was the C3's GPIO wake, which the S3 doesn't have; the S3 wakes through RTC
+// IO, ext0/ext1). The fixture's logger on the ESP32-S3-MINI-1 must build, with its pins read back.
+test("the ESP32-S3 logger builds: its deep-sleep wake is the S3's (RTC IO ext0/ext1), not the C3's GPIO wake", { skip, timeout: 900_000 }, async () => {
+	const s3 = (JSON.parse(readFileSync(join(root, "catalog/parts.json"), "utf8")) as { role: string; mpn: string; lcsc: string; footprint: string; pins: string[] }[]).find((p) => p.role === "mcu" && p.mpn === "ESP32-S3-MINI-1")!
+	const s = fixtureContract()
+	s.values.parts = s.values.parts!.map((p) => (p.role === "mcu" ? { ...p, mpn: s3.mpn, lcsc: s3.lcsc, footprint: s3.footprint, pins: s3.pins } : p))
+	s.values.pins = [
+		{ signal: "I2C_SDA", gpio: 8, partRef: "U2", partPin: "SDA" },
+		{ signal: "I2C_SCL", gpio: 9, partRef: "U2", partPin: "SCL" },
+		{ signal: "STATUS_LED", gpio: 21, partRef: "D1", partPin: "A" },
+	]
+	const dir = tempDir()
+	try {
+		const firmware = await buildFirmware(pio!, root, dir, s, 6)
+		assert.equal(firmware.ok, true, firmware.log.split("\n").filter((l) => /error:/.test(l)).join("\n") || firmware.log.slice(-2000))
+		assert.deepEqual({ sda: firmware.pins.I2C_SDA, scl: firmware.pins.I2C_SCL, led: firmware.pins.STATUS_LED }, { sda: 8, scl: 9, led: 21 })
+		assert.match(readFileSync(join(dir, "platformio.ini"), "utf8"), /^default_envs = esp32s3$/m)
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})

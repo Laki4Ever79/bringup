@@ -35,6 +35,11 @@ void setup() {
 		return;
 	}
 	Serial.printf("ARM plan: %d waypoints, approach %.0f mm, %d cycles\n", n, approach, ARM_REPEATS);
+#ifdef PIN_STATUS_LED
+	// The status LED: on while the arm works, toggled after each cycle, off when it's done.
+	pinMode(PIN_STATUS_LED, OUTPUT);
+	digitalWrite(PIN_STATUS_LED, HIGH);
+#endif
 	for (int i = 0; i < ARM_NS; i++) pose[i] = w[0].deg[i];
 	// At power-on the servos jump from wherever they are to the first pose at full speed: hold it (gripper open) until the
 	// slowest could have crossed its whole travel, before the plan assumes the arm is there.
@@ -43,8 +48,14 @@ void setup() {
 	for (int r = 0; r < ARM_REPEATS; r++) {
 		for (int k = 0; k < n; k++) go(w[k].deg, w[k].holdMs);
 		Serial.printf("ARM cycle %d done\n", r + 1);
+#ifdef PIN_STATUS_LED
+		digitalWrite(PIN_STATUS_LED, r % 2 ? HIGH : LOW);
+#endif
 	}
 	servo_done();
+#ifdef PIN_STATUS_LED
+	digitalWrite(PIN_STATUS_LED, LOW);
+#endif
 	Serial.println("ARM done");
 }
 

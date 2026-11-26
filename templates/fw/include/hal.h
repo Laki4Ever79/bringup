@@ -101,10 +101,19 @@ struct HalHistory {
 };
 
 // Deep sleep: the timer, plus the pins given (-1: none). A low wake (the button, which closes to GND) gets the internal
-// pull-up; a high wake (USB sense, held low by its divider) no pull. The wake pins accumulate. Only GPIO0..5 can wake
-// the ESP32-C3 from deep sleep (TRM, "Deep-sleep wakeup"); main.cpp asserts that at compile time.
+// pull-up; a high wake (USB sense, held low by its divider) no pull. The wake pins accumulate.
+// The ESP32-C3 (and C6, H2) wake from deep sleep on a GPIO (SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP): only GPIO0..5 on the C3
+// (TRM, "Deep-sleep wakeup"); main.cpp asserts that at compile time. The ESP32-S3 and the ESP32 have no GPIO deep-sleep
+// wake: they wake through RTC IO, ext0 for one pin at a level and ext1 for a mask (ESP-IDF "Sleep Modes": ext0, ext1),
+// so the low pin takes ext0 and the high one ext1. Before (26 Nov 2026) the S3's product firmware didn't compile here.
+#if !SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
+#include <driver/rtc_io.h>
+// The pin ext0 waits on, kept over deep sleep, so halWokeByPin can tell an ext0 wake's pin.
+RTC_DATA_ATTR static int halExt0Pin = -1;
+#endif
 [[noreturn]] static void halSleep(uint32_t seconds, int wakeLowPin, int wakeHighPin) {
 	esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
+#if SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
 	if (wakeLowPin >= 0) {
 		gpio_pullup_en((gpio_num_t)wakeLowPin);
 		gpio_pulldown_dis((gpio_num_t)wakeLowPin);
@@ -115,11 +124,31 @@ struct HalHistory {
 		gpio_pulldown_dis((gpio_num_t)wakeHighPin);
 		esp_deep_sleep_enable_gpio_wakeup(1ULL << wakeHighPin, ESP_GPIO_WAKEUP_GPIO_HIGH);
 	}
+#else
+	halExt0Pin = wakeLowPin;
+	if (wakeLowPin >= 0) {
+		rtc_gpio_pullup_en((gpio_num_t)wakeLowPin);
+		rtc_gpio_pulldown_dis((gpio_num_t)wakeLowPin);
+		esp_sleep_enable_ext0_wakeup((gpio_num_t)wakeLowPin, 0);
+	}
+	if (wakeHighPin >= 0) {
+		rtc_gpio_pullup_dis((gpio_num_t)wakeHighPin);
+		rtc_gpio_pulldown_dis((gpio_num_t)wakeHighPin);
+		esp_sleep_enable_ext1_wakeup(1ULL << wakeHighPin, ESP_EXT1_WAKEUP_ANY_HIGH);
+	}
+#endif
 	esp_deep_sleep_start();
 }
 
 // Whether this boot is the end of a deep sleep that the given pin cut short.
-__attribute__((unused)) static bool halWokeByPin(int pin) { return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO && (esp_sleep_get_gpio_wakeup_status() & (1ULL << pin)); }
+__attribute__((unused)) static bool halWokeByPin(int pin) {
+#if SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
+	return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO && (esp_sleep_get_gpio_wakeup_status() & (1ULL << pin));
+#else
+	const esp_sleep_wakeup_cause_t c = esp_sleep_get_wakeup_cause();
+	return (c == ESP_SLEEP_WAKEUP_EXT0 && pin == halExt0Pin) || (c == ESP_SLEEP_WAKEUP_EXT1 && (esp_sleep_get_ext1_wakeup_status() & (1ULL << pin)));
+#endif
+}
 
 static uint64_t halUniqueId() { return ESP.getEfuseMac(); }
 // Truly random only while Wi-Fi or Bluetooth runs (Espressif's esp_random()); a pseudo-random sequence otherwise.

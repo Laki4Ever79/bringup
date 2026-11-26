@@ -15,7 +15,7 @@ import { isEvent, makeEvent, type ArtifactKind } from "../events.ts"
 import { emit, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 import { Rebuilder } from "../tools/rebuilder.ts"
-import { tail } from "../tools/exec.ts"
+import { tail, failureExcerpt } from "../tools/exec.ts"
 import { buildBoard } from "../tools/board.ts"
 import { exportFab } from "../tools/fab.ts"
 import { buildEnclosure } from "../tools/enclosure.ts"
@@ -132,7 +132,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			const failure = opts.failure?.(artifact) ?? null
 			if (failure !== null) {
 				s.artifactFailures[opts.kind] = failure
-				emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: tail(failure, 40) }), self.id)
+				emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: failureExcerpt(failure, 40) }), self.id)
 				return
 			}
 			delete s.artifactFailures[opts.kind]
@@ -145,7 +145,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			const message = error instanceof Error ? error.message : String(error)
 			s.artifactInputs[opts.kind] = inputs
 			s.artifactFailures[opts.kind] = message
-			emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: tail(message, 40) }), self.id)
+			emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: failureExcerpt(message, 40) }), self.id)
 		}
 	})
 	const builder = createHuman({

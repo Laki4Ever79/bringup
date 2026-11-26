@@ -53,6 +53,17 @@ test("header values come from the contract", () => {
 	assert.throws(() => armHeader(armContract({ ...ARM, gripper: { ...ARM.gripper, servo: "STS3215 C001 7.4V" } })), /phase 2/)
 })
 
+test("the arm firmware declares the status LED the contract wires, so the pin map read back matches it", async () => {
+	const { parsePinsHeader } = await import("../src/codegen/firmware.ts")
+	const c = armContract()
+	assert.equal(parsePinsHeader(armHeader(c)).STATUS_LED, undefined, "no LED pin in the contract: none declared")
+	const lit = { ...c, values: { ...c.values, pins: [...c.values.pins!, { signal: "STATUS_LED", gpio: 21, partRef: "D1", partPin: "A" }] } }
+	assert.match(armHeader(lit), /^#define PIN_STATUS_LED 21$/m)
+	// What pin-mismatch compares: the firmware's pins against the contract's (an arm mock with hardware, 26 Nov 2026:
+	// "firmware drives STATUS_LED on ?" until the end of the run).
+	assert.equal(parsePinsHeader(armHeader(lit)).STATUS_LED, 21)
+})
+
 test("PCA9685 bytes: deg → counts against the datasheet's PRE_SCALE and LEDn_ON/OFF", async () => {
 	// Shoulder (MG996R, 120° travel, 1000–2000 us) at 60°: the middle of its 0..120 range → 1500 us.
 	const [r] = await ask<{ prescale50: number; prescale200: number; reg: number; servoDeg: number; us: number; bytes: number[] }>(["pca 1 60"])

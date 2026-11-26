@@ -201,6 +201,10 @@ export interface Violation {
 	affects: AgentRole[]
 	// The datasheet numbers the check used and where each was read (mechanics checks today).
 	sources?: { mpn: string; field: string; url: string; where: string }[]
+	// A built artifact that disagrees with the contract: the rebuild of this kind is what fixes it, so while that artifact
+	// is behind the contract the violation wakes no agent. Once it's built for this revision and still disagrees, the
+	// consistency participant hands it to an owner (src/agents/recipients.ts routeWaiting).
+	waitsOn?: "board" | "firmware" | "chassis" | "enclosure"
 }
 
 const OUTLINE_TOLERANCE_MM = 0.1
@@ -289,6 +293,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 				message: `board is ${a.board.widthMm}×${a.board.heightMm} mm, contract says ${outline.widthMm}×${outline.heightMm} mm`,
 				fields: ["outline"],
 				affects: ["board"],
+				waitsOn: "board",
 			})
 		}
 	}
@@ -324,6 +329,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 					fields: ["pins"],
 					// A board built from older pins: the rebuild wires them; nobody is woken.
 					affects: opts.boardStale ? [] : ["board"],
+					waitsOn: "board",
 				})
 			}
 		}
@@ -372,6 +378,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 					message: `firmware drives ${pin.signal} on ${built == null ? "?" : mcuPinName(parts, built)}, contract says ${mcuPinName(parts, pin.gpio)}`,
 					fields: ["pins"],
 					affects: [],
+					waitsOn: "firmware",
 				})
 			}
 		}
@@ -386,6 +393,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 				message: `firmware reads the sensor with the ${a.firmware.sensor ?? "no"} driver, contract's ${sensor.ref} is ${sensor.mpn} (${wanted ?? "no driver"})`,
 				fields: ["parts"],
 				affects: [],
+				waitsOn: "firmware",
 			})
 		}
 	}
@@ -495,7 +503,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 				: got.mpn !== null && got.mpn.toLowerCase() !== p.mpn.toLowerCase()
 					? `board places ${got.mpn} as ${p.ref}, contract says ${p.mpn}`
 					: null
-			if (message) v.push({ kind: "part-mismatch", message, fields: ["parts"], affects: ["board"] })
+			if (message) v.push({ kind: "part-mismatch", message, fields: ["parts"], affects: ["board"], waitsOn: "board" })
 		}
 	}
 

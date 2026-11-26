@@ -91,6 +91,8 @@ export function armHeader(s: ContractSnapshot): string {
 		'#include "arm_logic.h"',
 		`#define I2C_SDA ${pin("I2C_SDA")}`,
 		`#define I2C_SCL ${pin("I2C_SCL")}`,
+		// The status LED the contract wires, when it does: on while the program runs, toggled per cycle (main.cpp).
+		...(pin("STATUS_LED") >= 0 ? [`#define PIN_STATUS_LED ${pin("STATUS_LED")}`] : []),
 		`#define PCA9685_ADDR 0x${pwm.i2cAddress.toString(16)}`,
 		`#define ARM_SERVO_HZ ${ARM_SERVO_HZ}`,
 		`#define ARM_PERIOD_MS ${ARM_PERIOD_MS}`,

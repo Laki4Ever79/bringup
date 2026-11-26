@@ -4,7 +4,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { recipients, VIOLATION_ROLES } from "../src/agents/recipients.ts"
+import { recipients, routeWaiting, VIOLATION_ROLES } from "../src/agents/recipients.ts"
 import { FIELDS, OWNERS, type AgentRole, type FieldName } from "../src/contract/types.ts"
 
 const ROOT = join(import.meta.dirname, "..")
@@ -61,3 +61,29 @@ test("every role that takes violations has a handler, and every field's owner is
 	const unowned = FIELDS.filter((f) => !VIOLATION_ROLES.includes(OWNERS[f]))
 	assert.deepEqual(unowned.map((f) => `${f}: ${OWNERS[f]}`), ["links: integrator", "assembly: integrator"].filter((x) => unowned.includes(x.split(":")[0] as FieldName)))
 })
+
+test("a disagreement that waits on a rebuild goes to an owner once that artifact is current, never stays with nobody", () => {
+	const pin = { kind: "pin-mismatch", message: "firmware drives STATUS_LED on ?, contract says GPIO21", fields: ["pins"] as FieldName[], affects: [] as AgentRole[], waitsOn: "firmware" }
+	// The firmware behind the contract: it waits, nobody woken (the rebuild fixes it).
+	assert.deepEqual(routeWaiting([pin], () => false)[0].affects, [])
+	// Built for this revision and still wrong (the arm mock of 26 Nov 2026): the firmware agent hears it, told it's no rebuild's.
+	const [now] = routeWaiting([pin], () => true)
+	assert.deepEqual(now.affects, ["firmware"])
+	assert.match(now.message, /the firmware built for this revision still disagrees: not a rebuild's to fix/)
+	// The board has no agent: a current board's part-mismatch goes to the parts list's owner.
+	assert.deepEqual(routeWaiting([{ kind: "part-mismatch", message: "board has no U6", fields: ["parts"] as FieldName[], affects: ["board"] as AgentRole[], waitsOn: "board" }], () => true)[0].affects, ["parts"])
+	// One already addressed to an agent is left as it is.
+	const own = { kind: "x", message: "m", fields: ["pins"] as FieldName[], affects: ["architect"] as AgentRole[], waitsOn: "firmware" }
+	assert.equal(routeWaiting([own], () => true)[0], own)
+})
+
+test("every check src addresses to no agent names the artifact it waits on (or is the system's link-budget)", () => {
+	const src = (f: string) => readFileSync(join(ROOT, f), "utf8")
+	const text = src("src/contract/consistency.ts")
+	for (const kind of ["pin-mismatch", "sensor-mismatch", "outline-mismatch", "part-mismatch", "net-missing"]) {
+		const at = text.indexOf(`kind: "${kind}"`)
+		assert.ok(at >= 0, kind)
+		assert.match(text.slice(at, at + 600), /waitsOn: "(board|firmware|chassis|enclosure)"/, `${kind} names what it waits on`)
+	}
+})
+
