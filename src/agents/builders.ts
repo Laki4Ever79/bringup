@@ -4,6 +4,7 @@ import { mcuProfileOf } from "../mcu/profile.ts"
 import { unassignedRoverPins } from "../mechanics/firmware.ts"
 import { prepareFirmware } from "../tools/firmware.ts"
 import { runDrive, type DriveArtifact } from "../tools/drive.ts"
+import { buildArm, type ArmArtifact } from "../tools/arm.ts"
 import { buildChassis, chassisSpec, type ChassisArtifact } from "../tools/chassis.ts"
 import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
@@ -23,7 +24,7 @@ import { buildTestkit } from "../tools/testkit.ts"
 import type { Env } from "../tools/env.ts"
 import type { DrcSummary } from "../tools/drc.ts"
 
-type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact; drive: DriveArtifact }
+type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact; drive: DriveArtifact; arm: ArmBuildArtifact }
 
 export interface BuildContext {
 	revision: number
@@ -37,7 +38,7 @@ export const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b
 // Artifacts a design has only when it asks for them: without the field the kind counts as current (nothing to build),
 // so it never holds a design from settling.
 export const OPTIONAL_KINDS = Object.fromEntries(Object.entries(BUILDS).filter(([, b]) => b.optional).map(([k, b]) => [k, b.optional])) as Partial<Record<ArtifactKind, FieldName>>
-export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive"]
+export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive", "arm"]
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
 // its builds awaited one after another instead of concurrently. Runs never pass one.
@@ -229,6 +230,26 @@ export function createChassisBuilder(env: Env, lock?: BuildLock): Human {
 			const r = await buildChassis(env.python, env.root, dir, snapshot, revision)
 			if (!r.ok) throw new Error(`chassis build failed: ${r.reason}`)
 			return r
+		},
+	})
+}
+
+// A robot arm's printed parts and their sweep (src/tools/arm.ts): the clashes and print problems become arm-interference
+// and arm-dfm violations for the mechanics engineer (src/contract/consistency.ts). A design without an arm field has none.
+export type ArmBuildArtifact = ArmArtifact & { revision: number; stub?: true }
+export const armNotNeeded = (s: ContractSnapshot) => (!s.values.arm ? "no arm design: not a robot arm" : null)
+export function createArmBuilder(env: Env, lock?: BuildLock): Human {
+	return createBuilder({
+		kind: "arm",
+		lock,
+		inputs: BUILD_INPUTS.arm,
+		requires: BUILD_REQUIRES.arm,
+		notNeeded: armNotNeeded,
+		build: async ({ dir, snapshot, revision }) => {
+			if (!env.python) throw new Error("arm build failed: .venv python with build123d is not installed")
+			const r = await buildArm(env.python, env.root, dir, snapshot.values)
+			if (!r.ok) throw new Error(`arm build failed: ${r.reason}`)
+			return { ...r, revision }
 		},
 	})
 }

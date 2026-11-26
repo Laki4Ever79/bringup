@@ -1,4 +1,5 @@
 import type { DriveArtifact } from "../tools/drive.ts"
+import { armBuildChecks, type ArmArtifact } from "../tools/arm.ts"
 import { rosBuiltChecks } from "../ros/checks.ts"
 import { boardMountChecks, chassisPrintChecks, interferenceChecks, packOnStandoffs, type ChassisArtifact, type Interference } from "../tools/chassis.ts"
 import { hardwareChecks } from "../tools/robot-parts.ts"
@@ -115,6 +116,7 @@ export interface Artifacts {
 	testkit?: TestkitArtifact
 	chassis?: ChassisArtifact
 	drive?: DriveArtifact
+	arm?: ArmArtifact & { revision?: number; stub?: true }
 }
 
 // The pins whose part isn't in the parts list yet: the architect writes the pins first (as told), and the parts agent
@@ -218,7 +220,7 @@ const MOUNTING_PAIR_MM = 5
 // quick: the board page's per-move check, which leaves out the smallest-board search (spaceChecks).
 // opts.boardStale: the board artifact was built from older inputs than the contract's (the consistency participant knows
 // from the build inputs). Its net findings are then judged against what the current contract generates.
-export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean; boardStale?: boolean; chassisStale?: boolean } = {}): Violation[] {
+export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean; boardStale?: boolean; chassisStale?: boolean; armStale?: boolean } = {}): Violation[] {
 	const v: Violation[] = []
 	// A failed firmware-in-the-loop drive (docs/mechanics.md): the mechanics must change. "not run" (no QEMU, a stubbed
 	// run) wakes nobody: the report says "not proven in simulation". Not the firmware reviewer: the rover's firmware is
@@ -235,6 +237,9 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	// The ROS package built with it: one URDF tree, physical inertials, the design's mass, wheels, limits and rate.
 	if (a.chassis && !a.chassis.stub) for (const r of rosBuiltChecks(a.chassis.dir)) v.push({ kind: "ros-package", message: `the robot's ROS package (${r.kind}): ${r.message}`, fields: ["mechanics"], affects: ["mechanics"] })
 	if (a.chassis && !a.chassis.stub) v.push(...chassisPrintChecks(a.chassis))
+	// The built arm's sweep (its printed parts and servos through the poses armTargets asks for) and its print check. An
+	// arm built for an older arm field waits for its rebuild, addressed to nobody, as the chassis's mounts do.
+	if (a.arm && !a.arm.stub) v.push(...armBuildChecks(a.arm).map((x) => (opts.armStale ? { ...x, affects: [] as Violation["affects"] } : x)))
 	// The case's own print check (py/enclosure.py print.json: thin walls, long bridges, overhangs, an open mesh, the lid's
 	// fit), which before 22 Nov 2026 only the report showed: the design settled with a case that wouldn't print.
 	if (a.enclosure?.printCheck && !a.enclosure.printCheck.ok)

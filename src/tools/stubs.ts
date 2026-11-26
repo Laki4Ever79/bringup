@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
-import { BUILD_DERIVED, BUILD_INPUTS, BUILD_REQUIRES, caseNotNeeded, chassisNotNeeded, createBuilder, type BuildLock } from "../agents/builders.ts"
+import { BUILD_DERIVED, BUILD_INPUTS, BUILD_REQUIRES, caseNotNeeded, armNotNeeded, chassisNotNeeded, createBuilder, type BuildLock } from "../agents/builders.ts"
 import { micPorts, mountingHoles, placedByRole, testPoints, generatedNets } from "../codegen/circuit.ts"
 import { testPlan, testPlanMarkdown } from "../contract/testkit.ts"
 import { behaviorHeader, modelHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
@@ -108,6 +108,7 @@ export function createStubBuilders(lock?: BuildLock): Human[] {
 		createBuilder({ kind: "firmware", inputs: BUILD_INPUTS.firmware, requires: BUILD_REQUIRES.firmware, derived: BUILD_DERIVED.firmware, lock, build: async ({ snapshot, revision, dir }) => stubFirmware(snapshot, revision, dir) }),
 		createBuilder({ kind: "chassis", inputs: BUILD_INPUTS.chassis, requires: BUILD_REQUIRES.chassis, derived: BUILD_DERIVED.chassis, notNeeded: chassisNotNeeded, lock, build: async ({ revision, dir }) => ({ ok: true as const, revision, dir: note(dir, "chassis"), files: [], mounts: null, stub: true }) }),
 		createBuilder({ kind: "drive", inputs: BUILD_INPUTS.drive, requires: BUILD_REQUIRES.drive, derived: BUILD_DERIVED.drive, notNeeded: chassisNotNeeded, lock, build: async ({ revision, dir }) => ({ revision, dir: note(dir, "drive"), result: "not run" as const, reason: "hardware tools off (--no-hardware): not proven in simulation", segments: [], stub: true }) }),
+		createBuilder({ kind: "arm", inputs: BUILD_INPUTS.arm, requires: BUILD_REQUIRES.arm, notNeeded: armNotNeeded, lock, build: async ({ revision, dir }) => ({ ok: true as const, revision, dir: note(dir, "arm"), files: [], links: [], built: { poses: 0, pairs: 0, clashes: [], print: { ok: true, issues: [], notes: [], bedMm: [] } }, stub: true as const }) }),
 		createBuilder({ kind: "testkit", inputs: BUILD_INPUTS.testkit, requires: BUILD_REQUIRES.testkit, derived: BUILD_DERIVED.testkit, lock, build: async ({ snapshot, revision, dir }) => stubTestkit(snapshot, revision, dir) }),
 	]
 }

@@ -35,4 +35,7 @@ export const BUILDS = {
 	chassis: { inputs: ["mechanics", "motion", "outline", "assembly", "connectors", "parts"], requires: ["mechanics", "motion", "outline"], optional: "mechanics" },
 	// The simulated drive runs the firmware (pins, parts) on the mechanics (mechanics, motion, the board's size).
 	drive: { inputs: ["mechanics", "motion", "pins", "parts", "outline", "assembly"], requires: ["mechanics", "motion", "pins"], optional: "mechanics" },
+	// A robot arm's printed parts (py/arm.py through src/tools/arm.ts): the arm's joints, servos and base, swept through
+	// the poses armTargets asks for (pick, drop and the approach above each). Only with an arm field.
+	arm: { inputs: ["arm", "armTargets"], requires: ["arm"], optional: "arm" },
 }
