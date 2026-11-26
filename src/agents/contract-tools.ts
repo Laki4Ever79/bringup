@@ -93,6 +93,14 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				}
 				// A robot's power tree is decided in code from its pack and regulator (contract/power-auto.ts): every parts write
 				// lands it complete (real run 19b spent 19 revisions on it by hand).
+				// A CNC (cncTargets): its logic's 5 V from the brick, the power tree decided in code as an arm's is (CNC gap 6).
+				if (args.field === "parts" && Array.isArray(args.value) && !s.contract.get("motion") && !s.contract.get("arm") && s.contract.get("cncTargets")) {
+					const t = completePowerTree(args.value as NonNullable<ContractValues["parts"]>, undefined, s.contract.snapshot())
+					if (t.note) {
+						args = { ...args, value: t.parts as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, t.note].filter(Boolean).join("; ")
+					}
+				}
 				if (args.field === "parts" && Array.isArray(args.value) && (s.contract.get("motion") || s.contract.get("arm"))) {
 					// A PWM driver comes with its servo plugs, their supply and the spare motor (contract/outputs-auto.ts; run 20b);
 					// on an arm, a plug per servo, its rails and the brick's jack (power-auto.ts armOutputs).

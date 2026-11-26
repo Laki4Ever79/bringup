@@ -119,3 +119,20 @@ Each failure on the way, with its general fix.
   next new part can't be placed blind. Also seen: "the 5 mm maximum length for U4.VS to C11.pin1 cannot be satisfied
   (6.12 mm)", to recheck once the plugs no longer crowd the drivers.
 
+- 26 Nov 2026, mock 8 → 11. The 6.12 mm capacitor: the reach check had no pad ring for a non-MCU QFN and skipped every
+  driver capacitor; later parts took earlier parts' reserved capacitor spots; VCP-to-VS sat beside VCP only. Fixed in
+  placement for every board (QUAD_RING_MM, reserved spots kept free, a two-side capacitor between its pads, VCP to VS2):
+  10 capacitors out of reach → 0. Mock 9 built a clean board (0 DRC errors) but ended on it: it was built before
+  mechanics wrote cnc, and nothing counted the drivers' context as a board input. Fixed twice over: the board's derived
+  key holds every chip's context, and "current" compares derived keys (mock 11: the board rebuilds at revisions 8-11).
+  The scripted architect read the work area's "200 × 50 mm" as the board size; fixed. Open: the four-driver board
+  doesn't route on 2 layers (tscircuit "over 50 traces remaining", Freerouting 3-6 pins unrouted): bringup-lead-4's
+  4-layer fallback, triggered by unrouted connections.
+- 26 Nov 2026, gap 6, part 1: the logic's 5 V from the brick. The board ran its MCU from USB only: unplugged, the
+  machine had no controller. A CNC's DC jack is now a machine input as an arm's is (circuit.ts machineInput, on the net
+  its jack names: VMOT at its rail's 24 V): the power tree adds a 5 V step-down rated over the input TVS's clamp and two
+  Schottkys OR'ing it with VBUS (power-auto.ts brickLogicTree, shared with the arm), and the jack gets the arm's TVS and
+  bulk capacitor. Part 2, the spindle switch, is next: a 3.3 V GPIO can't drive a power MOSFET whose RDS(on) is
+  specified only at 4.5 V and up (no 30 V part with a 2.5 V rating in a power package turned up), so a 5 V AHCT buffer
+  (SN74AHCT1G125, C7484: TTL input, VIH 2.0 V) drives the gate from the new 5 V; its OE is where the emergency stop will
+  cut the spindle in hardware (gap 7). Flyback: SS54 (C22452, JLCPCB basic, 40 V 5 A, SMA).

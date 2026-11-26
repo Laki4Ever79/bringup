@@ -445,14 +445,15 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	if (imuPart && supply) for (const pin of ["VDD", "VDDIO"]) if (imuPart.pins.includes(pin)) jobs.push({ job: `decoupling on ${imuPart.ref}.${pin}`, spec: SUPPORT.decouple, a: { ref: imuPart.ref, pin }, b: GND, near: imuPart.ref })
 	// An arm (values.arm) has a servo supply per rail (armRails) and no emergency stop: its rails are built below.
 	const servoSupply = s.values.arm ? undefined : parts.find((p) => p.role === "servo-supply")
-	const jack = armJack(s)
-	if (jack) {
+	const brick = machineInput(s)
+	if (brick) {
 		// The TVS picked for the brick (tvs.ts: the smallest stand-off over its maximum output); SMBJ20A when none covers it,
-		// the check (inrush.ts) says so.
-		const t = s.values.arm ? armInputTvs(s.values.arm.input) : null
+		// the check (inrush.ts) says so. An arm's and a CNC's brick alike.
+		const { jack, net: inNet } = brick
+		const t = armInputTvs(s.values.arm ? s.values.arm.input : { volts: brick.volts })
 		const tvs: SupportSpec = t ? { kind: "diode", value: t.mpn, lcsc: t.lcsc, mpn: t.mpn, footprint: "smb" } : SUPPORT.tvs
-		jobs.push({ job: `${armInputNet} TVS (${jack.ref}: a hot-plugged brick's spike under the rail chips' maximum)`, spec: tvs, a: { net: armInputNet }, b: GND, near: jack.ref })
-		jobs.push({ job: `${armInputNet} bulk electrolytic (${jack.ref}: damps the cable's ringing)`, spec: SUPPORT.bulkElec, a: { net: armInputNet }, b: GND, near: jack.ref })
+		jobs.push({ job: `${inNet} TVS (${jack.ref}: a hot-plugged brick's spike under the rail chips' maximum)`, spec: tvs, a: { net: inNet }, b: GND, near: jack.ref })
+		jobs.push({ job: `${inNet} bulk electrolytic (${jack.ref}: damps the cable's ringing)`, spec: SUPPORT.bulkElec, a: { net: inNet }, b: GND, near: jack.ref })
 	}
 	for (const rail of armRails(s) ?? []) {
 		const near = rail.supplyRef
@@ -498,7 +499,7 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	// A step-down whose catalog entry lists its parts brings them itself (chipInstances); this is the AP63205's.
 	if (buckIc?.pins.includes("SW") && !(buckIc.mpn && chipEntry(buckIc.mpn))) {
 		const near = buckIc.ref
-		jobs.push({ job: `${buckIc.ref} input capacitor (${packNet(s)})`, spec: s.values.arm ? SUPPORT.buckIn50 : SUPPORT.buckIn, a: { net: packNet(s) }, b: GND, near })
+		jobs.push({ job: `${buckIc.ref} input capacitor (${packNet(s)})`, spec: machineInput(s) ? SUPPORT.buckIn50 : SUPPORT.buckIn, a: { net: packNet(s) }, b: GND, near })
 		jobs.push({ job: `${buckIc.ref} inductor (SW to ${BUCK_NET})`, spec: SUPPORT.buckL, a: { net: BUCK_SW_NET }, b: { net: BUCK_NET }, near })
 		for (const k of [1, 2]) jobs.push({ job: `${buckIc.ref} output capacitor ${k} of 2 (${BUCK_NET})`, spec: SUPPORT.buckOut, a: { net: BUCK_NET }, b: GND, near })
 		if (buckIc.pins.includes("BST")) jobs.push({ job: `${buckIc.ref} bootstrap capacitor (BST to SW)`, spec: SUPPORT.decouple, a: { ref: buckIc.ref, pin: "BST" }, b: { net: BUCK_SW_NET }, near })
@@ -2222,7 +2223,7 @@ export const BUCK_SW_NET = "BUCK_SW"
 // Schottky's drop would take under the LDO's; behind a step-down, a Schottky (5 V has room for it). VBUS: a Schottky.
 export function powerTree(s: ContractSnapshot): { battery: Part; usb: Part; buck?: Part } | null {
 	const parts = s.values.parts ?? []
-	if (!(parts.some((p) => p.role === "battery") || armJack(s)) || parts.some((p) => p.role === "charger") || !parts.some((p) => p.role === "ldo")) return null
+	if (!(parts.some((p) => p.role === "battery") || machineInput(s)) || parts.some((p) => p.role === "charger") || !parts.some((p) => p.role === "ldo")) return null
 	const diodes = parts.filter((p) => p.role === "diode" && p.pins.includes("A") && p.pins.includes("K")).sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }))
 	const ideal = parts.find((p) => p.role === "ideal-diode" && p.pins.includes("VIN") && p.pins.includes("VOUT"))
 	const buck = parts.find((p) => p.role === "buck")
@@ -2231,10 +2232,23 @@ export function powerTree(s: ContractSnapshot): { battery: Part; usb: Part; buck
 	if (!battery || !usb) return null
 	return { battery, usb, ...(buck ? { buck } : {}) }
 }
-// The net the power tree's input sits on: the cell (VBAT), or an arm's brick (armInputNet, its DC jack).
-export const packNet = (s: ContractSnapshot) => (armJack(s) ? armInputNet : "VBAT")
+// The net the power tree's input sits on: the cell (VBAT), or a machine's brick (machineInput: an arm's armInputNet, a
+// CNC's motor rail).
+export const packNet = (s: ContractSnapshot) => machineInput(s)?.net ?? "VBAT"
 // An arm's DC input jack (the catalog's DC-091-A250: VIN on its centre pin).
 export const armJack = (s: ContractSnapshot) => (s.values.arm ? (s.values.parts ?? []).find((p) => p.mpn === "DC-091-A250") : undefined)
+// A machine's brick input: its DC jack, the net the jack's VIN is on, and the brick's volts. An arm's is armInputNet at
+// arm.input; a CNC's (cncTargets) is the net its jack names (the motor rail, VMOT) at that rail's voltage, so the
+// logic's 5 V comes from the brick too: off USB only, the MCU was dead without the cable (CNC gap 6, 26 Nov 2026).
+export function machineInput(s: ContractSnapshot): { jack: Part; net: string; volts: number } | null {
+	const jack = (s.values.parts ?? []).find((p) => p.mpn === "DC-091-A250")
+	if (!jack) return null
+	if (s.values.arm) return { jack, net: armInputNet, volts: s.values.arm.input.volts }
+	if (!s.values.cncTargets && !s.values.cnc) return null
+	const net = jack.nets?.VIN
+	const rail = net ? (s.values.rails ?? []).find((r) => r.name === net || netName(r.name) === net) : undefined
+	return net && rail ? { jack, net, volts: rail.voltageV } : null
+}
 // A battery-path part's input and output pins: an ideal diode's VIN/VOUT, a Schottky's A/K.
 const pathPins = (p: Part) => (p.role === "ideal-diode" ? { in: "VIN", out: "VOUT" } : { in: "A", out: "K" })
 

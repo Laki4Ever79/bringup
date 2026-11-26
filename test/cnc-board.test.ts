@@ -60,3 +60,25 @@ test("the board rebuilds when mechanics writes cnc: the drivers' context (motor 
 	assert.deepEqual(capsUnchecked(s), [])
 	assert.deepEqual(unreachableCaps(s), [])
 })
+
+test("a CNC's logic runs from its brick: a 5 V step-down on the motor rail, OR'd with USB, feeding the LDO (gap 6)", async () => {
+	const { completePowerTree } = await import("../src/contract/power-auto.ts")
+	const { powerTree, packNet, machineInput } = await import("../src/codegen/circuit.ts")
+	const base = cnc()
+	const t = completePowerTree(base.values.parts!, undefined, base)
+	assert.ok(t.note && /CNC's logic power from its 24 V brick/.test(t.note), t.note ?? "no note")
+	const buck = t.parts.find((p) => p.role === "buck")!
+	assert.equal(buck.nets?.VIN, "VMOT")
+	assert.equal(t.parts.filter((p) => p.role === "diode").length, 2)
+	const s = { ...base, values: { ...base.values, parts: t.parts } } as typeof base
+	assert.equal(machineInput(s)?.net, "VMOT")
+	assert.equal(packNet(s), "VMOT")
+	const tree = powerTree(s)
+	assert.ok(tree?.buck, "the step-down is in the tree")
+	const nets = generatedNets(s)
+	assert.ok(nets.get("VMOT")!.includes(`${buck.ref}.VIN`), "the step-down on the brick's net")
+	// The brick's input protection at the jack, as on an arm.
+	assert.ok(supportParts(s).some((p) => /VMOT TVS \(J2/.test(p.job)), "a TVS at the jack")
+	// Applied again, nothing changes.
+	assert.equal(completePowerTree(t.parts, undefined, s).note, null)
+})

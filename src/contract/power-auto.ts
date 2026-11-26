@@ -23,6 +23,13 @@ type Entry = Part & { lcsc: string | null; maxInV?: number; cells?: number }
 export function completePowerTree(parts: Part[], mechanics: Mechanics | undefined, ctx?: ContractSnapshot): { parts: Part[]; note: string | null } {
 	// An arm: no pack; the logic's 5 V from the brick (its servo rails come with the PWM driver, armOutputs).
 	if (ctx?.values.arm) return armLogicTree(catalogRoles(parts).parts, ctx.values.arm)
+	// A CNC: the logic's 5 V from its brick too, on the net its jack names (the motor rail) at that rail's voltage.
+	if (ctx?.values.cncTargets || ctx?.values.cnc) {
+		const jack = parts.find((p) => p.mpn === "DC-091-A250")
+		const net = jack?.nets?.VIN
+		const rail = net ? (ctx.values.rails ?? []).find((r) => r.name === net || `V${r.name}` === net) : undefined
+		return net && rail ? brickLogicTree(catalogRoles(parts).parts, { net, volts: rail.voltageV }, "CNC") : { parts, note: null }
+	}
 	const t = completeTree(parts, mechanics, ctx)
 	const a = assemblableSupplies(t.parts, mechanics)
 	return a.note ? { parts: a.parts, note: [t.note, a.note].filter(Boolean).join("; ") } : t
@@ -208,6 +215,13 @@ export function armOutputs(parts: Part[], catalog: (Part & { lcsc: string | null
 // The logic side of an arm: from the brick's input through a step-down to 5 V, OR'd with USB's VBUS by two Schottkys, into
 // the LDO (the 2S robots' tree, fed from the brick instead of a pack). No pack, so no charger or ideal diode.
 function armLogicTree(parts: Part[], arm: ArmSpec): { parts: Part[]; note: string | null } {
+	return brickLogicTree(parts, { net: armInputNet, volts: arm.input.volts, tolerancePct: arm.input.tolerancePct }, "arm")
+}
+// A machine's logic power from its brick (an arm's, a CNC's): no pack, a 5 V step-down rated over the input TVS's clamp
+// on the brick's net, and two Schottkys OR'ing it with VBUS.
+function brickLogicTree(parts: Part[], input: { net: string; volts: number; tolerancePct?: number }, what: string): { parts: Part[]; note: string | null } {
+	const armInputNet = input.net
+	const arm = { input: { volts: input.volts, ...(input.tolerancePct !== undefined ? { tolerancePct: input.tolerancePct } : {}) } }
 	const list = (defaultCheckCatalog()?.boardParts ?? []) as unknown as Entry[]
 	const changed: string[] = []
 	const gone = parts.filter((p) => ["charger", "charge-led", "ideal-diode", "battery"].includes(p.role ?? ""))
@@ -237,7 +251,7 @@ function armLogicTree(parts: Part[], arm: ArmSpec): { parts: Part[]; note: strin
 		out.push({ ...stripEntry(diode), ref })
 		changed.push(`added ${ref} ${diode.mpn} (diode)`)
 	}
-	return { parts: out, note: changed.length ? `the arm's logic power from its ${arm.input.volts} V brick, decided in code: ${changed.join("; ")}` : null }
+	return { parts: out, note: changed.length ? `the ${what}'s logic power from its ${arm.input.volts} V brick, decided in code: ${changed.join("; ")}` : null }
 }
 
 // The arm's power checks (arm-supply): every servo rated for the rail, the rails split to fit their chip, a chip per rail,
