@@ -6,6 +6,9 @@
 export interface RailPads {
 	net: string
 	points: { x: number; y: number }[]
+	// A cell goes to the rail with the least distance / weight (1 when absent): a heavier rail takes room from its
+	// neighbours (powerPlaneRegions raises it while its neck is under its IPC-2221 width).
+	weight?: number
 }
 export interface PlaneRegion {
 	net: string
@@ -19,7 +22,7 @@ export interface PlaneRegion {
 // Board coordinates centred on the board (tscircuit's), widthMm x heightMm, cells of stepMm, kept marginMm inside the edge;
 // neighbouring rails' regions keep at least gapMm between them (the cells along a border with another rail are left out).
 export function planeRegions(widthMm: number, heightMm: number, rails: RailPads[], stepMm = 0.5, marginMm = 0.5, gapMm = 0.5): PlaneRegion[] {
-	const pts = rails.flatMap((r, i) => r.points.map((p) => ({ ...p, i })))
+	const pts = rails.flatMap((r, i) => r.points.map((p) => ({ ...p, i, w: r.weight ?? 1 })))
 	if (!pts.length) return []
 	const x0 = -widthMm / 2 + marginMm, y0 = -heightMm / 2 + marginMm
 	const nx = Math.floor((widthMm - 2 * marginMm) / stepMm), ny = Math.floor((heightMm - 2 * marginMm) / stepMm)
@@ -29,7 +32,7 @@ export function planeRegions(widthMm: number, heightMm: number, rails: RailPads[
 			const cx = x0 + (i + 0.5) * stepMm, cy = y0 + (j + 0.5) * stepMm
 			let best = -1, bd = Infinity
 			for (const p of pts) {
-				const d = (p.x - cx) ** 2 + (p.y - cy) ** 2
+				const d = ((p.x - cx) ** 2 + (p.y - cy) ** 2) / (p.w * p.w)
 				if (d < bd) [bd, best] = [d, p.i]
 			}
 			owner[j * nx + i] = best

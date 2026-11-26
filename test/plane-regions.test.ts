@@ -39,3 +39,14 @@ test("a rail whose pads sit far apart past another rail's gets a thin neck, whic
 	// A is cut in two by B (no passage) or joined by a thin one: either way no wide neck joins its pads.
 	assert.ok(a.length === 2 || a[0].neckMm < 2, JSON.stringify(a.map((x) => x.neckMm)))
 })
+
+test("the power layer's split is weighted by need: the arm mock's VSERVO1 got 1 mm against 1.5 mm; every region now takes its rail", async () => {
+	const { readFileSync } = await import("node:fs")
+	const { powerPlaneRegions, supplyWidths } = await import("../src/codegen/circuit.ts")
+	const c = JSON.parse(readFileSync(new URL("./fixtures/arm-mock-rev14.json", import.meta.url), "utf8"))
+	const s = c.values ? c : { values: c }
+	const need = supplyWidths(s)
+	const regions = powerPlaneRegions(s).filter((r) => Number.isFinite(r.neckMm))
+	assert.ok(regions.some((r) => r.net === "VSERVO1"))
+	for (const r of regions) assert.ok(r.neckMm >= need.get(r.net)!, `${r.net} ${r.neckMm} < ${need.get(r.net)}`)
+})

@@ -2322,7 +2322,21 @@ export function powerPlaneRegions(s: ContractSnapshot, placement: Map<string, Pl
 			...sup.filter((x) => ("net" in x.a && x.a.net === net) || ("net" in x.b && x.b.net === net)).map((x) => centre(x.ref)),
 		].filter((p): p is { x: number; y: number } => p !== null),
 	}))
-	return planeRegions(o.widthMm, o.heightMm, rails)
+	// Need-weighted (lead-2, 27 Nov 2026): a rail whose region narrows under its IPC-2221 width between its pads takes
+	// room from its neighbours, its weight raised a step at a time while a neighbour keeps its own; the split with the
+	// smallest shortfall is kept, and the neck check (consistency) reports what is left. The arm mock's VSERVO1 had 1 mm
+	// against 1.5 mm.
+	const need = supplyWidths(s)
+	const shortfall = (rs: PlaneRegion[]) => rs.filter((r) => Number.isFinite(r.neckMm)).reduce((t, r) => t + Math.max(0, (need.get(r.net) ?? 0) - r.neckMm), 0)
+	let weighted = rails.map((r) => ({ ...r, weight: 1 }))
+	let best = planeRegions(o.widthMm, o.heightMm, weighted)
+	for (let k = 0; k < 8 && shortfall(best) > 0; k++) {
+		const short = new Set(best.filter((r) => Number.isFinite(r.neckMm) && r.neckMm < (need.get(r.net) ?? 0)).map((r) => r.net))
+		weighted = weighted.map((r) => (short.has(r.net) ? { ...r, weight: r.weight * 1.25 } : r))
+		const next = planeRegions(o.widthMm, o.heightMm, weighted)
+		if (shortfall(next) < shortfall(best)) best = next
+	}
+	return best
 }
 // The track widths each routed net needs: the supply widths, except the nets poured (their tracks stay the default).
 // Full width: Freerouting takes it as the net's class and necks the track down only to enter a pin, so MAX_TRACK_MM
