@@ -973,7 +973,9 @@ export function mockScripts(): Record<string, Script> {
 				// space check then compacts the board within it.
 				// Not a robot's: its brief's size is the robot's (the Eurobot base's 290 × 290 mm start square), not its board's.
 				// A CNC's too: "a work area of about 300 × 200 × 50 mm" read as a 200 × 50 mm board (CNC mock 9, 26 Nov 2026).
-				const robot = Boolean(design.motion || armTargets || isCnc())
+				// The brief's own text too: when requirements are first written, neither cncTargets nor the summary is there yet
+				// and mock 10 still set requirements.size to 200 × 50 mm.
+				const robot = Boolean(design.motion || armTargets || isCnc() || CNC_BRIEF.test(instruction))
 				const stated = robot ? null : /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/.exec(instruction)
 				const line = stated ? (instruction.split("\n").find((l) => l.includes(stated[0])) ?? "") : ""
 				const exact = /\bexact(ly)?\b|\bmust be\b|\bfixed\b|\bchassis\b|\b(existing|our own) (housing|enclosure|case)\b|\btakes a\b/i.test(line)

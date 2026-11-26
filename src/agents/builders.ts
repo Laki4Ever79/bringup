@@ -87,6 +87,12 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	// hour ran out waiting for it).
 	let lastBuilt: string | null = null
 	let lastKey: string | null = null
+	// The derived key this build is from (lastKey), kept beside the input versions so "current" counts it too.
+	const recordDerived = () => {
+		if (!opts.derived || lastKey === null) return
+		const key = opts.derived.key
+		state().artifactDerived[opts.kind] = { built: lastKey, now: () => JSON.stringify(key(state().contract.snapshot()) ?? null) }
+	}
 	const keyChanged = (field: string) => Boolean(opts.derived?.fields.includes(field as FieldName)) && JSON.stringify(opts.derived!.key(state().contract.snapshot()) ?? null) !== lastKey
 	// Steering (runner/steer.ts): a paused or stopped builder starts no build until it is resumed; Redo rebuilds the
 	// current revision even when its inputs haven't changed. A build in flight is never killed: it finishes.
@@ -112,6 +118,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			delete (s.artifacts as Record<string, unknown>)[opts.kind]
 			delete s.artifactFailures[opts.kind]
 			s.artifactInputs[opts.kind] = inputs
+			recordDerived()
 			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, skipped }), self.id)
 			return
 		}
@@ -119,6 +126,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 		lastKey = JSON.stringify(opts.derived?.key(snapshot) ?? null)
 		if (!forced && built === lastBuilt && (s.artifacts as Record<string, unknown>)[opts.kind] !== undefined && !s.artifactFailures[opts.kind]) {
 			s.artifactInputs[opts.kind] = inputs
+			recordDerived()
 			const drc = ((s.artifacts as Record<string, unknown>)[opts.kind] as { drc?: DrcSummary | null }).drc
 			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}) }), self.id)
 			return
@@ -130,6 +138,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			const artifact = await (opts.lock ? opts.lock.run(() => opts.build(ctx)) : opts.build(ctx))
 			;(s.artifacts as Record<string, unknown>)[opts.kind] = artifact
 			s.artifactInputs[opts.kind] = inputs
+			recordDerived()
 			const failure = opts.failure?.(artifact) ?? null
 			if (failure !== null) {
 				s.artifactFailures[opts.kind] = failure
@@ -145,6 +154,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
 			s.artifactInputs[opts.kind] = inputs
+			recordDerived()
 			s.artifactFailures[opts.kind] = message
 			emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: failureExcerpt(message, 40) }), self.id)
 		}

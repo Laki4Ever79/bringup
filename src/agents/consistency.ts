@@ -67,7 +67,8 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 		const gate = OPTIONAL_KINDS[kind]
 		if (gate && s.contract.version(gate) === 0) return true
 		const inputs = s.artifactInputs[kind]
-		return inputs !== undefined && Object.entries(inputs).every(([field, version]) => s.contract.version(field as never) === version)
+		const derived = s.artifactDerived[kind]
+		return inputs !== undefined && Object.entries(inputs).every(([field, version]) => s.contract.version(field as never) === version) && (!derived || derived.now() === derived.built)
 	}
 
 	// One check per burst of events, after the burst: it ran in the middle of event delivery for every contract.changed,

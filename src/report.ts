@@ -223,11 +223,16 @@ export function writeBench(outDir: string, s: ContractSnapshot, board?: { debugP
 
 // What holds an unsettled design besides the consistency violations, so a report never says "UNSETTLED" with nothing
 // named (the mock rover, 17 Nov 2026: UNSETTLED with 0 violations, held by two grounding findings nobody saw).
+// A derived input changed since the build (runtime.ts artifactDerived: the CNC drivers' context from the cnc field).
+const derivedStale = (s: BringupState, k: keyof typeof BUILD_INPUTS): boolean => {
+	const d = s.artifactDerived[k]
+	return !!d && d.now() !== d.built
+}
 export function heldBy(s: BringupState): string[] {
 	const snapshot = s.contract.snapshot()
 	const blockers = (s.review.results.at(-1)?.findings ?? []).filter((f) => f.severity === "blocker")
 	const stale = (Object.keys(BUILD_INPUTS) as (keyof typeof BUILD_INPUTS)[]).filter(
-		(k) => s.artifactFailures[k] === undefined && BUILD_INPUTS[k].every((f) => snapshot.versions[f] > 0) && BUILD_INPUTS[k].some((f) => (s.artifactInputs[k]?.[f] ?? 0) !== snapshot.versions[f]),
+		(k) => s.artifactFailures[k] === undefined && BUILD_INPUTS[k].every((f) => snapshot.versions[f] > 0) && (BUILD_INPUTS[k].some((f) => (s.artifactInputs[k]?.[f] ?? 0) !== snapshot.versions[f]) || derivedStale(s, k)),
 	)
 	const open = s.approvals.openCount()
 	return [
@@ -254,7 +259,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`Status: ${status} at contract revision ${snapshot.revision}`,
 		// A board older than the contract's last board-input change: the run ended before its rebuild finished, so the
 		// board findings below are about an old board (run cc-eurobot-17: built at rev 11, judged at rev 41).
-		...(s.artifacts.board && s.artifacts.board.revision < snapshot.revision && BUILD_INPUTS.board.some((f) => (s.artifactInputs.board?.[f] ?? 0) !== snapshot.versions[f])
+		...(s.artifacts.board && s.artifacts.board.revision < snapshot.revision && (BUILD_INPUTS.board.some((f) => (s.artifactInputs.board?.[f] ?? 0) !== snapshot.versions[f]) || derivedStale(s, "board"))
 			? [`Board: built at revision ${s.artifacts.board.revision}; the contract changed it after that and the run ended before the rebuild finished, so the board findings below are about that older board`]
 			: []),
 		...(opts.mock ? [`Models: mock (scripted agents: no model judged this design)`] : []),

@@ -30,6 +30,10 @@ export class BringupState extends RuntimeState {
 	readonly artifacts: Artifacts = {}
 	// Per artifact: the versions of its input fields it was last built from.
 	readonly artifactInputs: Partial<Record<ArtifactKind, Partial<Record<FieldName, number>>>> = {}
+	// Per artifact with derived inputs (builders.ts BUILD_DERIVED): the key it was last built from, and how to compute it
+	// now. A derived change alone (the CNC drivers' context from the cnc field) left the board "current" and the run
+	// ended on the board built before it (CNC mock 10, 26 Nov 2026).
+	readonly artifactDerived: Partial<Record<ArtifactKind, { built: string; now: () => string }>> = {}
 	readonly roles = new Map<string, AgentRole>()
 	readonly approvals = new ApprovalRegistry()
 	// The engineer request being forwarded right now (run.ts), so the turn it starts can name it as its cause.
