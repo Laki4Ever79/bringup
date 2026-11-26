@@ -36,7 +36,8 @@ export interface RunPlan {
 }
 
 const PLAN_ID = /^rp-[0-9a-f]{12}$/
-export const runPlansDir = () => join(bringupHome(), "run-plans")
+// BRINGUP_RUN_PLANS moves them (the tests keep theirs in a temporary folder: test/helpers.ts).
+export const runPlansDir = () => process.env.BRINGUP_RUN_PLANS ?? join(bringupHome(), "run-plans")
 export const subjectHash = (subject: string) => createHash("sha256").update(subject.replace(/\r\n/g, "\n").trim()).digest("hex")
 
 // What a brief leaves open, found in plain code. Each topic is "answered" when the brief states it.

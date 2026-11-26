@@ -5,6 +5,10 @@ import { join as joinPath } from "node:path"
 import { createHuman, type SemanticEvent } from "@mozaik-ai/core"
 import { join } from "../src/runtime.ts"
 
+// Run plans a test makes (src/system/plan-gate.ts) stay out of the real ~/.bringup: one temporary folder per test
+// process, inherited by the runs it spawns.
+process.env.BRINGUP_RUN_PLANS ??= mkdtempSync(joinPath(tmpdir(), "bringup-test-plans-"))
+
 // A brief whose "about W × H mm" becomes "exactly W × H mm": the scripted architect then keeps that very size (space
 // rules: "about" is a limit, and a run on it ends compact). For tests whose subject is a change on the 50 × 30 mm board.
 export function exactSize(brief: string): string {
