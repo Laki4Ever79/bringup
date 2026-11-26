@@ -893,8 +893,21 @@ export function sotPinOffset(footprint: string, pin: number): { x: number; y: nu
 	if (!f || pin < 1 || pin > f.ys.length) return null
 	return { x: pin <= 3 ? -f.x : f.x, y: f.ys[pin - 1] }
 }
-function padOffset(footprint: string, pad: number, rotation: number): { x: number; y: number } | null {
-	const at = icPinOffset(footprint, pad) ?? sotPinOffset(footprint, pad) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
+// known: the pads learnt since 26 Nov 2026 count (SOT-23, the generator's own lands): the checks always; placement only
+// in the fallback layout (PlacementOptions.pinPads), so a plain layout places as it did before.
+// The land patterns the generator draws itself (imuFootprint, so8eFootprint): their pad centres from the same numbers.
+// Without them the reach check skipped their capacitors: a rover's IMU (U6, LGA-14) VDD capacitor 5.09 mm out passed the
+// check and tscircuit refused the layout (rover mock, 26 Nov 2026).
+function ownPadOffset(footprint: string, pin: number): { x: number; y: number } | null {
+	if (footprint === IMU_FOOTPRINT) {
+		const l = imuLands().find((x) => x.pin === pin)
+		return l ? { x: l.x, y: l.y } : null
+	}
+	if (footprint === SO8E_FOOTPRINT && pin >= 1 && pin <= 9) return pin === 9 ? { x: 0, y: 0 } : pin <= 4 ? { x: -2.7, y: +(1.905 - 1.27 * (pin - 1)).toFixed(3) } : { x: 2.7, y: +(-1.905 + 1.27 * (pin - 5)).toFixed(3) }
+	return null
+}
+function padOffset(footprint: string, pad: number, rotation: number, known = true): { x: number; y: number } | null {
+	const at = icPinOffset(footprint, pad) ?? (known ? ownPadOffset(footprint, pad) ?? sotPinOffset(footprint, pad) : null) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
 	if (!at) return null
 	const t = (rotation * Math.PI) / 180
 	return { x: +(at.x * Math.cos(t) - at.y * Math.sin(t)).toFixed(3), y: +(at.x * Math.sin(t) + at.y * Math.cos(t)).toFixed(3) }
@@ -1071,6 +1084,11 @@ export interface PlacementOptions {
 	gapMm?: number
 	// Place only, no autorouting: the board goes to Freerouting instead (src/tools/freerouting.ts).
 	routingDisabled?: boolean
+	// Place the pin parts of a SOT-23 and of the generator's own land patterns (the IMU, SO8E) beside their own pins
+	// (sotPinOffset, ownPadOffset), not at the chip. Tried only after the layouts without it (board.ts): on by default it
+	// moved a rover's LDO and charger parts 1-2 mm and its tscircuit layouts stopped routing (rover mock 26 Nov 2026:
+	// board 43 → 106 s through Freerouting); the arm's AP63205 BST capacitor needs it (14.56 mm from its pin without).
+	pinPads?: boolean
 	// Distance from the USB-C connector centre to the LDO target.
 	ldoFromUsbMm?: number
 	// Routing keepouts at the USB-C locating holes. Off by default: on some layouts J1's own pad traces run too close
@@ -1300,7 +1318,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		return pinCaps.flatMap((sp) => {
 			const end = sp.a as { ref: string; pin: string }
 			if (end.ref !== b.ref) return []
-			const at = padOffset(footprint, part.pins.indexOf(end.pin) + 1, b.rotation)
+			const at = padOffset(footprint, part.pins.indexOf(end.pin) + 1, b.rotation, !!opts.pinPads)
 			if (!at) return []
 			const [cw, ch] = sizeAt(sp.spec.footprint, 0)
 			const gap = chipProfile(part) ? CHIP_GAP_MM : gapMm
@@ -1490,7 +1508,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		const box = boxOf(end.ref)
 		const fp = part ? footprintFor(part) : ""
 		const pad = part ? part.pins.indexOf(end.pin) + 1 : 0
-		const at = part && box && box.rotation % 90 === 0 ? padOffset(fp, pad, box.rotation) : null
+		const at = part && box && box.rotation % 90 === 0 ? padOffset(fp, pad, box.rotation, !!opts.pinPads) : null
 		if (!at || !box) return null
 		// Out past the pad, away from the body: along x for a side pad, along y for a top or bottom one.
 		// A quad package's pads end 0.7 mm past their centre; 1.2 mm out leaves the 0402 clear and its trace short.
@@ -1529,7 +1547,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		if (!("ref" in end)) return null
 		const part = parts.find((p) => p.ref === end.ref)
 		const box = boxOf(end.ref)
-		const at = part && box && box.rotation % 90 === 0 ? padOffset(footprintFor(part), part.pins.indexOf(end.pin) + 1, box.rotation) : null
+		const at = part && box && box.rotation % 90 === 0 ? padOffset(footprintFor(part), part.pins.indexOf(end.pin) + 1, box.rotation, !!opts.pinPads) : null
 		return at && box ? { x: (box.ox ?? box.x) + at.x, y: (box.oy ?? box.y) + at.y } : null
 	}
 	const crosses = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }, d: { x: number; y: number }) => {
@@ -1704,10 +1722,12 @@ export function bringupPads(s: ContractSnapshot, opts: PadOpts = {}): { placed: 
 	return padsOf(s, "bringup", opts)
 }
 
-type PadOpts = { capsAlong?: boolean }
+// The layout the pads go round: the same placement options the board is built with (capsAlong, pinPads), else the
+// debug footprint's spot was found on another layout (the arm board, 26 Nov 2026: C2 over JD1's holes on a pinPads layout).
+type PadOpts = { capsAlong?: boolean; pinPads?: boolean }
 function padsOf(s: ContractSnapshot, kind: PadKind, opts: PadOpts = {}): { placed: TestPoint[]; unplaced: string[] } {
 	if (!s.values.outline) return { placed: [], unplaced: [] }
-	const { placed, unplaced } = bottomPads(s, !!opts.capsAlong)
+	const { placed, unplaced } = bottomPads(s, opts)
 	return { placed: placed.filter((p) => p.kind === kind).map(({ kind: _k, ...p }) => p), unplaced: unplaced.filter((u) => u.kind === kind).map((u) => u.net) }
 }
 
@@ -1736,24 +1756,25 @@ type BottomPads = { placed: (TestPoint & { kind: PadKind })[]; unplaced: { net: 
 const bottomPadsCache = new Map<string, BottomPads>()
 // capsAlong: the pads around the layout with the pin capacitors along their pads (PlacementOptions.capsAlong), whose
 // debug footprint can sit elsewhere; the default layout's otherwise.
-function bottomPads(s: ContractSnapshot, capsAlong = false): BottomPads {
-	const key = `${capsAlong ? "A" : "D"}${JSON.stringify(s.values)}`
+function bottomPads(s: ContractSnapshot, opts: PadOpts = {}): BottomPads {
+	const capsAlong = !!opts.capsAlong, pinPads = !!opts.pinPads
+	const key = `${capsAlong ? "A" : "D"}${pinPads ? "S" : "P"}${JSON.stringify(s.values)}`
 	const hit = bottomPadsCache.get(key)
 	if (hit) return structuredClone(hit)
-	const result = bottomPadsUncached(s, capsAlong)
+	const result = bottomPadsUncached(s, capsAlong, pinPads)
 	if (bottomPadsCache.size >= 16) bottomPadsCache.delete(bottomPadsCache.keys().next().value!)
 	bottomPadsCache.set(key, result)
 	return structuredClone(result)
 }
 
-function bottomPadsUncached(s: ContractSnapshot, capsAlong = false): BottomPads {
+function bottomPadsUncached(s: ContractSnapshot, capsAlong = false, pinPads = false): BottomPads {
 	const { outline, test, parts = [], pins = [] } = s.values
 	const bootNet = recoveryBootNet(s)
 	const bringup = bringupNets(s)
 	const pinout = debugEnabled(s) ? debugPinout(s) : null
 	if (!outline || (!test && !bootNet && !bringup.length && !pinout)) return { placed: [], unplaced: [], debug: null, debugUnplaced: false }
 	const [W, H] = [outline.widthMm, outline.heightMm]
-	const layout = layoutBoard(s, capsAlong ? { capsAlong } : {})
+	const layout = layoutBoard(s, { ...(capsAlong ? { capsAlong } : {}), ...(pinPads ? { pinPads } : {}) })
 	const boxes = layout.parts
 	const byRef = new Map(boxes.map((b) => [b.ref, b]))
 	const connectorRefs = new Set((s.values.connectors ?? []).map((c) => c.ref))
@@ -1946,7 +1967,7 @@ function debugFrom(box: Placed, pinout: DebugPinout, W: number, H: number): Debu
 // The debug footprint as placed on this board, or why not: off (requirements.debugPort false, no pinout) or no room.
 export function debugPort(s: ContractSnapshot, opts: PadOpts = {}): { placed: DebugPlacement | null; unplaced: boolean } {
 	if (!debugEnabled(s) || !debugPinout(s)) return { placed: null, unplaced: false }
-	const b = bottomPads(s, !!opts.capsAlong)
+	const b = bottomPads(s, opts)
 	return { placed: b.debug, unplaced: b.debugUnplaced }
 }
 
@@ -2433,8 +2454,25 @@ const CAP_TERMINAL_MM: Record<string, number> = { "0402": 0.5, "0603": 0.75, "08
 // The pin capacitors a placement leaves farther from their pad than tscircuit's bound (capBound), in tscircuit's own
 // words: straight from the part's pad to the capacitor's pin 1, which no route can beat. tscircuit decides this before it
 // routes and exits; run 21 built six such layouts and a Freerouting pass for it, 13-19 min a failed build, where this
-// takes milliseconds (25 Nov 2026). A small margin keeps a layout tscircuit might still accept.
-export const CAP_REACH_MARGIN_MM = 0.5
+// takes milliseconds (25 Nov 2026). One bound with tscircuit's: a layout this passes must never be refused for reach
+// (lead-2, 26 Nov 2026). The margin is this estimate's measured error, on the strict side: on run 21 it gave 17.61/13.53/
+// 30.19/15.48 mm where tscircuit said 17.32/13.20/30.04/15.50 (at most 0.02 mm under). Before it was +0.5, which let a
+// rover's 5.09 mm through (its IMU's pads were unknown to the check too; ownPadOffset).
+export const CAP_REACH_MARGIN_MM = -0.05
+// The pin capacitors with a bound whose owner's pad the check can't find (an unknown land pattern): it skips them, so a
+// layout it passes could still be refused for them. Empty on every fixture (test/second-driver-caps.test.ts).
+export function capsUnchecked(s: ContractSnapshot): string[] {
+	const parts = s.values.parts ?? []
+	return supportParts(s).flatMap((sp) => {
+		if (capBound(s, sp) === null) return []
+		return [sp.a, sp.b].flatMap((end) => {
+			if (!("ref" in end)) return []
+			const part = parts.find((p) => p.ref === end.ref)
+			if (!part) return []
+			return padOffset(footprintFor(part), part.pins.indexOf(end.pin) + 1, 0) && CAP_TERMINAL_MM[sp.spec.footprint] !== undefined ? [] : [`${sp.ref} on ${part.ref}.${end.pin} (${footprintFor(part)}, ${sp.spec.footprint})`]
+		})
+	})
+}
 export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}): string[] {
 	if (opts.routingDisabled) return []
 	const placed = layoutBoard(s, opts).parts
@@ -2442,17 +2480,24 @@ export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}
 	const out: string[] = []
 	for (const sp of supportParts(s)) {
 		const bound = capBound(s, sp)
-		if (bound === null || !("ref" in sp.a)) continue
-		const part = parts.find((p) => p.ref === (sp.a as { ref: string }).ref)
-		const [box, cap] = [placed.find((b) => b.ref === part?.ref), placed.find((b) => b.ref === sp.ref)]
-		if (!part || !box || !cap || box.rotation % 90 !== 0) continue
-		const at = padOffset(footprintFor(part), part.pins.indexOf(sp.a.pin) + 1, box.rotation)
+		if (bound === null) continue
+		const cap = placed.find((b) => b.ref === sp.ref)
 		const t = CAP_TERMINAL_MM[sp.spec.footprint]
-		if (!at || t === undefined) continue
+		if (!cap || t === undefined) continue
 		const r = (cap.rotation * Math.PI) / 180
-		const pin1 = { x: (cap.ox ?? cap.x) - t * Math.cos(r), y: (cap.oy ?? cap.y) - t * Math.sin(r) }
-		const d = Math.hypot((box.ox ?? box.x) + at.x - pin1.x, (box.oy ?? box.y) + at.y - pin1.y)
-		if (d > bound + CAP_REACH_MARGIN_MM) out.push(`the ${bound}mm maximum length for .${part.ref} > .${sp.a.pin} to .${sp.ref} > .pin1 cannot be satisfied: its endpoints are ${d.toFixed(2)}mm apart`)
+		// Each end on a part's pin, tscircuit bounds both: pin 1 (the a end) and pin 2 (the b end, a chip's own GND):
+		// a rover's IMU capacitor passed on pin 1 and tscircuit refused its pin 2 to U6.GND at 5.01 mm (26 Nov 2026).
+		for (const [end, capPin, sign] of [[sp.a, "pin1", -1], [sp.b, "pin2", 1]] as const) {
+			if (!("ref" in end)) continue
+			const part = parts.find((p) => p.ref === end.ref)
+			const box = placed.find((b) => b.ref === part?.ref)
+			if (!part || !box || box.rotation % 90 !== 0) continue
+			const at = padOffset(footprintFor(part), part.pins.indexOf(end.pin) + 1, box.rotation)
+			if (!at) continue
+			const pin = { x: (cap.ox ?? cap.x) + sign * t * Math.cos(r), y: (cap.oy ?? cap.y) + sign * t * Math.sin(r) }
+			const d = Math.hypot((box.ox ?? box.x) + at.x - pin.x, (box.oy ?? box.y) + at.y - pin.y)
+			if (d > bound + CAP_REACH_MARGIN_MM) out.push(`the ${bound}mm maximum length for .${part.ref} > .${end.pin} to .${sp.ref} > .${capPin} cannot be satisfied: its endpoints are ${d.toFixed(2)}mm apart`)
+		}
 	}
 	return out
 }
@@ -2715,7 +2760,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		lines.push(`<trace name=${q(`${bootNet}_mcu`)} from=${q(`.${boot.mcu.ref} > .${boot.pin}`)} to=${q(`net.${bootNet}`)} />`)
 		nets.add(bootNet)
 	}
-	const padOpts = opts.capsAlong ? { capsAlong: true } : {}
+	const padOpts = { ...(opts.capsAlong ? { capsAlong: true } : {}), ...(opts.pinPads ? { pinPads: true } : {}) }
 	for (const tp of [...testPoints(s, padOpts).placed, ...recoveryPads(s, padOpts).placed, ...bringupPads(s, padOpts).placed].map((t) => ({ ...t, net: nets.has(t.net) ? t.net : netName(t.net) })).filter((t) => nets.has(t.net))) {
 		lines.push(`<testpoint name=${q(tp.ref)} footprintVariant="pad" padShape="circle" padDiameter="${TEST_PAD.diameterMm}mm" layer="bottom" pcbX={${tp.x}} pcbY={${tp.y}} />`)
 		lines.push(`<trace name=${q(`${tp.net}_${tp.ref}`)} from=${q(`.${tp.ref} > .pin1`)} to=${q(`net.${tp.net}`)} />`)

@@ -104,16 +104,19 @@ test("every two-pad land pattern (inductors, the electrolytic) fits inside the b
 	}
 })
 
-test("a SOT-23's pads are known (tscircuit's own), so its pin capacitors sit beside the pin and are checked", async () => {
+test("a SOT-23's pads are known (tscircuit's own): the check always uses them; placement beside them is the fallback layout", async () => {
 	const { sotPinOffset, layoutBoard, unreachableCaps } = await import("../src/codegen/circuit.ts")
 	assert.deepEqual(sotPinOffset("sot23_6", 6), { x: 1.3, y: 0.95 })
 	assert.deepEqual(sotPinOffset("sot23_5", 5), { x: 1.137, y: 0.95 })
 	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
-	const pl = layoutBoard(s, {}).parts
+	// The check always knows the pads: the default layout (pin parts at the chip) leaves U9's BST capacitor out of reach,
+	// so the board build skips it for the layout with the SOT-23 pads (pinPads, tried after the others).
+	assert.ok(unreachableCaps(s, {}).some((m) => /U9 > \.BST/.test(m)))
+	const pl = layoutBoard(s, { pinPads: true }).parts
 	const u9 = pl.find((b) => b.ref === "U9")!, c26 = pl.find((b) => b.ref === "C26")!
 	// U9's BST (pin 6) to its capacitor: within the 5 mm bound (it was 14.56 mm when the pads were unknown).
 	assert.ok(Math.hypot(u9.x + 1.3 - c26.x, u9.y + 0.95 - c26.y) < 5)
-	assert.deepEqual(unreachableCaps(s, {}), [])
+	assert.deepEqual(unreachableCaps(s, { pinPads: true }), [])
 })
 
 // KNOWN FAILURE (arm task 6, lead-2, 26 Nov 2026): the arm board's rails don't get their copper on 2 layers. Routed at
@@ -128,4 +131,25 @@ test("KNOWN FAILURE: the arm board routes clean with every rail at its width", {
 	// What the build meets today: rails wider than a track reaching a pin, routed by Freerouting and widened after.
 	assert.deepEqual(wideTracks(s).map(([n]) => n), ["VSERVO2", "VIN_BRICK"])
 	assert.fail("on 2 layers the rails reach their width on 5-31 % of their track, at 62×47 and at 71×54")
+})
+
+test("the pin-pad layouts (pinPads) come after every plain one, so a board that routed before keeps its first layout", async () => {
+	const { withPinPadLayouts, layoutAttempts } = await import("../src/tools/board.ts")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
+	const plain = layoutAttempts(s, [{}])
+	const all = withPinPadLayouts(s, plain)
+	assert.deepEqual(all.slice(0, plain.length), plain)
+	assert.ok(all.length > plain.length && all.slice(plain.length).every((p) => p.pinPads))
+})
+
+test("on every layout the build tries, the debug footprint's holes stay clear of the top parts (C2 sat on them on a pin-pad layout)", async () => {
+	const { layoutBoard, debugPort } = await import("../src/codegen/circuit.ts")
+	const { layoutAttempts, withPinPadLayouts } = await import("../src/tools/board.ts")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
+	for (const o of withPinPadLayouts(s, layoutAttempts(s, [{}]))) {
+		const dp = debugPort(s, o).placed
+		if (!dp) continue
+		for (const b of layoutBoard(s, o).parts)
+			for (const h of dp.holes) assert.ok(Math.abs(h.x - b.x) > b.w / 2 || Math.abs(h.y - b.y) > b.h / 2, `${JSON.stringify(o)}: JD1 hole at ${h.x},${h.y} inside ${b.ref}`)
+	}
 })

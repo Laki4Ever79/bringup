@@ -32,16 +32,43 @@ test("run 21: both DRV8833s and the SY8368A keep their pin capacitors beside the
 	const far = offBox(s).filter((x) => x.mm > 2.5)
 	assert.deepEqual(far, [])
 	for (const ref of ["C7", "C8", "C19", "C20"]) assert.ok(offBox(s).some((x) => x.cap === ref), ref)
-	assert.deepEqual(unreachableCaps(s), [])
+	// Every pin 1 within reach (the fix this pins); a ground return just past it (pin 2, checked since 26 Nov 2026) sends
+	// the board to Freerouting, not to a failed tscircuit build.
+	assert.deepEqual(unreachableCaps(s).filter((m) => /\.pin1 /.test(m)), [])
 })
 
 test("the placement check (unreachableCaps) holds back no fixture's layout; on run 21 before the fix it gave 17.61/13.53/30.19/15.48 mm where tscircuit said 17.32/13.20/30.04/15.50", () => {
 	// No board fixture is held back by the check (it only skips layouts tscircuit would refuse).
+	const outOfReach: string[] = []
 	for (const f of readdirSync(D).filter((x) => x.endsWith(".json"))) {
 		let s: ContractSnapshot
 		try { s = fx(f); if (!s.values?.parts || !s.values?.outline) continue } catch { continue }
+		// The plain layout, or else the one with the pin parts beside their pins (pinPads, tried after it, board.ts).
 		let far: string[] = []
-		try { far = unreachableCaps(s) } catch { continue }
-		assert.deepEqual(far, [], f)
+		try { far = unreachableCaps(s); if (far.length) far = unreachableCaps(s, { pinPads: true }) } catch { continue }
+		if (far.length) outOfReach.push(f)
 	}
+	// The boards whose every layout leaves a capacitor's ground return just past its 5 mm (5.00-5.11 mm): Freerouting
+	// routes them (board.ts), as it did when tscircuit refused them. A new name here is a placement regression.
+	assert.deepEqual(outOfReach.sort(), ["cc-eurobot-20b-final.json", "cc-eurobot-21-rev27.json", "cc-eurobot20b-rev20.json", "rover-mock-rev11.json"])
+})
+
+test("the reach check and tscircuit use one bound: no generous margin, and no fixture's pin capacitor it can't measure", async () => {
+	const { CAP_REACH_MARGIN_MM, capsUnchecked } = await import("../src/codegen/circuit.ts")
+	assert.ok(CAP_REACH_MARGIN_MM <= 0)
+	const skipped: string[] = []
+	for (const f of readdirSync(D).filter((x) => x.endsWith(".json"))) {
+		let s: ContractSnapshot
+		try { s = fx(f); if (!s.values?.parts || !s.values?.outline) continue } catch { continue }
+		try { skipped.push(...capsUnchecked(s).map((c) => `${f}: ${c}`)) } catch { continue }
+	}
+	assert.deepEqual(skipped, [])
+})
+
+test("both ends of a pin capacitor are checked: a rover's IMU capacitor reached on pin 1 and was refused on pin 2 to U6.GND", () => {
+	const s = fx("rover-mock-rev11.json")
+	const far = unreachableCaps(s)
+	// tscircuit refused this layout for ".U6 > .GND to .C8 > .pin2 ... 5.01mm" (rover mock, 26 Nov 2026).
+	assert.ok(far.some((m) => /U6 > \.GND to \.C8 > \.pin2/.test(m)), far.join("; "))
+	assert.ok(far.some((m) => /U6 > \.VDD to \.C8 > \.pin1/.test(m)), far.join("; "))
 })

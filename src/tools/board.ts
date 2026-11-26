@@ -74,14 +74,21 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	// A layout that leaves a part out is never built: tscircuit would drop the part at the board's centre, onto whatever
 	// is there (the wake-word board at 35×25 mm, LDO 11 mm from J1: "C3 overlaps U3", and autorouting skipped).
 	const count = boardParts(s).length
-	const withAlong = layoutAttempts(s, attempts)
+	// The layouts with each SOT-23's pin parts beside their pins come after all the others, and only where they differ
+	// (PlacementOptions.pinPads): a layout that routed before stays first.
+	const withAlong = withPinPadLayouts(s, layoutAttempts(s, attempts))
 	const placing = withAlong.filter((placement) => placeParts(s, placement).length >= count)
-	// A layout with a pin capacitor out of its trace bound's reach is never built: tscircuit refuses it before routing, and
-	// a build costs minutes (unreachableCaps). None left: the build fails now, in tscircuit's words, for the architect.
-	const fitting = placing.filter((placement) => unreachableCaps(s, placement).length === 0)
+	// A layout with a pin capacitor out of its trace bound's reach is never built by tscircuit: it refuses it before
+	// routing, and a build costs minutes (unreachableCaps). None left: Freerouting, which has no such bound, routes the
+	// layout whose farthest capacitor is nearest (a rover's IMU capacitor at 5.00-5.09 mm in every layout, 26 Nov 2026:
+	// before, tscircuit refused it and Freerouting routed it; failing outright would have stopped the run).
+	let fitting = placing.filter((placement) => unreachableCaps(s, placement).length === 0)
+	let reachError: Error | null = null
 	if (placing.length && !fitting.length) {
 		const far = unreachableCaps(s, placing[0])
-		throw new Error(`tscircuit build failed (placement check, no layout built):\nAutorouting was skipped because ${far[0]}${far.length > 1 ? ` (${far.length - 1} additional violations)` : ""}. Every one of ${placing.length} layouts leaves a pin capacitor out of reach.`)
+		reachError = new Error(`tscircuit build failed (placement check, no layout built):\nAutorouting was skipped because ${far[0]}${far.length > 1 ? ` (${far.length - 1} additional violations)` : ""}. Every one of ${placing.length} layouts leaves a pin capacitor out of reach.`)
+		const worst = (p: PlacementOptions) => Math.max(...unreachableCaps(s, p).map((m) => Number(/([\d.]+)mm apart/.exec(m)?.[1] ?? Infinity)))
+		fitting = [placing.reduce((a, b) => (worst(b) < worst(a) ? b : a))]
 	}
 	if (fitting.length === 0) {
 		const placed = new Set(placeParts(s).map((b) => b.ref))
@@ -150,7 +157,12 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	// A net wider than a track reaching a pin (a servo rail's 2.4 mm) routes at width only in Freerouting, which necks it
 	// down at the pins: such a board goes there first too.
 	if ((routerOrder() === "freerouting-first" || wideTracks(s).length) && fitting.length) await viaFreerouting([fitting[0]])
-	for (const placement of withPort ? [...fitting, ...fitting.map((p) => ({ ...p, debugPort: false as const }))] : fitting) {
+	// Every layout out of reach: Freerouting alone, on the nearest one.
+	if (reachError) {
+		await viaFreerouting(fitting)
+		if (!best) throw withFreerouting(reachError)
+	}
+	for (const placement of reachError ? [] : withPort ? [...fitting, ...fitting.map((p) => ({ ...p, debugPort: false as const }))] : fitting) {
 		if (best && best.errors === 0) break
 		// A couple of tscircuit layouts not clean (built with DRC errors, or failed): Freerouting routes the best one's
 		// placement (the first when none built), before more layouts are tried. Measured
@@ -260,6 +272,12 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 // whose capacitor trace runs past its bound gets it as its next build. It builds with its own debug footprint spot and
 // bottom pads (circuitFromContract passes capsAlong on); not for a design with a production test whose pads would
 // move, since its fixture is built from the default layout's pads.
+// The layouts with each SOT-23's pin parts beside their own pins, after all the others and only where they differ.
+export function withPinPadLayouts(s: ContractSnapshot, plain: PlacementOptions[]): PlacementOptions[] {
+	const sot = plain.map((p) => ({ ...p, pinPads: true })).filter((p) => JSON.stringify(layoutBoard(s, p).parts) !== JSON.stringify(layoutBoard(s, { ...p, pinPads: false }).parts))
+	return [...plain, ...sot]
+}
+
 export function layoutAttempts(s: ContractSnapshot, attempts: PlacementOptions[]): PlacementOptions[] {
 	return attempts.flatMap((p) => {
 		const alt = { ...p, capsAlong: true }
