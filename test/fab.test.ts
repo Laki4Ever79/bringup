@@ -43,3 +43,8 @@ test("zip round-trips: stored entries come back byte for byte", () => {
 	assert.equal(zip.readUInt32LE(0), 0x04034b50, "local file header signature")
 	assert.deepEqual(zipEntries(zip).map((e) => [e.name, e.data.toString()]), files.map((f) => [f.name, f.data.toString()]))
 })
+
+test("cplCsv leaves out footprints with no reference (mounting holes, fiducials), which JLC's assembly can't place", () => {
+	const pos = 'Ref,Val,Package,PosX,PosY,Rot,Side\n"U1","ESP32","MOD",10,20,90,top\n"","","MountingHole",122,-88,0,top\n'
+	assert.equal(cplCsv(pos), "Designator,Mid X,Mid Y,Layer,Rotation\nU1,10mm,20mm,Top,90\n")
+})

@@ -61,8 +61,9 @@ function csvRow(line: string): string[] {
 export function cplCsv(posCsv: string): string {
 	const [header, ...lines] = posCsv.trim().split("\n")
 	const col = Object.fromEntries(csvRow(header).map((h, i) => [h, i]))
-	const rows = lines.filter(Boolean).map((line) => {
-		const f = csvRow(line)
+	// kicad-cli's position file can list footprints with no reference (mounting holes, fiducials: `,122mm,-88mm,Top,0`);
+	// they aren't placed parts, and an empty designator row can make JLC's assembly reject or misplace the file.
+	const rows = lines.filter(Boolean).map(csvRow).filter((f) => (f[col.Ref] ?? "").trim() !== "").map((f) => {
 		const rot = ((Number(f[col.Rot]) % 360) + 360) % 360
 		const side = f[col.Side] === "bottom" ? "Bottom" : "Top"
 		return `${f[col.Ref]},${+Number(f[col.PosX]).toFixed(4)}mm,${+Number(f[col.PosY]).toFixed(4)}mm,${side},${+rot.toFixed(2)}`
