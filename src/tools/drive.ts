@@ -8,6 +8,9 @@ import { qemuEnv } from "./env.ts"
 import { qemuBaseArgs, qemuBinary, qemuTarget } from "./qemu.ts"
 import { run } from "./exec.ts"
 import type { ChassisSpec } from "./chassis.ts"
+import type { ContractSnapshot } from "../contract/types.ts"
+import { ARM_JOINTS } from "../arm/types.ts"
+import { ARM_GRIP_CLOSED_DEG, ARM_PERIOD_MS, armGripOpenDeg } from "../arm/firmware.ts"
 
 // Firmware in the loop (docs/mechanics.md): the rover's simulation build in QEMU, its UART1 on a local TCP port, and
 // py/mech/drive.py stepping MuJoCo in lock-step with it over a course. Results: drive.json and trajectory.json.
@@ -72,10 +75,81 @@ function hasMujoco(python: string): boolean {
 }
 
 export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveArtifact> {
+	const outDir = resolve(opts.outDir)
+	const r = await simInLoop({ ...opts, script: "py/mech/drive.py", resultFile: "drive.json", args: [String(opts.courseS ?? 25), ...(opts.consolePort ? ["realtime"] : [])] })
+	if ("notRun" in r) return { revision, dir: outDir, result: "not run", reason: r.notRun, segments: [] }
+	return { ...(r.json as Omit<DriveArtifact, "revision" | "dir">), revision, dir: outDir }
+}
+
+// The robot arm's pick-and-place in the loop (task 8): the arm firmware's simulation build (templates/fw-arm, SIM.md)
+// in QEMU, py/mech/arm_drive.py stepping the MuJoCo arm (py/mech/arm_model.py) in lock-step with it. Results: arm.json.
+// The simulation doesn't exercise the PCA9685 I2C driver (servo_uart.cpp replaces servo_pca9685.cpp); its register
+// bytes are checked on the host (test/arm-firmware.test.ts).
+export interface ArmSimSpec {
+	mjcf: string
+	joints: readonly string[]
+	// closedQ/openQ: the gripper actuator's targets; absent, the bridge takes them from py/mech/arm_model.py.
+	gripper: { closedDeg: number; openDeg: number; closedQ?: number; openQ?: number }
+	periodMs: number
+	repeats: number
+	spawn?: [number, number, number] // mm: where each new cube appears; absent, where the model put the first (on the plate at the pick point)
+	// innerRMm/rimZMm absent: from py/mech/arm_model.py (CUP_INNER_MM, CUP_RIM_MM).
+	cup: { xMm: number; yMm: number; innerRMm?: number; rimZMm?: number }
+}
+export interface ArmDriveArtifact {
+	revision: number
+	dir: string
+	result: "pass" | "fail" | "not run"
+	reason: string
+	landed?: number
+	attempts?: number
+	worstMm?: number // the farthest a landed or missed cube came to rest from the cup's centre
+	cycleS?: number[] // simulated seconds per pick-and-drop
+	simS?: number
+	note: string
+}
+export const ARM_SIM_NOTE = "the simulation doesn't exercise the PCA9685 I2C driver (its register bytes are checked on the host)"
+
+// The bridge's spec from the contract: the brief's drop point (the cup), its repeats, the firmware's period and gripper
+// angles. The model (py/mech/arm_model.py) places the cube on the plate at the pick point; each new one goes there too.
+export function armSimSpec(s: ContractSnapshot, mjcf: string): ArmSimSpec {
+	const t = s.values.armTargets
+	if (!t) throw new Error("no arm simulation: the contract has no armTargets")
+	return {
+		mjcf,
+		joints: ARM_JOINTS,
+		gripper: { closedDeg: ARM_GRIP_CLOSED_DEG, openDeg: armGripOpenDeg(s) },
+		periodMs: ARM_PERIOD_MS,
+		repeats: t.repeats,
+		cup: { xMm: t.drop.xMm, yMm: t.drop.yMm },
+	}
+}
+
+export interface ArmDriveOptions extends Omit<DriveOptions, "spec" | "courseS" | "consolePort" | "onConsoleReady" | "until"> {
+	spec: ArmSimSpec
+	limitS?: number // simulated seconds before the bridge gives up (default 600)
+}
+
+export async function runArmDrive(opts: ArmDriveOptions, revision = 0): Promise<ArmDriveArtifact> {
+	const outDir = resolve(opts.outDir)
+	const r = await simInLoop({ ...opts, machine: opts.machine ?? "esp32s3", script: "py/mech/arm_drive.py", resultFile: "arm.json", args: [String(opts.limitS ?? 600)] })
+	if ("notRun" in r) return { revision, dir: outDir, result: "not run", reason: r.notRun, note: ARM_SIM_NOTE }
+	return { ...(r.json as Omit<ArmDriveArtifact, "revision" | "dir" | "note">), revision, dir: outDir, note: ARM_SIM_NOTE }
+}
+
+// Shared by both: build the firmware's simulation build, start it in QEMU with UART1 on a Unix socket, run the bridge
+// script on it and read its result file.
+interface SimInLoop extends Omit<DriveOptions, "spec" | "courseS"> {
+	spec: unknown
+	script: string // the bridge, from the repo root: <script> <spec.json> <socket> <out dir> ...args
+	args: string[]
+	resultFile: string
+}
+async function simInLoop(opts: SimInLoop): Promise<{ notRun: string } | { json: unknown }> {
 	// Absolute paths: the bridge runs from py/, so a relative --out dir would point elsewhere there.
 	const o = { ...opts, root: resolve(opts.root), fwDir: resolve(opts.fwDir), outDir: resolve(opts.outDir) }
 	mkdirSync(o.outDir, { recursive: true })
-	const notRun = (reason: string): DriveArtifact => ({ revision, dir: o.outDir, result: "not run", reason, segments: [] })
+	const notRun = (reason: string) => ({ notRun: reason })
 	// The chip's QEMU (qemu.ts): riscv32 for the ESP32-C3, xtensa for the ESP32-S3.
 	const target = qemuTarget(o.machine)
 	if (!target) return notRun(`QEMU has no model of the ${o.machine} machine: not proven in simulation`)
@@ -106,7 +180,7 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 			}
 		})()
 	try {
-		const bridge = spawn(o.python, ["-B", join(o.root, "py/mech/drive.py"), specPath, sock, o.outDir, String(o.courseS ?? 25), ...(o.consolePort ? ["realtime"] : [])], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
+		const bridge = spawn(o.python, ["-B", join(o.root, o.script), specPath, sock, o.outDir, ...o.args], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
 		let stderr = ""
 		bridge.stderr.on("data", (d) => (stderr += d))
 		// A host's test that ends first asks the bridge to end the course (a "stop" file it checks); it writes its results.
@@ -116,11 +190,10 @@ export async function runDrive(opts: DriveOptions, revision = 0): Promise<DriveA
 			const timer = setTimeout(() => { bridge.kill("SIGKILL"); resolve(null) }, o.timeoutMs ?? 300_000)
 			bridge.on("close", (c) => { clearTimeout(timer); resolve(c) })
 		})
-		const file = join(o.outDir, "drive.json")
-		if (code === null) return notRun(`the drive didn't finish within ${Math.round((o.timeoutMs ?? 300_000) / 1000)} s`)
+		const file = join(o.outDir, o.resultFile)
+		if (code === null) return notRun(`the run didn't finish within ${Math.round((o.timeoutMs ?? 300_000) / 1000)} s`)
 		if (!existsSync(file)) return notRun(`the bridge failed: ${stderr.trim().split("\n").at(-1) ?? `exit ${code}`}`)
-		const r = JSON.parse(readFileSync(file, "utf8")) as Omit<DriveArtifact, "revision" | "dir">
-		return { ...r, revision, dir: o.outDir }
+		return { json: JSON.parse(readFileSync(file, "utf8")) }
 	} finally {
 		ended = true
 		q.kill("SIGKILL")

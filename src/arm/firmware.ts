@@ -25,6 +25,14 @@ export const ARM_GRIP_HOLD_MS = 400
 const f = (n: number) => { const t = String(Number(n.toFixed(3))); return `${/[.e]/.test(t) ? t : `${t}.0`}f` }
 const list = (xs: number[], fmt = f) => `{${xs.map(fmt).join(", ")}}`
 
+// The gripper opens to ARM_GRIP_OPEN_DEG, or as far as its servo turns.
+const gripOpen = (rangeDeg: number) => Math.min(rangeDeg, ARM_GRIP_OPEN_DEG)
+export function armGripOpenDeg(s: ContractSnapshot): number {
+	const mpn = s.values.arm?.gripper.servo
+	const part = defaultCheckCatalog()?.mech.servos?.find((p) => p.mpn === mpn)
+	return part ? gripOpen(part.rangeDeg) : ARM_GRIP_OPEN_DEG
+}
+
 export function armHeader(s: ContractSnapshot): string {
 	const arm = s.values.arm, t = s.values.armTargets
 	if (!arm || !t) throw new Error("arm firmware not built: the contract has no arm or armTargets")
@@ -35,7 +43,7 @@ export function armHeader(s: ContractSnapshot): string {
 		const part = cat?.mech.servos?.find((p) => p.mpn === mpn)
 		if (!part) { missing.push(`${name} servo ${mpn}`); continue }
 		const range = part.rangeDeg
-		servos.push({ name, part, channel, minDeg: lim ? lim[0] : ARM_GRIP_CLOSED_DEG, maxDeg: lim ? lim[1] : Math.min(range, ARM_GRIP_OPEN_DEG) })
+		servos.push({ name, part, channel, minDeg: lim ? lim[0] : ARM_GRIP_CLOSED_DEG, maxDeg: lim ? lim[1] : gripOpen(range) })
 	}
 	if (missing.length) throw new Error(`arm firmware not built: ${missing.join(", ")} not in catalog/mechanics.json servos`)
 	const bus = servos.filter((x) => x.part.control !== "pwm" || !x.part.pulseUs)
