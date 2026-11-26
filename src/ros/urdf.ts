@@ -1,5 +1,8 @@
 import type { ChassisSpec } from "../tools/chassis.ts"
 import { drivenDecel, onWheelsShare } from "../mechanics/model.ts"
+import { byMpn, servoAt, type MechCatalog } from "../mechanics/catalog.ts"
+import { est } from "../mechanics/estimates.ts"
+import { ARM_JOINTS, type ArmJointName, type ArmSpec } from "../arm/types.ts"
 
 // The robot's ROS 2 description (URDF) from the chassis spec, the same numbers the MuJoCo model (py/mech/model.py)
 // and the mechanics checks use, in ROS units (REP-103: metres, kilograms, x forward, y left, z up). Frames (REP-105):
@@ -312,4 +315,162 @@ imu_sensor_broadcaster:
     static_covariance_angular_velocity: [1.0e6, 0.0, 0.0, 0.0, 1.0e6, 0.0, 0.0, 0.0, ${g(((spec.imu.noiseDegPerSqrtS * Math.PI) / 180) ** 2)}]
     static_covariance_linear_acceleration: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 ` : ""}`
+}
+
+// The arm's ROS 2 description (arm task 4), in the arm's frame (src/arm/kinematics.ts: base_link at the base plate's top
+// centre, x forward, y left, z up) and with the MuJoCo model's numbers (py/mech/arm_model.py): a revolute joint per
+// contract joint (underscored: base_yaw, shoulder, elbow, wrist_pitch, wrist_roll), the pitch joints about -y so a
+// positive angle raises the link as in the contract; two prismatic fingers, the right mimicking the left. Each joint's
+// effort is ARM_TORQUE_SHARE of its servo's stall torque at the rail (what the torque check allows), its velocity the
+// servo's no-load speed. Masses: the printed links' measured ones (arm.links) or the armLinkG / armGripperG ESTIMATES,
+// each servo's catalog mass at its joint, every link a point mass at its centre of mass (said in the file).
+export const ARM_ROS_JOINTS: Record<ArmJointName, string> = { "base-yaw": "base_yaw", shoulder: "shoulder", elbow: "elbow", "wrist-pitch": "wrist_pitch", "wrist-roll": "wrist_roll" }
+export const ARM_FINGER_JOINT = "gripper_left_finger_joint"
+const ARM_POINT_I = 1e-6 // kg·m²: a small inertia on each point mass so a physics engine accepts it
+
+export function armJointLimits(arm: ArmSpec, cat: MechCatalog) {
+	const share = est("ARM_TORQUE_SHARE")
+	return ARM_JOINTS.map((n) => {
+		const j = arm.joints.find((x) => x.name === n)!
+		const sv = byMpn(cat.servos ?? [], j.servo)
+		const at = sv ? servoAt(sv, arm.railV) : { error: `${j.servo} not in the catalog` }
+		if ("error" in at) throw new Error(`arm joint ${n}: ${at.error}`)
+		return { name: n, ros: ARM_ROS_JOINTS[n], lower: (j.minDeg * Math.PI) / 180, upper: (j.maxDeg * Math.PI) / 180, effort: share * at.stallNm, velocity: (at.degPerS * Math.PI) / 180, servoKg: sv!.massG / 1000, linkMm: j.linkMm }
+	})
+}
+
+export function armUrdf(arm: ArmSpec, cat: MechCatalog, opts: { name?: string; hardware?: RosHardware; port?: string } = {}): string {
+	const name = opts.name ?? "bringup_arm"
+	const hw = opts.hardware ?? "mock"
+	const lim = armJointLimits(arm, cat)
+	const by = Object.fromEntries(lim.map((l) => [l.name, l])) as Record<ArmJointName, (typeof lim)[number]>
+	const measured = new Map((arm.links ?? []).map((l) => [l.name, l]))
+	const gripSv = byMpn(cat.servos ?? [], arm.gripper.servo)
+	const pointI = { ixx: ARM_POINT_I, iyy: ARM_POINT_I, izz: ARM_POINT_I }
+	// A link's mass and centre: measured, else the estimate along the link; plus the servo it carries at its far end.
+	const linkInertial = (n: ArmJointName | "gripper", lengthMm: number, carriedKg: number) => {
+		const m = measured.get(n)
+		const printed = m ? m.massG / 1000 : n === "gripper" ? est("armGripperG") / 1000 : (est("armLinkG") * lengthMm) / 100 / 1000
+		const at: [number, number, number] = m ? [mm(m.comMm[0]), mm(m.comMm[1]), mm(m.comMm[2])] : [mm(lengthMm) / 2, 0, 0]
+		const total = printed + carriedKg
+		// The carried servo sits at the link's far end (the next joint).
+		const com: [number, number, number] = total > 0 ? [(at[0] * printed + mm(lengthMm) * carriedKg) / total, (at[1] * printed) / total, (at[2] * printed) / total] : [0, 0, 0]
+		return inertial(Math.max(total, 1e-4), com, pointI)
+	}
+	const capsule = (lengthMm: number) => `    <visual>
+      <origin xyz="${xyz(mm(lengthMm) / 2, 0, 0)}" rpy="0 1.570796 0"/>
+      <geometry><cylinder radius="0.008" length="${f(Math.max(mm(lengthMm), 0.001))}"/></geometry>
+    </visual>`
+	const L = (n: ArmJointName) => by[n].linkMm
+	const L3roll = L("wrist-roll")
+	const open = mm(arm.gripper.openMm) / 2
+	const finger = mm(arm.gripper.fingerMm)
+	const chain: { joint: ArmJointName; parent: string; child: string; origin: [number, number, number]; axis: string; inertialXml: string; visual: string }[] = [
+		{ joint: "base-yaw", parent: "base_link", child: "turntable_link", origin: [0, 0, 0], axis: "0 0 1", inertialXml: linkInertial("base-yaw", 0, by.shoulder.servoKg), visual: "" },
+		{ joint: "shoulder", parent: "turntable_link", child: "upper_arm_link", origin: [mm(L("base-yaw")), 0, mm(arm.base.shoulderZMm)], axis: "0 -1 0", inertialXml: linkInertial("shoulder", L("shoulder"), by.elbow.servoKg), visual: capsule(L("shoulder")) },
+		{ joint: "elbow", parent: "upper_arm_link", child: "forearm_link", origin: [mm(L("shoulder")), 0, 0], axis: "0 -1 0", inertialXml: linkInertial("elbow", L("elbow"), by["wrist-pitch"].servoKg), visual: capsule(L("elbow")) },
+		{ joint: "wrist-pitch", parent: "forearm_link", child: "wrist_link", origin: [mm(L("elbow")), 0, 0], axis: "0 -1 0", inertialXml: linkInertial("wrist-pitch", L("wrist-pitch"), by["wrist-roll"].servoKg), visual: capsule(L("wrist-pitch")) },
+		{ joint: "wrist-roll", parent: "wrist_link", child: "gripper_link", origin: [mm(L("wrist-pitch")), 0, 0], axis: "1 0 0", inertialXml: linkInertial("gripper", L3roll, (gripSv?.massG ?? 0) / 1000), visual: capsule(L3roll - arm.gripper.fingerMm / 2) },
+	]
+	const links = chain
+		.map((c) => `  <link name="${c.child}">
+${c.visual ? c.visual + "\n" : ""}${c.inertialXml}
+  </link>
+  <joint name="${by[c.joint].ros}" type="revolute">
+    <parent link="${c.parent}"/>
+    <child link="${c.child}"/>
+    <origin xyz="${xyz(...c.origin)}" rpy="0 0 0"/>
+    <axis xyz="${c.axis}"/>
+    <limit lower="${f(by[c.joint].lower)}" upper="${f(by[c.joint].upper)}" effort="${f(by[c.joint].effort)}" velocity="${f(by[c.joint].velocity)}"/>
+  </joint>`)
+		.join("\n")
+	const gripAt = mm(L3roll)
+	const fingerLink = (side: "left" | "right", sign: 1 | -1) => `  <link name="gripper_${side}_finger_link">
+    <visual>
+      <origin xyz="0 ${f((sign * 0.004) / 2)} 0" rpy="0 0 0"/>
+      <geometry><box size="${xyz(finger, 0.004, 0.016)}"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 ${f((sign * 0.004) / 2)} 0" rpy="0 0 0"/>
+      <geometry><box size="${xyz(finger, 0.004, 0.016)}"/></geometry>
+    </collision>
+${inertial(0.004, [0, 0, 0], boxInertia(0.004, finger, 0.004, 0.016))}
+  </link>
+  <joint name="gripper_${side}_finger_joint" type="prismatic">
+    <parent link="gripper_link"/>
+    <child link="gripper_${side}_finger_link"/>
+    <origin xyz="${xyz(gripAt, 0, 0)}" rpy="0 0 0"/>
+    <axis xyz="0 ${sign} 0"/>
+    <limit lower="0" upper="${f(open)}" effort="${f(gripSv ? ((x) => ("error" in x ? 0 : x.stallNm / 0.01))(servoAt(gripSv, arm.railV)) : 0)}" velocity="0.1"/>${side === "right" ? `
+    <mimic joint="${ARM_FINGER_JOINT}" multiplier="1" offset="0"/>` : ""}
+  </joint>`
+	const iface = (joint: string) => `    <joint name="${joint}">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>`
+	return `<?xml version="1.0"?>
+<!-- Generated by Bringup from the design contract (src/ros/urdf.ts armUrdf). Do not edit: change the design instead.
+     Link masses: ${arm.links?.length ? "the printed links' measured masses (arm.links)" : "ESTIMATES (armLinkG per 100 mm, armGripperG) until the arm's parts are built"}, plus each servo's catalog mass; each link a point mass.
+     Joint effort: ${est("ARM_TORQUE_SHARE")} x the servo's stall torque at ${arm.railV} V; velocity: its no-load speed. Finger effort: the gripper servo's stall on a 10 mm horn (ESTIMATE). -->
+<robot name="${name}">
+  <link name="base_link">
+    <visual>
+      <origin xyz="${xyz(0, 0, -mm(arm.base.thicknessMm) / 2)}" rpy="0 0 0"/>
+      <geometry><box size="${xyz(mm(arm.base.plateMm[0]), mm(arm.base.plateMm[1]), mm(arm.base.thicknessMm))}"/></geometry>
+    </visual>
+  </link>
+${links}
+  <link name="grip_link"/>
+  <joint name="grip_joint" type="fixed">
+    <parent link="gripper_link"/>
+    <child link="grip_link"/>
+    <origin xyz="${xyz(gripAt, 0, 0)}" rpy="0 0 0"/>
+  </joint>
+${fingerLink("left", 1)}
+${fingerLink("right", -1)}
+  <ros2_control name="${name}_system" type="system">
+    <hardware>
+      <plugin>${HARDWARE_PLUGIN[hw]}</plugin>${hw === "bringup" ? `
+      <param name="port">${opts.port ?? "tcp:127.0.0.1:5555"}</param>` : ""}
+    </hardware>
+${lim.map((l) => iface(l.ros)).join("\n")}
+${iface(ARM_FINGER_JOINT)}
+  </ros2_control>
+</robot>
+`
+}
+
+// The arm's controllers: a joint_trajectory_controller over the five joints (the firmware's moves) and a parallel
+// gripper action on the left finger (the right mimics it).
+export function armControllersYaml(arm: ArmSpec, cat: MechCatalog, opts: { updateRateHz?: number } = {}): string {
+	const lim = armJointLimits(arm, cat)
+	const rate = opts.updateRateHz ?? 50
+	return `# Generated by Bringup from the design contract (src/ros/urdf.ts). Do not edit: change the design instead.
+controller_manager:
+  ros__parameters:
+    update_rate: ${rate}  # a hobby servo's 50 Hz pulse
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    gripper_controller:
+      type: parallel_gripper_action_controller/GripperActionController
+
+arm_controller:
+  ros__parameters:
+    joints: [${lim.map((l) => `"${l.ros}"`).join(", ")}]
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+    constraints:
+      goal_time: 0.5
+${lim.map((l) => `      ${l.ros}: { goal: 0.05 }  # rad; ${l.name}: ${f(l.lower)}…${f(l.upper)} rad, ${f(l.velocity)} rad/s`).join("\n")}
+
+gripper_controller:
+  ros__parameters:
+    joint: ${ARM_FINGER_JOINT}
+    max_velocity: 0.1
+    allow_stalling: true  # closing on the object stalls the fingers: that is the grasp
+`
 }

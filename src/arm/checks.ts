@@ -87,7 +87,20 @@ export function armChecks(values: Partial<ContractValues>, cat: CheckCatalog): M
 	const named = [...arm.joints.map((j) => ({ what: `the ${j.name} joint`, mpn: j.servo })), { what: "the gripper", mpn: arm.gripper.servo }]
 	for (const { what, mpn } of named)
 		if (!servoOf(cat.mech, mpn)) push("arm-torque", `${what}'s servo ${mpn} is not in catalog/mechanics.json servos (${(cat.mech.servos ?? []).map((x) => x.mpn).join(", ")})`)
-	if (out.length || !t) return out
+	if (out.length) return out
+	// Each joint's range within its servo's travel: the firmware centres the range in the travel and clamps, so a wider range
+	// can't be reached at its ends and nothing would say so.
+	for (const j of arm.joints) {
+		const s = servoOf(cat.mech, j.servo)!
+		const wide = j.maxDeg - j.minDeg
+		if (wide <= s.rangeDeg + 1e-9) continue
+		// The alternative must also carry what this servo does: at least its torque at the rail (an SG90 has the travel a
+		// shoulder needs, not the torque).
+		const nm = (x: ServoPart) => { const r = servoAt(x, arm.railV); return "error" in r ? -1 : r.stallNm }
+		const enough = (cat.mech.servos ?? []).filter((x) => x.control === s.control && x.rangeDeg >= wide && nm(x) >= nm(s) - 1e-9).sort((a, b) => a.rangeDeg - b.rangeDeg || nm(a) - nm(b))[0]
+		push("arm-reach", `the ${j.name} joint's range ${j.minDeg}…${j.maxDeg}° is ${wide}°, more than its ${j.servo}'s ${s.rangeDeg}° of travel (the firmware centres the range in the travel and can't reach its outer ${(wide - s.rangeDeg) / 2}° at each end): narrow it to ${s.rangeDeg}°${enough ? `, or use a servo with ${enough.rangeDeg}° (${enough.mpn})` : ""}`)
+	}
+	if (!t) return out
 
 	// Torque.
 	const { estimated } = outboard(arm, t, cat.mech)

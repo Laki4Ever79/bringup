@@ -13,7 +13,7 @@ const kinds = (arm: ArmSpec, t = TARGETS) => armChecks({ arm, armTargets: t }, c
 
 test("forward∘solve round-trips the pick point within 0.5 mm", () => {
 	assert.equal(armReachMm(ARM), 280)
-	for (const p of [TARGETS.pick, TARGETS.drop, { xMm: 150, yMm: 0, zMm: 0 }]) {
+	for (const p of [TARGETS.pick, TARGETS.drop, { xMm: 200, yMm: 0, zMm: 40 }]) {
 		const q = solve(ARM, p)
 		assert.ok(Array.isArray(q), JSON.stringify(q))
 		const tip = forward(ARM, q).tip
@@ -95,4 +95,15 @@ test("280 mm and 100 g on an MG996R shoulder is just over (the spec's estimate);
 	assert.deepEqual(kinds({ ...strong, railV: 7.4 }), [])
 	assert.match(kinds({ ...strong, joints: strong.joints.map((j, i) => (i === 2 ? { ...j, servo: "NOPE-9" } : j)) }).join(), /arm-torque/)
 	assert.deepEqual(armChecks({}, cat), [])
+})
+
+test("a joint range wider than its servo's travel gives arm-reach naming a servo with enough travel", () => {
+	// MG996R: 120° of travel. A 0…150° shoulder can't be reached at its ends; the DS3218MG has 180°.
+	const wide: ArmSpec = { ...ARM, joints: ARM.joints.map((j) => (j.name === "shoulder" ? { ...j, minDeg: 0, maxDeg: 150 } : j)) }
+	const v = armChecks({ arm: wide, armTargets: TARGETS }, cat).filter((x) => x.kind === "arm-reach" && /travel/.test(x.message))
+	assert.equal(v.length, 1, JSON.stringify(v))
+	assert.match(v[0].message, /shoulder joint's range 0…150° is 150°, more than its MG996R's 120°/)
+	assert.match(v[0].message, /DS3218MG/)
+	// The fixture's ranges all fit their servos.
+	assert.ok(!armChecks({ arm: ARM, armTargets: TARGETS }, cat).some((x) => /travel/.test(x.message)))
 })

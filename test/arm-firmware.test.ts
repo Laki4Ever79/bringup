@@ -61,12 +61,12 @@ test("PCA9685 bytes: deg → counts against the datasheet's PRE_SCALE and LEDn_O
 	assert.equal(r.reg, 0x06 + 4 * 1, "LED1_ON_L")
 	assert.equal(r.us, 1500)
 	assert.deepEqual(r.bytes, [0, 0, 307 & 0xff, 307 >> 8], "ON at 0, OFF at 1500 us × 4096 × 50 Hz = 307")
-	// The wrist pitch (SG90, 180° of travel) spans -120..90, 210°: centred, its ends fall 15° past the servo's, so -90
-	// lands at 15° of travel: 1000 + 1000 × 15/180 = 1083 us. (A joint range over the servo's travel: clamped here.)
+	// The wrist pitch (SG90, 180° of travel) spans -120..60, exactly its travel: -90 lands at 30° of travel,
+	// 1000 + 1000 × 30/180 = 1167 us. (A command past the joint's range is clamped to the servo's travel.)
 	const [w] = await ask<{ us: number; servoDeg: number }>(["pca 3 -90"])
-	assert.equal(w.servoDeg, 15)
-	assert.equal(w.us, 1083)
-	const [lo] = await ask<{ servoDeg: number }>(["pca 3 -120"])
+	assert.equal(w.servoDeg, 30)
+	assert.equal(w.us, 1167)
+	const [lo] = await ask<{ servoDeg: number }>(["pca 3 -130"])
 	assert.equal(lo.servoDeg, 0, "clamped to the servo's travel")
 })
 
