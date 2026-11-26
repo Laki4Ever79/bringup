@@ -56,12 +56,10 @@ struct RoverGoto {
 	// Every change of manoeuvre waits for the robot to stand still (rover_goto_step): after the turn toward the target,
 	// and on arrival. settle: 0 none, 1 after the turn, 2 after the stop at the target.
 	int settle = 0, still = 0, tries = 0;
-	float stopX = 0, stopY = 0, stopTh = 0;
+	float stopX = 0, stopY = 0;
 	// How far it rolled on after a stop at the target, learned from the last one (kept across targets): the next approach
 	// stops that much short.
 	float coastMm = 0;
-	// The same for turning in place: how far it kept rotating after the turn toward a target stopped (radians).
-	float turnCoastRad = 0;
 };
 
 // The design choices of the go-to controller: within ROVER_GOTO_TOL_MM it has arrived; it turns in place until it faces
@@ -143,8 +141,6 @@ inline RoverOut rover_goto_step(RoverGoto &g, const RoverOdo &o, float cruise, f
 			}
 			g.facing = false;  // short of it: face it again from here and creep the rest
 		} else {
-			const float rolled = fabsf(rover_wrap(o.th - g.stopTh));
-			g.turnCoastRad = g.turnCoastRad > 0 ? 0.5f * (g.turnCoastRad + rolled) : rolled;
 			const float err = rover_wrap(atan2f(g.ty - o.y, g.tx - o.x) - o.th);
 			if (fabsf(err) >= GOTO_ACCEPT_RAD && ++g.tries <= GOTO_TRIES) g.facing = false;
 			else g.tries = 0;
@@ -152,8 +148,16 @@ inline RoverOut rover_goto_step(RoverGoto &g, const RoverOdo &o, float cruise, f
 	}
 	const float dist = rover_goto_remaining(g, o);
 	const float err = rover_wrap(atan2f(g.ty - o.y, g.tx - o.x) - o.th);
+	// Where the drive and the turn cut the motors. The drive cuts early by its learned coast and slows to minDuty by that
+	// cut-off, not by the target, so it always stops from a creep. The turn is not cut early: a learned turn coast
+	// (25 Nov) cut it before it had slowed, it rolled on 4-8 deg, the bigger roll was learned and the next cut came
+	// earlier still; each roll in place scrubs the wheels where the counts can't see it. The Eurobot base's lap (no gyro)
+	// ended 20.9 mm off with it, 18.1 mm without (11.1 mm before the rest-first go-to, which stopped 8 mm short and
+	// happened to cancel part of the same ~2 deg drift).
+	const float stopMm = g.facing && g.coastMm > 0 ? g.coastMm + 0.5f * ROVER_GOTO_TOL_MM : ROVER_GOTO_TOL_MM;
+	const float stopRad = GOTO_FACE_RAD;
 	// Arrived (with a learned coast: where rolling on ends it in the tolerance's middle, not at its edge), or passed it (it is behind, close): stop, then check from rest.
-	if (dist < (g.facing && g.coastMm > 0 ? g.coastMm + 0.5f * ROVER_GOTO_TOL_MM : ROVER_GOTO_TOL_MM) || (g.facing && dist < 2 * ROVER_GOTO_TOL_MM && fabsf(err) > (float)M_PI / 2)) {
+	if (dist < stopMm || (g.facing && dist < 2 * ROVER_GOTO_TOL_MM && fabsf(err) > (float)M_PI / 2)) {
 		g.settle = 2;
 		g.stopX = o.x;
 		g.stopY = o.y;
@@ -161,20 +165,19 @@ inline RoverOut rover_goto_step(RoverGoto &g, const RoverOdo &o, float cruise, f
 	}
 	if (g.facing && fabsf(err) > GOTO_REFACE_RAD && dist > GOTO_SLOW_MM) g.facing = false;
 	if (!g.facing) {
-		// Faced it, less the rotation it will carry on with (learned): stop turning, and look again from rest.
-		if (fabsf(err) < GOTO_FACE_RAD + fminf(g.turnCoastRad, 0.3f)) {
+		// Faced it: stop turning, and look again from rest.
+		if (fabsf(err) < stopRad) {
 			g.facing = true;
 			g.settle = 1;
-			g.stopTh = o.th;  // faced it: stop turning, and look again from rest
 			return RoverOut{0, 0};
 		} else {
-			// In place, toward it: slower as the error closes.
-			float u = cruise * fminf(1.0f, fabsf(err) / 0.5f);
+			// In place, toward it: slower as the error closes, at minDuty by the cut-off.
+			float u = cruise * fminf(1.0f, (fabsf(err) - stopRad) / 0.5f);
 			if (u < minDuty) u = minDuty;
 			return err > 0 ? RoverOut{-u, u} : RoverOut{u, -u};
 		}
 	}
-	float v = cruise * fminf(1.0f, dist / GOTO_SLOW_MM);
+	float v = cruise * fminf(1.0f, (dist - stopMm) / GOTO_SLOW_MM);
 	if (v < minDuty) v = minDuty;
 	// Heading held on the way: the wheels differ by a share of the speed in proportion to the error.
 	float w = 1.5f * err * v;
