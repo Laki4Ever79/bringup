@@ -1,0 +1,150 @@
+{
+ "_about": "JLCPCB basic 0402 1 % resistors: the values a computed support (a feedback divider, an RT resistor) may use, so every one is a part JLCPCB stocks and assembles without a setup fee. Source: https://jlcsearch.tscircuit.com/resistors/list.json?package=0402&is_basic=true (26 Nov 2026).",
+ "resistors": [
+  {
+   "ohms": 10,
+   "lcsc": "C25077",
+   "mpn": "0402WGF100JTCE"
+  },
+  {
+   "ohms": 22,
+   "lcsc": "C25092",
+   "mpn": "0402WGF220JTCE"
+  },
+  {
+   "ohms": 33,
+   "lcsc": "C25105",
+   "mpn": "0402WGF330JTCE"
+  },
+  {
+   "ohms": 49.9,
+   "lcsc": "C25120",
+   "mpn": "0402WGF499JTCE"
+  },
+  {
+   "ohms": 100,
+   "lcsc": "C25076",
+   "mpn": "0402WGF1000TCE"
+  },
+  {
+   "ohms": 120,
+   "lcsc": "C25079",
+   "mpn": "0402WGF1200TCE"
+  },
+  {
+   "ohms": 200,
+   "lcsc": "C25087",
+   "mpn": "0402WGF2000TCE"
+  },
+  {
+   "ohms": 220,
+   "lcsc": "C25091",
+   "mpn": "0402WGF2200TCE"
+  },
+  {
+   "ohms": 330,
+   "lcsc": "C25104",
+   "mpn": "0402WGF3300TCE"
+  },
+  {
+   "ohms": 470,
+   "lcsc": "C25117",
+   "mpn": "0402WGF4700TCE"
+  },
+  {
+   "ohms": 510,
+   "lcsc": "C25123",
+   "mpn": "0402WGF5100TCE"
+  },
+  {
+   "ohms": 1000,
+   "lcsc": "C11702",
+   "mpn": "0402WGF1001TCE"
+  },
+  {
+   "ohms": 1500,
+   "lcsc": "C25867",
+   "mpn": "0402WGF1501TCE"
+  },
+  {
+   "ohms": 2000,
+   "lcsc": "C4109",
+   "mpn": "0402WGF2001TCE"
+  },
+  {
+   "ohms": 2200,
+   "lcsc": "C25879",
+   "mpn": "0402WGF2201TCE"
+  },
+  {
+   "ohms": 3300,
+   "lcsc": "C25890",
+   "mpn": "0402WGF3301TCE"
+  },
+  {
+   "ohms": 4700,
+   "lcsc": "C25900",
+   "mpn": "0402WGF4701TCE"
+  },
+  {
+   "ohms": 5100,
+   "lcsc": "C25905",
+   "mpn": "0402WGF5101TCE"
+  },
+  {
+   "ohms": 10000,
+   "lcsc": "C25744",
+   "mpn": "0402WGF1002TCE"
+  },
+  {
+   "ohms": 12000,
+   "lcsc": "C25752",
+   "mpn": "0402WGF1202TCE"
+  },
+  {
+   "ohms": 15000,
+   "lcsc": "C25756",
+   "mpn": "0402WGF1502TCE"
+  },
+  {
+   "ohms": 20000,
+   "lcsc": "C25765",
+   "mpn": "0402WGF2002TCE"
+  },
+  {
+   "ohms": 22000,
+   "lcsc": "C25768",
+   "mpn": "0402WGF2202TCE"
+  },
+  {
+   "ohms": 33000,
+   "lcsc": "C25779",
+   "mpn": "0402WGF3302TCE"
+  },
+  {
+   "ohms": 47000,
+   "lcsc": "C25792",
+   "mpn": "0402WGF4702TCE"
+  },
+  {
+   "ohms": 51000,
+   "lcsc": "C25794",
+   "mpn": "0402WGF5102TCE"
+  },
+  {
+   "ohms": 100000,
+   "lcsc": "C25741",
+   "mpn": "0402WGF1003TCE"
+  },
+  {
+   "ohms": 200000,
+   "lcsc": "C25764",
+   "mpn": "0402WGF2003TCE"
+  },
+  {
+   "ohms": 1000000,
+   "lcsc": "C26083",
+   "mpn": "0402WGF1004TCE"
+  }
+ ]
+}

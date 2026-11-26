@@ -48,8 +48,9 @@ export interface ArmSpec {
 	gripper: { servo: string; channel: number; openMm: number; fingerMm: number }
 	// The servos' supply rail (V), 6 for the hobby servos.
 	railV: number
-	// The arm's power input: a mains DC brick.
-	input: { kind: "dc-brick"; volts: number; amps: number }
+	// The arm's power input: a mains DC brick. mpn and tolerancePct from its catalog entry (mechanics.json powerBricks):
+	// the input TVS must stay off at nominal × (1 + tolerance) (src/arm/tvs.ts; ±5 %, an estimate, when absent).
+	input: { kind: "dc-brick"; volts: number; amps: number; mpn?: string; tolerancePct?: number }
 	// The controller on the base plate.
 	boards: Mechanics["chassis"]["boards"]
 	// Written by the arm geometry tool; absent, the checks estimate the links from the servo masses.

@@ -30,7 +30,7 @@ function armContract(arm: ArmSpec): ContractSnapshot {
 	return { ...withArm, values: { ...withArm.values, parts: t.parts } }
 }
 
-test("six arm servos split into two rails that each fit", () => {
+test("six arm servos split into rails that each fit (three TPS54560s behind the brick's TVS)", () => {
 	// 3 x MG996R at 2.5 A and 3 x SG90 at 0.7 A, 6 V: 9.6 A, 12 A with headroom, over one SY8368A's 8 A.
 	const servos = [2.5, 2.5, 2.5, 0.7, 0.7, 0.7].map((a, i) => ({ ref: `JV${i + 1}`, stallA: a }))
 	const rails = servoRails(servos, 8)
@@ -41,18 +41,25 @@ test("six arm servos split into two rails that each fit", () => {
 	// One servo over the chip's rating can't be split: null, which the check reports.
 	assert.equal(servoRails([{ ref: "JV1", stallA: 7 }], 8), null)
 
+	// The rail chip by rule (arm-rails.ts railChip, 26 Nov 2026): it must clear the input TVS's rated clamp (35.5 V for the
+	// SMBJ22A a 19.5 V ±5 % brick needs), so not the SY8368A (28 V) or the SY8205 (30 V): the TPS54560 (65 V, 5 A),
+	// whose 4 A per rail with the headroom takes three rails.
 	const s = armContract(ARM24)
 	const ar = armRails(s)!
-	assert.deepEqual(ar.map((r) => r.net), ["VSERVO1", "VSERVO2"])
+	assert.deepEqual(ar.map((r) => r.net), ["VSERVO1", "VSERVO2", "VSERVO3"])
 	const supplies = s.values.parts!.filter((p) => p.role === "servo-supply")
 	assert.deepEqual(ar.map((r) => r.supplyRef), supplies.map((p) => p.ref))
-	assert.ok(supplies.every((p) => p.mpn === "SY8368AQQC"))
-	for (const r of ar) assert.ok(r.headroomA <= 8 + 1e-9 && r.railV === 6)
+	assert.ok(supplies.every((p) => p.mpn === "TPS54560DDAR"))
+	for (const r of ar) assert.ok(r.headroomA <= 5 + 1e-9 && r.railV === 6)
 	// Plugs JV1..JV6 in joint order then the gripper, on the arm's channels.
 	const plugs = ar.flatMap((r) => r.plugs).sort((a, b) => a.ref.localeCompare(b.ref))
 	assert.deepEqual(plugs.map((p) => [p.ref, p.joint, p.channel]), [["JV1", "base-yaw", 0], ["JV2", "shoulder", 1], ["JV3", "elbow", 2], ["JV4", "wrist-pitch", 3], ["JV5", "wrist-roll", 4], ["JV6", "gripper", 5]])
 	assert.equal(s.values.parts!.filter((p) => p.role === "servo").length, 6)
-	assert.deepEqual(armPowerChecks(s), [])
+	// The one finding: the logic's AP63205 (32 V) under the input TVS's rated clamp (35.5 V), flagged until a 36 V+ logic
+	// step-down replaces it (lead-2, 26 Nov 2026).
+	const found = armPowerChecks(s)
+	assert.equal(found.length, 1)
+	assert.match(found[0].message, /^U\d+ AP63205WU-7 on the VIN_BRICK input is rated 32 V, under SMBJ22A's clamp of 35.5 V/)
 })
 
 test("rail divider gives 6.0 V ±2 %", () => {

@@ -16,8 +16,8 @@
    "enclosure": "none"
   },
   "outline": {
-   "widthMm": 71,
-   "heightMm": 54,
+   "widthMm": 76,
+   "heightMm": 57,
    "thicknessMm": 1.6
   },
   "connectors": [
@@ -25,7 +25,7 @@
     "ref": "J1",
     "kind": "usb-c",
     "edge": "left",
-    "offsetMm": 32.5,
+    "offsetMm": 34.5,
     "widthMm": 9,
     "heightMm": 3.2
    }
@@ -44,10 +44,28 @@
     "loadMa": 250
    },
    {
+    "name": "VSERVO1",
+    "voltageV": 6,
+    "regulatorMaxMa": 5000,
+    "loadMa": 3200
+   },
+   {
+    "name": "VSERVO2",
+    "voltageV": 6,
+    "regulatorMaxMa": 5000,
+    "loadMa": 3200
+   },
+   {
+    "name": "VSERVO3",
+    "voltageV": 6,
+    "regulatorMaxMa": 5000,
+    "loadMa": 3200
+   },
+   {
     "name": "VIN_BRICK",
-    "voltageV": 24,
-    "regulatorMaxMa": 3500,
-    "loadMa": 3500
+    "voltageV": 19.5,
+    "regulatorMaxMa": 4620,
+    "loadMa": 3603
    }
   ],
   "parts": [
@@ -260,56 +278,288 @@
    },
    {
     "role": "servo-supply",
-    "mpn": "SY8368AQQC",
-    "lcsc": "C207642",
-    "footprint": "qfn12_sy8368a",
+    "mpn": "TPS54560DDAR",
+    "lcsc": "C31966",
+    "footprint": "so8_powerpad_dda",
     "pins": [
-     "GND",
-     "LX",
-     "GND_2",
-     "IN",
-     "IN_2",
-     "IN_3",
-     "BS",
-     "VCC_INT",
+     "BOOT",
+     "VIN",
+     "EN",
+     "RT_CLK",
      "FB",
-     "ILMT",
-     "PG",
-     "EN"
+     "COMP",
+     "GND",
+     "SW",
+     "GND_2"
     ],
-    "ref": "U7",
-    "nets": {
-     "IN": "VIN_BRICK",
-     "IN_2": "VIN_BRICK",
-     "IN_3": "VIN_BRICK"
+    "maxA": 5,
+    "nets": {},
+    "support": [
+     {
+      "part": "buckIn50",
+      "a": "$in",
+      "b": "GND",
+      "count": 2,
+      "job": "input capacitor (VIN, 10 uF 50 V)"
+     },
+     {
+      "part": "decouple",
+      "a": "BOOT",
+      "b": "$:SW",
+      "job": "bootstrap capacitor (BOOT to SW, 100 nF)",
+      "bound": 5
+     },
+     {
+      "part": {
+       "kind": "diode",
+       "value": "SS56",
+       "lcsc": "C4154973",
+       "mpn": "SS56(SMB)",
+       "footprint": "smb"
+      },
+      "a": "$:SW",
+      "b": "GND",
+      "job": "catch Schottky (SW to GND, 60 V 5 A; pad 1 the cathode)"
+     },
+     {
+      "part": "servoL",
+      "a": "$:SW",
+      "b": "$out",
+      "job": "inductor (SW to the rail, 4.7 uH 11.2 A saturation)"
+     },
+     {
+      "part": "buckOut",
+      "a": "$out",
+      "b": "GND",
+      "count": 5,
+      "job": "output capacitor"
+     },
+     {
+      "part": {
+       "compute": "divider",
+       "vref": 0.8,
+       "from": "$out",
+       "to": "FB"
+      },
+      "job": "feedback divider"
+     },
+     {
+      "part": {
+       "compute": "resistor",
+       "ohms": 200000
+      },
+      "a": "RT_CLK",
+      "b": "GND",
+      "job": "RT resistor (500 kHz)"
+     },
+     {
+      "part": {
+       "compute": "resistor",
+       "ohms": 16900
+      },
+      "a": "COMP",
+      "b": "$:CZ",
+      "job": "compensation resistor"
+     },
+     {
+      "part": {
+       "kind": "capacitor",
+       "value": "4.7nF",
+       "lcsc": "C1538",
+       "mpn": "0402B472K500NT",
+       "footprint": "0402"
+      },
+      "a": "$:CZ",
+      "b": "GND",
+      "job": "compensation capacitor"
+     },
+     {
+      "part": {
+       "kind": "capacitor",
+       "value": "47pF",
+       "lcsc": "C1567",
+       "mpn": "0402CG470J500NT",
+       "footprint": "0402"
+      },
+      "a": "COMP",
+      "b": "GND",
+      "job": "compensation high-frequency capacitor"
+     }
+    ],
+    "source": {
+     "pins": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "SLVSBN0C, 5 Pin Configuration and Functions (HSOP): 1 BOOT, 2 VIN, 3 EN, 4 RT/CLK (named RT_CLK here), 5 FB, 6 COMP, 7 GND, 8 SW; the thermal pad (pin 9, GND_2 here) must connect to GND"
+     },
+     "maxInV": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "6.1 Absolute Maximum Ratings: VIN -0.3 to 65 V (operating 4.5 to 60 V, Pin Functions); EN 8.4 V max (left open: its internal pull-up enables it)"
+     },
+     "maxA": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "title: 4.5 V to 60 V input, 5 A step-down; 6.3 Electrical Characteristics: current limit threshold 6.3 / 7.5 / 8.3 A"
+     },
+     "footprint": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "DDA0008B Land Pattern Example: 8X 1.55 x 0.6 mm pads, 1.27 mm pitch, rows 5.4 mm apart; thermal pad solder mask opening 2.71 x 3.4 mm"
+     },
+     "parts": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "8.2 Typical Application (Figure 33, 5 V 5 A at 400 kHz): BOOT 0.1 uF, catch Schottky B560C (SS56 here: 60 V 5 A, 0.70 V), compensation 16.9k + 4700 pF + 47 pF, 3 x 47 uF out; Vref 0.792/0.8/0.808 V (6.3); RT 200 kOhm -> 500 kHz (6.3, fSW). At 6 V the inductor ripple with 4.7 uH is about 1.8 A at 21 V in (an estimate) and the example's compensation is reused (an estimate: the crossover moves with the output capacitance)"
+     },
+     "lcsc": {
+      "url": "https://www.lcsc.com/product-detail/C31966.html",
+      "where": "TI TPS54560DDAR, SOIC-8-EP (HSOP-8 PowerPAD), LCSC C31966; JLCPCB stock to confirm before an order"
+     }
     },
+    "notes": "The arm's servo rail chip when the brick's hot plug passes the SY8368A's 28 V (lead-2, 26 Nov 2026: a 20 V or 19.5 V brick at +5 % needs the SMBJ22A, whose clamp at the estimated 5 A surge is 29.44 V). Non-synchronous: the catch Schottky carries the off-time current. 5 A: with the 1.25x headroom a rail carries 4 A, so six servos at stall (9.6 A) take three rails. EN open (enabled by its pull-up).",
+    "stock": null,
+    "priceUsd": null,
+    "inStock": null,
+    "ref": "U7",
     "reason": "servo rail VSERVO1 at 6 V from the 24 V brick"
    },
    {
     "role": "servo-supply",
-    "mpn": "SY8368AQQC",
-    "lcsc": "C207642",
-    "footprint": "qfn12_sy8368a",
+    "mpn": "TPS54560DDAR",
+    "lcsc": "C31966",
+    "footprint": "so8_powerpad_dda",
     "pins": [
-     "GND",
-     "LX",
-     "GND_2",
-     "IN",
-     "IN_2",
-     "IN_3",
-     "BS",
-     "VCC_INT",
+     "BOOT",
+     "VIN",
+     "EN",
+     "RT_CLK",
      "FB",
-     "ILMT",
-     "PG",
-     "EN"
+     "COMP",
+     "GND",
+     "SW",
+     "GND_2"
     ],
-    "ref": "U8",
-    "nets": {
-     "IN": "VIN_BRICK",
-     "IN_2": "VIN_BRICK",
-     "IN_3": "VIN_BRICK"
+    "maxA": 5,
+    "nets": {},
+    "support": [
+     {
+      "part": "buckIn50",
+      "a": "$in",
+      "b": "GND",
+      "count": 2,
+      "job": "input capacitor (VIN, 10 uF 50 V)"
+     },
+     {
+      "part": "decouple",
+      "a": "BOOT",
+      "b": "$:SW",
+      "job": "bootstrap capacitor (BOOT to SW, 100 nF)",
+      "bound": 5
+     },
+     {
+      "part": {
+       "kind": "diode",
+       "value": "SS56",
+       "lcsc": "C4154973",
+       "mpn": "SS56(SMB)",
+       "footprint": "smb"
+      },
+      "a": "$:SW",
+      "b": "GND",
+      "job": "catch Schottky (SW to GND, 60 V 5 A; pad 1 the cathode)"
+     },
+     {
+      "part": "servoL",
+      "a": "$:SW",
+      "b": "$out",
+      "job": "inductor (SW to the rail, 4.7 uH 11.2 A saturation)"
+     },
+     {
+      "part": "buckOut",
+      "a": "$out",
+      "b": "GND",
+      "count": 5,
+      "job": "output capacitor"
+     },
+     {
+      "part": {
+       "compute": "divider",
+       "vref": 0.8,
+       "from": "$out",
+       "to": "FB"
+      },
+      "job": "feedback divider"
+     },
+     {
+      "part": {
+       "compute": "resistor",
+       "ohms": 200000
+      },
+      "a": "RT_CLK",
+      "b": "GND",
+      "job": "RT resistor (500 kHz)"
+     },
+     {
+      "part": {
+       "compute": "resistor",
+       "ohms": 16900
+      },
+      "a": "COMP",
+      "b": "$:CZ",
+      "job": "compensation resistor"
+     },
+     {
+      "part": {
+       "kind": "capacitor",
+       "value": "4.7nF",
+       "lcsc": "C1538",
+       "mpn": "0402B472K500NT",
+       "footprint": "0402"
+      },
+      "a": "$:CZ",
+      "b": "GND",
+      "job": "compensation capacitor"
+     },
+     {
+      "part": {
+       "kind": "capacitor",
+       "value": "47pF",
+       "lcsc": "C1567",
+       "mpn": "0402CG470J500NT",
+       "footprint": "0402"
+      },
+      "a": "COMP",
+      "b": "GND",
+      "job": "compensation high-frequency capacitor"
+     }
+    ],
+    "source": {
+     "pins": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "SLVSBN0C, 5 Pin Configuration and Functions (HSOP): 1 BOOT, 2 VIN, 3 EN, 4 RT/CLK (named RT_CLK here), 5 FB, 6 COMP, 7 GND, 8 SW; the thermal pad (pin 9, GND_2 here) must connect to GND"
+     },
+     "maxInV": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "6.1 Absolute Maximum Ratings: VIN -0.3 to 65 V (operating 4.5 to 60 V, Pin Functions); EN 8.4 V max (left open: its internal pull-up enables it)"
+     },
+     "maxA": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "title: 4.5 V to 60 V input, 5 A step-down; 6.3 Electrical Characteristics: current limit threshold 6.3 / 7.5 / 8.3 A"
+     },
+     "footprint": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "DDA0008B Land Pattern Example: 8X 1.55 x 0.6 mm pads, 1.27 mm pitch, rows 5.4 mm apart; thermal pad solder mask opening 2.71 x 3.4 mm"
+     },
+     "parts": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "8.2 Typical Application (Figure 33, 5 V 5 A at 400 kHz): BOOT 0.1 uF, catch Schottky B560C (SS56 here: 60 V 5 A, 0.70 V), compensation 16.9k + 4700 pF + 47 pF, 3 x 47 uF out; Vref 0.792/0.8/0.808 V (6.3); RT 200 kOhm -> 500 kHz (6.3, fSW). At 6 V the inductor ripple with 4.7 uH is about 1.8 A at 21 V in (an estimate) and the example's compensation is reused (an estimate: the crossover moves with the output capacitance)"
+     },
+     "lcsc": {
+      "url": "https://www.lcsc.com/product-detail/C31966.html",
+      "where": "TI TPS54560DDAR, SOIC-8-EP (HSOP-8 PowerPAD), LCSC C31966; JLCPCB stock to confirm before an order"
+     }
     },
+    "notes": "The arm's servo rail chip when the brick's hot plug passes the SY8368A's 28 V (lead-2, 26 Nov 2026: a 20 V or 19.5 V brick at +5 % needs the SMBJ22A, whose clamp at the estimated 5 A surge is 29.44 V). Non-synchronous: the catch Schottky carries the off-time current. 5 A: with the 1.25x headroom a rail carries 4 A, so six servos at stall (9.6 A) take three rails. EN open (enabled by its pull-up).",
+    "stock": null,
+    "priceUsd": null,
+    "inStock": null,
+    "ref": "U8",
     "reason": "servo rail VSERVO2 at 6 V from the 24 V brick"
    },
    {
@@ -370,6 +620,149 @@
      "A"
     ],
     "ref": "D11"
+   },
+   {
+    "role": "servo-supply",
+    "mpn": "TPS54560DDAR",
+    "lcsc": "C31966",
+    "footprint": "so8_powerpad_dda",
+    "pins": [
+     "BOOT",
+     "VIN",
+     "EN",
+     "RT_CLK",
+     "FB",
+     "COMP",
+     "GND",
+     "SW",
+     "GND_2"
+    ],
+    "maxA": 5,
+    "nets": {},
+    "support": [
+     {
+      "part": "buckIn50",
+      "a": "$in",
+      "b": "GND",
+      "count": 2,
+      "job": "input capacitor (VIN, 10 uF 50 V)"
+     },
+     {
+      "part": "decouple",
+      "a": "BOOT",
+      "b": "$:SW",
+      "job": "bootstrap capacitor (BOOT to SW, 100 nF)",
+      "bound": 5
+     },
+     {
+      "part": {
+       "kind": "diode",
+       "value": "SS56",
+       "lcsc": "C4154973",
+       "mpn": "SS56(SMB)",
+       "footprint": "smb"
+      },
+      "a": "$:SW",
+      "b": "GND",
+      "job": "catch Schottky (SW to GND, 60 V 5 A; pad 1 the cathode)"
+     },
+     {
+      "part": "servoL",
+      "a": "$:SW",
+      "b": "$out",
+      "job": "inductor (SW to the rail, 4.7 uH 11.2 A saturation)"
+     },
+     {
+      "part": "buckOut",
+      "a": "$out",
+      "b": "GND",
+      "count": 5,
+      "job": "output capacitor"
+     },
+     {
+      "part": {
+       "compute": "divider",
+       "vref": 0.8,
+       "from": "$out",
+       "to": "FB"
+      },
+      "job": "feedback divider"
+     },
+     {
+      "part": {
+       "compute": "resistor",
+       "ohms": 200000
+      },
+      "a": "RT_CLK",
+      "b": "GND",
+      "job": "RT resistor (500 kHz)"
+     },
+     {
+      "part": {
+       "compute": "resistor",
+       "ohms": 16900
+      },
+      "a": "COMP",
+      "b": "$:CZ",
+      "job": "compensation resistor"
+     },
+     {
+      "part": {
+       "kind": "capacitor",
+       "value": "4.7nF",
+       "lcsc": "C1538",
+       "mpn": "0402B472K500NT",
+       "footprint": "0402"
+      },
+      "a": "$:CZ",
+      "b": "GND",
+      "job": "compensation capacitor"
+     },
+     {
+      "part": {
+       "kind": "capacitor",
+       "value": "47pF",
+       "lcsc": "C1567",
+       "mpn": "0402CG470J500NT",
+       "footprint": "0402"
+      },
+      "a": "COMP",
+      "b": "GND",
+      "job": "compensation high-frequency capacitor"
+     }
+    ],
+    "source": {
+     "pins": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "SLVSBN0C, 5 Pin Configuration and Functions (HSOP): 1 BOOT, 2 VIN, 3 EN, 4 RT/CLK (named RT_CLK here), 5 FB, 6 COMP, 7 GND, 8 SW; the thermal pad (pin 9, GND_2 here) must connect to GND"
+     },
+     "maxInV": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "6.1 Absolute Maximum Ratings: VIN -0.3 to 65 V (operating 4.5 to 60 V, Pin Functions); EN 8.4 V max (left open: its internal pull-up enables it)"
+     },
+     "maxA": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "title: 4.5 V to 60 V input, 5 A step-down; 6.3 Electrical Characteristics: current limit threshold 6.3 / 7.5 / 8.3 A"
+     },
+     "footprint": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "DDA0008B Land Pattern Example: 8X 1.55 x 0.6 mm pads, 1.27 mm pitch, rows 5.4 mm apart; thermal pad solder mask opening 2.71 x 3.4 mm"
+     },
+     "parts": {
+      "url": "https://www.ti.com/lit/ds/symlink/tps54560.pdf",
+      "where": "8.2 Typical Application (Figure 33, 5 V 5 A at 400 kHz): BOOT 0.1 uF, catch Schottky B560C (SS56 here: 60 V 5 A, 0.70 V), compensation 16.9k + 4700 pF + 47 pF, 3 x 47 uF out; Vref 0.792/0.8/0.808 V (6.3); RT 200 kOhm -> 500 kHz (6.3, fSW). At 6 V the inductor ripple with 4.7 uH is about 1.8 A at 21 V in (an estimate) and the example's compensation is reused (an estimate: the crossover moves with the output capacitance)"
+     },
+     "lcsc": {
+      "url": "https://www.lcsc.com/product-detail/C31966.html",
+      "where": "TI TPS54560DDAR, SOIC-8-EP (HSOP-8 PowerPAD), LCSC C31966; JLCPCB stock to confirm before an order"
+     }
+    },
+    "notes": "The arm's servo rail chip when the brick's hot plug passes the SY8368A's 28 V (lead-2, 26 Nov 2026: a 20 V or 19.5 V brick at +5 % needs the SMBJ22A, whose clamp at the estimated 5 A surge is 29.44 V). Non-synchronous: the catch Schottky carries the off-time current. 5 A: with the 1.25x headroom a rail carries 4 A, so six servos at stall (9.6 A) take three rails. EN open (enabled by its pull-up).",
+    "stock": null,
+    "priceUsd": null,
+    "inStock": null,
+    "ref": "U10",
+    "reason": "servo rail VSERVO3 at 6 V from the 19.5 V brick"
    }
   ],
   "pins": [

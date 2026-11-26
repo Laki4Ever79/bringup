@@ -44,27 +44,44 @@ test("arm board: 6 servo plugs on PCA9685 LED0..5", async () => {
 	assert.deepEqual(chans, [0, 1, 2, 3, 4, 5])
 	chans.forEach((ch: number, i: number) => assert.deepEqual(n.get(`SERVO_CH${ch}`), [`U6.LED${ch}`, `JV${i + 1}.SIG`]))
 	// Every plug's +V on exactly one servo rail; no plug on the rover's 5 V servo net.
-	const onRail = (ref: string) => ["VSERVO1", "VSERVO2"].filter((r) => n.get(r)?.includes(`${ref}.V5`))
+	const onRail = (ref: string) => ["VSERVO1", "VSERVO2", "VSERVO3"].filter((r) => n.get(r)?.includes(`${ref}.V5`))
 	for (let i = 1; i <= 6; i++) assert.equal(onRail(`JV${i}`).length, 1, `JV${i}`)
 	assert.equal(n.get("SERVO_5V"), undefined)
 })
 
-test("arm board: each rail's SY8368A from the brick jack, its 6.0 V divider (27k/3k), and 50 V input capacitors", async () => {
+test("arm board: each rail's TPS54560 from the brick jack, wired and supported from its catalog entry (chip-support.ts)", async () => {
 	const { generatedNets, supportParts, powerTree } = await import("../src/codegen/circuit.ts")
 	const { armRails } = await import("../src/contract/arm-rails.ts")
 	const s = armBoard()
 	const n = generatedNets(s)
 	const rails = armRails(s)!
-	assert.deepEqual(rails.map((r) => r.supplyRef), ["U7", "U8"])
-	for (const u of ["U7", "U8"]) for (const pin of ["IN", "IN_2", "IN_3", "EN"]) assert.ok(n.get("VIN_BRICK")!.includes(`${u}.${pin}`), `${u}.${pin}`)
+	assert.deepEqual(rails.map((r) => r.supplyRef), ["U7", "U8", "U10"])
+	// Its entry's nets: VIN on the brick, SW on its own switch node, both grounds; EN open (its pull-up enables it).
+	for (const u of ["U7", "U8", "U10"]) {
+		assert.ok(n.get("VIN_BRICK")!.includes(`${u}.VIN`), u)
+		assert.deepEqual([n.get(`${u}_SW`)?.includes(`${u}.SW`), n.get("GND")!.includes(`${u}.GND_2`)], [true, true], u)
+		assert.ok(![...n.values()].some((e) => e.includes(`${u}.EN`)), `${u}.EN open`)
+	}
 	assert.ok(n.get("VIN_BRICK")!.includes("J10.VIN"))
 	assert.equal(n.get("VIN_BRICK")!.length, new Set(n.get("VIN_BRICK")).size, "each pin once")
 	assert.equal(powerTree(s)?.buck?.ref, "U9")
 	assert.ok(n.get("VIN_BRICK")!.includes("U9.VIN"), "the logic's buck from the jack")
 	const sp = supportParts(s)
-	for (const rail of ["VSERVO1", "VSERVO2"]) assert.equal(sp.find((x) => x.spec.kind === "resistor" && "net" in x.a && x.a.net === rail)?.spec.value, "27k", rail)
+	const of = (u: string) => sp.filter((x) => x.near === u)
+	for (const [u, rail] of [["U7", "VSERVO1"], ["U8", "VSERVO2"], ["U10", "VSERVO3"]] as const) {
+		const parts = of(u)
+		// The divider from the rail to FB: 33k/5.1k (5.98 V) of JLCPCB's basic resistors.
+		const top = parts.find((x) => x.spec.kind === "resistor" && "net" in x.a && x.a.net === rail)!
+		assert.deepEqual([top.spec.value, top.b], ["33k", { ref: u, pin: "FB" }], u)
+		// The catch Schottky from the switch node to ground (pad 1 the cathode), the inductor on to the rail.
+		const d = parts.find((x) => x.spec.mpn === "SS56(SMB)")!
+		assert.deepEqual([d.a, d.b], [{ net: `${u}_SW` }, { net: "GND" }])
+		assert.deepEqual([parts.find((x) => x.spec.kind === "inductor")!.b], [{ net: rail }])
+		assert.equal(parts.find((x) => x.job.includes("RT resistor"))!.spec.value, "200k")
+		assert.equal(parts.filter((x) => x.job.includes("output capacitor")).length, 5)
+	}
 	const ceramics = sp.filter((x) => x.spec.kind === "capacitor" && "net" in x.a && x.a.net === "VIN_BRICK" && x.spec.value === "10uF")
-	assert.equal(ceramics.length, 5) // two per SY8368A, one for the AP63205
+	assert.equal(ceramics.length, 7) // two per TPS54560, one for the AP63205
 	for (const c of ceramics) assert.equal(c.spec.mpn, "CL31A106KBHNNNE")
 })
 
@@ -72,7 +89,7 @@ test("arm board input protection: SMBJ20A cathode on the brick net, 100 uF elect
 	const { supportParts, generatedNets } = await import("../src/codegen/circuit.ts")
 	const s = armBoard()
 	const sp = supportParts(s)
-	const tvs = sp.find((x) => x.spec.mpn === "SMBJ20A")!
+	const tvs = sp.find((x) => x.spec.mpn === "SMBJ22A")!
 	const elec = sp.find((x) => x.spec.mpn === "EEEFK1V101P")!
 	for (const x of [tvs, elec]) {
 		assert.deepEqual([x.a, x.b, x.near], [{ net: "VIN_BRICK" }, { net: "GND" }, "J10"])
@@ -81,18 +98,29 @@ test("arm board input protection: SMBJ20A cathode on the brick net, 100 uF elect
 	assert.ok(generatedNets(s).get("VIN_BRICK")!.includes(`${tvs.ref}.pin1`))
 })
 
-test("hot-plug check: a 19.5 V brick peaks at 26.62 V under the SY8368A's 28 V; a 24 V brick is over the TVS's stand-off", async () => {
-	const { armInrush, tvsClampV, HOTPLUG_SURGE_A } = await import("../src/arm/inrush.ts")
+test("hot-plug check: the brick at its maximum picks the TVS; the clamp at the estimated surge is held against the rail chip", async () => {
+	const { armInrush, HOTPLUG_SURGE_A } = await import("../src/arm/inrush.ts")
+	const { armInputTvs, tvsClampAt, brickMaxV } = await import("../src/arm/tvs.ts")
 	const s = armBoard()
+	// 19.5 V ±5 % (an estimate when the brick gives none) reaches 20.48 V: over the SMBJ20A's 20 V, so the SMBJ22A.
+	assert.equal(brickMaxV(19.5), 20.48)
+	assert.equal(armInputTvs(s.values.arm.input)?.mpn, "SMBJ22A")
 	const r = armInrush(s)
-	assert.equal(r.figure?.value, "26.62 V")
-	assert.equal(r.figure?.ok, true)
-	assert.match(r.figure?.limit ?? "", /28 V \(U7 SY8368AQQC\)/)
-	assert.match(r.figure?.note ?? "", /an estimate/)
-	assert.deepEqual(r.violations, [])
-	assert.ok(Math.abs(tvsClampV(HOTPLUG_SURGE_A) - 26.62) < 0.01)
-	s.values.arm.input.volts = 24
-	assert.match(armInrush(s).violations[0]?.message ?? "", /over the input TVS's 20 V stand-off/)
+	// Its clamp at 5 A (linear model): 26.9 + (35.5 - 26.9) x 5 / 16.9 = 29.44 V, over the SY8368A's 28 V.
+	assert.ok(Math.abs(tvsClampAt(armInputTvs(s.values.arm.input)!, HOTPLUG_SURGE_A) - 29.44) < 0.01)
+	assert.equal(r.figure?.value, "29.44 V (TVS rated clamp 35.5 V)")
+	// One rule for every chip on the input (lead-2, 26 Nov 2026): rated over the TVS's clamp at its full pulse, 35.5 V.
+	// The rail chips the rule picked clear it (TPS54560, 65 V); the logic's AP63205 (32 V) does not, so the check flags it
+	// until a 36 V+ logic step-down replaces it (the SY8368A's 28 V failed even the estimate).
+	assert.equal(r.figure?.ok, false)
+	assert.match(r.figure?.limit ?? "", /at most 32 V \(U9 AP63205WU-7\)/)
+	assert.equal(r.violations.length, 1)
+	assert.match(r.violations[0].message, /U9 AP63205WU-7 on the VIN_BRICK input is rated 32 V, under SMBJ22A's clamp of 35.5 V/)
+	// A 20 V brick at ±5 % (GST120A20): 21 V, still the SMBJ22A; a 24 V brick has no TVS that stays off.
+	s.values.arm.input = { ...s.values.arm.input, volts: 20, tolerancePct: 5 }
+	assert.equal(armInputTvs(s.values.arm.input)?.mpn, "SMBJ22A")
+	s.values.arm.input = { ...s.values.arm.input, volts: 24 }
+	assert.match(armInrush(s).violations[0]?.message ?? "", /over every input TVS's stand-off/)
 })
 
 test("every two-pad land pattern (inductors, the electrolytic) fits inside the box the placer keeps for it", async () => {
@@ -113,7 +141,9 @@ test("a SOT-23's pads are known (tscircuit's own): the check always uses them; p
 	// so the board build skips it for the layout with the SOT-23 pads (pinPads, tried after the others).
 	assert.ok(unreachableCaps(s, {}).some((m) => /U9 > \.BST/.test(m)))
 	const pl = layoutBoard(s, { pinPads: true }).parts
-	const u9 = pl.find((b) => b.ref === "U9")!, c26 = pl.find((b) => b.ref === "C26")!
+	const { supportParts } = await import("../src/codegen/circuit.ts")
+	const bst = supportParts(s).find((x) => "ref" in x.a && x.a.ref === "U9" && x.a.pin === "BST")!.ref
+	const u9 = pl.find((b) => b.ref === "U9")!, c26 = pl.find((b) => b.ref === bst)!
 	// U9's BST (pin 6) to its capacitor: within the 5 mm bound (it was 14.56 mm when the pads were unknown).
 	assert.ok(Math.hypot(u9.x + 1.3 - c26.x, u9.y + 0.95 - c26.y) < 5)
 	assert.deepEqual(unreachableCaps(s, { pinPads: true }), [])

@@ -10,23 +10,11 @@ import { resolve } from "node:path"
 import type { ContractSnapshot, Part } from "../contract/types.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { armInputNet } from "../contract/arm-rails.ts"
+import { armBrickMaxV, armInputTvs, DEFAULT_BRICK_TOLERANCE_PCT, HOTPLUG_RING_FACTOR, HOTPLUG_SURGE_A, INPUT_TVS_SERIES, tvsClampAt } from "./tvs.ts"
+export { HOTPLUG_RING_FACTOR, HOTPLUG_SURGE_A } from "./tvs.ts"
 
-// An undamped LC's step response peaks at twice the step: the ceiling (ESTIMATE: the cable and capacitors are not modelled).
-export const HOTPLUG_RING_FACTOR = 2
-// The current the TVS takes while it clamps the ring (ESTIMATE: set by the cable's inductance and the brick, unmeasured).
-export const HOTPLUG_SURGE_A = 5
-// The input TVS (circuit.ts SUPPORT.tvs): MDD SMBJ20A, its datasheet's table row.
-export const INPUT_TVS = {
-	mpn: "SMBJ20A",
-	vrwmV: 20.0,
-	vbrMaxV: 24.5,
-	vcV: 32.4,
-	ippA: 18.6,
-	source: { url: "https://datasheet.lcsc.com/datasheet/pdf/2fdb55289569ebfc0bc21eab3853afe6.pdf", where: "MDD SMBJ series datasheet, electrical characteristics: SMBJ20A VRWM 20.0 V, VBR 22.20-24.50 V at IT 1 mA, VC 32.4 V at IPP 18.6 A, IR 1 uA" },
-}
-// The TVS's clamp at a current: straight between its breakdown (at 1 mA, about 0 A) and its clamp at IPP.
-export const tvsClampV = (a: number) => INPUT_TVS.vbrMaxV + ((INPUT_TVS.vcV - INPUT_TVS.vbrMaxV) * a) / INPUT_TVS.ippA
-
+// The hot-plug estimates (HOTPLUG_RING_FACTOR, HOTPLUG_SURGE_A) live in tvs.ts, a leaf the rail plan reads too.
+// The input TVS: picked for the brick (tvs.ts armInputTvs), the smallest stand-off over its maximum output.
 export interface InrushResult {
 	figure: { check: string; value: string; limit: string; ok: boolean; note: string } | null
 	violations: { kind: "arm-supply"; message: string }[]
@@ -44,14 +32,27 @@ export function armInrush(s: ContractSnapshot): InrushResult {
 		return typeof max === "number" ? [{ ref: p.ref, mpn: p.mpn, maxV: max }] : []
 	})
 	const violations: InrushResult["violations"] = []
-	if (v > INPUT_TVS.vrwmV) violations.push({ kind: "arm-supply", message: `the ${v} V brick is over the input TVS's ${INPUT_TVS.vrwmV} V stand-off (${INPUT_TVS.mpn}): it would conduct all the time; use a brick of at most ${INPUT_TVS.vrwmV} V (a 19.5 V laptop brick)` })
-	const ring = v * HOTPLUG_RING_FACTOR
-	const peak = Math.min(ring, tvsClampV(HOTPLUG_SURGE_A))
+	const maxV = armBrickMaxV(arm.input)
+	const tol = arm.input.tolerancePct ?? DEFAULT_BRICK_TOLERANCE_PCT
+	const tvs = armInputTvs(arm.input)
+	if (!tvs) {
+		const top = INPUT_TVS_SERIES.reduce((m, t) => (t.vrwmV > m.vrwmV ? t : m))
+		violations.push({ kind: "arm-supply", message: `the ${v} V brick reaches ${maxV} V (±${tol} %${arm.input.tolerancePct === undefined ? ", an estimate" : ""}), over every input TVS's stand-off (at most ${top.vrwmV} V, ${top.mpn}): a TVS there would conduct all the time; use a brick of at most ${r2(top.vrwmV / (1 + tol / 100))} V` })
+		return { figure: null, violations }
+	}
+	// The ring, held to the TVS's clamp at the estimated surge current: the peak every chip on the input must take.
+	const clamp = tvsClampAt(tvs, HOTPLUG_SURGE_A)
+	const ring = maxV * HOTPLUG_RING_FACTOR
+	const peak = Math.min(ring, clamp)
 	if (!chips.length) return { figure: null, violations }
 	const lowest = chips.reduce((m, c) => (c.maxV < m.maxV ? c : m))
-	for (const c of chips) if (peak > c.maxV) violations.push({ kind: "arm-supply", message: `a hot-plugged ${v} V brick peaks at about ${r2(peak)} V (the ring, ${HOTPLUG_RING_FACTOR}x, an estimate, held by ${INPUT_TVS.mpn} to ${r2(tvsClampV(HOTPLUG_SURGE_A))} V at ${HOTPLUG_SURGE_A} A, an estimate), over ${c.ref} ${c.mpn}'s ${c.maxV} V maximum input` })
+	// One rule for every chip on the input (lead-2, 26 Nov 2026): rated over the TVS's clamp at its full pulse current,
+	// which holds whatever the surge; the estimate above only says how close a real hot plug comes.
+	const rated = tvs.vcV
+	for (const c of chips) if (c.maxV < rated && peak <= c.maxV) violations.push({ kind: "arm-supply", message: `${c.ref} ${c.mpn} on the ${armInputNet} input is rated ${c.maxV} V, under ${tvs.mpn}'s clamp of ${rated} V at its full ${tvs.ippA} A (a hot plug of the ${v} V brick reaches about ${r2(peak)} V, an estimate): every chip on the input must take the TVS's rated clamp; use one rated ${Math.ceil(rated)} V or more` })
+	for (const c of chips) if (peak > c.maxV) violations.push({ kind: "arm-supply", message: `a hot-plugged ${v} V brick (up to ${maxV} V at ±${tol} %) peaks at about ${r2(peak)} V (the ring, ${HOTPLUG_RING_FACTOR}x, an estimate, held by ${tvs.mpn} to ${r2(clamp)} V at ${HOTPLUG_SURGE_A} A, a linear clamp model at an estimated surge), over ${c.ref} ${c.mpn}'s ${c.maxV} V maximum input: use a supply chip rated over it` })
 	return {
-		figure: { check: "Hot-plug input peak", value: `${r2(peak)} V`, limit: `at most ${lowest.maxV} V (${lowest.ref} ${lowest.mpn})`, ok: peak <= lowest.maxV, note: `${v} V brick: the ring up to ${r2(ring)} V (${HOTPLUG_RING_FACTOR}x, an undamped LC's peak, an estimate), clamped by ${INPUT_TVS.mpn} at ${r2(tvsClampV(HOTPLUG_SURGE_A))} V at ${HOTPLUG_SURGE_A} A (an estimate) with a 100 uF electrolytic damping it` },
+		figure: { check: "Hot-plug input peak", value: `${r2(peak)} V (TVS rated clamp ${rated} V)`, limit: `at most ${lowest.maxV} V (${lowest.ref} ${lowest.mpn})`, ok: rated <= lowest.maxV, note: `${v} V brick, up to ${maxV} V (±${tol} %): the ring up to ${r2(ring)} V (${HOTPLUG_RING_FACTOR}x, an undamped LC's peak, an estimate), clamped by ${tvs.mpn} (stand-off ${tvs.vrwmV} V) at ${r2(clamp)} V at ${HOTPLUG_SURGE_A} A (a linear clamp model at an estimated surge) with a 100 uF electrolytic damping it` },
 		violations,
 	}
 }

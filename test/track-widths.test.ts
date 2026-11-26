@@ -31,7 +31,7 @@ test("an arm's rails enter the contract with their peak, replacing older entries
 	const { armRailEntries, withArmRails } = await import("../src/contract/arm-rails.ts")
 	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
 	const gen = armRailEntries(s)
-	assert.deepEqual(gen.map((r) => r.name), ["VSERVO1", "VSERVO2", "VIN_BRICK"])
+	assert.deepEqual(gen.map((r) => r.name), ["VSERVO1", "VSERVO2", "VSERVO3", "VIN_BRICK"])
 	// The brick's peak: the servo rails' power through the converters plus the logic, at 19.5 V; under its 4.62 A rating.
 	const brick = gen.find((r) => r.name === "VIN_BRICK")!
 	assert.equal(brick.voltageV, 19.5)
@@ -57,14 +57,15 @@ test("the space model reserves each wide rail's lane and grows the minimum board
 	const { minimumBoard, railCorridors } = await import("../src/contract/space.ts")
 	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
 	const c = railCorridors(s)
-	assert.deepEqual(c.map((x) => x.net), ["VSERVO1", "VSERVO2", "VIN_BRICK"])
+	assert.deepEqual(c.map((x) => x.net), ["VSERVO1", "VSERVO2", "VSERVO3", "VIN_BRICK"])
 	// A lane: the spanning tree over its parts times the rail's IPC-2221 width plus 0.15 mm clearance a side.
 	for (const x of c) assert.ok(Math.abs(x.areaMm2 - x.lengthMm * (x.widthMm + 0.3)) < 2, `${x.net}: ${x.areaMm2}`)
 	const m = minimumBoard(s)!
 	assert.equal(m.limitedBy, "rail-copper")
-	// Placement alone packs it near 62×47 (about 2900 mm²); with the lanes the area is that plus theirs.
+	// Placement alone packs it in about 3550 mm² (three rail chips with their parts, 26 Nov 2026; 2914 with two
+	// SY8368As); with the lanes the area is that plus theirs.
 	const lanes = c.reduce((a, x) => a + x.areaMm2, 0)
-	assert.ok(m.areaMm2 - lanes > 2800 && m.areaMm2 - lanes < 3000, `${m.areaMm2} - ${lanes}`)
+	assert.ok(m.areaMm2 - lanes > 3300 && m.areaMm2 - lanes < 3800, `${m.areaMm2} - ${lanes}`)
 	assert.ok(m.widthMm * m.heightMm >= m.areaMm2)
 	// A board without wide rails is unchanged (the HAT's 5 V is poured).
 	assert.deepEqual(railCorridors({ ...s, values: { ...s.values, arm: undefined, rails: [] } }), [])

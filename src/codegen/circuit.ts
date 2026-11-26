@@ -1,4 +1,6 @@
 import { armInputNet, armRails, withArmRails } from "../contract/arm-rails.ts"
+import { armInputTvs } from "../arm/tvs.ts"
+import { chipEntry, chipSupport as catalogChipSupport, type ChipCtx, type ChipJob, type Spec as ChipSpec } from "./chip-support.ts"
 import { readFileSync } from "node:fs"
 import { canName, canSignals } from "../contract/links.ts"
 import { isEncoderPlug, isMotorPlug } from "../mechanics/refs.ts"
@@ -235,6 +237,8 @@ export interface Support {
 	near: string // placed next to this part
 	added: boolean
 	pins: [string, string]
+	// The decoupling trace bound its chip's catalog entry gives (chip-support.ts), over capBound's default.
+	bound?: number
 }
 
 export function usbRef(s: ContractSnapshot): string | undefined {
@@ -355,6 +359,25 @@ function crystalFootprint(): string {
 	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
 }
 
+// The context each chip with a catalog support list works in (chip-support.ts ChipCtx): what feeds it, what it makes.
+// Each design kind registers how it hands it (the arm's servo rails below; the CNC's stepper drivers, lead-3).
+const chipContexts: ((s: ContractSnapshot, part: Part) => ChipCtx | null)[] = []
+export const registerChipContext = (f: (s: ContractSnapshot, part: Part) => ChipCtx | null) => void chipContexts.push(f)
+export function chipInstances(s: ContractSnapshot): { part: Part; ctx: ChipCtx; jobs: ChipJob[]; joins: { net: string; ref: string; pin: string }[] }[] {
+	return (s.values.parts ?? []).flatMap((part) => {
+		const entry = part.mpn ? chipEntry(part.mpn) : undefined
+		if (!entry) return []
+		const ctx = chipContexts.map((f) => f(s, part)).find((c) => c)
+		if (!ctx) return []
+		return [{ part, ctx, ...catalogChipSupport({ ref: part.ref, pins: part.pins }, entry, ctx, SUPPORT as unknown as Record<string, ChipSpec>) }]
+	})
+}
+// An arm's servo rail chip: fed by the brick's input, making its rail at the arm's rail voltage.
+registerChipContext((s, part) => {
+	const rail = (armRails(s) ?? []).find((r) => r.supplyRef === part.ref)
+	return rail ? { in: armInputNet, out: rail.net, outV: rail.railV } : null
+})
+
 export function supportParts(s: ContractSnapshot): Support[] {
 	const { parts = [], connectors = [], pins = [], rails = [] } = s.values
 	const supply = rails.some((r) => r.name === SUPPLY_RAIL) ? netName(SUPPLY_RAIL) : null
@@ -410,12 +433,18 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const servoSupply = s.values.arm ? undefined : parts.find((p) => p.role === "servo-supply")
 	const jack = armJack(s)
 	if (jack) {
-		jobs.push({ job: `${armInputNet} TVS (${jack.ref}: a hot-plugged brick's spike under the rail chips' maximum)`, spec: SUPPORT.tvs, a: { net: armInputNet }, b: GND, near: jack.ref })
+		// The TVS picked for the brick (tvs.ts: the smallest stand-off over its maximum output); SMBJ20A when none covers it,
+		// the check (inrush.ts) says so.
+		const t = s.values.arm ? armInputTvs(s.values.arm.input) : null
+		const tvs: SupportSpec = t ? { kind: "diode", value: t.mpn, lcsc: t.lcsc, mpn: t.mpn, footprint: "smb" } : SUPPORT.tvs
+		jobs.push({ job: `${armInputNet} TVS (${jack.ref}: a hot-plugged brick's spike under the rail chips' maximum)`, spec: tvs, a: { net: armInputNet }, b: GND, near: jack.ref })
 		jobs.push({ job: `${armInputNet} bulk electrolytic (${jack.ref}: damps the cable's ringing)`, spec: SUPPORT.bulkElec, a: { net: armInputNet }, b: GND, near: jack.ref })
 	}
 	for (const rail of armRails(s) ?? []) {
 		const near = rail.supplyRef
-		if (!parts.some((p) => p.ref === near)) continue
+		const railChipPart = parts.find((p) => p.ref === near)
+		// A chip whose catalog entry lists its parts brings them itself (chipInstances, below); this is the SY8368A's.
+		if (!railChipPart || (railChipPart.mpn && chipEntry(railChipPart.mpn))) continue
 		const [sw, fb] = [`${rail.net}_SW`, `${rail.net}_FB`]
 		for (const k of [1, 2]) jobs.push({ job: `${near} input capacitor ${k} of 2 (IN, ${armInputNet}, at least 10 uF)`, spec: SUPPORT.buckIn50, a: { net: armInputNet }, b: GND, near })
 		jobs.push({ job: `${near} inductor (LX to ${rail.net})`, spec: SUPPORT.servoL, a: { net: sw }, b: { net: rail.net }, near })
@@ -505,6 +534,14 @@ export function supportParts(s: ContractSnapshot): Support[] {
 		if (j.spec.kind !== "capacitor" || !("ref" in j.a) || !("net" in j.b) || j.b.net !== "GND") continue
 		const owner = parts.find((p) => p.ref === (j.a as { ref: string }).ref)
 		if (owner?.pins.includes("GND")) j.b = { ref: owner.ref, pin: "GND" }
+	}
+
+	// Chips whose catalog entry lists their support parts (chip-support.ts), in the context the design gives them.
+	for (const c of chipInstances(s)) {
+		for (const j of c.jobs) {
+			if (j.pins) throw new Error(`chip support: ${j.job} is a multi-pin part, which the board generator doesn't place yet`)
+			jobs.push({ job: j.job, spec: j.spec as SupportSpec, a: j.a!, b: j.b!, near: j.near, ...(j.bound !== undefined ? { bound: j.bound } : {}) })
+		}
 	}
 
 	const claimed = new Set<string>()
@@ -733,18 +770,23 @@ export function dc091Footprint(): string {
 	return `{<footprint>${[...pads, ...holes].join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
 }
 export const SO8E_FOOTPRINT = "so8e_silergy"
-function so8eFootprint(): string {
+// TI's HSOP-8 PowerPAD (DDA0008B, TPS54560 SLVSBN0C Land Pattern Example): the same 1.55 x 0.6 mm pads at 1.27 mm pitch,
+// rows 5.4 mm apart, with a 2.71 x 3.4 mm thermal pad (its solder mask opening): pin 9.
+export const DDA_FOOTPRINT = "so8_powerpad_dda"
+const SO8_EP: Record<string, [number, number]> = { [SO8E_FOOTPRINT]: [2.55, 3.2], [DDA_FOOTPRINT]: [2.71, 3.4] }
+function so8eFootprint(name = SO8E_FOOTPRINT): string {
+	const [epW, epH] = SO8_EP[name]
 	const pads: string[] = []
 	for (let k = 0; k < 4; k++) pads.push(`<smtpad portHints={["pin${1 + k}"]} pcbX="-2.7mm" pcbY="${+(1.905 - 1.27 * k).toFixed(3)}mm" width="1.55mm" height="0.6mm" shape="rect" />`)
 	for (let k = 0; k < 4; k++) pads.push(`<smtpad portHints={["pin${5 + k}"]} pcbX="2.7mm" pcbY="${+(-1.905 + 1.27 * k).toFixed(3)}mm" width="1.55mm" height="0.6mm" shape="rect" />`)
-	pads.push(`<smtpad portHints={["pin9"]} pcbX="0mm" pcbY="0mm" width="2.55mm" height="3.2mm" shape="rect" />`)
+	pads.push(`<smtpad portHints={["pin9"]} pcbX="0mm" pcbY="0mm" width="${epW}mm" height="${epH}mm" shape="rect" />`)
 	const outline = [[-2, -2.55], [2, -2.55], [2, 2.55], [-2, 2.55], [-2, -2.55]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
 	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[{ x: -3.7, y: 2.4 }, { x: -3.7, y: 2.0 }]} /></footprint>}`
 }
 // The footprints the generator draws itself (a module's land pattern, or a part tscircuit's string doesn't draw right):
 // the land pattern as JSX, or null for a tscircuit footprint string. test/footprint-clearance.test.ts skips these.
 export function ownFootprint(footprint: string): string | null {
-	return MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : footprint === SO8E_FOOTPRINT ? so8eFootprint() : footprint === XT60_FOOTPRINT ? xt60Footprint() : footprint === SY8368_FOOTPRINT ? sy8368Footprint() : footprint === DC091_FOOTPRINT ? dc091Footprint() : null
+	return MODULES[footprint] ? moduleFootprint(MODULES[footprint]) : footprint === MIC_FOOTPRINT ? micFootprint() : footprint === IMU_FOOTPRINT ? imuFootprint() : footprint === SO8E_FOOTPRINT || footprint === DDA_FOOTPRINT ? so8eFootprint(footprint) : footprint === XT60_FOOTPRINT ? xt60Footprint() : footprint === SY8368_FOOTPRINT ? sy8368Footprint() : footprint === DC091_FOOTPRINT ? dc091Footprint() : null
 }
 export const IMU_FOOTPRINT = "lga14_2.5x3"
 export const IMU_BODY = { w: 3.0, h: 2.5 }
@@ -825,7 +867,7 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// A 3-pin 2.54 mm header (a servo's plug).
 	pinrow3: [8.6, 3.6],
 	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
-	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4], [SY8368_FOOTPRINT]: [3.9, 3.6], [XT60_FOOTPRINT]: [9.4, 17], [DC091_FOOTPRINT]: [13.6, 10.6],
+	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4], [DDA_FOOTPRINT]: [7.2, 5.4], [SY8368_FOOTPRINT]: [3.9, 3.6], [XT60_FOOTPRINT]: [9.4, 17], [DC091_FOOTPRINT]: [13.6, 10.6],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
@@ -903,7 +945,7 @@ function ownPadOffset(footprint: string, pin: number): { x: number; y: number } 
 		const l = imuLands().find((x) => x.pin === pin)
 		return l ? { x: l.x, y: l.y } : null
 	}
-	if (footprint === SO8E_FOOTPRINT && pin >= 1 && pin <= 9) return pin === 9 ? { x: 0, y: 0 } : pin <= 4 ? { x: -2.7, y: +(1.905 - 1.27 * (pin - 1)).toFixed(3) } : { x: 2.7, y: +(-1.905 + 1.27 * (pin - 5)).toFixed(3) }
+	if ((footprint === SO8E_FOOTPRINT || footprint === DDA_FOOTPRINT) && pin >= 1 && pin <= 9) return pin === 9 ? { x: 0, y: 0 } : pin <= 4 ? { x: -2.7, y: +(1.905 - 1.27 * (pin - 1)).toFixed(3) } : { x: 2.7, y: +(-1.905 + 1.27 * (pin - 5)).toFixed(3) }
 	return null
 }
 function padOffset(footprint: string, pad: number, rotation: number, known = true): { x: number; y: number } | null {
@@ -2239,7 +2281,8 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 		for (const rail of armRailList) {
 			for (const n of [rail.net, `${rail.net}_SW`, `${rail.net}_FB`]) if (!nets.has(n)) nets.set(n, [])
 			const chip = parts.find((p) => p.ref === rail.supplyRef)
-			if (chip) {
+			// A chip with a catalog support list joins its own pins (chipInstances); this is the SY8368A's wiring.
+			if (chip && !(chip.mpn && chipEntry(chip.mpn))) {
 				for (const pin of ["IN", "IN_2", "IN_3", "EN"]) if (chip.pins.includes(pin)) join(armInputNet, chip.ref, pin)
 				if (chip.pins.includes("LX")) join(`${rail.net}_SW`, chip.ref, "LX")
 				if (chip.pins.includes("FB")) join(`${rail.net}_FB`, chip.ref, "FB")
@@ -2255,6 +2298,11 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 				if (part.pins.includes("V5")) join(rail.net, part.ref, "V5")
 			}
 		}
+	}
+	// The chips with a catalog support list: their own pins on the nets their entry names (chip-support.ts).
+	for (const c of chipInstances(s)) for (const j of c.joins) {
+		if (!nets.has(j.net)) nets.set(j.net, [])
+		join(j.net, j.ref, j.pin)
 	}
 	const so = armRailList ? null : servoOutputs(parts)
 	if (so) {
@@ -2453,6 +2501,7 @@ export function usbPadSignal(pin: string): string | undefined {
 // The bound tscircuit holds a pin capacitor's traces to (maxDecouplingTraceLength), null for none: 5 mm for a part's
 // own capacitor (the DRV8833's VINT and VCP), 20 mm for a bare chip's decoupling, none for a crystal's load capacitors.
 function capBound(s: ContractSnapshot, sp: Support): number | null {
+	if (sp.added && sp.bound !== undefined) return sp.bound
 	if (!sp.added || sp.spec.kind !== "capacitor" || sp.near === boardCrystal(s)?.ref || !("ref" in sp.a || "ref" in sp.b)) return null
 	return chipProfile((s.values.parts ?? []).find((p) => p.ref === sp.near)) !== null ? 20 : 5
 }

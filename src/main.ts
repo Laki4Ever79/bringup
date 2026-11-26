@@ -4,7 +4,9 @@ import { loadSpec, specErrors } from "./system/spec.ts"
 import { runSystem } from "./system/run.ts"
 import { addedForYou } from "./contract/added.ts"
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { basename, join, resolve } from "node:path"
+import { studioConnector } from "./connector/client.ts"
+import { login, logout, openInBrowser, readToken, STUDIO_URL, tokenPath } from "./connector/login.ts"
 import { fileURLToPath } from "node:url"
 import { missingTools, simulationLine } from "./report.ts"
 import { ledgerPath, spendCap, spentUsd } from "./inference/spend.ts"
@@ -29,7 +31,7 @@ function revisionEnv(runDir: string, revDir: string, purpose: FirmwarePurpose = 
 	return envFor(mcuProfileOf(c?.values?.parts), purpose)
 }
 
-const USAGE = "usage: npm run bringup -- status <runDir> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--docker-toolchain] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud]"
+const USAGE = "usage: npm run bringup -- status <runDir> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--docker-toolchain] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud] [--offline] | login [--url <studio>] | logout"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -115,6 +117,30 @@ async function dockerToolchain(argv: string[]): Promise<void> {
 
 export async function main(argv: string[], deps: { detect?: (root: string) => Promise<Env> } = {}): Promise<number> {
 	argv = takeNoCloudFlag(argv)
+	// --offline: this run doesn't stream to Bringup Studio even when this machine is logged in (src/connector).
+	const offline = argv.includes("--offline")
+	argv = argv.filter((a) => a !== "--offline")
+	// `bringup login [--url <studio>]` / `bringup logout`: pair this machine with a Bringup Studio account (docs/studio.md).
+	if (argv[0] === "login") {
+		const at = argv.indexOf("--url")
+		const url = at > 0 ? argv[at + 1] : STUDIO_URL
+		if (!url) {
+			console.error("bringup: login needs Bringup Studio's address: --url <https://...> or BRINGUP_STUDIO_URL")
+			return 1
+		}
+		try {
+			const { account } = await login(url, (u) => openInBrowser(u))
+			console.log(`bringup: this machine is connected to Bringup Studio${account ? ` as ${account}` : ""}; runs stream there unless --offline (token in ${tokenPath()})`)
+			return 0
+		} catch (e) {
+			console.error(`bringup: login failed: ${(e as Error).message}`)
+			return 1
+		}
+	}
+	if (argv[0] === "logout") {
+		console.log(logout() ? `bringup: disconnected from Bringup Studio (removed ${tokenPath()})` : "bringup: this machine wasn't connected to Bringup Studio")
+		return 0
+	}
 	// `bringup status <runDir>`: the run's drifted files, like git status (runner/drift.ts).
 	if (argv[0] === "status") {
 		const dir = argv[1]
@@ -382,7 +408,12 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			open: () => openBench({ root: ROOT, source, outDir, replay: args.benchReplay, extraArgs: [...(args.benchNoMeter ? ["--no-meter"] : []), ...(args.benchNoImu ? ["--no-imu"] : [])], start: (a) => startBridge(python, a, { cwd: ROOT, onStderr: (t) => process.stderr.write(`[bench.py] ${t}`) }) }),
 		}
 	}
+	// Bringup Studio: the run streams there when this machine is logged in (bringup login) and --offline isn't given. The
+	// connector never fails the run: Studio down only delays what it shows.
+	const studio = studioConnector(outDir, basename(outDir), { offline, token: readToken(), log: (m) => console.warn(`bringup: ${m}`) })
+	if (studio) console.log(`bringup: streaming to Bringup Studio (${readToken()!.url}); --offline to keep this run local`)
 	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, ...(args.maxRevisions ? { maxRevisions: args.maxRevisions } : {}), bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}), ...(args.link ? { link: resolve(args.link) } : {}) })
+	await studio?.stop()
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)${result.held?.length ? `, held by ${result.held.length} more (report: "Held by")` : ""}\nreport: ${result.reportPath}`)
 	// What Bringup added without being asked, in one line each; the report's "Added for you" says how each shows and
 	// how to turn it off.

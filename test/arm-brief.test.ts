@@ -75,7 +75,7 @@ test("armTargets with no arm yet wake the mechanics engineer", () => {
 	assert.match(v[0].message, /no arm design yet/)
 })
 
-test("the scripted arm's board: the S3 and the PCA9685; the parts tools add six plugs, two 6 V rails and the 19.5 V jack, and the brick passes", () => {
+test("the scripted arm's board: the S3 and the PCA9685; the parts tools add six plugs, three 6 V rails and the 19.5 V jack, and the brick passes", () => {
 	assert.equal(scriptedDesignFor(ARM_BRIEF), ARM_BOARD as never)
 	assert.ok(ARM_SUMMARY.test(ARM_BOARD.requirements.summary))
 	// No word that makes the design a rover (src/mechanics/checks.ts saysRobot; the mock's isRover reads "motors").
@@ -87,8 +87,13 @@ test("the scripted arm's board: the S3 and the PCA9685; the parts tools add six 
 	const t = completePowerTree(o.parts, undefined, { ...c, values: { ...c.values, arm: ARM_SPEC, parts: o.parts } })
 	const parts = t.parts
 	assert.equal(parts.filter((p) => p.role === "servo").length, 6)
-	assert.equal(parts.filter((p) => p.role === "servo-supply").length, 2)
+	// Three TPS54560 rails (the rail chip by rule, 26 Nov 2026: rated over the input TVS's 35.5 V clamp; 5 A each).
+	assert.equal(parts.filter((p) => p.role === "servo-supply").length, 3)
 	assert.ok(parts.some((p) => p.nets?.VIN === "VIN_BRICK" && p.role === "connector"))
 	const s: ContractSnapshot = { ...c, values: { ...c.values, arm: ARM_SPEC, armTargets: armTargetsFromBrief(ARM_BRIEF)!, parts } }
-	assert.deepEqual(armPowerChecks(s).map((v) => v.message), [])
+	// The brick passes; the one finding is the logic's AP63205 (32 V) under the TVS's rated clamp, until a 36 V+ step-down
+	// replaces it (lead-2, 26 Nov 2026).
+	const found = armPowerChecks(s).map((v) => v.message)
+	assert.equal(found.length, 1)
+	assert.match(found[0], /AP63205WU-7 on the VIN_BRICK input is rated 32 V, under SMBJ22A's clamp of 35.5 V/)
 })

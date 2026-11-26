@@ -7,6 +7,7 @@ import type { ArmJointName, ArmSpec } from "../arm/types.ts"
 import { loadMechCatalog, servoAt } from "../mechanics/catalog.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { SERVO_STALL_A, SERVO_SUPPLY_EFF } from "../mechanics/servo-stall.ts"
+import { armInputRatingV } from "../arm/tvs.ts"
 
 const ROOT = resolve(import.meta.dirname, "../..")
 let cat: { mech: ReturnType<typeof loadMechCatalog>; boardParts: Part[] } | undefined
@@ -88,9 +89,18 @@ export interface ArmRail {
 
 type SupplyEntry = Part & { lcsc: string | null; maxInV?: number | null; maxA?: number | null }
 // The servo rails' chip: the assembled servo supply rated for the brick's voltage with the most current (the SY8368A).
-export function railChip(volts: number): SupplyEntry | undefined {
-	const list = (catalogs().boardParts) as unknown as SupplyEntry[]
-	return list.filter((x) => x.role === "servo-supply" && x.lcsc && (x.maxInV ?? 0) >= volts && x.maxA).sort((a, b) => (b.maxA ?? 0) - (a.maxA ?? 0))[0]
+// The servo rails' chip, by rule (lead-2, 26 Nov 2026): of the assembled servo supplies (an LCSC number), those whose
+// maximum input clears the input TVS's rated clamp (tvs.ts armInputRatingV: 35.5 V for the SMBJ22A, whatever the
+// surge; the SY8205's 30 V passed the 29.44 V estimate by 0.56 V); of those the fewest rails for these servos, then the
+// fewest parts (the chip and its catalog support list: a proxy for board area, an estimate). Before it was the most current at the brick's nominal voltage: the 8 A SY8368A,
+// whose 28 V the 19.5 V brick's hot plug passes (29.44 V through an SMBJ22A).
+export function railChip(input: ArmSpec["input"], servos: { ref: string; stallA: number }[] = []): SupplyEntry | undefined {
+	const list = (catalogs().boardParts) as unknown as (SupplyEntry & { support?: unknown[] })[]
+	const peak = armInputRatingV(input)
+	const ok = list.filter((x) => x.role === "servo-supply" && x.lcsc && x.maxA && (x.maxInV ?? 0) >= peak)
+	const rails = (x: SupplyEntry) => servoRails(servos, x.maxA!)?.length ?? Infinity
+	const partsOf = (x: { support?: unknown[] }) => 1 + (x.support?.length ?? 9)
+	return ok.sort((a, b) => rails(a) - rails(b) || partsOf(a) - partsOf(b) || (b.maxA ?? 0) - (a.maxA ?? 0))[0]
 }
 
 // Each servo's stall current at the rail: the catalog's at railV (servoAt); outside its rated range (a violation
@@ -104,7 +114,7 @@ export function stallOf(servo: string, railV: number): number {
 
 export function railPlan(arm: ArmSpec) {
 	const plugs = armServos(arm).map((s) => ({ ref: s.ref, joint: s.joint, channel: s.channel, stallA: stallOf(s.servo, arm.railV) }))
-	const chip = railChip(arm.input.volts) ?? railChip(0)
+	const chip = railChip(arm.input, plugs)
 	const chipA = chip?.maxA ?? 8
 	const split = servoRails(plugs, chipA)
 	// No split fits (one servo over the chip): one rail per servo, so the board still has a rail for each; the check says why.
