@@ -94,7 +94,17 @@ async function design(server, expect = {}, brief = LOGGER) {
 		st = await server.tool("design_status", { runId: start.runId })
 		if (st.status !== "running" && st.status !== "installing") break
 	}
-	if (st?.status !== "settled") throw new Error(`ended ${st?.status} at revision ${st?.revision} with ${st?.violations?.length ?? "?"} violations ${st?.error ?? ""}; hardware: ${start.hardware}`)
+	if (st?.status !== "settled") {
+		// What kept it from settling: the violations, and the last failed build's own error from the run's trace.
+		const v = (st?.violations ?? []).map((x) => `${x.kind}: ${x.message}`).join(" / ")
+		let failed = ""
+		try {
+			const tr = readFileSync(join(start.outDir, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+			const f = tr.filter((e) => e.type === "artifact.failed").at(-1)
+			if (f) failed = ` | last failed build: ${f.payload.kind} rev ${f.payload.revision}: ${String(f.payload.error ?? "").slice(0, 1500)}`
+		} catch {}
+		throw new Error(`ended ${st?.status} at revision ${st?.revision} with ${st?.violations?.length ?? "?"} violations: ${v} ${st?.error ?? ""}; hardware: ${start.hardware}${failed}`)
+	}
 	const fs = files(start.outDir)
 	const pics = fs.filter((x) => /board(\.png|-pcb\.svg|-schematic\.svg)$/.test(x.f)).length
 	const gerbers = fs.filter((x) => x.f.endsWith("gerbers.zip")).length

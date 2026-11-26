@@ -29,7 +29,7 @@ export const DOMAINS: Record<Domain, DomainInfo> = {
 	case: { what: "Python 3.12 and build123d 0.13, pinned (the CAD kernel for cases, chassis and printed parts), through uv", sizeMb: 945, seconds: 75, gives: "the case or chassis as STEP and STL, and the robot's assembly pictures", needs: "the system's OpenGL library (libGL.so.1): on a desktop it's there; on a minimal Linux, `sudo apt install libgl1`" },
 	// PlatformIO itself measured 122 MB with its Python, 11 s; the chip's platform and compiler it fetches on the first
 	// firmware build are not counted (about 1 GB for the ESP32 family: an ESTIMATE, not measured on the clean container).
-	firmware: { what: "PlatformIO 6.2, pinned (the firmware's build tool); the first firmware build then fetches the chip's platform and compiler, about 1 GB more (an estimate)", sizeMb: 125, seconds: 15, gives: "firmware built against the board's real pin map" },
+	firmware: { what: "PlatformIO 6.2, pinned (the firmware's build tool; installing it takes seconds). The first firmware build then downloads the chip's platform and compiler, about 1 GB more (an estimate), which made that first build take 2.5-3 min on GitHub's runners", sizeMb: 125, seconds: 15, gives: "firmware built against the board's real pin map" },
 }
 
 export const describeDomain = (d: Domain): string => `${d}: about ${DOMAINS[d].sizeMb >= 1000 ? `${(DOMAINS[d].sizeMb / 1000).toFixed(1)} GB` : `${DOMAINS[d].sizeMb} MB`} and ${DOMAINS[d].seconds} s, once, for ${DOMAINS[d].what}; gives ${DOMAINS[d].gives}`
