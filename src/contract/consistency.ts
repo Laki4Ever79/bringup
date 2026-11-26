@@ -9,7 +9,7 @@ import { drivenWheels, packOhm } from "../mechanics/model.ts"
 import { motionBriefChecks } from "../mechanics/brief.ts"
 import { dutyCycleCheckLines, estimatePower } from "./power.ts"
 import { linkChecks, type LinkViolation } from "./links.ts"
-import { powerTree, VIN_OR_NET, connectorAlongMm, connectorBoxes, connectorExtents, downloadStrap, generatedNets, netName, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
+import { powerTree, VIN_OR_NET, connectorAlongMm, connectorBoxes, connectorExtents, downloadStrap, generatedNets, netName, powerPlaneRegions, supplyWidths, MIC_PORT, moduleBlocked, partPads, recoveryBootPin, recoveryPads, sharesBootPin, supportParts, usbWake } from "../codegen/circuit.ts"
 import { mcuCurrents, regulatorRating } from "./power.ts"
 import { armPowerChecks } from "./power-auto.ts"
 import { DEFAULT_PERIOD_S, HISTORY_CAPACITY_BYTES, HISTORY_RECORD_BYTES, sensorDriver } from "../codegen/firmware.ts"
@@ -37,6 +37,10 @@ export interface BoardArtifact {
 	drc?: import("../tools/drc.ts").DrcSummary | null
 	// The wide nets routed thinner than they need over more than the neck-downs into pins (track-widths.ts).
 	narrowNets?: import("../tools/track-widths.ts").NetCopper[]
+	// 4 on a board whose wide rails ride a power layer (circuit.ts boardLayers), and why: the estimate or a measured
+	// shortfall at 2 layers.
+	layers?: 2 | 4
+	layersReason?: { by: "estimate" | "measured"; detail: string }
 	// The JLC/PCBWay fab package (gerbers.zip, bom.csv, cpl.csv, README.txt), or why it could not be exported.
 	// Best-effort: a failed export never fails the board build.
 	fabDir?: string
@@ -789,6 +793,13 @@ export function supplyWiring(c: ContractSnapshot): Violation[] {
 	for (const r of rails)
 		if (!nets.has(netName(r.name)))
 			v.push({ kind: "rail-unwired", message: `rail ${r.name} (${r.voltageV} V, ${r.loadMa} mA) reaches no two pads: nothing on the board is wired to it. A part whose supply pin isn't labelled ${r.name === "3V3" ? "3V3/VDD/VCC" : "by the rail"} (a numbered header pin, a power input) names it in its nets, e.g. { "2": "${r.name}" }`, fields: ["parts", "rails"], affects: ["architect"] })
+	// A 4-layer board's rail on its power plane (In2): each region's narrowest passage between its pads must take the rail's
+	// IPC-2221 width (lead-2, 26 Nov 2026: a rail whose pads sit far apart can get a thin region).
+	for (const r of powerPlaneRegions(c)) {
+		const need = supplyWidths(c).get(r.net)
+		if (need !== undefined && r.neckMm < need)
+			v.push({ kind: "track-width-narrow", message: `${r.net} needs ${need} mm of 1 oz copper for its peak (IPC-2221, 10 °C rise, an estimate), but its region of the power layer (In2) narrows to ${r.neckMm} mm between its pads: move its parts closer together, or give the board room`, fields: ["outline", "parts"], affects: ["architect"] })
+	}
 	// A rail wider than a track reaching a pin (MAX_TRACK_MM) with the pour taken was a violation here (rail-current-copper);
 	// since 26 Nov 2026 it is routed at its width by Freerouting, which necks it down at the pins (circuit.ts wideTracks),
 	// and the routed board's copper is measured instead (board.ts, track-widths.ts: track-width-narrow).

@@ -19,6 +19,8 @@ export interface FabPackage {
 
 // The layers JLCPCB needs for a 2-layer board.
 const LAYERS = ["F.Cu", "B.Cu", "F.Mask", "B.Mask", "F.Silkscreen", "B.Silkscreen", "F.Paste", "B.Paste", "Edge.Cuts"]
+// A 4-layer board's inner copper too (In1 ground, In2 the power planes; circuit.ts boardLayers).
+const layersOf = (pcb: string) => (existsSync(pcb) && /\(\d+ "In1\.Cu"/.test(readFileSync(pcb, "utf8")) ? ["F.Cu", "In1.Cu", "In2.Cu", ...LAYERS.slice(1)] : LAYERS)
 const TIMEOUT_MS = 120_000
 
 const quote = (s: string) => `"${s.replace(/"/g, '""')}"`
@@ -145,7 +147,7 @@ function readme(board: BoardArtifact, s: ContractSnapshot, parts: BoardPart[]): 
 	return `Bringup fab package: board revision ${board.revision}, JLCPCB assembly format (PCBWay accepts the same files)
 
 FILES
-  gerbers.zip  Gerber X2 for ${LAYERS.join(", ")}, plus an Excellon drill file (board.drl)
+  gerbers.zip  Gerber X2 for ${layersOf(board.pcbPath).join(", ")}, plus an Excellon drill file (board.drl)
   bom.csv      Comment, Designator, Footprint, LCSC Part # (one row per distinct part)
   cpl.csv      Designator, Mid X, Mid Y, Layer, Rotation (from KiCad's position export, mm)
 
@@ -239,7 +241,7 @@ export async function exportFab(env: Env, board: BoardArtifact, s: ContractSnaps
 		copyFileSync(board.pcbPath, join(work, "board.kicad_pcb"))
 		mkdirSync(join(work, "gerbers"))
 		const steps = [
-			["pcb", "export", "gerbers", "-o", "gerbers/", "--layers", LAYERS.join(","), "board.kicad_pcb"],
+			["pcb", "export", "gerbers", "-o", "gerbers/", "--layers", layersOf(join(work, "board.kicad_pcb")).join(","), "board.kicad_pcb"],
 			["pcb", "export", "drill", "-o", "gerbers/", "--format", "excellon", "board.kicad_pcb"],
 			["pcb", "export", "pos", "-o", "pos.csv", "--format", "csv", "--units", "mm", "board.kicad_pcb"],
 		]

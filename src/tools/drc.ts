@@ -114,7 +114,10 @@ export async function runDrc(env: Env, workDir: string, pcbRel: string, proRel: 
 	const exemptions = writeFabRules(workDir, proRel, usbRefs)
 	const r = await kicadCli(env, ["pcb", "drc", "--format", "json", "--severity-all", "-o", "drc.json", pcbRel], workDir, 180_000)
 	try {
-		return { ...summarizeDrc(JSON.parse(readFileSync(join(workDir, "drc.json"), "utf8"))), exemptions }
+		// The same limits on a 4-layer board (JLCPCB's 4-layer minimums are no larger); named by its layer count.
+		const fourLayer = /\(\d+ "In1\.Cu"/.test(readFileSync(join(workDir, pcbRel), "utf8"))
+		const sum = summarizeDrc(JSON.parse(readFileSync(join(workDir, "drc.json"), "utf8")))
+		return { ...sum, ...(fourLayer ? { rules: FAB_RULES.name.replace("2-layer", "4-layer") } : {}), exemptions }
 	} catch {
 		return r.code === 0 ? null : null
 	}

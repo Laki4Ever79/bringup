@@ -32,7 +32,9 @@ for (const rotationDeg of [90, 180, 270] as const) {
 test("the STM32 logger routes with its decoupling faced toward the pads", { skip: !(env.tsci && env.kicad) && "tsci or KiCad missing", timeout: 600_000 }, async () => {
 	const s = fixtureContract()
 	s.values = { ...s.values, ...structuredClone(STM32_LOGGER_DESIGN) }
-	assert.deepEqual(layoutBoard(s).parts.filter((p) => p.rotation === 180 && p.ref.startsWith("C")).map((p) => p.ref), ["C4"])
+	// Both pin capacitors face their pins: C4 (VDD) and, since the reserved capacitor spots (lead-3's placement change,
+	// 26 Nov 2026), C6 on NRST (PF2) too. No contract passive is involved (the logger lists none), so nothing is claimed twice.
+	assert.deepEqual(layoutBoard(s).parts.filter((p) => p.rotation === 180 && p.ref.startsWith("C")).map((p) => p.ref), ["C4", "C6"])
 	const board = await buildBoard(env, tempDir(), s, s.revision)
 	assert.ok(board.pcbPath)
 })

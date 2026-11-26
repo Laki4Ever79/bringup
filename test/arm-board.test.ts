@@ -139,18 +139,16 @@ test("a SOT-23's pads and the generator's own lands are known to the reach check
 	assert.deepEqual(capsUnchecked(s), [])
 })
 
-// KNOWN FAILURE (arm task 6, lead-2, 26 Nov 2026): the arm board's rails don't get their copper on 2 layers. Routed at
-// the default track and widened after (option c): at 62×47 (placement minimum) DRC 0, VSERVO1 at its 2.8 mm on 10 of 94 mm,
-// VSERVO2 at 2.5 mm on 21 of 100, VIN_BRICK at 1.8 mm on 17 of 155; at 71×54 (the rails' lanes counted, +32 % area)
-// 0 unconnected, but 5/101, 5/78 and 53/169 mm: the router packs its tracks beside the rails at any size. With the widths
-// as Freerouting classes (option b): 20 connections unrouted. Next: 4 layers (option a, its own task).
-// Run: npm run board -- test/fixtures/arm-board-test.json
-test("KNOWN FAILURE: the arm board routes clean with every rail at its width", { todo: "option (a), 4 layers: on 2 layers the rails reach their width on 5-31 % of their track" }, async () => {
-	const { wideTracks } = await import("../src/codegen/circuit.ts")
+// The arm's rails get their copper on 4 layers (arm task 6, option a; lead-2, 26 Nov 2026). On 2 layers they reached their
+// IPC-2221 width on only 5-31 % of their track, at 62x47 and at 71x54. On 4 (ground on In1, each rail's region of In2,
+// stitched to its pads; signals on all four layers): DRC 0 errors, 0 unconnected, consistency clean (npm run board --
+// test/fixtures/arm-board-test.json, 26 Nov 2026, 135 s). What the build relies on is pinned here.
+test("the arm board goes to 4 layers, its rails on their own regions of the power layer, each wide enough", async () => {
+	const { boardLayers, planeRails, powerPlaneRegions, supplyWidths } = await import("../src/codegen/circuit.ts")
 	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
-	// What the build meets today: rails wider than a track reaching a pin, routed by Freerouting and widened after.
-	assert.deepEqual(wideTracks(s).map(([n]) => n), ["VSERVO2", "VIN_BRICK"])
-	assert.fail("on 2 layers the rails reach their width on 5-31 % of their track, at 62×47 and at 71×54")
+	assert.equal(boardLayers(s).layers, 4)
+	assert.deepEqual(planeRails(s).sort(), ["VIN_BRICK", "VSERVO1", "VSERVO2", "VSERVO3"])
+	for (const r of powerPlaneRegions(s).filter((x) => Number.isFinite(x.neckMm))) assert.ok(r.neckMm >= supplyWidths(s).get(r.net)!, r.net)
 })
 
 test("the pin-pad layouts (pinPads) come after every plain one, so a board that routed before keeps its first layout", async () => {

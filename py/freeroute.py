@@ -13,6 +13,7 @@
       refills the copper pours only (the same step, for a board routed elsewhere and for the test).
 """
 import json
+import math
 import sys
 import pcbnew
 
@@ -42,20 +43,52 @@ def edge_ring(board, mm):
         board.Add(z)
 
 
+def inner_keepout(board):
+    box = board.GetBoardEdgesBoundingBox()
+    z = pcbnew.ZONE(board)
+    z.SetIsRuleArea(True)
+    z.SetDoNotAllowTracks(True)
+    z.SetDoNotAllowVias(False)
+    z.SetDoNotAllowPads(False)
+    z.SetZoneName(KEEPOUT)
+    ls = pcbnew.LSET()
+    ls.AddLayer(pcbnew.In1_Cu)
+    ls.AddLayer(pcbnew.In2_Cu)
+    z.SetLayerSet(ls)
+    o = z.Outline()
+    o.NewOutline()
+    for (px, py) in ((box.GetLeft(), box.GetTop()), (box.GetRight(), box.GetTop()), (box.GetRight(), box.GetBottom()), (box.GetLeft(), box.GetBottom())):
+        o.Append(px, py)
+    board.Add(z)
+
+
 def dsn(pcb, out, track, clearance, via, drill, edge):
     b = pcbnew.LoadBoard(pcb)
+    four = b.GetCopperLayerCount() >= 4
     nc = b.GetDesignSettings().m_NetSettings.GetDefaultNetclass()
     nc.SetTrackWidth(pcbnew.FromMM(track))
     nc.SetClearance(pcbnew.FromMM(clearance))
     nc.SetViaDiameter(pcbnew.FromMM(via))
     nc.SetViaDrill(pcbnew.FromMM(drill))
     edge_ring(b, edge)
-    # The copper pours stay out of the DSN (only this in-memory board loses them; the file keeps them for the ses step):
+    # The outer layers' copper pours stay out of the DSN (only this in-memory board loses them; the file keeps them):
     # handed to Freerouting as planes it took every pad on one as joined through it, but the refilled pour came back cut
     # by the tracks on its layer, and the pads on its pieces unjoined (the arm board, 26 Nov 2026: 6 GND items
     # unconnected). Without them it routes every connection as a track; the pour, refilled after, is copper on top.
-    for z in [z for z in b.Zones() if not z.GetIsRuleArea()]:
+    for z in [z for z in b.Zones() if not z.GetIsRuleArea() and (z.IsOnLayer(pcbnew.F_Cu) or z.IsOnLayer(pcbnew.B_Cu))]:
         b.Remove(z)
+    # A 4-layer board's inner layers are planes (ground on In1, the wide rails' regions on In2). Freerouting can't take
+    # them: it treats a plane as solid copper, so a via of another net can't cross it (the arm board, 26 Nov 2026: 35
+    # connections unrouted; its plane_as_obstacle and conduction_is_obstacle settings changed nothing). So it routes the
+    # board as on 2 layers, every net on the outer layers (leaving the plane nets out made it worse: 24 unrouted, fanout
+    # failing on 88 pins), and the ses step adds the planes' copper: each plane-net pad joined to its plane by a via
+    # beside it (stitch), so the rail's current has the plane as well as its track.
+    if four:
+        # The inner layers route signals too (more room: lead-3's CNC didn't route on 2); the planes are refilled around
+        # what lands there and stitched after (stitch checks every copper layer). A track keepout on them blocked
+        # Freerouting's vias as well (the arm, 26 Nov 2026: 45 connections unrouted where 2 layers routed them all).
+        for z in [z for z in b.Zones() if not z.GetIsRuleArea()]:
+            b.Remove(z)
     if not pcbnew.ExportSpecctraDSN(b, out):
         sys.exit("DSN export failed")
 
@@ -69,6 +102,8 @@ def ses(pcb, ses_path, out, widths_path=None, clearance=0.15, edge=0.35):
     if widths_path:
         with open(widths_path) as f:
             widen(b, json.load(f), clearance, edge)
+    if b.GetCopperLayerCount() >= 4:
+        stitch(b, plane_nets(b), clearance, edge)
     # The pours' fill is what tscircuit drew before any track existed: Freerouting routes over the planes, so without a
     # refill every new track and via of another net sits on the old fill (the arm board, 25 Nov 2026: 499 "zone
     # clearance 0.15 mm, actual 0" and 199 isolated copper).
@@ -139,6 +174,96 @@ def clear_of_holes(t, layer, net, holes, clr):
     return True
 
 
+# The nets an inner layer's pour carries (a 4-layer board's ground and power planes).
+def plane_nets(b):
+    inner = (pcbnew.In1_Cu, pcbnew.In2_Cu)
+    return {z.GetNetname() for z in b.Zones() if not z.GetIsRuleArea() and z.GetNetname() and any(z.IsOnLayer(l) for l in inner)}
+
+
+# Each surface pad of a plane's net joined to its plane: a through via beside it (the fab's via, 0.45 / 0.25 mm) and a
+# short track from the pad, at the first spot on rings around the pad that keeps the clearance from every other net's
+# copper on every layer it touches, the hole clearance from every drilled hole, and the edge. A through-hole pad already
+# reaches the planes. A pad with no free spot stays unjoined, and the DRC says so.
+STITCH_VIA_MM = (0.45, 0.25)
+STITCH_TRACK_MM = 0.3
+
+
+def stitch(b, nets, clearance, edge):
+    clr = pcbnew.FromMM(clearance)
+    hole_clr = pcbnew.FromMM(HOLE_CLEARANCE_MM)
+    box = b.GetBoardEdgesBoundingBox()
+    e = pcbnew.FromMM(edge)
+    inner = (box.GetLeft() + e, box.GetTop() + e, box.GetRight() - e, box.GetBottom() - e)
+    copper_layers = list(b.GetEnabledLayers().CuStack())
+    inner_layers = (pcbnew.In1_Cu, pcbnew.In2_Cu)
+    regions = {}
+    for z in b.Zones():
+        if not z.GetIsRuleArea() and any(z.IsOnLayer(l) for l in inner_layers):
+            regions.setdefault(z.GetNetname(), []).append(z.Outline())
+    margin = pcbnew.FromMM(STITCH_VIA_MM[0] / 2 + clearance)
+
+    # A via joins its plane only inside its own net's region of the inner layer, clear of the region's edge (a rail's
+    # region of In2 is not the whole layer; the arm, 26 Nov 2026: stitch vias outside it were left dangling).
+    def in_region(net, pos):
+        for poly in regions.get(net, []):
+            if all(poly.Contains(pcbnew.VECTOR2I(pos.x + dx, pos.y + dy)) for dx, dy in ((0, 0), (margin, 0), (-margin, 0), (0, margin), (0, -margin))):
+                return True
+        return False
+    for fp in b.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetname() not in nets or pad.HasHole():
+                continue
+            layer = pcbnew.F_Cu if pad.IsOnLayer(pcbnew.F_Cu) else pcbnew.B_Cu
+            c = pad.GetPosition()
+            reach = max(pad.GetSize().x, pad.GetSize().y) / 2
+            placed = False
+            for extra in (0.55, 0.9, 1.3, 1.8):
+                r = reach + pcbnew.FromMM(extra)
+                for k in range(16):
+                    a = 2 * math.pi * k / 16
+                    pos = pcbnew.VECTOR2I(int(c.x + r * math.cos(a)), int(c.y + r * math.sin(a)))
+                    if not (inner[0] < pos.x < inner[2] and inner[1] < pos.y < inner[3]):
+                        continue
+                    via = pcbnew.PCB_VIA(b)
+                    via.SetPosition(pos)
+                    via.SetWidth(pcbnew.FromMM(STITCH_VIA_MM[0]))
+                    via.SetDrill(pcbnew.FromMM(STITCH_VIA_MM[1]))
+                    via.SetNet(pad.GetNet())
+                    t = pcbnew.PCB_TRACK(b)
+                    t.SetStart(c)
+                    t.SetEnd(pos)
+                    t.SetWidth(pcbnew.FromMM(STITCH_TRACK_MM))
+                    t.SetLayer(layer)
+                    t.SetNet(pad.GetNet())
+                    net = pad.GetNetname()
+                    copper = [x for x in b.GetTracks()] + [q for f in b.GetFootprints() for q in f.Pads()]
+                    if not in_region(net, pos):
+                        continue
+                    ok = all(fits(via, l, [o for o in copper if o.GetNetname() != net and o.IsOnLayer(l)], clr, inner) for l in copper_layers)
+                    ok = ok and fits(t, layer, [o for o in copper if o.GetNetname() != net and o.IsOnLayer(layer)], clr, inner)
+                    holes = [q for f in b.GetFootprints() for q in f.Pads() if q.HasHole()] + [x for x in b.GetTracks() if x.Type() == pcbnew.PCB_VIA_T]
+                    ok = ok and clear_of_holes(via, pcbnew.F_Cu, net, holes, hole_clr)
+                    # Drill to drill, whatever the net (FAB_RULES.minHoleToHoleMm): a stitch via landed on a GND via
+                    # Freerouting had put there (the arm, 26 Nov 2026: 6 hole_to_hole at 0 mm).
+                    ok = ok and all(drill_gap(pos, STITCH_VIA_MM[1], h) >= HOLE_TO_HOLE_MM for h in holes)
+                    if ok:
+                        b.Add(via)
+                        b.Add(t)
+                        placed = True
+                        break
+                if placed:
+                    break
+
+
+HOLE_TO_HOLE_MM = 0.25
+
+
+def drill_gap(pos, drill_mm, h):
+    c = h.GetPosition()
+    d = h.GetDrillValue() if h.Type() == pcbnew.PCB_VIA_T else max(h.GetDrillSize().x, h.GetDrillSize().y)
+    return pcbnew.ToMM(int(math.hypot(c.x - pos.x, c.y - pos.y))) - drill_mm / 2 - pcbnew.ToMM(d) / 2
+
+
 def refill(b):
     zones = [z for z in b.Zones() if not z.GetIsRuleArea()]
     # A piece of pour that reaches no pad of its net is floating copper (KiCad's isolated_copper): removed.
@@ -157,6 +282,15 @@ if __name__ == "__main__":
         pcbnew.SaveBoard(sys.argv[3], b)
     elif sys.argv[1] == "ses":
         ses(sys.argv[2], sys.argv[3], sys.argv[4], *sys.argv[5:6], *map(float, sys.argv[6:8]))
+    elif sys.argv[1] == "stitch":
+        b = pcbnew.LoadBoard(sys.argv[2])
+        nets = plane_nets(b)
+        stitch(b, nets, float(sys.argv[4]), float(sys.argv[5]))
+        refill(b)
+        pcbnew.SaveBoard(sys.argv[3], b)
+        pads = [q for f in b.GetFootprints() for q in f.Pads() if q.GetNetname() in nets and not q.HasHole()]
+        vias = [x for x in b.GetTracks() if x.Type() == pcbnew.PCB_VIA_T and x.GetNetname() in nets]
+        print("plane nets", sorted(nets), "surface pads", len(pads), "stitch vias", len(vias))
     elif sys.argv[1] == "widen":
         b = pcbnew.LoadBoard(sys.argv[2])
         with open(sys.argv[4]) as f:

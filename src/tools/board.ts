@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symli
 import { recordRoutingFailure, ROUTING_FAILURE } from "../contract/space.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { boardParts, capPaths, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, routedWidths, DEFAULT_TRACE_MM, unreachableCaps, wideTracks, type PlacementOptions } from "../codegen/circuit.ts"
+import { boardParts, capPaths, circuitFromContract, debugPort, layoutBoard, testPoints, LDO_FROM_USB_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, planeRails, boardLayers, forgetLayerShortfall, recordLayerShortfall, routedWidths, DEFAULT_TRACE_MM, unreachableCaps, wideTracks, type PlacementOptions } from "../codegen/circuit.ts"
 import { connectorClashes, pinPartsMissing, pinsWithoutMcu, WAITING_ON_CONTRACT, type BoardArtifact } from "../contract/consistency.ts"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
@@ -34,14 +34,50 @@ export { WAITING_ON_CONTRACT }
 // never offers that size, or one inside it, again. Only failures more room can fix (the router gave up, a trace past its
 // length bound, parts or traces too close): not a design error such as a missing port, which no size changes.
 export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
+	// The backstop (lead-2, 26 Nov 2026): a 2-layer build that falls short is built once more on 4 layers, before the
+	// architect is asked for a bigger board: ground on In1 and the wide rails on In2 leave the router's job (their pads are
+	// stitched to the planes), so both copper and room come back. The design remembers it (boardLayers: "measured").
+	// Three shortfalls count: a wide rail short on copper, connections left unconnected, a build that didn't route.
+	const twoLayers = boardLayers(s).layers === 2
+	const onFour = async (detail: string): Promise<BoardArtifact> => {
+		recordLayerShortfall(s, detail)
+		try {
+			const work = `${dir}-4l`
+			const b4 = await buildBoardAt(env, work, s, revision)
+			rmSync(dir, { recursive: true, force: true })
+			cpSync(work, dir, { recursive: true })
+			rmSync(work, { recursive: true, force: true })
+			const re = (p: string | null) => (p ? p.replace(work, dir) : p)
+			return { ...b4, dir, pcbPath: re(b4.pcbPath)!, stepPath: re(b4.stepPath), renderPath: re(b4.renderPath), layers: 4, layersReason: { by: "measured", detail } }
+		} catch (error) {
+			forgetLayerShortfall(s)
+			throw error
+		}
+	}
+	let board: BoardArtifact
 	try {
-		return await buildBoardAt(env, dir, s, revision)
+		board = await buildBoardAt(env, dir, s, revision)
 	} catch (error) {
 		const message = String(error instanceof Error ? error.message : error)
 		const o = s.values.outline
+		if (twoLayers && sizeFailure(message)) {
+			try {
+				return await onFour(`at 2 layers the board didn't route (rev ${revision}: ${message.split("\n").find((l) => /skipped|unrouted|Freerouting/.test(l))?.trim().slice(0, 160) ?? "build failed"})`)
+			} catch {
+				// Not on 4 either: the size is the architect's question, as before.
+			}
+		}
 		if (o && sizeFailure(message)) recordRoutingFailure(s, o.widthMm, o.heightMm)
 		throw error
 	}
+	// A 4-layer try that fails keeps the 2-layer board (its findings stand).
+	const orTwo = (p: Promise<BoardArtifact>) => p.catch(() => board)
+	if (twoLayers && board.narrowNets?.length)
+		return orTwo(onFour(`at 2 layers ${board.narrowNets.map((n) => `${n.net} reached its ${n.needMm} mm on ${Math.round(n.atWidthMm)} of ${Math.round(n.totalMm)} mm`).join(", ")} (rev ${revision}): the rails ride a power layer`))
+	if (twoLayers && (board.drc?.unconnected ?? 0) > 0)
+		return orTwo(onFour(`at 2 layers ${board.drc!.unconnected} connection(s) stayed unconnected (rev ${revision}): ground and the wide rails move to planes`))
+	const l = boardLayers(s)
+	return l.layers === 4 ? { ...board, layers: 4, ...(l.reason ? { layersReason: l.reason } : {}) } : board
 }
 
 export const sizeFailure = (message: string): boolean => /^tscircuit build failed \(exit/.test(message) && (ROUTING_FAILURE.test(message) || layoutSensitive(message))
@@ -320,7 +356,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	const circuitPath = join(work, "dist/board/circuit.json")
 	// Placed only: Freerouting routes it (src/tools/freerouting.ts).
 	if (placement.routingDisabled && build.code === 0 && existsSync(circuitPath)) {
-		const why = await freeroute(env.root, work, "dist/board/kicad/board.kicad_pcb", routedWidths(s, true))
+		const why = await freeroute(env.root, work, "dist/board/kicad/board.kicad_pcb", new Map([...routedWidths(s, true)].filter(([n]) => !planeRails(s).includes(n))))
 		if (why) {
 			writeFileSync(join(dir, "build.log"), build.stdout + "\n" + build.stderr)
 			throw new Error(`tscircuit build failed (exit 1):\nFreerouting: ${why}`)
@@ -361,7 +397,8 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	}
 	cpSync(work, dir, { recursive: true, filter: (src) => !src.endsWith("/node_modules") })
 	// Each rail routed at its width, not the fab's default (only Freerouting routes a wide net at width; track-widths.ts).
-	const wide = new Map([...routedWidths(s, !!placement.routingDisabled)].filter(([, w]) => w > DEFAULT_TRACE_MM))
+	// A rail on a 4-layer board's power plane is judged by its region (planeNecks), not its track.
+	const wide = new Map([...routedWidths(s, !!placement.routingDisabled)].filter(([n, w]) => w > DEFAULT_TRACE_MM && !planeRails(s).includes(n)))
 	const narrow = wide.size && existsSync(pcbFile) ? narrowNets(netCopper(readFileSync(pcbFile, "utf8"), wide)) : []
 
 	return {

@@ -30,8 +30,11 @@ import { defaultCheckCatalog } from "../mechanics/checks.ts"
 // for 5 two-layer boards up to 100 x 100 mm). Checked 16 Nov 2026; JLC's quote at upload is the real number.
 export const JLC = { pcb5Usd: 2, pcbMaxMm: 100, setupUsd: 8.18, stencilUsd: 1.53, jointUsd: 0.0016, extendedUsd: 3.07, assembled: 2 }
 export interface JlcEstimate { pcbUsd: number | null; setupUsd: number; stencilUsd: number; joints: number; jointsUsd: number; extended: string[]; extendedUsd: number; partsUsd: number | null; totalUsd: number | null }
-export function jlcEstimate(board: { widthMm: number; heightMm: number }, joints: number, extended: string[], partsPerBoardUsd: number | null): JlcEstimate {
-	const pcbUsd = board.widthMm <= JLC.pcbMaxMm && board.heightMm <= JLC.pcbMaxMm ? JLC.pcb5Usd : null
+// A 4-layer board (circuit.ts boardLayers): JLCPCB publishes no fixed price for 5 four-layer boards (its ad's "1-4 layer,
+// 100 x 100 mm, 5 pcs, from $2" is a headline promotion, not a quote; https://jlcpcb.com/ads/pcb-manufacturer-comparison,
+// checked 26 Nov 2026), so the estimate leaves the bare boards to JLC's quote rather than guess a figure.
+export function jlcEstimate(board: { widthMm: number; heightMm: number; layers?: 2 | 4 }, joints: number, extended: string[], partsPerBoardUsd: number | null): JlcEstimate {
+	const pcbUsd = board.layers !== 4 && board.widthMm <= JLC.pcbMaxMm && board.heightMm <= JLC.pcbMaxMm ? JLC.pcb5Usd : null
 	const jointsUsd = Math.round(joints * JLC.assembled * JLC.jointUsd * 100) / 100
 	const extendedUsd = Math.round(extended.length * JLC.extendedUsd * 100) / 100
 	const partsUsd = partsPerBoardUsd === null ? null : Math.round(partsPerBoardUsd * JLC.assembled * 100) / 100
@@ -201,7 +204,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		"",
 		`Parts total: ${usd(boardUsd)} per board (LCSC unit prices).`,
 		...(jlc ? ["", "## JLCPCB order (an ESTIMATE from JLC's published rules, checked 16 Nov 2026; its quote at upload is the real number)", "", "| Line | Cost |", "|---|---|",
-			`| 5 bare boards (2-layer, ${board!.widthMm} × ${board!.heightMm} mm) | ${jlc.pcbUsd === null ? "over 100 × 100 mm: quote" : usd(jlc.pcbUsd)} |`,
+			`| 5 bare boards (${board!.layers === 4 ? "4" : "2"}-layer, ${board!.widthMm} × ${board!.heightMm} mm) | ${jlc.pcbUsd !== null ? usd(jlc.pcbUsd) : board!.layers === 4 ? `4 layers (${board!.layersReason?.detail ?? "the wide rails on a power layer"}): JLC's quote at upload (no published 4-layer price for 5 boards)` : "over 100 × 100 mm: quote"} |`,
 			`| Assembly setup (economic) | ${usd(jlc.setupUsd)} |`, `| Stencil | ${usd(jlc.stencilUsd)} |`,
 			`| Solder joints: ${jlc.joints} a board × ${JLC.assembled} boards at $${JLC.jointUsd} | ${usd(jlc.jointsUsd)} |`,
 			`| Extended parts' feeder loading: ${jlc.extended.length} × $${JLC.extendedUsd}${jlc.extended.length ? ` (${jlc.extended.join(", ")})` : ""} | ${usd(jlc.extendedUsd)} |`,

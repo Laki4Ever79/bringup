@@ -1,5 +1,7 @@
 import { armInputNet, armRails, withArmRails } from "../contract/arm-rails.ts"
 import { armInputTvs } from "../arm/tvs.ts"
+import { planeRegions, type PlaneRegion } from "./plane-regions.ts"
+import { ROUTE } from "../tools/freerouting.ts"
 import { chipEntry, chipSupport as catalogChipSupport, type ChipCtx, type ChipJob, type Spec as ChipSpec } from "./chip-support.ts"
 import { readFileSync } from "node:fs"
 import { canName, canSignals } from "../contract/links.ts"
@@ -2191,11 +2193,102 @@ export function supplyWidths(s: ContractSnapshot): Map<string, number> {
 // VIN_BRICK in 11 pieces after the refill); it routes each rail as a track at its width instead (routedWidths).
 // tscircuit pours after routing, around its tracks, so its boards keep the rail pour (the rpi-5 HAT's 5 V).
 export function supplyPours(s: ContractSnapshot, freerouting = false): { net: string; layer: "top" | "bottom" }[] {
+	// A Freerouting board always pours ground on the bottom, whatever its width needs (lead-2, 26 Nov 2026: good practice
+	// for return paths and EMI; lead-3's CNC mock 9: GND needed 0.35 mm, under MAX_TRACK_MM, got no pour and was routed
+	// at 0.2 mm on 162 of 246 mm).
+	if (freerouting) return [{ net: "GND", layer: "bottom" }]
 	const wide = [...supplyWidths(s)].filter(([, w]) => w > MAX_TRACK_MM).map(([n]) => n)
 	if (!wide.length) return []
 	if (freerouting) return [{ net: "GND", layer: "bottom" }]
 	const rail = wide.filter((n) => n !== "GND").sort((a, b) => supplyWidths(s).get(b)! - supplyWidths(s).get(a)!)[0]
 	return [...(rail ? [{ net: rail, layer: "top" as const }] : []), { net: "GND", layer: "bottom" as const }]
+}
+// A wide rail's lane: the copper a rail wider than a track reaching a pin (MAX_TRACK_MM) needs between its parts, which
+// placement alone doesn't count (the arm board, 26 Nov 2026: at its placement minimum 62×47 the rails reached their
+// IPC-2221 width on only 10-21 % of their track). Its length is ESTIMATED as the Manhattan spanning tree over its parts'
+// centres (88-116 mm on the arm against 94-155 mm routed), its width the rail's own plus the fab's clearance a side.
+export interface RailCorridor {
+	net: string
+	widthMm: number
+	lengthMm: number
+	areaMm2: number
+}
+export function railCorridors(s: ContractSnapshot, placed: { ref: string; x: number; y: number }[] = placeParts(s)): RailCorridor[] {
+	const freerouted = wideTracks(s).length > 0
+	const wide = [...routedWidths(s, freerouted)].filter(([, w]) => w > MAX_TRACK_MM)
+	if (!wide.length) return []
+	const at = new Map(placed.map((b) => [b.ref, b]))
+	const nets = generatedNets(s)
+	return wide.map(([net, widthMm]) => {
+		const pts = [...new Set((nets.get(net) ?? []).map((e) => e.split(".")[0]))].flatMap((r) => (at.has(r) ? [at.get(r)!] : []))
+		let lengthMm = 0
+		const tree = new Set(pts.length ? [0] : [])
+		while (tree.size < pts.length) {
+			let best = Infinity
+			let next = -1
+			for (const i of tree) for (let j = 0; j < pts.length; j++) if (!tree.has(j)) {
+				const d = Math.abs(pts[i].x - pts[j].x) + Math.abs(pts[i].y - pts[j].y)
+				if (d < best) [best, next] = [d, j]
+			}
+			tree.add(next)
+			lengthMm += best
+		}
+		return { net, widthMm, lengthMm: Math.round(lengthMm), areaMm2: Math.round(lengthMm * (widthMm + 2 * ROUTE.clearanceMm)) }
+	})
+}
+
+// The copper layers a board needs (lead-2, 26 Nov 2026): 4 when its wide rails' lanes (railCorridors) take more than
+// LANES_4L_SHARE of its area, an estimate that was right about the arm; the board build adds 4 after a measured shortfall
+// at 2 (track-width-narrow) and records it in outline.layers. On 4 layers the rails ride the power plane (In2).
+export const LANES_4L_SHARE = 0.15
+// The designs whose 2-layer build left a rail short (board.ts): they build at 4 from then on, as a measured reason.
+const layerShortfalls = new Map<string, string>()
+const layersKey = (s: ContractSnapshot) => JSON.stringify([(s.values.parts ?? []).map((p) => `${p.ref} ${p.mpn}`), s.values.rails, s.values.arm?.railV])
+export function recordLayerShortfall(s: ContractSnapshot, detail: string): void {
+	layerShortfalls.set(layersKey(s), detail)
+}
+// A 4-layer try that failed too: the design goes back to 2 layers (its size is then the architect's question).
+export function forgetLayerShortfall(s: ContractSnapshot): void {
+	layerShortfalls.delete(layersKey(s))
+}
+export function boardLayers(s: ContractSnapshot): { layers: 2 | 4; reason: { by: "estimate" | "measured"; detail: string } | null } {
+	const o = s.values.outline
+	if (o?.layers === 4) return { layers: 4, reason: o.layersReason ?? null }
+	const measured = layerShortfalls.get(layersKey(s))
+	if (measured) return { layers: 4, reason: { by: "measured", detail: measured } }
+	if (!o) return { layers: 2, reason: null }
+	const c = railCorridors(s)
+	const lanes = c.reduce((a, x) => a + x.areaMm2, 0)
+	const share = lanes / (o.widthMm * o.heightMm)
+	if (share <= LANES_4L_SHARE) return { layers: 2, reason: null }
+	return { layers: 4, reason: { by: "estimate", detail: `the wide rails' lanes (${c.map((x) => `${x.net} ${x.widthMm} mm x ${x.lengthMm} mm`).join(", ")}; IPC-2221 widths, lengths estimated) are ${Math.round(share * 100)} % of the ${o.widthMm}x${o.heightMm} mm board, over ${LANES_4L_SHARE * 100} %: they ride a power layer` } }
+}
+
+// The wide rails a 4-layer board carries on its power layer (In2): those over a track reaching a pin (MAX_TRACK_MM), each
+// a region of In2 around its pads and its support parts (plane-regions.ts).
+export const planeRails = (s: ContractSnapshot) => (boardLayers(s).layers === 4 ? [...routedWidths(s, true)].filter(([n, w]) => w > MAX_TRACK_MM && n !== "GND").map(([n]) => n) : [])
+export function powerPlaneRegions(s: ContractSnapshot, placement: Map<string, Placed> = new Map(placeParts(s).map((b) => [b.ref, b]))): PlaneRegion[] {
+	const o = s.values.outline
+	const nets = planeRails(s)
+	if (!o || !nets.length) return []
+	const parts = s.values.parts ?? []
+	const gen = generatedNets(s)
+	const centre = (ref: string, pin?: string) => {
+		const b = placement.get(ref)
+		if (!b) return null
+		const part = parts.find((p) => p.ref === ref)
+		const at = part && pin && b.rotation % 90 === 0 ? padOffset(footprintFor(part), part.pins.indexOf(pin) + 1, b.rotation) : null
+		return { x: (b.ox ?? b.x) + (at?.x ?? 0), y: (b.oy ?? b.y) + (at?.y ?? 0) }
+	}
+	const sup = supportParts(s)
+	const rails = nets.map((net) => ({
+		net,
+		points: [
+			...(gen.get(net) ?? []).map((e) => centre(e.split(".")[0], e.split(".")[1])),
+			...sup.filter((x) => ("net" in x.a && x.a.net === net) || ("net" in x.b && x.b.net === net)).map((x) => centre(x.ref)),
+		].filter((p): p is { x: number; y: number } => p !== null),
+	}))
+	return planeRegions(o.widthMm, o.heightMm, rails)
 }
 // The track widths each routed net needs: the supply widths, except the nets poured (their tracks stay the default).
 // Full width: Freerouting takes it as the net's class and necks the track down only to enter a pin, so MAX_TRACK_MM
@@ -2854,6 +2947,11 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 	}
 	// Margins over JLCPCB's 2-layer rules (0.2 mm hole clearance, 0.3 mm copper to edge): tscircuit's defaults left the
 	// pours 0.19 mm from the mounting holes and on the edge clearance (the rpi-5 HAT, 15 Nov 2026: 10 KiCad DRC errors).
+	// A 4-layer board (space.ts boardLayers): ground on In1, each wide rail on its own region of In2 (planeRegions).
+	if (boardLayers(s).layers === 4) {
+		lines.push(`<copperpour connectsTo="net.GND" layer="inner1" clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
+		for (const r of powerPlaneRegions(s, placement)) lines.push(`<copperpour connectsTo=${q(`net.${r.net}`)} layer="inner2" outline={[${r.outline.map((p) => `{ x: ${p.x}, y: ${p.y} }`).join(", ")}]} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
+	}
 	for (const pour of supplyPours(s, unbounded)) lines.push(`<copperpour connectsTo=${q(`net.${pour.net}`)} layer=${q(pour.layer)} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
 	return lines
 }
@@ -2950,7 +3048,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 
 	return [
 		"export default () => (",
-		`  <board width="${outline.widthMm}mm" height="${outline.heightMm}mm" minViaHoleDiameter="0.25mm" minViaPadDiameter="0.45mm"${opts.routingDisabled ? " routingDisabled" : ""}>`,
+		`  <board${boardLayers(s).layers === 4 ? " layers={4}" : ""} width="${outline.widthMm}mm" height="${outline.heightMm}mm" minViaHoleDiameter="0.25mm" minViaPadDiameter="0.45mm"${opts.routingDisabled ? " routingDisabled" : ""}>`,
 		...lines.map((l) => `    ${l}`),
 		"  </board>",
 		")",

@@ -49,8 +49,28 @@ test("a board Freerouting routes pours ground only; every rail is a track at its
 	const fr = routedWidths(s, true)
 	for (const n of ["VSERVO1", "VSERVO2", "VIN_BRICK"]) assert.equal(fr.get(n), supplyWidths(s).get(n))
 	const src = circuitFromContract(s, { routingDisabled: true })
-	assert.doesNotMatch(src, /<copperpour connectsTo="net\.VSERVO1"/)
+	// No rail pour on an outer layer (the arm is a 4-layer board: its rails ride the inner power layer, below).
+	assert.doesNotMatch(src, /<copperpour connectsTo="net\.VSERVO1" layer="(top|bottom)"/)
 	assert.match(src, /<copperpour connectsTo="net\.GND" layer="bottom"/)
+})
+
+test("4 layers when the wide rails' lanes are over 15 % of the board: ground on In1, each rail's own regions on In2, the reason named", async () => {
+	const { boardLayers, powerPlaneRegions, circuitFromContract } = await import("../src/codegen/circuit.ts")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
+	const l = boardLayers(s)
+	assert.equal(l.layers, 4)
+	assert.equal(l.reason?.by, "estimate")
+	assert.match(l.reason?.detail ?? "", /lanes .* are \d+ % of the 80x60 mm board, over 15 %/)
+	const src = circuitFromContract(s, { routingDisabled: true })
+	assert.match(src, /<board layers=\{4\}/)
+	assert.match(src, /<copperpour connectsTo="net\.GND" layer="inner1"/)
+	const regions = powerPlaneRegions(s)
+	assert.deepEqual([...new Set(regions.map((r) => r.net))].sort(), ["VIN_BRICK", "VSERVO1", "VSERVO2", "VSERVO3"])
+	assert.equal((src.match(/layer="inner2"/g) ?? []).length, regions.length)
+	// Each region joining two or more pads is wide enough for its rail (IPC-2221), so no plane neck finding.
+	for (const r of regions.filter((x) => Number.isFinite(x.neckMm))) assert.ok(r.neckMm >= supplyWidths(s).get(r.net)!, `${r.net} ${r.neckMm}`)
+	// A board without wide rails stays at 2 layers.
+	assert.equal(boardLayers({ ...s, values: { ...s.values, arm: undefined, rails: [] } }).layers, 2)
 })
 
 test("the space model reserves each wide rail's lane and grows the minimum board for it, saying so", async () => {
@@ -69,4 +89,28 @@ test("the space model reserves each wide rail's lane and grows the minimum board
 	assert.ok(m.widthMm * m.heightMm >= m.areaMm2)
 	// A board without wide rails is unchanged (the HAT's 5 V is poured).
 	assert.deepEqual(railCorridors({ ...s, values: { ...s.values, arm: undefined, rails: [] } }), [])
+})
+
+test("the order estimate leaves a 4-layer board's bare boards to JLC's quote (no published price), a 2-layer one at $2", async () => {
+	const { jlcEstimate } = await import("../src/package/build.ts")
+	assert.equal(jlcEstimate({ widthMm: 80, heightMm: 60 }, 100, [], 10).pcbUsd, 2)
+	const four = jlcEstimate({ widthMm: 80, heightMm: 60, layers: 4 }, 100, [], 10)
+	assert.equal(four.pcbUsd, null)
+	assert.equal(four.totalUsd, null)
+})
+
+test("a Freerouting board always pours ground, whatever its widths (GND at 0.35 mm got no pour); tscircuit's keep their rule", async () => {
+	const { supplyPours, routedWidths: rw, supplyWidths: sw, DEFAULT_TRACE_MM, MAX_TRACK_MM } = await import("../src/codegen/circuit.ts")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
+	// Only a modest rail: about 0.35 mm for its peak, over the default, under MAX_TRACK_MM.
+	const small = { ...s, values: { ...s.values, arm: undefined, rails: [{ name: "V12", voltageV: 12, regulatorMaxMa: 1000, loadMa: 900 }] } }
+	const g = sw(small).get("GND")!
+	assert.ok(g > DEFAULT_TRACE_MM && g <= MAX_TRACK_MM, String(g))
+	assert.deepEqual(supplyPours(small, true), [{ net: "GND", layer: "bottom" }])
+	assert.equal(rw(small, true).has("GND"), false)
+	// tscircuit's boards keep their rule (a pour only past MAX_TRACK_MM).
+	assert.deepEqual(supplyPours(small, false), [])
+	// No wide net at all: a Freerouting board still pours ground.
+	const none = { ...small, values: { ...small.values, rails: [] } }
+	assert.deepEqual(supplyPours(none, true), [{ net: "GND", layer: "bottom" }])
 })

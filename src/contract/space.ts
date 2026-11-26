@@ -1,6 +1,6 @@
 import { connectorsOntoEdges } from "./connectors.ts"
-import { antennaOverhang, boardParts, debugPort, generatedNets, layoutBoard, MAX_TRACK_MM, moduleBlocked, moduleFreedAlongEdges, placeParts, recoveryPads, routedWidths, testPoints, wideTracks } from "../codegen/circuit.ts"
-import { ROUTE } from "../tools/freerouting.ts"
+import { antennaOverhang, boardLayers, boardParts, debugPort, layoutBoard, LANES_4L_SHARE, moduleBlocked, moduleFreedAlongEdges, placeParts, railCorridors, recoveryPads, testPoints, type RailCorridor } from "../codegen/circuit.ts"
+export { boardLayers, LANES_4L_SHARE, railCorridors, type RailCorridor }
 import { caseOf, minCaseHeight } from "./case.ts"
 import type { AgentRole, ContractSnapshot, FieldName, SizeReason } from "./types.ts"
 
@@ -144,40 +144,6 @@ export function connectorsAt(s: ContractSnapshot, w: number, h: number): NonNull
 	return resized(s, w, h).values.connectors ?? []
 }
 
-// A wide rail's lane: the copper a rail wider than a track reaching a pin (MAX_TRACK_MM) needs between its parts, which
-// placement alone doesn't count (the arm board, 26 Nov 2026: at its placement minimum 62×47 the rails reached their
-// IPC-2221 width on only 10-21 % of their track). Its length is ESTIMATED as the Manhattan spanning tree over its parts'
-// centres (88-116 mm on the arm against 94-155 mm routed), its width the rail's own plus the fab's clearance a side.
-export interface RailCorridor {
-	net: string
-	widthMm: number
-	lengthMm: number
-	areaMm2: number
-}
-export function railCorridors(s: ContractSnapshot, placed: { ref: string; x: number; y: number }[] = placeParts(s)): RailCorridor[] {
-	const freerouted = wideTracks(s).length > 0
-	const wide = [...routedWidths(s, freerouted)].filter(([, w]) => w > MAX_TRACK_MM)
-	if (!wide.length) return []
-	const at = new Map(placed.map((b) => [b.ref, b]))
-	const nets = generatedNets(s)
-	return wide.map(([net, widthMm]) => {
-		const pts = [...new Set((nets.get(net) ?? []).map((e) => e.split(".")[0]))].flatMap((r) => (at.has(r) ? [at.get(r)!] : []))
-		let lengthMm = 0
-		const tree = new Set(pts.length ? [0] : [])
-		while (tree.size < pts.length) {
-			let best = Infinity
-			let next = -1
-			for (const i of tree) for (let j = 0; j < pts.length; j++) if (!tree.has(j)) {
-				const d = Math.abs(pts[i].x - pts[j].x) + Math.abs(pts[i].y - pts[j].y)
-				if (d < best) [best, next] = [d, j]
-			}
-			tree.add(next)
-			lengthMm += best
-		}
-		return { net, widthMm, lengthMm: Math.round(lengthMm), areaMm2: Math.round(lengthMm * (widthMm + 2 * ROUTE.clearanceMm)) }
-	})
-}
-
 // The smallest board outline (1 mm steps) the board generator places every part on, and no smaller than the routing
 // ceiling allows. Only placement, which takes milliseconds; routing is proven by building the chosen size. Cached:
 // it doesn't depend on the outline's own size, which is what changes most.
@@ -219,7 +185,8 @@ export function minimumBoard(s: ContractSnapshot): MinimumBoard | null {
 	const packed = best.w * best.h
 	// Wide rails need their own lanes beside the parts (a listed reason for room: rail copper): the board grows by their
 	// area, every shape scaled alike so it keeps its proportions.
-	const corridors = railCorridors(s, atSize)
+	// On 4 layers the rails ride the power plane: no lanes beside the parts.
+	const corridors = s.values.outline?.layers === 4 ? [] : railCorridors(s, atSize)
 	const corridorMm2 = corridors.reduce((a, c) => a + c.areaMm2, 0)
 	if (corridorMm2 > 0) {
 		const need = Math.max(packed, floorArea) + corridorMm2
