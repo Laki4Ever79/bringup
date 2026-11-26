@@ -194,7 +194,7 @@ function benchScopeError(field: FieldName, current: ContractValues["rails"] | un
 }
 
 // Rejects values a model got structurally wrong, so a bad shape never reaches the checkers and builders.
-function shapeError(field: FieldName, value: unknown): string | null {
+export function shapeError(field: FieldName, value: unknown): string | null {
 	const list = (check: (x: Record<string, unknown>) => boolean, what: string) =>
 		Array.isArray(value) && value.every((x) => obj(x) && check(x)) ? null : `${field} must be an array of ${what}`
 	switch (field) {

@@ -11,6 +11,7 @@ import { state } from "../runtime.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { Part } from "../contract/types.ts"
 import { parseSwap } from "../tools/sourcing.ts"
+import { mechanicsFromRequest, partsAfterSwap } from "../runner/request-map.ts"
 import { parseMoves, type PartMove, type Release } from "../board-edit/board-move.ts"
 import { resolve } from "node:path"
 import { toolCall, type Script } from "./scripted-runner.ts"
@@ -1031,13 +1032,11 @@ export function mockScripts(): Record<string, Script> {
 			const swap = instruction.startsWith("Change request from the engineer:") ? parseSwap(instruction.split("\n")[1] ?? "") : null
 			if (swap) {
 				const parts = state().contract.get("parts") ?? []
-				const old = parts.find((p) => p.ref === swap.ref)
-				const to = old && CATALOG.find((c) => c.role === old.role && c.mpn.toUpperCase() === swap.mpn.toUpperCase())
-				if (stepsTaken(items) > 0 || !old || !to) return say(to ? "part swapped" : "not in the catalog")
-				if (old.mpn === to.mpn) return say("already that part")
-				const part = { ref: old.ref, role: old.role, mpn: to.mpn, lcsc: to.lcsc, footprint: to.footprint, pins: [...to.pins], reason: `The engineer swapped it in for the ${old.mpn}, from the catalog, in a change request.` }
-				swapped.set(old.ref, part)
-				return propose("parts", parts.map((p) => (p.ref === old.ref ? part : p)), `engineer swapped ${old.ref} ${old.mpn} for the ${to.mpn} from the catalog`)
+				// The one request mapper (runner/request-map.ts), also what the "what if" preview shows.
+				const r = partsAfterSwap(instruction.split("\n")[1] ?? "", parts, CATALOG)
+				if (stepsTaken(items) > 0 || !r || "error" in r) return say(r && !("error" in r) ? "part swapped" : r && "error" in r && /already/.test(r.error) ? "already that part" : "not in the catalog")
+				swapped.set(r.part.ref, r.part)
+				return propose("parts", r.value, r.reason)
 			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
@@ -1124,15 +1123,10 @@ export function mockScripts(): Record<string, Script> {
 			const current = state().contract.get("mechanics")
 			if (instruction.startsWith("Change request from the engineer:")) {
 				const request = instruction.split("\n")[1] ?? ""
-				const m = /(\d+(?:\.\d+)?)\s*(cm|mm)\s+(narrower|wider)/i.exec(request)
-				if (step === 0 && m && current) {
-					const d = Number(m[1]) * (m[2].toLowerCase() === "cm" ? 10 : 1) * (m[3].toLowerCase() === "narrower" ? -1 : 1)
-					return propose("mechanics", { ...current, drive: { ...current.drive, trackMm: current.drive.trackMm + d }, chassis: { ...current.chassis, plateMm: [current.chassis.plateMm[0], current.chassis.plateMm[1] + d] } }, `engineer asked: ${request} (plate and track together, so the wheels keep clear)`)
-				}
-				// A real robot's turn calibration (the build guide's "Teach it how it turns"): "set the turn scale to 1.01".
-				const turn = /turn scale (?:to |of |= ?)?(\d+(?:\.\d+)?)/i.exec(request)
-				if (step === 0 && turn && current) return propose("mechanics", { ...current, drive: { ...current.drive, turnScale: Number(turn[1]) } }, `engineer measured it: ${request} (the odometry's track times this; rover_odo.h RoverCal)`)
-				return say(m || turn ? "chassis updated" : "no mechanics change")
+				// The one request mapper (runner/request-map.ts), also what the "what if" preview shows.
+				const change = current ? mechanicsFromRequest(request, current) : null
+				if (step === 0 && change) return propose("mechanics", change.value, change.reason)
+				return say(change ? "chassis updated" : "no mechanics change")
 			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]
