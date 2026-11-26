@@ -552,7 +552,11 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	const claimed = new Set<string>()
 	const taken = new Set([...parts.map((p) => p.ref), ...connectors.map((c) => c.ref)])
 	return jobs.map((j) => {
-		const own = parts.find((p) => p.role === j.spec.kind && p.lcsc === j.spec.lcsc && !claimed.has(p.ref))
+		// A passive the contract already lists stands in for the generated one it duplicates: same kind and the same part,
+		// by its LCSC number or its maker's part number (an agent's CL05A105KA5NQNC under another LCSC number, or none,
+		// was left wired to nothing beside the generator's own: cad's arm run C4, 26 Nov 2026). One with nets of its own
+		// is the agents' wiring, not a duplicate.
+		const own = parts.find((p) => p.role === j.spec.kind && (p.lcsc === j.spec.lcsc || (!p.nets && p.mpn === j.spec.mpn)) && !claimed.has(p.ref))
 		if (own) {
 			claimed.add(own.ref)
 			return { ...j, ref: own.ref, added: false, pins: [own.pins[0] ?? "pin1", own.pins[1] ?? "pin2"] }
