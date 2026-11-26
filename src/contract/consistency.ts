@@ -770,9 +770,12 @@ export function supplyWiring(c: ContractSnapshot): Violation[] {
 	if (!parts.length || !rails.length) return []
 	const v: Violation[] = [...powerTreeChecks(c), ...stallSagChecks(c)]
 	const railNames = new Set(rails.map((r) => r.name))
+	// An "@<name>" net must be one something else on the board is on too (a chip's catalog entry names it): else a typo.
+	const generated = parts.some((p) => Object.values(p.nets ?? {}).some((n) => n.startsWith("@"))) ? generatedNets(c) : null
+	const shared = (net: string, end: string) => (generated?.get(net) ?? []).some((e) => e !== end)
 	for (const p of parts)
 		for (const [pin, rail] of Object.entries(p.nets ?? {})) {
-			const bad = !p.pins.includes(pin) ? `${p.ref} (${p.mpn}) has no pin "${pin}" (its pins: ${p.pins.join(", ")})` : rail !== "GND" && !railNames.has(rail) ? `rail "${rail}" isn't in the contract's rails (${[...railNames].join(", ")})` : null
+			const bad = !p.pins.includes(pin) ? `${p.ref} (${p.mpn}) has no pin "${pin}" (its pins: ${p.pins.join(", ")})` : rail.startsWith("@") ? (shared(rail.slice(1), `${p.ref}.${pin}`) ? null : `no other part is on the net "${rail.slice(1)}" (a chip's catalog entry names the nets it shares)`) : rail !== "GND" && !railNames.has(rail) ? `rail "${rail}" isn't in the contract's rails (${[...railNames].join(", ")})` : null
 			if (bad) v.push({ kind: "part-net-unknown", message: `${p.ref}'s nets put pin ${pin} on ${rail}, but ${bad}: the board generator leaves that pin open`, fields: ["parts", "rails"], affects: ["architect"] })
 		}
 	const nets = generatedNets(c)

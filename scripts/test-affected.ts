@@ -17,7 +17,7 @@ export const HAND: Record<string, string[]> = {
 	// 2026: bom.test went untested and failed on adopt).
 	"src/tools/robot-parts.ts": ["bom", "robot-parts"],
 	"catalog/mcu/": ["mcu-profile", "mcu-solver", "mcu-board", "mcu-select", "mcu-pins", "mcu-crystal", "mcu-firmware", "mcu-firmware.int"],
-	"catalog/parts.json": ["parts-search", "catalog-facts", "bom", "part-roles", "footprint-clearance"],
+	"catalog/parts.json": ["parts-search", "catalog-facts", "bom", "part-roles", "footprint-clearance", "footprint-size"],
 	"templates/fw/": ["firmware.int", "mcu-firmware.int", "mcu-firmware-vendors.int", "firmware-codegen"],
 	"templates/wokwi/": ["wokwi", "wokwi.int"],
 	"templates/fw-arm/": ["arm-firmware", "arm-acceptance.int"],

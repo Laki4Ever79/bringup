@@ -25,6 +25,7 @@ import { laidOut, solveChassis } from "../mechanics/solve.ts"
 import { armTargetsFromBrief } from "../mechanics/brief.ts"
 import type { ArmSpec } from "../arm/types.ts"
 import { armInputNet } from "../contract/power-auto.ts"
+import { pinIndex } from "../mcu/pins.ts"
 
 // The logger design the mock agents produce: ESP32-C3, SHT40 over I2C, USB-C power, LDO, LED.
 export const LOGGER_DESIGN: Omit<ContractValues, "parts" | "behavior" | "model" | "test" | "case" | "connectivity" | "links" | "motion" | "mechanics"> & { parts: ContractValues["parts"] } = {
@@ -133,11 +134,25 @@ export const STM32_LOGGER_DESIGN: typeof LOGGER_DESIGN = {
 		...LOGGER_DESIGN.parts.filter((p) => p.role !== "mcu" && !ESP32_MODULE_PARTS.includes(p.ref)),
 	],
 }
-// One stepper driver per motor (X, Y ×2, Z): the catalog's TMC2209-LA as the parts list carries it.
-function cncDriver(ref: string): Part {
-	const d = (loadCatalog(process.cwd()) as unknown as (Part & { lcsc: string })[]).find((p) => p.role === "stepper-driver" && p.mpn === "TMC2209-LA")
-	if (!d) throw new Error("catalog/parts.json has no TMC2209-LA")
-	return { ref, role: "stepper-driver", mpn: d.mpn, lcsc: d.lcsc, footprint: d.footprint, pins: d.pins } as Part
+// A catalog part as the parts list carries it, under a ref (and its own nets, when it has them).
+function catalogPart(mpn: string, ref: string, nets?: Record<string, string>): Part {
+	const d = (loadCatalog(process.cwd()) as unknown as (Part & { lcsc: string })[]).find((p) => p.mpn === mpn)
+	if (!d) throw new Error(`catalog/parts.json has no ${mpn}`)
+	return { ref, role: d.role, mpn: d.mpn, lcsc: d.lcsc, footprint: d.footprint, pins: d.pins, ...(nets ? { nets } : {}) } as Part
+}
+// One stepper driver per motor (X, Y ×2, Z): the catalog's TMC2209-LA.
+const cncDriver = (ref: string) => catalogPart("TMC2209-LA", ref)
+// The motors in the drivers' order (src/cnc/board.ts cncMotors) and each one's MCU pins (UFQFPN48 names): STEP, DIR, ENN.
+const CNC_MOTORS: { label: string; driver: string; plug: string; step: string; dir: string; en: string }[] = [
+	{ label: "X", driver: "U4", plug: "JX1", step: "PA0", dir: "PA1", en: "PA2" },
+	{ label: "Y1", driver: "U5", plug: "JX2", step: "PA3", dir: "PA4", en: "PA5" },
+	{ label: "Y2", driver: "U6", plug: "JX3", step: "PA6", dir: "PA7", en: "PB0" },
+	{ label: "Z", driver: "U7", plug: "JX4", step: "PB1", dir: "PB10", en: "PB12" },
+]
+const f411 = (name: string) => {
+	const i = pinIndex(profileById("stm32f411ceu6"), name)
+	if (i === null) throw new Error(`STM32F411CEU6 has no ${name}`)
+	return i
 }
 
 // The CNC's controller board as the mock can write it today (docs/cnc.md step 0): the STM32F411CEU6 (grblHAL's chip; the
@@ -153,9 +168,30 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 	},
 	outline: { widthMm: 100, heightMm: 80, thicknessMm: 1.6 },
 	connectors: LOGGER_DESIGN.connectors,
-	rails: [{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 350, averageMa: 120 }],
-	pins: [],
-	parts: [chipPart("stm32f411ceu6"), ...LOGGER_DESIGN.parts.filter((p) => ["U3", "J1", "D1", "R1", "R2", "R3", "C1", "C2", "C3"].includes(p.ref)), ...["U4", "U5", "U6", "U7"].map((ref) => cncDriver(ref))],
+	// The motors' 24 V from the brick's jack (its whole 6.67 A; their coils ~1.1 A at the run current, cnc checks' estimate).
+	rails: [
+		{ name: "3V3", voltageV: 3.3, regulatorMaxMa: 600, loadMa: 350, averageMa: 120 },
+		{ name: "VMOT", voltageV: 24, regulatorMaxMa: 6670, loadMa: 1100 },
+	],
+	// Each driver's STEP, DIR and ENN on a GPIO; one single-wire UART for all four (USART1 TX, PA9, on PDN_UART); the LED.
+	pins: [
+		...CNC_MOTORS.flatMap((m) => [
+			{ signal: `${m.label}_STEP`, gpio: f411(m.step), partRef: m.driver, partPin: "STEP" },
+			{ signal: `${m.label}_DIR`, gpio: f411(m.dir), partRef: m.driver, partPin: "DIR" },
+			{ signal: `${m.label}_EN`, gpio: f411(m.en), partRef: m.driver, partPin: "ENN" },
+		]),
+		{ signal: "STEPPER_UART", gpio: f411("PA9"), partRef: "U4", partPin: "PDN_UART" },
+		{ signal: "STATUS_LED", gpio: f411("PC13"), partRef: "D1", partPin: "A" },
+	],
+	parts: [
+		chipPart("stm32f411ceu6"),
+		...LOGGER_DESIGN.parts.filter((p) => ["U3", "J1", "D1", "R1", "R2", "R3", "C1", "C3"].includes(p.ref)),
+		...CNC_MOTORS.map((m) => cncDriver(m.driver)),
+		// The brick's jack: its VIN on the motors' rail.
+		catalogPart("DC-091-A250", "J2", { VIN: "VMOT", GND: "GND", GND_2: "GND", GND_3: "GND", GND_4: "GND" }),
+		// Each motor's plug, its pins on the driver's output nets (catalog TMC2209-LA nets, src/cnc/board.ts).
+		...CNC_MOTORS.map((m) => catalogPart("B4B-XH-A(LF)(SN)", m.plug, { A1: `@${m.label}_A1`, A2: `@${m.label}_A2`, B1: `@${m.label}_B1`, B2: `@${m.label}_B2` })),
+	],
 }
 const isCnc = () => !!state().contract.get("cncTargets") || CNC_BRIEF.test(state().contract.get("requirements")?.summary ?? "")
 const isStm32 = () => /\bSTM32\b/.test(state().contract.get("requirements")?.summary ?? "")
@@ -936,7 +972,8 @@ export function mockScripts(): Record<string, Script> {
 				// as the reason the board is that big; "about 50 × 30 mm" is a limit (requirements.size exact false), and the
 				// space check then compacts the board within it.
 				// Not a robot's: its brief's size is the robot's (the Eurobot base's 290 × 290 mm start square), not its board's.
-				const robot = Boolean(design.motion || armTargets)
+				// A CNC's too: "a work area of about 300 × 200 × 50 mm" read as a 200 × 50 mm board (CNC mock 9, 26 Nov 2026).
+				const robot = Boolean(design.motion || armTargets || isCnc())
 				const stated = robot ? null : /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*mm/.exec(instruction)
 				const line = stated ? (instruction.split("\n").find((l) => l.includes(stated[0])) ?? "") : ""
 				const exact = /\bexact(ly)?\b|\bmust be\b|\bfixed\b|\bchassis\b|\b(existing|our own) (housing|enclosure|case)\b|\btakes a\b/i.test(line)

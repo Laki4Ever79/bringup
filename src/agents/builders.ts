@@ -17,6 +17,7 @@ import { when } from "../change-control.ts"
 import { Rebuilder } from "../tools/rebuilder.ts"
 import { failureExcerpt, run, tail } from "../tools/exec.ts"
 import { buildBoard } from "../tools/board.ts"
+import { chipInstances } from "../codegen/circuit.ts"
 import { exportFab } from "../tools/fab.ts"
 import { buildEnclosure } from "../tools/enclosure.ts"
 import { buildFirmware } from "../tools/firmware.ts"
@@ -170,14 +171,19 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 // the sensor plug's VCC, the debug port, the duty cycle and USB wake (power and pads), and the test pads.
 export const BOARD_DERIVED = (s: ContractSnapshot) => {
 	const m = s.values.mechanics, r = s.values.requirements
-	return { driveKind: m?.drive.kind ?? null, sensorPlug: m?.sensor?.connector ?? null, debugPort: r?.debugPort ?? null, dutyCycle: r?.dutyCycle ?? null, usbWake: r?.usbWake ?? null, testPads: r?.testPads ?? null }
+	// chips: what each catalog chip's context hands it (chipInstances: a CNC driver's motor rail, address and plug nets,
+	// read from the cnc field). Without it the CNC board built before mechanics wrote cnc was never rebuilt: no motor
+	// rail, every plug unconnected, "supply-unwired J2.VIN" to the end (CNC mock 9, 26 Nov 2026).
+	let chips: unknown = null
+	try { chips = chipInstances(s).map((i) => [i.part.ref, i.ctx]) } catch { /* a contract the generator can't wire yet */ }
+	return { driveKind: m?.drive.kind ?? null, sensorPlug: m?.sensor?.connector ?? null, debugPort: r?.debugPort ?? null, dutyCycle: r?.dutyCycle ?? null, usbWake: r?.usbWake ?? null, testPads: r?.testPads ?? null, chips }
 }
 
 // Each artifact's derived inputs (createBuilder's derived), shared by the real builders and the stubs (tools/stubs.ts):
 // the stub board had none, so under --no-hardware a robot's mechanics (its sensor plug's 3V3) never rebuilt the board,
 // and the scripted rover ended on "supply-unwired JT1.VCC" (17 Nov 2026).
 export const BUILD_DERIVED: Partial<Record<ArtifactKind, { fields: FieldName[]; key: (s: ContractSnapshot) => unknown }>> = {
-	board: { fields: ["mechanics", "requirements"], key: BOARD_DERIVED },
+	board: { fields: ["mechanics", "requirements", "cnc"], key: BOARD_DERIVED },
 }
 
 // The three domain builders. Each depends only on the contract fields that shape its artifact,

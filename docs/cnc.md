@@ -104,4 +104,18 @@ Each failure on the way, with its general fix.
 - 26 Nov, mock run 7 (76 s): UNSETTLED at revision 9 with exactly those 5 findings (4 drivers × STEP/DIR/ENN, the 24 V
   rail), 0 failed builds. Next: the board generator wires a stepper driver (its VS from the 24 V rail, the charge pump,
   5VOUT, the sense resistors, the motor connector, the UART), then the scripted design assigns the pins.
+- 26 Nov: gap 5, the board side: the TMC2209-LA's catalog entry carries its wiring (nets) and parts (support) for
+  bringup-lead-4's chipSupport (src/codegen/chip-support.ts): VS on the motor rail with 10 µF 50 V + 100 µF 35 V, the
+  charge pump (22 nF 50 V CPI–CPO, 100 nF VCP–VS), 4.7 µF on 5VOUT, VCC_IO decoupled on 3V3, CLK/STDBY/pin 25 to GND,
+  PDN_UART on one line for all four (@STEPPER_UART), MS1/MS2 strapped per motor, a sense resistor per coil computed
+  for the run current (0.15 Ω for 1.2 A: 1.35 A full scale; src/cnc/board.ts). Each motor's plug is a contract part
+  (JST B4B-XH-A, 3 A) whose pins name the driver's output nets (Part.nets "@X_A1"…; a typo reports
+  part-net-unknown). The scripted board: VMOT 24 V from the DC jack, STEP/DIR/ENN for X, Y1, Y2, Z on PA0–PB12, the
+  UART on PA9. Its consistency check leaves only space-slack (the board's size), which the architect shrinks.
+- 26 Nov, mock run 8 (1754 s, under a load of ~24 from another session's tests): the drivers wired, revision 13,
+  0 violations, but 6 of 7 board builds failed: "Courtyard of JX1 overlaps with courtyard of C7"… The placer didn't
+  know the JST XH plug's size either (3 mm default; its courtyard is 13.4 × 6.75 mm). Fix: its size from tscircuit's
+  own courtyard, and a test that every catalog footprint has a placement size (test/footprint-size.test.ts), so the
+  next new part can't be placed blind. Also seen: "the 5 mm maximum length for U4.VS to C11.pin1 cannot be satisfied
+  (6.12 mm)", to recheck once the plugs no longer crowd the drivers.
 

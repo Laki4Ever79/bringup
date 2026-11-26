@@ -8,6 +8,7 @@ import type { Connector, ContractSnapshot, Part } from "../contract/types.ts"
 import { chipCrystal, chipPadLabels, chipPinLabels, chipPowerPins, chipSupport, type ChipCrystal } from "../mcu/board.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { loadProfiles, profileForPart, type McuProfile } from "../mcu/profile.ts"
+import { stepperDriverCtx } from "../cnc/board.ts"
 
 interface CatalogEntry {
 	ref?: string
@@ -51,6 +52,13 @@ function chipProfile(p: Part | undefined): McuProfile | null {
 	if (!p || p.role !== "mcu") return null
 	const prof = profileForPart(p)
 	return prof?.kind === "chip" && prof.board.supported ? prof : null
+}
+
+// A bare chip whose pin parts sit CHIP_GAP_MM off its box: an MCU with a chip profile, or any quad package (the
+// TMC2209's QFN28): with the parts' 1.5 mm gap its VCP and 5VOUT capacitors landed 6-8 mm from their pads, past
+// tscircuit's 5 mm (CNC mock 8, 26 Nov 2026).
+function bareChip(p: Part): boolean {
+	return !!chipProfile(p) || /^(?:qfn|lqfp)\d/.test(footprintFor(p))
 }
 
 function pinLabels(pins: string[]): string {
@@ -376,6 +384,8 @@ export function chipInstances(s: ContractSnapshot): { part: Part; ctx: ChipCtx; 
 }
 // The power tree's step-down (the logic's 5 V): fed by the pack or the brick (packNet), making BUCK_NET at 5 V.
 registerChipContext((s, part) => (part.role === "buck" && powerTree(s)?.buck?.ref === part.ref ? { in: packNet(s), out: BUCK_NET, outV: 5 } : null))
+// A CNC's stepper drivers: the motor rail, the address straps and the plug nets per motor (src/cnc/board.ts).
+registerChipContext(stepperDriverCtx)
 // An arm's servo rail chip: fed by the brick's input, making its rail at the arm's rail voltage.
 registerChipContext((s, part) => {
 	const rail = (armRails(s) ?? []).find((r) => r.supplyRef === part.ref)
@@ -890,6 +900,10 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4], [DDA_FOOTPRINT]: [7.2, 5.4], [SY8368_FOOTPRINT]: [3.9, 3.6], [XT60_FOOTPRINT]: [9.4, 17], [DC091_FOOTPRINT]: [13.6, 10.6],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
+	// JST XH 4-pin vertical (a CNC's stepper plug, B4B-XH-A): tscircuit's own courtyard, 13.4 × 6.75 mm, 0.525 mm behind
+	// the pins (circuit.json of footprinter jst4_xh, 26 Nov 2026). Unlisted, it got the 3 mm default and the CNC mock's
+	// plugs were placed on top of the drivers and their capacitors (6 of 7 board builds failed).
+	jst4_xh: [13.4, 6.75],
 	// JST SH 4-pin right angle (link connector): pads 6.8 × 4.2 mm (footprinter jst4_sh), the body a little deeper.
 	jst4_sh: [7, 5.5],
 	// The robot plugs added 16 Nov, their courtyards from circuit.json of a tscircuit 0.0.3042 build of the Eurobot base
@@ -943,6 +957,16 @@ export function quadPinOffset(footprint: string, pin: number, ringMm: number | u
 	return [{ x: -c, y: -along }, { x: along, y: -c }, { x: c, y: along }, { x: -along, y: c }][at]
 }
 
+// The pad ring of the quad packages that aren't MCUs (no profile to carry ringMm), measured from tscircuit's footprinter
+// (0.0.3042's @tscircuit/footprinter, 26 Nov 2026): the TMC2209's QFN28 pads sit 2.425 mm out. Without it the reach
+// check skipped every stepper driver capacitor and tscircuit refused U4.VS to C11 at 6.12 mm (CNC mock 8, 26 Nov 2026).
+export const QUAD_RING_MM: Record<string, number> = {
+	"qfn28_w5.8mm_h5.8mm_p0.5mm_pl0.75mm_pw0.25mm_thermalpad3.7mmx3.7mm": 2.425,
+}
+export function quadRingMm(footprint: string): number | undefined {
+	return loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm ?? QUAD_RING_MM[footprint]
+}
+
 // A pad's centre from the part's origin at the part's rotation (counter-clockwise, as tscircuit's pcbRotation and
 // offsetAt turn), for a dual-row or quad package; null for other footprints.
 // A SOT-23-5/6's pad centre at rotation 0, from tscircuit 0.0.3042's own pads (circuit.json of the arm board, 26 Nov
@@ -969,14 +993,14 @@ function ownPadOffset(footprint: string, pin: number): { x: number; y: number } 
 	return null
 }
 function padOffset(footprint: string, pad: number, rotation: number, known = true): { x: number; y: number } | null {
-	const at = icPinOffset(footprint, pad) ?? (known ? ownPadOffset(footprint, pad) ?? sotPinOffset(footprint, pad) : null) ?? quadPinOffset(footprint, pad, loadProfiles().find((x) => x.package.footprint === footprint)?.package.ringMm) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
+	const at = icPinOffset(footprint, pad) ?? (known ? ownPadOffset(footprint, pad) ?? sotPinOffset(footprint, pad) : null) ?? quadPinOffset(footprint, pad, quadRingMm(footprint)) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
 	if (!at) return null
 	const t = (rotation * Math.PI) / 180
 	return { x: +(at.x * Math.cos(t) - at.y * Math.sin(t)).toFixed(3), y: +(at.x * Math.sin(t) + at.y * Math.cos(t)).toFixed(3) }
 }
 
 // Centre of the reserved box relative to the part's origin, at rotation 0.
-const FOOTPRINT_OFFSET: Record<string, [number, number]> = { usbcmidmount: [0, -0.855], jst2_ph: [0, -0.55] }
+const FOOTPRINT_OFFSET: Record<string, [number, number]> = { usbcmidmount: [0, -0.855], jst2_ph: [0, -0.55], jst4_xh: [0, -0.525] }
 
 function offsetAt(footprint: string, rotation: number): { dx: number; dy: number } {
 	const [ox, oy] = FOOTPRINT_OFFSET[footprint] ?? [0, 0]
@@ -1371,6 +1395,10 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 			}
 		// The routing channel around a part's pin-capacitor group (capChannel): only that part and its capacitors may sit in it.
 		if (channels.some((c) => b.ref !== c.owner && !c.caps.has(b.ref) && overlaps(b, c))) return false
+		// A pin capacitor's reserved spot (capBoxes) is kept for it until it is placed: parts placed after its owner took
+		// them (the CNC board's drivers on the MCU's decoupling spots, the MCU's capacitors on the drivers'), and the
+		// capacitors went to the next free spot, 6-8 mm from their pads (CNC mock 8, 26 Nov 2026).
+		for (const r of reservedCaps.values()) if (r.ref !== b.ref && r.owner !== b.ref && blocks(b, r)) return false
 		return keepouts.every((o) => !overlaps(b, o))
 	}
 
@@ -1380,6 +1408,17 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// too. On a 33 mm
 	// wide rover the driver went hard against the module and VINT's capacitor landed across it, 7.98 mm of trace against
 	// tscircuit's 5 mm, and every build failed (14 Nov 2026).
+	// A capacitor between pads on two different sides of one part (a quad package's corner: the TMC2209's VCP and VS2).
+	// Pads on one side (the DRV8833's VCP and VM) keep the spot beside the first pad, as before.
+	const sideOf = (at: { x: number; y: number }) => (Math.abs(at.x) >= Math.abs(at.y) ? `x${Math.sign(at.x)}` : `y${Math.sign(at.y)}`)
+	const acrossSides = (sp: Support): boolean => {
+		if (!("ref" in sp.a) || !("ref" in sp.b) || sp.a.ref !== sp.b.ref) return false
+		const part = parts.find((p) => p.ref === (sp.a as { ref: string }).ref)
+		if (!part) return false
+		const fp = footprintFor(part)
+		const pa = padOffset(fp, part.pins.indexOf(sp.a.pin) + 1, 0, !!opts.pinPads), pb = padOffset(fp, part.pins.indexOf(sp.b.pin) + 1, 0, !!opts.pinPads)
+		return !!pa && !!pb && sideOf(pa) !== sideOf(pb)
+	}
 	const pinCaps = supportParts(s).filter((sp) => sp.added && sp.spec.kind === "capacitor" && "ref" in sp.a && sp.near !== boardCrystal(s)?.ref)
 	// A turned part (the board page) turns its pads, and these boxes with them.
 	const capBoxes = (b: Placed, footprint: string): Placed[] => {
@@ -1389,10 +1428,14 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		return pinCaps.flatMap((sp) => {
 			const end = sp.a as { ref: string; pin: string }
 			if (end.ref !== b.ref) return []
-			const at = padOffset(footprint, part.pins.indexOf(end.pin) + 1, b.rotation, !!opts.pinPads)
-			if (!at) return []
+			const a = padOffset(footprint, part.pins.indexOf(end.pin) + 1, b.rotation, !!opts.pinPads)
+			if (!a) return []
+			// A capacitor across two pins of the same part (the TMC2209's VCP to VS2, CPO to CPI) sits beside the middle of
+			// its two pads: beside its first pad alone, VS2's end was 7-8 mm away on a corner (CNC mock 8, 26 Nov 2026).
+			const other = acrossSides(sp) ? padOffset(footprint, part.pins.indexOf((sp.b as { pin: string }).pin) + 1, b.rotation, !!opts.pinPads) : null
+			const at = other ? { x: (a.x + other.x) / 2, y: (a.y + other.y) / 2 } : a
 			const [cw, ch] = sizeAt(sp.spec.footprint, 0)
-			const gap = chipProfile(part) ? CHIP_GAP_MM : gapMm
+			const gap = bareChip(part) ? CHIP_GAP_MM : gapMm
 			return [Math.abs(at.x) >= Math.abs(at.y)
 				? { ref: sp.ref, x: b.x + Math.sign(at.x) * (b.w / 2 + gap + cw / 2), y: b.y + at.y, w: cw, h: ch, rotation: 0 }
 				: { ref: sp.ref, x: b.x + at.x, y: b.y + Math.sign(at.y) * (b.h / 2 + gap + ch / 2), w: cw, h: ch, rotation: 0 }]
@@ -1473,6 +1516,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		if (best && (dx !== 0 || dy !== 0)) best = { ...best, ox: +(best.x - dx).toFixed(3), oy: +(best.y - dy).toFixed(3) }
 		if (best) {
 			placed.push(best)
+			reservedCaps.delete(ref)
 			const boxes = capBoxes(best, footprint)
 			for (const c of boxes) reservedCaps.set(c.ref, { ...c, owner: ref })
 			const chan = channelOf(ref, boxes)
@@ -1708,7 +1752,11 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 				continue
 			}
 			done.add(sp.ref)
-			const b = place(sp.ref, sp.spec.footprint, 0, want, first(sp) === 0 ? mcuPart?.ref : undefined, reservedCaps.get(sp.ref))
+			// Across two pins of one part (VCP to VS2): its reserved spot, between the pads, is the target; beside the first
+			// pad alone the grid spot there won and the second end was 7 mm off (CNC mock 8, 26 Nov 2026).
+			const exact = reservedCaps.get(sp.ref)
+			const both = exact && acrossSides(sp)
+			const b = place(sp.ref, sp.spec.footprint, 0, both ? { x: exact.x, y: exact.y } : want, first(sp) === 0 ? mcuPart?.ref : undefined, exact)
 			if (b && facesAway(b, sp)) b.rotation = 180
 		} else put(free.find((p) => p.ref === sp.ref), want)
 	}
@@ -2256,6 +2304,14 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	const railNames = new Set(rails.map((r) => r.name))
 	for (const p of parts)
 		for (const [pin, rail] of Object.entries(p.nets ?? {})) {
+			// "@<name>": a net a chip's catalog entry names too (chip-support.ts "@" ends): a CNC's motor plug on its
+			// driver's outputs. The check (part-net-unknown) reports one nothing else is on.
+			if (rail.startsWith("@") && p.pins.includes(pin)) {
+				const net = rail.slice(1)
+				if (!nets.has(net)) nets.set(net, [])
+				if (!nets.get(net)!.includes(`${p.ref}.${pin}`)) join(net, p.ref, pin)
+				continue
+			}
 			if (!p.pins.includes(pin) || (rail !== "GND" && !railNames.has(rail))) continue
 			// The power tree owns the LDO's input (VIN_OR): a contract rail there would short the tree's sources.
 			if (p.role === "ldo" && pin === "VIN" && powerTree(s)) continue
@@ -2527,7 +2583,8 @@ function capBound(s: ContractSnapshot, sp: Support): number | null {
 }
 
 // Half the distance between a chip capacitor's two pad centres (tscircuit's footprints).
-const CAP_TERMINAL_MM: Record<string, number> = { "0402": 0.5, "0603": 0.75, "0805": 0.95 }
+// 1206: tscircuit's pad centre, measured 26 Nov 2026 (the TMC2209's VS ceramic; without it the check skipped it).
+const CAP_TERMINAL_MM: Record<string, number> = { "0402": 0.5, "0603": 0.75, "0805": 0.95, "1206": 1.46 }
 
 // The pin capacitors a placement leaves farther from their pad than tscircuit's bound (capBound), in tscircuit's own
 // words: straight from the part's pad to the capacitor's pin 1, which no route can beat. tscircuit decides this before it

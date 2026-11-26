@@ -48,9 +48,10 @@ test("the placement check (unreachableCaps) holds back no fixture's layout; on r
 		try { far = unreachableCaps(s); if (far.length) far = unreachableCaps(s, { pinPads: true }) } catch { continue }
 		if (far.length) outOfReach.push(f)
 	}
-	// The boards whose every layout leaves a capacitor's ground return just past its 5 mm (5.00-5.11 mm): Freerouting
-	// routes them (board.ts), as it did when tscircuit refused them. A new name here is a placement regression.
-	assert.deepEqual(outOfReach.sort(), ["cc-eurobot-20b-final.json", "cc-eurobot-21-rev27.json", "cc-eurobot20b-rev20.json", "rover-mock-rev11.json"])
+	// Until 26 Nov 2026 four boards (both eurobots, the rover mock) left a capacitor 5.08-7.58 mm out on every layout; with
+	// pin capacitors' reserved spots kept free for them (CNC mock 8), their pinPads layout reaches all. A name here is a
+	// placement regression.
+	assert.deepEqual(outOfReach.sort(), [])
 })
 
 test("the reach check and tscircuit use one bound: no generous margin, and no fixture's pin capacitor it can't measure", async () => {
