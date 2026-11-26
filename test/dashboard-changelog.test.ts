@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { causeText, changeLog, defaultRange, fileDrift, readableDiff } from "../src/dashboard/changelog.js"
+import { causeText, changeLog, defaultRange, fileDrift, readableDiff } from "../src/timeline/changelog.js"
 
 let seq = 0
 const changed = (revision: number, field: string, version: number, by: string, extra: object = {}) => ({ seq: seq++, at: `2026-10-31T12:00:${String(revision).padStart(2, "0")}.000Z`, type: "contract.changed", producerId: "x", payload: { field, version, revision, by, ...extra } })

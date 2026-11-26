@@ -3,7 +3,7 @@ import { join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
 import { ALL_KINDS, BUILD_INPUTS, OPTIONAL_KINDS } from "../agents/builders.ts"
 import type { ArtifactKind } from "../events.ts"
-import { shownLanes } from "../dashboard/lanes.js"
+import { shownLanes } from "../timeline/lanes.js"
 
 export const RIPPLES_FILE = "ripples.json"
 
@@ -44,7 +44,7 @@ export interface Ripple {
 const KINDS: ArtifactKind[] = ALL_KINDS
 const builderName = (kind: string) => `build:${kind}`
 
-// Everyone a request could wake, keyed like the dashboard's lanes (src/dashboard/lanes.js): the four LLM agents by
+// Everyone a request could wake, keyed like the dashboard's lanes (src/timeline/lanes.js): the four LLM agents by
 // role, the three builders (the QEMU boot rides on build:firmware), the grounding check and the consistency check.
 export const RIPPLE_PARTICIPANTS = ["architect", "parts", "ml", "test", "enclosure", "mechanics", "connectivity", "firmware", "reviewer", ...KINDS.map(builderName), "grounding", "consistency"]
 

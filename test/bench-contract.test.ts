@@ -70,7 +70,7 @@ test("behavior.h has defaults without a behavior field, and the contract's value
 
 test("a model change rebuilds the firmware: model is one of its build inputs", async () => {
 	const { BUILD_INPUTS } = await import("../src/agents/builders.ts")
-	const { BUILDS } = await import("../src/dashboard/lanes.js")
+	const { BUILDS } = await import("../src/timeline/lanes.js")
 	assert.ok(BUILD_INPUTS.firmware.includes("model"))
 	assert.ok(BUILDS.firmware.inputs.includes("model"), "the dashboard's firmware lane wakes on it too")
 })

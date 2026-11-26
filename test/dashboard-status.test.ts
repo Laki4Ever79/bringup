@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { statusLine } from "../src/dashboard/ripple.js"
+import { statusLine } from "../src/timeline/ripple.js"
 
 // The 04 Result banner as a live status line: what is happening now, in plain words, then how the change ended.
 const T0 = Date.parse("2026-10-31T12:00:00.000Z")

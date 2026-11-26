@@ -1,7 +1,7 @@
 import { providerProblem } from "../inference/providers.ts"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { callModel, NoModelKey } from "../dashboard/ask.ts"
+import { callModel, NoModelKey } from "../runner/ask.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { UsageRecord } from "../inference/usage.ts"
 import { specErrors, type SystemSpec } from "./spec.ts"

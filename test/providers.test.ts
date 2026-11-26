@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { modelFor } from "../src/inference/models.ts"
 import { modelsFor, providerModel, providerProblem, PROVIDERS, resolveProvider } from "../src/inference/providers.ts"
-import { callModel, NoModelKey } from "../src/dashboard/ask.ts"
+import { callModel, NoModelKey } from "../src/runner/ask.ts"
 
 test("the old setups pick the same provider and models as before", () => {
 	assert.equal(resolveProvider({ OPENAI_API_KEY: "k" })?.id, "openai")

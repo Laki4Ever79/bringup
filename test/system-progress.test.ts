@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { progressState, badgeOf, stepOfEvent } from "../src/dashboard/progress.js"
+import { progressState, badgeOf, stepOfEvent } from "../src/timeline/progress.js"
 
 const L = (round: number, board: string, step: string, status: string, extra = {}) => ({ at: "t", round, board, step, status, ...extra }) as never
 

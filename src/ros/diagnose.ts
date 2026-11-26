@@ -1,6 +1,6 @@
 import type { AgentRole, ContractSnapshot, FieldName } from "../contract/types.ts"
 import type { ChassisSpec } from "../tools/chassis.ts"
-import { BOARD_PF, CABLE_PF_PER_M, DEVICE_PF, PULLUP_OHM } from "../dashboard/assembly-geom.js"
+import { BOARD_PF, CABLE_PF_PER_M, DEVICE_PF, PULLUP_OHM } from "../geometry/assembly-geom.js"
 import { maxWheelRadS } from "./urdf.ts"
 
 // From a ROS symptom to its cause in the design (docs/ros.md; the user, 15 Nov: "we have a unique possibility to solve

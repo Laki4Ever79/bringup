@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { rippleTimeline } from "../src/dashboard/changelog.js"
+import { rippleTimeline } from "../src/timeline/changelog.js"
 
 // The timeline beside 03 Agents: how the change travelled, step by step, with times from the request.
 const T0 = Date.parse("2026-10-31T12:00:00.000Z")

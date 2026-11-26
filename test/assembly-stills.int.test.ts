@@ -1,0 +1,29 @@
+// The build package's robot pictures without the hosted page (py/stills.py, src/package/assembly-pictures.ts): the
+// scripted rover's chassis built, then drawn per assembly step, exploded, from the top and the side.
+import { test } from "node:test"
+import assert from "node:assert/strict"
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
+import { buildChassis } from "../src/tools/chassis.ts"
+import { assemblyPictures } from "../src/package/assembly-pictures.ts"
+import { ASSEMBLY_STEPS } from "../src/geometry/assembly-steps.js"
+import { ROVER_BOARD } from "../src/inference/scripts.ts"
+import { tempDir } from "./helpers.ts"
+
+const root = process.cwd()
+const python = [join(root, ".venv/bin/python")].find(existsSync)
+
+test("a built rover gets its assembly pictures with no page and no browser", { skip: python ? false : "no .venv python with build123d" }, async () => {
+	const work = tempDir(), out = tempDir()
+	const s = { revision: 1, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) } as never
+	const ch = await buildChassis(python!, root, work, s, 1)
+	assert.ok(ch.ok, JSON.stringify(ch))
+	const r = await assemblyPictures(python!, root, work, out)
+	assert.equal(r.note, null)
+	assert.deepEqual(r.files, [...ASSEMBLY_STEPS.map((n, k) => `assembly/step-${k + 1}-${n}.png`), "assembly/exploded.png", "assembly/view-top.png", "assembly/view-side.png"])
+	for (const f of r.files) {
+		const png = readFileSync(join(out, f))
+		assert.equal(png.subarray(1, 4).toString(), "PNG", f)
+		assert.equal(png.readUInt32BE(16), 1200, f)
+	}
+})

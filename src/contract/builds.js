@@ -1,5 +1,5 @@
 // What each artifact is built from, in one place for the builders (src/agents/builders.ts: BUILD_INPUTS, BUILD_REQUIRES,
-// OPTIONAL_KINDS) and the dashboard (src/dashboard/lanes.js, ripple.js: which lane wakes, which waits). A plain ES module
+// OPTIONAL_KINDS) and the run timeline (src/timeline/lanes.js, ripple.js: which lane wakes, which waits). A plain ES module
 // with no imports: Node imports it, and the dashboard server serves it to the page as /contract/builds.js. It was a hand
 // copy in lanes.js until 17 Nov 2026, when the board's rails (an input and a requirement since real run 16) were missing
 // from the copy and the board lane showed "building" for a build that would never start.

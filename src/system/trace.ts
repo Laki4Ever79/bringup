@@ -5,7 +5,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { readTrace } from "../runner/ripple.ts"
-import { stepOfEvent } from "../dashboard/progress.js"
+import { stepOfEvent } from "../timeline/progress.js"
 
 export const SYSTEM_TRACE = "system-trace.jsonl"
 

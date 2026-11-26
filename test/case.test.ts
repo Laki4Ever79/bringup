@@ -13,7 +13,7 @@ import { enclosureSpec } from "../src/tools/enclosure.ts"
 import { stubEnclosure } from "../src/tools/stubs.ts"
 import { caseFromRequest, requestedCaseWidth } from "../src/inference/scripts.ts"
 import { appendDecision } from "../src/runner/decisions.ts"
-import { prCards } from "../src/dashboard/model.js"
+import { prCards } from "../src/timeline/model.js"
 import { fixtureContract } from "./fixture.ts"
 import { tempDir, exactSize } from "./helpers.ts"
 

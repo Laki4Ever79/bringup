@@ -201,7 +201,7 @@ test("stubs open the floor under each microphone where the board places it, and 
 	assert.deepEqual(v.map((x) => x.affects), [["enclosure"]])
 })
 
-// The Drive tile reads how the simulated drive went from artifact.ready (src/dashboard/lanes.js).
+// The Drive tile reads how the simulated drive went from artifact.ready (src/timeline/lanes.js).
 test("a builder's summary rides on artifact.ready; the drive's says its result and the first failed segment", async () => {
 	assert.deepEqual(driveSummary({ revision: 3, dir: "/d", result: "fail", reason: "x", segments: [{ name: "edge crossed", pass: false, detail: "" }, { name: "top speed", pass: false, detail: "" }] }), { result: "fail", failed: "edge crossed" })
 	assert.deepEqual(driveSummary({ revision: 3, dir: "/d", result: "pass", reason: "", segments: [] }), { result: "pass" })

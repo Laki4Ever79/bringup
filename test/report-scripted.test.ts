@@ -4,7 +4,7 @@ import { test } from "node:test"
 import { writeReport } from "../src/report.ts"
 import { BringupState } from "../src/runtime.ts"
 import type { Env } from "../src/tools/env.ts"
-import { checkPills } from "../src/dashboard/model.js"
+import { checkPills } from "../src/timeline/model.js"
 import { tempDir } from "./helpers.ts"
 
 const env: Env = { root: ".", tsci: "tsci", kicad: "docker", python: "python", pio: "pio", qemu: "qemu" }

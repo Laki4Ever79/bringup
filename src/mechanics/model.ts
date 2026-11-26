@@ -8,7 +8,7 @@ import { ESTOP_HEAD_CLEARANCE_MM, ESTOP_PANEL_MM } from "./safety.ts"
 const DECK_WALL_MM = 2
 import { est } from "./estimates.ts"
 import type { Mechanics, Mount } from "./types.ts"
-import { hatBaseZ } from "../dashboard/assembly-geom.js"
+import { hatBaseZ } from "../geometry/assembly-geom.js"
 
 export const G = 9.81
 

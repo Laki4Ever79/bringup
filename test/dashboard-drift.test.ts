@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { driftView } from "../src/dashboard/model.js"
+import { driftView } from "../src/timeline/model.js"
 
 // The Drift drawer: saved edits outside the contract (drift.json, owned by the run), with Adopt / Revert.
 const entry = (o: object) => ({ id: "drift-1", path: "firmware/rev-7/include/pins.h", savedAt: "2026-10-31T12:50:42.000Z", savedRevision: 7, designRevision: 7, kind: "not-in-contract", items: ["+ #define DEBUG_LOG 1"], status: "open", adoptable: false, note: "a #define with no contract field", ...o })

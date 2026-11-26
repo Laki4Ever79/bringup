@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { liveRipples, mergeRipples, runStart, statusLine, whatMoved } from "../src/dashboard/ripple.js"
+import { liveRipples, mergeRipples, runStart, statusLine, whatMoved } from "../src/timeline/ripple.js"
 
 const T0 = Date.parse("2026-10-31T12:00:00.000Z")
 let seq = 0

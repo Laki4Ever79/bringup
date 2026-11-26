@@ -8,7 +8,7 @@ import { loadModules, type Module } from "../modules/library.ts"
 const ROOT = resolve(import.meta.dirname, "../..")
 
 // The carrier is a HAT on top of the module: the gap between them, with its source (assembly-geom.js).
-import { HAT_STACK_MM, HAT_STACK_SOURCE } from "../dashboard/assembly-geom.js"
+import { HAT_STACK_MM, HAT_STACK_SOURCE } from "../geometry/assembly-geom.js"
 export const HAT_STACK = { mm: HAT_STACK_MM, source: HAT_STACK_SOURCE }
 
 // The library is read once per root: specErrors runs on every drag of a plan.

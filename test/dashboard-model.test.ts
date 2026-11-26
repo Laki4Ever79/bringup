@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { AGENT_COLORS, boardFor, changedRefs, checkPills, contractDiff, parseBattery, prCards, scrubberModel } from "../src/dashboard/model.js"
+import { AGENT_COLORS, boardFor, changedRefs, checkPills, contractDiff, parseBattery, prCards, scrubberModel } from "../src/timeline/model.js"
 import { fixtureContract } from "./fixture.ts"
 
 let seq = 0
@@ -151,7 +151,7 @@ test("the Review pill says off when the run has the brief review disabled", () =
 })
 
 test("the composer and the state pill: live, bench, waiting for a change, settled, stopped", async () => {
-	const { runPhase } = await import("../src/dashboard/model.js")
+	const { runPhase } = await import("../src/timeline/model.js")
 	assert.deepEqual(runPhase({ settled: null, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "live", pill: "LIVE", open: true })
 	assert.deepEqual(runPhase({ settled: { settled: true }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "SETTLED · open", open: true })
 	assert.deepEqual(runPhase({ settled: { settled: false }, stay: true, alive: true, benchLive: false, stopped: false }), { bar: "waiting", pill: "UNSETTLED · open", open: true })
@@ -191,7 +191,7 @@ test("DRC with no errors is clean even with KiCad's warnings (silkscreen, librar
 })
 
 test("the composer's prompt matches the run: settled and waiting, unsettled and waiting, live, bench, ended", async () => {
-	const { composerPrompt } = await import("../src/dashboard/model.js")
+	const { composerPrompt } = await import("../src/timeline/model.js")
 	assert.match(composerPrompt("waiting", { settled: true }), /^Settled\. Now change one thing/)
 	assert.match(composerPrompt("waiting", { settled: false }), /^Not consistent yet/)
 	assert.doesNotMatch(composerPrompt("waiting", { settled: false }), /Settled\./)
@@ -209,7 +209,7 @@ test("a part that keeps its MPN and footprint says what did change, not \"SOT-23
 })
 
 test("in a scripted run the composer says what the scripted agents understand: a width and the blink", async () => {
-	const { composerPrompt } = await import("../src/dashboard/model.js")
+	const { composerPrompt } = await import("../src/timeline/model.js")
 	for (const bar of ["waiting", "live"]) {
 		const p = composerPrompt(bar, { settled: true }, { scripted: true })
 		assert.match(p, /add a temperature\/humidity sensor/)
@@ -223,7 +223,7 @@ test("in a scripted run the composer says what the scripted agents understand: a
 })
 
 test("folds: the parts list and the revisions strip start collapsed, with a one-line header, and remember the choice", async () => {
-	const { foldHeader, foldOpen, setFold } = await import("../src/dashboard/model.js")
+	const { foldHeader, foldOpen, setFold } = await import("../src/timeline/model.js")
 	assert.equal(foldHeader("parts", { count: 18, totalUsd: 5.41 }), "Parts · 18 · $5.41")
 	assert.equal(foldHeader("parts", { count: 18, totalUsd: null }), "Parts · 18")
 	assert.equal(foldHeader("parts", { count: 0 }), "Parts")
@@ -246,7 +246,7 @@ test("folds: the parts list and the revisions strip start collapsed, with a one-
 })
 
 test("scripted mode offers the two scripted briefs, the beacon (then add a sensor) first and by default", async () => {
-	const { scriptedBriefs } = await import("../src/dashboard/model.js")
+	const { scriptedBriefs } = await import("../src/timeline/model.js")
 	const briefs = [{ name: "blinky.md", title: "blinky", text: "b" }, { name: "logger.md", title: "pocket climate logger", text: "L" }, { name: "beacon.md", title: "pocket BLE beacon", text: "B" }]
 	assert.deepEqual(scriptedBriefs(briefs), [
 		{ name: "beacon.md", label: "beacon.md (then add a sensor)", text: "B" },
@@ -257,7 +257,7 @@ test("scripted mode offers the two scripted briefs, the beacon (then add a senso
 })
 
 test("the battery label has a short form for narrow stages", async () => {
-	const { batteryLabel } = await import("../src/dashboard/model.js")
+	const { batteryLabel } = await import("../src/timeline/model.js")
 	assert.equal(batteryLabel({ days: 103, targetDays: 90, measured: false }), "103 days vs 90 target")
 	assert.equal(batteryLabel({ days: 103, targetDays: 90, measured: false, short: true }), "103 d / 90 d")
 	assert.equal(batteryLabel({ days: 64.4, targetDays: null, measured: true, source: "fake" }), "64 days measured (fake)")

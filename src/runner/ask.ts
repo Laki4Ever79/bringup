@@ -2,7 +2,7 @@ import "dotenv/config"
 import { modelFor } from "../inference/models.ts"
 import { baseURL, providerProblem, resolveProvider } from "../inference/providers.ts"
 import type { AgentRole } from "../contract/types.ts"
-import { changeLog } from "./changelog.js"
+import { changeLog } from "../timeline/changelog.js"
 import { anthropicUsage, usageRecord, type UsageRecord } from "../inference/usage.ts"
 
 // "Ask about the changes": one model call that answers from the run's own record (contract.changed with its

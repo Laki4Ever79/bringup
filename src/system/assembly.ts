@@ -43,7 +43,7 @@ export interface SystemAssembly {
 }
 
 // The pure geometry lives in the dashboard module, so the design page checks with the same code.
-import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, plateLimitForBrief, SENSOR_BRACKET_WALL_MM, snapCarriers, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../dashboard/assembly-geom.js"
+import { boardsOverlap, cableLength, CABLE_SLACK_MM, footprint, offPlate, plateLimitForBrief, SENSOR_BRACKET_WALL_MM, snapCarriers, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM } from "../geometry/assembly-geom.js"
 import { RAIL_WALL_MM, STANDOFF_OD_MM } from "../tools/chassis.ts"
 import { motionFromBrief } from "../mechanics/brief.ts"
 export { cableLength, CABLE_SLACK_MM, footprint, STANDOFF_DEFAULT_MM, STANDOFF_RANGE_MM }

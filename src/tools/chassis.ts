@@ -12,7 +12,7 @@ import { byMpn, type MotorMountPart } from "../mechanics/catalog.ts"
 import { est } from "../mechanics/estimates.ts"
 import { massAndCom, mounts, payloadMount, stickerPanel } from "../mechanics/model.ts"
 import { connectorBoxes, MOUNTING_HOLE, mountingHoles } from "../codegen/circuit.ts"
-import { CABLE_SLACK_MM } from "../dashboard/assembly-geom.js"
+import { CABLE_SLACK_MM } from "../geometry/assembly-geom.js"
 import { isMotorPlug } from "../mechanics/refs.ts"
 import { STANDOFF } from "../contract/case.ts"
 

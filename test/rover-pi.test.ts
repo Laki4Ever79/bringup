@@ -13,7 +13,7 @@ import { specErrors, type SystemSpec } from "../src/system/spec.ts"
 import { assemblyErrors, assemblyFitError } from "../src/system/assembly.ts"
 import { byMpn } from "../src/mechanics/catalog.ts"
 import { defaultCheckCatalog, mechanicsChecksWith } from "../src/mechanics/checks.ts"
-import { plateLimitForBrief } from "../src/dashboard/assembly-geom.js"
+import { plateLimitForBrief } from "../src/geometry/assembly-geom.js"
 import { fixtureContract } from "./fixture.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 

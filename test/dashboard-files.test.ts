@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { test } from "node:test"
-import { filesView } from "../src/dashboard/model.js"
+import { filesView } from "../src/timeline/model.js"
 
 // The Files panel: the linked folder, your edits (in plain words, one action each) and the git history of the design.
 // Fixture: 5b's docs/runs/linked/files.json, exactly what GET /api/runs/:id/files returned.

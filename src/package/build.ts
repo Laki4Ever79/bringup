@@ -148,11 +148,11 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 
 	// 5. Bench bring-up, the assembly order, the parts list and the summary.
 	writeBench(outDir, s, board)
-	// The robot drawn step by step in the 3D view, from the run the contract came from (assembly-pictures.ts).
-	const pictures = opts.runDir ? await assemblyPictures(opts.runDir, outDir, log) : { files: [], note: "no assembly pictures: packaged from a contract outside a run" }
+	// The robot drawn step by step from the chassis built above (assembly-pictures.ts, py/stills.py).
+	const pictures = stls.length ? await assemblyPictures(opts.python, opts.root, join(work, "chassis"), outDir, log) : { files: [], note: s.values.mechanics ? "no assembly pictures: the chassis didn't build" : null }
 	writeFileSync(
 		join(outDir, "assembly.md"),
-		assemblyOrder(s, stls.map((f) => basename(f))) + (pictures.files.length ? `\n## Pictures\n\nThe robot after each step, and exploded (the run's board and chassis in the 3D view):\n\n${pictures.files.map((f) => `![${basename(f, ".png")}](${f})`).join("\n")}\n` : pictures.note ? `\n${pictures.note}\n` : ""),
+		assemblyOrder(s, stls.map((f) => basename(f))) + (pictures.files.length ? `\n## Pictures\n\nThe robot after each step, exploded, and from the top and the side (the chassis built here, with the bought parts where they go):\n\n${pictures.files.map((f) => `![${basename(f, ".png")}](${f})`).join("\n")}\n` : pictures.note ? `\n${pictures.note}\n` : ""),
 	)
 	const partsMd = [
 		`# Parts (prices and stock checked ${new Date().toISOString().slice(0, 10)})`,

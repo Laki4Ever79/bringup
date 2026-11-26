@@ -1,4 +1,4 @@
-import { NoModelKey } from "../dashboard/ask.ts"
+import { NoModelKey } from "../runner/ask.ts"
 import { usageRecord, type UsageRecord } from "../inference/usage.ts"
 
 // The models the part learner starts with: a cheap one reads every page, the strong one only settles disagreements.

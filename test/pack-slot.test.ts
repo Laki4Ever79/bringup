@@ -3,7 +3,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { clearPackSlot, packSlotOf, type SystemAssembly } from "../src/system/assembly.ts"
-import { boardsOverlap, footprint } from "../src/dashboard/assembly-geom.js"
+import { boardsOverlap, footprint } from "../src/geometry/assembly-geom.js"
 
 const spec = { battery: { sizeMm: [60, 36, 8] as [number, number, number] }, sensor: { xMm: 74.2, sizeMm: [4, 20, 10] as [number, number, number] }, plate: { lengthMm: 150 } }
 const est = (w: number, h: number) => ({ widthMm: w, heightMm: h })

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { readinessShort, safeUrl, sourcingRows } from "../src/dashboard/model.js"
+import { readinessShort, safeUrl, sourcingRows } from "../src/timeline/model.js"
 
 test("only absolute http(s) links reach an href", () => {
 	assert.equal(safeUrl("https://www.lcsc.com/product-detail/C2838502.html"), "https://www.lcsc.com/product-detail/C2838502.html")
@@ -33,7 +33,7 @@ test("sources show live stock and price where known, 'not checked' otherwise, ne
 })
 
 test("a part's order status: amber only for out of stock or not listed, neutral when stock is unknown or not checked", async () => {
-	const { readinessLine } = await import("../src/dashboard/model.js")
+	const { readinessLine } = await import("../src/timeline/model.js")
 	const readiness = { warn: true, lines: [{ ref: "U1", status: "stock unknown" }, { ref: "U2", status: "stock confirmed" }, { ref: "U4", status: "out of stock" }, { ref: "J2", status: "not listed" }, { ref: "R1", status: "not checked" }] }
 	assert.deepEqual(readinessLine(readiness, "U1"), { status: "stock unknown", warn: false })
 	assert.deepEqual(readinessLine(readiness, "U4"), { status: "out of stock", warn: true })
@@ -45,7 +45,7 @@ test("a part's order status: amber only for out of stock or not listed, neutral 
 })
 
 test("the sourcing popover toggles: the same row closes it, another row switches, nothing (Esc, outside) closes", async () => {
-	const { toggleOpen } = await import("../src/dashboard/model.js")
+	const { toggleOpen } = await import("../src/timeline/model.js")
 	assert.equal(toggleOpen(null, "U1"), "U1")
 	assert.equal(toggleOpen("U1", "U1"), null)
 	assert.equal(toggleOpen("U1", "U2"), "U2")

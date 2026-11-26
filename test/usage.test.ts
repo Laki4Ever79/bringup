@@ -5,7 +5,7 @@ import assert from "node:assert/strict"
 import { InputTokenDetails, ModelMessageItem, OutputTokenDetails, TokenUsage, type InferenceInput, type InferenceOutput, type InferenceRunner } from "@mozaik-ai/core"
 import { PRICES } from "../src/inference/prices.ts"
 import { appendUsage, costUsd, readSpend, UsageRunner, type UsageRecord } from "../src/inference/usage.ts"
-import { callModel } from "../src/dashboard/ask.ts"
+import { callModel } from "../src/runner/ask.ts"
 import { tempDir } from "./helpers.ts"
 
 const MODEL = "gpt-5.4-mini"

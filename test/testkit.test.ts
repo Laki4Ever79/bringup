@@ -8,7 +8,7 @@ import { circuitFromContract, testPoints, TEST_PAD, mountingHoles } from "../src
 import { defaultTestSpec, testkitHeader, testPlan, fixtureChecks } from "../src/contract/testkit.ts"
 import { DesignContract } from "../src/contract/contract.ts"
 import { BUILD_INPUTS, BUILD_REQUIRES } from "../src/agents/builders.ts"
-import { BUILDS } from "../src/dashboard/lanes.js"
+import { BUILDS } from "../src/timeline/lanes.js"
 import { changeRipples } from "../src/runner/ripple.ts"
 import { MIC_PART, MIC_PINS } from "../src/inference/scripts.ts"
 import { stubBoard } from "../src/tools/stubs.ts"

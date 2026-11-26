@@ -6,7 +6,7 @@ import { uartSignals } from "../contract/links.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import { boardLinks } from "./derive.ts"
 // The cable limit and its figures live in the dashboard module, so the design page checks with the same code.
-import { BOARD_PF, CABLE_PF_PER_M, DEVICE_PF, i2cCableLimit, PULLUP_OHM } from "../dashboard/assembly-geom.js"
+import { BOARD_PF, CABLE_PF_PER_M, DEVICE_PF, i2cCableLimit, PULLUP_OHM } from "../geometry/assembly-geom.js"
 export { BOARD_PF, CABLE_PF_PER_M, DEVICE_PF, i2cCableLimit, PULLUP_OHM }
 import { CAN_BUS_MAX_M, DEFAULT_I2C_KHZ, type SystemLink, type SystemSpec, canChain } from "./spec.ts"
 import { mcuProfileOf } from "../mcu/profile.ts"

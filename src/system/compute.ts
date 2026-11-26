@@ -5,7 +5,7 @@
 import type { Module } from "../modules/library.ts"
 import type { BatteryPack, MotorPart } from "../mechanics/catalog.ts"
 import type { AssemblyBoard, AssemblyPlate } from "./assembly.ts"
-import { blocksSensor, boardsOverlap, footprint, HAT_STACK_MM, HAT_STACK_SOURCE, hatBaseZ, offPlate, STANDOFF_DEFAULT_MM } from "../dashboard/assembly-geom.js"
+import { blocksSensor, boardsOverlap, footprint, HAT_STACK_MM, HAT_STACK_SOURCE, hatBaseZ, offPlate, STANDOFF_DEFAULT_MM } from "../geometry/assembly-geom.js"
 import { field, type Cite, type Sourced } from "./bought.ts"
 
 export type ComputeCheck = "compute-power" | "compute-rail" | "compute-header" | "compute-mechanics"
