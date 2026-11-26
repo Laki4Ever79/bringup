@@ -33,7 +33,7 @@ function revisionEnv(runDir: string, revDir: string, purpose: FirmwarePurpose = 
 	return envFor(mcuProfileOf(c?.values?.parts), purpose)
 }
 
-const USAGE = "usage: npm run bringup -- status <runDir> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-scorecard] [--stub-missing] [--docker-toolchain] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud] [--offline] | login [--url <studio>] | logout"
+const USAGE = "usage: npm run bringup -- status <runDir> | bench-log <runDir> <serial log> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-scorecard] [--stub-missing] [--docker-toolchain] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud] [--offline] | login [--url <studio>] | logout"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -128,6 +128,22 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	// `bringup login [--url <studio>]` / `bringup logout`: pair this machine with a Bringup Studio account (docs/studio.md).
 	if (argv[0] === "login" || argv[0] === "logout") return connectorCli(argv)
 	// `bringup status <runDir>`: the run's drifted files, like git status (runner/drift.ts).
+	// `bringup bench-log <run> <log.txt>`: a real rover's serial log (saved from USB) read as the simulation's is, with what
+	// it shows and the same revision's simulated drive beside it (src/bench/rover-log.ts). Free; no model, no hardware.
+	if (argv[0] === "bench-log") {
+		const [dir, logFile] = [argv[1], argv[2]]
+		if (!dir || !existsSync(dir) || !logFile || !existsSync(logFile)) {
+			console.error("bringup: usage: bench-log <run folder> <serial log file>")
+			return 1
+		}
+		const { diagnoseRoverLog, findingsText, parseRoverLog } = await import("./bench/rover-log.ts")
+		const { readdirSync, readFileSync } = await import("node:fs")
+		const revs = existsSync(join(dir, "drive")) ? readdirSync(join(dir, "drive")).flatMap((n) => { const m = /^rev-(\d+)$/.exec(n); return m ? [Number(m[1])] : [] }).sort((a, b) => b - a) : []
+		const simFile = revs.map((r) => join(dir, "drive", `rev-${r}`, "uart0.txt")).find((f) => existsSync(f)) ?? null
+		const findings = diagnoseRoverLog(parseRoverLog(readFileSync(logFile, "utf8")), simFile ? parseRoverLog(readFileSync(simFile, "utf8")) : null)
+		console.log(`${findingsText(findings)}${simFile ? "" : "\n\n(No simulated drive in this run to compare with.)"}`)
+		return findings.length ? 2 : 0
+	}
 	if (argv[0] === "status") {
 		const dir = argv[1]
 		if (!dir || !existsSync(dir)) {
