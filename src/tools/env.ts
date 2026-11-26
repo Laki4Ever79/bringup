@@ -4,8 +4,7 @@ import { resolve } from "node:path"
 import { randomBytes } from "node:crypto"
 import { existsSync, realpathSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
-import { join, sep } from "node:path"
-import { getuid, getgid } from "node:process"
+import { delimiter, join, sep } from "node:path"
 import { run, type RunResult } from "./exec.ts"
 import { renodePath } from "./renode.ts"
 import { popplerAvailable } from "../learn/docs.ts"
@@ -39,6 +38,12 @@ export interface Env {
 // Where an npm or npx install keeps the tools it installs on request (`npx bringup-mcp setup <domain>`,
 // src/setup/domains.ts): ~/.bringup, or BRINGUP_HOME. A git checkout keeps its own in tools/ and .venv/ beside the repo,
 // and those come first.
+// The tools' file names on this platform: npm installs a .cmd shim on Windows, and a Python venv keeps its programs in
+// Scripts\ there (bin/ elsewhere).
+const WIN = process.platform === "win32"
+export const BIN = { tsci: WIN ? "tsci.cmd" : "tsci" } as const
+export const VENV = { python: WIN ? ".venv/Scripts/python.exe" : ".venv/bin/python", pio: WIN ? ".venv/Scripts/pio.exe" : ".venv/bin/pio" } as const
+
 export const bringupHome = (): string => process.env.BRINGUP_HOME ?? join(homedir(), ".bringup")
 // A tool's path in the repo, else in the tools home; null when neither has it.
 export function toolAt(root: string, rel: string): string | null {
@@ -59,8 +64,9 @@ export async function detectEnvironment(root: string): Promise<Env> {
 		run("docker", ["image", "inspect", KICAD_IMAGE], { timeoutMs: 10_000 }),
 		qemuPath ? run(qemuPath, ["--version"], { timeoutMs: 10_000, env: qemuEnv(root) }) : Promise.resolve(null),
 	])
-	const nodeModules = toolAt(root, "tools/node/node_modules/.bin/tsci") ? join(toolAt(root, "tools/node/node_modules/.bin/tsci")!, "..", "..") : null
-	const tools = { tsci: nodeModules ? join(nodeModules, ".bin", "tsci") : null, python: toolAt(root, ".venv/bin/python"), pio: toolAt(root, ".venv/bin/pio") }
+	const tsciBin = toolAt(root, `tools/node/node_modules/.bin/${BIN.tsci}`)
+	const nodeModules = tsciBin ? join(tsciBin, "..", "..") : null
+	const tools = { tsci: tsciBin, python: toolAt(root, VENV.python), pio: toolAt(root, VENV.pio) }
 	const toolchain = await dockerToolchain(root, tools)
 	return {
 		root,
@@ -94,7 +100,7 @@ export function qemuEnv(root: string): Record<string, string> {
 
 // PATH for child processes, with the repo's node tools (tsci, bun) first.
 export function toolPath(env: Env): string {
-	return `${join(env.nodeModules ?? join(env.root, "tools/node/node_modules"), ".bin")}:${process.env.PATH ?? ""}`
+	return `${join(env.nodeModules ?? join(env.root, "tools/node/node_modules"), ".bin")}${delimiter}${process.env.PATH ?? ""}`
 }
 
 // One KiCad container per process for the calls in the temporary folders, where every board build, DRC and fab export
@@ -107,7 +113,7 @@ const RENEW_BEFORE_S = 300 // past the longest call's timeout (180 s)
 let shared: { name: string; until: number } | null = null
 let starting: Promise<string | null> | null = null
 let cleanupHooked = false
-const user = () => `${getuid?.() ?? 1000}:${getgid?.() ?? 1000}`
+const user = () => `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`
 const tmpRoot = () => realpathSync(tmpdir())
 
 // The shared container's name, while there is one (for tests).

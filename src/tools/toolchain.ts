@@ -30,7 +30,10 @@ export function toolchainImage(root: string): string | null {
 	return `bringup-toolchain:${h.digest("hex").slice(0, 12)}`
 }
 
+// BRINGUP_TOOLCHAIN=local: never the image, so not Docker either (the MCP's hardware "auto" asked Docker regardless and
+// built the multi-GB image on a GitHub Linux runner, 26 Nov 2026).
 export async function dockerUsable(): Promise<boolean> {
+	if (process.env.BRINGUP_TOOLCHAIN === "local") return false
 	return (await run("docker", ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: 15_000 })).code === 0
 }
 

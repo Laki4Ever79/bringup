@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { getgid, getuid } from "node:process"
 import { join } from "node:path"
 import { parseKicadSymbols, type KicadSymbol } from "../contract/grounding.ts"
 import { KICAD_IMAGE, type Env } from "./env.ts"
@@ -15,7 +14,7 @@ async function readLibrary(env: Env, library: string): Promise<string> {
 	const path = `${SYMBOL_DIR}/${library}.kicad_sym`
 	if (env.kicad === "local") return readFile(path, "utf8")
 	if (env.kicad !== "docker") throw new Error("KiCad is not available (no kicad-cli and no kicad/kicad:10.0 image)")
-	const user = `${getuid?.() ?? 1000}:${getgid?.() ?? 1000}`
+	const user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`
 	const r = await run("docker", ["run", "--rm", "-u", user, KICAD_IMAGE, "cat", path], { timeoutMs: TIMEOUT_MS })
 	if (r.code !== 0) throw new Error(`reading KiCad library ${library} failed: ${r.stderr.trimEnd().split("\n").slice(-STDERR_TAIL_LINES).join("\n")}`)
 	return r.stdout

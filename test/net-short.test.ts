@@ -40,3 +40,20 @@ test("no other board fixture puts a pin on two nets", () => {
 		assert.deepEqual(pinsOnTwoNets(s), [], f)
 	}
 })
+
+test("a pin named GND that the contract wires elsewhere isn't grounded by its name: the KF301 terminal on a spindle's minus lead", async () => {
+	const { CNC_DESIGN, CNC_MACHINE, CNC_TARGETS } = await import("../src/inference/scripts.ts")
+	const { fixtureContract } = await import("./fixture.ts")
+	const base = fixtureContract()
+	// The catalog's KF301 input terminal (pins VIN, GND) as the spindle's plug: its GND pin on the MOSFET's drain.
+	const kf301 = { ref: "J3", role: "connector", mpn: "KF301-5.0-2P", lcsc: "C474881", footprint: "pinrow2_p5_id1.3_od2.6", pins: ["VIN", "GND"], nets: { VIN: "VMOT", GND: "@SPINDLE_N" } }
+	const parts = [...CNC_DESIGN.parts.filter((p) => p.ref !== "J3"), kf301]
+	const s = { ...base, values: { ...base.values, ...CNC_DESIGN, parts, cncTargets: CNC_TARGETS, cnc: CNC_MACHINE } } as typeof base
+	const nets = generatedNets(s)
+	assert.ok(nets.get("SPINDLE_N")!.includes("J3.GND"), "on the drain")
+	assert.ok(!nets.get("GND")!.includes("J3.GND"), "not shorted to ground by its name")
+	assert.deepEqual(pinsOnTwoNets(s).filter((e) => e.startsWith("J3.")), [])
+	assert.ok(!supplyWiring(s).some((v) => v.kind === "net-short" && v.message.startsWith("J3.")))
+	// A GND pin the contract leaves alone is still ground: the jack's.
+	assert.ok(nets.get("GND")!.includes("J2.GND"))
+})

@@ -2308,6 +2308,11 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// VBAT, which would bypass the emergency stop's MOTOR_VM.
 	// A pin listed once per net: a part's own nets (Part.nets, the arm's rail chips and jack, 25 Nov 2026) and the wiring
 	// below may both name it.
+	// A pin the contract puts on a net other than ground: by its part's nets, or as a signal's part pin.
+	const wiredElsewhere = (p: Part, pin: string) => {
+		const own = p.nets?.[pin]
+		return (own !== undefined && own !== "GND") || pins.some((x) => x.partRef === p.ref && x.partPin === pin)
+	}
 	const join = (net: string, ref: string, pin: string) => {
 		const list = nets.get(net)!
 		if (!list.includes(`${ref}.${pin}`)) list.push(`${ref}.${pin}`)
@@ -2316,7 +2321,11 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	for (const p of parts) {
 		if (footprintFor(p) === USBC_FOOTPRINT || p.role === "button") continue
 		for (const pin of p.pins) {
-			if (GROUND_PINS.has(pin)) join("GND", p.ref, pin)
+			// A pin named GND (or VSS) is ground unless the contract wires it elsewhere: its part's nets or the pins field
+			// naming another net win over the name (lead-2, 26 Nov 2026). The catalog's KF301 terminal (pins VIN, GND) on a
+			// spindle's minus lead would otherwise have shorted the spindle past its switch. Only the name rule yields: the
+			// generator's deliberate grounds (a PWM driver's OE, an IMU's address strap) still meet net-short.
+			if (GROUND_PINS.has(pin) && !wiredElsewhere(p, pin)) join("GND", p.ref, pin)
 			// A link connector's VCC carries power only when its link says so (below): two boards' regulators never meet.
 			if (hasSupply && p.role !== "ldo" && p.role !== "charger" && p.role !== "connector" && SUPPLY_PINS.has(pin)) join(supply, p.ref, pin)
 		}

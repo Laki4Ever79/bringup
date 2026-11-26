@@ -11,7 +11,7 @@ import { createHash } from "node:crypto"
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { bringupHome } from "../tools/env.ts"
+import { BIN, VENV, bringupHome } from "../tools/env.ts"
 
 export type Domain = "board" | "case" | "firmware"
 export interface DomainInfo {
@@ -42,10 +42,12 @@ const UV_SHA256: Record<string, string> = {
 	"aarch64-unknown-linux-gnu": "14590f644805a6234ffe071154340669e38137f38e60aa9629690119704107d2",
 	"aarch64-apple-darwin": "e419bf07533bdbf48795fc793601c834dd79db57a8c49ce8e25cfe3a8639958d",
 	"x86_64-apple-darwin": "153e03197588204c04fc4c81cc4bafbfa4280222a385e4ee36a87aeec0ae63b4",
+	"x86_64-pc-windows-msvc": "297b3881fe1adfb922becc2c1613202abb41dc83ea5ff43d472aa087ca1f8683",
+	"aarch64-pc-windows-msvc": "f223bcd3fa010174ffeeb885cc1d5334bb81388640c65baa5b8b42b47017337e",
 }
 const uvTarget = (): string | null => {
 	const arch = process.arch === "x64" ? "x86_64" : process.arch === "arm64" ? "aarch64" : null
-	const os = process.platform === "linux" ? "unknown-linux-gnu" : process.platform === "darwin" ? "apple-darwin" : null
+	const os = process.platform === "linux" ? "unknown-linux-gnu" : process.platform === "darwin" ? "apple-darwin" : process.platform === "win32" ? "pc-windows-msvc" : null
 	return arch && os ? `${arch}-${os}` : null
 }
 
@@ -73,20 +75,22 @@ async function ensureUv(home: string, d: Required<InstallDeps>): Promise<string>
 	const target = uvTarget()
 	if (!target || !UV_SHA256[target]) throw new Error(`no pinned uv for ${process.platform}-${process.arch}: install uv (https://docs.astral.sh/uv/), then run setup again`)
 	const dir = join(home, "tools", "uv")
-	const bin = join(dir, "uv")
+	// Windows: a .zip with uv.exe at its top (Windows 10's own tar.exe unpacks it); elsewhere a .tar.gz with a folder.
+	const win = target.endsWith("windows-msvc")
+	const bin = join(dir, win ? "uv.exe" : "uv")
 	if (existsSync(bin)) return bin
 	mkdirSync(dir, { recursive: true })
 	d.log(`uv ${UV_VERSION}: downloading`)
-	const res = await d.fetch(`https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${target}.tar.gz`)
+	const res = await d.fetch(`https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${target}.${win ? "zip" : "tar.gz"}`)
 	if (!res.ok) throw new Error(`uv download failed (HTTP ${res.status})`)
 	const tar = Buffer.from(await res.arrayBuffer())
 	const sum = createHash("sha256").update(tar).digest("hex")
 	if (sum !== UV_SHA256[target]) throw new Error(`uv download's checksum is ${sum}, not the pinned ${UV_SHA256[target]}: not installed`)
-	const tgz = join(dir, "uv.tar.gz")
-	writeFileSync(tgz, tar)
-	if ((await d.exec("tar", ["xzf", tgz, "-C", dir, "--strip-components=1"])) !== 0) throw new Error("couldn't unpack uv")
-	rmSync(tgz)
-	chmodSync(bin, 0o755)
+	const archive = join(dir, win ? "uv.zip" : "uv.tar.gz")
+	writeFileSync(archive, tar)
+	if ((await d.exec("tar", win ? ["xf", archive, "-C", dir] : ["xzf", archive, "-C", dir, "--strip-components=1"])) !== 0) throw new Error("couldn't unpack uv")
+	rmSync(archive)
+	if (!win) chmodSync(bin, 0o755)
 	return bin
 }
 
@@ -96,24 +100,24 @@ export async function installDomain(domain: Domain, deps: InstallDeps = {}): Pro
 	const home = d.home
 	if (domain === "board") {
 		const dir = join(home, "tools", "node")
-		if (existsSync(join(dir, "node_modules", ".bin", "tsci"))) return { installed: false, note: "board tools already installed" }
+		if (existsSync(join(dir, "node_modules", ".bin", BIN.tsci))) return { installed: false, note: "board tools already installed" }
 		mkdirSync(dir, { recursive: true })
 		// The tested lockfile (src/setup/tools-node): its dependencies don't float.
 		for (const f of ["package.json", "package-lock.json"]) copyFileSync(join(ROOT, "src", "setup", "tools-node", f), join(dir, f))
 		d.log(`board: ${DOMAINS.board.what} into ${dir}`)
 		const code = await d.exec("npm", ["ci", "--no-audit", "--no-fund", "--prefix", dir])
-		if (code !== 0 || !existsSync(join(dir, "node_modules", ".bin", "tsci"))) throw new Error(`board tools didn't install (npm ci exited ${code})`)
+		if (code !== 0 || !existsSync(join(dir, "node_modules", ".bin", BIN.tsci))) throw new Error(`board tools didn't install (npm ci exited ${code})`)
 		return { installed: true, note: `board tools in ${dir}` }
 	}
 	const venv = join(home, ".venv")
-	const python = join(venv, "bin", "python")
+	const python = join(home, VENV.python)
 	const uv = await ensureUv(home, d)
 	if (!existsSync(python)) {
 		d.log(`python 3.12: creating ${venv}`)
 		if ((await d.exec(uv, ["venv", "-q", "--python", "3.12", venv])) !== 0) throw new Error("couldn't create the Python environment")
 	}
 	const pkgs = domain === "case" ? ["build123d==0.13.0"] : ["platformio==6.2.0"]
-	const marker = domain === "case" ? join(venv, "bin", "python") : join(venv, "bin", "pio")
+	const marker = domain === "case" ? python : join(home, VENV.pio)
 	if (domain === "firmware" && existsSync(marker)) return { installed: false, note: "firmware tools already installed" }
 	if (domain === "case" && (await d.exec(python, ["-c", "import build123d"])) === 0) return { installed: false, note: "case tools already installed" }
 	d.log(`${domain}: ${DOMAINS[domain].what} into ${venv}`)
@@ -153,10 +157,10 @@ export async function setupCli(args: string[]): Promise<number> {
 // For tests and doctor: the domains installed in a tools home.
 export function installedDomains(home = bringupHome()): Domain[] {
 	const out: Domain[] = []
-	if (existsSync(join(home, "tools", "node", "node_modules", ".bin", "tsci"))) out.push("board")
+	if (existsSync(join(home, "tools", "node", "node_modules", ".bin", BIN.tsci))) out.push("board")
 	const lib = join(home, ".venv", "lib")
 	const site = existsSync(lib) ? readdirSync(lib).map((v) => join(lib, v, "site-packages")) : []
 	if (site.some((p) => existsSync(join(p, "build123d")))) out.push("case")
-	if (existsSync(join(home, ".venv", "bin", "pio"))) out.push("firmware")
+	if (existsSync(join(home, VENV.pio))) out.push("firmware")
 	return out
 }

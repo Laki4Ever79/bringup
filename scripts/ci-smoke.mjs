@@ -10,7 +10,8 @@ import { join } from "node:path"
 const win = process.platform === "win32"
 const steps = []
 const out = mkdtempSync(join(tmpdir(), "bringup-ci-"))
-const env = { ...process.env, BRINGUP_OUT: join(out, "runs"), BRINGUP_HOME: join(out, "home"), MOZAIK_CREDENTIALS_FILE: win ? "NUL" : "/dev/null" }
+// BRINGUP_TOOLCHAIN=local: the npx user's path, not Docker's toolchain image (GitHub's Linux runners have Docker).
+const env = { ...process.env, BRINGUP_OUT: join(out, "runs"), BRINGUP_HOME: join(out, "home"), BRINGUP_TOOLCHAIN: "local", MOZAIK_CREDENTIALS_FILE: win ? "NUL" : "/dev/null" }
 
 async function step(name, fn) {
 	const t = Date.now()
@@ -18,7 +19,12 @@ async function step(name, fn) {
 		const note = (await fn()) ?? ""
 		steps.push({ name, ok: true, s: (Date.now() - t) / 1000, note })
 	} catch (e) {
-		steps.push({ name, ok: false, s: (Date.now() - t) / 1000, note: String(e?.message ?? e).split("\n").slice(-3).join(" ").slice(0, 300) })
+		const text = String(e?.message ?? e)
+		// The whole output in the job log; in the table the lines that say what went wrong (npm's "npm error …", a
+		// thrown error's first lines), not its last lines.
+		console.log(`--- ${name} failed ---\n${text}\n---`)
+		const telling = text.split("\n").filter((l) => /error|ERR_|EBAD|not provide|cannot|failed/i.test(l) && !/A complete log|npm help/.test(l))
+		steps.push({ name, ok: false, s: (Date.now() - t) / 1000, note: (telling.length ? telling.slice(0, 3) : text.split("\n").slice(0, 3)).join(" ").slice(0, 400) })
 	}
 }
 

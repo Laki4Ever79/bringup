@@ -21,7 +21,8 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; timeoutMs
 			clearTimeout(timer)
 			resolve({ code, stdout, stderr, ms: Date.now() - start })
 		}
-		const child = spawn(cmd, args, { cwd: opts.cwd, env: { ...process.env, ...opts.env } })
+		// A .cmd or .bat (npm's shims on Windows) only runs through the shell.
+		const child = spawn(cmd, args, { cwd: opts.cwd, env: { ...process.env, ...opts.env }, ...(/\.(cmd|bat)$/i.test(cmd) ? { shell: true } : {}) })
 		const timer = setTimeout(() => {
 			stderr += `\ntimed out after ${opts.timeoutMs} ms`
 			child.kill("SIGKILL")
