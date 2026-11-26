@@ -223,6 +223,37 @@ export async function runArmDrive(opts: ArmDriveOptions, revision = 0): Promise<
 	return { ...(r.json as Omit<ArmDriveArtifact, "revision" | "dir" | "note">), revision, dir: outDir, note: ARM_SIM_NOTE }
 }
 
+// The scorecard course (Bringup Studio's simulation scorecard, docs: 2026-11-26-sim-scorecard-design): once a design
+// settles, a gyro-less encoder rover (the kind whose drive ran the turn calibration) also drives a go-to to (500, 300) mm
+// and a 600 x 400 mm lap back to its start, on the settled drive's own firmware and calibration, so each accepted change
+// shows its lap and go-to error before -> after. Judged at the brief's 2 cm; the miss is the number that matters.
+export const SCORECARD_FILE = "scorecard.json"
+export const SCORECARD_GOTO_MM = { x: 500, y: 300 }, SCORECARD_LAP_MM = { w: 600, h: 400 }
+export interface ScorecardLeg { result: DriveArtifact["result"]; missMm: number | null; reason: string }
+export interface DriveScorecard { revision: number; goto: ScorecardLeg; lap: ScorecardLeg; turnScale: number; at: string }
+
+// Whether a settled drive gets the scorecard course: it passed, and it is a gyro-less encoder rover (its drive ran
+// the turn calibration, needsTurnCalibration).
+export function wantsScorecard(d: DriveArtifact | undefined | null): d is DriveArtifact & { turnCalibration: TurnCalibration } {
+	return Boolean(d && d.result === "pass" && d.turnCalibration && !d.stub)
+}
+
+// base: the settled drive's own options (its firmware folder, spec and machine); the legs go in <drive dir>/scorecard/.
+export async function runScorecardCourse(base: DriveOptions, drive: DriveArtifact & { turnCalibration: TurnCalibration }): Promise<DriveScorecard> {
+	const cal = drive.turnCalibration
+	const flags = [base.buildFlags, `-DROVER_TURN_SCALE=${cal.scale.toFixed(5)}f`, ...(cal.coastMm !== undefined ? [`-DROVER_COAST_MM=${cal.coastMm.toFixed(1)}f`] : [])].filter(Boolean).join(" ")
+	const leg = async (name: string, target: { xMm: number; yMm: number }, extra: string, courseS: number): Promise<ScorecardLeg> => {
+		const r = await runDrive({ ...base, spec: { ...base.spec, target: { ...target, tolMm: 20 } } as ChassisSpec, outDir: join(drive.dir, "scorecard", name), courseS, buildFlags: `${flags} ${extra}`, calibrateTurn: false }, drive.revision)
+		const miss = (r as { targetMissMm?: unknown }).targetMissMm
+		return { result: r.result, missMm: typeof miss === "number" ? miss : null, reason: r.reason }
+	}
+	const goto = await leg("goto", { xMm: SCORECARD_GOTO_MM.x, yMm: SCORECARD_GOTO_MM.y }, `-DROVER_GOTO_X_MM=${SCORECARD_GOTO_MM.x}.0f -DROVER_GOTO_Y_MM=${SCORECARD_GOTO_MM.y}.0f`, 12)
+	const lap = await leg("lap", { xMm: 0, yMm: 0 }, `-DROVER_GOTO_LAP_W_MM=${SCORECARD_LAP_MM.w}.0f -DROVER_GOTO_LAP_H_MM=${SCORECARD_LAP_MM.h}.0f`, 40)
+	const out: DriveScorecard = { revision: drive.revision, goto, lap, turnScale: cal.scale, at: new Date().toISOString() }
+	writeFileSync(join(drive.dir, SCORECARD_FILE), JSON.stringify(out, null, "\t") + "\n")
+	return out
+}
+
 // Shared by both: build the firmware's simulation build, start it in QEMU with UART1 on a Unix socket, run the bridge
 // script on it and read its result file.
 interface SimInLoop extends Omit<DriveOptions, "spec" | "courseS"> {

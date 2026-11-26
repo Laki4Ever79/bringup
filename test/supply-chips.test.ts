@@ -69,7 +69,7 @@ test("the SY8205 is wired as its application note draws it, with its parts, and 
 	assert.ok(n.get("GND")!.includes(`${u.ref}.GND`))
 	assert.ok(!(n.get("V3V3") ?? []).includes(`${u.ref}.VCC_INT`), "its internal LDO's pin is on no rail")
 	const mine = supportParts(s).filter((x) => x.near === u.ref)
-	assert.deepEqual(mine.filter((x) => x.spec.kind === "inductor").map((x) => x.spec.mpn), ["SPM7054VT-4R7M-D"])
+	assert.deepEqual(mine.filter((x) => x.spec.kind === "inductor").map((x) => x.spec.mpn), ["SPM6545VT-4R7M-D"])
 	assert.equal(mine.filter((x) => x.spec.value === "22uF" && "net" in x.a && x.a.net === SERVO_5V_NET).length, 3)
 	assert.deepEqual(mine.filter((x) => /feedback divider/.test(x.job ?? "")).map((x) => x.spec.value).sort(), ["22k", "3k"])
 	assert.deepEqual(unconnectedParts(s).map((v) => v.message.split(" is ")[0]), [])

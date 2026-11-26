@@ -14,6 +14,7 @@ import { CONNECTOR_HEADROOM, defaultCheckCatalog, SERVO_STALL_A, SERVO_SUPPLY_EF
 import { byMpn, servoAt } from "../mechanics/catalog.ts"
 import type { ArmJointName, ArmSpec } from "../arm/types.ts"
 import { armInrush } from "../arm/inrush.ts"
+import { armInputRatingV } from "../arm/tvs.ts"
 
 type Entry = Part & { lcsc: string | null; maxInV?: number; cells?: number }
 
@@ -213,8 +214,17 @@ function armLogicTree(parts: Part[], arm: ArmSpec): { parts: Part[]; note: strin
 	let out = parts.filter((p) => !gone.includes(p))
 	if (gone.length) changed.push(`dropped ${gone.map((p) => `${p.ref} ${p.mpn}`).join(", ")} (a brick, no pack)`)
 	const taken = new Set(out.map((p) => p.ref))
+	// One rule for every chip on the brick's input (lead-2, 26 Nov 2026): rated over its TVS's clamp at full pulse
+	// (tvs.ts armInputRatingV, 35.5 V), as the rail chips are: not the AP63205's 32 V. A step-down under it is replaced in
+	// place (its ref kept), as the rail chips are.
+	const rated = armInputRatingV(arm.input)
+	const e = list.find((x) => x.role === "buck" && x.lcsc && (x.maxInV ?? 0) >= rated)
+	const under = out.find((p) => p.role === "buck" && (list.find((x) => x.mpn === p.mpn)?.maxInV ?? Infinity) < rated)
+	if (under && e) {
+		out = out.map((p) => (p === under ? { ...stripEntry(e), ref: under.ref, nets: { VIN: armInputNet }, ...(under.at ? { at: under.at } : {}) } : p))
+		changed.push(`${under.ref} ${under.mpn} (rated ${list.find((x) => x.mpn === under.mpn)?.maxInV} V) became ${e.mpn} (${e.maxInV} V): every chip on the brick's input is rated over its TVS's ${rated} V clamp`)
+	}
 	if (!out.some((p) => p.role === "buck")) {
-		const e = list.find((x) => x.role === "buck" && x.lcsc && (x.maxInV ?? 0) >= arm.input.volts)
 		if (e) {
 			const ref = freeRef(taken, "U", 7)
 			out.push({ ...stripEntry(e), ref, nets: { VIN: armInputNet } })

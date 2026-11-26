@@ -81,7 +81,7 @@ test("arm board: each rail's TPS54560 from the brick jack, wired and supported f
 		assert.equal(parts.filter((x) => x.job.includes("output capacitor")).length, 5)
 	}
 	const ceramics = sp.filter((x) => x.spec.kind === "capacitor" && "net" in x.a && x.a.net === "VIN_BRICK" && x.spec.value === "10uF")
-	assert.equal(ceramics.length, 7) // two per TPS54560, one for the AP63205
+	assert.equal(ceramics.length, 8) // two per TPS54560, two for the LMR16010 (the logic's step-down)
 	for (const c of ceramics) assert.equal(c.spec.mpn, "CL31A106KBHNNNE")
 })
 
@@ -110,12 +110,10 @@ test("hot-plug check: the brick at its maximum picks the TVS; the clamp at the e
 	assert.ok(Math.abs(tvsClampAt(armInputTvs(s.values.arm.input)!, HOTPLUG_SURGE_A) - 29.44) < 0.01)
 	assert.equal(r.figure?.value, "29.44 V (TVS rated clamp 35.5 V)")
 	// One rule for every chip on the input (lead-2, 26 Nov 2026): rated over the TVS's clamp at its full pulse, 35.5 V.
-	// The rail chips the rule picked clear it (TPS54560, 65 V); the logic's AP63205 (32 V) does not, so the check flags it
-	// until a 36 V+ logic step-down replaces it (the SY8368A's 28 V failed even the estimate).
-	assert.equal(r.figure?.ok, false)
-	assert.match(r.figure?.limit ?? "", /at most 32 V \(U9 AP63205WU-7\)/)
-	assert.equal(r.violations.length, 1)
-	assert.match(r.violations[0].message, /U9 AP63205WU-7 on the VIN_BRICK input is rated 32 V, under SMBJ22A's clamp of 35.5 V/)
+	// The rail chips (TPS54560) and the logic's step-down (LMR16010, which replaced the AP63205's 32 V) are rated 65 V.
+	assert.equal(r.figure?.ok, true)
+	assert.match(r.figure?.limit ?? "", /at most 65 V/)
+	assert.deepEqual(r.violations, [])
 	// A 20 V brick at ±5 % (GST120A20): 21 V, still the SMBJ22A; a 24 V brick has no TVS that stays off.
 	s.values.arm.input = { ...s.values.arm.input, volts: 20, tolerancePct: 5 }
 	assert.equal(armInputTvs(s.values.arm.input)?.mpn, "SMBJ22A")
@@ -132,21 +130,13 @@ test("every two-pad land pattern (inductors, the electrolytic) fits inside the b
 	}
 })
 
-test("a SOT-23's pads are known (tscircuit's own): the check always uses them; placement beside them is the fallback layout", async () => {
-	const { sotPinOffset, layoutBoard, unreachableCaps } = await import("../src/codegen/circuit.ts")
+test("a SOT-23's pads and the generator's own lands are known to the reach check (tscircuit's own positions)", async () => {
+	const { sotPinOffset, capsUnchecked } = await import("../src/codegen/circuit.ts")
 	assert.deepEqual(sotPinOffset("sot23_6", 6), { x: 1.3, y: 0.95 })
 	assert.deepEqual(sotPinOffset("sot23_5", 5), { x: 1.137, y: 0.95 })
+	// The arm's chips (TPS54560 and LMR16010 on the DDA land, the IMU-less S3 board): no pin capacitor the check skips.
 	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
-	// The check always knows the pads: the default layout (pin parts at the chip) leaves U9's BST capacitor out of reach,
-	// so the board build skips it for the layout with the SOT-23 pads (pinPads, tried after the others).
-	assert.ok(unreachableCaps(s, {}).some((m) => /U9 > \.BST/.test(m)))
-	const pl = layoutBoard(s, { pinPads: true }).parts
-	const { supportParts } = await import("../src/codegen/circuit.ts")
-	const bst = supportParts(s).find((x) => "ref" in x.a && x.a.ref === "U9" && x.a.pin === "BST")!.ref
-	const u9 = pl.find((b) => b.ref === "U9")!, c26 = pl.find((b) => b.ref === bst)!
-	// U9's BST (pin 6) to its capacitor: within the 5 mm bound (it was 14.56 mm when the pads were unknown).
-	assert.ok(Math.hypot(u9.x + 1.3 - c26.x, u9.y + 0.95 - c26.y) < 5)
-	assert.deepEqual(unreachableCaps(s, { pinPads: true }), [])
+	assert.deepEqual(capsUnchecked(s), [])
 })
 
 // KNOWN FAILURE (arm task 6, lead-2, 26 Nov 2026): the arm board's rails don't get their copper on 2 layers. Routed at

@@ -294,6 +294,11 @@ export function compactOutline(s: ContractSnapshot): { widthMm: number; heightMm
 	const base = compactBase(s, min)
 	const lim0 = s.values.requirements?.size
 	const shapes = lim0 && !lim0.exact ? [...min.shapes, ...limitShapes(s, min, lim0)] : min.shapes
+	// A board that already meets the rule (it places everything, inside the slack limit) keeps its size: taking the
+	// named size again then settles by construction. Without it the arm board went 79×59 → 80×60 → 79×59 (26 Nov 2026).
+	const area = o.widthMm * o.heightMm
+	const lim1 = s.values.requirements?.size
+	if (area >= min.areaMm2 && area <= base * (1 + SLACK_LIMIT) && (!lim1 || lim1.exact || withinLimit(o, lim1)) && !insideFailed(s, o.widthMm, o.heightMm) && placesAll(s, o.widthMm, o.heightMm)) return { widthMm: o.widthMm, heightMm: o.heightMm }
 	const all = shapes.filter((x) => x.widthMm * x.heightMm <= base * (1 + SLACK_LIMIT) && x.widthMm * x.heightMm >= min.areaMm2)
 	// Within the engineer's size limit when any shape is, the closest proportions winning.
 	const lim = s.values.requirements?.size

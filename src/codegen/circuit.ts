@@ -144,8 +144,10 @@ const SUPPORT = {
 	buckIn: { kind: "capacitor", value: "10uF", lcsc: "C15850", mpn: "CL21A106KAYNNNE", footprint: "0805" },
 	buckOut: { kind: "capacitor", value: "22uF", lcsc: "C45783", mpn: "CL21A226MAQNNNE", footprint: "0805" },
 	// The SY8205 servo supply's parts (Silergy AN_SY8205 Rev. 0.4, Applications Information): L 4.7 uH with saturation
-	// over 5.9 A (TDK SPM7054VT-4R7M-D: 11.2 A, 16.6 mOhm), Vout = 0.6 x (1 + 22k/3k) = 5.00 V (JLCPCB basic resistors).
-	servoL: { kind: "inductor", value: "4.7uH", lcsc: "C2047699", mpn: "SPM7054VT-4R7M-D", footprint: "spm7054" },
+	// over 5.9 A (TDK SPM6545VT-4R7M-D: 10.9 A, 22 mOhm), Vout = 0.6 x (1 + 22k/3k) = 5.00 V (JLCPCB basic resistors).
+	// TDK SPM6545VT-4R7M-D: 4.7 uH, 10.9 A saturation, 22 mOhm, LCSC C1332501 (2,865 in stock, 26 Nov 2026), over the
+	// TPS54560's 8.3 A current limit. Before: SPM7054VT-4R7M-D (C2047699), out of stock in cad's arm package (26 Nov 2026).
+	servoL: { kind: "inductor", value: "4.7uH", lcsc: "C1332501", mpn: "SPM6545VT-4R7M-D", footprint: "spm6545" },
 	fbTop: { kind: "resistor", value: "22k", lcsc: "C25768", mpn: "0402WGF2202TCE", footprint: "0402" },
 	fbBottom: { kind: "resistor", value: "3k", lcsc: "C25895", mpn: "0402WGF3001TCE", footprint: "0402" },
 	// The arm's brick input (arm task 6, a 19.5 V laptop brick; up to 24 V): 10 uF rated 50 V; the 25 V CL21A106 sits at its rating there and keeps little of
@@ -372,6 +374,8 @@ export function chipInstances(s: ContractSnapshot): { part: Part; ctx: ChipCtx; 
 		return [{ part, ctx, ...catalogChipSupport({ ref: part.ref, pins: part.pins }, entry, ctx, SUPPORT as unknown as Record<string, ChipSpec>) }]
 	})
 }
+// The power tree's step-down (the logic's 5 V): fed by the pack or the brick (packNet), making BUCK_NET at 5 V.
+registerChipContext((s, part) => (part.role === "buck" && powerTree(s)?.buck?.ref === part.ref ? { in: packNet(s), out: BUCK_NET, outV: 5 } : null))
 // An arm's servo rail chip: fed by the brick's input, making its rail at the arm's rail voltage.
 registerChipContext((s, part) => {
 	const rail = (armRails(s) ?? []).find((r) => r.supplyRef === part.ref)
@@ -481,7 +485,8 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	if (ldo && supply) jobs.push({ job: `decoupling on ${supply} (LDO output)`, spec: SUPPORT.bulk, a: { net: supply }, b: GND, near: ldo.ref })
 	// The AP63205 step-down (a chip: its pins include SW): Table 3's parts at 5 V, beside it.
 	const buckIc = powerTree(s)?.buck
-	if (buckIc?.pins.includes("SW")) {
+	// A step-down whose catalog entry lists its parts brings them itself (chipInstances); this is the AP63205's.
+	if (buckIc?.pins.includes("SW") && !(buckIc.mpn && chipEntry(buckIc.mpn))) {
 		const near = buckIc.ref
 		jobs.push({ job: `${buckIc.ref} input capacitor (${packNet(s)})`, spec: s.values.arm ? SUPPORT.buckIn50 : SUPPORT.buckIn, a: { net: packNet(s) }, b: GND, near })
 		jobs.push({ job: `${buckIc.ref} inductor (SW to ${BUCK_NET})`, spec: SUPPORT.buckL, a: { net: BUCK_SW_NET }, b: { net: BUCK_NET }, near })
@@ -715,6 +720,13 @@ export const INDUCTOR_FOOTPRINTS: Record<string, { padW: number; padH: number; c
 	// C128462 (easyeda.com/api/products/C128462/components, 25 Nov 2026): 4.2 x 1.4 mm pads, centres 6.53 mm apart; pad 1 is +
 	// (the chamfered corners and the + mark on its side).
 	cap_elec_8x10: { padW: 4.2, padH: 1.4, cx: 3.267, body: [8.3, 8.3] },
+	// A 7.1 x 6.6 mm molded power inductor (KOHER MDA7030, the LMR16010's 15 uH): JLCPCB's EasyEDA footprint
+	// IND-SMD_L7.1-W6.6 for C2847486 (easyeda.com/api/products/C2847486/components, 26 Nov 2026): 2.15 x 3.32 mm pads,
+	// centres 5.83 mm apart.
+	mda7030: { padW: 2.15, padH: 3.32, cx: 2.913, body: [7.1, 6.6] },
+	// TDK SPM6545VT (7.0 x 6.5 mm): JLCPCB's EasyEDA footprint IND-SMD_L7.0-W6.5-1 for C1332501 (26 Nov 2026): 2.3 x 3.3 mm
+	// pads, centres 5.9 mm apart.
+	spm6545: { padW: 2.3, padH: 3.3, cx: 2.95, body: [7.0, 6.5] },
 }
 export const INDUCTOR_FOOTPRINT = "nrs4018"
 function inductorFootprint(name: string): string {
@@ -857,6 +869,10 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// The electrolytic (cap_elec_8x10): its pads reach past the 8.3 mm base (centres 6.53 mm apart, 4.2 mm long: 10.73 mm)
 	// plus 0.25 mm a side; 8.3 mm tall. Before (26 Nov 2026) the base alone (8.8): pad 2 sat on JD1's locating hole.
 	cap_elec_8x10: [11.25, 8.8],
+	// The MDA7030 inductor: its pads span 7.98 mm (past the 7.1 mm body), plus 0.25 mm a side; the body 6.6 mm tall.
+	mda7030: [8.5, 7.1],
+	// The SPM6545: pads span 8.2 mm, plus 0.25 mm a side; the 6.5 mm body plus 0.25 mm a side.
+	spm6545: [8.7, 7.0],
 	// SMB (DO-214AA, the input TVS): tscircuit's pads 2.5 x 2.3 mm at +-2.15 mm span 6.8 x 2.3 mm (measured from circuit.json,
 	// 25 Nov 2026), plus 0.25 mm a side.
 	smb: [7.3, 2.8],
@@ -2345,7 +2361,7 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 			if (tree.buck.pins.includes("VOUT")) join(BUCK_NET, tree.buck.ref, "VOUT")
 			// The AP63205: EN to VIN (it starts with the pack), FB senses its fixed 5 V output, SW to the inductor
 			// (Diodes AP63200/1/3/5 datasheet, Figure 21; its parts in supportParts).
-			if (tree.buck.pins.includes("SW")) {
+			if (tree.buck.pins.includes("SW") && !(tree.buck.mpn && chipEntry(tree.buck.mpn))) {
 				if (!nets.has(BUCK_SW_NET)) nets.set(BUCK_SW_NET, [])
 				join(BUCK_SW_NET, tree.buck.ref, "SW")
 				if (tree.buck.pins.includes("EN")) join(packNet(s), tree.buck.ref, "EN")

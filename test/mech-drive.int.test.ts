@@ -87,3 +87,26 @@ test("with wheel encoders the base laps a 600 x 400 mm rectangle and ends within
 	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec, outDir: tempDir(), courseS: 40, buildFlags: "-DROVER_GOTO_LAP_W_MM=600.0f -DROVER_GOTO_LAP_H_MM=400.0f" }, 5)
 	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
 })
+
+// The scorecard course after a settle (runScorecardCourse): the Eurobot base's settled drive (calibrated, no gyro) also
+// drives the go-to and the lap on its own firmware and calibration, without calibrating again, and writes
+// scorecard.json with both misses, each within the brief's 2 cm.
+test("after a settle, a gyro-less encoder rover's drive also drives the go-to and the lap, and records both misses", { skip, timeout: 1_800_000 }, async () => {
+	const { EUROBOT_BOARD } = await import("../src/inference/scripts.ts")
+	const { runScorecardCourse, wantsScorecard, SCORECARD_FILE } = await import("../src/tools/drive.ts")
+	const { readFileSync, existsSync: exists } = await import("node:fs")
+	const s: ContractSnapshot = { revision: 5, versions: {} as never, values: JSON.parse(JSON.stringify(EUROBOT_BOARD)) }
+	const dir = tempDir()
+	const fw = join(dir, "fw")
+	await prepareFirmware(ROOT, fw, s)
+	const base = { root: ROOT, python, pio, fwDir: fw, spec: chassisSpec(s)!, outDir: dir }
+	const drive = await runDrive({ ...base, courseS: 20 }, 5)
+	assert.ok(wantsScorecard(drive), `the Eurobot base's drive should pass and carry a turn calibration: ${JSON.stringify({ result: drive.result, reason: drive.reason, cal: drive.turnCalibration })}`)
+	const sc = await runScorecardCourse(base, drive)
+	assert.ok(!exists(join(dir, "scorecard", "goto", "turn-cal")), "the legs reuse the drive's calibration")
+	assert.deepEqual(JSON.parse(readFileSync(join(dir, SCORECARD_FILE), "utf8")).revision, 5)
+	for (const leg of [sc.goto, sc.lap]) {
+		assert.equal(leg.result, "pass", leg.reason)
+		assert.ok(leg.missMm !== null && leg.missMm <= 20, `${leg.missMm} mm`)
+	}
+})

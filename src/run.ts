@@ -2,7 +2,7 @@ import { resolveProvider } from "./inference/providers.ts"
 import { readBrief } from "./brief-file.ts"
 import { sweepStaleTemp } from "./tmp.ts"
 import { modelLimitOf } from "./inference/limit.ts"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, basename } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { FieldName } from "./contract/types.ts"
@@ -39,6 +39,8 @@ import type { Bridge, BridgeHello } from "./tools/bench-bridge.ts"
 import { appendUsage } from "./inference/usage.ts"
 import { recordRun, runSource } from "./modules/library.ts"
 import { rosAfterRun } from "./ros/after-run.ts"
+import { runScorecardCourse, SCORECARD_FILE, wantsScorecard } from "./tools/drive.ts"
+import { mcuProfileOf } from "./mcu/profile.ts"
 
 export interface RunOptions {
 	brief: string
@@ -50,6 +52,8 @@ export interface RunOptions {
 	env?: Env
 	// Derive board, enclosure and firmware from the contract instead of running the hardware tools.
 	noHardware?: boolean
+	// Skip the scorecard course (lap and go-to) a gyro-less encoder rover drives after each settle (--no-scorecard).
+	noScorecard?: boolean
 	// The LLM brief reviewer gates settling (default on); maxReviewRounds is how many fix rounds it may ask for.
 	review?: boolean
 	// Every held change also needs the human engineer (votes arrive in <outDir>/decisions.jsonl).
@@ -177,7 +181,26 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		if (changeTimer) clearTimeout(changeTimer)
 		changeTimer = setTimeout(nextChange, opts.changeDelayMs ?? 0)
 	}
+	// The scorecard course (tools/drive.ts runScorecardCourse): once per settle, on the settled drive (a gyro-less encoder
+	// rover's that passed), unless that drive already has one. One at a time, in the background; the run waits for it
+	// before its report. About 1-2 min of QEMU per accepted change, not per rebuild.
+	let scoring: Promise<void> | null = null
+	const scoreSettled = () => {
+		const d = state.artifacts.drive
+		if (opts.noScorecard || opts.noHardware || scoring || !env.pio || !env.python || !wantsScorecard(d) || existsSync(join(d.dir, SCORECARD_FILE))) return
+		if (!existsSync(join(d.dir, "fw")) || !existsSync(join(d.dir, "spec.json"))) return
+		const machine = mcuProfileOf(state.contract.snapshot().values.parts)?.sim.machine ?? "esp32c3"
+		scoring = runScorecardCourse({ root: env.root, python: env.python, pio: env.pio, fwDir: join(d.dir, "fw"), spec: JSON.parse(readFileSync(join(d.dir, "spec.json"), "utf8")), outDir: d.dir, machine }, d)
+			.then((sc) => console.log(`bringup: scorecard for drive rev ${sc.revision}: go-to ${sc.goto.missMm ?? "?"} mm, lap ${sc.lap.missMm ?? "?"} mm`))
+			.catch((e) => console.warn(`bringup: the scorecard course didn't run: ${e instanceof Error ? e.message : e}`))
+			.finally(() => {
+				scoring = null
+				// A settle that came while this one drove: its drive gets its own course now.
+				if ((latest as Settlement | null)?.settled) scoreSettled()
+			})
+	}
 	const onSettled = (s: Settlement) => {
+		if (s.settled) scoreSettled()
 		const first = latest === null
 		latest = s
 		if (opts.bench || scripted || opts.stay) writeOutputs(s.settled)
@@ -276,6 +299,8 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	await cloud?.end()
 	// The design has settled; give a boot that is still running a moment to finish, so the report can include it.
 	await Promise.all([emulator?.whenIdle(EMULATOR_GRACE_MS), bom.whenIdle(BOM_GRACE_MS)])
+	// The scorecard course still driving: its lap and go-to belong in this run's files.
+	await scoring
 	// A robot's ROS 2 package, tested on mock hardware and on its own firmware in QEMU (src/ros/after-run.ts).
 	await rosAfterRun(env, opts.outDir, state.contract.snapshot(), state.artifacts)
 	const settled = (latest as Settlement | null)?.settled ?? outcome.settled

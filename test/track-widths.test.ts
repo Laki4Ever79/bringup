@@ -32,9 +32,9 @@ test("an arm's rails enter the contract with their peak, replacing older entries
 	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-board-test.json", import.meta.url), "utf8"))
 	const gen = armRailEntries(s)
 	assert.deepEqual(gen.map((r) => r.name), ["VSERVO1", "VSERVO2", "VSERVO3", "VIN_BRICK"])
-	// The brick's peak: the servo rails' power through the converters plus the logic, at 19.5 V; under its 4.62 A rating.
+	// The brick's peak: the servo rails' power through the converters plus the logic, at 20 V (the GST120A20); under its 6 A rating.
 	const brick = gen.find((r) => r.name === "VIN_BRICK")!
-	assert.equal(brick.voltageV, 19.5)
+	assert.equal(brick.voltageV, 20)
 	assert.ok(brick.loadMa > 3000 && brick.loadMa <= brick.regulatorMaxMa, String(brick.loadMa))
 	const merged = withArmRails(s.values.rails, s)
 	assert.equal(merged.filter((r) => r.name === "VIN_BRICK").length, 1)

@@ -55,11 +55,8 @@ test("six arm servos split into rails that each fit (three TPS54560s behind the 
 	const plugs = ar.flatMap((r) => r.plugs).sort((a, b) => a.ref.localeCompare(b.ref))
 	assert.deepEqual(plugs.map((p) => [p.ref, p.joint, p.channel]), [["JV1", "base-yaw", 0], ["JV2", "shoulder", 1], ["JV3", "elbow", 2], ["JV4", "wrist-pitch", 3], ["JV5", "wrist-roll", 4], ["JV6", "gripper", 5]])
 	assert.equal(s.values.parts!.filter((p) => p.role === "servo").length, 6)
-	// The one finding: the logic's AP63205 (32 V) under the input TVS's rated clamp (35.5 V), flagged until a 36 V+ logic
-	// step-down replaces it (lead-2, 26 Nov 2026).
-	const found = armPowerChecks(s)
-	assert.equal(found.length, 1)
-	assert.match(found[0].message, /^U\d+ AP63205WU-7 on the VIN_BRICK input is rated 32 V, under SMBJ22A's clamp of 35.5 V/)
+	// Every chip on the brick's input is rated over its TVS's clamp (rail chips and logic step-down at 65 V): no finding.
+	assert.deepEqual(armPowerChecks(s).map((v) => v.message), [])
 })
 
 test("rail divider gives 6.0 V ±2 %", () => {

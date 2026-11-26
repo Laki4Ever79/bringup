@@ -92,9 +92,6 @@ test("the scripted arm's board: the S3 and the PCA9685; the parts tools add six 
 	assert.equal(parts.filter((p) => p.role === "servo-supply").length, 3)
 	assert.ok(parts.some((p) => p.nets?.VIN === "VIN_BRICK" && p.role === "connector"))
 	const s: ContractSnapshot = { ...c, values: { ...c.values, arm: ARM_SPEC, armTargets: armTargetsFromBrief(ARM_BRIEF)!, parts } }
-	// The brick passes; the one finding is the logic's AP63205 (32 V) under the TVS's rated clamp, until a 36 V+ step-down
-	// replaces it (lead-2, 26 Nov 2026).
-	const found = armPowerChecks(s).map((v) => v.message)
-	assert.equal(found.length, 1)
-	assert.match(found[0], /AP63205WU-7 on the VIN_BRICK input is rated 32 V, under SMBJ22A's clamp of 35.5 V/)
+	// Every chip on the brick's input is rated over its TVS's clamp (rail chips and logic step-down at 65 V): no finding.
+	assert.deepEqual(armPowerChecks(s).map((v) => v.message), [])
 })
