@@ -24,7 +24,7 @@ test("the scripted CNC's drivers: VS on the 24 V rail, one shared UART, addresse
 		for (const [coil, out] of [["A1", "OA1"], ["A2", "OA2"], ["B1", "OB1"], ["B2", "OB2"]]) assert.deepEqual(nets.get(`${motor}_${coil}`)!.sort(), [`${driver}.${out}`, `${plug}.${coil}`].sort())
 	// The UART addresses: X, Y and Z their axes' (0, 1, 2), the gantry's second Y motor the free one (3); the straps follow.
 	assert.deepEqual(cncMotors(s).map((m) => `${m.label}:${m.addr}`), ["X:0", "Y1:1", "Y2:3", "Z:2"])
-	const straps = chipInstances(s).map((i) => `${i.part.ref} ${i.ctx.ms1}/${i.ctx.ms2}`)
+	const straps = chipInstances(s).filter((i) => i.part.role === "stepper-driver").map((i) => `${i.part.ref} ${i.ctx.ms1}/${i.ctx.ms2}`)
 	assert.deepEqual(straps, ["U4 GND/GND", "U5 rail:3V3/GND", "U6 rail:3V3/rail:3V3", "U7 GND/rail:3V3"])
 	// Each driver's support from its catalog entry: 8 parts, the sense resistors sized for 1.2 A.
 	const sup = supportParts(s).filter((p) => /^U[4-7] /.test(p.job))
@@ -58,7 +58,10 @@ test("the board rebuilds when mechanics writes cnc: the drivers' context (motor 
 	// The capacitor fix (mock 8): every driver capacitor in reach, none the reach check can't measure.
 	const { unreachableCaps, capsUnchecked } = await import("../src/codegen/circuit.ts")
 	assert.deepEqual(capsUnchecked(s), [])
-	assert.deepEqual(unreachableCaps(s), [])
+	// The plain layout, or else the one with pin parts beside their own pins (pinPads, tried after it: the spindle
+	// driver's SOT-23-5 decoupling, board.ts).
+	const far = unreachableCaps(s)
+	assert.deepEqual(far.length ? unreachableCaps(s, { pinPads: true }) : far, [])
 })
 
 test("a CNC's logic runs from its brick: a 5 V step-down on the motor rail, OR'd with USB, feeding the LDO (gap 6)", async () => {
@@ -81,4 +84,31 @@ test("a CNC's logic runs from its brick: a 5 V step-down on the motor rail, OR'd
 	assert.ok(supportParts(s).some((p) => /VMOT TVS \(J2/.test(p.job)), "a TVS at the jack")
 	// Applied again, nothing changes.
 	assert.equal(completePowerTree(t.parts, undefined, s).note, null)
+})
+
+test("the spindle switch (gap 6): PA8 PWM into a 5 V AHCT buffer, its gate resistor and pull-down to the AO4468, the flyback on the motor rail", async () => {
+	const { completePowerTree } = await import("../src/contract/power-auto.ts")
+	const { BUCK_NET } = await import("../src/codegen/circuit.ts")
+	const base = cnc()
+	const s = { ...base, values: { ...base.values, parts: completePowerTree(base.values.parts!, undefined, base).parts } } as typeof base
+	const nets = generatedNets(s)
+	// The buffer on the logic 5 V, enabled (OE low) until the e-stop takes OE (gap 7).
+	assert.ok(nets.get(BUCK_NET)!.includes("U8.VCC"), "U8 on the step-down's 5 V")
+	assert.ok(nets.get("GND")!.includes("U8.OE"))
+	const sup = supportParts(s).filter((p) => /^U8 /.test(p.job))
+	const by = (re: RegExp) => sup.find((p) => re.test(p.job))!
+	// Gate: the resistor from Y to SPINDLE_GATE, the pull-down from SPINDLE_GATE to ground; the MOSFET's gate on it.
+	assert.ok(nets.get("SPINDLE_GATE")!.includes("Q1.G"))
+	const r = by(/gate resistor/), pd = by(/pull-down/), d = by(/flyback/)
+	assert.deepEqual([r.spec.lcsc, pd.spec.lcsc, d.spec.lcsc], ["C25079", "C25741", "C22452"])
+	assert.deepEqual(r.a, { ref: "U8", pin: "Y" })
+	assert.deepEqual(r.b, { net: "SPINDLE_GATE" })
+	// The drain, the spindle's minus lead and the flyback's anode on one node; the cathode on the motor rail.
+	assert.deepEqual(d.a, { net: "VMOT" })
+	assert.deepEqual(d.b, { net: "SPINDLE_N" })
+	for (const e of ["Q1.D", "Q1.D_4", "J3.M-"]) assert.ok(nets.get("SPINDLE_N")!.includes(e), e)
+	assert.ok(nets.get("VMOT")!.includes("J3.M+"), "the spindle's plus lead on the motor rail")
+	for (const e of ["Q1.S", "Q1.S_3"]) assert.ok(nets.get("GND")!.includes(e), e)
+	// A typo'd @-net still reports (part-net-unknown): every @ net here has another end.
+	assert.deepEqual(checkConsistency(s, {}).filter((v) => v.kind === "part-net-unknown"), [])
 })

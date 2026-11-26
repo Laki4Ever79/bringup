@@ -8,7 +8,7 @@ import type { Connector, ContractSnapshot, Part } from "../contract/types.ts"
 import { chipCrystal, chipPadLabels, chipPinLabels, chipPowerPins, chipSupport, type ChipCrystal } from "../mcu/board.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { loadProfiles, profileForPart, type McuProfile } from "../mcu/profile.ts"
-import { stepperDriverCtx } from "../cnc/board.ts"
+import { stepperDriverCtx, spindleDriverCtx } from "../cnc/board.ts"
 
 interface CatalogEntry {
 	ref?: string
@@ -386,6 +386,8 @@ export function chipInstances(s: ContractSnapshot): { part: Part; ctx: ChipCtx; 
 registerChipContext((s, part) => (part.role === "buck" && powerTree(s)?.buck?.ref === part.ref ? { in: packNet(s), out: BUCK_NET, outV: 5 } : null))
 // A CNC's stepper drivers: the motor rail, the address straps and the plug nets per motor (src/cnc/board.ts).
 registerChipContext(stepperDriverCtx)
+// A CNC's spindle gate driver: VCC on the logic 5 V (the power tree's step-down), OE on GND until the e-stop cuts it.
+registerChipContext((s, part) => spindleDriverCtx(s, part, BUCK_NET))
 // An arm's servo rail chip: fed by the brick's input, making its rail at the arm's rail voltage.
 registerChipContext((s, part) => {
 	const rail = (armRails(s) ?? []).find((r) => r.supplyRef === part.ref)
@@ -871,6 +873,12 @@ export const THROUGH_HOLE_FOOTPRINT = /^(pinrow|pinheader|dip|to92|to220|axial|j
 // from circuit.json of tscircuit 0.0.3042 builds (6 Nov 2026). Pad boxes alone left parts reaching past the board edge
 // (J2 by 0.3 mm on 25 mm boards: tscircuit then skips autorouting altogether).
 const FOOTPRINT_SIZE: Record<string, [number, number]> = {
+	// The CNC spindle switch (26 Nov 2026): soic8 from tscircuit's pads (x ±2.15 ± 0.5, the 4.9 mm body) + 0.25 mm a side;
+	// sma its courtyard (7 × 3.5); the KF128R terminal 11.16 mm along its pin row (tscircuit's courtyard) by 8 mm, the
+	// block's depth an ESTIMATE (its LCSC drawing didn't download).
+	soic8: [5.8, 5.4],
+	sma: [7, 3.5],
+	"pinrow2_p5.08mm": [11.16, 8],
 	dfn4: [5.8, 2.8], sot23_5: [3.6, 2.5], sot23: [3.6, 2.5],
 	// SOT-23-6 (the AP63205 buck): the SOT-23-5's outline with a sixth lead (JEDEC MO-178); measured on a mock Eurobot's
 	// board (20 Nov 2026): pads + 0.25 mm 4.1 × 3.0, as PAD_EXTENT has it.

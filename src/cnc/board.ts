@@ -31,6 +31,15 @@ export function motorSupplyRail(s: ContractSnapshot): string | null {
 	return r ? (/^\d/.test(r.name) ? `V${r.name}` : r.name) : null
 }
 
+// The spindle's gate driver (the SN74AHCT1G125, role spindle-driver): VCC on the logic 5 V (logic5V: circuit.ts hands
+// the power tree's step-down net), OE on GND until the emergency stop cuts it (gap 7), the flyback's cathode on the
+// motor rail (the brick's net). Null when the board has no motor rail yet.
+export function spindleDriverCtx(s: ContractSnapshot, part: Part, logic5V: string): ChipCtx | null {
+	if (part.role !== "spindle-driver") return null
+	const motor = motorSupplyRail(s) ?? (s.values.parts ?? []).find((p) => p.mpn === "DC-091-A250")?.nets?.VIN
+	return motor ? { in: logic5V, oe: "GND", motor: `@${motor}` } : null
+}
+
 export function stepperDriverCtx(s: ContractSnapshot, part: Part): ChipCtx | null {
 	if (part.role !== "stepper-driver") return null
 	const drivers = (s.values.parts ?? []).filter((p) => p.role === "stepper-driver")

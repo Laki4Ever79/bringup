@@ -136,3 +136,13 @@ Each failure on the way, with its general fix.
   specified only at 4.5 V and up (no 30 V part with a 2.5 V rating in a power package turned up), so a 5 V AHCT buffer
   (SN74AHCT1G125, C7484: TTL input, VIH 2.0 V) drives the gate from the new 5 V; its OE is where the emergency stop will
   cut the spindle in hardware (gap 7). Flyback: SS54 (C22452, JLCPCB basic, 40 V 5 A, SMA).
+- 26 Nov 2026, gap 6, part 2: the spindle switch. SPINDLE_PWM (TIM1_CH1, PA8) into the AHCT buffer U8 on the 5 V; its
+  catalog support adds the 120 Ω gate resistor, the 100 kΩ gate pull-down (off in reset or while OE is high) and the SS54
+  flyback (cathode on VMOT); Q1 AO4468 (C87410: 23 mΩ max at 4.5 V; SOIC-8) switches the spindle's minus lead; J3 a
+  KF128R 5.08 mm 24 A terminal. Checked against the datasheet (lead-2's ask): a stall is limited by the 6.67 A brick,
+  about 1.3 W in the MOSFET, Tj ≈ 125 °C at 25 °C ambient (an estimate, under its 150 °C maximum but marginal: the
+  firmware should stop a stalled spindle, gap 11); avalanche (IAS 19 A, EAS 18 mJ) only without the flyback. Found on the
+  way: the catalog's KF301 input terminal names its pins VIN/GND, and every pin named GND joins ground, so it could not
+  carry the spindle's minus lead; hence a terminal of its own. Also found: compactOutline takes ~94 s on this ~70-part
+  board (~260 layouts of ~0.36 s; 75 s of it without the reserved-spot check), and every consistency check calls it:
+  a speed fix for large boards, logged for the space check's owner.

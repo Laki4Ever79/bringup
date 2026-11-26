@@ -182,6 +182,8 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		]),
 		{ signal: "STEPPER_UART", gpio: f411("PA9"), partRef: "U4", partPin: "PDN_UART" },
 		{ signal: "STATUS_LED", gpio: f411("PC13"), partRef: "D1", partPin: "A" },
+		// The spindle's speed: TIM1_CH1 PWM on PA8, into the 5 V gate driver (gap 6).
+		{ signal: "SPINDLE_PWM", gpio: f411("PA8"), partRef: "U8", partPin: "A" },
 	],
 	parts: [
 		chipPart("stm32f411ceu6"),
@@ -191,6 +193,11 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		catalogPart("DC-091-A250", "J2", { VIN: "VMOT", GND: "GND", GND_2: "GND", GND_3: "GND", GND_4: "GND" }),
 		// Each motor's plug, its pins on the driver's output nets (catalog TMC2209-LA nets, src/cnc/board.ts).
 		...CNC_MOTORS.map((m) => catalogPart("B4B-XH-A(LF)(SN)", m.plug, { A1: `@${m.label}_A1`, A2: `@${m.label}_A2`, B1: `@${m.label}_B1`, B2: `@${m.label}_B2` })),
+		// The spindle switch (gap 6): the AHCT gate driver (its support: gate resistor, pull-down, flyback; catalog), the
+		// low-side MOSFET between the spindle's minus lead and ground, and the spindle's screw terminal on the motor rail.
+		catalogPart("SN74AHCT1G125DBVR", "U8"),
+		catalogPart("AO4468", "Q1", { S: "GND", S_2: "GND", S_3: "GND", G: "@SPINDLE_GATE", D: "@SPINDLE_N", D_2: "@SPINDLE_N", D_3: "@SPINDLE_N", D_4: "@SPINDLE_N" }),
+		catalogPart("KF128R-5.08-2P", "J3", { "M+": "VMOT", "M-": "@SPINDLE_N" }),
 	],
 }
 const isCnc = () => !!state().contract.get("cncTargets") || CNC_BRIEF.test(state().contract.get("requirements")?.summary ?? "")
