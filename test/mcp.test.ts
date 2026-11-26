@@ -267,7 +267,11 @@ async function connectWith(deps: Partial<Parameters<typeof createBringupMcpServe
 	return { call, close: () => client.close() }
 }
 
-test("a real-model run needs realModels: true and a configured provider; mock stays the free default", async () => {
+test("a real-model run needs realModels: true and a configured provider; mock stays the free default", async (t) => {
+	// Run plans go to the tools home: a temporary one here.
+	const home = process.env.BRINGUP_HOME
+	process.env.BRINGUP_HOME = tempDir()
+	t.after(() => (home === undefined ? delete process.env.BRINGUP_HOME : (process.env.BRINGUP_HOME = home)))
 	const stub = stubRun()
 	const none = await connectWith({ launch: stub.launch, env: {} })
 	try {
@@ -280,9 +284,16 @@ test("a real-model run needs realModels: true and a configured provider; mock st
 	}
 	const keyed = await connectWith({ launch: stub.launch, env: { OPENAI_API_KEY: "set" } })
 	try {
-		const r = await keyed.call("start_design", { brief: "x", mock: false, realModels: true })
+		// A real run starts from a plan the user approved (src/system/plan-gate.ts).
+		assert.match((await keyed.call("start_design", { brief: "x", mock: false, realModels: true })).text, /approved plan: call plan_design/)
+		const { planId } = (await keyed.call("plan_design", { brief: "x" })).json()
+		assert.match((await keyed.call("start_design", { brief: "x", mock: false, realModels: true, planId })).text, /isn't approved yet/)
+		await keyed.call("approve_plan", { planId })
+		assert.match((await keyed.call("start_design", { brief: "y", mock: false, realModels: true, planId })).text, /different brief/)
+		const r = await keyed.call("start_design", { brief: "x", mock: false, realModels: true, planId })
 		assert.equal(r.isError, false, r.text)
 		assert.equal(stub.calls[0].mock, false)
+		assert.deepEqual(stub.calls[0].extraArgs, ["--plan", planId])
 		stub.release()
 	} finally {
 		await keyed.close()
@@ -373,7 +384,7 @@ test("bin/bringup-mcp.js speaks MCP on stdio: handshake, every tool listed, safe
 	try {
 		assert.equal(client.getServerVersion()?.name, "bringup")
 		const names = (await client.listTools()).tools.map((t) => t.name).sort()
-		assert.deepEqual(names, ["design_status", "export_package", "get_report", "list_events", "list_part_refs", "list_starters", "read_contract", "request_change", "run_summary", "start_design", "start_system", "stop_design"])
+		assert.deepEqual(names, ["approve_plan", "design_status", "export_package", "get_report", "list_events", "list_part_refs", "list_starters", "plan_design", "read_contract", "request_change", "run_summary", "start_design", "start_system", "stop_design"])
 		const refused: any = await client.callTool({ name: "start_design", arguments: { brief: "x", mock: false } })
 		assert.equal(refused.isError, true)
 	} finally {

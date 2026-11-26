@@ -1,4 +1,6 @@
 import { evidenceDir, LEVELS, moduleStatus } from "./modules/library.ts"
+import { cliPaidGate } from "./system/plan-gate.ts"
+import { createInterface } from "node:readline/promises"
 import "dotenv/config"
 import { loadSpec, specErrors } from "./system/spec.ts"
 import { runSystem } from "./system/run.ts"
@@ -343,6 +345,16 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			return 1
 		}
 		const flag = (f: string) => argv.includes(f)
+		// A real-model system starts from an approved plan too; its board runs inherit the approval.
+		if (!flag("--mock")) {
+			const text = JSON.stringify(JSON.parse(readFileSync(path, "utf8")))
+			const gate = await cliPaidGate({ system: spec as never, briefs: spec.boards.map((b) => (typeof b.brief === "string" && existsSync(resolve(ROOT, b.brief)) ? readFileSync(resolve(ROOT, b.brief), "utf8") : "")) }, text, { argv, outRoot: join(ROOT, "out"), env: process.env, isTTY: Boolean(process.stdin.isTTY), ask: askLine, log: (s) => console.log(s) })
+			if ("refused" in gate) {
+				console.error(`bringup system: ${gate.refused}`)
+				return 2
+			}
+			process.env.BRINGUP_PLAN_APPROVED = gate.planId
+		}
 		const outAt = argv.indexOf("--out")
 		const out = resolve(outAt > 0 ? argv[outAt + 1] : join(ROOT, "out", `system-${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}`))
 		console.log(`bringup system: ${spec.name}, ${spec.boards.length} boards, ${spec.links.length} links; output ${out}`)
@@ -396,6 +408,14 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 			}
 			console.log(`bringup: spend so far $${usd.toFixed(2)} of the $${cap.toFixed(2)} cap (ledger ${ledgerPath()})`)
 		}
+		// The plan the person approves before paying (src/system/plan-gate.ts; the user, 26 Nov 2026).
+		const brief = readFileSync(args.briefPath, "utf8")
+		const gate = await cliPaidGate({ brief }, brief, { argv, outRoot: join(ROOT, "out"), env: process.env, isTTY: Boolean(process.stdin.isTTY), ask: askLine, log: (s) => console.log(s) })
+		if ("refused" in gate) {
+			console.error(`bringup: ${gate.refused}`)
+			return 2
+		}
+		process.env.BRINGUP_PLAN_APPROVED = gate.planId
 	}
 	const mode = `${args.mock ? "mock models (no API key)" : "real models"}${args.noHardware ? ", hardware stubbed" : ""}${args.review ? "" : ", no brief review"}`
 	console.log(`bringup: ${mode}\n${describeEnv(env)}\noutput: ${outDir}`)
@@ -449,3 +469,13 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 
 // Run only when executed (tsx src/main.ts), not when a test imports main().
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exit(await main(process.argv.slice(2)))
+
+// One question on the terminal (the plan's "Build this?").
+async function askLine(q: string): Promise<string> {
+	const rl = createInterface({ input: process.stdin, output: process.stdout })
+	try {
+		return await rl.question(q)
+	} finally {
+		rl.close()
+	}
+}

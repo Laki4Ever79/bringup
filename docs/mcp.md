@@ -83,6 +83,8 @@ Connect the machine to Bringup Studio, and every run the MCP starts streams ther
 |---|---|
 | `list_starters` | The shipped example devices and robots, multi-board systems and briefs |
 | `start_design` | Start a design from a brief (`mock` by default; `stay: true` keeps it up to take changes; `hardware` as above). Returns a `runId` at once |
+| `plan_design` | Before a paid (real-model) run: the plan to show your user (what will be designed, what the brief leaves open and the agents would assume, the estimated time and cost) and its `planId`. Free, no model call |
+| `approve_plan` | Approve a plan, only after your user said yes. A real-model `start_design` or `start_system` (`mock: false, realModels: true`) needs an approved `planId` for that exact brief or system |
 | `start_system` | Start a multi-board system: a robot's boards on one chassis, a sensor board on a cable, a Pi with its HAT. Takes a shipped system's name or a spec |
 | `design_status` | Running, settled, unsettled or failed, with the revision, the open violations and event counts. A system run gives one block per board |
 | `run_summary` | One screen: the status, the open violations, and each artifact's own verdict (board DRC, the case's print check, the chassis' interference, the simulated drive, the ROS test), with the files to open |

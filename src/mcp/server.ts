@@ -1,4 +1,5 @@
 import { providerProblem } from "../inference/providers.ts"
+import { approveRunPlan, makeRunPlan, paidStartRefusal, planText, readRunPlan } from "../system/plan-gate.ts"
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { readFile, realpath, stat } from "node:fs/promises"
@@ -196,6 +197,42 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	}
 
 	server.registerTool(
+		"plan_design",
+		{
+			description: "Before a paid (real-model) run: the plan your user approves. Give the brief (or a system: a bundled name or a spec). Returns what will be designed, what the brief leaves open and the agents would assume, and the estimated time and cost, plus a planId. Free: plain code, no model call. Show the plan text to your user and ask; call approve_plan only once they say yes. Clearer briefs mean fewer paid runs.",
+			inputSchema: {
+				brief: z.string().min(1).optional().describe("The brief start_design would get"),
+				system: z.union([z.string(), z.record(z.string(), z.unknown())]).optional().describe("Or the system start_system would get"),
+			},
+		},
+		async ({ brief, system }) => {
+			if (!brief === !system) return fail("give either brief or system")
+			const plan = brief
+				? makeRunPlan({ brief }, deps.outRoot, deps.env ?? process.env)
+				: (() => {
+						const subject = systemSubject(root, system!)
+						const spec = JSON.parse(subject) as { name?: string; boards: { name: string; brief?: string }[] }
+						// A bundled system names its boards' brief files; the questions read their text.
+						const briefs = spec.boards.map((b) => (b.brief && /\.md$/.test(b.brief) && existsSync(join(root, b.brief)) ? readFileSync(join(root, b.brief), "utf8") : (b.brief ?? "")))
+						return makeRunPlan({ system: spec, briefs }, deps.outRoot, deps.env ?? process.env, new Date(), subject)
+					})()
+			return ok({ planId: plan.id, plan: planText(plan), questions: plan.questions, estimate: plan.estimate, approved: false })
+		},
+	)
+
+	server.registerTool(
+		"approve_plan",
+		{
+			description: "Approve a plan from plan_design, ONLY after your user has seen it and said yes. A paid start_design or start_system needs an approved planId. Never approve on your user's behalf.",
+			inputSchema: { planId: z.string() },
+		},
+		async ({ planId }) => {
+			const p = approveRunPlan(planId)
+			return p ? ok({ planId, approvedAt: p.approvedAt }) : fail(`no plan ${planId}`)
+		},
+	)
+
+	server.registerTool(
 		"start_design",
 		{
 			description: "Start a Bringup run: concurrent agents turn the brief into parts, a routed PCB, an enclosure and firmware. Returns at once with the runId; poll design_status.",
@@ -203,13 +240,14 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 				brief: z.string().min(1).describe("Short product brief, e.g. 'BLE temperature logger, USB-C, 50x30 mm'"),
 				mock: z.boolean().optional().describe("Scripted agents: free, no API key, a complete design in minutes. Default true."),
 				realModels: z.boolean().optional().describe("Required with mock: false. Real models cost money or quota; the server refuses without it."),
+				planId: z.string().optional().describe("Required with mock: false: the id of a plan made by plan_design for this exact brief and approved by your user through approve_plan."),
 				stay: z.boolean().optional().describe("Keep the run up after it settles so request_change can reach it; end it with stop_design. Default false."),
 				hardware: HARDWARE,
 				installTools: z.boolean().optional().describe("Install the missing tools first (into ~/.bringup), only after the user said yes: start_design without it says per domain what would be downloaded and how big (about 1 GB each for board and case). Never pass it on the user's behalf without asking. The run starts when the install is done; design_status says installing meanwhile."),
 			},
 		},
-		async ({ brief, mock, realModels, stay, hardware, installTools }) => {
-			const refused = paidRunRefusal(mock, realModels, deps.env ?? process.env)
+		async ({ brief, mock, realModels, planId, stay, hardware, installTools }) => {
+			const refused = paidRunRefusal(mock, realModels, deps.env ?? process.env) ?? (mock === false ? paidStartRefusal(planId, brief) : null)
 			if (refused) return fail(refused)
 			const runId = newRunId()
 			const outDir = join(deps.outRoot, runId)
@@ -233,7 +271,7 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 					}
 					writeFileSync(join(outDir, "setup.log"), notes.join("\n") + "\n")
 					const hw = await hardwareFlags(hardware)
-					const extraArgs = [...(stay ? ["--stay"] : []), ...hw.flags]
+					const extraArgs = [...(stay ? ["--stay"] : []), ...hw.flags, ...(mock === false && planId ? ["--plan", planId] : [])]
 					runs.set(runId, { status: "running" })
 					track(runId, deps.launch({ briefPath, mock: mock ?? true, outDir, ...(extraArgs.length ? { extraArgs } : {}) }))
 				})()
@@ -241,7 +279,7 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			}
 			// Not awaited: the run goes on in its own process while the client polls.
 			const hw = await hardwareFlags(hardware)
-			const extraArgs = [...(stay ? ["--stay"] : []), ...hw.flags]
+			const extraArgs = [...(stay ? ["--stay"] : []), ...hw.flags, ...(mock === false && planId ? ["--plan", planId] : [])]
 			track(runId, deps.launch({ briefPath, mock: mock ?? true, outDir, ...(extraArgs.length ? { extraArgs } : {}) }))
 			return ok({ runId, outDir, mock: mock ?? true, stay: Boolean(stay), hardware: hw.said })
 		},
@@ -401,12 +439,13 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 				system: z.union([z.string(), z.record(z.string(), z.unknown())]).describe("A bundled system name (list_starters) or a system spec: {name, boards: [{name, brief}], links: [...]}"),
 				mock: z.boolean().optional().describe("Scripted agents: free, no API key. Default true."),
 				realModels: z.boolean().optional().describe("Required with mock: false. Real models cost money or quota."),
+				planId: z.string().optional().describe("Required with mock: false: a plan_design plan for this system, approved by your user through approve_plan."),
 				stay: z.boolean().optional().describe("Keep the system up after it settles, for request_change. Default false."),
 				hardware: HARDWARE,
 			},
 		},
-		async ({ system, mock, realModels, stay, hardware }) => {
-			const refused = paidRunRefusal(mock, realModels, deps.env ?? process.env)
+		async ({ system, mock, realModels, planId, stay, hardware }) => {
+			const refused = paidRunRefusal(mock, realModels, deps.env ?? process.env) ?? (mock === false ? paidStartRefusal(planId, systemSubject(root, system)) : null)
 			if (refused) return fail(refused)
 			let specPath: string
 			const runId = newRunId()
@@ -423,7 +462,7 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			const hw = await hardwareFlags(hardware)
 			runs.set(runId, { status: "running" })
 			if (stay) stays.add(runId)
-			track(runId, deps.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, ...(mock === false ? [] : ["--mock"]), ...(stay ? ["--stay"] : []), ...hw.flags] }))
+			track(runId, deps.launch({ briefPath: "system", mock: false, outDir, extraArgs: [specPath, ...(mock === false ? [] : ["--mock"]), ...(stay ? ["--stay"] : []), ...hw.flags, ...(mock === false && planId ? ["--plan", planId] : [])] }))
 			return ok({ runId, outDir, mock: mock ?? true, stay: Boolean(stay), hardware: hw.said })
 		},
 	)
@@ -494,3 +533,12 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 }
 
 interface PartRef { ref: string; kind: string; label: string; atMm?: number[]; madeBy: string }
+
+// The text a system's plan approval is for: the bundled system's spec file, or the given spec, as JSON.
+export function systemSubject(root: string, system: string | Record<string, unknown>): string {
+	if (typeof system === "string") {
+		const f = join(root, "briefs/systems", `${system}.json`)
+		return existsSync(f) ? JSON.stringify(JSON.parse(readFileSync(f, "utf8"))) : JSON.stringify({ name: system, boards: [] })
+	}
+	return JSON.stringify(system)
+}
