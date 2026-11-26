@@ -53,6 +53,20 @@ test("\"make it 2 cm narrower\" narrows the chassis and the run settles again", 
 	assert.deepEqual(mechViolations(out), [])
 })
 
+// The real robot's turn calibration (the build guide's "Teach it how it turns") comes back as a change in plain words;
+// it lands on mechanics.drive.turnScale, and the drive (BUILD_INPUTS.drive reads mechanics) is built again with it.
+test("\"set the turn scale to 1.01\" lands on mechanics.drive.turnScale and the run settles again", { timeout: 120_000 }, async () => {
+	const out = tempDir()
+	const env = await detectEnvironment(ROOT)
+	const r = await quiet(() => runDesign({ brief: readFileSync(join(ROOT, "briefs/rover.md"), "utf8"), mock: true, noHardware: true, outDir: out, env, timeoutMs: 110_000, changes: ["set the turn scale to 1.01"] }))
+	assert.ok(r.settled)
+	const v = lastContract(out)
+	assert.equal(v.mechanics.drive.turnScale, 1.01)
+	assert.equal(v.mechanics.drive.trackMm, ROVER_MECHANICS.drive.trackMm, "nothing else moved")
+	const { BUILD_INPUTS } = await import("../src/agents/builders.ts")
+	assert.ok((BUILD_INPUTS.drive as readonly string[]).includes("mechanics"))
+})
+
 test("designers of a robot get the drive catalog and the computed mass in their facts; other boards don't", async () => {
 	const { designFacts } = await import("../src/agents/design-facts.ts")
 	const { ROVER_BOARD } = await import("../src/inference/scripts.ts")

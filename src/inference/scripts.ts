@@ -1015,7 +1015,10 @@ export function mockScripts(): Record<string, Script> {
 					const d = Number(m[1]) * (m[2].toLowerCase() === "cm" ? 10 : 1) * (m[3].toLowerCase() === "narrower" ? -1 : 1)
 					return propose("mechanics", { ...current, drive: { ...current.drive, trackMm: current.drive.trackMm + d }, chassis: { ...current.chassis, plateMm: [current.chassis.plateMm[0], current.chassis.plateMm[1] + d] } }, `engineer asked: ${request} (plate and track together, so the wheels keep clear)`)
 				}
-				return say(m ? "chassis updated" : "no mechanics change")
+				// A real robot's turn calibration (the build guide's "Teach it how it turns"): "set the turn scale to 1.01".
+				const turn = /turn scale (?:to |of |= ?)?(\d+(?:\.\d+)?)/i.exec(request)
+				if (step === 0 && turn && current) return propose("mechanics", { ...current, drive: { ...current.drive, turnScale: Number(turn[1]) } }, `engineer measured it: ${request} (the odometry's track times this; rover_odo.h RoverCal)`)
+				return say(m || turn ? "chassis updated" : "no mechanics change")
 			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]

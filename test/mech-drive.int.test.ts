@@ -65,24 +65,25 @@ test("under Eurobot's rules the base stops 150 mm short of the opponent, holds w
 
 // Odometry and go-to-point (rover_odo.h): the Eurobot base's firmware, built with a target, drives there on its wheel
 // encoders; the physics, not the odometry, judges where its axle's middle ends.
-test("with wheel encoders the base drives to a point 500 mm ahead and 300 mm left, within 20 mm, and stops there", { skip, timeout: 1_200_000 }, async () => {
+test("with wheel encoders the base drives to a point 500 mm ahead and 300 mm left, within 10 mm, and stops there", { skip, timeout: 1_200_000 }, async () => {
 	const { EUROBOT_BOARD } = await import("../src/inference/scripts.ts")
 	const s: ContractSnapshot = { revision: 5, versions: {} as never, values: JSON.parse(JSON.stringify(EUROBOT_BOARD)) }
 	const fw = tempDir()
 	assert.match(await prepareFirmware(ROOT, fw, s), /#define ROVER_MM_PER_COUNT/)
-	const spec = { ...chassisSpec(s)!, target: { xMm: 500, yMm: 300, tolMm: 20 } }
+	const spec = { ...chassisSpec(s)!, target: { xMm: 500, yMm: 300, tolMm: 10 } }
 	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec, outDir: tempDir(), courseS: 12, buildFlags: "-DROVER_GOTO_X_MM=500.0f -DROVER_GOTO_Y_MM=300.0f" }, 5)
 	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
 })
 
 // The brief's words: "within 2 cm after a full lap". A route round a 600 x 400 mm rectangle and back to the start, the
-// odometry carried throughout; the physics judges how far from the start the axle's middle ends.
-test("with wheel encoders the base laps a 600 x 400 mm rectangle and ends within 20 mm of where it started", { skip, timeout: 1_200_000 }, async () => {
+// odometry carried throughout; the physics judges how far from the start the axle's middle ends. The test holds our
+// code to 10 mm (turn-calibrated, no gyro: 4.8 mm on 26 Nov 2026); the brief's own 2 cm is judged where the brief is.
+test("with wheel encoders the base laps a 600 x 400 mm rectangle and ends within 10 mm of where it started", { skip, timeout: 1_200_000 }, async () => {
 	const { EUROBOT_BOARD } = await import("../src/inference/scripts.ts")
 	const s: ContractSnapshot = { revision: 5, versions: {} as never, values: JSON.parse(JSON.stringify(EUROBOT_BOARD)) }
 	const fw = tempDir()
 	await prepareFirmware(ROOT, fw, s)
-	const spec = { ...chassisSpec(s)!, target: { xMm: 0, yMm: 0, tolMm: 20 } }
+	const spec = { ...chassisSpec(s)!, target: { xMm: 0, yMm: 0, tolMm: 10 } }
 	const r = await runDrive({ root: ROOT, python, pio, fwDir: fw, spec, outDir: tempDir(), courseS: 40, buildFlags: "-DROVER_GOTO_LAP_W_MM=600.0f -DROVER_GOTO_LAP_H_MM=400.0f" }, 5)
 	assert.equal(r.result, "pass", JSON.stringify(r, null, 1))
 })
