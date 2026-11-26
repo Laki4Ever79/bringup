@@ -187,6 +187,8 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 	],
 	parts: [
 		chipPart("stm32f411ceu6"),
+		// Not the logger's C4 (the C3 module's EN reset capacitor): on the S3 board the generator adds its own (C27 beside
+		// R10), so a copy here was a surplus part wired to nothing (the 4-layer arm mock, 27 Nov 2026: part-unconnected C4).
 		...LOGGER_DESIGN.parts.filter((p) => ["U3", "J1", "D1", "R1", "R2", "R3", "C1", "C3"].includes(p.ref)),
 		...CNC_MOTORS.map((m) => cncDriver(m.driver)),
 		// The brick's jack: its VIN on the motors' rail.
@@ -417,7 +419,7 @@ export const ARM_BOARD = {
 	parts: [
 		{ ref: "U1", role: "mcu", mpn: "ESP32-S3-MINI-1", lcsc: "C2913206", footprint: "esp32_s3_mini_1", pins: ["GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7", "GPIO8", "GPIO9", "GPIO10", "GPIO11", "GPIO12", "GPIO13", "GPIO14", "GPIO15", "GPIO16", "GPIO17", "GPIO18", "GPIO19", "GPIO20", "GPIO21", "GPIO26", "GPIO33", "GPIO34", "GPIO35", "GPIO36", "GPIO37", "GPIO38", "GPIO39", "GPIO40", "GPIO41", "GPIO42", "GPIO43", "GPIO44", "GPIO45", "GPIO46", "GPIO47", "GPIO48", "EN", "3V3", "GND"], reason: "Brief: \"One USB-C cable to program and talk to the board\": the ESP32-S3's native USB programs it with no bridge, and its dual core runs the arm's inverse kinematics and moves" },
 		{ ref: "U7", role: "pwm-driver", mpn: "PCA9685PW,118", lcsc: "C2678753", footprint: "tssop28_w6.4mm_p0.65mm", pins: ["A0", "A1", "A2", "A3", "A4", "LED0", "LED1", "LED2", "LED3", "LED4", "LED5", "LED6", "LED7", "VSS", "LED8", "LED9", "LED10", "LED11", "LED12", "LED13", "LED14", "LED15", "OE", "A5", "EXTCLK", "SCL", "SDA", "VDD"], reason: "Brief: \"5 joints plus a gripper\" on \"hobby PWM servos\": six 50 Hz servo pulses on channels 0-5 from the I2C bus, address 0x40" },
-		...LOGGER_DESIGN.parts.filter((p) => ["U3", "J1", "D1", "R1", "R2", "R3", "R5", "R6", "C1", "C2", "C3", "R10", "C4"].includes(p.ref)).map((p) =>
+		...LOGGER_DESIGN.parts.filter((p) => ["U3", "J1", "D1", "R1", "R2", "R3", "R5", "R6", "C1", "C2", "C3", "R10"].includes(p.ref)).map((p) =>
 			p.ref === "J1" ? { ...p, reason: "Brief: \"One USB-C cable to program and talk to the board\"" } : p.ref === "D1" ? { ...p, reason: "Brief (nice to have): \"A status LED that shows ready, moving and fault\"" } : p.ref === "U3" ? { ...p, reason: "The 3.3 V rail for the S3 and the PCA9685 from the logic's 5 V, rated for the module's 0.5 A" } : p,
 		),
 	],
