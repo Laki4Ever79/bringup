@@ -6,7 +6,10 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { failureExcerpt, tail } from "../src/tools/exec.ts"
 
-const log = readFileSync(join(import.meta.dirname, "data/s3-deep-sleep-build.log"), "utf8")
+// A .txt, not .log: .gitignore's *.log kept the first copy out of the repo, so the test failed on every fresh checkout
+// (cad's clean-checkout check, 27 Nov 2026). Reproduced then by building the S3 logger on the tree before the fix
+// (996766bc^): pio's own output, unedited.
+const log = readFileSync(join(import.meta.dirname, "data/s3-deep-sleep-build.txt"), "utf8")
 
 test("a failed build's excerpt leads with its error lines, then the tail, in the same budget", () => {
 	const cause = /'ESP_GPIO_WAKEUP_GPIO_LOW' was not declared in this scope/

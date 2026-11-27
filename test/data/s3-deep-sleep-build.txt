@@ -1,0 +1,66 @@
+include/hal.h:111:71: error: 'ESP_GPIO_WAKEUP_GPIO_LOW' was not declared in this scope; did you mean 'ESP_EXT1_WAKEUP_ANY_LOW'?
+include/hal.h:111:17: error: 'esp_deep_sleep_enable_gpio_wakeup' was not declared in this scope; did you mean 'esp_sleep_enable_gpio_wakeup'?
+include/hal.h:116:72: error: 'ESP_GPIO_WAKEUP_GPIO_HIGH' was not declared in this scope; did you mean 'ESP_EXT1_WAKEUP_ANY_HIGH'?
+include/hal.h:116:17: error: 'esp_deep_sleep_enable_gpio_wakeup' was not declared in this scope; did you mean 'esp_sleep_enable_gpio_wakeup'?
+include/hal.h:122:126: error: 'esp_sleep_get_gpio_wakeup_status' was not declared in this scope; did you mean 'esp_sleep_get_ext1_wakeup_status'?
+…
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/cfg_cli.c.o
+src/main.cpp: In function 'void serveBle(uint32_t, bool, float, float)':
+src/main.cpp:290:23: warning: 'bool NimBLEService::start()' is deprecated: NimBLEService::start() has no effect. Services are started when the server is started. [-Wdeprecated-declarations]
+  290 |         service->start();
+      |         ~~~~~~~~~~~~~~^~
+In file included from .pio/libdeps/esp32s3/NimBLE-Arduino/src/NimBLEDevice.h:299,
+                 from src/main.cpp:160:
+.pio/libdeps/esp32s3/NimBLE-Arduino/src/NimBLEService.h:51:10: note: declared here
+   51 |     bool start() { return true; }
+      |          ^~~~~
+src/main.cpp:300:19: warning: 'bool NimBLEService::start()' is deprecated: NimBLEService::start() has no effect. Services are started when the server is started. [-Wdeprecated-declarations]
+  300 |         ess->start();
+      |         ~~~~~~~~~~^~
+.pio/libdeps/esp32s3/NimBLE-Arduino/src/NimBLEService.h:51:10: note: declared here
+   51 |     bool start() { return true; }
+      |          ^~~~~
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/cfg_srv.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/crypto.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/friend.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/glue.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/health_cli.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/health_srv.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/heartbeat.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/light_model.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/lpn.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/mesh.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/model_cli.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/model_srv.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/msg.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/net.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/pb_adv.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/pb_gatt.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/pb_gatt_srv.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/prov.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/prov_device.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/provisioner.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/proxy.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/proxy_msg.c.o
+In file included from src/main.cpp:35:
+include/link.h: At global scope:
+include/link.h:21:13: warning: 'void linkPoll(uint32_t)' defined but not used [-Wunused-function]
+   21 | static void linkPoll(uint32_t ms) {
+      |             ^~~~~~~~
+include/hal.h:800:20: warning: 'const char* halFixed(char*, size_t, float, int)' defined but not used [-Wunused-function]
+  800 | static const char *halFixed(char *buf, size_t n, float v, int decimals) {
+      |                    ^~~~~~~~
+include/hal.h:126:17: warning: 'uint32_t halRandom32()' defined but not used [-Wunused-function]
+  126 | static uint32_t halRandom32() { return esp_random(); }
+      |                 ^~~~~~~~~~~
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/proxy_srv.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/rpl.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/settings.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/shell.c.o
+Compiling .pio/build/esp32s3/lib2b1/NimBLE-Arduino/nimble/nimble/host/mesh/src/subnet.c.o
+*** [.pio/build/esp32s3/src/main.cpp.o] Error 1
+========================= [FAILED] Took 17.33 seconds =========================
+Environment    Status    Duration
+-------------  --------  ------------
+esp32s3        FAILED    00:00:17.332
+==================== 1 failed, 0 succeeded in 00:00:17.332 ====================
