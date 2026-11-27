@@ -36,6 +36,9 @@ test("the settings come from the machine, and hold the no-restart requirement (h
 	assert.equal(set.get(22), 1)
 	assert.equal(set.get(64), 1)
 	assert.equal(set.get(21), 1, "hard limits on")
+	// Homing before soft limits: grblHAL answers error:10 to $20=1 while $22 is 0.
+	const ids = grblhalSettings(cnc(), defaultCheckCatalog()!.mech)!.map((x) => x.id)
+	assert.ok(ids.indexOf(22) < ids.indexOf(20))
 })
 
 test("a signal the map needs, missing from the pins, wakes the architect; the firmware folder carries the map and settings", async () => {

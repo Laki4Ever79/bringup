@@ -213,3 +213,14 @@ Each failure on the way, with its general fix.
   aux_out_claim_explicit), so naming SPINDLE_PWM_PORT directly left the spindle without one; the spindle's PWM and enable
   are now AUXOUTPUT0/1 and the e-stop's RESET input AUXINPUT0, as grblHAL's BlackPill map declares them (the warning is
   gone in Renode). And the gantry's second Y motor (M3) needs Y_GANGED=1 to step with Y; without it grblHAL left it idle.
+- 27 Nov 2026, gap 12 (part 1): grblHAL in the loop, in Renode. src/tools/cnc-sim.ts generates the simulation from the
+  contract: an overlay on Renode's STM32F412 model (no F411 in Renode 1.17) with the DWT at 96 MHz (grblHAL's µs timing),
+  a small Python ADC1 (the spindle current, set by the scenario) and TIM5 at 96 MHz; a hook reloading TIM5's counter from
+  ARR (Renode's model doesn't, for a down-counter, so grblHAL stepped once and stopped); the step pulses counted on each
+  motor's STEP pin from the GPIO writes; and a scenario: our settings, a move X2 Y1 Z-0.5, the e-stop pressed and
+  released, a stall injected, X's limit tripped. Run on grblHAL's simulation build (console on USART1, no USB, no
+  Trinamic; generated beside the board's in platformio.local.ini): X 800, Y 400, M3 400, Z 200 step pulses, exactly the
+  move times 400 steps/mm, Y's two motors equal; the stall plugin's ALARM:14 on the injected current; about 13 s of wall
+  time. Open: the e-stop's and limit's inputs (PB12, PB13, driven with Renode's OnGPIO) don't reach grblHAL yet; the
+  run as a build kind (cncsim) in every CNC design run. Found on the way: settings sent in number order gave error:10
+  ($20 soft limits before $22 homing): homing now comes first in settings.txt.
