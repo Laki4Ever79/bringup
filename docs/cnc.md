@@ -243,3 +243,9 @@ Each failure on the way, with its general fix.
   VIN, so on a bare jack it never ran (U8.VCC on no net); the wiring now goes first. `--no-hardware` mocks of both CNC
   briefs: adopt UNSETTLED rev 9 with 1 violation (space-slack, 100×80) → settled rev 12 with 0 (80×64, 2% over its
   smallest).
+- 27 Nov, gap 2 (pins): each scripted pin left out in turn. The driver checks named the whole entry, but grblHAL's
+  and FluidNC's missing-signal check named 7 signals with only "with its part's pin" (ESTOP_TRIP, the three limits,
+  STEPPER_UART, STEPPER_UART_TX, SPINDLE_PWM), and nothing asked for the UART's 1 kΩ TX resistor itself. Fix
+  (src/cnc/signal-ends.ts): every missing signal is listed with its partRef and partPin, found by role (the motors' by
+  the drivers' axis order). With no TX resistor, the check names the part to add (0402WGF1001TCE, its pin2 on
+  @STEPPER_UART).
