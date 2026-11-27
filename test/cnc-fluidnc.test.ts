@@ -107,3 +107,12 @@ test("the scripted FluidNC CNC (briefs/cnc-fluidnc.md): the WROOM-32E with every
 	assert.deepEqual(fluidncPinProblems(s), [])
 	assert.equal(cncChecks(s.values, defaultCheckCatalog()!).filter((x) => /FluidNC|GPIO\d/.test(x.message)).length, 0)
 })
+
+test("the FluidNC design only for the brief that asks for an ESP32, not for any ESP32 the architect's facts name", async () => {
+	const { scriptedDesignFor } = await import("../src/inference/scripts.ts")
+	const { readFileSync } = await import("node:fs")
+	const facts = "\nMCUs: ESP32-C3-MINI-1, ESP32-S3-WROOM-1, ESP32-WROOM-32E"
+	const mcu = (b: string) => scriptedDesignFor(readFileSync(join(root, "briefs", `${b}.md`), "utf8") + facts).parts!.find((p) => p.role === "mcu")!.mpn
+	assert.equal(mcu("cnc"), "STM32F411CEU6")
+	assert.equal(mcu("cnc-fluidnc"), "ESP32-WROOM-32E")
+})

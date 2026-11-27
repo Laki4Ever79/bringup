@@ -232,6 +232,10 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 // reset as that strap wants), UART0 (1, 3) and the flash (6-11); the e-stop's trip (the OR gate drives it) on input-only
 // 36, the spindle's current on ADC1's 39 (ADC2 is lost to Wi-Fi). The USB-UART bridge and the auto-reset pair come with
 // the module (src/contract/usb-bridge-auto.ts); the 3.3 V load is the module's Wi-Fi peak.
+// The FluidNC brief's own words ("on an **ESP32**"), not any ESP32 in the text: the architect's instruction carries the
+// MCU facts, which name ESP32 modules for every brief, so the grblHAL brief's mock was designed on the ESP32 too (full
+// CNC mock, 27 Nov 2026: briefs/cnc.md came out FluidNC on the WROOM-32E).
+export const CNC_ON_ESP32 = /\bon an \**ESP32\b/i
 export const CNC_FLUIDNC_PINS: Record<string, number> = { X_STEP: 26, X_DIR: 27, Y1_STEP: 14, Y1_DIR: 13, Y2_STEP: 33, Y2_DIR: 32, Z_STEP: 25, Z_DIR: 4, STEPPERS_EN: 23, ESTOP_TRIP: 36, LIMIT_X: 18, LIMIT_Y: 19, LIMIT_Z: 21, SPINDLE_I: 39, STEPPER_UART: 16, STEPPER_UART_TX: 17, STATUS_LED: 2, SPINDLE_PWM: 22 }
 export const CNC_FLUIDNC_DESIGN: typeof LOGGER_DESIGN = {
 	...CNC_DESIGN,
@@ -614,7 +618,7 @@ const SENSOR_PINS = LOGGER_DESIGN.pins.filter((p) => p.partRef === "U2")
 
 // Which scripted design a brief gets: the beacon for a brief that says so, the logger for anything else.
 export const scriptedDesignFor = (brief: string): typeof LOGGER_DESIGN & Partial<Pick<ContractValues, "motion">> =>
-	armTargetsFromBrief(brief) ? (ARM_BOARD as unknown as typeof LOGGER_DESIGN) : EUROBOT.test(brief) ? (EUROBOT_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : FOUR_WD.test(brief) ? (ROVER4_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : CNC_BRIEF.test(brief) ? (/\bESP32\b/.test(brief) ? CNC_FLUIDNC_DESIGN : CNC_DESIGN) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
+	armTargetsFromBrief(brief) ? (ARM_BOARD as unknown as typeof LOGGER_DESIGN) : EUROBOT.test(brief) ? (EUROBOT_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : FOUR_WD.test(brief) ? (ROVER4_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : CNC_BRIEF.test(brief) ? (CNC_ON_ESP32.test(brief) ? CNC_FLUIDNC_DESIGN : CNC_DESIGN) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
 // A robot's requirements ask for motors (briefs/rover.md).
 const isRover = () => (state().contract.get("requirements")?.peripherals ?? []).includes("motors")
 const isEurobot = () => EUROBOT.test(state().contract.get("requirements")?.summary ?? "")
