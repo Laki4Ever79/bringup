@@ -91,18 +91,19 @@ def camera(yaw_deg, pitch_deg):
     return np.stack([right, up, fwd])
 
 
-def render(parts, path, yaw, pitch, floor_z, extent=None):
+def render(parts, path, yaw, pitch, floor_z, extent=None, size=SIZE, ss=SS, span=None):
     """parts: [(triangles, colour)]. An orthographic view, fitted to `extent` (the whole robot's points) so every step
-    of a sequence is drawn at one scale."""
+    of a sequence is drawn at one scale. size, ss: the picture's size and supersampling (a GIF's frames are smaller);
+    span: the floor square's half side (default: around the drawing)."""
     R = camera(yaw, pitch)
     allpts = extent if extent is not None else np.concatenate([t.reshape(-1, 3) for t, _ in parts])
     lo, hi = allpts.min(0), allpts.max(0)
     centre = (lo + hi) / 2
     # A floor square under the robot.
-    span = max(hi[0] - lo[0], hi[1] - lo[1]) * 0.8 + 40
+    span = span if span is not None else max(hi[0] - lo[0], hi[1] - lo[1]) * 0.8 + 40
     f = np.array([[centre[0] - span, centre[1] - span, floor_z], [centre[0] + span, centre[1] - span, floor_z], [centre[0] + span, centre[1] + span, floor_z], [centre[0] - span, centre[1] + span, floor_z]])
     view = (allpts - centre) @ R.T
-    w, h = SIZE[0] * SS, SIZE[1] * SS
+    w, h = size[0] * ss, size[1] * ss
     scale = 0.82 * min(w / max(np.ptp(view[:, 0]), 1), h / max(np.ptp(view[:, 1]), 1))
     img = Image.new("RGB", (w, h), BG)
     d = ImageDraw.Draw(img)
@@ -151,7 +152,10 @@ def render(parts, path, yaw, pitch, floor_z, extent=None):
             zb[win] = depth[win]
             rgb[by0:by1, bx0:bx1][win] = cols[i]
     img = Image.fromarray(rgb)
-    img.resize(SIZE, Image.LANCZOS).save(path)
+    img = img.resize(size, Image.LANCZOS)
+    if path is not None:
+        img.save(path)
+    return img
 
 
 KIND_COLOURS = {"printed": COLOURS["plate"], "bought": (58, 60, 66)}

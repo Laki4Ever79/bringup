@@ -29,11 +29,14 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             src/setup/tools-node/package-lock.json
-      # Espressif's macOS QEMU links Homebrew's libraries (README: setup sim); Linux's libslirp comes with setup sim and
-      # Windows' build carries its DLLs.
+      # Espressif's QEMU links system libraries (README: setup sim): Homebrew's on macOS, SDL2, pixman and libgcrypt on
+      # Linux (libslirp comes with setup sim); Windows' build carries its DLLs.
       - name: QEMU's libraries (macOS)
         if: runner.os == 'macOS'
         run: brew install libgcrypt glib pixman sdl2 libslirp
+      - name: QEMU's libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libsdl2-2.0-0 libpixman-1-0 libgcrypt20 libglib2.0-0
       - name: Smoke test (each step timed in the job summary)
         run: node scripts/ci-smoke.mjs
 

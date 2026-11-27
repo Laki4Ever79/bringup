@@ -32,12 +32,9 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
+from mech.course import BACK_WALL_X, FRONT_WALL_X, SIDE_WALL_Y, STEP_X  # noqa: F401 - re-exported for older imports
 from mech.model import battery_volts, build_model, motor_torque
 
-FRONT_WALL_X = 1.5
-BACK_WALL_X = -1.0
-SIDE_WALL_Y = 1.0
-STEP_X = 0.6
 PAYLOAD = (22.5, 45.0)  # what the simulated payload sensor reads (fixed, stated in the report)
 
 

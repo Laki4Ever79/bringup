@@ -209,14 +209,29 @@ async function design(server, expect = {}, brief = LOGGER) {
 	const drives = fs.filter((x) => /[\\/]drive[\\/]rev-\d+[\\/]drive\.json$/.test(x.f)).sort((a, b) => statSync(a.f).mtimeMs - statSync(b.f).mtimeMs)
 	const drive = drives.length ? JSON.parse(readFileSync(drives.at(-1).f, "utf8")) : null
 	const said = `settled at revision ${st.revision}${builds ? ` (builds: ${builds})` : ""}, ${fs.length} files, ${pics} board pictures, ${gerbers} gerber zips, ${printed} printed-part files, ${ros} URDFs, ${firmware} firmware images${drive ? `, drive ${drive.result}${drive.topSpeedMps ? ` (top ${drive.topSpeedMps.toFixed(2)} m/s)` : ""}` : ""}`
-	if (expect.drive && drive?.result !== "pass") throw new Error(`settled, but the MuJoCo drive ${drive ? `${drive.result}: ${drive.reason || (drive.segments ?? []).filter((x) => !x.pass).map((x) => `${x.name}: ${x.detail}`).join("; ")}` : "never ran"}; ${said}`)
+	if (expect.drive && drive?.result !== "pass") {
+		// No drive.json: the builder's own reason is in the trace (a missing tool, QEMU not starting).
+		let why = ""
+		try {
+			const ev = readFileSync(join(start.outDir, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((e) => e.payload?.kind === "drive").at(-1)
+			if (ev) why = ` (the drive's last event: ${ev.type} ${JSON.stringify(ev.payload).slice(0, 600)})`
+		} catch {}
+		throw new Error(`settled, but the MuJoCo drive ${drive ? `${drive.result}: ${drive.reason || (drive.segments ?? []).filter((x) => !x.pass).map((x) => `${x.name}: ${x.detail}`).join("; ")}` : "never ran"}${why}; ${said}`)
+	}
 	const missing = [expect.board && !pics && "board pictures", expect.printed && !printed && "printed parts", expect.ros && !ros && "the ROS workspace", expect.firmware && !firmware && "a firmware image"].filter(Boolean)
 	if (missing.length) throw new Error(`settled, but no ${missing.join(", ")}: ${said}; hardware: ${start.hardware}`)
 	return said
 }
 
 // The setup command: this checkout's, or the installed copy's.
-const setup = (domain) => (packed ? sh(`npx --no-install bringup-mcp setup ${domain}`, 1_800_000, user) : sh(`node bin/bringup-mcp.js setup ${domain}`, 1_800_000), "")
+// Its note: setup's last line (stderr: what it installed, or that a tool installed but can't start here).
+const setup = (domain) => {
+	const cmd = packed ? `npx --no-install bringup-mcp setup ${domain}` : `node bin/bringup-mcp.js setup ${domain}`
+	const r = spawnSync(cmd, { shell: true, env, cwd: packed ? user : undefined, encoding: "utf8", timeout: 1_800_000, maxBuffer: 64 * 1024 * 1024 })
+	const said = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim()
+	if (r.status !== 0) throw new Error(`${cmd} exited ${r.status ?? r.signal}: ${said}`)
+	return said.split(/\r?\n/).at(-1).replace(/ in \S+bringup-ci-\S+/, "")
+}
 if (packed) {
 	await step("npm pack, installed into an empty folder", () => {
 		const tgz = sh(`npm pack --pack-destination "${out}"`).trim().split(/\r?\n/).at(-1).trim()
@@ -260,6 +275,18 @@ await step("setup case", () => setup("case"))
 await step("setup firmware", () => setup("firmware"))
 await step("setup sim", () => setup("sim"))
 await step("mock rover (printed parts, ROS workspace, MuJoCo drive)", () => design(server, { board: true, printed: true, ros: true, drive: true }, readFileSync("briefs/rover.md", "utf8")))
+// What a Claude Code user sees of that drive: its verdict, the course from above, the robot at its farthest, a GIF.
+const rover = lastRun
+await step("get_pictures drive: true (the rover driving)", async () => {
+	if (!rover) throw new Error("no rover design ran")
+	const r = await server.raw("get_pictures", { runId: rover.runId, drive: true }, 600_000)
+	const listed = JSON.parse(r.content[0].text)
+	if (listed.drive?.result !== "pass") throw new Error(`the drive's verdict: ${JSON.stringify(listed.drive ?? null)}; notes: ${(listed.notes ?? []).join(" / ")}`)
+	const want = ["drive-track.png", "drive-2-farthest.png", "drive.gif"].filter((f) => !listed.files.some((x) => x.path.endsWith(f)))
+	if (want.length) throw new Error(`no ${want.join(", ")}: ${r.content[0].text.slice(0, 800)}`)
+	const images = r.content.filter((c) => c.type === "image").length
+	return `drive ${listed.drive.result}; ${listed.files.filter((x) => /[\\/]drive[\\/]/.test(x.path)).length} drive pictures, ${images} inline`
+})
 }
 await login()
 await step("mock design with the firmware tools (firmware built)", () => design(server, { board: true, firmware: true }))

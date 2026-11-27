@@ -63,6 +63,15 @@ export interface DriveOptions {
 
 // Whether something listens on a local TCP port: a connection opened and closed at once (QEMU's console server takes
 // a client again after one leaves).
+// Why a drive's firmware may not have answered: QEMU quit (and its last error line), or the console's last line (how far
+// the firmware got), or that it printed nothing.
+export function qemuSaid(exit: string | null, stderr: string, uart0: string | null): string {
+	const lastLine = (t: string) => t.replace(/\r/g, "").trim().split("\n").filter(Boolean).at(-1)?.slice(0, 200)
+	if (exit) return `QEMU ${exit}${lastLine(stderr) ? `: ${lastLine(stderr)}` : ""}`
+	const console = uart0 && existsSync(uart0) ? readFileSync(uart0, "utf8") : ""
+	return lastLine(console) ? `QEMU running; the firmware's console last printed: ${lastLine(console)}` : `QEMU running; the firmware's console printed nothing${lastLine(stderr) ? ` (QEMU: ${lastLine(stderr)})` : ""}`
+}
+
 // A TCP port nothing listens on now (the OS's pick), for QEMU to serve.
 function freePort(): Promise<number> {
 	return new Promise((ok, no) => {
@@ -301,7 +310,15 @@ async function simInLoop(opts: SimInLoop): Promise<{ notRun: string } | { json: 
 	const sock = tcp ? null : Buffer.byteLength(local) <= 100 ? local : join(mkdtempSync(join(tmpdir(), "bringup-drive-")), "uart1.sock")
 	if (sock) rmSync(sock, { force: true })
 	const uart1 = tcp ? `tcp:127.0.0.1:${tcp},server=on,wait=on` : `unix:${sock},server=on,wait=on`
-	const q = spawn(qemu, ["-display", "none", ...qemuBaseArgs(target, image), "-serial", o.consolePort ? `tcp:127.0.0.1:${o.consolePort},server=on,wait=off` : `file:${join(o.outDir, "uart0.txt")}`, "-serial", uart1], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
+	const uart0 = join(o.outDir, "uart0.txt")
+	const q = spawn(qemu, ["-display", "none", ...qemuBaseArgs(target, image), "-serial", o.consolePort ? `tcp:127.0.0.1:${o.consolePort},server=on,wait=off` : `file:${uart0}`, "-serial", uart1], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, ...qemuEnv(o.root) } })
+	// What QEMU said and whether it quit: a drive that didn't run says why (Windows' first OS smoke run, 27 Nov 2026: "the
+	// firmware didn't answer within 60 s" and nothing else to go on).
+	let qemuErr = ""
+	let qemuExit: string | null = null
+	q.stderr?.on("data", (d) => (qemuErr = (qemuErr + d).slice(-2000)))
+	q.on("exit", (code, signal) => (qemuExit = `exited ${code ?? signal}`))
+	q.on("error", (e) => (qemuExit = `didn't start (${e.message})`))
 	// The console is up once QEMU listens on it (polled; it stops when the drive ends).
 	let ended = false
 	if (o.consolePort && o.onConsoleReady)
@@ -325,7 +342,9 @@ async function simInLoop(opts: SimInLoop): Promise<{ notRun: string } | { json: 
 		const file = join(o.outDir, o.resultFile)
 		if (code === null) return notRun(`the run didn't finish within ${Math.round((o.timeoutMs ?? 300_000) / 1000)} s`)
 		if (!existsSync(file)) return notRun(`the bridge failed: ${stderr.trim().split("\n").at(-1) ?? `exit ${code}`}`)
-		return { json: JSON.parse(readFileSync(file, "utf8")) }
+		const json = JSON.parse(readFileSync(file, "utf8")) as { result?: string; reason?: string }
+		if (json.result === "not run") json.reason = `${json.reason ?? ""}; ${qemuSaid(qemuExit, qemuErr, o.consolePort ? null : uart0)}`
+		return { json }
 	} finally {
 		ended = true
 		q.kill("SIGKILL")

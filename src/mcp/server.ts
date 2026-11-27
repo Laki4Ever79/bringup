@@ -1,6 +1,6 @@
 import { providerProblem } from "../inference/providers.ts"
 import { continueSeed } from "../runner/continue.ts"
-import { armPictures, assemblyPictures, casePictures } from "../package/assembly-pictures.ts"
+import { armPictures, assemblyPictures, casePictures, drivePictures } from "../package/assembly-pictures.ts"
 import { approveRunPlan, makeRunPlan, paidStartRefusal, planText, readRunPlan } from "../system/plan-gate.ts"
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
@@ -558,14 +558,15 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	server.registerTool(
 		"get_pictures",
 		{
-			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true 3D stills of the board in its case, or of a robot or arm (needs the case tools; 10-25 s). Every file is also listed by path.",
+			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true 3D stills of the board in its case, or of a robot or arm (needs the case tools; 10-25 s). A robot's simulated drive (its firmware in QEMU driving the MuJoCo model) comes back as its verdict; with drive: true also as pictures of the robot driving the course and a GIF (30-90 s). Every file is also listed by path.",
 			inputSchema: {
 				runId: z.string(),
 				board: BOARD,
 				stills: z.boolean().optional().describe("Render 3D stills into <run>/pictures (py/stills.py, the case tools): the board in its case, or a robot or arm step by step. Default false."),
+				drive: z.boolean().optional().describe("Render the robot's simulated drive into <run>/pictures/drive (py/drive_pictures.py, the case tools): the course from above with its path, three frames following the robot, and drive.gif. Default false."),
 			},
 		},
-		async ({ runId, board, stills }) => {
+		async ({ runId, board, stills, drive }) => {
 			const r = await runDir(runId)
 			if ("error" in r) return fail(r.error)
 			const b = boardDir(r.dir, runId, board)
@@ -602,16 +603,46 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 					for (const f of p.files) files.push({ what: `3D still: ${basename(f, ".png").replace(/[-_]/g, " ")}`, path: join(out, f) })
 				}
 			}
+			// The robot's simulated drive (src/tools/drive.ts): its verdict always, its pictures on request.
+			const driveRev = newest(join(b.dir, "drive"), "drive.json")
+			let driveVerdict: Record<string, unknown> | undefined
+			if (driveRev) {
+				try {
+					const d = JSON.parse(readFileSync(join(driveRev, "drive.json"), "utf8")) as { result: string; reason?: string; segments?: { name: string; pass: boolean; detail: string }[]; topSpeedMps?: number; peakA?: number; closestWallMm?: number }
+					driveVerdict = { result: d.result, reason: d.reason, segments: (d.segments ?? []).map((x) => `${x.pass ? "pass" : "FAIL"} ${x.name}: ${x.detail}`), ...(d.topSpeedMps !== undefined ? { topSpeedMps: d.topSpeedMps } : {}), ...(d.peakA !== undefined ? { peakA: d.peakA } : {}), ...(d.closestWallMm !== undefined ? { closestWallMm: d.closestWallMm } : {}) }
+				} catch {
+					notes.push(`the drive's result (${join(driveRev, "drive.json")}) couldn't be read`)
+				}
+			}
+			const drivePngs: { what: string; path: string }[] = []
+			if (drive) {
+				const env = await (deps.detect ?? (() => detectEnvironment(root)))()
+				const chassis = newest(join(b.dir, "chassis"), "chassis.stl")
+				const trajRev = newest(join(b.dir, "drive"), "trajectory.json")
+				if (!chassis || !trajRev) notes.push(!chassis ? "no drive pictures: this design has no robot chassis built" : "no drive pictures: the robot's drive didn't run (it needs `npx bringup-mcp setup firmware sim`, after your user says yes)")
+				else if (!env.python) notes.push("no drive pictures: they need the case tools (`npx bringup-mcp setup case`, after your user says yes)")
+				else {
+					const out = join(b.dir, "pictures")
+					const p = await drivePictures(env.python, root, chassis, trajRev, out)
+					if (p.note) notes.push(p.note)
+					for (const f of p.files) {
+						const entry = { what: f.endsWith(".gif") ? "the drive, animated (GIF)" : `drive: ${basename(f, ".png").replace(/^drive-(\d-)?/, "").replace(/[-_]/g, " ")}`, path: join(out, f) }
+						files.push(entry)
+						if (/drive-(track|2-farthest)\.png$/.test(f)) drivePngs.push(entry)
+					}
+				}
+			}
 			// The PNGs themselves, so a client that shows images can put them in front of the user: the board and the
-			// finished robot (the last assembly step), each at most 2 MB.
-			const pngs = files.filter((f) => f.path.endsWith(".png"))
+			// finished robot (the last assembly step), each at most 2 MB; with drive, the course from above and the robot
+			// at its farthest.
+			const pngs = files.filter((f) => f.path.endsWith(".png") && !drivePngs.includes(f))
 			const steps = pngs.filter((f) => /[\\/]step-\d+[^\\/]*\.png$/.test(f.path))
 			const exploded = pngs.find((f) => /[\\/]exploded\.png$/.test(f.path))
 			const finished = showExploded && exploded ? exploded : steps.length ? steps.reduce((x, y) => (Number(/step-(\d+)/.exec(y.path)![1]) > Number(/step-(\d+)/.exec(x.path)![1]) ? y : x)) : pngs.length > 1 ? pngs[pngs.length - 1] : undefined
-			const shown = [pngs[0], finished].filter((f): f is { what: string; path: string } => Boolean(f) && statSync(f!.path).size <= 2_000_000)
+			const shown = [pngs[0], finished, ...drivePngs].filter((f): f is { what: string; path: string } => Boolean(f) && statSync(f!.path).size <= 2_000_000)
 			return {
 				content: [
-					{ type: "text" as const, text: JSON.stringify({ runId, files, ...(notes.length ? { notes } : {}) }, null, 2) },
+					{ type: "text" as const, text: JSON.stringify({ runId, files, ...(driveVerdict ? { drive: driveVerdict } : {}), ...(notes.length ? { notes } : {}) }, null, 2) },
 					...shown.map((f) => ({ type: "image" as const, data: readFileSync(f.path).toString("base64"), mimeType: "image/png" })),
 				],
 			}

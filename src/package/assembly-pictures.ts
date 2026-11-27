@@ -63,3 +63,20 @@ export async function casePictures(python: string, root: string, enclosureDir: s
 		return { files: [], note: `no case pictures: py/stills.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
 	}
 }
+
+// The rover's simulated drive (py/drive_pictures.py): the robot's own meshes at the poses of its MuJoCo drive's
+// trajectory, on the course, drawn without MuJoCo or OpenGL: from above with the whole path, three key frames following
+// the robot (start, farthest, end) and a GIF of the whole drive. Files under drive/ in outDir.
+export async function drivePictures(python: string, root: string, chassisDir: string, driveDir: string, outDir: string, log: (m: string) => void = () => {}): Promise<AssemblyPictures> {
+	if (!existsSync(join(chassisDir, "spec.json")) || !existsSync(join(chassisDir, "chassis.stl"))) return { files: [], note: `no drive pictures: ${chassisDir} holds no built chassis` }
+	if (!existsSync(join(driveDir, "trajectory.json"))) return { files: [], note: `no drive pictures: ${driveDir} holds no trajectory (the drive didn't run)` }
+	const dir = join(outDir, "drive")
+	try {
+		const { stdout } = await exec(python, [join(root, "py", "drive_pictures.py"), chassisDir, driveDir, dir], { timeout: 600_000 })
+		const files = stdout.split(/\r?\n/).map((f) => f.trim()).filter((f) => /\.(png|gif)$/.test(f)).map((f) => `drive/${f}`)
+		log(`drive pictures: ${files.length} in ${dir}`)
+		return { files, note: null }
+	} catch (e) {
+		return { files: [], note: `no drive pictures: py/drive_pictures.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
+	}
+}

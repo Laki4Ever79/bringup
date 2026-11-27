@@ -33,7 +33,7 @@ export const DOMAINS: Record<Domain, DomainInfo> = {
 	// MuJoCo's wheel and Espressif's QEMU for this OS (the two machines: riscv32 for the ESP32-C3, xtensa for the ESP32 and
 	// S3): a robot's firmware runs in QEMU, driving its MuJoCo model over a course (src/tools/drive.ts). Sizes: the
 	// release's tarballs (Linux 32 MB, macOS 8 MB, Windows 74 MB) and MuJoCo's wheel; an ESTIMATE, not measured clean.
-	sim: { what: "MuJoCo 3.17 and Espressif's QEMU 9.2.2, pinned (a robot's firmware driving its physics model)", sizeMb: 180, seconds: 40, gives: "a robot's drive proven in simulation: its own firmware in QEMU driving the MuJoCo model", needs: "Homebrew's libraries for QEMU on macOS: `brew install libgcrypt glib pixman sdl2 libslirp`" },
+	sim: { what: "MuJoCo 3.17 and Espressif's QEMU 9.2.2, pinned (a robot's firmware driving its physics model)", sizeMb: 180, seconds: 40, gives: "a robot's drive proven in simulation: its own firmware in QEMU driving the MuJoCo model", needs: "QEMU's system libraries: on Linux `sudo apt install libsdl2-2.0-0 libpixman-1-0 libgcrypt20 libglib2.0-0` (libslirp comes with setup), on macOS `brew install libgcrypt glib pixman sdl2 libslirp`" },
 	firmware: { what: "PlatformIO 6.2, pinned (the firmware's build tool; installing it takes seconds). The first firmware build then downloads the chip's platform and compiler, about 1 GB more (an estimate), which made that first build take 2.5-3 min on GitHub's runners", sizeMb: 125, seconds: 15, gives: "firmware built against the board's real pin map" },
 }
 
@@ -197,7 +197,7 @@ export async function installDomain(domain: Domain, deps: InstallDeps = {}): Pro
 		await installQemu(home, d)
 		const qemu = join(home, QEMU_BINS.riscv32)
 		const runs = (await d.exec(qemu, ["--version"], { env: { LD_LIBRARY_PATH: join(home, "tools", "qemu", "lib") } })) === 0
-		return { installed: true, note: runs ? `sim tools in ${home}` : `sim tools installed, but QEMU doesn't start here${process.platform === "darwin" ? `: it needs ${DOMAINS.sim.needs}` : ` (${qemu} --version failed)`}` }
+		return { installed: true, note: runs ? `sim tools in ${home}` : `sim tools installed, but QEMU doesn't start here${process.platform === "win32" ? ` (${qemu} --version failed)` : `: it needs ${DOMAINS.sim.needs}`}` }
 	}
 	const pkgs = domain === "case" ? ["build123d==0.13.0"] : ["platformio==6.2.0"]
 	const marker = domain === "case" ? python : join(home, VENV.pio)

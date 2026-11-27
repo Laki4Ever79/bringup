@@ -633,6 +633,17 @@ test("get_pictures returns the newest board's 3D picture as an image and lists e
 		assert.deepEqual(bare.files, [])
 		assert.match(bare.notes.join(" "), /setup board/)
 		assert.match(bare.notes.join(" "), /a case, a robot's chassis or an arm/)
+		// A robot's simulated drive: its verdict always (the newest revision's); its pictures need a built chassis.
+		for (const [rev, result] of [[1, "fail"], [4, "pass"]] as const) {
+			mkdirSync(join(dir, "drive", `rev-${rev}`), { recursive: true })
+			writeFileSync(join(dir, "drive", `rev-${rev}`, "drive.json"), JSON.stringify({ result, reason: "every segment passed", segments: [{ name: "edge crossed", pass: true, detail: "x = 1.12 m" }], topSpeedMps: 0.41 }))
+		}
+		const driven = JSON.parse((await mcp.call("get_pictures", { runId: "pics-run", drive: true })).text)
+		assert.equal(driven.drive.result, "pass")
+		assert.deepEqual(driven.drive.segments, ["pass edge crossed: x = 1.12 m"])
+		assert.equal(driven.drive.topSpeedMps, 0.41)
+		assert.match(driven.notes.join(" "), /no drive pictures: this design has no robot chassis built/)
+		assert.equal(JSON.parse((await mcp.call("get_pictures", { runId: "bare" })).text).drive, undefined)
 	} finally {
 		await mcp.close()
 	}
