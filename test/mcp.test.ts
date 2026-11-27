@@ -656,6 +656,9 @@ test("get_pictures returns the newest board's 3D picture as an image and lists e
 		const machine = JSON.parse((await mcp.call("get_pictures", { runId: "bare", drive: true })).text)
 		assert.deepEqual(machine.machine, { result: "pass", checks: ["pass X steps: 800 step pulses on PA0, 800 expected"] })
 		assert.match(machine.notes.join(" "), /no toolpath pictures: the simulated machine recorded no toolpath/)
+		// overview: one picture of the whole design; without the case tools a note says why, and the run's files still list.
+		const ov = JSON.parse((await mcp.call("get_pictures", { runId: "pics-run", overview: true })).text)
+		assert.ok(ov.files.length >= 3)
 	} finally {
 		await mcp.close()
 	}

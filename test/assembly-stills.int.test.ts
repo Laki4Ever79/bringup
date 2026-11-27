@@ -5,7 +5,7 @@ import assert from "node:assert/strict"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { buildChassis } from "../src/tools/chassis.ts"
-import { assemblyPictures, casePictures, cncSimPictures, drivePictures } from "../src/package/assembly-pictures.ts"
+import { assemblyPictures, casePictures, cncSimPictures, drivePictures, overviewPicture } from "../src/package/assembly-pictures.ts"
 import { buildEnclosure } from "../src/tools/enclosure.ts"
 import { ASSEMBLY_STEPS } from "../src/geometry/assembly-steps.js"
 import { LOGGER_DESIGN, ROVER_BOARD } from "../src/inference/scripts.ts"
@@ -79,4 +79,12 @@ test("a CNC's toolpath is drawn from grblHAL's reported positions: from above on
 	assert.equal(index.revision, 7)
 	assert.deepEqual(index.files, ["cnc-toolpath.png", "cnc-toolpath-3d.png", "cnc.gif"])
 	assert.match((await cncSimPictures(python!, root, tempDir(), out)).note ?? "", /holds no toolpath/)
+	// The overview: those pictures side by side in one, labelled; a missing one is left out.
+	const ov = join(out, "overview.png")
+	const o = await overviewPicture(python!, root, ov, [{ label: "the toolpath: pass", path: join(out, "cncsim/cnc-toolpath.png") }, { label: "from the front", path: join(out, "cncsim/cnc-toolpath-3d.png") }, { label: "gone", path: join(out, "nope.png") }])
+	assert.equal(o.note, null)
+	const png = readFileSync(ov)
+	assert.equal(png.subarray(1, 4).toString(), "PNG")
+	assert.equal(png.readUInt32BE(16), 24 + 2 * (720 + 24)) // two panels wide
+	assert.match((await overviewPicture(python!, root, ov, [])).note ?? "", /no pictures of this design yet/)
 })

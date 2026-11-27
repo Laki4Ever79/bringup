@@ -127,3 +127,14 @@ export async function cncSimPictures(python: string, root: string, simDir: strin
 		return { files: [], note: `no toolpath pictures: py/cnc_pictures.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
 	}
 }
+
+// The whole design in one picture (py/overview.py): the given pictures side by side, each labelled, into outFile.
+export async function overviewPicture(python: string, root: string, outFile: string, panels: { label: string; path: string }[]): Promise<{ file: string | null; note: string | null }> {
+	if (!panels.length) return { file: null, note: "no overview: there are no pictures of this design yet" }
+	try {
+		await exec(python, [join(root, "py", "overview.py"), outFile, ...panels.map((p) => `${p.label}=${p.path}`)], { timeout: 120_000 })
+		return existsSync(outFile) ? { file: outFile, note: null } : { file: null, note: "no overview: py/overview.py wrote nothing" }
+	} catch (e) {
+		return { file: null, note: `no overview: py/overview.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
+	}
+}

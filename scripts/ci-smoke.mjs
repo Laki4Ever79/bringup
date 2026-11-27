@@ -296,6 +296,16 @@ await step("get_pictures drive: true (the rover driving)", async () => {
 	const images = r.content.filter((c) => c.type === "image").length
 	return `drive ${listed.drive.result}; ${listed.files.filter((x) => /[\\/]drive[\\/]/.test(x.path)).length} drive pictures, ${images} inline`
 })
+// The whole design in one image: the board, the rover assembled, its drive.
+await step("get_pictures overview: true (board, assembly, drive in one)", async () => {
+	if (!rover) throw new Error("no rover design ran")
+	const r = await server.raw("get_pictures", { runId: rover.runId, overview: true }, 600_000)
+	const listed = JSON.parse(r.content[0].text)
+	const images = r.content.filter((c) => c.type === "image")
+	const ov = listed.files.find((x) => x.path.endsWith("overview.png"))
+	if (!ov || images.length !== 1) throw new Error(`no single overview image (${images.length} images): ${r.content[0].text.slice(0, 600)}`)
+	return `${ov.what}; ${Math.round(images[0].data.length * 0.75 / 1024)} kB`
+})
 }
 await login()
 await step("mock design with the firmware tools (firmware built)", () => design(server, { board: true, firmware: true }))
