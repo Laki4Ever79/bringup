@@ -194,12 +194,14 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 	// 5. Bench bring-up, the assembly order, the parts list and the summary.
 	writeBench(outDir, s, board)
 	// The robot drawn step by step from the chassis built above (assembly-pictures.ts, py/stills.py).
-	const pictures = stls.length
-		? await assemblyPictures(opts.python, opts.root, join(work, "chassis"), outDir, log)
-		: arm
-			? await armPictures(opts.python, opts.root, join(arm.dir, "posed"), outDir, log)
-			: caseDir
-				? await casePictures(opts.python, opts.root, caseDir, outDir, log)
+	// The case first: its STLs are in stls too, and a plain product took the chassis branch and got "holds no built
+	// chassis" (OS smoke test, newcomer path, 27 Nov 2026).
+	const pictures = caseDir
+		? await casePictures(opts.python, opts.root, caseDir, outDir, log)
+		: stls.length
+			? await assemblyPictures(opts.python, opts.root, join(work, "chassis"), outDir, log)
+			: arm
+				? await armPictures(opts.python, opts.root, join(arm.dir, "posed"), outDir, log)
 				: { files: [], note: s.values.mechanics ? "no assembly pictures: the chassis didn't build" : s.values.arm ? "no assembly pictures: the arm's parts didn't build" : null }
 	writeFileSync(
 		join(outDir, "assembly.md"),

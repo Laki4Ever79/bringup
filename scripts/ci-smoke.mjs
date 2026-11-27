@@ -1,6 +1,7 @@
 // The free tier on a fresh machine of each OS (.github/workflows/os-smoke.yml): install, typecheck, the MCP server's
 // handshake, a mock design with no tools, then each setup domain and a design that needs it: the board and its
-// pictures, a rover's printed parts and ROS workspace, a firmware build.
+// pictures, a rover's printed parts and ROS workspace, a firmware build; then the newcomer's MCP path on that design:
+// run_summary, get_pictures (the board as an image, the stills of it in its case) and export_package.
 // Each step is timed, a failed step doesn't stop the rest, and the table goes to the job summary
 // ($GITHUB_STEP_SUMMARY), or stdout when run by hand: node scripts/ci-smoke.mjs
 import { spawn, spawnSync } from "node:child_process"
@@ -12,7 +13,10 @@ const win = process.platform === "win32"
 const steps = []
 const out = mkdtempSync(join(tmpdir(), "bringup-ci-"))
 // BRINGUP_TOOLCHAIN=local: the npx user's path, not Docker's toolchain image (GitHub's Linux runners have Docker).
-const env = { ...process.env, BRINGUP_OUT: join(out, "runs"), BRINGUP_HOME: join(out, "home"), BRINGUP_TOOLCHAIN: "local", MOZAIK_CREDENTIALS_FILE: win ? "NUL" : "/dev/null" }
+// --newcomer-only: this machine's installed tools, no installs: the handshake, one design and the newcomer's MCP path
+// after it (a quick check by hand of the steps a fresh runner takes the whole way).
+const only = process.argv.includes("--newcomer-only")
+const env = { ...process.env, BRINGUP_OUT: join(out, "runs"), ...(only ? {} : { BRINGUP_HOME: join(out, "home") }), BRINGUP_TOOLCHAIN: "local", MOZAIK_CREDENTIALS_FILE: win ? "NUL" : "/dev/null" }
 
 async function step(name, fn) {
 	const t = Date.now()
@@ -61,13 +65,19 @@ function mcp() {
 			waiting.set(n, (m) => (clearTimeout(timer), ok(m)))
 			p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: n, method, params }) + "\n")
 		})
-	const tool = async (name, args) => {
-		const r = await call("tools/call", { name, arguments: args })
+	const tool = async (name, args, ms) => {
+		const r = await call("tools/call", { name, arguments: args }, ms)
 		const text = r.result?.content?.[0]?.text ?? JSON.stringify(r.error ?? r)
 		if (r.result?.isError) throw new Error(`${name}: ${text}`)
 		return JSON.parse(text)
 	}
-	return { call, tool, close: () => p.kill(), stderr: () => err }
+	// The whole result: a picture comes back as image content beside the text.
+	const raw = async (name, args, ms) => {
+		const r = await call("tools/call", { name, arguments: args }, ms)
+		if (r.result?.isError || !r.result) throw new Error(`${name}: ${r.result?.content?.[0]?.text ?? JSON.stringify(r.error ?? r)}`)
+		return r.result
+	}
+	return { call, tool, raw, close: () => p.kill(), stderr: () => err }
 }
 
 function files(dir) {
@@ -85,8 +95,11 @@ function files(dir) {
 
 const LOGGER = "BLE temperature logger, USB-C, 50x30 mm"
 // expect: what the run must have made (board pictures, printed parts, the ROS workspace, a firmware image).
+// The last design started, for the steps after it (run_summary, get_pictures, export_package).
+let lastRun = null
 async function design(server, expect = {}, brief = LOGGER) {
 	const start = await server.tool("start_design", { brief, mock: true })
+	lastRun = start
 	const t = Date.now()
 	let st
 	while (Date.now() - t < 45 * 60_000) {
@@ -139,14 +152,17 @@ async function design(server, expect = {}, brief = LOGGER) {
 	return said
 }
 
-await step("npm ci", () => (sh("npm ci --no-audit --no-fund"), ""))
-await step("typecheck", () => (sh("npm run typecheck"), ""))
+if (!only) {
+	await step("npm ci", () => (sh("npm ci --no-audit --no-fund"), ""))
+	await step("typecheck", () => (sh("npm run typecheck"), ""))
+}
 const server = mcp()
 await step("MCP handshake (initialize, tools/list)", async () => {
 	const init = await server.call("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "ci-smoke", version: "0" } })
 	const tools = await server.call("tools/list", {})
 	return `${init.result?.serverInfo?.name} ${init.result?.serverInfo?.version}, ${tools.result?.tools?.length} tools`
 })
+if (!only) {
 await step("mock design, no tools (design only)", () => design(server))
 await step("setup board", () => (sh("node bin/bringup-mcp.js setup board", 1_200_000), files(join(out, "home")).length ? "installed into BRINGUP_HOME" : "nothing installed"))
 await step("mock design with the board tools (board + pictures)", () => design(server, { board: true }))
@@ -155,7 +171,47 @@ await step("setup case", () => (sh("node bin/bringup-mcp.js setup case", 1_800_0
 await step("mock rover with the case tools (printed parts + ROS workspace)", () => design(server, { board: true, printed: true, ros: true }, readFileSync("briefs/rover.md", "utf8")))
 // PlatformIO; the first firmware build fetches the chip's platform and compiler.
 await step("setup firmware", () => (sh("node bin/bringup-mcp.js setup firmware", 1_800_000), ""))
+}
 await step("mock design with the firmware tools (firmware built)", () => design(server, { board: true, firmware: true }))
+// The newcomer's path after that design, all through the MCP as Claude Code drives it: what was built, show me, the
+// package to order and print from.
+const need = () => {
+	if (!lastRun) throw new Error("no design to look at (the design step didn't start)")
+	return lastRun.runId
+}
+await step("run_summary", async () => {
+	const s = await server.tool("run_summary", { runId: need() })
+	const built = s.boards[0].artifacts.filter((a) => /^built|print check ok/.test(a.verdict)).map((a) => a.what)
+	if (!built.includes("board") || !built.includes("case")) throw new Error(`board and case not both built: ${s.text}`)
+	return `${s.status}; built ${built.join(", ")}; ${s.files.length} files`
+})
+await step("get_pictures (board picture as an image)", async () => {
+	const r = await server.raw("get_pictures", { runId: need() })
+	const listed = JSON.parse(r.content[0].text)
+	const images = r.content.filter((c) => c.type === "image" && c.mimeType === "image/png" && c.data.length > 1000)
+	if (!images.length) throw new Error(`no image content: ${r.content[0].text.slice(0, 600)}`)
+	const want = ["board.png", "case.stl"].filter((f) => !listed.files.some((x) => x.path.endsWith(f)))
+	if (want.length) throw new Error(`missing ${want.join(", ")}: ${r.content[0].text.slice(0, 600)}`)
+	return `${images.length} image(s), ${listed.files.length} files`
+})
+await step("get_pictures stills: true (the board in its case)", async () => {
+	const r = await server.raw("get_pictures", { runId: need(), stills: true }, 600_000)
+	const listed = JSON.parse(r.content[0].text)
+	const stills = listed.files.filter((x) => x.what.startsWith("3D still"))
+	if (!stills.some((x) => x.path.endsWith("exploded.png"))) throw new Error(`no exploded still: ${r.content[0].text.slice(0, 800)}`)
+	return `${stills.length} stills, ${r.content.filter((c) => c.type === "image").length} inline`
+})
+await step("export_package (fab, BOM, case, pictures, firmware)", async () => {
+	// A mock design's review is scripted, so the package gate refuses it unless forced: the refusal must say how.
+	const refused = await server.raw("export_package", { runId: need() }, 1_800_000).then(() => null, (e) => String(e.message))
+	if (refused !== null && !/force/.test(refused)) throw new Error(`refused without saying how to go on: ${refused}`)
+	const p = await server.tool("export_package", { runId: need(), force: true }, 1_800_000)
+	const all = files(p.package).map((x) => x.f.slice(p.package.length + 1).replace(/\\/g, "/"))
+	const want = ["fab/gerbers.zip", "fab/bom.csv", "fab/cpl.csv", "printed/case.stl", "printed/lid.stl", "assembly/exploded.png", "firmware/firmware.bin", "parts.md", "assembly.md", "bringup.md", "README.md"]
+	const lacking = want.filter((f) => !all.includes(f))
+	if (lacking.length) throw new Error(`the package lacks ${lacking.join(", ")}; it has: ${all.join(", ").slice(0, 900)}`)
+	return `${all.length} files, every expected one`
+})
 server.close()
 
 const md = [`### ${process.platform} ${process.arch}, Node ${process.versions.node}`, "", "| Step | Result | Time | Notes |", "|---|---|---|---|", ...steps.map((x) => `| ${x.name} | ${x.ok ? "pass" : "**FAIL**"} | ${x.s.toFixed(1)} s | ${x.note.replace(/\|/g, "/")} |`), ""].join("\n")
