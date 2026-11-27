@@ -1018,7 +1018,8 @@ function ownPadOffset(footprint: string, pin: number): { x: number; y: number } 
 	if ((footprint === SO8E_FOOTPRINT || footprint === DDA_FOOTPRINT) && pin >= 1 && pin <= 9) return pin === 9 ? { x: 0, y: 0 } : pin <= 4 ? { x: -2.7, y: +(1.905 - 1.27 * (pin - 1)).toFixed(3) } : { x: 2.7, y: +(-1.905 + 1.27 * (pin - 5)).toFixed(3) }
 	return null
 }
-function padOffset(footprint: string, pad: number, rotation: number, known = true): { x: number; y: number } | null {
+// Exported for test/own-footprint-rotation.int.test.ts: it is checked against tscircuit's own placement of the pads.
+export function padOffset(footprint: string, pad: number, rotation: number, known = true): { x: number; y: number } | null {
 	const at = icPinOffset(footprint, pad) ?? (known ? ownPadOffset(footprint, pad) ?? sotPinOffset(footprint, pad) ?? pinrowPinOffset(footprint, pad) : null) ?? quadPinOffset(footprint, pad, quadRingMm(footprint)) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
 	if (!at) return null
 	const t = (rotation * Math.PI) / 180
