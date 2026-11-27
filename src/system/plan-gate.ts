@@ -13,6 +13,7 @@ import { join, resolve } from "node:path"
 import { bringupHome } from "../tools/env.ts"
 import { resolveProvider } from "../inference/providers.ts"
 import { estimate } from "./estimate.ts"
+import { briefKind } from "../contract/design-kind.ts"
 import { runTimeText } from "../runner/run-time.ts"
 import type { Plan } from "./plan.ts"
 
@@ -92,7 +93,7 @@ export function makeRunPlan(subject: { brief: string } | { system: { name?: stri
 	const perBoard = briefs.map(briefQuestions)
 	const questions = perBoard[0].map((q, i) => (perBoard.every((b) => b[i].answered) ? q : perBoard.find((b) => !b[i].answered)![i]))
 	const title = isBrief ? (/^#\s*(?:Brief:\s*)?(.+)$/m.exec(subject.brief)?.[1] ?? subject.brief.split("\n")[0]).slice(0, 120) : (subject.system.name ?? "a system")
-	const est = estimate({ spec: { boards: Array.from({ length: boards }, (_, i) => ({ name: `b${i}` })) } } as unknown as Plan, outRoot)
+	const est = estimate({ spec: { boards: Array.from({ length: boards }, (_, i) => ({ name: `b${i}` })) } } as unknown as Plan, outRoot, isBrief ? briefKind(subject.brief) : undefined)
 	return save({ id: `rp-${randomBytes(6).toString("hex")}`, kind: isBrief ? "brief" : "system", subjectHash: subjectHash(text), title, questions, boards, estimate: est, provider: resolveProvider(env)?.id ?? null, planCostUsd: 0, runTime: runTimeText(env), createdAt: now.toISOString(), approvedAt: null })
 }
 

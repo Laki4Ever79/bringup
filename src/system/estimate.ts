@@ -1,3 +1,4 @@
+import { designKind, type DesignKind } from "../contract/design-kind.ts"
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { readSpend } from "../inference/usage.ts"
@@ -13,6 +14,9 @@ export const MIN_COST_RUNS = 3
 interface BoardRun {
 	minutes: number | null
 	usd: number | null
+	// Its design's kind (contract.json), and how long it ran when it never settled.
+	kind: DesignKind
+	ranMinutes: number | null
 }
 
 function boardRun(dir: string): BoardRun | null {
@@ -24,6 +28,7 @@ function boardRun(dir: string): BoardRun | null {
 	}
 	let start: number | null = null
 	let settledAt: number | null = null
+	let lastAt: number | null = null
 	for (const line of text.split("\n")) {
 		if (!line.trim()) continue
 		let e: { at?: string; type?: string; payload?: { mock?: boolean; settled?: boolean } }
@@ -37,11 +42,18 @@ function boardRun(dir: string): BoardRun | null {
 			start = Date.parse(e.at ?? "")
 		}
 		if (e.type === "design.settled" && e.payload?.settled === true && settledAt === null) settledAt = Date.parse(e.at ?? "")
+		if (e.at) lastAt = Date.parse(e.at)
 	}
 	if (start === null || Number.isNaN(start)) return null
 	const minutes = settledAt !== null && !Number.isNaN(settledAt) ? Math.round((settledAt - start) / 60_000) : null
 	const spend = readSpend(dir)
-	return { minutes, usd: spend.calls > 0 && spend.unknownCalls === 0 ? spend.usd : null }
+	let kind: DesignKind = "board"
+	try {
+		const c = JSON.parse(readFileSync(join(dir, "contract.json"), "utf8"))
+		kind = designKind(c.values ?? c)
+	} catch {}
+	const ranMinutes = minutes === null && lastAt !== null && !Number.isNaN(lastAt) ? Math.round((lastAt - start) / 60_000) : null
+	return { minutes, usd: spend.calls > 0 && spend.unknownCalls === 0 ? spend.usd : null, kind, ranMinutes }
 }
 
 function recordedBoardRuns(outRoot: string): BoardRun[] {
@@ -61,8 +73,17 @@ function recordedBoardRuns(outRoot: string): BoardRun[] {
 	return out
 }
 
-export function estimate(plan: Plan, outRoot: string): { minutes: [number, number] | null; usd: [number, number] | null; basis: string } {
-	const runs = recordedBoardRuns(outRoot)
+// With a kind (the brief's, contract/design-kind.ts briefKind), only runs of that kind count: a CNC's plan said 2-7 min
+// from rovers and loggers, and real CNC run 2 took 84 (27 Nov 2026). None of that kind: no range, and the basis says so.
+export function estimate(plan: Plan, outRoot: string, kind?: DesignKind): { minutes: [number, number] | null; usd: [number, number] | null; basis: string } {
+	const all = recordedBoardRuns(outRoot)
+	const runs = kind ? all.filter((r) => r.kind === kind) : all
+	if (kind && all.length && !runs.some((r) => r.minutes !== null)) {
+		const others = all.map((r) => r.minutes).filter((m): m is number => m !== null)
+		const ran = runs.map((r) => r.ranMinutes).filter((m): m is number => m !== null)
+		const basis = `No ${kind} design has settled in a recorded run yet${ran.length ? ` (${ran.length} ended unsettled after ${Math.min(...ran)}-${Math.max(...ran)} min)` : ""}: expect longer than ${others.length ? `other kinds' ${Math.min(...others)}-${Math.max(...others)} min` : "a board alone"}.`
+		return { minutes: null, usd: null, basis }
+	}
 	const times = runs.map((r) => r.minutes).filter((m): m is number => m !== null)
 	const costs = runs.map((r) => r.usd).filter((u): u is number => u !== null)
 	const unsettled = runs.length - times.length

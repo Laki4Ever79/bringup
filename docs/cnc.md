@@ -276,3 +276,18 @@ Each failure on the way, with its general fix.
   Renode) passes in 21 s. The path there: the 30-min cap had cut the board off (fixed: the run waits for a build still
   running, 22e23aa6); the grblHAL brief had been designed on the ESP32 (16420eb2); and the motor rails were too narrow
   (bringup-board's 4b13b385 and 5c26ea71).
+- 27 Nov, real run 2 (out/real-runs/cc-cnc-2, the user's yes: briefs/cnc.md on the Claude subscription with every
+  build, plan rp-7100c8acbe63): UNSETTLED at revision 26, 1 violation (rail-unwired 5V), the board held, 84 min (60
+  plus the build grace), 9.89 M input and 0.38 M output tokens, $0 (API-equivalent $6.77). It was 4 violations in run
+  1. Boards were built DRC-clean three times. The gap-2 completion and the run-1 lessons held. Lessons → fixes:
+  - both runs ended at the 25-revision budget, because only motion got a robot's 40: the budget now follows the
+    design's kind (contract/design-kind.ts), and the end-of-budget drain waits the same 45-min build grace (it was 15);
+  - the architect's 5V rail (net V5V) and the power tree's buck (V5) never met, which cost 4 revisions: a code-made
+    supply net joins the contract's one rail at its voltage that nothing else feeds (never VBUS, the cell, the brick or a
+    servo rail; the Eurobot fixture's VBUS caught a first version that would have shorted it);
+  - the plan said 2-7 min (from rovers and loggers): the estimate is now per kind, and says when no run of that kind has
+    settled yet;
+  - grblHAL picked on the ESP32 reached the mechanics engineer as a broken simulation: now one finding ("grblHAL builds
+    for the STM32F4: set fluidnc or move to the STM32F411"), and the sim reports not run;
+  - the run's board build kept running after the run exited: run()'s children are now killed with their process group
+    on exit.

@@ -7,6 +7,37 @@ export interface RunResult {
 	ms: number
 }
 
+// The children run() started that are still running, killed when this process exits: a run that ended at its revision
+// budget left its board build (bun's tsci, re-parented to init) routing for minutes on a shared machine (real CNC run 2,
+// 27 Nov 2026). On Linux and macOS each child leads its own process group, so the kill takes its own children too
+// (tsci's workers, a shell's command); Windows has no groups, so the child alone.
+const GROUPS = process.platform !== "win32"
+const live = new Set<number>()
+let hooked = false
+function track(pid: number | undefined): void {
+	if (pid === undefined) return
+	live.add(pid)
+	if (hooked) return
+	hooked = true
+	process.on("exit", killAll)
+	// A child in its own group misses the terminal's Ctrl-C: kill the children, then exit as Node would have, unless
+	// something else (a run that stays up) handles the signal itself.
+	for (const sig of ["SIGINT", "SIGTERM"] as const)
+		process.once(sig, () => {
+			killAll()
+			if (process.listenerCount(sig) === 0) process.kill(process.pid, sig)
+		})
+}
+function killAll(): void {
+	for (const p of live) {
+		try {
+			process.kill(GROUPS ? -p : p, "SIGKILL")
+		} catch {}
+	}
+	live.clear()
+}
+export const liveChildren = (): number[] => [...live]
+
 // Runs a command and always resolves: non-zero exits keep their code; a timeout or a
 // missing binary is reported as code -1 with the reason in stderr.
 export function run(cmd: string, args: string[], opts: { cwd?: string; timeoutMs: number; env?: Record<string, string> }): Promise<RunResult> {
@@ -22,10 +53,16 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; timeoutMs
 			resolve({ code, stdout, stderr, ms: Date.now() - start })
 		}
 		// A .cmd or .bat (npm's shims on Windows) only runs through the shell.
-		const child = spawn(cmd, args, { cwd: opts.cwd, env: { ...process.env, ...opts.env }, ...(/\.(cmd|bat)$/i.test(cmd) ? { shell: true } : {}) })
+		const child = spawn(cmd, args, { cwd: opts.cwd, env: { ...process.env, ...opts.env }, ...(GROUPS ? { detached: true } : {}), ...(/\.(cmd|bat)$/i.test(cmd) ? { shell: true } : {}) })
+		track(child.pid)
 		const timer = setTimeout(() => {
 			stderr += `\ntimed out after ${opts.timeoutMs} ms`
-			child.kill("SIGKILL")
+			try {
+				if (GROUPS && child.pid !== undefined) process.kill(-child.pid, "SIGKILL")
+				else child.kill("SIGKILL")
+			} catch {
+				child.kill("SIGKILL")
+			}
 			done(-1)
 		}, opts.timeoutMs)
 		child.stdout.on("data", (d) => (stdout += d))
@@ -34,7 +71,10 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; timeoutMs
 			stderr += String(error)
 			done(-1)
 		})
-		child.on("close", (code) => done(code ?? -1))
+		child.on("close", (code) => {
+			if (child.pid !== undefined) live.delete(child.pid)
+			done(code ?? -1)
+		})
 	})
 }
 

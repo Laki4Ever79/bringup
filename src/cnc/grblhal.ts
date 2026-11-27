@@ -195,3 +195,12 @@ export const grblhalEnv = (name = "bringup_cnc") => [
 	"; The simulation's build (Renode): console on USART1, no USB, no Trinamic.",
 	...envBlock(`${name}_sim`, GRBLHAL_SIM_BUILD_FLAGS, false),
 ].join("\n")
+
+// Bringup builds grblHAL for the STM32F4 only (its driver, the board map's ports and pins, the Renode simulation): the
+// MCU this machine's grblHAL needs, or null when the board's MCU is one (real CNC run 2, 27 Nov 2026: grblHAL picked on
+// the ESP32-WROOM-32E, its map had no ports, and the failure reached the mechanics engineer as a broken simulation).
+export function grblhalMcuProblem(parts: { role?: string; mpn: string }[]): string | null {
+	const mcu = parts.find((p) => p.role === "mcu")
+	if (!mcu || /^STM32F4/i.test(mcu.mpn)) return null
+	return `Bringup builds grblHAL for the STM32F4 (the STM32F411CEU6), but this board's MCU is the ${mcu.mpn}: set cnc.firmware to "fluidnc" (FluidNC runs on the classic ESP32) or move the board to the STM32F411CEU6`
+}

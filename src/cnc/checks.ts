@@ -3,7 +3,7 @@ import type { MechCatalog, StepperPart } from "../mechanics/catalog.ts"
 import type { MechViolation } from "../mechanics/checks.ts"
 import { CNC_AXES, type CncAxis } from "./types.ts"
 import { estopChecks, spindleSenseChecks } from "./estop.ts"
-import { grblhalPins } from "./grblhal.ts"
+import { grblhalMcuProblem, grblhalPins } from "./grblhal.ts"
 import { fluidncPinProblems, fluidncPins } from "./fluidnc.ts"
 import { signalEndsText, TX_RESISTOR } from "./signal-ends.ts"
 const TX_RESISTOR_TEXT = `a 1 kΩ resistor (${TX_RESISTOR.mpn}, LCSC ${TX_RESISTOR.lcsc}, ${TX_RESISTOR.footprint}, pins ["pin1", "pin2"], nets { "pin2": "@STEPPER_UART" })`
@@ -80,7 +80,9 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 	}
 	// grblHAL's board map (gap 11, src/cnc/grblhal.ts) names a pin for each of these: one missing is a map that can't be
 	// written, so the firmware's configuration would be a guess.
-	if (m.firmware === "grblhal" && values.parts && values.pins?.length) {
+	const grblMcu = m.firmware === "grblhal" && values.parts ? grblhalMcuProblem(values.parts) : null
+	if (grblMcu) out.push({ kind: "cnc-wiring", message: grblMcu, fields: ["cnc", "parts"], affects: ["mechanics", "architect"] })
+	if (m.firmware === "grblhal" && !grblMcu && values.parts && values.pins?.length) {
 		const { missing } = grblhalPins({ revision: 0, versions: {} as never, values })
 		if (missing.length) out.push({ kind: "cnc-wiring", message: `grblHAL's board map needs a GPIO for ${signalEndsText(missing, values.parts, m)}: assign each signal by that name to a free MCU pin with that partRef and partPin`, fields: ["pins"], affects: ["architect"] })
 	}

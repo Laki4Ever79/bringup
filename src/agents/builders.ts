@@ -22,6 +22,7 @@ import { exportFab } from "../tools/fab.ts"
 import { buildEnclosure } from "../tools/enclosure.ts"
 import { buildFirmware } from "../tools/firmware.ts"
 import { cncSimReady, runCncSim, type CncSimArtifact } from "../tools/cnc-sim.ts"
+import { grblhalMcuProblem } from "../cnc/grblhal.ts"
 import { buildTestkit } from "../tools/testkit.ts"
 import type { Env } from "../tools/env.ts"
 import type { DrcSummary } from "../tools/drc.ts"
@@ -321,6 +322,8 @@ export function createCncSimBuilder(env: Env, lock?: BuildLock): Human {
 		build: async ({ dir, snapshot, revision }) => {
 			const notRun = (reason: string): CncSimArtifact => ({ revision, dir, result: "not run", reason, checks: [], knownLimits: [] })
 			if (snapshot.values.cnc?.firmware !== "grblhal") return notRun(`the simulation runs grblHAL; this machine's firmware is ${snapshot.values.cnc?.firmware ?? "unset"}`)
+			const mcuProblem = grblhalMcuProblem(snapshot.values.parts ?? [])
+			if (mcuProblem) return notRun(`the simulation runs grblHAL's STM32F4 build; ${mcuProblem.replace(/^Bringup builds grblHAL for the STM32F4 \(the STM32F411CEU6\), but /, "")}`)
 			if (!env.pio || !cncSimReady(env.root)) return notRun("PlatformIO, grblHAL's STM32F4xx clone or Renode 1.17 is missing in tools/: not proven in simulation")
 			mkdirSync(dir, { recursive: true })
 			const r = runCncSim(env.root, snapshot, dir)

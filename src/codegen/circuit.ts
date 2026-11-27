@@ -2852,7 +2852,32 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	for (const sp of supportParts(s)) {
 		for (const [end, pin] of [[sp.a, sp.pins[0]], [sp.b, sp.pins[1]]] as const) if (!("ref" in end) && nets.has(end.net)) join(end.net, sp.ref, pin)
 	}
+	// A supply net code makes joins the contract's rail at its voltage, so the agents' rail and code's supply are one
+	// net (codeSupplyRail).
+	for (const [net] of CODE_SUPPLY_NETS) {
+		const rail = codeSupplyRail(s, net)
+		if (!rail || !nets.has(net)) continue
+		nets.set(rail, [...new Set([...(nets.get(rail) ?? []), ...nets.get(net)!])])
+		nets.delete(net)
+	}
 	return new Map([...nets].filter(([, ends]) => new Set(ends.map((e) => e.split(".")[0])).size >= 2))
+}
+
+// The supply nets code makes itself, with their volts: the power tree's step-down (the logic's 5 V). The brick's input
+// already takes its jack's net (the motor rail), and the LDO the contract's 3V3 rail. Real CNC run 2 (27 Nov 2026):
+// the architect's "5V" rail (net V5V) and the buck's V5 never met, so "rail 5V reaches no two pads" took 4 revisions and
+// nothing the agents wrote could fix it.
+const CODE_SUPPLY_NETS: [string, number][] = [[BUCK_NET, 5]]
+// The contract rail's net a code-made supply net joins: the one rail at its voltage, under another name, that nothing
+// else feeds. Never a rail another source drives (USB's VBUS at 5 V, the cell, the brick, the OR-ed input, a servo
+// rail): that would short two supplies (the Eurobot fixture's VBUS rail at 5 V, test/buck-ic.test.ts, caught it). Not
+// when two such rails share the voltage either: which one is the logic's is a guess.
+export function codeSupplyRail(s: ContractSnapshot, net: string): string | null {
+	const volts = CODE_SUPPLY_NETS.find(([n]) => n === net)?.[1]
+	if (volts === undefined) return null
+	const sourced = new Set(["VBUS", "VBAT", VIN_OR_NET, SERVO_5V_NET, packNet(s)])
+	const at = (s.values.rails ?? []).filter((r) => Math.abs(r.voltageV - volts) < 0.05 && !sourced.has(netName(r.name)) && !/^(VBUS|USB)|SERVO/i.test(r.name))
+	return at.length === 1 && netName(at[0].name) !== net ? netName(at[0].name) : null
 }
 
 // The connector pins an I2C link puts on the board's bus, unless a contract pin already wires them there.

@@ -9,17 +9,21 @@ import { emit, roleOf, state } from "../runtime.ts"
 import { when } from "../change-control.ts"
 import { ALL_KINDS, BUILD_REQUIRES, OPTIONAL_KINDS } from "./builders.ts"
 import { routeWaiting } from "./recipients.ts"
+import { designKind, isMachine } from "../contract/design-kind.ts"
+import { buildGraceMs } from "../runner/run-time.ts"
 
 
 export const MAX_REVISIONS = 25
-// A robot (a motion field) carries more fields than a board alone: the drive, the chassis, the driver and its
+// A machine (designKind: a rover, an arm, a CNC) carries more fields than a board alone: the drive, the chassis, the driver and its
 // connectors are drafted after the board (real rover run 2, 15 Nov: the cap ended it mid-design). A system's boards
 // get the same 40 (system/run.ts SYSTEM_BOARD_MAX_REVISIONS).
 export const ROBOT_MAX_REVISIONS = 40
 // At the revision cap the contract freezes and the run waits this long at most for the builds of its last revision, so
 // the report judges built artifacts, not ones still building (real rover run 10, 15 Nov: 41 revisions in 2 minutes, the
 // run ended with no board ever built and the firmware 15 revisions old).
-export const DRAIN_MS = 15 * 60_000
+// The same grace the run's time limit gives a build still running (runner/run-time.ts): a fixed 15 min ended real CNC
+// run 2 with its 25-min board build in flight ("the revision budget ran out while it was building").
+export const DRAIN_MS = buildGraceMs()
 export const REMIND_ROUNDS = 2
 export const FROZEN_REASON = "the run's revision budget is spent: the contract takes no more changes; the builds of this revision finish, then the run ends"
 const KINDS: ArtifactKind[] = ALL_KINDS
@@ -268,7 +272,7 @@ export function createConsistencyParticipant(opts: { quietMs: number; maxRevisio
 							onReview(event.payload)
 							if (done) return
 						}
-						const cap = state().contract.get("motion") ? Math.max(maxRevisions, ROBOT_MAX_REVISIONS) : maxRevisions
+						const cap = isMachine(designKind(state().contract.snapshot().values)) ? Math.max(maxRevisions, ROBOT_MAX_REVISIONS) : maxRevisions
 						if (!draining && isEvent(event, "contract.changed") && event.payload.revision - budgetBase > cap) {
 							// Freeze, and let the builds of this revision finish before judging (evaluate ends the run).
 							capped = true

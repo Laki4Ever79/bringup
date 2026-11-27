@@ -28,6 +28,8 @@ export const CNC_SIM_LIMITS = [
 	"the spindle's current is an injected ADC value, not a motor model",
 	"Renode's GPIOB pins 13-15 don't reach its EXTI, so the scenario drives each input's EXTI line along with the pin (the edge the pin makes on the chip)",
 	"Renode reads 0 for a byte read of the bit-band alias, so the simulation's build reads input pins from the port's IDR (BRINGUP_SIM); the board's build keeps grblHAL's bit-band read",
+	"grblHAL's DIR pins never show in Renode's GPIO register (PB10's set by a byte write), so the toolpath's shape comes from grblHAL's own position reports and the STEP pins only measure each axis's length (bringup-cad, a2648e36)",
+	"port A's STEP pulses are set without Renode seeing it and cleared by ODR writes, so the toolpath's pulse count reads the port's real register (bringup-cad, a2648e36)",
 ] as const
 
 export interface CncSimPlan {
