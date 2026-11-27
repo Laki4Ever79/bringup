@@ -21,7 +21,7 @@ import { dirname, join, normalize } from "node:path"
 // Bringup Studio's server (cloud/: accounts, the mirror, payments) is private (the open-core plan, 26 Nov 2026).
 // The finished example designs (examples/, the page's home screen) are private too (the user, 25 Nov 2026: "examples
 // should stay on private repo"); examples/learn stays public: the datasheet fixtures the engine's mock and tests read.
-export const PRIVATE_ROOTS = ["src/dashboard/", "src/demo.ts", "docs/design/dashboard.md", "src/sim/", "py/mech/live.py", "examples/", "cloud/", "docs/studio-guide.md", "docs/img/studio-guide/", "docs/rename.md"]
+export const PRIVATE_ROOTS = ["src/dashboard/", "src/demo.ts", "docs/design/dashboard.md", "src/sim/", "py/mech/live.py", "examples/", "cloud/", "docs/studio-guide.md", "docs/img/studio-guide/", "docs/rename.md", "scripts/gallery-pack.ts", "docs/launch/"]
 export const PUBLIC_INSIDE = ["examples/learn/"]
 // Never in a public tree (they are gitignored; a hit means something slipped in).
 const FORBIDDEN = [/(^|\/)\.env(\.(?!example$)[^/]*)?$/, /^catalog\/learned\//, /(^|\/)\.cache\//]

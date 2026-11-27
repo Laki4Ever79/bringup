@@ -21,7 +21,9 @@ export interface PlaneRegion {
 
 // Board coordinates centred on the board (tscircuit's), widthMm x heightMm, cells of stepMm, kept marginMm inside the edge;
 // neighbouring rails' regions keep at least gapMm between them (the cells along a border with another rail are left out).
-export function planeRegions(widthMm: number, heightMm: number, rails: RailPads[], stepMm = 0.5, marginMm = 0.5, gapMm = 0.5): PlaneRegion[] {
+// within: the outline the regions must stay inside (the board less the antenna's keep-out band, circuit.ts antennaNotch);
+// a cell with any corner outside it belongs to no rail.
+export function planeRegions(widthMm: number, heightMm: number, rails: RailPads[], stepMm = 0.5, marginMm = 0.5, gapMm = 0.5, within: { x: number; y: number }[] | null = null): PlaneRegion[] {
 	const pts = rails.flatMap((r, i) => r.points.map((p) => ({ ...p, i, w: r.weight ?? 1 })))
 	if (!pts.length) return []
 	const x0 = -widthMm / 2 + marginMm, y0 = -heightMm / 2 + marginMm
@@ -35,7 +37,8 @@ export function planeRegions(widthMm: number, heightMm: number, rails: RailPads[
 				const d = ((p.x - cx) ** 2 + (p.y - cy) ** 2) / (p.w * p.w)
 				if (d < bd) [bd, best] = [d, p.i]
 			}
-			owner[j * nx + i] = best
+			const e = stepMm / 2 - 1e-6
+			owner[j * nx + i] = within && ![[-e, -e], [e, -e], [e, e], [-e, e]].every(([dx, dy]) => inside(within, cx + dx, cy + dy)) ? -1 : best
 		}
 	// The gap: each cell beside a cell of another rail is left out (both sides, so at least two cells between regions).
 	const erode = Math.max(1, Math.ceil(gapMm / 2 / stepMm))
@@ -84,6 +87,16 @@ export function planeRegions(widthMm: number, heightMm: number, rails: RailPads[
 		out.push({ net: rails[rail].net, outline: keyhole(loops), cells: comp.length, neckMm: neck(comp, inComp, padCells, nx, ny, stepMm) })
 	}
 	return out
+}
+
+// Even-odd ray test: is (x, y) inside the polygon?
+function inside(poly: { x: number; y: number }[], x: number, y: number): boolean {
+	let in_ = false
+	for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+		const [a, b] = [poly[i], poly[j]]
+		if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) in_ = !in_
+	}
+	return in_
 }
 
 // One outline from a piece's boundary loops: the largest is the outer one, and each other (a hole) is spliced in at the

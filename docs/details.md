@@ -457,6 +457,45 @@ against a reference ESP32-C3 + SHT40 logger (`test/fixture.ts`). Each one **skip
 | After `npm ci` only | all pass; the tool-dependent integration tests skip | about 20 s |
 | Full toolchain | all pass; only the 3 QEMU tests skip (QEMU is optional) | about 2 min; 3 min 15 s with QEMU |
 
+### Measuring a board change: `npm run board-pass`
+
+Run it for any change that can move a board: placement, footprints, pours and planes, routing, the size and layer
+choice. Unit tests say the code does what was meant; this says what it did to real boards. Run it once on the code
+before the change and once after, and compare:
+
+```bash
+npm run board-pass                                          # before: on the base branch
+npm run board-pass -- --before out/board-pass/<before>.json # after: on your branch, the table before → after
+npm run board-pass -- --only cnc,arm                        # some cases only
+```
+
+It builds four boards, one after another, with the real toolchain:
+
+| Case | What is built |
+|---|---|
+| `cnc` | the CNC controller at 81×66 mm (`test/fixtures/cnc-81x66.json`), one board build |
+| `arm` | the arm controller, 4 layers (`test/fixtures/arm-mock-rev14.json`), one board build |
+| `rover` | a whole mock rover run (`briefs/rover.md --mock`), Freerouting on |
+| `rover-nofr` | the same without Freerouting (`BRINGUP_FREEROUTING=off`, `BRINGUP_TOOLCHAIN=local`): the free tier's and CI's path, since `bringup setup board` installs no Freerouting |
+
+It takes about 30–40 minutes on a laptop. Each row of the table reads:
+
+- **verdict**: `ROUTED` (with the router, and `4L` for 4 layers) or `DRC errors` for a board build; `settled rN` for a
+  run (the contract revision it settled at: a higher N took more rounds), or why it didn't settle.
+- **time**: the seconds spent building boards. For a run, the sum over its board builds, so the agents' own time doesn't
+  count.
+- **builds (failed)**: how many board builds: the layouts tried for one board, the revisions built in a run. A failed
+  build is one that tscircuit or the checks refused.
+- **DRC errors/unconnected**: KiCad's DRC on the last board, against JLCPCB's rules. Both must be 0.
+- **silk**: the silkscreen warnings (`silk_overlap`, `silk_over_copper`): the fab clips them, but they hide the ones
+  that matter.
+
+The DRC warnings by type follow the table, with the before values in brackets. Results are saved as
+`out/board-pass/<time>-<commit>.json`, with each run's folder beside it.
+
+Two builds at once slow each other and both times mean nothing, so it refuses to start while another board build runs
+on the machine (a tscircuit build or a Freerouting container). `--force` starts it anyway.
+
 ## Prior art and what's new
 
 The pieces are not new on their own. We credit:

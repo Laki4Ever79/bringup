@@ -395,6 +395,17 @@ export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {})
 // neither recorded the size, so no finding asked for a bigger board and the run stayed unsettled with none open.
 export const ROUTING_FAILURE = /Autorouting was skipped because \d+ PCB placement errors? (?:was|were) found|has no PCB trace|missing a trace|could not (?:be )?route|failed to route|no route|no room on the board|via hole at .* overlaps/i
 
+// Why a board didn't route, in a size reason's words (lead-2, 27 Nov 2026: a rover's widening read "tscircuit left pins
+// without a trace" when every layout had failed on a decoupling capacitor's trace bound). A trace past its bound is named
+// with its ends and length; anything else stays the general reason.
+export function routingFailureReason(message: string): string {
+	const routed = /PCB trace is ([\d.]+)mm long, exceeding the ([\d.]+)mm maximum \(([^)]+)\)/.exec(message)
+	if (routed) return `a decoupling trace exceeded its ${routed[2]} mm bound (${routed[3]}: ${routed[1]} mm)`
+	const before = /the ([\d.]+)mm maximum length for (.+?) cannot be satisfied: its endpoints are ([\d.]+)mm apart/.exec(message)
+	if (before) return `a decoupling trace exceeded its ${before[1]} mm bound (${before[2]}: ${before[3]} mm apart)`
+	return "tscircuit left pins without a trace"
+}
+
 export const SIZE_REASON_SHAPE = `sizeReason (optional): {kind: ${Object.keys(SIZE_REASONS).map((k) => `"${k}"`).join("|")}, detail: string}`
 
 export function sizeReasonError(r: unknown): string | null {

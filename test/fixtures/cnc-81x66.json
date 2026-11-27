@@ -1,0 +1,1079 @@
+{
+  "revision": 12,
+  "values": {
+    "requirements": {
+      "summary": "Desktop 3-axis CNC engraver: three NEMA 17 steppers on T8 lead screws, a 24 V spindle, limit switches and an emergency stop, FluidNC on an ESP32-WROOM-32E",
+      "peripherals": [
+        "stepper-drivers",
+        "spindle",
+        "limit-switches",
+        "estop",
+        "usb-c",
+        "status-led"
+      ],
+      "batteryLifeDays": null,
+      "enclosure": "none"
+    },
+    "parts": [
+      {
+        "ref": "U1",
+        "role": "mcu",
+        "mpn": "ESP32-WROOM-32E",
+        "lcsc": "C701341",
+        "footprint": "esp32_wroom_32e",
+        "pins": [
+          "GPIO0",
+          "GPIO2",
+          "GPIO4",
+          "GPIO5",
+          "GPIO12",
+          "GPIO13",
+          "GPIO14",
+          "GPIO15",
+          "GPIO16",
+          "GPIO17",
+          "GPIO18",
+          "GPIO19",
+          "GPIO21",
+          "GPIO22",
+          "GPIO23",
+          "GPIO25",
+          "GPIO26",
+          "GPIO27",
+          "GPIO32",
+          "GPIO33",
+          "GPIO34",
+          "GPIO35",
+          "GPIO36",
+          "GPIO39",
+          "GPIO1",
+          "GPIO3",
+          "EN",
+          "3V3",
+          "GND",
+          "GND_2",
+          "GND_3",
+          "GND_4"
+        ]
+      },
+      {
+        "ref": "U3",
+        "role": "ldo",
+        "mpn": "RT9080-33GJ5",
+        "lcsc": "C841192",
+        "footprint": "sot23_5",
+        "pins": [
+          "VIN",
+          "GND",
+          "EN",
+          "NC",
+          "VOUT"
+        ],
+        "reason": "Brief: \"Runs on one Li-ion cell for at least 6 months\": a 2 µA quiescent regulator for the 3.3 V rail, rated for the module's 0.5 A"
+      },
+      {
+        "ref": "J1",
+        "role": "usb-c",
+        "mpn": "TYPE-C-31-M-12",
+        "lcsc": "C165948",
+        "footprint": "usbcmidmount",
+        "pins": [
+          "VBUS",
+          "GND",
+          "CC1",
+          "CC2",
+          "DP",
+          "DN"
+        ],
+        "reason": "Brief: \"USB-C for charging and for flashing firmware. Nobody should need a special cable\""
+      },
+      {
+        "ref": "D1",
+        "role": "led",
+        "mpn": "KT-0603R",
+        "lcsc": "C2286",
+        "footprint": "0603",
+        "pins": [
+          "A",
+          "K"
+        ],
+        "reason": "Brief: \"A status LED that blinks briefly on each reading\""
+      },
+      {
+        "ref": "R1",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ]
+      },
+      {
+        "ref": "R2",
+        "role": "resistor",
+        "mpn": "0402WGF5101TCE",
+        "lcsc": "C25905",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ]
+      },
+      {
+        "ref": "R3",
+        "role": "resistor",
+        "mpn": "0402WGF5101TCE",
+        "lcsc": "C25905",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ]
+      },
+      {
+        "ref": "C1",
+        "role": "capacitor",
+        "mpn": "CL05A105KA5NQNC",
+        "lcsc": "C52923",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ]
+      },
+      {
+        "ref": "C3",
+        "role": "capacitor",
+        "mpn": "CL10A106KP8NNNC",
+        "lcsc": "C19702",
+        "footprint": "0603",
+        "pins": [
+          "pin1",
+          "pin2"
+        ]
+      },
+      {
+        "ref": "U4",
+        "role": "stepper-driver",
+        "mpn": "TMC2209-LA",
+        "lcsc": "C465949",
+        "footprint": "qfn28_w5.8mm_h5.8mm_p0.5mm_pl0.75mm_pw0.25mm_thermalpad3.7mmx3.7mm",
+        "pins": [
+          "OB2",
+          "ENN",
+          "GND",
+          "CPO",
+          "CPI",
+          "VCP",
+          "SPREAD",
+          "5VOUT",
+          "MS1_AD0",
+          "MS2_AD1",
+          "DIAG",
+          "INDEX",
+          "CLK",
+          "PDN_UART",
+          "VCC_IO",
+          "STEP",
+          "VREF",
+          "GND2",
+          "DIR",
+          "STDBY",
+          "OA2",
+          "VS",
+          "BRA",
+          "OA1",
+          "NC",
+          "OB1",
+          "BRB",
+          "VS2"
+        ]
+      },
+      {
+        "ref": "U5",
+        "role": "stepper-driver",
+        "mpn": "TMC2209-LA",
+        "lcsc": "C465949",
+        "footprint": "qfn28_w5.8mm_h5.8mm_p0.5mm_pl0.75mm_pw0.25mm_thermalpad3.7mmx3.7mm",
+        "pins": [
+          "OB2",
+          "ENN",
+          "GND",
+          "CPO",
+          "CPI",
+          "VCP",
+          "SPREAD",
+          "5VOUT",
+          "MS1_AD0",
+          "MS2_AD1",
+          "DIAG",
+          "INDEX",
+          "CLK",
+          "PDN_UART",
+          "VCC_IO",
+          "STEP",
+          "VREF",
+          "GND2",
+          "DIR",
+          "STDBY",
+          "OA2",
+          "VS",
+          "BRA",
+          "OA1",
+          "NC",
+          "OB1",
+          "BRB",
+          "VS2"
+        ]
+      },
+      {
+        "ref": "U6",
+        "role": "stepper-driver",
+        "mpn": "TMC2209-LA",
+        "lcsc": "C465949",
+        "footprint": "qfn28_w5.8mm_h5.8mm_p0.5mm_pl0.75mm_pw0.25mm_thermalpad3.7mmx3.7mm",
+        "pins": [
+          "OB2",
+          "ENN",
+          "GND",
+          "CPO",
+          "CPI",
+          "VCP",
+          "SPREAD",
+          "5VOUT",
+          "MS1_AD0",
+          "MS2_AD1",
+          "DIAG",
+          "INDEX",
+          "CLK",
+          "PDN_UART",
+          "VCC_IO",
+          "STEP",
+          "VREF",
+          "GND2",
+          "DIR",
+          "STDBY",
+          "OA2",
+          "VS",
+          "BRA",
+          "OA1",
+          "NC",
+          "OB1",
+          "BRB",
+          "VS2"
+        ]
+      },
+      {
+        "ref": "U7",
+        "role": "stepper-driver",
+        "mpn": "TMC2209-LA",
+        "lcsc": "C465949",
+        "footprint": "qfn28_w5.8mm_h5.8mm_p0.5mm_pl0.75mm_pw0.25mm_thermalpad3.7mmx3.7mm",
+        "pins": [
+          "OB2",
+          "ENN",
+          "GND",
+          "CPO",
+          "CPI",
+          "VCP",
+          "SPREAD",
+          "5VOUT",
+          "MS1_AD0",
+          "MS2_AD1",
+          "DIAG",
+          "INDEX",
+          "CLK",
+          "PDN_UART",
+          "VCC_IO",
+          "STEP",
+          "VREF",
+          "GND2",
+          "DIR",
+          "STDBY",
+          "OA2",
+          "VS",
+          "BRA",
+          "OA1",
+          "NC",
+          "OB1",
+          "BRB",
+          "VS2"
+        ]
+      },
+      {
+        "ref": "U8",
+        "role": "spindle-driver",
+        "mpn": "SN74AHCT1G125DBVR",
+        "lcsc": "C7484",
+        "footprint": "sot23_5",
+        "pins": [
+          "OE",
+          "A",
+          "GND",
+          "Y",
+          "VCC"
+        ]
+      },
+      {
+        "ref": "Q1",
+        "role": "mosfet",
+        "mpn": "AO4468",
+        "lcsc": "C87410",
+        "footprint": "soic8",
+        "pins": [
+          "S",
+          "S_2",
+          "S_3",
+          "G",
+          "D",
+          "D_2",
+          "D_3",
+          "D_4"
+        ],
+        "nets": {
+          "S": "@SPINDLE_SHUNT",
+          "S_2": "@SPINDLE_SHUNT",
+          "S_3": "@SPINDLE_SHUNT",
+          "G": "@SPINDLE_GATE",
+          "D": "@SPINDLE_N",
+          "D_2": "@SPINDLE_N",
+          "D_3": "@SPINDLE_N",
+          "D_4": "@SPINDLE_N"
+        }
+      },
+      {
+        "ref": "R20",
+        "role": "resistor",
+        "mpn": "0402WGF1001TCE",
+        "lcsc": "C11702",
+        "footprint": "0402",
+        "pins": [
+          "pin1",
+          "pin2"
+        ],
+        "nets": {
+          "pin2": "@STEPPER_UART"
+        }
+      },
+      {
+        "ref": "U10",
+        "role": "current-sense",
+        "mpn": "INA180A1IDBVR",
+        "lcsc": "C122228",
+        "footprint": "sot23_5",
+        "pins": [
+          "OUT",
+          "GND",
+          "INP",
+          "INN",
+          "VS"
+        ]
+      },
+      {
+        "ref": "Q2",
+        "role": "estop-switch",
+        "mpn": "AO4407A",
+        "lcsc": "C16072",
+        "footprint": "soic8",
+        "pins": [
+          "S",
+          "S_2",
+          "S_3",
+          "G",
+          "D",
+          "D_2",
+          "D_3",
+          "D_4"
+        ]
+      },
+      {
+        "ref": "U9",
+        "role": "enable-gate",
+        "mpn": "SN74LVC1G32DBVR",
+        "lcsc": "C19829663",
+        "footprint": "sot23_5",
+        "pins": [
+          "A",
+          "B",
+          "GND",
+          "Y",
+          "VCC"
+        ]
+      },
+      {
+        "role": "usb-uart",
+        "mpn": "CH340C",
+        "lcsc": "C84681",
+        "footprint": "soic16",
+        "pins": [
+          "GND",
+          "TXD",
+          "RXD",
+          "V3",
+          "UDP",
+          "UDM",
+          "NC",
+          "OUT",
+          "CTS",
+          "DSR",
+          "RI",
+          "DCD",
+          "DTR",
+          "RTS",
+          "R232",
+          "VCC"
+        ],
+        "support": [
+          {
+            "part": "decouple",
+            "a": "VCC",
+            "b": "GND",
+            "job": "VCC decoupling (0.1 uF; V3 joins VCC at 3.3 V)"
+          }
+        ],
+        "notes": "WCH CH340C USB to UART bridge, SOP-16, built-in clock (no crystal). At 3.3 V, V3 joins VCC (datasheet: 'When using a 3.3V working voltage, the V3 pin ... should be connected to the VCC pin'); UD+/UD- straight to the USB-C's D+/D- (no series resistors). TXD to the MCU's console RX, RXD to its TX; DTR#/RTS# drive the auto-reset pair. Pin names drop the datasheet's # and +/-: UDP/UDM, DTR, RTS.",
+        "sources": {
+          "pins": {
+            "url": "https://www.wch-ic.com/download/file?id=79",
+            "where": "CH340 datasheet V3D, section 3 pin table (SOP16 column), 'Built-in clock' and 3.3 V power notes"
+          },
+          "lcsc": {
+            "url": "https://jlcsearch.tscircuit.com/components/list.json?search=C84681",
+            "where": "LCSC C84681: CH340C, SOP-16"
+          }
+        },
+        "stock": null,
+        "priceUsd": null,
+        "inStock": null,
+        "ref": "U2",
+        "reason": "the MCU has no native USB and flashes over UART0: the USB-C's D+/D- reach it through this bridge"
+      },
+      {
+        "role": "auto-reset",
+        "mpn": "UMH3N",
+        "lcsc": "C62892",
+        "footprint": "sot363",
+        "pins": [
+          "E1",
+          "B1",
+          "C2",
+          "E2",
+          "B2",
+          "C1"
+        ],
+        "notes": "ROHM UMH3N: two NPN digital transistors (DTC143T: 4.7 kOhm base resistor built in), SOT-363. The ESP32 auto-program pair: Tr1 (base DTR, emitter RTS) pulls EN low, Tr2 (base RTS, emitter DTR) pulls GPIO0 low, so esptool's DTR/RTS sequence resets the chip into its download mode and either line alone does nothing.",
+        "sources": {
+          "pins": {
+            "url": "https://fscdn.rohm.com/en/products/databook/datasheet/discrete/transistor/digital/umh3ntn-e.pdf",
+            "where": "ROHM EMH3/UMH3N/IMH3A datasheet, inner circuit: (1) emitter, (2) base, (6) collector of Tr1; (4) emitter, (5) base, (3) collector of Tr2; R1 4.7k"
+          },
+          "lcsc": {
+            "url": "https://jlcsearch.tscircuit.com/components/list.json?search=UMH3N",
+            "where": "LCSC C62892: UMH3N, SOT-363"
+          }
+        },
+        "stock": null,
+        "priceUsd": null,
+        "inStock": null,
+        "ref": "Q3",
+        "reason": "the bridge's DTR/RTS reset the MCU into its download mode (EN and GPIO0), so it flashes without buttons"
+      },
+      {
+        "ref": "J2",
+        "role": "connector",
+        "mpn": "DC-091-A250",
+        "lcsc": "C720588",
+        "footprint": "dc091a250",
+        "pins": [
+          "VIN",
+          "SW",
+          "GND",
+          "GND_2",
+          "GND_3",
+          "GND_4"
+        ],
+        "reason": "the brick's input jack: the machine's one supply",
+        "nets": {
+          "VIN": "VMOT",
+          "GND": "GND",
+          "GND_2": "GND",
+          "GND_3": "GND",
+          "GND_4": "GND"
+        }
+      },
+      {
+        "ref": "JX1",
+        "role": "connector",
+        "mpn": "B4B-XH-A(LF)(SN)",
+        "lcsc": "C144395",
+        "footprint": "jst4_xh",
+        "pins": [
+          "A1",
+          "A2",
+          "B1",
+          "B2"
+        ],
+        "reason": "a stepper motor's plug, on its driver's outputs",
+        "nets": {
+          "A1": "@X_A1",
+          "A2": "@X_A2",
+          "B1": "@X_B1",
+          "B2": "@X_B2"
+        }
+      },
+      {
+        "ref": "JX2",
+        "role": "connector",
+        "mpn": "B4B-XH-A(LF)(SN)",
+        "lcsc": "C144395",
+        "footprint": "jst4_xh",
+        "pins": [
+          "A1",
+          "A2",
+          "B1",
+          "B2"
+        ],
+        "reason": "a stepper motor's plug, on its driver's outputs",
+        "nets": {
+          "A1": "@Y1_A1",
+          "A2": "@Y1_A2",
+          "B1": "@Y1_B1",
+          "B2": "@Y1_B2"
+        }
+      },
+      {
+        "ref": "JX3",
+        "role": "connector",
+        "mpn": "B4B-XH-A(LF)(SN)",
+        "lcsc": "C144395",
+        "footprint": "jst4_xh",
+        "pins": [
+          "A1",
+          "A2",
+          "B1",
+          "B2"
+        ],
+        "reason": "a stepper motor's plug, on its driver's outputs",
+        "nets": {
+          "A1": "@Y2_A1",
+          "A2": "@Y2_A2",
+          "B1": "@Y2_B1",
+          "B2": "@Y2_B2"
+        }
+      },
+      {
+        "ref": "JX4",
+        "role": "connector",
+        "mpn": "B4B-XH-A(LF)(SN)",
+        "lcsc": "C144395",
+        "footprint": "jst4_xh",
+        "pins": [
+          "A1",
+          "A2",
+          "B1",
+          "B2"
+        ],
+        "reason": "a stepper motor's plug, on its driver's outputs",
+        "nets": {
+          "A1": "@Z_A1",
+          "A2": "@Z_A2",
+          "B1": "@Z_B1",
+          "B2": "@Z_B2"
+        }
+      },
+      {
+        "ref": "J3",
+        "role": "connector",
+        "mpn": "KF128R-5.08-2P",
+        "lcsc": "C475082",
+        "footprint": "pinrow2_p5.08mm",
+        "pins": [
+          "POS",
+          "NEG"
+        ],
+        "reason": "the spindle's screw terminal, its leads on the switched motor rail and the MOSFET",
+        "nets": {
+          "POS": "@VMOT_SW",
+          "NEG": "@SPINDLE_N"
+        }
+      },
+      {
+        "ref": "JE1",
+        "role": "estop",
+        "mpn": "B2B-XH-A-R(LF)(SN)",
+        "lcsc": "C495685",
+        "footprint": "pinrow2_p2.5_id1_od1.8",
+        "pins": [
+          "LOOP",
+          "GND"
+        ],
+        "reason": "the emergency stop's plug: its NC contact holds the motor supply's switch on",
+        "nets": {
+          "LOOP": "@ESTOP_LOOP"
+        }
+      },
+      {
+        "ref": "JL1",
+        "role": "limit-switch",
+        "mpn": "S2B-XH-A(LF)(SN)",
+        "lcsc": "C157931",
+        "footprint": "pinrow2_p2.5_id1_od1.8",
+        "pins": [
+          "SIG",
+          "GND"
+        ],
+        "reason": "an axis' limit switch plug, for homing and a hard stop"
+      },
+      {
+        "ref": "JL2",
+        "role": "limit-switch",
+        "mpn": "S2B-XH-A(LF)(SN)",
+        "lcsc": "C157931",
+        "footprint": "pinrow2_p2.5_id1_od1.8",
+        "pins": [
+          "SIG",
+          "GND"
+        ],
+        "reason": "an axis' limit switch plug, for homing and a hard stop"
+      },
+      {
+        "ref": "JL3",
+        "role": "limit-switch",
+        "mpn": "S2B-XH-A(LF)(SN)",
+        "lcsc": "C157931",
+        "footprint": "pinrow2_p2.5_id1_od1.8",
+        "pins": [
+          "SIG",
+          "GND"
+        ],
+        "reason": "an axis' limit switch plug, for homing and a hard stop"
+      },
+      {
+        "role": "buck",
+        "mpn": "LMR16010PDDAR",
+        "lcsc": "C183084",
+        "footprint": "so8_powerpad_dda",
+        "pins": [
+          "BOOT",
+          "VIN",
+          "EN",
+          "RT_SYNC",
+          "FB",
+          "PGOOD",
+          "GND",
+          "SW",
+          "GND_2"
+        ],
+        "maxA": 1,
+        "outV": 5,
+        "nets": {
+          "VIN": "VMOT"
+        },
+        "support": [
+          {
+            "part": "buckIn50",
+            "a": "$in",
+            "b": "GND",
+            "count": 2,
+            "job": "input capacitor (VIN, 10 uF 50 V)"
+          },
+          {
+            "part": "decouple",
+            "a": "BOOT",
+            "b": "$:SW",
+            "job": "bootstrap capacitor (BOOT to SW, 100 nF)",
+            "bound": 5
+          },
+          {
+            "part": {
+              "kind": "diode",
+              "value": "SS56",
+              "lcsc": "C4154973",
+              "mpn": "SS56(SMB)",
+              "footprint": "smb"
+            },
+            "a": "$:SW",
+            "b": "GND",
+            "job": "catch Schottky (SW to GND, 60 V; pad 1 the cathode)"
+          },
+          {
+            "part": {
+              "kind": "inductor",
+              "value": "15uH",
+              "lcsc": "C2847486",
+              "mpn": "MDA7030-150M",
+              "footprint": "mda7030"
+            },
+            "a": "$:SW",
+            "b": "$out",
+            "job": "inductor (SW to 5 V, 15 uH 4.5 A saturation)"
+          },
+          {
+            "part": "buckOut",
+            "a": "$out",
+            "b": "GND",
+            "count": 3,
+            "job": "output capacitor"
+          },
+          {
+            "part": {
+              "compute": "divider",
+              "vref": 0.75,
+              "from": "$out",
+              "to": "FB"
+            },
+            "job": "feedback divider"
+          },
+          {
+            "part": {
+              "compute": "resistor",
+              "ohms": 49600
+            },
+            "a": "RT_SYNC",
+            "b": "GND",
+            "job": "RT resistor (about 500 kHz)"
+          }
+        ],
+        "source": {
+          "pins": {
+            "url": "https://www.ti.com/lit/ds/symlink/lmr16010.pdf",
+            "where": "SNVSAH7A, 5 Pin Configuration and Functions (8-pin HSOIC): 1 BOOT, 2 VIN, 3 EN, 4 RT/SYNC (RT_SYNC here), 5 FB, 6 PGOOD, 7 GND, 8 SW; thermal pad (9, GND_2 here) to ground. EN: float to enable (internal pull-up)"
+          },
+          "maxInV": {
+            "url": "https://www.ti.com/lit/ds/symlink/lmr16010.pdf",
+            "where": "6.1 Absolute Maximum Ratings: VIN, EN to GND -0.3 to 65 V; SW 65 V; recommended VIN 4.3 to 60 V"
+          },
+          "maxA": {
+            "url": "https://www.ti.com/lit/ds/symlink/lmr16010.pdf",
+            "where": "title: 60 V, 1 A step-down; 6.5 Electrical Characteristics: current limit 1.45 / 1.75 / 2.1 A; VFB 0.746 / 0.750 / 0.754 V"
+          },
+          "footprint": {
+            "url": "https://www.ti.com/lit/ds/symlink/lmr16010.pdf",
+            "where": "DDA0008B Land Pattern Example (same as the TPS54560's): 8X 1.55 x 0.6 mm pads, 1.27 mm pitch, rows 5.4 mm apart; thermal pad mask opening 2.71 x 3.4 mm"
+          },
+          "parts": {
+            "url": "https://www.ti.com/lit/ds/symlink/lmr16010.pdf",
+            "where": "8.2 Typical Application (5 V, 1 A): RT (kOhm) = 42904 x fSW(kHz)^-1.088 (Equation 7; 49.6 kOhm for 500 kHz, 51k basic: about 487 kHz); L_min = (VIN_MAX - VOUT)/(IOUT x KIND) x VOUT/(VIN_MAX x fSW) = 15.6 uH at 21 V, 1 A, KIND 0.5 (Equation 9; the inductor rated over the 2.1 A current limit: MDA7030-150M 15 uH, 4.5 A saturation, LCSC C2847486); COUT 47 uF (3 x 22 uF here); CBOOT 0.1 uF; a Schottky catch diode (SS56, 60 V 5 A)"
+          },
+          "lcsc": {
+            "url": "https://jlcsearch.tscircuit.com/components/list.json?search=LMR16010",
+            "where": "C183084 LMR16010PDDAR SO-8 (HSOIC PowerPAD), 1964 in stock (26 Nov 2026), extended part"
+          }
+        },
+        "notes": "The logic's 5 V step-down on a brick input: rated 65 V, over the input TVS's 35.5 V clamp (the AP63205's 32 V is not; lead-2, 26 Nov 2026: one rule for every chip on the input). The logic draws about 0.5 A (ARM_LOGIC_W 2.5 W at 5 V, an estimate), 0.625 A with the 1.25x headroom, inside its 1 A.",
+        "stock": null,
+        "priceUsd": null,
+        "inStock": null,
+        "ref": "U11"
+      },
+      {
+        "role": "diode",
+        "mpn": "B5819W SL",
+        "lcsc": "C8598",
+        "footprint": "sod123",
+        "pins": [
+          "K",
+          "A"
+        ],
+        "vrV": 40,
+        "ifA": 1,
+        "vfV": 0.6,
+        "vfAtA": 1,
+        "source": {
+          "vfV": {
+            "url": "https://www.lcsc.com/product-detail/C8598.html",
+            "where": "JSCJ B5819W SL, SOD-123: 'Voltage - DC Reverse (Vr) (Max) 40V', 'Current - Rectified 1A', 'Voltage - Forward(Vf@If) 600mV@1A'; datasheet https://www.lcsc.com/datasheet/C8598.pdf"
+          }
+        },
+        "notes": "Schottky diode for OR-ing two supplies into one rail (a robot's pack or its buck, and USB): the higher one feeds it and neither back-feeds the other. Drops up to 0.6 V at 1 A (less at a board's few hundred mA).",
+        "stock": null,
+        "priceUsd": null,
+        "inStock": null,
+        "ref": "D10"
+      },
+      {
+        "role": "diode",
+        "mpn": "B5819W SL",
+        "lcsc": "C8598",
+        "footprint": "sod123",
+        "pins": [
+          "K",
+          "A"
+        ],
+        "vrV": 40,
+        "ifA": 1,
+        "vfV": 0.6,
+        "vfAtA": 1,
+        "source": {
+          "vfV": {
+            "url": "https://www.lcsc.com/product-detail/C8598.html",
+            "where": "JSCJ B5819W SL, SOD-123: 'Voltage - DC Reverse (Vr) (Max) 40V', 'Current - Rectified 1A', 'Voltage - Forward(Vf@If) 600mV@1A'; datasheet https://www.lcsc.com/datasheet/C8598.pdf"
+          }
+        },
+        "notes": "Schottky diode for OR-ing two supplies into one rail (a robot's pack or its buck, and USB): the higher one feeds it and neither back-feeds the other. Drops up to 0.6 V at 1 A (less at a board's few hundred mA).",
+        "stock": null,
+        "priceUsd": null,
+        "inStock": null,
+        "ref": "D11"
+      }
+    ],
+    "outline": {
+      "widthMm": 81,
+      "heightMm": 66,
+      "thicknessMm": 1.6
+    },
+    "connectors": [
+      {
+        "ref": "J1",
+        "kind": "usb-c",
+        "edge": "left",
+        "offsetMm": 12.5,
+        "widthMm": 9,
+        "heightMm": 3.5
+      }
+    ],
+    "rails": [
+      {
+        "name": "3V3",
+        "voltageV": 3.3,
+        "regulatorMaxMa": 600,
+        "loadMa": 500,
+        "averageMa": 120
+      },
+      {
+        "name": "VMOT",
+        "voltageV": 24,
+        "regulatorMaxMa": 6670,
+        "loadMa": 1100
+      }
+    ],
+    "pins": [
+      {
+        "signal": "X_STEP",
+        "gpio": 26,
+        "partRef": "U4",
+        "partPin": "STEP"
+      },
+      {
+        "signal": "X_DIR",
+        "gpio": 27,
+        "partRef": "U4",
+        "partPin": "DIR"
+      },
+      {
+        "signal": "Y1_STEP",
+        "gpio": 14,
+        "partRef": "U5",
+        "partPin": "STEP"
+      },
+      {
+        "signal": "Y1_DIR",
+        "gpio": 13,
+        "partRef": "U5",
+        "partPin": "DIR"
+      },
+      {
+        "signal": "Y2_STEP",
+        "gpio": 33,
+        "partRef": "U6",
+        "partPin": "STEP"
+      },
+      {
+        "signal": "Y2_DIR",
+        "gpio": 32,
+        "partRef": "U6",
+        "partPin": "DIR"
+      },
+      {
+        "signal": "Z_STEP",
+        "gpio": 25,
+        "partRef": "U7",
+        "partPin": "STEP"
+      },
+      {
+        "signal": "Z_DIR",
+        "gpio": 4,
+        "partRef": "U7",
+        "partPin": "DIR"
+      },
+      {
+        "signal": "STEPPERS_EN",
+        "gpio": 23,
+        "partRef": "U9",
+        "partPin": "B"
+      },
+      {
+        "signal": "ESTOP_TRIP",
+        "gpio": 36,
+        "partRef": "U9",
+        "partPin": "A"
+      },
+      {
+        "signal": "LIMIT_X",
+        "gpio": 18,
+        "partRef": "JL1",
+        "partPin": "SIG"
+      },
+      {
+        "signal": "LIMIT_Y",
+        "gpio": 19,
+        "partRef": "JL2",
+        "partPin": "SIG"
+      },
+      {
+        "signal": "LIMIT_Z",
+        "gpio": 21,
+        "partRef": "JL3",
+        "partPin": "SIG"
+      },
+      {
+        "signal": "SPINDLE_I",
+        "gpio": 39,
+        "partRef": "U10",
+        "partPin": "OUT"
+      },
+      {
+        "signal": "STEPPER_UART",
+        "gpio": 16,
+        "partRef": "U4",
+        "partPin": "PDN_UART"
+      },
+      {
+        "signal": "STEPPER_UART_TX",
+        "gpio": 17,
+        "partRef": "R20",
+        "partPin": "pin1"
+      },
+      {
+        "signal": "STATUS_LED",
+        "gpio": 2,
+        "partRef": "D1",
+        "partPin": "A"
+      },
+      {
+        "signal": "SPINDLE_PWM",
+        "gpio": 22,
+        "partRef": "U8",
+        "partPin": "A"
+      }
+    ],
+    "cncTargets": {
+      "travelMm": {
+        "x": 300,
+        "y": 200,
+        "z": 50
+      },
+      "footprintMm": [
+        450,
+        350
+      ],
+      "rapidMmMin": 1500,
+      "feedMmMin": 600,
+      "cut": {
+        "material": "plywood",
+        "depthMm": 3,
+        "toolMm": 3.175
+      },
+      "spindleW": 100,
+      "repeatMm": 0.05
+    },
+    "cnc": {
+      "axes": [
+        {
+          "name": "x",
+          "motor": "17HS15-1504S1",
+          "motors": 1,
+          "screw": "GOBILDA-3501-0804-0400 lead screw 8 mm lead 400 mm",
+          "rail": "HIWIN MGN12H",
+          "travelMm": 300,
+          "homeAt": "min",
+          "driver": {
+            "currentA": 1.2,
+            "microsteps": 16,
+            "uartAddr": 0
+          }
+        },
+        {
+          "name": "y",
+          "motor": "17HS15-1504S1",
+          "motors": 2,
+          "screw": "GOBILDA-3501-0804-0300 lead screw 8 mm lead 300 mm",
+          "rail": "HIWIN MGN12H",
+          "travelMm": 200,
+          "homeAt": "min",
+          "driver": {
+            "currentA": 1.2,
+            "microsteps": 16,
+            "uartAddr": 1
+          }
+        },
+        {
+          "name": "z",
+          "motor": "17HS15-1504S1",
+          "motors": 1,
+          "screw": "GOBILDA-3501-0804-0200 lead screw 8 mm lead 200 mm",
+          "rail": "HIWIN MGN12H",
+          "travelMm": 50,
+          "homeAt": "max",
+          "driver": {
+            "currentA": 1.2,
+            "microsteps": 16,
+            "uartAddr": 2
+          }
+        }
+      ],
+      "spindle": {
+        "part": "Genmitsu GS-775MR",
+        "volts": 24,
+        "watts": 75
+      },
+      "estop": "OMRON A22E-M-01 emergency stop 40 mm red, 1 NC",
+      "input": {
+        "kind": "dc-brick",
+        "volts": 24,
+        "amps": 6.67
+      },
+      "frame": {
+        "footprintMm": [
+          450,
+          350
+        ],
+        "heightMm": 300
+      },
+      "boards": [
+        {
+          "name": "controller",
+          "at": {
+            "xMm": 380,
+            "yMm": 300
+          },
+          "rotDeg": 0
+        }
+      ],
+      "firmware": "fluidnc"
+    }
+  },
+  "versions": {
+    "requirements": 1,
+    "outline": 2,
+    "connectors": 2,
+    "rails": 1,
+    "parts": 4,
+    "pins": 1,
+    "behavior": 0,
+    "model": 0,
+    "test": 0,
+    "case": 0,
+    "connectivity": 0,
+    "links": 0,
+    "motion": 0,
+    "mechanics": 0,
+    "assembly": 0,
+    "armTargets": 0,
+    "arm": 0,
+    "cncTargets": 1,
+    "cnc": 1
+  }
+}

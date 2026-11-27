@@ -21,9 +21,15 @@ const docker = (args: string[], timeoutMs: number): Promise<RunResult> => docker
 // Routes work/<pcbRel> in place. Returns null when it routed every connection, else why not. widths: the track width a
 // net needs over the fab's default (a rail's IPC-2221 width, circuit.ts routedWidths): Freerouting routes it at the
 // default, then freeroute.py widens it where clearance allows (thin only into fine-pitch pins; track-widths.ts judges).
+// Whether this machine can run Freerouting (its jar in tools/, and not switched off): without it the board build skips
+// the layouts it would route there, and the 4-layer retry on a trace-bound failure (board.ts).
+export const freeroutingAvailable = (root: string): boolean => process.env.BRINGUP_FREEROUTING !== "off" && existsSync(resolve(root, FREEROUTING_JAR))
+export const FREEROUTING_MISSING = `Freerouting isn't installed (${FREEROUTING_JAR})`
 export async function freeroute(root: string, work: string, pcbRel: string, widths: Map<string, number> = new Map(), fourLayers = false): Promise<string | null> {
 	const jar = resolve(root, FREEROUTING_JAR)
-	if (!existsSync(jar)) return `Freerouting isn't installed (${FREEROUTING_JAR})`
+	// BRINGUP_FREEROUTING=off: as if the jar weren't there (the free tier's and CI's path: `bringup setup board` installs no
+	// Freerouting), so a checkout that has it can measure that path too (scripts/board-pass.ts).
+	if (!freeroutingAvailable(root)) return FREEROUTING_MISSING
 	copyFileSync(resolve(root, "py/freeroute.py"), join(work, "freeroute.py"))
 	copyFileSync(jar, join(work, "freerouting.jar"))
 	const v = ["-v", mount(work, "/w"), "-w", "/w"]

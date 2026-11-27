@@ -72,3 +72,35 @@ test("a region with another rail's inside it is kept, as one outline round both 
 	assert.equal(inside(a.outline, -15, -15), true)
 	assert.equal(inside(a.outline, 0, 0), false, "B's middle is A's hole")
 })
+
+// The antenna's keep-out band (lead-2, 27 Nov 2026: the In2 cut, the follow-up to the band on the pours): a cell outside
+// the given outline belongs to no rail, so a region stops at the band's edge.
+test("a region stays inside the outline it is given: the antenna band's notch is left out", () => {
+	// 40×30 board, a 10×8 notch at the top edge from x = 5 to 15.
+	const within = [{ x: -20, y: -15 }, { x: -20, y: 15 }, { x: 5, y: 15 }, { x: 5, y: 7 }, { x: 15, y: 7 }, { x: 15, y: 15 }, { x: 20, y: 15 }, { x: 20, y: -15 }]
+	const rails = [{ net: "A", points: [{ x: -10, y: 0 }] }, { net: "B", points: [{ x: 10, y: 0 }] }]
+	const whole = planeRegions(40, 30, rails)
+	const cut = planeRegions(40, 30, rails, undefined, undefined, undefined, within)
+	const b = cut.find((r) => r.net === "B")!
+	assert.equal(inside(b.outline, { x: 10, y: 11 }), false, "the notch is outside B's region")
+	assert.equal(inside(b.outline, { x: 17, y: 11 }), true, "beside the notch B keeps its copper")
+	assert.equal(whole.find((r) => r.net === "B")!.cells - b.cells, 11 * 8 * 4, "B loses the notch grown to whole cells (x 4.5..15.5, y 6.5..14.5 at a 0.5 mm step), no more")
+	assert.equal(cut.find((r) => r.net === "A")!.cells, whole.find((r) => r.net === "A")!.cells, "A, away from the notch, is untouched")
+})
+
+test("the arm's In2 rail regions leave its antenna band out (bar the module's own column), as the ground pour does", async () => {
+	const { readFileSync } = await import("node:fs")
+	const { layoutBoard, powerPlaneRegions, antennaNotch } = await import("../src/codegen/circuit.ts")
+	const s = JSON.parse(readFileSync(new URL("./fixtures/arm-mock-rev14.json", import.meta.url), "utf8"))
+	const z = layoutBoard(s).antennaZone!
+	assert.ok(z, "the arm has a band")
+	const o = s.values.outline
+	const notch = antennaNotch(o.widthMm, o.heightMm, z)!
+	const cut = powerPlaneRegions(s)
+	const whole = powerPlaneRegions(s, undefined, null)
+	// Every corner of every region lies inside the notched outline (a vertex on its edge counts: nudge toward the board's middle).
+	for (const r of cut) for (const p of r.outline) assert.ok(inside(notch, { x: p.x * 0.999, y: p.y * 0.999 }), `${r.net} at ${p.x},${p.y} is in the band`)
+	const cells = (rs: typeof cut) => rs.reduce((t, r) => t + r.cells, 0)
+	assert.ok(cells(cut) < cells(whole), "the band's cells are taken off")
+	assert.deepEqual(cut.map((r) => r.neckMm), whole.map((r) => r.neckMm), "no rail's neck narrows")
+})

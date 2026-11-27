@@ -8,7 +8,7 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { holesFromCircuitJson, netsFromCircuitJson, partsFromCircuitJson, placementsFromCircuitJson } from "./board-nets.ts"
 import { kicadCli, toolPath, type Env } from "./env.ts"
 import { FAB_RULES, runDrc } from "./drc.ts"
-import { freeroute } from "./freerouting.ts"
+import { freeroute, freeroutingAvailable, FREEROUTING_MISSING } from "./freerouting.ts"
 import { narrowNets, netCopper } from "./track-widths.ts"
 import { nudgeVias } from "./via-edge.ts"
 import { alternatePinLabels, hideReferences, pinLabelsToFab, raiseSilkText } from "./silk.ts"
@@ -60,7 +60,7 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 	} catch (error) {
 		const message = String(error instanceof Error ? error.message : error)
 		const o = s.values.outline
-		if (twoLayers && sizeFailure(message)) {
+		if (twoLayers && retryOnFour(message, freeroutingAvailable(env.root))) {
 			try {
 				return await onFour(`at 2 layers the board didn't route (rev ${revision}: ${message.split("\n").find((l) => /skipped|unrouted|Freerouting/.test(l))?.trim().slice(0, 160) ?? "build failed"})`)
 			} catch {
@@ -88,6 +88,15 @@ const PART_ERROR = /Could not find port for selector|has no ports/
 // reach) is the same cause tscircuit gives when it skips routing, and goes to the 4-layer retry and the bigger board the
 // same way: the CNC's GND-end bound (27 Nov 2026) failed outright once the check measured it.
 export const sizeFailure = (message: string): boolean => /^tscircuit build failed \((?:exit|placement check)/.test(message) && !PART_ERROR.test(message) && (ROUTING_FAILURE.test(message) || layoutSensitive(message))
+
+// Whether a failed 2-layer build is worth a 4-layer one: a size failure, except a trace past its length bound with no
+// Freerouting to route it. There the 4-layer retry has tscircuit's same bound and the same placement, and it never
+// built (14 of 14 retries over six mock and real rover runs, 85 s each, 27 Nov 2026). With Freerouting it does: the
+// CNC's bound failures route there on 4 layers.
+export function retryOnFour(message: string, freerouting: boolean): boolean {
+	if (!sizeFailure(message)) return false
+	return freerouting || !(TOO_LONG.test(message) || BOUND_UNSATISFIED.test(message))
+}
 
 async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
 	// A pin on a part that isn't there yet would only fail in tscircuit ("Could not find port for selector"), slowly and
@@ -167,6 +176,12 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 	const viaFreerouting = async (placements: PlacementOptions[]) => {
 		if (freerouted) return
 		freerouted = true
+		// No Freerouting here: its layout isn't built at all (it placed the board in tscircuit first, 12-13 s, only for the
+		// route to fail: about 50 s of a free-tier rover run, 27 Nov 2026).
+		if (!freeroutingAvailable(env.root)) {
+			freeroutingError = `Freerouting: ${FREEROUTING_MISSING}`
+			return
+		}
 		for (const placement of placements) {
 			const work = mkdtempSync(join(tmpdir(), "bringup-board-"))
 			const out = mkdtempSync(join(tmpdir(), "bringup-board-out-"))
@@ -461,6 +476,8 @@ const SUMMARY = /^Circuits\s+\d+ passed \d+ failed/
 // its length bound (a pin's capacitor placed where its trace runs long). Not the router's port warning, which shows on
 // clean builds too: it was the only reason a too-long trace got another layout before.
 export const TOO_LONG = /exceeding the [\d.]+mm maximum/i
+// tscircuit's (and the placement check's) refusal before routing: a bounded trace whose ends are already too far apart.
+export const BOUND_UNSATISFIED = /[\d.]+mm maximum length for .* cannot be satisfied/
 export function layoutSensitive(error: string): boolean {
 	return /overlap|clearance|keepout|too close|exceeding the [\d.]+mm maximum|[\d.]+mm maximum length for .* cannot be satisfied/i.test(error)
 }

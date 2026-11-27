@@ -1,0 +1,65 @@
+# The board pass in CI (lead-2, 27 Nov 2026): the mock rover without Freerouting (the free tier's path) and the CNC
+# controller, built on a fresh Linux runner and compared with the last passing run's result. The job fails on a
+# regression: no longer settled or routed, more DRC errors or unconnected (scripts/board-pass.ts regressions). Over 25 %
+# slower is a warning in the summary, not a failure: shared runners' times vary. It catches what the antenna keep-out did on 27 Nov (the rover unsettled at r16 on every OS) without
+# anyone's local machine. Each run's result is uploaded as the next run's baseline; a failing run's result is not taken
+# as one.
+#
+# Nightly only on the public repo, where Actions minutes are free; on the private repo, on demand only (its minutes are
+# paid, and this job takes about 30 min).
+name: Board pass
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  board-pass:
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'Laki4Ever79/bringup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      BRINGUP_HOME: ${{ github.workspace }}/../bringup-home
+      MOZAIK_CREDENTIALS_FILE: /dev/null
+      MOZAIK_API_KEY: ""
+      BRINGUP_CLOUD: "off"
+      BRINGUP_TOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            src/setup/tools-node/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: setup board (the board tools a user installs; no Freerouting)
+        run: node bin/bringup-mcp.js setup board
+      - name: The last passing run's result, as the baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow board-pass.yml --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          if [ -n "$id" ] && gh run download "$id" --repo "$GITHUB_REPOSITORY" -n board-pass-result -D baseline; then
+            echo "BEFORE=--before baseline/board-pass.json" >> "$GITHUB_ENV"
+          else
+            echo "No passing run yet: this one is the baseline." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Board pass (rover without Freerouting, CNC)
+        run: npx tsx scripts/board-pass.ts --only rover-nofr,cnc $BEFORE --save board-pass.json --fail-on-regression --force
+      - name: Keep the result (the next run's baseline) and the run logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: board-pass-result
+          path: |
+            board-pass.json
+            out/board-pass/*.log
+          retention-days: 90
+          if-no-files-found: warn

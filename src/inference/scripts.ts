@@ -6,7 +6,7 @@ import { supportParts, testPoints, nativeUsbIndexes } from "../codegen/circuit.t
 import { FunctionCallOutputItem, ModelMessageItem, UserMessageItem, type ContextItem } from "@mozaik-ai/core"
 import type { CaseSpec, ContractSnapshot, ContractValues, EnclosureMode, FieldName } from "../contract/types.ts"
 import { boardWidthFor, caseChecks, caseOf, LID, minCaseHeight } from "../contract/case.ts"
-import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT, sizeReasonHolds } from "../contract/space.ts"
+import { compactOutline, ROUTING_FAILURE, routingFailureReason, SLACK_LIMIT, sizeReasonHolds } from "../contract/space.ts"
 import { state } from "../runtime.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { Part } from "../contract/types.ts"
@@ -1009,14 +1009,16 @@ export function mockScripts(): Record<string, Script> {
 				return step === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: why })] : say("decided")
 			}
 			// The board didn't route at this size: the same answer as a failed DRC, 2 mm wider with the build as the reason.
-			const routingFail = instruction.startsWith("Build failed: the board build failed at revision") && ROUTING_FAILURE.test(instruction)
+			// A trace past its bound too (tscircuit's routed length, or the placement check's refusal before routing): more room
+			// is the answer there as well, as recordRoutingFailure takes it (board.ts sizeFailure).
+			const routingFail = instruction.startsWith("Build failed: the board build failed at revision") && (ROUTING_FAILURE.test(instruction) || /exceeding the [\d.]+mm maximum|[\d.]+mm maximum length for .* cannot be satisfied/.test(instruction))
 			const grown = state().contract.get("outline")
 			if (routingFail && grown) {
 				if (stepsTaken(items) > 0) return say("board widened")
 				if (drcGrows >= 5) return say("can't route it")
 				drcGrows++
 				const rev = /at revision (\d+)/.exec(instruction)?.[1]
-				return propose("outline", { ...grown, widthMm: grown.widthMm + 2, sizeReason: { kind: "routing", detail: `the ${grown.widthMm}×${grown.heightMm} mm board (rev ${rev}) didn't route: tscircuit left pins without a trace` } }, `2 mm wider so the router has room: the rev ${rev} board didn't route`)
+				return propose("outline", { ...grown, widthMm: grown.widthMm + 2, sizeReason: { kind: "routing", detail: `the ${grown.widthMm}×${grown.heightMm} mm board (rev ${rev}) didn't route: ${routingFailureReason(instruction)}` } }, `2 mm wider so the router has room: the rev ${rev} board didn't route`)
 			}
 			if (instruction.startsWith("Brief")) {
 				// A carrier brief: the scripted HAT, every value read from the brief (and kept for the parts agent).

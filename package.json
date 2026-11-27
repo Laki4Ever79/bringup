@@ -59,6 +59,7 @@
 		"test:affected": "tsx scripts/test-affected.ts",
 		"test:slow": "tsx scripts/test-slow.ts",
 		"board": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= PATH=$PWD/tools/node/node_modules/.bin:$PATH tsx scripts/board.ts",
+		"board-pass": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= PATH=$PWD/tools/node/node_modules/.bin:$PATH tsx scripts/board-pass.ts",
 		"experiment": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= tsx src/experiment/cli.ts",
 		"ros": "MOZAIK_CREDENTIALS_FILE=/dev/null MOZAIK_API_KEY= tsx src/ros/cli.ts"
 	},

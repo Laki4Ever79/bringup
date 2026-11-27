@@ -11,6 +11,7 @@ import { chipCrystal, chipPadLabels, chipPinLabels, chipPowerPins, chipSupport, 
 import { mcuPinName } from "../mcu/pins.ts"
 import { loadProfiles, profileForPart, type McuProfile } from "../mcu/profile.ts"
 import { stepperDriverCtx, spindleDriverCtx, estopSwitchCtx, fixedCtx, motorSupplyRail, VMOT_SW_NET, hasEstopSwitch } from "../cnc/board.ts"
+import { clearSilk } from "./silk-clear.ts"
 
 interface CatalogEntry {
 	ref?: string
@@ -380,7 +381,7 @@ const CRYSTAL_PADS: Record<string, [number, number]> = { pin1: [-1.1, -0.85], pi
 function crystalFootprint(): string {
 	const pads = Object.entries(CRYSTAL_PADS).map(([pin, [x, y]]) => `<smtpad portHints={["${pin}"]} pcbX="${x}mm" pcbY="${y}mm" width="1.4mm" height="1.2mm" shape="rect" />`)
 	const outline = [[-1.6, -1.25], [1.6, -1.25], [1.6, 1.25], [-1.6, 1.25], [-1.6, -1.25]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
-	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
+	return clearSilk(`{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /></footprint>}`)
 }
 
 // The context each chip with a catalog support list works in (chip-support.ts ChipCtx): what feeds it, what it makes.
@@ -749,7 +750,7 @@ function moduleFootprint(m: RadioModule): string {
 	const [hw, hh] = [m.body.w / 2, m.body.h / 2]
 	const top = +(m.padAreaTop + MODULE_EDGE_MM - 0.25).toFixed(2)
 	const outline = [[-hw, top], [-hw, -hh], [hw, -hh], [hw, top]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
-	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
+	return clearSilk(`{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /></footprint>}`)
 }
 
 // ICS-43434 I2S microphone (TDK DS-000069 Rev 1.2, Figure 13 land pattern, Figure 3 pin configuration, Figure 15
@@ -773,7 +774,7 @@ function micFootprint(): string {
 	const ring = `<platedhole portHints={["pin3"]} pcbX="${n(MIC_PORT.x)}" pcbY="${n(MIC_PORT.y)}" holeDiameter="${n(MIC_PORT.holeMm)}" outerDiameter="1.625mm" shape="circle" />`
 	const [hw, hh] = [MIC_BODY.w / 2, MIC_BODY.h / 2]
 	const outline = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
-	return `{<footprint>${smt}${ring}<silkscreenpath route={[${outline}]} /></footprint>}`
+	return clearSilk(`{<footprint>${smt}${ring}<silkscreenpath route={[${outline}]} /></footprint>}`)
 }
 
 // LSM6DS3TR-C IMU (ST DocID030071 Rev 3: Figure 1 pin connections, bottom view; Figure 17 LGA-14 2.5x3x0.86 mm).
@@ -808,7 +809,7 @@ function inductorFootprint(name: string): string {
 	const pads = [1, 2].map((pin, i) => `<smtpad portHints={["pin${pin}"]} pcbX="${i ? f.cx : -f.cx}mm" pcbY="0mm" width="${f.padW}mm" height="${f.padH}mm" shape="rect" />`).join("")
 	const [hw, hh] = [f.body[0] / 2 + 0.2, f.body[1] / 2 + 0.2]
 	const outline = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]].map(([x, y]) => `{ x: ${+x.toFixed(2)}, y: ${+y.toFixed(2)} }`).join(", ")
-	return `{<footprint>${pads}<silkscreenpath route={[${outline}]} /></footprint>}`
+	return clearSilk(`{<footprint>${pads}<silkscreenpath route={[${outline}]} /></footprint>}`)
 }
 // Silergy SO8E (AN_SY8205 Rev. 0.4, SO8E Package outline & PCB layout design, Recommended Pad Layout): 0.60 x 1.55 mm
 // pads at 1.27 mm pitch, the rows 5.40 mm apart centre to centre; 1-4 down the left, 5-8 up the right (top view); the
@@ -829,7 +830,7 @@ function sy8368Footprint(): string {
 	const f = JSON.parse(readFileSync(new URL("../../catalog/footprints/sy8368a.json", import.meta.url), "utf8")) as { pads: { pin: number; points: [number, number][] }[] }
 	const pads = f.pads.map((p) => `<smtpad portHints={["pin${p.pin}"]} shape="polygon" points={[${p.points.map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")}]} />`).join("")
 	const outline = [[-1.6, -1.65], [1.6, -1.65], [1.6, 1.65], [-1.6, 1.65], [-1.6, -1.65]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
-	return `{<footprint>${pads}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[{ x: -1.9, y: 1.7 }, { x: -1.9, y: 1.4 }]} /></footprint>}`
+	return clearSilk(`{<footprint>${pads}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[{ x: -1.9, y: 1.7 }, { x: -1.9, y: 1.4 }]} /></footprint>}`)
 }
 // Amass XT60PW-M right-angle PCB plug, from JLCPCB's EasyEDA footprint CONN-TH_XT60PW-M (C98732): the two contacts
 // Ø2.9 mm drilled in Ø3.8 mm pads 7.2 mm apart (pin 1 "-", pin 2 "+"), the body's two pegs 1.8 x 0.8 mm slots in
@@ -839,7 +840,7 @@ function xt60Footprint(): string {
 	const pins = [[1, 3.0, -3.6], [2, 3.0, 3.6]].map(([pin, x, y]) => `<platedhole portHints={["pin${pin}"]} pcbX="${x}mm" pcbY="${y}mm" holeDiameter="2.9mm" outerDiameter="3.8mm" shape="circle" />`)
 	const pegs = [[3, -3.0, -6.75], [4, -3.0, 6.75]].map(([pin, x, y]) => `<platedhole portHints={["pin${pin}"]} pcbX="${x}mm" pcbY="${y}mm" holeWidth="1.8mm" holeHeight="0.8mm" outerWidth="2.4mm" outerHeight="1.4mm" shape="pill" />`)
 	const outline = [[-4.4, -8.2], [4.4, -8.2], [4.4, 8.2], [-4.4, 8.2], [-4.4, -8.2]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
-	return `{<footprint>${[...pins, ...pegs].join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
+	return clearSilk(`{<footprint>${[...pins, ...pegs].join("")}<silkscreenpath route={[${outline}]} /></footprint>}`)
 }
 // The brick input jack (the arm, 25 Nov 2026): XunPu DC-091-A250, rated 24 V 8 A, pads from JLCPCB's own footprint
 // (catalog/footprints/dc091a250.json). Pin 1 the centre pin, 2 the switch, 3-6 the sleeve's four shield legs.
@@ -853,7 +854,7 @@ export function dc091Footprint(): string {
 	const holes = f.holes.map((h) => `<hole pcbX="${h.x}mm" pcbY="${h.y}mm" diameter="${h.d}mm" />`)
 	const [w, h] = [f.body.w / 2, f.body.h / 2]
 	const outline = [[-w, -h], [w, -h], [w, h], [-w, h], [-w, -h]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
-	return `{<footprint>${[...pads, ...holes].join("")}<silkscreenpath route={[${outline}]} /></footprint>}`
+	return clearSilk(`{<footprint>${[...pads, ...holes].join("")}<silkscreenpath route={[${outline}]} /></footprint>}`)
 }
 export const SO8E_FOOTPRINT = "so8e_silergy"
 // TI's HSOP-8 PowerPAD (DDA0008B, TPS54560 SLVSBN0C Land Pattern Example): the same 1.55 x 0.6 mm pads at 1.27 mm pitch,
@@ -867,7 +868,7 @@ function so8eFootprint(name = SO8E_FOOTPRINT): string {
 	for (let k = 0; k < 4; k++) pads.push(`<smtpad portHints={["pin${5 + k}"]} pcbX="2.7mm" pcbY="${+(-1.905 + 1.27 * k).toFixed(3)}mm" width="1.55mm" height="0.6mm" shape="rect" />`)
 	pads.push(`<smtpad portHints={["pin9"]} pcbX="0mm" pcbY="0mm" width="${epW}mm" height="${epH}mm" shape="rect" />`)
 	const outline = [[-2, -2.55], [2, -2.55], [2, 2.55], [-2, 2.55], [-2, -2.55]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
-	return `{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[{ x: -3.7, y: 2.4 }, { x: -3.7, y: 2.0 }]} /></footprint>}`
+	return clearSilk(`{<footprint>${pads.join("")}<silkscreenpath route={[${outline}]} /><silkscreenpath route={[{ x: -3.7, y: 2.4 }, { x: -3.7, y: 2.0 }]} /></footprint>}`)
 }
 // The footprints the generator draws itself (a module's land pattern, or a part tscircuit's string doesn't draw right):
 // the land pattern as JSX, or null for a tscircuit footprint string. test/footprint-clearance.test.ts skips these.
@@ -893,7 +894,7 @@ function imuFootprint(): string {
 	const [hw, hh] = [IMU_BODY.w / 2 + 0.25, IMU_BODY.h / 2 + 0.25]
 	const outline = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]].map(([x, y]) => `{ x: ${x}, y: ${y} }`).join(", ")
 	const dot = `<silkscreenpath route={[{ x: ${-hw - 0.3}, y: ${hh} }, { x: ${-hw - 0.3}, y: ${hh - 0.3} }]} />`
-	return `{<footprint>${pads}<silkscreenpath route={[${outline}]} />${dot}</footprint>}`
+	return clearSilk(`{<footprint>${pads}<silkscreenpath route={[${outline}]} />${dot}</footprint>}`)
 }
 
 function modulePinLabels(m: RadioModule, pins: string[]): string {
@@ -2419,7 +2420,14 @@ export function boardLayers(s: ContractSnapshot): { layers: 2 | 4; reason: { by:
 // CNC's VMOT and VMOT_SW, 0.35 mm needed, at it on 120 of 166 mm and 142 of 239 mm (rev 9 on 4 layers, 27 Nov 2026).
 // On its own region the plane carries the current (the plane neck check judges it) and the track only reaches the pin.
 export const planeRails = (s: ContractSnapshot) => (boardLayers(s).layers === 4 ? [...routedWidths(s, true)].filter(([n, w]) => w > DEFAULT_TRACE_MM && n !== "GND").map(([n]) => n) : [])
-export function powerPlaneRegions(s: ContractSnapshot, placement: Map<string, Placed> = new Map(placeParts(s).map((b) => [b.ref, b]))): PlaneRegion[] {
+// antenna: the module antenna's keep-out band (Layout.antennaZone); its cut (antennaNotch) is left out of every region, as
+// of the ground pour on In1. Without a placement given, the board's own layout and band are taken.
+export function powerPlaneRegions(s: ContractSnapshot, placement?: Map<string, Placed>, antenna?: (Box & { module: Box }) | null): PlaneRegion[] {
+	if (!placement) {
+		const l = layoutBoard(s)
+		placement = new Map(l.parts.map((b) => [b.ref, b]))
+		if (antenna === undefined) antenna = l.antennaZone ?? null
+	}
 	const o = s.values.outline
 	const nets = planeRails(s)
 	if (!o || !nets.length) return []
@@ -2447,11 +2455,12 @@ export function powerPlaneRegions(s: ContractSnapshot, placement: Map<string, Pl
 	const need = supplyWidths(s)
 	const shortfall = (rs: PlaneRegion[]) => rs.filter((r) => Number.isFinite(r.neckMm)).reduce((t, r) => t + Math.max(0, (need.get(r.net) ?? 0) - r.neckMm), 0)
 	let weighted = rails.map((r) => ({ ...r, weight: 1 }))
-	let best = planeRegions(o.widthMm, o.heightMm, weighted)
+	const within = antenna ? antennaNotch(o.widthMm, o.heightMm, antenna) : null
+	let best = planeRegions(o.widthMm, o.heightMm, weighted, undefined, undefined, undefined, within)
 	for (let k = 0; k < 8 && shortfall(best) > 0; k++) {
 		const short = new Set(best.filter((r) => Number.isFinite(r.neckMm) && r.neckMm < (need.get(r.net) ?? 0)).map((r) => r.net))
 		weighted = weighted.map((r) => (short.has(r.net) ? { ...r, weight: r.weight * 1.25 } : r))
-		const next = planeRegions(o.widthMm, o.heightMm, weighted)
+		const next = planeRegions(o.widthMm, o.heightMm, weighted, undefined, undefined, undefined, within)
 		if (shortfall(next) < shortfall(best)) best = next
 	}
 	return best
@@ -2961,11 +2970,24 @@ export function capsUnchecked(s: ContractSnapshot): string[] {
 		})
 	})
 }
-export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}): string[] {
+// Each bounded capacitor trace on a layout: its two endpoints as tscircuit bounds them (a pin end to the part's pad; a
+// GND end to the nearest placed GND pad of any part), with the straight and the Manhattan distance between them.
+export interface CapReach {
+	cap: string
+	capPin: "pin1" | "pin2"
+	// The other end: ".U6 > .VDDIO" or "net.GND".
+	to: string
+	bound: number
+	straightMm: number
+	manhattanMm: number
+	// tscircuit's own words for this trace's ends (its pre-routing message), for the error.
+	label: string
+}
+export function capReaches(s: ContractSnapshot, opts: PlacementOptions = {}): CapReach[] {
 	if (opts.routingDisabled) return []
 	const placed = layoutBoard(s, opts).parts
 	const parts = s.values.parts ?? []
-	const out: string[] = []
+	const out: CapReach[] = []
 	// Where each GND member's pad is on this layout: a capacitor's GND end is bounded by tscircuit to the nearest of them,
 	// whichever part it is on (the CNC's ".C29 > .pin2 to net.GND", 5.74 mm: every 2-layer layout refused, 21 minutes
 	// of tscircuit layouts before the 4-layer retry, 27 Nov 2026).
@@ -2978,6 +3000,7 @@ export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}
 			const at = part && box && box.rotation % 90 === 0 ? padOffset(footprintFor(part), part.pins.indexOf(pin) + 1, box.rotation) : null
 			return at && box ? [{ x: (box.ox ?? box.x) + at.x, y: (box.oy ?? box.y) + at.y }] : []
 		}))
+	const span = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ straightMm: Math.hypot(a.x - b.x, a.y - b.y), manhattanMm: Math.abs(a.x - b.x) + Math.abs(a.y - b.y) })
 	for (const sp of pinEndedSupports(s)) {
 		const bound = capBound(s, sp)
 		if (bound === null) continue
@@ -2990,8 +3013,8 @@ export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}
 			const pin = { x: (cap.ox ?? cap.x) + sign * t * Math.cos(r), y: (cap.oy ?? cap.y) + sign * t * Math.sin(r) }
 			const pads = ground()
 			if (!pads.length) continue
-			const d = Math.min(...pads.map((g) => Math.hypot(g.x - pin.x, g.y - pin.y)))
-			if (d > bound + CAP_REACH_MARGIN_MM) out.push(`the ${bound}mm maximum length for .${sp.ref} > .${capPin} to net.GND cannot be satisfied: its endpoints are ${d.toFixed(2)}mm apart`)
+			const near = pads.reduce((a, g) => (Math.hypot(g.x - pin.x, g.y - pin.y) < Math.hypot(a.x - pin.x, a.y - pin.y) ? g : a))
+			out.push({ cap: sp.ref, capPin, to: "net.GND", bound, ...span(near, pin), label: `.${sp.ref} > .${capPin} to net.GND` })
 		}
 		// Each end on a part's pin, tscircuit bounds both: pin 1 (the a end) and pin 2 (the b end, a chip's own GND):
 		// a rover's IMU capacitor passed on pin 1 and tscircuit refused its pin 2 to U6.GND at 5.01 mm (26 Nov 2026).
@@ -3003,11 +3026,15 @@ export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}
 			const at = padOffset(footprintFor(part), part.pins.indexOf(end.pin) + 1, box.rotation)
 			if (!at) continue
 			const pin = { x: (cap.ox ?? cap.x) + sign * t * Math.cos(r), y: (cap.oy ?? cap.y) + sign * t * Math.sin(r) }
-			const d = Math.hypot((box.ox ?? box.x) + at.x - pin.x, (box.oy ?? box.y) + at.y - pin.y)
-			if (d > bound + CAP_REACH_MARGIN_MM) out.push(`the ${bound}mm maximum length for .${part.ref} > .${end.pin} to .${sp.ref} > .${capPin} cannot be satisfied: its endpoints are ${d.toFixed(2)}mm apart`)
+			out.push({ cap: sp.ref, capPin, to: `.${part.ref} > .${end.pin}`, bound, ...span({ x: (box.ox ?? box.x) + at.x, y: (box.oy ?? box.y) + at.y }, pin), label: `.${part.ref} > .${end.pin} to .${sp.ref} > .${capPin}` })
 		}
 	}
 	return out
+}
+export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}): string[] {
+	return capReaches(s, opts)
+		.filter((c) => c.straightMm > c.bound + CAP_REACH_MARGIN_MM)
+		.map((c) => `the ${c.bound}mm maximum length for ${c.label} cannot be satisfied: its endpoints are ${c.straightMm.toFixed(2)}mm apart`)
 }
 // tscircuit's trace width and copper clearance, and a little margin: drawn traces keep this far from other copper.
 const DRAWN_CLEAR_MM = 0.075 + 0.1 + 0.05
@@ -3231,13 +3258,13 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 	// pours 0.19 mm from the mounting holes and on the edge clearance (the rpi-5 HAT, 15 Nov 2026: 10 KiCad DRC errors).
 	// A 4-layer board (space.ts boardLayers): ground on In1, each wide rail on its own region of In2 (planeRegions).
 	// The module antenna's keep-out band stays free of copper too (Espressif: no copper under or beside the antenna):
-	// the pours take the board outline with the band cut out of its edge.
+	// the pours take the board outline with the band cut out of its edge, and In2's rail regions leave it out.
 	const o = s.values.outline
 	const notch = antenna && o ? antennaNotch(o.widthMm, o.heightMm, antenna) : null
 	const pourOutline = notch ? ` outline={[${notch.map((p) => `{ x: ${p.x}, y: ${p.y} }`).join(", ")}]}` : ""
 	if (boardLayers(s).layers === 4) {
 		lines.push(`<copperpour connectsTo="net.GND" layer="inner1"${pourOutline} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
-		for (const r of powerPlaneRegions(s, placement)) lines.push(`<copperpour connectsTo=${q(`net.${r.net}`)} layer="inner2" outline={[${r.outline.map((p) => `{ x: ${p.x}, y: ${p.y} }`).join(", ")}]} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
+		for (const r of powerPlaneRegions(s, placement, antenna)) lines.push(`<copperpour connectsTo=${q(`net.${r.net}`)} layer="inner2" outline={[${r.outline.map((p) => `{ x: ${p.x}, y: ${p.y} }`).join(", ")}]} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
 	}
 	for (const pour of supplyPours(s, unbounded)) lines.push(`<copperpour connectsTo=${q(`net.${pour.net}`)} layer=${q(pour.layer)}${pourOutline} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
 	return lines
