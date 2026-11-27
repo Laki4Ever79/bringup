@@ -42,32 +42,46 @@
 // The core declares HWCDCSerial only when USB is the boot console (ARDUINO_USB_CDC_ON_BOOT); the HWCDC class itself is
 // always there on the C3, so the console uses the core's instance when there is one (the bench link-test build) and
 // its own otherwise; the build flags stay as they are. HWCDC's state is shared and begin() is idempotent either way.
+// A chip without the USB Serial/JTAG (the classic ESP32: the WROOM-32E's board reads UART0 through its USB-UART bridge,
+// CH340C) logs on UART0 alone; the soc's capability says which, not the board's name.
+#include <soc/soc_caps.h>
+#if SOC_USB_SERIAL_JTAG_SUPPORTED
+#define HAL_USB_LOG 1
 #if defined(HWCDC_SERIAL_IS_DEFINED)
 static HWCDC &UsbLog = HWCDCSerial;
 #else
 static HWCDC UsbLog;
 #endif
+#endif
 struct Console : public Print {
 	size_t write(uint8_t c) override {
 		Serial0.write(c);
+#ifdef HAL_USB_LOG
 		UsbLog.write(c);
+#endif
 		return 1;
 	}
 	size_t write(const uint8_t *b, size_t n) override {
 		Serial0.write(b, n);
+#ifdef HAL_USB_LOG
 		UsbLog.write(b, n);
+#endif
 		return n;
 	}
 	void flush() {
 		Serial0.flush();
+#ifdef HAL_USB_LOG
 		UsbLog.flush();
+#endif
 	}
 };
 static Console Log;
 static void logBegin() {
 	Serial0.begin(115200);
+#ifdef HAL_USB_LOG
 	UsbLog.setTxTimeoutMs(0);
 	UsbLog.begin();
+#endif
 }
 
 // Kept in the RTC slow memory, which deep sleep powers; lost on power-up and reset.

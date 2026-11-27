@@ -39,6 +39,10 @@ test("the console writes every line to UART0 and to the USB port, and never wait
 	assert.match(halEsp32, /static HWCDC UsbLog;/)
 	assert.match(halEsp32, /static HWCDC &UsbLog = HWCDCSerial;/)
 	assert.match(halEsp32, /UsbLog\.setTxTimeoutMs\(0\)/)
+	// The classic ESP32 has no USB Serial/JTAG (its board reads UART0 through the CH340C): the USB log is the soc's
+	// capability, so the WROOM-32E's firmware compiles (CNC mock 16, 27 Nov 2026: 'HWCDC' does not name a type).
+	assert.match(halEsp32, /#if SOC_USB_SERIAL_JTAG_SUPPORTED\n#define HAL_USB_LOG 1/)
+	assert.match(console, /#ifdef HAL_USB_LOG\n\t\tUsbLog\.write/)
 	assert.match(main, /#include "hal\.h"/)
 	assert.match(product, /logBegin\(\)/)
 	assert.doesNotMatch(product, /\bSerial\.(print|printf|println|write|flush|begin)\(/, "the product path prints through Log, not Serial (UART0 only)")

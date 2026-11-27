@@ -9,10 +9,10 @@ import type { MechCatalog } from "../mechanics/catalog.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { ACCEL_MM_S2 } from "./checks.ts"
 
-// The signals the map needs, by the scripted design's names (src/inference/scripts.ts CNC_DESIGN): the drivers' STEP and
-// DIR per motor (X, Y1, Y2 the ganged second Y motor = grblHAL's M3, Z), one shared enable, the limits, the spindle's PWM,
-// the e-stop's trip (grblHAL's RESET input) and the drivers' UART.
-export const GRBLHAL_SIGNALS = ["X_STEP", "X_DIR", "Y1_STEP", "Y1_DIR", "Y2_STEP", "Y2_DIR", "Z_STEP", "Z_DIR", "STEPPERS_EN", "LIMIT_X", "LIMIT_Y", "LIMIT_Z", "SPINDLE_PWM", "ESTOP_TRIP", "STEPPER_UART", "STEPPER_UART_TX"] as const
+// The signals the map needs (signals.ts: imported, not declared here, so the checks -> fluidnc -> grblhal import cycle
+// never reads it before it is set).
+export { CNC_SIGNALS as GRBLHAL_SIGNALS } from "./signals.ts"
+import { CNC_SIGNALS as GRBLHAL_SIGNALS } from "./signals.ts"
 // The spindle's PWM frequency, Hz: an ESTIMATE for a brushed 775 motor through a MOSFET (no maker states one).
 export const SPINDLE_PWM_HZ = 1000
 

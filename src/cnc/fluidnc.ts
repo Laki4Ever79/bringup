@@ -12,11 +12,12 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import type { MechCatalog } from "../mechanics/catalog.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { profileForPart } from "../mcu/profile.ts"
-import { GRBLHAL_SIGNALS, SPINDLE_PWM_HZ, grblhalSettings } from "./grblhal.ts"
+import { SPINDLE_PWM_HZ, grblhalSettings } from "./grblhal.ts"
+import { CNC_SIGNALS } from "./signals.ts"
 import { cncMotors, senseResistor } from "./board.ts"
 
 // The same signals as grblHAL's map (the scripted design's names).
-export const FLUIDNC_SIGNALS = GRBLHAL_SIGNALS
+export const FLUIDNC_SIGNALS = CNC_SIGNALS
 const INPUTS = new Set(["LIMIT_X", "LIMIT_Y", "LIMIT_Z", "ESTOP_TRIP", "STEPPER_UART"])
 // Inputs the board leaves to the MCU's pull-up: the limit switches' SIG (NC to ground: closed reads low, a tripped switch
 // or a cut cable reads high). The e-stop's trip and the UART's RX are driven by the board.

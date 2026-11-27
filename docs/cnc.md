@@ -224,3 +224,12 @@ Each failure on the way, with its general fix.
   time. Open: the e-stop's and limit's inputs (PB12, PB13, driven with Renode's OnGPIO) don't reach grblHAL yet; the
   run as a build kind (cncsim) in every CNC design run. Found on the way: settings sent in number order gave error:10
   ($20 soft limits before $22 homing): homing now comes first in settings.txt.
+- 27 Nov, mock run 16 (`briefs/cnc-fluidnc.md --mock`, 30 min, the CNC on FluidNC and the ESP32-WROOM-32E): UNSETTLED at
+  revision 9, 5 violations. The USB-UART bridge and auto-reset pair arrived on their own; the pins had no FluidNC
+  problem. `firmware-build-failed`: the product firmware's console logged on the chip's USB Serial/JTAG ("'HWCDC' does
+  not name a type"), which the classic ESP32 doesn't have. Fix, general (templates/fw/include/hal.h): the USB log is
+  the soc's capability (SOC_USB_SERIAL_JTAG_SUPPORTED), UART0 alone otherwise; the mock's own firmware dir now builds
+  (RAM 11.4%, flash 64.8%), C3 and S3 too. The other four (U8.VCC unwired, U11/D10/D11 missing) are the board built at
+  revision 6, before the power tree; the revision-9 board is the CNC's routing density (">50 traces left unrouted"),
+  bringup-board's next item. Found on the way: checks.ts -> fluidnc.ts -> grblhal.ts -> checks.ts read the signal
+  list before it was set when grblhal.ts loaded first (firmware-log.test.ts); the list now lives in cnc/signals.ts.

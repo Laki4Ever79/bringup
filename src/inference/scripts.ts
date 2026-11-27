@@ -226,7 +226,25 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		catalogPart("S2B-XH-A(LF)(SN)", "JL3"),
 	],
 }
+// The CNC on FluidNC (briefs/cnc-fluidnc.md, docs/cnc.md gap 14): the same machine and board on the ESP32-WROOM-32E, its
+// pins GPIO numbers. Outputs stay off the input-only 34-39, the strapping pins (0, 2, 5, 12, 15 but the LED's 2, low at
+// reset as that strap wants), UART0 (1, 3) and the flash (6-11); the e-stop's trip (the OR gate drives it) on input-only
+// 36, the spindle's current on ADC1's 39 (ADC2 is lost to Wi-Fi). The USB-UART bridge and the auto-reset pair come with
+// the module (src/contract/usb-bridge-auto.ts); the 3.3 V load is the module's Wi-Fi peak.
+export const CNC_FLUIDNC_PINS: Record<string, number> = { X_STEP: 26, X_DIR: 27, Y1_STEP: 14, Y1_DIR: 13, Y2_STEP: 33, Y2_DIR: 32, Z_STEP: 25, Z_DIR: 4, STEPPERS_EN: 23, ESTOP_TRIP: 36, LIMIT_X: 18, LIMIT_Y: 19, LIMIT_Z: 21, SPINDLE_I: 39, STEPPER_UART: 16, STEPPER_UART_TX: 17, STATUS_LED: 2, SPINDLE_PWM: 22 }
+export const CNC_FLUIDNC_DESIGN: typeof LOGGER_DESIGN = {
+	...CNC_DESIGN,
+	requirements: { ...CNC_DESIGN.requirements, summary: "Desktop 3-axis CNC engraver: three NEMA 17 steppers on T8 lead screws, a 24 V spindle, limit switches and an emergency stop, FluidNC on an ESP32-WROOM-32E" },
+	rails: CNC_DESIGN.rails!.map((r) => (r.name === "3V3" ? { ...r, loadMa: 500 } : r)),
+	pins: CNC_DESIGN.pins!.map((p) => {
+		const gpio = CNC_FLUIDNC_PINS[p.signal]
+		if (gpio === undefined) throw new Error(`CNC_FLUIDNC_PINS has no ${p.signal}`)
+		return { ...p, gpio }
+	}),
+	parts: CNC_DESIGN.parts!.map((p) => (p.role === "mcu" ? catalogPart("ESP32-WROOM-32E", p.ref) : p)),
+}
 const isCnc = () => !!state().contract.get("cncTargets") || CNC_BRIEF.test(state().contract.get("requirements")?.summary ?? "")
+const isCncFluidnc = () => isCnc() && /\bESP32\b/.test(state().contract.get("requirements")?.summary ?? "")
 const isStm32 = () => /\bSTM32\b/.test(state().contract.get("requirements")?.summary ?? "")
 
 // The scripted rover (briefs/rover.md, docs/mechanics.md): the logger's board without its case, plus a DRV8833 driving
@@ -591,7 +609,7 @@ const SENSOR_PINS = LOGGER_DESIGN.pins.filter((p) => p.partRef === "U2")
 
 // Which scripted design a brief gets: the beacon for a brief that says so, the logger for anything else.
 export const scriptedDesignFor = (brief: string): typeof LOGGER_DESIGN & Partial<Pick<ContractValues, "motion">> =>
-	armTargetsFromBrief(brief) ? (ARM_BOARD as unknown as typeof LOGGER_DESIGN) : EUROBOT.test(brief) ? (EUROBOT_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : FOUR_WD.test(brief) ? (ROVER4_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : CNC_BRIEF.test(brief) ? CNC_DESIGN : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
+	armTargetsFromBrief(brief) ? (ARM_BOARD as unknown as typeof LOGGER_DESIGN) : EUROBOT.test(brief) ? (EUROBOT_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : FOUR_WD.test(brief) ? (ROVER4_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : /\brover\b/i.test(brief) ? (ROVER_BOARD as unknown as typeof LOGGER_DESIGN & Pick<ContractValues, "motion">) : CNC_BRIEF.test(brief) ? (/\bESP32\b/.test(brief) ? CNC_FLUIDNC_DESIGN : CNC_DESIGN) : /\bbeacon\b/i.test(brief) ? BEACON_DESIGN : /\bSTM32\b/i.test(brief) ? STM32_LOGGER_DESIGN : LOGGER_DESIGN
 // A robot's requirements ask for motors (briefs/rover.md).
 const isRover = () => (state().contract.get("requirements")?.peripherals ?? []).includes("motors")
 const isEurobot = () => EUROBOT.test(state().contract.get("requirements")?.summary ?? "")
@@ -1120,7 +1138,7 @@ export function mockScripts(): Record<string, Script> {
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
 			}
 			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
-			const base = hat ? hat.parts : isArm() ? ARM_BOARD.parts : isEurobot() ? EUROBOT_BOARD.parts : isRover4() ? ROVER4_BOARD.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : isCnc() ? CNC_DESIGN.parts : LOGGER_DESIGN.parts
+			const base = hat ? hat.parts : isArm() ? ARM_BOARD.parts : isEurobot() ? EUROBOT_BOARD.parts : isRover4() ? ROVER4_BOARD.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : isCncFluidnc() ? CNC_FLUIDNC_DESIGN.parts : isCnc() ? CNC_DESIGN.parts : LOGGER_DESIGN.parts
 			const wanted = withSwaps(state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base)
 			if (stepsTaken(items) > 0) return say("parts chosen")
 			// An arm's parts list grows in code past the scripted one (the servo plugs, rails and jack, the logic's power tree):
@@ -1222,7 +1240,7 @@ export function mockScripts(): Record<string, Script> {
 			}
 			// A CNC: the machine meeting the brief's targets, from the catalog (docs/cnc.md; hand-written: gap 2).
 			if (instruction.startsWith("Consistency violations for you") && step === 0 && state().contract.get("cncTargets") && !state().contract.get("cnc"))
-				return propose("cnc", CNC_MACHINE, "the desktop CNC: 17HS15-1504S1 steppers on T8 screws (each its travel plus 40 mm) and MGN12H rails, Y a gantry on two motors, the GS-775MR spindle on the 24 V brick (catalog/mechanics.json)")
+				return propose("cnc", isCncFluidnc() ? { ...CNC_MACHINE, firmware: "fluidnc" } : CNC_MACHINE, "the desktop CNC: 17HS15-1504S1 steppers on T8 screws (each its travel plus 40 mm) and MGN12H rails, Y a gantry on two motors, the GS-775MR spindle on the 24 V brick (catalog/mechanics.json)")
 			// A robot arm: the brief's servos on the scripted links once the targets exist, then the servo each arm-torque
 			// violation names, a brick as big as arm-supply asks, and ballast while it tips.
 			const arm = state().contract.get("arm")

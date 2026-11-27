@@ -6,7 +6,7 @@ import assert from "node:assert/strict"
 import { existsSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { spawnSync } from "node:child_process"
-import { CNC_DESIGN, CNC_MACHINE, CNC_TARGETS } from "../src/inference/scripts.ts"
+import { CNC_DESIGN, CNC_FLUIDNC_DESIGN, CNC_MACHINE, CNC_TARGETS } from "../src/inference/scripts.ts"
 import { fluidncConfig, fluidncPinProblems, fluidncPins } from "../src/cnc/fluidnc.ts"
 import { cncChecks } from "../src/cnc/checks.ts"
 import { defaultCheckCatalog } from "../src/mechanics/checks.ts"
@@ -97,4 +97,13 @@ test("config.yaml: parses, names the machine's numbers and pins, and every key i
 	}
 	walk(y, [])
 	assert.deepEqual(unknown, [])
+})
+
+test("the scripted FluidNC CNC (briefs/cnc-fluidnc.md): the WROOM-32E with every signal FluidNC needs, no pin problem", () => {
+	const b = fixtureContract()
+	const s = { ...b, values: { ...b.values, ...CNC_FLUIDNC_DESIGN, cncTargets: CNC_TARGETS, cnc: { ...CNC_MACHINE, firmware: "fluidnc" } } } as ContractSnapshot
+	assert.equal(s.values.parts!.find((p) => p.role === "mcu")!.mpn, "ESP32-WROOM-32E")
+	assert.deepEqual(fluidncPins(s).missing, [])
+	assert.deepEqual(fluidncPinProblems(s), [])
+	assert.equal(cncChecks(s.values, defaultCheckCatalog()!).filter((x) => /FluidNC|GPIO\d/.test(x.message)).length, 0)
 })
