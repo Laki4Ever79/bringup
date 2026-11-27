@@ -1,3 +1,4 @@
+import { planVsActual, planVsActualText } from "./runner/plan-actual.ts"
 import { standardsSection } from "./contract/standards.ts"
 import { BUILD_INPUTS } from "./agents/builders.ts"
 import { antennaLine } from "./contract/antenna.ts"
@@ -344,6 +345,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		`- Consistency checks: ${c["consistency.checked"] ?? 0}; violations caught along the way: ${c.violationsSeen ?? 0}`,
 		`- Artifacts built: ${c["artifact.ready"] ?? 0}; failed builds: ${c["artifact.failed"] ?? 0}; agent crashes: ${c["agent.halted"] ?? 0}`,
 		``,
+		...planSection(outDir),
 		`## Environment`,
 		"```",
 		describeEnv(env),
@@ -363,3 +365,9 @@ function drcLines(drc: import("./tools/drc.ts").DrcSummary | null | undefined): 
 	return [`- Design rules (KiCad, ${drc.rules}): ${drc.errors} errors, ${drc.warnings} warnings, ${drc.unconnected} unconnected${types ? ` (${types})` : ""}${own.length ? `; ${own.join(", ")} (its vendor land pattern against the fab's generic rule, not the layout)` : ""}${drc.exemptions?.length ? `; ${drc.exemptions.length} rule${drc.exemptions.length === 1 ? "" : "s"}: ${drc.exemptions.join("; ")}` : ""}`]
 }
 export const drcReportLinesForTest = drcLines
+
+// A paid run's plan against what it took (runner/plan-actual.ts); nothing for a run without an approved plan.
+function planSection(outDir: string): string[] {
+	const v = planVsActual(outDir)
+	return v ? [`## Plan and actual`, `- ${planVsActualText(v)}`, ...(v.planned.runTime ? [`- ${v.planned.runTime}`] : []), ``] : []
+}

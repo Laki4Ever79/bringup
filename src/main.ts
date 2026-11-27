@@ -19,6 +19,7 @@ import { ROOT, runDesign } from "./run.ts"
 import { driftStatusLines, readDrift } from "./runner/drift.ts"
 import { linkedStatusLines, linkRun } from "./runner/linked.ts"
 import { continueSeed } from "./runner/continue.ts"
+import { recordRunPlan } from "./runner/plan-actual.ts"
 import type { ContractSnapshot } from "./contract/types.ts"
 import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 import { prepareToolchain } from "./tools/toolchain.ts"
@@ -329,6 +330,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		}
 		const outAt = argv.indexOf("--out")
 		const out = resolve(outAt > 0 ? argv[outAt + 1] : join(ROOT, "out", `system-${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}`))
+		if (!flag("--mock") && process.env.BRINGUP_PLAN_APPROVED) recordRunPlan(out, process.env.BRINGUP_PLAN_APPROVED)
 		console.log(`bringup system: ${spec.name}, ${spec.boards.length} boards, ${spec.links.length} links; output ${out}`)
 		await dockerToolchain(argv)
 		const env = flag("--no-hardware") ? null : await (deps.detect ?? detectEnvironment)(ROOT)
@@ -402,12 +404,16 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		}
 		// The plan the person approves before paying (src/system/plan-gate.ts; the user, 26 Nov 2026).
 		const brief = readFileSync(args.briefPath, "utf8")
+		// A system's board run inherits its system's plan: the system keeps that one (its own run-plan.json).
+		const inherited = Boolean(process.env.BRINGUP_PLAN_APPROVED)
 		const gate = await cliPaidGate({ brief }, brief, { argv, outRoot: join(ROOT, "out"), env: process.env, isTTY: Boolean(process.stdin.isTTY), ask: askLine, log: (s) => console.log(s) })
 		if ("refused" in gate) {
 			console.error(`bringup: ${gate.refused}`)
 			return 2
 		}
 		process.env.BRINGUP_PLAN_APPROVED = gate.planId
+		// The approved plan stays with the run, for estimate vs actual (runner/plan-actual.ts).
+		if (!inherited) recordRunPlan(outDir, gate.planId)
 	}
 	const mode = `${args.mock ? "mock models (no API key)" : "real models"}${args.noHardware ? ", hardware stubbed" : ""}${args.review ? "" : ", no brief review"}`
 	console.log(`bringup: ${mode}\n${describeEnv(env)}\noutput: ${outDir}`)
