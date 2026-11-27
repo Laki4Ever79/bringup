@@ -101,6 +101,8 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 	let force = false
 	const rebuilder = new Rebuilder(async (revision) => {
 		await state().steer.gate(name)
+		// How long this build took, on the artifact's event (profiling a slow OS: the Windows rover, 27 Nov 2026).
+		const t0 = Date.now()
 		const s = state()
 		const snapshot = s.contract.snapshot()
 		const forced = force
@@ -128,7 +130,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			s.artifactInputs[opts.kind] = inputs
 			recordDerived()
 			const drc = ((s.artifacts as Record<string, unknown>)[opts.kind] as { drc?: DrcSummary | null }).drc
-			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}) }), self.id)
+			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}), ms: Date.now() - t0 }), self.id)
 			return
 		}
 		try {
@@ -142,7 +144,7 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			const failure = opts.failure?.(artifact) ?? null
 			if (failure !== null) {
 				s.artifactFailures[opts.kind] = failure
-				emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: failureExcerpt(failure, 40) }), self.id)
+				emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: failureExcerpt(failure, 40), ms: Date.now() - t0 }), self.id)
 				return
 			}
 			delete s.artifactFailures[opts.kind]
@@ -150,13 +152,13 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			// A board's KiCad DRC summary rides along, so the dashboard can show it live (not only in report.md).
 			const drc = (artifact as { drc?: DrcSummary | null }).drc
 			const summary = opts.summary?.(artifact as ArtifactOf[K])
-			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}), ...(summary ? { [opts.kind]: summary } : {}) }), self.id)
+			emit(makeEvent("artifact.ready", self.id, { kind: opts.kind, revision: snapshot.revision, ...(drc ? { drc } : {}), ...(summary ? { [opts.kind]: summary } : {}), ms: Date.now() - t0 }), self.id)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
 			s.artifactInputs[opts.kind] = inputs
 			recordDerived()
 			s.artifactFailures[opts.kind] = message
-			emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: failureExcerpt(message, 40) }), self.id)
+			emit(makeEvent("artifact.failed", self.id, { kind: opts.kind, revision: snapshot.revision, error: failureExcerpt(message, 40), ms: Date.now() - t0 }), self.id)
 		}
 	})
 	const builder = createHuman({

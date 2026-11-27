@@ -37,13 +37,20 @@ function setup(build: (revision: number) => Promise<unknown>) {
 	return { state, events, builds, change }
 }
 
+// A build's payload without its duration (ms varies run to run); the duration itself is checked once below.
+const noMs = (p: unknown) => {
+	const { ms, ...rest } = p as { ms?: number }
+	assert.ok(ms === undefined || (Number.isFinite(ms) && ms >= 0), `ms: ${ms}`)
+	return rest
+}
+
 test("builder rebuilds when one of its inputs changes", async () => {
 	const t = setup(async (revision) => ({ ...fixtureArtifacts().enclosure!, revision }))
 	t.change("outline")
 	await waitFor(() => t.events.some((e) => e.type === "artifact.ready"))
 	assert.deepEqual(t.builds, [1])
 	assert.equal(t.state.artifacts.enclosure?.revision, 1)
-	assert.deepEqual(t.events.find((e) => e.type === "artifact.ready")!.payload, { kind: "enclosure", revision: 1 })
+	assert.deepEqual(noMs(t.events.find((e) => e.type === "artifact.ready")!.payload), { kind: "enclosure", revision: 1 })
 })
 
 test("builder ignores fields it does not depend on", async () => {
@@ -161,7 +168,7 @@ test("a board build's KiCad DRC summary rides on its artifact.ready, for the das
 	if (r.status !== "applied") throw new Error(r.status)
 	emit(makeEvent("contract.changed", desk.getId(), { field: "outline", version: r.version, revision: r.revision, by: "architect" }), desk.getId())
 	await waitFor(() => events.some((e) => e.type === "artifact.ready"))
-	assert.deepEqual(events.find((e) => e.type === "artifact.ready")!.payload, { kind: "board", revision: 1, drc })
+	assert.deepEqual(noMs(events.find((e) => e.type === "artifact.ready")!.payload), { kind: "board", revision: 1, drc })
 })
 
 test("stubs report the board's mounting holes and the case's standoffs from the same contract", () => {
@@ -215,7 +222,7 @@ test("a builder's summary rides on artifact.ready; the drive's says its result a
 	const r = state.contract.propose({ field: "outline", value: { widthMm: 50, heightMm: 30, thicknessMm: 1.6 }, by: "architect", baseVersion: 0 } as never)
 	emit(makeEvent("contract.changed", desk.getId(), { field: "outline", version: (r as { version: number }).version, revision: (r as { revision: number }).revision, by: "architect" }), desk.getId())
 	await waitFor(() => events.some((e) => e.type === "artifact.ready"))
-	assert.deepEqual(events.find((e) => e.type === "artifact.ready")!.payload, { kind: "enclosure", revision: 1, enclosure: { note: "hi" } })
+	assert.deepEqual(noMs(events.find((e) => e.type === "artifact.ready")!.payload), { kind: "enclosure", revision: 1, enclosure: { note: "hi" } })
 })
 
 test("a re-sent assembly wakes the chassis and drive builders (a robot's body follows its siblings' built sizes)", async () => {

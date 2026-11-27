@@ -111,7 +111,15 @@ async function design(server, expect = {}, brief = LOGGER) {
 	const printed = fs.filter((x) => /\.(stl|step)$/.test(x.f) && !/[\\/]board[\\/]/.test(x.f)).length
 	const ros = fs.filter((x) => /[\\/]ros[\\/]src[\\/].*\.urdf$/.test(x.f)).length
 	const firmware = fs.filter((x) => /firmware\.bin$/.test(x.f)).length
-	const said = `settled at revision ${st.revision}, ${fs.length} files, ${pics} board pictures, ${gerbers} gerber zips, ${printed} printed-part files, ${ros} URDFs, ${firmware} firmware images`
+	// Where the time went: each builder's total build time from the trace (artifact events carry ms).
+	let builds = ""
+	try {
+		const per = {}
+		for (const e of readFileSync(join(start.outDir, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)))
+			if ((e.type === "artifact.ready" || e.type === "artifact.failed") && typeof e.payload.ms === "number") per[e.payload.kind] = (per[e.payload.kind] ?? 0) + e.payload.ms
+		builds = Object.entries(per).sort((a, b) => b[1] - a[1]).map(([k, ms]) => `${k} ${Math.round(ms / 1000)} s`).join(", ")
+	} catch {}
+	const said = `settled at revision ${st.revision}${builds ? ` (builds: ${builds})` : ""}, ${fs.length} files, ${pics} board pictures, ${gerbers} gerber zips, ${printed} printed-part files, ${ros} URDFs, ${firmware} firmware images`
 	const missing = [expect.board && !pics && "board pictures", expect.printed && !printed && "printed parts", expect.ros && !ros && "the ROS workspace", expect.firmware && !firmware && "a firmware image"].filter(Boolean)
 	if (missing.length) throw new Error(`settled, but no ${missing.join(", ")}: ${said}; hardware: ${start.hardware}`)
 	return said
