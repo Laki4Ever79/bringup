@@ -9,7 +9,7 @@
 // page all see the same approval.
 import { createHash, randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { bringupHome } from "../tools/env.ts"
 import { resolveProvider } from "../inference/providers.ts"
 import { estimate } from "./estimate.ts"
@@ -67,11 +67,23 @@ export function readRunPlan(id: string): RunPlan | null {
 	return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as RunPlan) : null
 }
 
+// A system spec names each board's brief as a file (briefs/main.md, relative to the repo or the cwd) or gives the text:
+// the questions read the text either way (a path's words would make every topic look open).
+const REPO = resolve(import.meta.dirname, "../..")
+export function briefText(brief: string | undefined): string {
+	if (!brief) return ""
+	if (/\.md$/.test(brief.trim())) for (const base of [REPO, process.cwd()]) {
+		const f = resolve(base, brief.trim())
+		if (existsSync(f)) return readFileSync(f, "utf8")
+	}
+	return brief
+}
+
 // The plan for a brief (one board) or a system spec (its boards), estimated from the runs recorded under outRoot.
 export function makeRunPlan(subject: { brief: string } | { system: { name?: string; boards: { name: string; brief?: string }[] }; briefs?: string[] }, outRoot: string, env: Record<string, string | undefined> = process.env, now = new Date(), subjectText?: string): RunPlan {
 	const isBrief = "brief" in subject
 	const text = subjectText ?? (isBrief ? subject.brief : JSON.stringify(subject.system))
-	const briefs = isBrief ? [subject.brief] : (subject.briefs ?? subject.system.boards.map((b) => b.brief ?? ""))
+	const briefs = isBrief ? [subject.brief] : (subject.briefs ?? subject.system.boards.map((b) => briefText(b.brief)))
 	const boards = isBrief ? 1 : Math.max(1, subject.system.boards.length)
 	// Each board's open questions together: a topic is open when any board's brief leaves it open.
 	const perBoard = briefs.map(briefQuestions)

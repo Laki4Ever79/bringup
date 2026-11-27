@@ -53,3 +53,9 @@ test("the CLI gate: a script without a terminal is refused unless it says --yes;
 	const named = await cliPaidGate({ brief }, brief, o(["--plan", (yes as { planId: string }).planId]))
 	assert.deepEqual(named, yes)
 })
+
+test("a system's plan reads its boards' brief files, not their paths", (t) => {
+	withHome(t)
+	const p = makeRunPlan({ system: { name: "logger and beacon", boards: [{ name: "main", brief: "briefs/logger.md" }] } }, tempDir())
+	assert.ok(p.questions.some((q) => q.answered), JSON.stringify(p.questions))
+})
