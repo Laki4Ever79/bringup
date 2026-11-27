@@ -58,7 +58,8 @@ Needs Node 22 or later. Nothing else to install first.
 
    `npx -y bringup-mcp setup` lists them and installs nothing. On Windows, Defender scans every file the board tools
    unpack, so `setup board` takes 2–3 min there (24 s on GitHub's Windows runner with the scan excluded); to speed it up,
-   exclude `%USERPROFILE%\.bringup` in Windows Security, Virus & threat protection, Exclusions. With Docker, Bringup builds everything in its own
+   exclude `%USERPROFILE%\.bringup` in Windows Security, Virus & threat protection, Exclusions. That folder also holds
+   your designs' runs (`.bringup\runs`), whose builds Defender slows the same way (about 1.4× per build on GitHub's runner). With Docker, Bringup builds everything in its own
    toolchain image instead (a few GB, once).
 
 4. **Bringup Studio** (from 0.2.3): `npx -y bringup-mcp login --url <studio address>` connects this machine, and every
