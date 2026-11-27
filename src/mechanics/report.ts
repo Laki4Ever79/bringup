@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
 import type { DriveArtifact } from "../tools/drive.ts"
 import { defaultCheckCatalog, mechanicsFigures, SERVO_SUPPLY_EFF } from "./checks.ts"
@@ -46,6 +48,7 @@ export function mechanicsSection(s: ContractSnapshot, drive: DriveArtifact | und
 			`Simulated drive: ${drive.result} (the rover's own firmware in QEMU driving the MuJoCo model, revision ${drive.revision}): ${drive.reason}.`,
 			...drive.segments.map((g) => `- ${g.name}: ${g.pass ? "pass" : "FAIL"} (${g.detail})`),
 			...(drive.peakA !== undefined ? [`- Peak motor current ${drive.peakA} A, top speed ${drive.topSpeedMps} m/s, closest to a wall ${drive.closestWallMm} mm; trajectory in ${drive.dir}/trajectory.json`] : []),
+			drivePicturesLine(drive.dir),
 			"",
 		)
 	return lines
@@ -103,4 +106,14 @@ export function armSection(s: ContractSnapshot): string[] {
 		`Estimates (no datasheet states these): ${(["armLinkG", "armGripperG", "ARM_TORQUE_SHARE", "plaDensityGcm3"] as const).map((k) => `${k} ${est(k)}`).join(", ")}${arm.links ? "" : "; the link masses are estimated until the arm geometry tool weighs them"}.`,
 		"",
 	]
+}
+
+// Pictures of the drive (py/drive_pictures.py, package/assembly-pictures.ts): where they are and which drive they show,
+// or how to make them (they're drawn on request: get_pictures with drive: true).
+export function drivePicturesLine(driveDir: string | undefined): string {
+	const dir = driveDir ? join(dirname(dirname(driveDir)), "pictures", "drive") : null
+	let made: { revision: number | null; files: string[] } | null = null
+	try { if (dir && existsSync(join(dir, "pictures.json"))) made = JSON.parse(readFileSync(join(dir, "pictures.json"), "utf8")) } catch {}
+	if (!dir || !made) return "- Pictures of the drive: not made yet (ask for them: get_pictures with drive: true; they land in pictures/drive/)"
+	return `- Pictures of the drive${made.revision ? ` (revision ${made.revision})` : ""}: ${dir}/drive.gif (the whole drive, animated), drive-track.png (from above), drive-1-start.png, drive-2-farthest.png, drive-3-end.png`
 }

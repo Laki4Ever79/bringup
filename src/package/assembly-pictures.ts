@@ -4,7 +4,7 @@
 // it needs neither the hosted page nor a browser (the open-core split, 25 Nov 2026: before, the pictures were
 // screenshots of the page's 3D view in headless Chromium, and an install without the page got none).
 import { execFile } from "node:child_process"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { promisify } from "node:util"
 import { ASSEMBLY_STEPS } from "../geometry/assembly-steps.js"
@@ -64,6 +64,9 @@ export async function casePictures(python: string, root: string, enclosureDir: s
 	}
 }
 
+// pictures/drive/pictures.json: { revision, files, at }, the drive the pictures show.
+export const DRIVE_PICTURES_FILE = "pictures.json"
+
 // The rover's simulated drive (py/drive_pictures.py): the robot's own meshes at the poses of its MuJoCo drive's
 // trajectory, on the course, drawn without MuJoCo or OpenGL: from above with the whole path, three key frames following
 // the robot (start, farthest, end) and a GIF of the whole drive. Files under drive/ in outDir.
@@ -75,6 +78,9 @@ export async function drivePictures(python: string, root: string, chassisDir: st
 	try {
 		const { stdout } = await exec(python, [join(root, "py", "drive_pictures.py"), chassisDir, driveDir, dir], { timeout: 600_000 })
 		const files = stdout.split(/\r?\n/).map((f) => f.trim()).filter((f) => /\.(png|gif)$/.test(f)).map((f) => `drive/${f}`)
+		// Which drive they show (the newest when they were made): Studio's Drive tab and the report label them by it.
+		const revision = Number(/rev-(\d+)$/.exec(driveDir.replace(/[\\/]+$/, ""))?.[1]) || null
+		writeFileSync(join(dir, DRIVE_PICTURES_FILE), JSON.stringify({ revision, files: files.map((f) => f.replace(/^drive\//, "")), at: new Date().toISOString() }, null, "\t"))
 		log(`drive pictures: ${files.length} in ${dir}`)
 		return { files, note: null }
 	} catch (e) {
