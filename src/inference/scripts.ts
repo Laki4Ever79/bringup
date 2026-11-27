@@ -187,6 +187,8 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		{ signal: "LIMIT_X", gpio: f411("PB13"), partRef: "JL1", partPin: "SIG" },
 		{ signal: "LIMIT_Y", gpio: f411("PB14"), partRef: "JL2", partPin: "SIG" },
 		{ signal: "LIMIT_Z", gpio: f411("PB15"), partRef: "JL3", partPin: "SIG" },
+		// The spindle's current on ADC1_IN5 (PA5, freed by the shared enable): its stall stop.
+		{ signal: "SPINDLE_I", gpio: f411("PA5"), partRef: "U10", partPin: "OUT" },
 		// The drivers' one single-wire UART (TMC2209 §4: PDN_UART): grblHAL's shared Trinamic stream is a full-duplex USART
 		// (TRINAMIC_UART_ENABLE 1, addresses by motor index), so RX (PA10) sits on the line and TX (PA9) joins it through
 		// 1 kΩ (R20). PA9 straight onto the line, as before, could write the drivers and never read them back.
@@ -209,11 +211,13 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		// The spindle switch (gap 6): the AHCT gate driver (its support: gate resistor, pull-down, flyback; catalog), the
 		// low-side MOSFET between the spindle's minus lead and ground, and the spindle's screw terminal on the motor rail.
 		catalogPart("SN74AHCT1G125DBVR", "U8"),
-		catalogPart("AO4468", "Q1", { S: "GND", S_2: "GND", S_3: "GND", G: "@SPINDLE_GATE", D: "@SPINDLE_N", D_2: "@SPINDLE_N", D_3: "@SPINDLE_N", D_4: "@SPINDLE_N" }),
+		catalogPart("AO4468", "Q1", { S: "@SPINDLE_SHUNT", S_2: "@SPINDLE_SHUNT", S_3: "@SPINDLE_SHUNT", G: "@SPINDLE_GATE", D: "@SPINDLE_N", D_2: "@SPINDLE_N", D_3: "@SPINDLE_N", D_4: "@SPINDLE_N" }),
 		catalogPart("KF128R-5.08-2P", "J3", { POS: "@VMOT_SW", NEG: "@SPINDLE_N" }),
 		// The emergency stop (gap 7): its power switch (VMOT to VMOT_SW, gate held on through the e-stop's NC loop), the OR
 		// gate that disables every driver on a stop, the e-stop's plug, and a limit switch's plug per axis.
 		{ ref: "R20", role: "resistor", mpn: "0402WGF1001TCE", lcsc: "C11702", footprint: "0402", pins: ["pin1", "pin2"], nets: { pin2: "@STEPPER_UART" } },
+		// The spindle's current (its stall stop): the shunt under Q1's source, its amplifier to an ADC pin.
+		catalogPart("INA180A1IDBVR", "U10"),
 		catalogPart("AO4407A", "Q2"),
 		catalogPart("SN74LVC1G32DBVR", "U9"),
 		catalogPart("B2B-XH-A-R(LF)(SN)", "JE1", { LOOP: "@ESTOP_LOOP" }),

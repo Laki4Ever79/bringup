@@ -93,6 +93,22 @@ From a short brief (a board: [the climate logger](briefs/logger.md); a robot: [t
 - **A parts list** with live stock and prices, and a build package with the assembly steps.
 - **Checks** across all of it: wiring, power, motor and battery currents, parts that collide, the competition's rules.
 
+## Robots
+
+**A rover** ([briefs/rover.md](briefs/rover.md)): the board, the chassis as printable parts (STL, STEP), the motors,
+wheels, battery and distance sensor chosen and checked against each other, the robot's own firmware driving a physics
+model of it in simulation, and a ROS 2 Jazzy workspace: the URDF, ros2_control and Nav2 settings, launch files and the
+hardware plugin that talks to the firmware ([docs/ros.md](docs/ros.md#from-npm-no-clone)). From the Quick start it needs
+`setup board case`; on a clean machine the rover settled in 5–8 min.
+
+![The rover Bringup designed: its printed chassis, wheels, board, battery and sensor](docs/img/rover-assembled.png)
+
+**A desktop arm** ([briefs/arm.md](briefs/arm.md)): six hobby servos on its own board, the base, brackets, wrist and
+gripper as printable parts checked for collisions across the joints' range and for printability, its firmware picking a
+cube and dropping it into a cup in simulation (5 of 5 in the acceptance test), and its URDF and controllers.
+<!-- The arm's picture goes here: lead-5's new still (examples/arm/still.png on the private repo), copied to
+     docs/img/arm.png for the public README. -->
+
 ## How it works
 
 Concurrent [Mozaik](https://www.npmjs.com/package/@mozaik-ai/core) agents (electronics, mechanics, firmware, parts) work

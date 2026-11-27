@@ -87,3 +87,31 @@ export function estopChecks(values: Partial<ContractValues>, cat: { mech: MechCa
 	if (f.offMj > entry.earMj) bad(`${sw.ref}'s turn-off puts about ${f.offMj} mJ into it (an estimate: ${f.offMs} ms at up to ${m.input.amps} A), over its ${entry.earMj} mJ repetitive avalanche rating: a faster turn-off (a smaller top resistor)`)
 	return out
 }
+
+// The spindle's stall stop (lead-2, after gap 11): a stalled spindle draws up to the brick's current (6.67 A) and cooks its
+// MOSFET in seconds (catalog AO4468: ~1.3 W hot, Tj ~125 C), so the board must measure its current: a current-sense
+// amplifier (role current-sense) on a shunt under the MOSFET's source, its full scale over the brick's current, its
+// output on an MCU GPIO the firmware reads (SPINDLE_I).
+interface SenseEntry {
+	mpn: string
+	gainVV: number
+	support?: { shuntOhm?: number }[]
+}
+export function spindleSenseChecks(values: Partial<ContractValues>, cat: { boardParts?: unknown }): MechViolation[] {
+	const m = values.cnc, parts = values.parts
+	if (!m || !parts || !parts.some((p) => p.role === "spindle-driver")) return []
+	const out: MechViolation[] = []
+	const sense = parts.find((p) => p.role === "current-sense")
+	if (!sense) {
+		out.push({ kind: "cnc-wiring", message: `the spindle has no current sense: a stall (up to the brick's ${m.input.amps} A) can't be seen, so the firmware can't stop it before its MOSFET overheats: add the spindle's current amplifier (catalog role current-sense, INA180A1IDBVR; its shunt goes under the MOSFET's source, @SPINDLE_SHUNT)`, fields: ["parts"], affects: ["parts"] })
+		return out
+	}
+	const entry = ((cat.boardParts ?? []) as SenseEntry[]).find((x) => x.mpn === sense.mpn)
+	const shunt = entry?.support?.find((x) => x.shuntOhm)?.shuntOhm
+	if (entry && shunt) {
+		const fullA = Math.round((3.3 / (entry.gainVV * shunt)) * 10) / 10
+		if (fullA < m.input.amps) out.push({ kind: "cnc-wiring", message: `${sense.ref} ${sense.mpn} reads at most ${fullA} A (3.3 V / (${entry.gainVV} V/V × ${shunt * 1000} mOhm)), under the brick's ${m.input.amps} A: a stall would read as full scale, not its current; a lower gain or a smaller shunt`, fields: ["parts"], affects: ["parts"] })
+	}
+	if (!(values.pins ?? []).some((p) => p.partRef === sense.ref && p.partPin === "OUT")) out.push({ kind: "cnc-wiring", message: `${sense.ref}'s OUT (the spindle's current) is on no MCU pin: assign an ADC-capable GPIO with partRef ${sense.ref} and partPin OUT (signal SPINDLE_I)`, fields: ["pins"], affects: ["architect"] })
+	return out
+}

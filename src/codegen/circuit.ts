@@ -394,6 +394,7 @@ registerChipContext((s, part) => spindleDriverCtx(s, part, BUCK_NET))
 registerChipContext(estopSwitchCtx)
 registerChipContext(fixedCtx("enable-gate"))
 registerChipContext(fixedCtx("limit-switch"))
+registerChipContext(fixedCtx("current-sense"))
 // An arm's servo rail chip: fed by the brick's input, making its rail at the arm's rail voltage.
 registerChipContext((s, part) => {
 	const rail = (armRails(s) ?? []).find((r) => r.supplyRef === part.ref)
@@ -885,6 +886,8 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	soic8: [5.8, 5.4],
 	sma: [7, 3.5],
 	"pinrow2_p5.08mm": [11.16, 8],
+	// 2512 (the spindle shunt): tscircuit's courtyard, measured 27 Nov 2026.
+	"2512": [7.66, 3.86],
 	dfn4: [5.8, 2.8], sot23_5: [3.6, 2.5], sot23: [3.6, 2.5],
 	// SOT-23-6 (the AP63205 buck): the SOT-23-5's outline with a sixth lead (JEDEC MO-178); measured on a mock Eurobot's
 	// board (20 Nov 2026): pads + 0.25 mm 4.1 × 3.0, as PAD_EXTENT has it.

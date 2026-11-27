@@ -2,7 +2,7 @@ import type { ContractValues } from "../contract/types.ts"
 import type { MechCatalog, StepperPart } from "../mechanics/catalog.ts"
 import type { MechViolation } from "../mechanics/checks.ts"
 import { CNC_AXES, type CncAxis } from "./types.ts"
-import { estopChecks } from "./estop.ts"
+import { estopChecks, spindleSenseChecks } from "./estop.ts"
 import { grblhalPins } from "./grblhal.ts"
 
 // The stepper driver's continuous RMS current per coil: the board's stepper-driver part's, from catalog/parts.json (the
@@ -84,6 +84,8 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 	if (!cat) return out
 	// The emergency stop's power switch and its gate loop (gap 7, src/cnc/estop.ts).
 	out.push(...estopChecks(values, cat))
+	// The spindle's stall stop: its current measured (src/cnc/estop.ts spindleSenseChecks).
+	out.push(...spindleSenseChecks(values, cat))
 
 	// The catalog's parts.
 	const mech = cat.mech

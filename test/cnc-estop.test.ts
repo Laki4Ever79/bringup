@@ -66,3 +66,18 @@ test("the gate loop's numbers: the contact's minimum load at the brick's low end
 	const direct = cnc((p) => p.filter((x) => x.role !== "estop-switch"))
 	assert.match(estopChecks(direct.values, cat).map((v) => v.message).join("\n"), /breaks 1\.5 A of inductive load/)
 })
+
+test("the spindle's current is measured (its stall stop): a 10 mOhm shunt under Q1's source, the INA180A1 to an ADC pin, 16.5 A full scale", async () => {
+	const { spindleSenseChecks } = await import("../src/cnc/estop.ts")
+	const s = cnc()
+	const nets = generatedNets(s)
+	for (const e of ["Q1.S", "Q1.S_3", "U10.INP"]) assert.ok(nets.get("SPINDLE_SHUNT")!.includes(e), e)
+	assert.ok(nets.get("GND")!.includes("U10.INN"), "IN- on the shunt's ground side")
+	assert.ok(supportParts(s).some((p) => /^U10 spindle shunt/.test(p.job) && p.spec.lcsc === "C466594"))
+	assert.ok(s.values.pins!.some((p) => p.signal === "SPINDLE_I" && p.partRef === "U10" && p.partPin === "OUT"))
+	const cat = defaultCheckCatalog()!
+	assert.deepEqual(spindleSenseChecks(s.values, cat), [])
+	// Without it the stall can't be seen: the parts agent hears it.
+	const blind = cnc((p) => p.filter((x) => x.role !== "current-sense"))
+	assert.match(spindleSenseChecks(blind.values, cat).map((v) => v.message).join("\n"), /the spindle has no current sense/)
+})

@@ -188,3 +188,12 @@ Each failure on the way, with its general fix.
   calls a one-argument spindle_dir() with two), so the spindle is PWM without direction, its enable on a spare GPIO wired to
   nothing. Built 27 Nov 2026 (STM32F4xx b0cd1bb): RAM 16.9 %, flash 41.9 % (test/cnc-grblhal.int.test.ts, skipped without
   the clone). The firmware folder's grblhal/ now has platformio_env.ini too.
+- 27 Nov 2026: the spindle's stall stop, its hardware. A stall draws up to the brick's 6.67 A and cooks the AO4468 (about
+  1.3 W, Tj about 125 °C), so the board measures it: a 10 mΩ shunt under the MOSFET's source (VMS-R010-1.0-U, C466594,
+  2512, 4 W; 0.44 W and 67 mV at 6.67 A) and an INA180A1 (C122228, 20 V/V, pinout A) on 3.3 V to PA5 (ADC1_IN5, SPINDLE_I):
+  16.5 A full scale (3.3 V / (20 × 10 mΩ)); the 3.1 A run current reads 0.62 V. Gain 50 would have saturated at 6.6 A,
+  under the brick's current. Its output takes at most 1 nF (TI: no sustained oscillation), so the filter is 1 nF and the
+  firmware averages: the low-side shunt sees the current only while the MOSFET conducts, so the average is divided by the
+  duty. The check (src/cnc/estop.ts spindleSenseChecks): a switched spindle with no current sense, a full scale under
+  the brick's current, or its output on no pin, each reported. Open: grblHAL has no stall stop of its own; the plugin that
+  reads SPINDLE_I is still to write.
