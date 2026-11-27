@@ -132,6 +132,33 @@ export async function installDomain(domain: Domain, deps: InstallDeps = {}): Pro
 	return { installed: true, note: `${domain} tools in ${venv}` }
 }
 
+// What `setup` with no domain prints: each domain on one line, whether it's installed here, its size and time, what it
+// gives, then the commands (a newcomer's read, 27 Nov 2026: three 250-character lines, no word on what was already
+// installed, and "all" never explained).
+const SHORT: Record<Domain, string> = {
+	board: "a routed board, its fab files and pictures of it",
+	case: "the case or chassis as STEP and STL, a robot's 3D pictures",
+	firmware: "firmware built against the board's real pin map",
+}
+export function setupListing(home = bringupHome()): string {
+	const have = new Set(installedDomains(home))
+	const all: Domain[] = ["board", "case", "firmware"]
+	const size = (d: Domain) => (DOMAINS[d].sizeMb >= 1000 ? `~${(DOMAINS[d].sizeMb / 1000).toFixed(1)} GB` : `~${DOMAINS[d].sizeMb} MB`)
+	const rows = all.map((d) => `  ${d.padEnd(9)} ${(have.has(d) ? "installed" : "not installed").padEnd(14)} ${`${size(d)}, ~${DOMAINS[d].seconds} s`.padEnd(16)} ${SHORT[d]}`)
+	const missing = all.filter((d) => !have.has(d))
+	return [
+		`Bringup's tools, each installed once into ${home} (pinned versions, nothing system-wide):`,
+		"",
+		...rows,
+		"           (firmware's first build then downloads the chip's compiler: ~1 GB more, 2.5-3 min, once)",
+		"",
+		missing.length
+			? `Install:  npx bringup-mcp setup ${missing.join(" ")}${missing.length > 1 ? `      (or one at a time; "all" installs every domain)` : ""}`
+			: "Everything is installed.",
+		"Without a domain's tools, designs still run: those parts are stubbed and the run's summary says which command builds them.",
+	].join("\n")
+}
+
 // `npx bringup-mcp setup [board|case|firmware|all]`: what each would download, then the install. With no domain it
 // only lists them, so nothing is downloaded by accident.
 export async function setupCli(args: string[]): Promise<number> {
@@ -140,7 +167,7 @@ export async function setupCli(args: string[]): Promise<number> {
 	const picked = asked.includes("all") ? all : (asked.filter((a) => all.includes(a as Domain)) as Domain[])
 	const unknown = asked.filter((a) => a !== "all" && !all.includes(a as Domain))
 	if (!picked.length || unknown.length) {
-		console.error(`${unknown.length ? `unknown domain: ${unknown.join(", ")}\n` : ""}usage: npx bringup-mcp setup <board|case|firmware|all>\n\nEach installs once into ${bringupHome()}:\n${all.map((x) => `  ${describeDomain(x)}`).join("\n")}`)
+		console.error(`${unknown.length ? `unknown domain: ${unknown.join(", ")}\n\n` : ""}${setupListing()}`)
 		return unknown.length ? 2 : 0
 	}
 	let failed = false

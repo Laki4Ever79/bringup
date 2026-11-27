@@ -7,7 +7,19 @@
 import { register } from "tsx/esm/api"
 
 register()
-if (process.argv[2] === "setup") {
+if (["--help", "-h", "help"].includes(process.argv[2])) {
+	// A person typing it, not an MCP client (which starts it with no arguments): without this it started the server and
+	// waited silently on stdin.
+	console.log(`bringup-mcp: Bringup for Claude Code and other MCP clients.
+
+  npx bringup-mcp                      the MCP server on stdio (add it: claude mcp add bringup -- npx -y bringup-mcp)
+  npx bringup-mcp setup [domain...]    list the hardware tools, or install board, case, firmware or all
+  npx bringup-mcp login --url <studio> connect this machine to Bringup Studio; logout disconnects
+  npx bringup-mcp bench-log <design> <log>   read a real board's serial log into its design
+
+Docs: https://github.com/Laki4Ever79/bringup/blob/main/docs/mcp.md`)
+	process.exit(0)
+} else if (process.argv[2] === "setup") {
 	const { setupCli } = await import("../src/setup/domains.ts")
 	process.exit(await setupCli(process.argv.slice(3)))
 } else if (process.argv[2] === "login" || process.argv[2] === "logout") {

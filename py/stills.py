@@ -5,6 +5,7 @@ the parts up to that step), one exploded, and a top and a side view of the whole
 
 usage: stills.py <chassis rev dir (spec.json, chassis.stl)> <out dir> <step names, comma-separated>
        stills.py --groups <dir with groups.json> <out dir>
+       stills.py --case <enclosure rev dir (spec.json, case.stl, lid.stl)> <out dir>
 The second form draws any posed assembly from STLs in its steps' order (py/arm.py writes the arm's posed/ folder:
 groups.json {steps: [{name, files: [[stl, "printed" | "bought"]]}], floorZ}).
 prints the files written, one per line."""
@@ -186,7 +187,34 @@ def draw_steps(g, steps, out, floor_z):
     return written + ["view-top.png", "view-side.png"]
 
 
+def case_groups(rev):
+    """A board in its printed case (py/enclosure.py's frame: the board's bottom-left corner the origin, the floor's
+    underside z 0): the open case, the board on its standoffs with its connectors, then the lid, mirrored back from its
+    print orientation (z_assembled = heightMm + plateMm - z)."""
+    spec = json.loads((rev / "spec.json").read_text())
+    o = spec["outline"]
+    w, h, t = float(o["widthMm"]), float(o["heightMm"]), float(o.get("thicknessMm", 1.6))
+    z0 = float(spec["wallMm"]) + float(spec["standoff"]["heightMm"])
+    board = [tris(Pos(w / 2, h / 2, z0 + t / 2) * Box(w, h, t))]
+    for c in spec.get("connectors", []):
+        cw, ch, depth = float(c.get("widthMm", 5)), float(c.get("heightMm", 2)), min(6.0, w / 3, h / 3)
+        off, edge = float(c["offsetMm"]), c["edge"]
+        x, y, sx, sy = {"bottom": (off, depth / 2, cw, depth), "top": (off, h - depth / 2, cw, depth), "left": (depth / 2, off, depth, cw), "right": (w - depth / 2, off, depth, cw)}[edge]
+        board.append(tris(Pos(x, y, z0 + t + ch / 2) * Box(sx, sy, ch)))
+    g = {"case": [(read_stl(rev / "case.stl"), COLOURS["plate"])], "board": [(np.concatenate(board[:1]), COLOURS["board"])] + ([(np.concatenate(board[1:]), (58, 60, 66))] if len(board) > 1 else [])}
+    if (rev / "lid.stl").exists():
+        lid = read_stl(rev / "lid.stl").copy()
+        lid[:, :, 2] = float(spec["heightMm"]) + float(spec["lid"]["plateMm"]) - lid[:, :, 2]
+        g["lid"] = [(lid[:, ::-1, :], COLOURS["plate"])]  # mirrored: reverse the winding so the faces still point out
+    return g
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--case":
+        src, out = Path(sys.argv[2]), Path(sys.argv[3])
+        g = case_groups(src)
+        print("\n".join(draw_steps(g, list(g), out, 0.0)))
+        return
     if len(sys.argv) == 4 and sys.argv[1] == "--groups":
         src, out = Path(sys.argv[2]), Path(sys.argv[3])
         g, floor_z = file_groups(src)

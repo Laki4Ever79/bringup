@@ -1,6 +1,6 @@
 import { providerProblem } from "../inference/providers.ts"
 import { continueSeed } from "../runner/continue.ts"
-import { armPictures, assemblyPictures } from "../package/assembly-pictures.ts"
+import { armPictures, assemblyPictures, casePictures } from "../package/assembly-pictures.ts"
 import { approveRunPlan, makeRunPlan, paidStartRefusal, planText, readRunPlan } from "../system/plan-gate.ts"
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
@@ -558,11 +558,11 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	server.registerTool(
 		"get_pictures",
 		{
-			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true a robot's or arm's 3D stills (needs the case tools; takes a minute). Every file is also listed by path.",
+			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true 3D stills of the board in its case, or of a robot or arm (needs the case tools; 10-25 s). Every file is also listed by path.",
 			inputSchema: {
 				runId: z.string(),
 				board: BOARD,
-				stills: z.boolean().optional().describe("Render a robot's or arm's 3D stills into <run>/pictures (py/stills.py, the case tools). Default false."),
+				stills: z.boolean().optional().describe("Render 3D stills into <run>/pictures (py/stills.py, the case tools): the board in its case, or a robot or arm step by step. Default false."),
 			},
 		},
 		async ({ runId, board, stills }) => {
@@ -577,6 +577,9 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 				return rev === undefined ? null : join(dir, `rev-${rev}`)
 			}
 			const files: { what: string; path: string }[] = []
+			// Which still shows the design best: a robot or arm finished (its last step); a case exploded, since the closed
+			// lid hides the board.
+			let showExploded = false
 			const notes: string[] = []
 			const boardRev = newest(join(b.dir, "board"), "board.png") ?? newest(join(b.dir, "board"), "board-pcb.svg")
 			if (boardRev) {
@@ -591,9 +594,10 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 				const arm = newest(join(b.dir, "arm"), join("arm", "posed", "groups.json"))
 				const out = join(b.dir, "pictures")
 				if (!env.python) notes.push("no 3D stills: they need the case tools (`npx bringup-mcp setup case`, after your user says yes)")
-				else if (!chassis && !arm) notes.push("no 3D stills: stills are drawn for a robot's chassis or an arm, and this design has neither built")
+				else if (!chassis && !arm && !caseRev) notes.push("no 3D stills: stills are drawn for a case, a robot's chassis or an arm, and this design has none of them built")
 				else {
-					const p = chassis ? await assemblyPictures(env.python, root, chassis, out) : await armPictures(env.python, root, join(arm!, "arm", "posed"), out)
+					const p = chassis ? await assemblyPictures(env.python, root, chassis, out) : arm ? await armPictures(env.python, root, join(arm, "arm", "posed"), out) : await casePictures(env.python, root, caseRev!, out)
+					showExploded = !chassis && !arm
 					if (p.note) notes.push(p.note)
 					for (const f of p.files) files.push({ what: `3D still: ${basename(f, ".png").replace(/[-_]/g, " ")}`, path: join(out, f) })
 				}
@@ -602,7 +606,8 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			// finished robot (the last assembly step), each at most 2 MB.
 			const pngs = files.filter((f) => f.path.endsWith(".png"))
 			const steps = pngs.filter((f) => /[\\/]step-\d+[^\\/]*\.png$/.test(f.path))
-			const finished = steps.length ? steps.reduce((x, y) => (Number(/step-(\d+)/.exec(y.path)![1]) > Number(/step-(\d+)/.exec(x.path)![1]) ? y : x)) : pngs.length > 1 ? pngs[pngs.length - 1] : undefined
+			const exploded = pngs.find((f) => /[\\/]exploded\.png$/.test(f.path))
+			const finished = showExploded && exploded ? exploded : steps.length ? steps.reduce((x, y) => (Number(/step-(\d+)/.exec(y.path)![1]) > Number(/step-(\d+)/.exec(x.path)![1]) ? y : x)) : pngs.length > 1 ? pngs[pngs.length - 1] : undefined
 			const shown = [pngs[0], finished].filter((f): f is { what: string; path: string } => Boolean(f) && statSync(f!.path).size <= 2_000_000)
 			return {
 				content: [

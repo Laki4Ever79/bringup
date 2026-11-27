@@ -43,3 +43,19 @@ export async function armPictures(python: string, root: string, posedDir: string
 		return { files: [], note: `no assembly pictures: py/stills.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
 	}
 }
+
+// A board in its printed case (py/enclosure.py's case.stl and lid.stl, the board on its standoffs with its connectors):
+// the open case, the board in it, the lid on, an exploded view and a top and side view (stills.py --case). Most first
+// designs are a plain board in a case, and before this only robots and arms had pictures of their printed parts.
+export async function casePictures(python: string, root: string, enclosureDir: string, outDir: string, log: (m: string) => void = () => {}): Promise<AssemblyPictures> {
+	if (!existsSync(join(enclosureDir, "spec.json")) || !existsSync(join(enclosureDir, "case.stl"))) return { files: [], note: `no case pictures: ${enclosureDir} holds no built case` }
+	const dir = join(outDir, "assembly")
+	try {
+		const { stdout } = await exec(python, [join(root, "py", "stills.py"), "--case", enclosureDir, dir], { timeout: 600_000 })
+		const files = stdout.split("\n").filter((f) => f.endsWith(".png")).map((f) => `assembly/${f}`)
+		log(`case pictures: ${files.length} in ${dir}`)
+		return { files, note: null }
+	} catch (e) {
+		return { files: [], note: `no case pictures: py/stills.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
+	}
+}

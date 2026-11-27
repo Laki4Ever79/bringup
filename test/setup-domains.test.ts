@@ -3,7 +3,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { DOMAINS, describeDomain, installDomain, installedDomains, setupCli } from "../src/setup/domains.ts"
+import { DOMAINS, describeDomain, installDomain, installedDomains, setupCli, setupListing } from "../src/setup/domains.ts"
 import { bringupHome, toolAt } from "../src/tools/env.ts"
 import { missingBuilders } from "../src/tools/stubs.ts"
 import { tempDir } from "./helpers.ts"
@@ -25,8 +25,22 @@ test("setup with no domain only lists them; an unknown domain is refused; nothin
 	} finally {
 		console.error = err
 	}
-	assert.match(said.join("\n"), /usage: npx bringup-mcp setup <board\|case\|firmware\|all>/)
+	assert.match(said.join("\n"), /Install:  npx bringup-mcp setup /)
 	assert.match(said.join("\n"), /unknown domain: cad/)
+})
+
+test("the listing says per domain whether it's installed here, then the command for exactly what's missing", () => {
+	const home = tempDir()
+	const empty = setupListing(home)
+	assert.match(empty, /^  board +not installed +~923 MB, ~35 s +a routed board/m)
+	assert.match(empty, /Install:  npx bringup-mcp setup board case firmware/)
+	assert.match(empty, /"all" installs every domain/)
+	// The board's tools in place: it says installed, and the command names only the others.
+	mkdirSync(join(home, "tools", "node", "node_modules", ".bin"), { recursive: true })
+	writeFileSync(join(home, "tools", "node", "node_modules", ".bin", process.platform === "win32" ? "tsci.cmd" : "tsci"), "")
+	const some = setupListing(home)
+	assert.match(some, /^  board +installed /m)
+	assert.match(some, /Install:  npx bringup-mcp setup case firmware/)
 })
 
 test("board: the pinned lockfile goes into the tools home and npm ci installs it there; a second run is a no-op", async () => {
@@ -109,4 +123,11 @@ test("a CAD kernel that can't load libGL is explained, not shown as a Python Imp
 	const raw = 'Traceback (most recent call last):\n  File "py/enclosure.py", line 3, in <module>\n    from OCP.OCP import *\nImportError: libGL.so.1: cannot open shared object file: No such file or directory'
 	assert.match(explainToolError(raw)!, /lacks the system's OpenGL library \(libGL\.so\.1\)\. On Debian or Ubuntu: sudo apt install libgl1/)
 	assert.equal(explainToolError("ValueError: the lid doesn't fit"), null)
+})
+
+test("bringup-mcp --help prints the commands and exits, instead of starting the server", async () => {
+	const { execFileSync } = await import("node:child_process")
+	const out = execFileSync(process.execPath, [join(import.meta.dirname, "..", "bin", "bringup-mcp.js"), "--help"], { encoding: "utf8", timeout: 60_000, input: "" })
+	assert.match(out, /claude mcp add bringup -- npx -y bringup-mcp/)
+	assert.match(out, /setup \[domain\.\.\.\]/)
 })

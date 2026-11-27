@@ -632,7 +632,7 @@ test("get_pictures returns the newest board's 3D picture as an image and lists e
 		const bare = JSON.parse((await mcp.call("get_pictures", { runId: "bare", stills: true })).text)
 		assert.deepEqual(bare.files, [])
 		assert.match(bare.notes.join(" "), /setup board/)
-		assert.match(bare.notes.join(" "), /robot's chassis or an arm/)
+		assert.match(bare.notes.join(" "), /a case, a robot's chassis or an arm/)
 	} finally {
 		await mcp.close()
 	}
